@@ -56,11 +56,11 @@ ruby-fixed-proof-values-negative-control: ruby-toolchain-check
 	sh test/slowgate/proof ruby-fixed-proof-values-negative-control 'TestRubyFixedProofValuesNegativeControl' -count=1 -timeout 600s -tags schema_leg_ruby -run '^TestRubyFixedProofValuesNegativeControl$$' ./internal/codegen/rubytable/
 
 ruby-fixed-proof-shapes-negative-control: ruby-toolchain-check
-	sh test/slowgate/proof ruby-fixed-proof-shapes-negative-control 'TestRubyFixedProofShapes' -count=1 -timeout 600s -tags schema_leg_ruby -run '^TestRubyFixedProofShapes$$/^negative-controls$$' ./internal/codegen/rubytable/
+	sh test/slowgate/proof ruby-fixed-proof-shapes-negative-control 'TestRubyFixedProofShapesControlRows' -count=1 -timeout 600s -tags schema_leg_ruby -run '^TestRubyFixedProofShapesControlRows$$' ./internal/codegen/rubytable/
 	sh test/slowgate/proof ruby-fixed-proof-shapes-negative-control-2 'TestRubyFixedProofShapesNegativeControl' -count=1 -timeout 600s -tags schema_leg_ruby -run '^TestRubyFixedProofShapesNegativeControl$$' ./internal/codegen/rubytable/
 
 ruby-fixed-proof-unions-optionals-negative-control: ruby-toolchain-check
-	sh test/slowgate/proof ruby-fixed-proof-unions-optionals-negative-control 'TestRubyFixedProofUnionsOptionals' -count=1 -timeout 600s -tags schema_leg_ruby -run '^TestRubyFixedProofUnionsOptionals$$/^controls$$' ./internal/codegen/rubytable/
+	sh test/slowgate/proof ruby-fixed-proof-unions-optionals-negative-control 'TestRubyFixedProofUnionsOptionalsControlRows' -count=1 -timeout 600s -tags schema_leg_ruby -run '^TestRubyFixedProofUnionsOptionalsControlRows$$' ./internal/codegen/rubytable/
 
 ruby-fixed-proof-evolution-negative-control: ruby-toolchain-check build/fixedform-corpus/.stamp
 	sh test/slowgate/proof ruby-fixed-proof-evolution-negative-control 'TestRubyFixedProofEvolutionNegativeControl TestRubyFixedProofEvolutionKindPairsNegativeControl' -count=1 -timeout 600s -tags schema_leg_ruby -run '^(TestRubyFixedProofEvolutionNegativeControl$$|TestRubyFixedProofEvolutionKindPairsNegativeControl$$)' ./internal/codegen/rubytable/

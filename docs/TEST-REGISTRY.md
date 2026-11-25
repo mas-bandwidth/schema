@@ -211,6 +211,7 @@ The `corpus` adapter's harnesses, by family:
 |---|---|---|---|
 | `align-arrays` | `verify-bitphase --adapter --lang L` | `make bin/schema build/verify-bitphase-bin` | the row's bytes (alignarrays.go) |
 | `conformance-<surface>` | `build/conformance-harness-vm adapter --lang L` | `make conformance-leg-L` | `surface`, `case` (the file the driver writes), `files` (the corpus files the case reads), `driver` |
+| any family whose rows' inputs carry `tests` (a union row) | `go-union`: L's own Go test, through the `gotest` adapter's calls | none (the runner provides L's toolchain, as the test's tier says) | `tests`: `{"<lang>": {"package", "test", "tags"}}` (`tags` optional) |
 
 ### The tables conformance corpus
 
@@ -249,6 +250,82 @@ files and the drivers as the registry's, not the ledger's.
   `_verify-<lang>-conformance` (make/verify-compiled.mk, make/verify-vm.mk),
   which ran exactly these cases, leg by leg. The rest of those targets (packet
   wire, defaults, UTF-8) stays in verify-leg until its own family moves in.
+
+### Union rows: the per-language Go tests
+
+Before the registry, each language held its own hand-written Go tests of a
+case set (internal/codegen/<lang>table and the like), named differently per
+language, and a language that never wrote one was silent. A union row holds
+the case once and names each language's test that answers it:
+
+```
+{"rec":"test","key":"roundtrip.wire-json-integers.wide-integers-are-strings", ...,
+ "inputs":{"tests":{"go":{"package":"./internal/codegen/gotable","test":"TestGoJsonWideIntegersAreStrings"},
+                    "lua":{"package":"./internal/codegen/luatable","test":"TestLuaJsonWideIntegersAreStrings"}, ...}}}
+```
+
+- It is a per-language row: every language row has an instance. The
+  `go-union` harness runs a language's instance as that language's Go test,
+  by its exact name, in the `gotest` adapter's `go test -json` calls (cut by
+  measured seconds, a package in a module of its own run from that module,
+  `-tags` when the language's entry names them). A skip fails, as everywhere.
+- A language the row names no test for is red, naming the languages that do
+  answer the case: the case is unanswered there until its test is written.
+  A named test its package's source does not declare is red as MISSING.
+- `testreg.Load` refuses a union row naming a language the registry does not
+  list (or `none`), a Go test two union rows name, inputs that do not read,
+  and a language-free union row (`TestLoadRefusesUnion*`,
+  `TestLoadRefusesAGoTestTwoUnionRowsName`). `schema-test extract` credits
+  each named Go test to its row, so it leaves the ledger
+  (`TestAUnionRowCoversEachLanguagesGoTest`).
+- A row's tier is the highest of its tests' needs (a toolchain makes it
+  functional), and its seconds the slowest language's.
+- Moving a test in is a move, not a rewrite: the Go test is unchanged, and
+  only the row is new. Families are named for the data set or behaviour
+  (`wire-<stem>` for a testdata/wire stem).
+
+### Language-intrinsic tests
+
+A test that exists in one language only is sorted by its subject (Rowan's
+ruling, 2026-11-25, easy for Glenn to overrule):
+
+- **Format behaviour every language must show** (a refusal, a wire or JSON
+  rule, a limit, a round trip, a corpus, evolution, damage, a differential
+  against the engine, or a negative control of one of these) is a union row
+  that names only that language's test. Every other language is red until it
+  answers the case. These reds are the point: they are the parity gaps.
+- **Intrinsic to that language's own generated source or runtime**, with no
+  counterpart elsewhere (a Lua string-escape emitter, a C# attribute shape, a
+  Rust lifetime, a formatter's or analyser's verdict on the generated code,
+  module layout, allocation counts, a timing bench of the language's own code
+  shapes): the row carries `"intrinsic":{"lang":L,"reason":R}`. It has L's
+  instance only. Every other language is declared unrepresentable with R, in
+  `schema-test coverage` and the spec addenda's "Intrinsic to one language"
+  tables. It runs and is red when it fails. It is no exemption: the subject
+  does not exist elsewhere.
+- When in doubt, a test is format behaviour. A cold reader checks the split.
+- `testreg.Load` refuses an intrinsic row:
+  - naming a language the registry does not list;
+  - with an empty or boilerplate reason (under four words, or fewer than three
+    distinct words that are not filler such as "language-specific", "only",
+    "code", "TODO", "placeholder"),
+    so every reason says what the subject is;
+  - that is language-free, or is not a union row (only a row naming the
+    language's own Go test can be intrinsic);
+  - whose inputs name another language's test, or not its own;
+  - whose family is not named `<lang>-<subject>` (an intrinsic family is one
+    language's), or whose case another language's intrinsic row also has (a
+    case two languages answer is one union row, and splitting it would drop
+    every other language's red);
+  - with an `unrepresentable` line of its own.
+
+  A count of words cannot judge whether a reason is true: the cold reader of
+  the split does.
+
+  These are `TestAnIntrinsicTestHasOneInstance` and `TestLoadRefusesABadIntrinsic`.
+- A union row takes no `unrepresentable` line: a language with no Go test
+  for the case is red, never left out
+  (`TestLoadRefusesAnUnrepresentableLineOnAUnionRow`).
 
 ## How each kind of test fits
 

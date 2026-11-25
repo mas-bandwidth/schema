@@ -5,7 +5,7 @@ Part of the specification: every test of tier `functional`, from the test regist
 
 **Tier functional:** uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it.
 
-Functional tests every language answers: 2240. Language-free tests: 484.
+Functional tests every language answers: 2256. Language-free tests: 484.
 
 Run this tier for a language with `schema-test run --tier functional --lang L`, one test with `schema-test run <full name>`.
 
@@ -44,6 +44,13 @@ read bytes, write them back, same bytes.
 | `L.functional.roundtrip.align-arrays.phase63-three` | align-arrays Phase63 row three: read, then written back to the same bytes (SPEC §4.3) | `file: aa_phase63_valid_three.bin`<br>`hex: 0b616201630164`<br>`kind: valid`<br>`root: Phase63`<br>`schema: test/verify-bitphase/align-arrays/BitPhase.schema` | read, and written back to exactly these bytes | `test/verify-bitphase/alignarrays.go alignArraysRows` |
 | `L.functional.roundtrip.align-arrays.phase7-named-tail-void` | align-arrays Phase7 row named-tail-void: read, then written back to the same bytes (SPEC §4.3) | `file: aa_phase7_valid_named-tail-void.bin`<br>`hex: 276869066175`<br>`kind: valid`<br>`root: Phase7`<br>`schema: test/verify-bitphase/align-arrays/BitPhase.schema` | read, and written back to exactly these bytes | `test/verify-bitphase/alignarrays.go alignArraysRows` |
 | `L.functional.roundtrip.align-arrays.phase7-void-named-named` | align-arrays Phase7 row void-named-named: read, then written back to the same bytes (SPEC §4.3) | `file: aa_phase7_valid_void-named-named.bin`<br>`hex: 1f000571`<br>`kind: valid`<br>`root: Phase7`<br>`schema: test/verify-bitphase/align-arrays/BitPhase.schema` | read, and written back to exactly these bytes | `test/verify-bitphase/alignarrays.go alignArraysRows` |
+
+#### `roundtrip` family `compressed-float`, 2 tests
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.functional.roundtrip.compressed-float.f32-ends-corpus` | the compressed float32 ends corpus: each row's value at and past the range ends reads and writes as the corpus says | `inputs.tests` (1648 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/compressed_f32_ends_corpus_test.go:223` |
+| `L.functional.roundtrip.compressed-float.negzero-corpus` | the compressed -0 corpus (testdata/conformance/feature-witnesses/compressed-negzero-go): every writer stores a compressed -0 as +0, bit for bit with the Go engine | `inputs.tests` (1476 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/ctable/compressed_negzero_writers_test.go:226` |
 
 #### `roundtrip` family `conformance-message`, 25 tests
 
@@ -381,6 +388,12 @@ read bytes, write them back, same bytes.
 | `L.functional.roundtrip.conformance-wire.w1-fleet-default` | conformance wire w1\_fleet\_default: the pinned wire is read and written back to the same bytes | `case: w1_fleet_default`<br>`driver: test/conformance/{lang}/driver`<br>`inputs.files` (169 bytes, held in the registry row's `inputs.files`)<br>`surface: wire` | the leg's answer equals the corpus's expectation (test/conformance/README.md) | `testdata/conformance/tables/MANIFEST.txt` |
 | `L.functional.roundtrip.conformance-wire.w2-fleet` | conformance wire w2\_fleet: the pinned wire is read and written back to the same bytes | `case: w2_fleet`<br>`driver: test/conformance/{lang}/driver`<br>`inputs.files` (153 bytes, held in the registry row's `inputs.files`)<br>`surface: wire` | the leg's answer equals the corpus's expectation (test/conformance/README.md) | `testdata/conformance/tables/MANIFEST.txt` |
 | `L.functional.roundtrip.conformance-wire.widelist-wide` | conformance wire widelist\_wide: the pinned wire is read and written back to the same bytes | `case: widelist_wide`<br>`driver: test/conformance/{lang}/driver`<br>`inputs.files` (357 bytes, held in the registry row's `inputs.files`)<br>`surface: wire` | the leg's answer equals the corpus's expectation (test/conformance/README.md) | `testdata/conformance/tables/MANIFEST.txt` |
+
+#### `roundtrip` family `wire-json-integers`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.functional.roundtrip.wire-json-integers.wide-integers-are-strings` | testdata/wire/json-integers: a wide integer is written and read as a JSON string, and every refused vector is refused | `inputs.tests` (1497 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/jsonwideintegers_test.go:37` |
 
 ### Type `encode`
 
@@ -1697,6 +1710,19 @@ writing a bad value is refused (debug assert in the assert legs; every build in 
 | `L.functional.write-refusal.conformance-write-refusal-shape.shref-v-whole-null` | conformance write-refusal-shape shref\_v\_whole\_null: writing a value of the wrong shape is refused | `case: shref_v_whole_null`<br>`driver: test/conformance/{lang}/driver`<br>`inputs.files` (146 bytes, held in the registry row's `inputs.files`)<br>`surface: write-refusal-shape` | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `testdata/conformance/tables/MANIFEST.txt` |
 | `L.functional.write-refusal.conformance-write-refusal-shape.shref-v-whole-text` | conformance write-refusal-shape shref\_v\_whole\_text: writing a value of the wrong shape is refused | `case: shref_v_whole_text`<br>`driver: test/conformance/{lang}/driver`<br>`inputs.files` (146 bytes, held in the registry row's `inputs.files`)<br>`surface: write-refusal-shape` | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `testdata/conformance/tables/MANIFEST.txt` |
 
+#### `write-refusal` family `id-cap`, 2 tests
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.functional.write-refusal.id-cap.announcement-refuses-more-than-4096-entries` | an announcement of 4096 entries measures, writes and reads back; one of 4097 is refused by the measure and the writer, which writes nothing | `inputs.tests` (1934 bytes, held in the registry row's `inputs.tests`) | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `internal/codegen/gotable/announce_cap_test.go:16` |
+| `L.functional.write-refusal.id-cap.writer-refuses-more-than-4096-ids` | a table writer holds the 4096-id budget: 4096 ids write, a 4097th is refused | `inputs.tests` (1724 bytes, held in the registry row's `inputs.tests`) | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `internal/codegen/gotable/idcap_write_test.go:20` |
+
+#### `write-refusal` family `json-text`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.functional.write-refusal.json-text.writer-refuses-zero-byte` | the JSON writer refuses a text holding a zero byte (debug assert in the assert legs, every build in the refuse legs), and the same value without it writes | `inputs.tests` (1301 bytes, held in the registry row's `inputs.tests`) | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `internal/codegen/gotable/jsonwriterzero_test.go:5` |
+
 ### Type `load-refusal`
 
 hostile bytes are refused in every build, with the named reason.
@@ -2388,6 +2414,49 @@ hostile bytes are refused in every build, with the named reason.
 | `L.functional.load-refusal.conformance-retain-refusal.retain-refusal-kind31` | conformance retain-refusal retain\_refusal\_kind31: the retaining read refuses the row | `case: retain_refusal_kind31`<br>`driver: test/conformance/{lang}/driver`<br>`inputs.files` (342 bytes, held in the registry row's `inputs.files`)<br>`surface: retain-refusal` | refused on load, in every build (verdict only) | `testdata/conformance/tables/MANIFEST.txt` |
 | `L.functional.load-refusal.conformance-retain-refusal.retain-refusal-short` | conformance retain-refusal retain\_refusal\_short: the retaining read refuses the row | `case: retain_refusal_short`<br>`driver: test/conformance/{lang}/driver`<br>`inputs.files` (320 bytes, held in the registry row's `inputs.files`)<br>`surface: retain-refusal` | refused on load, in every build (verdict only) | `testdata/conformance/tables/MANIFEST.txt` |
 
+#### `load-refusal` family `fixed-dead-bytes`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.functional.load-refusal.fixed-dead-bytes.are-zero` | every dead byte of a fixed record is zero: a control reads and saves back, and each vector with one dead region made non-zero is refused whole | `inputs.tests` (1272 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/gotable/fixeddeadbytes_test.go:19` |
+
+#### `load-refusal` family `json-text`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.functional.load-refusal.json-text.name-cap` | the JSON read refuses a schema-name string past 255 bytes (SPEC-TABLES §16.2) wherever one appears (field key, skipped key, enum variant, flags element, union arm key, pointer key), while a long map key and a long string value still read | `inputs.tests` (1038 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/gotable/jsonnamecap_test.go:152` |
+
+#### `load-refusal` family `message-load-capacity`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.functional.load-refusal.message-load-capacity.fixture` | the committed capacity fixture testdata/batch\_capacity\_two.bin: storage for two values loads both; storage for one, and each refused variant, answers a count of 0 with every value handed in at its declared default (R4) | `inputs.tests` (1700 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/gotable/messageform_capacity_fixture_test.go:28` |
+
+#### `load-refusal` family `wire-fixed-empty-batch`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.functional.load-refusal.wire-fixed-empty-batch.batch-holds-a-record` | a fixed batch holds at least one record: testdata/wire/fixed-empty-batch's empty batch is refused by every fixed read, one record reads, and a save of zero records is refused | `inputs.tests` (1349 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/gotable/fixedemptybatch_test.go:17` |
+
+#### `load-refusal` family `wire-non-canonical`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.functional.load-refusal.wire-non-canonical.reads-refuse-non-canonical` | testdata/wire/non-canonical: a read of a non-canonical encoding is refused and the canonical twin reads | `inputs.tests` (1468 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/gotable/noncanonical_test.go:24` |
+
+#### `load-refusal` family `wire-pointer-target-type`, 2 tests
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.functional.load-refusal.wire-pointer-target-type.blob-kind-refused` | testdata/wire/pointer-target-type blobkind: a pointer whose target is a blob of the wrong kind is refused on load | `inputs.tests` (1439 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/gotable/pointer_target_blob_kind_test.go:52` |
+| `L.functional.load-refusal.wire-pointer-target-type.type-checked` | testdata/wire/pointer-target-type: a pointer's target is checked against its declared type; the canonical file reads and each mistyped target is refused | `inputs.tests` (1275 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/gotable/pointer_target_type_test.go:23` |
+
+#### `load-refusal` family `wire-skipped-value`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.functional.load-refusal.wire-skipped-value.skipped-value-is-validated` | testdata/wire/skipped-value: a value the reader skips is still validated, and each bad skipped value refuses the load | `inputs.tests` (1261 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/gotable/skipped_value_json_test.go:17` |
+
 ### Type `evolution`
 
 one schema version reads or writes another's data.
@@ -2441,6 +2510,17 @@ one schema version reads or writes another's data.
 | `L.functional.evolution.conformance-message-prior.prior-wide-inside` | conformance message-prior prior\_wide\_inside: a message written by a prior version of the schema reads as the oracle's value | `case: prior_wide_inside`<br>`driver: test/conformance/{lang}/driver`<br>`inputs.files` (347 bytes, held in the registry row's `inputs.files`)<br>`surface: message-prior` | the leg's answer equals the corpus's expectation (test/conformance/README.md) | `testdata/conformance/tables/MANIFEST.txt` |
 | `L.functional.evolution.conformance-message-prior.prior-wide-past` | conformance message-prior prior\_wide\_past: a message written by a prior version of the schema reads as the oracle's value | `case: prior_wide_past`<br>`driver: test/conformance/{lang}/driver`<br>`inputs.files` (286 bytes, held in the registry row's `inputs.files`)<br>`surface: message-prior` | the leg's answer equals the corpus's expectation (test/conformance/README.md) | `testdata/conformance/tables/MANIFEST.txt` |
 | `L.functional.evolution.conformance-message-prior.prior-widened-inside` | conformance message-prior prior\_widened\_inside: a message written by a prior version of the schema reads as the oracle's value | `case: prior_widened_inside`<br>`driver: test/conformance/{lang}/driver`<br>`inputs.files` (353 bytes, held in the registry row's `inputs.files`)<br>`surface: message-prior` | the leg's answer equals the corpus's expectation (test/conformance/README.md) | `testdata/conformance/tables/MANIFEST.txt` |
+
+### Type `differential`
+
+two implementations or two versions give the same answer.
+
+#### `differential` family `text-differential`, 2 tests
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.functional.differential.text-differential.engine-agrees` | I13: random instances written as text by the leg and by the compiler's engine are byte-identical, and each reads the other's text back | `inputs.tests` (1445 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/textdifferential_test.go:188` |
+| `L.functional.differential.text-differential.negative-control` | I13's control: a planted difference between the leg's text and the engine's is caught by the differential | `inputs.tests` (1595 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/textdifferential_test.go:199` |
 
 ## Language-free tests
 
@@ -3314,3 +3394,7 @@ memory, allocation and depth limits are held.
 ## Declared unrepresentable
 
 None: every language answers every test of tier `functional`.
+
+## Intrinsic to one language
+
+None of tier `functional`.
