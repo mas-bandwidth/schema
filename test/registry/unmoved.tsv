@@ -56,7 +56,7 @@ go-test	internal/codegen/mootable	257	L5	per-language (moo) Go tests: moo's adap
 go-test	internal/codegen/python	37	L5	per-language (python) Go tests: python's adapter runs them when their families move in
 go-test	internal/codegen/pythontable	529	L5	per-language (python) Go tests: python's adapter runs them when their families move in
 go-test	internal/codegen/ruby	17	L5	per-language (ruby) Go tests: ruby's adapter runs them when their families move in
-go-test	internal/codegen/rubytable	66	L5	per-language (ruby) Go tests: ruby's adapter runs them when their families move in
+go-test	internal/codegen/rubytable	68	L5	per-language (ruby) Go tests: ruby's adapter runs them when their families move in
 go-test	internal/codegen/rust	6	L5	per-language (rust) Go tests: rust's adapter runs them when their families move in
 go-test	internal/codegen/rusttable	245	L5	per-language (rust) Go tests: rust's adapter runs them when their families move in
 go-test	internal/codegen/squirrel	15	L5	per-language (squirrel) Go tests: squirrel's adapter runs them when their families move in
@@ -5492,11 +5492,13 @@ tier	internal/codegen/rubytable:TestRubyFixedProofEvolutionNumeric	1	L5	function
 tier	internal/codegen/rubytable:TestRubyFixedProofEvolutionStrict	1	L5	functional: needs pinned RuboCop and Steep (was slowtest.Gate)
 tier	internal/codegen/rubytable:TestRubyFixedProofEvolutionValues	1	L5	functional: needs the pinned Ruby interpreters and live C++ oracle (was slowtest.Gate)
 tier	internal/codegen/rubytable:TestRubyFixedProofShapes	1	L5	functional: needs the pinned Ruby interpreters and C++ fixed-form oracle (was slowtest.Gate)
+tier	internal/codegen/rubytable:TestRubyFixedProofShapesControlRows	1	L5	functional: needs the pinned Ruby interpreters and C++ fixed-form oracle (the control rows of TestRubyFixedProofShapes, run once under their own name)
 tier	internal/codegen/rubytable:TestRubyFixedProofShapesArrayBounds	1	L5	functional: needs the pinned Ruby interpreters and C++ fixed-form oracle (was slowtest.Gate)
 tier	internal/codegen/rubytable:TestRubyFixedProofShapesNegativeControl	1	L5	functional: needs the pinned Ruby interpreters and C++ fixed-form oracle (was slowtest.Gate)
 tier	internal/codegen/rubytable:TestRubyFixedProofShapesText	1	L5	functional: needs the pinned Ruby interpreters and C++ fixed-form oracle (was slowtest.Gate)
 tier	internal/codegen/rubytable:TestRubyFixedProofSuite	1	L5	functional: needs both Ruby pins and the C++ fixed-form corpus (was slowtest.Gate)
 tier	internal/codegen/rubytable:TestRubyFixedProofUnionsOptionals	1	L5	functional: needs the pinned interpreters and live C++ fixed-form oracle (was slowtest.Gate)
+tier	internal/codegen/rubytable:TestRubyFixedProofUnionsOptionalsControlRows	1	L5	functional: needs the pinned interpreters and live C++ fixed-form oracle (the control rows of TestRubyFixedProofUnionsOptionals, run once under their own name)
 tier	internal/codegen/rubytable:TestRubyFixedProofValues	1	L5	functional: needs pinned Ruby and the C++ fixed oracle (was slowtest.Gate)
 tier	internal/codegen/rubytable:TestRubyFixedProofValuesFloatBounds	1	L5	functional: needs pinned Ruby and the C++ fixed oracle (was slowtest.Gate)
 tier	internal/codegen/rubytable:TestRubyFixedProofValuesNegativeControl	1	L5	functional: needs pinned Ruby and the C++ fixed oracle (was slowtest.Gate)
