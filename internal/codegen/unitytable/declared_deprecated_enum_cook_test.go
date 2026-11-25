@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // THE COOK REFUSES A DEPRECATED OR OUT-OF-SET ENUM BEFORE ANY BYTE (SF-25,
@@ -86,7 +85,6 @@ const (
 
 func TestUnityDeclaredDeprecatedEnumCookAssertsBeforeAnyByte(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dotnet Roslyn csc (it runs the generated C# (unity) cook over the declared-deprecated-enum witness)")
 	src, err := os.ReadFile("../../../testdata/conformance/feature-witnesses/declared-deprecated-enum/Probe.schema")
 	if err != nil {
 		t.Fatal(err)

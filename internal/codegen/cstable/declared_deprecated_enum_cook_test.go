@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/csharp"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -91,7 +90,6 @@ const (
 )
 
 func TestCSharpDeclaredDeprecatedEnumCookAssertsBeforeAnyByte(t *testing.T) {
-	slowtest.Gate(t, "the .NET SDK")
 	t.Parallel()
 	src, err := os.ReadFile("../../../testdata/conformance/feature-witnesses/declared-deprecated-enum/Probe.schema")
 	if err != nil {
