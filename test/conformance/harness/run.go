@@ -962,6 +962,9 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 	if err != nil {
 		return false, err
 	}
+	// the cases sent on a manifest of their own, which a scoped cut of the
+	// derived manifest leaves alone (scope.go)
+	own := ownManifestCases(m)
 	derived := filepath.Join(work, "manifest.txt")
 	if err := deriveManifest(m, derived); err != nil {
 		return false, err
@@ -1055,14 +1058,14 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 		only := opts.only
 		var scope map[caseKey]bool
 		if opts.cases != nil {
-			scope = closeScope(opts.cases, legWants, disc, wireRefusals)
+			scope = closeScope(opts.cases, legWants, disc, wireRefusals, framed)
 			only = map[string]bool{}
 			for key := range scope {
 				if opts.only == nil || opts.only[key.surface] {
 					only[key.surface] = true
 				}
 			}
-			if legDerived, err = scopeManifest(legDerived, d.lang, scope, only, legWants, notAsked); err != nil {
+			if legDerived, err = scopeManifest(legDerived, d.lang, scope, only, legWants, notAsked, own); err != nil {
 				return false, fmt.Errorf("%s: %w", d.lang, err)
 			}
 		}

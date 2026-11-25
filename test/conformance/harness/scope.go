@@ -29,8 +29,10 @@ import (
 	"strings"
 )
 
-// closeScope is the asked cases and every case their verdicts depend on.
-func closeScope(asked map[caseKey]bool, legWants map[string][]expectation, disc *discrimination, wireRefusals map[string]Instance) map[caseKey]bool {
+// closeScope is the asked cases and every case their verdicts depend on: a
+// refusal's twins, and a framed rewrite row's framing row of the same name,
+// whose write-back is its answer (rewrite.go, framedRewrites).
+func closeScope(asked map[caseKey]bool, legWants map[string][]expectation, disc *discrimination, wireRefusals map[string]Instance, framed map[string]FramingCase) map[caseKey]bool {
 	// each surface's refusal pairs, both ways: a refusal names its twin, and
 	// a twin every refusal that names it
 	partners := map[caseKey][]caseKey{}
@@ -57,6 +59,9 @@ func closeScope(asked map[caseKey]bool, legWants map[string][]expectation, disc 
 		queue = queue[1:]
 		for _, p := range partners[k] {
 			add(p)
+		}
+		if _, ok := framed[k.name]; ok && k.surface == "rewrite" {
+			add(caseKey{"framing", k.name})
 		}
 		if group, ok := disc.refusal[caseRef(k)]; ok {
 			for _, twin := range disc.twins(group) {
@@ -192,11 +197,28 @@ func scopeLines(text string, scope map[caseKey]bool, running map[string]bool) (s
 	return kept, nil
 }
 
+// ownManifestCases are the cases a leg is sent on a manifest of their own,
+// never on its derived one: the rewrite rows (rewrite.go,
+// deriveRewriteManifest) and the hand-authored json-read texts (jsontext.go,
+// jsonReadManifest). The derived manifest carries no row for them, so the cut
+// neither keeps nor asks for one.
+func ownManifestCases(m *Manifest) map[caseKey]bool {
+	own := map[caseKey]bool{}
+	for _, rw := range m.Rewrites {
+		own[caseKey{"rewrite", rw.Name}] = true
+	}
+	for _, jt := range m.JSONTexts {
+		own[caseKey{"json-read", jt.Name}] = true
+	}
+	return own
+}
+
 // scopeManifest writes the leg's manifest cut to the scope beside it and
 // returns its path. A case of the scope the corpus does not have (a stale
 // registry row) is no row to keep: the adapter answers it as stale; nor is
-// a case on an opt-in unit the leg did not name (optin.go), scored absent.
-func scopeManifest(legDerived, lang string, scope map[caseKey]bool, running map[string]bool, legWants map[string][]expectation, unsent notAsked) (string, error) {
+// a case on an opt-in unit the leg did not name (optin.go), scored absent;
+// nor is a case sent on a manifest of its own (ownManifestCases).
+func scopeManifest(legDerived, lang string, scope map[caseKey]bool, running map[string]bool, legWants map[string][]expectation, unsent notAsked, own map[caseKey]bool) (string, error) {
 	text, err := os.ReadFile(legDerived)
 	if err != nil {
 		return "", err
@@ -204,7 +226,7 @@ func scopeManifest(legDerived, lang string, scope map[caseKey]bool, running map[
 	known := map[caseKey]bool{}
 	for _, s := range surfaces {
 		for _, e := range legWants[s] {
-			if k := (caseKey{s, e.name}); scope[k] && !unsent.has(s, e.name) {
+			if k := (caseKey{s, e.name}); scope[k] && !unsent.has(s, e.name) && !own[k] {
 				known[k] = true
 			}
 		}

@@ -24,15 +24,23 @@ func TestTheScopeClosesOverTwins(t *testing.T) {
 		lawful:   map[string][]caseRef{"wire|U|R": {{"wire", "w_ok"}}},
 		fallback: map[string][]string{"report|U|R": {"wire|U|R"}},
 	}
-	got := closeScope(map[caseKey]bool{{"report", "rep_bad"}: true}, legWants, disc, nil)
+	got := closeScope(map[caseKey]bool{{"report", "rep_bad"}: true}, legWants, disc, nil, nil)
 	want := map[caseKey]bool{{"report", "rep_bad"}: true, {"wire", "w_ok"}: true, {"wire", "w_bad"}: true}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("scope %v, want %v", got, want)
 	}
 	// asking the lawful half alone brings the refusal paired with it
-	got = closeScope(map[caseKey]bool{{"wire", "w_ok"}: true}, legWants, disc, nil)
+	got = closeScope(map[caseKey]bool{{"wire", "w_ok"}: true}, legWants, disc, nil, nil)
 	if want := map[caseKey]bool{{"wire", "w_ok"}: true, {"wire", "w_bad"}: true}; !reflect.DeepEqual(got, want) {
 		t.Errorf("scope of the lawful half %v, want %v", got, want)
+	}
+	// a framed rewrite row brings the framing row of its name, whose
+	// write-back is its answer (rewrite.go); an unframed one, and a framing
+	// row asked alone, bring nothing
+	framed := map[string]FramingCase{"rw_f": {Name: "rw_f"}}
+	got = closeScope(map[caseKey]bool{{"rewrite", "rw_f"}: true, {"rewrite", "rw_plain"}: true, {"framing", "fr_alone"}: true}, legWants, disc, nil, framed)
+	if want := map[caseKey]bool{{"rewrite", "rw_f"}: true, {"framing", "rw_f"}: true, {"rewrite", "rw_plain"}: true, {"framing", "fr_alone"}: true}; !reflect.DeepEqual(got, want) {
+		t.Errorf("scope of the rewrite rows %v, want %v", got, want)
 	}
 }
 
@@ -136,7 +144,11 @@ func TestScopeLinesKeepTheAskedRowsAndWhatTheyRead(t *testing.T) {
 // TestEveryCorpusCaseIsCarriedByAManifestRow holds the committed corpus to
 // the scoped run: every case of every surface the harness scores is carried
 // by a line of the derived manifest (derivedRows says which), so asking it
-// alone sends the leg that row, and the row's references survive the cut.
+// alone sends the leg that row, and the row's references survive the cut. A
+// case sent on a manifest of its own (ownManifestCases) is held to that
+// manifest instead: a rewrite row to the rewrite manifest's instance line,
+// or, framed, to the framing row of its name the scope brings with it; an
+// authored text to the json-read manifest's instance line.
 func TestEveryCorpusCaseIsCarriedByAManifestRow(t *testing.T) {
 	chdirRepoRoot(t)
 	m, err := ReadManifest(defaultManifest, defaultJSONDir)
@@ -167,6 +179,30 @@ func TestEveryCorpusCaseIsCarriedByAManifestRow(t *testing.T) {
 			}
 		}
 	}
+	framed, err := framedRewrites(newUnits(m), m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rewritePath := filepath.Join(t.TempDir(), "rewrite.txt")
+	if err := deriveRewriteManifest(m, rewritePath, nil, framed); err != nil {
+		t.Fatal(err)
+	}
+	rewriteText, err := os.ReadFile(rewritePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ownLines := map[caseKey]bool{}
+	for surface, text := range map[string]string{"rewrite": string(rewriteText), "json-read": jsonReadManifest(string(data), m, nil)} {
+		for line := range strings.SplitSeq(text, "\n") {
+			if f := strings.Fields(line); len(f) > 1 && f[0] == "instance" {
+				ownLines[caseKey{surface, f[1]}] = true
+			}
+		}
+	}
+	own := ownManifestCases(m)
+	if len(own) == 0 {
+		t.Error("the corpus has no case on a manifest of its own: the check of them below read none")
+	}
 	cases := 0
 	all := map[caseKey]bool{}
 	for _, s := range surfaces {
@@ -188,16 +224,36 @@ func TestEveryCorpusCaseIsCarriedByAManifestRow(t *testing.T) {
 			t.Errorf("the %s surface has no case: the check below read none of it", s)
 			continue
 		}
+		first := ""
 		for _, name := range names {
 			cases++
-			all[caseKey{s, name}] = true
-			if !carried[caseKey{s, name}] {
-				t.Errorf("%s/%s: no derived manifest line carries it, so a scoped run would never send it", s, name)
+			key := caseKey{s, name}
+			switch _, isFramed := framed[name]; {
+			case own[key] && s == "rewrite" && isFramed:
+				if !carried[caseKey{"framing", name}] {
+					t.Errorf("%s/%s: framed, but no derived manifest line carries the framing row whose write-back answers it", s, name)
+				}
+			case own[key]:
+				if !ownLines[key] {
+					t.Errorf("%s/%s: its own manifest has no line for it, so a scoped run would never send it", s, name)
+				}
+			default:
+				all[key] = true
+				if first == "" {
+					first = name
+				}
+				if !carried[key] {
+					t.Errorf("%s/%s: no derived manifest line carries it, so a scoped run would never send it", s, name)
+				}
 			}
 		}
-		// the first case asked alone cuts a manifest whose references hold
-		if _, err := scopeLines(string(data), map[caseKey]bool{{s, names[0]}: true}, nil); err != nil {
-			t.Errorf("%s/%s asked alone: %v", s, names[0], err)
+		// the first case the derived manifest carries, asked alone, cuts a
+		// manifest whose references hold
+		if first == "" {
+			continue
+		}
+		if _, err := scopeLines(string(data), map[caseKey]bool{{s, first}: true}, nil); err != nil {
+			t.Errorf("%s/%s asked alone: %v", s, first, err)
 		}
 	}
 	if cases == 0 {
@@ -206,5 +262,39 @@ func TestEveryCorpusCaseIsCarriedByAManifestRow(t *testing.T) {
 	// every case asked at once: every forgery's subject answers to a line
 	if _, err := scopeLines(string(data), all, nil); err != nil {
 		t.Errorf("the whole corpus asked at once: %v", err)
+	}
+}
+
+// TestTheCutLeavesCasesOnTheirOwnManifestAlone: a rewrite row and an authored
+// json-read text are sent on manifests of their own (ownManifestCases), so a
+// scope that asks them cuts the derived manifest without asking it for their
+// rows; without that, the cut refuses them as cases no line carries.
+func TestTheCutLeavesCasesOnTheirOwnManifestAlone(t *testing.T) {
+	dir := t.TempDir()
+	derived := filepath.Join(dir, "manifest-go.txt")
+	text := "unit U a.schema\ninstance inst1 U Root a.bin\n"
+	if err := os.WriteFile(derived, []byte(text), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	legWants := map[string][]expectation{
+		"wire":      {{name: "inst1"}},
+		"rewrite":   {{name: "rw1"}},
+		"json-read": {{name: "inst1"}, {name: "authored1"}},
+	}
+	scope := map[caseKey]bool{{"wire", "inst1"}: true, {"rewrite", "rw1"}: true, {"json-read", "authored1"}: true}
+	own := map[caseKey]bool{{"rewrite", "rw1"}: true, {"json-read", "authored1"}: true}
+	path, err := scopeManifest(derived, "go", scope, nil, legWants, nil, own)
+	if err != nil {
+		t.Fatalf("a scope asking cases on their own manifests: %v", err)
+	}
+	kept, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(kept), "instance inst1 U Root a.bin") {
+		t.Errorf("the asked wire row was cut:\n%s", kept)
+	}
+	if _, err := scopeManifest(derived, "go", scope, nil, legWants, nil, nil); err == nil || !strings.Contains(err.Error(), "rewrite/rw1") || !strings.Contains(err.Error(), "json-read/authored1") {
+		t.Errorf("with no own-manifest cases named, the cut must refuse rewrite/rw1 and json-read/authored1 by name, got %v", err)
 	}
 }
