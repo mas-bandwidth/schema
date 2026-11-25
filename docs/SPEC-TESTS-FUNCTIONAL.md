@@ -5,7 +5,7 @@ Part of the specification: every test of tier `functional`, from the test regist
 
 **Tier functional:** uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it.
 
-Functional tests every language answers: 2468. Language-free tests: 2244.
+Functional tests every language answers: 2468. Language-free tests: 2245.
 
 Run this tier for a language with `schema-test run --tier functional --lang L`, one test with `schema-test run <full name>`.
 
@@ -4866,7 +4866,7 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 | `none.functional.compiler.codegen-golang.go-string-write-refuses-interior-nul-and-invalid-utf8` | `gotest` | Go test TestGoStringWriteRefusesInteriorNULAndInvalidUTF8 in ./internal/codegen/golang | `package: ./internal/codegen/golang`<br>`test: TestGoStringWriteRefusesInteriorNULAndInvalidUTF8` | the Go test passes | `internal/codegen/golang/stringwrite_test.go:19` |
 | `none.functional.compiler.codegen-golang.go-union-then-fixed-byte-array-wire` | `gotest` | Go test TestGoUnionThenFixedByteArrayWire in ./internal/codegen/golang | `package: ./internal/codegen/golang`<br>`test: TestGoUnionThenFixedByteArrayWire` | the Go test passes | `internal/codegen/golang/unionbytes_test.go:18` |
 
-#### `compiler` family `compiler`, 171 tests
+#### `compiler` family `compiler`, 172 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -4929,7 +4929,8 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 | `none.functional.compiler.compiler.corpus-non-canonical-spellings` | `gotest` | Go test TestCorpusNonCanonicalSpellings in ./compiler | `package: ./compiler`<br>`test: TestCorpusNonCanonicalSpellings` | the Go test passes | `compiler/corpus_non_canonical_test.go:30` |
 | `none.functional.compiler.compiler.cpp-blob-named-twice` | `gotest` | Go test TestCPPBlobNamedTwice in ./compiler | `package: ./compiler`<br>`test: TestCPPBlobNamedTwice` | the Go test passes | `compiler/cppblobshared_test.go:270` |
 | `none.functional.compiler.compiler.cpp-collection-widening` | `gotest` | Go test TestCppCollectionWidening in ./compiler | `package: ./compiler`<br>`test: TestCppCollectionWidening` | the Go test passes | `compiler/collectionwiden_test.go:13` |
-| `none.functional.compiler.compiler.cpp-cook-extent-canonical-alignment` | `gotest` | Go test TestCppCookExtentCanonicalAlignment in ./compiler | `package: ./compiler`<br>`test: TestCppCookExtentCanonicalAlignment` | the Go test passes | `compiler/tablecookalignment_test.go:62` |
+| `none.functional.compiler.compiler.cpp-cook-extent-canonical-alignment` | `gotest` | Go test TestCppCookExtentCanonicalAlignment in ./compiler | `package: ./compiler`<br>`test: TestCppCookExtentCanonicalAlignment` | the Go test passes | `compiler/tablecookalignment_test.go:87` |
+| `none.functional.compiler.compiler.cpp-cook-extent-canonical-alignment-linked` | `gotest` | Go test TestCppCookExtentCanonicalAlignmentLinked in ./compiler | `package: ./compiler`<br>`test: TestCppCookExtentCanonicalAlignmentLinked` | the Go test passes | `compiler/tablecookalignment_test.go:93` |
 | `none.functional.compiler.compiler.cpp-cook-open-node-alignment` | `gotest` | Go test TestCppCookOpenNodeAlignment in ./compiler | `package: ./compiler`<br>`test: TestCppCookOpenNodeAlignment` | the Go test passes | `compiler/tablecookalignment_test.go:14` |
 | `none.functional.compiler.compiler.cpp-default-binary-read-is-strict` | `gotest` | Go test TestCPPDefaultBinaryReadIsStrict in ./compiler | `package: ./compiler`<br>`test: TestCPPDefaultBinaryReadIsStrict` | the Go test passes | `compiler/cppstrictbinaryread_test.go:162` |
 | `none.functional.compiler.compiler.cpp-exact-integer-range-bounds` | `gotest` | Go test TestCPPExactIntegerRangeBounds in ./compiler | `package: ./compiler`<br>`test: TestCPPExactIntegerRangeBounds` | the Go test passes | `compiler/cppexactrange_test.go:47` |
@@ -5063,8 +5064,8 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.functional.compiler.fuzz.random-table-bounds-pass` | `gotest` | Go test TestRandomTableBoundsPass in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestRandomTableBoundsPass` | the Go test passes | `internal/fuzz/tablebounds_test.go:556` |
-| `none.functional.compiler.fuzz.random-table-gen-fixed-point` | `gotest` | Go test TestRandomTableGenFixedPoint in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestRandomTableGenFixedPoint` | the Go test passes | `internal/fuzz/tablegen_fixedpoint_test.go:25` |
-| `none.functional.compiler.fuzz.random-table-gen-fixed-point-plant-clamp` | `gotest` | Go test TestRandomTableGenFixedPointPlantClamp in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestRandomTableGenFixedPointPlantClamp` | the Go test passes | `internal/fuzz/tablegen_fixedpoint_test.go:130` |
+| `none.functional.compiler.fuzz.random-table-gen-fixed-point` | `gotest` | Go test TestRandomTableGenFixedPoint in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestRandomTableGenFixedPoint` | the Go test passes | `internal/fuzz/tablegen_fixedpoint_test.go:138` |
+| `none.functional.compiler.fuzz.random-table-gen-fixed-point-plant-clamp` | `gotest` | Go test TestRandomTableGenFixedPointPlantClamp in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestRandomTableGenFixedPointPlantClamp` | the Go test passes | `internal/fuzz/tablegen_fixedpoint_test.go:236` |
 | `none.functional.compiler.fuzz.random-table-json-plants` | `gotest` | Go test TestRandomTableJsonPlants in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestRandomTableJsonPlants` | the Go test passes | `internal/fuzz/tablejsonplants_test.go:461` |
 
 #### `compiler` family `listwalk`, 1 test
@@ -5227,7 +5228,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.functional.tooling.goldens.generated-text-names-no-machine` | `gotest` | Go test TestGeneratedTextNamesNoMachine in ./internal/goldens | `package: ./internal/goldens`<br>`test: TestGeneratedTextNamesNoMachine` | the Go test passes | `internal/goldens/generated_text_test.go:82` |
+| `none.functional.tooling.goldens.generated-text-names-no-machine` | `gotest` | Go test TestGeneratedTextNamesNoMachine in ./internal/goldens | `package: ./internal/goldens`<br>`test: TestGeneratedTextNamesNoMachine` | the Go test passes | `internal/goldens/generated_text_test.go:151` |
 
 #### `tooling` family `gotestrun`, 1 test
 
@@ -5360,7 +5361,7 @@ generated or runtime code is clean under the language's strict analyser.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.functional.lint.make-c.tables-c-clean` | `make` | make tables-c-clean (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: tables-c-clean`<br>`tools: ["clang-format"]` | the target exits 0 with no skip in its log | `make/c.mk:1676` |
+| `none.functional.lint.make-c.tables-c-clean-fast` | `make` | make tables-c-clean-fast (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: tables-c-clean-fast`<br>`tools: ["clang-format"]` | the target exits 0 with no skip in its log | `make/c.mk:1712` |
 
 #### `lint` family `make-cpp`, 2 tests
 

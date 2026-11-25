@@ -5,7 +5,7 @@ Part of the specification: every test of tier `nightly`, from the test registry.
 
 **Tier nightly:** heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded.
 
-Nightly tests every language answers: 625. Language-free tests: 1345.
+Nightly tests every language answers: 625. Language-free tests: 1347.
 
 Run this tier for a language with `schema-test run --tier nightly --lang L`, one test with `schema-test run <full name>`.
 
@@ -756,6 +756,12 @@ one schema version reads or writes another's data.
 ### Type `fuzz`
 
 seeded mutations.
+
+#### `fuzz` family `fuzz`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.fuzz.fuzz.fuzz-table-front-end` | `gotest` | Go test FuzzTableFrontEnd in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: FuzzTableFrontEnd` | the Go test passes | `internal/fuzz/tablefrontend_test.go:218` |
 
 #### `fuzz` family `make-go`, 3 tests
 
@@ -4262,9 +4268,9 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 | `none.nightly.compiler.fuzz.prop-refusal-never-silent` | `gotest` | Go test TestPropRefusalNeverSilent in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestPropRefusalNeverSilent` | the Go test passes | `internal/fuzz/rapidprops_test.go:210` |
 | `none.nightly.compiler.fuzz.prop-round-trip-every-form` | `gotest` | Go test TestPropRoundTripEveryForm in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestPropRoundTripEveryForm` | the Go test passes | `internal/fuzz/rapidprops_test.go:195` |
 | `none.nightly.compiler.fuzz.prop-strict-reads-agree` | `gotest` | Go test TestPropStrictReadsAgree in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestPropStrictReadsAgree` | the Go test passes | `internal/fuzz/rapidprops_test.go:226` |
-| `none.nightly.compiler.fuzz.random-table-differential` | `gotest` | Go test TestRandomTableDifferential in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestRandomTableDifferential` | the Go test passes | `internal/fuzz/tablediff_test.go:765` |
-| `none.nightly.compiler.fuzz.random-table-differential-negative-control` | `gotest` | Go test TestRandomTableDifferentialNegativeControl in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestRandomTableDifferentialNegativeControl` | the Go test passes | `internal/fuzz/tablediff_test.go:790` |
-| `none.nightly.compiler.fuzz.random-table-integrity-units` | `gotest` | Go test TestRandomTableIntegrityUnits in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestRandomTableIntegrityUnits` | the Go test passes | `internal/fuzz/tablediff_test.go:819` |
+| `none.nightly.compiler.fuzz.random-table-differential` | `gotest` | Go test TestRandomTableDifferential in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestRandomTableDifferential` | the Go test passes | `internal/fuzz/tablediff_test.go:752` |
+| `none.nightly.compiler.fuzz.random-table-differential-negative-control` | `gotest` | Go test TestRandomTableDifferentialNegativeControl in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestRandomTableDifferentialNegativeControl` | the Go test passes | `internal/fuzz/tablediff_test.go:777` |
+| `none.nightly.compiler.fuzz.random-table-integrity-units` | `gotest` | Go test TestRandomTableIntegrityUnits in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestRandomTableIntegrityUnits` | the Go test passes | `internal/fuzz/tablediff_test.go:806` |
 | `none.nightly.compiler.fuzz.rapid-props-negative-control` | `gotest` | Go test TestRapidPropsNegativeControl in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestRapidPropsNegativeControl` | the Go test passes | `internal/fuzz/rapidprops_test.go:335` |
 
 #### `compiler` family `publicapi`, 2 tests
@@ -4416,6 +4422,12 @@ performance or timing.
 ### Type `lint`
 
 generated or runtime code is clean under the language's strict analyser.
+
+#### `lint` family `make-c`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.lint.make-c.tables-c-clean` | `make` | make tables-c-clean (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: tables-c-clean`<br>`tools: ["clang-format"]` | the target exits 0 with no skip in its log | `make/c.mk:1692` |
 
 #### `lint` family `make-cpp`, 1 test
 

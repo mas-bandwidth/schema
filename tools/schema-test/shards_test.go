@@ -53,11 +53,14 @@ func shardsFit(reg *testreg.Registry, shards []string, budget float64) []string 
 	if err != nil {
 		return append(problems, err.Error())
 	}
-	// one test past the budget fits no shard, however many there are: it is
-	// split into rows that fit (by package or target), never tiered nightly
+	// one test past the budget fits no shard, however many there are. The
+	// registry keeps its true seconds, and the test is made faster (profile
+	// it; parallelise, share the work, or split it into rows that fit); one
+	// that cannot be fast and keep its coverage runs nightly whole, with a
+	// per-PR fast twin (the ruling of 2026-11-25)
 	for _, inst := range sel.Instances {
 		if w := testreg.Weight(inst); w > budget {
-			problems = append(problems, fmt.Sprintf("%s weighs %.1f s, past one shard's %.0f s budget: split it into rows that fit (by package or target); a nightly tier is not the way under the budget", inst.Full, w, budget))
+			problems = append(problems, fmt.Sprintf("%s weighs %.1f s, past one shard's %.0f s budget: make it faster (profile it; parallelise, share the work, or split it into rows that fit), or, if it cannot be fast and keep its coverage, run it nightly whole beside a per-PR fast twin; never record fewer seconds than it takes", inst.Full, w, budget))
 		}
 	}
 	parts := testreg.Parts(sel.Instances, n)

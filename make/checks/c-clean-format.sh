@@ -51,8 +51,12 @@ if [ ! -s "$OUT/c-format-files.txt" ]; then
 	exit 1
 fi
 checked=$(wc -l < "$OUT/c-format-files.txt" | tr -d ' ')
+# one file per worker call: the files run from a few hundred bytes to 5 MB
+# (clang-format 0.01 s to 69 s), and a batch of sixteen left one worker
+# holding the big ones while the rest sat idle (93 s of wall for 34 s of
+# even share on amd-2, 2026-11-25)
 if [ -s "$OUT/c-format-files.txt" ]; then
-	xargs -P "$jobs" -n 16 sh -c '
+	xargs -P "$jobs" -n 1 sh -c '
 		cf=$1; st=$2; wk=$3; shift 3
 		out="$wk/res.$$"
 		for f in "$@"; do

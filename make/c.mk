@@ -1700,6 +1700,28 @@ tables-c-clean: $(TABLES_C_CLEAN_INPUTS)
 	SHARD=$(C_FORMAT_SHARD) CLANG_FORMAT=$(CLANG_FORMAT) OUT=build sh make/checks/c-clean-format.sh make/c-format-allow.txt $(C_FORMAT_TREES)
 test-c: tables-c-clean
 
+# THE PER-CHANGE TWIN, tables-c-clean-fast: the same engine, ratchet, pin and
+# shard over every tree tables-c-clean judges but build/tables-generated-c/ann,
+# the announce corpus's two 5 MB headers, which take clang-format 69 s each on
+# their own (amd-2, 2026-11-25): either alone is past a per-PR shard's budget.
+# tables-c-clean judges every file, those two too, in the nightly tier with its
+# negative control (tables-c-format-negative-control). The trees are listed
+# when the recipe runs, after the inputs are built.
+C_FORMAT_NIGHTLY_TREE := build/tables-generated-c/ann
+.PHONY: tables-c-clean-fast
+tables-c-clean-fast: $(TABLES_C_CLEAN_INPUTS)
+	@if ! command -v $(CLANG_FORMAT) >/dev/null 2>&1; then \
+		echo "tables-c-clean-fast FAILED: $(CLANG_FORMAT) is not installed"; exit 1; \
+	fi; \
+	v=$$($(CLANG_FORMAT) --version | sed -n 's/.*version \([0-9][0-9]*\)\..*/\1/p'); \
+	if [ "$$v" != "$(CLANG_FORMAT_MAJOR)" ]; then \
+		echo "tables-c-clean-fast: $(CLANG_FORMAT) is major $$v; the gate is pinned to $(CLANG_FORMAT_PIN) (major $(CLANG_FORMAT_MAJOR)) — install it, or pass CLANG_FORMAT=<that binary>"; exit 1; \
+	fi; \
+	[ -d $(C_FORMAT_NIGHTLY_TREE) ] || { echo "tables-c-clean-fast: $(C_FORMAT_NIGHTLY_TREE) is not generated, so the tree this twin leaves to tables-c-clean has moved: say what it leaves out again"; exit 1; }; \
+	units=$$(find build/tables-generated-c -mindepth 1 -maxdepth 1 -type d ! -path $(C_FORMAT_NIGHTLY_TREE) | sort); \
+	[ -n "$$units" ] || { echo "tables-c-clean-fast: build/tables-generated-c holds no unit"; exit 1; }; \
+	SHARD=$(C_FORMAT_SHARD) CLANG_FORMAT=$(CLANG_FORMAT) OUT=build/c-format-fast sh make/checks/c-clean-format.sh make/c-format-allow.txt $$units $(filter-out build/tables-generated-c,$(C_FORMAT_TREES))
+
 # ITS NEGATIVE CONTROL: one struct typedef brace written K&R in the C PACKET
 # emitter (tools/sabotage c-clean-format-drift), whose output the gate holds to
 # zero drift, built under `go build -overlay`; the examples corpus generated

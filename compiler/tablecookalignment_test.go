@@ -56,17 +56,90 @@ int main() {
 	}
 }
 
+// cppCookExtentCase is one unit of the cook-extent alignment check, and the
+// test that runs it.
+type cppCookExtentCase struct{ test, name, source, text string }
+
+// The cook-extent cases, each run by the test it names. Every case compiles
+// its probe six times (debug, release and sanitize, each with and without
+// native 128-bit integers): the five were 65 s of one test alone on amd-2
+// (2026-11-25), past a per-PR shard, so they run as two tests, the root and
+// list-held cases and the cases held through a pointer or a map
+// (TestCppCookExtentCasesAreEachInOneTest).
+const (
+	cookExtentDirect = "TestCppCookExtentCanonicalAlignment"
+	cookExtentLinked = "TestCppCookExtentCanonicalAlignmentLinked"
+)
+
+var cppCookExtentCases = []cppCookExtentCase{
+	{cookExtentDirect, "root", "table Root { tiny []uint8\nwides []uint128 }", "{\"tiny\":[1],\"wides\":[\"1267650600228229401496703205383\"]}"},
+	{cookExtentDirect, "nested", "table Bucket { tiny []uint8\nwides []uint128 }\ntable Root { buckets []Bucket }", "{\"buckets\":[{\"tiny\":[1],\"wides\":[\"7\"]}]}"},
+	{cookExtentDirect, "schema-type-named-Dish", "table Dish { tiny []uint8\nwides []uint128 }\ntable Root { buckets []Dish }", "{\"buckets\":[{\"tiny\":[1],\"wides\":[\"7\"]}]}"},
+	{cookExtentLinked, "pointer-node", "table Bucket { tiny []uint8\nwides []uint128 }\ntable Root { next *Bucket }", "{\"next\":{\"tiny\":[1],\"wides\":[\"7\"]}}"},
+	{cookExtentLinked, "map-entry", "table Bucket { tiny []uint8\nwides []uint128 }\ntable Root { buckets map[uint8]Bucket }", "{\"buckets\":{\"2\":{\"tiny\":[1],\"wides\":[\"7\"]}}}"},
+}
+
 // Cook extents use canonical scalar alignment; native arena/locked extents
 // use the actual C++ storage type. A preceding byte array exposes the gap
-// when serialize's portable uint128_t is an eight-aligned pair.
+// when serialize's portable uint128_t is an eight-aligned pair. This test
+// runs the root and list-held cases; TestCppCookExtentCanonicalAlignmentLinked
+// the cases held through a pointer or a map.
 func TestCppCookExtentCanonicalAlignment(t *testing.T) {
-	for _, tc := range []struct{ name, source, text string }{
-		{"root", "table Root { tiny []uint8\nwides []uint128 }", "{\"tiny\":[1],\"wides\":[\"1267650600228229401496703205383\"]}"},
-		{"nested", "table Bucket { tiny []uint8\nwides []uint128 }\ntable Root { buckets []Bucket }", "{\"buckets\":[{\"tiny\":[1],\"wides\":[\"7\"]}]}"},
-		{"schema-type-named-Dish", "table Dish { tiny []uint8\nwides []uint128 }\ntable Root { buckets []Dish }", "{\"buckets\":[{\"tiny\":[1],\"wides\":[\"7\"]}]}"},
-		{"pointer-node", "table Bucket { tiny []uint8\nwides []uint128 }\ntable Root { next *Bucket }", "{\"next\":{\"tiny\":[1],\"wides\":[\"7\"]}}"},
-		{"map-entry", "table Bucket { tiny []uint8\nwides []uint128 }\ntable Root { buckets map[uint8]Bucket }", "{\"buckets\":{\"2\":{\"tiny\":[1],\"wides\":[\"7\"]}}}"},
-	} {
+	runCppCookExtentCases(t, cookExtentDirect)
+}
+
+// TestCppCookExtentCanonicalAlignmentLinked is the cook-extent check over the
+// cases held through a pointer or a map (TestCppCookExtentCanonicalAlignment).
+func TestCppCookExtentCanonicalAlignmentLinked(t *testing.T) {
+	runCppCookExtentCases(t, cookExtentLinked)
+}
+
+// TestCppCookExtentCasesAreEachInOneTest holds the split to the five cases
+// the one test ran: every case names one of the two tests, by name, and no
+// name is twice. Planted: a case that names neither test would run in
+// neither (red).
+func TestCppCookExtentCasesAreEachInOneTest(t *testing.T) {
+	t.Parallel()
+	if err := cppCookExtentCasesSplit(cppCookExtentCases); err != nil {
+		t.Fatal(err)
+	}
+	lost := append(append([]cppCookExtentCase(nil), cppCookExtentCases...), cppCookExtentCase{"TestCppCookExtentCanonicalAlignmentLinkd", "planted", "", ""})
+	if err := cppCookExtentCasesSplit(lost); err == nil {
+		t.Fatal("a case that names neither test passed the split check")
+	}
+}
+
+// cppCookExtentCasesSplit refuses a case list in which a case runs in no
+// test, a name repeats, or a test runs nothing.
+func cppCookExtentCasesSplit(cases []cppCookExtentCase) error {
+	per := map[string]int{}
+	seen := map[string]bool{}
+	for _, tc := range cases {
+		if tc.test != cookExtentDirect && tc.test != cookExtentLinked {
+			return fmt.Errorf("case %s names test %q, which is neither cook-extent test: it would run in none", tc.name, tc.test)
+		}
+		if seen[tc.name] {
+			return fmt.Errorf("case %s is in the list twice", tc.name)
+		}
+		seen[tc.name] = true
+		per[tc.test]++
+	}
+	for _, test := range []string{cookExtentDirect, cookExtentLinked} {
+		if per[test] == 0 {
+			return fmt.Errorf("%s runs no case", test)
+		}
+	}
+	return nil
+}
+
+// runCppCookExtentCases runs the cases of cppCookExtentCases that name test.
+func runCppCookExtentCases(t *testing.T, test string) {
+	ran := 0
+	for _, tc := range cppCookExtentCases {
+		if tc.test != test {
+			continue
+		}
+		ran++
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			files, arrays := cppCookAlignmentFixture(t, tc.source, tc.text)
@@ -112,6 +185,9 @@ int main() {
 				})
 			}
 		})
+	}
+	if ran == 0 {
+		t.Fatalf("%s ran no cook-extent case", test)
 	}
 }
 
