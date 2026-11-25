@@ -1251,7 +1251,13 @@ array_elements = function(T, ctx, fd, sub, ek, count, prior, reuse, crossed)
             end
           end
         else
-          out[dkey] = inst[valname]
+          -- AN ENUM VALUE AT None IS STILL AN ENTRY (§2.8): the value read
+          -- None, or a variant retired in place read as the value's declared
+          -- default, None (§2.15), so the entry holds false, as a None list
+          -- element does; nil would drop the key
+          local val = inst[valname]
+          if val == nil and vf.shape == "enum" then val = false end
+          out[dkey] = val
         end
       end
     end

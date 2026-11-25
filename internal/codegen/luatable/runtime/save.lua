@@ -228,6 +228,9 @@ local function at_default(fd, v)
   -- A PLAIN FLOAT COMPARES BY ITS BIT PATTERN (§3.3, "-0 IS A VALUE, AND IT
   -- RIDES"), at its own width: -0 under a +0 default rides.
   if s == "float" then return same_float(fd.f32, D.cf(fd, x), D.cf(fd, fd.default)) end
+  -- an enum's None is nil, and false in a map entry's value (a key cannot
+  -- hold nil): both are a None default
+  if s == "enum" and x == false then x = nil end
   return x == fd.default
 end
 
