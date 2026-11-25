@@ -28,8 +28,11 @@ package elixirtable
 // the refusal names the table, no form is emitted, and no lineage entry is
 // parsed for it even when the lock carries one.
 //
-// elixir/R14 [owed]: layout_record_too_large for an entry reaching past the
-// writer's declared record, not only for the 65536 bound and a zero root.
+// elixir/R14: layout_record_too_large for an entry reaching past the writer's
+// declared record, not only for the 65536 bound and a zero root; the source
+// anchors are t03R14, and a lawful grown union tag (1 -> 8, whose None reads
+// the writer's tag at the writer's width) compiling whole, running and laying
+// a ready lineage lane is test/conformance/elixir/rows/R14.exs.
 //
 // elixir/R22 [owed]: the closure rule: every table or type reached by value is
 // itself fixed; a pointer, map or unbounded array in the closure is a compile
@@ -504,6 +507,8 @@ func t03R14(t *testing.T) {
 	t03Has(t, runtime, "any_past?(entries, record) ->", "R14 every compiled entry is held to the writer's record")
 	t03Has(t, runtime, "defp any_past?(entries, record), do: Enum.any?(entries, fn e -> src_end(e) > record end)", "R14 an entry reaching past the writer's declared record")
 	t03Has(t, runtime, "{:error, :layout_record_too_large, report}", "R14 the plan is refused WHOLE and named layout_record_too_large")
+	t03Has(t, runtime, "guarded(acc, guard, tag, {:tagcount, their_at, their_tag, their_arms})", "R14 the union None's tag read reaches at the WRITER's tag width (§5.2 EMIT kind 15)")
+	t03Has(t, runtime, "defp src_end({:tagcount, at, tag, _arms}), do: at + tag", "R14 the tag read's reach is src + the width it reads")
 }
 
 // ---- elixir/R22 ----------------------------------------------------------------
