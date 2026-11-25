@@ -5816,7 +5816,7 @@ tier	internal/fuzz:TestPropStrictReadsAgree	1	L3	nightly: nightly-only env gate 
 tier	internal/fuzz:TestRandomTableBoundsPass	1	L3	functional: needs the Go toolchain (it compiles and runs generated units); the Go toolchain (it compiles and runs the generated unit) (was slowtest.Gate)
 tier	internal/fuzz:TestRandomTableDifferential	1	L3	nightly: nightly-only env gate removed: random-schema campaign
 tier	internal/fuzz:TestRandomTableDifferentialNegativeControl	1	L3	nightly: nightly-only env gate removed: random-schema campaign
-tier	internal/fuzz:TestRandomTableGenFixedPoint	1	L3	functional: needs the Go toolchain (it compiles and runs generated units); the Go toolchain (it compiles and runs the generated unit) (was slowtest.Gate)
+tier	internal/fuzz:TestRandomTableGenFixedPoint	1	L3	nightly: 100 nested go test compiles of generated units, 175 s on 2 threads and past 40 min on one CPU; needs the Go toolchain
 tier	internal/fuzz:TestRandomTableGenFixedPointPlantClamp	1	L3	functional: needs the Go toolchain (it compiles and runs generated units); the Go toolchain (it compiles and runs the generated unit) (was slowtest.Gate)
 tier	internal/fuzz:TestRandomTableIntegrityUnits	1	L3	nightly: nightly-only env gate removed: random-schema campaign
 tier	internal/fuzz:TestRandomTableJsonPlants	1	L3	functional: needs the Go toolchain (it compiles and runs generated units); the Go toolchain (it compiles and runs the generated unit) (was slowtest.Gate)
@@ -5918,7 +5918,7 @@ tier	test/conformance/python:TestWriteRefusalPacketPythonSurface	1	L5	functional
 tier	test/conformance/ruby:TestWriteRefusalPacketRuby	1	L5	functional: needs the pinned Ruby interpreter (it runs the generated packet writer) (was slowtest.Gate)
 tier	test/conformance/ruby:TestWriteRefusalPacketRubySurface	1	L5	functional: needs the pinned Ruby interpreter (it runs the generated packet writer) (was slowtest.Gate)
 tier	tools/agentsmap:TestSkippedDirectoriesHoldNoTrackedFile	1	L3	functional: needs a git checkout and git (was t.Skipf, now t.Fatalf)
-tier	tools/namebuild:TestNameBuildability	1	L3	functional: needs every target's toolchain (the name-buildability nightly) (was slowtest.Gate)
+tier	tools/namebuild:TestNameBuildability	1	L3	nightly: 3582 toolchain build jobs, about 50 min on a reserved slot; needs every target toolchain
 tier	tools/pgroup:TestEnvWallStopsTheGroupAndNamesTheRule	1	L3	functional: needs sh and sleep (was slowtest.Gate)
 tier	tools/pgroup:TestOrphanDiesWithTheCommand	1	L3	functional: needs sh and sleep (was slowtest.Gate)
 tier	tools/pgroup:TestOrphanOutlivesABareCommand	1	L3	functional: needs sh and sleep (was slowtest.Gate)
