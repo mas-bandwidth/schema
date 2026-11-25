@@ -8,4 +8,4 @@
 # target runs the package under the tag.
 .PHONY: test-goose-tagged-harness
 test-goose-tagged-harness:
-	go test -count=1 -tags schema_leg_goose ./test/conformance/harness/
+	$(GO_TEST) -count=1 -tags schema_leg_goose ./test/conformance/harness/

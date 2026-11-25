@@ -175,8 +175,8 @@ func checkCertifyParallelPolicy(certifyYAML, makefile string, registeredLegs []s
 			"TEST_LEGS_LOOP",
 			// tools/namebuild's per-target tests are nightly registry rows:
 			// the package's other tests are chosen at the root by name
-			"go test $$(go list ./... | grep -v '/tools/namebuild$$')",
-			`sel=$$(go run ./tools/gotestselect ./tools/namebuild) || exit 1; go test -run "$$sel" ./tools/namebuild`,
+			"$(GO_TEST) $$(go list ./... | grep -v '/tools/namebuild$$')",
+			`sel=$$(go run ./tools/gotestselect ./tools/namebuild) || exit 1; $(GO_TEST) -run "$$sel" ./tools/namebuild`,
 		}
 		if !slices.Equal(recipeCmds, wantCmds) {
 			errs = append(errs, fmt.Sprintf("Makefile test: recipe commands = %q, want exact sharded delegation %q", recipeCmds, wantCmds))
@@ -370,7 +370,7 @@ func TestCertifyParallelShardsCoverFullMakeTest(t *testing.T) {
 		{
 			name: "unsharded recipe line added to Makefile test:",
 			cf:   certifyYAML,
-			mk:   strings.Replace(makefile, "\tgo test $$(go list ./... | grep -v '/tools/namebuild$$')\n", "\tgo test $$(go list ./... | grep -v '/tools/namebuild$$')\n\t$(MAKE) unsharded-new-gate\n", 1),
+			mk:   strings.Replace(makefile, "\t$(GO_TEST) $$(go list ./... | grep -v '/tools/namebuild$$')\n", "\t$(GO_TEST) $$(go list ./... | grep -v '/tools/namebuild$$')\n\t$(MAKE) unsharded-new-gate\n", 1),
 		},
 		{
 			name: "monolithic make test reintroduced into inline-gate",

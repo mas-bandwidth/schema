@@ -34,6 +34,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 )
@@ -80,7 +81,18 @@ type Unparsed struct {
 type Result struct {
 	Items    []Item
 	Unparsed []Unparsed
+	// Rules is every rule the make files write, by file and name
+	// (RuleID): a make target that stops being a test while its rule
+	// stands is found against it (DroppedMakeTargets).
+	Rules map[string]bool `json:"-"`
+	// CaseFiles is each data case's files (a case of a .jsonl line has
+	// none), by its ID: a golden row covers a case only when it pins them
+	// all (CoveredIn).
+	CaseFiles map[string][]string `json:"-"`
 }
+
+// RuleID is a make rule's key in Result.Rules.
+func RuleID(file, name string) string { return file + "\x00" + name }
 
 type scan struct {
 	root    string
@@ -202,6 +214,9 @@ func Extract(root string) (*Result, error) {
 		case strings.HasPrefix(rel, "tla/") && ext == ".cfg":
 			models = append(models, rel)
 		case inData && !isDoc(name):
+			if notACase(rel, name) {
+				return
+			}
 			if strings.HasPrefix(rel, "test/") && !strings.Contains("/"+rel, "/testdata/") && codeExt[ext] {
 				if ext != ".go" {
 					dir := driverDir(rel)
@@ -270,6 +285,20 @@ func isDoc(name string) bool {
 		return true
 	}
 	return false
+}
+
+// testguardRecord is tools/testguard's record of one Go test that ran:
+// test/testguard/<shard>/<package>/<TestName>, an empty file. The test it
+// records is a go-test item already, so the record is no case of its own;
+// the shard's configuration beside them (<shard>.tsv) stays one.
+var testguardRecord = regexp.MustCompile(`^test/testguard/[^/]+/[^/]+/[^/]+$`)
+
+// notACase is a file under a data path that holds no test: a testguard
+// record, or the MSBuild configuration (Directory.Build.props, .targets)
+// every project under its directory imports, whose projects are the
+// drivers.
+func notACase(rel, name string) bool {
+	return testguardRecord.MatchString(rel) || strings.HasPrefix(name, "Directory.Build.")
 }
 
 var codeExt = map[string]bool{

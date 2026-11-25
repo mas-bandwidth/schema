@@ -24,8 +24,12 @@ func Tool(t testing.TB, name string) string {
 	return path
 }
 
+// MissingWords start every failure Missing writes. tools/gotestrun reads them:
+// a negative control's test red for this reason caught no sabotage.
+const MissingWords = "missing what this test needs"
+
 // Missing fails the calling test because something it needs is absent.
 func Missing(t testing.TB, reason string) {
 	t.Helper()
-	t.Fatalf("missing what this test needs (its tier is functional or nightly, so its runner must carry it): %s", reason)
+	t.Fatalf("%s (its tier is functional or nightly, so its runner must carry it): %s", MissingWords, reason)
 }

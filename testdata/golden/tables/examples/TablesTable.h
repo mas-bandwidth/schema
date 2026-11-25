@@ -25844,7 +25844,10 @@ inline int64_t WeaponConfigFixedLoadWalkBody( WeaponConfig * values, int64_t cap
             if ( made < 0 )
             {
                 report->refused = true;
-                report->reason = ( made == -2 ) ? TableMessageReason::layout_record_too_large : ( made == -3 ) ? TableMessageReason::layout_malformed : ( made == -4 ) ? TableMessageReason::kind_mismatch : TableMessageReason::plan_too_large;
+                report->reason = TableMessageReason::plan_too_large;
+                if ( made == -2 ) { report->reason = TableMessageReason::layout_record_too_large; }
+                if ( made == -3 ) { report->reason = TableMessageReason::layout_malformed; }
+                if ( made == -4 ) { report->reason = TableMessageReason::kind_mismatch; }
                 return -1;
             }
             record_bytes = known.record_bytes;
@@ -26578,7 +26581,10 @@ inline int64_t LoadoutConfigFixedLoadWalkBody( LoadoutConfig * values, int64_t c
             if ( made < 0 )
             {
                 report->refused = true;
-                report->reason = ( made == -2 ) ? TableMessageReason::layout_record_too_large : ( made == -3 ) ? TableMessageReason::layout_malformed : ( made == -4 ) ? TableMessageReason::kind_mismatch : TableMessageReason::plan_too_large;
+                report->reason = TableMessageReason::plan_too_large;
+                if ( made == -2 ) { report->reason = TableMessageReason::layout_record_too_large; }
+                if ( made == -3 ) { report->reason = TableMessageReason::layout_malformed; }
+                if ( made == -4 ) { report->reason = TableMessageReason::kind_mismatch; }
                 return -1;
             }
             record_bytes = known.record_bytes;
@@ -27396,7 +27402,10 @@ inline int64_t ProfileConfigFixedLoadWalkBody( ProfileConfig * values, int64_t c
             if ( made < 0 )
             {
                 report->refused = true;
-                report->reason = ( made == -2 ) ? TableMessageReason::layout_record_too_large : ( made == -3 ) ? TableMessageReason::layout_malformed : ( made == -4 ) ? TableMessageReason::kind_mismatch : TableMessageReason::plan_too_large;
+                report->reason = TableMessageReason::plan_too_large;
+                if ( made == -2 ) { report->reason = TableMessageReason::layout_record_too_large; }
+                if ( made == -3 ) { report->reason = TableMessageReason::layout_malformed; }
+                if ( made == -4 ) { report->reason = TableMessageReason::kind_mismatch; }
                 return -1;
             }
             record_bytes = known.record_bytes;
@@ -28636,7 +28645,10 @@ inline int64_t RootConfigFixedLoadWalkBody( RootConfig * values, int64_t capacit
             if ( made < 0 )
             {
                 report->refused = true;
-                report->reason = ( made == -2 ) ? TableMessageReason::layout_record_too_large : ( made == -3 ) ? TableMessageReason::layout_malformed : ( made == -4 ) ? TableMessageReason::kind_mismatch : TableMessageReason::plan_too_large;
+                report->reason = TableMessageReason::plan_too_large;
+                if ( made == -2 ) { report->reason = TableMessageReason::layout_record_too_large; }
+                if ( made == -3 ) { report->reason = TableMessageReason::layout_malformed; }
+                if ( made == -4 ) { report->reason = TableMessageReason::kind_mismatch; }
                 return -1;
             }
             record_bytes = known.record_bytes;
@@ -29142,7 +29154,10 @@ inline int64_t CountedMinFixedLoadWalkBody( CountedMin * values, int64_t capacit
             if ( made < 0 )
             {
                 report->refused = true;
-                report->reason = ( made == -2 ) ? TableMessageReason::layout_record_too_large : ( made == -3 ) ? TableMessageReason::layout_malformed : ( made == -4 ) ? TableMessageReason::kind_mismatch : TableMessageReason::plan_too_large;
+                report->reason = TableMessageReason::plan_too_large;
+                if ( made == -2 ) { report->reason = TableMessageReason::layout_record_too_large; }
+                if ( made == -3 ) { report->reason = TableMessageReason::layout_malformed; }
+                if ( made == -4 ) { report->reason = TableMessageReason::kind_mismatch; }
                 return -1;
             }
             record_bytes = known.record_bytes;
@@ -29629,7 +29644,10 @@ inline int64_t FloatBoundFixedLoadWalkBody( FloatBound * values, int64_t capacit
             if ( made < 0 )
             {
                 report->refused = true;
-                report->reason = ( made == -2 ) ? TableMessageReason::layout_record_too_large : ( made == -3 ) ? TableMessageReason::layout_malformed : ( made == -4 ) ? TableMessageReason::kind_mismatch : TableMessageReason::plan_too_large;
+                report->reason = TableMessageReason::plan_too_large;
+                if ( made == -2 ) { report->reason = TableMessageReason::layout_record_too_large; }
+                if ( made == -3 ) { report->reason = TableMessageReason::layout_malformed; }
+                if ( made == -4 ) { report->reason = TableMessageReason::kind_mismatch; }
                 return -1;
             }
             record_bytes = known.record_bytes;
@@ -30146,7 +30164,10 @@ inline int64_t MoodsFixedLoadWalkBody( Moods * values, int64_t capacity, const u
             if ( made < 0 )
             {
                 report->refused = true;
-                report->reason = ( made == -2 ) ? TableMessageReason::layout_record_too_large : ( made == -3 ) ? TableMessageReason::layout_malformed : ( made == -4 ) ? TableMessageReason::kind_mismatch : TableMessageReason::plan_too_large;
+                report->reason = TableMessageReason::plan_too_large;
+                if ( made == -2 ) { report->reason = TableMessageReason::layout_record_too_large; }
+                if ( made == -3 ) { report->reason = TableMessageReason::layout_malformed; }
+                if ( made == -4 ) { report->reason = TableMessageReason::kind_mismatch; }
                 return -1;
             }
             record_bytes = known.record_bytes;
@@ -30653,7 +30674,10 @@ inline int64_t MoodFieldFixedLoadWalkBody( MoodField * values, int64_t capacity,
             if ( made < 0 )
             {
                 report->refused = true;
-                report->reason = ( made == -2 ) ? TableMessageReason::layout_record_too_large : ( made == -3 ) ? TableMessageReason::layout_malformed : ( made == -4 ) ? TableMessageReason::kind_mismatch : TableMessageReason::plan_too_large;
+                report->reason = TableMessageReason::plan_too_large;
+                if ( made == -2 ) { report->reason = TableMessageReason::layout_record_too_large; }
+                if ( made == -3 ) { report->reason = TableMessageReason::layout_malformed; }
+                if ( made == -4 ) { report->reason = TableMessageReason::kind_mismatch; }
                 return -1;
             }
             record_bytes = known.record_bytes;
@@ -31153,7 +31177,10 @@ inline int64_t MinArmFixFixedLoadWalkBody( MinArmFix * values, int64_t capacity,
             if ( made < 0 )
             {
                 report->refused = true;
-                report->reason = ( made == -2 ) ? TableMessageReason::layout_record_too_large : ( made == -3 ) ? TableMessageReason::layout_malformed : ( made == -4 ) ? TableMessageReason::kind_mismatch : TableMessageReason::plan_too_large;
+                report->reason = TableMessageReason::plan_too_large;
+                if ( made == -2 ) { report->reason = TableMessageReason::layout_record_too_large; }
+                if ( made == -3 ) { report->reason = TableMessageReason::layout_malformed; }
+                if ( made == -4 ) { report->reason = TableMessageReason::kind_mismatch; }
                 return -1;
             }
             record_bytes = known.record_bytes;
@@ -31643,7 +31670,10 @@ inline int64_t MinPlainFixFixedLoadWalkBody( MinPlainFix * values, int64_t capac
             if ( made < 0 )
             {
                 report->refused = true;
-                report->reason = ( made == -2 ) ? TableMessageReason::layout_record_too_large : ( made == -3 ) ? TableMessageReason::layout_malformed : ( made == -4 ) ? TableMessageReason::kind_mismatch : TableMessageReason::plan_too_large;
+                report->reason = TableMessageReason::plan_too_large;
+                if ( made == -2 ) { report->reason = TableMessageReason::layout_record_too_large; }
+                if ( made == -3 ) { report->reason = TableMessageReason::layout_malformed; }
+                if ( made == -4 ) { report->reason = TableMessageReason::kind_mismatch; }
                 return -1;
             }
             record_bytes = known.record_bytes;

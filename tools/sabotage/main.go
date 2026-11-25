@@ -44,7 +44,13 @@ var sabotages = map[string][]edit{
 	"reference-map-widen-count":    {{old: "if !st.IsMapEntry() || f.Name != ir.MapKeyFieldName {", new: "if true { // SABOTAGED: count each widened key twice"}},
 	"reference-list-widen-extent":  {{old: "        if ( !TableKindWidens( wire_kind, elem_kind ) ) { return true; }\n        // Load accepts the widening ladder.", new: "        if ( wire_kind != elem_kind ) { return true; } // SABOTAGED\n        // Load accepts the widening ladder."}},
 	"go-builder-union-refusal":     {{old: "g.pf(\"%sif !%sLoadBody(&%s,&%s) { return false }\\n\", ind, v.Type, rdr, expr)\n\t\tg.emitCarveReturn(\"r\", rdr, ind)", new: "{ s := strings.ReplaceAll(g.body.String(), \"reason!=TableRefuseOk {report.Refuse(reason,\\\"\\\");return false}\", \"reason!=TableRefuseOk {_ = reason;return false}\"); g.body.Reset(); g.body.WriteString(s) } // SABOTAGED: inspect payload length before propagating refusal\n\t\tg.pf(\"%sif !%sLoadBody(&%s,&%s) { return false }\\n\", ind, v.Type, rdr, expr)\n\t\tg.emitCarveReturn(\"r\", rdr, ind)"}},
-	"map-builder-count-oracle":     {{old: "return decodeWithOrder(m, inst, data, report, rt, readOrder{})", new: "return decodeWithOrder(m, inst, data, report, rt, readOrder{wireLast: true}) // SABOTAGED"}, {old: "\tif count > uint64(math.MaxInt32) {\n\t\treturn r.refuse(&CountRefusal{})\n\t}\n\tfv.Entries = nil", new: "\tif false && count > uint64(math.MaxInt32) { // SABOTAGED\n\t\treturn r.refuse(&CountRefusal{})\n\t}\n\tfv.Entries = nil"}},
+	// the C++ strict walk's int32 count cap, on an array and on a keyed array:
+	// a count past it is read as an array with nothing in it, never refused
+	"map-builder-cap-strictwalk": {
+		{old: "    // the cap applies even when this array belongs to an unknown field\n    if ( count > 0x7FFFFFFFull )\n    {\n        s.refusal = count_over_extent_cap;\n        return false;\n    }", new: "    if ( count > 0x7FFFFFFFull ) { return true; } // SABOTAGED: the array count cap refuses nothing"},
+		{old: "    // the cap applies even when this keyed array belongs to an unknown field\n    if ( count > 0x7FFFFFFFull )\n    {\n        s.refusal = count_over_extent_cap;\n        return false;\n    }", new: "    if ( count > 0x7FFFFFFFull ) { return true; } // SABOTAGED: the keyed array count cap refuses nothing"},
+	},
+	"map-builder-count-oracle": {{old: "return decodeWithOrder(m, inst, data, report, rt, readOrder{})", new: "return decodeWithOrder(m, inst, data, report, rt, readOrder{wireLast: true}) // SABOTAGED"}, {old: "\tif count > uint64(math.MaxInt32) {\n\t\treturn r.refuse(&CountRefusal{})\n\t}\n\tfv.Entries = nil", new: "\tif false && count > uint64(math.MaxInt32) { // SABOTAGED\n\t\treturn r.refuse(&CountRefusal{})\n\t}\n\tfv.Entries = nil"}},
 	// Go ownership, managed activation frames, and bounded retention.
 	"go-allocator-original-slice": {
 		{old: ";return b}", new: ";return b[:n] /* SABOTAGED */}"},

@@ -60,7 +60,7 @@ func goList(args ...string) ([]string, error) {
 	cmd := exec.Command("go", append([]string{"list"}, args...)...)
 	cmd.Stdout, cmd.Stderr = &out, &errb
 	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("go list %s: %v: %s", strings.Join(args, " "), err, strings.TrimSpace(errb.String()))
+		return nil, fmt.Errorf("go list %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(errb.String()))
 	}
 	return strings.Fields(out.String()), nil
 }
