@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"os"
@@ -37,6 +38,17 @@ import (
 // sibling not there FAILS, naming the runner, before make runs: a gate
 // never passes by not finding what it checks with.
 //
+// Before the target runs, its dry run (make -n -B: every command the target
+// would run, its prerequisites rebuilt) is read. A row's "reads" names the
+// data cases the target runs (test/tables/VNEW_x.schema): each must be a
+// word of the dry run, or the row FAILS, since a row cannot claim a case
+// its target does not touch. A command that runs go test without -json
+// FAILS the row: go test's plain output prints nothing for a skipped test,
+// so a skip there would read as a pass, where with -json each skip is an
+// event in the log, which a skip in the log fails. A plain go test summary
+// line in the log (from a script the dry run cannot see into) fails it the
+// same way.
+//
 // The targets of one call run one after another, never side by side: they
 // share build/ (bin/schema, the generated trees and their stamps), and two
 // recipes writing one stamp at once is a race the targets were not written
@@ -45,6 +57,9 @@ type makeAdapter struct {
 	// exec runs one make command line and returns its combined output; a
 	// unit test hands in its own, so no unit test runs make.
 	exec func(ctx context.Context, argv []string) (string, error)
+	// plan runs make's dry run of a target and returns what it prints; a
+	// unit test hands in its own.
+	plan func(ctx context.Context, argv []string) (string, error)
 	// read reads a make file by its repository path; a unit test hands in
 	// its own, so no unit test reads the tree.
 	read func(path string) ([]byte, error)
@@ -65,11 +80,13 @@ type makeInputs struct {
 	Vars     map[string]string `json:"vars,omitempty"`
 	Tools    []string          `json:"tools,omitempty"`
 	Siblings []string          `json:"siblings,omitempty"`
+	Reads    []string          `json:"reads,omitempty"`
 }
 
 func newMakeAdapter() makeAdapter {
 	return makeAdapter{
 		exec: execMake,
+		plan: execMake,
 		read: func(p string) ([]byte, error) { return os.ReadFile(filepath.FromSlash(p)) },
 		jobs: runtime.NumCPU(),
 		look: exec.LookPath,
@@ -164,6 +181,11 @@ func decodeMakeInputs(raw json.RawMessage) (makeInputs, error) {
 			return in, fmt.Errorf("sibling %q: want ../<checkout>, one directory beside this one", s)
 		}
 	}
+	for _, r := range in.Reads {
+		if r == "" || r != path.Clean(r) || path.IsAbs(r) || strings.HasPrefix(r, "../") || strings.ContainsAny(r, " \t\n\\") {
+			return in, fmt.Errorf("reads %q: want a file of the repository by its path", r)
+		}
+	}
 	return in, nil
 }
 
@@ -203,6 +225,14 @@ func (a makeAdapter) Run(ctx context.Context, _ string, instances []testreg.Inst
 		if ctx.Err() != nil {
 			return out, ctx.Err()
 		}
+		why, err := a.vet(ctx, in)
+		if err != nil {
+			return out, fmt.Errorf("%s: %w", inst.Full, err)
+		}
+		if why != "" {
+			out = append(out, testreg.Result{Instance: inst.Full, Verdict: testreg.Fail, Reason: why})
+			continue
+		}
 		argv := []string{"make", "--no-print-directory"}
 		if a.jobs > 0 {
 			argv = append(argv, fmt.Sprintf("-j%d", a.jobs))
@@ -216,6 +246,7 @@ func (a makeAdapter) Run(ctx context.Context, _ string, instances []testreg.Inst
 			return out, fmt.Errorf("make %s: %w\n%s", in.Target, ctx.Err(), tail(log, 40))
 		}
 		lines := strings.Split(log, "\n")
+		plain := plainGoTest(lines)
 		switch skipErr := testreg.RefuseSkips(lines); {
 		case err != nil:
 			out = append(out, testreg.Result{Instance: inst.Full, Verdict: testreg.Fail,
@@ -223,6 +254,9 @@ func (a makeAdapter) Run(ctx context.Context, _ string, instances []testreg.Inst
 		case skipErr != nil:
 			out = append(out, testreg.Result{Instance: inst.Full, Verdict: testreg.Fail,
 				Reason: fmt.Sprintf("make %s exited 0, and %v", in.Target, skipErr)})
+		case plain != "":
+			out = append(out, testreg.Result{Instance: inst.Full, Verdict: testreg.Fail,
+				Reason: fmt.Sprintf("make %s exited 0, and its log holds go test's plain output, which prints nothing for a skipped test, so a skip would read as a pass: %q", in.Target, plain)})
 		default:
 			out = append(out, testreg.Result{Instance: inst.Full, Verdict: testreg.Pass})
 		}
@@ -291,4 +325,88 @@ func makeRules(data []byte) (map[string]bool, error) {
 		}
 	}
 	return out, sc.Err()
+}
+
+// vet reads a row's target before it runs: its dry run must name every
+// file the row says it reads, and run no go test without -json. It returns
+// why the row fails, or "", and an error only when the context ended.
+func (a makeAdapter) vet(ctx context.Context, in makeInputs) (string, error) {
+	argv := []string{"make", "--no-print-directory", "-n", "-B", in.Target}
+	for _, k := range slices.Sorted(maps.Keys(in.Vars)) {
+		argv = append(argv, k+"="+in.Vars[k])
+	}
+	if a.plan == nil {
+		return "", errors.New("the make adapter has no dry run to read the recipe with")
+	}
+	dry, err := a.plan(ctx, argv)
+	if ctx.Err() != nil {
+		return "", fmt.Errorf("make -n %s: %w", in.Target, ctx.Err())
+	}
+	if err != nil {
+		return fmt.Sprintf("make -n -B %s, the dry run that shows what its recipe runs, failed: %v\n%s", in.Target, err, tail(dry, 20)), nil
+	}
+	var why []string
+	for _, r := range in.Reads {
+		if !mentions(dry, r) {
+			why = append(why, fmt.Sprintf("the row says make %s reads %s, and no command of its dry run names it", in.Target, r))
+		}
+	}
+	if line := goTestWithoutJSON(dry); line != "" {
+		why = append(why, fmt.Sprintf("make %s runs go test without -json, whose plain output prints nothing for a skipped test, so a skip would read as a pass: %q", in.Target, line))
+	}
+	return strings.Join(why, "; "), nil
+}
+
+// pathByte is a byte a path may hold: a mention of a file is the file's
+// path with none of these on either side.
+func pathByte(c byte) bool {
+	return c == '/' || c == '.' || c == '_' || c == '-' || c >= '0' && c <= '9' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z'
+}
+
+// mentions is whether text names the file p as a word of its own (not
+// p.bak, not old/p).
+func mentions(text, p string) bool {
+	for i := 0; ; {
+		j := strings.Index(text[i:], p)
+		if j < 0 {
+			return false
+		}
+		at, end := i+j, i+j+len(p)
+		if (at == 0 || !pathByte(text[at-1])) && (end == len(text) || !pathByte(text[end])) {
+			return true
+		}
+		i = at + 1
+	}
+}
+
+// goTestCommand is go test run as a command: after the start of a line, a
+// space or an operator, and followed by a space or the end (not "go
+// test/conformance", a path).
+var goTestCommand = regexp.MustCompile(`(^|[\s;&|(@])go\s+test(\s|$)`)
+
+// goTestWithoutJSON is the first command of a dry run that runs go test
+// without -json, its continuation lines joined, or "".
+func goTestWithoutJSON(dry string) string {
+	joined := strings.ReplaceAll(dry, "\\\n", " ")
+	for line := range strings.SplitSeq(joined, "\n") {
+		if goTestCommand.MatchString(line) && !strings.Contains(line, "-json") {
+			return strings.TrimSpace(line)
+		}
+	}
+	return ""
+}
+
+// goTestPlain is a summary line of go test's plain output: "ok  <pkg>
+// 0.12s", "ok <pkg> (cached)", "? <pkg> [no test files]".
+var goTestPlain = regexp.MustCompile(`^(ok|\?)\s+\S+\s+(\d+(\.\d+)?s|\(cached\)|\[no test files\])`)
+
+// plainGoTest is the first line of a log that is go test's plain output,
+// or "".
+func plainGoTest(lines []string) string {
+	for _, l := range lines {
+		if goTestPlain.MatchString(l) {
+			return l
+		}
+	}
+	return ""
 }

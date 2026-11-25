@@ -61,6 +61,9 @@ func TestMain(m *testing.M) {}
 	"test/conformance/zz/driver.py": "print()",
 	"test/conformance/zz/src/a.py":  "print()",
 	"tla/m/MCSpec.cfg":              "INIT Init",
+	"test/testguard/rest/pkg/TestPlain": "",
+	"test/testguard/rest.tsv": "pkg\tTestPlain\n",
+	"test/conformance/zz/Directory.Build.targets": "<Project/>",
 	"working/x_test.go":             "package x\n\nimport \"testing\"\n\nfunc TestScratch(t *testing.T) {}\n",
 }
 
@@ -81,7 +84,9 @@ func writeFixture(t *testing.T, files map[string]string) string {
 
 // TestExtractFindsEveryKind: the fixture's tests, each of its kind, with
 // the gates that decide its tier; fixtures under testdata, scratch under
-// working/, TestMain and a lower-case Testhelper are not tests. A rule only
+// working/, TestMain and a lower-case Testhelper are not tests, nor is a
+// testguard record of a Go test (its shard's .tsv is a case) or the
+// MSBuild configuration a driver directory imports. A rule only
 // a registry make row runs (row-only) is run by name all the same.
 func TestExtractFindsEveryKind(t *testing.T) {
 	t.Parallel()
@@ -114,6 +119,7 @@ func TestExtractFindsEveryKind(t *testing.T) {
 		"workflow-job .github/workflows/ci.yml build [functional] ",
 		"workflow-job .github/workflows/ci.yml lint [functional] ",
 		"data-case pkg/testdata fixture_test [functional] ",
+		"data-case test/testguard rest [functional] ",
 		"data-case testdata/corpus cases/line4 [functional] ",
 		"data-case testdata/corpus cases/one [functional] ",
 		"data-case testdata/corpus cases/two [functional] ",
@@ -314,6 +320,55 @@ func TestAGoldenCoversACaseOnlyWhenItPinsEveryFile(t *testing.T) {
 	ledger := Ledger(res, reg, func(string, string) (string, string) { return "L4", "the languages run it" })
 	if len(ledger) != 1 || ledger[0].Dir != "testdata/conformance" || ledger[0].Count != 1 {
 		t.Errorf("the ledger: %+v", ledger)
+	}
+}
+
+// TestAMakeRowsReadsCoverTheCasesItRuns: a make row covers the data cases
+// its reads name, every file of each; a case a golden row pins and a make
+// row reads is claimed by both with no problem (two checks of one case),
+// and stays the golden row's; a read of a file no case holds, a read
+// outside the data paths and a case only partly read are each named or
+// left in the ledger.
+func TestAMakeRowsReadsCoverTheCasesItRuns(t *testing.T) {
+	t.Parallel()
+	vnew := Item{Kind: KindDataCase, Dir: "test/tables", Name: "VNEW_a", Source: "test/tables/VNEW_a.schema:1"}
+	pin := Item{Kind: KindDataCase, Dir: "testdata/pins", Name: "p", Source: "testdata/pins/p.h:1"}
+	pair := Item{Kind: KindDataCase, Dir: "test/tables", Name: "pair", Source: "test/tables/pair.in:1"}
+	gate := Item{Kind: KindMakeTarget, Dir: "Makefile", Name: "gate", Source: "Makefile:1"}
+	res := &Result{Items: []Item{gate, vnew, pin, pair}, CaseFiles: map[string][]string{
+		vnew.ID(): {"test/tables/VNEW_a.schema"},
+		pin.ID():  {"testdata/pins/p.h"},
+		pair.ID(): {"test/tables/pair.in", "test/tables/pair.out"},
+	}}
+	mk := func(reads string) testreg.Test {
+		return testreg.Test{Key: "harness-run.makefile.gate", Adapter: "make", Inputs: []byte(`{"file":"Makefile","target":"gate","reads":[` + reads + `]}`)}
+	}
+	golden := testreg.Test{Key: "golden.p.h", Adapter: "golden", Inputs: []byte(`{"writer":"pins-x","files":["testdata/pins/p.h"]}`)}
+	reg := &testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{golden, mk(`"test/tables/VNEW_a.schema","testdata/pins/p.h","test/tables/pair.in"`)}}
+	covered, p := CoveredIn(res, reg)
+	if len(p) != 0 {
+		t.Fatalf("a golden row and a make row on one case: %v", p)
+	}
+	if covered[vnew.ID()] != "harness-run.makefile.gate" || covered[pin.ID()] != "golden.p.h" {
+		t.Errorf("covered %v: the read case is the make row's, the pinned one the golden row's", covered)
+	}
+	if _, ok := covered[pair.ID()]; ok {
+		t.Errorf("a case read in part is covered by %s", covered[pair.ID()])
+	}
+	ledger := []LedgerLine{{Kind: KindDataCase, Dir: "test/tables", Count: 1}}
+	if p := Check(res, reg, ledger); len(p) != 0 {
+		t.Errorf("the exact account: %v", p)
+	}
+	for name, c := range map[string]struct {
+		reads, says string
+	}{
+		"a file no case holds":   {`"test/tables/VNEW_gone.schema"`, "harness-run.makefile.gate reads test/tables/VNEW_gone.schema, which the repository does not hold"},
+		"a file of no data path": {`"internal/x/a.go"`, "harness-run.makefile.gate reads internal/x/a.go, which is no data case's file"},
+	} {
+		p := Check(res, &testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{golden, mk(c.reads)}}, nil)
+		if !strings.Contains(strings.Join(p, "\n"), c.says) {
+			t.Errorf("%s: want %q in:\n%s", name, c.says, strings.Join(p, "\n"))
+		}
 	}
 }
 

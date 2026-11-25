@@ -34,6 +34,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 )
@@ -214,7 +215,10 @@ func Extract(root string) (*Result, error) {
 		case strings.HasPrefix(rel, "tla/") && ext == ".cfg":
 			models = append(models, rel)
 		case inData && !isDoc(name):
-			if strings.HasPrefix(rel, "test/") && !strings.Contains("/"+rel, "/testdata/") && codeExt[ext] {
+			if notACase(rel, name) {
+				return
+			}
+			if strings.HasPrefix(rel, "test/")&& !strings.Contains("/"+rel, "/testdata/") && codeExt[ext] {
 				if ext != ".go" {
 					dir := driverDir(rel)
 					if _, ok := drivers[dir]; !ok {
@@ -282,6 +286,20 @@ func isDoc(name string) bool {
 		return true
 	}
 	return false
+}
+
+// testguardRecord is tools/testguard's record of one Go test that ran:
+// test/testguard/<shard>/<package>/<TestName>, an empty file. The test it
+// records is a go-test item already, so the record is no case of its own;
+// the shard's configuration beside them (<shard>.tsv) stays one.
+var testguardRecord = regexp.MustCompile(`^test/testguard/[^/]+/[^/]+/[^/]+$`)
+
+// notACase is a file under a data path that holds no test: a testguard
+// record, or the MSBuild configuration (Directory.Build.props, .targets)
+// every project under its directory imports, whose projects are the
+// drivers.
+func notACase(rel, name string) bool {
+	return testguardRecord.MatchString(rel) || strings.HasPrefix(name, "Directory.Build.")
 }
 
 var codeExt = map[string]bool{

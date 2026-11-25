@@ -99,6 +99,16 @@ func LoadLedger(path string) ([]LedgerLine, error) {
 //     its files (every file of the case: its directory and stem); the rows
 //     of one case's files, one per file, share it.
 //   - a TLC configuration, by a model-check row whose inputs name it.
+//   - a data case a make target runs, by a make row whose inputs name the
+//     case's files in "reads" (the target's dry run names each: the make
+//     adapter holds the row to it).
+//
+// A claim is exclusive (two rows running one item is a problem named) but
+// for a data case: the golden rows of one case share it, and a make row's
+// reads claim it beside them, since a golden row checks the pinned output
+// while the make row runs the case, two different checks of one case. The
+// first exclusive claim keeps the item; a read fills only what no exclusive
+// claim holds.
 //
 // Each kind's rows join this as its layer moves it in.
 func Covered(reg *testreg.Registry) (map[string]string, []string) {
@@ -108,6 +118,8 @@ func Covered(reg *testreg.Registry) (map[string]string, []string) {
 	// a case is its files (a .cpp and its .h; a .bin and its .bits)
 	goldenCase := map[string]bool{}
 	goldenFile := map[string]string{} // a pinned file, by the golden row that names it
+	readCase := map[string]string{} // a data case a make row reads, by the first such row
+	var readOrder []string
 	claim := func(t testreg.Test, it Item, what string) {
 		id := it.ID()
 		if prev, dup := out[id]; dup {
@@ -137,12 +149,27 @@ func Covered(reg *testreg.Registry) (map[string]string, []string) {
 			}
 			claim(t, Item{Kind: KindModel, Dir: "tla", Name: in.Config}, "tla/"+in.Config)
 		case "make":
-			var in struct{ File, Target string }
+			var in struct {
+				File, Target string
+				Reads        []string
+			}
 			if err := json.Unmarshal(t.Inputs, &in); err != nil || in.File == "" || in.Target == "" {
 				problems = append(problems, fmt.Sprintf("%s:%d: %s is a make row without a file and a target in its inputs", reg.Path, t.Line, t.Key))
 				continue
 			}
 			claim(t, Item{Kind: KindMakeTarget, Dir: in.File, Name: in.Target}, "make "+in.Target)
+			for _, f := range in.Reads {
+				dir, name := path.Split(f)
+				if !isDataPath(f) || name == "" || f != path.Clean(f) {
+					problems = append(problems, fmt.Sprintf("%s:%d: %s reads %s, which is no data case's file", reg.Path, t.Line, t.Key, f))
+					continue
+				}
+				id := Item{Kind: KindDataCase, Dir: strings.TrimSuffix(dir, "/"), Name: DataStem(name)}.ID()
+				if _, seen := readCase[id]; !seen {
+					readCase[id] = t.Key
+					readOrder = append(readOrder, id)
+				}
+			}
 		case "plant":
 			var in struct{ Make, Group string }
 			if err := json.Unmarshal(t.Inputs, &in); err != nil {
@@ -185,25 +212,47 @@ func Covered(reg *testreg.Registry) (map[string]string, []string) {
 			}
 		}
 	}
+	for _, id := range readOrder {
+		if _, held := out[id]; !held {
+			out[id] = readCase[id]
+		}
+	}
 	return out, problems
 }
 
-// CoveredIn is Covered held to the extract: a golden row covers a data case
-// only when every file of the case is a pin some golden row names. A case
-// with an input beside its pinned expectation is a case the languages still
-// run (L4), so a pin of one of its files leaves it in the ledger, and its
-// language rows will not read as "already runs" against the golden row.
+// CoveredIn is Covered held to the extract: a row covers a data case only
+// when every file of the case is a file the rows name (a golden row's pins
+// and a make row's reads together). A case with an input beside its pinned
+// expectation is a case the languages still run (L4), so a pin of one of its
+// files leaves it in the ledger, and its language rows will not read as
+// "already runs" against the golden row. A make row that reads a file no
+// case of the extract holds names a test that does not exist, by name.
 func CoveredIn(res *Result, reg *testreg.Registry) (map[string]string, []string) {
 	out, problems := Covered(reg)
-	pinned := map[string]bool{}
+	named := map[string]bool{}
+	held := map[string]bool{}
+	for _, files := range res.CaseFiles {
+		for _, f := range files {
+			held[f] = true
+		}
+	}
 	for _, t := range reg.Tests {
-		if t.Adapter != "golden" {
+		var in struct{ Files, Reads []string }
+		switch t.Adapter {
+		case "golden", "make":
+		default:
 			continue
 		}
-		var in struct{ Files []string }
-		if json.Unmarshal(t.Inputs, &in) == nil {
-			for _, f := range in.Files {
-				pinned[f] = true
+		if json.Unmarshal(t.Inputs, &in) != nil {
+			continue // Covered named it
+		}
+		for _, f := range in.Files {
+			named[f] = true
+		}
+		for _, f := range in.Reads {
+			named[f] = true
+			if !held[f] && isDataPath(f) {
+				problems = append(problems, fmt.Sprintf("%s:%d: %s reads %s, which the repository does not hold", reg.Path, t.Line, t.Key, f))
 			}
 		}
 	}
@@ -212,7 +261,7 @@ func CoveredIn(res *Result, reg *testreg.Registry) (map[string]string, []string)
 			continue
 		}
 		for _, f := range res.CaseFiles[id] {
-			if !pinned[f] {
+			if !named[f] {
 				delete(out, id)
 				break
 			}
