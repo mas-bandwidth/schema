@@ -321,7 +321,7 @@ func TestAGoldenCoversACaseOnlyWhenItPinsEveryFile(t *testing.T) {
 	if covered[pin.ID()] == "" {
 		t.Errorf("a case every file of which is pinned is not covered")
 	}
-	ledger := Ledger(res, reg, func(string, string) (string, string) { return "L4", "the languages run it" })
+	ledger := Ledger(res, reg, func(string, string, []Item) (string, string) { return "L4", "the languages run it" })
 	if len(ledger) != 1 || ledger[0].Dir != "testdata/conformance" || ledger[0].Count != 1 {
 		t.Errorf("the ledger: %+v", ledger)
 	}
