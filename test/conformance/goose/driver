@@ -1397,9 +1397,12 @@ batch_lock() {
 # command, and by the
 # pid of the process that runs the drivers (the harness), so the cache lives
 # for one run and a run never meets another's answers or locks. The call
-# that creates it removes the caches of runs that have ended, writes the map,
-# warms every unit (batch_warm) and then writes warm.done; every other call
-# waits for warm.done, looking once a second.
+# that creates it removes the caches of runs that have ended, writes the map
+# and then writes map.done; every other call waits for map.done, looking once
+# a second. Nothing is warmed here: each call warms the units it answers
+# (batch_warm), so a call scoped to a few cases never pays for the batches of
+# units it does not ask (a scoped manifest still lists, for surfaces the run
+# does not run, every unit's rows).
 batch_dir() {
 	# the key's text is gathered first, so a file that cannot be read (or a
 	# units/*.goose that matches nothing) stops the batch by name instead of
@@ -1415,11 +1418,11 @@ batch_dir() {
 	rm -f "$_kf"
 	_d="$base/batch/$_k-$PPID"
 	mkdir -p "$_d" || return 1
-	while [ ! -f "$_d/warm.done" ]; do
-		if mkdir "$_d/warm.lock" 2>/dev/null; then
-			# a warm that finished between the look and the lock is done
-			if [ -f "$_d/warm.done" ]; then
-				rm -rf "$_d/warm.lock"
+	while [ ! -f "$_d/map.done" ]; do
+		if mkdir "$_d/map.lock" 2>/dev/null; then
+			# a map that was written between the look and the lock is done
+			if [ -f "$_d/map.done" ]; then
+				rm -rf "$_d/map.lock"
 				break
 			fi
 			for _o in "$base"/batch/*-*; do
@@ -1428,24 +1431,26 @@ batch_dir() {
 			done
 			if ! batch_map "$1" "$_d"; then
 				echo "goose driver: no batch map in $_d" >&2
-				rm -rf "$_d/warm.lock"
+				rm -rf "$_d/map.lock"
 				return 1
 			fi
-			batch_warm "$1" "$_d" >&2
-			: >"$_d/warm.done"
-			rm -rf "$_d/warm.lock"
+			: >"$_d/map.done"
+			rm -rf "$_d/map.lock"
 			break
 		fi
 		sleep 1
 	done
 	echo "$_d"
 }
-# batch_warm <manifest> <dir>: every unit's batch, the largest unit first,
-# nproc at a time; a unit whose batch fails says so here, and its surfaces
-# are answered by their single runs
+# batch_warm <manifest> <dir> <units>: the batches of <units> (the units
+# this call answers, one per line) that the map gives a batch, the largest
+# unit first, nproc at a time; a unit whose batch fails says so here, and its
+# surfaces are answered by their single runs. A unit another call of the run
+# is filling is waited for under its lock, never filled twice.
 batch_warm() {
-	for _k in $(awk '$1 == "unit" { print $2 }' "$1"); do
-		[ -d "$units/$_k" ] && printf '%s %s\n' "$(du -sk "$units/$_k" | cut -f1)" "$_k"
+	for _k in $3; do
+		[ -d "$units/$_k" ] && [ -n "$(batch_of "$2/batch.map" "$_k")" ] &&
+			printf '%s %s\n' "$(du -sk "$units/$_k" | cut -f1)" "$_k"
 	done | sort -rn | cut -d" " -f2 | batch_d="$2" xargs -P "$maxjobs" -n 1 "$0" "$1" __batch-fill ||
 		echo "goose driver: a unit's batch failed (its .err in $2 says why); its surfaces fall back to single runs" >&2
 }
@@ -1600,10 +1605,11 @@ if [ "$prog" = accel ]; then
 else
 	active_units=$(main_units "$1" "$2")
 fi
-# the manifest's batch cache directory, once for this call (it warms the
-# cache when this call is the first)
+# the manifest's batch cache directory, and the batches of the units this
+# call answers, warmed side by side before the units are read
 batch_d=
 case " $batch_surfaces " in *" $2 "*) batch_d=$(batch_dir "$1") || exit 1 ;; esac
+[ -z "$batch_d" ] || batch_warm "$1" "$batch_d" "$active_units" >&2
 running=0
 pids=""
 jobfailed=0
