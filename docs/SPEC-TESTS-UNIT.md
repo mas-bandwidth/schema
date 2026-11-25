@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 686. Language-free tests: 2902.
+Unit tests every language answers: 686. Language-free tests: 2903.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -2760,7 +2760,7 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.unit.compiler.value-names.enum-tag-and-flags-print-their-names` | a generated enum, union tag and flags set each print their names through the language's own value-to-text hook (in Go, String: EnumName for an enum or union tag, FlagNames for a flags set) | `tests: {"go":{"package":"./internal/codegen/golang","test":"TestEnumAndFlagsNameMethods"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/golang/tidy_test.go:188` |
+| `L.unit.compiler.value-names.enum-tag-and-flags-print-their-names` | the generated source gives an enum, a union tag and a flags set the language's own value-to-text hook, answering by name (in Go, a String method: EnumName returns it for an enum or union tag, and a flags set's String is FlagNames) | `tests: {"go":{"package":"./internal/codegen/golang","test":"TestEnumAndFlagsNameMethods"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/golang/tidy_test.go:188` |
 
 ### Type `bench`
 
@@ -5235,10 +5235,11 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.gotestrows.the-registry-rows-read-their-packages` | `gotest` | Go test TestTheRegistryRowsReadTheirPackages in ./tools/gotestrows | `package: ./tools/gotestrows`<br>`test: TestTheRegistryRowsReadTheirPackages` | the Go test passes | `tools/gotestrows/registered_test.go:54` |
 | `none.unit.tooling.gotestrows.the-table-parses` | `gotest` | Go test TestTheTableParses in ./tools/gotestrows | `package: ./tools/gotestrows`<br>`test: TestTheTableParses` | the Go test passes | `tools/gotestrows/main_test.go:206` |
 
-#### `tooling` family `gotestrun`, 10 tests
+#### `tooling` family `gotestrun`, 11 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
+| `none.unit.tooling.gotestrun.a-package-behind-the-head-is-written-when-the-head-ends` | `gotest` | Go test TestAPackageBehindTheHeadIsWrittenWhenTheHeadEnds in ./tools/gotestrun | `package: ./tools/gotestrun`<br>`test: TestAPackageBehindTheHeadIsWrittenWhenTheHeadEnds` | the Go test passes | `tools/gotestrun/main_test.go:370` |
 | `none.unit.tooling.gotestrun.a-refusal-under-red-is-not-red` | `gotest` | Go test TestARefusalUnderRedIsNotRed in ./tools/gotestrun | `package: ./tools/gotestrun`<br>`test: TestARefusalUnderRedIsNotRed` | the Go test passes | `tools/gotestrun/main_test.go:106` |
 | `none.unit.tooling.gotestrun.a-result-line-is-marked-as-read-from-json` | `gotest` | Go test TestAResultLineIsMarkedAsReadFromJSON in ./tools/gotestrun | `package: ./tools/gotestrun`<br>`test: TestAResultLineIsMarkedAsReadFromJSON` | the Go test passes | `tools/gotestrun/main_test.go:` |
 | `none.unit.tooling.gotestrun.read-names-every-skip` | `gotest` | Go test TestReadNamesEverySkip in ./tools/gotestrun | `package: ./tools/gotestrun`<br>`test: TestReadNamesEverySkip` | the Go test passes | `tools/gotestrun/main_test.go:97` |

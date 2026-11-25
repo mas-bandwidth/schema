@@ -349,6 +349,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 type packageOrder struct {
 	text  io.Writer
 	order []string                 // packages, in the order first seen
+	at    map[string]int           // each package's place in order
 	head  int                      // order[head] is the package streaming now
 	held  map[string]*bytes.Buffer // output of packages behind the head
 	done  map[string]bool          // packages whose verdict event came
@@ -359,18 +360,26 @@ func (o *packageOrder) see(pkg string) {
 	if _, ok := o.held[pkg]; ok {
 		return
 	}
+	if o.at == nil {
+		o.at = map[string]int{}
+	}
+	o.at[pkg] = len(o.order)
 	o.held[pkg] = &bytes.Buffer{}
 	o.order = append(o.order, pkg)
 }
 
 // write writes one package's output, or holds it behind the head. Output with
-// no package, or of a package that already ended, goes straight through.
+// no package, of the head, or of a package before the head (one already
+// written out) goes straight through; a package behind the head that ended
+// keeps its place.
 func (o *packageOrder) write(pkg, s string) {
-	if pkg == "" || o.done[pkg] || (o.head < len(o.order) && o.order[o.head] == pkg) {
+	if pkg != "" {
+		o.see(pkg)
+	}
+	if pkg == "" || o.at[pkg] <= o.head {
 		_, _ = io.WriteString(o.text, s) // errdiscard: best-effort mirror of go test output; tally decides the verdict
 		return
 	}
-	o.see(pkg)
 	o.held[pkg].WriteString(s)
 }
 

@@ -361,3 +361,48 @@ func TestReadWritesEachPackageWhole(t *testing.T) {
 		t.Errorf("a stream cut short wrote %q, want a's output then b's", text.String())
 	}
 }
+
+// TestAPackageBehindTheHeadIsWrittenWhenTheHeadEnds: when the streaming
+// package ends, by a pass, a fail or a skip, the held output of the package
+// behind it is written at once, before anything later in the stream, not
+// only when the stream ends; and output of a package behind the head that
+// already ended keeps its place.
+func TestAPackageBehindTheHeadIsWrittenWhenTheHeadEnds(t *testing.T) {
+	t.Parallel()
+	ev := func(action, pkg, test, output string) string {
+		b, err := json.Marshal(event{Action: action, Package: pkg, Test: test, Output: output})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b) + "\n"
+	}
+	for _, end := range []string{"pass", "fail", "skip"} {
+		stream := ev("start", "a", "", "") + ev("start", "b", "", "") +
+			ev("output", "b", "", "B1\n") + ev("output", "a", "", "A1\n") + ev(end, "a", "", "") +
+			"# after a ended\n" + ev("output", "b", "", "B2\n") + ev("pass", "b", "", "")
+		var text bytes.Buffer
+		read(strings.NewReader(stream), &text)
+		if want := "A1\nB1\n# after a ended\nB2\n"; text.String() != want {
+			t.Errorf("a ends by %s: text %q, want %q", end, text.String(), want)
+		}
+	}
+
+	// c ends behind the head b: its later output stays behind b's
+	var text bytes.Buffer
+	o := packageOrder{text: &text, held: map[string]*bytes.Buffer{}, done: map[string]bool{}}
+	o.see("a")
+	o.see("b")
+	o.see("c")
+	o.write("c", "C1\n")
+	o.end("c")
+	o.write("c", "C2\n")
+	o.write("b", "B1\n")
+	o.end("a")
+	if text.String() != "B1\n" {
+		t.Errorf("before b ends the text is %q, want only b's output", text.String())
+	}
+	o.end("b")
+	if text.String() != "B1\nC1\nC2\n" {
+		t.Errorf("after b ends the text is %q, want b's output then all of c's", text.String())
+	}
+}
