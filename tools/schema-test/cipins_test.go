@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"io"
 	"maps"
@@ -135,10 +136,14 @@ func TestEveryGitHubFileIsGeneratedOrPinned(t *testing.T) {
 	}
 }
 
-// TestTheNotYetGeneratedListOnlyShrinks: against main's ci-pins.tsv, no
-// workflow joins the not-yet-generated list and none leaves it as pinned; one
-// that leaves it by being generated or deleted is green, and so is a main
-// with no ci-pins.tsv. extract --since runs it.
+// TestTheNotYetGeneratedListOnlyShrinks: against the base's ci-pins.tsv (the
+// tree the change merges into), no workflow joins the not-yet-generated list
+// and none leaves it as pinned; one that leaves it by being generated or
+// deleted is green. A base from before ci-pins.tsv holds every workflow it
+// has as not yet generated, but the generated ones and the ones that run no
+// test: a list within those is green, and one naming a workflow the base
+// lacks, or a generated one, is red. A base that is no directory is an
+// error, never a pass. extract --since --pins-base runs it.
 func TestTheNotYetGeneratedListOnlyShrinks(t *testing.T) {
 	t.Parallel()
 	s := strings.Repeat("a", 64)
@@ -159,7 +164,7 @@ func TestTheNotYetGeneratedListOnlyShrinks(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		p, _, err := pinsShrinkSince(since, root)
+		p, err := pinsShrinkFrom(since, root)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -169,7 +174,7 @@ func TestTheNotYetGeneratedListOnlyShrinks(t *testing.T) {
 		}
 	}
 	// ci-pins.tsv deleted, while main lists not-yet-generated workflows
-	if p, _, err := pinsShrinkSince(func() string {
+	if p, err := pinsShrinkFrom(func() string {
 		d := t.TempDir()
 		if err := os.MkdirAll(filepath.Join(d, filepath.Dir(ciPinsPath)), 0o755); err != nil {
 			t.Fatal(err)
@@ -178,26 +183,54 @@ func TestTheNotYetGeneratedListOnlyShrinks(t *testing.T) {
 			t.Fatal(err)
 		}
 		return d
-	}(), t.TempDir()); err != nil || !strings.Contains(strings.Join(p, "\n"), ciPinsPath+" is gone, and main's lists .github/workflows/x.yml") {
+	}(), t.TempDir()); err != nil || !strings.Contains(strings.Join(p, "\n"), ciPinsPath+" is gone, and the base lists .github/workflows/x.yml") {
 		t.Errorf("ci-pins.tsv deleted is not named: %v %v", p, err)
 	}
-	// a main with no ci-pins.tsv has nothing to shrink from
-	root := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(root, filepath.Dir(ciPinsPath)), 0o755); err != nil {
-		t.Fatal(err)
+	// a base from before ci-pins.tsv: its workflows are the list, but the
+	// generated ones and the ones that run no test
+	old := t.TempDir()
+	for _, w := range []string{"x.yml", "y.yml", "ci-fast.yml", "cla.yml"} {
+		if err := os.MkdirAll(filepath.Join(old, ".github", "workflows"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(old, ".github", "workflows", w), []byte("name: "+w+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if err := os.WriteFile(filepath.Join(root, ciPinsPath), []byte(main), 0o644); err != nil {
-		t.Fatal(err)
+	for name, c := range map[string]struct{ now, says string }{
+		"the base's workflows listed":         {main, ""},
+		"fewer than the base's":               {"# pins\n" + line(".github/workflows/y.yml", pinNotYetGenerated), ""},
+		"a workflow the base lacks joins":     {main + line(".github/workflows/z.yml", pinNotYetGenerated), ciPinsPath + ":4: .github/workflows/z.yml joins the not-yet-generated list"},
+		"a generated workflow listed":         {main + line(fastWorkflow, pinNotYetGenerated), ciPinsPath + ":4: " + fastWorkflow + " joins the not-yet-generated list"},
+		"a workflow that runs no test listed": {main + line(".github/workflows/cla.yml", pinNotYetGenerated), ciPinsPath + ":4: .github/workflows/cla.yml joins the not-yet-generated list"},
+	} {
+		root := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(root, filepath.Dir(ciPinsPath)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, ciPinsPath), []byte(c.now), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		p, err := pinsShrinkFrom(old, root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := strings.Join(p, "\n")
+		if c.says == "" && got != "" || c.says != "" && !strings.Contains(got, c.says) {
+			t.Errorf("a base with no ci-pins.tsv, %s: want %q, got %q", name, c.says, got)
+		}
 	}
-	if p, hadMain, err := pinsShrinkSince(t.TempDir(), root); err != nil || len(p) > 0 || hadMain {
-		t.Errorf("a main with no ci-pins.tsv: %v %v %v", p, hadMain, err)
+	// a base that is not there is an error, never a pass
+	if p, err := pinsShrinkFrom(filepath.Join(old, "absent"), old); err == nil || !strings.Contains(err.Error(), "not a directory") {
+		t.Errorf("a base that is not there: %v %v", p, err)
 	}
 }
 
 // TestCICheckAndExtractHoldThePins: the two commands that run per pull
 // request hold the pins: ci --check names an unpinned file and a pin line
-// that does not read, and extract --since names a workflow that joins the
-// not-yet-generated list. Each runs in a tree of its own.
+// that does not read, and extract --since --pins-base names a workflow that
+// joins the not-yet-generated list of the base given (not main's), and
+// refuses either flag alone. Each runs in a tree of its own.
 func TestCICheckAndExtractHoldThePins(t *testing.T) {
 	t.Parallel()
 	reg := loadRepoRegistry(t)
@@ -251,16 +284,67 @@ func TestCICheckAndExtractHoldThePins(t *testing.T) {
 		}
 	}
 	out.Reset()
-	err = extractCmd([]string{"--root", root, "--since", main}, &out)
+	err = extractCmd([]string{"--root", root, "--since", main, "--pins-base", main}, &out)
 	if err == nil || !strings.Contains(out.String(), ".github/workflows/z.yml joins the not-yet-generated list") {
-		t.Errorf("extract --since does not name a workflow joining the list (err %v):\n%s", err, out.String())
+		t.Errorf("extract --pins-base does not name a workflow joining the list (err %v):\n%s", err, out.String())
 	}
-	// and a main with no list is said aloud
-	out.Reset()
-	if err := os.Remove(filepath.Join(main, ciPinsPath)); err != nil {
+	// the list is held to the base given, not to main: main lists z, the
+	// integration branch's previous tip does not, and growing the list
+	// against that base is red; against a base that lists z it is green
+	base := extractRoot(t)
+	if err := os.WriteFile(filepath.Join(base, ciPinsPath), []byte("# pins\n"+line(".github/workflows/x.yml")), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := extractCmd([]string{"--root", root, "--since", main}, &out); err != nil || !strings.Contains(out.String(), "has no "+ciPinsPath+": this change brings the not-yet-generated list") {
-		t.Errorf("extract --since with a main that has no list is silent (err %v):\n%s", err, out.String())
+	if err := os.WriteFile(filepath.Join(main, ciPinsPath), []byte("# pins\n"+line(".github/workflows/x.yml")+line(".github/workflows/z.yml")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	err = extractCmd([]string{"--root", root, "--since", main, "--pins-base", base}, &out)
+	if err == nil || !strings.Contains(out.String(), ".github/workflows/z.yml joins the not-yet-generated list") {
+		t.Errorf("growing the list against the given base is not red (err %v):\n%s", err, out.String())
+	}
+	out.Reset()
+	if err := extractCmd([]string{"--root", root, "--since", base, "--pins-base", main}, &out); err != nil {
+		t.Errorf("the list held to a base that lists every entry is red: %v\n%s", err, out.String())
+	}
+	if strings.Contains(out.String(), "nothing to shrink from") {
+		t.Errorf("extract says the shrink check is inert:\n%s", out.String())
+	}
+	// ci-fast.yml runs extract with the base, from the main-tree action, on
+	// every step that runs extract; a step that drops it is red
+	extractSteps := func(wf string) []string {
+		var bad []string
+		n := 0
+		for _, l := range strings.Split(wf, "\n") {
+			if !strings.Contains(l, "go run ./tools/schema-test extract") {
+				continue
+			}
+			n++
+			if !strings.Contains(l, `--pins-base "$BASE_TREE"`) {
+				bad = append(bad, strings.TrimSpace(l))
+			}
+		}
+		if n == 0 {
+			bad = append(bad, "no step runs extract")
+		}
+		if strings.Count(wf, "BASE_TREE: ${{ steps.main.outputs.base }}") != n {
+			bad = append(bad, "BASE_TREE is not the main-tree action's base on every extract step")
+		}
+		return bad
+	}
+	fast := string(files[fastWorkflow])
+	if bad := extractSteps(fast); len(bad) > 0 {
+		t.Errorf("ci-fast.yml runs extract without the base: %v", bad)
+	}
+	if bad := extractSteps(strings.Replace(fast, ` --pins-base "$BASE_TREE"`, "", 1)); len(bad) == 0 {
+		t.Error("PLANTED PATTERN: an extract step without --pins-base left the check green")
+	}
+	// --since without --pins-base, or the reverse, is refused: the base is
+	// always given
+	for _, args := range [][]string{{"--root", root, "--since", main}, {"--root", root, "--pins-base", main}} {
+		var u usageError
+		if err := extractCmd(args, io.Discard); !errors.As(err, &u) || !strings.Contains(err.Error(), "--since and --pins-base go together") {
+			t.Errorf("extract %v: want the usage error, got %v", args, err)
+		}
 	}
 }

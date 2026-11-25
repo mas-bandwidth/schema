@@ -624,13 +624,20 @@ of two.
   lobster-fixed-proof-qualification, nightly-conformance, python-leg-nightly,
   python-leg, ruby-leg, tla-nightly). A changed pinned file is a reviewed
   change: `ci --check` names the file, the pin's line and the line to write.
-  The not-yet-generated list only shrinks: `extract --since` holds it to
-  main's (`TestTheNotYetGeneratedListOnlyShrinks`), and a file leaves it by
-  being generated or deleted, never by becoming pinned.
+  The not-yet-generated list only shrinks: `extract --since MAIN --pins-base
+  BASE` holds it to the list of BASE, the tree of the commit the change
+  merges into (main for a change to main, the integration branch's previous
+  tip otherwise; ci-fast.yml's main-tree action exports it from the event),
+  and the two flags only go together
+  (`TestTheNotYetGeneratedListOnlyShrinks`). A file leaves the list by being
+  generated or deleted, never by becoming pinned. A base from before
+  ci-pins.tsv has every workflow it holds not yet generated, but the
+  generated ones and the ones that run no test, so there is always a list
+  to hold to.
 A file that is neither, a pin of a file that is gone and a pin of a
 generated file are each red by name; so are a pinned workflow that is none
 of the workflows that run no test (nonTestWorkflows), and a not-yet-generated file that is no
-workflow. When main has no ci-pins.tsv yet, extract --since says so aloud.
+workflow.
 
 **The rule the generated workflows keep**
 (`TestEveryWorkflowStepCallsOnlySchemaTest`, file:line on every red): every

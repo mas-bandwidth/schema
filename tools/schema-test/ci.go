@@ -555,17 +555,19 @@ jobs:
         run: go run ./tools/schema-test coverage
       - id: main
         uses: ./.github/actions/main-tree
-      - name: schema-test extract, against main's ledger and tree
+      - name: schema-test extract, against main's ledger and tree, and the base's not-yet-generated list
         if: steps.main.outputs.ledger != ''
         env:
           MAIN_TREE: ${{ steps.main.outputs.tree }}
           MAIN_LEDGER: ${{ steps.main.outputs.ledger }}
-        run: go run ./tools/schema-test extract --since "$MAIN_TREE" --shrinks-from "$MAIN_LEDGER"
-      - name: schema-test extract, against main's tree (main has no ledger yet)
+          BASE_TREE: ${{ steps.main.outputs.base }}
+        run: go run ./tools/schema-test extract --since "$MAIN_TREE" --pins-base "$BASE_TREE" --shrinks-from "$MAIN_LEDGER"
+      - name: schema-test extract, against main's tree (main has no ledger yet), and the base's not-yet-generated list
         if: steps.main.outputs.ledger == ''
         env:
           MAIN_TREE: ${{ steps.main.outputs.tree }}
-        run: go run ./tools/schema-test extract --since "$MAIN_TREE"
+          BASE_TREE: ${{ steps.main.outputs.base }}
+        run: go run ./tools/schema-test extract --since "$MAIN_TREE" --pins-base "$BASE_TREE"
 
   # the complete fixed corpus the language-free Go tests read, built once
   fixed-corpus:

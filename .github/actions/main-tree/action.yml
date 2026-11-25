@@ -1,9 +1,12 @@
 name: main's tree
 description: >
   Exports main's tree beside the checkout for `schema-test extract --since`,
-  and main's unmoved ledger for `--shrinks-from` when main has one. An
-  exported tree, not a worktree: a worktree stays registered in .git on a
-  persistent runner and refuses the next job. Runs no test.
+  main's unmoved ledger for `--shrinks-from` when main has one, and the tree
+  of the commit this change merges into for `--pins-base`: for a pull
+  request the tip of the branch it targets (main, or an integration branch),
+  for a push the branch's own previous tip, for a dispatch main. An exported
+  tree, not a worktree: a worktree stays registered in .git on a persistent
+  runner and refuses the next job. Runs no test.
 outputs:
   tree:
     description: the directory main's tree is in
@@ -11,6 +14,9 @@ outputs:
   ledger:
     description: main's test/registry/unmoved.tsv, or empty when main has none
     value: ${{ steps.export.outputs.ledger }}
+  base:
+    description: the directory the tree of the commit this change merges into is in
+    value: ${{ steps.export.outputs.base }}
 runs:
   using: composite
   steps:
@@ -19,15 +25,36 @@ runs:
       run: |
         set -euo pipefail
         git fetch --quiet --depth 1 origin main
+        main=$(git rev-parse FETCH_HEAD)
         tree="$RUNNER_TEMP/main-tree"
         rm -rf "$tree"
         mkdir -p "$tree"
-        git archive FETCH_HEAD | tar -x -C "$tree"
+        git archive "$main" | tar -x -C "$tree"
         echo "tree=$tree" >> "$GITHUB_OUTPUT"
-        if git cat-file -e FETCH_HEAD:test/registry/unmoved.tsv; then
-          git show FETCH_HEAD:test/registry/unmoved.tsv > "$RUNNER_TEMP/unmoved-main.tsv"
+        if git cat-file -e "$main":test/registry/unmoved.tsv; then
+          git show "$main":test/registry/unmoved.tsv > "$RUNNER_TEMP/unmoved-main.tsv"
           echo "ledger=$RUNNER_TEMP/unmoved-main.tsv" >> "$GITHUB_OUTPUT"
         else
           echo "::notice::main has no test/registry/unmoved.tsv: this change creates it, so there is nothing to shrink from"
           echo "ledger=" >> "$GITHUB_OUTPUT"
+        fi
+        case "$GITHUB_EVENT_NAME" in
+          pull_request) ref="$GITHUB_BASE_REF" ;;
+          push) ref=$(jq -r .before "$GITHUB_EVENT_PATH") ;;
+          *) ref=main ;;
+        esac
+        if [ -z "$ref" ] || [ "$ref" = null ] || [ -z "${ref//0/}" ]; then
+          echo "::error::no base to hold the not-yet-generated list to: event $GITHUB_EVENT_NAME gives '$ref'"
+          exit 1
+        fi
+        git fetch --quiet --depth 1 origin "$ref"
+        base_sha=$(git rev-parse FETCH_HEAD)
+        if [ "$base_sha" = "$main" ]; then
+          echo "base=$tree" >> "$GITHUB_OUTPUT"
+        else
+          base="$RUNNER_TEMP/base-tree"
+          rm -rf "$base"
+          mkdir -p "$base"
+          git archive "$base_sha" | tar -x -C "$base"
+          echo "base=$base" >> "$GITHUB_OUTPUT"
         fi
