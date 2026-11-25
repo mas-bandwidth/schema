@@ -5,7 +5,7 @@ Part of the specification: every test of tier `functional`, from the test regist
 
 **Tier functional:** uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it.
 
-Functional tests every language answers: 2560. Language-free tests: 2284.
+Functional tests every language answers: 2560. Language-free tests: 2285.
 
 Run this tier for a language with `schema-test run --tier functional --lang L`, one test with `schema-test run <full name>`.
 
@@ -4737,10 +4737,11 @@ one schema version reads or writes another's data.
 | `none.functional.evolution.cpptable.cpp-fixed-unlawful-corpus` | `gotest` | Go test TestCppFixedUnlawfulCorpus in ./internal/codegen/cpptable | `package: ./internal/codegen/cpptable`<br>`test: TestCppFixedUnlawfulCorpus` | the Go test passes | `internal/codegen/cpptable/fixed_unlawful_corpus_test.go:96` |
 | `none.functional.evolution.cpptable.fixed-versioning-kind-moved` | `gotest` | Go test TestFixedVersioningKindMoved in ./internal/codegen/cpptable | `package: ./internal/codegen/cpptable`<br>`test: TestFixedVersioningKindMoved` | the Go test passes | `internal/codegen/cpptable/fixedversioning_kind_moved_test.go:18` |
 
-#### `evolution` family `cstable`, 3 tests
+#### `evolution` family `cstable`, 4 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
+| `none.functional.evolution.cstable.c-sharp-fixed-r14-grown-union-tag` | `gotest` | Go test TestCSharpFixedR14GrownUnionTag in ./internal/codegen/cstable | `package: ./internal/codegen/cstable`<br>`test: TestCSharpFixedR14GrownUnionTag` | the Go test passes | `internal/codegen/cstable/fixed_r14_grown_tag_test.go:21` |
 | `none.functional.evolution.cstable.c-sharp-fixed-unlawful-corpus` | `gotest` | Go test TestCSharpFixedUnlawfulCorpus in ./internal/codegen/cstable | `package: ./internal/codegen/cstable`<br>`test: TestCSharpFixedUnlawfulCorpus` | the Go test passes | `internal/codegen/cstable/fixed_unlawful_corpus_test.go:103` |
 | `none.functional.evolution.cstable.c-sharp-lineage-optional-unwrapped-is-kind-mismatch` | `gotest` | Go test TestCSharpLineageOptionalUnwrappedIsKindMismatch in ./internal/codegen/cstable | `package: ./internal/codegen/cstable`<br>`test: TestCSharpLineageOptionalUnwrappedIsKindMismatch` | the Go test passes | `internal/codegen/cstable/fixedlineage_kind_moved_test.go:156` |
 | `none.functional.evolution.cstable.fixed-versioning-kind-moved` | `gotest` | Go test TestFixedVersioningKindMoved in ./internal/codegen/cstable | `package: ./internal/codegen/cstable`<br>`test: TestFixedVersioningKindMoved` | the Go test passes | `internal/codegen/cstable/fixedversioning_kind_moved_test.go:18` |
