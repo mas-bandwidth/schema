@@ -90,6 +90,8 @@ func TestSinglePassConditionalsRefuses(t *testing.T) {
 			"#if defined( A )\n#include_next <x.h>\n#else\nint b;\n#endif\n", "#includes a project file"},
 		{"a system header in a chain that reads a name a header may define",
 			"#ifndef __BYTE_ORDER\n#include <endian.h>\n#else\nint b;\n#endif\n", "#includes a system header, and the chain reads __BYTE_ORDER"},
+		{"every name a header may define is named, in order",
+			"#if defined( Z ) || defined( B ) || defined( M )\n#include <x.h>\n#else\nint b;\n#endif\n", "the chain reads B, M, Z,"},
 		{"a reserved name that is not the compiler's, tested by value",
 			"#if _POSIX_C_SOURCE >= 200809L\nint a;\n#else\nint b;\n#endif\n", "_POSIX_C_SOURCE is tested by value"},
 		{"a chain that tests a macro's value",

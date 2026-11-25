@@ -3,6 +3,7 @@ package ccommon
 import (
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -334,10 +335,15 @@ func (n *ppNode) check() error {
 		for _, c := range nodes {
 			for _, line := range c.text {
 				if ppSystemInclude.MatchString(line) {
+					var off []string
 					for id := range read {
 						if !ppPredefined[id] {
-							return fmt.Errorf("line %d: a branch of this chain #includes a system header, and the chain reads %s, which a header may define; it cannot be split into independent conditionals", n.branches[0].start, id)
+							off = append(off, id)
 						}
+					}
+					if len(off) > 0 {
+						sort.Strings(off) // the same input names the same name
+						return fmt.Errorf("line %d: a branch of this chain #includes a system header, and the chain reads %s, which a header may define; it cannot be split into independent conditionals", n.branches[0].start, strings.Join(off, ", "))
 					}
 				} else if ppInclude.MatchString(line) {
 					return fmt.Errorf("line %d: a branch of this chain #includes a project file, which may change a name the chain reads; it cannot be split into independent conditionals", n.branches[0].start)
