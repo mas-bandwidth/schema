@@ -551,7 +551,7 @@ func TestABuildStepRunsInPrepare(t *testing.T) {
 	t.Parallel()
 	planted := errors.New("planted: the build failed")
 	b := &builder{log: io.Discard, done: map[string]error{
-		"make\x00conformance-leg-go": planted,
+		"make\x00conformance-leg-go":      planted,
 		strings.Join(tlcrunBuild, "\x00"): planted,
 	}}
 	leg := testreg.Instance{Full: "go.functional.roundtrip.conformance-wire.root-full", Lang: "go", Test: testreg.Test{Family: "conformance-wire"}}
