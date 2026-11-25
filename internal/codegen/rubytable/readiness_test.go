@@ -16,8 +16,7 @@ var rubyReadinessFiles = []string{
 	".github/workflows/ci-full.yml",
 	".github/workflows/leg.yml",
 	".github/workflows/certify.yml",
-	".github/workflows/schema-ruby-nightly-fuzz.yml",
-	".github/workflows/schema-ruby-runs-hostile-corpus.yml",
+	".github/workflows/schema-test-nightly.yml",
 	"test/conformance/ruby/ci.json",
 	"test/conformance/nightly-readiness",
 	"test/conformance/harness/implementation_ruby.go",
@@ -83,8 +82,7 @@ func rubyReadinessFindings(files map[string]string) []string {
 		add("wire-fuzz-release")
 	}
 	for _, wf := range []string{
-		".github/workflows/schema-ruby-nightly-fuzz.yml",
-		".github/workflows/schema-ruby-runs-hostile-corpus.yml",
+		".github/workflows/schema-test-nightly.yml",
 	} {
 		if !strings.Contains(files[wf], "uses: ./.github/actions/ruby") {
 			add("workflow-pins")

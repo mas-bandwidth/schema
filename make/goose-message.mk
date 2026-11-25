@@ -8,8 +8,8 @@
 # load and the re-save byte for byte), every fixed root of the C++ reference's
 # fixed corpus crossed with tablewire.DecodeMessages / EncodeMessages, every
 # payload shape, and the batch surface's refusals by name. The fixed-corpus
-# rows read build/fixedform-corpus, so the rule that nothing skips turns a missing
-# oracle into a failure.
+# rows read build/fixedform-corpus, and a missing oracle is a failure that
+# names it (docs/rulings.json no-skips).
 .PHONY: tables-goose-message-form
 tables-goose-message-form: build/fixedform-corpus/.stamp
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose

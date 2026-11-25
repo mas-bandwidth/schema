@@ -293,6 +293,7 @@ func Covered(reg *testreg.Registry) (map[string]string, []string) {
 // case of the extract holds names a test that does not exist, by name.
 func CoveredIn(res *Result, reg *testreg.Registry) (map[string]string, []string) {
 	out, problems := Covered(reg)
+	problems = append(problems, perLangClaims(res, reg, out)...)
 	named := map[string]bool{}
 	held := map[string]bool{}
 	for _, files := range res.CaseFiles {
@@ -334,6 +335,71 @@ func CoveredIn(res *Result, reg *testreg.Registry) (map[string]string, []string)
 	return out, problems
 }
 
+// perLangClaims adds to out what a per-language row's one run per language
+// runs (docs/TEST-REGISTRY.md, "The hostile corpus"): its inputs' "target",
+// a make target with {lang} for each listed language, and "go_tests",
+// "<package> <Test>" with {lang}, the Go tests such a target runs. Each
+// language's item is claimed when the extract holds it (a language whose
+// target runs no Go test has none), by the first row of the family that
+// names it, since every case row of the family names the same run. An item
+// another row already claims is a problem named: it would run twice.
+func perLangClaims(res *Result, reg *testreg.Registry, out map[string]string) []string {
+	var problems []string
+	byID := map[string]bool{}
+	targets := map[string][]Item{}
+	for _, it := range res.Items {
+		byID[it.ID()] = true
+		if it.Kind == KindMakeTarget {
+			targets[it.Name] = append(targets[it.Name], it)
+		}
+	}
+	family := map[string]string{} // an item, by the family whose rows claim it
+	claim := func(t testreg.Test, it Item) {
+		id := it.ID()
+		if family[id] == t.Family {
+			return
+		}
+		if prev, dup := out[id]; dup {
+			problems = append(problems, fmt.Sprintf("%s:%d: %s runs %s %s, which %s already runs", reg.Path, t.Line, t.Key, it.Kind, it.Name, prev))
+			return
+		}
+		out[id] = t.Key
+		family[id] = t.Family
+	}
+	for _, t := range reg.Tests {
+		if !t.PerLang() {
+			continue
+		}
+		var in struct {
+			Target  string   `json:"target"`
+			GoTests []string `json:"go_tests"`
+		}
+		if json.Unmarshal(t.Inputs, &in) != nil || !strings.Contains(in.Target, testreg.LangPlaceholder) {
+			continue // a row whose inputs name no per-language target
+		}
+		for _, l := range reg.Langs {
+			if l.Name == testreg.LangFree {
+				continue
+			}
+			for _, it := range targets[strings.ReplaceAll(in.Target, testreg.LangPlaceholder, l.Name)] {
+				claim(t, it)
+			}
+			for _, g := range in.GoTests {
+				pkg, name, ok := strings.Cut(g, " ")
+				if !ok {
+					problems = append(problems, fmt.Sprintf("%s:%d: %s: go_tests entry %q is not \"<package> <Test>\"", reg.Path, t.Line, t.Key, g))
+					continue
+				}
+				it := Item{Kind: KindGoTest, Dir: strings.TrimPrefix(pkg, "./"), Name: strings.ReplaceAll(name, testreg.LangPlaceholder, l.Name)}
+				if byID[it.ID()] {
+					claim(t, it)
+				}
+			}
+		}
+	}
+	return problems
+}
+
 // Indexed reports, for each data case and driver a per-language registry row
 // reads, the first such row's key. A corpus is data in the registry where its
 // files are (docs/TEST-REGISTRY.md, "How each kind of test fits"): a row's
@@ -348,7 +414,15 @@ func CoveredIn(res *Result, reg *testreg.Registry) (map[string]string, []string)
 // answers it (a ready language, one with an adapter, that does not declare it
 // unrepresentable), and its driver only for those languages. A
 // row no adapter answers, and the driver of a language with no adapter, stay
-// unmoved.
+// unmoved. A language-free row (scope none) runs through the adapter it
+// names, so it indexes the files its inputs name (a Go test that replays a
+// committed case folder), and one that names no adapter indexes nothing.
+// filesHeld are the language-free adapters that hold a row to the files its
+// inputs name: gotest fails a row whose files are gone before it runs, and
+// its rows' tests read exactly those files. A language-free row of another
+// adapter indexes no files.
+var filesHeld = map[string]bool{"gotest": true}
+
 func Indexed(reg *testreg.Registry) map[string]string {
 	out := map[string]string{}
 	claim := func(id, key string) {
@@ -356,8 +430,35 @@ func Indexed(reg *testreg.Registry) map[string]string {
 			out[id] = key
 		}
 	}
+	dataCase := func(f, key string) {
+		dir, name := path.Split(f)
+		if strings.HasSuffix(name, ".jsonl") || name == "" {
+			return // each line of a .jsonl file is a case of its own
+		}
+		stem := name
+		if i := strings.Index(name[1:], "."); i >= 0 {
+			stem = name[:i+1]
+		}
+		claim(Item{Kind: KindDataCase, Dir: strings.TrimSuffix(dir, "/"), Name: stem}.ID(), key)
+	}
 	for _, t := range reg.Tests {
 		if !t.PerLang() {
+			// a language-free row runs through the adapter it names, and
+			// the files its inputs name are the data it runs over (a Go
+			// test that replays a committed case folder names its files),
+			// but only through an adapter that holds a row to its files: a
+			// row of any other adapter could name files it never reads
+			if !filesHeld[t.Adapter] {
+				continue
+			}
+			var in struct {
+				Files []string `json:"files"`
+			}
+			if json.Unmarshal(t.Inputs, &in) == nil {
+				for _, f := range in.Files {
+					dataCase(f, t.Key)
+				}
+			}
 			continue
 		}
 		var in struct {
@@ -378,15 +479,7 @@ func Indexed(reg *testreg.Registry) map[string]string {
 			continue // no language runs it: what it reads is not yet the registry's
 		}
 		for _, f := range in.Files {
-			dir, name := path.Split(f)
-			if strings.HasSuffix(name, ".jsonl") || name == "" {
-				continue // each line of a .jsonl file is a case of its own
-			}
-			stem := name
-			if i := strings.Index(name[1:], "."); i >= 0 {
-				stem = name[:i+1]
-			}
-			claim(Item{Kind: KindDataCase, Dir: strings.TrimSuffix(dir, "/"), Name: stem}.ID(), t.Key)
+			dataCase(f, t.Key)
 		}
 		if in.Driver != "" {
 			for _, l := range answering {

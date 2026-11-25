@@ -22,10 +22,7 @@ func TestHostileZeroEscapeRows(t *testing.T) {
 			if row.VerdictFor(lang) != "refused" {
 				t.Fatalf("%s/%s lost refusal", name, lang)
 			}
-			wants, exemptions := hostileExpectations(m, lang)
-			if len(exemptions) != 0 {
-				t.Fatalf("port exemptions survived: %v", exemptions)
-			}
+			wants := hostileExpectations(m, lang)
 			var want expectation
 			for _, e := range wants {
 				if e.name == name {

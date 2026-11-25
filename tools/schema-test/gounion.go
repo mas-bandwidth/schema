@@ -25,7 +25,9 @@ var goUnion = harness{
 	Build: func(string) [][]string { return nil },
 	Run: func(ctx context.Context, lang string, instances []testreg.Instance, log io.Writer) ([]testreg.Result, error) {
 		a := newGoTestAdapter(log, ".", goTestJobs())
-		a.build = builderFrom(ctx) // the corpus adapter's, which Prepare built with
+		if b := builderFrom(ctx); b != nil {
+			a.build = b.run // the corpus adapter's, which Prepare built with
+		}
 		return a.runUnion(ctx, lang, instances)
 	},
 }

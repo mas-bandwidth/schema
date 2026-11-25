@@ -731,6 +731,7 @@ func main() {
 		}
 		// the opt-in units this leg answers (MANIFEST.txt `opt-in`)
 		fmt.Println("unit shapes")
+		fmt.Println("unit tblmoodmap")
 		return
 	}
 	if len(os.Args) < 4 {

@@ -14,7 +14,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster/lobsterrun"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
-	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // textSchema is this card's probe unit: the kinds the first slice of the
@@ -116,40 +115,6 @@ type textRun struct {
 	wire, rewrite, edited, dump string
 }
 
-// textCarried reports whether this card's reader carries every field kind the
-// unit declares; a unit with a wide string, a pointer or a timestamp is left
-// to its own card and named as not done.
-func textCarried(u *ir.Unit) bool {
-	for _, st := range u.Tables {
-		for _, f := range st.Fields {
-			if !textFieldCarried(f) {
-				return false
-			}
-		}
-	}
-	for _, st := range u.Structs {
-		for _, f := range st.Fields {
-			if !textFieldCarried(f) {
-				return false
-			}
-		}
-	}
-	return true
-}
-
-func textFieldCarried(f *ir.Field) bool {
-	t := f.Type
-	if t.Timestamp || t.Pointer {
-		return false
-	}
-	// a default document of a huge bound is the load walk's business, not
-	// this card's text mapping; keep the sweep to units a person writes.
-	if f.Array != ir.ArrayNone && f.ArrayBound > 1000 {
-		return false
-	}
-	return true
-}
-
 // textSweepProgram is one manifest unit's default document through the text
 // form: every table reads "()", writes canonical JSON, and exposes its value, each
 // answer named by its root.
@@ -204,7 +169,6 @@ func sweepManifest(t *testing.T) {
 		t.Fatal(err)
 	}
 	seen := 0
-	skipped := 0
 	for _, unit := range units {
 		var full []string
 		for _, p := range unit.paths {
@@ -217,10 +181,6 @@ func sweepManifest(t *testing.T) {
 		g, err := generateLoadUnit(t, ps)
 		if err != nil {
 			t.Fatalf("manifest unit %s is refused: %v", unit.key, err)
-		}
-		if !textCarried(g.u) {
-			skipped++
-			continue
 		}
 		var roots []string
 		for name := range g.u.Tables {
@@ -261,7 +221,7 @@ func sweepManifest(t *testing.T) {
 			seen++
 		}
 	}
-	t.Logf("manifest sweep: %d units, %d carried, %d skipped for a kind a later card names; %d table roots read and written as Go did", len(units), len(units)-skipped, skipped, seen)
+	t.Logf("manifest sweep: %d units; %d table roots read and written as Go did", len(units), seen)
 }
 
 func runText(t *testing.T, schema, input, editPath, editToken string) textRun {

@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"io"
 	"path/filepath"
 	"strings"
 
@@ -18,13 +17,6 @@ import (
 // fails fails exactly the rows whose tests read it, by name, and their go
 // test does not run; the other rows run.
 
-// newGoTestAdapterBuilding is a gotest adapter whose builds go through b.
-func newGoTestAdapterBuilding(log io.Writer, root string, jobs int, b *builder) *goTestAdapter {
-	a := newGoTestAdapter(log, root, jobs)
-	a.build = b
-	return a
-}
-
 // goTestRef is one Go test: its package and top-level name.
 type goTestRef struct{ pkg, test string }
 
@@ -36,12 +28,13 @@ func (a *goTestAdapter) needs() ([]testreg.GoNeed, error) {
 	return a.needsTable, a.needsErr
 }
 
-// builder is the run's builder, or one of the adapter's own.
-func (a *goTestAdapter) builder() *builder {
+// builder runs one build step through the run's builder, or one of the
+// adapter's own.
+func (a *goTestAdapter) builder() func(context.Context, []string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.build == nil {
-		a.build = &builder{log: a.log, done: map[string]error{}}
+		a.build = (&builder{log: a.log, done: map[string]error{}}).run
 	}
 	return a.build
 }
@@ -58,7 +51,7 @@ func (a *goTestAdapter) buildNeeds(ctx context.Context, refs []goTestRef) (map[s
 	if err != nil {
 		return nil, err
 	}
-	b := a.builder()
+	run := a.builder()
 	failed := map[string]error{}
 	seen := map[string]bool{}
 	for _, r := range refs {
@@ -67,7 +60,7 @@ func (a *goTestAdapter) buildNeeds(ctx context.Context, refs []goTestRef) (map[s
 				continue
 			}
 			seen[target] = true
-			if err := b.run(ctx, needsStep(target)); err != nil {
+			if err := run(ctx, needsStep(target)); err != nil {
 				failed[target] = err
 			}
 		}
@@ -90,10 +83,10 @@ func (a *goTestAdapter) needsFailure(failed map[string]error, r goTestRef) strin
 	return ""
 }
 
-// Prepare builds what the rows' Go tests read (testreg.Preparer). A build
-// that fails is not Prepare's error: Run fails the rows that read it, by
-// name, and the rest of the group runs.
-func (a *goTestAdapter) Prepare(ctx context.Context, _ string, instances []testreg.Instance) error {
+// prepareNeeds builds what the rows' Go tests read, for Prepare
+// (testreg.Preparer). A build that fails is not Prepare's error: Run fails
+// the rows that read it, by name, and the rest of the group runs.
+func (a *goTestAdapter) prepareNeeds(ctx context.Context, instances []testreg.Instance) error {
 	var refs []goTestRef
 	for _, inst := range instances {
 		in, err := goTestInputsOf(inst.Test)

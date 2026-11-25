@@ -35,8 +35,8 @@ func needsRoot(t *testing.T) string {
 
 // plantedBuilder is a builder whose step for target already ran and answered
 // err: run returns it at once and execs nothing.
-func plantedBuilder(target string, err error) *builder {
-	return &builder{log: io.Discard, done: map[string]error{strings.Join(needsStep(target), "\x00"): err}}
+func plantedBuilder(target string, err error) func(context.Context, []string) error {
+	return (&builder{log: io.Discard, done: map[string]error{strings.Join(needsStep(target), "\x00"): err}}).run
 }
 
 // stubGoTest answers go test for every test the call names as passed, and
@@ -173,6 +173,14 @@ func writeNoNeeds(t *testing.T, root string) {
 	if err := os.WriteFile(p, nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// noNeedsRoot is a temporary test root holding an empty needs table.
+func noNeedsRoot(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	writeNoNeeds(t, root)
+	return root
 }
 
 // TestAPrepareCutShortByItsDeadlineSaysSo: a needs build that the Prepare

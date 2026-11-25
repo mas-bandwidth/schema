@@ -60,12 +60,7 @@ func TestDartIllFormedBoundaryClaim(t *testing.T) {
 	if got := row.VerdictFor("dart"); got != "refused" {
 		t.Fatalf("Dart invalid UTF-8 claim=%q, want refused", got)
 	}
-	wants, exemptions := hostileExpectations(m, "dart")
-	for _, exemption := range exemptions {
-		if bytes.Contains([]byte(exemption), []byte(row.Name)) {
-			t.Fatalf("Dart still exempted: %s", exemption)
-		}
-	}
+	wants := hostileExpectations(m, "dart")
 	for _, want := range wants {
 		if want.name == row.Name && string(want.want) == "refused\n" {
 			return
