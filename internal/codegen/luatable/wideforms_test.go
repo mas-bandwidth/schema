@@ -171,6 +171,14 @@ func mustAbs(t *testing.T, path string) string {
 
 const serializeStub = `package serialize
 
+// Refusal and ErrValueOutOfRange mirror serialize.go's write-side refusal,
+// which the generated Go names for a value off its declared range.
+type Refusal uint8
+
+func (r Refusal) Error() string { return "serialize: value_out_of_range" }
+
+const ErrValueOutOfRange Refusal = 2
+
 type Int128 struct{ Lo, Hi uint64 }
 type Uint128 struct{ Lo, Hi uint64 }
 
