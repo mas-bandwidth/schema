@@ -52,6 +52,7 @@ update-goldens-moo: ;
 
 TEST_LEGS          += test-moo
 TOOLCHAIN_LEGS     += moo
+CONFORMANCE_LEG_moo := build/conformance-moo
 TOOLCHAIN_PINS_moo := MOO MOO_ANALYZE
 CONFORMANCE_LEGS   += $(call unless_skipped,moo,build/conformance-moo)
 GOLDENS_LEGS       += update-goldens-moo

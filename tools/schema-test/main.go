@@ -7,6 +7,7 @@
 //	schema-test list [the same]
 //	schema-test coverage
 //	schema-test extract [--json] [--write-ledger] [--shrinks-from LEDGER] [--since MAIN-TREE] [--move LAYER]
+//	schema-test langs [--ready]
 //	schema-test addenda [--check] [--root DIR]
 //	schema-test seconds [--registry PATH] LOG...
 //
@@ -31,12 +32,14 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"os"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -58,10 +61,11 @@ const usage = `usage:
   schema-test list [the same]
   schema-test coverage
   schema-test extract [--json] [--write-ledger] [--shrinks-from LEDGER] [--since MAIN-TREE] [--move LAYER]
+  schema-test langs [--ready]   the registry's languages as a JSON list (a CI matrix)
   schema-test addenda [--check] [--root DIR]
   schema-test seconds [--registry PATH] LOG...
   NAME is <lang>.<tier>.<type>.<family>.<case>; a PATTERN has "*" in it
-  --group G         a stored query of the registry (rec "group")
+  --group G         a stored query of the registry (rec "group"); --lang narrows it
   --shard i/n       the i-th of n parts of the expanded list
   --registry PATH   the registry (default ` + testreg.DefaultPath + `)
   --timeout D       one adapter call's limit, 0 for none (default 90s)
@@ -134,6 +138,9 @@ func runErr(ctx context.Context, args []string, stdout io.Writer, ads map[string
 	if sub == "extract" {
 		return extractCmd(args[1:], stdout)
 	}
+	if sub == "langs" {
+		return langsCmd(args[1:], stdout)
+	}
 	if sub == "addenda" {
 		return addendaCmd(args[1:], stdout)
 	}
@@ -192,14 +199,25 @@ func runErr(ctx context.Context, args []string, stdout io.Writer, ads map[string
 		return err
 	}
 	if *group != "" {
+		// --lang narrows a group to the languages named, the CI matrix's
+		// one row per language; anything else is a different query
+		langs := q.Langs
+		q.Langs = nil
 		if !q.Empty() {
-			return usageError{"--group is a whole stored query: give it alone (with --shard)"}
+			return usageError{"--group is a whole stored query: give it alone (with --lang and --shard)"}
 		}
 		g, ok := reg.Group(*group)
 		if !ok {
 			return noRun(fmt.Errorf("group %q is not in the registry", *group))
 		}
 		q = g.Query()
+		if len(langs) > 0 {
+			narrowed, err := narrowLangs(q.Langs, langs)
+			if err != nil {
+				return noRun(fmt.Errorf("group %s: %w", *group, err))
+			}
+			q.Langs = narrowed
+		}
 	}
 	if q.Empty() {
 		return usageError{"name what to run: a name, a pattern, a filter or --group (everything is --tier unit --tier functional --tier nightly)"}
@@ -301,5 +319,59 @@ func secondsCmd(args []string, stdout io.Writer) error {
 		return err
 	}
 	_, err = fmt.Fprintf(stdout, "schema-test seconds: wrote the measured seconds of %d tests into %s\n", n, *path)
+	return err
+}
+
+// narrowLangs is a group's languages narrowed by --lang: the named ones, or,
+// when the group names languages itself, the ones in both. A language in
+// neither is an error, never an empty run.
+func narrowLangs(group, named []string) ([]string, error) {
+	if len(group) == 0 {
+		return named, nil
+	}
+	var out []string
+	for _, l := range named {
+		if !slices.Contains(group, l) {
+			return nil, fmt.Errorf("--lang %s is not one of the group's languages (%s)", l, strings.Join(group, ", "))
+		}
+		out = append(out, l)
+	}
+	return out, nil
+}
+
+// langsCmd is "schema-test langs": the registry's languages as a JSON list,
+// with --ready only those whose adapter has landed, then "none" for the
+// language-free tests. A workflow's per-language matrix reads it, so the list
+// is never written in a workflow.
+func langsCmd(args []string, stdout io.Writer) error {
+	fs := flag.NewFlagSet("schema-test langs", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	ready := fs.Bool("ready", false, "")
+	path := fs.String("registry", testreg.DefaultPath, "")
+	if err := fs.Parse(args); err != nil {
+		return usageError{err.Error()}
+	}
+	if fs.NArg() != 0 {
+		return usageError{"langs takes no names"}
+	}
+	reg, err := testreg.Load(*path)
+	if err != nil {
+		return err
+	}
+	var out []string
+	for _, l := range reg.Langs {
+		if !*ready || l.Ready() {
+			out = append(out, l.Name)
+		}
+	}
+	if len(out) == 0 {
+		return fmt.Errorf("langs: the registry has no language%s", map[bool]string{true: " whose adapter has landed", false: ""}[*ready])
+	}
+	out = append(out, testreg.LangFree)
+	b, err := json.Marshal(out)
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintf(stdout, "%s\n", b)
 	return err
 }

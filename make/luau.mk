@@ -315,6 +315,7 @@ test-luau: tables-luau-finite-float
 
 TEST_LEGS         += test-luau
 TOOLCHAIN_LEGS    += luau
+CONFORMANCE_LEG_luau := build/conformance-luau
 TOOLCHAIN_PINS_luau := LUAU
 CONFORMANCE_LEGS  += $(call unless_skipped,luau,build/conformance-luau)
 BENCH_TABLES_LEGS += generated/bench/tables/luau/.stamp

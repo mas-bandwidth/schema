@@ -6811,6 +6811,27 @@ conformance: build/conformance-harness build/conformance-cpp build/schema_test_c
 		--results build/conformance/results.json \
 		$(if $(SKIPPED_LEGS),--skip $(subst $(skip_space),$(skip_comma),$(strip $(SKIPPED_LEGS))))
 
+# ONE LEG'S CONFORMANCE BUILD, for the test registry's corpus adapter
+# (docs/TEST-REGISTRY.md; test/conformance/harness/adapter.go). tools/schema-test
+# runs `make conformance-leg-<lang>` before `build/conformance-harness-vm
+# adapter --lang <lang>`: the harness built with every leg's tag, so --claims
+# resolves every target's carries, and exactly what `make conformance` builds
+# for that one leg, which each leg's make file names CONFORMANCE_LEG_<lang>
+# (the same targets it puts on CONFORMANCE_LEGS). The reference leg, cpp, is
+# not on CONFORMANCE_LEGS: the conformance rule names its driver and cook
+# itself, and so does CONFORMANCE_LEG_cpp. A port with no such variable is an
+# error by name, never an empty build.
+CONFORMANCE_LEG_cpp := build/conformance-cpp build/schema_test_cook
+.PHONY: conformance-leg-% conformance-leg-built
+conformance-leg-%: bin/schema
+	@$(if $(filter $*,$(SCHEMA_PORTS)),,$(error conformance-leg-$*: $* is not a port (SCHEMA_PORTS: $(SCHEMA_PORTS))))
+	@$(if $(CONFORMANCE_LEG_$*),,$(error conformance-leg-$*: no make file names CONFORMANCE_LEG_$* (the leg's conformance build)))
+	@$(MAKE) $(VERIFY_JFLAG) --no-print-directory CONFORMANCE_LEG=$* build/conformance-harness-vm conformance-leg-built
+
+conformance-leg-built: $(CONFORMANCE_LEG_$(CONFORMANCE_LEG))
+	@$(if $(CONFORMANCE_LEG_$(CONFORMANCE_LEG)),,$(error conformance-leg-built: CONFORMANCE_LEG=$(CONFORMANCE_LEG) names no leg build: run make conformance-leg-<lang>))
+	@echo "conformance-leg-$(CONFORMANCE_LEG): built $(strip $(CONFORMANCE_LEG_$(CONFORMANCE_LEG)))"
+
 # THE TABLES BENCH PASS (bench/tables/README.md): every leg under
 # bench/tables/*/leg, results under bench/tables/results/. A PUBLISHABLE
 # number is a box sitting under the estate's bench rules — core 15, server

@@ -140,7 +140,7 @@ func extractCmd(args []string, stdout io.Writer) error {
 // printCounts is the extract's account: tests by kind, how many are rows
 // and how many wait, and the gates that decide tiers.
 func printCounts(w io.Writer, res *extract.Result, reg *testreg.Registry, ledger []extract.LedgerLine) error {
-	covered, _ := extract.Covered(reg)
+	covered := extract.Runs(reg)
 	total, rows, gated := map[string]int{}, map[string]int{}, map[string]int{}
 	for _, it := range res.Items {
 		total[it.Kind]++

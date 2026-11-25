@@ -147,6 +147,7 @@ python-vt-widening-negative-control: python-toolchain-check
 
 generated/bench/tables/python/.stamp: ;
 
+CONFORMANCE_LEG_python := build/conformance-python
 TEST_LEGS             += test-python
 CONFORMANCE_LEGS      += $(call unless_skipped,python,build/conformance-python)
 BENCH_TABLES_LEGS     += generated/bench/tables/python/.stamp

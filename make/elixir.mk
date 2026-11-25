@@ -1133,6 +1133,7 @@ test-elixir-packet: build/mustrun toolchain-elixir generated/elixir/.stamp gener
 
 TEST_LEGS            += test-elixir
 TOOLCHAIN_LEGS       += elixir
+CONFORMANCE_LEG_elixir := build-conformance-elixir
 TOOLCHAIN_PINS_elixir := ELIXIR ELIXIRC MIX
 CONFORMANCE_LEGS     += $(call unless_skipped,elixir,build-conformance-elixir)
 REGISTRY_NA          += goldens:elixir

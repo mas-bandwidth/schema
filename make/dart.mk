@@ -705,6 +705,20 @@ build/conformance-dart: build/tables-generated-dart/.stamp $(CARDS_DART_STAMP) b
 	@mkdir -p build
 	$(DART) compile exe --enable-asserts -o $@ test/conformance/dart/main.dart >/dev/null
 
+# THE ASSERT SURFACES' SNAPSHOT. The rows whose answer is an assert's refusal
+# run on the VM with --enable-asserts (test/conformance/dart/driver), from
+# this kernel snapshot: the same prerequisites as build/conformance-dart, so
+# it is rebuilt whenever the AOT driver is, and each of those surfaces starts
+# in about a second where compiling main.dart from source took about
+# eighteen. It is an order-only prerequisite of build/conformance-dart, so
+# every target that builds the AOT driver builds or refreshes it too, while a
+# restored AOT driver is never rebuilt for the snapshot's timestamp. A make run
+# with -o build/conformance-dart (the CI claims job) names it itself.
+build/conformance-dart-asserts.dill: build/tables-generated-dart/.stamp $(CARDS_DART_STAMP) build/tables-generated-dart-framing/countedmin/.stamp test/conformance/dart/main.dart
+	@mkdir -p build
+	$(DART) compile kernel -o $@ test/conformance/dart/main.dart >/dev/null
+build/conformance-dart: | build/conformance-dart-asserts.dill
+
 # Every unit build/conformance-dart reads, into any build root, from any
 # compiler: the corpus list above, the cards unit and the CountedMin framing
 # unit. test/conformance/dart/negative-control builds its sabotaged driver on
@@ -1479,6 +1493,7 @@ test-dart-packet: toolchain-dart build/mustrun generated/dart/.stamp generated/d
 
 TEST_LEGS         += test-dart
 TOOLCHAIN_LEGS    += dart
+CONFORMANCE_LEG_dart := build/conformance-dart build/conformance-dart-asserts.dill
 TOOLCHAIN_PINS_dart := DART
 CONFORMANCE_LEGS  += $(call unless_skipped,dart,build/conformance-dart)
 REGISTRY_NA       += goldens:dart

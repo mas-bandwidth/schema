@@ -45,7 +45,11 @@ func shardsFit(reg *testreg.Registry, shards []string, budget float64) []string 
 	if !ok {
 		return append(problems, "the registry has no group pr")
 	}
-	sel, err := reg.Select(g.Query())
+	// the shards run the group's language-free part (--lang none); the
+	// per-language rows have a job each
+	q := g.Query()
+	q.Langs = []string{testreg.LangFree}
+	sel, err := reg.Select(q)
 	if err != nil {
 		return append(problems, err.Error())
 	}
