@@ -415,9 +415,13 @@ func TestEveryHostileTargetDeclaresItsBuild(t *testing.T) {
 // dist-squirrel's extract line did (make/squirrel.mk, SQUIRREL_SUBMAKE).
 //
 // It dry-runs a private copy of the checkout's files (tracked and untracked,
-// not ignored) under build/, so no other run writing the checkout can turn it
-// red, and the copy is cold the way a fresh CI checkout is. It sees writes to
-// that tree only, not to caches or $HOME. Functional tier: it runs git and make.
+// not ignored) at build/dryrun-<n>/checkout, so no other run writing the
+// checkout can turn it red, and the copy is cold the way a fresh CI checkout
+// is. It watches all of build/dryrun-<n>, so a write through the make files'
+// ../ sibling paths (../serialize and the rest) lands inside what it sees.
+// Those siblings are absent there: the dry run takes the path a checkout
+// without them takes. It sees writes to that folder only, not to caches or
+// $HOME. Functional tier: it runs git and make.
 func TestEveryHostileTargetDryRunsWithoutWriting(t *testing.T) {
 	t.Chdir("../..")
 	reg, err := testreg.Load(testreg.DefaultPath)
@@ -428,7 +432,7 @@ func TestEveryHostileTargetDryRunsWithoutWriting(t *testing.T) {
 	if len(langs) == 0 {
 		t.Fatal("the registry names no language")
 	}
-	tree := dryRunCopy(t)
+	watched, tree := dryRunCopy(t)
 	// the dry run is make's own, not a parent make's jobserver or flags
 	var env []string
 	for _, kv := range os.Environ() {
@@ -438,7 +442,7 @@ func TestEveryHostileTargetDryRunsWithoutWriting(t *testing.T) {
 			env = append(env, kv)
 		}
 	}
-	before, err := checkoutState(tree)
+	before, err := checkoutState(watched)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -448,7 +452,7 @@ func TestEveryHostileTargetDryRunsWithoutWriting(t *testing.T) {
 		cmd.Dir = tree
 		cmd.Env = env
 		out, runErr := cmd.CombinedOutput()
-		after, err := checkoutState(tree)
+		after, err := checkoutState(watched)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -463,10 +467,11 @@ func TestEveryHostileTargetDryRunsWithoutWriting(t *testing.T) {
 }
 
 // dryRunCopy copies every file git lists in the checkout (tracked, and
-// untracked but not ignored) into a new folder under build/, removed when the
-// test ends, and returns it. A tracked file deleted in the checkout is not
-// copied: the copy is the working tree as it stands.
-func dryRunCopy(t *testing.T) string {
+// untracked but not ignored) into checkout/ of a new folder under build/,
+// removed when the test ends, and returns the folder and the copy. A tracked
+// file deleted in the checkout is not copied: the copy is the working tree as
+// it stands.
+func dryRunCopy(t *testing.T) (string, string) {
 	t.Helper()
 	list, err := exec.Command("git", "ls-files", "-z", "--cached", "--others", "--exclude-standard").Output()
 	if err != nil {
@@ -498,7 +503,7 @@ func dryRunCopy(t *testing.T) string {
 		if err != nil {
 			t.Fatal(err)
 		}
-		dst := filepath.Join(dir, rel)
+		dst := filepath.Join(dir, "checkout", rel)
 		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -527,7 +532,7 @@ func dryRunCopy(t *testing.T) string {
 	if copied == 0 {
 		t.Fatal("git ls-files listed no file to copy")
 	}
-	return dir
+	return dir, filepath.Join(dir, "checkout")
 }
 
 // fileState is one path's kind, size, modification time and identity (its

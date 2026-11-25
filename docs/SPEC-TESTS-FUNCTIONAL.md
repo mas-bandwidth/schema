@@ -5332,7 +5332,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.functional.tooling.schema-test.every-hostile-target-dry-runs-without-writing` | `gotest` | Go test TestEveryHostileTargetDryRunsWithoutWriting in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestEveryHostileTargetDryRunsWithoutWriting` | the Go test passes | `tools/schema-test/hostile_test.go:421` |
+| `none.functional.tooling.schema-test.every-hostile-target-dry-runs-without-writing` | `gotest` | Go test TestEveryHostileTargetDryRunsWithoutWriting in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestEveryHostileTargetDryRunsWithoutWriting` | the Go test passes | `tools/schema-test/hostile_test.go:425` |
 | `none.functional.tooling.schema-test.run-name-build-reads-what-the-run-wrote` | `gotest` | Go test TestRunNameBuildReadsWhatTheRunWrote in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestRunNameBuildReadsWhatTheRunWrote` | the Go test passes | `tools/schema-test/namebuild_test.go:130` |
 
 #### `tooling` family `slowtest`, 1 test
