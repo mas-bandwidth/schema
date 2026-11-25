@@ -66,7 +66,6 @@ func TestFixedVersioningForgedOrdinalBothPlans(t *testing.T) {
         report.refused && report.reason == TableFixedReason::OutOfRange,
         "a forged value past its bound is an out_of_range refusal: {:?}", report
     );
-    assert!(!report.damaged, "a forged value is not damage: {:?}", report);
     assert!(report.unknown == 0 && report.widened == 0, "a refusal moved a counter: {:?}", report);
 `, forged)
 

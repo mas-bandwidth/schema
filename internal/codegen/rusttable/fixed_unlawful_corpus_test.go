@@ -108,7 +108,7 @@ fn %[1]s() {
     }
     let mut report = TableFixedReport::default();
     let n = LOADFN(&mut values, &data, &mut plan, &mut remap, &mut report);
-    assert!(!report.refused && !report.damaged, "%[5]s: the LAWFUL control refused: n={:?} {:?}", n, report);
+    assert!(!report.refused, "%[5]s: the LAWFUL control refused: n={:?} {:?}", n, report);
     let n = n.expect("%[5]s: the LAWFUL control must load");
     let v = &values[0];
     std::fs::write(%[6]q, format!("loaded {}: {}", n, %[7]s)).expect("write the verdict");
@@ -134,7 +134,6 @@ fn %[1]s() {
             report.reason.name(), "layout_malformed",
             "%[5]s pass {pass}: the refusal is layout_malformed: {:?}", report
         );
-        assert!(!report.damaged, "%[5]s pass {pass}: a refusal by name is not damage: {:?}", report);
         assert!(
             report.unknown == 0 && report.widened == 0,
             "%[5]s pass {pass}: a refusal moved a counter: unknown={} widened={}", report.unknown, report.widened

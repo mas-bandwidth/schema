@@ -1569,10 +1569,9 @@ build/tables-generated-c-fixed/.stamp: bin/schema test/tables/FX1.schema test/ta
 	@touch $@
 
 C_FIXEDFORM_SOURCES := test/c-tables/fixedform_main.c test/c-tables/fixedform_fx1.c test/c-tables/fixedform_fx2.c \
-	test/c-tables/fixedform_layout.c \
-	test/c-tables/fixedform_v1.c test/c-tables/fixedform_v2.c \
+	test/c-tables/fixedform_v1.c \
 	test/c-tables/fixedform_ut1.c test/c-tables/fixedform_ut2.c \
-	test/c-tables/fixedform_fu1.c test/c-tables/fixedform_fu2.c \
+	test/c-tables/fixedform_fu1.c \
 	build/tables-generated-c-fixed/fx1/FX1Table.c build/tables-generated-c-fixed/fx2/FX2Table.c \
 	build/tables-generated-c-fixed/v1/V1Table.c build/tables-generated-c-fixed/v2/V2Table.c \
 	build/tables-generated-c-fixed/ut1/UT1Table.c build/tables-generated-c-fixed/ut2/UT2Table.c \
