@@ -10656,7 +10656,8 @@ struct Leaf
 };
 
 // CarryType: union Carry's tag — None = 0, then each variant in declared order (SPEC §4.8)
-enum class CarryType : uint8_t {
+enum class CarryType : uint8_t
+{
     None = 0,
     Leaf = 1,
     Plain = 2,
@@ -11283,7 +11284,10 @@ inline bool HolderSaveBodyFields( const Ctx & ctx, const TableNumbering & number
                 }
                 w.header( arm_ref, 13 );
                 w.putleb( (uint64_t) arm_payload ); // leaf
-                if ( !LeafSaveBody( ctx, numbering, w, ids, value.carry.leaf ) ) { return false; }
+                if ( !LeafSaveBody( ctx, numbering, w, ids, value.carry.leaf ) )
+            {
+                return false;
+            }
                 break;
             }
             case CarryType::Plain:
@@ -11811,7 +11815,10 @@ inline bool HandSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                         }
                         w.header( arm_refu, 13 );
                         w.putleb( (uint64_t) arm_payloadu ); // leaf
-                        if ( !LeafSaveBody( ctx, numbering, w, ids, value.entries[elem_i].leaf ) ) { return false; }
+                        if ( !LeafSaveBody( ctx, numbering, w, ids, value.entries[elem_i].leaf ) )
+            {
+                return false;
+            }
                         break;
                     }
                     case CarryType::Plain:
@@ -12243,7 +12250,10 @@ inline bool ChainSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
                             }
                             w.header( arm_ref_linksu, 13 );
                             w.putleb( (uint64_t) arm_payload_linksu ); // leaf
-                            if ( !LeafSaveBody( ctx, numbering, w, ids, cursor_links[elem_i_links].leaf ) ) { return false; }
+                            if ( !LeafSaveBody( ctx, numbering, w, ids, cursor_links[elem_i_links].leaf ) )
+            {
+                return false;
+            }
                             break;
                         }
                         case CarryType::Plain:
@@ -12825,13 +12835,13 @@ inline bool HandExtentAt( const Ctx & ctx, const Hand & value, int64_t & at )
     }
     }
     if (value.entries_count < 0 || value.entries_count > 2) { return false; }
-    for (int32_t i = value.entries_count; i < 2; i++) // hidden union slots have no extent placement
+    for ( int32_t i = value.entries_count; i < 2; i++ ) // hidden union slots have no extent placement
     {
         switch ( value.entries[i].type ) // entries: the set arm is the edge
         {
             case CarryType::Leaf:
             {
-                if (!TableExtentUnreachedEmpty(LeafExtent(ctx,value.entries[i].leaf))) { return false; }
+                if ( !TableExtentUnreachedEmpty(LeafExtent( ctx,value.entries[i].leaf) ) ) { return false; }
                 break;
             }
             default: break;
@@ -12869,13 +12879,13 @@ inline bool HandExtentPack( const Ctx & ctx, const Hand & src, Hand & dst, uint8
     }
     }
     if (src.entries_count < 0 || src.entries_count > 2) { return false; }
-    for (int32_t i = src.entries_count; i < 2; i++) // hidden union slots have no extent placement
+    for ( int32_t i = src.entries_count; i < 2; i++ ) // hidden union slots have no extent placement
     {
         switch ( src.entries[i].type ) // entries: the set arm is the edge
         {
             case CarryType::Leaf:
             {
-                if (!TableExtentUnreachedEmpty(LeafExtent(ctx,src.entries[i].leaf))) { return false; }
+                if ( !TableExtentUnreachedEmpty(LeafExtent( ctx,src.entries[i].leaf) ) ) { return false; }
                 break;
             }
             default: break;
@@ -13180,11 +13190,22 @@ inline bool LeafNumber( const Ctx & ctx, TableNumbering & numbering, const Leaf 
             continue;
         }
         if ( !TableNumberingAppend( numbering, work ) ) { return false; }
-        if ( work.walk == NULL ) { TablePackMapClose( numbering.seen, work.node, slot ); continue; } // a blob reaches nothing
+        if ( work.walk == NULL )
+        {
+            TablePackMapClose( numbering.seen, work.node, slot );
+            continue;
+        } // a blob reaches nothing
         TableNodeEntry close;
-        close.node = work.node; close.type_id = 0; close.measure = NULL; close.save = NULL;
-        close.pack_bytes = NULL; close.pack_copy = NULL; close.pack_slots = NULL; close.walk = NULL;
-        close.close = true; close.hint = slot;
+        close.node = work.node;
+        close.type_id = 0;
+        close.measure = NULL;
+        close.save = NULL;
+        close.pack_bytes = NULL;
+        close.pack_copy = NULL;
+        close.pack_slots = NULL;
+        close.walk = NULL;
+        close.close = true;
+        close.hint = slot;
         if ( !TableNumberingWorkPush( numbering, close ) ) { return false; }
         const int64_t first = numbering.work_count;
         if ( !work.walk( (const void *) &ctx, numbering, work.node ) ) { return false; }
@@ -13295,11 +13316,22 @@ inline bool HolderNumber( const Ctx & ctx, TableNumbering & numbering, const Hol
             continue;
         }
         if ( !TableNumberingAppend( numbering, work ) ) { return false; }
-        if ( work.walk == NULL ) { TablePackMapClose( numbering.seen, work.node, slot ); continue; } // a blob reaches nothing
+        if ( work.walk == NULL )
+        {
+            TablePackMapClose( numbering.seen, work.node, slot );
+            continue;
+        } // a blob reaches nothing
         TableNodeEntry close;
-        close.node = work.node; close.type_id = 0; close.measure = NULL; close.save = NULL;
-        close.pack_bytes = NULL; close.pack_copy = NULL; close.pack_slots = NULL; close.walk = NULL;
-        close.close = true; close.hint = slot;
+        close.node = work.node;
+        close.type_id = 0;
+        close.measure = NULL;
+        close.save = NULL;
+        close.pack_bytes = NULL;
+        close.pack_copy = NULL;
+        close.pack_slots = NULL;
+        close.walk = NULL;
+        close.close = true;
+        close.hint = slot;
         if ( !TableNumberingWorkPush( numbering, close ) ) { return false; }
         const int64_t first = numbering.work_count;
         if ( !work.walk( (const void *) &ctx, numbering, work.node ) ) { return false; }
@@ -13426,11 +13458,22 @@ inline bool HandNumber( const Ctx & ctx, TableNumbering & numbering, const Hand 
             continue;
         }
         if ( !TableNumberingAppend( numbering, work ) ) { return false; }
-        if ( work.walk == NULL ) { TablePackMapClose( numbering.seen, work.node, slot ); continue; } // a blob reaches nothing
+        if ( work.walk == NULL )
+        {
+            TablePackMapClose( numbering.seen, work.node, slot );
+            continue;
+        } // a blob reaches nothing
         TableNodeEntry close;
-        close.node = work.node; close.type_id = 0; close.measure = NULL; close.save = NULL;
-        close.pack_bytes = NULL; close.pack_copy = NULL; close.pack_slots = NULL; close.walk = NULL;
-        close.close = true; close.hint = slot;
+        close.node = work.node;
+        close.type_id = 0;
+        close.measure = NULL;
+        close.save = NULL;
+        close.pack_bytes = NULL;
+        close.pack_copy = NULL;
+        close.pack_slots = NULL;
+        close.walk = NULL;
+        close.close = true;
+        close.hint = slot;
         if ( !TableNumberingWorkPush( numbering, close ) ) { return false; }
         const int64_t first = numbering.work_count;
         if ( !work.walk( (const void *) &ctx, numbering, work.node ) ) { return false; }
@@ -13567,11 +13610,22 @@ inline bool ChainNumber( const Ctx & ctx, TableNumbering & numbering, const Chai
             continue;
         }
         if ( !TableNumberingAppend( numbering, work ) ) { return false; }
-        if ( work.walk == NULL ) { TablePackMapClose( numbering.seen, work.node, slot ); continue; } // a blob reaches nothing
+        if ( work.walk == NULL )
+        {
+            TablePackMapClose( numbering.seen, work.node, slot );
+            continue;
+        } // a blob reaches nothing
         TableNodeEntry close;
-        close.node = work.node; close.type_id = 0; close.measure = NULL; close.save = NULL;
-        close.pack_bytes = NULL; close.pack_copy = NULL; close.pack_slots = NULL; close.walk = NULL;
-        close.close = true; close.hint = slot;
+        close.node = work.node;
+        close.type_id = 0;
+        close.measure = NULL;
+        close.save = NULL;
+        close.pack_bytes = NULL;
+        close.pack_copy = NULL;
+        close.pack_slots = NULL;
+        close.walk = NULL;
+        close.close = true;
+        close.hint = slot;
         if ( !TableNumberingWorkPush( numbering, close ) ) { return false; }
         const int64_t first = numbering.work_count;
         if ( !work.walk( (const void *) &ctx, numbering, work.node ) ) { return false; }
@@ -13755,9 +13809,17 @@ inline bool LeafBuilder::Lock()
         for ( int64_t k = 0; ok && k < numbering.count; k++ )
         {
             const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
-            if ( bytes < 0 ) { ok = false; break; }
+            if ( bytes < 0 )
+            {
+                ok = false;
+                break;
+            }
             TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-            if ( entry == NULL ) { ok = false; break; }
+            if ( entry == NULL )
+            {
+                ok = false;
+                break;
+            }
             measured = TableAlignUp64( measured );
             entry->offset = measured;
             measured += bytes;
@@ -13781,9 +13843,17 @@ inline bool LeafBuilder::Lock()
         for ( int64_t k = 0; ok && k < numbering.count; k++ )
         {
             const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
-            if ( bytes < 0 ) { ok = false; break; }
+            if ( bytes < 0 )
+            {
+                ok = false;
+                break;
+            }
             TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-            if ( entry == NULL ) { ok = false; break; }
+            if ( entry == NULL )
+            {
+                ok = false;
+                break;
+            }
             used = TableAlignUp64( used );
             entry->offset = used;
             used += bytes;
@@ -13808,14 +13878,22 @@ inline bool LeafBuilder::Lock()
     for ( int64_t k = 0; ok && k < numbering.count; k++ )
     {
         const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-        if ( entry == NULL ) { ok = false; break; }
+        if ( entry == NULL )
+        {
+            ok = false;
+            break;
+        }
         ok = numbering.entries[k].pack_copy( (const void *) &ctx, numbering.entries[k].node, packed + entry->offset, packed, total );
     }
-    if ( ok ) { ok = LeafPackSlots( ctx, numbering.seen, root, *( Leaf * ) packed, packed ); }
+    if ( ok ) { ok = LeafPackSlots( ctx, numbering.seen, root, *(Leaf *) packed, packed ); }
     for ( int64_t k = 0; ok && k < numbering.count; k++ )
     {
         const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-        if ( entry == NULL ) { ok = false; break; }
+        if ( entry == NULL )
+        {
+            ok = false;
+            break;
+        }
         if ( numbering.entries[k].pack_slots != NULL ) { ok = numbering.entries[k].pack_slots( (const void *) &ctx, numbering.seen, numbering.entries[k].node, packed + entry->offset, packed ); } // a blob has no slots
     }
     TableNumberingShutdown( numbering );
@@ -14811,9 +14889,17 @@ inline bool HolderBuilder::Lock()
         for ( int64_t k = 0; ok && k < numbering.count; k++ )
         {
             const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
-            if ( bytes < 0 ) { ok = false; break; }
+            if ( bytes < 0 )
+            {
+                ok = false;
+                break;
+            }
             TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-            if ( entry == NULL ) { ok = false; break; }
+            if ( entry == NULL )
+            {
+                ok = false;
+                break;
+            }
             measured = TableAlignUp64( measured );
             entry->offset = measured;
             measured += bytes;
@@ -14837,9 +14923,17 @@ inline bool HolderBuilder::Lock()
         for ( int64_t k = 0; ok && k < numbering.count; k++ )
         {
             const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
-            if ( bytes < 0 ) { ok = false; break; }
+            if ( bytes < 0 )
+            {
+                ok = false;
+                break;
+            }
             TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-            if ( entry == NULL ) { ok = false; break; }
+            if ( entry == NULL )
+            {
+                ok = false;
+                break;
+            }
             used = TableAlignUp64( used );
             entry->offset = used;
             used += bytes;
@@ -14864,14 +14958,22 @@ inline bool HolderBuilder::Lock()
     for ( int64_t k = 0; ok && k < numbering.count; k++ )
     {
         const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-        if ( entry == NULL ) { ok = false; break; }
+        if ( entry == NULL )
+        {
+            ok = false;
+            break;
+        }
         ok = numbering.entries[k].pack_copy( (const void *) &ctx, numbering.entries[k].node, packed + entry->offset, packed, total );
     }
-    if ( ok ) { ok = HolderPackSlots( ctx, numbering.seen, root, *( Holder * ) packed, packed ); }
+    if ( ok ) { ok = HolderPackSlots( ctx, numbering.seen, root, *(Holder *) packed, packed ); }
     for ( int64_t k = 0; ok && k < numbering.count; k++ )
     {
         const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-        if ( entry == NULL ) { ok = false; break; }
+        if ( entry == NULL )
+        {
+            ok = false;
+            break;
+        }
         if ( numbering.entries[k].pack_slots != NULL ) { ok = numbering.entries[k].pack_slots( (const void *) &ctx, numbering.seen, numbering.entries[k].node, packed + entry->offset, packed ); } // a blob has no slots
     }
     TableNumberingShutdown( numbering );
@@ -15867,9 +15969,17 @@ inline bool HandBuilder::Lock()
         for ( int64_t k = 0; ok && k < numbering.count; k++ )
         {
             const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
-            if ( bytes < 0 ) { ok = false; break; }
+            if ( bytes < 0 )
+            {
+                ok = false;
+                break;
+            }
             TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-            if ( entry == NULL ) { ok = false; break; }
+            if ( entry == NULL )
+            {
+                ok = false;
+                break;
+            }
             measured = TableAlignUp64( measured );
             entry->offset = measured;
             measured += bytes;
@@ -15893,9 +16003,17 @@ inline bool HandBuilder::Lock()
         for ( int64_t k = 0; ok && k < numbering.count; k++ )
         {
             const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
-            if ( bytes < 0 ) { ok = false; break; }
+            if ( bytes < 0 )
+            {
+                ok = false;
+                break;
+            }
             TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-            if ( entry == NULL ) { ok = false; break; }
+            if ( entry == NULL )
+            {
+                ok = false;
+                break;
+            }
             used = TableAlignUp64( used );
             entry->offset = used;
             used += bytes;
@@ -15920,14 +16038,22 @@ inline bool HandBuilder::Lock()
     for ( int64_t k = 0; ok && k < numbering.count; k++ )
     {
         const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-        if ( entry == NULL ) { ok = false; break; }
+        if ( entry == NULL )
+        {
+            ok = false;
+            break;
+        }
         ok = numbering.entries[k].pack_copy( (const void *) &ctx, numbering.entries[k].node, packed + entry->offset, packed, total );
     }
-    if ( ok ) { ok = HandPackSlots( ctx, numbering.seen, root, *( Hand * ) packed, packed ); }
+    if ( ok ) { ok = HandPackSlots( ctx, numbering.seen, root, *(Hand *) packed, packed ); }
     for ( int64_t k = 0; ok && k < numbering.count; k++ )
     {
         const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-        if ( entry == NULL ) { ok = false; break; }
+        if ( entry == NULL )
+        {
+            ok = false;
+            break;
+        }
         if ( numbering.entries[k].pack_slots != NULL ) { ok = numbering.entries[k].pack_slots( (const void *) &ctx, numbering.seen, numbering.entries[k].node, packed + entry->offset, packed ); } // a blob has no slots
     }
     TableNumberingShutdown( numbering );
@@ -16923,9 +17049,17 @@ inline bool ChainBuilder::Lock()
         for ( int64_t k = 0; ok && k < numbering.count; k++ )
         {
             const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
-            if ( bytes < 0 ) { ok = false; break; }
+            if ( bytes < 0 )
+            {
+                ok = false;
+                break;
+            }
             TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-            if ( entry == NULL ) { ok = false; break; }
+            if ( entry == NULL )
+            {
+                ok = false;
+                break;
+            }
             measured = TableAlignUp64( measured );
             entry->offset = measured;
             measured += bytes;
@@ -16949,9 +17083,17 @@ inline bool ChainBuilder::Lock()
         for ( int64_t k = 0; ok && k < numbering.count; k++ )
         {
             const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
-            if ( bytes < 0 ) { ok = false; break; }
+            if ( bytes < 0 )
+            {
+                ok = false;
+                break;
+            }
             TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-            if ( entry == NULL ) { ok = false; break; }
+            if ( entry == NULL )
+            {
+                ok = false;
+                break;
+            }
             used = TableAlignUp64( used );
             entry->offset = used;
             used += bytes;
@@ -16976,14 +17118,22 @@ inline bool ChainBuilder::Lock()
     for ( int64_t k = 0; ok && k < numbering.count; k++ )
     {
         const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-        if ( entry == NULL ) { ok = false; break; }
+        if ( entry == NULL )
+        {
+            ok = false;
+            break;
+        }
         ok = numbering.entries[k].pack_copy( (const void *) &ctx, numbering.entries[k].node, packed + entry->offset, packed, total );
     }
-    if ( ok ) { ok = ChainPackSlots( ctx, numbering.seen, root, *( Chain * ) packed, packed ); }
+    if ( ok ) { ok = ChainPackSlots( ctx, numbering.seen, root, *(Chain *) packed, packed ); }
     for ( int64_t k = 0; ok && k < numbering.count; k++ )
     {
         const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-        if ( entry == NULL ) { ok = false; break; }
+        if ( entry == NULL )
+        {
+            ok = false;
+            break;
+        }
         if ( numbering.entries[k].pack_slots != NULL ) { ok = numbering.entries[k].pack_slots( (const void *) &ctx, numbering.seen, numbering.entries[k].node, packed + entry->offset, packed ); } // a blob has no slots
     }
     TableNumberingShutdown( numbering );
@@ -18260,7 +18410,10 @@ inline bool HolderSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & 
                 }
                 w.header( arm_ref, 13 );
                 w.putleb( (uint64_t) arm_payload ); // leaf
-                if ( !LeafSaveBodyRetain( ctx, numbering, w, ids, value.carry.leaf, retain, TableRetainStepInto( path, 0, (uint32_t) ( 0 ) ) ) ) { return false; }
+                if ( !LeafSaveBodyRetain( ctx, numbering, w, ids, value.carry.leaf, retain, TableRetainStepInto( path, 0, (uint32_t) ( 0 ) ) ) )
+            {
+                return false;
+            }
                 break;
             }
             case CarryType::Plain:
@@ -18796,7 +18949,10 @@ inline bool HandSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
                         }
                         w.header( arm_refu, 13 );
                         w.putleb( (uint64_t) arm_payloadu ); // leaf
-                        if ( !LeafSaveBodyRetain( ctx, numbering, w, ids, value.entries[elem_i].leaf, retain, TableRetainStepInto( TableRetainStepInto( path, 0, (uint32_t) ( elem_i ) ), 0, (uint32_t) ( 0 ) ) ) ) { return false; }
+                        if ( !LeafSaveBodyRetain( ctx, numbering, w, ids, value.entries[elem_i].leaf, retain, TableRetainStepInto( TableRetainStepInto( path, 0, (uint32_t) ( elem_i ) ), 0, (uint32_t) ( 0 ) ) ) )
+            {
+                return false;
+            }
                         break;
                     }
                     case CarryType::Plain:
@@ -19238,7 +19394,10 @@ inline bool ChainSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
                             }
                             w.header( arm_ref_linksu, 13 );
                             w.putleb( (uint64_t) arm_payload_linksu ); // leaf
-                            if ( !LeafSaveBodyRetain( ctx, numbering, w, ids, cursor_links[elem_i_links].leaf, retain, TableRetainStepInto( TableRetainStepInto( path, 0, (uint32_t) ( elem_i_links ) ), 0, (uint32_t) ( 0 ) ) ) ) { return false; }
+                            if ( !LeafSaveBodyRetain( ctx, numbering, w, ids, cursor_links[elem_i_links].leaf, retain, TableRetainStepInto( TableRetainStepInto( path, 0, (uint32_t) ( elem_i_links ) ), 0, (uint32_t) ( 0 ) ) ) )
+            {
+                return false;
+            }
                             break;
                         }
                         case CarryType::Plain:
@@ -21653,7 +21812,7 @@ inline bool HolderCookBody( const Ctx & ctx, const TableCookRegion & region, uin
         switch ( value.carry.type )
         {
             case CarryType::Leaf: if ( !LeafCookBody( ctx, region, at + 0 + 8, value.carry.leaf, order ) ) { return false; } break;
-            case CarryType::Plain:
+                case CarryType::Plain:
             {
                 table_cook_put( at + 0 + 8, (uint64_t) value.carry.plain, 4, order );
                 break;
@@ -21679,7 +21838,7 @@ inline bool HandCookBody( const Ctx & ctx, const TableCookRegion & region, uint8
             switch ( value.entries[i].type )
             {
                 case CarryType::Leaf: if ( !LeafCookBody( ctx, region, at + 0 + i * 24 + 8, value.entries[i].leaf, order ) ) { return false; } break;
-                case CarryType::Plain:
+                    case CarryType::Plain:
                 {
                     table_cook_put( at + 0 + i * 24 + 8, (uint64_t) value.entries[i].plain, 4, order );
                     break;
@@ -21790,13 +21949,13 @@ inline bool HandCookExtent( const Ctx & ctx, const TableCookRegion & region, uin
     }
     }
     if (value.entries_count < 0 || value.entries_count > 2) { return false; }
-    for (int32_t i = value.entries_count; i < 2; i++) // hidden union slots have no extent placement
+    for ( int32_t i = value.entries_count; i < 2; i++ ) // hidden union slots have no extent placement
     {
         switch ( value.entries[i].type ) // entries: the set arm is the edge
         {
             case CarryType::Leaf:
             {
-                if (!TableExtentUnreachedEmpty(LeafExtent(ctx,value.entries[i].leaf))) { return false; }
+                if ( !TableExtentUnreachedEmpty(LeafExtent( ctx,value.entries[i].leaf) ) ) { return false; }
                 break;
             }
             default: break;
@@ -21828,7 +21987,7 @@ inline bool ChainCookExtent( const Ctx & ctx, const TableCookRegion & region, ui
                 switch ( cursor[i].type )
                 {
                     case CarryType::Leaf: if ( !LeafCookBody( ctx, region, array + i * 24 + 8, cursor[i].leaf, order ) ) { return false; } break;
-                    case CarryType::Plain:
+                        case CarryType::Plain:
                     {
                         table_cook_put( array + i * 24 + 8, (uint64_t) cursor[i].plain, 4, order );
                         break;

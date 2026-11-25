@@ -10656,7 +10656,8 @@ struct Node
 };
 
 // SlotType: union Slot's tag — None = 0, then each variant in declared order (SPEC §4.8)
-enum class SlotType : uint8_t {
+enum class SlotType : uint8_t
+{
     None = 0,
     Vertex = 1,
     Plain = 2,
@@ -10706,7 +10707,8 @@ struct Ring
 };
 
 // SlotsType: union Slots's tag — None = 0, then each variant in declared order (SPEC §4.8)
-enum class SlotsType : uint8_t {
+enum class SlotsType : uint8_t
+{
     None = 0,
     Many = 1,
     Plain = 2,
@@ -10740,7 +10742,11 @@ struct Slots
 
     union
     {
-        struct { TableRef value[2]; int32_t value_count; } many; // [..2]Node
+        struct
+        {
+            TableRef value[2];
+            int32_t value_count;
+        } many; // [..2]Node
         int32_t plain;
     };
 
@@ -10930,8 +10936,10 @@ inline bool TrayPackSlots( const Ctx & ctx, TablePackMap & seen, const Tray & sr
 
 // ---- the numbering's bridge to each member's codec (docs/SPEC-TABLES.md §3.1) ----
 
-template <typename Ctx> inline int64_t TableNodeMeasure( const Ctx &, const TableNumbering &, TableIds & ids, const Node & value ) { return NodeMeasureBody( ids, value ); }
-template <typename Ctx> inline bool TableNodeSave( const Ctx &, const TableNumbering &, TableWriter & w, TableIds & ids, const Node & value ) { return NodeSaveBody( w, ids, value ); }
+template <typename Ctx>
+inline int64_t TableNodeMeasure( const Ctx &, const TableNumbering &, TableIds & ids, const Node & value ) { return NodeMeasureBody( ids, value ); }
+template <typename Ctx>
+inline bool TableNodeSave( const Ctx &, const TableNumbering &, TableWriter & w, TableIds & ids, const Node & value ) { return NodeSaveBody( w, ids, value ); }
 template <typename Ctx>
 inline int64_t TableNodeMeasure( const Ctx & ctx, const TableNumbering & numbering, TableIds & ids, const Ring & value ) { return RingMeasureBody( ctx, numbering, ids, value ); }
 template <typename Ctx>
@@ -11325,7 +11333,7 @@ inline bool NodeLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                             else if ( width > 0 && width < 64 )
                             {
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
-                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                             }
                             if ( decoded_wide < -2147483648ll )
                             {
@@ -11373,7 +11381,7 @@ inline bool NodeLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                     else if ( width > 0 && width < 64 )
                     {
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
-                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     const int64_t pre_clamp = decoded_wide;
                     if ( decoded_wide < -2147483648ll )
@@ -11399,7 +11407,11 @@ inline bool NodeLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                 break;
             }
             default:
-                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
+                if ( vocabulary.build_version == BuildVersion )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 report->unknown++;
                 if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
@@ -13174,16 +13186,19 @@ inline int64_t NodeFixedSave( const Node * values, int64_t count, uint8_t * buff
 // R4: every refusal leaves ALL `capacity` rows at their declared defaults, so a direct call
 // holds the same rule as FixedLoad. The body below is the walk itself.
 inline int64_t NodeFixedLoadWalkBody( Node * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
 inline int64_t NodeFixedLoadWalk( Node * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
     const int64_t n = NodeFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
     if ( n < 0 || report->damaged || report->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { NodeReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { NodeReset( values[k] ); }
+        }
         return -1;
     }
     return n;
@@ -13192,7 +13207,7 @@ inline int64_t NodeFixedLoadWalk( Node * values, int64_t capacity, const uint8_t
 // NodeFixedLoadWalkBody is the STRICT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps
 // every recovered record, with the counters counted onto the report passed.
 inline int64_t NodeFixedLoadWalkBody( Node * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
@@ -13209,8 +13224,8 @@ inline int64_t NodeFixedLoadWalkBody( Node * values, int64_t capacity, const uin
     {
         report->refused = true;
         report->reason = data[0] == kTableWireForm ? TableMessageReason::previous_form
-                       : data[0] == kTableWireMessageForm ? TableMessageReason::message_form_as_file
-                       : TableMessageReason::newer_form;
+            : data[0] == kTableWireMessageForm     ? TableMessageReason::message_form_as_file
+                                                   : TableMessageReason::newer_form;
         return -1;
     }
     if ( bytes < kTableFixedHeaderBytes + 4 )
@@ -13224,7 +13239,12 @@ inline int64_t NodeFixedLoadWalkBody( Node * values, int64_t capacity, const uin
     // spendable later.
     for ( int32_t i = 1; i < kTableFixedHashAt; ++i )
     {
-        if ( data[i] != 0 ) { report->damaged = true; report->reason = TableFixedReason::reserved_not_zero; return -1; }
+        if ( data[i] != 0 )
+        {
+            report->damaged = true;
+            report->reason = TableFixedReason::reserved_not_zero;
+            return -1;
+        }
     }
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
     if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes )
@@ -13263,7 +13283,9 @@ inline int64_t NodeFixedLoadWalkBody( Node * values, int64_t capacity, const uin
     const TableFixedKnownLayout & known = NodeFixedKnown[lineage_at];
     if ( (int64_t) layout_bytes != known.layout_bytes || memcmp( layout, known.layout, (size_t) layout_bytes ) != 0 )
     {
-        report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1;
+        report->refused = true;
+        report->reason = TableMessageReason::layout_malformed;
+        return -1;
     }
     const TableFixedEntry * entries = NodeFixedPlan;
     int32_t entry_count = NodeFixedPlanCount;
@@ -13318,8 +13340,8 @@ inline int64_t NodeFixedLoadWalkBody( Node * values, int64_t capacity, const uin
             int32_t compiled_guarded = 0;
             uint32_t fill_at = 0;
             const int32_t made = TableFixedCompile( parsed, NodeFixedLayout, (int32_t) NodeFixedLayoutBytes, NodeFixedDst,
-                                                   NodeFixedCover, NodeFixedCoverCount,
-                                                   dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
+                NodeFixedCover, NodeFixedCoverCount,
+                dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
             if ( made < 0 )
             {
                 report->refused = true;
@@ -13404,7 +13426,9 @@ inline int64_t NodeFixedLoadWalkBody( Node * values, int64_t capacity, const uin
         {
             for ( int64_t j = 0; j < k; ++j ) { NodeReset( values[j] ); }
             report->widened = batch_widened;
-            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+            report->refused = true;
+            report->reason = TableMessageReason::no_layout;
+            return -1;
         }
         for ( int32_t i = 0; i < entry_count; ++i )
         {
@@ -13421,7 +13445,7 @@ inline int64_t NodeFixedLoadWalkBody( Node * values, int64_t capacity, const uin
                         if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
                         {
                             matches = false;
-                            break;
+                                break;
                         }
                     }
                     if ( !matches ) { continue; }
@@ -13449,7 +13473,7 @@ inline int64_t NodeFixedLoadWalkBody( Node * values, int64_t capacity, const uin
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, NodeFixedGuards, NULL );
         TableFixedClampKnownRanges( NodeFixedKnownRanges[lineage_at], NodeFixedKnownRangeCounts[lineage_at],
-                                    (uint8_t *) &values[k], report );
+            (uint8_t *) &values[k], report );
         at += record_bytes;
     }
     return n;
@@ -13462,7 +13486,7 @@ inline int64_t NodeFixedLoadWalkBody( Node * values, int64_t capacity, const uin
 // them, on EVERY refusal (R4), so no partial value survives. A supplied report receives THIS
 // read's report. unknown and widened alone never refuse.
 inline int64_t NodeFixedLoad( Node * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     TableReport * out = report != NULL ? report : &local;
@@ -13470,7 +13494,10 @@ inline int64_t NodeFixedLoad( Node * values, int64_t capacity, const uint8_t * d
     const int64_t n = NodeFixedLoadWalk( values, capacity, data, bytes, plan, plan_capacity, cache, out );
     if ( n < 0 || out->damaged || out->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { NodeReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { NodeReset( values[k] ); }
+        }
         return -1;
     }
     return n;
@@ -13845,11 +13872,22 @@ inline bool NodeNumber( const Ctx & ctx, TableNumbering & numbering, const Node 
             continue;
         }
         if ( !TableNumberingAppend( numbering, work ) ) { return false; }
-        if ( work.walk == NULL ) { TablePackMapClose( numbering.seen, work.node, slot ); continue; } // a blob reaches nothing
+        if ( work.walk == NULL )
+        {
+            TablePackMapClose( numbering.seen, work.node, slot );
+            continue;
+        } // a blob reaches nothing
         TableNodeEntry close;
-        close.node = work.node; close.type_id = 0; close.measure = NULL; close.save = NULL;
-        close.pack_bytes = NULL; close.pack_copy = NULL; close.pack_slots = NULL; close.walk = NULL;
-        close.close = true; close.hint = slot;
+        close.node = work.node;
+        close.type_id = 0;
+        close.measure = NULL;
+        close.save = NULL;
+        close.pack_bytes = NULL;
+        close.pack_copy = NULL;
+        close.pack_slots = NULL;
+        close.walk = NULL;
+        close.close = true;
+        close.hint = slot;
         if ( !TableNumberingWorkPush( numbering, close ) ) { return false; }
         const int64_t first = numbering.work_count;
         if ( !work.walk( (const void *) &ctx, numbering, work.node ) ) { return false; }
@@ -13939,7 +13977,7 @@ inline bool RingNumberEdges( const Ctx & ctx, TableNumbering & numbering, const 
                         node.save = &TableNodeSaveThunk<Ctx, Node>;
                         node.pack_bytes = +[]( const void * pack_ctx, const void * pack_node ) -> int64_t { return NodePackBytes( *(const Ctx *) pack_ctx, *(const Node *) pack_node ); };
                         node.pack_copy = +[]( const void * pack_ctx, const void * pack_src, void * pack_dst, uint8_t * pack_base, int64_t pack_capacity ) -> bool { return NodePackCopy( *(const Ctx *) pack_ctx, *(const Node *) pack_src, pack_dst, pack_base, pack_capacity ); };
-                        node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return NodePackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const Node *) pack_src, *( Node * ) pack_dst, pack_base ); };
+                        node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return NodePackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const Node *) pack_src, *(Node *) pack_dst, pack_base ); };
                         node.walk = +[]( const void * walk_ctx, TableNumbering & walk_numbering, const void * walk_node ) -> bool { return NodeNumberEdges( *(const Ctx *) walk_ctx, walk_numbering, *(const Node *) walk_node ); };
                         node.close = false;
                         node.hint = 0;
@@ -13991,11 +14029,22 @@ inline bool RingNumber( const Ctx & ctx, TableNumbering & numbering, const Ring 
             continue;
         }
         if ( !TableNumberingAppend( numbering, work ) ) { return false; }
-        if ( work.walk == NULL ) { TablePackMapClose( numbering.seen, work.node, slot ); continue; } // a blob reaches nothing
+        if ( work.walk == NULL )
+        {
+            TablePackMapClose( numbering.seen, work.node, slot );
+            continue;
+        } // a blob reaches nothing
         TableNodeEntry close;
-        close.node = work.node; close.type_id = 0; close.measure = NULL; close.save = NULL;
-        close.pack_bytes = NULL; close.pack_copy = NULL; close.pack_slots = NULL; close.walk = NULL;
-        close.close = true; close.hint = slot;
+        close.node = work.node;
+        close.type_id = 0;
+        close.measure = NULL;
+        close.save = NULL;
+        close.pack_bytes = NULL;
+        close.pack_copy = NULL;
+        close.pack_slots = NULL;
+        close.walk = NULL;
+        close.close = true;
+        close.hint = slot;
         if ( !TableNumberingWorkPush( numbering, close ) ) { return false; }
         const int64_t first = numbering.work_count;
         if ( !work.walk( (const void *) &ctx, numbering, work.node ) ) { return false; }
@@ -14125,7 +14174,7 @@ inline bool RackNumberEdges( const Ctx & ctx, TableNumbering & numbering, const 
                         node.save = &TableNodeSaveThunk<Ctx, Node>;
                         node.pack_bytes = +[]( const void * pack_ctx, const void * pack_node ) -> int64_t { return NodePackBytes( *(const Ctx *) pack_ctx, *(const Node *) pack_node ); };
                         node.pack_copy = +[]( const void * pack_ctx, const void * pack_src, void * pack_dst, uint8_t * pack_base, int64_t pack_capacity ) -> bool { return NodePackCopy( *(const Ctx *) pack_ctx, *(const Node *) pack_src, pack_dst, pack_base, pack_capacity ); };
-                        node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return NodePackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const Node *) pack_src, *( Node * ) pack_dst, pack_base ); };
+                        node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return NodePackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const Node *) pack_src, *(Node *) pack_dst, pack_base ); };
                         node.walk = +[]( const void * walk_ctx, TableNumbering & walk_numbering, const void * walk_node ) -> bool { return NodeNumberEdges( *(const Ctx *) walk_ctx, walk_numbering, *(const Node *) walk_node ); };
                         node.close = false;
                         node.hint = 0;
@@ -14178,11 +14227,22 @@ inline bool RackNumber( const Ctx & ctx, TableNumbering & numbering, const Rack 
             continue;
         }
         if ( !TableNumberingAppend( numbering, work ) ) { return false; }
-        if ( work.walk == NULL ) { TablePackMapClose( numbering.seen, work.node, slot ); continue; } // a blob reaches nothing
+        if ( work.walk == NULL )
+        {
+            TablePackMapClose( numbering.seen, work.node, slot );
+            continue;
+        } // a blob reaches nothing
         TableNodeEntry close;
-        close.node = work.node; close.type_id = 0; close.measure = NULL; close.save = NULL;
-        close.pack_bytes = NULL; close.pack_copy = NULL; close.pack_slots = NULL; close.walk = NULL;
-        close.close = true; close.hint = slot;
+        close.node = work.node;
+        close.type_id = 0;
+        close.measure = NULL;
+        close.save = NULL;
+        close.pack_bytes = NULL;
+        close.pack_copy = NULL;
+        close.pack_slots = NULL;
+        close.walk = NULL;
+        close.close = true;
+        close.hint = slot;
         if ( !TableNumberingWorkPush( numbering, close ) ) { return false; }
         const int64_t first = numbering.work_count;
         if ( !work.walk( (const void *) &ctx, numbering, work.node ) ) { return false; }
@@ -14315,7 +14375,7 @@ inline bool TrayNumberEdges( const Ctx & ctx, TableNumbering & numbering, const 
                 node.save = &TableNodeSaveThunk<Ctx, Node>;
                 node.pack_bytes = +[]( const void * pack_ctx, const void * pack_node ) -> int64_t { return NodePackBytes( *(const Ctx *) pack_ctx, *(const Node *) pack_node ); };
                 node.pack_copy = +[]( const void * pack_ctx, const void * pack_src, void * pack_dst, uint8_t * pack_base, int64_t pack_capacity ) -> bool { return NodePackCopy( *(const Ctx *) pack_ctx, *(const Node *) pack_src, pack_dst, pack_base, pack_capacity ); };
-                node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return NodePackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const Node *) pack_src, *( Node * ) pack_dst, pack_base ); };
+                node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return NodePackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const Node *) pack_src, *(Node *) pack_dst, pack_base ); };
                 node.walk = +[]( const void * walk_ctx, TableNumbering & walk_numbering, const void * walk_node ) -> bool { return NodeNumberEdges( *(const Ctx *) walk_ctx, walk_numbering, *(const Node *) walk_node ); };
                 node.close = false;
                 node.hint = 0;
@@ -14367,11 +14427,22 @@ inline bool TrayNumber( const Ctx & ctx, TableNumbering & numbering, const Tray 
             continue;
         }
         if ( !TableNumberingAppend( numbering, work ) ) { return false; }
-        if ( work.walk == NULL ) { TablePackMapClose( numbering.seen, work.node, slot ); continue; } // a blob reaches nothing
+        if ( work.walk == NULL )
+        {
+            TablePackMapClose( numbering.seen, work.node, slot );
+            continue;
+        } // a blob reaches nothing
         TableNodeEntry close;
-        close.node = work.node; close.type_id = 0; close.measure = NULL; close.save = NULL;
-        close.pack_bytes = NULL; close.pack_copy = NULL; close.pack_slots = NULL; close.walk = NULL;
-        close.close = true; close.hint = slot;
+        close.node = work.node;
+        close.type_id = 0;
+        close.measure = NULL;
+        close.save = NULL;
+        close.pack_bytes = NULL;
+        close.pack_copy = NULL;
+        close.pack_slots = NULL;
+        close.walk = NULL;
+        close.close = true;
+        close.hint = slot;
         if ( !TableNumberingWorkPush( numbering, close ) ) { return false; }
         const int64_t first = numbering.work_count;
         if ( !work.walk( (const void *) &ctx, numbering, work.node ) ) { return false; }
@@ -14560,9 +14631,17 @@ inline bool RingBuilder::Lock()
         for ( int64_t k = 0; ok && k < numbering.count; k++ )
         {
             const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
-            if ( bytes < 0 ) { ok = false; break; }
+            if ( bytes < 0 )
+            {
+                ok = false;
+                break;
+            }
             TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-            if ( entry == NULL ) { ok = false; break; }
+            if ( entry == NULL )
+            {
+                ok = false;
+                break;
+            }
             measured = TableAlignUp64( measured );
             entry->offset = measured;
             measured += bytes;
@@ -14586,9 +14665,17 @@ inline bool RingBuilder::Lock()
         for ( int64_t k = 0; ok && k < numbering.count; k++ )
         {
             const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
-            if ( bytes < 0 ) { ok = false; break; }
+            if ( bytes < 0 )
+            {
+                ok = false;
+                break;
+            }
             TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-            if ( entry == NULL ) { ok = false; break; }
+            if ( entry == NULL )
+            {
+                ok = false;
+                break;
+            }
             used = TableAlignUp64( used );
             entry->offset = used;
             used += bytes;
@@ -14613,14 +14700,22 @@ inline bool RingBuilder::Lock()
     for ( int64_t k = 0; ok && k < numbering.count; k++ )
     {
         const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-        if ( entry == NULL ) { ok = false; break; }
+        if ( entry == NULL )
+        {
+            ok = false;
+            break;
+        }
         ok = numbering.entries[k].pack_copy( (const void *) &ctx, numbering.entries[k].node, packed + entry->offset, packed, total );
     }
-    if ( ok ) { ok = RingPackSlots( ctx, numbering.seen, root, *( Ring * ) packed, packed ); }
+    if ( ok ) { ok = RingPackSlots( ctx, numbering.seen, root, *(Ring *) packed, packed ); }
     for ( int64_t k = 0; ok && k < numbering.count; k++ )
     {
         const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-        if ( entry == NULL ) { ok = false; break; }
+        if ( entry == NULL )
+        {
+            ok = false;
+            break;
+        }
         if ( numbering.entries[k].pack_slots != NULL ) { ok = numbering.entries[k].pack_slots( (const void *) &ctx, numbering.seen, numbering.entries[k].node, packed + entry->offset, packed ); } // a blob has no slots
     }
     TableNumberingShutdown( numbering );
@@ -15644,9 +15739,17 @@ inline bool RackBuilder::Lock()
         for ( int64_t k = 0; ok && k < numbering.count; k++ )
         {
             const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
-            if ( bytes < 0 ) { ok = false; break; }
+            if ( bytes < 0 )
+            {
+                ok = false;
+                break;
+            }
             TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-            if ( entry == NULL ) { ok = false; break; }
+            if ( entry == NULL )
+            {
+                ok = false;
+                break;
+            }
             measured = TableAlignUp64( measured );
             entry->offset = measured;
             measured += bytes;
@@ -15670,9 +15773,17 @@ inline bool RackBuilder::Lock()
         for ( int64_t k = 0; ok && k < numbering.count; k++ )
         {
             const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
-            if ( bytes < 0 ) { ok = false; break; }
+            if ( bytes < 0 )
+            {
+                ok = false;
+                break;
+            }
             TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-            if ( entry == NULL ) { ok = false; break; }
+            if ( entry == NULL )
+            {
+                ok = false;
+                break;
+            }
             used = TableAlignUp64( used );
             entry->offset = used;
             used += bytes;
@@ -15697,14 +15808,22 @@ inline bool RackBuilder::Lock()
     for ( int64_t k = 0; ok && k < numbering.count; k++ )
     {
         const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-        if ( entry == NULL ) { ok = false; break; }
+        if ( entry == NULL )
+        {
+            ok = false;
+            break;
+        }
         ok = numbering.entries[k].pack_copy( (const void *) &ctx, numbering.entries[k].node, packed + entry->offset, packed, total );
     }
-    if ( ok ) { ok = RackPackSlots( ctx, numbering.seen, root, *( Rack * ) packed, packed ); }
+    if ( ok ) { ok = RackPackSlots( ctx, numbering.seen, root, *(Rack *) packed, packed ); }
     for ( int64_t k = 0; ok && k < numbering.count; k++ )
     {
         const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-        if ( entry == NULL ) { ok = false; break; }
+        if ( entry == NULL )
+        {
+            ok = false;
+            break;
+        }
         if ( numbering.entries[k].pack_slots != NULL ) { ok = numbering.entries[k].pack_slots( (const void *) &ctx, numbering.seen, numbering.entries[k].node, packed + entry->offset, packed ); } // a blob has no slots
     }
     TableNumberingShutdown( numbering );
@@ -16728,9 +16847,17 @@ inline bool TrayBuilder::Lock()
         for ( int64_t k = 0; ok && k < numbering.count; k++ )
         {
             const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
-            if ( bytes < 0 ) { ok = false; break; }
+            if ( bytes < 0 )
+            {
+                ok = false;
+                break;
+            }
             TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-            if ( entry == NULL ) { ok = false; break; }
+            if ( entry == NULL )
+            {
+                ok = false;
+                break;
+            }
             measured = TableAlignUp64( measured );
             entry->offset = measured;
             measured += bytes;
@@ -16754,9 +16881,17 @@ inline bool TrayBuilder::Lock()
         for ( int64_t k = 0; ok && k < numbering.count; k++ )
         {
             const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
-            if ( bytes < 0 ) { ok = false; break; }
+            if ( bytes < 0 )
+            {
+                ok = false;
+                break;
+            }
             TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-            if ( entry == NULL ) { ok = false; break; }
+            if ( entry == NULL )
+            {
+                ok = false;
+                break;
+            }
             used = TableAlignUp64( used );
             entry->offset = used;
             used += bytes;
@@ -16781,14 +16916,22 @@ inline bool TrayBuilder::Lock()
     for ( int64_t k = 0; ok && k < numbering.count; k++ )
     {
         const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-        if ( entry == NULL ) { ok = false; break; }
+        if ( entry == NULL )
+        {
+            ok = false;
+            break;
+        }
         ok = numbering.entries[k].pack_copy( (const void *) &ctx, numbering.entries[k].node, packed + entry->offset, packed, total );
     }
-    if ( ok ) { ok = TrayPackSlots( ctx, numbering.seen, root, *( Tray * ) packed, packed ); }
+    if ( ok ) { ok = TrayPackSlots( ctx, numbering.seen, root, *(Tray *) packed, packed ); }
     for ( int64_t k = 0; ok && k < numbering.count; k++ )
     {
         const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-        if ( entry == NULL ) { ok = false; break; }
+        if ( entry == NULL )
+        {
+            ok = false;
+            break;
+        }
         if ( numbering.entries[k].pack_slots != NULL ) { ok = numbering.entries[k].pack_slots( (const void *) &ctx, numbering.seen, numbering.entries[k].node, packed + entry->offset, packed ); } // a blob has no slots
     }
     TableNumberingShutdown( numbering );
@@ -21095,7 +21238,7 @@ inline bool TrayCookBody( const Ctx & ctx, const TableCookRegion & region, uint8
             table_cook_put( at + 0 + i * 32, (uint64_t) value.entries[i].type, 1, order ); // the tag; None is the tag alone
             switch ( value.entries[i].type )
             {
-                case SlotsType::Many:
+                    case SlotsType::Many:
                 {
                     schema_assert( value.entries[i].many.value_count >= 0 && value.entries[i].many.value_count <= 2 ); // storage invariant, debug only (§5.1)
                     if ( value.entries[i].many.value_count < 0 || value.entries[i].many.value_count > 2 ) { return false; }
@@ -21106,7 +21249,7 @@ inline bool TrayCookBody( const Ctx & ctx, const TableCookRegion & region, uint8
                     table_cook_put( at + 0 + i * 32 + 24, (uint64_t) (uint32_t) value.entries[i].many.value_count, 4, order );
                     break;
                 }
-                case SlotsType::Plain:
+                    case SlotsType::Plain:
                 {
                     table_cook_put( at + 0 + i * 32 + 8, (uint64_t) value.entries[i].plain, 4, order );
                     break;
@@ -21167,12 +21310,12 @@ inline bool RingCookExtent( const Ctx & ctx, const TableCookRegion & region, uin
                 table_cook_put( array + i * 16, (uint64_t) cursor[i].type, 1, order ); // the tag; None is the tag alone
                 switch ( cursor[i].type )
                 {
-                    case SlotType::Vertex:
+                        case SlotType::Vertex:
                     {
                         if ( !table_cook_ref( region, array + i * 16 + 8, (const void *) NodeAt( ctx, cursor[i].vertex ), order ) ) { return false; } // vertex
                         break;
                     }
-                    case SlotType::Plain:
+                        case SlotType::Plain:
                     {
                         table_cook_put( array + i * 16 + 8, (uint64_t) cursor[i].plain, 4, order );
                         break;
@@ -21207,7 +21350,7 @@ inline bool RackCookExtent( const Ctx & ctx, const TableCookRegion & region, uin
                 table_cook_put( array + i * 32, (uint64_t) cursor[i].type, 1, order ); // the tag; None is the tag alone
                 switch ( cursor[i].type )
                 {
-                    case SlotsType::Many:
+                        case SlotsType::Many:
                     {
                         schema_assert( cursor[i].many.value_count >= 0 && cursor[i].many.value_count <= 2 ); // storage invariant, debug only (§5.1)
                         if ( cursor[i].many.value_count < 0 || cursor[i].many.value_count > 2 ) { return false; }
@@ -21218,7 +21361,7 @@ inline bool RackCookExtent( const Ctx & ctx, const TableCookRegion & region, uin
                         table_cook_put( array + i * 32 + 24, (uint64_t) (uint32_t) cursor[i].many.value_count, 4, order );
                         break;
                     }
-                    case SlotsType::Plain:
+                        case SlotsType::Plain:
                     {
                         table_cook_put( array + i * 32 + 8, (uint64_t) cursor[i].plain, 4, order );
                         break;

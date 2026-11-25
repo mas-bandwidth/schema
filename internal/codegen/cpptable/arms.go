@@ -31,16 +31,16 @@ func (g *tableGen) emitArmStorage(v ir.UnionVariant) {
 		g.noteRef(f.Type.Name)
 		g.pf("        TableRef %s; // *%s — a node index on the wire (§3.1)\n", v.Name, f.Type.Name)
 	case f.Type.Kind == ir.TString:
-		g.pf("        struct { char value[%d + 1]; int32_t value_length; } %s; // string(%d)\n", f.Type.Size, v.Name, f.Type.Size)
+		g.pf("        struct\n        {\n            char value[%d + 1];\n            int32_t value_length;\n        } %s; // string(%d)\n", f.Type.Size, v.Name, f.Type.Size)
 	case f.Type.Kind == ir.TBytes:
-		g.pf("        struct { uint8_t value[%d]; int32_t value_length; } %s; // bytes(%d)\n", f.Type.Size, v.Name, f.Type.Size)
+		g.pf("        struct\n        {\n            uint8_t value[%d];\n            int32_t value_length;\n        } %s; // bytes(%d)\n", f.Type.Size, v.Name, f.Type.Size)
 	case f.Array == ir.ArrayCounted:
 		g.noteRef(f.Type.Name)
 		align16 := ""
 		if !f.Type.Pointer && f.Type.Width == 128 && (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TFixed) {
 			align16 = "alignas( 16 ) "
 		}
-		g.pf("        %sstruct { %s value[%d]; int32_t value_count; } %s; // [..%d]%s\n",
+		g.pf("        %sstruct\n        {\n            %s value[%d];\n            int32_t value_count;\n        } %s; // [..%d]%s\n",
 			align16, g.armElementType(v), f.ArrayBound, v.Name, f.ArrayBound, ir.TableTypeSpelling(f))
 	case f.Array == ir.ArrayFixed:
 		g.noteRef(f.Type.Name)
@@ -210,7 +210,7 @@ func (g *tableGen) emitArmSave(v ir.UnionVariant, base, ind, onBad, sfx string) 
 	index := "arm_index" + sfx
 	switch {
 	case v.Body():
-		g.pf("%sif ( !%s ) { %s }\n", ind, g.saveCall(g.unionField, v.Type, value), onBad)
+		g.pf("%sif ( !%s )\n            {\n                %s\n            }\n", ind, g.saveCall(g.unionField, v.Type, value), onBad)
 	case f.Type.Blob():
 		blob := "arm_blob" + sfx
 		g.pf("%s{\n%s    const TableBlob * %s = TableBlobAt( ctx, %s );\n", ind, ind, blob, value)

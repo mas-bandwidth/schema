@@ -11553,7 +11553,10 @@ inline int64_t ArchiveConfigMeasureBody( TableIds & ids, const ArchiveConfig & v
         const int64_t body_root = RootConfigMeasureBody( ids, value.root );
         if ( body_root < 0 ) { return -1; }
         if ( body_root > 1 ) { bytes += TableLebBytes( ref_root ) + 1 + TableLebBytes( (uint64_t) ( body_root ) ) + ( body_root ); } // root
-        else { ids.truncate( mark_root ); } // an all-default nested table elides, and costs no entry
+        else
+        {
+            ids.truncate( mark_root );
+        } // an all-default nested table elides, and costs no entry
     }
     schema_assert( value.count >= 0 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
     schema_assert( value.count <= 100 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
@@ -11584,7 +11587,10 @@ TABLEDEMO_TABLE_INLINE bool ArchiveConfigSaveBody( TableWriter & w, TableIds & i
             w.putleb( (uint64_t) body_root ); // root
             if ( !RootConfigSaveBody( w, ids, value.root ) ) return false;
         }
-        else { ids.truncate( mark_root ); }
+        else
+        {
+            ids.truncate( mark_root );
+        }
     }
     if ( value.count != 1 )
     {
@@ -12031,7 +12037,7 @@ inline bool ArchiveConfigLoadMessageBody( TableBitReader & r, const TableVocabul
                             else if ( width > 0 && width < 64 )
                             {
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
-                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                             }
                             if ( decoded_wide < 0ll )
                             {
@@ -12079,7 +12085,7 @@ inline bool ArchiveConfigLoadMessageBody( TableBitReader & r, const TableVocabul
                     else if ( width > 0 && width < 64 )
                     {
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
-                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     const int64_t pre_clamp = decoded_wide;
                     if ( decoded_wide < 0ll )
@@ -12105,7 +12111,11 @@ inline bool ArchiveConfigLoadMessageBody( TableBitReader & r, const TableVocabul
                 break;
             }
             default:
-                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
+                if ( vocabulary.build_version == BuildVersion )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 report->unknown++;
                 if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
@@ -13175,7 +13185,10 @@ inline int64_t ArchiveConfigFixedSave( const ArchiveConfig * values, int64_t cou
     TableFixedPut64( buffer + kTableFixedHashAt, ArchiveConfigFixedHash );
     TableFixedPut32( buffer + kTableFixedHeaderBytes, (uint32_t) ArchiveConfigFixedLayoutBytes );
     memcpy( buffer + kTableFixedHeaderBytes + 4, ArchiveConfigFixedLayout, (size_t) ArchiveConfigFixedLayoutBytes );
-    for ( int64_t k = 0; k < count; ++k ) { if ( !ArchiveConfigFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        if ( !ArchiveConfigFixedFiniteBody( values[k] ) ) { return -1; }
+    } // a NaN or an infinity is refused (§3.3)
     uint8_t * at = buffer + kTableFixedHeaderBytes + 4 + ArchiveConfigFixedLayoutBytes;
     for ( int64_t k = 0; k < count; ++k )
     {
@@ -13195,16 +13208,19 @@ inline int64_t ArchiveConfigFixedSave( const ArchiveConfig * values, int64_t cou
 // R4: every refusal leaves ALL `capacity` rows at their declared defaults, so a direct call
 // holds the same rule as FixedLoad. The body below is the walk itself.
 inline int64_t ArchiveConfigFixedLoadWalkBody( ArchiveConfig * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
 inline int64_t ArchiveConfigFixedLoadWalk( ArchiveConfig * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
     const int64_t n = ArchiveConfigFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
     if ( n < 0 || report->damaged || report->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { ArchiveConfigReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { ArchiveConfigReset( values[k] ); }
+        }
         return -1;
     }
     return n;
@@ -13213,7 +13229,7 @@ inline int64_t ArchiveConfigFixedLoadWalk( ArchiveConfig * values, int64_t capac
 // ArchiveConfigFixedLoadWalkBody is the STRICT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps
 // every recovered record, with the counters counted onto the report passed.
 inline int64_t ArchiveConfigFixedLoadWalkBody( ArchiveConfig * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
@@ -13230,8 +13246,8 @@ inline int64_t ArchiveConfigFixedLoadWalkBody( ArchiveConfig * values, int64_t c
     {
         report->refused = true;
         report->reason = data[0] == kTableWireForm ? TableMessageReason::previous_form
-                       : data[0] == kTableWireMessageForm ? TableMessageReason::message_form_as_file
-                       : TableMessageReason::newer_form;
+            : data[0] == kTableWireMessageForm     ? TableMessageReason::message_form_as_file
+                                                   : TableMessageReason::newer_form;
         return -1;
     }
     if ( bytes < kTableFixedHeaderBytes + 4 )
@@ -13245,7 +13261,12 @@ inline int64_t ArchiveConfigFixedLoadWalkBody( ArchiveConfig * values, int64_t c
     // spendable later.
     for ( int32_t i = 1; i < kTableFixedHashAt; ++i )
     {
-        if ( data[i] != 0 ) { report->damaged = true; report->reason = TableFixedReason::reserved_not_zero; return -1; }
+        if ( data[i] != 0 )
+        {
+            report->damaged = true;
+            report->reason = TableFixedReason::reserved_not_zero;
+            return -1;
+        }
     }
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
     if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes )
@@ -13284,7 +13305,9 @@ inline int64_t ArchiveConfigFixedLoadWalkBody( ArchiveConfig * values, int64_t c
     const TableFixedKnownLayout & known = ArchiveConfigFixedKnown[lineage_at];
     if ( (int64_t) layout_bytes != known.layout_bytes || memcmp( layout, known.layout, (size_t) layout_bytes ) != 0 )
     {
-        report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1;
+        report->refused = true;
+        report->reason = TableMessageReason::layout_malformed;
+        return -1;
     }
     const TableFixedEntry * entries = ArchiveConfigFixedPlan;
     int32_t entry_count = ArchiveConfigFixedPlanCount;
@@ -13339,8 +13362,8 @@ inline int64_t ArchiveConfigFixedLoadWalkBody( ArchiveConfig * values, int64_t c
             int32_t compiled_guarded = 0;
             uint32_t fill_at = 0;
             const int32_t made = TableFixedCompile( parsed, ArchiveConfigFixedLayout, (int32_t) ArchiveConfigFixedLayoutBytes, ArchiveConfigFixedDst,
-                                                   ArchiveConfigFixedCover, ArchiveConfigFixedCoverCount,
-                                                   dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
+                ArchiveConfigFixedCover, ArchiveConfigFixedCoverCount,
+                dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
             if ( made < 0 )
             {
                 report->refused = true;
@@ -13425,7 +13448,9 @@ inline int64_t ArchiveConfigFixedLoadWalkBody( ArchiveConfig * values, int64_t c
         {
             for ( int64_t j = 0; j < k; ++j ) { ArchiveConfigReset( values[j] ); }
             report->widened = batch_widened;
-            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+            report->refused = true;
+            report->reason = TableMessageReason::no_layout;
+            return -1;
         }
         for ( int32_t i = 0; i < entry_count; ++i )
         {
@@ -13442,7 +13467,7 @@ inline int64_t ArchiveConfigFixedLoadWalkBody( ArchiveConfig * values, int64_t c
                         if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
                         {
                             matches = false;
-                            break;
+                                break;
                         }
                     }
                     if ( !matches ) { continue; }
@@ -13480,7 +13505,7 @@ inline int64_t ArchiveConfigFixedLoadWalkBody( ArchiveConfig * values, int64_t c
             return -1;
         }
         TableFixedClampKnownRanges( ArchiveConfigFixedKnownRanges[lineage_at], ArchiveConfigFixedKnownRangeCounts[lineage_at],
-                                    (uint8_t *) &values[k], report );
+            (uint8_t *) &values[k], report );
         if ( !ArchiveConfigFixedClamp( values[k], report ) )
         {
             for ( int64_t j = 0; j <= k; ++j ) { ArchiveConfigReset( values[j] ); }
@@ -13499,7 +13524,7 @@ inline int64_t ArchiveConfigFixedLoadWalkBody( ArchiveConfig * values, int64_t c
 // them, on EVERY refusal (R4), so no partial value survives. A supplied report receives THIS
 // read's report. unknown and widened alone never refuse.
 inline int64_t ArchiveConfigFixedLoad( ArchiveConfig * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     TableReport * out = report != NULL ? report : &local;
@@ -13507,7 +13532,10 @@ inline int64_t ArchiveConfigFixedLoad( ArchiveConfig * values, int64_t capacity,
     const int64_t n = ArchiveConfigFixedLoadWalk( values, capacity, data, bytes, plan, plan_capacity, cache, out );
     if ( n < 0 || out->damaged || out->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { ArchiveConfigReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { ArchiveConfigReset( values[k] ); }
+        }
         return -1;
     }
     return n;
@@ -13522,7 +13550,10 @@ inline int64_t ArchiveConfigMeasureBodyRetain( TableRetainIds & ids, const Archi
         const int64_t body_root = RootConfigMeasureBodyRetain( ids, value.root, retain, TableRetainStepInto( path, 0, (uint32_t) ( 0 ) ) );
         if ( body_root < 0 ) { return -1; }
         if ( body_root > 1 ) { bytes += TableLebBytes( ref_root ) + 1 + TableLebBytes( (uint64_t) ( body_root ) ) + ( body_root ); } // root
-        else { ids.truncate( mark_root ); } // an all-default nested table elides, and costs no entry
+        else
+        {
+            ids.truncate( mark_root );
+        } // an all-default nested table elides, and costs no entry
     }
     schema_assert( value.count >= 0 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
     schema_assert( value.count <= 100 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
@@ -13544,7 +13575,10 @@ TABLEDEMO_TABLE_INLINE bool ArchiveConfigSaveBodyRetain( TableWriter & w, TableR
             w.putleb( (uint64_t) body_root ); // root
             if ( !RootConfigSaveBodyRetain( w, ids, value.root, retain, TableRetainStepInto( path, 0, (uint32_t) ( 0 ) ) ) ) return false;
         }
-        else { ids.truncate( mark_root ); }
+        else
+        {
+            ids.truncate( mark_root );
+        }
     }
     if ( value.count != 1 )
     {

@@ -510,7 +510,7 @@ func (g *tableGen) emitCookWriteUnion(un *ir.Union, at, value, indent, sfx strin
 			// AN ARM IS A FIELD LINE (§2.6): its pieces sit at the arms'
 			// shared offset and ride exactly as a field's do, through the
 			// same writer
-			g.pf("%s        case %sType::%s:\n%s        {\n", indent, un.Name, ir.GoExportName(v.Name), indent)
+			g.pf("%s            case %sType::%s:\n%s        {\n", indent, un.Name, ir.GoExportName(v.Name), indent)
 			saved := g.indent
 			g.indent = g.indent + indent + "        "
 			g.emitCookWriteFieldAs(nil, v.F, armOffset, armValue(value, v), at, sfx+"a")

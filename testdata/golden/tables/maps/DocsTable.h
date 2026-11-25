@@ -12974,11 +12974,22 @@ inline bool DocsPagesEntryNumber( const Ctx & ctx, TableNumbering & numbering, c
             continue;
         }
         if ( !TableNumberingAppend( numbering, work ) ) { return false; }
-        if ( work.walk == NULL ) { TablePackMapClose( numbering.seen, work.node, slot ); continue; } // a blob reaches nothing
+        if ( work.walk == NULL )
+        {
+            TablePackMapClose( numbering.seen, work.node, slot );
+            continue;
+        } // a blob reaches nothing
         TableNodeEntry close;
-        close.node = work.node; close.type_id = 0; close.measure = NULL; close.save = NULL;
-        close.pack_bytes = NULL; close.pack_copy = NULL; close.pack_slots = NULL; close.walk = NULL;
-        close.close = true; close.hint = slot;
+        close.node = work.node;
+        close.type_id = 0;
+        close.measure = NULL;
+        close.save = NULL;
+        close.pack_bytes = NULL;
+        close.pack_copy = NULL;
+        close.pack_slots = NULL;
+        close.walk = NULL;
+        close.close = true;
+        close.hint = slot;
         if ( !TableNumberingWorkPush( numbering, close ) ) { return false; }
         const int64_t first = numbering.work_count;
         if ( !work.walk( (const void *) &ctx, numbering, work.node ) ) { return false; }
@@ -13098,11 +13109,22 @@ inline bool DocsNumber( const Ctx & ctx, TableNumbering & numbering, const Docs 
             continue;
         }
         if ( !TableNumberingAppend( numbering, work ) ) { return false; }
-        if ( work.walk == NULL ) { TablePackMapClose( numbering.seen, work.node, slot ); continue; } // a blob reaches nothing
+        if ( work.walk == NULL )
+        {
+            TablePackMapClose( numbering.seen, work.node, slot );
+            continue;
+        } // a blob reaches nothing
         TableNodeEntry close;
-        close.node = work.node; close.type_id = 0; close.measure = NULL; close.save = NULL;
-        close.pack_bytes = NULL; close.pack_copy = NULL; close.pack_slots = NULL; close.walk = NULL;
-        close.close = true; close.hint = slot;
+        close.node = work.node;
+        close.type_id = 0;
+        close.measure = NULL;
+        close.save = NULL;
+        close.pack_bytes = NULL;
+        close.pack_copy = NULL;
+        close.pack_slots = NULL;
+        close.walk = NULL;
+        close.close = true;
+        close.hint = slot;
         if ( !TableNumberingWorkPush( numbering, close ) ) { return false; }
         const int64_t first = numbering.work_count;
         if ( !work.walk( (const void *) &ctx, numbering, work.node ) ) { return false; }
@@ -13126,7 +13148,7 @@ inline bool DocsCycleSlots( const Ctx & ctx, TableCycle & cycle, const Docs & va
     if ( !TableMapVisitStored( ctx, value.pages, [&]( const DocsPagesEntry & entry )
     {
         return DocsPagesEntryCycleSlots( ctx, cycle, entry );
-    } ) ) { return false; }
+         } ) ) { return false; }
     return true;
 }
 
@@ -13267,9 +13289,17 @@ inline bool DocsBuilder::Lock()
         for ( int64_t k = 0; ok && k < numbering.count; k++ )
         {
             const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
-            if ( bytes < 0 ) { ok = false; break; }
+            if ( bytes < 0 )
+            {
+                ok = false;
+                break;
+            }
             TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-            if ( entry == NULL ) { ok = false; break; }
+            if ( entry == NULL )
+            {
+                ok = false;
+                break;
+            }
             measured = TableAlignUp64( measured );
             entry->offset = measured;
             measured += bytes;
@@ -13293,9 +13323,17 @@ inline bool DocsBuilder::Lock()
         for ( int64_t k = 0; ok && k < numbering.count; k++ )
         {
             const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
-            if ( bytes < 0 ) { ok = false; break; }
+            if ( bytes < 0 )
+            {
+                ok = false;
+                break;
+            }
             TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-            if ( entry == NULL ) { ok = false; break; }
+            if ( entry == NULL )
+            {
+                ok = false;
+                break;
+            }
             used = TableAlignUp64( used );
             entry->offset = used;
             used += bytes;
@@ -13320,14 +13358,22 @@ inline bool DocsBuilder::Lock()
     for ( int64_t k = 0; ok && k < numbering.count; k++ )
     {
         const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-        if ( entry == NULL ) { ok = false; break; }
+        if ( entry == NULL )
+        {
+            ok = false;
+            break;
+        }
         ok = numbering.entries[k].pack_copy( (const void *) &ctx, numbering.entries[k].node, packed + entry->offset, packed, total );
     }
-    if ( ok ) { ok = DocsPackSlots( ctx, numbering.seen, root, *( Docs * ) packed, packed ); }
+    if ( ok ) { ok = DocsPackSlots( ctx, numbering.seen, root, *(Docs *) packed, packed ); }
     for ( int64_t k = 0; ok && k < numbering.count; k++ )
     {
         const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-        if ( entry == NULL ) { ok = false; break; }
+        if ( entry == NULL )
+        {
+            ok = false;
+            break;
+        }
         if ( numbering.entries[k].pack_slots != NULL ) { ok = numbering.entries[k].pack_slots( (const void *) &ctx, numbering.seen, numbering.entries[k].node, packed + entry->offset, packed ); } // a blob has no slots
     }
     TableNumberingShutdown( numbering );

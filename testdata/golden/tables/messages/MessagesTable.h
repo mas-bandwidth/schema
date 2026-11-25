@@ -10200,7 +10200,8 @@ struct Selection
 };
 
 // OriginType: union Origin's tag — None = 0, then each variant in declared order (SPEC §4.8)
-enum class OriginType : uint8_t {
+enum class OriginType : uint8_t
+{
     None = 0,
     User = 1,
     Script = 2,
@@ -10241,7 +10242,11 @@ struct Origin
         User user;
         Script script;
         uint32_t pid;
-        struct { char value[24 + 1]; int32_t value_length; } note; // string(24)
+        struct
+        {
+            char value[24 + 1];
+            int32_t value_length;
+        } note; // string(24)
     };
 
     Origin() : type( OriginType::None ) {} // the tag only — arms are established at selection
@@ -10270,7 +10275,8 @@ struct RemoveText
 };
 
 // EditBodyType: union EditBody's tag — None = 0, then each variant in declared order (SPEC §4.8)
-enum class EditBodyType : uint8_t {
+enum class EditBodyType : uint8_t
+{
     None = 0,
     Insert = 1,
     Remove = 2,
@@ -10315,8 +10321,16 @@ struct EditBody
         InsertText insert;
         RemoveText remove;
         int32_t tally;
-        struct { uint16_t value[3]; int32_t value_count; } marks; // [..3]uint16
-        struct { uint8_t value[4]; int32_t value_length; } blob; // bytes(4)
+        struct
+        {
+            uint16_t value[3];
+            int32_t value_count;
+        } marks; // [..3]uint16
+        struct
+        {
+            uint8_t value[4];
+            int32_t value_length;
+        } blob; // bytes(4)
         Mode mode;
     };
 
@@ -10366,7 +10380,8 @@ struct Transaction
 };
 
 // ToolBodyType: union ToolBody's tag — None = 0, then each variant in declared order (SPEC §4.8)
-enum class ToolBodyType : uint8_t {
+enum class ToolBodyType : uint8_t
+{
     None = 0,
     Open = 1,
     Save = 2,
@@ -11307,7 +11322,11 @@ inline bool UserLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                 break;
             }
             default:
-                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
+                if ( vocabulary.build_version == BuildVersion )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 report->unknown++;
                 if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
@@ -11942,7 +11961,11 @@ inline bool ScriptLoadMessageBody( TableBitReader & r, const TableVocabulary & v
                 break;
             }
             default:
-                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
+                if ( vocabulary.build_version == BuildVersion )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 report->unknown++;
                 if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
@@ -12058,7 +12081,10 @@ inline int64_t SelectionMeasureBody( TableIds & ids, const Selection & value )
         const int64_t body_start = CursorMeasureBody( ids, value.start );
         if ( body_start < 0 ) { return -1; }
         if ( body_start > 1 ) { bytes += TableLebBytes( ref_start ) + 1 + TableLebBytes( (uint64_t) ( body_start ) ) + ( body_start ); } // start
-        else { ids.truncate( mark_start ); } // an all-default nested table elides, and costs no entry
+        else
+        {
+            ids.truncate( mark_start );
+        } // an all-default nested table elides, and costs no entry
     }
     {
         const int32_t mark_stop = ids.count;
@@ -12066,7 +12092,10 @@ inline int64_t SelectionMeasureBody( TableIds & ids, const Selection & value )
         const int64_t body_stop = CursorMeasureBody( ids, value.stop );
         if ( body_stop < 0 ) { return -1; }
         if ( body_stop > 1 ) { bytes += TableLebBytes( ref_stop ) + 1 + TableLebBytes( (uint64_t) ( body_stop ) ) + ( body_stop ); } // stop
-        else { ids.truncate( mark_stop ); } // an all-default nested table elides, and costs no entry
+        else
+        {
+            ids.truncate( mark_stop );
+        } // an all-default nested table elides, and costs no entry
     }
     return bytes;
 }
@@ -12092,7 +12121,10 @@ MESSAGEDEMO_TABLE_INLINE bool SelectionSaveBody( TableWriter & w, TableIds & ids
             w.putleb( (uint64_t) body_start ); // start
             if ( !CursorSaveBody( w, ids, value.start ) ) return false;
         }
-        else { ids.truncate( mark_start ); }
+        else
+        {
+            ids.truncate( mark_start );
+        }
     }
     {
         const int32_t mark_stop = ids.count;
@@ -12105,7 +12137,10 @@ MESSAGEDEMO_TABLE_INLINE bool SelectionSaveBody( TableWriter & w, TableIds & ids
             w.putleb( (uint64_t) body_stop ); // stop
             if ( !CursorSaveBody( w, ids, value.stop ) ) return false;
         }
-        else { ids.truncate( mark_stop ); }
+        else
+        {
+            ids.truncate( mark_stop );
+        }
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
     return !w.overflow;
@@ -12525,7 +12560,11 @@ inline bool SelectionLoadMessageBody( TableBitReader & r, const TableVocabulary 
                 break;
             }
             default:
-                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
+                if ( vocabulary.build_version == BuildVersion )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 report->unknown++;
                 if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
@@ -12639,7 +12678,10 @@ inline int64_t InsertTextMeasureBody( TableIds & ids, const InsertText & value )
         const int64_t body_at = CursorMeasureBody( ids, value.at );
         if ( body_at < 0 ) { return -1; }
         if ( body_at > 1 ) { bytes += TableLebBytes( ref_at ) + 1 + TableLebBytes( (uint64_t) ( body_at ) ) + ( body_at ); } // at
-        else { ids.truncate( mark_at ); } // an all-default nested table elides, and costs no entry
+        else
+        {
+            ids.truncate( mark_at );
+        } // an all-default nested table elides, and costs no entry
     }
     schema_assert( value.text_length >= 0 && value.text_length <= 32 ); // storage invariant, debug only (§5.1)
     if ( !TableUtf8Valid( (const uint8_t *) value.text, (uint64_t) value.text_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
@@ -12797,7 +12839,10 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBody( TableWriter & w, TableIds & id
             w.putleb( (uint64_t) body_at ); // at
             if ( !CursorSaveBody( w, ids, value.at ) ) return false;
         }
-        else { ids.truncate( mark_at ); }
+        else
+        {
+            ids.truncate( mark_at );
+        }
     }
     schema_assert( value.text_length >= 0 && value.text_length <= 32 ); // storage invariant, debug only (§5.1)
     if ( !TableUtf8Valid( (const uint8_t *) value.text, (uint64_t) value.text_length ) ) { return false; }
@@ -12823,7 +12868,10 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBody( TableWriter & w, TableIds & id
                 }
                 w.header( arm_ref, 13 );
                 w.putleb( (uint64_t) arm_payload ); // user
-                if ( !UserSaveBody( w, ids, value.origin.user ) ) { return false; }
+                if ( !UserSaveBody( w, ids, value.origin.user ) )
+            {
+                return false;
+            }
                 break;
             }
             case OriginType::Script:
@@ -12837,7 +12885,10 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBody( TableWriter & w, TableIds & id
                 }
                 w.header( arm_ref, 13 );
                 w.putleb( (uint64_t) arm_payload ); // script
-                if ( !ScriptSaveBody( w, ids, value.origin.script ) ) { return false; }
+                if ( !ScriptSaveBody( w, ids, value.origin.script ) )
+            {
+                return false;
+            }
                 break;
             }
             case OriginType::Pid:
@@ -12950,7 +13001,10 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBody( TableWriter & w, TableIds & id
                         }
                         w.header( arm_refu, 13 );
                         w.putleb( (uint64_t) arm_payloadu ); // user
-                        if ( !UserSaveBody( w, ids, value.origins[elem_i].user ) ) { return false; }
+                        if ( !UserSaveBody( w, ids, value.origins[elem_i].user ) )
+            {
+                return false;
+            }
                         break;
                     }
                     case OriginType::Script:
@@ -12964,7 +13018,10 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBody( TableWriter & w, TableIds & id
                         }
                         w.header( arm_refu, 13 );
                         w.putleb( (uint64_t) arm_payloadu ); // script
-                        if ( !ScriptSaveBody( w, ids, value.origins[elem_i].script ) ) { return false; }
+                        if ( !ScriptSaveBody( w, ids, value.origins[elem_i].script ) )
+            {
+                return false;
+            }
                         break;
                     }
                     case OriginType::Pid:
@@ -14715,7 +14772,11 @@ inline bool InsertTextLoadMessageBody( TableBitReader & r, const TableVocabulary
                 break;
             }
             default:
-                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
+                if ( vocabulary.build_version == BuildVersion )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 report->unknown++;
                 if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
@@ -14831,7 +14892,10 @@ inline int64_t RemoveTextMeasureBody( TableIds & ids, const RemoveText & value )
         const int64_t body_span = SelectionMeasureBody( ids, value.span );
         if ( body_span < 0 ) { return -1; }
         if ( body_span > 1 ) { bytes += TableLebBytes( ref_span ) + 1 + TableLebBytes( (uint64_t) ( body_span ) ) + ( body_span ); } // span
-        else { ids.truncate( mark_span ); } // an all-default nested table elides, and costs no entry
+        else
+        {
+            ids.truncate( mark_span );
+        } // an all-default nested table elides, and costs no entry
     }
     return bytes;
 }
@@ -14857,7 +14921,10 @@ MESSAGEDEMO_TABLE_INLINE bool RemoveTextSaveBody( TableWriter & w, TableIds & id
             w.putleb( (uint64_t) body_span ); // span
             if ( !SelectionSaveBody( w, ids, value.span ) ) return false;
         }
-        else { ids.truncate( mark_span ); }
+        else
+        {
+            ids.truncate( mark_span );
+        }
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
     return !w.overflow;
@@ -15190,7 +15257,11 @@ inline bool RemoveTextLoadMessageBody( TableBitReader & r, const TableVocabulary
                 break;
             }
             default:
-                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
+                if ( vocabulary.build_version == BuildVersion )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 report->unknown++;
                 if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
@@ -15407,7 +15478,10 @@ MESSAGEDEMO_TABLE_INLINE bool EditSaveBody( TableWriter & w, TableIds & ids, con
                 }
                 w.header( arm_ref, 13 );
                 w.putleb( (uint64_t) arm_payload ); // insert
-                if ( !InsertTextSaveBody( w, ids, value.body.insert ) ) { return false; }
+                if ( !InsertTextSaveBody( w, ids, value.body.insert ) )
+            {
+                return false;
+            }
                 break;
             }
             case EditBodyType::Remove:
@@ -15421,7 +15495,10 @@ MESSAGEDEMO_TABLE_INLINE bool EditSaveBody( TableWriter & w, TableIds & ids, con
                 }
                 w.header( arm_ref, 13 );
                 w.putleb( (uint64_t) arm_payload ); // remove
-                if ( !RemoveTextSaveBody( w, ids, value.body.remove ) ) { return false; }
+                if ( !RemoveTextSaveBody( w, ids, value.body.remove ) )
+            {
+                return false;
+            }
                 break;
             }
             case EditBodyType::Tally:
@@ -16428,7 +16505,7 @@ inline bool EditLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                                             else if ( width_2 > 0 && width_2 < 64 )
                                             {
                                                 const uint64_t sign_2 = uint64_t(1) << ( width_2 - 1 );
-                                                if ( ( raw_2 & sign_2 ) != 0 ) { decoded_wide_2 = (int64_t) ( raw_2 | ~( ( uint64_t(1) << width_2 ) - 1 ) ); }
+                                                if ( ( raw_2 & sign_2 ) != 0 ) { decoded_wide_2 = (int64_t) ( raw_2 | ~( ( uint64_t( 1 ) << width_2 ) - 1 ) ); }
                                             }
                                             if ( decoded_wide_2 < 0ll )
                                             {
@@ -16478,7 +16555,7 @@ inline bool EditLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                                     else if ( width_2 > 0 && width_2 < 64 )
                                     {
                                         const uint64_t sign_2 = uint64_t(1) << ( width_2 - 1 );
-                                        if ( ( raw_2 & sign_2 ) != 0 ) { decoded_wide_2 = (int64_t) ( raw_2 | ~( ( uint64_t(1) << width_2 ) - 1 ) ); }
+                                        if ( ( raw_2 & sign_2 ) != 0 ) { decoded_wide_2 = (int64_t) ( raw_2 | ~( ( uint64_t( 1 ) << width_2 ) - 1 ) ); }
                                     }
                                     if ( decoded_wide_2 < 0ll )
                                     {
@@ -16681,7 +16758,11 @@ inline bool EditLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                 break;
             }
             default:
-                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
+                if ( vocabulary.build_version == BuildVersion )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 report->unknown++;
                 if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
@@ -16808,7 +16889,10 @@ inline int64_t OpenDocumentMeasureBody( TableIds & ids, const OpenDocument & val
         const int64_t body_cursor = CursorMeasureBody( ids, value.cursor );
         if ( body_cursor < 0 ) { return -1; }
         if ( body_cursor > 1 ) { bytes += TableLebBytes( ref_cursor ) + 1 + TableLebBytes( (uint64_t) ( body_cursor ) ) + ( body_cursor ); } // cursor
-        else { ids.truncate( mark_cursor ); } // an all-default nested table elides, and costs no entry
+        else
+        {
+            ids.truncate( mark_cursor );
+        } // an all-default nested table elides, and costs no entry
     }
     return bytes;
 }
@@ -16839,7 +16923,8 @@ MESSAGEDEMO_TABLE_INLINE bool OpenDocumentSaveBody( TableWriter & w, TableIds & 
         const uint64_t ref_mode = ids.ref_at( 6, 0x0d3deba2c41dadb2ull );
         uint64_t variant_mode = 0;
         if ( !TableEnumRef( ids, value.mode, variant_mode ) ) { return false; }
-        w.header( ref_mode, 30 ); w.putleb( variant_mode ); // mode
+        w.header( ref_mode, 30 );
+        w.putleb( variant_mode ); // mode
     }
     {
         const int32_t mark_cursor = ids.count;
@@ -16852,7 +16937,10 @@ MESSAGEDEMO_TABLE_INLINE bool OpenDocumentSaveBody( TableWriter & w, TableIds & 
             w.putleb( (uint64_t) body_cursor ); // cursor
             if ( !CursorSaveBody( w, ids, value.cursor ) ) return false;
         }
-        else { ids.truncate( mark_cursor ); }
+        else
+        {
+            ids.truncate( mark_cursor );
+        }
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
     return !w.overflow;
@@ -17399,7 +17487,11 @@ inline bool OpenDocumentLoadMessageBody( TableBitReader & r, const TableVocabula
                 break;
             }
             default:
-                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
+                if ( vocabulary.build_version == BuildVersion )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 report->unknown++;
                 if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
@@ -17958,7 +18050,9 @@ inline bool SaveDocumentLoadMessageBody( TableBitReader & r, const TableVocabula
                     }
                     break;
                 }
-                { uint64_t raw = 0; if ( !r.get( raw, 1 ) || ( same_shape && raw == 0 ) )
+                {
+                    uint64_t raw = 0;
+                    if ( !r.get( raw, 1 ) || ( same_shape && raw == 0 ) )
                 {
                     report->damaged = true;
                     return false;
@@ -17967,7 +18061,11 @@ inline bool SaveDocumentLoadMessageBody( TableBitReader & r, const TableVocabula
                 break;
             }
             default:
-                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
+                if ( vocabulary.build_version == BuildVersion )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 report->unknown++;
                 if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
@@ -18096,7 +18194,14 @@ inline int64_t TransactionMeasureBody( TableIds & ids, const Transaction & value
     }
     {
         bool any_pending = false;
-        for ( int32_t i = 0; i < 2; i++ ) { if ( value.pending[i].type != EditBodyType::None ) { any_pending = true; break; } }
+        for ( int32_t i = 0; i < 2; i++ )
+        {
+            if ( value.pending[i].type != EditBodyType::None )
+            {
+                any_pending = true;
+                break;
+            }
+        }
         if ( any_pending )
         {
             const uint64_t ref_pending = ids.ref_at( 16, 0x52dea0d6eeb5083cull );
@@ -18257,7 +18362,14 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionSaveBody( TableWriter & w, TableIds & i
     }
     {
         bool any_pending = false;
-        for ( int32_t i = 0; i < 2; i++ ) { if ( value.pending[i].type != EditBodyType::None ) { any_pending = true; break; } }
+        for ( int32_t i = 0; i < 2; i++ )
+        {
+            if ( value.pending[i].type != EditBodyType::None )
+            {
+                any_pending = true;
+                break;
+            }
+        }
         if ( any_pending )
         {
             const uint64_t ref_pending = ids.ref_at( 16, 0x52dea0d6eeb5083cull );
@@ -18360,7 +18472,10 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionSaveBody( TableWriter & w, TableIds & i
                             }
                             w.header( arm_refu, 13 );
                             w.putleb( (uint64_t) arm_payloadu ); // insert
-                            if ( !InsertTextSaveBody( w, ids, value.pending[elem_i].insert ) ) { return false; }
+                            if ( !InsertTextSaveBody( w, ids, value.pending[elem_i].insert ) )
+            {
+                return false;
+            }
                             break;
                         }
                         case EditBodyType::Remove:
@@ -18374,7 +18489,10 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionSaveBody( TableWriter & w, TableIds & i
                             }
                             w.header( arm_refu, 13 );
                             w.putleb( (uint64_t) arm_payloadu ); // remove
-                            if ( !RemoveTextSaveBody( w, ids, value.pending[elem_i].remove ) ) { return false; }
+                            if ( !RemoveTextSaveBody( w, ids, value.pending[elem_i].remove ) )
+            {
+                return false;
+            }
                             break;
                         }
                         case EditBodyType::Tally:
@@ -19385,7 +19503,14 @@ inline int64_t TransactionMeasureMessageBody( int64_t at, const Transaction & va
     }
     {
         bool rides_pending = false;
-        for ( int32_t i = 0; i < 2; i++ ) { if ( value.pending[i].type != EditBodyType::None ) { rides_pending = true; break; } }
+        for ( int32_t i = 0; i < 2; i++ )
+        {
+            if ( value.pending[i].type != EditBodyType::None )
+            {
+                rides_pending = true;
+                break;
+            }
+        }
         if ( rides_pending )
         {
             bits += kTableMessageRefBitsHere;
@@ -19500,7 +19625,14 @@ inline bool TransactionSaveMessageBody( TableBitWriter & w, const Transaction & 
     }
     {
         bool rides_pending = false;
-        for ( int32_t i = 0; i < 2; i++ ) { if ( value.pending[i].type != EditBodyType::None ) { rides_pending = true; break; } }
+        for ( int32_t i = 0; i < 2; i++ )
+        {
+            if ( value.pending[i].type != EditBodyType::None )
+            {
+                rides_pending = true;
+                break;
+            }
+        }
         if ( rides_pending )
         {
             w.put( 24, kTableMessageRefBitsHere );
@@ -19883,7 +20015,7 @@ inline bool TransactionLoadMessageBody( TableBitReader & r, const TableVocabular
                                                     else if ( width_3 > 0 && width_3 < 64 )
                                                     {
                                                         const uint64_t sign_3 = uint64_t(1) << ( width_3 - 1 );
-                                                        if ( ( raw_3 & sign_3 ) != 0 ) { decoded_wide_3 = (int64_t) ( raw_3 | ~( ( uint64_t(1) << width_3 ) - 1 ) ); }
+                                                        if ( ( raw_3 & sign_3 ) != 0 ) { decoded_wide_3 = (int64_t) ( raw_3 | ~( ( uint64_t( 1 ) << width_3 ) - 1 ) ); }
                                                     }
                                                     if ( decoded_wide_3 < 0ll )
                                                     {
@@ -19933,7 +20065,7 @@ inline bool TransactionLoadMessageBody( TableBitReader & r, const TableVocabular
                                             else if ( width_3 > 0 && width_3 < 64 )
                                             {
                                                 const uint64_t sign_3 = uint64_t(1) << ( width_3 - 1 );
-                                                if ( ( raw_3 & sign_3 ) != 0 ) { decoded_wide_3 = (int64_t) ( raw_3 | ~( ( uint64_t(1) << width_3 ) - 1 ) ); }
+                                                if ( ( raw_3 & sign_3 ) != 0 ) { decoded_wide_3 = (int64_t) ( raw_3 | ~( ( uint64_t( 1 ) << width_3 ) - 1 ) ); }
                                             }
                                             if ( decoded_wide_3 < 0ll )
                                             {
@@ -20358,7 +20490,11 @@ inline bool TransactionLoadMessageBody( TableBitReader & r, const TableVocabular
                 break;
             }
             default:
-                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
+                if ( vocabulary.build_version == BuildVersion )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 report->unknown++;
                 if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
@@ -20823,7 +20959,10 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                 }
                 w.header( arm_ref, 13 );
                 w.putleb( (uint64_t) arm_payload ); // open
-                if ( !OpenDocumentSaveBody( w, ids, value.body.open ) ) { return false; }
+                if ( !OpenDocumentSaveBody( w, ids, value.body.open ) )
+            {
+                return false;
+            }
                 break;
             }
             case ToolBodyType::Save:
@@ -20837,7 +20976,10 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                 }
                 w.header( arm_ref, 13 );
                 w.putleb( (uint64_t) arm_payload ); // save
-                if ( !SaveDocumentSaveBody( w, ids, value.body.save ) ) { return false; }
+                if ( !SaveDocumentSaveBody( w, ids, value.body.save ) )
+            {
+                return false;
+            }
                 break;
             }
             case ToolBodyType::Transact:
@@ -20851,7 +20993,10 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                 }
                 w.header( arm_ref, 13 );
                 w.putleb( (uint64_t) arm_payload ); // transact
-                if ( !TransactionSaveBody( w, ids, value.body.transact ) ) { return false; }
+                if ( !TransactionSaveBody( w, ids, value.body.transact ) )
+            {
+                return false;
+            }
                 break;
             }
             case ToolBodyType::Ping:
@@ -20865,7 +21010,10 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                 }
                 w.header( arm_ref, 13 );
                 w.putleb( (uint64_t) arm_payload ); // ping
-                if ( !PingSaveBody( w, ids, value.body.ping ) ) { return false; }
+                if ( !PingSaveBody( w, ids, value.body.ping ) )
+            {
+                return false;
+            }
                 break;
             }
             case ToolBodyType::Caps:
@@ -20968,7 +21116,10 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                             }
                             w.header( arm_refa, 13 );
                             w.putleb( (uint64_t) arm_payloada ); // user
-                            if ( !UserSaveBody( w, ids, value.body.origin.user ) ) { return false; }
+                            if ( !UserSaveBody( w, ids, value.body.origin.user ) )
+            {
+                return false;
+            }
                             break;
                         }
                         case OriginType::Script:
@@ -20982,7 +21133,10 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                             }
                             w.header( arm_refa, 13 );
                             w.putleb( (uint64_t) arm_payloada ); // script
-                            if ( !ScriptSaveBody( w, ids, value.body.origin.script ) ) { return false; }
+                            if ( !ScriptSaveBody( w, ids, value.body.origin.script ) )
+            {
+                return false;
+            }
                             break;
                         }
                         case OriginType::Pid:
@@ -21199,7 +21353,10 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                         }
                         w.header( arm_refu, 13 );
                         w.putleb( (uint64_t) arm_payloadu ); // open
-                        if ( !OpenDocumentSaveBody( w, ids, value.history[elem_i].open ) ) { return false; }
+                        if ( !OpenDocumentSaveBody( w, ids, value.history[elem_i].open ) )
+            {
+                return false;
+            }
                         break;
                     }
                     case ToolBodyType::Save:
@@ -21213,7 +21370,10 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                         }
                         w.header( arm_refu, 13 );
                         w.putleb( (uint64_t) arm_payloadu ); // save
-                        if ( !SaveDocumentSaveBody( w, ids, value.history[elem_i].save ) ) { return false; }
+                        if ( !SaveDocumentSaveBody( w, ids, value.history[elem_i].save ) )
+            {
+                return false;
+            }
                         break;
                     }
                     case ToolBodyType::Transact:
@@ -21227,7 +21387,10 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                         }
                         w.header( arm_refu, 13 );
                         w.putleb( (uint64_t) arm_payloadu ); // transact
-                        if ( !TransactionSaveBody( w, ids, value.history[elem_i].transact ) ) { return false; }
+                        if ( !TransactionSaveBody( w, ids, value.history[elem_i].transact ) )
+            {
+                return false;
+            }
                         break;
                     }
                     case ToolBodyType::Ping:
@@ -21241,7 +21404,10 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                         }
                         w.header( arm_refu, 13 );
                         w.putleb( (uint64_t) arm_payloadu ); // ping
-                        if ( !PingSaveBody( w, ids, value.history[elem_i].ping ) ) { return false; }
+                        if ( !PingSaveBody( w, ids, value.history[elem_i].ping ) )
+            {
+                return false;
+            }
                         break;
                     }
                     case ToolBodyType::Caps:
@@ -21344,7 +21510,10 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                                     }
                                     w.header( arm_refua, 13 );
                                     w.putleb( (uint64_t) arm_payloadua ); // user
-                                    if ( !UserSaveBody( w, ids, value.history[elem_i].origin.user ) ) { return false; }
+                                    if ( !UserSaveBody( w, ids, value.history[elem_i].origin.user ) )
+            {
+                return false;
+            }
                                     break;
                                 }
                                 case OriginType::Script:
@@ -21358,7 +21527,10 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                                     }
                                     w.header( arm_refua, 13 );
                                     w.putleb( (uint64_t) arm_payloadua ); // script
-                                    if ( !ScriptSaveBody( w, ids, value.history[elem_i].origin.script ) ) { return false; }
+                                    if ( !ScriptSaveBody( w, ids, value.history[elem_i].origin.script ) )
+            {
+                return false;
+            }
                                     break;
                                 }
                                 case OriginType::Pid:
@@ -23701,7 +23873,7 @@ inline bool ToolMessageLoadMessageBody( TableBitReader & r, const TableVocabular
                                             else if ( width_3 > 0 && width_3 < 64 )
                                             {
                                                 const uint64_t sign_3 = uint64_t(1) << ( width_3 - 1 );
-                                                if ( ( raw_3 & sign_3 ) != 0 ) { decoded_wide_3 = (int64_t) ( raw_3 | ~( ( uint64_t(1) << width_3 ) - 1 ) ); }
+                                                if ( ( raw_3 & sign_3 ) != 0 ) { decoded_wide_3 = (int64_t) ( raw_3 | ~( ( uint64_t( 1 ) << width_3 ) - 1 ) ); }
                                             }
                                             if ( decoded_wide_3 < -2147483648ll )
                                             {
@@ -24239,7 +24411,7 @@ inline bool ToolMessageLoadMessageBody( TableBitReader & r, const TableVocabular
                                                     else if ( width_4 > 0 && width_4 < 64 )
                                                     {
                                                         const uint64_t sign_4 = uint64_t(1) << ( width_4 - 1 );
-                                                        if ( ( raw_4 & sign_4 ) != 0 ) { decoded_wide_4 = (int64_t) ( raw_4 | ~( ( uint64_t(1) << width_4 ) - 1 ) ); }
+                                                        if ( ( raw_4 & sign_4 ) != 0 ) { decoded_wide_4 = (int64_t) ( raw_4 | ~( ( uint64_t( 1 ) << width_4 ) - 1 ) ); }
                                                     }
                                                     if ( decoded_wide_4 < -2147483648ll )
                                                     {
@@ -24641,7 +24813,11 @@ inline bool ToolMessageLoadMessageBody( TableBitReader & r, const TableVocabular
                 break;
             }
             default:
-                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
+                if ( vocabulary.build_version == BuildVersion )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 report->unknown++;
                 if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
@@ -24924,7 +25100,10 @@ inline bool ToolEnvelopeSaveBodyFields( const Ctx & ctx, const TableNumbering & 
                 }
                 w.header( arm_ref, 13 );
                 w.putleb( (uint64_t) arm_payload ); // open
-                if ( !OpenDocumentSaveBody( w, ids, value.body.open ) ) { return false; }
+                if ( !OpenDocumentSaveBody( w, ids, value.body.open ) )
+            {
+                return false;
+            }
                 break;
             }
             case ToolBodyType::Save:
@@ -24938,7 +25117,10 @@ inline bool ToolEnvelopeSaveBodyFields( const Ctx & ctx, const TableNumbering & 
                 }
                 w.header( arm_ref, 13 );
                 w.putleb( (uint64_t) arm_payload ); // save
-                if ( !SaveDocumentSaveBody( w, ids, value.body.save ) ) { return false; }
+                if ( !SaveDocumentSaveBody( w, ids, value.body.save ) )
+            {
+                return false;
+            }
                 break;
             }
             case ToolBodyType::Transact:
@@ -24952,7 +25134,10 @@ inline bool ToolEnvelopeSaveBodyFields( const Ctx & ctx, const TableNumbering & 
                 }
                 w.header( arm_ref, 13 );
                 w.putleb( (uint64_t) arm_payload ); // transact
-                if ( !TransactionSaveBody( w, ids, value.body.transact ) ) { return false; }
+                if ( !TransactionSaveBody( w, ids, value.body.transact ) )
+            {
+                return false;
+            }
                 break;
             }
             case ToolBodyType::Ping:
@@ -24966,7 +25151,10 @@ inline bool ToolEnvelopeSaveBodyFields( const Ctx & ctx, const TableNumbering & 
                 }
                 w.header( arm_ref, 13 );
                 w.putleb( (uint64_t) arm_payload ); // ping
-                if ( !PingSaveBody( w, ids, value.body.ping ) ) { return false; }
+                if ( !PingSaveBody( w, ids, value.body.ping ) )
+            {
+                return false;
+            }
                 break;
             }
             case ToolBodyType::Caps:
@@ -25069,7 +25257,10 @@ inline bool ToolEnvelopeSaveBodyFields( const Ctx & ctx, const TableNumbering & 
                             }
                             w.header( arm_refa, 13 );
                             w.putleb( (uint64_t) arm_payloada ); // user
-                            if ( !UserSaveBody( w, ids, value.body.origin.user ) ) { return false; }
+                            if ( !UserSaveBody( w, ids, value.body.origin.user ) )
+            {
+                return false;
+            }
                             break;
                         }
                         case OriginType::Script:
@@ -25083,7 +25274,10 @@ inline bool ToolEnvelopeSaveBodyFields( const Ctx & ctx, const TableNumbering & 
                             }
                             w.header( arm_refa, 13 );
                             w.putleb( (uint64_t) arm_payloada ); // script
-                            if ( !ScriptSaveBody( w, ids, value.body.origin.script ) ) { return false; }
+                            if ( !ScriptSaveBody( w, ids, value.body.origin.script ) )
+            {
+                return false;
+            }
                             break;
                         }
                         case OriginType::Pid:
@@ -26239,7 +26433,11 @@ inline bool CursorLoadMessageBody( TableBitReader & r, const TableVocabulary & v
                 break;
             }
             default:
-                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
+                if ( vocabulary.build_version == BuildVersion )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 report->unknown++;
                 if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
@@ -26745,7 +26943,11 @@ inline bool PingLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                 break;
             }
             default:
-                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
+                if ( vocabulary.build_version == BuildVersion )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 report->unknown++;
                 if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
@@ -28541,16 +28743,19 @@ inline int64_t UserFixedSave( const User * values, int64_t count, uint8_t * buff
 // R4: every refusal leaves ALL `capacity` rows at their declared defaults, so a direct call
 // holds the same rule as FixedLoad. The body below is the walk itself.
 inline int64_t UserFixedLoadWalkBody( User * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
 inline int64_t UserFixedLoadWalk( User * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
     const int64_t n = UserFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
     if ( n < 0 || report->damaged || report->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { UserReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { UserReset( values[k] ); }
+        }
         return -1;
     }
     return n;
@@ -28559,7 +28764,7 @@ inline int64_t UserFixedLoadWalk( User * values, int64_t capacity, const uint8_t
 // UserFixedLoadWalkBody is the STRICT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps
 // every recovered record, with the counters counted onto the report passed.
 inline int64_t UserFixedLoadWalkBody( User * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
@@ -28576,8 +28781,8 @@ inline int64_t UserFixedLoadWalkBody( User * values, int64_t capacity, const uin
     {
         report->refused = true;
         report->reason = data[0] == kTableWireForm ? TableMessageReason::previous_form
-                       : data[0] == kTableWireMessageForm ? TableMessageReason::message_form_as_file
-                       : TableMessageReason::newer_form;
+            : data[0] == kTableWireMessageForm     ? TableMessageReason::message_form_as_file
+                                                   : TableMessageReason::newer_form;
         return -1;
     }
     if ( bytes < kTableFixedHeaderBytes + 4 )
@@ -28591,7 +28796,12 @@ inline int64_t UserFixedLoadWalkBody( User * values, int64_t capacity, const uin
     // spendable later.
     for ( int32_t i = 1; i < kTableFixedHashAt; ++i )
     {
-        if ( data[i] != 0 ) { report->damaged = true; report->reason = TableFixedReason::reserved_not_zero; return -1; }
+        if ( data[i] != 0 )
+        {
+            report->damaged = true;
+            report->reason = TableFixedReason::reserved_not_zero;
+            return -1;
+        }
     }
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
     if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes )
@@ -28630,7 +28840,9 @@ inline int64_t UserFixedLoadWalkBody( User * values, int64_t capacity, const uin
     const TableFixedKnownLayout & known = UserFixedKnown[lineage_at];
     if ( (int64_t) layout_bytes != known.layout_bytes || memcmp( layout, known.layout, (size_t) layout_bytes ) != 0 )
     {
-        report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1;
+        report->refused = true;
+        report->reason = TableMessageReason::layout_malformed;
+        return -1;
     }
     const TableFixedEntry * entries = UserFixedPlan;
     int32_t entry_count = UserFixedPlanCount;
@@ -28685,8 +28897,8 @@ inline int64_t UserFixedLoadWalkBody( User * values, int64_t capacity, const uin
             int32_t compiled_guarded = 0;
             uint32_t fill_at = 0;
             const int32_t made = TableFixedCompile( parsed, UserFixedLayout, (int32_t) UserFixedLayoutBytes, UserFixedDst,
-                                                   UserFixedCover, UserFixedCoverCount,
-                                                   dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
+                UserFixedCover, UserFixedCoverCount,
+                dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
             if ( made < 0 )
             {
                 report->refused = true;
@@ -28771,7 +28983,9 @@ inline int64_t UserFixedLoadWalkBody( User * values, int64_t capacity, const uin
         {
             for ( int64_t j = 0; j < k; ++j ) { UserReset( values[j] ); }
             report->widened = batch_widened;
-            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+            report->refused = true;
+            report->reason = TableMessageReason::no_layout;
+            return -1;
         }
         for ( int32_t i = 0; i < entry_count; ++i )
         {
@@ -28788,7 +29002,7 @@ inline int64_t UserFixedLoadWalkBody( User * values, int64_t capacity, const uin
                         if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
                         {
                             matches = false;
-                            break;
+                                break;
                         }
                     }
                     if ( !matches ) { continue; }
@@ -28819,7 +29033,7 @@ inline int64_t UserFixedLoadWalkBody( User * values, int64_t capacity, const uin
         // the counters back to what they were before the batch.
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, UserFixedGuards, NULL );
         TableFixedClampKnownRanges( UserFixedKnownRanges[lineage_at], UserFixedKnownRangeCounts[lineage_at],
-                                    (uint8_t *) &values[k], report );
+            (uint8_t *) &values[k], report );
         if ( !UserFixedClamp( values[k], report ) )
         {
             for ( int64_t j = 0; j <= k; ++j ) { UserReset( values[j] ); }
@@ -28838,7 +29052,7 @@ inline int64_t UserFixedLoadWalkBody( User * values, int64_t capacity, const uin
 // them, on EVERY refusal (R4), so no partial value survives. A supplied report receives THIS
 // read's report. unknown and widened alone never refuse.
 inline int64_t UserFixedLoad( User * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     TableReport * out = report != NULL ? report : &local;
@@ -28846,7 +29060,10 @@ inline int64_t UserFixedLoad( User * values, int64_t capacity, const uint8_t * d
     const int64_t n = UserFixedLoadWalk( values, capacity, data, bytes, plan, plan_capacity, cache, out );
     if ( n < 0 || out->damaged || out->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { UserReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { UserReset( values[k] ); }
+        }
         return -1;
     }
     return n;
@@ -29018,16 +29235,19 @@ inline int64_t ScriptFixedSave( const Script * values, int64_t count, uint8_t * 
 // R4: every refusal leaves ALL `capacity` rows at their declared defaults, so a direct call
 // holds the same rule as FixedLoad. The body below is the walk itself.
 inline int64_t ScriptFixedLoadWalkBody( Script * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
 inline int64_t ScriptFixedLoadWalk( Script * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
     const int64_t n = ScriptFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
     if ( n < 0 || report->damaged || report->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { ScriptReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { ScriptReset( values[k] ); }
+        }
         return -1;
     }
     return n;
@@ -29036,7 +29256,7 @@ inline int64_t ScriptFixedLoadWalk( Script * values, int64_t capacity, const uin
 // ScriptFixedLoadWalkBody is the STRICT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps
 // every recovered record, with the counters counted onto the report passed.
 inline int64_t ScriptFixedLoadWalkBody( Script * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
@@ -29053,8 +29273,8 @@ inline int64_t ScriptFixedLoadWalkBody( Script * values, int64_t capacity, const
     {
         report->refused = true;
         report->reason = data[0] == kTableWireForm ? TableMessageReason::previous_form
-                       : data[0] == kTableWireMessageForm ? TableMessageReason::message_form_as_file
-                       : TableMessageReason::newer_form;
+            : data[0] == kTableWireMessageForm     ? TableMessageReason::message_form_as_file
+                                                   : TableMessageReason::newer_form;
         return -1;
     }
     if ( bytes < kTableFixedHeaderBytes + 4 )
@@ -29068,7 +29288,12 @@ inline int64_t ScriptFixedLoadWalkBody( Script * values, int64_t capacity, const
     // spendable later.
     for ( int32_t i = 1; i < kTableFixedHashAt; ++i )
     {
-        if ( data[i] != 0 ) { report->damaged = true; report->reason = TableFixedReason::reserved_not_zero; return -1; }
+        if ( data[i] != 0 )
+        {
+            report->damaged = true;
+            report->reason = TableFixedReason::reserved_not_zero;
+            return -1;
+        }
     }
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
     if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes )
@@ -29107,7 +29332,9 @@ inline int64_t ScriptFixedLoadWalkBody( Script * values, int64_t capacity, const
     const TableFixedKnownLayout & known = ScriptFixedKnown[lineage_at];
     if ( (int64_t) layout_bytes != known.layout_bytes || memcmp( layout, known.layout, (size_t) layout_bytes ) != 0 )
     {
-        report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1;
+        report->refused = true;
+        report->reason = TableMessageReason::layout_malformed;
+        return -1;
     }
     const TableFixedEntry * entries = ScriptFixedPlan;
     int32_t entry_count = ScriptFixedPlanCount;
@@ -29162,8 +29389,8 @@ inline int64_t ScriptFixedLoadWalkBody( Script * values, int64_t capacity, const
             int32_t compiled_guarded = 0;
             uint32_t fill_at = 0;
             const int32_t made = TableFixedCompile( parsed, ScriptFixedLayout, (int32_t) ScriptFixedLayoutBytes, ScriptFixedDst,
-                                                   ScriptFixedCover, ScriptFixedCoverCount,
-                                                   dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
+                ScriptFixedCover, ScriptFixedCoverCount,
+                dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
             if ( made < 0 )
             {
                 report->refused = true;
@@ -29248,7 +29475,9 @@ inline int64_t ScriptFixedLoadWalkBody( Script * values, int64_t capacity, const
         {
             for ( int64_t j = 0; j < k; ++j ) { ScriptReset( values[j] ); }
             report->widened = batch_widened;
-            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+            report->refused = true;
+            report->reason = TableMessageReason::no_layout;
+            return -1;
         }
         for ( int32_t i = 0; i < entry_count; ++i )
         {
@@ -29265,7 +29494,7 @@ inline int64_t ScriptFixedLoadWalkBody( Script * values, int64_t capacity, const
                         if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
                         {
                             matches = false;
-                            break;
+                                break;
                         }
                     }
                     if ( !matches ) { continue; }
@@ -29296,7 +29525,7 @@ inline int64_t ScriptFixedLoadWalkBody( Script * values, int64_t capacity, const
         // the counters back to what they were before the batch.
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, ScriptFixedGuards, NULL );
         TableFixedClampKnownRanges( ScriptFixedKnownRanges[lineage_at], ScriptFixedKnownRangeCounts[lineage_at],
-                                    (uint8_t *) &values[k], report );
+            (uint8_t *) &values[k], report );
         if ( !ScriptFixedClamp( values[k], report ) )
         {
             for ( int64_t j = 0; j <= k; ++j ) { ScriptReset( values[j] ); }
@@ -29315,7 +29544,7 @@ inline int64_t ScriptFixedLoadWalkBody( Script * values, int64_t capacity, const
 // them, on EVERY refusal (R4), so no partial value survives. A supplied report receives THIS
 // read's report. unknown and widened alone never refuse.
 inline int64_t ScriptFixedLoad( Script * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     TableReport * out = report != NULL ? report : &local;
@@ -29323,7 +29552,10 @@ inline int64_t ScriptFixedLoad( Script * values, int64_t capacity, const uint8_t
     const int64_t n = ScriptFixedLoadWalk( values, capacity, data, bytes, plan, plan_capacity, cache, out );
     if ( n < 0 || out->damaged || out->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { ScriptReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { ScriptReset( values[k] ); }
+        }
         return -1;
     }
     return n;
@@ -29480,16 +29712,19 @@ inline int64_t SelectionFixedSave( const Selection * values, int64_t count, uint
 // R4: every refusal leaves ALL `capacity` rows at their declared defaults, so a direct call
 // holds the same rule as FixedLoad. The body below is the walk itself.
 inline int64_t SelectionFixedLoadWalkBody( Selection * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
 inline int64_t SelectionFixedLoadWalk( Selection * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
     const int64_t n = SelectionFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
     if ( n < 0 || report->damaged || report->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { SelectionReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { SelectionReset( values[k] ); }
+        }
         return -1;
     }
     return n;
@@ -29498,7 +29733,7 @@ inline int64_t SelectionFixedLoadWalk( Selection * values, int64_t capacity, con
 // SelectionFixedLoadWalkBody is the STRICT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps
 // every recovered record, with the counters counted onto the report passed.
 inline int64_t SelectionFixedLoadWalkBody( Selection * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
@@ -29515,8 +29750,8 @@ inline int64_t SelectionFixedLoadWalkBody( Selection * values, int64_t capacity,
     {
         report->refused = true;
         report->reason = data[0] == kTableWireForm ? TableMessageReason::previous_form
-                       : data[0] == kTableWireMessageForm ? TableMessageReason::message_form_as_file
-                       : TableMessageReason::newer_form;
+            : data[0] == kTableWireMessageForm     ? TableMessageReason::message_form_as_file
+                                                   : TableMessageReason::newer_form;
         return -1;
     }
     if ( bytes < kTableFixedHeaderBytes + 4 )
@@ -29530,7 +29765,12 @@ inline int64_t SelectionFixedLoadWalkBody( Selection * values, int64_t capacity,
     // spendable later.
     for ( int32_t i = 1; i < kTableFixedHashAt; ++i )
     {
-        if ( data[i] != 0 ) { report->damaged = true; report->reason = TableFixedReason::reserved_not_zero; return -1; }
+        if ( data[i] != 0 )
+        {
+            report->damaged = true;
+            report->reason = TableFixedReason::reserved_not_zero;
+            return -1;
+        }
     }
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
     if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes )
@@ -29569,7 +29809,9 @@ inline int64_t SelectionFixedLoadWalkBody( Selection * values, int64_t capacity,
     const TableFixedKnownLayout & known = SelectionFixedKnown[lineage_at];
     if ( (int64_t) layout_bytes != known.layout_bytes || memcmp( layout, known.layout, (size_t) layout_bytes ) != 0 )
     {
-        report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1;
+        report->refused = true;
+        report->reason = TableMessageReason::layout_malformed;
+        return -1;
     }
     const TableFixedEntry * entries = SelectionFixedPlan;
     int32_t entry_count = SelectionFixedPlanCount;
@@ -29624,8 +29866,8 @@ inline int64_t SelectionFixedLoadWalkBody( Selection * values, int64_t capacity,
             int32_t compiled_guarded = 0;
             uint32_t fill_at = 0;
             const int32_t made = TableFixedCompile( parsed, SelectionFixedLayout, (int32_t) SelectionFixedLayoutBytes, SelectionFixedDst,
-                                                   SelectionFixedCover, SelectionFixedCoverCount,
-                                                   dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
+                SelectionFixedCover, SelectionFixedCoverCount,
+                dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
             if ( made < 0 )
             {
                 report->refused = true;
@@ -29710,7 +29952,9 @@ inline int64_t SelectionFixedLoadWalkBody( Selection * values, int64_t capacity,
         {
             for ( int64_t j = 0; j < k; ++j ) { SelectionReset( values[j] ); }
             report->widened = batch_widened;
-            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+            report->refused = true;
+            report->reason = TableMessageReason::no_layout;
+            return -1;
         }
         for ( int32_t i = 0; i < entry_count; ++i )
         {
@@ -29727,7 +29971,7 @@ inline int64_t SelectionFixedLoadWalkBody( Selection * values, int64_t capacity,
                         if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
                         {
                             matches = false;
-                            break;
+                                break;
                         }
                     }
                     if ( !matches ) { continue; }
@@ -29755,7 +29999,7 @@ inline int64_t SelectionFixedLoadWalkBody( Selection * values, int64_t capacity,
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, SelectionFixedGuards, NULL );
         TableFixedClampKnownRanges( SelectionFixedKnownRanges[lineage_at], SelectionFixedKnownRangeCounts[lineage_at],
-                                    (uint8_t *) &values[k], report );
+            (uint8_t *) &values[k], report );
         at += record_bytes;
     }
     return n;
@@ -29768,7 +30012,7 @@ inline int64_t SelectionFixedLoadWalkBody( Selection * values, int64_t capacity,
 // them, on EVERY refusal (R4), so no partial value survives. A supplied report receives THIS
 // read's report. unknown and widened alone never refuse.
 inline int64_t SelectionFixedLoad( Selection * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     TableReport * out = report != NULL ? report : &local;
@@ -29776,7 +30020,10 @@ inline int64_t SelectionFixedLoad( Selection * values, int64_t capacity, const u
     const int64_t n = SelectionFixedLoadWalk( values, capacity, data, bytes, plan, plan_capacity, cache, out );
     if ( n < 0 || out->damaged || out->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { SelectionReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { SelectionReset( values[k] ); }
+        }
         return -1;
     }
     return n;
@@ -30089,16 +30336,19 @@ inline int64_t InsertTextFixedSave( const InsertText * values, int64_t count, ui
 // R4: every refusal leaves ALL `capacity` rows at their declared defaults, so a direct call
 // holds the same rule as FixedLoad. The body below is the walk itself.
 inline int64_t InsertTextFixedLoadWalkBody( InsertText * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
 inline int64_t InsertTextFixedLoadWalk( InsertText * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
     const int64_t n = InsertTextFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
     if ( n < 0 || report->damaged || report->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { InsertTextReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { InsertTextReset( values[k] ); }
+        }
         return -1;
     }
     return n;
@@ -30107,7 +30357,7 @@ inline int64_t InsertTextFixedLoadWalk( InsertText * values, int64_t capacity, c
 // InsertTextFixedLoadWalkBody is the STRICT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps
 // every recovered record, with the counters counted onto the report passed.
 inline int64_t InsertTextFixedLoadWalkBody( InsertText * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
@@ -30124,8 +30374,8 @@ inline int64_t InsertTextFixedLoadWalkBody( InsertText * values, int64_t capacit
     {
         report->refused = true;
         report->reason = data[0] == kTableWireForm ? TableMessageReason::previous_form
-                       : data[0] == kTableWireMessageForm ? TableMessageReason::message_form_as_file
-                       : TableMessageReason::newer_form;
+            : data[0] == kTableWireMessageForm     ? TableMessageReason::message_form_as_file
+                                                   : TableMessageReason::newer_form;
         return -1;
     }
     if ( bytes < kTableFixedHeaderBytes + 4 )
@@ -30139,7 +30389,12 @@ inline int64_t InsertTextFixedLoadWalkBody( InsertText * values, int64_t capacit
     // spendable later.
     for ( int32_t i = 1; i < kTableFixedHashAt; ++i )
     {
-        if ( data[i] != 0 ) { report->damaged = true; report->reason = TableFixedReason::reserved_not_zero; return -1; }
+        if ( data[i] != 0 )
+        {
+            report->damaged = true;
+            report->reason = TableFixedReason::reserved_not_zero;
+            return -1;
+        }
     }
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
     if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes )
@@ -30178,7 +30433,9 @@ inline int64_t InsertTextFixedLoadWalkBody( InsertText * values, int64_t capacit
     const TableFixedKnownLayout & known = InsertTextFixedKnown[lineage_at];
     if ( (int64_t) layout_bytes != known.layout_bytes || memcmp( layout, known.layout, (size_t) layout_bytes ) != 0 )
     {
-        report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1;
+        report->refused = true;
+        report->reason = TableMessageReason::layout_malformed;
+        return -1;
     }
     const TableFixedEntry * entries = InsertTextFixedPlan;
     int32_t entry_count = InsertTextFixedPlanCount;
@@ -30233,8 +30490,8 @@ inline int64_t InsertTextFixedLoadWalkBody( InsertText * values, int64_t capacit
             int32_t compiled_guarded = 0;
             uint32_t fill_at = 0;
             const int32_t made = TableFixedCompile( parsed, InsertTextFixedLayout, (int32_t) InsertTextFixedLayoutBytes, InsertTextFixedDst,
-                                                   InsertTextFixedCover, InsertTextFixedCoverCount,
-                                                   dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
+                InsertTextFixedCover, InsertTextFixedCoverCount,
+                dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
             if ( made < 0 )
             {
                 report->refused = true;
@@ -30316,7 +30573,9 @@ inline int64_t InsertTextFixedLoadWalkBody( InsertText * values, int64_t capacit
         {
             for ( int64_t j = 0; j < k; ++j ) { InsertTextReset( values[j] ); }
             report->widened = batch_widened;
-            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+            report->refused = true;
+            report->reason = TableMessageReason::no_layout;
+            return -1;
         }
         for ( int32_t i = 0; i < entry_count; ++i )
         {
@@ -30333,7 +30592,7 @@ inline int64_t InsertTextFixedLoadWalkBody( InsertText * values, int64_t capacit
                         if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
                         {
                             matches = false;
-                            break;
+                                break;
                         }
                     }
                     if ( !matches ) { continue; }
@@ -30364,7 +30623,7 @@ inline int64_t InsertTextFixedLoadWalkBody( InsertText * values, int64_t capacit
         // the counters back to what they were before the batch.
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, InsertTextFixedGuards, (const uint8_t *) &defaults );
         TableFixedClampKnownRanges( InsertTextFixedKnownRanges[lineage_at], InsertTextFixedKnownRangeCounts[lineage_at],
-                                    (uint8_t *) &values[k], report );
+            (uint8_t *) &values[k], report );
         if ( !InsertTextFixedClamp( values[k], report ) )
         {
             for ( int64_t j = 0; j <= k; ++j ) { InsertTextReset( values[j] ); }
@@ -30383,7 +30642,7 @@ inline int64_t InsertTextFixedLoadWalkBody( InsertText * values, int64_t capacit
 // them, on EVERY refusal (R4), so no partial value survives. A supplied report receives THIS
 // read's report. unknown and widened alone never refuse.
 inline int64_t InsertTextFixedLoad( InsertText * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     TableReport * out = report != NULL ? report : &local;
@@ -30391,7 +30650,10 @@ inline int64_t InsertTextFixedLoad( InsertText * values, int64_t capacity, const
     const int64_t n = InsertTextFixedLoadWalk( values, capacity, data, bytes, plan, plan_capacity, cache, out );
     if ( n < 0 || out->damaged || out->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { InsertTextReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { InsertTextReset( values[k] ); }
+        }
         return -1;
     }
     return n;
@@ -30552,16 +30814,19 @@ inline int64_t RemoveTextFixedSave( const RemoveText * values, int64_t count, ui
 // R4: every refusal leaves ALL `capacity` rows at their declared defaults, so a direct call
 // holds the same rule as FixedLoad. The body below is the walk itself.
 inline int64_t RemoveTextFixedLoadWalkBody( RemoveText * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
 inline int64_t RemoveTextFixedLoadWalk( RemoveText * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
     const int64_t n = RemoveTextFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
     if ( n < 0 || report->damaged || report->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { RemoveTextReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { RemoveTextReset( values[k] ); }
+        }
         return -1;
     }
     return n;
@@ -30570,7 +30835,7 @@ inline int64_t RemoveTextFixedLoadWalk( RemoveText * values, int64_t capacity, c
 // RemoveTextFixedLoadWalkBody is the STRICT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps
 // every recovered record, with the counters counted onto the report passed.
 inline int64_t RemoveTextFixedLoadWalkBody( RemoveText * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
@@ -30587,8 +30852,8 @@ inline int64_t RemoveTextFixedLoadWalkBody( RemoveText * values, int64_t capacit
     {
         report->refused = true;
         report->reason = data[0] == kTableWireForm ? TableMessageReason::previous_form
-                       : data[0] == kTableWireMessageForm ? TableMessageReason::message_form_as_file
-                       : TableMessageReason::newer_form;
+            : data[0] == kTableWireMessageForm     ? TableMessageReason::message_form_as_file
+                                                   : TableMessageReason::newer_form;
         return -1;
     }
     if ( bytes < kTableFixedHeaderBytes + 4 )
@@ -30602,7 +30867,12 @@ inline int64_t RemoveTextFixedLoadWalkBody( RemoveText * values, int64_t capacit
     // spendable later.
     for ( int32_t i = 1; i < kTableFixedHashAt; ++i )
     {
-        if ( data[i] != 0 ) { report->damaged = true; report->reason = TableFixedReason::reserved_not_zero; return -1; }
+        if ( data[i] != 0 )
+        {
+            report->damaged = true;
+            report->reason = TableFixedReason::reserved_not_zero;
+            return -1;
+        }
     }
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
     if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes )
@@ -30641,7 +30911,9 @@ inline int64_t RemoveTextFixedLoadWalkBody( RemoveText * values, int64_t capacit
     const TableFixedKnownLayout & known = RemoveTextFixedKnown[lineage_at];
     if ( (int64_t) layout_bytes != known.layout_bytes || memcmp( layout, known.layout, (size_t) layout_bytes ) != 0 )
     {
-        report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1;
+        report->refused = true;
+        report->reason = TableMessageReason::layout_malformed;
+        return -1;
     }
     const TableFixedEntry * entries = RemoveTextFixedPlan;
     int32_t entry_count = RemoveTextFixedPlanCount;
@@ -30696,8 +30968,8 @@ inline int64_t RemoveTextFixedLoadWalkBody( RemoveText * values, int64_t capacit
             int32_t compiled_guarded = 0;
             uint32_t fill_at = 0;
             const int32_t made = TableFixedCompile( parsed, RemoveTextFixedLayout, (int32_t) RemoveTextFixedLayoutBytes, RemoveTextFixedDst,
-                                                   RemoveTextFixedCover, RemoveTextFixedCoverCount,
-                                                   dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
+                RemoveTextFixedCover, RemoveTextFixedCoverCount,
+                dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
             if ( made < 0 )
             {
                 report->refused = true;
@@ -30782,7 +31054,9 @@ inline int64_t RemoveTextFixedLoadWalkBody( RemoveText * values, int64_t capacit
         {
             for ( int64_t j = 0; j < k; ++j ) { RemoveTextReset( values[j] ); }
             report->widened = batch_widened;
-            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+            report->refused = true;
+            report->reason = TableMessageReason::no_layout;
+            return -1;
         }
         for ( int32_t i = 0; i < entry_count; ++i )
         {
@@ -30799,7 +31073,7 @@ inline int64_t RemoveTextFixedLoadWalkBody( RemoveText * values, int64_t capacit
                         if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
                         {
                             matches = false;
-                            break;
+                                break;
                         }
                     }
                     if ( !matches ) { continue; }
@@ -30827,7 +31101,7 @@ inline int64_t RemoveTextFixedLoadWalkBody( RemoveText * values, int64_t capacit
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, RemoveTextFixedGuards, NULL );
         TableFixedClampKnownRanges( RemoveTextFixedKnownRanges[lineage_at], RemoveTextFixedKnownRangeCounts[lineage_at],
-                                    (uint8_t *) &values[k], report );
+            (uint8_t *) &values[k], report );
         at += record_bytes;
     }
     return n;
@@ -30840,7 +31114,7 @@ inline int64_t RemoveTextFixedLoadWalkBody( RemoveText * values, int64_t capacit
 // them, on EVERY refusal (R4), so no partial value survives. A supplied report receives THIS
 // read's report. unknown and widened alone never refuse.
 inline int64_t RemoveTextFixedLoad( RemoveText * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     TableReport * out = report != NULL ? report : &local;
@@ -30848,7 +31122,10 @@ inline int64_t RemoveTextFixedLoad( RemoveText * values, int64_t capacity, const
     const int64_t n = RemoveTextFixedLoadWalk( values, capacity, data, bytes, plan, plan_capacity, cache, out );
     if ( n < 0 || out->damaged || out->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { RemoveTextReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { RemoveTextReset( values[k] ); }
+        }
         return -1;
     }
     return n;
@@ -31269,16 +31546,19 @@ inline int64_t EditFixedSave( const Edit * values, int64_t count, uint8_t * buff
 // R4: every refusal leaves ALL `capacity` rows at their declared defaults, so a direct call
 // holds the same rule as FixedLoad. The body below is the walk itself.
 inline int64_t EditFixedLoadWalkBody( Edit * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
 inline int64_t EditFixedLoadWalk( Edit * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
     const int64_t n = EditFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
     if ( n < 0 || report->damaged || report->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { EditReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { EditReset( values[k] ); }
+        }
         return -1;
     }
     return n;
@@ -31287,7 +31567,7 @@ inline int64_t EditFixedLoadWalk( Edit * values, int64_t capacity, const uint8_t
 // EditFixedLoadWalkBody is the STRICT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps
 // every recovered record, with the counters counted onto the report passed.
 inline int64_t EditFixedLoadWalkBody( Edit * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
@@ -31304,8 +31584,8 @@ inline int64_t EditFixedLoadWalkBody( Edit * values, int64_t capacity, const uin
     {
         report->refused = true;
         report->reason = data[0] == kTableWireForm ? TableMessageReason::previous_form
-                       : data[0] == kTableWireMessageForm ? TableMessageReason::message_form_as_file
-                       : TableMessageReason::newer_form;
+            : data[0] == kTableWireMessageForm     ? TableMessageReason::message_form_as_file
+                                                   : TableMessageReason::newer_form;
         return -1;
     }
     if ( bytes < kTableFixedHeaderBytes + 4 )
@@ -31319,7 +31599,12 @@ inline int64_t EditFixedLoadWalkBody( Edit * values, int64_t capacity, const uin
     // spendable later.
     for ( int32_t i = 1; i < kTableFixedHashAt; ++i )
     {
-        if ( data[i] != 0 ) { report->damaged = true; report->reason = TableFixedReason::reserved_not_zero; return -1; }
+        if ( data[i] != 0 )
+        {
+            report->damaged = true;
+            report->reason = TableFixedReason::reserved_not_zero;
+            return -1;
+        }
     }
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
     if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes )
@@ -31358,7 +31643,9 @@ inline int64_t EditFixedLoadWalkBody( Edit * values, int64_t capacity, const uin
     const TableFixedKnownLayout & known = EditFixedKnown[lineage_at];
     if ( (int64_t) layout_bytes != known.layout_bytes || memcmp( layout, known.layout, (size_t) layout_bytes ) != 0 )
     {
-        report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1;
+        report->refused = true;
+        report->reason = TableMessageReason::layout_malformed;
+        return -1;
     }
     const TableFixedEntry * entries = EditFixedPlan;
     int32_t entry_count = EditFixedPlanCount;
@@ -31413,8 +31700,8 @@ inline int64_t EditFixedLoadWalkBody( Edit * values, int64_t capacity, const uin
             int32_t compiled_guarded = 0;
             uint32_t fill_at = 0;
             const int32_t made = TableFixedCompile( parsed, EditFixedLayout, (int32_t) EditFixedLayoutBytes, EditFixedDst,
-                                                   EditFixedCover, EditFixedCoverCount,
-                                                   dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
+                EditFixedCover, EditFixedCoverCount,
+                dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
             if ( made < 0 )
             {
                 report->refused = true;
@@ -31496,7 +31783,9 @@ inline int64_t EditFixedLoadWalkBody( Edit * values, int64_t capacity, const uin
         {
             for ( int64_t j = 0; j < k; ++j ) { EditReset( values[j] ); }
             report->widened = batch_widened;
-            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+            report->refused = true;
+            report->reason = TableMessageReason::no_layout;
+            return -1;
         }
         for ( int32_t i = 0; i < entry_count; ++i )
         {
@@ -31513,7 +31802,7 @@ inline int64_t EditFixedLoadWalkBody( Edit * values, int64_t capacity, const uin
                         if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
                         {
                             matches = false;
-                            break;
+                                break;
                         }
                     }
                     if ( !matches ) { continue; }
@@ -31544,7 +31833,7 @@ inline int64_t EditFixedLoadWalkBody( Edit * values, int64_t capacity, const uin
         // the counters back to what they were before the batch.
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, EditFixedGuards, (const uint8_t *) &defaults );
         TableFixedClampKnownRanges( EditFixedKnownRanges[lineage_at], EditFixedKnownRangeCounts[lineage_at],
-                                    (uint8_t *) &values[k], report );
+            (uint8_t *) &values[k], report );
         if ( !EditFixedClamp( values[k], report ) )
         {
             for ( int64_t j = 0; j <= k; ++j ) { EditReset( values[j] ); }
@@ -31563,7 +31852,7 @@ inline int64_t EditFixedLoadWalkBody( Edit * values, int64_t capacity, const uin
 // them, on EVERY refusal (R4), so no partial value survives. A supplied report receives THIS
 // read's report. unknown and widened alone never refuse.
 inline int64_t EditFixedLoad( Edit * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     TableReport * out = report != NULL ? report : &local;
@@ -31571,7 +31860,10 @@ inline int64_t EditFixedLoad( Edit * values, int64_t capacity, const uint8_t * d
     const int64_t n = EditFixedLoadWalk( values, capacity, data, bytes, plan, plan_capacity, cache, out );
     if ( n < 0 || out->damaged || out->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { EditReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { EditReset( values[k] ); }
+        }
         return -1;
     }
     return n;
@@ -31766,16 +32058,19 @@ inline int64_t OpenDocumentFixedSave( const OpenDocument * values, int64_t count
 // R4: every refusal leaves ALL `capacity` rows at their declared defaults, so a direct call
 // holds the same rule as FixedLoad. The body below is the walk itself.
 inline int64_t OpenDocumentFixedLoadWalkBody( OpenDocument * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
 inline int64_t OpenDocumentFixedLoadWalk( OpenDocument * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
     const int64_t n = OpenDocumentFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
     if ( n < 0 || report->damaged || report->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { OpenDocumentReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { OpenDocumentReset( values[k] ); }
+        }
         return -1;
     }
     return n;
@@ -31784,7 +32079,7 @@ inline int64_t OpenDocumentFixedLoadWalk( OpenDocument * values, int64_t capacit
 // OpenDocumentFixedLoadWalkBody is the STRICT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps
 // every recovered record, with the counters counted onto the report passed.
 inline int64_t OpenDocumentFixedLoadWalkBody( OpenDocument * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
@@ -31801,8 +32096,8 @@ inline int64_t OpenDocumentFixedLoadWalkBody( OpenDocument * values, int64_t cap
     {
         report->refused = true;
         report->reason = data[0] == kTableWireForm ? TableMessageReason::previous_form
-                       : data[0] == kTableWireMessageForm ? TableMessageReason::message_form_as_file
-                       : TableMessageReason::newer_form;
+            : data[0] == kTableWireMessageForm     ? TableMessageReason::message_form_as_file
+                                                   : TableMessageReason::newer_form;
         return -1;
     }
     if ( bytes < kTableFixedHeaderBytes + 4 )
@@ -31816,7 +32111,12 @@ inline int64_t OpenDocumentFixedLoadWalkBody( OpenDocument * values, int64_t cap
     // spendable later.
     for ( int32_t i = 1; i < kTableFixedHashAt; ++i )
     {
-        if ( data[i] != 0 ) { report->damaged = true; report->reason = TableFixedReason::reserved_not_zero; return -1; }
+        if ( data[i] != 0 )
+        {
+            report->damaged = true;
+            report->reason = TableFixedReason::reserved_not_zero;
+            return -1;
+        }
     }
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
     if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes )
@@ -31855,7 +32155,9 @@ inline int64_t OpenDocumentFixedLoadWalkBody( OpenDocument * values, int64_t cap
     const TableFixedKnownLayout & known = OpenDocumentFixedKnown[lineage_at];
     if ( (int64_t) layout_bytes != known.layout_bytes || memcmp( layout, known.layout, (size_t) layout_bytes ) != 0 )
     {
-        report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1;
+        report->refused = true;
+        report->reason = TableMessageReason::layout_malformed;
+        return -1;
     }
     const TableFixedEntry * entries = OpenDocumentFixedPlan;
     int32_t entry_count = OpenDocumentFixedPlanCount;
@@ -31910,8 +32212,8 @@ inline int64_t OpenDocumentFixedLoadWalkBody( OpenDocument * values, int64_t cap
             int32_t compiled_guarded = 0;
             uint32_t fill_at = 0;
             const int32_t made = TableFixedCompile( parsed, OpenDocumentFixedLayout, (int32_t) OpenDocumentFixedLayoutBytes, OpenDocumentFixedDst,
-                                                   OpenDocumentFixedCover, OpenDocumentFixedCoverCount,
-                                                   dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
+                OpenDocumentFixedCover, OpenDocumentFixedCoverCount,
+                dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
             if ( made < 0 )
             {
                 report->refused = true;
@@ -31996,7 +32298,9 @@ inline int64_t OpenDocumentFixedLoadWalkBody( OpenDocument * values, int64_t cap
         {
             for ( int64_t j = 0; j < k; ++j ) { OpenDocumentReset( values[j] ); }
             report->widened = batch_widened;
-            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+            report->refused = true;
+            report->reason = TableMessageReason::no_layout;
+            return -1;
         }
         for ( int32_t i = 0; i < entry_count; ++i )
         {
@@ -32013,7 +32317,7 @@ inline int64_t OpenDocumentFixedLoadWalkBody( OpenDocument * values, int64_t cap
                         if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
                         {
                             matches = false;
-                            break;
+                                break;
                         }
                     }
                     if ( !matches ) { continue; }
@@ -32044,7 +32348,7 @@ inline int64_t OpenDocumentFixedLoadWalkBody( OpenDocument * values, int64_t cap
         // the counters back to what they were before the batch.
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, OpenDocumentFixedGuards, NULL );
         TableFixedClampKnownRanges( OpenDocumentFixedKnownRanges[lineage_at], OpenDocumentFixedKnownRangeCounts[lineage_at],
-                                    (uint8_t *) &values[k], report );
+            (uint8_t *) &values[k], report );
         if ( !OpenDocumentFixedClamp( values[k], report ) )
         {
             for ( int64_t j = 0; j <= k; ++j ) { OpenDocumentReset( values[j] ); }
@@ -32063,7 +32367,7 @@ inline int64_t OpenDocumentFixedLoadWalkBody( OpenDocument * values, int64_t cap
 // them, on EVERY refusal (R4), so no partial value survives. A supplied report receives THIS
 // read's report. unknown and widened alone never refuse.
 inline int64_t OpenDocumentFixedLoad( OpenDocument * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     TableReport * out = report != NULL ? report : &local;
@@ -32071,7 +32375,10 @@ inline int64_t OpenDocumentFixedLoad( OpenDocument * values, int64_t capacity, c
     const int64_t n = OpenDocumentFixedLoadWalk( values, capacity, data, bytes, plan, plan_capacity, cache, out );
     if ( n < 0 || out->damaged || out->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { OpenDocumentReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { OpenDocumentReset( values[k] ); }
+        }
         return -1;
     }
     return n;
@@ -32243,16 +32550,19 @@ inline int64_t SaveDocumentFixedSave( const SaveDocument * values, int64_t count
 // R4: every refusal leaves ALL `capacity` rows at their declared defaults, so a direct call
 // holds the same rule as FixedLoad. The body below is the walk itself.
 inline int64_t SaveDocumentFixedLoadWalkBody( SaveDocument * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
 inline int64_t SaveDocumentFixedLoadWalk( SaveDocument * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
     const int64_t n = SaveDocumentFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
     if ( n < 0 || report->damaged || report->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { SaveDocumentReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { SaveDocumentReset( values[k] ); }
+        }
         return -1;
     }
     return n;
@@ -32261,7 +32571,7 @@ inline int64_t SaveDocumentFixedLoadWalk( SaveDocument * values, int64_t capacit
 // SaveDocumentFixedLoadWalkBody is the STRICT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps
 // every recovered record, with the counters counted onto the report passed.
 inline int64_t SaveDocumentFixedLoadWalkBody( SaveDocument * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
@@ -32278,8 +32588,8 @@ inline int64_t SaveDocumentFixedLoadWalkBody( SaveDocument * values, int64_t cap
     {
         report->refused = true;
         report->reason = data[0] == kTableWireForm ? TableMessageReason::previous_form
-                       : data[0] == kTableWireMessageForm ? TableMessageReason::message_form_as_file
-                       : TableMessageReason::newer_form;
+            : data[0] == kTableWireMessageForm     ? TableMessageReason::message_form_as_file
+                                                   : TableMessageReason::newer_form;
         return -1;
     }
     if ( bytes < kTableFixedHeaderBytes + 4 )
@@ -32293,7 +32603,12 @@ inline int64_t SaveDocumentFixedLoadWalkBody( SaveDocument * values, int64_t cap
     // spendable later.
     for ( int32_t i = 1; i < kTableFixedHashAt; ++i )
     {
-        if ( data[i] != 0 ) { report->damaged = true; report->reason = TableFixedReason::reserved_not_zero; return -1; }
+        if ( data[i] != 0 )
+        {
+            report->damaged = true;
+            report->reason = TableFixedReason::reserved_not_zero;
+            return -1;
+        }
     }
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
     if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes )
@@ -32332,7 +32647,9 @@ inline int64_t SaveDocumentFixedLoadWalkBody( SaveDocument * values, int64_t cap
     const TableFixedKnownLayout & known = SaveDocumentFixedKnown[lineage_at];
     if ( (int64_t) layout_bytes != known.layout_bytes || memcmp( layout, known.layout, (size_t) layout_bytes ) != 0 )
     {
-        report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1;
+        report->refused = true;
+        report->reason = TableMessageReason::layout_malformed;
+        return -1;
     }
     const TableFixedEntry * entries = SaveDocumentFixedPlan;
     int32_t entry_count = SaveDocumentFixedPlanCount;
@@ -32387,8 +32704,8 @@ inline int64_t SaveDocumentFixedLoadWalkBody( SaveDocument * values, int64_t cap
             int32_t compiled_guarded = 0;
             uint32_t fill_at = 0;
             const int32_t made = TableFixedCompile( parsed, SaveDocumentFixedLayout, (int32_t) SaveDocumentFixedLayoutBytes, SaveDocumentFixedDst,
-                                                   SaveDocumentFixedCover, SaveDocumentFixedCoverCount,
-                                                   dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
+                SaveDocumentFixedCover, SaveDocumentFixedCoverCount,
+                dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
             if ( made < 0 )
             {
                 report->refused = true;
@@ -32473,7 +32790,9 @@ inline int64_t SaveDocumentFixedLoadWalkBody( SaveDocument * values, int64_t cap
         {
             for ( int64_t j = 0; j < k; ++j ) { SaveDocumentReset( values[j] ); }
             report->widened = batch_widened;
-            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+            report->refused = true;
+            report->reason = TableMessageReason::no_layout;
+            return -1;
         }
         for ( int32_t i = 0; i < entry_count; ++i )
         {
@@ -32490,7 +32809,7 @@ inline int64_t SaveDocumentFixedLoadWalkBody( SaveDocument * values, int64_t cap
                         if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
                         {
                             matches = false;
-                            break;
+                                break;
                         }
                     }
                     if ( !matches ) { continue; }
@@ -32521,7 +32840,7 @@ inline int64_t SaveDocumentFixedLoadWalkBody( SaveDocument * values, int64_t cap
         // the counters back to what they were before the batch.
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, SaveDocumentFixedGuards, NULL );
         TableFixedClampKnownRanges( SaveDocumentFixedKnownRanges[lineage_at], SaveDocumentFixedKnownRangeCounts[lineage_at],
-                                    (uint8_t *) &values[k], report );
+            (uint8_t *) &values[k], report );
         if ( !SaveDocumentFixedClamp( values[k], report ) )
         {
             for ( int64_t j = 0; j <= k; ++j ) { SaveDocumentReset( values[j] ); }
@@ -32540,7 +32859,7 @@ inline int64_t SaveDocumentFixedLoadWalkBody( SaveDocument * values, int64_t cap
 // them, on EVERY refusal (R4), so no partial value survives. A supplied report receives THIS
 // read's report. unknown and widened alone never refuse.
 inline int64_t SaveDocumentFixedLoad( SaveDocument * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     TableReport * out = report != NULL ? report : &local;
@@ -32548,7 +32867,10 @@ inline int64_t SaveDocumentFixedLoad( SaveDocument * values, int64_t capacity, c
     const int64_t n = SaveDocumentFixedLoadWalk( values, capacity, data, bytes, plan, plan_capacity, cache, out );
     if ( n < 0 || out->damaged || out->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { SaveDocumentReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { SaveDocumentReset( values[k] ); }
+        }
         return -1;
     }
     return n;
@@ -33525,16 +33847,19 @@ inline int64_t TransactionFixedSave( const Transaction * values, int64_t count, 
 // R4: every refusal leaves ALL `capacity` rows at their declared defaults, so a direct call
 // holds the same rule as FixedLoad. The body below is the walk itself.
 inline int64_t TransactionFixedLoadWalkBody( Transaction * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
 inline int64_t TransactionFixedLoadWalk( Transaction * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
     const int64_t n = TransactionFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
     if ( n < 0 || report->damaged || report->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { TransactionReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { TransactionReset( values[k] ); }
+        }
         return -1;
     }
     return n;
@@ -33543,7 +33868,7 @@ inline int64_t TransactionFixedLoadWalk( Transaction * values, int64_t capacity,
 // TransactionFixedLoadWalkBody is the STRICT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps
 // every recovered record, with the counters counted onto the report passed.
 inline int64_t TransactionFixedLoadWalkBody( Transaction * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
@@ -33560,8 +33885,8 @@ inline int64_t TransactionFixedLoadWalkBody( Transaction * values, int64_t capac
     {
         report->refused = true;
         report->reason = data[0] == kTableWireForm ? TableMessageReason::previous_form
-                       : data[0] == kTableWireMessageForm ? TableMessageReason::message_form_as_file
-                       : TableMessageReason::newer_form;
+            : data[0] == kTableWireMessageForm     ? TableMessageReason::message_form_as_file
+                                                   : TableMessageReason::newer_form;
         return -1;
     }
     if ( bytes < kTableFixedHeaderBytes + 4 )
@@ -33575,7 +33900,12 @@ inline int64_t TransactionFixedLoadWalkBody( Transaction * values, int64_t capac
     // spendable later.
     for ( int32_t i = 1; i < kTableFixedHashAt; ++i )
     {
-        if ( data[i] != 0 ) { report->damaged = true; report->reason = TableFixedReason::reserved_not_zero; return -1; }
+        if ( data[i] != 0 )
+        {
+            report->damaged = true;
+            report->reason = TableFixedReason::reserved_not_zero;
+            return -1;
+        }
     }
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
     if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes )
@@ -33614,7 +33944,9 @@ inline int64_t TransactionFixedLoadWalkBody( Transaction * values, int64_t capac
     const TableFixedKnownLayout & known = TransactionFixedKnown[lineage_at];
     if ( (int64_t) layout_bytes != known.layout_bytes || memcmp( layout, known.layout, (size_t) layout_bytes ) != 0 )
     {
-        report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1;
+        report->refused = true;
+        report->reason = TableMessageReason::layout_malformed;
+        return -1;
     }
     const TableFixedEntry * entries = TransactionFixedPlan;
     int32_t entry_count = TransactionFixedPlanCount;
@@ -33669,8 +34001,8 @@ inline int64_t TransactionFixedLoadWalkBody( Transaction * values, int64_t capac
             int32_t compiled_guarded = 0;
             uint32_t fill_at = 0;
             const int32_t made = TableFixedCompile( parsed, TransactionFixedLayout, (int32_t) TransactionFixedLayoutBytes, TransactionFixedDst,
-                                                   TransactionFixedCover, TransactionFixedCoverCount,
-                                                   dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
+                TransactionFixedCover, TransactionFixedCoverCount,
+                dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
             if ( made < 0 )
             {
                 report->refused = true;
@@ -33752,7 +34084,9 @@ inline int64_t TransactionFixedLoadWalkBody( Transaction * values, int64_t capac
         {
             for ( int64_t j = 0; j < k; ++j ) { TransactionReset( values[j] ); }
             report->widened = batch_widened;
-            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+            report->refused = true;
+            report->reason = TableMessageReason::no_layout;
+            return -1;
         }
         for ( int32_t i = 0; i < entry_count; ++i )
         {
@@ -33769,7 +34103,7 @@ inline int64_t TransactionFixedLoadWalkBody( Transaction * values, int64_t capac
                         if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
                         {
                             matches = false;
-                            break;
+                                break;
                         }
                     }
                     if ( !matches ) { continue; }
@@ -33800,7 +34134,7 @@ inline int64_t TransactionFixedLoadWalkBody( Transaction * values, int64_t capac
         // the counters back to what they were before the batch.
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, TransactionFixedGuards, (const uint8_t *) &defaults );
         TableFixedClampKnownRanges( TransactionFixedKnownRanges[lineage_at], TransactionFixedKnownRangeCounts[lineage_at],
-                                    (uint8_t *) &values[k], report );
+            (uint8_t *) &values[k], report );
         if ( !TransactionFixedClamp( values[k], report ) )
         {
             for ( int64_t j = 0; j <= k; ++j ) { TransactionReset( values[j] ); }
@@ -33819,7 +34153,7 @@ inline int64_t TransactionFixedLoadWalkBody( Transaction * values, int64_t capac
 // them, on EVERY refusal (R4), so no partial value survives. A supplied report receives THIS
 // read's report. unknown and widened alone never refuse.
 inline int64_t TransactionFixedLoad( Transaction * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     TableReport * out = report != NULL ? report : &local;
@@ -33827,7 +34161,10 @@ inline int64_t TransactionFixedLoad( Transaction * values, int64_t capacity, con
     const int64_t n = TransactionFixedLoadWalk( values, capacity, data, bytes, plan, plan_capacity, cache, out );
     if ( n < 0 || out->damaged || out->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { TransactionReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { TransactionReset( values[k] ); }
+        }
         return -1;
     }
     return n;
@@ -36647,16 +36984,19 @@ inline int64_t ToolMessageFixedSave( const ToolMessage * values, int64_t count, 
 // R4: every refusal leaves ALL `capacity` rows at their declared defaults, so a direct call
 // holds the same rule as FixedLoad. The body below is the walk itself.
 inline int64_t ToolMessageFixedLoadWalkBody( ToolMessage * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
 inline int64_t ToolMessageFixedLoadWalk( ToolMessage * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
     const int64_t n = ToolMessageFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
     if ( n < 0 || report->damaged || report->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { ToolMessageReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { ToolMessageReset( values[k] ); }
+        }
         return -1;
     }
     return n;
@@ -36665,7 +37005,7 @@ inline int64_t ToolMessageFixedLoadWalk( ToolMessage * values, int64_t capacity,
 // ToolMessageFixedLoadWalkBody is the STRICT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps
 // every recovered record, with the counters counted onto the report passed.
 inline int64_t ToolMessageFixedLoadWalkBody( ToolMessage * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
@@ -36682,8 +37022,8 @@ inline int64_t ToolMessageFixedLoadWalkBody( ToolMessage * values, int64_t capac
     {
         report->refused = true;
         report->reason = data[0] == kTableWireForm ? TableMessageReason::previous_form
-                       : data[0] == kTableWireMessageForm ? TableMessageReason::message_form_as_file
-                       : TableMessageReason::newer_form;
+            : data[0] == kTableWireMessageForm     ? TableMessageReason::message_form_as_file
+                                                   : TableMessageReason::newer_form;
         return -1;
     }
     if ( bytes < kTableFixedHeaderBytes + 4 )
@@ -36697,7 +37037,12 @@ inline int64_t ToolMessageFixedLoadWalkBody( ToolMessage * values, int64_t capac
     // spendable later.
     for ( int32_t i = 1; i < kTableFixedHashAt; ++i )
     {
-        if ( data[i] != 0 ) { report->damaged = true; report->reason = TableFixedReason::reserved_not_zero; return -1; }
+        if ( data[i] != 0 )
+        {
+            report->damaged = true;
+            report->reason = TableFixedReason::reserved_not_zero;
+            return -1;
+        }
     }
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
     if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes )
@@ -36736,7 +37081,9 @@ inline int64_t ToolMessageFixedLoadWalkBody( ToolMessage * values, int64_t capac
     const TableFixedKnownLayout & known = ToolMessageFixedKnown[lineage_at];
     if ( (int64_t) layout_bytes != known.layout_bytes || memcmp( layout, known.layout, (size_t) layout_bytes ) != 0 )
     {
-        report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1;
+        report->refused = true;
+        report->reason = TableMessageReason::layout_malformed;
+        return -1;
     }
     const TableFixedEntry * entries = ToolMessageFixedPlan;
     int32_t entry_count = ToolMessageFixedPlanCount;
@@ -36791,8 +37138,8 @@ inline int64_t ToolMessageFixedLoadWalkBody( ToolMessage * values, int64_t capac
             int32_t compiled_guarded = 0;
             uint32_t fill_at = 0;
             const int32_t made = TableFixedCompile( parsed, ToolMessageFixedLayout, (int32_t) ToolMessageFixedLayoutBytes, ToolMessageFixedDst,
-                                                   ToolMessageFixedCover, ToolMessageFixedCoverCount,
-                                                   dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
+                ToolMessageFixedCover, ToolMessageFixedCoverCount,
+                dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
             if ( made < 0 )
             {
                 report->refused = true;
@@ -36874,7 +37221,9 @@ inline int64_t ToolMessageFixedLoadWalkBody( ToolMessage * values, int64_t capac
         {
             for ( int64_t j = 0; j < k; ++j ) { ToolMessageReset( values[j] ); }
             report->widened = batch_widened;
-            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+            report->refused = true;
+            report->reason = TableMessageReason::no_layout;
+            return -1;
         }
         for ( int32_t i = 0; i < entry_count; ++i )
         {
@@ -36891,7 +37240,7 @@ inline int64_t ToolMessageFixedLoadWalkBody( ToolMessage * values, int64_t capac
                         if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
                         {
                             matches = false;
-                            break;
+                                break;
                         }
                     }
                     if ( !matches ) { continue; }
@@ -36922,7 +37271,7 @@ inline int64_t ToolMessageFixedLoadWalkBody( ToolMessage * values, int64_t capac
         // the counters back to what they were before the batch.
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, ToolMessageFixedGuards, (const uint8_t *) &defaults );
         TableFixedClampKnownRanges( ToolMessageFixedKnownRanges[lineage_at], ToolMessageFixedKnownRangeCounts[lineage_at],
-                                    (uint8_t *) &values[k], report );
+            (uint8_t *) &values[k], report );
         if ( !ToolMessageFixedClamp( values[k], report ) )
         {
             for ( int64_t j = 0; j <= k; ++j ) { ToolMessageReset( values[j] ); }
@@ -36941,7 +37290,7 @@ inline int64_t ToolMessageFixedLoadWalkBody( ToolMessage * values, int64_t capac
 // them, on EVERY refusal (R4), so no partial value survives. A supplied report receives THIS
 // read's report. unknown and widened alone never refuse.
 inline int64_t ToolMessageFixedLoad( ToolMessage * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     TableReport * out = report != NULL ? report : &local;
@@ -36949,7 +37298,10 @@ inline int64_t ToolMessageFixedLoad( ToolMessage * values, int64_t capacity, con
     const int64_t n = ToolMessageFixedLoadWalk( values, capacity, data, bytes, plan, plan_capacity, cache, out );
     if ( n < 0 || out->damaged || out->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { ToolMessageReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { ToolMessageReset( values[k] ); }
+        }
         return -1;
     }
     return n;
@@ -37002,11 +37354,22 @@ inline bool ToolEnvelopeNumber( const Ctx & ctx, TableNumbering & numbering, con
             continue;
         }
         if ( !TableNumberingAppend( numbering, work ) ) { return false; }
-        if ( work.walk == NULL ) { TablePackMapClose( numbering.seen, work.node, slot ); continue; } // a blob reaches nothing
+        if ( work.walk == NULL )
+        {
+            TablePackMapClose( numbering.seen, work.node, slot );
+            continue;
+        } // a blob reaches nothing
         TableNodeEntry close;
-        close.node = work.node; close.type_id = 0; close.measure = NULL; close.save = NULL;
-        close.pack_bytes = NULL; close.pack_copy = NULL; close.pack_slots = NULL; close.walk = NULL;
-        close.close = true; close.hint = slot;
+        close.node = work.node;
+        close.type_id = 0;
+        close.measure = NULL;
+        close.save = NULL;
+        close.pack_bytes = NULL;
+        close.pack_copy = NULL;
+        close.pack_slots = NULL;
+        close.walk = NULL;
+        close.close = true;
+        close.hint = slot;
         if ( !TableNumberingWorkPush( numbering, close ) ) { return false; }
         const int64_t first = numbering.work_count;
         if ( !work.walk( (const void *) &ctx, numbering, work.node ) ) { return false; }
@@ -37161,9 +37524,17 @@ inline bool ToolEnvelopeBuilder::Lock()
         for ( int64_t k = 0; ok && k < numbering.count; k++ )
         {
             const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
-            if ( bytes < 0 ) { ok = false; break; }
+            if ( bytes < 0 )
+            {
+                ok = false;
+                break;
+            }
             TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-            if ( entry == NULL ) { ok = false; break; }
+            if ( entry == NULL )
+            {
+                ok = false;
+                break;
+            }
             measured = TableAlignUp64( measured );
             entry->offset = measured;
             measured += bytes;
@@ -37187,9 +37558,17 @@ inline bool ToolEnvelopeBuilder::Lock()
         for ( int64_t k = 0; ok && k < numbering.count; k++ )
         {
             const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
-            if ( bytes < 0 ) { ok = false; break; }
+            if ( bytes < 0 )
+            {
+                ok = false;
+                break;
+            }
             TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-            if ( entry == NULL ) { ok = false; break; }
+            if ( entry == NULL )
+            {
+                ok = false;
+                break;
+            }
             used = TableAlignUp64( used );
             entry->offset = used;
             used += bytes;
@@ -37214,14 +37593,22 @@ inline bool ToolEnvelopeBuilder::Lock()
     for ( int64_t k = 0; ok && k < numbering.count; k++ )
     {
         const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-        if ( entry == NULL ) { ok = false; break; }
+        if ( entry == NULL )
+        {
+            ok = false;
+            break;
+        }
         ok = numbering.entries[k].pack_copy( (const void *) &ctx, numbering.entries[k].node, packed + entry->offset, packed, total );
     }
-    if ( ok ) { ok = ToolEnvelopePackSlots( ctx, numbering.seen, root, *( ToolEnvelope * ) packed, packed ); }
+    if ( ok ) { ok = ToolEnvelopePackSlots( ctx, numbering.seen, root, *(ToolEnvelope *) packed, packed ); }
     for ( int64_t k = 0; ok && k < numbering.count; k++ )
     {
         const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-        if ( entry == NULL ) { ok = false; break; }
+        if ( entry == NULL )
+        {
+            ok = false;
+            break;
+        }
         if ( numbering.entries[k].pack_slots != NULL ) { ok = numbering.entries[k].pack_slots( (const void *) &ctx, numbering.seen, numbering.entries[k].node, packed + entry->offset, packed ); } // a blob has no slots
     }
     TableNumberingShutdown( numbering );
@@ -38275,7 +38662,10 @@ inline int64_t SelectionMeasureBodyRetain( TableRetainIds & ids, const Selection
         const int64_t body_start = CursorMeasureBodyRetain( ids, value.start, retain, TableRetainStepInto( path, 0, (uint32_t) ( 0 ) ) );
         if ( body_start < 0 ) { return -1; }
         if ( body_start > 1 ) { bytes += TableLebBytes( ref_start ) + 1 + TableLebBytes( (uint64_t) ( body_start ) ) + ( body_start ); } // start
-        else { ids.truncate( mark_start ); } // an all-default nested table elides, and costs no entry
+        else
+        {
+            ids.truncate( mark_start );
+        } // an all-default nested table elides, and costs no entry
     }
     {
         const int32_t mark_stop = ids.count;
@@ -38283,7 +38673,10 @@ inline int64_t SelectionMeasureBodyRetain( TableRetainIds & ids, const Selection
         const int64_t body_stop = CursorMeasureBodyRetain( ids, value.stop, retain, TableRetainStepInto( path, 1, (uint32_t) ( 0 ) ) );
         if ( body_stop < 0 ) { return -1; }
         if ( body_stop > 1 ) { bytes += TableLebBytes( ref_stop ) + 1 + TableLebBytes( (uint64_t) ( body_stop ) ) + ( body_stop ); } // stop
-        else { ids.truncate( mark_stop ); } // an all-default nested table elides, and costs no entry
+        else
+        {
+            ids.truncate( mark_stop );
+        } // an all-default nested table elides, and costs no entry
     }
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
@@ -38302,7 +38695,10 @@ MESSAGEDEMO_TABLE_INLINE bool SelectionSaveBodyRetain( TableWriter & w, TableRet
             w.putleb( (uint64_t) body_start ); // start
             if ( !CursorSaveBodyRetain( w, ids, value.start, retain, TableRetainStepInto( path, 0, (uint32_t) ( 0 ) ) ) ) return false;
         }
-        else { ids.truncate( mark_start ); }
+        else
+        {
+            ids.truncate( mark_start );
+        }
     }
     {
         const int32_t mark_stop = ids.count;
@@ -38315,7 +38711,10 @@ MESSAGEDEMO_TABLE_INLINE bool SelectionSaveBodyRetain( TableWriter & w, TableRet
             w.putleb( (uint64_t) body_stop ); // stop
             if ( !CursorSaveBodyRetain( w, ids, value.stop, retain, TableRetainStepInto( path, 1, (uint32_t) ( 0 ) ) ) ) return false;
         }
-        else { ids.truncate( mark_stop ); }
+        else
+        {
+            ids.truncate( mark_stop );
+        }
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -38458,7 +38857,10 @@ inline int64_t InsertTextMeasureBodyRetain( TableRetainIds & ids, const InsertTe
         const int64_t body_at = CursorMeasureBodyRetain( ids, value.at, retain, TableRetainStepInto( path, 0, (uint32_t) ( 0 ) ) );
         if ( body_at < 0 ) { return -1; }
         if ( body_at > 1 ) { bytes += TableLebBytes( ref_at ) + 1 + TableLebBytes( (uint64_t) ( body_at ) ) + ( body_at ); } // at
-        else { ids.truncate( mark_at ); } // an all-default nested table elides, and costs no entry
+        else
+        {
+            ids.truncate( mark_at );
+        } // an all-default nested table elides, and costs no entry
     }
     schema_assert( value.text_length >= 0 && value.text_length <= 32 ); // storage invariant, debug only (§5.1)
     if ( !TableUtf8Valid( (const uint8_t *) value.text, (uint64_t) value.text_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
@@ -38607,7 +39009,10 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBodyRetain( TableWriter & w, TableRe
             w.putleb( (uint64_t) body_at ); // at
             if ( !CursorSaveBodyRetain( w, ids, value.at, retain, TableRetainStepInto( path, 0, (uint32_t) ( 0 ) ) ) ) return false;
         }
-        else { ids.truncate( mark_at ); }
+        else
+        {
+            ids.truncate( mark_at );
+        }
     }
     schema_assert( value.text_length >= 0 && value.text_length <= 32 ); // storage invariant, debug only (§5.1)
     if ( !TableUtf8Valid( (const uint8_t *) value.text, (uint64_t) value.text_length ) ) { return false; }
@@ -38633,7 +39038,10 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBodyRetain( TableWriter & w, TableRe
                 }
                 w.header( arm_ref, 13 );
                 w.putleb( (uint64_t) arm_payload ); // user
-                if ( !UserSaveBodyRetain( w, ids, value.origin.user, retain, TableRetainStepInto( path, 2, (uint32_t) ( 0 ) ) ) ) { return false; }
+                if ( !UserSaveBodyRetain( w, ids, value.origin.user, retain, TableRetainStepInto( path, 2, (uint32_t) ( 0 ) ) ) )
+            {
+                return false;
+            }
                 break;
             }
             case OriginType::Script:
@@ -38647,7 +39055,10 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBodyRetain( TableWriter & w, TableRe
                 }
                 w.header( arm_ref, 13 );
                 w.putleb( (uint64_t) arm_payload ); // script
-                if ( !ScriptSaveBodyRetain( w, ids, value.origin.script, retain, TableRetainStepInto( path, 2, (uint32_t) ( 1 ) ) ) ) { return false; }
+                if ( !ScriptSaveBodyRetain( w, ids, value.origin.script, retain, TableRetainStepInto( path, 2, (uint32_t) ( 1 ) ) ) )
+            {
+                return false;
+            }
                 break;
             }
             case OriginType::Pid:
@@ -38760,7 +39171,10 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBodyRetain( TableWriter & w, TableRe
                         }
                         w.header( arm_refu, 13 );
                         w.putleb( (uint64_t) arm_payloadu ); // user
-                        if ( !UserSaveBodyRetain( w, ids, value.origins[elem_i].user, retain, TableRetainStepInto( TableRetainStepInto( path, 3, (uint32_t) ( elem_i ) ), 3, (uint32_t) ( 0 ) ) ) ) { return false; }
+                        if ( !UserSaveBodyRetain( w, ids, value.origins[elem_i].user, retain, TableRetainStepInto( TableRetainStepInto( path, 3, (uint32_t) ( elem_i ) ), 3, (uint32_t) ( 0 ) ) ) )
+            {
+                return false;
+            }
                         break;
                     }
                     case OriginType::Script:
@@ -38774,7 +39188,10 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBodyRetain( TableWriter & w, TableRe
                         }
                         w.header( arm_refu, 13 );
                         w.putleb( (uint64_t) arm_payloadu ); // script
-                        if ( !ScriptSaveBodyRetain( w, ids, value.origins[elem_i].script, retain, TableRetainStepInto( TableRetainStepInto( path, 3, (uint32_t) ( elem_i ) ), 3, (uint32_t) ( 1 ) ) ) ) { return false; }
+                        if ( !ScriptSaveBodyRetain( w, ids, value.origins[elem_i].script, retain, TableRetainStepInto( TableRetainStepInto( path, 3, (uint32_t) ( elem_i ) ), 3, (uint32_t) ( 1 ) ) ) )
+            {
+                return false;
+            }
                         break;
                     }
                     case OriginType::Pid:
@@ -39497,7 +39914,10 @@ inline int64_t RemoveTextMeasureBodyRetain( TableRetainIds & ids, const RemoveTe
         const int64_t body_span = SelectionMeasureBodyRetain( ids, value.span, retain, TableRetainStepInto( path, 0, (uint32_t) ( 0 ) ) );
         if ( body_span < 0 ) { return -1; }
         if ( body_span > 1 ) { bytes += TableLebBytes( ref_span ) + 1 + TableLebBytes( (uint64_t) ( body_span ) ) + ( body_span ); } // span
-        else { ids.truncate( mark_span ); } // an all-default nested table elides, and costs no entry
+        else
+        {
+            ids.truncate( mark_span );
+        } // an all-default nested table elides, and costs no entry
     }
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
@@ -39516,7 +39936,10 @@ MESSAGEDEMO_TABLE_INLINE bool RemoveTextSaveBodyRetain( TableWriter & w, TableRe
             w.putleb( (uint64_t) body_span ); // span
             if ( !SelectionSaveBodyRetain( w, ids, value.span, retain, TableRetainStepInto( path, 0, (uint32_t) ( 0 ) ) ) ) return false;
         }
-        else { ids.truncate( mark_span ); }
+        else
+        {
+            ids.truncate( mark_span );
+        }
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -39719,7 +40142,10 @@ MESSAGEDEMO_TABLE_INLINE bool EditSaveBodyRetain( TableWriter & w, TableRetainId
                 }
                 w.header( arm_ref, 13 );
                 w.putleb( (uint64_t) arm_payload ); // insert
-                if ( !InsertTextSaveBodyRetain( w, ids, value.body.insert, retain, TableRetainStepInto( path, 1, (uint32_t) ( 0 ) ) ) ) { return false; }
+                if ( !InsertTextSaveBodyRetain( w, ids, value.body.insert, retain, TableRetainStepInto( path, 1, (uint32_t) ( 0 ) ) ) )
+            {
+                return false;
+            }
                 break;
             }
             case EditBodyType::Remove:
@@ -39733,7 +40159,10 @@ MESSAGEDEMO_TABLE_INLINE bool EditSaveBodyRetain( TableWriter & w, TableRetainId
                 }
                 w.header( arm_ref, 13 );
                 w.putleb( (uint64_t) arm_payload ); // remove
-                if ( !RemoveTextSaveBodyRetain( w, ids, value.body.remove, retain, TableRetainStepInto( path, 1, (uint32_t) ( 1 ) ) ) ) { return false; }
+                if ( !RemoveTextSaveBodyRetain( w, ids, value.body.remove, retain, TableRetainStepInto( path, 1, (uint32_t) ( 1 ) ) ) )
+            {
+                return false;
+            }
                 break;
             }
             case EditBodyType::Tally:
@@ -40264,7 +40693,10 @@ inline int64_t OpenDocumentMeasureBodyRetain( TableRetainIds & ids, const OpenDo
         const int64_t body_cursor = CursorMeasureBodyRetain( ids, value.cursor, retain, TableRetainStepInto( path, 2, (uint32_t) ( 0 ) ) );
         if ( body_cursor < 0 ) { return -1; }
         if ( body_cursor > 1 ) { bytes += TableLebBytes( ref_cursor ) + 1 + TableLebBytes( (uint64_t) ( body_cursor ) ) + ( body_cursor ); } // cursor
-        else { ids.truncate( mark_cursor ); } // an all-default nested table elides, and costs no entry
+        else
+        {
+            ids.truncate( mark_cursor );
+        } // an all-default nested table elides, and costs no entry
     }
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
@@ -40286,7 +40718,8 @@ MESSAGEDEMO_TABLE_INLINE bool OpenDocumentSaveBodyRetain( TableWriter & w, Table
         const uint64_t ref_mode = ids.ref_at( 6, 0x0d3deba2c41dadb2ull );
         uint64_t variant_mode = 0;
         if ( !TableEnumRef( ids, value.mode, variant_mode ) ) { return false; }
-        w.header( ref_mode, 30 ); w.putleb( variant_mode ); // mode
+        w.header( ref_mode, 30 );
+        w.putleb( variant_mode ); // mode
     }
     {
         const int32_t mark_cursor = ids.count;
@@ -40299,7 +40732,10 @@ MESSAGEDEMO_TABLE_INLINE bool OpenDocumentSaveBodyRetain( TableWriter & w, Table
             w.putleb( (uint64_t) body_cursor ); // cursor
             if ( !CursorSaveBodyRetain( w, ids, value.cursor, retain, TableRetainStepInto( path, 2, (uint32_t) ( 0 ) ) ) ) return false;
         }
-        else { ids.truncate( mark_cursor ); }
+        else
+        {
+            ids.truncate( mark_cursor );
+        }
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -40654,7 +41090,14 @@ inline int64_t TransactionMeasureBodyRetain( TableRetainIds & ids, const Transac
     }
     {
         bool any_pending = false;
-        for ( int32_t i = 0; i < 2; i++ ) { if ( value.pending[i].type != EditBodyType::None ) { any_pending = true; break; } }
+        for ( int32_t i = 0; i < 2; i++ )
+        {
+            if ( value.pending[i].type != EditBodyType::None )
+            {
+                any_pending = true;
+                break;
+            }
+        }
         if ( any_pending )
         {
             const uint64_t ref_pending = ids.ref_at( 16, 0x52dea0d6eeb5083cull );
@@ -40801,7 +41244,14 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionSaveBodyRetain( TableWriter & w, TableR
     }
     {
         bool any_pending = false;
-        for ( int32_t i = 0; i < 2; i++ ) { if ( value.pending[i].type != EditBodyType::None ) { any_pending = true; break; } }
+        for ( int32_t i = 0; i < 2; i++ )
+        {
+            if ( value.pending[i].type != EditBodyType::None )
+            {
+                any_pending = true;
+                break;
+            }
+        }
         if ( any_pending )
         {
             const uint64_t ref_pending = ids.ref_at( 16, 0x52dea0d6eeb5083cull );
@@ -40904,7 +41354,10 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionSaveBodyRetain( TableWriter & w, TableR
                             }
                             w.header( arm_refu, 13 );
                             w.putleb( (uint64_t) arm_payloadu ); // insert
-                            if ( !InsertTextSaveBodyRetain( w, ids, value.pending[elem_i].insert, retain, TableRetainStepInto( TableRetainStepInto( path, 2, (uint32_t) ( elem_i ) ), 2, (uint32_t) ( 0 ) ) ) ) { return false; }
+                            if ( !InsertTextSaveBodyRetain( w, ids, value.pending[elem_i].insert, retain, TableRetainStepInto( TableRetainStepInto( path, 2, (uint32_t) ( elem_i ) ), 2, (uint32_t) ( 0 ) ) ) )
+            {
+                return false;
+            }
                             break;
                         }
                         case EditBodyType::Remove:
@@ -40918,7 +41371,10 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionSaveBodyRetain( TableWriter & w, TableR
                             }
                             w.header( arm_refu, 13 );
                             w.putleb( (uint64_t) arm_payloadu ); // remove
-                            if ( !RemoveTextSaveBodyRetain( w, ids, value.pending[elem_i].remove, retain, TableRetainStepInto( TableRetainStepInto( path, 2, (uint32_t) ( elem_i ) ), 2, (uint32_t) ( 1 ) ) ) ) { return false; }
+                            if ( !RemoveTextSaveBodyRetain( w, ids, value.pending[elem_i].remove, retain, TableRetainStepInto( TableRetainStepInto( path, 2, (uint32_t) ( elem_i ) ), 2, (uint32_t) ( 1 ) ) ) )
+            {
+                return false;
+            }
                             break;
                         }
                         case EditBodyType::Tally:
@@ -42140,7 +42596,10 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBodyRetain( TableWriter & w, TableR
                 }
                 w.header( arm_ref, 13 );
                 w.putleb( (uint64_t) arm_payload ); // open
-                if ( !OpenDocumentSaveBodyRetain( w, ids, value.body.open, retain, TableRetainStepInto( path, 1, (uint32_t) ( 0 ) ) ) ) { return false; }
+                if ( !OpenDocumentSaveBodyRetain( w, ids, value.body.open, retain, TableRetainStepInto( path, 1, (uint32_t) ( 0 ) ) ) )
+            {
+                return false;
+            }
                 break;
             }
             case ToolBodyType::Save:
@@ -42154,7 +42613,10 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBodyRetain( TableWriter & w, TableR
                 }
                 w.header( arm_ref, 13 );
                 w.putleb( (uint64_t) arm_payload ); // save
-                if ( !SaveDocumentSaveBodyRetain( w, ids, value.body.save, retain, TableRetainStepInto( path, 1, (uint32_t) ( 1 ) ) ) ) { return false; }
+                if ( !SaveDocumentSaveBodyRetain( w, ids, value.body.save, retain, TableRetainStepInto( path, 1, (uint32_t) ( 1 ) ) ) )
+            {
+                return false;
+            }
                 break;
             }
             case ToolBodyType::Transact:
@@ -42168,7 +42630,10 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBodyRetain( TableWriter & w, TableR
                 }
                 w.header( arm_ref, 13 );
                 w.putleb( (uint64_t) arm_payload ); // transact
-                if ( !TransactionSaveBodyRetain( w, ids, value.body.transact, retain, TableRetainStepInto( path, 1, (uint32_t) ( 2 ) ) ) ) { return false; }
+                if ( !TransactionSaveBodyRetain( w, ids, value.body.transact, retain, TableRetainStepInto( path, 1, (uint32_t) ( 2 ) ) ) )
+            {
+                return false;
+            }
                 break;
             }
             case ToolBodyType::Ping:
@@ -42182,7 +42647,10 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBodyRetain( TableWriter & w, TableR
                 }
                 w.header( arm_ref, 13 );
                 w.putleb( (uint64_t) arm_payload ); // ping
-                if ( !PingSaveBodyRetain( w, ids, value.body.ping, retain, TableRetainStepInto( path, 1, (uint32_t) ( 3 ) ) ) ) { return false; }
+                if ( !PingSaveBodyRetain( w, ids, value.body.ping, retain, TableRetainStepInto( path, 1, (uint32_t) ( 3 ) ) ) )
+            {
+                return false;
+            }
                 break;
             }
             case ToolBodyType::Caps:
@@ -42285,7 +42753,10 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBodyRetain( TableWriter & w, TableR
                             }
                             w.header( arm_refa, 13 );
                             w.putleb( (uint64_t) arm_payloada ); // user
-                            if ( !UserSaveBodyRetain( w, ids, value.body.origin.user, retain, TableRetainStepInto( path, 0, (uint32_t) ( 0 ) ) ) ) { return false; }
+                            if ( !UserSaveBodyRetain( w, ids, value.body.origin.user, retain, TableRetainStepInto( path, 0, (uint32_t) ( 0 ) ) ) )
+            {
+                return false;
+            }
                             break;
                         }
                         case OriginType::Script:
@@ -42299,7 +42770,10 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBodyRetain( TableWriter & w, TableR
                             }
                             w.header( arm_refa, 13 );
                             w.putleb( (uint64_t) arm_payloada ); // script
-                            if ( !ScriptSaveBodyRetain( w, ids, value.body.origin.script, retain, TableRetainStepInto( path, 0, (uint32_t) ( 1 ) ) ) ) { return false; }
+                            if ( !ScriptSaveBodyRetain( w, ids, value.body.origin.script, retain, TableRetainStepInto( path, 0, (uint32_t) ( 1 ) ) ) )
+            {
+                return false;
+            }
                             break;
                         }
                         case OriginType::Pid:
@@ -42516,7 +42990,10 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBodyRetain( TableWriter & w, TableR
                         }
                         w.header( arm_refu, 13 );
                         w.putleb( (uint64_t) arm_payloadu ); // open
-                        if ( !OpenDocumentSaveBodyRetain( w, ids, value.history[elem_i].open, retain, TableRetainStepInto( TableRetainStepInto( path, 2, (uint32_t) ( elem_i ) ), 2, (uint32_t) ( 0 ) ) ) ) { return false; }
+                        if ( !OpenDocumentSaveBodyRetain( w, ids, value.history[elem_i].open, retain, TableRetainStepInto( TableRetainStepInto( path, 2, (uint32_t) ( elem_i ) ), 2, (uint32_t) ( 0 ) ) ) )
+            {
+                return false;
+            }
                         break;
                     }
                     case ToolBodyType::Save:
@@ -42530,7 +43007,10 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBodyRetain( TableWriter & w, TableR
                         }
                         w.header( arm_refu, 13 );
                         w.putleb( (uint64_t) arm_payloadu ); // save
-                        if ( !SaveDocumentSaveBodyRetain( w, ids, value.history[elem_i].save, retain, TableRetainStepInto( TableRetainStepInto( path, 2, (uint32_t) ( elem_i ) ), 2, (uint32_t) ( 1 ) ) ) ) { return false; }
+                        if ( !SaveDocumentSaveBodyRetain( w, ids, value.history[elem_i].save, retain, TableRetainStepInto( TableRetainStepInto( path, 2, (uint32_t) ( elem_i ) ), 2, (uint32_t) ( 1 ) ) ) )
+            {
+                return false;
+            }
                         break;
                     }
                     case ToolBodyType::Transact:
@@ -42544,7 +43024,10 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBodyRetain( TableWriter & w, TableR
                         }
                         w.header( arm_refu, 13 );
                         w.putleb( (uint64_t) arm_payloadu ); // transact
-                        if ( !TransactionSaveBodyRetain( w, ids, value.history[elem_i].transact, retain, TableRetainStepInto( TableRetainStepInto( path, 2, (uint32_t) ( elem_i ) ), 2, (uint32_t) ( 2 ) ) ) ) { return false; }
+                        if ( !TransactionSaveBodyRetain( w, ids, value.history[elem_i].transact, retain, TableRetainStepInto( TableRetainStepInto( path, 2, (uint32_t) ( elem_i ) ), 2, (uint32_t) ( 2 ) ) ) )
+            {
+                return false;
+            }
                         break;
                     }
                     case ToolBodyType::Ping:
@@ -42558,7 +43041,10 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBodyRetain( TableWriter & w, TableR
                         }
                         w.header( arm_refu, 13 );
                         w.putleb( (uint64_t) arm_payloadu ); // ping
-                        if ( !PingSaveBodyRetain( w, ids, value.history[elem_i].ping, retain, TableRetainStepInto( TableRetainStepInto( path, 2, (uint32_t) ( elem_i ) ), 2, (uint32_t) ( 3 ) ) ) ) { return false; }
+                        if ( !PingSaveBodyRetain( w, ids, value.history[elem_i].ping, retain, TableRetainStepInto( TableRetainStepInto( path, 2, (uint32_t) ( elem_i ) ), 2, (uint32_t) ( 3 ) ) ) )
+            {
+                return false;
+            }
                         break;
                     }
                     case ToolBodyType::Caps:
@@ -42661,7 +43147,10 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBodyRetain( TableWriter & w, TableR
                                     }
                                     w.header( arm_refua, 13 );
                                     w.putleb( (uint64_t) arm_payloadua ); // user
-                                    if ( !UserSaveBodyRetain( w, ids, value.history[elem_i].origin.user, retain, TableRetainStepInto( TableRetainStepInto( path, 2, (uint32_t) ( elem_i ) ), 0, (uint32_t) ( 0 ) ) ) ) { return false; }
+                                    if ( !UserSaveBodyRetain( w, ids, value.history[elem_i].origin.user, retain, TableRetainStepInto( TableRetainStepInto( path, 2, (uint32_t) ( elem_i ) ), 0, (uint32_t) ( 0 ) ) ) )
+            {
+                return false;
+            }
                                     break;
                                 }
                                 case OriginType::Script:
@@ -42675,7 +43164,10 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBodyRetain( TableWriter & w, TableR
                                     }
                                     w.header( arm_refua, 13 );
                                     w.putleb( (uint64_t) arm_payloadua ); // script
-                                    if ( !ScriptSaveBodyRetain( w, ids, value.history[elem_i].origin.script, retain, TableRetainStepInto( TableRetainStepInto( path, 2, (uint32_t) ( elem_i ) ), 0, (uint32_t) ( 1 ) ) ) ) { return false; }
+                                    if ( !ScriptSaveBodyRetain( w, ids, value.history[elem_i].origin.script, retain, TableRetainStepInto( TableRetainStepInto( path, 2, (uint32_t) ( elem_i ) ), 0, (uint32_t) ( 1 ) ) ) )
+            {
+                return false;
+            }
                                     break;
                                 }
                                 case OriginType::Pid:
@@ -44177,7 +44669,10 @@ inline bool ToolEnvelopeSaveBodyFieldsRetain( const Ctx & ctx, const TableNumber
                 }
                 w.header( arm_ref, 13 );
                 w.putleb( (uint64_t) arm_payload ); // open
-                if ( !OpenDocumentSaveBodyRetain( w, ids, value.body.open, retain, TableRetainStepInto( path, 1, (uint32_t) ( 0 ) ) ) ) { return false; }
+                if ( !OpenDocumentSaveBodyRetain( w, ids, value.body.open, retain, TableRetainStepInto( path, 1, (uint32_t) ( 0 ) ) ) )
+            {
+                return false;
+            }
                 break;
             }
             case ToolBodyType::Save:
@@ -44191,7 +44686,10 @@ inline bool ToolEnvelopeSaveBodyFieldsRetain( const Ctx & ctx, const TableNumber
                 }
                 w.header( arm_ref, 13 );
                 w.putleb( (uint64_t) arm_payload ); // save
-                if ( !SaveDocumentSaveBodyRetain( w, ids, value.body.save, retain, TableRetainStepInto( path, 1, (uint32_t) ( 1 ) ) ) ) { return false; }
+                if ( !SaveDocumentSaveBodyRetain( w, ids, value.body.save, retain, TableRetainStepInto( path, 1, (uint32_t) ( 1 ) ) ) )
+            {
+                return false;
+            }
                 break;
             }
             case ToolBodyType::Transact:
@@ -44205,7 +44703,10 @@ inline bool ToolEnvelopeSaveBodyFieldsRetain( const Ctx & ctx, const TableNumber
                 }
                 w.header( arm_ref, 13 );
                 w.putleb( (uint64_t) arm_payload ); // transact
-                if ( !TransactionSaveBodyRetain( w, ids, value.body.transact, retain, TableRetainStepInto( path, 1, (uint32_t) ( 2 ) ) ) ) { return false; }
+                if ( !TransactionSaveBodyRetain( w, ids, value.body.transact, retain, TableRetainStepInto( path, 1, (uint32_t) ( 2 ) ) ) )
+            {
+                return false;
+            }
                 break;
             }
             case ToolBodyType::Ping:
@@ -44219,7 +44720,10 @@ inline bool ToolEnvelopeSaveBodyFieldsRetain( const Ctx & ctx, const TableNumber
                 }
                 w.header( arm_ref, 13 );
                 w.putleb( (uint64_t) arm_payload ); // ping
-                if ( !PingSaveBodyRetain( w, ids, value.body.ping, retain, TableRetainStepInto( path, 1, (uint32_t) ( 3 ) ) ) ) { return false; }
+                if ( !PingSaveBodyRetain( w, ids, value.body.ping, retain, TableRetainStepInto( path, 1, (uint32_t) ( 3 ) ) ) )
+            {
+                return false;
+            }
                 break;
             }
             case ToolBodyType::Caps:
@@ -44322,7 +44826,10 @@ inline bool ToolEnvelopeSaveBodyFieldsRetain( const Ctx & ctx, const TableNumber
                             }
                             w.header( arm_refa, 13 );
                             w.putleb( (uint64_t) arm_payloada ); // user
-                            if ( !UserSaveBodyRetain( w, ids, value.body.origin.user, retain, TableRetainStepInto( path, 0, (uint32_t) ( 0 ) ) ) ) { return false; }
+                            if ( !UserSaveBodyRetain( w, ids, value.body.origin.user, retain, TableRetainStepInto( path, 0, (uint32_t) ( 0 ) ) ) )
+            {
+                return false;
+            }
                             break;
                         }
                         case OriginType::Script:
@@ -44336,7 +44843,10 @@ inline bool ToolEnvelopeSaveBodyFieldsRetain( const Ctx & ctx, const TableNumber
                             }
                             w.header( arm_refa, 13 );
                             w.putleb( (uint64_t) arm_payloada ); // script
-                            if ( !ScriptSaveBodyRetain( w, ids, value.body.origin.script, retain, TableRetainStepInto( path, 0, (uint32_t) ( 1 ) ) ) ) { return false; }
+                            if ( !ScriptSaveBodyRetain( w, ids, value.body.origin.script, retain, TableRetainStepInto( path, 0, (uint32_t) ( 1 ) ) ) )
+            {
+                return false;
+            }
                             break;
                         }
                         case OriginType::Pid:
@@ -46417,12 +46927,12 @@ inline bool InsertTextCookBody( uint8_t * at, const InsertText & value, TableByt
         {
             case OriginType::User: if ( !UserCookBody( at + 48 + 4, value.origin.user, order ) ) { return false; } break;
             case OriginType::Script: if ( !ScriptCookBody( at + 48 + 4, value.origin.script, order ) ) { return false; } break;
-            case OriginType::Pid:
+                case OriginType::Pid:
             {
                 table_cook_put( at + 48 + 4, (uint64_t) value.origin.pid, 4, order );
                 break;
             }
-            case OriginType::Note:
+                case OriginType::Note:
             {
                 table_cook_bytes( at + 48 + 4, value.origin.note.value, value.origin.note.value_length, 25 );
                 table_cook_put( at + 48 + 32, (uint64_t) (uint32_t) value.origin.note.value_length, 4, order );
@@ -46442,12 +46952,12 @@ inline bool InsertTextCookBody( uint8_t * at, const InsertText & value, TableByt
             {
                 case OriginType::User: if ( !UserCookBody( at + 128 + i * 80 + 4, value.origins[i].user, order ) ) { return false; } break;
                 case OriginType::Script: if ( !ScriptCookBody( at + 128 + i * 80 + 4, value.origins[i].script, order ) ) { return false; } break;
-                case OriginType::Pid:
+                    case OriginType::Pid:
                 {
                     table_cook_put( at + 128 + i * 80 + 4, (uint64_t) value.origins[i].pid, 4, order );
                     break;
                 }
-                case OriginType::Note:
+                    case OriginType::Note:
                 {
                     table_cook_bytes( at + 128 + i * 80 + 4, value.origins[i].note.value, value.origins[i].note.value_length, 25 );
                     table_cook_put( at + 128 + i * 80 + 32, (uint64_t) (uint32_t) value.origins[i].note.value_length, 4, order );
@@ -46488,12 +46998,12 @@ inline bool EditCookBody( uint8_t * at, const Edit & value, TableByteOrder order
         {
             case EditBodyType::Insert: if ( !InsertTextCookBody( at + 4 + 4, value.body.insert, order ) ) { return false; } break;
             case EditBodyType::Remove: if ( !RemoveTextCookBody( at + 4 + 4, value.body.remove, order ) ) { return false; } break;
-            case EditBodyType::Tally:
+                case EditBodyType::Tally:
             {
                 table_cook_put( at + 4 + 4, (uint64_t) value.body.tally, 4, order );
                 break;
             }
-            case EditBodyType::Marks:
+                case EditBodyType::Marks:
             {
                 // 3 slots of storage, value.body.marks.value_count live: a slot past the count keeps the extent's zero (§7.2)
                 schema_assert( value.body.marks.value_count >= 0 && value.body.marks.value_count <= 3 ); // storage invariant, debug only (§5.1)
@@ -46505,13 +47015,13 @@ inline bool EditCookBody( uint8_t * at, const Edit & value, TableByteOrder order
                 table_cook_put( at + 4 + 12, (uint64_t) (uint32_t) value.body.marks.value_count, 4, order );
                 break;
             }
-            case EditBodyType::Blob:
+                case EditBodyType::Blob:
             {
                 table_cook_bytes( at + 4 + 4, value.body.blob.value, value.body.blob.value_length, 4 );
                 table_cook_put( at + 4 + 8, (uint64_t) (uint32_t) value.body.blob.value_length, 4, order );
                 break;
             }
-            case EditBodyType::Mode:
+                case EditBodyType::Mode:
             {
                 table_cook_put( at + 4 + 4, (uint64_t) value.body.mode, 1, order );
                 break;
@@ -46559,12 +47069,12 @@ inline bool TransactionCookBody( uint8_t * at, const Transaction & value, TableB
             {
                 case EditBodyType::Insert: if ( !InsertTextCookBody( at + 964 + i * 308 + 4, value.pending[i].insert, order ) ) { return false; } break;
                 case EditBodyType::Remove: if ( !RemoveTextCookBody( at + 964 + i * 308 + 4, value.pending[i].remove, order ) ) { return false; } break;
-                case EditBodyType::Tally:
+                    case EditBodyType::Tally:
                 {
                     table_cook_put( at + 964 + i * 308 + 4, (uint64_t) value.pending[i].tally, 4, order );
                     break;
                 }
-                case EditBodyType::Marks:
+                    case EditBodyType::Marks:
                 {
                     // 3 slots of storage, value.pending[i].marks.value_count live: a slot past the count keeps the extent's zero (§7.2)
                     schema_assert( value.pending[i].marks.value_count >= 0 && value.pending[i].marks.value_count <= 3 ); // storage invariant, debug only (§5.1)
@@ -46576,13 +47086,13 @@ inline bool TransactionCookBody( uint8_t * at, const Transaction & value, TableB
                     table_cook_put( at + 964 + i * 308 + 12, (uint64_t) (uint32_t) value.pending[i].marks.value_count, 4, order );
                     break;
                 }
-                case EditBodyType::Blob:
+                    case EditBodyType::Blob:
                 {
                     table_cook_bytes( at + 964 + i * 308 + 4, value.pending[i].blob.value, value.pending[i].blob.value_length, 4 );
                     table_cook_put( at + 964 + i * 308 + 8, (uint64_t) (uint32_t) value.pending[i].blob.value_length, 4, order );
                     break;
                 }
-                case EditBodyType::Mode:
+                    case EditBodyType::Mode:
                 {
                     table_cook_put( at + 964 + i * 308 + 4, (uint64_t) value.pending[i].mode, 1, order );
                     break;
@@ -46621,12 +47131,12 @@ inline bool ToolMessageCookBody( uint8_t * at, const ToolMessage & value, TableB
             case ToolBodyType::Save: if ( !SaveDocumentCookBody( at + 8 + 8, value.body.save, order ) ) { return false; } break;
             case ToolBodyType::Transact: if ( !TransactionCookBody( at + 8 + 8, value.body.transact, order ) ) { return false; } break;
             case ToolBodyType::Ping: if ( !PingCookBody( at + 8 + 8, value.body.ping, order ) ) { return false; } break;
-            case ToolBodyType::Caps:
+                case ToolBodyType::Caps:
             {
                 table_cook_put( at + 8 + 8, (uint64_t) value.body.caps, 8, order ); // a mask rides raw, in every target
                 break;
             }
-            case ToolBodyType::Spans:
+                case ToolBodyType::Spans:
             {
                 for ( int32_t ia = 0; ia < 2; ia++ )
                 {
@@ -46634,7 +47144,7 @@ inline bool ToolMessageCookBody( uint8_t * at, const ToolMessage & value, TableB
                 }
                 break;
             }
-            case ToolBodyType::Origin:
+                case ToolBodyType::Origin:
             {
                 {
                     table_cook_put( at + 8 + 8, (uint64_t) value.body.origin.type, 1, order ); // the tag; None is the tag alone
@@ -46642,12 +47152,12 @@ inline bool ToolMessageCookBody( uint8_t * at, const ToolMessage & value, TableB
                     {
                         case OriginType::User: if ( !UserCookBody( at + 8 + 8 + 4, value.body.origin.user, order ) ) { return false; } break;
                         case OriginType::Script: if ( !ScriptCookBody( at + 8 + 8 + 4, value.body.origin.script, order ) ) { return false; } break;
-                        case OriginType::Pid:
+                            case OriginType::Pid:
                         {
                             table_cook_put( at + 8 + 8 + 4, (uint64_t) value.body.origin.pid, 4, order );
                             break;
                         }
-                        case OriginType::Note:
+                            case OriginType::Note:
                         {
                             table_cook_bytes( at + 8 + 8 + 4, value.body.origin.note.value, value.body.origin.note.value_length, 25 );
                             table_cook_put( at + 8 + 8 + 32, (uint64_t) (uint32_t) value.body.origin.note.value_length, 4, order );
@@ -46674,12 +47184,12 @@ inline bool ToolMessageCookBody( uint8_t * at, const ToolMessage & value, TableB
                 case ToolBodyType::Save: if ( !SaveDocumentCookBody( at + 1648 + i * 1640 + 8, value.history[i].save, order ) ) { return false; } break;
                 case ToolBodyType::Transact: if ( !TransactionCookBody( at + 1648 + i * 1640 + 8, value.history[i].transact, order ) ) { return false; } break;
                 case ToolBodyType::Ping: if ( !PingCookBody( at + 1648 + i * 1640 + 8, value.history[i].ping, order ) ) { return false; } break;
-                case ToolBodyType::Caps:
+                    case ToolBodyType::Caps:
                 {
                     table_cook_put( at + 1648 + i * 1640 + 8, (uint64_t) value.history[i].caps, 8, order ); // a mask rides raw, in every target
                     break;
                 }
-                case ToolBodyType::Spans:
+                    case ToolBodyType::Spans:
                 {
                     for ( int32_t ia = 0; ia < 2; ia++ )
                     {
@@ -46687,7 +47197,7 @@ inline bool ToolMessageCookBody( uint8_t * at, const ToolMessage & value, TableB
                     }
                     break;
                 }
-                case ToolBodyType::Origin:
+                    case ToolBodyType::Origin:
                 {
                     {
                         table_cook_put( at + 1648 + i * 1640 + 8, (uint64_t) value.history[i].origin.type, 1, order ); // the tag; None is the tag alone
@@ -46695,12 +47205,12 @@ inline bool ToolMessageCookBody( uint8_t * at, const ToolMessage & value, TableB
                         {
                             case OriginType::User: if ( !UserCookBody( at + 1648 + i * 1640 + 8 + 4, value.history[i].origin.user, order ) ) { return false; } break;
                             case OriginType::Script: if ( !ScriptCookBody( at + 1648 + i * 1640 + 8 + 4, value.history[i].origin.script, order ) ) { return false; } break;
-                            case OriginType::Pid:
+                                case OriginType::Pid:
                             {
                                 table_cook_put( at + 1648 + i * 1640 + 8 + 4, (uint64_t) value.history[i].origin.pid, 4, order );
                                 break;
                             }
-                            case OriginType::Note:
+                                case OriginType::Note:
                             {
                                 table_cook_bytes( at + 1648 + i * 1640 + 8 + 4, value.history[i].origin.note.value, value.history[i].origin.note.value_length, 25 );
                                 table_cook_put( at + 1648 + i * 1640 + 8 + 32, (uint64_t) (uint32_t) value.history[i].origin.note.value_length, 4, order );
@@ -46753,12 +47263,12 @@ inline bool ToolEnvelopeCookBody( const Ctx & ctx, const TableCookRegion & regio
             case ToolBodyType::Save: if ( !SaveDocumentCookBody( at + 8 + 8, value.body.save, order ) ) { return false; } break;
             case ToolBodyType::Transact: if ( !TransactionCookBody( at + 8 + 8, value.body.transact, order ) ) { return false; } break;
             case ToolBodyType::Ping: if ( !PingCookBody( at + 8 + 8, value.body.ping, order ) ) { return false; } break;
-            case ToolBodyType::Caps:
+                case ToolBodyType::Caps:
             {
                 table_cook_put( at + 8 + 8, (uint64_t) value.body.caps, 8, order ); // a mask rides raw, in every target
                 break;
             }
-            case ToolBodyType::Spans:
+                case ToolBodyType::Spans:
             {
                 for ( int32_t ia = 0; ia < 2; ia++ )
                 {
@@ -46766,7 +47276,7 @@ inline bool ToolEnvelopeCookBody( const Ctx & ctx, const TableCookRegion & regio
                 }
                 break;
             }
-            case ToolBodyType::Origin:
+                case ToolBodyType::Origin:
             {
                 {
                     table_cook_put( at + 8 + 8, (uint64_t) value.body.origin.type, 1, order ); // the tag; None is the tag alone
@@ -46774,12 +47284,12 @@ inline bool ToolEnvelopeCookBody( const Ctx & ctx, const TableCookRegion & regio
                     {
                         case OriginType::User: if ( !UserCookBody( at + 8 + 8 + 4, value.body.origin.user, order ) ) { return false; } break;
                         case OriginType::Script: if ( !ScriptCookBody( at + 8 + 8 + 4, value.body.origin.script, order ) ) { return false; } break;
-                        case OriginType::Pid:
+                            case OriginType::Pid:
                         {
                             table_cook_put( at + 8 + 8 + 4, (uint64_t) value.body.origin.pid, 4, order );
                             break;
                         }
-                        case OriginType::Note:
+                            case OriginType::Note:
                         {
                             table_cook_bytes( at + 8 + 8 + 4, value.body.origin.note.value, value.body.origin.note.value_length, 25 );
                             table_cook_put( at + 8 + 8 + 32, (uint64_t) (uint32_t) value.body.origin.note.value_length, 4, order );

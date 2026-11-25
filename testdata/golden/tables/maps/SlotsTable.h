@@ -12191,7 +12191,10 @@ inline int64_t SlotsSeatsEntryMeasureBody( TableIds & ids, const SlotsSeatsEntry
             const int64_t whole_value = 1 + TableLebBytes( (uint64_t) pairs_value ) + body_value;
             bytes += TableLebBytes( ref_value ) + 1 + TableLebBytes( (uint64_t) ( whole_value ) ) + ( whole_value ); // value
         }
-        else { ids.truncate( mark_value ); } // an ELIDED field costs nothing in the id table either
+        else
+        {
+            ids.truncate( mark_value );
+        } // an ELIDED field costs nothing in the id table either
     }
     return bytes;
 }
@@ -12238,7 +12241,10 @@ MAPDEMO_TABLE_INLINE bool SlotsSeatsEntrySaveBody( TableWriter & w, TableIds & i
                 w.put32( uint32_t( value.value.slots[i] ) );
             }
         }
-        else { ids.truncate( mark_value ); } // an ELIDED field costs nothing in the id table either
+        else
+        {
+            ids.truncate( mark_value );
+        } // an ELIDED field costs nothing in the id table either
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
     return !w.overflow;
@@ -13063,11 +13069,22 @@ inline bool SlotsNumber( const Ctx & ctx, TableNumbering & numbering, const Slot
             continue;
         }
         if ( !TableNumberingAppend( numbering, work ) ) { return false; }
-        if ( work.walk == NULL ) { TablePackMapClose( numbering.seen, work.node, slot ); continue; } // a blob reaches nothing
+        if ( work.walk == NULL )
+        {
+            TablePackMapClose( numbering.seen, work.node, slot );
+            continue;
+        } // a blob reaches nothing
         TableNodeEntry close;
-        close.node = work.node; close.type_id = 0; close.measure = NULL; close.save = NULL;
-        close.pack_bytes = NULL; close.pack_copy = NULL; close.pack_slots = NULL; close.walk = NULL;
-        close.close = true; close.hint = slot;
+        close.node = work.node;
+        close.type_id = 0;
+        close.measure = NULL;
+        close.save = NULL;
+        close.pack_bytes = NULL;
+        close.pack_copy = NULL;
+        close.pack_slots = NULL;
+        close.walk = NULL;
+        close.close = true;
+        close.hint = slot;
         if ( !TableNumberingWorkPush( numbering, close ) ) { return false; }
         const int64_t first = numbering.work_count;
         if ( !work.walk( (const void *) &ctx, numbering, work.node ) ) { return false; }
@@ -13223,9 +13240,17 @@ inline bool SlotsBuilder::Lock()
         for ( int64_t k = 0; ok && k < numbering.count; k++ )
         {
             const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
-            if ( bytes < 0 ) { ok = false; break; }
+            if ( bytes < 0 )
+            {
+                ok = false;
+                break;
+            }
             TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-            if ( entry == NULL ) { ok = false; break; }
+            if ( entry == NULL )
+            {
+                ok = false;
+                break;
+            }
             measured = TableAlignUp64( measured );
             entry->offset = measured;
             measured += bytes;
@@ -13249,9 +13274,17 @@ inline bool SlotsBuilder::Lock()
         for ( int64_t k = 0; ok && k < numbering.count; k++ )
         {
             const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
-            if ( bytes < 0 ) { ok = false; break; }
+            if ( bytes < 0 )
+            {
+                ok = false;
+                break;
+            }
             TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-            if ( entry == NULL ) { ok = false; break; }
+            if ( entry == NULL )
+            {
+                ok = false;
+                break;
+            }
             used = TableAlignUp64( used );
             entry->offset = used;
             used += bytes;
@@ -13276,14 +13309,22 @@ inline bool SlotsBuilder::Lock()
     for ( int64_t k = 0; ok && k < numbering.count; k++ )
     {
         const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-        if ( entry == NULL ) { ok = false; break; }
+        if ( entry == NULL )
+        {
+            ok = false;
+            break;
+        }
         ok = numbering.entries[k].pack_copy( (const void *) &ctx, numbering.entries[k].node, packed + entry->offset, packed, total );
     }
-    if ( ok ) { ok = SlotsPackSlots( ctx, numbering.seen, root, *( Slots * ) packed, packed ); }
+    if ( ok ) { ok = SlotsPackSlots( ctx, numbering.seen, root, *(Slots *) packed, packed ); }
     for ( int64_t k = 0; ok && k < numbering.count; k++ )
     {
         const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-        if ( entry == NULL ) { ok = false; break; }
+        if ( entry == NULL )
+        {
+            ok = false;
+            break;
+        }
         if ( numbering.entries[k].pack_slots != NULL ) { ok = numbering.entries[k].pack_slots( (const void *) &ctx, numbering.seen, numbering.entries[k].node, packed + entry->offset, packed ); } // a blob has no slots
     }
     TableNumberingShutdown( numbering );
@@ -14229,7 +14270,10 @@ inline int64_t SlotsSeatsEntryMeasureBodyRetain( TableRetainIds & ids, const Slo
             const int64_t whole_value = 1 + TableLebBytes( (uint64_t) pairs_value ) + body_value;
             bytes += TableLebBytes( ref_value ) + 1 + TableLebBytes( (uint64_t) ( whole_value ) ) + ( whole_value ); // value
         }
-        else { ids.truncate( mark_value ); } // an ELIDED field costs nothing in the id table either
+        else
+        {
+            ids.truncate( mark_value );
+        } // an ELIDED field costs nothing in the id table either
     }
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
@@ -14277,7 +14321,10 @@ MAPDEMO_TABLE_INLINE bool SlotsSeatsEntrySaveBodyRetain( TableWriter & w, TableR
                 w.put32( uint32_t( value.value.slots[i] ) );
             }
         }
-        else { ids.truncate( mark_value ); } // an ELIDED field costs nothing in the id table either
+        else
+        {
+            ids.truncate( mark_value );
+        } // an ELIDED field costs nothing in the id table either
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body

@@ -10650,7 +10650,8 @@ inline bool table_cook_ref( const TableCookRegion & region, uint8_t * at, const 
 namespace armdemo {
 
 // InnerType: union Inner's tag — None = 0, then each variant in declared order (SPEC §4.8)
-enum class InnerType : uint8_t {
+enum class InnerType : uint8_t
+{
     None = 0,
     Leaf = 1,
     Plain = 2,
@@ -10699,7 +10700,8 @@ struct Twig
 };
 
 // OuterType: union Outer's tag — None = 0, then each variant in declared order (SPEC §4.8)
-enum class OuterType : uint8_t {
+enum class OuterType : uint8_t
+{
     None = 0,
     Inner = 1,
     Plain = 2,
@@ -10919,7 +10921,10 @@ inline bool TwigSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                 }
                 w.header( arm_ref, 13 );
                 w.putleb( (uint64_t) arm_payload ); // leaf
-                if ( !LeafSaveBody( ctx, numbering, w, ids, value.inner.leaf ) ) { return false; }
+                if ( !LeafSaveBody( ctx, numbering, w, ids, value.inner.leaf ) )
+            {
+                return false;
+            }
                 break;
             }
             case InnerType::Plain:
@@ -11272,7 +11277,10 @@ inline bool NestSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                             }
                             w.header( arm_refa, 13 );
                             w.putleb( (uint64_t) arm_payloada ); // leaf
-                            if ( !LeafSaveBody( ctx, numbering, w, ids, value.outer.inner.leaf ) ) { return false; }
+                            if ( !LeafSaveBody( ctx, numbering, w, ids, value.outer.inner.leaf ) )
+            {
+                return false;
+            }
                             break;
                         }
                         case InnerType::Plain:
@@ -12187,11 +12195,22 @@ inline bool TwigNumber( const Ctx & ctx, TableNumbering & numbering, const Twig 
             continue;
         }
         if ( !TableNumberingAppend( numbering, work ) ) { return false; }
-        if ( work.walk == NULL ) { TablePackMapClose( numbering.seen, work.node, slot ); continue; } // a blob reaches nothing
+        if ( work.walk == NULL )
+        {
+            TablePackMapClose( numbering.seen, work.node, slot );
+            continue;
+        } // a blob reaches nothing
         TableNodeEntry close;
-        close.node = work.node; close.type_id = 0; close.measure = NULL; close.save = NULL;
-        close.pack_bytes = NULL; close.pack_copy = NULL; close.pack_slots = NULL; close.walk = NULL;
-        close.close = true; close.hint = slot;
+        close.node = work.node;
+        close.type_id = 0;
+        close.measure = NULL;
+        close.save = NULL;
+        close.pack_bytes = NULL;
+        close.pack_copy = NULL;
+        close.pack_slots = NULL;
+        close.walk = NULL;
+        close.close = true;
+        close.hint = slot;
         if ( !TableNumberingWorkPush( numbering, close ) ) { return false; }
         const int64_t first = numbering.work_count;
         if ( !work.walk( (const void *) &ctx, numbering, work.node ) ) { return false; }
@@ -12323,11 +12342,22 @@ inline bool NestNumber( const Ctx & ctx, TableNumbering & numbering, const Nest 
             continue;
         }
         if ( !TableNumberingAppend( numbering, work ) ) { return false; }
-        if ( work.walk == NULL ) { TablePackMapClose( numbering.seen, work.node, slot ); continue; } // a blob reaches nothing
+        if ( work.walk == NULL )
+        {
+            TablePackMapClose( numbering.seen, work.node, slot );
+            continue;
+        } // a blob reaches nothing
         TableNodeEntry close;
-        close.node = work.node; close.type_id = 0; close.measure = NULL; close.save = NULL;
-        close.pack_bytes = NULL; close.pack_copy = NULL; close.pack_slots = NULL; close.walk = NULL;
-        close.close = true; close.hint = slot;
+        close.node = work.node;
+        close.type_id = 0;
+        close.measure = NULL;
+        close.save = NULL;
+        close.pack_bytes = NULL;
+        close.pack_copy = NULL;
+        close.pack_slots = NULL;
+        close.walk = NULL;
+        close.close = true;
+        close.hint = slot;
         if ( !TableNumberingWorkPush( numbering, close ) ) { return false; }
         const int64_t first = numbering.work_count;
         if ( !work.walk( (const void *) &ctx, numbering, work.node ) ) { return false; }
@@ -12512,9 +12542,17 @@ inline bool TwigBuilder::Lock()
         for ( int64_t k = 0; ok && k < numbering.count; k++ )
         {
             const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
-            if ( bytes < 0 ) { ok = false; break; }
+            if ( bytes < 0 )
+            {
+                ok = false;
+                break;
+            }
             TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-            if ( entry == NULL ) { ok = false; break; }
+            if ( entry == NULL )
+            {
+                ok = false;
+                break;
+            }
             measured = TableAlignUp64( measured );
             entry->offset = measured;
             measured += bytes;
@@ -12538,9 +12576,17 @@ inline bool TwigBuilder::Lock()
         for ( int64_t k = 0; ok && k < numbering.count; k++ )
         {
             const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
-            if ( bytes < 0 ) { ok = false; break; }
+            if ( bytes < 0 )
+            {
+                ok = false;
+                break;
+            }
             TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-            if ( entry == NULL ) { ok = false; break; }
+            if ( entry == NULL )
+            {
+                ok = false;
+                break;
+            }
             used = TableAlignUp64( used );
             entry->offset = used;
             used += bytes;
@@ -12565,14 +12611,22 @@ inline bool TwigBuilder::Lock()
     for ( int64_t k = 0; ok && k < numbering.count; k++ )
     {
         const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-        if ( entry == NULL ) { ok = false; break; }
+        if ( entry == NULL )
+        {
+            ok = false;
+            break;
+        }
         ok = numbering.entries[k].pack_copy( (const void *) &ctx, numbering.entries[k].node, packed + entry->offset, packed, total );
     }
-    if ( ok ) { ok = TwigPackSlots( ctx, numbering.seen, root, *( Twig * ) packed, packed ); }
+    if ( ok ) { ok = TwigPackSlots( ctx, numbering.seen, root, *(Twig *) packed, packed ); }
     for ( int64_t k = 0; ok && k < numbering.count; k++ )
     {
         const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-        if ( entry == NULL ) { ok = false; break; }
+        if ( entry == NULL )
+        {
+            ok = false;
+            break;
+        }
         if ( numbering.entries[k].pack_slots != NULL ) { ok = numbering.entries[k].pack_slots( (const void *) &ctx, numbering.seen, numbering.entries[k].node, packed + entry->offset, packed ); } // a blob has no slots
     }
     TableNumberingShutdown( numbering );
@@ -13568,9 +13622,17 @@ inline bool NestBuilder::Lock()
         for ( int64_t k = 0; ok && k < numbering.count; k++ )
         {
             const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
-            if ( bytes < 0 ) { ok = false; break; }
+            if ( bytes < 0 )
+            {
+                ok = false;
+                break;
+            }
             TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-            if ( entry == NULL ) { ok = false; break; }
+            if ( entry == NULL )
+            {
+                ok = false;
+                break;
+            }
             measured = TableAlignUp64( measured );
             entry->offset = measured;
             measured += bytes;
@@ -13594,9 +13656,17 @@ inline bool NestBuilder::Lock()
         for ( int64_t k = 0; ok && k < numbering.count; k++ )
         {
             const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
-            if ( bytes < 0 ) { ok = false; break; }
+            if ( bytes < 0 )
+            {
+                ok = false;
+                break;
+            }
             TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-            if ( entry == NULL ) { ok = false; break; }
+            if ( entry == NULL )
+            {
+                ok = false;
+                break;
+            }
             used = TableAlignUp64( used );
             entry->offset = used;
             used += bytes;
@@ -13621,14 +13691,22 @@ inline bool NestBuilder::Lock()
     for ( int64_t k = 0; ok && k < numbering.count; k++ )
     {
         const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-        if ( entry == NULL ) { ok = false; break; }
+        if ( entry == NULL )
+        {
+            ok = false;
+            break;
+        }
         ok = numbering.entries[k].pack_copy( (const void *) &ctx, numbering.entries[k].node, packed + entry->offset, packed, total );
     }
-    if ( ok ) { ok = NestPackSlots( ctx, numbering.seen, root, *( Nest * ) packed, packed ); }
+    if ( ok ) { ok = NestPackSlots( ctx, numbering.seen, root, *(Nest *) packed, packed ); }
     for ( int64_t k = 0; ok && k < numbering.count; k++ )
     {
         const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-        if ( entry == NULL ) { ok = false; break; }
+        if ( entry == NULL )
+        {
+            ok = false;
+            break;
+        }
         if ( numbering.entries[k].pack_slots != NULL ) { ok = numbering.entries[k].pack_slots( (const void *) &ctx, numbering.seen, numbering.entries[k].node, packed + entry->offset, packed ); } // a blob has no slots
     }
     TableNumberingShutdown( numbering );
@@ -14586,7 +14664,10 @@ inline bool TwigSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
                 }
                 w.header( arm_ref, 13 );
                 w.putleb( (uint64_t) arm_payload ); // leaf
-                if ( !LeafSaveBodyRetain( ctx, numbering, w, ids, value.inner.leaf, retain, TableRetainStepInto( path, 0, (uint32_t) ( 0 ) ) ) ) { return false; }
+                if ( !LeafSaveBodyRetain( ctx, numbering, w, ids, value.inner.leaf, retain, TableRetainStepInto( path, 0, (uint32_t) ( 0 ) ) ) )
+            {
+                return false;
+            }
                 break;
             }
             case InnerType::Plain:
@@ -14947,7 +15028,10 @@ inline bool NestSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
                             }
                             w.header( arm_refa, 13 );
                             w.putleb( (uint64_t) arm_payloada ); // leaf
-                            if ( !LeafSaveBodyRetain( ctx, numbering, w, ids, value.outer.inner.leaf, retain, TableRetainStepInto( path, 0, (uint32_t) ( 0 ) ) ) ) { return false; }
+                            if ( !LeafSaveBodyRetain( ctx, numbering, w, ids, value.outer.inner.leaf, retain, TableRetainStepInto( path, 0, (uint32_t) ( 0 ) ) ) )
+            {
+                return false;
+            }
                             break;
                         }
                         case InnerType::Plain:
@@ -16513,7 +16597,7 @@ inline bool TwigCookBody( const Ctx & ctx, const TableCookRegion & region, uint8
         switch ( value.inner.type )
         {
             case InnerType::Leaf: if ( !LeafCookBody( ctx, region, at + 0 + 8, value.inner.leaf, order ) ) { return false; } break;
-            case InnerType::Plain:
+                case InnerType::Plain:
             {
                 table_cook_put( at + 0 + 8, (uint64_t) value.inner.plain, 4, order );
                 break;
@@ -16531,14 +16615,14 @@ inline bool NestCookBody( const Ctx & ctx, const TableCookRegion & region, uint8
         table_cook_put( at + 0, (uint64_t) value.outer.type, 1, order ); // the tag; None is the tag alone
         switch ( value.outer.type )
         {
-            case OuterType::Inner:
+                case OuterType::Inner:
             {
                 {
                     table_cook_put( at + 0 + 8, (uint64_t) value.outer.inner.type, 1, order ); // the tag; None is the tag alone
                     switch ( value.outer.inner.type )
                     {
                         case InnerType::Leaf: if ( !LeafCookBody( ctx, region, at + 0 + 8 + 8, value.outer.inner.leaf, order ) ) { return false; } break;
-                        case InnerType::Plain:
+                            case InnerType::Plain:
                         {
                             table_cook_put( at + 0 + 8 + 8, (uint64_t) value.outer.inner.plain, 4, order );
                             break;
@@ -16548,7 +16632,7 @@ inline bool NestCookBody( const Ctx & ctx, const TableCookRegion & region, uint8
                 }
                 break;
             }
-            case OuterType::Plain:
+                case OuterType::Plain:
             {
                 table_cook_put( at + 0 + 8, (uint64_t) value.outer.plain, 4, order );
                 break;

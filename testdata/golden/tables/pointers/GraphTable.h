@@ -10359,8 +10359,10 @@ inline bool AlbumPackSlots( const Ctx & ctx, TablePackMap & seen, const Album & 
 
 // ---- the numbering's bridge to each member's codec (docs/SPEC-TABLES.md §3.1) ----
 
-template <typename Ctx> inline int64_t TableNodeMeasure( const Ctx &, const TableNumbering &, TableIds & ids, const Settings & value ) { return SettingsMeasureBody( ids, value ); }
-template <typename Ctx> inline bool TableNodeSave( const Ctx &, const TableNumbering &, TableWriter & w, TableIds & ids, const Settings & value ) { return SettingsSaveBody( w, ids, value ); }
+template <typename Ctx>
+inline int64_t TableNodeMeasure( const Ctx &, const TableNumbering &, TableIds & ids, const Settings & value ) { return SettingsMeasureBody( ids, value ); }
+template <typename Ctx>
+inline bool TableNodeSave( const Ctx &, const TableNumbering &, TableWriter & w, TableIds & ids, const Settings & value ) { return SettingsSaveBody( w, ids, value ); }
 template <typename Ctx>
 inline int64_t TableNodeMeasure( const Ctx & ctx, const TableNumbering & numbering, TableIds & ids, const ListNode & value ) { return ListNodeMeasureBody( ctx, numbering, ids, value ); }
 template <typename Ctx>
@@ -10891,7 +10893,7 @@ inline bool MetaLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                             else if ( width > 0 && width < 64 )
                             {
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
-                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                             }
                             if ( decoded_wide < 0ll )
                             {
@@ -10939,7 +10941,7 @@ inline bool MetaLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                     else if ( width > 0 && width < 64 )
                     {
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
-                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     const int64_t pre_clamp = decoded_wide;
                     if ( decoded_wide < 0ll )
@@ -11019,7 +11021,11 @@ inline bool MetaLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                 break;
             }
             default:
-                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
+                if ( vocabulary.build_version == BuildVersion )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 report->unknown++;
                 if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
@@ -11576,7 +11582,7 @@ inline bool SettingsLoadMessageBody( TableBitReader & r, const TableVocabulary &
                             else if ( width > 0 && width < 64 )
                             {
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
-                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                             }
                             if ( decoded_wide < 0ll )
                             {
@@ -11624,7 +11630,7 @@ inline bool SettingsLoadMessageBody( TableBitReader & r, const TableVocabulary &
                     else if ( width > 0 && width < 64 )
                     {
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
-                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     const int64_t pre_clamp = decoded_wide;
                     if ( decoded_wide < 0ll )
@@ -11704,7 +11710,11 @@ inline bool SettingsLoadMessageBody( TableBitReader & r, const TableVocabulary &
                 break;
             }
             default:
-                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
+                if ( vocabulary.build_version == BuildVersion )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 report->unknown++;
                 if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
@@ -12592,7 +12602,10 @@ inline int64_t SceneMeasureBody( const Ctx & ctx, const TableNumbering & numberi
         const int64_t body_ground = LayerMeasureBody( ctx, numbering, ids, value.ground );
         if ( body_ground < 0 ) { return -1; }
         if ( body_ground > 1 ) { bytes += TableLebBytes( ref_ground ) + 1 + TableLebBytes( (uint64_t) ( body_ground ) ) + ( body_ground ); } // ground
-        else { ids.truncate( mark_ground ); } // an all-default nested table elides, and costs no entry
+        else
+        {
+            ids.truncate( mark_ground );
+        } // an all-default nested table elides, and costs no entry
     }
     schema_assert( value.layers_count >= 0 && value.layers_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.layers_count > 0 )
@@ -12614,7 +12627,10 @@ inline int64_t SceneMeasureBody( const Ctx & ctx, const TableNumbering & numberi
         const int64_t body_meta = MetaMeasureBody( ids, value.meta );
         if ( body_meta < 0 ) { return -1; }
         if ( body_meta > 1 ) { bytes += TableLebBytes( ref_meta ) + 1 + TableLebBytes( (uint64_t) ( body_meta ) ) + ( body_meta ); } // meta
-        else { ids.truncate( mark_meta ); } // an all-default nested table elides, and costs no entry
+        else
+        {
+            ids.truncate( mark_meta );
+        } // an all-default nested table elides, and costs no entry
     }
     return bytes;
 }
@@ -12690,7 +12706,10 @@ inline bool SceneSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
             w.putleb( (uint64_t) body_ground ); // ground
             if ( !LayerSaveBody( ctx, numbering, w, ids, value.ground ) ) return false;
         }
-        else { ids.truncate( mark_ground ); }
+        else
+        {
+            ids.truncate( mark_ground );
+        }
     }
     schema_assert( value.layers_count >= 0 && value.layers_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.layers_count > 0 )
@@ -12734,7 +12753,10 @@ inline bool SceneSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
             w.putleb( (uint64_t) body_meta ); // meta
             if ( !MetaSaveBody( w, ids, value.meta ) ) return false;
         }
-        else { ids.truncate( mark_meta ); }
+        else
+        {
+            ids.truncate( mark_meta );
+        }
     }
     return !w.overflow;
 }
@@ -13228,7 +13250,10 @@ inline int64_t DepotMeasureBody( const Ctx & ctx, const TableNumbering & numberi
             const int64_t whole_banks = 1 + TableLebBytes( (uint64_t) pairs_banks ) + body_banks;
             bytes += TableLebBytes( ref_banks ) + 1 + TableLebBytes( (uint64_t) ( whole_banks ) ) + ( whole_banks ); // banks
         }
-        else { ids.truncate( mark_banks ); } // an ELIDED field costs nothing in the id table either
+        else
+        {
+            ids.truncate( mark_banks );
+        } // an ELIDED field costs nothing in the id table either
     }
     if ( value.spare_present ) // ?Meta: presence decides, not content
     {
@@ -13316,7 +13341,10 @@ inline bool DepotSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
                 if ( !LayerSaveBody( ctx, numbering, w, ids, value.banks.slots[i] ) ) return false;
             }
         }
-        else { ids.truncate( mark_banks ); } // an ELIDED field costs nothing in the id table either
+        else
+        {
+            ids.truncate( mark_banks );
+        } // an ELIDED field costs nothing in the id table either
     }
     if ( value.spare_present ) // ?Meta
     {
@@ -13633,7 +13661,10 @@ inline int64_t AlbumMeasureBody( const Ctx & ctx, const TableNumbering & numberi
         const int64_t body_tint = ColourMeasureBody( ids, value.tint );
         if ( body_tint < 0 ) { return -1; }
         if ( body_tint > 1 ) { bytes += TableLebBytes( ref_tint ) + 1 + TableLebBytes( (uint64_t) ( body_tint ) ) + ( body_tint ); } // tint
-        else { ids.truncate( mark_tint ); } // an all-default nested table elides, and costs no entry
+        else
+        {
+            ids.truncate( mark_tint );
+        } // an all-default nested table elides, and costs no entry
     }
     {
         const int32_t mark_stamp = ids.count;
@@ -13641,7 +13672,10 @@ inline int64_t AlbumMeasureBody( const Ctx & ctx, const TableNumbering & numberi
         const int64_t body_stamp = StampMeasureBody( ids, value.stamp );
         if ( body_stamp < 0 ) { return -1; }
         if ( body_stamp > 1 ) { bytes += TableLebBytes( ref_stamp ) + 1 + TableLebBytes( (uint64_t) ( body_stamp ) ) + ( body_stamp ); } // stamp
-        else { ids.truncate( mark_stamp ); } // an all-default nested table elides, and costs no entry
+        else
+        {
+            ids.truncate( mark_stamp );
+        } // an all-default nested table elides, and costs no entry
     }
     {
         const int32_t mark_marker = ids.count;
@@ -13649,7 +13683,10 @@ inline int64_t AlbumMeasureBody( const Ctx & ctx, const TableNumbering & numberi
         const int64_t body_marker = MarkerMeasureBody( ctx, numbering, ids, value.marker );
         if ( body_marker < 0 ) { return -1; }
         if ( body_marker > 1 ) { bytes += TableLebBytes( ref_marker ) + 1 + TableLebBytes( (uint64_t) ( body_marker ) ) + ( body_marker ); } // marker
-        else { ids.truncate( mark_marker ); } // an all-default nested table elides, and costs no entry
+        else
+        {
+            ids.truncate( mark_marker );
+        } // an all-default nested table elides, and costs no entry
     }
     {
         const Marker * pointee_pin = MarkerAt( ctx, value.pin ); // *Marker
@@ -13706,7 +13743,10 @@ inline bool AlbumSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
             w.putleb( (uint64_t) body_tint ); // tint
             if ( !ColourSaveBody( w, ids, value.tint ) ) return false;
         }
-        else { ids.truncate( mark_tint ); }
+        else
+        {
+            ids.truncate( mark_tint );
+        }
     }
     {
         const int32_t mark_stamp = ids.count;
@@ -13719,7 +13759,10 @@ inline bool AlbumSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
             w.putleb( (uint64_t) body_stamp ); // stamp
             if ( !StampSaveBody( w, ids, value.stamp ) ) return false;
         }
-        else { ids.truncate( mark_stamp ); }
+        else
+        {
+            ids.truncate( mark_stamp );
+        }
     }
     {
         const int32_t mark_marker = ids.count;
@@ -13732,7 +13775,10 @@ inline bool AlbumSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
             w.putleb( (uint64_t) body_marker ); // marker
             if ( !MarkerSaveBody( ctx, numbering, w, ids, value.marker ) ) return false;
         }
-        else { ids.truncate( mark_marker ); }
+        else
+        {
+            ids.truncate( mark_marker );
+        }
     }
     {
         const Marker * pointee_pin = MarkerAt( ctx, value.pin ); // *Marker
@@ -14319,16 +14365,19 @@ inline int64_t MetaFixedSave( const Meta * values, int64_t count, uint8_t * buff
 // R4: every refusal leaves ALL `capacity` rows at their declared defaults, so a direct call
 // holds the same rule as FixedLoad. The body below is the walk itself.
 inline int64_t MetaFixedLoadWalkBody( Meta * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
 inline int64_t MetaFixedLoadWalk( Meta * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
     const int64_t n = MetaFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
     if ( n < 0 || report->damaged || report->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { MetaReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { MetaReset( values[k] ); }
+        }
         return -1;
     }
     return n;
@@ -14337,7 +14386,7 @@ inline int64_t MetaFixedLoadWalk( Meta * values, int64_t capacity, const uint8_t
 // MetaFixedLoadWalkBody is the STRICT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps
 // every recovered record, with the counters counted onto the report passed.
 inline int64_t MetaFixedLoadWalkBody( Meta * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
@@ -14354,8 +14403,8 @@ inline int64_t MetaFixedLoadWalkBody( Meta * values, int64_t capacity, const uin
     {
         report->refused = true;
         report->reason = data[0] == kTableWireForm ? TableMessageReason::previous_form
-                       : data[0] == kTableWireMessageForm ? TableMessageReason::message_form_as_file
-                       : TableMessageReason::newer_form;
+            : data[0] == kTableWireMessageForm     ? TableMessageReason::message_form_as_file
+                                                   : TableMessageReason::newer_form;
         return -1;
     }
     if ( bytes < kTableFixedHeaderBytes + 4 )
@@ -14369,7 +14418,12 @@ inline int64_t MetaFixedLoadWalkBody( Meta * values, int64_t capacity, const uin
     // spendable later.
     for ( int32_t i = 1; i < kTableFixedHashAt; ++i )
     {
-        if ( data[i] != 0 ) { report->damaged = true; report->reason = TableFixedReason::reserved_not_zero; return -1; }
+        if ( data[i] != 0 )
+        {
+            report->damaged = true;
+            report->reason = TableFixedReason::reserved_not_zero;
+            return -1;
+        }
     }
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
     if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes )
@@ -14408,7 +14462,9 @@ inline int64_t MetaFixedLoadWalkBody( Meta * values, int64_t capacity, const uin
     const TableFixedKnownLayout & known = MetaFixedKnown[lineage_at];
     if ( (int64_t) layout_bytes != known.layout_bytes || memcmp( layout, known.layout, (size_t) layout_bytes ) != 0 )
     {
-        report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1;
+        report->refused = true;
+        report->reason = TableMessageReason::layout_malformed;
+        return -1;
     }
     const TableFixedEntry * entries = MetaFixedPlan;
     int32_t entry_count = MetaFixedPlanCount;
@@ -14463,8 +14519,8 @@ inline int64_t MetaFixedLoadWalkBody( Meta * values, int64_t capacity, const uin
             int32_t compiled_guarded = 0;
             uint32_t fill_at = 0;
             const int32_t made = TableFixedCompile( parsed, MetaFixedLayout, (int32_t) MetaFixedLayoutBytes, MetaFixedDst,
-                                                   MetaFixedCover, MetaFixedCoverCount,
-                                                   dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
+                MetaFixedCover, MetaFixedCoverCount,
+                dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
             if ( made < 0 )
             {
                 report->refused = true;
@@ -14549,7 +14605,9 @@ inline int64_t MetaFixedLoadWalkBody( Meta * values, int64_t capacity, const uin
         {
             for ( int64_t j = 0; j < k; ++j ) { MetaReset( values[j] ); }
             report->widened = batch_widened;
-            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+            report->refused = true;
+            report->reason = TableMessageReason::no_layout;
+            return -1;
         }
         for ( int32_t i = 0; i < entry_count; ++i )
         {
@@ -14566,7 +14624,7 @@ inline int64_t MetaFixedLoadWalkBody( Meta * values, int64_t capacity, const uin
                         if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
                         {
                             matches = false;
-                            break;
+                                break;
                         }
                     }
                     if ( !matches ) { continue; }
@@ -14597,7 +14655,7 @@ inline int64_t MetaFixedLoadWalkBody( Meta * values, int64_t capacity, const uin
         // the counters back to what they were before the batch.
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, MetaFixedGuards, NULL );
         TableFixedClampKnownRanges( MetaFixedKnownRanges[lineage_at], MetaFixedKnownRangeCounts[lineage_at],
-                                    (uint8_t *) &values[k], report );
+            (uint8_t *) &values[k], report );
         if ( !MetaFixedClamp( values[k], report ) )
         {
             for ( int64_t j = 0; j <= k; ++j ) { MetaReset( values[j] ); }
@@ -14616,7 +14674,7 @@ inline int64_t MetaFixedLoadWalkBody( Meta * values, int64_t capacity, const uin
 // them, on EVERY refusal (R4), so no partial value survives. A supplied report receives THIS
 // read's report. unknown and widened alone never refuse.
 inline int64_t MetaFixedLoad( Meta * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     TableReport * out = report != NULL ? report : &local;
@@ -14624,7 +14682,10 @@ inline int64_t MetaFixedLoad( Meta * values, int64_t capacity, const uint8_t * d
     const int64_t n = MetaFixedLoadWalk( values, capacity, data, bytes, plan, plan_capacity, cache, out );
     if ( n < 0 || out->damaged || out->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { MetaReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { MetaReset( values[k] ); }
+        }
         return -1;
     }
     return n;
@@ -14802,16 +14863,19 @@ inline int64_t SettingsFixedSave( const Settings * values, int64_t count, uint8_
 // R4: every refusal leaves ALL `capacity` rows at their declared defaults, so a direct call
 // holds the same rule as FixedLoad. The body below is the walk itself.
 inline int64_t SettingsFixedLoadWalkBody( Settings * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
 inline int64_t SettingsFixedLoadWalk( Settings * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
     const int64_t n = SettingsFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
     if ( n < 0 || report->damaged || report->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { SettingsReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { SettingsReset( values[k] ); }
+        }
         return -1;
     }
     return n;
@@ -14820,7 +14884,7 @@ inline int64_t SettingsFixedLoadWalk( Settings * values, int64_t capacity, const
 // SettingsFixedLoadWalkBody is the STRICT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps
 // every recovered record, with the counters counted onto the report passed.
 inline int64_t SettingsFixedLoadWalkBody( Settings * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
@@ -14837,8 +14901,8 @@ inline int64_t SettingsFixedLoadWalkBody( Settings * values, int64_t capacity, c
     {
         report->refused = true;
         report->reason = data[0] == kTableWireForm ? TableMessageReason::previous_form
-                       : data[0] == kTableWireMessageForm ? TableMessageReason::message_form_as_file
-                       : TableMessageReason::newer_form;
+            : data[0] == kTableWireMessageForm     ? TableMessageReason::message_form_as_file
+                                                   : TableMessageReason::newer_form;
         return -1;
     }
     if ( bytes < kTableFixedHeaderBytes + 4 )
@@ -14852,7 +14916,12 @@ inline int64_t SettingsFixedLoadWalkBody( Settings * values, int64_t capacity, c
     // spendable later.
     for ( int32_t i = 1; i < kTableFixedHashAt; ++i )
     {
-        if ( data[i] != 0 ) { report->damaged = true; report->reason = TableFixedReason::reserved_not_zero; return -1; }
+        if ( data[i] != 0 )
+        {
+            report->damaged = true;
+            report->reason = TableFixedReason::reserved_not_zero;
+            return -1;
+        }
     }
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
     if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes )
@@ -14891,7 +14960,9 @@ inline int64_t SettingsFixedLoadWalkBody( Settings * values, int64_t capacity, c
     const TableFixedKnownLayout & known = SettingsFixedKnown[lineage_at];
     if ( (int64_t) layout_bytes != known.layout_bytes || memcmp( layout, known.layout, (size_t) layout_bytes ) != 0 )
     {
-        report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1;
+        report->refused = true;
+        report->reason = TableMessageReason::layout_malformed;
+        return -1;
     }
     const TableFixedEntry * entries = SettingsFixedPlan;
     int32_t entry_count = SettingsFixedPlanCount;
@@ -14946,8 +15017,8 @@ inline int64_t SettingsFixedLoadWalkBody( Settings * values, int64_t capacity, c
             int32_t compiled_guarded = 0;
             uint32_t fill_at = 0;
             const int32_t made = TableFixedCompile( parsed, SettingsFixedLayout, (int32_t) SettingsFixedLayoutBytes, SettingsFixedDst,
-                                                   SettingsFixedCover, SettingsFixedCoverCount,
-                                                   dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
+                SettingsFixedCover, SettingsFixedCoverCount,
+                dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
             if ( made < 0 )
             {
                 report->refused = true;
@@ -15032,7 +15103,9 @@ inline int64_t SettingsFixedLoadWalkBody( Settings * values, int64_t capacity, c
         {
             for ( int64_t j = 0; j < k; ++j ) { SettingsReset( values[j] ); }
             report->widened = batch_widened;
-            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+            report->refused = true;
+            report->reason = TableMessageReason::no_layout;
+            return -1;
         }
         for ( int32_t i = 0; i < entry_count; ++i )
         {
@@ -15049,7 +15122,7 @@ inline int64_t SettingsFixedLoadWalkBody( Settings * values, int64_t capacity, c
                         if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
                         {
                             matches = false;
-                            break;
+                                break;
                         }
                     }
                     if ( !matches ) { continue; }
@@ -15080,7 +15153,7 @@ inline int64_t SettingsFixedLoadWalkBody( Settings * values, int64_t capacity, c
         // the counters back to what they were before the batch.
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, SettingsFixedGuards, NULL );
         TableFixedClampKnownRanges( SettingsFixedKnownRanges[lineage_at], SettingsFixedKnownRangeCounts[lineage_at],
-                                    (uint8_t *) &values[k], report );
+            (uint8_t *) &values[k], report );
         if ( !SettingsFixedClamp( values[k], report ) )
         {
             for ( int64_t j = 0; j <= k; ++j ) { SettingsReset( values[j] ); }
@@ -15099,7 +15172,7 @@ inline int64_t SettingsFixedLoadWalkBody( Settings * values, int64_t capacity, c
 // them, on EVERY refusal (R4), so no partial value survives. A supplied report receives THIS
 // read's report. unknown and widened alone never refuse.
 inline int64_t SettingsFixedLoad( Settings * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     TableReport * out = report != NULL ? report : &local;
@@ -15107,7 +15180,10 @@ inline int64_t SettingsFixedLoad( Settings * values, int64_t capacity, const uin
     const int64_t n = SettingsFixedLoadWalk( values, capacity, data, bytes, plan, plan_capacity, cache, out );
     if ( n < 0 || out->damaged || out->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { SettingsReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { SettingsReset( values[k] ); }
+        }
         return -1;
     }
     return n;
@@ -15160,11 +15236,22 @@ inline bool SettingsNumber( const Ctx & ctx, TableNumbering & numbering, const S
             continue;
         }
         if ( !TableNumberingAppend( numbering, work ) ) { return false; }
-        if ( work.walk == NULL ) { TablePackMapClose( numbering.seen, work.node, slot ); continue; } // a blob reaches nothing
+        if ( work.walk == NULL )
+        {
+            TablePackMapClose( numbering.seen, work.node, slot );
+            continue;
+        } // a blob reaches nothing
         TableNodeEntry close;
-        close.node = work.node; close.type_id = 0; close.measure = NULL; close.save = NULL;
-        close.pack_bytes = NULL; close.pack_copy = NULL; close.pack_slots = NULL; close.walk = NULL;
-        close.close = true; close.hint = slot;
+        close.node = work.node;
+        close.type_id = 0;
+        close.measure = NULL;
+        close.save = NULL;
+        close.pack_bytes = NULL;
+        close.pack_copy = NULL;
+        close.pack_slots = NULL;
+        close.walk = NULL;
+        close.close = true;
+        close.hint = slot;
         if ( !TableNumberingWorkPush( numbering, close ) ) { return false; }
         const int64_t first = numbering.work_count;
         if ( !work.walk( (const void *) &ctx, numbering, work.node ) ) { return false; }
@@ -15245,7 +15332,7 @@ inline bool ListNodeNumberEdges( const Ctx & ctx, TableNumbering & numbering, co
                 node.save = &TableNodeSaveThunk<Ctx, ListNode>;
                 node.pack_bytes = +[]( const void * pack_ctx, const void * pack_node ) -> int64_t { return ListNodePackBytes( *(const Ctx *) pack_ctx, *(const ListNode *) pack_node ); };
                 node.pack_copy = +[]( const void * pack_ctx, const void * pack_src, void * pack_dst, uint8_t * pack_base, int64_t pack_capacity ) -> bool { return ListNodePackCopy( *(const Ctx *) pack_ctx, *(const ListNode *) pack_src, pack_dst, pack_base, pack_capacity ); };
-                node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return ListNodePackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const ListNode *) pack_src, *( ListNode * ) pack_dst, pack_base ); };
+                node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return ListNodePackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const ListNode *) pack_src, *(ListNode *) pack_dst, pack_base ); };
                 node.walk = +[]( const void * walk_ctx, TableNumbering & walk_numbering, const void * walk_node ) -> bool { return ListNodeNumberEdges( *(const Ctx *) walk_ctx, walk_numbering, *(const ListNode *) walk_node ); };
                 node.close = false;
                 node.hint = 0;
@@ -15291,11 +15378,22 @@ inline bool ListNodeNumber( const Ctx & ctx, TableNumbering & numbering, const L
             continue;
         }
         if ( !TableNumberingAppend( numbering, work ) ) { return false; }
-        if ( work.walk == NULL ) { TablePackMapClose( numbering.seen, work.node, slot ); continue; } // a blob reaches nothing
+        if ( work.walk == NULL )
+        {
+            TablePackMapClose( numbering.seen, work.node, slot );
+            continue;
+        } // a blob reaches nothing
         TableNodeEntry close;
-        close.node = work.node; close.type_id = 0; close.measure = NULL; close.save = NULL;
-        close.pack_bytes = NULL; close.pack_copy = NULL; close.pack_slots = NULL; close.walk = NULL;
-        close.close = true; close.hint = slot;
+        close.node = work.node;
+        close.type_id = 0;
+        close.measure = NULL;
+        close.save = NULL;
+        close.pack_bytes = NULL;
+        close.pack_copy = NULL;
+        close.pack_slots = NULL;
+        close.walk = NULL;
+        close.close = true;
+        close.hint = slot;
         if ( !TableNumberingWorkPush( numbering, close ) ) { return false; }
         const int64_t first = numbering.work_count;
         if ( !work.walk( (const void *) &ctx, numbering, work.node ) ) { return false; }
@@ -15382,7 +15480,7 @@ inline bool TreeNodeNumberEdges( const Ctx & ctx, TableNumbering & numbering, co
                 node.save = &TableNodeSaveThunk<Ctx, TreeNode>;
                 node.pack_bytes = +[]( const void * pack_ctx, const void * pack_node ) -> int64_t { return TreeNodePackBytes( *(const Ctx *) pack_ctx, *(const TreeNode *) pack_node ); };
                 node.pack_copy = +[]( const void * pack_ctx, const void * pack_src, void * pack_dst, uint8_t * pack_base, int64_t pack_capacity ) -> bool { return TreeNodePackCopy( *(const Ctx *) pack_ctx, *(const TreeNode *) pack_src, pack_dst, pack_base, pack_capacity ); };
-                node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return TreeNodePackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const TreeNode *) pack_src, *( TreeNode * ) pack_dst, pack_base ); };
+                node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return TreeNodePackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const TreeNode *) pack_src, *(TreeNode *) pack_dst, pack_base ); };
                 node.walk = +[]( const void * walk_ctx, TableNumbering & walk_numbering, const void * walk_node ) -> bool { return TreeNodeNumberEdges( *(const Ctx *) walk_ctx, walk_numbering, *(const TreeNode *) walk_node ); };
                 node.close = false;
                 node.hint = 0;
@@ -15408,7 +15506,7 @@ inline bool TreeNodeNumberEdges( const Ctx & ctx, TableNumbering & numbering, co
                 node.save = &TableNodeSaveThunk<Ctx, TreeNode>;
                 node.pack_bytes = +[]( const void * pack_ctx, const void * pack_node ) -> int64_t { return TreeNodePackBytes( *(const Ctx *) pack_ctx, *(const TreeNode *) pack_node ); };
                 node.pack_copy = +[]( const void * pack_ctx, const void * pack_src, void * pack_dst, uint8_t * pack_base, int64_t pack_capacity ) -> bool { return TreeNodePackCopy( *(const Ctx *) pack_ctx, *(const TreeNode *) pack_src, pack_dst, pack_base, pack_capacity ); };
-                node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return TreeNodePackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const TreeNode *) pack_src, *( TreeNode * ) pack_dst, pack_base ); };
+                node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return TreeNodePackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const TreeNode *) pack_src, *(TreeNode *) pack_dst, pack_base ); };
                 node.walk = +[]( const void * walk_ctx, TableNumbering & walk_numbering, const void * walk_node ) -> bool { return TreeNodeNumberEdges( *(const Ctx *) walk_ctx, walk_numbering, *(const TreeNode *) walk_node ); };
                 node.close = false;
                 node.hint = 0;
@@ -15454,11 +15552,22 @@ inline bool TreeNodeNumber( const Ctx & ctx, TableNumbering & numbering, const T
             continue;
         }
         if ( !TableNumberingAppend( numbering, work ) ) { return false; }
-        if ( work.walk == NULL ) { TablePackMapClose( numbering.seen, work.node, slot ); continue; } // a blob reaches nothing
+        if ( work.walk == NULL )
+        {
+            TablePackMapClose( numbering.seen, work.node, slot );
+            continue;
+        } // a blob reaches nothing
         TableNodeEntry close;
-        close.node = work.node; close.type_id = 0; close.measure = NULL; close.save = NULL;
-        close.pack_bytes = NULL; close.pack_copy = NULL; close.pack_slots = NULL; close.walk = NULL;
-        close.close = true; close.hint = slot;
+        close.node = work.node;
+        close.type_id = 0;
+        close.measure = NULL;
+        close.save = NULL;
+        close.pack_bytes = NULL;
+        close.pack_copy = NULL;
+        close.pack_slots = NULL;
+        close.walk = NULL;
+        close.close = true;
+        close.hint = slot;
         if ( !TableNumberingWorkPush( numbering, close ) ) { return false; }
         const int64_t first = numbering.work_count;
         if ( !work.walk( (const void *) &ctx, numbering, work.node ) ) { return false; }
@@ -15556,7 +15665,7 @@ inline bool LayerNumberEdges( const Ctx & ctx, TableNumbering & numbering, const
                 node.save = &TableNodeSaveThunk<Ctx, ListNode>;
                 node.pack_bytes = +[]( const void * pack_ctx, const void * pack_node ) -> int64_t { return ListNodePackBytes( *(const Ctx *) pack_ctx, *(const ListNode *) pack_node ); };
                 node.pack_copy = +[]( const void * pack_ctx, const void * pack_src, void * pack_dst, uint8_t * pack_base, int64_t pack_capacity ) -> bool { return ListNodePackCopy( *(const Ctx *) pack_ctx, *(const ListNode *) pack_src, pack_dst, pack_base, pack_capacity ); };
-                node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return ListNodePackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const ListNode *) pack_src, *( ListNode * ) pack_dst, pack_base ); };
+                node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return ListNodePackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const ListNode *) pack_src, *(ListNode *) pack_dst, pack_base ); };
                 node.walk = +[]( const void * walk_ctx, TableNumbering & walk_numbering, const void * walk_node ) -> bool { return ListNodeNumberEdges( *(const Ctx *) walk_ctx, walk_numbering, *(const ListNode *) walk_node ); };
                 node.close = false;
                 node.hint = 0;
@@ -15602,11 +15711,22 @@ inline bool LayerNumber( const Ctx & ctx, TableNumbering & numbering, const Laye
             continue;
         }
         if ( !TableNumberingAppend( numbering, work ) ) { return false; }
-        if ( work.walk == NULL ) { TablePackMapClose( numbering.seen, work.node, slot ); continue; } // a blob reaches nothing
+        if ( work.walk == NULL )
+        {
+            TablePackMapClose( numbering.seen, work.node, slot );
+            continue;
+        } // a blob reaches nothing
         TableNodeEntry close;
-        close.node = work.node; close.type_id = 0; close.measure = NULL; close.save = NULL;
-        close.pack_bytes = NULL; close.pack_copy = NULL; close.pack_slots = NULL; close.walk = NULL;
-        close.close = true; close.hint = slot;
+        close.node = work.node;
+        close.type_id = 0;
+        close.measure = NULL;
+        close.save = NULL;
+        close.pack_bytes = NULL;
+        close.pack_copy = NULL;
+        close.pack_slots = NULL;
+        close.walk = NULL;
+        close.close = true;
+        close.hint = slot;
         if ( !TableNumberingWorkPush( numbering, close ) ) { return false; }
         const int64_t first = numbering.work_count;
         if ( !work.walk( (const void *) &ctx, numbering, work.node ) ) { return false; }
@@ -15693,7 +15813,7 @@ inline bool SceneNumberEdges( const Ctx & ctx, TableNumbering & numbering, const
                 node.save = &TableNodeSaveThunk<Ctx, ListNode>;
                 node.pack_bytes = +[]( const void * pack_ctx, const void * pack_node ) -> int64_t { return ListNodePackBytes( *(const Ctx *) pack_ctx, *(const ListNode *) pack_node ); };
                 node.pack_copy = +[]( const void * pack_ctx, const void * pack_src, void * pack_dst, uint8_t * pack_base, int64_t pack_capacity ) -> bool { return ListNodePackCopy( *(const Ctx *) pack_ctx, *(const ListNode *) pack_src, pack_dst, pack_base, pack_capacity ); };
-                node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return ListNodePackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const ListNode *) pack_src, *( ListNode * ) pack_dst, pack_base ); };
+                node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return ListNodePackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const ListNode *) pack_src, *(ListNode *) pack_dst, pack_base ); };
                 node.walk = +[]( const void * walk_ctx, TableNumbering & walk_numbering, const void * walk_node ) -> bool { return ListNodeNumberEdges( *(const Ctx *) walk_ctx, walk_numbering, *(const ListNode *) walk_node ); };
                 node.close = false;
                 node.hint = 0;
@@ -15719,7 +15839,7 @@ inline bool SceneNumberEdges( const Ctx & ctx, TableNumbering & numbering, const
                 node.save = &TableNodeSaveThunk<Ctx, TreeNode>;
                 node.pack_bytes = +[]( const void * pack_ctx, const void * pack_node ) -> int64_t { return TreeNodePackBytes( *(const Ctx *) pack_ctx, *(const TreeNode *) pack_node ); };
                 node.pack_copy = +[]( const void * pack_ctx, const void * pack_src, void * pack_dst, uint8_t * pack_base, int64_t pack_capacity ) -> bool { return TreeNodePackCopy( *(const Ctx *) pack_ctx, *(const TreeNode *) pack_src, pack_dst, pack_base, pack_capacity ); };
-                node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return TreeNodePackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const TreeNode *) pack_src, *( TreeNode * ) pack_dst, pack_base ); };
+                node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return TreeNodePackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const TreeNode *) pack_src, *(TreeNode *) pack_dst, pack_base ); };
                 node.walk = +[]( const void * walk_ctx, TableNumbering & walk_numbering, const void * walk_node ) -> bool { return TreeNodeNumberEdges( *(const Ctx *) walk_ctx, walk_numbering, *(const TreeNode *) walk_node ); };
                 node.close = false;
                 node.hint = 0;
@@ -15745,7 +15865,7 @@ inline bool SceneNumberEdges( const Ctx & ctx, TableNumbering & numbering, const
                 node.save = &TableNodeSaveThunk<Ctx, Settings>;
                 node.pack_bytes = +[]( const void * pack_ctx, const void * pack_node ) -> int64_t { return SettingsPackBytes( *(const Ctx *) pack_ctx, *(const Settings *) pack_node ); };
                 node.pack_copy = +[]( const void * pack_ctx, const void * pack_src, void * pack_dst, uint8_t * pack_base, int64_t pack_capacity ) -> bool { return SettingsPackCopy( *(const Ctx *) pack_ctx, *(const Settings *) pack_src, pack_dst, pack_base, pack_capacity ); };
-                node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return SettingsPackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const Settings *) pack_src, *( Settings * ) pack_dst, pack_base ); };
+                node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return SettingsPackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const Settings *) pack_src, *(Settings *) pack_dst, pack_base ); };
                 node.walk = +[]( const void * walk_ctx, TableNumbering & walk_numbering, const void * walk_node ) -> bool { return SettingsNumberEdges( *(const Ctx *) walk_ctx, walk_numbering, *(const Settings *) walk_node ); };
                 node.close = false;
                 node.hint = 0;
@@ -15771,7 +15891,7 @@ inline bool SceneNumberEdges( const Ctx & ctx, TableNumbering & numbering, const
                 node.save = &TableNodeSaveThunk<Ctx, ListNode>;
                 node.pack_bytes = +[]( const void * pack_ctx, const void * pack_node ) -> int64_t { return ListNodePackBytes( *(const Ctx *) pack_ctx, *(const ListNode *) pack_node ); };
                 node.pack_copy = +[]( const void * pack_ctx, const void * pack_src, void * pack_dst, uint8_t * pack_base, int64_t pack_capacity ) -> bool { return ListNodePackCopy( *(const Ctx *) pack_ctx, *(const ListNode *) pack_src, pack_dst, pack_base, pack_capacity ); };
-                node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return ListNodePackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const ListNode *) pack_src, *( ListNode * ) pack_dst, pack_base ); };
+                node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return ListNodePackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const ListNode *) pack_src, *(ListNode *) pack_dst, pack_base ); };
                 node.walk = +[]( const void * walk_ctx, TableNumbering & walk_numbering, const void * walk_node ) -> bool { return ListNodeNumberEdges( *(const Ctx *) walk_ctx, walk_numbering, *(const ListNode *) walk_node ); };
                 node.close = false;
                 node.hint = 0;
@@ -15824,11 +15944,22 @@ inline bool SceneNumber( const Ctx & ctx, TableNumbering & numbering, const Scen
             continue;
         }
         if ( !TableNumberingAppend( numbering, work ) ) { return false; }
-        if ( work.walk == NULL ) { TablePackMapClose( numbering.seen, work.node, slot ); continue; } // a blob reaches nothing
+        if ( work.walk == NULL )
+        {
+            TablePackMapClose( numbering.seen, work.node, slot );
+            continue;
+        } // a blob reaches nothing
         TableNodeEntry close;
-        close.node = work.node; close.type_id = 0; close.measure = NULL; close.save = NULL;
-        close.pack_bytes = NULL; close.pack_copy = NULL; close.pack_slots = NULL; close.walk = NULL;
-        close.close = true; close.hint = slot;
+        close.node = work.node;
+        close.type_id = 0;
+        close.measure = NULL;
+        close.save = NULL;
+        close.pack_bytes = NULL;
+        close.pack_copy = NULL;
+        close.pack_slots = NULL;
+        close.walk = NULL;
+        close.close = true;
+        close.hint = slot;
         if ( !TableNumberingWorkPush( numbering, close ) ) { return false; }
         const int64_t first = numbering.work_count;
         if ( !work.walk( (const void *) &ctx, numbering, work.node ) ) { return false; }
@@ -15966,7 +16097,7 @@ inline bool DepotNumberEdges( const Ctx & ctx, TableNumbering & numbering, const
                 node.save = &TableNodeSaveThunk<Ctx, ListNode>;
                 node.pack_bytes = +[]( const void * pack_ctx, const void * pack_node ) -> int64_t { return ListNodePackBytes( *(const Ctx *) pack_ctx, *(const ListNode *) pack_node ); };
                 node.pack_copy = +[]( const void * pack_ctx, const void * pack_src, void * pack_dst, uint8_t * pack_base, int64_t pack_capacity ) -> bool { return ListNodePackCopy( *(const Ctx *) pack_ctx, *(const ListNode *) pack_src, pack_dst, pack_base, pack_capacity ); };
-                node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return ListNodePackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const ListNode *) pack_src, *( ListNode * ) pack_dst, pack_base ); };
+                node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return ListNodePackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const ListNode *) pack_src, *(ListNode *) pack_dst, pack_base ); };
                 node.walk = +[]( const void * walk_ctx, TableNumbering & walk_numbering, const void * walk_node ) -> bool { return ListNodeNumberEdges( *(const Ctx *) walk_ctx, walk_numbering, *(const ListNode *) walk_node ); };
                 node.close = false;
                 node.hint = 0;
@@ -16012,11 +16143,22 @@ inline bool DepotNumber( const Ctx & ctx, TableNumbering & numbering, const Depo
             continue;
         }
         if ( !TableNumberingAppend( numbering, work ) ) { return false; }
-        if ( work.walk == NULL ) { TablePackMapClose( numbering.seen, work.node, slot ); continue; } // a blob reaches nothing
+        if ( work.walk == NULL )
+        {
+            TablePackMapClose( numbering.seen, work.node, slot );
+            continue;
+        } // a blob reaches nothing
         TableNodeEntry close;
-        close.node = work.node; close.type_id = 0; close.measure = NULL; close.save = NULL;
-        close.pack_bytes = NULL; close.pack_copy = NULL; close.pack_slots = NULL; close.walk = NULL;
-        close.close = true; close.hint = slot;
+        close.node = work.node;
+        close.type_id = 0;
+        close.measure = NULL;
+        close.save = NULL;
+        close.pack_bytes = NULL;
+        close.pack_copy = NULL;
+        close.pack_slots = NULL;
+        close.walk = NULL;
+        close.close = true;
+        close.hint = slot;
         if ( !TableNumberingWorkPush( numbering, close ) ) { return false; }
         const int64_t first = numbering.work_count;
         if ( !work.walk( (const void *) &ctx, numbering, work.node ) ) { return false; }
@@ -16114,7 +16256,7 @@ inline bool AlbumNumberEdges( const Ctx & ctx, TableNumbering & numbering, const
                 node.save = &TableNodeSaveThunk<Ctx, Marker>;
                 node.pack_bytes = +[]( const void * pack_ctx, const void * pack_node ) -> int64_t { return MarkerPackBytes( *(const Ctx *) pack_ctx, *(const Marker *) pack_node ); };
                 node.pack_copy = +[]( const void * pack_ctx, const void * pack_src, void * pack_dst, uint8_t * pack_base, int64_t pack_capacity ) -> bool { return MarkerPackCopy( *(const Ctx *) pack_ctx, *(const Marker *) pack_src, pack_dst, pack_base, pack_capacity ); };
-                node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return MarkerPackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const Marker *) pack_src, *( Marker * ) pack_dst, pack_base ); };
+                node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return MarkerPackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const Marker *) pack_src, *(Marker *) pack_dst, pack_base ); };
                 node.walk = +[]( const void * walk_ctx, TableNumbering & walk_numbering, const void * walk_node ) -> bool { return MarkerNumberEdges( *(const Ctx *) walk_ctx, walk_numbering, *(const Marker *) walk_node ); };
                 node.close = false;
                 node.hint = 0;
@@ -16140,7 +16282,7 @@ inline bool AlbumNumberEdges( const Ctx & ctx, TableNumbering & numbering, const
                 node.save = &TableNodeSaveThunk<Ctx, ListNode>;
                 node.pack_bytes = +[]( const void * pack_ctx, const void * pack_node ) -> int64_t { return ListNodePackBytes( *(const Ctx *) pack_ctx, *(const ListNode *) pack_node ); };
                 node.pack_copy = +[]( const void * pack_ctx, const void * pack_src, void * pack_dst, uint8_t * pack_base, int64_t pack_capacity ) -> bool { return ListNodePackCopy( *(const Ctx *) pack_ctx, *(const ListNode *) pack_src, pack_dst, pack_base, pack_capacity ); };
-                node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return ListNodePackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const ListNode *) pack_src, *( ListNode * ) pack_dst, pack_base ); };
+                node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return ListNodePackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const ListNode *) pack_src, *(ListNode *) pack_dst, pack_base ); };
                 node.walk = +[]( const void * walk_ctx, TableNumbering & walk_numbering, const void * walk_node ) -> bool { return ListNodeNumberEdges( *(const Ctx *) walk_ctx, walk_numbering, *(const ListNode *) walk_node ); };
                 node.close = false;
                 node.hint = 0;
@@ -16186,11 +16328,22 @@ inline bool AlbumNumber( const Ctx & ctx, TableNumbering & numbering, const Albu
             continue;
         }
         if ( !TableNumberingAppend( numbering, work ) ) { return false; }
-        if ( work.walk == NULL ) { TablePackMapClose( numbering.seen, work.node, slot ); continue; } // a blob reaches nothing
+        if ( work.walk == NULL )
+        {
+            TablePackMapClose( numbering.seen, work.node, slot );
+            continue;
+        } // a blob reaches nothing
         TableNodeEntry close;
-        close.node = work.node; close.type_id = 0; close.measure = NULL; close.save = NULL;
-        close.pack_bytes = NULL; close.pack_copy = NULL; close.pack_slots = NULL; close.walk = NULL;
-        close.close = true; close.hint = slot;
+        close.node = work.node;
+        close.type_id = 0;
+        close.measure = NULL;
+        close.save = NULL;
+        close.pack_bytes = NULL;
+        close.pack_copy = NULL;
+        close.pack_slots = NULL;
+        close.walk = NULL;
+        close.close = true;
+        close.hint = slot;
         if ( !TableNumberingWorkPush( numbering, close ) ) { return false; }
         const int64_t first = numbering.work_count;
         if ( !work.walk( (const void *) &ctx, numbering, work.node ) ) { return false; }
@@ -16368,9 +16521,17 @@ inline bool ListNodeBuilder::Lock()
         for ( int64_t k = 0; ok && k < numbering.count; k++ )
         {
             const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
-            if ( bytes < 0 ) { ok = false; break; }
+            if ( bytes < 0 )
+            {
+                ok = false;
+                break;
+            }
             TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-            if ( entry == NULL ) { ok = false; break; }
+            if ( entry == NULL )
+            {
+                ok = false;
+                break;
+            }
             measured = TableAlignUp64( measured );
             entry->offset = measured;
             measured += bytes;
@@ -16394,9 +16555,17 @@ inline bool ListNodeBuilder::Lock()
         for ( int64_t k = 0; ok && k < numbering.count; k++ )
         {
             const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
-            if ( bytes < 0 ) { ok = false; break; }
+            if ( bytes < 0 )
+            {
+                ok = false;
+                break;
+            }
             TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-            if ( entry == NULL ) { ok = false; break; }
+            if ( entry == NULL )
+            {
+                ok = false;
+                break;
+            }
             used = TableAlignUp64( used );
             entry->offset = used;
             used += bytes;
@@ -16421,14 +16590,22 @@ inline bool ListNodeBuilder::Lock()
     for ( int64_t k = 0; ok && k < numbering.count; k++ )
     {
         const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-        if ( entry == NULL ) { ok = false; break; }
+        if ( entry == NULL )
+        {
+            ok = false;
+            break;
+        }
         ok = numbering.entries[k].pack_copy( (const void *) &ctx, numbering.entries[k].node, packed + entry->offset, packed, total );
     }
-    if ( ok ) { ok = ListNodePackSlots( ctx, numbering.seen, root, *( ListNode * ) packed, packed ); }
+    if ( ok ) { ok = ListNodePackSlots( ctx, numbering.seen, root, *(ListNode *) packed, packed ); }
     for ( int64_t k = 0; ok && k < numbering.count; k++ )
     {
         const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-        if ( entry == NULL ) { ok = false; break; }
+        if ( entry == NULL )
+        {
+            ok = false;
+            break;
+        }
         if ( numbering.entries[k].pack_slots != NULL ) { ok = numbering.entries[k].pack_slots( (const void *) &ctx, numbering.seen, numbering.entries[k].node, packed + entry->offset, packed ); } // a blob has no slots
     }
     TableNumberingShutdown( numbering );
@@ -17288,9 +17465,17 @@ inline bool TreeNodeBuilder::Lock()
         for ( int64_t k = 0; ok && k < numbering.count; k++ )
         {
             const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
-            if ( bytes < 0 ) { ok = false; break; }
+            if ( bytes < 0 )
+            {
+                ok = false;
+                break;
+            }
             TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-            if ( entry == NULL ) { ok = false; break; }
+            if ( entry == NULL )
+            {
+                ok = false;
+                break;
+            }
             measured = TableAlignUp64( measured );
             entry->offset = measured;
             measured += bytes;
@@ -17314,9 +17499,17 @@ inline bool TreeNodeBuilder::Lock()
         for ( int64_t k = 0; ok && k < numbering.count; k++ )
         {
             const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
-            if ( bytes < 0 ) { ok = false; break; }
+            if ( bytes < 0 )
+            {
+                ok = false;
+                break;
+            }
             TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-            if ( entry == NULL ) { ok = false; break; }
+            if ( entry == NULL )
+            {
+                ok = false;
+                break;
+            }
             used = TableAlignUp64( used );
             entry->offset = used;
             used += bytes;
@@ -17341,14 +17534,22 @@ inline bool TreeNodeBuilder::Lock()
     for ( int64_t k = 0; ok && k < numbering.count; k++ )
     {
         const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-        if ( entry == NULL ) { ok = false; break; }
+        if ( entry == NULL )
+        {
+            ok = false;
+            break;
+        }
         ok = numbering.entries[k].pack_copy( (const void *) &ctx, numbering.entries[k].node, packed + entry->offset, packed, total );
     }
-    if ( ok ) { ok = TreeNodePackSlots( ctx, numbering.seen, root, *( TreeNode * ) packed, packed ); }
+    if ( ok ) { ok = TreeNodePackSlots( ctx, numbering.seen, root, *(TreeNode *) packed, packed ); }
     for ( int64_t k = 0; ok && k < numbering.count; k++ )
     {
         const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-        if ( entry == NULL ) { ok = false; break; }
+        if ( entry == NULL )
+        {
+            ok = false;
+            break;
+        }
         if ( numbering.entries[k].pack_slots != NULL ) { ok = numbering.entries[k].pack_slots( (const void *) &ctx, numbering.seen, numbering.entries[k].node, packed + entry->offset, packed ); } // a blob has no slots
     }
     TableNumberingShutdown( numbering );
@@ -18208,9 +18409,17 @@ inline bool LayerBuilder::Lock()
         for ( int64_t k = 0; ok && k < numbering.count; k++ )
         {
             const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
-            if ( bytes < 0 ) { ok = false; break; }
+            if ( bytes < 0 )
+            {
+                ok = false;
+                break;
+            }
             TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-            if ( entry == NULL ) { ok = false; break; }
+            if ( entry == NULL )
+            {
+                ok = false;
+                break;
+            }
             measured = TableAlignUp64( measured );
             entry->offset = measured;
             measured += bytes;
@@ -18234,9 +18443,17 @@ inline bool LayerBuilder::Lock()
         for ( int64_t k = 0; ok && k < numbering.count; k++ )
         {
             const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
-            if ( bytes < 0 ) { ok = false; break; }
+            if ( bytes < 0 )
+            {
+                ok = false;
+                break;
+            }
             TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-            if ( entry == NULL ) { ok = false; break; }
+            if ( entry == NULL )
+            {
+                ok = false;
+                break;
+            }
             used = TableAlignUp64( used );
             entry->offset = used;
             used += bytes;
@@ -18261,14 +18478,22 @@ inline bool LayerBuilder::Lock()
     for ( int64_t k = 0; ok && k < numbering.count; k++ )
     {
         const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-        if ( entry == NULL ) { ok = false; break; }
+        if ( entry == NULL )
+        {
+            ok = false;
+            break;
+        }
         ok = numbering.entries[k].pack_copy( (const void *) &ctx, numbering.entries[k].node, packed + entry->offset, packed, total );
     }
-    if ( ok ) { ok = LayerPackSlots( ctx, numbering.seen, root, *( Layer * ) packed, packed ); }
+    if ( ok ) { ok = LayerPackSlots( ctx, numbering.seen, root, *(Layer *) packed, packed ); }
     for ( int64_t k = 0; ok && k < numbering.count; k++ )
     {
         const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-        if ( entry == NULL ) { ok = false; break; }
+        if ( entry == NULL )
+        {
+            ok = false;
+            break;
+        }
         if ( numbering.entries[k].pack_slots != NULL ) { ok = numbering.entries[k].pack_slots( (const void *) &ctx, numbering.seen, numbering.entries[k].node, packed + entry->offset, packed ); } // a blob has no slots
     }
     TableNumberingShutdown( numbering );
@@ -19130,9 +19355,17 @@ inline bool SceneBuilder::Lock()
         for ( int64_t k = 0; ok && k < numbering.count; k++ )
         {
             const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
-            if ( bytes < 0 ) { ok = false; break; }
+            if ( bytes < 0 )
+            {
+                ok = false;
+                break;
+            }
             TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-            if ( entry == NULL ) { ok = false; break; }
+            if ( entry == NULL )
+            {
+                ok = false;
+                break;
+            }
             measured = TableAlignUp64( measured );
             entry->offset = measured;
             measured += bytes;
@@ -19156,9 +19389,17 @@ inline bool SceneBuilder::Lock()
         for ( int64_t k = 0; ok && k < numbering.count; k++ )
         {
             const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
-            if ( bytes < 0 ) { ok = false; break; }
+            if ( bytes < 0 )
+            {
+                ok = false;
+                break;
+            }
             TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-            if ( entry == NULL ) { ok = false; break; }
+            if ( entry == NULL )
+            {
+                ok = false;
+                break;
+            }
             used = TableAlignUp64( used );
             entry->offset = used;
             used += bytes;
@@ -19183,14 +19424,22 @@ inline bool SceneBuilder::Lock()
     for ( int64_t k = 0; ok && k < numbering.count; k++ )
     {
         const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-        if ( entry == NULL ) { ok = false; break; }
+        if ( entry == NULL )
+        {
+            ok = false;
+            break;
+        }
         ok = numbering.entries[k].pack_copy( (const void *) &ctx, numbering.entries[k].node, packed + entry->offset, packed, total );
     }
-    if ( ok ) { ok = ScenePackSlots( ctx, numbering.seen, root, *( Scene * ) packed, packed ); }
+    if ( ok ) { ok = ScenePackSlots( ctx, numbering.seen, root, *(Scene *) packed, packed ); }
     for ( int64_t k = 0; ok && k < numbering.count; k++ )
     {
         const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-        if ( entry == NULL ) { ok = false; break; }
+        if ( entry == NULL )
+        {
+            ok = false;
+            break;
+        }
         if ( numbering.entries[k].pack_slots != NULL ) { ok = numbering.entries[k].pack_slots( (const void *) &ctx, numbering.seen, numbering.entries[k].node, packed + entry->offset, packed ); } // a blob has no slots
     }
     TableNumberingShutdown( numbering );
@@ -20078,9 +20327,17 @@ inline bool DepotBuilder::Lock()
         for ( int64_t k = 0; ok && k < numbering.count; k++ )
         {
             const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
-            if ( bytes < 0 ) { ok = false; break; }
+            if ( bytes < 0 )
+            {
+                ok = false;
+                break;
+            }
             TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-            if ( entry == NULL ) { ok = false; break; }
+            if ( entry == NULL )
+            {
+                ok = false;
+                break;
+            }
             measured = TableAlignUp64( measured );
             entry->offset = measured;
             measured += bytes;
@@ -20104,9 +20361,17 @@ inline bool DepotBuilder::Lock()
         for ( int64_t k = 0; ok && k < numbering.count; k++ )
         {
             const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
-            if ( bytes < 0 ) { ok = false; break; }
+            if ( bytes < 0 )
+            {
+                ok = false;
+                break;
+            }
             TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-            if ( entry == NULL ) { ok = false; break; }
+            if ( entry == NULL )
+            {
+                ok = false;
+                break;
+            }
             used = TableAlignUp64( used );
             entry->offset = used;
             used += bytes;
@@ -20131,14 +20396,22 @@ inline bool DepotBuilder::Lock()
     for ( int64_t k = 0; ok && k < numbering.count; k++ )
     {
         const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-        if ( entry == NULL ) { ok = false; break; }
+        if ( entry == NULL )
+        {
+            ok = false;
+            break;
+        }
         ok = numbering.entries[k].pack_copy( (const void *) &ctx, numbering.entries[k].node, packed + entry->offset, packed, total );
     }
-    if ( ok ) { ok = DepotPackSlots( ctx, numbering.seen, root, *( Depot * ) packed, packed ); }
+    if ( ok ) { ok = DepotPackSlots( ctx, numbering.seen, root, *(Depot *) packed, packed ); }
     for ( int64_t k = 0; ok && k < numbering.count; k++ )
     {
         const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-        if ( entry == NULL ) { ok = false; break; }
+        if ( entry == NULL )
+        {
+            ok = false;
+            break;
+        }
         if ( numbering.entries[k].pack_slots != NULL ) { ok = numbering.entries[k].pack_slots( (const void *) &ctx, numbering.seen, numbering.entries[k].node, packed + entry->offset, packed ); } // a blob has no slots
     }
     TableNumberingShutdown( numbering );
@@ -21000,9 +21273,17 @@ inline bool AlbumBuilder::Lock()
         for ( int64_t k = 0; ok && k < numbering.count; k++ )
         {
             const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
-            if ( bytes < 0 ) { ok = false; break; }
+            if ( bytes < 0 )
+            {
+                ok = false;
+                break;
+            }
             TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-            if ( entry == NULL ) { ok = false; break; }
+            if ( entry == NULL )
+            {
+                ok = false;
+                break;
+            }
             measured = TableAlignUp64( measured );
             entry->offset = measured;
             measured += bytes;
@@ -21026,9 +21307,17 @@ inline bool AlbumBuilder::Lock()
         for ( int64_t k = 0; ok && k < numbering.count; k++ )
         {
             const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
-            if ( bytes < 0 ) { ok = false; break; }
+            if ( bytes < 0 )
+            {
+                ok = false;
+                break;
+            }
             TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-            if ( entry == NULL ) { ok = false; break; }
+            if ( entry == NULL )
+            {
+                ok = false;
+                break;
+            }
             used = TableAlignUp64( used );
             entry->offset = used;
             used += bytes;
@@ -21053,14 +21342,22 @@ inline bool AlbumBuilder::Lock()
     for ( int64_t k = 0; ok && k < numbering.count; k++ )
     {
         const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-        if ( entry == NULL ) { ok = false; break; }
+        if ( entry == NULL )
+        {
+            ok = false;
+            break;
+        }
         ok = numbering.entries[k].pack_copy( (const void *) &ctx, numbering.entries[k].node, packed + entry->offset, packed, total );
     }
-    if ( ok ) { ok = AlbumPackSlots( ctx, numbering.seen, root, *( Album * ) packed, packed ); }
+    if ( ok ) { ok = AlbumPackSlots( ctx, numbering.seen, root, *(Album *) packed, packed ); }
     for ( int64_t k = 0; ok && k < numbering.count; k++ )
     {
         const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-        if ( entry == NULL ) { ok = false; break; }
+        if ( entry == NULL )
+        {
+            ok = false;
+            break;
+        }
         if ( numbering.entries[k].pack_slots != NULL ) { ok = numbering.entries[k].pack_slots( (const void *) &ctx, numbering.seen, numbering.entries[k].node, packed + entry->offset, packed ); } // a blob has no slots
     }
     TableNumberingShutdown( numbering );
@@ -23054,7 +23351,10 @@ inline int64_t SceneMeasureBodyRetain( const Ctx & ctx, const TableNumbering & n
         const int64_t body_ground = LayerMeasureBodyRetain( ctx, numbering, ids, value.ground, retain, TableRetainStepInto( path, 6, (uint32_t) ( 0 ) ) );
         if ( body_ground < 0 ) { return -1; }
         if ( body_ground > 1 ) { bytes += TableLebBytes( ref_ground ) + 1 + TableLebBytes( (uint64_t) ( body_ground ) ) + ( body_ground ); } // ground
-        else { ids.truncate( mark_ground ); } // an all-default nested table elides, and costs no entry
+        else
+        {
+            ids.truncate( mark_ground );
+        } // an all-default nested table elides, and costs no entry
     }
     schema_assert( value.layers_count >= 0 && value.layers_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.layers_count > 0 )
@@ -23076,7 +23376,10 @@ inline int64_t SceneMeasureBodyRetain( const Ctx & ctx, const TableNumbering & n
         const int64_t body_meta = MetaMeasureBodyRetain( ids, value.meta, retain, TableRetainStepInto( path, 8, (uint32_t) ( 0 ) ) );
         if ( body_meta < 0 ) { return -1; }
         if ( body_meta > 1 ) { bytes += TableLebBytes( ref_meta ) + 1 + TableLebBytes( (uint64_t) ( body_meta ) ) + ( body_meta ); } // meta
-        else { ids.truncate( mark_meta ); } // an all-default nested table elides, and costs no entry
+        else
+        {
+            ids.truncate( mark_meta );
+        } // an all-default nested table elides, and costs no entry
     }
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
@@ -23153,7 +23456,10 @@ inline bool SceneSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
             w.putleb( (uint64_t) body_ground ); // ground
             if ( !LayerSaveBodyRetain( ctx, numbering, w, ids, value.ground, retain, TableRetainStepInto( path, 6, (uint32_t) ( 0 ) ) ) ) return false;
         }
-        else { ids.truncate( mark_ground ); }
+        else
+        {
+            ids.truncate( mark_ground );
+        }
     }
     schema_assert( value.layers_count >= 0 && value.layers_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.layers_count > 0 )
@@ -23192,7 +23498,10 @@ inline bool SceneSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
             w.putleb( (uint64_t) body_meta ); // meta
             if ( !MetaSaveBodyRetain( w, ids, value.meta, retain, TableRetainStepInto( path, 8, (uint32_t) ( 0 ) ) ) ) return false;
         }
-        else { ids.truncate( mark_meta ); }
+        else
+        {
+            ids.truncate( mark_meta );
+        }
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }
     return !w.overflow;
@@ -23697,7 +24006,10 @@ inline int64_t DepotMeasureBodyRetain( const Ctx & ctx, const TableNumbering & n
             const int64_t whole_banks = 1 + TableLebBytes( (uint64_t) pairs_banks ) + body_banks;
             bytes += TableLebBytes( ref_banks ) + 1 + TableLebBytes( (uint64_t) ( whole_banks ) ) + ( whole_banks ); // banks
         }
-        else { ids.truncate( mark_banks ); } // an ELIDED field costs nothing in the id table either
+        else
+        {
+            ids.truncate( mark_banks );
+        } // an ELIDED field costs nothing in the id table either
     }
     if ( value.spare_present ) // ?Meta: presence decides, not content
     {
@@ -23786,7 +24098,10 @@ inline bool DepotSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
                 if ( !LayerSaveBodyRetain( ctx, numbering, w, ids, value.banks.slots[i], retain, TableRetainStepInto( path, 1, (uint32_t) ( i ) ) ) ) return false;
             }
         }
-        else { ids.truncate( mark_banks ); } // an ELIDED field costs nothing in the id table either
+        else
+        {
+            ids.truncate( mark_banks );
+        } // an ELIDED field costs nothing in the id table either
     }
     if ( value.spare_present ) // ?Meta
     {
@@ -24110,7 +24425,10 @@ inline int64_t AlbumMeasureBodyRetain( const Ctx & ctx, const TableNumbering & n
         const int64_t body_tint = ColourMeasureBodyRetain( ids, value.tint, retain, TableRetainStepInto( path, 1, (uint32_t) ( 0 ) ) );
         if ( body_tint < 0 ) { return -1; }
         if ( body_tint > 1 ) { bytes += TableLebBytes( ref_tint ) + 1 + TableLebBytes( (uint64_t) ( body_tint ) ) + ( body_tint ); } // tint
-        else { ids.truncate( mark_tint ); } // an all-default nested table elides, and costs no entry
+        else
+        {
+            ids.truncate( mark_tint );
+        } // an all-default nested table elides, and costs no entry
     }
     {
         const int32_t mark_stamp = ids.count;
@@ -24118,7 +24436,10 @@ inline int64_t AlbumMeasureBodyRetain( const Ctx & ctx, const TableNumbering & n
         const int64_t body_stamp = StampMeasureBodyRetain( ids, value.stamp, retain, TableRetainStepInto( path, 2, (uint32_t) ( 0 ) ) );
         if ( body_stamp < 0 ) { return -1; }
         if ( body_stamp > 1 ) { bytes += TableLebBytes( ref_stamp ) + 1 + TableLebBytes( (uint64_t) ( body_stamp ) ) + ( body_stamp ); } // stamp
-        else { ids.truncate( mark_stamp ); } // an all-default nested table elides, and costs no entry
+        else
+        {
+            ids.truncate( mark_stamp );
+        } // an all-default nested table elides, and costs no entry
     }
     {
         const int32_t mark_marker = ids.count;
@@ -24126,7 +24447,10 @@ inline int64_t AlbumMeasureBodyRetain( const Ctx & ctx, const TableNumbering & n
         const int64_t body_marker = MarkerMeasureBodyRetain( ctx, numbering, ids, value.marker, retain, TableRetainStepInto( path, 3, (uint32_t) ( 0 ) ) );
         if ( body_marker < 0 ) { return -1; }
         if ( body_marker > 1 ) { bytes += TableLebBytes( ref_marker ) + 1 + TableLebBytes( (uint64_t) ( body_marker ) ) + ( body_marker ); } // marker
-        else { ids.truncate( mark_marker ); } // an all-default nested table elides, and costs no entry
+        else
+        {
+            ids.truncate( mark_marker );
+        } // an all-default nested table elides, and costs no entry
     }
     {
         const Marker * pointee_pin = MarkerAt( ctx, value.pin ); // *Marker
@@ -24184,7 +24508,10 @@ inline bool AlbumSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
             w.putleb( (uint64_t) body_tint ); // tint
             if ( !ColourSaveBodyRetain( w, ids, value.tint, retain, TableRetainStepInto( path, 1, (uint32_t) ( 0 ) ) ) ) return false;
         }
-        else { ids.truncate( mark_tint ); }
+        else
+        {
+            ids.truncate( mark_tint );
+        }
     }
     {
         const int32_t mark_stamp = ids.count;
@@ -24197,7 +24524,10 @@ inline bool AlbumSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
             w.putleb( (uint64_t) body_stamp ); // stamp
             if ( !StampSaveBodyRetain( w, ids, value.stamp, retain, TableRetainStepInto( path, 2, (uint32_t) ( 0 ) ) ) ) return false;
         }
-        else { ids.truncate( mark_stamp ); }
+        else
+        {
+            ids.truncate( mark_stamp );
+        }
     }
     {
         const int32_t mark_marker = ids.count;
@@ -24210,7 +24540,10 @@ inline bool AlbumSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
             w.putleb( (uint64_t) body_marker ); // marker
             if ( !MarkerSaveBodyRetain( ctx, numbering, w, ids, value.marker, retain, TableRetainStepInto( path, 3, (uint32_t) ( 0 ) ) ) ) return false;
         }
-        else { ids.truncate( mark_marker ); }
+        else
+        {
+            ids.truncate( mark_marker );
+        }
     }
     {
         const Marker * pointee_pin = MarkerAt( ctx, value.pin ); // *Marker

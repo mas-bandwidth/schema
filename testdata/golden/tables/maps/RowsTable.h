@@ -12628,7 +12628,10 @@ inline int64_t RowEntriesEntryMeasureBody( TableIds & ids, const RowEntriesEntry
         const int64_t body_value = ItemMeasureBody( ids, value.value );
         if ( body_value < 0 ) { return -1; }
         if ( body_value > 1 ) { bytes += TableLebBytes( ref_value ) + 1 + TableLebBytes( (uint64_t) ( body_value ) ) + ( body_value ); } // value
-        else { ids.truncate( mark_value ); } // an all-default nested table elides, and costs no entry
+        else
+        {
+            ids.truncate( mark_value );
+        } // an all-default nested table elides, and costs no entry
     }
     return bytes;
 }
@@ -12654,7 +12657,10 @@ MAPDEMO_TABLE_INLINE bool RowEntriesEntrySaveBody( TableWriter & w, TableIds & i
             w.putleb( (uint64_t) body_value ); // value
             if ( !ItemSaveBody( w, ids, value.value ) ) return false;
         }
-        else { ids.truncate( mark_value ); }
+        else
+        {
+            ids.truncate( mark_value );
+        }
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
     return !w.overflow;
@@ -13149,7 +13155,10 @@ inline int64_t WideRowEntriesEntryMeasureBody( TableIds & ids, const WideRowEntr
         const int64_t body_value = ItemMeasureBody( ids, value.value );
         if ( body_value < 0 ) { return -1; }
         if ( body_value > 1 ) { bytes += TableLebBytes( ref_value ) + 1 + TableLebBytes( (uint64_t) ( body_value ) ) + ( body_value ); } // value
-        else { ids.truncate( mark_value ); } // an all-default nested table elides, and costs no entry
+        else
+        {
+            ids.truncate( mark_value );
+        } // an all-default nested table elides, and costs no entry
     }
     return bytes;
 }
@@ -13172,7 +13181,10 @@ MAPDEMO_TABLE_INLINE bool WideRowEntriesEntrySaveBody( TableWriter & w, TableIds
             w.putleb( (uint64_t) body_value ); // value
             if ( !ItemSaveBody( w, ids, value.value ) ) return false;
         }
-        else { ids.truncate( mark_value ); }
+        else
+        {
+            ids.truncate( mark_value );
+        }
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
     return !w.overflow;
@@ -13661,7 +13673,10 @@ inline int64_t EdgeRowNamesEntryMeasureBody( TableIds & ids, const EdgeRowNamesE
         const int64_t body_value = ItemMeasureBody( ids, value.value );
         if ( body_value < 0 ) { return -1; }
         if ( body_value > 1 ) { bytes += TableLebBytes( ref_value ) + 1 + TableLebBytes( (uint64_t) ( body_value ) ) + ( body_value ); } // value
-        else { ids.truncate( mark_value ); } // an all-default nested table elides, and costs no entry
+        else
+        {
+            ids.truncate( mark_value );
+        } // an all-default nested table elides, and costs no entry
     }
     return bytes;
 }
@@ -13687,7 +13702,10 @@ MAPDEMO_TABLE_INLINE bool EdgeRowNamesEntrySaveBody( TableWriter & w, TableIds &
             w.putleb( (uint64_t) body_value ); // value
             if ( !ItemSaveBody( w, ids, value.value ) ) return false;
         }
-        else { ids.truncate( mark_value ); }
+        else
+        {
+            ids.truncate( mark_value );
+        }
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
     return !w.overflow;
@@ -13834,7 +13852,10 @@ inline int64_t EdgeRowIdsEntryMeasureBody( TableIds & ids, const EdgeRowIdsEntry
         const int64_t body_value = ItemMeasureBody( ids, value.value );
         if ( body_value < 0 ) { return -1; }
         if ( body_value > 1 ) { bytes += TableLebBytes( ref_value ) + 1 + TableLebBytes( (uint64_t) ( body_value ) ) + ( body_value ); } // value
-        else { ids.truncate( mark_value ); } // an all-default nested table elides, and costs no entry
+        else
+        {
+            ids.truncate( mark_value );
+        } // an all-default nested table elides, and costs no entry
     }
     return bytes;
 }
@@ -13857,7 +13878,10 @@ MAPDEMO_TABLE_INLINE bool EdgeRowIdsEntrySaveBody( TableWriter & w, TableIds & i
             w.putleb( (uint64_t) body_value ); // value
             if ( !ItemSaveBody( w, ids, value.value ) ) return false;
         }
-        else { ids.truncate( mark_value ); }
+        else
+        {
+            ids.truncate( mark_value );
+        }
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
     return !w.overflow;
@@ -15253,11 +15277,22 @@ inline bool RowNumber( const Ctx & ctx, TableNumbering & numbering, const Row & 
             continue;
         }
         if ( !TableNumberingAppend( numbering, work ) ) { return false; }
-        if ( work.walk == NULL ) { TablePackMapClose( numbering.seen, work.node, slot ); continue; } // a blob reaches nothing
+        if ( work.walk == NULL )
+        {
+            TablePackMapClose( numbering.seen, work.node, slot );
+            continue;
+        } // a blob reaches nothing
         TableNodeEntry close;
-        close.node = work.node; close.type_id = 0; close.measure = NULL; close.save = NULL;
-        close.pack_bytes = NULL; close.pack_copy = NULL; close.pack_slots = NULL; close.walk = NULL;
-        close.close = true; close.hint = slot;
+        close.node = work.node;
+        close.type_id = 0;
+        close.measure = NULL;
+        close.save = NULL;
+        close.pack_bytes = NULL;
+        close.pack_copy = NULL;
+        close.pack_slots = NULL;
+        close.walk = NULL;
+        close.close = true;
+        close.hint = slot;
         if ( !TableNumberingWorkPush( numbering, close ) ) { return false; }
         const int64_t first = numbering.work_count;
         if ( !work.walk( (const void *) &ctx, numbering, work.node ) ) { return false; }
@@ -15362,11 +15397,22 @@ inline bool WideRowNumber( const Ctx & ctx, TableNumbering & numbering, const Wi
             continue;
         }
         if ( !TableNumberingAppend( numbering, work ) ) { return false; }
-        if ( work.walk == NULL ) { TablePackMapClose( numbering.seen, work.node, slot ); continue; } // a blob reaches nothing
+        if ( work.walk == NULL )
+        {
+            TablePackMapClose( numbering.seen, work.node, slot );
+            continue;
+        } // a blob reaches nothing
         TableNodeEntry close;
-        close.node = work.node; close.type_id = 0; close.measure = NULL; close.save = NULL;
-        close.pack_bytes = NULL; close.pack_copy = NULL; close.pack_slots = NULL; close.walk = NULL;
-        close.close = true; close.hint = slot;
+        close.node = work.node;
+        close.type_id = 0;
+        close.measure = NULL;
+        close.save = NULL;
+        close.pack_bytes = NULL;
+        close.pack_copy = NULL;
+        close.pack_slots = NULL;
+        close.walk = NULL;
+        close.close = true;
+        close.hint = slot;
         if ( !TableNumberingWorkPush( numbering, close ) ) { return false; }
         const int64_t first = numbering.work_count;
         if ( !work.walk( (const void *) &ctx, numbering, work.node ) ) { return false; }
@@ -15471,11 +15517,22 @@ inline bool EdgeRowNumber( const Ctx & ctx, TableNumbering & numbering, const Ed
             continue;
         }
         if ( !TableNumberingAppend( numbering, work ) ) { return false; }
-        if ( work.walk == NULL ) { TablePackMapClose( numbering.seen, work.node, slot ); continue; } // a blob reaches nothing
+        if ( work.walk == NULL )
+        {
+            TablePackMapClose( numbering.seen, work.node, slot );
+            continue;
+        } // a blob reaches nothing
         TableNodeEntry close;
-        close.node = work.node; close.type_id = 0; close.measure = NULL; close.save = NULL;
-        close.pack_bytes = NULL; close.pack_copy = NULL; close.pack_slots = NULL; close.walk = NULL;
-        close.close = true; close.hint = slot;
+        close.node = work.node;
+        close.type_id = 0;
+        close.measure = NULL;
+        close.save = NULL;
+        close.pack_bytes = NULL;
+        close.pack_copy = NULL;
+        close.pack_slots = NULL;
+        close.walk = NULL;
+        close.close = true;
+        close.hint = slot;
         if ( !TableNumberingWorkPush( numbering, close ) ) { return false; }
         const int64_t first = numbering.work_count;
         if ( !work.walk( (const void *) &ctx, numbering, work.node ) ) { return false; }
@@ -15631,9 +15688,17 @@ inline bool RowBuilder::Lock()
         for ( int64_t k = 0; ok && k < numbering.count; k++ )
         {
             const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
-            if ( bytes < 0 ) { ok = false; break; }
+            if ( bytes < 0 )
+            {
+                ok = false;
+                break;
+            }
             TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-            if ( entry == NULL ) { ok = false; break; }
+            if ( entry == NULL )
+            {
+                ok = false;
+                break;
+            }
             measured = TableAlignUp64( measured );
             entry->offset = measured;
             measured += bytes;
@@ -15657,9 +15722,17 @@ inline bool RowBuilder::Lock()
         for ( int64_t k = 0; ok && k < numbering.count; k++ )
         {
             const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
-            if ( bytes < 0 ) { ok = false; break; }
+            if ( bytes < 0 )
+            {
+                ok = false;
+                break;
+            }
             TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-            if ( entry == NULL ) { ok = false; break; }
+            if ( entry == NULL )
+            {
+                ok = false;
+                break;
+            }
             used = TableAlignUp64( used );
             entry->offset = used;
             used += bytes;
@@ -15684,14 +15757,22 @@ inline bool RowBuilder::Lock()
     for ( int64_t k = 0; ok && k < numbering.count; k++ )
     {
         const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-        if ( entry == NULL ) { ok = false; break; }
+        if ( entry == NULL )
+        {
+            ok = false;
+            break;
+        }
         ok = numbering.entries[k].pack_copy( (const void *) &ctx, numbering.entries[k].node, packed + entry->offset, packed, total );
     }
-    if ( ok ) { ok = RowPackSlots( ctx, numbering.seen, root, *( Row * ) packed, packed ); }
+    if ( ok ) { ok = RowPackSlots( ctx, numbering.seen, root, *(Row *) packed, packed ); }
     for ( int64_t k = 0; ok && k < numbering.count; k++ )
     {
         const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-        if ( entry == NULL ) { ok = false; break; }
+        if ( entry == NULL )
+        {
+            ok = false;
+            break;
+        }
         if ( numbering.entries[k].pack_slots != NULL ) { ok = numbering.entries[k].pack_slots( (const void *) &ctx, numbering.seen, numbering.entries[k].node, packed + entry->offset, packed ); } // a blob has no slots
     }
     TableNumberingShutdown( numbering );
@@ -16714,9 +16795,17 @@ inline bool WideRowBuilder::Lock()
         for ( int64_t k = 0; ok && k < numbering.count; k++ )
         {
             const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
-            if ( bytes < 0 ) { ok = false; break; }
+            if ( bytes < 0 )
+            {
+                ok = false;
+                break;
+            }
             TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-            if ( entry == NULL ) { ok = false; break; }
+            if ( entry == NULL )
+            {
+                ok = false;
+                break;
+            }
             measured = TableAlignUp64( measured );
             entry->offset = measured;
             measured += bytes;
@@ -16740,9 +16829,17 @@ inline bool WideRowBuilder::Lock()
         for ( int64_t k = 0; ok && k < numbering.count; k++ )
         {
             const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
-            if ( bytes < 0 ) { ok = false; break; }
+            if ( bytes < 0 )
+            {
+                ok = false;
+                break;
+            }
             TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-            if ( entry == NULL ) { ok = false; break; }
+            if ( entry == NULL )
+            {
+                ok = false;
+                break;
+            }
             used = TableAlignUp64( used );
             entry->offset = used;
             used += bytes;
@@ -16767,14 +16864,22 @@ inline bool WideRowBuilder::Lock()
     for ( int64_t k = 0; ok && k < numbering.count; k++ )
     {
         const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-        if ( entry == NULL ) { ok = false; break; }
+        if ( entry == NULL )
+        {
+            ok = false;
+            break;
+        }
         ok = numbering.entries[k].pack_copy( (const void *) &ctx, numbering.entries[k].node, packed + entry->offset, packed, total );
     }
-    if ( ok ) { ok = WideRowPackSlots( ctx, numbering.seen, root, *( WideRow * ) packed, packed ); }
+    if ( ok ) { ok = WideRowPackSlots( ctx, numbering.seen, root, *(WideRow *) packed, packed ); }
     for ( int64_t k = 0; ok && k < numbering.count; k++ )
     {
         const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-        if ( entry == NULL ) { ok = false; break; }
+        if ( entry == NULL )
+        {
+            ok = false;
+            break;
+        }
         if ( numbering.entries[k].pack_slots != NULL ) { ok = numbering.entries[k].pack_slots( (const void *) &ctx, numbering.seen, numbering.entries[k].node, packed + entry->offset, packed ); } // a blob has no slots
     }
     TableNumberingShutdown( numbering );
@@ -17797,9 +17902,17 @@ inline bool EdgeRowBuilder::Lock()
         for ( int64_t k = 0; ok && k < numbering.count; k++ )
         {
             const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
-            if ( bytes < 0 ) { ok = false; break; }
+            if ( bytes < 0 )
+            {
+                ok = false;
+                break;
+            }
             TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-            if ( entry == NULL ) { ok = false; break; }
+            if ( entry == NULL )
+            {
+                ok = false;
+                break;
+            }
             measured = TableAlignUp64( measured );
             entry->offset = measured;
             measured += bytes;
@@ -17823,9 +17936,17 @@ inline bool EdgeRowBuilder::Lock()
         for ( int64_t k = 0; ok && k < numbering.count; k++ )
         {
             const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
-            if ( bytes < 0 ) { ok = false; break; }
+            if ( bytes < 0 )
+            {
+                ok = false;
+                break;
+            }
             TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-            if ( entry == NULL ) { ok = false; break; }
+            if ( entry == NULL )
+            {
+                ok = false;
+                break;
+            }
             used = TableAlignUp64( used );
             entry->offset = used;
             used += bytes;
@@ -17850,14 +17971,22 @@ inline bool EdgeRowBuilder::Lock()
     for ( int64_t k = 0; ok && k < numbering.count; k++ )
     {
         const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-        if ( entry == NULL ) { ok = false; break; }
+        if ( entry == NULL )
+        {
+            ok = false;
+            break;
+        }
         ok = numbering.entries[k].pack_copy( (const void *) &ctx, numbering.entries[k].node, packed + entry->offset, packed, total );
     }
-    if ( ok ) { ok = EdgeRowPackSlots( ctx, numbering.seen, root, *( EdgeRow * ) packed, packed ); }
+    if ( ok ) { ok = EdgeRowPackSlots( ctx, numbering.seen, root, *(EdgeRow *) packed, packed ); }
     for ( int64_t k = 0; ok && k < numbering.count; k++ )
     {
         const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-        if ( entry == NULL ) { ok = false; break; }
+        if ( entry == NULL )
+        {
+            ok = false;
+            break;
+        }
         if ( numbering.entries[k].pack_slots != NULL ) { ok = numbering.entries[k].pack_slots( (const void *) &ctx, numbering.seen, numbering.entries[k].node, packed + entry->offset, packed ); } // a blob has no slots
     }
     TableNumberingShutdown( numbering );
@@ -18794,7 +18923,10 @@ inline int64_t RowEntriesEntryMeasureBodyRetain( TableRetainIds & ids, const Row
         const int64_t body_value = ItemMeasureBodyRetain( ids, value.value, retain, TableRetainStepInto( path, 1, (uint32_t) ( 0 ) ) );
         if ( body_value < 0 ) { return -1; }
         if ( body_value > 1 ) { bytes += TableLebBytes( ref_value ) + 1 + TableLebBytes( (uint64_t) ( body_value ) ) + ( body_value ); } // value
-        else { ids.truncate( mark_value ); } // an all-default nested table elides, and costs no entry
+        else
+        {
+            ids.truncate( mark_value );
+        } // an all-default nested table elides, and costs no entry
     }
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
@@ -18821,7 +18953,10 @@ MAPDEMO_TABLE_INLINE bool RowEntriesEntrySaveBodyRetain( TableWriter & w, TableR
             w.putleb( (uint64_t) body_value ); // value
             if ( !ItemSaveBodyRetain( w, ids, value.value, retain, TableRetainStepInto( path, 1, (uint32_t) ( 0 ) ) ) ) return false;
         }
-        else { ids.truncate( mark_value ); }
+        else
+        {
+            ids.truncate( mark_value );
+        }
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -19333,7 +19468,10 @@ inline int64_t WideRowEntriesEntryMeasureBodyRetain( TableRetainIds & ids, const
         const int64_t body_value = ItemMeasureBodyRetain( ids, value.value, retain, TableRetainStepInto( path, 1, (uint32_t) ( 0 ) ) );
         if ( body_value < 0 ) { return -1; }
         if ( body_value > 1 ) { bytes += TableLebBytes( ref_value ) + 1 + TableLebBytes( (uint64_t) ( body_value ) ) + ( body_value ); } // value
-        else { ids.truncate( mark_value ); } // an all-default nested table elides, and costs no entry
+        else
+        {
+            ids.truncate( mark_value );
+        } // an all-default nested table elides, and costs no entry
     }
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
@@ -19357,7 +19495,10 @@ MAPDEMO_TABLE_INLINE bool WideRowEntriesEntrySaveBodyRetain( TableWriter & w, Ta
             w.putleb( (uint64_t) body_value ); // value
             if ( !ItemSaveBodyRetain( w, ids, value.value, retain, TableRetainStepInto( path, 1, (uint32_t) ( 0 ) ) ) ) return false;
         }
-        else { ids.truncate( mark_value ); }
+        else
+        {
+            ids.truncate( mark_value );
+        }
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -19863,7 +20004,10 @@ inline int64_t EdgeRowNamesEntryMeasureBodyRetain( TableRetainIds & ids, const E
         const int64_t body_value = ItemMeasureBodyRetain( ids, value.value, retain, TableRetainStepInto( path, 1, (uint32_t) ( 0 ) ) );
         if ( body_value < 0 ) { return -1; }
         if ( body_value > 1 ) { bytes += TableLebBytes( ref_value ) + 1 + TableLebBytes( (uint64_t) ( body_value ) ) + ( body_value ); } // value
-        else { ids.truncate( mark_value ); } // an all-default nested table elides, and costs no entry
+        else
+        {
+            ids.truncate( mark_value );
+        } // an all-default nested table elides, and costs no entry
     }
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
@@ -19890,7 +20034,10 @@ MAPDEMO_TABLE_INLINE bool EdgeRowNamesEntrySaveBodyRetain( TableWriter & w, Tabl
             w.putleb( (uint64_t) body_value ); // value
             if ( !ItemSaveBodyRetain( w, ids, value.value, retain, TableRetainStepInto( path, 1, (uint32_t) ( 0 ) ) ) ) return false;
         }
-        else { ids.truncate( mark_value ); }
+        else
+        {
+            ids.truncate( mark_value );
+        }
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -20044,7 +20191,10 @@ inline int64_t EdgeRowIdsEntryMeasureBodyRetain( TableRetainIds & ids, const Edg
         const int64_t body_value = ItemMeasureBodyRetain( ids, value.value, retain, TableRetainStepInto( path, 1, (uint32_t) ( 0 ) ) );
         if ( body_value < 0 ) { return -1; }
         if ( body_value > 1 ) { bytes += TableLebBytes( ref_value ) + 1 + TableLebBytes( (uint64_t) ( body_value ) ) + ( body_value ); } // value
-        else { ids.truncate( mark_value ); } // an all-default nested table elides, and costs no entry
+        else
+        {
+            ids.truncate( mark_value );
+        } // an all-default nested table elides, and costs no entry
     }
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
@@ -20068,7 +20218,10 @@ MAPDEMO_TABLE_INLINE bool EdgeRowIdsEntrySaveBodyRetain( TableWriter & w, TableR
             w.putleb( (uint64_t) body_value ); // value
             if ( !ItemSaveBodyRetain( w, ids, value.value, retain, TableRetainStepInto( path, 1, (uint32_t) ( 0 ) ) ) ) return false;
         }
-        else { ids.truncate( mark_value ); }
+        else
+        {
+            ids.truncate( mark_value );
+        }
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body

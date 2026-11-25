@@ -6979,7 +6979,14 @@ inline bool ArmorPlateLoadMessageBody( TableBitReader & r, const TableVocabulary
                 {
                     TableNonFiniteFloat( report );
                     return false;
-                    } const double decoded_d = table_bits_to_double( raw ); if ( same_shape && ( table_double_to_bits( decoded_d ) == table_double_to_bits( 0.0 ) ) ) { report->damaged = true; return false; } value.thickness = decoded_d;
+                    }
+                    const double decoded_d = table_bits_to_double( raw );
+                    if ( same_shape && ( table_double_to_bits( decoded_d ) == table_double_to_bits( 0.0 ) ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
+                    value.thickness = decoded_d;
                 }
                 break;
             }
@@ -7126,7 +7133,11 @@ inline bool ArmorPlateLoadMessageBody( TableBitReader & r, const TableVocabulary
                 break;
             }
             default:
-                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
+                if ( vocabulary.build_version == BuildVersion )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 report->unknown++;
                 if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
@@ -7240,7 +7251,10 @@ inline int64_t ArmorConfigMeasureBody( TableIds & ids, const ArmorConfig & value
         const int64_t body_front = ArmorPlateMeasureBody( ids, value.front );
         if ( body_front < 0 ) { return -1; }
         if ( body_front > 1 ) { bytes += TableLebBytes( ref_front ) + 1 + TableLebBytes( (uint64_t) ( body_front ) ) + ( body_front ); } // front
-        else { ids.truncate( mark_front ); } // an all-default nested table elides, and costs no entry
+        else
+        {
+            ids.truncate( mark_front );
+        } // an all-default nested table elides, and costs no entry
     }
     {
         const int32_t mark_rear = ids.count;
@@ -7248,7 +7262,10 @@ inline int64_t ArmorConfigMeasureBody( TableIds & ids, const ArmorConfig & value
         const int64_t body_rear = ArmorPlateMeasureBody( ids, value.rear );
         if ( body_rear < 0 ) { return -1; }
         if ( body_rear > 1 ) { bytes += TableLebBytes( ref_rear ) + 1 + TableLebBytes( (uint64_t) ( body_rear ) ) + ( body_rear ); } // rear
-        else { ids.truncate( mark_rear ); } // an all-default nested table elides, and costs no entry
+        else
+        {
+            ids.truncate( mark_rear );
+        } // an all-default nested table elides, and costs no entry
     }
     if ( !TableFloatFinite( value.rating ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
     if ( table_float_to_bits( value.rating ) != table_float_to_bits( 0.0f ) ) { bytes += TableLebBytes( ids.ref_at( 10, 0x4e79ecbefe5ff4d0ull ) ) + 1 + 4; } // rating
@@ -7277,7 +7294,10 @@ BLOCKHOME_TABLE_INLINE bool ArmorConfigSaveBody( TableWriter & w, TableIds & ids
             w.putleb( (uint64_t) body_front ); // front
             if ( !ArmorPlateSaveBody( w, ids, value.front ) ) return false;
         }
-        else { ids.truncate( mark_front ); }
+        else
+        {
+            ids.truncate( mark_front );
+        }
     }
     {
         const int32_t mark_rear = ids.count;
@@ -7290,7 +7310,10 @@ BLOCKHOME_TABLE_INLINE bool ArmorConfigSaveBody( TableWriter & w, TableIds & ids
             w.putleb( (uint64_t) body_rear ); // rear
             if ( !ArmorPlateSaveBody( w, ids, value.rear ) ) return false;
         }
-        else { ids.truncate( mark_rear ); }
+        else
+        {
+            ids.truncate( mark_rear );
+        }
     }
     if ( table_float_to_bits( value.rating ) != table_float_to_bits( 0.0f ) )
     {
@@ -7917,7 +7940,11 @@ inline bool ArmorConfigLoadMessageBody( TableBitReader & r, const TableVocabular
                 break;
             }
             default:
-                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
+                if ( vocabulary.build_version == BuildVersion )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 report->unknown++;
                 if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
@@ -8537,7 +8564,11 @@ inline bool FiringGroupLoadMessageBody( TableBitReader & r, const TableVocabular
                 break;
             }
             default:
-                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
+                if ( vocabulary.build_version == BuildVersion )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 report->unknown++;
                 if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
@@ -9605,7 +9636,11 @@ inline bool GunnerSettingsLoadMessageBody( TableBitReader & r, const TableVocabu
                 break;
             }
             default:
-                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
+                if ( vocabulary.build_version == BuildVersion )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 report->unknown++;
                 if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {

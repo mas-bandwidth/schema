@@ -7634,7 +7634,8 @@ BENCH_TABLE_INLINE bool MixedEntitySaveBody( TableWriter & w, TableIds & ids, co
         const uint64_t ref_weapon = ids.ref_at( 52, 0xa0b610205f2c6e01ull );
         uint64_t variant_weapon = 0;
         if ( !TableEnumRef( ids, value.weapon, variant_weapon ) ) { return false; }
-        w.header( ref_weapon, 30 ); w.putleb( variant_weapon ); // weapon
+        w.header( ref_weapon, 30 );
+        w.putleb( variant_weapon ); // weapon
     }
     if ( value.damage != 0 )
     {
@@ -8903,7 +8904,7 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                             else if ( width > 0 && width < 64 )
                             {
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
-                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                             }
                             if ( decoded_wide < -16383ll )
                             {
@@ -8951,7 +8952,7 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                     else if ( width > 0 && width < 64 )
                     {
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
-                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     const int64_t pre_clamp = decoded_wide;
                     if ( decoded_wide < -16383ll )
@@ -9011,7 +9012,7 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                             else if ( width > 0 && width < 64 )
                             {
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
-                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                             }
                             if ( decoded_wide < -16383ll )
                             {
@@ -9059,7 +9060,7 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                     else if ( width > 0 && width < 64 )
                     {
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
-                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     const int64_t pre_clamp = decoded_wide;
                     if ( decoded_wide < -16383ll )
@@ -9119,7 +9120,7 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                             else if ( width > 0 && width < 64 )
                             {
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
-                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                             }
                             if ( decoded_wide < -16383ll )
                             {
@@ -9167,7 +9168,7 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                     else if ( width > 0 && width < 64 )
                     {
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
-                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     const int64_t pre_clamp = decoded_wide;
                     if ( decoded_wide < -16383ll )
@@ -9423,7 +9424,7 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                             else if ( width > 0 && width < 64 )
                             {
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
-                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                             }
                             if ( decoded_wide < -2048ll )
                             {
@@ -9471,7 +9472,7 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                     else if ( width > 0 && width < 64 )
                     {
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
-                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     const int64_t pre_clamp = decoded_wide;
                     if ( decoded_wide < -2048ll )
@@ -9531,7 +9532,7 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                             else if ( width > 0 && width < 64 )
                             {
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
-                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                             }
                             if ( decoded_wide < -2048ll )
                             {
@@ -9579,7 +9580,7 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                     else if ( width > 0 && width < 64 )
                     {
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
-                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     const int64_t pre_clamp = decoded_wide;
                     if ( decoded_wide < -2048ll )
@@ -9639,7 +9640,7 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                             else if ( width > 0 && width < 64 )
                             {
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
-                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                             }
                             if ( decoded_wide < -2048ll )
                             {
@@ -9687,7 +9688,7 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                     else if ( width > 0 && width < 64 )
                     {
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
-                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     const int64_t pre_clamp = decoded_wide;
                     if ( decoded_wide < -2048ll )
@@ -9747,7 +9748,7 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                             else if ( width > 0 && width < 64 )
                             {
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
-                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                             }
                             if ( decoded_wide < 0ll )
                             {
@@ -9795,7 +9796,7 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                     else if ( width > 0 && width < 64 )
                     {
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
-                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     const int64_t pre_clamp = decoded_wide;
                     if ( decoded_wide < 0ll )
@@ -9985,7 +9986,9 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                     }
                     break;
                 }
-                { uint64_t raw = 0; if ( !r.get( raw, 1 ) || ( same_shape && raw == 0 ) )
+                {
+                    uint64_t raw = 0;
+                    if ( !r.get( raw, 1 ) || ( same_shape && raw == 0 ) )
                 {
                     report->damaged = true;
                     return false;
@@ -10016,7 +10019,9 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                     }
                     break;
                 }
-                { uint64_t raw = 0; if ( !r.get( raw, 1 ) || ( same_shape && raw == 0 ) )
+                {
+                    uint64_t raw = 0;
+                    if ( !r.get( raw, 1 ) || ( same_shape && raw == 0 ) )
                 {
                     report->damaged = true;
                     return false;
@@ -10025,7 +10030,11 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                 break;
             }
             default:
-                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
+                if ( vocabulary.build_version == BuildVersion )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 report->unknown++;
                 if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
@@ -10607,7 +10616,7 @@ inline bool MixedStatLoadMessageBody( TableBitReader & r, const TableVocabulary 
                             else if ( width > 0 && width < 64 )
                             {
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
-                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                             }
                             if ( decoded_wide < -512ll )
                             {
@@ -10655,7 +10664,7 @@ inline bool MixedStatLoadMessageBody( TableBitReader & r, const TableVocabulary 
                     else if ( width > 0 && width < 64 )
                     {
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
-                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     const int64_t pre_clamp = decoded_wide;
                     if ( decoded_wide < -512ll )
@@ -10681,7 +10690,11 @@ inline bool MixedStatLoadMessageBody( TableBitReader & r, const TableVocabulary 
                 break;
             }
             default:
-                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
+                if ( vocabulary.build_version == BuildVersion )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 report->unknown++;
                 if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
@@ -11460,7 +11473,7 @@ inline bool MixedHitEventLoadMessageBody( TableBitReader & r, const TableVocabul
                             else if ( width > 0 && width < 64 )
                             {
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
-                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                             }
                             if ( decoded_wide < 0ll )
                             {
@@ -11508,7 +11521,7 @@ inline bool MixedHitEventLoadMessageBody( TableBitReader & r, const TableVocabul
                     else if ( width > 0 && width < 64 )
                     {
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
-                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     const int64_t pre_clamp = decoded_wide;
                     if ( decoded_wide < 0ll )
@@ -11568,7 +11581,7 @@ inline bool MixedHitEventLoadMessageBody( TableBitReader & r, const TableVocabul
                             else if ( width > 0 && width < 64 )
                             {
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
-                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                             }
                             if ( decoded_wide < 0ll )
                             {
@@ -11616,7 +11629,7 @@ inline bool MixedHitEventLoadMessageBody( TableBitReader & r, const TableVocabul
                     else if ( width > 0 && width < 64 )
                     {
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
-                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     const int64_t pre_clamp = decoded_wide;
                     if ( decoded_wide < 0ll )
@@ -11664,7 +11677,9 @@ inline bool MixedHitEventLoadMessageBody( TableBitReader & r, const TableVocabul
                     }
                     break;
                 }
-                { uint64_t raw = 0; if ( !r.get( raw, 1 ) || ( same_shape && raw == 0 ) )
+                {
+                    uint64_t raw = 0;
+                    if ( !r.get( raw, 1 ) || ( same_shape && raw == 0 ) )
                 {
                     report->damaged = true;
                     return false;
@@ -11673,7 +11688,11 @@ inline bool MixedHitEventLoadMessageBody( TableBitReader & r, const TableVocabul
                 break;
             }
             default:
-                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
+                if ( vocabulary.build_version == BuildVersion )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 report->unknown++;
                 if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
@@ -12228,7 +12247,7 @@ inline bool MixedChatEventLoadMessageBody( TableBitReader & r, const TableVocabu
                             else if ( width > 0 && width < 64 )
                             {
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
-                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                             }
                             if ( decoded_wide < 0ll )
                             {
@@ -12276,7 +12295,7 @@ inline bool MixedChatEventLoadMessageBody( TableBitReader & r, const TableVocabu
                     else if ( width > 0 && width < 64 )
                     {
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
-                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     const int64_t pre_clamp = decoded_wide;
                     if ( decoded_wide < 0ll )
@@ -12400,7 +12419,11 @@ inline bool MixedChatEventLoadMessageBody( TableBitReader & r, const TableVocabu
                 break;
             }
             default:
-                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
+                if ( vocabulary.build_version == BuildVersion )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 report->unknown++;
                 if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
@@ -13053,7 +13076,7 @@ inline bool MixedPickupEventLoadMessageBody( TableBitReader & r, const TableVoca
                             else if ( width > 0 && width < 64 )
                             {
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
-                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                             }
                             if ( decoded_wide < 0ll )
                             {
@@ -13101,7 +13124,7 @@ inline bool MixedPickupEventLoadMessageBody( TableBitReader & r, const TableVoca
                     else if ( width > 0 && width < 64 )
                     {
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
-                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     const int64_t pre_clamp = decoded_wide;
                     if ( decoded_wide < 0ll )
@@ -13127,7 +13150,11 @@ inline bool MixedPickupEventLoadMessageBody( TableBitReader & r, const TableVoca
                 break;
             }
             default:
-                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
+                if ( vocabulary.build_version == BuildVersion )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 report->unknown++;
                 if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
@@ -13338,7 +13365,14 @@ inline int64_t BenchMixedMeasureBody( TableIds & ids, const BenchMixed & value )
     }
     {
         bool all_default_loadout = true;
-        for ( int32_t i = 0; i < 4; i++ ) { if ( value.loadout[i] != 0 ) { all_default_loadout = false; break; } }
+        for ( int32_t i = 0; i < 4; i++ )
+        {
+            if ( value.loadout[i] != 0 )
+            {
+                all_default_loadout = false;
+                break;
+            }
+        }
         if ( !all_default_loadout )
         {
             const uint64_t ref_loadout = ids.ref_at( 24, 0x5759ce7586bbb5a3ull );
@@ -13540,7 +13574,10 @@ BENCH_TABLE_INLINE bool BenchMixedSaveBody( TableWriter & w, TableIds & ids, con
                 }
                 w.header( arm_ref, 13 );
                 w.putleb( (uint64_t) arm_payload ); // hit
-                if ( !MixedHitEventSaveBody( w, ids, value.game_event.hit ) ) { return false; }
+                if ( !MixedHitEventSaveBody( w, ids, value.game_event.hit ) )
+            {
+                return false;
+            }
                 break;
             }
             case MixedEventType::Chat:
@@ -13554,7 +13591,10 @@ BENCH_TABLE_INLINE bool BenchMixedSaveBody( TableWriter & w, TableIds & ids, con
                 }
                 w.header( arm_ref, 13 );
                 w.putleb( (uint64_t) arm_payload ); // chat
-                if ( !MixedChatEventSaveBody( w, ids, value.game_event.chat ) ) { return false; }
+                if ( !MixedChatEventSaveBody( w, ids, value.game_event.chat ) )
+            {
+                return false;
+            }
                 break;
             }
             case MixedEventType::Pickup:
@@ -13568,7 +13608,10 @@ BENCH_TABLE_INLINE bool BenchMixedSaveBody( TableWriter & w, TableIds & ids, con
                 }
                 w.header( arm_ref, 13 );
                 w.putleb( (uint64_t) arm_payload ); // pickup
-                if ( !MixedPickupEventSaveBody( w, ids, value.game_event.pickup ) ) { return false; }
+                if ( !MixedPickupEventSaveBody( w, ids, value.game_event.pickup ) )
+            {
+                return false;
+            }
                 break;
             }
             default: return false; // write validates the tag before it rides
@@ -13576,7 +13619,14 @@ BENCH_TABLE_INLINE bool BenchMixedSaveBody( TableWriter & w, TableIds & ids, con
     }
     {
         bool all_default_loadout = true;
-        for ( int32_t i = 0; i < 4; i++ ) { if ( value.loadout[i] != 0 ) { all_default_loadout = false; break; } }
+        for ( int32_t i = 0; i < 4; i++ )
+        {
+            if ( value.loadout[i] != 0 )
+            {
+                all_default_loadout = false;
+                break;
+            }
+        }
         if ( !all_default_loadout )
         {
             const uint64_t ref_loadout = ids.ref_at( 24, 0x5759ce7586bbb5a3ull );
@@ -15464,7 +15514,14 @@ inline int64_t BenchMixedMeasureMessageBody( int64_t at, const BenchMixed & valu
     }
     {
         bool rides_loadout = false;
-        for ( int32_t i = 0; i < 4; i++ ) { if ( value.loadout[i] != 0 ) { rides_loadout = true; break; } }
+        for ( int32_t i = 0; i < 4; i++ )
+        {
+            if ( value.loadout[i] != 0 )
+            {
+                rides_loadout = true;
+                break;
+            }
+        }
         if ( rides_loadout )
         {
             bits += kTableMessageRefBitsHere;
@@ -15668,7 +15725,14 @@ inline bool BenchMixedSaveMessageBody( TableBitWriter & w, const BenchMixed & va
     }
     {
         bool rides_loadout = false;
-        for ( int32_t i = 0; i < 4; i++ ) { if ( value.loadout[i] != 0 ) { rides_loadout = true; break; } }
+        for ( int32_t i = 0; i < 4; i++ )
+        {
+            if ( value.loadout[i] != 0 )
+            {
+                rides_loadout = true;
+                break;
+            }
+        }
         if ( rides_loadout )
         {
             w.put( 13, kTableMessageRefBitsHere );
@@ -15933,7 +15997,7 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                             else if ( width > 0 && width < 64 )
                             {
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
-                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                             }
                             if ( decoded_wide < 0ll )
                             {
@@ -15981,7 +16045,7 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                     else if ( width > 0 && width < 64 )
                     {
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
-                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     const int64_t pre_clamp = decoded_wide;
                     if ( decoded_wide < 0ll )
@@ -16361,7 +16425,7 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                             else if ( width > 0 && width < 64 )
                             {
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
-                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                             }
                             if ( decoded_wide < -1000000000000ll )
                             {
@@ -16409,7 +16473,7 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                     else if ( width > 0 && width < 64 )
                     {
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
-                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     const int64_t pre_clamp = decoded_wide;
                     if ( decoded_wide < -1000000000000ll )
@@ -16562,7 +16626,7 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                     else if ( width > 0 && width < 64 )
                     {
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
-                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     const int64_t pre_clamp = decoded_wide;
                     if ( decoded_wide < 0ll )
@@ -17424,7 +17488,14 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                 {
                     TableNonFiniteFloat( report );
                     return false;
-                    } const double decoded_d = table_bits_to_double( raw ); if ( same_shape && ( table_double_to_bits( decoded_d ) == table_double_to_bits( 0.0 ) ) ) { report->damaged = true; return false; } value.drift = decoded_d;
+                    }
+                    const double decoded_d = table_bits_to_double( raw );
+                    if ( same_shape && ( table_double_to_bits( decoded_d ) == table_double_to_bits( 0.0 ) ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
+                    value.drift = decoded_d;
                 }
                 break;
             }
@@ -17534,9 +17605,9 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                             if ( entry.packing != 1 && width > 0 && width < 64 )
                             {
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
-                                if ( ( raw & sign ) != 0 ) { raw = raw | ~( ( uint64_t(1) << width ) - 1 ); }
+                                if ( ( raw & sign ) != 0 ) { raw = raw | ~( ( uint64_t( 1 ) << width ) - 1 ); }
                             }
-                            serialize::uint128_t raw_v = ( serialize::uint128_t( (int64_t) raw < 0 ? ~uint64_t(0) : uint64_t(0) ) << 64 ) | serialize::uint128_t( raw );
+                            serialize::uint128_t raw_v = ( serialize::uint128_t( (int64_t) raw < 0 ? ~uint64_t( 0 ) : uint64_t( 0 ) ) << 64 ) | serialize::uint128_t( raw );
                             if ( entry.packing == 1 && !past ) { raw_v = raw_v + ( ( serialize::uint128_t( (uint64_t) entry.base_hi ) << 64 ) | serialize::uint128_t( (uint64_t) entry.base_lo ) ); }
                             serialize::int128_t decoded_v = serialize::int128_t( raw_v );
                             if ( decoded_v < serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ) )
@@ -17780,7 +17851,9 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                     }
                     break;
                 }
-                { uint64_t raw = 0; if ( !r.get( raw, 1 ) || ( same_shape && raw == 1 ) )
+                {
+                    uint64_t raw = 0;
+                    if ( !r.get( raw, 1 ) || ( same_shape && raw == 1 ) )
                 {
                     report->damaged = true;
                     return false;
@@ -17823,7 +17896,7 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                             else if ( width > 0 && width < 64 )
                             {
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
-                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                             }
                             if ( decoded_wide < 0ll )
                             {
@@ -17871,7 +17944,7 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                     else if ( width > 0 && width < 64 )
                     {
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
-                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     const int64_t pre_clamp = decoded_wide;
                     if ( decoded_wide < 0ll )
@@ -17931,7 +18004,7 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                             else if ( width > 0 && width < 64 )
                             {
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
-                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                             }
                             if ( decoded_wide < 0ll )
                             {
@@ -17979,7 +18052,7 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                     else if ( width > 0 && width < 64 )
                     {
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
-                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     const int64_t pre_clamp = decoded_wide;
                     if ( decoded_wide < 0ll )
@@ -18005,7 +18078,11 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                 break;
             }
             default:
-                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
+                if ( vocabulary.build_version == BuildVersion )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 report->unknown++;
                 if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {

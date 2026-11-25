@@ -11871,7 +11871,8 @@ struct Squad
 };
 
 // ForceType: union Force's tag — None = 0, then each variant in declared order (SPEC §4.8)
-enum class ForceType : uint8_t {
+enum class ForceType : uint8_t
+{
     None = 0,
     Squad = 1,
     Plain = 2,
@@ -12266,7 +12267,10 @@ inline int64_t SquadRosterEntryMeasureBody( TableIds & ids, const SquadRosterEnt
         const int64_t body_value = ItemMeasureBody( ids, value.value );
         if ( body_value < 0 ) { return -1; }
         if ( body_value > 1 ) { bytes += TableLebBytes( ref_value ) + 1 + TableLebBytes( (uint64_t) ( body_value ) ) + ( body_value ); } // value
-        else { ids.truncate( mark_value ); } // an all-default nested table elides, and costs no entry
+        else
+        {
+            ids.truncate( mark_value );
+        } // an all-default nested table elides, and costs no entry
     }
     return bytes;
 }
@@ -12289,7 +12293,10 @@ MAPDEMO_TABLE_INLINE bool SquadRosterEntrySaveBody( TableWriter & w, TableIds & 
             w.putleb( (uint64_t) body_value ); // value
             if ( !ItemSaveBody( w, ids, value.value ) ) return false;
         }
-        else { ids.truncate( mark_value ); }
+        else
+        {
+            ids.truncate( mark_value );
+        }
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
     return !w.overflow;
@@ -12719,7 +12726,10 @@ inline int64_t DepthMeasureBody( const Ctx & ctx, const TableNumbering & numberi
         const int64_t body_one = SquadMeasureBody( ctx, numbering, ids, value.one );
         if ( body_one < 0 ) { return -1; }
         if ( body_one > 1 ) { bytes += TableLebBytes( ref_one ) + 1 + TableLebBytes( (uint64_t) ( body_one ) ) + ( body_one ); } // one
-        else { ids.truncate( mark_one ); } // an all-default nested table elides, and costs no entry
+        else
+        {
+            ids.truncate( mark_one );
+        } // an all-default nested table elides, and costs no entry
     }
     schema_assert( value.many_count >= 0 && value.many_count <= 3 ); // storage invariant, debug only (§5.1)
     if ( value.many_count > 0 )
@@ -12759,7 +12769,10 @@ inline int64_t DepthMeasureBody( const Ctx & ctx, const TableNumbering & numberi
             const int64_t whole_keyed = 1 + TableLebBytes( (uint64_t) pairs_keyed ) + body_keyed;
             bytes += TableLebBytes( ref_keyed ) + 1 + TableLebBytes( (uint64_t) ( whole_keyed ) ) + ( whole_keyed ); // keyed
         }
-        else { ids.truncate( mark_keyed ); } // an ELIDED field costs nothing in the id table either
+        else
+        {
+            ids.truncate( mark_keyed );
+        } // an ELIDED field costs nothing in the id table either
     }
     if ( value.arm.type != ForceType::None ) // None elides — the absence of the field is the None
     {
@@ -12810,7 +12823,10 @@ inline bool DepthSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
             w.putleb( (uint64_t) body_one ); // one
             if ( !SquadSaveBody( ctx, numbering, w, ids, value.one ) ) return false;
         }
-        else { ids.truncate( mark_one ); }
+        else
+        {
+            ids.truncate( mark_one );
+        }
     }
     schema_assert( value.many_count >= 0 && value.many_count <= 3 ); // storage invariant, debug only (§5.1)
     if ( value.many_count > 0 )
@@ -12892,7 +12908,10 @@ inline bool DepthSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
                 if ( !SquadSaveBody( ctx, numbering, w, ids, value.keyed.slots[i] ) ) return false;
             }
         }
-        else { ids.truncate( mark_keyed ); } // an ELIDED field costs nothing in the id table either
+        else
+        {
+            ids.truncate( mark_keyed );
+        } // an ELIDED field costs nothing in the id table either
     }
     if ( value.arm.type != ForceType::None )
     {
@@ -12910,7 +12929,10 @@ inline bool DepthSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
                 }
                 w.header( arm_ref, 13 );
                 w.putleb( (uint64_t) arm_payload ); // squad
-                if ( !SquadSaveBody( ctx, numbering, w, ids, value.arm.squad ) ) { return false; }
+                if ( !SquadSaveBody( ctx, numbering, w, ids, value.arm.squad ) )
+            {
+                return false;
+            }
                 break;
             }
             case ForceType::Plain:
@@ -13807,11 +13829,22 @@ inline bool SquadNumber( const Ctx & ctx, TableNumbering & numbering, const Squa
             continue;
         }
         if ( !TableNumberingAppend( numbering, work ) ) { return false; }
-        if ( work.walk == NULL ) { TablePackMapClose( numbering.seen, work.node, slot ); continue; } // a blob reaches nothing
+        if ( work.walk == NULL )
+        {
+            TablePackMapClose( numbering.seen, work.node, slot );
+            continue;
+        } // a blob reaches nothing
         TableNodeEntry close;
-        close.node = work.node; close.type_id = 0; close.measure = NULL; close.save = NULL;
-        close.pack_bytes = NULL; close.pack_copy = NULL; close.pack_slots = NULL; close.walk = NULL;
-        close.close = true; close.hint = slot;
+        close.node = work.node;
+        close.type_id = 0;
+        close.measure = NULL;
+        close.save = NULL;
+        close.pack_bytes = NULL;
+        close.pack_copy = NULL;
+        close.pack_slots = NULL;
+        close.walk = NULL;
+        close.close = true;
+        close.hint = slot;
         if ( !TableNumberingWorkPush( numbering, close ) ) { return false; }
         const int64_t first = numbering.work_count;
         if ( !work.walk( (const void *) &ctx, numbering, work.node ) ) { return false; }
@@ -13933,11 +13966,22 @@ inline bool DepthNumber( const Ctx & ctx, TableNumbering & numbering, const Dept
             continue;
         }
         if ( !TableNumberingAppend( numbering, work ) ) { return false; }
-        if ( work.walk == NULL ) { TablePackMapClose( numbering.seen, work.node, slot ); continue; } // a blob reaches nothing
+        if ( work.walk == NULL )
+        {
+            TablePackMapClose( numbering.seen, work.node, slot );
+            continue;
+        } // a blob reaches nothing
         TableNodeEntry close;
-        close.node = work.node; close.type_id = 0; close.measure = NULL; close.save = NULL;
-        close.pack_bytes = NULL; close.pack_copy = NULL; close.pack_slots = NULL; close.walk = NULL;
-        close.close = true; close.hint = slot;
+        close.node = work.node;
+        close.type_id = 0;
+        close.measure = NULL;
+        close.save = NULL;
+        close.pack_bytes = NULL;
+        close.pack_copy = NULL;
+        close.pack_slots = NULL;
+        close.walk = NULL;
+        close.close = true;
+        close.hint = slot;
         if ( !TableNumberingWorkPush( numbering, close ) ) { return false; }
         const int64_t first = numbering.work_count;
         if ( !work.walk( (const void *) &ctx, numbering, work.node ) ) { return false; }
@@ -14128,9 +14172,17 @@ inline bool SquadBuilder::Lock()
         for ( int64_t k = 0; ok && k < numbering.count; k++ )
         {
             const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
-            if ( bytes < 0 ) { ok = false; break; }
+            if ( bytes < 0 )
+            {
+                ok = false;
+                break;
+            }
             TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-            if ( entry == NULL ) { ok = false; break; }
+            if ( entry == NULL )
+            {
+                ok = false;
+                break;
+            }
             measured = TableAlignUp64( measured );
             entry->offset = measured;
             measured += bytes;
@@ -14154,9 +14206,17 @@ inline bool SquadBuilder::Lock()
         for ( int64_t k = 0; ok && k < numbering.count; k++ )
         {
             const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
-            if ( bytes < 0 ) { ok = false; break; }
+            if ( bytes < 0 )
+            {
+                ok = false;
+                break;
+            }
             TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-            if ( entry == NULL ) { ok = false; break; }
+            if ( entry == NULL )
+            {
+                ok = false;
+                break;
+            }
             used = TableAlignUp64( used );
             entry->offset = used;
             used += bytes;
@@ -14181,14 +14241,22 @@ inline bool SquadBuilder::Lock()
     for ( int64_t k = 0; ok && k < numbering.count; k++ )
     {
         const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-        if ( entry == NULL ) { ok = false; break; }
+        if ( entry == NULL )
+        {
+            ok = false;
+            break;
+        }
         ok = numbering.entries[k].pack_copy( (const void *) &ctx, numbering.entries[k].node, packed + entry->offset, packed, total );
     }
-    if ( ok ) { ok = SquadPackSlots( ctx, numbering.seen, root, *( Squad * ) packed, packed ); }
+    if ( ok ) { ok = SquadPackSlots( ctx, numbering.seen, root, *(Squad *) packed, packed ); }
     for ( int64_t k = 0; ok && k < numbering.count; k++ )
     {
         const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-        if ( entry == NULL ) { ok = false; break; }
+        if ( entry == NULL )
+        {
+            ok = false;
+            break;
+        }
         if ( numbering.entries[k].pack_slots != NULL ) { ok = numbering.entries[k].pack_slots( (const void *) &ctx, numbering.seen, numbering.entries[k].node, packed + entry->offset, packed ); } // a blob has no slots
     }
     TableNumberingShutdown( numbering );
@@ -15211,9 +15279,17 @@ inline bool DepthBuilder::Lock()
         for ( int64_t k = 0; ok && k < numbering.count; k++ )
         {
             const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
-            if ( bytes < 0 ) { ok = false; break; }
+            if ( bytes < 0 )
+            {
+                ok = false;
+                break;
+            }
             TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-            if ( entry == NULL ) { ok = false; break; }
+            if ( entry == NULL )
+            {
+                ok = false;
+                break;
+            }
             measured = TableAlignUp64( measured );
             entry->offset = measured;
             measured += bytes;
@@ -15237,9 +15313,17 @@ inline bool DepthBuilder::Lock()
         for ( int64_t k = 0; ok && k < numbering.count; k++ )
         {
             const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
-            if ( bytes < 0 ) { ok = false; break; }
+            if ( bytes < 0 )
+            {
+                ok = false;
+                break;
+            }
             TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-            if ( entry == NULL ) { ok = false; break; }
+            if ( entry == NULL )
+            {
+                ok = false;
+                break;
+            }
             used = TableAlignUp64( used );
             entry->offset = used;
             used += bytes;
@@ -15264,14 +15348,22 @@ inline bool DepthBuilder::Lock()
     for ( int64_t k = 0; ok && k < numbering.count; k++ )
     {
         const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-        if ( entry == NULL ) { ok = false; break; }
+        if ( entry == NULL )
+        {
+            ok = false;
+            break;
+        }
         ok = numbering.entries[k].pack_copy( (const void *) &ctx, numbering.entries[k].node, packed + entry->offset, packed, total );
     }
-    if ( ok ) { ok = DepthPackSlots( ctx, numbering.seen, root, *( Depth * ) packed, packed ); }
+    if ( ok ) { ok = DepthPackSlots( ctx, numbering.seen, root, *(Depth *) packed, packed ); }
     for ( int64_t k = 0; ok && k < numbering.count; k++ )
     {
         const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-        if ( entry == NULL ) { ok = false; break; }
+        if ( entry == NULL )
+        {
+            ok = false;
+            break;
+        }
         if ( numbering.entries[k].pack_slots != NULL ) { ok = numbering.entries[k].pack_slots( (const void *) &ctx, numbering.seen, numbering.entries[k].node, packed + entry->offset, packed ); } // a blob has no slots
     }
     TableNumberingShutdown( numbering );
@@ -16206,7 +16298,10 @@ inline int64_t SquadRosterEntryMeasureBodyRetain( TableRetainIds & ids, const Sq
         const int64_t body_value = ItemMeasureBodyRetain( ids, value.value, retain, TableRetainStepInto( path, 1, (uint32_t) ( 0 ) ) );
         if ( body_value < 0 ) { return -1; }
         if ( body_value > 1 ) { bytes += TableLebBytes( ref_value ) + 1 + TableLebBytes( (uint64_t) ( body_value ) ) + ( body_value ); } // value
-        else { ids.truncate( mark_value ); } // an all-default nested table elides, and costs no entry
+        else
+        {
+            ids.truncate( mark_value );
+        } // an all-default nested table elides, and costs no entry
     }
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
@@ -16230,7 +16325,10 @@ MAPDEMO_TABLE_INLINE bool SquadRosterEntrySaveBodyRetain( TableWriter & w, Table
             w.putleb( (uint64_t) body_value ); // value
             if ( !ItemSaveBodyRetain( w, ids, value.value, retain, TableRetainStepInto( path, 1, (uint32_t) ( 0 ) ) ) ) return false;
         }
-        else { ids.truncate( mark_value ); }
+        else
+        {
+            ids.truncate( mark_value );
+        }
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -16677,7 +16775,10 @@ inline int64_t DepthMeasureBodyRetain( const Ctx & ctx, const TableNumbering & n
         const int64_t body_one = SquadMeasureBodyRetain( ctx, numbering, ids, value.one, retain, TableRetainStepInto( path, 0, (uint32_t) ( 0 ) ) );
         if ( body_one < 0 ) { return -1; }
         if ( body_one > 1 ) { bytes += TableLebBytes( ref_one ) + 1 + TableLebBytes( (uint64_t) ( body_one ) ) + ( body_one ); } // one
-        else { ids.truncate( mark_one ); } // an all-default nested table elides, and costs no entry
+        else
+        {
+            ids.truncate( mark_one );
+        } // an all-default nested table elides, and costs no entry
     }
     schema_assert( value.many_count >= 0 && value.many_count <= 3 ); // storage invariant, debug only (§5.1)
     if ( value.many_count > 0 )
@@ -16717,7 +16818,10 @@ inline int64_t DepthMeasureBodyRetain( const Ctx & ctx, const TableNumbering & n
             const int64_t whole_keyed = 1 + TableLebBytes( (uint64_t) pairs_keyed ) + body_keyed;
             bytes += TableLebBytes( ref_keyed ) + 1 + TableLebBytes( (uint64_t) ( whole_keyed ) ) + ( whole_keyed ); // keyed
         }
-        else { ids.truncate( mark_keyed ); } // an ELIDED field costs nothing in the id table either
+        else
+        {
+            ids.truncate( mark_keyed );
+        } // an ELIDED field costs nothing in the id table either
     }
     if ( value.arm.type != ForceType::None ) // None elides — the absence of the field is the None
     {
@@ -16769,7 +16873,10 @@ inline bool DepthSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
             w.putleb( (uint64_t) body_one ); // one
             if ( !SquadSaveBodyRetain( ctx, numbering, w, ids, value.one, retain, TableRetainStepInto( path, 0, (uint32_t) ( 0 ) ) ) ) return false;
         }
-        else { ids.truncate( mark_one ); }
+        else
+        {
+            ids.truncate( mark_one );
+        }
     }
     schema_assert( value.many_count >= 0 && value.many_count <= 3 ); // storage invariant, debug only (§5.1)
     if ( value.many_count > 0 )
@@ -16846,7 +16953,10 @@ inline bool DepthSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
                 if ( !SquadSaveBodyRetain( ctx, numbering, w, ids, value.keyed.slots[i], retain, TableRetainStepInto( path, 2, (uint32_t) ( i ) ) ) ) return false;
             }
         }
-        else { ids.truncate( mark_keyed ); } // an ELIDED field costs nothing in the id table either
+        else
+        {
+            ids.truncate( mark_keyed );
+        } // an ELIDED field costs nothing in the id table either
     }
     if ( value.arm.type != ForceType::None )
     {
@@ -16864,7 +16974,10 @@ inline bool DepthSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
                 }
                 w.header( arm_ref, 13 );
                 w.putleb( (uint64_t) arm_payload ); // squad
-                if ( !SquadSaveBodyRetain( ctx, numbering, w, ids, value.arm.squad, retain, TableRetainStepInto( path, 3, (uint32_t) ( 0 ) ) ) ) { return false; }
+                if ( !SquadSaveBodyRetain( ctx, numbering, w, ids, value.arm.squad, retain, TableRetainStepInto( path, 3, (uint32_t) ( 0 ) ) ) )
+            {
+                return false;
+            }
                 break;
             }
             case ForceType::Plain:
@@ -18437,7 +18550,7 @@ inline bool DepthCookBody( const Ctx & ctx, const TableCookRegion & region, uint
         switch ( value.arm.type )
         {
             case ForceType::Squad: if ( !SquadCookBody( ctx, region, at + 104 + 8, value.arm.squad, order ) ) { return false; } break;
-            case ForceType::Plain:
+                case ForceType::Plain:
             {
                 table_cook_put( at + 104 + 8, (uint64_t) value.arm.plain, 4, order );
                 break;

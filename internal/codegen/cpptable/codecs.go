@@ -1372,7 +1372,7 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 		g.pf("            const int64_t whole_%s = 1 + TableLebBytes( (uint64_t) pairs_%s ) + body_%s;\n", f.Name, f.Name, f.Name)
 		g.pf("            bytes += TableLebBytes( ref_%s ) + 1 + %s; // %s\n", f.Name, framed("whole_"+f.Name), f.Name)
 		g.pf("        }\n")
-		g.pf("        else { ids.truncate( mark_%s ); } // an ELIDED field costs nothing in the id table either\n", f.Name)
+		g.pf("        else\n        {\n            ids.truncate( mark_%s );\n        } // an ELIDED field costs nothing in the id table either\n", f.Name)
 		g.pf("    }\n")
 	case f.Type.Pointer && f.Array == ir.ArrayCounted:
 		// an ARRAY OF POINTERS (docs/SPEC-TABLES.md §2.1, §3.1): kind 14 with element
@@ -1398,7 +1398,7 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 			g.pf("        if ( true ) // | required: the field always rides (§2.3)\n        {\n")
 		} else {
 			g.pf("        bool any_%s = false;\n", f.Name)
-			g.pf("        for ( int32_t i = 0; i < %d; i++ ) { if ( %sAt( ctx, value.%s[i] ) != NULL ) { any_%s = true; break; } }\n", f.ArrayBound, f.Type.Name, f.Name, f.Name)
+			g.pf("        for ( int32_t i = 0; i < %d; i++ )\n        {\n            if ( %sAt( ctx, value.%s[i] ) != NULL )\n            {\n                any_%s = true;\n                break;\n            }\n        }\n", f.ArrayBound, f.Type.Name, f.Name, f.Name)
 			g.pf("        if ( any_%s )\n        {\n", f.Name)
 		}
 		g.pf("            const uint64_t ref_%s = %s;\n", f.Name, g.wireRef(id))
@@ -1420,7 +1420,7 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 		g.pf("            bytes += %s + TableLebBytes( index_%s );\n", g.hdrBytes(id), f.Name)
 		g.pf("        }\n")
 		if f.Required {
-			g.pf("        else { bytes += %s + 1; } // | required: null rides as index 0 (§2.3)\n", g.hdrBytes(id))
+			g.pf("        else\n        {\n            bytes += %s + 1;\n        } // | required: null rides as index 0 (§2.3)\n", g.hdrBytes(id))
 		}
 		g.pf("    }\n")
 	case f.Type.Pointer:
@@ -1438,7 +1438,7 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 		g.pf("            bytes += %s + TableLebBytes( index_%s );\n", g.hdrBytes(id), f.Name)
 		g.pf("        }\n")
 		if f.Required {
-			g.pf("        else { bytes += %s + 1; } // | required: null rides as index 0 (§2.3)\n", g.hdrBytes(id))
+			g.pf("        else\n        {\n            bytes += %s + 1;\n        } // | required: null rides as index 0 (§2.3)\n", g.hdrBytes(id))
 		}
 		g.pf("    }\n")
 	case f.Type.TextUnbounded():
@@ -1494,7 +1494,7 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 				g.pf("        if ( true ) // | required: the field always rides (§2.3)\n        {\n")
 			} else {
 				g.pf("        bool any_%s = false;\n", f.Name)
-				g.pf("        for ( int32_t i = 0; i < %d; i++ ) { if ( value.%s[i].type != %sType::None ) { any_%s = true; break; } }\n", f.ArrayBound, f.Name, f.Type.Name, f.Name)
+				g.pf("        for ( int32_t i = 0; i < %d; i++ )\n        {\n            if ( value.%s[i].type != %sType::None )\n            {\n                any_%s = true;\n                break;\n            }\n        }\n", f.ArrayBound, f.Name, f.Type.Name, f.Name)
 				g.pf("        if ( any_%s )\n        {\n", f.Name)
 			}
 			guard = "    "
@@ -1513,7 +1513,7 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 			g.pf("        if ( true ) // | required: the field always rides, all default included (§2.3)\n        {\n")
 		} else {
 			g.pf("        bool all_default_%s = true;\n", f.Name)
-			g.pf("        for ( int32_t i = 0; i < %d; i++ ) { if ( %s ) { all_default_%s = false; break; } }\n",
+			g.pf("        for ( int32_t i = 0; i < %d; i++ )\n        {\n            if ( %s )\n            {\n                all_default_%s = false;\n                break;\n            }\n        }\n",
 				f.ArrayBound, g.fieldDiffers(f, "value."+f.Name+"[i]"), f.Name)
 			g.pf("        if ( !all_default_%s )\n        {\n", f.Name)
 		}
@@ -1547,7 +1547,7 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 			g.pf("        const int64_t body_%s = %s;\n", f.Name, g.measureCall(f, f.Type.Name, "value."+f.Name))
 			g.pf("        if ( body_%s < 0 ) { return -1; }\n", f.Name)
 			g.pf("        if ( body_%s > 1 ) { bytes += TableLebBytes( ref_%s ) + 1 + %s; } // %s\n", f.Name, f.Name, framed("body_"+f.Name), f.Name)
-			g.pf("        else { ids.truncate( mark_%s ); } // an all-default nested table elides, and costs no entry\n", f.Name)
+			g.pf("        else\n        {\n            ids.truncate( mark_%s );\n        } // an all-default nested table elides, and costs no entry\n", f.Name)
 		}
 		g.pf("    }\n")
 	case kind == tkEnum:
@@ -1968,7 +1968,7 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		}
 		g.pf("            }\n")
 		g.pf("        }\n")
-		g.pf("        else { ids.truncate( mark_%s ); } // an ELIDED field costs nothing in the id table either\n", f.Name)
+		g.pf("        else\n        {\n            ids.truncate( mark_%s );\n        } // an ELIDED field costs nothing in the id table either\n", f.Name)
 		g.pf("    }\n")
 	case f.Type.Pointer && f.Array != ir.ArrayNone:
 		// an ARRAY OF POINTERS (§2.1, §3.1): the array framing with element kind
@@ -1991,7 +1991,7 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 				g.pf("        if ( true ) // | required: the field always rides (§2.3)\n        {\n")
 			} else {
 				g.pf("        bool any_%s = false;\n", f.Name)
-				g.pf("        for ( int32_t i = 0; i < %d; i++ ) { if ( %sAt( ctx, value.%s[i] ) != NULL ) { any_%s = true; break; } }\n", f.ArrayBound, f.Type.Name, f.Name, f.Name)
+				g.pf("        for ( int32_t i = 0; i < %d; i++ )\n        {\n            if ( %sAt( ctx, value.%s[i] ) != NULL )\n            {\n                any_%s = true;\n                break;\n            }\n        }\n", f.ArrayBound, f.Type.Name, f.Name, f.Name)
 				g.pf("        if ( any_%s )\n        {\n", f.Name)
 			}
 			ind = "            "
@@ -2011,7 +2011,7 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		g.pf("            w.putleb( index_%s );\n", f.Name)
 		g.pf("        }\n")
 		if f.Required {
-			g.pf("        else { w.header( %s, %d ); w.putleb( 0 ); } // | required: null rides as index 0 (§2.3)\n", g.wireRef(id), tkNodeIndex)
+			g.pf("        else\n        {\n            w.header( %s, %d );\n            w.putleb( 0 );\n        } // | required: null rides as index 0 (§2.3)\n", g.wireRef(id), tkNodeIndex)
 		}
 		g.pf("    }\n")
 	case f.Type.Pointer:
@@ -2025,7 +2025,7 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		g.pf("            w.putleb( index_%s );\n", f.Name)
 		g.pf("        }\n")
 		if f.Required {
-			g.pf("        else { w.header( %s, %d ); w.putleb( 0 ); } // | required: null rides as index 0 (§2.3)\n", g.wireRef(id), tkNodeIndex)
+			g.pf("        else\n        {\n            w.header( %s, %d );\n            w.putleb( 0 );\n        } // | required: null rides as index 0 (§2.3)\n", g.wireRef(id), tkNodeIndex)
 		}
 		g.pf("    }\n")
 	case f.Type.TextUnbounded():
@@ -2088,7 +2088,7 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 			g.pf("        if ( true ) // | required: the field always rides (§2.3)\n        {\n")
 		} else {
 			g.pf("        bool any_%s = false;\n", f.Name)
-			g.pf("        for ( int32_t i = 0; i < %d; i++ ) { if ( value.%s[i].type != %sType::None ) { any_%s = true; break; } }\n", f.ArrayBound, f.Name, f.Type.Name, f.Name)
+			g.pf("        for ( int32_t i = 0; i < %d; i++ )\n        {\n            if ( value.%s[i].type != %sType::None )\n            {\n                any_%s = true;\n                break;\n            }\n        }\n", f.ArrayBound, f.Name, f.Type.Name, f.Name)
 			g.pf("        if ( any_%s )\n        {\n", f.Name)
 		}
 		g.emitArrayField(f, id, elemKind, strconv.FormatInt(f.ArrayBound, 10), "value."+f.Name+"[%s]", "            ")
@@ -2101,7 +2101,7 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 			g.pf("        if ( true ) // | required: the field always rides, all default included (§2.3)\n        {\n")
 		} else {
 			g.pf("        bool all_default_%s = true;\n", f.Name)
-			g.pf("        for ( int32_t i = 0; i < %d; i++ ) { if ( %s ) { all_default_%s = false; break; } }\n",
+			g.pf("        for ( int32_t i = 0; i < %d; i++ )\n        {\n            if ( %s )\n            {\n                all_default_%s = false;\n                break;\n            }\n        }\n",
 				f.ArrayBound, g.fieldDiffers(f, "value."+f.Name+"[i]"), f.Name)
 			g.pf("        if ( !all_default_%s )\n        {\n", f.Name)
 		}
@@ -2140,7 +2140,7 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 			g.pf("            w.header( ref_%[1]s, %[2]d );\n            w.putleb( (uint64_t) body_%[3]s ); // %[4]s\n", f.Name, tkTable, f.Name, f.Name)
 			g.pf("            if ( !%s ) return false;\n", g.saveCall(f, f.Type.Name, "value."+f.Name))
 			g.pf("        }\n")
-			g.pf("        else { ids.truncate( mark_%s ); }\n", f.Name)
+			g.pf("        else\n        {\n            ids.truncate( mark_%s );\n        }\n", f.Name)
 		}
 		g.pf("    }\n")
 	case kind == tkEnum:
@@ -2157,7 +2157,7 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		g.pf("        const uint64_t ref_%s = %s;\n", f.Name, g.wireRef(id))
 		g.pf("        uint64_t variant_%s = 0;\n", f.Name)
 		g.pf("        if ( !TableEnumRef( ids, value.%s, variant_%s ) ) { return false; }\n", f.Name, f.Name)
-		g.pf("        w.header( ref_%s, %d ); w.putleb( variant_%s ); // %s\n    }\n", f.Name, tkEnum, f.Name, f.Name)
+		g.pf("        w.header( ref_%s, %d );\n        w.putleb( variant_%s ); // %s\n    }\n", f.Name, tkEnum, f.Name, f.Name)
 	default:
 		if f.Required {
 			g.pf("    if ( true ) // | required: the field always rides, zero included (§2.3)\n    {\n")

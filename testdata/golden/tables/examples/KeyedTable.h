@@ -12464,7 +12464,7 @@ inline bool TeamConfigLoadMessageBody( TableBitReader & r, const TableVocabulary
                             else if ( width > 0 && width < 64 )
                             {
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
-                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                             }
                             if ( decoded_wide < 0ll )
                             {
@@ -12512,7 +12512,7 @@ inline bool TeamConfigLoadMessageBody( TableBitReader & r, const TableVocabulary
                     else if ( width > 0 && width < 64 )
                     {
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
-                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     const int64_t pre_clamp = decoded_wide;
                     if ( decoded_wide < 0ll )
@@ -12592,7 +12592,11 @@ inline bool TeamConfigLoadMessageBody( TableBitReader & r, const TableVocabulary
                 break;
             }
             default:
-                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
+                if ( vocabulary.build_version == BuildVersion )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 report->unknown++;
                 if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
@@ -13138,7 +13142,9 @@ inline bool GunnerConfigLoadMessageBody( TableBitReader & r, const TableVocabula
                     }
                     break;
                 }
-                { uint64_t raw = 0; if ( !r.get( raw, 1 ) || ( same_shape && raw == 0 ) )
+                {
+                    uint64_t raw = 0;
+                    if ( !r.get( raw, 1 ) || ( same_shape && raw == 0 ) )
                 {
                     report->damaged = true;
                     return false;
@@ -13147,7 +13153,11 @@ inline bool GunnerConfigLoadMessageBody( TableBitReader & r, const TableVocabula
                 break;
             }
             default:
-                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
+                if ( vocabulary.build_version == BuildVersion )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 report->unknown++;
                 if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
@@ -13831,7 +13841,11 @@ inline bool TurretConfigLoadMessageBody( TableBitReader & r, const TableVocabula
                 break;
             }
             default:
-                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
+                if ( vocabulary.build_version == BuildVersion )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 report->unknown++;
                 if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
@@ -13967,7 +13981,10 @@ inline int64_t HullConfigMeasureBody( TableIds & ids, const HullConfig & value )
             const int64_t whole_turrets = 1 + TableLebBytes( (uint64_t) pairs_turrets ) + body_turrets;
             bytes += TableLebBytes( ref_turrets ) + 1 + TableLebBytes( (uint64_t) ( whole_turrets ) ) + ( whole_turrets ); // turrets
         }
-        else { ids.truncate( mark_turrets ); } // an ELIDED field costs nothing in the id table either
+        else
+        {
+            ids.truncate( mark_turrets );
+        } // an ELIDED field costs nothing in the id table either
     }
     return bytes;
 }
@@ -14043,7 +14060,10 @@ TABLEDEMO_TABLE_INLINE bool HullConfigSaveBody( TableWriter & w, TableIds & ids,
                 if ( !TurretConfigSaveBody( w, ids, value.turrets.slots[i] ) ) return false;
             }
         }
-        else { ids.truncate( mark_turrets ); } // an ELIDED field costs nothing in the id table either
+        else
+        {
+            ids.truncate( mark_turrets );
+        } // an ELIDED field costs nothing in the id table either
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
     return !w.overflow;
@@ -14745,7 +14765,11 @@ inline bool HullConfigLoadMessageBody( TableBitReader & r, const TableVocabulary
                 break;
             }
             default:
-                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
+                if ( vocabulary.build_version == BuildVersion )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 report->unknown++;
                 if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
@@ -14877,7 +14901,10 @@ inline int64_t KeyedConfigMeasureBody( TableIds & ids, const KeyedConfig & value
             const int64_t whole_teams = 1 + TableLebBytes( (uint64_t) pairs_teams ) + body_teams;
             bytes += TableLebBytes( ref_teams ) + 1 + TableLebBytes( (uint64_t) ( whole_teams ) ) + ( whole_teams ); // teams
         }
-        else { ids.truncate( mark_teams ); } // an ELIDED field costs nothing in the id table either
+        else
+        {
+            ids.truncate( mark_teams );
+        } // an ELIDED field costs nothing in the id table either
     }
     {
         const int32_t mark_hulls = ids.count;
@@ -14903,7 +14930,10 @@ inline int64_t KeyedConfigMeasureBody( TableIds & ids, const KeyedConfig & value
             const int64_t whole_hulls = 1 + TableLebBytes( (uint64_t) pairs_hulls ) + body_hulls;
             bytes += TableLebBytes( ref_hulls ) + 1 + TableLebBytes( (uint64_t) ( whole_hulls ) ) + ( whole_hulls ); // hulls
         }
-        else { ids.truncate( mark_hulls ); } // an ELIDED field costs nothing in the id table either
+        else
+        {
+            ids.truncate( mark_hulls );
+        } // an ELIDED field costs nothing in the id table either
     }
     {
         const int32_t mark_scores = ids.count;
@@ -14911,7 +14941,10 @@ inline int64_t KeyedConfigMeasureBody( TableIds & ids, const KeyedConfig & value
         const int64_t body_scores = ScoreBoardMeasureBody( ids, value.scores );
         if ( body_scores < 0 ) { return -1; }
         if ( body_scores > 1 ) { bytes += TableLebBytes( ref_scores ) + 1 + TableLebBytes( (uint64_t) ( body_scores ) ) + ( body_scores ); } // scores
-        else { ids.truncate( mark_scores ); } // an all-default nested table elides, and costs no entry
+        else
+        {
+            ids.truncate( mark_scores );
+        } // an all-default nested table elides, and costs no entry
     }
     return bytes;
 }
@@ -14977,7 +15010,10 @@ TABLEDEMO_TABLE_INLINE bool KeyedConfigSaveBody( TableWriter & w, TableIds & ids
                 if ( !TeamConfigSaveBody( w, ids, value.teams.slots[i] ) ) return false;
             }
         }
-        else { ids.truncate( mark_teams ); } // an ELIDED field costs nothing in the id table either
+        else
+        {
+            ids.truncate( mark_teams );
+        } // an ELIDED field costs nothing in the id table either
     }
     {
         const int32_t mark_hulls = ids.count;
@@ -15028,7 +15064,10 @@ TABLEDEMO_TABLE_INLINE bool KeyedConfigSaveBody( TableWriter & w, TableIds & ids
                 if ( !HullConfigSaveBody( w, ids, value.hulls.slots[i] ) ) return false;
             }
         }
-        else { ids.truncate( mark_hulls ); } // an ELIDED field costs nothing in the id table either
+        else
+        {
+            ids.truncate( mark_hulls );
+        } // an ELIDED field costs nothing in the id table either
     }
     {
         const int32_t mark_scores = ids.count;
@@ -15041,7 +15080,10 @@ TABLEDEMO_TABLE_INLINE bool KeyedConfigSaveBody( TableWriter & w, TableIds & ids
             w.putleb( (uint64_t) body_scores ); // scores
             if ( !ScoreBoardSaveBody( w, ids, value.scores ) ) return false;
         }
-        else { ids.truncate( mark_scores ); }
+        else
+        {
+            ids.truncate( mark_scores );
+        }
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
     return !w.overflow;
@@ -15862,7 +15904,11 @@ inline bool KeyedConfigLoadMessageBody( TableBitReader & r, const TableVocabular
                 break;
             }
             default:
-                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
+                if ( vocabulary.build_version == BuildVersion )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 report->unknown++;
                 if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
@@ -15989,7 +16035,10 @@ inline int64_t ScoreBoardMeasureBody( TableIds & ids, const ScoreBoard & value )
             const int64_t whole_per_team = 1 + TableLebBytes( (uint64_t) pairs_per_team ) + body_per_team;
             bytes += TableLebBytes( ref_per_team ) + 1 + TableLebBytes( (uint64_t) ( whole_per_team ) ) + ( whole_per_team ); // per_team
         }
-        else { ids.truncate( mark_per_team ); } // an ELIDED field costs nothing in the id table either
+        else
+        {
+            ids.truncate( mark_per_team );
+        } // an ELIDED field costs nothing in the id table either
     }
     return bytes;
 }
@@ -16043,7 +16092,10 @@ TABLEDEMO_TABLE_INLINE bool ScoreBoardSaveBody( TableWriter & w, TableIds & ids,
                 w.put32( uint32_t( value.per_team[i] ) );
             }
         }
-        else { ids.truncate( mark_per_team ); } // an ELIDED field costs nothing in the id table either
+        else
+        {
+            ids.truncate( mark_per_team );
+        } // an ELIDED field costs nothing in the id table either
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
     return !w.overflow;
@@ -16611,7 +16663,7 @@ inline bool ScoreBoardLoadMessageBody( TableBitReader & r, const TableVocabulary
                             else if ( width_2 > 0 && width_2 < 64 )
                             {
                                 const uint64_t sign_2 = uint64_t(1) << ( width_2 - 1 );
-                                if ( ( raw_2 & sign_2 ) != 0 ) { decoded_wide_2 = (int64_t) ( raw_2 | ~( ( uint64_t(1) << width_2 ) - 1 ) ); }
+                                if ( ( raw_2 & sign_2 ) != 0 ) { decoded_wide_2 = (int64_t) ( raw_2 | ~( ( uint64_t( 1 ) << width_2 ) - 1 ) ); }
                             }
                             const int64_t pre_clamp_2 = decoded_wide_2;
                             if ( decoded_wide_2 < 0ll )
@@ -16640,7 +16692,11 @@ inline bool ScoreBoardLoadMessageBody( TableBitReader & r, const TableVocabulary
                 break;
             }
             default:
-                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
+                if ( vocabulary.build_version == BuildVersion )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 report->unknown++;
                 if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
@@ -17195,16 +17251,19 @@ inline int64_t TeamConfigFixedSave( const TeamConfig * values, int64_t count, ui
 // R4: every refusal leaves ALL `capacity` rows at their declared defaults, so a direct call
 // holds the same rule as FixedLoad. The body below is the walk itself.
 inline int64_t TeamConfigFixedLoadWalkBody( TeamConfig * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
 inline int64_t TeamConfigFixedLoadWalk( TeamConfig * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
     const int64_t n = TeamConfigFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
     if ( n < 0 || report->damaged || report->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { TeamConfigReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { TeamConfigReset( values[k] ); }
+        }
         return -1;
     }
     return n;
@@ -17213,7 +17272,7 @@ inline int64_t TeamConfigFixedLoadWalk( TeamConfig * values, int64_t capacity, c
 // TeamConfigFixedLoadWalkBody is the STRICT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps
 // every recovered record, with the counters counted onto the report passed.
 inline int64_t TeamConfigFixedLoadWalkBody( TeamConfig * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
@@ -17230,8 +17289,8 @@ inline int64_t TeamConfigFixedLoadWalkBody( TeamConfig * values, int64_t capacit
     {
         report->refused = true;
         report->reason = data[0] == kTableWireForm ? TableMessageReason::previous_form
-                       : data[0] == kTableWireMessageForm ? TableMessageReason::message_form_as_file
-                       : TableMessageReason::newer_form;
+            : data[0] == kTableWireMessageForm     ? TableMessageReason::message_form_as_file
+                                                   : TableMessageReason::newer_form;
         return -1;
     }
     if ( bytes < kTableFixedHeaderBytes + 4 )
@@ -17245,7 +17304,12 @@ inline int64_t TeamConfigFixedLoadWalkBody( TeamConfig * values, int64_t capacit
     // spendable later.
     for ( int32_t i = 1; i < kTableFixedHashAt; ++i )
     {
-        if ( data[i] != 0 ) { report->damaged = true; report->reason = TableFixedReason::reserved_not_zero; return -1; }
+        if ( data[i] != 0 )
+        {
+            report->damaged = true;
+            report->reason = TableFixedReason::reserved_not_zero;
+            return -1;
+        }
     }
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
     if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes )
@@ -17284,7 +17348,9 @@ inline int64_t TeamConfigFixedLoadWalkBody( TeamConfig * values, int64_t capacit
     const TableFixedKnownLayout & known = TeamConfigFixedKnown[lineage_at];
     if ( (int64_t) layout_bytes != known.layout_bytes || memcmp( layout, known.layout, (size_t) layout_bytes ) != 0 )
     {
-        report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1;
+        report->refused = true;
+        report->reason = TableMessageReason::layout_malformed;
+        return -1;
     }
     const TableFixedEntry * entries = TeamConfigFixedPlan;
     int32_t entry_count = TeamConfigFixedPlanCount;
@@ -17339,8 +17405,8 @@ inline int64_t TeamConfigFixedLoadWalkBody( TeamConfig * values, int64_t capacit
             int32_t compiled_guarded = 0;
             uint32_t fill_at = 0;
             const int32_t made = TableFixedCompile( parsed, TeamConfigFixedLayout, (int32_t) TeamConfigFixedLayoutBytes, TeamConfigFixedDst,
-                                                   TeamConfigFixedCover, TeamConfigFixedCoverCount,
-                                                   dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
+                TeamConfigFixedCover, TeamConfigFixedCoverCount,
+                dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
             if ( made < 0 )
             {
                 report->refused = true;
@@ -17425,7 +17491,9 @@ inline int64_t TeamConfigFixedLoadWalkBody( TeamConfig * values, int64_t capacit
         {
             for ( int64_t j = 0; j < k; ++j ) { TeamConfigReset( values[j] ); }
             report->widened = batch_widened;
-            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+            report->refused = true;
+            report->reason = TableMessageReason::no_layout;
+            return -1;
         }
         for ( int32_t i = 0; i < entry_count; ++i )
         {
@@ -17442,7 +17510,7 @@ inline int64_t TeamConfigFixedLoadWalkBody( TeamConfig * values, int64_t capacit
                         if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
                         {
                             matches = false;
-                            break;
+                                break;
                         }
                     }
                     if ( !matches ) { continue; }
@@ -17473,7 +17541,7 @@ inline int64_t TeamConfigFixedLoadWalkBody( TeamConfig * values, int64_t capacit
         // the counters back to what they were before the batch.
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, TeamConfigFixedGuards, NULL );
         TableFixedClampKnownRanges( TeamConfigFixedKnownRanges[lineage_at], TeamConfigFixedKnownRangeCounts[lineage_at],
-                                    (uint8_t *) &values[k], report );
+            (uint8_t *) &values[k], report );
         if ( !TeamConfigFixedClamp( values[k], report ) )
         {
             for ( int64_t j = 0; j <= k; ++j ) { TeamConfigReset( values[j] ); }
@@ -17492,7 +17560,7 @@ inline int64_t TeamConfigFixedLoadWalkBody( TeamConfig * values, int64_t capacit
 // them, on EVERY refusal (R4), so no partial value survives. A supplied report receives THIS
 // read's report. unknown and widened alone never refuse.
 inline int64_t TeamConfigFixedLoad( TeamConfig * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     TableReport * out = report != NULL ? report : &local;
@@ -17500,7 +17568,10 @@ inline int64_t TeamConfigFixedLoad( TeamConfig * values, int64_t capacity, const
     const int64_t n = TeamConfigFixedLoadWalk( values, capacity, data, bytes, plan, plan_capacity, cache, out );
     if ( n < 0 || out->damaged || out->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { TeamConfigReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { TeamConfigReset( values[k] ); }
+        }
         return -1;
     }
     return n;
@@ -17620,7 +17691,10 @@ inline int64_t GunnerConfigFixedSave( const GunnerConfig * values, int64_t count
     TableFixedPut64( buffer + kTableFixedHashAt, GunnerConfigFixedHash );
     TableFixedPut32( buffer + kTableFixedHeaderBytes, (uint32_t) GunnerConfigFixedLayoutBytes );
     memcpy( buffer + kTableFixedHeaderBytes + 4, GunnerConfigFixedLayout, (size_t) GunnerConfigFixedLayoutBytes );
-    for ( int64_t k = 0; k < count; ++k ) { if ( !GunnerConfigFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        if ( !GunnerConfigFixedFiniteBody( values[k] ) ) { return -1; }
+    } // a NaN or an infinity is refused (§3.3)
     uint8_t * at = buffer + kTableFixedHeaderBytes + 4 + GunnerConfigFixedLayoutBytes;
     for ( int64_t k = 0; k < count; ++k )
     {
@@ -17640,16 +17714,19 @@ inline int64_t GunnerConfigFixedSave( const GunnerConfig * values, int64_t count
 // R4: every refusal leaves ALL `capacity` rows at their declared defaults, so a direct call
 // holds the same rule as FixedLoad. The body below is the walk itself.
 inline int64_t GunnerConfigFixedLoadWalkBody( GunnerConfig * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
 inline int64_t GunnerConfigFixedLoadWalk( GunnerConfig * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
     const int64_t n = GunnerConfigFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
     if ( n < 0 || report->damaged || report->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { GunnerConfigReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { GunnerConfigReset( values[k] ); }
+        }
         return -1;
     }
     return n;
@@ -17658,7 +17735,7 @@ inline int64_t GunnerConfigFixedLoadWalk( GunnerConfig * values, int64_t capacit
 // GunnerConfigFixedLoadWalkBody is the STRICT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps
 // every recovered record, with the counters counted onto the report passed.
 inline int64_t GunnerConfigFixedLoadWalkBody( GunnerConfig * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
@@ -17675,8 +17752,8 @@ inline int64_t GunnerConfigFixedLoadWalkBody( GunnerConfig * values, int64_t cap
     {
         report->refused = true;
         report->reason = data[0] == kTableWireForm ? TableMessageReason::previous_form
-                       : data[0] == kTableWireMessageForm ? TableMessageReason::message_form_as_file
-                       : TableMessageReason::newer_form;
+            : data[0] == kTableWireMessageForm     ? TableMessageReason::message_form_as_file
+                                                   : TableMessageReason::newer_form;
         return -1;
     }
     if ( bytes < kTableFixedHeaderBytes + 4 )
@@ -17690,7 +17767,12 @@ inline int64_t GunnerConfigFixedLoadWalkBody( GunnerConfig * values, int64_t cap
     // spendable later.
     for ( int32_t i = 1; i < kTableFixedHashAt; ++i )
     {
-        if ( data[i] != 0 ) { report->damaged = true; report->reason = TableFixedReason::reserved_not_zero; return -1; }
+        if ( data[i] != 0 )
+        {
+            report->damaged = true;
+            report->reason = TableFixedReason::reserved_not_zero;
+            return -1;
+        }
     }
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
     if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes )
@@ -17729,7 +17811,9 @@ inline int64_t GunnerConfigFixedLoadWalkBody( GunnerConfig * values, int64_t cap
     const TableFixedKnownLayout & known = GunnerConfigFixedKnown[lineage_at];
     if ( (int64_t) layout_bytes != known.layout_bytes || memcmp( layout, known.layout, (size_t) layout_bytes ) != 0 )
     {
-        report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1;
+        report->refused = true;
+        report->reason = TableMessageReason::layout_malformed;
+        return -1;
     }
     const TableFixedEntry * entries = GunnerConfigFixedPlan;
     int32_t entry_count = GunnerConfigFixedPlanCount;
@@ -17784,8 +17868,8 @@ inline int64_t GunnerConfigFixedLoadWalkBody( GunnerConfig * values, int64_t cap
             int32_t compiled_guarded = 0;
             uint32_t fill_at = 0;
             const int32_t made = TableFixedCompile( parsed, GunnerConfigFixedLayout, (int32_t) GunnerConfigFixedLayoutBytes, GunnerConfigFixedDst,
-                                                   GunnerConfigFixedCover, GunnerConfigFixedCoverCount,
-                                                   dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
+                GunnerConfigFixedCover, GunnerConfigFixedCoverCount,
+                dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
             if ( made < 0 )
             {
                 report->refused = true;
@@ -17870,7 +17954,9 @@ inline int64_t GunnerConfigFixedLoadWalkBody( GunnerConfig * values, int64_t cap
         {
             for ( int64_t j = 0; j < k; ++j ) { GunnerConfigReset( values[j] ); }
             report->widened = batch_widened;
-            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+            report->refused = true;
+            report->reason = TableMessageReason::no_layout;
+            return -1;
         }
         for ( int32_t i = 0; i < entry_count; ++i )
         {
@@ -17887,7 +17973,7 @@ inline int64_t GunnerConfigFixedLoadWalkBody( GunnerConfig * values, int64_t cap
                         if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
                         {
                             matches = false;
-                            break;
+                                break;
                         }
                     }
                     if ( !matches ) { continue; }
@@ -17922,7 +18008,7 @@ inline int64_t GunnerConfigFixedLoadWalkBody( GunnerConfig * values, int64_t cap
             return -1;
         }
         TableFixedClampKnownRanges( GunnerConfigFixedKnownRanges[lineage_at], GunnerConfigFixedKnownRangeCounts[lineage_at],
-                                    (uint8_t *) &values[k], report );
+            (uint8_t *) &values[k], report );
         at += record_bytes;
     }
     return n;
@@ -17935,7 +18021,7 @@ inline int64_t GunnerConfigFixedLoadWalkBody( GunnerConfig * values, int64_t cap
 // them, on EVERY refusal (R4), so no partial value survives. A supplied report receives THIS
 // read's report. unknown and widened alone never refuse.
 inline int64_t GunnerConfigFixedLoad( GunnerConfig * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     TableReport * out = report != NULL ? report : &local;
@@ -17943,7 +18029,10 @@ inline int64_t GunnerConfigFixedLoad( GunnerConfig * values, int64_t capacity, c
     const int64_t n = GunnerConfigFixedLoadWalk( values, capacity, data, bytes, plan, plan_capacity, cache, out );
     if ( n < 0 || out->damaged || out->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { GunnerConfigReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { GunnerConfigReset( values[k] ); }
+        }
         return -1;
     }
     return n;
@@ -18083,7 +18172,10 @@ inline int64_t TurretConfigFixedSave( const TurretConfig * values, int64_t count
     TableFixedPut64( buffer + kTableFixedHashAt, TurretConfigFixedHash );
     TableFixedPut32( buffer + kTableFixedHeaderBytes, (uint32_t) TurretConfigFixedLayoutBytes );
     memcpy( buffer + kTableFixedHeaderBytes + 4, TurretConfigFixedLayout, (size_t) TurretConfigFixedLayoutBytes );
-    for ( int64_t k = 0; k < count; ++k ) { if ( !TurretConfigFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        if ( !TurretConfigFixedFiniteBody( values[k] ) ) { return -1; }
+    } // a NaN or an infinity is refused (§3.3)
     uint8_t * at = buffer + kTableFixedHeaderBytes + 4 + TurretConfigFixedLayoutBytes;
     for ( int64_t k = 0; k < count; ++k )
     {
@@ -18103,16 +18195,19 @@ inline int64_t TurretConfigFixedSave( const TurretConfig * values, int64_t count
 // R4: every refusal leaves ALL `capacity` rows at their declared defaults, so a direct call
 // holds the same rule as FixedLoad. The body below is the walk itself.
 inline int64_t TurretConfigFixedLoadWalkBody( TurretConfig * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
 inline int64_t TurretConfigFixedLoadWalk( TurretConfig * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
     const int64_t n = TurretConfigFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
     if ( n < 0 || report->damaged || report->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { TurretConfigReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { TurretConfigReset( values[k] ); }
+        }
         return -1;
     }
     return n;
@@ -18121,7 +18216,7 @@ inline int64_t TurretConfigFixedLoadWalk( TurretConfig * values, int64_t capacit
 // TurretConfigFixedLoadWalkBody is the STRICT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps
 // every recovered record, with the counters counted onto the report passed.
 inline int64_t TurretConfigFixedLoadWalkBody( TurretConfig * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
@@ -18138,8 +18233,8 @@ inline int64_t TurretConfigFixedLoadWalkBody( TurretConfig * values, int64_t cap
     {
         report->refused = true;
         report->reason = data[0] == kTableWireForm ? TableMessageReason::previous_form
-                       : data[0] == kTableWireMessageForm ? TableMessageReason::message_form_as_file
-                       : TableMessageReason::newer_form;
+            : data[0] == kTableWireMessageForm     ? TableMessageReason::message_form_as_file
+                                                   : TableMessageReason::newer_form;
         return -1;
     }
     if ( bytes < kTableFixedHeaderBytes + 4 )
@@ -18153,7 +18248,12 @@ inline int64_t TurretConfigFixedLoadWalkBody( TurretConfig * values, int64_t cap
     // spendable later.
     for ( int32_t i = 1; i < kTableFixedHashAt; ++i )
     {
-        if ( data[i] != 0 ) { report->damaged = true; report->reason = TableFixedReason::reserved_not_zero; return -1; }
+        if ( data[i] != 0 )
+        {
+            report->damaged = true;
+            report->reason = TableFixedReason::reserved_not_zero;
+            return -1;
+        }
     }
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
     if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes )
@@ -18192,7 +18292,9 @@ inline int64_t TurretConfigFixedLoadWalkBody( TurretConfig * values, int64_t cap
     const TableFixedKnownLayout & known = TurretConfigFixedKnown[lineage_at];
     if ( (int64_t) layout_bytes != known.layout_bytes || memcmp( layout, known.layout, (size_t) layout_bytes ) != 0 )
     {
-        report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1;
+        report->refused = true;
+        report->reason = TableMessageReason::layout_malformed;
+        return -1;
     }
     const TableFixedEntry * entries = TurretConfigFixedPlan;
     int32_t entry_count = TurretConfigFixedPlanCount;
@@ -18247,8 +18349,8 @@ inline int64_t TurretConfigFixedLoadWalkBody( TurretConfig * values, int64_t cap
             int32_t compiled_guarded = 0;
             uint32_t fill_at = 0;
             const int32_t made = TableFixedCompile( parsed, TurretConfigFixedLayout, (int32_t) TurretConfigFixedLayoutBytes, TurretConfigFixedDst,
-                                                   TurretConfigFixedCover, TurretConfigFixedCoverCount,
-                                                   dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
+                TurretConfigFixedCover, TurretConfigFixedCoverCount,
+                dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
             if ( made < 0 )
             {
                 report->refused = true;
@@ -18330,7 +18432,9 @@ inline int64_t TurretConfigFixedLoadWalkBody( TurretConfig * values, int64_t cap
         {
             for ( int64_t j = 0; j < k; ++j ) { TurretConfigReset( values[j] ); }
             report->widened = batch_widened;
-            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+            report->refused = true;
+            report->reason = TableMessageReason::no_layout;
+            return -1;
         }
         for ( int32_t i = 0; i < entry_count; ++i )
         {
@@ -18347,7 +18451,7 @@ inline int64_t TurretConfigFixedLoadWalkBody( TurretConfig * values, int64_t cap
                         if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
                         {
                             matches = false;
-                            break;
+                                break;
                         }
                     }
                     if ( !matches ) { continue; }
@@ -18382,7 +18486,7 @@ inline int64_t TurretConfigFixedLoadWalkBody( TurretConfig * values, int64_t cap
             return -1;
         }
         TableFixedClampKnownRanges( TurretConfigFixedKnownRanges[lineage_at], TurretConfigFixedKnownRangeCounts[lineage_at],
-                                    (uint8_t *) &values[k], report );
+            (uint8_t *) &values[k], report );
         at += record_bytes;
     }
     return n;
@@ -18395,7 +18499,7 @@ inline int64_t TurretConfigFixedLoadWalkBody( TurretConfig * values, int64_t cap
 // them, on EVERY refusal (R4), so no partial value survives. A supplied report receives THIS
 // read's report. unknown and widened alone never refuse.
 inline int64_t TurretConfigFixedLoad( TurretConfig * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     TableReport * out = report != NULL ? report : &local;
@@ -18403,7 +18507,10 @@ inline int64_t TurretConfigFixedLoad( TurretConfig * values, int64_t capacity, c
     const int64_t n = TurretConfigFixedLoadWalk( values, capacity, data, bytes, plan, plan_capacity, cache, out );
     if ( n < 0 || out->damaged || out->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { TurretConfigReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { TurretConfigReset( values[k] ); }
+        }
         return -1;
     }
     return n;
@@ -18594,7 +18701,10 @@ inline int64_t HullConfigFixedSave( const HullConfig * values, int64_t count, ui
     TableFixedPut64( buffer + kTableFixedHashAt, HullConfigFixedHash );
     TableFixedPut32( buffer + kTableFixedHeaderBytes, (uint32_t) HullConfigFixedLayoutBytes );
     memcpy( buffer + kTableFixedHeaderBytes + 4, HullConfigFixedLayout, (size_t) HullConfigFixedLayoutBytes );
-    for ( int64_t k = 0; k < count; ++k ) { if ( !HullConfigFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        if ( !HullConfigFixedFiniteBody( values[k] ) ) { return -1; }
+    } // a NaN or an infinity is refused (§3.3)
     uint8_t * at = buffer + kTableFixedHeaderBytes + 4 + HullConfigFixedLayoutBytes;
     for ( int64_t k = 0; k < count; ++k )
     {
@@ -18614,16 +18724,19 @@ inline int64_t HullConfigFixedSave( const HullConfig * values, int64_t count, ui
 // R4: every refusal leaves ALL `capacity` rows at their declared defaults, so a direct call
 // holds the same rule as FixedLoad. The body below is the walk itself.
 inline int64_t HullConfigFixedLoadWalkBody( HullConfig * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
 inline int64_t HullConfigFixedLoadWalk( HullConfig * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
     const int64_t n = HullConfigFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
     if ( n < 0 || report->damaged || report->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { HullConfigReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { HullConfigReset( values[k] ); }
+        }
         return -1;
     }
     return n;
@@ -18632,7 +18745,7 @@ inline int64_t HullConfigFixedLoadWalk( HullConfig * values, int64_t capacity, c
 // HullConfigFixedLoadWalkBody is the STRICT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps
 // every recovered record, with the counters counted onto the report passed.
 inline int64_t HullConfigFixedLoadWalkBody( HullConfig * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
@@ -18649,8 +18762,8 @@ inline int64_t HullConfigFixedLoadWalkBody( HullConfig * values, int64_t capacit
     {
         report->refused = true;
         report->reason = data[0] == kTableWireForm ? TableMessageReason::previous_form
-                       : data[0] == kTableWireMessageForm ? TableMessageReason::message_form_as_file
-                       : TableMessageReason::newer_form;
+            : data[0] == kTableWireMessageForm     ? TableMessageReason::message_form_as_file
+                                                   : TableMessageReason::newer_form;
         return -1;
     }
     if ( bytes < kTableFixedHeaderBytes + 4 )
@@ -18664,7 +18777,12 @@ inline int64_t HullConfigFixedLoadWalkBody( HullConfig * values, int64_t capacit
     // spendable later.
     for ( int32_t i = 1; i < kTableFixedHashAt; ++i )
     {
-        if ( data[i] != 0 ) { report->damaged = true; report->reason = TableFixedReason::reserved_not_zero; return -1; }
+        if ( data[i] != 0 )
+        {
+            report->damaged = true;
+            report->reason = TableFixedReason::reserved_not_zero;
+            return -1;
+        }
     }
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
     if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes )
@@ -18703,7 +18821,9 @@ inline int64_t HullConfigFixedLoadWalkBody( HullConfig * values, int64_t capacit
     const TableFixedKnownLayout & known = HullConfigFixedKnown[lineage_at];
     if ( (int64_t) layout_bytes != known.layout_bytes || memcmp( layout, known.layout, (size_t) layout_bytes ) != 0 )
     {
-        report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1;
+        report->refused = true;
+        report->reason = TableMessageReason::layout_malformed;
+        return -1;
     }
     const TableFixedEntry * entries = HullConfigFixedPlan;
     int32_t entry_count = HullConfigFixedPlanCount;
@@ -18758,8 +18878,8 @@ inline int64_t HullConfigFixedLoadWalkBody( HullConfig * values, int64_t capacit
             int32_t compiled_guarded = 0;
             uint32_t fill_at = 0;
             const int32_t made = TableFixedCompile( parsed, HullConfigFixedLayout, (int32_t) HullConfigFixedLayoutBytes, HullConfigFixedDst,
-                                                   HullConfigFixedCover, HullConfigFixedCoverCount,
-                                                   dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
+                HullConfigFixedCover, HullConfigFixedCoverCount,
+                dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
             if ( made < 0 )
             {
                 report->refused = true;
@@ -18841,7 +18961,9 @@ inline int64_t HullConfigFixedLoadWalkBody( HullConfig * values, int64_t capacit
         {
             for ( int64_t j = 0; j < k; ++j ) { HullConfigReset( values[j] ); }
             report->widened = batch_widened;
-            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+            report->refused = true;
+            report->reason = TableMessageReason::no_layout;
+            return -1;
         }
         for ( int32_t i = 0; i < entry_count; ++i )
         {
@@ -18858,7 +18980,7 @@ inline int64_t HullConfigFixedLoadWalkBody( HullConfig * values, int64_t capacit
                         if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
                         {
                             matches = false;
-                            break;
+                                break;
                         }
                     }
                     if ( !matches ) { continue; }
@@ -18893,7 +19015,7 @@ inline int64_t HullConfigFixedLoadWalkBody( HullConfig * values, int64_t capacit
             return -1;
         }
         TableFixedClampKnownRanges( HullConfigFixedKnownRanges[lineage_at], HullConfigFixedKnownRangeCounts[lineage_at],
-                                    (uint8_t *) &values[k], report );
+            (uint8_t *) &values[k], report );
         at += record_bytes;
     }
     return n;
@@ -18906,7 +19028,7 @@ inline int64_t HullConfigFixedLoadWalkBody( HullConfig * values, int64_t capacit
 // them, on EVERY refusal (R4), so no partial value survives. A supplied report receives THIS
 // read's report. unknown and widened alone never refuse.
 inline int64_t HullConfigFixedLoad( HullConfig * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     TableReport * out = report != NULL ? report : &local;
@@ -18914,7 +19036,10 @@ inline int64_t HullConfigFixedLoad( HullConfig * values, int64_t capacity, const
     const int64_t n = HullConfigFixedLoadWalk( values, capacity, data, bytes, plan, plan_capacity, cache, out );
     if ( n < 0 || out->damaged || out->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { HullConfigReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { HullConfigReset( values[k] ); }
+        }
         return -1;
     }
     return n;
@@ -19283,7 +19408,10 @@ inline int64_t KeyedConfigFixedSave( const KeyedConfig * values, int64_t count, 
     TableFixedPut64( buffer + kTableFixedHashAt, KeyedConfigFixedHash );
     TableFixedPut32( buffer + kTableFixedHeaderBytes, (uint32_t) KeyedConfigFixedLayoutBytes );
     memcpy( buffer + kTableFixedHeaderBytes + 4, KeyedConfigFixedLayout, (size_t) KeyedConfigFixedLayoutBytes );
-    for ( int64_t k = 0; k < count; ++k ) { if ( !KeyedConfigFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        if ( !KeyedConfigFixedFiniteBody( values[k] ) ) { return -1; }
+    } // a NaN or an infinity is refused (§3.3)
     uint8_t * at = buffer + kTableFixedHeaderBytes + 4 + KeyedConfigFixedLayoutBytes;
     for ( int64_t k = 0; k < count; ++k )
     {
@@ -19303,16 +19431,19 @@ inline int64_t KeyedConfigFixedSave( const KeyedConfig * values, int64_t count, 
 // R4: every refusal leaves ALL `capacity` rows at their declared defaults, so a direct call
 // holds the same rule as FixedLoad. The body below is the walk itself.
 inline int64_t KeyedConfigFixedLoadWalkBody( KeyedConfig * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
 inline int64_t KeyedConfigFixedLoadWalk( KeyedConfig * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
     const int64_t n = KeyedConfigFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
     if ( n < 0 || report->damaged || report->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { KeyedConfigReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { KeyedConfigReset( values[k] ); }
+        }
         return -1;
     }
     return n;
@@ -19321,7 +19452,7 @@ inline int64_t KeyedConfigFixedLoadWalk( KeyedConfig * values, int64_t capacity,
 // KeyedConfigFixedLoadWalkBody is the STRICT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps
 // every recovered record, with the counters counted onto the report passed.
 inline int64_t KeyedConfigFixedLoadWalkBody( KeyedConfig * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
@@ -19338,8 +19469,8 @@ inline int64_t KeyedConfigFixedLoadWalkBody( KeyedConfig * values, int64_t capac
     {
         report->refused = true;
         report->reason = data[0] == kTableWireForm ? TableMessageReason::previous_form
-                       : data[0] == kTableWireMessageForm ? TableMessageReason::message_form_as_file
-                       : TableMessageReason::newer_form;
+            : data[0] == kTableWireMessageForm     ? TableMessageReason::message_form_as_file
+                                                   : TableMessageReason::newer_form;
         return -1;
     }
     if ( bytes < kTableFixedHeaderBytes + 4 )
@@ -19353,7 +19484,12 @@ inline int64_t KeyedConfigFixedLoadWalkBody( KeyedConfig * values, int64_t capac
     // spendable later.
     for ( int32_t i = 1; i < kTableFixedHashAt; ++i )
     {
-        if ( data[i] != 0 ) { report->damaged = true; report->reason = TableFixedReason::reserved_not_zero; return -1; }
+        if ( data[i] != 0 )
+        {
+            report->damaged = true;
+            report->reason = TableFixedReason::reserved_not_zero;
+            return -1;
+        }
     }
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
     if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes )
@@ -19392,7 +19528,9 @@ inline int64_t KeyedConfigFixedLoadWalkBody( KeyedConfig * values, int64_t capac
     const TableFixedKnownLayout & known = KeyedConfigFixedKnown[lineage_at];
     if ( (int64_t) layout_bytes != known.layout_bytes || memcmp( layout, known.layout, (size_t) layout_bytes ) != 0 )
     {
-        report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1;
+        report->refused = true;
+        report->reason = TableMessageReason::layout_malformed;
+        return -1;
     }
     const TableFixedEntry * entries = KeyedConfigFixedPlan;
     int32_t entry_count = KeyedConfigFixedPlanCount;
@@ -19447,8 +19585,8 @@ inline int64_t KeyedConfigFixedLoadWalkBody( KeyedConfig * values, int64_t capac
             int32_t compiled_guarded = 0;
             uint32_t fill_at = 0;
             const int32_t made = TableFixedCompile( parsed, KeyedConfigFixedLayout, (int32_t) KeyedConfigFixedLayoutBytes, KeyedConfigFixedDst,
-                                                   KeyedConfigFixedCover, KeyedConfigFixedCoverCount,
-                                                   dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
+                KeyedConfigFixedCover, KeyedConfigFixedCoverCount,
+                dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
             if ( made < 0 )
             {
                 report->refused = true;
@@ -19530,7 +19668,9 @@ inline int64_t KeyedConfigFixedLoadWalkBody( KeyedConfig * values, int64_t capac
         {
             for ( int64_t j = 0; j < k; ++j ) { KeyedConfigReset( values[j] ); }
             report->widened = batch_widened;
-            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+            report->refused = true;
+            report->reason = TableMessageReason::no_layout;
+            return -1;
         }
         for ( int32_t i = 0; i < entry_count; ++i )
         {
@@ -19547,7 +19687,7 @@ inline int64_t KeyedConfigFixedLoadWalkBody( KeyedConfig * values, int64_t capac
                         if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
                         {
                             matches = false;
-                            break;
+                                break;
                         }
                     }
                     if ( !matches ) { continue; }
@@ -19585,7 +19725,7 @@ inline int64_t KeyedConfigFixedLoadWalkBody( KeyedConfig * values, int64_t capac
             return -1;
         }
         TableFixedClampKnownRanges( KeyedConfigFixedKnownRanges[lineage_at], KeyedConfigFixedKnownRangeCounts[lineage_at],
-                                    (uint8_t *) &values[k], report );
+            (uint8_t *) &values[k], report );
         if ( !KeyedConfigFixedClamp( values[k], report ) )
         {
             for ( int64_t j = 0; j <= k; ++j ) { KeyedConfigReset( values[j] ); }
@@ -19604,7 +19744,7 @@ inline int64_t KeyedConfigFixedLoadWalkBody( KeyedConfig * values, int64_t capac
 // them, on EVERY refusal (R4), so no partial value survives. A supplied report receives THIS
 // read's report. unknown and widened alone never refuse.
 inline int64_t KeyedConfigFixedLoad( KeyedConfig * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     TableReport * out = report != NULL ? report : &local;
@@ -19612,7 +19752,10 @@ inline int64_t KeyedConfigFixedLoad( KeyedConfig * values, int64_t capacity, con
     const int64_t n = KeyedConfigFixedLoadWalk( values, capacity, data, bytes, plan, plan_capacity, cache, out );
     if ( n < 0 || out->damaged || out->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { KeyedConfigReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { KeyedConfigReset( values[k] ); }
+        }
         return -1;
     }
     return n;
@@ -20194,7 +20337,10 @@ inline int64_t HullConfigMeasureBodyRetain( TableRetainIds & ids, const HullConf
             const int64_t whole_turrets = 1 + TableLebBytes( (uint64_t) pairs_turrets ) + body_turrets;
             bytes += TableLebBytes( ref_turrets ) + 1 + TableLebBytes( (uint64_t) ( whole_turrets ) ) + ( whole_turrets ); // turrets
         }
-        else { ids.truncate( mark_turrets ); } // an ELIDED field costs nothing in the id table either
+        else
+        {
+            ids.truncate( mark_turrets );
+        } // an ELIDED field costs nothing in the id table either
     }
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
@@ -20263,7 +20409,10 @@ TABLEDEMO_TABLE_INLINE bool HullConfigSaveBodyRetain( TableWriter & w, TableReta
                 if ( !TurretConfigSaveBodyRetain( w, ids, value.turrets.slots[i], retain, TableRetainStepInto( path, 2, (uint32_t) ( i ) ) ) ) return false;
             }
         }
-        else { ids.truncate( mark_turrets ); } // an ELIDED field costs nothing in the id table either
+        else
+        {
+            ids.truncate( mark_turrets );
+        } // an ELIDED field costs nothing in the id table either
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -20515,7 +20664,10 @@ inline int64_t KeyedConfigMeasureBodyRetain( TableRetainIds & ids, const KeyedCo
             const int64_t whole_teams = 1 + TableLebBytes( (uint64_t) pairs_teams ) + body_teams;
             bytes += TableLebBytes( ref_teams ) + 1 + TableLebBytes( (uint64_t) ( whole_teams ) ) + ( whole_teams ); // teams
         }
-        else { ids.truncate( mark_teams ); } // an ELIDED field costs nothing in the id table either
+        else
+        {
+            ids.truncate( mark_teams );
+        } // an ELIDED field costs nothing in the id table either
     }
     {
         const int32_t mark_hulls = ids.count;
@@ -20541,7 +20693,10 @@ inline int64_t KeyedConfigMeasureBodyRetain( TableRetainIds & ids, const KeyedCo
             const int64_t whole_hulls = 1 + TableLebBytes( (uint64_t) pairs_hulls ) + body_hulls;
             bytes += TableLebBytes( ref_hulls ) + 1 + TableLebBytes( (uint64_t) ( whole_hulls ) ) + ( whole_hulls ); // hulls
         }
-        else { ids.truncate( mark_hulls ); } // an ELIDED field costs nothing in the id table either
+        else
+        {
+            ids.truncate( mark_hulls );
+        } // an ELIDED field costs nothing in the id table either
     }
     {
         const int32_t mark_scores = ids.count;
@@ -20549,7 +20704,10 @@ inline int64_t KeyedConfigMeasureBodyRetain( TableRetainIds & ids, const KeyedCo
         const int64_t body_scores = ScoreBoardMeasureBodyRetain( ids, value.scores, retain, TableRetainStepInto( path, 2, (uint32_t) ( 0 ) ) );
         if ( body_scores < 0 ) { return -1; }
         if ( body_scores > 1 ) { bytes += TableLebBytes( ref_scores ) + 1 + TableLebBytes( (uint64_t) ( body_scores ) ) + ( body_scores ); } // scores
-        else { ids.truncate( mark_scores ); } // an all-default nested table elides, and costs no entry
+        else
+        {
+            ids.truncate( mark_scores );
+        } // an all-default nested table elides, and costs no entry
     }
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
@@ -20606,7 +20764,10 @@ TABLEDEMO_TABLE_INLINE bool KeyedConfigSaveBodyRetain( TableWriter & w, TableRet
                 if ( !TeamConfigSaveBodyRetain( w, ids, value.teams.slots[i], retain, TableRetainStepInto( path, 0, (uint32_t) ( i ) ) ) ) return false;
             }
         }
-        else { ids.truncate( mark_teams ); } // an ELIDED field costs nothing in the id table either
+        else
+        {
+            ids.truncate( mark_teams );
+        } // an ELIDED field costs nothing in the id table either
     }
     {
         const int32_t mark_hulls = ids.count;
@@ -20657,7 +20818,10 @@ TABLEDEMO_TABLE_INLINE bool KeyedConfigSaveBodyRetain( TableWriter & w, TableRet
                 if ( !HullConfigSaveBodyRetain( w, ids, value.hulls.slots[i], retain, TableRetainStepInto( path, 1, (uint32_t) ( i ) ) ) ) return false;
             }
         }
-        else { ids.truncate( mark_hulls ); } // an ELIDED field costs nothing in the id table either
+        else
+        {
+            ids.truncate( mark_hulls );
+        } // an ELIDED field costs nothing in the id table either
     }
     {
         const int32_t mark_scores = ids.count;
@@ -20670,7 +20834,10 @@ TABLEDEMO_TABLE_INLINE bool KeyedConfigSaveBodyRetain( TableWriter & w, TableRet
             w.putleb( (uint64_t) body_scores ); // scores
             if ( !ScoreBoardSaveBodyRetain( w, ids, value.scores, retain, TableRetainStepInto( path, 2, (uint32_t) ( 0 ) ) ) ) return false;
         }
-        else { ids.truncate( mark_scores ); }
+        else
+        {
+            ids.truncate( mark_scores );
+        }
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -20988,7 +21155,10 @@ inline int64_t ScoreBoardMeasureBodyRetain( TableRetainIds & ids, const ScoreBoa
             const int64_t whole_per_team = 1 + TableLebBytes( (uint64_t) pairs_per_team ) + body_per_team;
             bytes += TableLebBytes( ref_per_team ) + 1 + TableLebBytes( (uint64_t) ( whole_per_team ) ) + ( whole_per_team ); // per_team
         }
-        else { ids.truncate( mark_per_team ); } // an ELIDED field costs nothing in the id table either
+        else
+        {
+            ids.truncate( mark_per_team );
+        } // an ELIDED field costs nothing in the id table either
     }
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
@@ -21033,7 +21203,10 @@ TABLEDEMO_TABLE_INLINE bool ScoreBoardSaveBodyRetain( TableWriter & w, TableReta
                 w.put32( uint32_t( value.per_team[i] ) );
             }
         }
-        else { ids.truncate( mark_per_team ); } // an ELIDED field costs nothing in the id table either
+        else
+        {
+            ids.truncate( mark_per_team );
+        } // an ELIDED field costs nothing in the id table either
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body

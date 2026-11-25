@@ -328,7 +328,7 @@ func (g *tableGen) pf(format string, args ...any) {
 // The caller owns the statements; this only supplies the block and indentation.
 func (g *tableGen) emitIfActions(ind, condition string, actions ...string) {
 	if len(actions) == 1 {
-		g.pf("%sif ( %s ) { %s }\n", ind, condition, actions[0])
+		g.pf("%sif ( %s )\n        {\n            %s\n        }\n", ind, condition, actions[0])
 		return
 	}
 	g.pf("%sif ( %s )\n%s{\n", ind, condition, ind)

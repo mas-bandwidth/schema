@@ -12182,10 +12182,14 @@ inline bool FleetPackSlots( const Ctx & ctx, TablePackMap & seen, const Fleet & 
 
 // ---- the numbering's bridge to each member's codec (docs/SPEC-TABLES.md §3.1) ----
 
-template <typename Ctx> inline int64_t TableNodeMeasure( const Ctx &, const TableNumbering &, TableIds & ids, const ShipConfig & value ) { return ShipConfigMeasureBody( ids, value ); }
-template <typename Ctx> inline bool TableNodeSave( const Ctx &, const TableNumbering &, TableWriter & w, TableIds & ids, const ShipConfig & value ) { return ShipConfigSaveBody( w, ids, value ); }
-template <typename Ctx> inline int64_t TableNodeMeasure( const Ctx &, const TableNumbering &, TableIds & ids, const Item & value ) { return ItemMeasureBody( ids, value ); }
-template <typename Ctx> inline bool TableNodeSave( const Ctx &, const TableNumbering &, TableWriter & w, TableIds & ids, const Item & value ) { return ItemSaveBody( w, ids, value ); }
+template <typename Ctx>
+inline int64_t TableNodeMeasure( const Ctx &, const TableNumbering &, TableIds & ids, const ShipConfig & value ) { return ShipConfigMeasureBody( ids, value ); }
+template <typename Ctx>
+inline bool TableNodeSave( const Ctx &, const TableNumbering &, TableWriter & w, TableIds & ids, const ShipConfig & value ) { return ShipConfigSaveBody( w, ids, value ); }
+template <typename Ctx>
+inline int64_t TableNodeMeasure( const Ctx &, const TableNumbering &, TableIds & ids, const Item & value ) { return ItemMeasureBody( ids, value ); }
+template <typename Ctx>
+inline bool TableNodeSave( const Ctx &, const TableNumbering &, TableWriter & w, TableIds & ids, const Item & value ) { return ItemSaveBody( w, ids, value ); }
 template <typename Ctx>
 inline int64_t TableNodeMeasure( const Ctx & ctx, const TableNumbering & numbering, TableIds & ids, const FleetByIdEntry & value ) { return FleetByIdEntryMeasureBody( ctx, numbering, ids, value ); }
 template <typename Ctx>
@@ -13320,7 +13324,7 @@ inline bool ShipConfigLoadMessageBody( TableBitReader & r, const TableVocabulary
                             else if ( width > 0 && width < 64 )
                             {
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
-                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                             }
                             if ( decoded_wide < -2147483648ll )
                             {
@@ -13368,7 +13372,7 @@ inline bool ShipConfigLoadMessageBody( TableBitReader & r, const TableVocabulary
                     else if ( width > 0 && width < 64 )
                     {
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
-                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     const int64_t pre_clamp = decoded_wide;
                     if ( decoded_wide < -2147483648ll )
@@ -13394,7 +13398,11 @@ inline bool ShipConfigLoadMessageBody( TableBitReader & r, const TableVocabulary
                 break;
             }
             default:
-                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
+                if ( vocabulary.build_version == BuildVersion )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 report->unknown++;
                 if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
@@ -13850,7 +13858,7 @@ inline bool ItemLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                             else if ( width > 0 && width < 64 )
                             {
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
-                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                             }
                             if ( decoded_wide < -2147483648ll )
                             {
@@ -13898,7 +13906,7 @@ inline bool ItemLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                     else if ( width > 0 && width < 64 )
                     {
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
-                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     const int64_t pre_clamp = decoded_wide;
                     if ( decoded_wide < -2147483648ll )
@@ -13924,7 +13932,11 @@ inline bool ItemLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                 break;
             }
             default:
-                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
+                if ( vocabulary.build_version == BuildVersion )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 report->unknown++;
                 if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
@@ -14041,7 +14053,10 @@ inline int64_t FleetShipsEntryMeasureBody( TableIds & ids, const FleetShipsEntry
         const int64_t body_value = ShipConfigMeasureBody( ids, value.value );
         if ( body_value < 0 ) { return -1; }
         if ( body_value > 1 ) { bytes += TableLebBytes( ref_value ) + 1 + TableLebBytes( (uint64_t) ( body_value ) ) + ( body_value ); } // value
-        else { ids.truncate( mark_value ); } // an all-default nested table elides, and costs no entry
+        else
+        {
+            ids.truncate( mark_value );
+        } // an all-default nested table elides, and costs no entry
     }
     return bytes;
 }
@@ -14067,7 +14082,10 @@ MAPDEMO_TABLE_INLINE bool FleetShipsEntrySaveBody( TableWriter & w, TableIds & i
             w.putleb( (uint64_t) body_value ); // value
             if ( !ShipConfigSaveBody( w, ids, value.value ) ) return false;
         }
-        else { ids.truncate( mark_value ); }
+        else
+        {
+            ids.truncate( mark_value );
+        }
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
     return !w.overflow;
@@ -14401,7 +14419,10 @@ inline int64_t FleetLoadoutsEntryValueEntryMeasureBody( TableIds & ids, const Fl
         const int64_t body_value = ItemMeasureBody( ids, value.value );
         if ( body_value < 0 ) { return -1; }
         if ( body_value > 1 ) { bytes += TableLebBytes( ref_value ) + 1 + TableLebBytes( (uint64_t) ( body_value ) ) + ( body_value ); } // value
-        else { ids.truncate( mark_value ); } // an all-default nested table elides, and costs no entry
+        else
+        {
+            ids.truncate( mark_value );
+        } // an all-default nested table elides, and costs no entry
     }
     return bytes;
 }
@@ -14424,7 +14445,10 @@ MAPDEMO_TABLE_INLINE bool FleetLoadoutsEntryValueEntrySaveBody( TableWriter & w,
             w.putleb( (uint64_t) body_value ); // value
             if ( !ItemSaveBody( w, ids, value.value ) ) return false;
         }
-        else { ids.truncate( mark_value ); }
+        else
+        {
+            ids.truncate( mark_value );
+        }
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
     return !w.overflow;
@@ -14907,7 +14931,10 @@ inline int64_t FleetTiersEntryMeasureBody( TableIds & ids, const FleetTiersEntry
         const int64_t body_value = ItemMeasureBody( ids, value.value );
         if ( body_value < 0 ) { return -1; }
         if ( body_value > 1 ) { bytes += TableLebBytes( ref_value ) + 1 + TableLebBytes( (uint64_t) ( body_value ) ) + ( body_value ); } // value
-        else { ids.truncate( mark_value ); } // an all-default nested table elides, and costs no entry
+        else
+        {
+            ids.truncate( mark_value );
+        } // an all-default nested table elides, and costs no entry
     }
     return bytes;
 }
@@ -14930,7 +14957,10 @@ MAPDEMO_TABLE_INLINE bool FleetTiersEntrySaveBody( TableWriter & w, TableIds & i
             w.putleb( (uint64_t) body_value ); // value
             if ( !ItemSaveBody( w, ids, value.value ) ) return false;
         }
-        else { ids.truncate( mark_value ); }
+        else
+        {
+            ids.truncate( mark_value );
+        }
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
     return !w.overflow;
@@ -16292,16 +16322,19 @@ inline int64_t ShipConfigFixedSave( const ShipConfig * values, int64_t count, ui
 // R4: every refusal leaves ALL `capacity` rows at their declared defaults, so a direct call
 // holds the same rule as FixedLoad. The body below is the walk itself.
 inline int64_t ShipConfigFixedLoadWalkBody( ShipConfig * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
 inline int64_t ShipConfigFixedLoadWalk( ShipConfig * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
     const int64_t n = ShipConfigFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
     if ( n < 0 || report->damaged || report->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { ShipConfigReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { ShipConfigReset( values[k] ); }
+        }
         return -1;
     }
     return n;
@@ -16310,7 +16343,7 @@ inline int64_t ShipConfigFixedLoadWalk( ShipConfig * values, int64_t capacity, c
 // ShipConfigFixedLoadWalkBody is the STRICT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps
 // every recovered record, with the counters counted onto the report passed.
 inline int64_t ShipConfigFixedLoadWalkBody( ShipConfig * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
@@ -16327,8 +16360,8 @@ inline int64_t ShipConfigFixedLoadWalkBody( ShipConfig * values, int64_t capacit
     {
         report->refused = true;
         report->reason = data[0] == kTableWireForm ? TableMessageReason::previous_form
-                       : data[0] == kTableWireMessageForm ? TableMessageReason::message_form_as_file
-                       : TableMessageReason::newer_form;
+            : data[0] == kTableWireMessageForm     ? TableMessageReason::message_form_as_file
+                                                   : TableMessageReason::newer_form;
         return -1;
     }
     if ( bytes < kTableFixedHeaderBytes + 4 )
@@ -16342,7 +16375,12 @@ inline int64_t ShipConfigFixedLoadWalkBody( ShipConfig * values, int64_t capacit
     // spendable later.
     for ( int32_t i = 1; i < kTableFixedHashAt; ++i )
     {
-        if ( data[i] != 0 ) { report->damaged = true; report->reason = TableFixedReason::reserved_not_zero; return -1; }
+        if ( data[i] != 0 )
+        {
+            report->damaged = true;
+            report->reason = TableFixedReason::reserved_not_zero;
+            return -1;
+        }
     }
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
     if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes )
@@ -16381,7 +16419,9 @@ inline int64_t ShipConfigFixedLoadWalkBody( ShipConfig * values, int64_t capacit
     const TableFixedKnownLayout & known = ShipConfigFixedKnown[lineage_at];
     if ( (int64_t) layout_bytes != known.layout_bytes || memcmp( layout, known.layout, (size_t) layout_bytes ) != 0 )
     {
-        report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1;
+        report->refused = true;
+        report->reason = TableMessageReason::layout_malformed;
+        return -1;
     }
     const TableFixedEntry * entries = ShipConfigFixedPlan;
     int32_t entry_count = ShipConfigFixedPlanCount;
@@ -16436,8 +16476,8 @@ inline int64_t ShipConfigFixedLoadWalkBody( ShipConfig * values, int64_t capacit
             int32_t compiled_guarded = 0;
             uint32_t fill_at = 0;
             const int32_t made = TableFixedCompile( parsed, ShipConfigFixedLayout, (int32_t) ShipConfigFixedLayoutBytes, ShipConfigFixedDst,
-                                                   ShipConfigFixedCover, ShipConfigFixedCoverCount,
-                                                   dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
+                ShipConfigFixedCover, ShipConfigFixedCoverCount,
+                dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
             if ( made < 0 )
             {
                 report->refused = true;
@@ -16522,7 +16562,9 @@ inline int64_t ShipConfigFixedLoadWalkBody( ShipConfig * values, int64_t capacit
         {
             for ( int64_t j = 0; j < k; ++j ) { ShipConfigReset( values[j] ); }
             report->widened = batch_widened;
-            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+            report->refused = true;
+            report->reason = TableMessageReason::no_layout;
+            return -1;
         }
         for ( int32_t i = 0; i < entry_count; ++i )
         {
@@ -16539,7 +16581,7 @@ inline int64_t ShipConfigFixedLoadWalkBody( ShipConfig * values, int64_t capacit
                         if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
                         {
                             matches = false;
-                            break;
+                                break;
                         }
                     }
                     if ( !matches ) { continue; }
@@ -16570,7 +16612,7 @@ inline int64_t ShipConfigFixedLoadWalkBody( ShipConfig * values, int64_t capacit
         // the counters back to what they were before the batch.
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, ShipConfigFixedGuards, NULL );
         TableFixedClampKnownRanges( ShipConfigFixedKnownRanges[lineage_at], ShipConfigFixedKnownRangeCounts[lineage_at],
-                                    (uint8_t *) &values[k], report );
+            (uint8_t *) &values[k], report );
         if ( !ShipConfigFixedClamp( values[k], report ) )
         {
             for ( int64_t j = 0; j <= k; ++j ) { ShipConfigReset( values[j] ); }
@@ -16589,7 +16631,7 @@ inline int64_t ShipConfigFixedLoadWalkBody( ShipConfig * values, int64_t capacit
 // them, on EVERY refusal (R4), so no partial value survives. A supplied report receives THIS
 // read's report. unknown and widened alone never refuse.
 inline int64_t ShipConfigFixedLoad( ShipConfig * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     TableReport * out = report != NULL ? report : &local;
@@ -16597,7 +16639,10 @@ inline int64_t ShipConfigFixedLoad( ShipConfig * values, int64_t capacity, const
     const int64_t n = ShipConfigFixedLoadWalk( values, capacity, data, bytes, plan, plan_capacity, cache, out );
     if ( n < 0 || out->damaged || out->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { ShipConfigReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { ShipConfigReset( values[k] ); }
+        }
         return -1;
     }
     return n;
@@ -16731,16 +16776,19 @@ inline int64_t ItemFixedSave( const Item * values, int64_t count, uint8_t * buff
 // R4: every refusal leaves ALL `capacity` rows at their declared defaults, so a direct call
 // holds the same rule as FixedLoad. The body below is the walk itself.
 inline int64_t ItemFixedLoadWalkBody( Item * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
 inline int64_t ItemFixedLoadWalk( Item * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
     const int64_t n = ItemFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
     if ( n < 0 || report->damaged || report->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { ItemReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { ItemReset( values[k] ); }
+        }
         return -1;
     }
     return n;
@@ -16749,7 +16797,7 @@ inline int64_t ItemFixedLoadWalk( Item * values, int64_t capacity, const uint8_t
 // ItemFixedLoadWalkBody is the STRICT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps
 // every recovered record, with the counters counted onto the report passed.
 inline int64_t ItemFixedLoadWalkBody( Item * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
@@ -16766,8 +16814,8 @@ inline int64_t ItemFixedLoadWalkBody( Item * values, int64_t capacity, const uin
     {
         report->refused = true;
         report->reason = data[0] == kTableWireForm ? TableMessageReason::previous_form
-                       : data[0] == kTableWireMessageForm ? TableMessageReason::message_form_as_file
-                       : TableMessageReason::newer_form;
+            : data[0] == kTableWireMessageForm     ? TableMessageReason::message_form_as_file
+                                                   : TableMessageReason::newer_form;
         return -1;
     }
     if ( bytes < kTableFixedHeaderBytes + 4 )
@@ -16781,7 +16829,12 @@ inline int64_t ItemFixedLoadWalkBody( Item * values, int64_t capacity, const uin
     // spendable later.
     for ( int32_t i = 1; i < kTableFixedHashAt; ++i )
     {
-        if ( data[i] != 0 ) { report->damaged = true; report->reason = TableFixedReason::reserved_not_zero; return -1; }
+        if ( data[i] != 0 )
+        {
+            report->damaged = true;
+            report->reason = TableFixedReason::reserved_not_zero;
+            return -1;
+        }
     }
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
     if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes )
@@ -16820,7 +16873,9 @@ inline int64_t ItemFixedLoadWalkBody( Item * values, int64_t capacity, const uin
     const TableFixedKnownLayout & known = ItemFixedKnown[lineage_at];
     if ( (int64_t) layout_bytes != known.layout_bytes || memcmp( layout, known.layout, (size_t) layout_bytes ) != 0 )
     {
-        report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1;
+        report->refused = true;
+        report->reason = TableMessageReason::layout_malformed;
+        return -1;
     }
     const TableFixedEntry * entries = ItemFixedPlan;
     int32_t entry_count = ItemFixedPlanCount;
@@ -16875,8 +16930,8 @@ inline int64_t ItemFixedLoadWalkBody( Item * values, int64_t capacity, const uin
             int32_t compiled_guarded = 0;
             uint32_t fill_at = 0;
             const int32_t made = TableFixedCompile( parsed, ItemFixedLayout, (int32_t) ItemFixedLayoutBytes, ItemFixedDst,
-                                                   ItemFixedCover, ItemFixedCoverCount,
-                                                   dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
+                ItemFixedCover, ItemFixedCoverCount,
+                dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
             if ( made < 0 )
             {
                 report->refused = true;
@@ -16961,7 +17016,9 @@ inline int64_t ItemFixedLoadWalkBody( Item * values, int64_t capacity, const uin
         {
             for ( int64_t j = 0; j < k; ++j ) { ItemReset( values[j] ); }
             report->widened = batch_widened;
-            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+            report->refused = true;
+            report->reason = TableMessageReason::no_layout;
+            return -1;
         }
         for ( int32_t i = 0; i < entry_count; ++i )
         {
@@ -16978,7 +17035,7 @@ inline int64_t ItemFixedLoadWalkBody( Item * values, int64_t capacity, const uin
                         if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
                         {
                             matches = false;
-                            break;
+                                break;
                         }
                     }
                     if ( !matches ) { continue; }
@@ -17006,7 +17063,7 @@ inline int64_t ItemFixedLoadWalkBody( Item * values, int64_t capacity, const uin
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, ItemFixedGuards, NULL );
         TableFixedClampKnownRanges( ItemFixedKnownRanges[lineage_at], ItemFixedKnownRangeCounts[lineage_at],
-                                    (uint8_t *) &values[k], report );
+            (uint8_t *) &values[k], report );
         at += record_bytes;
     }
     return n;
@@ -17019,7 +17076,7 @@ inline int64_t ItemFixedLoadWalkBody( Item * values, int64_t capacity, const uin
 // them, on EVERY refusal (R4), so no partial value survives. A supplied report receives THIS
 // read's report. unknown and widened alone never refuse.
 inline int64_t ItemFixedLoad( Item * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     TableReport * out = report != NULL ? report : &local;
@@ -17027,7 +17084,10 @@ inline int64_t ItemFixedLoad( Item * values, int64_t capacity, const uint8_t * d
     const int64_t n = ItemFixedLoadWalk( values, capacity, data, bytes, plan, plan_capacity, cache, out );
     if ( n < 0 || out->damaged || out->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { ItemReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { ItemReset( values[k] ); }
+        }
         return -1;
     }
     return n;
@@ -17993,11 +18053,22 @@ inline bool ShipConfigNumber( const Ctx & ctx, TableNumbering & numbering, const
             continue;
         }
         if ( !TableNumberingAppend( numbering, work ) ) { return false; }
-        if ( work.walk == NULL ) { TablePackMapClose( numbering.seen, work.node, slot ); continue; } // a blob reaches nothing
+        if ( work.walk == NULL )
+        {
+            TablePackMapClose( numbering.seen, work.node, slot );
+            continue;
+        } // a blob reaches nothing
         TableNodeEntry close;
-        close.node = work.node; close.type_id = 0; close.measure = NULL; close.save = NULL;
-        close.pack_bytes = NULL; close.pack_copy = NULL; close.pack_slots = NULL; close.walk = NULL;
-        close.close = true; close.hint = slot;
+        close.node = work.node;
+        close.type_id = 0;
+        close.measure = NULL;
+        close.save = NULL;
+        close.pack_bytes = NULL;
+        close.pack_copy = NULL;
+        close.pack_slots = NULL;
+        close.walk = NULL;
+        close.close = true;
+        close.hint = slot;
         if ( !TableNumberingWorkPush( numbering, close ) ) { return false; }
         const int64_t first = numbering.work_count;
         if ( !work.walk( (const void *) &ctx, numbering, work.node ) ) { return false; }
@@ -18101,11 +18172,22 @@ inline bool ItemNumber( const Ctx & ctx, TableNumbering & numbering, const Item 
             continue;
         }
         if ( !TableNumberingAppend( numbering, work ) ) { return false; }
-        if ( work.walk == NULL ) { TablePackMapClose( numbering.seen, work.node, slot ); continue; } // a blob reaches nothing
+        if ( work.walk == NULL )
+        {
+            TablePackMapClose( numbering.seen, work.node, slot );
+            continue;
+        } // a blob reaches nothing
         TableNodeEntry close;
-        close.node = work.node; close.type_id = 0; close.measure = NULL; close.save = NULL;
-        close.pack_bytes = NULL; close.pack_copy = NULL; close.pack_slots = NULL; close.walk = NULL;
-        close.close = true; close.hint = slot;
+        close.node = work.node;
+        close.type_id = 0;
+        close.measure = NULL;
+        close.save = NULL;
+        close.pack_bytes = NULL;
+        close.pack_copy = NULL;
+        close.pack_slots = NULL;
+        close.walk = NULL;
+        close.close = true;
+        close.hint = slot;
         if ( !TableNumberingWorkPush( numbering, close ) ) { return false; }
         const int64_t first = numbering.work_count;
         if ( !work.walk( (const void *) &ctx, numbering, work.node ) ) { return false; }
@@ -18186,7 +18268,7 @@ inline bool FleetByIdEntryNumberEdges( const Ctx & ctx, TableNumbering & numberi
                 node.save = &TableNodeSaveThunk<Ctx, ShipConfig>;
                 node.pack_bytes = +[]( const void * pack_ctx, const void * pack_node ) -> int64_t { return ShipConfigPackBytes( *(const Ctx *) pack_ctx, *(const ShipConfig *) pack_node ); };
                 node.pack_copy = +[]( const void * pack_ctx, const void * pack_src, void * pack_dst, uint8_t * pack_base, int64_t pack_capacity ) -> bool { return ShipConfigPackCopy( *(const Ctx *) pack_ctx, *(const ShipConfig *) pack_src, pack_dst, pack_base, pack_capacity ); };
-                node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return ShipConfigPackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const ShipConfig *) pack_src, *( ShipConfig * ) pack_dst, pack_base ); };
+                node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return ShipConfigPackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const ShipConfig *) pack_src, *(ShipConfig *) pack_dst, pack_base ); };
                 node.walk = +[]( const void * walk_ctx, TableNumbering & walk_numbering, const void * walk_node ) -> bool { return ShipConfigNumberEdges( *(const Ctx *) walk_ctx, walk_numbering, *(const ShipConfig *) walk_node ); };
                 node.close = false;
                 node.hint = 0;
@@ -18232,11 +18314,22 @@ inline bool FleetByIdEntryNumber( const Ctx & ctx, TableNumbering & numbering, c
             continue;
         }
         if ( !TableNumberingAppend( numbering, work ) ) { return false; }
-        if ( work.walk == NULL ) { TablePackMapClose( numbering.seen, work.node, slot ); continue; } // a blob reaches nothing
+        if ( work.walk == NULL )
+        {
+            TablePackMapClose( numbering.seen, work.node, slot );
+            continue;
+        } // a blob reaches nothing
         TableNodeEntry close;
-        close.node = work.node; close.type_id = 0; close.measure = NULL; close.save = NULL;
-        close.pack_bytes = NULL; close.pack_copy = NULL; close.pack_slots = NULL; close.walk = NULL;
-        close.close = true; close.hint = slot;
+        close.node = work.node;
+        close.type_id = 0;
+        close.measure = NULL;
+        close.save = NULL;
+        close.pack_bytes = NULL;
+        close.pack_copy = NULL;
+        close.pack_slots = NULL;
+        close.walk = NULL;
+        close.close = true;
+        close.hint = slot;
         if ( !TableNumberingWorkPush( numbering, close ) ) { return false; }
         const int64_t first = numbering.work_count;
         if ( !work.walk( (const void *) &ctx, numbering, work.node ) ) { return false; }
@@ -18346,11 +18439,22 @@ inline bool FleetLoadoutsEntryNumber( const Ctx & ctx, TableNumbering & numberin
             continue;
         }
         if ( !TableNumberingAppend( numbering, work ) ) { return false; }
-        if ( work.walk == NULL ) { TablePackMapClose( numbering.seen, work.node, slot ); continue; } // a blob reaches nothing
+        if ( work.walk == NULL )
+        {
+            TablePackMapClose( numbering.seen, work.node, slot );
+            continue;
+        } // a blob reaches nothing
         TableNodeEntry close;
-        close.node = work.node; close.type_id = 0; close.measure = NULL; close.save = NULL;
-        close.pack_bytes = NULL; close.pack_copy = NULL; close.pack_slots = NULL; close.walk = NULL;
-        close.close = true; close.hint = slot;
+        close.node = work.node;
+        close.type_id = 0;
+        close.measure = NULL;
+        close.save = NULL;
+        close.pack_bytes = NULL;
+        close.pack_copy = NULL;
+        close.pack_slots = NULL;
+        close.walk = NULL;
+        close.close = true;
+        close.hint = slot;
         if ( !TableNumberingWorkPush( numbering, close ) ) { return false; }
         const int64_t first = numbering.work_count;
         if ( !work.walk( (const void *) &ctx, numbering, work.node ) ) { return false; }
@@ -18445,7 +18549,7 @@ inline bool FleetNumberEdges( const Ctx & ctx, TableNumbering & numbering, const
                 node.save = &TableNodeSaveThunk<Ctx, ShipConfig>;
                 node.pack_bytes = +[]( const void * pack_ctx, const void * pack_node ) -> int64_t { return ShipConfigPackBytes( *(const Ctx *) pack_ctx, *(const ShipConfig *) pack_node ); };
                 node.pack_copy = +[]( const void * pack_ctx, const void * pack_src, void * pack_dst, uint8_t * pack_base, int64_t pack_capacity ) -> bool { return ShipConfigPackCopy( *(const Ctx *) pack_ctx, *(const ShipConfig *) pack_src, pack_dst, pack_base, pack_capacity ); };
-                node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return ShipConfigPackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const ShipConfig *) pack_src, *( ShipConfig * ) pack_dst, pack_base ); };
+                node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return ShipConfigPackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const ShipConfig *) pack_src, *(ShipConfig *) pack_dst, pack_base ); };
                 node.walk = +[]( const void * walk_ctx, TableNumbering & walk_numbering, const void * walk_node ) -> bool { return ShipConfigNumberEdges( *(const Ctx *) walk_ctx, walk_numbering, *(const ShipConfig *) walk_node ); };
                 node.close = false;
                 node.hint = 0;
@@ -18491,11 +18595,22 @@ inline bool FleetNumber( const Ctx & ctx, TableNumbering & numbering, const Flee
             continue;
         }
         if ( !TableNumberingAppend( numbering, work ) ) { return false; }
-        if ( work.walk == NULL ) { TablePackMapClose( numbering.seen, work.node, slot ); continue; } // a blob reaches nothing
+        if ( work.walk == NULL )
+        {
+            TablePackMapClose( numbering.seen, work.node, slot );
+            continue;
+        } // a blob reaches nothing
         TableNodeEntry close;
-        close.node = work.node; close.type_id = 0; close.measure = NULL; close.save = NULL;
-        close.pack_bytes = NULL; close.pack_copy = NULL; close.pack_slots = NULL; close.walk = NULL;
-        close.close = true; close.hint = slot;
+        close.node = work.node;
+        close.type_id = 0;
+        close.measure = NULL;
+        close.save = NULL;
+        close.pack_bytes = NULL;
+        close.pack_copy = NULL;
+        close.pack_slots = NULL;
+        close.walk = NULL;
+        close.close = true;
+        close.hint = slot;
         if ( !TableNumberingWorkPush( numbering, close ) ) { return false; }
         const int64_t first = numbering.work_count;
         if ( !work.walk( (const void *) &ctx, numbering, work.node ) ) { return false; }
@@ -18519,7 +18634,7 @@ inline bool FleetCycleSlots( const Ctx & ctx, TableCycle & cycle, const Fleet & 
     if ( !TableMapVisitStored( ctx, value.by_id, [&]( const FleetByIdEntry & entry )
     {
         return FleetByIdEntryCycleSlots( ctx, cycle, entry );
-    } ) ) { return false; }
+         } ) ) { return false; }
     if ( !TableCycleEdge( cycle, value.flagship ) ) { return false; } // flagship
     return true;
 }
@@ -18671,9 +18786,17 @@ inline bool FleetBuilder::Lock()
         for ( int64_t k = 0; ok && k < numbering.count; k++ )
         {
             const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
-            if ( bytes < 0 ) { ok = false; break; }
+            if ( bytes < 0 )
+            {
+                ok = false;
+                break;
+            }
             TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-            if ( entry == NULL ) { ok = false; break; }
+            if ( entry == NULL )
+            {
+                ok = false;
+                break;
+            }
             measured = TableAlignUp64( measured );
             entry->offset = measured;
             measured += bytes;
@@ -18697,9 +18820,17 @@ inline bool FleetBuilder::Lock()
         for ( int64_t k = 0; ok && k < numbering.count; k++ )
         {
             const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
-            if ( bytes < 0 ) { ok = false; break; }
+            if ( bytes < 0 )
+            {
+                ok = false;
+                break;
+            }
             TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-            if ( entry == NULL ) { ok = false; break; }
+            if ( entry == NULL )
+            {
+                ok = false;
+                break;
+            }
             used = TableAlignUp64( used );
             entry->offset = used;
             used += bytes;
@@ -18724,14 +18855,22 @@ inline bool FleetBuilder::Lock()
     for ( int64_t k = 0; ok && k < numbering.count; k++ )
     {
         const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-        if ( entry == NULL ) { ok = false; break; }
+        if ( entry == NULL )
+        {
+            ok = false;
+            break;
+        }
         ok = numbering.entries[k].pack_copy( (const void *) &ctx, numbering.entries[k].node, packed + entry->offset, packed, total );
     }
-    if ( ok ) { ok = FleetPackSlots( ctx, numbering.seen, root, *( Fleet * ) packed, packed ); }
+    if ( ok ) { ok = FleetPackSlots( ctx, numbering.seen, root, *(Fleet *) packed, packed ); }
     for ( int64_t k = 0; ok && k < numbering.count; k++ )
     {
         const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-        if ( entry == NULL ) { ok = false; break; }
+        if ( entry == NULL )
+        {
+            ok = false;
+            break;
+        }
         if ( numbering.entries[k].pack_slots != NULL ) { ok = numbering.entries[k].pack_slots( (const void *) &ctx, numbering.seen, numbering.entries[k].node, packed + entry->offset, packed ); } // a blob has no slots
     }
     TableNumberingShutdown( numbering );
@@ -19987,7 +20126,10 @@ inline int64_t FleetShipsEntryMeasureBodyRetain( TableRetainIds & ids, const Fle
         const int64_t body_value = ShipConfigMeasureBodyRetain( ids, value.value, retain, TableRetainStepInto( path, 1, (uint32_t) ( 0 ) ) );
         if ( body_value < 0 ) { return -1; }
         if ( body_value > 1 ) { bytes += TableLebBytes( ref_value ) + 1 + TableLebBytes( (uint64_t) ( body_value ) ) + ( body_value ); } // value
-        else { ids.truncate( mark_value ); } // an all-default nested table elides, and costs no entry
+        else
+        {
+            ids.truncate( mark_value );
+        } // an all-default nested table elides, and costs no entry
     }
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
@@ -20014,7 +20156,10 @@ MAPDEMO_TABLE_INLINE bool FleetShipsEntrySaveBodyRetain( TableWriter & w, TableR
             w.putleb( (uint64_t) body_value ); // value
             if ( !ShipConfigSaveBodyRetain( w, ids, value.value, retain, TableRetainStepInto( path, 1, (uint32_t) ( 0 ) ) ) ) return false;
         }
-        else { ids.truncate( mark_value ); }
+        else
+        {
+            ids.truncate( mark_value );
+        }
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -20362,7 +20507,10 @@ inline int64_t FleetLoadoutsEntryValueEntryMeasureBodyRetain( TableRetainIds & i
         const int64_t body_value = ItemMeasureBodyRetain( ids, value.value, retain, TableRetainStepInto( path, 1, (uint32_t) ( 0 ) ) );
         if ( body_value < 0 ) { return -1; }
         if ( body_value > 1 ) { bytes += TableLebBytes( ref_value ) + 1 + TableLebBytes( (uint64_t) ( body_value ) ) + ( body_value ); } // value
-        else { ids.truncate( mark_value ); } // an all-default nested table elides, and costs no entry
+        else
+        {
+            ids.truncate( mark_value );
+        } // an all-default nested table elides, and costs no entry
     }
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
@@ -20386,7 +20534,10 @@ MAPDEMO_TABLE_INLINE bool FleetLoadoutsEntryValueEntrySaveBodyRetain( TableWrite
             w.putleb( (uint64_t) body_value ); // value
             if ( !ItemSaveBodyRetain( w, ids, value.value, retain, TableRetainStepInto( path, 1, (uint32_t) ( 0 ) ) ) ) return false;
         }
-        else { ids.truncate( mark_value ); }
+        else
+        {
+            ids.truncate( mark_value );
+        }
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -20886,7 +21037,10 @@ inline int64_t FleetTiersEntryMeasureBodyRetain( TableRetainIds & ids, const Fle
         const int64_t body_value = ItemMeasureBodyRetain( ids, value.value, retain, TableRetainStepInto( path, 1, (uint32_t) ( 0 ) ) );
         if ( body_value < 0 ) { return -1; }
         if ( body_value > 1 ) { bytes += TableLebBytes( ref_value ) + 1 + TableLebBytes( (uint64_t) ( body_value ) ) + ( body_value ); } // value
-        else { ids.truncate( mark_value ); } // an all-default nested table elides, and costs no entry
+        else
+        {
+            ids.truncate( mark_value );
+        } // an all-default nested table elides, and costs no entry
     }
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
@@ -20910,7 +21064,10 @@ MAPDEMO_TABLE_INLINE bool FleetTiersEntrySaveBodyRetain( TableWriter & w, TableR
             w.putleb( (uint64_t) body_value ); // value
             if ( !ItemSaveBodyRetain( w, ids, value.value, retain, TableRetainStepInto( path, 1, (uint32_t) ( 0 ) ) ) ) return false;
         }
-        else { ids.truncate( mark_value ); }
+        else
+        {
+            ids.truncate( mark_value );
+        }
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body

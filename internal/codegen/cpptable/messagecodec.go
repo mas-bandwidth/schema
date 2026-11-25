@@ -747,11 +747,11 @@ func (g *tableGen) emitMessageArrayRides(f *ir.Field, ind string) {
 		g.pf("%sconst bool rides_%s = true; // position is identity in a fixed array of tables\n", ind, f.Name)
 	case tableScalarKind(f) == tkUnion:
 		g.pf("%sbool rides_%s = false;\n", ind, f.Name)
-		g.pf("%sfor ( int32_t i = 0; i < %d; i++ ) { if ( value.%s[i].type != %sType::None ) { rides_%s = true; break; } }\n",
+		g.pf("%sfor ( int32_t i = 0; i < %d; i++ )\n        {\n            if ( value.%s[i].type != %sType::None )\n            {\n                rides_%s = true;\n                break;\n            }\n        }\n",
 			ind, f.ArrayBound, f.Name, f.Type.Name, f.Name)
 	default:
 		g.pf("%sbool rides_%s = false;\n", ind, f.Name)
-		g.pf("%sfor ( int32_t i = 0; i < %d; i++ ) { if ( %s ) { rides_%s = true; break; } }\n",
+		g.pf("%sfor ( int32_t i = 0; i < %d; i++ )\n        {\n            if ( %s )\n            {\n                rides_%s = true;\n                break;\n            }\n        }\n",
 			ind, f.ArrayBound, g.fieldDiffers(f, "value."+f.Name+"[i]"), f.Name)
 	}
 }

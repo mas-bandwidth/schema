@@ -73,7 +73,7 @@ func (g *tableGen) emitMessageLoadBody(st *ir.Struct) {
 	g.pf("            default:\n")
 	// At our own announced build a foreign record's vocabulary entry cannot
 	// be a field of this record. Another build may have added it (§3.3).
-	g.pf("                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }\n")
+	g.pf("                if ( vocabulary.build_version == BuildVersion )\n                {\n                    report->damaged = true;\n                    return false;\n                }\n")
 	g.pf("                report->unknown++;\n")
 	g.pf("                if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )\n                {\n                    report->damaged = true;\n                    return false;\n                }\n")
 	g.pf("                break;\n")
@@ -646,16 +646,16 @@ func (g *tableGen) emitMessageReadScalarFromEntryChecked(f *ir.Field, lvalue, in
 			if f.HasDefault && f.DefBool {
 				defBit = 1
 			}
-			g.pf("%[1]s{ uint64_t raw%[2]s = 0; if ( !r.get( raw%[3]s, 1 ) || ( %[4]s && raw%[5]s == %[6]d ) )\n%[1]s{\n%[1]s    report->damaged = true;\n%[1]s    return false;\n%[1]s    } %[7]s = raw%[8]s != 0;\n%[1]s}\n", ind, sfx, sfx, gate, sfx, defBit, lvalue, sfx)
+			g.pf("%[1]s{\n                    uint64_t raw%[2]s = 0;\n                    if ( !r.get( raw%[3]s, 1 ) || ( %[4]s && raw%[5]s == %[6]d ) )\n%[1]s{\n%[1]s    report->damaged = true;\n%[1]s    return false;\n%[1]s    } %[7]s = raw%[8]s != 0;\n%[1]s}\n", ind, sfx, sfx, gate, sfx, defBit, lvalue, sfx)
 		} else {
 			g.pf("%[1]s{ uint64_t raw%[2]s = 0; if ( !r.get( raw%[3]s, 1 ) )\n%[1]s{\n%[1]s    report->damaged = true;\n%[1]s    return false;\n%[1]s    } %[4]s = raw%[5]s != 0;\n%[1]s}\n", ind, sfx, sfx, lvalue, sfx)
 		}
 		return
 	case tkF64:
 		if gate != "" {
-			g.pf("%[1]s{ uint64_t raw%[2]s = 0; if ( !r.get( raw%[3]s, 64 ) ) { report->damaged = true; return false; } if ( !TableBitsFinite64( raw%[4]s ) )\n%[1]s{\n%[1]s    TableNonFiniteFloat( report );\n%[1]s    return false;\n%[1]s    } const double decoded_d%[5]s = table_bits_to_double( raw%[6]s ); if ( %[7]s && ( %[8]s ) ) { report->damaged = true; return false; } %[9]s = decoded_d%[10]s;\n%[1]s}\n", ind, sfx, sfx, sfx, sfx, sfx, gate, g.fieldIsDefault(f, "decoded_d"+sfx), lvalue, sfx)
+			g.pf("%[1]s{ uint64_t raw%[2]s = 0; if ( !r.get( raw%[3]s, 64 ) ) { report->damaged = true; return false; } if ( !TableBitsFinite64( raw%[4]s ) )\n%[1]s{\n%[1]s    TableNonFiniteFloat( report );\n%[1]s    return false;\n%[1]s    }\n                    const double decoded_d%[5]s = table_bits_to_double( raw%[6]s );\n                    if ( %[7]s && ( %[8]s ) )\n                    {\n                        report->damaged = true;\n                        return false;\n                    }\n                    %[9]s = decoded_d%[10]s;\n%[1]s}\n", ind, sfx, sfx, sfx, sfx, sfx, gate, g.fieldIsDefault(f, "decoded_d"+sfx), lvalue, sfx)
 		} else {
-			g.pf("%[1]s{ uint64_t raw%[2]s = 0; if ( !r.get( raw%[3]s, 64 ) ) { report->damaged = true; return false; } if ( !TableBitsFinite64( raw%[4]s ) )\n%[1]s{\n%[1]s    TableNonFiniteFloat( report );\n%[1]s    return false;\n%[1]s    } %[5]s = table_bits_to_double( raw%[6]s );\n%[1]s}\n", ind, sfx, sfx, sfx, lvalue, sfx)
+			g.pf("%[1]s{ uint64_t raw%[2]s = 0; if ( !r.get( raw%[3]s, 64 ) ) { report->damaged = true; return false; } if ( !TableBitsFinite64( raw%[4]s ) )\n%[1]s{\n%[1]s    TableNonFiniteFloat( report );\n%[1]s    return false;\n%[1]s    }\n                            %[5]s = table_bits_to_double( raw%[6]s );\n%[1]s}\n", ind, sfx, sfx, sfx, lvalue, sfx)
 		}
 		return
 	case tkF32:
@@ -717,9 +717,9 @@ func (g *tableGen) emitMessageReadScalarFromEntryChecked(f *ir.Field, lvalue, in
 		if signed {
 			g.pf("%s    if ( %s != 1 && width%s > 0 && width%s < 64 )\n%s    {\n", ind, packing, sfx, sfx, ind)
 			g.pf("%s        const uint64_t sign%s = uint64_t(1) << ( width%s - 1 );\n", ind, sfx, sfx)
-			g.pf("%s        if ( ( raw%s & sign%s ) != 0 ) { raw%s = raw%s | ~( ( uint64_t(1) << width%s ) - 1 ); }\n", ind, sfx, sfx, sfx, sfx, sfx)
+			g.pf("%s        if ( ( raw%s & sign%s ) != 0 ) { raw%s = raw%s | ~( ( uint64_t( 1 ) << width%s ) - 1 ); }\n", ind, sfx, sfx, sfx, sfx, sfx)
 			g.pf("%s    }\n", ind)
-			g.pf("%s    serialize::uint128_t raw_v%s = ( serialize::uint128_t( (int64_t) raw%s < 0 ? ~uint64_t(0) : uint64_t(0) ) << 64 ) | serialize::uint128_t( raw%s );\n", ind, sfx, sfx, sfx)
+			g.pf("%s    serialize::uint128_t raw_v%s = ( serialize::uint128_t( (int64_t) raw%s < 0 ? ~uint64_t( 0 ) : uint64_t( 0 ) ) << 64 ) | serialize::uint128_t( raw%s );\n", ind, sfx, sfx, sfx)
 		} else {
 			g.pf("%s    serialize::uint128_t raw_v%s = serialize::uint128_t( raw%s );\n", ind, sfx, sfx)
 		}
@@ -766,7 +766,7 @@ func (g *tableGen) emitMessageReadScalarFromEntryChecked(f *ir.Field, lvalue, in
 	if signed {
 		g.pf("%s    else if ( width%s > 0 && width%s < 64 )\n%s    {\n", ind, sfx, sfx, ind)
 		g.pf("%s        const uint64_t sign%s = uint64_t(1) << ( width%s - 1 );\n", ind, sfx, sfx)
-		g.pf("%s        if ( ( raw%s & sign%s ) != 0 ) { decoded_wide%s = (int64_t) ( raw%s | ~( ( uint64_t(1) << width%s ) - 1 ) ); }\n", ind, sfx, sfx, sfx, sfx, sfx)
+		g.pf("%s        if ( ( raw%s & sign%s ) != 0 ) { decoded_wide%s = (int64_t) ( raw%s | ~( ( uint64_t( 1 ) << width%s ) - 1 ) ); }\n", ind, sfx, sfx, sfx, sfx, sfx)
 		g.pf("%s    }\n", ind)
 	}
 	// THE BOUND APPLIES WHILE THE VALUE IS STILL WIDE, and the narrowing

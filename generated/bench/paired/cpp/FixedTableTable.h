@@ -7154,7 +7154,10 @@ inline int64_t FixedTableMeasureBody( TableIds & ids, const FixedTable & value )
         const int64_t body_value = BenchMixedMeasureBody( ids, value.value );
         if ( body_value < 0 ) { return -1; }
         if ( body_value > 1 ) { bytes += TableLebBytes( ref_value ) + 1 + TableLebBytes( (uint64_t) ( body_value ) ) + ( body_value ); } // value
-        else { ids.truncate( mark_value ); } // an all-default nested table elides, and costs no entry
+        else
+        {
+            ids.truncate( mark_value );
+        } // an all-default nested table elides, and costs no entry
     }
     return bytes;
 }
@@ -7182,7 +7185,10 @@ BENCH_TABLE_INLINE bool FixedTableSaveBody( TableWriter & w, TableIds & ids, con
             w.putleb( (uint64_t) body_value ); // value
             if ( !BenchMixedSaveBody( w, ids, value.value ) ) return false;
         }
-        else { ids.truncate( mark_value ); }
+        else
+        {
+            ids.truncate( mark_value );
+        }
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
     return !w.overflow;
@@ -7515,7 +7521,11 @@ inline bool FixedTableLoadMessageBody( TableBitReader & r, const TableVocabulary
                 break;
             }
             default:
-                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
+                if ( vocabulary.build_version == BuildVersion )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 report->unknown++;
                 if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
@@ -8370,7 +8380,10 @@ inline int64_t FixedTableFixedSave( const FixedTable * values, int64_t count, ui
     TableFixedPut64( buffer + kTableFixedHashAt, FixedTableFixedHash );
     TableFixedPut32( buffer + kTableFixedHeaderBytes, (uint32_t) FixedTableFixedLayoutBytes );
     memcpy( buffer + kTableFixedHeaderBytes + 4, FixedTableFixedLayout, (size_t) FixedTableFixedLayoutBytes );
-    for ( int64_t k = 0; k < count; ++k ) { if ( !FixedTableFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        if ( !FixedTableFixedFiniteBody( values[k] ) ) { return -1; }
+    } // a NaN or an infinity is refused (§3.3)
     uint8_t * at = buffer + kTableFixedHeaderBytes + 4 + FixedTableFixedLayoutBytes;
     for ( int64_t k = 0; k < count; ++k )
     {
@@ -8390,16 +8403,19 @@ inline int64_t FixedTableFixedSave( const FixedTable * values, int64_t count, ui
 // R4: every refusal leaves ALL `capacity` rows at their declared defaults, so a direct call
 // holds the same rule as FixedLoad. The body below is the walk itself.
 inline int64_t FixedTableFixedLoadWalkBody( FixedTable * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
 inline int64_t FixedTableFixedLoadWalk( FixedTable * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
     const int64_t n = FixedTableFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
     if ( n < 0 || report->damaged || report->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { FixedTableReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { FixedTableReset( values[k] ); }
+        }
         return -1;
     }
     return n;
@@ -8408,7 +8424,7 @@ inline int64_t FixedTableFixedLoadWalk( FixedTable * values, int64_t capacity, c
 // FixedTableFixedLoadWalkBody is the STRICT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps
 // every recovered record, with the counters counted onto the report passed.
 inline int64_t FixedTableFixedLoadWalkBody( FixedTable * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
@@ -8425,8 +8441,8 @@ inline int64_t FixedTableFixedLoadWalkBody( FixedTable * values, int64_t capacit
     {
         report->refused = true;
         report->reason = data[0] == kTableWireForm ? TableMessageReason::previous_form
-                       : data[0] == kTableWireMessageForm ? TableMessageReason::message_form_as_file
-                       : TableMessageReason::newer_form;
+            : data[0] == kTableWireMessageForm     ? TableMessageReason::message_form_as_file
+                                                   : TableMessageReason::newer_form;
         return -1;
     }
     if ( bytes < kTableFixedHeaderBytes + 4 )
@@ -8440,7 +8456,12 @@ inline int64_t FixedTableFixedLoadWalkBody( FixedTable * values, int64_t capacit
     // spendable later.
     for ( int32_t i = 1; i < kTableFixedHashAt; ++i )
     {
-        if ( data[i] != 0 ) { report->damaged = true; report->reason = TableFixedReason::reserved_not_zero; return -1; }
+        if ( data[i] != 0 )
+        {
+            report->damaged = true;
+            report->reason = TableFixedReason::reserved_not_zero;
+            return -1;
+        }
     }
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
     if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes )
@@ -8479,7 +8500,9 @@ inline int64_t FixedTableFixedLoadWalkBody( FixedTable * values, int64_t capacit
     const TableFixedKnownLayout & known = FixedTableFixedKnown[lineage_at];
     if ( (int64_t) layout_bytes != known.layout_bytes || memcmp( layout, known.layout, (size_t) layout_bytes ) != 0 )
     {
-        report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1;
+        report->refused = true;
+        report->reason = TableMessageReason::layout_malformed;
+        return -1;
     }
     const TableFixedEntry * entries = FixedTableFixedPlan;
     int32_t entry_count = FixedTableFixedPlanCount;
@@ -8534,8 +8557,8 @@ inline int64_t FixedTableFixedLoadWalkBody( FixedTable * values, int64_t capacit
             int32_t compiled_guarded = 0;
             uint32_t fill_at = 0;
             const int32_t made = TableFixedCompile( parsed, FixedTableFixedLayout, (int32_t) FixedTableFixedLayoutBytes, FixedTableFixedDst,
-                                                   FixedTableFixedCover, FixedTableFixedCoverCount,
-                                                   dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
+                FixedTableFixedCover, FixedTableFixedCoverCount,
+                dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
             if ( made < 0 )
             {
                 report->refused = true;
@@ -8620,7 +8643,9 @@ inline int64_t FixedTableFixedLoadWalkBody( FixedTable * values, int64_t capacit
         {
             for ( int64_t j = 0; j < k; ++j ) { FixedTableReset( values[j] ); }
             report->widened = batch_widened;
-            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+            report->refused = true;
+            report->reason = TableMessageReason::no_layout;
+            return -1;
         }
         for ( int32_t i = 0; i < entry_count; ++i )
         {
@@ -8637,7 +8662,7 @@ inline int64_t FixedTableFixedLoadWalkBody( FixedTable * values, int64_t capacit
                         if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
                         {
                             matches = false;
-                            break;
+                                break;
                         }
                     }
                     if ( !matches ) { continue; }
@@ -8675,7 +8700,7 @@ inline int64_t FixedTableFixedLoadWalkBody( FixedTable * values, int64_t capacit
             return -1;
         }
         TableFixedClampKnownRanges( FixedTableFixedKnownRanges[lineage_at], FixedTableFixedKnownRangeCounts[lineage_at],
-                                    (uint8_t *) &values[k], report );
+            (uint8_t *) &values[k], report );
         if ( !FixedTableFixedClamp( values[k], report ) )
         {
             for ( int64_t j = 0; j <= k; ++j ) { FixedTableReset( values[j] ); }
@@ -8694,7 +8719,7 @@ inline int64_t FixedTableFixedLoadWalkBody( FixedTable * values, int64_t capacit
 // them, on EVERY refusal (R4), so no partial value survives. A supplied report receives THIS
 // read's report. unknown and widened alone never refuse.
 inline int64_t FixedTableFixedLoad( FixedTable * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     TableReport * out = report != NULL ? report : &local;
@@ -8702,7 +8727,10 @@ inline int64_t FixedTableFixedLoad( FixedTable * values, int64_t capacity, const
     const int64_t n = FixedTableFixedLoadWalk( values, capacity, data, bytes, plan, plan_capacity, cache, out );
     if ( n < 0 || out->damaged || out->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { FixedTableReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { FixedTableReset( values[k] ); }
+        }
         return -1;
     }
     return n;
