@@ -46,9 +46,10 @@ const conformanceFamilyPrefix = "conformance-"
 
 // conformance is the tables conformance harness's adapter mode
 // (test/conformance/harness/adapter.go): it builds the one leg's driver
-// (make conformance-leg-<lang>), runs the leg over every surface as
-// `harness run --only <lang> --claims` scores it, and answers each requested
-// case from that run.
+// (make conformance-leg-<lang>), runs the leg over the requested cases and
+// the cases their verdicts depend on (test/conformance/harness/scope.go) as
+// `harness run --only <lang> --claims` scores them, and answers each
+// requested case from that run.
 var conformance = harness{
 	Name: "conformance",
 	Build: func(lang string) [][]string {

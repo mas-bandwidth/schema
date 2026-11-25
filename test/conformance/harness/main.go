@@ -366,13 +366,13 @@ func main() {
 		if *lang == "" {
 			fatalf("adapter: --lang names the leg whose instances are on standard input")
 		}
-		legRunner := func(lang string) (legRun, error) {
+		legRunner := func(lang string, cases map[caseKey]bool) (legRun, error) {
 			set, err := claimsFor(m, *drivers, lang, true)
 			if err != nil {
 				return legRun{}, err
 			}
 			var got legRun
-			opts := runOptions{claims: set, strictRows: true, capture: func(results map[string]map[string]*result, legFailures map[string][]string) {
+			opts := runOptions{claims: set, strictRows: true, cases: cases, capture: func(results map[string]map[string]*result, legFailures map[string][]string) {
 				got = legRun{results: results[lang], legFailures: legFailures[lang]}
 			}}
 			// the matrix is the run's log: on stderr, never the protocol
