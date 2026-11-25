@@ -535,7 +535,8 @@ func wireFuzzAdapter(ctx context.Context, in io.Reader, out, log io.Writer, setu
 				}
 				mu.Lock()
 				seconds[j.req] += took
-				fmt.Fprintf(log, "wire-fuzz-adapter: %s [%s]: %s\n", q.Instance, cfg.Name, map[bool]string{true: "pass", false: "FAIL"}[why == ""])
+				// the log is the run's diagnostics; a result line, below, is checked
+				_, _ = fmt.Fprintf(log, "wire-fuzz-adapter: %s [%s]: %s\n", q.Instance, cfg.Name, map[bool]string{true: "pass", false: "FAIL"}[why == ""])
 				if count != "" {
 					counts[j.req] = append(counts[j.req], fmt.Sprintf("[%s] %s", cfg.Name, count))
 				}
@@ -575,7 +576,9 @@ func wireFuzzAdapter(ctx context.Context, in io.Reader, out, log io.Writer, setu
 			}
 			r.Reason = named
 		}
-		fmt.Fprintln(bw, testreg.FormatResult(r))
+		if _, err := fmt.Fprintln(bw, testreg.FormatResult(r)); err != nil {
+			return err
+		}
 	}
 	return bw.Flush()
 }
