@@ -5,7 +5,7 @@ Part of the specification: every test of tier `functional`, from the test regist
 
 **Tier functional:** uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it.
 
-Functional tests every language answers: 2468. Language-free tests: 2245.
+Functional tests every language answers: 2468. Language-free tests: 2244.
 
 Run this tier for a language with `schema-test run --tier functional --lang L`, one test with `schema-test run <full name>`.
 
@@ -5149,11 +5149,11 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.functional.tooling.bench-tools.render-awk-and-the-pair-lock-agree-on-the-same-sitting` | `gotest` | Go test TestRenderAwkAndThePairLockAgreeOnTheSameSitting in ./bench/tools | `package: ./bench/tools`<br>`test: TestRenderAwkAndThePairLockAgreeOnTheSameSitting` | the Go test passes | `bench/tools/ledger_test.go:425` |
 | `none.functional.tooling.bench-tools.table-pass-interleaves-after-every-build` | `gotest` | Go test TestTablePassInterleavesAfterEveryBuild in ./bench/tools | `package: ./bench/tools`<br>`test: TestTablePassInterleavesAfterEveryBuild` | the Go test passes | `bench/tools/table_pass_test.go:44` |
 | `none.functional.tooling.bench-tools.table-pass-refuses-failed-producer-without-publishing-rows` | `gotest` | Go test TestTablePassRefusesFailedProducerWithoutPublishingRows in ./bench/tools | `package: ./bench/tools`<br>`test: TestTablePassRefusesFailedProducerWithoutPublishingRows` | the Go test passes | `bench/tools/table_pass_test.go:63` |
+| `none.functional.tooling.bench-tools.table-pass-refuses-unavailable-scaffold` | `gotest` | Go test TestTablePassRefusesUnavailableScaffold in ./bench/tools | `package: ./bench/tools`<br>`test: TestTablePassRefusesUnavailableScaffold` | the Go test passes | `bench/tools/table_pass_test.go:98` |
 | `none.functional.tooling.bench-tools.table-pass-requires-every-requested-language` | `gotest` | Go test TestTablePassRequiresEveryRequestedLanguage in ./bench/tools | `package: ./bench/tools`<br>`test: TestTablePassRequiresEveryRequestedLanguage` | the Go test passes | `bench/tools/table_pass_test.go:79` |
-| `none.functional.tooling.bench-tools.table-pass-skips-unavailable-scaffold-only-during-discovery` | `gotest` | Go test TestTablePassSkipsUnavailableScaffoldOnlyDuringDiscovery in ./bench/tools | `package: ./bench/tools`<br>`test: TestTablePassSkipsUnavailableScaffoldOnlyDuringDiscovery` | the Go test passes | `bench/tools/table_pass_test.go:94` |
 | `none.functional.tooling.bench-tools.two-regressed-files-in-one-commit-cannot-reset-the-axis` | `gotest` | Go test TestTwoRegressedFilesInOneCommitCannotResetTheAxis in ./bench/tools | `package: ./bench/tools`<br>`test: TestTwoRegressedFilesInOneCommitCannotResetTheAxis` | the Go test passes | `bench/tools/ledger_test.go:279` |
 
-#### `tooling` family `ci`, 59 tests
+#### `tooling` family `ci`, 58 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -5207,7 +5207,6 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.functional.tooling.ci.schema-ruby-hostile-corpus-planted-reader` | `gotest` | Go test TestSchemaRubyHostileCorpusPlantedReader in ./internal/ci | `package: ./internal/ci`<br>`test: TestSchemaRubyHostileCorpusPlantedReader` | the Go test passes | `internal/ci/schema_ruby_runs_hostile_corpus_test.go:529` |
 | `none.functional.tooling.ci.schema-ruby-resource-bounds-hostile-shapes` | `gotest` | Go test TestSchemaRubyResourceBoundsHostileShapes in ./internal/ci | `package: ./internal/ci`<br>`test: TestSchemaRubyResourceBoundsHostileShapes` | the Go test passes | `internal/ci/schema_ruby_runs_hostile_corpus_test.go:769` |
 | `none.functional.tooling.ci.schema-ruby-resource-bounds-planted-pattern` | `gotest` | Go test TestSchemaRubyResourceBoundsPlantedPattern in ./internal/ci | `package: ./internal/ci`<br>`test: TestSchemaRubyResourceBoundsPlantedPattern` | the Go test passes | `internal/ci/schema_ruby_runs_hostile_corpus_test.go:797` |
-| `none.functional.tooling.ci.schema-squirrel-all-port-differential` | `gotest` | Go test TestSchemaSquirrelAllPortDifferential in ./internal/ci | `package: ./internal/ci`<br>`test: TestSchemaSquirrelAllPortDifferential` | the Go test passes | `internal/ci/schema_squirrel_all_port_differential_test.go:548` |
 | `none.functional.tooling.ci.serialize-fetch-tries-the-mirror-first` | `gotest` | Go test TestSerializeFetchTriesTheMirrorFirst in ./internal/ci | `package: ./internal/ci`<br>`test: TestSerializeFetchTriesTheMirrorFirst` | the Go test passes | `internal/ci/serializefetch_test.go:33` |
 | `none.functional.tooling.ci.serialize-go-runtime-when-the-sibling-arrives-mid-run` | `gotest` | Go test TestSerializeGoRuntimeWhenTheSiblingArrivesMidRun in ./internal/ci | `package: ./internal/ci`<br>`test: TestSerializeGoRuntimeWhenTheSiblingArrivesMidRun` | the Go test passes | `internal/ci/serializegorace_test.go:30` |
 | `none.functional.tooling.ci.siblings-present-make-deps-fetches-nothing` | `gotest` | Go test TestSiblingsPresentMakeDepsFetchesNothing in ./internal/ci | `package: ./internal/ci`<br>`test: TestSiblingsPresentMakeDepsFetchesNothing` | the Go test passes | `internal/ci/siblings_test.go:119` |

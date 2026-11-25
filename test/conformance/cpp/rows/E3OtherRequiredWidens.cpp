@@ -21,7 +21,7 @@
 //   The production caller is the generated reader's load function, reached
 //   exactly as test/tables/versioning_numbers.cpp:uint_widen_case() reaches it
 //   (versioning_numbers.cpp:604), and as the conformance driver reaches every
-//   FixedLoad (test/conformance/cpp/main.cpp:981 via the VarCodec::load column).
+//   FixedLoad (test/conformance/cpp/driver.h, VARCODEC, via the VarCodec::load column).
 //
 // NEGATIVE CONTROL: forge the writer's uint16 value's HIGH byte from 0xFF to 0x80
 //   (0xFFFF → 0x80FF) so that a sign-extension would produce 0xFFFFFFFF instead

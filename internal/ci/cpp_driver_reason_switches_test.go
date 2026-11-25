@@ -50,17 +50,44 @@ func TestCPPDriverReasonSwitchesNameEveryRefusal(t *testing.T) {
 	if len(reasons) == 0 {
 		t.Fatal("tables/goruntime/goruntime.go declares no TableRefuseReason constants; this gate scanned nothing")
 	}
-	for _, driver := range []string{
-		filepath.Join("test", "tables", "cook_main.cpp"),
-		filepath.Join("test", "conformance", "cpp", "main.cpp"),
-	} {
-		data, err := os.ReadFile(filepath.Join(root, driver))
+	cook := filepath.Join("test", "tables", "cook_main.cpp")
+	data, err := os.ReadFile(filepath.Join(root, cook))
+	if err != nil {
+		t.Fatalf("read %s: %v", cook, err)
+	}
+	for _, finding := range checkReasonNameSwitches(cook, string(data), reasons) {
+		t.Error(finding)
+	}
+	// the conformance driver is every unit and header under
+	// test/conformance/cpp (main.cpp was split into units): each switch in
+	// any of them is checked, and the driver as a whole must have one
+	var units []string
+	for _, glob := range []string{"*.cpp", "*.h"} {
+		m, err := filepath.Glob(filepath.Join(root, "test", "conformance", "cpp", glob))
 		if err != nil {
-			t.Fatalf("read %s: %v", driver, err)
+			t.Fatal(err)
 		}
-		for _, finding := range checkReasonNameSwitches(driver, string(data), reasons) {
-			t.Error(finding)
+		units = append(units, m...)
+	}
+	if len(units) == 0 {
+		t.Fatal("test/conformance/cpp holds no .cpp or .h: this gate scanned nothing")
+	}
+	switches := 0
+	for _, path := range units {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
 		}
+		if n := len(reasonNameSwitchRe.FindAllStringIndex(string(data), -1)); n > 0 {
+			switches += n
+			rel, _ := filepath.Rel(root, path)
+			for _, finding := range checkReasonNameSwitches(rel, string(data), reasons) {
+				t.Error(finding)
+			}
+		}
+	}
+	if switches == 0 {
+		t.Error("test/conformance/cpp: no unit has a reason_name( <ns>::TableRefuseReason ) switch")
 	}
 
 	// REVERSED WITNESS: the same check over an in-memory driver must go red on

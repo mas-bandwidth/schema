@@ -31,8 +31,6 @@ needs ./internal/codegen/unitytable .* tables-fixedform-corpus
 needs ./internal/fixedproof .* tables-fixedform-corpus
 needs ./internal/fixedvector .* tables-fixedform-corpus
 
-# the all-port differential's answer tree, build/conformance-differential
-needs ./internal/ci TestSchemaSquirrelAllPortDifferential schema-squirrel-all-port-differential-harness
 
 # Nested modules whose go.mod replaces its imports with generated trees under
 # build/ (fullrun runs them with go -C <module>): the build that writes those

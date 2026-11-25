@@ -80,7 +80,7 @@ func TestFixedDeadBytesAreZero(t *testing.T) {
 				t.Fatal(err)
 			}
 			r := runDeadBytesProbe(t, javaBin, nestedClasses, nestedPkg, nestedRoot, file)
-			if r.n == 1 && !r.refused && !r.damaged {
+			if r.n == 1 && !r.refused {
 				t.Fatal("nested lineage reader accepted non-zero union dead bytes")
 			}
 			if !r.reset {
@@ -129,7 +129,7 @@ fixed table Root
 
 func checkDeadBytesResult(t *testing.T, vec fixedvector.DeadVector, r deadProbeRun, reader string, saveBack bool) {
 	t.Helper()
-	read := r.n == 1 && !r.refused && !r.damaged
+	read := r.n == 1 && !r.refused
 	if !vec.Reads {
 		if read {
 			t.Fatalf("%s reader: %s read the file, want a refusal", reader, vec.File)
@@ -142,7 +142,7 @@ func checkDeadBytesResult(t *testing.T, vec fixedvector.DeadVector, r deadProbeR
 		return
 	}
 	if !read {
-		t.Fatalf("%s reader: %s control did not read: n=%d refused=%v damaged=%v", reader, vec.File, r.n, r.refused, r.damaged)
+		t.Fatalf("%s reader: %s control did not read: n=%d refused=%v", reader, vec.File, r.n, r.refused)
 	}
 	if saveBack && !r.saved {
 		t.Fatalf("%s reader: %s control did not save back byte for byte (written=%d file=%d)", reader, vec.File, r.written, r.file)
@@ -330,7 +330,7 @@ func nestedDeadBytesFile(writer FixedLineageEntry, innerTag byte, deadAt int) []
 
 type deadProbeRun struct {
 	n, written, file int
-	refused, damaged bool
+	refused          bool
 	saved            bool
 	before, value    map[string]string
 	fresh            map[string]string
@@ -348,7 +348,7 @@ func runDeadBytesProbe(t *testing.T, javaBin, classes, pkg, root, file string) d
 	for line := range strings.SplitSeq(string(out), "\n") {
 		switch {
 		case strings.HasPrefix(line, "REPORT "):
-			r.n, r.refused, r.damaged = parseDeadReport(line)
+			r.n, r.refused = parseDeadReport(line)
 		case strings.HasPrefix(line, "BEFORE "):
 			k, v, _ := strings.Cut(strings.TrimPrefix(line, "BEFORE "), "=")
 			r.before[k] = v
@@ -370,7 +370,7 @@ func runDeadBytesProbe(t *testing.T, javaBin, classes, pkg, root, file string) d
 	return r
 }
 
-func parseDeadReport(line string) (n int, refused, damaged bool) {
+func parseDeadReport(line string) (n int, refused bool) {
 	for tok := range strings.FieldsSeq(strings.TrimPrefix(line, "REPORT ")) {
 		k, v, ok := strings.Cut(tok, "=")
 		if !ok {
@@ -381,11 +381,9 @@ func parseDeadReport(line string) (n int, refused, damaged bool) {
 			fmt.Sscanf(v, "%d", &n)
 		case "refused":
 			refused = v == "true"
-		case "damaged":
-			damaged = v == "true"
 		}
 	}
-	return n, refused, damaged
+	return n, refused
 }
 
 func parseDeadSave(line string) (match bool, written, file int) {
@@ -430,10 +428,9 @@ public final class DeadProbe {
             %s.TableFixed.plan(1 << 14), new short[1 << 14], %s.%sFixed.image(), report);
         out.append("REPORT n=").append(n)
            .append(" refused=").append(report.refused)
-           .append(" damaged=").append(report.damaged)
            .append('\n');
         dump("VALUE", vals[0]);
-        if (n == 1 && !report.refused && !report.damaged) {
+        if (n == 1 && !report.refused) {
             byte[] back = new byte[%s.%sFixed.measure(1)];
             int w = %s.%sFixed.save(vals, 1, back);
             boolean match = w == data.length && java.util.Arrays.equals(back, data);

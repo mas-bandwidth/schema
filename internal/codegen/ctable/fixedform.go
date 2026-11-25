@@ -185,6 +185,7 @@ func (g *tableGen) emitFixedForm(members []*ir.Struct) {
 	/* THE WRITE CHECK, the same bounds over const storage (docs/SPEC.md §5.1),
 	   in the same post-order. */
 	checkSeen := map[string]bool{}
+	admitted := map[string]bool{}
 	for _, st := range own {
 		checkSeen[st.Name] = true
 		g.emitFixedWriteCheckBodyFn(st)
@@ -202,13 +203,26 @@ func (g *tableGen) emitFixedForm(members []*ir.Struct) {
 			}
 		}
 		for _, st := range refused {
+			admitted[st.Name] = true
 			g.emitWriteAdmits(st)
 		}
 	}
 	for _, st := range roots {
+		admitted[st.Name] = true
 		g.emitWriteAdmits(st)
 		g.emitFixedClamp(st)
 		g.emitFixedRoot(st)
+	}
+	// EVERY TYPE IN THE CLOSURE TOO: each one this file declares has its own
+	// SaveMessages (message_save.go), which asserts the type's write check per
+	// value, and its declaration (wire.go) stands for every bounded struct; a
+	// declaration with no definition is "used but never defined" under -Werror.
+	// The body it calls is emitted above for every type in own.
+	for _, st := range own {
+		if !admitted[st.Name] {
+			admitted[st.Name] = true
+			g.emitWriteAdmits(st)
+		}
 	}
 }
 

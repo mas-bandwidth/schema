@@ -14717,7 +14717,7 @@ in build version (§20.5).
   FixedResetImage  FixedHoles  FixedLineageHoles  FixedPlanMax  FixedReadPlan  FixedLoadWalk  GenPastBound
   FixedDecode  FixedPrefill  FixedIdentity  FixedNewPlan  FixedHashLo  FixedHashHi
   FixedDstCopy  FixedIdentityCopy  FixedLayoutCopy  FixedPrefillCopy
-  FixedKnown  FixedFloor  FixedLineagePlans  FixedBoundsKnown
+  FixedKnown  FixedFloor  FixedLineagePlans  FixedKnownViews  FixedBoundsKnown
   ```
 
   The Go templates also use Add, Erase, Each, Insert, Find,
@@ -14758,6 +14758,10 @@ in build version (§20.5).
   They are per-declaration for the same reason the identity plan is: a lineage
   belongs to ONE table and a unit can declare several, so a name that is free
   today must not become a collision the day a second root is added.
+  `FixedKnownViews` rides with them: the JavaScript leg's one `DataView` per
+  lineage entry over the lock's layout bytes, made once at module load beside
+  `FixedKnown` so each entry carries only FIXED-FORM-ALGORITHM §5.9 #19's
+  members. It is per-declaration module data and is claimed on the same rule.
 
   The `Fixed` rows are §3.4's, and they are claimed on this list's own rule:
   nothing declares the fixed form, every table whose closure §3.4 lays out

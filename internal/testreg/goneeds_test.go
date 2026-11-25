@@ -14,8 +14,7 @@ import (
 // builtReads is each build output a Go test opens by path and does not make
 // itself, and the make target that writes it.
 var builtReads = map[string]string{
-	"fixedform-corpus":         "tables-fixedform-corpus",
-	"conformance-differential": "schema-squirrel-all-port-differential-harness",
+	"fixedform-corpus": "tables-fixedform-corpus",
 }
 
 // TestEveryBuiltReadIsDeclared: a package whose Go tests open a build output

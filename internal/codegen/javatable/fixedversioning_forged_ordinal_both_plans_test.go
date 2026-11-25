@@ -61,9 +61,6 @@ func TestFixedVersioningForgedOrdinalBothPlans(t *testing.T) {
 		if !probe.r.refused || probe.r.reason != "outOfRange" {
 			t.Errorf("%s: refused=%v reason=%s, want a refusal named outOfRange", probe.which, probe.r.refused, probe.r.reason)
 		}
-		if probe.r.damaged {
-			t.Errorf("%s: damaged=%v, want false: a forged value is a refusal, never framing damage", probe.which, probe.r.damaged)
-		}
 		if probe.r.unknown != 0 || probe.r.widened != 0 {
 			t.Errorf("%s: counters moved: unknown=%d widened=%d, want all 0",
 				probe.which, probe.r.unknown, probe.r.widened)

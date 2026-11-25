@@ -217,8 +217,8 @@ public final class FixedDriver_ROOT {
         PKG.ROOTFixed.Value[] values = { new PKG.ROOTFixed.Value() };
         PKG.TableFixed.Report fr = new PKG.TableFixed.Report();
         int read = PKG.ROOTFixed.load(values, 1, wire, PKG.TableFixed.plan(1 << 14), new short[1 << 14], PKG.ROOTFixed.image(), fr);
-        if (read != 1 || fr.refused || fr.damaged || fr.unknown != 0 || fr.widened != 0) {
-            fail("fixed load: read=" + read + " refused=" + fr.refused + " damaged=" + fr.damaged + " reason=" + fr.reason + " unknown=" + fr.unknown + " widened=" + fr.widened);
+        if (read != 1 || fr.refused || fr.unknown != 0 || fr.widened != 0) {
+            fail("fixed load: read=" + read + " refused=" + fr.refused + " reason=" + fr.reason + " unknown=" + fr.unknown + " widened=" + fr.widened);
         }
         byte[] saved = new byte[PKG.ROOTFixed.measure(1)];
         int wrote = PKG.ROOTFixed.save(values, 1, saved);

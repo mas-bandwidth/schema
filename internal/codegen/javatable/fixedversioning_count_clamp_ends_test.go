@@ -72,8 +72,8 @@ func TestFixedVersioningCountClampEnds(t *testing.T) {
 
 	// The unforged file still reads: each refusal above is a refusal OF A FORGE.
 	r := runProbe(t, classes, "Probe_reads", oldFile)
-	if r.n != 1 || r.refused || r.damaged {
-		t.Errorf("the unforged file does not read: n=%d refused=%v reason=%s damaged=%v", r.n, r.refused, r.reason, r.damaged)
+	if r.n != 1 || r.refused {
+		t.Errorf("the unforged file does not read: n=%d refused=%v reason=%s", r.n, r.refused, r.reason)
 	}
 	if got := r.value["valsCount"]; got != "4" {
 		t.Errorf("valsCount=%s, want the writer's 4 on the unforged file", got)

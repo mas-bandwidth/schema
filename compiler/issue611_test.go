@@ -22,7 +22,7 @@ import (
 // field. The Go and C# walkers carried the narrow and landed 0.
 func TestIssue611JsonUnsignedOverflowLandsCeiling(t *testing.T) {
 	t.Parallel()
-	src := `package p
+	src := `package issue611
 fixed table Ship
 {
     experience uint32 = 0
@@ -52,7 +52,7 @@ fixed table Ship
 		if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte(gomod), 0644); err != nil {
 			t.Fatal(err)
 		}
-		testSrc := `package p
+		testSrc := `package issue611
 
 import "testing"
 
@@ -110,7 +110,7 @@ func TestIssue611(t *testing.T) {
 		}
 		program := `using System;
 using System.Text;
-using P;
+using Issue611;
 
 class Program {
     static int Main() {
