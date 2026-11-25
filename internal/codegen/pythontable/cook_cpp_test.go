@@ -10,7 +10,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpptable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -19,7 +18,6 @@ import (
 // generated C++ in both byte orders, under both pinned interpreters.
 func TestPythonCookCppIdentity(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "generated C++ and both pinned Python interpreters")
 	u := loadUnit(t, `package cookcpp
 enum Shade { Red, Blue, Green }
 flags Traits { Fast, Strong }

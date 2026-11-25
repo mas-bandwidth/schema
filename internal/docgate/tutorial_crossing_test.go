@@ -67,7 +67,6 @@ type crossingStep struct {
 }
 
 func TestTutorialGoCrossing(t *testing.T) {
-	slowtest.Gate(t, "go, c++ and the CLI it builds (it walks the tutorial's Go crossing)")
 	root, err := FindRoot(".")
 	if err != nil {
 		t.Fatal(err)

@@ -8,7 +8,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -60,7 +59,6 @@ func parseBitsWidthUnit(t *testing.T) *ir.Unit {
 // is dormant without -ea, like the other Java write contracts.
 func TestJavaWriteAssertsBitsWidth(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "javac")
 
 	files, err := Generate(parseBitsWidthUnit(t))
 	if err != nil {

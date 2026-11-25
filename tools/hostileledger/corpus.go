@@ -2,8 +2,8 @@
 // replayed over (testdata/ledger-corpus).
 //
 // A finding against the ledger is a runner log and the verdict it owes. Each
-// case is a log (<id>/log.txt, with the held lists it is checked under beside
-// it) over the small registry in corpus/, and CASES.tsv gives its verdict:
+// case is a log (<id>/log.txt) over the small registry in corpus/, and
+// CASES.tsv gives its verdict:
 // `pass`, or `red:` and words the refusal must say. The unit test
 // (TestLedgerCorpus) and `hostileledger -ledger-corpus` read the same files;
 // `make hostile-ledger-corpus` runs the second, and the generated-Go
@@ -12,7 +12,6 @@
 //
 //	CASES.tsv   id <TAB> verdict <TAB> flags <TAB> what the case is
 //	            flags, space separated or `-`: runs=N  rows=<carrier>=<row>,<row>
-//	            skips (read <id>/skips.tsv)  carriers (read <id>/carriers.tsv)
 //	            crlf (check the log with CRLF line endings)
 //	            registry (hold the log to <id>/registry/ in place of corpus/)
 package main
@@ -67,7 +66,7 @@ func readLedgerCorpus(dir string) ([]ledgerCase, error) {
 
 // runLedgerCase checks one case's log and holds the outcome to its verdict.
 func runLedgerCase(dir string, c ledgerCase, scratch string) error {
-	runs, rows, skips, carriers, crlf := 1, "", "", "", false
+	runs, rows, crlf := 1, "", false
 	registry := filepath.Join(dir, "corpus")
 	if c.flags != "-" {
 		for flag := range strings.FieldsSeq(c.flags) {
@@ -81,10 +80,6 @@ func runLedgerCase(dir string, c ledgerCase, scratch string) error {
 				runs = n
 			case "rows":
 				rows = value
-			case "skips":
-				skips = filepath.Join(dir, c.id, "skips.tsv")
-			case "carriers":
-				carriers = filepath.Join(dir, c.id, "carriers.tsv")
 			case "registry":
 				registry = filepath.Join(dir, c.id, "registry")
 			case "crlf":
@@ -107,7 +102,7 @@ func runLedgerCase(dir string, c ledgerCase, scratch string) error {
 	} else if _, err := os.Stat(logPath); err != nil {
 		return err
 	}
-	out, err := check("corpus", registry, logPath, runs, skips, carriers, rows)
+	out, err := check("corpus", registry, logPath, runs, rows)
 	if c.verdict == "pass" {
 		if err != nil {
 			return fmt.Errorf("the case owes a pass and the ledger is red: %w", err)

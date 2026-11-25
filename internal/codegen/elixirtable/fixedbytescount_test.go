@@ -19,7 +19,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -209,7 +208,6 @@ IO.puts("ELIXIR_FIXED_BYTES_COUNT_OK")
 
 func TestElixirFixedBytesCountFillsItsLength(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 
 	real, err := os.ReadFile(filepath.Join("..", "..", "..", "testdata", "wire", "tables", "map_text.bin"))
 	if err != nil {

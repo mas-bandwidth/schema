@@ -736,7 +736,7 @@ async function run(corpus, genDir, serializeJs, findingsPath) {
     }
   }
   const all = caseRows(cases);
-  const skipped = all.filter((r) => !CARRIERS.has(r.carrier));
+  const noReader = all.filter((r) => !CARRIERS.has(r.carrier));
   const live = all.filter((r) => CARRIERS.has(r.carrier));
   const schemas = [...new Set(live.map((r) => r.schema))];
   const data = { genDir: resolve(genDir), serializeJs: resolve(serializeJs), schemas };
@@ -751,15 +751,15 @@ async function run(corpus, genDir, serializeJs, findingsPath) {
   let passed = 0, carried = 0;
   const bad = [], stale = [], unbound = [];
   const seen = new Set(all.map((r) => r.id));
-  for (const r of skipped) {
-    console.log(`SKIP ${r.id}: carrier ${r.carrier} has no JavaScript reader`);
+  for (const r of noReader) {
+    console.log(`FAIL ${r.id}: carrier ${r.carrier} has no JavaScript reader`);
   }
   // THE LEDGER (docs/HOSTILE-CORPUS.md): one line per ROW a reader answered,
   // by the row's id (the case's name, and for a packet case its tier and mode). tools/hostileledger holds the lines to the corpus
   // folder, and it owes the rows from the folder, never from caseRows above:
   // one per case, and one per tier and mode for a packet case. A case this
   // file's own enumerator made no row for is therefore a case not run, and a
-  // skipped or unbound row leaves its case short.
+  // row with no reader or an unbound row leaves its case short, and fails.
   const ranRows = [];
   live.forEach((row, i) => {
     const got = answers[i];
@@ -797,7 +797,7 @@ async function run(corpus, genDir, serializeJs, findingsPath) {
     }
   }
   console.log(`${cases.length} cases, ${all.length} rows: ${passed} pass, ${carried} carried as FIX-CARD, ` +
-    `${bad.length} unexplained, ${stale.length} stale, ${skipped.length} skipped, ${unbound.length} unbound`);
+    `${bad.length} unexplained, ${stale.length} stale, ${noReader.length} with no reader, ${unbound.length} unbound`);
   for (const id of ranRows) {
     console.log(`hostile-ledger ran ${id}`);
   }
@@ -805,8 +805,8 @@ async function run(corpus, genDir, serializeJs, findingsPath) {
   // One unit per manifest row that reached a reader. tools/mustrun holds the
   // count to the one the recipe registers for the committed corpus, so an
   // emptied or shortened manifest is red; a row no JavaScript reader carries
-  // is a failure here, never a quiet skip.
-  const failed = bad.length + stale.length + unbound.length + skipped.length;
+  // is a failure here.
+  const failed = bad.length + stale.length + unbound.length + noReader.length;
   console.log(`ran ${live.length}, failed ${failed}`);
   process.exit(failed > 0 || live.length === 0 ? 1 : 0);
 }

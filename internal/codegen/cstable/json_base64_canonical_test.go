@@ -10,7 +10,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -26,7 +25,6 @@ import (
 // come first, as the engine pins in internal/tabletext/base64escape_test.go.
 func TestCSJsonBase64Canonical(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the .NET SDK")
 
 	const schemaSrc = `package probe
 table Chunk {

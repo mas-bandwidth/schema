@@ -31,7 +31,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/moo/moorun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/mootable"
 	"github.com/mas-bandwidth/schema/v2/internal/lockfile"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -550,7 +549,6 @@ func TestSchemaMooHostileScorerOutcomes(t *testing.T) {
 // finding whose fix card and actual verdict are pinned here.
 func TestSchemaMooRunsHostileCorpus(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "moo (the pinned release)")
 	root := repoRoot(t)
 	corpusDir := mooHostileCorpusDir(root)
 	cases := mooHostileCorpusCases(t, corpusDir)
@@ -574,7 +572,6 @@ func TestSchemaMooRunsHostileCorpus(t *testing.T) {
 // verdict alone), and no other.
 func TestSchemaMooRunsHostileCorpusPlantedReader(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "moo (the pinned release)")
 	root := repoRoot(t)
 	corpusDir := mooHostileCorpusDir(root)
 	cases := mooHostileCorpusCases(t, corpusDir)

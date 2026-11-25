@@ -103,23 +103,16 @@ int main( void )
 // value agree with internal/tabletext for the same token.
 func TestCppTextFixedPointTokenExact(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the C++ compiler (it compiles and runs the generated unit)")
 	cxx := os.Getenv("CXX")
 	if cxx == "" {
 		cxx = "c++"
 	}
 	if _, err := exec.LookPath(cxx); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and %s is not found: %v", cxx, err)
-		}
-		t.Skipf("%s: %v", cxx, err)
+		t.Fatalf("%s is not found: %v", cxx, err)
 	}
 	serialize, ok := cppSerializeDir(t)
 	if !ok {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("the sibling runtime serialize is absent at %s: the generated header's 128-bit storage does not resolve", serialize)
-		}
-		t.Skipf("named as not run: the sibling serialize runtime is not staged at %s", serialize)
+		t.Fatalf("the sibling runtime serialize is absent at %s: the generated header's 128-bit storage does not resolve", serialize)
 	}
 	u := t02CppUnit(t, cppTextFixedExactSchema)
 	files, err := cpp.Generate(u)

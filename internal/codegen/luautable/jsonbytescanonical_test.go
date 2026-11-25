@@ -14,7 +14,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // THE JSON READ ACCEPTS ONLY CANONICAL BASE64 (docs/SPEC-TABLES.md §16.2 and
@@ -90,7 +89,6 @@ func jsonBytesWant(t *testing.T, row jsonBytesVectorRow) []byte {
 
 func TestLuauJsonBytesReadCanonicalBase64Only(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter (it reads every shared base64 vector)")
 	rows := readJSONBytesVectors(t)
 	if len(rows) == 0 {
 		t.Fatal("the shared base64 vectors are empty")

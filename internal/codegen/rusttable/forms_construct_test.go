@@ -10,7 +10,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -58,7 +57,6 @@ func rustFormsProbe(t *testing.T, files map[string][]byte, body string) {
 }
 
 func TestRustDeclaredFormsNative(t *testing.T) {
-	slowtest.Gate(t, "rustc (all eight declared form masks)")
 	keyedRequireRustc(t)
 	for mask := range 8 {
 		t.Run(fmt.Sprint(mask), func(t *testing.T) {
@@ -123,7 +121,6 @@ let mut storage=vec![TableMessageEntry::default();64];let mut vocab=TableVocabul
 }
 
 func TestRustDeclaredFormsMixedClosure(t *testing.T) {
-	slowtest.Gate(t, "rustc (mixed form closure across source files)")
 	keyedRequireRustc(t)
 	paths, err := filepath.Glob("../../../testdata/conformance/feature-witnesses/forms/*.schema")
 	if err != nil || len(paths) != 3 {

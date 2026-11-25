@@ -5,7 +5,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -158,7 +157,6 @@ var requiredRefused = map[string]bool{"lacks_n": true, "lacks_both": true, "elem
 // the read, at any depth (§2.3), and a key named with a mismatched kind
 // refuses; the verdict and the text are the engine's.
 func TestMooJsonRequired(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted text form)")
 	t.Parallel()
 	for _, d := range runTextCases(t, requiredText, "Player", requiredCases, requiredRefused, nil) {
 		t.Error(d)
@@ -168,7 +166,6 @@ func TestMooJsonRequired(t *testing.T) {
 // TestMooJsonRequiredNegativeControl turns the object's required check off in
 // the emitted json.moo and requires the comparison to go red.
 func TestMooJsonRequiredNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted text form)")
 	t.Parallel()
 	const anchor = "if fd.required == true and not seen[i] and guardHolds(fd, rec) then"
 	diffs := runTextCases(t, requiredText, "Player", requiredCases, requiredRefused, func(files map[string][]byte) {
@@ -187,7 +184,6 @@ func TestMooJsonRequiredNegativeControl(t *testing.T) {
 // required (the field elided at zero) refuses the strict read by name; the
 // same wire with the field written is read. The wires are the Go engine's.
 func TestMooWireRequiredRefusesAbsence(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table runtime)")
 	t.Parallel()
 	const required = "package probe\ntable Player\n{\n    name string(8)\n    n int32 | required\n}\n"
 	older := unitFromSource(t, strings.Replace(required, " | required", "", 1))
@@ -233,7 +229,6 @@ var unboundedCases = []textCase{
 // its length and reads whole; a [..N] list past its count refuses, and so
 // does a zero (§2.13.1); the verdict and the text are the engine's.
 func TestMooJsonUnboundedText(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted text form)")
 	t.Parallel()
 	for _, d := range runTextCases(t, unboundedText, "Where", unboundedCases, map[string]bool{"zero_refuses": true, "count_clamps": true}, nil) {
 		t.Error(d)
@@ -244,7 +239,6 @@ func TestMooJsonUnboundedText(t *testing.T) {
 // capacity of eight bytes in the emitted module and requires the comparison
 // to go red.
 func TestMooJsonUnboundedTextNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted text form)")
 	t.Parallel()
 	const anchor = "{ tl = { opt = false, bound = -1, rec = \"WhereReceiptsText\" } }"
 	diffs := runTextCases(t, unboundedText, "Where", unboundedCases, map[string]bool{"zero_refuses": true, "count_clamps": true}, func(files map[string][]byte) {
@@ -279,7 +273,6 @@ var arrayRootCases = []textCase{
 // TestMooJsonArrayRoot: a json = "array" table's text is its one field's
 // array, read and written; an object at its root refuses (§16.10).
 func TestMooJsonArrayRoot(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted text form)")
 	t.Parallel()
 	for _, d := range runTextCases(t, arrayRootText, "GoalList", arrayRootCases, map[string]bool{"object_refuses": true}, nil) {
 		t.Error(d)
@@ -289,7 +282,6 @@ func TestMooJsonArrayRoot(t *testing.T) {
 // TestMooJsonArrayRootNegativeControl drops the array-root mark from the
 // emitted descriptor and requires the comparison to go red.
 func TestMooJsonArrayRootNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted text form)")
 	t.Parallel()
 	const anchor = "jsonArray = true"
 	diffs := runTextCases(t, arrayRootText, "GoalList", arrayRootCases, map[string]bool{"object_refuses": true}, func(files map[string][]byte) {
@@ -335,7 +327,6 @@ func TestMooFormsGateTheTextForm(t *testing.T) {
 // ToJson as the Go engine's Write does; the same record set in range is the
 // control (§2.3).
 func TestMooJsonRequiredRangeRefusesTheWrite(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted text form)")
 	t.Parallel()
 	const src = "package probe\ntable R\n{\n    n int32 | min = 1, max = 9, required\n}\n"
 	u := unitFromSource(t, src)

@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/moo/moorun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -148,7 +147,6 @@ func jsonGates(t *testing.T, runtime map[string][]byte) (writeBad, readBad []str
 // TestMooJsonWriteAndReadGates: json-write and json-read, both green over
 // every textual instance of the corpus.
 func TestMooJsonWriteAndReadGates(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the generated text form)")
 	t.Parallel()
 	writeBad, readBad, total := jsonGates(t, nil)
 	for _, b := range writeBad {
@@ -165,7 +163,6 @@ func TestMooJsonWriteAndReadGates(t *testing.T) {
 // field — one key's value lands in its neighbour — and json-read must go red
 // while json-write stays green, which is what says the break is the READER's.
 func TestMooJsonWalkNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs a sabotaged json.moo)")
 	t.Parallel()
 	src := string(Runtime()["json.moo"])
 	const site = "\t\t\tk[fd.json] = i\n"

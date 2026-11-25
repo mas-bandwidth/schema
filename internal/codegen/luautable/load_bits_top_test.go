@@ -17,7 +17,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -186,7 +185,6 @@ end
 // nothing raises. The same unit's generated Go strict load is the oracle.
 func TestLuauLoadBitsTopEveryWidth(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter and the schema-go oracle")
 	dir := t.TempDir()
 	schemaPath := filepath.Join(dir, "Carton.schema")
 	if err := os.WriteFile(schemaPath, []byte(bitsTopSchema), 0o644); err != nil {

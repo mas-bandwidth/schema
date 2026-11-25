@@ -28,7 +28,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // vtCell is one roadmap row and the manifest cases that prove it on this leg.
@@ -177,7 +176,6 @@ func vtCellFailures(t *testing.T, c vtCell, mutate func(*testing.T, string)) (fa
 }
 
 func TestLobsterVariableTableCells(t *testing.T) {
-	slowtest.Gate(t, "the pinned Lobster toolchain (it runs the emitted table runtime)")
 	t.Parallel()
 	for _, c := range vtCells {
 		t.Run(c.row, func(t *testing.T) {
@@ -202,7 +200,6 @@ func TestLobsterVariableTableCells(t *testing.T) {
 // so no loaded value is the reference's), and requires every row's subtest
 // to go red under each: no row's gate is green by holding nothing.
 func TestLobsterVariableTableCellsNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "the pinned Lobster toolchain (it runs the emitted table runtime)")
 	t.Parallel()
 	plant := func(file, from, to string) func(*testing.T, string) {
 		return func(t *testing.T, dir string) {

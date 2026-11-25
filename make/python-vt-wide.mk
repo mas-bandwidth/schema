@@ -13,4 +13,4 @@ PYTHON_CI_SUPPORT_GROUPS += python-ci-vt-wide
 python-ci-vt-wide: python-table-wide-negative-control
 
 python-table-wide-negative-control:
-	SCHEMA_SLOW=1 $(GO_TEST) -tags schema_leg_python -run 'TestPythonVtWideNegativeControl' ./internal/codegen/pythontable/ -count=1
+	$(GO_TEST) -tags schema_leg_python -run 'TestPythonVtWideNegativeControl' ./internal/codegen/pythontable/ -count=1

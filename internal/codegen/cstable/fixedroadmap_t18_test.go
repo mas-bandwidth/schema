@@ -13,7 +13,6 @@ package cstable
 // emitted text alone: no dotnet, no clock, no socket, no network.
 
 import (
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -309,7 +308,7 @@ if (n != -1) { t0 += Fail("n " + n); }
 if (t0 == 0) { Console.WriteLine("T18 tag-past-the-arm-set ok"); }
 `
 
-// t18Discover performs the skip-by-name / fail-by-name-under-require logic that
+// t18Discover performs the fail-by-name discovery that
 // t13Discover does, but without mutating any package-level state. t13Discover
 // wrote the shared t13* globals; TestFixedRoadmapCSharpT13* tests are also
 // t.Parallel and call it, so a second caller from this file raced on the writes
@@ -317,20 +316,15 @@ if (t0 == 0) { Console.WriteLine("T18 tag-past-the-arm-set ok"); }
 // and never skips (a driven clause that cannot run is red, not skipped), so this
 // local discover only decides early skip/fatal then hands off to t08RunCS.
 func t18Discover(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
-	require := os.Getenv("SCHEMA_REQUIRE_CORPUS") != ""
 	dotnet := os.Getenv("DOTNET")
 	if dotnet == "" {
 		dotnet = "dotnet"
 	}
 	resolved, err := exec.LookPath(dotnet)
 	if err != nil {
-		if require {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and no dotnet on PATH: %v", err)
-		}
-		t.Skipf("no dotnet on PATH (set DOTNET): %v", err)
+		t.Fatalf("no dotnet on PATH (set DOTNET): %v", err)
 	}
 	real, err := filepath.EvalSymlinks(resolved)
 	if err != nil {
@@ -339,23 +333,16 @@ func t18Discover(t *testing.T) {
 	root := filepath.Dir(real)
 	cscs, _ := filepath.Glob(filepath.Join(root, "sdk", "*", "Roslyn", "bincore", "csc.dll"))
 	if len(cscs) == 0 {
-		if require {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and no Roslyn csc.dll under %s", root)
-		}
-		t.Skipf("no Roslyn csc.dll under %s", root)
+		t.Fatalf("no Roslyn csc.dll under %s", root)
 	}
 	refs, _ := filepath.Glob(filepath.Join(root, "packs", "Microsoft.NETCore.App.Ref", "*", "ref", "net10.0"))
 	if len(refs) == 0 {
-		if require {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and no .NET ref pack under %s", root)
-		}
-		t.Skipf("no .NET ref pack under %s", root)
+		t.Fatalf("no .NET ref pack under %s", root)
 	}
 }
 
 // TestFixedRoadmapCSharpT18UnionArms drives the generated C# for the two union
-// fixtures. It skips by name without dotnet unless SCHEMA_REQUIRE_CORPUS=1 is
-// set, and fails by name when it is (t18Discover does the skip/fail logic locally
+// fixtures. It fails by name without dotnet (t18Discover does the discovery locally
 // to avoid racing t13Discover's package globals with other t.Parallel t13 tests;
 // see t13Discover at fixedroadmap_t13_test.go:127). The driver prints one line per
 // arm, "T18 <leaf>/<arm> ok" or "T18 <leaf>/<arm> BAD <why>"; the Go side logs

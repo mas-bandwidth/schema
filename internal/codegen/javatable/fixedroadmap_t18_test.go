@@ -23,7 +23,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -573,7 +572,6 @@ type t18Gen struct {
 }
 
 func t18BuildTree(t *testing.T, dir string, gens []*t18Gen) string {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	javac, _ := javaTools(t)
@@ -805,7 +803,6 @@ fixed table CfloatRangeWiden
 // target refuses (a union closure, compiler/target_java.go refuseTableArms) or
 // a root the leg emits no fixed form for is named and not loaded.
 func t18R27(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	corpus := corpusDir(t)
 	type task struct {
@@ -963,16 +960,10 @@ func t18R27(t *testing.T) {
 
 // ---- P3 and P4: the hostile checks, inline units ---------------------------
 
-// t18RequireJava is javaTools with the gate the card asks for: a missing
-// toolchain skips by name, and under SCHEMA_REQUIRE_CORPUS it FAILS by name.
+// t18RequireJava fails by name when no working javac and java resolve.
 func t18RequireJava(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
-	if !slowtest.CorpusRequired() {
-		javaTools(t) // skips, naming the missing JDK, when there is none
-		return
-	}
 	ok := func(jc, j string) bool {
 		if jc == "" || j == "" {
 			return false
@@ -990,13 +981,12 @@ func t18RequireJava(t *testing.T) {
 	if home := "/Users/glenn/toolchains/schema-dist/jdk-21.0.12.1/Contents/Home"; ok(home+"/bin/javac", home+"/bin/java") {
 		return
 	}
-	t.Fatal("SCHEMA_REQUIRE_CORPUS is set (or CI runs the slow half) and no working javac and java are on PATH or named by JAVAC and JAVA")
+	t.Fatal("no working javac and java are on PATH or named by JAVAC and JAVA")
 }
 
 // t18Compile generates an inline unit's fixed form and compiles it with the
 // probes (name -> source, in package `probe`).
 func t18Compile(t *testing.T, schema string, probes map[string]string) string {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	u := unitFrom(t, schema)

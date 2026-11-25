@@ -419,7 +419,6 @@ console.log('OK');
 // its declarations pass tsc --strict for a consumer reading each of them.
 func TestJsUnitDeclaringEveryGlobalRunsAndTypeChecks(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "node, serialize.js and tsc (they run and type-check the generated modules)")
 	files, err := New().Generate(loadJsGlobalsShadow(t), "js", Options{})
 	if err != nil {
 		t.Fatal(err)
@@ -446,9 +445,8 @@ func TestJsUnitDeclaringEveryGlobalRunsAndTypeChecks(t *testing.T) {
 
 	t.Run("node", func(t *testing.T) {
 		t.Parallel()
-		// a lane that sets SCHEMA_REQUIRE_NODE=1 says it has node and the
-		// serialize.js runtime, so either missing fails there by name
-		node := slowtest.Program(t, "node", "NODE", "SCHEMA_REQUIRE_NODE")
+		// node and the serialize.js runtime: either missing fails by name
+		node := slowtest.Program(t, "node", "NODE")
 		runtime := os.Getenv("SERIALIZE_JS")
 		if runtime == "" {
 			runtime = "../../serialize.js"
@@ -458,7 +456,7 @@ func TestJsUnitDeclaringEveryGlobalRunsAndTypeChecks(t *testing.T) {
 			t.Fatal(err)
 		}
 		if _, err := os.Stat(index); err != nil {
-			slowtest.Require(t, "SCHEMA_REQUIRE_NODE", "no serialize.js runtime: set SERIALIZE_JS or stage the sibling checkout")
+			slowtest.Missing(t, "no serialize.js runtime: set SERIALIZE_JS or stage the sibling checkout")
 		}
 		cmd := testproc.Command(t, node, "run.mjs")
 		cmd.Dir = dir
@@ -470,7 +468,7 @@ func TestJsUnitDeclaringEveryGlobalRunsAndTypeChecks(t *testing.T) {
 	})
 	t.Run("tsc", func(t *testing.T) {
 		t.Parallel()
-		tsc := slowtest.Program(t, "tsc", "TSC", "SCHEMA_REQUIRE_TSC")
+		tsc := slowtest.Program(t, "tsc", "TSC")
 		args := []string{"--strict", "--noEmit", "--target", "es2022", "--module", "nodenext", "--moduleResolution", "nodenext", "consumer.ts"}
 		for name := range files {
 			if strings.HasSuffix(name, ".d.ts") {
@@ -564,8 +562,7 @@ table Entry
 	}
 
 	t.Run("tsc", func(t *testing.T) {
-		slowtest.Gate(t, "tsc (it type-checks the generated declarations)")
-		tsc := slowtest.Program(t, "tsc", "TSC", "SCHEMA_REQUIRE_TSC")
+		tsc := slowtest.Program(t, "tsc", "TSC")
 		dir := t.TempDir()
 		args := []string{"--strict", "--noEmit", "--target", "es2022", "--module", "nodenext", "--moduleResolution", "nodenext"}
 		for name, data := range files {

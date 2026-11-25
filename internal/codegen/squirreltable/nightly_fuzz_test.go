@@ -17,7 +17,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -47,29 +46,22 @@ func nightlyFuzzCorpus(t *testing.T, path string) []string {
 	return paths
 }
 
-// nightlyCampaign confines a nightly test to its campaign. The three nightly
-// tests are minutes of interpreter time over the whole corpus, so they run only
-// under make schema-squirrel-nightly-fuzz, which sets SCHEMA_SQUIRREL_FUZZ_CORPUS,
-// or where the corpus is required (SCHEMA_REQUIRE_CORPUS); the SCHEMA_SLOW=1
-// pull-request lane runs the same seeded differential at its own budget in
-// fuzz_test.go. The skip names the campaign, so a reader of the slow lane sees
-// what did not run and where it does. It returns the corpus file, which the
-// tolerant differential reads; the two reader tests build their seeds from the
-// conformance manifest directly.
+// nightlyCampaign returns the corpus file the nightly campaign reads (make
+// schema-squirrel-nightly-fuzz sets SCHEMA_SQUIRREL_FUZZ_CORPUS); unset, the
+// Makefile's own rule writes it. The tests are nightly tier.
 func nightlyCampaign(t *testing.T) string {
 	t.Helper()
-	corpus := os.Getenv("SCHEMA_SQUIRREL_FUZZ_CORPUS")
-	if corpus == "" && os.Getenv("SCHEMA_REQUIRE_CORPUS") == "" {
-		t.Skip("the nightly campaign, not the pull request: make schema-squirrel-nightly-fuzz sets SCHEMA_SQUIRREL_FUZZ_CORPUS and runs it")
+	if corpus := os.Getenv("SCHEMA_SQUIRREL_FUZZ_CORPUS"); corpus != "" {
+		return corpus
 	}
-	return corpus
+	return nightlyCorpusFromMake(t)
 }
 
 // nightlyCorpusFromMake writes the corpus file the nightly target reads, with
 // the target's own rule (make/schema-squirrel-nightly-fuzz.mk), for a run that
-// requires the corpus (SCHEMA_REQUIRE_CORPUS) and was not handed one by
-// SCHEMA_SQUIRREL_FUZZ_CORPUS: the schema set stays the Makefile's, and a rule
-// that cannot write it is a red naming make's own words.
+// was not handed one by SCHEMA_SQUIRREL_FUZZ_CORPUS: the schema set stays the
+// Makefile's, and a rule that cannot write it is a red naming make's own
+// words. These tests are nightly tier: the root selects them, never a gate.
 func nightlyCorpusFromMake(t *testing.T) string {
 	t.Helper()
 	testinputs.Make(t)
@@ -92,12 +84,8 @@ func nightlyCorpusFromMake(t *testing.T) string {
 // which names the test, rather than being silently truncated.
 func TestSquirrelNightlyFuzz(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Squirrel interpreter and the tables conformance corpus")
 
 	corpus := nightlyCampaign(t)
-	if corpus == "" {
-		corpus = nightlyCorpusFromMake(t)
-	}
 	paths := nightlyFuzzCorpus(t, corpus)
 
 	n, err := runWireFuzzDifferential(t, nil)

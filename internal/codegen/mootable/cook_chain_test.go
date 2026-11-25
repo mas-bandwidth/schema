@@ -3,8 +3,6 @@ package mootable_test
 import (
 	"fmt"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestMooCookReadsALongPointerChain: the length of a pointer chain is not a
@@ -13,7 +11,6 @@ import (
 // port's own writer, and read back through the cook reader; both values must
 // agree node for node, however long the chain.
 func TestMooCookReadsALongPointerChain(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_cookread.moo over a long pointer chain)")
 	t.Parallel()
 	const nodes = 30000
 	units, _ := readManifest(t)

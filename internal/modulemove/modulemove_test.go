@@ -66,9 +66,6 @@ func TestCompare(t *testing.T) {
 // major 3, with no pre-release or build suffix.
 func TestFirstV3ModuleTagParses(t *testing.T) {
 	t.Parallel()
-	if FirstV3ModuleTag == "" {
-		t.Skip("FirstV3ModuleTag is unset: go.mod has not moved to /v3, so there is no boundary tag to parse")
-	}
 	if Major(FirstV3ModuleTag) != "3" || strings.ContainsAny(FirstV3ModuleTag, "-+") || strings.Count(FirstV3ModuleTag, ".") != 2 {
 		t.Errorf("FirstV3ModuleTag = %q; want a v3.Y.Z release tag", FirstV3ModuleTag)
 	}

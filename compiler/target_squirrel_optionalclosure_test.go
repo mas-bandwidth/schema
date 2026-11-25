@@ -9,7 +9,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirreltable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -20,7 +19,6 @@ import (
 // saved bytes equal internal/tablewire's walk of the same value, absent and
 // present, so an absent optional walks no pointer edge and writes no node.
 func TestSquirrelCarriesOptionalVariableClosure(t *testing.T) {
-	slowtest.Gate(t, "the pinned Squirrel interpreter")
 	sqrun.Require(t)
 	t.Parallel()
 	u := unitFromSource(t, "package probe\ntable Leaf\n{\n    n int32\n}\ntable Inner\n{\n    child *Leaf\n}\ntable Outer\n{\n    inner ?Inner\n}\n")

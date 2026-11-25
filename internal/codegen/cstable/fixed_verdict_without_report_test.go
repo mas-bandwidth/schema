@@ -7,8 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -148,7 +146,6 @@ func runFixedVerdictProbe(t *testing.T, edit func(map[string][]byte)) (string, e
 }
 
 func TestCSharpFixedVerdictWithoutReport(t *testing.T) {
-	slowtest.Gate(t, "the .NET SDK")
 	t.Parallel()
 	out, err := runFixedVerdictProbe(t, nil)
 	if err != nil {
@@ -169,7 +166,6 @@ func TestCSharpFixedVerdictWithoutReport(t *testing.T) {
 // generated artifact: the clamp signals a refusal only when a report exists.
 // The same probe must then go red by name on the no-report rows.
 func TestCSharpFixedVerdictWithoutReportNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "the .NET SDK")
 	t.Parallel()
 	out, err := runFixedVerdictProbe(t, func(files map[string][]byte) {
 		replaced := false

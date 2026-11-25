@@ -9,13 +9,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
 func TestDartPointerTargetsSharedCorpus(t *testing.T) {
-	slowtest.Gate(t, "dart")
 	schema, raw := sharedDartFixture(t, "pointer-targets")
 	var rows []struct {
 		Name, Writer, Reader string

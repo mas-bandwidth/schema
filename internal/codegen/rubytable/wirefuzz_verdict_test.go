@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/ruby/rubyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -26,7 +25,6 @@ func generateWireFuzzUnit(t *testing.T, root, relDir string) map[string][]byte {
 
 func TestRubyWireFuzzVerdictPipeNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Ruby wire fuzz verdict pipe negative control")
 	root, err := rubyrun.RepoRoot()
 	if err != nil {
 		t.Fatal(err)
@@ -78,7 +76,6 @@ func TestRubyWireFuzzVerdictPipeNegativeControl(t *testing.T) {
 
 func TestRubyWireFuzzRetainNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Ruby retaining verdict pipe negative control")
 	root, err := rubyrun.RepoRoot()
 	if err != nil {
 		t.Fatal(err)
@@ -126,7 +123,6 @@ func TestRubyWireFuzzRetainNegativeControl(t *testing.T) {
 
 func TestRubyWireFuzzRetainLoss(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Ruby retained-loss verdict pipe")
 	root, err := rubyrun.RepoRoot()
 	if err != nil {
 		t.Fatal(err)

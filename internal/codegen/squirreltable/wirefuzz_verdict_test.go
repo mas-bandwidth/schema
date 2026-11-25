@@ -20,8 +20,6 @@ package squirreltable_test
 import (
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestSquirrelWireFuzzVerdictPipe drives the strict verdict pipe over every
@@ -32,7 +30,6 @@ import (
 // the cell's evidence (docs/SPEC-TABLES.md §4.2, §6.5).
 func TestSquirrelWireFuzzVerdictPipe(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Squirrel interpreter")
 	n, err := runWireFuzzDifferential(t, nil)
 	if err != nil {
 		t.Fatalf("after %d agreeing mutants: %v", n, err)
@@ -48,7 +45,6 @@ func TestSquirrelWireFuzzVerdictPipe(t *testing.T) {
 // oracle's encoded value turns the pipe red (docs/SPEC-TABLES.md §4.2, §6.5).
 func TestSquirrelWireFuzzVerdictPipeNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Squirrel interpreter")
 	const anchor = "  if (c.fixed) return saveFixed(T, c, value);\n"
 	const sabotaged = "  return null;\n"
 	patchedFiles := 0

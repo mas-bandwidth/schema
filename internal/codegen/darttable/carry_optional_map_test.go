@@ -3,7 +3,6 @@ package darttable
 import (
 	"encoding/hex"
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -17,7 +16,6 @@ import (
 )
 
 func TestDartOptionalMapNative(t *testing.T) {
-	slowtest.Gate(t, "dart")
 	u := unitFrom(t, `package probe
 table Child { n int32 }
 table Inner { tags ?map[string(8)]int32 }
@@ -161,7 +159,6 @@ check(refused2&&plain.plain.isEmpty,'plain wrong shapes refuse');
 }
 
 func TestDartOptionalMapSharedPins(t *testing.T) {
-	slowtest.Gate(t, "dart")
 	fixture := "../../../testdata/conformance/feature-witnesses/optional-map"
 	schema, err := os.ReadFile(filepath.Join(fixture, "Probe.schema"))
 	if err != nil {

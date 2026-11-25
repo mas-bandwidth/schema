@@ -19,12 +19,10 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func TestLuaFixedBatchHoldsARecord(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "lua (it runs the emitted fixed-form runtime over the empty-batch vector)")
 
 	repo := filepath.Join("..", "..", "..")
 	u := luarun.LoadUnit(t, filepath.Join(repo, "test", "fixed-empty-batch", "Batch.schema"))

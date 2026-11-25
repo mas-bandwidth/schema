@@ -7,23 +7,19 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
 func TestPythonScalarNodeTableLastThroughDriver(t *testing.T) {
-	slowtest.Gate(t, "public scalar fast reader and node table order")
 	scalarNodeLastProbe(t, "")
 }
 
 func TestPythonScalarNodeTableLastFastGuardControl(t *testing.T) {
-	slowtest.Gate(t, "public scalar fast reader node order fault control")
 	scalarNodeLastProbe(t, "guard")
 }
 
 func TestPythonScalarNodeTableLastPrecedenceControl(t *testing.T) {
-	slowtest.Gate(t, "public scalar fast reader precedence fault control")
 	scalarNodeLastProbe(t, "walk")
 }
 
@@ -133,7 +129,6 @@ for name in ("bad.bin", "mismatch.bin"):
 }
 
 func TestPythonScalarNodeLastHelperNames(t *testing.T) {
-	slowtest.Gate(t, "public scalar helper name collision")
 	u := unitFromSource(t, `package collision
  table Foo { a int32 }
  table checked_Foo { b int32 }

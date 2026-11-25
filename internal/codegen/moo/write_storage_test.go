@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/moo/moorun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 const writeStorageSchema = `package write_storage
@@ -116,7 +115,6 @@ end
 // WIRE; SPEC.md §5.1). Valid storage still emits the pinned byte sequences.
 func TestMooTypeWireWriteRefusesWrongStorage(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "moo (it runs the generated modules under the pinned interpreter)")
 	dir, _ := generateInto(t, unitFromSource(t, "WriteStorage", writeStorageSchema))
 	writeFile(t, dir, "main.moo", writeStorageProbe)
 	out := strings.TrimSpace(string(moorun.Run(t, dir, "main.moo", nil)))
@@ -142,7 +140,6 @@ func TestMooTypeWireWriteRefusesWrongStorage(t *testing.T) {
 // probe catches a missing storage check.
 func TestMooTypeWireWriteRefusesWrongStorageNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "moo (it runs the generated modules under the pinned interpreter)")
 	dir, files := generateInto(t, unitFromSource(t, "WriteStorage", writeStorageSchema))
 	types := string(files["WriteStorage.moo"])
 	anchor := "\tif type(value.Data) ~= \"buffer\" or "

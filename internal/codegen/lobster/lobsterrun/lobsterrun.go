@@ -17,8 +17,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -121,11 +119,7 @@ func run(t testing.TB, dir, main string, inputs map[string][]byte, args []string
 
 func runFlags(t testing.TB, dir, main string, flags []string, inputs map[string][]byte, args []string) ([]byte, []byte, error) {
 	t.Helper()
-	// a test that shells out to a toolchain is the slow half (internal/slowtest):
-	// make test-lobster and ci-full set SCHEMA_REQUIRE_CORPUS / SCHEMA_SLOW, so
-	// the gates always run it, and a bare `go test ./...` without the pin skips
-	// by name rather than failing
-	slowtest.Gate(t, "the Lobster toolchain")
+	// a missing toolchain fails the test by name; nothing skips
 	lobster, why := Interpreter()
 	if lobster == "" {
 		t.Fatalf("lobsterrun: the Lobster toolchain does not resolve: %s", why)

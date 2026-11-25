@@ -12,13 +12,10 @@ import (
 	"syscall"
 	"testing"
 	"time"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // These are FUNCTIONAL tests: they start real processes and wait on real
-// time, so they run under SCHEMA_SLOW=1 (ci-full.yml's go-test steps) and skip
-// in a default `go test`.
+// time, so their tier is functional.
 
 func buildPgroup(t *testing.T) string {
 	t.Helper()
@@ -63,7 +60,6 @@ func gone(pid int) bool {
 }
 
 func TestOrphanDiesWithTheCommand(t *testing.T) {
-	slowtest.Gate(t, "sh and sleep")
 	bin := buildPgroup(t)
 	pidFile := filepath.Join(t.TempDir(), "pid")
 
@@ -83,7 +79,6 @@ func TestOrphanDiesWithTheCommand(t *testing.T) {
 // TestOrphanOutlivesABareCommand is the negative control: the same script
 // without pgroup leaves the sleep running, so the test above can go red.
 func TestOrphanOutlivesABareCommand(t *testing.T) {
-	slowtest.Gate(t, "sh and sleep")
 	pidFile := filepath.Join(t.TempDir(), "pid")
 	// testinputs:none — runs the inline orphanScript; reads no repository file
 	err := exec.Command("sh", "-c", orphanScript, "sh", pidFile).Run()
@@ -100,7 +95,6 @@ func TestOrphanOutlivesABareCommand(t *testing.T) {
 }
 
 func TestWallStopsTheGroup(t *testing.T) {
-	slowtest.Gate(t, "sh and sleep")
 	bin := buildPgroup(t)
 	pidFile := filepath.Join(t.TempDir(), "pid")
 	start := time.Now()
@@ -125,7 +119,6 @@ func TestWallStopsTheGroup(t *testing.T) {
 // pgroup names the CI rule and the step so a reader knows to split, cache or
 // move it before the runner kills the job.
 func TestEnvWallStopsTheGroupAndNamesTheRule(t *testing.T) {
-	slowtest.Gate(t, "sh and sleep")
 	bin := buildPgroup(t)
 	pidFile := filepath.Join(t.TempDir(), "pid")
 	// testinputs:none — runs an inline script; reads no repository file

@@ -15,7 +15,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goosetable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // topLevel is a declaration at a module's top level: the name it puts into
@@ -58,7 +57,6 @@ func TestGooseEveryPackageNameIsClaimed(t *testing.T) {
 	// one whole generation per unit per emitted name: 524 s on two cores of a
 	// loaded bench (2026-11-15), past the two-minute push row, so it rides the
 	// slow lane with the toolchain tests
-	slowtest.Gate(t, "no toolchain, but the whole-manifest name sweep (one generation per unit per emitted name)")
 	units, _ := readManifest(t)
 	runtimeFiles := goosetable.Runtime()
 	maps.Copy(runtimeFiles, goose.Runtime())

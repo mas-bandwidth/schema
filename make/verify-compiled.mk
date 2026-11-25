@@ -6,7 +6,7 @@
 # Each language exposes four independent sub-targets sized for ci-fast.yml's
 # strict 2-minute job ceiling (cold-verified <= 85s), plus one umbrella target:
 #
-#   make verify-<lang>-conformance   all 21 table surfaces (--claims) + packet wire + 128-bit/UTF-8/defaults/finite
+#   make verify-<lang>-conformance   packet wire + 128-bit/UTF-8/defaults/finite
 #   make verify-<lang>-bench         packet & table 64-variant bench gates + 9-surface cards conformance + UnitView/descriptors + packet write/end contracts
 #   make verify-<lang>-fuzz          deterministic wire-fuzz smoke (plain + --retain, 6-step shrinking reuse + multi-body batches + all 64 roots)
 #   make verify-<lang>-tablegen      generated-schema table round trips (make/verify-widen-18.mk)
@@ -65,7 +65,7 @@ VERIFY_FUZZ_DEPS_java   := toolchain-java build-conformance-java
 VERIFY_FUZZ_DEPS_dart   := toolchain-dart build/conformance-dart
 VERIFY_FUZZ_DEPS_elixir := toolchain-elixir build/elixir-tables-ebin/.stamp build-conformance-elixir
 
-VERIFY_FUZZ_EXTRA_go    := SCHEMA_SLOW=1 $(GO_TEST) -count=1 ./internal/codegen/golang
+VERIFY_FUZZ_EXTRA_go    := $(GO_TEST) -count=1 ./internal/codegen/golang
 
 define verify_compiled_fuzz_rules
 .PHONY: _verify-$(1)-fuzz _verify-$(1)-fuzz-extra _verify-$(1)-fuzz-plain _verify-$(1)-fuzz-retain _verify-$(1)-fuzz-json _verify-$(1)-fuzz-message verify-$(1)-fuzz
@@ -137,8 +137,9 @@ $(foreach leg,$(VERIFY_COMPILED_LEGS),$(eval $(call verify_compiled_fuzz_rules,$
 #           schema_test_ludicrous, packet text, and the packet-defaults
 #           and packet-void checks their targets run; the C++ conformance
 #           rows run in ci-fast.yml's conformance-rows job);
-#   part 2: the harness's --claims run and what test/conformance/cpp/ci.json
-#           says it needs (the driver, schema_test_cook, table-base64-cpp).
+#   part 2: what test/conformance/cpp/ci.json says the corpus run needs (the
+#           corpus run itself is the schema-test corpus adapter's now): the
+#           driver, schema_test_cook, table-base64-cpp.
 #
 # Nothing is dropped: _verify-cpp-conformance is both parts, and the split is
 # by target, so it is the same every run. ci-fast.yml's verify-cpp-conformance
@@ -153,8 +154,6 @@ _verify-cpp-conformance-1: build/schema_test build/schema_test_ludicrous packet-
 	./build/packet-text/harness ./build/packet-text/cpp/driver
 
 _verify-cpp-conformance-2: build/conformance-harness build/conformance-cpp build/schema_test_cook table-base64-cpp
-	@rm -rf build/verify/conformance-cpp && mkdir -p build/verify/conformance-cpp $(VERIFY_RESULTS_DIR)
-	./build/conformance-harness run --only cpp --claims --work build/verify/conformance-cpp --results $(VERIFY_RESULTS_DIR)/cpp.json
 
 verify-cpp-conformance-1 verify-cpp-conformance-2: verify-cpp-conformance-%:
 	@$(MAKE) $(VERIFY_JFLAG) --no-print-directory _verify-cpp-conformance-$*
@@ -170,8 +169,6 @@ _verify-cpp-bench: bin/schema generated/bench/cpp/.stamp generated/bench/tables/
 _verify-c-conformance: build/conformance-harness build/conformance-c build/schema_test_c build/schema_test_c_ludicrous packet-defaults-c packet-utf8-c packet-void-c table-base64-c
 	cd test/c && ../../build/schema_test_c
 	cd test/c-ludicrous && ../../build/schema_test_c_ludicrous
-	@rm -rf build/verify/conformance-c && mkdir -p build/verify/conformance-c $(VERIFY_RESULTS_DIR)
-	./build/conformance-harness run --only c --claims --work build/verify/conformance-c --results $(VERIFY_RESULTS_DIR)/c.json
 
 _verify-c-bench: bin/schema generated/bench/c/.stamp generated/bench/tables/c/.stamp tables-c-bench-gate cards-c-conformance packet-end-c packet-write-cfloat-c packet-write-text-c
 	@mkdir -p build/verify build/bench && rm -f build/verify/bench-c.csv
@@ -182,12 +179,10 @@ _verify-c-bench: bin/schema generated/bench/c/.stamp generated/bench/tables/c/.s
 
 .PHONY: _verify-cs-conformance _verify-cs-bench
 _verify-cs-conformance: toolchain-cs build/conformance-harness build-conformance-cs build-cs-cook generated/cs/.stamp generated/cs-ludicrous/.stamp
-	@rm -rf build/verify/conformance-cs && mkdir -p build/verify/conformance-cs $(VERIFY_RESULTS_DIR)
 	@set -e; \
 		(cd test/cs && $(DOTNET) run -c Release --nologo) & p1=$$!; \
 		(cd test/cs-ludicrous && $(DOTNET) run --nologo) & p2=$$!; \
-		./build/conformance-harness run --only cs --claims --work build/verify/conformance-cs --results $(VERIFY_RESULTS_DIR)/cs.json & p3=$$!; \
-		wait $$p1; wait $$p2; wait $$p3
+		wait $$p1; wait $$p2
 
 _verify-cs-bench: toolchain-cs bin/schema generated/bench/cs/.stamp tables-cs-bench-gate cards-cs-conformance table-base64-cs packet-defaults-cs packet-utf8-cs
 	@mkdir -p build/verify build/bench && rm -f build/verify/bench-cs.csv
@@ -198,11 +193,9 @@ _verify-cs-bench: toolchain-cs bin/schema generated/bench/cs/.stamp tables-cs-be
 
 .PHONY: _verify-unity-conformance _verify-unity-bench
 _verify-unity-conformance: toolchain-unity build/conformance-harness build/conformance-unity/.stamp unity-wire
-	@rm -rf build/verify/conformance-unity && mkdir -p build/verify/conformance-unity $(VERIFY_RESULTS_DIR)
-	./build/conformance-harness run --only unity --claims --work build/verify/conformance-unity --results $(VERIFY_RESULTS_DIR)/unity.json
 
 _verify-unity-bench: toolchain-unity bin/schema tables-unity-bench-gate cards-unity-conformance packet-defaults-unity packet-utf8-unity
-	SCHEMA_SLOW=1 $(GO_TEST) -count=1 -run '^TestUnityVTReflectionDocTagsAndUnitView$$' ./internal/codegen/unitytable
+	$(GO_TEST) -count=1 -run '^TestUnityVTReflectionDocTagsAndUnitView$$' ./internal/codegen/unitytable
 
 # ---- go ----
 
@@ -210,8 +203,6 @@ _verify-unity-bench: toolchain-unity bin/schema tables-unity-bench-gate cards-un
 _verify-go-conformance: build/mustrun build/conformance-harness build/conformance-go generated/go/.stamp generated/go-ludicrous/.stamp cards-go-conformance tables-go-view tables-go-textform packet-defaults-go packet-utf8-go packet-finite-go table-base64-go
 	cd test/go && "$(CURDIR)/$(MUSTRUN)" -name test-go-main -count $(GO_MAIN_CHECKS) -- go run .
 	cd test/go-ludicrous && "$(CURDIR)/$(MUSTRUN)" -name test-go-ludicrous -count $(GO_LUDICROUS_CHECKS) -- go run .
-	@rm -rf build/verify/conformance-go && mkdir -p build/verify/conformance-go $(VERIFY_RESULTS_DIR)
-	./build/conformance-harness run --only go --claims --work build/verify/conformance-go --results $(VERIFY_RESULTS_DIR)/go.json
 
 # The timed quick run is a prerequisite of its own, so under the umbrella's -j
 # it runs beside the gates instead of after them, and it takes one warmup and
@@ -272,12 +263,10 @@ _verify-rust-driver-write-refusal: build/conformance-rust
 
 .PHONY: _verify-rust-conformance _verify-rust-bench
 _verify-rust-conformance: build/conformance-harness build/conformance-rust generated/rust/.stamp generated/rust-ludicrous/.stamp packet-utf8-rust
-	@rm -rf build/verify/conformance-rust && mkdir -p build/verify/conformance-rust $(VERIFY_RESULTS_DIR)
 	@set -e; \
 		(cd test/rust && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet --release) & p1=$$!; \
 		(cd test/rust-ludicrous && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet --release) & p2=$$!; \
-		./build/conformance-harness run --only rust --claims --work build/verify/conformance-rust --results $(VERIFY_RESULTS_DIR)/rust.json & p3=$$!; \
-		wait $$p1; wait $$p2; wait $$p3
+		wait $$p1; wait $$p2
 
 # The timed quick run and the paired gate are prerequisites of their own, as
 # Go's are (_verify-go-bench-quick above): under the umbrella's -j they run
@@ -309,8 +298,6 @@ _verify-java-packet-ludicrous: toolchain-java build/java-test-ludicrous/.stamp
 	cd test/java-ludicrous && $(JAVA) -ea -cp ../../build/java-test-ludicrous Main
 
 _verify-java-conformance: toolchain-java build/conformance-harness build-conformance-java _verify-java-packet-main-ea _verify-java-packet-main _verify-java-packet-ludicrous packet-defaults-java packet-utf8-java packet-finite-java
-	@rm -rf build/verify/conformance-java && mkdir -p build/verify/conformance-java $(VERIFY_RESULTS_DIR)
-	JAVA="$(JAVA)" JAVAC="$(JAVAC)" ./build/conformance-harness run --only java --claims --work build/verify/conformance-java --results $(VERIFY_RESULTS_DIR)/java.json
 
 # As Rust's: the quick run (--round 0) and the paired gate run beside the view
 # and cards gates. On a vision slot the whole leg was cancelled at the cap in
@@ -335,8 +322,6 @@ _verify-dart-packets: build/mustrun toolchain-dart generated/dart/.stamp generat
 	cd test/dart-ludicrous && "$(CURDIR)/$(MUSTRUN)" -name test-dart-ludicrous -count $(DART_LUDICROUS_CHECKS) -- $(DART) --enable-asserts main.dart
 
 _verify-dart-conformance: build/conformance-harness build/conformance-dart _verify-dart-packets
-	@rm -rf build/verify/conformance-dart && mkdir -p build/verify/conformance-dart $(VERIFY_RESULTS_DIR)
-	DART="$(DART)" ./build/conformance-harness run --only dart --claims --work build/verify/conformance-dart --results $(VERIFY_RESULTS_DIR)/dart.json
 
 _verify-dart-bench: toolchain-dart bin/schema generated/bench/dart/.stamp generated/bench/tables/dart/.stamp tables-dart-bench-gate cards-dart-conformance tables-dart-view packet-end-dart packet-write-cfloat-dart packet-write-text-dart packet-write-bareint-dart
 	@mkdir -p build/verify build/bench && rm -f build/verify/bench-dart.csv
@@ -357,8 +342,6 @@ VERIFY_ELIXIR_BUILD = $(if $(ELIXIR_AGREEMENT_ARTIFACTS),build-conformance-elixi
 VERIFY_ELIXIR_EBIN = $(if $(ELIXIR_AGREEMENT_ARTIFACTS),$(ELIXIR_HANDOFF_EBIN),build/elixir-tables-ebin)
 
 _verify-elixir-conformance: build/conformance-harness $(VERIFY_ELIXIR_BUILD) _verify-elixir-packet-main _verify-elixir-packet-ludicrous packet-defaults-elixir packet-utf8-elixir packet-finite-elixir
-	@rm -rf build/verify/conformance-elixir && mkdir -p build/verify/conformance-elixir $(VERIFY_RESULTS_DIR)
-	BEAM_PATH="$(BEAM_PATH)" ELIXIR_TABLES_EBIN="$(CURDIR)/$(VERIFY_ELIXIR_EBIN)" ./build/conformance-harness run --only elixir --claims --work build/verify/conformance-elixir --results $(VERIFY_RESULTS_DIR)/elixir.json
 
 _verify-elixir-bench: toolchain-elixir bin/schema generated/bench/elixir/.stamp generated/bench/tables/elixir/.stamp tables-elixir-bench-gate cards-elixir-conformance tables-elixir-view packet-end-elixir packet-write-cfloat-elixir packet-write-text-elixir packet-write-bareint-elixir
 	@mkdir -p build/verify build/bench && rm -f build/verify/bench-elixir.csv

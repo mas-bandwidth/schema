@@ -13,7 +13,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -38,7 +37,6 @@ fixed table Root {
 // rows the generated Go builder wrote.
 func TestLuauBlockInlineCountBounded(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter and the generated Go oracle")
 	dir := t.TempDir()
 	schema := filepath.Join(dir, "Probe.schema")
 	if err := os.WriteFile(schema, []byte(blockInlineCountSchema), 0o644); err != nil {

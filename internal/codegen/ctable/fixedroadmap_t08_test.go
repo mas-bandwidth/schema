@@ -33,7 +33,6 @@ import (
 
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpptable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -78,7 +77,6 @@ const cT08OtherHash = 0x00ff00ff00ff00ff
 // other hash) and T08_BODY(file) (record 0's body), all for table `root`.
 func cT08Probe(t *testing.T, schema, root, source string, extraCC ...string) {
 	t.Helper()
-	slowtest.Gate(t, "a C compiler (it builds and runs the generated probe)")
 	cc := os.Getenv("CC")
 	if cc == "" {
 		cc = "cc"
@@ -690,10 +688,8 @@ func cT08GuardChain(t *testing.T) {
 	// generated header is about 17 MB, and the sanitized -O2 compile of it was
 	// 18.7 s of this row's 22 s on the studio (2026-10-22) and minutes on a
 	// two-core runner. The three-union and 31-deep probes above stay in the
-	// default run; this one runs wherever SCHEMA_SLOW=1 (ci-full's go-test
-	// lanes, the nightly and the make leg gates), so no check is lost.
+	// default run; this one makes the test nightly-tier, so no check is lost.
 	t.Run("edge-probe", func(t *testing.T) {
-		slowtest.Gate(t, "the C compiler with ASan and UBSan (a 17 MB generated header at the chain's edge)")
 		cT08Probe(t, cT08UnionChainSchema(edge), "Root", cT08ChainProbe(edgeSet.String(),
 			"back"+strings.TrimPrefix(edgePath, "value")+".x", "back.u.type", "back.u.as.a.type", edgeLinks[0].Guard, edgeLinks[1].Guard),
 			"-fsanitize=address,undefined", "-fno-sanitize-recover=all", "-fno-omit-frame-pointer", "-g")

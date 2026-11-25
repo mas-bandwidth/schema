@@ -6,12 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 func TestCNestedUnionFramesAreWhole(t *testing.T) {
-	slowtest.Gate(t, "the C compiler and sanitizers")
 	u := unitFrom(t, `package probe
 union Inner { number int64 }
 union Middle { inner Inner }

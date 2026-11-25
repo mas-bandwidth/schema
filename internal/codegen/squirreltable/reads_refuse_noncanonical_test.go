@@ -14,7 +14,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirreltable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -60,7 +59,6 @@ type sqNonCanonicalRow struct {
 // both.
 func TestSquirrelReadsRefuseNonCanonical(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Squirrel interpreter")
 
 	repo, err := sqrun.RepoRoot()
 	if err != nil {

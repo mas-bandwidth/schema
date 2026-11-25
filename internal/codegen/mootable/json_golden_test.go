@@ -14,7 +14,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/moo"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/moo/moorun"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -199,7 +198,6 @@ end
 // TestMooJsonGoldensRoundTrip: every instance's golden text reads with a
 // silent report and writes back byte for byte.
 func TestMooJsonGoldensRoundTrip(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the generated text form)")
 	t.Parallel()
 	bad := jsonGoldenRun(t, nil)
 	for _, b := range bad {
@@ -212,7 +210,6 @@ func TestMooJsonGoldensRoundTrip(t *testing.T) {
 // never on the read: the reader takes any whitespace, so the break is the
 // writer's.
 func TestMooJsonGoldensRoundTripNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs a sabotaged json.moo)")
 	t.Parallel()
 	src := string(Runtime()["json.moo"])
 	const site = `s = "\n" .. string.rep("  ", depth)`
@@ -271,7 +268,6 @@ func jsonGoldenRun(t *testing.T, runtime map[string][]byte) []string {
 // the one strict read's `read` or `refused` and nothing finer (docs/rulings.json
 // refusal-verdict-only: a reason name is the reader's own).
 func TestMooJsonHostileVerdicts(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the generated text form)")
 	t.Parallel()
 	for _, bad := range hostileVerdictRun(t, nil) {
 		t.Error(bad)
@@ -284,7 +280,6 @@ func TestMooJsonHostileVerdicts(t *testing.T) {
 // and keyed-duplicate-unknown, so the control requires exactly those two
 // trees red, and no others: the verdicts see a reader that accepts the repeat.
 func TestMooJsonHostileVerdictsNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs a sabotaged json.moo)")
 	t.Parallel()
 	src := string(Runtime()["json.moo"])
 	sites := []string{

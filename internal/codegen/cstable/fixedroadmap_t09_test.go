@@ -12,7 +12,7 @@ package cstable
 // hold the EMITTED codec to the construct: the value surface the record is
 // written from and read into, the plan entry that copies it, and the bounds
 // pass the read runs. A runtime execution needs the sibling `serialize.cs`
-// checkout and dotnet, and is named as not run in the card's report.
+// checkout and dotnet, and fails by name without them.
 
 import (
 	"strings"

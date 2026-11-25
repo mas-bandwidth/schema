@@ -6,8 +6,6 @@ import (
 	"os"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // twoRefusalsSchema is the float unit of
@@ -20,7 +18,6 @@ const twoRefusalsSchema = "package probe\n table Root { f float32\n values []int
 // §2.9). LoadBuilder's reason, LoadBuilder's refuse_reason and
 // ReadStrict's reason each answer the pin's strict column.
 func TestTwoRefusalsFirstNamesTheReadCPP(t *testing.T) {
-	slowtest.Gate(t, "the C++ compiler (c++)")
 	t.Parallel()
 	data, err := os.ReadFile("../goosetable/testdata/load_refusal_reasons.tsv")
 	if err != nil {

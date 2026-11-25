@@ -141,12 +141,10 @@ tables-goose-wire-fuzz-leb-negative-control tables-goose-wire-fuzz-utf8-negative
 # engine's own encode, and otherwise by its canonical text's digest and the
 # engine's encode of that text (make/goose-hostile.sh). The runner reads the
 # `wire`, `message` and `packet` carriers today; the text, announcement and
-# message_novocab carriers are absences held by name in
-# test/goose-hostile/absent-carriers.tsv until the runner dispatches them (the
-# port has their readers; docs/roadmap.sexp goose/hostile-runner-carriers), a
-# wire or packet case the port cannot read is held by name in
-# test/goose-hostile/absent-cases.tsv, and tools/hostileledger holds the run to
-# the corpus folder: every other registered case ran, or the gate is red.
+# message_novocab carriers do not run until the runner dispatches them (the
+# port has their readers; docs/roadmap.sexp goose/hostile-runner-carriers),
+# and no list holds them back: tools/hostileledger holds the run to the corpus
+# folder, and every registered case ran or the gate is red by its name.
 # test/goose-hostile/known-findings.tsv carries each disagreement by name with
 # the card that owes it.
 GOOSE_HOSTILE_CORPUS ?= internal/ci/hostilecorpus/corpus
@@ -155,7 +153,7 @@ GOOSE_HOSTILE_CORPUS ?= internal/ci/hostilecorpus/corpus
 schema-goose-runs-hostile-corpus: $(GOOSE_FUZZ_SCHEMA)
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
 	@sh make/goose-hostile.sh --scorer tools/hostilecorpusexec/testdata/scorer-outcomes.tsv
-	$(call hostile_ledgered,goose,$(GOOSE_FUZZ_DIR)/hostile-run.log,sh make/goose-hostile.sh "$(GOOSE)" ./$(GOOSE_FUZZ_SCHEMA) $(GOOSE_HOSTILE_CORPUS) $(GOOSE_FUZZ_DIR)/hostile,$(GOOSE_HOSTILE_CORPUS),-absent-carriers test/goose-hostile/absent-carriers.tsv -skips test/goose-hostile/absent-cases.tsv)
+	$(call hostile_ledgered,goose,$(GOOSE_FUZZ_DIR)/hostile-run.log,sh make/goose-hostile.sh "$(GOOSE)" ./$(GOOSE_FUZZ_SCHEMA) $(GOOSE_HOSTILE_CORPUS) $(GOOSE_FUZZ_DIR)/hostile,$(GOOSE_HOSTILE_CORPUS),)
 
 # ITS CONTROL: the non-finite refusal taken out of the generated load
 # (make/goose-hostile.sh's sabotage seam, checked to have matched); the corpus
@@ -213,10 +211,10 @@ test-goose: tables-goose-wire-fuzz schema-goose-runs-hostile-corpus \
 .PHONY: tables-goose-retain-fuzz-driver tables-goose-retain-fuzz-negative-control
 tables-goose-retain-fuzz-driver:
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
-	SCHEMA_SLOW=1 $(GO_TEST) -count=1 -run '^TestGooseRetaining(FuzzDriver|MapReplacement)$$' ./internal/codegen/goosetable/
+	$(GO_TEST) -count=1 -run '^TestGooseRetaining(FuzzDriver|MapReplacement)$$' ./internal/codegen/goosetable/
 tables-goose-retain-fuzz-negative-control:
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
-	SCHEMA_SLOW=1 $(GO_TEST) -count=1 -run '^TestGooseRetaining(FuzzNegativeControl|MapReplacementNegativeControl)$$' ./internal/codegen/goosetable/
+	$(GO_TEST) -count=1 -run '^TestGooseRetaining(FuzzNegativeControl|MapReplacementNegativeControl)$$' ./internal/codegen/goosetable/
 
 # THE INTEGRITY TRAILER UNDER THE LEG'S OWN BUILD (docs/SPEC-TABLES.md §2.14;
 # internal/codegen/goosetable/integrity_test.go). The gate builds its probes
@@ -228,7 +226,7 @@ tables-goose-retain-fuzz-negative-control:
 .PHONY: tables-goose-integrity tables-goose-integrity-negative-control
 tables-goose-integrity:
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
-	SCHEMA_SLOW=1 $(GO_TEST) -count=1 -run '^TestGooseIntegrity(CRC32C|WireFuzzLeg)$$' ./internal/codegen/goosetable/
+	$(GO_TEST) -count=1 -run '^TestGooseIntegrity(CRC32C|WireFuzzLeg)$$' ./internal/codegen/goosetable/
 
 # ITS CONTROLS, each deterministic on any C compiler. A wrong-polynomial
 # table reds the known answers and the Root round trips, and nothing else. A
@@ -239,7 +237,7 @@ tables-goose-integrity:
 GOOSE_FUZZ_SED_crcloop := s|crc = Crc32cTable\[((crc ^ data\[i\]) \& 0xFF) as! i64\] ^ (crc >> 8);|loop { crc ^= 1; } // SABOTAGED: crc32c never returns|
 tables-goose-integrity-negative-control: $(GOOSE_FUZZ_SCHEMA) build/conformance-harness
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
-	SCHEMA_SLOW=1 $(GO_TEST) -count=1 -run '^TestGooseIntegrityCRC32CNegativeControl$$' ./internal/codegen/goosetable/
+	$(GO_TEST) -count=1 -run '^TestGooseIntegrityCRC32CNegativeControl$$' ./internal/codegen/goosetable/
 	@sh make/goose-crc-replay.sh "$(GOOSE)" ./$(GOOSE_FUZZ_SCHEMA) ./build/conformance-harness $(GOOSE_FUZZ_DIR)/control-crcloop '$(GOOSE_FUZZ_SED_crcloop)'; \
 	rc=$$?; if [ $$rc -eq 0 ]; then \
 		echo "NEGATIVE CONTROL FAILED: a crc32c that never returns left the replay green"; exit 1; \

@@ -10,7 +10,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 
@@ -18,7 +17,6 @@ import (
 )
 
 func TestDartArrayRootNative(t *testing.T) {
-	slowtest.Gate(t, "dart")
 	fixture := "../../../testdata/conformance/feature-witnesses/array-root"
 	schema, err := os.ReadFile(filepath.Join(fixture, "Probe.schema"))
 	if err != nil {

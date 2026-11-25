@@ -31,7 +31,6 @@ fixed table FixedRow | integrity = "crc32c" { value int32 }
 `
 
 func TestIntegrityCSharp(t *testing.T) {
-	slowtest.Gate(t, "the .NET SDK")
 	witnesses := integrityGoWitnesses(t)
 	// The Go optimized fixed-table form-1 surface currently omits its integrity
 	// trailer. Do not reproduce that defect: a neutral undeclared-table body and

@@ -12,7 +12,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablepack"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -433,7 +432,6 @@ end
 // wstring, required fields, and conditional fields).
 func TestLuauVtTextCells(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter")
 	if err := vtTextCheckSuite(t, "", "", ""); err != nil {
 		t.Fatalf("the strict text cells failed:\n%v", err)
 	}
@@ -449,7 +447,6 @@ func TestLuauVtTextCells(t *testing.T) {
 //     repeated-key wire pass ReadStrict.
 func TestLuauVtTextCellsNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter")
 	controls := []struct {
 		name, file, from, to string
 	}{

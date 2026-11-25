@@ -159,7 +159,6 @@ func TestCSharpVariableCellsStrict(t *testing.T) {
 		}
 	})
 	t.Run("strict-read", func(t *testing.T) {
-		slowtest.Gate(t, "the .NET SDK (it compiles and runs the generated C#)")
 		out, err := vtCellsRun(t, false)
 		t.Logf("probe:\n%s", out)
 		if err != nil || !strings.Contains(out, "VT_CELLS_OK") {
@@ -169,7 +168,6 @@ func TestCSharpVariableCellsStrict(t *testing.T) {
 }
 
 func TestCSharpVariableCellsStrictNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "the .NET SDK (it compiles and runs the generated C#)")
 	clean, err := vtCellsRun(t, false)
 	if err != nil || !strings.Contains(clean, "VT_CELLS_OK") || !strings.Contains(clean, "ROW vt/variable-class/cs: ok") {
 		t.Fatalf("unplanted tree:\n%s\n%v", clean, err)

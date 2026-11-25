@@ -9,7 +9,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/ruby/rubyrun"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestRubyPacketReadEnforcesSerializeEnd pins SPEC §5 ("Read termination") on
@@ -47,7 +46,6 @@ type FiveBits
 	}
 
 	t.Run("runtime", func(t *testing.T) {
-		slowtest.Gate(t, "ruby (runs generated packet Cls.read termination check)")
 		interp := rubyrun.Interpreter(t)
 		dir := t.TempDir()
 		writeTree(t, dir, files)

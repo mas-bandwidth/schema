@@ -12,7 +12,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/pythontable"
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -36,7 +35,6 @@ func pythonFixedTree(t *testing.T, files map[string][]byte) string {
 // Functional: both Python pins and a live C++ fixed-form oracle.
 func TestPythonFixedForm(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned interpreters and the live C++ fixed-form oracle")
 	tc := fixedproof.Cases()[0]
 	u := fixedproof.ParseCheckUnit(t, tc.Schema)
 	oracle, verify := fixedproof.CppOracle(t, tc, u)
@@ -127,7 +125,6 @@ func pythonFixedMixed(t *testing.T) (*ir.Unit, map[string][]byte, []byte, func([
 
 func TestPythonFixedFormMixed(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned interpreters and the live C++ fixed-form oracle")
 	u, files, oracle, verify := pythonFixedMixed(t)
 	script := `from probe import T, Point, LoadReport, InvalidValue, Refused
 import struct
@@ -222,7 +219,6 @@ print('whole-batch-refusal')
 
 func TestPythonFixedFormStrict(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned analyzer")
 	u := fixedproof.ParseCheckUnit(t, pythonFixedMixedSchema)
 	files, err := pythontable.Generate(u)
 	if err != nil {
@@ -236,7 +232,6 @@ func TestPythonFixedFormStrict(t *testing.T) {
 
 func TestPythonFixedFormLineage(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned interpreters")
 	old := fixedproof.ParseCheckUnit(t, "package probe\nfixed table T {\n a uint16 = 1\n b int32 = 10\n}\n")
 	newer := fixedproof.ParseCheckUnit(t, "package probe\nfixed table T {\n a uint32 = 1\n b int64 = 10\n c int32 = 99\n}\n")
 	entry, _ := fixedproof.LineageEntryOf(old, "T")
@@ -259,7 +254,6 @@ func TestPythonFixedFormLineage(t *testing.T) {
 
 func TestPythonFixedFormNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned interpreters and the live C++ fixed-form oracle")
 	tc := fixedproof.Cases()[0]
 	u := fixedproof.ParseCheckUnit(t, tc.Schema)
 	oracle, _ := fixedproof.CppOracle(t, tc, u)
@@ -303,7 +297,6 @@ if T.fixed_save(rows)!=wire: raise SystemExit('fixed_writer_control')
 
 func TestPythonFixedFormBirthDefaults(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned interpreters and analyzer")
 	u := fixedproof.ParseCheckUnit(t, "package probe\nfixed table T {\n a [2..3]int16\n f float64 = 1.0\n g float32 = 0.3 | min = 0.0, max = 1.0, resolution = 0.1\n q fixed(16,16) = 1.5 | min = 0, max = 10\n}\n")
 	files, err := pythontable.Generate(u)
 	if err != nil {
@@ -332,7 +325,6 @@ print('birth-defaults')
 
 func TestPythonFixedFormWriterBounds(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned interpreters")
 	source := `package probe
  type Inner { n int128 | min = -10, max = 10 }
  fixed table T {
@@ -398,7 +390,6 @@ print('writer-snapshot-bounds')
 
 func TestPythonFixedFormGuardedDefaults(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned interpreters")
 	source := `package probe
  fixed table Arm { x int32 }
  union Pick {

@@ -14,9 +14,7 @@ package rusttable
 // carrying the held kind 31 is refused as damage (R17). The
 // clauses assert the VERDICT alone (docs/rulings.json refusal-verdict-only).
 //
-// A FUNCTIONAL TEST: it compiles and runs Rust with rustc. It skips by name
-// when rustc is absent and SCHEMA_REQUIRE_CORPUS is unset, and fails by name
-// when SCHEMA_REQUIRE_CORPUS=1. It reads only the generator's output: no
+// A FUNCTIONAL TEST: it compiles and runs Rust with rustc. It fails by name when rustc is absent. It reads only the generator's output: no
 // clock beyond the probe's own finite timeout, no socket.
 
 import (
@@ -30,8 +28,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -88,12 +84,8 @@ fn main() {
 
 func TestRustAnnouncementSkipFieldIsBounded(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "rustc (it builds and runs the announcement skip probe)")
 	if _, err := exec.LookPath("rustc"); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and rustc is not on PATH, so the announcement skip cannot be built or run: %v", err)
-		}
-		t.Skipf("rustc is not on PATH and SCHEMA_REQUIRE_CORPUS is unset: this is a functional test that compiles and runs Rust: %v", err)
+		t.Fatalf("rustc is not on PATH, so the announcement skip cannot be built or run: %v", err)
 	}
 
 	files, err := Generate(unitFrom(t, announceSkipBoundsSchema))

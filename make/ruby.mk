@@ -79,6 +79,8 @@ generated/bench/tables/ruby/.stamp: ;
 TEST_LEGS           += test-ruby
 BENCH_TABLES_LEGS   += generated/bench/tables/ruby/.stamp
 TOOLCHAIN_LEGS      += ruby
+CONFORMANCE_LEG_ruby := build/conformance-ruby
 TOOLCHAIN_PINS_ruby := RUBY RUBY_FLOOR RUBOCOP STEEP RBS
-CONFORMANCE_LEGS    += $(call unless_skipped,ruby,build/conformance-ruby)
+CONFORMANCE_OF.ruby := build/conformance-ruby
+CONFORMANCE_LEGS    += $(CONFORMANCE_OF.ruby)
 GOLDENS_LEGS        += update-goldens-ruby

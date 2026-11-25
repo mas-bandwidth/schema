@@ -1,21 +1,6 @@
 # testguard config for the ci-policy (python-legs) row of .github/workflows/ci-fast.yml.
 # Every package the row's go test runs is a suite; every test that runs has
-# an empty file under the baseline directory; skips are ledgered here by test.
+# an empty file under the baseline directory; no test may skip (a test that is not to run is left out at the root).
 # go run ./tools/testguard help check
 suite	github.com/mas-bandwidth/schema/v2/internal/ci
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestPythonCICorpusProvenanceAndDamageControls	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestPythonCIPlannerProvisionsFixedCorpus	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestPythonCISupportCoversEveryPrerequisite	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestPythonCIWireFuzzStandalonePartition	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestPythonCompilerCIShardCoverage	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestPythonFixedEvolutionCICoverage	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestPythonHandtextCISelection	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestPythonUsageFragmentsRun/examples-3.11.18	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestPythonUsageFragmentsRun/examples-3.15.2	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestPythonUsageFragmentsRun/pointers-3.11.18	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestPythonUsageFragmentsRun/pointers-3.15.2	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestPythonUsageFragmentsRunNegativeControl/packet-write-renamed	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestPythonUsageFragmentsRunNegativeControl/runtime-refused-renamed	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestPythonUsageFragmentsRunNegativeControl/table-load-renamed	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestPythonUsageFragmentsRunNegativeControl/table-save-renamed	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
 baseline	test/testguard/ci-policy-python-legs

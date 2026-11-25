@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -23,7 +22,6 @@ import (
 // by value as its own blob record on save, saveRetain, measureRetain, toJson
 // and Cook (docs/USAGE.md).
 func TestJavaWritersRefuseASharedBlob(t *testing.T) {
-	slowtest.Gate(t, "the JDK (it compiles and runs the generated Java)")
 	t.Parallel()
 	repo := filepath.Join("..", "..", "..")
 	build := t.TempDir()

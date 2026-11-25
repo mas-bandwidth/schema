@@ -75,7 +75,7 @@ func runCNodeRecordTerminatorProbe(t *testing.T, u *ir.Unit, body string, mutate
 		var err error
 		cc, err = exec.LookPath("cc")
 		if err != nil {
-			t.Skip("generated C execution requires cc")
+			t.Fatal("generated C execution requires cc")
 		}
 	}
 	files, err := cgen.Generate(u)
@@ -133,7 +133,6 @@ int main(void) {
 
 func TestCNodeRecordEndsAtTerminator(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the C compiler (cc)")
 	u := unitFrom(t, cNodeRecordTerminatorSchema)
 	body := fmt.Sprintf(`
     int failures = 0;
@@ -176,7 +175,6 @@ func TestCNodeRecordEndsAtTerminator(t *testing.T) {
 
 func TestCNodeRecordEndsAtTerminatorNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the C compiler (cc)")
 	u := unitFrom(t, cNodeRecordTerminatorSchema)
 	body := fmt.Sprintf(`
     int failures = 0;

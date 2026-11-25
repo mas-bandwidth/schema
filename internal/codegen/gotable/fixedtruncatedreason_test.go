@@ -2,8 +2,6 @@ package gotable
 
 import (
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestGoFixedTruncatedIsMalformedNamedTruncated pins SPEC-TABLES §3.4 and §6.5:
@@ -11,7 +9,6 @@ import (
 // clean read and an ordinary clamp do not inherit that class.
 func TestGoFixedTruncatedIsMalformedNamedTruncated(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
 	const schema = `package probe
 fixed table Fix {
  n int32 = 1 | min = 0, max = 10

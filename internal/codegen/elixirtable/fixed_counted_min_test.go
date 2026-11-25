@@ -3,8 +3,6 @@ package elixirtable
 import (
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestFixedCountedArrayBelowMinRefuses pins the fixed-read cell of rule 2 in
@@ -15,10 +13,9 @@ import (
 // It now holds [Min, Max], on the identity read and on a read through a
 // lineage (the older writer's layout).
 //
-// It runs elixir, so it is a functional test behind slowtest.Gate.
+// It runs elixir, so it is a functional test.
 func TestFixedCountedArrayBelowMinRefuses(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Elixir (fixed counted array below its Min)")
 	bin := elixirBinary(t)
 	old := "package slack\nfixed table Root { vals [2..4]uint8 }"
 	newer := "package slack\nfixed table Root { vals [2..4]uint16 }"

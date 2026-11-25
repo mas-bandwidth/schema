@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // blockClauseProbe opens the C++ reference's block_padded.bin through the
@@ -91,7 +90,6 @@ func blockClauseGate(t *testing.T, mutate func(*testing.T, map[string][]byte)) m
 // schema_blockread.luau's BlockOpen to Go's verdicts over the C++ reference
 // image: the clean block opens, and each forged clause refuses by Go's name.
 func TestLuauBlockOpenClauses(t *testing.T) {
-	slowtest.Gate(t, "the pinned Luau interpreter (it runs the emitted block reader)")
 	t.Parallel()
 	for name, got := range blockClauseGate(t, nil) {
 		t.Errorf("%s answered %q, Go answers %q", name, got, blockClauseWant[name])
@@ -101,7 +99,6 @@ func TestLuauBlockOpenClauses(t *testing.T) {
 // TestLuauBlockOpenClausesNegativeControl cuts one clause at a time out of
 // BlockOpen and requires exactly that clause's case red.
 func TestLuauBlockOpenClausesNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "the pinned Luau interpreter (it runs the emitted block reader)")
 	t.Parallel()
 	for _, ctl := range []struct{ name, from, to, red string }{
 		{"stride", "if offsetOf < 0 or stride ~= f.stride then", "if offsetOf < 0 then", "stride"},

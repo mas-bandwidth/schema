@@ -23,7 +23,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -235,7 +234,7 @@ func cppReasonCompiler(t *testing.T, names ...string) string {
 			return path
 		}
 	}
-	t.Skipf("none of %v is on PATH", names)
+	t.Fatalf("none of %v is on PATH", names)
 	return ""
 }
 
@@ -267,7 +266,6 @@ func cppReasonCompile(t testing.TB, cxx, dir string) ([]byte, error) {
 
 func TestCPPGeneratedHeadersCompileUnderClangAndGxxWerror(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the C++ compilers (the generated headers are compiled, not read)")
 
 	clang := cppReasonCompiler(t, "clang++-21", "clang++")
 	gxx := cppReasonCompiler(t, "g++")

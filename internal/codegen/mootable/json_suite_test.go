@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/jsontestsuite"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // THE OUTSIDE ORACLE (docs/SPEC-TABLES.md §16.12): json.moo's JSON layer over
@@ -48,7 +47,6 @@ func itoa(i int) string {
 }
 
 func TestMooJSONTestSuite(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs json.moo's JSON layer)")
 	t.Parallel()
 	s, err := jsontestsuite.Load(repoRoot)
 	if err != nil {
@@ -67,7 +65,6 @@ func TestMooJSONTestSuite(t *testing.T) {
 // root value (§16.1, THE ROOT OBJECT IS THE WHOLE TEXT) and requires the suite
 // to name the files that see it.
 func TestMooJSONTestSuiteNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs a sabotaged json.moo)")
 	t.Parallel()
 	s, err := jsontestsuite.Load(repoRoot)
 	if err != nil {

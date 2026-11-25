@@ -7,8 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -21,7 +19,6 @@ import (
 // zero, a subnormal and the largest finite value read back bit exact, and a
 // non-finite write is the debug assertion the runtime's write is.
 func TestPacketFiniteRust(t *testing.T) {
-	slowtest.Gate(t, "cargo and the serialize.rs runtime (it builds and runs the generated crate)")
 
 	src, err := os.ReadFile(filepath.Join("..", "..", "..", "test", "packet-finite", "Finite.schema"))
 	if err != nil {

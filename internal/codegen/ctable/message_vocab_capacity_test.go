@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -255,7 +254,6 @@ func vocabCapacityCases(refs vocabCapacityRefs) []vocabCapacityCase {
 
 func TestCMessageVocabularyCapacityAbove4096(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the c compiler (it compiles and runs the generated message vocabulary capacity probe)")
 	u, ann, refs := vocabCapacityFixtures(t)
 	cases := vocabCapacityCases(refs)
 	cc := os.Getenv("CC")

@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -61,7 +60,6 @@ assert v==%s.load(Path("canonical").read_bytes())
 
 func TestPythonMapKeyWidenManifest(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	u := loadUnitPaths(t, "../../../tables/maps")
 	wire, err := os.ReadFile("../../../testdata/wire/tables/fuzz-vectors/map_key_widen.bin")
 	if err != nil {
@@ -77,7 +75,6 @@ func TestPythonMapKeyWidenManifest(t *testing.T) {
 
 func TestPythonMapKeyWidenKinds(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	for _, c := range []struct {
 		name, source, target, text, why string
 		widened                         int
@@ -113,7 +110,6 @@ func TestPythonMapKeyWidenKinds(t *testing.T) {
 
 func TestPythonMapKeyWidenCountNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	source := loadUnit(t, "package probe\ntable Root { values map[int8]int32 }\n")
 	target := loadUnit(t, "package probe\ntable Root { values map[int32]int32 }\n")
 	wire := pythonVTMapEngineWire(t, source, "Root", `{"values":{"-3":4,"2":5}}`)

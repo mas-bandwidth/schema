@@ -41,7 +41,6 @@ var probes2 = map[string]struct {
 	"entry-empty-junit-name":             {write: true, code: 2, want: "r.xml has a <testcase> with no name"},
 	"entry-empty-junit-name-check":       {code: 2, want: "r.xml has a <testcase> with no name"},
 	"entry-gitkeep-in-suite":             {code: 0, want: "OK:"},
-	"entry-listed-now-ledgered-skip":     {code: 1, want: "RED vanished s\tu"},
 	"entry-long-name-260":                {write: true, code: 1, want: "WROTE: 1 baseline entries", wrote: []string{"bl/s/" + strings.Repeat("x", maxEntry-17) + "~"}},
 	"entry-rust-colons":                  {write: true, code: 1, want: "WROTE: 1 baseline entries", wrote: []string{"bl/s/codec%3A%3Atests%3A%3Aroundtrip"}},
 	"entry-spaces-brackets-100":          {write: true, code: 1, want: "WROTE: 1 baseline entries", wrote: []string{"bl/s/test_roundtrip%5Ba%20b%20"}},

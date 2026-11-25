@@ -61,7 +61,6 @@ $(SQUIRREL_FUZZ_CORPUS_FILE): Makefile make/schema-squirrel-nightly-fuzz.mk
 # are parallel, so the budget is the whole campaign's, not per kind.
 .PHONY: schema-squirrel-nightly-fuzz
 schema-squirrel-nightly-fuzz: schema-squirrel-nightly-fuzz-toolchain $(SQUIRREL_FUZZ_CORPUS_FILE)
-	SCHEMA_REQUIRE_CORPUS=1 SCHEMA_SLOW=1 \
 	SCHEMA_SQUIRREL_FUZZ_CORPUS=$$PWD/$(SQUIRREL_FUZZ_CORPUS_FILE) \
 	SCHEMA_SQUIRREL_FUZZ_MUTANTS=$(SQUIRREL_FUZZ_MUTANTS) \
 	SCHEMA_SQUIRREL_FUZZ_SEED=$(SQUIRREL_FUZZ_SEED) \
@@ -75,6 +74,5 @@ schema-squirrel-nightly-fuzz: schema-squirrel-nightly-fuzz-toolchain $(SQUIRREL_
 # sides. Registered in make/negative-controls.json's nightly group.
 .PHONY: schema-squirrel-nightly-fuzz-negative-control
 schema-squirrel-nightly-fuzz-negative-control: schema-squirrel-nightly-fuzz-toolchain
-	SCHEMA_REQUIRE_CORPUS=1 SCHEMA_SLOW=1 \
 	nice -n 19 $(GO_TEST) -count=1 -timeout 600s ./internal/codegen/squirreltable \
 		-run '^TestSquirrelWireFuzzNegativeControl$$' -v

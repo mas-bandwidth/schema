@@ -9,14 +9,12 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster/lobsterrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 )
 
 func TestLobsterCookAuthoredOptionalMap(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "native authored optional-map storage")
 	corpus := "testdata/conformance/cook-authored-optional-map"
 	row := cookWriteRow{root: "Root", paths: []string{corpus + "/Probe.schema"}}
 	g := generateCookUnit(t, row)

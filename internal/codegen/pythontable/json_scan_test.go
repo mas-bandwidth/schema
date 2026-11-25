@@ -12,7 +12,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpptable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
 	"github.com/mas-bandwidth/schema/v2/internal/jsontestsuite"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 
@@ -1953,7 +1952,6 @@ for i in range(10):
 
 func TestPythonJsonFixedGrammarCppOracle(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "generated C++ grammar oracle")
 	const schema = `package jsonfixedgrammar
 table Root {
     f fixed(48, 16) | min = -10, max = 10
@@ -2025,7 +2023,6 @@ int main() {
 
 func TestPythonJsonFixedClassIntegration(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "generated C++ and both pinned Python interpreters")
 	const schema = `package jsonfixedclass
 table Root {
     values [3]int64

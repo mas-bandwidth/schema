@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // A fixed read with no capacity reads the file's own records: 4,096 is a
@@ -16,7 +15,6 @@ import (
 // batch_too_large. The planted old default of 4,096 goes red.
 func TestFixedLuauNoCapacityIsUnbounded(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter")
 	run := func(plant bool) string {
 		g := generateFiles(t, map[string]string{"Batch.schema": fixedBatchCapacitySchema})
 		if plant {

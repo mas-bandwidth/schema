@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestLuauFixedPlainReadIsStrict holds the fixed form to docs/SPEC-TABLES.md
@@ -22,7 +21,6 @@ import (
 // never refuses (fixedversioning_test.go).
 func TestLuauFixedPlainReadIsStrict(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter")
 	g := generateFiles(t, map[string]string{"Pt.schema": "package probe\n\nfixed table Pt\n{\n    a int32 = 0\n    b int32 = 5\n}\n"})
 	if g.err != nil {
 		t.Fatalf("the Luau unit does not generate: %v", g.err)

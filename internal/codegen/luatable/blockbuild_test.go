@@ -27,7 +27,6 @@ import (
 // opens the Lua bytes with the generated Go reader.
 func TestLuaBlockBuilder(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "go and the pinned lua")
 	repo := filepath.Join("..", "..", "..")
 	manifest := filepath.Join(repo, "testdata", "conformance", "tables", "MANIFEST.txt")
 	units := manifestUnits(t, manifest)
@@ -241,7 +240,6 @@ func TestLuaBlockOpen(t *testing.T) {
 // extent rounding removed.
 func TestLuaBlockBuilderNegativeControlsFunctional(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Lua 5.4 functional probe")
 	repo := filepath.Join("..", "..", "..")
 	u := luarun.LoadUnit(t, filepath.Join(repo, "tables", "block"))
 	runProbe := func(t *testing.T, patch func(map[string][]byte)) (string, error) {

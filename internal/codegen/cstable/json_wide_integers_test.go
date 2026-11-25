@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/csharp"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -62,7 +61,6 @@ table Sites {
 // and bare wide number tokens report kind_mismatch.
 func TestCSharpJsonWideIntegersAreStrings(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the .NET SDK")
 
 	dir := filepath.Join("..", "..", "..", "testdata", "wire", "json-integers")
 	manifest, err := os.ReadFile(filepath.Join(dir, "MANIFEST.tsv"))

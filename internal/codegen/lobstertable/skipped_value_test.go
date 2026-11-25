@@ -19,7 +19,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster/lobsterrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 type skippedValueRow struct {
@@ -104,7 +103,6 @@ def mrow(file:string):
 
 func TestLobsterSkippedValueIsValidated(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Lobster toolchain (it runs the generated modules)")
 
 	rows := readSkippedValueManifest(t)
 	dir := filepath.Join(root, "testdata", "wire", "skipped-value")

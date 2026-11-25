@@ -28,7 +28,6 @@ import (
 // after checking invalidates that proof; copying alone is not validation.
 func TestCheckedCookGoConsumers(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the generated Go hostile cook consumer")
 	const schema = `package probe
 table Node { value int32
  next *Node
@@ -362,7 +361,6 @@ func TestAcceptedCookConsumers(t *testing.T) {
 // fails in the child process after acceptance. No recovery masks a panic.
 func TestCheckedCookGoConsumersNegativeControls(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the generated Go checked-cook negative controls")
 	root, err := filepath.Abs("..")
 	if err != nil {
 		t.Fatal(err)

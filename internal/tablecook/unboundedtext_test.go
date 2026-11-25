@@ -12,7 +12,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -97,7 +96,6 @@ func TestUnboundedTextMinimalLayoutAndRoundTrip(t *testing.T) {
 }
 
 func TestUnboundedTextAllShapesAndGeneratedGoEquivalence(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	const schema = "package probe\ntable Note {\n    lines []string\n}\ntable Where {\n    capped [..3]string\n    maybe_capped [..3]?string\n    open []string\n    maybe_open []?string\n    by_name map[string]int32\n    note *Note\n}\n"
 	u, m := unitFromSource(t, schema)
@@ -160,12 +158,8 @@ func TestUnboundedTextAllShapesAndGeneratedGoEquivalence(t *testing.T) {
 		}
 	}
 
-	// The generated-Go half compiles and runs a go test. It used to run only
-	// under SCHEMA_SLOW=1, so a run the test's own gate admitted through
-	// SCHEMA_REQUIRE_CORPUS went green with the equivalence unchecked; it now
-	// runs whenever the slow half is enabled (slowtest.Enabled).
+	// The generated-Go half compiles and runs a go test. It always runs.
 	t.Run("generated-go-equivalence", func(t *testing.T) {
-		slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated table code)")
 		dir := t.TempDir()
 		goFiles, err := golang.Generate(u)
 		if err != nil {

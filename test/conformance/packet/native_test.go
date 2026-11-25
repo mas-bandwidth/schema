@@ -159,7 +159,6 @@ func sibling(envName, dir, marker string) string {
 // the instance, and every reader gives the same verdict and value for every
 // one-bit flip of the reference packets.
 func TestPacketCarrier(t *testing.T) {
-	slowtest.Gate(t, "cc, c++, go, cargo, node and lua (it builds and runs one driver per language)")
 	t.Chdir("../../..")
 	rt := runtimes{
 		cpp:       sibling("SERIALIZE", "serialize", "serialize.h"),

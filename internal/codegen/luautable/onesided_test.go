@@ -122,7 +122,6 @@ func oneSidedOracle(t *testing.T, model *tabletext.Model, u *ir.Unit, tc oneSide
 }
 
 func TestLuauOneSidedIntegerRange(t *testing.T) {
-	t.Skip("layer 4 (luau): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 	u, g := oneSidedUnit(t)
 	model := tabletext.NewModel(u)

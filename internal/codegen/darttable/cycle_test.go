@@ -10,7 +10,6 @@ import (
 
 	"bytes"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -32,7 +31,6 @@ import (
 // probe red on the three cyclic rows alone.
 func TestCyclicWireIsDamageDart(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dart")
 	out, err := runCycleProbe(t, nil)
 	if err != nil {
 		t.Fatalf("the cycle probe failed: %v\n%s", err, out)
@@ -44,7 +42,6 @@ func TestCyclicWireIsDamageDart(t *testing.T) {
 // (tables-dart-cycle-negative-control).
 func TestCyclicWireIsDamageDartNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dart")
 	// Both cycle checks answer false: the stored-edge pass and the wire-alone
 	// walk over every kind-17 payload, either of which refuses a cycle alone.
 	const sig = "  bool cyclic() {\n"

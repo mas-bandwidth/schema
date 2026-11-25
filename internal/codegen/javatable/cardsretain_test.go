@@ -1,7 +1,6 @@
 package javatable
 
 import (
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -134,7 +133,6 @@ func writeVarPackages(t *testing.T, srcdir string) {
 // record it names that the older root cannot place, as loss — never retained
 // silently. The save is idempotent.
 func TestCardConstructsRetainUnknownFields(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Parallel()
 	javac, javaBin := javaTools(t)
@@ -233,7 +231,6 @@ const retainDriver = `public final class RetainDriver {
 // unknown enum variant is reported and blocks a lossless claim, and the input
 // bytes are unchanged in every case.
 func TestRetentionCapacityIsALoss(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Parallel()
 	javac, javaBin := javaTools(t)

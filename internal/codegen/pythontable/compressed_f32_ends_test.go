@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // f32EndsDir is the cross-port corpus for A COMPRESSED FLOAT'S RANGE IS HELD
@@ -73,7 +72,6 @@ func TestPythonCompressedF32EndsDescriptors(t *testing.T) {
 // the corpus.
 func TestPythonCompressedF32EndsCorpus(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	data, err := os.ReadFile(filepath.Join(f32EndsDir, "cases.tsv"))
 	if err != nil {
 		t.Fatal(err)

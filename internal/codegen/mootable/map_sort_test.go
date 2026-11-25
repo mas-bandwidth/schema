@@ -6,8 +6,6 @@ import (
 	"maps"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // THE WRITER HOLDS THE SORT (docs/PORTING.md M19; docs/SPEC-TABLES.md §2.8). A
@@ -105,7 +103,6 @@ func mooMapSortSetup(t *testing.T) (*generatedUnit, [][2]string, map[string][]by
 }
 
 func TestMooMapWriterHoldsTheSort(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_save.moo)")
 	t.Parallel()
 	g, rows, inputs, files := mooMapSortSetup(t)
 	got, multi := mooMapSortRows(t, g, rows, inputs)
@@ -128,7 +125,6 @@ func TestMooMapWriterHoldsTheSort(t *testing.T) {
 }
 
 func TestMooMapWriterSortNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_save.moo)")
 	t.Parallel()
 	g, rows, inputs, _ := mooMapSortSetup(t)
 	const sortLines = "\t\ttable.sort(order, function(a: any, b: any): boolean\n\t\t\treturn key_less(keyfd, a, b)\n\t\tend)\n"

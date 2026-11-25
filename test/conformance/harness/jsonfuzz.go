@@ -22,7 +22,6 @@ type jsonFuzzOptions struct {
 	driversPath string
 	driverCmd   string
 	only        string
-	skip        string
 	work        string
 	failed      string
 	seed        uint64
@@ -187,12 +186,6 @@ func resolveJSONFuzzDrivers(opts jsonFuzzOptions) ([]driver, error) {
 	if err != nil {
 		return nil, err
 	}
-	skipped := map[string]bool{}
-	for tok := range strings.FieldsFuncSeq(opts.skip, func(r rune) bool { return r == ',' || r == ' ' }) {
-		if tok != "" {
-			skipped[tok] = true
-		}
-	}
 	onlySet := map[string]bool{}
 	if opts.only != "" {
 		for tok := range strings.FieldsFuncSeq(opts.only, func(r rune) bool { return r == ',' || r == ' ' }) {
@@ -204,9 +197,6 @@ func resolveJSONFuzzDrivers(opts jsonFuzzOptions) ([]driver, error) {
 	var out []driver
 	for _, d := range all {
 		if len(onlySet) > 0 && !onlySet[d.lang] {
-			continue
-		}
-		if skipped[d.lang] {
 			continue
 		}
 		out = append(out, d)

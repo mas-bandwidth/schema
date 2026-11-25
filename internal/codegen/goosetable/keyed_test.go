@@ -22,7 +22,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 const keyedProbeSchema = `package probe
@@ -136,7 +135,6 @@ func keyedRows(t *testing.T, override map[string][]byte) []string {
 }
 
 func TestGooseKeyedAccessorCoversBothEnds(t *testing.T) {
-	slowtest.Gate(t, "the Goose toolchain (it builds and runs the keyed probe)")
 	t.Parallel()
 	for _, b := range keyedRows(t, nil) {
 		t.Error(b)
@@ -152,7 +150,6 @@ func TestGooseKeyedAccessorCoversBothEnds(t *testing.T) {
 //   - shift: the key indexes slot k, not k-1 — place goes red (E.Max then
 //     runs past the end, so the max row turns with it; none and past stay green).
 func TestGooseKeyedNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "the Goose toolchain (it builds and runs the keyed probe)")
 	t.Parallel()
 	const guard = "    if key <= 0 || key > slots.len {\n"
 	for _, ctl := range []struct {

@@ -10,10 +10,9 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luatable"
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
-// Functional (luaBinary): run with SCHEMA_SLOW=1.
+// Functional (luaBinary): needs the pinned Lua.
 //
 // TestFixedLuaReadFixedOnePath holds docs/FIXED-FORM-ALGORITHM.md §4 ("ONE
 // path") and §5.3 step 11 on the Lua leg: ReadFixed is the strict load at a
@@ -22,7 +21,6 @@ import (
 // second record hash is not the file's.
 func TestFixedLuaReadFixedOnePath(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "lua (it runs the emitted fixed-form runtime)")
 	u := fixedproof.ParseCheckUnit(t, "package probe\nfixed table Point {\n    x int32 = 1\n    y int32 = 2\n}\n")
 	files, err := luatable.Generate(u)
 	if err != nil {

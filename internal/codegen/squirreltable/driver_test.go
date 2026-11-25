@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -63,7 +62,6 @@ func knownSurfaces(t *testing.T, root, manifest string) map[string]bool {
 // names, every opt-in unit the manifest marks, and nothing else.
 func TestSquirrelDriverListsItsSurfaces(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Squirrel interpreter")
 	root, err := sqrun.RepoRoot()
 	if err != nil {
 		t.Fatal(err)

@@ -18,13 +18,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 func TestElixirSaveMessagesRefusesTextOffShape(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Elixir save_messages refuses text off its announced shape")
 
 	root, err := filepath.Abs("../../..")
 	if err != nil {

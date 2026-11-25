@@ -10,7 +10,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -39,15 +38,11 @@ import (
 // back from the text and saved (the bytes must be the wire again). Every corpus
 // wire is first held to the oracle itself.
 func TestMapsAndUnionArmsOnTheTableWireRust(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Parallel()
 
 	if _, err := exec.LookPath("rustc"); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and rustc is not on PATH: %v", err)
-		}
-		t.Skipf("rustc is not on PATH: %v", err)
+		t.Fatalf("rustc is not on PATH: %v", err)
 	}
 	repo, err := filepath.Abs("../../..")
 	if err != nil {

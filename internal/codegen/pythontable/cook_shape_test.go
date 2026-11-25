@@ -5,12 +5,10 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func TestPythonCookShapeFunctional(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned interpreters and a timed shape comparison")
 	u := loadUnit(t, fixedUnionSchema)
 	files, err := Generate(u)
 	if err != nil {

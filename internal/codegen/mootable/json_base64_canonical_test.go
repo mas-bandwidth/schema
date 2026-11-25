@@ -27,7 +27,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/moo/moorun"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -150,7 +149,6 @@ end
 
 func TestMooJsonBytesReadCanonicalBase64Only(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "moo (it runs json.moo's canonical base64 read)")
 	rows := readMooBase64Vectors(t)
 	if len(rows) == 0 {
 		t.Fatal("the shared base64 vectors are empty")

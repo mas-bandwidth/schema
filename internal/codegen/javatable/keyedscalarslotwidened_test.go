@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 
@@ -26,7 +25,6 @@ import (
 // whole load and the Java leg owes the same refusal and no value. A case the
 // oracle reads is held to one widened and the oracle's text.
 func TestJavaFixKeyedScalarSlotWidened(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Parallel()
 	cases := []struct {

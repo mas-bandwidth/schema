@@ -10,14 +10,12 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpptable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestPythonCookOptionalMapsCppIdentity(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "generated C++ and both pinned interpreters")
 	u := loadUnit(t, optionalMapSchema)
 	files, err := cpp.Generate(u)
 	if err != nil {

@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/fixedvector"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -25,12 +24,8 @@ import (
 // bit-exact.
 func TestFixedCompressedNegZeroRead(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "rustc (a generated fixed-load probe)")
 	if _, err := exec.LookPath("rustc"); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and rustc is not on PATH: %v", err)
-		}
-		t.Skipf("rustc is not on PATH: %v", err)
+		t.Fatalf("rustc is not on PATH: %v", err)
 	}
 	corpus := versionCorpus(t)
 	u := versionUnit(t, versionSchema(t, "FNZ"))

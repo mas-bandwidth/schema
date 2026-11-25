@@ -29,7 +29,6 @@ func TestFixedFormLayoutRules(t *testing.T) {
 	// unknown hash is layout_unknown. The seven rules stay as the LOCK'S
 	// validation of what it records and the oracle's of the corpus, and that is
 	// where this coverage is owed next.
-	t.Skip("retired by docs/FIXED-FORM-ALGORITHM.md §5.6; the seven rules are the lock's validation now")
 	fx1, err := os.ReadFile("../../../test/tables/FX1.schema")
 	if err != nil {
 		t.Fatal(err)
@@ -276,7 +275,6 @@ func TestLayoutMalformedResidue(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(testDir, "layout_test.go"), []byte(src), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
 	cmd := testproc.Command(t, "go", "test", "-count=1", "-v", ".")
 	cmd.Dir = testDir
 	out, err := cmd.CombinedOutput()

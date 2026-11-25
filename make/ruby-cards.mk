@@ -13,7 +13,7 @@ $(CARDS_RUBY_GENERATED)/.stamp: build/schema-ruby tables/cards/Card.schema table
 	@touch $@
 
 cards-ruby-test: ruby-toolchain-check
-	SCHEMA_SLOW=1 $(GO_TEST) -count=1 -timeout 600s -tags schema_leg_ruby -run '^TestRubyCards$$' ./internal/codegen/rubytable/
+	$(GO_TEST) -count=1 -timeout 600s -tags schema_leg_ruby -run '^TestRubyCards$$' ./internal/codegen/rubytable/
 
 cards-ruby-conformance: toolchain-ruby build/conformance-harness cards-ruby-generate
 	RUBY=$(RUBY) ./build/conformance-harness cards --work build/cards-ruby-current --corpus tables/cards/conformance --driver 'tables/cards/ruby/driver' --require $(CARDS_RUBY_SURFACES)
@@ -22,7 +22,7 @@ cards-ruby-conformance: toolchain-ruby build/conformance-harness cards-ruby-gene
 define cards-ruby-control
 	@rm -rf build/cards-ruby-control-$(1) && mkdir -p build/cards-ruby-control-$(1)
 	@sed '$(2)' tables/cards/ruby/facade.rb > build/cards-ruby-control-$(1)/facade.rb
-	@cmp -s tables/cards/ruby/facade.rb build/cards-ruby-control-$(1)/facade.rb && { echo 'NEGATIVE CONTROL FAILED: $(1) sed changed nothing'; exit 1; } || true
+	@cmp -s tables/cards/ruby/facade.rb build/cards-ruby-control-$(1)/facade.rb && { echo 'NEGATIVE CONTROL FAILED: $(1) sed changed nothing'; exit 1; } || [ $$? -eq 1 ] || exit 1
 	@for interp in "$(RUBY)" "$(RUBY_FLOOR)"; do \
 		name=$$(basename $$(dirname $$(dirname "$$interp"))); log=build/cards-ruby-control-$(1)/$$name.log; \
 		if CARDS_RUBY_FACADE=build/cards-ruby-control-$(1)/facade.rb RUBY="$$interp" ./build/conformance-harness cards --work build/cards-ruby-control-$(1)/$$name --corpus tables/cards/conformance --driver 'tables/cards/ruby/driver' --require $(CARDS_RUBY_SURFACES) > "$$log" 2>&1; then echo 'negative control $(1) left conformance green'; exit 1; fi; \
@@ -42,7 +42,7 @@ cards-ruby-hash-negative-control: toolchain-ruby build/conformance-harness cards
 	$(call cards-ruby-control,taskhash,s/Digest::SHA256.hexdigest(data)/"0" * 64/)
 
 cards-ruby-facade-negative-control: ruby-toolchain-check
-	SCHEMA_SLOW=1 $(GO_TEST) -count=1 -timeout 600s -tags schema_leg_ruby -run '^TestRubyCardsFacadeNegativeControl$$' ./internal/codegen/rubytable/
+	$(GO_TEST) -count=1 -timeout 600s -tags schema_leg_ruby -run '^TestRubyCardsFacadeNegativeControl$$' ./internal/codegen/rubytable/
 
 ruby-ci-cards: cards-ruby-test cards-ruby-conformance cards-ruby-render-negative-control cards-ruby-upgrade-negative-control cards-ruby-hash-negative-control cards-ruby-facade-negative-control
 test-ruby: ruby-ci-cards

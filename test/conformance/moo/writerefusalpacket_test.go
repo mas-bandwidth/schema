@@ -56,7 +56,6 @@ func TestWriteRefusalPacketMooSurface(t *testing.T) {
 // moorun fails, never skips, when the pinned moo does not resolve.
 func runWriteRefusalPacketMoo(t *testing.T) {
 	t.Helper()
-	slowtest.Gate(t, "the pinned moo interpreter (it runs the generated packet writer)")
 	path := filepath.Join(root, wrpacket.Dir, "RefusalPacket.schema")
 	src, err := os.ReadFile(path)
 	if err != nil {

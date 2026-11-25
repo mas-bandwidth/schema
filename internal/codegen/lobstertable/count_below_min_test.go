@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -46,7 +45,6 @@ table Probe
 
 func TestLobsterCountedArrayMinimum(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Lobster toolchain")
 	g := finiteGenerate(t, countMinSchema)
 	m := tabletext.NewModel(g.u)
 	fresh, err := tablewire.Encode(m, m.New(m.Lookup("Probe")))

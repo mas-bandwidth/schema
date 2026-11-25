@@ -3,7 +3,6 @@ package pythontable
 import (
 	"fmt"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"strings"
@@ -11,7 +10,6 @@ import (
 )
 
 func TestPythonContainerWidenHistorical(t *testing.T) {
-	slowtest.Gate(t, "historical keyed elements and union arms")
 	for _, tc := range []struct{ name, old, new, text, check string }{
 		{"keyed", `package contwiden
  enum Slot { A, B }
@@ -68,7 +66,6 @@ print(v.save().hex())
 }
 
 func TestPythonContainerWidenRefusalsAndControls(t *testing.T) {
-	slowtest.Gate(t, "keyed and arm widening refusals and planted controls")
 	for _, tc := range []struct{ name, old, new, text, anchor string }{
 		{"keyed", `package contwiden
  enum Slot { A, B }

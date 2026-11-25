@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -26,7 +25,6 @@ func init() { nonGoCarriers["python"] = append(nonGoCarriers["python"], carryReq
 // field; the new required writer supplies its declared default.
 func TestPythonRequiredPublicShapes(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters and strict mypy")
 	cases := []struct{ name, decl, shape string }{
 		{"bool", "", "bool"}, {"signed", "", "int32"}, {"wide", "", "uint64"},
 		{"bits", "", "bits(12)"}, {"fixedpoint", "", "fixed(16,16) | min = -100, max = 100"},
@@ -235,7 +233,6 @@ print("required-public")
 // independent decoded-value assertions for each carried family.
 func TestPythonRequiredPublicNondefault(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	cases := []struct{ name, decl, shape, input, check string }{
 		{"bool", "", "bool", `true`, `v.x is True`},
 		{"int", "", "int32", `-7`, `v.x == -7`},
@@ -311,7 +308,6 @@ print("required-value")
 
 func TestPythonRequiredPublicGuards(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	schema := `package reqguards
 table Root { active bool
 if active { amount int32 | required } else { fallback int32 | required } }
@@ -375,7 +371,6 @@ print("required-guards")
 // unchanged when a different old writer omitted the required field entirely.
 func TestPythonRequiredPublicArrayEvolution(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	old := unitFromSource(t, `package reqgrow
 table Root { x [2]uint8 }
 `)

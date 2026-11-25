@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -326,7 +325,6 @@ func runRustVTShapeProbe(t *testing.T, edit func(string) string) (string, error)
 }
 
 func TestRustVariableShapeCellsStrict(t *testing.T) {
-	slowtest.Gate(t, "rustc (variable shape cells strict read)")
 	keyedRequireRustc(t)
 	out, err := runRustVTShapeProbe(t, nil)
 	if err != nil || !strings.Contains(out, "VT_SHAPE_CELLS_OK") {
@@ -335,7 +333,6 @@ func TestRustVariableShapeCellsStrict(t *testing.T) {
 }
 
 func TestRustVariableShapeCellsStrictNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "rustc (negative control for variable shape cells strict read)")
 	keyedRequireRustc(t)
 
 	// Clean first: the unmutated artifact must hold, or a red below is noise.

@@ -24,7 +24,7 @@ func TestEmptySelectionIsAnError(t *testing.T) {
 		{"one leg absent, one answering", map[string]map[string]*result{"go": cell(3, true), "cpp": cell(3, false)}, ""},
 	}
 	for _, c := range cases {
-		err := emptySelection(c.results, "go", "", map[string]bool{"wire": true})
+		err := emptySelection(c.results, "go", map[string]bool{"wire": true})
 		switch {
 		case c.say == "" && err != nil:
 			t.Errorf("%s: refused: %v", c.name, err)
@@ -50,7 +50,7 @@ func TestRunWithErrorsOnAFilterThatSelectsNothing(t *testing.T) {
 			t.Fatal(err)
 		}
 		var out strings.Builder
-		ok, err := runWith(&out, c.m, c.manifest, c.jsonDir, c.reports, drivers, t.TempDir()+"/work", tc.only, "", runOptions{only: only})
+		ok, err := runWith(&out, c.m, c.manifest, c.jsonDir, c.reports, drivers, t.TempDir()+"/work", tc.only, runOptions{only: only})
 		if ok || err == nil || !strings.Contains(err.Error(), tc.say) {
 			t.Errorf("%s: ok=%v err=%v, want an error containing %q\n%s", tc.name, ok, err, tc.say, out.String())
 		}

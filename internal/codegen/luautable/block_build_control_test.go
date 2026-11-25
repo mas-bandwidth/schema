@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -89,7 +88,6 @@ if buf2 ~= nil then print("OVERCOUNT_ACCEPTED") else print("OVERCOUNT_REFUSED") 
 // exactly that clause's case red, as TestLuauBlockOpenClausesNegativeControl
 // does for the reader.
 func TestLuauBlockBuildNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "the pinned Luau interpreter (it runs the emitted block builder)")
 	t.Parallel()
 	for _, ctl := range []struct{ name, from, to, red string }{
 		{"count", "\t\tif c < 0 or c > a.max then\n", "\t\tif false then\n", "overcount"},
@@ -186,7 +184,6 @@ func cookOpenGate(t *testing.T, mutate func(*testing.T, map[string][]byte)) map[
 // TestLuauCookOpenNegativeControl cuts one §7.4 clause out of the cook open
 // and requires exactly that clause's case red.
 func TestLuauCookOpenNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "the pinned Luau interpreter (it runs the emitted cook reader)")
 	t.Parallel()
 	for _, ctl := range []struct{ name, from, to, red string }{
 		{"version", "\tif build ~= nil and buffer.readinteger(bytes, at + 8) ~= build then return \"wrong_build_version\" end\n", "\tif false then return \"wrong_build_version\" end\n", "version"},

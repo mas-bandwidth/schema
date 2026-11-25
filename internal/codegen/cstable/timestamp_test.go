@@ -4,12 +4,9 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func TestTimestampCSharp(t *testing.T) {
-	slowtest.Gate(t, "the .NET SDK")
 	// The same RFC3339 boundaries pinned by internal/rfc3339 and the generated
 	// Go reader. Fractions past nanoseconds truncate; valid offsets reach23:59.
 	values := []string{

@@ -11,8 +11,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func testWindow() windowEvidence {
@@ -110,12 +108,9 @@ func TestProcessSnapshotNamesAndValidation(t *testing.T) {
 	}
 }
 
-// This read-only opt-in checks the actual host monitor without opening a quiet
+// This read-only check reads the actual host monitor without opening a quiet
 // window or starting clocks; other workers may remain active during this check.
 func TestLocalProcessMonitor(t *testing.T) {
-	if os.Getenv("SCHEMA_PAIRED_TEST_MONITOR") != "1" {
-		t.Skip("set SCHEMA_PAIRED_TEST_MONITOR=1 to check the local ps/load monitor")
-	}
 	sample, err := windowSnapshot("monitor-check")
 	if err != nil {
 		t.Fatal(err)
@@ -387,21 +382,22 @@ func TestFinalWriteFailureRetainsJournalAndRefusesSeal(t *testing.T) {
 	}
 }
 
-// This subprocess waits without doing benchmark work. The parent test must
-// terminate its own child when the synthetic monitor sees a foreign compiler.
-// Outside that parent it does nothing; as the child, surviving the whole wait
+// TestMain makes the test binary the quiet-window child when
+// SCHEMA_WINDOW_TEST_CHILD=1: it waits without doing benchmark work, and the
+// parent (TestQuietWindowStopsOwnedRunnerAndRetainsRefusal) must terminate it
+// when the synthetic monitor sees a foreign compiler. Surviving the whole wait
 // means the parent never stopped it, and that is a failure.
-func TestQuietWindowChild(t *testing.T) {
-	if os.Getenv("SCHEMA_WINDOW_TEST_CHILD") != "1" {
-		t.Skip("helper for TestQuietWindowStopsOwnedRunnerAndRetainsRefusal")
+func TestMain(m *testing.M) {
+	if os.Getenv("SCHEMA_WINDOW_TEST_CHILD") == "1" {
+		fmt.Print("child ready\n")
+		time.Sleep(30 * time.Second)
+		fmt.Fprintln(os.Stderr, "quiet-window child outlived its 30s wait: the owning window never stopped it")
+		os.Exit(1)
 	}
-	fmt.Print("child ready\n")
-	time.Sleep(30 * time.Second)
-	t.Fatal("quiet-window child outlived its 30s wait: the owning window never stopped it")
+	os.Exit(m.Run())
 }
 
 func TestQuietWindowStopsOwnedRunnerAndRetainsRefusal(t *testing.T) {
-	slowtest.Gate(t, "a child test process (it runs this test binary again)")
 	executable, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
@@ -417,7 +413,7 @@ func TestQuietWindowStopsOwnedRunnerAndRetainsRefusal(t *testing.T) {
 		return sample, nil
 	}
 	start := time.Now()
-	out, err := w.capture(command{args: []string{executable, "-test.run=^TestQuietWindowChild$"}}, "synthetic-child")
+	out, err := w.capture(command{args: []string{executable, "-test.run=^$"}}, "synthetic-child")
 	if err == nil || !strings.Contains(err.Error(), "competing process clang++") {
 		t.Fatalf("foreign compiler did not stop owned runner: %q, %v", out, err)
 	}

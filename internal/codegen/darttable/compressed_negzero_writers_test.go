@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -83,7 +82,6 @@ func TestDartCompressedFloatStoresAreGuarded(t *testing.T) {
 // conformance lane runs it (make/dart-compressed-negzero.mk).
 func TestDartCompressedNegZeroWriters(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dart (it runs the generated library)")
 	dart := dartBinary(t)
 	schema, err := os.ReadFile(filepath.Join(dartNegZeroCorpus, "Probe.schema"))
 	if err != nil {

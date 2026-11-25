@@ -42,7 +42,7 @@ import .conformance_hooks
 // announcement, the read into caller values, and the text written under a
 // comma-decimal locale (test/conformance/README.md)
 let surfaces = ["wire", "message", "message-prior", "report", "framing", "retain", "retain-save", "retain-refusal", "cook", "cook-write", "cook-foreign",
-    "block", "block-foreign", "block-dump", "forgery", "cook-forgery", "cook-reason", "block-reason",
+    "block", "block-foreign", "block-dump", "forgery", "cook-forgery",
     "json-read", "json-write", "json-hostile",
     "write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json",
     "write-refusal-cook", "write-refusal-block", "write-refusal-shape", "announce", "read-into", "json-write-into"]

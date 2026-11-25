@@ -16,7 +16,7 @@ func TestSurfaceWithNoRowsIsRed(t *testing.T) {
 	drivers := c.committed(t, map[string]fakeLeg{referenceLang: {}})
 	var out bytes.Buffer
 	ok, err := runWith(&out, c.m, c.manifest, c.jsonDir, c.reports, drivers,
-		filepath.Join(t.TempDir(), "work"), "", "", runOptions{strictRows: true})
+		filepath.Join(t.TempDir(), "work"), "", runOptions{strictRows: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -27,7 +27,7 @@ func TestSurfaceWithNoRowsIsRed(t *testing.T) {
 	// the same run without strictRows is the fake corpus's own shape and stays green
 	out.Reset()
 	ok, err = runWith(&out, c.m, c.manifest, c.jsonDir, c.reports, drivers,
-		filepath.Join(t.TempDir(), "work2"), "", "", runOptions{})
+		filepath.Join(t.TempDir(), "work2"), "", runOptions{})
 	if err != nil || !ok {
 		t.Fatalf("the default run turned red: %v\n%s", err, out.String())
 	}

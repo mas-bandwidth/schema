@@ -25,7 +25,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/moo/moorun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/mootable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -236,7 +235,6 @@ const pointSchema = "package probe\nfixed table Point\n{\n    x int32 = 1\n    y
 // layout byte moved, or the length one short — is layout_malformed. Every
 // refusal is total: nothing lands and every stale counter is reset to zero.
 func TestMooFixedEvolutionFileEnvelope(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
 	corpus := fixedCorpus(t)
 	oracle := corpusFile(t, corpus, "fx1.bin")
@@ -272,7 +270,6 @@ func TestMooFixedEvolutionFileEnvelope(t *testing.T) {
 // record is looked at (a bad record hash behind it is not reached), nothing
 // lands, no counter moves; a capacity the batch fits reads.
 func TestMooFixedEvolutionBatchCapacity(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
 	g := fixedUnit(t, unitFromSource(t, pointSchema), nil)
 	three := evoSave(t, g, "ProbeTable", "Point", "local v = T.NewPoint()\nv.X = 10\nv.Y = 20\nvalues = { v, v, v }\n")
@@ -310,7 +307,6 @@ func TestMooFixedEvolutionBatchCapacity(t *testing.T) {
 // no_layout before anything lands, even the last of a batch. Every refusal is
 // total. The runtime carries no hash function: the hash is never recomputed.
 func TestMooFixedEvolutionPlanSelection(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
 	corpus := fixedCorpus(t)
 	oracle := corpusFile(t, corpus, "fx1.bin")
@@ -373,7 +369,6 @@ print(bad)
 // writes sits at the offset the compiler's layout walk gives it (moo's storage
 // is its values, so the plan's constant offsets are the record's own).
 func TestMooFixedEvolutionCompiledPlans(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
 	u1 := unitFromSource(t, "package probe\nfixed table Lineage\n{\n    a uint16 = 1\n}\n")
 	u2 := unitFromSource(t, "package probe\nfixed table Lineage\n{\n    a uint32 = 1\n    b int32 = 10\n}\n")
@@ -521,7 +516,6 @@ values = { v }
 // with a range and a resolution and carries the resolution under 'Q'; bytes(N)
 // is layout kind 14; the entry count word is inside the hash.
 func TestMooFixedEvolutionDefinitionHash(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
 	const schema = "package probe\nfixed table T\n{\n    b bytes(6)\n    x int32 = 1 | min = -10, max = 10\n    f float32 = 0.0 | min = -1.0, max = 1.0, resolution = 0.25\n}\n"
 	u := unitFromSource(t, schema)
@@ -589,7 +583,6 @@ func TestMooFixedEvolutionDefinitionHash(t *testing.T) {
 // map, unbounded array or guarded branch in the closure is a compile refusal
 // naming the construct.
 func TestMooFixedEvolutionClosure(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
 	t.Run("R6", func(t *testing.T) {
 		t.Parallel()
@@ -694,7 +687,6 @@ values = { v }
 // hash, at and above it reads, a raised floor refuses yesterday's file, and
 // the refusal is the same on every load.
 func TestMooFixedEvolutionRetirement(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
 	corpus := fixedCorpus(t)
 	older, mid, newer := readTestSchema(t, "VOLD_floor"), readTestSchema(t, "VMID_floor"), readTestSchema(t, "VNEW_floor")
@@ -726,7 +718,6 @@ func TestMooFixedEvolutionRetirement(t *testing.T) {
 // grows a counted array, widens a range, appends a variant or appends a field
 // is refused by name before any record, never clamped, remapped or dropped.
 func TestMooFixedEvolutionRetiredRuntime(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
 	corpus := fixedCorpus(t)
 	for _, row := range []string{"field_append", "array_bounded_grow", "range_widen", "enum_append"} {
@@ -762,7 +753,6 @@ func TestMooFixedEvolutionRetiredRuntime(t *testing.T) {
 // widening, an added field lands its declared default with no counter. The
 // negative controls break the widened count and the sign extension.
 func TestMooFixedEvolutionNumericWidening(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
 	older := unitFromSource(t, "package probe\nfixed table N\n{\n    lead uint32 = 1\n    v int16 = 0\n    f float32 = 0.0\n    trail uint32 = 2\n}\n")
 	newer := unitFromSource(t, "package probe\nfixed table N\n{\n    lead uint32 = 1\n    v int32 = 0\n    f float64 = 0.0\n    trail uint32 = 2\n    added int32 = 77\n}\n")
@@ -803,7 +793,6 @@ func TestMooFixedEvolutionNumericWidening(t *testing.T) {
 // held the field plain is read by a ?T reader as present. The negative control
 // stores the absent payload.
 func TestMooFixedEvolutionOptionalValues(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
 	const types = "package probe\ntype Inner\n{\n    a int32 = 5\n    b int32 = 6\n}\n"
 	u := unitFromSource(t, types+"fixed table T\n{\n    plain Inner\n    opt ?Inner\n}\n")
@@ -843,7 +832,6 @@ func TestMooFixedEvolutionOptionalValues(t *testing.T) {
 // field or keyed slot moves no counter at all. The id match's negative control
 // is TestMooFixedVersioningNegativeControl.
 func TestMooFixedEvolutionFieldEvolution(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
 	corpus := fixedCorpus(t)
 	manifest := readFixedManifest(t, corpus)
@@ -893,7 +881,6 @@ func TestMooFixedEvolutionFieldEvolution(t *testing.T) {
 // every counter reset and nothing landed. The negative control drops the
 // unlawful-entry refusal and requires the three records to land.
 func TestMooFixedEvolutionReports(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
 	corpus := fixedCorpus(t)
 	g := fixedUnit(t, unitFromSource(t, "package probe\nfixed table R\n{\n    a int8 = 0 | min = -128, max = 127\n    b uint8\n}\n"), nil)
@@ -935,7 +922,6 @@ end
 // the reader at 8 refuses count_over_bound for a count of -1 and of 7, and
 // reads at exactly 4. The negative control bounds the count by the reader's 8.
 func TestMooFixedEvolutionArrayBounds(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
 	corpus := fixedCorpus(t)
 	older, newer := readTestSchema(t, "VOLD_array_bounded_grow"), readTestSchema(t, "VNEW_array_bounded_grow")
@@ -975,7 +961,6 @@ func TestMooFixedEvolutionArrayBounds(t *testing.T) {
 // nonzero one refuses the whole load (R24). The negative control drops the
 // UTF-8 check.
 func TestMooFixedEvolutionText(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
 	u := unitFromSource(t, "package probe\nfixed table T\n{\n    s string(4)\n}\n")
 	const setup = "local v = T.NewT()\nv.S = \"ab\"\nvalues = { v }\n"
@@ -1018,7 +1003,6 @@ func TestMooFixedEvolutionText(t *testing.T) {
 // negative control drops the reader's range check and requires the forged
 // value to land.
 func TestMooFixedEvolutionScalarBounds(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
 	u := unitFromSource(t, "package probe\nfixed table T\n{\n    x int32 = 0 | min = -5, max = 5\n    s int128 = 0 | min = -500, max = 500\n    u uint16 = 10 | min = 10, max = 1000\n}\n")
 	e := evoEntry(t, u, "T")
@@ -1110,7 +1094,6 @@ const ordinalOld = "package probe\nenum Tier { Bronze, Silver }\nunion Pick\n{\n
 // writer variant and arm land. The negative controls drop the tag refusal and
 // the ordinal refusal in turn and require the forged file to land.
 func TestMooFixedEvolutionOrdinals(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
 	uOld := unitFromSource(t, ordinalOld)
 	uNew := unitFromSource(t, strings.Replace(strings.Replace(ordinalOld, "Silver }", "Silver, Gold }", 1), "    b int32\n", "    b int32\n    c int32\n", 1))
@@ -1150,7 +1133,6 @@ func TestMooFixedEvolutionOrdinals(t *testing.T) {
 // (an absent optional's payload is dead, so the control keeps it zero).
 // The negative control drops the bool check and requires 0x7f to land.
 func TestMooFixedEvolutionNormalization(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
 	g := fixedUnit(t, unitFromSource(t, "package probe\nfixed table T\n{\n    flag bool\n    opt ?int32\n}\n"), nil)
 	file := evoSave(t, g, "ProbeTable", "T", "local v = T.NewT()\nv.Opt = 99\nvalues = { v }\n")
@@ -1199,7 +1181,6 @@ func TestMooFixedEvolutionNormalization(t *testing.T) {
 // the whole load wire_damaged and a zero one reads — and a field the writer
 // never wrote lands the reader's declared default.
 func TestMooFixedEvolutionLiveExtents(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
 	g := fixedUnit(t, unitFromSource(t, "package probe\nenum Small { One, Two }\nfixed table T\n{\n    arr [..3]Small\n    opt ?Small\n    tail int32 = 77\n}\n"), nil)
 	file := evoSave(t, g, "ProbeTable", "T", "local v = T.NewT()\nv.Arr[1] = 1\nv.ArrCount = 1\nvalues = { v }\n")
@@ -1233,7 +1214,6 @@ func TestMooFixedEvolutionLiveExtents(t *testing.T) {
 // release-on here): an out-of-contract value refuses by name and writes
 // nothing. The negative control drops the per-record zeroing.
 func TestMooFixedEvolutionWriting(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
 	u := unitFromSource(t, "package probe\nunion Pick\n{\n    narrow uint8\n    wide uint64\n}\nfixed table T\n{\n    arr [..3]uint16\n    s string(4)\n    b bytes(4)\n    pick Pick\n}\n")
 	const setup = `local full = T.NewT()
@@ -1287,7 +1267,6 @@ const guardOld = "package probe\nunion Inner\n{\n    x int16\n    y int32\n}\nun
 // read, widened or clamped — and the selected nested arm widens (int16 ->
 // int32) exactly once.
 func TestMooFixedEvolutionUnionGuards(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
 	uOld := unitFromSource(t, guardOld)
 	uNew := unitFromSource(t, strings.Replace(guardOld, "x int16", "x int32", 1))
@@ -1315,7 +1294,6 @@ const planSchema = "package probe\nenum Kind { A, B }\nunion Choice\n{\n    n in
 // walk with no partition: an entry under a guard is reached only through its
 // union's selected arm (TestMooFixedEvolutionUnionGuards).
 func TestMooFixedEvolutionPlanExecution(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
 	u := unitFromSource(t, planSchema)
 	own := evoEntry(t, u, "T")
@@ -1347,7 +1325,6 @@ func TestMooFixedEvolutionPlanExecution(t *testing.T) {
 // control moves one byte of a record body and requires the round trip to
 // notice.
 func TestMooFixedEvolutionInteroperability(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
 	corpus := fixedCorpus(t)
 	manifest := readFixedManifest(t, corpus)
@@ -1440,7 +1417,6 @@ print(bad, cases)
 // layout_malformed, never read through B's plan. The negative control drops
 // the range clamp and requires the sweep to find out-of-bound values.
 func TestMooFixedEvolutionHostileInput(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
 	u := unitFromSource(t, hostSchema)
 	g := fixedUnit(t, u, nil)
@@ -1507,7 +1483,6 @@ int main( int argc, char ** argv )
 // generated headers, and the two verdicts are the same. The negative control
 // holds the reader's range alone and requires 150 to land.
 func TestMooFixedEvolutionWriterRange(t *testing.T) {
-	slowtest.Gate(t, "moo and g++ (they run the emitted fixed-form readers)")
 	t.Parallel()
 	corpus := fixedCorpus(t)
 	base := corpusFile(t, corpus, "old_range_widen.bin")

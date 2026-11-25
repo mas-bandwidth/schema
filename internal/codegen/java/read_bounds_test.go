@@ -8,7 +8,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -105,7 +104,6 @@ func TestJavaReadBoundsRefuseHostileInput(t *testing.T) {
 		t.Fatal("Hostile.java not emitted")
 	}
 
-	slowtest.Gate(t, "javac")
 	runReadBoundsProbe(t, text)
 }
 

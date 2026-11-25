@@ -7,8 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -34,7 +32,6 @@ const jsFixedTotalSchema = `package probe
 // holds its declared default afterwards, the poisoned ones included. Exercise
 // both the in-place identity and shared image paths.
 func TestJavaScriptFixedBatchRefusalUntouched(t *testing.T) {
-	slowtest.Gate(t, "node (fixed whole-batch CHECK before LAND)")
 	t.Parallel()
 	files := generatedTree(unitFrom(t, jsFixedTotalSchema))
 	for _, shared := range []bool{false, true} {
@@ -54,7 +51,6 @@ func TestJavaScriptFixedBatchRefusalUntouched(t *testing.T) {
 // The reset control: the generated read with its refusal reset planted away (the
 // old rule, every row left as the caller had it) must fail the oracle.
 func TestJavaScriptFixedBatchResetNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "node (refusal reset sabotage)")
 	t.Parallel()
 	files := generatedTree(unitFrom(t, jsFixedTotalSchema))
 	editJsFixedTotal(t, files, "  if (n < 0) {\n    for (let j = 0; j < values.length", "  if (false) {\n    for (let j = 0; j < values.length")
@@ -65,7 +61,6 @@ func TestJavaScriptFixedBatchResetNegativeControl(t *testing.T) {
 }
 
 func TestJavaScriptFixedBatchCheckNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "node (real generated CHECK phase sabotage)")
 	t.Parallel()
 	files := generatedTree(unitFrom(t, jsFixedTotalSchema))
 	editJsFixedTotal(t, files, "for (let phase = 0; phase < 2; phase++)", "for (let phase = 1; phase < 2; phase++)")

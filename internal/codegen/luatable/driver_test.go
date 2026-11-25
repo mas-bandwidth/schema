@@ -1,7 +1,6 @@
 package luatable
 
 import (
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,7 +15,6 @@ import (
 // names, and nothing else.
 func TestLuaDriverListsItsSurfaces(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned lua")
 	root := repoRoot(t)
 	manifest := filepath.Join(t.TempDir(), "MANIFEST.txt")
 	if err := os.WriteFile(manifest, []byte("# derived manifest\n"), 0o644); err != nil {

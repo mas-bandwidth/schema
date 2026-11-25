@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -16,7 +15,6 @@ import (
 )
 
 func TestRustRequiredWireReadNative(t *testing.T) {
-	slowtest.Gate(t, "rustc (Required compatible wire presence and whole-record refusal)")
 	keyedRequireRustc(t)
 
 	fixture := "../../../testdata/conformance/feature-witnesses/required/wire-presence"

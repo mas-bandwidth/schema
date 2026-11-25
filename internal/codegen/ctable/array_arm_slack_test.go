@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -28,13 +27,9 @@ import (
 // goes red.
 func TestPinnedArrayArmSlackC(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "cc (it compiles and runs the generated array-arm slack probe)")
 	cc, err := exec.LookPath("cc")
 	if err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and cc is not on PATH: %v", err)
-		}
-		t.Skipf("cc is not on PATH: %v", err)
+		t.Fatalf("cc is not on PATH: %v", err)
 	}
 	seed, err := os.ReadFile(filepath.Join("..", "..", "..", "testdata", "conformance", "tables", "wire", "widenbound_envelope_spans.bin"))
 	if err != nil {

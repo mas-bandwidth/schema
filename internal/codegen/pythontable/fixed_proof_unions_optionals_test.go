@@ -9,7 +9,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/pythontable"
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -105,7 +104,6 @@ else:
 
 func TestPythonFixedProofUnionsOptionals(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned interpreters and live C++ fixed-form oracle")
 	runner := unionOptionalProofRunner{}
 	t.Run("values", func(t *testing.T) { fixedproof.RunValueRows(t, runner, pythonUnionOptionalRows...) })
 	t.Run("controls", func(t *testing.T) { fixedproof.RunNegativeControlRows(t, runner, pythonUnionOptionalRows...) })

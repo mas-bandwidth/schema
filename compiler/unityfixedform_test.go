@@ -20,7 +20,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/unitytable"
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -158,7 +157,6 @@ func TestUnityFixedFormMatchesCpp(t *testing.T) {
 		t.Errorf("a writer snapshot that is not the entry's must stop generation, got %v", err)
 	}
 
-	slowtest.Gate(t, "dotnet and the C++ compiler")
 	dotnet := compiler.FindDotnetForTest()
 	if dotnet == "" {
 		t.Fatal("dotnet is not on PATH")

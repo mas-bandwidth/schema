@@ -8,9 +8,8 @@ package rusttable
 // an offset sum that wraps.
 //
 // A FUNCTIONAL TEST: it compiles and runs the generated Rust with rustc alone,
-// twice, once with overflow checks on and once optimized. It skips by name when
-// rustc is absent and SCHEMA_REQUIRE_CORPUS is unset, and fails by name when
-// SCHEMA_REQUIRE_CORPUS=1. The Go half reads only the generator's output: no
+// twice, once with overflow checks on and once optimized. It fails by name when
+// rustc is absent. The Go half reads only the generator's output: no
 // clock, no socket.
 
 import (
@@ -22,8 +21,6 @@ import (
 	"sort"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -139,12 +136,8 @@ func unknownLengthProbe(varWire, announceFramed, announceInner []byte) string {
 // neither the hostile file nor the control panics.
 func TestRustUnknownLengthCheckedInEveryProfile(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "rustc (it builds and runs the generated Rust)")
 	if _, err := exec.LookPath("rustc"); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and rustc is not on PATH, so the length rule cannot be built or run: %v", err)
-		}
-		t.Skipf("rustc is not on PATH and SCHEMA_REQUIRE_CORPUS is unset: this is a functional test that compiles and runs Rust: %v", err)
+		t.Fatalf("rustc is not on PATH, so the length rule cannot be built or run: %v", err)
 	}
 	files, err := Generate(unitFrom(t, unknownLengthSchema))
 	if err != nil {

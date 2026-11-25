@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -70,7 +69,6 @@ func compileAndRunJavaProbe(t *testing.T, schema, pkg, driver string) (map[strin
 }
 
 func TestJavaOneSidedRange(t *testing.T) {
-	slowtest.Gate(t, "the JDK (it compiles and runs the generated Java)")
 	t.Parallel()
 	const schema = `package probe
 
@@ -167,7 +165,6 @@ public final class Main {
 }
 
 func TestJavaDeclaredForms(t *testing.T) {
-	slowtest.Gate(t, "the JDK (it compiles and runs the generated Java)")
 	t.Parallel()
 
 	for _, dec := range []string{
@@ -290,7 +287,6 @@ fixed table FoxAll
 }
 
 func TestJavaJsonArrayRoot(t *testing.T) {
-	slowtest.Gate(t, "the JDK (it compiles and runs the generated Java)")
 	t.Parallel()
 	const schema = `package probe
 

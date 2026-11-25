@@ -13,7 +13,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpptable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -181,14 +180,10 @@ fn main() {
 // and runs it once with rustc. It is the same shape as fixedroadmap_t09_test.go's
 // t09Run: a fixed unit grows no packet module, so `rustc` alone builds it.
 func blockProbeRun(t *testing.T, spillTo string) map[string]string {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	if _, err := exec.LookPath("rustc"); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and rustc is not on PATH, so the emitted runtime cannot be built or run: %v", err)
-		}
-		t.Skipf("rustc is not on PATH and SCHEMA_REQUIRE_CORPUS is unset: this is a functional test that compiles and runs Rust: %v", err)
+		t.Fatalf("rustc is not on PATH, so the emitted runtime cannot be built or run: %v", err)
 	}
 	out := generate(t, blockBuildCookSchema)
 	root := t.TempDir()
@@ -281,7 +276,6 @@ func goBlockBytes(t *testing.T, u *ir.Unit, counts map[string]int32) []byte {
 // reader is generated beside the probe, not build/schema_test_block: that
 // binary is the blockdemo record and has no mode that takes these bytes.
 func cppOpensRustBlock(t *testing.T, block []byte) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	cxx, err := exec.LookPath("c++")
@@ -367,11 +361,7 @@ int main(int argc, char** argv) {
 // side) and §7.6 (the cook write), held against the running runtime.
 //
 // THIS IS A FUNCTIONAL TEST: it compiles the emitted Rust runtime with rustc
-// and the emitted C++ block reader with c++, and RUNS both, so it skips by
-// name when either compiler is absent and SCHEMA_REQUIRE_CORPUS is unset, and
-// fails by name when SCHEMA_REQUIRE_CORPUS=1. The make target
-// tables-rust-block-build runs it with that variable set, so the target never
-// passes on a SKIP.
+// and the emitted C++ block reader with c++, and RUNS both, so it fails by name when either compiler is absent. The make target tables-rust-block-build runs it too.
 //
 // THE PINS ARE THE RUNNING RUNTIME'S OWN BYTES, not the emitter's text: the
 // block image the Rust builder writes is compared byte for byte against the
@@ -382,14 +372,10 @@ int main(int argc, char** argv) {
 // is refused, both orders ride, what the writer wrote reads back, and the C++
 // block reader generated for this probe opens the Rust-built bytes.
 func TestBlockBuildAndCookWriteRust(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Parallel()
 	if _, err := exec.LookPath("c++"); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and c++ is not on PATH, so the C++ reader cannot open the Rust-built block: %v", err)
-		}
-		t.Skipf("c++ is not on PATH and SCHEMA_REQUIRE_CORPUS is unset: this is a functional test that compiles and runs the C++ reader: %v", err)
+		t.Fatalf("c++ is not on PATH, so the C++ reader cannot open the Rust-built block: %v", err)
 	}
 
 	got := blockProbeRun(t, os.Getenv("SCHEMA_RUST_BLOCK_OUT"))
@@ -506,8 +492,7 @@ func TestBlockBuildAndCookWriteRust(t *testing.T) {
 // the other byte order are each refused by their own Open (docs/SPEC-TABLES.md
 // §7.1, §19.2). The cook-foreign and block-foreign surfaces reverse the magic;
 // this holds the order word alone. A FUNCTIONAL test: it compiles and runs
-// Rust, and fails by name when SCHEMA_REQUIRE_CORPUS is set and rustc is
-// missing.
+// Rust, and fails by name when rustc is missing.
 func TestRustOtherOrderWordIsRefused(t *testing.T) {
 	t.Parallel()
 	got := blockProbeRun(t, "")

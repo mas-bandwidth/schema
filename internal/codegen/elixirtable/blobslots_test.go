@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -17,7 +16,6 @@ import (
 
 func TestBlobOwnershipUsesFinalSlotsElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Elixir blob ownership counts final slots after repeated field replacement")
 	u := loadUnit(t, "../../../tables/blobs/Assets.schema")
 	m := tabletext.NewModel(u)
 	read := func(name string) []byte {
@@ -135,7 +133,6 @@ end
 
 func TestBlobOwnershipUsesLiveGuardsElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Elixir blob writer ownership follows final nested guards")
 	u := unitFrom(t, `package blobguards
  table Catalog {
  name string(32)

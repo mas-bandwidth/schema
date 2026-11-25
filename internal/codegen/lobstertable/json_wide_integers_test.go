@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster/lobsterrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // lobsterJsonIntegersSchema is the unit testdata/wire/json-integers/ reads:
@@ -39,7 +38,6 @@ table Integers
 // json-integer-token-only).
 func TestLobsterJsonWideIntegersAreStrings(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Lobster toolchain (it runs the generated JSON reader and writer)")
 
 	scratch := t.TempDir()
 	schemaPath := filepath.Join(scratch, "Integers.schema")

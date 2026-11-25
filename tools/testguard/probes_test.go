@@ -13,8 +13,7 @@ import (
 // The probes under testdata/probes are a cold reader's adversarial cases, kept
 // as written. Two things in them predate this layout and are translated as the
 // case is copied into its own directory: a baseline file bl/SUITE.tests of test
-// names becomes an empty file bl/SUITE/TEST per name, a skip line
-// skip<TAB>SUITE.TEST<TAB>REASON splits at its first dot, and a config with no
+// names becomes an empty file bl/SUITE/TEST per name, and a config with no
 // baseline line gets baseline<TAB>bl, except in the case that probes its
 // absence. (write-baseline-absorbs-vanish/bl/s.tests is as the probe wrote it,
 // before the tool that ran it rewrote it.)
@@ -52,10 +51,6 @@ var probes = map[string]struct {
 	"junit-tests-attr-without-cases":        {code: 2, want: "the result files hold 0 tests that ran"},
 	"junit-trailing-garbage":                {code: 2, want: "r.xml is not JUnit XML"},
 	"junit-two-roots-skip-in-second":        {code: 1, want: "RED skip s\tu"},
-	"ledger-case":                           {code: 1, want: "RED skip s\ttesta"},
-	"ledger-id-collision":                   {code: 1, want: "RED skip a.b\tc"},
-	"ledger-prefix-not-honoured":            {code: 1, want: "RED skip s\tTestA/sub"},
-	"ledger-trailing-space":                 {code: 2, want: "a field is empty or starts or ends with a blank"},
 	"tap-SKIP-control":                      {code: 1, want: "RED skip s\tb"},
 	"tap-SKIPPED":                           {code: 1, want: "RED skip s\tb"},
 	"tap-TODO-control":                      {code: 1, want: "RED skip s\tb"},
@@ -102,10 +97,6 @@ func copyProbe(t *testing.T, src, dir string) string {
 		case rel == "c.tsv":
 			var lines []string
 			for l := range strings.SplitSeq(string(data), "\n") {
-				if f := strings.Split(l, "\t"); f[0] == "skip" && len(f) == 3 {
-					suite, test, _ := strings.Cut(f[1], ".") // errdiscard: a skip with no dot stays one field and is refused
-					l = strings.Join([]string{"skip", suite, test, f[2]}, "\t")
-				}
 				lines = append(lines, l)
 			}
 			if !strings.Contains(string(data), "baseline\t") && filepath.Base(src) != "config-no-baseline-line-test-vanished" {

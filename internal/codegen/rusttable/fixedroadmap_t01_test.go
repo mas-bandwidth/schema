@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -299,7 +298,6 @@ fn v_t01_r13() {
 
 // t01Run builds the one probe crate and runs it once.
 func t01Run(t *testing.T) string {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	corpus := versionCorpus(t)

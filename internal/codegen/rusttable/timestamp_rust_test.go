@@ -11,7 +11,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -21,7 +20,6 @@ import (
 // Explicit decimal counts and canonical spellings cover the complete int64
 // nanosecond domain, offsets, truncation and strict RFC3339 refusal boundaries.
 func TestRustTimestampNative(t *testing.T) {
-	slowtest.Gate(t, "rustc (strict timestamp text, wire and cook)")
 	keyedRequireRustc(t)
 	fixture := filepath.Join("../../..", "testdata/conformance/feature-witnesses/timestamp/rust-boundaries")
 	schema, err := os.ReadFile(filepath.Join(fixture, "Probe.schema"))
@@ -104,7 +102,6 @@ func TestRustTimestampNative(t *testing.T) {
 }
 
 func TestRustTimestampFixedAndMessageNative(t *testing.T) {
-	slowtest.Gate(t, "rustc and Go (timestamp fixed and message byte agreement)")
 	keyedRequireRustc(t)
 	schema, err := os.ReadFile("../../../testdata/conformance/feature-witnesses/timestamp/rust-boundaries/Probe.schema")
 	if err != nil {
@@ -147,7 +144,6 @@ func TestRustTimestampFixedAndMessageNative(t *testing.T) {
 }
 
 func TestRustTimestampUnknownMessageNative(t *testing.T) {
-	slowtest.Gate(t, "rustc and Go (unknown timestamp message field)")
 	keyedRequireRustc(t)
 	schema, err := os.ReadFile("../../../testdata/conformance/feature-witnesses/timestamp/rust-boundaries/Probe.schema")
 	if err != nil {

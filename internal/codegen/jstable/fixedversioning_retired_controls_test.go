@@ -13,7 +13,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpptable"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -33,7 +32,6 @@ import (
 // through FX2: the widened `narrow`, the renamed field, and FX2's own `added`
 // and `extra` at their defaults, with unknown at zero.
 func TestJSFixedVersioningBytesAndDefaults(t *testing.T) {
-	slowtest.Gate(t, "native JavaScript fixed lineage controls")
 	corpus, node := jsFixedCorpus(t), jsNode(t)
 	older, newer := jsReadSchema(t, "FX1"), jsReadSchema(t, "FX2")
 	const goneLine = "    gone    int32 = 9 | min = 0, max = 1000\n"
@@ -131,7 +129,6 @@ for (const poison of [0x5A, 0xFF]) {
 }
 
 func TestJSFixedVersioningArmTextControls(t *testing.T) {
-	slowtest.Gate(t, "native JavaScript fixed lineage controls")
 	corpus, node := jsFixedCorpus(t), jsNode(t)
 	older, newer := jsReadSchema(t, "FU1"), jsReadSchema(t, "FU2")
 	for _, compiled := range []bool{false, true} {
@@ -189,7 +186,7 @@ for (const [flag, present] of [[2,1],[1,7],[2,7],[255,128]]) {
 
 // Build the existing independent optional corpus in a temporary directory. The
 // ordinary native gate runs before make's external fixtures, so this must not
-// depend on a prior build/js-fixed-optional or silently skip it in required mode.
+// depend on a prior build/js-fixed-optional; a missing compiler fails by name.
 func jsFixedCPPFiles(t *testing.T, schemas map[string]string, driver string, outputs []string) string {
 	t.Helper()
 	cxx := os.Getenv("CXX")
@@ -198,10 +195,7 @@ func jsFixedCPPFiles(t *testing.T, schemas map[string]string, driver string, out
 	}
 	tool, err := exec.LookPath(cxx)
 	if err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("C++ optional oracle requires %s: %v", cxx, err)
-		}
-		t.Skip("C++ optional oracle requires a C++ compiler")
+		t.Fatalf("C++ optional oracle requires %s: %v", cxx, err)
 	}
 	dir := t.TempDir()
 	args := []string{"-std=c++17", "-O0"}
@@ -261,7 +255,6 @@ func jsFixedCPPFiles(t *testing.T, schemas map[string]string, driver string, out
 }
 
 func TestJSFixedVersioningOptionalControls(t *testing.T) {
-	slowtest.Gate(t, "native JavaScript fixed lineage controls")
 	node := jsNode(t)
 	driver, err := os.ReadFile("../../../test/js-tables/fixedoptional_corpus.cpp")
 	if err != nil {
@@ -364,7 +357,6 @@ for (const [offset,kind] of [[65,"union"],[43,"enum"]]) {
 }
 
 func TestJSFixedVersioningOptionalGuardChain(t *testing.T) {
-	slowtest.Gate(t, "native JavaScript fixed lineage controls")
 	node := jsNode(t)
 	const older = `package probe
 
@@ -456,7 +448,6 @@ for (const [outer,tag,inner,ordinal,wantRefused] of [
 }
 
 func TestJSFixedVersioningReferenceForwardRefusal(t *testing.T) {
-	slowtest.Gate(t, "native JavaScript fixed lineage controls")
 	corpus, node := jsFixedCorpus(t), jsNode(t)
 	body := fmt.Sprintf(`
 const data=readFileSync(%q), back=[new T()], plan=TNewPlan(4096,4096);

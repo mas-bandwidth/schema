@@ -12,7 +12,7 @@
 // succeeds, and the baseline's history keeps both reasons.
 //
 // The limit is the kernel's own, so this file is the functional half
-// (SCHEMA_SLOW); atomicwrites_test.go fails the same commands through the
+// (tier functional); atomicwrites_test.go fails the same commands through the
 // publisher's seam in every run.
 package main
 
@@ -254,9 +254,6 @@ func TestARealSizeLimitFormatsADirectoryAllOrNothing(t *testing.T) {
 // file writable again the retry writes them all.
 func TestGenerateOverAReadOnlyFileThroughTheCLI(t *testing.T) {
 	t.Parallel()
-	if os.Geteuid() == 0 {
-		t.Skip("root writes into a read-only file")
-	}
 	bin := buildCLI(t)
 	unit, out := realTempDir(t), realTempDir(t)
 	mustWrite(t, filepath.Join(unit, "Config.schema"), sharedS3Schema)

@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/moo/moorun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 )
 
@@ -26,7 +25,6 @@ table Root
 // storage containing NUL is not text and must be refused before writing.
 func TestMooJsonWriterRefusesZeroByte(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "moo (it runs the generated text form)")
 
 	u := mooBase64UnitFromSource(t, zeroByteWriterSchema)
 	m := tabletext.NewModel(u)

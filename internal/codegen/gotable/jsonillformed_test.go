@@ -5,8 +5,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -16,8 +14,6 @@ import (
 // ill-formed UTF-8 sequence with string_not_utf8 and Malformed.
 func TestJsonIllFormedUTF8RefusedBothWays(t *testing.T) {
 	t.Parallel()
-
-	slowtest.Gate(t, "the generated Go runtime")
 
 	files, err := Generate(goUnit(t, jsonFffdSchema))
 	if err != nil {

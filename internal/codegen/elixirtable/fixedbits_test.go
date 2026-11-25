@@ -3,8 +3,6 @@ package elixirtable
 import (
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestFixedBitsPastWidthRefuses pins docs/FIXED-FORM-ALGORITHM.md §4.5 on the
@@ -18,7 +16,6 @@ import (
 // the hostile wires load, and the probe goes red.
 func TestFixedBitsPastWidthRefuses(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Elixir (native fixed bits(N) bound)")
 	bin := elixirBinary(t)
 	const schema = "package bitsprobe\nfixed table Root { v bits(6)\n w uint8 }"
 	body := `
@@ -62,7 +59,6 @@ func TestFixedBitsPastWidthRefuses(t *testing.T) {
 // the absent wire reads, and the probe goes red.
 func TestFixedAbsentOptionalBoolIsDeadBytes(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Elixir (native absent optional bool)")
 	bin := elixirBinary(t)
 	const schema = "package boolprobe\nfixed table Root { o ?bool\n w uint8 }"
 	body := `

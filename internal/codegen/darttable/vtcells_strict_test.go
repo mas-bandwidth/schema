@@ -10,7 +10,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -350,7 +349,6 @@ func runDartVariableCellsProbe(t *testing.T, edit func(name string, data []byte)
 }
 
 func TestDartVariableCellsStrict(t *testing.T) {
-	slowtest.Gate(t, "dart (variable cells strict read)")
 	out, err := runDartVariableCellsProbe(t, nil)
 	if err != nil || !strings.Contains(out, "VT_CELLS_OK") {
 		t.Fatalf("variable cells probe failed: %v\n%s", err, out)
@@ -358,7 +356,6 @@ func TestDartVariableCellsStrict(t *testing.T) {
 }
 
 func TestDartVariableCellsStrictNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "dart (negative control for variable cells strict read)")
 
 	if out, err := runDartVariableCellsProbe(t, nil); err != nil || !strings.Contains(out, "VT_CELLS_OK") {
 		t.Fatalf("clean artifact should hold the strict read: %v\n%s", err, out)

@@ -18,7 +18,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // --- source gate over the real runtime artifacts ---
@@ -167,7 +166,6 @@ func TestSquirrelVtBlobMapCells(t *testing.T) {
 	if f := vtBlobMapFindings(loadSrc, refusalSrc); len(f) > 0 {
 		t.Fatalf("source gate: %v", f)
 	}
-	slowtest.Gate(t, "the pinned Squirrel interpreter")
 	got := vtRunCases(t, nil)
 	if fails := vtExpect(t, got); len(fails) > 0 {
 		for _, f := range fails {
@@ -196,7 +194,6 @@ func TestSquirrelVtBlobMapCellsNegativeControl(t *testing.T) {
 			t.Fatalf("NEGATIVE CONTROL FAILED: planting %s in real load.nut left gate green", pl.name)
 		}
 	}
-	slowtest.Gate(t, "the pinned Squirrel interpreter")
 	// plant in emitted load runtime: neutralise blob_shared graph check
 	got := vtRunCases(t, func(src string) string {
 		anchor := `if (blobRec && names[k + 1] > 1) {`

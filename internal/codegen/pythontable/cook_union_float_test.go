@@ -3,7 +3,6 @@ package pythontable
 import (
 	"encoding/hex"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"strings"
@@ -12,7 +11,6 @@ import (
 
 func TestPythonCookUnionFloat(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	u := loadUnit(t, `package cookunionfloat
 union Pick {
  value float32 | min = -1.0, max = 1.0, resolution = 0.25

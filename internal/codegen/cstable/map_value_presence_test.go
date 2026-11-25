@@ -1,7 +1,6 @@
 package cstable
 
 import (
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"testing"
 )
 
@@ -14,7 +13,6 @@ table Root {
 `
 
 func TestMapValuePresenceCSharp(t *testing.T) {
-	slowtest.Gate(t, "the .NET SDK")
 	t15RunCS(t, mapValuePresenceSchema, `
  void Check(string input,bool present,int mismatch,int duplicate,int expectedValue=0){
   // THE STRICT READ (docs/SPEC-TABLES.md §4, §6.5, §16.2): a changed kind and a

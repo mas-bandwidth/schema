@@ -30,7 +30,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goosetable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -335,7 +334,6 @@ fn load_fix(file: const u8[:]) -> nzgo::Fix {
 // that differ (a plain float's -0 rides).
 func TestGooseCompressedNegZeroCorpus(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Goose toolchain (it builds and runs the compressed -0 corpus over the generated unit)")
 	u := negZeroCorpusUnit(t)
 	files := probeFiles(t, u, nil)
 	rows := negZeroRows(t)

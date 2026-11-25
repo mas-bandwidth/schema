@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster/lobsterrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // A FLOAT32 IS SPELLED FROM ITS FLOAT32 VALUE (docs/SPEC-TABLES.md §16.2; Go's
@@ -20,7 +19,6 @@ import (
 // refuses it, never spelled as a double the reader would refuse.
 func TestLobsterJSONFloat32WriterRoundsFirst(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Lobster toolchain")
 	path := filepath.Join(t.TempDir(), "Root.schema")
 	if err := os.WriteFile(path, []byte("package floatroundprobe\ntable Root { value float32 }\n"), 0644); err != nil {
 		t.Fatal(err)

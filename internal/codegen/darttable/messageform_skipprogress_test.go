@@ -24,7 +24,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/dart"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -130,7 +129,6 @@ func skipProgressBody(announcement, wire []byte) string {
 // source in memory, and runs the probe with the leg's own toolchain. A missing
 // toolchain fails under SCHEMA_REQUIRE_CORPUS rather than skipping.
 func runSkipProgressProbe(t *testing.T, u *ir.Unit, root, body string, edit func(map[string][]byte)) (string, error) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	files, err := dart.Generate(u)

@@ -29,9 +29,9 @@ build/conformance-rust: $(RUST_FEATURE_WITNESSES_CRATES)/.stamp
 .PHONY: conformance-rust-feature-witnesses conformance-rust-feature-witnesses-negative-control
 conformance-rust-feature-witnesses: build/conformance-harness build/conformance-rust
 	@rm -rf $(RUST_FEATURE_WITNESSES) && mkdir -p $(RUST_FEATURE_WITNESSES)
-# loud-ok: the harness's status covers every surface of the leg; this target's verdict is the named row read from the log below, and a missing row is red
+# the harness's status covers every surface of the leg; this target's verdict is the named row read from the log below, and a missing row is red
 	@./build/conformance-harness run --only rust --results $(RUST_FEATURE_WITNESSES)/results.json \
-		--work $(RUST_FEATURE_WITNESSES)/work > $(RUST_FEATURE_WITNESSES)/log 2>&1 || true
+		--work $(RUST_FEATURE_WITNESSES)/work > $(RUST_FEATURE_WITNESSES)/log 2>&1; echo "exited $$? (the verdict is read from $(RUST_FEATURE_WITNESSES)/log below)"
 	@test -s $(RUST_FEATURE_WITNESSES)/results.json || \
 		{ cat $(RUST_FEATURE_WITNESSES)/log; echo "conformance-rust-feature-witnesses: the run wrote no results"; exit 1; }
 	sh test/conformance/rust/feature-witnesses-verdict $(RUST_FEATURE_WITNESSES)
@@ -53,10 +53,10 @@ conformance-rust-feature-witnesses-negative-control: build/conformance-harness b
 	@printf '#!/bin/sh\nexec "%s/test/conformance/rust/target/debug/conformance-rust-feature-witnesses-control" "$$@"\n' "$(CURDIR)" \
 		> $(RUST_FEATURE_WITNESSES_CONTROL)/driver/driver && chmod +x $(RUST_FEATURE_WITNESSES_CONTROL)/driver/driver
 	@printf 'rust %s/driver/driver\n' "$(RUST_FEATURE_WITNESSES_CONTROL)" > $(RUST_FEATURE_WITNESSES_CONTROL)/drivers.txt
-# loud-ok: the harness's status covers every surface of the leg; this target's verdict is the named row read from the log below, and a missing row is red
+# the harness's status covers every surface of the leg; this target's verdict is the named row read from the log below, and a missing row is red
 	@./build/conformance-harness run --drivers $(RUST_FEATURE_WITNESSES_CONTROL)/drivers.txt \
 		--results $(RUST_FEATURE_WITNESSES_CONTROL)/results.json \
-		--work $(RUST_FEATURE_WITNESSES_CONTROL)/work > $(RUST_FEATURE_WITNESSES_CONTROL)/log 2>&1 || true
+		--work $(RUST_FEATURE_WITNESSES_CONTROL)/work > $(RUST_FEATURE_WITNESSES_CONTROL)/log 2>&1; echo "exited $$? (the verdict is read from $(RUST_FEATURE_WITNESSES_CONTROL)/log below)"
 	@test -s $(RUST_FEATURE_WITNESSES_CONTROL)/results.json || \
 		{ cat $(RUST_FEATURE_WITNESSES_CONTROL)/log; echo "NEGATIVE CONTROL: the sabotaged run wrote no results"; exit 1; }
 	@if sh test/conformance/rust/feature-witnesses-verdict $(RUST_FEATURE_WITNESSES_CONTROL) > $(RUST_FEATURE_WITNESSES_CONTROL)/verdict 2>&1; then \

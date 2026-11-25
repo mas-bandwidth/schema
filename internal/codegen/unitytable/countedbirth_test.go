@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // THE BIRTH VALUE OF A COUNTED ARRAY IN C# (unity) (docs/SPEC-TABLES.md
@@ -19,7 +18,6 @@ import (
 // element kind (test/verify-tablegen/pinned.go, pin:ci32:* and pin:crec:*).
 func TestUnityCountedArrayBirthValue(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dotnet Roslyn csc Unity dialect counted-array birth value")
 	files, err := unityGenerateFiles(fixedproof.ParseCheckUnit(t, unityCountedBirthSchema), nil)
 	if err != nil {
 		t.Fatal(err)

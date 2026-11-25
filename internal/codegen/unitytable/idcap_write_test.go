@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
@@ -14,7 +13,6 @@ import (
 // says so), and the third makes Measure and Save answer -1 and write nothing.
 func TestUnityWriterRefusesMoreThan4096Ids(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dotnet Roslyn csc Unity dialect id table maximum")
 	u := fixedproof.ParseCheckUnit(t, tablewire.IdCapSchema())
 	files, err := unityGenerateFiles(u, nil)
 	if err != nil {

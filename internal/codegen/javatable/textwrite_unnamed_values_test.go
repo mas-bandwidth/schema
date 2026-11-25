@@ -19,7 +19,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
@@ -193,7 +192,6 @@ func namedValuesLawful(t *testing.T, m *tabletext.Model, u *ir.Unit) *tabletext.
 // and a lawful twin writes the Go writer's text and reads back equal.
 func TestJavaToJsonAssertsNamedValues(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the JDK (it compiles and runs the generated Java)")
 	javac, javaBin := javaToolsRequired(t)
 
 	u := unitFrom(t, namedValuesSchema)

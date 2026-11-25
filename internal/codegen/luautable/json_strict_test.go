@@ -14,7 +14,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -234,7 +233,6 @@ func jsonStrictUnit(t *testing.T) *ir.Unit {
 // verdict on every case.
 func TestLuauJsonPlainReadIsStrict(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter and the Go toolchain")
 	u := jsonStrictUnit(t)
 	want := jsonStrictGoOracle(t, u)
 	got := jsonStrictLuau(t, u, func(s string) string { return s })
@@ -262,7 +260,6 @@ func TestLuauJsonPlainReadIsStrict(t *testing.T) {
 // out.
 func TestLuauJsonStrictNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter and the Go toolchain")
 	u := jsonStrictUnit(t)
 	want := jsonStrictGoOracle(t, u)
 	plants := []struct {

@@ -2,8 +2,6 @@ package gotable
 
 import (
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // A blob named by two slots (docs/SPEC-TABLES.md §2.5, §16.7): written
@@ -55,7 +53,6 @@ func shared(t *testing.T,what string,err error){t.Helper();if !errors.Is(err,Tab
 // by name. The clean wire still reads and round-trips byte for byte.
 func TestBlobNamedTwiceSeed24(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
 	out, err := runGeneratedResult(t, blobNamedTwiceSeed24Unit, blobNamedTwiceProbeHead+`
 func TestSeed24(t *testing.T){
  damaged,clean:=wires(t)
@@ -75,7 +72,6 @@ func TestSeed24(t *testing.T){
 // with two blobs saves and round-trips.
 func TestBlobNamedTwiceWriters(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
 	out, err := runGeneratedResult(t, blobNamedTwiceSeed24Unit, blobNamedTwiceProbeHead+`
 func TestWriters(t *testing.T){
  var b RootBuilder;if !b.Init(){t.Fatal("init")};defer b.Shutdown();r:=b.GetRoot();data,ref:=b.Main.AllocBytes(3);copy(data,"abc");r.F2=ref;r.U0.Type=U0TypePtr;r.U0.Ptr().Value=ref
@@ -105,7 +101,6 @@ func TestWriters(t *testing.T){
 // per slot: the reads allocate far less than one copy per slot would.
 func TestBlobNamedTwiceAmplification(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
 	out, err := runGeneratedResult(t, `package probe
 table Item { b *bytes }
 table Root { items [..4096]Item }

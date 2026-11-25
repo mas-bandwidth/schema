@@ -446,9 +446,6 @@ func TestPinTargetBoundary(t *testing.T) {
 // the mixed tree the first attempt had made).
 func TestPinReadOnlyDirectoryChangesNothing(t *testing.T) {
 	t.Parallel()
-	if os.Geteuid() == 0 {
-		t.Skip("root writes into a read-only directory; TestPinPublishAllOrNothing covers the same rule through its seam")
-	}
 	bin := buildCLI(t)
 	root := t.TempDir()
 	p1 := writePinPkg(t, root, "p1", pinPkg1)

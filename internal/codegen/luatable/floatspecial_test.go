@@ -40,7 +40,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -534,7 +533,6 @@ func fsGenerate(t *testing.T, u *ir.Unit) map[string][]byte {
 
 func TestLuaPlainFloatSpecialValuesAgreeAcrossForms(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "go and the pinned lua")
 	u := fsLoadUnit(t)
 	values, checks := fsRun(t, u, fsGenerate(t, u))
 

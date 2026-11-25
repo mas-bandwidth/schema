@@ -12,9 +12,8 @@ package elixirtable
 // name.
 //
 // It compiles and runs the generated units with the real Elixir and OTP
-// toolchain, so it is a functional test: it skips by name without SCHEMA_SLOW
-// and fails by name under SCHEMA_REQUIRE_CORPUS=1 when the toolchain or
-// corpus is missing.
+// toolchain, so it is a functional test: it fails by name when the toolchain or corpus
+// is missing.
 
 import (
 	"bytes"
@@ -85,10 +84,7 @@ func elixircBinary(t *testing.T, elixirBin string) string {
 	if found, err := exec.LookPath("elixirc"); err == nil {
 		return found
 	}
-	if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-		t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and no elixirc is on this bench: not at %s and not on PATH", sibling)
-	}
-	t.Skip("no elixirc: unpack it in dist/ or put it on PATH — see make/elixir.mk")
+	t.Fatalf("no elixirc is on this bench: not at %s and not on PATH", sibling)
 	return ""
 }
 
@@ -213,7 +209,6 @@ func runFixedFormHarnessScript(t *testing.T, root, elixirBin, otpPath, ebin, cor
 }
 
 func TestElixirFixedFormHarnessStrict(t *testing.T) {
-	slowtest.Gate(t, "the Elixir fixed-form harness (it compiles and runs test/elixir-fixedform/main.exs)")
 	corpus := fixedCorpus(t)
 	elixirBin := elixirBinary(t)
 	elixircBin := elixircBinary(t, elixirBin)
@@ -236,7 +231,6 @@ func TestElixirFixedFormHarnessStrict(t *testing.T) {
 }
 
 func TestElixirFixedFormHarnessStrictNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "the Elixir fixed-form harness negative control")
 	corpus := fixedCorpus(t)
 	elixirBin := elixirBinary(t)
 	elixircBin := elixircBinary(t, elixirBin)

@@ -6396,7 +6396,7 @@ const String surfaces =
     ''
     'wire\nmessage\nmessage-prior\nretain\nretain-save\nretain-refusal\njson-read\njson-write\njson-hostile\nreport\nframing\n'
     'cook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\n'
-    'forgery\ncook-forgery\ncook-reason\nblock-reason\n'
+    'forgery\ncook-forgery\n'
     'write-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n'
     'write-refusal-cook\nwrite-refusal-block\nwrite-refusal-shape\nannounce\nread-into\njson-write-into\n'
     'unit shapes\n';

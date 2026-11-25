@@ -6,13 +6,10 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func TestGoFixedLoadCapacityWitness(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Go compiler")
 	root := filepath.Join("..", "..", "..")
 	read := func(relative string) []byte {
 		t.Helper()
@@ -55,9 +52,6 @@ func TestFixedLoadCapacities(t *testing.T) {
             var observed string
             switch row[1] {
             case "load":
-                if row[2] == "omitted" {
-                    t.Skip("BatchFixedLoad requires a destination slice whose length is the capacity")
-                }
                 capacity, err := strconv.Atoi(row[2])
                 if err != nil { t.Fatal(err) }
                 values := make([]Batch, capacity)

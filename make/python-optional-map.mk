@@ -6,4 +6,4 @@ python-ci-optional-map: python-optional-map-negative-control
 test-python: python-optional-map-negative-control
 
 python-optional-map-negative-control: python-toolchain-check
-	SCHEMA_SLOW=1 $(GO_TEST) -count=1 -timeout 600s -run 'TestPythonOptionalMapNegativeControlFunctional' ./internal/codegen/pythontable/
+	$(GO_TEST) -count=1 -timeout 600s -run 'TestPythonOptionalMapNegativeControlFunctional' ./internal/codegen/pythontable/

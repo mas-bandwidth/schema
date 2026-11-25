@@ -39,7 +39,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -307,10 +306,9 @@ func vtEvoRowFailures(t *testing.T, r vtEvoRow, plant *vtEvoPlant) (fails []stri
 	return fails, held
 }
 
-// Functional (both pinned interpreters): run with SCHEMA_SLOW=1.
+// Functional (both pinned interpreters).
 func TestPythonVtEvolutionRows(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 
 	// THE COMPLETENESS CHECK: every instance and report row of the evolution
 	// units is a case of one row here, but the previous_form_* rows.
@@ -393,10 +391,9 @@ func vtEvoDropWas(u *ir.Unit) {
 //	                        names and the renamed units' files no longer read
 //	                        back
 //
-// Functional (both pinned interpreters): run with SCHEMA_SLOW=1.
+// Functional (both pinned interpreters).
 func TestPythonVtEvolutionRowsNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	edit := func(suffix, from, to string) func(*testing.T, map[string][]byte) {
 		return func(t *testing.T, files map[string][]byte) {
 			for name := range files {

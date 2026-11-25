@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -96,7 +95,6 @@ func elixirNonCanonicalMeasureHolds(row elixirNonCanonicalRow) bool {
 // the union field written with arm reference 0 stays refused (§3.3 (c)).
 func TestElixirReadsRefuseNonCanonical(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 
 	root, err := filepath.Abs(filepath.Join("..", "..", ".."))
 	if err != nil {

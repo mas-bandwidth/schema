@@ -3,8 +3,6 @@ package elixirtable
 import (
 	"fmt"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // Compilation emits the bound-many widening entries; execution counts only
@@ -13,7 +11,6 @@ import (
 // 11, docs/SPEC-TABLES.md §3.4) and never moves a counter.
 func TestFixedCountedArrayLiveExtent(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Elixir (native counted-array slack and widening)")
 	bin := elixirBinary(t)
 	for _, tc := range []struct {
 		name, old, new, values string

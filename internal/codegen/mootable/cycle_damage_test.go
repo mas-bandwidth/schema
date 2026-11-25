@@ -6,8 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // mooCycleVectors are the pinned pointer-cycle vectors
@@ -94,7 +92,6 @@ func cycleWant(value int, malformed bool) string {
 // A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): every moo load path
 // discards the whole read as malformed.
 func TestMooCyclicWireIsDamage(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted readers)")
 	t.Parallel()
 	want := cycleWant(0, true)
 	allRunCycleVectors := runCycleVectors(t, nil)
@@ -112,7 +109,6 @@ func TestMooCyclicWireIsDamage(t *testing.T) {
 // phase one, the wire-alone walk, which judges the graph first: every cycle
 // vector then loads, whole and not malformed, on every path.
 func TestMooCyclicWireNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted readers)")
 	t.Parallel()
 	const anchor = "if _numberingGood and not report.bodyDamaged and cyclic() then"
 	got := runCycleVectors(t, func(t *testing.T, g *generatedUnit) {
@@ -185,7 +181,6 @@ func runMapKeyWiden(t *testing.T, dropKind, dropRepeat bool) string {
 // widens: the Go engine refuses map_repeated_key_widen ("the same field id
 // twice in one body"), and so do moo's one read and its retaining load.
 func TestMooMapKeyWidenReplacesAForeignKind(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted readers)")
 	t.Parallel()
 	const want = "strict refused\nretain refused"
 	if got := runMapKeyWiden(t, false, false); got != want {
@@ -198,7 +193,6 @@ func TestMooMapKeyWidenReplacesAForeignKind(t *testing.T) {
 // (the decode's, and phase one, whose walk refuses an id twice in one body)
 // the retired last-occurrence-wins rule reads it.
 func TestMooMapKeyWidenNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted readers)")
 	t.Parallel()
 	if got := runMapKeyWiden(t, true, false); got != "strict refused\nretain refused" {
 		t.Errorf("the repeated-id check alone does not refuse the vector:\n%s", got)

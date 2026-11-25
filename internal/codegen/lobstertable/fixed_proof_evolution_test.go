@@ -13,7 +13,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster/lobsterrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobstertable"
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -30,7 +29,6 @@ import (
 // the same file with a non-zero dead byte is refused.
 func TestLobsterFixedProofEvolution(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Lobster toolchain and the C++ fixed-form corpus")
 	repo := filepath.Join("..", "..", "..")
 	fixedproof.RunEvolutionRows(t, repo, lobsterFixedProofRunner{},
 		"fixed-file-roundtrip", "file-envelope", "batch-capacity", "plan-selection",

@@ -15,12 +15,10 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/fixedvector"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func TestFixedDeadBytesAreZero(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "node (it runs the generated reader over the dead-byte corpus)")
 	corpus := jsFixedCorpus(t)
 	node := jsNode(t)
 	src := jsReadSchema(t, "DeadBytes")

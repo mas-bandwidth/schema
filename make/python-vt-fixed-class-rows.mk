@@ -11,10 +11,10 @@
 # make/negative-controls.d/python-vt-fixed-class-rows-negative-control.json.
 .PHONY: python-vt-fixed-class-rows python-vt-fixed-class-rows-negative-control
 python-vt-fixed-class-rows: deps-go python-toolchain-check
-	SCHEMA_SLOW=1 $(GO_TEST) -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonVtFixedClassRows$$' ./internal/codegen/pythontable/
+	$(GO_TEST) -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonVtFixedClassRows$$' ./internal/codegen/pythontable/
 
 python-vt-fixed-class-rows-negative-control: deps-go python-toolchain-check
-	SCHEMA_SLOW=1 $(GO_TEST) -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonVtFixedClassRowsNegativeControl$$' ./internal/codegen/pythontable/
+	$(GO_TEST) -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonVtFixedClassRowsNegativeControl$$' ./internal/codegen/pythontable/
 
 test-python: python-vt-fixed-class-rows python-vt-fixed-class-rows-negative-control
 PYTHON_CI_SUPPORT_GROUPS += python-vt-fixed-class-rows python-vt-fixed-class-rows-negative-control

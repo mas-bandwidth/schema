@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/hex"
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -121,7 +120,6 @@ func readCookWriteManifest(t *testing.T, repo string) (map[string][]string, []co
 // testdata/conformance/tables/MANIFEST.txt byte for byte against the committed
 // little-endian and big-endian golden files (docs/SPEC-TABLES.md §7.6).
 func TestCookWriteAnswersEveryCookWriteRowJavaScript(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Parallel()
 	node := jsNode(t)

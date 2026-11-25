@@ -30,7 +30,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -265,7 +264,6 @@ func wideNarrowWire(t *testing.T, u *ir.Unit, root, field string) []byte {
 // returns the findings and the number of probe runs that held.
 func wideCellFailures(t *testing.T, mutate func(map[string][]byte)) (fails []string, held int) {
 	t.Helper()
-	slowtest.Gate(t, "both pinned Python interpreters and strict mypy")
 	currentPy := pyrun.Interpreter(t)
 	floorPy := pyrun.Floor(t)
 	var mypyBin string
@@ -365,7 +363,7 @@ func wideCellFailures(t *testing.T, mutate func(map[string][]byte)) (fails []str
 	return fails, held
 }
 
-// Functional (pyrun): run with SCHEMA_SLOW=1.
+// Functional (pyrun).
 func TestPythonVtWide(t *testing.T) {
 	t.Parallel()
 	fails, held := wideCellFailures(t, nil)
@@ -384,10 +382,9 @@ func TestPythonVtWide(t *testing.T) {
 // wide payload refuses by name, and an out-of-range write raises InvalidValue
 // before writing a byte and leaves the caller's value untouched.
 //
-// Functional (pyrun): run with SCHEMA_SLOW=1.
+// Functional (pyrun).
 func TestPythonVtWideRefused(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	const schema = `package wide
 
 table Narrow
@@ -437,7 +434,7 @@ table Narrow
 // save then renumbers its fields). Each control's finding names the construct
 // and the pin.
 //
-// Functional (pyrun): run with SCHEMA_SLOW=1.
+// Functional (pyrun).
 func TestPythonVtWideNegativeControl(t *testing.T) {
 	t.Parallel()
 	plant := func(file, from, to string) func(map[string][]byte) {

@@ -18,7 +18,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -89,7 +88,6 @@ fn %[2]s_message(v: const birth::%[2]s&) -> u8[>..] {
 `
 
 func TestGooseCountedArrayBornAtItsMinimum(t *testing.T) {
-	slowtest.Gate(t, "the Goose toolchain (it builds and runs the generated unit)")
 	t.Parallel()
 	unit := probeUnit(t, countedBirthSchema)
 	model := tabletext.NewModel(unit)

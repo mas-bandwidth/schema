@@ -15,9 +15,7 @@
 #                                          one per array body, each turning only the
 #                                          rows that pass through it (I1)
 # tables-lua-alloc-runtime-negative-control  another interpreter's version is refused by
-#                                          name before anything is measured (I14);
-#                                          SCHEMA_LUA_ALLOC_ANY_LUA=1 prints the rows
-#                                          under NOT CERTIFIED and asserts nothing
+#                                          name before anything is measured (I14)
 # tables-lua-soak                          the soak, a PASS COUNT (never a clock):
 #                                          TABLES_LUA_SOAK_ITERATIONS passes, gated on
 #                                          the allocation count beside the live heap (I9)

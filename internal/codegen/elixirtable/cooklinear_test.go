@@ -5,8 +5,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 const elixirCookLinearSchema = `package cooklinear
@@ -32,7 +30,6 @@ func TestElixirCookWriteCostIsLinearInCookedSize(t *testing.T) {
 	// Intentionally serial (no t.Parallel): ERTS charges monotonic GC wall time
 	// into :reductions (erl_gc.c), so running before the row's ~88 parallel BEAM
 	// VMs keeps OS scheduler preemption out of the reduction counter.
-	slowtest.Gate(t, "the Elixir toolchain")
 	elixirBin := elixirBinary(t)
 	dir := t.TempDir()
 	path := filepath.Join(dir, "CookLinear.schema")

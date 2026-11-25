@@ -11,8 +11,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -82,7 +80,6 @@ func evolutionCICoverage(names []string, source string) error {
 }
 
 func TestPythonVtEvolutionCICoverage(t *testing.T) {
-	slowtest.Gate(t, "sh")
 	root, err := filepath.Abs("../../..")
 	if err != nil {
 		t.Fatal(err)

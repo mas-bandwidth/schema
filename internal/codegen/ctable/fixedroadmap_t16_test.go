@@ -10,8 +10,7 @@ package ctable
 // MaxUint32, and a remap past the uint16 length word refused by name.
 //
 // Assertions on the emitted header are unit tests. The compiled probe is a
-// functional test: slowtest.Gate first, then the compiler by exec.LookPath,
-// skipping by name when it is absent.
+// functional test: the compiler by exec.LookPath, failing by name when it is absent.
 
 import (
 	"fmt"
@@ -23,7 +22,6 @@ import (
 	"testing"
 
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -92,13 +90,12 @@ func t16CR31(t *testing.T) {
 		t.Error("R31: the published identity plan carries no entry with arg 300; arm 300's ordinal truncated")
 	}
 
-	slowtest.Gate(t, "the C toolchain (it compiles and runs the generated unit)")
 	cc := os.Getenv("CC")
 	if cc == "" {
 		cc = "cc"
 	}
 	if _, err := exec.LookPath(cc); err != nil {
-		t.Skipf("the C compiler %q is absent: %v", cc, err)
+		t.Fatalf("the C compiler %q is absent: %v", cc, err)
 	}
 	writer := unitFrom(t, t16CWriterSchema())
 	wst := writer.Tables["Root"]

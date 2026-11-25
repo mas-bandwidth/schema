@@ -28,18 +28,18 @@ const allSkipped = `{"Action":"run","Package":"p/a","Test":"TestSlow"}
 {"Action":"pass","Package":"p/a"}
 `
 
-// one test passed and one skipped for SCHEMA_SLOW: the shape of a local run
-// of a package whose driver tests are slow (test/conformance/packet, 11-22).
-const passAndSlowSkip = `{"Action":"run","Package":"p/a","Test":"TestFast"}
+// one test passed and one skipped itself with a reason: the skip is a
+// failure whatever the reason says.
+const passAndReasonSkip = `{"Action":"run","Package":"p/a","Test":"TestFast"}
 {"Action":"pass","Package":"p/a","Test":"TestFast"}
 {"Action":"run","Package":"p/a","Test":"TestDriver"}
-{"Action":"output","Package":"p/a","Test":"TestDriver","Output":"    d_test.go:16: SCHEMA_SLOW: this test shells out to cc; set SCHEMA_SLOW=1 to run it\n"}
+{"Action":"output","Package":"p/a","Test":"TestDriver","Output":"    d_test.go:16: this test shells out to cc\n"}
 {"Action":"output","Package":"p/a","Test":"TestDriver","Output":"--- SKIP: TestDriver (0.00s)\n"}
 {"Action":"skip","Package":"p/a","Test":"TestDriver"}
 {"Action":"pass","Package":"p/a"}
 `
 
-// a skip for another reason (a missing tool): nothing is ever skipped.
+// a skip for another reason (a missing tool) is a failure just the same.
 const passAndToolSkip = `{"Action":"run","Package":"p/a","Test":"TestFast"}
 {"Action":"pass","Package":"p/a","Test":"TestFast"}
 {"Action":"run","Package":"p/a","Test":"TestCargo"}
@@ -53,25 +53,23 @@ func TestVerdict(t *testing.T) {
 		exit   int
 		stream string
 		each   bool
-		slowOK bool
 		code   int
 		say    string
 	}{
-		{"a SCHEMA_SLOW skip beside a pass is red and named", 0, passAndSlowSkip, false, false, 1, "SKIPPED-SLOW: 1 test(s)"},
-		{"SKIP_SLOW_OK=1 accepts the slow skip", 0, passAndSlowSkip, false, true, 0, ""},
-		{"a non-slow skip beside a pass is red", 0, passAndToolSkip, false, false, 1, "SKIPPED: 1 test(s)"},
-		{"matched nothing is red though go test said ok", 0, noMatch, false, false, 1, "ran NO test"},
-		{"one test passed", 0, onePass, false, false, 0, ""},
-		{"empty stream is red", 0, "", false, false, 1, "ran NO test"},
-		{"all skipped is red", 0, allSkipped, false, false, 1, "all 1 that ran skipped"},
-		{"go test failure keeps its status", 3, onePass, false, false, 3, "exited 3"},
-		{"each: a package with no passing test is named", 0, onePass, true, false, 1, "p/b"},
-		{"each: not asked, a bare package is fine", 0, onePass, false, false, 0, ""},
+		{"a skip with a reason beside a pass is red and named", 0, passAndReasonSkip, false, 1, "SKIPPED: 1 test(s)"},
+		{"a missing-tool skip beside a pass is red", 0, passAndToolSkip, false, 1, "SKIPPED: 1 test(s)"},
+		{"matched nothing is red though go test said ok", 0, noMatch, false, 1, "ran NO test"},
+		{"one test passed", 0, onePass, false, 0, ""},
+		{"empty stream is red", 0, "", false, 1, "ran NO test"},
+		{"all skipped is red", 0, allSkipped, false, 1, "SKIPPED: 1 test(s)"},
+		{"go test failure keeps its status", 3, onePass, false, 3, "exited 3"},
+		{"each: a package with no passing test is named", 0, onePass, true, 1, "p/b"},
+		{"each: not asked, a bare package is fine", 0, onePass, false, 0, ""},
 	}
 	for _, c := range cases {
 		var text bytes.Buffer
 		tl := read(strings.NewReader(c.stream), &text)
-		code, why := verdict(c.exit, tl, c.each, c.slowOK)
+		code, why := verdict(c.exit, tl, c.each)
 		if code != c.code || !strings.Contains(why, c.say) || (c.code == 0 && why != "") {
 			t.Errorf("%s: verdict = %d %q, want %d containing %q", c.name, code, why, c.code, c.say)
 		}
@@ -98,10 +96,10 @@ func TestRunRefusesNoArgumentsAndForeignFlags(t *testing.T) {
 	}
 }
 
-func TestReadNamesSlowSkips(t *testing.T) {
-	tl := read(strings.NewReader(passAndSlowSkip+passAndToolSkip), &bytes.Buffer{})
-	if len(tl.slowSkipped) != 1 || tl.slowSkipped[0] != "p/a TestDriver" {
-		t.Errorf("slowSkipped = %q, want [\"p/a TestDriver\"]", tl.slowSkipped)
+func TestReadNamesEverySkip(t *testing.T) {
+	tl := read(strings.NewReader(passAndReasonSkip+passAndToolSkip), &bytes.Buffer{})
+	if len(tl.skippedTests) != 2 || tl.skippedTests[0] != "p/a TestDriver" || tl.skippedTests[1] != "p/a TestCargo" {
+		t.Errorf("skippedTests = %q, want [\"p/a TestDriver\" \"p/a TestCargo\"]", tl.skippedTests)
 	}
 }
 

@@ -25,7 +25,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -141,7 +140,6 @@ public final class %s {
 // t08Build generates the schema's java fixed surface and compiles it beside the
 // capability probe, answering the classes directory.
 func t08Build(t *testing.T, dir, name, schema, setters string) string {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	u := unitFrom(t, schema)

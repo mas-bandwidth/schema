@@ -149,7 +149,7 @@ func checkCertifyParallelPolicy(certifyYAML, makefile string, registeredLegs []s
 	if strings.Contains(certifyYAML, "macos-latest") {
 		errs = append(errs, "certify.yml still schedules on hosted macos-latest instead of [self-hosted, macOS, ARM64, fleet, schema]")
 	}
-	if !strings.Contains(certifyYAML, "\n  MAKEFLAGS: ''\n") || !strings.Contains(certifyYAML, "unset MAKEFLAGS\n          make toolchain SCHEMA_SKIP_LEGS=\"$OTHER_LEGS\"") {
+	if !strings.Contains(certifyYAML, "\n  MAKEFLAGS: ''\n") || !strings.Contains(certifyYAML, "unset MAKEFLAGS\n          for t in $PINNED; do make \"$t\"") {
 		errs = append(errs, "certify.yml must clear MAKEFLAGS (workflow env MAKEFLAGS: '' and unset MAKEFLAGS before leg gates) so runner MAKEFLAGS=-j* cannot race in-place sabotage controls")
 	}
 
@@ -261,8 +261,8 @@ func checkCertifyParallelPolicy(certifyYAML, makefile string, registeredLegs []s
 		"make fuzz-tables-diff TABLE_DIFF_FROM=100 TABLE_DIFF_TO=149",
 		"make fuzz-tables-diff TABLE_DIFF_FROM=150 TABLE_DIFF_TO=200",
 		"make fuzz-tables-props",
-		`make toolchain SCHEMA_SKIP_LEGS="$OTHER_LEGS"`,
-		`make conformance SCHEMA_SKIP_LEGS="$OTHER_LEGS"`,
+		`for t in $PINNED; do make "$t" "${MAKE_VARS[@]}"; done`,
+		`make conformance CONFORMANCE_ONLY="$BASE_LEG"`,
 		"make test-c-recipe",
 		"make test-elixir-recipe",
 		"make test-goose-recipe",
@@ -319,7 +319,7 @@ func TestCertifyParallelShardsCoverFullMakeTest(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
 	if _, err := exec.LookPath("make"); err != nil {
-		t.Skip("no make on PATH")
+		t.Fatal("no make on PATH")
 	}
 
 	legs := registeredTestLegs(t, root)
@@ -327,7 +327,7 @@ func TestCertifyParallelShardsCoverFullMakeTest(t *testing.T) {
 		t.Fatalf("expected at least 17 registered legs, got %d: %v", len(legs), legs)
 	}
 	prereqs := makeTestDatabasePrereqs(t, root)
-	for _, must := range []string{"toolchain", "deps", "slow-gate-scan", "vuln-selftest", "release-proof-refusal", "tables-cpp-clean"} {
+	for _, must := range []string{"toolchain", "deps", "vuln-selftest", "release-proof-refusal", "tables-cpp-clean"} {
 		if !slices.Contains(prereqs, must) {
 			t.Errorf("make -qp test: prerequisites missing %q (got %v)", must, prereqs)
 		}

@@ -15,8 +15,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -269,10 +267,9 @@ int main()
 // descriptor, and the plain reader's silent reading of all three.
 func TestCPPMapPresence(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the C++ compiler")
 	cxx, err := exec.LookPath("c++")
 	if err != nil {
-		t.Skip("the generated C++ is compiled and run: no c++ on PATH")
+		t.Fatal("the generated C++ is compiled and run: no c++ on PATH")
 	}
 	run := func(name, schema, driver string) {
 		t.Helper()

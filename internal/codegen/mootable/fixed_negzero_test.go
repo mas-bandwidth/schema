@@ -14,7 +14,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/fixedvector"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // fixedHeaderBytes is the fixed form's file header (docs/SPEC-TABLES.md §3.4);
@@ -28,7 +27,6 @@ const fixedHeaderBytes = 16
 // with that field's bytes cleared.
 func TestFixedCompressedNegZeroRead(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	corpus := fixedCorpus(t)
 	g := fixedUnit(t, readTestSchema(t, "FNZ"), nil)
 	for _, vec := range fixedvector.NegativeZero {

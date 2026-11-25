@@ -16,7 +16,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -147,7 +146,6 @@ func TestOracle(t *testing.T) {
 // §16.9.4).
 func TestLuauTextFormEditKeepsTheDocument(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter")
 	cases := tfWriteCases(t)
 
 	srcDir := t.TempDir()

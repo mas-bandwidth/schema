@@ -18,7 +18,6 @@ import (
 // owns extra and orders b before a; its announcement and messages are produced
 // by the generated native writer, without editing a build identity.
 func TestCTableMessageOrderAndMembership(t *testing.T) {
-	slowtest.Gate(t, "the C compiler (cc)")
 	receiver := unitFromSource(t, `package receiver
  fixed table Root { a uint8
  b uint8

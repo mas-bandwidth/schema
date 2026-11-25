@@ -9,7 +9,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/pythontable"
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestPythonFixedNumericLadders compares every adjacent signed and unsigned
@@ -20,7 +19,6 @@ import (
 // TestPythonFixedProofEvolutionKindPairs holds their refusal.
 func TestPythonFixedNumericLadders(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters, strict mypy, and live C++")
 	oldSchema := `package probe
 fixed table T {
  s8 int8
@@ -150,7 +148,6 @@ print('backward-refused')
 // unsigned raw scale and does not sign-extend the high bit.
 func TestPythonFixedUnsignedFixedpoint(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both Python pins, strict mypy and live C++")
 	old := fixedproof.ParseCheckUnit(t, "package probe\nfixed table T { q ufixed(4,4) | min = 0, max = 15 }\n")
 	newer := fixedproof.ParseCheckUnit(t, "package probe\nfixed table T { q ufixed(12,4) | min = 0, max = 15 }\n")
 	_, _, oldBody := fixedproof.RootFacts(old.Tables["T"])

@@ -18,7 +18,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -63,7 +62,6 @@ func countedMatrixCases() []countedMatrixCase {
 }
 
 func TestJavaCountedArrayBornAtItsMinimum(t *testing.T) {
-	slowtest.Gate(t, "the JDK (it compiles and runs the generated Java)")
 	t.Parallel()
 	javac, java := javaTools(t)
 	unit := unitFrom(t, countedMatrixSchema)

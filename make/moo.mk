@@ -47,13 +47,15 @@ toolchain-moo:
 # network: inputs go in as source.
 .PHONY: test-moo update-goldens-moo
 test-moo: toolchain-moo
-	SCHEMA_SLOW=1 $(GO_TEST) -count=1 ./internal/codegen/moo/...
+	$(GO_TEST) -count=1 ./internal/codegen/moo/...
 update-goldens-moo: ;
 
 TEST_LEGS          += test-moo
 TOOLCHAIN_LEGS     += moo
+CONFORMANCE_LEG_moo := build/conformance-moo
 TOOLCHAIN_PINS_moo := MOO MOO_ANALYZE
-CONFORMANCE_LEGS   += $(call unless_skipped,moo,build/conformance-moo)
+CONFORMANCE_OF.moo := build/conformance-moo
+CONFORMANCE_LEGS   += $(CONFORMANCE_OF.moo)
 GOLDENS_LEGS       += update-goldens-moo
 REGISTRY_NA        += bench-tables:moo
 REGISTRY_NA_WHY.bench-tables.moo := bench/tables/moo/leg build generates its own unit, so the aggregate has no prerequisite to add
@@ -84,7 +86,7 @@ cards-moo-test: toolchain-moo cards-moo-generate build/cards-driver-moo cards-co
 	$(MUSTRUN) -name cards-moo-test -count 11 -- cat build/cards-moo-unit/unit.txt
 
 cards-moo-conformance: toolchain-moo cards-moo-generate build/cards-driver-moo build/conformance-harness cards-corpus-check
-	SCHEMA_REQUIRE_CARDS_CORPUS=1 SCHEMA_CARDS_SURFACES=$(CARDS_MOO_REQUIRE) ./build/conformance-harness cards --work build/cards-moo-conformance --corpus tables/cards/conformance --driver tables/cards/moo/driver --require $(CARDS_MOO_REQUIRE)
+	SCHEMA_CARDS_SURFACES=$(CARDS_MOO_REQUIRE) ./build/conformance-harness cards --work build/cards-moo-conformance --corpus tables/cards/conformance --driver tables/cards/moo/driver --require $(CARDS_MOO_REQUIRE)
 
 cards-moo-conformance-negative-control: cards-moo-test cards-moo-conformance
 	sh tables/cards/moo/negative-control.sh render

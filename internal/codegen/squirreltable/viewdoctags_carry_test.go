@@ -12,7 +12,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirreltable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -174,7 +173,7 @@ func TestSquirrelViewDocAndTagsCarried(t *testing.T) {
 		}
 	}
 
-	if slowtest.Enabled() {
+	{
 		runDir := t.TempDir()
 		for name, data := range files {
 			writeFile(t, filepath.Join(runDir, name), data)

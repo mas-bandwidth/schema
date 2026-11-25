@@ -332,7 +332,7 @@ func finiteProbeRun(t *testing.T, sabotage *finiteSabotage) ([]string, string) {
 		var err error
 		cc, err = exec.LookPath("cc")
 		if err != nil {
-			t.Skip("generated C execution requires cc")
+			t.Fatal("generated C execution requires cc")
 		}
 	}
 	u := unitFrom(t, finiteProbeSchema)
@@ -418,7 +418,6 @@ func finiteProbeRun(t *testing.T, sabotage *finiteSabotage) ([]string, string) {
 }
 
 func TestCFiniteFloats(t *testing.T) {
-	slowtest.Gate(t, "the C compiler (cc)")
 	t.Parallel()
 	if fails, out := finiteProbeRun(t, nil); len(fails) != 0 {
 		t.Fatalf("the C finite rule does not hold:\n%s", out)
@@ -426,7 +425,6 @@ func TestCFiniteFloats(t *testing.T) {
 }
 
 func TestCFiniteFloatNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "the C compiler (cc)")
 	t.Parallel()
 	for i := range finiteSabotages {
 		c := &finiteSabotages[i]

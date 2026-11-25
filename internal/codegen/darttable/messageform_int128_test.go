@@ -12,7 +12,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/dart"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -28,7 +27,6 @@ import (
 // the low first).
 func TestDartMessageWriterCarries128BitFields(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Dart toolchain")
 
 	const schema = `package int128msg
 type Dummy { x uint128 }

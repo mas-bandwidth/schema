@@ -185,7 +185,8 @@ func TestAListRidesInItsHolderNodeExtent(t *testing.T) {
 func TestTheToolWritesTheReferencesListCook(t *testing.T) {
 	dir := os.Getenv("SCHEMA_LIST_TOOL_COOK_DIR")
 	if dir == "" {
-		t.Skip("set SCHEMA_LIST_TOOL_COOK_DIR to write the fixtures the C++ leg reads")
+		// make tables-lists-tool-cook names the directory the C++ leg reads
+		dir = t.TempDir()
 	}
 	_, m := listUnit(t)
 	wire, err := tablewire.Encode(m, buildListSave(m))

@@ -12,7 +12,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -139,7 +138,6 @@ func probeVerdicts(t *testing.T, out []byte) map[string]string {
 // so a chain of 127 nodes under the root puts the last `kids` at depth 128
 // and round-trips, and one of 128 puts it at 129 and does neither.
 func TestJavaTextReadDepthCap(t *testing.T) {
-	slowtest.Gate(t, "the JDK (it compiles and runs the generated Java)")
 	t.Parallel()
 	javac, javaBin := javaToolsRequired(t)
 

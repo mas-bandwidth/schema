@@ -18,7 +18,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/unitytable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablenames"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -208,7 +207,6 @@ func TestUnityTableSurfaceAndBoolIntFrame(t *testing.T) {
 		}
 	}
 
-	slowtest.Gate(t, "dotnet")
 	dotnet := findDotnet()
 	if dotnet == "" {
 		t.Fatal("dotnet is not on PATH")

@@ -2,7 +2,6 @@ package jstable
 
 import (
 	"encoding/hex"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -11,7 +10,6 @@ import (
 )
 
 func TestJavaScriptTextListConstruct(t *testing.T) {
-	slowtest.Gate(t, "node (text lists and total bounds)")
 	source := `package probe
  table Lists {
  a [..3]string(5)
@@ -181,7 +179,6 @@ console.log("TEXT LIST OK");
 // the out-of-range part of the strict verdict must expose a partial value in
 // both the wire and JSON readers.
 func TestJavaScriptTextListStrictNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "node (text list strict negative control)")
 	u := unitFrom(t, `package probe
  table Wide { values []string(8) }
  table Narrow { values []string(8) | total=5 }

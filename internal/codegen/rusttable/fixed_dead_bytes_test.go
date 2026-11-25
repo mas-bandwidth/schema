@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/fixedvector"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -24,7 +23,6 @@ import (
 // saves back byte for byte.
 func TestFixedDeadBytesAreZero(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "cargo (it runs the generated Rust reader over the reference's files)")
 	corpus := versionCorpus(t)
 	repo, err := filepath.Abs("../../..")
 	if err != nil {

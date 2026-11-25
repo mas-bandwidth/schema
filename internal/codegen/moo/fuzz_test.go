@@ -20,7 +20,7 @@ package moo
 //
 // A moo trap anywhere is a finding: hostile bytes never raise.
 //
-// It runs moo and builds Go, so it is behind SCHEMA_SLOW. The test leg runs one
+// It runs moo and builds Go, so it is a functional test. The test leg runs one
 // short seeded round (SCHEMA_MOO_FUZZ_N instances per unit, default 400); the
 // nightly (make schema-moo-nightly-fuzz) runs SCHEMA_MOO_FUZZ_ROUNDS rounds from
 // SCHEMA_MOO_FUZZ_SEED, a case count and never a clock, so every finding
@@ -741,7 +741,6 @@ func reportFindings(t *testing.T, res *fuzzResult) {
 // every packet corpus, every root drawn at least once per unit per round, the
 // reads non-vacuous (both verdicts seen, the runtime's refusals reached).
 func TestMooWireFuzzAgreesWithTheGoTarget(t *testing.T) {
-	slowtest.Gate(t, "moo and the Go toolchain (it runs the generated moo and builds the Go target)")
 	t.Parallel()
 	seed := envInt(t, "SCHEMA_MOO_FUZZ_SEED", fuzzDefaultSeed)
 	n := int(envInt(t, "SCHEMA_MOO_FUZZ_N", 400))
@@ -832,7 +831,6 @@ func witness(t *testing.T, patch func(*testing.T, *fuzzUnit, map[string][]byte),
 // Handle.object_sequence (an 8-bit field the goldens only ever fill below 128)
 // must make the write half of the differential go red on Handle.
 func TestMooWireFuzzWriteNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo and the Go toolchain (it runs the generated moo and builds the Go target)")
 	t.Parallel()
 	witness(t, plant("examples", "Types.moo",
 		"\tNUM.value = value.ObjectSequence\n",
@@ -843,7 +841,6 @@ func TestMooWireFuzzWriteNegativeControl(t *testing.T) {
 // tag as two raw bits, its bound dropped, accepts tag 3 where Go refuses
 // value_out_of_range; the read half must go red on ProbeShape.
 func TestMooWireFuzzReadNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo and the Go toolchain (it runs the generated moo and builds the Go target)")
 	t.Parallel()
 	witness(t, plant("examples", "Wire.moo",
 		"function M.ReadProbeShapeBody(stream: any, value: ProbeShape): boolean\n\tif not stream:serializeInt(NUM, 0, 2) then",

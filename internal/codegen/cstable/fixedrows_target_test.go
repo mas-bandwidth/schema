@@ -28,9 +28,6 @@ func TestCsFixedRowsTargetCoversEveryRoadmapTest(t *testing.T) {
 	if !ok {
 		t.Fatalf("make/cs.mk has no tables-cs-fixed-rows recipe; the fixed-rows target must exist")
 	}
-	if !strings.Contains(recipe, "SCHEMA_REQUIRE_CORPUS=1") {
-		t.Errorf("tables-cs-fixed-rows go test line does not set SCHEMA_REQUIRE_CORPUS=1")
-	}
 	run := csMkRunPattern(recipe)
 	if run == nil {
 		t.Fatalf("tables-cs-fixed-rows recipe has no -run pattern")

@@ -14,7 +14,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/ruby"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/ruby/rubyrun"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -92,7 +91,6 @@ func runBothRubyPins(t *testing.T, dir, main string, inputs map[string][]byte) s
 }
 
 func TestRubyVariableTablesAllSurfacesAndStrictAnalyze(t *testing.T) {
-	slowtest.Gate(t, "both pinned Ruby interpreters and strict analyzers")
 
 	const schemaSrc = `package vtdemo
 
@@ -407,7 +405,6 @@ puts cooked_le.unpack1('H*')
 }
 
 func TestRubyMessageFormAndRetainUnknown(t *testing.T) {
-	slowtest.Gate(t, "both pinned Ruby interpreters and strict analyzers")
 
 	const v1Src = `package msgret
 
@@ -569,7 +566,6 @@ puts 'ok'
 }
 
 func TestRubyBlockManifestAndRealUnitsAnalyze(t *testing.T) {
-	slowtest.Gate(t, "both pinned Ruby interpreters and strict analyzers")
 
 	repo := filepath.Join("..", "..", "..")
 	for _, relDir := range []string{

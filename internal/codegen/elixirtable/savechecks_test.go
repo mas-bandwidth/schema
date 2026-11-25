@@ -3,8 +3,6 @@ package elixirtable
 import (
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestElixirSaveChecksEveryField pins docs/SPEC.md §5.1 rows 1-5 and 11 and
@@ -24,10 +22,9 @@ import (
 //
 // Every refusal has its lawful twin at the same boundary, which writes. Each
 // row is named, so a planted old behaviour goes red on its own row. It runs
-// elixir, so it is a functional test: it skips by name without the toolchain.
+// elixir, so it is a functional test: it fails by name without the toolchain.
 func TestElixirSaveChecksEveryField(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 
 	files, probe := saveChecksProbe(t)
 	out, err := runArmProbe(t, elixirBinary(t), files, probe)
@@ -40,7 +37,6 @@ func TestElixirSaveChecksEveryField(t *testing.T) {
 // the generated Elixir and requires the probe to go red on that fix's rows.
 func TestElixirSaveChecksNegativeControls(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 
 	plants := []struct {
 		fix, old, new, row string

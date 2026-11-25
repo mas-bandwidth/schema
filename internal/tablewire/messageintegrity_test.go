@@ -14,7 +14,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -132,7 +131,6 @@ func TestMessageIntegrityBatch(t *testing.T) {
 }
 
 func TestMessageIntegrityIndependentJavaScript(t *testing.T) {
-	slowtest.Gate(t, "node (independent message integrity writer)")
 	node, err := exec.LookPath("node")
 	if err != nil {
 		t.Fatal(err)

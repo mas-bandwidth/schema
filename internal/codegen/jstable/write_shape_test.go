@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -33,7 +32,6 @@ func TestJsTableWritersRefuseWrongShapes(t *testing.T) {
 // SlotFixedSave as `m` and the one carrying the class Slot as `c`.
 func jsFixedShapeRun(t *testing.T, u *ir.Unit) {
 	t.Helper()
-	slowtest.Gate(t, "node (it runs the generated fixed writer)")
 	base, err := js.Generate(u)
 	if err != nil {
 		t.Fatalf("js.Generate: %v", err)

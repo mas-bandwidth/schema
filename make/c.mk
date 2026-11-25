@@ -488,7 +488,7 @@ conformance-negative-control-c: build/conformance-harness
 	@rm -rf $(CONFORMANCE_NEGATIVE_C) && mkdir -p $(CONFORMANCE_NEGATIVE_C)
 	@sed '$(CONFORMANCE_NEGATIVE_C_SED)' internal/codegen/ctable/json.go > $(CONFORMANCE_NEGATIVE_C)/ctable-json.go.txt
 	@cmp -s internal/codegen/ctable/json.go $(CONFORMANCE_NEGATIVE_C)/ctable-json.go.txt && \
-		{ echo "NEGATIVE CONTROL: the C emitter sabotage did not apply"; exit 1; } || true
+		{ echo "NEGATIVE CONTROL: the C emitter sabotage did not apply"; exit 1; } || [ $$? -eq 1 ] || exit 1
 	@printf '{"Replace":{"%s/internal/codegen/ctable/json.go":"%s/$(CONFORMANCE_NEGATIVE_C)/ctable-json.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(CONFORMANCE_NEGATIVE_C)/overlay.json
 	go build -overlay $(CONFORMANCE_NEGATIVE_C)/overlay.json -o $(CONFORMANCE_NEGATIVE_C)/schema ./cmd/schema
@@ -746,7 +746,7 @@ tables-c-big-endian-negative-control: test/c-tables/soak_main.c
 	@sed 's|for ( j = 0; j < 8; j++ ) { dst\[i \* 8 + j\] = (uint8_t) ( v >> ( j \* 8 ) ); }|for ( j = 0; j < 8; j++ ) { dst[i * 8 + j] = ( (const uint8_t *) \&v )[j]; } /* SABOTAGED: host order */|' \
 		internal/codegen/ctable/wire.go > $(C_BE_NC)/wire.go.txt
 	@cmp -s internal/codegen/ctable/wire.go $(C_BE_NC)/wire.go.txt && \
-		{ echo "NEGATIVE CONTROL: the C fallback-arm sabotage patched nothing"; exit 1; } || true
+		{ echo "NEGATIVE CONTROL: the C fallback-arm sabotage patched nothing"; exit 1; } || [ $$? -eq 1 ] || exit 1
 	@printf '{"Replace":{"%s/internal/codegen/ctable/wire.go":"%s/$(C_BE_NC)/wire.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(C_BE_NC)/overlay.json
 	go build -overlay $(C_BE_NC)/overlay.json -o $(C_BE_NC)/schema ./cmd/schema
@@ -804,7 +804,7 @@ tables-c-little-endian-negative-control: test/c-tables/soak_main.c
 	@sed 's|if ( count > 0 ) { memcpy( dst, w->vocabulary->ids, (size_t) ( count \* 8 ) ); }|if ( count > 0 ) { int64_t k; for ( k = 0; k < count; k++ ) { memcpy( dst + k * 8, w->vocabulary->ids + ( count - 1 - k ), 8 ); } } /* SABOTAGED: reversed id words */|' \
 		internal/codegen/ctable/wire.go > $(C_LE_NC)/wire.go.txt
 	@cmp -s internal/codegen/ctable/wire.go $(C_LE_NC)/wire.go.txt && \
-		{ echo "NEGATIVE CONTROL: the C memcpy-arm sabotage patched nothing"; exit 1; } || true
+		{ echo "NEGATIVE CONTROL: the C memcpy-arm sabotage patched nothing"; exit 1; } || [ $$? -eq 1 ] || exit 1
 	@printf '{"Replace":{"%s/internal/codegen/ctable/wire.go":"%s/$(C_LE_NC)/wire.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(C_LE_NC)/overlay.json
 	go build -overlay $(C_LE_NC)/overlay.json -o $(C_LE_NC)/schema ./cmd/schema
@@ -852,7 +852,7 @@ tables-c-keyed-none-refusal-negative-control: bin/schema test/c-tables/keyed_non
 	@sed 's|        schema_fatal();|        /* SABOTAGED: the abort is gone */ (void) 0;|' \
 		internal/codegen/ctable/ctable.go > build/c-keyed-sabotage/ctable.go.txt
 	@cmp -s internal/codegen/ctable/ctable.go build/c-keyed-sabotage/ctable.go.txt && \
-		{ echo "NEGATIVE CONTROL: the sabotage patched nothing"; exit 1; } || true
+		{ echo "NEGATIVE CONTROL: the sabotage patched nothing"; exit 1; } || [ $$? -eq 1 ] || exit 1
 	@printf '{"Replace":{"%s/internal/codegen/ctable/ctable.go":"%s/build/c-keyed-sabotage/ctable.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/c-keyed-sabotage/overlay.json
 	go build -overlay build/c-keyed-sabotage/overlay.json -o build/c-keyed-sabotage/schema ./cmd/schema
@@ -888,7 +888,7 @@ tables-c-keyed-max-refusal-negative-control: bin/schema test/c-tables/keyed_max_
 	@sed 's|    if ( (uint32_t) key - 1u >= count )|    if ( key == 0 ) /* SABOTAGED: the None-only compare again */|' \
 		internal/codegen/ctable/ctable.go > build/c-keyed-max-sabotage/ctable.go.txt
 	@cmp -s internal/codegen/ctable/ctable.go build/c-keyed-max-sabotage/ctable.go.txt && \
-		{ echo "NEGATIVE CONTROL: the sabotage patched nothing"; exit 1; } || true
+		{ echo "NEGATIVE CONTROL: the sabotage patched nothing"; exit 1; } || [ $$? -eq 1 ] || exit 1
 	@printf '{"Replace":{"%s/internal/codegen/ctable/ctable.go":"%s/build/c-keyed-max-sabotage/ctable.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/c-keyed-max-sabotage/overlay.json
 	go build -overlay build/c-keyed-max-sabotage/overlay.json -o build/c-keyed-max-sabotage/schema ./cmd/schema
@@ -946,7 +946,7 @@ tables-c-usage-negative-control: docs/USAGE.md
 	@sed 's|SCHEMA_TABLE_KEYED_AT(|SCHEMA_TABLE_KEYED_SLOT(|g' internal/codegen/ctable/ctable.go > $(C_USAGE_NC)/ctable.go.txt
 	@sed 's|SCHEMA_TABLE_KEYED_AT(|SCHEMA_TABLE_KEYED_SLOT(|g' internal/codegen/ctable/codecs.go > $(C_USAGE_NC)/codecs.go.txt
 	@cmp -s $(C_USAGE_NC)/ctable.go.txt internal/codegen/ctable/ctable.go && \
-		{ echo "NEGATIVE CONTROL FAILED: the rename patched nothing"; exit 1; } || true
+		{ echo "NEGATIVE CONTROL FAILED: the rename patched nothing"; exit 1; } || [ $$? -eq 1 ] || exit 1
 	@printf '{"Replace":{"%s/internal/codegen/ctable/ctable.go":"%s/$(C_USAGE_NC)/ctable.go.txt","%s/internal/codegen/ctable/codecs.go":"%s/$(C_USAGE_NC)/codecs.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" "$(CURDIR)" "$(CURDIR)" > $(C_USAGE_NC)/overlay.json
 	go build -overlay $(C_USAGE_NC)/overlay.json -o $(C_USAGE_NC)/schema ./cmd/schema
@@ -1035,7 +1035,7 @@ tables-c-block-layout-model-negative-control: bin/schema
 	@sed 's|ml.Fields = append(ml.Fields, FieldLayout{Field: f, Offset: start, Size: offset - start, Align: fieldAlign})|ml.Fields = append(ml.Fields, FieldLayout{Field: f, Offset: start + 8, Size: offset - start, Align: fieldAlign}) // SABOTAGED: one field, moved|' \
 		ir/blocklayout.go > $(C_LAYOUT_NC)/blocklayout.go.txt
 	@cmp -s $(C_LAYOUT_NC)/blocklayout.go.txt ir/blocklayout.go && \
-		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; } || true
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; } || [ $$? -eq 1 ] || exit 1
 	@printf '{"Replace":{"%s/ir/blocklayout.go":"%s/$(C_LAYOUT_NC)/blocklayout.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(C_LAYOUT_NC)/overlay.json
 	go build -overlay $(C_LAYOUT_NC)/overlay.json -o $(C_LAYOUT_NC)/schema ./cmd/schema
@@ -1048,7 +1048,7 @@ tables-c-block-layout-model-negative-control: bin/schema
 	fi
 	@grep -q "schema_table_assert_.*negative\|static assertion failed" $(C_LAYOUT_NC)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: C went red, but not on a layout static assert"; cat $(C_LAYOUT_NC)/log; exit 1; }
-	@grep -m1 "moved" $(C_LAYOUT_NC)/log || true
+	@grep -m1 "moved" $(C_LAYOUT_NC)/log || [ $$? -eq 1 ] || exit 1
 	@echo "negative control: a moved offset in the compiler's model turns the C layout static asserts red"
 
 # ITS NEGATIVE CONTROL: the C allocator sends a blob past a slab to the span
@@ -1102,7 +1102,7 @@ tables-c-json-label-negative-control:
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/ctable/graph_json.go":"%s/build/c-json-label-nc/emitter.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/c-json-label-nc/overlay.json
-	@if SCHEMA_SLOW=1 go test -v -overlay build/c-json-label-nc/overlay.json -count=1 ./compiler \
+	@if go test -v -overlay build/c-json-label-nc/overlay.json -count=1 ./compiler \
 			-run '^TestCTableWireGraphIdentity$$' > build/c-json-label-nc/log 2>&1; then \
 		if grep -q -- '--- SKIP' build/c-json-label-nc/log || ! grep -q -- '--- PASS' build/c-json-label-nc/log; then \
 			echo "NEGATIVE CONTROL FAILED: TestCTableWireGraphIdentity did not run (skipped), so this control is watching nothing"; \
@@ -1132,7 +1132,7 @@ tables-c-map-sort-negative-control:
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/ctable/sequence.go":"%s/build/c-map-sort-nc/emitter.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/c-map-sort-nc/overlay.json
-	@if SCHEMA_SLOW=1 $(GO_TEST_RED) -v -overlay build/c-map-sort-nc/overlay.json -count=1 ./compiler \
+	@if $(GO_TEST_RED) -v -overlay build/c-map-sort-nc/overlay.json -count=1 ./compiler \
 			-run '^TestCTableWireMaps$$' > build/c-map-sort-nc/log 2>&1; then \
 		if grep -q -- '--- SKIP' build/c-map-sort-nc/log || ! grep -q -- '--- PASS' build/c-map-sort-nc/log; then \
 			echo "NEGATIVE CONTROL FAILED: TestCTableWireMaps did not run (skipped), so this control is watching nothing"; \
@@ -1246,10 +1246,10 @@ tables-c-ref-ordinal-negative-control:
 	@sed -e 's|o=v->ordinal_of\[v->count\]; if(o>=0) { v->slot\[o\]=-1; }|o=v->ordinal_of[v->count]; (void)o; /* NEGATIVE CONTROL: the slot is not taken back */|' \
 		internal/codegen/ctable/wire.go > build/c-ref-ordinal-nc/emitter.go.txt
 	@cmp -s internal/codegen/ctable/wire.go build/c-ref-ordinal-nc/emitter.go.txt && \
-		{ echo "NEGATIVE CONTROL: the rewind sabotage patched nothing"; exit 1; } || true
+		{ echo "NEGATIVE CONTROL: the rewind sabotage patched nothing"; exit 1; } || [ $$? -eq 1 ] || exit 1
 	@printf '{"Replace":{"%s/internal/codegen/ctable/wire.go":"%s/build/c-ref-ordinal-nc/emitter.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/c-ref-ordinal-nc/overlay.json
-	@if SCHEMA_SLOW=1 $(GO_TEST_RED) -v -overlay build/c-ref-ordinal-nc/overlay.json -count=1 ./compiler \
+	@if $(GO_TEST_RED) -v -overlay build/c-ref-ordinal-nc/overlay.json -count=1 ./compiler \
 			-run TestCTableRefOrdinalBytes > build/c-ref-ordinal-nc/log 2>&1; then \
 		if grep -q -- '--- SKIP' build/c-ref-ordinal-nc/log || \
 				! grep -q -- '--- PASS' build/c-ref-ordinal-nc/log; then \
@@ -1281,7 +1281,7 @@ tables-c-strict-load-negative-control:
 		{ echo "NEGATIVE CONTROL: the strict-rule sabotage patched nothing"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/ctable/cook.go":"%s/build/c-strict-load-nc/cook.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/c-strict-load-nc/overlay.json
-	@if SCHEMA_SLOW=1 $(GO_TEST_RED) -v -overlay build/c-strict-load-nc/overlay.json -count=1 ./compiler \
+	@if $(GO_TEST_RED) -v -overlay build/c-strict-load-nc/overlay.json -count=1 ./compiler \
 			-run '^TestCTablePlainLoadIsStrict$$' > build/c-strict-load-nc/log 2>&1; then \
 		if grep -q -- '--- SKIP' build/c-strict-load-nc/log || \
 				! grep -q -- '--- PASS' build/c-strict-load-nc/log; then \
@@ -1310,14 +1310,14 @@ tables-c-strict-load-negative-control:
 .PHONY: tables-c-finite-float tables-c-finite-float-negative-control
 tables-c-finite-float:
 	@mkdir -p build/c-finite-float
-	@SCHEMA_SLOW=1 $(GO_TEST) -v -count=1 -timeout 600s ./internal/codegen/ctable/ -run '^TestCFiniteFloats$$' > build/c-finite-float/pin.log 2>&1 || \
+	@$(GO_TEST) -v -count=1 -timeout 600s ./internal/codegen/ctable/ -run '^TestCFiniteFloats$$' > build/c-finite-float/pin.log 2>&1 || \
 		{ cat build/c-finite-float/pin.log; exit 1; }
 	@! grep -q -- '--- SKIP' build/c-finite-float/pin.log || \
 		{ echo "tables-c-finite-float: the pin was skipped, so it held nothing"; cat build/c-finite-float/pin.log; exit 1; }
 	@echo 'C finite floats: every read refuses a NaN or an infinity, every writer refuses one, -0 rides by its bits'
 tables-c-finite-float-negative-control:
 	@mkdir -p build/c-finite-float
-	@SCHEMA_SLOW=1 $(GO_TEST) -v -count=1 -timeout 600s ./internal/codegen/ctable/ -run '^TestCFiniteFloatNegativeControl$$' > build/c-finite-float/control.log 2>&1 || \
+	@$(GO_TEST) -v -count=1 -timeout 600s ./internal/codegen/ctable/ -run '^TestCFiniteFloatNegativeControl$$' > build/c-finite-float/control.log 2>&1 || \
 		{ cat build/c-finite-float/control.log; exit 1; }
 	@! grep -q -- '--- SKIP' build/c-finite-float/control.log || \
 		{ echo "NEGATIVE CONTROL FAILED: the finite-float control was skipped, so it is watching nothing"; cat build/c-finite-float/control.log; exit 1; }
@@ -1444,7 +1444,7 @@ tables-c-accessor-negative-control: bin/schema test/c-tables/accessor_descriptor
 		-e 's|f.Name, fl.Offset, fl.Size, kind, blockCOffset(facts.CountOffset)|f.Name, fl.Offset+4, fl.Size, kind, blockCOffset(facts.CountOffset)|' \
 		internal/codegen/ctable/block.go > build/c-accessor-sabotage/block.go.txt
 	@cmp -s internal/codegen/ctable/block.go build/c-accessor-sabotage/block.go.txt && \
-		{ echo "NEGATIVE CONTROL: the sabotage patched nothing"; exit 1; } || true
+		{ echo "NEGATIVE CONTROL: the sabotage patched nothing"; exit 1; } || [ $$? -eq 1 ] || exit 1
 	@printf '{"Replace":{"%s/internal/codegen/ctable/block.go":"%s/build/c-accessor-sabotage/block.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/c-accessor-sabotage/overlay.json
 	go build -overlay build/c-accessor-sabotage/overlay.json -o build/c-accessor-sabotage/schema ./cmd/schema
@@ -1470,7 +1470,7 @@ tables-c-slot-negative-control: bin/schema test/c-tables/accessor_descriptor_mai
 		-e 's|st.Name, member, elemSize, countOffset|st.Name, member, boolC(f.Type.Pointer), elemSize, countOffset|' \
 		internal/codegen/ctable/codecs.go > build/c-slot-sabotage/codecs.go.txt
 	@cmp -s internal/codegen/ctable/codecs.go build/c-slot-sabotage/codecs.go.txt && \
-		{ echo "NEGATIVE CONTROL: the sabotage patched nothing"; exit 1; } || true
+		{ echo "NEGATIVE CONTROL: the sabotage patched nothing"; exit 1; } || [ $$? -eq 1 ] || exit 1
 	@printf '{"Replace":{"%s/internal/codegen/ctable/codecs.go":"%s/build/c-slot-sabotage/codecs.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/c-slot-sabotage/overlay.json
 	go build -overlay build/c-slot-sabotage/overlay.json -o build/c-slot-sabotage/schema ./cmd/schema
@@ -1499,14 +1499,14 @@ test-c tables-c: tables-c-accessor-descriptor-agreement tables-c-accessor-negati
 # internal/tablepack) writes its own text from the leg's wire, byte-compared,
 # and packs the leg's text back to wire, byte-compared. The control caps the
 # emitted float32 writer at six significant digits in memory and must go red on
-# the text comparison. SCHEMA_REQUIRE_CORPUS=1 makes a missing C compiler a
+# the text comparison. the rule that nothing skips makes a missing C compiler a
 # FAILURE rather than a skip.
 .PHONY: tables-c-text-differential tables-c-text-differential-negative-control
 tables-c-text-differential:
-	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 $(GO_TEST) ./internal/codegen/ctable/ -count=1 -timeout 600s -v -run '^TestCTextDifferentialAgainstTheGoEngine$$'
+	$(GO_TEST) ./internal/codegen/ctable/ -count=1 -timeout 600s -v -run '^TestCTextDifferentialAgainstTheGoEngine$$'
 	@echo 'tables C text differential: 200 random float instances agree with the Go engine byte for byte, both directions'
 tables-c-text-differential-negative-control:
-	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 $(GO_TEST) ./internal/codegen/ctable/ -count=1 -timeout 600s -v -run '^TestCTextDifferentialNegativeControl$$'
+	$(GO_TEST) ./internal/codegen/ctable/ -count=1 -timeout 600s -v -run '^TestCTextDifferentialNegativeControl$$'
 	@echo 'tables C text differential negative control: a six-digit float32 writer is red on the text comparison'
 
 # THE C LEG of `make test` (docs/SPEC-TABLES.md; test/conformance/README.md):
@@ -1604,12 +1604,12 @@ tables-c-fixedform: build/retiredskips build/schema_test_c_fixedform build/schem
 # a bare `go test ./...` on a tree that never built the oracle — and is exactly
 # how a §5 regression would have ridden into CI green. So the target BUILDS THE
 # ORACLE FIRST (`tables-fixedform-corpus`, the C++ reference's own dump) and then
-# sets SCHEMA_REQUIRE_CORPUS=1, which turns that skip into a FAILURE. Run the
+# sets the rule that nothing skips, which turns that skip into a FAILURE. Run the
 # whole ctable package: the fixed roadmap framing tests also read this corpus,
 # and the former TestFixedVersioning filter left them outside the gate.
 .PHONY: tables-c-versioning
 tables-c-versioning: tables-fixedform-corpus
-	SCHEMA_REQUIRE_CORPUS=1 $(GO_TEST) ./internal/codegen/ctable/ -count=1
+	$(GO_TEST) ./internal/codegen/ctable/ -count=1
 	@echo 'tables C corpus: ctable checks the C++ reference bytes, including §5 and fixed roadmap framing'
 
 .PHONY: test-c test-c-recipe
@@ -1644,8 +1644,10 @@ test-c-recipe: build/mustrun build/schema_test_c build/schema_test_c_asan build/
 	cd test/c-ludicrous && ../../$(MUSTRUN) -name schema_test_c_ludicrous -count 39 -- ../../build/schema_test_c_ludicrous
 	$(MUSTRUN) -name schema_test_bench_c -count 35 -- ./build/schema_test_bench_c
 
+CONFORMANCE_LEG_c := build/conformance-c
 TEST_LEGS         += test-c
-CONFORMANCE_LEGS  += $(call unless_skipped,c,build/conformance-c)
+CONFORMANCE_OF.c := build/conformance-c
+CONFORMANCE_LEGS  += $(CONFORMANCE_OF.c)
 BENCH_TABLES_LEGS += generated/bench/tables/c/.stamp
 GOLDENS_LEGS      += update-goldens-c
 REGISTRY_NA       += toolchain:c
@@ -1662,7 +1664,7 @@ REGISTRY_NA_WHY.toolchain.c := builds with the host C compiler (CC), which nothi
 # majors: CI installs clang-format $(CLANG_FORMAT_PIN) and a different major
 # fails by name rather than reporting drift that is the tool's. Where no
 # clang-format is installed the gate SKIPS, except where
-# SCHEMA_REQUIRE_CLANG_FORMAT=1 (CI sets it): a gate that always skips is no
+# the rule that nothing skips (CI sets it): a gate that always skips is no
 # gate.
 #
 # THE TABLE EMITTER IS NOT CLEAN YET, and its files ride a SHRINK-ONLY RATCHET,
@@ -1676,8 +1678,7 @@ C_FORMAT_TREES     := build/tables-generated-c generated/c generated/c-ludicrous
 .PHONY: tables-c-clean
 tables-c-clean: build/tables-generated-c/.stamp cards-c-generate generated/c/.stamp generated/c-ludicrous/.stamp generated/bench/c/.stamp generated/bench/tables/c/.stamp generated/bench/paired/c/.stamp
 	@if ! command -v $(CLANG_FORMAT) >/dev/null 2>&1; then \
-		if [ "$(SCHEMA_REQUIRE_CLANG_FORMAT)" = 1 ]; then echo "tables-c-clean: $(CLANG_FORMAT) is not installed and SCHEMA_REQUIRE_CLANG_FORMAT=1"; exit 1; fi; \
-		echo "SKIP tables-c-clean: $(CLANG_FORMAT) is not installed"; exit 0; \
+		echo "tables-c-clean FAILED: $(CLANG_FORMAT) is not installed"; exit 1; \
 	fi; \
 	v=$$($(CLANG_FORMAT) --version | sed -n 's/.*version \([0-9][0-9]*\)\..*/\1/p'); \
 	if [ "$$v" != "$(CLANG_FORMAT_MAJOR)" ]; then \
@@ -1907,7 +1908,7 @@ tables-c-message-negative-control:
 	@mkdir -p build/c-message-negative
 	go run ./tools/sabotage -name message-c-wrong-slot -out build/c-message-negative/message_save.gotext internal/codegen/ctable/message_save.go
 	@printf '{"Replace":{"%s/internal/codegen/ctable/message_save.go":"%s/build/c-message-negative/message_save.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/c-message-negative/overlay.json
-	@if SCHEMA_SLOW=1 $(GO_TEST_RED) -v -count=1 -overlay=build/c-message-negative/overlay.json ./compiler -run '^TestCTableMessageSave$$' > build/c-message-negative/log 2>&1; then \
+	@if $(GO_TEST_RED) -v -count=1 -overlay=build/c-message-negative/overlay.json ./compiler -run '^TestCTableMessageSave$$' > build/c-message-negative/log 2>&1; then \
 		if grep -q -- '--- SKIP' build/c-message-negative/log || \
 				! grep -q -- '--- PASS' build/c-message-negative/log; then \
 			echo 'NEGATIVE CONTROL FAILED: the wire comparison did not run (skipped), so this control is watching nothing'; \
@@ -1933,7 +1934,7 @@ tables-c-retain-negative-control:
 	@mkdir -p build/c-retain-negative
 	go run ./tools/sabotage -name retain-c-drop-field -out build/c-retain-negative/retain.gotext internal/codegen/ctable/retain.go
 	@printf '{"Replace":{"%s/internal/codegen/ctable/retain.go":"%s/build/c-retain-negative/retain.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/c-retain-negative/overlay.json
-	@if SCHEMA_SLOW=1 $(GO_TEST_RED) -v -count=1 -overlay=build/c-retain-negative/overlay.json ./compiler -run '^TestCTableRetainFile$$' > build/c-retain-negative/log 2>&1; then \
+	@if $(GO_TEST_RED) -v -count=1 -overlay=build/c-retain-negative/overlay.json ./compiler -run '^TestCTableRetainFile$$' > build/c-retain-negative/log 2>&1; then \
 		if grep -q -- '--- SKIP' build/c-retain-negative/log || \
 				! grep -q -- '--- PASS' build/c-retain-negative/log; then \
 			echo 'NEGATIVE CONTROL FAILED: the public round-trip report did not run (skipped), so this control is watching nothing'; \
@@ -2193,14 +2194,14 @@ test-c: tables-c-two-units tables-c-two-units-negative-controls
 .PHONY: tables-c-discard tables-c-discard-negative-control
 tables-c-discard:
 	@mkdir -p build/c-discard
-	@SCHEMA_SLOW=1 $(GO_TEST) -v -count=1 -timeout 600s ./internal/codegen/ctable/ -run '^TestDamageDiscardsTheWholeLoadC$$' > build/c-discard/pin.log 2>&1 || \
+	@$(GO_TEST) -v -count=1 -timeout 600s ./internal/codegen/ctable/ -run '^TestDamageDiscardsTheWholeLoadC$$' > build/c-discard/pin.log 2>&1 || \
 		{ cat build/c-discard/pin.log; exit 1; }
 	@! grep -q -- '--- SKIP' build/c-discard/pin.log || \
 		{ echo "tables-c-discard: the pin was skipped, so it held nothing"; cat build/c-discard/pin.log; exit 1; }
 	@echo 'C discard: damage hands back no value from any C read'
 tables-c-discard-negative-control:
 	@mkdir -p build/c-discard
-	@SCHEMA_SLOW=1 $(GO_TEST) -v -count=1 -timeout 600s ./internal/codegen/ctable/ -run '^TestDamageDiscardsTheWholeLoadCNegativeControl$$' > build/c-discard/control.log 2>&1 || \
+	@$(GO_TEST) -v -count=1 -timeout 600s ./internal/codegen/ctable/ -run '^TestDamageDiscardsTheWholeLoadCNegativeControl$$' > build/c-discard/control.log 2>&1 || \
 		{ cat build/c-discard/control.log; exit 1; }
 	@! grep -q -- '--- SKIP' build/c-discard/control.log || \
 		{ echo "NEGATIVE CONTROL FAILED: the discard control was skipped, so it is watching nothing"; cat build/c-discard/control.log; exit 1; }
@@ -2223,7 +2224,7 @@ C_CYCLE_LINEAR_NC := build/c-cycle-linear-nc
 .PHONY: tables-c-cycle tables-c-cycle-negative-control tables-c-cycle-linear-negative-control
 tables-c-cycle:
 	@mkdir -p build/c-cycle
-	@SCHEMA_SLOW=1 $(GO_TEST) -v -count=1 -timeout 600s ./internal/codegen/ctable/ -run '^Test(PointerNamingAnOpenNodeIsRefusedC|CyclicWireIsRefusedC|DiamondChainLoadsLinearC|CycleOrdinalBoundaryC)$$' > build/c-cycle/pin.log 2>&1 || \
+	@$(GO_TEST) -v -count=1 -timeout 600s ./internal/codegen/ctable/ -run '^Test(PointerNamingAnOpenNodeIsRefusedC|CyclicWireIsRefusedC|DiamondChainLoadsLinearC|CycleOrdinalBoundaryC)$$' > build/c-cycle/pin.log 2>&1 || \
 		{ cat build/c-cycle/pin.log; exit 1; }
 	@! grep -q -- '--- SKIP' build/c-cycle/pin.log || \
 		{ echo "tables-c-cycle: the pin was skipped, so it held nothing"; cat build/c-cycle/pin.log; exit 1; }
@@ -2240,10 +2241,10 @@ tables-c-cycle-negative-control:
 		-e 's#if ( marks\[child\] == 1 ) { ok = 0; goto done; }#if ( marks[child] == 1 ) { continue; } /* NEGATIVE CONTROL: a wire back edge is accepted */#' \
 		internal/codegen/ctable/graph.go > $(C_CYCLE_NC)/graph.go.txt
 	@cmp -s internal/codegen/ctable/graph.go $(C_CYCLE_NC)/graph.go.txt && \
-		{ echo "NEGATIVE CONTROL: the C cycle sabotage patched nothing"; exit 1; } || true
+		{ echo "NEGATIVE CONTROL: the C cycle sabotage patched nothing"; exit 1; } || [ $$? -eq 1 ] || exit 1
 	@printf '{"Replace":{"%s/internal/codegen/ctable/graph.go":"%s/$(C_CYCLE_NC)/graph.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(C_CYCLE_NC)/overlay.json
-	@if SCHEMA_SLOW=1 $(GO_TEST_RED) -count=1 -overlay $(C_CYCLE_NC)/overlay.json -run '^Test(PointerNamingAnOpenNodeIsRefusedC|CyclicWireIsRefusedC)$$' \
+	@if $(GO_TEST_RED) -count=1 -overlay $(C_CYCLE_NC)/overlay.json -run '^Test(PointerNamingAnOpenNodeIsRefusedC|CyclicWireIsRefusedC)$$' \
 			./internal/codegen/ctable > $(C_CYCLE_NC)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: both C cycle verdicts are gone and the gate stayed green"; \
 		cat $(C_CYCLE_NC)/log; exit 1; \
@@ -2258,10 +2259,10 @@ tables-c-cycle-linear-negative-control:
 	@sed -e 's#if ( degree == 1 ) { table_cycle_push( c, p ); } /\* the last slot naming it: its descent is free \*/#table_cycle_push( c, p ); /* NEGATIVE CONTROL: entered once per path */#' \
 		internal/codegen/ctable/graph.go > $(C_CYCLE_LINEAR_NC)/graph.go.txt
 	@cmp -s internal/codegen/ctable/graph.go $(C_CYCLE_LINEAR_NC)/graph.go.txt && \
-		{ echo "NEGATIVE CONTROL: the C linear sabotage patched nothing"; exit 1; } || true
+		{ echo "NEGATIVE CONTROL: the C linear sabotage patched nothing"; exit 1; } || [ $$? -eq 1 ] || exit 1
 	@printf '{"Replace":{"%s/internal/codegen/ctable/graph.go":"%s/$(C_CYCLE_LINEAR_NC)/graph.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(C_CYCLE_LINEAR_NC)/overlay.json
-	@if SCHEMA_SLOW=1 $(GO_TEST_RED) -count=1 -timeout 300s -overlay $(C_CYCLE_LINEAR_NC)/overlay.json -run '^TestDiamondChainLoadsLinearC$$' \
+	@if $(GO_TEST_RED) -count=1 -timeout 300s -overlay $(C_CYCLE_LINEAR_NC)/overlay.json -run '^TestDiamondChainLoadsLinearC$$' \
 			./internal/codegen/ctable > $(C_CYCLE_LINEAR_NC)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a node entered once per path and the diamond gate stayed green"; \
 		cat $(C_CYCLE_LINEAR_NC)/log; exit 1; \
@@ -2522,12 +2523,12 @@ test-c: packet-write-refusal-c packet-write-refusal-c-negative-control
 .PHONY: tables-c-retain-hashzero tables-c-retain-hashzero-negative-control
 tables-c-retain-hashzero:
 	@mkdir -p build/c-retain-hashzero
-	@SCHEMA_SLOW=1 $(GO_TEST) -count=1 -v -timeout 120s -run '^TestCRetainNestedHashZero$$' ./internal/codegen/ctable/ > build/c-retain-hashzero/positive.log 2>&1 || { cat build/c-retain-hashzero/positive.log; exit 1; }
+	@$(GO_TEST) -count=1 -v -timeout 120s -run '^TestCRetainNestedHashZero$$' ./internal/codegen/ctable/ > build/c-retain-hashzero/positive.log 2>&1 || { cat build/c-retain-hashzero/positive.log; exit 1; }
 	@grep -q -- '--- PASS: TestCRetainNestedHashZero ' build/c-retain-hashzero/positive.log || { cat build/c-retain-hashzero/positive.log; exit 1; }
 	@echo 'C retention: hash-zero identities and None round-trip'
 
 tables-c-retain-hashzero-negative-control: tables-c-retain-hashzero
-	@SCHEMA_SLOW=1 $(GO_TEST) -count=1 -v -timeout 120s -run '^TestCRetainNestedHashZeroNegativeControl$$' ./internal/codegen/ctable/ > build/c-retain-hashzero/control.log 2>&1 || { cat build/c-retain-hashzero/control.log; exit 1; }
+	@$(GO_TEST) -count=1 -v -timeout 120s -run '^TestCRetainNestedHashZeroNegativeControl$$' ./internal/codegen/ctable/ > build/c-retain-hashzero/control.log 2>&1 || { cat build/c-retain-hashzero/control.log; exit 1; }
 	@grep -q -- '--- PASS: TestCRetainNestedHashZeroNegativeControl ' build/c-retain-hashzero/control.log || { cat build/c-retain-hashzero/control.log; exit 1; }
 	@echo 'C retention: removing the hash-zero escape breaks each zero-ID vector'
 

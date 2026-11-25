@@ -57,26 +57,6 @@ func TestExpectedClassesNameRealCards(t *testing.T) {
 	}
 }
 
-func TestTableDiffRunsOnlyWhenOptedIn(t *testing.T) {
-	t.Parallel()
-	env := func(kv ...string) func(string) string {
-		m := map[string]string{}
-		for i := 0; i+1 < len(kv); i += 2 {
-			m[kv[i]] = kv[i+1]
-		}
-		return func(k string) string { return m[k] }
-	}
-	if tableDiffOptedIn(env("SCHEMA_SLOW", "1")) {
-		t.Errorf("SCHEMA_SLOW=1 alone (ci-full) runs the table differential")
-	}
-	if tableDiffOptedIn(env("SCHEMA_REQUIRE_CORPUS", "1")) {
-		t.Errorf("SCHEMA_REQUIRE_CORPUS alone runs the table differential")
-	}
-	if !tableDiffOptedIn(env("SCHEMA_SLOW", "1", "SCHEMA_TABLE_DIFF", "1")) {
-		t.Errorf("SCHEMA_TABLE_DIFF=1 does not run the table differential")
-	}
-}
-
 // TestCiFullKeepsFuzzAndOnlyMakeOptsIn reads the workflow and make files: ci-full
 // runs ./internal/fuzz (crasher corpus, property and oracle tests), and the one
 // line that sets SCHEMA_TABLE_DIFF=1 anywhere is the fuzz-tables-diff recipe.

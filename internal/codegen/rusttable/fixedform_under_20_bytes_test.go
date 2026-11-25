@@ -2,7 +2,6 @@ package rusttable
 
 import (
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -29,7 +28,6 @@ import (
 // report.
 
 func TestFixedFormUnder20Bytes(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	corpus := versionCorpus(t)
 

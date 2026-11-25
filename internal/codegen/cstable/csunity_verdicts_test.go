@@ -25,7 +25,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/csharp"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -78,16 +77,12 @@ fixed table Fx
 // and returns the directory holding probe.dll. debug turns the write asserts on.
 func csVerdictsBuild(t *testing.T, mainSrc string, debug bool) string {
 	t.Helper()
-	slowtest.Gate(t, "the .NET SDK (it compiles and runs the generated C#)")
 	runtimeDir, err := filepath.Abs("../../../../serialize.cs")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(runtimeDir, "src", "Serialize.cs")); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and the C# runtime checkout is not at %s", runtimeDir)
-		}
-		t.Skipf("the C# runtime checkout is not at %s", runtimeDir)
+		t.Fatalf("the C# runtime checkout is not at %s", runtimeDir)
 	}
 	u := unitFrom(t, csVerdictsSchema)
 	files, err := csharp.Generate(u)

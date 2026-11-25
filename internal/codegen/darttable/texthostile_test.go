@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 
@@ -56,7 +55,6 @@ table Root {
 `
 
 func TestDartTextHostile(t *testing.T) {
-	slowtest.Gate(t, "dart")
 	t.Parallel()
 
 	u := buildUnit(t, dartTextHostileSchema)

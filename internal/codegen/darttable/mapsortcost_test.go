@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -77,7 +76,6 @@ func TestDartMapSortIsMergeSortOverKeysBuiltOnce(t *testing.T) {
 // compares, never time.
 func TestDartMapSortCountsCompares(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dart")
 	files, err := Generate(buildUnit(t, mapSortCostSchema))
 	if err != nil {
 		t.Fatal(err)

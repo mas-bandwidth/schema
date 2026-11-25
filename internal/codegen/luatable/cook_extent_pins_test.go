@@ -8,13 +8,11 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // These existing independent cook pins must remain in the exercised corpus.
 // In particular maps may not disappear behind a dynamic oracle refusal.
 func TestLuaCookExtentPins(t *testing.T) {
-	slowtest.Gate(t, "native Lua map/list extent pins and caller storage")
 	repo := filepath.Join("..", "..", "..")
 	manifest := filepath.Join(repo, "testdata/conformance/tables/MANIFEST.txt")
 	units := manifestUnits(t, manifest)

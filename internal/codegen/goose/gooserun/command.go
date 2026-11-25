@@ -5,7 +5,6 @@ import (
 	"os/exec"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"time"
 )
 
@@ -23,7 +22,6 @@ const Timeout = 5 * time.Minute
 // fails on it as on any other.
 func Command(t testing.TB, name string, args ...string) *exec.Cmd {
 	t.Helper()
-	slowtest.Gate(t, "the Goose toolchain")
 	limit := Timeout
 	if d, ok := t.(interface{ Deadline() (time.Time, bool) }); ok {
 		if at, set := d.Deadline(); set {

@@ -3,6 +3,6 @@ PYTHON_CI_SUPPORT_GROUPS += python-hosted-keyed python-hosted-keyed-negative-con
 # The real mixed unit's positional packet list and table-keyed wrappers.
 test-python: python-hosted-keyed python-hosted-keyed-negative-control
 python-hosted-keyed:
-	SCHEMA_SLOW=1 $(GO_TEST) -count=1 -timeout 600s -run '^TestPythonHostedPacketKeyed($$|TableWire$$|Module$$)' ./internal/codegen/pythontable/
+	$(GO_TEST) -count=1 -timeout 600s -run '^TestPythonHostedPacketKeyed($$|TableWire$$|Module$$)' ./internal/codegen/pythontable/
 python-hosted-keyed-negative-control:
-	SCHEMA_SLOW=1 $(GO_TEST) -count=1 -timeout 600s -run '^TestPythonHostedPacketKeyed(NegativeControl|TableWireNegativeControl|ModuleNegativeControl)$$' ./internal/codegen/pythontable/
+	$(GO_TEST) -count=1 -timeout 600s -run '^TestPythonHostedPacketKeyed(NegativeControl|TableWireNegativeControl|ModuleNegativeControl)$$' ./internal/codegen/pythontable/

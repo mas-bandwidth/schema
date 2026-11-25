@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestLuaJsonWriterRefusesZeroByte holds docs/SPEC-TABLES.md §16.3 and §16.14
@@ -15,7 +14,6 @@ import (
 // containing a zero byte refuse, while ordinary text keeps its canonical JSON.
 func TestLuaJsonWriterRefusesZeroByte(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Lua interpreter")
 
 	work := t.TempDir()
 	schema := `package probe

@@ -45,7 +45,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -82,7 +81,6 @@ func cppRunForging(t *testing.T, schema, pkg, body string, includes []string) ([
 
 // cppRunUnitFlags is cppRunUnit with extra compiler flags.
 func cppRunUnitFlags(t *testing.T, schema, pkg, body string, includes, flags []string) ([]byte, error) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	dir := t.TempDir()

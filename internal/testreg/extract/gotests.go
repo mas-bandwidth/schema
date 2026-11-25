@@ -88,18 +88,11 @@ func (s *scan) goPkgTests(p *goPkg) {
 		if b := p.build[e.file]; b != "" {
 			gates = append(gates, "build: "+b)
 		}
-		slow, skips := p.reach(e.fn)
-		if slow {
-			gates = append(gates, "slow")
-		}
+		skips := p.reach(e.fn)
 		for _, sk := range skips {
 			gates = append(gates, "skip: "+sk)
 		}
-		tier := "unit"
-		if slow {
-			tier = "functional"
-		}
-		s.add(Item{Kind: KindGoTest, Dir: p.dir, Name: e.fn.Name.Name, Source: p.pos(e.fn.Pos()), Gates: gates, Tier: tier})
+		s.add(Item{Kind: KindGoTest, Dir: p.dir, Name: e.fn.Name.Name, Source: p.pos(e.fn.Pos()), Gates: gates})
 	}
 }
 
@@ -142,13 +135,12 @@ func (p *goPkg) pos(pos token.Pos) string {
 	return at.Filename + ":" + strconv.Itoa(at.Line)
 }
 
-// reach returns whether fn, or a package function it calls (transitively),
-// opens the slow gate, and every Skip reachable that way, each as
+// reach returns every Skip fn reaches, itself or through a package function
+// it calls (transitively), each as
 // "file:line" with the condition of the if around it.
-func (p *goPkg) reach(fn *ast.FuncDecl) (bool, []string) {
+func (p *goPkg) reach(fn *ast.FuncDecl) []string {
 	seen := map[*ast.FuncDecl]bool{}
 	var skips []string
-	slow := false
 	var visit func(*ast.FuncDecl)
 	visit = func(f *ast.FuncDecl) {
 		if seen[f] {
@@ -163,16 +155,9 @@ func (p *goPkg) reach(fn *ast.FuncDecl) (bool, []string) {
 			}
 			stack = append(stack, n)
 			switch x := n.(type) {
-			case *ast.BasicLit:
-				if x.Kind == token.STRING && strings.Contains(x.Value, "SCHEMA_SLOW") {
-					slow = true
-				}
 			case *ast.CallExpr:
 				switch fun := x.Fun.(type) {
 				case *ast.SelectorExpr:
-					if identIs(fun.X, "slowtest") && (fun.Sel.Name == "Gate" || fun.Sel.Name == "Enabled") {
-						slow = true
-					}
 					switch fun.Sel.Name {
 					case "Skip", "SkipNow", "Skipf":
 						skips = append(skips, p.pos(x.Pos())+p.cond(stack))
@@ -194,7 +179,7 @@ func (p *goPkg) reach(fn *ast.FuncDecl) (bool, []string) {
 	visit(fn)
 	sort.Strings(skips)
 	skips = slices.Compact(skips)
-	return slow, skips
+	return skips
 }
 
 // cond is " if <condition>" for the innermost if whose body holds the call.

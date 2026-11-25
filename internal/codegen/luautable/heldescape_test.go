@@ -13,7 +13,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestLuauKindHeldEscapeRefuses (R17: the newer reader reads old data, never
@@ -23,7 +22,6 @@ import (
 // retaining walk and the retaining load all refuse the whole load. The old
 // reader skipped it by its L and read the file.
 func TestLuauKindHeldEscapeRefuses(t *testing.T) {
-	slowtest.Gate(t, "Luau (it runs the emitted readers)")
 	t.Parallel()
 	units, _ := readManifest(t)
 	paths, err := compiler.GatherPaths(prefix(units["tblvarevo1"]))

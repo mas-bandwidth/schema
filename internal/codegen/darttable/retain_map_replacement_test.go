@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -14,7 +13,6 @@ import (
 )
 
 func TestDartRetainedMapReplacement(t *testing.T) {
-	slowtest.Gate(t, "dart")
 	u := unitFrom(t, `package probe
 table Node { known int32 }
 table Value { known int32

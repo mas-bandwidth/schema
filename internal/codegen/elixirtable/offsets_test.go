@@ -32,7 +32,7 @@ import (
 //     whose high half is small: the refusal is decided from the high half
 //     before any 64-bit integer is formed.
 //
-// Functional (elixirBinary): run with SCHEMA_REQUIRE_CORPUS=1.
+// Functional (elixirBinary): a missing toolchain fails by name.
 func TestOffsetsComposeFromHalvesElixir(t *testing.T) {
 	t.Parallel()
 	elixirBin := elixirBinary(t)

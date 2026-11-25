@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/viewlisting"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
@@ -139,7 +138,6 @@ func testCookedPlace(u *ir.Unit, st *ir.Struct, f *ir.Field) fieldPlace {
 //     included. `make tables-java-view` runs the same comparison over the whole
 //     VIEW_CORPUS; this test keeps it in `go test`.
 func TestUnitViewDescriptorsJava(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Parallel()
 	javac, java := javaTools(t)

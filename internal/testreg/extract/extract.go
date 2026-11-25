@@ -9,9 +9,9 @@
 // The kinds it finds, each exactly, from what the repository declares:
 //
 //   - go-test: a top-level Test, Fuzz or Benchmark function of a _test.go file,
-//     with the facts that decide its tier: its build constraint, whether it
-//     opens slowtest.Gate or reads SCHEMA_SLOW, and every Skip it can reach,
-//     each through the package's own helpers.
+//     with its build constraint and every Skip it can reach through the
+//     package's own helpers (Check refuses any: no test skips). Its tier is
+//     its registry row's, or its tier line's in the ledger, else unit.
 //   - make-target: a make rule whose name says it checks something (test-,
 //     check-, verify-, or -check, -test, -gate, -probe, -negative-control),
 //     or that a workflow runs by name.
@@ -59,14 +59,12 @@ type Item struct {
 	Name string `json:"name"`
 	// Source is file:line, from the repository root.
 	Source string `json:"source"`
-	// Gates are the conditions under which it does not run today: "build:
-	// <constraint>", "slow" (slowtest.Gate or SCHEMA_SLOW), "skip: file:line
-	// <condition>". The driver has no skip verdict, so each becomes a tier or
-	// a tool requirement when the test moves in.
+	// Gates are the conditions the source puts on it: "build: <constraint>"
+	// and "skip: file:line <condition>". Check refuses every skip: the driver
+	// has no skip verdict, and a skip's condition is a tier at the root.
 	Gates []string `json:"gates,omitempty"`
-	// Tier is the tier its gates give it: functional when it is slow-gated
-	// (it needs a toolchain), else unit. A test the night alone runs is
-	// re-tiered nightly when its family moves.
+	// Tier is unit unless its tier line in the ledger says functional or
+	// nightly (ApplyTiers); a registry row carries its own.
 	Tier string `json:"tier"`
 }
 

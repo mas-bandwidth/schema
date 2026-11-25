@@ -11,7 +11,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -40,7 +39,6 @@ table Root {
 // occupied store, and a refusal clears that store.
 func TestWireCountRefusalElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 	files, probe := countRefusalProbe(t)
 	out, err := runArmProbe(t, elixirBinary(t), files, probe)
 	if err != nil {
@@ -52,7 +50,6 @@ func TestWireCountRefusalElixir(t *testing.T) {
 // damage, and the native oracle must reject that loss of the named refusal.
 func TestWireCountRefusalElixirNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 	files, probe := countRefusalProbe(t)
 	elixirPatch(t, files, "throw({:count_over_extent_cap, report})", "report")
 	out, err := runArmProbe(t, elixirBinary(t), files, probe)
@@ -243,7 +240,6 @@ IO.puts("count refusal, reports, retention, admission, body-short and bounded co
 // plain and retaining, before any element lands.
 func TestWireCountBoundedRetainElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 	schema := filepath.Join(t.TempDir(), "Count.schema")
 	if err := os.WriteFile(schema, []byte(countRefusalSchema), 0600); err != nil {
 		t.Fatal(err)
@@ -311,7 +307,6 @@ if Process.get(:failed,false),do: System.halt(1)
 // byte floor must be refused by load_measure (-1), matching FileRegionMeasure.
 func TestNodeRecordListCountRefusalElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 	u := loadDirUnit(t, filepath.Join("..", "..", "..", "tables", "lists"))
 	root := u.Tables["Sheet"]
 	if root == nil {

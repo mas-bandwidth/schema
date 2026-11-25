@@ -20,7 +20,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -174,7 +173,6 @@ using namespace uniontag;
 }
 
 func TestCppUnionListSaveInvalidTagFails(t *testing.T) {
-	slowtest.Gate(t, "the C++ compiler (the leg's own toolchain)")
 	t.Parallel()
 	out, err := cppUnionInvalidTagRun(t)
 	if err != nil {

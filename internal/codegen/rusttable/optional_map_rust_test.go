@@ -3,7 +3,6 @@ package rusttable
 import (
 	"bytes"
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -16,7 +15,6 @@ import (
 // The three wire pins were independently matched by Go and C++: absent,
 // present-empty, and present-populated are distinct states (§2.8).
 func TestRustOptionalMapNative(t *testing.T) {
-	slowtest.Gate(t, "rustc (native optional-map presence and cook)")
 	keyedRequireRustc(t)
 	fixture := filepath.Join("../../..", "testdata/conformance/feature-witnesses/optional-map")
 	schema, err := os.ReadFile(filepath.Join(fixture, "Probe.schema"))
@@ -94,7 +92,6 @@ println!("case %d ok");
 // Entry types, nested containers, extreme signed keys, and distinct shared
 // pointer nodes exercise the same presence states through every map walk.
 func TestRustOptionalMapClosureNative(t *testing.T) {
-	slowtest.Gate(t, "rustc (optional map closure, ordering and cook)")
 	keyedRequireRustc(t)
 	fixture := filepath.Join("../../..", "testdata/conformance/feature-witnesses/optional-map")
 	schema, err := os.ReadFile(filepath.Join(fixture, "Closure.schema"))
@@ -197,7 +194,6 @@ assert_eq!(got.is_some(),*want,"truncated %s at {}",cut);
 // Kind mismatches, duplicate keys, explicit absence and truncated text must
 // reach the same verdict as the neutral reader.
 func TestRustOptionalMapTextRecoveryNative(t *testing.T) {
-	slowtest.Gate(t, "rustc (optional map malformed text and presence)")
 	keyedRequireRustc(t)
 	fixture := filepath.Join("../../..", "testdata/conformance/feature-witnesses/optional-map")
 	schema, err := os.ReadFile(filepath.Join(fixture, "Probe.schema"))

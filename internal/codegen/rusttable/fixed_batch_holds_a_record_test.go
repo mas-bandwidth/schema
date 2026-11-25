@@ -25,12 +25,8 @@ import (
 
 func TestRustFixedBatchHoldsARecord(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "rustc (it builds and runs the generated fixed-form reader and writer)")
 	if _, err := exec.LookPath("rustc"); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatal(err)
-		}
-		t.Skipf("rustc is not on PATH: %v", err)
+		t.Fatal(err)
 	}
 
 	root, err := filepath.Abs("../../..")

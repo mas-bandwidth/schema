@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -107,7 +106,6 @@ func TestJsCompressedFloatNegZeroAndFloat32Ends(t *testing.T) {
 	}
 
 	t.Run("node", func(t *testing.T) {
-		slowtest.Gate(t, "node (it runs the generated reads and writes)")
 		got := strings.TrimSpace(runJSConstructProbe(t, vfiles, home, jsCompressedVariableProbe, []int{0}))
 		if got != "OK" {
 			t.Errorf("variable and JSON forms:\n%s", got)

@@ -4,8 +4,6 @@ import (
 	"maps"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // THE KEYED ACCESSOR (docs/PORTING.md M5). An enum-keyed array is a plain moo
@@ -69,7 +67,6 @@ func keyedUnit(t *testing.T) *generatedUnit {
 }
 
 func TestMooKeyedAccessorCoversBothEnds(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted schema_tables.moo)")
 	t.Parallel()
 	rows := mooKeyedRows(t, keyedUnit(t))
 	want := map[string]string{
@@ -93,7 +90,6 @@ func TestMooKeyedAccessorCoversBothEnds(t *testing.T) {
 // the method, each of which must turn exactly its own rows: the None guard
 // removed, the past-Max guard removed, the key misplaced by one.
 func TestMooKeyedNegativeControls(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted schema_tables.moo)")
 	t.Parallel()
 	g := keyedUnit(t)
 	clean := mooKeyedRows(t, g)

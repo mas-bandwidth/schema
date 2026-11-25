@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestUnityMessageLoadCapacityFixture reads the committed capacity fixture,
@@ -25,7 +24,6 @@ import (
 // the leg's own tests, never in the shared suites.
 func TestUnityMessageLoadCapacityFixture(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dotnet Roslyn csc Unity dialect capacity fixture")
 	schema, err := os.ReadFile(filepath.Join("..", "..", "..", "tables", "backend", "Backend.schema"))
 	if err != nil {
 		t.Fatal(err)

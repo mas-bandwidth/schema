@@ -21,7 +21,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/fixedvector"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -94,7 +93,6 @@ int main( int argc, char ** argv )
 // the same binary, so the corpus is read by the exact reader the schema
 // produces and the compile is paid once.
 func cppFixedDeadBytesProbe(t *testing.T) string {
-	slowtest.Gate(t, "an external toolchain")
 	t.Helper()
 	schema := filepath.Join("..", "..", "..", "test", "tables", "DeadBytes.schema")
 	u := loadUnit(t, schema)
@@ -142,7 +140,6 @@ func cppFixedDeadBytesProbe(t *testing.T) string {
 
 func TestFixedDeadBytesAreZero(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "a C++ compiler (it runs the generated reader over the corpus)")
 	corpus := cppFixedCorpus(t)
 	probe := cppFixedDeadBytesProbe(t)
 	for _, vec := range fixedvector.DeadBytes {

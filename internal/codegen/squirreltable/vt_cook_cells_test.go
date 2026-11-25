@@ -6,8 +6,7 @@ package squirreltable_test
 // the cook-write, cook-open, block-build, reflection, and unit-registry
 // surfaces.
 //
-// Functional: runs the pinned Squirrel interpreter via sqrun under
-// slowtest.Gate; the source gate takes no real time, sockets, or network.
+// Functional: runs the pinned Squirrel interpreter via sqrun; the source gate takes no real time, sockets, or network.
 
 import (
 	"bytes"
@@ -19,7 +18,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -322,7 +320,6 @@ func TestSquirrelVtCookCells(t *testing.T) {
 	if f := vtCookCellsFindings(readVtCookArtifacts(t)); len(f) > 0 {
 		t.Fatalf("source gate: %v", f)
 	}
-	slowtest.Gate(t, "the pinned Squirrel interpreter")
 	got, oracle := runVtCookProbe(t, nil)
 	if fails := checkVtCookProbe(got, oracle); len(fails) > 0 {
 		for _, f := range fails {
@@ -370,8 +367,6 @@ func TestSquirrelVtCookCellsNegativeControl(t *testing.T) {
 			t.Fatalf("NEGATIVE CONTROL FAILED: source plant %s left vtCookCellsFindings green", sp.name)
 		}
 	}
-
-	slowtest.Gate(t, "the pinned Squirrel interpreter")
 
 	// Interpreter-level plants in copies of the real emitted files for each cell.
 	runtimePlants := []struct {

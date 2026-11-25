@@ -141,7 +141,6 @@ weight ./tools/releasetag 1 1
 weight ./tools/roadmap 2 2
 weight ./tools/roadmap/cmd/roadmap-handtext 0 0
 weight ./tools/sabotage 1 1
-weight ./tools/slowgatescan 5 1
 weight ./tools/treelock 1 1
 weight ./working 0 0
 

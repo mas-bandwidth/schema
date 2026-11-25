@@ -7,8 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -73,7 +71,6 @@ if Process.get(:failed), do: System.halt(1), else: IO.puts("ok: zero dead and ab
 // toolchain, so it is a FUNCTIONAL test.
 func TestElixirCookWriteZeroesDeadAndAbsentBytes(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 	elixirBin := elixirBinary(t)
 	elixirc := elixircBinary(t, elixirBin)
 	root, err := filepath.Abs(filepath.Join("..", "..", ".."))

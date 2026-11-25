@@ -118,10 +118,9 @@ int main(void)
 
 func runCTableWireProbe(t *testing.T, u *ir.Unit, source string) {
 	t.Helper()
-	slowtest.Gate(t, "the C compiler (cc)")
 	cc, err := exec.LookPath("cc")
 	if err != nil {
-		t.Skip("generated C execution requires cc")
+		t.Fatal("generated C execution requires cc")
 	}
 	files, err := generateCUnqualified(u)
 	if err != nil {

@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestMooPointerTargetTypeChecked holds every moo read of the variable form to
@@ -23,7 +22,6 @@ import (
 // the strict read and the retaining load, and each must answer the row's
 // verdict.
 func TestMooPointerTargetTypeChecked(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted readers)")
 	t.Parallel()
 	dir := filepath.Join(root, "testdata", "wire", "pointer-target-type")
 	manifest, err := os.ReadFile(filepath.Join(dir, "MANIFEST.tsv"))

@@ -6,14 +6,12 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // Actual generated writers distinguish the intended bad value from a driver
 // assigning the wrong Python type. In-bound twins must write on both pins.
 func TestPythonWriteRefusalDriverMutations(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	u := loadUnit(t, `package mutation
  enum Grade { First, Second, Third }
  union Pick { number int32

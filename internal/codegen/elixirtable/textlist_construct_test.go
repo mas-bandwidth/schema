@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -27,7 +26,6 @@ const elixirTextListSource = `package probe
 
 func TestTextListConstructElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Elixir four text-list shapes native populated round trips")
 	u := unitFrom(t, elixirTextListSource)
 	m := tabletext.NewModel(u)
 	var p strings.Builder
@@ -109,7 +107,6 @@ IO.puts("TEXT_LIST_OK")
 
 func TestTextListClampsAndDamageElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Elixir text-list UTF8 count over-bound and malformed-data refusals")
 	u := unitFrom(t, elixirTextListSource)
 	wide := unitFrom(t, strings.ReplaceAll(strings.ReplaceAll(elixirTextListSource, "string(5)", "string(16)"), "[..3]", "[..8]"))
 	m := tabletext.NewModel(wide)
@@ -162,7 +159,6 @@ IO.puts("TEXT_LIST_DAMAGE_OK")
 
 func TestListWidenedRegionMeasureElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Elixir primitive widened list region arithmetic")
 	u := unitFrom(t, `package probe
  table R { values []int32 }`)
 	old := unitFrom(t, `package probe

@@ -18,8 +18,8 @@ package elixirtable
 // runtime's flag/1, so a byte past 1 lands as true again, and requires every
 // refusal row to go red and every read row to stay green.
 //
-// It runs elixir, so it is a functional test: under SCHEMA_REQUIRE_CORPUS=1 a
-// missing toolchain fails by name; without SCHEMA_SLOW it skips by name.
+// It runs elixir, so it is a functional test: a
+// missing toolchain fails by name.
 
 import (
 	"slices"

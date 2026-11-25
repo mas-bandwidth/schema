@@ -31,6 +31,9 @@
 #include <signal.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#if defined( __linux__ )
+#include <sys/prctl.h>
+#endif
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -2496,6 +2499,12 @@ static int surface_write_refusal( const std::string & surface, const std::string
         if ( child < 0 ) { fprintf( stderr, "driver: fork failed\n" ); return 1; }
         if ( child == 0 )
         {
+#if defined( __linux__ )
+            // an assert's abort is the refusal, not a crash: no core, so no
+            // crash reporter (apport) runs, and waits, for every refused row
+            // (the C leg's wref.c does the same)
+            (void) prctl( PR_SET_DUMPABLE, 0L, 0L, 0L, 0L );
+#endif
             alarm( kWrefChildSeconds );
             // A VALUE OF THE WRONG KIND (`write-refusal-shape` kind `shape`,
             // DW-TABLE-SHAPE) is one C++'s types cannot hold: the compiler
@@ -3076,7 +3085,7 @@ int main( int argc, char ** argv )
     const std::string surface = argv[2];
     if ( surface == "list" )
     {
-        printf( "wire\nmessage\nmessage-prior\nreport\nframing\nretain\nretain-save\nretain-refusal\njson-read\njson-write\njson-hostile\ncook-write\nblock\nblock-foreign\nblock-dump\nforgery\nblock-reason\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n"
+        printf( "wire\nmessage\nmessage-prior\nreport\nframing\nretain\nretain-save\nretain-refusal\njson-read\njson-write\njson-hostile\ncook-write\nblock\nblock-foreign\nblock-dump\nforgery\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n"
                 "write-refusal-cook\nwrite-refusal-block\nwrite-refusal-shape\nannounce\nread-into\njson-write-into\n" );
         // the opt-in units this leg answers (MANIFEST.txt `opt-in`)
         printf( "unit shapes\n" );

@@ -5,15 +5,12 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // An actual generated older writer supplies the file. Each newer declaration
 // appends native default storage across the word-copy size boundaries; its
 // reader must land the old value and initialize every added byte.
 func TestCFixedDefaultCopyNativeExtents(t *testing.T) {
-	slowtest.Gate(t, "the C compiler (ordinary generated-writer evolution)")
 	const older = "package probe\nfixed table Root { keep uint8 = 42 }\n"
 	file := filepath.Join(t.TempDir(), "older.bin")
 	cc := os.Getenv("CC")

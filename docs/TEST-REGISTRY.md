@@ -25,6 +25,7 @@ Lines may come in any order.
 | `type` | `name`, `what`, `contract` | one kind of check (roundtrip, load-refusal, golden, lint, model, plant, ...); `contract` is what an adapter does to answer a test of the type, which the spec addenda write out |
 | `test` | `key`, `type`, `family`, `case`, `tier`, `checks`, `inputs`, `expect`, `source`, and for a language-free test `scope: "none"` and `adapter` | one test |
 | `unrepresentable` | `test`, `lang`, `reason` | a language cannot express a test |
+| `owed` | `test`, `lang`, `reason` | a language does not answer a test yet: the instance exists and is MISSING |
 | `group` | `name`, `what`, `query` | a stored query a workflow runs by name |
 
 A test's key is `type.family.case`. `inputs` is the data its adapter is handed;
@@ -39,7 +40,9 @@ row, or a row with no generator, is red.
 record kind or field, a duplicate language, tier, type, test key or group, a test
 whose type or tier is not declared, a key that is not `type.family.case`, an
 unrepresentable declaration for a test or language that does not exist (or with
-no reason), and a group whose query is unknown or matches nothing.
+no reason), an owed line for a test or language that does not exist, for a
+language-free test, for a pair declared unrepresentable, twice or with no
+reason, and a group whose query is unknown or matches nothing.
 
 ## Names
 
@@ -52,6 +55,11 @@ language-free test.
 - A language-free instance is `none.<tier>.<type>.<family>.<case>`, for example
   `none.unit.tooling.testreg.shards-cover-every-name-exactly-once`. `none` is a
   scope, not a language: it is never counted with the languages.
+- An owed pair is an instance, and it is MISSING. The `owed` lines are the
+  work list as data: a run that names the instance fails it MISSING ("go owes
+  roundtrip.conformance-wire.x: ..."), the nightly is red on it, `coverage`
+  shows it `MISS`, and `--ready` (which the `pr` group runs) leaves it out.
+  Answering the test is deleting its line. There is no other owed list.
 - A declared-unrepresentable pair has no instance. It is data, shown in the
   coverage matrix and counted, never a name in a run and never a pass. Running it
   by name fails ("declares it unrepresentable, so it has no such instance").
@@ -60,9 +68,10 @@ language-free test.
 
 ```
 schema-test run  NAME|PATTERN... [--lang L]... [--tier T]... [--type Y]... [--family F]... [--ready] [--shard i/n]
-schema-test run  --group G [--shard i/n]
+schema-test run  --group G [--lang L] [--shard i/n]
 schema-test list (the same)
 schema-test coverage
+schema-test langs [--ready]
 schema-test addenda [--check] [--root DIR]
 ```
 
@@ -74,9 +83,14 @@ name in it runs and passes or fails; nothing downstream drops a name.
   (`squirrel.*`, `*.unit.roundtrip.align-arrays.*`). Names and patterns are
   alternatives; the filters then narrow them (within a filter the values are
   alternatives, across filters all must hold). `--ready` keeps the languages
-  whose adapter has landed. `--lang none` selects the language-free tests.
+  whose adapter has landed, less what each owes. `--lang none` selects the language-free tests.
 - `--group G` runs a stored query. The workflows run groups, so which tests a
   job runs is data here, never a list in a workflow: `pr` and `nightly`.
+  `--lang L` narrows a group to one language (a CI row); a language the
+  registry does not have, or one the group does not name, fails.
+- `langs` prints the registry's languages as a JSON list, then `none`;
+  `--ready` keeps the languages whose adapter has landed. It is the CI
+  matrix, so no workflow writes a list of languages.
 - `--shard i/n` runs the i-th of n parts of the expanded list: name k goes to
   part k mod n + 1, so the parts cover every name exactly once. An empty part fails.
 - Adapters for different languages run in parallel within one run.
@@ -99,6 +113,8 @@ failure and a non-zero exit, never a pass, a skip or an empty result:
 | a language with no adapter: every instance MISSING | `TestALanguageWithNoAdapterFails` |
 | a language naming an adapter schema-test does not have | `TestAnAdapterSchemaTestDoesNotHaveFails` |
 | a test with no instance for a language and no unrepresentable declaration | `TestAnInstanceWithNoAnswerAndNoDeclarationFails` |
+| a test a language owes (an `owed` line): MISSING, never in `--ready` | `TestAnOwedInstanceIsMissing` |
+| an unknown language in a query, or one a group does not name | `TestTheCommandExitsNonZeroOnEveryFailRule` |
 | expected != ran | `TestExpectedNotRanFails` |
 | an adapter reports an instance it was not asked for | `TestAResultNobodyAskedForFails` |
 | an adapter omits an instance it was asked for, or reports one twice | `TestExpectedNotRanFails`, `TestAResultReportedTwiceFails` |
@@ -113,7 +129,8 @@ failure and a non-zero exit, never a pass, a skip or an empty result:
 
 The loader's refusals have one test each (`TestLoadRefuses*`). `TestTheDriverHasNoSkips`
 refuses any `Skip`, `SkipNow`, `Skipf` or `testing.Short()` in the driver's own
-packages, and finds a planted one; the repo-wide form comes with the migration.
+packages, and finds a planted one. Its repo-wide form is `TestNoSkipMechanismAnywhere`
+(see "No skips" below).
 `TestEveryDriverTestIsRegistered` holds every Go test in the driver's packages
 to a registry row, and every such row to a test that exists.
 
@@ -126,8 +143,31 @@ to a registry row, and every such row to a test that exists.
   toolchain there is a failure, never a skip.
 - **nightly**: heavy or long: long fuzz, full matrices, soak, timing.
 
-Where a test today skips because it needs a toolchain or a long run, that
-condition becomes its tier. Choosing what runs is the query, stated up front.
+Where a test skipped because it needed a toolchain or a long run, that
+condition is now its tier. Choosing what runs is the query, stated up front.
+
+## No skips
+
+Glenn, 2026-11-25: "NO SKIPS", and "if you don't want to run a test, don't run
+it (i mean at the root)". The only place a test is left out is the root: the
+driver's query, expanded to names before the run. Below it nothing decides: no
+test, helper, adapter, driver, script, Makefile recipe or workflow step checks a
+condition and does not run, or turns a failure into a pass. A missing toolchain,
+runtime or built artifact fails the test naming what is missing
+(`slowtest.Tool`, `slowtest.Program`, `slowtest.Missing`); `slowtest.Gate`,
+`SCHEMA_SLOW`, the `SCHEMA_REQUIRE_*` lane promises, the skip ledger and the
+harness's `--skip` are gone.
+
+`TestNoSkipMechanismAnywhere` (unit, every pull request) scans the repository
+and names, by file, line and rule, every skip mechanism: in Go, a `Skip` call
+on a testing value or a test double, `testing.Short()`, a skip or lane
+variable, an early return on an environment, tool, file or platform check, and
+a build tag that leaves a test out; in scripts, recipes and workflows, `|| true`,
+`continue-on-error`, `if: false`, a branch-name condition, `go test -skip` or
+`-short`, a skip variable and a skip announcement; in a driver of any language,
+a skip verdict; and any skip ledger file. `TestNoSkipMechanismIsPlanted` plants
+one of each and requires each named. The files it does not read are listed with
+their reasons in `internal/testreg/noskip_test.go`.
 
 ## Adapters
 
@@ -153,12 +193,60 @@ Built today:
 
 | adapter | for | how |
 |---|---|---|
-| `go`, `lua` | per-language rows of family `align-arrays` | `make bin/schema build/verify-bitphase-bin`, then `verify-bitphase --adapter --lang L` |
+| `corpus` | every language row: each per-language family a harness exists for, routed by family | below |
 | `gotest` | language-free Go tests; inputs `{"package", "test"}` | `go test -json -run '^(...)$' <package>`, one verdict per top-level test; skip is fail |
 | `plant` | negative controls; inputs `{"target", "env", "reason"}`, `{"edits", "red", "run", "reason"}` or `{"make", "file", "group"}` | env form: runs the target with `env` set; edit form: applies each edit (its anchor exactly once, every copy reached) to a copy of the tracked tree and runs the named tests there, so each builds with its own leg's flags. Passes only when every named row passes on the tree as it is, and then under the sabotage exactly the named targets fail with a reason whose first line holds `reason` (16 characters or more), every other name passes and the run has no run-level problem: a red for another cause (a missing tool, a broken build), or a row red already, fails the plant. The edit form's copy is a git worktree of HEAD with the checkout's files over it and the checkouts beside the checkout (`../serialize.go`) linked beside it, its run is that tree's own schema-test, and its verdict is read from that run's `--report` JSON. A make row cannot be named red (its reason is its exit status, which any failure gives); a copy of an anchor in a file of the same source family (C and C++ sources and headers are one) that no edit names fails the plant. Make form: a control of `make/negative-controls.json`, whose recipe holds its own gate red |
 | `make` | make gates; inputs `{"file", "target"}` plus optional `"vars"` (make variables on the command line), `"tools"` (programs that must be on PATH) and `"siblings"` (checkouts such as `../serialize.go`) and `"reads"` (the data cases the target runs, which the extract counts covered beside any golden row of the same case) | the target must be a rule its file writes, else FAIL; a missing tool or sibling FAILS naming the runner before make runs; the target's dry run (`make -n -B`) must name every file of `reads` and run no `go test` without `-json` (plain go test output prints nothing for a skipped test), else FAIL before it runs; `make -jN target VAR=value...` passes on exit 0 with no skip in the log and no line of go test's plain output |
 | `golden` | goldens and pins; inputs `{"writer", "files"}` | the `pins-*` writer runs once per run in a copy of the tracked tree, with every file its rows name aged first so a file it leaves untouched shows it was not written; each file is compared byte for byte; a file it no longer writes, or wrote differently, FAILS; a pin it writes that no row names FAILS every row of the writer; a row whose file is not committed is MISSING; a writer that fails FAILS its own rows with its error, and the other writers' rows are judged as usual; `run --update <names>` re-pins only those rows. A copy a killed run left beside the checkout (named with its process id) is removed by the next run |
 | `model-check` | TLA+ model checks (type `model`); inputs `{"config", "workers"}`, or `{"controls": true}` | `go build ./tools/tlcrun`, then `tlcrun -adapter`: TLC over `tla/<config>`, judged against its `tla/RUNS.tsv` row (an exhaustive run explores the recorded distinct states with no error; a reversed witness violates exactly the invariant its row names). The controls row runs the judge's three broken-tree controls. No TLC jar or no java fails every instance naming the runner. `SCHEMA_TEST_TLC_PLANT_APPEND` is the plant hook: its text is appended to the config in a scratch copy of `tla/` |
+
+The `corpus` adapter's harnesses, by family:
+
+| family | harness | build | inputs |
+|---|---|---|---|
+| `align-arrays` | `verify-bitphase --adapter --lang L` | `make bin/schema build/verify-bitphase-bin` | the row's bytes (alignarrays.go) |
+| `conformance-<surface>` | `build/conformance-harness-vm adapter --lang L` | `make conformance-leg-L` | `surface`, `case` (the file the driver writes), `files` (the corpus files the case reads), `driver` |
+
+### The tables conformance corpus
+
+Every case of every surface the tables conformance harness scores
+(test/conformance/README.md) is one registry test,
+`<type>.conformance-<surface>.<case>`, answered by every language through its
+`test/conformance/<lang>/driver`. The corpus stays where it is
+(testdata/conformance/tables, testdata/wire/tables, the units' schemas): a
+row's inputs name the files it reads, and `schema-test extract` counts those
+files and the drivers as the registry's, not the ledger's.
+
+- `harness adapter --lang L` reads the request lines, runs L's leg over every
+  surface exactly as `harness run --only L --claims` scores it, and answers
+  each requested case from that run. The leg always runs whole: a refusal row
+  is credited only beside its lawful twin, which may sit on another surface,
+  so a partial run would score a case differently. A run is seconds once the
+  leg's driver is built; the build (`make conformance-leg-L`: the harness
+  built with every leg's tag, and what `make conformance` builds for L) is the
+  cost.
+- A case passes when the leg's answer is the corpus's (or the row's named
+  writer refusal). An absent answer, a surface the leg does not list, a
+  refusal with no answered twin, a wrong answer, a claimed case answered
+  absent, a surface failure that names no case, and a case the harness does
+  not have each fail, naming which.
+- `harness registry-rows` prints the rows, and
+  `TestTheRegistryHoldsEveryConformanceCase` holds the registry to them field
+  for field: a corpus case with no row, or a row with no case, is red.
+- A case a language does not answer today is an `owed` line, so it is MISSING
+  (red in the nightly) and out of the `pr` group. The corpus's owed lines are
+  generated from the harness's one list, testdata/conformance/tables/
+  retain-refusal-owed.txt (`registry-rows` prints them after the rows), and
+  the same test holds the registry to it.
+- Plants: `plant.corpus-plants.go-wrong-byte-root-full` flips one byte of the
+  go leg's wire answer for root_full, and `plant.corpus-plants.go-absent-root-full`
+  drops that case from its answers (test/conformance/go/main.go, `plantEnv`);
+  each must turn `go.functional.roundtrip.conformance-wire.root-full` red for
+  its own reason (the wrong byte: "not the corpus's"; the dropped case: MISSING).
+- Retired with this: the `--claims` corpus run inside each
+  `_verify-<lang>-conformance` (make/verify-compiled.mk, make/verify-vm.mk),
+  which ran exactly these cases, leg by leg. The rest of those targets (packet
+  wire, defaults, UTF-8) stays in verify-leg until its own family moves in.
 
 ## How each kind of test fits
 
@@ -198,15 +286,10 @@ nothing. These are the kinds it finds, each exactly:
 | `driver` | a directory under `test/` holding code that is not Go: a language's harness |
 | `model` | a TLC configuration under `tla/` |
 
-For each Go test it also records the facts that decide its tier, each through
-the package's own helpers:
-- its build constraint;
-- whether it opens `slowtest.Gate` or reads `SCHEMA_SLOW`, which makes it
-  functional;
-- every `Skip` it can reach, with the condition around it.
-
-The driver has no skip verdict. So when a test moves in, each of these facts
-becomes either its tier or a tool its runner must carry.
+For each Go test it also records its build constraint and every `Skip` it can
+reach through its package's own helpers, with the condition around it. Check
+refuses every such skip: the driver has no skip verdict, and nothing below the
+root decides whether a test runs.
 
 Every test the extract finds is either a registry row or counted in the unmoved
 ledger, [`test/registry/unmoved.tsv`](../test/registry/unmoved.tsv). The extract
@@ -228,23 +311,21 @@ Two checks hold this:
   also extracts main's tree (`--since`), so a new test without a row is red
   by its own name, not only by its place's count.
 
-A skip that hides a red is in the ledger too. A `skip-red` line names one Go
-test (`<package dir>:<TestName>`). Its count is the number of `Skip` sites the
-extract finds in that test. Its reason names the red the skip hides and the run
-that measured it. Check holds the count to the extract, so the line must
-shrink as the test's skips go, and be deleted when the last one goes. Against
-main's ledger, a `skip-red` line may not be added or grow, and it may not leave
-while its test still skips. A test renamed or moved takes its line along: set
-the place to the new name. The line may leave with its test only when no test
-reaches its skips (the same file and condition) any more. A skip that hides a
-red is therefore never a silent pass. The extract sees only the skips a test
-reaches through its own package; a skip inside another package's helper (for
-example `slowtest`) is not counted, so such a red cannot be ledgered until
-that helper's skip moves into the test.
+A Go test that has no row yet and is not unit has a tier line in the ledger:
+`tier <package dir>:<TestName> 1 <layer> functional: <what it needs>` (or
+`nightly: ...`). It is where a removed skip's condition went: a test that
+needed a toolchain, a sibling runtime or a built corpus is functional, and one
+that needed a long run is nightly, so the root selects it by tier and nothing
+inside it decides. Check holds every tier line to a Go test that exists and has
+no row (a renamed test takes its line along; a test that gets its row drops it,
+since the row carries the tier). A tier line is a fact, not a count, so it may
+be added or removed against main's ledger. There is no line that permits a
+skip: the `skip-red` kind is gone, and every test it held now runs and is red
+until it is fixed.
 
 `schema-test extract --json` prints every test, one JSON line each.
 `--write-ledger` rewrites the ledger to what is unmoved now, and keeps every
-`skip-red` line as it is. It refuses to write while any file does not parse.
+tier line as it is. It refuses to write while any file does not parse.
 Use it only when tests move in or go away.
 
 ## Adding a test
@@ -287,13 +368,19 @@ this driver from the spec alone.
 Add one `lang` line with `"adapter": ""`. From then on every per-language test
 has an instance in it, each MISSING: `coverage` shows the column red and the
 nightly run fails on every one. That red count is the language's remaining work.
-When its adapter lands, set `adapter`: the `pr` group (`--ready`) then runs it on
-every pull request.
+When its adapter lands, set `adapter` (`corpus` routes every family a harness
+exists for), and add an `owed` line for each test it does not answer yet: the
+`pr` group (`--ready`) then runs the rest on every pull request, in a CI row of
+its own, and the owed lines stay MISSING in the nightly until each is answered.
 
 ## CI
 
-- Per PR: ci-fast.yml job `schema-test` prints `coverage`, then runs
-  `--group pr`: unit and functional, every ready language, every language-free test.
+- Per PR: ci-fast.yml job `plan` reads the matrix (`schema-test langs
+  --ready`); job `schema-test` runs `--group pr --lang L`, one row per
+  language and one (`none`) for the language-free tests, and its `none` row
+  also prints `coverage` and holds the extract to the ledger. The rows together are the `pr`
+  group exactly: unit and functional, every ready language less what it
+  owes, every language-free test. Each row builds only its own leg.
 - Nightly: `schema-test-nightly.yml` runs `--group nightly` (every tier, every
   language, no timeout) and names every MISSING instance red. It is red by
   intent until every language has an adapter: its MISSING list is the

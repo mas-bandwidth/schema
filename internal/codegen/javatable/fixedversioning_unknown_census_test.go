@@ -23,7 +23,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -40,9 +39,8 @@ const (
 // JDK or corpus file FAILS by name, never a quiet skip. It answers the file.
 func javaUnlawfulRequired(t *testing.T, name string) string {
 	t.Helper()
-	slowtest.Gate(t, "javac and java (it builds and runs the generated Java)")
 	if _, _, ok := javaToolsLookup(t); !ok {
-		t.Fatal("SCHEMA_SLOW or SCHEMA_REQUIRE_CORPUS promised the Java toolchain and no working javac/java was found: set JAVAC and JAVA")
+		t.Fatal("no working javac/java was found: set JAVAC and JAVA")
 	}
 	dir := os.Getenv("SCHEMA_FIXEDFORM_CORPUS")
 	if dir == "" {

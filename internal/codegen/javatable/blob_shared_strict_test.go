@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 
@@ -299,7 +298,6 @@ public final class BlobSharedStrictDriver {
 // TestJavaBlobSharedStrict certifies vt/blobs/java and java/per-value-shared-marker
 // under the strict read and write rules (docs/SPEC-TABLES.md §2.5, docs/plans/strict-only.md).
 func TestJavaBlobSharedStrict(t *testing.T) {
-	slowtest.Gate(t, "the JDK (it compiles and runs the generated Java)")
 	t.Parallel()
 	if err := runJavaBlobSharedStrict(t, nil); err != nil {
 		t.Fatal(err)
@@ -310,7 +308,6 @@ func TestJavaBlobSharedStrict(t *testing.T) {
 // artifacts for read-side shared-blob detection, write-side shared-bytes refusal,
 // and write-side per-slot *string value numbering, and verifies each fault fails.
 func TestJavaBlobSharedStrictNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "the JDK (it compiles and runs the generated Java)")
 	t.Parallel()
 
 	t.Run("read-wirecheck-shared-blob", func(t *testing.T) {

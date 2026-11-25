@@ -35,7 +35,6 @@ import (
 	"testing"
 
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -140,7 +139,6 @@ func TestFixedCT18DirectArmLines(t *testing.T) {
 // fixed save/load with non-default and boundary values, and A2.schema generates
 // and compiles.
 func TestFixedRoadmapCT18DirectArms(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Parallel()
 	t.Run("union-field-arms/c/valid-data", func(t *testing.T) {

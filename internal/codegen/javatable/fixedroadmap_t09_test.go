@@ -23,7 +23,6 @@ package javatable
 
 import (
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -54,7 +53,6 @@ func TestFixedRoadmapJavaT09Optionals(t *testing.T) {
 // it beside the generated probe and compiles the lot with this leg's toolchain.
 // It answers the classpath, the generated package and the root table's name.
 func t09BuildInline(t *testing.T, dir, src, probe string) (classes, pkg, root string) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	javac, _ := javaTools(t)
@@ -199,7 +197,6 @@ func t09Dump() string {
 
 // t09Run runs one compiled capability probe and answers its output.
 func t09Run(t *testing.T, classes, class string) string {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	_, javaBin := javaTools(t)

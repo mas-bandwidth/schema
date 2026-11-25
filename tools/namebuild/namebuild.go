@@ -18,12 +18,12 @@
 // cases.tsv, with its true cause (owed.go): the nightly counts that job owed,
 // and fails on any other failure and on any ledgered job that passes.
 //
-// TestNameBuildability is the nightly: under SCHEMA_SLOW=1 it builds the
+// TestNameBuildability is the nightly: it builds the
 // compiler, generates every builds row in every
 // target, and builds and loads each output, every child through
 // internal/testproc. Its last line is the per-target summary.
 //
-//	SCHEMA_SLOW=1 go test -count=1 -timeout=0 -parallel 4 ./tools/namebuild
+//	go test -count=1 -timeout=0 -parallel 4 ./tools/namebuild
 //
 // The toolchains are read from the environment under the make fragments'
 // names (CC, CXX, DOTNET, DART, CARGO, GO, JAVAC, JAVA, NODE, PYTHON, RUBY,

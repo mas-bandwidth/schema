@@ -35,15 +35,14 @@ func main() {
 	schemaBin := flag.String("schema", "./bin/schema", "the schema compiler")
 	corpus := flag.String("corpus", "internal/ci/hostilecorpus/corpus", "corpus directory")
 	out := flag.String("out", "build/unity-hostile/generated", "output directory")
-	knownSkips := flag.String("known-skips", "test/unity-hostile/known-skips.tsv", "the (schema, table, carrier) rows this port is allowed to skip")
 	flag.Parse()
-	if err := run(*schemaBin, *corpus, *out, *knownSkips); err != nil {
+	if err := run(*schemaBin, *corpus, *out); err != nil {
 		fmt.Fprintln(os.Stderr, "unity-hostile gen:", err)
 		os.Exit(1)
 	}
 }
 
-func run(schemaBin, corpus, out, knownSkips string) error {
+func run(schemaBin, corpus, out string) error {
 	data, err := os.ReadFile(filepath.Join(corpus, hostilecorpus.ManifestName))
 	if err != nil {
 		return err
@@ -147,64 +146,27 @@ func run(schemaBin, corpus, out, knownSkips string) error {
 	if err != nil {
 		return err
 	}
-	known, err := readKnownSkips(knownSkips)
-	if err != nil {
-		return err
-	}
-	if err := checkSkips(skipped, known); err != nil {
+	if err := checkSkips(skipped); err != nil {
 		return err
 	}
 	return os.WriteFile(filepath.Join(out, "Dispatch.cs"), src, 0o644)
 }
 
-// readKnownSkips reads the rows this port is allowed to skip, one
-// "<schema>\t<table>\t<carrier>" per line; # starts a comment. A missing file
-// allows none.
-func readKnownSkips(path string) (map[string]bool, error) {
-	known := map[string]bool{}
-	data, err := os.ReadFile(path)
-	if os.IsNotExist(err) {
-		return known, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	for i, line := range strings.Split(string(data), "\n") {
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		if len(strings.Split(line, "\t")) != 3 {
-			return nil, fmt.Errorf("%s line %d: want <schema>\\t<table>\\t<carrier>", path, i+1)
-		}
-		known[line] = true
-	}
-	return known, nil
-}
-
-// checkSkips is THE FLOOR ON SKIPS: a carrier whose surface detection stops
-// matching turns its cases into skips, and a skip is no verdict, so every row
-// the dispatch skips has to be one known-skips.tsv names, and every row it
-// names has to still skip. Either drift fails the gate here, before a runner
-// is built, instead of passing with the cases unread.
-func checkSkips(skipped []string, known map[string]bool) error {
-	var bad []string
-	got := map[string]bool{}
-	for _, key := range skipped {
-		got[key] = true
-		if !known[key] {
-			bad = append(bad, "skipped but not in known-skips: "+strings.ReplaceAll(key, "\t", " "))
-		}
-	}
-	for key := range known {
-		if !got[key] {
-			bad = append(bad, "in known-skips but no longer skipped: "+strings.ReplaceAll(key, "\t", " "))
-		}
-	}
-	if len(bad) == 0 {
+// checkSkips is THE FLOOR ON SKIPS, and the floor is zero: a carrier whose
+// surface detection stops matching turns its cases into rows with no reader,
+// and a row with no reader is no verdict. There is no list that allows one:
+// any such row fails generation here, naming it, before a runner is built.
+// Which rows run is chosen at the root, never excused below it.
+func checkSkips(skipped []string) error {
+	if len(skipped) == 0 {
 		return nil
 	}
+	bad := make([]string, 0, len(skipped))
+	for _, key := range skipped {
+		bad = append(bad, "no reader for this row: "+strings.ReplaceAll(key, "\t", " "))
+	}
 	sort.Strings(bad)
-	return fmt.Errorf("the port's skips moved (a surface detection may have stopped matching):\n  %s", strings.Join(bad, "\n  "))
+	return fmt.Errorf("the port has no reader for %d row(s) (a surface detection may have stopped matching):\n  %s", len(bad), strings.Join(bad, "\n  "))
 }
 
 func renderDispatch(rows []row, bySchema map[string]*unit, check func(row) error) ([]byte, []string, error) {

@@ -6,8 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // rubyMessageBytesDir is the committed corpus: the reader's and each writer's
@@ -22,7 +20,6 @@ const rubyMessageBytesDir = "testdata/message-bytes-element"
 // the read used to repack its elements as bytes, even when its elements hold
 // the very bits a uint8 writer's do. The rows are the committed corpus.
 func TestRubyMessageBytesElementKind(t *testing.T) {
-	slowtest.Gate(t, "both pinned Ruby interpreters")
 
 	schema := func(name string) string {
 		t.Helper()

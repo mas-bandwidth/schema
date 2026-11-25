@@ -75,10 +75,6 @@ func runGateCase(dir string, c gateCase, scratch string) (string, error) {
 	if err := os.MkdirAll(work, 0o755); err != nil {
 		return "", err
 	}
-	none := filepath.Join(work, "none.txt")
-	if err := os.WriteFile(none, []byte("# none\n"), 0o644); err != nil {
-		return "", err
-	}
 	f := strings.Fields(c.spec)
 	switch c.kind {
 	case "row":
@@ -98,7 +94,7 @@ func runGateCase(dir string, c gateCase, scratch string) (string, error) {
 		if err := os.WriteFile(filepath.Join(work, base+".log"), log, 0o644); err != nil {
 			return "", err
 		}
-		if err := writeRow(f[0], f[1], f[2], work, none, none, false, status, 3, asked); err != nil {
+		if err := writeRow(f[0], f[1], f[2], work, false, status, 3, asked); err != nil {
 			return "", err
 		}
 		row, err := os.ReadFile(filepath.Join(work, base+".row"))

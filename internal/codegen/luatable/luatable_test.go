@@ -2,7 +2,6 @@ package luatable
 
 import (
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"path/filepath"
 	"runtime/debug"
@@ -171,7 +170,6 @@ func TestMain(m *testing.M) {
 // type_id in TabledemoTables.lua and requires probeUnit to go red on each.
 func TestLuaTableDescriptorsNegativeControlFunctional(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Lua 5.4 functional probe")
 	repo := filepath.Join("..", "..", "..")
 	units, roots := manifest(t, filepath.Join(repo, "testdata", "conformance", "tables", "MANIFEST.txt"))
 	var paths []string

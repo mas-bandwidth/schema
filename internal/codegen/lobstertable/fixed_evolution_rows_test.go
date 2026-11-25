@@ -23,7 +23,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobstertable"
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -168,7 +167,6 @@ const rowsProbeTable = "probeTable.lobster"
 // one per widened entry per record (4 over two records) with nothing else
 // moved. The negative controls drop the widened count and the sign extension.
 func TestLobsterFixedRowNumericEvolution(t *testing.T) {
-	slowtest.Gate(t, rowsGate)
 	t.Parallel()
 	older := fixedproof.ParseCheckUnit(t, "package probe\nfixed table N\n{\n    lead uint32 = 1\n    v int16 = 0\n    f float32 = 0.0\n    trail uint32 = 2\n}\n")
 	newer := fixedproof.ParseCheckUnit(t, "package probe\nfixed table N\n{\n    lead uint32 = 1\n    v int32 = 0\n    f float64 = 0.0\n    trail uint32 = 2\n    added int32 = 77\n}\n")
@@ -222,7 +220,6 @@ func TestLobsterFixedRowNumericEvolution(t *testing.T) {
 // a new hash whose compiled plan reads the old writer's bits unchanged. The
 // negative control drops the int32 range check from the bounds pass.
 func TestLobsterFixedRowScalarBounds(t *testing.T) {
-	slowtest.Gate(t, rowsGate)
 	t.Parallel()
 	u := fixedproof.ParseCheckUnit(t, "package probe\nfixed table T\n{\n    x int32 = 0 | min = -5, max = 5\n    s int128 = 0 | min = -500, max = 500\n    u uint16 = 10 | min = 10, max = 1000\n}\n")
 	e := rowEntry(t, u, "T")
@@ -315,7 +312,6 @@ const rowOrdinalOld = "package probe\nenum Tier { Bronze, Silver }\nunion Pick\n
 // the compiled plan's ordinal check and the check on the const entry that
 // lands a remapped union tag; with either gone its forged record reads.
 func TestLobsterFixedRowOrdinals(t *testing.T) {
-	slowtest.Gate(t, rowsGate)
 	t.Parallel()
 	uOld := fixedproof.ParseCheckUnit(t, rowOrdinalOld)
 	uNew := fixedproof.ParseCheckUnit(t, strings.Replace(strings.Replace(rowOrdinalOld, "Silver }", "Silver, Gold }", 1), "    b int32\n", "    b int32\n    c int32\n", 1))
@@ -360,7 +356,6 @@ func TestLobsterFixedRowOrdinals(t *testing.T) {
 // reads and is written back as zeros. The negative control widens the byte
 // check to 255; 0x7f then reads.
 func TestLobsterFixedRowNormalization(t *testing.T) {
-	slowtest.Gate(t, rowsGate)
 	t.Parallel()
 	u := fixedproof.ParseCheckUnit(t, "package probe\nfixed table T\n{\n    flag bool\n    opt ?int32\n}\n")
 	e := rowEntry(t, u, "T")
@@ -407,7 +402,6 @@ func TestLobsterFixedRowNormalization(t *testing.T) {
 // beside an unranged uint8 reads all 256 byte values with nothing moved. The
 // negative control removes the report reset; the stale unknown then shows.
 func TestLobsterFixedRowReports(t *testing.T) {
-	slowtest.Gate(t, rowsGate)
 	t.Parallel()
 	u := fixedproof.ParseCheckUnit(t, "package probe\nfixed table R\n{\n    a int8 = 0 | min = -128, max = 127\n    b uint8\n}\n")
 	files := rowFiles(t, u)
@@ -446,7 +440,6 @@ func TestLobsterFixedRowReports(t *testing.T) {
 // (inside the reader's 8, past the writer's 4), and reads at exactly 4. The
 // negative control bounds the count by the reader's 8; 7 then reads.
 func TestLobsterFixedRowArrayBounds(t *testing.T) {
-	slowtest.Gate(t, rowsGate)
 	t.Parallel()
 	older := fixedproof.ParseCheckUnit(t, "package probe\nfixed table G\n{\n    lead uint32 = 1\n    vals [..4]int32\n    trail uint32 = 2\n}\n")
 	newer := fixedproof.ParseCheckUnit(t, "package probe\nfixed table G\n{\n    lead uint32 = 1\n    vals [..8]int32\n    trail uint32 = 2\n}\n")
@@ -487,7 +480,6 @@ func TestLobsterFixedRowArrayBounds(t *testing.T) {
 // UTF-8 check from the read and from the bounds pass; 0xff in the used bytes
 // then reads.
 func TestLobsterFixedRowText(t *testing.T) {
-	slowtest.Gate(t, rowsGate)
 	t.Parallel()
 	u := fixedproof.ParseCheckUnit(t, "package probe\nfixed table T\n{\n    s string(4)\n}\n")
 	clean := rowSave(t, u, "T", "r[0].S = \"ab\"\nr[0].SLength = 2\n", 1)
@@ -596,7 +588,6 @@ print(string(fails) + " " + string(cases))
 // the range check on small and requires the sweep to find an out-of-bound
 // value.
 func TestLobsterFixedRowHostileInput(t *testing.T) {
-	slowtest.Gate(t, rowsGate)
 	t.Parallel()
 	u := fixedproof.ParseCheckUnit(t, rowHostSchema)
 	cases := 6 * (rowEntry(t, u, "Host").Record - 8)

@@ -6,8 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -17,7 +15,6 @@ import (
 // values are refused. A planted const byte must fail the probe_header golden.
 func TestUnityPacketWireGoldens(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dotnet")
 	dotnet := findDotnet()
 	if dotnet == "" {
 		t.Fatal("dotnet is not on PATH")
@@ -41,7 +38,7 @@ func TestUnityPacketWireGoldens(t *testing.T) {
 	// touches the sibling checkout.
 	serializeSrc := filepath.Join(abs, "..", "serialize.cs", "src")
 	if _, err := os.Stat(filepath.Join(serializeSrc, "Serialize.cs")); err != nil {
-		t.Skip("serialize.cs unavailable")
+		t.Fatal("no serialize.cs sibling checkout (its src/Serialize.cs)")
 	}
 	scratchSerialize := filepath.Join(t.TempDir(), "serialize.cs")
 	if err := os.MkdirAll(filepath.Join(scratchSerialize, "src"), 0o755); err != nil {

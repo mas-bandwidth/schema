@@ -6,4 +6,4 @@ python-ci-vt-keyed-enum: python-vt-keyed-enum-negative-control
 test-python: python-vt-keyed-enum-negative-control
 
 python-vt-keyed-enum-negative-control: python-toolchain-check
-	SCHEMA_SLOW=1 $(GO_TEST) -count=1 -timeout 600s -run 'TestPythonVtKeyedEnumNegativeControlFunctional' ./internal/codegen/pythontable/
+	$(GO_TEST) -count=1 -timeout 600s -run 'TestPythonVtKeyedEnumNegativeControlFunctional' ./internal/codegen/pythontable/

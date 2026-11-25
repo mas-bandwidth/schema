@@ -3,7 +3,7 @@
 // fewer times than the manifest registers, under the success footer:
 //
 //   - no leg at all: an --only that names no registered leg, an empty
-//     registry, a --skip that names every leg;
+//     registry;
 //   - a leg that answers nothing: every surface absent, or every case
 //     `.absent`;
 //   - a scoring loop that stops before the surface's last case.
@@ -21,11 +21,11 @@ import (
 	"testing"
 )
 
-func (c fakeCorpus) runOnly(t *testing.T, drivers, only, skip string, opts runOptions) (string, bool) {
+func (c fakeCorpus) runOnly(t *testing.T, drivers, only string, opts runOptions) (string, bool) {
 	t.Helper()
 	var out bytes.Buffer
 	ok, err := runWith(&out, c.m, c.manifest, c.jsonDir, c.reports, drivers,
-		filepath.Join(t.TempDir(), "work"), only, skip, opts)
+		filepath.Join(t.TempDir(), "work"), only, opts)
 	if err != nil {
 		// a refused run is red: its error is what it says
 		return out.String() + "\n" + err.Error(), false
@@ -39,7 +39,7 @@ func TestRunWithNoLegIsRed(t *testing.T) {
 
 	t.Run("control: the leg --only names runs and is green", func(t *testing.T) {
 		c := newFakeCorpus(t)
-		out, ok := c.runOnly(t, c.committed(t, map[string]fakeLeg{referenceLang: {}, "zz": {}}), "zz", "", runOptions{})
+		out, ok := c.runOnly(t, c.committed(t, map[string]fakeLeg{referenceLang: {}, "zz": {}}), "zz", runOptions{})
 		if !ok {
 			t.Fatalf("CONTROL FAILED: a whole run of one leg is red:\n%s", out)
 		}
@@ -47,7 +47,7 @@ func TestRunWithNoLegIsRed(t *testing.T) {
 	})
 	t.Run("--only names no registered leg", func(t *testing.T) {
 		c := newFakeCorpus(t)
-		out, ok := c.runOnly(t, c.committed(t, map[string]fakeLeg{referenceLang: {}, "zz": {}}), "zy", "", runOptions{})
+		out, ok := c.runOnly(t, c.committed(t, map[string]fakeLeg{referenceLang: {}, "zz": {}}), "zy", runOptions{})
 		if ok {
 			t.Errorf("a run of no leg passed:\n%s", out)
 		}
@@ -57,19 +57,11 @@ func TestRunWithNoLegIsRed(t *testing.T) {
 		c := newFakeCorpus(t)
 		empty := filepath.Join(t.TempDir(), "drivers.txt")
 		writeFile(t, empty, "# no leg\n")
-		out, ok := c.runOnly(t, empty, "", "", runOptions{})
+		out, ok := c.runOnly(t, empty, "", runOptions{})
 		if ok {
 			t.Errorf("a run over an empty registry passed:\n%s", out)
 		}
 		mustSay(t, out, []string{says}, []string{footer})
-	})
-	t.Run("--skip names every leg", func(t *testing.T) {
-		c := newFakeCorpus(t)
-		out, ok := c.runOnly(t, c.substituted(t, "zz", fakeLeg{}), "", "zz", runOptions{})
-		if ok {
-			t.Errorf("a run that skipped its only leg passed:\n%s", out)
-		}
-		mustSay(t, out, []string{says, "conformance SKIPS the zz leg"}, []string{footer})
 	})
 }
 
@@ -92,7 +84,7 @@ func TestLegThatAnswersNothingIsRed(t *testing.T) {
 		c := newFakeCorpus(t)
 		// emptySelection passes this run (its "pass 0/0" cells are not
 		// absent); proveRan is what reads the leg answered nothing
-		out, ok := c.runOnly(t, c.substituted(t, "zz", nothing), "", "", runOptions{})
+		out, ok := c.runOnly(t, c.substituted(t, "zz", nothing), "", runOptions{})
 		if ok {
 			t.Errorf("a leg that answered nothing passed:\n%s", out)
 		}

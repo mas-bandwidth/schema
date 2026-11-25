@@ -8,7 +8,6 @@ package darttable
 import (
 	"bytes"
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"path/filepath"
 	"slices"
@@ -36,10 +35,9 @@ var cookWriteAbsentDart = map[string]string{}
 // in each order. A row is a passing cook or a named absence; never a skip.
 //
 // It runs the driver over the generated corpus in build/tables-generated-dart,
-// which make's tables-dart-block-build builds first; a bare `go test` without
-// the corpus skips by name, and SCHEMA_REQUIRE_CORPUS=1 makes that a failure.
+// which make's tables-dart-block-build builds first; without the corpus the
+// test fails by name.
 func TestCookWriteAnswersEveryCookWriteRowDart(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Parallel()
 	dart := dartBinary(t)
@@ -55,10 +53,7 @@ func TestCookWriteAnswersEveryCookWriteRowDart(t *testing.T) {
 		defer dartMakeMu.Unlock()
 		for _, need := range []string{".stamp", "cards/.stamp", "pointers/GraphCook.dart", "blobs/AssetsCook.dart", "cards/CardsWire.dart"} {
 			if _, err := os.Stat(filepath.Join(repo, "build", "tables-generated-dart", need)); err != nil {
-				if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-					t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and the generated Dart corpus lacks %s: run make tables-dart-block-build", need)
-				}
-				t.Skip("the generated Dart corpus is not built: make tables-dart-block-build")
+				t.Fatalf("the generated Dart corpus lacks %s: run make tables-dart-block-build", need)
 			}
 		}
 		if err := os.CopyFS(corpusDart, os.DirFS(filepath.Join(repo, "build", "tables-generated-dart"))); err != nil {

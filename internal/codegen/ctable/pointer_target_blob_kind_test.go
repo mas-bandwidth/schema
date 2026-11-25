@@ -103,7 +103,6 @@ func cBlobKindField(t *testing.T, u *ir.Unit, root string) (name string, stringK
 
 func TestCPointerTargetBlobKindRefused(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the C compiler (cc)")
 	dir := filepath.Join("..", "..", "..", "testdata", "wire", "pointer-target-type", "blobkind")
 	rows := cBlobKindRows(t, dir)
 
@@ -432,7 +431,7 @@ func runCBlobKindProbe(t *testing.T, u *ir.Unit, body string, edit func(map[stri
 		var err error
 		cc, err = exec.LookPath("cc")
 		if err != nil {
-			t.Skip("generated C execution requires cc")
+			t.Fatal("generated C execution requires cc")
 		}
 	}
 	files, err := cgen.Generate(u)

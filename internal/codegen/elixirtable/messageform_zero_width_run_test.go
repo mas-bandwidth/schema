@@ -13,7 +13,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -65,7 +64,6 @@ func zeroWidthAnnouncement(entries ...[]byte) []byte {
 
 func TestElixirMessageZeroWidthRunIsBounded(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "an external toolchain")
 
 	const far = 30_000_000
 

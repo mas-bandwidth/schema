@@ -12,8 +12,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 type fixedEvolutionRow struct{ name, top, sub string }
@@ -153,7 +151,6 @@ func fixedEvolutionCoverage(names []string, aggregate string, rows []fixedEvolut
 
 func TestPythonFixedEvolutionCICoverage(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Go discovery and fixed evolution CI selection")
 	run := func(name string, args ...string) []byte {
 		t.Helper()
 		c := exec.Command(name, args...)

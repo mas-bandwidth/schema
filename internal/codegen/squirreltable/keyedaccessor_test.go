@@ -14,7 +14,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirreltable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 const keyedAccessorSchema = `package keyedaccessor
@@ -70,7 +69,6 @@ func runKeyedAccessor(t *testing.T, descriptor string) string {
 
 func TestSquirrelKeyedAccessorCoversBothEnds(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Squirrel interpreter")
 	if got := runKeyedAccessor(t, ""); got != keyedAccessorWant {
 		t.Errorf("keyed accessor:\n got %q\nwant %q", got, keyedAccessorWant)
 	}
@@ -82,7 +80,6 @@ func TestSquirrelKeyedAccessorCoversBothEnds(t *testing.T) {
 // accessor probe red on its own lines.
 func TestSquirrelKeyedNegativeControls(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Squirrel interpreter")
 	runtime := string(squirreltable.Runtime()["schema_table_descriptor.nut"])
 	plants := []struct {
 		name, anchor, plant, mustSee string

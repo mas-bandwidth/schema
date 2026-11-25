@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 
@@ -18,7 +17,6 @@ import (
 
 func TestElixirVoidUnionNative(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "native void union compilation and round trips")
 	elixirBin := elixirBinary(t)
 	strict, err := filepath.Abs("../../../make/elixir-strict.sh")
 	if err != nil {

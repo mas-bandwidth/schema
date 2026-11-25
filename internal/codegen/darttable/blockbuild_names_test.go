@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/dart"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -47,7 +46,6 @@ fixed table Root {
 	}
 	t.Run("dart-compiles", func(t *testing.T) {
 		t.Parallel()
-		slowtest.Gate(t, "dart")
 		// View/Bytes/Base also collide with pre-existing block class members.
 		// Keep those in the parameter assertions above; compile the begin-only
 		// collision cases here without broadening this fix into accessor naming.

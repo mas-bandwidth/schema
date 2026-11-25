@@ -7,7 +7,6 @@
 --   block-foreign  byte-swap the image's magic word, open, `refuse\n`
 --   block-dump     open the image, the canonical row dump
 --   forgery        open the forged file at the claimed extent and base
---   block-reason   the same, the refusal's name or `ok`
 --
 -- every one through the emitted table_blockread.moo (BlockOpen, Read, Triple)
 -- and the <Name>BlockInfo descriptors of the generated <Base>Table.moo,
@@ -239,21 +238,6 @@ return function(ctx: any): { [string]: Surface }
 			eachForgery(function(_, b, data, extent, lead)
 				return verdict(b, data, extent, lead)
 			end)
-		end,
-	}
-	surfaces["block-reason"] = {
-		carried = carried,
-		run = function()
-			local reasons: { [string]: boolean } = {}
-			for _, r in ctx.kind("refusal") do
-				if r[3] == "block" then
-					reasons[r[2]] = true
-				end
-			end
-			eachForgery(function(name, b, data, extent, lead)
-				local _, why = open(b, data, extent, lead)
-				return why .. "\n"
-			end, reasons)
 		end,
 	}
 	return surfaces

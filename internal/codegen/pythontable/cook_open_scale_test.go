@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // cookOpenScaleSizes are the file sizes every probe opens, smallest first.
@@ -81,7 +80,6 @@ for p, n in zip(paths, SIZES):
 // compute that touches no page). Each meter has its own reversed witness.
 func TestPythonCookOpenFunctionalScale(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters and real monotonic timing")
 	u := loadUnit(t, "package openscale\nfixed table Root {\n x int32\n}\n")
 	files, err := Generate(u)
 	if err != nil {

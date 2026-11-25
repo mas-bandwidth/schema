@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/schema/v2/internal/modulemove/pincorpus"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -36,7 +35,6 @@ func TestPinDocSeparatesOfflineChecksFromGoResolution(t *testing.T) {
 // repository and an empty module cache: the corpus rows with git_time hold one
 // version Go resolves and one it refuses, and pin accepts both.
 func TestPinCorpusGoResolution(t *testing.T) {
-	slowtest.Gate(t, "Go and Git resolve a pseudo-version against a local repository")
 	bin := buildCLI(t)
 	cases, err := pincorpus.Spellings()
 	if err != nil {

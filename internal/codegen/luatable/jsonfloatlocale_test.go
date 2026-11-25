@@ -16,7 +16,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablepack"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 
@@ -104,7 +103,6 @@ func luaJSONFloatLocalePath(t *testing.T) string {
 // locale FAILS by name; it never skips.
 func TestLuaJsonFloatTextIgnoresLocale(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Lua interpreter")
 	lua := luarun.Interpreter(t)
 	dir := t.TempDir()
 	schema := filepath.Join(dir, "localefloat.schema")

@@ -3,7 +3,6 @@ package rusttable
 import (
 	"encoding/binary"
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -15,7 +14,6 @@ import (
 )
 
 func TestRustTextTotalNative(t *testing.T) {
-	slowtest.Gate(t, "rustc (streaming total text budgets)")
 	keyedRequireRustc(t)
 	read := func(name string) string {
 		b, e := os.ReadFile(filepath.Join("../../../testdata/conformance/feature-witnesses/text-list-total", name))

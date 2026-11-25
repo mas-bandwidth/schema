@@ -17,7 +17,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -90,7 +89,6 @@ fixed table Root { items [200]Item }
 // at walk index 1 faces the writer's 500-byte array at the same index.
 func TestFixedLineageEvolvedUnionPlanFits(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the C compiler (it compiles and runs the generated units)")
 	const oldSchema = `package probe
 union U {
     a int32

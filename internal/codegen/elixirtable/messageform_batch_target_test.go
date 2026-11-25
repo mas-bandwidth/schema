@@ -2,13 +2,12 @@ package elixirtable
 
 // TestElixirMessageBatchTargetRunsUnderTestElixir IS THE WIRING HALF of the
 // Elixir message form's gate. TestMessageFormBatchElixir gets its Elixir through
-// elixirBinary (fixedversioning_test.go), which SKIPS itself when no toolchain
-// is found and only FAILS by name under SCHEMA_REQUIRE_CORPUS, so a bare
-// `go test` on a bench with no Elixir never runs the cell and exits 0 — exactly
-// how the message form's :done was read, not run. This test reads make/elixir.mk
+// elixirBinary (fixedversioning_test.go), which now FAILS by name when no toolchain
+// is found (it once skipped, which is how the message form's :done was read,
+// not run). This test reads make/elixir.mk
 // from the repository root and pins three things: the target
-// tables-elixir-message-batch exists, its recipe runs the batch test under
-// SCHEMA_REQUIRE_CORPUS=1 with the exact -run, and a `test-elixir:` line names
+// tables-elixir-message-batch exists, its recipe runs the batch test with the
+// exact -run, and a `test-elixir:` line names
 // it — so the gate cannot be deleted or disarmed without this test going red.
 
 import (
@@ -32,9 +31,6 @@ func TestElixirMessageBatchTargetRunsUnderTestElixir(t *testing.T) {
 
 	const target = "tables-elixir-message-batch"
 	recipe := makeTargetRecipe(t, text, target)
-	if !strings.Contains(recipe, "SCHEMA_REQUIRE_CORPUS=1") {
-		t.Errorf("the %s recipe does not set SCHEMA_REQUIRE_CORPUS=1, so a missing Elixir skips instead of failing:\n%s", target, recipe)
-	}
 	if !strings.Contains(recipe, "./internal/codegen/elixirtable/") {
 		t.Errorf("the %s recipe does not run go test on ./internal/codegen/elixirtable/:\n%s", target, recipe)
 	}

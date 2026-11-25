@@ -8,8 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -31,7 +29,6 @@ import (
 // turn its row red, so a regression that descends an absent optional is
 // caught here.
 func TestJavaOptionalVariableClosureG1(t *testing.T) {
-	slowtest.Gate(t, "the JDK (it compiles and runs the generated Java)")
 	t.Parallel()
 	repo := filepath.Join("..", "..", "..")
 	dir := t.TempDir()

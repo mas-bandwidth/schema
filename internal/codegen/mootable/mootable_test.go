@@ -16,7 +16,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/moo/moorun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/mootable"
 	"github.com/mas-bandwidth/schema/v2/internal/lockfile"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -276,7 +275,6 @@ func (g *generatedUnit) analyze(t *testing.T) string {
 // Every root a manifest row names has a descriptor, and every emitted module
 // passes moo-analyze with no output at all.
 func TestMooTableDescriptorsLoad(t *testing.T) {
-	slowtest.Gate(t, "moo and moo-analyze (it loads the generated table modules)")
 	t.Parallel()
 	units, roots := readManifest(t)
 	keys := sortedKeys(units)
@@ -370,7 +368,6 @@ end
 // TestMooTableDescriptorsNegativeControl plants a default the record was not
 // born with into one generated descriptor and requires the probe to name it.
 func TestMooTableDescriptorsNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo (it loads the generated table modules)")
 	t.Parallel()
 	g := generateFiles(t, map[string]string{"Carton.schema": "package boxes\ntable Box\n{\n    a uint8 = 7\n}\n"})
 	path := filepath.Join(g.dir, "CartonTable.moo")

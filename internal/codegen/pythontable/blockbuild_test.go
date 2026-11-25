@@ -28,7 +28,6 @@ import (
 
 func TestPythonBlockBuilder(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "go and the pinned python")
 	repo := filepath.Join("..", "..", "..")
 	u := loadUnitFiles(t, filepath.Join(repo, "tables", "block"))
 	files, err := Generate(u)

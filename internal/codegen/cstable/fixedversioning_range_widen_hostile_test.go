@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/fixedvector"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -23,7 +22,6 @@ import (
 // carries no `expect=` when the C++ reference's own NEW reader refused the bytes
 // (fixedvector.Read answers Refused), and the landed values when it did not.
 func TestFixedVersioningRangeWidenHostile(t *testing.T) {
-	slowtest.Gate(t, "dotnet (it runs the generated NEW reader over the forged file)")
 	corpus := csFixedCorpus(t)
 	runtime, err := filepath.Abs("../../../../serialize.cs")
 	if err != nil {

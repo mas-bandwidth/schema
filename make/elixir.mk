@@ -432,9 +432,9 @@ ELIXIR_WREF_MESSAGE_SED := -e 's|check(is_integer(value) and value >= lo and val
 # $(call ELIXIR_WREF_CONTROL,dir,file,sedvar,surface,rows,green,what)
 define ELIXIR_WREF_CONTROL
 	$(call ELIXIR_SABOTAGED_BUILD,$(1),$(2),$(3))
-	@# loud-ok: the harness's status covers every surface of the leg; this target's verdict is the named row read from the log below, and a missing row is red
+	@# the harness's status covers every surface of the leg; this target's verdict is the named row read from the log below, and a missing row is red
 	@ELIXIR_TABLES_EBIN=$(CURDIR)/$(1)/ebin ./build/conformance-harness run --only elixir \
-		--work $(1)/work > $(1)/log 2>&1 || true
+		--work $(1)/work > $(1)/log 2>&1; echo "exited $$? (the verdict is read from $(1)/log below)"
 	@got=$$(sed -n 's|^  elixir / $(4): \([^:]*\):.*|\1|p' $(1)/log | sort | tr '\n' ' '); \
 		want="$$(echo $(5) | tr ' ' '\n' | sort | tr '\n' ' ')"; \
 		if [ "$$got" != "$$want" ]; then \
@@ -509,7 +509,7 @@ define ELIXIR_SABOTAGED_BUILD
 	@rm -rf $(1) && mkdir -p $(1)
 	@sed $($(3)) $(2) > $(1)/sabotaged.go.txt
 	@cmp -s $(2) $(1)/sabotaged.go.txt && \
-		{ echo "NEGATIVE CONTROL: the sabotage of $(2) did not apply"; exit 1; } || true
+		{ echo "NEGATIVE CONTROL: the sabotage of $(2) did not apply"; exit 1; } || [ $$? -eq 1 ] || exit 1
 	@printf '{"Replace":{"%s/$(2)":"%s/$(1)/sabotaged.go.txt"}}\n' "$(CURDIR)" "$(CURDIR)" > $(1)/overlay.json
 	go build -overlay $(1)/overlay.json -o $(1)/schema ./cmd/schema
 	@for unit in $(ELIXIR_TABLE_UNITS); do \
@@ -638,17 +638,17 @@ tables-elixir-block-lead-negative-control: build/conformance-elixir-manifest/man
 # and (b) that a FORGED offset_of or delta word (high half 0x7FFFFFFF, and the
 # delta's negative twin) is refused with no more minor collections than an
 # immediate-high-half twin (a bignum would add some). It is a FUNCTIONAL test:
-# SCHEMA_REQUIRE_CORPUS=1 turns a missing toolchain into a failure, never a skip.
+# the rule that nothing skips turns a missing toolchain into a failure, never a skip.
 .PHONY: tables-elixir-offsets
 tables-elixir-offsets:
 	@mkdir -p build
-	@SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
+	@ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
 		$(GO_TEST) ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestOffsetsComposeFromHalvesElixir$$' \
 		> build/tables-elixir-offsets.log 2>&1; \
 		status=$$?; cat build/tables-elixir-offsets.log; \
 		if [ $$status -ne 0 ]; then exit $$status; fi
 	@if grep -q -- '--- SKIP' build/tables-elixir-offsets.log; then \
-		echo "tables-elixir-offsets: the gate SKIPPED a subtest; under SCHEMA_REQUIRE_CORPUS=1 a missing toolchain or corpus is a failure"; \
+		echo "tables-elixir-offsets: the gate SKIPPED a subtest; a missing toolchain or corpus is a failure"; \
 		exit 1; \
 	fi
 	@echo 'tables Elixir offsets: ordinary opens, rows and cook slots allocate no more than the immediate-value control; forged offset_of and cook delta refused with no extra collections'
@@ -662,7 +662,7 @@ ELIXIR_OFFSETS_SED := -e 's|B.u64halves(data, a.offset_of_offset)|B.u64(data, a.
 .PHONY: tables-elixir-offsets-negative-control
 tables-elixir-offsets-negative-control:
 	$(call ELIXIR_SABOTAGED_BUILD,$(CONFORMANCE_NEGATIVE_ELIXIR_OFFSETS),internal/codegen/elixirtable/block.go,ELIXIR_OFFSETS_SED)
-	@if SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
+	@if ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
 			$(GO_TEST_RED) -overlay $(CURDIR)/$(CONFORMANCE_NEGATIVE_ELIXIR_OFFSETS)/overlay.json \
 			./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestOffsetsComposeFromHalvesElixir$$' \
 			> $(CONFORMANCE_NEGATIVE_ELIXIR_OFFSETS)/log 2>&1; then \
@@ -688,7 +688,7 @@ ELIXIR_COOK_SED := \
 .PHONY: tables-elixir-cook-negative-control
 tables-elixir-cook-negative-control:
 	$(call ELIXIR_SABOTAGED_BUILD,$(CONFORMANCE_NEGATIVE_ELIXIR_COOK),internal/codegen/elixirtable/cook.go,ELIXIR_COOK_SED)
-	@if SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
+	@if ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
 			$(GO_TEST_RED) -overlay $(CURDIR)/$(CONFORMANCE_NEGATIVE_ELIXIR_COOK)/overlay.json \
 			./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestOffsetsComposeFromHalvesElixir$$' \
 			> $(CONFORMANCE_NEGATIVE_ELIXIR_COOK)/log 2>&1; then \
@@ -751,7 +751,7 @@ tables-elixir-accessor-descriptor-agreement-shard-%: build/tables-generated-elix
 # the agreement shards. Package only after the normal agreement gate passes.
 ELIXIR_HANDOFF_EBIN := build/elixir-verified-ebin
 ELIXIR_HANDOFF_PY := PATH="$(BEAM_PATH):$$PATH" python3 make/elixir-handoff.py
-ELIXIR_HANDOFF_PIN := env -u SCHEMA_ELIXIR_ANY_OTP $(ELIXIR) test/elixir/runtime_pin.exs $(ELIXIR_PIN_OTP) $(ELIXIR_PIN_ELIXIR)
+ELIXIR_HANDOFF_PIN := $(ELIXIR) test/elixir/runtime_pin.exs $(ELIXIR_PIN_OTP) $(ELIXIR_PIN_ELIXIR)
 
 .PHONY: elixir-agreement-artifact-% build-conformance-elixir-from-shards
 elixir-agreement-artifact-%: tables-elixir-accessor-descriptor-agreement-shard-%
@@ -846,9 +846,7 @@ tables-elixir-runtime-pin-negative-control:
 #
 # THE PIN COMES FIRST: the script's first act is test/elixir/runtime_pin.exs
 # with ELIXIR_PIN_OTP and ELIXIR_PIN_ELIXIR, so on any other runtime it prints
-# FAILED and exits non-zero before a case is measured; SCHEMA_ELIXIR_ANY_OTP=1
-# prints the numbers under NOT CERTIFIED and exits 0, and the pin target refuses
-# to write a budget under it. Re-pinning is deliberate, as a wire golden is.
+# FAILED and exits non-zero before a case is measured. Re-pinning is deliberate, as a wire golden is.
 ELIXIR_ALLOC_BUDGET := test/conformance/elixir/alloc-budget.txt
 
 .PHONY: tables-elixir-alloc-audit
@@ -1133,8 +1131,10 @@ test-elixir-packet: build/mustrun toolchain-elixir generated/elixir/.stamp gener
 
 TEST_LEGS            += test-elixir
 TOOLCHAIN_LEGS       += elixir
+CONFORMANCE_LEG_elixir := build-conformance-elixir
 TOOLCHAIN_PINS_elixir := ELIXIR ELIXIRC MIX
-CONFORMANCE_LEGS     += $(call unless_skipped,elixir,build-conformance-elixir)
+CONFORMANCE_OF.elixir := build-conformance-elixir
+CONFORMANCE_LEGS     += $(CONFORMANCE_OF.elixir)
 REGISTRY_NA          += goldens:elixir
 REGISTRY_NA_WHY.goldens.elixir := no committed table goldens; its packet goldens (testdata/golden/elixir) are rewritten by internal/goldens at the top of update-goldens
 # Packet UTF-8 content validation, including a compiled mutation control.
@@ -1208,7 +1208,7 @@ test-elixir:
 # fixed-only form-1 units tblp1 and tblp3 through the generated Elixir against
 # the Go oracle bytes and text form; it is a FUNCTIONAL
 # test (it runs the leg's own toolchain through elixirBinary), so
-# SCHEMA_REQUIRE_CORPUS=1 turns a missing toolchain or corpus into a FAILURE,
+# the rule that nothing skips turns a missing toolchain or corpus into a FAILURE,
 # never a skip. TestListdemoNamesUncarriedRoots (the roots the cook write and
 # the wire-fuzz roster leave uncarried) rides the same -run; the refusal gate
 # TestOtherVariableConstructsAreRefusedByName retired with
@@ -1216,7 +1216,7 @@ test-elixir:
 # json-write and report surfaces for the variable-class instances.
 .PHONY: tables-elixir-variable-class
 tables-elixir-variable-class: build/conformance-elixir-manifest/manifest.txt
-	SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) $(GO_TEST) ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run 'TestVariableClassBeyondCardConstructsElixir|TestListdemoNamesUncarriedRoots|TestOptionalVariableClosureElixir|TestScalarListUnderATableHeaderElixir|TestCountPastTheBoundRefusesElixir|TestNestedBodyEndingEarlyIsDamageElixir|TestReservedNodeIdInANestedBodyIsDamageElixir'
+	ELIXIR=$(ELIXIR_BIN) $(GO_TEST) ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run 'TestVariableClassBeyondCardConstructsElixir|TestListdemoNamesUncarriedRoots|TestOptionalVariableClosureElixir|TestScalarListUnderATableHeaderElixir|TestCountPastTheBoundRefusesElixir|TestNestedBodyEndingEarlyIsDamageElixir|TestReservedNodeIdInANestedBodyIsDamageElixir'
 	@rm -rf build/conformance-elixir-variable-class
 	./build/conformance-harness run --only elixir --work build/conformance-elixir-variable-class
 
@@ -1227,7 +1227,7 @@ test-elixir: tables-elixir-variable-class
 # (Vessel -> Ship) reads across the rename on form 1 alone. TestFixedClassOn-
 # TableWireElixir generates tblw1/tblw2 and tblr1 through the COMPILER path and
 # round-trips the committed oracle bytes and text through the generated Elixir.
-# It is a FUNCTIONAL test, so SCHEMA_REQUIRE_CORPUS=1 turns a missing toolchain
+# It is a FUNCTIONAL test, so the rule that nothing skips turns a missing toolchain
 # into a failure, never a skip. The conformance run answers wire and report for
 # the tblv1/tblv2, tblw1/tblw2 and tblr1 instances, whose report rows
 # w1_fleet_as_w2 and w1_fleet_default_as_w2 equal the Go leg's, and tblr2's
@@ -1237,7 +1237,7 @@ test-elixir: tables-elixir-variable-class
 # writer's bytes as the engine reads them (§5).
 .PHONY: tables-elixir-variable-fixed-class
 tables-elixir-variable-fixed-class: build/conformance-elixir-manifest/manifest.txt
-	SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) $(GO_TEST) ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run 'TestFixedClassOnTableWireElixir|TestDefaultsAndTableRenameElixir'
+	ELIXIR=$(ELIXIR_BIN) $(GO_TEST) ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run 'TestFixedClassOnTableWireElixir|TestDefaultsAndTableRenameElixir'
 	@rm -rf build/conformance-elixir-variable-fixed-class
 	./build/conformance-harness run --only elixir --work build/conformance-elixir-variable-fixed-class
 
@@ -1248,10 +1248,10 @@ test-elixir: tables-elixir-variable-fixed-class
 # build an older writer's bytes (the engine over the old unit), and requires the new
 # build to read and re-save them byte for byte. It is a FUNCTIONAL test (it runs the
 # leg's own toolchain through elixirBinary), so it runs under
-# SCHEMA_REQUIRE_CORPUS=1 and fails on any SKIP.
+# the rule that nothing skips and fails on any SKIP.
 .PHONY: tables-elixir-wasrows
 tables-elixir-wasrows:
-	SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
+	ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
 		$(GO_TEST) ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestElixirWasRowsCarried$$'
 test-elixir: tables-elixir-wasrows
 
@@ -1280,12 +1280,12 @@ test-elixir: tables-elixir-file-module
 # and byte-compare its text with the leg's, and pack every leg text back and
 # byte-compare the wire. The probe builds its own unit, so no corpus is a
 # prerequisite. It is a FUNCTIONAL test (it runs elixir), so the target runs it
-# under SCHEMA_REQUIRE_CORPUS=1 and fails on any SKIP. The control caps a
+# under the rule that nothing skips and fails on any SKIP. The control caps a
 # float32 at six significant digits in the emitted json_float, in memory, and
 # requires the run red on the text comparison and not on a compile error.
 .PHONY: tables-elixir-json-differential tables-elixir-json-differential-negative-control
 tables-elixir-json-differential:
-	@out=$$(SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
+	@out=$$(ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
 		$(GO_TEST) ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestTextDifferentialElixir$$' 2>&1); status=$$?; \
 	printf '%s\n' "$$out"; \
 	if [ $$status -ne 0 ]; then exit $$status; fi; \
@@ -1294,7 +1294,7 @@ tables-elixir-json-differential:
 	@echo 'tables Elixir json differential: 200 of 200 instances agree with the engine in both directions'
 
 tables-elixir-json-differential-negative-control:
-	@out=$$(SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
+	@out=$$(ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
 		$(GO_TEST) ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestTextDifferentialNegativeControlElixir$$' 2>&1); status=$$?; \
 	printf '%s\n' "$$out"; \
 	if [ $$status -ne 0 ]; then exit $$status; fi; \
@@ -1310,13 +1310,13 @@ test-elixir: tables-elixir-json-differential tables-elixir-json-differential-neg
 # raw bits as non_finite_float, every writer refuses one, and -0 rides by its
 # bits. TestElixirFiniteFloat generates its own three units and runs a probe
 # over every float position, so no corpus is a prerequisite. It is a FUNCTIONAL
-# test (it runs elixir), so the target runs it under SCHEMA_REQUIRE_CORPUS=1 and
+# test (it runs elixir), so the target runs it under the rule that nothing skips and
 # fails on any SKIP. The control sabotages the variable read's bit test at each
 # width, the retained unknown's test, the message read's, the fixed read's and
 # the variable writer's, one at a time, and each must red exactly its own rows.
 .PHONY: tables-elixir-finite-float tables-elixir-finite-float-negative-control
 tables-elixir-finite-float:
-	@out=$$(SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
+	@out=$$(ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
 		$(GO_TEST) ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestElixirFiniteFloat$$' 2>&1); status=$$?; \
 	printf '%s\n' "$$out"; \
 	if [ $$status -ne 0 ]; then exit $$status; fi; \
@@ -1325,7 +1325,7 @@ tables-elixir-finite-float:
 	@echo 'tables Elixir finite floats: every read refuses a NaN or an infinity, every writer refuses one, -0 rides'
 
 tables-elixir-finite-float-negative-control:
-	@out=$$(SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
+	@out=$$(ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
 		$(GO_TEST) ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestElixirFiniteFloatNegativeControl$$' 2>&1); status=$$?; \
 	printf '%s\n' "$$out"; \
 	if [ $$status -ne 0 ]; then exit $$status; fi; \
@@ -1344,13 +1344,13 @@ test-elixir: tables-elixir-finite-float tables-elixir-finite-float-negative-cont
 # (`schema generate --lang elixir`) and round-trips every committed instance,
 # and the tables/arms goldens, through the generated Elixir against the Go
 # oracle's wire and text byte for byte. It is a FUNCTIONAL test (it runs the
-# leg's own toolchain), so SCHEMA_REQUIRE_CORPUS=1 turns a missing toolchain
+# leg's own toolchain), so the rule that nothing skips turns a missing toolchain
 # into a failure, never a skip. The conformance run answers wire, report,
 # json-read and json-write for the mapdemo, messagedemo and scalars
 # instances.
 .PHONY: tables-elixir-variable-arms
 tables-elixir-variable-arms: build/conformance-elixir-manifest/manifest.txt
-	SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) $(GO_TEST) ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run TestMapsAndUnionArmsOnTheTableWireElixir
+	ELIXIR=$(ELIXIR_BIN) $(GO_TEST) ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run TestMapsAndUnionArmsOnTheTableWireElixir
 	@rm -rf build/conformance-elixir-variable-arms
 	./build/conformance-harness run --only elixir --work build/conformance-elixir-variable-arms
 
@@ -1359,12 +1359,12 @@ test-elixir: tables-elixir-variable-arms
 # THE BUILDER SIDE (docs/SPEC-TABLES.md §19.1, §7.6). TestBlockBuildAndCookWriteElixir
 # builds the pinned block golden and cooks the carried instances to `schema cook`
 # in both byte orders; a short buffer returns false and writes nothing. It is a
-# FUNCTIONAL test, so SCHEMA_REQUIRE_CORPUS=1 turns a missing toolchain into a
+# FUNCTIONAL test, so the rule that nothing skips turns a missing toolchain into a
 # failure. The conformance run answers cook-write for the instances this leg
 # carries and writes <case>.absent for the rest.
 .PHONY: tables-elixir-block-build
 tables-elixir-block-build: build/conformance-elixir-manifest/manifest.txt
-	SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) $(GO_TEST) ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run TestBlockBuildAndCookWriteElixir
+	ELIXIR=$(ELIXIR_BIN) $(GO_TEST) ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run TestBlockBuildAndCookWriteElixir
 	@rm -rf build/conformance-elixir-block-build
 	./build/conformance-harness run --only elixir --work build/conformance-elixir-block-build
 
@@ -1529,7 +1529,7 @@ tables-elixir-fixed-form-negative-control: build/fixedform-corpus/.stamp
 	@mkdir -p $(CONFORMANCE_NEGATIVE_ELIXIR_FIXED)/ebin
 	@sed $(ELIXIR_FIXED_SED) internal/codegen/elixirtable/fixedelixir.go > $(CONFORMANCE_NEGATIVE_ELIXIR_FIXED)/sabotaged.go.txt
 	@cmp -s internal/codegen/elixirtable/fixedelixir.go $(CONFORMANCE_NEGATIVE_ELIXIR_FIXED)/sabotaged.go.txt && \
-		{ echo "NEGATIVE CONTROL: the sabotage of the fixed emitter did not apply"; exit 1; } || true
+		{ echo "NEGATIVE CONTROL: the sabotage of the fixed emitter did not apply"; exit 1; } || [ $$? -eq 1 ] || exit 1
 	@printf '{"Replace":{"%s/internal/codegen/elixirtable/fixedelixir.go":"%s/$(CONFORMANCE_NEGATIVE_ELIXIR_FIXED)/sabotaged.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(CONFORMANCE_NEGATIVE_ELIXIR_FIXED)/overlay.json
 	go build -overlay $(CONFORMANCE_NEGATIVE_ELIXIR_FIXED)/overlay.json -o $(CONFORMANCE_NEGATIVE_ELIXIR_FIXED)/schema ./cmd/schema
@@ -1561,7 +1561,7 @@ tables-elixir-fixed-form-negative-control: build/fixedform-corpus/.stamp
 # SKIPS itself when build/fixedform-corpus or the Elixir in dist/ is absent,
 # which is right for a bare `go test ./...` and is exactly how a §5 regression
 # would ride into a green. So the target builds the oracle first and sets
-# SCHEMA_REQUIRE_CORPUS=1, under which that skip is a FAILURE.
+# the rule that nothing skips, under which that skip is a FAILURE.
 #
 # ELIXIR_BIN and ERL_BIN are PLAIN PATHS and not the PATH-prefixed launchers the
 # rest of this file uses, because the harness spawns the binary itself: empty is
@@ -1574,7 +1574,7 @@ ERL_BIN    ?=
 
 .PHONY: tables-elixir-versioning
 tables-elixir-versioning: tables-fixedform-corpus
-	SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
+	ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
 		$(GO_TEST) ./internal/codegen/elixirtable/ -count=1 -timeout 600s -run 'TestFixedVersioning'
 	@echo 'tables Elixir versioning: §5 read both columns of every row against the C++ reference bytes'
 
@@ -1589,10 +1589,10 @@ tables-elixir-versioning-negative-control: tables-fixedform-corpus
 	@sed 's|{:error, :layout_newer, hash}|{:error, :layout_malformed, hash}|' \
 		internal/codegen/elixirtable/fixedruntime.go > build/elixir-versioning-nc/fixedruntime.go.txt
 	@cmp -s internal/codegen/elixirtable/fixedruntime.go build/elixir-versioning-nc/fixedruntime.go.txt && \
-		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the emitter moved"; exit 1; } || true
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the emitter moved"; exit 1; } || [ $$? -eq 1 ] || exit 1
 	@printf '{"Replace":{"%s/internal/codegen/elixirtable/fixedruntime.go":"%s/build/elixir-versioning-nc/fixedruntime.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/elixir-versioning-nc/overlay.json
-	@if SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
+	@if ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
 			$(GO_TEST_RED) -overlay build/elixir-versioning-nc/overlay.json \
 			./internal/codegen/elixirtable/ -count=1 -timeout 600s -run 'TestFixedVersioningOldRefusesNew' \
 			> build/elixir-versioning-nc/log 2>&1; then \
@@ -1621,10 +1621,10 @@ tables-elixir-row-f12: build/elixir-fixedform/.stamp
 # build's hash, and this build's layout under the older entry's hash, each
 # `:layout_malformed`, plus the `:layout_newer` contrast. It runs the leg's own
 # Elixir, so it is gated exactly like tables-elixir-versioning: the corpus skip
-# is a FAILURE under SCHEMA_REQUIRE_CORPUS=1.
+# is a FAILURE under the rule that nothing skips.
 .PHONY: tables-elixir-t13
 tables-elixir-t13:
-	SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
+	ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
 		$(GO_TEST) ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run 'TestFixedRoadmapElixirT13SecondLayoutUnderAHeldHash'
 	@echo 'tables Elixir T13: a second layout under a held hash is layout_malformed, no counter moved'
 
@@ -1632,10 +1632,10 @@ tables-elixir-t13:
 # TestMessageFormBatchElixir reads the `message` rows of the conformance
 # manifest and runs the generated Elixir against the leg's own toolchain, so it
 # is a FUNCTIONAL test: elixirBinary SKIPS when no Elixir is found and only
-# FAILS by name under SCHEMA_REQUIRE_CORPUS — which is the shape
+# FAILS by name under the rule that nothing skips — which is the shape
 # tables-elixir-versioning (above) established: a bare `go test ./...` is green
 # with no toolchain, so the leg's gate is never satisfied by absence. This
-# target is that gate for the batch: it arms SCHEMA_REQUIRE_CORPUS=1, pins the
+# target is that gate for the batch: it arms the rule that nothing skips, pins the
 # one test, and reds on any `--- SKIP` in the -v output.
 #
 # ERL_FLAGS CAPS EACH BEAM'S SCHEDULER THREADS. The batch runs one Elixir VM per
@@ -1647,13 +1647,13 @@ tables-elixir-t13:
 .PHONY: tables-elixir-message-batch
 tables-elixir-message-batch:
 	@mkdir -p build
-	@SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_FLAGS='+S 1:1 +SDcpu 1 +SDio 1' \
+	@ELIXIR=$(ELIXIR_BIN) ERL_FLAGS='+S 1:1 +SDcpu 1 +SDio 1' \
 		$(GO_TEST) ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestMessageFormBatchElixir$$' \
 		> build/tables-elixir-message-batch.log 2>&1; \
 		status=$$?; cat build/tables-elixir-message-batch.log; \
 		if [ $$status -ne 0 ]; then exit $$status; fi
 	@if grep -q -- '--- SKIP' build/tables-elixir-message-batch.log; then \
-		echo "tables-elixir-message-batch: the batch gate SKIPPED a subtest; under SCHEMA_REQUIRE_CORPUS=1 a missing toolchain or corpus is a failure"; \
+		echo "tables-elixir-message-batch: the batch gate SKIPPED a subtest; a missing toolchain or corpus is a failure"; \
 		exit 1; \
 	fi
 	@echo 'tables Elixir message batch: TestMessageFormBatchElixir ran under test-elixir with no subtest skipped'
@@ -1664,17 +1664,17 @@ tables-elixir-message-batch:
 # golden, and answers graph_tree `refused` (its root Scene is a variable table,
 # which the form refuses by name; ruling R13). TestMessageFormConformanceElixir's harness clause
 # runs `./build/conformance-harness run --only elixir` over the built leg; the
-# target arms SCHEMA_REQUIRE_CORPUS=1 and reds on any `--- SKIP`.
+# target arms the rule that nothing skips and reds on any `--- SKIP`.
 .PHONY: tables-elixir-message-conformance
 tables-elixir-message-conformance: build/conformance-harness build-conformance-elixir
 	@mkdir -p build
-	@SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) \
+	@ELIXIR=$(ELIXIR_BIN) \
 		$(GO_TEST) ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestMessageFormConformanceElixir$$' \
 		> build/tables-elixir-message-conformance.log 2>&1; \
 		status=$$?; cat build/tables-elixir-message-conformance.log; \
 		if [ $$status -ne 0 ]; then exit $$status; fi
 	@if grep -q -- '--- SKIP' build/tables-elixir-message-conformance.log; then \
-		echo "tables-elixir-message-conformance: a clause SKIPPED; under SCHEMA_REQUIRE_CORPUS=1 a missing toolchain or build is a failure"; \
+		echo "tables-elixir-message-conformance: a clause SKIPPED; a missing toolchain or build is a failure"; \
 		exit 1; \
 	fi
 	@echo 'tables Elixir message conformance: the driver answers the message surface, graph_tree the one refusal'
@@ -1682,7 +1682,7 @@ test-elixir: tables-elixir-message-conformance
 
 .PHONY: tables-elixir-fixed-roadmap-t12
 tables-elixir-fixed-roadmap-t12: tables-fixedform-corpus
-	SCHEMA_REQUIRE_CORPUS=1 SCHEMA_SLOW=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
+	ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
 		$(GO_TEST) ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run 'TestFixedRoadmapElixirT12OrdinalsArms'
 	@echo 'tables Elixir T12: R27 manifest oracle, union-field-arms and payload-free-arms verified'
 
@@ -1692,13 +1692,13 @@ tables-elixir-fixed-roadmap-t12: tables-fixedform-corpus
 .PHONY: tables-elixir-keyed
 tables-elixir-keyed:
 	@mkdir -p build
-	@SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) ERL_FLAGS='+S 1:1 +SDcpu 1 +SDio 1' \
+	@ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) ERL_FLAGS='+S 1:1 +SDcpu 1 +SDio 1' \
 		$(GO_TEST) ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestKeyedAccessorCoversBothEndsElixir$$' \
 		> build/tables-elixir-keyed.log 2>&1; \
 		status=$$?; cat build/tables-elixir-keyed.log; \
 		if [ $$status -ne 0 ]; then exit $$status; fi
 	@if grep -q -- '--- SKIP' build/tables-elixir-keyed.log; then \
-		echo "tables-elixir-keyed: the keyed array gate SKIPPED; under SCHEMA_REQUIRE_CORPUS=1 a missing toolchain is a failure"; \
+		echo "tables-elixir-keyed: the keyed array gate SKIPPED; a missing toolchain is a failure"; \
 		exit 1; \
 	fi
 	@echo 'tables Elixir keyed: 1-based keyed array accessors refuse None (0) and keys past E.Max on both table and type structs'
@@ -1711,10 +1711,10 @@ tables-elixir-keyed-none-negative-control:
 	@sed $(ELIXIR_KEYED_NONE_SED) \
 		internal/codegen/elixir/elixir.go > build/elixir-keyed-none-nc/elixir.go.txt
 	@cmp -s internal/codegen/elixir/elixir.go build/elixir-keyed-none-nc/elixir.go.txt && \
-		{ echo "NEGATIVE CONTROL FAILED: ELIXIR_KEYED_NONE_SED matched nothing — the emitter moved"; exit 1; } || true
+		{ echo "NEGATIVE CONTROL FAILED: ELIXIR_KEYED_NONE_SED matched nothing — the emitter moved"; exit 1; } || [ $$? -eq 1 ] || exit 1
 	@printf '{"Replace":{"%s/internal/codegen/elixir/elixir.go":"%s/build/elixir-keyed-none-nc/elixir.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/elixir-keyed-none-nc/overlay.json
-	@if SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) ERL_FLAGS='+S 1:1 +SDcpu 1 +SDio 1' \
+	@if ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) ERL_FLAGS='+S 1:1 +SDcpu 1 +SDio 1' \
 			$(GO_TEST_RED) -overlay build/elixir-keyed-none-nc/overlay.json \
 			./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestKeyedAccessorCoversBothEndsElixir$$' \
 			> build/elixir-keyed-none-nc/log 2>&1; then \
@@ -1734,10 +1734,10 @@ tables-elixir-keyed-max-negative-control:
 	@sed $(ELIXIR_KEYED_MAX_SED) \
 		internal/codegen/elixir/elixir.go > build/elixir-keyed-max-nc/elixir.go.txt
 	@cmp -s internal/codegen/elixir/elixir.go build/elixir-keyed-max-nc/elixir.go.txt && \
-		{ echo "NEGATIVE CONTROL FAILED: ELIXIR_KEYED_MAX_SED matched nothing — the emitter moved"; exit 1; } || true
+		{ echo "NEGATIVE CONTROL FAILED: ELIXIR_KEYED_MAX_SED matched nothing — the emitter moved"; exit 1; } || [ $$? -eq 1 ] || exit 1
 	@printf '{"Replace":{"%s/internal/codegen/elixir/elixir.go":"%s/build/elixir-keyed-max-nc/elixir.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/elixir-keyed-max-nc/overlay.json
-	@if SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) ERL_FLAGS='+S 1:1 +SDcpu 1 +SDio 1' \
+	@if ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) ERL_FLAGS='+S 1:1 +SDcpu 1 +SDio 1' \
 			$(GO_TEST_RED) -overlay build/elixir-keyed-max-nc/overlay.json \
 			./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestKeyedAccessorCoversBothEndsElixir$$' \
 			> build/elixir-keyed-max-nc/log 2>&1; then \
@@ -1762,10 +1762,10 @@ tables-elixir-cook-blob-negative-control:
 	@sed $(ELIXIR_COOK_BLOB_SED) \
 		internal/codegen/elixirtable/cookwrite.go > build/elixir-cook-blob-nc/cookwrite.go.txt
 	@cmp -s internal/codegen/elixirtable/cookwrite.go build/elixir-cook-blob-nc/cookwrite.go.txt && \
-		{ echo "NEGATIVE CONTROL FAILED: ELIXIR_COOK_BLOB_SED matched nothing — the emitter moved"; exit 1; } || true
+		{ echo "NEGATIVE CONTROL FAILED: ELIXIR_COOK_BLOB_SED matched nothing — the emitter moved"; exit 1; } || [ $$? -eq 1 ] || exit 1
 	@printf '{"Replace":{"%s/internal/codegen/elixirtable/cookwrite.go":"%s/build/elixir-cook-blob-nc/cookwrite.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/elixir-cook-blob-nc/overlay.json
-	@if SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) ERL_FLAGS='+S 1:1 +SDcpu 1 +SDio 1' \
+	@if ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) ERL_FLAGS='+S 1:1 +SDcpu 1 +SDio 1' \
 			$(GO_TEST_RED) -overlay build/elixir-cook-blob-nc/overlay.json \
 			./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestCookNumbersABlobByItsSlotElixir$$' \
 			> build/elixir-cook-blob-nc/log 2>&1; then \
@@ -1948,7 +1948,7 @@ ELIXIR_DISCARD_NC := build/elixir-discard-nc
 
 .PHONY: tables-elixir-discard tables-elixir-discard-negative-control
 tables-elixir-discard:
-	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) $(GO_TEST) ./internal/codegen/elixirtable/ -count=1 -timeout 600s \
+	ELIXIR=$(ELIXIR_BIN) $(GO_TEST) ./internal/codegen/elixirtable/ -count=1 -timeout 600s \
 		-run '^TestDamageDiscardsTheWholeLoadElixir$$'
 
 tables-elixir-discard-negative-control:
@@ -1958,10 +1958,10 @@ tables-elixir-discard-negative-control:
 		-e 's|        if not first_use_order?(body, ids), do: throw(:wire_damaged)|        _ = body|' \
 		internal/codegen/elixirtable/variableform.go > $(ELIXIR_DISCARD_NC)/variableform.go.txt
 	@cmp -s internal/codegen/elixirtable/variableform.go $(ELIXIR_DISCARD_NC)/variableform.go.txt && \
-		{ echo "NEGATIVE CONTROL: the Elixir discard sabotage patched nothing"; exit 1; } || true
+		{ echo "NEGATIVE CONTROL: the Elixir discard sabotage patched nothing"; exit 1; } || [ $$? -eq 1 ] || exit 1
 	@printf '{"Replace":{"%s/internal/codegen/elixirtable/variableform.go":"%s/$(ELIXIR_DISCARD_NC)/variableform.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(ELIXIR_DISCARD_NC)/overlay.json
-	@if SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) $(GO_TEST_RED) -count=1 -overlay $(ELIXIR_DISCARD_NC)/overlay.json \
+	@if ELIXIR=$(ELIXIR_BIN) $(GO_TEST_RED) -count=1 -overlay $(ELIXIR_DISCARD_NC)/overlay.json \
 			-run '^TestDamageDiscardsTheWholeLoadElixir$$' ./internal/codegen/elixirtable > $(ELIXIR_DISCARD_NC)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the Elixir discard is gone and the gate stayed green"; \
 		cat $(ELIXIR_DISCARD_NC)/log; exit 1; \
@@ -2159,15 +2159,12 @@ test-elixir: cards-elixir-conformance cards-elixir-conformance-negative-control
 # unused variable and an unused alias) through the same strict invocation the
 # gates use and requires the compile to exit NON-ZERO with the warning text. It
 # passes only when the strict compile fails, and fails by name when the compile
-# exits 0. Without a toolchain it skips by name; under SCHEMA_REQUIRE_CORPUS=1
+# exits 0. Without a toolchain it skips by name; under the rule that nothing skips
 # a missing toolchain is a failure, not a skip.
 .PHONY: tables-elixir-warning-control
 tables-elixir-warning-control:
 	@if ! command -v $(lastword $(ELIXIRC)) >/dev/null 2>&1; then \
-		if [ "$$SCHEMA_REQUIRE_CORPUS" = "1" ]; then \
-			echo "tables-elixir-warning-control: elixirc missing and SCHEMA_REQUIRE_CORPUS=1"; exit 1; \
-		fi; \
-		echo "SKIP tables-elixir-warning-control (no elixirc on PATH)"; exit 0; \
+		echo "tables-elixir-warning-control FAILED: no elixirc on PATH"; exit 1; \
 	fi
 	@mkdir -p build/elixir-warning-control
 	@if $(ELIXIRC_STRICT) -o build/elixir-warning-control test/elixir-warning-control/planted.ex > build/elixir-warning-control/log 2>&1; then \
@@ -2246,7 +2243,7 @@ ELIXIR_CONFORMANCE_FRAMING_SED := -e 's~    if count > 4096 or count > div(size 
 ELIXIR_CONFORMANCE_FRAMING_SHARE_SED := -e 's|Enum.reduce(Map.get(parents, idx, \[\]), {pending, ready}, fn|Enum.reduce(Enum.take(Map.get(parents, idx, []), 1), {pending, ready}, fn|'
 .PHONY: conformance-elixir-framing conformance-negative-control-elixir-framing
 conformance-elixir-framing: build/conformance-harness build-conformance-elixir
-	SCHEMA_SLOW=1 $(GO) test -timeout=0 ./internal/codegen/elixirtable -run '^(TestCyclicWireIsDamageElixir|TestCycleSlotKindsElixir)$$'
+	$(GO) test -timeout=0 ./internal/codegen/elixirtable -run '^(TestCyclicWireIsDamageElixir|TestCycleSlotKindsElixir)$$'
 	sh test/conformance/framing/gate elixir test/conformance/elixir/driver build/conformance-elixir-framing
 conformance-negative-control-elixir-framing: build/conformance-harness
 	$(call ELIXIR_CONFORMANCE_CONTROL,build/elixir-conformance-negative-framing,internal/codegen/elixirtable/variableform.go,ELIXIR_CONFORMANCE_FRAMING_SED,framing,report,an id table past 4096 entries and a cyclic wire read as legal)
@@ -2266,11 +2263,11 @@ test-elixir: conformance-elixir-framing conformance-negative-control-elixir-fram
 # whose keys come out of order (past thirty-two keys, and integer keys spelled
 # as strings), reads the cook back through the holder's span and <field>_find,
 # and requires the entries ascending and every key found where it lies. Both
-# run the leg's own toolchain, so SCHEMA_REQUIRE_CORPUS=1 turns a missing one
+# run the leg's own toolchain, so the rule that nothing skips turns a missing one
 # into a failure.
 .PHONY: tables-elixir-cook-map
 tables-elixir-cook-map:
-	SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) $(GO_TEST) ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v \
+	ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) $(GO_TEST) ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v \
 		-run '^(TestCookWriteMapsAndListsElixir|TestCookMapWriterHoldsTheSortElixir)$$'
 
 test-elixir: tables-elixir-cook-map
@@ -2293,10 +2290,10 @@ define ELIXIR_COOK_MAP_CONTROL
 	@rm -rf build/elixir-cook-map-nc-$(1) && mkdir -p build/elixir-cook-map-nc-$(1)
 	@sed $($(2)) internal/codegen/elixirtable/cookwrite.go > build/elixir-cook-map-nc-$(1)/cookwrite.go.txt
 	@cmp -s internal/codegen/elixirtable/cookwrite.go build/elixir-cook-map-nc-$(1)/cookwrite.go.txt && \
-		{ echo "NEGATIVE CONTROL FAILED: $(2) matched nothing — the emitter moved"; exit 1; } || true
+		{ echo "NEGATIVE CONTROL FAILED: $(2) matched nothing — the emitter moved"; exit 1; } || [ $$? -eq 1 ] || exit 1
 	@printf '{"Replace":{"%s/internal/codegen/elixirtable/cookwrite.go":"%s/build/elixir-cook-map-nc-$(1)/cookwrite.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/elixir-cook-map-nc-$(1)/overlay.json
-	@if SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
+	@if ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
 			$(GO_TEST_RED) -overlay build/elixir-cook-map-nc-$(1)/overlay.json ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v \
 			-run '^(TestCookWriteMapsAndListsElixir|TestCookMapWriterHoldsTheSortElixir)$$' \
 			> build/elixir-cook-map-nc-$(1)/log 2>&1; then \
@@ -2322,7 +2319,7 @@ test-elixir: tables-elixir-cook-map-negative-control
 # Void-only unions must compile without unreachable payload alternatives.
 .PHONY: tables-elixir-void-union
 tables-elixir-void-union: toolchain-elixir
-	SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
+	ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
 		sh test/slowgate/proof tables-elixir-void-union 'TestElixirVoidUnionNative' \
 		-count=1 -timeout=0 -run '^TestElixirVoidUnionNative$$' ./internal/codegen/elixirtable/
 
@@ -2332,7 +2329,7 @@ test-elixir: tables-elixir-void-union
 # Framing-driven map, keyed and union extents use shared independent region pins.
 .PHONY: tables-elixir-region-closure
 tables-elixir-region-closure: toolchain-elixir
-	SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
+	ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
 		sh test/slowgate/proof tables-elixir-region-closure 'TestRegionClosureElixir' \
 		-count=1 -timeout=0 -run '^TestRegionClosureElixir$$' ./internal/codegen/elixirtable/
 

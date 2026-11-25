@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -31,7 +30,6 @@ import (
 // This test copies all three and drives the same pipeline by hand, so the
 // reader really is handed BOTH endpoints before it reads the writer's file.
 func TestFixedVersioningWriterBoundCountTwoRemotes(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	corpus := cppFixedCorpus(t)
 	row := "array_bounded_grow"

@@ -12,7 +12,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -82,7 +81,6 @@ func nestedTableUnionCompile(t *testing.T, sources map[string]string, header str
 
 func TestNestedTableUnionDefinitionOrder(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the C++ compiler (the leg's own toolchain)")
 	nestedTableUnionCompile(t, map[string]string{"Probe.schema": `package nesteddef
 
 type Leaf { n int32 }
@@ -101,7 +99,6 @@ table Root { pick L1 }
 
 func TestNestedTableUnionReverseExtentOrder(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the C++ compiler (the leg's own toolchain)")
 	nestedTableUnionCompile(t, map[string]string{"Probe.schema": `package nestedrev
 
 union L1 { a L2 }
@@ -123,7 +120,6 @@ table Root {
 
 func TestNestedTableUnionReverseFixedOrder(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the C++ compiler (the leg's own toolchain)")
 	nestedTableUnionCompile(t, map[string]string{"Probe.schema": `package nestedfix
 
 fixed table Root { pick L2 }
@@ -137,7 +133,6 @@ fixed table Leaf { n int32 }
 
 func TestNestedTableUnionOnlyFileOrder(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the C++ compiler (the leg's own toolchain)")
 	nestedTableUnionCompile(t, map[string]string{
 		"A.schema": `package nestedonly
 

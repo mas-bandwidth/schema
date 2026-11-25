@@ -6,8 +6,6 @@ import (
 	"os"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestPinnedUnknownArmTextElixir pins the fuzz vector unknown_arm_text_nul
@@ -23,7 +21,6 @@ import (
 // (strict_syntax!) removed from the emitted reads, the probe goes red.
 func TestPinnedUnknownArmTextElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 	u := loadUnit(t, "../../../tables/stream/Stream.schema")
 	wire, e := os.ReadFile("../../../testdata/wire/tables/fuzz-vectors/unknown_arm_text_nul.bin")
 	if e != nil {

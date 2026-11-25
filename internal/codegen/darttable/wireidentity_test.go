@@ -6,8 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -23,7 +21,6 @@ import (
 // Its reversed witness is TestWireIdentityMapDartNegativeControl.
 func TestWireIdentityMapDart(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dart")
 	u := buildUnit(t, identityProbeSchema)
 	files, err := Generate(u)
 	if err != nil {
@@ -41,7 +38,6 @@ func TestWireIdentityMapDart(t *testing.T) {
 // ordinary shared node, and requires the same probe red on the cycle alone.
 func TestWireIdentityMapDartNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dart")
 	u := buildUnit(t, identityProbeSchema)
 	files, err := Generate(u)
 	if err != nil {

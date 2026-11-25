@@ -30,7 +30,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/ci/hostilecorpus"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -491,7 +490,6 @@ func TestPythonHostileScorerOutcomes(t *testing.T) {
 // interpreters, and no input crashes or hangs the leg.
 func TestPythonRunsHostileCorpus(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	root := filepath.Join("..", "..", "..")
 	corpusDir := pythonHostileCorpusDir(root)
 	cases := pythonHostileCorpusCases(t, corpusDir)
@@ -502,7 +500,7 @@ func TestPythonRunsHostileCorpus(t *testing.T) {
 	}
 	// THE LEDGER (internal/ci/hostilecorpus/ledger.go): the cases the Python
 	// reader answered against the cases the folder registers, per carrier.
-	summary, err := hostilecorpus.RanEvery(corpusDir, slices.Collect(maps.Keys(answers)), nil)
+	summary, err := hostilecorpus.RanEvery(corpusDir, slices.Collect(maps.Keys(answers)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -527,7 +525,6 @@ func pythonHostileSchemas(cases []pythonHostileCase) []string {
 // the corpus comparison to go red: red with the plant in, green with it out.
 func TestPythonHostileCorpusPlantedReader(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	root := filepath.Join("..", "..", "..")
 	corpusDir := pythonHostileCorpusDir(root)
 	cases := pythonHostileCorpusCases(t, corpusDir)

@@ -16,7 +16,6 @@ import (
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cqualify"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
@@ -135,10 +134,7 @@ func cStrictCorpus(t *testing.T) string {
 		cStrictCorpusDir = cached
 	})
 	if cStrictCorpusErr != nil {
-		if slowtest.CorpusRequired() {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set (or CI runs the slow half) and corpus build failed: %v", cStrictCorpusErr)
-		}
-		t.Skipf("fixedform corpus unavailable: %v", cStrictCorpusErr)
+		t.Fatalf("corpus build failed: %v", cStrictCorpusErr)
 	}
 	return cStrictCorpusDir
 }
@@ -172,7 +168,7 @@ func buildAndRunCFixedFormHarness(t *testing.T, mut *cHarnessMutation) ([]byte, 
 		cc = "cc"
 	}
 	if _, err := exec.LookPath(cc); err != nil {
-		t.Skipf("cc: %v", err)
+		t.Fatalf("cc: %v", err)
 	}
 	dir := t.TempDir()
 	schemas := []string{"FX1", "FX2", "V1", "V2", "UT1", "UT2", "FU1", "FU2"}
@@ -336,7 +332,6 @@ func TestCFixedFormSourcesStrict(t *testing.T) {
 		}
 	})
 
-	slowtest.Gate(t, "functional test: invokes the C compiler (cc) and runs compiled C fixed-form binaries")
 	corpus := cStrictCorpus(t)
 
 	// c/F1, c/F2, c/F3 and the 8 valid-data rows (fixed-arrays, bool-values,
@@ -916,8 +911,6 @@ func TestCFixedFormSourcesStrictNegativeControl(t *testing.T) {
 			t.Fatal("negative control missing_load_call: checkCFixedFormSourcesStrict accepted reader unit without *_fixed_load")
 		}
 	})
-
-	slowtest.Gate(t, "functional negative control: invokes the C compiler (cc) on mutated C fixed-form artifacts")
 
 	// 2. Functional negative control: plant a fault in FX1Table.h disabling out_of_range refusal in the clamp pass.
 	t.Run("plant_fx1_range_refusal", func(t *testing.T) {

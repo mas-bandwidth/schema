@@ -25,7 +25,6 @@ import (
 // generated Go and C++ readers, including the canonical JSON's final newline.
 func TestPythonHandtextReferencesFunctional(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "generated Go and C++ readers and the pinned interpreters")
 	const schema = `package probe
 fixed table Sample {
  number int32
@@ -136,7 +135,6 @@ print(v.to_json().encode().hex())
 // and canonical JSON byte with the generated Go reader of the same input.
 func TestPythonHandtextGoCorpusFunctional(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "generated Go reader and pinned Python interpreters")
 	for _, fixed := range []bool{false, true} {
 		t.Run(fmt.Sprintf("fixed=%t", fixed), func(t *testing.T) {
 			t.Parallel()
@@ -227,7 +225,6 @@ for stem in ('roadmap','layout','kinds','variable'):
 // directly against generated C++ for fixed and variable Document roots.
 func TestPythonHandtextCppCorpusFunctional(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "generated C++ reader and pinned Python interpreters")
 	for _, fixed := range []bool{false, true} {
 		t.Run(fmt.Sprintf("fixed=%t", fixed), func(t *testing.T) {
 			t.Parallel()
@@ -326,7 +323,6 @@ for stem in ('roadmap','layout','kinds','variable'):
 
 func TestPythonHandtextUnboundedReferencesFunctional(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "generated Go and C++ readers and pinned Python interpreters")
 	const schema = `package probe
 table Tags {
  rules []string
@@ -448,7 +444,6 @@ print(Tags.from_text_form(Path('input.sexp').read_bytes()).value.to_json().encod
 
 func TestPythonHandtextFixedCarrierCRCFunctional(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Go and C++ fixed-wire CRC references and pinned Python interpreters")
 	const schema = `package probe
 fixed table Root | integrity = "crc32c" { n int32 }
 `

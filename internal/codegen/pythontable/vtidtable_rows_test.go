@@ -28,7 +28,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -227,10 +226,9 @@ func vtIdtableCase(t *testing.T, repo, name string, mutate func(*testing.T, map[
 // TestPythonVtIdtableRows holds every manifest case of the id-table-wire row
 // to the one read on read-then-write under both pinned interpreters.
 //
-// Functional (python pins): run with SCHEMA_SLOW=1; make test-python does.
+// Functional (python pins).
 func TestPythonVtIdtableRows(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Python interpreters")
 	repo, err := pyrun.RepoRoot()
 	if err != nil {
 		t.Fatal(err)
@@ -252,10 +250,9 @@ func TestPythonVtIdtableRows(t *testing.T) {
 // case; and the variable read skipping kind 31 by its L as the removed escape
 // did, required red on escape_unnamed_field.
 //
-// Functional (python pins): run with SCHEMA_SLOW=1; make test-python does.
+// Functional (python pins).
 func TestPythonVtIdtableRowsNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Python interpreters")
 	repo, err := pyrun.RepoRoot()
 	if err != nil {
 		t.Fatal(err)

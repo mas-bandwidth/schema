@@ -14,7 +14,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/moo/moorun"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
@@ -107,7 +106,6 @@ func runLongNumberProbe(t *testing.T, dir, main string, inputs map[string][]byte
 // value of three million-digit tokens, one at a time, under a deadline on the
 // whole moo process.
 func TestMooJsonLongNumberIsLinearFunctional(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs json.moo's number reader)")
 	t.Parallel()
 	u := longNumberUnit(t)
 	dir := generateUnitDir(t, u, nil)

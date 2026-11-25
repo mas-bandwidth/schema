@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestSquirrelFixedLayoutEntryExtentChecked pins that the emitted fixed loader
@@ -23,11 +22,8 @@ import (
 // the emitted loader. Either spelling of the guard satisfies it — the header
 // extent check (L holds at least one 17-byte entry) or the entry-count check
 // (n at least one) — because the refusal, not one spelling, is what this test
-// pins. The interpreter half runs under SCHEMA_SLOW=1 (slowtest.Enabled) and
-// exercises the same refusal through FixedLoad and FixedLoad; without
-// it the test still passes on the source half alone, so the plain
-// `go test -run TestSquirrelFixedLayoutEntryExtentChecked` invocation is a
-// genuine pass rather than a gated skip.
+// pins. The interpreter half then exercises the same refusal through
+// FixedLoad; it always runs.
 func TestSquirrelFixedLayoutEntryExtentChecked(t *testing.T) {
 	t.Parallel()
 	root, err := sqrun.RepoRoot()
@@ -47,10 +43,6 @@ func TestSquirrelFixedLayoutEntryExtentChecked(t *testing.T) {
 	}
 	checkFixedEntryExtentGuard(t, module, string(modSrc))
 
-	if !slowtest.Enabled() {
-		t.Logf("SCHEMA_SLOW: interpreter cases gated; entry-extent source guard check passed (set SCHEMA_SLOW=1 for the behavioural run)")
-		return
-	}
 	clean := makeFixedCleanFile(t, sqDir, module, recRoot)
 
 	// Header (20 bytes), then the layout: a count and its entries.

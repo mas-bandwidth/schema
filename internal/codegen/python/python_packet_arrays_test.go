@@ -438,7 +438,6 @@ func main() {
 // the slow gate, because it shells out to the Go toolchain.
 func goReference(t *testing.T, u *ir.Unit) []byte {
 	t.Helper()
-	slowtest.Gate(t, "the Go toolchain (it builds the Go reference writer)")
 	gen, err := golang.Generate(u)
 	if err != nil {
 		t.Fatalf("generate the Go reference: %v", err)

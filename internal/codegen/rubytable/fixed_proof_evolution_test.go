@@ -12,7 +12,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/ruby/rubyrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/rubytable"
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -30,25 +29,21 @@ var rubyEvolutionRows = []string{"field-evolution", "retirement", "retired-runti
 
 func TestRubyFixedProofEvolution(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Ruby interpreters and C++ fixed-form corpus")
 	fixedproof.RunEvolutionRows(t, filepath.Join("..", "..", ".."), rubyFixedProofRunner{}, rubyEvolutionRows...)
 }
 
 func TestRubyFixedProofEvolutionValues(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Ruby interpreters and live C++ oracle")
 	fixedproof.RunValueRows(t, rubyFixedProofRunner{}, "field-evolution", "retirement", "retired-runtime", "plan-execution", "interoperability")
 }
 
 func TestRubyFixedProofEvolutionNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Ruby interpreters and live C++ oracle")
 	fixedproof.RunNegativeControlRows(t, rubyFixedProofRunner{}, "field-evolution", "retirement", "retired-runtime", "plan-execution", "interoperability")
 }
 
 func TestRubyFixedProofEvolutionStrict(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "pinned RuboCop and Steep")
 	for _, id := range rubyEvolutionRows {
 		t.Run(id, func(t *testing.T) {
 			t.Parallel()
@@ -74,7 +69,6 @@ func TestRubyFixedProofEvolutionStrict(t *testing.T) {
 
 func TestRubyFixedProofEvolutionNumeric(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Ruby interpreters and live C++ oracle")
 	oldSchema := "package probe\nfixed table T {\n v int16\n f float32\n}\n"
 	newSchema := "package probe\nfixed table T {\n v int32\n f float64\n added int32 = 77\n}\n"
 	setup := "value[0].v = -7; value[0].f = 1.5f;"
@@ -129,7 +123,6 @@ puts "numeric-evolution"
 
 func TestRubyFixedNumericLadders(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Ruby interpreters, Steep strict, and live C++")
 	oldSchema := `package probe
 fixed table T {
  s8 int8
@@ -230,7 +223,6 @@ var rubyFixedKindDecls = []rubyFixedKindDecl{
 
 func TestRubyFixedProofEvolutionKindPairs(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "pinned Ruby interpreters and live C++ kind-pair oracle")
 	type writerArtifact struct {
 		decl  rubyFixedKindDecl
 		unit  *ir.Unit
@@ -336,7 +328,6 @@ end
 
 func TestRubyFixedProofEvolutionKindPairsNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Ruby interpreters and the live C++ reference")
 	from, to := rubyFixedKindDecls[0], rubyFixedKindDecls[1]
 	old := fixedproof.ParseCheckUnit(t, "package probe\nfixed table T {\n lead uint32 = 1\n v "+from.decl+"\n trail uint32 = 2\n}\n")
 	newer := fixedproof.ParseCheckUnit(t, "package probe\nfixed table T {\n lead uint32 = 1\n v "+to.decl+"\n trail uint32 = 2\n}\n")
@@ -368,7 +359,6 @@ File.binwrite("saved", Probe::T.fixed_save(rows))
 
 func TestRubyFixedProofEvolutionHostile(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Ruby interpreters and live C++ oracle")
 	const src = `package probe
 enum E { One, Two }
 type Point { x int32 }

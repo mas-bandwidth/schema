@@ -2,7 +2,6 @@ package rusttable
 
 import (
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -21,7 +20,6 @@ import (
 // deleting the emitter pass keeps hostile_ green and only past_ goes red.
 
 func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	corpus := versionCorpus(t)
 	// TWO OF THE THREE NUMBERS COME FROM THE CORPUS MANIFEST AND THE THIRD

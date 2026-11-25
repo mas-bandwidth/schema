@@ -429,6 +429,15 @@
         "if there is ever any uncertainty about how to read something, and it is weird or not a natural case for somebody sending us well formed data, the answer is always reject."
       ],
       "source": "the maintainer, relayed verbatim by the coordinator from the live session of 2026-11-17: the standing principle that an uncertain or unnatural read is refused, applied to a blob record outside the root's closure named from a declared slot"
+    },
+    {
+      "id": "no-skips",
+      "date": "2026-11-25",
+      "quotes": [
+        "NO SKIPS",
+        "if you don't want to run a test, don't run it (i mean at the root)"
+      ],
+      "source": "the maintainer, live in session, relayed verbatim by the coordinator on 2026-11-25: nothing below the root decides whether a test runs (no t.Skip, no gate, no early return, no || true, no held list); what a skip waited for is the test's tier, which the root selects on by name, and a missing toolchain fails naming what is missing (docs/FORMAT.md, No skipping, ever)"
     }
   ]
 }

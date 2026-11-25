@@ -5,8 +5,6 @@ import (
 	"sort"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // framingVerdicts reads every `framing` row of the conformance manifest
@@ -65,7 +63,6 @@ func framingVerdicts(t *testing.T, edit func(t *testing.T, g *generatedUnit)) (g
 // table that cannot be read whole all refuse the load, as the Go engine's
 // phase one refuses them.
 func TestMooReadStrictAnswersEveryFramingRow(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_load.moo)")
 	t.Parallel()
 	got, want := framingVerdicts(t, nil)
 	if len(want) == 0 {
@@ -88,7 +85,6 @@ func TestMooReadStrictAnswersEveryFramingRow(t *testing.T) {
 // walk's too: the walk bounds framed depth (internal/tablewire/wirecheck.go,
 // ir.TableBinaryMaxDepth), and without it moo reads those rows.
 func TestMooReadStrictWireCheckNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_load.moo)")
 	t.Parallel()
 	got, want := framingVerdicts(t, func(t *testing.T, g *generatedUnit) {
 		removeMooDiscard(t, g, "table_load.moo", wirePhaseOne, wirePhaseOneOff)

@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestLuaJsonLabelRules holds docs/SPEC-TABLES.md §16.7's label rules in the
@@ -19,7 +18,6 @@ import (
 // whole text. The verdict is the contract, so no reason is compared.
 func TestLuaJsonLabelRules(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Lua 5.4 functional probe")
 	repo := filepath.Join("..", "..", "..")
 	data, err := os.ReadFile(filepath.Join(repo, "testdata", "conformance", "tables", "MANIFEST.txt"))
 	if err != nil {

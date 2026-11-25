@@ -6,9 +6,9 @@ RUST_FIXED_ROOTS_CONTROL := build/conformance-rust-fixed-roots-control
 .PHONY: conformance-rust-fixed-roots conformance-rust-fixed-roots-negative-control
 conformance-rust-fixed-roots: build/conformance-harness build/conformance-cpp build/schema_test_cook build/conformance-rust
 	@rm -rf $(RUST_FIXED_ROOTS) && mkdir -p $(RUST_FIXED_ROOTS)
-# loud-ok: the harness's status covers every surface of the leg; this target's verdict is the named row read from the log below, and a missing row is red
+# the harness's status covers every surface of the leg; this target's verdict is the named row read from the log below, and a missing row is red
 	@./build/conformance-harness run --only rust --results $(RUST_FIXED_ROOTS)/results.json \
-		--work $(RUST_FIXED_ROOTS)/work > $(RUST_FIXED_ROOTS)/log 2>&1 || true
+		--work $(RUST_FIXED_ROOTS)/work > $(RUST_FIXED_ROOTS)/log 2>&1; echo "exited $$? (the verdict is read from $(RUST_FIXED_ROOTS)/log below)"
 	sh test/conformance/rust/fixed-roots-verdict $(RUST_FIXED_ROOTS)
 	@echo 'conformance-rust-fixed-roots: fixed values answer text and both cook byte orders'
 
@@ -19,10 +19,10 @@ conformance-rust-fixed-roots-negative-control: build/conformance-harness build/c
 	@printf '#!/bin/sh\nset -eu\n"%s/build/conformance-rust" "$$@"\nif [ "$$2" = json-write ]; then\n  file="$$3/root_full.json"\n  test -s "$$file"\n  sed '\''/^  "version_note":/d'\'' "$$file" > "$$file.tmp"\n  if cmp -s "$$file" "$$file.tmp"; then echo "field-drop control changed nothing" >&2; exit 1; fi\n  mv "$$file.tmp" "$$file"\nfi\n' "$(CURDIR)" > $(RUST_FIXED_ROOTS_CONTROL)/driver
 	@chmod +x $(RUST_FIXED_ROOTS_CONTROL)/driver
 	@printf 'rust %s/driver\n' "$(CURDIR)/$(RUST_FIXED_ROOTS_CONTROL)" > $(RUST_FIXED_ROOTS_CONTROL)/drivers.txt
-# loud-ok: the harness's status covers every surface of the leg; this target's verdict is the named row read from the log below, and a missing row is red
+# the harness's status covers every surface of the leg; this target's verdict is the named row read from the log below, and a missing row is red
 	@./build/conformance-harness run --drivers $(RUST_FIXED_ROOTS_CONTROL)/drivers.txt \
 		--results $(RUST_FIXED_ROOTS_CONTROL)/results.json --work $(RUST_FIXED_ROOTS_CONTROL)/work \
-		> $(RUST_FIXED_ROOTS_CONTROL)/log 2>&1 || true
+		> $(RUST_FIXED_ROOTS_CONTROL)/log 2>&1; echo "exited $$? (the verdict is read from $(RUST_FIXED_ROOTS_CONTROL)/log below)"
 	@if sh test/conformance/rust/fixed-roots-verdict $(RUST_FIXED_ROOTS_CONTROL) > $(RUST_FIXED_ROOTS_CONTROL)/verdict 2>&1; then \
 		cat $(RUST_FIXED_ROOTS_CONTROL)/verdict; echo 'NEGATIVE CONTROL FAILED: field drop passed'; exit 1; fi
 	@grep -qE '^json-read +pass ([1-9][0-9]*)/\1 *$$' $(RUST_FIXED_ROOTS_CONTROL)/log || \

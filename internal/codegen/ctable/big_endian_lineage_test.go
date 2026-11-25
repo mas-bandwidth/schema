@@ -210,14 +210,13 @@ func bigEndianLineageCC(t *testing.T) string {
 		var err error
 		cc, err = exec.LookPath("cc")
 		if err != nil {
-			t.Skip("generated C execution requires cc")
+			t.Fatal("generated C execution requires cc")
 		}
 	}
 	return cc
 }
 
 func TestCBigEndianFormThreeLineageStores(t *testing.T) {
-	slowtest.Gate(t, "the C compiler (cc)")
 	t.Parallel()
 	cc := bigEndianLineageCC(t)
 	ctx, cancel := slowtest.ProbeContext(t)

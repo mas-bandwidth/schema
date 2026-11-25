@@ -7,20 +7,14 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestRustGraphCheckedOverEveryPointer holds both Rust strict readers to the
 // declaration-free graph walk in docs/SPEC-TABLES.md §3.1 and §6.5.
 func TestRustGraphCheckedOverEveryPointer(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "rustc (it builds and runs the generated Rust)")
 	if _, err := exec.LookPath("rustc"); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and rustc is not on PATH: %v", err)
-		}
-		t.Skipf("rustc is not on PATH: %v", err)
+		t.Fatalf("rustc is not on PATH: %v", err)
 	}
 	repo, err := filepath.Abs("../../..")
 	if err != nil {

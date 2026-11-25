@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -413,7 +412,6 @@ func runRustShortBodiesProbe(t *testing.T, edit func(string) string) (string, er
 }
 
 func TestRustShortBodiesAndUnreachableNodesRefuse(t *testing.T) {
-	slowtest.Gate(t, "rustc (short collection bodies and unreachable nodes refuse)")
 	keyedRequireRustc(t)
 	out, err := runRustShortBodiesProbe(t, nil)
 	if err != nil || !strings.Contains(out, "SHORT_BODIES_AND_UNREACHABLE_OK") {
@@ -422,7 +420,6 @@ func TestRustShortBodiesAndUnreachableNodesRefuse(t *testing.T) {
 }
 
 func TestRustShortBodiesAndUnreachableNodesRefuseNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "rustc (negative control for short collection bodies and unreachable nodes)")
 	keyedRequireRustc(t)
 
 	// 1. Sabotage the short-collection-body refusal in the generated artifact.

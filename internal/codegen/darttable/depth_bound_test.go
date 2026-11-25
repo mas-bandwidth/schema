@@ -22,7 +22,6 @@ import (
 // its unknown field through the retaining load and save it back unchanged.
 func TestDartWireDepthBound128(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dart")
 	root, err := filepath.Abs(filepath.Join("..", "..", ".."))
 	if err != nil {
 		t.Fatal(err)

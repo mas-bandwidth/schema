@@ -16,7 +16,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -470,10 +469,9 @@ func pythonVTMapCellFailures(t *testing.T, c pythonVTMapConstruct, mutate func(m
 	return fails
 }
 
-// Functional (python pins): run with SCHEMA_SLOW=1.
+// Functional (python pins).
 func TestPythonVtMaps(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Python interpreters (it runs the emitted table runtime)")
 	for _, c := range pythonVTMapConstructs {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
@@ -501,10 +499,9 @@ func TestPythonVtMaps(t *testing.T) {
 // reader's descending check, and the order the save numbers a map's nodes in —
 // and requires the named construct's cell to go red under each.
 //
-// Functional (python pins): run with SCHEMA_SLOW=1.
+// Functional (python pins).
 func TestPythonVtMapsNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Python interpreters (it runs the emitted table runtime)")
 	plant := func(path, from, to string) func(map[string][]byte) error {
 		return func(files map[string][]byte) error {
 			src := string(files[path])

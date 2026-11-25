@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -22,7 +21,6 @@ import (
 // ascending by UNSIGNED id, and a Java long compares signed, so the search
 // must compare unsigned across the whole table, including both sides of 2^63.
 func TestJavaRetainNamesEveryOwnId(t *testing.T) {
-	slowtest.Gate(t, "the JDK (it compiles and runs the generated Java)")
 	t.Parallel()
 	javac, javaBin := javaToolsRequired(t)
 

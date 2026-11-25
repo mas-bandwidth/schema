@@ -21,7 +21,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/dart"
 	"github.com/mas-bandwidth/schema/v2/internal/fixedvector"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -29,7 +28,6 @@ import (
 
 func TestFixedDeadBytesAreZero(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dart (it runs the generated reader over the dead-byte corpus)")
 	corpus := fixedCorpus(t)
 	dartBin := dartBinary(t)
 	for _, vec := range fixedvector.DeadBytes {
@@ -98,7 +96,6 @@ func runDeadVectorAt(t *testing.T, dartBin, corpus string, vec fixedvector.DeadV
 // files were written by that same declaration, and every vector is one changed
 // dead region of it.
 func runDeadBytesProbe(t *testing.T, dartBin, file, body string) (string, error) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	u := versionSchema(t, "DeadBytes")

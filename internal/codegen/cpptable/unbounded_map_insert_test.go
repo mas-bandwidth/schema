@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -71,16 +70,12 @@ func TestUnboundedStringMapInsertAndFind(t *testing.T) {
 		t.Fatalf("ProbeTable.h missing 64-bit INT32_MAX KeyBound for unbounded map[string]V")
 	}
 
-	slowtest.Gate(t, "a C++17 compiler")
 	cxx := os.Getenv("CXX")
 	if cxx == "" {
 		cxx = "c++"
 	}
 	if _, err := exec.LookPath(cxx); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and %s is not found: %v", cxx, err)
-		}
-		t.Skipf("%s: %v", cxx, err)
+		t.Fatalf("%s is not found: %v", cxx, err)
 	}
 
 	files, err := cpp.Generate(u)

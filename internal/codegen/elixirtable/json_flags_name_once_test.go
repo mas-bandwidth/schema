@@ -8,7 +8,7 @@ package elixirtable
 // The rows are the vectors under testdata/wire/json-flags-name-once; each is
 // compared on the verdict alone with the Go engine's (internal/tabletext), and
 // the engine is first held to the verdict the vectors state. Running the
-// generated Elixir makes this a functional test, gated by slowtest.
+// generated Elixir makes this a functional test.
 
 import (
 	"bufio"
@@ -18,7 +18,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -90,7 +89,6 @@ func elixirJsonFlagsNameOnceOracle(t *testing.T, rows []elixirJsonFlagsNameOnceR
 
 func TestElixirJsonFlagsNameOnce(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 
 	rows := elixirJsonFlagsNameOnceRows(t)
 	want := elixirJsonFlagsNameOnceOracle(t, rows)

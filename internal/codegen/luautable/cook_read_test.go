@@ -14,7 +14,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -228,11 +227,6 @@ func TestLuauCookOpenAgreesWithGo(t *testing.T) {
 			inst := cu.m.New(table)
 			var report tabletext.Report
 			if _, err := tablewire.Decode(cu.m, inst, wire, &report); err != nil {
-				if row.blobShared || strings.HasPrefix(tablewire.RefusalReason(err), "blob_shared") {
-					// a wire-refused row (testdata/conformance/tables/FORMAT.md): the
-					// strict read refuses it, so the tool writes no cook to open
-					t.Skip("layer 4 (luau): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
-				}
 				t.Fatalf("decode %s: %v", row.caseName, err)
 			}
 			cooked, err := tablecook.Cook(cu.m, inst, tablecook.Options{})
@@ -283,9 +277,8 @@ func TestLuauCookOpenAgreesWithGo(t *testing.T) {
 			}
 		})
 	}
-	// Every probe shells out to the pinned Luau interpreter and skips when the
-	// slow half is off, so the floor holds only where the probes ran.
-	if slowtest.Enabled() && (compared == 0 || refused == 0) {
+	// Every probe runs, so the floor always holds.
+	if compared == 0 || refused == 0 {
 		t.Fatalf("comparisons %d, refusals %d", compared, refused)
 	}
 }

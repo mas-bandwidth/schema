@@ -6,8 +6,8 @@
 // WHY. `go test -run <pattern>` that matches no test prints "ok" and exits 0
 // ("[no tests to run]"), so a typo in a pattern (-run Idcap for a test named
 // TestIDCap) looks exactly like a pass. The same goes for a package with no
-// test files, and for a run whose every test skipped itself (SCHEMA_SLOW
-// unset). A pass that executed nothing is not a pass.
+// test files, and for a run where a test skipped itself. A pass that executed
+// nothing is not a pass, and a skipped test is a test that did not run.
 //
 // THE CONTRACT. gotestrun runs `go test -json` with the given arguments,
 // writes go test's own text output through unchanged, and then exits non-zero
@@ -15,18 +15,14 @@
 //
 //   - go test exited non-zero (gotestrun exits with the same status);
 //   - no test ran at all (no "run" event for a test);
-//   - every test that ran was skipped (nothing passed);
 //   - with -each, any package named on the command line ran no passing test;
-//   - any test skipped itself because SCHEMA_SLOW is unset. Each one is named
-//     on its own line, "SKIPPED-SLOW <package> <test>", and the run is red
-//     unless the caller sets SKIP_SLOW_OK=1: a local "pass" over a selection
-//     whose slow tests never ran is not a pass of those tests (2026-11-22).
-//   - any other test skipped itself: nothing is ever skipped, so a skip is
-//     never read as a pass (each is named on its own line, "SKIPPED
-//     <package> <test>").
+//   - any test skipped itself, for any reason. Each one is named on its own
+//     line, "SKIPPED <package> <test>", and the run is red: there is no
+//     opt-out. A test that is not to run is left out at the root (the one
+//     driver's query, tools/schema-test), never skipped below it.
 //
 // THE MAKE RECIPES' go test. Every recipe of the make files runs its go test
-// through this (20 20 12 61 79 80 81 702 706 708 707 705 703 709 33 98 100 204 250 395 398 399 400 704 701GO_TEST) and 20 20 12 61 79 80 81 702 706 708 707 705 703 709 33 98 100 204 250 395 398 399 400 704 701GO_TEST_RED), Makefile): go test's plain
+// through this ($(GO_TEST) and $(GO_TEST_RED), Makefile): go test's plain
 // output prints nothing for a skipped test, so a recipe that ran it bare
 // could read a skip as a pass. -dir runs go test in DIR (the recipe's own
 // directory, which go run -C left). The text written is what go test -v
@@ -52,7 +48,7 @@
 // pass is not a run of the test.
 //
 // A trailing summary line is always printed: "gotestrun: ran N, passed P,
-// skipped S, failed F across K package(s)".
+// failed F across K package(s)", with ", skipped S" after P when S > 0.
 package main
 
 import (
@@ -88,23 +84,16 @@ type tally struct {
 	// perPackage counts the tests that passed, by package, for -each; a
 	// package seen in any event is a key.
 	perPackage map[string]int
-	// slowSkipped names every test ("package test") that skipped with a
-	// SCHEMA_SLOW reason, in the order go test reported the skips.
-	slowSkipped []string
-	// skippedNames names every test ("package test") that skipped.
-	skippedNames []string
+	// skippedTests names every test ("package test") that skipped, in the
+	// order go test reported the skips.
+	skippedTests []string
 }
-
-// slowReason is the reason the skip ledger names "slow" (^SCHEMA_SLOW: ), as
-// go test prints a t.Skip message: "    file_test.go:16: SCHEMA_SLOW: ...".
-var slowReason = regexp.MustCompile(`(?m)^\s*\S+\.go:[0-9]+: SCHEMA_SLOW: `)
 
 // read consumes a `go test -json` stream. Text that is not an event (a
 // toolchain message before the first package) is passed to text unchanged.
 // Output events are written to text as go test would have printed them.
 func read(in io.Reader, text io.Writer) tally {
 	t := tally{perPackage: map[string]int{}}
-	slow := map[string]bool{} // "package test" -> printed a SCHEMA_SLOW reason
 	sc := bufio.NewScanner(in)
 	sc.Buffer(make([]byte, 1<<20), 64<<20)
 	for sc.Scan() {
@@ -121,9 +110,6 @@ func read(in io.Reader, text io.Writer) tally {
 		}
 		if e.Action == "output" {
 			_, _ = io.WriteString(text, markResult(e)) // errdiscard: best-effort mirror of go test output; tally decides the verdict
-			if e.Test != "" && slowReason.MatchString(e.Output) {
-				slow[e.Package+" "+e.Test] = true
-			}
 			continue
 		}
 		if e.Test == "" {
@@ -137,10 +123,7 @@ func read(in io.Reader, text io.Writer) tally {
 			t.perPackage[e.Package]++
 		case "skip":
 			t.skipped++
-			t.skippedNames = append(t.skippedNames, e.Package+" "+e.Test)
-			if slow[e.Package+" "+e.Test] {
-				t.slowSkipped = append(t.slowSkipped, e.Package+" "+e.Test)
-			}
+			t.skippedTests = append(t.skippedTests, e.Package+" "+e.Test)
 		case "fail":
 			t.failed++
 		}
@@ -151,15 +134,18 @@ func read(in io.Reader, text io.Writer) tally {
 // verdict decides a finished run from go test's exit status and the tally. It
 // returns the exit status and, when that is non-zero for a reason gotestrun
 // owns, the reason. A pure function: no clock, no process.
-func verdict(exit int, t tally, each, skipSlowOK bool) (int, string) {
+func verdict(exit int, t tally, each bool) (int, string) {
 	if exit != 0 {
 		return exit, fmt.Sprintf("go test exited %d", exit)
 	}
 	if t.ran == 0 {
 		return 1, "go test exited 0 and ran NO test: the -run pattern (or the package) matched nothing, so this is not a pass"
 	}
+	if t.skipped > 0 {
+		return 1, fmt.Sprintf("SKIPPED: %d test(s) of this selection skipped themselves, so they did not run; a skip is a failure, and a test that is not to run is left out at the root", t.skipped)
+	}
 	if t.passed == 0 {
-		return 1, fmt.Sprintf("go test exited 0 but no test passed: all %d that ran skipped", t.skipped)
+		return 1, "go test exited 0 but no test passed"
 	}
 	if each {
 		var empty []string
@@ -172,13 +158,6 @@ func verdict(exit int, t tally, each, skipSlowOK bool) (int, string) {
 		if len(empty) > 0 {
 			return 1, "-each: no test passed in " + strings.Join(empty, ", ")
 		}
-	}
-	if len(t.slowSkipped) > 0 && !skipSlowOK {
-		return 1, fmt.Sprintf("SKIPPED-SLOW: %d test(s) of this selection skipped because SCHEMA_SLOW is unset, so they were not run: "+
-			"set SCHEMA_SLOW=1 to run them, or SKIP_SLOW_OK=1 to accept the skip by name", len(t.slowSkipped))
-	}
-	if other := t.skipped - len(t.slowSkipped); other > 0 {
-		return 1, fmt.Sprintf("SKIPPED: %d test(s) skipped themselves, and nothing is ever skipped: a skip is no pass", other)
 	}
 	return 0, ""
 }
@@ -295,7 +274,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 			exit = 1
 		}
 	}
-	code, why := verdict(exit, t, each, os.Getenv("SKIP_SLOW_OK") == "1")
+	code, why := verdict(exit, t, each)
 	if red {
 		code, why = redVerdict(exit, t)
 	}
@@ -305,11 +284,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 			why = fmt.Sprintf("go test -list exited %d", exit)
 		}
 	}
-	for _, n := range t.skippedNames {
+	for _, n := range t.skippedTests {
 		_, _ = fmt.Fprintf(stderr, "SKIPPED %s\n", n)
-	}
-	for _, n := range t.slowSkipped {
-		_, _ = fmt.Fprintf(stderr, "SKIPPED-SLOW %s\n", n)
 	}
 	_, _ = fmt.Fprintln(stderr, summary(t))
 	if why != "" {

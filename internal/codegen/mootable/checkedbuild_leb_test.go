@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/moo/moorun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -131,7 +130,6 @@ func checkedMoo(t *testing.T) string {
 // seventh-byte edge to the same refusal in both interpreters: the release
 // build and the checked build, with no raise.
 func TestMooLengthsStayInRangeUnderACheckedBuild(t *testing.T) {
-	slowtest.Gate(t, "moo and a checked moo (it runs the emitted load and values modules)")
 	t.Parallel()
 	g := sceneUnit(t)
 	release, why := moorun.Interpreter()
@@ -165,7 +163,6 @@ func TestMooLengthsStayInRangeUnderACheckedBuild(t *testing.T) {
 // back into an emitted table_values.moo and requires the checked interpreter
 // to raise.
 func TestMooLengthsStayInRangeNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo and a checked moo (it runs the emitted load and values modules)")
 	t.Parallel()
 	g := sceneUnit(t)
 	checked := checkedMoo(t)

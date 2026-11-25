@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -22,7 +21,6 @@ import (
 // paths in the test itself. There is no wall-clock cutoff on the native probe.
 func TestCyclicWireIsDamageElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 	elixirBin := elixirBinary(t)
 	root, err := filepath.Abs(filepath.Join("..", "..", ".."))
 	if err != nil {
@@ -266,7 +264,6 @@ table Node
 // The false guard is deliberately decoded with its stored pointer intact.
 func TestCycleSlotKindsElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 	elixirBin := elixirBinary(t)
 	for _, kind := range []string{"list", "map", "guard", "array", "union"} {
 		t.Run(kind, func(t *testing.T) {

@@ -12,7 +12,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
@@ -320,7 +319,6 @@ int main(void)
 
 func TestGeneratedMessageDepthBoundary(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the c++ compiler (it compiles and runs the generated depth probe)")
 	u, ann, cases := depthBoundaryFixtures(t)
 	out, err := runCppDepthBoundaryProbe(t, u, ann, cases, nil)
 	if err != nil {

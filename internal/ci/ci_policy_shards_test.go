@@ -15,8 +15,15 @@ import (
 )
 
 // ciPolicyRowRe reads one row of ci-fast.yml's ci-policy matrix: the shard
-// name, then its `go test` selection, `-run` or `-skip` of `^(A|B|...)`.
-var ciPolicyRowRe = regexp.MustCompile(`(?m)^          - shard: ([a-z-]+)\n            select: -(run|skip) '\^\(([A-Za-z0-9_|]+)\)'\n`)
+// name, then its selection, `-run '^(A|B|...)'` or the complement `-not
+// '^(A|B|...)'`, which ciPolicyCommand expands to test names at the root (no
+// row skips: docs/rulings.json no-skips, 2026-11-25, "NO SKIPS").
+var ciPolicyRowRe = regexp.MustCompile(`(?m)^          - shard: ([a-z-]+)\n            select: -(run|not) '\^\(([A-Za-z0-9_|]+)\)'\n`)
+
+// ciPolicyCommand is the ci-policy step: the row's selection listed by name
+// (a selection that names nothing, or does not build, stops the step), then
+// go test over those names.
+const ciPolicyCommand = `run: sel=$(go run ./tools/gotestselect ${{ matrix.select }} ./internal/ci) || exit 1; go test -run "$sel" ./internal/ci/`
 
 type ciPolicyRow struct {
 	shard, flag string
@@ -31,19 +38,19 @@ func ciPolicyRows(wf string) []ciPolicyRow {
 	return rows
 }
 
-// ciPolicyShardErrors holds the ci-policy rows complete: exactly one `-skip`
+// ciPolicyShardErrors holds the ci-policy rows complete: exactly one `-not`
 // row, named `rest`, whose prefixes are exactly the union of every `-run`
 // row's, no prefix in two rows, and every test name selected by exactly one
 // row, the way `go test` selects a top-level test.
 func ciPolicyShardErrors(wf string, tests []string) []string {
 	var errs []string
 	policy := yamlJobs(wf)["ci-policy"]
-	if !strings.Contains(policy, "run: go test ${{ matrix.select }} ./internal/ci/") {
-		errs = append(errs, "ci-policy does not run `go test ${{ matrix.select }} ./internal/ci/`")
+	if !strings.Contains(policy, ciPolicyCommand) {
+		errs = append(errs, "ci-policy does not run `"+ciPolicyCommand+"`")
 	}
 	rows := ciPolicyRows(wf)
 	if got := strings.Count(policy, "          - shard: "); got != len(rows) || len(rows) < 2 {
-		errs = append(errs, "ci-policy matrix rows must each be `- shard:` then `select: -run|-skip '^(A|B)'`")
+		errs = append(errs, "ci-policy matrix rows must each be `- shard:` then `select: -run '^(A|B)'` or the complement `select: -not '^(A|B)'`")
 		return errs
 	}
 	var union, skip []string
@@ -57,22 +64,22 @@ func ciPolicyShardErrors(wf string, tests []string) []string {
 				}
 				union = append(union, p)
 			}
-		case "skip":
+		case "not":
 			skips++
 			skip = r.prefixes
 			if r.shard != "rest" {
-				errs = append(errs, "the -skip row must be named rest, not "+r.shard)
+				errs = append(errs, "the -not row must be named rest, not "+r.shard)
 			}
 		}
 	}
 	if skips != 1 {
-		errs = append(errs, "ci-policy needs exactly one -skip row")
+		errs = append(errs, "ci-policy needs exactly one -not row")
 	}
 	a, b := slices.Clone(union), slices.Clone(skip)
 	sort.Strings(a)
 	sort.Strings(b)
 	if !slices.Equal(a, b) {
-		errs = append(errs, "the rest row skips "+strings.Join(b, "|")+" but the -run rows select "+strings.Join(a, "|"))
+		errs = append(errs, "the rest row leaves out "+strings.Join(b, "|")+" but the -run rows select "+strings.Join(a, "|"))
 	}
 	for _, name := range tests {
 		n := 0
@@ -153,13 +160,14 @@ func TestCIPolicyShardsCoverEveryTest(t *testing.T) {
 	if errs := ciPolicyShardErrors(wf, tests); len(errs) != 0 {
 		t.Fatal(strings.Join(errs, "\n"))
 	}
-	// NEGATIVE CONTROLS: a prefix dropped from the rest row's skip (its tests
-	// would run twice), a prefix dropped from a -run row but still skipped
-	// (its tests would run nowhere), and a new test no row names.
+	// NEGATIVE CONTROLS: a prefix dropped from the rest row's -not (its tests
+	// would run twice), a prefix dropped from a -run row but still left out
+	// of rest (its tests would run nowhere), and a new test no row names.
 	for _, mutate := range []struct{ name, from, to string }{
-		{"skip loses a prefix", "-skip '^(TestFastPlan|", "-skip '^("},
+		{"not loses a prefix", "-not '^(TestFastPlan|", "-not '^("},
 		{"run loses a prefix", "-run '^(TestFastPlan|", "-run '^("},
-		{"go test unsharded", "run: go test ${{ matrix.select }} ./internal/ci/", "run: go test ./internal/ci/"},
+		{"go test unsharded", ciPolicyCommand, "run: go test ./internal/ci/"},
+		{"selection failure ignored", "|| exit 1; go test -run \"$sel\" ./internal/ci/", "; go test -run \"$sel\" ./internal/ci/"},
 	} {
 		mutated := strings.Replace(wf, mutate.from, mutate.to, 1)
 		if mutated == wf {

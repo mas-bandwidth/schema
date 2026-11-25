@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 const optionalMapSchema = `package optmap
@@ -37,7 +36,6 @@ print('ok')
 
 func TestPythonOptionalMapFunctional(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Go and C++ wire oracles and both pinned Python interpreters")
 	for _, tc := range []struct{ name, json string }{
 		{"absent", `{}`},
 		{"empty", `{"tags":{}}`},
@@ -86,7 +84,6 @@ print('ok')
 
 func TestPythonOptionalMapRefusalsFunctional(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	u := loadUnit(t, optionalMapSchema)
 	if got := pyKeyedRun(t, u, optionalMapRefusalsProbe, nil, nil); strings.TrimSpace(got) != "ok" {
 		t.Fatal(got)
@@ -95,7 +92,6 @@ func TestPythonOptionalMapRefusalsFunctional(t *testing.T) {
 
 func TestPythonOptionalMapNegativeControlFunctional(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	u := loadUnit(t, optionalMapSchema)
 	emptyWire := wideEngineWire(t, u, "Root", `{"tags":{}}`)
 	nodesWire := wideEngineWire(t, u, "Root", `{"nodes":{"2":{"value":7}}}`)

@@ -7,8 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 const writerContractSchema = `package probe
@@ -134,7 +132,6 @@ func writerContractProgram(g *generatedUnit, mutations []writerMutation) string 
 
 func TestMooWritersRefuseOffContract(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "moo (it runs the emitted table writers)")
 	g := generateFiles(t, map[string]string{"Probe.schema": writerContractSchema})
 	got := strings.Split(g.run(t, writerContractProgram(g, writerMutations), nil), "\n")
 	if len(got) != len(writerMutations) {
@@ -194,7 +191,6 @@ print("bounds read back")
 
 func TestMooWritersRefuseOffContractNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "moo (it runs the emitted table writers)")
 	g := generateFiles(t, map[string]string{"Probe.schema": writerContractSchema})
 	const anchor = "\tif fd.lo ~= nil and (V.rawCmp(x, fd.lo, kw, signed) < 0 or V.rawCmp(x, fd.hi, kw, signed) > 0) then return nil end\n"
 	path := filepath.Join(g.dir, "table_values.moo")

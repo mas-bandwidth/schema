@@ -6,12 +6,10 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func TestPythonVariableIntegrityCRC(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Python variable-table CRC32C")
 	schema := `package crcprobe
  table Root | integrity = "crc32c" { n int32 }
  table Wrapper { inner Root }
@@ -68,7 +66,6 @@ print("ok")
 
 func TestPythonVariableIntegrityCRCNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Python variable-table CRC32C negative controls")
 	schema := `package crcprobe
 table Root | integrity = "crc32c" { n int32 }
 `
@@ -110,7 +107,6 @@ assert v.save() == wire, "CRC writer omitted trailer"
 
 func TestPythonIntegrityEnvelope(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Python CRC envelope form ordering")
 	u := loadUnit(t, "package crcprobe\ntable Root { n int32 }\n")
 	files, err := Generate(u)
 	if err != nil {

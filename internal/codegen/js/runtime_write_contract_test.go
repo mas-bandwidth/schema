@@ -8,7 +8,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -57,7 +56,6 @@ type RuntimeProbe
 	}
 
 	t.Run("wire", func(t *testing.T) {
-		slowtest.Gate(t, "node (runs runtime-tier WriteRuntimeProbe under checked and production)")
 		node := jsFlatNode(t)
 		serializeDir := serializeJSDir(t)
 

@@ -5,7 +5,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -25,7 +24,6 @@ table Holder {
 `
 
 func TestJavaScriptArrayRootConstruct(t *testing.T) {
-	slowtest.Gate(t, "node (it executes array-root JSON values)")
 	t.Parallel()
 	u := unitFrom(t, jsArrayRootSchema)
 	m := tabletext.NewModel(u)

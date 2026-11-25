@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/ruby/rubyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 const rubyCardsFacadeProbe = `# frozen_string_literal: true
@@ -96,7 +95,6 @@ func generateCardsUnit(t *testing.T, root string) map[string][]byte {
 
 func TestRubyCards(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Ruby interpreters (cards facade)")
 	root, err := rubyrun.RepoRoot()
 	if err != nil {
 		t.Fatal(err)
@@ -128,7 +126,6 @@ func TestRubyCards(t *testing.T) {
 
 func TestRubyCardsFacadeNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Ruby interpreters (cards facade negative control)")
 	root, err := rubyrun.RepoRoot()
 	if err != nil {
 		t.Fatal(err)

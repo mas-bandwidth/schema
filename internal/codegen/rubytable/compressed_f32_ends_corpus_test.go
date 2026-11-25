@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/ruby"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // f32EndsDir is the cross-port corpus for A COMPRESSED FLOAT'S RANGE IS HELD
@@ -112,7 +111,6 @@ func TestRubyCompressedF32EndsCorpus(t *testing.T) {
 		}
 	}
 	t.Run("ruby", func(t *testing.T) {
-		slowtest.Gate(t, "both pinned Ruby interpreters")
 		dir := t.TempDir()
 		writeTree(t, dir, files)
 		ins := map[string][]byte{"probe.rb": []byte(probe.String())}

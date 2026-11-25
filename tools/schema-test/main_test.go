@@ -82,6 +82,11 @@ func TestTheCommandExitsNonZeroOnEveryFailRule(t *testing.T) {
 		{[]string{"list", "c.functional.roundtrip.fam.one", "--lang", "go"}, 1, "the filters exclude the full names c.functional.roundtrip.fam.one"},
 		{[]string{"list", "*"}, 0, "3 names"},
 		{[]string{"list", "*", "--update"}, 2, "--update is a run that re-pins goldens"},
+		{[]string{"run", "--lang", "klingon"}, 1, `names what the registry does not have: language "klingon"`},
+		{[]string{"run", "--group", "ready", "--lang", "klingon"}, 1, "--lang klingon is not one of the group's languages"},
+		{[]string{"run", "--group", "ready", "--lang", "go"}, 0, "1 names"},
+		{[]string{"run", "--group", "ready", "--tier", "functional"}, 2, "--group is a whole stored query"},
+		{[]string{"langs", "go"}, 2, "langs takes no names"},
 	} {
 		code, out := cli(t, envFake{}, c.args...)
 		if code != c.code || !strings.Contains(out, c.says) {
@@ -92,7 +97,8 @@ func TestTheCommandExitsNonZeroOnEveryFailRule(t *testing.T) {
 
 // TestAPlantPassesOnlyWhenItsTargetGoesRed: the plant's env breaks the
 // fake's build, so its target fails and the plant passes; a fake that
-// ignores the break leaves the target green, and the plant fails.
+// ignores the break leaves the target green, and the plant fails (a red for
+// another reason is TestAPlantRedForAnotherReasonFails).
 func TestAPlantPassesOnlyWhenItsTargetGoesRed(t *testing.T) {
 	t.Parallel()
 	if code, out := cli(t, envFake{}, "run", "none.functional.plant.fam.one-red"); code != 0 {
@@ -213,6 +219,60 @@ func TestARunThatSelectsNothingStillPrintsItsCounts(t *testing.T) {
 		if code != 1 || !strings.Contains(out, counts) {
 			t.Errorf("%v: exit %d, want 1 with %q:\n%s", args, code, counts, out)
 		}
+	}
+}
+
+// TestLangsIsTheRegistrysList: the CI matrix's language list comes from the
+// registry, with "none" for the language-free tests; --ready keeps the
+// languages whose adapter has landed.
+func TestLangsIsTheRegistrysList(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"langs"}, `["go","c","none"]`},
+		{[]string{"langs", "--ready"}, `["go","none"]`},
+	} {
+		code, out := cli(t, envFake{}, c.args...)
+		if code != 0 || strings.TrimSpace(out) != c.want {
+			t.Errorf("%v: exit %d, %q; want %s", c.args, code, out, c.want)
+		}
+	}
+}
+
+// TestEveryCorpusFamilyHasItsHarness: the corpus adapter answers every
+// per-language family a harness exists for, and a family with none is
+// MISSING (it does not answer it), never routed to a harness that would run
+// something else.
+func TestEveryCorpusFamilyHasItsHarness(t *testing.T) {
+	t.Parallel()
+	a := &harnessAdapter{}
+	for fam, want := range map[string]string{
+		"align-arrays":          "align-arrays",
+		"conformance-wire":      "conformance",
+		"conformance-json-read": "conformance",
+		"name-buildability":     "",
+	} {
+		h, ok := harnessFor(fam)
+		if (want != "") != ok || h.Name != want {
+			t.Errorf("harnessFor(%s) = %q %v, want %q", fam, h.Name, ok, want)
+		}
+		if got := a.Answers(testreg.Test{Family: fam}); got != (want != "") {
+			t.Errorf("Answers(%s) = %v", fam, got)
+		}
+	}
+	if a.Answers(testreg.Test{Family: "conformance-wire", Scope: testreg.LangFree}) {
+		t.Error("the corpus adapter answers a language-free test")
+	}
+	if got := conformance.Build("lua"); len(got) != 1 || strings.Join(got[0], " ") != "make conformance-leg-lua" {
+		t.Errorf("conformance build for lua: %q", got)
+	}
+	// an instance routed here with no harness is an error naming it, before
+	// anything builds or runs
+	inst := testreg.Instance{Full: "go.functional.codegen.name-buildability.x", Lang: "go", Test: testreg.Test{Family: "name-buildability"}}
+	if _, err := a.Run(context.Background(), "go", []testreg.Instance{inst}); err == nil || !strings.Contains(err.Error(), "no harness for family name-buildability") {
+		t.Errorf("an instance with no harness: %v", err)
 	}
 }
 

@@ -17,8 +17,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 type cPointerTargetRow struct {
@@ -65,7 +63,6 @@ func cPointerTargetRows(t *testing.T, dir string) []cPointerTargetRow {
 
 func TestCPointerTargetTypeChecked(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the C compiler (cc)")
 	dir := filepath.Join("..", "..", "..", "testdata", "wire", "pointer-target-type")
 	rows := cPointerTargetRows(t, dir)
 	if len(rows) == 0 {

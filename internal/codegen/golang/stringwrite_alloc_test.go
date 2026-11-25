@@ -25,7 +25,6 @@ func TestGoStringWriteCheckAllocatesNothing(t *testing.T) {
 		t.Errorf("WriteLine checks UTF-8 through a string conversion, not on the bytes:\n%s", body)
 	}
 
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated writer)")
 	const probe = `package line
 
 import (

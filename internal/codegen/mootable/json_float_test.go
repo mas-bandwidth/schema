@@ -10,7 +10,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 )
 
@@ -83,7 +82,6 @@ func float64Corpus(n int) []uint64 {
 // TestMooJsonFloatWriteMatchesEngine: every pattern of the corpus, written by
 // json.moo and by the engine, is the same text byte for byte.
 func TestMooJsonFloatWriteMatchesEngine(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs json.moo's float writer)")
 	t.Parallel()
 	got32, got64, want32, want64 := floatWriteRun(t, nil)
 	compareFloatTexts(t, "float32", got32, want32)
@@ -94,7 +92,6 @@ func TestMooJsonFloatWriteMatchesEngine(t *testing.T) {
 // zero instead of half to even, the mistake I13 names) and requires the same
 // differential to go red on a tie, and only on the writer's text.
 func TestMooJsonFloatWriteNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs a sabotaged json.moo)")
 	t.Parallel()
 	src := string(Runtime()["json.moo"])
 	const tie = "if nextDigit > 5 or (nextDigit == 5 and (rest or lastOdd)) then"
@@ -124,7 +121,6 @@ func TestMooJsonFloatWriteNegativeControl(t *testing.T) {
 // read-back (parse to the nearest double, then narrow) and requires the
 // differential red on exactly the double-round magnitudes and nothing else.
 func TestMooJsonFloat32ReadBackNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs a sabotaged json.moo)")
 	t.Parallel()
 	src := string(Runtime()["json.moo"])
 	broken := src
@@ -300,7 +296,6 @@ func sign(r *rand.Rand) string {
 // the same pattern in json.moo as in the engine at both widths, and a token
 // the engine refuses as an infinity (kind_mismatch) is an infinity in moo.
 func TestMooJsonFloatReadMatchesEngine(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs json.moo's float reader)")
 	t.Parallel()
 	m := oracleModel(t, floatProbeSchema)
 	st := oracleRoot(t, m)
@@ -361,7 +356,6 @@ end
 // rounding every read takes, and requires the read differential to go red:
 // the exact midpoints of the corpus are what see it.
 func TestMooJsonFloatReadNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs a sabotaged json.moo)")
 	t.Parallel()
 	src := string(Runtime()["json.moo"])
 	const tie = "up = c > 0 or (c == 0 and ql % 2 == 1)"

@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster/lobsterrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // A COMPRESSED FLOAT HOLDING -0 IS STORED AS +0 (docs/SPEC-TABLES.md §3.3;
@@ -67,7 +66,6 @@ print("fixed " + nzhex(negzerostore.RowFixedSave([row])))
 // bits, the plain one keeps its sign.
 func TestLobsterCompressedNegZeroStoredAsPlusZero(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Lobster toolchain")
 	g, err := generateLoadUnit(t, []string{writeSchema(t, "Probe", negZeroStoreSchema)})
 	if err != nil {
 		t.Fatal(err)

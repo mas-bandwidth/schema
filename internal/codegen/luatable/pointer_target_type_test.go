@@ -22,7 +22,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
@@ -98,7 +97,6 @@ print(table.concat({
 
 func TestLuaPointerTargetTypeChecked(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Lua 5.4 functional pointer-target-type probe")
 
 	repo, err := filepath.Abs(filepath.Join("..", "..", ".."))
 	if err != nil {

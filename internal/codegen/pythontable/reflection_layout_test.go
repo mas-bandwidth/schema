@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -268,7 +267,6 @@ func reflectionLayoutRun(t *testing.T, u *ir.Unit, files map[string][]byte, floo
 
 func TestPythonReflectionLayout(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	allReflectionUnits := reflectionUnits(t)
 	if len(allReflectionUnits) == 0 {
 		t.Fatal("reflectionUnits(t) is empty: the loop below would check nothing")
@@ -292,7 +290,6 @@ func TestPythonReflectionLayout(t *testing.T) {
 
 func TestPythonReflectionLayoutNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Python interpreter")
 	u := loadUnit(t, reflectionDocsSchema)
 	files, err := Generate(u)
 	if err != nil {

@@ -7,7 +7,7 @@
 #
 # The tests live in internal/ci/schema_lua_runs_hostile_corpus_test.go. The
 # corpus is not on this BASE yet (it arrives through
-# lua-base-forward-merge-schema-go-r), so SCHEMA_REQUIRE_CORPUS=1 makes an
+# lua-base-forward-merge-schema-go-r), so the rule that nothing skips makes an
 # absent corpus a named failure rather than a silent pass.
 .PHONY: schema-lua-runs-hostile-corpus
 schema-lua-runs-hostile-corpus: toolchain-lua
@@ -16,7 +16,7 @@ schema-lua-runs-hostile-corpus: toolchain-lua
 		exit 1; \
 	fi
 	@echo "lua hostile corpus: every verdict and decoded-value digest; a refusal on its verdict alone (Lua $(LUA_VERSION))"
-	GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 SCHEMA_REQUIRE_CORPUS=1 nice -n 19 sh test/slowgate/proof schema-lua-runs-hostile-corpus \
+	GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 nice -n 19 sh test/slowgate/proof schema-lua-runs-hostile-corpus \
 		'TestSchemaLuaRunsHostileCorpus TestSchemaLuaHostileCorpusPlantedReader TestSchemaLuaHostileCorpusLane TestSchemaLuaHostileScorerOutcomes' \
 		./internal/ci -run '^(TestSchemaLuaRunsHostileCorpus|TestSchemaLuaHostileCorpusPlantedReader|TestSchemaLuaHostileCorpusLane|TestSchemaLuaHostileScorerOutcomes)$$' -count=1 -timeout 600s
 
@@ -32,7 +32,7 @@ schema-lua-runs-hostile-corpus-planted: toolchain-lua
 		exit 1; \
 	fi
 	@echo "lua hostile corpus: planted-reader control (Lua $(LUA_VERSION))"
-	GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 SCHEMA_REQUIRE_CORPUS=1 nice -n 19 sh test/slowgate/proof schema-lua-runs-hostile-corpus-planted \
+	GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 nice -n 19 sh test/slowgate/proof schema-lua-runs-hostile-corpus-planted \
 		'TestSchemaLuaHostileCorpusPlantedReader' \
 		./internal/ci -run '^TestSchemaLuaHostileCorpusPlantedReader$$' -count=1 -timeout 600s
 

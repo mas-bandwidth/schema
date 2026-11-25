@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -20,7 +19,6 @@ import (
 // the fixed class's storage (a count beside the array, an ordinal) and write
 // the same bytes the Go engine writes for the same text.
 func TestJsFixedRootJsonReadsIntoTheMessageWriter(t *testing.T) {
-	slowtest.Gate(t, "node (it executes the JSON read into the message writer)")
 	t.Parallel()
 	node := jsNode(t)
 	u := loadSchemaString(t, "fixedjson_message.schema", `package fixedjsonmessage

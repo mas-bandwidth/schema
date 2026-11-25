@@ -8,7 +8,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -57,7 +56,6 @@ func TestJsFlatReadReportsBitsConsumed(t *testing.T) {
 
 	t.Run("wire", func(t *testing.T) {
 		t.Parallel()
-		slowtest.Gate(t, "node (it runs the generated flat codec)")
 		node := jsFlatNode(t)
 		runFlatBitsProbe(t, node, out)
 	})

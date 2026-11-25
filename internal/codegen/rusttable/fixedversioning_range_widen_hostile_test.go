@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/fixedvector"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -23,7 +22,6 @@ import (
 // where a reader bounding by its own wider range would read it; a vector that
 // counts none reads and lands the manifest's `expect=` values.
 func TestFixedVersioningRangeWidenHostile(t *testing.T) {
-	slowtest.Gate(t, "cargo (it runs the generated NEW reader over the forged file)")
 	corpus := versionCorpus(t)
 	repo, err := filepath.Abs("../../..")
 	if err != nil {

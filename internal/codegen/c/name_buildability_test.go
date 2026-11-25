@@ -15,12 +15,10 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/nameemit"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestNameCorpusBuildsC(t *testing.T) {
-	slowtest.Gate(t, "the C compiler and the serialize.c sibling")
 	serialize := os.Getenv("SERIALIZE_C")
 	if serialize == "" {
 		serialize = filepath.Join("..", "..", "..", "..", "serialize.c")
@@ -30,10 +28,7 @@ func TestNameCorpusBuildsC(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(serialize, "serialize.h")); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("serialize.h is not staged at %s (SERIALIZE_C, else the sibling checkout); SCHEMA_REQUIRE_CORPUS says the corpus must build", serialize)
-		}
-		t.Skipf("serialize.h is not staged at %s (SERIALIZE_C, else the sibling checkout)", serialize)
+		t.Fatalf("serialize.h is not staged at %s (SERIALIZE_C, else the sibling checkout)", serialize)
 	}
 	cc := os.Getenv("CC")
 	if cc == "" {

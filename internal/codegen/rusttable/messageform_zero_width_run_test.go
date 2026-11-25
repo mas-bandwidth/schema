@@ -17,9 +17,7 @@ package rusttable
 // pinned, never a time or a reason name (docs/rulings.json, refusal-verdict
 // only).
 //
-// A FUNCTIONAL TEST: it compiles and runs Rust with rustc. It skips by name
-// when rustc is absent and SCHEMA_REQUIRE_CORPUS is unset, and fails by name
-// when SCHEMA_REQUIRE_CORPUS=1, as finitefloat_test.go does. The Go half reads
+// A FUNCTIONAL TEST: it compiles and runs Rust with rustc. It fails by name when rustc is absent, as finitefloat_test.go does. The Go half reads
 // only the generator's output and the oracle: no clock, no socket, no network.
 
 import (
@@ -31,7 +29,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -53,7 +50,6 @@ var messageZeroWidthBatch = []byte{ir.TableWireMessageForm, 0, 0x01}
 
 func TestRustMessageZeroWidthRunIsBounded(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "rustc (it builds and runs the generated Rust)")
 	messageBatchRustc(t)
 
 	u := unitFrom(t, messageZeroWidthSrc)

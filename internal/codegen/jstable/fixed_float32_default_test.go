@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -37,7 +36,6 @@ fixed table Msg
 	if err != nil {
 		t.Fatal(err)
 	}
-	slowtest.Gate(t, "node (it runs the generated fixed form)")
 	node := jsNode(t)
 	dir := t.TempDir()
 	for _, set := range []map[string][]byte{base, files} {

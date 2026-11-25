@@ -15,7 +15,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirreltable"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -99,7 +98,6 @@ func sqSplitMix64(s *uint64) uint64 {
 // and row of every opened handle so no read leaves the buffer.
 func TestSquirrelForgeryFuzz(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "squirrel block and cook forgery walk fuzz")
 	repo := filepath.Join("..", "..", "..")
 	bu := sqForgeryUnit(t, filepath.Join(repo, "tables", "block"))
 	bDir := sqForgeryEmit(t, bu, nil)
@@ -228,7 +226,6 @@ print("ok " + opened + " " + refused + "\n");
 // verifies a truncated block image opens with Used past the buffer.
 func TestSquirrelForgeryFuzzNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "squirrel block forgery fuzz negative control")
 	repo := filepath.Join("..", "..", "..")
 	bu := sqForgeryUnit(t, filepath.Join(repo, "tables", "block"))
 	bDir := sqForgeryEmit(t, bu, func(files map[string][]byte) {

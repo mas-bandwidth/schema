@@ -17,7 +17,7 @@ import (
 // are not round-tripped here. Each remaining unit round-trips through the
 // generated Elixir against the Go oracle: the committed wire loads, re-saves
 // byte for byte, and its committed JSON text round-trips identically.
-// Functional (elixirBinary): run with SCHEMA_REQUIRE_CORPUS=1.
+// Functional (elixirBinary): a missing toolchain fails by name.
 func TestVariableClassBeyondCardConstructsElixir(t *testing.T) {
 	t.Parallel()
 	elixirBin := elixirBinary(t)

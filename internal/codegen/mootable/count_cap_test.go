@@ -7,8 +7,6 @@ import (
 	"slices"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // countCapProbe prints, per input and per builder read path, the answer a
@@ -228,7 +226,6 @@ func countCapUnitRed(t *testing.T, unit string, inputs func(*testing.T) (map[str
 // NaN met before the count is the first refusal in read order and answers
 // non_finite_float; a NaN met after it leaves the count's answer.
 func TestMooCountCapRefusal(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_load.moo)")
 	t.Parallel()
 	for _, b := range countCapRed(t, "", nil, nil) {
 		t.Error(b)
@@ -239,7 +236,6 @@ func TestMooCountCapRefusal(t *testing.T) {
 // on the refusal: retained_cap's store keeps the record captured before the
 // count, and that row and path go red, and only it.
 func TestMooCountCapRefusalNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_retain.moo)")
 	t.Parallel()
 	const from = "\tif v == nil then\n\t\treset_store(store)\n"
 	bad := countCapRed(t, "table_retain.moo", func(src string) string {
@@ -264,7 +260,6 @@ func TestMooCountCapRefusalNegativeControl(t *testing.T) {
 // count whatever the walk met first, so nan_then_over_cap goes red on every
 // builder read path, and only it.
 func TestMooCountCapReadOrderNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_load.moo)")
 	t.Parallel()
 	const from = `wcFail(if wc.nonFinite then "non_finite_float" else "count_over_extent_cap")`
 	bad := countCapRed(t, "table_load.moo", func(src string) string {

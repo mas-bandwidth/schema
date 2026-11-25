@@ -24,8 +24,8 @@ import (
 // the generated Elixir loads the Go oracle's wire clean, saves it back byte
 // for byte, writes the committed JSON byte for byte, and reads that JSON back
 // to the same wire: a card written in one language keeps every field across
-// the hop. It runs the leg's own toolchain, so it is a FUNCTIONAL test and
-// SCHEMA_REQUIRE_CORPUS=1 turns a missing toolchain into a failure.
+// the hop. It runs the leg's own toolchain, so it is a FUNCTIONAL test: a
+// missing toolchain is a failure.
 func TestMapsAndUnionArmsOnTheTableWireElixir(t *testing.T) {
 	t.Parallel()
 	elixirBin := elixirtable.ElixirBinaryForTest(t)

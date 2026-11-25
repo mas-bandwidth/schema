@@ -1107,6 +1107,9 @@ static void test_message_form_mask_width()
     static uint8_t scratch[4096];
     expect_storage_assert( "flags bit past W (variable save)", [&] { (void) tabledemo::LoadoutConfigSave( past, scratch, sizeof( scratch ) ); } );
     expect_storage_assert( "flags bit past W (fixed save)", [&] { (void) tabledemo::LoadoutConfigFixedSave( &past, 1, scratch, sizeof( scratch ) ); } );
+#else
+    printf( "FAIL flags bit past W: asserts are off in this build: this row needs the assert build\n" );
+    failures++;
 #endif
 }
 #endif // TABLES_IN_PART

@@ -63,18 +63,18 @@ build/conformance-harness-goose: $(wildcard test/conformance/harness/*.go) $(GO_
 # compiler, AGAINST THE C++ REFERENCE'S BYTES: the fixed form's suite
 # (internal/codegen/goosetable/fixedform_test.go) reads every fixed root of
 # build/fixedform-corpus and must save it back byte for byte, so the corpus is
-# a prerequisite, and SCHEMA_REQUIRE_CORPUS=1 makes a missing oracle a failure
+# a prerequisite, and the rule that nothing skips makes a missing oracle a failure
 # rather than the skip a bare `go test` takes.
 .PHONY: test-goose test-goose-recipe update-goldens-goose
 test-goose: toolchain-goose build/fixedform-corpus/.stamp
 	$(MAKE) test-goose-recipe
 test-goose-recipe: toolchain-goose build/fixedform-corpus/.stamp
-	SCHEMA_REQUIRE_CORPUS=1 $(GO_TEST) -count=1 -timeout 600s ./internal/codegen/goose/...
-	SCHEMA_REQUIRE_CORPUS=1 $(GO_TEST) -count=1 -timeout 600s ./internal/codegen/goosetable -run '^TestGoose[A-C]'
-	SCHEMA_REQUIRE_CORPUS=1 $(GO_TEST) -count=1 -timeout 600s ./internal/codegen/goosetable -run '^TestGoose[D-E]'
-	SCHEMA_REQUIRE_CORPUS=1 $(GO_TEST) -count=1 -timeout 600s ./internal/codegen/goosetable -run '^TestGooseF'
-	SCHEMA_REQUIRE_CORPUS=1 $(GO_TEST) -count=1 -timeout 600s ./internal/codegen/goosetable -run '^TestGoose[G-P]'
-	SCHEMA_REQUIRE_CORPUS=1 $(GO_TEST) -count=1 -timeout 600s ./internal/codegen/goosetable -skip '^TestGoose[A-C]|^TestGoose[D-E]|^TestGooseF|^TestGoose[G-P]'
+	$(GO_TEST) -count=1 -timeout 600s ./internal/codegen/goose/...
+	$(GO_TEST) -count=1 -timeout 600s ./internal/codegen/goosetable -run '^TestGoose[A-C]'
+	$(GO_TEST) -count=1 -timeout 600s ./internal/codegen/goosetable -run '^TestGoose[D-E]'
+	$(GO_TEST) -count=1 -timeout 600s ./internal/codegen/goosetable -run '^TestGooseF'
+	$(GO_TEST) -count=1 -timeout 600s ./internal/codegen/goosetable -run '^TestGoose[G-P]'
+	sel=$$(go run ./tools/gotestselect -not '^TestGoose[A-C]|^TestGoose[D-E]|^TestGooseF|^TestGoose[G-P]' ./internal/codegen/goosetable) || exit 1; $(GO_TEST) -count=1 -timeout 600s -run "$$sel" ./internal/codegen/goosetable
 update-goldens-goose: ;
 
 # THE FIXED FORM'S NEGATIVE CONTROL (make/negative-controls.json, group
@@ -82,15 +82,15 @@ update-goldens-goose: ;
 # a count past its bound and a capacity one short into the reference's own
 # fixed-form files and requires the Goose reader to refuse each by its reason
 # and the oracle comparison to see the planted byte. It runs under
-# SCHEMA_REQUIRE_CORPUS=1, so a missing corpus is a failure, never a pass.
+# the rule that nothing skips, so a missing corpus is a failure, never a pass.
 \.PHONY: tables-goose-fixedform tables-goose-fixedform-negative-control
 tables-goose-fixedform: build/fixedform-corpus/.stamp
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
-	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 $(GO_TEST) -count=1 -timeout 600s -run "^(TestGooseFixedFormAgreesWithTheByteOracle|TestGooseFixedProofSuiteStrict|TestGooseFixedProofSuiteStrictNegativeControl)$$" ./internal/codegen/goosetable/
+	$(GO_TEST) -count=1 -timeout 600s -run "^(TestGooseFixedFormAgreesWithTheByteOracle|TestGooseFixedProofSuiteStrict|TestGooseFixedProofSuiteStrictNegativeControl)$$" ./internal/codegen/goosetable/
 
 tables-goose-fixedform-negative-control: build/fixedform-corpus/.stamp
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
-	SCHEMA_REQUIRE_CORPUS=1 $(GO_TEST) -count=1 -run '^TestGooseFixedFormNegativeControl$$' ./internal/codegen/goosetable/
+	$(GO_TEST) -count=1 -run '^TestGooseFixedFormNegativeControl$$' ./internal/codegen/goosetable/
 
 # THE TABLE WIRE'S NEGATIVE CONTROL (make/negative-controls.json, group
 # goose): TestGooseTableWireNegativeControl breaks the load's widened count,
@@ -100,7 +100,7 @@ tables-goose-fixedform-negative-control: build/fixedform-corpus/.stamp
 .PHONY: tables-goose-tablewire-negative-control
 tables-goose-tablewire-negative-control:
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
-	SCHEMA_SLOW=1 $(GO_TEST) -count=1 -timeout 600s -run '^TestGooseTableWireNegativeControl$$' ./internal/codegen/goosetable/
+	$(GO_TEST) -count=1 -timeout 600s -run '^TestGooseTableWireNegativeControl$$' ./internal/codegen/goosetable/
 
 # build/conformance-goose is the manifest's units generated for goose, one
 # directory per unit. The schema_leg_goose tag is the target's until the port
@@ -121,8 +121,10 @@ generated/bench/tables/goose/.stamp: ;
 
 TEST_LEGS         += test-goose
 TOOLCHAIN_LEGS    += goose
+CONFORMANCE_LEG_goose := build/conformance-goose
 TOOLCHAIN_PINS_goose := GOOSE
-CONFORMANCE_LEGS  += $(call unless_skipped,goose,build/conformance-goose)
+CONFORMANCE_OF.goose := build/conformance-goose
+CONFORMANCE_LEGS  += $(CONFORMANCE_OF.goose)
 BENCH_TABLES_LEGS += generated/bench/tables/goose/.stamp
 GOLDENS_LEGS      += update-goldens-goose
 
@@ -161,9 +163,9 @@ conformance-negative-control-goose-write-refusal-message: build/conformance-harn
 # cycle check, and require the damaged and the cyclic roots to escape.
 .PHONY: tables-goose-damage tables-goose-damage-negative-control
 tables-goose-damage: goose-toolchain-ready
-	SCHEMA_SLOW=1 $(GO_TEST) -count=1 ./internal/codegen/goosetable -run '^(TestGooseDamagedLoadReturnsNoRoot|TestGooseCyclicWireIsDamage)$$'
+	$(GO_TEST) -count=1 ./internal/codegen/goosetable -run '^(TestGooseDamagedLoadReturnsNoRoot|TestGooseCyclicWireIsDamage)$$'
 tables-goose-damage-negative-control: goose-toolchain-ready
-	SCHEMA_SLOW=1 $(GO_TEST) -count=1 ./internal/codegen/goosetable -run '^(TestGooseDamagedLoadNegativeControl|TestGooseCyclicWireNegativeControl)$$'
+	$(GO_TEST) -count=1 ./internal/codegen/goosetable -run '^(TestGooseDamagedLoadNegativeControl|TestGooseCyclicWireNegativeControl)$$'
 test-goose: tables-goose-damage tables-goose-damage-negative-control
 
 # THE ENUM-KEYED ARRAY's guard (docs/PORTING.md M5): schema_rt::table_keyed
@@ -173,9 +175,9 @@ test-goose: tables-goose-damage tables-goose-damage-negative-control
 # the shift out of the runtime in turn, each turning exactly its own row red.
 .PHONY: tables-goose-keyed tables-goose-keyed-negative-control
 tables-goose-keyed: goose-toolchain-ready
-	SCHEMA_SLOW=1 $(GO_TEST) -count=1 ./internal/codegen/goosetable -run '^TestGooseKeyedAccessorCoversBothEnds$$'
+	$(GO_TEST) -count=1 ./internal/codegen/goosetable -run '^TestGooseKeyedAccessorCoversBothEnds$$'
 tables-goose-keyed-negative-control: goose-toolchain-ready
-	SCHEMA_SLOW=1 $(GO_TEST) -count=1 ./internal/codegen/goosetable -run '^TestGooseKeyedNegativeControl$$'
+	$(GO_TEST) -count=1 ./internal/codegen/goosetable -run '^TestGooseKeyedNegativeControl$$'
 test-goose: tables-goose-keyed tables-goose-keyed-negative-control
 
 # A MAP IS A SORTED ENTRY ARRAY (docs/PORTING.md M19): every writer (the wire
@@ -187,9 +189,9 @@ test-goose: tables-goose-keyed tables-goose-keyed-negative-control
 # own rows red.
 .PHONY: tables-goose-maps tables-goose-maps-negative-controls
 tables-goose-maps: goose-toolchain-ready
-	SCHEMA_SLOW=1 $(GO_TEST) -count=1 ./internal/codegen/goosetable -run '^TestGooseMapsAreSortedEntryArrays$$'
+	$(GO_TEST) -count=1 ./internal/codegen/goosetable -run '^TestGooseMapsAreSortedEntryArrays$$'
 tables-goose-maps-negative-controls: goose-toolchain-ready
-	SCHEMA_SLOW=1 $(GO_TEST) -count=1 ./internal/codegen/goosetable -run '^TestGooseMapsNegativeControl$$'
+	$(GO_TEST) -count=1 ./internal/codegen/goosetable -run '^TestGooseMapsNegativeControl$$'
 test-goose: tables-goose-maps tables-goose-maps-negative-controls
 
 # The variable-table wire-fuzz verdict pipe (§4.2, §6.6): both the plain
@@ -197,9 +199,9 @@ test-goose: tables-goose-maps tables-goose-maps-negative-controls
 # on every mutant's strict read verdict and canonical write-back bytes.
 .PHONY: tables-goose-wire-fuzz-verdict tables-goose-wire-fuzz-verdict-negative-control
 tables-goose-wire-fuzz-verdict: goose-toolchain-ready
-	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 $(GO_TEST) -count=1 ./internal/codegen/goosetable -run '^TestGooseWireFuzzVerdictPipe$$'
+	$(GO_TEST) -count=1 ./internal/codegen/goosetable -run '^TestGooseWireFuzzVerdictPipe$$'
 tables-goose-wire-fuzz-verdict-negative-control: goose-toolchain-ready
-	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 $(GO_TEST) -count=1 ./internal/codegen/goosetable -run '^TestGooseWireFuzzVerdictPipeNegativeControl$$'
+	$(GO_TEST) -count=1 ./internal/codegen/goosetable -run '^TestGooseWireFuzzVerdictPipeNegativeControl$$'
 test-goose: tables-goose-wire-fuzz-verdict tables-goose-wire-fuzz-verdict-negative-control
 
 test-goose: conformance-negative-control-goose-write-refusal conformance-negative-control-goose-write-refusal-fixed conformance-negative-control-goose-write-refusal-message

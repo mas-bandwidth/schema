@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 
@@ -31,7 +30,6 @@ const idTableProbeLoads = 6000
 // (internal/tablewire) on the same bytes.
 func TestJavaIdTableDistinctProbeFunctional(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the JDK (it compiles and runs the generated Java)")
 	javac, javaBin := javaToolsRequired(t)
 
 	u := unitFrom(t, `package probe

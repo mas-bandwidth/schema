@@ -110,17 +110,11 @@ func TestLuaWideFixedPointVariableForm(t *testing.T) {
 			}
 			wire, err := tablewire.Encode(model, inst)
 			if err != nil {
-				if strings.HasPrefix(err.Error(), "invalid_value:") {
-					t.Skip("layer 4 (lua): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
-				}
 				t.Fatalf("the Go engine refused the save: %v", err)
 			}
 			back := model.New(root)
 			var goReport tabletext.Report
 			if ok, err := tablewire.Decode(model, back, wire, &goReport); err != nil || !ok {
-				if tablewire.ReadRefusal(err) {
-					t.Skip("layer 4 (lua): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
-				}
 				t.Fatalf("the Go engine refused its own wire: ok=%v err=%v report=%+v", ok, err, goReport)
 			}
 

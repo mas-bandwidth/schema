@@ -16,7 +16,7 @@ import (
 // counts, and cook_from equals schema cook in both byte orders. A buffer
 // shorter than the measure returns false and writes nothing. An invalid value
 // answers invalid_value.
-// Functional (elixirBinary): run with SCHEMA_REQUIRE_CORPUS=1.
+// Functional (elixirBinary): a missing toolchain fails by name.
 func TestBlockBuildAndCookWriteElixir(t *testing.T) {
 	t.Parallel()
 	elixirBin := elixirBinary(t)

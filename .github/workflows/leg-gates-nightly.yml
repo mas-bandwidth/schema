@@ -193,7 +193,7 @@ jobs:
             cpp)    make -j"$(nproc)" tables-fixedform-plain ;;
             go)     make tables-go-fixed-form tables-go-versioning ;;
             c)      make tables-c-fixedform tables-c-versioning
-                    make tables-c-clean tables-c-format-negative-control SCHEMA_REQUIRE_CLANG_FORMAT=1 CLANG_FORMAT="$CLANG_FORMAT" ;;
+                    make tables-c-clean tables-c-format-negative-control CLANG_FORMAT="$CLANG_FORMAT" ;;
             # the fixed form and the framing-text versioning rows, which drive
             # tables-rust-fixedform again on the build it just made; the probe
             # workspace's half is leg-gate-rust below
@@ -483,7 +483,7 @@ jobs:
           set -euo pipefail
           case "$PART" in
             asan)  make -j"$(nproc)" tables-fixedform-asan ;;
-            clean) make tables-cpp-clean tables-cpp-format-negative-control tables-cpp-warnings-negative-control SCHEMA_REQUIRE_CLANG_FORMAT=1 SCHEMA_REQUIRE_CLANGXX=1 CLANG_FORMAT="$CLANG_FORMAT" ;;
+            clean) make tables-cpp-clean tables-cpp-format-negative-control tables-cpp-warnings-negative-control CLANG_FORMAT="$CLANG_FORMAT" ;;
             *) echo "::error::leg-gate-cpp has no part '$PART'"; exit 1 ;;
           esac
 

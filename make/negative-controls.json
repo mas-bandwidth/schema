@@ -394,7 +394,7 @@
     {
       "name": "base-c-conformance-message",
       "when": "pull-request",
-      "why": "The C message control, alone: a wrong compile-time field slot in the generated C message writer, planted through a Go build overlay, must turn the independent wire comparison (TestCTableMessageSave) red. It pays one SCHEMA_SLOW compiler test build. Split from the old three-target base-c-conformance group, whose control step measured 96 s on both run 42556155793 and run 42554833739 (127-134 s wall), so it no longer pays the complete C driver compile in base-c-conformance before it starts.",
+      "why": "The C message control, alone: a wrong compile-time field slot in the generated C message writer, planted through a Go build overlay, must turn the independent wire comparison (TestCTableMessageSave) red. It pays one compiler test build. Split from the old three-target base-c-conformance group, whose control step measured 96 s on both run 42556155793 and run 42554833739 (127-134 s wall), so it no longer pays the complete C driver compile in base-c-conformance before it starts.",
       "targets": [
         "tables-c-message-negative-control"
       ]
@@ -402,7 +402,7 @@
     {
       "name": "base-c-conformance-retain",
       "when": "pull-request",
-      "why": "The C retention control, alone: a retained field dropped from the emitted C, planted through a Go build overlay, must turn the public round-trip report (TestCTableRetainFile) red. It pays one SCHEMA_SLOW compiler test build. Split from the old three-target base-c-conformance group, whose control step measured 96 s on both run 42556155793 and run 42554833739 (127-134 s wall), so it no longer pays the complete C driver compile in base-c-conformance before it starts.",
+      "why": "The C retention control, alone: a retained field dropped from the emitted C, planted through a Go build overlay, must turn the public round-trip report (TestCTableRetainFile) red. It pays one compiler test build. Split from the old three-target base-c-conformance group, whose control step measured 96 s on both run 42556155793 and run 42554833739 (127-134 s wall), so it no longer pays the complete C driver compile in base-c-conformance before it starts.",
       "targets": [
         "tables-c-retain-negative-control"
       ]
@@ -873,7 +873,7 @@
     {
       "name": "base-c-finite",
       "when": "nightly",
-      "why": "the C leg's FINITE TABLE FLOAT control (docs/SPEC-TABLES.md \u00a73.3, the 2026-10-27 finite rule): it blinds each check in the emitted C in turn (the variable read at both widths, the message read at both widths, the fixed finite pass, the retained unknown, and the file, message, fixed and cook writers) and requires exactly that check's rows of TestCFiniteFloats red and every other row green. Ten small cc builds of one probe unit, about 3 s together on the author's machine (arm64 macOS). Moved nightly: on the fleet its control step measured 99 s on run 42556155793 and 77 s on run 42554833739 (132-133 s wall), on top of the shared setup and build; that 3 s figure was the author's quiet machine and is not the fleet measurement. It is a single SCHEMA_SLOW go test that blinds ten checks in turn, so no grouping can cut it further; it moves to the nightly tier (certify.yml), where it still runs in full, instead of leaving the per-commit leg.",
+      "why": "the C leg's FINITE TABLE FLOAT control (docs/SPEC-TABLES.md \u00a73.3, the 2026-10-27 finite rule): it blinds each check in the emitted C in turn (the variable read at both widths, the message read at both widths, the fixed finite pass, the retained unknown, and the file, message, fixed and cook writers) and requires exactly that check's rows of TestCFiniteFloats red and every other row green. Ten small cc builds of one probe unit, about 3 s together on the author's machine (arm64 macOS). Moved nightly: on the fleet its control step measured 99 s on run 42556155793 and 77 s on run 42554833739 (132-133 s wall), on top of the shared setup and build; that 3 s figure was the author's quiet machine and is not the fleet measurement. It is a single go test that blinds ten checks in turn, so no grouping can cut it further; it moves to the nightly tier (certify.yml), where it still runs in full, instead of leaving the per-commit leg.",
       "targets": [
         "tables-c-finite-float-negative-control"
       ]
@@ -917,7 +917,7 @@
     {
       "name": "wire-fuzz-cpp-cycle",
       "when": "nightly",
-      "why": "the C++ cycle-verdict control (docs/SPEC-TABLES.md \u00a73.1): the verdict is removed from a COPY of arena.go through a Go build overlay and TestPointerNamingAnOpenNodeIsRefusedCPP runs as one SCHEMA_SLOW gate. It is its own row. In CI full run 42608548526 on head 9480e504b this row ran 119 s (11:24:11Z..11:26:10Z), past the 110 s per-commit ceiling and close to the 120 s kill, so it moves to nightly like its linear twin wire-fuzz-cpp-cycle-linear, whose recipe sets go test -timeout 300s and whose probe has no alarm. One control, nightly, where the job timeout is 60 minutes.",
+      "why": "the C++ cycle-verdict control (docs/SPEC-TABLES.md \u00a73.1): the verdict is removed from a COPY of arena.go through a Go build overlay and TestPointerNamingAnOpenNodeIsRefusedCPP runs as one gate. It is its own row. In CI full run 42608548526 on head 9480e504b this row ran 119 s (11:24:11Z..11:26:10Z), past the 110 s per-commit ceiling and close to the 120 s kill, so it moves to nightly like its linear twin wire-fuzz-cpp-cycle-linear, whose recipe sets go test -timeout 300s and whose probe has no alarm. One control, nightly, where the job timeout is 60 minutes.",
       "targets": [
         "tables-cpp-cycle-negative-control"
       ]
@@ -925,7 +925,7 @@
     {
       "name": "wire-fuzz-cpp-cycle-linear",
       "when": "nightly",
-      "why": "the C++ linear-walk control (docs/SPEC-TABLES.md \u00a73.1): a COPY of arena.go enters a shared node once per path, and TestDiamondChainLoadsLinearCPP must go red. The recipe is SCHEMA_SLOW=1 go test -timeout 300s, and cppHeldRun's probe has no alarm, so a walk that does not return holds the job until that timeout. 300 s cannot fit a per-commit row (110 s target, 2-minute kill). Nightly, one control. This card has not timed a completed run; the bound is the timeout written in the recipe.",
+      "why": "the C++ linear-walk control (docs/SPEC-TABLES.md \u00a73.1): a COPY of arena.go enters a shared node once per path, and TestDiamondChainLoadsLinearCPP must go red. The recipe is go test -timeout 300s, and cppHeldRun's probe has no alarm, so a walk that does not return holds the job until that timeout. 300 s cannot fit a per-commit row (110 s target, 2-minute kill). Nightly, one control. This card has not timed a completed run; the bound is the timeout written in the recipe.",
       "targets": [
         "tables-cpp-cycle-linear-negative-control"
       ]
@@ -942,7 +942,7 @@
     {
       "name": "wire-fuzz-cpp-refusal",
       "when": "pull-request",
-      "why": "the C++ retaining-load refusal control (docs/SPEC-TABLES.md \u00a73.3, \u00a76.6): the store reset is removed from a COPY of pointers.go and TestRefusedLoadsHandBackNothingCPP runs as one SCHEMA_SLOW gate. Its own row, so it does not share a job with the fixed-batch twin. Measured 23 s in CI full run 42608548526 (and 63 s in run 42613741359), under the 110 s per-commit ceiling.",
+      "why": "the C++ retaining-load refusal control (docs/SPEC-TABLES.md \u00a73.3, \u00a76.6): the store reset is removed from a COPY of pointers.go and TestRefusedLoadsHandBackNothingCPP runs as one gate. Its own row, so it does not share a job with the fixed-batch twin. Measured 23 s in CI full run 42608548526 (and 63 s in run 42613741359), under the 110 s per-commit ceiling.",
       "targets": [
         "tables-cpp-retain-refusal-negative-control"
       ]
@@ -950,7 +950,7 @@
     {
       "name": "wire-fuzz-cpp-fixed-refusal",
       "when": "pull-request",
-      "why": "the C++ fixed-batch refusal control (docs/SPEC-TABLES.md \u00a74, \u00a76.5): the no_layout reset is removed from a COPY of fixedform.go and TestFixedRefusalHandsBackNothingCPP runs as one SCHEMA_SLOW gate. Its own row, beside the retaining-load twin, so the two compiles do not share a per-commit job. Measured 41 s in CI full run 42608548526 (and 28 s in run 42616597055), under the 110 s per-commit ceiling.",
+      "why": "the C++ fixed-batch refusal control (docs/SPEC-TABLES.md \u00a74, \u00a76.5): the no_layout reset is removed from a COPY of fixedform.go and TestFixedRefusalHandsBackNothingCPP runs as one gate. Its own row, beside the retaining-load twin, so the two compiles do not share a per-commit job. Measured 41 s in CI full run 42608548526 (and 28 s in run 42616597055), under the 110 s per-commit ceiling.",
       "targets": [
         "tables-cpp-fixed-refusal-negative-control"
       ]
@@ -1121,7 +1121,7 @@
     {
       "name": "python-table-maps",
       "when": "pull-request",
-      "why": "the map cell's controls (make/python.mk): a copy of the map runtime loses the writer's ascending sort, then the reader's duplicate check, then its descending check, then the ascending order save.py numbers a map's nodes in, and TestPythonVtMapsNegativeControl must go red under each. One SCHEMA_SLOW go test under both pinned interpreters, the cost of the pin cache restore rather than the run.",
+      "why": "the map cell's controls (make/python.mk): a copy of the map runtime loses the writer's ascending sort, then the reader's duplicate check, then its descending check, then the ascending order save.py numbers a map's nodes in, and TestPythonVtMapsNegativeControl must go red under each. One go test under both pinned interpreters, the cost of the pin cache restore rather than the run.",
       "targets": [
         "python-table-maps-negative-control"
       ],
@@ -1130,7 +1130,7 @@
     {
       "name": "python-vt-widening",
       "when": "pull-request",
-      "why": "the widening cell's controls (make/python.mk): in a COPY of the emitted runtime the kind-pair ladder is turned off, then the field, the union arm and the map widened counters stop counting, and TestPythonVtWideningNegativeControl must go red by name on exactly the rows each fault guards. One SCHEMA_SLOW go test under both pinned interpreters, the cost of the pin cache restore rather than the run.",
+      "why": "the widening cell's controls (make/python.mk): in a COPY of the emitted runtime the kind-pair ladder is turned off, then the field, the union arm and the map widened counters stop counting, and TestPythonVtWideningNegativeControl must go red by name on exactly the rows each fault guards. One go test under both pinned interpreters, the cost of the pin cache restore rather than the run.",
       "targets": [
         "python-vt-widening-negative-control"
       ],
@@ -1139,7 +1139,7 @@
     {
       "name": "moo-tables",
       "when": "pull-request",
-      "why": "the moo port's RETAIN-UNKNOWN controls (docs/PORT-MOO.md), on the moo pin .github/actions/moo restores into dist/moo: the tail write of a kept record planted out of the emitted table_retain.moo (the manifest's retain_round_trip save then differs from its pinned file), and the fixed-class and nil-report refusals planted out (the same call then answers). Each is one go test of internal/codegen/mootable under SCHEMA_SLOW; measured under 1 s of test time each on the studio, so the row is the package's compile plus the pin's cache restore.",
+      "why": "the moo port's RETAIN-UNKNOWN controls (docs/PORT-MOO.md), on the moo pin .github/actions/moo restores into dist/moo: the tail write of a kept record planted out of the emitted table_retain.moo (the manifest's retain_round_trip save then differs from its pinned file), and the fixed-class and nil-report refusals planted out (the same call then answers). Each is one go test of internal/codegen/mootable; measured under 1 s of test time each on the studio, so the row is the package's compile plus the pin's cache restore.",
       "targets": [
         "tables-moo-retain-negative-control",
         "tables-moo-retain-refusal-negative-control",
@@ -1151,7 +1151,7 @@
     {
       "name": "moo-view",
       "when": "pull-request",
-      "why": "the moo unit view's controls (docs/SPEC-TABLES.md \u00a78.7; make/moo-view.mk), on the moo pin .github/actions/moo restores into dist/moo: each breaks one claim of the corpus gate in a copy of the generated text (a printer that leaves a multi-line doc unflattened, a declaration dropped from the registry's tables set, a general arm's arm_offset moved one byte, a field's doc emptied, a field of a type no table reaches given a wire id) and requires the listing red on the line that claim owns. One go test of internal/codegen/mootable under SCHEMA_SLOW; the five subtests measured under 0.4 s each on vision, so the row is the package's compile plus the pin's cache restore.",
+      "why": "the moo unit view's controls (docs/SPEC-TABLES.md \u00a78.7; make/moo-view.mk), on the moo pin .github/actions/moo restores into dist/moo: each breaks one claim of the corpus gate in a copy of the generated text (a printer that leaves a multi-line doc unflattened, a declaration dropped from the registry's tables set, a general arm's arm_offset moved one byte, a field's doc emptied, a field of a type no table reaches given a wire id) and requires the listing red on the line that claim owns. One go test of internal/codegen/mootable; the five subtests measured under 0.4 s each on vision, so the row is the package's compile plus the pin's cache restore.",
       "targets": [
         "tables-moo-view-negative-controls"
       ],
@@ -3426,7 +3426,7 @@
     {
       "name": "python-packet-core",
       "when": "pull-request",
-      "why": "the packet core's control (docs/PORT-PYTHON.md, THE HARNESS): a copy of the generated ShipCreate reader offsets the health field by one and TestPythonPacketCoreNegativeControl must go red on the write-back marker. One SCHEMA_SLOW go test under both pinned interpreters, the cost of the pin cache restore rather than the run.",
+      "why": "the packet core's control (docs/PORT-PYTHON.md, THE HARNESS): a copy of the generated ShipCreate reader offsets the health field by one and TestPythonPacketCoreNegativeControl must go red on the write-back marker. One go test under both pinned interpreters, the cost of the pin cache restore rather than the run.",
       "targets": [
         "python-packet-core-negative-control"
       ],
@@ -3448,7 +3448,7 @@
     {
       "name": "python-packet-floats",
       "when": "pull-request",
-      "why": "the Python packet float kinds' controls (make/python.mk, packet-finite-python-negative-control): the finite rule is removed from a copy of the generated tree once per direction and test/packet-finite/python/main.py must fail exactly the vectors in its read.expected and write.expected, and the compressed float's range check is cut from a copy of a generated validator and the contract probe must name exactly its vectors, and the fixed point read's raw span check is cut from a copy of the bit layer and the probe must name exactly the headroom reads. One SCHEMA_SLOW go test, about a second of interpreter time on a bench; the row's cost is the pin cache restore.",
+      "why": "the Python packet float kinds' controls (make/python.mk, packet-finite-python-negative-control): the finite rule is removed from a copy of the generated tree once per direction and test/packet-finite/python/main.py must fail exactly the vectors in its read.expected and write.expected, and the compressed float's range check is cut from a copy of a generated validator and the contract probe must name exactly its vectors, and the fixed point read's raw span check is cut from a copy of the bit layer and the probe must name exactly the headroom reads. One go test, about a second of interpreter time on a bench; the row's cost is the pin cache restore.",
       "targets": [
         "packet-finite-python-negative-control"
       ],

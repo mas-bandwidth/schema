@@ -16,7 +16,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -160,7 +159,6 @@ func oneWalkUnit(t *testing.T, src, dir string) []byte {
 // 200-record one. The wires and the expected verdicts come from the generated
 // Go of the same pair, never from a number typed here.
 func TestLuauLoadUnknownFieldOneWalk(t *testing.T) {
-	slowtest.Gate(t, "the pinned Luau interpreter and the schema-go oracle")
 	t.Parallel()
 	dir := t.TempDir()
 	oneWalkUnit(t, oneWalkOldSchema, filepath.Join(dir, "old"))

@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 )
 
@@ -16,7 +15,6 @@ import (
 // alone with the Go engine's verdict on the same text.
 func TestElixirJsonFlagsElementsAreStrings(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 	paths, err := filepath.Glob("../../../tables/examples/*.schema")
 	if err != nil || len(paths) == 0 {
 		t.Fatalf("examples schema: %v", err)

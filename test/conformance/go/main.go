@@ -192,9 +192,26 @@ func noText(f line) bool { return len(f) > 5 && f[5] == "no-text" }
 
 var scratch []byte
 
+// plantEnv is the test registry's plant hook into this leg's wire surface
+// (docs/TEST-REGISTRY.md, "Plants"): "wrong-byte:<case>" flips the first byte
+// of that case's written-back wire, a reader that read one byte wrong, and
+// "absent:<case>" answers the case absent, a case dropped from the leg's
+// answers. Each must turn exactly the registry instance
+// go.functional.roundtrip.conformance-wire.<case> red. Unset, it does
+// nothing.
+const plantEnv = "SCHEMA_TEST_PLANT_CONFORMANCE_GO"
+
+func planted(mode, name string) bool { return os.Getenv(plantEnv) == mode+":"+name }
+
 func surfaceWire(lines []line, out string) error {
 	for _, f := range lines {
 		if f[0] != "instance" {
+			continue
+		}
+		if planted("absent", f[1]) {
+			if err := spillAbsent(out, f[1]); err != nil {
+				return err
+			}
 			continue
 		}
 		c := findCodec(f[2], f[3])
@@ -243,6 +260,9 @@ func surfaceWire(lines []line, out string) error {
 		clear(scratch)
 		if c.save(value, scratch) != size {
 			return fmt.Errorf("%s: save did not write measure's answer", f[1])
+		}
+		if planted("wrong-byte", f[1]) && len(scratch) > 0 {
+			scratch[0] ^= 1
 		}
 		if err := spill(out, f[1], scratch); err != nil {
 			return err

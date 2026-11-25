@@ -197,7 +197,7 @@ func runCCountRefusalProbe(t *testing.T, u *ir.Unit, body string) (string, error
 		var err error
 		cc, err = exec.LookPath("cc")
 		if err != nil {
-			t.Skip("generated C execution requires cc")
+			t.Fatal("generated C execution requires cc")
 		}
 	}
 	files, err := cgen.Generate(u)
@@ -249,7 +249,6 @@ int main(void) {
 }
 
 func TestCountRefusalDiscardsTheWholeLoadC(t *testing.T) {
-	slowtest.Gate(t, "the C compiler (cc)")
 	t.Parallel()
 	u := unitFrom(t, cCountRefusalSchema)
 	model := tabletext.NewModel(u)
@@ -418,7 +417,6 @@ table GraphLeaf { a int32 = 0
 `
 
 func TestJsonLeadingBOMBoundaryC(t *testing.T) {
-	slowtest.Gate(t, "the C compiler (cc)")
 	t.Parallel()
 	u := unitFrom(t, cBomBoundarySchema)
 	model := tabletext.NewModel(u)

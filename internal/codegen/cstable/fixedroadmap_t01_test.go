@@ -2,7 +2,6 @@ package cstable
 
 import (
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -365,7 +364,6 @@ func t01Probes() []csVersionProbe {
 }
 
 func t01Run(t *testing.T, corpus string) ([]byte, error) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	t01Once.Do(func() {

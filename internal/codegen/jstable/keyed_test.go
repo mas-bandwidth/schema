@@ -7,8 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -35,7 +33,6 @@ import (
 // failure.
 func TestKeyedArrayAccessorsJavaScript(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "node (it runs the generated modules)")
 	node := jsNode(t)
 	work := t.TempDir()
 

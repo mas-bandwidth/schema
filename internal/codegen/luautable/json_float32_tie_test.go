@@ -13,7 +13,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -232,7 +231,6 @@ end
 // 100 significant digits (docs/SPEC-TABLES.md §16.2 Numbers).
 func TestLuauJsonFloat32TiesExact(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter and the schema-go oracle")
 	cases := jsonFloat32TieCases()
 	path := filepath.Join(t.TempDir(), "Tie.schema")
 	if err := os.WriteFile(path, []byte(jsonFloat32TieSchema), 0o644); err != nil {

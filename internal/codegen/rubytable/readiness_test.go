@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/ruby/rubyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 var rubyReadinessFiles = []string{
@@ -136,9 +135,6 @@ func TestRubyReadiness(t *testing.T) {
 	if got := rubyReadinessFindings(files); len(got) != 0 {
 		t.Fatalf("ruby readiness findings: %v", got)
 	}
-	if !slowtest.Enabled() {
-		return
-	}
 	unit := rubyBenchLegUnit(t, root)
 	for _, interp := range []string{rubyrun.Interpreter(t), rubyrun.Floor(t)} {
 		stdout, stderr, gerr := rubyBenchLegGate(t, root, interp, unit, "")
@@ -183,9 +179,6 @@ func TestRubyReadinessNegativeControl(t *testing.T) {
 		if got := rubyReadinessFindings(planted); !slices.Contains(got, plant.finding) {
 			t.Errorf("NEGATIVE CONTROL FAILED: planted %s in %s not caught (got %v)", plant.finding, plant.file, got)
 		}
-	}
-	if !slowtest.Enabled() {
-		return
 	}
 	unit := rubyBenchLegUnit(t, root)
 	interp := rubyrun.Interpreter(t)

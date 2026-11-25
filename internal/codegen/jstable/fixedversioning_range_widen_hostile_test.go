@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/fixedvector"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // THE WRITER'S RANGE IS THE BOUND (docs/FIXED-FORM-ALGORITHM.md §4.5), the
@@ -21,7 +20,6 @@ import (
 // value is compared as its decimal text, so a uint64 held as a BigInt and an
 // int32 held as a Number are spelled alike.
 func TestFixedVersioningRangeWidenHostile(t *testing.T) {
-	slowtest.Gate(t, "node (it runs the generated NEW reader over the forged file)")
 	corpus := jsFixedCorpus(t)
 	node := jsNode(t)
 	for _, vec := range fixedvector.WriterRange {

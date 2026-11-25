@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -377,7 +376,6 @@ func runMooBlockForgery(t *testing.T, seed uint64, n int, edit func(map[string][
 	return res
 }
 func TestMooBlockForgeryFuzz(t *testing.T) {
-	slowtest.Gate(t, mooBlockForgeryCost)
 	seed, n := mooBlockForgeryKnobs(t)
 	res := runMooBlockForgery(t, seed, n, nil)
 	t.Log(res.summary())
@@ -389,7 +387,6 @@ func TestMooBlockForgeryFuzz(t *testing.T) {
 	}
 }
 func TestMooBlockForgeryFuzzNegativeControl(t *testing.T) {
-	slowtest.Gate(t, mooBlockForgeryCost)
 	seed, n := mooBlockForgeryKnobs(t)
 	res := runMooBlockForgery(t, seed, n, func(files map[string][]byte) {
 		name := "table_blockread.moo"

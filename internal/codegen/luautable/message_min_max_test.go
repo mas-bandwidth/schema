@@ -20,7 +20,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
@@ -155,7 +154,6 @@ func minMaxArrayShape(t *testing.T, ann []byte) int {
 // while an entry whose min equals max is accepted and a batch naming it loads.
 func TestLuauMessageAnnounceMinAboveMax(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter and the generated Go oracle")
 	dir := t.TempDir()
 	schemaPath := filepath.Join(dir, "Carton.schema")
 	if err := os.WriteFile(schemaPath, []byte(minMaxSchema), 0o644); err != nil {

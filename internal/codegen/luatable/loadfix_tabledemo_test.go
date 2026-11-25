@@ -17,7 +17,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -185,7 +184,6 @@ func loadFixTabledemoEngine(t *testing.T, m *tabletext.Model, def *ir.Struct, da
 // (docs/SPEC-TABLES.md §3, §4).
 func TestLuaLoadTabledemoMalformedAgreesWithTheEngine(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, loadFixTabledemoCost)
 	repo := filepath.Join("..", "..", "..")
 	units := manifestUnits(t, filepath.Join(repo, "testdata", "conformance", "tables", "MANIFEST.txt"))
 	for _, c := range loadFixTabledemoCases {

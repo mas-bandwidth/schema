@@ -5,8 +5,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestMooMessageLoadCapacityFixture reads the committed capacity fixture,
@@ -21,7 +19,6 @@ import (
 // (§6.5), so this row runs here, in the leg's own tests, never in the shared
 // suites.
 func TestMooMessageLoadCapacityFixture(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_message.moo)")
 	t.Parallel()
 	fixture, err := os.ReadFile(filepath.Join("testdata", "batch_capacity_two.bin"))
 	if err != nil {

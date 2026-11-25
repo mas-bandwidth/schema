@@ -5,11 +5,7 @@ package rusttable
 // `rust/P2`, `rust/R27`, `rust/P3`, `rust/P4`; docs/SPEC-TABLES.md §3.4 and
 // docs/FIXED-FORM-ALGORITHM.md §4.1, §4.4, §5.3, §5.7, §5.9, §7).
 //
-// Every subtest here is gated on the C++ reference's byte oracle in
-// `build/fixedform-corpus` (built by `make tables-fixedform-corpus`): when the
-// corpus directory is absent and SCHEMA_REQUIRE_CORPUS is unset, `versionCorpus`
-// skips by name; when SCHEMA_REQUIRE_CORPUS=1 (as under `make
-// tables-rust-versioning`), a missing corpus or toolchain fails by name.
+// Every subtest here needs the C++ reference's byte oracle in `build/fixedform-corpus` (built by `make tables-fixedform-corpus`): a missing corpus or toolchain fails by name.
 //
 // `rust/F7` ("malformed, under 20 bytes") is already pinned by
 // `TestFixedFormUnder20Bytes` in `fixedform_under_20_bytes_test.go` and is
@@ -27,7 +23,6 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
@@ -65,18 +60,13 @@ func TestFixedRoadmapRustT12FramingText(t *testing.T) {
 	})
 }
 
-// t12RequireRustToolchain gates the functional probe on rustc and cargo using
-// the same SCHEMA_REQUIRE_CORPUS contract as `versionCorpus`.
+// t12RequireRustToolchain fails the functional probe by name without rustc and cargo, as `versionCorpus` does without the corpus.
 func t12RequireRustToolchain(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	for _, bin := range []string{"rustc", "cargo"} {
 		if _, err := exec.LookPath(bin); err != nil {
-			if slowtest.CorpusRequired() {
-				t.Fatalf("SCHEMA_REQUIRE_CORPUS=1, and %s is not on PATH: %v", bin, err)
-			}
-			t.Skipf("%s is not on PATH: %v", bin, err)
+			t.Fatalf("%s is not on PATH: %v", bin, err)
 		}
 	}
 }
@@ -395,7 +385,6 @@ var (
 )
 
 func t12FixedFormRun(t *testing.T, corpus string) string {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	_ = corpus
@@ -432,7 +421,6 @@ func t12ProbeRun(t *testing.T, corpus string) string {
 }
 
 func t12BuildAndRunProbe(t *testing.T, corpus string) (string, error) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	uOld := versionUnit(t, versionSchema(t, "VOLD_field_append"))

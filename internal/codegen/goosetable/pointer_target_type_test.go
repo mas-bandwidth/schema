@@ -22,7 +22,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 type pointerTargetCase struct {
@@ -115,7 +114,6 @@ type pointerTargetAnswer struct {
 
 func TestGoosePointerTargetTypeChecked(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Goose toolchain (it builds and runs the generated reader)")
 
 	rows := pointerTargetCases(t)
 	byUnit := map[string][]pointerTargetCase{}

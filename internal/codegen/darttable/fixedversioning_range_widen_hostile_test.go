@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/fixedvector"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // THE WRITER'S RANGE IS THE BOUND (docs/FIXED-FORM-ALGORITHM.md §4.5), the
@@ -17,7 +16,6 @@ import (
 // unsigned, so it lands the max). The answer is the manifest's `expect=`, which
 // is what the C++ reference's own NEW reader landed from the same bytes.
 func TestFixedVersioningRangeWidenHostile(t *testing.T) {
-	slowtest.Gate(t, "dart (it runs the generated NEW reader over the forged file)")
 	corpus := fixedCorpus(t)
 	dartBin := dartBinary(t)
 	for _, vec := range fixedvector.WriterRange {

@@ -21,7 +21,7 @@
 
 # The tests shell out to the pinned interpreter, so they sit behind
 # slowtest.Gate; both targets run through test/slowgate/proof, which sets
-# SCHEMA_SLOW=1, refuses a gate skip and requires each named --- PASS, so a
+# the rule that nothing skips, refuses a gate skip and requires each named --- PASS, so a
 # skipped run can never pass as green.
 schema-moo-runs-hostile-corpus: toolchain-moo
 	sh test/slowgate/proof schema-moo-runs-hostile-corpus \

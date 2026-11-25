@@ -7,8 +7,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // rubyCorpusRows reads one committed cases.tsv: every row that is not blank
@@ -45,7 +43,7 @@ const rubyCompressedEndsDir = "testdata/float32-ends"
 // leg: a float32 field's declared range is compared at float32. The pure half
 // reads the emitted descriptors, which must carry the float32 ends of the
 // range (the runtime rounds the value to float32 before it compares); the
-// gated half runs every row of the committed corpus on both pins, on the
+// functional half runs every row of the committed corpus on both pins, on the
 // variable save and load, the JSON write and read, a JSON literal read and the
 // message save and load: the declared top and a value rounding into it held
 // at the float32 0.1f, a value past it refused, a compressed -0 landing as +0,
@@ -109,7 +107,6 @@ func TestRubyCompressedFloatFloat32Ends(t *testing.T) {
 	}
 
 	t.Run("ruby", func(t *testing.T) {
-		slowtest.Gate(t, "both pinned Ruby interpreters")
 		dir := t.TempDir()
 		writeTree(t, dir, files)
 		out := runBothRubyPins(t, dir, "probe.rb", map[string][]byte{"probe.rb": []byte(probe.String())})

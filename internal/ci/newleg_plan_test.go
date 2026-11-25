@@ -57,8 +57,8 @@ func TestFastPlanSelectsNewLegScaffold(t *testing.T) {
 	}
 	_, job, _ := strings.Cut(wf, "  newleg-scaffold:\n")
 	job, _, _ = strings.Cut(job, "\n\n  # ")
-	if !strings.Contains(job, "SCHEMA_SLOW: '1'") || !strings.Contains(job, "timeout-minutes: 2") {
-		t.Errorf("newleg-scaffold must set SCHEMA_SLOW=1 and keep the two-minute bound:\n%s", job)
+	if !strings.Contains(job, "timeout-minutes: 2") {
+		t.Errorf("newleg-scaffold must keep the two-minute bound:\n%s", job)
 	}
 
 	raw, err := os.ReadFile(filepath.Join("testdata", "newleg-plan.json"))

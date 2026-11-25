@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -121,7 +120,6 @@ if Process.get(:failed), do: System.halt(1), else: IO.puts("ok: the compressed r
 
 func TestElixirCompressedRangeWriteCorpus(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 	elixirBin := elixirBinary(t)
 	elixirc := elixircBinary(t, elixirBin)
 	dir, err := filepath.Abs(rangeWriteCorpusDir)

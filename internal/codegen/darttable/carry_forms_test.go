@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -19,7 +18,6 @@ import (
 )
 
 func TestDartDeclaredFormsNative(t *testing.T) {
-	slowtest.Gate(t, "dart")
 	for mask := range 8 {
 		t.Run(fmt.Sprint(mask), func(t *testing.T) {
 			forms := "wire"
@@ -134,7 +132,6 @@ func runFormsProbe(t *testing.T, files map[string][]byte, source string) {
 }
 
 func TestDartDeclaredFormsMixedClosure(t *testing.T) {
-	slowtest.Gate(t, "dart")
 	u := unitFrom(t, `package probe
  table Child | forms = "wire" { value int32 }
  table Root | forms = "wire,json,cook" { child Child

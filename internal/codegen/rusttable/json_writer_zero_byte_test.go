@@ -6,14 +6,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestRustJsonWriterRefusesZeroByte(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "rustc (JSON zero-byte writer probe)")
 	keyedRequireRustc(t)
 
 	u := unitFrom(t, `package probe

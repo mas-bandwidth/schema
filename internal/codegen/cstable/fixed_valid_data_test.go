@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -92,7 +91,6 @@ var (
 )
 
 func TestCSharpFixedValidDataRows(t *testing.T) {
-	requireValidDataSlow(t)
 	checks := validDataChecksSource(t)
 	if strings.Count(checks, validDataBoolToken) != 1 {
 		t.Fatalf("the bool check's expected-value token appears %d times, want 1", strings.Count(checks, validDataBoolToken))
@@ -114,7 +112,6 @@ func TestCSharpFixedValidDataRows(t *testing.T) {
 }
 
 func TestCSharpFixedValidDataRowsNegativeControl(t *testing.T) {
-	requireValidDataSlow(t)
 	checks := validDataChecksSource(t)
 	if strings.Count(checks, validDataBoolToken) != 1 {
 		t.Fatalf("negative control token appears %d times, want 1", strings.Count(checks, validDataBoolToken))
@@ -132,19 +129,6 @@ func TestCSharpFixedValidDataRowsNegativeControl(t *testing.T) {
 	out, code := runCSharpValidData(t, faulted)
 	if code == 0 || strings.Contains(out, "VALID-DATA PASS") || !strings.Contains(out, "FAILED: bool-values/cs/valid-data") {
 		t.Fatalf("negative control stayed green, exit %d\n%s", code, out)
-	}
-}
-
-func requireValidDataSlow(t *testing.T) {
-	t.Helper()
-	slowtest.Gate(t, "dotnet (the C# toolchain)")
-	slow := os.Getenv("SCHEMA_SLOW") != ""
-	required := os.Getenv("SCHEMA_REQUIRE_CORPUS") != ""
-	if !slow && required {
-		t.Fatal("SCHEMA_REQUIRE_CORPUS is set and SCHEMA_SLOW is not")
-	}
-	if !slow {
-		t.Skip("SCHEMA_SLOW is unset")
 	}
 }
 

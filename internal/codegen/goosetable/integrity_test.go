@@ -34,7 +34,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 const (
@@ -207,7 +206,6 @@ func integrityProbe(t *testing.T, override map[string][]byte) []string {
 }
 
 func TestGooseIntegrityCRC32C(t *testing.T) {
-	slowtest.Gate(t, "the Goose toolchain (it builds an integrity probe with goose build -O2)")
 	if red := integrityProbe(t, nil); len(red) > 0 {
 		t.Fatalf("the integrity probe is red:\n%s", strings.Join(red, "\n"))
 	}
@@ -217,7 +215,6 @@ func TestGooseIntegrityCRC32C(t *testing.T) {
 // polynomial (CRC-32's 0xEDB88320) and requires every known answer and every
 // row that reads a trailer red.
 func TestGooseIntegrityCRC32CNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "the Goose toolchain (it builds an integrity probe with goose build -O2)")
 	ieee := crc32.MakeTable(crc32.IEEE)
 	var table strings.Builder
 	table.WriteString("let Crc32cTable: u32[256] = [")
@@ -260,7 +257,6 @@ func sabotageCrcTable(t *testing.T, decl string) string {
 // each root twice, as a builder entry and as a builder+retain entry: the
 // harness's --builder and --builder --retain profiles in one process.
 func TestGooseIntegrityWireFuzzLeg(t *testing.T) {
-	slowtest.Gate(t, "the Goose toolchain (it builds and runs the wire-fuzz leg)")
 	files := integrityFiles(t, nil)
 	delete(files, "main.goose")
 	addFileOnlyWireFuzzGlue(files)

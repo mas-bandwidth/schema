@@ -3,7 +3,6 @@ package lobstertable_test
 import (
 	"fmt"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster/lobsterrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -44,7 +43,6 @@ var positionCases = []struct{ name, number, quoted string }{{"plain", `{"plain":
 
 func TestLobsterJsonWideNumberPositions(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Lobster")
 	p := filepath.Join(t.TempDir(), "Probe.schema")
 	if err := os.WriteFile(p, []byte(positionSchema), 0644); err != nil {
 		t.Fatal(err)

@@ -3,7 +3,6 @@ package compiler
 import (
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -27,7 +26,6 @@ type UnityHarnessForTest struct{ h *unityTableHarness }
 
 // NewUnityHarnessForTest is newUnityTableHarness.
 func NewUnityHarnessForTest(t *testing.T, dotnet string) UnityHarnessForTest {
-	slowtest.Gate(t, "dotnet")
 	return UnityHarnessForTest{newUnityTableHarness(t, dotnet)}
 }
 

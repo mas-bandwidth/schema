@@ -9,14 +9,12 @@ import (
 	"testing"
 
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestCOneSidedIntegerRange(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the C compiler")
 	src := "package probe\n\n" +
 		"fixed table FixedOneSided\n{\n" +
 		"    a int64 | min = 0\n" +
@@ -284,7 +282,6 @@ func cMapJsonRun(t *testing.T, cc, probe string, revert bool) (string, error) {
 
 func TestCFirstJSONMapEntry(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the C compiler")
 	cc, err := exec.LookPath("cc")
 	if err != nil {
 		t.Fatal(err)
@@ -296,10 +293,9 @@ func TestCFirstJSONMapEntry(t *testing.T) {
 
 func TestCOptionalMapJsonNullResetsToEmpty(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the C compiler")
 	cc, err := exec.LookPath("cc")
 	if err != nil {
-		t.Skip("the generated C is compiled and run: no cc on PATH")
+		t.Fatal("the generated C is compiled and run: no cc on PATH")
 	}
 	if out, err := cMapJsonRun(t, cc, cMapJsonNullProbe, false); err != nil {
 		t.Fatalf("the null reset probe failed: %v\n%s", err, out)
@@ -318,7 +314,6 @@ func TestCOptionalMapJsonNullResetsToEmpty(t *testing.T) {
 
 func TestCMapOptionalValues(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the C compiler")
 	src := "package probe\n\n" +
 		"table Child\n{\n" +
 		"    n int32\n" +
@@ -422,7 +417,6 @@ func TestCMapOptionalValues(t *testing.T) {
 
 func TestCOptionalMapCookAndUnreachedRefusal(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the C compiler")
 	schema := "package probe\n\ntable M\n{\n    id   int32\n    tags ?map[string(8)]int32\n}\n"
 	u := unitFrom(t, schema)
 	out, err := cHeldRun(t, u, `

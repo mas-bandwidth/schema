@@ -3,8 +3,6 @@ package elixirtable
 import (
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestElixirAnnounceReadFirstUseWalkIsDepthBounded pins ELIXIR-6 of the
@@ -20,9 +18,8 @@ import (
 // (the BEAM counts the stack in it) is capped at a million words with
 // kill: true, so an unbounded descent kills the process and fails the test.
 //
-// It runs elixir, so it is a functional test behind slowtest.Gate.
+// It runs elixir, so it is a functional test.
 func TestElixirAnnounceReadFirstUseWalkIsDepthBounded(t *testing.T) {
-	slowtest.Gate(t, "the Elixir toolchain")
 	u := unitFrom(t, `package msgdeep
 
 fixed table Note

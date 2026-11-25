@@ -13,8 +13,8 @@
 #
 # The interpreter is $PYTHON, else the pinned CPython 3.15.2 under dist/
 # (`make dist-python`); it must be a file path to one of the two pins, never a
-# name looked up on PATH. A leg whose toolchain is absent answers 2 and the
-# pass skips it when it was not asked for by name.
+# name looked up on PATH. A leg whose toolchain is absent answers 2, and the
+# pass fails, naming it.
 set -e
 
 # PYTHON_BENCH_GEN lets a control build its own copy beside a running gate

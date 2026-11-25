@@ -7,8 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -24,7 +22,6 @@ import (
 // field. The Go and C# walkers carried the narrow and landed 0.
 func TestIssue611JsonUnsignedOverflowLandsCeiling(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Go and .NET toolchains (they compile and run the generated packages)")
 	src := `package p
 fixed table Ship
 {
@@ -88,7 +85,7 @@ func TestIssue611(t *testing.T) {
 	t.Run("cs", func(t *testing.T) {
 		dotnet := findDotnet()
 		if dotnet == "" {
-			t.Skip("dotnet unavailable")
+			t.Fatal("no dotnet on PATH or in ~/.dotnet")
 		}
 		files, err := c.Generate(u, "cs", Options{})
 		if err != nil {

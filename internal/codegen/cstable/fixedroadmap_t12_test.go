@@ -18,7 +18,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/csharp"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -221,11 +220,8 @@ func t12R15(t *testing.T) {
 	// the clamps that REMAIN in the read are the writer's bounds above, never the
 	// reader's own. The behavioural half — each of the four retired forward-read
 	// clamps comes back layout_newer with the destination at its declared default (R4) — runs through
-	// one dotnet build and run, under the make target that sets SCHEMA_REQUIRE_CORPUS.
+	// one dotnet build and run.
 	t.Run("forward-reads", func(t *testing.T) {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") == "" {
-			t.Skip("the four forward-read clamps run under make tables-cs-fixed-roadmap")
-		}
 		t12R15Forward(t)
 	})
 }
@@ -284,7 +280,6 @@ const t12R15ForwardBody = `
 // the SDK's Roslyn compiler and dotnet exec — the t10 harness, no serialize.cs
 // and no corpus — then reads each clamp's verdict out of the one run.
 func t12R15Forward(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	t10Discover(t)
@@ -458,9 +453,6 @@ func t12R29(t *testing.T) {
 	t12Has(t, text, "if (writerClamp != null && !writerClamp.Invoke(values[k], report)) { refused = true; }", "R29 the compiled lane holds the writer's bounds after the run")
 
 	t.Run("forged", func(t *testing.T) {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") == "" {
-			t.Skip("the writer-bound clamp runs under make tables-cs-fixed-roadmap")
-		}
 		t12R29Forged(t)
 	})
 }
@@ -504,7 +496,6 @@ const t12R29ForgedBody = `
 // forge-and-read probe through the SDK's Roslyn compiler and dotnet exec — the
 // t10 harness, no corpus — then reads the one verdict out of the run.
 func t12R29Forged(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	t10Discover(t)
@@ -727,9 +718,6 @@ var t12WidenCases = []t12WidenCase{
 // pair does not show is the writer producing the bytes, which is this.
 func t12E3(t *testing.T) {
 	t.Run("write-half", func(t *testing.T) {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") == "" {
-			t.Skip("the widen-ladder write half runs under make tables-cs-fixed-roadmap")
-		}
 		t12E3Write(t)
 	})
 }
@@ -738,7 +726,6 @@ func t12E3(t *testing.T) {
 // SDK's Roslyn compiler and dotnet exec — the t10 harness, no corpus — then
 // reads each fixture's verdict out of the one run.
 func t12E3Write(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	t10Discover(t)

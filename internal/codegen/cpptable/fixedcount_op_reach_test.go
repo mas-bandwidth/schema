@@ -15,7 +15,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -83,7 +82,6 @@ func cppCountOpFixture(t *testing.T) (dir, header, pkg string) {
 
 func TestFixedCountOpReachCoversItsHeaderASan(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the c++ compiler (the leg's own toolchain)")
 	dir, header, pkg := cppCountOpFixture(t)
 
 	probe := fmt.Sprintf(`#include <cstdio>

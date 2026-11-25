@@ -131,7 +131,6 @@ fixed table FoxAll
 		}
 	}
 
-	slowtest.Gate(t, "c++")
 	cxx := slowtest.Tool(t, "c++")
 	dir := t.TempDir()
 	var sources []string

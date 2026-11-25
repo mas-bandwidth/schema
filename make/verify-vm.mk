@@ -6,7 +6,7 @@
 # Each language exposes three independent sub-targets sized for ci-fast.yml's
 # strict 2-minute job ceiling (<= 75s cold per sub-target), plus one umbrella:
 #
-#   make verify-<lang>-conformance   all 21 table surfaces (--claims) + packet wire byte-exact check
+#   make verify-<lang>-conformance   packet wire byte-exact check
 #   make verify-<lang>-bench         64-variant packet & Form-1 gates + all-27-feature packet wire +
 #                                    25 hostile bit-mutations + stateful reuse + cards (9/9) +
 #                                    &node DAG/S-expr + Descriptors + UnitView (verify-deep-<lang>)
@@ -216,7 +216,7 @@ verify-deep-luau: verify-toolchain-luau bin/schema build/vmverify
 	LUAU="$(LUAU)" LUAU_ANALYZE="$(LUAU_ANALYZE)" ./build/vmverify --lang luau --schema ./bin/schema --work build/verify/vmverify-luau
 
 verify-cards-luau: verify-toolchain-luau build/conformance-harness-vm cards-luau-generate build/cards-driver-luau
-	LUAU="$(LUAU)" SCHEMA_REQUIRE_CARDS_CORPUS=1 SCHEMA_CARDS_SURFACES=$(VERIFY_CARDS_SURFACES) \
+	LUAU="$(LUAU)" SCHEMA_CARDS_SURFACES=$(VERIFY_CARDS_SURFACES) \
 		./build/conformance-harness-vm cards --work build/verify/cards-luau \
 		--corpus tables/cards/conformance --driver tables/cards/luau/driver --require $(VERIFY_CARDS_SURFACES)
 
@@ -231,7 +231,7 @@ verify-deep-moo: verify-toolchain-moo build/schema-moo build/vmverify
 	MOO="$(MOO)" MOO_ANALYZE="$(MOO_ANALYZE)" ./build/vmverify --lang moo --schema ./build/schema-moo --work build/verify/vmverify-moo
 
 verify-cards-moo: verify-toolchain-moo build/conformance-harness-vm cards-moo-generate build/cards-driver-moo
-	MOO="$(MOO)" SCHEMA_REQUIRE_CARDS_CORPUS=1 SCHEMA_CARDS_SURFACES=$(VERIFY_CARDS_SURFACES) \
+	MOO="$(MOO)" SCHEMA_CARDS_SURFACES=$(VERIFY_CARDS_SURFACES) \
 		./build/conformance-harness-vm cards --work build/verify/cards-moo \
 		--corpus tables/cards/conformance --driver tables/cards/moo/driver --require $(VERIFY_CARDS_SURFACES)
 
@@ -279,8 +279,6 @@ $(foreach leg,$(VERIFY_VM_LEGS),$(eval $(call verify_vm_entrypoints,$(leg))))
 _verify-js-conformance: verify-toolchain-js build/conformance-harness-vm build/tables-generated-js/.stamp build/packet-defaults/js/.stamp packet-end-js packet-write-cfloat-js
 	$(NODE) test/packet-defaults/js/main.mjs testdata/wire/packet-defaults
 	NODE_ENV=production $(NODE) test/packet-defaults/js/main.mjs testdata/wire/packet-defaults
-	@rm -rf build/verify/conformance-js && mkdir -p build/verify/conformance-js $(VERIFY_RESULTS_DIR)
-	NODE="$(NODE)" ./build/conformance-harness-vm run --only js --claims --work build/verify/conformance-js --results $(VERIFY_RESULTS_DIR)/js.json
 
 _verify-js-bench: bench-js-gate tables-js-bench-gate verify-deep-js verify-cards-js
 
@@ -311,8 +309,6 @@ _verify-js-fuzz-message: verify-toolchain-js build/conformance-harness-vm build/
 
 .PHONY: _verify-python-conformance _verify-python-bench _verify-python-fuzz
 _verify-python-conformance: verify-toolchain-python build/conformance-harness-vm build/conformance-python packet-defaults-python packet-finite-python packet-void-python
-	@rm -rf build/verify/conformance-python && mkdir -p build/verify/conformance-python $(VERIFY_RESULTS_DIR)
-	PYTHON="$(PYTHON)" ./build/conformance-harness-vm run --only python --claims --work build/verify/conformance-python --results $(VERIFY_RESULTS_DIR)/python.json
 
 _verify-python-bench: verify-toolchain-python bench-python-gate tables-python-bench-gate verify-deep-python verify-cards-python
 
@@ -343,8 +339,6 @@ _verify-python-fuzz-message: verify-toolchain-python build/conformance-harness-v
 
 .PHONY: _verify-ruby-conformance _verify-ruby-bench _verify-ruby-fuzz
 _verify-ruby-conformance: verify-toolchain-ruby build/conformance-harness-vm build/conformance-ruby packet-defaults-ruby packet-finite-ruby packet-void-ruby
-	@rm -rf build/verify/conformance-ruby && mkdir -p build/verify/conformance-ruby $(VERIFY_RESULTS_DIR)
-	RUBY="$(RUBY)" ./build/conformance-harness-vm run --only ruby --claims --work build/verify/conformance-ruby --results $(VERIFY_RESULTS_DIR)/ruby.json
 
 _verify-ruby-bench: verify-toolchain-ruby bench-ruby-gate tables-ruby-bench-gate verify-deep-ruby verify-cards-ruby
 
@@ -375,8 +369,6 @@ _verify-ruby-fuzz-message: verify-toolchain-ruby build/conformance-harness-vm bu
 
 .PHONY: _verify-lua-conformance _verify-lua-bench _verify-lua-fuzz
 _verify-lua-conformance: verify-toolchain-lua build/conformance-harness-vm build/conformance-lua packet-defaults-lua packet-end-lua packet-finite-lua
-	@rm -rf build/verify/conformance-lua && mkdir -p build/verify/conformance-lua $(VERIFY_RESULTS_DIR)
-	LUA="$(LUA)" ./build/conformance-harness-vm run --only lua --claims --work build/verify/conformance-lua --results $(VERIFY_RESULTS_DIR)/lua.json
 
 _verify-lua-bench: verify-toolchain-lua bench-lua-gate tables-lua-bench-gate verify-deep-lua verify-cards-lua
 
@@ -407,8 +399,6 @@ _verify-lua-fuzz-message: verify-toolchain-lua build/conformance-harness-vm buil
 
 .PHONY: _verify-luau-conformance _verify-luau-bench _verify-luau-fuzz
 _verify-luau-conformance: verify-toolchain-luau build/conformance-harness-vm build/conformance-luau packet-defaults-luau packet-end-luau packet-write-text-luau
-	@rm -rf build/verify/conformance-luau && mkdir -p build/verify/conformance-luau $(VERIFY_RESULTS_DIR)
-	LUAU="$(LUAU)" ./build/conformance-harness-vm run --only luau --claims --work build/verify/conformance-luau --results $(VERIFY_RESULTS_DIR)/luau.json
 
 _verify-luau-bench: verify-toolchain-luau bench-luau-gate tables-luau-bench-gate verify-deep-luau verify-cards-luau
 
@@ -439,8 +429,6 @@ _verify-luau-fuzz-message: verify-toolchain-luau build/conformance-harness-vm bu
 
 .PHONY: _verify-squirrel-conformance _verify-squirrel-bench _verify-squirrel-fuzz
 _verify-squirrel-conformance: verify-toolchain-squirrel build/conformance-harness-vm build/conformance-squirrel packet-end-squirrel packet-write-bareint-squirrel packet-write-cfloat-squirrel packet-write-text-squirrel
-	@rm -rf build/verify/conformance-squirrel && mkdir -p build/verify/conformance-squirrel $(VERIFY_RESULTS_DIR)
-	SQ="$(SQ)" ./build/conformance-harness-vm run --only squirrel --claims --work build/verify/conformance-squirrel --results $(VERIFY_RESULTS_DIR)/squirrel.json
 
 _verify-squirrel-bench: verify-toolchain-squirrel bench-squirrel-gate tables-squirrel-bench-gate verify-deep-squirrel verify-cards-squirrel
 
@@ -476,8 +464,6 @@ _verify-squirrel-fuzz-message: verify-toolchain-squirrel build/conformance-harne
 
 .PHONY: _verify-moo-conformance _verify-moo-bench _verify-moo-fuzz
 _verify-moo-conformance: verify-toolchain-moo build/conformance-harness-vm build/conformance-moo packet-end-moo packet-finite-moo packet-write-bareint-moo
-	@rm -rf build/verify/conformance-moo && mkdir -p build/verify/conformance-moo $(VERIFY_RESULTS_DIR)
-	MOO="$(MOO)" MOO_ANALYZE="$(MOO_ANALYZE)" ./build/conformance-harness-vm run --only moo --claims --work build/verify/conformance-moo --results $(VERIFY_RESULTS_DIR)/moo.json
 
 _verify-moo-bench: verify-toolchain-moo bench-moo-gate tables-moo-bench-gate verify-deep-moo verify-cards-moo
 
@@ -515,8 +501,6 @@ _verify-goose-packet-ludicrous: verify-toolchain-goose build/goose-packet/.stamp
 	cd build/goose-packet/ludicrous && "$(GOOSE)" run -O0 main.goose
 
 _verify-goose-conformance: verify-toolchain-goose build/conformance-harness-vm build/conformance-goose _verify-goose-packet-normal _verify-goose-packet-ludicrous
-	@rm -rf build/verify/conformance-goose && mkdir -p build/verify/conformance-goose $(VERIFY_RESULTS_DIR)
-	GOOSE="$(GOOSE)" ./build/conformance-harness-vm run --only goose --claims --work build/verify/conformance-goose --results $(VERIFY_RESULTS_DIR)/goose.json
 
 _verify-goose-bench: verify-toolchain-goose bench-goose-gate tables-goose-bench-gate verify-deep-goose verify-cards-goose
 
@@ -603,8 +587,6 @@ verify-goose-fuzz-part-2:
 
 .PHONY: _verify-lobster-conformance _verify-lobster-bench _verify-lobster-fuzz
 _verify-lobster-conformance: verify-toolchain-lobster build/conformance-harness-vm build/conformance-lobster packet-end-lobster packet-write-bareint-lobster packet-write-cfloat-lobster
-	@rm -rf build/verify/conformance-lobster && mkdir -p build/verify/conformance-lobster $(VERIFY_RESULTS_DIR)
-	LOBSTER="$(LOBSTER)" ./build/conformance-harness-vm run --only lobster --claims --work build/verify/conformance-lobster --results $(VERIFY_RESULTS_DIR)/lobster.json
 
 _verify-lobster-bench: verify-toolchain-lobster bench-lobster-gate tables-lobster-bench-gate verify-deep-lobster verify-cards-lobster
 

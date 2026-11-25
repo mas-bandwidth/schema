@@ -191,7 +191,7 @@ func testRoot(t *testing.T) string {
 func TestSkippedDirectoriesHoldNoTrackedFile(t *testing.T) {
 	root := testRoot(t)
 	if _, err := os.Stat(filepath.Join(root, ".git")); err != nil {
-		t.Skipf("%s is not a git checkout (%v): which directories are tracked is git's to say", root, err)
+		t.Fatalf("%s is not a git checkout (%v): which directories are tracked is git's to say", root, err)
 	}
 	issues, err := trackedButSkipped(root, catalog, func(dir string) ([]string, error) {
 		cmd := exec.Command("git", "-C", root, "ls-files", "--", dir)

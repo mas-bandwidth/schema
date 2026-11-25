@@ -8,14 +8,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestCPPTextFormIntegralNumbersFunctional(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "generated C++ text-form reader")
 	const schema = `package probe
 table Root {
  small int32

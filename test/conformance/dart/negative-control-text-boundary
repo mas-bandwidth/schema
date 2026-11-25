@@ -20,13 +20,13 @@ private_driver() {
     case "$variant" in
       replacement)
         anchor='    final text = utf8.decode(bytes, allowMalformed: false);'
-        matches=$(grep -Fxc "$anchor" "$source" || true)
+        matches=$(grep -Fxc "$anchor" "$source") || [ $? -eq 1 ]
         [ "$matches" = 1 ] || { echo "decoder anchor matched $matches times, want 1" >&2; exit 1; }
         sed 's/final text = utf8.decode(bytes, allowMalformed: false);/final text = utf8.decode(bytes, allowMalformed: true);/' "$source" > "$main"
         ;;
       reader)
         anchor='        final v = tabledemo.rootConfigFromJson(text, r);'
-        matches=$(grep -Fxc "$anchor" "$source" || true)
+        matches=$(grep -Fxc "$anchor" "$source") || [ $? -eq 1 ]
         [ "$matches" = 1 ] || { echo "reader anchor matched $matches times, want 1" >&2; exit 1; }
         sed "s/final v = tabledemo.rootConfigFromJson(text, r);/final v = tabledemo.rootConfigFromJson(text, r); throw StateError('text-boundary-reader-control');/" "$source" > "$main"
         ;;
@@ -34,7 +34,7 @@ private_driver() {
         # Let the boundary drop the leading mark as well, solely for this
         # private control: the generated reader then skips a second one.
         anchor="    return bom ? '\\uFEFF\$text' : text;"
-        matches=$(grep -Fxc "$anchor" "$source" || true)
+        matches=$(grep -Fxc "$anchor" "$source") || [ $? -eq 1 ]
         [ "$matches" = 1 ] || { echo "bom anchor matched $matches times, want 1" >&2; exit 1; }
         [ "$(grep -c '^    return bom ? ' "$source")" = 1 ] || { echo "bom return matched more than once" >&2; exit 1; }
         sed 's/^    return bom ? .*$/    return text;/' "$source" > "$main"

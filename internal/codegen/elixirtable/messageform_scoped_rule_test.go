@@ -17,7 +17,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -43,7 +42,6 @@ fixed table R
 
 func TestElixirSaveMessagesScopedRuleHoldsEachDeclarationToItsOwnRange(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "an external toolchain")
 	u := unitFrom(t, scopedRuleSchema)
 	vocab := tablewire.MessageVocabulary(u)
 	refOf := func(f *ir.Field) int {

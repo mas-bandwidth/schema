@@ -95,6 +95,17 @@ func usage() {
              fixed and variable roots, run the compiler engine as oracle, and
              verify FromJson verdict, canonical ToJson, Save wire, and
              Load(wire) -> ToJson across matching drivers in two batched calls.
+  registry-rows
+             print every case of every surface as a test registry row,
+             then an owed line for each case retain-refusal-owed.txt
+             ledgers (adapter.go); test/registry/registry.jsonl holds
+             exactly these.
+
+  adapter    the test registry's corpus harness (docs/TEST-REGISTRY.md): read
+             request lines on stdin, run --lang's leg over every surface as
+             run --only <lang> --claims scores it, and write one
+             SCHEMA_TEST_RESULT line per request on stdout.
+
   cook-differential
              cook every cook-write row's wire with the tool's engine and
              with the C++ reference driver (--driver, default its committed
@@ -111,10 +122,6 @@ flags:
                       "<language> <command...>" lines (a substituted one)
   --work <dir>        scratch: fixtures, driver output, the derived manifest
   --only <lang>       run one registered language (run only)
-  --skip <langs>      registered languages this run does not exercise, comma
-                      separated, each printed by name; the Makefile fills it
-                      from SCHEMA_SKIP_LEGS and the reference leg is refused
-                      (run only)
   --claims            fail a case the leg CLAIMS and answers ABSENT: its unit
                       uses a construct the leg's target registers as carried
                       (compiler/carries_<target>.go); build the harness with
@@ -151,7 +158,6 @@ func main() {
 	drivers := fs.String("drivers", defaultDrivers, "the driver registry")
 	work := fs.String("work", defaultWork, "scratch directory")
 	only := fs.String("only", "", "run one registered language")
-	skip := fs.String("skip", "", "registered languages this run does not exercise, comma separated")
 	resultsOut := fs.String("results", "", "write every case's verdict to this JSON file, the input of tools/matrix proof (run only)")
 	driver := fs.String("driver", "", "the leg to fuzz, as a command (wire-fuzz); the leg to pin from instead of the registry's first (pin)")
 	seed := fs.Uint64("seed", 24845619678, "the random pass's seed (wire-fuzz only)")
@@ -175,7 +181,6 @@ func main() {
 	require := fs.String("require", strings.Join(cardSurfaces, ","), "comma-separated required card surfaces, default all nine (cards only)")
 	claims := fs.Bool("claims", false, "fail a claimed case answered ABSENT (run only)")
 	onlySurfaces := fs.String("surfaces", "", "run only these surfaces, comma separated; the rest are not run, so they are neither answers nor absences (run); pin only these of cook, block-dump (pin)")
-	complete := fs.Bool("complete", false, "a port's conformance run: any absence, of a surface or a case, fails the run and the success footer is not printed, because an absence is never a pass (docs/SPEC-CONFORMANCE.md §2, §5; run only)")
 	coverage := fs.String("coverage", "", "write coverage rows as JSON (run, cross-read)")
 	lang := fs.String("lang", "", "the original-nine language (implementation), or writes to re-read (cross-read)")
 	writes := fs.String("writes", "", "that leg's answers (cross-read only)")
@@ -276,7 +281,7 @@ func main() {
 			fatalf("%v", err)
 		}
 	case "json-fuzz":
-		if err := jsonFuzz(os.Stdout, m, jsonFuzzOptions{driversPath: *drivers, driverCmd: *driver, only: *only, skip: *skip, work: *work, failed: *failed, seed: *seed, n: *n, jsonDir: *jsonDir}); err != nil {
+		if err := jsonFuzz(os.Stdout, m, jsonFuzzOptions{driversPath: *drivers, driverCmd: *driver, only: *only, work: *work, failed: *failed, seed: *seed, n: *n, jsonDir: *jsonDir}); err != nil {
 			fatalf("%v", err)
 		}
 	case "message-fuzz":
@@ -312,7 +317,6 @@ func main() {
 			opts.claims = set
 		}
 		opts.results = *resultsOut
-		opts.complete = *complete
 		opts.summary = os.Getenv("GITHUB_STEP_SUMMARY")
 		runSurfaces, err := parseSurfaces(*onlySurfaces)
 		if err != nil {
@@ -330,7 +334,7 @@ func main() {
 		}
 		opts.only = runSurfaces
 		opts.strictRows = true
-		ok, err := runWith(os.Stdout, m, *manifest, *jsonDir, *reports, *drivers, *work, *only, *skip, opts)
+		ok, err := runWith(os.Stdout, m, *manifest, *jsonDir, *reports, *drivers, *work, *only, opts)
 		if err != nil {
 			fatalf("%v", err)
 		}
@@ -341,6 +345,47 @@ func main() {
 		}
 		if !ok {
 			os.Exit(1)
+		}
+	case "registry-rows":
+		reps, err := readReports(*reports)
+		if err != nil {
+			fatalf("%v", err)
+		}
+		rows, err := corpusRows(m, reps, *jsonDir)
+		if err != nil {
+			fatalf("%v", err)
+		}
+		owed, err := corpusOwed(*manifest, m, rows)
+		if err != nil {
+			fatalf("%v", err)
+		}
+		if err := writeRegistryRows(os.Stdout, rows, owed); err != nil {
+			fatalf("%v", err)
+		}
+	case "adapter":
+		if *lang == "" {
+			fatalf("adapter: --lang names the leg whose instances are on standard input")
+		}
+		legRunner := func(lang string) (legRun, error) {
+			set, err := claimsFor(m, *drivers, lang, true)
+			if err != nil {
+				return legRun{}, err
+			}
+			var got legRun
+			opts := runOptions{claims: set, strictRows: true, capture: func(results map[string]map[string]*result, legFailures map[string][]string) {
+				got = legRun{results: results[lang], legFailures: legFailures[lang]}
+			}}
+			// the matrix is the run's log: on stderr, never the protocol
+			if _, err := runWith(os.Stderr, m, *manifest, *jsonDir, *reports, *drivers, *work, lang, opts); err != nil {
+				return legRun{}, err
+			}
+			if got.results == nil {
+				return legRun{}, fmt.Errorf("adapter: the run scored no surface of the %s leg", lang)
+			}
+			return got, nil
+		}
+		if err := adapterMain(os.Stdin, os.Stdout, os.Stderr, m, *lang, legRunner); err != nil {
+			fatalf("%v", err)
 		}
 	case "cross-read":
 		if *lang == "" || *writes == "" {

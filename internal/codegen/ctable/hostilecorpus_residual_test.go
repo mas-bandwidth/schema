@@ -142,13 +142,12 @@ func hostileWire(t *testing.T, text string) string {
 
 func runCHostileResidual(t *testing.T, readerSrc, source string) {
 	t.Helper()
-	slowtest.Gate(t, "cc (the C toolchain)")
 	cc := os.Getenv("CC")
 	if cc == "" {
 		var err error
 		cc, err = exec.LookPath("cc")
 		if err != nil {
-			t.Skip("generated C execution requires cc")
+			t.Fatal("generated C execution requires cc")
 		}
 	}
 	files := map[string][]byte{}

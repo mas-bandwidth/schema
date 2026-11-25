@@ -3,8 +3,6 @@ package rubytable
 import (
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4), and a file refused
@@ -68,7 +66,6 @@ func TestRubyRetainResetsBeforeOpen(t *testing.T) {
 // MANIFEST.txt, test/conformance/ruby/surfaces/retain-refusal.rb).
 func TestRubyRetainRefusalEmptiesTheStore(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Ruby interpreters")
 	crc, err := Generate(loadUnit(t, "package probe\ntable Root | integrity = \"crc32c\" { n int32 }\n"))
 	if err != nil {
 		t.Fatal(err)

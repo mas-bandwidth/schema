@@ -3,9 +3,10 @@
 #
 # Builds and runs whichever language runners are available, and collects every
 # runner's CSV rows into one results file with a metadata preamble (host, cpu,
-# compiler, flags, pinning, noise). Languages whose runner or toolchain is
-# missing are SKIPPED with the reason printed — the go/rust/cs runners land
-# with the serialize ports (see bench/README.md for the runner contract).
+# compiler, flags, pinning, noise). A language whose runner or toolchain is
+# missing FAILS the run with the reason printed; to leave a language out,
+# choose the legs at the root with --only (see bench/README.md for the runner
+# contract).
 #
 # usage: bench/run.sh [--debug] [--out FILE] [--compiler CXX] [--only LANG]
 #                     [--round K] [--bare] [--reuse-build] [--quick]
@@ -23,13 +24,13 @@
 #                 read, fastest language = 100% — after the CSV lands. The
 #                 table is SINGLE-SUBJECT: family gen (generated code) for
 #                 every language, family and checks mode printed per row
-#                 under a caption naming what is held constant, and a leg
-#                 whose toolchain is missing prints as an ABSENT row with
-#                 the reason (#175).
+#                 under a caption naming what is held constant; a leg
+#                 whose toolchain is missing fails the run with the
+#                 reason (#175).
 #                 Scaling constants are PROPOSED in BENCH-STANDARD.md terms.
 #   --only LANG   run a single language leg (c|cpp|go|rust|cs|js|java|dart|elixir|goose|lobster|luau|squirrel|python).
-#                 An --only run whose leg is skipped (missing toolchain)
-#                 exits non-zero with the reason — zero rows is a refusal,
+#                 A leg whose toolchain is missing fails the run with the
+#                 reason, and an --only run with zero rows is a refusal,
 #                 never a quietly green empty CSV (#175). For shared boxes
 #                 under one-profile-at-a-time discipline: a driver runs the
 #                 legs serially with quiet-window checks between them. Each
@@ -130,7 +131,7 @@ if [ -n "${RENDER:-}" ]; then
         echo ""
         echo "rendered from $RENDER"
         echo "held constant: contract (BENCH-STANDARD §2.9 — bench_mixed, family gen round_trip over max rates), corpus (id per CSV row), machine (${R_HOST:-unknown}, ${R_CPU:-unknown}), one sitting"
-        awk -F, -v skips="" -f bench/render.awk "$RENDER"
+        awk -F, -f bench/render.awk "$RENDER"
     } >&2
     exit $?
 fi
@@ -158,14 +159,11 @@ if [ "$ONLY" != squirrel ] && [ "$ONLY" != python ] && [ ! -f "$SERIALIZE/serial
 fi
 CC_BIN="${CC:-cc}"
 
-# Loud skips (#175): a leg that cannot run is RECORDED, printed as an ABSENT
-# row in the quick tables, and an --only invocation that produced zero rows
-# exits non-zero — never a silently green empty table.
-SKIP_NOTES=""
-skip_leg() {
-    # ";"-joined lang|reason pairs (BWK awk rejects newlines in -v strings)
-    SKIP_NOTES="${SKIP_NOTES}${1}|${2};"
-    echo "SKIP $1: $2" >&2
+# A leg that cannot run FAILS the run, named, with its reason (#175): a
+# leg is left out only by --only at the root, never by the driver.
+fail_leg() {
+    echo "FAIL $1: $2 (a leg that cannot run is a failure; leave it out with --only)" >&2
+    exit 1
 }
 
 ARCH="$(uname -m)"
@@ -199,18 +197,24 @@ case "$(uname -s)" in
 esac
 
 # language toolchain versions — every CSV carries its exact builders
-# loud-ok: a toolchain version label for the CSV header; an absent toolchain records 'not present' and its leg is skipped by name below
-GO_VERSION="$(go version 2>/dev/null | sed -n 1p || true)"
+GO_VERSION=""
+if command -v go >/dev/null 2>&1; then
+    GO_VERSION="$(go version | sed -n 1p)"
+fi
 RUST_VERSION=""
 if command -v cargo >/dev/null 2>&1; then
     RUST_VERSION="$(cargo --version | sed -n 1p); $(rustc --version | sed -n 1p)"
 elif [ -x /opt/homebrew/opt/rustup/bin/cargo ]; then
     RUST_VERSION="$(/opt/homebrew/opt/rustup/bin/cargo --version | sed -n 1p); $(/opt/homebrew/opt/rustup/bin/rustc --version | sed -n 1p)"
 fi
-# loud-ok: a toolchain version label for the CSV header; an absent toolchain records 'not present' and its leg is skipped by name below
-DOTNET_VERSION="$(dotnet --version 2>/dev/null | sed -n 1p || true)"
-# loud-ok: a toolchain version label for the CSV header; an absent toolchain records 'not present' and its leg is skipped by name below
-NODE_VERSION="$(node --version 2>/dev/null | sed -n 1p || true)"
+DOTNET_VERSION=""
+if command -v dotnet >/dev/null 2>&1; then
+    DOTNET_VERSION="$(dotnet --version | sed -n 1p)"
+fi
+NODE_VERSION=""
+if command -v node >/dev/null 2>&1; then
+    NODE_VERSION="$(node --version | sed -n 1p)"
+fi
 
 # The codegen-only legs (java, dart, elixir): schema's backends for these
 # languages emit self-contained code with no runtime library, so the legs
@@ -221,16 +225,20 @@ JAVA_BIN="${JAVA:-$PWD/dist/jdk-21.0.12.1/Contents/Home/bin/java}"
 JAVAC_BIN="${JAVAC:-$PWD/dist/jdk-21.0.12.1/Contents/Home/bin/javac}"
 DART_BIN="${DART:-$PWD/dist/dart-sdk-3.13.2/bin/dart}"
 BEAM_PATH="${BEAM_PATH:-$PWD/dist/otp-29.0.5/bin:$PWD/dist/elixir-1.20.4/bin}"
-# loud-ok: a toolchain version label for the CSV header; an absent toolchain records 'not present' and its leg is skipped by name below
-JAVA_VERSION="$("$JAVA_BIN" --version 2>/dev/null | sed -n 1p || true)"
-# loud-ok: a toolchain version label for the CSV header; an absent toolchain records 'not present' and its leg is skipped by name below
-DART_VERSION="$("$DART_BIN" --version 2>/dev/null | sed -n 1p || true)"
+JAVA_VERSION=""
+if [ -x "$JAVA_BIN" ] || command -v "$JAVA_BIN" >/dev/null 2>&1; then
+    JAVA_VERSION="$("$JAVA_BIN" --version | sed -n 1p)"
+fi
+DART_VERSION=""
+if [ -x "$DART_BIN" ] || command -v "$DART_BIN" >/dev/null 2>&1; then
+    DART_VERSION="$("$DART_BIN" --version | sed -n 1p)"
+fi
 # beam_pinned: true only when an executable named $1 sits in one of
 # BEAM_PATH's OWN directories. The elixir leg REQUIRES the pin the way java
 # and dart require their absolute $JAVAC_BIN and $DART_BIN: a `command -v`
 # under PATH="$BEAM_PATH:$PATH" prepends rather than requires, so with dist/
 # absent and a Homebrew or asdf elixir on the caller's PATH the leg ran on
-# the system toolchain instead of skipping (#693).
+# the system toolchain instead of failing (#693).
 beam_pinned() {
     local dir rest="$BEAM_PATH:"
     while [ -n "$rest" ]; do
@@ -268,16 +276,17 @@ fi
 # the leg would refuse to run on
 ELIXIR_VERSION=""
 if beam_pinned elixir && beam_pinned erl; then
-    # loud-ok: a toolchain version label for the CSV header; an absent toolchain records 'not present' and its leg is skipped by name below
-    ELIXIR_VERSION="$(PATH="$BEAM_PATH:$PATH" elixir --short-version 2>/dev/null | sed -n 1p || true)"
+    ELIXIR_VERSION="$(PATH="$BEAM_PATH:$PATH" elixir --short-version | sed -n 1p)"
 fi
 # Goose (docs/PORT-GOOSE.md): the pinned compiler `make dist-goose` installs,
 # or $GOOSE. Its runtime is vendored into the generated unit, so like the
 # codegen-only legs there is no runtime checkout; the target is behind the
 # schema_leg_goose tag, so the leg builds build/schema-goose itself.
 GOOSE_BIN="${GOOSE:-$PWD/dist/goose-v2026.2-linux-x64/goose}"
-# loud-ok: a toolchain version label for the CSV header; an absent toolchain records 'not present' and its leg is skipped by name below
-GOOSE_VERSION="$("$GOOSE_BIN" version 2>/dev/null | sed -n 1p || true)"
+GOOSE_VERSION=""
+if [ -x "$GOOSE_BIN" ]; then
+    GOOSE_VERSION="$("$GOOSE_BIN" version | sed -n 1p)"
+fi
 
 # Release flags: the schema repo's own flags (-std=c++17 -Wall -Wextra -Werror
 # -ffp-contract=off) plus the serialize repo's Release bench configuration
@@ -532,9 +541,9 @@ fi
 # ---- C (the fifth target; serialize.c is a compiled TU, not a header) ----
 if [ -z "$ONLY" ] || [ "$ONLY" = c ]; then
     if [ ! -f generated/bench/c/BenchWire.h ]; then
-        skip_leg c "generated/bench/c is missing — run make first"
+        fail_leg c "generated/bench/c is missing — run make first"
     elif [ ! -f "$SERIALIZE_C/serialize.c" ]; then
-        skip_leg c "serialize.c not found at $SERIALIZE_C (set SERIALIZE_C)"
+        fail_leg c "serialize.c not found at $SERIALIZE_C (set SERIALIZE_C)"
     else
         if [ "$REUSE" = 1 ] && [ -x build/bench/schema_bench_c ]; then
             echo "== c: reusing build/bench/schema_bench_c ==" >&2
@@ -575,10 +584,10 @@ if [ -z "$ONLY" ] || [ "$ONLY" = go ]; then
             # modfile when SERIALIZE_GO points elsewhere
             ( cd bench/go && $PIN go run $GO_MODFILE_ARG . $RUNNER_ARGS ) >> "$OUT"
         else
-            skip_leg go "runner present but no go toolchain"
+            fail_leg go "runner present but no go toolchain"
         fi
     else
-        skip_leg go "runner not landed yet (bench/go/main.go — see bench/go/README.md)"
+        fail_leg go "runner not landed yet (bench/go/main.go — see bench/go/README.md)"
     fi
 fi
 
@@ -601,10 +610,10 @@ if [ -z "$ONLY" ] || [ "$ONLY" = rust ]; then
               CARGO_PROFILE_RELEASE_OPT_LEVEL="${OPT_LEVEL#O}" \
               $PIN cargo run --release --quiet $RS_CARGO_ARGS -- $RUNNER_ARGS ) >> "$OUT"
         else
-            skip_leg rust "runner present but no cargo"
+            fail_leg rust "runner present but no cargo"
         fi
     else
-        skip_leg rust "runner not landed yet (bench/rust/Cargo.toml — see bench/rust/README.md)"
+        fail_leg rust "runner not landed yet (bench/rust/Cargo.toml — see bench/rust/README.md)"
     fi
 fi
 
@@ -617,10 +626,10 @@ if [ -z "$ONLY" ] || [ "$ONLY" = cs ]; then
             # SerializeCsRoot=<abs> (consumed by the csproj includes) otherwise
             ( cd bench/cs && $PIN dotnet run -c Release $CS_PROP_ARGS -- $RUNNER_ARGS ) >> "$OUT"
         else
-            skip_leg cs "runner present but no dotnet"
+            fail_leg cs "runner present but no dotnet"
         fi
     else
-        skip_leg cs "runner not landed yet (bench/cs/*.csproj — see bench/cs/README.md)"
+        fail_leg cs "runner not landed yet (bench/cs/*.csproj — see bench/cs/README.md)"
     fi
 fi
 
@@ -636,10 +645,10 @@ if [ -z "$ONLY" ] || [ "$ONLY" = js ]; then
             # override otherwise (already verified by the provenance guard).
             ( cd bench/js && $PIN env NODE_ENV=production $JS_ENV node main.mjs $RUNNER_ARGS ) >> "$OUT"
         else
-            skip_leg js "runner present but no node"
+            fail_leg js "runner present but no node"
         fi
     else
-        skip_leg js "runner not landed yet (bench/js/main.mjs — see bench/README.md)"
+        fail_leg js "runner not landed yet (bench/js/main.mjs — see bench/README.md)"
     fi
 fi
 
@@ -658,10 +667,10 @@ if [ -z "$ONLY" ] || [ "$ONLY" = java ]; then
             echo "== java: run ==" >&2
             ( cd bench/java && $PIN "$JAVA_BIN" -cp ../../build/bench/java Main $RUNNER_ARGS ) >> "$OUT"
         else
-            skip_leg java "runner present but no javac at $JAVAC_BIN (populate dist/ per the Makefile, or set JAVA/JAVAC)"
+            fail_leg java "runner present but no javac at $JAVAC_BIN (populate dist/ per the Makefile, or set JAVA/JAVAC)"
         fi
     else
-        skip_leg java "runner not landed yet (bench/java/Main.java)"
+        fail_leg java "runner not landed yet (bench/java/Main.java)"
     fi
 fi
 
@@ -678,10 +687,10 @@ if [ -z "$ONLY" ] || [ "$ONLY" = dart ]; then
             echo "== dart: run ==" >&2
             ( cd bench/dart && $PIN ../../build/bench/schema_bench_dart $RUNNER_ARGS ) >> "$OUT"
         else
-            skip_leg dart "runner present but no dart at $DART_BIN (populate dist/ per the Makefile, or set DART)"
+            fail_leg dart "runner present but no dart at $DART_BIN (populate dist/ per the Makefile, or set DART)"
         fi
     else
-        skip_leg dart "runner not landed yet (bench/dart/main.dart)"
+        fail_leg dart "runner not landed yet (bench/dart/main.dart)"
     fi
 fi
 
@@ -695,10 +704,10 @@ if [ -z "$ONLY" ] || [ "$ONLY" = elixir ]; then
             echo "== elixir: run ==" >&2
             ( cd bench/elixir && $PIN env PATH="$BEAM_PATH:$PATH" elixir main.exs $RUNNER_ARGS ) >> "$OUT"
         else
-            skip_leg elixir "runner present but no pinned elixir+erl on $BEAM_PATH (populate dist/ per the Makefile, or set BEAM_PATH)"
+            fail_leg elixir "runner present but no pinned elixir+erl on $BEAM_PATH (populate dist/ per the Makefile, or set BEAM_PATH)"
         fi
     else
-        skip_leg elixir "runner not landed yet (bench/elixir/main.exs)"
+        fail_leg elixir "runner not landed yet (bench/elixir/main.exs)"
     fi
 fi
 
@@ -719,10 +728,10 @@ if [ -z "$ONLY" ] || [ "$ONLY" = goose ]; then
             echo "== goose: run ==" >&2
             ( cd bench/goose && $PIN ../../build/bench/schema_bench_goose $RUNNER_ARGS ) >> "$OUT"
         else
-            skip_leg goose "runner present but no goose at $GOOSE_BIN (make dist-goose, or set GOOSE)"
+            fail_leg goose "runner present but no goose at $GOOSE_BIN (make dist-goose, or set GOOSE)"
         fi
     else
-        skip_leg goose "runner not landed yet (bench/goose/main.goose)"
+        fail_leg goose "runner not landed yet (bench/goose/main.goose)"
     fi
 fi
 
@@ -733,10 +742,10 @@ if [ -z "$ONLY" ] || [ "$ONLY" = lobster ]; then
             echo "== lobster: run ==" >&2
             $PIN env LOBSTER="$LOBSTER_BIN" bench/lobster/run $RUNNER_ARGS >> "$OUT"
         else
-            skip_leg lobster "runner present but no lobster at $LOBSTER_BIN (make dist-lobster, or set LOBSTER)"
+            fail_leg lobster "runner present but no lobster at $LOBSTER_BIN (make dist-lobster, or set LOBSTER)"
         fi
     else
-        skip_leg lobster "runner not landed yet (bench/lobster/main.lobster)"
+        fail_leg lobster "runner not landed yet (bench/lobster/main.lobster)"
     fi
 fi
 
@@ -747,10 +756,10 @@ if [ -z "$ONLY" ] || [ "$ONLY" = luau ]; then
             echo "== luau: run ==" >&2
             $PIN env LUAU="$LUAU_BIN" bench/luau/run $RUNNER_ARGS >> "$OUT"
         else
-            skip_leg luau "runner present but no luau at $LUAU_BIN (make dist-luau, or set LUAU)"
+            fail_leg luau "runner present but no luau at $LUAU_BIN (make dist-luau, or set LUAU)"
         fi
     else
-        skip_leg luau "runner not landed yet (bench/luau/main.luau)"
+        fail_leg luau "runner not landed yet (bench/luau/main.luau)"
     fi
 fi
 
@@ -761,7 +770,7 @@ if [ -z "$ONLY" ] || [ "$ONLY" = python ]; then
         echo "== python: run ==" >&2
         $PIN env PYTHON="$PYTHON_BIN" bench/python/run $RUNNER_ARGS >> "$OUT"
     else
-        skip_leg python "pinned interpreter or generated benchmark missing (make dist-python generated/bench/python/.stamp)"
+        fail_leg python "pinned interpreter or generated benchmark missing (make dist-python generated/bench/python/.stamp)"
     fi
 fi
 
@@ -1035,7 +1044,7 @@ SQEOF
             esac
         done < "$SQ_OUT"
     else
-        skip_leg squirrel "no sq at $SQ_BIN (make dist-squirrel, or set SQ)"
+        fail_leg squirrel "no sq at $SQ_BIN (make dist-squirrel, or set SQ)"
     fi
 fi
 
@@ -1090,7 +1099,7 @@ if [ "$QUICK" = 1 ]; then
         # constant — the profiling doctrine's apples-to-apples rule
         echo "held constant: contract (BENCH-STANDARD §2.8 quick + §2.9 — bench_mixed, family gen round_trip over max rates), corpus (id per CSV row), machine ($HOST, $CPU), one sitting; the read-side sink deviations §2.7 named are gone — the round-trip observes its own decode (#191)"
         echo "NOT equalized: checks mode — recorded per row in the CSV; a cross-language checks ruling is deferred to the owner (#175)"
-        awk -F, -v skips="$SKIP_NOTES" -f bench/render.awk "$OUT" || QUICK_STATUS=$?
+        awk -F, -f bench/render.awk "$OUT" || QUICK_STATUS=$?
     } >&2
     if [ "${QUICK_STATUS:-0}" -ne 0 ]; then
         echo "results: $OUT (headline REFUSED)" >&2
@@ -1099,10 +1108,11 @@ if [ "$QUICK" = 1 ]; then
 fi
 
 # ---- #175: an --only run that produced zero data rows is a failure, not a
-# quietly green empty CSV — the leg was skipped, not measured. Refuse. ----
-DATA_ROWS="$(grep -c -E '^(c|cpp|go|rust|cs|js|java|dart|elixir|goose|lobster|luau|squirrel|python),' "$OUT" 2>/dev/null || true)"
+# quietly green empty CSV — nothing was measured. Refuse. grep -c exits 1
+# on a zero count (the refusal below names it); any other status is a failure. ----
+DATA_ROWS="$(grep -c -E '$1' "$OUT")" || [ "$?" -eq 1 ]
 if [ -n "$ONLY" ] && [ "${DATA_ROWS:-0}" -eq 0 ]; then
-    echo "REFUSED (#175): --only $ONLY produced ZERO rows — see the SKIP reason above; nothing was measured" >&2
+    echo "REFUSED (#175): --only $ONLY produced ZERO rows; nothing was measured" >&2
     echo "results: $OUT (EMPTY — refused)" >&2
     exit 1
 fi

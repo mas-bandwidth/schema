@@ -13,7 +13,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 
@@ -230,11 +229,10 @@ func describeDescriptors(tables []pinnedTable) string {
 // beside a probe main, and returns the binary's path. The schema's single table
 // is named Card, so the codec module is probe_table.rs (the file base is Probe).
 func retainBinary(t *testing.T, schemaPath, probe string) string {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	if _, err := exec.LookPath("rustc"); err != nil {
-		t.Skipf("rustc is not on PATH: %v", err)
+		t.Fatalf("rustc is not on PATH: %v", err)
 	}
 	src, err := os.ReadFile(schemaPath)
 	if err != nil {
@@ -423,7 +421,6 @@ func cardsRetainGolden(t *testing.T, input []byte) []byte {
 // silently, and the same for the unknown enum variant the newer declaration
 // spells (kind 30), which §6.6 names an exclusion of its own.
 func TestCardConstructsRetainUnknownFields(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Parallel()
 
@@ -502,7 +499,6 @@ func firstDiff(a, b []byte) int {
 // reported as retain_lost — not merely unknown — so it blocks any lossless
 // claim, and the input bytes stay unchanged through every case.
 func TestRetentionCapacityIsALoss(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Parallel()
 
