@@ -8265,6 +8265,9 @@ pins-fresh-wire-packet:
 # selects every test that carries a FRAMING_WRITE writer; a test that writes and
 # is not selected here is a Go test (TestFramingWritersAreAllSelected) that
 # fails, so a new writer cannot sit outside the rewrite-and-diff.
+# Nothing is skipped: a slow-gated test whose name matched (the populated
+# feature witnesses, built from generated Go) was renamed out of the match
+# rather than left behind a -skip, which the make adapter refuses.
 PINS_FRAMING_RUN := Pin|FramingRows|FramingDir|HeldDepth|NoWriter|FramingVector
 
 .PHONY: pins-framing
@@ -8272,7 +8275,7 @@ pins-framing:
 	@# Compare every committed framing pin against its Go vector script and
 	@# reject any hand-written file under testdata/wire/tables/framing, without
 	@# setting FRAMING_WRITE=1 (which slowtest.Rewriting forbids under CI).
-	sh test/slowgate/proof pins-framing 'TestFramingRowsNameEveryVector TestFramingVectorBytesArePinned TestFramingDirHasNoHandWrittenFiles TestNoWriterFramingVectorsRefused' -count=1 ./test/conformance/harness -run '$(PINS_FRAMING_RUN)' -skip '^TestPopulatedFeatureWitnessNativePins$$'
+	sh test/slowgate/proof pins-framing 'TestFramingRowsNameEveryVector TestFramingVectorBytesArePinned TestFramingDirHasNoHandWrittenFiles TestNoWriterFramingVectorsRefused' -count=1 ./test/conformance/harness -run '$(PINS_FRAMING_RUN)'
 
 PINS_WIRE_TABLES_DIRS := examples pointers v1 v2 p1 p2 p3 jsonkeys messages stream blobs m1 m2 a1 a2 g1 k1 k2 w1 w2 r1 r2 f1 scalars backend vocab vocab9 bases
 
