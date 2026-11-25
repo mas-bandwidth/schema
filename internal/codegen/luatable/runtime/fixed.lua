@@ -485,7 +485,7 @@ local function layout_tree(layout)
   end
   local root = parse()
   if i ~= count or root == nil or root.kind ~= 13 then return nil end
-  local malformed = false
+  local bad_tag_width = false
   local function check_bounds(node)
     if node.size > maxRecordBytes then return false end
     if node.kind == 13 then
@@ -513,7 +513,7 @@ local function layout_tree(layout)
       end
       local w = node.size - widest
       node.tag = w
-      if w ~= 1 and w ~= 2 and w ~= 4 and w ~= 8 then malformed = true end
+      if w ~= 1 and w ~= 2 and w ~= 4 and w ~= 8 then bad_tag_width = true end
     else
       for _, c in ipairs(node.children) do
         if not check_bounds(c) then return false end
@@ -522,7 +522,7 @@ local function layout_tree(layout)
     return true
   end
   local bounded = check_bounds(root)
-  if malformed then return nil end
+  if bad_tag_width then return nil end
   if not bounded then
     return { refusal = "layout_record_too_large", kind = root.kind, size = root.size, children = {} }
   end

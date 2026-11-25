@@ -598,10 +598,10 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
         // §4.5 and §4.6, BEFORE ANY DESTINATION BYTE IS WRITTEN, so the check
         // runs first and the None lands only after it passes (the const stored
         // its value first until 2026-11-24; test/conformance/js/rows/R16.mjs).
-        // The source read is bounded
-        // here rather than at the push: TableFixedPush on this leg takes no
-        // record bound at all, so the entry that reads a record byte carries
-        // its own.
+        // The tag is read at THE WRITER'S TAG WIDTH (meta >>> 8), and
+        // TableFixedPush bounds this entry at that same reach, src + their_tag,
+        // against the writer's record (§5.2 EMIT kind 15); the read keeps its
+        // own bound against the source as well.
         const meta = e[b + TableFixedLaneMeta];
         const arms = meta & 0xff;
         const tagW = (meta >>> 8) !== 0 ? (meta >>> 8) : size;
