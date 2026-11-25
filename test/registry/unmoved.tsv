@@ -90,8 +90,6 @@ workflow-job	.github/workflows/ruby-leg.yml	2	L7	workflow jobs: CI is generated 
 workflow-job	.github/workflows/schema-dart-nightly-fuzz.yml	2	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/schema-engine-is-the-oracle.yml	1	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/schema-moo-nightly-fuzz.yml	2	L7	workflow jobs: CI is generated from the registry
-workflow-job	.github/workflows/schema-python-nightly-fuzz.yml	1	L7	workflow jobs: CI is generated from the registry
-workflow-job	.github/workflows/schema-ruby-nightly-fuzz.yml	1	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/schema-test-nightly.yml	1	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/tla-nightly.yml	1	L7	workflow jobs: CI is generated from the registry
 data-case	bench/tables/moo/testdata	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
@@ -383,7 +381,6 @@ data-case	test/packet-void/ruby	2	L4	corpus data and harnesses: each language's 
 data-case	test/pointer-target-type/writer	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/proof	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/skipped-value/writer	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	test/verify-bitphase/testdata/roster-cases	6	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/verify-canonical/testdata/corpus-cases	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/verify-reuse	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/verify-tablegen/testdata	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
@@ -647,7 +644,6 @@ data-case	tools/testguard/testdata/probes2/write-in-ci-hides-unlisted/bl/s	1	L4	
 data-case	tools/testguard/testdata/probes2/yaml-plan	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	tools/testguard/testdata/probes2/yaml-plan/bl/s	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	tools/vuln/testdata	11	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	tools/wirefuzzrelease/testdata/gate-cases	11	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 driver	test	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 driver	test/conformance/c/rows	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 driver	test/conformance/canary	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in

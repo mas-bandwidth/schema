@@ -776,7 +776,8 @@ func TestEveryTestIsARowOrInTheLedger(t *testing.T) {
 // committed files it reads and the driver each language answers it with, and
 // those data cases and drivers count as the registry's: a file by its
 // directory and stem (x.in and x.out are the case x), a driver for every
-// language that answers the row. A language-free row's inputs index nothing,
+// language that answers the row. A language-free row indexes the files its
+// inputs name when it names its adapter, and nothing when it names none;
 // and a data case no row reads is still unmoved. Only what runs counts: the
 // driver of a language with no adapter is unmoved, and a row no ready
 // language answers (none has an adapter, or each declares it unrepresentable) indexes nothing.
@@ -806,9 +807,18 @@ func TestARowIndexesTheCorpusItReads(t *testing.T) {
 	if p := Check(res, &testreg.Registry{Path: "r.jsonl", Langs: reg.Langs}, ledger); !strings.Contains(strings.Join(p, "\n"), "there are 2: give each new test a registry row") {
 		t.Fatalf("a dropped row: %v", p)
 	}
-	reg.Tests = append(reg.Tests, free)
-	if got := Indexed(reg); len(got) != 3 {
-		t.Fatalf("a language-free row indexed files: %v", got)
+	// a language-free row runs through its adapter, so the files it names
+	// are indexed (y, read by the Go test TestY); one naming no adapter
+	// indexes nothing (planted: drop the adapter check, and it indexes z)
+	unrun := testreg.Test{Key: "tooling.t.z", Scope: testreg.LangFree, Inputs: []byte(`{"files":["testdata/corpus/z.in"]}`)}
+	// an adapter that does not hold a row to its files (model-check, plant)
+	// indexes none of them, however the row names them
+	unheld := testreg.Test{Key: "tooling.t.w", Scope: testreg.LangFree, Adapter: "model-check", Inputs: []byte(`{"files":["testdata/corpus/w.in"]}`)}
+	reg.Tests = append(reg.Tests, free, unrun, unheld)
+	got = Indexed(reg)
+	if len(got) != 4 || got[res.Items[1].ID()] != free.Key || got[Item{Kind: KindDataCase, Dir: "testdata/corpus", Name: "z"}.ID()] != "" ||
+		got[Item{Kind: KindDataCase, Dir: "testdata/corpus", Name: "w"}.ID()] != "" {
+		t.Fatalf("language-free rows indexed %v, want y and neither z nor w", got)
 	}
 	// no ready language answers it: it indexes nothing
 	idle := &testreg.Registry{Path: "r.jsonl", Langs: []testreg.Lang{{Name: "zz"}, {Name: "qq"}}, Tests: []testreg.Test{row}}

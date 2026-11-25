@@ -310,6 +310,13 @@ static partial class Program
             if(inner.Refused || inner.Damaged) { return new Shapes.Bounds(); }
             return Shapes.Schema.TableWire.CopyRegion(Shapes.Schema.BoundsTableType(),(IntPtr)builder.GetRoot(),true);
         };
+        BindBuilder("tblmoodmap","MoodMap").PartialLoad=(bytes,report)=>
+        {
+            using var builder=new Tblmoodmap.MoodMapBuilder();
+            var inner=new Tblmoodmap.TableReport(); builderLoaded=builder.Load(bytes,inner); Fill(report,Copy(inner));
+            if(inner.Refused || inner.Damaged) { return new Tblmoodmap.MoodMap(); }
+            return Tblmoodmap.Schema.TableWire.CopyRegion(Tblmoodmap.Schema.MoodMapTableType(),(IntPtr)builder.GetRoot(),true);
+        };
         BindBuilder("tblsurf","Chain").PartialLoad=(bytes,report)=>
         {
             using var builder=new Surfaces.ChainBuilder();

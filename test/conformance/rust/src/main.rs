@@ -1348,6 +1348,12 @@ macro_rules! with_root {
                 let $save = fixed_save_from_variable!(shapes, FixedBounds, FixedBoundsRow, fixed_bounds_cook_write, fixed_bounds_fixed_save, fixed_bounds_fixed_measure);
                 Some($body)
             }
+            // FL-19's map form (test/tables/moodmap), opted in by `list`
+            ("tblmoodmap", "MoodMap") => {
+                #[allow(unused_imports)]
+                use tblmoodmap::{mood_map_from_json_bytes as $from_json, mood_map_load as $load, mood_map_save_checked as $save, mood_map_to_json_checked as $to_json};
+                Some($body)
+            }
             ("featurewitnesses", "Root") => {
                 #[allow(unused_imports)]
                 use featurewitnesses::{root_from_json_bytes as $from_json, root_load as $load, root_save_checked as $save, root_to_json_checked as $to_json};
@@ -3684,7 +3690,7 @@ fn main() {
             // case ABSENT, one by one; the message surface rides the message form's
             // batch for the fixed roots of backenddemo, vocabdemo and vocab9demo
             // (§3.3); the retaining file rows read through tblrt1 (§6.6).
-            "wire\nreport\nframing\nretain\nretain-save\nretain-refusal\njson-read\njson-write\njson-hostile\ncook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-write\nmessage\nmessage-prior\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\nwrite-refusal-cook\nwrite-refusal-block\nwrite-refusal-shape\nannounce\nread-into\njson-write-into\nunit shapes"
+            "wire\nreport\nframing\nretain\nretain-save\nretain-refusal\njson-read\njson-write\njson-hostile\ncook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-write\nmessage\nmessage-prior\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\nwrite-refusal-cook\nwrite-refusal-block\nwrite-refusal-shape\nannounce\nread-into\njson-write-into\nunit shapes\nunit tblmoodmap"
         );
         return;
     }

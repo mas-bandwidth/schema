@@ -38,6 +38,8 @@ import '../../../build/tables-generated-dart-scalars/scalars/ScalardemoWire.dart
 import '../../../build/tables-generated-dart/v1/Tblv1Wire.dart' as tblv1;
 import '../../../build/tables-generated-dart/v2/Tblv2Wire.dart' as tblv2;
 import '../../../build/tables-generated-dart/w1/Tblw1Wire.dart' as tblw1;
+// FL-19's map form (test/tables/moodmap), opted in by `list`
+import '../../../build/tables-generated-dart/moodmap/TblmoodmapWire.dart' as tblmoodmap;
 import '../../../build/tables-generated-dart/w2/Tblw2Wire.dart' as tblw2;
 import '../../../build/tables-generated-dart/r1/Tblr1Wire.dart' as tblr1;
 import '../../../build/tables-generated-dart/r2/Tblr2Wire.dart' as tblr2;
@@ -2576,6 +2578,8 @@ Uint8List? wireResave(String unit, String root, Uint8List wire) {
       return _wireResaveOne(wire, feature.TableWireReport.new, (rep) => (rep.refused, rep.refusal), feature.arrayRootWireLoad, feature.arrayRootWireSave);
     case 'tblg1 Guarded':
       return _wireResaveOne(wire, tblg1.TableWireReport.new, (rep) => (rep.refused, rep.refusal), tblg1.guardedWireLoad, tblg1.guardedWireSave);
+    case 'tblmoodmap MoodMap':
+      return _wireResaveOne(wire, tblmoodmap.TableWireReport.new, (rep) => (rep.refused, rep.refusal), tblmoodmap.moodMapWireLoad, tblmoodmap.moodMapWireSave);
     case 'tblw1 Fleet':
       return _wireResaveOne(wire, tblw1.TableWireReport.new, (rep) => (rep.refused, rep.refusal), tblw1.fleetWireLoad, tblw1.fleetWireSave);
     case 'tblw2 Fleet':
@@ -3064,6 +3068,11 @@ Uint8List? jsonReadSave(String unit, String root, String text) {
       final v = tblg1.guardedFromJson(text, rep);
       if (rep.refused) return null;
       return tblg1.guardedWireSave(v);
+    case 'tblmoodmap MoodMap':
+      final rep = tblmoodmap.TableTextReport();
+      final v = tblmoodmap.moodMapFromJson(text, rep);
+      if (rep.refused) return null;
+      return tblmoodmap.moodMapWireSave(v);
     case 'tblw1 Fleet':
       final rep = tblw1.TableTextReport();
       final v = tblw1.fleetFromJson(text, rep);
@@ -3573,6 +3582,11 @@ String? jsonWriteText(String unit, String root, Uint8List wire) {
       final v = tblg1.guardedWireLoad(wire, rep);
       if (rep.refused) return null;
       return tblg1.guardedToJson(v);
+    case 'tblmoodmap MoodMap':
+      final rep = tblmoodmap.TableWireReport();
+      final v = tblmoodmap.moodMapWireLoad(wire, rep);
+      if (rep.refused) return null;
+      return tblmoodmap.moodMapToJson(v);
     case 'tblw1 Fleet':
       final rep = tblw1.TableWireReport();
       final v = tblw1.fleetWireLoad(wire, rep);
@@ -5243,6 +5257,11 @@ String? jsonHostileReport(String unit, String root, String text) {
         final v = feature.arrayRootFromJson(text, r);
         encode = () => feature.arrayRootToJson(v);
         break;
+      case 'tblmoodmap MoodMap':
+        r = tblmoodmap.TableTextReport();
+        final v = tblmoodmap.moodMapFromJson(text, r);
+        encode = () => tblmoodmap.moodMapToJson(v);
+        break;
       case 'tabledemo RootConfig':
         r = tabledemo.TableTextReport();
         final v = tabledemo.rootConfigFromJson(text, r);
@@ -6399,7 +6418,8 @@ const String surfaces =
     'forgery\ncook-forgery\n'
     'write-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n'
     'write-refusal-cook\nwrite-refusal-block\nwrite-refusal-shape\nannounce\nread-into\njson-write-into\n'
-    'unit shapes\n';
+    'unit shapes\n'
+    'unit tblmoodmap\n';
 
 void main(List<String> args) {
   if (args.isNotEmpty && args[0] == 'wire-fuzz') {
@@ -6951,6 +6971,10 @@ _FuzzRoot? fuzzRoot(String unit, String root) {
       return _FuzzRoot(
           _plainCodec(cooktorture.TableWireReport.new, cooktorture.tortureCookWireMeasure, cooktorture.tortureCookWireLoad, cooktorture.tortureCookWireSave),
           retain: _retainCodec(cooktorture.TableRetain.new, cooktorture.TableWireReport.new, cooktorture.tortureCookWireMeasure, cooktorture.tortureCookWireLoadRetain, cooktorture.tortureCookWireSaveRetain));
+    case 'tblmoodmap MoodMap':
+      return _FuzzRoot(
+          _plainCodec(tblmoodmap.TableWireReport.new, tblmoodmap.moodMapWireMeasure, tblmoodmap.moodMapWireLoad, tblmoodmap.moodMapWireSave),
+          retain: _retainCodec(tblmoodmap.TableRetain.new, tblmoodmap.TableWireReport.new, tblmoodmap.moodMapWireMeasure, tblmoodmap.moodMapWireLoadRetain, tblmoodmap.moodMapWireSaveRetain));
     case 'shapes Bounds':
       return _FuzzRoot(
           _plainCodec(shapes.TableWireReport.new, shapes.boundsWireMeasure, shapes.boundsWireLoad, shapes.boundsWireSave),

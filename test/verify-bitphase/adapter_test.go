@@ -42,7 +42,8 @@ func TestTheRegistryHoldsTheAlignArraysRows(t *testing.T) {
 			continue
 		case seen[in.File]:
 			t.Errorf("%s names %s, which another test names too", tt.Key, in.File)
-		case in.Schema != AlignArraysSchema || in.Root != r.Type || in.Kind != r.Kind || in.Hex != hex.EncodeToString(r.data):
+		case in.Schema != AlignArraysSchema || in.Root != r.Type || in.Kind != r.Kind || in.Hex != hex.EncodeToString(r.data) ||
+			len(in.Files) != 1 || in.Files[0] != AlignArraysSchema:
 			t.Errorf("%s: inputs %+v, the row is %s %s %x", tt.Key, in, r.Type, r.Kind, r.data)
 		case (r.Kind == "valid") != (tt.Type == "roundtrip") || (r.Kind == "refuse") != (tt.Type == "load-refusal"):
 			t.Errorf("%s: a %s row is type %s", tt.Key, r.Kind, tt.Type)
@@ -63,11 +64,23 @@ func TestTheAdapterNamesTheFailingRow(t *testing.T) {
 		"panic: FAILED: bytes aa_phase63_valid_ab-e-acute.bin (got 5 want 6)",
 		"lua: main.lua:30: FAILED: read aa_phase63_valid_ab-e-acute.bin",
 		"FAILED: accepted aa_phase63_valid_ab-e-acute.bin",
+		// the C++ leg's verify.cpp, the bit-phase sweep's and align-arrays'
+		"FAILED: cpp failed refuse Phase63 aa_phase63_valid_ab-e-acute.bin",
+		"FAILED: cpp failed valid ArrA aa_phase63_valid_ab-e-acute.bin",
 	} {
 		m := failedRow.FindStringSubmatch(out)
 		if m == nil || m[1] != "aa_phase63_valid_ab-e-acute.bin" {
 			t.Errorf("%q: %v", out, m)
 		}
+	}
+	// the bit-phase roster's files carry no aa_ prefix
+	if m := failedRow.FindStringSubmatch("FAILED: cpp failed refuse Phase1 valid_p1_v0.bin"); m == nil || m[1] != "valid_p1_v0.bin" {
+		t.Errorf("a bit-phase C++ failure: %v", m)
+	}
+	// a C++ line of another shape names no row: the run then fails as a
+	// crash that names the line, never as some other row's verdict
+	if m := failedRow.FindStringSubmatch("FAILED: cpp failed maybe Phase1 valid_p1_v0.bin"); m != nil {
+		t.Errorf("an unknown C++ kind named a row: %v", m)
 	}
 }
 
@@ -137,7 +150,7 @@ func TestThePlantTurnsAValidRowAround(t *testing.T) {
 func TestARequestThatDisagreesWithItsRowIsRefused(t *testing.T) {
 	t.Parallel()
 	r := alignArraysRows()[0]
-	in := alignInputs{Schema: AlignArraysSchema, Root: r.Type, Kind: r.Kind, File: r.File, Hex: hex.EncodeToString(r.data)}
+	in := alignInputs{Schema: AlignArraysSchema, Root: r.Type, Kind: r.Kind, File: r.File, Hex: hex.EncodeToString(r.data), Files: []string{AlignArraysSchema}}
 	ok, _ := json.Marshal(in)
 	in.Hex = "00" + in.Hex
 	bad, _ := json.Marshal(in)

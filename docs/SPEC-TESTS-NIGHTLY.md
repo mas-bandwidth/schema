@@ -5,7 +5,7 @@ Part of the specification: every test of tier `nightly`, from the test registry.
 
 **Tier nightly:** heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded.
 
-Nightly tests every language answers: 622. Language-free tests: 1351.
+Nightly tests every language answers: 625. Language-free tests: 1351.
 
 Run this tier for a language with `schema-test run --tier nightly --lang L`, one test with `schema-test run <full name>`.
 
@@ -666,6 +666,18 @@ generated source compiles and is clean.
 | `L.nightly.codegen.name-buildability.tb-max-items` | name-buildability tb\_max\_items: the checker accepts its names, and the language generates it and builds and loads the output with its own toolchain (SPEC §4.6) | `package: ./tools/namebuild`<br>`subtest: tb_max_items`<br>`test: TestNameBuildability_{lang}` | the Go test TestNameBuildability\_&lt;lang&gt;/tb\_max\_items passes: generate, build and load all succeed | `testdata/name-buildability/cases.tsv:318` |
 | `L.nightly.codegen.name-buildability.u-pick` | name-buildability u\_pick: the checker accepts its names, and the language generates it and builds and loads the output with its own toolchain (SPEC §4.6) | `package: ./tools/namebuild`<br>`subtest: u_pick`<br>`test: TestNameBuildability_{lang}` | the Go test TestNameBuildability\_&lt;lang&gt;/u\_pick passes: generate, build and load all succeed | `testdata/name-buildability/cases.tsv:316` |
 
+### Type `fuzz`
+
+seeded mutations.
+
+#### `fuzz` family `wire-fuzz`, 3 tests
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.nightly.fuzz.wire-fuzz.mixed` | wire fuzz, mixed arm (the mutable builder oracle on the variable file roots): every corpus root's enumerated mutants and 500000 random ones at the run's seed | `arm: mixed`<br>`n: 500000` | no divergence from the oracle, at least one mutant, and no corpus root the leg has no codec for, in every configuration of the leg; the verdict names the seed | `test/conformance/harness/wirefuzz_registry.go` |
+| `L.nightly.fuzz.wire-fuzz.plain` | wire fuzz, plain arm (the plain read and write-back): every corpus root's enumerated mutants and 500000 random ones at the run's seed | `arm: plain`<br>`n: 500000` | no divergence from the oracle, at least one mutant, and no corpus root the leg has no codec for, in every configuration of the leg; the verdict names the seed | `test/conformance/harness/wirefuzz_registry.go` |
+| `L.nightly.fuzz.wire-fuzz.retain` | wire fuzz, retain arm (the retaining read's canonical write-back): every corpus root's enumerated mutants and 500000 random ones at the run's seed | `arm: retain`<br>`n: 500000` | no divergence from the oracle, at least one mutant, and no corpus root the leg has no codec for, in every configuration of the leg; the verdict names the seed | `test/conformance/harness/wirefuzz_registry.go` |
+
 ### Type `lint`
 
 generated or runtime code is clean under the language's strict analyser.
@@ -775,7 +787,7 @@ seeded mutations.
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.nightly.fuzz.make-schema-dart-nightly-fuzz.schema-dart-nightly-fuzz` | `make` | make schema-dart-nightly-fuzz (make/schema-dart-nightly-fuzz.mk) exits 0 | `file: make/schema-dart-nightly-fuzz.mk`<br>`reads: ["test/dart-tables/"]`<br>`seed: DART_NIGHTLY_FUZZ_SEED`<br>`target: schema-dart-nightly-fuzz` | the target exits 0 with no skip in its log | `make/schema-dart-nightly-fuzz.mk:88` |
-| `none.nightly.fuzz.make-schema-dart-nightly-fuzz.schema-dart-nightly-fuzz-replay` | `make` | make schema-dart-nightly-fuzz-replay (make/schema-dart-nightly-fuzz.mk) exits 0 | `file: make/schema-dart-nightly-fuzz.mk`<br>`reads: ["testdata/wire/tables/fuzz-vectors/","testdata/wire/tables/nightly-fuzz-regressions/"]`<br>`target: schema-dart-nightly-fuzz-replay` | the target exits 0 with no skip in its log | `make/schema-dart-nightly-fuzz.mk:118` |
+| `none.nightly.fuzz.make-schema-dart-nightly-fuzz.schema-dart-nightly-fuzz-replay` | `make` | make schema-dart-nightly-fuzz-replay (make/schema-dart-nightly-fuzz.mk) exits 0 | `file: make/schema-dart-nightly-fuzz.mk`<br>`reads: ["testdata/wire/tables/nightly-fuzz-regressions/"]`<br>`target: schema-dart-nightly-fuzz-replay` | the target exits 0 with no skip in its log | `make/schema-dart-nightly-fuzz.mk:118` |
 
 #### `fuzz` family `make-schema-lua-nightly-fuzz`, 1 test
 
@@ -4943,7 +4955,7 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.harness-run.make-verify-widen-18.verify-bitphase-cases` | `make` | make verify-bitphase-cases (make/verify-widen-18.mk) exits 0 | `file: make/verify-widen-18.mk`<br>`reads: ["test/verify-bitphase/","test/verify-bitphase/align-arrays/","test/verify-bitphase/cpp/"]`<br>`target: verify-bitphase-cases` | the target exits 0 with no skip in its log | `make/verify-widen-18.mk:106` |
+| `none.nightly.harness-run.make-verify-widen-18.verify-bitphase-cases` | `make` | make verify-bitphase-cases (make/verify-widen-18.mk) exits 0 | `file: make/verify-widen-18.mk`<br>`target: verify-bitphase-cases` | the target exits 0 with no skip in its log | `make/verify-widen-18.mk:106` |
 | `none.nightly.harness-run.make-verify-widen-18.verify-canonical-cases` | `make` | make verify-canonical-cases (make/verify-widen-18.mk) exits 0 | `file: make/verify-widen-18.mk`<br>`reads: ["test/verify-canonical/"]`<br>`target: verify-canonical-cases` | the target exits 0 with no skip in its log | `make/verify-widen-18.mk:108` |
 | `none.nightly.harness-run.make-verify-widen-18.verify-tablegen-cases` | `make` | make verify-tablegen-cases (make/verify-widen-18.mk) exits 0 | `file: make/verify-widen-18.mk`<br>`target: verify-tablegen-cases` | the target exits 0 with no skip in its log | `make/verify-widen-18.mk:110` |
 

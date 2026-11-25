@@ -179,6 +179,8 @@ build/tables-generated-js/.stamp: make/js.mk bin/schema testdata/conformance/fea
 	./bin/schema generate --lang js --out build/tables-generated-js/rt3 test/tables/RT3.schema
 	# THE SHAPES UNIT (test/tables/shapes), opted in by the driver's `list`
 	./bin/schema generate --lang js --out build/tables-generated-js/shapes test/tables/shapes
+	# FL-19's map form (test/tables/moodmap), opted in by the driver's `list`
+	./bin/schema generate --lang js --out build/tables-generated-js/moodmap test/tables/moodmap/MoodMap.schema
 	# THE 2026-11-22 SURFACES' units (docs/SPEC-CONFORMANCE.md §2): tblsurf, one
 	# root per rule, and the two announcement-ceiling vocabularies of 4096 and
 	# 4097 entries (FL-38).

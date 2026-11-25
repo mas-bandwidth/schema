@@ -287,7 +287,10 @@ func runErr(ctx context.Context, args []string, stdout io.Writer, ads map[string
 	// with it
 	// with the clock read only when no --seed names it
 	var seed uint64
-	if *seedFlag != "" {
+	seedGiven := false
+	fs.Visit(func(f *flag.Flag) { seedGiven = seedGiven || f.Name == "seed" })
+	if seedGiven {
+		// a --seed given empty is refused, never read as no --seed at all
 		if seed, err = testreg.ParseSeed(*seedFlag); err != nil {
 			return usageError{"--seed: " + err.Error()}
 		}
