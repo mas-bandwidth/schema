@@ -214,13 +214,21 @@ func corpusRows(m *Manifest, reports map[string]string, jsonDir string) ([]corpu
 // caseFiles is, for each name the manifest gives a case, the committed files
 // the manifest names for it: every field of the case's line that is a path
 // in the working tree (a directory stands for every file under it), the
-// schema files of the unit it names, and the files of the line its Base
+// schema files of the unit it names, the wire and schema files of a
+// connection it names, and the files of the line its Base
 // names (a forgery's fixture). A line's name is its Name, Case or Instance
 // field. Paths under build/ are what the run materialises, not the corpus.
 func caseFiles(m *Manifest) (map[string][]string, error) {
 	units := map[string][]string{}
 	for _, u := range m.Units {
 		units[u.Key] = u.Paths
+	}
+	// a connection key in a case's line (a message row's unit column, a
+	// drift's peer) stands for the connection's announcement wire and its
+	// unit's schema files
+	conns := map[string][]string{}
+	for _, c := range m.Connections {
+		conns[c.Key] = append([]string{c.Wire}, units[c.Unit]...)
 	}
 	out := map[string]map[string]bool{}
 	bases := map[string][]string{}
@@ -268,6 +276,16 @@ func caseFiles(m *Manifest) (map[string][]string, error) {
 			if name == "" {
 				continue
 			}
+			// the files a case owes that live by its name rather than in a
+			// field: an announce or read-into golden, a retain-refusal's two
+			// saves, a message batch's wire (caseGoldens)
+			for _, method := range caseGoldens {
+				if fn := e.MethodByName(method); fn.IsValid() {
+					if err := add(name, fn.Call(nil)[0].String()); err != nil {
+						return nil, err
+					}
+				}
+			}
 			for k := 0; k < e.NumField(); k++ {
 				v := e.Field(k)
 				switch field := e.Type().Field(k).Name; {
@@ -279,6 +297,14 @@ func caseFiles(m *Manifest) (map[string][]string, error) {
 				}
 				switch v.Kind() {
 				case reflect.String:
+					if paths, ok := conns[v.String()]; ok {
+						for _, p := range paths {
+							if err := add(name, p); err != nil {
+								return nil, err
+							}
+						}
+						continue
+					}
 					if e.Type().Field(k).Name == "Unit" {
 						for _, p := range units[v.String()] {
 							if err := add(name, p); err != nil {
@@ -323,6 +349,11 @@ func caseFiles(m *Manifest) (map[string][]string, error) {
 	}
 	return files, nil
 }
+
+// caseGoldens are the methods a manifest line's type has that name a file the
+// case owes by its name: AnnounceCase.Golden and ReadInto.Golden, and
+// RetainRefusal.Before and After, and MessageBatch.Wire.
+var caseGoldens = []string{"Golden", "Before", "After", "Wire"}
 
 // filesOf is the files of the line a case answers: json-write's case is the
 // instance's name with ".json", and cook-write's big-endian case is the

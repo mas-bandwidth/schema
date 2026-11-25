@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 0. Language-free tests: 2780.
+Unit tests every language answers: 0. Language-free tests: 2781.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -2282,7 +2282,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.gotestrun.read-passes-text-through` | `gotest` | Go test TestReadPassesTextThrough in ./tools/gotestrun | `package: ./tools/gotestrun`<br>`test: TestReadPassesTextThrough` | the Go test passes | `tools/gotestrun/main_test.go:77` |
 | `none.unit.tooling.gotestrun.run-refuses-no-arguments-and-foreign-flags` | `gotest` | Go test TestRunRefusesNoArgumentsAndForeignFlags in ./tools/gotestrun | `package: ./tools/gotestrun`<br>`test: TestRunRefusesNoArgumentsAndForeignFlags` | the Go test passes | `tools/gotestrun/main_test.go:88` |
 
-#### `tooling` family `harness`, 315 tests
+#### `tooling` family `harness`, 316 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -2317,6 +2317,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.harness.cap-before-na-n-pin` | `gotest` | Go test TestCapBeforeNaNPin in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestCapBeforeNaNPin` | the Go test passes | `test/conformance/harness/cap_order_pin_test.go:16` |
 | `none.unit.tooling.harness.cards-check-compares-every-surface` | `gotest` | Go test TestCardsCheckComparesEverySurface in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestCardsCheckComparesEverySurface` | the Go test passes | `test/conformance/harness/cards_test.go:49` |
 | `none.unit.tooling.harness.cards-check-refuses-a-required-absence` | `gotest` | Go test TestCardsCheckRefusesARequiredAbsence in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestCardsCheckRefusesARequiredAbsence` | the Go test passes | `test/conformance/harness/cards_test.go:140` |
+| `none.unit.tooling.harness.case-files-name-what-a-case-owes-by-name` | `gotest` | Go test TestCaseFilesNameWhatACaseOwesByName in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestCaseFilesNameWhatACaseOwesByName` | the Go test passes | `test/conformance/harness/casefiles_test.go:14` |
 | `none.unit.tooling.harness.case-index-covers-the-corpus` | `gotest` | Go test TestCaseIndexCoversTheCorpus in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestCaseIndexCoversTheCorpus` | the Go test passes | `test/conformance/harness/claims_test.go:144` |
 | `none.unit.tooling.harness.case-rows-name-committed-roadmap-rows` | `gotest` | Go test TestCaseRowsNameCommittedRoadmapRows in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestCaseRowsNameCommittedRoadmapRows` | the Go test passes | `test/conformance/harness/ticked_test.go:99` |
 | `none.unit.tooling.harness.check-run-stdout-is-silent-or-refused` | `gotest` | Go test TestCheckRunStdoutIsSilentOrRefused in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestCheckRunStdoutIsSilentOrRefused` | the Go test passes | `test/conformance/harness/driverstdout_test.go:75` |
