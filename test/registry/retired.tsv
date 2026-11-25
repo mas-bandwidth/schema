@@ -199,7 +199,7 @@ ci-fast.yml	nightly-fast	make	appendix-go-fixed	harness-run.make-conformance-row
 ci-fast.yml	nightly-fast	make	table-optional-array-resize-go	harness-run.make-go-table-optional-array-resize.table-optional-array-resize-go	none
 ci-fast.yml	nightly-fast	make	appendix-python-fixed	harness-run.make-conformance-rows.appendix-python-fixed	none
 ci-fast.yml	nightly-fast	make	tables-cs-block-compile	harness-run.make-cs-block-compile.tables-cs-block-compile	none
-ci-fast.yml	nightly-fast	make	tables-cs-block-compile-negative-control	harness-run.make-cs-block-compile.tables-cs-block-compile-negative-control	none
+ci-fast.yml	nightly-fast	make	tables-cs-block-compile-negative-control	plant.make-cs-block-compile.tables-cs-block-compile-negative-control	none
 ci-fast.yml	verify-leg	make	verify-c-conformance	-	none
 ci-fast.yml	verify-leg	make	verify-c-bench	-	none
 ci-fast.yml	verify-leg	make	verify-c-fuzz	-	none

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -43,6 +44,21 @@ import (
 // job's setup. A language's leg build is inside its adapter's first call, so
 // it is inside the measured seconds.
 const shardBudget = testreg.ShardBudget
+
+// shardPlan is what the matrix plans a shard to carry: the fewest shards
+// whose every part is at most this many measured seconds. The seconds are
+// measured on a warm, quiet bench, and a cold CI runner takes longer, so the
+// plan leaves headroom under the limit and buys it with more shards, never
+// with lighter rows (2026-11-25). A part of one test, which cannot be cut,
+// fits up to the limit. The limit itself, shardBudget, is unchanged.
+const shardPlan = 50.0
+
+// shardBudgets are the plan a shard is cut to and the limit no shard may
+// pass.
+type shardBudgets struct{ plan, limit float64 }
+
+// prShards are the per-PR matrix's.
+var prShards = shardBudgets{plan: shardPlan, limit: shardBudget}
 
 const (
 	fastWorkflow    = ".github/workflows/ci-fast.yml"
@@ -102,6 +118,7 @@ var producers = []producer{
 	{"conformance-leg-go", "conformance-leg-go", "bin/schema build/conformance-go build/conformance-harness-vm build/tables-counted-min-variable build/tables-generated-go build/tables-generated-go-announce build/tables-generated-go-framing build/tables-generated-go-r19 build/tables-lists-variable build/tables-r1-variable"},
 	{"conformance-leg-goose", "conformance-leg-goose", "bin/schema build/conformance-goose build/conformance-harness-vm build/schema-goose"},
 	{"conformance-leg-cpp", "conformance-leg-cpp", "bin/schema build/conformance-cpp build/conformance-cpp-objs build/conformance-harness-vm build/schema_test_cook build/tables-generated"},
+	{"lint-c", "tables-c-clean-inputs", "bin/schema build/tables-generated-c generated/c generated/c-ludicrous generated/bench/c generated/bench/tables/c generated/bench/paired/c"},
 	{"lint-cpp", "tables-cpp-clean-inputs", "bin/schema build/tables-generated generated/cpp generated/bench/cpp generated/bench/tables/cpp generated/bench/paired/cpp"},
 	{"lint-js", "tables-js-clean-inputs", "bin/schema build/tables-generated-js generated/js generated/js-ludicrous generated/bench/js generated/bench/paired/js"},
 	{"lint-rust", "tables-rust-clippy-inputs", "bin/schema build/tables-generated-rust build/tables-generated-rust-witnesses"},
@@ -123,7 +140,7 @@ type ciRow struct {
 // counted. A test heavier than a shard is named: it fits no shard, however
 // many there are, and is split into rows that fit, never moved out of the
 // pull-request tier to fit.
-func ciMatrix(reg *testreg.Registry, budget float64) ([]ciRow, []string) {
+func ciMatrix(reg *testreg.Registry, budget shardBudgets) ([]ciRow, []string) {
 	g, ok := reg.Group("pr")
 	if !ok {
 		return nil, []string{"the registry has no group pr"}
@@ -155,15 +172,15 @@ func ciMatrix(reg *testreg.Registry, budget float64) ([]ciRow, []string) {
 		insts := sel.Instances
 		heavy := false
 		for _, inst := range insts {
-			if w := testreg.Weight(inst); w > budget {
-				problems = append(problems, fmt.Sprintf("%s weighs %.1f s, past one shard's %.0f s budget: split it into rows that fit (by package or target); a nightly tier is not the way under the budget", inst.Full, w, budget))
+			if w := testreg.Weight(inst); w > budget.limit {
+				problems = append(problems, fmt.Sprintf("%s weighs %.1f s, past one shard's %.0f s budget: split it into rows that fit (by package or target); a nightly tier is not the way under the budget", inst.Full, w, budget.limit))
 				heavy = true
 			}
 		}
 		if heavy {
 			continue
 		}
-		n := 1
+		n := leastShards(insts, budget)
 		for ; n < len(insts); n++ {
 			if fits(testreg.Parts(insts, n), budget) {
 				break
@@ -184,7 +201,7 @@ func ciMatrix(reg *testreg.Registry, budget float64) ([]ciRow, []string) {
 // matrixAccount runs the matrix as its jobs will (--group pr --lang L
 // --shard i/N) and holds it to the pr group: every name in exactly one job,
 // none left out, no shard past budget. Each break is named.
-func matrixAccount(reg *testreg.Registry, rows []ciRow, budget float64) []string {
+func matrixAccount(reg *testreg.Registry, rows []ciRow, budget shardBudgets) []string {
 	g, ok := reg.Group("pr")
 	if !ok {
 		return []string{"the registry has no group pr"}
@@ -196,13 +213,21 @@ func matrixAccount(reg *testreg.Registry, rows []ciRow, budget float64) []string
 	var bad []string
 	seen := map[string]int{}
 	count := map[string]int{} // a language's shard count, from its first row
+	// one selection per language: every row of a language selects the same
+	// list
+	sels := map[string]testreg.Selection{}
 	for _, r := range rows {
-		q := g.Query()
-		q.Langs = []string{r.Lang}
-		sel, err := reg.Select(q)
-		if err != nil {
-			bad = append(bad, fmt.Sprintf("%s %s: %v", r.Lang, r.Shard, err))
-			continue
+		sel, ok := sels[r.Lang]
+		if !ok {
+			q := g.Query()
+			q.Langs = []string{r.Lang}
+			got, err := reg.Select(q)
+			if err != nil {
+				bad = append(bad, fmt.Sprintf("%s %s: %v", r.Lang, r.Shard, err))
+				continue
+			}
+			sel = got
+			sels[r.Lang] = sel
 		}
 		var i, n int
 		if _, err := fmt.Sscanf(r.Shard, "%d/%d", &i, &n); err != nil {
@@ -213,7 +238,7 @@ func matrixAccount(reg *testreg.Registry, rows []ciRow, budget float64) []string
 		// job too many, so the count moves down as rows get lighter or move
 		if c, ok := count[r.Lang]; !ok {
 			count[r.Lang] = n
-			for m := 1; m < n; m++ {
+			for m := leastShards(sel.Instances, budget); m < n; m++ {
 				if fits(testreg.Parts(sel.Instances, m), budget) {
 					bad = append(bad, fmt.Sprintf("%s is cut into %d shards, and %d fit: the matrix is the fewest shards that fit", r.Lang, n, m))
 					break
@@ -232,8 +257,11 @@ func matrixAccount(reg *testreg.Registry, rows []ciRow, budget float64) []string
 			seen[inst.Full]++
 			secs += testreg.Weight(inst)
 		}
-		if secs > budget {
-			bad = append(bad, fmt.Sprintf("%s %s carries %.1f s, past %.0f s", r.Lang, r.Shard, secs, budget))
+		switch {
+		case secs > budget.limit:
+			bad = append(bad, fmt.Sprintf("%s %s carries %.1f s, past %.0f s", r.Lang, r.Shard, secs, budget.limit))
+		case secs > budget.plan && len(part) > 1:
+			bad = append(bad, fmt.Sprintf("%s %s carries %.1f s, past the %.0f s plan (the limit is %.0f s; the plan is headroom for a cold runner, bought with shards)", r.Lang, r.Shard, secs, budget.plan, budget.limit))
 		}
 	}
 	missing := 0
@@ -294,10 +322,25 @@ func matrixJobs(rows []ciRow) [][]ciRow {
 	return jobs
 }
 
-// fits: every part runs a test and carries at most budget seconds.
-func fits(parts [][]testreg.Instance, budget float64) bool {
+// leastShards is the fewest parts that could fit insts: no part carries past
+// the limit, so fewer than the weight over the limit cannot (and never fewer
+// than one). The search for the fewest that fit starts here.
+func leastShards(insts []testreg.Instance, budget shardBudgets) int {
+	total := 0.0
+	for _, inst := range insts {
+		total += testreg.Weight(inst)
+	}
+	return max(1, int(math.Ceil(total/budget.limit)))
+}
+
+// fits: every part runs a test and carries at most the plan's seconds, or,
+// a part of one test (which cannot be cut), at most the limit.
+func fits(parts [][]testreg.Instance, budget shardBudgets) bool {
 	for i, s := range testreg.PartSeconds(parts) {
-		if len(parts[i]) == 0 || s > budget {
+		switch {
+		case len(parts[i]) == 0, s > budget.limit:
+			return false
+		case s > budget.plan && len(parts[i]) > 1:
 			return false
 		}
 	}
@@ -345,7 +388,7 @@ var sumRe40 = regexp.MustCompile(`^[0-9a-f]{40}$`)
 
 // ciFiles are the generated files, by repository path.
 func ciFiles(reg *testreg.Registry) (map[string][]byte, error) {
-	rows, problems := ciMatrix(reg, shardBudget)
+	rows, problems := ciMatrix(reg, prShards)
 	if len(problems) > 0 {
 		return nil, fmt.Errorf("the pr group does not cut into shards that fit:\n  %s", strings.Join(problems, "\n  "))
 	}
@@ -362,7 +405,7 @@ func ciFiles(reg *testreg.Registry) (map[string][]byte, error) {
 		return nil, err
 	}
 	var wf bytes.Buffer
-	if err := fastTemplate.Execute(&wf, map[string]any{"Jobs": jobs, "Producers": string(produce), "Budget": shardBudget, "MaxJobs": maxMatrixJobs}); err != nil {
+	if err := fastTemplate.Execute(&wf, map[string]any{"Jobs": jobs, "Producers": string(produce), "Budget": shardBudget, "Plan": shardPlan, "MaxJobs": maxMatrixJobs}); err != nil {
 		return nil, err
 	}
 	road, err := roadmapWorkflow(reg)
@@ -489,7 +532,9 @@ the same.
 ## The per-PR matrix
 
 The `+"`pr`"+` group is cut per language into the fewest shards whose every part
-carries at most %.0f s of measured test time (each test's `+"`seconds`"+` in the
+carries at most %.0f s of measured test time, planned under the %.0f s limit
+as headroom for a cold runner; a part of one test may carry up to the limit
+(each test's `+"`seconds`"+` in the
 registry; a test with none weighs %.0f s until a run measures it, so a shard of
 unmeasured tests is held to the budget only once they are measured). Each row is
 one job, in jobs of at most `+"`%d`"+` rows (GitHub's limit on one matrix),
@@ -497,7 +542,7 @@ one job, in jobs of at most `+"`%d`"+` rows (GitHub's limit on one matrix),
 
 | language | shard | tests | measured seconds |
 |---|---|---|---|
-`, shardBudget, testreg.DefaultSeconds, maxMatrixJobs)
+`, shardPlan, shardBudget, testreg.DefaultSeconds, maxMatrixJobs)
 	jobs, tests, secs := 0, 0, 0.0
 	for _, r := range rows {
 		fmt.Fprintf(&b, "| `%s` | %s | %d | %.1f |\n", r.Lang, r.Shard, r.Tests, r.Seconds)
@@ -527,8 +572,9 @@ var fastTemplate = template.Must(template.New("ci-fast.yml").Delims("[[", "]]").
 #
 # THE PER-PR TIER. Every pull request, and every push to main, runs the
 # registry's pr group whole: every ready test of tiers unit and functional,
-# cut per language into shards of at most [[.Budget]] s of measured test time
-# (an unmeasured test weighs 1 s), each job capped at two minutes. Nothing
+# cut per language into the fewest shards planned at [[.Plan]] s of measured test
+# time and none past [[.Budget]] s (an unmeasured test weighs 1 s), each job
+# capped at two minutes. Nothing
 # selects by path or branch. Every step that runs a test calls schema-test, and only it
 # (TestEveryWorkflowStepCallsOnlySchemaTest). release.yml's fast lane is
 # locked on a green run of this workflow at the commit.
@@ -1225,7 +1271,7 @@ func ciCmd(args []string, stdout io.Writer) error {
 		return err
 	}
 	if *verdictFlag {
-		rows, problems := ciMatrix(reg, shardBudget)
+		rows, problems := ciMatrix(reg, prShards)
 		if len(problems) > 0 {
 			return fmt.Errorf("the pr group does not cut into shards that fit:\n  %s", strings.Join(problems, "\n  "))
 		}

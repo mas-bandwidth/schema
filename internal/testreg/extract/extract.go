@@ -85,6 +85,9 @@ type Result struct {
 	// (RuleID): a make target that stops being a test while its rule
 	// stands is found against it (DroppedMakeTargets).
 	Rules map[string]bool `json:"-"`
+	// RuleLines is the first line each rule is written on, by RuleID: what a
+	// make row's source names (MakeSourceProblems).
+	RuleLines map[string]int `json:"-"`
 	// CaseFiles is each data case's files (a case of a .jsonl line has
 	// none), by its ID: a golden row covers a case only when it pins them
 	// all (CoveredIn).

@@ -565,6 +565,16 @@ tables_zero_cost_scan = for u in $(TABLES_ZERO_COST_UNITS); do \
 				echo "ZERO-COST GATE FAILED: pointer, map or list machinery leaked into $$f"; exit 1; \
 			fi; \
 		done; \
+		for f in $(1)/$$u/*TableData.h; do \
+			test -e "$$f" || continue; \
+			if ! test -r "$$f"; then \
+				echo "ZERO-COST GATE FAILED: unit $$u has an unreadable data header: $$f"; exit 1; \
+			fi; \
+			if $(call tables_zero_cost_leaks,$$f); then \
+				grep -nE "$(TABLES_ZERO_COST_SYMBOLS)" $$f | grep -vE "$(TABLES_ZERO_COST_ALLOWED)"; \
+				echo "ZERO-COST GATE FAILED: pointer, map or list machinery leaked into $$f"; exit 1; \
+			fi; \
+		done; \
 	done
 
 .PHONY: tables-zero-cost
@@ -1909,7 +1919,7 @@ tables-block-zero-cost-negative-control: build/tables-generated/.stamp
 		>> build/zero-cost-leak/pointers/GraphTable.h
 	@grep -q "PLANTED: a block spelling" build/zero-cost-leak/pointers/GraphTable.h || \
 		{ echo "NEGATIVE CONTROL FAILED: the plant did not apply"; exit 1; }
-	@if $(call tables_byte_identical,cpp,build/tables-generated,build/zero-cost-leak,-name '*Table.h' -o -name '*Table.cpp',100); then \
+	@if $(call tables_byte_identical,cpp,build/tables-generated,build/zero-cost-leak,-name '*Table.h' -o -name '*TableData.h' -o -name '*Table.cpp',100); then \
 		echo "NEGATIVE CONTROL FAILED: a planted block symbol left the byte comparison green"; exit 1; \
 	fi
 	@echo "negative control: a moved Table source turns the block-less comparison RED"
@@ -5039,7 +5049,7 @@ update-goldens-steps: packet-defaults-goldens conformance-pin
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_retain
 	@for d in examples pointers block blockhome messages stream blobs scalars maps lists arms; do \
 		mkdir -p testdata/golden/tables/$$d; \
-		for f in build/tables-generated/$$d/*Table.h build/tables-generated/$$d/*Table.cpp; do [ ! -e "$$f" ] || cp "$$f" testdata/golden/tables/$$d/ || exit 1; done; \
+		for f in build/tables-generated/$$d/*Table.h build/tables-generated/$$d/*TableData.h build/tables-generated/$$d/*Table.cpp; do [ ! -e "$$f" ] || cp "$$f" testdata/golden/tables/$$d/ || exit 1; done; \
 	done
 	# every leg's committed table goldens (make/<lang>.mk, GOLDENS_LEGS)
 	@set -e; for leg in $(GOLDENS_LEGS); do $(MAKE) $$leg; done
@@ -5769,7 +5779,7 @@ tables-cpp-names-negative-control:
 # A 2 GiB input and a ~2.8 GiB output under Clang UBSan cost about twenty
 # seconds and do not fit the owner's two-minute per-commit rule, which is why
 # the test gates itself on SCHEMA_CERTIFY_INT32_MAX and this target sets it.
-CPP_RELEASE_JOBS ?= $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
+CPP_RELEASE_JOBS ?= $(shell nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 .PHONY: tables-cpp-release
 tables-cpp-release:
 	$(MAKE) -j$(CPP_RELEASE_JOBS) $(CPP_RELEASE_DIR)/tables $(CPP_RELEASE_DIR)/maps $(CPP_RELEASE_DIR)/lists \
@@ -7763,7 +7773,7 @@ release-binaries:
 # runtime, the sibling $(SERIALIZE) or else the pinned one fetched into build/.
 RELEASE_DIFFERENTIAL_PREV ?=
 RELEASE_DIFFERENTIAL_FLAGS ?=
-RELEASE_DIFFERENTIAL_JOBS ?= $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)
+RELEASE_DIFFERENTIAL_JOBS ?= $(shell nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 # THE JUDGE CORPUS (tools/releasediff/testdata/judge-corpus): committed cases,
 # each two listings of what the packet drivers wrote and the verdict the
 # release owes on them, replayed through the differential's own Judge. The
@@ -8191,7 +8201,7 @@ pins-source-cpp: bin/schema
 	$(call pins_generate_dirs,PINS_CPP_GENERATE,$(PINS_SOURCE_CPP_DIRS),cpp-source)
 	@for d in $(PINS_SOURCE_CPP_DIRS); do \
 		mkdir -p testdata/golden/tables/$$d; \
-		for f in build/tables-generated/$$d/*Table.h build/tables-generated/$$d/*Table.cpp; do [ ! -e "$$f" ] || cp "$$f" testdata/golden/tables/$$d/ || exit 1; done; \
+		for f in build/tables-generated/$$d/*Table.h build/tables-generated/$$d/*TableData.h build/tables-generated/$$d/*Table.cpp; do [ ! -e "$$f" ] || cp "$$f" testdata/golden/tables/$$d/ || exit 1; done; \
 	done
 
 .PHONY: pins-source-c
@@ -8201,7 +8211,7 @@ pins-source-c: bin/schema
 	$(call pins_generate_dirs,PINS_C_GENERATE,$(PINS_SOURCE_C_DIRS),c-source)
 	@for d in $(PINS_SOURCE_C_DIRS); do \
 		mkdir -p testdata/golden/tables/$$d-c; \
-		cp build/tables-generated-c/$$d/*Table.h build/tables-generated-c/$$d/*Table.c build/tables-generated-c/$$d/*View.h build/tables-generated-c/$$d/*View.c testdata/golden/tables/$$d-c/; \
+		cp build/tables-generated-c/$$d/*Table.h $$(find build/tables-generated-c/$$d -maxdepth 1 -name '*TableData.h') build/tables-generated-c/$$d/*Table.c build/tables-generated-c/$$d/*View.h build/tables-generated-c/$$d/*View.c testdata/golden/tables/$$d-c/; \
 	done
 
 .PHONY: pins-source-cs
@@ -8477,6 +8487,7 @@ endef
 
 define tables_zero_cost_symbol_grep
 	@for f in $(1); do \
+		if ! test -r "$$f"; then echo "BLOCK ZERO-COST GATE FAILED: no readable file $$f"; exit 1; fi; \
 		if sed -E 's://.*$$::' $$f | grep -nE "TableBlock|[A-Za-z0-9_]Block"; then \
 			echo "BLOCK ZERO-COST GATE FAILED: the block form leaked into $$f"; exit 1; \
 		fi; \
@@ -8514,9 +8525,9 @@ tables-block-zero-cost-cpp: bin/schema $(BLOCKLESS_SCHEMA)
 	@mkdir -p $(BLOCKFUL_ROOT)/cpp $(BLOCKLESS_ROOT)/cpp
 	@$(call tables_run_arm,ZERO_COST_CPP_BLOCKFUL,cpp blockful)
 	@$(call tables_run_arm,ZERO_COST_CPP_BLOCKLESS,cpp blockless)
-	@$(call tables_zero_cost_symbol_grep,$(BLOCKFUL_ROOT)/cpp/*/*Table.h $(BLOCKFUL_ROOT)/cpp/*/*Table.cpp)
+	@$(call tables_zero_cost_symbol_grep,$(BLOCKFUL_ROOT)/cpp/*/*Table.h $(BLOCKFUL_ROOT)/cpp/*/*TableData.h $(BLOCKFUL_ROOT)/cpp/*/*Table.cpp)
 	@$(call tables_zero_cost_no_block_files,$(BLOCKLESS_ROOT)/cpp)
-	@$(call tables_byte_identical,cpp,$(BLOCKFUL_ROOT)/cpp,$(BLOCKLESS_ROOT)/cpp,-name '*Table.h' -o -name '*Table.cpp',100)
+	@$(call tables_byte_identical,cpp,$(BLOCKFUL_ROOT)/cpp,$(BLOCKLESS_ROOT)/cpp,-name '*Table.h' -o -name '*TableData.h' -o -name '*Table.cpp',100)
 
 tables-block-zero-cost-cs: export ZERO_COST_CS_BLOCKFUL = $(call tables_generate_cs,./bin/schema,$(BLOCKFUL_ROOT)/cs)
 tables-block-zero-cost-cs: export ZERO_COST_CS_BLOCKLESS = $(call tables_generate_cs,$(BLOCKLESS_SCHEMA),$(BLOCKLESS_ROOT)/cs)
@@ -8549,14 +8560,14 @@ tables-block-zero-cost-c-heavy: bin/schema $(BLOCKLESS_SCHEMA)
 	@mkdir -p $(BLOCKLESS_ROOT)/c/block $(BLOCKLESS_ROOT)/c/blockhome $(BLOCKLESS_ROOT)/c/messages $(BLOCKLESS_ROOT)/c/examples
 	@$(call tables_run_both_arms,ZERO_COST_C_BLOCKFUL,c,ZERO_COST_C_BLOCKLESS,heavy)
 	@$(call tables_zero_cost_no_block_files,$(BLOCKLESS_ROOT)/c)
-	@$(call tables_byte_identical,c,$(BLOCKFUL_ROOT)/c,$(BLOCKLESS_ROOT)/c,-name '*Table.h' -o -name '*Table.c',2)
+	@$(call tables_byte_identical,c,$(BLOCKFUL_ROOT)/c,$(BLOCKLESS_ROOT)/c,-name '*Table.h' -o -name '*TableData.h' -o -name '*Table.c',2)
 
 tables-block-zero-cost-c-rest: bin/schema $(BLOCKLESS_SCHEMA)
 	@rm -rf $(BLOCKFUL_ROOT)/c $(BLOCKLESS_ROOT)/c
 	@mkdir -p $(BLOCKFUL_ROOT)/c $(BLOCKLESS_ROOT)/c
 	@$(call tables_run_both_arms,ZERO_COST_C_BLOCKFUL,c,ZERO_COST_C_BLOCKLESS,rest)
 	@$(call tables_zero_cost_no_block_files,$(BLOCKLESS_ROOT)/c)
-	@$(call tables_byte_identical,c,$(BLOCKFUL_ROOT)/c,$(BLOCKLESS_ROOT)/c,-name '*Table.h' -o -name '*Table.c',60)
+	@$(call tables_byte_identical,c,$(BLOCKFUL_ROOT)/c,$(BLOCKLESS_ROOT)/c,-name '*Table.h' -o -name '*TableData.h' -o -name '*Table.c',60)
 
 # Serial on purpose: each row deletes the whole C tree, so neither may
 # overlap the other in one workspace, and neither judges what the other left

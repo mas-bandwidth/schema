@@ -73,20 +73,20 @@ func TestTheCIFilesAreCurrent(t *testing.T) {
 func TestTheMatrixIsThePRGroup(t *testing.T) {
 	t.Parallel()
 	reg := loadRepoRegistry(t)
-	rows, problems := ciMatrix(reg, shardBudget)
+	rows, problems := ciMatrix(reg, prShards)
 	if len(problems) > 0 {
 		t.Fatalf("the pr group does not cut into shards that fit:\n  %s", strings.Join(problems, "\n  "))
 	}
-	if p := matrixAccount(reg, rows, shardBudget); len(p) > 0 {
+	if p := matrixAccount(reg, rows, prShards); len(p) > 0 {
 		t.Fatalf("the matrix is not the pr group:\n  %s", strings.Join(p, "\n  "))
 	}
 	has := func(p []string, s string) bool { return strings.Contains(strings.Join(p, "\n"), s) }
 	// plant: one row dropped
-	if p := matrixAccount(reg, rows[1:], shardBudget); !has(p, "left out") {
+	if p := matrixAccount(reg, rows[1:], prShards); !has(p, "left out") {
 		t.Errorf("a matrix one row short is not named: %v", p)
 	}
 	// plant: one row doubled
-	if p := matrixAccount(reg, append([]ciRow{rows[0]}, rows...), shardBudget); !has(p, "runs in 2 jobs, not 1") {
+	if p := matrixAccount(reg, append([]ciRow{rows[0]}, rows...), prShards); !has(p, "runs in 2 jobs, not 1") {
 		t.Errorf("a matrix with a row twice is not named: %v", p)
 	}
 	// plant: a language's shards merged into one, past the budget
@@ -97,7 +97,7 @@ func TestTheMatrixIsThePRGroup(t *testing.T) {
 		}
 	}
 	coarse = append(coarse, ciRow{Lang: testreg.LangFree, Shard: "1/1"})
-	if p := matrixAccount(reg, coarse, shardBudget); !has(p, "none 1/1 carries") {
+	if p := matrixAccount(reg, coarse, prShards); !has(p, "none 1/1 carries") {
 		t.Errorf("a shard past its budget is not named: %v", p)
 	}
 	// plant: a language cut into one shard more than it needs (the
@@ -117,19 +117,19 @@ func TestTheMatrixIsThePRGroup(t *testing.T) {
 	for i := 1; i <= n+1; i++ {
 		extra = append(extra, ciRow{Lang: testreg.LangFree, Shard: fmt.Sprintf("%d/%d", i, n+1)})
 	}
-	if p := matrixAccount(reg, extra, shardBudget); !has(p, fmt.Sprintf("%s is cut into %d shards, and %d fit", testreg.LangFree, n+1, n)) {
+	if p := matrixAccount(reg, extra, prShards); !has(p, fmt.Sprintf("%s is cut into %d shards, and %d fit", testreg.LangFree, n+1, n)) {
 		t.Errorf("a language cut into more shards than fit is not named: %v", p)
 	}
 	// plant: one language's shards cut two ways
-	if p := matrixAccount(reg, append(append([]ciRow{}, rows...), ciRow{Lang: rows[0].Lang, Shard: "1/999"}), shardBudget); !has(p, "one count per language") {
+	if p := matrixAccount(reg, append(append([]ciRow{}, rows...), ciRow{Lang: rows[0].Lang, Shard: "1/999"}), prShards); !has(p, "one count per language") {
 		t.Errorf("a language cut two ways is not named: %v", p)
 	}
 	// plant: a row whose shard does not read
-	if p := matrixAccount(reg, append(append([]ciRow{}, rows...), ciRow{Lang: rows[0].Lang, Shard: "x"}), shardBudget); !has(p, rows[0].Lang+" x: the shard does not read") {
+	if p := matrixAccount(reg, append(append([]ciRow{}, rows...), ciRow{Lang: rows[0].Lang, Shard: "x"}), prShards); !has(p, rows[0].Lang+" x: the shard does not read") {
 		t.Errorf("a shard that does not read is not named: %v", p)
 	}
 	// plant: a shard past the language's count
-	if p := matrixAccount(reg, append(append([]ciRow{}, rows...), ciRow{Lang: rows[0].Lang, Shard: "9/1"}), shardBudget); !has(p, rows[0].Lang+" 9/1:") {
+	if p := matrixAccount(reg, append(append([]ciRow{}, rows...), ciRow{Lang: rows[0].Lang, Shard: "9/1"}), prShards); !has(p, rows[0].Lang+" 9/1:") {
 		t.Errorf("a shard past its count is not named: %v", p)
 	}
 	// plant: a test heavier than a shard
@@ -137,12 +137,60 @@ func TestTheMatrixIsThePRGroup(t *testing.T) {
 		if tt.Scope == testreg.LangFree && tt.Tier == "unit" {
 			was := tt.Seconds
 			reg.Tests[i].Seconds = shardBudget + 1
-			_, p := ciMatrix(reg, shardBudget)
+			_, p := ciMatrix(reg, prShards)
 			reg.Tests[i].Seconds = was
 			if want := "none.unit." + tt.Key + " weighs 61.0 s, past one shard's 60 s budget"; !has(p, want) {
 				t.Errorf("a test heavier than a shard was not named (want %q): %v", want, p)
 			}
 			break
+		}
+	}
+}
+
+// TestTheMatrixPlansHeadroomUnderTheLimit: the generated matrix cuts
+// every shard of more than one test to the 50 s plan, under the 60 s limit,
+// and a part of one test may carry up to the limit. The plants: the
+// repository's matrix cut to the limit alone (no headroom), which the
+// account names past the plan; and fits over hand-made parts, by the rule.
+func TestTheMatrixPlansHeadroomUnderTheLimit(t *testing.T) {
+	t.Parallel()
+	if shardPlan >= shardBudget {
+		t.Fatalf("the plan (%.0f s) leaves no headroom under the limit (%.0f s)", shardPlan, shardBudget)
+	}
+	reg := loadRepoRegistry(t)
+	rows, problems := ciMatrix(reg, prShards)
+	if len(problems) > 0 {
+		t.Fatalf("the pr group does not cut into shards that fit:\n  %s", strings.Join(problems, "\n  "))
+	}
+	for _, r := range rows {
+		if r.Seconds > shardPlan && r.Tests > 1 {
+			t.Errorf("%s %s carries %.1f s over %d tests, past the %.0f s plan", r.Lang, r.Shard, r.Seconds, r.Tests, shardPlan)
+		}
+	}
+	// plant: the matrix cut to the limit, with no headroom
+	tight, problems := ciMatrix(reg, shardBudgets{plan: shardBudget, limit: shardBudget})
+	if len(problems) > 0 {
+		t.Fatalf("the pr group does not cut to the limit:\n  %s", strings.Join(problems, "\n  "))
+	}
+	if p := matrixAccount(reg, tight, prShards); !strings.Contains(strings.Join(p, "\n"), "plan") {
+		t.Errorf("a matrix cut to the limit, with no headroom, is not named past the plan: %v", p)
+	}
+	inst := func(secs float64) testreg.Instance {
+		return testreg.Instance{Test: testreg.Test{Seconds: secs}}
+	}
+	for _, tc := range []struct {
+		what  string
+		parts [][]testreg.Instance
+		want  bool
+	}{
+		{"two tests under the plan", [][]testreg.Instance{{inst(20), inst(25)}}, true},
+		{"two tests past the plan, under the limit", [][]testreg.Instance{{inst(30), inst(25)}}, false},
+		{"one test past the plan, under the limit", [][]testreg.Instance{{inst(55)}}, true},
+		{"one test past the limit", [][]testreg.Instance{{inst(61)}}, false},
+		{"an empty part", [][]testreg.Instance{{inst(1)}, {}}, false},
+	} {
+		if got := fits(tc.parts, prShards); got != tc.want {
+			t.Errorf("fits(%s) = %v, want %v", tc.what, got, tc.want)
 		}
 	}
 }
@@ -155,7 +203,7 @@ func TestTheMatrixIsThePRGroup(t *testing.T) {
 func TestTheShardJobsFitGitHubsMatrixLimit(t *testing.T) {
 	t.Parallel()
 	reg := loadRepoRegistry(t)
-	rows, problems := ciMatrix(reg, shardBudget)
+	rows, problems := ciMatrix(reg, prShards)
 	if len(problems) > 0 {
 		t.Fatalf("the pr group does not cut into shards that fit:\n  %s", strings.Join(problems, "\n  "))
 	}

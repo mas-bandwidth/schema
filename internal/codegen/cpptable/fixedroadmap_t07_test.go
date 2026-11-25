@@ -124,7 +124,8 @@ func cppT07Header(t *testing.T, src, base string) string {
 	maps.Copy(files, tables)
 	for name, data := range files {
 		if strings.HasSuffix(name, "Table.h") {
-			return string(data)
+			// the header includes <Base>TableData.h, which holds the fixed form's arrays
+			return string(data) + string(files[strings.TrimSuffix(name, ".h")+"Data.h"])
 		}
 	}
 	t.Fatal("no Table.h was generated")
@@ -444,12 +445,16 @@ fixed table Probe {
 }
 `
 	h := cppT07Header(t, src, "w8")
-	blob := "{ 16, 1, 24, 1, 3 }, // blob"
-	label := "{ 12, 0, 0, 0, 1 }, // label"
-	if !strings.Contains(cppSourceSpelling(h), blob) {
+	// the header names no row: a row is found by its place in the layout walk
+	u := loadUnitFromSource(t, src)
+	notes := cppFixedDstNotes(cppOnlyFixedRoot(t, u))
+	const marker = "constexpr TableFixedDst ProbeFixedDst[] = {\n"
+	blob := "{ 16, 1, 24, 1, 3 },"
+	label := "{ 12, 0, 0, 0, 1 },"
+	if cppSourceSpelling(cppFixedRow(t, h, marker, notes, "blob")) != blob {
 		t.Errorf("W8: bytes(N) takes the array row: the bytes destination row must be the array's — buffer at dst, stride one, live count at aux — got no line %q", blob)
 	}
-	if !strings.Contains(cppSourceSpelling(h), label) {
+	if cppSourceSpelling(cppFixedRow(t, h, marker, notes, "label")) != label {
 		t.Errorf("W8: bytes(N) takes the array row: the text row is the CONTROL and must stay the text convention %q", label)
 	}
 }

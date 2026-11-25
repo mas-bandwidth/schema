@@ -210,6 +210,52 @@ func TestCheckHoldsTheRepositoryTheRegistryAndTheLedgerExactly(t *testing.T) {
 	}
 }
 
+// TestASubtestRowClaimsItsSubtest: the parent gotest row claims the top-level
+// test and a row that names a subtest claims that subtest, so the two are not
+// "already runs". The extract lists the top-level test, which holds the
+// subtest claim. A second row for the same subtest is refused, and a subtest
+// whose top-level test the repository does not hold is named. The subtest
+// row's files index the data case; the parent, naming none, does not.
+func TestASubtestRowClaimsItsSubtest(t *testing.T) {
+	t.Parallel()
+	top := Item{Kind: KindGoTest, Dir: "internal/baseline", Name: "TestCommittedEditPairs", Source: "internal/baseline/editpairs_test.go:19"}
+	res := &Result{Items: []Item{
+		top,
+		{Kind: KindDataCase, Dir: "internal/baseline/testdata/editpairs/f058-fixed-to-bounded", Name: "want", Source: "internal/baseline/testdata/editpairs/f058-fixed-to-bounded/want.txt:1"},
+	}}
+	parent := gotestRow("tooling.baseline.committed-edit-pairs", "./internal/baseline", "TestCommittedEditPairs")
+	child := testreg.Test{Key: "tooling.baseline.edit-pair-f058-fixed-to-bounded", Scope: testreg.LangFree, Adapter: "gotest", Inputs: []byte(`{"package":"./internal/baseline","test":"TestCommittedEditPairs","subtest":"f058-fixed-to-bounded","files":["internal/baseline/testdata/editpairs/f058-fixed-to-bounded/want.txt"]}`)}
+	sib := testreg.Test{Key: "tooling.baseline.edit-pair-f058-control-bounded-to-map", Scope: testreg.LangFree, Adapter: "gotest", Inputs: []byte(`{"package":"./internal/baseline","test":"TestCommittedEditPairs","subtest":"f058-control-bounded-to-map"}`)}
+	reg := &testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{parent, child, sib}}
+	out, problems := Covered(reg)
+	if len(problems) != 0 {
+		t.Fatalf("parent and its subtests: %v", problems)
+	}
+	if out[top.ID()] != parent.Key {
+		t.Fatalf("parent claim %q, want %s", out[top.ID()], parent.Key)
+	}
+	sub := Item{Kind: KindGoTest, Dir: "internal/baseline", Name: "TestCommittedEditPairs/f058-fixed-to-bounded"}
+	if out[sub.ID()] != child.Key {
+		t.Fatalf("subtest claim %q, want %s", out[sub.ID()], child.Key)
+	}
+	if p := Check(res, reg, nil); len(p) != 0 {
+		t.Fatalf("the top-level test holds its subtests: %v", p)
+	}
+	if got := Indexed(reg)[Item{Kind: KindDataCase, Dir: "internal/baseline/testdata/editpairs/f058-fixed-to-bounded", Name: "want"}.ID()]; got != child.Key {
+		t.Fatalf("the case file is indexed by %q, want the subtest row", got)
+	}
+	dup := testreg.Test{Key: "tooling.baseline.edit-pair-again", Adapter: "gotest", Inputs: child.Inputs}
+	if _, problems := Covered(&testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{child, dup}}); len(problems) != 1 || !strings.Contains(problems[0], "already runs") {
+		t.Fatalf("two rows for one subtest: %v", problems)
+	}
+	gone := &Result{}
+	p := Check(gone, reg, nil)
+	joined := strings.Join(p, "\n")
+	if !strings.Contains(joined, "tooling.baseline.edit-pair-f058-fixed-to-bounded runs go-test internal/baseline TestCommittedEditPairs/f058-fixed-to-bounded, which the repository does not hold") {
+		t.Fatalf("a subtest whose test is gone:\n%s", joined)
+	}
+}
+
 // TestMakePlantAndGoldenRowsCoverTheirTests: a make row covers its make
 // target, a plant row its negative control, a golden row the data case its
 // files are; each row naming a test the repository does not hold is named.
@@ -249,6 +295,44 @@ func TestMakePlantAndGoldenRowsCoverTheirTests(t *testing.T) {
 		"a make row with no file": {row("harness-run.makefile.nofile", "make", `{"target":"prep"}`), "is a make row without a file and a target"},
 	} {
 		p := Check(res, &testreg.Registry{Path: "r.jsonl", Tests: append(slices.Clone(good), c.extra)}, nil)
+		if !strings.Contains(strings.Join(p, "\n"), c.says) {
+			t.Errorf("%s: want %q in:\n%s", name, c.says, strings.Join(p, "\n"))
+		}
+	}
+}
+
+// TestTheShardRowsOfAGateShareItsTarget: the rows of a sharded make gate,
+// each setting one *_SHARD var to K/N, together cover its target once; a
+// shard run twice, a shard of another N, a shard row gone, a whole row
+// beside the shards, two shard vars on one row, and a value that is not K/N
+// are each named.
+func TestTheShardRowsOfAGateShareItsTarget(t *testing.T) {
+	t.Parallel()
+	res := &Result{Items: []Item{{Kind: KindMakeTarget, Dir: "make/x.mk", Name: "lint", Source: "make/x.mk:1"}}}
+	shard := func(key, vars string) testreg.Test {
+		return testreg.Test{Key: key, Adapter: "make", Inputs: []byte(`{"file":"make/x.mk","target":"lint","vars":{` + vars + `}}`)}
+	}
+	good := []testreg.Test{
+		shard("lint.x.lint-shard-1-of-3", `"X_SHARD":"1/3","OTHER":"y"`),
+		shard("lint.x.lint-shard-2-of-3", `"X_SHARD":"2/3","OTHER":"y"`),
+		shard("lint.x.lint-shard-3-of-3", `"X_SHARD":"3/3","OTHER":"y"`),
+	}
+	if p := Check(res, &testreg.Registry{Path: "r.jsonl", Tests: good}, nil); len(p) != 0 {
+		t.Fatalf("the exact account: %v", p)
+	}
+	for name, c := range map[string]struct {
+		tests []testreg.Test
+		says  string
+	}{
+		"a shard run twice":          {append(slices.Clone(good), shard("lint.x.again", `"X_SHARD":"2/3"`)), "lint.x.again runs shard 2/3 of make lint, which lint.x.lint-shard-2-of-3 already runs"},
+		"a shard of another N":       {append(slices.Clone(good), shard("lint.x.four", `"X_SHARD":"1/4"`)), "lint.x.four shards make lint as X_SHARD=1/4, but lint.x.lint-shard-1-of-3 shards it as X_SHARD of 3"},
+		"a shard row gone":           {[]testreg.Test{good[0], good[2]}, "no row runs shard 2/3 of make lint (X_SHARD)"},
+		"a whole row after":          {append(slices.Clone(good), shard("lint.x.whole", `"OTHER":"y"`)), "lint.x.whole runs make lint, which lint.x.lint-shard-1-of-3 already runs"},
+		"a whole row before":         {append([]testreg.Test{shard("lint.x.whole", `"OTHER":"y"`)}, good...), "lint.x.lint-shard-1-of-3 runs shard 1/3 of make lint, which lint.x.whole already runs whole"},
+		"two shard vars":             {append(slices.Clone(good), shard("lint.x.two", `"X_SHARD":"1/3","Y_SHARD":"1/2"`)), "lint.x.two: sets two shard vars, X_SHARD and Y_SHARD"},
+		"a shard that is not K of N": {append(slices.Clone(good), shard("lint.x.zero", `"X_SHARD":"0/3"`)), `lint.x.zero: X_SHARD="0/3" is not a shard K/N`},
+	} {
+		p := Check(res, &testreg.Registry{Path: "r.jsonl", Tests: c.tests}, nil)
 		if !strings.Contains(strings.Join(p, "\n"), c.says) {
 			t.Errorf("%s: want %q in:\n%s", name, c.says, strings.Join(p, "\n"))
 		}
@@ -813,5 +897,128 @@ func TestAPerLanguageRowsTargetNoMakeFileDefinesIsNamed(t *testing.T) {
 	// the pattern rules empty stem is no match: runs--text is not runs-%-texts
 	if makeDefines(map[string]bool{}, []string{"runs-%-text"}, "runs--text") {
 		t.Errorf("an empty stem matched a pattern rule")
+	}
+}
+
+// TestARowNamingAJsonlFileReadsEveryLine: a .jsonl file's lines are cases
+// of their own (dataCases names each for its line), so a row naming the
+// file claims no stem for it; it reads every line, so each line case counts
+// as the row's in Check, and a line case no row's file names is unmoved.
+func TestARowNamingAJsonlFileReadsEveryLine(t *testing.T) {
+	t.Parallel()
+	res := &Result{Items: []Item{
+		{Kind: KindDataCase, Dir: "testdata/corpus", Name: "cases/line1", Source: "testdata/corpus/cases.jsonl:1"},
+		{Kind: KindDataCase, Dir: "testdata/corpus", Name: "cases/line2", Source: "testdata/corpus/cases.jsonl:2"},
+		{Kind: KindDataCase, Dir: "testdata/other", Name: "cases/line1", Source: "testdata/other/cases.jsonl:1"},
+	}}
+	row := testreg.Test{Key: "roundtrip.conformance-wire.cases", Inputs: []byte(`{"surface":"wire","case":"cases","files":["testdata/corpus/cases.jsonl"],"driver":"test/conformance/{lang}/driver"}`)}
+	reg := &testreg.Registry{Path: "r.jsonl", Langs: []testreg.Lang{{Name: "zz", Adapter: "corpus"}}, Tests: []testreg.Test{row}}
+	ledger := []LedgerLine{{Kind: KindDataCase, Dir: "testdata/other", Count: 1}}
+	if p := Check(res, reg, ledger); len(p) != 0 {
+		t.Fatalf("the exact account: %v", p)
+	}
+	// the row gone, its two line cases are unmoved again
+	if p := Check(res, &testreg.Registry{Path: "r.jsonl", Langs: reg.Langs}, ledger); !strings.Contains(strings.Join(p, "\n"), "testdata/corpus: 2 tests are neither registry rows") {
+		t.Fatalf("a dropped row: %v", p)
+	}
+	// a row no ready language answers reads nothing
+	idle := &testreg.Registry{Path: "r.jsonl", Langs: []testreg.Lang{{Name: "zz"}}, Tests: []testreg.Test{row}}
+	if p := Check(res, idle, ledger); !strings.Contains(strings.Join(p, "\n"), "testdata/corpus: 2 tests are neither registry rows") {
+		t.Fatalf("an unanswered row: %v", p)
+	}
+}
+
+// TestAGoTestSubtestRowClaimsTheSubtest: a row that names a subtest claims
+// Test/sub, and the parent row still claims Test. The subtest is held when
+// that Test exists. It does not cover the parent, and a second row for the
+// same subtest is named. A subtest whose test the repository does not hold
+// is named. A subtest name with a slash is not a claim.
+func TestAGoTestSubtestRowClaimsTheSubtest(t *testing.T) {
+	t.Parallel()
+	res := &Result{Items: []Item{
+		{Kind: KindGoTest, Dir: "compiler", Name: "TestParent", Source: "compiler/x_test.go:1"},
+	}}
+	parent := gotestRow("compiler.compiler.parent", "./compiler", "TestParent")
+	child := testreg.Test{Key: "compiler.compiler.child", Adapter: "gotest", Inputs: []byte(`{"package":"./compiler","test":"TestParent","subtest":"Player.schema"}`)}
+	reg := &testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{parent, child}}
+	if p := Check(res, reg, nil); len(p) != 0 {
+		t.Fatalf("parent and its subtest: %v", p)
+	}
+	covered, problems := Covered(reg)
+	if len(problems) != 0 {
+		t.Fatal(problems)
+	}
+	if covered["go-test compiler TestParent"] != "compiler.compiler.parent" {
+		t.Errorf("parent claim: %v", covered)
+	}
+	if covered["go-test compiler TestParent/Player.schema"] != "compiler.compiler.child" {
+		t.Errorf("subtest claim: %v", covered)
+	}
+	onlyChild := &testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{child}}
+	p := Check(res, onlyChild, nil)
+	joined := strings.Join(p, "\n")
+	if !strings.Contains(joined, "TestParent") || strings.Contains(joined, "does not hold") {
+		t.Fatalf("a subtest row does not cover its parent, and the subtest is held: %v", p)
+	}
+	again := child
+	again.Key = "compiler.compiler.again"
+	p = Check(res, &testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{parent, child, again}}, nil)
+	if !strings.Contains(strings.Join(p, "\n"), "already runs") {
+		t.Fatalf("two rows for one subtest: %v", p)
+	}
+	orphan := testreg.Test{Key: "compiler.compiler.orphan", Adapter: "gotest", Inputs: []byte(`{"package":"./compiler","test":"TestGone","subtest":"X.schema"}`)}
+	p = Check(res, &testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{parent, orphan}}, nil)
+	if !strings.Contains(strings.Join(p, "\n"), "registry row compiler.compiler.orphan runs go-test compiler TestGone/X.schema, which the repository does not hold") {
+		t.Fatalf("orphan subtest: %v", p)
+	}
+	slash := testreg.Test{Key: "compiler.compiler.slash", Adapter: "gotest", Inputs: []byte(`{"package":"./compiler","test":"TestParent","subtest":"a/b"}`)}
+	p = Check(res, &testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{parent, slash}}, nil)
+	if !strings.Contains(strings.Join(p, "\n"), `names subtest "a/b"`) {
+		t.Fatalf("slash: %v", p)
+	}
+}
+
+// TestAMakeRowsSourceIsHeldToItsRulesLine: a make row's source is the file
+// and the first line its target's rule is written on; a source on another
+// line, with no line, or in another file is named with the line to set, and
+// a row naming the right line, a per-language row and a rule no make file
+// writes are not named here. Planted: without MakeSourceProblems in Check, a
+// stale line passes.
+func TestAMakeRowsSourceIsHeldToItsRulesLine(t *testing.T) {
+	t.Parallel()
+	root := writeFixture(t, fixture)
+	res, err := Extract(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	row := func(key, target, source string) testreg.Test {
+		return testreg.Test{Key: key, Adapter: "make", Source: source, Inputs: []byte(`{"file":"Makefile","target":"` + target + `"}`)}
+	}
+	reg := &testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{
+		row("a.right", "prep", "Makefile:7"),
+		row("a.stale", "prep", "Makefile:8"),
+		row("a.noline", "quoted", "Makefile"),
+		row("a.elsewhere", "build", "make/x.mk:4"),
+		row("a.none", "no-such-rule", "Makefile:1"),
+		{Key: "a.perlang", Adapter: "make", Source: "Makefile:99", Inputs: []byte(`{"file":"Makefile","target":"runs-{lang}-x"}`)},
+	}}
+	got := MakeSourceProblems(res, reg)
+	want := []string{
+		`r.jsonl:0: a.stale source is "Makefile:8", and prep is written at Makefile:7: set source to "Makefile:7"`,
+		`r.jsonl:0: a.noline source is "Makefile", and quoted is written at Makefile:10: set source to "Makefile:10"`,
+		`r.jsonl:0: a.elsewhere source is "make/x.mk:4", and build is written at Makefile:4: set source to "Makefile:4"`,
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("make row sources:\n  %s\nwant:\n  %s", strings.Join(got, "\n  "), strings.Join(want, "\n  "))
+	}
+	// Check carries them: the stale row is named by Check
+	found := false
+	for _, p := range Check(res, reg, nil) {
+		if strings.Contains(p, "a.stale source is") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("Check does not name a make row whose source line is stale")
 	}
 }

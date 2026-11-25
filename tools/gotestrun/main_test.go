@@ -52,6 +52,20 @@ const passAndToolSkip = `{"Action":"run","Package":"p/a","Test":"TestFast"}
 {"Action":"skip","Package":"p/a","Test":"TestCargo"}
 `
 
+// a fuzz target with no seed input passes having run nothing; one with a
+// seed runs it as a subtest.
+const seedlessFuzz = `{"Action":"run","Package":"p/a","Test":"FuzzNoSeeds"}
+{"Action":"pass","Package":"p/a","Test":"FuzzNoSeeds"}
+{"Action":"pass","Package":"p/a"}
+`
+
+const seededFuzz = `{"Action":"run","Package":"p/a","Test":"FuzzSeeded"}
+{"Action":"run","Package":"p/a","Test":"FuzzSeeded/seed#0"}
+{"Action":"pass","Package":"p/a","Test":"FuzzSeeded/seed#0"}
+{"Action":"pass","Package":"p/a","Test":"FuzzSeeded"}
+{"Action":"pass","Package":"p/a"}
+`
+
 func TestVerdict(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -70,6 +84,8 @@ func TestVerdict(t *testing.T) {
 		{"go test failure keeps its status", 3, onePass, false, 3, "exited 3"},
 		{"each: a package with no passing test is named", 0, onePass, true, 1, "p/b"},
 		{"each: not asked, a bare package is fine", 0, onePass, false, 0, ""},
+		{"a fuzz target that ran no seed is red and named", 0, seedlessFuzz, false, 1, "NO SEED: fuzz target(s) ran no seed input (no f.Add and no testdata/fuzz corpus), so they tested nothing: p/a FuzzNoSeeds"},
+		{"a fuzz target that ran its seed passes", 0, seededFuzz, false, 0, ""},
 	}
 	for _, c := range cases {
 		var text bytes.Buffer

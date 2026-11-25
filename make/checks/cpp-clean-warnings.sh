@@ -30,7 +30,7 @@ mode=$2
 shift 2
 CLANGXX=${CLANGXX:-clang++}
 OUT=${OUT:-build/cpp-clean}
-JOBS=${JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)}
+JOBS=${JOBS:-$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)}
 : "${SERIALIZE_DIR:?SERIALIZE_DIR names the serialize checkout}"
 
 rm -rf "$OUT" && mkdir -p "$OUT/logs"
