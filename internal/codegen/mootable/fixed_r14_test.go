@@ -22,7 +22,7 @@ import (
 // <Root>Fixed.lineage). parseLayout takes the writer's tag width off the
 // layout — `tagw = e.size - widest` (table_fixed.moo:197), held to 1, 2, 4 or
 // 8 — and bounds every child's reach, `c.off + c.size`, by the WRITER's
-// record (`inside`, :127); the read takes the tag at `n.tagw`
+// record (`inside`, :132); the read takes the tag at `n.tagw`
 // (`ordinalAt(rec, off, n.tagw)`, :791). A moo union holds its tag as a
 // number, so the reader has no tag width of its own.
 //
