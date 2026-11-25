@@ -791,19 +791,19 @@ func part(units []Unit, k, n int) ([]Unit, error) {
 var partGOOS = []string{"windows", "darwin"}
 
 // goosPart is the part named for goos: exactly the plan's units built
-// only for it.
+// only for it that a shard runs, as part deals only those.
 func goosPart(units []Unit, goos string) ([]Unit, error) {
 	if !slices.Contains(partGOOS, goos) {
 		return nil, fmt.Errorf("--part %s: a part is i/n or one of %s", goos, strings.Join(partGOOS, ", "))
 	}
 	var out []Unit
 	for _, u := range units {
-		if u.GOOS == goos {
+		if u.GOOS == goos && u.Runs() {
 			out = append(out, u)
 		}
 	}
 	if len(out) == 0 {
-		return nil, fmt.Errorf("--part %s holds no unit: the plan builds no test only for %s", goos, goos)
+		return nil, fmt.Errorf("--part %s holds no unit: this plan holds no test built only for %s", goos, goos)
 	}
 	return out, nil
 }

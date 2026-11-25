@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -1467,7 +1468,9 @@ func TestTheWindowsPartRunsEveryWindowsTest(t *testing.T) {
 	win := Unit{ID: "gotest/tools/treelock/goos-windows/001", Kind: KindGoTest, Dir: "./tools/treelock", GOOS: "windows", Args: []string{"TestW"},
 		Names: []Name{{Name: "unmoved/go-test/tools/treelock/TestW"}}, Weight: 9}
 	units := []Unit{makeUnit("a"), makeUnit("b"), win}
-	if p, err := goosPart(units, "windows"); err != nil || len(p) != 1 || p[0].ID != win.ID {
+	// a unit no shard runs is in no part, whatever it is built for
+	noShard := Unit{ID: "unrunnable/w", Kind: KindUnrunnable, GOOS: "windows", Names: []Name{{Name: "UNRUNNABLE w"}}}
+	if p, err := goosPart(append(slices.Clip(units), noShard), "windows"); err != nil || len(p) != 1 || p[0].ID != win.ID {
 		t.Fatalf("the windows part is %v (%v), want exactly %s", p, err, win.ID)
 	}
 	if _, err := goosPart(units, "darwin"); err == nil || !strings.Contains(err.Error(), "holds no unit") {
@@ -1555,5 +1558,57 @@ func TestTheWindowsPartRunsEveryWindowsTest(t *testing.T) {
 	write(d, "pwindows", "windows", []Unit{win}, windows)
 	if err := mergeParts(units, "abc", d, o, now, io.Discard); err == nil || !strings.Contains(readReds(t, o), "PART MISSING i/n") {
 		t.Errorf("only the windows part: %v\n%s", err, readReds(t, o))
+	}
+}
+
+// planRemote answers launch's planner with units and every other script
+// with nothing, as a bench that prepared cleanly.
+type planRemote struct{ units []Unit }
+
+func (p planRemote) Run(_ context.Context, _, script string, _ []byte) ([]byte, error) {
+	if strings.Contains(script, " items --root ") {
+		return json.Marshal(p.units)
+	}
+	return nil, nil
+}
+
+func (planRemote) Fetch(context.Context, string, string, string) error { return nil }
+
+// TestLaunchRunsTheWindowsPartAlone: launch --part windows plans exactly
+// the units built for Windows onto the bench that runs them, records the
+// part by name so the merge takes it, and names its shards for it.
+func TestLaunchRunsTheWindowsPartAlone(t *testing.T) {
+	t.Parallel()
+	win := Unit{ID: "gotest/tools/treelock/goos-windows/001", Kind: KindGoTest, Dir: "./tools/treelock", GOOS: "windows", Args: []string{"TestW"},
+		Names: []Name{{Name: "unmoved/go-test/tools/treelock/TestW"}}, Weight: 9}
+	sha := strings.Repeat("ab", 20)
+	o := Options{Sha: sha, Benches: []Bench{{Host: "captain", Shards: 2, GOOS: []string{"windows"}}}, OutRoot: t.TempDir(), Work: "w",
+		PartGOOS: "windows", PlanOnly: true, Retries: 1, Poll: time.Minute}
+	st, err := launch(context.Background(), o, planRemote{units: []Unit{makeUnit("a"), win, makeUnit("b")}},
+		func(time.Duration) {}, func() time.Time { return time.Unix(0, 0) }, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Part != "windows" || !strings.HasPrefix(filepath.Base(st.Dir), "part-windows") {
+		t.Errorf("the windows part is recorded as part %q in %s", st.Part, st.Dir)
+	}
+	if len(st.Units) != 1 || st.Units[0].ID != win.ID {
+		t.Errorf("the windows part plans %v, want only %s", st.Units, win.ID)
+	}
+	var ran []string
+	for _, s := range st.Shards {
+		if !strings.HasPrefix(s.ID, "pwindows-") {
+			t.Errorf("shard %s is not named for the windows part", s.ID)
+		}
+		for _, u := range s.Units {
+			ran = append(ran, u.ID)
+		}
+	}
+	if !slices.Equal(ran, []string{win.ID}) {
+		t.Errorf("the windows part's shards hold %v, want only %s", ran, win.ID)
+	}
+	loaded, err := loadState(st.Dir)
+	if err != nil || loaded.Part != "windows" {
+		t.Errorf("the saved state's part is %q (%v), and merge reads it", loaded.Part, err)
 	}
 }
