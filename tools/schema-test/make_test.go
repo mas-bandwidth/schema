@@ -334,14 +334,32 @@ func TestAMakeVariableCannotTurnTheGateOff(t *testing.T) {
 	}
 }
 
-// emptyPlan is a dry run that prints nothing: a target whose recipe runs
-// no go test and reads nothing a row names.
-func emptyPlan(context.Context, []string) (string, error) { return "", nil }
+// fakeDatabase is make -p's output for the given variables, pattern rules
+// and rules (each as make -p prints them: recipe lines start with a tab),
+// stopped at the sentinel goal as make stops.
+func fakeDatabase(vars, patterns, rules string) string {
+	return "# GNU Make 4.3\n\n# Make data base, printed on Wed Nov 25 2026\n\n# Variables\n\n" + vars +
+		"\n# Directories\n\n# Implicit Rules\n\n" + patterns +
+		"\n# Files\n\n" + rules +
+		"\n# VPATH Search Paths\n\n# finished make data base\nmake: *** No rule to make target '" + makeDBSentinel + "'.  Stop.\n"
+}
 
-// vetRun runs one make row of the given inputs against a dry run that
-// prints plan and a make whose log is log, and returns its result and
-// whether the target ran.
-func vetRun(t *testing.T, in makeInputs, plan string, planErr error, log string) (testreg.Result, bool) {
+// gateDatabase is a database in which gate-check makes a stamp from two
+// schemas and a pattern-built object, and runs its recipe.
+func gateDatabase(recipe string) string {
+	return fakeDatabase("GO_TEST_JSON = go test -json\n",
+		"build/objs/%.o: test/tables/%.cpp build/gen/.stamp\n\t$(CXX) -c $< -o $@\n",
+		"gate-check: SOME_VAR = 1\ngate-check: build/bin\n"+recipe+"\n\nbuild/bin: build/objs/main.o\n\nbuild/gen/.stamp: bin/schema test/tables/VNEW_a.schema\n\t./bin/schema generate $^\n\nbuild/objs/main.o:\n#  Implicit rule search has not been done.\n")
+}
+
+// emptyPlan is a database in which every asked target runs nothing.
+func emptyPlan(context.Context, []string) (string, error) {
+	return fakeDatabase("", "", "gate-check:\n\ngate-red:\n\ngate-skips:\n"), errors.New("exit status 2")
+}
+
+// vetRun runs one make row of the given inputs against database db and a
+// make whose log is log, and returns its result and whether the target ran.
+func vetRun(t *testing.T, in makeInputs, db string, log string) (testreg.Result, bool) {
 	t.Helper()
 	raw, err := json.Marshal(in)
 	if err != nil {
@@ -349,38 +367,41 @@ func vetRun(t *testing.T, in makeInputs, plan string, planErr error, log string)
 	}
 	inst := testreg.Instance{Full: "row", Lang: testreg.LangFree, Test: testreg.Test{Scope: testreg.LangFree, Inputs: raw}}
 	ran := false
-	var planned []string
+	var asked []string
 	a := makeAdapter{
 		read: func(string) ([]byte, error) { return []byte(fakeRules), nil },
-		plan: func(_ context.Context, argv []string) (string, error) { planned = argv; return plan, planErr },
+		plan: func(_ context.Context, argv []string) (string, error) {
+			asked = argv
+			return db, errors.New("exit status 2")
+		},
 		exec: func(context.Context, []string) (string, error) { ran = true; return log, nil },
 	}
 	res, err := a.Run(context.Background(), "", []testreg.Instance{inst})
 	if err != nil || len(res) != 1 {
 		t.Fatalf("%v %+v", err, res)
 	}
-	if want := "make --no-print-directory -n -B " + in.Target; !strings.HasPrefix(strings.Join(planned, " "), want) {
-		t.Errorf("dry run %q, want %q", strings.Join(planned, " "), want)
+	if strings.Join(asked, " ") != strings.Join(makeDBArgv, " ") {
+		t.Errorf("read the database with %q, want %q", asked, makeDBArgv)
 	}
 	return res[0], ran
 }
 
-// TestAMakeRowReadsOnlyWhatItsDryRunNames: a row's reads are each a word of
-// its target's dry run, or the row fails before the target runs, naming
-// the file; a longer name that only starts with the file is not it.
-func TestAMakeRowReadsOnlyWhatItsDryRunNames(t *testing.T) {
+// TestAMakeRowReadsOnlyWhatItsTargetDependsOn: a row's reads are each a
+// file its target depends on, through rules, pattern rules and stamps, or
+// the row fails before the target runs, naming the file; a name that only
+// starts like the file is not it.
+func TestAMakeRowReadsOnlyWhatItsTargetDependsOn(t *testing.T) {
 	t.Parallel()
-	const plan = "./bin/schema generate --lang cpp --out build/vnum test/tables/VNEW_a.schema\ntouch build/.stamp\n"
+	db := gateDatabase("\t./build/bin")
 	for _, c := range []struct {
 		reads []string
 		says  string
 	}{
-		{[]string{"test/tables/VNEW_a.schema"}, ""},
-		{[]string{"test/tables/VNEW_a.schema", "test/tables/VNEW_b.schema"}, "reads test/tables/VNEW_b.schema, and no command of its dry run names it"},
-		{[]string{"test/tables/VNEW_a.sch"}, "reads test/tables/VNEW_a.sch, and no command"},
-		{[]string{"tables/VNEW_a.schema"}, "reads tables/VNEW_a.schema, and no command"},
+		{[]string{"test/tables/VNEW_a.schema", "test/tables/main.cpp"}, ""},
+		{[]string{"test/tables/VNEW_a.schema", "test/tables/VNEW_b.schema"}, "reads test/tables/VNEW_b.schema, and nothing make gate-check makes depends on it"},
+		{[]string{"test/tables/VNEW_a.sch"}, "reads test/tables/VNEW_a.sch, and nothing"},
 	} {
-		r, ran := vetRun(t, makeInputs{File: "make/x.mk", Target: "gate-check", Reads: c.reads}, plan, nil, "")
+		r, ran := vetRun(t, makeInputs{File: "make/x.mk", Target: "gate-check", Reads: c.reads}, db, "")
 		if c.says == "" {
 			if r.Verdict != testreg.Pass || !ran {
 				t.Errorf("%v: %+v, ran %v", c.reads, r, ran)
@@ -405,46 +426,53 @@ func TestAMakeRowReadsOnlyWhatItsDryRunNames(t *testing.T) {
 }
 
 // TestARecipeThatRunsGoTestWithoutJSONFails: go test's plain output prints
-// nothing for a skipped test, so a recipe that runs it without -json fails
-// before it runs, naming the command; -json on a continuation line counts,
-// and a path that starts "go test/" is no go test.
+// nothing for a skipped test, so a target whose recipes (its own, its
+// prerequisites', a variable they expand, a target made by $(MAKE)) run go
+// test without -json fails before it runs, naming the command; -json on a
+// continuation line or in the variable counts, and a path that starts "go
+// test/" is no go test.
 func TestARecipeThatRunsGoTestWithoutJSONFails(t *testing.T) {
 	t.Parallel()
-	for plan, says := range map[string]string{
-		"go build ./...\nSCHEMA_SLOW=1 go test ./internal/x -run '^TestA$$' -count=1\n": `runs go test without -json`,
-		"@if go test -count=1 ./x > log 2>&1; then exit 1; fi\n":                        `runs go test without -json`,
-		"cd sub && go  test ./...\n":                                                    `runs go test without -json`,
-		"go test -count=1 \\\n\t-json ./internal/x -run '^TestA$$'\n":                   "",
-		"go test -json ./x | tee build/x.json\n":                                        "",
-		"printf 'go test/conformance/go/driver\\n' > build/solo.txt\n":                  "",
-		"echo no go here\n": "",
+	for recipe, fails := range map[string]bool{
+		"\tSCHEMA_SLOW=1 go test ./internal/x -run '^TestA$$' -count=1":                                     true,
+		"\t@if go test -count=1 ./x > log 2>&1; then exit 1; fi":                                           true,
+		"\tcd sub && go  test ./...":                                                                        true,
+		"\t$(call RUN_GO,./x)":                                                                              true,
+		"\t$(MAKE) --no-print-directory gate-inner":                                                         true,
+		"\tgo test -count=1 \\\n\t\t-json ./internal/x -run '^TestA$$'":                                     false,
+		"\tgo test -json ./x | tee build/x.json":                                                            false,
+		"\t$(GO_TEST_JSON) ./x":                                                                             false,
+		"\tprintf 'go test/conformance/go/driver\\n' > build/solo.txt":                                      false,
+		"\techo no go here":                                                                                 false,
 	} {
-		r, ran := vetRun(t, makeInputs{File: "make/x.mk", Target: "gate-check"}, plan, nil, "")
-		if says == "" {
+		db := fakeDatabase("GO_TEST_JSON = go test -json\ndefine RUN_GO\ngo test $(1)\nendef\n", "",
+			"gate-check:\n"+recipe+"\n\ngate-inner:\n\tgo test ./inner\n")
+		r, ran := vetRun(t, makeInputs{File: "make/x.mk", Target: "gate-check"}, db, "")
+		if !fails {
 			if r.Verdict != testreg.Pass || !ran {
-				t.Errorf("%q: %+v, ran %v", plan, r, ran)
+				t.Errorf("%q: %+v, ran %v", recipe, r, ran)
 			}
 			continue
 		}
-		if r.Verdict != testreg.Fail || ran || !strings.Contains(r.Reason, says) || !strings.Contains(r.Reason, "go test") {
-			t.Errorf("%q: %+v, ran %v, want a fail before the target runs saying %q", plan, r, ran, says)
+		if r.Verdict != testreg.Fail || ran || !strings.Contains(r.Reason, "runs go test without -json") {
+			t.Errorf("%q: %+v, ran %v, want a fail before the target runs", recipe, r, ran)
 		}
 	}
 }
 
 // TestGoTestPlainOutputInTheLogFails: a target that exits 0 with go test's
-// plain summary in its log (a script the dry run cannot see into ran go
+// plain summary in its log (a script the database cannot see into ran go
 // test without -json) fails; go test -json's events pass.
 func TestGoTestPlainOutputInTheLogFails(t *testing.T) {
 	t.Parallel()
 	for log, fails := range map[string]bool{
-		"ok  \tgithub.com/mas-bandwidth/schema/v2/internal/x\t0.123s\n":                                    true,
-		"ok  \tgithub.com/mas-bandwidth/schema/v2/internal/x\t(cached)\n":                                  true,
-		"?   \tgithub.com/mas-bandwidth/schema/v2/internal/y\t[no test files]\n":                           true,
+		"ok  \tgithub.com/mas-bandwidth/schema/v2/internal/x\t0.123s\n":                                      true,
+		"ok  \tgithub.com/mas-bandwidth/schema/v2/internal/x\t(cached)\n":                                     true,
+		"?   \tgithub.com/mas-bandwidth/schema/v2/internal/y\t[no test files]\n":                              true,
 		`{"Action":"pass","Package":"github.com/mas-bandwidth/schema/v2/internal/x","Elapsed":0.1}` + "\n": false,
 		"ok, every row checked\n": false,
 	} {
-		r, _ := vetRun(t, makeInputs{File: "make/x.mk", Target: "gate-check"}, "", nil, log)
+		r, _ := vetRun(t, makeInputs{File: "make/x.mk", Target: "gate-check"}, gateDatabase("\ttrue"), log)
 		if got := r.Verdict == testreg.Fail; got != fails {
 			t.Errorf("%q: %+v, want failed %v", log, r, fails)
 		}
@@ -454,18 +482,43 @@ func TestGoTestPlainOutputInTheLogFails(t *testing.T) {
 	}
 }
 
-// TestADryRunThatFailsFailsTheRow: a target whose dry run fails cannot be
-// read, so the row fails naming the dry run and the target never runs; an
-// adapter with no dry run refuses to run at all.
-func TestADryRunThatFailsFailsTheRow(t *testing.T) {
+// TestADatabaseReadInPartFailsTheRow: a database with no Files section, or
+// one make stopped printing for a reason other than the sentinel goal,
+// cannot say what a target runs, so the row fails naming why and never
+// runs; an adapter with no way to read the database refuses to run at all.
+func TestADatabaseReadInPartFailsTheRow(t *testing.T) {
 	t.Parallel()
-	r, ran := vetRun(t, makeInputs{File: "make/x.mk", Target: "gate-check"}, "make: *** No rule to make target 'x'.", errors.New("exit status 2"), "")
-	if r.Verdict != testreg.Fail || ran || !strings.Contains(r.Reason, "the dry run that shows what its recipe runs, failed") {
-		t.Errorf("%+v, ran %v", r, ran)
+	whole := gateDatabase("\ttrue")
+	for name, db := range map[string]string{
+		"no Files section":    strings.Replace(whole, "\n# Files\n", "\n", 1),
+		"stopped another way": strings.Replace(whole, "No rule to make target '"+makeDBSentinel+"'", "Makefile:3: *** missing separator", 1),
+	} {
+		r, ran := vetRun(t, makeInputs{File: "make/x.mk", Target: "gate-check"}, db, "")
+		if r.Verdict != testreg.Fail || ran || !strings.Contains(r.Reason, "cannot be read before it runs") {
+			t.Errorf("%s: %+v, ran %v", name, r, ran)
+		}
 	}
 	a := makeAdapter{read: func(string) ([]byte, error) { return []byte(fakeRules), nil },
 		exec: func(context.Context, []string) (string, error) { return "", nil }}
-	if _, err := a.Run(context.Background(), "", []testreg.Instance{makeInst(t, "c", "make/x.mk", "gate-check")}); err == nil || !strings.Contains(err.Error(), "no dry run") {
-		t.Errorf("an adapter with no dry run ran: %v", err)
+	if _, err := a.Run(context.Background(), "", []testreg.Instance{makeInst(t, "c", "make/x.mk", "gate-check")}); err == nil || !strings.Contains(err.Error(), "no way to read make's database") {
+		t.Errorf("an adapter with no database ran: %v", err)
+	}
+}
+
+// TestTheDatabaseIsReadOncePerRun: the rows of one run share one read of
+// make's database.
+func TestTheDatabaseIsReadOncePerRun(t *testing.T) {
+	t.Parallel()
+	reads := 0
+	a := makeAdapter{read: func(string) ([]byte, error) { return []byte(fakeRules), nil },
+		plan:  func(ctx context.Context, argv []string) (string, error) { reads++; return emptyPlan(ctx, argv) },
+		exec:  func(context.Context, []string) (string, error) { return "", nil },
+		cache: &makeDBCache{}}
+	res, err := a.Run(context.Background(), "", []testreg.Instance{makeInst(t, "a", "make/x.mk", "gate-check"), makeInst(t, "b", "make/x.mk", "gate-red")})
+	if err != nil || len(res) != 2 || res[0].Verdict != testreg.Pass || res[1].Verdict != testreg.Pass {
+		t.Fatalf("%v %+v", err, res)
+	}
+	if reads != 1 {
+		t.Errorf("the database was read %d times for one run, want once", reads)
 	}
 }

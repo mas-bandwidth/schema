@@ -16,6 +16,7 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testreg"
@@ -38,16 +39,18 @@ import (
 // sibling not there FAILS, naming the runner, before make runs: a gate
 // never passes by not finding what it checks with.
 //
-// Before the target runs, its dry run (make -n -B: every command the target
-// would run, its prerequisites rebuilt) is read. A row's "reads" names the
-// data cases the target runs (test/tables/VNEW_x.schema): each must be a
-// word of the dry run, or the row FAILS, since a row cannot claim a case
-// its target does not touch. A command that runs go test without -json
-// FAILS the row: go test's plain output prints nothing for a skipped test,
+// Before the target runs, make's database (make -p, which runs no recipe)
+// is read for what the target would make and run: its prerequisites all
+// the way down, through pattern rules and the targets its recipes make by
+// $(MAKE), and every recipe and variable those expand. A row's "reads"
+// names the data cases the target runs (test/tables/VNEW_x.schema): each
+// must be among what the target depends on, or the row FAILS, since a row
+// cannot claim a case its target does not touch. A recipe that runs go
+// test without -json FAILS the row: go test's plain output prints nothing for a skipped test,
 // so a skip there would read as a pass, where with -json each skip is an
 // event in the log, which a skip in the log fails. A plain go test summary
-// line in the log (from a script the dry run cannot see into) fails it the
-// same way.
+// line in the log (from a script the database cannot see into) fails it
+// the same way.
 //
 // The targets of one call run one after another, never side by side: they
 // share build/ (bin/schema, the generated trees and their stamps), and two
@@ -57,9 +60,11 @@ type makeAdapter struct {
 	// exec runs one make command line and returns its combined output; a
 	// unit test hands in its own, so no unit test runs make.
 	exec func(ctx context.Context, argv []string) (string, error)
-	// plan runs make's dry run of a target and returns what it prints; a
-	// unit test hands in its own.
-	plan func(ctx context.Context, argv []string) (string, error)
+	// plan runs make -p (makeDBArgv) and returns the database it prints;
+	// cache, when set, keeps what it read for the rest of the run. A unit
+	// test hands in its own.
+	plan  func(ctx context.Context, argv []string) (string, error)
+	cache *makeDBCache
 	// read reads a make file by its repository path; a unit test hands in
 	// its own, so no unit test reads the tree.
 	read func(path string) ([]byte, error)
@@ -86,7 +91,8 @@ type makeInputs struct {
 func newMakeAdapter() makeAdapter {
 	return makeAdapter{
 		exec: execMake,
-		plan: execMake,
+		plan:  execMake,
+		cache: &makeDBCache{},
 		read: func(p string) ([]byte, error) { return os.ReadFile(filepath.FromSlash(p)) },
 		jobs: runtime.NumCPU(),
 		look: exec.LookPath,
@@ -327,56 +333,62 @@ func makeRules(data []byte) (map[string]bool, error) {
 	return out, sc.Err()
 }
 
-// vet reads a row's target before it runs: its dry run must name every
-// file the row says it reads, and run no go test without -json. It returns
+// vet reads a row's target in make's database before it runs: it must
+// depend on every file the row says it reads, and run no go test without
+// -json. It returns
 // why the row fails, or "", and an error only when the context ended.
 func (a makeAdapter) vet(ctx context.Context, in makeInputs) (string, error) {
-	argv := []string{"make", "--no-print-directory", "-n", "-B", in.Target}
-	for _, k := range slices.Sorted(maps.Keys(in.Vars)) {
-		argv = append(argv, k+"="+in.Vars[k])
-	}
-	if a.plan == nil {
-		return "", errors.New("the make adapter has no dry run to read the recipe with")
-	}
-	dry, err := a.plan(ctx, argv)
+	db, err := a.database(ctx)
 	if ctx.Err() != nil {
-		return "", fmt.Errorf("make -n %s: %w", in.Target, ctx.Err())
+		return "", fmt.Errorf("make -p for %s: %w", in.Target, ctx.Err())
 	}
 	if err != nil {
-		return fmt.Sprintf("make -n -B %s, the dry run that shows what its recipe runs, failed: %v\n%s", in.Target, err, tail(dry, 20)), nil
+		return fmt.Sprintf("make %s cannot be read before it runs: %v", in.Target, err), nil
 	}
+	files, text := db.reach(in.Target)
 	var why []string
 	for _, r := range in.Reads {
-		if !mentions(dry, r) {
-			why = append(why, fmt.Sprintf("the row says make %s reads %s, and no command of its dry run names it", in.Target, r))
+		if !files[r] {
+			why = append(why, fmt.Sprintf("the row says make %s reads %s, and nothing make %s makes depends on it", in.Target, r, in.Target))
 		}
 	}
-	if line := goTestWithoutJSON(dry); line != "" {
+	if line := goTestWithoutJSON(strings.Join(text, "\n")); line != "" {
 		why = append(why, fmt.Sprintf("make %s runs go test without -json, whose plain output prints nothing for a skipped test, so a skip would read as a pass: %q", in.Target, line))
 	}
 	return strings.Join(why, "; "), nil
 }
 
-// pathByte is a byte a path may hold: a mention of a file is the file's
-// path with none of these on either side.
-func pathByte(c byte) bool {
-	return c == '/' || c == '.' || c == '_' || c == '-' || c >= '0' && c <= '9' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z'
+// makeDBCache holds the database one adapter read, so the rows of a run
+// read it once: the make files do not change while a run reads them.
+type makeDBCache struct {
+	mu  sync.Mutex
+	db  *makeDB
+	err error
 }
 
-// mentions is whether text names the file p as a word of its own (not
-// p.bak, not old/p).
-func mentions(text, p string) bool {
-	for i := 0; ; {
-		j := strings.Index(text[i:], p)
-		if j < 0 {
-			return false
-		}
-		at, end := i+j, i+j+len(p)
-		if (at == 0 || !pathByte(text[at-1])) && (end == len(text) || !pathByte(text[end])) {
-			return true
-		}
-		i = at + 1
+// database is make's database of the checkout, read once per adapter.
+func (a makeAdapter) database(ctx context.Context) (*makeDB, error) {
+	if a.plan == nil {
+		return nil, errors.New("the make adapter has no way to read make's database")
 	}
+	if a.cache != nil {
+		a.cache.mu.Lock()
+		defer a.cache.mu.Unlock()
+		if a.cache.db != nil || a.cache.err != nil {
+			return a.cache.db, a.cache.err
+		}
+	}
+	// make -p of a goal no rule makes prints the database and exits 2; the
+	// parse, not the exit, says whether the database is whole
+	out, _ := a.plan(ctx, makeDBArgv)
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	db, err := parseMakeDB(out)
+	if a.cache != nil {
+		a.cache.db, a.cache.err = db, err
+	}
+	return db, err
 }
 
 // goTestCommand is go test run as a command: after the start of a line, a
@@ -384,10 +396,10 @@ func mentions(text, p string) bool {
 // test/conformance", a path).
 var goTestCommand = regexp.MustCompile(`(^|[\s;&|(@])go\s+test(\s|$)`)
 
-// goTestWithoutJSON is the first command of a dry run that runs go test
+// goTestWithoutJSON is the first command of recipe text that runs go test
 // without -json, its continuation lines joined, or "".
-func goTestWithoutJSON(dry string) string {
-	joined := strings.ReplaceAll(dry, "\\\n", " ")
+func goTestWithoutJSON(recipes string) string {
+	joined := strings.ReplaceAll(recipes, "\\\n", " ")
 	for line := range strings.SplitSeq(joined, "\n") {
 		if goTestCommand.MatchString(line) && !strings.Contains(line, "-json") {
 			return strings.TrimSpace(line)
