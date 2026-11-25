@@ -19,6 +19,7 @@ import (
 	"math/big"
 	"strconv"
 	"strings"
+	"sync/atomic"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -437,24 +438,53 @@ export function TableMessageFloat64FromBits(bits) { TableMessageDoubleWords[0] =
 
 // messageSlot is the 1-based slot an entry names in this unit's own
 // vocabulary, a compile-time constant on the write path (§3.3).
-func messageSlot(u *ir.Unit, entry ir.TableVocabularyEntry) int {
-	for i, v := range tablewire.MessageVocabulary(u) {
-		if entry.Key() == v.Key() {
-			return i + 1
-		}
+func (g *fixedModule) messageSlot(entry ir.TableVocabularyEntry) int {
+	if slot, ok := g.messageSlots().byKey[entry.Key()]; ok {
+		return slot
 	}
 	panic("message entry outside vocabulary: " + fmt.Sprintf("%016x", entry.Id))
 }
 
 // messageNameSlot is the 1-based slot of a NAME entry (kind 0) with a given id,
-// the enum-variant slot lookup on the write path.
-func messageNameSlot(u *ir.Unit, id uint64) int {
-	for i, v := range tablewire.MessageVocabulary(u) {
-		if v.Id == id && v.Kind == 0 {
-			return i + 1
+// the enum-variant slot lookup on the write path, or 0 when the message
+// closure announces no such name.
+func (g *fixedModule) messageNameSlot(id uint64) int {
+	return g.messageSlots().byName[id]
+}
+
+// messageSlotTable is the message closure's vocabulary indexed once: the slot
+// of each entry by its triple, and of each NAME entry (kind 0) by its id, the
+// FIRST slot holding it in both, as the linear scans this replaces answered.
+type messageSlotTable struct {
+	byKey  map[string]int
+	byName map[uint64]int
+}
+
+// messageSlotTableBuilds counts how many times a module indexed the message
+// vocabulary. The write path asks for one slot per field, arm and enum
+// variant, and rebuilding the vocabulary for each ask was quadratic in the
+// unit's size: an enum of 4096 variants (test/tables/announce4096) cost about
+// 30 CPU-seconds of codegen per unit. Tests hold this count to one per module.
+var messageSlotTableBuilds atomic.Int64
+
+func (g *fixedModule) messageSlots() *messageSlotTable {
+	if g.msgSlots != nil {
+		return g.msgSlots
+	}
+	messageSlotTableBuilds.Add(1)
+	t := &messageSlotTable{byKey: map[string]int{}, byName: map[uint64]int{}}
+	for i, v := range tablewire.MessageVocabulary(g.unit) {
+		if _, ok := t.byKey[v.Key()]; !ok {
+			t.byKey[v.Key()] = i + 1
+		}
+		if v.Kind == 0 {
+			if _, ok := t.byName[v.Id]; !ok {
+				t.byName[v.Id] = i + 1
+			}
 		}
 	}
-	return 0
+	g.msgSlots = t
+	return t
 }
 
 func isStructRef(t ir.FieldType) bool {
@@ -843,7 +873,7 @@ func (g *fixedModule) emitMessageWriteField(f *ir.Field, ind string) {
 	name := js.MemberName(f.Name)
 	mem := "value." + name
 	entry := ir.TableFieldEntry(f)
-	slot := messageSlot(g.unit, entry)
+	slot := g.messageSlot(entry)
 	ride := g.messageRides(f, mem, ind)
 	if ride == "true" {
 		// a field that always rides is a plain block: `if (true)` is a
@@ -914,7 +944,7 @@ func (g *fixedModule) emitMessageWriteArray(f *ir.Field, entry ir.TableVocabular
 		}
 		g.pf("%s  switch (%s) {\n", ind, iv)
 		for i := range f.KeyEnumRef.Variants {
-			slot := messageNameSlot(g.unit, ir.TableWireId(f.KeyEnumRef.VariantWireName(i)))
+			slot := g.messageNameSlot(ir.TableWireId(f.KeyEnumRef.VariantWireName(i)))
 			g.pf("%s    case %d: w.Put(%dn, TableMessageRefBitsHere); break;\n", ind, i, slot)
 		}
 		g.pf("%s  }\n", ind)
@@ -977,7 +1007,7 @@ func (g *fixedModule) emitMessageWriteEnum(f *ir.Field, mem, ind string) {
 			g.pf("%s    case %d: return false;\n", ind, i+1)
 			continue
 		}
-		g.pf("%s    case %d: w.Put(%dn, TableMessageRefBitsHere); break;\n", ind, i+1, messageNameSlot(g.unit, ir.TableWireId(e.VariantWireName(i))))
+		g.pf("%s    case %d: w.Put(%dn, TableMessageRefBitsHere); break;\n", ind, i+1, g.messageNameSlot(ir.TableWireId(e.VariantWireName(i))))
 		_ = v
 	}
 	g.pf("%s    default: return false;\n%s  }\n%s}\n", ind, ind, ind)
@@ -989,7 +1019,7 @@ func (g *fixedModule) emitMessageWriteUnion(f *ir.Field, mem, ind string) {
 	g.pf("%s  case 0: w.Put(0n, TableMessageRefBitsHere); break;\n", ind)
 	for i, v := range un.Variants {
 		g.pf("%s  case %d: {\n", ind, i+1)
-		g.pf("%s    w.Put(%dn, TableMessageRefBitsHere);\n", ind, messageSlot(g.unit, ir.TableArmEntry(v)))
+		g.pf("%s    w.Put(%dn, TableMessageRefBitsHere);\n", ind, g.messageSlot(ir.TableArmEntry(v)))
 		if !v.Void() {
 			arm := ir.TableArmEntry(v)
 			g.emitMessageWriteValue(v.F, arm, mem+"."+js.MemberName(v.Name), ind+"    ")
