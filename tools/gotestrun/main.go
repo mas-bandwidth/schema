@@ -28,7 +28,9 @@
 // directory; the wrapper builds gotestrun in the checkout's root). Under -red,
 // gotestrun failing before a verdict is exit 0, NOT RED, since a control reads
 // any non-zero exit as its sabotage caught. The text written is what go test -v
-// prints, but that a package's result line ("ok  <pkg>  0.1s") carries
+// prints, each package's output whole and in the order the packages started
+// (go test -json interleaves packages that run at once; its plain output does
+// not), but that a package's result line ("ok  <pkg>  0.1s") carries
 // " (go test -json, read by gotestrun)", so a log of go test's bare plain
 // output still reads as one (tools/schema-test's make adapter refuses it).
 //
@@ -106,9 +108,17 @@ var missingTool = regexp.MustCompile(regexp.QuoteMeta(slowtest.MissingWords) + `
 
 // read consumes a `go test -json` stream. Text that is not an event (a
 // toolchain message before the first package) is passed to text unchanged.
-// Output events are written to text as go test would have printed them.
+// Output events are written to text as go test would have printed them, each
+// package's output whole and ending in its result line, in the order the
+// packages started: go test -json interleaves the events of packages that run
+// at once, where its plain output does not, and a reader of the log (the make
+// adapter's go_tests check, tools/schema-test) credits a --- PASS line to the
+// package whose result line follows it. The first unfinished package's
+// output streams; a later one's is held until every package before it ends.
 func read(in io.Reader, text io.Writer) tally {
 	t := tally{perPackage: map[string]int{}}
+	out := packageOrder{text: text, held: map[string]*bytes.Buffer{}, done: map[string]bool{}}
+	defer out.flush()
 	sc := bufio.NewScanner(in)
 	sc.Buffer(make([]byte, 1<<20), 64<<20)
 	for sc.Scan() {
@@ -122,15 +132,19 @@ func read(in io.Reader, text io.Writer) tally {
 			if _, ok := t.perPackage[e.Package]; !ok {
 				t.perPackage[e.Package] = 0
 			}
+			out.see(e.Package)
 		}
 		if e.Action == "output" {
 			if t.missing == "" && missingTool.MatchString(e.Output) {
 				t.missing = strings.TrimSpace(e.Output)
 			}
-			_, _ = io.WriteString(text, markResult(e)) // errdiscard: best-effort mirror of go test output; tally decides the verdict
+			out.write(e.Package, markResult(e))
 			continue
 		}
 		if e.Test == "" {
+			if e.Action == "pass" || e.Action == "fail" || e.Action == "skip" {
+				out.end(e.Package)
+			}
 			continue // a package-level verdict is not a test
 		}
 		switch e.Action {
@@ -327,4 +341,60 @@ func run(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintf(stderr, "gotestrun: REFUSED: %s\n", why)
 	}
 	return code
+}
+
+// packageOrder writes each package's output whole, in the order the packages
+// started: the first unfinished package's output goes straight to text, and
+// a later package's is held until every package started before it has ended.
+type packageOrder struct {
+	text  io.Writer
+	order []string                 // packages, in the order first seen
+	head  int                      // order[head] is the package streaming now
+	held  map[string]*bytes.Buffer // output of packages behind the head
+	done  map[string]bool          // packages whose verdict event came
+}
+
+// see records a package the first time an event names it.
+func (o *packageOrder) see(pkg string) {
+	if _, ok := o.held[pkg]; ok {
+		return
+	}
+	o.held[pkg] = &bytes.Buffer{}
+	o.order = append(o.order, pkg)
+}
+
+// write writes one package's output, or holds it behind the head. Output with
+// no package, or of a package that already ended, goes straight through.
+func (o *packageOrder) write(pkg, s string) {
+	if pkg == "" || o.done[pkg] || (o.head < len(o.order) && o.order[o.head] == pkg) {
+		_, _ = io.WriteString(o.text, s) // errdiscard: best-effort mirror of go test output; tally decides the verdict
+		return
+	}
+	o.see(pkg)
+	o.held[pkg].WriteString(s)
+}
+
+// end marks a package finished; when it is the head, the packages behind it
+// are written out in order until one that has not finished, which streams.
+func (o *packageOrder) end(pkg string) {
+	o.done[pkg] = true
+	for o.head < len(o.order) && o.done[o.order[o.head]] {
+		o.head++
+		if o.head < len(o.order) {
+			o.release(o.order[o.head])
+		}
+	}
+}
+
+// release writes a package's held output.
+func (o *packageOrder) release(pkg string) {
+	_, _ = o.text.Write(o.held[pkg].Bytes()) // errdiscard: best-effort mirror of go test output; tally decides the verdict
+	o.held[pkg].Reset()
+}
+
+// flush writes whatever is still held, in order, when the stream ends.
+func (o *packageOrder) flush() {
+	for ; o.head < len(o.order); o.head++ {
+		o.release(o.order[o.head])
+	}
 }

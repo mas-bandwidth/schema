@@ -306,3 +306,58 @@ func TestTheSummaryReportsASkipOnlyWhenOneHappened(t *testing.T) {
 		t.Errorf("a run with a skip is not refused: %q", skipped)
 	}
 }
+
+// TestReadWritesEachPackageWhole: go test -json interleaves the events of
+// packages that run at once; the text is each package's output whole, ending
+// in its result line, in the order the packages started, so a --- PASS line
+// belongs to the package whose result line follows it. The first package
+// streams before anything after it ends, and a stream cut short still writes
+// what it held.
+func TestReadWritesEachPackageWhole(t *testing.T) {
+	t.Parallel()
+	ev := func(action, pkg, test, output string) string {
+		b, err := json.Marshal(event{Action: action, Package: pkg, Test: test, Output: output})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b) + "\n"
+	}
+	stream := ev("start", "a", "", "") + ev("start", "b", "", "") +
+		ev("run", "b", "TestB", "") + ev("output", "b", "TestB", "--- PASS: TestB (0.00s)\n") + ev("pass", "b", "TestB", "") +
+		ev("run", "a", "TestA", "") + ev("output", "a", "TestA", "--- PASS: TestA (0.00s)\n") + ev("pass", "a", "TestA", "") +
+		ev("start", "c", "", "") + ev("output", "c", "", "ok  \tc\t0.01s\n") + ev("pass", "c", "", "") +
+		ev("output", "b", "", "ok  \tb\t0.01s\n") + ev("pass", "b", "", "") +
+		ev("output", "a", "", "ok  \ta\t0.01s\n") + ev("pass", "a", "", "")
+	var text bytes.Buffer
+	read(strings.NewReader(stream), &text)
+	var lines []string
+	for l := range strings.Lines(text.String()) {
+		lines = append(lines, strings.TrimSuffix(strings.TrimSuffix(l, "\n"), " (go test -json, read by gotestrun)"))
+	}
+	want := []string{"--- PASS: TestA (0.00s)", "ok  \ta\t0.01s", "--- PASS: TestB (0.00s)", "ok  \tb\t0.01s", "ok  \tc\t0.01s"}
+	if strings.Join(lines, "|") != strings.Join(want, "|") {
+		t.Errorf("text %q, want %q", lines, want)
+	}
+
+	// the head streams: a's pass is written before a ends, b's is held
+	text.Reset()
+	cut := ev("start", "a", "", "") + ev("start", "b", "", "") +
+		ev("output", "b", "TestB", "--- PASS: TestB (0.00s)\n") + ev("output", "a", "TestA", "--- PASS: TestA (0.00s)\n")
+	var streamed bytes.Buffer
+	o := packageOrder{text: &streamed, held: map[string]*bytes.Buffer{}, done: map[string]bool{}}
+	o.see("a")
+	o.see("b")
+	o.write("b", "held\n")
+	o.write("a", "streamed\n")
+	if streamed.String() != "streamed\n" {
+		t.Errorf("before a ends the text is %q, want only a's output", streamed.String())
+	}
+	o.flush()
+	if streamed.String() != "streamed\nheld\n" {
+		t.Errorf("after the flush the text is %q, want a's then b's", streamed.String())
+	}
+	read(strings.NewReader(cut), &text)
+	if text.String() != "--- PASS: TestA (0.00s)\n--- PASS: TestB (0.00s)\n" {
+		t.Errorf("a stream cut short wrote %q, want a's output then b's", text.String())
+	}
+}

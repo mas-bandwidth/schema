@@ -5189,7 +5189,7 @@ writing a bad value is refused (debug assert in the assert legs; every build in 
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.write-refusal.cook-enum-arm.unit-compiles-with-only-the-enum-arm-refusal` | a unit whose only write check is the cook writer's enum refusal (an enum reached through a union arm of a table, the name-buildability probe u\_enum\_arm\_table; SPEC §5.1 row 5) generates source that compiles, with the refusal's assert hook in scope | `tests: {"c":{"package":"./internal/codegen/ctable","test":"TestCCookEnumArmDefinesAssertHook"}}` | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `internal/codegen/ctable/cook_enum_assert_hook_test.go:31` |
+| `L.functional.write-refusal.cook-enum-arm.unit-carries-the-assert-hook` | a unit whose only write check is the cook writer's enum refusal (an enum reached through a union arm of a table, the name-buildability probe u\_enum\_arm\_table; SPEC §5.1 row 5) carries the refusal's assert hook: every generated source that calls schema\_assert defines the hook before its first use and includes the assert header | `tests: {"c":{"package":"./internal/codegen/ctable","test":"TestCCookEnumArmDefinesAssertHook"}}` | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `internal/codegen/ctable/cook_enum_assert_hook_test.go:31` |
 
 #### `write-refusal` family `cook-write`, 1 test
 

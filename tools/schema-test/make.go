@@ -99,6 +99,12 @@ type makeInputs struct {
 	// would), or the row fails naming it, and the ledger counts them as
 	// this row's.
 	GoTests []string `json:"go_tests,omitempty"`
+	// GoImport names, for a go_tests package the target tests under another
+	// module, the import path its result line prints: tables/cards is copied
+	// into the generated module "cards" and tested there, so
+	// {"./tables/cards": "cards"}. A package it does not name is named by the
+	// nearest go.mod's module and its directory below it.
+	GoImport map[string]string `json:"go_import,omitempty"`
 }
 
 func newMakeAdapter() makeAdapter {
@@ -222,6 +228,17 @@ func decodeMakeInputs(raw json.RawMessage) (makeInputs, error) {
 		}
 		seen[name] = true
 	}
+	for pkg, imp := range in.GoImport {
+		named := false
+		for _, g := range in.GoTests {
+			if p, _, _ := strings.Cut(g, " "); p == pkg {
+				named = true
+			}
+		}
+		if !named || imp == "" || strings.ContainsAny(imp, " \t\n") {
+			return in, fmt.Errorf("go_import %q: %q: want a package go_tests names, and the import path its result line prints", pkg, imp)
+		}
+	}
 	return in, nil
 }
 
@@ -307,9 +324,9 @@ func (a makeAdapter) Run(ctx context.Context, _ string, instances []testreg.Inst
 		case plain != "":
 			out = append(out, testreg.Result{Instance: inst.Full, Verdict: testreg.Fail,
 				Reason: fmt.Sprintf("make %s exited 0, and its log holds go test's plain output, which prints nothing for a skipped test, so a skip would read as a pass: %q", in.Target, plain)})
-		case len(unreported(a.read, lines, in.GoTests)) > 0:
+		case len(unreported(a.read, lines, in.GoTests, in.GoImport)) > 0:
 			out = append(out, testreg.Result{Instance: inst.Full, Verdict: testreg.Fail,
-				Reason: fmt.Sprintf("make %s exited 0, and these of its Go tests did not report --- PASS: %s", in.Target, strings.Join(unreported(a.read, lines, in.GoTests), ", "))})
+				Reason: fmt.Sprintf("make %s exited 0, and these of its Go tests did not report --- PASS: %s", in.Target, strings.Join(unreported(a.read, lines, in.GoTests, in.GoImport), ", "))})
 		default:
 			out = append(out, testreg.Result{Instance: inst.Full, Verdict: testreg.Pass})
 		}
@@ -487,13 +504,15 @@ func (makeAdapter) Serial() bool { return true }
 
 // unreported is the go_tests entries ("./<dir> <Test>") whose test does not
 // report "--- PASS: <name> (" at the top level (a subtest line is indented)
-// of its own package's output in a go test -v log. go test prints each
+// of its own package's output in the target's log. gotestrun (every recipe's
+// go test; plain go test output is refused before this) writes each
 // package's output whole, ending in its result line ("ok  \t<import path>"
 // or "FAIL\t<import path>"), so a pass belongs to the package whose result
 // line follows it, and a test of the same name in another package the target
-// runs does not answer for it. A package's import path is its module's path
-// (the nearest go.mod, read by read) and its directory below the module.
-func unreported(read func(string) ([]byte, error), lines, entries []string) []string {
+// runs does not answer for it. A package's import path is the one goImport
+// names for it, or else its module's path (the nearest go.mod, read by
+// read) and its directory below the module.
+func unreported(read func(string) ([]byte, error), lines, entries []string, goImport map[string]string) []string {
 	passed := map[string]bool{}
 	var pending []string
 	for _, l := range lines {
@@ -513,7 +532,10 @@ func unreported(read func(string) ([]byte, error), lines, entries []string) []st
 	var missing []string
 	for _, g := range entries {
 		dir, name, _ := strings.Cut(g, " ")
-		pkg, err := importPath(read, strings.TrimPrefix(dir, "./"))
+		pkg, err := goImport[dir], error(nil)
+		if pkg == "" {
+			pkg, err = importPath(read, strings.TrimPrefix(dir, "./"))
+		}
 		if err != nil || !passed[pkg+" "+name] {
 			missing = append(missing, g)
 		}

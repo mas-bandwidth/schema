@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 686. Language-free tests: 2901.
+Unit tests every language answers: 686. Language-free tests: 2902.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -2748,12 +2748,6 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 | `L.unit.compiler.go-initialisms.on-members` | the go Go test TestGoInitialismsOnMembers passes: Go initialism spelling of generated member names | `tests: {"go":{"package":"./internal/codegen/golang","test":"TestGoInitialismsOnMembers"}}` | the go Go test for the case (inputs.tests) passes | `internal/codegen/golang/tidy_test.go:126` |
 | `L.unit.compiler.go-initialisms.on-top-level-names` | the go Go test TestGoInitialismsOnTopLevelNames passes: Go initialism spelling of generated top-level names | `tests: {"go":{"package":"./internal/codegen/golang","test":"TestGoInitialismsOnTopLevelNames"}}` | the go Go test for the case (inputs.tests) passes | `internal/codegen/golang/tidy_test.go:244` |
 
-#### `compiler` family `go-stringer`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.unit.compiler.go-stringer.enum-and-flags-name-methods` | the go Go test TestEnumAndFlagsNameMethods passes: a generated enum and union tag carry a String method returning EnumName, and a flags set's String is FlagNames, so each satisfies fmt.Stringer | `tests: {"go":{"package":"./internal/codegen/golang","test":"TestEnumAndFlagsNameMethods"}}` | the go Go test for the case (inputs.tests) passes | `internal/codegen/golang/tidy_test.go:188` |
-
 #### `compiler` family `go-tidy`, 3 tests
 
 | full name | checks | inputs | expected result | source |
@@ -2761,6 +2755,12 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 | `L.unit.compiler.go-tidy.drops-the-noise` | the go Go test TestTidyDropsTheNoise passes: the Go source tidy pass drops redundant locals, parentheses and conversions | `tests: {"go":{"package":"./internal/codegen/golang","test":"TestTidyDropsTheNoise"}}` | the go Go test for the case (inputs.tests) passes | `internal/codegen/golang/tidy_test.go:92` |
 | `L.unit.compiler.go-tidy.hoist-renames-only-what-collides` | the go Go test TestHoistRenamesOnlyWhatCollides passes: the Go source tidy pass's block-local renaming | `tests: {"go":{"package":"./internal/codegen/golang","test":"TestHoistRenamesOnlyWhatCollides"}}` | the go Go test for the case (inputs.tests) passes | `internal/codegen/golang/tidy_test.go:206` |
 | `L.unit.compiler.go-tidy.leaves-no-bare-blocks` | the go Go test TestTidyLeavesNoBareBlocks passes: the Go source tidy pass leaves no bare blocks | `tests: {"go":{"package":"./internal/codegen/golang","test":"TestTidyLeavesNoBareBlocks"}}` | the go Go test for the case (inputs.tests) passes | `internal/codegen/golang/tidy_test.go:61` |
+
+#### `compiler` family `value-names`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.unit.compiler.value-names.enum-tag-and-flags-print-their-names` | a generated enum, union tag and flags set each print their names through the language's own value-to-text hook (in Go, String: EnumName for an enum or union tag, FlagNames for a flags set) | `tests: {"go":{"package":"./internal/codegen/golang","test":"TestEnumAndFlagsNameMethods"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/golang/tidy_test.go:188` |
 
 ### Type `bench`
 
@@ -5235,7 +5235,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.gotestrows.the-registry-rows-read-their-packages` | `gotest` | Go test TestTheRegistryRowsReadTheirPackages in ./tools/gotestrows | `package: ./tools/gotestrows`<br>`test: TestTheRegistryRowsReadTheirPackages` | the Go test passes | `tools/gotestrows/registered_test.go:54` |
 | `none.unit.tooling.gotestrows.the-table-parses` | `gotest` | Go test TestTheTableParses in ./tools/gotestrows | `package: ./tools/gotestrows`<br>`test: TestTheTableParses` | the Go test passes | `tools/gotestrows/main_test.go:206` |
 
-#### `tooling` family `gotestrun`, 9 tests
+#### `tooling` family `gotestrun`, 10 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -5244,6 +5244,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.gotestrun.read-names-every-skip` | `gotest` | Go test TestReadNamesEverySkip in ./tools/gotestrun | `package: ./tools/gotestrun`<br>`test: TestReadNamesEverySkip` | the Go test passes | `tools/gotestrun/main_test.go:97` |
 | `none.unit.tooling.gotestrun.read-passes-text-through` | `gotest` | Go test TestReadPassesTextThrough in ./tools/gotestrun | `package: ./tools/gotestrun`<br>`test: TestReadPassesTextThrough` | the Go test passes | `tools/gotestrun/main_test.go:77` |
 | `none.unit.tooling.gotestrun.read-reports-a-stream-it-could-not-finish` | `gotest` | Go test TestReadReportsAStreamItCouldNotFinish in ./tools/gotestrun | `package: ./tools/gotestrun`<br>`test: TestReadReportsAStreamItCouldNotFinish` | the Go test passes | `tools/gotestrun/main_test.go:128` |
+| `none.unit.tooling.gotestrun.read-writes-each-package-whole` | `gotest` | Go test TestReadWritesEachPackageWhole in ./tools/gotestrun | `package: ./tools/gotestrun`<br>`test: TestReadWritesEachPackageWhole` | the Go test passes | `tools/gotestrun/main_test.go:316` |
 | `none.unit.tooling.gotestrun.red-verdict` | `gotest` | Go test TestRedVerdict in ./tools/gotestrun | `package: ./tools/gotestrun`<br>`test: TestRedVerdict` | the Go test passes | `tools/gotestrun/main_test.go:` |
 | `none.unit.tooling.gotestrun.run-refuses-no-arguments-and-foreign-flags` | `gotest` | Go test TestRunRefusesNoArgumentsAndForeignFlags in ./tools/gotestrun | `package: ./tools/gotestrun`<br>`test: TestRunRefusesNoArgumentsAndForeignFlags` | the Go test passes | `tools/gotestrun/main_test.go:88` |
 | `none.unit.tooling.gotestrun.the-summary-reports-a-skip-only-when-one-happened` | `gotest` | Go test TestTheSummaryReportsASkipOnlyWhenOneHappened in ./tools/gotestrun | `package: ./tools/gotestrun`<br>`test: TestTheSummaryReportsASkipOnlyWhenOneHappened` | the Go test passes | `tools/gotestrun/main_test.go:` |
@@ -6618,7 +6619,6 @@ Each test's subject exists in one language only (that language's own generated s
 | `compiler.go-godoc.on-every-export` | `go` | Go godoc comment on every exported generated identifier |
 | `compiler.go-initialisms.on-members` | `go` | Go initialism spelling of generated member names |
 | `compiler.go-initialisms.on-top-level-names` | `go` | Go initialism spelling of generated top-level names |
-| `compiler.go-stringer.enum-and-flags-name-methods` | `go` | Go's fmt.Stringer interface: the String methods fmt calls on generated enums, union tags and flags; no other language has this interface |
 | `compiler.go-tidy.drops-the-noise` | `go` | the Go source tidy pass drops redundant locals, parentheses and conversions |
 | `compiler.go-tidy.hoist-renames-only-what-collides` | `go` | the Go source tidy pass's block-local renaming |
 | `compiler.go-tidy.leaves-no-bare-blocks` | `go` | the Go source tidy pass leaves no bare blocks |

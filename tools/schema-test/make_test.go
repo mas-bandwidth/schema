@@ -589,15 +589,18 @@ func TestABuildStepRunsInPrepare(t *testing.T) {
 }
 
 // TestAMakeRowNamingItsGoTestsPassesOnlyWhenEachReportsAPass: a row that
-// names the Go tests of a module of its own (tables/cards) passes only when
-// each reports --- PASS at the top level of its own package's output in the
-// target log; one that does not report, or fails, or passes only as a
-// subtest, or passes only in another package the target runs, fails the row
-// by name.
+// names the Go tests of a module of its own (tables/cards, tested as the
+// generated module "cards", its go_import) passes only when each reports
+// --- PASS at the top level of its own package's output in the target log;
+// one that does not report, or fails, or passes only as a subtest, or passes
+// only in another package the target runs (the source module's name is
+// another package), fails the row by name. A package go_import does not name
+// is named by its go.mod.
 func TestAMakeRowNamingItsGoTestsPassesOnlyWhenEachReportsAPass(t *testing.T) {
 	t.Parallel()
-	in := makeInputs{File: "make/x.mk", Target: "gate-check", GoTests: []string{"./tables/cards TestA", "./tables/cards TestB"}}
-	const ok = "ok  \tcards-source\t0.21s (go test -json, read by gotestrun)\n"
+	in := makeInputs{File: "make/x.mk", Target: "gate-check", GoTests: []string{"./tables/cards TestA", "./tables/cards TestB"}, GoImport: map[string]string{"./tables/cards": "cards"}}
+	const ok = "ok  \tcards\t0.21s (go test -json, read by gotestrun)\n"
+	const source = "ok  \tcards-source\t0.21s (go test -json, read by gotestrun)\n"
 	const other = "ok  \tgithub.com/mas-bandwidth/schema/v2/tables\t0.10s (go test -json, read by gotestrun)\n"
 	for log, missing := range map[string]string{
 		"--- PASS: TestA (0.01s)\n--- PASS: TestB (0.20s)\n" + ok:                                       "",
@@ -608,7 +611,8 @@ func TestAMakeRowNamingItsGoTestsPassesOnlyWhenEachReportsAPass(t *testing.T) {
 		"--- PASS: TestAB (0.01s)\n--- PASS: TestB (0.01s)\n" + ok:                                      "./tables/cards TestA",
 		"--- PASS: TestA (0.01s)\n--- PASS: TestB (0.01s)\n":                                            "./tables/cards TestA",
 		"--- PASS: TestA (0.01s)\n" + ok + "--- PASS: TestB (0.01s)\n" + other:                          "./tables/cards TestB",
-		"--- PASS: TestA (0.01s)\n--- PASS: TestB (0.01s)\nFAIL\tcards-source\t0.2s\n":                  "",
+		"--- PASS: TestA (0.01s)\n--- PASS: TestB (0.01s)\nFAIL\tcards\t0.2s\n":                         "",
+		"--- PASS: TestA (0.01s)\n--- PASS: TestB (0.01s)\n" + source:                                   "./tables/cards TestA",
 	} {
 		r, _ := vetRun(t, in, gateDatabase("\ttrue"), log)
 		if missing == "" {
@@ -620,6 +624,14 @@ func TestAMakeRowNamingItsGoTestsPassesOnlyWhenEachReportsAPass(t *testing.T) {
 		if r.Verdict != testreg.Fail || !strings.Contains(r.Reason, "did not report --- PASS: "+missing) {
 			t.Errorf("%q: %+v, want a fail naming %s", log, r, missing)
 		}
+	}
+	// a package go_import does not name is named by its go.mod
+	ex := makeInputs{File: "make/x.mk", Target: "gate-check", GoTests: []string{"./tables/cards/example TestE"}}
+	if r, _ := vetRun(t, ex, gateDatabase("\ttrue"), "--- PASS: TestE (0.01s)\nok  \tcardsexample\t0.1s (go test -json, read by gotestrun)\n"); r.Verdict != testreg.Pass {
+		t.Errorf("a pass in its go.mod's module: %+v, want a pass", r)
+	}
+	if r, _ := vetRun(t, ex, gateDatabase("\ttrue"), "--- PASS: TestE (0.01s)\nok  \tcards\t0.1s (go test -json, read by gotestrun)\n"); r.Verdict != testreg.Fail {
+		t.Errorf("a pass in another module: %+v, want a fail", r)
 	}
 }
 
@@ -670,12 +682,15 @@ func TestAMakeRowNamesItsGoTestsWithTheirPackage(t *testing.T) {
 		`{"file":"make/x.mk","target":"a","go_tests":["./tables/../cards TestA"]}`,
 		`{"file":"make/x.mk","target":"a","go_tests":["./tables/cards Helper"]}`,
 		`{"file":"make/x.mk","target":"a","go_tests":["./tables/cards TestA","./tables/cards TestA"]}`,
+		`{"file":"make/x.mk","target":"a","go_tests":["./tables/cards TestA"],"go_import":{"./tables/other":"cards"}}`,
+		`{"file":"make/x.mk","target":"a","go_tests":["./tables/cards TestA"],"go_import":{"./tables/cards":""}}`,
+		`{"file":"make/x.mk","target":"a","go_tests":["./tables/cards TestA"],"go_import":{"./tables/cards":"two words"}}`,
 	} {
 		if _, err := decodeMakeInputs(json.RawMessage(in)); err == nil {
 			t.Errorf("%s decoded", in)
 		}
 	}
-	if _, err := decodeMakeInputs(json.RawMessage(`{"file":"make/x.mk","target":"a","go_tests":["./tables/cards TestA","./tables/cards FuzzB"]}`)); err != nil {
+	if _, err := decodeMakeInputs(json.RawMessage(`{"file":"make/x.mk","target":"a","go_tests":["./tables/cards TestA","./tables/cards FuzzB"],"go_import":{"./tables/cards":"cards"}}`)); err != nil {
 		t.Errorf("a lawful row: %v", err)
 	}
 }
