@@ -132,6 +132,12 @@ func TestCheckRedsAnUnreadableTiming(t *testing.T) {
 	if _, err := check(fsys, "objs", recordedBudget, units); err == nil || !strings.Contains(err.Error(), `"fast" is not a number`) {
 		t.Errorf("an unreadable timing is not red: %v", err)
 	}
+	for _, bad := range []string{"NaN", "+Inf", "-1"} {
+		fsys := fstest.MapFS{"main.seconds": &fstest.MapFile{Data: []byte(bad + "\n")}}
+		if _, err := check(fsys, "objs", recordedBudget, units); err == nil || !strings.Contains(err.Error(), `"`+bad+`" is not a number`) {
+			t.Errorf("a timing of %s is not red: %v", bad, err)
+		}
+	}
 	if _, err := check(recordedFS(units), "objs", recordedBudget, []string{"main", "main"}); err == nil || !strings.Contains(err.Error(), "named twice") {
 		t.Errorf("a unit named twice is not red: %v", err)
 	}

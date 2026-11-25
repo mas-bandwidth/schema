@@ -1446,13 +1446,20 @@ batch_dir() {
 # this call answers, one per line) that the map gives a batch, the largest
 # unit first, nproc at a time; a unit whose batch fails says so here, and its
 # surfaces are answered by their single runs. A unit another call of the run
-# is filling is waited for under its lock, never filled twice.
+# is filling is waited for under its lock, never filled twice. The harness
+# runs several surfaces' calls at once, so the warms of one run take turns
+# under the run's warm lock: never more than nproc compiles at a time, as
+# when one call warmed every unit. A call with no unit to warm starts none.
 batch_warm() {
-	for _k in $3; do
-		[ -d "$units/$_k" ] && [ -n "$(batch_of "$2/batch.map" "$_k")" ] &&
+	_todo=$(for _k in $3; do
+		[ -d "$units/$_k" ] && [ -n "$(batch_of "$2/batch.map" "$_k")" ] && ! batch_fresh "$2/$_k.out" "$units/$_k" &&
 			printf '%s %s\n' "$(du -sk "$units/$_k" | cut -f1)" "$_k"
-	done | sort -rn | cut -d" " -f2 | batch_d="$2" xargs -P "$maxjobs" -n 1 "$0" "$1" __batch-fill ||
+	done | sort -rn | cut -d" " -f2)
+	[ -n "$_todo" ] || return 0
+	batch_lock "$2/warm.lock"
+	printf '%s\n' "$_todo" | batch_d="$2" xargs -P "$maxjobs" -n 1 "$0" "$1" __batch-fill ||
 		echo "goose driver: a unit's batch failed (its .err in $2 says why); its surfaces fall back to single runs" >&2
+	rm -rf "$2/warm.lock"
 }
 # batch_fill <manifest> <unit>: the unit's batch cache under $batch_d, made
 # under the unit's lock when it is missing or stale (a fresh cache is read

@@ -17,10 +17,13 @@ import (
 // lists every unit's rows on the surfaces the run does not run, so one wire
 // case paid for every unit's batch: about 30 s, twice over in the case's
 // plant (plant.corpus-plants.goose-batch-wrong-byte-root-full). A call warms
-// the units it answers, and only those. The goose compiler is a stand-in
-// script that logs each program it is asked to run and answers one wire
-// case; the driver is the real one. Reads and writes only its temporary
-// directory.
+// the units it answers, and only those, under the run's warm lock (the
+// harness runs surfaces side by side, and their warms take turns, so no more
+// than nproc compiles run at once); a second call that finds its units warm
+// compiles nothing. The goose compiler is a stand-in script that logs each
+// program it is asked to run, and whether the run's warm lock was held, and
+// answers one wire case; the driver is the real one. Reads and writes only
+// its temporary directory.
 func TestGooseDriverWarmsOnlyTheUnitsItAnswers(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
@@ -45,6 +48,7 @@ shift 3
 shift
 if [ "$1" = batch ]; then
 	echo "batch $3" >> "$GOOSE_LOG"
+	ls -d "$GOOSE_UNITS".driver/batch/*/warm.lock >/dev/null 2>&1 || echo "no warm lock held for $3" >> "$GOOSE_LOG"
 	shift 3
 	for s in "$@"; do
 		echo "#surface $s"
@@ -72,12 +76,18 @@ echo "case1 00"
 	}, "\n"), 0o644)
 	out := filepath.Join(tmp, "out")
 	testinputs.Files(t, "test/conformance/goose", "test/conformance/answer-lines.pl")
-	cmd := exec.Command("sh", "test/conformance/goose/driver", manifest, "wire", out)
-	cmd.Dir = root
-	cmd.Env = append(os.Environ(), "GOOSE="+goose, "GOOSE_LOG="+log, "SCHEMA_GOOSE_GENERATED="+units)
-	text, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("the driver's wire call failed: %v\n%s", err, text)
+	var text []byte
+	// the same call twice in one run (this process is the harness): the
+	// second finds unit asked warm
+	for range 2 {
+		cmd := exec.Command("sh", "test/conformance/goose/driver", manifest, "wire", out)
+		cmd.Dir = root
+		cmd.Env = append(os.Environ(), "GOOSE="+goose, "GOOSE_LOG="+log, "GOOSE_UNITS="+units, "SCHEMA_GOOSE_GENERATED="+units)
+		var err error
+		text, err = cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("the driver's wire call failed: %v\n%s", err, text)
+		}
 	}
 	got, err := os.ReadFile(log)
 	if err != nil {
@@ -85,7 +95,16 @@ echo "case1 00"
 	}
 	lines := strings.Split(strings.TrimSpace(string(got)), "\n")
 	if strings.Join(lines, "|") != "batch asked" {
-		t.Fatalf("a wire call over one unit's case ran %q; want exactly the batch of unit asked (unit other answers no wire case, so its batch is not this call's)", lines)
+		t.Fatalf("two wire calls over one unit's case ran %q; want exactly one batch, of unit asked, under the run's warm lock (unit other answers no wire case, so its batch is not this call's, and the second call finds asked warm)", lines)
+	}
+	// a call with nothing to warm starts no fill: an empty unit's fill
+	// leaves .lock or .out behind
+	strays, err := filepath.Glob(filepath.Join(units+".driver", "batch", "*", ".*"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(strays) > 0 {
+		t.Fatalf("a fill ran for no unit: %q", strays)
 	}
 	answer, err := os.ReadFile(filepath.Join(out, "case1"))
 	if err != nil {

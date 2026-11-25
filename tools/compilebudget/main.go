@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"math"
 	"os"
 	"strconv"
 	"strings"
@@ -92,7 +93,8 @@ func check(fsys fs.FS, dir string, budget float64, units []string) (string, erro
 		}
 		text := strings.TrimSpace(string(data))
 		seconds, err := strconv.ParseFloat(text, 64)
-		if err != nil || seconds < 0 {
+		// NaN and Inf parse, and NaN compares false against any budget
+		if err != nil || seconds < 0 || math.IsNaN(seconds) || math.IsInf(seconds, 0) {
 			problems = append(problems, fmt.Sprintf("%s/%s: %q is not a number of seconds", dir, name, text))
 			continue
 		}
