@@ -2261,6 +2261,9 @@ function TableVariableJsonField(fd, val, depth, g, out) {
     case "map": return TableVariableJsonMap(fd, val, depth, g, out);
     case "keyed": return TableVariableJsonKeyed(fd, val, depth, g, out);
     case "arr": {
+      // an array or a text list, an empty [] included, is a container the
+      // depth cap counts, as the read counts it (SPEC-TABLES §16.14 W2)
+      if (depth > 128) { return false; }
       if (!TableVariableArrayValid(fd, val)) { return false; }
       if (fd.tl && !TableVariableTextListValid(fd, val)) { return false; }
       const n = TableVariableCount(fd, val);
@@ -2308,6 +2311,9 @@ function TableVariableJsonScalar(d, val, depth, g, out) {
       for (const [name] of d.vs) { if (name === val) { if (d.dp !== undefined && d.dp.includes(name)) { return false; } out.push(TableVariableJsonString(name)); return true; } }
       return false;
     case "flags": {
+      // a flags value is an array of names, a container the read counts, an
+      // empty [] included (SPEC-TABLES §16.14 W2)
+      if (depth > 128) { return false; }
       // the save's own test: a BigInt mask inside the unsigned width, never a Number
       if (!TableVariableIntegerValid(d, val)) { return false; }
       const bits = globalThis.BigInt(val);
