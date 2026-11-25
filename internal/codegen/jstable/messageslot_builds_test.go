@@ -47,8 +47,9 @@ func TestMessageSlotsIndexedOncePerModule(t *testing.T) {
 	if small < 1 {
 		t.Fatalf("a keyed enum built the message slot index %d times: the write path no longer asks it, so this budget measures nothing", small)
 	}
-	// One index per generated module that writes a message: the unit emits
-	// at most its file module and its home module.
+	// One index per generated module that writes a message: this one-file
+	// unit emits its file module and its home module (a unit of n files builds
+	// it at most once per file module, still linear in the unit).
 	const budget = 2
 	if small > budget || large > budget || small != large {
 		t.Errorf("the message slot index was built %d times for 16 variants and %d for 256; the budget is %d per unit and must not grow with the enum — a per-lookup rebuild is quadratic in the vocabulary", small, large, budget)
