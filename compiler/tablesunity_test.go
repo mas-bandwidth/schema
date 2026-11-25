@@ -724,15 +724,19 @@ func (h *unityTableHarness) wireSurface(cases []unityTableCase) {
 	if err := os.WriteFile(manifest, []byte(b.String()), 0o644); err != nil {
 		h.t.Fatal(err)
 	}
+	// one surface per line, in the driver's order; "unit shapes" is the line
+	// every leg's list ends with (test/conformance/go/main.go, cs, java, rust)
 	wantSurfaces := []string{
-		"wire", "message", "report", "framing", "retain", "retain-save",
+		"wire", "message", "message-prior", "report", "framing", "retain", "retain-save", "retain-refusal",
 		"json-read", "json-write", "json-hostile",
 		"cook", "cook-write", "cook-foreign",
 		"block", "block-foreign", "block-dump",
 		"forgery", "cook-forgery",
 		"write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json",
+		"write-refusal-cook", "write-refusal-block", "write-refusal-shape",
+		"announce", "read-into", "json-write-into", "unit shapes",
 	}
-	if out, code := h.run(nil, manifest, "list"); code != 0 || !slices.Equal(strings.Fields(out), wantSurfaces) {
+	if out, code := h.run(nil, manifest, "list"); code != 0 || !slices.Equal(strings.Split(strings.TrimSuffix(out, "\n"), "\n"), wantSurfaces) {
 		h.t.Errorf("list: exit %d, %q; want %v", code, out, wantSurfaces)
 	}
 	if out, code := h.run(nil, manifest, "unknown-surface", filepath.Join(h.tmp, "absent-unknown")); code != 2 {
