@@ -123,6 +123,7 @@ func Select(ctx build.Context, root string, dirs []string, run, not *regexp.Rege
 		}
 	}
 	seen := map[string]bool{}
+	left := map[string]string{} // a name left out as nightly, and where
 	var keep []string
 	for _, dir := range dirs {
 		rel, err := filepath.Rel(root, dir)
@@ -134,11 +135,24 @@ func Select(ctx build.Context, root string, dirs []string, run, not *regexp.Rege
 			return "", err
 		}
 		for _, n := range names {
-			if (run != nil && !run.MatchString(n)) || (not != nil && not.MatchString(n)) || nightly[filepath.ToSlash(rel)+":"+n] || seen[n] {
+			if (run != nil && !run.MatchString(n)) || (not != nil && not.MatchString(n)) {
 				continue
 			}
-			seen[n] = true
-			keep = append(keep, n)
+			if nightly[filepath.ToSlash(rel)+":"+n] {
+				left[n] = filepath.ToSlash(rel)
+				continue
+			}
+			if !seen[n] {
+				seen[n] = true
+				keep = append(keep, n)
+			}
+		}
+	}
+	// the pattern is names only, and go test applies it to every package:
+	// a name nightly in one package and kept in another cannot be said
+	for n, where := range left {
+		if seen[n] {
+			return "", fmt.Errorf("%s is nightly in %s and not in another package of the selection; select those packages apart", n, where)
 		}
 	}
 	if len(keep) == 0 {

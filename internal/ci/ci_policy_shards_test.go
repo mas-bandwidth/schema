@@ -15,10 +15,15 @@ import (
 )
 
 // ciPolicyRowRe reads one row of ci-fast.yml's ci-policy matrix: the shard
-// name, then its `go test` selection: `-run '^(A|B|...)'`, or the complement
-// listed by name, `-run "$(go run ./tools/gotestselect -not '^(A|B|...)'
-// ./internal/ci)"` (no row skips: Glenn, 2026-11-25, "NO SKIPS").
-var ciPolicyRowRe = regexp.MustCompile(`(?m)^          - shard: ([a-z-]+)\n            select: (?:-(run) '\^\(([A-Za-z0-9_|]+)\)'|-run "\$\(go run \./tools/gotestselect -(not) '\^\(([A-Za-z0-9_|]+)\)' \./internal/ci\)")\n`)
+// name, then its selection, `-run '^(A|B|...)'` or the complement `-not
+// '^(A|B|...)'`, which ciPolicyCommand expands to test names at the root (no
+// row skips: Glenn, 2026-11-25, "NO SKIPS").
+var ciPolicyRowRe = regexp.MustCompile(`(?m)^          - shard: ([a-z-]+)\n            select: -(run|not) '\^\(([A-Za-z0-9_|]+)\)'\n`)
+
+// ciPolicyCommand is the ci-policy step: the row's selection listed by name
+// (a selection that names nothing, or does not build, stops the step), then
+// go test over those names.
+const ciPolicyCommand = `run: sel=$(go run ./tools/gotestselect ${{ matrix.select }} ./internal/ci) || exit 1; go test -run "$sel" ./internal/ci/`
 
 type ciPolicyRow struct {
 	shard, flag string
@@ -28,11 +33,7 @@ type ciPolicyRow struct {
 func ciPolicyRows(wf string) []ciPolicyRow {
 	var rows []ciPolicyRow
 	for _, m := range ciPolicyRowRe.FindAllStringSubmatch(yamlJobs(wf)["ci-policy"], -1) {
-		flag, prefixes := m[2], m[3]
-		if flag == "" {
-			flag, prefixes = m[4], m[5]
-		}
-		rows = append(rows, ciPolicyRow{shard: m[1], flag: flag, prefixes: strings.Split(prefixes, "|")})
+		rows = append(rows, ciPolicyRow{shard: m[1], flag: m[2], prefixes: strings.Split(m[3], "|")})
 	}
 	return rows
 }
@@ -44,12 +45,12 @@ func ciPolicyRows(wf string) []ciPolicyRow {
 func ciPolicyShardErrors(wf string, tests []string) []string {
 	var errs []string
 	policy := yamlJobs(wf)["ci-policy"]
-	if !strings.Contains(policy, "run: go test ${{ matrix.select }} ./internal/ci/") {
-		errs = append(errs, "ci-policy does not run `go test ${{ matrix.select }} ./internal/ci/`")
+	if !strings.Contains(policy, ciPolicyCommand) {
+		errs = append(errs, "ci-policy does not run `"+ciPolicyCommand+"`")
 	}
 	rows := ciPolicyRows(wf)
 	if got := strings.Count(policy, "          - shard: "); got != len(rows) || len(rows) < 2 {
-		errs = append(errs, "ci-policy matrix rows must each be `- shard:` then `select: -run '^(A|B)'` or the gotestselect -not '^(A|B)' complement")
+		errs = append(errs, "ci-policy matrix rows must each be `- shard:` then `select: -run '^(A|B)'` or the complement `select: -not '^(A|B)'`")
 		return errs
 	}
 	var union, skip []string
@@ -165,7 +166,8 @@ func TestCIPolicyShardsCoverEveryTest(t *testing.T) {
 	for _, mutate := range []struct{ name, from, to string }{
 		{"not loses a prefix", "-not '^(TestFastPlan|", "-not '^("},
 		{"run loses a prefix", "-run '^(TestFastPlan|", "-run '^("},
-		{"go test unsharded", "run: go test ${{ matrix.select }} ./internal/ci/", "run: go test ./internal/ci/"},
+		{"go test unsharded", ciPolicyCommand, "run: go test ./internal/ci/"},
+		{"selection failure ignored", "|| exit 1; go test -run \"$sel\" ./internal/ci/", "; go test -run \"$sel\" ./internal/ci/"},
 	} {
 		mutated := strings.Replace(wf, mutate.from, mutate.to, 1)
 		if mutated == wf {
