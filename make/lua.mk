@@ -68,9 +68,10 @@ toolchain-lua:
 	@$(call toolchain_probe,lua,LUA,$(LUA))
 
 # THE WIRE-FUZZ DIFFERENTIAL's SLOW-GATE RUN-PROOF (test/slowgate/proof): the
-# in-package half of the card is gated by internal/slowtest and SKIPS unless
-# the rule that nothing skips, so a bare `go test` proves nothing. `make test-lua` runs it
-# THROUGH proof, exactly as make/go.mk's tables-go-textform runs its gated tests.
+# in-package half of the card fails by name without the pinned interpreter
+# (docs/rulings.json no-skips). `make test-lua` runs it THROUGH proof, which
+# requires each named --- PASS, exactly as make/go.mk's tables-go-textform runs
+# its tests.
 .PHONY: tables-lua-wire-fuzz-differential
 tables-lua-wire-fuzz-differential:
 	sh test/slowgate/proof tables-lua-wire-fuzz-differential \
@@ -111,13 +112,13 @@ lua-generated-loads: toolchain-lua generated/lua/.stamp generated/lua-ludicrous/
 	echo "lua-generated-loads: $$n committed modules load under Lua $(LUA_VERSION)"
 
 .PHONY: test-lua update-goldens-lua
-# The fixed-form tests read the shared byte-oracle corpus, so it is built first,
-# and the rule that nothing skips makes its absence a FAILURE rather than a skip.
-# The variable also arms internal/slowtest's gate (schema#988's slow-gate scan),
-# so the gated luatable tests this leg's toolchain can run (the loadfix and
-# variant probes) run here instead of skipping green. The wire-fuzz pair is
-# -skip'd only because tables-lua-wire-fuzz-differential, a prerequisite above,
-# has just run it through test/slowgate/proof.
+# The fixed-form tests read the shared byte-oracle corpus, so it is built first;
+# its absence is a FAILURE that names it, never a skip (docs/rulings.json
+# no-skips).
+# The luatable tests this leg's toolchain runs (the loadfix and variant probes)
+# run here too. The wire-fuzz pair is left out at the root (gotestselect -not)
+# only because tables-lua-wire-fuzz-differential, a prerequisite above, has
+# just run it through test/slowgate/proof.
 test-lua: toolchain-lua lua-generated-loads tables-lua-finite-float tables-lua-finite-float-negative-control tables-lua-release-negative-control conformance-negative-control-lua-absent tables-lua-usage tables-lua-usage-negative-control tables-lua-bench-gate tables-lua-bench-gate-negative-control conformance-negative-control-lua conformance-negative-control-lua-walk conformance-negative-control-lua-framing conformance-negative-control-lua-cycle conformance-negative-control-lua-write tables-lua-wire-fuzz-differential build/fixedform-corpus/.stamp packet-finite-lua packet-finite-lua-negative-control packet-utf8-lua packet-utf8-lua-negative-control packet-defaults-lua packet-defaults-lua-negative-control packet-end-lua packet-end-lua-negative-control tables-lua-alloc tables-lua-alloc-negative-control tables-lua-alloc-runtime-negative-control tables-lua-soak tables-lua-soak-negative-control
 	sel=$$(go run ./tools/gotestselect -not '^TestLuaWireFuzz' ./internal/codegen/lua/ ./internal/codegen/luatable/) || exit 1; $(GO_TEST) -run "$$sel" ./internal/codegen/lua/ ./internal/codegen/luatable/ -count=1 -timeout 600s
 update-goldens-lua: ;

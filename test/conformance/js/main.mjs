@@ -901,6 +901,8 @@ const wireRows = [
   // variable table and a fixed one
   ["shapes", "Bounds", "shapes/ShapesVariable.js"],
   ["shapes", "FixedBounds", "shapes/ShapesVariable.js"],
+  // FL-19's map form (test/tables/moodmap), opted in by `list` below
+  ["tblmoodmap", "MoodMap", "moodmap/TblmoodmapVariable.js"],
   // the 2026-11-22 unit (test/tables/surfaces): the text writer's depth cap
   // (Chain), a null required pointer (Holder), a counted array with a Min
   // (Counted), and the three fixed roots with a file form (Narrow, Wide,
@@ -1092,6 +1094,7 @@ const textUnits = {
   listdemo: "lists/ListdemoVariable.js",
   widelist: "widelist/WidelistdemoVariable.js",
   shapes: "shapes/ShapesVariable.js",
+  tblmoodmap: "moodmap/TblmoodmapVariable.js",
   tblsurf: "surfaces/SurfacesVariable.js",
   tblvaluedefaults: "valuedefaults/TblvaluedefaultsVariable.js",
 };
@@ -1817,6 +1820,7 @@ if (surface === "list") {
   process.stdout.write("wire\nreport\nframing\nretain\nretain-save\nretain-refusal\njson-read\njson-write\njson-hostile\ncook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\nmessage\nmessage-prior\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\nwrite-refusal-cook\nwrite-refusal-block\nwrite-refusal-shape\nannounce\nread-into\njson-write-into\n");
   // the opt-in units this leg answers (MANIFEST.txt `opt-in`)
   process.stdout.write("unit shapes\n");
+  process.stdout.write("unit tblmoodmap\n");
   process.exit(0);
 }
 if (surface === "block-lead") {

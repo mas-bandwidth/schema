@@ -33,11 +33,15 @@ type alignInputs struct {
 	Kind   string `json:"kind"`
 	File   string `json:"file"`
 	Hex    string `json:"hex"`
+	// Files are the committed files the row reads, the schema: the registry
+	// indexes them where they are (internal/testreg/extract, Indexed).
+	Files []string `json:"files"`
 }
 
 // failedRow finds the row a leg's driver names in its failure: every driver
-// says "FAILED: <read|write|bytes|accepted> <file>".
-var failedRow = regexp.MustCompile(`FAILED: (?:read|write|bytes|accepted) (aa_[A-Za-z0-9_.-]+?\.bin)`)
+// says "FAILED: <read|write|bytes|accepted> <file>", but for the C++ leg's
+// verify.cpp, which says "FAILED: cpp failed <valid|refuse> <type> <file>".
+var failedRow = regexp.MustCompile(`FAILED: (?:read|write|bytes|accepted|cpp failed (?:valid|refuse) [A-Za-z0-9_]+) ([A-Za-z0-9_.-]+?\.bin)`)
 
 // rowsForRequests maps each request to its row, refusing one whose family,
 // lang or inputs are not the row's.
@@ -65,7 +69,8 @@ func rowsForRequests(lang string, reqs []testreg.Request) ([]alignRow, map[strin
 		switch {
 		case !ok:
 			return nil, nil, fmt.Errorf("%s: inputs.file %q is no row of alignarrays.go", q.Instance, in.File)
-		case in.Schema != AlignArraysSchema || in.Root != r.Type || in.Kind != r.Kind || in.Hex != hex.EncodeToString(r.data):
+		case in.Schema != AlignArraysSchema || in.Root != r.Type || in.Kind != r.Kind || in.Hex != hex.EncodeToString(r.data) ||
+			len(in.Files) != 1 || in.Files[0] != AlignArraysSchema:
 			return nil, nil, fmt.Errorf("%s: inputs %s do not agree with alignarrays.go's row (%s %s %s %x)",
 				q.Instance, string(q.Inputs), AlignArraysSchema, r.Type, r.Kind, r.data)
 		case instOf[r.File] != "":
@@ -89,6 +94,24 @@ func runAdapter(in io.Reader, out io.Writer, repoRoot, schemaBin, schemaMooBin, 
 	if len(reqs) == 0 {
 		return fmt.Errorf("--adapter was handed no requests")
 	}
+	// the bit-phase family's requests run on their own corpus (bitphase_adapter.go)
+	var bitPhase, align []testreg.Request
+	for _, q := range reqs {
+		if q.Family == BitPhaseFamily {
+			bitPhase = append(bitPhase, q)
+		} else {
+			align = append(align, q)
+		}
+	}
+	if len(bitPhase) > 0 {
+		if err := runBitPhase(bitPhase, out, repoRoot, schemaBin, schemaMooBin, workRoot, lang); err != nil {
+			return err
+		}
+		if len(align) == 0 {
+			return nil
+		}
+	}
+	reqs = align
 	rows, instOf, err := rowsForRequests(lang, reqs)
 	if err != nil {
 		return err

@@ -5,7 +5,7 @@ Part of the specification: every test of tier `nightly`, from the test registry.
 
 **Tier nightly:** heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded.
 
-Nightly tests every language answers: 630. Language-free tests: 1344.
+Nightly tests every language answers: 633. Language-free tests: 1344.
 
 Run this tier for a language with `schema-test run --tier nightly --lang L`, one test with `schema-test run <full name>`.
 
@@ -698,6 +698,14 @@ seeded mutations.
 |---|---|---|---|---|
 | `L.nightly.fuzz.nightly-fuzz-readers.nightly-fuzz-strict` | a nightly fuzz campaign of the strict readers over every mutant gives the expected verdict on each | `inputs.tests` (98 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/squirreltable/nightly_fuzz_readers_test.go:170` |
 | `L.nightly.fuzz.nightly-fuzz-readers.nightly-fuzz-text-json` | a nightly fuzz campaign of the text and JSON readers over every mutant gives the expected verdict on each | `inputs.tests` (100 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/squirreltable/nightly_fuzz_readers_test.go:202` |
+
+#### `fuzz` family `wire-fuzz`, 3 tests
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.nightly.fuzz.wire-fuzz.mixed` | wire fuzz, mixed arm (the mutable builder oracle on the variable file roots): every corpus root's enumerated mutants and 500000 random ones at the run's seed | `arm: mixed`<br>`n: 500000` | no divergence from the oracle, at least one mutant, and no corpus root the leg has no codec for, in every configuration of the leg; the verdict names the seed | `test/conformance/harness/wirefuzz_registry.go` |
+| `L.nightly.fuzz.wire-fuzz.plain` | wire fuzz, plain arm (the plain read and write-back): every corpus root's enumerated mutants and 500000 random ones at the run's seed | `arm: plain`<br>`n: 500000` | no divergence from the oracle, at least one mutant, and no corpus root the leg has no codec for, in every configuration of the leg; the verdict names the seed | `test/conformance/harness/wirefuzz_registry.go` |
+| `L.nightly.fuzz.wire-fuzz.retain` | wire fuzz, retain arm (the retaining read's canonical write-back): every corpus root's enumerated mutants and 500000 random ones at the run's seed | `arm: retain`<br>`n: 500000` | no divergence from the oracle, at least one mutant, and no corpus root the leg has no codec for, in every configuration of the leg; the verdict names the seed | `test/conformance/harness/wirefuzz_registry.go` |
 
 ### Type `plant`
 

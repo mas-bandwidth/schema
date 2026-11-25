@@ -268,6 +268,9 @@ if surface == "list" then
 	if unit("shapes") ~= nil then
 		print("unit shapes")
 	end
+	if unit("tblmoodmap") ~= nil then
+		print("unit tblmoodmap")
+	end
 	return
 end
 

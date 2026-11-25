@@ -3531,7 +3531,7 @@ public final class Driver {
                     + "block-dump\nforgery\ncook\ncook-write\ncook-foreign\ncook-forgery\n"
                     + "write-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n"
                     + "write-refusal-cook\nwrite-refusal-block\nwrite-refusal-shape\nannounce\nread-into\njson-write-into\n"
-                    + "unit shapes\n");
+                    + "unit shapes\nunit tblmoodmap\n");
             return 0;
         }
         if (args.length < 3) {

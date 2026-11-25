@@ -31,7 +31,9 @@
 //
 // A bench named "local" is the machine the launcher runs on, reached with
 // bash instead of ssh. A scheduled workflow runs one part of the plan per
-// matrix job (launch --bench local=N --part I/N), and a last job merges
+// matrix job (launch --bench local=N --part I/N), the tests built only for
+// another OS run in the part named for it on a runner that runs them
+// (launch --bench local=N+windows --part windows), and a last job merges
 // the parts against the whole plan (merge), red when REDS.tsv is not empty.
 //
 // covers is the counts match for retiring a workflow: for each scheduled
@@ -52,6 +54,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -64,7 +67,7 @@ type usageError struct{ msg string }
 func (e usageError) Error() string { return e.msg }
 
 const usage = `usage:
-  fullrun launch --ref REF --bench HOST=SHARDS[+GOOS]... --out DIR [--tool-ref REF] [--only PATTERN]... [--env K=V]... [--seconds FILE] [--retries N] [--poll D] [--plan-only] [--part I/N] [--work DIR]
+  fullrun launch --ref REF --bench HOST=SHARDS[+GOOS]... --out DIR [--tool-ref REF] [--only PATTERN]... [--env K=V]... [--seconds FILE] [--retries N] [--poll D] [--plan-only] [--part I/N|GOOS] [--work DIR]
   fullrun retest --reds REDS.tsv --ref REF --bench HOST=SHARDS[+GOOS]... --out DIR [the same]
   fullrun watch --run DIR
   fullrun collect --run DIR
@@ -242,15 +245,13 @@ func runErr(ctx context.Context, args []string, stdout, stderr io.Writer) error 
 			return usageError{"retest needs --reds REDS.tsv"}
 		}
 		var err error
-		if *partFlag != "" {
-			k, n, ok := cutPart(*partFlag)
-			if !ok {
-				return usageError{fmt.Sprintf("--part %q is not i/n with 1 <= i <= n", *partFlag)}
-			}
-			o.Part, o.Parts = k, n
-		}
 		if o.Benches, err = parseBenches(benches); err != nil {
 			return err
+		}
+		if *partFlag != "" {
+			if o.Part, o.Parts, o.PartGOOS, err = parsePart(*partFlag, o.Benches); err != nil {
+				return err
+			}
 		}
 		for _, kv := range envs {
 			k, v, ok := strings.Cut(kv, "=")
@@ -305,4 +306,20 @@ func parseBenches(vs []string) ([]Bench, error) {
 // verdict, so its error is dropped.
 func logf(w io.Writer, format string, args ...any) {
 	_, _ = fmt.Fprintf(w, format, args...)
+}
+
+// parsePart reads --part: i/n, a numbered part of the plan, or the name of
+// a GOOS, the part that holds the plan's tests built only for it, which
+// needs a bench that runs them.
+func parsePart(v string, benches []Bench) (int, int, string, error) {
+	if k, n, ok := cutPart(v); ok {
+		return k, n, "", nil
+	}
+	if !slices.Contains(partGOOS, v) {
+		return 0, 0, "", usageError{fmt.Sprintf("--part %q is not i/n with 1 <= i <= n, nor one of %s", v, strings.Join(partGOOS, ", "))}
+	}
+	if !slices.ContainsFunc(benches, func(b Bench) bool { return b.Runs(v) }) {
+		return 0, 0, "", usageError{fmt.Sprintf("--part %s needs a bench that runs %s tests: --bench HOST=SHARDS+%s", v, v, v)}
+	}
+	return 0, 0, v, nil
 }
