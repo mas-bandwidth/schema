@@ -303,7 +303,21 @@ SCHEMAS_VERSIONING := test/tables/VOLD_array_bounded_grow.schema \
 	test/tables/VOLD_unknown_census.schema \
 	test/tables/VNEW_unknown_census.schema \
 	test/tables/VOLD_kind_moved.schema \
-	test/tables/VNEW_kind_moved.schema
+	test/tables/VNEW_kind_moved.schema \
+	test/tables/VOLD_arm_removed.schema \
+	test/tables/VNEW_arm_removed.schema \
+	test/tables/VOLD_variant_removed.schema \
+	test/tables/VNEW_variant_removed.schema \
+	test/tables/VOLD_key_removed.schema \
+	test/tables/VNEW_key_removed.schema \
+	test/tables/VOLD_array_shrunk.schema \
+	test/tables/VNEW_array_shrunk.schema \
+	test/tables/VOLD_counted_shrunk.schema \
+	test/tables/VNEW_counted_shrunk.schema \
+	test/tables/VOLD_text_narrowed.schema \
+	test/tables/VNEW_text_narrowed.schema \
+	test/tables/VOLD_bytes_narrowed.schema \
+	test/tables/VNEW_bytes_narrowed.schema
 # ---- rowan/cpp-versioning-numbers: END ----------------------------------
 
 define tables_generate

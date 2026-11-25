@@ -832,7 +832,8 @@ final class TableFixedPlan {
   /// kind_mismatch (rulings 2026-11-22, R2)
   bool optionalIntoBare = false;
 
-  /// A WRITER FIELD NO READER FIELD NAMES: the entry is UNLAWFUL and refuses
+  /// A WRITER FIELD, ARM, VARIANT OR KEY NO READER CHILD NAMES, A KIND MOVED
+  /// OFF EVERY LADDER, OR A SHRUNK ARRAY, TEXT OR BYTES: the entry is UNLAWFUL and refuses
   /// the plan whole as layout_malformed (this leg's layoutDamaged), never
   /// counted as unknown (docs/FIXED-FORM-ALGORITHM.md §5.4, §5.9 #30; the
   /// Go reference's tableFixedChildrenNamed)
@@ -1565,6 +1566,12 @@ abstract final class TableFixedCompiler {
     TableFixedReport report,
     bool census,
   ) {
+    // A FIELD OF THEIRS I COULD NOT NAME MAKES THE ENTRY UNLAWFUL, in every
+    // slot and either pass, census or not: it is refused, never counted.
+    if (!childrenNamed(plan, ti, mi)) {
+      plan.unlawful = true;
+      return;
+    }
     final theirs = plan.theirs;
     final mine = plan.mine;
     final theirChildren = theirs.children(ti);
@@ -1594,8 +1601,18 @@ abstract final class TableFixedCompiler {
       }
       myChild += mine.subtree(myChild);
     }
-    // A FIELD OF THEIRS I COULD NOT NAME MAKES THE ENTRY UNLAWFUL, in every
-    // slot and either pass, census or not: it is refused, never counted.
+  }
+
+  /// A LAWFUL OLDER WRITER NAMES ONLY FIELDS, ARMS, VARIANTS AND KEYS THE
+  /// READER RETAINS (docs/FIXED-FORM-ALGORITHM.md §5.2, §5.4, §5.9 #30; the
+  /// Go reference's tableFixedChildrenNamed): true when every child of their
+  /// entry ti has a child of my entry mi with the same id. Deprecation keeps
+  /// the slot and its name; removal leaves source bytes no entry reads.
+  static bool childrenNamed(TableFixedPlan plan, int ti, int mi) {
+    final theirs = plan.theirs;
+    final mine = plan.mine;
+    final theirChildren = theirs.children(ti);
+    final myChildren = mine.children(mi);
     var tc = ti + 1;
     for (var j = 0; j < theirChildren; j++) {
       var named = false;
@@ -1608,10 +1625,11 @@ abstract final class TableFixedCompiler {
         mc += mine.subtree(mc);
       }
       if (!named) {
-        plan.unlawful = true;
+        return false;
       }
       tc += theirs.subtree(tc);
     }
+    return true;
   }
 
   static void compileEntry(
@@ -1734,6 +1752,14 @@ abstract final class TableFixedCompiler {
         final head = dst[row + TableFixedLane.dstCounted] != 0 ? 4 : 0;
         final theirN = theirElem != 0 ? (theirSize - head) ~/ theirElem : 0;
         final myN = myElem != 0 ? (mySize - head) ~/ myElem : 0;
+        // A SHRUNK ARRAY IS UNLAWFUL (§5.1, §5.4; the Go reference's
+        // theirN > myN): fixed [N], counted [..N] and bytes(N) alike. The
+        // writer's slots past my bound have nowhere to land, so no plan is
+        // laid, rather than landing min(their_n, my_n).
+        if (theirN > myN) {
+          plan.unlawful = true;
+          return;
+        }
         if (dst[row + TableFixedLane.dstCounted] != 0) {
           // THE COUNT'S BOUND IS THE WRITER'S, CARRIED BY THE PLAN (§5.2's
           // EMIT, bill §12.5): a count forged past what THIS ENDPOINT could have
@@ -1779,6 +1805,17 @@ abstract final class TableFixedCompiler {
         final theirElemAt = ti + 1 + theirs.subtree(ti + 1);
         final myElemAt = mi + 1 + mine.subtree(mi + 1);
         final theirElemSize = theirs.size(theirElemAt);
+        // A REMOVED KEY, OR MORE WRITER SLOTS THAN MINE, IS UNLAWFUL (§5.4;
+        // the Go reference's case 16): a writer slot keyed by a variant this
+        // reader dropped has nowhere to land.
+        final myElemSize = mine.size(myElemAt);
+        if (!childrenNamed(plan, ti + 1, mi + 1) ||
+            (theirElemSize != 0 &&
+                myElemSize != 0 &&
+                theirSize ~/ theirElemSize > mySize ~/ myElemSize)) {
+          plan.unlawful = true;
+          return;
+        }
         for (var k = 0; k < myKeys; k++) {
           for (var j = 0; j < theirKeys; j++) {
             if (theirs.id(ti + 2 + j) != mine.id(mi + 2 + k)) {
@@ -1801,6 +1838,12 @@ abstract final class TableFixedCompiler {
         }
         break;
       case 15: // a union: the tag, remapped, then each arm matched by id
+        // A REMOVED ARM IS UNLAWFUL (§5.4; the Go reference's case 15): a
+        // record taking it would land None where the writer said a value.
+        if (!childrenNamed(plan, ti, mi)) {
+          plan.unlawful = true;
+          return;
+        }
         final theirTag = theirs.tagBytes(ti);
         final myTag = mine.tagBytes(mi);
         // THE GUARD IS THE WRITER'S TAG AND IS COMPARED AT ITS WIDTH (§5.2).
@@ -1944,6 +1987,14 @@ abstract final class TableFixedCompiler {
         plan.argw = savedArgw;
         break;
       case 30: // an enum: the ordinal is the layout's position, so it remaps
+        // A REMOVED VARIANT IS UNLAWFUL (§5.4; the Go reference's case 30, on
+        // both the grown-width widen path and the same-width remap path): a
+        // record holding it would land None. Tested in BOTH halves, before
+        // keeping() discards one, so neither pass lays a plan for it.
+        if (!childrenNamed(plan, ti, mi)) {
+          plan.unlawful = true;
+          return;
+        }
         // THE HALF IS TESTED BEFORE THE POOL SPENDS (§5.2, the two-pass split):
         // layRemap allocates ahead of its push, so the discarded pass would
         // spend the pool and a plan that fits would come back plan_too_large.
@@ -1998,6 +2049,14 @@ abstract final class TableFixedCompiler {
         // (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5, §5.3 step 11). A counted
         // array of wrapped strings TEXTS every bound slot for that reason;
         // the decode both paths share still clamps LIVE used-lengths.
+        //
+        // NARROWED TEXT IS UNLAWFUL (§5.1, §5.4; the Go reference's
+        // te.Size > me.Size): the writer could hold units this reader cannot,
+        // so no plan is laid, rather than landing min(me.size, te.size).
+        if (theirSize > mySize) {
+          plan.unlawful = true;
+          return;
+        }
         final units = (mySize - 4) < (theirSize - 4)
             ? (mySize - 4)
             : (theirSize - 4);
@@ -2028,6 +2087,10 @@ abstract final class TableFixedCompiler {
             arg,
             mySize & 0xff,
           );
+        } else {
+          // A SAME-KIND LEAF THAT NARROWED IS UNLAWFUL (the Go reference's
+          // default case): it used to lay no entry and read on.
+          plan.unlawful = true;
         }
         break;
     }

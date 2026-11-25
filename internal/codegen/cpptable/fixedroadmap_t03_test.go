@@ -598,7 +598,8 @@ fixed table T
 	// lineage entry UNLAWFUL before any entry is laid, and the load refuses
 	// layout_malformed (FIXED-FORM-ALGORITHM §5.2 MATCH, §5.4, §5.9 #30). A
 	// deprecated field keeps its place and its name, so it is matched, not this.
-	t03Has(t, runtime, "        if ( !named )\n        {\n            c.unlawful = 1;\n            return;\n        }", "R20 a field the reader cannot name makes the entry unlawful")
+	t03Has(t, runtime, "    if ( !TableFixedChildrenNamed( theirs, ti, mine, mi ) )\n    {\n        c.unlawful = 1;\n        return;\n    }", "R20 a field the reader cannot name makes the entry unlawful")
+	t03Has(t, runtime, "        if ( !named ) { return false; }", "R20 every writer child must be named by a child of mine")
 	t03Has(t, runtime, "c.unlawful = ( te.kind == 35 ) ? 3u : 1u;", "R20 a kind off every ladder makes the entry unlawful")
 	t03Has(t, runtime, "return ( c.unlawful == 3 ) ? -4 : -3;", "R20 an unlawful entry lays no plan")
 	for _, gone := range []string{"c.report->unknown++", "census && i == 0", "census && k == 0", "int census"} {

@@ -1121,15 +1121,13 @@ function TableFixedRemapRoom(n) {
   return TableFixedRemapScratch;
 }
 
-// matchChildren walks a TABLE's children on both sides, by id.
-//
-// A LAWFUL OLDER WRITER NAMES ONLY FIELDS THIS READER RETAINS (§5.1 refuses a
-// removal; a field is deprecated in place, and a "was =" rename keeps the id).
-// A writer field no child of mine names makes the lineage entry UNLAWFUL before
-// any entry is laid (docs/FIXED-FORM-ALGORITHM.md §5.2 MATCH, §5.4, §5.9 #30):
-// no plan, nothing counted, and a file under its hash refuses layout_malformed.
-// There is no compile census (§5.8 row 11 is that census, retired).
-function TableFixedMatchChildren(plan, theirs, ti, theirAt, mine, mi, dst, myAt, guard, arg) {
+// A LAWFUL OLDER WRITER NAMES ONLY FIELDS, ARMS, VARIANTS AND KEYS THIS READER
+// RETAINS (§5.1 refuses a removal; a field is deprecated in place, and a "was ="
+// rename keeps the id). childrenNamed is true when every child of their entry
+// ti carries an id some child of my entry mi carries: the table's fields, the
+// union's arms, the enum's variants, the keyed array's key enum. The Go
+// reference's tableFixedChildrenNamed, ported.
+function TableFixedChildrenNamed(theirs, ti, mine, mi) {
   const theirChildren = TableFixedChildren(theirs, ti);
   const myChildren = TableFixedChildren(mine, mi);
   let tcAt = ti + 1;
@@ -1140,9 +1138,22 @@ function TableFixedMatchChildren(plan, theirs, ti, theirAt, mine, mi, dst, myAt,
       if (TableFixedSameId(mine, mcAt, theirs, tcAt)) { named = true; break; }
       mcAt += TableFixedSubtree(mine, mcAt);
     }
-    if (!named) { plan.unlawful = true; return; }
+    if (!named) { return false; }
     tcAt += TableFixedSubtree(theirs, tcAt);
   }
+  return true;
+}
+
+// matchChildren walks a TABLE's children on both sides, by id.
+//
+// A writer field no child of mine names makes the lineage entry UNLAWFUL before
+// any entry is laid (docs/FIXED-FORM-ALGORITHM.md §5.2 MATCH, §5.4, §5.9 #30):
+// no plan, nothing counted, and a file under its hash refuses layout_malformed.
+// There is no compile census (§5.8 row 11 is that census, retired).
+function TableFixedMatchChildren(plan, theirs, ti, theirAt, mine, mi, dst, myAt, guard, arg) {
+  if (!TableFixedChildrenNamed(theirs, ti, mine, mi)) { plan.unlawful = true; return; }
+  const theirChildren = TableFixedChildren(theirs, ti);
+  const myChildren = TableFixedChildren(mine, mi);
   let myChild = mi + 1;
   for (let k = 0; k < myChildren; k++) {
     let theirChild = ti + 1;
@@ -1229,7 +1240,7 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
       TableFixedMatchChildren(plan, theirs, ti, theirAt, mine, mi, dst, at, guard, arg);
       break;
     }
-    case 14: { // an array: the count, then min( their bound, my bound ) elements
+    case 14: { // an array: the count, then their bound of elements (a narrowed bound refuses)
       const theirElem = TableFixedSize(theirs, ti + 1);
       const myElem = TableFixedSize(mine, mi + 1);
       const head = dst[row + TableFixedDstCounted] ? 4 : 0;
@@ -1241,6 +1252,16 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
       // here would underflow to a negative bound and let the over-reach through.
       const theirN = theirElem ? globalThis.Math.floor(((theirSize - head) >>> 0) / theirElem) : 0;
       const myN = myElem ? ((mySize - head) / myElem) | 0 : 0;
+      // A NARROWED BOUND IS AN UNLAWFUL ENTRY (§5.1 "bound narrowed", §5.4,
+      // §5.9 #30): a fixed [N], a counted [..N] and a bytes(N) alike. Never
+      // min(their_n, my_n) and drop the rest, and never a check of only the
+      // live count: no plan is laid and the load refuses layout_malformed.
+      // A required count word wider than the writer's whole field reaches past
+      // its record: that is layout_record_too_large, decided BEFORE the bound
+      // comparison, or the wrapped their_n above would read as a narrowing and
+      // refuse under the wrong name (the Go reference's te.Size < head).
+      if (theirSize < head) { plan.hostile = true; return; }
+      if (theirN > myN) { plan.unlawful = true; return; }
       if (dst[row + TableFixedDstCounted]) {
         // THE BOUND IS THE WRITER'S their_n AND NOT THE READER'S (§5.2 EMIT,
         // bill §12.5): a count forged past what THAT endpoint could have written
@@ -1264,11 +1285,20 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
       break;
     }
     case 16: { // an enum-keyed array: every slot, matched by the KEY's id
+      // A REMOVED KEY IS AN UNLAWFUL ENTRY (§5.1 "variant removed": the keyed
+      // array follows its enum; §5.4, §5.9 #30), and so is a writer with more
+      // slots than this reader holds. Never a reader slot landed from the
+      // writer slot of the same key with the rest dropped: no plan is laid.
+      if (!TableFixedChildrenNamed(theirs, ti + 1, mine, mi + 1)) { plan.unlawful = true; return; }
       const theirKeyChildren = TableFixedChildren(theirs, ti + 1);
       const myKeyChildren = TableFixedChildren(mine, mi + 1);
       const theirElemAt = ti + 1 + TableFixedSubtree(theirs, ti + 1);
       const myElemAt = mi + 1 + TableFixedSubtree(mine, mi + 1);
       const theirElemSize = TableFixedSize(theirs, theirElemAt);
+      const myElemSize = TableFixedSize(mine, myElemAt);
+      const theirSlots = theirElemSize ? globalThis.Math.floor(theirSize / theirElemSize) : 0;
+      const mySlots = myElemSize ? globalThis.Math.floor(mySize / myElemSize) : 0;
+      if (theirSlots > mySlots) { plan.unlawful = true; return; }
       for (let k = 0; k < myKeyChildren; k++) {
         for (let j = 0; j < theirKeyChildren; j++) {
           if (!TableFixedSameId(theirs, ti + 2 + j, mine, mi + 2 + k)) { continue; }
@@ -1281,6 +1311,10 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
       break;
     }
     case 15: { // a union: the tag, remapped, then each arm matched by id
+      // A REMOVED ARM IS AN UNLAWFUL ENTRY (§5.1 "arm removed", §5.4, §5.9
+      // #30): never arms matched by id with the one this reader lacks dropped.
+      // No plan is laid and the load refuses layout_malformed.
+      if (!TableFixedChildrenNamed(theirs, ti, mine, mi)) { plan.unlawful = true; return; }
       const theirTag = TableFixedTagBytes(theirs, ti);
       const myTag = TableFixedTagBytes(mine, mi);
       // THE TAG'S "NONE" GOES DOWN FIRST AND UNGUARDED, and it is pushed HERE,
@@ -1367,6 +1401,13 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
       // A GROWN ORDINAL WIDTH IS A WIDEN, unsigned, and it counts widened (§5.2
       // EMIT kind 30, §5.4, bill §12.7). Only a SAME-WIDTH ordinal takes the
       // remap table.
+      //
+      // A REMOVED VARIANT IS AN UNLAWFUL ENTRY on both paths, the grown-width
+      // widen and the same-width remap (§5.1 "variant removed", §5.4, §5.9
+      // #30): never an ordinal remapped by id with the variant this reader
+      // lacks landed as None. Decided before the pool is spent and on both
+      // passes, so the guarded pass cannot miss it.
+      if (!TableFixedChildrenNamed(theirs, ti, mine, mi)) { plan.unlawful = true; return; }
       if (theirSize < mySize) {
         TableFixedPush(plan, TableFixedOpWiden, theirAt, at, theirSize, 0, guard, arg, mySize & 0xff);
         break;
@@ -1395,6 +1436,11 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
       // flavour, so the entry either never ran under its own arm or ran under
       // somebody else's and smeared its bytes across a sibling's storage. The
       // two facts are independent, so they get independent lanes.
+      //
+      // A NARROWED CAPACITY IS AN UNLAWFUL ENTRY (§5.1 "capacity narrowed",
+      // §5.4, §5.9 #30): never min(my capacity, theirs) and a check of only the
+      // used length. No plan is laid and the load refuses layout_malformed.
+      if (theirSize > mySize) { plan.unlawful = true; return; }
       const units = (mySize - 4) < (theirSize - 4) ? (mySize - 4) : (theirSize - 4);
       TableFixedPush(plan, TableFixedOpText, theirAt, at, units, auxAt, guard, arg, dst[row + TableFixedDstArg]);
       // THE BYTES PAST THE USED LENGTH, OUT TO THE WRITER'S CAPACITY, ARE DEAD (§4.5).

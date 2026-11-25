@@ -1471,16 +1471,21 @@ public final class ArmProbe {
         }
 
         // 5. Identity only. A present byte of 0 with a non-zero payload refuses
-        // the whole load and leaves the caller's destination as the lawful read
-        // left it. Moved off "a cleared present byte ignores its payload".
+        // the whole load, and (ruling R4, SPEC-TABLES §6.5) every row handed in
+        // then holds its DECLARED DEFAULTS: pick None, the labelled arm at
+        // lead 5, an empty label, trail 9, tail 3, mark -1. Rewritten from "leaves
+        // the destination as the lawful read left it", which held only because
+        // the defaults scatter landed None and left the arm's label behind.
         data[body + 2] = 44;
         if (tblfu1.FuRootFixed.load(v1, v1.length, data,
                 tblfu1.TableFixed.plan(4096), new short[4096], tblfu1.FuRootFixed.image(), r1) == 3
                 || !r1.refused) {
             fail("FU1 non-zero absent payload read");
         }
-        if (v1[0].flag || v1[0].notePresent || v1[0].pick.labelled.labelLength != 5) {
-            fail("FU1 non-zero absent payload wrote the destination");
+        if (v1[0].flag || v1[0].notePresent || v1[0].pick.type != tblfu1.PickFixed.none
+                || v1[0].pick.labelled.lead != 5 || v1[0].pick.labelled.labelLength != 0
+                || v1[0].pick.labelled.trail != 9 || v1[0].tail != 3 || v1[0].mark != -1) {
+            fail("FU1 non-zero absent payload: the refused row is not at its declared defaults");
         }
         System.out.println("ok");
     }

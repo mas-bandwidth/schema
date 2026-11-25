@@ -104,6 +104,7 @@ func init() {
 		Name{Name: "TableFixedKind", What: "an entry's kind byte"},
 		Name{Name: "TableFixedSize", What: "an entry's constant size"},
 		Name{Name: "TableFixedChildren", What: "an entry's child count"},
+		Name{Name: "TableFixedChildrenNamed", What: "whether every child of their entry is one my entry names by id; a child mine does not name makes the lineage entry unlawful (FIXED-FORM-ALGORITHM §5.2)"},
 		Name{Name: "TableFixedSubtree", What: "how many entries the subtree at i occupies — what makes SKIPPING an unknown field free"},
 		Name{Name: "TableFixedUnionArmBytes", What: "the widest arm of a union entry"},
 		Name{Name: "TableFixedTagBytes", What: "a union entry's tag width: its size less its widest arm"},

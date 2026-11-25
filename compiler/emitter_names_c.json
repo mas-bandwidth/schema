@@ -240,6 +240,7 @@
   "{p}_table_fixed_big_endian_host",
   "{p}_table_fixed_check_entry",
   "{p}_table_fixed_check_t",
+  "{p}_table_fixed_children_named",
   "{p}_table_fixed_compile",
   "{p}_table_fixed_compile_entry",
   "{p}_table_fixed_compiler_init",

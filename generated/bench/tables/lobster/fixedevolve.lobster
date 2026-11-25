@@ -226,8 +226,8 @@ class TableFixedKnownLayout:
 class TableFixedLineagePlan:
     entries:[TableFixedEntry] = []
     count:int = 0
-    unknown:int = 0
-    kind_mismatch:int = 0
+    // why is the lane's refusal, "" for a lawful entry: an UNLAWFUL entry
+    // (layout_malformed, or kind_mismatch for ?T into bare T) lays no plan.
     why:string = ""
 
 class TableFixedLayoutEntry:
@@ -608,7 +608,14 @@ class tableFixedCompiler:
     chain:[TableFixedGuardLink] = []
     chain_at:int = 0
     chain_laid:bool = false
-    report:TableReport? = nil
+    // unlawful is a removed writer field, arm, variant or key, a shrunk
+    // array, a narrowed span, or a kind moved off every ladder: the handed-in
+    // lineage entry is not a lawful widening of this reader (§5.1) and NO
+    // plan is laid (§5.2 MATCH/EMIT, §5.4, §5.9 #30). 0 none, 1
+    // layout_malformed, 3 kind_mismatch (the writer's ?T into this reader's
+    // bare T, ruling R2); Go's tableFixedCompiler.unlawful is the reference,
+    // and as there a later verdict overwrites an earlier one.
+    unlawful:int = 0
 
 def fixed_lay_guards(c:tableFixedCompiler, links:[TableFixedGuardLink]) -> int:
     let bytes = 16 * length(links)
@@ -689,7 +696,7 @@ def fixed_push(c:tableFixedCompiler, e:TableFixedEntry):
     push(c.plan, e)
     c.count += 1
 
-def fixed_compile_entry(c:tableFixedCompiler, theirs:TableFixedLayoutView, ti:int, their_at:int, mine:TableFixedLayoutView, mi:int, dst:[TableFixedDst], my_at:int, grd:int, arg:int, census:bool) -> void:
+def fixed_compile_entry(c:tableFixedCompiler, theirs:TableFixedLayoutView, ti:int, their_at:int, mine:TableFixedLayoutView, mi:int, dst:[TableFixedDst], my_at:int, grd:int, arg:int) -> void:
     let te = fixed_entry_at(theirs, ti)
     let me = fixed_entry_at(mine, mi)
     let d = dst[mi]
@@ -712,8 +719,9 @@ def fixed_compile_entry(c:tableFixedCompiler, theirs:TableFixedLayoutView, ti:in
                 sign: sign
             })
             return
-        if c.report:
-            c.report.kind_mismatch += 1
+        // A KIND MOVED OFF EVERY LADDER makes the entry unlawful: it is never
+        // reinterpreted, and never counted and read past.
+        c.unlawful = if te.kind == 35: 3 else: 1
         return
     if me.kind == 35 and te.kind != 35:
         fixed_push(c, TableFixedEntry {
@@ -724,7 +732,7 @@ def fixed_compile_entry(c:tableFixedCompiler, theirs:TableFixedLayoutView, ti:in
             op: tableFixedConst,
             arg: arg
         })
-        fixed_compile_entry(c, theirs, ti, their_at, mine, mi + 1, dst, my_at, grd, arg, census)
+        fixed_compile_entry(c, theirs, ti, their_at, mine, mi + 1, dst, my_at, grd, arg)
         return
     switch me.kind:
         case 35:
@@ -738,15 +746,20 @@ def fixed_compile_entry(c:tableFixedCompiler, theirs:TableFixedLayoutView, ti:in
                 op: tableFixedBool,
                 arg: arg
             })
-            fixed_compile_entry(c, theirs, ti + 1, their_at + 1, mine, mi + 1, dst, my_at, grd, arg, census)
+            fixed_compile_entry(c, theirs, ti + 1, their_at + 1, mine, mi + 1, dst, my_at, grd, arg)
         case 13:
-            fixed_match_children(c, theirs, ti, their_at, mine, mi, dst, at, grd, arg, census)
+            fixed_match_children(c, theirs, ti, their_at, mine, mi, dst, at, grd, arg)
         case 14:
             let tel = fixed_entry_at(theirs, ti + 1)
             let mel = fixed_entry_at(mine, mi + 1)
             let head = if d.counted != 0: 4 else: 0
             let their_n = if tel.size != 0: (te.size - head) / tel.size else: 0
             let my_n = if mel.size != 0: (me.size - head) / mel.size else: 0
+            // A SHRUNK ARRAY ([N], [..N] or bytes(N)) is unlawful: the
+            // writer's elements past this reader's bound have nowhere to land.
+            if their_n > my_n:
+                c.unlawful = 1
+                return
             let their_base = their_at + head
             let n = if my_n < their_n: my_n else: their_n
             if d.counted != 0:
@@ -760,21 +773,37 @@ def fixed_compile_entry(c:tableFixedCompiler, theirs:TableFixedLayoutView, ti:in
                     arg: arg
                 })
             for(n) i:
-                fixed_compile_entry(c, theirs, ti + 1, their_base + i * tel.size, mine, mi + 1, dst, at + i * d.stride, grd, arg, census and i == 0)
+                fixed_compile_entry(c, theirs, ti + 1, their_base + i * tel.size, mine, mi + 1, dst, at + i * d.stride, grd, arg)
         case 16:
+            // A REMOVED KEY is unlawful, and so is a writer with more slots
+            // than this reader holds.
+            if not fixed_children_named(theirs, ti + 1, mine, mi + 1):
+                c.unlawful = 1
+                return
             let tkey = fixed_entry_at(theirs, ti + 1)
             let mkey = fixed_entry_at(mine, mi + 1)
             let tel = ti + 1 + fixed_subtree(theirs, ti + 1)
             let mel = mi + 1 + fixed_subtree(mine, mi + 1)
             let tee = fixed_entry_at(theirs, tel)
+            let mee = fixed_entry_at(mine, mel)
+            let their_slots = if tee.size != 0: te.size / tee.size else: 0
+            let my_slots = if mee.size != 0: me.size / mee.size else: 0
+            if their_slots > my_slots:
+                c.unlawful = 1
+                return
             for(mkey.children) k:
                 let key_id = fixed_entry_at(mine, mi + 2 + k).id
                 var matched = false
                 for(tkey.children) j:
                     if not matched and fixed_entry_at(theirs, ti + 2 + j).id == key_id:
                         matched = true
-                        fixed_compile_entry(c, theirs, tel, their_at + j * tee.size, mine, mel, dst, at + k * d.stride, grd, arg, census and k == 0)
+                        fixed_compile_entry(c, theirs, tel, their_at + j * tee.size, mine, mel, dst, at + k * d.stride, grd, arg)
         case 15:
+            // A REMOVED ARM is unlawful: a lawful writer names only arms this
+            // reader retains.
+            if not fixed_children_named(theirs, ti, mine, mi):
+                c.unlawful = 1
+                return
             let their_tag = fixed_tag_bytes(theirs, ti)
             let my_tag = fixed_tag_bytes(mine, mi)
             let span = te.size - their_tag
@@ -816,7 +845,7 @@ def fixed_compile_entry(c:tableFixedCompiler, theirs:TableFixedLayoutView, ti:in
                                 op: tableFixedConst,
                                 arg: j + 1
                             })
-                            fixed_compile_entry(c, theirs, their_arm, their_at + their_tag, mine, my_arm, dst, at, their_at, j + 1, census)
+                            fixed_compile_entry(c, theirs, their_arm, their_at + their_tag, mine, my_arm, dst, at, their_at, j + 1)
                             if ta.size < span:
                                 fixed_push(c, TableFixedEntry {
                                     src: their_at + their_tag + ta.size,
@@ -875,6 +904,11 @@ def fixed_compile_entry(c:tableFixedCompiler, theirs:TableFixedLayoutView, ti:in
             if n > tableFixedRemapMax:
                 c.overflow = true
                 return
+            // A REMOVED VARIANT is unlawful, on the grown-width widen and the
+            // same-width remap alike.
+            if not fixed_children_named(theirs, ti, mine, mi):
+                c.unlawful = 1
+                return
             let m:[int] = []
             for(n) j:
                 let vid = fixed_entry_at(theirs, ti + 1 + j).id
@@ -896,6 +930,11 @@ def fixed_compile_entry(c:tableFixedCompiler, theirs:TableFixedLayoutView, ti:in
                 remap: m
             })
         case 12:
+            // NARROWED TEXT is unlawful: a writer's text this reader's
+            // string(N) cannot hold has nowhere to land.
+            if te.size > me.size:
+                c.unlawful = 1
+                return
             var units = me.size - 4
             if te.size - 4 < units:
                 units = te.size - 4
@@ -930,12 +969,43 @@ def fixed_compile_entry(c:tableFixedCompiler, theirs:TableFixedLayoutView, ti:in
                     arg: arg,
                     op: tableFixedWiden
                 })
-            elif c.report:
-                c.report.kind_mismatch += 1
+            else:
+                // A NARROWED SPAN is unlawful.
+                c.unlawful = 1
 
-def fixed_match_children(c:tableFixedCompiler, theirs:TableFixedLayoutView, ti:int, their_at:int, mine:TableFixedLayoutView, mi:int, dst:[TableFixedDst], my_at:int, grd:int, arg:int, census:bool) -> void:
+// fixed_children_named is whether every child of the writer's entry ti (a
+// table's fields, a union's arms, an enum's variants, a keyed array's keys)
+// is named by a child of the reader's entry mi. A lawful older writer names
+// only what the reader retains: deprecation retains the slot and its name,
+// and a removal leaves source bytes outside the check pass
+// (docs/FIXED-FORM-ALGORITHM.md §5.2, §5.8 rule 6; Go's
+// tableFixedChildrenNamed).
+def fixed_children_named(theirs:TableFixedLayoutView, ti:int, mine:TableFixedLayoutView, mi:int) -> bool:
+    let me = fixed_entry_at(mine, mi)
+    var tc = ti + 1
+    for(fixed_entry_at(theirs, ti).children):
+        let id = fixed_entry_at(theirs, tc).id
+        var named = false
+        var mc = mi + 1
+        for(me.children):
+            if not named:
+                if fixed_entry_at(mine, mc).id == id:
+                    named = true
+                else:
+                    mc += fixed_subtree(mine, mc)
+        if not named:
+            return false
+        tc += fixed_subtree(theirs, tc)
+    return true
+
+def fixed_match_children(c:tableFixedCompiler, theirs:TableFixedLayoutView, ti:int, their_at:int, mine:TableFixedLayoutView, mi:int, dst:[TableFixedDst], my_at:int, grd:int, arg:int) -> void:
     let te = fixed_entry_at(theirs, ti)
     let me = fixed_entry_at(mine, mi)
+    // A WRITER FIELD THIS READER NAMES NOWHERE makes the entry unlawful: it is
+    // never counted unknown and read past (§5.2 MATCH, §5.4, §5.9 #30).
+    if not fixed_children_named(theirs, ti, mine, mi):
+        c.unlawful = 1
+        return
     var my_child = mi + 1
     for(me.children):
         let mc = fixed_entry_at(mine, my_child)
@@ -947,27 +1017,19 @@ def fixed_match_children(c:tableFixedCompiler, theirs:TableFixedLayoutView, ti:i
                 let tc = fixed_entry_at(theirs, their_child)
                 if tc.id == mc.id:
                     matched = true
-                    fixed_compile_entry(c, theirs, their_child, their_off, mine, my_child, dst, my_at, grd, arg, census)
+                    fixed_compile_entry(c, theirs, their_child, their_off, mine, my_child, dst, my_at, grd, arg)
                 else:
                     their_off += tc.size
                     their_child += fixed_subtree(theirs, their_child)
         my_child += fixed_subtree(mine, my_child)
-    var tc_at = ti + 1
-    for(te.children):
-        let tc = fixed_entry_at(theirs, tc_at)
-        var named = false
-        var mc_at = mi + 1
-        for(me.children):
-            if not named:
-                if fixed_entry_at(mine, mc_at).id == tc.id:
-                    named = true
-                else:
-                    mc_at += fixed_subtree(mine, mc_at)
-        if not named and census and c.report:
-            c.report.unknown += 1
-        tc_at += fixed_subtree(theirs, tc_at)
 
-def fixed_compile(theirs:TableFixedLayoutView, my_layout:string, dst:[TableFixedDst], capacity:int, report:TableReport?) -> [TableFixedEntry], int:
+// fixed_compile lays the plan for the writer's layout theirs into this
+// reader's my_layout. Its count, or: -1 the plan storage (retry larger), -2
+// the reader's own layout, -3 an entry past the writer's record
+// (layout_record_too_large), -4 an UNLAWFUL entry (layout_malformed), -5 an
+// UNLAWFUL entry whose writer carried ?T into this reader's bare T
+// (kind_mismatch). An unlawful entry lays no plan and counts nothing.
+def fixed_compile(theirs:TableFixedLayoutView, my_layout:string, dst:[TableFixedDst], capacity:int) -> [TableFixedEntry], int:
     let empty:[TableFixedEntry] = []
     if capacity <= 0:
         return empty, -1
@@ -976,12 +1038,15 @@ def fixed_compile(theirs:TableFixedLayoutView, my_layout:string, dst:[TableFixed
         return empty, -2
     let c = tableFixedCompiler {
         capacity: capacity,
-        record: fixed_entry_at(theirs, 0).size,
-        report: report
+        record: fixed_entry_at(theirs, 0).size
     }
-    fixed_match_children(c, theirs, 0, 0, mine, 0, dst, 0, tableFixedNoGuard, 0, true)
+    fixed_match_children(c, theirs, 0, 0, mine, 0, dst, 0, tableFixedNoGuard, 0)
     if c.too_large:
         return empty, -3
+    if c.unlawful == 3:
+        return empty, -5
+    if c.unlawful != 0:
+        return empty, -4
     if c.overflow:
         return empty, -1
     let coalesced:[TableFixedEntry] = []
@@ -1085,10 +1150,12 @@ def fixed_lineage_plans(known:[TableFixedKnownLayout], my_layout:string, dst:[Ta
                 var room = 256
                 var done = false
                 while not done:
-                    let census = TableReport {}
-                    let entries, made = fixed_compile(parsed, my_layout, dst, room, census)
-                    if made == -2:
+                    let entries, made = fixed_compile(parsed, my_layout, dst, room)
+                    if made == -2 or made == -4:
                         lane.why = TableRefuseLayoutMalformed
+                        done = true
+                    elif made == -5:
+                        lane.why = TableRefuseKindMismatch
                         done = true
                     elif made == -3:
                         lane.why = TableRefuseLayoutRecordTooLarge
@@ -1102,8 +1169,6 @@ def fixed_lineage_plans(known:[TableFixedKnownLayout], my_layout:string, dst:[Ta
                     else:
                         lane.entries = entries
                         lane.count = made
-                        lane.unknown = census.unknown
-                        lane.kind_mismatch = census.kind_mismatch
                         done = true
         push(out, lane)
     return out

@@ -571,6 +571,7 @@ func init() {
 		Name{Name: "table_fixed_entry_runs", What: "the fixed form: whether a plan entry runs under its guard chain (§3.4)"},
 		Name{Name: "table_fixed_span_zero", What: "the fixed form: whether a source span is all zero bytes (§3.4)"},
 		Name{Name: "table_fixed_dead_refuses", What: "the fixed form: the dead-byte check that refuses a non-zero dead byte as wire_damaged (§3.4)"},
+		Name{Name: "table_fixed_children_named", What: "the fixed form: whether every child of their entry is one my entry names by id; a child mine does not name makes the lineage entry unlawful (FIXED-FORM-ALGORITHM §5.2)"},
 		Name{Name: "TableFixedLayoutEntry", What: "the fixed form: one entry of a LAYOUT"},
 		Name{Name: "TableFixedLayoutView", What: "the fixed form: a parsed LAYOUT"},
 		Name{Name: "kTableFixedBool", What: "the fixed form's ops: a bool or a present flag normalises byte != 0 (fix 2)"},

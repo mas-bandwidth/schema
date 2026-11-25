@@ -344,7 +344,7 @@ func t05CsR16(t *testing.T) {
 			t.Errorf("R16: case %s does not refuse exactly once per entry", op)
 		}
 	}
-	if !strings.Contains(strings.Join(strings.Fields(run), " "), "if (!named) { c.Unlawful = 1; return; }") {
+	if !strings.Contains(strings.Join(strings.Fields(run), " "), "if (!ChildrenNamed(theirs, ti, mine, mi)) { c.Unlawful = 1; return; }") {
 		t.Error("R16: a writer field this reader names nowhere does not make the lineage entry unlawful")
 	}
 	if strings.Contains(run, "c.Report.Unknown++") || strings.Contains(run, "c.Report.KindChanged++") {

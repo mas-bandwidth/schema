@@ -92,7 +92,7 @@ var lobsterRuntimeNames = map[string][]string{
 		"TableRefuseOutOfRange", "TableRefusePlanTooLarge", "TableRefusePreviousForm", "TableRefuseReservedNotZero",
 		"TableRefuseTextIllFormed", "TableRefuseTruncated", "TableRefuseUnknownForm", "TableReport",
 		"fixed_arg_width", "fixed_build_plan", "fixed_chain_holds", "fixed_chains_equal", "fixed_check_entry",
-		"fixed_check_fail", "fixed_clone_entry", "fixed_compile", "fixed_compile_entry", "fixed_copy_run",
+		"fixed_check_fail", "fixed_children_named", "fixed_clone_entry", "fixed_compile", "fixed_compile_entry", "fixed_copy_run",
 		"fixed_crc32c", "fixed_entry_at", "fixed_dead_at", "fixed_holes", "fixed_integrity_holds",
 		"fixed_integrity_seal", "fixed_kind_known", "fixed_land", "fixed_lay_guards", "fixed_lay_table",
 		"fixed_leaf_size", "fixed_lineage_holes", "fixed_lineage_plans", "fixed_match_children",

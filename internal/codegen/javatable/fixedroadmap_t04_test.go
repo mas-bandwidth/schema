@@ -291,11 +291,13 @@ fixed table T
 		}
 	}
 	for _, want := range []string{
-		"final int n = java.lang.Math.min(theirN, myN);",
+		"if (theirN > myN) { c.unlawful = true; break; }",
+		"final int n = theirN;",
 		"compileEntry(c, theirs, ti + 1, theirAt + head + i * theirElem,",
 	} {
 		t04Has(t, runtime, want, "R16 the array case emits element by element, never a folded run (§5.9 #33)")
 	}
+	t04No(t, runtime, "java.lang.Math.min(theirN, myN)", "R16 a shrunk array is unlawful and is never truncated to the reader (§5.1, §5.4)")
 	// COPY, CONST, PRESENT AND ORDINAL MOVE NOTHING: the opCopy case carries no
 	// counter bump at all (only its framing-damage `malformed` guard), so the
 	// only counters the run loop can move are the widen, count/text clamp and

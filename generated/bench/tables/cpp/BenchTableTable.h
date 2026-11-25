@@ -6110,22 +6110,21 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
     const TableFixedLayoutView & mine, int32_t mi, const TableFixedDst * dst, uint32_t my_at,
     uint32_t guard, uint64_t arg );
 
-// TableFixedMatchChildren walks a TABLE's children on both sides.
+// TableFixedChildrenNamed is true when every child of THEIR entry ti — a
+// table's fields, a union's arms, an enum's variants, a keyed array's keys — is
+// named by a child of MY entry mi.
 //
-// A LAWFUL OLDER WRITER NAMES ONLY FIELDS THIS READER RETAINS (§5.1 refuses a
-// removal; a field is deprecated in place). A writer field no child of mine
-// names makes the lineage entry UNLAWFUL before any entry is laid: there is no
-// compile census to count (§5.4, §5.9 #30; §5.8 row 11 is that census, retired).
-inline void TableFixedMatchChildren( TableFixedCompiler & c,
-    const TableFixedLayoutView & theirs, int32_t ti, uint32_t their_at,
-    const TableFixedLayoutView & mine, int32_t mi, const TableFixedDst * dst, uint32_t my_at,
-    uint32_t guard, uint64_t arg )
+// A LAWFUL OLDER WRITER NAMES ONLY FIELDS, ARMS AND VARIANTS THIS READER
+// RETAINS (§5.1 refuses a removal; deprecation keeps the slot and its name). A
+// writer child no child of mine names makes the lineage entry UNLAWFUL before
+// any entry is laid: there is no compile census to count and no arm or variant
+// to drop (docs/FIXED-FORM-ALGORITHM.md §5.2, §5.4, §5.9 #30).
+inline bool TableFixedChildrenNamed( const TableFixedLayoutView & theirs, int32_t ti,
+    const TableFixedLayoutView & mine, int32_t mi )
 {
     const TableFixedLayoutEntry te = TableFixedEntryAt( theirs, ti );
     const TableFixedLayoutEntry me = TableFixedEntryAt( mine, mi );
-    int32_t my_child = mi + 1;
     int32_t tc_at = ti + 1;
-    // EVERY FIELD OF THEIRS MUST BE ONE I NAME, or the entry is unlawful
     for ( uint32_t j = 0; j < te.children && tc_at < theirs.count; ++j )
     {
         const TableFixedLayoutEntry tc = TableFixedEntryAt( theirs, tc_at );
@@ -6140,13 +6139,28 @@ inline void TableFixedMatchChildren( TableFixedCompiler & c,
             }
             mc_at += TableFixedSubtree( mine, mc_at );
         }
-        if ( !named )
-        {
-            c.unlawful = 1;
-            return;
-        }
+        if ( !named ) { return false; }
         tc_at += TableFixedSubtree( theirs, tc_at );
     }
+    return true;
+}
+
+// TableFixedMatchChildren walks a TABLE's children on both sides. A writer
+// field this reader does not name makes the entry unlawful (§5.8 row 11's
+// compile census is retired: nothing is counted and read past).
+inline void TableFixedMatchChildren( TableFixedCompiler & c,
+    const TableFixedLayoutView & theirs, int32_t ti, uint32_t their_at,
+    const TableFixedLayoutView & mine, int32_t mi, const TableFixedDst * dst, uint32_t my_at,
+    uint32_t guard, uint64_t arg )
+{
+    const TableFixedLayoutEntry te = TableFixedEntryAt( theirs, ti );
+    const TableFixedLayoutEntry me = TableFixedEntryAt( mine, mi );
+    if ( !TableFixedChildrenNamed( theirs, ti, mine, mi ) )
+    {
+        c.unlawful = 1;
+        return;
+    }
+    int32_t my_child = mi + 1;
     for ( uint32_t k = 0; k < me.children && my_child < mine.count; ++k )
     {
         const TableFixedLayoutEntry mc = TableFixedEntryAt( mine, my_child );
@@ -6263,7 +6277,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             TableFixedMatchChildren( c, theirs, ti, their_at, mine, mi, dst, at, guard, arg );
             break;
         }
-        case 14: // an array: the count, then min( their bound, my bound ) elements
+        case 14: // an array: the count, then their bound's elements
         {
             // A COUNTED LOCAL against an ENDPOINT whose array is too small to hold the
             // four-byte count is a mismatch the head subtraction below would
@@ -6280,7 +6294,17 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             const uint32_t their_n = tel.size ? ( te.size - head ) / tel.size : 0u;
             const uint32_t my_n = mel.size ? ( me.size - head ) / mel.size : 0u;
             const uint32_t their_base = their_at + head;
-            const uint32_t n = their_n < my_n ? their_n : my_n;
+            // A BOUND THAT NARROWED IS AN UNLAWFUL ENTRY (§5.1 "bound
+            // narrowed"), a fixed [N], a counted [..N] and a bytes(N) alike:
+            // never min( their_n, my_n ) with the rest dropped, and never
+            // admitted because the live count happens to fit (§5.4, §5.9 #30).
+            if ( their_n > my_n )
+            {
+                c.unlawful = 1;
+                break;
+            }
+            // their_n <= my_n past the refusal above, so n IS the writer's count.
+            const uint32_t n = their_n;
             if ( d.counted )
             {
                 TableFixedEntry e;
@@ -6302,11 +6326,25 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
         }
         case 16: // an enum-keyed array: every slot, matched by the KEY's id
         {
+            // A REMOVED KEY IS AN UNLAWFUL ENTRY (§5.1: the keyed array follows
+            // its enum, and a removed variant is refused), and so is a writer
+            // with more slots than this reader holds.
             const TableFixedLayoutEntry tkey = TableFixedEntryAt( theirs, ti + 1 );
             const TableFixedLayoutEntry mkey = TableFixedEntryAt( mine, mi + 1 );
             const int32_t tel = ti + 1 + TableFixedSubtree( theirs, ti + 1 );
             const int32_t mel = mi + 1 + TableFixedSubtree( mine, mi + 1 );
             const TableFixedLayoutEntry tee = TableFixedEntryAt( theirs, tel );
+            const TableFixedLayoutEntry mee = TableFixedEntryAt( mine, mel );
+            if ( !TableFixedChildrenNamed( theirs, ti + 1, mine, mi + 1 ) )
+            {
+                c.unlawful = 1;
+                break;
+            }
+            if ( tee.size != 0u && mee.size != 0u && te.size / tee.size > me.size / mee.size )
+            {
+                c.unlawful = 1;
+                break;
+            }
             for ( uint32_t k = 0; k < mkey.children && mi + 2 + (int32_t) k < mine.count; ++k )
             {
                 const uint64_t key_id = TableFixedEntryAt( mine, mi + 2 + (int32_t) k ).id;
@@ -6322,6 +6360,13 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
         }
         case 15: // a union: the tag, remapped, then each arm matched by id
         {
+            // A REMOVED ARM IS AN UNLAWFUL ENTRY (§5.1 "arm removed"): never
+            // dropped by id and the record read on.
+            if ( !TableFixedChildrenNamed( theirs, ti, mine, mi ) )
+            {
+                c.unlawful = 1;
+                break;
+            }
             const uint32_t their_tag = TableFixedTagBytes( theirs, ti );
             const uint32_t my_tag = TableFixedTagBytes( mine, mi );
             const uint8_t saved_argw = c.argw;
@@ -6413,6 +6458,15 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
         }
         case 30: // an enum: the ordinal is the layout's position, so it remaps
         {
+            // A REMOVED VARIANT IS AN UNLAWFUL ENTRY (§5.1 "variant removed"),
+            // on the grown-width widen path and the same-width remap path
+            // alike: never landed as None by the remap. Decided before the
+            // pass gate so either pass sees it.
+            if ( !TableFixedChildrenNamed( theirs, ti, mine, mi ) )
+            {
+                c.unlawful = 1;
+                break;
+            }
             if ( ( guard != kTableFixedNoGuard ) != c.want_guarded ) { break; }
             // A GROWN ORDINAL WIDTH IS A WIDEN (bill §12.7, algorithm §5.2):
             // append-only means the writer's ordinal IS the reader's, and the
@@ -6466,6 +6520,13 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
         }
         case 12: // text
         {
+            // A CAPACITY THAT NARROWED IS AN UNLAWFUL ENTRY (§5.1 "capacity
+            // narrowed"), whatever the live length of any one record.
+            if ( te.size > me.size )
+            {
+                c.unlawful = 1;
+                break;
+            }
             const uint32_t units = ( me.size - 4u ) < ( te.size - 4u ) ? ( me.size - 4u ) : ( te.size - 4u );
             TableFixedEntry e;
             e.src = their_at;
@@ -6500,10 +6561,11 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
                 e.op = kTableFixedWiden;
                 TableFixedPush( c, e );
             }
-            else if ( c.report != NULL )
+            else
             {
-                c.report->refused = true;
-                c.report->refuse_reason = kind_mismatch;
+                // A SCALAR THAT NARROWED (or grew past eight bytes) is no
+                // widening: an unlawful entry, no plan laid (§5.4).
+                c.unlawful = 1;
             }
             break;
         }
@@ -6539,11 +6601,9 @@ inline int32_t TableFixedCompile( const TableFixedLayoutView & theirs,
     // AN UNLAWFUL ENTRY LAYS NO PLAN (§5.4): -3 is layout_malformed, -4 the
     // writer's ?T into a bare T, kind_mismatch (R2). Decided before overflow,
     // so a capacity retry never turns an unlawful entry into plan_too_large.
-    // The caller names the refusal from the code, as the C twin's caller does.
-    if ( c.unlawful != 0 )
-    {
-        return ( c.unlawful == 3 ) ? -4 : -3;
-    }
+    // The return code IS the name: the load names -3 and -4 on its report, as
+    // the C twin's lineage build does, so the compile does not write it twice.
+    if ( c.unlawful != 0 ) { return ( c.unlawful == 3 ) ? -4 : -3; }
     if ( c.overflow || c.hostile )
     {
         if ( c.hostile && report != NULL ) { report->reason = layout_record_too_large; }

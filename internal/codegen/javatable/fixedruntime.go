@@ -1948,13 +1948,21 @@ public final class TableFixed {
                     break;
                 }
             case 14:
-                { // an array: the count, then min( their bound, my bound ) elements
+                { // an array: the count, then the writer's their_n elements
                     final int theirElem = (int) theirs.size(ti + 1);
                     final int myElem = (int) mine.size(mi + 1);
                     final int head = live ? 4 : 0;
                     final int theirN = theirElem != 0 ? (theirSize - head) / theirElem : 0;
                     final int myN = myElem != 0 ? (mySize - head) / myElem : 0;
-                    final int n = java.lang.Math.min(theirN, myN);
+                    // A SHRUNK ARRAY IS AN UNLAWFUL ENTRY (§5.1, §5.4), fixed [N],
+                    // counted [..N] and bytes(N) alike: a writer bound above this
+                    // reader's lays no plan, as the Go leg's tableFixedCompileEntry
+                    // refuses theirN > myN. Never truncated to min(theirN, myN).
+                    if (theirN > myN) {
+                        c.unlawful = true;
+                        break;
+                    }
+                    final int n = theirN;
                     if (live) {
                         // THE COUNT'S BOUND IS THE WRITER'S theirN (5.2 EMIT kind 14,
                         // 5.3 step 11: BOUNDS runs against the PLAN's bounds). The
@@ -1985,11 +1993,25 @@ public final class TableFixed {
                 }
             case 16:
                 { // an enum-keyed array: every slot, matched by the KEY's id
+                    // A REMOVED KEY IS AN UNLAWFUL ENTRY (§5.1, §5.4): every
+                    // writer key must be a key this reader names, as the Go
+                    // leg's tableFixedChildrenNamed on the key enum requires.
+                    if (!childrenNamed(theirs, ti + 1, mine, mi + 1)) {
+                        c.unlawful = true;
+                        break;
+                    }
                     final long theirKeys = theirs.children(ti + 1);
                     final long myKeys = mine.children(mi + 1);
                     final int theirElemAt = ti + 1 + theirs.subtree(ti + 1);
                     final int myElemAt = mi + 1 + mine.subtree(mi + 1);
                     final int theirElem = (int) theirs.size(theirElemAt);
+                    final int myElemSize = (int) mine.size(myElemAt);
+                    // and the writer's slot count above this reader's is a
+                    // shrunk array: no plan (Go: te.Size/tee.Size > me.Size/mee.Size).
+                    if (theirElem != 0 && myElemSize != 0 && theirSize / theirElem > mySize / myElemSize) {
+                        c.unlawful = true;
+                        break;
+                    }
                     final int step = stride != 0 ? stride : (int) mine.size(myElemAt);
                     for (long k = 0; k < myKeys; k++) {
                         final long keyId = mine.id(mi + 2 + (int) k);
@@ -2014,6 +2036,14 @@ public final class TableFixed {
                 }
             case 15:
                 { // a union: the tag, remapped, then each arm matched by id
+                    // A REMOVED ARM IS AN UNLAWFUL ENTRY (§5.1, §5.4): every
+                    // writer arm must be an arm this reader names, as the Go
+                    // leg's tableFixedChildrenNamed requires. Never dropped to
+                    // None or remapped onto a survivor.
+                    if (!childrenNamed(theirs, ti, mine, mi)) {
+                        c.unlawful = true;
+                        break;
+                    }
                     final int theirTag = theirs.tagBytes(ti);
                     final int myTag = mine.tagBytes(mi);
                     final long theirArms = theirs.children(ti);
@@ -2137,6 +2167,15 @@ public final class TableFixed {
                     // crossed 255 variants rides one byte on the writer and two here,
                     // and the ordinals themselves did not move -- a prefix by name is
                     // a prefix by position, so there is nothing to remap.
+                    //
+                    // A REMOVED VARIANT IS AN UNLAWFUL ENTRY (§5.1, §5.4), on the
+                    // widen path and the remap path alike: every writer variant
+                    // must be one this reader names, as the Go leg's
+                    // tableFixedChildrenNamed requires. Never remapped to None.
+                    if (!childrenNamed(theirs, ti, mine, mi)) {
+                        c.unlawful = true;
+                        break;
+                    }
                     if (theirSize < mySize) {
                         c.push(
                                 theirAt,
@@ -2191,8 +2230,15 @@ public final class TableFixed {
                     break;
                 }
             case 12:
-                { // text: the length, then min( their units, my units )
-                    final int units = java.lang.Math.min(mySize - 4, theirSize - 4);
+                { // text: the length, then the writer's units
+                    // NARROWED TEXT IS AN UNLAWFUL ENTRY (§5.1, §5.4): a writer
+                    // string(N) wider than this reader's lays no plan, as the Go
+                    // leg refuses te.Size > me.Size. Never truncated.
+                    if (theirSize > mySize) {
+                        c.unlawful = true;
+                        break;
+                    }
+                    final int units = theirSize - 4;
                     if (deadAllowed) {
                         c.pushDeadTail(theirAt + 4, theirSize - 4, 1, theirAt, guard, arg);
                     }
@@ -2264,7 +2310,8 @@ public final class TableFixed {
             return -1;
         }
         // AN UNLAWFUL ENTRY LAYS NO PLAN (§5.4, §5.9 #30): a writer field this
-        // reader names nowhere, or a kind off every ladder, refuses the plan
+        // reader names nowhere, a kind off every ladder, a removed arm, variant
+        // or key, a shrunk array or narrowed text or bytes, refuses the plan
         // whole by layoutMalformed, as the Go leg's tableFixedCompile does.
         // Nothing is decoded and nothing is counted.
         if (c.unlawful) {
