@@ -14,7 +14,7 @@
 // corpus (docs/HOSTILE-CORPUS.md).
 //
 // THE INTERPRETER. The two tests that run the pinned interpreter
-// (TestSquirrelRunsHostileCorpus and TestSquirrelRunsHostileCorpusPlant) are
+// (TestHostileCorpus_squirrel and TestSquirrelRunsHostileCorpusPlant) are
 // functional: on a machine without dist/squirrel-3.2/bin/sq they FAIL naming
 // it (sqrun.Interpreter), never skip and never pass vacuously. `make
 // schema-squirrel-runs-hostile-corpus` builds dist-squirrel first and runs them
@@ -54,53 +54,10 @@ type hostileResult struct {
 	text    []byte
 }
 
-// A carried reader defect: the input, the verdict the manifest holds, and the
-// card that owns the fix. The list is exact so a newly passing row or a newly
-// failing row changes the unit result; the runner logs each row and its actual
-// verdict in the FIX-CARD line.
-type squirrelExpectedHostileMismatch struct {
-	name, input, expected, actual, fixCard string
-}
-
-// No row is carried. The four rows the list held before (the three
-// ill-formed UTF-8 fuzz-text inputs and conformance-str-illformed-at-bound)
-// had one cause, a corpus manifest that predated §16.3; the shared corpus on
-// dev now holds the engine's refusal of ill-formed UTF-8 (`refuse damaged`),
-// which is the Squirrel reader's answer, so those rows pass.
-//
-// conformance-str-zero-escape-map-key arrived with dev's §16.3
-// zero rows in tables/maps; the unit generates and the reader refuses the zero
-// key by name, which is the manifest's verdict.
-//
-// wire-non-finite-float, which arrived with the finite-tables ruling (#2226,
-// SPEC-TABLES §3.3), passes since tables-finite/squirrel: the strict read
-// refuses the NaN as non_finite_float, the manifest's verdict.
-var squirrelExpectedHostileMismatches = []squirrelExpectedHostileMismatch{}
-
-func squirrelExpectedHostileMismatchNames() []string {
-	names := make([]string, 0, len(squirrelExpectedHostileMismatches))
-	for _, m := range squirrelExpectedHostileMismatches {
-		names = append(names, m.name)
-	}
-	return names
-}
-
-func squirrelExpectedHostileMismatchFor(name string) (squirrelExpectedHostileMismatch, bool) {
-	for _, m := range squirrelExpectedHostileMismatches {
-		if m.name == name {
-			return m, true
-		}
-	}
-	return squirrelExpectedHostileMismatch{}, false
-}
-
-func squirrelExpectedHostileFixCard(name string) string {
-	if m, ok := squirrelExpectedHostileMismatchFor(name); ok {
-		return m.fixCard
-	}
-	return "squirrel-hostile-corpus"
-}
-
+// squirrelHostileMismatchSetDrift compares the names that disagree with the
+// manifest against the names expected to: none in the gate (docs/rulings.json
+// no-skips: no list carries a finding), so a case that disagrees is red by
+// its name.
 func squirrelHostileMismatchSetDrift(got, expected []string) []string {
 	actual := append([]string(nil), got...)
 	want := append([]string(nil), expected...)
@@ -125,7 +82,7 @@ func TestSquirrelHostileMismatchSetRejectsDrift(t *testing.T) {
 	t.Parallel()
 	want := []string{"known"}
 	if drift := squirrelHostileMismatchSetDrift([]string{"known"}, want); len(drift) != 0 {
-		t.Fatalf("exact carried mismatch set was rejected: %v", drift)
+		t.Fatalf("an exact mismatch set was rejected: %v", drift)
 	}
 	for label, changed := range map[string][]string{
 		"newly passing expected row": {},
@@ -136,37 +93,6 @@ func TestSquirrelHostileMismatchSetRejectsDrift(t *testing.T) {
 				t.Fatalf("mismatch set drift was accepted: %v", changed)
 			}
 		})
-	}
-}
-
-// TestSquirrelExpectedHostileMismatchesMatchManifest pins each carried row to
-// the corpus: the input path and expected verdict must still be the manifest's,
-// and the row must name the card that owns the fix. A manifest change therefore
-// cannot silently hide behind the allowlist.
-func TestSquirrelExpectedHostileMismatchesMatchManifest(t *testing.T) {
-	t.Parallel()
-	byName := map[string]hostileCase{}
-	for _, c := range squirrelHostileCases(t) {
-		byName[c.name] = c
-	}
-	for _, m := range squirrelExpectedHostileMismatches {
-		c, ok := byName[m.name]
-		if !ok {
-			t.Errorf("expected mismatch %q is not a manifest case", m.name)
-			continue
-		}
-		if c.input != m.input {
-			t.Errorf("%s: carried input %q, manifest input %q", m.name, m.input, c.input)
-		}
-		if want := c.verdict + " " + c.reason; m.expected != want {
-			t.Errorf("%s: carried expected verdict %q, manifest says %q", m.name, m.expected, want)
-		}
-		if m.actual == "" {
-			t.Errorf("%s: carried mismatch names no actual verdict", m.name)
-		}
-		if m.fixCard == "" {
-			t.Errorf("%s: carried mismatch names no fix card", m.name)
-		}
 	}
 }
 
@@ -281,29 +207,27 @@ func TestSquirrelHostileScorerOutcomes(t *testing.T) {
 	}
 }
 
-// TestSquirrelRunsHostileCorpus is the port's runner: every input of the
+// TestHostileCorpus_squirrel is the port's runner: every input of the
 // committed corpus reaches the manifest's verdict through the generated
 // Squirrel reader.
-func TestSquirrelRunsHostileCorpus(t *testing.T) {
+func TestHostileCorpus_squirrel(t *testing.T) {
 	t.Parallel()
 	n, mismatchNames, findingLines := squirrelRunHostileCorpus(t, nil)
-	// Keep the exact expected defects visible in the verbose unit target, but
-	// only a changed set is red: a fixed expected row or a new mismatch must
-	// both fail the gate.
+	// every disagreement is logged and red by its case's name
 	for _, f := range findingLines {
 		t.Log(f)
 	}
-	for _, drift := range squirrelHostileMismatchSetDrift(mismatchNames, squirrelExpectedHostileMismatchNames()) {
-		t.Errorf("hostile mismatch list drift: %s", drift)
+	for _, drift := range squirrelHostileMismatchSetDrift(mismatchNames, nil) {
+		t.Errorf("hostile corpus cases disagree with the manifest: %s", drift)
 	}
-	t.Logf("%d hostile inputs: mismatch set matches %d expected FIX-CARD rows", n, len(mismatchNames))
+	t.Logf("%d hostile inputs: every one agrees with the manifest", n)
 }
 
 // squirrelRunHostileCorpus generates every manifest schema's Squirrel modules
 // into a scratch directory, applies plant (nil in the gate) to each generated
 // file set, runs every input through the pinned interpreter, and answers the
 // case count, the names that disagree with the manifest, and one FIX-CARD line
-// per disagreement. A carried row whose actual verdict changed is a drift line.
+// per disagreement.
 func squirrelRunHostileCorpus(t *testing.T, plant func(files map[string][]byte)) (int, []string, []string) {
 	t.Helper()
 	root := repoRoot(t)
@@ -416,42 +340,45 @@ func squirrelRunHostileCorpus(t *testing.T, plant func(files map[string][]byte))
 		}
 	}
 
-	mismatchNames := make([]string, 0, len(squirrelExpectedHostileMismatches))
+	var mismatchNames []string
 	var findingLines []string
+	failed := map[string]string{} // by case, for the registry's verdicts
+	var ran []string
 	for _, c := range cases {
 		expected := c.verdict + " " + c.reason
+		if _, ok := got[c.name]; ok {
+			ran = append(ran, c.name)
+		}
 		if why, ok := unsupported[c.schema]; ok {
 			actual := fmt.Sprintf("generator refuses %s; no reader verdict", c.schema)
-			if m, known := squirrelExpectedHostileMismatchFor(c.name); known && m.actual != actual {
-				findingLines = append(findingLines, fmt.Sprintf("FIX-CARD: %s: %s carried actual verdict changed: expected %q, actual %q",
-					m.fixCard, c.input, m.actual, actual))
-			}
+			failed[c.name] = fmt.Sprintf("expected %s, actual %s (%s)", expected, actual, why)
 			findingLines = append(findingLines, fmt.Sprintf("FIX-CARD: %s: %s expected %s, actual %s (%s)",
-				squirrelExpectedHostileFixCard(c.name), c.input, expected, actual, why))
+				"squirrel-hostile-corpus", c.input, expected, actual, why))
 			mismatchNames = append(mismatchNames, c.name)
 			continue
 		}
 		g, ok := got[c.name]
 		if !ok {
 			findingLines = append(findingLines, fmt.Sprintf("FIX-CARD: %s: %s expected %s, actual the runner printed no verdict",
-				squirrelExpectedHostileFixCard(c.name), c.input, expected))
+				"squirrel-hostile-corpus", c.input, expected))
+			failed[c.name] = fmt.Sprintf("expected %s, actual the runner printed no verdict", expected)
 			mismatchNames = append(mismatchNames, c.name)
 			continue
 		}
 		rowFindings := squirrelHostileFindings(c, g)
 		if len(rowFindings) > 0 {
-			name := c.name
-			if m, known := squirrelExpectedHostileMismatchFor(c.name); known {
-				if actual := g.verdict + " " + g.reason; actual != m.actual {
-					// the carried row still disagrees, but differently: the
-					// list is exact, so this is drift, not the known defect
-					name = c.name + " (actual " + actual + ", carried " + m.actual + ")"
-				}
-			}
-			mismatchNames = append(mismatchNames, name)
+			failed[c.name] = strings.Join(rowFindings, "; ")
+			mismatchNames = append(mismatchNames, c.name)
 			for _, f := range rowFindings {
-				findingLines = append(findingLines, fmt.Sprintf("FIX-CARD: %s: %s", squirrelExpectedHostileFixCard(c.name), f))
+				findingLines = append(findingLines, fmt.Sprintf("FIX-CARD: squirrel-hostile-corpus: %s", f))
 			}
+		}
+	}
+	// the per-case verdicts the registry reads (hostilecorpus.WriteVerdicts):
+	// the gate's run (no plant), every disagreement a FAIL
+	if plant == nil {
+		if err := hostilecorpus.WriteVerdicts(hostilecorpus.VerdictsPath(t.TempDir()), ran, failed); err != nil {
+			t.Fatal(err)
 		}
 	}
 	// THE LEDGER (internal/ci/hostilecorpus/ledger.go): the cases the Squirrel
@@ -480,7 +407,7 @@ const (
 
 // TestSquirrelRunsHostileCorpusPlant is the planted-bad-pattern control: the
 // whole corpus run through a generated reader carrying one planted bug is red
-// (its mismatch set drifts from the carried list), and the comparator alone
+// (a case disagrees with the manifest), and the comparator alone
 // catches a reader that returns one different decoded byte.
 func TestSquirrelRunsHostileCorpusPlant(t *testing.T) {
 	t.Parallel()
@@ -496,7 +423,7 @@ func TestSquirrelRunsHostileCorpusPlant(t *testing.T) {
 	if planted == 0 {
 		t.Fatalf("the plant did not land: no generated file carries %q", squirrelHostilePlantFrom)
 	}
-	drift := squirrelHostileMismatchSetDrift(mismatchNames, squirrelExpectedHostileMismatchNames())
+	drift := squirrelHostileMismatchSetDrift(mismatchNames, nil)
 	if len(drift) == 0 {
 		t.Fatal("a generated reader whose form gate refuses the fixed form was NOT caught by the corpus run")
 	}
@@ -515,35 +442,6 @@ func TestSquirrelRunsHostileCorpusPlant(t *testing.T) {
 	wrong := hostileResult{verdict: "accept", reason: "-", text: []byte("{\"value\":2}")}
 	if f := squirrelHostileFindings(c, wrong); len(f) == 0 {
 		t.Fatal("a reader that decoded a different value was NOT caught")
-	}
-}
-
-// TestSquirrelRunsHostileCorpusWorkflowIsFleetOnly is the harness's own gate:
-// the corpus and the planted control run on fleet hardware, never a hosted
-// runner, and a pull request from a fork never starts a fleet job. A workflow
-// that quietly moved a job to ubuntu-latest, dropped the same-repository guard,
-// or stopped running either target is red here.
-func TestSquirrelRunsHostileCorpusWorkflowIsFleetOnly(t *testing.T) {
-	t.Parallel()
-	data, err := os.ReadFile(filepath.Join(repoRoot(t), ".github", "workflows", "schema-squirrel-runs-hostile-corpus.yml"))
-	if err != nil {
-		t.Fatalf("read workflow: %v", err)
-	}
-	text := string(data)
-	for _, want := range []string{
-		"runs-on: [self-hosted, Linux, X64, fleet, schema]",
-		"github.event.pull_request.head.repo.full_name == github.repository",
-		"make schema-squirrel-runs-hostile-corpus\n",
-		"make schema-squirrel-runs-hostile-corpus-negative-control\n",
-		"schedule:",
-		"workflow_dispatch:",
-	} {
-		if !strings.Contains(text, want) {
-			t.Errorf("workflow missing %q", want)
-		}
-	}
-	if strings.Contains(text, "ubuntu-latest") {
-		t.Errorf("workflow still carries %q", "ubuntu-latest")
 	}
 }
 

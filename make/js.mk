@@ -624,11 +624,9 @@ tables-js-fixed-form: build/retiredskips build/mustrun build/js-fixed/.stamp bui
 # OLD-REFUSES-NEW answers layout_newer before any record, on the file's hash alone
 # (§5.3).
 #
-# THIS TARGET EXISTS BECAUSE `go test ./...` ASSERTS NOTHING HERE. The suite's
-# harness SKIPS itself when build/fixedform-corpus is absent, which is right for a
-# bare `go test ./...` on a tree that never built the oracle — and is exactly how a
-# §5 regression would ride into CI green. Under this target the corpus is built
-# first and the rule that nothing skips makes the skip a FAILURE.
+# THE CORPUS IS BUILT FIRST: the suite's harness fails by name when
+# build/fixedform-corpus is absent (docs/rulings.json no-skips), so a §5
+# regression can never ride into CI green on a tree that never built it.
 .PHONY: tables-js-versioning
 tables-js-versioning: build/fixedform-corpus/.stamp
 	NODE=$(NODE) $(GO_TEST) -count=1 ./internal/codegen/jstable/ -run 'TestJSFixedVersioning|TestJSFixedLineageLockBugFailsTheBuild'
@@ -647,9 +645,8 @@ test-js: tables-js-versioning
 # the counts written, and a count past its declared maximum is refused with the
 # extent untouched.
 #
-# THIS TARGET EXISTS BECAUSE `go test ./...` ASSERTS NOTHING HERE: the test takes
-# node through jsNode, so a bare `go test` skips it by name, and the rule that nothing skips
-# makes a missing node a FAILURE rather than a skip.
+# The test takes node through jsNode, and a missing node is a FAILURE that
+# names it, never a skip (docs/rulings.json no-skips).
 .PHONY: tables-js-block-build
 tables-js-block-build:
 	NODE=$(NODE) $(GO_TEST) -count=1 -v ./internal/codegen/jstable/ -run '^TestBlockBuildAndCookWriteJavaScript$$'
@@ -727,7 +724,7 @@ test-js: tables-js-cook-map-extent-start-negative-control tables-js-cook-map-nod
 # Go oracle over tables/pointers, tables/blobs and tables/lists (and a probe unit
 # the oracle writes) by TestVariableClassBeyondCardConstructsJavaScript, and every
 # construct the leg still refuses named by TestOtherVariableConstructsAreRefusedByName.
-# the rule that nothing skips makes a missing node a FAILURE rather than a skip.
+# A missing node is a FAILURE that names it, never a skip (docs/rulings.json no-skips).
 .PHONY: tables-js-variable-class
 tables-js-variable-class:
 	NODE=$(NODE) $(GO_TEST) -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^(TestVariableClassBeyondCardConstructsJavaScript|TestOtherVariableConstructsAreRefusedByName)$$'
@@ -750,7 +747,7 @@ test-js: tables-js-variable-class
 # sort: a Map built out of key order saves, measures and writes text in
 # ascending key order, with a reversed witness that drops the sort
 # (TestMapWriterSortJavaScript, docs/PORTING.md M19).
-# the rule that nothing skips makes a missing node a FAILURE rather than a skip.
+# A missing node is a FAILURE that names it, never a skip (docs/rulings.json no-skips).
 .PHONY: tables-js-variable-arms
 tables-js-variable-arms:
 	NODE=$(NODE) $(GO_TEST) -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^(TestNestedTypesAndFixedArraysOnTheTableWireJavaScript|TestMapsAndUnionArmsOnTheTableWireJavaScript|TestOtherVariableConstructsAreRefusedByName|TestMapWriterSortJavaScript)$$'
@@ -765,7 +762,7 @@ test-js: tables-js-variable-arms
 # fixed(W, F) / ufixed(W, F), nested `type`, `flags` and `was` renames on tables,
 # variants, arms and type fields, byte for byte against the Go oracle
 # (TestFixedClassOnTableWireJavaScript).
-# the rule that nothing skips makes a missing node a FAILURE rather than a skip.
+# A missing node is a FAILURE that names it, never a skip (docs/rulings.json no-skips).
 .PHONY: tables-js-variable-fixed-class
 tables-js-variable-fixed-class:
 	NODE=$(NODE) $(GO_TEST) -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^TestFixedClassOnTableWireJavaScript$$'
@@ -781,7 +778,7 @@ test-js: tables-js-variable-fixed-class
 # and packs the leg's text back to wire, byte-compared
 # (TestTextDifferentialJavaScript). The control caps the emitted float32 text at
 # six significant digits in memory and must go red on the text comparison.
-# the rule that nothing skips makes a missing node a FAILURE rather than a skip.
+# A missing node is a FAILURE that names it, never a skip (docs/rulings.json no-skips).
 .PHONY: tables-js-text-differential tables-js-text-differential-negative-control
 tables-js-text-differential:
 	NODE=$(NODE) $(GO_TEST) -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^TestTextDifferentialJavaScript$$'
@@ -812,8 +809,8 @@ test-js: tables-js-finite-float
 # builds a valid file for the held layout and two copies — one whose layout bytes
 # differ under the same hash, one whose held layout length differs — and proves
 # both are refused layout_malformed before any record lands. It rides the
-# versioning target's pattern and the rule that nothing skips keeps a missing node a
-# FAILURE rather than a skip, but it needs no C++ oracle: its files are built in
+# versioning target's pattern (a missing node is a FAILURE that names it), but
+# it needs no C++ oracle: its files are built in
 # memory, so it does not take build/fixedform-corpus/.stamp (whose C++ serialize
 # sibling is absent on this bench).
 #
@@ -834,12 +831,10 @@ test-js: tables-js-fixed-roadmap
 # TestMessageFormConformanceJavaScript (docs/SPEC-TABLES.md §3.2, §3.3 and the
 # conformance driver's message rows) and the three small regressions beside them
 # (the third, TestJsMessageInnerBoundRefused, runs the corpus's inner-message
-# rows: a bound one record down refuses the batch) take node through jsNode, which SKIPS a test when no node is on PATH — the
-# exact failure tables-js-versioning's comment above describes: `go test ./...`
-# asserts nothing there, so a regression rides into CI green. Under this target
-# the rule that nothing skips makes a missing node a FAILURE, and the target ALSO
-# fails if the -v output holds a SKIP line (a subtest skipped for any other
-# reason is a test that did not run). internal/codegen/jstable/gatecoverage_test.go
+# rows: a bound one record down refuses the batch) take node through jsNode,
+# which fails a test by name when no node is on PATH (docs/rulings.json
+# no-skips), and the target ALSO fails if the -v output holds a SKIP line (a
+# test that did not run). internal/codegen/jstable/gatecoverage_test.go
 # refuses a roadmap or message-form test no -run pattern in this file names.
 .PHONY: tables-js-message-form
 tables-js-message-form:
@@ -1481,7 +1476,7 @@ tables-js-view: bin/schema test/js-view/view_main.mjs
 # THE VIEW'S DESCRIPTORS (docs/SPEC-TABLES.md §8.1, §8.2): offsets, element
 # sizes, the vocabulary, docs and tags of the generated view, run under node
 # and held to the IR by TestUnitViewDescriptorsJavaScript.
-# the rule that nothing skips makes a missing node a FAILURE rather than a skip.
+# A missing node is a FAILURE that names it, never a skip (docs/rulings.json no-skips).
 .PHONY: tables-js-view-descriptors
 tables-js-view-descriptors:
 	NODE=$(NODE) $(GO_TEST) -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^TestUnitViewDescriptorsJavaScript$$'
@@ -1620,7 +1615,7 @@ test-js: tables-js-json-walk tables-js-json-walk-negative-control
 # are frozen as they are made. TestJavaScriptDescriptorsAreConstants walks
 # every descriptor reachable from them and requires each frozen, and a write
 # into one to throw; its reversed witness drops the freeze and must find one
-# open. the rule that nothing skips makes a missing node a FAILURE, not a skip.
+# open. A missing node is a FAILURE that names it (docs/rulings.json no-skips).
 .PHONY: tables-js-descriptors
 tables-js-descriptors:
 	NODE=$(NODE) $(GO_TEST) -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^TestJavaScriptDescriptorsAreConstants$$'
@@ -1635,7 +1630,7 @@ test-js: tables-js-descriptors
 # None and a key past E.Max in every build. TestKeyedArrayAccessorsJavaScript
 # holds all three forms and plants the None-only guard, the Max-only guard and
 # the missing shift back, each of which must turn it red.
-# the rule that nothing skips makes a missing node a FAILURE rather than a skip.
+# A missing node is a FAILURE that names it, never a skip (docs/rulings.json no-skips).
 .PHONY: tables-js-keyed
 tables-js-keyed:
 	NODE=$(NODE) $(GO_TEST) -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^TestKeyedArrayAccessorsJavaScript$$'

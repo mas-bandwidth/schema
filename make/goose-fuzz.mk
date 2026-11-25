@@ -144,9 +144,9 @@ tables-goose-wire-fuzz-leb-negative-control tables-goose-wire-fuzz-utf8-negative
 # message_novocab carriers do not run until the runner dispatches them (the
 # port has their readers; docs/roadmap.sexp goose/hostile-runner-carriers),
 # and no list holds them back: tools/hostileledger holds the run to the corpus
-# folder, and every registered case ran or the gate is red by its name.
-# test/goose-hostile/known-findings.tsv carries each disagreement by name with
-# the card that owes it.
+# folder, and every registered case ran or the gate is red by its name. No
+# list carries a finding (docs/rulings.json no-skips): every disagreement is
+# red by its case's name.
 GOOSE_HOSTILE_CORPUS ?= internal/ci/hostilecorpus/corpus
 
 .PHONY: schema-goose-runs-hostile-corpus

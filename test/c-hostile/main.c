@@ -35,6 +35,7 @@ const hc_binding_t * hc_bindings_probe( int * count );
 const hc_binding_t * hc_bindings_featurewitnesses( int * count );
 const hc_binding_t * hc_bindings_hostilepacket( int * count );
 const hc_binding_t * hc_bindings_tblvaluedefaults( int * count );
+const hc_binding_t * hc_bindings_tblmoodmap( int * count );
 
 static const hc_unit_t units[] = {
     hc_bindings_tabledemo, hc_bindings_messagedemo, hc_bindings_blobdemo,
@@ -43,6 +44,7 @@ static const hc_unit_t units[] = {
     hc_bindings_featurewitnesses, hc_bindings_hostilepacket, hc_bindings_shapes,
     hc_bindings_inner,
     hc_bindings_tblvaluedefaults,
+    hc_bindings_tblmoodmap,
 };
 
 static int answered;

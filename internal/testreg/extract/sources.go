@@ -120,9 +120,11 @@ func (s *scan) workflowMakeTargets(workflows []string) map[string]bool {
 
 // registryMakeTargets are the targets the registry's make rows run: CI
 // runs them through schema-test, so they are run by name as surely as a
-// workflow's own make line. A row only names a target; the target is
-// counted only where a make file writes its rule, so a row whose target is
-// gone still fails Check by name.
+// workflow's own make line. A per-language row (no scope) whose target
+// holds {lang} runs that target once for each language the registry lists,
+// as perLangClaims claims it, so each language's target counts the same. A
+// row only names a target; the target is counted only where a make file
+// writes its rule, so a row whose target is gone still fails Check by name.
 func (s *scan) registryMakeTargets() map[string]bool {
 	out := map[string]bool{}
 	data, err := os.ReadFile(filepath.Join(s.root, filepath.FromSlash(testreg.DefaultPath)))
@@ -133,23 +135,43 @@ func (s *scan) registryMakeTargets() map[string]bool {
 		s.fail(testreg.DefaultPath, "read: %v", err)
 		return out
 	}
+	var langs, perLang []string
 	for line := range strings.SplitSeq(string(data), "\n") {
-		if !strings.Contains(line, `"adapter":"make"`) {
+		isMake := strings.Contains(line, `"adapter":"make"`)
+		isLang := strings.Contains(line, `"rec":"lang"`)
+		if !isMake && !isLang && !strings.Contains(line, testreg.LangPlaceholder) {
 			continue
 		}
 		var row struct {
 			Rec     string `json:"rec"`
+			Name    string `json:"name"`
 			Adapter string `json:"adapter"`
+			Scope   string `json:"scope"`
 			Inputs  struct {
 				Target string `json:"target"`
 			} `json:"inputs"`
 		}
 		if err := json.Unmarshal([]byte(line), &row); err != nil {
-			s.fail(testreg.DefaultPath, "a make row: %v", err)
+			if isMake {
+				s.fail(testreg.DefaultPath, "a make row: %v", err)
+			} else {
+				s.fail(testreg.DefaultPath, "a row naming a language: %v", err)
+			}
 			continue
 		}
-		if row.Rec == "test" && row.Adapter == "make" && row.Inputs.Target != "" {
+		switch {
+		case row.Rec == "lang" && row.Name != "" && row.Name != testreg.LangFree:
+			langs = append(langs, row.Name)
+		case row.Rec != "test" || row.Inputs.Target == "":
+		case row.Scope == "" && strings.Contains(row.Inputs.Target, testreg.LangPlaceholder):
+			perLang = append(perLang, row.Inputs.Target)
+		case row.Adapter == "make":
 			out[row.Inputs.Target] = true
+		}
+	}
+	for _, target := range perLang {
+		for _, l := range langs {
+			out[strings.ReplaceAll(target, testreg.LangPlaceholder, l)] = true
 		}
 	}
 	return out

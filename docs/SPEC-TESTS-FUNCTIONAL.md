@@ -5,7 +5,7 @@ Part of the specification: every test of tier `functional`, from the test regist
 
 **Tier functional:** uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it.
 
-Functional tests every language answers: 2256. Language-free tests: 2245.
+Functional tests every language answers: 2256. Language-free tests: 2241.
 
 Run this tier for a language with `schema-test run --tier functional --lang L`, one test with `schema-test run <full name>`.
 
@@ -4376,13 +4376,14 @@ one schema version reads or writes another's data.
 | `none.functional.evolution.goosetable.goose-fixed-form-kind-moved-unlawful` | `gotest` | Go test TestGooseFixedFormKindMovedUnlawful in ./internal/codegen/goosetable | `package: ./internal/codegen/goosetable`<br>`test: TestGooseFixedFormKindMovedUnlawful` | the Go test passes | `internal/codegen/goosetable/fixedevolve_test.go:198` |
 | `none.functional.evolution.goosetable.goose-fixed-unlawful-corpus` | `gotest` | Go test TestGooseFixedUnlawfulCorpus in ./internal/codegen/goosetable | `package: ./internal/codegen/goosetable`<br>`test: TestGooseFixedUnlawfulCorpus` | the Go test passes | `internal/codegen/goosetable/fixed_unlawful_corpus_test.go:60` |
 
-#### `evolution` family `gotable`, 3 tests
+#### `evolution` family `gotable`, 4 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.functional.evolution.gotable.fixed-unlawful-corpus` | `gotest` | Go test TestFixedUnlawfulCorpus in ./internal/codegen/gotable | `package: ./internal/codegen/gotable`<br>`test: TestFixedUnlawfulCorpus` | the Go test passes | `internal/codegen/gotable/fixed_unlawful_corpus_test.go:85` |
 | `none.functional.evolution.gotable.fixed-v1-l-is-a-lawful-writer-for-v2` | `gotest` | Go test TestFixedV1LIsALawfulWriterForV2 in ./internal/codegen/gotable | `package: ./internal/codegen/gotable`<br>`test: TestFixedV1LIsALawfulWriterForV2` | the Go test passes | `internal/codegen/gotable/fixed_v1l_lawful_test.go:19` |
 | `none.functional.evolution.gotable.fixed-versioning-kind-moved` | `gotest` | Go test TestFixedVersioningKindMoved in ./internal/codegen/gotable | `package: ./internal/codegen/gotable`<br>`test: TestFixedVersioningKindMoved` | the Go test passes | `internal/codegen/gotable/fixedversioning_kind_moved_test.go:14` |
+| `none.functional.evolution.gotable.json-walk-generated-go-tables` | `gotest` | every unit of the generated Go tables tree (build/tables-generated-go, which the row makes first) emits one generic JSON walker matching its reference profile; a run without the tree fails naming it (Go test TestJsonWalkGeneratedGoTables in ./internal/codegen/gotable) | `make: build/tables-generated-go/.stamp`<br>`package: ./internal/codegen/gotable`<br>`test: TestJsonWalkGeneratedGoTables` | the Go test passes | `internal/codegen/gotable/jsonwalk_test.go:329` |
 
 #### `evolution` family `javatable`, 2 tests
 
@@ -4903,7 +4904,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.functional.tooling.bench-tools.table-pass-skips-unavailable-scaffold-only-during-discovery` | `gotest` | Go test TestTablePassSkipsUnavailableScaffoldOnlyDuringDiscovery in ./bench/tools | `package: ./bench/tools`<br>`test: TestTablePassSkipsUnavailableScaffoldOnlyDuringDiscovery` | the Go test passes | `bench/tools/table_pass_test.go:94` |
 | `none.functional.tooling.bench-tools.two-regressed-files-in-one-commit-cannot-reset-the-axis` | `gotest` | Go test TestTwoRegressedFilesInOneCommitCannotResetTheAxis in ./bench/tools | `package: ./bench/tools`<br>`test: TestTwoRegressedFilesInOneCommitCannotResetTheAxis` | the Go test passes | `bench/tools/ledger_test.go:279` |
 
-#### `tooling` family `ci`, 63 tests
+#### `tooling` family `ci`, 58 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -4930,7 +4931,6 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.functional.tooling.ci.luau-generated-analyze-strict-gate-planted-pattern` | `gotest` | Go test TestLuauGeneratedAnalyzeStrictGatePlantedPattern in ./internal/ci | `package: ./internal/ci`<br>`test: TestLuauGeneratedAnalyzeStrictGatePlantedPattern` | the Go test passes | `internal/ci/schema_luau_generated_analyze_strict_gate_test.go:204` |
 | `none.functional.tooling.ci.luau-resource-bounds-hostile-shapes` | `gotest` | Go test TestLuauResourceBoundsHostileShapes in ./internal/ci | `package: ./internal/ci`<br>`test: TestLuauResourceBoundsHostileShapes` | the Go test passes | `internal/ci/schema_luau_resource_bounds_test.go:176` |
 | `none.functional.tooling.ci.luau-resource-bounds-planted-pattern` | `gotest` | Go test TestLuauResourceBoundsPlantedPattern in ./internal/ci | `package: ./internal/ci`<br>`test: TestLuauResourceBoundsPlantedPattern` | the Go test passes | `internal/ci/schema_luau_resource_bounds_test.go:217` |
-| `none.functional.tooling.ci.luau-runs-hostile-corpus` | `gotest` | Go test TestLuauRunsHostileCorpus in ./internal/ci | `package: ./internal/ci`<br>`test: TestLuauRunsHostileCorpus` | the Go test passes | `internal/ci/schema_luau_runs_hostile_corpus_test.go:697` |
 | `none.functional.tooling.ci.luau-runs-hostile-corpus-planted-pattern` | `gotest` | Go test TestLuauRunsHostileCorpusPlantedPattern in ./internal/ci | `package: ./internal/ci`<br>`test: TestLuauRunsHostileCorpusPlantedPattern` | the Go test passes | `internal/ci/schema_luau_runs_hostile_corpus_test.go:738` |
 | `none.functional.tooling.ci.luau-vocabulary-default-entry-bound` | `gotest` | Go test TestLuauVocabularyDefaultEntryBound in ./internal/ci | `package: ./internal/ci`<br>`test: TestLuauVocabularyDefaultEntryBound` | the Go test passes | `internal/ci/schema_luau_runs_hostile_corpus_test.go:814` |
 | `none.functional.tooling.ci.no-fast-job-skips-on-a-main-push` | `gotest` | Go test TestNoFastJobSkipsOnAMainPush in ./internal/ci | `package: ./internal/ci`<br>`test: TestNoFastJobSkipsOnAMainPush` | the Go test passes | `internal/ci/every_job_runs_test.go:106` |
@@ -4953,19 +4953,15 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.functional.tooling.ci.ruby-usage-fragments-run` | `gotest` | Go test TestRubyUsageFragmentsRun in ./internal/ci | `package: ./internal/ci`<br>`test: TestRubyUsageFragmentsRun` | the Go test passes | `internal/ci/ruby_usage_fragments_test.go:119` |
 | `none.functional.tooling.ci.ruby-usage-fragments-run-negative-control` | `gotest` | Go test TestRubyUsageFragmentsRunNegativeControl in ./internal/ci | `package: ./internal/ci`<br>`test: TestRubyUsageFragmentsRunNegativeControl` | the Go test passes | `internal/ci/ruby_usage_fragments_test.go:142` |
 | `none.functional.tooling.ci.schema-lua-hostile-corpus-planted-reader` | `gotest` | Go test TestSchemaLuaHostileCorpusPlantedReader in ./internal/ci | `package: ./internal/ci`<br>`test: TestSchemaLuaHostileCorpusPlantedReader` | the Go test passes | `internal/ci/schema_lua_runs_hostile_corpus_test.go:576` |
-| `none.functional.tooling.ci.schema-lua-runs-hostile-corpus` | `gotest` | Go test TestSchemaLuaRunsHostileCorpus in ./internal/ci | `package: ./internal/ci`<br>`test: TestSchemaLuaRunsHostileCorpus` | the Go test passes | `internal/ci/schema_lua_runs_hostile_corpus_test.go:545` |
-| `none.functional.tooling.ci.schema-moo-runs-hostile-corpus` | `gotest` | Go test TestSchemaMooRunsHostileCorpus in ./internal/ci | `package: ./internal/ci`<br>`test: TestSchemaMooRunsHostileCorpus` | the Go test passes | `internal/ci/schema_moo_runs_hostile_corpus_test.go:550` |
 | `none.functional.tooling.ci.schema-moo-runs-hostile-corpus-planted-reader` | `gotest` | Go test TestSchemaMooRunsHostileCorpusPlantedReader in ./internal/ci | `package: ./internal/ci`<br>`test: TestSchemaMooRunsHostileCorpusPlantedReader` | the Go test passes | `internal/ci/schema_moo_runs_hostile_corpus_test.go:573` |
 | `none.functional.tooling.ci.schema-ruby-hostile-corpus-planted-reader` | `gotest` | Go test TestSchemaRubyHostileCorpusPlantedReader in ./internal/ci | `package: ./internal/ci`<br>`test: TestSchemaRubyHostileCorpusPlantedReader` | the Go test passes | `internal/ci/schema_ruby_runs_hostile_corpus_test.go:529` |
 | `none.functional.tooling.ci.schema-ruby-resource-bounds-hostile-shapes` | `gotest` | Go test TestSchemaRubyResourceBoundsHostileShapes in ./internal/ci | `package: ./internal/ci`<br>`test: TestSchemaRubyResourceBoundsHostileShapes` | the Go test passes | `internal/ci/schema_ruby_runs_hostile_corpus_test.go:769` |
 | `none.functional.tooling.ci.schema-ruby-resource-bounds-planted-pattern` | `gotest` | Go test TestSchemaRubyResourceBoundsPlantedPattern in ./internal/ci | `package: ./internal/ci`<br>`test: TestSchemaRubyResourceBoundsPlantedPattern` | the Go test passes | `internal/ci/schema_ruby_runs_hostile_corpus_test.go:797` |
-| `none.functional.tooling.ci.schema-ruby-runs-hostile-corpus` | `gotest` | Go test TestSchemaRubyRunsHostileCorpus in ./internal/ci | `package: ./internal/ci`<br>`test: TestSchemaRubyRunsHostileCorpus` | the Go test passes | `internal/ci/schema_ruby_runs_hostile_corpus_test.go:517` |
 | `none.functional.tooling.ci.schema-squirrel-all-port-differential` | `gotest` | Go test TestSchemaSquirrelAllPortDifferential in ./internal/ci | `package: ./internal/ci`<br>`test: TestSchemaSquirrelAllPortDifferential` | the Go test passes | `internal/ci/schema_squirrel_all_port_differential_test.go:548` |
 | `none.functional.tooling.ci.serialize-fetch-tries-the-mirror-first` | `gotest` | Go test TestSerializeFetchTriesTheMirrorFirst in ./internal/ci | `package: ./internal/ci`<br>`test: TestSerializeFetchTriesTheMirrorFirst` | the Go test passes | `internal/ci/serializefetch_test.go:33` |
 | `none.functional.tooling.ci.serialize-go-runtime-when-the-sibling-arrives-mid-run` | `gotest` | Go test TestSerializeGoRuntimeWhenTheSiblingArrivesMidRun in ./internal/ci | `package: ./internal/ci`<br>`test: TestSerializeGoRuntimeWhenTheSiblingArrivesMidRun` | the Go test passes | `internal/ci/serializegorace_test.go:30` |
 | `none.functional.tooling.ci.siblings-present-make-deps-fetches-nothing` | `gotest` | Go test TestSiblingsPresentMakeDepsFetchesNothing in ./internal/ci | `package: ./internal/ci`<br>`test: TestSiblingsPresentMakeDepsFetchesNothing` | the Go test passes | `internal/ci/siblings_test.go:119` |
 | `none.functional.tooling.ci.squirrel-all-port-differential-leaves-uncomparable-answers-out` | `gotest` | Go test TestSquirrelAllPortDifferentialLeavesUncomparableAnswersOut in ./internal/ci | `package: ./internal/ci`<br>`test: TestSquirrelAllPortDifferentialLeavesUncomparableAnswersOut` | the Go test passes | `internal/ci/schema_squirrel_all_port_differential_test.go:482` |
-| `none.functional.tooling.ci.squirrel-runs-hostile-corpus` | `gotest` | Go test TestSquirrelRunsHostileCorpus in ./internal/ci | `package: ./internal/ci`<br>`test: TestSquirrelRunsHostileCorpus` | the Go test passes | `internal/ci/schema_squirrel_runs_hostile_corpus_test.go:287` |
 | `none.functional.tooling.ci.squirrel-runs-hostile-corpus-plant` | `gotest` | Go test TestSquirrelRunsHostileCorpusPlant in ./internal/ci | `package: ./internal/ci`<br>`test: TestSquirrelRunsHostileCorpusPlant` | the Go test passes | `internal/ci/schema_squirrel_runs_hostile_corpus_test.go:485` |
 | `none.functional.tooling.ci.touched-leg-reads-its-families-again` | `gotest` | Go test TestTouchedLegReadsItsFamiliesAgain in ./internal/ci | `package: ./internal/ci`<br>`test: TestTouchedLegReadsItsFamiliesAgain` | the Go test passes | `internal/ci/touched_leg_rows_test.go:17` |
 | `none.functional.tooling.ci.vuln-recipe-runs-the-pinned-scanner-singular` | `gotest` | Go test TestVulnRecipeRunsThePinnedScannerSingular in ./internal/ci | `package: ./internal/ci`<br>`test: TestVulnRecipeRunsThePinnedScannerSingular` | the Go test passes | `internal/ci/vuln_test.go:23` |

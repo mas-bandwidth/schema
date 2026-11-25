@@ -911,11 +911,9 @@ tables-dart-fixed-form: build/retiredskips build/dart-fixed/.stamp build/fixedfo
 # with the older generation's locked entry as its lineage, writes a probe beside
 # it and runs `$(DART)` over it.
 #
-# THIS TARGET EXISTS BECAUSE `go test ./...` ASSERTS NOTHING HERE: the harness
-# SKIPS itself when build/fixedform-corpus or the SDK is absent, which is right
-# for a bare `go test ./...` and is exactly how a §5 regression would ride into
-# a green. So the target builds the oracle first and sets
-# the rule that nothing skips, under which that skip is a FAILURE.
+# THE TARGET BUILDS THE ORACLE FIRST: the harness fails by name when
+# build/fixedform-corpus or the SDK is absent (docs/rulings.json no-skips), so
+# a §5 regression can never ride into a green on a tree without them.
 .PHONY: tables-dart-versioning
 tables-dart-versioning: tables-fixedform-corpus
 	DART=$(DART) $(GO_TEST) ./internal/codegen/darttable/ -count=1 -run 'TestFixedVersioning|TestFixedCompiledPlanTagPastArmSet'
@@ -1012,8 +1010,8 @@ test-dart: tables-dart-keyed-negative-control
 
 # THE VARIABLE CLASS (docs/SPEC-TABLES.md §2.5, §2.9, §3, §3.1, §16.7): pointers,
 # by-value nesting, []*T, blobs, the remaining scalar kinds and unbounded
-# scalar/enum arrays, byte for byte against the oracle. A bare go test skips
-# when the SDK is absent; the rule that nothing skips makes that skip a failure.
+# scalar/enum arrays, byte for byte against the oracle. A missing SDK fails by
+# name (docs/rulings.json no-skips).
 .PHONY: tables-dart-variable-class
 tables-dart-variable-class:
 	DART=$(DART) $(GO_TEST) ./internal/codegen/darttable/ -count=1 -timeout=0 -run 'TestVariableClassBeyondCardConstructsDart|TestOtherVariableConstructsAreRefusedByName'
@@ -1194,8 +1192,8 @@ test-dart: tables-dart-float-jit tables-dart-float-jit-negative-control tables-d
 # Squad (tables/lists) with a known roster, an absent map and an emptied one,
 # and a unit holding every key kind §2.8 admits; the Dart programs in
 # test/dart-tables read EVERY entry, by index and by Find, and must print the
-# oracle's lines entry for entry. A bare go test skips by name without the SDK;
-# the rule that nothing skips makes that skip a failure.
+# oracle's lines entry for entry. A missing SDK fails by name
+# (docs/rulings.json no-skips).
 .PHONY: tables-dart-cook-map-field
 tables-dart-cook-map-field:
 	@mkdir -p build/dart-cook-map-field
@@ -1231,8 +1229,8 @@ test-dart: tables-dart-text-differential tables-dart-text-differential-negative-
 # of testdata/conformance/tables/MANIFEST.txt through the conformance driver's
 # own surface — a byte-identical cook in both orders, or the named absence the
 # test's ratchet holds. The row test runs the driver over the generated corpus,
-# so the corpus is built first; the rule that nothing skips makes a missing SDK or
-# corpus a failure rather than a skip.
+# so the corpus is built first; a missing SDK or corpus is a failure that names
+# it, never a skip (docs/rulings.json no-skips).
 .PHONY: tables-dart-block-build
 tables-dart-block-build: build/tables-generated-dart/.stamp cards-dart-generate
 	DART=$(DART) $(GO_TEST) ./internal/codegen/darttable/ -count=1 -timeout=0 -run '^(TestBlockBuildAndCookWriteDart|TestCookWriteFixedDart|TestCookWriteGuardedAndTextArrayRootsDart|TestCookWriteAnswersEveryCookWriteRowDart)$$'
@@ -1245,7 +1243,7 @@ test-dart: tables-dart-block-build
 # against the oracle rows of tables/maps and tables/arms, and of the fixed-root
 # units tables/messages and tables/scalars (optional
 # fields and arrays, flags, `type` bodies, fixed(I,F) and the 128-bit scalars).
-# the rule that nothing skips makes a missing SDK a failure.
+# A missing SDK fails by name (docs/rulings.json no-skips).
 .PHONY: tables-dart-variable-arms
 tables-dart-variable-arms:
 	DART=$(DART) $(GO_TEST) ./internal/codegen/darttable/ -count=1 -timeout=0 -run 'TestMapsAndUnionArmsOnTheTableWireDart|TestOtherVariableConstructsAreRefusedByName'
@@ -1255,8 +1253,8 @@ test-dart: tables-dart-variable-arms
 # THE MESSAGE FORM'S BATCH (docs/SPEC-TABLES.md §3.3): every manifest `message`
 # row of a fixed root loads, measures and saves the reference's bytes exactly,
 # and every unit's fixed home defines the table-arm unions it names (§2.6,
-# §3.4), so no row is skipped but the §3.3 plain-table one. A bare go test
-# skips when the SDK is absent; the rule that nothing skips makes that a failure.
+# §3.4), so every row runs but the §3.3 plain-table one, which has no message
+# form. A missing SDK fails by name (docs/rulings.json no-skips).
 .PHONY: tables-dart-message-batch
 tables-dart-message-batch:
 	DART=$(DART) $(GO_TEST) ./internal/codegen/darttable/ -count=1 -timeout=0 -run 'TestMessageFormBatchDart|TestFixedHomeDefinesItsTableArmUnionsDart|TestNestedDefaultMessageBytesMatchGoEmitter'
@@ -1270,8 +1268,8 @@ test-dart: tables-dart-message-batch
 # the cook's and the block's Open reason, one forgery per clause; and the
 # TableRefuseReason words held to internal/codegen/gotable/refusal.go's. The
 # conformance driver's report, cook-reason and block-reason surfaces answer the
-# manifest's rows under `make conformance`. A bare go test skips when the SDK
-# is absent; the rule that nothing skips makes that a failure.
+# manifest's rows under `make conformance`. A missing SDK fails by name
+# (docs/rulings.json no-skips).
 .PHONY: tables-dart-widening
 tables-dart-widening:
 	DART=$(DART) $(GO_TEST) ./internal/codegen/darttable/ -count=1 -timeout=0 -run '^TestWideningReasonsDart$$'

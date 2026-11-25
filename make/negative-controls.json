@@ -3538,7 +3538,7 @@
   "excluded": [
     {
       "target": "schema-rust-runs-hostile-corpus-negative-control",
-      "reason": "the Rust hostile-corpus runner control changes a committed wire verdict in a scratch manifest and requires both release and debug runners to fail on that case. .github/workflows/schema-rust-runs-hostile-corpus.yml runs it in its negative-control job on the nightly schedule and workflow_dispatch with the pinned serialize.rs runtime, beside the corpus gate that runs on every push and pull request. The shared control matrix need not repeat that dedicated job."
+      "reason": "the Rust hostile-corpus runner control changes a committed wire verdict in a scratch manifest and requires both release and debug runners to fail on that case. Its registry row (plant.make-schema-rust-runs-hostile-corpus.schema-rust-runs-hostile-corpus-negative-control, nightly) runs it beside the per-case hostile rows it controls, on a runner with the pinned serialize.rs runtime. A group would run it a second time."
     },
     {
       "target": "conformance-big-endian-negative-control",
@@ -3594,7 +3594,7 @@
     },
     {
       "target": "schema-shared-hostile-corpus-negative-control",
-      "reason": "the hostile-corpus card's own planted-bad-pattern control: .github/workflows/schema-shared-hostile-corpus.yml runs it on its schedule and on dispatch, beside the drift gate that job runs on every push and pull request, so this leg would run it a second time."
+      "reason": "the hostile-corpus card's own planted-bad-pattern control: its registry row (plant.make-checks-schema-shared-hostile-corpus.schema-shared-hostile-corpus-negative-control, nightly) runs it beside the drift gate's row, so a group would run it a second time."
     },
     {
       "target": "tables-lua-finite-float-negative-control",

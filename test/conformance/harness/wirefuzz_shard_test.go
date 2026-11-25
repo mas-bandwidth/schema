@@ -23,8 +23,8 @@ func TestWireFuzzShardExactUnion(t *testing.T) {
 				draw := func(m *wireMutant) { got = append(got, key(m)) }
 				if mode == "enumerated" {
 					enumeratedShard(live, shard, shards, draw)
-				} else if msg := randomPassShard(pool, 1, 24845619678, 103, shard, shards, draw); msg != "" {
-					t.Fatal(msg)
+				} else if err := randomPassShard(pool, 1, 24845619678, 103, shard, shards, draw); err != nil {
+					t.Fatal(err)
 				}
 				return got
 			}

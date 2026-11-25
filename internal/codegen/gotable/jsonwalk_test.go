@@ -97,6 +97,15 @@ fixed table ProbeFixed { x int32 }
 `,
 		},
 		{
+			name: "fixed-only-timestamp",
+			schema: `package walkprobe0
+fixed table ProbeFixed {
+	x int32
+	ts timestamp
+}
+`,
+		},
+		{
 			name: "variable-only",
 			schema: `package walkprobe0
 table ProbeNode { x int32 }
@@ -108,6 +117,16 @@ table ProbeVar { p *ProbeNode }
 			schema: `package walkprobe0
 fixed table ProbeFixed { x int32 }
 table ProbeVar { p *ProbeFixed }
+`,
+		},
+		{
+			name: "fixed-and-variable-required",
+			schema: `package walkprobe0
+fixed table ProbeFixed { x int32 }
+table ProbeVar {
+	p *ProbeFixed
+	req int32 | required
+}
 `,
 		},
 		{
@@ -297,14 +316,34 @@ func TestGoJsonWalkIsOneGenericRuntime(t *testing.T) {
 			}
 		})
 	}
+}
 
-	if genDir := os.Getenv("SCHEMA_GO_JSON_WALK_DIR"); genDir != "" {
-		total, counts, err := checkGoJSONWalkDir(genDir, os.Getenv("SCHEMA_GO_JSON_WALK_OUT"), profiles)
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Logf("tables Go generic-walk gate: one walker per unit across %d units (%v)", total, counts)
+// TestJsonWalkGeneratedGoTables holds the same property over every unit of
+// the generated Go tables tree, build/tables-generated-go. Its registry row
+// names build/tables-generated-go/.stamp as the make target the driver makes
+// first, and `make tables-go-json-walk` builds the tree before it runs this
+// test by name (it names the tree in SCHEMA_GO_JSON_WALK_DIR, and
+// SCHEMA_GO_JSON_WALK_OUT is where the extracted walkers go). It is
+// functional, and a run without the tree fails naming it (docs/rulings.json
+// no-skips).
+func TestJsonWalkGeneratedGoTables(t *testing.T) {
+	t.Parallel()
+	genDir := os.Getenv("SCHEMA_GO_JSON_WALK_DIR")
+	if genDir == "" {
+		genDir = filepath.Join("..", "..", "..", "build", "tables-generated-go")
 	}
+	if _, err := os.Stat(genDir); err != nil {
+		t.Fatalf("the generated Go tables tree is missing (%v): make build/tables-generated-go/.stamp builds it", err)
+	}
+	profiles, err := canonicalWalkProfiles()
+	if err != nil {
+		t.Fatal(err)
+	}
+	total, counts, err := checkGoJSONWalkDir(genDir, os.Getenv("SCHEMA_GO_JSON_WALK_OUT"), profiles)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("tables Go generic-walk gate: one walker per unit across %d units (%v)", total, counts)
 }
 
 func TestGoJsonWalkNegativeControl(t *testing.T) {
