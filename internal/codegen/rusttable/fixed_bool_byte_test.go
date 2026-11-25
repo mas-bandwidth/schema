@@ -41,10 +41,7 @@ fixed table B
 func TestFixedBoolByteIsDamageRust(t *testing.T) {
 	t.Parallel()
 	if _, err := exec.LookPath("rustc"); err != nil {
-		if slowtest.CorpusRequired() {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set (or CI runs the slow half) and rustc is not on PATH: %v", err)
-		}
-		t.Skipf("rustc is not on PATH: %v", err)
+		t.Fatalf("rustc is not on PATH: %v", err)
 	}
 	u := unitFrom(t, rustBoolByteUnit)
 	// The body offsets are the fixed image's: ok 0, opt's present 1 and payload

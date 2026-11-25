@@ -20,25 +20,24 @@ go-test	editors/vscode	5	L3	language-free Go tests: the gotest adapter runs them
 go-test	internal/atomicfile	15	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	internal/baseline	91	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	internal/check	123	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/ci	329	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/ci	333	L3	language-free Go tests: the gotest adapter runs them when their package moves in
+go-test	internal/ci	324	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	internal/ci/hostilecorpus	10	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	internal/codegen/c	18	L5	per-language (c) Go tests: c's adapter runs them when their families move in
 go-test	internal/codegen/ccommon	2	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	internal/codegen/cfmt	6	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	internal/codegen/cpp	28	L5	per-language (cpp) Go tests: cpp's adapter runs them when their families move in
-go-test	internal/codegen/cpptable	183	L5	per-language (cpp) Go tests: cpp's adapter runs them when their families move in
+go-test	internal/codegen/cpptable	182	L5	per-language (cpp) Go tests: cpp's adapter runs them when their families move in
 go-test	internal/codegen/cqualify	9	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	internal/codegen/csharp	7	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	internal/codegen/cstable	171	L5	per-language (cs) Go tests: cs's adapter runs them when their families move in
-go-test	internal/codegen/ctable	188	L5	per-language (c) Go tests: c's adapter runs them when their families move in
+go-test	internal/codegen/ctable	187	L5	per-language (c) Go tests: c's adapter runs them when their families move in
 go-test	internal/codegen/dart	13	L5	per-language (dart) Go tests: dart's adapter runs them when their families move in
 go-test	internal/codegen/darttable	279	L5	per-language (dart) Go tests: dart's adapter runs them when their families move in
 go-test	internal/codegen/elixir	13	L5	per-language (elixir) Go tests: elixir's adapter runs them when their families move in
 go-test	internal/codegen/elixirtable	291	L5	per-language (elixir) Go tests: elixir's adapter runs them when their families move in
 go-test	internal/codegen/golang	25	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	internal/codegen/goose	10	L5	per-language (goose) Go tests: goose's adapter runs them when their families move in
-go-test	internal/codegen/goosetable	195	L5	per-language (goose) Go tests: goose's adapter runs them when their families move in
+go-test	internal/codegen/goosetable	194	L5	per-language (goose) Go tests: goose's adapter runs them when their families move in
 go-test	internal/codegen/gotable	395	L5	per-language (go) Go tests: go's adapter runs them when their families move in
 go-test	internal/codegen/gotable/fuzzunit	35	L5	per-language (go) Go tests: go's adapter runs them when their families move in
 go-test	internal/codegen/java	19	L5	per-language (java) Go tests: java's adapter runs them when their families move in
@@ -61,7 +60,7 @@ go-test	internal/codegen/rubytable	66	L5	per-language (ruby) Go tests: ruby's ad
 go-test	internal/codegen/rust	6	L5	per-language (rust) Go tests: rust's adapter runs them when their families move in
 go-test	internal/codegen/rusttable	245	L5	per-language (rust) Go tests: rust's adapter runs them when their families move in
 go-test	internal/codegen/squirrel	15	L5	per-language (squirrel) Go tests: squirrel's adapter runs them when their families move in
-go-test	internal/codegen/squirreltable	224	L5	per-language (squirrel) Go tests: squirrel's adapter runs them when their families move in
+go-test	internal/codegen/squirreltable	223	L5	per-language (squirrel) Go tests: squirrel's adapter runs them when their families move in
 go-test	internal/codegen/unity	6	L5	per-language (unity) Go tests: unity's adapter runs them when their families move in
 go-test	internal/codegen/unitytable	37	L5	per-language (unity) Go tests: unity's adapter runs them when their families move in
 go-test	internal/docgate	12	L3	language-free Go tests: the gotest adapter runs them when their package moves in
@@ -111,7 +110,7 @@ go-test	test/conformance/go	4	L5	per-language (go) Go tests: go's adapter runs t
 go-test	test/conformance/go/rows	47	L5	per-language (go) Go tests: go's adapter runs them when their families move in
 go-test	test/conformance/goose/wirefuzzdispatch	5	L5	per-language (goose) Go tests: goose's adapter runs them when their families move in
 go-test	test/conformance/goose/writerefusalpacket	2	L5	per-language (goose) Go tests: goose's adapter runs them when their families move in
-go-test	test/conformance/harness	368	L3	language-free Go tests: the gotest adapter runs them when their package moves in
+go-test	test/conformance/harness	364	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	test/conformance/js	2	L5	per-language (js) Go tests: js's adapter runs them when their families move in
 go-test	test/conformance/lobster	2	L5	per-language (lobster) Go tests: lobster's adapter runs them when their families move in
 go-test	test/conformance/lobster/hostile	2	L5	per-language (lobster) Go tests: lobster's adapter runs them when their families move in
@@ -126,24 +125,22 @@ go-test	test/cs-hostile/gen	4	L3	language-free Go tests: the gotest adapter runs
 go-test	test/go-tables	18	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	test/packet-write-bareint/lobster	1	L5	per-language (lobster) Go tests: lobster's adapter runs them when their families move in
 go-test	test/unity-hostile/gen	1	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	test/verify-bitphase	18	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	test/verify-canonical	3	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	test/verify-tablegen	5	L3	language-free Go tests: the gotest adapter runs them when their package moves in
+go-test	test/verify-bitphase	17	L3	language-free Go tests: the gotest adapter runs them when their package moves in
+go-test	test/verify-canonical	2	L3	language-free Go tests: the gotest adapter runs them when their package moves in
+go-test	test/verify-tablegen	4	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	tools/agentsmap	8	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	tools/cellmerge	2	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	tools/fixedtwin	16	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tools/gatecontrol	2	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	tools/gotestreport	14	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tools/gotestrows	16	L3	language-free Go tests: the gotest adapter runs them when their package moves in
+go-test	tools/gotestrows	14	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	tools/gotestrun	4	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	tools/hostilecorpusexec	5	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	tools/hostileledger	8	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tools/inputaccount	6	L3	language-free Go tests: the gotest adapter runs them when their package moves in
+go-test	tools/inputaccount	3	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	tools/matrix	17	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	tools/mustrun	2	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	tools/namebuild	4	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	tools/negativecontrols	22	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tools/nightlyrows	5	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	tools/pgroup	22	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	tools/releasebin	8	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	tools/releasediff	14	L3	language-free Go tests: the gotest adapter runs them when their package moves in
@@ -153,7 +150,6 @@ go-test	tools/roadmap	14	L3	language-free Go tests: the gotest adapter runs them
 go-test	tools/testguard	44	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	tools/tlcrun	5	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	tools/treelock	7	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tools/wiredtargets	7	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	tools/wirefuzzrelease	7	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 make-target	Makefile	37	L6	make gates: the make adapter runs them
 make-target	make/bench-check.mk	1	L6	make gates: the make adapter runs them
@@ -705,7 +701,7 @@ negative-control	write-refusal-storage-debug-dart	1	L6	negative controls: the pl
 negative-control	write-refusal-storage-debug-java	1	L6	negative controls: the plant adapter runs them
 workflow-job	.github/workflows/caa-self-test.yml	1	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/certify.yml	13	L7	workflow jobs: CI is generated from the registry
-workflow-job	.github/workflows/ci-fast.yml	29	L7	workflow jobs: CI is generated from the registry
+workflow-job	.github/workflows/ci-fast.yml	31	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/ci-full.yml	23	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/cla.yml	1	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/leg-gates-nightly.yml	6	L7	workflow jobs: CI is generated from the registry
@@ -1049,6 +1045,7 @@ data-case	test/conformance/case-outcomes	3	L4	corpus data and harnesses: each la
 data-case	test/conformance/case-outcomes/continues	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/conformance/cpp	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/conformance/cs	4	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
+data-case	test/conformance/cs/rows	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/conformance/cs/rows/E5	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/conformance/cs/storage-debug	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/conformance/dart	5	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
@@ -1174,9 +1171,18 @@ data-case	test/slowgate	1	L4	corpus data and harnesses: each language's adapter 
 data-case	test/table-base64	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/table-base64/go	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/tables	110	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
+data-case	test/tables	144	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
+data-case	test/tables/announce4096	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
+data-case	test/tables/announce4097	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
+data-case	test/tables/cooktorture	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
+data-case	test/tables/cooktorturewide	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/tables/enumbound	13	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/tables/fnz	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/tables/inner	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
+data-case	test/tables/lawful/fx1l	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
+data-case	test/tables/lawful/v1l	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
+data-case	test/tables/packetunions	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
+data-case	test/tables/prior	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/tables/r14	4	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/tables/r14/AtInt64	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/tables/r14/ChildValue	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
@@ -1288,6 +1294,10 @@ data-case	testdata/conformance/tables/shapes-loose	1	L4	corpus data and harnesse
 data-case	testdata/conformance/tables/wire	4	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/conformance/text	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/conformance/write-refusal-int	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
+data-case	testdata/cpp-standalone/ranged_bits	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
+data-case	testdata/cpp-standalone/ranged_fixed	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
+data-case	testdata/cpp-standalone/ranged_float	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
+data-case	testdata/cpp-standalone/ranged_int	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/golangci-lint-classes	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/golangci-lint-classes/packet	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/golangci-lint-classes/tables	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
@@ -2273,30 +2283,6 @@ driver	test/unity-hostile	1	L4	corpus data and harnesses: each language's adapte
 driver	test/unity-hostile/units	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 driver	test/unity/serialize	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 driver	test/verify-bitphase/cpp	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-skip-red	internal/codegen/luatable:TestLuaCookOpenAndCheck	2	L5	cook_test.go:59 (layer 4, tolerant read) hides 13 red rows: unskipped, each fails because the Go reference refuses the wire the test pins (non_finite_float, out_of_range, count_over_bound, blob_shared), while the shared MANIFEST pins those rows wire-refused. Re-pin as a verdict (docs/plans/strict-only.md). Measured on hetzner1 at d41e9f7e4c, SCHEMA_SLOW=1
-skip-red	internal/codegen/luatable:TestLuaCookRead	2	L5	cookread_test.go:62 (layer 4, tolerant read) hides 13 red rows: unskipped, each fails because the Go reference refuses the wire the test pins (non_finite_float, out_of_range, count_over_bound, blob_shared). Re-pin as a verdict (docs/plans/strict-only.md). Measured on hetzner1 at d41e9f7e4c, SCHEMA_SLOW=1
-skip-red	internal/codegen/luatable:TestLuaWide128BitVariableForm	2	L5	wide128_test.go:143 and :151 (layer 4) hide the red case clamped: unskipped, the Go engine refuses the save (invalid_value: off its range) that the test expects to clamp. Re-pin as a verdict (docs/plans/strict-only.md). Measured on hetzner1 at d41e9f7e4c, SCHEMA_SLOW=1
-skip-red	internal/codegen/luatable:TestLuaWideFixedPointVariableForm	2	L5	widefixed_test.go:114 and :122 (layer 4) hide the red cases one_below_min and one_above_max: unskipped, the Go engine refuses the save (invalid_value) that the test expects to clamp. Re-pin as a verdict (docs/plans/strict-only.md). Measured on hetzner1 at d41e9f7e4c, SCHEMA_SLOW=1
-skip-red	internal/codegen/luatable:TestLuaWideKindsJson	1	L5	widejson_test.go:93 (layer 4) hides 12 red JSON cases (f16, uf16, u128, i128, f64 out of range or not integral): unskipped, the Go engine refuses each text the test expects the leg to tolerate. Re-pin as a verdict (docs/plans/strict-only.md). Measured on hetzner1 at d41e9f7e4c, SCHEMA_SLOW=1
-skip-red	internal/codegen/luautable:TestLuauBlobNamedTwice	1	L5	blob_shared_test.go:195 (layer 4, the whole test) hides a red: unskipped, the oracle refuses the shared wire (blob_shared) that the test expects to decode. Re-pin as a verdict (docs/plans/strict-only.md). Measured on hetzner1 at d41e9f7e4c, SCHEMA_SLOW=1
-skip-red	internal/codegen/luautable:TestLuauCookOpenAgreesWithGo	1	L5	cook_read_test.go:234 (layer 4) hides the red rows blob_shared, blob_shared_string and 11 shapes_* rows: unskipped, each fails because the Go reference refuses the wire the test pins. Re-pin as a verdict (docs/plans/strict-only.md). Measured on hetzner1 at d41e9f7e4c, SCHEMA_SLOW=1
-skip-red	internal/codegen/luautable:TestLuauDefaultReadIsStrict	1	L5	strict_default_test.go:25 (layer 4, the whole test) hides a red: unskipped, the Go encoder refuses the out-of-range value the test builds its wire from (invalid_value: Var.n 100 off [0, 10]). Re-pin as a verdict (docs/plans/strict-only.md). Measured on hetzner1 at d41e9f7e4c, SCHEMA_SLOW=1
-skip-red	internal/codegen/luautable:TestLuauJsonElemReadsAreNotNil	1	L5	json_elem_test.go:73 (layer 4) hides red cases: unskipped, the Go reference refuses bytes-not-base64-element, and enum-none-element and enum-unknown-element keep elements the strict read drops. Re-pin as a verdict (docs/plans/strict-only.md). Measured on hetzner1 at d41e9f7e4c, SCHEMA_SLOW=1
-skip-red	internal/codegen/luautable:TestLuauOneSidedIntegerRange	1	L5	onesided_test.go:125 (layer 4, the whole test) hides 3 red cases (a_below_min, b_above_max, b_above_max_at_the_kind_limit): unskipped, the Go encoder refuses the out-of-range value each builds its wire from. Re-pin as a verdict (docs/plans/strict-only.md). Measured on hetzner1 at d41e9f7e4c, SCHEMA_SLOW=1
-skip-red	internal/codegen/luautable:TestLuauTableTextLists	1	L5	text_lists_test.go:212 (layer 4, the whole test) hides the red case element_past_M_clamps: unskipped, the Go encoder refuses a text element past its bound (invalid_value). Re-pin as a verdict (docs/plans/strict-only.md). Measured on hetzner1 at d41e9f7e4c, SCHEMA_SLOW=1
-skip-red	internal/codegen/luautable:TestLuauTextListClampAndMalformedLoadLikeGo	1	L5	text_list_clamp_test.go:25 (layer 4, the whole test) hides the red case element_past_M_clamps: unskipped, the Go encoder refuses a text element past its bound (invalid_value). Re-pin as a verdict (docs/plans/strict-only.md). Measured on hetzner1 at d41e9f7e4c, SCHEMA_SLOW=1
-skip-red	internal/codegen/squirreltable:TestSquirrelBlobNamedTwice	1	L5	blobshared_test.go:221 (layer 4, the whole test) hides a red: unskipped, the oracle refuses the shared wire (blob_shared) that the test expects to decode. Re-pin as a verdict (docs/plans/strict-only.md). Measured on hetzner1 at d41e9f7e4c, SCHEMA_SLOW=1
-skip-red	internal/codegen/squirreltable:TestSquirrelLoadClampsThe128BitRange	1	L5	load_test.go:499 (layer 4, the whole test) hides a red: unskipped, the load refuses out_of_range Root.a where the test expects a clamp. Re-pin as a verdict (docs/plans/strict-only.md). Measured on hetzner1 at d41e9f7e4c, SCHEMA_SLOW=1
-skip-red	internal/codegen/squirreltable:TestSquirrelLoadFramesTheMapEntryTerminator	1	L5	load_test.go:568 (layer 4, the whole test) hides a red: unskipped, the load refuses wire_damaged where the test expects a tolerant read. Re-pin as a verdict (docs/plans/strict-only.md). Measured on hetzner1 at d41e9f7e4c, SCHEMA_SLOW=1
-skip-red	internal/codegen/squirreltable:TestSquirrelMapsMatchTheWire	1	L5	maps_test.go:153 (layer 4, the whole test) hides a red: unskipped, the duplicate-key oracle refuses where the test expects a tolerant read. Re-pin as a verdict (docs/plans/strict-only.md). Measured on hetzner1 at d41e9f7e4c, SCHEMA_SLOW=1
-skip-red	internal/codegen/squirreltable:TestSquirrelMapWireCountRefusal	1	L5	maps_test.go:275 (layer 4, the whole test) hides a red: unskipped, the past-L oracle refuses where the test expects a tolerant read. Re-pin as a verdict (docs/plans/strict-only.md). Measured on hetzner1 at d41e9f7e4c, SCHEMA_SLOW=1
-skip-red	internal/codegen/gotable:TestFixedVersioningUnknownCensus	1	L5	fixedversioning_test.go:859 (byte oracle not built) skips it in every row without the corpus; with make tables-fixedform-corpus it is red: "unlawful lineage wrote destination", the test still wants a refused fixed load to leave the caller's values, where SPEC-TABLES FL-03 now resets them to defaults. Red in ci-full nightly 45346851098 and on hetzner1 at d41e9f7e4c
-skip-red	internal/codegen/gotable:TestFixedVersioningUnknownCensusManyRecords	1	L5	fixedversioning_test.go:859 (byte oracle not built) skips it in every row without the corpus; with make tables-fixedform-corpus it is red: "unlawful lineage wrote destination", the same stale FL-03 expectation. Red in ci-full nightly 45346851098 and on hetzner1 at d41e9f7e4c
-skip-red	internal/codegen/darttable:TestCookWriteAnswersEveryCookWriteRowDart	2	L5	cookwrite_rows_test.go:61 skips it until make tables-dart-block-build has run, and under that target it is red on hetzner1 at d41e9f7e4c: the driver imports build/tables-generated-dart-framing/countedmin, which only tables-dart-wire-fuzz builds. Green once that output exists; no workflow runs this target
-skip-red	test/conformance/harness:TestCCollectionCookDifferential	1	L3	collections_test.go:23 skips it until make tables-c-collections-fuzz builds both native legs, and that target does not link on hetzner1 at d41e9f7e4c (undefined conformance_write_refusal_integer, test/c-tables/collections_fuzz_lists.c), so the test never runs
-skip-red	test/conformance/harness:TestCCollectionDifferential	1	L3	collections_test.go:23 skips it until make tables-c-collections-fuzz builds both native legs, and that target does not link on hetzner1 at d41e9f7e4c (undefined conformance_write_refusal_integer, test/c-tables/collections_fuzz_lists.c), so the test never runs
-skip-red	bench/tables/moo:TestMooFixedHotPathBench	1	L5	fixed_hotpath_bench_test.go:174 (SCHEMA_MOO_FIXED_BENCH unset) skips it everywhere; set, it is red before any timing on hetzner1 at d41e9f7e4c: the generated bench script fails (bench_load2000.moo:15: attempt to index nil with 'file'), so the bench input never reaches the runtime
-skip-red	bench/paired:TestBuiltGateOnly	1	L3	main_test.go:260 (SCHEMA_PAIRED_TEST_BUILT unset) skips it everywhere; it needs the paired runners built, and make bench-paired-gate, which builds them, is red on hetzner1 at 5efdeb36dc: bench/tables/c/lineage/schema.lock does not end with the FixedTable layout (hash 0xcde672e9249dd5e0, lineage last 0x5f1320927e9ad910), so build/paired/packet-go is never made and the test fails. No workflow runs that target
 tier	bench/paired:TestBuiltGateOnly	1	L3	functional: needs a built artifact or corpus; it fails by name now where it skipped
 tier	bench/paired:TestLocalProcessMonitor	1	L3	functional: reads the real host process monitor (ps/load)
 tier	bench/paired:TestQuietWindowStopsOwnedRunnerAndRetainsRefusal	1	L3	functional: needs a child test process (it runs this test binary again) (was slowtest.Gate)
@@ -3501,7 +3487,6 @@ tier	internal/codegen/goosetable:TestGooseDriverVerdictAndWriteBackNegativeContr
 tier	internal/codegen/goosetable:TestGooseEveryPackageNameIsClaimed	1	L5	functional: needs no toolchain, but the whole-manifest name sweep (one generation per unit per emitted name) (was slowtest.Gate)
 tier	internal/codegen/goosetable:TestGooseFixedAbsentRecordOptionalIsZero	1	L5	functional: needs goose (it runs the generated reader over the fixed-form seeds) (was slowtest.Gate)
 tier	internal/codegen/goosetable:TestGooseFixedFormAgreesWithTheByteOracle	1	L5	functional: needs the C++ reference fixed-form corpus (make tables-fixedform-corpus)
-tier	internal/codegen/goosetable:TestGooseFixedFormKindMismatchCensus	1	L5	functional: needs the C++ reference fixed-form corpus (make tables-fixedform-corpus)
 tier	internal/codegen/goosetable:TestGooseFixedFormNamesEveryRefusal	1	L5	functional: needs the C++ reference fixed-form corpus (make tables-fixedform-corpus)
 tier	internal/codegen/goosetable:TestGooseFixedFormNegativeControl	1	L5	functional: needs the C++ reference fixed-form corpus (make tables-fixedform-corpus)
 tier	internal/codegen/goosetable:TestGooseFixedProofArrayBounds	1	L5	functional: needs goose (was slowtest.Gate)
@@ -5201,7 +5186,6 @@ tier	internal/codegen/pythontable:TestPythonJsonUnionBlobAgainstEngine	1	L5	func
 tier	internal/codegen/pythontable:TestPythonJsonUnionWide	1	L5	functional: needs the pinned Python toolchain (pyrun: make dist-python)
 tier	internal/codegen/pythontable:TestPythonJsonVocabularyAgainstEngine	1	L5	functional: needs the pinned Python toolchain (pyrun: make dist-python)
 tier	internal/codegen/pythontable:TestPythonJsonWideCorpus	1	L5	functional: needs the pinned Python toolchain (pyrun: make dist-python)
-tier	internal/codegen/pythontable:TestPythonJsonWriteDepthCountsTablesOnly	1	L5	functional: needs the pinned Python toolchain (pyrun: make dist-python)
 tier	internal/codegen/pythontable:TestPythonKeyedAccessorCoversBothEnds	1	L5	functional: needs python keyed array accessor under both pins (was slowtest.Gate)
 tier	internal/codegen/pythontable:TestPythonKeyedBoundsNegativeControl	1	L5	functional: needs python keyed array negative controls (was slowtest.Gate)
 tier	internal/codegen/pythontable:TestPythonKeyedFlags	1	L5	functional: needs Go and C++ keyed flags and both Python pins (was slowtest.Gate)

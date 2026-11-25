@@ -12,12 +12,10 @@ package cstable
 // either loads, and this probe is red.
 
 import (
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"testing"
 )
 
 func TestFixedVersioningKindMoved(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 	corpus := csFixedCorpusFile(t, "old_kind_moved.bin")
 	csRunOneVersionProbe(t, corpus, csVersionProbe{
 		name:   "kind_moved/new_reads_old",

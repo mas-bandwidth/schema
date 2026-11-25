@@ -820,20 +820,22 @@ jobs:
         if: matrix.group == 'unit-codegen-cpp-2'
         run: go test -v ./internal/codegen/cpptable -run '^Test(Cpp([^D]|D[^r])|CPP|Generated|Message)'
 
+      # Row 3 is every test the other three rows do not name, listed from the
+      # package and selected by name (no -skip: the row chooses what it runs).
       - name: go test the C++ table emitter package, row 3 of 4
         if: matrix.group == 'unit-codegen-cpp-3'
-        env:
-          SCHEMA_SLOW: '1'
-        run: go test -v ./internal/codegen/cpptable -skip '^Test(CppDriver)|^Test(Cpp([^D]|D[^r])|CPP|Generated|Message)|^TestEveryGeneratedTableHeaderCompilesStandalone$'
+        run: |
+          names=$(go test -list '^Test' ./internal/codegen/cpptable | grep '^Test' | grep -v -E '^Test(CppDriver)|^Test(Cpp([^D]|D[^r])|CPP|Generated|Message)|^TestEveryGeneratedTableHeaderCompilesStandalone$' | paste -sd'|' -)
+          test -n "$names" || { echo "row 3 of the C++ table emitter package selects no test"; exit 1; }
+          go test -v ./internal/codegen/cpptable -run "^($names)\$"
 
       # THE STANDALONE-HEADER SWEEP has its own row: it compiles every generated
       # header of every manifest unit alone (docs/SPEC-CONFORMANCE.md, "Every
       # generated C++ table header compiles standalone"), about 150 s of CPU that
-      # row 3 cannot carry in its 110 s. Row 3 -skips it, so no test runs twice.
+      # row 3 cannot carry in its 110 s. Row 3 leaves it out of its list, so no
+      # test runs twice.
       - name: go test the C++ table emitter package, row 4 of 4
         if: matrix.group == 'unit-codegen-cpp-4'
-        env:
-          SCHEMA_SLOW: '1'
         run: go test -v ./internal/codegen/cpptable -run '^TestEveryGeneratedTableHeaderCompilesStandalone$'
 
       # THE LOBSTER FIXED FORM AGAINST THE REFERENCE'S BYTES. The step above

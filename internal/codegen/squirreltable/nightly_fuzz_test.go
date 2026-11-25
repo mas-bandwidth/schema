@@ -17,7 +17,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
