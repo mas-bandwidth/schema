@@ -2846,9 +2846,9 @@ jobs:
 
   # THE SAME-RUN COMPILER for the C++ accounting build (#4843): bin/schema,
   # bound to this exact source tree, built once and handed on. It checks
-  # nothing; the block zero-cost gate it once rode with is the registry row
-  # none.functional.harness-run.makefile.tables-block-zero-cost, which the
-  # schema-test shards run on every pull request.
+  # nothing; the block zero-cost gate it once rode with is four registry rows,
+  # none.functional.harness-run.makefile.tables-block-zero-cost-{cpp,cs,c-heavy,
+  # c-rest}, which the schema-test shards run on every pull request.
   stage-compiler:
     needs: plan
     if: ((needs.plan.outputs.all == 'yes' || needs.plan.outputs.cpp_corpus_account == 'true') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))

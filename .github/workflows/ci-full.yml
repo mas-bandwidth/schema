@@ -2009,7 +2009,7 @@ jobs:
     # do not share an --out directory running in parallel inside the row.
     # The tree check stays the `tree` row. Nothing moved to certify.yml.
     # `make tables-block-zero-cost` still runs all three languages, for
-    # `make test` and the registry's tables-block-zero-cost row (ci-fast.yml's schema-test).
+    # `make test` and the registry's four tables-block-zero-cost-* rows (ci-fast.yml's schema-test).
     #
     # C WAS STILL OVER. Run 42571846331, job generated (zero-cost-c), 153s
     # from start to complete, 140s of log, the make step 148s. Both arms ran
