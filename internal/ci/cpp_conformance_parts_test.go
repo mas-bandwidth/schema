@@ -20,15 +20,17 @@ import (
 )
 
 // cppConformanceWhole is what `_verify-cpp-conformance` built and ran as one
-// row before the split, at c1e5f93a, less conformance-rows-cpp: the C++ rows
-// run in ci-fast.yml's conformance-rows job (#4920).
+// row before the split, at c1e5f93a, less conformance-rows-cpp (the C++ rows
+// run in ci-fast.yml's conformance-rows job, #4920) and less the corpus run
+// (`conformance-harness run --only cpp --claims`), which test registry L4
+// retired: the schema-test corpus adapter answers those cases, row for row
+// (docs/TEST-REGISTRY.md).
 var cppConformanceWhole = []string{
 	"build/conformance-harness", "build/conformance-cpp", "build/schema_test_cook", "build/schema_test",
 	"build/schema_test_ludicrous", "packet-defaults-cpp", "packet-void-cpp", "table-base64-cpp",
 	"build/packet-text/cpp/driver", "build/packet-text/harness", "build/schema_test_tables",
 	"./build/schema_test", "./build/schema_test_tables", "./build/schema_test_ludicrous",
 	"./build/packet-text/harness ./build/packet-text/cpp/driver",
-	"./build/conformance-harness run --only cpp --claims",
 }
 
 // makeRule returns a rule's prerequisites and recipe lines.
@@ -124,7 +126,7 @@ func TestCppConformancePartsCoverTheGate(t *testing.T) {
 		mk, fast string
 	}{
 		{"part 1 loses schema_test_tables", plant(mk, " build/packet-text/harness build/schema_test_tables\n", " build/packet-text/harness\n"), fast},
-		{"part 2 loses the claims run", plant(mk, "\t./build/conformance-harness run --only cpp --claims", "\t@true"), fast},
+		{"part 2 loses table-base64-cpp", plant(mk, " build/schema_test_cook table-base64-cpp\n", " build/schema_test_cook\n"), fast},
 		{"the gate runs one part", plant(mk, "_verify-cpp-conformance: _verify-cpp-conformance-1 _verify-cpp-conformance-2", "_verify-cpp-conformance: _verify-cpp-conformance-1"), fast},
 		{"ci-fast runs one part", mk, plant(fast, "        part: [1, 2]\n", "        part: [1]\n")},
 		{"verify-leg runs cpp conformance again", mk, plant(fast, "          - leg: cpp\n            gate: conformance\n", "")},

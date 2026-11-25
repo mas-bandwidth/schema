@@ -120,6 +120,9 @@ type plantAdapter struct{ rn *testreg.Runner }
 type plantInputs struct {
 	Target string            `json:"target"`
 	Env    map[string]string `json:"env"`
+	// Reason, when given, must be in the target's fail reason: the plant
+	// passes only when the target goes red for the planted cause.
+	Reason string `json:"reason,omitempty"`
 }
 
 func (plantAdapter) Answers(t testreg.Test) bool {
@@ -148,6 +151,11 @@ func (a plantAdapter) Run(ctx context.Context, _ string, instances []testreg.Ins
 			if x.Full == target.Full {
 				o = x
 			}
+		}
+		if o.Status == testreg.StatusFail && rep.Ran == 1 && len(rep.Problems) == 0 && !strings.Contains(o.Reason, in.Reason) {
+			out = append(out, testreg.Result{Instance: inst.Full, Verdict: testreg.Fail,
+				Reason: fmt.Sprintf("planted %v, %s went red but not for the planted reason %q: %s", in.Env, target.Full, in.Reason, o.Reason)})
+			continue
 		}
 		if o.Status == testreg.StatusFail && rep.Ran == 1 && len(rep.Problems) == 0 {
 			out = append(out, testreg.Result{Instance: inst.Full, Verdict: testreg.Pass})

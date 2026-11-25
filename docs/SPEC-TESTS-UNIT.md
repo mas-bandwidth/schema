@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 0. Language-free tests: 129.
+Unit tests every language answers: 0. Language-free tests: 148.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -49,10 +49,11 @@ a negative control: a named test run against a deliberately broken build must co
 
 CI policy, docs, roadmap, repo-structure and harness self-tests.
 
-#### `tooling` family `ci`, 2 tests
+#### `tooling` family `ci`, 3 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
+| `none.unit.tooling.ci.every-port-names-its-conformance-leg-build` | `gotest` | Go test TestEveryPortNamesItsConformanceLegBuild in ./internal/ci | `package: ./internal/ci`<br>`test: TestEveryPortNamesItsConformanceLegBuild` | the Go test passes | `internal/ci/conformance_leg_build_test.go:59` |
 | `none.unit.tooling.ci.goose-fuzz-parts-are-the-whole-gate` | `gotest` | Go test TestGooseFuzzPartsAreTheWholeGate in ./internal/ci | `package: ./internal/ci`<br>`test: TestGooseFuzzPartsAreTheWholeGate` | the Go test passes | `internal/ci/fuzz_halves_test.go:153` |
 | `none.unit.tooling.ci.rust-fuzz-halves-are-the-whole-gate` | `gotest` | Go test TestRustFuzzHalvesAreTheWholeGate in ./internal/ci | `package: ./internal/ci`<br>`test: TestRustFuzzHalvesAreTheWholeGate` | the Go test passes | `internal/ci/fuzz_halves_test.go:101` |
 
@@ -67,6 +68,19 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.conformancerows.list-rows-is-the-directory` | `gotest` | Go test TestListRowsIsTheDirectory in ./tools/conformancerows | `package: ./tools/conformancerows`<br>`test: TestListRowsIsTheDirectory` | the Go test passes | `tools/conformancerows/ledger_test.go:41` |
 | `none.unit.tooling.conformancerows.parse-shard` | `gotest` | Go test TestParseShard in ./tools/conformancerows | `package: ./tools/conformancerows`<br>`test: TestParseShard` | the Go test passes | `tools/conformancerows/ledger_test.go:67` |
 | `none.unit.tooling.conformancerows.shards-cover-every-row-once` | `gotest` | Go test TestShardsCoverEveryRowOnce in ./tools/conformancerows | `package: ./tools/conformancerows`<br>`test: TestShardsCoverEveryRowOnce` | the Go test passes | `tools/conformancerows/ledger_test.go:22` |
+
+#### `tooling` family `corpus-adapter`, 8 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.unit.tooling.corpus-adapter.a-surface-failure-that-names-no-case-fails-every-case-of-it` | `gotest` | Go test TestASurfaceFailureThatNamesNoCaseFailsEveryCaseOfIt in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestASurfaceFailureThatNamesNoCaseFailsEveryCaseOfIt` | the Go test passes | `test/conformance/harness/adapter_test.go:59` |
+| `none.unit.tooling.corpus-adapter.case-slugs-are-registry-cases` | `gotest` | Go test TestCaseSlugsAreRegistryCases in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestCaseSlugsAreRegistryCases` | the Go test passes | `test/conformance/harness/adapter_test.go:128` |
+| `none.unit.tooling.corpus-adapter.the-corpus-adapter-answers-every-request-once` | `gotest` | Go test TestTheCorpusAdapterAnswersEveryRequestOnce in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestTheCorpusAdapterAnswersEveryRequestOnce` | the Go test passes | `test/conformance/harness/adapter_test.go:91` |
+| `none.unit.tooling.corpus-adapter.the-corpus-adapter-gives-each-case-its-verdict` | `gotest` | Go test TestTheCorpusAdapterGivesEachCaseItsVerdict in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestTheCorpusAdapterGivesEachCaseItsVerdict` | the Go test passes | `test/conformance/harness/adapter_test.go:24` |
+| `none.unit.tooling.corpus-adapter.the-corpus-adapter-refuses-a-request-it-cannot-read` | `gotest` | Go test TestTheCorpusAdapterRefusesARequestItCannotRead in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestTheCorpusAdapterRefusesARequestItCannotRead` | the Go test passes | `test/conformance/harness/adapter_test.go:75` |
+| `none.unit.tooling.corpus-adapter.the-corpus-owes-exactly-the-harness-ledger` | `gotest` | Go test TestTheCorpusOwesExactlyTheHarnessLedger in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestTheCorpusOwesExactlyTheHarnessLedger` | the Go test passes | `test/conformance/harness/adapter_test.go:254` |
+| `none.unit.tooling.corpus-adapter.the-registry-check-goes-red-on-each-drift` | `gotest` | Go test TestTheRegistryCheckGoesRedOnEachDrift in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestTheRegistryCheckGoesRedOnEachDrift` | the Go test passes | `test/conformance/harness/adapter_test.go:225` |
+| `none.unit.tooling.corpus-adapter.the-registry-holds-every-conformance-case` | `gotest` | Go test TestTheRegistryHoldsEveryConformanceCase in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestTheRegistryHoldsEveryConformanceCase` | the Go test passes | `test/conformance/harness/adapter_test.go:144` |
 
 #### `tooling` family `fixedtwin`, 2 tests
 
@@ -133,18 +147,20 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.retiredskips.every-skip-is-red` | `gotest` | Go test TestEverySkipIsRed in ./tools/retiredskips | `package: ./tools/retiredskips`<br>`test: TestEverySkipIsRed` | the Go test passes | `tools/retiredskips/main_test.go:27` |
 | `none.unit.tooling.retiredskips.skip-line-is-the-readiness-reading` | `gotest` | Go test TestSkipLineIsTheReadinessReading in ./tools/retiredskips | `package: ./tools/retiredskips`<br>`test: TestSkipLineIsTheReadinessReading` | the Go test passes | `tools/retiredskips/main_test.go:8` |
 
-#### `tooling` family `schema-test`, 14 tests
+#### `tooling` family `schema-test`, 16 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.unit.tooling.schema-test.a-plant-passes-only-when-its-target-goes-red` | `gotest` | Go test TestAPlantPassesOnlyWhenItsTargetGoesRed in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAPlantPassesOnlyWhenItsTargetGoesRed` | the Go test passes | `tools/schema-test/main_test.go:73` |
 | `none.unit.tooling.schema-test.a-run-that-selects-nothing-still-prints-its-counts` | `gotest` | Go test TestARunThatSelectsNothingStillPrintsItsCounts in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestARunThatSelectsNothingStillPrintsItsCounts` | the Go test passes | `tools/schema-test/main_test.go:169` |
+| `none.unit.tooling.schema-test.every-corpus-family-has-its-harness` | `gotest` | Go test TestEveryCorpusFamilyHasItsHarness in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestEveryCorpusFamilyHasItsHarness` | the Go test passes | `tools/schema-test/main_test.go:212` |
 | `none.unit.tooling.schema-test.extract-holds-a-renamed-skip-red-test` | `gotest` | Go test TestExtractHoldsARenamedSkipRedTest in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestExtractHoldsARenamedSkipRedTest` | the Go test passes | `tools/schema-test/extract_test.go:177` |
 | `none.unit.tooling.schema-test.extract-holds-the-ledger-to-the-tree` | `gotest` | Go test TestExtractHoldsTheLedgerToTheTree in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestExtractHoldsTheLedgerToTheTree` | the Go test passes | `tools/schema-test/extract_test.go:118` |
 | `none.unit.tooling.schema-test.extract-names-a-new-test-since-main` | `gotest` | Go test TestExtractNamesANewTestSinceMain in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestExtractNamesANewTestSinceMain` | the Go test passes | `tools/schema-test/extract_test.go:70` |
 | `none.unit.tooling.schema-test.extract-refuses-a-dropped-skip-red-line` | `gotest` | Go test TestExtractRefusesADroppedSkipRedLine in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestExtractRefusesADroppedSkipRedLine` | the Go test passes | `tools/schema-test/extract_test.go:90` |
 | `none.unit.tooling.schema-test.extract-refuses-a-grown-ledger` | `gotest` | Go test TestExtractRefusesAGrownLedger in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestExtractRefusesAGrownLedger` | the Go test passes | `tools/schema-test/extract_test.go:134` |
 | `none.unit.tooling.schema-test.go-test-events-give-one-verdict-each` | `gotest` | Go test TestGoTestEventsGiveOneVerdictEach in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestGoTestEventsGiveOneVerdictEach` | the Go test passes | `tools/schema-test/main_test.go:86` |
+| `none.unit.tooling.schema-test.langs-is-the-registrys-list` | `gotest` | Go test TestLangsIsTheRegistrysList in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestLangsIsTheRegistrysList` | the Go test passes | `tools/schema-test/main_test.go:192` |
 | `none.unit.tooling.schema-test.the-addenda-verb-checks-the-committed-pages` | `gotest` | schema-test addenda --check exits 0 against the repository's pages and 1 naming a missing page, and refuses a stray argument | `package: ./tools/schema-test`<br>`test: TestTheAddendaVerbChecksTheCommittedPages` | the Go test passes | `tools/schema-test/main_test.go:188` |
 | `none.unit.tooling.schema-test.the-addenda-verb-writes-every-page-and-removes-the-stale` | `gotest` | schema-test addenda writes every generated page, removes a stale one, and stops naming the page on a failed write or remove | `package: ./tools/schema-test`<br>`test: TestTheAddendaVerbWritesEveryPageAndRemovesTheStale` | the Go test passes | `tools/schema-test/main_test.go:213` |
 | `none.unit.tooling.schema-test.the-command-exits-non-zero-on-every-adapter-fault` | `gotest` | Go test TestTheCommandExitsNonZeroOnEveryAdapterFault in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheCommandExitsNonZeroOnEveryAdapterFault` | the Go test passes | `tools/schema-test/main_test.go:145` |
@@ -152,7 +168,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.schema-test.write-ledger-keeps-the-skip-red-lines` | `gotest` | Go test TestWriteLedgerKeepsTheSkipRedLines in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestWriteLedgerKeepsTheSkipRedLines` | the Go test passes | `tools/schema-test/extract_test.go:44` |
 | `none.unit.tooling.schema-test.write-ledger-refuses-an-unreadable-tree` | `gotest` | Go test TestWriteLedgerRefusesAnUnreadableTree in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestWriteLedgerRefusesAnUnreadableTree` | the Go test passes | `tools/schema-test/extract_test.go:150` |
 
-#### `tooling` family `testreg`, 40 tests
+#### `tooling` family `testreg`, 47 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -171,6 +187,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.testreg.an-adapter-schema-test-does-not-have-fails` | `gotest` | Go test TestAnAdapterSchemaTestDoesNotHaveFails in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestAnAdapterSchemaTestDoesNotHaveFails` | the Go test passes | `internal/testreg/run_test.go:144` |
 | `none.unit.tooling.testreg.an-adapter-timeout-fails` | `gotest` | Go test TestAnAdapterTimeoutFails in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestAnAdapterTimeoutFails` | the Go test passes | `internal/testreg/run_test.go:231` |
 | `none.unit.tooling.testreg.an-instance-with-no-answer-and-no-declaration-fails` | `gotest` | Go test TestAnInstanceWithNoAnswerAndNoDeclarationFails in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestAnInstanceWithNoAnswerAndNoDeclarationFails` | the Go test passes | `internal/testreg/run_test.go:153` |
+| `none.unit.tooling.testreg.an-owed-instance-is-missing` | `gotest` | Go test TestAnOwedInstanceIsMissing in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestAnOwedInstanceIsMissing` | the Go test passes | `internal/testreg/owed_test.go:14` |
 | `none.unit.tooling.testreg.coverage-shows-every-cell` | `gotest` | Go test TestCoverageShowsEveryCell in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestCoverageShowsEveryCell` | the Go test passes | `internal/testreg/run_test.go:353` |
 | `none.unit.tooling.testreg.every-driver-test-is-registered` | `gotest` | Go test TestEveryDriverTestIsRegistered in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestEveryDriverTestIsRegistered` | the Go test passes | `internal/testreg/policy_test.go:81` |
 | `none.unit.tooling.testreg.expected-not-ran-fails` | `gotest` | Go test TestExpectedNotRanFails in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestExpectedNotRanFails` | the Go test passes | `internal/testreg/run_test.go:186` |
@@ -181,6 +198,12 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.testreg.load-refuses-a-key-that-is-not-type-family-case` | `gotest` | Go test TestLoadRefusesAKeyThatIsNotTypeFamilyCase in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestLoadRefusesAKeyThatIsNotTypeFamilyCase` | the Go test passes | `internal/testreg/registry_test.go:103` |
 | `none.unit.tooling.testreg.load-refuses-an-unknown-tier` | `gotest` | Go test TestLoadRefusesAnUnknownTier in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestLoadRefusesAnUnknownTier` | the Go test passes | `internal/testreg/registry_test.go:79` |
 | `none.unit.tooling.testreg.load-refuses-an-unknown-type` | `gotest` | Go test TestLoadRefusesAnUnknownType in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestLoadRefusesAnUnknownType` | the Go test passes | `internal/testreg/registry_test.go:73` |
+| `none.unit.tooling.testreg.load-refuses-owed-for-a-language-free-test` | `gotest` | Go test TestLoadRefusesOwedForALanguageFreeTest in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestLoadRefusesOwedForALanguageFreeTest` | the Go test passes | `internal/testreg/owed_test.go:77` |
+| `none.unit.tooling.testreg.load-refuses-owed-for-a-language-that-does-not-exist` | `gotest` | Go test TestLoadRefusesOwedForALanguageThatDoesNotExist in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestLoadRefusesOwedForALanguageThatDoesNotExist` | the Go test passes | `internal/testreg/owed_test.go:54` |
+| `none.unit.tooling.testreg.load-refuses-owed-for-a-test-that-does-not-exist` | `gotest` | Go test TestLoadRefusesOwedForATestThatDoesNotExist in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestLoadRefusesOwedForATestThatDoesNotExist` | the Go test passes | `internal/testreg/owed_test.go:48` |
+| `none.unit.tooling.testreg.load-refuses-owed-for-an-unrepresentable-pair` | `gotest` | Go test TestLoadRefusesOwedForAnUnrepresentablePair in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestLoadRefusesOwedForAnUnrepresentablePair` | the Go test passes | `internal/testreg/owed_test.go:71` |
+| `none.unit.tooling.testreg.load-refuses-owed-twice` | `gotest` | Go test TestLoadRefusesOwedTwice in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestLoadRefusesOwedTwice` | the Go test passes | `internal/testreg/owed_test.go:66` |
+| `none.unit.tooling.testreg.load-refuses-owed-with-no-reason` | `gotest` | Go test TestLoadRefusesOwedWithNoReason in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestLoadRefusesOwedWithNoReason` | the Go test passes | `internal/testreg/owed_test.go:60` |
 | `none.unit.tooling.testreg.load-refuses-unrepresentable-for-a-language-that-does-not-exist` | `gotest` | Go test TestLoadRefusesUnrepresentableForALanguageThatDoesNotExist in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestLoadRefusesUnrepresentableForALanguageThatDoesNotExist` | the Go test passes | `internal/testreg/registry_test.go:91` |
 | `none.unit.tooling.testreg.load-refuses-unrepresentable-for-a-test-that-does-not-exist` | `gotest` | Go test TestLoadRefusesUnrepresentableForATestThatDoesNotExist in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestLoadRefusesUnrepresentableForATestThatDoesNotExist` | the Go test passes | `internal/testreg/registry_test.go:85` |
 | `none.unit.tooling.testreg.shards-cover-every-name-exactly-once` | `gotest` | Go test TestShardsCoverEveryNameExactlyOnce in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestShardsCoverEveryNameExactlyOnce` | the Go test passes | `internal/testreg/run_test.go:310` |
@@ -197,7 +220,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.testreg.unrepresentable-is-data-not-a-name` | `gotest` | Go test TestUnrepresentableIsDataNotAName in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestUnrepresentableIsDataNotAName` | the Go test passes | `internal/testreg/run_test.go:162` |
 | `none.unit.tooling.testreg.wildcards-expand-to-an-explicit-list` | `gotest` | Go test TestWildcardsExpandToAnExplicitList in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestWildcardsExpandToAnExplicitList` | the Go test passes | `internal/testreg/run_test.go:279` |
 
-#### `tooling` family `testreg-extract`, 14 tests
+#### `tooling` family `testreg-extract`, 15 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -205,6 +228,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.testreg-extract.a-file-that-does-not-parse-is-named` | `gotest` | Go test TestAFileThatDoesNotParseIsNamed in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestAFileThatDoesNotParseIsNamed` | the Go test passes | `internal/testreg/extract/extract_test.go:126` |
 | `none.unit.tooling.testreg-extract.a-model-check-row-covers-its-config` | `gotest` | Go test TestAModelCheckRowCoversItsConfig in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestAModelCheckRowCoversItsConfig` | the Go test passes | `internal/testreg/extract/extract_test.go:205` |
 | `none.unit.tooling.testreg-extract.a-new-test-without-a-row-is-named` | `gotest` | Go test TestANewTestWithoutARowIsNamed in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestANewTestWithoutARowIsNamed` | the Go test passes | `internal/testreg/extract/extract_test.go:309` |
+| `none.unit.tooling.testreg-extract.a-row-indexes-the-corpus-it-reads` | `gotest` | Go test TestARowIndexesTheCorpusItReads in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestARowIndexesTheCorpusItReads` | the Go test passes | `internal/testreg/extract/extract_test.go:287` |
 | `none.unit.tooling.testreg-extract.a-skip-red-line-stays-while-its-skip-does` | `gotest` | Go test TestASkipRedLineStaysWhileItsSkipDoes in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestASkipRedLineStaysWhileItsSkipDoes` | the Go test passes | `internal/testreg/extract/extract_test.go:254` |
 | `none.unit.tooling.testreg-extract.check-holds-the-repository-the-registry-and-the-ledger-exactly` | `gotest` | Go test TestCheckHoldsTheRepositoryTheRegistryAndTheLedgerExactly in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestCheckHoldsTheRepositoryTheRegistryAndTheLedgerExactly` | the Go test passes | `internal/testreg/extract/extract_test.go:162` |
 | `none.unit.tooling.testreg-extract.every-test-is-a-row-or-in-the-ledger` | `gotest` | Go test TestEveryTestIsARowOrInTheLedger in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestEveryTestIsARowOrInTheLedger` | the Go test passes | `internal/testreg/extract/extract_test.go:374` |

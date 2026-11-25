@@ -121,6 +121,7 @@ generated/bench/tables/goose/.stamp: ;
 
 TEST_LEGS         += test-goose
 TOOLCHAIN_LEGS    += goose
+CONFORMANCE_LEG_goose := build/conformance-goose
 TOOLCHAIN_PINS_goose := GOOSE
 CONFORMANCE_LEGS  += $(call unless_skipped,goose,build/conformance-goose)
 BENCH_TABLES_LEGS += generated/bench/tables/goose/.stamp

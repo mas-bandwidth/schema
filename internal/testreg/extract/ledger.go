@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"sort"
 	"strconv"
 	"strings"
@@ -133,6 +134,82 @@ func Covered(reg *testreg.Registry) (map[string]string, []string) {
 	return out, problems
 }
 
+// Indexed reports, for each data case and driver a per-language registry row
+// reads, the first such row's key. A corpus is data in the registry where its
+// files are (docs/TEST-REGISTRY.md, "How each kind of test fits"): a row's
+// inputs may name the committed files it reads, "files", and the driver every
+// language answers it with, "driver", {lang} standing for each language the
+// registry lists. A file counts as the data case its directory and stem make
+// (the extract's own rule, dataCases), and a driver as the driver directory
+// it sits in. Many rows read one file, so this is a set, not a claim each row
+// owns.
+//
+// Only what runs counts: a row indexes its files only when some language
+// answers it (a ready language, one with an adapter, that neither owes it nor
+// declares it unrepresentable), and its driver only for those languages. A
+// row no adapter answers, and the driver of a language with no adapter, stay
+// unmoved.
+func Indexed(reg *testreg.Registry) map[string]string {
+	out := map[string]string{}
+	claim := func(id, key string) {
+		if _, ok := out[id]; !ok {
+			out[id] = key
+		}
+	}
+	for _, t := range reg.Tests {
+		if !t.PerLang() {
+			continue
+		}
+		var in struct {
+			Files  []string `json:"files"`
+			Driver string   `json:"driver"`
+		}
+		if err := json.Unmarshal(t.Inputs, &in); err != nil {
+			continue // inputs that are not an object index nothing
+		}
+		var answering []string
+		for _, l := range reg.Langs {
+			_, owed := reg.OwedBy(t.Key, l.Name)
+			_, unrep := reg.Unrepresentable(t.Key, l.Name)
+			if l.Ready() && !owed && !unrep {
+				answering = append(answering, l.Name)
+			}
+		}
+		if len(answering) == 0 {
+			continue // no language runs it: what it reads is not yet the registry's
+		}
+		for _, f := range in.Files {
+			dir, name := path.Split(f)
+			if strings.HasSuffix(name, ".jsonl") || name == "" {
+				continue // each line of a .jsonl file is a case of its own
+			}
+			stem := name
+			if i := strings.Index(name[1:], "."); i >= 0 {
+				stem = name[:i+1]
+			}
+			claim(Item{Kind: KindDataCase, Dir: strings.TrimSuffix(dir, "/"), Name: stem}.ID(), t.Key)
+		}
+		if in.Driver != "" {
+			for _, l := range answering {
+				dir := path.Dir(strings.ReplaceAll(in.Driver, "{lang}", l))
+				claim(Item{Kind: KindDriver, Dir: dir, Name: path.Base(dir)}.ID(), t.Key)
+			}
+		}
+	}
+	return out
+}
+
+// Runs is every item a registry row runs or reads: Covered and Indexed.
+func Runs(reg *testreg.Registry) map[string]string {
+	covered, _ := Covered(reg)
+	for id, key := range Indexed(reg) {
+		if _, ok := covered[id]; !ok {
+			covered[id] = key
+		}
+	}
+	return covered
+}
+
 // Check holds the extract, the registry and the ledger to each other: every
 // test the repository holds is a registry row or counted in the ledger,
 // exactly; every registry row that claims a test names one that exists;
@@ -144,11 +221,12 @@ func Check(res *Result, reg *testreg.Registry, ledger []LedgerLine) []string {
 	}
 	covered, p := Covered(reg)
 	problems = append(problems, p...)
+	runs := Runs(reg)
 	exists := map[string]bool{}
 	uncovered := map[string][]Item{}
 	for _, it := range res.Items {
 		exists[it.ID()] = true
-		if _, ok := covered[it.ID()]; ok {
+		if _, ok := runs[it.ID()]; ok {
 			continue
 		}
 		k := it.Kind + "\t" + it.Dir
@@ -437,7 +515,7 @@ func Shrinks(old, now []LedgerLine) []string {
 // Ledger is the ledger that counts exactly what res holds and reg does not
 // run, each line's layer and reason given by plan(kind, place).
 func Ledger(res *Result, reg *testreg.Registry, plan func(kind, dir string) (layer, reason string)) []LedgerLine {
-	covered, _ := Covered(reg)
+	covered := Runs(reg)
 	count := map[string]int{}
 	var order []string
 	for _, it := range res.Items {

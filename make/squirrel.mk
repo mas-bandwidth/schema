@@ -135,6 +135,7 @@ tables-squirrel-float-parity-negative-control: toolchain-squirrel dist-squirrel
 
 generated/bench/tables/squirrel/.stamp: ;
 
+CONFORMANCE_LEG_squirrel := build/conformance-squirrel
 TEST_LEGS         += test-squirrel
 CONFORMANCE_LEGS  += $(call unless_skipped,squirrel,build/conformance-squirrel)
 BENCH_TABLES_LEGS += generated/bench/tables/squirrel/.stamp

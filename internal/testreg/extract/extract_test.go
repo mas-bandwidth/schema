@@ -429,6 +429,51 @@ func TestEveryTestIsARowOrInTheLedger(t *testing.T) {
 	t.Logf("%d tests, %d ledger lines", len(res.Items), len(ledger))
 }
 
+// TestARowIndexesTheCorpusItReads: a per-language row's inputs name the
+// committed files it reads and the driver each language answers it with, and
+// those data cases and drivers count as the registry's: a file by its
+// directory and stem (x.in and x.out are the case x), a driver for every
+// language that answers the row. A language-free row's inputs index nothing,
+// and a data case no row reads is still unmoved. Only what runs counts: the
+// driver of a language with no adapter is unmoved, and a row no ready
+// language answers (none has an adapter, or each owes it) indexes nothing.
+func TestARowIndexesTheCorpusItReads(t *testing.T) {
+	t.Parallel()
+	res := &Result{Items: []Item{
+		{Kind: KindDataCase, Dir: "testdata/corpus", Name: "x", Source: "testdata/corpus/x.in:1"},
+		{Kind: KindDataCase, Dir: "testdata/corpus", Name: "y", Source: "testdata/corpus/y.in:1"},
+		{Kind: KindDriver, Dir: "test/conformance/zz", Name: "zz", Source: "test/conformance/zz/driver:1"},
+		{Kind: KindDriver, Dir: "test/conformance/qq", Name: "qq", Source: "test/conformance/qq/driver:1"},
+	}}
+	row := testreg.Test{Key: "roundtrip.conformance-wire.x", Inputs: []byte(`{"surface":"wire","case":"x","files":["testdata/corpus/x.in","testdata/corpus/x.out"],"driver":"test/conformance/{lang}/driver"}`)}
+	free := testreg.Test{Key: "tooling.t.y", Scope: testreg.LangFree, Adapter: "gotest", Inputs: []byte(`{"package":"./t","test":"TestY","files":["testdata/corpus/y.in"]}`)}
+	reg := &testreg.Registry{Path: "r.jsonl", Langs: []testreg.Lang{{Name: "zz", Adapter: "corpus"}, {Name: "ww", Adapter: "corpus"}, {Name: "qq"}}, Tests: []testreg.Test{row}}
+	// a driver is claimed for every ready language; ww has none on disk, so
+	// its claim matches nothing, and qq has no adapter, so its driver is not
+	// claimed (planted: claim it, and the ledger's qq line is red)
+	got := Indexed(reg)
+	if len(got) != 3 || got[res.Items[0].ID()] != row.Key || got[res.Items[2].ID()] != row.Key || got[res.Items[3].ID()] != "" {
+		t.Fatalf("indexed %v, want the case x and the zz and ww drivers", got)
+	}
+	ledger := []LedgerLine{{Kind: KindDataCase, Dir: "testdata/corpus", Count: 1}, {Kind: KindDriver, Dir: "test/conformance/qq", Count: 1}}
+	if p := Check(res, reg, ledger); len(p) != 0 {
+		t.Fatalf("the exact account: %v", p)
+	}
+	// the row gone, x and the zz driver are unmoved again: red until counted
+	if p := Check(res, &testreg.Registry{Path: "r.jsonl", Langs: reg.Langs}, ledger); !strings.Contains(strings.Join(p, "\n"), "there are 2: give each new test a registry row") {
+		t.Fatalf("a dropped row: %v", p)
+	}
+	reg.Tests = append(reg.Tests, free)
+	if got := Indexed(reg); len(got) != 3 {
+		t.Fatalf("a language-free row indexed files: %v", got)
+	}
+	// no ready language answers it: it indexes nothing
+	idle := &testreg.Registry{Path: "r.jsonl", Langs: []testreg.Lang{{Name: "zz"}, {Name: "qq"}}, Tests: []testreg.Test{row}}
+	if got := Indexed(idle); len(got) != 0 {
+		t.Fatalf("a row no adapter answers indexed %v", got)
+	}
+}
+
 // TestWhatGitIgnoresIsNotATest: in a git checkout, files git ignores (a
 // build's output, a lock file it writes) are not tests; without the ignore
 // they are. A .git that git cannot read is an error, never an empty set.

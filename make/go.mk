@@ -918,6 +918,7 @@ test-go-packet: build/mustrun generated/go/.stamp generated/go-ludicrous/.stamp 
 	cd test/go && "$(CURDIR)/$(MUSTRUN)" -name test-go-main -count $(GO_MAIN_CHECKS) -- go run .
 	cd test/go-ludicrous && "$(CURDIR)/$(MUSTRUN)" -name test-go-ludicrous -count $(GO_LUDICROUS_CHECKS) -- go run .
 
+CONFORMANCE_LEG_go := build/conformance-go
 TEST_LEGS         += test-go
 CONFORMANCE_LEGS  += $(call unless_skipped,go,build/conformance-go)
 BENCH_TABLES_LEGS += generated/bench/tables/go/.stamp

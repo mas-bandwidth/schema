@@ -13,8 +13,10 @@
 #        driver <manifest> <surface> <outdir>
 case "${2:-}" in
   write-refusal|write-refusal-fixed|write-refusal-message|write-refusal-json|write-refusal-cook|write-refusal-block|json-write)
-    # json-write holds rows whose answer is a debug assert's refusal: AOT has no asserts
-    exec "${DART:-dart}" --enable-asserts test/conformance/dart/main.dart "$@"
+    # json-write holds rows whose answer is a debug assert's refusal: AOT has no asserts.
+    # The VM runs the kernel snapshot make/dart.mk builds beside build/conformance-dart,
+    # from the same sources; a missing snapshot is a failed surface, never a fallback.
+    exec "${DART:-dart}" --enable-asserts build/conformance-dart-asserts.dill "$@"
     ;;
 esac
 exec build/conformance-dart "$@"
