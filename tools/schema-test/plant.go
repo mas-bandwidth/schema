@@ -8,9 +8,14 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
+	"regexp"
+	"runtime"
 	"sort"
+	"strconv"
 	"strings"
+	"syscall"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testreg"
 )
@@ -106,8 +111,8 @@ func decodePlant(raw json.RawMessage) (plantInputs, string, error) {
 			return in, "", fmt.Errorf("an edit plant names its edits, the tests it turns red and the reason they fail for")
 		}
 		for i, e := range in.Edits {
-			if e.File == "" || e.Anchor == "" || e.Anchor == e.With || filepath.IsAbs(e.File) || strings.Contains(e.File, "..") {
-				return in, "", fmt.Errorf("edit %d: want a repository file, an anchor and a different replacement", i+1)
+			if e.File == "" || e.Anchor == "" || e.Anchor == e.With || filepath.IsAbs(e.File) || strings.Contains(e.File, "..") || e.File != path.Clean(e.File) {
+				return in, "", fmt.Errorf("edit %d: want a clean repository file (internal/x.go, never ./internal/x.go), an anchor and a different replacement", i+1)
 			}
 		}
 		return in, "edits", nil
@@ -222,6 +227,17 @@ func (a plantAdapter) runEdits(ctx context.Context, inst testreg.Instance, in pl
 		}
 		before = append(before, t)
 	}
+	red := map[string]bool{}
+	for _, n := range in.Red {
+		red[n] = true
+	}
+	for _, t := range before {
+		if red[t.Full] && t.Test.Adapter == "make" {
+			// a make row fails "make <target>: exit status N", which any
+			// failure gives: a broken build as well as the sabotage
+			return testreg.Result{Instance: inst.Full, Verdict: testreg.Fail, Reason: fmt.Sprintf("the plant names the make row %s red, and a make row's red reason is its exit status, which any failure gives: plant its recipe's gate as a make control, or name the rows its gate runs", t.Full)}, nil
+		}
+	}
 	if bad := a.greenBefore(ctx, before); bad != "" {
 		return testreg.Result{Instance: inst.Full, Verdict: testreg.Fail, Reason: bad}, nil
 	}
@@ -313,7 +329,7 @@ func asEditError(err error, pe *plantEditError) bool {
 // applyEdits applies the edits to files (by repository path) and returns
 // the edited contents. Each anchor must be in its file exactly once, after
 // the edits before it; and an anchor written in another file of sources (a
-// file of the same extension, not a test, where no edit sabotages that same
+// file of the same family (sourceFamily), not a test, where no edit sabotages that same
 // anchor) is a copy the plant does not reach.
 func applyEdits(edits []plantEdit, read func(string) ([]byte, error), sources []string) (map[string][]byte, error) {
 	out := map[string][]byte{}
@@ -339,9 +355,9 @@ func applyEdits(edits []plantEdit, read func(string) ([]byte, error), sources []
 		out[e.File] = bytes.Replace(data, []byte(e.Anchor), []byte(e.With), 1)
 	}
 	for i, e := range edits {
-		ext := filepath.Ext(e.File)
+		family := sourceFamily(e.File)
 		for _, src := range sources {
-			if src == e.File || reached[src+"\x00"+e.Anchor] || filepath.Ext(src) != ext || isTestSource(src) {
+			if src == e.File || reached[src+"\x00"+e.Anchor] || sourceFamily(src) != family || isTestSource(src) {
 				continue // its own file, or a copy another edit sabotages too
 			}
 			data, err := read(src)
@@ -354,6 +370,19 @@ func applyEdits(edits []plantEdit, read func(string) ([]byte, error), sources []
 		}
 	}
 	return out, nil
+}
+
+// sourceFamily is the kind of source a copy of sabotaged code may sit in: C
+// and C++ sources and headers are one family (a header holds what its source
+// does, an inline template what its .cpp does); every other extension is its
+// own.
+func sourceFamily(p string) string {
+	switch ext := filepath.Ext(p); ext {
+	case ".c", ".h", ".cc", ".cpp", ".cxx", ".hpp", ".hh", ".hxx", ".inl", ".ipp", ".tpp":
+		return "c"
+	default:
+		return ext
+	}
 }
 
 func isTestSource(p string) bool {
@@ -394,7 +423,13 @@ func plantInTree(ctx context.Context, edits []plantEdit, names []string) (plantR
 	if err != nil {
 		return plantRun{}, err
 	}
-	parent, err := os.MkdirTemp(filepath.Dir(root), ".schema-test-plant-")
+	if _, err := sweepStale(filepath.Dir(root), processAlive); err != nil {
+		return plantRun{}, err
+	}
+	if log, err := gitIn(ctx, root, "worktree", "prune"); err != nil {
+		return plantRun{log: log}, fmt.Errorf("git worktree prune: %w", err)
+	}
+	parent, err := os.MkdirTemp(filepath.Dir(root), copyPrefix("plant"))
 	if err != nil {
 		return plantRun{}, err
 	}
@@ -432,15 +467,22 @@ func plantInTree(ctx context.Context, edits []plantEdit, names []string) (plantR
 	cmd.Stdout = &out
 	cmd.Stderr = &out
 	runErr := cmd.Run() // red by design: the report, not the exit, is the verdict
+	return readPlantReport(reportPath, out.String(), runErr)
+}
+
+// readPlantReport reads the planted run's --report JSON into its outcomes
+// and run-level problems. A run that wrote none, or wrote one that is not a
+// report, is an error naming the run's own exit (runErr).
+func readPlantReport(reportPath, log string, runErr error) (plantRun, error) {
 	data, err := os.ReadFile(reportPath)
 	if err != nil {
-		return plantRun{log: out.String()}, fmt.Errorf("the planted run wrote no report (%w): %w", runErr, err)
+		return plantRun{log: log}, fmt.Errorf("the planted run wrote no report (its exit: %v): %w", runErr, err)
 	}
 	var rep testreg.Report
 	if err := json.Unmarshal(data, &rep); err != nil {
-		return plantRun{log: out.String()}, fmt.Errorf("the planted run's report: %w", err)
+		return plantRun{log: log}, fmt.Errorf("the planted run's report (its exit: %v): %w", runErr, err)
 	}
-	run := plantRun{status: map[string]outcome{}, problems: rep.Problems, log: out.String()}
+	run := plantRun{status: map[string]outcome{}, problems: rep.Problems, log: log}
 	for _, o := range rep.Outcomes {
 		run.status[o.Full] = outcome{o.Status, o.Reason}
 	}
@@ -450,8 +492,8 @@ func plantInTree(ctx context.Context, edits []plantEdit, names []string) (plantR
 // linkSiblings links each checkout beside root (../serialize.go,
 // ../serialize) into parent, beside the planted copy, so the copy's build
 // finds its siblings where the checkout's own build finds them and builds as
-// the checkout does. A plain file beside root, and another plant's copy
-// (.schema-test-plant-*), are not linked.
+// the checkout does. A plain file beside root, and another run's copy
+// (.schema-test-*), are not linked.
 func linkSiblings(root, parent string) error {
 	beside := filepath.Dir(root)
 	entries, err := os.ReadDir(beside)
@@ -460,7 +502,7 @@ func linkSiblings(root, parent string) error {
 	}
 	for _, e := range entries {
 		name := e.Name()
-		if name == filepath.Base(root) || strings.HasPrefix(name, ".schema-test-plant-") || !e.IsDir() && e.Type()&os.ModeSymlink == 0 {
+		if name == filepath.Base(root) || strings.HasPrefix(name, ".schema-test-") || !e.IsDir() && e.Type()&os.ModeSymlink == 0 {
 			continue
 		}
 		if err := os.Symlink(filepath.Join(beside, name), filepath.Join(parent, name)); err != nil {
@@ -514,11 +556,70 @@ func copyFile(from, to string) error {
 		if err != nil {
 			return err
 		}
+		// the worktree holds HEAD's file or link here already
+		if err := os.Remove(to); err != nil && !os.IsNotExist(err) {
+			return err
+		}
 		return os.Symlink(target, to)
 	}
 	data, err := os.ReadFile(from)
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(to, data, info.Mode().Perm())
+	if err := os.WriteFile(to, data, info.Mode().Perm()); err != nil {
+		return err
+	}
+	// WriteFile keeps the mode of a file already there (HEAD's): the
+	// checkout's mode is the one it builds with
+	return os.Chmod(to, info.Mode().Perm())
+}
+
+// copyPrefix is the name of a run's copy beside the checkout: it carries
+// the run's process id, so a later run tells a copy a killed run left (its
+// process gone, its cleanup never run) from one a run beside it is using.
+func copyPrefix(kind string) string {
+	return fmt.Sprintf(".schema-test-%s-%d-", kind, os.Getpid())
+}
+
+var staleCopy = regexp.MustCompile(`^\.schema-test-(?:golden|plant)-(\d+)-`)
+
+// sweepStale removes each copy beside the checkout (copyPrefix) whose run
+// is no longer alive, and returns their names: a run killed before its
+// cleanup leaves a whole tree, and on a runner that keeps its disk the next
+// run would find it there.
+func sweepStale(beside string, alive func(pid int) bool) ([]string, error) {
+	entries, err := os.ReadDir(beside)
+	if err != nil {
+		return nil, err
+	}
+	var removed []string
+	for _, e := range entries {
+		m := staleCopy.FindStringSubmatch(e.Name())
+		if m == nil {
+			continue
+		}
+		pid, err := strconv.Atoi(m[1])
+		if err != nil || pid == os.Getpid() || alive(pid) {
+			continue
+		}
+		if err := os.RemoveAll(filepath.Join(beside, e.Name())); err != nil {
+			return removed, fmt.Errorf("removing %s, which a killed run left: %w", e.Name(), err)
+		}
+		removed = append(removed, e.Name())
+	}
+	return removed, nil
+}
+
+// processAlive reports whether pid is a running process. Where a signal
+// cannot ask (Windows), every process counts as alive and nothing is swept.
+func processAlive(pid int) bool {
+	if runtime.GOOS == "windows" {
+		return true
+	}
+	p, err := os.FindProcess(pid)
+	if err != nil {
+		return false
+	}
+	err = p.Signal(syscall.Signal(0))
+	return err == nil || errors.Is(err, syscall.EPERM)
 }

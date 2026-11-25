@@ -79,7 +79,11 @@ type builder struct {
 func (b *builder) run(ctx context.Context, argv []string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	defer holdCheckout()()
+	release, err := holdCheckout(ctx)
+	if err != nil {
+		return fmt.Errorf("build step %q: %w", strings.Join(argv, " "), err)
+	}
+	defer release()
 	key := strings.Join(argv, "\x00")
 	if err, ok := b.done[key]; ok {
 		return err
@@ -89,7 +93,7 @@ func (b *builder) run(ctx context.Context, argv []string) error {
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &out
-	err := cmd.Run()
+	err = cmd.Run()
 	if err != nil {
 		err = fmt.Errorf("build step %q: %w\n%s", strings.Join(argv, " "), err, tail(out.String(), 40))
 	}
@@ -159,7 +163,11 @@ func (a *harnessAdapter) Run(ctx context.Context, lang string, instances []testr
 func runHarness(ctx context.Context, argv []string, instances []testreg.Instance, log io.Writer) ([]testreg.Result, error) {
 	// the harness runs bin/schema and what the build steps made: no make
 	// in the checkout relinks them under it
-	defer holdCheckout()()
+	release, err := holdCheckout(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("%q: %w", strings.Join(argv, " "), err)
+	}
+	defer release()
 	var in bytes.Buffer
 	if err := testreg.EncodeRequests(&in, instances); err != nil {
 		return nil, err

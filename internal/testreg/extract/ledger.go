@@ -161,6 +161,10 @@ func Covered(reg *testreg.Registry) (map[string]string, []string) {
 					continue // a pin outside the data paths is no data case: the row checks it all the same
 				}
 				dir, name := path.Split(f)
+				if name == "" {
+					problems = append(problems, fmt.Sprintf("%s:%d: %s pins %s, which is not a file", reg.Path, t.Line, t.Key, f))
+					continue
+				}
 				it := Item{Kind: KindDataCase, Dir: strings.TrimSuffix(dir, "/"), Name: DataStem(name)}
 				if !goldenCase[it.ID()] {
 					goldenCase[it.ID()] = true

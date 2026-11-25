@@ -235,6 +235,7 @@ func TestMakePlantAndGoldenRowsCoverTheirTests(t *testing.T) {
 		"a deleted golden":        {row("golden.x.gone", "golden", `{"writer":"pins-x","files":["testdata/corpus/gone.bin"]}`), "registry row golden.x.gone runs data-case testdata/corpus gone, which the repository does not hold"},
 		"a golden twice":          {row("golden.x.again", "golden", `{"writer":"pins-x","files":["testdata/corpus/x.out"]}`), "golden.x.again pins testdata/corpus/x.out, which golden row golden.x.x-out already pins"},
 		"a golden with no files":  {row("golden.x.none", "golden", `{"writer":"pins-x"}`), "golden.x.none is a golden row without files"},
+		"a golden of a directory": {row("golden.x.dir", "golden", `{"writer":"pins-x","files":["testdata/corpus/"]}`), "golden.x.dir pins testdata/corpus/, which is not a file"},
 		"a make row with no file": {row("harness-run.makefile.nofile", "make", `{"target":"prep"}`), "is a make row without a file and a target"},
 	} {
 		p := Check(res, &testreg.Registry{Path: "r.jsonl", Tests: append(slices.Clone(good), c.extra)}, nil)

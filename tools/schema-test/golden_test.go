@@ -246,7 +246,7 @@ func TestAGoldenTheWriterLeftUntouchedWasNotWritten(t *testing.T) {
 // committed (not tracked) is not answered, so the run shows it MISSING.
 func TestAnUncommittedGoldenIsMissing(t *testing.T) {
 	t.Parallel()
-	a := goldenAdapter{checkout: memTree{"testdata/g/a.bin": "AAAA", "testdata/g/new.bin": "N"}, tracked: func(p string) bool { return p == "testdata/g/a.bin" }}
+	a := goldenAdapter{checkout: memTree{"testdata/g/a.bin": "AAAA", "testdata/g/new.bin": "N"}, tracked: func(p string) (bool, error) { return p == "testdata/g/a.bin", nil }}
 	if !a.Answers(goldenInst(t, "a", "pins-x", "testdata/g/a.bin").Test) || a.Answers(goldenInst(t, "n", "pins-x", "testdata/g/new.bin").Test) {
 		t.Fatal("a tracked golden is answered, an untracked one is MISSING")
 	}
@@ -300,7 +300,7 @@ func TestAStrayPinIsJudgedAgainstWhatIsCommitted(t *testing.T) {
 	checkout := memTree{"testdata/g/a.bin": "AAAA", "testdata/g/new.bin": "N", "testdata/g/old.bin": "O"}
 	calls := 0
 	a := goldenFake(checkout, memTree{"testdata/g/a.bin": "AAAA", "testdata/g/new.bin": "N"}, &calls)
-	a.tracked = func(p string) bool { return p != "testdata/g/new.bin" }
+	a.tracked = func(p string) (bool, error) { return p != "testdata/g/new.bin", nil }
 	got := goldenVerdicts(t, a, context.Background(), goldenInst(t, "a", "pins-x", "testdata/g/a.bin"))
 	if got["a"].Verdict != testreg.Fail || !strings.Contains(got["a"].Reason, "testdata/g/new.bin") || !strings.Contains(got["a"].Reason, "testdata/g/old.bin (deleted by the writer)") {
 		t.Fatalf("verdicts %+v", got)
@@ -325,5 +325,60 @@ func TestSeedingAgesTheCommittedGoldens(t *testing.T) {
 	tree := seededTree{dirTree(dir), seeded}
 	if len(seeded) != 1 || !tree.Untouched("testdata/g/a.bin") {
 		t.Fatalf("seeded %v: the committed golden is aged and untouched until written", seeded)
+	}
+}
+
+// TestAFailedWriterFailsOnlyItsOwnRows: a writer that fails fails its own
+// rows, with its error; another writer's rows are still judged on what that
+// writer wrote.
+func TestAFailedWriterFailsOnlyItsOwnRows(t *testing.T) {
+	t.Parallel()
+	calls := 0
+	// the writer's copy is the whole tree, as the checkout holds it
+	tree := memTree{"testdata/g/a.bin": "AAAA", "testdata/h/b.bin": "BBBB"}
+	a := goldenFake(tree, tree, &calls)
+	got := goldenVerdicts(t, a, context.Background(),
+		goldenInst(t, "y", "pins-y", "testdata/h/b.bin"),
+		goldenInst(t, "x", "pins-x", "testdata/g/a.bin"))
+	if got["y"].Verdict != testreg.Fail || !strings.Contains(got["y"].Reason, "writer pins-y: unknown writer pins-y") {
+		t.Errorf("the failed writer's row: %+v", got["y"])
+	}
+	if got["x"].Verdict != testreg.Pass {
+		t.Errorf("the healthy writer's row: %+v", got["x"])
+	}
+}
+
+// TestAnUnreadableIndexIsNamed: when git ls-files fails, a golden is not
+// called MISSING; the run fails naming the index's error.
+func TestAnUnreadableIndexIsNamed(t *testing.T) {
+	t.Parallel()
+	calls := 0
+	a := goldenFake(memTree{"testdata/g/a.bin": "AAAA"}, memTree{"testdata/g/a.bin": "AAAA"}, &calls)
+	a.tracked = func(string) (bool, error) { return false, errors.New("not a git repository") }
+	inst := goldenInst(t, "a", "pins-x", "testdata/g/a.bin")
+	if !a.Answers(inst.Test) {
+		t.Fatal("a golden was MISSING for an index that could not be read")
+	}
+	_, err := a.Run(context.Background(), testreg.LangFree, []testreg.Instance{inst})
+	if err == nil || !strings.Contains(err.Error(), "git ls-files") || !strings.Contains(err.Error(), "not a git repository") {
+		t.Fatalf("the run: %v", err)
+	}
+	if calls != 0 {
+		t.Errorf("the writer ran %d times on an unreadable index", calls)
+	}
+}
+
+// TestAWriterThatFailsOrSkipsWroteNothing: a writer that exits non-zero, or
+// whose log reports a skip, wrote nothing to judge; a clean exit did.
+func TestAWriterThatFailsOrSkipsWroteNothing(t *testing.T) {
+	t.Parallel()
+	if err := writerFailed("pins-x", "wrote it\n", nil); err != nil {
+		t.Fatalf("a clean writer: %v", err)
+	}
+	if err := writerFailed("pins-x", "", errors.New("exit status 2")); err == nil || !strings.Contains(err.Error(), "make pins-x: exit status 2") {
+		t.Errorf("a failed writer: %v", err)
+	}
+	if err := writerFailed("pins-x", "--- SKIP: TestPins (0.00s)\n", nil); err == nil || !strings.Contains(err.Error(), "make pins-x") {
+		t.Errorf("a writer that skipped: %v", err)
 	}
 }

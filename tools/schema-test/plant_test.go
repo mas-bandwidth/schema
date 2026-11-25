@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -193,6 +194,8 @@ func TestPlantInputsAreOneForm(t *testing.T) {
 		`{"target":"go.functional.roundtrip.fam.one"}`:                                                     false,
 		`{"edits":[{"file":"a.go","anchor":"x","with":"x"}],"red":["a"]}`:                                  false,
 		`{"edits":[{"file":"../a.go","anchor":"x","with":"y"}],"red":["a"]}`:                               false,
+		`{"edits":[{"file":"./a.go","anchor":"x","with":"y"}],"red":["a"],"reason":"a stated reason, long"}`: false,
+		`{"edits":[{"file":"src/../a.go","anchor":"x","with":"y"}],"red":["a"],"reason":"a stated reason, long"}`: false,
 		`{"edits":[{"file":"a.go","anchor":"x","with":"y"}]}`:                                              false,
 		`{"make":"x-negative-control","group":"g"}`:                                                        false,
 		`{"make":"x","file":"Makefile","group":"g","target":"go.functional.roundtrip.fam.one"}`:            false,
@@ -281,5 +284,143 @@ func TestThePlantedCopyFindsItsSiblings(t *testing.T) {
 		if _, err := os.Lstat(filepath.Join(parent, name)); err == nil {
 			t.Errorf("%s was linked beside the copy", name)
 		}
+	}
+}
+
+// TestAnEditPlantCannotNameAMakeRowRed: a make row's red reason is its exit
+// status, which any failure gives (a broken build as well as the sabotage),
+// so an edit plant naming one red fails, named, and plants nothing.
+func TestAnEditPlantCannotNameAMakeRowRed(t *testing.T) {
+	t.Parallel()
+	data, err := os.ReadFile(cliRegistry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data = append(data, `{"rec":"type","name":"harness-run","what":"a make gate"}
+{"rec":"test","key":"harness-run.makefile.gate","type":"harness-run","family":"makefile","case":"gate","tier":"functional","scope":"none","adapter":"make","checks":"make gate exits 0","inputs":{"file":"Makefile","target":"gate"},"expect":"exit 0"}
+`...)
+	reg, err := testreg.Parse("r.jsonl", bytes.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	in, err := json.Marshal(plantInputs{Edits: []plantEdit{{File: "Makefile", Anchor: "x", With: "y"}}, Red: []string{"none.functional.harness-run.makefile.gate"}, Reason: "make gate: exit status 2"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	inst := testreg.Instance{Full: "none.functional.plant.fam.make-red", Lang: testreg.LangFree, Test: testreg.Test{Scope: testreg.LangFree, Type: "plant", Adapter: "plant", Inputs: in}}
+	a := plantAdapter{rn: &testreg.Runner{Reg: reg, Adapters: map[string]testreg.Adapter{}, Context: testreg.WithTimeout(0)}, tree: func(context.Context, []plantEdit, []string) (plantRun, error) {
+		t.Error("a planted tree ran")
+		return plantRun{}, nil
+	}}
+	res, err := a.Run(context.Background(), testreg.LangFree, []testreg.Instance{inst})
+	if err != nil || len(res) != 1 || res[0].Verdict != testreg.Fail || !strings.Contains(res[0].Reason, "a make row's red reason is its exit status") {
+		t.Fatalf("%v %+v", err, res)
+	}
+}
+
+// TestAPlantReachesACopyInAHeader: C and C++ sources and headers are one
+// family, so a copy of the sabotaged code in a header next to the edited
+// source is a copy the plant must reach; a copy in another language is not
+// looked for.
+func TestAPlantReachesACopyInAHeader(t *testing.T) {
+	t.Parallel()
+	files := map[string]string{"src/a.cpp": "check(x);", "src/a.h": "inline void f() { check(x); }", "src/a.lua": "check(x);"}
+	_, err := applyEdits([]plantEdit{{File: "src/a.cpp", Anchor: "check(x);", With: "(void)x;"}}, memRead(files), []string{"src/a.cpp", "src/a.h", "src/a.lua"})
+	var pe plantEditError
+	if !errors.As(err, &pe) || !strings.Contains(pe.Error(), "also written in src/a.h") {
+		t.Fatalf("the header's copy: %v", err)
+	}
+	delete(files, "src/a.h")
+	if _, err := applyEdits([]plantEdit{{File: "src/a.cpp", Anchor: "check(x);", With: "(void)x;"}}, memRead(files), []string{"src/a.cpp", "src/a.lua"}); err != nil {
+		t.Fatalf("a lua file is not a copy of C++: %v", err)
+	}
+}
+
+// TestACopyAKilledRunLeftIsSwept: a copy beside the checkout whose run is
+// gone is removed; one whose run is alive, this run's own, one of another
+// naming, and anything else stay.
+func TestACopyAKilledRunLeftIsSwept(t *testing.T) {
+	t.Parallel()
+	beside := t.TempDir()
+	own := strings.TrimSuffix(copyPrefix("plant"), "-") + "-1"
+	for _, d := range []string{".schema-test-golden-111-1", ".schema-test-plant-222-1", own, ".schema-test-golden-333", "schema"} {
+		if err := os.MkdirAll(filepath.Join(beside, d, "inner"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	removed, err := sweepStale(beside, func(pid int) bool { return pid == 222 })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(removed) != 1 || removed[0] != ".schema-test-golden-111-1" {
+		t.Fatalf("removed %v", removed)
+	}
+	for _, d := range []string{".schema-test-plant-222-1", own, ".schema-test-golden-333", "schema"} {
+		if _, err := os.Stat(filepath.Join(beside, d)); err != nil {
+			t.Errorf("%s: %v", d, err)
+		}
+	}
+}
+
+// TestThePlantedRunsReportIsItsVerdict: the report's outcomes and problems
+// are the planted run's; no report, or one that is not JSON, is an error
+// naming the run's exit.
+func TestThePlantedRunsReportIsItsVerdict(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "report.json")
+	if _, err := readPlantReport(path, "", errors.New("exit status 2")); err == nil || !strings.Contains(err.Error(), "wrote no report (its exit: exit status 2)") {
+		t.Errorf("no report: %v", err)
+	}
+	if err := os.WriteFile(path, []byte("{"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readPlantReport(path, "", nil); err == nil || !strings.Contains(err.Error(), "the planted run's report") {
+		t.Errorf("a report that is not JSON: %v", err)
+	}
+	rep := testreg.Report{Outcomes: []testreg.Outcome{{Full: "a", Status: testreg.StatusFail, Reason: "planted"}}, Problems: []string{"adapter x crashed"}}
+	data, err := json.Marshal(rep)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	run, err := readPlantReport(path, "the log", errors.New("exit status 1"))
+	if err != nil || run.status["a"] != (outcome{testreg.StatusFail, "planted"}) || len(run.problems) != 1 || run.log != "the log" {
+		t.Fatalf("%v %+v", err, run)
+	}
+}
+
+// TestTheCopyIsTheCheckoutAsItStands: over HEAD's files in the worktree, a
+// file deleted in the checkout is deleted, a link replaces the file there,
+// and a file keeps the checkout's mode.
+func TestTheCopyIsTheCheckoutAsItStands(t *testing.T) {
+	t.Parallel()
+	from, to := t.TempDir(), t.TempDir()
+	for _, f := range []string{"gone.txt", "link", "run.sh"} {
+		if err := os.WriteFile(filepath.Join(to, f), []byte("HEAD"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(from, "run.sh"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("run.sh", filepath.Join(from, "link")); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range []string{"gone.txt", "link", "run.sh"} {
+		if err := copyFile(filepath.Join(from, f), filepath.Join(to, f)); err != nil {
+			t.Fatalf("%s: %v", f, err)
+		}
+	}
+	if _, err := os.Lstat(filepath.Join(to, "gone.txt")); !os.IsNotExist(err) {
+		t.Errorf("a file deleted in the checkout is in the copy: %v", err)
+	}
+	if got, err := os.Readlink(filepath.Join(to, "link")); err != nil || got != "run.sh" {
+		t.Errorf("the link: %q %v", got, err)
+	}
+	if info, err := os.Stat(filepath.Join(to, "run.sh")); err != nil || info.Mode().Perm() != 0o755 {
+		t.Errorf("the mode: %v %v", info, err)
 	}
 }

@@ -15,7 +15,6 @@ import (
 	"runtime"
 	"slices"
 	"strings"
-	"sync"
 	"sync/atomic"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testreg"
@@ -84,21 +83,32 @@ func newMakeAdapter() makeAdapter {
 // bin/schema, and the runner runs adapter groups side by side, so two
 // recipes would otherwise write one stamp at once. A golden's writer runs in
 // its own copy and holds nothing.
-var checkoutMake sync.Mutex
+var checkoutMake = make(chan struct{}, 1)
 
 // checkoutHolds counts the holds of checkoutMake, so a unit test sees each
 // make in the checkout take it.
 var checkoutHolds atomic.Int64
 
-// holdCheckout takes checkoutMake and returns its release.
-func holdCheckout() func() {
-	checkoutMake.Lock()
-	checkoutHolds.Add(1)
-	return checkoutMake.Unlock
+// holdCheckout takes checkoutMake and returns its release. A wait for it
+// ends with ctx: the runner's groups run side by side, each under its own
+// deadline, and a group whose deadline passes while another make holds the
+// checkout fails naming that wait, never running on with a dead context.
+func holdCheckout(ctx context.Context) (func(), error) {
+	select {
+	case checkoutMake <- struct{}{}:
+		checkoutHolds.Add(1)
+		return func() { <-checkoutMake }, nil
+	case <-ctx.Done():
+		return nil, fmt.Errorf("waiting for the checkout, which another make of this run holds: %w", ctx.Err())
+	}
 }
 
 func execMake(ctx context.Context, argv []string) (string, error) {
-	defer holdCheckout()()
+	release, err := holdCheckout(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer release()
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	bound(cmd)
 	if env := testreg.EnvFrom(ctx); len(env) > 0 {
@@ -110,7 +120,7 @@ func execMake(ctx context.Context, argv []string) (string, error) {
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &out
-	err := cmd.Run()
+	err = cmd.Run()
 	return out.String(), err
 }
 

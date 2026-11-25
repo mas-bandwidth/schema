@@ -294,6 +294,31 @@ func TestEveryMakeInTheCheckoutHoldsIt(t *testing.T) {
 	}
 }
 
+// TestAWaitForTheCheckoutEndsWithItsContext: while another make holds the
+// checkout, a make, a build step or a harness whose context ends fails
+// naming the wait, and runs nothing. (Not parallel: it holds the checkout.)
+func TestAWaitForTheCheckoutEndsWithItsContext(t *testing.T) {
+	release, err := holdCheckout(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	for name, run := range map[string]func() error{
+		"a make row": func() error { _, err := execMake(ctx, []string{"true"}); return err },
+		"a build step": func() error {
+			b := &builder{log: io.Discard, done: map[string]error{}}
+			return b.run(ctx, []string{"true"})
+		},
+		"a harness": func() error { _, err := runHarness(ctx, []string{"true"}, nil, io.Discard); return err },
+	} {
+		if err := run(); err == nil || !strings.Contains(err.Error(), "waiting for the checkout") {
+			t.Errorf("%s ran on past its context: %v", name, err)
+		}
+	}
+}
+
 // TestAMakeVariableCannotTurnTheGateOff: SHELL, MAKEFLAGS and make's other
 // own variables would let a row pass without its recipe checking anything;
 // a row may not set them.
