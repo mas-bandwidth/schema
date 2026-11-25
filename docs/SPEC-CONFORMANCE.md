@@ -993,3 +993,15 @@ the `shapes` instance rows `shapes_fixed_tenth_past_max`,
 | rule | case | the leg it was red on before its fix |
 |---|---|---|
 | SPEC-TABLES §3.4, §4: a fixed read refuses a value past its range and a count below Min, never clamps | `shapes_fixed_tenth_past_max`, `shapes_fixed_seventh_below_min`, `shapes_fixed_octets_below_min`; `TestSquirrelTableSaveRoundTripsEveryInstance` (`internal/codegen/squirreltable`, slow tier) | red before its fix on Squirrel: the walk load's fixed path clamped the floats to their ends (counting `oor`) and took a count of 1 under `[2..8]`, so the value reached the save, which wrote 655 bytes |
+
+### Every save of a fixed root holds the write contract
+
+A fixed root is written by two public calls in some legs: the batch writer
+`<Root>FixedSave` and the whole-file `<Root>Save`. SPEC.md §5.1's refusals
+bind both, in every build for a refuse-every-build leg. The shared
+`write-refusal-fixed` rows reach the batch writer, so the whole-file save is
+held to the same rows by the leg's own test.
+
+| rule | case | the leg it was red on before its fix |
+|---|---|---|
+| SPEC.md §5.1 rows 1 to 8 and 10: the whole-file save of a fixed root refuses what the fixed writer refuses | Go unit test `TestSquirrelFixedRootSaveRefusesOffContract` (`internal/codegen/squirreltable`, slow tier): every row of `TestSquirrelFixedSaveRefusesOffContract` through `RecSave`; no shared case, because the conformance driver writes a fixed root through `<Root>FixedSave` | red before its fix on Squirrel: `saveFixed` in runtime/save.nut walked the body itself with no range, count-minimum, width, text or type check, so `RecSave` wrote 18 off-contract rows and raised on 7 wrong-typed ones; it now delegates to `<Root>FixedSave` |
