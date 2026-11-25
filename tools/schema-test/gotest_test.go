@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -460,6 +461,192 @@ func TestAGoTestRowsMakeTargetIsBuiltFirst(t *testing.T) {
 
 	if _, err := goTestInputsOf(row("d", `{"package":"./p","test":"TestD","make":"a b; rm"}`).Test); err == nil {
 		t.Fatal("a make input that is not one target was accepted")
+	}
+	if _, err := goTestInputsOf(row("e", `{"package":"./p","test":"TestE","subtest":"a/b"}`).Test); err == nil {
+		t.Fatal("a subtest name with a slash was accepted")
+	}
+}
+
+// TestASubtestRowTakesThatSubtestsVerdict: a row that names a subtest gets
+// that subtest's pass or fail, and a parent event does not flip a subtest
+// that passed. A row that does not name a subtest still runs as the top-level
+// test. The plant is go test exiting non-zero after the subtest passed.
+func TestASubtestRowTakesThatSubtestsVerdict(t *testing.T) {
+	t.Parallel()
+	events := strings.Join([]string{
+		`{"Action":"output","Test":"TestP/ok","Output":"=== RUN   TestP/ok\n"}`,
+		`{"Action":"pass","Test":"TestP/ok","Elapsed":0.01}`,
+		`{"Action":"output","Test":"TestP/bad","Output":"--- FAIL: TestP/bad\n"}`,
+		`{"Action":"output","Test":"TestP/bad","Output":"    x_test.go:1: bad case\n"}`,
+		`{"Action":"fail","Test":"TestP/bad","Elapsed":0.02}`,
+		`{"Action":"output","Test":"TestP/skip","Output":"--- SKIP: TestP/skip\n"}`,
+		`{"Action":"skip","Test":"TestP/skip"}`,
+		`{"Action":"output","Test":"TestP","Output":"--- FAIL: TestP\n"}`,
+		`{"Action":"fail","Test":"TestP","Elapsed":0.03}`,
+		`{"Action":"pass","Test":"TestP/other","Elapsed":1}`,
+		"",
+	}, "\n")
+	want := map[string]string{"TestP/ok": "ok", "TestP/bad": "bad", "TestP/skip": "skip"}
+	res, other, err := goTestSubtestResults(strings.NewReader(events), want)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(other) == 0 || !strings.Contains(strings.Join(other, "\n"), "FAIL: TestP") {
+		t.Fatalf("parent output was not kept aside: %q", other)
+	}
+	got := map[string]testreg.Result{}
+	for _, r := range res {
+		got[r.Instance] = r
+	}
+	if len(got) != 3 {
+		t.Fatalf("results %+v, want the three asked subtests and not the other", res)
+	}
+	if got["ok"].Verdict != testreg.Pass || got["ok"].Seconds != 0.01 {
+		t.Fatalf("a passing subtest beside a failing parent: %+v", got["ok"])
+	}
+	if got["bad"].Verdict != testreg.Fail || !strings.Contains(got["bad"].Reason, "TestP/bad") || !strings.Contains(got["bad"].Reason, "bad case") {
+		t.Fatalf("a failing subtest: %+v", got["bad"])
+	}
+	if got["skip"].Verdict != testreg.Fail || !strings.Contains(got["skip"].Reason, "skipped") {
+		t.Fatalf("a skipped subtest: %+v", got["skip"])
+	}
+
+	root := noNeedsRoot(t)
+	for name, src := range map[string]string{
+		"go.mod":      "module x\n\ngo 1.25\n",
+		"p/a_test.go": "package p\n\nimport \"testing\"\n\nfunc TestP(t *testing.T) {}\n",
+	} {
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(root, name)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, name), []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	a := newGoTestAdapter(nil, root, 1)
+	var runs []string
+	a.goTest = func(_ context.Context, dir string, args []string, stdout, _ io.Writer) error {
+		runs = append(runs, strings.Join(args, " "))
+		m, held := goTestPackageLocks.Load(filepath.Join(dir, args[len(args)-1]))
+		if !held {
+			t.Errorf("go test %v runs with no lock", args)
+		} else if mu := m.(*sync.Mutex); mu.TryLock() {
+			mu.Unlock()
+			t.Errorf("go test %v runs without holding its package lock", args)
+		}
+		run := strings.Join(args, " ")
+		if strings.Contains(run, "$/^(") {
+			if _, err := io.WriteString(stdout, strings.Join([]string{
+				`{"Action":"pass","Test":"TestP/ok","Elapsed":0}`,
+				`{"Action":"output","Test":"TestP/bad","Output":"--- FAIL: TestP/bad\n"}`,
+				`{"Action":"fail","Test":"TestP/bad","Elapsed":0.02}`,
+				`{"Action":"output","Test":"TestP","Output":"parent check failed\n"}`,
+				`{"Action":"fail","Test":"TestP"}`,
+				"",
+			}, "\n")); err != nil {
+				return err
+			}
+			return errors.New("exit status 1")
+		}
+		_, err := io.WriteString(stdout, `{"Action":"pass","Test":"TestP","Elapsed":0.04}`+"\n")
+		return err
+	}
+	row := func(full, inputs string) testreg.Instance {
+		return testreg.Instance{Full: full, Lang: testreg.LangFree, Test: testreg.Test{
+			Key: full, Scope: testreg.LangFree, Adapter: "gotest", Inputs: []byte(inputs)}}
+	}
+	res, err = a.Run(context.Background(), testreg.LangFree, []testreg.Instance{
+		row("parent", `{"package":"./p","test":"TestP"}`),
+		row("ok", `{"package":"./p","test":"TestP","subtest":"ok"}`),
+		row("bad", `{"package":"./p","test":"TestP","subtest":"bad"}`),
+		row("spaced", `{"package":"./p","test":"TestP","subtest":"control: slot names"}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	by := map[string]testreg.Result{}
+	for _, r := range res {
+		by[r.Instance] = r
+	}
+	if by["parent"].Verdict != testreg.Pass {
+		t.Fatalf("the top-level row: %+v", by["parent"])
+	}
+	if by["ok"].Verdict != testreg.Pass || by["ok"].Seconds != goTestTick {
+		t.Fatalf("a subtest that passed while its parent failed: %+v", by["ok"])
+	}
+	if by["bad"].Verdict != testreg.Fail || !strings.Contains(by["bad"].Reason, "TestP/bad") {
+		t.Fatalf("the failing subtest: %+v", by["bad"])
+	}
+	if _, ok := by["spaced"]; ok {
+		t.Fatalf("an asked subtest with no event was reported: %+v", by["spaced"])
+	}
+	if len(runs) != 2 {
+		t.Fatalf("go test runs:\n%s", strings.Join(runs, "\n"))
+	}
+	plain, sub := runs[0], runs[1]
+	if !strings.Contains(plain, "-run ^(TestP)$ ./p") {
+		t.Fatalf("top-level -run: %s", plain)
+	}
+	if !strings.Contains(sub, "-run ^TestP$/^(bad|control: slot names|ok)$ ./p") {
+		t.Fatalf("subtest -run: %s", sub)
+	}
+}
+
+// TestAPlantedGoSkipIsRedThroughTheAdapter: the gotest adapter runs a real
+// go test over a planted module, and a test that calls t.Skip, a test whose
+// subtest skips and a fuzz target with no seed input each fail by name. go
+// test itself reports the first as skipped and the others as passed, so
+// with the adapter's checks planted out the first would be no verdict and
+// the others passes; a test and a seeded fuzz target beside them pass. It
+// runs the Go toolchain, so it is
+// functional (docs/rulings.json no-skips: the run-time gate).
+func TestAPlantedGoSkipIsRedThroughTheAdapter(t *testing.T) {
+	t.Parallel()
+	root := noNeedsRoot(t)
+	for f, body := range map[string]string{
+		"go.mod":      "module plant\n\ngo 1.21\n",
+		"p/p_test.go": "package p\n\nimport \"testing\"\n\nfunc TestSkips(t *testing.T) { t.Skip(\"no cc on PATH\") }\n\nfunc TestSubSkips(t *testing.T) {\n\tt.Run(\"needs_cc\", func(t *testing.T) { t.Skip(\"no cc on PATH\") })\n\tt.Run(\"runs\", func(t *testing.T) {})\n}\n\nfunc TestRuns(t *testing.T) {}\n\nfunc FuzzNoSeeds(f *testing.F) { f.Fuzz(func(t *testing.T, b []byte) {}) }\n\nfunc FuzzSeeded(f *testing.F) {\n\tf.Add([]byte(\"x\"))\n\tf.Fuzz(func(t *testing.T, b []byte) {})\n}\n",
+	} {
+		path := filepath.Join(root, filepath.FromSlash(f))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	inst := func(test string) testreg.Instance {
+		key := "tooling.plant." + strings.ToLower(test)
+		return testreg.Instance{Full: testreg.LangFree + ".functional." + key, Lang: testreg.LangFree, Test: testreg.Test{
+			Key: key, Scope: testreg.LangFree, Adapter: "gotest", Tier: "functional",
+			Inputs: []byte(`{"package":"./p","test":"` + test + `"}`)}}
+	}
+	insts := []testreg.Instance{inst("TestSkips"), inst("TestSubSkips"), inst("TestRuns"), inst("FuzzNoSeeds"), inst("FuzzSeeded")}
+	res, err := newGoTestAdapter(nil, root, 1).Run(context.Background(), "", insts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]testreg.Result{}
+	for _, r := range res {
+		got[r.Instance] = r
+	}
+	if r := got[insts[0].Full]; r.Verdict != testreg.Fail || !strings.Contains(r.Reason, "the Go test skipped") || !strings.Contains(r.Reason, "no cc on PATH") {
+		t.Errorf("a planted t.Skip: %+v", r)
+	}
+	if r := got[insts[1].Full]; r.Verdict != testreg.Fail || !strings.Contains(r.Reason, "subtests skipped") || !strings.Contains(r.Reason, "needs_cc") {
+		t.Errorf("a planted subtest skip: %+v", r)
+	}
+	if r := got[insts[2].Full]; r.Verdict != testreg.Pass {
+		t.Errorf("a test that runs: %+v", r)
+	}
+	if r := got[insts[3].Full]; r.Verdict != testreg.Fail || !strings.Contains(r.Reason, "ran no seed input") {
+		t.Errorf("a planted fuzz target with no seed: %+v", r)
+	}
+	if r := got[insts[4].Full]; r.Verdict != testreg.Pass {
+		t.Errorf("a fuzz target with a seed: %+v", r)
+	}
+	if len(res) != len(insts) {
+		t.Errorf("want one result per row, got %+v", res)
 	}
 }
 

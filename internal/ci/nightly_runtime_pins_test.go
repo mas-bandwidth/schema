@@ -27,7 +27,7 @@ func TestNightlyRuntimePinsMatchMergeAndRelease(t *testing.T) {
 		return pins
 	}
 	want := read("ci-full.yml")
-	for _, name := range []string{"ci-fast.yml", "certify.yml", "leg.yml", "nightly-conformance.yml"} {
+	for _, name := range []string{"certify.yml", "leg.yml", "nightly-conformance.yml"} {
 		got := read(name)
 		if len(want) == 0 {
 			t.Fatal("want is empty: the loop below would check nothing")

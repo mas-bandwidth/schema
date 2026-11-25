@@ -191,7 +191,7 @@ func TestACFormatShardHoldsItsRatchetLines(t *testing.T) {
 		}
 		cmd := exec.Command("sh", "make/checks/c-clean-format.sh", "allow.txt", "gen")
 		cmd.Dir = dir
-		cmd.Env = append(os.Environ(), "CLANG_FORMAT="+filepath.Join(dir, "format"), "OUT="+filepath.Join(dir, "out"), "SHARD="+shard)
+		cmd.Env = append(os.Environ(), "CLANG_FORMAT="+filepath.Join(dir, "format"), "OUT="+filepath.Join(dir, "out"), "SHARD="+shard, "FILE_SECONDS=5")
 		out, err := cmd.CombinedOutput()
 		return string(out), err
 	}

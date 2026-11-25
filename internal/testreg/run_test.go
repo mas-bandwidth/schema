@@ -197,6 +197,39 @@ func TestExpectedNotRanFails(t *testing.T) {
 	wantRed(t, rep, "the fake adapter did not report it", "expected 3 instances to run, 2 ran")
 }
 
+// TestARunOfNoTestsFails: a run with no instance to run is red, by name: it
+// proves nothing, so it is never a pass of 0 (docs/rulings.json no-skips).
+// Planted: without the check, Expected == Ran == Passed == 0 reads green.
+func TestARunOfNoTestsFails(t *testing.T) {
+	t.Parallel()
+	reg := load(t, fixture)
+	wantRed(t, runner(reg, fake{}).Run(context.Background(), nil), "a run of 0 tests is no pass")
+	// the account alone, with no problem line: 0 == 0 == 0 is still red
+	if (&Report{}).OK() {
+		t.Error("an empty report reads green")
+	}
+}
+
+// TestAPassThatReportsASkipFails: a pass whose reason says it skipped did
+// not run what it passes for, so it fails by name; a pass whose reason
+// names a seed stays a pass. Planted: without the reason check, the first
+// row passes.
+func TestAPassThatReportsASkipFails(t *testing.T) {
+	t.Parallel()
+	reg := load(t, fixture)
+	skipReason := fake{run: func(_ context.Context, insts []Instance) ([]Result, error) {
+		out := passAll(insts)
+		out[0].Reason = "skipped: lua not found"
+		out[1].Reason = "seed 20261125"
+		return out, nil
+	}}
+	rep := runner(reg, skipReason).Run(context.Background(), selectQ(t, reg, Query{Langs: []string{"go"}}))
+	wantRed(t, rep, "a pass whose reason reports a skip")
+	if rep.Failed != 1 {
+		t.Errorf("want only the pass that skipped failed, got %d failed", rep.Failed)
+	}
+}
+
 func TestAResultNobodyAskedForFails(t *testing.T) {
 	t.Parallel()
 	reg := load(t, fixture)
@@ -288,6 +321,14 @@ func TestAHarnessSkipLineFails(t *testing.T) {
 		"Tests: 4 passed, 1 skipped",
 		"skipped: 2",
 		"skips=1",
+		// other runners' words for a test that did not run
+		"test tests::needs_net ... ignored",
+		"test result: ok. 1 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out",
+		"3 tests, 0 failures, 1 excluded",
+		"Tests: 1 todo, 3 passed",
+		"1 test pending",
+		"not run: 2",
+		"00:01 +3 ~1: All tests passed!",
 	} {
 		if !reportsASkip(l) {
 			t.Errorf("a planted skip verdict passed: %q", l)
@@ -307,6 +348,11 @@ func TestAHarnessSkipLineFails(t *testing.T) {
 		"reading testdata/skip_depth.bin",
 		"the unknown-skip walk refused depth 65",
 		"BITPHASE_OK go 1",
+		"test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out",
+		"3 tests, 0 failures, 0 excluded",
+		"00:01 +3: All tests passed!",
+		"the reader ignored field 7 as the schema says",
+		"pending_writes: 0",
 	} {
 		if reportsASkip(l) {
 			t.Errorf("a line that reports no skip was refused: %q", l)
@@ -850,4 +896,29 @@ func (c deadlineCtx) Err() error {
 		return context.DeadlineExceeded
 	}
 	return nil
+}
+
+// TestGoTestSubtestsOfOneParentShareOneShard: subtest rows of one Go test
+// share that test's process, so a cut keeps them one block, placed where
+// the first is, even when another row sits between them.
+func TestGoTestSubtestsOfOneParentShareOneShard(t *testing.T) {
+	t.Parallel()
+	sub := func(name, test string) Instance {
+		return Instance{Full: name, Test: Test{Adapter: "gotest", Seconds: 5, Inputs: []byte(`{"package":"./compiler","test":"` + test + `","subtest":"a.schema"}`)}}
+	}
+	plain := func(name string) Instance {
+		return Instance{Full: name, Test: Test{Adapter: "gotest", Seconds: 5}}
+	}
+	all := []Instance{plain("a"), sub("s1", "TestA"), sub("s2", "TestA"), plain("b"), sub("s3", "TestA"), sub("o1", "TestB"), plain("c"), plain("d")}
+	var got []string
+	for _, part := range Parts(all, 3) {
+		var names []string
+		for _, inst := range part {
+			names = append(names, inst.Full)
+		}
+		got = append(got, strings.Join(names, ","))
+	}
+	if strings.Join(got, " | ") != "a,s1,s2,s3 | b,o1 | c,d" {
+		t.Fatalf("parts %q, want TestA's three subtests together", got)
+	}
 }

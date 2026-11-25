@@ -370,16 +370,20 @@ func t02CppW14(t *testing.T) {
 		"W14 the ABI assert ties the plan's dst to offsetof(x)")
 	t02CppHas(t, src, "static_assert( (uint32_t) __builtin_offsetof( T, y ) == 4, \"T.y: the fixed form's plan lands here\" );",
 		"W14 the ABI assert ties the plan's dst to offsetof(y)")
-	dst := t02CppBlock(t, src, "constexpr TableFixedDst TFixedDst[] = {", "\n};")
+	// the header names no row: a row is found by its place in the layout walk
+	dstNotes := cppFixedDstNotes(st)
+	dstRow := func(note string) string {
+		return cppFixedRow(t, src, "constexpr TableFixedDst TFixedDst[] = {\n", dstNotes, note)
+	}
 	// The destination rows carry BYTE OFFSETS, not offsetof expressions: the
 	// fixed form's dst is the same number the static asserts above vouch for,
 	// and the C++ spelling of offsetof cannot name an array element (a fixed
 	// arm's spans[2]int32 has no .value member), so both legs walk one set of
 	// numbers (ctable/fixedform.go). The bytes are still tied to the ABI by
 	// the static_assert( __builtin_offsetof( T, x ) == 0 ) pair above.
-	t02CppHas(t, dst, "{ 0, 0, 0, 0, 0 }, // x",
+	t02CppHas(t, dstRow("x"), "{ 0, 0, 0, 0, 0 },",
 		"W14 the storage row carries x's byte offset, offsetof(x) = 0")
-	t02CppHas(t, dst, "{ 4, 0, 0, 0, 0 }, // y",
+	t02CppHas(t, dstRow("y"), "{ 4, 0, 0, 0, 0 },",
 		"W14 the storage row carries y's byte offset, offsetof(y) = 4")
 }
 

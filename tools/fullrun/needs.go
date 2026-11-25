@@ -47,8 +47,7 @@ var benchProperties = map[string]string{
 // probeProperty reports why this machine does not provide the property, or
 // nil when it does. Run on the bench (fullrun probe PROPERTY).
 func probeProperty(name string) error {
-	switch name {
-	case "casefold":
+	if name == "casefold" {
 		return testvolume.Probe()
 	}
 	return fmt.Errorf("fullrun has no probe for %q", name)

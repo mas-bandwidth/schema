@@ -137,6 +137,23 @@ func (s *scan) registryMakeTargets() map[string]bool {
 	}
 	var langs, perLang []string
 	for line := range strings.SplitSeq(string(data), "\n") {
+		if strings.Contains(line, `"make":{`) {
+			// a per-language row's make gates run by name too
+			var row struct {
+				Rec    string          `json:"rec"`
+				Inputs json.RawMessage `json:"inputs"`
+			}
+			if json.Unmarshal([]byte(line), &row) == nil && row.Rec == "test" {
+				if gates, ok, err := LangMakeGates(row.Inputs); ok && err == nil {
+					for _, gs := range gates {
+						for _, g := range gs {
+							out[g.Target] = true
+						}
+					}
+				}
+			}
+			continue
+		}
 		isMake := strings.Contains(line, `"adapter":"make"`) || strings.Contains(line, `"adapter":"make-gotest"`)
 		isLang := strings.Contains(line, `"rec":"lang"`)
 		if !isMake && !isLang && !strings.Contains(line, testreg.LangPlaceholder) {

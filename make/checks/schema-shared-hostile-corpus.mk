@@ -15,7 +15,7 @@ GO ?= go
 # THE FAST GATE (push and pull request): the committed manifest still matches
 # the engine, and the corpus names every refusal reason the engine can produce.
 schema-shared-hostile-corpus:
-	$(GO) test -v -count=1 -timeout 600s ./internal/ci -run '^(TestHostileRefusalReasonFailsClosed|TestSchemaSharedHostileCorpus|TestSchemaSharedHostileCorpusReasons|TestSchemaSharedHostileCorpusSources|TestSchemaSharedHostileCorpusExcludedSources)$$'
+	$(GO_TEST) -v -count=1 -timeout 600s ./internal/ci -run '^(TestHostileRefusalReasonFailsClosed|TestSchemaSharedHostileCorpus|TestSchemaSharedHostileCorpusReasons|TestSchemaSharedHostileCorpusSources|TestSchemaSharedHostileCorpusExcludedSources)$$'
 
 # Regenerate the manifest from the engine after a deliberate verdict change.
 schema-shared-hostile-corpus-generate:
@@ -25,5 +25,5 @@ schema-shared-hostile-corpus-generate:
 # manifest, require the drift gate to go red, then require the unplanted corpus
 # to be green. A control that cannot go red is no control.
 schema-shared-hostile-corpus-negative-control:
-	$(GO) test -v -count=1 -timeout 600s ./internal/ci -run '^(TestSchemaSharedHostileCorpusNegativeControl|TestSchemaSharedHostileCorpusSourcesNegativeControl)$$'
+	$(GO_TEST) -v -count=1 -timeout 600s ./internal/ci -run '^(TestSchemaSharedHostileCorpusNegativeControl|TestSchemaSharedHostileCorpusSourcesNegativeControl)$$'
 

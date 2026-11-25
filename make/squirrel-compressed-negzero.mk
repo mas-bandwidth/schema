@@ -19,6 +19,6 @@
 .PHONY: conformance-squirrel-compressed-negzero
 conformance-squirrel-compressed-negzero:
 	@if [ ! -x "$(SQ)" ]; then $(MAKE) dist-squirrel; fi
-	SQ="$(abspath $(SQ))" $(GO) test -timeout=0 -count=1 ./internal/codegen/squirreltable -run '^TestSquirrelCompressedNegZeroCorpus$$'
+	SQ="$(abspath $(SQ))" $(GO_TEST) -timeout=0 -count=1 ./internal/codegen/squirreltable -run '^TestSquirrelCompressedNegZeroCorpus$$'
 
 test-squirrel: conformance-squirrel-compressed-negzero

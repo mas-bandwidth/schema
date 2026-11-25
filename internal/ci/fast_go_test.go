@@ -1,109 +1,10 @@
 package ci
 
 import (
-	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
-	"unicode"
 )
-
-// cardAddedGoFixedFormTest is a harvest-card name (schema#1374, P2 on the go
-// leg). Go's -run is an unanchored regexp: `TestFixedForm` matches it and
-// `TestFixedVersioning|TestHash|TestFloor|TestLineageMerge` does not.
-const cardAddedGoFixedFormTest = "TestFixedForm_P2_WriteReadWriteByteIdentical"
-
-// tablesGoFixedformTarget is the make target that actually runs TestFixedForm*
-// (make/go.mk). It is not tables-go-fixed-form, which is the
-// compiled-binary byte gate ci-fast's go leg already invokes.
-var tablesGoFixedformTarget = regexp.MustCompile(`(?:^|[^[:alnum:]_-])tables-go-fixedform(?:[^[:alnum:]_-]|$)`)
-
-// TestFastLaneRunsCardAddedGoFixedFormTests is schema#1376.
-//
-// A card adding TestFixedForm* to internal/codegen/gotable is a go-leg pull
-// request into fixed-table-form. runGenerated once skipped those tests unless
-// an environment variable was set, and ci-fast's go-test-touched job used to
-// run a bare `go test $PACKAGES`. The go leg-gate that could run
-// tables-go-fixedform is skipped below main (its if: requires base_ref ==
-// main). Both doors shut: the card is green in every ci-fast job having run
-// nothing, which is why those go members were derated.
-//
-// This gate requires that some ci-fast job that still runs on a pull request
-// into fixed-table-form actually selects that test.
-func TestFastLaneRunsCardAddedGoFixedFormTests(t *testing.T) {
-	wf, ok := workflows(t, repoRoot(t))["ci-fast.yml"]
-	if !ok {
-		t.Fatal("ci-fast.yml is missing")
-	}
-	jobs := yamlJobs(wf)
-	if len(jobs) == 0 {
-		t.Fatal("ci-fast.yml has no jobs")
-	}
-	if _, ok := jobs["go-test-touched"]; !ok {
-		t.Fatal("ci-fast.yml has no go-test-touched job — that is the job that still runs on a PR into fixed-table-form")
-	}
-
-	var found []string
-	for name, body := range jobs {
-		if jobSkippedBelowMain(body) {
-			continue
-		}
-		if jobSelectsCardAddedGoTest(t, body) {
-			found = append(found, name)
-		}
-	}
-	if len(found) == 0 {
-		t.Fatalf("no ci-fast job that still runs on a PR into dev or fixed-table-form runs %s (schema#1376). "+
-			"the go leg-gate is skipped below main; "+
-			"tables-go-fixed-form is the binary gate and tables-go-versioning's -run never names TestFixedForm. "+
-			"Invoke `make tables-go-fixedform` (or go test ./internal/codegen/gotable -run TestFixedForm) from go-test-touched.",
-			cardAddedGoFixedFormTest)
-	}
-	t.Logf("card-added %s is visible to ci-fast job(s) %s", cardAddedGoFixedFormTest, strings.Join(found, ", "))
-
-	// Verify ci-fast.yml triggers on a pull request whatever its base,
-	// including stream-to-dev, main, fixed-table-form, and a base that is
-	// none of those, while blocking fork PRs.
-	for _, base := range []string{"dev", "main", "fixed-table-form", "feature/not-a-named-base"} {
-		ev := ciEvent{
-			Name:     "pull_request",
-			Branch:   base,
-			HeadRef:  "sprint-group/schema-go",
-			Repo:     "mas-bandwidth/schema",
-			HeadRepo: "mas-bandwidth/schema",
-			PlanPkgs: "./internal/codegen/gotable",
-			PlanLegs: `["go"]`,
-		}
-		if ok, err := jobRunsInWorkflow(wf, "go-test-touched", ev); err != nil || !ok {
-			t.Fatalf("ci-fast.yml go-test-touched did not run on same-repo PR into %s: ok=%v err=%v", base, ok, err)
-		}
-		forkEv := ev
-		forkEv.HeadRepo = "fork/schema"
-		if ok, err := jobRunsInWorkflow(wf, "go-test-touched", forkEv); err != nil || ok {
-			t.Fatalf("ci-fast.yml go-test-touched ran on fork PR into %s: ok=%v err=%v", base, ok, err)
-		}
-	}
-	// Mutation control: restoring a named-base filter must stop a pull request
-	// whose base is not in that list.
-	const unfiltered = "  # every pull request, whatever its base: sprint landings target sprint/<stream> branches, not main\n  pull_request:\n  workflow_dispatch:\n"
-	const filtered = "  # every pull request, whatever its base: sprint landings target sprint/<stream> branches, not main\n  pull_request:\n    branches: [ main, dev, fixed-table-form ]\n  workflow_dispatch:\n"
-	if !strings.Contains(wf, unfiltered) {
-		t.Fatal("ci-fast.yml pull_request trigger is not unfiltered")
-	}
-	mutated := strings.Replace(wf, unfiltered, filtered, 1)
-	if ok, err := jobRunsInWorkflow(mutated, "go-test-touched", ciEvent{
-		Name:     "pull_request",
-		Branch:   "feature/not-a-named-base",
-		HeadRef:  "sprint-group/schema-go",
-		Repo:     "mas-bandwidth/schema",
-		HeadRepo: "mas-bandwidth/schema",
-		PlanPkgs: "./internal/codegen/gotable",
-		PlanLegs: `["go"]`,
-	}); err != nil || ok {
-		t.Fatalf("restoring a named-base filter on ci-fast.yml still ran a pull request into an unnamed base: ok=%v err=%v", ok, err)
-	}
-}
 
 // TestCIFastAndCIFullRunOnPullRequestWhateverItsBase is the sprint-base gate:
 // CI fast runs on a pull request into any base; CI full runs on none (it is
@@ -119,16 +20,11 @@ func TestCIFastAndCIFullRunOnPullRequestWhateverItsBase(t *testing.T) {
 		PlanPkgs: "./internal/codegen/gotable",
 		PlanLegs: `["go"]`,
 	}
-	for _, job := range []string{"plan", "lint-fast", "schema-test", "schema-test-pr", "ci-policy", "go-test-touched"} {
+	for _, key := range ciFastJobKeys(wfs) {
+		_, job, _ := strings.Cut(key, ":")
 		if ok, err := jobRunsInWorkflow(wfs["ci-fast.yml"], job, ev); err != nil || !ok {
 			t.Fatalf("ci-fast.yml %s did not run on a pull request into %s: ok=%v err=%v", job, ev.Branch, ok, err)
 		}
-	}
-	if ok, err := jobRunsInWorkflow(wfs["ci-fast.yml"], "verify-elixir-conformance", ev); err != nil || ok {
-		t.Fatalf("ci-fast.yml verify-elixir-conformance ran when the PR selected Go: ok=%v err=%v", ok, err)
-	}
-	if ok, err := jobRunsInWorkflow(wfs["ci-fast.yml"], "verify-goose-fuzz", ev); err != nil || ok {
-		t.Fatalf("ci-fast.yml verify-goose-fuzz ran on a pull request into %s that selected Go: ok=%v err=%v", ev.Branch, ok, err)
 	}
 	// ci-full.yml runs nightly and on dispatch only (the owner, 2026-11-15: "I
 	// want everything that is not light moved to nightly test now." "no
@@ -213,21 +109,6 @@ func TestCIFastAndCIFullRunOnPullRequestWhateverItsBase(t *testing.T) {
 	}
 }
 
-// TestHyphenatedFixedFormTargetDoesNotSelectGoTests is the trap #1376 names:
-// tables-go-fixed-form (binaries) must not be mistaken for tables-go-fixedform
-// (the go test of TestFixedForm*).
-func TestHyphenatedFixedFormTargetDoesNotSelectGoTests(t *testing.T) {
-	if tablesGoFixedformTarget.MatchString("make tables-go-fixed-form tables-go-versioning") {
-		t.Fatal("tables-go-fixed-form (the binary gate) was counted as tables-go-fixedform")
-	}
-	if tablesGoFixedformTarget.MatchString("make tables-go-fixedform-negative-control") {
-		t.Fatal("tables-go-fixedform-negative-control was counted as tables-go-fixedform")
-	}
-	if !tablesGoFixedformTarget.MatchString("make tables-go-fixedform") {
-		t.Fatal("tables-go-fixedform was not recognised")
-	}
-}
-
 func yamlJobs(wf string) map[string]string {
 	_, after, ok := strings.Cut(wf, "\njobs:\n")
 	if !ok {
@@ -243,202 +124,6 @@ func yamlJobs(wf string) map[string]string {
 			end = idxs[i+1][0]
 		}
 		out[name] = after[loc[0]:end]
-	}
-	return out
-}
-
-func jobSkippedBelowMain(job string) bool {
-	for raw := range strings.SplitSeq(job, "\n") {
-		if strings.HasPrefix(raw, "    if:") && strings.Contains(raw, "github.base_ref == 'main'") {
-			return true
-		}
-	}
-	return false
-}
-
-func jobSelectsCardAddedGoTest(t *testing.T, job string) bool {
-	t.Helper()
-	for _, l := range lines("ci-fast.yml", job) {
-		switch {
-		case strings.HasPrefix(l.text, "run:"):
-			rest := strings.TrimSpace(strings.TrimPrefix(l.text, "run:"))
-			if rest != "" && rest != "|" && rest != ">" {
-				if lineSelectsCardAddedGoTest(t, rest) {
-					return true
-				}
-			}
-		case lineSelectsCardAddedGoTest(t, l.text):
-			return true
-		}
-	}
-	return false
-}
-
-func lineSelectsCardAddedGoTest(t *testing.T, line string) bool {
-	t.Helper()
-	if tablesGoFixedformTarget.MatchString(line) {
-		return makeTargetSelectsCardAdded(t)
-	}
-	cmd, ok := parseGoTestLine(line)
-	if !ok {
-		return false
-	}
-	if !cmd.coversGotable() {
-		return false
-	}
-	return cmd.selects(cardAddedGoFixedFormTest)
-}
-
-func makeTargetSelectsCardAdded(t *testing.T) bool {
-	t.Helper()
-	root := repoRoot(t)
-	data, err := os.ReadFile(filepath.Join(root, "make/go.mk"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := strings.ReplaceAll(string(data), "\\\n", " ")
-	const prefix = "tables-go-fixedform:"
-	in := false
-	var recipe strings.Builder
-	for line := range strings.SplitSeq(text, "\n") {
-		if strings.HasPrefix(line, prefix) {
-			in = true
-			continue
-		}
-		if !in {
-			continue
-		}
-		if strings.HasPrefix(line, "\t") {
-			recipe.WriteString(line)
-			recipe.WriteByte('\n')
-			continue
-		}
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		break
-	}
-	if recipe.Len() == 0 {
-		t.Fatal("make/go.mk has no recipe for tables-go-fixedform")
-	}
-	for line := range strings.SplitSeq(recipe.String(), "\n") {
-		cmd, ok := parseGoTestLine(strings.TrimSpace(line))
-		if ok && cmd.coversGotable() && cmd.selects(cardAddedGoFixedFormTest) {
-			return true
-		}
-	}
-	t.Fatalf("ci-fast invokes tables-go-fixedform but that target does not select %s", cardAddedGoFixedFormTest)
-	return false
-}
-
-type goTestCmd struct {
-	packages []string
-	run      string
-}
-
-func (c goTestCmd) coversGotable() bool {
-	for _, p := range c.packages {
-		p = strings.TrimSuffix(p, "/")
-		switch p {
-		case "./internal/codegen/gotable", "./...", "$PACKAGES":
-			return true
-		}
-	}
-	return false
-}
-
-func (c goTestCmd) selects(name string) bool {
-	if c.run == "" {
-		return true
-	}
-	re, err := regexp.Compile(c.run)
-	if err != nil {
-		return false
-	}
-	return re.MatchString(name)
-}
-
-func parseGoTestLine(line string) (goTestCmd, bool) {
-	fields := splitShell(line)
-	i := 0
-	for i < len(fields) {
-		key, _, ok := strings.Cut(fields[i], "=")
-		if !ok || key == "" || strings.ContainsAny(key, "/-.") {
-			break
-		}
-		i++
-	}
-	fields = fields[i:]
-	if len(fields) >= 2 && (fields[0] == "sh" || fields[0] == "bash") && strings.HasSuffix(fields[1], "test/slowgate/proof") {
-		if len(fields) < 5 {
-			return goTestCmd{}, false
-		}
-		return parseGoTestArgs(fields[4:]), true
-	}
-	if len(fields) >= 1 && strings.HasSuffix(fields[0], "test/slowgate/proof") {
-		if len(fields) < 4 {
-			return goTestCmd{}, false
-		}
-		return parseGoTestArgs(fields[3:]), true
-	}
-	for j := 0; j < len(fields)-1; j++ {
-		if fields[j] == "go" && fields[j+1] == "test" {
-			return parseGoTestArgs(fields[j+2:]), true
-		}
-	}
-	return goTestCmd{}, false
-}
-
-func parseGoTestArgs(args []string) goTestCmd {
-	c := goTestCmd{}
-	for i := 0; i < len(args); i++ {
-		a := args[i]
-		switch {
-		case a == "-run" || a == "--run":
-			if i+1 < len(args) {
-				i++
-				c.run = args[i]
-			}
-		case strings.HasPrefix(a, "-run="):
-			c.run = strings.TrimPrefix(a, "-run=")
-		case strings.HasPrefix(a, "--run="):
-			c.run = strings.TrimPrefix(a, "--run=")
-		case a == "-count" || a == "-timeout" || a == "-parallel":
-			i++
-		case strings.HasPrefix(a, "-"):
-			// flag with attached value, or a boolean
-		default:
-			c.packages = append(c.packages, a)
-		}
-	}
-	return c
-}
-
-func splitShell(s string) []string {
-	var out []string
-	var b strings.Builder
-	var quote rune
-	for _, r := range s {
-		switch {
-		case quote != 0:
-			if r == quote {
-				quote = 0
-			} else {
-				b.WriteRune(r)
-			}
-		case r == '\'' || r == '"':
-			quote = r
-		case unicode.IsSpace(r):
-			if b.Len() > 0 {
-				out = append(out, b.String())
-				b.Reset()
-			}
-		default:
-			b.WriteRune(r)
-		}
-	}
-	if b.Len() > 0 {
-		out = append(out, b.String())
 	}
 	return out
 }

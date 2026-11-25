@@ -281,12 +281,17 @@ func Weight(inst Instance) float64 {
 // produce job), and a leg built in the shard is built once per process
 // however many plants ask (the builder), so nothing is saved by keeping one
 // language's env plants together, and the go corpus plants together weigh
-// more than a shard.
+// more than a shard. Gotest rows that name a subtest of one test share that
+// test's process, so a cut keeps them one block: splitting them would run
+// the process once per shard.
 func unitOf(inst Instance) string {
 	var in struct {
-		Writer string `json:"writer"`
-		File   string `json:"file"`
-		Target string `json:"target"`
+		Writer  string `json:"writer"`
+		File    string `json:"file"`
+		Target  string `json:"target"`
+		Package string `json:"package"`
+		Test    string `json:"test"`
+		Subtest string `json:"subtest"`
 	}
 	if json.Unmarshal(inst.Test.Inputs, &in) != nil {
 		return ""
@@ -298,6 +303,9 @@ func unitOf(inst Instance) string {
 	// of one target cut across two shards would run the target twice
 	if inst.Test.Adapter == "make-gotest" && in.Target != "" {
 		return "make-gotest " + in.File + " " + in.Target
+	}
+	if inst.Test.Adapter == "gotest" && in.Subtest != "" && in.Package != "" && in.Test != "" {
+		return "gotest " + in.Package + " " + in.Test
 	}
 	return ""
 }

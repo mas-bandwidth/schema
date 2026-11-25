@@ -96,6 +96,11 @@ type tally struct {
 	// skippedTests names every test ("package test") that skipped, in the
 	// order go test reported the skips.
 	skippedTests []string
+	// subRuns counts the subtests that ran under each top-level test
+	// ("package test"); seedless names every fuzz target that passed having
+	// run no seed input (each seed is a subtest), so tested nothing.
+	subRuns  map[string]int
+	seedless []string
 	// readErr is why the stream could not be read to its end, or nil.
 	readErr error
 	// writeErr is why an event could not be appended to the events file, or
@@ -122,7 +127,7 @@ func read(in io.Reader, text io.Writer) tally { return readTo(in, text, nil) }
 // rows (EventsEnv). One write per line, so the lines of go tests that run
 // side by side under make -j never interleave within a line.
 func readTo(in io.Reader, text, events io.Writer) tally {
-	t := tally{perPackage: map[string]int{}}
+	t := tally{perPackage: map[string]int{}, subRuns: map[string]int{}}
 	sc := bufio.NewScanner(in)
 	sc.Buffer(make([]byte, 1<<20), 64<<20)
 	for sc.Scan() {
@@ -152,12 +157,19 @@ func readTo(in io.Reader, text, events io.Writer) tally {
 		if e.Test == "" {
 			continue // a package-level verdict is not a test
 		}
+		top, _, isSub := strings.Cut(e.Test, "/")
 		switch e.Action {
 		case "run":
 			t.ran++
+			if isSub {
+				t.subRuns[e.Package+" "+top]++
+			}
 		case "pass":
 			t.passed++
 			t.perPackage[e.Package]++
+			if !isSub && strings.HasPrefix(top, "Fuzz") && t.subRuns[e.Package+" "+top] == 0 {
+				t.seedless = append(t.seedless, e.Package+" "+top)
+			}
 		case "skip":
 			t.skipped++
 			t.skippedTests = append(t.skippedTests, e.Package+" "+e.Test)
@@ -181,6 +193,9 @@ func verdict(exit int, t tally, each bool) (int, string) {
 	}
 	if t.skipped > 0 {
 		return 1, fmt.Sprintf("SKIPPED: %d test(s) of this selection skipped themselves, so they did not run; a skip is a failure, and a test that is not to run is left out at the root", t.skipped)
+	}
+	if len(t.seedless) > 0 {
+		return 1, fmt.Sprintf("NO SEED: fuzz target(s) ran no seed input (no f.Add and no testdata/fuzz corpus), so they tested nothing: %s", strings.Join(t.seedless, ", "))
 	}
 	if t.passed == 0 {
 		return 1, "go test exited 0 but no test passed"
@@ -320,7 +335,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 			_ = cmd.Wait()         // errdiscard: as above
 			return broken("%s=%s: %v", EventsEnv, p, err)
 		}
-		defer f.Close() // errdiscard: every line was written by its own Write, each checked
+		// closed on every path; the success path closes it first and checks
+		defer func() { _ = f.Close() }() // errdiscard: a second Close of a closed file, or the close of a run already broken
 		events = f
 	}
 	var t tally
@@ -340,6 +356,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 		_, _ = io.Copy(io.Discard, pipe) // errdiscard: the run is already broken; this only lets go test exit
 		_ = cmd.Wait()                   // errdiscard: as above
 		return broken("reading go test -json: %v", t.readErr)
+	}
+	if events != nil {
+		if err := events.Close(); err != nil {
+			_ = cmd.Wait() // errdiscard: the run is already broken; this only lets go test exit
+			return broken("closing go test events %s: %v", events.Name(), err)
+		}
 	}
 	exit := 0
 	if err := cmd.Wait(); err != nil {

@@ -72,7 +72,7 @@ func TestStampSelfGuardIsRed(t *testing.T) {
 }
 
 func TestStampTouchStatusLostIsRed(t *testing.T) {
-	fs, _ := fragment(t, "stamp-touch-lost.mk")
+	fs, _ := fragment(t, "plants/stamp-touch-lost.mk")
 	got := withRule(fs, RuleStamp)
 	if len(got) != 1 {
 		t.Fatalf("want 1 stamp finding, got %d: %v", len(got), fs)
@@ -83,7 +83,7 @@ func TestStampTouchStatusLostIsRed(t *testing.T) {
 }
 
 func TestStampCorrectIsGreen(t *testing.T) {
-	fs, _ := fragment(t, "stamp-correct.mk")
+	fs, _ := fragment(t, "plants/stamp-correct.mk")
 	if len(fs) != 0 {
 		t.Errorf("want no findings, got %v", fs)
 	}
@@ -118,7 +118,7 @@ func TestCleanRootIsGreen(t *testing.T) {
 // F-069: an extensionless script is found by its shebang anywhere in the
 // tree, and a file whose shebang names another interpreter is not read.
 func TestExtensionlessScriptFoundByShebang(t *testing.T) {
-	fs, st, err := ScanTree(filepath.Join("testdata", "tree"), []string{"Makefile"})
+	fs, st, err := ScanTree(filepath.Join("testdata", "plants", "tree"), []string{"Makefile"})
 	if err != nil {
 		t.Fatal(err)
 	}

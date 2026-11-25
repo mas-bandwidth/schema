@@ -217,7 +217,7 @@ var WriteRules = []string{"assert", "refuse"}
 var (
 	nameRE = regexp.MustCompile(`^[a-z][a-z0-9]*(-[a-z0-9]+)*$`)
 	caseRE = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
-	// needRE is a machine property a test needs (Test.Needs)
+	// needRE is a machine property a test needs (Test.Needs).
 	needRE = nameRE
 )
 
