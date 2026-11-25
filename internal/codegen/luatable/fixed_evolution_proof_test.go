@@ -464,7 +464,7 @@ func TestLuaFixedEvolutionOrdinals(t *testing.T) {
 		t.Errorf("the negative control: an unchecked identity ordinal still refuses")
 	}
 	g = luaEvoGen(t, uNew, lin)
-	g.plant(t, "    if tag > nArms then refuse_out_of_range() end\n", "")
+	g.plant(t, "    if tag < 0 or tag > nArms then refuse_out_of_range() end\n", "")
 	if got := g.load(t, "Lineage", tag).head; got == "refused out_of_range" {
 		t.Errorf("the negative control: a compiled tag held to the reader's arms still refuses")
 	}

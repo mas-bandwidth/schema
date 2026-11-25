@@ -5,7 +5,7 @@ Part of the specification: every test of tier `functional`, from the test regist
 
 **Tier functional:** uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it.
 
-Functional tests every language answers: 2560. Language-free tests: 2290.
+Functional tests every language answers: 2560. Language-free tests: 2291.
 
 Run this tier for a language with `schema-test run --tier functional --lang L`, one test with `schema-test run <full name>`.
 
@@ -4811,10 +4811,11 @@ one schema version reads or writes another's data.
 |---|---|---|---|---|---|
 | `none.functional.evolution.lobstertable.lobster-fixed-unlawful-corpus` | `gotest` | Go test TestLobsterFixedUnlawfulCorpus in ./internal/codegen/lobstertable | `package: ./internal/codegen/lobstertable`<br>`test: TestLobsterFixedUnlawfulCorpus` | the Go test passes | `internal/codegen/lobstertable/fixed_unlawful_corpus_test.go:86` |
 
-#### `evolution` family `luatable`, 1 test
+#### `evolution` family `luatable`, 2 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
+| `none.functional.evolution.luatable.lua-fixed-r14-grown-tag-reads-the-writers-tag-width` | `gotest` | Go test TestLuaFixedR14GrownTagReadsTheWritersTagWidth in ./internal/codegen/luatable | `package: ./internal/codegen/luatable`<br>`test: TestLuaFixedR14GrownTagReadsTheWritersTagWidth` | the Go test passes | `internal/codegen/luatable/fixed_r14_test.go:235` |
 | `none.functional.evolution.luatable.lua-fixed-unlawful-corpus` | `gotest` | Go test TestLuaFixedUnlawfulCorpus in ./internal/codegen/luatable | `package: ./internal/codegen/luatable`<br>`test: TestLuaFixedUnlawfulCorpus` | the Go test passes | `internal/codegen/luatable/fixed_unlawful_corpus_test.go:104` |
 
 #### `evolution` family `luautable`, 2 tests

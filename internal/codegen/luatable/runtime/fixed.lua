@@ -485,6 +485,7 @@ local function layout_tree(layout)
   end
   local root = parse()
   if i ~= count or root == nil or root.kind ~= 13 then return nil end
+  local malformed = false
   local function check_bounds(node)
     if node.size > maxRecordBytes then return false end
     if node.kind == 13 then
@@ -498,6 +499,21 @@ local function layout_tree(layout)
     elseif node.kind == 35 then
       if #node.children ~= 1 or 1 + node.children[1].size ~= node.size then return false end
       if not check_bounds(node.children[1]) then return false end
+    elseif node.kind == 15 then
+      -- THE WRITER'S TAG WIDTH IS ITS OWN LAYOUT'S: their_tag := te.size -
+      -- widest arm (docs/FIXED-FORM-ALGORITHM.md §5.2 EMIT kind 15), never a
+      -- width this reader derives from the arm count. A width that is not an
+      -- ordinal width, 1, 2, 4 or 8 (§1's union row), is no tag a lock
+      -- records (§5.9 #36): the entry refuses layout_malformed, and nothing
+      -- clamps it.
+      local widest = 0
+      for _, c in ipairs(node.children) do
+        if c.size > widest then widest = c.size end
+        if not check_bounds(c) then return false end
+      end
+      local w = node.size - widest
+      node.tag = w
+      if w ~= 1 and w ~= 2 and w ~= 4 and w ~= 8 then malformed = true end
     else
       for _, c in ipairs(node.children) do
         if not check_bounds(c) then return false end
@@ -505,7 +521,9 @@ local function layout_tree(layout)
     end
     return true
   end
-  if not check_bounds(root) then
+  local bounded = check_bounds(root)
+  if malformed then return nil end
+  if not bounded then
     return { refusal = "layout_record_too_large", kind = root.kind, size = root.size, children = {} }
   end
   return root
@@ -806,10 +824,17 @@ decode_old_value = function(T, d, node, buf, pos, rep)
     return decode_old_table(T, d.target, node, buf, pos, rep)
   elseif s == "union" then
     local nArms = #node.children
-    local w = (nArms <= 255 and 1) or (nArms <= 65535 and 2) or 4
-    local tag = unpack_int(buf, pos, w, false)
-    -- THE WRITER'S ARM COUNT GOVERNS (§4.6): a tag past it refuses
-    if tag > nArms then refuse_out_of_range() end
+    -- THE WRITER'S RAW TAG AT THE WRITER'S TAG WIDTH (§5.2 EMIT kind 15, the
+    -- ruling of 2026-11-25): te.size - widest arm, laid by layout_tree. A
+    -- tag grown 1 -> 8 is read at the width the writer stored it, so the
+    -- arm's payload is never read into the tag, and a writer whose tag is
+    -- wider than its arm count needs is never read at the narrower width
+    -- (test TestLuaFixedR14GrownTagReadsTheWritersTagWidth).
+    local w = node.tag
+    local tag = string.unpack("<I" .. w, buf, pos)
+    -- THE WRITER'S ARM COUNT GOVERNS (§4.6): a tag past it refuses; an
+    -- 8-byte tag with its top bit set unpacks negative, and is past it too
+    if tag < 0 or tag > nArms then refuse_out_of_range() end
     local live = w
     if tag ~= 0 then
       local armNode = node.children[tag]
