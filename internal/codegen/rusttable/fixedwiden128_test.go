@@ -186,7 +186,7 @@ fn main() {
         n, Some(1),
         "the newer build did not land the older writer's record: {:?} {:?}", n, report
     );
-    assert!(!report.refused && !report.damaged, "a clean backward read is not a refusal: {:?}", report);
+    assert!(!report.refused, "a clean backward read is not a refusal: {:?}", report);
     let v = &values[0];
     assert!(v.lead == 0xAAAA_AAAA && v.trail == 0xBBBB_BBBB, "a neighbour moved: lead={:#x} trail={:#x}", v.lead, v.trail);
     assert!(

@@ -42,7 +42,14 @@ $(CS_HOSTILE_BUILD)/bin/.stamp: $(CS_HOSTILE_BUILD)/generated/.stamp test/cs-hos
 # is red. A commit that adds a hostile case changes it.
 CS_HOSTILE_CASES ?= $(shell grep -vc '^\#' $(CS_HOSTILE_CORPUS)/manifest.tsv)
 .PHONY: schema-cs-runs-hostile-corpus
-schema-cs-runs-hostile-corpus: build/mustrun $(CS_HOSTILE_BUILD)/bin/.stamp
+# THE BUILD, DECLARED: the prerequisites the corpus target builds first.
+# tools/schema-test builds this target before a row's deadline starts (the
+# hostile harness's Build step), so what it builds is never a case's timeout;
+# what the run recipe itself still compiles is paid inside the run.
+.PHONY: schema-cs-runs-hostile-corpus-build
+schema-cs-runs-hostile-corpus-build: build/mustrun $(CS_HOSTILE_BUILD)/bin/.stamp
+
+schema-cs-runs-hostile-corpus: schema-cs-runs-hostile-corpus-build
 	$(DOTNET) $(CS_HOSTILE_BUILD)/bin/cshostile.dll --scorer tools/hostilecorpusexec/testdata/scorer-outcomes.tsv
 	$(call hostile_ledgered,cs,$(CS_HOSTILE_BUILD)/run.log,$(MUSTRUN) -name schema-cs-runs-hostile-corpus -count $(CS_HOSTILE_CASES) -- $(DOTNET) $(CS_HOSTILE_BUILD)/bin/cshostile.dll "$(CS_HOSTILE_CORPUS)",$(CS_HOSTILE_CORPUS))
 

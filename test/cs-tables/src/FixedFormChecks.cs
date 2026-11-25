@@ -16,31 +16,17 @@ using UT = Tblut;
 
 static partial class Program
 {
-    // A RETIRED TEST FAILS BY NAME (§5.6): a test not run is never a pass, and
-    // a test is left out only at the root. The count is printed at the end.
-    static int retired;
-
-    static void Retired(string what)
-    {
-        retired++;
-        Check(false, "RETIRED, NOT RUN: " + what);
-    }
+    // WHAT §5.6 RETIRED HAS LEFT THIS SUITE (docs/FIXED-FORM-ALGORITHM.md §5.6, §5.9 #23):
+    // the compiled and forward reads across two generations with no lineage between
+    // them (FX1/FX2, V1/V2, P1/P3) and §1.1's seven rules at read time. Their
+    // coverage lives in the lineage harness (internal/codegen/cstable's
+    // fixedversioning tests) and in the LOCK's validation of what it records.
 
     static void TestFixedForm()
     {
         TestFixedValidDataRows();
         TestFixedLittleEndianCopies();
         TestFixedFxCase();
-        // RETIRED BY NAME, NOT DELETED, AND A FAILURE (§5.6, §5.9 #23). Both cases are ENTIRELY
-        // a forward/compiled read across two generations with no lineage between
-        // them — V2 reading a V1 file, P3 reading a P1 file — which §5 retires: the
-        // answer is layout_newer, by name, before a plan exists. THE COVERAGE MOVES
-        // TO THE LINEAGE HARNESS: every row they assert (a variant inserted mid-list,
-        // an arm inserted mid-list, a renamed field, a keyed slot that slid, an
-        // optional added) is a row of §5.7 with its own two columns, read against
-        // the C++ reference's own bytes rather than against a file this test wrote.
-        Retired("TestFixedVCase — §5.6 retires the compiled read of another generation's layout; the coverage moves to the lineage harness");
-        Retired("TestFixedPCase — §5.6 retires the compiled read of another generation's layout; the coverage moves to the lineage harness");
         TestFixedWide128Case();
         TestFixedSignedLowEndCase();
         TestFixedFoldedArraysCase();
@@ -49,23 +35,9 @@ static partial class Program
         TestFixedNegativeControl();
         TestFixedFormHeaderProbes();
         TestFixedHashOracleCase();
-        // RETIRED BY NAME, NOT DELETED, AND A FAILURE (docs/FIXED-FORM-ALGORITHM.md §5.6, and
-        // §5.9 #23 for a suite whose verb is a printed line): TestFixedLayoutValidation
-        // asserts the RUN-TIME WALK of a stranger's layout, which §5 retires —
-        // a layout arriving on the wire is no longer walked at all, so §1.1's
-        // seven rules cannot fire at read time and a malformation under a KNOWN
-        // hash is ONE name, layout_malformed. THE COVERAGE IS OWED BY THE LOCK'S
-        // VALIDATION of what it records, and by the oracle's validation of the
-        // corpus. The function stays in the tree and stays compiling: a deleted
-        // test is a coverage claim nobody can audit.
-        Retired("TestFixedLayoutValidation — §5.6 retires the run-time walk of a stranger's layout; §1.1's seven rules move to the LOCK's validation of what it records");
         TestFixedHostileBoolCase();
         TestFixedGuardComparedAtArgW();
         TestFixedAbsentOptionalCase();
-        if (retired > 0)
-        {
-            Console.WriteLine("cs fixed form: " + retired + " test(s) retired by name, §5.6, each a failure");
-        }
     }
 
     sealed class ArgWProbe { public byte V; }
@@ -167,146 +139,6 @@ static partial class Program
             Check(r.Unknown == 0 && !r.Refused && r.Widened == 0 && !r.Damaged,
                   "same schema: a clean read moves no counter");
         }
-
-        // RETIRED BY NAME, NOT DELETED, AND A FAILURE (§5.6, §5.9 #23). The rest of this case is
-        // the PLAN PATH ACROSS TWO GENERATIONS — FX2 reading an FX1 file and FX1
-        // reading an FX2 one — which §5 retires: with no lineage between the two
-        // builds each file is layout_newer, correctly, and the compiled read those
-        // rows assert cannot be reached from a bare pair of generated units at all.
-        // THE COVERAGE MOVES TO THE LINEAGE HARNESS, where the newer unit is handed
-        // the older unit's locked entry and the row owes both of §5.7's columns.
-        Retired("TestFixedFxCrossGeneration — §5.6 retires the run-time walk of a stranger's layout; the coverage moves to the lineage harness");
-    }
-
-    // RETIRED BY §5.6 AND KEPT: the failure at its call site says why.
-    static void TestFixedFxCrossGeneration(byte[] w1)
-    {
-        // 2, 4, 5. FX2 READS FX1 — a plan compiled from FX1's block
-        {
-            FX2.FxRoot back = new FX2.FxRoot();
-            FX2.TableReport r = new FX2.TableReport();
-            FX2.TableFixedEntry[] plan = new FX2.TableFixedEntry[1024];
-            long n = FX2.Schema.FxRootFixedLoad(back, w1, plan, r);
-            Check(n == 1, "older writer: one record");
-            Check(back.Keep == 4242u, "older writer: an unmoved field");
-            Check(back.Narrow == 40000u, "WIDENED: uint16 into uint32, exactly");
-            Check(r.Widened == 1, "WIDENED: one widened counts");
-            Check(back.RenamedTo == 321, "RENAMED: `was =` keeps the wire id");
-            Check(back.Added == 11, "MISSING: a field the writer does not carry takes its declared default");
-            Check(back.Extra.X == 0 && back.Extra.Y == 0, "MISSING: a whole nested type takes its defaults");
-            Check(back.Nested.A == 111 && back.Nested.B == 222, "older writer: the nesting");
-            Check(back.BlobLength == 4 && back.Blob[0] == 0xDE && back.Blob[1] == 0xAD && back.Blob[2] == 0xBE && back.Blob[3] == 0xEF, "older writer: the blob");
-            Check(r.Unknown == 1, "older writer: `gone` is the one field this reader cannot name");
-            Check(!r.Refused && !r.Damaged, "older writer: nothing else fired");
-        }
-
-        // MISSING FIELD ON A DIRTY DEST: the hole list, not a whole TableReset.
-        {
-            FX2.FxRoot dirty = new FX2.FxRoot();
-            dirty.Added = 999;
-            dirty.Extra.X = 77;
-            dirty.Extra.Y = 88;
-            dirty.Keep = 1;
-            FX2.TableReport r = new FX2.TableReport();
-            FX2.TableFixedEntry[] plan = new FX2.TableFixedEntry[1024];
-            long n = FX2.Schema.FxRootFixedLoad(dirty, w1, plan, r);
-            Check(n == 1, "dirty dest: one record");
-            Check(dirty.Added == 11, "dirty dest: missing Added is the hole's default, not the poison");
-            Check(dirty.Extra.X == 0 && dirty.Extra.Y == 0, "dirty dest: missing nested Extra is the hole's default");
-            Check(dirty.Keep == 4242u, "dirty dest: landed Keep overwrites poison");
-        }
-
-        // 3. FX1 READS FX2 — an unknown field and an unknown NESTED TYPE
-        {
-            FX2.FxRoot two = new FX2.FxRoot();
-            FX2.Schema.TableReset(two);
-            two.Keep = 5150u;
-            two.Narrow = 70000u;
-            two.RenamedTo = 808;
-            two.Added = 909;
-            two.Nested.A = 33;
-            two.Nested.B = 44;
-            two.Extra.X = 55;
-            two.Extra.Y = 66;
-            two.BlobLength = 4;
-            two.Blob[0] = 0xCA; two.Blob[1] = 0xFE; two.Blob[2] = 0xBA; two.Blob[3] = 0xBE;
-            byte[] w2 = new byte[(int)FX2.Schema.FxRootFixedMeasure(1)];
-            Check(FX2.Schema.FxRootFixedSave(two, w2) == w2.Length, "FX2 save");
-
-            FX1.FxRoot back = new FX1.FxRoot();
-            FX1.TableReport r = new FX1.TableReport();
-            FX1.TableFixedEntry[] plan = new FX1.TableFixedEntry[1024];
-            long n = FX1.Schema.FxRootFixedLoad(back, w2, plan, r);
-            Check(n == 1, "newer writer: one record");
-            Check(back.Keep == 5150u, "newer writer: an unmoved field lands past the unknowns");
-            Check(back.Renamed == 808, "newer writer: `was =` reads the other way too");
-            Check(back.Gone == 9, "newer writer: a field the writer dropped takes its declared default");
-            Check(back.Nested.A == 33 && back.Nested.B == 44, "newer writer: the nesting lands past the unknown type");
-            Check(back.BlobLength == 4 && back.Blob[0] == 0xCA && back.Blob[1] == 0xFE && back.Blob[2] == 0xBA && back.Blob[3] == 0xBE, "newer writer: the blob");
-            Check(r.Unknown == 2, "newer writer: two names this reader does not have");
-            // uint32 into uint16 is a kind that moved, not a widening: under
-            // strict-only it is no lawful entry and refuses (§5.2), never a counter.
-            Check(back.Narrow == 3, "newer writer: a narrowing leaves the declared default");
-            Check(!r.Damaged && !r.Refused, "newer writer: no damage and no refusal");
-        }
-    }
-
-    static void TestFixedVCase()
-    {
-        V1.Cfg one = new V1.Cfg();
-        V1.Schema.TableReset(one);
-        one.A = 42;
-        byte[] hello = Encoding.UTF8.GetBytes("hello");
-        Array.Copy(hello, one.Name, hello.Length);
-        one.NameLength = 5;
-        one.Grade = V1.Grade.Gold;         // V2 inserts Silver BEFORE Gold
-        one.Effect.Type = V1.EffectType.Ward;
-        one.Effect.Ward.Charge = 0.75f;    // V2 inserts hex BEFORE ward
-        one.Tokens[(int)V1.Slot.Alpha] = 21;
-        one.Tokens[(int)V1.Slot.Delta] = 24;    // V2 slides Beta and keeps Delta
-        one.TierPresent = true;
-        one.Tier = 77;
-
-        byte[] w = new byte[(int)V1.Schema.CfgFixedMeasure(1)];
-        Check(V1.Schema.CfgFixedSave(one, w) == w.Length, "V1 save");
-
-        V2.Cfg back = new V2.Cfg();
-        V2.TableReport r = new V2.TableReport();
-        V2.TableFixedEntry[] plan = new V2.TableFixedEntry[8192];
-        long n = V2.Schema.CfgFixedLoad(back, w, plan, r);
-        Check(n == 1, "V2 reads V1: one record");
-        Check(back.Grade == V2.Grade.Gold, "ENUM: a variant inserted in the middle is remapped by NAME");
-        Check(back.Effect.Type == V2.EffectType.Ward, "UNION: an arm inserted in the middle is remapped by NAME");
-        Check(back.Effect.Ward.Charge == 0.75f, "UNION: the arm's payload lands");
-        Check(Encoding.UTF8.GetString(back.Title, 0, back.TitleLength) == "hello" && back.TitleLength == 5, "RENAMED: title reads name's bytes");
-        Check(back.Tokens[(int)V2.Slot.Alpha] == 21, "KEYED: a slot whose key did not move");
-        Check(back.Tokens[(int)V2.Slot.Delta] == 24, "KEYED: a slot whose key SLID keeps its value");
-        Check(back.Tokens[(int)V2.Slot.Sigma] == 0, "KEYED: a key the writer has no name for takes its default");
-        Check(back.TierPresent && back.Tier == 77, "OPTIONAL: the present flag and the payload");
-        Check(back.C, "MISSING: V2's own `c` takes its declared default");
-        Check(back.A == 5.0f, "KIND MOVED: int32 -> float32 leaves the declared default");
-        Check(!r.Damaged && !r.Refused, "V2 reads V1: no damage and no refusal");
-    }
-
-    static void TestFixedPCase()
-    {
-        P1.Chain one = new P1.Chain();
-        P1.Schema.TableReset(one);
-        byte[] chainBytes = Encoding.UTF8.GetBytes("chain");
-        Array.Copy(chainBytes, one.Name, chainBytes.Length);
-        one.NameLength = 5;
-        one.Link.Value = 500;
-
-        byte[] w = new byte[(int)P1.Schema.ChainFixedMeasure(1)];
-        Check(P1.Schema.ChainFixedSave(one, w) == w.Length, "P1 save");
-
-        P3.Chain back = new P3.Chain();
-        P3.TableReport r = new P3.TableReport();
-        P3.TableFixedEntry[] plan = new P3.TableFixedEntry[1024];
-        long n = P3.Schema.ChainFixedLoad(back, w, plan, r);
-        // OPTIONAL vs VALUE is a kind that moved: under strict-only the read
-        // refuses the whole file, never a silent reread and never a partial value.
-        Check(n == -1 && r.Refused && back.NameLength == 0, "OPTIONAL vs VALUE refuses the file, never a silent reread");
     }
 
     static void TestFixedNegativeControl()
@@ -373,17 +205,6 @@ static partial class Program
                       "REFUSED BY NAME: a form-byte refusal moves no counter");
             }
         }
-
-        // RETIRED BY NAME, NOT DELETED, AND A FAILURE (§5.6, and §5.9 #23 for a suite whose retired
-        // verb is a printed line). Every row of TestFixedNegativeControlForwardRead
-        // asks FX1 to read an FX2 FILE — a FORWARD read, which is the whole of what
-        // §5 retires: FX2's hash is in no lineage entry of this build, so the answer
-        // is layout_newer BEFORE a plan exists and the conditions those rows assert
-        // can no longer be reached from here. THE COVERAGE IS OWED BY THE LINEAGE
-        // HARNESS, where the reader is handed FX1's lineage and each of these is a
-        // row with its own two columns. The function stays in the tree and stays
-        // compiling: a deleted test is a coverage claim nobody can audit.
-        Retired("TestFixedNegativeControlForwardRead — §5.6 retires the forward read; the coverage moves to the lineage harness");
     }
 
     // THE FIVE FORM-HEADER PROBES (card 411411, schema#876; the model is
@@ -448,16 +269,16 @@ static partial class Program
 
         FX1.TableFixedEntry[] plan = new FX1.TableFixedEntry[1024];
 
-        // CASE empty-file: ZERO BYTES. There is no first byte, so no name can be
-        // earned; the residue is malformed and nothing else claims success.
+        // CASE empty-file: ZERO BYTES. There is no first byte, and §5.3's refusal
+        // table names it truncated; this form's report has no malformed flag.
         {
             FX1.FxRoot v = Poison();
             string before = DefaultsFp();
             FX1.TableReport r = new FX1.TableReport();
             long n = FX1.Schema.FxRootFixedLoad(v, ReadOnlySpan<byte>.Empty, plan, r);
-            Check(n == -1 && r.Damaged && !r.Refused && r.Reason == null &&
+            Check(n == -1 && !r.Damaged && r.Refused && r.Reason == "truncated" &&
                   r.Unknown == 0 && r.Widened == 0 && r.LayoutHash == 0,
-                  "empty-file: zero bytes is malformed and claims no success" + Clean(r));
+                  "empty-file: zero bytes refuses truncated by name (§5.3)" + Clean(r));
             Check(Fp(v) == before, "empty-file: the row is at its declared defaults");
         }
 
@@ -515,76 +336,10 @@ static partial class Program
             string before = DefaultsFp();
             FX1.TableReport r = new FX1.TableReport();
             long n = FX1.Schema.FxRootFixedLoad(v, reserved, plan, r);
-            Check(n == -1 && r.Damaged && !r.Refused && r.Reason == null &&
+            Check(n == -1 && !r.Damaged && r.Refused && r.Reason == "reserved_not_zero" &&
                   r.Unknown == 0 && r.Widened == 0 && r.LayoutHash == 0,
-                  "reserved-byte3: a nonzero reserved byte is malformed and claims no success" + Clean(r));
+                  "reserved-byte3: a nonzero reserved byte refuses reserved_not_zero by name (§5.3)" + Clean(r));
             Check(Fp(v) == before, "reserved-byte3: the row is at its declared defaults");
-        }
-    }
-
-    // RETIRED BY §5.6 AND KEPT: the failure at its call site, above, says why and
-    // where the coverage is owed.
-    static void TestFixedNegativeControlForwardRead(byte[] w2)
-    {
-        // and the loader never takes that path: the hash is what selects the plan
-        FX1.FxRoot right = new FX1.FxRoot();
-        FX1.TableReport r2 = new FX1.TableReport();
-        FX1.TableFixedEntry[] plan = new FX1.TableFixedEntry[1024];
-        long n = FX1.Schema.FxRootFixedLoad(right, w2, plan, r2);
-        Check(n == 1 && right.Nested.A == 33 && right.Nested.B == 44,
-              "NEGATIVE CONTROL: the loader compiles a plan from the block and gets it right");
-
-        {
-            byte[] unknownKind = (byte[])w2.Clone();
-            unknownKind[FX1.Schema.TableFixedWire.HeaderBytes + 4 + 4 + 17 + 8] = 99; // entry 1's kind byte
-            FX1.FxRoot v = new FX1.FxRoot();
-            FX1.TableReport rKind = new FX1.TableReport();
-            long bad = FX1.Schema.FxRootFixedLoad(v, unknownKind, plan, rKind);
-            Check(bad < 0 && rKind.Refused && rKind.Reason == "layout_kind_unknown", "REFUSED BY NAME: unknown wire kind refuses as layout_kind_unknown");
-            Check(rKind.Unknown == 0 && !rKind.Refused && !rKind.Damaged, "REFUSED BY NAME: unknown kind refusal moves no counter");
-        }
-
-        // THE HEADER NAMES THE LAYOUT ONCE (docs/SPEC-TABLES.md §3)
-        {
-            byte[] lying = (byte[])w2.Clone();
-            lying[FX1.Schema.TableFixedWire.HashAt] ^= 0xFF;
-            FX1.FxRoot v = new FX1.FxRoot();
-            FX1.TableReport r6 = new FX1.TableReport();
-            long bad = FX1.Schema.FxRootFixedLoad(v, lying, plan, r6);
-            Check(bad < 0 && r6.Refused && r6.Reason == "layout_malformed",
-                  "REFUSED BY NAME: a header hash that is not the layout's");
-            Check(!r6.Damaged, "REFUSED BY NAME: never damage");
-        }
-
-        // RECORD HASH MISMATCH: a record stamped with a different layout refuses no_layout
-        {
-            byte[] corruptRecord = (byte[])w2.Clone();
-            int recordHashOffset = FX1.Schema.TableFixedWire.HeaderBytes + 4 + (int)FX2.Schema.FxRootFixedLayoutBytes;
-            corruptRecord[recordHashOffset] ^= 0xFF;
-            FX1.FxRoot v = new FX1.FxRoot();
-            FX1.TableReport rNoLayout = new FX1.TableReport();
-            long bad = FX1.Schema.FxRootFixedLoad(v, corruptRecord, plan, rNoLayout);
-            Check(bad < 0 && rNoLayout.Refused && rNoLayout.Reason == "no_layout",
-                  "REFUSED BY NAME: record hash mismatch refuses no_layout");
-            Check(!rNoLayout.Damaged, "REFUSED BY NAME: never damage");
-        }
-
-        // FIXEDLOAD WITH NULL REPORT: accepts null report cleanly and allocates nothing
-        {
-            FX1.FxRoot v = new FX1.FxRoot();
-            long loaded = FX1.Schema.FxRootFixedLoad(v, w2, plan, null);
-            Check(loaded == 1 && v.Nested.A == 33 && v.Nested.B == 44,
-                  "LOAD WITH NULL REPORT: succeeds and populates record");
-        }
-
-        // A PLAN THAT DOES NOT FIT THE CALLER'S STORAGE IS A REFUSAL BY NAME, and
-        // the codec allocates nothing to get around it.
-        {
-            FX1.FxRoot v = new FX1.FxRoot();
-            FX1.TableReport r5 = new FX1.TableReport();
-            FX1.TableFixedEntry[] tiny = new FX1.TableFixedEntry[1];
-            long bad = FX1.Schema.FxRootFixedLoad(v, w2, tiny, r5);
-            Check(bad < 0 && r5.Refused && r5.Reason == "plan_too_large", "REFUSED BY NAME: plan_too_large");
         }
     }
 
@@ -1094,108 +849,6 @@ static partial class Program
         layout[at + 8] = kind;
         BinaryPrimitives.WriteUInt32LittleEndian(layout.AsSpan(at + 9), size);
         BinaryPrimitives.WriteUInt32LittleEndian(layout.AsSpan(at + 13), children);
-    }
-
-    static void TestFixedLayoutValidation()
-    {
-        // the layout this reader ACCEPTS, which every case below breaks once
-        FX2.FxRoot two = new FX2.FxRoot();
-        FX2.Schema.TableReset(two);
-        byte[] good = new byte[(int)FX2.Schema.FxRootFixedMeasure(1)];
-        Check(FX2.Schema.FxRootFixedSave(two, good) == good.Length, "layout validation: the unbroken file saves");
-
-        int layoutAt = FX1.Schema.TableFixedWire.HeaderBytes + 4;
-        int entry0 = layoutAt + 4;
-
-        // 1. THE ENTRY COUNT FITS THE LAYOUT LENGTH EXACTLY
-        {
-            byte[] f = (byte[])good.Clone();
-            uint count = BinaryPrimitives.ReadUInt32LittleEndian(f.AsSpan(layoutAt));
-            BinaryPrimitives.WriteUInt32LittleEndian(f.AsSpan(layoutAt), count + 1);
-            LayoutRefuses(f, "layout_count_mismatch", "RULE: the entry count fits the layout length exactly");
-        }
-        {
-            byte[] f = (byte[])good.Clone();
-            BinaryPrimitives.WriteUInt32LittleEndian(f.AsSpan(layoutAt), 0);
-            LayoutRefuses(f, "layout_count_mismatch", "RULE: an entry count of zero is not a layout");
-        }
-
-        // 2. EVERY KIND IS IN THE CLOSED SET
-        {
-            byte[] f = (byte[])good.Clone();
-            f[entry0 + 1 * 17 + 8] = 200; // a kind no form byte defines
-            LayoutRefuses(f, "layout_kind_unknown", "RULE: a kind outside the closed set is REFUSED, not skipped");
-        }
-
-        // 3. A KIND IS USED AS ITS DEFINITION ALLOWS — here, the ROOT is a table
-        {
-            byte[] f = (byte[])good.Clone();
-            f[entry0 + 0 * 17 + 8] = 14; // an array as the root of a record
-            LayoutRefuses(f, "layout_kind_invalid", "RULE: the root entry is a TABLE");
-        }
-
-        // 4. A CONSTANT SIZE MATCHES ITS KIND
-        {
-            byte[] f = (byte[])good.Clone();
-            BinaryPrimitives.WriteUInt32LittleEndian(f.AsSpan(entry0 + 1 * 17 + 9), 5); // a uint32 leaf in five bytes
-            LayoutRefuses(f, "layout_size_mismatch", "RULE: a constant size its kind does not admit");
-        }
-        {
-            byte[] f = (byte[])good.Clone();
-            uint body = BinaryPrimitives.ReadUInt32LittleEndian(f.AsSpan(entry0 + 0 * 17 + 9));
-            BinaryPrimitives.WriteUInt32LittleEndian(f.AsSpan(entry0 + 0 * 17 + 9), body + 4);
-            LayoutRefuses(f, "layout_size_mismatch", "RULE: a table's size is the sum of its fields'");
-        }
-
-        // 5. THE PRE-ORDER CHILD WALK CONSUMES EXACTLY THE ENTRIES
-        {
-            byte[] f = (byte[])good.Clone();
-            uint kids = BinaryPrimitives.ReadUInt32LittleEndian(f.AsSpan(entry0 + 0 * 17 + 13));
-            BinaryPrimitives.WriteUInt32LittleEndian(f.AsSpan(entry0 + 0 * 17 + 13), kids + 1);
-            LayoutRefuses(f, "layout_tree_unclosed", "RULE: the tree runs out of layout");
-        }
-        {
-            byte[] layout = new byte[4 + 4 * 17];
-            BinaryPrimitives.WriteUInt32LittleEndian(layout, 4);
-            PutLayoutEntry(layout, 4, 1, 13, 4, 1); // a table of one field
-            PutLayoutEntry(layout, 4 + 17, 2, 30, 4, 0); // an enum, its TWO variants unreached
-            PutLayoutEntry(layout, 4 + 34, 3, 32, 0, 0);
-            PutLayoutEntry(layout, 4 + 51, 4, 32, 0, 0);
-            byte[] f = LayoutFileOf(layout);
-            LayoutRefuses(f, "layout_tree_unclosed", "RULE: the layout outlasts the tree");
-        }
-
-        // 6. THE TOTAL RECORD SIZE IS WITHIN 65536 AND DOES NOT OVERFLOW
-        {
-            byte[] f = (byte[])good.Clone();
-            BinaryPrimitives.WriteUInt32LittleEndian(f.AsSpan(entry0 + 0 * 17 + 9), 65537);
-            LayoutRefuses(f, "layout_record_too_large", "RULE: a record size past 65536");
-        }
-        {
-            byte[] f = (byte[])good.Clone();
-            BinaryPrimitives.WriteUInt32LittleEndian(f.AsSpan(entry0 + 1 * 17 + 9), 0xFFFFFFFF);
-            LayoutRefuses(f, "layout_record_too_large", "RULE: a size that would overflow the sum");
-        }
-
-        // 7. NOTHING NESTED PAST THE READER'S WALK BOUND
-        {
-            uint depth = 64; // MaxDepth is 32
-            byte[] layout = new byte[4 + (depth + 1) * 17];
-            BinaryPrimitives.WriteUInt32LittleEndian(layout, depth + 1);
-            for (uint i = 0; i < depth; ++i)
-            {
-                PutLayoutEntry(layout, (int)(4 + i * 17), 1, (byte)(i == 0 ? 13 : 35), depth - i, 1);
-            }
-            PutLayoutEntry(layout, (int)(4 + depth * 17), 2, 1, 1, 0); // a bool at the bottom
-            byte[] f = LayoutFileOf(layout);
-            LayoutRefuses(f, "layout_too_deep", "RULE: a nesting depth past the walk's own bound");
-        }
-
-        // RESIDUE: fewer bytes than a header is layout_malformed
-        {
-            byte[] f = LayoutFileOf(new byte[2]);
-            LayoutRefuses(f, "layout_malformed", "RULE: fewer bytes than a header is layout_malformed");
-        }
     }
 
     static void TestFixedHostileBoolCase()

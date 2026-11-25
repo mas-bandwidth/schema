@@ -17,7 +17,14 @@
 # (docs/rulings.json no-skips); both targets run them through
 # test/slowgate/proof, which refuses a SKIP in the log and requires each named
 # --- PASS, so a run that tested nothing can never pass as green.
-schema-luau-runs-hostile-corpus: toolchain-luau
+# THE BUILD, DECLARED: the prerequisites the corpus target builds first.
+# tools/schema-test builds this target before a row's deadline starts (the
+# hostile harness's Build step), so what it builds is never a case's timeout;
+# what the run recipe itself still compiles is paid inside the run.
+.PHONY: schema-luau-runs-hostile-corpus-build
+schema-luau-runs-hostile-corpus-build: toolchain-luau
+
+schema-luau-runs-hostile-corpus: schema-luau-runs-hostile-corpus-build
 	sh test/slowgate/proof schema-luau-runs-hostile-corpus \
 		'TestHostileCorpus_luau TestLuauHostileScorerOutcomes' \
 		./internal/ci -run '^(TestHostileCorpus_luau|TestLuauHostileScorerOutcomes)$$' -count=1 -timeout 600s

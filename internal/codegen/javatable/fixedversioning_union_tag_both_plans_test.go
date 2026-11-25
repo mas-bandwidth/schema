@@ -100,9 +100,6 @@ func TestFixedVersioningUnionTagBothPlans(t *testing.T) {
 		if !r.refused || r.reason != "outOfRange" {
 			t.Errorf("%s: refused=%v reason=%s, want a refusal named outOfRange", which, r.refused, r.reason)
 		}
-		if r.damaged {
-			t.Errorf("%s: damaged=%v, want false: a forged tag is a refusal, never framing damage", which, r.damaged)
-		}
 		if r.unknown != 0 || r.widened != 0 {
 			t.Errorf("%s: counters moved: unknown=%d widened=%d, want all 0",
 				which, r.unknown, r.widened)

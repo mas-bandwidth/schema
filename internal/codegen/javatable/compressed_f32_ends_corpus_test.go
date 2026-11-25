@@ -79,7 +79,7 @@ public final class F32EndsDriver {
         TableFixed.Report r = new TableFixed.Report();
         int n = FFixed.load(vs, 1, file(stem + ".fixed.bin"), null, null, FFixed.image(), r);
         reason = String.valueOf(r.reason);
-        return n == 1 && !r.refused && !r.damaged ? vs[0] : null;
+        return n == 1 && !r.refused ? vs[0] : null;
     }
 
     static VVariable.Value readVariable(String stem) throws Exception {

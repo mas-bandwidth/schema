@@ -131,7 +131,7 @@ public final class Main {
         TableFixed.Report frep = new TableFixed.Report();
         ClampRowFixed.Value floaded = new ClampRowFixed.Value();
         ClampRowFixed.scatter(fbuf, 0, floaded, frep);
-        check(frep.refused && !frep.damaged, "Fixed out of range not refused: refused=" + frep.refused + " damaged=" + frep.damaged);
+        check(frep.refused, "Fixed out of range not refused: refused=" + frep.refused + " reason=" + frep.reason);
         // each bound alone refuses
         for (int i = 0; i < 4; i++) {
             ClampRowFixed.Value one = new ClampRowFixed.Value();
@@ -142,7 +142,7 @@ public final class Main {
             forge(fbuf, one);
             TableFixed.Report r1 = new TableFixed.Report();
             ClampRowFixed.scatter(fbuf, 0, new ClampRowFixed.Value(), r1);
-            check(r1.refused && !r1.damaged, "Fixed bound " + i + " not refused");
+            check(r1.refused, "Fixed bound " + i + " not refused");
         }
 
         // High uint64 (0xffffffffffffffffL) on Fixed form must not refuse when only min = 100 is declared
@@ -157,7 +157,7 @@ public final class Main {
         check(java.util.Arrays.equals(forged, fbuf), "the forge lays writeBody's own bytes");
         TableFixed.Report frep2 = new TableFixed.Report();
         ClampRowFixed.scatter(fbuf, 0, floaded, frep2);
-        check(floaded.u64Lo == -1L && !frep2.refused && !frep2.damaged, "Fixed high u64 refused: " + frep2.reason);
+        check(floaded.u64Lo == -1L && !frep2.refused, "Fixed high u64 refused: " + frep2.reason);
     }
 }
 `

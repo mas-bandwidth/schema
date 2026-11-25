@@ -83,7 +83,7 @@ void main() {
 
   // ---- THE REPORT'S layout_hash LAST AND ZERO ON EVERY OTHER PATH ---
   // The report's layoutHash is the LAST member and is zero on every path except
-  // the two layout refusals (layout_newer and layout_unsupported).
+  // the two layout refusals (layout_unknown and layout_unsupported).
 
   // Create a fresh report - all members should be zero-initialized
   final report = TableFixedReport();

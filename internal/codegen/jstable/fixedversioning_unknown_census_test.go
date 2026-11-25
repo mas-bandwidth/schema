@@ -37,7 +37,7 @@ for (let pass = 0; pass < 2; pass++) {
   const r = new TableFixedReport();
   const n = TLoad(back, back.length, data, data.length, plan, r);
   if (n !== -1) { fail(%[2]q + " pass " + pass + ": the UNLAWFUL entry loaded n=" + n + " " + reason(r)); }
-  if (r.refused !== TableFixedRefusal.LayoutMalformed || r.damaged) {
+  if (r.refused !== TableFixedRefusal.LayoutMalformed || ("damaged" in r)) {
     fail(%[2]q + " pass " + pass + ": an unlawful lineage entry refuses layout_malformed by name: " + reason(r));
   }
   if (r.unknown !== 0 || r.mismatch !== 0 || r.widened !== 0 || r.oor !== 0 || r.repeated !== 0) {

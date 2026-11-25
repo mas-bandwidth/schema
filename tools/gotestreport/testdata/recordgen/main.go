@@ -1,7 +1,7 @@
 // Command recordgen writes the record files of the gotestreport record corpus
 // (../records/<case>/*.jsonl) from real `go test -json` runs of the package in
-// ledgertest, the way a lane's recorder (tools/pgroup) writes them: the budget
-// line, then what go test printed. Each case's case.txt is written by hand and
+// ../plants/ledgertest, the way a lane recorder (tools/pgroup) writes them:
+// the budget line, then what go test printed. Each case.txt is written by hand and
 // left alone. Run it from the repository root:
 //
 //	go run ./tools/gotestreport/testdata/recordgen
@@ -15,7 +15,8 @@ import (
 )
 
 const (
-	here    = "tools/gotestreport/testdata/recordgen"
+	// the planted test package it runs: planted data, which no lane runs
+	plants  = "tools/gotestreport/testdata/plants"
 	records = "tools/gotestreport/testdata/records"
 	budget  = `{"Action":"budget","Budget":"10m"}` + "\n"
 )
@@ -48,7 +49,7 @@ func main() {
 			out := []byte(rec.literal)
 			if rec.test != "" {
 				cmd := exec.Command("go", "test", "-json", fmt.Sprintf("-count=%d", rec.count), "-run", "^"+rec.test+"$", ".")
-				cmd.Dir = filepath.Join(here, "ledgertest")
+				cmd.Dir = filepath.Join(plants, "ledgertest")
 				cmd.Env = append(os.Environ(), "RECORD_CASE="+rec.recordCase, "GOWORK=off", "GOFLAGS=")
 				run, err := cmd.Output()
 				if err != nil {

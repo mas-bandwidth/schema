@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"sort"
 	"strings"
@@ -130,8 +131,10 @@ func TestGenerateGoRefusesGoReservedWords(t *testing.T) {
 // table name (escaped to name_) and a field — and the emitted package builds
 // without shadowing the builtin (SPEC §4.6). The words come from the checker's
 // own table (check.ReservedWords), so a Go word missing from it, or one the
-// emitter cannot carry, fails here. A word any other language reserves never
-// reaches the Go output: it is refused whatever target is generated. The
+// emitter cannot carry, fails here. A word any other language reserves, or
+// another backend's own name rules refuse (a Python builtin), never reaches
+// the Go output: it is refused whatever target is generated, by a refusal
+// that names that other target. The
 // serialize.go runtime is a stub here (its real sibling is not staged); the
 // emitted code uses only the stream types and SerializeBits64/Err, which the
 // stub provides.
@@ -186,6 +189,7 @@ func (s *ReadStream) Err() error { return s.err }
 	sem := make(chan struct{}, maxParallel)
 	var mu sync.Mutex
 	var bad []string
+	var generated, refusedElsewhere int
 	var wg sync.WaitGroup
 	for _, w := range words {
 		wg.Go(func() {
@@ -202,15 +206,30 @@ func (s *ReadStream) Err() error { return s.err }
 				fail("%v", err)
 				return
 			}
-			src := fmt.Sprintf("package t\ntable %s {\n  %s int32\n}\n", w, w)
+			src := fmt.Sprintf("package gowords\ntable %s {\n  %s int32\n}\n", w, w)
 			if err := os.WriteFile(filepath.Join(dir, "W.schema"), []byte(src), 0o644); err != nil {
 				fail("%v", err)
 				return
 			}
 			if outBytes, err := exec.Command(bin, "generate", "--lang", "go", "--out", out, dir).CombinedOutput(); err != nil {
-				fail("generate: %s", outBytes)
+				// A unit is checked against every target (SPEC §4.6), so a
+				// word another backend's own name rules refuse (a Python
+				// builtin, a Ruby constant) never reaches the Go output
+				// either. That refusal is right, and it must name a target
+				// other than Go: Go itself never refuses a Go-only word.
+				m := otherTargetRefusal.FindSubmatch(outBytes)
+				_, why, _ := strings.Cut(string(outBytes), "refused for every target:")
+				if m == nil || string(m[1]) == "Go" || !regexp.MustCompile(`\b`+w+`\b`).MatchString(why) {
+					fail("generate: %s", outBytes)
+				}
+				mu.Lock()
+				refusedElsewhere++
+				mu.Unlock()
 				return
 			}
+			mu.Lock()
+			generated++
+			mu.Unlock()
 			mod := fmt.Sprintf("module t\n\ngo 1.26\n\nrequire (\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n\tgithub.com/mas-bandwidth/serialize.go/v2 v2.0.0\n)\n\nreplace (\n\tgithub.com/mas-bandwidth/schema/v2 => %s\n\tgithub.com/mas-bandwidth/serialize.go/v2 => %s\n)\n", checkout, runtime)
 			if err := os.WriteFile(filepath.Join(out, "go.mod"), []byte(mod), 0o644); err != nil {
 				fail("%v", err)
@@ -227,7 +246,15 @@ func (s *ReadStream) Err() error { return s.err }
 	for _, b := range bad {
 		t.Error(b)
 	}
+	if generated == 0 {
+		t.Fatalf("no Go-only word generated (%d refused by another target): the build check below compiled nothing", refusedElsewhere)
+	}
+	t.Logf("%d Go-only words generated and built, %d refused by another target's own name rules", generated, refusedElsewhere)
 }
+
+// otherTargetRefusal reads the target a unit check names when it refuses a
+// unit for every target (SPEC §4.6).
+var otherTargetRefusal = regexp.MustCompile(`the ([A-Za-z+#]+) target cannot express a name in this unit`)
 
 // select, ulong and ushort are not C++ keywords, but the generated C++
 // declares `namespace <name>` beside sys/select.h or sys/types.h, whose own

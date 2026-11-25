@@ -76,9 +76,12 @@ const t01Common = `            byte[] Corpus(string f) { return System.IO.File.R
             {
                 return r.Unknown != 0 || r.Widened != 0 || r.Retained != 0 || r.RetainLost != 0;
             }
-            // Expect: the read REFUSES by name (reason != null) or is MALFORMED
-            // (reason == null), and in both cases returns -1, never sets both
-            // answers, moves no counter and resets every row handed in to its declared default.
+            // Expect: the read REFUSES by name, returns -1, moves no counter and
+            // resets every row handed in to its declared default. EVERY row of
+            // §5.3's refusal table is a refusal by name, framing damage included
+            // (truncated, reserved_not_zero): "There is no malformed flag on
+            // this form's report" (docs/FIXED-FORM-ALGORITHM.md §5.3), so
+            // Damaged is never set and the verdict is Refused.
             void Expect(string label, byte[] file, int cap, string reason, ulong wantHash)
             {
                 @TABLE@[] back = Fresh(cap);
@@ -87,21 +90,11 @@ const t01Common = `            byte[] Corpus(string f) { return System.IO.File.R
                 TableFixedEntry[] plan = new TableFixedEntry[8192];
                 long n = Schema.@TABLE@FixedLoad(back, file, plan, r);
                 if (n != -1) { bad += ProbeLog.Fail(@NAME@, label + ": must return -1, returned " + n + " reason=" + r.Reason); }
-                if (reason == null)
+                if (!r.Refused || r.Reason != reason || r.Verdict != Schema.TableWire.Verdict.Refused)
                 {
-                    if (!r.Damaged || r.Refused || r.Reason != null || r.Verdict != Schema.TableWire.Verdict.Damaged)
-                    {
-                        bad += ProbeLog.Fail(@NAME@, label + ": the residue is malformed alone: malformed=" + r.Damaged + " refused=" + r.Refused + " reason=" + r.Reason + " verdict=" + r.Verdict);
-                    }
+                    bad += ProbeLog.Fail(@NAME@, label + ": must refuse " + reason + " by name: refused=" + r.Refused + " reason=" + r.Reason + " verdict=" + r.Verdict);
                 }
-                else
-                {
-                    if (!r.Refused || r.Reason != reason || r.Verdict != Schema.TableWire.Verdict.Refused)
-                    {
-                        bad += ProbeLog.Fail(@NAME@, label + ": must refuse " + reason + " by name: refused=" + r.Refused + " reason=" + r.Reason + " verdict=" + r.Verdict);
-                    }
-                    if (r.Damaged) { bad += ProbeLog.Fail(@NAME@, label + ": refused+reason and malformed are never both set"); }
-                }
+                if (r.Damaged) { bad += ProbeLog.Fail(@NAME@, label + ": this form's report has no malformed flag, and a refusal never sets one"); }
                 if (r.LayoutHash != wantHash) { bad += ProbeLog.Fail(@NAME@, label + ": layout hash 0x" + r.LayoutHash.ToString("x16") + ", want 0x" + wantHash.ToString("x16")); }
                 if (Counters(r)) { bad += ProbeLog.Fail(@NAME@, label + ": a counter moved on a refusal: unknown=" + r.Unknown + " widened=" + r.Widened + " retained=" + r.Retained + " lost=" + r.RetainLost); }
                 if (!Defaulted(back)) { bad += ProbeLog.Fail(@NAME@, label + ": the refused read left a row off its declared default"); }
@@ -143,12 +136,13 @@ func t01Body(poison, untouched, defaulted, steps string) string {
 }
 
 // t01Refusals is the REFUSE set shared by R13's two tables. Each case is a
-// distinct refusal of §5.3's table (or the malformed residue) broken in one place
-// over a file that reads cleanly: the per-record hash first (step 11), a batch
-// past capacity (step 10), a hash in no lineage entry (step 5), a known hash
-// over other layout bytes (step 7), a layout past the file (step 3), the three
-// form-byte directions (step 1), and the residues that are malformed ALONE: a
-// ragged tail (step 9) and a reserved byte (step 2).
+// distinct refusal of §5.3's table broken in one place over a file that reads
+// cleanly: the per-record hash first (step 11), a batch past capacity (step 10),
+// a hash in no lineage entry (step 5, layout_unknown), a known hash over other
+// layout bytes (step 7), a layout past the file (step 3), the three form-byte
+// directions (step 1), and the framing damage, refused by name like every
+// other row: a ragged tail (step 9, truncated) and a reserved byte (step 2,
+// reserved_not_zero). There is no malformed flag on this form's report.
 const t01Refusals = `            foreach (string name in new string[] { @FILES@ })
             {
                 byte[] g = Corpus(name);
@@ -165,15 +159,15 @@ const t01Refusals = `            foreach (string name in new string[] { @FILES@ 
                 W(shortLayout, 16, LayoutBytes(g) - 1, 4);
                 Expect(name + " no_layout", noLayout, 1, "no_layout", 0);
                 Expect(name + " batch_too_large", Records(g, 2), 1, "batch_too_large", 0);
-                Expect(name + " layout_newer", Put(g, 8, 0x1122334455667788L, 8), 1, "layout_newer", 0x1122334455667788UL);
+                Expect(name + " layout_unknown", Put(g, 8, 0x1122334455667788L, 8), 1, "layout_unknown", 0x1122334455667788UL);
                 Expect(name + " layout_malformed bytes", Put(g, 24, Rd(g, 24, 4) ^ 0xFF, 4), 1, "layout_malformed", 0);
                 Expect(name + " layout_malformed length", shortLayout, 1, "layout_malformed", 0);
                 Expect(name + " layout_malformed past the file", Put(g, 16, g.Length, 4), 1, "layout_malformed", 0);
                 Expect(name + " previous_form", Put(g, 0, 1, 1), 1, "previous_form", 0);
                 Expect(name + " message_form_as_file", Put(g, 0, 2, 1), 1, "message_form_as_file", 0);
                 Expect(name + " newer_form", Put(g, 0, 9, 1), 1, "newer_form", 0);
-                Expect(name + " ragged tail", ragged, 1, null, 0);
-                Expect(name + " reserved byte", Put(g, 3, 1, 1), 1, null, 0);
+                Expect(name + " ragged tail", ragged, 1, "truncated", 0);
+                Expect(name + " reserved byte", Put(g, 3, 1, 1), 1, "reserved_not_zero", 0);
             }
 `
 
@@ -198,12 +192,12 @@ func t01Probes() []csVersionProbe {
                 byte[] g = Corpus(name);
                 int end = 20 + LayoutBytes(g);
                 ReadsClean(name + " unbroken", g, 1, 1);
-                // The boundary: the file ends exactly after its layout. The layout
-                // is whole, so a BATCH read is a zero-record read and no refusal;
-                // a ROOT read, handed room for one value, finds no value to read
-                // and answers it as damage, as the engine and the Go leg do.
-                Expect(name + " ends at the layout", Records(g, 0), 2, null, 0);
-                Expect(name + " ends at the layout, read as a root", Records(g, 0), 1, null, 0);
+                // The boundary: the file ends exactly after its layout. A
+                // fixed-form file holds at least one record (§5.3's refusal
+                // table: "a header and a layout followed by no record"), so
+                // a batch read and a root read both refuse truncated by name.
+                Expect(name + " ends at the layout", Records(g, 0), 2, "truncated", 0);
+                Expect(name + " ends at the layout, read as a root", Records(g, 0), 1, "truncated", 0);
                 for (int cut = 20; cut < end; ++cut)
                 {
                     Expect(name + " cut at " + cut, Records(g, 1).AsSpan(0, cut).ToArray(), 1, "layout_malformed", 0);
@@ -240,14 +234,14 @@ func t01Probes() []csVersionProbe {
 `),
 		// R7, §5.3 "EVERY HASH A RUNTIME HOLDS WAS HANDED TO IT": the header's hash is
 		// taken as given. A header hash outside the lineage over the file's TRUE layout
-		// bytes is layout_newer, so no hash is derived from the bytes; a header hash
+		// bytes is layout_unknown (§5.3 step 5; layout_newer is retired), so no hash is derived from the bytes; a header hash
 		// IN the lineage over other bytes is layout_malformed, so the bytes do not
 		// choose the lane.
 		lineage("cs/R7", `            foreach (string name in new string[] { `+files+` })
             {
                 byte[] g = Corpus(name);
                 ReadsClean(name + " unbroken", g, 1, 1);
-                Expect(name + " forged header hash over the true layout", Put(g, 8, 0x0123456789ABCDEFL, 8), 1, "layout_newer", 0x0123456789ABCDEFUL);
+                Expect(name + " forged header hash over the true layout", Put(g, 8, 0x0123456789ABCDEFL, 8), 1, "layout_unknown", 0x0123456789ABCDEFUL);
                 Expect(name + " the held hash over other layout bytes", Put(g, 24, Rd(g, 24, 4) + 1, 4), 1, "layout_malformed", 0);
             }
             {
@@ -345,14 +339,14 @@ func t01Probes() []csVersionProbe {
                 Expect("a record hash naming no layout", noLayout, 1, "layout_malformed", 0);
                 Expect("batch past capacity", Records(g, 2), 1, "layout_malformed", 0);
                 Expect("ragged tail", ragged, 1, "layout_malformed", 0);
-                Expect("layout_newer", Put(g, 8, 0x1122334455667788L, 8), 1, "layout_newer", 0x1122334455667788UL);
+                Expect("layout_unknown", Put(g, 8, 0x1122334455667788L, 8), 1, "layout_unknown", 0x1122334455667788UL);
                 Expect("layout_malformed bytes", Put(g, 24, Rd(g, 24, 4) ^ 0xFF, 4), 1, "layout_malformed", 0);
                 Expect("layout_malformed length", shortLayout, 1, "layout_malformed", 0);
                 Expect("layout_malformed past the file", Put(g, 16, g.Length, 4), 1, "layout_malformed", 0);
                 Expect("previous_form", Put(g, 0, 1, 1), 1, "previous_form", 0);
                 Expect("message_form_as_file", Put(g, 0, 2, 1), 1, "message_form_as_file", 0);
                 Expect("newer_form", Put(g, 0, 9, 1), 1, "newer_form", 0);
-                Expect("reserved byte", Put(g, 3, 1, 1), 1, null, 0);
+                Expect("reserved byte", Put(g, 3, 1, 1), 1, "reserved_not_zero", 0);
             }
 `),
 		// R13 for layout_unsupported: below the floor, over a retired entry.

@@ -9,7 +9,7 @@
 # "a test failed", so a gotestrun that refused or did not build would read
 # as a negative control's sabotage caught. Under -red, a gotestrun that did
 # not build is exit 0, NOT RED, as gotestrun's own refusals are.
-set -uo pipefail
+set -euo pipefail
 red=0
 [ "${1:-}" = -red ] && red=1
 broken() {
@@ -24,8 +24,9 @@ root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd) || broken "the checkout
 tmp=$(mktemp -d) || broken "no temporary directory for gotestrun"
 trap 'rm -r -f "$tmp"' EXIT
 go build -C "$root" -o "$tmp/gotestrun" ./tools/gotestrun || broken "tools/gotestrun did not build"
-"$tmp/gotestrun" -dir "$PWD" "$@"
-rc=$?
+# set -e stops at a failed command unless its status is read: || reads it
+rc=0
+"$tmp/gotestrun" -dir "$PWD" "$@" || rc=$?
 # under -red only 1 is a red; anything else (a signal, a crash) proved nothing
 if [ "$red" = 1 ] && [ "$rc" != 0 ] && [ "$rc" != 1 ]; then
 	broken "gotestrun exited $rc"

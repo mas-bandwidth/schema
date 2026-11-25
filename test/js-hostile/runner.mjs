@@ -348,7 +348,7 @@ class Reader {
     if (report.refused) {
       return { verdict: "refuse", detail: reasonName(rt.TableFixedRefusalName(report.refused)) };
     }
-    if (n !== 1 || report.damaged) {
+    if (n !== 1 || ("damaged" in report)) {
       return DAMAGED;
     }
     const size = fm[`${T}FixedMeasure`](1);

@@ -676,7 +676,7 @@ verify-sabotage-fixed-negative-control: verify-toolchain-js bin/schema build/con
 		'const x = new MT.Cfg(); MT.InitCfg(x);' \
 		'const r = new MT.TableFixedReport();' \
 		'const n = MF.CfgFixedLoad([x], 1, wire, wire.length, MF.CfgFixedNewPlan(), r);' \
-		'if (n !== 1 || r.refused !== 0 || r.damaged || x.a !== 7.5 || x.ncActive !== true || x.ncGain !== 2.5) {' \
+		'if (n !== 1 || r.refused !== 0 || ("damaged" in r) || x.a !== 7.5 || x.ncActive !== true || x.ncGain !== 2.5) {' \
 		'  console.error("FIXED_PREFILL_MISMATCH", { n, a: x.a, ncActive: x.ncActive, ncGain: x.ncGain });' \
 		'  process.exit(1);' \
 		'}' > build/verify-sabotage-nc/fixed/check.mjs

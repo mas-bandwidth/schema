@@ -2,9 +2,11 @@ package cpptable
 
 // TestCPPFixedLoadNamesEveryRefusal pins docs/FIXED-FORM-ALGORITHM.md §5.3's
 // naming rule on the C++ leg: every refusal of the emitted <T>FixedLoad has a
-// name, the framing-damage returns included. A framing-damage return keeps
-// `malformed` set BESIDE its name (truncated, reserved_not_zero), and a refusal
-// by name never sets it.
+// name, the framing-damage returns included. Framing damage refuses by its
+// own name (truncated, reserved_not_zero) like every other refusal, and "there
+// is no `malformed` flag on this form's report": no return of the fixed load
+// sets it. layout_newer is retired (§5.3 step 5): its ordinal stays reserved
+// in the shared reason enum, and no emitted fixed load ever produces it.
 //
 // THE ORACLE IS THE GO LEG: internal/codegen/gotable/fixedrefusalnames_test.go,
 // TestFixedLoadNamesEveryRefusal, over the same schema text
@@ -29,6 +31,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -88,6 +91,21 @@ fixed table Point
 	}
 	if header == "" {
 		t.Fatal("the generated reader carries no <Base>Table.h")
+	}
+	// THE RETIRED NAME IS NEVER PRODUCED (§5.3 step 5; SPEC-TABLES §21.3): the
+	// shared reason enum keeps layout_newer's ordinal reserved, and no line of
+	// the emitted reader assigns it (or picks it in a ternary) on any path; the
+	// vocabulary's own `static constexpr` spelling of the name is not a use.
+	produces := regexp.MustCompile(`[=?]\s*(?:\w+::)?layout_newer\b`)
+	for name, data := range files {
+		for i, line := range strings.Split(string(data), "\n") {
+			if strings.Contains(line, "static constexpr") {
+				continue
+			}
+			if produces.MatchString(line) {
+				t.Errorf("%s:%d produces the retired layout_newer: %s", name, i+1, strings.TrimSpace(line))
+			}
+		}
 	}
 
 	probe := fmt.Sprintf(`#include <cstdio>
@@ -190,18 +208,18 @@ int main( void )
     if ( expect( "no_layout", scratch, written, 2, plan, 64, 1, 0, TableMessageReason::no_layout, 0, 0 ) ) return 1;
 
     /* case "truncated empty": the Go case passes a nil slice, length 0 */
-    if ( expect( "truncated empty", NULL, 0, 2, plan, 64, 0, 1, k_truncated, 0, 0 ) ) return 1;
+    if ( expect( "truncated empty", NULL, 0, 2, plan, 64, 1, 0, k_truncated, 0, 0 ) ) return 1;
 
     /* case "truncated short header": file[:19] */
-    if ( expect( "truncated short header", file, 19, 2, plan, 64, 0, 1, k_truncated, 0, 0 ) ) return 1;
+    if ( expect( "truncated short header", file, 19, 2, plan, 64, 1, 0, k_truncated, 0, 0 ) ) return 1;
 
     /* case "truncated ragged": the two-record file plus one byte */
     memcpy( scratch, file, (size_t) written ); scratch[written] = 0;
-    if ( expect( "truncated ragged", scratch, written + 1, 2, plan, 64, 0, 1, k_truncated, 0, 0 ) ) return 1;
+    if ( expect( "truncated ragged", scratch, written + 1, 2, plan, 64, 1, 0, k_truncated, 0, 0 ) ) return 1;
 
     /* case "reserved_not_zero": b[3] = 1 */
     memcpy( scratch, file, (size_t) written ); scratch[3] = 1;
-    if ( expect( "reserved_not_zero", scratch, written, 2, plan, 64, 0, 1, k_reserved_not_zero, 0, 0 ) ) return 1;
+    if ( expect( "reserved_not_zero", scratch, written, 2, plan, 64, 1, 0, k_reserved_not_zero, 0, 0 ) ) return 1;
 
     /* case "layout_unknown": a hash in no lineage entry carries the file's hash
        and NOTHING ELSE (layout_newer is reserved: SPEC-TABLES §21.3) */

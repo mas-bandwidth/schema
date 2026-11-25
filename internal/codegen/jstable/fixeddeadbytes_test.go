@@ -43,7 +43,7 @@ const back = []; for (let k = 0; k < 8; k++) { back.push(new T()); InitT(back[k]
 const r = new TableFixedReport();
 const plan = TNewPlan(4096, 4096);
 const n = TLoad(back, back.length, data, data.length, plan, r);
-if (n !== 1 || r.damaged || r.refused !== 0) { fail(%[2]q + ": the control must read one record, n=" + n + " " + reason(r)); }
+if (n !== 1 || ("damaged" in r) || r.refused !== 0) { fail(%[2]q + ": the control must read one record, n=" + n + " " + reason(r)); }
 const out = new Uint8Array(TMeasure(1));
 if (TSave(back, 1, out) !== out.length) { fail(%[2]q + ": the control's save refused"); }
 if (out.length !== data.length) { fail(%[2]q + ": the control's save is " + out.length + " bytes, the file " + data.length); }

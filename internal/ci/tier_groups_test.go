@@ -10,17 +10,11 @@ package ci
 // #5003 and #5004 merged with all 29 checks SKIPPED. A skipped job is not red,
 // so nobody saw it.
 //
-// The rule, and the table these tests hold the workflows to, is
-// docs/CI-TIERS.md "Every job and its tier":
-//
-//   - no `if:`, job or step, reads a branch name, a ref or a label; no
-//     pull-request trigger filters its base branches. The fork guard
-//     (head.repo.full_name == github.repository) is keyed on the repository and
-//     stays: a fork's code never runs on the fleet;
-//   - every job of a workflow that runs on a pull request, a push or a comment
-//     has a row naming its tiers, and the tiers are what the workflow gives it;
-//   - every per-PR group is a ci-fast.yml job that a pull request from any
-//     branch runs, within two minutes.
+// The rule this test holds the workflows to: no `if:`, job or step, reads a
+// branch name, a ref or a label; no pull-request trigger filters its base
+// branches. The fork guard (head.repo.full_name == github.repository) is
+// keyed on the repository and stays: a fork's code never runs on the fleet.
+// (ci-fast.yml's two-minute cap is twoMinuteErrors' in nightly_test.go.)
 //
 // All of it reads the workflow text and evaluates `if:` with the model in
 // ci_test.go (evalCIExpr); nothing runs.
@@ -28,12 +22,9 @@ package ci
 import (
 	"fmt"
 	"maps"
-	"os"
-	"path/filepath"
 	"regexp"
 	"slices"
 	"sort"
-	"strconv"
 	"strings"
 	"testing"
 )
@@ -205,8 +196,11 @@ func branchBehaviourErrors(wfs map[string]string, only string) []string {
 func TestNoJobRunsOnABranchName(t *testing.T) {
 	t.Parallel()
 	wfs := workflows(t, repoRoot(t))
-	if n := len(yamlJobs(wfs["ci-fast.yml"])); n < 10 {
-		t.Fatalf("ci-fast.yml has %d jobs: this gate would pass over an empty fast lane", n)
+	fastJobs := yamlJobs(wfs["ci-fast.yml"])
+	for _, key := range append([]string{"ci-fast.yml:fork-pull-request"}, ciFastJobKeys(wfs)...) {
+		if _, job, _ := strings.Cut(key, ":"); fastJobs[job] == "" {
+			t.Fatalf("ci-fast.yml has no %s job: this gate would pass over an empty fast lane", job)
+		}
 	}
 	for _, e := range branchTokenErrors(wfs) {
 		t.Error(e)
@@ -219,8 +213,11 @@ func TestNoJobRunsOnABranchName(t *testing.T) {
 	// refused whatever its branch is called.
 	for _, head := range []string{"sprint/schema-main/a-card", "feature"} {
 		fork := fullPlan(ciEvent{Name: "pull_request", Branch: "main", HeadRef: head, Repo: tierRepo, HeadRepo: "someone/schema"})
-		if runs, err := jobRunsInWorkflow(wfs["ci-fast.yml"], "plan", fork); err != nil || runs {
-			t.Errorf("a fork's pull request from %q runs ci-fast.yml plan on the fleet (runs=%v err=%v)", head, runs, err)
+		for _, key := range ciFastJobKeys(wfs) {
+			_, job, _ := strings.Cut(key, ":")
+			if runs, err := jobRunsInWorkflow(wfs["ci-fast.yml"], job, fork); err != nil || runs {
+				t.Errorf("a fork's pull request from %q runs ci-fast.yml %s on the fleet (runs=%v err=%v)", head, job, runs, err)
+			}
 		}
 		if runs, err := jobRunsInWorkflow(wfs["ci-fast.yml"], "fork-pull-request", fork); err != nil || !runs {
 			t.Errorf("a fork's pull request from %q does not get the red fork-pull-request job (runs=%v err=%v)", head, runs, err)
@@ -236,17 +233,17 @@ func TestNoJobRunsOnABranchName(t *testing.T) {
 		m[name] = strings.Replace(m[name], from, to, 1)
 		return m
 	}
-	planIf := "  plan:\n    if: ("
+	shardIf := "    needs: [fixed-corpus, produce]\n    if: ("
 	for _, c := range []struct {
 		name      string
 		wfs       map[string]string
 		behaviour string // the workflow the evaluated half must catch it in; "" when only the text gate can
 	}{
-		{"the sprint/ skip put back on plan", plant("ci-fast.yml", planIf, "  plan:\n    if: startsWith(github.head_ref, 'sprint/') == false && ("), "ci-fast.yml"},
-		{"a skip on the pull request's head ref", plant("ci-fast.yml", planIf, "  plan:\n    if: !startsWith(github.event.pull_request.head.ref, 'sprint/') && ("), "ci-fast.yml"},
-		{"a base-branch gate", plant("ci-fast.yml", planIf, "  plan:\n    if: github.base_ref == 'main' && ("), "ci-fast.yml"},
-		{"a label gate", plant("caa-self-test.yml", "    if: (", "    if: contains(github.event.pull_request.labels.*.name, 'full-ci') && ("), ""},
-		{"a ref gate on a step", plant("ci-fast.yml", "        if: startsWith(matrix.lang, 'elixir-') && runner.environment == 'github-hosted'", "        if: github.ref_name == 'main'"), ""},
+		{"the sprint/ skip put back on the shards", plant("ci-fast.yml", shardIf, "    needs: [fixed-corpus, produce]\n    if: startsWith(github.head_ref, 'sprint/') == false && ("), "ci-fast.yml"},
+		{"a skip on the pull request's head ref", plant("ci-fast.yml", shardIf, "    needs: [fixed-corpus, produce]\n    if: !startsWith(github.event.pull_request.head.ref, 'sprint/') && ("), "ci-fast.yml"},
+		{"a base-branch gate", plant("ci-fast.yml", shardIf, "    needs: [fixed-corpus, produce]\n    if: github.base_ref == 'main' && ("), "ci-fast.yml"},
+		{"a label gate", plant("roadmap.yml", "    if: (", "    if: contains(github.event.pull_request.labels.*.name, 'full-ci') && ("), ""},
+		{"a ref gate on a step", plant("ci-fast.yml", "        if: matrix.lang == 'none'", "        if: github.ref_name == 'main'"), ""},
 		{"a base filter on the pull_request trigger", plant("roadmap.yml", "  pull_request:\n", "  pull_request:\n    branches: [ main ]\n"), "roadmap.yml"},
 	} {
 		if len(branchTokenErrors(c.wfs)) == 0 {
@@ -254,263 +251,6 @@ func TestNoJobRunsOnABranchName(t *testing.T) {
 		}
 		if c.behaviour != "" && len(branchBehaviourErrors(c.wfs, c.behaviour)) == 0 {
 			t.Errorf("PLANTED %q left the evaluated gate green", c.name)
-		}
-	}
-}
-
-// tierRow is a row of the "Every job and its tier" table. It never matches a
-// row of the nightly table, whose first cell is a workflow.
-var tierRow = regexp.MustCompile("^\\| `([a-z0-9_-]+)` \\| `([a-z0-9._-]+\\.yml)` \\| ([A-Za-z, -]+) \\| (.+) \\|$")
-
-var tierOrder = []string{"per-PR", "fork-PR", "main", "nightly", "dispatch", "comment"}
-
-type tierEntry struct {
-	line          int
-	job, workflow string
-	tiers         string
-}
-
-func readTierTable(t *testing.T) string {
-	t.Helper()
-	doc, err := os.ReadFile(filepath.Join(repoRoot(t), "docs", "CI-TIERS.md"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	return string(doc)
-}
-
-func parseTierTable(doc string) ([]tierEntry, []string) {
-	var rows []tierEntry
-	var errs []string
-	for i, line := range strings.Split(doc, "\n") {
-		m := tierRow.FindStringSubmatch(line)
-		if m == nil {
-			continue
-		}
-		var got []string
-		for p := range strings.SplitSeq(m[3], ",") {
-			p = strings.TrimSpace(p)
-			if !slices.Contains(tierOrder, p) {
-				errs = append(errs, fmt.Sprintf("docs/CI-TIERS.md:%d: %s names tier %q; the tiers are %v", i+1, m[1], p, tierOrder))
-			}
-			got = append(got, p)
-		}
-		rows = append(rows, tierEntry{line: i + 1, job: m[1], workflow: m[2], tiers: strings.Join(got, ", ")})
-	}
-	return rows, errs
-}
-
-// jobTiers evaluates the tiers a workflow gives a job, every plan output set.
-func jobTiers(wf, job string) (string, error) {
-	triggers := workflowTriggerBranches(wf)
-	var tiers []string
-	add := func(tier string, ev ciEvent) error {
-		runs, err := jobRunsInWorkflow(wf, job, fullPlan(ev))
-		if err != nil {
-			return err
-		}
-		if runs && !slices.Contains(tiers, tier) {
-			tiers = append(tiers, tier)
-		}
-		return nil
-	}
-	for _, evName := range []string{"pull_request", "pull_request_target"} {
-		if _, on := triggers[evName]; !on {
-			continue
-		}
-		if err := add("per-PR", ciEvent{Name: evName, Branch: "main", HeadRef: "feature", Repo: tierRepo, HeadRepo: tierRepo}); err != nil {
-			return "", err
-		}
-		if err := add("fork-PR", ciEvent{Name: evName, Branch: "main", HeadRef: "feature", Repo: tierRepo, HeadRepo: "someone/schema"}); err != nil {
-			return "", err
-		}
-	}
-	for _, c := range []struct {
-		tier string
-		ev   ciEvent
-	}{
-		{"main", ciEvent{Name: "push", Branch: "main", Repo: tierRepo}},
-		{"nightly", ciEvent{Name: "schedule", Branch: "main", Repo: tierRepo}},
-		{"dispatch", ciEvent{Name: "workflow_dispatch", Branch: "main", Repo: tierRepo}},
-		{"comment", ciEvent{Name: "issue_comment", Repo: tierRepo, IssueIsPR: true, IssueUser: "someone", CommentUser: "someone", CommentBody: "recheck"}},
-	} {
-		if err := add(c.tier, c.ev); err != nil {
-			return "", err
-		}
-	}
-	slices.SortFunc(tiers, func(a, b string) int { return slices.Index(tierOrder, a) - slices.Index(tierOrder, b) })
-	return strings.Join(tiers, ", "), nil
-}
-
-// tieredWorkflows are the workflows whose every job needs a row: those a pull
-// request, a push or a comment starts. A schedule- or dispatch-only workflow
-// is decided whole in the nightly table (TestEveryNightlyOnlyGateHasAPRTierForm).
-func tieredWorkflows(wfs map[string]string) []string {
-	var out []string
-	for _, name := range tierKeys(wfs) {
-		triggers := workflowTriggerBranches(wfs[name])
-		for _, ev := range []string{"pull_request", "pull_request_target", "push", "issue_comment"} {
-			if _, on := triggers[ev]; on {
-				out = append(out, name)
-				break
-			}
-		}
-	}
-	return out
-}
-
-func tierTableErrors(wfs map[string]string, doc string) []string {
-	rows, errs := parseTierTable(doc)
-	if len(rows) == 0 {
-		return append(errs, "docs/CI-TIERS.md has no row in \"Every job and its tier\": the table holds nothing")
-	}
-	seen := map[string]int{}
-	for _, r := range rows {
-		key := r.workflow + ":" + r.job
-		if prev, dup := seen[key]; dup {
-			errs = append(errs, fmt.Sprintf("docs/CI-TIERS.md:%d: %s has a row already at line %d", r.line, key, prev))
-			continue
-		}
-		seen[key] = r.line
-		wf, ok := wfs[r.workflow]
-		if !ok {
-			errs = append(errs, fmt.Sprintf("docs/CI-TIERS.md:%d: %s names workflow %s, which does not exist", r.line, r.job, r.workflow))
-			continue
-		}
-		if _, ok := yamlJobs(wf)[r.job]; !ok {
-			errs = append(errs, fmt.Sprintf("docs/CI-TIERS.md:%d: %s names job %s, which %s does not have: a group the table promises runs nowhere", r.line, r.workflow, r.job, r.workflow))
-			continue
-		}
-		got, err := jobTiers(wf, r.job)
-		if err != nil {
-			errs = append(errs, fmt.Sprintf("docs/CI-TIERS.md:%d: %s cannot be evaluated: %v", r.line, key, err))
-			continue
-		}
-		if got != r.tiers {
-			errs = append(errs, fmt.Sprintf("docs/CI-TIERS.md:%d: %s says tiers %q, but the workflow runs it on %q", r.line, key, r.tiers, got))
-		}
-	}
-	for _, name := range tieredWorkflows(wfs) {
-		for _, job := range tierKeys(yamlJobs(wfs[name])) {
-			if _, ok := seen[name+":"+job]; !ok {
-				errs = append(errs, fmt.Sprintf("%s:%s has no row in docs/CI-TIERS.md \"Every job and its tier\": name its tiers there", name, job))
-			}
-		}
-	}
-	return errs
-}
-
-func TestEveryJobHasItsTierInCITiers(t *testing.T) {
-	t.Parallel()
-	wfs := workflows(t, repoRoot(t))
-	doc := readTierTable(t)
-	for _, e := range tierTableErrors(wfs, doc) {
-		t.Error(e)
-	}
-
-	plantDoc := func(from, to string) string {
-		t.Helper()
-		if !strings.Contains(doc, from) {
-			t.Fatalf("control cannot plant: docs/CI-TIERS.md does not contain %q", from)
-		}
-		return strings.Replace(doc, from, to, 1)
-	}
-	dropJob := func(name, job string) map[string]string {
-		t.Helper()
-		m := maps.Clone(wfs)
-		body, ok := yamlJobs(m[name])[job]
-		if !ok {
-			t.Fatalf("control cannot plant: %s has no job %s", name, job)
-		}
-		m[name] = strings.Replace(m[name], body, "", 1)
-		return m
-	}
-	verifyRow := "| `verify-leg` | `ci-fast.yml` | per-PR, main, dispatch |"
-	for _, c := range []struct {
-		name string
-		wfs  map[string]string
-		doc  string
-	}{
-		{"a group dropped from ci-fast.yml", dropJob("ci-fast.yml", "verify-leg"), doc},
-		{"a job with no row", wfs, plantDoc(verifyRow, "| `verify-leg-gone` | `ci-fast.yml` | per-PR, main, dispatch |")},
-		{"a row with the wrong tiers", wfs, plantDoc(verifyRow, "| `verify-leg` | `ci-fast.yml` | main |")},
-		{"a nightly-only job called per-PR", wfs, plantDoc("| `page` | `roadmap.yml` | nightly, dispatch |", "| `page` | `roadmap.yml` | per-PR, main, nightly, dispatch |")},
-	} {
-		if len(tierTableErrors(c.wfs, c.doc)) == 0 {
-			t.Errorf("PLANTED %q left the gate green", c.name)
-		}
-	}
-}
-
-var timeoutLine = regexp.MustCompile(`(?m)^    timeout-minutes: (\d+)\s*$`)
-
-func perPRGroupErrors(wfs map[string]string, doc string) []string {
-	rows, errs := parseTierTable(doc)
-	fast := wfs["ci-fast.yml"]
-	jobs := yamlJobs(fast)
-	groups := 0
-	for _, r := range rows {
-		if !slices.Contains(strings.Split(r.tiers, ", "), "per-PR") || r.workflow != "ci-fast.yml" {
-			continue
-		}
-		groups++
-		body, ok := jobs[r.job]
-		if !ok {
-			errs = append(errs, fmt.Sprintf("docs/CI-TIERS.md:%d: per-PR group %s is not a ci-fast.yml job: it runs on no pull request", r.line, r.job))
-			continue
-		}
-		m := timeoutLine.FindStringSubmatch(body)
-		if m == nil {
-			errs = append(errs, fmt.Sprintf("ci-fast.yml:%s has no job-level timeout-minutes: a per-PR group finishes in two minutes", r.job))
-		} else if n, _ := strconv.Atoi(m[1]); n > 2 {
-			errs = append(errs, fmt.Sprintf("ci-fast.yml:%s has timeout-minutes: %d: a per-PR group finishes in two minutes; split it into more rows or shards", r.job, n))
-		}
-		for _, head := range []string{"sprint/schema-main/a-card", "sprint-group/schema-main", "feature"} {
-			for _, base := range []string{"main", "sprint/schema-main"} {
-				ev := fullPlan(ciEvent{Name: "pull_request", Branch: base, HeadRef: head, Repo: tierRepo, HeadRepo: tierRepo})
-				runs, err := jobRunsInWorkflow(fast, r.job, ev)
-				if err != nil || !runs {
-					errs = append(errs, fmt.Sprintf("ci-fast.yml:%s: a pull request from %s into %s does not run it (runs=%v err=%v): every pull request runs every per-PR group", r.job, head, base, runs, err))
-				}
-			}
-		}
-	}
-	if groups < 10 {
-		errs = append(errs, fmt.Sprintf("docs/CI-TIERS.md names %d per-PR groups of ci-fast.yml: this gate would pass over an empty tier", groups))
-	}
-	return errs
-}
-
-func TestEveryPerPRGroupRunsOnEveryPullRequest(t *testing.T) {
-	t.Parallel()
-	wfs := workflows(t, repoRoot(t))
-	doc := readTierTable(t)
-	for _, e := range perPRGroupErrors(wfs, doc) {
-		t.Error(e)
-	}
-
-	plant := func(from, to string) map[string]string {
-		t.Helper()
-		m := maps.Clone(wfs)
-		if !strings.Contains(m["ci-fast.yml"], from) {
-			t.Fatalf("control cannot plant: ci-fast.yml does not contain %q", from)
-		}
-		m["ci-fast.yml"] = strings.Replace(m["ci-fast.yml"], from, to, 1)
-		return m
-	}
-	m := maps.Clone(wfs)
-	m["ci-fast.yml"] = strings.Replace(m["ci-fast.yml"], yamlJobs(m["ci-fast.yml"])["verify-leg"], "", 1)
-	verifyIf := "    if: ((needs.plan.outputs.all == 'yes' || needs.plan.outputs.verify_legs != '[]')"
-	for _, c := range []struct {
-		name string
-		wfs  map[string]string
-	}{
-		{"a group dropped from ci-fast.yml", m},
-		{"the sprint/ skip put back on a group", plant(verifyIf, "    if: startsWith(github.head_ref, 'sprint/') == false && ((needs.plan.outputs.all == 'yes' || needs.plan.outputs.verify_legs != '[]')")},
-		{"a group given three minutes", plant("  vet:\n", "  vet:\n    timeout-minutes: 3\n")},
-	} {
-		if len(perPRGroupErrors(c.wfs, doc)) == 0 {
-			t.Errorf("PLANTED %q left the gate green", c.name)
 		}
 	}
 }

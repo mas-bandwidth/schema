@@ -372,10 +372,17 @@ func TestCppDriverRefusesFormOneFramingNegativeControl(t *testing.T) {
 
 	bin := filepath.Join(scratch, "driver-bin")
 	mk := filepath.Join(scratch, "negative.mk")
-	// the planted headers shadow the generated ones for the driver's own main.cpp
-	// alone; the table objects the driver links are the unsabotaged ones, so the
-	// control recompiles one translation unit, not every table source over again
-	rule := fmt.Sprintf("NEGATIVE_SCRATCH := %s\n%s: conformance-cpp-objects\n\t$(CXX) $(TABLES_CXXFLAGS) $(subst -Ibuild/tables-generated,-I$(NEGATIVE_SCRATCH),$(CONFORMANCE_INCLUDES)) %s $(CONFORMANCE_OBJECTS) -o %s\n", scratch, bin, filepath.Join(root, "test", "conformance", "cpp", "main.cpp"), bin)
+	// the planted headers shadow the generated ones for the driver's own units
+	// alone (CONFORMANCE_DRIVER_TUS, compiled side by side into the scratch);
+	// the table objects the driver links are the unsabotaged ones, so the
+	// control recompiles the driver, not every table source over again
+	rule := fmt.Sprintf("NEGATIVE_SCRATCH := %s\n"+
+		"NEGATIVE_DRIVER_OBJECTS := $(patsubst %%,$(NEGATIVE_SCRATCH)/driver/%%.o,$(CONFORMANCE_DRIVER_TUS))\n"+
+		"$(NEGATIVE_SCRATCH)/driver/%%.o: test/conformance/cpp/%%.cpp $(CONFORMANCE_DRIVER_HEADERS) build/tables-generated/.stamp\n"+
+		"\t@mkdir -p $(@D)\n"+
+		"\t$(CXX) $(TABLES_CXXFLAGS) $(subst -Ibuild/tables-generated,-I$(NEGATIVE_SCRATCH),$(CONFORMANCE_INCLUDES)) -c $< -o $@\n"+
+		"%s: conformance-cpp-objects $(NEGATIVE_DRIVER_OBJECTS)\n"+
+		"\t$(CXX) $(TABLES_CXXFLAGS) $(NEGATIVE_DRIVER_OBJECTS) $(CONFORMANCE_OBJECTS) -o %s\n", scratch, bin, bin)
 	if err := os.WriteFile(mk, []byte(rule), 0o600); err != nil {
 		t.Fatal(err)
 	}

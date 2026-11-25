@@ -26,6 +26,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/ccommon"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -658,21 +659,24 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("constexpr int64_t %sFixedRecordBytes = 8 + %sFixedBodyBytes; // the hash and the body\n", st.Name, st.Name)
 	g.pf("constexpr uint64_t %sFixedHash = 0x%016xull; // fnv1a64 over the layout and the definitions digest (bill §13)\n\n", st.Name, hash)
 
-	g.pf("// THE LAYOUT (form 1 calls this the vocabulary block): %d entries, a\n", len(entries))
-	g.pf("// PRE-ORDER walk of the closure in the writer's declared order.\n")
-	g.pf("// Every byte is settled by the compiler.\n")
-	g.pf("constexpr uint8_t %sFixedLayout[] = {\n", st.Name)
+	g.df("// THE LAYOUT (form 1 calls this the vocabulary block): %d entries, a\n", len(entries))
+	g.df("// PRE-ORDER walk of the closure in the writer's declared order.\n")
+	g.df("// Every byte is settled by the compiler.\n")
+	g.df("constexpr uint8_t %sFixedLayout[] = {\n", st.Name)
 	g.emitByteArray(layout)
 	g.pf("constexpr int64_t %sFixedLayoutBytes = (int64_t) sizeof( %sFixedLayout );\n\n", st.Name, st.Name)
 
-	g.pf("// MY SIDE of the layout, one row per entry: the storage facts a layout\n")
-	g.pf("// entry cannot carry, which is what a plan compiled from another writer's\n")
-	g.pf("// layout lands values through.\n")
-	g.pf("constexpr TableFixedDst %sFixedDst[] = {\n", st.Name)
+	g.df("// MY SIDE of the layout, one row per entry: the storage facts a layout\n")
+	g.df("// entry cannot carry, which is what a plan compiled from another writer's\n")
+	g.df("// layout lands values through.\n")
+	g.df("constexpr TableFixedDst %sFixedDst[] = {\n", st.Name)
+	// NO NAME ON A ROW: a trailing comment on each of thousands of rows is
+	// what made clang-format take 32 s on one header (tables-cpp-format); the
+	// runtime reads no name here, and the layout walk names every entry.
 	for _, e := range entries {
-		g.pf("    %s, // %s\n", g.dstRow(e), e.Note)
+		g.df("    %s,\n", g.dstRow(e))
 	}
-	g.pf("};\n\n")
+	g.df("};\n\n")
 
 	plan, guarded, pool := ir.TableFixedBuildPlanPresentDefaultsWithPool(g.unit, st)
 	presentDefaults := false
@@ -682,21 +686,21 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 			break
 		}
 	}
-	g.pf("// THE IDENTITY PLAN, coalesced out of %d leaves by the schema compiler —\n", ir.TableFixedLeafCount(g.unit, st))
-	g.pf("// the one walk every backend lays down (ir/fixedform.go), so no two ports\n")
-	g.pf("// can disagree about what the coalescer did; the asserts above tie every\n")
-	g.pf("// destination in it to this compiler's own ABI. A bool field and a present\n")
-	g.pf("// flag land through kTableFixedBool (byte != 0), so a forged 0x02 is the\n")
-	g.pf("// language's own true and not a bool holding 2 (fix 2). UNGUARDED ENTRIES\n")
-	g.pf("// FIRST, then the arms, then any guardless present-defaults entry that must\n")
-	g.pf("// run after the guarded payload it replaces: the entries that are nearly\n")
-	g.pf("// all of a plan never test a guard at all.\n")
+	g.df("// THE IDENTITY PLAN, coalesced out of %d leaves by the schema compiler —\n", ir.TableFixedLeafCount(g.unit, st))
+	g.df("// the one walk every backend lays down (ir/fixedform.go), so no two ports\n")
+	g.df("// can disagree about what the coalescer did; the header's asserts tie every\n")
+	g.df("// destination in it to this compiler's own ABI. A bool field and a present\n")
+	g.df("// flag land through kTableFixedBool (byte != 0), so a forged 0x02 is the\n")
+	g.df("// language's own true and not a bool holding 2 (fix 2). UNGUARDED ENTRIES\n")
+	g.df("// FIRST, then the arms, then any guardless present-defaults entry that must\n")
+	g.df("// run after the guarded payload it replaces: the entries that are nearly\n")
+	g.df("// all of a plan never test a guard at all.\n")
 	// THE EMITTED PLAN IS THE COALESCED PLAN, SPLIT ONLY WHERE A COPY ENTRY
 	// SPANS LEAVES OF DIFFERENT WIDTHS, so a big-endian copy knows its element
 	// width (ir.TableFixedSplitByWidth, the same split the C leg lays down).
 	split := ir.TableFixedSplitByWidth(entries, plan, guarded)
 	elemBytes, optionalPayload, unionArms := fixedPlanWireSpans(entries)
-	g.pf("constexpr TableFixedEntry %sFixedPlan[] = {\n", st.Name)
+	g.df("constexpr TableFixedEntry %sFixedPlan[] = {\n", st.Name)
 	for i, e := range split.Plan {
 		guard := "kTableFixedNoGuard"
 		if e.Guard != ir.TableFixedNoGuard {
@@ -753,11 +757,12 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 			meta = int(wire & 0xff)
 			dstsize = int((wire >> 8) & 0xff)
 		}
-		g.pf("    { %du, %du, %du, %du, %s, %s, %d, %d, %d, 0, %d, %s, %d, %d, %d, %s, %d }, // %s\n",
+		// no name on a plan row either, for the reason given at the dst rows
+		g.df("    { %du, %du, %du, %du, %s, %s, %d, %d, %d, 0, %d, %s, %d, %d, %d, %s, %d },\n",
 			e.Src, e.Dst, e.Size, aux, guard, fixedOpName(e.Op), e.Arg, meta, dstsize, argw, guard2, e.Arg2, argw2,
-			e.GuardCount, guardIndex, split.Elems[i], e.Note)
+			e.GuardCount, guardIndex, split.Elems[i])
 	}
-	g.pf("};\n")
+	g.df("};\n")
 	g.pf("constexpr int32_t %sFixedPlanCount = %d;\n", st.Name, len(split.Plan))
 	g.pf("constexpr int32_t %sFixedPlanGuarded = %d;\n", st.Name, split.Guarded)
 	g.pf("// THE GUARD POOL: the (guard, arg, argw) links every chain above points\n")
@@ -864,14 +869,15 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    TableReport local;\n    if ( report == NULL ) { report = &local; }\n")
 	// STEP 1 AND STEP 2 (§5.3): THE FORM BYTE IS READ BEFORE THE FILE'S LENGTH.
 	// A committed form-1 file is TEN bytes and a form-2 batch THREE, so a reader
-	// that measured first would answer `malformed` for every real file of the two
-	// forms it is supposed to name. Only a file with NO FIRST BYTE is malformed
+	// that measured first would answer `truncated` for every real file of the two
+	// forms it is supposed to name. Only a file with NO FIRST BYTE is truncated
 	// before the byte is read; the twenty-byte minimum and the seven reserved
 	// bytes follow it.
 	g.pf("    // EVERY REFUSAL OF THE FIXED LOAD HAS A NAME, THE FRAMING-DAMAGE RETURNS\n")
-	g.pf("    // INCLUDED (docs/FIXED-FORM-ALGORITHM.md §5.3): a damage return keeps\n")
-	g.pf("    // malformed set BESIDE the name, so a caller switching on reason sees it.\n")
-	g.pf("    if ( data == NULL || bytes < 1 )\n    {\n        report->damaged = true;\n        report->reason = TableFixedReason::truncated;\n        return -1;\n    }\n")
+	g.pf("    // INCLUDED (docs/FIXED-FORM-ALGORITHM.md §5.3's refusal table): framing\n")
+	g.pf("    // damage refuses by name like every other refusal, and \"there is no\n")
+	g.pf("    // malformed flag on this form's report\": damaged is never set here.\n")
+	g.pf("    if ( data == NULL || bytes < 1 )\n    {\n        report->refused = true;\n        report->reason = TableFixedReason::truncated;\n        return -1;\n    }\n")
 	g.pf("    if ( data[0] != kTableFixedForm )\n    {\n")
 	g.pf("        report->refused = true;\n")
 	g.pf("        report->reason = data[0] == kTableWireForm ? TableMessageReason::previous_form\n")
@@ -881,22 +887,23 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	if st.Integrity != "" {
 		// THE INTEGRITY TRAILER, AFTER THE FORM BYTE AND BEFORE ANYTHING ELSE
 		// (docs/SPEC-TABLES.md §2.14, §3.4 THE FRAMING): a missing or mismatched
-		// trailer is whole-file damage named integrity_mismatch, with no layout
-		// compared and no record touched, exactly as the Go oracle's
-		// integrityfixed_test.go and internal/codegen/gotable/fixedform.go have
-		// it. A file too short to hold the trailer is that same damage.
+		// trailer is REFUSED integrity_mismatch (SPEC-TABLES §2.14: "refused,
+		// integrity_mismatch"), with no layout compared and no record touched.
+		// A file too short to hold the trailer is that same refusal. Like every
+		// refusal of this form it sets no malformed flag
+		// (docs/FIXED-FORM-ALGORITHM.md §5.3).
 		g.pf("    if ( !schema_integrity_holds( data, bytes ) )\n    {\n")
-		g.pf("        report->damaged = true;\n")
-		g.pf("        report->damage_reason = integrity_mismatch;\n")
+		g.pf("        report->refused = true;\n")
+		g.pf("        report->reason = integrity_mismatch;\n")
 		g.pf("        return -1;\n    }\n")
 		g.pf("    bytes -= 4; // the trailer is not part of the layout or the records\n")
 	}
-	g.pf("    if ( bytes < kTableFixedHeaderBytes + 4 )\n    {\n        report->damaged = true;\n        report->reason = TableFixedReason::truncated;\n        return -1;\n    }\n")
+	g.pf("    if ( bytes < kTableFixedHeaderBytes + 4 )\n    {\n        report->refused = true;\n        report->reason = TableFixedReason::truncated;\n        return -1;\n    }\n")
 	g.pf("    // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3): a nonzero\n")
-	g.pf("    // one is `malformed`, NAMED TableFixedReason::reserved_not_zero, which is what keeps them\n")
+	g.pf("    // one refuses TableFixedReason::reserved_not_zero, which is what keeps them\n")
 	g.pf("    // spendable later.\n")
 	g.pf("    for ( int32_t i = 1; i < kTableFixedHashAt; ++i )\n")
-	g.pf("    {\n        if ( data[i] != 0 )\n        {\n            report->damaged = true;\n            report->reason = TableFixedReason::reserved_not_zero;\n            return -1;\n        }\n    }\n")
+	g.pf("    {\n        if ( data[i] != 0 )\n        {\n            report->refused = true;\n            report->reason = TableFixedReason::reserved_not_zero;\n            return -1;\n        }\n    }\n")
 	g.pf("    const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );\n")
 	g.pf("    if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes )\n    {\n        report->refused = true;\n        report->reason = TableMessageReason::layout_malformed;\n        return -1;\n    }\n")
 	g.pf("    const uint8_t * layout = data + kTableFixedHeaderBytes + 4;\n")
@@ -980,7 +987,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	// A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (docs/SPEC-TABLES.md §3.4,
 	// §22.6; docs/FIXED-FORM-ALGORITHM.md §5.3 step 9): a header and a layout
 	// followed by no record is `truncated`, never a batch of none.
-	g.pf("    if ( rest == 0 || record_bytes <= 8 || rest %% record_bytes != 0 )\n    {\n        report->damaged = true;\n        report->reason = TableFixedReason::truncated;\n        return -1;\n    }\n")
+	g.pf("    if ( rest == 0 || record_bytes <= 8 || rest %% record_bytes != 0 )\n    {\n        report->refused = true;\n        report->reason = TableFixedReason::truncated;\n        return -1;\n    }\n")
 	g.pf("    const int64_t n = rest / record_bytes;\n")
 	g.pf("    if ( n > capacity )\n    {\n        report->refused = true;\n        report->reason = TableMessageReason::batch_too_large;\n        return -1;\n    }\n")
 	g.pf("    // STEP 11: EVERY RECORD'S COUNT AND TEXT FIRST, in a pass of its own\n")
@@ -1120,7 +1127,7 @@ func (g *tableGen) emitFixedLineage(st *ir.Struct, known []fixedKnown, floor int
 	g.pf("inline void %sFixedSetFloorForTest( int32_t index ) { %sFixedFloorLive = index; }\n", st.Name, st.Name)
 	g.pf("#endif\n\n")
 	for i, k := range known {
-		g.pf("constexpr uint8_t %sFixedKnown%dLayout[] = {\n", st.Name, i)
+		g.df("constexpr uint8_t %sFixedKnown%dLayout[] = {\n", st.Name, i)
 		g.emitByteArray(k.layout)
 	}
 	g.pf("constexpr TableFixedKnownLayout %sFixedKnown[] = {\n", st.Name)
@@ -1164,27 +1171,12 @@ func (g *tableGen) emitFixedLineage(st *ir.Struct, known []fixedKnown, floor int
 	g.pf(" };\n\n")
 }
 
-// It closes the initializer itself: the last byte carries no trailing comma
+// emitByteArray writes a byte array's items into the data header (df). It
+// closes the initializer itself: the last byte carries no trailing comma
 // and the brace follows it on the same line, the one spelling of a long byte
 // list that clang-format (the house .clang-format) leaves sixteen to a row.
 func (g *tableGen) emitByteArray(b []byte) {
-	if len(b) == 0 {
-		g.pf("};\n")
-		return
-	}
-	for i := 0; i < len(b); i += 16 {
-		end := min(i+16, len(b))
-		var sb strings.Builder
-		sb.WriteString("   ")
-		for j, v := range b[i:end] {
-			if i+j == len(b)-1 {
-				fmt.Fprintf(&sb, " 0x%02x };", v)
-			} else {
-				fmt.Fprintf(&sb, " 0x%02x,", v)
-			}
-		}
-		g.pf("%s\n", sb.String())
-	}
+	g.df("%s", ccommon.PackedBytes(b))
 }
 
 // emitFixedLayoutAsserts is what makes a generator-computed offset safe: every

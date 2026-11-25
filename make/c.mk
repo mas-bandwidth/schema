@@ -208,6 +208,13 @@ TABLES_CFLAGS := -std=c99 -Wall -Wextra -Werror -Wshadow -Wtype-limits $(C_TAUTO
 # these.
 TABLES_CFLAGS_CONTROL := $(subst -O2,-O0,$(TABLES_CFLAGS))
 
+# A unit that includes its *Block.h links its *Block.c. The header's
+# static SCHEMA_UNUSED wrappers call extern functions defined only there,
+# and the -O2 build dropped those unused wrappers (its driver links
+# without BackendBlock.c), while the -O0 negative control
+# (TABLES_CFLAGS_CONTROL) failed with 20 undefined references to 16
+# schema_backenddemo_*_block_* symbols.
+
 C_CONFORMANCE_SOURCES = test/c-tables/collections_fuzz_maps.c test/c-tables/collections_fuzz_lists.c test/c-tables/collections_fuzz_arms.c \
 	$(patsubst tables/%.schema,build/tables-generated-c/%Table.c,$(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_ARMS)) \
 	test/conformance/c/unit_tblw1.c build/tables-generated-c/w1/W1Table.c \
@@ -219,7 +226,7 @@ C_CONFORMANCE_SOURCES = test/c-tables/collections_fuzz_maps.c test/c-tables/coll
 	test/conformance/c/unit_blobdemo.c build/tables-generated-c/blobs/AssetsTable.c \
 	test/conformance/c/unit_vocab9demo.c build/tables-generated-c/vocab9/Vocab9Table.c \
 	test/conformance/c/unit_vocabdemo.c build/tables-generated-c/vocab/VocabTable.c \
-	test/conformance/c/unit_backenddemo.c build/tables-generated-c/backend/BackendTable.c \
+	test/conformance/c/unit_backenddemo.c build/tables-generated-c/backend/BackendTable.c build/tables-generated-c/backend/BackendBlock.c \
 	test/conformance/c/unit_tblr2.c build/tables-generated-c/r2/R2Table.c \
 	test/conformance/c/unit_tblr1.c build/tables-generated-c/r1/R1Table.c \
 	test/conformance/c/unit_tblk2.c build/tables-generated-c/k2/K2Table.c \
@@ -315,6 +322,15 @@ tables-c-zero-cost: build/tables-generated-c/.stamp
 			echo "ZERO-COST GATE FAILED: pointer machinery leaked into $$f"; exit 1; \
 		fi; \
 	done
+	@for f in build/tables-generated-c/v1/*TableData.h \
+	          build/tables-generated-c/v2/*TableData.h build/tables-generated-c/p1/*TableData.h \
+	          build/tables-generated-c/p3/*TableData.h; do \
+		test -e "$$f" || continue; \
+		test -r "$$f" || { echo "ZERO-COST GATE FAILED: unreadable data header $$f"; exit 1; }; \
+		if grep -nE "TableArena|TableWorker|TableRef([^u]|$$)|TableSink|TableCtx|TableRegionSink|kTableSegment|kTableSlab|kTableMaxDepth|is_pointer|Builder|PackMeasure|LoadMeasure|stdatomic" $$f; then \
+			echo "ZERO-COST GATE FAILED: pointer machinery leaked into $$f"; exit 1; \
+		fi; \
+	done
 	@echo "tables C zero-cost gate: value-only tables carry no pointer machinery"
 
 # THE GENERIC-WALK GATE, C side (docs/SPEC-TABLES.md §16). Every name the walk
@@ -396,7 +412,7 @@ build/schema_test_c_soak: build/tables-generated-c/.stamp test/c-tables/soak_mai
 		-O2 -ffp-contract=off $(C_CONFORMANCE_INCLUDES) \
 		-DCONFORMANCE_NO_WREF_CASE \
 		test/c-tables/soak_main.c test/conformance/c/unit_tabledemo.c test/conformance/c/wref.c test/conformance/c/unit_tblv1.c \
-		test/conformance/c/unit_backenddemo.c build/tables-generated-c/backend/BackendTable.c \
+		test/conformance/c/unit_backenddemo.c build/tables-generated-c/backend/BackendTable.c build/tables-generated-c/backend/BackendBlock.c \
 		test/conformance/c/unit_tblv2.c test/conformance/c/unit_tblp1.c test/conformance/c/unit_tblp3.c \
 		build/tables-generated-c/examples/TablesTable.c build/tables-generated-c/examples/WideTable.c \
 		build/tables-generated-c/examples/NestedTable.c build/tables-generated-c/examples/KeyedTable.c \
@@ -432,7 +448,7 @@ tables-c-fuzz: build/schema_test_c_fuzz
 # else: the hour-long soak (the TABLES_C_SOAK_ITERATIONS default) that `make
 # test` runs at 512 passes, the forged-block fuzzer at five times the PR scale
 # under a second seed, and each one's planted control.
-C_RELEASE_JOBS ?= $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
+C_RELEASE_JOBS ?= $(shell nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 .PHONY: tables-c-release
 tables-c-release:
 	$(MAKE) -j$(C_RELEASE_JOBS) build/schema_test_c_soak build/schema_test_c_fuzz
@@ -705,7 +721,7 @@ build/schema_test_c_soak_be: build/tables-generated-c/.stamp test/c-tables/soak_
 		-DSCHEMA_SOAK_NO_INTERPOSE -DCONFORMANCE_NO_WREF_CASE \
 		$(C_CONFORMANCE_INCLUDES) \
 		test/c-tables/soak_main.c test/conformance/c/unit_tabledemo.c test/conformance/c/wref.c test/conformance/c/unit_tblv1.c \
-		test/conformance/c/unit_backenddemo.c build/tables-generated-c/backend/BackendTable.c \
+		test/conformance/c/unit_backenddemo.c build/tables-generated-c/backend/BackendTable.c build/tables-generated-c/backend/BackendBlock.c \
 		test/conformance/c/unit_tblv2.c test/conformance/c/unit_tblp1.c test/conformance/c/unit_tblp3.c \
 		build/tables-generated-c/examples/TablesTable.c build/tables-generated-c/examples/WideTable.c \
 		build/tables-generated-c/examples/NestedTable.c build/tables-generated-c/examples/KeyedTable.c \
@@ -734,7 +750,7 @@ C_BE_NC := build/c-be-sabotage
 C_BE_NC_GEN := $(C_BE_NC)/generated
 C_BE_NC_INCLUDES := $(subst build/tables-generated-c,$(C_BE_NC_GEN),$(C_CONFORMANCE_INCLUDES))
 C_BE_NC_SOAK_SRCS := test/c-tables/soak_main.c test/conformance/c/unit_tabledemo.c test/conformance/c/wref.c \
-	test/conformance/c/unit_backenddemo.c $(C_BE_NC_GEN)/backend/BackendTable.c \
+	test/conformance/c/unit_backenddemo.c $(C_BE_NC_GEN)/backend/BackendTable.c $(C_BE_NC_GEN)/backend/BackendBlock.c \
 	test/conformance/c/unit_tblv1.c test/conformance/c/unit_tblv2.c \
 	test/conformance/c/unit_tblp1.c test/conformance/c/unit_tblp3.c \
 	$(C_BE_NC_GEN)/examples/TablesTable.c $(C_BE_NC_GEN)/examples/WideTable.c \
@@ -792,7 +808,7 @@ C_LE_NC := build/c-le-sabotage
 C_LE_NC_GEN := $(C_LE_NC)/generated
 C_LE_NC_INCLUDES := $(subst build/tables-generated-c,$(C_LE_NC_GEN),$(C_CONFORMANCE_INCLUDES))
 C_LE_NC_SOAK_SRCS := test/c-tables/soak_main.c test/conformance/c/unit_tabledemo.c test/conformance/c/wref.c \
-	test/conformance/c/unit_backenddemo.c $(C_LE_NC_GEN)/backend/BackendTable.c \
+	test/conformance/c/unit_backenddemo.c $(C_LE_NC_GEN)/backend/BackendTable.c $(C_LE_NC_GEN)/backend/BackendBlock.c \
 	test/conformance/c/unit_tblv1.c test/conformance/c/unit_tblv2.c \
 	test/conformance/c/unit_tblp1.c test/conformance/c/unit_tblp3.c \
 	$(C_LE_NC_GEN)/examples/TablesTable.c $(C_LE_NC_GEN)/examples/WideTable.c \
@@ -1210,7 +1226,7 @@ tables-c-soak-negative-control: build/tables-generated-c/.stamp
 		{ echo "NEGATIVE CONTROL: the sabotage patched nothing"; exit 1; }
 	$(CC) $(TABLES_CFLAGS) -DCONFORMANCE_NO_WREF_CASE $(C_CONFORMANCE_INCLUDES) \
 		build/c-soak-sabotage/soak_main.c test/conformance/c/unit_tabledemo.c test/conformance/c/wref.c test/conformance/c/unit_tblv1.c \
-		test/conformance/c/unit_backenddemo.c build/tables-generated-c/backend/BackendTable.c \
+		test/conformance/c/unit_backenddemo.c build/tables-generated-c/backend/BackendTable.c build/tables-generated-c/backend/BackendBlock.c \
 		test/conformance/c/unit_tblv2.c test/conformance/c/unit_tblp1.c test/conformance/c/unit_tblp3.c \
 		build/tables-generated-c/examples/TablesTable.c build/tables-generated-c/examples/WideTable.c \
 		build/tables-generated-c/examples/NestedTable.c build/tables-generated-c/examples/KeyedTable.c \
@@ -1361,7 +1377,7 @@ test-c: tables-c-finite-float
 update-goldens-c: build/tables-generated-c/.stamp
 	@for d in examples block pointers; do \
 		mkdir -p testdata/golden/tables/$$d-c; \
-		cp build/tables-generated-c/$$d/*Table.h build/tables-generated-c/$$d/*Table.c build/tables-generated-c/$$d/*View.h build/tables-generated-c/$$d/*View.c testdata/golden/tables/$$d-c/; \
+		cp build/tables-generated-c/$$d/*Table.h $$(find build/tables-generated-c/$$d -maxdepth 1 -name '*TableData.h') build/tables-generated-c/$$d/*Table.c build/tables-generated-c/$$d/*View.h build/tables-generated-c/$$d/*View.c testdata/golden/tables/$$d-c/; \
 	done
 
 # The same registry listing oracle as the reference, through the C surface.
@@ -1553,10 +1569,9 @@ build/tables-generated-c-fixed/.stamp: bin/schema test/tables/FX1.schema test/ta
 	@touch $@
 
 C_FIXEDFORM_SOURCES := test/c-tables/fixedform_main.c test/c-tables/fixedform_fx1.c test/c-tables/fixedform_fx2.c \
-	test/c-tables/fixedform_layout.c \
-	test/c-tables/fixedform_v1.c test/c-tables/fixedform_v2.c \
+	test/c-tables/fixedform_v1.c \
 	test/c-tables/fixedform_ut1.c test/c-tables/fixedform_ut2.c \
-	test/c-tables/fixedform_fu1.c test/c-tables/fixedform_fu2.c \
+	test/c-tables/fixedform_fu1.c \
 	build/tables-generated-c-fixed/fx1/FX1Table.c build/tables-generated-c-fixed/fx2/FX2Table.c \
 	build/tables-generated-c-fixed/v1/V1Table.c build/tables-generated-c-fixed/v2/V2Table.c \
 	build/tables-generated-c-fixed/ut1/UT1Table.c build/tables-generated-c-fixed/ut2/UT2Table.c \
@@ -1671,6 +1686,24 @@ REGISTRY_NA_WHY.toolchain.c := builds with the host C compiler (CC), which nothi
 # the list is working/schema-fix-briefs/CTABLE-FORMAT.md's, layer by layer.
 CLANG_FORMAT_PIN   ?= 23.1.3
 CLANG_FORMAT_MAJOR := $(firstword $(subst ., ,$(CLANG_FORMAT_PIN)))
+# THE PER-FILE LIMIT. clang-format gets CLANG_FORMAT_FILE_SECONDS of CPU for
+# any one generated C or C++ file (`ulimit -t` in make/checks/c-clean-format.sh
+# and cpp-clean-format.sh, both gates), and a file it cannot finish inside
+# that is red by name (SLOW). clang-format lays a file out once per branch
+# combination of its #if/#elif/#else chains, so a table header's big constant
+# arrays were read five or six times over. The emitters now write the fixed
+# form's arrays into <Base>TableData.h with no name on a row (a trailing
+# comment per row tripled the data header's time: 3.2 s alone, 7.6 s at
+# 4-way), pack byte arrays 16 to a line, and
+# rewrite every chain into single-branch conditionals
+# (ccommon.SinglePassConditionals), so each file is laid out once.
+# Measured 2026-11-25 on amd-1 (clang-format 23.1.3, user+sys CPU, load
+# 2.2-9.8): ann/announce4097/AnnounceTable.h went from 29.3 s to 0.72 s alone
+# (81 s at 4-way) in C and from 16.3 s to 0.70 s in C++; the slowest file now
+# is 1.50 s in C and 1.69 s in C++; the whole C tree from 402 s to 47 s of CPU
+# and the C++ tree from 349 s to 94 s. A file over the limit is cured in the
+# emitter's shape, never in this number.
+CLANG_FORMAT_FILE_SECONDS := 5
 C_FORMAT_TREES     := build/tables-generated-c generated/c generated/c-ludicrous generated/bench/c generated/bench/tables/c generated/bench/paired/c
 # THE GATE RUNS WHOLE OR AS SHARD K OF N (make/checks/shard-filter.sh): a
 # row may set C_FORMAT_SHARD=K/N, so N rows judge every file once.
@@ -1690,7 +1723,7 @@ tables-c-clean: $(TABLES_C_CLEAN_INPUTS)
 	if [ "$$v" != "$(CLANG_FORMAT_MAJOR)" ]; then \
 		echo "tables-c-clean: $(CLANG_FORMAT) is major $$v; the gate is pinned to $(CLANG_FORMAT_PIN) (major $(CLANG_FORMAT_MAJOR)) — install it, or pass CLANG_FORMAT=<that binary>"; exit 1; \
 	fi; \
-	SHARD=$(C_FORMAT_SHARD) CLANG_FORMAT=$(CLANG_FORMAT) OUT=build sh make/checks/c-clean-format.sh make/c-format-allow.txt $(C_FORMAT_TREES)
+	SHARD=$(C_FORMAT_SHARD) CLANG_FORMAT=$(CLANG_FORMAT) OUT=build FILE_SECONDS=$(CLANG_FORMAT_FILE_SECONDS) sh make/checks/c-clean-format.sh make/c-format-allow.txt $(C_FORMAT_TREES)
 test-c: tables-c-clean
 
 # ITS NEGATIVE CONTROL: one struct typedef brace written K&R in the C PACKET
@@ -1710,7 +1743,7 @@ tables-c-format-negative-control: bin/schema tools/sabotage/c_clean.go make/chec
 	@rm -rf $(C_CLEAN_CONTROL) && mkdir -p $(C_CLEAN_CONTROL) && : > $(C_CLEAN_CONTROL)/empty.txt
 	./bin/schema generate --lang c --out $(C_CLEAN_CONTROL)/clean-all examples
 	@mkdir -p $(C_CLEAN_CONTROL)/clean && cp $(C_CLEAN_CONTROL)/clean-all/Types.h $(C_CLEAN_CONTROL)/clean/
-	@CLANG_FORMAT=$(CLANG_FORMAT) OUT=$(C_CLEAN_CONTROL)/guard sh make/checks/c-clean-format.sh $(C_CLEAN_CONTROL)/empty.txt $(C_CLEAN_CONTROL)/clean > $(C_CLEAN_CONTROL)/guard.out 2>&1 || \
+	@CLANG_FORMAT=$(CLANG_FORMAT) OUT=$(C_CLEAN_CONTROL)/guard FILE_SECONDS=$(CLANG_FORMAT_FILE_SECONDS) sh make/checks/c-clean-format.sh $(C_CLEAN_CONTROL)/empty.txt $(C_CLEAN_CONTROL)/clean > $(C_CLEAN_CONTROL)/guard.out 2>&1 || \
 		{ echo "NEGATIVE CONTROL FAILED: the unsabotaged C packet emitter's output is not format-clean, so this control would watch a tree that was red anyway"; cat $(C_CLEAN_CONTROL)/guard.out; exit 1; }
 	go run ./tools/sabotage -name c-clean-format-drift -out $(C_CLEAN_CONTROL)/c.gotext internal/codegen/c/c.go
 	@printf '{"Replace":{"%s/internal/codegen/c/c.go":"%s/$(C_CLEAN_CONTROL)/c.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > $(C_CLEAN_CONTROL)/overlay.json
@@ -1719,7 +1752,7 @@ tables-c-format-negative-control: bin/schema tools/sabotage/c_clean.go make/chec
 	@mkdir -p $(C_CLEAN_CONTROL)/sabotaged && cp $(C_CLEAN_CONTROL)/sabotaged-all/Types.h $(C_CLEAN_CONTROL)/sabotaged/
 	@grep -q '^typedef struct [A-Za-z0-9_]* {$$' $(C_CLEAN_CONTROL)/sabotaged/Types.h || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter wrote no K&R brace"; exit 1; }
-	@if CLANG_FORMAT=$(CLANG_FORMAT) OUT=$(C_CLEAN_CONTROL)/red sh make/checks/c-clean-format.sh $(C_CLEAN_CONTROL)/empty.txt $(C_CLEAN_CONTROL)/sabotaged > $(C_CLEAN_CONTROL)/red.out 2>&1; then \
+	@if CLANG_FORMAT=$(CLANG_FORMAT) OUT=$(C_CLEAN_CONTROL)/red FILE_SECONDS=$(CLANG_FORMAT_FILE_SECONDS) sh make/checks/c-clean-format.sh $(C_CLEAN_CONTROL)/empty.txt $(C_CLEAN_CONTROL)/sabotaged > $(C_CLEAN_CONTROL)/red.out 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a K&R struct brace in the emitted C left the format gate green"; cat $(C_CLEAN_CONTROL)/red.out; exit 1; \
 	fi
 	@grep -q 'clang-format drift in .*/sabotaged/Types\.h' $(C_CLEAN_CONTROL)/red.out || \
@@ -2539,3 +2572,86 @@ tables-c-retain-hashzero-negative-control: tables-c-retain-hashzero
 	@echo 'C retention: removing the hash-zero escape breaks each zero-ID vector'
 
 test-c tables-c: tables-c-retain-hashzero tables-c-retain-hashzero-negative-control
+
+# THE SINGLE-PASS EQUIVALENCE GATE. ccommon.SinglePassConditionals rewrites
+# every #if/#elif/#else chain the C and C++ table generators write into
+# single-branch conditionals (CLANG_FORMAT_FILE_SECONDS above says why). The
+# rewrite is held to what it rewrote here, on every file of the six generated
+# table trees: each tree is generated twice into build/single-pass, once as
+# emitted (SCHEMA_CONDITIONALS_AS_EMITTED=1, ccommon.RewriteConditionals) and
+# once rewritten (the switch cleared), and tools/singlepasscheck preprocesses
+# both forms of every file under its six configurations (host GCC, MSVC on
+# Windows, neither compiler, big-endian without atomics, test hooks with
+# NDEBUG and every name another header or the build defines, Clang on Apple)
+# and requires the same tokens, red by file name. Every branch of every chain
+# the rewrite took apart must be kept under one of them, or it is named by
+# line as never compared; exactly the six trees must be there, and a tree the
+# rewrite changed nothing in is red. 2209 files, 722 rewritten, about 90 s on
+# amd-1 (2026-11-25): a nightly row, with the rewriter's unit tests on the
+# pull-request tier. Its controls are the two
+# tables-single-pass-*-negative-control targets below.
+SINGLE_PASS_OUT := build/single-pass
+SINGLE_PASS_TREES := tables-c,tables-cpp,bench-tables-c,bench-paired-c,bench-tables-cpp,bench-paired-cpp
+.PHONY: tables-single-pass-equivalence single-pass-generate
+tables-single-pass-equivalence: bin/schema
+	@rm -rf $(SINGLE_PASS_OUT) && mkdir -p $(SINGLE_PASS_OUT)/before $(SINGLE_PASS_OUT)/after
+	@# the two generations are independent: run side by side, each logged
+	@SCHEMA_CONDITIONALS_AS_EMITTED=1 $(MAKE) --no-print-directory single-pass-generate SINGLE_PASS_SCHEMA=./bin/schema SINGLE_PASS_SIDE=$(SINGLE_PASS_OUT)/before > $(SINGLE_PASS_OUT)/before.log 2>&1 & b=$$!; \
+	env -u SCHEMA_CONDITIONALS_AS_EMITTED $(MAKE) --no-print-directory single-pass-generate SINGLE_PASS_SCHEMA=./bin/schema SINGLE_PASS_SIDE=$(SINGLE_PASS_OUT)/after > $(SINGLE_PASS_OUT)/after.log 2>&1 & a=$$!; \
+	fail=0; wait $$b || { echo "single-pass equivalence: generating the trees as emitted failed"; cat $(SINGLE_PASS_OUT)/before.log; fail=1; }; \
+	wait $$a || { echo "single-pass equivalence: generating the rewritten trees failed"; cat $(SINGLE_PASS_OUT)/after.log; fail=1; }; \
+	[ $$fail = 0 ]
+	go run ./tools/singlepasscheck -trees $(SINGLE_PASS_TREES) $(SINGLE_PASS_OUT)/before $(SINGLE_PASS_OUT)/after
+
+# single-pass-generate writes the six trees with SINGLE_PASS_SCHEMA into
+# SINGLE_PASS_SIDE, by the same generate lines their own stamps run; a tree's
+# directory ends in -c or -cpp, which is how the check knows its language.
+single-pass-generate: export SINGLE_PASS_C = $(call tables_generate_c,$(SINGLE_PASS_SCHEMA),$(SINGLE_PASS_SIDE)/tables-c)
+single-pass-generate: export SINGLE_PASS_C_COLLECTIONS = $(call tables_generate_c_collections,$(SINGLE_PASS_SCHEMA),$(SINGLE_PASS_SIDE)/tables-c)
+single-pass-generate: export SINGLE_PASS_CPP = $(call tables_generate,$(SINGLE_PASS_SCHEMA),$(SINGLE_PASS_SIDE)/tables-cpp)
+single-pass-generate:
+	@test -n "$(SINGLE_PASS_SCHEMA)" -a -n "$(SINGLE_PASS_SIDE)" || { echo "single-pass-generate: SINGLE_PASS_SCHEMA and SINGLE_PASS_SIDE name the compiler and the output"; exit 1; }
+	@mkdir -p $(SINGLE_PASS_SIDE)/tables-c $(SINGLE_PASS_SIDE)/tables-cpp
+	$(call tables_generate_side_by_side,SINGLE_PASS_C)
+	$(call tables_generate_side_by_side,SINGLE_PASS_C_COLLECTIONS)
+	$(call tables_generate_cpp_side_by_side,SINGLE_PASS_CPP,$(SINGLE_PASS_SIDE)/tables-cpp.lines)
+	$(SINGLE_PASS_SCHEMA) generate --lang c --out $(SINGLE_PASS_SIDE)/bench-tables-c bench/corpus/BenchTable.schema
+	$(SINGLE_PASS_SCHEMA) generate --lang c --out $(SINGLE_PASS_SIDE)/bench-paired-c bench/corpus/Bench.schema bench/corpus/FixedTable.schema
+	$(SINGLE_PASS_SCHEMA) generate --lang cpp --out $(SINGLE_PASS_SIDE)/bench-tables-cpp bench/corpus/BenchTable.schema
+	$(SINGLE_PASS_SCHEMA) generate --lang cpp --out $(SINGLE_PASS_SIDE)/bench-paired-cpp bench/corpus/Bench.schema bench/corpus/FixedTable.schema
+
+# THE CONTROLS. Each plants one wrong rewrite in a copy of
+# internal/codegen/ccommon/singlepass.go (tools/sabotage, under a Go overlay),
+# generates the paired bench closure in C as emitted and with the sabotaged
+# rewrite, and the check must go red naming the header the sabotage broke:
+#   single-pass-drop-else    the rewrite drops each file's first #else branch;
+#   single-pass-hoist-define the rewrite moves a guarded #if ahead of the
+#                            #define between it and its twin, so a second
+#                            #ifndef ONCE block is read as if the first had
+#                            not defined ONCE.
+SINGLE_PASS_CONTROL := build/single-pass-control
+.PHONY: tables-single-pass-drop-else-negative-control tables-single-pass-hoist-define-negative-control
+tables-single-pass-drop-else-negative-control: bin/schema tools/sabotage/single_pass.go
+	@$(MAKE) --no-print-directory single-pass-sabotaged SINGLE_PASS_SABOTAGE=single-pass-drop-else
+
+tables-single-pass-hoist-define-negative-control: bin/schema tools/sabotage/single_pass.go
+	@$(MAKE) --no-print-directory single-pass-sabotaged SINGLE_PASS_SABOTAGE=single-pass-hoist-define
+
+.PHONY: single-pass-sabotaged
+single-pass-sabotaged:
+	@test -n "$(SINGLE_PASS_SABOTAGE)" || { echo "single-pass-sabotaged: SINGLE_PASS_SABOTAGE names the sabotage"; exit 1; }
+	@rm -rf $(SINGLE_PASS_CONTROL)/$(SINGLE_PASS_SABOTAGE) && mkdir -p $(SINGLE_PASS_CONTROL)/$(SINGLE_PASS_SABOTAGE)/before $(SINGLE_PASS_CONTROL)/$(SINGLE_PASS_SABOTAGE)/after $(SINGLE_PASS_CONTROL)/$(SINGLE_PASS_SABOTAGE)/sabotaged
+	SCHEMA_CONDITIONALS_AS_EMITTED=1 ./bin/schema generate --lang c --out $(SINGLE_PASS_CONTROL)/$(SINGLE_PASS_SABOTAGE)/before/bench-paired-c bench/corpus/Bench.schema bench/corpus/FixedTable.schema
+	env -u SCHEMA_CONDITIONALS_AS_EMITTED ./bin/schema generate --lang c --out $(SINGLE_PASS_CONTROL)/$(SINGLE_PASS_SABOTAGE)/after/bench-paired-c bench/corpus/Bench.schema bench/corpus/FixedTable.schema
+	@go run ./tools/singlepasscheck -trees bench-paired-c $(SINGLE_PASS_CONTROL)/$(SINGLE_PASS_SABOTAGE)/before $(SINGLE_PASS_CONTROL)/$(SINGLE_PASS_SABOTAGE)/after > $(SINGLE_PASS_CONTROL)/$(SINGLE_PASS_SABOTAGE)/clean.out 2>&1 || \
+		{ echo "NEGATIVE CONTROL FAILED: the unsabotaged rewrite of the paired bench closure is not equivalent, so this control would watch a tree that was red anyway"; cat $(SINGLE_PASS_CONTROL)/$(SINGLE_PASS_SABOTAGE)/clean.out; exit 1; }
+	go run ./tools/sabotage -name $(SINGLE_PASS_SABOTAGE) -out $(SINGLE_PASS_CONTROL)/$(SINGLE_PASS_SABOTAGE)/singlepass.gotext internal/codegen/ccommon/singlepass.go
+	@printf '{"Replace":{"%s/internal/codegen/ccommon/singlepass.go":"%s/$(SINGLE_PASS_CONTROL)/$(SINGLE_PASS_SABOTAGE)/singlepass.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > $(SINGLE_PASS_CONTROL)/$(SINGLE_PASS_SABOTAGE)/overlay.json
+	go build -overlay $(SINGLE_PASS_CONTROL)/$(SINGLE_PASS_SABOTAGE)/overlay.json -o $(SINGLE_PASS_CONTROL)/$(SINGLE_PASS_SABOTAGE)/schema ./cmd/schema
+	env -u SCHEMA_CONDITIONALS_AS_EMITTED $(SINGLE_PASS_CONTROL)/$(SINGLE_PASS_SABOTAGE)/schema generate --lang c --out $(SINGLE_PASS_CONTROL)/$(SINGLE_PASS_SABOTAGE)/sabotaged/bench-paired-c bench/corpus/Bench.schema bench/corpus/FixedTable.schema
+	@if go run ./tools/singlepasscheck -trees bench-paired-c $(SINGLE_PASS_CONTROL)/$(SINGLE_PASS_SABOTAGE)/before $(SINGLE_PASS_CONTROL)/$(SINGLE_PASS_SABOTAGE)/sabotaged > $(SINGLE_PASS_CONTROL)/$(SINGLE_PASS_SABOTAGE)/red.out 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the $(SINGLE_PASS_SABOTAGE) rewrite left the single-pass equivalence check green"; cat $(SINGLE_PASS_CONTROL)/$(SINGLE_PASS_SABOTAGE)/red.out; exit 1; \
+	fi
+	@grep -q '^SINGLE-PASS EQUIVALENCE FAILED: bench-paired-c/BenchTable\.h: config ' $(SINGLE_PASS_CONTROL)/$(SINGLE_PASS_SABOTAGE)/red.out || \
+		{ echo "NEGATIVE CONTROL FAILED: the check went red, but not naming bench-paired-c/BenchTable.h"; cat $(SINGLE_PASS_CONTROL)/$(SINGLE_PASS_SABOTAGE)/red.out; exit 1; }
+	@echo "negative control: the $(SINGLE_PASS_SABOTAGE) rewrite turns the single-pass equivalence check RED naming bench-paired-c/BenchTable.h"

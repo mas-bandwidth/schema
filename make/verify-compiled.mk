@@ -33,23 +33,20 @@ cards-go-conformance: cards-conformance-go
 # build/conformance-cpp and build/wire-fuzz-cpp in Makefile each invoke
 # $(MAKE) $(CONFORMANCE_OBJECTS), so listing both as parallel prerequisites of
 # _verify-cpp-fuzz compiled all 62 generated table objects twice simultaneously
-# (racing on identical .o outputs) and delayed the two slowest main TUs until
-# after the object pass finished. Compiling both main TUs first alongside one
-# shared $(CONFORMANCE_OBJECTS) pass eliminates the duplicate work and file race
-# and overlaps the main TUs with the generated objects.
-build/conformance-cpp-objs/_main/conformance_main.o: test/conformance/cpp/main.cpp build/tables-generated/.stamp $(wildcard $(SERIALIZE)/*.h)
-	@mkdir -p $(@D)
-	$(CXX) $(TABLES_CXXFLAGS) $(CONFORMANCE_INCLUDES) -c $< -o $@
-
+# (racing on identical .o outputs) and delayed the slowest main TUs until
+# after the object pass finished. Compiling the driver's own units
+# ($(CONFORMANCE_DRIVER_OBJECTS), Makefile) and the fuzzer's main first,
+# alongside one shared $(CONFORMANCE_OBJECTS) pass, eliminates the duplicate
+# work and file race and overlaps the main TUs with the generated objects.
 .PHONY: _verify-cpp-fuzz-bins
-_verify-cpp-fuzz-bins: build/tables-generated/.stamp test/conformance/cpp/main.cpp test/tables/wire_fuzz_main.cpp
+_verify-cpp-fuzz-bins: build/tables-generated/.stamp $(CONFORMANCE_DRIVER_SOURCES) $(CONFORMANCE_DRIVER_HEADERS) test/tables/wire_fuzz_main.cpp
 	@mkdir -p build
 	@$(MAKE) --no-print-directory \
-		build/conformance-cpp-objs/_main/conformance_main.o \
+		$(CONFORMANCE_DRIVER_OBJECTS) \
 		build/conformance-cpp-objs/_main/wire_fuzz_main.o \
 		$(CONFORMANCE_OBJECTS)
 	@set -e; \
-		$(CXX) $(TABLES_CXXFLAGS) build/conformance-cpp-objs/_main/conformance_main.o \
+		$(CXX) $(TABLES_CXXFLAGS) $(CONFORMANCE_DRIVER_OBJECTS) \
 			$(CONFORMANCE_OBJECTS) -o build/conformance-cpp & p1=$$!; \
 		$(CXX) $(TABLES_CXXFLAGS) build/conformance-cpp-objs/_main/wire_fuzz_main.o \
 			$(CONFORMANCE_OBJECTS) -o build/wire-fuzz-cpp & p2=$$!; \
@@ -95,7 +92,7 @@ _verify-$(1)-fuzz-json: build/conformance-harness $$(VERIFY_FUZZ_DEPS_$(1))
 _verify-$(1)-fuzz-message: build/conformance-harness $$(VERIFY_FUZZ_DEPS_$(1))
 	@mkdir -p build/verify
 	DOTNET="$$(DOTNET)" JAVA="$$(JAVA)" BEAM_PATH="$$(BEAM_PATH)" $$(WFR_ENV_$(1)) \
-		./build/conformance-harness message-fuzz --only $(1)) \
+		./build/conformance-harness message-fuzz --only $(1) \
 		--seed $$(VERIFY_FUZZ_SEED) --n $$(VERIFY_MESSAGE_FUZZ_N) \
 		--failed build/verify/message-fuzz-$(1)
 

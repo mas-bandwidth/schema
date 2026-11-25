@@ -119,10 +119,10 @@ for (let i = 0; i < COUNT; i++) {
     "the refusal's name is layout_unknown, never layout_newer");
   check(report.layoutHash === UNKNOWN_HASH,
     "layoutHash is the file's hash 0x" + UNKNOWN_HASH.toString(16) + " (got 0x" + report.layoutHash.toString(16) + ")");
-  check(countersZero(report) && report.damaged === false,
+  check(countersZero(report) && ("damaged" in report) === false,
     "every counter zero, not damaged: no clamp, remap or drop ran (unknown=" + report.unknown +
     " mismatch=" + report.mismatch + " oor=" + report.oor + " widened=" + report.widened +
-    " repeated=" + report.repeated + " damaged=" + report.damaged + ")");
+    " repeated=" + report.repeated + ")");
   check(values.every(isDefault), "ruling R4: every value handed in holds its declared default after the refusal");
 }
 

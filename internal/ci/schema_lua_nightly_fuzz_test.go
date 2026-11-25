@@ -16,7 +16,6 @@ package ci
 
 import (
 	"encoding/base64"
-	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -199,36 +198,4 @@ func TestLuaNightlyFuzzOracleCarriesEveryRuntimeRefusal(t *testing.T) {
 	if !strings.Contains(readCI(t, root, runtime+"load.lua"), "\n"+plant[1]+"\n") {
 		t.Errorf("the negative control plants against %q, which load.lua no longer carries", plant[1])
 	}
-}
-
-// luaHeavyLaneTriggerProblems holds a lua heavy lane's workflow to the
-// nightly-and-dispatch-only rule (the owner, 2026-11-15: "I want everything that
-// is not light moved to nightly test now." "no exceptions."): no push and no
-// pull request trigger, the nightly job runs on schedule and on dispatch, the
-// fast job (replay and planted control) runs on dispatch, and no job runs on
-// a push or a pull request.
-func luaHeavyLaneTriggerProblems(wf string) []string {
-	problems := nightlyOnlyTriggerProblems(wf)
-	schedule := ciEvent{Name: "schedule", Branch: "main", Repo: "mas-bandwidth/schema"}
-	dispatch := ciEvent{Name: "workflow_dispatch", Branch: "main", Repo: "mas-bandwidth/schema"}
-	for _, want := range []struct {
-		job string
-		ev  ciEvent
-	}{{"nightly", schedule}, {"nightly", dispatch}, {"fast", dispatch}} {
-		if ok, err := jobRunsInWorkflow(wf, want.job, want.ev); err != nil || !ok {
-			problems = append(problems, fmt.Sprintf("the %s job does not run on %s (ok=%v err=%v)", want.job, want.ev.Name, ok, err))
-		}
-	}
-	for _, ev := range []ciEvent{
-		{Name: "push", Branch: "main", Repo: "mas-bandwidth/schema"},
-		{Name: "push", Branch: "dev", Repo: "mas-bandwidth/schema"},
-		{Name: "pull_request", Branch: "main", Repo: "mas-bandwidth/schema", HeadRepo: "mas-bandwidth/schema"},
-	} {
-		for _, job := range []string{"fast", "nightly"} {
-			if ok, _ := jobRunsInWorkflow(wf, job, ev); ok {
-				problems = append(problems, fmt.Sprintf("the %s job runs on a %s to %s; the lane is nightly and dispatch only", job, ev.Name, ev.Branch))
-			}
-		}
-	}
-	return problems
 }

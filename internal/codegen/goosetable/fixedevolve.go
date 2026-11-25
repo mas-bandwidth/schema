@@ -710,6 +710,12 @@ func (c *evolveCompiler) checkSrc(oldOff, size int64) bool {
 
 // subtree is how many pre-order entries the subtree rooted at i occupies.
 func (c *evolveCompiler) subtree(all []rawEntry, i int) int {
+	return layoutSubtree(all, i)
+}
+
+// layoutSubtree is how many pre-order entries the subtree rooted at i
+// occupies.
+func layoutSubtree(all []rawEntry, i int) int {
 	if i < 0 || i >= len(all) {
 		return 1
 	}
@@ -724,7 +730,12 @@ func (c *evolveCompiler) subtree(all []rawEntry, i int) int {
 }
 
 // widestArm is the union's widest arm, so its tag width is the entry's size
-// less that arm (§5.2 THE GUARD'S WIDTH).
+// less that arm (§5.2 THE GUARD'S WIDTH). The arms are the union's CHILDREN,
+// each a whole subtree in pre-order: the walk steps over an arm's own
+// entries (a struct arm's fields) to reach the next arm. Before 2026-11-25 it
+// stepped one entry, so a struct arm's first field stood in for the next arm,
+// a wider arm after it was never seen, and the tag width came out wrong
+// (TestGooseFixedR14GrownTagReadsWritersTagWidth, struct_arm).
 func widestArm(all []rawEntry, i int) int64 {
 	var widest int64
 	if i < 0 || i >= len(all) {
@@ -735,9 +746,15 @@ func widestArm(all []rawEntry, i int) int64 {
 		if all[at].size > widest {
 			widest = all[at].size
 		}
-		at += 1
+		at += layoutSubtree(all, at)
 	}
 	return widest
+}
+
+// evolveOrdinalWidth reports whether a tag or ordinal width is one a layout
+// lays: 1, 2, 4 or 8 bytes (docs/FIXED-FORM-ALGORITHM.md §1.1).
+func evolveOrdinalWidth(w int64) bool {
+	return w == 1 || w == 2 || w == 4 || w == 8
 }
 
 func (c *evolveCompiler) match(oi, ci int, oldOff, curOff int64, depth int) []evolveNode {
@@ -997,8 +1014,11 @@ func (c *evolveCompiler) union(oi, ci int, oldOff, curOff int64, depth int) []ev
 	te, me := c.oldAll[oi], c.curAll[ci]
 	oldTag := te.size - widestArm(c.oldAll, oi)
 	curTag := me.size - widestArm(c.curAll, ci)
-	if oldTag < 1 || oldTag > 8 || curTag < 1 || curTag > 8 {
-		// a tag width no union lays: not a widening of this reader
+	if !evolveOrdinalWidth(oldTag) || !evolveOrdinalWidth(curTag) {
+		// A TAG WIDTH NO UNION LAYS — `size - widest` is an ordinal width, 1,
+		// 2, 4 or 8 (docs/FIXED-FORM-ALGORITHM.md §1.1, kind 15) — is
+		// malformed: a 3-byte tag was read at 3 bytes and landed before
+		// 2026-11-25 (TestGooseFixedR14GrownTagReadsWritersTagWidth).
 		c.unlawful = true
 		return nil
 	}

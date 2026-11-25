@@ -2,6 +2,8 @@ package main
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -49,5 +51,39 @@ func TestARedThatComparedNothingFailsTheControl(t *testing.T) {
 	caught := dead + "FAILED: stream read valid_p0_v0.bin\n"
 	if got := verdict("bitphase", red, []byte(caught), want, refuse); got != "" {
 		t.Errorf("a leg red on its planted vector failed its control: %q", got)
+	}
+}
+
+// TestEveryRefuseMatchesOnlyAPassLine: a control's -refuse (make/widen-18-
+// gate-controls.mk) matches the leg's pass line and nothing else. A gate's
+// own red names the token it did not get ("squirrel did not print
+// \"TABLEGEN_OK squirrel 12\""): an unanchored -refuse matched that quote
+// and failed the tablegen control on squirrel, a leg that was red on its
+// planted case (fullrun ab1e1e195a).
+func TestEveryRefuseMatchesOnlyAPassLine(t *testing.T) {
+	t.Parallel()
+	src, err := os.ReadFile(filepath.Join("..", "..", "make", "widen-18-gate-controls.mk"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	refuses := regexp.MustCompile(`-refuse '([^']*)'`).FindAllStringSubmatch(string(src), -1)
+	if len(refuses) == 0 {
+		t.Fatal("make/widen-18-gate-controls.mk gives no control a -refuse")
+	}
+	for _, m := range refuses {
+		pattern := strings.ReplaceAll(m[1], "$(1)", "squirrel")
+		refuse, err := regexp.Compile(pattern)
+		if err != nil {
+			t.Fatalf("-refuse %q: %v", m[1], err)
+		}
+		token := strings.TrimPrefix(pattern, "(?m)^")
+		pass := "PLANTED x\n" + token + "12\n"
+		quoted := "PLANTED x\nFAILED: tg3:case\nsquirrel did not print \"" + token + "12\":\nFAILED: tg3:case\n"
+		if !refuse.MatchString(pass) {
+			t.Errorf("-refuse %q misses the pass line %q", m[1], token+"12")
+		}
+		if refuse.MatchString(quoted) {
+			t.Errorf("-refuse %q matches the gate's own red quoting the token it did not get", m[1])
+		}
 	}
 }

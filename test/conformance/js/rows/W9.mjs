@@ -124,8 +124,13 @@ const THEIRS_LO = 0xfeedface, THEIRS_HI = 0x0badc0de;
 const known = [new TableFixedKnownLayout(THEIRS_LO, THEIRS_HI, theirs, theirs.length, 8 + 20)];
 const lane = TableFixedLineagePlans(known, keyed.TeamConfigFixedHashLo, keyed.TeamConfigFixedHashHi,
   own, Int32Array.from(dstRows), body)[0];
-check(lane !== null && lane.ready === true && lane.why === 0 && lane.unknown === 0 && lane.mismatch === 0,
-  `absent field: the pre-spawn writer's layout compiles to a plan of ${lane && lane.count} entries, nothing unknown`);
+// A LAWFUL ENTRY IS ONE THAT LAYS A PLAN (§5.2 MATCH/EMIT, §5.4, §5.9 #30):
+// an unlawful one lays none and its lane carries layout_malformed (or
+// kind_mismatch) in `why`. The plan's unknown/mismatch counters this row once
+// read are the compile census §5.8 row 11 retired (jstable 8265da2bd2); a
+// lane no longer has them, so `ready`, `why` and the entry count are the law.
+check(lane !== null && lane.ready === true && lane.why === 0 && lane.count === 2,
+  `absent field: the pre-spawn writer's layout compiles to a plan of ${lane && lane.count} entries, nothing refused`);
 
 // ---- 3: the unwritten ranges are EXACTLY the absent field's bytes ----
 
@@ -159,7 +164,7 @@ check(prefill[0] === 0x04 && prefill[1] === 0 && prefill[2] === 0 && prefill[3] 
   check(value.bannerLength === 3 && value.banner[0] === 0x68 && value.banner[1] === 0x65 &&
     value.banner[2] === 0x79 && plan.image[4] === 3,
     "only those: the ranges an entry covers keep the WRITER'S bytes — \"hey\", not the default 4 and not the stain");
-  check(!report.damaged && report.refused === 0 && report.oor === 0 &&
+  check(!("damaged" in report) && report.refused === 0 && report.oor === 0 &&
     report.unknown === 0 && report.mismatch === 0,
     `the prefill moves nothing else: verdict clean, counters 0 (clamped=${report.oor})`);
 }

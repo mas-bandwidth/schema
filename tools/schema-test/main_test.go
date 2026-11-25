@@ -233,6 +233,7 @@ func TestLangsIsTheRegistrysList(t *testing.T) {
 	}{
 		{[]string{"langs"}, `["go","c","none"]`},
 		{[]string{"langs", "--ready"}, `["go","none"]`},
+		{[]string{"langs", "--targets"}, `go,c`},
 	} {
 		code, out := cli(t, envFake{}, c.args...)
 		if code != 0 || strings.TrimSpace(out) != c.want {
@@ -256,6 +257,7 @@ func TestEveryCorpusFamilyHasItsHarness(t *testing.T) {
 		"name-buildability":     "name-buildability",
 		"wire-fuzz":             "wire-fuzz",
 		"wire-fuzz-vector":      "wire-fuzz",
+		"tables":                "tables",
 		"wire-fuzz-release":     "",
 		"no-such-family":        "",
 	} {

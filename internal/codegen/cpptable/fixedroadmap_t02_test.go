@@ -319,7 +319,7 @@ func t02CppR25(t *testing.T) {
 	t02CppHas(t, src, "int32_t dest_capacity = plan_capacity;",
 		"R25 the caller's capacity is the bound")
 	t02CppHas(t, src, "dest, dest_capacity,", "R25 the compile is handed the caller's capacity")
-	t02CppHas(t, src, "( made == -2 ) ? TableMessageReason::layout_record_too_large : ( made == -3 ) ? TableMessageReason::layout_malformed : ( made == -4 ) ? TableMessageReason::kind_mismatch : TableMessageReason::plan_too_large",
+	t02CppHas(t, src, "report->reason = TableMessageReason::plan_too_large;\n                if ( made == -2 ) { report->reason = TableMessageReason::layout_record_too_large; }\n                if ( made == -3 ) { report->reason = TableMessageReason::layout_malformed; }\n                if ( made == -4 ) { report->reason = TableMessageReason::kind_mismatch; }",
 		"R25 the refusal is by name")
 }
 
@@ -336,7 +336,7 @@ func t02CppR26(t *testing.T) {
 	t02CppHas(t, src,
 		"if ( !TableFixedParseLayout( known.layout, known.layout_bytes, parsed, why ) ) { report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1; }",
 		"R26 an unparseable lineage entry carries TableMessageReason::layout_malformed on its own lane")
-	t02CppHas(t, src, "( made == -2 ) ? TableMessageReason::layout_record_too_large : ( made == -3 ) ? TableMessageReason::layout_malformed : ( made == -4 ) ? TableMessageReason::kind_mismatch : TableMessageReason::plan_too_large; return -1;",
+	t02CppHas(t, src, "report->reason = TableMessageReason::plan_too_large;\n                if ( made == -2 ) { report->reason = TableMessageReason::layout_record_too_large; }\n                if ( made == -3 ) { report->reason = TableMessageReason::layout_malformed; }\n                if ( made == -4 ) { report->reason = TableMessageReason::kind_mismatch; }\n                return -1;",
 		"R26 an entry whose plan outgrows the cap refuses TableMessageReason::plan_too_large and returns")
 	load := t02CppBlock(t, src, "inline int64_t TFixedLoadWalk(", "static_assert( __is_standard_layout")
 	if strings.Contains(load, "throw") {
@@ -370,16 +370,20 @@ func t02CppW14(t *testing.T) {
 		"W14 the ABI assert ties the plan's dst to offsetof(x)")
 	t02CppHas(t, src, "static_assert( (uint32_t) __builtin_offsetof( T, y ) == 4, \"T.y: the fixed form's plan lands here\" );",
 		"W14 the ABI assert ties the plan's dst to offsetof(y)")
-	dst := t02CppBlock(t, src, "constexpr TableFixedDst TFixedDst[] = {", "\n};")
+	// the header names no row: a row is found by its place in the layout walk
+	dstNotes := cppFixedDstNotes(st)
+	dstRow := func(note string) string {
+		return cppFixedRow(t, src, "constexpr TableFixedDst TFixedDst[] = {\n", dstNotes, note)
+	}
 	// The destination rows carry BYTE OFFSETS, not offsetof expressions: the
 	// fixed form's dst is the same number the static asserts above vouch for,
 	// and the C++ spelling of offsetof cannot name an array element (a fixed
 	// arm's spans[2]int32 has no .value member), so both legs walk one set of
 	// numbers (ctable/fixedform.go). The bytes are still tied to the ABI by
 	// the static_assert( __builtin_offsetof( T, x ) == 0 ) pair above.
-	t02CppHas(t, dst, "{ 0, 0, 0, 0, 0 }, // x",
+	t02CppHas(t, dstRow("x"), "{ 0, 0, 0, 0, 0 },",
 		"W14 the storage row carries x's byte offset, offsetof(x) = 0")
-	t02CppHas(t, dst, "{ 4, 0, 0, 0, 0 }, // y",
+	t02CppHas(t, dstRow("y"), "{ 4, 0, 0, 0, 0 },",
 		"W14 the storage row carries y's byte offset, offsetof(y) = 4")
 }
 

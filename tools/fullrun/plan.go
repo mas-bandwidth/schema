@@ -68,6 +68,13 @@ type Unit struct {
 	Weight   float64  `json:"weight"`
 	Measured bool     `json:"measured,omitempty"`
 	Reason   string   `json:"reason,omitempty"`
+	// Needs is the make targets the unit's Go tests read (testreg.GoNeedsPath),
+	// run in the clone before the unit's own command.
+	Needs []string `json:"needs,omitempty"`
+	// Requires is the machine properties its tests need (testreg.Test's
+	// Needs): only a bench that provides every one takes the unit, and a
+	// unit no bench of the run can take is NOT RUN, naming them.
+	Requires []string `json:"requires,omitempty"`
 }
 
 // Runs reports whether a shard runs the unit. Rides and unrunnable units
@@ -118,7 +125,16 @@ func buildUnits(root string) ([]Unit, error) {
 	if err != nil {
 		return nil, err
 	}
-	return planUnits(reg, res, ledger, weights, moduleOf(root))
+	needs, err := testreg.LoadGoNeeds(filepath.Join(root, testreg.GoNeedsPath))
+	if err != nil {
+		return nil, err
+	}
+	units, err := planUnits(reg, res, ledger, weights, moduleOf(root))
+	if err != nil {
+		return nil, err
+	}
+	applyNeeds(units, needs)
+	return units, nil
 }
 
 // moduleOf answers, for a directory under root, the directory of the
@@ -191,10 +207,19 @@ func registryUnits(reg *testreg.Registry, weights map[string]float64, counts map
 		return nil, fmt.Errorf("registry: every tier selects %d instances, and the registry has %d", len(sel.Instances), len(all))
 	}
 	var units []Unit
-	perLang := map[string][]testreg.Instance{}
+	// a language's instances are chunked by what they need, so a chunk's
+	// requirement is every one of its rows', and a row needing nothing is
+	// never held back from a bench by a neighbour's need
+	type langNeeds struct{ lang, needs string }
+	perLang := map[langNeeds][]testreg.Instance{}
+	// a call unit's rows (testreg.UnitOf: a make target's Go tests, a golden
+	// writer's pins) are one unit: rows of one call dealt to two shards
+	// would run the call twice
+	callUnit := map[string]int{} // UnitOf key -> index in units
 	for _, inst := range sel.Instances {
 		if inst.Test.PerLang() {
-			perLang[inst.Lang] = append(perLang[inst.Lang], inst)
+			k := langNeeds{inst.Lang, strings.Join(sortedNeeds(inst.Test.Needs), "+")}
+			perLang[k] = append(perLang[k], inst)
 			continue
 		}
 		n := Name{Name: inst.Full, Tier: inst.Test.Tier, Type: inst.Test.Type, Lang: inst.Lang}
@@ -211,26 +236,60 @@ func registryUnits(reg *testreg.Registry, weights map[string]float64, counts map
 		case "plant":
 			w = plantSeconds
 		}
-		units = append(units, Unit{ID: "registry/" + inst.Full, Kind: KindRegistry, Args: []string{inst.Full}, Names: []Name{n}, Weight: w})
+		if key := testreg.UnitOf(inst); key != "" {
+			if i, ok := callUnit[key]; ok {
+				u := &units[i]
+				u.Args = append(u.Args, inst.Full)
+				u.Names = append(u.Names, n)
+				u.Weight += w
+				u.Requires = sortedNeeds(append(u.Requires, inst.Test.Needs...))
+				continue
+			}
+			callUnit[key] = len(units)
+		}
+		units = append(units, Unit{ID: "registry/" + inst.Full, Kind: KindRegistry, Args: []string{inst.Full}, Names: []Name{n}, Weight: w, Requires: sortedNeeds(inst.Test.Needs)})
 	}
 	for _, l := range reg.Langs {
-		insts := perLang[l.Name]
 		per := float64(instanceSeconds)
 		if !l.Ready() {
 			per = missingSeconds
 		}
-		for k := 0; k*registryChunk < len(insts); k++ {
-			chunk := insts[k*registryChunk : min(len(insts), (k+1)*registryChunk)]
-			u := Unit{ID: fmt.Sprintf("registry/%s/%03d", l.Name, k+1), Kind: KindRegistry}
-			for _, inst := range chunk {
-				u.Args = append(u.Args, inst.Full)
-				u.Names = append(u.Names, Name{Name: inst.Full, Tier: inst.Test.Tier, Type: inst.Test.Type, Lang: inst.Lang})
-				u.Weight += per
+		var keys []langNeeds
+		for k := range perLang {
+			if k.lang == l.Name {
+				keys = append(keys, k)
 			}
-			units = append(units, u)
+		}
+		sort.Slice(keys, func(i, j int) bool { return keys[i].needs < keys[j].needs })
+		for _, key := range keys {
+			insts := perLang[key]
+			id := "registry/" + l.Name
+			if key.needs != "" {
+				id += "/needs-" + key.needs
+			}
+			for k := 0; k*registryChunk < len(insts); k++ {
+				chunk := insts[k*registryChunk : min(len(insts), (k+1)*registryChunk)]
+				u := Unit{ID: fmt.Sprintf("%s/%03d", id, k+1), Kind: KindRegistry, Requires: sortedNeeds(chunk[0].Test.Needs)}
+				for _, inst := range chunk {
+					u.Args = append(u.Args, inst.Full)
+					u.Names = append(u.Names, Name{Name: inst.Full, Tier: inst.Test.Tier, Type: inst.Test.Type, Lang: inst.Lang})
+					u.Weight += per
+				}
+				units = append(units, u)
+			}
 		}
 	}
 	return units, nil
+}
+
+// sortedNeeds is a set of needs in order, each once, or nil.
+func sortedNeeds(needs []string) []string {
+	if len(needs) == 0 {
+		return nil
+	}
+	out := slices.Clone(needs)
+	sort.Strings(out)
+	return slices.Compact(out)
 }
 
 // unmovedName is the run's name for a test the registry does not hold yet.
@@ -665,16 +724,79 @@ type Bench struct {
 	// GOOS are the operating systems besides Linux whose tests it runs
 	// (captain: windows, through WSL).
 	GOOS []string `json:"goos,omitempty"`
+	// Provides are the machine properties the bench declares and its probe
+	// confirmed (benchProperties): --bench HOST=SHARDS+casefold. A
+	// declaration its probe refused is in Refused instead, with why, and the
+	// bench takes no unit that requires it.
+	Provides []string `json:"provides,omitempty"`
+	Refused  []string `json:"refused,omitempty"`
 }
 
 // Runs reports whether the bench runs a unit built for goos ("": Linux).
 func (b Bench) Runs(goos string) bool { return goos == "" || slices.Contains(b.GOOS, goos) }
 
+// Takes reports whether the bench runs the unit: it runs the unit's GOOS
+// and provides every property the unit requires. A plan never sends a unit
+// to a bench that lacks one of its needs.
+func (b Bench) Takes(u Unit) bool {
+	if !b.Runs(u.GOOS) {
+		return false
+	}
+	for _, r := range u.Requires {
+		if !slices.Contains(b.Provides, r) {
+			return false
+		}
+	}
+	return true
+}
+
+// lacks is why no bench of benches takes u for its needs, naming each
+// property no bench provides and each bench whose declaration of it its
+// probe refused, or "" when one bench takes it. A unit whose needs (and
+// GOOS) some benches provide between them but no one bench all together
+// names that.
+func lacks(u Unit, benches []Bench) string {
+	var missing []string
+	for _, r := range u.Requires {
+		if !slices.ContainsFunc(benches, func(b Bench) bool { return slices.Contains(b.Provides, r) }) {
+			missing = append(missing, r)
+		}
+	}
+	if len(missing) == 0 {
+		if len(u.Requires) == 0 || slices.ContainsFunc(benches, func(b Bench) bool { return b.Takes(u) }) {
+			return ""
+		}
+		all := strings.Join(u.Requires, " and ")
+		if u.GOOS != "" {
+			all += " on " + u.GOOS
+		}
+		words := slices.Clone(u.Requires)
+		if u.GOOS != "" {
+			words = append(words, u.GOOS)
+		}
+		return fmt.Sprintf("it needs %s on one bench, and no bench in this run provides them all: name one that does with --bench HOST=SHARDS+%s", all, strings.Join(words, "+"))
+	}
+	why := fmt.Sprintf("it needs %s, which no bench in this run provides: name one that does with --bench HOST=SHARDS+%s", strings.Join(missing, " and "), strings.Join(missing, "+"))
+	var refused []string
+	for _, b := range benches {
+		for _, r := range b.Refused {
+			p, _, _ := strings.Cut(r, ": ")
+			if slices.Contains(missing, p) {
+				refused = append(refused, b.Host+" declared "+r)
+			}
+		}
+	}
+	if len(refused) > 0 {
+		why += " (refused: " + strings.Join(refused, "; ") + ")"
+	}
+	return why
+}
+
 // assign deals the units a shard runs to the shards, heaviest first, each
-// to the least loaded shard (ties to the first): the same units and
-// benches always give the same shards. A unit built for an operating
-// system no bench runs is in no shard: the run reports it NOT RUN, naming
-// what it needs.
+// to the least loaded shard whose bench takes it (ties to the first): the
+// same units and benches always give the same shards. A unit built for an
+// operating system no bench runs, or needing a property no bench provides,
+// is in no shard: the run reports it NOT RUN, naming what it needs.
 func assign(units []Unit, benches []Bench) ([]Shard, error) {
 	var shards []Shard
 	var of []Bench // each shard's bench
@@ -702,7 +824,7 @@ func assign(units []Unit, benches []Bench) ([]Shard, error) {
 	for _, u := range run {
 		best := -1
 		for i := range shards {
-			if of[i].Runs(u.GOOS) && (best < 0 || shards[i].Load < shards[best].Load) {
+			if of[i].Takes(u) && (best < 0 || shards[i].Load < shards[best].Load) {
 				best = i
 			}
 		}

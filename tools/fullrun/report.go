@@ -87,6 +87,11 @@ func account(st *State) (*Account, error) {
 						r.First += " (captain runs them, through WSL)"
 					}
 				}
+				if s == nil {
+					if why := lacks(u, st.Benches); why != "" {
+						r.First = "NOT RUN: " + why
+					}
+				}
 				if s != nil {
 					r.Bench, r.Shard = s.label(), s.ID
 					r.Log = filepath.Join(st.localDir(s), "shard.log")
@@ -249,6 +254,23 @@ func collect(st *State, log io.Writer) error {
 	}
 	_, err = io.WriteString(log, summary+"reds: "+filepath.Join(st.Dir, "REDS.tsv")+"\n")
 	return err
+}
+
+// redsErr is a collected run's verdict for its exit status: nil only when
+// the REDS.tsv collect wrote into dir holds no red. Every red row is one
+// line there, a failure, an UNRUNNABLE and a NOT RUN alike (a unit whose
+// need no bench provides among them), and so is every run-level red, so a
+// run with any of them exits non-zero: launch, watch, collect and merge.
+func redsErr(dir string) error {
+	p := filepath.Join(dir, "REDS.tsv")
+	b, err := os.ReadFile(p)
+	if err != nil {
+		return err
+	}
+	if n := strings.Count(strings.TrimRight(string(b), "\n"), "\n"); n > 0 {
+		return fmt.Errorf("%d reds in %s", n, p)
+	}
+	return nil
 }
 
 // flipped is FLIPS.tsv, every re-tested name that went red to green, and

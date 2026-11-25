@@ -58,7 +58,7 @@ for (const poison of [0x5A, 0xFF]) {
   plan.image.fill(poison);
   const r = new TableFixedReport();
   const n = TLoad(back, 2, data, data.length, plan, r);
-  if (n !== 2 || r.refused || r.damaged || r.unknown || r.widened ||
+  if (n !== 2 || r.refused || ("damaged" in r) || r.unknown || r.widened ||
       r.mismatch || r.oor || r.repeated) { fail("FX1 C++ read: " + n + " " + reason(r)); }
 %s
 }
@@ -78,7 +78,7 @@ for (const poison of [0x5A, 0xFF]) {
   plan.image.fill(poison);
   const r = new TableFixedReport();
   const n = TLoad(back, 2, data, data.length, plan, r);
-  if (n !== -1 || r.refused !== TableFixedRefusal.LayoutMalformed || r.damaged) {
+  if (n !== -1 || r.refused !== TableFixedRefusal.LayoutMalformed || ("damaged" in r)) {
     fail("FX2 over FX1's entry: the removed gone makes it UNLAWFUL and the load refuses layout_malformed: " + n + " " + reason(r));
   }
   if (r.unknown || r.widened || r.mismatch || r.oor || r.repeated) {
@@ -116,7 +116,7 @@ for (const poison of [0x5A, 0xFF]) {
   plan.image.fill(poison);
   const r = new TableFixedReport();
   const n = TLoad(back, 2, data, data.length, plan, r);
-  if (n !== 2 || r.refused || r.damaged || r.unknown !== 0 || r.widened !== 2 ||
+  if (n !== 2 || r.refused || ("damaged" in r) || r.unknown !== 0 || r.widened !== 2 ||
       r.mismatch || r.oor || r.repeated) { fail("lawful FX1 read by FX2: " + n + " " + reason(r)); }
 %s
   if (v.renamedTo !== 5 || v.added !== 11 || v.extra.x !== 0 || v.extra.y !== 0) { fail("missing fields lost their defaults: " + show(v)); }
@@ -153,7 +153,7 @@ for (const [flag, present] of [[1,1],[0,0]]) {
   plan.image.fill(0x5A);
   const r = new TableFixedReport();
   const n = TLoad(back, 3, data, data.length, plan, r);
-  if (n !== 3 || r.refused || r.damaged || r.unknown || r.mismatch || r.oor ||
+  if (n !== 3 || r.refused || ("damaged" in r) || r.unknown || r.mismatch || r.oor ||
       r.repeated || r.widened !== %d) { fail("arm/flag report: " + n + " " + reason(r)); }
   const a = back[0], b = back[1], c = back[2];
   if (a.flag !== (flag !== 0) || a.notePresent !== (present !== 0) ||
@@ -172,7 +172,7 @@ for (const [flag, present] of [[2,1],[1,7],[2,7],[255,128]]) {
   plan.image.fill(0x5A);
   const r = new TableFixedReport();
   const n = TLoad(back, 3, data, data.length, plan, r);
-  if (n !== -1 || r.refused !== TableFixedRefusal.WireDamaged || r.damaged || r.oor) {
+  if (n !== -1 || r.refused !== TableFixedRefusal.WireDamaged || ("damaged" in r) || r.oor) {
     fail("non-boolean flag/present must refuse wire_damaged: " + n + " " + reason(r));
   }
 }
@@ -287,7 +287,7 @@ function load(data, count=1, clamped=0) {
   plan.image.fill(0x5A);
   const r = new TableFixedReport();
   const n = TLoad(back,count,data,data.length,plan,r);
-  if (n !== count || r.refused || r.damaged || r.unknown || r.mismatch || r.widened || r.repeated || r.oor !== clamped) {
+  if (n !== count || r.refused || ("damaged" in r) || r.unknown || r.mismatch || r.widened || r.repeated || r.oor !== clamped) {
     fail("optional load " + loadIndex + " expected clamps=" + clamped + ": " + n + " " + reason(r));
   }
   return back[0];
@@ -313,7 +313,7 @@ function refuse(data, wantRefused) {
   plan.image.fill(0x5A);
   const r = new TableFixedReport();
   const n = TLoad(back,1,data,data.length,plan,r);
-  if (n !== -1 || r.refused !== wantRefused || r.damaged || r.oor) {
+  if (n !== -1 || r.refused !== wantRefused || ("damaged" in r) || r.oor) {
     fail("optional load " + loadIndex + " expected refused=" + wantRefused + ": " + n + " " + reason(r));
   }
 }
@@ -416,7 +416,7 @@ for (const [outer,tag,inner,ordinal] of [[1,1,1,2],[0,9,7,9],[1,1,0,9],[1,2,7,9]
   else if (inner === 0) { data[at+7] = 0; }
   plan.image.fill(0x5A);
   const r=new TableFixedReport(), n=TLoad(back,1,data,data.length,plan,r), got=back[0];
-  if(n!==1 || r.refused || r.damaged || r.unknown || r.mismatch || r.widened || r.repeated || r.oor) {
+  if(n!==1 || r.refused || ("damaged" in r) || r.unknown || r.mismatch || r.widened || r.repeated || r.oor) {
     fail("nested guards "+[outer,tag,inner,ordinal]+" expected clean read "+reason(r));
   }
   if(got.head!==0x11223344 || got.tail!==0x55667788 || got.optPresent!==(outer!==0)) { fail("optional guard neighbours/presence"); }
@@ -435,7 +435,7 @@ for (const [outer,tag,inner,ordinal,wantRefused] of [
 ]) {
   data.set([outer,tag,inner,ordinal],at+4); plan.image.fill(0x5A);
   const r=new TableFixedReport(), n=TLoad(back,1,data,data.length,plan,r);
-  if(n!==-1 || r.refused!==wantRefused || r.damaged || r.oor) {
+  if(n!==-1 || r.refused!==wantRefused || ("damaged" in r) || r.oor) {
     fail("nested guards "+[outer,tag,inner,ordinal]+" expected refused="+wantRefused+" "+reason(r));
   }
 }
@@ -454,7 +454,7 @@ const data=readFileSync(%q), back=[new T()], plan=TNewPlan(4096,4096);
 const before=show(back); plan.image.fill(0x5A);
 const r=new TableFixedReport(), n=TLoad(back,1,data,data.length,plan,r);
 const hash=new DataView(data.buffer,data.byteOffset,data.length).getBigUint64(8,true);
-if(n!==-1 || r.refused!==TableFixedRefusal.LayoutUnknown || r.layoutHash!==hash || r.damaged ||
+if(n!==-1 || r.refused!==TableFixedRefusal.LayoutUnknown || r.layoutHash!==hash || ("damaged" in r) ||
    r.unknown || r.mismatch || r.widened || r.oor || r.repeated) { fail("FX2 outside FX1 lineage: "+reason(r)); }
 if(show(back)!==before || plan.image.some(b=>b!==0x5A)) { fail("unknown reference version wrote destination"); }
 `, filepath.Join(corpus, "fx2.bin"))

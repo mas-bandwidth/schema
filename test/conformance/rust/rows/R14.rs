@@ -19,7 +19,7 @@
 // runtime's plan compiler (build/tables-generated-rust/<unit>/src/
 // fixed_runtime.rs, emitted from internal/codegen/rusttable/fixedruntime.go):
 // `Compiler::push` takes EVERY entry's reach — `src + size`, the union's None
-// const at `src + size` too, a guard at `guard + width` — against
+// const at `src` + the writer's tag width, a guard at `guard + width` — against
 // `self.record = theirs.entry(0).size`, the WRITER'S declared root size, and
 // one entry past it refuses the plan whole under `LayoutRecordTooLarge`
 // (fixed_runtime.rs:984-1004, :1070, :1075-1077). The layout blocks it walks
@@ -33,11 +33,15 @@
 // fields'), kind 15 a union (size = tag + widest arm, the tag 1/2/4/8), kind 4
 // a u32. THEIRS is the writer's lock layout: a record of 5 bytes, one union
 // whose tag is 1 and whose one arm is a u32. MINE names the same ids with the
-// tag grown 1 -> 8 (a real §5.2 evolution): the compile lands the union's None
-// const at src 0 with the READER'S tag width, so that one entry reaches
-// 0 + 8 = 8, past the writer's declared record of 5 — under 65536, root
-// non-zero, every other fact lawful. The reference answered that compile
-// `layout_malformed`; the law answers `layout_record_too_large`.
+// tag grown 1 -> 8 (a real §5.2 evolution). Every source reach is in the
+// writer's coordinates — the union's None const reads the writer's raw tag
+// at the WRITER's tag width (FIXED-FORM-ALGORITHM §5.2 EMIT kind 15), 0 + 1
+// of 5 — so the pair compiles whole and no lawful parsed pair reaches past
+// the writer's record: the over-reach refusal is the compiler's defence in
+// depth, held by its own source in internal/codegen/rusttable
+// fixedroadmap_t03_test.go (rust/R14). Until 2026-11-25 this row expected a
+// reach at the READER's width, 0 + 8, refused layout_record_too_large; that
+// reach read the arm's payload into the tag, and 306e734396 fixed it.
 //
 // RUN (from ./repo):
 //   rustc --edition 2021 --test test/conformance/rust/rows/R14.rs \
@@ -53,8 +57,8 @@
 mod fixed_runtime;
 
 use fixed_runtime::{
-    table_fixed_compile, TableFixedBlock, TableFixedEntry, TableFixedGuard, TableFixedReason,
-    TableFixedReport,
+    table_fixed_compile, TableFixedBlock, TableFixedEntry, TableFixedGuard, TableFixedOp,
+    TableFixedReason, TableFixedReport,
 };
 
 // ---- the vectors ------------------------------------------------------------
@@ -143,7 +147,6 @@ fn r14_positive_control_same_layout_compiles() {
     assert_eq!(report.reason, TableFixedReason::None, "no refusal: {report:?}");
     assert!(!report.refused, "nothing refused: {report:?}");
     assert_eq!(report.unknown, 0, "unknown stays zero: {report:?}");
-    assert_eq!(report.mismatch, 0, "kind_mismatch stays zero: {report:?}");
 }
 
 // THE BOUNDARY: an entry reaching EXACTLY to the writer's record still
@@ -166,43 +169,45 @@ fn r14_reaching_exactly_the_record_still_compiles() {
     assert!(!report.refused, "nothing refused: {report:?}");
 }
 
-// THE CELL: one entry whose reach passes the writer's declared record refuses
-// the plan WHOLE, by the law's name — never `layout_malformed` (§5.8 row 13),
-// never a partly compiled plan, and never a clamp or a count instead.
+// THE CELL: a tag grown 1 -> 8 is a lawful §5.2 evolution and compiles WHOLE.
+// Every source reach of the plan is in the WRITER's coordinates: the union's
+// None const lands MY 8-byte tag (size 8) but reads the writer's raw tag at
+// the WRITER's tag width (sign 1), so it reaches 0 + 1 = 1 of the writer's 5
+// (FIXED-FORM-ALGORITHM §5.2 EMIT kind 15). A reach at the reader's width
+// would read 0 + 8 = 8 — the writer's tag AND its arm's payload as one tag —
+// and refuse a lawful file under layout_record_too_large. Until 2026-11-25
+// this row asserted exactly that refusal; 306e734396 fixed the reach.
 #[test]
-fn r14_entry_past_the_writer_record_refuses_by_name() {
-    println!("R14: the None const reaches 0 + 8 against a declared record of 5");
+fn r14_a_grown_tag_reads_the_writers_tag_width_and_compiles_whole() {
+    println!("R14: the None const reads the writer's 1-byte tag of a 5-byte record");
     let t = theirs();
     let m = mine(8);
     let theirs = parse_ok(&t, "the writer's layout");
     let mine = parse_ok(&m, "the reader's layout (tag 8)");
+    assert_eq!(theirs.entry(0).size, 5, "the writer's declared record: 5 bytes");
+    let mut plan = [TableFixedEntry::default(); 512];
+    let mut guards = [TableFixedGuard::default(); 512];
+    let mut remap = [0u16; 512];
+    let mut report = TableFixedReport::default();
+    let out = table_fixed_compile(&theirs, &mine, &[], &mut plan, &mut guards, &mut remap, &mut report);
     assert_eq!(
-        theirs.entry(0).size, 5,
-        "the writer's declared record: 5 bytes, no 65536 bound, no zero root"
+        out,
+        Some(3),
+        "the grown tag compiles whole: None const, arm's tag const, the u32's copy: {report:?}"
     );
-    let (out, report) = compile(&theirs, &mine);
-    assert_eq!(out, None, "the plan is refused whole: {report:?}");
-    assert!(report.refused, "a refusal, not a decode: {report:?}");
-    assert_eq!(
-        report.reason,
-        TableFixedReason::LayoutRecordTooLarge,
-        "the law's name for an entry past the writer's record: {report:?}"
+    assert!(!report.refused, "nothing refused: {report:?}");
+    assert_eq!(report.reason, TableFixedReason::None, "no refusal: {report:?}");
+    let none = plan[..3]
+        .iter()
+        .find(|e| e.op == TableFixedOp::Const && e.aux == 0)
+        .expect("the union's None const is in the plan");
+    assert_eq!(none.src, 0, "the None const reads the writer's tag at its offset");
+    assert_eq!(none.size, 8, "the None const lands MY 8-byte tag");
+    assert_eq!(none.sign, 1, "the None const reads the WRITER's 1-byte tag, never 8");
+    assert!(
+        u64::from(none.src) + u64::from(none.sign) <= u64::from(theirs.entry(0).size),
+        "its reach, 0 + 1, is inside the writer's record of 5"
     );
-    assert_eq!(
-        report.reason.name(),
-        "layout_record_too_large",
-        "the name spells layout_record_too_large"
-    );
-    assert_ne!(
-        report.reason,
-        TableFixedReason::LayoutMalformed,
-        "§5.8 row 13: the compile's failure path is NOT layout_malformed"
-    );
-    assert!(!report.damaged, "a refusal by name is not damage: {report:?}");
-    assert_eq!(report.oor, 0, "nothing clamped: {report:?}");
-    assert_eq!(report.unknown, 0, "refuse is total: {report:?}");
-    assert_eq!(report.mismatch, 0, "refuse is total: {report:?}");
-    assert_eq!(report.layout_hash, 0, "the name carries no hash: {report:?}");
 }
 
 // THE NAME IS ONE NAME across both wirings of the law: the 65536 parse bound

@@ -78,8 +78,8 @@ func rustDiscardWire(t *testing.T, u *ir.Unit, root, text string) []byte {
 
 // TestDamageDiscardsTheWholeLoadRust is the Rust leg's gate for DAMAGE
 // DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): every public load entry
-// point of the Rust leg, given damaged input, answers no usable value with
-// `malformed` set. The variable wire's tolerant load of a fixed root and of a
+// point of the Rust leg, given damaged input, answers no usable value and
+// says so on its report. The variable wire's tolerant load of a fixed root and of a
 // variable root answers None, the retaining load answers None with both of the
 // retention store's stores empty, the fixed form's load answers None with
 // every caller record back at its declared defaults, the message batch answers
@@ -161,7 +161,9 @@ func TestDamageDiscardsTheWholeLoadRust(t *testing.T) {
     let mut remap = [0u16; 64];
     let mut r = TableFixedReport::default();
     if root_fixed_load(&mut values, &file, &mut plan, &mut remap, &mut r).is_some() { bad.push("fixed: fixed_load answered records on damage".to_string()); }
-    if !r.damaged { bad.push("fixed: the report does not say malformed".to_string()); }
+    // this form has no malformed flag (FIXED-FORM-ALGORITHM §5.3): the ragged
+    // tail is a refusal by name
+    if !r.refused || r.reason != TableFixedReason::Truncated { bad.push(format!("fixed: a ragged tail must refuse truncated, got refused={} reason={:?}", r.refused, r.reason)); }
     if values.iter().any(|v| v.a != 0 || v.b != 0 || v.inner.n != 0 || v.inner.ok) {
         bad.push(format!("fixed: a damaged load left a caller record holding a={} b={} n={}", values[0].a, values[0].b, values[0].inner.n));
     }

@@ -276,25 +276,36 @@ func Weight(inst Instance) float64 {
 // cut must not split, or "" for a row that stands alone. A golden row's
 // writer runs once for all the rows a shard holds of it, and each row's
 // seconds are its share of that run: rows of one writer cut across two
-// shards would cost each shard the writer whole. An env plant runs its target
-// row in the checkout, so its shard builds the target language's leg first
-// (Preparer): the env plants of one language are one block, measured cold, so
-// the shard that holds them is weighed with that build once.
+// shards would cost each shard the writer whole. An env plant stands alone:
+// the leg its target runs on comes built to every shard (ci-fast.yml's
+// produce job), and a leg built in the shard is built once per process
+// however many plants ask (the builder), so nothing is saved by keeping one
+// language's env plants together, and the go corpus plants together weigh
+// more than a shard. Gotest rows that name a subtest of one test share that
+// test's process, so a cut keeps them one block: splitting them would run
+// the process once per shard.
 func unitOf(inst Instance) string {
 	var in struct {
-		Writer string          `json:"writer"`
-		Env    json.RawMessage `json:"env"`
-		Target string          `json:"target"`
+		Writer  string `json:"writer"`
+		File    string `json:"file"`
+		Target  string `json:"target"`
+		Package string `json:"package"`
+		Test    string `json:"test"`
+		Subtest string `json:"subtest"`
 	}
 	if json.Unmarshal(inst.Test.Inputs, &in) != nil {
 		return ""
 	}
-	switch {
-	case inst.Test.Adapter == "golden" && in.Writer != "":
+	if inst.Test.Adapter == "golden" && in.Writer != "" {
 		return "golden " + in.Writer
-	case inst.Test.Adapter == "plant" && len(in.Env) > 0 && in.Target != "":
-		lang, _, _ := strings.Cut(in.Target, ".")
-		return "plant env " + lang
+	}
+	// a make target's Go tests (the make-gotest rows) are one make run: rows
+	// of one target cut across two shards would run the target twice
+	if inst.Test.Adapter == "make-gotest" && in.Target != "" {
+		return "make-gotest " + in.File + " " + in.Target
+	}
+	if inst.Test.Adapter == "gotest" && in.Subtest != "" && in.Package != "" && in.Test != "" {
+		return "gotest " + in.Package + " " + in.Test
 	}
 	return ""
 }
@@ -432,3 +443,8 @@ func Shard(instances []Instance, i, n int) ([]Instance, error) {
 	}
 	return out, nil
 }
+
+// UnitOf is the key of the rows one adapter call answers together, which a
+// cut must not split, or "" for a row that stands alone (unitOf): a plan
+// that deals rows to machines (tools/fullrun) keeps each such unit on one.
+func UnitOf(inst Instance) string { return unitOf(inst) }

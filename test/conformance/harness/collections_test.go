@@ -18,10 +18,8 @@ func TestCCollectionCookDifferential(t *testing.T) {
 }
 
 func cCollectionDifferential(t *testing.T, mode string) {
-	driver, reference := os.Getenv("SCHEMA_C_COLLECTIONS_DRIVER"), os.Getenv("SCHEMA_CPP_COLLECTIONS_DRIVER")
-	if driver == "" || reference == "" {
-		t.Fatal("SCHEMA_C_COLLECTIONS_DRIVER and SCHEMA_CPP_COLLECTIONS_DRIVER must name the built native legs: make tables-c-collections-fuzz builds them")
-	}
+	driver := nativeDriver(t, "SCHEMA_C_COLLECTIONS_DRIVER", "build/c-collections-fuzz", "test/c-tables", "test/conformance/c")
+	reference := nativeDriver(t, "SCHEMA_CPP_COLLECTIONS_DRIVER", "build/cpp-collections-fuzz", "test/c-tables", "test/conformance/c")
 	t.Chdir(conformanceRoot(t))
 	driver += " " + mode
 	reference += " " + mode

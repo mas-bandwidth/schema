@@ -64,12 +64,18 @@
 // codec silently degrades to that shape. Forcing the primitives and the
 // fixed-class bodies inline is what keeps the cursor in registers and lets
 // adjacent constant framing bytes merge into one store.
+// A build may define the macro first (as plain inline, say, where forcing
+// every body inline makes a sanitizer build crawl); the default is unchanged.
+#ifndef MAPDEMO_TABLE_INLINE
 #if defined( _MSC_VER )
 #define MAPDEMO_TABLE_INLINE __forceinline
-#elif defined( __GNUC__ ) || defined( __clang__ )
+#endif
+#if !( defined( _MSC_VER ) ) && ( defined( __GNUC__ ) || defined( __clang__ ) )
 #define MAPDEMO_TABLE_INLINE inline __attribute__( ( always_inline ) )
-#else
+#endif
+#if !( defined( _MSC_VER ) ) && !( defined( __GNUC__ ) || defined( __clang__ ) )
 #define MAPDEMO_TABLE_INLINE inline
+#endif
 #endif
 
 namespace mapdemo {
@@ -798,7 +804,8 @@ inline void TableIdsWrite( TableWriter & w, const TableIds & ids )
     }
     const uint64_t n = uint64_t( count );
     memcpy( dst + count * 8, &n, 8 );
-#else
+#endif
+#if !( defined( __BYTE_ORDER__ ) && defined( __ORDER_LITTLE_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__ )
     // Explicit little-endian stores also cover compilers that do not expose
     // byte-order macros. Native copies require positive little-endian proof.
     for ( int64_t i = 0; i <= count; i++ )
@@ -2277,9 +2284,11 @@ inline bool TableMessageQuantization( float qmin, float qmax, float qres, float 
 // would otherwise fuse into one rounding and move the wire.
 #if ( defined( __GNUC__ ) || defined( __clang__ ) ) && ( defined( __aarch64__ ) || defined( _M_ARM64 ) )
 #define TABLE_FLOAT_FORCE_ROUND( x ) __asm__( "" : "+w"( x ) )
-#elif ( defined( __GNUC__ ) || defined( __clang__ ) ) && ( defined( __x86_64__ ) || defined( __i386__ ) )
+#endif
+#if !( ( defined( __GNUC__ ) || defined( __clang__ ) ) && ( defined( __aarch64__ ) || defined( _M_ARM64 ) ) ) && ( ( defined( __GNUC__ ) || defined( __clang__ ) ) && ( defined( __x86_64__ ) || defined( __i386__ ) ) )
 #define TABLE_FLOAT_FORCE_ROUND( x ) __asm__( "" : "+x"( x ) )
-#else
+#endif
+#if !( ( defined( __GNUC__ ) || defined( __clang__ ) ) && ( defined( __aarch64__ ) || defined( _M_ARM64 ) ) ) && !( ( defined( __GNUC__ ) || defined( __clang__ ) ) && ( defined( __x86_64__ ) || defined( __i386__ ) ) )
 #define TABLE_FLOAT_FORCE_ROUND( x ) \
     do \
     { \
@@ -2606,258 +2615,22 @@ static const bool kTableAnnounceTooLarge = false;
 // entity, its own COMDAT, and every definition of it token-identical because
 // there is only one header that writes it.
 inline const uint8_t kTableAnnounce[kTableAnnounceBytes] = {
-    0x01,
-    0x01,
-    0x09,
-    0xe3,
-    0x9d,
-    0x54,
-    0x9e,
-    0x37,
-    0x1a,
-    0xd6,
-    0x22,
-    0x02,
-    0x0e,
-    0xd3,
-    0x01,
-    0x06,
-    0xd0,
-    0x01,
-    0xec,
-    0x10,
-    0x5b,
-    0x36,
-    0x19,
-    0x4a,
-    0xc9,
-    0x3d,
-    0x06,
-    0x00,
-    0xec,
-    0x10,
-    0x5b,
-    0x36,
-    0x19,
-    0x4a,
-    0xc9,
-    0x3d,
-    0x0c,
-    0x08,
-    0xec,
-    0x10,
-    0x5b,
-    0x36,
-    0x19,
-    0x4a,
-    0xc9,
-    0x3d,
-    0x0c,
-    0x20,
-    0xea,
-    0x0c,
-    0xe8,
-    0x30,
-    0x94,
-    0xfd,
-    0xe4,
-    0x7c,
-    0x0d,
-    0xec,
-    0x10,
-    0x5b,
-    0x36,
-    0x19,
-    0x4a,
-    0xc9,
-    0x3d,
-    0x03,
-    0x00,
-    0xec,
-    0x10,
-    0x5b,
-    0x36,
-    0x19,
-    0x4a,
-    0xc9,
-    0x3d,
-    0x08,
-    0x00,
-    0xea,
-    0x0c,
-    0xe8,
-    0x30,
-    0x94,
-    0xfd,
-    0xe4,
-    0x7c,
-    0x0e,
-    0x03,
-    0x03,
-    0x04,
-    0x00,
-    0xec,
-    0x10,
-    0x5b,
-    0x36,
-    0x19,
-    0x4a,
-    0xc9,
-    0x3d,
-    0x04,
-    0x00,
-    0xea,
-    0x0c,
-    0xe8,
-    0x30,
-    0x94,
-    0xfd,
-    0xe4,
-    0x7c,
-    0x0e,
-    0x00,
-    0x0a,
-    0x06,
-    0x00,
-    0xea,
-    0x0c,
-    0xe8,
-    0x30,
-    0x94,
-    0xfd,
-    0xe4,
-    0x7c,
-    0x0c,
-    0x10,
-    0xec,
-    0x10,
-    0x5b,
-    0x36,
-    0x19,
-    0x4a,
-    0xc9,
-    0x3d,
-    0x0c,
-    0xac,
-    0x02,
-    0xec,
-    0x10,
-    0x5b,
-    0x36,
-    0x19,
-    0x4a,
-    0xc9,
-    0x3d,
-    0x09,
-    0x00,
-    0x74,
-    0xa2,
-    0x79,
-    0x44,
-    0x8e,
-    0xe2,
-    0xe5,
-    0xb1,
-    0x04,
-    0x00,
-    0xec,
-    0x10,
-    0x5b,
-    0x36,
-    0x19,
-    0x4a,
-    0xc9,
-    0x3d,
-    0x07,
-    0x00,
-    0xea,
-    0x0c,
-    0xe8,
-    0x30,
-    0x94,
-    0xfd,
-    0xe4,
-    0x7c,
-    0x0e,
-    0x00,
-    0x04,
-    0x0d,
-    0x86,
-    0x1b,
-    0x63,
-    0x8e,
-    0xba,
-    0xad,
-    0xbc,
-    0xc4,
-    0x0c,
-    0x40,
-    0xcf,
-    0xa9,
-    0x8b,
-    0x28,
-    0xb5,
-    0xd4,
-    0x69,
-    0x7f,
-    0x04,
-    0x00,
-    0xea,
-    0x0c,
-    0xe8,
-    0x30,
-    0x94,
-    0xfd,
-    0xe4,
-    0x7c,
-    0x10,
-    0x02,
-    0x04,
-    0x00,
-    0x8b,
-    0xe1,
-    0x45,
-    0xc2,
-    0xcb,
-    0x04,
-    0xda,
-    0x4f,
-    0x00,
-    0x87,
-    0x94,
-    0xb6,
-    0x96,
-    0xa7,
-    0x62,
-    0xb5,
-    0xa0,
-    0x00,
-    0x00,
-    0xfe,
-    0xff,
-    0xff,
-    0xff,
-    0xff,
-    0xff,
-    0xff,
-    0xff,
-    0xfd,
-    0xff,
-    0xff,
-    0xff,
-    0xff,
-    0xff,
-    0xff,
-    0xff,
-    0x02,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-};
+    0x01, 0x01, 0x09, 0xe3, 0x9d, 0x54, 0x9e, 0x37, 0x1a, 0xd6, 0x22, 0x02, 0x0e, 0xd3, 0x01, 0x06,
+    0xd0, 0x01, 0xec, 0x10, 0x5b, 0x36, 0x19, 0x4a, 0xc9, 0x3d, 0x06, 0x00, 0xec, 0x10, 0x5b, 0x36,
+    0x19, 0x4a, 0xc9, 0x3d, 0x0c, 0x08, 0xec, 0x10, 0x5b, 0x36, 0x19, 0x4a, 0xc9, 0x3d, 0x0c, 0x20,
+    0xea, 0x0c, 0xe8, 0x30, 0x94, 0xfd, 0xe4, 0x7c, 0x0d, 0xec, 0x10, 0x5b, 0x36, 0x19, 0x4a, 0xc9,
+    0x3d, 0x03, 0x00, 0xec, 0x10, 0x5b, 0x36, 0x19, 0x4a, 0xc9, 0x3d, 0x08, 0x00, 0xea, 0x0c, 0xe8,
+    0x30, 0x94, 0xfd, 0xe4, 0x7c, 0x0e, 0x03, 0x03, 0x04, 0x00, 0xec, 0x10, 0x5b, 0x36, 0x19, 0x4a,
+    0xc9, 0x3d, 0x04, 0x00, 0xea, 0x0c, 0xe8, 0x30, 0x94, 0xfd, 0xe4, 0x7c, 0x0e, 0x00, 0x0a, 0x06,
+    0x00, 0xea, 0x0c, 0xe8, 0x30, 0x94, 0xfd, 0xe4, 0x7c, 0x0c, 0x10, 0xec, 0x10, 0x5b, 0x36, 0x19,
+    0x4a, 0xc9, 0x3d, 0x0c, 0xac, 0x02, 0xec, 0x10, 0x5b, 0x36, 0x19, 0x4a, 0xc9, 0x3d, 0x09, 0x00,
+    0x74, 0xa2, 0x79, 0x44, 0x8e, 0xe2, 0xe5, 0xb1, 0x04, 0x00, 0xec, 0x10, 0x5b, 0x36, 0x19, 0x4a,
+    0xc9, 0x3d, 0x07, 0x00, 0xea, 0x0c, 0xe8, 0x30, 0x94, 0xfd, 0xe4, 0x7c, 0x0e, 0x00, 0x04, 0x0d,
+    0x86, 0x1b, 0x63, 0x8e, 0xba, 0xad, 0xbc, 0xc4, 0x0c, 0x40, 0xcf, 0xa9, 0x8b, 0x28, 0xb5, 0xd4,
+    0x69, 0x7f, 0x04, 0x00, 0xea, 0x0c, 0xe8, 0x30, 0x94, 0xfd, 0xe4, 0x7c, 0x10, 0x02, 0x04, 0x00,
+    0x8b, 0xe1, 0x45, 0xc2, 0xcb, 0x04, 0xda, 0x4f, 0x00, 0x87, 0x94, 0xb6, 0x96, 0xa7, 0x62, 0xb5,
+    0xa0, 0x00, 0x00, 0xfe, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfd, 0xff, 0xff, 0xff, 0xff,
+    0xff, 0xff, 0xff, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 
 // TableVocabulary is ONE DIRECTION's announced vocabulary (§3.3): the entries
 // an announcement carried, RESOLVED ONCE, under one numbering.
@@ -3949,8 +3722,8 @@ inline uint64_t TableStoredFloatBits( double d )
 
 // THE FIXED FORM'S THREE REASON NAMES THE COOKED FORM ALSO SPELLS
 // (docs/FIXED-FORM-ALGORITHM.md §5.3, docs/SPEC-TABLES.md §3.4, §11): every
-// -1 of <T>FixedLoad carries one, and a framing-damage return keeps
-// "malformed" set BESIDE it. They are the one vocabulary's own values
+// -1 of <T>FixedLoad carries one with refused set, a framing-damage return
+// included: there is no malformed flag on this form's report. They are the one vocabulary's own values
 // (TableRefuseReason, §6.5), named here as well so the fixed form's callers
 // keep the spelling they already read.
 #define SCHEMA_HAS_FIXED_REASON_NAMES 1
@@ -4017,9 +3790,11 @@ constexpr uint32_t kTableFixedNoGuard = 0xFFFFFFFFu;
 // time in the read loop, and the spelling is the compiler's.
 #if defined( _MSC_VER )
 #define TABLE_RESTRICT __restrict
-#elif defined( __GNUC__ ) || defined( __clang__ )
+#endif
+#if !( defined( _MSC_VER ) ) && ( defined( __GNUC__ ) || defined( __clang__ ) )
 #define TABLE_RESTRICT __restrict__
-#else
+#endif
+#if !( defined( _MSC_VER ) ) && !( defined( __GNUC__ ) || defined( __clang__ ) )
 #define TABLE_RESTRICT
 #endif
 
@@ -4038,7 +3813,8 @@ constexpr uint32_t kTableFixedNoGuard = 0xFFFFFFFFu;
 #ifndef TABLE_CLAMP_RESTRICT
 #if defined( __clang__ )
 #define TABLE_CLAMP_RESTRICT __restrict__
-#else
+#endif
+#if !( defined( __clang__ ) )
 #define TABLE_CLAMP_RESTRICT
 #endif
 #endif
@@ -4047,9 +3823,11 @@ constexpr uint32_t kTableFixedNoGuard = 0xFFFFFFFFu;
 // halves of the loop below, and a call there is the whole cost of the form.
 #if defined( _MSC_VER )
 #define TABLE_FIXED_INLINE __forceinline
-#elif defined( __GNUC__ ) || defined( __clang__ )
+#endif
+#if !( defined( _MSC_VER ) ) && ( defined( __GNUC__ ) || defined( __clang__ ) )
 #define TABLE_FIXED_INLINE inline __attribute__( ( always_inline ) )
-#else
+#endif
+#if !( defined( _MSC_VER ) ) && !( defined( __GNUC__ ) || defined( __clang__ ) )
 #define TABLE_FIXED_INLINE inline
 #endif
 
@@ -4215,9 +3993,11 @@ inline uint64_t TableFixedGetLe( const uint8_t * b, uint32_t size )
 // the big-endian path so a test can hold its byte image.
 #if defined( SCHEMA_TABLE_FIXED_FORCE_BIG_ENDIAN )
 constexpr bool TableFixedBigEndianHost = true;
-#elif defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+#endif
+#if !( defined( SCHEMA_TABLE_FIXED_FORCE_BIG_ENDIAN ) ) && ( defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__ )
 constexpr bool TableFixedBigEndianHost = true;
-#else
+#endif
+#if !( defined( SCHEMA_TABLE_FIXED_FORCE_BIG_ENDIAN ) ) && !( defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__ )
 constexpr bool TableFixedBigEndianHost = false;
 #endif
 
@@ -11686,7 +11466,8 @@ static const uint64_t TableCookMagic = 0x4b4f4f434d484353ull;
 // two builds of one schema for two orders emit the same id.
 #if defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
 static const uint64_t TableCookByteOrder = 2; // big
-#else
+#endif
+#if !( defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__ )
 static const uint64_t TableCookByteOrder = 1; // little
 #endif
 

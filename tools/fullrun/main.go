@@ -4,8 +4,8 @@
 // extract finds that is not a registry row yet (the unmoved ledger's
 // tests), each by the command that runs it. It collects the reds.
 //
-//	fullrun launch --ref REF --bench HOST=SHARDS[+GOOS]... --out DIR [--tool-ref REF] [--only PATTERN]... [--env K=V]... [--seconds FILE] [--retries N] [--poll D] [--plan-only]
-//	fullrun retest --reds REDS.tsv --ref REF --bench HOST=SHARDS[+GOOS]... --out DIR [the same]
+//	fullrun launch --ref REF --bench HOST=SHARDS[+GOOS|+PROPERTY]... --out DIR [--tool-ref REF] [--only PATTERN]... [--env K=V]... [--seconds FILE] [--retries N] [--poll D] [--plan-only]
+//	fullrun retest --reds REDS.tsv --ref REF --bench HOST=SHARDS[+GOOS|+PROPERTY]... --out DIR [the same]
 //	fullrun watch --run DIR
 //	fullrun collect --run DIR
 //	fullrun merge --root DIR --parts DIR --out DIR [--only PATTERN]...
@@ -13,6 +13,7 @@
 //	fullrun items --root DIR                                 (on a bench)
 //	fullrun shard --manifest FILE --out DIR --schema-test BIN (on a bench)
 //	fullrun shard-status --out DIR                           (on a bench)
+//	fullrun probe PROPERTY                                   (on a bench)
 //
 // launch resolves REF on a bench, readies every bench (its deploy key, a
 // mirror, one clone per shard, the binaries; a bench that cannot is left
@@ -31,7 +32,9 @@
 //
 // A bench named "local" is the machine the launcher runs on, reached with
 // bash instead of ssh. A scheduled workflow runs one part of the plan per
-// matrix job (launch --bench local=N --part I/N), and a last job merges
+// matrix job (launch --bench local=N --part I/N), the tests built only for
+// another OS run in the part named for it on a runner that runs them
+// (launch --bench local=N+windows --part windows), and a last job merges
 // the parts against the whole plan (merge), red when REDS.tsv is not empty.
 //
 // covers is the counts match for retiring a workflow: for each scheduled
@@ -50,8 +53,10 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"os/signal"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -64,8 +69,8 @@ type usageError struct{ msg string }
 func (e usageError) Error() string { return e.msg }
 
 const usage = `usage:
-  fullrun launch --ref REF --bench HOST=SHARDS[+GOOS]... --out DIR [--tool-ref REF] [--only PATTERN]... [--env K=V]... [--seconds FILE] [--retries N] [--poll D] [--plan-only] [--part I/N] [--work DIR]
-  fullrun retest --reds REDS.tsv --ref REF --bench HOST=SHARDS[+GOOS]... --out DIR [the same]
+  fullrun launch --ref REF --bench HOST=SHARDS[+GOOS|+PROPERTY]... --out DIR [--tool-ref REF] [--only PATTERN]... [--env K=V]... [--seconds FILE] [--retries N] [--poll D] [--plan-only] [--part I/N|GOOS] [--work DIR]
+  fullrun retest --reds REDS.tsv --ref REF --bench HOST=SHARDS[+GOOS|+PROPERTY]... --out DIR [the same]
   fullrun watch --run DIR
   fullrun collect --run DIR
   fullrun merge --root DIR --parts DIR --out DIR [--only PATTERN]...
@@ -73,6 +78,7 @@ const usage = `usage:
   fullrun items --root DIR
   fullrun shard --manifest FILE --out DIR --schema-test BIN
   fullrun shard-status --out DIR
+  fullrun probe PROPERTY
   fullrun reread --out DIR
 `
 
@@ -183,6 +189,17 @@ func runErr(ctx context.Context, args []string, stdout, stderr io.Writer) error 
 			return usageError{"reread needs --out DIR, a shard's out directory"}
 		}
 		return reread(*out, stdout)
+	case "probe":
+		// a bench's declared property, checked on the bench itself before a
+		// unit that needs it is sent there (launch)
+		if len(args) != 1 || benchProperties[args[0]] == "" {
+			return usageError{fmt.Sprintf("probe takes one property fullrun can probe (%s), got %q", strings.Join(slices.Sorted(maps.Keys(benchProperties)), ", "), args)}
+		}
+		if err := probeProperty(args[0]); err != nil {
+			return fmt.Errorf("this machine does not provide %s: %w", args[0], err)
+		}
+		logf(stdout, "provides %s\n", args[0])
+		return nil
 	case "shard-status":
 		out := fs.String("out", "", "")
 		if err := parse(); err != nil {
@@ -206,9 +223,14 @@ func runErr(ctx context.Context, args []string, stdout, stderr io.Writer) error 
 			return err
 		}
 		if sub == "collect" {
-			return collect(st, stdout)
+			err = collect(st, stdout)
+		} else {
+			err = watch(ctx, st, fleetRemote{}, time.Sleep, time.Now, stdout)
 		}
-		return watch(ctx, st, fleetRemote{}, time.Sleep, time.Now, stdout)
+		if err != nil {
+			return err
+		}
+		return redsErr(*dir)
 	case "launch", "retest":
 		o := Options{Env: map[string]string{}}
 		var benches, envs multi
@@ -242,15 +264,13 @@ func runErr(ctx context.Context, args []string, stdout, stderr io.Writer) error 
 			return usageError{"retest needs --reds REDS.tsv"}
 		}
 		var err error
-		if *partFlag != "" {
-			k, n, ok := cutPart(*partFlag)
-			if !ok {
-				return usageError{fmt.Sprintf("--part %q is not i/n with 1 <= i <= n", *partFlag)}
-			}
-			o.Part, o.Parts = k, n
-		}
 		if o.Benches, err = parseBenches(benches); err != nil {
 			return err
+		}
+		if *partFlag != "" {
+			if o.Part, o.Parts, o.PartGOOS, err = parsePart(*partFlag, o.Benches); err != nil {
+				return err
+			}
 		}
 		for _, kv := range envs {
 			k, v, ok := strings.Cut(kv, "=")
@@ -263,37 +283,48 @@ func runErr(ctx context.Context, args []string, stdout, stderr io.Writer) error 
 		if err != nil {
 			return err
 		}
-		if !o.PlanOnly {
-			logf(stdout, "fullrun: %s done: %s\n", st.Run, st.Dir)
+		if o.PlanOnly {
+			return nil
 		}
-		return nil
+		logf(stdout, "fullrun: %s done: %s\n", st.Run, st.Dir)
+		return redsErr(st.Dir)
 	}
 	return usageError{fmt.Sprintf("unknown subcommand %q", sub)}
 }
 
 // parseBenches reads HOST=SHARDS values, each with the operating systems
-// besides Linux the bench runs tests for (HOST=SHARDS+windows); a host
-// named twice is refused.
+// besides Linux the bench runs tests for (HOST=SHARDS+windows) and the
+// machine properties it declares (HOST=SHARDS+casefold, benchProperties);
+// a host named twice, and a word that is neither, are refused.
 func parseBenches(vs []string) ([]Bench, error) {
 	var out []Bench
 	seen := map[string]bool{}
 	for _, v := range vs {
 		h, n, ok := strings.Cut(v, "=")
-		goos := strings.Split(n, "+")
-		k, err := strconv.Atoi(goos[0])
+		extra := strings.Split(n, "+")
+		k, err := strconv.Atoi(extra[0])
 		if !ok || h == "" || err != nil || k < 1 {
-			return nil, usageError{fmt.Sprintf("--bench %q is not HOST=SHARDS[+GOOS]", v)}
+			return nil, usageError{fmt.Sprintf("--bench %q is not HOST=SHARDS[+GOOS|+PROPERTY]...", v)}
 		}
-		for _, g := range goos[1:] {
-			if !osTags[g] || g == "linux" || g == "unix" {
-				return nil, usageError{fmt.Sprintf("--bench %q: %q is not an operating system besides linux", v, g)}
+		b := Bench{Host: h, Shards: k}
+		for _, g := range extra[1:] {
+			switch {
+			case benchProperties[g] != "":
+				if slices.Contains(b.Provides, g) {
+					return nil, usageError{fmt.Sprintf("--bench %q declares %s twice", v, g)}
+				}
+				b.Provides = append(b.Provides, g)
+			case osTags[g] && g != "linux" && g != "unix":
+				b.GOOS = append(b.GOOS, g)
+			default:
+				return nil, usageError{fmt.Sprintf("--bench %q: %q is neither an operating system besides linux nor a property fullrun can probe (%s)", v, g, strings.Join(slices.Sorted(maps.Keys(benchProperties)), ", "))}
 			}
 		}
 		if seen[h] {
 			return nil, usageError{fmt.Sprintf("--bench %s is named twice", h)}
 		}
 		seen[h] = true
-		out = append(out, Bench{Host: h, Shards: k, GOOS: goos[1:]})
+		out = append(out, b)
 	}
 	if len(out) == 0 {
 		return nil, usageError{"name the benches: --bench HOST=SHARDS"}
@@ -305,4 +336,20 @@ func parseBenches(vs []string) ([]Bench, error) {
 // verdict, so its error is dropped.
 func logf(w io.Writer, format string, args ...any) {
 	_, _ = fmt.Fprintf(w, format, args...)
+}
+
+// parsePart reads --part: i/n, a numbered part of the plan, or the name of
+// a GOOS, the part that holds the plan's tests built only for it, which
+// needs a bench that runs them.
+func parsePart(v string, benches []Bench) (int, int, string, error) {
+	if k, n, ok := cutPart(v); ok {
+		return k, n, "", nil
+	}
+	if !slices.Contains(partGOOS, v) {
+		return 0, 0, "", usageError{fmt.Sprintf("--part %q is not i/n with 1 <= i <= n, nor one of %s", v, strings.Join(partGOOS, ", "))}
+	}
+	if !slices.ContainsFunc(benches, func(b Bench) bool { return b.Runs(v) }) {
+		return 0, 0, "", usageError{fmt.Sprintf("--part %s needs a bench that runs %s tests: --bench HOST=SHARDS+%s", v, v, v)}
+	}
+	return 0, 0, v, nil
 }

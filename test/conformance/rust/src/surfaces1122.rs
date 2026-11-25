@@ -586,7 +586,7 @@ macro_rules! read_into_fixed {
         let mut text = String::new();
         let mut read = |data: &[u8], values: &mut Vec<k::$row>, report: &mut k::TableFixedReport| -> &'static str {
             let got = catch(|| k::$load(values, data, &mut plan, &mut remap, report).is_some());
-            read_line(got, report.refused || report.damaged)
+            read_line(got, report.refused)
         };
         text.push_str(read(&lawful, &mut values, &mut report));
         text.push_str(read(&damaged, &mut values, &mut report));

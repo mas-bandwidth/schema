@@ -52,7 +52,7 @@ if (!LoginRequestLoadMessages(&value, &count, foreign_vocab, wire, sizeof(wire),
 			return
 		}
 		const marker = "inline bool LoginRequestLoadMessageBody("
-		const guard = "                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }\n"
+		const guard = "                if ( vocabulary.build_version == BuildVersion )\n                {\n                    report->damaged = true;\n                    return false;\n                }\n"
 		found := false
 		for name, data := range files {
 			src := string(data)

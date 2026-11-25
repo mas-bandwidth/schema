@@ -115,13 +115,47 @@ func LoadLedger(path string) ([]LedgerLine, error) {
 	return ReadLedger(bytes.NewReader(data), path)
 }
 
+// LangGate is one make gate a per-language row names for one language.
+type LangGate struct {
+	File   string `json:"file"`
+	Target string `json:"target"`
+	Group  string `json:"group"`
+}
+
+// LangMakeGates reads a per-language row's make gates: inputs whose "make"
+// is an object of language to gates (tools/schema-test/langmake.go). ok is
+// false when "make" is absent or is not an object (a plant's make control
+// names its target as a string).
+func LangMakeGates(inputs json.RawMessage) (map[string][]LangGate, bool, error) {
+	var in map[string]json.RawMessage
+	if len(inputs) == 0 || json.Unmarshal(inputs, &in) != nil {
+		return nil, false, nil
+	}
+	raw, has := in["make"]
+	if !has || !bytes.HasPrefix(bytes.TrimSpace(raw), []byte("{")) {
+		return nil, false, nil
+	}
+	var gates map[string][]LangGate
+	if err := json.Unmarshal(raw, &gates); err != nil {
+		return nil, true, err
+	}
+	return gates, true, nil
+}
+
 // Covered reports, for each item a registry row runs, the row's key:
-//   - a Go test, by a gotest row whose inputs name its package and test, or
+//   - a Go test, by a gotest row whose inputs name its package and test
+//     (and that subtest, when the row names one), or
 //     by a per-language row whose inputs name its package and a test named
 //     with testreg.LangPlaceholder, which covers that test for every
 //     language the registry lists (tools/namebuild's
 //     TestNameBuildability_<lang>);
 //   - a make target, by a make row whose inputs name its file and target;
+//     the rows of a sharded gate (each sets one *_SHARD var to K/N) share
+//     it: shards 1..N of one var and one N, each once, and no whole row;
+//   - a Go test a make target's recipe runs, by a make-gotest row whose
+//     inputs name its package and test (that test alone, never its whole
+//     package), and the target itself, which the make-gotest rows of one
+//     target share;
 //   - a negative control, by a plant row whose inputs name its make target
 //     and its group in make/negative-controls.json;
 //   - a data case that is a pinned output, by a golden row whose inputs name
@@ -131,6 +165,8 @@ func LoadLedger(path string) ([]LedgerLine, error) {
 //   - a data case a make target runs, by a make row whose inputs name the
 //     case's files in "reads" (the target's dry run names each: the make
 //     adapter holds the row to it).
+//   - each make gate a per-language row names for a language: a make target
+//     by its file, or a negative control by its group (LangMakeGates).
 //
 // A claim is exclusive (two rows running one item is a problem named) but
 // for a data case: the golden rows of one case share it, and a make row's
@@ -149,6 +185,17 @@ func Covered(reg *testreg.Registry) (map[string]string, []string) {
 	goldenFile := map[string]string{} // a pinned file, by the golden row that names it
 	readCase := map[string]string{}   // a data case a make row reads, by the first such row
 	var readOrder []string
+	// a make target the make-gotest rows hold: its rows share it, and any
+	// other row that runs it is a second run
+	makeGoTestTarget := map[string]bool{}
+	// a sharded make target: its shard var and N, and the row of each K
+	type sharding struct {
+		var_, of string
+		n        int
+		line     int
+		by       map[int]string
+	}
+	sharded := map[string]*sharding{}
 	claim := func(t testreg.Test, it Item, what string) {
 		id := it.ID()
 		if prev, dup := out[id]; dup {
@@ -158,6 +205,33 @@ func Covered(reg *testreg.Registry) (map[string]string, []string) {
 		out[id] = t.Key
 	}
 	for _, t := range reg.Tests {
+		if gates, ok, err := LangMakeGates(t.Inputs); ok && t.PerLang() {
+			// a per-language row runs each language's make gates
+			// (tools/schema-test/langmake.go): it covers every one
+			if err != nil {
+				problems = append(problems, fmt.Sprintf("%s:%d: %s: per-language make inputs: %v", reg.Path, t.Line, t.Key, err))
+				continue
+			}
+			for _, lang := range slices.Sorted(maps.Keys(gates)) {
+				if !slices.Contains(reg.LangNames(), lang) {
+					// a gate filed under no language of the registry never
+					// runs: no instance of the row is that language
+					problems = append(problems, fmt.Sprintf("%s:%d: %s names make gates for %q, which is no language of the registry: they would never run", reg.Path, t.Line, t.Key, lang))
+					continue
+				}
+				for _, g := range gates[lang] {
+					switch {
+					case g.File == "" || g.Target == "":
+						problems = append(problems, fmt.Sprintf("%s:%d: %s names a %s make gate without a file and a target", reg.Path, t.Line, t.Key, lang))
+					case g.Group != "":
+						claim(t, Item{Kind: KindNegativeControl, Dir: g.Group, Name: g.Target}, "negative control "+g.Target)
+					default:
+						claim(t, Item{Kind: KindMakeTarget, Dir: g.File, Name: g.Target}, "make "+g.Target)
+					}
+				}
+			}
+			continue
+		}
 		if tests, ok, err := testreg.GoTestsOf(t); ok {
 			// a union row: each language's own Go test for the case
 			if err != nil {
@@ -172,12 +246,22 @@ func Covered(reg *testreg.Registry) (map[string]string, []string) {
 		}
 		switch t.Adapter {
 		case "gotest":
-			var in struct{ Package, Test string }
+			var in struct{ Package, Test, Subtest string }
 			if err := json.Unmarshal(t.Inputs, &in); err != nil || in.Package == "" || in.Test == "" {
 				problems = append(problems, fmt.Sprintf("%s:%d: %s is a gotest row without a package and a test in its inputs", reg.Path, t.Line, t.Key))
 				continue
 			}
-			claim(t, Item{Kind: KindGoTest, Dir: strings.TrimPrefix(in.Package, "./"), Name: in.Test}, in.Package+" "+in.Test)
+			// the parent row claims the top-level test. A row that names a
+			// subtest claims that subtest, so the two are not the same run.
+			if in.Subtest != "" && (strings.TrimSpace(in.Subtest) != in.Subtest || strings.ContainsAny(in.Subtest, "/\r\n")) {
+				problems = append(problems, fmt.Sprintf("%s:%d: %s names subtest %q, which is not one Go subtest name", reg.Path, t.Line, t.Key, in.Subtest))
+				continue
+			}
+			name := in.Test
+			if in.Subtest != "" {
+				name = in.Test + "/" + in.Subtest
+			}
+			claim(t, Item{Kind: KindGoTest, Dir: strings.TrimPrefix(in.Package, "./"), Name: name}, in.Package+" "+name)
 		case "model-check":
 			// a TLC run of tla/<config>; the controls row runs no config
 			var in struct{ Config string }
@@ -193,12 +277,31 @@ func Covered(reg *testreg.Registry) (map[string]string, []string) {
 			var in struct {
 				File, Target string
 				Reads        []string
+				Vars         map[string]string
 			}
 			if err := json.Unmarshal(t.Inputs, &in); err != nil || in.File == "" || in.Target == "" {
 				problems = append(problems, fmt.Sprintf("%s:%d: %s is a make row without a file and a target in its inputs", reg.Path, t.Line, t.Key))
 				continue
 			}
-			claim(t, Item{Kind: KindMakeTarget, Dir: in.File, Name: in.Target}, "make "+in.Target)
+			it := Item{Kind: KindMakeTarget, Dir: in.File, Name: in.Target}
+			if v, k, n, isShard, err := makeShard(in.Vars); err != nil {
+				problems = append(problems, fmt.Sprintf("%s:%d: %s: %v", reg.Path, t.Line, t.Key, err))
+			} else if !isShard {
+				claim(t, it, "make "+in.Target)
+			} else if sh := sharded[it.ID()]; sh == nil {
+				if prev, dup := out[it.ID()]; dup {
+					problems = append(problems, fmt.Sprintf("%s:%d: %s runs shard %d/%d of make %s, which %s already runs whole", reg.Path, t.Line, t.Key, k, n, in.Target, prev))
+				} else {
+					out[it.ID()] = t.Key
+					sharded[it.ID()] = &sharding{var_: v, of: in.Target, n: n, line: t.Line, by: map[int]string{k: t.Key}}
+				}
+			} else if sh.var_ != v || sh.n != n {
+				problems = append(problems, fmt.Sprintf("%s:%d: %s shards make %s as %s=%d/%d, but %s shards it as %s of %d", reg.Path, t.Line, t.Key, in.Target, v, k, n, sh.by[firstShard(sh.by)], sh.var_, sh.n))
+			} else if prev, dup := sh.by[k]; dup {
+				problems = append(problems, fmt.Sprintf("%s:%d: %s runs shard %d/%d of make %s, which %s already runs", reg.Path, t.Line, t.Key, k, n, in.Target, prev))
+			} else {
+				sh.by[k] = t.Key
+			}
 			for _, f := range in.Reads {
 				dir, name := path.Split(f)
 				if !isDataPath(f) || name == "" || f != path.Clean(f) {
@@ -210,6 +313,25 @@ func Covered(reg *testreg.Registry) (map[string]string, []string) {
 					readCase[id] = t.Key
 					readOrder = append(readOrder, id)
 				}
+			}
+		case "make-gotest":
+			// one Go test a make target's recipe runs, read by name from the
+			// target's go test -json events: the row claims that test and no
+			// other (never its package), and the target, which every row of
+			// it shares as one make run
+			var in struct{ File, Target, Package, Test string }
+			if err := json.Unmarshal(t.Inputs, &in); err != nil || in.File == "" || in.Target == "" || in.Package == "" || in.Test == "" {
+				problems = append(problems, fmt.Sprintf("%s:%d: %s is a make-gotest row without a file, a target, a package and a test in its inputs", reg.Path, t.Line, t.Key))
+				continue
+			}
+			claim(t, Item{Kind: KindGoTest, Dir: strings.TrimPrefix(in.Package, "./"), Name: in.Test}, in.Package+" "+in.Test)
+			target := Item{Kind: KindMakeTarget, Dir: in.File, Name: in.Target}.ID()
+			switch prev, held := out[target]; {
+			case !held:
+				out[target] = t.Key
+				makeGoTestTarget[target] = true
+			case !makeGoTestTarget[target]:
+				problems = append(problems, fmt.Sprintf("%s:%d: %s runs make %s, which %s already runs", reg.Path, t.Line, t.Key, in.Target, prev))
 			}
 		case "plant":
 			var in struct{ Make, Group string }
@@ -276,12 +398,50 @@ func Covered(reg *testreg.Registry) (map[string]string, []string) {
 			}
 		}
 	}
+	for _, id := range slices.Sorted(maps.Keys(sharded)) {
+		sh := sharded[id]
+		for k := 1; k <= sh.n; k++ {
+			if _, ok := sh.by[k]; !ok {
+				problems = append(problems, fmt.Sprintf("%s:%d: no row runs shard %d/%d of make %s (%s), so the files of that shard are never judged", reg.Path, sh.line, k, sh.n, sh.of, sh.var_))
+			}
+		}
+	}
 	for _, id := range readOrder {
 		if _, held := out[id]; !held {
 			out[id] = readCase[id]
 		}
 	}
 	return out, problems
+}
+
+// makeShard reads a make row's shard: the one var named *_SHARD and its K/N.
+// A row with no such var is whole; two such vars, or a value that is not
+// K/N with 1 <= K <= N and N >= 2, is an error.
+func makeShard(vars map[string]string) (name string, k, n int, ok bool, err error) {
+	for v := range vars {
+		if !strings.HasSuffix(v, "_SHARD") {
+			continue
+		}
+		if ok {
+			return "", 0, 0, false, fmt.Errorf("sets two shard vars, %s and %s: a row is one shard of one gate", min(name, v), max(name, v))
+		}
+		name, ok = v, true
+	}
+	if !ok {
+		return "", 0, 0, false, nil
+	}
+	kk, nn, cut := strings.Cut(vars[name], "/")
+	k, errK := strconv.Atoi(kk)
+	n, errN := strconv.Atoi(nn)
+	if !cut || errK != nil || errN != nil || n < 2 || k < 1 || k > n {
+		return "", 0, 0, false, fmt.Errorf("%s=%q is not a shard K/N with 1 <= K <= N and N >= 2", name, vars[name])
+	}
+	return name, k, n, true, nil
+}
+
+// firstShard is the lowest K a sharding has a row for.
+func firstShard(by map[int]string) int {
+	return slices.Min(slices.Collect(maps.Keys(by)))
 }
 
 // CoveredIn is Covered held to the extract: a row covers a data case only
@@ -353,7 +513,21 @@ func perLangClaims(res *Result, reg *testreg.Registry, out map[string]string) []
 			targets[it.Name] = append(targets[it.Name], it)
 		}
 	}
-	family := map[string]string{} // an item, by the family whose rows claim it
+	// every rule name a make file writes, and the pattern rules among
+	// them: a per-language target no make file defines runs nothing, and
+	// every instance of its rows would be red for a reason no case shows
+	defined := map[string]bool{}
+	var patterns []string
+	for id := range res.Rules {
+		_, name, _ := strings.Cut(id, "\x00")
+		defined[name] = true
+		if strings.Count(name, "%") == 1 {
+			patterns = append(patterns, name)
+		}
+	}
+	sort.Strings(patterns)
+	undefined := map[string]bool{} // a target already named as undefined
+	family := map[string]string{}  // an item, by the family whose rows claim it
 	claim := func(t testreg.Test, it Item) {
 		id := it.ID()
 		if family[id] == t.Family {
@@ -381,7 +555,12 @@ func perLangClaims(res *Result, reg *testreg.Registry, out map[string]string) []
 			if l.Name == testreg.LangFree {
 				continue
 			}
-			for _, it := range targets[strings.ReplaceAll(in.Target, testreg.LangPlaceholder, l.Name)] {
+			target := strings.ReplaceAll(in.Target, testreg.LangPlaceholder, l.Name)
+			if _, unrep := reg.Unrepresentable(t.Key, l.Name); !unrep && !undefined[target] && !makeDefines(defined, patterns, target) {
+				undefined[target] = true
+				problems = append(problems, fmt.Sprintf("%s:%d: %s (and every row of family %s) runs make %s for %s, which no make file defines", reg.Path, t.Line, t.Key, t.Family, target, l.Name))
+			}
+			for _, it := range targets[target] {
 				claim(t, it)
 			}
 			for _, g := range in.GoTests {
@@ -398,6 +577,21 @@ func perLangClaims(res *Result, reg *testreg.Registry, out map[string]string) []
 		}
 	}
 	return problems
+}
+
+// makeDefines reports whether a make file writes a rule for target: by its
+// own name, or by a pattern rule (one %) that matches it with a stem.
+func makeDefines(defined map[string]bool, patterns []string, target string) bool {
+	if defined[target] {
+		return true
+	}
+	for _, p := range patterns {
+		pre, suf, _ := strings.Cut(p, "%")
+		if len(target) > len(pre)+len(suf) && strings.HasPrefix(target, pre) && strings.HasSuffix(target, suf) {
+			return true
+		}
+	}
+	return false
 }
 
 // Indexed reports, for each data case and driver a per-language registry row
@@ -501,7 +695,95 @@ func Runs(res *Result, reg *testreg.Registry) map[string]string {
 			covered[id] = key
 		}
 	}
+	// a .jsonl file's lines are cases of their own (dataCases), so a row
+	// naming the file claims no stem for it (Indexed); it reads every
+	// line, so each line case the extract holds for it is the row's too
+	named := jsonlFiles(reg)
+	for _, it := range res.Items {
+		if it.Kind != KindDataCase {
+			continue
+		}
+		base, _, ok := strings.Cut(it.Name, "/")
+		if !ok {
+			continue
+		}
+		key, is := named[it.Dir+"/"+base+".jsonl"]
+		if !is {
+			continue
+		}
+		if _, held := covered[it.ID()]; !held {
+			covered[it.ID()] = key
+		}
+	}
 	return covered
+}
+
+// goTestHeld reports whether the extract holds id. A gotest row that names a
+// subtest claims Test/sub; the extract lists the top-level test, and that
+// test holds the claim. A claim whose top-level test is absent does not hold.
+func goTestHeld(id string, exists map[string]bool) bool {
+	if exists[id] {
+		return true
+	}
+	kind, rest, ok := strings.Cut(id, " ")
+	if !ok || kind != KindGoTest {
+		return false
+	}
+	dir, name, ok := strings.Cut(rest, " ")
+	if !ok {
+		return false
+	}
+	top, _, isSub := strings.Cut(name, "/")
+	if !isSub {
+		return false
+	}
+	return exists[kind+" "+dir+" "+top]
+}
+
+// jsonlFiles is, for each .jsonl file a registry row names in its inputs'
+// files, the first such row's key, under the rules Indexed indexes by: a
+// per-language row some ready language answers (that does not declare it
+// unrepresentable), or a language-free row of a files-held adapter.
+func jsonlFiles(reg *testreg.Registry) map[string]string {
+	out := map[string]string{}
+	claim := func(f, key string) {
+		if strings.HasSuffix(f, ".jsonl") {
+			if _, ok := out[f]; !ok {
+				out[f] = key
+			}
+		}
+	}
+	for _, t := range reg.Tests {
+		var in struct {
+			Files []string `json:"files"`
+		}
+		if json.Unmarshal(t.Inputs, &in) != nil {
+			continue
+		}
+		if !t.PerLang() {
+			if !filesHeld[t.Adapter] {
+				continue
+			}
+			for _, f := range in.Files {
+				claim(f, t.Key)
+			}
+			continue
+		}
+		answering := false
+		for _, l := range reg.Langs {
+			if _, unrep := reg.Unrepresentable(t.Key, l.Name); l.Ready() && !unrep {
+				answering = true
+				break
+			}
+		}
+		if !answering {
+			continue
+		}
+		for _, f := range in.Files {
+			claim(f, t.Key)
+		}
+	}
+	return out
 }
 
 // Check holds the extract, the registry and the ledger to each other: every
@@ -516,6 +798,7 @@ func Check(res *Result, reg *testreg.Registry, ledger []LedgerLine) []string {
 	}
 	covered, p := CoveredIn(res, reg)
 	problems = append(problems, p...)
+	problems = append(problems, MakeSourceProblems(res, reg)...)
 	runs := Runs(res, reg)
 	exists := map[string]bool{}
 	goTests := map[string]Item{}
@@ -538,7 +821,7 @@ func Check(res *Result, reg *testreg.Registry, ledger []LedgerLine) []string {
 	}
 	var gone []string
 	for id, key := range covered {
-		if !exists[id] {
+		if !goTestHeld(id, exists) {
 			gone = append(gone, fmt.Sprintf("registry row %s runs %s, which the repository does not hold", key, id))
 		}
 	}
@@ -723,6 +1006,37 @@ func DroppedMakeTargets(before, res *Result) []string {
 			continue
 		}
 		problems = append(problems, fmt.Sprintf("make target %s (%s) is a test on main and no longer one here, though its rule stands: give it its registry row back, or remove the rule", it.Name, it.Dir))
+	}
+	return problems
+}
+
+// MakeSourceProblems holds each make row's source to the line its target's
+// rule is written on in the make file it names: the first line a rule of
+// that name starts on, the line the extract gives the target. A row whose
+// source names no line, another line, or a file other than its own is stale,
+// and is named with the line to set. A row naming a per-language target
+// ({lang}) or a rule no make file writes is CoveredIn's to name.
+func MakeSourceProblems(res *Result, reg *testreg.Registry) []string {
+	var problems []string
+	for _, t := range reg.Tests {
+		if t.Adapter != "make" {
+			continue
+		}
+		var in struct {
+			File   string `json:"file"`
+			Target string `json:"target"`
+		}
+		if json.Unmarshal(t.Inputs, &in) != nil || in.File == "" || in.Target == "" || strings.Contains(in.Target, testreg.LangPlaceholder) {
+			continue
+		}
+		line, ok := res.RuleLines[RuleID(in.File, in.Target)]
+		if !ok {
+			continue
+		}
+		want := fmt.Sprintf("%s:%d", in.File, line)
+		if t.Source != want {
+			problems = append(problems, fmt.Sprintf("%s:%d: %s source is %q, and %s is written at %s: set source to %q", reg.Path, t.Line, t.Key, t.Source, in.Target, want, want))
+		}
 	}
 	return problems
 }

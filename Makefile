@@ -162,7 +162,10 @@ build/mustrun: $(wildcard tools/mustrun/*.go)
 # wants red, is $(GO_TEST_RED): red only when a test FAILED and none skipped,
 # so a skip or a build that broke is no red the control can take for its
 # sabotage caught. tools/schema-test's make adapter refuses a recipe that runs
-# go test without -json.
+# go test without -json. With SCHEMA_GOTEST_JSON set (tools/schema-test's
+# make-gotest adapter sets it), $(GO_TEST) also appends its go test -json
+# events to that file, so each Go test the target runs is a registry row
+# with its own verdict, read by name; $(GO_TEST_RED) writes none.
 GO_TEST = $(CURDIR)/tools/gotestrun/gotest
 GO_TEST_RED = $(CURDIR)/tools/gotestrun/gotest -red
 
@@ -447,9 +450,34 @@ tables_includes = -I$(1)/examples -I$(1)/pointers -I$(1)/block -I$(1)/blockhome 
 	-I$(1)/v1 -I$(1)/v2 -I$(1)/p1 -I$(1)/p2 -I$(1)/p3 -I$(1)/jsonkeys \
 	-I$(1)/messages -I$(1)/stream -I$(1)/blobs -I$(1)/m1 -I$(1)/m2 -I$(1)/a1 -I$(1)/a2 -I$(1)/g1 -I$(1)/k1 -I$(1)/k2 -I$(1)/w1 -I$(1)/w2 -I$(1)/r1 -I$(1)/r2 -I$(1)/f1 -I$(1)/f2 -I$(1)/l1 -I$(1)/scalars -I$(1)/scalars2 -I$(1)/fixedevo -I$(1)/varevo1 -I$(1)/varevo2 -I$(1)/varevo3 -I$(1)/prior -I$(1)/cooktorture -I$(1)/cooktorturewide -I$(1)/shapes -I$(1)/moodmap -I$(1)/valuedefaults -I$(1)/packetunions -I$(1)/maps -I$(1)/lists -I$(1)/widelist -I$(1)/arms -I$(1)/backend -I$(1)/vocab -I$(1)/vocab9 -I$(1)/bases -I$(1)/rt1 -I$(1)/rt2 -I$(1)/rt3 -I$(1)/wide -I$(1)/features -I$(SERIALIZE)
 
+# $(call tables_generate_cpp_side_by_side,<VAR>,<file>) runs the lines of the
+# exported variable <VAR> -- the C++ generate macro's expansion -- side by
+# side, ONE PROCESS PER LINE, sixteen at a time, even the 59 lines that write
+# one directory (the versioning law's units, vnum). That is safe for C++ and
+# only for C++: a C++ generate writes the files it emits and removes nothing
+# (cmd/schema/generated.go, planGenerated: the stale cleanup is go's alone),
+# each file is staged under a random name beside the one it replaces
+# (internal/atomicfile), and no two of vnum's units emit one file name (59
+# units, 470 files, 470 names: captain, 2026-11-25). So every line must be a
+# `generate --lang cpp`; any other line is an error by name, as is a
+# variable with no line. Kept in order, vnum's 59 calls were one chain of
+# 4.6 s on one core that the whole phase waited on (11.8 s on 4 cores); one
+# after another, the tree's 155 calls were 20 s of the conformance-leg-cpp
+# build before any compiler started, inside the produce job's two minutes.
+# xargs fails when any line fails.
+define tables_generate_cpp_side_by_side
+	@awk 'BEGIN { n = split( ENVIRON["$(1)"], lines, "\n" ); k = 0; \
+		for ( i = 1; i <= n; i++ ) { l = lines[i]; sub( /^[ \t]+/, "", l ); if ( l == "" || l ~ /^#/ ) continue; \
+			if ( l !~ /^[^ ]+ generate --lang cpp --out [^ ]+ / || l ~ /&&|;|\|/ ) { print "tables_generate_cpp_side_by_side: not one C++ generate: " l > "/dev/stderr"; exit 1 } \
+			print l; k++ } \
+		if ( k == 0 ) { print "tables_generate_cpp_side_by_side: $(1) names no generate line" > "/dev/stderr"; exit 1 } }' > $(2)
+	tr '\n' '\0' < $(2) | xargs -0 -P 16 -n 1 sh -c 'echo "$$0"; eval "$$0"'
+endef
+
+build/tables-generated/.stamp: export TABLES_CPP_GENERATE = $(call tables_generate,./bin/schema,build/tables-generated)
 build/tables-generated/.stamp: bin/schema $(SCHEMAS_WIDE) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_SCALARS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_WIDELIST) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/K1.schema test/tables/K2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/F1.schema test/tables/F2.schema test/tables/L1.schema test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/widenbound/WidenBoundPeer.schema test/tables/prior/PriorNarrow.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema test/tables/shapes/Shapes.schema test/tables/moodmap/MoodMap.schema test/tables/Bases.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/DeadBytes.schema test/tables/FNZ.schema test/tables/UT1.schema test/tables/UT2.schema test/tables/FN1.schema test/tables/FN2.schema test/tables/HB.schema test/tables/FU1.schema test/tables/FU2.schema test/tables/FD1.schema test/tables/FH1.schema test/tables/FH2.schema test/tables/FG1.schema test/tables/FE1.schema test/tables/FE2.schema test/tables/FM1.schema test/tables/FM2.schema test/tables/VOLD_field_append.schema test/tables/VNEW_field_append.schema test/tables/VOLD_field_deprecate.schema test/tables/VNEW_field_deprecate.schema test/tables/VOLD_field_undeprecate.schema test/tables/VNEW_field_undeprecate.schema test/tables/VOLD_enum_append.schema test/tables/VNEW_enum_append.schema test/tables/VOLD_enum_width.schema test/tables/VNEW_enum_width.schema test/tables/VOLD_union_append.schema test/tables/VNEW_union_append.schema test/tables/VOLD_union_arm_payload_widen.schema test/tables/VNEW_union_arm_payload_widen.schema test/tables/VOLD_flags_append.schema test/tables/VNEW_flags_append.schema test/tables/VOLD_keyed_array_enum_append.schema test/tables/VNEW_keyed_array_enum_append.schema test/tables/VOLD_nested_append.schema test/tables/VNEW_nested_append.schema test/tables/VOLD_rename_without_was.schema test/tables/VNEW_rename_without_was.schema $(SCHEMAS_VERSIONING) testdata/conformance/feature-witnesses/full/Features.schema test/tables/surfaces/Surfaces.schema test/tables/announce4096/Announce.schema test/tables/announce4097/Announce.schema test/tables/ValueDefaults.schema test/tables/packetunions/PacketUnions.schema
 	@mkdir -p build/tables-generated
-	$(call tables_generate,./bin/schema,build/tables-generated)
+	$(call tables_generate_cpp_side_by_side,TABLES_CPP_GENERATE,build/tables-generated.lines)
 	@touch $@
 
 # The ZERO-COST GATE (docs/SPEC-TABLES.md): a table with no pointer in its by-value
@@ -534,6 +562,16 @@ tables_zero_cost_scan = for u in $(TABLES_ZERO_COST_UNITS); do \
 		for f in $(1)/$$u/*Table.h; do \
 			if ! test -f "$$f" || ! test -r "$$f"; then \
 				echo "ZERO-COST GATE FAILED: registered unit $$u has no readable header: $$f"; exit 1; \
+			fi; \
+			if $(call tables_zero_cost_leaks,$$f); then \
+				grep -nE "$(TABLES_ZERO_COST_SYMBOLS)" $$f | grep -vE "$(TABLES_ZERO_COST_ALLOWED)"; \
+				echo "ZERO-COST GATE FAILED: pointer, map or list machinery leaked into $$f"; exit 1; \
+			fi; \
+		done; \
+		for f in $(1)/$$u/*TableData.h; do \
+			test -e "$$f" || continue; \
+			if ! test -r "$$f"; then \
+				echo "ZERO-COST GATE FAILED: unit $$u has an unreadable data header: $$f"; exit 1; \
 			fi; \
 			if $(call tables_zero_cost_leaks,$$f); then \
 				grep -nE "$(TABLES_ZERO_COST_SYMBOLS)" $$f | grep -vE "$(TABLES_ZERO_COST_ALLOWED)"; \
@@ -1884,7 +1922,7 @@ tables-block-zero-cost-negative-control: build/tables-generated/.stamp
 		>> build/zero-cost-leak/pointers/GraphTable.h
 	@grep -q "PLANTED: a block spelling" build/zero-cost-leak/pointers/GraphTable.h || \
 		{ echo "NEGATIVE CONTROL FAILED: the plant did not apply"; exit 1; }
-	@if $(call tables_byte_identical,cpp,build/tables-generated,build/zero-cost-leak,-name '*Table.h' -o -name '*Table.cpp',100); then \
+	@if $(call tables_byte_identical,cpp,build/tables-generated,build/zero-cost-leak,-name '*Table.h' -o -name '*TableData.h' -o -name '*Table.cpp',100); then \
 		echo "NEGATIVE CONTROL FAILED: a planted block symbol left the byte comparison green"; exit 1; \
 	fi
 	@echo "negative control: a moved Table source turns the block-less comparison RED"
@@ -2351,16 +2389,17 @@ tables-json-clamp-prefix-negative-control: bin/schema test/tables/json_clamp_pre
 .PHONY: conformance-negative-control-absent
 conformance-negative-control-absent: build/conformance-harness build/tables-generated/.stamp build/conformance-go
 	@mkdir -p build
-	@perl -0pe 's|(static int surface_wire\(.*?        )if \( variable != NULL \)|$${1}if ( variable != NULL && !spill( out, f[1] + ".absent", "", 0 ) ) { return 1; } /* SABOTAGED */\n        if ( variable != NULL ) { continue; }\n        if ( false )|s' \
-		test/conformance/cpp/main.cpp > build/conformance-cpp-absent.cpp
-	@st=0; cmp -s build/conformance-cpp-absent.cpp test/conformance/cpp/main.cpp || st=$$?; \
+	@perl -0pe 's|(\nint surface_wire\(.*?        )if \( variable != NULL \)|$${1}if ( variable != NULL && !spill( out, f[1] + ".absent", "", 0 ) ) { return 1; } /* SABOTAGED */\n        if ( variable != NULL ) { continue; }\n        if ( false )|s' \
+		test/conformance/cpp/driver_codec.cpp > build/conformance-cpp-absent.cpp
+	@st=0; cmp -s build/conformance-cpp-absent.cpp test/conformance/cpp/driver_codec.cpp || st=$$?; \
 	case $$st in \
 		0) echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1 ;; \
 		1) ;; \
 		*) echo "NEGATIVE CONTROL FAILED: cmp could not compare the sabotaged driver (exit $$st)"; exit 1 ;; \
 	esac
-	$(CXX) $(TABLES_CXXFLAGS) $(CONFORMANCE_INCLUDES) build/conformance-cpp-absent.cpp \
-		$(CONFORMANCE_SOURCES) -o build/conformance-cpp
+	@$(MAKE) --no-print-directory $(CONFORMANCE_DRIVER_OBJECTS) $(CONFORMANCE_OBJECTS)
+	$(CXX) $(TABLES_CXXFLAGS) $(CONFORMANCE_INCLUDES) -Itest/conformance/cpp build/conformance-cpp-absent.cpp \
+		$(filter-out build/conformance-cpp-objs/driver/driver_codec.o,$(CONFORMANCE_DRIVER_OBJECTS)) $(CONFORMANCE_OBJECTS) -o build/conformance-cpp
 	@rm -rf build/conformance-absent-work
 	@if ./build/conformance-harness run --only cpp --work build/conformance-absent-work > build/conformance-absent.log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the REFERENCE leg answered ABSENT and the harness stayed green"; \
@@ -5013,7 +5052,7 @@ update-goldens-steps: packet-defaults-goldens conformance-pin
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_retain
 	@for d in examples pointers block blockhome messages stream blobs scalars maps lists arms; do \
 		mkdir -p testdata/golden/tables/$$d; \
-		for f in build/tables-generated/$$d/*Table.h build/tables-generated/$$d/*Table.cpp; do [ ! -e "$$f" ] || cp "$$f" testdata/golden/tables/$$d/ || exit 1; done; \
+		for f in build/tables-generated/$$d/*Table.h build/tables-generated/$$d/*TableData.h build/tables-generated/$$d/*Table.cpp; do [ ! -e "$$f" ] || cp "$$f" testdata/golden/tables/$$d/ || exit 1; done; \
 	done
 	# every leg's committed table goldens (make/<lang>.mk, GOLDENS_LEGS)
 	@set -e; for leg in $(GOLDENS_LEGS); do $(MAKE) $$leg; done
@@ -5414,11 +5453,75 @@ build/conformance-cpp-objs/%.o: build/tables-generated/%.cpp build/tables-genera
 conformance-cpp-objects: build/tables-generated/.stamp
 	@$(MAKE) --no-print-directory $(CONFORMANCE_OBJECTS)
 
-build/conformance-cpp: build/tables-generated/.stamp test/conformance/cpp/main.cpp
+# THE DRIVER'S OWN TRANSLATION UNITS (test/conformance/cpp/driver.h). main.cpp
+# was one unit that included every generated table header: 71 s at -O0 on
+# captain, compiled after the table objects and alone, inside a build the
+# produce job (ci-fast.yml) has two minutes for. It is now the dispatch alone,
+# and each surface group and each family of generated units is a unit of its
+# own, compiled under the same make -j as the table objects (the driver's units
+# first: they are the longest). The flags are the table objects' own.
+#
+# EVERY UNIT'S COMPILE IS TIMED: tools/compile-seconds.pl writes the CPU
+# seconds beside the object, and `make conformance-cpp-tu-budget` (the produce
+# job's cpp row) fails naming a unit past CONFORMANCE_DRIVER_TU_BUDGET, or a
+# unit with no timing at all (tools/compilebudget). The budget is a ceiling on
+# ONE unit, so a family that grows back toward the old single unit goes red by
+# name before the leg stops fitting its job.
+#
+# Measured on captain (2026-11-25, -O0, CPU seconds per unit, the leg cold
+# under make -j4 on 4 cores):
+#   driver_maps 9.17, driver_examples 8.43, driver_backend 6.37,
+#   driver_lists 6.12, driver_tblsurf 5.64, driver_cooktorture 5.39,
+#   driver_varevo12 5.36, driver_messages 4.99, driver_varevo3 4.90,
+#   driver_pointers 4.88, driver_wref 4.84, driver_evolution_b 3.94,
+#   driver_evolution_a 3.57, driver_blocks 2.60, driver_codec 1.19, main 0.74
+# (the slowest seen under load: driver_lists 9.73 s, captain at load 12). The
+# budget, 15 s, is that worst unit with half again as much beside it for a
+# slower runner and compiler variance; a unit past it is a unit growing back
+# toward the old one, and is cut, never given a larger budget.
+# Listed slowest first, the order make starts them in.
+CONFORMANCE_DRIVER_TUS := driver_maps driver_examples driver_backend driver_lists driver_tblsurf \
+	driver_cooktorture driver_varevo12 driver_messages driver_varevo3 driver_pointers driver_wref \
+	driver_evolution_b driver_evolution_a driver_blocks driver_codec main
+CONFORMANCE_DRIVER_TU_BUDGET := 15
+CONFORMANCE_DRIVER_SOURCES := $(patsubst %,test/conformance/cpp/%.cpp,$(CONFORMANCE_DRIVER_TUS))
+CONFORMANCE_DRIVER_HEADERS := test/conformance/cpp/driver.h test/conformance/cpp/manifest.h test/conformance/cpp/block_walk.h
+CONFORMANCE_DRIVER_OBJECTS := $(patsubst %,build/conformance-cpp-objs/driver/%.o,$(CONFORMANCE_DRIVER_TUS))
+
+# $(call conformance_driver_objects,<dir>,<includes>) compiles every driver
+# unit against <includes> into <dir>/<unit>.o, sixteen at a time, for the
+# negative controls that build the driver over planted headers: one compiler
+# call over every source would compile the units one after another. <dir> is
+# made afresh, and xargs fails when any unit fails. The objects are
+# $(call conformance_driver_objects_in,<dir>).
+define conformance_driver_objects
+	@rm -rf $(1) && mkdir -p $(1)
+	printf '%s\n' $(CONFORMANCE_DRIVER_TUS) | xargs -P 16 -I{} \
+		$(CXX) $(TABLES_CXXFLAGS) $(2) -c test/conformance/cpp/{}.cpp -o $(1)/{}.o
+endef
+conformance_driver_objects_in = $(patsubst %,$(1)/%.o,$(CONFORMANCE_DRIVER_TUS))
+
+# A static pattern rule, so each object is a target of its own in make's
+# database (`make -p`), with the inputs it is built from as its prerequisites:
+# TestConformanceLegsRebuildFromTheirInputs reads the leg's inputs there.
+$(CONFORMANCE_DRIVER_OBJECTS): build/conformance-cpp-objs/driver/%.o: test/conformance/cpp/%.cpp $(CONFORMANCE_DRIVER_HEADERS) tools/compile-seconds.pl \
+		build/tables-generated/.stamp $(wildcard $(SERIALIZE)/*.h)
+	@mkdir -p $(@D)
+	perl tools/compile-seconds.pl $(@:.o=.seconds) $(CXX) $(TABLES_CXXFLAGS) $(CONFORMANCE_INCLUDES) -c $< -o $@
+
+# The objects are the link's own prerequisites (named from the schemas, so
+# safe at parse time, as CONFORMANCE_OBJECTS says): no sub-make reparses this
+# Makefile before the first compiler starts, and an object rebuilt for any
+# reason relinks the driver.
+build/conformance-cpp: $(CONFORMANCE_DRIVER_OBJECTS) $(CONFORMANCE_OBJECTS)
 	@mkdir -p build
-	@$(MAKE) --no-print-directory $(CONFORMANCE_OBJECTS)
-	$(CXX) $(TABLES_CXXFLAGS) $(CONFORMANCE_INCLUDES) test/conformance/cpp/main.cpp \
-		$(CONFORMANCE_OBJECTS) -o $@
+	$(CXX) $(TABLES_CXXFLAGS) $(CONFORMANCE_DRIVER_OBJECTS) $(CONFORMANCE_OBJECTS) -o $@
+
+# THE BUDGET ON ONE UNIT (above): every unit's recorded CPU seconds, each held
+# to CONFORMANCE_DRIVER_TU_BUDGET; a missing or unreadable timing file is red.
+.PHONY: conformance-cpp-tu-budget
+conformance-cpp-tu-budget:
+	go run ./tools/compilebudget -budget $(CONFORMANCE_DRIVER_TU_BUDGET) -dir build/conformance-cpp-objs/driver $(CONFORMANCE_DRIVER_TUS)
 
 # ---- THE WIRE FUZZER (docs/SPEC-TABLES.md §4.2; docs/SECURITY.md) -------------
 #
@@ -5679,7 +5782,7 @@ tables-cpp-names-negative-control:
 # A 2 GiB input and a ~2.8 GiB output under Clang UBSan cost about twenty
 # seconds and do not fit the owner's two-minute per-commit rule, which is why
 # the test gates itself on SCHEMA_CERTIFY_INT32_MAX and this target sets it.
-CPP_RELEASE_JOBS ?= $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
+CPP_RELEASE_JOBS ?= $(shell nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 .PHONY: tables-cpp-release
 tables-cpp-release:
 	$(MAKE) -j$(CPP_RELEASE_JOBS) $(CPP_RELEASE_DIR)/tables $(CPP_RELEASE_DIR)/maps $(CPP_RELEASE_DIR)/lists \
@@ -6494,11 +6597,13 @@ conformance-pin: build/conformance-harness build/conformance-cpp build/schema_te
 conformance-negative-control: build/conformance-harness build/conformance-cpp
 	@rm -rf build/conformance-negative && mkdir -p build/conformance-negative
 	@sed 's|if ( !spill( out, f\[1\] + ".json", text.data(), (size_t) size ) ) return 1;|text[0] = (char) ( text[0] ^ 1 ); if ( !spill( out, f[1] + ".json", text.data(), (size_t) size ) ) return 1; // SABOTAGED|' \
-		test/conformance/cpp/main.cpp > build/conformance-negative/main.cpp
-	@cmp -s build/conformance-negative/main.cpp test/conformance/cpp/main.cpp && \
+		test/conformance/cpp/driver_codec.cpp > build/conformance-negative/driver_codec.cpp
+	@cmp -s build/conformance-negative/driver_codec.cpp test/conformance/cpp/driver_codec.cpp && \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; } || [ $$? -eq 1 ] || exit 1
-	$(CXX) $(TABLES_CXXFLAGS) $(CONFORMANCE_INCLUDES) build/conformance-negative/main.cpp \
-		$(CONFORMANCE_SOURCES) -o build/conformance-negative/driver-bin
+	@$(MAKE) --no-print-directory $(CONFORMANCE_DRIVER_OBJECTS) $(CONFORMANCE_OBJECTS)
+	$(CXX) $(TABLES_CXXFLAGS) $(CONFORMANCE_INCLUDES) -Itest/conformance/cpp build/conformance-negative/driver_codec.cpp \
+		$(filter-out build/conformance-cpp-objs/driver/driver_codec.o,$(CONFORMANCE_DRIVER_OBJECTS)) $(CONFORMANCE_OBJECTS) \
+		-o build/conformance-negative/driver-bin
 	@printf '#!/bin/sh\nexec build/conformance-negative/driver-bin "$$@"\n' > build/conformance-negative/driver
 	@chmod +x build/conformance-negative/driver
 	@printf 'cpp build/conformance-negative/driver\n' > build/conformance-negative/drivers.txt
@@ -6539,9 +6644,10 @@ conformance-negative-control-cpp: build/conformance-harness
 	@grep -lq SABOTAGED $(CONFORMANCE_NEGATIVE_CPP)/generated/*/*Table.cpp || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter emitted an unsabotaged walk"; exit 1; }
 	@$(MAKE) $(SERIALIZE_RUNTIME)/serialize.h
+	$(call conformance_driver_objects,$(CONFORMANCE_NEGATIVE_CPP)/driver-objs,$(subst -I$(SERIALIZE),-I$(SERIALIZE_RUNTIME),$(subst build/tables-generated/,$(CONFORMANCE_NEGATIVE_CPP)/generated/,$(CONFORMANCE_INCLUDES))))
 	$(CXX) $(TABLES_CXXFLAGS) \
 		$(subst -I$(SERIALIZE),-I$(SERIALIZE_RUNTIME),$(subst build/tables-generated/,$(CONFORMANCE_NEGATIVE_CPP)/generated/,$(CONFORMANCE_INCLUDES))) \
-		test/conformance/cpp/main.cpp \
+		$(call conformance_driver_objects_in,$(CONFORMANCE_NEGATIVE_CPP)/driver-objs) \
 		$(subst build/tables-generated/,$(CONFORMANCE_NEGATIVE_CPP)/generated/,$(CONFORMANCE_SOURCES)) \
 		-o $(CONFORMANCE_NEGATIVE_CPP)/driver-bin
 	@printf '#!/bin/sh\nexec "%s/driver-bin" "$$@"\n' "$(CURDIR)/$(CONFORMANCE_NEGATIVE_CPP)" > $(CONFORMANCE_NEGATIVE_CPP)/driver
@@ -7670,7 +7776,7 @@ release-binaries:
 # runtime, the sibling $(SERIALIZE) or else the pinned one fetched into build/.
 RELEASE_DIFFERENTIAL_PREV ?=
 RELEASE_DIFFERENTIAL_FLAGS ?=
-RELEASE_DIFFERENTIAL_JOBS ?= $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)
+RELEASE_DIFFERENTIAL_JOBS ?= $(shell nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 # THE JUDGE CORPUS (tools/releasediff/testdata/judge-corpus): committed cases,
 # each two listings of what the packet drivers wrote and the verdict the
 # release owes on them, replayed through the differential's own Judge. The
@@ -8098,7 +8204,7 @@ pins-source-cpp: bin/schema
 	$(call pins_generate_dirs,PINS_CPP_GENERATE,$(PINS_SOURCE_CPP_DIRS),cpp-source)
 	@for d in $(PINS_SOURCE_CPP_DIRS); do \
 		mkdir -p testdata/golden/tables/$$d; \
-		for f in build/tables-generated/$$d/*Table.h build/tables-generated/$$d/*Table.cpp; do [ ! -e "$$f" ] || cp "$$f" testdata/golden/tables/$$d/ || exit 1; done; \
+		for f in build/tables-generated/$$d/*Table.h build/tables-generated/$$d/*TableData.h build/tables-generated/$$d/*Table.cpp; do [ ! -e "$$f" ] || cp "$$f" testdata/golden/tables/$$d/ || exit 1; done; \
 	done
 
 .PHONY: pins-source-c
@@ -8108,7 +8214,7 @@ pins-source-c: bin/schema
 	$(call pins_generate_dirs,PINS_C_GENERATE,$(PINS_SOURCE_C_DIRS),c-source)
 	@for d in $(PINS_SOURCE_C_DIRS); do \
 		mkdir -p testdata/golden/tables/$$d-c; \
-		cp build/tables-generated-c/$$d/*Table.h build/tables-generated-c/$$d/*Table.c build/tables-generated-c/$$d/*View.h build/tables-generated-c/$$d/*View.c testdata/golden/tables/$$d-c/; \
+		cp build/tables-generated-c/$$d/*Table.h $$(find build/tables-generated-c/$$d -maxdepth 1 -name '*TableData.h') build/tables-generated-c/$$d/*Table.c build/tables-generated-c/$$d/*View.h build/tables-generated-c/$$d/*View.c testdata/golden/tables/$$d-c/; \
 	done
 
 .PHONY: pins-source-cs
@@ -8302,7 +8408,7 @@ pins-conformance-cook: bin/schema build/conformance-harness test/tables/cook_mai
 
 .PHONY: pins-conformance-block
 pins-conformance-block: export PINS_CPP_GENERATE = $(call tables_generate,./bin/schema,$(PINS_CONFORMANCE_GENERATED))
-pins-conformance-block: bin/schema build/conformance-harness test/conformance/cpp/block_pin.cpp test/conformance/cpp/block_walk.h
+pins-conformance-block: bin/schema build/conformance-harness test/conformance/cpp/block_pin.cpp test/conformance/cpp/block_walk.h test/conformance/cpp/manifest.h
 	@rm -rf $(PINS_CONFORMANCE_GENERATED) && mkdir -p $(PINS_CONFORMANCE_GENERATED)
 	$(call pins_generate_dirs,PINS_CPP_GENERATE,$(PINS_CONFORMANCE_BLOCK_DIRS),conformance-block)
 	$(call pins_compile_cxx,build/conformance-cpp-block,$(TABLES_CXXFLAGS) -I$(PINS_CONFORMANCE_GENERATED)/block -I$(PINS_CONFORMANCE_GENERATED)/cooktorture -I$(SERIALIZE),test/conformance/cpp/block_pin.cpp $$(ls $(PINS_CONFORMANCE_GENERATED)/block/*.cpp $(PINS_CONFORMANCE_GENERATED)/cooktorture/*.cpp),conformance-block)
@@ -8384,6 +8490,7 @@ endef
 
 define tables_zero_cost_symbol_grep
 	@for f in $(1); do \
+		if ! test -r "$$f"; then echo "BLOCK ZERO-COST GATE FAILED: no readable file $$f"; exit 1; fi; \
 		if sed -E 's://.*$$::' $$f | grep -nE "TableBlock|[A-Za-z0-9_]Block"; then \
 			echo "BLOCK ZERO-COST GATE FAILED: the block form leaked into $$f"; exit 1; \
 		fi; \
@@ -8421,9 +8528,9 @@ tables-block-zero-cost-cpp: bin/schema $(BLOCKLESS_SCHEMA)
 	@mkdir -p $(BLOCKFUL_ROOT)/cpp $(BLOCKLESS_ROOT)/cpp
 	@$(call tables_run_arm,ZERO_COST_CPP_BLOCKFUL,cpp blockful)
 	@$(call tables_run_arm,ZERO_COST_CPP_BLOCKLESS,cpp blockless)
-	@$(call tables_zero_cost_symbol_grep,$(BLOCKFUL_ROOT)/cpp/*/*Table.h $(BLOCKFUL_ROOT)/cpp/*/*Table.cpp)
+	@$(call tables_zero_cost_symbol_grep,$(BLOCKFUL_ROOT)/cpp/*/*Table.h $(BLOCKFUL_ROOT)/cpp/*/*TableData.h $(BLOCKFUL_ROOT)/cpp/*/*Table.cpp)
 	@$(call tables_zero_cost_no_block_files,$(BLOCKLESS_ROOT)/cpp)
-	@$(call tables_byte_identical,cpp,$(BLOCKFUL_ROOT)/cpp,$(BLOCKLESS_ROOT)/cpp,-name '*Table.h' -o -name '*Table.cpp',100)
+	@$(call tables_byte_identical,cpp,$(BLOCKFUL_ROOT)/cpp,$(BLOCKLESS_ROOT)/cpp,-name '*Table.h' -o -name '*TableData.h' -o -name '*Table.cpp',100)
 
 tables-block-zero-cost-cs: export ZERO_COST_CS_BLOCKFUL = $(call tables_generate_cs,./bin/schema,$(BLOCKFUL_ROOT)/cs)
 tables-block-zero-cost-cs: export ZERO_COST_CS_BLOCKLESS = $(call tables_generate_cs,$(BLOCKLESS_SCHEMA),$(BLOCKLESS_ROOT)/cs)
@@ -8456,14 +8563,14 @@ tables-block-zero-cost-c-heavy: bin/schema $(BLOCKLESS_SCHEMA)
 	@mkdir -p $(BLOCKLESS_ROOT)/c/block $(BLOCKLESS_ROOT)/c/blockhome $(BLOCKLESS_ROOT)/c/messages $(BLOCKLESS_ROOT)/c/examples
 	@$(call tables_run_both_arms,ZERO_COST_C_BLOCKFUL,c,ZERO_COST_C_BLOCKLESS,heavy)
 	@$(call tables_zero_cost_no_block_files,$(BLOCKLESS_ROOT)/c)
-	@$(call tables_byte_identical,c,$(BLOCKFUL_ROOT)/c,$(BLOCKLESS_ROOT)/c,-name '*Table.h' -o -name '*Table.c',2)
+	@$(call tables_byte_identical,c,$(BLOCKFUL_ROOT)/c,$(BLOCKLESS_ROOT)/c,-name '*Table.h' -o -name '*TableData.h' -o -name '*Table.c',2)
 
 tables-block-zero-cost-c-rest: bin/schema $(BLOCKLESS_SCHEMA)
 	@rm -rf $(BLOCKFUL_ROOT)/c $(BLOCKLESS_ROOT)/c
 	@mkdir -p $(BLOCKFUL_ROOT)/c $(BLOCKLESS_ROOT)/c
 	@$(call tables_run_both_arms,ZERO_COST_C_BLOCKFUL,c,ZERO_COST_C_BLOCKLESS,rest)
 	@$(call tables_zero_cost_no_block_files,$(BLOCKLESS_ROOT)/c)
-	@$(call tables_byte_identical,c,$(BLOCKFUL_ROOT)/c,$(BLOCKLESS_ROOT)/c,-name '*Table.h' -o -name '*Table.c',60)
+	@$(call tables_byte_identical,c,$(BLOCKFUL_ROOT)/c,$(BLOCKLESS_ROOT)/c,-name '*Table.h' -o -name '*TableData.h' -o -name '*Table.c',60)
 
 # Serial on purpose: each row deletes the whole C tree, so neither may
 # overlap the other in one workspace, and neither judges what the other left

@@ -182,9 +182,9 @@ func TestCIAreaPlantedSilenceIsRed(t *testing.T) {
 		rule  string
 	}{
 		"workflow shell loses pipefail":   {map[string]string{".github/workflows/ci-fast.yml": strings.Replace(fast, strict, "\n        shell: go run ./tools/pgroup -- bash -e {0}\n", 1)}, RuleNoStrictShell},
-		"workflow step swallows a test":   {map[string]string{".github/workflows/ci-fast.yml": strings.Replace(fast, "          modernize ./...\n", "          modernize ./... || true\n", 1)}, RuleSwallow},
-		"workflow step continue-on-error": {map[string]string{".github/workflows/ci-fast.yml": strings.Replace(fast, "      - name: modernize\n", "      - name: modernize\n        continue-on-error: true\n", 1)}, RuleContinueOnError},
-		"recipe swallows a test":          {map[string]string{"make/go.mk": strings.Replace(gomk, "go test -run Fuzz -count 1 .\n", "go test -run Fuzz -count 1 . || true\n", 1)}, RuleSwallow},
+		"workflow step swallows a test":   {map[string]string{".github/workflows/ci-fast.yml": strings.Replace(fast, "        run: go run ./tools/schema-test ci --check\n", "        run: go run ./tools/schema-test ci --check || true\n", 1)}, RuleSwallow},
+		"workflow step continue-on-error": {map[string]string{".github/workflows/ci-fast.yml": strings.Replace(fast, "        run: go run ./tools/schema-test ci --check\n", "        continue-on-error: true\n        run: go run ./tools/schema-test ci --check\n", 1)}, RuleContinueOnError},
+		"recipe swallows a test":          {map[string]string{"make/go.mk": strings.Replace(gomk, "$(GO_TEST) -run Fuzz -count 1 .\n", "$(GO_TEST) -run Fuzz -count 1 . || true\n", 1)}, RuleSwallow},
 		"recipe skips a missing tool":     {map[string]string{"make/go.mk": gomk + "\nlint-planted:\n\tif command -v golangci-lint >/dev/null; then golangci-lint run; fi\n"}, RuleToolSkip},
 		"recipe ignore prefix":            {map[string]string{"make/go.mk": gomk + "\ntest-planted:\n\t-go test ./...\n"}, RuleIgnorePrefix},
 		"stale loud-ok":                   {map[string]string{"make/go.mk": gomk + "\n# loud-ok: planted over nothing\n"}, RuleStaleLoudOK},

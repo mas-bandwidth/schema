@@ -3,8 +3,8 @@ package ci
 // THE FUZZ GATES IN PARTS (2026-11-24). verify-leg (rust, fuzz) and (goose,
 // fuzz) were cut at the two-minute cap on main's push run 45431445496. Each
 // now runs per commit in parts: Rust's in two halves on two rows, Goose's in
-// two unit slices at the per-commit mutant cap. These tests hold the parts
-// to the whole gate, so splitting a gate never drops a pass.
+// two unit slices at the per-commit mutant cap. These tests hold the parts'
+// make targets to the whole gate, so splitting a gate never drops a pass.
 
 import (
 	"os"
@@ -71,7 +71,7 @@ func union(a, b []string) []string {
 }
 
 // rustHalvesErrs answers how the two Rust halves differ from the whole gate.
-func rustHalvesErrs(t *testing.T, mk, wf string) []string {
+func rustHalvesErrs(t *testing.T, mk string) []string {
 	var errs []string
 	whole := templatePrereqs(t, mk, "_verify-$(1)-fuzz", "rust")
 	wire := subMakeTargets(t, mk, "verify-rust-fuzz-wire")
@@ -88,11 +88,6 @@ func rustHalvesErrs(t *testing.T, mk, wf string) []string {
 	if !slices.Equal(subMakeTargets(t, mk, "verify-rust-fuzz-driver"), driver) {
 		errs = append(errs, "verify-rust-fuzz-driver is not the conformance row's fuzz half")
 	}
-	for _, s := range []string{"fuzz)        target=verify-rust-fuzz-wire ;;", "conformance) target=verify-rust-conformance-and-driver-fuzz ;;"} {
-		if !strings.Contains(wf, s) {
-			errs = append(errs, "ci-fast.yml verify-leg does not map "+s)
-		}
-	}
 	return errs
 }
 
@@ -101,8 +96,7 @@ func rustHalvesErrs(t *testing.T, mk, wf string) []string {
 func TestRustFuzzHalvesAreTheWholeGate(t *testing.T) {
 	t.Parallel()
 	mk := readRepoRel(t, "make/verify-compiled.mk")
-	wf := readRepoRel(t, ".github/workflows/ci-fast.yml")
-	if errs := rustHalvesErrs(t, mk, wf); len(errs) > 0 {
+	if errs := rustHalvesErrs(t, mk); len(errs) > 0 {
 		t.Errorf("the Rust fuzz halves are not the whole gate: %s", strings.Join(errs, "; "))
 	}
 	// PLANTED: the message pass dropped from the conformance row.
@@ -110,7 +104,7 @@ func TestRustFuzzHalvesAreTheWholeGate(t *testing.T) {
 	if planted == mk {
 		t.Fatal("the planted control did not apply")
 	}
-	if len(rustHalvesErrs(t, planted, wf)) == 0 {
+	if len(rustHalvesErrs(t, planted)) == 0 {
 		t.Error("PLANTED CONTROL FAILED: the halves without the message pass still read as the whole gate")
 	}
 }
@@ -120,7 +114,7 @@ func TestRustFuzzHalvesAreTheWholeGate(t *testing.T) {
 const gooseSliceUnits = "\t\t$(if $(GOOSE_FUZZ_SLICE),--units \"$$(ls $(GOOSE_LEGS_DIR)/legs | paste -sd, -)\") \\\n"
 
 // gooseErrs answers how the two Goose parts differ from the whole gate.
-func gooseErrs(t *testing.T, mk, wf string) []string {
+func gooseErrs(t *testing.T, mk string) []string {
 	var errs []string
 	re := regexp.MustCompile(`(?m)^_verify-goose-fuzz:([^\n]*)$`)
 	m := re.FindStringSubmatch(mk)
@@ -151,9 +145,6 @@ func gooseErrs(t *testing.T, mk, wf string) []string {
 	if !regexp.MustCompile(`(?m)^_verify-goose-fuzz-message:[^\n]*\n(?:\t[^\n]*\n)*?` + regexp.QuoteMeta(gooseSliceUnits)).MatchString(mk) {
 		errs = append(errs, "_verify-goose-fuzz-message does not cut the roster to the slice's legs (--units)")
 	}
-	if !strings.Contains(wf, "        half: [1, 2]\n") || !strings.Contains(wf, `make "verify-goose-fuzz-part-${{ matrix.half }}"`) {
-		errs = append(errs, "ci-fast.yml verify-goose-fuzz does not run both parts")
-	}
 	return errs
 }
 
@@ -163,9 +154,8 @@ func gooseErrs(t *testing.T, mk, wf string) []string {
 func TestGooseFuzzPartsAreTheWholeGate(t *testing.T) {
 	t.Parallel()
 	mk := readRepoRel(t, "make/verify-vm.mk")
-	wf := readRepoRel(t, ".github/workflows/ci-fast.yml")
 	nightly := readRepoRel(t, ".github/workflows/leg-gates-nightly.yml")
-	if errs := gooseErrs(t, mk, wf); len(errs) > 0 {
+	if errs := gooseErrs(t, mk); len(errs) > 0 {
 		t.Errorf("the Goose fuzz parts are not the whole gate: %s", strings.Join(errs, "; "))
 	}
 	if !strings.Contains(nightly, "          make verify-goose-fuzz\n") {
@@ -176,7 +166,7 @@ func TestGooseFuzzPartsAreTheWholeGate(t *testing.T) {
 	if planted == mk {
 		t.Fatal("the planted control did not apply")
 	}
-	if len(gooseErrs(t, planted, wf)) == 0 {
+	if len(gooseErrs(t, planted)) == 0 {
 		t.Error("PLANTED CONTROL FAILED: part 2 without the retain pass still read as the whole gate")
 	}
 	// PLANTED: the message pass asks the whole roster under a slice.
@@ -184,7 +174,7 @@ func TestGooseFuzzPartsAreTheWholeGate(t *testing.T) {
 	if planted == mk {
 		t.Fatal("the planted --units control did not apply")
 	}
-	if len(gooseErrs(t, planted, wf)) == 0 {
+	if len(gooseErrs(t, planted)) == 0 {
 		t.Error("PLANTED CONTROL FAILED: a sliced message pass over the whole roster still read as the whole gate")
 	}
 }

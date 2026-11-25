@@ -7,7 +7,8 @@
 //    optional — every offset is arithmetic over sizes a stranger wrote down,
 //    so every byte, one bit at a time, is answered one of three ways and never
 //    a fourth: a refusal by name, a `malformed` read, or a read that lands
-//    values"
+//    values" (the quoted spec line; the fixed report has no malformed flag, so
+//    a framing fault is a refusal by name: docs/FIXED-FORM-ALGORITHM.md §5.3)
 //
 // THE VECTOR: the tree carries no fixed-form bytes in testdata, so the file is
 // CONSTRUCTED here from the law — a lawful form-3 file of one GlobalSettings
@@ -94,21 +95,22 @@ public final class P3 {
             final TableFixed.Report r = new TableFixed.Report();
             final int n = GlobalSettingsFixed.load(back, 1, file,
                     GlobalSettingsFixed.identityPlan(), new short[1024], GlobalSettingsFixed.image(), r);
-            check(n == 1 && !r.damaged && !r.refused,
+            check(n == 1 && !r.refused,
                     "P3 hostile bytes: the lawful record reads clean (n=" + n
-                            + ", refused=" + r.refused + ", damaged=" + r.damaged + ")");
+                            + ", refused=" + r.refused + ", reason=" + r.reason + ")");
             check(issue(back[0]) == null,
                     "P3 hostile bytes: the lawful record lands every field in bound");
         }
 
         // THE SWEEP: every byte, one bit at a time. Each mutant is answered one
-        // of three ways and never a fourth:
-        //   refusal by name  n < 0 && refused && !malformed
-        //   malformed        n < 0 && malformed && !refused
+        // of two ways and never a third (docs/FIXED-FORM-ALGORITHM.md §5.3
+        // refusal table; no malformed flag on this form's report):
+        //   refusal by name  n < 0 && refused (framing damage refuses by name
+        //                    too: truncated, reservedNotZero, integrityMismatch)
         //   lands values     n > 0, every landed field in bound, not refused
-        // A throw escaping the load, a negative read that is neither refusal
-        // nor malformed, or a landed field out of bound is the FOURTH.
-        long refused = 0, malformed = 0, landed = 0, bounded = 0, divergences = 0;
+        // A throw escaping the load, a negative read that is not a refusal,
+        // or a landed field out of bound is the THIRD.
+        long refused = 0, framing = 0, landed = 0, bounded = 0, divergences = 0;
         for (int at = 0; at < file.length; at++) {
             for (int bit = 0; bit < 8; bit++) {
                 final byte[] hit = file.clone();
@@ -126,20 +128,22 @@ public final class P3 {
                     continue;
                 }
                 if (n < 0) {
-                    if (r.refused && !r.damaged) {
+                    if (r.refused) {
                         refused++;
                         if (r.reason == TableFixed.Reason.outOfRange
                                 || r.reason == TableFixed.Reason.countOverBound
                                 || r.reason == TableFixed.Reason.lengthOverBound) {
                             bounded++;
                         }
-                    } else if (r.damaged && !r.refused) {
-                        malformed++;
+                        if (r.reason == TableFixed.Reason.truncated
+                                || r.reason == TableFixed.Reason.reservedNotZero
+                                || r.reason == TableFixed.Reason.integrityMismatch) {
+                            framing++;
+                        }
                     } else {
                         divergences++;
                         check(false, "P3 hostile bytes: byte " + at + " bit " + bit
-                                + " answered a FOURTH way: n=" + n + ", refused=" + r.refused
-                                + ", malformed=" + r.damaged);
+                                + " answered a FOURTH way: n=" + n + ", refused=" + r.refused);
                     }
                     continue;
                 }
@@ -160,16 +164,16 @@ public final class P3 {
 
         // NOT VACUOUS: each of the three answers must actually have been SEEN,
         // and a correction must have moved a counter. A sweep that never
-        // refused, never malformed, or never landed is a sweep over the wrong
+        // refused, never framing-refused, or never landed is a sweep over the wrong
         // file.
         check(refused > 0, "P3 hostile bytes: the sweep saw a named refusal (" + refused + ")");
-        check(malformed > 0, "P3 hostile bytes: the sweep saw a malformed read (" + malformed + ")");
+        check(framing > 0, "P3 hostile bytes: the sweep saw a framing refusal (truncated, reservedNotZero or integrityMismatch) (" + framing + ")");
         check(landed > 0, "P3 hostile bytes: the sweep saw reads that landed values (" + landed + ")");
         check(bounded > 0, "P3 hostile bytes: the sweep exercised a value past its bound, refused (" + bounded + ")");
         check(divergences == 0, "P3 hostile bytes: " + divergences + " divergences, never a fourth");
 
         System.out.println("P3 hostile bytes: " + file.length + " bytes x 8 bits — " + refused
-                + " refused by name, " + malformed + " malformed, " + landed
+                + " refused by name, " + framing + " of them framing, " + landed
                 + " records read, " + bounded + " refused past a bound, " + divergences + " divergences");
         if (failures == 0) {
             System.out.println("P3: " + assertions + " assertions, all green");

@@ -87,9 +87,6 @@ func TestFixedVersioningRefuseWritesNothing(t *testing.T) {
 	if r.reason != "noLayout" {
 		t.Errorf("reason=%s, want noLayout", r.reason)
 	}
-	if r.damaged {
-		t.Errorf("malformed=%v, want FALSE — a refusal is never damage (the joint assertion of §5.3)", r.damaged)
-	}
 	if r.layoutHash != "0x0" {
 		t.Errorf("layoutHash=%s, want untouched (0): only the two LAYOUT refusals carry the file's hash", r.layoutHash)
 	}

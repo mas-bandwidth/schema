@@ -1,23 +1,23 @@
-// R8 — a hash in no lineage entry → layout_newer, reporting the file's hash
+// R8 — a hash in no lineage entry → layout_unknown, reporting the file's hash
 // AND NOTHING ELSE.
 //
 // THE LAW (docs/FIXED-FORM-ALGORITHM.md:887):
 //
-//     | the hash is in no lineage entry | `layout_newer` |
+//     | the hash is in no lineage entry | `layout_unknown` |
 //       the file's hash, and nothing else |
 //
 // §5.3 step 5 (`docs/FIXED-FORM-ALGORITHM.md:829`):
 //
 //     i := the FIRST index with R.lineage[i] == h
-//     if none:  REFUSE layout_newer, reporting h AND NOTHING ELSE
+//     if none:  REFUSE layout_unknown, reporting h AND NOTHING ELSE
 //
 // §5.9 #7 (line 1219):
 //
-//      `layout_newer` alone is the words **AND NOTHING ELSE** (bill §12.4):
+//      `layout_unknown` alone is the words **AND NOTHING ELSE** (bill §12.4):
 //      its report carries the hash and no other field moves.
 //
 // what "AND NOTHING ELSE" MEANS, mechanically:
-//   - `report.refused == layout_newer` (THE NAME) and nothing decoded.
+//   - `report.refused == layout_unknown` (THE NAME) and nothing decoded.
 //   - `report.layoutHash == h` (THE FILE'S HASH, verbatim).
 //   - `report.malformed == false` (steps 1..4 passed; it is the lineage
 //     select that fired).
@@ -32,7 +32,7 @@
 // This test feeds a file whose header hash is a value the lineage does NOT
 // hold — neither the build's own, nor any locked layout, nor a derived
 // hash. The picked entry is `pick = -1` (tableFixedSelect's return for
-// absent). The load answers -1, sets `refused == layout_newer`, and sets
+// absent). The load answers -1, sets `refused == layout_unknown`, and sets
 // `layoutHash` to THE FILE'S HASH verbatim. Every counter is 0; the report
 // is otherwise untouched.
 //
@@ -145,8 +145,8 @@ void main() {
     'n=$n',
   );
   expect(
-    'refused == layout_newer, by name (docs/FIXED-FORM-ALGORITHM.md:887)',
-    report.refused == TableFixedRefusal.layoutNewer,
+    'refused == layout_unknown, by name (docs/FIXED-FORM-ALGORITHM.md:887)',
+    report.refused == TableFixedRefusal.layoutUnknown,
     'refused=${TableFixedRefusal.name(report.refused)} '
         '(${report.refused})',
   );
@@ -197,16 +197,16 @@ void main() {
 
   // ---- "AND NOTHING ELSE": ONLY THE THREE OF {refused, malformed, layoutHash} MOVE ----
   //
-  // §5.9 #7: layout_newer's report "carries the hash and no other field
+  // §5.9 #7: layout_unknown's report "carries the hash and no other field
   // moves." Programmatic confirmation the report's surface is exactly
   // those three on this refusal.
   final reportSurfaceHas =
-      report.refused == TableFixedRefusal.layoutNewer &&
+      report.refused == TableFixedRefusal.layoutUnknown &&
       report.layoutHash == unknownWireHash &&
       report.refused != TableFixedRefusal.damaged;
 
   expect(
-    'joint report: refused=layoutNewer AND layoutHash=wire AND !malformed '
+    'joint report: refused=layoutUnknown AND layoutHash=wire AND !malformed '
         '(the three the law activates on this refusal)',
     reportSurfaceHas,
     'refused=${report.refused} '

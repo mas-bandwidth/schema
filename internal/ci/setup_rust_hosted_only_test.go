@@ -361,19 +361,12 @@ func TestGolangciLintCacheIsolatedPerWorkspace(t *testing.T) {
 		t.Errorf("NEGATIVE CONTROL FAILED: dropping --allow-parallel-runners from %s stayed green", gateKey)
 	}
 
+	// No workflow runs golangci-lint today (registry L7: its runs are registry
+	// rows through make); the workflow half guards the one added tomorrow.
 	mutWF := maps.Clone(wfs)
-	mutWF["ci-fast.yml"] = strings.Replace(mutWF["ci-fast.yml"], "golangci-lint run --allow-parallel-runners $PACKAGES", "golangci-lint run $PACKAGES", 1)
-	if mutWF["ci-fast.yml"] == wfs["ci-fast.yml"] {
-		t.Fatal("negative control did not mutate ci-fast.yml")
-	}
+	mutWF["ci-full.yml"] += "      - run: golangci-lint run ./...\n"
 	if errs := checkGolangciLintParallelIsolation(makeFiles, mutWF); len(errs) == 0 {
-		t.Error("NEGATIVE CONTROL FAILED: dropping --allow-parallel-runners from ci-fast.yml stayed green")
-	}
-
-	// Also verify ci-fast.yml lang-clean (c) runs tables-c-soak-compile-modes so
-	// non-interposed / big-endian C soak #ifdef combinations are compile-checked in <2m CI.
-	if !strings.Contains(wfs["ci-fast.yml"], "tables-c-soak-compile-modes") {
-		t.Error("ci-fast.yml lang-clean (c) does not run tables-c-soak-compile-modes")
+		t.Error("NEGATIVE CONTROL FAILED: a ci-full.yml step running golangci-lint without --allow-parallel-runners stayed green")
 	}
 }
 

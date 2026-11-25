@@ -241,7 +241,7 @@ fn main() {
         values[1].label[0] = 0xAB;
         let mut report = TableFixedReport::default();
         let got = wide_blob_fixed_load(&mut values, &[form], &mut plan, &mut remap, &mut report);
-        clause(name, got.is_none() && report.refused && !report.damaged
+        clause(name, got.is_none() && report.refused
             && report.reason == reason && values.iter().all(|v| v.label[0] == 0));
     }
 
@@ -253,18 +253,20 @@ fn main() {
         values[1].label[0] = 0xAB;
         let mut report = TableFixedReport::default();
         let got = wide_blob_fixed_load(&mut values, &[3u8], &mut plan, &mut remap, &mut report);
-        clause("ceiling-form3", got.is_none() && report.refused && !report.damaged
+        clause("ceiling-form3", got.is_none() && report.refused
             && report.reason == TableFixedReason::LayoutRecordTooLarge && values.iter().all(|v| v.label[0] == 0));
     }
 
-    // An empty file is damage, and damage resets every destination row.
+    // An empty file is refused truncated (docs/FIXED-FORM-ALGORITHM.md §5.3
+    // step 1; this form's report has no malformed flag), and a refusal resets
+    // every destination row.
     {
         let mut values = vec![WideBlobRow::default()];
         values[0].label[0] = 0xAB;
         let mut report = TableFixedReport::default();
         let got = wide_blob_fixed_load(&mut values, &[], &mut plan, &mut remap, &mut report);
-        clause("empty-damage", got.is_none() && report.damaged && !report.refused
-            && report.reason == TableFixedReason::None && values[0].label[0] == 0);
+        clause("empty-damage", got.is_none() && report.refused
+            && report.reason == TableFixedReason::Truncated && values[0].label[0] == 0);
     }
 
     // The unit's real fixed root still reads clean, so the fixture is live.
@@ -276,7 +278,7 @@ fn main() {
         let mut report = TableFixedReport::default();
         let got = small_fixed_load(&mut values, &buf, &mut plan, &mut remap, &mut report);
         clause("small-clean", saved.is_some() && got == Some(1) && values[0].keep == 42
-            && !report.refused && !report.damaged);
+            && !report.refused);
     }
 }
 `

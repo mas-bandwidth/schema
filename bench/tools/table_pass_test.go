@@ -91,7 +91,11 @@ func TestTablePassRequiresEveryRequestedLanguage(t *testing.T) {
 	}
 }
 
-func TestTablePassSkipsUnavailableScaffoldOnlyDuringDiscovery(t *testing.T) {
+// TestTablePassRefusesUnavailableScaffold: a leg that cannot build fails the
+// pass, named, whether discovery found it or --only chose it, and its rows are
+// never run. Default discovery used to skip it (exit 2 from build); 30556c3a36
+// (no skips) made it a failure, and a leg is left out only by --only.
+func TestTablePassRefusesUnavailableScaffold(t *testing.T) {
 
 	root, env := tablePassFixture(t, "")
 	leg := filepath.Join(root, "bench", "tables", "lua", "leg")
@@ -106,8 +110,8 @@ func TestTablePassSkipsUnavailableScaffoldOnlyDuringDiscovery(t *testing.T) {
 	cmd := exec.Command("sh", "bench/tables/run.sh", "--bare")
 	cmd.Dir, cmd.Env = root, env
 	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("default discovery rejected an unavailable scaffold: %v\n%s", err, out)
+	if err == nil || !strings.Contains(string(out), "FAIL lua: build") {
+		t.Fatalf("default discovery accepted an unavailable scaffold, or did not name it: err=%v output=%s", err, out)
 	}
 	if strings.Contains(string(out), "fabricated-row") {
 		t.Fatalf("default discovery ran the unavailable scaffold: %s", out)
