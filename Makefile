@@ -8330,7 +8330,16 @@ PINS_WIRE_TABLES_DIRS := examples pointers v1 v2 p1 p2 p3 jsonkeys messages stre
 # per-PR tables rows keep the one-unit build, so the suite is still checked
 # whole; internal/ci's TestTablesSuitePartsCoverMain holds this list to the
 # blocks main() names.
-TABLES_PARTS := 1 2 3 4 5 6 7 8
+TABLES_PARTS := 1 2 3 4
+# and the generated sources the suite LINKS: the eleven its tests call into (the
+# text form's runtime, which is a translation unit). The other twenty-five of
+# TABLES_JSON_SOURCES compiled for nothing here, about 75 CPU-seconds a run. A
+# test that comes to call into another unit's source fails this row's link by
+# that symbol's name, and the source is added here.
+PINS_WIRE_TABLES_SOURCES := $(addprefix build/tables-generated/,pointers/GraphTable.cpp \
+	examples/TablesTable.cpp examples/GuardedTable.cpp examples/NestedTable.cpp examples/WideTable.cpp \
+	examples/KeyedTable.cpp jsonkeys/JsonKeysTable.cpp v1/V1Table.cpp messages/MessagesTable.cpp \
+	stream/StreamTable.cpp blobs/AssetsTable.cpp)
 
 define pins_compile_tables_parts
 	@# loud-ok: a core count for the job width (nproc, else sysctl, else 4); the work decides the status
@@ -8341,7 +8350,7 @@ define pins_compile_tables_parts
 	if [ "$$procs" -gt 8 ]; then procs=8; fi; \
 	jobs=''; idx=0; shared=''; \
 	for p in $(TABLES_PARTS); do jobs="$$jobs part:$$p"; done; \
-	for src in $(TABLES_JSON_SOURCES); do jobs="$$jobs src:$$src"; done; \
+	for src in $(PINS_WIRE_TABLES_SOURCES); do jobs="$$jobs src:$$src"; done; \
 	slot=0; pids=''; fail=0; \
 	for job in $$jobs; do \
 		case "$$job" in \
