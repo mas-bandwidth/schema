@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 2. Language-free tests: 2898.
+Unit tests every language answers: 2. Language-free tests: 2918.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -2165,21 +2165,29 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.fixedunlawful.judge-refuses-a-hollow-driver` | `gotest` | Go test TestJudgeRefusesAHollowDriver in ./internal/fixedunlawful | `package: ./internal/fixedunlawful`<br>`test: TestJudgeRefusesAHollowDriver` | the Go test passes | `internal/fixedunlawful/fixedunlawful_test.go:110` |
 | `none.unit.tooling.fixedunlawful.unanswered-refuses` | `gotest` | Go test TestUnansweredRefuses in ./internal/fixedunlawful | `package: ./internal/fixedunlawful`<br>`test: TestUnansweredRefuses` | the Go test passes | `internal/fixedunlawful/fixedunlawful_test.go:78` |
 
-#### `tooling` family `fullrun`, 27 tests
+#### `tooling` family `fullrun`, 39 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.unit.tooling.fullrun.a-bench-left-out-says-why` | `gotest` | Go test TestABenchLeftOutSaysWhy in ./tools/fullrun | `package: ./tools/fullrun`<br>`test: TestABenchLeftOutSaysWhy` | the Go test passes | `tools/fullrun/fullrun_test.go:779` |
 | `none.unit.tooling.fullrun.a-bench-that-stops-answering-is-a-dead-shard` | `gotest` | Go test TestABenchThatStopsAnsweringIsADeadShard in ./tools/fullrun | `package: ./tools/fullrun`<br>`test: TestABenchThatStopsAnsweringIsADeadShard` | the Go test passes | `tools/fullrun/fullrun_test.go:846` |
 | `none.unit.tooling.fullrun.a-dead-shard-is-a-red-and-runs-again` | `gotest` | Go test TestADeadShardIsARedAndRunsAgain in ./tools/fullrun | `package: ./tools/fullrun`<br>`test: TestADeadShardIsARedAndRunsAgain` | the Go test passes | `tools/fullrun/fullrun_test.go:416` |
+| `none.unit.tooling.fullrun.a-go-test-unit-takes-the-builds-its-tests-read` | `gotest` | Go test TestAGoTestUnitTakesTheBuildsItsTestsRead in ./tools/fullrun | `package: ./tools/fullrun`<br>`test: TestAGoTestUnitTakesTheBuildsItsTestsRead` | the Go test passes | `tools/fullrun/needs_test.go:20` |
+| `none.unit.tooling.fullrun.a-nested-module-test-runs-in-its-module` | `gotest` | Go test TestANestedModuleTestRunsInItsModule in ./tools/fullrun | `package: ./tools/fullrun`<br>`test: TestANestedModuleTestRunsInItsModule` | the Go test passes | `tools/fullrun/fullrun_test.go:1221` |
+| `none.unit.tooling.fullrun.a-part-holds-no-unit-its-runner-cannot-run` | `gotest` | Go test TestAPartHoldsNoUnitItsRunnerCannotRun in ./tools/fullrun | `package: ./tools/fullrun`<br>`test: TestAPartHoldsNoUnitItsRunnerCannotRun` | the Go test passes | `tools/fullrun/fullrun_test.go:1407` |
 | `none.unit.tooling.fullrun.a-registry-row-the-extract-cannot-read-is-a-red` | `gotest` | Go test TestARegistryRowTheExtractCannotReadIsARed in ./tools/fullrun | `package: ./tools/fullrun`<br>`test: TestARegistryRowTheExtractCannotReadIsARed` | the Go test passes | `tools/fullrun/fullrun_test.go:961` |
 | `none.unit.tooling.fullrun.a-restarted-shard-kills-what-its-dead-predecessor-left` | `gotest` | Go test TestARestartedShardKillsWhatItsDeadPredecessorLeft in ./tools/fullrun | `package: ./tools/fullrun`<br>`test: TestARestartedShardKillsWhatItsDeadPredecessorLeft` | the Go test passes | `tools/fullrun/fullrun_unix_test.go:22` |
 | `none.unit.tooling.fullrun.a-shard-past-its-retries-leaves-not-run-reds` | `gotest` | Go test TestAShardPastItsRetriesLeavesNotRunReds in ./tools/fullrun | `package: ./tools/fullrun`<br>`test: TestAShardPastItsRetriesLeavesNotRunReds` | the Go test passes | `tools/fullrun/fullrun_test.go:451` |
 | `none.unit.tooling.fullrun.a-shard-removes-its-temporary-files-when-done` | `gotest` | Go test TestAShardRemovesItsTemporaryFilesWhenDone in ./tools/fullrun | `package: ./tools/fullrun`<br>`test: TestAShardRemovesItsTemporaryFilesWhenDone` | the Go test passes | `tools/fullrun/fullrun_test.go:751` |
 | `none.unit.tooling.fullrun.a-shard-stops-when-it-cannot-clean-its-clone` | `gotest` | Go test TestAShardStopsWhenItCannotCleanItsClone in ./tools/fullrun | `package: ./tools/fullrun`<br>`test: TestAShardStopsWhenItCannotCleanItsClone` | the Go test passes | `tools/fullrun/fullrun_test.go:911` |
 | `none.unit.tooling.fullrun.a-shard-that-finishes-while-looked-at-is-done` | `gotest` | Go test TestAShardThatFinishesWhileLookedAtIsDone in ./tools/fullrun | `package: ./tools/fullrun`<br>`test: TestAShardThatFinishesWhileLookedAtIsDone` | the Go test passes | `tools/fullrun/fullrun_test.go:1003` |
+| `none.unit.tooling.fullrun.a-short-run-the-missing-names-explain-is-theirs` | `gotest` | Go test TestAShortRunTheMissingNamesExplainIsTheirs in ./tools/fullrun | `package: ./tools/fullrun`<br>`test: TestAShortRunTheMissingNamesExplainIsTheirs` | the Go test passes | `tools/fullrun/fullrun_test.go:1041` |
 | `none.unit.tooling.fullrun.a-skipped-sub-benchmark-fails-its-benchmark` | `gotest` | Go test TestASkippedSubBenchmarkFailsItsBenchmark in ./tools/fullrun | `package: ./tools/fullrun`<br>`test: TestASkippedSubBenchmarkFailsItsBenchmark` | the Go test passes | `tools/fullrun/fullrun_test.go:982` |
 | `none.unit.tooling.fullrun.a-start-beside-a-live-shard-refuses` | `gotest` | Go test TestAStartBesideALiveShardRefuses in ./tools/fullrun | `package: ./tools/fullrun`<br>`test: TestAStartBesideALiveShardRefuses` | the Go test passes | `tools/fullrun/fullrun_unix_test.go:120` |
+| `none.unit.tooling.fullrun.a-timed-outcome-line-is-read` | `gotest` | Go test TestATimedOutcomeLineIsRead in ./tools/fullrun | `package: ./tools/fullrun`<br>`test: TestATimedOutcomeLineIsRead` | the Go test passes | `tools/fullrun/fullrun_test.go:1026` |
+| `none.unit.tooling.fullrun.a-unit-builds-what-its-tests-read-first` | `gotest` | Go test TestAUnitBuildsWhatItsTestsReadFirst in ./tools/fullrun | `package: ./tools/fullrun`<br>`test: TestAUnitBuildsWhatItsTestsReadFirst` | the Go test passes | `tools/fullrun/needs_test.go:51` |
+| `none.unit.tooling.fullrun.a-warning-is-not-the-first-line-beside-a-failure` | `gotest` | Go test TestAWarningIsNotTheFirstLineBesideAFailure in ./tools/fullrun | `package: ./tools/fullrun`<br>`test: TestAWarningIsNotTheFirstLineBesideAFailure` | the Go test passes | `tools/fullrun/fullrun_test.go:1377` |
+| `none.unit.tooling.fullrun.a-windows-test-runs-on-a-bench-that-runs-windows` | `gotest` | Go test TestAWindowsTestRunsOnABenchThatRunsWindows in ./tools/fullrun | `package: ./tools/fullrun`<br>`test: TestAWindowsTestRunsOnABenchThatRunsWindows` | the Go test passes | `tools/fullrun/fullrun_test.go:1279` |
 | `none.unit.tooling.fullrun.assign-deals-each-unit-once-the-same-way-every-time` | `gotest` | Go test TestAssignDealsEachUnitOnceTheSameWayEveryTime in ./tools/fullrun | `package: ./tools/fullrun`<br>`test: TestAssignDealsEachUnitOnceTheSameWayEveryTime` | the Go test passes | `tools/fullrun/fullrun_test.go:136` |
 | `none.unit.tooling.fullrun.covers-names-what-the-full-run-does-not-run` | `gotest` | Go test TestCoversNamesWhatTheFullRunDoesNotRun in ./tools/fullrun | `package: ./tools/fullrun`<br>`test: TestCoversNamesWhatTheFullRunDoesNotRun` | the Go test passes | `tools/fullrun/fullrun_test.go:578` |
 | `none.unit.tooling.fullrun.go-test-verdicts` | `gotest` | Go test TestGoTestVerdicts in ./tools/fullrun | `package: ./tools/fullrun`<br>`test: TestGoTestVerdicts` | the Go test passes | `tools/fullrun/fullrun_test.go:189` |
@@ -2190,18 +2198,23 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.fullrun.only-a-pattern-that-matches-nothing-fails` | `gotest` | Go test TestOnlyAPatternThatMatchesNothingFails in ./tools/fullrun | `package: ./tools/fullrun`<br>`test: TestOnlyAPatternThatMatchesNothingFails` | the Go test passes | `tools/fullrun/fullrun_test.go:173` |
 | `none.unit.tooling.fullrun.parts-deal-each-unit-once` | `gotest` | Go test TestPartsDealEachUnitOnce in ./tools/fullrun | `package: ./tools/fullrun`<br>`test: TestPartsDealEachUnitOnce` | the Go test passes | `tools/fullrun/fullrun_test.go:664` |
 | `none.unit.tooling.fullrun.plan-holds-every-test-once` | `gotest` | Go test TestPlanHoldsEveryTestOnce in ./tools/fullrun | `package: ./tools/fullrun`<br>`test: TestPlanHoldsEveryTestOnce` | the Go test passes | `tools/fullrun/fullrun_test.go:90` |
+| `none.unit.tooling.fullrun.reread-corrects-a-registry-verdict-from-its-log` | `gotest` | Go test TestRereadCorrectsARegistryVerdictFromItsLog in ./tools/fullrun | `package: ./tools/fullrun`<br>`test: TestRereadCorrectsARegistryVerdictFromItsLog` | the Go test passes | `tools/fullrun/fullrun_test.go:1066` |
+| `none.unit.tooling.fullrun.reread-refuses-a-shard-that-has-not-finished` | `gotest` | Go test TestRereadRefusesAShardThatHasNotFinished in ./tools/fullrun | `package: ./tools/fullrun`<br>`test: TestRereadRefusesAShardThatHasNotFinished` | the Go test passes | `tools/fullrun/fullrun_test.go:1154` |
+| `none.unit.tooling.fullrun.reread-refuses-a-shard-that-holds-its-lock` | `gotest` | Go test TestRereadRefusesAShardThatHoldsItsLock in ./tools/fullrun | `package: ./tools/fullrun`<br>`test: TestRereadRefusesAShardThatHoldsItsLock` | the Go test passes | `tools/fullrun/fullrun_unix_test.go:158` |
 | `none.unit.tooling.fullrun.retest-runs-exactly-the-reds-and-flips-the-greens` | `gotest` | Go test TestRetestRunsExactlyTheRedsAndFlipsTheGreens in ./tools/fullrun | `package: ./tools/fullrun`<br>`test: TestRetestRunsExactlyTheRedsAndFlipsTheGreens` | the Go test passes | `tools/fullrun/fullrun_test.go:474` |
 | `none.unit.tooling.fullrun.rides-takes-its-packages-verdict` | `gotest` | Go test TestRidesTakesItsPackagesVerdict in ./tools/fullrun | `package: ./tools/fullrun`<br>`test: TestRidesTakesItsPackagesVerdict` | the Go test passes | `tools/fullrun/fullrun_test.go:522` |
 | `none.unit.tooling.fullrun.schema-test-verdicts` | `gotest` | Go test TestSchemaTestVerdicts in ./tools/fullrun | `package: ./tools/fullrun`<br>`test: TestSchemaTestVerdicts` | the Go test passes | `tools/fullrun/fullrun_test.go:235` |
 | `none.unit.tooling.fullrun.shard-carries-on-from-the-unit-it-died-in` | `gotest` | Go test TestShardCarriesOnFromTheUnitItDiedIn in ./tools/fullrun | `package: ./tools/fullrun`<br>`test: TestShardCarriesOnFromTheUnitItDiedIn` | the Go test passes | `tools/fullrun/fullrun_test.go:296` |
 | `none.unit.tooling.fullrun.shard-problems-and-double-names-are-reds` | `gotest` | Go test TestShardProblemsAndDoubleNamesAreReds in ./tools/fullrun | `package: ./tools/fullrun`<br>`test: TestShardProblemsAndDoubleNamesAreReds` | the Go test passes | `tools/fullrun/fullrun_test.go:873` |
+| `none.unit.tooling.fullrun.two-outcomes-for-one-name-are-the-runs-problem` | `gotest` | Go test TestTwoOutcomesForOneNameAreTheRunsProblem in ./tools/fullrun | `package: ./tools/fullrun`<br>`test: TestTwoOutcomesForOneNameAreTheRunsProblem` | the Go test passes | `tools/fullrun/fullrun_test.go:1190` |
 | `none.unit.tooling.fullrun.untar-refuses-what-is-not-a-file-or-directory` | `gotest` | Go test TestUntarRefusesWhatIsNotAFileOrDirectory in ./tools/fullrun | `package: ./tools/fullrun`<br>`test: TestUntarRefusesWhatIsNotAFileOrDirectory` | the Go test passes | `tools/fullrun/fullrun_test.go:934` |
 
-#### `tooling` family `gatecontrol`, 2 tests
+#### `tooling` family `gatecontrol`, 3 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.unit.tooling.gatecontrol.a-red-that-compared-nothing-fails-the-control` | `gotest` | Go test TestARedThatComparedNothingFailsTheControl in ./tools/gatecontrol | `package: ./tools/gatecontrol`<br>`test: TestARedThatComparedNothingFailsTheControl` | the Go test passes | `tools/gatecontrol/main_test.go:40` |
+| `none.unit.tooling.gatecontrol.every-refuse-matches-only-a-pass-line` | `gotest` | Go test TestEveryRefuseMatchesOnlyAPassLine in ./tools/gatecontrol | `package: ./tools/gatecontrol`<br>`test: TestEveryRefuseMatchesOnlyAPassLine` | the Go test passes | `tools/gatecontrol/main_test.go:63` |
 | `none.unit.tooling.gatecontrol.verdict-names-every-way-a-control-fails` | `gotest` | Go test TestVerdictNamesEveryWayAControlFails in ./tools/gatecontrol | `package: ./tools/gatecontrol`<br>`test: TestVerdictNamesEveryWayAControlFails` | the Go test passes | `tools/gatecontrol/main_test.go:12` |
 
 #### `tooling` family `githooks`, 3 tests
@@ -2939,6 +2952,12 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.roadmap.the-page-carries-the-three-tables` | `gotest` | Go test TestThePageCarriesTheThreeTables in ./tools/roadmap | `package: ./tools/roadmap`<br>`test: TestThePageCarriesTheThreeTables` | the Go test passes | `tools/roadmap/tally_test.go:144` |
 | `none.unit.tooling.roadmap.the-tables-are-well-formed` | `gotest` | Go test TestTheTablesAreWellFormed in ./tools/roadmap | `package: ./tools/roadmap`<br>`test: TestTheTablesAreWellFormed` | the Go test passes | `tools/roadmap/tally_test.go:127` |
 
+#### `tooling` family `rubyrun`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.unit.tooling.rubyrun.analyzers-resolve-beside-ruby` | `gotest` | Go test TestAnalyzersResolveBesideRuby in ./internal/codegen/ruby/rubyrun | `package: ./internal/codegen/ruby/rubyrun`<br>`test: TestAnalyzersResolveBesideRuby` | the Go test passes | `internal/codegen/ruby/rubyrun/rubyrun_test.go:13` |
+
 #### `tooling` family `runmatch`, 4 tests
 
 | full name | adapter | checks | inputs | expected result | source |
@@ -2948,7 +2967,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.runmatch.skips-follows-go` | `gotest` | Go test TestSkipsFollowsGo in ./internal/runmatch | `package: ./internal/runmatch`<br>`test: TestSkipsFollowsGo` | the Go test passes | `internal/runmatch/runmatch_test.go:107` |
 | `none.unit.tooling.runmatch.top-level-is-gos-split` | `gotest` | Go test TestTopLevelIsGosSplit in ./internal/runmatch | `package: ./internal/runmatch`<br>`test: TestTopLevelIsGosSplit` | the Go test passes | `internal/runmatch/runmatch_test.go:9` |
 
-#### `tooling` family `schema-test`, 90 tests
+#### `tooling` family `schema-test`, 92 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -2961,6 +2980,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.schema-test.a-fuzz-row-takes-its-runs-seed` | `gotest` | Go test TestAFuzzRowTakesItsRunsSeed in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAFuzzRowTakesItsRunsSeed` | the Go test passes | `tools/schema-test/make_seed_test.go:19` |
 | `none.unit.tooling.schema-test.a-go-test-family-never-takes-the-corpus-prefix` | `gotest` | Go test TestAGoTestFamilyNeverTakesTheCorpusPrefix in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAGoTestFamilyNeverTakesTheCorpusPrefix` | the Go test passes | `tools/schema-test/gotest_test.go:119` |
 | `none.unit.tooling.schema-test.a-go-test-that-exits-non-zero-fails-its-rows` | `gotest` | Go test TestAGoTestThatExitsNonZeroFailsItsRows in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAGoTestThatExitsNonZeroFailsItsRows` | the Go test passes | `tools/schema-test/gotest_test.go:235` |
+| `none.unit.tooling.schema-test.a-go-tests-declared-build-fails-only-the-rows-that-read-it` | `gotest` | Go test TestAGoTestsDeclaredBuildFailsOnlyTheRowsThatReadIt in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAGoTestsDeclaredBuildFailsOnlyTheRowsThatReadIt` | the Go test passes | `tools/schema-test/goneeds_test.go:83` |
 | `none.unit.tooling.schema-test.a-golden-edited-by-hand-fails` | `gotest` | Go test TestAGoldenEditedByHandFails in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAGoldenEditedByHandFails` | the Go test passes | `tools/schema-test/golden_test.go:81` |
 | `none.unit.tooling.schema-test.a-golden-nothing-writes-fails` | `gotest` | Go test TestAGoldenNothingWritesFails in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAGoldenNothingWritesFails` | the Go test passes | `tools/schema-test/golden_test.go:105` |
 | `none.unit.tooling.schema-test.a-golden-the-writer-left-untouched-was-not-written` | `gotest` | Go test TestAGoldenTheWriterLeftUntouchedWasNotWritten in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAGoldenTheWriterLeftUntouchedWasNotWritten` | the Go test passes | `tools/schema-test/golden_test.go:228` |
@@ -2997,6 +3017,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.schema-test.a-union-call-runs-under-its-package-lock-with-its-tags` | `gotest` | Go test TestAUnionCallRunsUnderItsPackageLockWithItsTags in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAUnionCallRunsUnderItsPackageLockWithItsTags` | the Go test passes | `tools/schema-test/gounion_test.go:80` |
 | `none.unit.tooling.schema-test.a-union-language-with-no-go-test-is-red` | `gotest` | Go test TestAUnionLanguageWithNoGoTestIsRed in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAUnionLanguageWithNoGoTestIsRed` | the Go test passes | `tools/schema-test/gounion_test.go:18` |
 | `none.unit.tooling.schema-test.a-union-row-routes-to-the-go-union-harness` | `gotest` | Go test TestAUnionRowRoutesToTheGoUnionHarness in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAUnionRowRoutesToTheGoUnionHarness` | the Go test passes | `tools/schema-test/gounion_test.go:47` |
+| `none.unit.tooling.schema-test.a-union-rows-declared-build-fails-only-the-rows-that-read-it` | `gotest` | Go test TestAUnionRowsDeclaredBuildFailsOnlyTheRowsThatReadIt in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAUnionRowsDeclaredBuildFailsOnlyTheRowsThatReadIt` | the Go test passes | `tools/schema-test/goneeds_test.go:139` |
 | `none.unit.tooling.schema-test.a-wait-for-the-checkout-ends-with-its-context` | `gotest` | Go test TestAWaitForTheCheckoutEndsWithItsContext in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAWaitForTheCheckoutEndsWithItsContext` | the Go test passes | `tools/schema-test/make_test.go:300` |
 | `none.unit.tooling.schema-test.a-writer-that-fails-or-skips-wrote-nothing` | `gotest` | Go test TestAWriterThatFailsOrSkipsWroteNothing in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAWriterThatFailsOrSkipsWroteNothing` | the Go test passes | `tools/schema-test/golden_test.go:373` |
 | `none.unit.tooling.schema-test.an-anchor-that-drifted-fails-by-name` | `gotest` | Go test TestAnAnchorThatDriftedFailsByName in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAnAnchorThatDriftedFailsByName` | the Go test passes | `tools/schema-test/plant_test.go:37` |
@@ -3123,7 +3144,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.testproc.child-leads-its-own-group` | `gotest` | Go test TestChildLeadsItsOwnGroup in ./internal/testproc | `package: ./internal/testproc`<br>`test: TestChildLeadsItsOwnGroup` | the Go test passes | `internal/testproc/group_unix_test.go:17` |
 | `none.unit.tooling.testproc.grandchild-is-killed-when-the-child-exits-normally` | `gotest` | Go test TestGrandchildIsKilledWhenTheChildExitsNormally in ./internal/testproc | `package: ./internal/testproc`<br>`test: TestGrandchildIsKilledWhenTheChildExitsNormally` | the Go test passes | `internal/testproc/testproc_test.go:154` |
 
-#### `tooling` family `testreg`, 67 tests
+#### `tooling` family `testreg`, 69 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -3154,8 +3175,10 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.testreg.an-intrinsic-test-has-one-instance` | `gotest` | Go test TestAnIntrinsicTestHasOneInstance in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestAnIntrinsicTestHasOneInstance` | the Go test passes | `internal/testreg/gotests_test.go:76` |
 | `none.unit.tooling.testreg.coverage-shows-every-cell` | `gotest` | Go test TestCoverageShowsEveryCell in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestCoverageShowsEveryCell` | the Go test passes | `internal/testreg/run_test.go:408` |
 | `none.unit.tooling.testreg.each-writer-and-plant-is-a-call-of-its-own` | `gotest` | Go test TestEachWriterAndPlantIsACallOfItsOwn in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestEachWriterAndPlantIsACallOfItsOwn` | the Go test passes | `internal/testreg/run_test.go:625` |
+| `none.unit.tooling.testreg.every-built-read-is-declared` | `gotest` | Go test TestEveryBuiltReadIsDeclared in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestEveryBuiltReadIsDeclared` | the Go test passes | `internal/testreg/goneeds_test.go:25` |
 | `none.unit.tooling.testreg.every-driver-test-is-registered` | `gotest` | Go test TestEveryDriverTestIsRegistered in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestEveryDriverTestIsRegistered` | the Go test passes | `internal/testreg/policy_test.go:81` |
 | `none.unit.tooling.testreg.expected-not-ran-fails` | `gotest` | Go test TestExpectedNotRanFails in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestExpectedNotRanFails` | the Go test passes | `internal/testreg/run_test.go:188` |
+| `none.unit.tooling.testreg.go-needs-select-by-package-and-whole-test-name` | `gotest` | Go test TestGoNeedsSelectByPackageAndWholeTestName in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestGoNeedsSelectByPackageAndWholeTestName` | the Go test passes | `internal/testreg/goneeds_test.go:126` |
 | `none.unit.tooling.testreg.load-accepts-a-union-row` | `gotest` | Go test TestLoadAcceptsAUnionRow in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestLoadAcceptsAUnionRow` | the Go test passes | `internal/testreg/gotests_test.go:14` |
 | `none.unit.tooling.testreg.load-accepts-the-fixture` | `gotest` | Go test TestLoadAcceptsTheFixture in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestLoadAcceptsTheFixture` | the Go test passes | `internal/testreg/registry_test.go:56` |
 | `none.unit.tooling.testreg.load-refuses-a-bad-intrinsic` | `gotest` | Go test TestLoadRefusesABadIntrinsic in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestLoadRefusesABadIntrinsic` | the Go test passes | `internal/testreg/gotests_test.go:109` |
@@ -3229,6 +3252,13 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.unit.tooling.testselect.a-per-language-nightly-row-leaves-out-each-languages-test` | `gotest` | Go test TestAPerLanguageNightlyRowLeavesOutEachLanguagesTest in ./internal/testselect | `package: ./internal/testselect`<br>`test: TestAPerLanguageNightlyRowLeavesOutEachLanguagesTest` | the Go test passes | `internal/testselect/testselect_test.go:94` |
+
+#### `tooling` family `testvolume`, 2 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.unit.tooling.testvolume.folding-base-order` | `gotest` | Go test TestFoldingBaseOrder in ./internal/testvolume | `package: ./internal/testvolume`<br>`test: TestFoldingBaseOrder` | the Go test passes | `internal/testvolume/testvolume_test.go:13` |
+| `none.unit.tooling.testvolume.folds-leaves-the-directory-as-it-was` | `gotest` | Go test TestFoldsLeavesTheDirectoryAsItWas in ./internal/testvolume | `package: ./internal/testvolume`<br>`test: TestFoldsLeavesTheDirectoryAsItWas` | the Go test passes | `internal/testvolume/testvolume_test.go:49` |
 
 #### `tooling` family `tlcrun`, 13 tests
 
