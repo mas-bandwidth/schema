@@ -80,15 +80,18 @@ func FormatResult(r Result) string {
 //
 //   - go test -json: an event whose Action is "skip";
 //   - a verdict marked SKIP in capitals (go test -v's "--- SKIP:", "SKIP: lua
-//     not found", "[SKIP]", a TAP "# SKIP"), or a line that opens with
-//     skip, skipped or skipping, or a verdict after a colon that ends a line ("x: skipped");
+//     not found", "[SKIP]"), a TAP "# skip" in any case, a line that opens
+//     with skip, skipped or skipping, or the word after a colon, comma,
+//     semicolon or closing bracket ("x: skipped (no lua)", "lua not found,
+//     skipping", "[c] skipped");
 //   - a recognised summary with a non-zero skipped count ("3 skipped",
 //     "skipped: 2", "skips=1").
 var skipVerdicts = []*regexp.Regexp{
 	regexp.MustCompile(`"Action"\s*:\s*"skip"`),
 	regexp.MustCompile(`(^|[^\w./-])SKIP(PED)?([^\w./-]|$)`),
 	regexp.MustCompile(`(?i)^\s*(skip|skipped|skipping)(\s|$|:\s*[^\s0-9])`),
-	regexp.MustCompile(`(?i):\s*(skip|skipped)\s*$`),
+	regexp.MustCompile(`(?i)#\s*skip([^\w./-]|$)`),
+	regexp.MustCompile(`(?i)[:,;\])]\s*(skip|skipped|skipping)([^\w./-]|\.?\s*$)`),
 	regexp.MustCompile(`(?i)(^|[^\w./-])0*[1-9][0-9]*\s+(tests?\s+)?skip(s|ped)?([^\w./-]|$)`),
 	regexp.MustCompile(`(?i)(^|[^\w./-])skip(s|ped)?\s*[:=]\s*0*[1-9]`),
 }
