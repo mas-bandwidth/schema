@@ -68,7 +68,7 @@ seeded mutations.
 | `none.unit.fuzz.fuzz.fuzz-format-idempotent` | `gotest` | Go test FuzzFormatIdempotent in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: FuzzFormatIdempotent` | the Go test passes | `internal/fuzz/property_test.go:208` |
 | `none.unit.fuzz.fuzz.fuzz-pipeline` | `gotest` | Go test FuzzPipeline in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: FuzzPipeline` | the Go test passes | `internal/fuzz/fuzz_test.go:257` |
 | `none.unit.fuzz.fuzz.fuzz-pipeline-two-files` | `gotest` | Go test FuzzPipelineTwoFiles in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: FuzzPipelineTwoFiles` | the Go test passes | `internal/fuzz/fuzz_test.go:274` |
-| `none.unit.fuzz.fuzz.fuzz-table-front-end` | `gotest` | Go test FuzzTableFrontEnd in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: FuzzTableFrontEnd` | the Go test passes | `internal/fuzz/tablefrontend_test.go:125` |
+| `none.unit.fuzz.fuzz.fuzz-table-front-end` | `gotest` | Go test FuzzTableFrontEnd in ./internal/fuzz | `inputs.files` (353 bytes, held in the registry row's `inputs.files`)<br>`package: ./internal/fuzz`<br>`test: FuzzTableFrontEnd` | the Go test passes | `internal/fuzz/tablefrontend_test.go:125` |
 
 #### `fuzz` family `tabletext`, 1 test
 

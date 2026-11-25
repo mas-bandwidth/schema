@@ -299,7 +299,6 @@ data-case	internal/fuzz/testdata/corpuslayout/no-schema-primary/examples128	1	L4
 data-case	internal/fuzz/testdata/fuzz/FuzzFormatIdempotent	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	internal/fuzz/testdata/fuzz/FuzzGeneratedCompiles	8	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	internal/fuzz/testdata/fuzz/FuzzPipelineTwoFiles	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	internal/fuzz/testdata/fuzz/FuzzTableFrontEnd	4	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	internal/lockfile/testdata/scalar-arm-v9	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	internal/lockfile/testdata/writer-v1/attribution	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	internal/lockfile/testdata/writer-v1/wide	5	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
