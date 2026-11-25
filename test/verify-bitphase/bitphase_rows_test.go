@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"strings"
 	"testing"
@@ -25,8 +26,9 @@ func TestTheRegistryHoldsTheBitPhaseRows(t *testing.T) {
 	sc := bufio.NewScanner(bytes.NewReader(data))
 	sc.Buffer(make([]byte, 0, 64*1024), 16*1024*1024)
 	for sc.Scan() {
-		var head struct{ Rec, Key, Family string }
-		if json.Unmarshal(sc.Bytes(), &head) == nil && head.Rec == "test" && head.Family == BitPhaseFamily {
+		var head struct{ Rec, Key, Type, Family string }
+		// the family's plants (rec type plant) are rows of their own
+		if json.Unmarshal(sc.Bytes(), &head) == nil && head.Rec == "test" && head.Family == BitPhaseFamily && head.Type != "plant" {
 			got[head.Key] = sc.Text()
 		}
 	}
@@ -118,4 +120,47 @@ func TestTheBitPhaseRowsAreTheRosterAndTheSteps(t *testing.T) {
 	if len(steps) != 2 || steps[0].Inputs.Step != bitPhaseCfDecodeCase || steps[1].Inputs.Step != bitPhaseF32LitCase {
 		t.Errorf("the steps: %+v", steps)
 	}
+}
+
+// TestAStepIsRedUnlessEveryTierCheckedIt: a main-only step passes only when
+// the run passed and every tier that ran held it. A second tier (Rust's
+// release, JS's production) that crashes before its checks reds both steps
+// even though the first tier's checks held; a step whose own check failed is
+// red with that check; the other step of a red run is red, since the tiers
+// after the failure never checked it; a run that reached no check is red.
+func TestAStepIsRedUnlessEveryTierCheckedIt(t *testing.T) {
+	t.Parallel()
+	cf, fl := bitPhaseCfDecodeCase, bitPhaseF32LitCase
+	ok := map[string]error{cf: nil, fl: nil}
+	crash := errors.New("rust failed (exit status 101)")
+	bad := errors.New("cfdecode index 7: got 0.5")
+	run := func(build func(m *mainStepRun)) *mainStepRun {
+		m := &mainStepRun{}
+		build(m)
+		return m
+	}
+	for _, c := range []struct {
+		name   string
+		m      *mainStepRun
+		runErr error
+		step   string
+		says   string // "" is a pass
+	}{
+		{"one tier held", run(func(m *mainStepRun) { m.check(ok) }), nil, cf, ""},
+		{"two tiers held", run(func(m *mainStepRun) { m.check(ok); m.check(ok) }), nil, fl, ""},
+		{"the second tier crashed", run(func(m *mainStepRun) { m.check(ok); m.stop(crash) }), crash, cf, "stopped before its steps were checked"},
+		{"its own check failed", run(func(m *mainStepRun) { m.check(map[string]error{cf: bad, fl: nil}) }), bad, cf, "cfdecode index 7"},
+		{"the other step failed", run(func(m *mainStepRun) { m.check(map[string]error{cf: bad, fl: nil}) }), bad, fl, "before every tier was held to this step"},
+		{"no tier reached a check", run(func(*mainStepRun) {}), crash, cf, "stopped before its steps were checked"},
+		{"nothing checked and nothing failed", run(func(*mainStepRun) {}), nil, fl, "checked no step"},
+	} {
+		err := c.m.verdict(c.step, c.runErr)
+		if (c.says == "") != (err == nil) || (err != nil && !strings.Contains(err.Error(), c.says)) {
+			t.Errorf("%s: verdict %v, want it to say %q", c.name, err, c.says)
+		}
+	}
+	// outside a step run nothing is recorded, and nothing panics
+	var none *mainStepRun
+	none.check(ok)
+	none.stop(crash)
 }

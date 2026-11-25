@@ -7,15 +7,26 @@
 #
 # schema-test's wire-fuzz harness (tools/schema-test/adapters.go) calls these
 # for the families wire-fuzz-vector (every pinned vector, replayed exactly)
-# and wire-fuzz (every arm at every seed). The driver, its prerequisites and
-# its environment are the leg's release wire-fuzz gate's
-# (make/wire-fuzz-release.mk), so the two run one leg the same way.
+# and wire-fuzz (every arm at the run's seed). The prerequisites, the
+# environment and the random-pass flags (WFR_FLAGS_<leg>, as --leg-flags) are
+# the leg's release wire-fuzz gate's (make/wire-fuzz-release.mk); the driver
+# is the gate's too, except where a leg has configurations of its own below.
+# The adapter answers only requests that are rows of its --lang leg.
 #
 # A leg answers in every configuration it has, each a --config NAME=COMMAND:
 # Python in the current and the floor interpreter, each in normal and -X dev
 # mode, and Ruby in the current and the floor interpreter, with the commands
 # make/python-wirefuzz.mk and make/ruby-wirefuzz.mk run; every other leg in
 # its one driver. An instance passes only when every configuration does.
+
+# The run's seed, as every fuzz row takes it (internal/testreg, SeedEnv):
+# SCHEMA_TEST_SEED when the run hands one in, else the UTC date as YYYYMMDD,
+# fixed once per make process. The registry rows get it from schema-test,
+# which hands it to the harness for every random pass; the Python and Ruby make rows
+# (make/python-wirefuzz.mk, make/ruby-wirefuzz.mk) run at it and print it,
+# and a red re-runs by name with the seed it printed:
+#   make <row> SCHEMA_TEST_SEED=<seed>
+WIRE_FUZZ_RUN_SEED := $(or $(SCHEMA_TEST_SEED),$(shell date -u +%Y%m%d))
 
 WIRE_FUZZ_REGISTRY_JOBS ?= 4
 
@@ -42,6 +53,7 @@ wire-fuzz-deps-$(1): build/conformance-harness $$(WFR_DEPS_$(1))
 wire-fuzz-adapter-$(1):
 	@test -n "$$(WFZ_WORK)" || { echo "wire-fuzz-adapter-$(1): WFZ_WORK names the call's work folder"; exit 1; }
 	@$$(WFR_ENV_$(1)) ./build/conformance-harness wire-fuzz-adapter --jobs $$(WIRE_FUZZ_REGISTRY_JOBS) \
+		--lang $(1) --leg-flags "$$(strip $$(WFR_FLAGS_$(1)))" \
 		--work "$$(WFZ_WORK)" $$(call wfz_configs,$(1))
 endef
 # The legs are make/wire-fuzz-release.mk's, which the Makefile's sorted

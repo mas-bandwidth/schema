@@ -17,9 +17,10 @@ ruby-wirefuzz-$(1)-$(2): build/conformance-harness build/conformance-ruby ruby-t
 	@set -eu; \
 	if find build/conformance-ruby -name '*.refused' -print | grep .; then echo 'wire-fuzz: a corpus unit was refused'; exit 1; fi; \
 	mkdir -p $(RUBY_WIRE_FUZZ_DIR); log=$(RUBY_WIRE_FUZZ_DIR)/$(1)-$(2).log; \
+	echo "$$@: seed $$(WIRE_FUZZ_RUN_SEED) (a red re-runs with: make $$@ SCHEMA_TEST_SEED=$$(WIRE_FUZZ_RUN_SEED))"; \
 	sh test/conformance/wire-fuzz-complete "$$$$log" ./build/conformance-harness wire-fuzz $(if $(filter mixed,$(2)),--mixed-builder,$(if $(filter retain,$(2)),--retain,)) \
 	  --driver '$(if $(filter current,$(1)),$(RUBY),$(RUBY_FLOOR)) --disable-gems -w test/conformance/ruby/wirefuzz.rb build/conformance-ruby' \
-	  --seed $(SEED) --n $(N) --failed $(RUBY_WIRE_FUZZ_DIR)/$(1)-$(2).bin
+	  --seed $$(WIRE_FUZZ_RUN_SEED) --n $(N) --failed $(RUBY_WIRE_FUZZ_DIR)/$(1)-$(2).bin
 endef
 $(foreach pin,current floor,$(foreach arm,plain mixed retain,$(eval $(call ruby_wirefuzz_row,$(pin),$(arm)))))
 
@@ -28,9 +29,10 @@ ruby-wirefuzz-$(1)-$(2)-shard-$(3): build/conformance-harness build/conformance-
 	@set -eu; \
 	if find build/conformance-ruby -name '*.refused' -print | grep .; then echo 'wire-fuzz: a corpus unit was refused'; exit 1; fi; \
 	mkdir -p $(RUBY_WIRE_FUZZ_DIR); log=$(RUBY_WIRE_FUZZ_DIR)/$(1)-$(2)-shard-$(3).log; \
+	echo "$$@: seed $$(WIRE_FUZZ_RUN_SEED) (a red re-runs with: make $$@ SCHEMA_TEST_SEED=$$(WIRE_FUZZ_RUN_SEED))"; \
 	sh test/conformance/wire-fuzz-complete "$$$$log" ./build/conformance-harness wire-fuzz $(if $(filter mixed,$(2)),--mixed-builder,$(if $(filter retain,$(2)),--retain,)) \
 	  --driver '$(if $(filter current,$(1)),$(RUBY),$(RUBY_FLOOR)) --disable-gems -w test/conformance/ruby/wirefuzz.rb build/conformance-ruby' \
-	  --seed $(SEED) --n $(N) --shard $(3) --shards $(words $(RUBY_WIRE_FUZZ_CI_SHARDS)) --failed $(RUBY_WIRE_FUZZ_DIR)/$(1)-$(2)-shard-$(3).bin; \
+	  --seed $$(WIRE_FUZZ_RUN_SEED) --n $(N) --shard $(3) --shards $(words $(RUBY_WIRE_FUZZ_CI_SHARDS)) --failed $(RUBY_WIRE_FUZZ_DIR)/$(1)-$(2)-shard-$(3).bin; \
 	grep -q ', shard $(3)/$(words $(RUBY_WIRE_FUZZ_CI_SHARDS))' "$$$$log" || { echo 'wire-fuzz: wrong or missing shard identity'; exit 1; }
 endef
 $(foreach pin,current floor,$(foreach arm,plain mixed retain,$(foreach shard,$(RUBY_WIRE_FUZZ_CI_SHARDS),$(eval $(call ruby_wirefuzz_ci_shard,$(pin),$(arm),$(shard))))))

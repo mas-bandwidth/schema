@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -11,11 +12,61 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/testreg"
 )
 
-// lastMainSteps is each main-only step's check of the last main run's
-// output (requireToken), by step case; nil when the run stopped before its
-// output was checked. The bit-phase adapter reads it to give each step its
-// own verdict.
-var lastMainSteps map[string]error
+// mainStepRun is what one main run said about the main-only steps, over
+// every tier the leg runs (Rust runs debug then release; JS checked then
+// production): each tier's output that reached the step checks, and each
+// tier that stopped before them.
+type mainStepRun struct {
+	tiers   int                // tiers whose output reached the step checks
+	steps   map[string][]error // each step's check, one per such tier
+	stopped []error            // tiers that stopped before their step checks
+}
+
+// mainSteps is the bit-phase adapter's record of its step run; nil outside
+// one, when requireToken records nothing.
+var mainSteps *mainStepRun
+
+func (m *mainStepRun) stop(err error) {
+	if m != nil {
+		m.stopped = append(m.stopped, err)
+	}
+}
+
+func (m *mainStepRun) check(steps map[string]error) {
+	if m == nil {
+		return
+	}
+	m.tiers++
+	if m.steps == nil {
+		m.steps = map[string][]error{}
+	}
+	for k, e := range steps {
+		m.steps[k] = append(m.steps[k], e)
+	}
+}
+
+// verdict is one step's: red when any tier stopped before its checks, when
+// no tier reached them, when its own check failed in any tier, and when the
+// run failed for another reason, since a tier the run never reached checked
+// nothing; green only when the run passed and every tier that ran checked
+// the step and it held.
+func (m *mainStepRun) verdict(step string, runErr error) error {
+	switch {
+	case len(m.stopped) > 0:
+		return fmt.Errorf("a tier of the main run over the roster stopped before its steps were checked: %w", errors.Join(m.stopped...))
+	case m.tiers == 0 && runErr != nil:
+		return fmt.Errorf("the main run over the roster stopped before its steps were checked: %w", runErr)
+	case m.tiers == 0:
+		return fmt.Errorf("the main run over the roster checked no step")
+	}
+	if own := errors.Join(m.steps[step]...); own != nil {
+		return own
+	}
+	if runErr != nil {
+		return fmt.Errorf("the main run failed before every tier was held to this step: %w", runErr)
+	}
+	return nil
+}
 
 // bitPhaseRequest is one bit-phase request, checked against its row.
 type bitPhaseRequest struct {
@@ -148,18 +199,12 @@ func runBitPhase(reqs []testreg.Request, out io.Writer, repoRoot, schemaBin, sch
 		for _, c := range requiredRoster() {
 			whole = append(whole, alignRow{c, blobs[c.File]})
 		}
-		lastMainSteps = nil
+		mainSteps = &mainStepRun{}
 		runErr := run("steps", whole, true)
+		record := mainSteps
+		mainSteps = nil
 		for _, s := range steps {
-			var why error
-			switch {
-			case lastMainSteps != nil:
-				why = lastMainSteps[s.row.Inputs.Step]
-			case runErr != nil:
-				why = fmt.Errorf("the main run over the roster stopped before its steps were checked: %w", runErr)
-			default:
-				why = fmt.Errorf("the main run over the roster checked no step")
-			}
+			why := record.verdict(s.row.Inputs.Step, runErr)
 			verdict, reason := testreg.Pass, ""
 			if why != nil {
 				verdict, reason = testreg.Fail, why.Error()

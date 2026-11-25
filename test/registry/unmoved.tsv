@@ -100,9 +100,7 @@ workflow-job	.github/workflows/schema-lua-runs-hostile-corpus.yml	2	L7	workflow 
 workflow-job	.github/workflows/schema-luau-runs-hostile-corpus.yml	2	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/schema-moo-nightly-fuzz.yml	2	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/schema-moo-runs-hostile-corpus.yml	2	L7	workflow jobs: CI is generated from the registry
-workflow-job	.github/workflows/schema-python-nightly-fuzz.yml	1	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/schema-python-runs-hostile-corpus.yml	2	L7	workflow jobs: CI is generated from the registry
-workflow-job	.github/workflows/schema-ruby-nightly-fuzz.yml	1	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/schema-ruby-runs-hostile-corpus.yml	1	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/schema-rust-runs-hostile-corpus.yml	2	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/schema-shared-hostile-corpus.yml	2	L7	workflow jobs: CI is generated from the registry

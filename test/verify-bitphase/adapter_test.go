@@ -64,11 +64,23 @@ func TestTheAdapterNamesTheFailingRow(t *testing.T) {
 		"panic: FAILED: bytes aa_phase63_valid_ab-e-acute.bin (got 5 want 6)",
 		"lua: main.lua:30: FAILED: read aa_phase63_valid_ab-e-acute.bin",
 		"FAILED: accepted aa_phase63_valid_ab-e-acute.bin",
+		// the C++ leg's verify.cpp, the bit-phase sweep's and align-arrays'
+		"FAILED: cpp failed refuse Phase63 aa_phase63_valid_ab-e-acute.bin",
+		"FAILED: cpp failed valid ArrA aa_phase63_valid_ab-e-acute.bin",
 	} {
 		m := failedRow.FindStringSubmatch(out)
 		if m == nil || m[1] != "aa_phase63_valid_ab-e-acute.bin" {
 			t.Errorf("%q: %v", out, m)
 		}
+	}
+	// the bit-phase roster's files carry no aa_ prefix
+	if m := failedRow.FindStringSubmatch("FAILED: cpp failed refuse Phase1 valid_p1_v0.bin"); m == nil || m[1] != "valid_p1_v0.bin" {
+		t.Errorf("a bit-phase C++ failure: %v", m)
+	}
+	// a C++ line of another shape names no row: the run then fails as a
+	// crash that names the line, never as some other row's verdict
+	if m := failedRow.FindStringSubmatch("FAILED: cpp failed maybe Phase1 valid_p1_v0.bin"); m != nil {
+		t.Errorf("an unknown C++ kind named a row: %v", m)
 	}
 }
 

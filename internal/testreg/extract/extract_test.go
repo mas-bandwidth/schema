@@ -641,10 +641,14 @@ func TestARowIndexesTheCorpusItReads(t *testing.T) {
 	// are indexed (y, read by the Go test TestY); one naming no adapter
 	// indexes nothing (planted: drop the adapter check, and it indexes z)
 	unrun := testreg.Test{Key: "tooling.t.z", Scope: testreg.LangFree, Inputs: []byte(`{"files":["testdata/corpus/z.in"]}`)}
-	reg.Tests = append(reg.Tests, free, unrun)
+	// an adapter that does not hold a row to its files (model-check, plant)
+	// indexes none of them, however the row names them
+	unheld := testreg.Test{Key: "tooling.t.w", Scope: testreg.LangFree, Adapter: "model-check", Inputs: []byte(`{"files":["testdata/corpus/w.in"]}`)}
+	reg.Tests = append(reg.Tests, free, unrun, unheld)
 	got = Indexed(reg)
-	if len(got) != 4 || got[res.Items[1].ID()] != free.Key || got[Item{Kind: KindDataCase, Dir: "testdata/corpus", Name: "z"}.ID()] != "" {
-		t.Fatalf("language-free rows indexed %v, want y and not z", got)
+	if len(got) != 4 || got[res.Items[1].ID()] != free.Key || got[Item{Kind: KindDataCase, Dir: "testdata/corpus", Name: "z"}.ID()] != "" ||
+		got[Item{Kind: KindDataCase, Dir: "testdata/corpus", Name: "w"}.ID()] != "" {
+		t.Fatalf("language-free rows indexed %v, want y and neither z nor w", got)
 	}
 	// no ready language answers it: it indexes nothing
 	idle := &testreg.Registry{Path: "r.jsonl", Langs: []testreg.Lang{{Name: "zz"}, {Name: "qq"}}, Tests: []testreg.Test{row}}

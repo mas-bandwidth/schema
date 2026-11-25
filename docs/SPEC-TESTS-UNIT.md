@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 2. Language-free tests: 2910.
+Unit tests every language answers: 2. Language-free tests: 2911.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -1772,7 +1772,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.cellmerge.resolve-leaves-a-hunk-it-cannot-merge-exactly` | `gotest` | Go test TestResolveLeavesAHunkItCannotMergeExactly in ./tools/cellmerge | `package: ./tools/cellmerge`<br>`test: TestResolveLeavesAHunkItCannotMergeExactly` | the Go test passes | `tools/cellmerge/main_test.go:68` |
 | `none.unit.tooling.cellmerge.resolve-merges-a-two-sided-row-cell-by-column` | `gotest` | Go test TestResolveMergesATwoSidedRowCellByColumn in ./tools/cellmerge | `package: ./tools/cellmerge`<br>`test: TestResolveMergesATwoSidedRowCellByColumn` | the Go test passes | `tools/cellmerge/main_test.go:54` |
 
-#### `tooling` family `ci`, 279 tests
+#### `tooling` family `ci`, 277 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -1941,8 +1941,6 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.ci.python-leg-workflow-is-dispatch-only` | `gotest` | Go test TestPythonLegWorkflowIsDispatchOnly in ./internal/ci | `package: ./internal/ci`<br>`test: TestPythonLegWorkflowIsDispatchOnly` | the Go test passes | `internal/ci/python_leg_dispatch_only_test.go:35` |
 | `none.unit.tooling.ci.python-map-bench-ci-plan` | `gotest` | Go test TestPythonMapBenchCIPlan in ./internal/ci | `package: ./internal/ci`<br>`test: TestPythonMapBenchCIPlan` | the Go test passes | `internal/ci/python_map_shape_ci_test.go:11` |
 | `none.unit.tooling.ci.python-message-ci-plan` | `gotest` | Go test TestPythonMessageCIPlan in ./internal/ci | `package: ./internal/ci`<br>`test: TestPythonMessageCIPlan` | the Go test passes | `internal/ci/python_message_partition_test.go:157` |
-| `none.unit.tooling.ci.python-nightly-fuzz-matrix` | `gotest` | Go test TestPythonNightlyFuzzMatrix in ./internal/ci | `package: ./internal/ci`<br>`test: TestPythonNightlyFuzzMatrix` | the Go test passes | `internal/ci/python_nightly_matrix_test.go:74` |
-| `none.unit.tooling.ci.python-nightly-fuzz-matrix-negative-control` | `gotest` | Go test TestPythonNightlyFuzzMatrixNegativeControl in ./internal/ci | `package: ./internal/ci`<br>`test: TestPythonNightlyFuzzMatrixNegativeControl` | the Go test passes | `internal/ci/python_nightly_matrix_test.go:130` |
 | `none.unit.tooling.ci.python-packet-core-ci-plan` | `gotest` | Go test TestPythonPacketCoreCIPlan in ./internal/ci | `package: ./internal/ci`<br>`test: TestPythonPacketCoreCIPlan` | the Go test passes | `internal/ci/python_packet_core_ci_test.go:11` |
 | `none.unit.tooling.ci.python-pins-are-registered-and-never-from-path` | `gotest` | Go test TestPythonPinsAreRegisteredAndNeverFromPath in ./internal/ci | `package: ./internal/ci`<br>`test: TestPythonPinsAreRegisteredAndNeverFromPath` | the Go test passes | `internal/ci/pythonpins_test.go:13` |
 | `none.unit.tooling.ci.python-reflection-ci-plan` | `gotest` | Go test TestPythonReflectionCIPlan in ./internal/ci | `package: ./internal/ci`<br>`test: TestPythonReflectionCIPlan` | the Go test passes | `internal/ci/python_reflection_ci_test.go:21` |
@@ -2309,7 +2307,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.gotestrun.the-summary-reports-a-skip-only-when-one-happened` | `gotest` | Go test TestTheSummaryReportsASkipOnlyWhenOneHappened in ./tools/gotestrun | `package: ./tools/gotestrun`<br>`test: TestTheSummaryReportsASkipOnlyWhenOneHappened` | the Go test passes | `tools/gotestrun/main_test.go:` |
 | `none.unit.tooling.gotestrun.the-wrapper-keeps-the-exit-and-under-red-only-one-is-red` | `gotest` | Go test TestTheWrapperKeepsTheExitAndUnderRedOnlyOneIsRed in ./tools/gotestrun | `package: ./tools/gotestrun`<br>`test: TestTheWrapperKeepsTheExitAndUnderRedOnlyOneIsRed` | the Go test passes | `tools/gotestrun/main_test.go:151` |
 
-#### `tooling` family `harness`, 343 tests
+#### `tooling` family `harness`, 345 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -2317,6 +2315,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.harness.a-hostile-shape` | `gotest` | Go test TestAHostileShape in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestAHostileShape` | the Go test passes | `test/conformance/harness/messagerules_test.go:697` |
 | `none.unit.tooling.harness.a-map-key-is-never-truncated-into-another` | `gotest` | Go test TestAMapKeyIsNeverTruncatedIntoAnother in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestAMapKeyIsNeverTruncatedIntoAnother` | the Go test passes | `test/conformance/harness/maps_test.go:115` |
 | `none.unit.tooling.harness.a-message-row-over-a-variable-table-is-a-refusal` | `gotest` | Go test TestAMessageRowOverAVariableTableIsARefusal in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestAMessageRowOverAVariableTableIsARefusal` | the Go test passes | `test/conformance/harness/message_test.go:1118` |
+| `none.unit.tooling.harness.a-planted-wire-driver-replaces-every-configuration` | `gotest` | Go test TestAPlantedWireDriverReplacesEveryConfiguration in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestAPlantedWireDriverReplacesEveryConfiguration` | the Go test passes | `test/conformance/harness/wirefuzz_registry_test.go:487` |
 | `none.unit.tooling.harness.a-range-that-moved` | `gotest` | Go test TestARangeThatMoved in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestARangeThatMoved` | the Go test passes | `test/conformance/harness/messagerules_test.go:507` |
 | `none.unit.tooling.harness.a-ranged-offset-above-the-senders-max` | `gotest` | Go test TestARangedOffsetAboveTheSendersMax in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestARangedOffsetAboveTheSendersMax` | the Go test passes | `test/conformance/harness/messagerules_test.go:447` |
 | `none.unit.tooling.harness.a-reference-at-and-above-the-entry-count` | `gotest` | Go test TestAReferenceAtAndAboveTheEntryCount in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestAReferenceAtAndAboveTheEntryCount` | the Go test passes | `test/conformance/harness/message_test.go:872` |
@@ -2326,6 +2325,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.harness.a-wide-vocabulary` | `gotest` | Go test TestAWideVocabulary in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestAWideVocabulary` | the Go test passes | `test/conformance/harness/message_test.go:1030` |
 | `none.unit.tooling.harness.a-widened-kind-on-a-message` | `gotest` | Go test TestAWidenedKindOnAMessage in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestAWidenedKindOnAMessage` | the Go test passes | `test/conformance/harness/messagerules_test.go:1370` |
 | `none.unit.tooling.harness.a-wire-fuzz-verdict-names-the-runs-seed` | `gotest` | Go test TestAWireFuzzVerdictNamesTheRunsSeed in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestAWireFuzzVerdictNamesTheRunsSeed` | the Go test passes | `test/conformance/harness/wirefuzz_registry_test.go:296` |
+| `none.unit.tooling.harness.a-wire-request-is-held-to-its-row` | `gotest` | Go test TestAWireRequestIsHeldToItsRow in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestAWireRequestIsHeldToItsRow` | the Go test passes | `test/conformance/harness/wirefuzz_registry_test.go:369` |
 | `none.unit.tooling.harness.a-zero-width-element-under-a-wide-count` | `gotest` | Go test TestAZeroWidthElementUnderAWideCount in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestAZeroWidthElementUnderAWideCount` | the Go test passes | `test/conformance/harness/messagerules_test.go:1126` |
 | `none.unit.tooling.harness.an-integer-map-key-past-the-buffer-drops` | `gotest` | Go test TestAnIntegerMapKeyPastTheBufferDrops in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestAnIntegerMapKeyPastTheBufferDrops` | the Go test passes | `test/conformance/harness/maps_test.go:278` |
 | `none.unit.tooling.harness.an-integer-map-key-takes-the-integer-rule` | `gotest` | Go test TestAnIntegerMapKeyTakesTheIntegerRule in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestAnIntegerMapKeyTakesTheIntegerRule` | the Go test passes | `test/conformance/harness/maps_test.go:150` |
@@ -3283,12 +3283,13 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.vacuous.gate-refuses-each-gated-class` | `gotest` | Go test TestGateRefusesEachGatedClass in ./internal/vacuous | `package: ./internal/vacuous`<br>`test: TestGateRefusesEachGatedClass` | the Go test passes | `internal/vacuous/vacuous_test.go:397` |
 | `none.unit.tooling.vacuous.rules` | `gotest` | Go test TestRules in ./internal/vacuous | `package: ./internal/vacuous`<br>`test: TestRules` | the Go test passes | `internal/vacuous/vacuous_test.go:371` |
 
-#### `tooling` family `verify-bitphase`, 26 tests
+#### `tooling` family `verify-bitphase`, 27 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.unit.tooling.verify-bitphase.a-bit-phase-request-is-held-to-its-row` | `gotest` | Go test TestABitPhaseRequestIsHeldToItsRow in ./test/verify-bitphase | `package: ./test/verify-bitphase`<br>`test: TestABitPhaseRequestIsHeldToItsRow` | the Go test passes | `test/verify-bitphase/bitphase_rows_test.go:67` |
 | `none.unit.tooling.verify-bitphase.a-request-that-disagrees-with-its-row-is-refused` | `gotest` | Go test TestARequestThatDisagreesWithItsRowIsRefused in ./test/verify-bitphase | `package: ./test/verify-bitphase`<br>`test: TestARequestThatDisagreesWithItsRowIsRefused` | the Go test passes | `test/verify-bitphase/adapter_test.go:137` |
+| `none.unit.tooling.verify-bitphase.a-step-is-red-unless-every-tier-checked-it` | `gotest` | Go test TestAStepIsRedUnlessEveryTierCheckedIt in ./test/verify-bitphase | `package: ./test/verify-bitphase`<br>`test: TestAStepIsRedUnlessEveryTierCheckedIt` | the Go test passes | `test/verify-bitphase/bitphase_rows_test.go:131` |
 | `none.unit.tooling.verify-bitphase.align-arrays-corpus-is-its-roster` | `gotest` | Go test TestAlignArraysCorpusIsItsRoster in ./test/verify-bitphase | `package: ./test/verify-bitphase`<br>`test: TestAlignArraysCorpusIsItsRoster` | the Go test passes | `test/verify-bitphase/alignarrays_test.go:38` |
 | `none.unit.tooling.verify-bitphase.align-arrays-rows-hold-the-audit-rows` | `gotest` | Go test TestAlignArraysRowsHoldTheAuditRows in ./test/verify-bitphase | `package: ./test/verify-bitphase`<br>`test: TestAlignArraysRowsHoldTheAuditRows` | the Go test passes | `test/verify-bitphase/alignarrays_test.go:13` |
 | `none.unit.tooling.verify-bitphase.cf-decode-check-refuses-every-shortfall` | `gotest` | Go test TestCfDecodeCheckRefusesEveryShortfall in ./test/verify-bitphase | `package: ./test/verify-bitphase`<br>`test: TestCfDecodeCheckRefusesEveryShortfall` | the Go test passes | `test/verify-bitphase/cfdecode_test.go:77` |

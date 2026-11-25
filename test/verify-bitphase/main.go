@@ -83,6 +83,23 @@ func runChecked(dir string, extraEnv []string, name string, args ...string) (str
 // (f32lit.go): every leg answers all three on the main corpus. A case
 // family's run carries neither case (mainonly.go) and answers the token alone.
 func requireToken(out string, err error, lang string) error {
+	if err := tokenRun(out, err, lang); err != nil {
+		if !familyRun {
+			mainSteps.stop(err)
+		}
+		return err
+	}
+	if familyRun {
+		return checkNoMainOnlyOutput(lang, out)
+	}
+	cf, fl := checkCfDecode(lang, out), checkF32Lit(lang, out)
+	mainSteps.check(map[string]error{bitPhaseCfDecodeCase: cf, bitPhaseF32LitCase: fl})
+	return errors.Join(cf, fl)
+}
+
+// tokenRun is requireToken's hold on the run itself: it exited cleanly,
+// printed the roster's token and no failure, and, under the adapter, no skip.
+func tokenRun(out string, err error, lang string) error {
 	want := fmt.Sprintf("BITPHASE_OK %s %d", lang, len(activeRoster()))
 	if err != nil {
 		return fmt.Errorf("%s failed (%w):\n%s", lang, err, stripCfDecode(out))
@@ -96,12 +113,7 @@ func requireToken(out string, err error, lang string) error {
 			return fmt.Errorf("%s: %w", lang, err)
 		}
 	}
-	if familyRun {
-		return checkNoMainOnlyOutput(lang, out)
-	}
-	cf, fl := checkCfDecode(lang, out), checkF32Lit(lang, out)
-	lastMainSteps = map[string]error{bitPhaseCfDecodeCase: cf, bitPhaseF32LitCase: fl}
-	return errors.Join(cf, fl)
+	return nil
 }
 
 func ensureCorpus(repoRoot, schemaBin, corpusDir, oracleBin string) ([]manifestCase, map[string][]byte, error) {

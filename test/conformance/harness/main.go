@@ -17,7 +17,6 @@
 package main
 
 import (
-	"context"
 	"flag"
 	"fmt"
 	"os"
@@ -101,7 +100,9 @@ func usage() {
              and seed as a test registry row (wirefuzz_registry.go)
   wire-fuzz-adapter
              answer the registry's wire-fuzz requests on standard input in
-             every --config NAME=COMMAND of one leg, --jobs runs at once
+             every --config NAME=COMMAND of one --lang leg, each random
+             pass with the leg's --leg-flags, --jobs runs at once; a
+             request that is not its row fails by name
   registry-rows
              print every case of every surface as a test registry row
              (adapter.go); test/registry/registry.jsonl holds exactly
@@ -198,6 +199,7 @@ func main() {
 	var configs configFlag
 	fs.Var(&configs, "config", "NAME=COMMAND: one configuration of the leg and its wire-fuzz driver, repeatable (wire-fuzz-adapter only)")
 	jobs := fs.Int("jobs", 4, "runs at once (wire-fuzz-adapter only)")
+	legFlags := fs.String("leg-flags", "", "the flags every random pass of this leg runs with, as the release gate gives them (wire-fuzz-adapter only)")
 	if len(os.Args) > 2 {
 		_ = fs.Parse(os.Args[2:])
 	}
@@ -366,10 +368,7 @@ func main() {
 			fatalf("%v", err)
 		}
 	case "wire-fuzz-adapter":
-		if err := os.MkdirAll(*work, 0o755); err != nil {
-			fatalf("%v", err)
-		}
-		if err := wireFuzzAdapter(context.Background(), os.Stdin, os.Stdout, os.Stderr, configs, *work, *jobs, os.Getenv(wireSeedEnv), childWireFuzz); err != nil {
+		if err := runWireFuzzAdapter(*vectors, *lang, configs, *legFlags, *work, *jobs); err != nil {
 			fatalf("%v", err)
 		}
 	case "registry-rows":

@@ -5,7 +5,7 @@ Part of the specification: every test of tier `functional`, from the test regist
 
 **Tier functional:** uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it.
 
-Functional tests every language answers: 2468. Language-free tests: 2245.
+Functional tests every language answers: 2468. Language-free tests: 2250.
 
 Run this tier for a language with `schema-test run --tier functional --lang L`, one test with `schema-test run <full name>`.
 
@@ -4704,14 +4704,21 @@ a negative control: a named test run against a deliberately broken build must co
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.functional.plant.align-arrays.go-valid-row-run-as-refuse` | `plant` | the go align-arrays harness reports a row red when its expectation is turned around: the run cannot pass a row it did not check | `env: {"SCHEMA_TEST_PLANT_BITPHASE_EXPECT_REFUSE":"aa_phase63_valid_ab-e-acute.bin"}`<br>`target: go.functional.roundtrip.align-arrays.phase63-ab-e-acute` | the target runs and fails | `test/verify-bitphase/adapter.go PlantEnv` |
-| `none.functional.plant.align-arrays.lua-valid-row-run-as-refuse` | `plant` | the lua align-arrays harness reports a row red when its expectation is turned around: the run cannot pass a row it did not check | `env: {"SCHEMA_TEST_PLANT_BITPHASE_EXPECT_REFUSE":"aa_phase31_valid_nested.bin"}`<br>`target: lua.functional.roundtrip.align-arrays.phase31-nested` | the target runs and fails | `test/verify-bitphase/adapter.go PlantEnv` |
+| `none.functional.plant.align-arrays.go-valid-row-run-as-refuse` | `plant` | the go align-arrays harness reports a row red when its expectation is turned around: the run cannot pass a row it did not check | `env: {"SCHEMA_TEST_PLANT_BITPHASE_EXPECT_REFUSE":"aa_phase63_valid_ab-e-acute.bin"}`<br>`reason: accepted aa_phase63_valid_ab-e-acute.bin`<br>`target: go.functional.roundtrip.align-arrays.phase63-ab-e-acute` | the target runs and fails: it accepted the row turned into a refusal | `test/verify-bitphase/adapter.go PlantEnv` |
+| `none.functional.plant.align-arrays.lua-valid-row-run-as-refuse` | `plant` | the lua align-arrays harness reports a row red when its expectation is turned around: the run cannot pass a row it did not check | `env: {"SCHEMA_TEST_PLANT_BITPHASE_EXPECT_REFUSE":"aa_phase31_valid_nested.bin"}`<br>`reason: accepted aa_phase31_valid_nested.bin`<br>`target: lua.functional.roundtrip.align-arrays.phase31-nested` | the target runs and fails: it accepted the row turned into a refusal | `test/verify-bitphase/adapter.go PlantEnv` |
 
 #### `plant` family `base-c-format`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.functional.plant.base-c-format.tables-cpp-format-negative-control` | `plant` | negative control tables-cpp-format-negative-control (group base-c-format of make/negative-controls.json): its sabotage turns the gate it controls red | `file: make/cpp.mk`<br>`group: base-c-format`<br>`make: tables-cpp-format-negative-control`<br>`tools: ["clang-format"]` | the control exits 0: the gate it controls went red on its planted sabotage | `make/negative-controls.json:870` |
+
+#### `plant` family `bit-phase`, 2 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.plant.bit-phase.cpp-valid-row-run-as-refuse` | `plant` | the C++ bit-phase leg (verify.cpp) reports a roster row red, by name, when its expectation is turned around: the run cannot pass a row it did not check, and a red C++ row is a red row, never a crashed adapter | `env: {"SCHEMA_TEST_PLANT_BITPHASE_EXPECT_REFUSE":"valid_p1_v0.bin"}`<br>`reason: cpp failed refuse Phase1 valid_p1_v0.bin`<br>`target: cpp.functional.roundtrip.bit-phase.valid-p1-v0` | the target runs and fails: the C++ leg failed the row turned into a refusal, by name | `test/verify-bitphase/adapter.go PlantEnv` |
+| `none.functional.plant.bit-phase.go-valid-row-run-as-refuse` | `plant` | the go bit-phase leg reports a roster row red, by name, when its expectation is turned around: the run cannot pass a row it did not check | `env: {"SCHEMA_TEST_PLANT_BITPHASE_EXPECT_REFUSE":"valid_p1_v0.bin"}`<br>`reason: accepted valid_p1_v0.bin`<br>`target: go.functional.roundtrip.bit-phase.valid-p1-v0` | the target runs and fails: it accepted the row turned into a refusal | `test/verify-bitphase/adapter.go PlantEnv` |
 
 #### `plant` family `corpus-plants`, 7 tests
 
@@ -4768,6 +4775,12 @@ a negative control: a named test run against a deliberately broken build must co
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.functional.plant.schema-dart-strict-analyze.schema-dart-generated-strict-analyze-gate-negative-control` | `plant` | negative control schema-dart-generated-strict-analyze-gate-negative-control (group schema-dart-strict-analyze of make/negative-controls.json): its sabotage turns the gate it controls red | `file: make/schema-dart-generated-strict-analyze-gate.mk`<br>`group: schema-dart-strict-analyze`<br>`make: schema-dart-generated-strict-analyze-gate-negative-control`<br>`tools: ["dart"]`<br>`vars: {"DART":"dart"}` | the control exits 0: the gate it controls went red on its planted sabotage | `make/negative-controls.json:2991` |
+
+#### `plant` family `wire-fuzz-vector`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.plant.wire-fuzz-vector.js-driver-that-always-fails` | `plant` | a wire-fuzz-vector row is red when its leg's driver fails: the plant swaps every configuration's driver for false, and the row cannot pass a replay that never ran | `env: {"SCHEMA_TEST_PLANT_WIREFUZZ_DRIVER":"false"}`<br>`reason: harness: the leg did not answer the roster`<br>`target: js.functional.fuzz.wire-fuzz-vector.arm-array-count-past-arm-length` | the target runs and fails: the driver that always fails answers no roster | `test/conformance/harness/wirefuzz_registry.go wirePlantEnv` |
 
 ### Type `compiler`
 
@@ -5139,11 +5152,12 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.functional.tooling.bench-tools.table-pass-skips-unavailable-scaffold-only-during-discovery` | `gotest` | Go test TestTablePassSkipsUnavailableScaffoldOnlyDuringDiscovery in ./bench/tools | `package: ./bench/tools`<br>`test: TestTablePassSkipsUnavailableScaffoldOnlyDuringDiscovery` | the Go test passes | `bench/tools/table_pass_test.go:94` |
 | `none.functional.tooling.bench-tools.two-regressed-files-in-one-commit-cannot-reset-the-axis` | `gotest` | Go test TestTwoRegressedFilesInOneCommitCannotResetTheAxis in ./bench/tools | `package: ./bench/tools`<br>`test: TestTwoRegressedFilesInOneCommitCannotResetTheAxis` | the Go test passes | `bench/tools/ledger_test.go:279` |
 
-#### `tooling` family `ci`, 63 tests
+#### `tooling` family `ci`, 65 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.functional.tooling.ci.a-produced-tree-unpacks-only-for-its-own-source` | `gotest` | Go test TestAProducedTreeUnpacksOnlyForItsOwnSource in ./internal/ci | `package: ./internal/ci`<br>`test: TestAProducedTreeUnpacksOnlyForItsOwnSource` | the Go test passes | `internal/ci/produce_linux_test.go:23` |
+| `none.functional.tooling.ci.a-wire-fuzz-row-on-the-fixed-seed-is-named` | `gotest` | Go test TestAWireFuzzRowOnTheFixedSeedIsNamed in ./internal/ci | `package: ./internal/ci`<br>`test: TestAWireFuzzRowOnTheFixedSeedIsNamed` | the Go test passes | `internal/ci/wirefuzz_seed_rows_test.go:67` |
 | `none.functional.tooling.ci.certify-parallel-shards-cover-full-make-test` | `gotest` | Go test TestCertifyParallelShardsCoverFullMakeTest in ./internal/ci | `package: ./internal/ci`<br>`test: TestCertifyParallelShardsCoverFullMakeTest` | the Go test passes | `internal/ci/certify_parallel_test.go:318` |
 | `none.functional.tooling.ci.conformance-legs-rebuild-from-their-inputs` | `gotest` | Go test TestConformanceLegsRebuildFromTheirInputs in ./internal/ci | `package: ./internal/ci`<br>`test: TestConformanceLegsRebuildFromTheirInputs` | the Go test passes | `internal/ci/conformancelegs_test.go:28` |
 | `none.functional.tooling.ci.conformance-legs-rebuild-negative-control` | `gotest` | Go test TestConformanceLegsRebuildNegativeControl in ./internal/ci | `package: ./internal/ci`<br>`test: TestConformanceLegsRebuildNegativeControl` | the Go test passes | `internal/ci/conformancelegs_test.go:40` |
@@ -5171,6 +5185,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.functional.tooling.ci.luau-vocabulary-default-entry-bound` | `gotest` | Go test TestLuauVocabularyDefaultEntryBound in ./internal/ci | `package: ./internal/ci`<br>`test: TestLuauVocabularyDefaultEntryBound` | the Go test passes | `internal/ci/schema_luau_runs_hostile_corpus_test.go:814` |
 | `none.functional.tooling.ci.no-fast-job-skips-on-a-main-push` | `gotest` | Go test TestNoFastJobSkipsOnAMainPush in ./internal/ci | `package: ./internal/ci`<br>`test: TestNoFastJobSkipsOnAMainPush` | the Go test passes | `internal/ci/every_job_runs_test.go:106` |
 | `none.functional.tooling.ci.plan-omission-log-names-every-job` | `gotest` | Go test TestPlanOmissionLogNamesEveryJob in ./internal/ci | `package: ./internal/ci`<br>`test: TestPlanOmissionLogNamesEveryJob` | the Go test passes | `internal/ci/every_job_runs_test.go:231` |
+| `none.functional.tooling.ci.python-and-ruby-wire-fuzz-rows-take-the-runs-seed` | `gotest` | Go test TestPythonAndRubyWireFuzzRowsTakeTheRunsSeed in ./internal/ci | `package: ./internal/ci`<br>`test: TestPythonAndRubyWireFuzzRowsTakeTheRunsSeed` | the Go test passes | `internal/ci/wirefuzz_seed_rows_test.go:58` |
 | `none.functional.tooling.ci.python-ci-corpus-provenance-and-damage-controls` | `gotest` | Go test TestPythonCICorpusProvenanceAndDamageControls in ./internal/ci | `package: ./internal/ci`<br>`test: TestPythonCICorpusProvenanceAndDamageControls` | the Go test passes | `internal/ci/python_ci_corpus_test.go:296` |
 | `none.functional.tooling.ci.python-ci-planner-provisions-fixed-corpus` | `gotest` | Go test TestPythonCIPlannerProvisionsFixedCorpus in ./internal/ci | `package: ./internal/ci`<br>`test: TestPythonCIPlannerProvisionsFixedCorpus` | the Go test passes | `internal/ci/python_ci_corpus_test.go:133` |
 | `none.functional.tooling.ci.python-ci-support-covers-every-prerequisite` | `gotest` | Go test TestPythonCISupportCoversEveryPrerequisite in ./internal/ci | `package: ./internal/ci`<br>`test: TestPythonCISupportCoversEveryPrerequisite` | the Go test passes | `internal/ci/python_ci_corpus_test.go:72` |

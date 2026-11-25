@@ -39,6 +39,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -52,7 +53,7 @@ const (
 	wireFuzzVectorFamily = "wire-fuzz-vector"
 	wireFuzzFamily       = "wire-fuzz"
 	// wireFuzzN is the random pass's count per run: the count the Python and
-	// Ruby nightly fuzz workflows ran before these rows replaced them.
+	// Ruby nightly fuzz workflows (schema-{python,ruby}-nightly-fuzz.yml) ran.
 	wireFuzzN = 500000
 )
 
@@ -134,12 +135,17 @@ func wireFuzzRows(index, pinnedList string) ([]wireFuzzRow, error) {
 	if err != nil {
 		return nil, err
 	}
-	have := map[string]bool{} // file and form, as the index replays them plain
+	// a replay is its file, unit, root and form: a pinned mutant replayed any
+	// other way than the index replays it is a row of its own
+	replayed := func(file, unit, root string, message bool) string {
+		return fmt.Sprint(file, "|", unit, "|", root, "|", message)
+	}
+	have := map[string]bool{}
 	for _, v := range vecs {
-		have[filepath.ToSlash(v.file)+fmt.Sprint(v.message)] = true
+		have[replayed(filepath.ToSlash(v.file), v.unit, v.root, v.message)] = true
 	}
 	for _, p := range pinned {
-		if !p.retain && have[p.file+fmt.Sprint(p.message)] {
+		if !p.retain && have[replayed(p.file, p.unit, p.root, p.message)] {
 			continue // the index's own vector, replayed the same way
 		}
 		stem := strings.TrimSuffix(filepath.Base(p.file), filepath.Ext(p.file))
@@ -275,8 +281,12 @@ func (c *configFlag) Set(s string) error {
 
 // wireFuzzRunArgs is the wire-fuzz command line one request's run in one
 // configuration takes, and checks what the request's inputs say; seed is the
-// run's, which only a random-pass row reads.
-func wireFuzzRunArgs(q testreg.Request, cfg wireConfig, failed string, seed uint64) ([]string, error) {
+// run's, which only a random-pass row reads. legFlags are the leg's own
+// harness flags (make/wire-fuzz-release.mk's WFR_FLAGS_<leg>, such as JS's
+// --mixed-builder): every random pass runs with them, as the leg's release
+// gate runs it, so an arm adds its flag to the leg's, never replaces them. A
+// replay runs one mutant exactly as its row names it, and takes none.
+func wireFuzzRunArgs(q testreg.Request, cfg wireConfig, failed string, seed uint64, legFlags []string) ([]string, error) {
 	var in wireFuzzInputs
 	d := json.NewDecoder(bytes.NewReader(q.Inputs))
 	d.DisallowUnknownFields()
@@ -313,6 +323,11 @@ func wireFuzzRunArgs(q testreg.Request, cfg wireConfig, failed string, seed uint
 		if in.N < 1 {
 			return nil, fmt.Errorf("a random-pass row's count must be positive, not %d", in.N)
 		}
+		for _, f := range legFlags {
+			if f != flag && !slices.Contains(args, f) {
+				args = append(args, f)
+			}
+		}
 		if flag != "" {
 			args = append(args, flag)
 		}
@@ -324,43 +339,88 @@ func wireFuzzRunArgs(q testreg.Request, cfg wireConfig, failed string, seed uint
 }
 
 var (
-	wireReplayDone   = regexp.MustCompile(`(^|\n)wire-fuzz: replay of .*, 1 mutant, 0 divergences`)
-	wireZeroDiverged = regexp.MustCompile(`(^|[^0-9])0 divergences`)
-	wireSeedsOver    = regexp.MustCompile(`[1-9][0-9]* seeds over [1-9][0-9]* roots`)
-	wireMutants      = regexp.MustCompile(`= [1-9][0-9]* mutants`)
-	wireAbsent       = regexp.MustCompile(`[0-9]+ seeds absent`)
+	wireSeedsOver = regexp.MustCompile(`([0-9]+) seeds over ([0-9]+) roots`)
+	wireMutants   = regexp.MustCompile(`([0-9]+) enumerated \+ ([0-9]+) random = ([0-9]+) mutants`)
+	wireAbsent    = regexp.MustCompile(`[0-9]+ seeds absent`)
+	wireSeedIs    = regexp.MustCompile(`: seed ([0-9]+),`)
 )
 
-// wireRunVerdict judges one finished run by its exit and its summary, as
-// test/conformance/wire-fuzz-complete does: "" when it passed, else why not.
-func wireRunVerdict(family string, exitErr error, out string) string {
-	if exitErr != nil {
-		return fmt.Sprintf("the run failed (%v): %s", exitErr, tailLines(out, 20))
-	}
-	if family == wireFuzzVectorFamily {
-		if !wireReplayDone.MatchString(out) {
-			return "the replay printed no summary of one mutant and 0 divergences: " + tailLines(out, 5)
-		}
-		return ""
-	}
-	switch {
-	case wireAbsent.MatchString(out):
-		return "the roster is incomplete: a corpus root has no codec in the leg: " + tailLines(out, 5)
-	case !wireZeroDiverged.MatchString(out) || !wireSeedsOver.MatchString(out) || !wireMutants.MatchString(out):
-		return "the run's coverage summary is missing or empty: " + tailLines(out, 5)
+// argAfter is the value args gives flag, or "".
+func argAfter(args []string, flag string) string {
+	if i := slices.Index(args, flag); i >= 0 && i+1 < len(args) {
+		return args[i+1]
 	}
 	return ""
 }
 
-// wireCoverageLine is a random pass's summary line: its seed, roots and
-// mutant counts.
-func wireCoverageLine(out string) string {
-	for _, l := range strings.Split(out, "\n") {
-		if wireSeedsOver.MatchString(l) && wireMutants.MatchString(l) {
-			return strings.TrimSpace(l)
+// wireRunVerdict judges one finished run of args by its exit and its
+// summary, as test/conformance/wire-fuzz-complete and the release gate
+// (tools/wirefuzzrelease) do: "" when it passed, else why not. The summary
+// must be this run's: a replay's names the file, unit, root and form it was
+// asked for, one mutant and 0 divergences; a random pass's carries the
+// arm's label (wire-fuzz, -mixed-builder, " retain"), the asked seed, a
+// non-empty roster with no root absent, and exactly the asked random count.
+func wireRunVerdict(family string, args []string, exitErr error, out string) string {
+	if exitErr != nil {
+		return fmt.Sprintf("the run failed (%v): %s", exitErr, tailLines(out, 20))
+	}
+	if family == wireFuzzVectorFamily {
+		form := "file"
+		if slices.Contains(args, "--message") {
+			form = "message"
 		}
+		want := fmt.Sprintf("wire-fuzz: replay of %s over %s.%s as a %s, 1 mutant, 0 divergences",
+			argAfter(args, "--replay"), argAfter(args, "--unit"), argAfter(args, "--root"), form)
+		for _, l := range strings.Split(out, "\n") {
+			if strings.HasPrefix(l, want) {
+				return ""
+			}
+		}
+		return fmt.Sprintf("the replay printed no summary %q: %s", want, tailLines(out, 5))
+	}
+	line := wireCoverageLine(out)
+	if line == "" {
+		return "the run's coverage summary is missing: " + tailLines(out, 5)
+	}
+	label := "wire-fuzz"
+	if slices.Contains(args, "--mixed-builder") {
+		label += "-mixed-builder"
+	}
+	if slices.Contains(args, "--retain") {
+		label += " retain"
+	}
+	s := wireSeedsOver.FindStringSubmatch(line)
+	m := wireMutants.FindStringSubmatch(line)
+	got, _, _ := strings.Cut(line, ":")
+	switch {
+	case wireAbsent.MatchString(line):
+		return "the roster is incomplete: a corpus root has no codec in the leg: " + line
+	case got != label:
+		return fmt.Sprintf("the summary is not the %s arm's: %s", label, line)
+	case wireSeedIs.FindStringSubmatch(line) == nil || wireSeedIs.FindStringSubmatch(line)[1] != argAfter(args, "--seed"):
+		return fmt.Sprintf("the summary is not seed %s's: %s", argAfter(args, "--seed"), line)
+	case s == nil || s[1] == "0" || s[2] == "0":
+		return "the run's roster is empty: " + line
+	case m == nil || m[3] == "0":
+		return "the run's mutant count is missing or empty: " + line
+	case m[2] != argAfter(args, "--n"):
+		return fmt.Sprintf("the random pass is not the %s mutants asked: %s", argAfter(args, "--n"), line)
+	case !strings.Contains(line, " 0 divergences"):
+		return "the summary does not say 0 divergences: " + line
 	}
 	return ""
+}
+
+// wireCoverageLine is a random pass's summary line: its arm, seed, roots and
+// mutant counts; the last such line, as the release gate reads it.
+func wireCoverageLine(out string) string {
+	line := ""
+	for _, l := range strings.Split(out, "\n") {
+		if wireSeedsOver.MatchString(l) && wireMutants.MatchString(l) {
+			line = strings.TrimSpace(l)
+		}
+	}
+	return line
 }
 
 func tailLines(s string, n int) string {
@@ -371,19 +431,62 @@ func tailLines(s string, n int) string {
 	return strings.Join(lines, "\n")
 }
 
-// wireFuzzAdapter answers the requests: each in every configuration, jobs
-// runs at a time, through run (a child wire-fuzz process). A request whose
-// inputs do not read, and one in any configuration that does not pass, is a
-// failure naming the configuration and why. seed is SCHEMA_TEST_SEED as the
-// run handed it in: every random-pass verdict names it, and when it is
-// missing or malformed every random-pass row fails, never defaults.
-func wireFuzzAdapter(ctx context.Context, in io.Reader, out, log io.Writer, configs []wireConfig, work string, jobs int, seed string,
+// wireAdapterSetup is what one wire-fuzz-adapter call answers with.
+type wireAdapterSetup struct {
+	Lang     string                 // the leg: every request must be this language's
+	Rows     map[string]wireFuzzRow // wireFuzzRows by key: every request is held to its row
+	Configs  []wireConfig
+	LegFlags []string // WFR_FLAGS_<leg>
+	Work     string
+	Jobs     int
+	Seed     string // SCHEMA_TEST_SEED as the run handed it in
+}
+
+// wireRequestRow holds a request to the row its family and case name: the
+// language, the family and the inputs byte for byte, so the registry and
+// wireFuzzRows cannot drift apart and a request cannot run one row's inputs
+// under another's name.
+func wireRequestRow(q testreg.Request, lang string, rows map[string]wireFuzzRow) error {
+	if q.Lang != lang {
+		return fmt.Errorf("language %q, but this leg is %s", q.Lang, lang)
+	}
+	key := "fuzz." + q.Family + "." + q.Case
+	r, ok := rows[key]
+	if !ok {
+		return fmt.Errorf("%s is no row of wireFuzzRows", key)
+	}
+	want, err := json.Marshal(r.Inputs)
+	if err != nil {
+		return err
+	}
+	var got bytes.Buffer
+	if err := json.Compact(&got, q.Inputs); err != nil {
+		return fmt.Errorf("inputs: %w", err)
+	}
+	if !bytes.Equal(got.Bytes(), want) {
+		return fmt.Errorf("inputs %s are not the row's %s", got.String(), want)
+	}
+	return nil
+}
+
+// wireFuzzAdapter answers the requests: each in every configuration, Jobs
+// runs at a time, through run (a child wire-fuzz process). A request not held
+// to its row, one whose inputs do not read, and one in any configuration that
+// does not pass, is a failure naming the configuration and why. Seed is
+// SCHEMA_TEST_SEED as the run handed it in: every random-pass verdict names
+// it, and when it is missing or malformed every random-pass row fails, never
+// defaults.
+func wireFuzzAdapter(ctx context.Context, in io.Reader, out, log io.Writer, setup wireAdapterSetup,
 	run func(ctx context.Context, args []string) (string, error)) error {
+	configs := setup.Configs
 	if len(configs) == 0 {
 		return fmt.Errorf("wire-fuzz-adapter: no --config names the leg's driver")
 	}
-	if jobs < 1 {
+	if setup.Jobs < 1 {
 		return fmt.Errorf("wire-fuzz-adapter: --jobs must be positive")
+	}
+	if setup.Lang == "" {
+		return fmt.Errorf("wire-fuzz-adapter: no --lang names the leg")
 	}
 	reqs, err := testreg.DecodeRequests(in)
 	if err != nil {
@@ -392,25 +495,31 @@ func wireFuzzAdapter(ctx context.Context, in io.Reader, out, log io.Writer, conf
 	if len(reqs) == 0 {
 		return fmt.Errorf("wire-fuzz-adapter: no request on standard input")
 	}
-	seedN, seedErr := testreg.ParseSeed(seed)
+	seedN, seedErr := testreg.ParseSeed(setup.Seed)
 	type job struct{ req, cfg int }
 	reasons := make([][]string, len(reqs))
 	counts := make([][]string, len(reqs)) // each passing random pass's coverage line, by configuration
 	seconds := make([]float64, len(reqs)) // every configuration's run, summed: what the row costs a shard
+	held := make([]error, len(reqs))
+	for i, q := range reqs {
+		held[i] = wireRequestRow(q, setup.Lang, setup.Rows)
+	}
 	var mu sync.Mutex
 	jobsCh := make(chan job)
 	var wg sync.WaitGroup
-	for w := 0; w < jobs; w++ {
+	for w := 0; w < setup.Jobs; w++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for j := range jobsCh {
 				q, cfg := reqs[j.req], configs[j.cfg]
-				failed := filepath.Join(work, fmt.Sprintf("%d-%s", j.req, cfg.Name), "failed.bin")
+				failed := filepath.Join(setup.Work, fmt.Sprintf("%d-%s", j.req, cfg.Name), "failed.bin")
 				var why, count string
 				var took float64
-				args, err := wireFuzzRunArgs(q, cfg, failed, seedN)
+				args, err := wireFuzzRunArgs(q, cfg, failed, seedN, setup.LegFlags)
 				switch {
+				case held[j.req] != nil:
+					why = "the request is not its row: " + held[j.req].Error()
 				case err != nil:
 					why = err.Error()
 				case q.Family == wireFuzzFamily && seedErr != nil:
@@ -419,7 +528,7 @@ func wireFuzzAdapter(ctx context.Context, in io.Reader, out, log io.Writer, conf
 					start := time.Now()
 					o, runErr := run(ctx, args)
 					took = time.Since(start).Seconds()
-					why = wireRunVerdict(q.Family, runErr, o)
+					why = wireRunVerdict(q.Family, args, runErr, o)
 					if why == "" && q.Family == wireFuzzFamily {
 						count = wireCoverageLine(o)
 					}
@@ -471,6 +580,27 @@ func wireFuzzAdapter(ctx context.Context, in io.Reader, out, log io.Writer, conf
 	return bw.Flush()
 }
 
+// runWireFuzzAdapter is `harness wire-fuzz-adapter`: the rows from the index
+// and the moo pinned list, the run's seed from SCHEMA_TEST_SEED, and a plant
+// (wirePlantEnv) when one is set.
+func runWireFuzzAdapter(index, lang string, configs []wireConfig, legFlags, work string, jobs int) error {
+	if err := os.MkdirAll(work, 0o755); err != nil {
+		return err
+	}
+	rows, err := wireFuzzRows(index, mooPinnedList)
+	if err != nil {
+		return err
+	}
+	byKey := map[string]wireFuzzRow{}
+	for _, r := range rows {
+		byKey[r.Key] = r
+	}
+	return wireFuzzAdapter(context.Background(), os.Stdin, os.Stdout, os.Stderr, wireAdapterSetup{
+		Lang: lang, Rows: byKey, Configs: plantWireConfigs(configs, os.Getenv(wirePlantEnv)),
+		LegFlags: strings.Fields(legFlags), Work: work, Jobs: jobs, Seed: os.Getenv(wireSeedEnv),
+	}, childWireFuzz)
+}
+
 // childWireFuzz runs this harness's own wire-fuzz in a child process.
 func childWireFuzz(ctx context.Context, args []string) (string, error) {
 	exe, err := os.Executable()
@@ -494,3 +624,22 @@ func childWireFuzz(ctx context.Context, args []string) (string, error) {
 
 // wireSeedEnv is where schema-test run hands the run's seed in.
 const wireSeedEnv = testreg.SeedEnv
+
+// wirePlantEnv is the negative control's handle on the wire-fuzz rows: when
+// it is set, every configuration's driver is that command instead, so a
+// plant row (rec type plant) can run a row against a leg that does not
+// answer as the oracle does and require it red.
+const wirePlantEnv = "SCHEMA_TEST_PLANT_WIREFUZZ_DRIVER"
+
+// plantWireConfigs is configs with every driver replaced by plant, or
+// configs as they are when plant is empty.
+func plantWireConfigs(configs []wireConfig, plant string) []wireConfig {
+	if plant == "" {
+		return configs
+	}
+	out := make([]wireConfig, len(configs))
+	for i, c := range configs {
+		out[i] = wireConfig{c.Name, plant}
+	}
+	return out
+}

@@ -351,6 +351,12 @@ func CoveredIn(res *Result, reg *testreg.Registry) (map[string]string, []string)
 // unmoved. A language-free row (scope none) runs through the adapter it
 // names, so it indexes the files its inputs name (a Go test that replays a
 // committed case folder), and one that names no adapter indexes nothing.
+// filesHeld are the language-free adapters that hold a row to the files its
+// inputs name: gotest fails a row whose files are gone before it runs, and
+// its rows' tests read exactly those files. A language-free row of another
+// adapter indexes no files.
+var filesHeld = map[string]bool{"gotest": true}
+
 func Indexed(reg *testreg.Registry) map[string]string {
 	out := map[string]string{}
 	claim := func(id, key string) {
@@ -373,8 +379,10 @@ func Indexed(reg *testreg.Registry) map[string]string {
 		if !t.PerLang() {
 			// a language-free row runs through the adapter it names, and
 			// the files its inputs name are the data it runs over (a Go
-			// test that replays a committed case folder names its files)
-			if t.Adapter == "" {
+			// test that replays a committed case folder names its files),
+			// but only through an adapter that holds a row to its files: a
+			// row of any other adapter could name files it never reads
+			if !filesHeld[t.Adapter] {
 				continue
 			}
 			var in struct {
