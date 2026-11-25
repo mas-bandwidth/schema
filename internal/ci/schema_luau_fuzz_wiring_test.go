@@ -3,7 +3,6 @@ package ci
 import (
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 )
@@ -12,8 +11,9 @@ import (
 // corpus and wire-fuzz blades without the interpreter in the Go unit tier, as
 // TestSchemaElixirRunsHostileCorpusWiring holds the Elixir port's: each gate
 // is a make target the port's unit target runs, each control is registered on
-// the pull-request tier of make/negative-controls.json, the wire fuzz holds the
-// roots its leg cannot open to a pinned list, and the corpus workflow runs
+// the pull-request tier of make/negative-controls.json, the wire fuzz fails on
+// any root its leg cannot open, with no pinned list to hold one back (the
+// no-skips ruling, docs/rulings.json), and the corpus workflow runs
 // nightly and on dispatch only (the owner, 2026-11-15), fleet only, fork guarded.
 func TestSchemaLuauHostileCorpusAndWireFuzzWiring(t *testing.T) {
 	t.Parallel()
@@ -42,33 +42,19 @@ func TestSchemaLuauHostileCorpusAndWireFuzzWiring(t *testing.T) {
 	carries("make/luau-fuzz.mk", read("make/luau-fuzz.mk"),
 		"test-luau: tables-luau-wire-fuzz tables-luau-wire-fuzz-negative-control",
 		"LUAUFUZZ_NOTE=",
-		"test/conformance/luau/wire-fuzz-absent.txt",
-		"LUAU_WIRE_FUZZ_ABSENT_COUNT",
+		`if [ "$$n" -ne 0 ]; then`,
 		"0 divergences",
 		"sh test/conformance/luau/wire-fuzz-negative-control")
 	carries("test/conformance/luau/wirefuzz.luau", read("test/conformance/luau/wirefuzz.luau"), "host.note(")
 
-	// the pinned absent list: one line per root, and the count the target
-	// holds it to
-	pinned := 0
-	for line := range strings.SplitSeq(read("test/conformance/luau/wire-fuzz-absent.txt"), "\n") {
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		if f := strings.Fields(line); len(f) != 3 || !strings.HasPrefix(f[1], "form=") {
-			t.Errorf("wire-fuzz-absent.txt line is not <unit>.<root> form=<f> <reason>: %q", line)
-		}
-		pinned++
-	}
-	fuzz := read("make/luau-fuzz.mk")
-	count := ""
-	for line := range strings.SplitSeq(fuzz, "\n") {
-		if rest, ok := strings.CutPrefix(line, "LUAU_WIRE_FUZZ_ABSENT_COUNT := "); ok {
-			count = strings.TrimSpace(rest)
+	// no pinned list of absent roots: it held roots back, and it is retired
+	for _, retired := range []string{"wire-fuzz-absent", "LUAU_WIRE_FUZZ_ABSENT_COUNT", "LUAU_WIRE_FUZZ_ABSENT_PIN"} {
+		if strings.Contains(read("make/luau-fuzz.mk"), retired) {
+			t.Errorf("make/luau-fuzz.mk carries %q: a pinned list of absent roots is retired", retired)
 		}
 	}
-	if count == "" || count != strconv.Itoa(pinned) {
-		t.Errorf("LUAU_WIRE_FUZZ_ABSENT_COUNT is %q, the pinned list has %d roots", count, pinned)
+	if _, err := os.Stat(filepath.Join(root, "test", "conformance", "luau", "wire-fuzz-absent.txt")); err == nil {
+		t.Error("test/conformance/luau/wire-fuzz-absent.txt is back: a pinned list of absent roots is retired")
 	}
 
 	controls := read("make/negative-controls.json")

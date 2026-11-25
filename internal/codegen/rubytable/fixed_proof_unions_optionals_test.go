@@ -102,11 +102,19 @@ end
 	return saved, nil
 }
 
+// TestRubyFixedProofUnionsOptionalsControlRows runs the negative control of
+// every union and optional row: each sabotaged row must fail. It is its own
+// test, so make ruby-fixed-proof-unions-optionals-negative-control selects it
+// by name and TestRubyFixedProofUnionsOptionals does not run it a second time.
+func TestRubyFixedProofUnionsOptionalsControlRows(t *testing.T) {
+	t.Parallel()
+	fixedproof.RunNegativeControlRows(t, rubyUnionOptionalRunner{}, rubyUnionOptionalRows...)
+}
+
 func TestRubyFixedProofUnionsOptionals(t *testing.T) {
 	t.Parallel()
 	runner := rubyUnionOptionalRunner{}
 	t.Run("values", func(t *testing.T) { fixedproof.RunValueRows(t, runner, rubyUnionOptionalRows...) })
-	t.Run("controls", func(t *testing.T) { fixedproof.RunNegativeControlRows(t, runner, rubyUnionOptionalRows...) })
 	t.Run("evolution", func(t *testing.T) {
 		fixedproof.RunEvolutionRows(t, "../../..", runner, "optional-values", "union-guards")
 	})

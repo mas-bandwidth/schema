@@ -9,14 +9,13 @@ package elixirtable
 // test reads make/elixir.mk and pins four things, with no toolchain and no
 // network: the recipe runs the harness with no --manifest; it carries the
 // zero-coverage greps the card fuzz targets use, so a roster with no live root
-// fails; it holds the roots the leg cannot open to a pinned list, so a root that
-// drops out fails by name; and a `test-elixir:` line names it.
+// fails; it fails on any root the leg cannot open, naming it, with no pinned
+// list to hold one back; and a `test-elixir:` line names it.
 
 import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 	"testing"
 )
@@ -63,41 +62,27 @@ func TestWireFuzzAllTargetElixir(t *testing.T) {
 		}
 	}
 
-	// THE ABSENT ROOTS ARE PINNED BY NAME AND BY COUNT. The driver writes one
-	// line per roster entry it answers 0 for to $ELIXIR_WIRE_FUZZ_ABSENT, and
-	// the recipe compares that list with the pinned file, so a root the leg
-	// stops opening fails the gate naming the root.
-	const pin = "test/conformance/elixir/wire-fuzz-absent.txt"
+	// AN ABSENT ROOT IS RED. The driver writes one line per roster entry it
+	// answers 0 for to $ELIXIR_WIRE_FUZZ_ABSENT, and the recipe fails on any
+	// line there, naming the root. No pinned list holds a root back (the
+	// no-skips ruling, docs/rulings.json), and none may come back.
 	if !strings.Contains(run, "ELIXIR_WIRE_FUZZ_ABSENT=") {
 		t.Errorf("the %s recipe does not ask the driver for its absent roots (ELIXIR_WIRE_FUZZ_ABSENT):\n%s", target, recipe)
 	}
-	if !strings.Contains(run, pin) {
-		t.Errorf("the %s recipe does not compare the absent roots with %s:\n%s", target, pin, recipe)
+	const zero = `if [ "$$n" -ne 0 ]; then`
+	if !strings.Contains(run, zero) {
+		t.Errorf("the %s recipe does not fail on an absent root (%q):\n%s", target, zero, recipe)
 	}
-	m := regexp.MustCompile(`(?m)^ELIXIR_WIRE_FUZZ_ABSENT_COUNT := ([0-9]+)$`).FindStringSubmatch(text)
-	if m == nil {
-		t.Fatalf("make/elixir.mk pins no ELIXIR_WIRE_FUZZ_ABSENT_COUNT")
-	}
-	want, _ := strconv.Atoi(m[1])
-	if !strings.Contains(run, "$(ELIXIR_WIRE_FUZZ_ABSENT_COUNT)") {
-		t.Errorf("the %s recipe does not check the absent count against ELIXIR_WIRE_FUZZ_ABSENT_COUNT:\n%s", target, recipe)
-	}
-	pinned, err := os.ReadFile(filepath.Join(root, pin))
-	if err != nil {
-		t.Fatalf("%s is unreadable: %v", pin, err)
-	}
-	var names []string
-	for line := range strings.SplitSeq(string(pinned), "\n") {
-		if line != "" && !strings.HasPrefix(line, "#") {
-			names = append(names, line)
+	for _, retired := range []string{"wire-fuzz-absent", "ELIXIR_WIRE_FUZZ_ABSENT_COUNT"} {
+		if strings.Contains(text, retired) {
+			t.Errorf("make/elixir.mk carries %q: a pinned list of absent roots holds roots back, and it is retired", retired)
 		}
 	}
-	if len(names) != want {
-		t.Errorf("%s names %d absent roots, ELIXIR_WIRE_FUZZ_ABSENT_COUNT pins %d", pin, len(names), want)
+	if strings.Contains(run, "pinned") {
+		t.Errorf("the %s recipe compares the absent roots with a pinned list, which is retired:\n%s", target, recipe)
 	}
-	const pinnedCount = 0
-	if want != pinnedCount {
-		t.Errorf("ELIXIR_WIRE_FUZZ_ABSENT_COUNT is %d, this test pins %d: a change in the roots the Elixir leg opens is a reviewed change to both", want, pinnedCount)
+	if _, err := os.Stat(filepath.Join(root, "test", "conformance", "elixir", "wire-fuzz-absent.txt")); err == nil {
+		t.Errorf("test/conformance/elixir/wire-fuzz-absent.txt is back: a pinned list of absent roots is retired")
 	}
 
 	if !testElixirNames(t, text, target) {
