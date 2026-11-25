@@ -12,7 +12,7 @@
 #include <stdio.h> // the text form: number formatting
 #include <stdlib.h> // the text form: exact number conversion
 #include <locale.h> // the text form: numbers convert in the "C" locale
-#if defined(__APPLE__)
+#if defined( __APPLE__ )
 #include <xlocale.h> // newlocale, uselocale
 #endif
 #include <string> // the hand-editable text form (§16.9)
@@ -120,7 +120,7 @@ static const int32_t kTableJsonMaxNumber = 1024;
 // switched to the "C" locale for the call and restored after it, so a number
 // reads and writes the same under any locale the program set, and another
 // thread's locale (or the global one) is never touched.
-#if defined(_WIN32)
+#if defined( _WIN32 )
 inline _locale_t TableJsonCLocale()
 {
     static _locale_t c = _create_locale( LC_ALL, "C" );
@@ -135,23 +135,26 @@ inline int TableJsonFormatG( char * text, size_t size, int digits, double value 
 #else
 inline locale_t TableJsonCLocale()
 {
-    static locale_t c = newlocale( LC_ALL_MASK, "C", (locale_t) 0 );
+    static locale_t c = newlocale( LC_ALL_MASK, "C", nullptr );
     return c;
 }
 struct TableJsonCNumbers
 {
     locale_t previous;
     bool swapped;
-    TableJsonCNumbers() : previous( (locale_t) 0 ), swapped( false )
+    TableJsonCNumbers() : previous( nullptr ), swapped( false )
     {
         const locale_t c = TableJsonCLocale();
-        if ( c != (locale_t) 0 )
+        if ( c != nullptr )
         {
             previous = uselocale( c );
-            swapped = previous != (locale_t) 0;
+            swapped = previous != nullptr;
         }
     }
-    ~TableJsonCNumbers() { if ( swapped ) { uselocale( previous ); } }
+    ~TableJsonCNumbers()
+    {
+        if ( swapped ) { uselocale( previous ); }
+    }
     TableJsonCNumbers( const TableJsonCNumbers & ) = delete;
     TableJsonCNumbers & operator=( const TableJsonCNumbers & ) = delete;
 };
@@ -1906,7 +1909,11 @@ inline bool TableJsonKeyTrack( TableJsonIn & in, const char * key, int32_t lengt
     }
     const int64_t count = in.key_count + 1;
     const int64_t bytes = in.key_bytes_used + (int64_t) length;
-    if ( !TableJsonKeysGrow( in, count, bytes ) ) { in.bad = true; return false; }
+    if ( !TableJsonKeysGrow( in, count, bytes ) )
+    {
+        in.bad = true;
+        return false;
+    }
     if ( length != 0 ) { memcpy( in.key_bytes + in.key_bytes_used, key, (size_t) length ); }
     in.key_offset[in.key_count] = in.key_bytes_used;
     in.key_length[in.key_count] = length;
@@ -2529,7 +2536,11 @@ inline bool TableJsonIntegerTokenOnly( const char * token, int32_t length )
     if ( length <= 0 ) { return false; }
     int32_t i = 0;
     bool negative = false;
-    if ( token[0] == '-' ) { negative = true; i = 1; }
+    if ( token[0] == '-' )
+    {
+        negative = true;
+        i = 1;
+    }
     if ( i >= length ) { return false; }
     if ( token[i] == '0' )
     {
@@ -2568,7 +2579,11 @@ inline double TableJsonTokenDouble( const char * token, int32_t length, bool sin
         int32_t kept_len = 0;
         int32_t i = 0;
         bool negative = false;
-        if ( i < length && token[i] == '-' ) { negative = true; i++; }
+        if ( i < length && token[i] == '-' )
+        {
+            negative = true;
+            i++;
+        }
         int32_t fraction = 0;
         bool after_point = false;
         int32_t digits = 0;
@@ -2577,7 +2592,11 @@ inline double TableJsonTokenDouble( const char * token, int32_t length, bool sin
         for ( ; i < length; i++ )
         {
             char c = token[i];
-            if ( c == '.' ) { after_point = true; continue; }
+            if ( c == '.' )
+            {
+                after_point = true;
+                continue;
+            }
             if ( c == 'e' || c == 'E' ) { break; }
             if ( after_point ) { fraction++; }
             if ( !nonzero )
@@ -2587,7 +2606,10 @@ inline double TableJsonTokenDouble( const char * token, int32_t length, bool sin
             }
             digits++;
             if ( c == '0' ) { trailing++; }
-            else { trailing = 0; }
+            else
+            {
+                trailing = 0;
+            }
             if ( kept_len < limit ) { kept[kept_len++] = c; }
         }
         int64_t exponent = 0;
@@ -2632,7 +2654,11 @@ inline double TableJsonTokenDouble( const char * token, int32_t length, bool sin
                 scale--;
             }
             work[n++] = 'e';
-            if ( scale < 0 ) { work[n++] = '-'; scale = -scale; }
+            if ( scale < 0 )
+            {
+                work[n++] = '-';
+                scale = -scale;
+            }
             char reversed[24];
             int32_t rn = 0;
             if ( scale == 0 ) { reversed[rn++] = '0'; }
@@ -3756,10 +3782,11 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
     if ( TableJsonKindWideText( f ) && !TableJsonKindInteger( f->kind ) )
     {
         TableJsonIn number = {};
-        number.text = token; number.size = length;
+        number.text = token;
+        number.size = length;
         bool whole = false;
         if ( length == 0 || token[0] == ' ' || token[0] == '\t' || token[0] == '\n' || token[0] == '\r' ||
-             !TableJsonWalkNumber( number, &whole ) || number.pos != length )
+            !TableJsonWalkNumber( number, &whole ) || number.pos != length )
         {
             in.report->refused = true;
             in.report->refuse_reason = kind_mismatch;
@@ -4216,7 +4243,11 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
     {
         // the array is a container one level below the table holding it, counted toward
         // the cap whether or not it holds an element (FL-12)
-        if ( depth + 1 > kTableJsonMaxDepth ) { in.bad = true; return false; }
+        if ( depth + 1 > kTableJsonMaxDepth )
+        {
+            in.bad = true;
+            return false;
+        }
         if ( TableJsonPeek( in ) != '[' )
         {
             in.bad = true;
@@ -5436,9 +5467,17 @@ struct TableTextFormReader
                 if ( end < n && end > start && s[end - 1] == '\r' ) { end--; }
                 for ( int64_t k = start; k < end; k++ )
                 {
-                    if ( s[k] == '\0' || s[k] == '\r' ) { i = start; return fail( "text_syntax" ); }
+                    if ( s[k] == '\0' || s[k] == '\r' )
+                    {
+                        i = start;
+                        return fail( "text_syntax" );
+                    }
                 }
-                if ( !TableUtf8Valid( (const uint8_t *) s + start, (uint64_t) ( end - start ) ) ) { i = start; return fail( "text_encoding" ); }
+                if ( !TableUtf8Valid( (const uint8_t *) s + start, (uint64_t) ( end - start ) ) )
+                {
+                    i = start;
+                    return fail( "text_encoding" );
+                }
                 continue;
             }
             return true;
@@ -5810,11 +5849,23 @@ inline std::string tableTextFormCanonDecimal( const std::string & token )
 inline bool tableTextFormInteger( const std::string & token, std::string & integer, const char ** why )
 {
     const std::string canon = tableTextFormCanonDecimal( token );
-    if ( canon == "0" ) { integer = "0"; return true; }
+    if ( canon == "0" )
+    {
+        integer = "0";
+        return true;
+    }
     const size_t e = canon.find( 'e' );
-    if ( e == std::string::npos ) { *why = "text_kind_mismatch"; return false; }
+    if ( e == std::string::npos )
+    {
+        *why = "text_kind_mismatch";
+        return false;
+    }
     const long long exponent = strtoll( canon.c_str() + e + 1, NULL, 10 );
-    if ( exponent < 0 ) { *why = "text_kind_mismatch"; return false; }
+    if ( exponent < 0 )
+    {
+        *why = "text_kind_mismatch";
+        return false;
+    }
     const size_t sign = canon[0] == '-' ? 1 : 0;
     const size_t digits = e - sign;
     if ( exponent > 39 || digits > 39 || digits + (size_t) exponent > 39 )
@@ -6023,7 +6074,11 @@ inline bool tableTextFormFixedExact( const std::string & token, int frac )
     {
         i++;
         bool exp_negative = false;
-        if ( i < length && ( s[i] == '-' || s[i] == '+' ) ) { exp_negative = s[i] == '-'; i++; }
+        if ( i < length && ( s[i] == '-' || s[i] == '+' ) )
+        {
+            exp_negative = s[i] == '-';
+            i++;
+        }
         int64_t e = 0;
         while ( i < length && s[i] >= '0' && s[i] <= '9' )
         {
@@ -6039,7 +6094,11 @@ inline bool tableTextFormFixedExact( const std::string & token, int frac )
     };
     int32_t start = 0;
     int64_t point = int_len + exp;
-    while ( start < total && digit( start ) == 0 ) { start++; point--; }
+    while ( start < total && digit( start ) == 0 )
+    {
+        start++;
+        point--;
+    }
     int32_t end = total;
     while ( end > start && digit( end - 1 ) == 0 ) { end--; }
     if ( start == end ) { return true; }
@@ -6486,7 +6545,10 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
         if ( !tableTextFormInteger( n.text, integer, why ) ) { return false; }
         tableTextFormCanon( spans, path, tableTextFormCanonDecimal( n.text ) );
         if ( TableJsonKindWideText( f ) ) { TableTextFormJsonString( out, integer ); }
-        else { out += integer; }
+        else
+        {
+            out += integer;
+        }
         return true;
     }
     // THE RANGE IS HELD AT FLOAT32 (docs/SPEC-TABLES.md §3.3): a float32
@@ -6519,7 +6581,10 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
         tableTextFormCanon( spans, path, tableTextFormCanonDecimal( n.text ) );
     }
     if ( TableJsonKindWideText( f ) ) { TableTextFormJsonString( out, n.text ); }
-    else { out += n.text; }
+    else
+    {
+        out += n.text;
+    }
     return true;
 }
 
