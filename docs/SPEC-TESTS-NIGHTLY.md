@@ -5,7 +5,7 @@ Part of the specification: every test of tier `nightly`, from the test registry.
 
 **Tier nightly:** heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded.
 
-Nightly tests every language answers: 625. Language-free tests: 1345.
+Nightly tests every language answers: 626. Language-free tests: 1349.
 
 Run this tier for a language with `schema-test run --tier nightly --lang L`, one test with `schema-test run <full name>`.
 
@@ -672,6 +672,16 @@ seeded mutations.
 | `L.nightly.fuzz.wire-fuzz.mixed` | wire fuzz, mixed arm (the mutable builder oracle on the variable file roots): every corpus root's enumerated mutants and 500000 random ones at the run's seed | `arm: mixed`<br>`n: 500000` | no divergence from the oracle, at least one mutant, and no corpus root the leg has no codec for, in every configuration of the leg; the verdict names the seed | `test/conformance/harness/wirefuzz_registry.go` |
 | `L.nightly.fuzz.wire-fuzz.plain` | wire fuzz, plain arm (the plain read and write-back): every corpus root's enumerated mutants and 500000 random ones at the run's seed | `arm: plain`<br>`n: 500000` | no divergence from the oracle, at least one mutant, and no corpus root the leg has no codec for, in every configuration of the leg; the verdict names the seed | `test/conformance/harness/wirefuzz_registry.go` |
 | `L.nightly.fuzz.wire-fuzz.retain` | wire fuzz, retain arm (the retaining read's canonical write-back): every corpus root's enumerated mutants and 500000 random ones at the run's seed | `arm: retain`<br>`n: 500000` | no divergence from the oracle, at least one mutant, and no corpus root the leg has no codec for, in every configuration of the leg; the verdict names the seed | `test/conformance/harness/wirefuzz_registry.go` |
+
+### Type `plant`
+
+a negative control: a named test run against a deliberately broken build must come out red.
+
+#### `plant` family `nightly-fuzz`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.nightly.plant.nightly-fuzz.oracle-control` | the language's fuzz oracle fires on a planted bad pattern (a missing bound) | `inputs.make` (125 bytes, held in the registry row's `inputs.make`) | the control's make gate exits 0: the planted bug was found | `docs/TEST-REGISTRY.md: the retired scheduled workflows` |
 
 ### Type `lint`
 
@@ -4294,6 +4304,14 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.nightly.tooling.makefile.vuln` | `make` | make vuln (Makefile) exits 0 | `file: Makefile`<br>`target: vuln` | the target exits 0 with no skip in its log | `Makefile:8071` |
 | `none.nightly.tooling.makefile.vuln-strict` | `make` | make vuln-strict (Makefile) exits 0 | `file: Makefile`<br>`target: vuln-strict` | the target exits 0 with no skip in its log | `Makefile:8075` |
 
+#### `tooling` family `roadmap`, 3 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.tooling.roadmap.all-targets-complete` | `make` | every target the registry names is complete in all three rendered sections, every required leaf done with evidence | `file: tools/roadmap/roadmap.mk`<br>`target: roadmap-all-targets-check` | the target exits 0 with no skip in its log | `tools/roadmap/roadmap.mk` |
+| `none.nightly.tooling.roadmap.check` | `make` | the roadmap data renders, blocks hold only tables, and the hand text is Glenn's | `file: tools/roadmap/roadmap.mk`<br>`target: roadmap-check` | the target exits 0 with no skip in its log | `tools/roadmap/roadmap.mk` |
+| `none.nightly.tooling.roadmap.page-is-the-render` | `make` | the committed roadmap tables are the render of the data | `file: tools/roadmap/roadmap.mk`<br>`target: roadmap-page-check` | the target exits 0 with no skip in its log | `tools/roadmap/roadmap.mk` |
+
 ### Type `bench`
 
 performance or timing.
@@ -4451,6 +4469,12 @@ generated or runtime code is clean under the language's strict analyser.
 ### Type `differential`
 
 two implementations or two versions give the same answer.
+
+#### `differential` family `engine`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.differential.engine.is-the-oracle` | `make` | the Go engine is independent of the oracle and the differential covers it | `file: make/checks/schema-engine-is-the-oracle.mk`<br>`target: schema-engine-is-the-oracle` | the target exits 0 with no skip in its log | `make/checks/schema-engine-is-the-oracle.mk` |
 
 #### `differential` family `make-schema-lua-version-differential`, 1 test
 

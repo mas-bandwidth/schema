@@ -1,0 +1,68 @@
+name: schema-test setup
+description: >
+  Puts in place what one row of the registry's tests needs on a fleet runner,
+  and runs no test: the pinned sibling runtimes (SIBLINGS, each removed and
+  cloned at its pinned tag, its commit checked), the runner's SDK on PATH, and
+  the interpreter pins of the row's language (dist-pins, python, ruby, moo).
+  The language-free row ("none") gets the lua pin and every sibling: its Go
+  tests build generated code. A test that finds what it needs missing fails
+  by name; nothing here decides whether a test runs (docs/TEST-REGISTRY.md,
+  "CI").
+inputs:
+  lang:
+    description: the row's language, or none for the language-free tests
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: the pinned sibling runtimes (SIBLINGS)
+      shell: bash
+      run: |
+        set -euo pipefail
+        grep -v '^#' SIBLINGS | while read -r path url tag commit; do
+          [ -n "$path" ] || continue
+          rm -rf "$path"
+          git clone --quiet --depth 1 --branch "$tag" "$url" "$path"
+          got=$(git -C "$path" rev-parse HEAD)
+          if [ "$got" != "$commit" ]; then
+            echo "::error::$path at tag $tag is $got, not the pinned $commit (SIBLINGS)"
+            exit 1
+          fi
+        done
+    - name: the runner's SDK, every variable it exports
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [ -f /opt/nova/sdk/env.sh ]; then
+          # every name env.sh exports (PATH, the dotnet build-server and NuGet
+          # settings, MIX_HOME and HEX_HOME, the interpreter pins), handed to
+          # every later step, as the old per-language jobs sourced it in the
+          # shell that ran the gate
+          names=$(grep -oE 'export [A-Za-z_][A-Za-z0-9_]*' /opt/nova/sdk/env.sh | cut -d' ' -f2 | sort -u)
+          (
+            . /opt/nova/sdk/env.sh
+            for v in $names; do
+              if [ -n "${!v+x}" ]; then printf '%s=%s\n' "$v" "${!v}"; fi
+            done >> "$GITHUB_ENV"
+          )
+        fi
+    - name: the toolchain variables the conformance harness reads
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [ -f /opt/nova/sdk/env.sh ]; then . /opt/nova/sdk/env.sh; fi
+        if command -v cargo >/dev/null; then echo "RUSTUP_BIN=$(dirname "$(command -v cargo)")" >> "$GITHUB_ENV"; fi
+        if command -v erl >/dev/null && command -v elixir >/dev/null; then
+          echo "BEAM_PATH=$(dirname "$(command -v erl)"):$(dirname "$(command -v elixir)")" >> "$GITHUB_ENV"
+        fi
+        { echo DART=dart; echo JAVA=java; echo JAVAC=javac; echo NODE=node; } >> "$GITHUB_ENV"
+    - uses: ./.github/actions/dist-pins
+      if: inputs.lang == 'lua' || inputs.lang == 'luau' || inputs.lang == 'goose' || inputs.lang == 'lobster' || inputs.lang == 'none'
+      with:
+        pins: ${{ inputs.lang == 'none' && 'lua luau goose lobster' || inputs.lang }}
+    - uses: ./.github/actions/python
+      if: inputs.lang == 'python'
+    - uses: ./.github/actions/ruby
+      if: inputs.lang == 'ruby'
+    - uses: ./.github/actions/moo
+      if: inputs.lang == 'moo'

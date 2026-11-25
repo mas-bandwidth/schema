@@ -1,6 +1,7 @@
 package ci
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -39,27 +40,23 @@ type produceRow struct {
 	paths  []string
 }
 
-// produceRows reads the produce job's matrix: each row's target and the
-// paths it packs.
+// produceRows reads the produce job's matrix, the one JSON `include:` line
+// schema-test ci writes: each row's target and the paths it packs. A matrix
+// that does not read is no rows, so every gate names its row as missing.
 func produceRows(job string) map[string]produceRow {
 	out := map[string]produceRow{}
-	blocks := strings.Split(job, "\n          - name: ")
-	for _, b := range blocks[1:] {
-		name, rest, _ := strings.Cut(b, "\n")
-		var row produceRow
-		for _, line := range strings.Split(rest, "\n") {
-			if !strings.HasPrefix(line, "            ") || strings.HasPrefix(line, "             ") {
-				break
-			}
-			k, v, _ := strings.Cut(strings.TrimSpace(line), ": ")
-			switch k {
-			case "target":
-				row.target = v
-			case "paths":
-				row.paths = strings.Fields(v)
-			}
+	for _, line := range strings.Split(job, "\n") {
+		text, ok := strings.CutPrefix(strings.TrimSpace(line), "include: ")
+		if !ok {
+			continue
 		}
-		out[strings.TrimSpace(name)] = row
+		var rows []struct{ Name, Target, Paths string }
+		if json.Unmarshal([]byte(text), &rows) != nil {
+			return out
+		}
+		for _, r := range rows {
+			out[r.Name] = produceRow{target: r.Target, paths: strings.Fields(r.Paths)}
+		}
 	}
 	return out
 }
@@ -221,8 +218,8 @@ func lintProducerProblems(workflow string, mk map[string]string) []string {
 // order-only halves of its stamps), so the shards unpack the tree instead of
 // generating it. The plants are a produce row gone, a row building another
 // target, a row packing less than its gate reads, a gate that stops reading
-// its inputs, and tables-lua-format no longer reading the corpus: each is
-// red by name.
+// its inputs, tables-lua-format no longer reading the corpus, and a
+// matrix that no longer reads as JSON: each is red by name.
 func TestEveryLintGateReadsAProducedTree(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
@@ -259,9 +256,10 @@ func TestEveryLintGateReadsAProducedTree(t *testing.T) {
 	plants := []struct {
 		name, file, old, new, want string
 	}{
-		{"producer row gone", "", "          - name: lint-rust\n            target: tables-rust-clippy-inputs\n", "", "no row lint-rust building tables-rust-clippy-inputs"},
-		{"producer builds the gate", "", "          - name: lint-js\n            target: tables-js-clean-inputs\n", "          - name: lint-js\n            target: tables-js-clean\n", "no row lint-js building tables-js-clean-inputs"},
-		{"row packs less than its gate reads", "", "            paths: bin/schema build/tables-generated-rust build/tables-generated-rust-witnesses\n", "            paths: bin/schema build/tables-generated-rust\n", "produce row lint-rust does not pack build/tables-generated-rust-witnesses/.stamp, which tables-rust-clippy reads"},
+		{"producer row gone", "", `{"name":"lint-rust","target":"tables-rust-clippy-inputs","paths":"bin/schema build/tables-generated-rust build/tables-generated-rust-witnesses"},`, "", "no row lint-rust building tables-rust-clippy-inputs"},
+		{"producer builds the gate", "", `"name":"lint-js","target":"tables-js-clean-inputs"`, `"name":"lint-js","target":"tables-js-clean"`, "no row lint-js building tables-js-clean-inputs"},
+		{"row packs less than its gate reads", "", `"paths":"bin/schema build/tables-generated-rust build/tables-generated-rust-witnesses"`, `"paths":"bin/schema build/tables-generated-rust"`, "produce row lint-rust does not pack build/tables-generated-rust-witnesses/.stamp, which tables-rust-clippy reads"},
+		{"the matrix does not read", "", `"name":"lint-js"`, `"name":lint-js"`, "no row lint-cpp building tables-cpp-clean-inputs"},
 		{"gate stops reading its inputs", "make/js.mk", "tables-js-clean: toolchain-js $(TABLES_JS_CLEAN_INPUTS)", "tables-js-clean: toolchain-js build/tables-generated-js/.stamp", "tables-js-clean does not read $(TABLES_JS_CLEAN_INPUTS)"},
 		{"lua format stops reading the corpus", "make/schema-lua-generated-luacheck-gate.mk", "tables-lua-format: dist-stylua $(LUA_LUACHECK_CORPUS)/.stamp\n", "tables-lua-format: dist-stylua\n", "tables-lua-format does not read $(LUA_LUACHECK_CORPUS)/.stamp"},
 	}

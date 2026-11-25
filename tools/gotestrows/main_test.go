@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -337,8 +338,10 @@ func TestRidingTestRunsInNoRow(t *testing.T) {
 }
 
 // TestEveryRideRunsInItsLegsRow: each committed rides line's test is run by
-// the make target its leg's verify-leg conformance row runs, so a riding test
-// is never a test that runs nowhere.
+// the make target its leg's conformance gate runs, and a registry row of the
+// pr group runs that target per pull request (ci-fast.yml's verify-leg job
+// ran it, and that job is retired: test/registry/retired.tsv), so a riding
+// test is never a test that runs nowhere.
 func TestEveryRideRunsInItsLegsRow(t *testing.T) {
 	t.Parallel()
 	tb, err := readTable(filepath.Join("..", "..", tablePath))
@@ -349,7 +352,7 @@ func TestEveryRideRunsInItsLegsRow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wf, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "ci-fast.yml"))
+	wf, err := os.ReadFile(filepath.Join("..", "..", "test", "registry", "registry.jsonl"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -375,15 +378,15 @@ func TestEveryRideRunsInItsLegsRow(t *testing.T) {
 	}
 }
 
-// rideErrs answers why a ride's test would not run in its leg's row: the
-// row's make target (verify-<leg>-conformance-and-driver-fuzz, which the
-// verify-leg step runs for that leg's conformance gate) must reach a recipe
-// that runs `go test ... -run '<pattern>' <pkg>`.
-func rideErrs(mk, wf, pkg string, r ride) []string {
+// rideErrs answers why a ride's test would not run in its leg's row: a
+// registry row of the pr group (reg, the registry's lines) runs the make
+// target verify-<leg>-conformance-and-driver-fuzz, which must reach a
+// recipe that runs `go test ... -run '<pattern>' <pkg>`.
+func rideErrs(mk, reg, pkg string, r ride) []string {
 	var errs []string
 	target := "verify-" + r.leg + "-conformance-and-driver-fuzz"
-	if !strings.Contains(wf, "conformance) target="+target+" ;;") {
-		errs = append(errs, "ci-fast.yml's verify-leg does not run "+target+" for the "+r.leg+" conformance gate")
+	if !prRowRunsTarget(reg, target) {
+		errs = append(errs, "no registry row of the pr group runs "+target+" for the "+r.leg+" conformance gate (ci-fast.yml's verify-leg ran it; test/registry/retired.tsv names it red until a row does)")
 	}
 	ruleRe := regexp.MustCompile(`(?m)^` + regexp.QuoteMeta(target) + `:\n\t@\$\(MAKE\)([^\n]*)`)
 	m := ruleRe.FindStringSubmatch(mk)
@@ -399,6 +402,24 @@ func rideErrs(mk, wf, pkg string, r ride) []string {
 		errs = append(errs, target+" does not make "+rm[1]+", the target that runs the test")
 	}
 	return errs
+}
+
+// prRowRunsTarget: a test line of the registry (reg, JSON lines) of tier
+// unit or functional runs make target target.
+func prRowRunsTarget(reg, target string) bool {
+	for _, l := range strings.Split(reg, "\n") {
+		var row struct {
+			Rec, Tier, Case string
+			Inputs          struct{ Target, Make string }
+		}
+		if json.Unmarshal([]byte(l), &row) != nil || row.Rec != "test" || (row.Tier != "unit" && row.Tier != "functional") {
+			continue
+		}
+		if row.Inputs.Target == target || row.Inputs.Make == target || row.Case == target {
+			return true
+		}
+	}
+	return false
 }
 
 // makeQuote answers a pattern as a makefile recipe spells it: $ doubled.
