@@ -20,6 +20,7 @@ import (
 	"sync/atomic"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testreg"
+	"github.com/mas-bandwidth/schema/v2/internal/testreg/extract"
 )
 
 // makeAdapter runs make gates: a test whose inputs are {"file": "make/c.mk",
@@ -188,8 +189,9 @@ func decodeMakeInputs(raw json.RawMessage) (makeInputs, error) {
 		}
 	}
 	for _, r := range in.Reads {
-		if r == "" || r != path.Clean(r) || path.IsAbs(r) || strings.HasPrefix(r, "../") || strings.ContainsAny(r, " \t\n\\") {
-			return in, fmt.Errorf("reads %q: want a file of the repository by its path", r)
+		p := strings.TrimSuffix(r, "/")
+		if p == "" || p != path.Clean(p) || path.IsAbs(p) || p == ".." || strings.HasPrefix(p, "../") || strings.ContainsAny(p, " \t\n\\") {
+			return in, fmt.Errorf("reads %q: want a file of the repository by its path, or a directory written with one trailing /", r)
 		}
 	}
 	return in, nil
@@ -350,7 +352,17 @@ func (a makeAdapter) vet(ctx context.Context, in makeInputs) (string, error) {
 	}
 	files, text := db.reach(in.Target)
 	var why []string
+	recipes := strings.Join(text, "\n")
 	for _, r := range in.Reads {
+		if extract.IsDirRead(r) {
+			// a directory the recipes run in or build from: a reached
+			// file at or below it, or a reached recipe or variable that
+			// names it as a path of its own
+			if !reachesDir(files, recipes, strings.TrimSuffix(r, "/")) {
+				why = append(why, fmt.Sprintf("the row says make %s reads %s, and nothing make %s makes or runs is in it", in.Target, r, in.Target))
+			}
+			continue
+		}
 		if !files[r] {
 			why = append(why, fmt.Sprintf("the row says make %s reads %s, and nothing make %s makes depends on it", in.Target, r, in.Target))
 		}
@@ -432,3 +444,38 @@ func plainGoTest(lines []string) string {
 
 // Serial: a make target takes the checkout (testreg.Serial).
 func (makeAdapter) Serial() bool { return true }
+
+// reachesDir reports whether a target's reach holds dir: a file make would
+// make at or below it, or recipe text naming it as a whole path (not as a
+// part of a longer name: test/rust is not named by test/rust-soak).
+func reachesDir(files map[string]bool, recipes, dir string) bool {
+	for f := range files {
+		if f == dir || strings.HasPrefix(f, dir+"/") || strings.HasPrefix(f, "./"+dir+"/") {
+			return true
+		}
+	}
+	return namesDir(recipes, dir)
+}
+
+// namesDir reports whether recipe text names dir as a whole path.
+func namesDir(recipes, dir string) bool {
+	for i := 0; ; {
+		j := strings.Index(recipes[i:], dir)
+		if j < 0 {
+			return false
+		}
+		at := i + j
+		end := at + len(dir)
+		before := at == 0 || !nameByte(recipes[at-1])
+		after := end == len(recipes) || !nameByte(recipes[end])
+		if before && after {
+			return true
+		}
+		i = at + 1
+	}
+}
+
+// nameByte is a byte a path element may hold.
+func nameByte(b byte) bool {
+	return b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z' || b >= '0' && b <= '9' || b == '_' || b == '-' || b == '.'
+}

@@ -319,6 +319,55 @@ func TestAnEditPlantCannotNameAMakeRowRed(t *testing.T) {
 	}
 }
 
+// TestAnEditPlantNamesAMakeRowRedOnlyByAMarkerItWrites: a make row may be
+// red in an edit plant only when the stated reason is text the edits write
+// (a marker the failing recipe's log can hold only because the sabotage
+// reached it); a reason the edits do not write, or one the anchor already
+// holds, is refused before anything runs.
+func TestAnEditPlantNamesAMakeRowRedOnlyByAMarkerItWrites(t *testing.T) {
+	t.Parallel()
+	for name, c := range map[string]struct {
+		edit   plantEdit
+		reason string
+		runs   bool
+	}{
+		"a marker the edit writes":         {plantEdit{File: "test/x/a.schema", Anchor: "type A", With: "type PlantMarkerZq9Schema"}, "PlantMarkerZq9Schema", true},
+		"a reason the edit does not write": {plantEdit{File: "test/x/a.schema", Anchor: "type A", With: "type B"}, "make gate: exit status 2", false},
+		"a reason the anchor holds":        {plantEdit{File: "test/x/a.schema", Anchor: "type AlreadyThereMarker", With: "type AlreadyThereMarkerX"}, "AlreadyThereMarker", false},
+	} {
+		in := plantInputs{Edits: []plantEdit{c.edit}, Reason: c.reason}
+		if got := plantedMarker(in); got != c.runs {
+			t.Errorf("%s: plantedMarker = %v, want %v", name, got, c.runs)
+		}
+	}
+}
+
+// TestAMakeRowRedIsJudgedByTheLineHoldingTheMarker: a make row red with the
+// marker in its log is judged by that line; one red without it, a make row
+// that passed and a row that is not a make row keep their reds as they are.
+func TestAMakeRowRedIsJudgedByTheLineHoldingTheMarker(t *testing.T) {
+	t.Parallel()
+	const marker = "PlantMarkerZq9Schema"
+	status := map[string]outcome{
+		"mk.caught": {testreg.StatusFail, "make gate: exit status 2\nbuilding\nerror: unknown type PlantMarkerZq9Schema at a.schema:3\n"},
+		"mk.broken": {testreg.StatusFail, "make gate: exit status 2\ncc: not found\n"},
+		"mk.green":  {testreg.StatusPass, ""},
+		"go.row":    {testreg.StatusFail, "x_test.go:1: other\nPlantMarkerZq9Schema\n"},
+	}
+	got := markerFirst(status, []string{"mk.caught", "mk.broken", "mk.green"}, marker)
+	if r := got["mk.caught"].reason; !strings.HasPrefix(r, "error: unknown type PlantMarkerZq9Schema at a.schema:3\nmake gate: exit status 2") {
+		t.Errorf("a make row red with the marker: %q", r)
+	}
+	for _, n := range []string{"mk.broken", "mk.green", "go.row"} {
+		if got[n] != status[n] {
+			t.Errorf("%s changed: %+v", n, got[n])
+		}
+	}
+	if judgePlant([]string{"mk.caught"}, marker, []string{"mk.caught"}, got) != "" || judgePlant([]string{"mk.broken"}, marker, []string{"mk.broken"}, got) == "" {
+		t.Errorf("judged: caught %q, broken %q", judgePlant([]string{"mk.caught"}, marker, []string{"mk.caught"}, got), judgePlant([]string{"mk.broken"}, marker, []string{"mk.broken"}, got))
+	}
+}
+
 // TestAPlantReachesACopyInAHeader: C and C++ sources and headers are one
 // family, so a copy of the sabotaged code in a header next to the edited
 // source is a copy the plant must reach; a copy in another language is not

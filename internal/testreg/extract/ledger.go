@@ -200,6 +200,9 @@ func Covered(reg *testreg.Registry) (map[string]string, []string) {
 			}
 			claim(t, Item{Kind: KindMakeTarget, Dir: in.File, Name: in.Target}, "make "+in.Target)
 			for _, f := range in.Reads {
+				if IsDirRead(f) {
+					continue // a directory: CoveredIn credits what it holds
+				}
 				dir, name := path.Split(f)
 				if !isDataPath(f) || name == "" || f != path.Clean(f) {
 					problems = append(problems, fmt.Sprintf("%s:%d: %s reads %s, which is no data case's file", reg.Path, t.Line, t.Key, f))
@@ -314,6 +317,9 @@ func CoveredIn(res *Result, reg *testreg.Registry) (map[string]string, []string)
 			named[f] = true
 		}
 		for _, f := range in.Reads {
+			if IsDirRead(f) {
+				continue // a directory: readCredits holds it
+			}
 			named[f] = true
 			if !held[f] && isDataPath(f) {
 				problems = append(problems, fmt.Sprintf("%s:%d: %s reads %s, which the repository does not hold", reg.Path, t.Line, t.Key, f))
@@ -331,7 +337,164 @@ func CoveredIn(res *Result, reg *testreg.Registry) (map[string]string, []string)
 			}
 		}
 	}
+	problems = append(problems, readCredits(res, reg, out)...)
 	return out, problems
+}
+
+// IsDirRead reports whether a row's read names a directory: it is written
+// with a trailing "/" (test/rust-soak/), so a read says which it means.
+func IsDirRead(r string) bool { return strings.HasSuffix(r, "/") }
+
+// readCredits adds to out what a row's "reads" credit beyond Covered's
+// file reads, each filling only what no claim holds already:
+//
+//   - a make row's directory read (test/packet-end/rust/): every data case
+//     and driver at or below it that no other driver below it holds (a
+//     driver below it is a harness of its own). The target's recipes run what is
+//     there (a driver's build, its Cargo.toml, its schemas) without make
+//     depending on each file, so the make adapter holds such a read to the
+//     text of the recipes the target reaches; here a make file must name
+//     the directory, or the read is stale.
+//   - a gotest or union row's read, a file (one data case) or a directory
+//     (what it holds, as above): the Go test reads it. The
+//     package's test source must name it: a string literal that is the
+//     read's last element or a whole trailing part of its path
+//     (filepath.Join("..", "..", "testdata", "name-buildability")).
+//
+// A read that holds no data case and no driver, or that its row's source
+// does not name, is a problem by name: a reads list goes stale the day
+// what it names moves.
+func readCredits(res *Result, reg *testreg.Registry, out map[string]string) []string {
+	var problems []string
+	under := func(dir, d string) bool { return dir == d || strings.HasPrefix(dir, d+"/") }
+	drivers := map[string]bool{}
+	for _, it := range res.Items {
+		if it.Kind == KindDriver {
+			drivers[it.Dir] = true
+		}
+	}
+	// own: dir is d, or below d with no driver of its own between them (a
+	// driver below d is a harness of its own, read by whoever runs it)
+	own := func(dir, d string) bool {
+		if !under(dir, d) {
+			return false
+		}
+		for x := dir; x != d; x = path.Dir(x) {
+			if drivers[x] {
+				return false
+			}
+		}
+		return true
+	}
+	credit := func(t testreg.Test, r string) {
+		n := 0
+		if IsDirRead(r) {
+			d := strings.TrimSuffix(r, "/")
+			for _, it := range res.Items {
+				if (it.Kind == KindDataCase || it.Kind == KindDriver) && own(it.Dir, d) {
+					n++
+					if _, held := out[it.ID()]; !held {
+						out[it.ID()] = t.Key
+					}
+				}
+			}
+		} else {
+			dir, name := path.Split(r)
+			id := Item{Kind: KindDataCase, Dir: strings.TrimSuffix(dir, "/"), Name: DataStem(name)}.ID()
+			if slices.Contains(res.CaseFiles[id], r) {
+				n++
+				if _, held := out[id]; !held {
+					out[id] = t.Key
+				}
+			}
+		}
+		if n == 0 {
+			problems = append(problems, fmt.Sprintf("%s:%d: %s reads %s, which holds no data case and no driver of the repository", reg.Path, t.Line, t.Key, r))
+		}
+	}
+	for _, t := range reg.Tests {
+		switch t.Adapter {
+		case "make":
+			var in struct{ Reads []string }
+			if json.Unmarshal(t.Inputs, &in) != nil {
+				continue // Covered named it
+			}
+			for _, r := range in.Reads {
+				if !IsDirRead(r) {
+					continue // a file: Covered's, held to make's own prerequisites
+				}
+				if !cleanRead(r) {
+					problems = append(problems, fmt.Sprintf("%s:%d: %s reads %s: want a clean repository directory, written with one trailing /", reg.Path, t.Line, t.Key, r))
+					continue
+				}
+				if !strings.Contains(res.MakeText, strings.TrimSuffix(r, "/")) {
+					problems = append(problems, fmt.Sprintf("%s:%d: %s reads %s, which no make file names: the read is stale", reg.Path, t.Line, t.Key, r))
+					continue
+				}
+				credit(t, r)
+			}
+		default:
+			// a gotest row, or a union row: the Go tests it runs read it
+			var in struct {
+				Package string
+				Reads   []string
+			}
+			if json.Unmarshal(t.Inputs, &in) != nil || len(in.Reads) == 0 {
+				continue
+			}
+			var pkgs []string
+			if tests, ok, err := testreg.GoTestsOf(t); ok {
+				if err != nil {
+					continue // Covered named it
+				}
+				for _, g := range tests {
+					pkgs = append(pkgs, strings.TrimPrefix(g.Package, "./"))
+				}
+			} else if t.Adapter == "gotest" {
+				pkgs = []string{strings.TrimPrefix(in.Package, "./")}
+			} else {
+				problems = append(problems, fmt.Sprintf("%s:%d: %s reads %v, and only a make, gotest or union row's reads are credited", reg.Path, t.Line, t.Key, in.Reads))
+				continue
+			}
+			slices.Sort(pkgs)
+			for _, r := range in.Reads {
+				if !cleanRead(r) {
+					problems = append(problems, fmt.Sprintf("%s:%d: %s reads %s: want a clean repository file, or a directory written with one trailing /", reg.Path, t.Line, t.Key, r))
+					continue
+				}
+				if !slices.ContainsFunc(pkgs, func(p string) bool { return sourceNames(res.GoStrings[p], strings.TrimSuffix(r, "/")) }) {
+					problems = append(problems, fmt.Sprintf("%s:%d: %s reads %s, which no string in the test source of %s names: the read is stale", reg.Path, t.Line, t.Key, r, strings.Join(pkgs, ", ")))
+					continue
+				}
+				credit(t, r)
+			}
+		}
+	}
+	return problems
+}
+
+// cleanRead is a read written as a clean repository path: a file, or a
+// directory with one trailing "/".
+func cleanRead(r string) bool {
+	p := strings.TrimSuffix(r, "/")
+	return p != "" && p == path.Clean(p) && !path.IsAbs(p) && p != ".." && !strings.HasPrefix(p, "../")
+}
+
+// sourceNames reports whether one of a package's string literals names p:
+// p's last element, or a whole trailing part of p ("../../testdata/x/y"
+// and "x/y" both name testdata/x/y).
+func sourceNames(lits map[string]bool, p string) bool {
+	last := path.Base(p)
+	for l := range lits {
+		c := path.Clean(strings.ReplaceAll(l, `\`, "/"))
+		for strings.HasPrefix(c, "../") {
+			c = c[3:]
+		}
+		if c == last || c == p || strings.HasSuffix(p, "/"+c) && strings.Contains(c, "/") {
+			return true
+		}
+	}
+	return false
 }
 
 // Indexed reports, for each data case and driver a per-language registry row

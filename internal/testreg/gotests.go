@@ -38,6 +38,9 @@ func GoTestsOf(t Test) (tests map[string]GoTest, ok bool, err error) {
 	}
 	var in struct {
 		Tests map[string]GoTest `json:"tests"`
+		// Reads names the data the case's tests read: the extract credits
+		// it to the row (extract.CoveredIn); the run needs nothing of it.
+		Reads []string `json:"reads"`
 	}
 	d := json.NewDecoder(bytes.NewReader(t.Inputs))
 	d.DisallowUnknownFields()

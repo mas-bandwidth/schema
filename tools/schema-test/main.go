@@ -10,6 +10,11 @@
 //	schema-test langs [--ready]
 //	schema-test addenda [--check] [--root DIR]
 //	schema-test seconds [--registry PATH] LOG...
+//	schema-test reads [--write] [--registry PATH]
+//
+// reads works out the make rows' directory reads from make's database
+// (reads.go) and fails when the registry's are not those; --write writes
+// them.
 //
 // seconds records, in the registry, the measured seconds of every test a
 // run's log (a CI job's, say) shows passing: what --shard weighs it by.
@@ -64,6 +69,7 @@ const usage = `usage:
   schema-test langs [--ready]   the registry's languages as a JSON list (a CI matrix)
   schema-test addenda [--check] [--root DIR]
   schema-test seconds [--registry PATH] LOG...
+  schema-test reads [--write] [--registry PATH]   the make rows' directory reads, from make's database
   NAME is <lang>.<tier>.<type>.<family>.<case>; a PATTERN has "*" in it
   --group G         a stored query of the registry (rec "group"); --lang narrows it
   --shard i/n       the i-th of n parts of the expanded list
@@ -148,6 +154,9 @@ func runErr(ctx context.Context, args []string, stdout io.Writer, ads map[string
 	}
 	if sub == "seconds" {
 		return secondsCmd(args[1:], stdout)
+	}
+	if sub == "reads" {
+		return readsCmd(ctx, args[1:], stdout)
 	}
 	if sub != "run" && sub != "list" && sub != "coverage" {
 		return usageError{fmt.Sprintf("unknown subcommand %q", sub)}

@@ -56,6 +56,11 @@ func newGoTestAdapter(log io.Writer, root string, jobs int) *goTestAdapter {
 type goTestInputs struct {
 	Package string `json:"package"`
 	Test    string `json:"test"`
+	// Reads names the data the test reads (a file, or a directory with a
+	// trailing /): the extract credits it to the row and holds the test's
+	// source to naming it (extract.CoveredIn); the run itself needs nothing
+	// of it.
+	Reads []string `json:"reads,omitempty"`
 }
 
 var goTestName = regexp.MustCompile(`^(Test|Fuzz)[A-Za-z0-9_]*$`)
@@ -305,13 +310,19 @@ func packageVerdict(pkg string, res []testreg.Result, runErr error, stdout, stde
 
 // goTestResults reads go test -json events into one result per asked test.
 // A subtest's events count against its top-level test: its output joins the
-// reason, and a subtest that skips fails its parent.
+// reason, and a subtest that skips fails its parent. A parent red through
+// its subtests names them first (failedFirst), so the red of one case among
+// hundreds says which case, ahead of the other cases' lines. A parent red through
+// its subtests names them first (failedFirst), so the red of one case among
+// hundreds says which case, ahead of the other cases' lines.
 func goTestResults(r io.Reader, tests map[string]string) ([]testreg.Result, error) {
 	type event struct {
 		Action, Test, Output string
 		Elapsed              float64
 	}
 	output := map[string][]string{}
+	subOutput := map[string][]string{}
+	failed := map[string][]string{}
 	skipped := map[string][]string{}
 	var out []testreg.Result
 	dec := json.NewDecoder(r)
@@ -330,6 +341,9 @@ func goTestResults(r io.Reader, tests map[string]string) ([]testreg.Result, erro
 		switch ev.Action {
 		case "output":
 			output[top] = append(output[top], strings.TrimRight(ev.Output, "\n"))
+			if isSub {
+				subOutput[ev.Test] = append(subOutput[ev.Test], strings.TrimRight(ev.Output, "\n"))
+			}
 		case "skip":
 			if isSub {
 				skipped[top] = append(skipped[top], sub)
@@ -347,9 +361,10 @@ func goTestResults(r io.Reader, tests map[string]string) ([]testreg.Result, erro
 			out = append(out, testreg.Result{Instance: inst, Verdict: testreg.Pass, Seconds: ev.Elapsed})
 		case "fail":
 			if isSub {
+				failed[top] = append(failed[top], ev.Test)
 				continue
 			}
-			out = append(out, testreg.Result{Instance: inst, Verdict: testreg.Fail, Reason: tail(strings.Join(output[top], "\n"), 20), Seconds: ev.Elapsed})
+			out = append(out, testreg.Result{Instance: inst, Verdict: testreg.Fail, Reason: failedFirst(failed[top], subOutput, output[top]) + tail(strings.Join(output[top], "\n"), 20), Seconds: ev.Elapsed})
 		}
 	}
 	return out, nil
@@ -400,4 +415,42 @@ func addToCall(calls []goTestCall, name string, inst testreg.Instance, budget fl
 		return calls
 	}
 	return append(calls, goTestCall{tests: map[string]string{name: inst.Full}, seconds: w})
+}
+
+// failedFirst is the line a red test's reason starts with, ahead of its
+// output's tail: when subtests failed, each failed leaf subtest (one no
+// other failed subtest is under) named with its first own line of output;
+// when none did, the test's own first line of output that is not go test's
+// "=== RUN" or "--- FAIL" bookkeeping. Either way the first line of the
+// reason is the failure's own words; "" when there are none.
+func failedFirst(failed []string, subOutput map[string][]string, own []string) string {
+	if len(failed) == 0 {
+		if l := ownLine(own); l != "" {
+			return "failed: " + l + "\n"
+		}
+		return ""
+	}
+	var lines []string
+	for _, f := range failed {
+		if slices.ContainsFunc(failed, func(g string) bool { return strings.HasPrefix(g, f+"/") }) {
+			continue // a parent of a failed subtest: its leaf says why
+		}
+		lines = append(lines, f+": "+ownLine(subOutput[f]))
+	}
+	if len(lines) == 0 {
+		return ""
+	}
+	return "failed: " + strings.Join(lines, "; ") + "\n"
+}
+
+// ownLine is the first line of output that is the test's own words, not go
+// test's "=== RUN", "=== PAUSE", "=== CONT" or "--- FAIL" bookkeeping.
+func ownLine(output []string) string {
+	for _, l := range output {
+		l = strings.TrimSpace(l)
+		if l != "" && !strings.HasPrefix(l, "=== ") && !strings.HasPrefix(l, "--- ") {
+			return l
+		}
+	}
+	return ""
 }

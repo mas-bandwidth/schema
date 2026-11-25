@@ -376,6 +376,90 @@ func TestAMakeRowsReadsCoverTheCasesItRuns(t *testing.T) {
 	}
 }
 
+// TestDirectoryAndGoTestReadsCreditWhatTheyHold: a make row's directory read
+// credits every data case and driver at or below it, when a make file names
+// the directory; a gotest row's read (a file, or a directory) credits what
+// it holds, when the package's test source names it; a union row's read the
+// same, when one of its languages' packages names it. A read that holds
+// nothing, a make directory no make file names, and a Go read the source
+// does not name are each a problem by name, and credit nothing.
+func TestDirectoryAndGoTestReadsCreditWhatTheyHold(t *testing.T) {
+	t.Parallel()
+	drv := Item{Kind: KindDriver, Dir: "test/packet-end/rust", Name: "rust"}
+	cargo := Item{Kind: KindDataCase, Dir: "test/packet-end/rust", Name: "Cargo"}
+	sib := Item{Kind: KindDataCase, Dir: "test/packet-end-x", Name: "a"}
+	// a driver below the read directory is a harness of its own: not read
+	inner := Item{Kind: KindDriver, Dir: "test/packet-end/rust/inner", Name: "inner"}
+	innerData := Item{Kind: KindDataCase, Dir: "test/packet-end/rust/inner/rows", Name: "r"}
+	nb := Item{Kind: KindDataCase, Dir: "testdata/name-buildability/b_x", Name: "x"}
+	tsv := Item{Kind: KindDataCase, Dir: "testdata/name-buildability", Name: "cases"}
+	one := Item{Kind: KindDataCase, Dir: "testdata/wire/json-integers", Name: "wide"}
+	res := &Result{
+		Items: []Item{drv, cargo, sib, nb, tsv, one, inner, innerData},
+		CaseFiles: map[string][]string{
+			cargo.ID():     {"test/packet-end/rust/Cargo.toml", "test/packet-end/rust/Cargo.lock"},
+			innerData.ID(): {"test/packet-end/rust/inner/rows/r.bin"},
+			sib.ID():       {"test/packet-end-x/a.schema"},
+			nb.ID():        {"testdata/name-buildability/b_x/x.schema"},
+			tsv.ID():       {"testdata/name-buildability/cases.tsv"},
+			one.ID():       {"testdata/wire/json-integers/wide.json"},
+		},
+		GoStrings: map[string]map[string]bool{
+			"internal/check":         {"..": true, "testdata": true, "name-buildability": true},
+			"internal/codegen/table": {"../../testdata/wire/json-integers/wide.json": true},
+		},
+		MakeText: "packet-end-rust-test:\n\tcd test/packet-end/rust && cargo test\n\trm -rf test/packet-end/rust/gone\n",
+	}
+	mk := testreg.Test{Key: "harness-run.rust.packet-end-rust-test", Adapter: "make", Line: 1,
+		Inputs: []byte(`{"file":"make/rust.mk","target":"packet-end-rust-test","reads":["test/packet-end/rust/"]}`)}
+	corpus := testreg.Test{Key: "compiler.check.name-buildability-corpus", Adapter: "gotest", Line: 2,
+		Inputs: []byte(`{"package":"./internal/check","test":"TestNameBuildabilityCorpus","reads":["testdata/name-buildability/"]}`)}
+	file := testreg.Test{Key: "roundtrip.wire-json-integers.wide", Line: 3,
+		Inputs: []byte(`{"tests":{"go":{"package":"./internal/codegen/table","test":"TestWide"}},"reads":["testdata/wire/json-integers/wide.json"]}`)}
+	covered, p := CoveredIn(res, &testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{mk, corpus, file}})
+	if len(p) != 0 {
+		t.Fatalf("problems: %v", p)
+	}
+	want := map[string]string{
+		drv.ID(): mk.Key, cargo.ID(): mk.Key,
+		nb.ID(): corpus.Key, tsv.ID(): corpus.Key,
+		one.ID(): file.Key,
+	}
+	for id, key := range want {
+		if covered[id] != key {
+			t.Errorf("%s is credited to %q, want %s", id, covered[id], key)
+		}
+	}
+	for _, it := range []Item{sib, inner, innerData} {
+		if k, ok := covered[it.ID()]; ok {
+			t.Errorf("%s is beside the read directory or under a driver of its own, and is credited to %s", it.ID(), k)
+		}
+	}
+	for name, c := range map[string]struct {
+		row  testreg.Test
+		says string
+	}{
+		"a directory that holds nothing": {testreg.Test{Key: "k.a", Adapter: "make", Inputs: []byte(`{"file":"m.mk","target":"t","reads":["test/packet-end/rust/gone/"]}`)},
+			"k.a reads test/packet-end/rust/gone/, which holds no data case and no driver"},
+		"a directory no make file names": {testreg.Test{Key: "k.b", Adapter: "make", Inputs: []byte(`{"file":"m.mk","target":"t","reads":["test/packet-end-x/"]}`)},
+			"k.b reads test/packet-end-x/, which no make file names: the read is stale"},
+		"a Go read the source does not name": {testreg.Test{Key: "k.c", Adapter: "gotest", Inputs: []byte(`{"package":"./internal/check","test":"TestX","reads":["testdata/wire/json-integers/"]}`)},
+			"k.c reads testdata/wire/json-integers/, which no string in the test source of internal/check names"},
+		"an unclean read": {testreg.Test{Key: "k.d", Adapter: "gotest", Inputs: []byte(`{"package":"./internal/check","test":"TestX","reads":["../name-buildability/"]}`)},
+			"k.d reads ../name-buildability/: want a clean repository file"},
+	} {
+		covered, p := CoveredIn(res, &testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{c.row}})
+		if !strings.Contains(strings.Join(p, "\n"), c.says) {
+			t.Errorf("%s: want %q in:\n%s", name, c.says, strings.Join(p, "\n"))
+		}
+		for id, key := range covered {
+			if key == c.row.Key && !strings.HasPrefix(id, KindGoTest) && !strings.HasPrefix(id, KindMakeTarget) {
+				t.Errorf("%s: credits %s", name, id)
+			}
+		}
+	}
+}
+
 // TestTheLedgerOnlyShrinks: against main's ledger, a lower count and a
 // removed line pass; a higher count and a new place fail by name.
 func TestTheLedgerOnlyShrinks(t *testing.T) {

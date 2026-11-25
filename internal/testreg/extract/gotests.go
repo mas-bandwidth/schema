@@ -6,6 +6,7 @@ import (
 	"go/parser"
 	"go/token"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -53,6 +54,7 @@ func (s *scan) goTests(files []string) {
 			}
 			p.files[f] = rel
 			p.src[rel] = src
+			s.goStrings(d, f)
 			p.build[f] = buildLine(src)
 			for _, decl := range f.Decls {
 				if fn, ok := decl.(*ast.FuncDecl); ok && fn.Recv == nil && fn.Body != nil {
@@ -66,6 +68,7 @@ func (s *scan) goTests(files []string) {
 		}
 		s.goPkgTests(p)
 	}
+	s.goSourceStrings()
 }
 
 func (s *scan) goPkgTests(p *goPkg) {
@@ -205,6 +208,109 @@ func buildLine(src []byte) string {
 		}
 		if c, ok := strings.CutPrefix(t, "//go:build "); ok {
 			return strings.TrimSpace(c)
+		}
+	}
+	return ""
+}
+
+// goStrings records every string literal of a parsed _test.go file under its
+// package's directory, and the packages of this module the file imports.
+func (s *scan) goStrings(dir string, f *ast.File) {
+	if s.res.GoStrings == nil {
+		s.res.GoStrings = map[string]map[string]bool{}
+	}
+	set := s.res.GoStrings[dir]
+	if set == nil {
+		set = map[string]bool{}
+		s.res.GoStrings[dir] = set
+	}
+	addLiterals(set, f)
+	if s.imports == nil {
+		s.imports = map[string]map[string]bool{}
+	}
+	if s.imports[dir] == nil {
+		s.imports[dir] = map[string]bool{}
+	}
+	for _, im := range f.Imports {
+		if v, err := strconv.Unquote(im.Path.Value); err == nil {
+			s.imports[dir][v] = true
+		}
+	}
+}
+
+func addLiterals(set map[string]bool, f *ast.File) {
+	ast.Inspect(f, func(n ast.Node) bool {
+		if bl, ok := n.(*ast.BasicLit); ok && bl.Kind == token.STRING {
+			if v, err := strconv.Unquote(bl.Value); err == nil {
+				set[v] = true
+			}
+		}
+		return true
+	})
+}
+
+// goSourceStrings adds to each test package's strings those of its own
+// non-test files and of the non-test files of every package of this module
+// its tests import: a test that reads its corpus through a helper package
+// (internal/nameemit's corpus directory) names it there.
+func (s *scan) goSourceStrings() {
+	mod := s.modulePath()
+	cache := map[string]map[string]bool{}
+	of := func(dir string) map[string]bool {
+		if got, ok := cache[dir]; ok {
+			return got
+		}
+		set := map[string]bool{}
+		cache[dir] = set
+		ents, err := os.ReadDir(filepath.Join(s.root, filepath.FromSlash(dir)))
+		if err != nil {
+			return set // an import outside this tree (a module of its own) names nothing here
+		}
+		fset := token.NewFileSet()
+		for _, e := range ents {
+			n := e.Name()
+			if e.IsDir() || !strings.HasSuffix(n, ".go") || strings.HasSuffix(n, "_test.go") {
+				continue
+			}
+			rel := path.Join(dir, n)
+			src, err := os.ReadFile(filepath.Join(s.root, filepath.FromSlash(rel)))
+			if err != nil {
+				s.fail(rel, "read: %v", err)
+				continue
+			}
+			f, err := parser.ParseFile(fset, rel, src, parser.SkipObjectResolution)
+			if err != nil {
+				s.fail(rel, "parse: %v", err)
+				continue
+			}
+			addLiterals(set, f)
+		}
+		return set
+	}
+	for dir, set := range s.res.GoStrings {
+		dirs := []string{dir}
+		for im := range s.imports[dir] {
+			if rest, ok := strings.CutPrefix(im, mod+"/"); ok && mod != "" {
+				dirs = append(dirs, rest)
+			}
+		}
+		for _, d := range dirs {
+			for l := range of(d) {
+				set[l] = true
+			}
+		}
+	}
+}
+
+// modulePath is go.mod's module path ("" when it names none).
+func (s *scan) modulePath() string {
+	data, err := os.ReadFile(filepath.Join(s.root, "go.mod"))
+	if err != nil {
+		return ""
+	}
+	for line := range strings.Lines(string(data)) {
+		if m, ok := strings.CutPrefix(strings.TrimSpace(line), "module "); ok {
+			return strings.Trim(strings.TrimSpace(m), `"`)
 		}
 	}
 	return ""

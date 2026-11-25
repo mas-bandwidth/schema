@@ -247,10 +247,13 @@ func (a plantAdapter) runEdits(ctx context.Context, inst testreg.Instance, in pl
 		red[n] = true
 	}
 	for _, t := range before {
-		if red[t.Full] && t.Test.Adapter == "make" {
-			// a make row fails "make <target>: exit status N", which any
-			// failure gives: a broken build as well as the sabotage
-			return testreg.Result{Instance: inst.Full, Verdict: testreg.Fail, Reason: fmt.Sprintf("the plant names the make row %s red, and a make row's red reason is its exit status, which any failure gives: plant its recipe's gate as a make control, or name the rows its gate runs", t.Full)}, nil
+		if red[t.Full] && t.Test.Adapter == "make" && !plantedMarker(in) {
+			// a make row fails "make <target>: exit status N" and its log's
+			// tail, and an exit status is what any failure gives: a broken
+			// build as well as the sabotage. Only a reason the edits
+			// themselves write (plantedMarker), which the log can hold only
+			// because the sabotage landed, makes the red the plant's.
+			return testreg.Result{Instance: inst.Full, Verdict: testreg.Fail, Reason: fmt.Sprintf("the plant names the make row %s red, and a make row's red reason is its exit status, which any failure gives: plant its recipe's gate as a make control, name the rows its gate runs, or state as the reason a marker the edits write", t.Full)}, nil
 		}
 	}
 	if bad := a.greenBefore(ctx, before); bad != "" {
@@ -265,6 +268,15 @@ func (a plantAdapter) runEdits(ctx context.Context, inst testreg.Instance, in pl
 			return testreg.Result{Instance: inst.Full, Verdict: testreg.Fail, Reason: pe.Error()}, nil
 		}
 		return testreg.Result{}, fmt.Errorf("%s: %w\n%s", inst.Full, err, tail(run.log, 30))
+	}
+	if plantedMarker(in) {
+		var makeRows []string
+		for _, t := range before {
+			if t.Test.Adapter == "make" {
+				makeRows = append(makeRows, t.Full)
+			}
+		}
+		run.status = markerFirst(run.status, makeRows, in.Reason)
 	}
 	bad := judgePlant(in.Red, in.Reason, names, run.status)
 	if bad == "" && len(run.problems) > 0 {
@@ -692,4 +704,47 @@ func (a plantAdapter) Prepare(ctx context.Context, _ string, instances []testreg
 		return nil
 	}
 	return a.rn.Prepare(ctx, rows)
+}
+
+// plantedMarker reports whether the plant's reason is text its edits write
+// and no anchor holds: a make row's log can show it only when a planted file
+// reached the recipe (a schema the compiler names in its refusal, a case
+// name a driver prints). The edit form's own check (applyEdits) has the
+// anchor in its file exactly once, so the marker is new to that file.
+// markerFirst: a make row's red starts "make <target>: exit status N",
+// which any failure writes, and its log follows. Where the plant's marker
+// (plantedMarker) is in that log, the log's line that holds it is put
+// first, so judgePlant judges the line the sabotage wrote; a make row whose
+// log does not hold the marker, and any row that is not a make row, keeps
+// its red as it is, and is judged red for another reason.
+func markerFirst(status map[string]outcome, makeRows []string, marker string) map[string]outcome {
+	out := make(map[string]outcome, len(status))
+	for n, o := range status {
+		out[n] = o
+	}
+	for _, n := range makeRows {
+		o, ok := out[n]
+		if !ok || o.status != testreg.StatusFail {
+			continue
+		}
+		for _, l := range strings.Split(o.reason, "\n") {
+			if strings.Contains(l, marker) {
+				out[n] = outcome{o.status, strings.TrimSpace(l) + "\n" + o.reason}
+				break
+			}
+		}
+	}
+	return out
+}
+
+func plantedMarker(in plantInputs) bool {
+	if len(strings.TrimSpace(in.Reason)) < minPlantReason {
+		return false
+	}
+	for _, e := range in.Edits {
+		if strings.Contains(e.With, in.Reason) && !strings.Contains(e.Anchor, in.Reason) {
+			return true
+		}
+	}
+	return false
 }

@@ -168,6 +168,7 @@ func (s *scan) makeTargets(files []string, nc, ci map[string]bool) {
 			s.fail(rel, "read: %v", err)
 			continue
 		}
+		s.res.MakeText += string(data) + "\n"
 		sc := bufio.NewScanner(bytes.NewReader(data))
 		sc.Buffer(make([]byte, 1<<20), 1<<24)
 		n := 0

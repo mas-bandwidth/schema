@@ -89,6 +89,13 @@ type Result struct {
 	// none), by its ID: a golden row covers a case only when it pins them
 	// all (CoveredIn).
 	CaseFiles map[string][]string `json:"-"`
+	// GoStrings is every string literal of each package's _test.go files,
+	// by the package's directory: a gotest row's read must be one its
+	// test source names (readCredits).
+	GoStrings map[string]map[string]bool `json:"-"`
+	// MakeText is the text of every make file: a make row's directory read
+	// must be one a make file names (readCredits).
+	MakeText string `json:"-"`
 }
 
 // RuleID is a make rule's key in Result.Rules.
@@ -98,6 +105,9 @@ type scan struct {
 	root    string
 	res     *Result
 	ignored map[string]bool
+	// imports is the import paths of each test package's _test.go files,
+	// by its directory (goSourceStrings)
+	imports map[string]map[string]bool
 }
 
 func (s *scan) add(it Item) {
