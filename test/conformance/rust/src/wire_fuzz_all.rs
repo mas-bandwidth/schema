@@ -58,6 +58,7 @@ mod vocab9demo;
 mod vocabdemo;
 mod widelist;
 mod shapes;
+mod tblmoodmap;
 
 use std::io::{self, Read, Write};
 
@@ -384,6 +385,7 @@ const ROOTS: &[(&str, &str)] = &[
     ("widelist", "Wide"),
     ("shapes", "Bounds"),
     ("shapes", "FixedBounds"),
+    ("tblmoodmap", "MoodMap"),
 ];
 
 // A declared fixed root reads form 3 and refuses every other form by name
@@ -612,6 +614,7 @@ fn drive(unit: &str, root: &str, wire: &[u8], retain: bool) -> Option<Reply> {
         ("vocabdemo", "Wide00") => arm!(vocabdemo, wide00_load, wide00_load_retain, wide00_save, wide00_save_checked, wide00_save_retain, wide00_load_measure, wire, retain),
         ("vocabdemo", "Wide09") => arm!(vocabdemo, wide09_load, wide09_load_retain, wide09_save, wide09_save_checked, wide09_save_retain, wide09_load_measure, wire, retain),
         ("shapes", "Bounds") => arm!(shapes, bounds_load, bounds_load_retain, bounds_save, bounds_save_checked, bounds_save_retain, bounds_load_measure, wire, retain),
+        ("tblmoodmap", "MoodMap") => arm!(tblmoodmap, mood_map_load, mood_map_load_retain, mood_map_save, mood_map_save_checked, mood_map_save_retain, mood_map_load_measure, wire, retain),
         _ => None,
     }
 }

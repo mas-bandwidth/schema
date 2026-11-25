@@ -1773,6 +1773,7 @@ if surface == "list" then
   -- the opt-in units this leg answers (MANIFEST.txt `opt-in`): every unit
   -- key is generated into build/conformance-lua by make/lua.mk
   io.write("unit shapes\n")
+  io.write("unit tblmoodmap\n")
   os.exit(0)
 end
 

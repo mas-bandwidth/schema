@@ -22,6 +22,7 @@ import (
 	"shapes"
 	"streamdemo"
 	"tblfixedevo"
+	"tblmoodmap"
 	"tblpacketunions"
 	tblscalars2 "tblscalars2"
 	"tblvaluedefaults"
@@ -919,6 +920,21 @@ var codecTable = []codec{
 		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
 	}),
 	row("shapes", "FixedBounds", shapes.FixedBoundsReset, shapes.FixedBoundsLoad, shapes.FixedBoundsMeasure, shapes.FixedBoundsSave, shapes.FixedBoundsFromJSON, shapes.FixedBoundsToJSONMeasure, shapes.FixedBoundsToJSON, shapes.FixedBoundsCookMeasure, shapes.FixedBoundsCookFrom, func(r *shapes.TableReport) report {
+		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
+	}),
+	// FL-19's map form (test/tables/moodmap), opted in by `list` (main.go)
+	regionRow("tblmoodmap", "MoodMap", tblmoodmap.MoodMapLoadMeasure, tblmoodmap.MoodMapLoad, tblmoodmap.MoodMapMeasure, tblmoodmap.MoodMapSave, func(text []byte, r *tblmoodmap.TableReport) (*tblmoodmap.MoodMap, []byte, bool) {
+		var b tblmoodmap.MoodMapBuilder
+		if !b.Init() {
+			return nil, nil, false
+		}
+		defer b.Shutdown()
+		ok := tblmoodmap.MoodMapFromJSON(&b, text, r)
+		if !b.Lock() {
+			return nil, nil, false
+		}
+		return b.AsConst(), b.Region(), ok
+	}, tblmoodmap.MoodMapToJSONMeasure, tblmoodmap.MoodMapToJSON, tblmoodmap.MoodMapCookMeasure, tblmoodmap.MoodMapCookFrom, func(r *tblmoodmap.TableReport) report {
 		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
 	}),
 

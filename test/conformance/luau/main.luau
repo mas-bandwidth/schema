@@ -52,6 +52,7 @@ if surface == "list" then
 	-- the opt-in units this leg answers (MANIFEST.txt `opt-in`): every unit
 	-- key is generated into build/conformance-luau by make/luau.mk
 	print("unit shapes")
+	print("unit tblmoodmap")
 	return
 end
 
