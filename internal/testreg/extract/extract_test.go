@@ -2,8 +2,10 @@ package extract
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
+	"sort"
 	"strings"
 	"testing"
 
@@ -246,31 +248,58 @@ func TestSkipRedLinesAreHeldToTheirSkips(t *testing.T) {
 }
 
 // TestASkipRedLineStaysWhileItsSkipDoes: against main's ledger a skip-red
-// line may leave only when its test's skips are gone; it may not be added
-// or grow.
+// line may leave only when its test's skips are gone, or its test is gone and
+// no test reaches its skips; it may not be added or grow. A renamed test
+// takes its line along, as a carry, never as a larger count.
 func TestASkipRedLineStaysWhileItsSkipDoes(t *testing.T) {
 	t.Parallel()
 	res := skipRedResult()
 	line := LedgerLine{Kind: KindSkipRed, Dir: "a:TestHides", Count: 2, Layer: "L5", Reason: "measured red"}
-	if p := KeepsSkipReds([]LedgerLine{line}, []LedgerLine{line}, res); len(p) != 0 {
+	main := []LedgerLine{line}
+	if p := KeepsSkipReds(main, main, res, res); len(p) != 0 {
 		t.Fatalf("a kept line: %v", p)
 	}
-	p := KeepsSkipReds([]LedgerLine{line}, nil, res)
+	p := KeepsSkipReds(main, nil, res, res)
 	if len(p) != 1 || !strings.Contains(p[0], "skip-red a:TestHides left the ledger, and the test still has 2 skips") {
 		t.Fatalf("a line dropped while its skip stays: %v", p)
 	}
 	fixed := &Result{Items: []Item{{Kind: KindGoTest, Dir: "a", Name: "TestHides"}}}
-	if p := KeepsSkipReds([]LedgerLine{line}, nil, fixed); len(p) != 0 {
+	if p := KeepsSkipReds(main, nil, res, fixed); len(p) != 0 {
 		t.Fatalf("a line dropped with its skip: %v", p)
 	}
-	if p := KeepsSkipReds([]LedgerLine{line}, nil, &Result{}); len(p) != 0 {
-		t.Fatalf("a line dropped with its test: %v", p)
+	if p := KeepsSkipReds(main, nil, res, &Result{}); len(p) != 0 {
+		t.Fatalf("a line dropped with its test and its skips: %v", p)
+	}
+	p = KeepsSkipReds(main, nil, nil, &Result{})
+	if len(p) != 1 || !strings.Contains(p[0], "skip-red a:TestHides left the ledger with its test, and without main's tree (--since)") {
+		t.Fatalf("a line dropped with its test, no main tree: %v", p)
 	}
 	grown := line
 	grown.Count = 3
-	p = Shrinks([]LedgerLine{line}, []LedgerLine{grown, {Kind: KindSkipRed, Dir: "a:TestNew", Count: 1}})
-	if len(p) != 2 || !strings.Contains(p[0], "grew from 2 to 3 skips") || !strings.Contains(p[1], "skip-red a:TestNew is a new ledger line") {
+	p = KeepsSkipReds(main, []LedgerLine{grown, {Kind: KindSkipRed, Dir: "a:TestNew", Count: 1}}, res, res)
+	if len(p) != 2 || !strings.Contains(p[0], "skip-red a:TestHides grew from 2 to 3 skips") || !strings.Contains(p[1], "skip-red a:TestNew is a new ledger line") {
 		t.Fatalf("a growing skip-red account: %v", p)
+	}
+	if p := Shrinks(main, []LedgerLine{grown}); len(p) != 0 {
+		t.Fatalf("Shrinks leaves skip-red lines to KeepsSkipReds: %v", p)
+	}
+	// TestHides renamed to TestHidesStill, its skips moved down two lines
+	renamed := &Result{Items: []Item{
+		{Kind: KindGoTest, Dir: "a", Name: "TestHidesStill", Source: "a/x_test.go:1", Gates: []string{"slow", "skip: a/x_test.go:5 if x", "skip: a/x_test.go:11 "}},
+		{Kind: KindGoTest, Dir: "a", Name: "TestClean", Source: "a/x_test.go:20"},
+	}}
+	p = KeepsSkipReds(main, nil, res, renamed)
+	if len(p) != 1 || !strings.Contains(p[0], "skip-red a:TestHides left the ledger with its test, and its skip is still reached by a:TestHidesStill (at a/x_test.go)") {
+		t.Fatalf("a renamed test that left its line behind: %v", p)
+	}
+	carried := LedgerLine{Kind: KindSkipRed, Dir: "a:TestHidesStill", Count: 2, Layer: "L5", Reason: "measured red"}
+	if p := KeepsSkipReds(main, []LedgerLine{carried}, res, renamed); len(p) != 0 {
+		t.Fatalf("a line carried with its renamed test: %v", p)
+	}
+	carried.Count = 3
+	p = KeepsSkipReds(main, []LedgerLine{carried}, res, renamed)
+	if len(p) != 2 || !strings.Contains(p[0], "skip-red a:TestHidesStill is a new ledger line") || !strings.Contains(p[1], "skip-red a:TestHides left the ledger with its test") {
+		t.Fatalf("a carry that grew: %v", p)
 	}
 }
 
@@ -361,4 +390,52 @@ func TestEveryTestIsARowOrInTheLedger(t *testing.T) {
 		t.Errorf("%d disagreements (go run ./tools/schema-test extract):\n  %s", len(p), strings.Join(p, "\n  "))
 	}
 	t.Logf("%d tests, %d ledger lines", len(res.Items), len(ledger))
+}
+
+// TestWhatGitIgnoresIsNotATest: in a git checkout, files git ignores (a
+// build's output, a lock file it writes) are not tests; without the ignore
+// they are. A .git that git cannot read is an error, never an empty set.
+func TestWhatGitIgnoresIsNotATest(t *testing.T) {
+	t.Parallel()
+	files := map[string]string{
+		"go.mod":               "module example.com/fx\n\ngo 1.26\n",
+		"pkg/a_test.go":        "package pkg\n\nimport \"testing\"\n\nfunc TestKept(t *testing.T) {}\n",
+		"out/x_test.go":        "package x\n\nimport \"testing\"\n\nfunc TestBuilt(t *testing.T) {}\n",
+		"test/rust/Cargo.lock": "lock",
+		"test/rust/case.in":    "in",
+		".gitignore":           "/out/\nCargo.lock\n",
+	}
+	names := func(root string) string {
+		t.Helper()
+		res, err := Extract(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var have []string
+		for _, it := range res.Items {
+			have = append(have, it.Kind+" "+it.Dir+" "+it.Name)
+		}
+		sort.Strings(have)
+		return strings.Join(have, "\n")
+	}
+	plain := names(writeFixture(t, files))
+	if !strings.Contains(plain, "TestBuilt") || !strings.Contains(plain, "Cargo") {
+		t.Fatalf("without git, every file is read:\n%s", plain)
+	}
+	root := writeFixture(t, files)
+	git := exec.Command("git", "init", "--quiet", root)
+	if out, err := git.CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v\n%s", err, out)
+	}
+	have := names(root)
+	if strings.Contains(have, "TestBuilt") || strings.Contains(have, "Cargo") || !strings.Contains(have, "go-test pkg TestKept") || !strings.Contains(have, "data-case test/rust case") {
+		t.Fatalf("in a checkout, what git ignores is not a test:\n%s", have)
+	}
+	broken := writeFixture(t, files)
+	if err := os.WriteFile(filepath.Join(broken, ".git"), []byte("gitdir: /nonexistent\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Extract(broken); err == nil || !strings.Contains(err.Error(), "to leave out what git ignores") {
+		t.Fatalf("a .git that git cannot read: %v", err)
+	}
 }

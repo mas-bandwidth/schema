@@ -3163,7 +3163,10 @@ jobs:
         run: |
           set -euo pipefail
           git fetch --quiet --depth 1 origin main
-          git worktree add --quiet --detach "$RUNNER_TEMP/main-tree" FETCH_HEAD
+          # an exported tree, not a worktree: a worktree stays registered in
+          # .git on a persistent runner and refuses the next job
+          rm -rf "$RUNNER_TEMP/main-tree" && mkdir -p "$RUNNER_TEMP/main-tree"
+          git archive FETCH_HEAD | tar -x -C "$RUNNER_TEMP/main-tree"
           if git cat-file -e FETCH_HEAD:test/registry/unmoved.tsv; then
             git show FETCH_HEAD:test/registry/unmoved.tsv > "$RUNNER_TEMP/unmoved-main.tsv"
             go run ./tools/schema-test extract --since "$RUNNER_TEMP/main-tree" --shrinks-from "$RUNNER_TEMP/unmoved-main.tsv"

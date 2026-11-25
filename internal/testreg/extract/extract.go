@@ -1,5 +1,6 @@
 // Package extract finds every test that exists in the repository, by reading
-// its source and data only: it runs nothing and builds nothing. It is the
+// its source and data only: it builds and runs no test, and asks git only
+// which files it ignores. It is the
 // mechanical half of the registry's task 2 (docs/TEST-REGISTRY.md, "Every test
 // is in the registry"): each test it finds is either a registry row or counted
 // in the unmoved ledger (test/registry/unmoved.tsv), and Check holds the two
@@ -27,9 +28,11 @@
 package extract
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -82,8 +85,9 @@ type Result struct {
 }
 
 type scan struct {
-	root string
-	res  *Result
+	root    string
+	res     *Result
+	ignored map[string]bool
 }
 
 func (s *scan) add(it Item) {
@@ -123,8 +127,31 @@ func skipDir(rel, name string) bool {
 	return false
 }
 
-// walk visits every file under the root that is not in a skipped directory,
-// in lexical order.
+// ignored is every path under root that git ignores (build output, lock
+// files a build writes, scratch), each directory with a trailing slash. A
+// root without .git (a fixture, an exported tree) has none; a git that cannot
+// answer is an error, never an empty set.
+func ignored(root string) (map[string]bool, error) {
+	if _, err := os.Stat(filepath.Join(root, ".git")); errors.Is(err, os.ErrNotExist) {
+		return map[string]bool{}, nil
+	} else if err != nil {
+		return nil, err
+	}
+	out, err := exec.Command("git", "-C", root, "ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z").Output()
+	if err != nil {
+		return nil, fmt.Errorf("git ls-files in %s, to leave out what git ignores: %w", root, err)
+	}
+	set := map[string]bool{}
+	for _, p := range strings.Split(string(out), "\x00") {
+		if p != "" {
+			set[p] = true
+		}
+	}
+	return set, nil
+}
+
+// walk visits every file under the root that is not in a skipped directory
+// and that git does not ignore, in lexical order.
 func (s *scan) walk(fn func(rel string, d fs.DirEntry)) {
 	err := filepath.WalkDir(s.root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -133,9 +160,12 @@ func (s *scan) walk(fn func(rel string, d fs.DirEntry)) {
 		}
 		rel := s.rel(p)
 		if d.IsDir() {
-			if rel != "." && skipDir(rel, d.Name()) {
+			if rel != "." && (skipDir(rel, d.Name()) || s.ignored[rel+"/"]) {
 				return filepath.SkipDir
 			}
+			return nil
+		}
+		if s.ignored[rel] {
 			return nil
 		}
 		fn(rel, d)
@@ -151,7 +181,11 @@ func Extract(root string) (*Result, error) {
 	if _, err := os.Stat(filepath.Join(root, "go.mod")); err != nil {
 		return nil, fmt.Errorf("%s is not the repository root: %w", root, err)
 	}
-	s := &scan{root: root, res: &Result{}}
+	ign, err := ignored(root)
+	if err != nil {
+		return nil, err
+	}
+	s := &scan{root: root, res: &Result{}, ignored: ign}
 	var goFiles, makeFiles, workflows, dataFiles, models []string
 	drivers := map[string]string{}
 	s.walk(func(rel string, d fs.DirEntry) {

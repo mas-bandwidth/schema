@@ -112,3 +112,62 @@ func TestExtractRefusesADroppedSkipRedLine(t *testing.T) {
 		t.Fatalf("a dropped skip-red line passed (err %v):\n%s", err, out.String())
 	}
 }
+
+// TestExtractHoldsTheLedgerToTheTree: the command fails on a ledger whose
+// count disagrees with the tree, by the line.
+func TestExtractHoldsTheLedgerToTheTree(t *testing.T) {
+	t.Parallel()
+	root := extractRoot(t)
+	ledger := filepath.Join(root, extract.LedgerPath)
+	if err := os.WriteFile(ledger, []byte("# h\ngo-test\tpkg\t2\tL3\twaits\nskip-red\tpkg:TestHides\t1\tL3\tmeasured red\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	err := extractCmd([]string{"--root", root}, &out)
+	if err == nil || !strings.Contains(out.String(), "FAIL extract: ") || !strings.Contains(out.String(), "go-test pkg") {
+		t.Fatalf("a ledger that miscounts passed (err %v):\n%s", err, out.String())
+	}
+}
+
+// TestExtractRefusesAGrownLedger: against main's ledger, a line that is new
+// and a skip-red line that is new fail the command by name.
+func TestExtractRefusesAGrownLedger(t *testing.T) {
+	t.Parallel()
+	root := extractRoot(t)
+	main := filepath.Join(t.TempDir(), "unmoved-main.tsv")
+	if err := os.WriteFile(main, []byte("# h\ngo-test\tother\t1\tL3\twaits\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	err := extractCmd([]string{"--root", root, "--shrinks-from", main}, &out)
+	if err == nil || !strings.Contains(out.String(), "go-test pkg is a new ledger line") || !strings.Contains(out.String(), "skip-red pkg:TestHides is a new ledger line") {
+		t.Fatalf("a grown ledger passed (err %v):\n%s", err, out.String())
+	}
+}
+
+// TestWriteLedgerRefusesAnUnreadableTree: --write-ledger writes nothing while
+// a file does not parse, and says which.
+func TestWriteLedgerRefusesAnUnreadableTree(t *testing.T) {
+	t.Parallel()
+	root := extractRoot(t)
+	if err := os.WriteFile(filepath.Join(root, "pkg", "bad_test.go"), []byte("package pkg\n\nfunc {\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ledger := filepath.Join(root, extract.LedgerPath)
+	before, err := os.ReadFile(ledger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	err = extractCmd([]string{"--root", root, "--write-ledger"}, &out)
+	if err == nil || !strings.Contains(err.Error(), "pkg/bad_test.go") {
+		t.Fatalf("a write over an unreadable tree: %v", err)
+	}
+	after, err := os.ReadFile(ledger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(before, after) {
+		t.Fatalf("the ledger was rewritten:\n%s", after)
+	}
+}

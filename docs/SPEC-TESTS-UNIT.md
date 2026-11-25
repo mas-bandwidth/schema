@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 0. Language-free tests: 66.
+Unit tests every language answers: 0. Language-free tests: 70.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -23,20 +23,23 @@ Each runs once, as `none.unit.<type>.<family>.<case>`, through the adapter its r
 
 CI policy, docs, roadmap, repo-structure and harness self-tests.
 
-#### `tooling` family `schema-test`, 10 tests
+#### `tooling` family `schema-test`, 13 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.unit.tooling.schema-test.a-plant-passes-only-when-its-target-goes-red` | `gotest` | Go test TestAPlantPassesOnlyWhenItsTargetGoesRed in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAPlantPassesOnlyWhenItsTargetGoesRed` | the Go test passes | `tools/schema-test/main_test.go:73` |
 | `none.unit.tooling.schema-test.a-run-that-selects-nothing-still-prints-its-counts` | `gotest` | Go test TestARunThatSelectsNothingStillPrintsItsCounts in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestARunThatSelectsNothingStillPrintsItsCounts` | the Go test passes | `tools/schema-test/main_test.go:169` |
+| `none.unit.tooling.schema-test.extract-holds-the-ledger-to-the-tree` | `gotest` | Go test TestExtractHoldsTheLedgerToTheTree in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestExtractHoldsTheLedgerToTheTree` | the Go test passes | `tools/schema-test/extract_test.go:118` |
 | `none.unit.tooling.schema-test.extract-names-a-new-test-since-main` | `gotest` | Go test TestExtractNamesANewTestSinceMain in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestExtractNamesANewTestSinceMain` | the Go test passes | `tools/schema-test/extract_test.go:70` |
 | `none.unit.tooling.schema-test.extract-refuses-a-dropped-skip-red-line` | `gotest` | Go test TestExtractRefusesADroppedSkipRedLine in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestExtractRefusesADroppedSkipRedLine` | the Go test passes | `tools/schema-test/extract_test.go:90` |
+| `none.unit.tooling.schema-test.extract-refuses-a-grown-ledger` | `gotest` | Go test TestExtractRefusesAGrownLedger in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestExtractRefusesAGrownLedger` | the Go test passes | `tools/schema-test/extract_test.go:134` |
 | `none.unit.tooling.schema-test.go-test-events-give-one-verdict-each` | `gotest` | Go test TestGoTestEventsGiveOneVerdictEach in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestGoTestEventsGiveOneVerdictEach` | the Go test passes | `tools/schema-test/main_test.go:86` |
 | `none.unit.tooling.schema-test.the-addenda-verb-checks-the-committed-pages` | `gotest` | schema-test addenda --check exits 0 against the repository's pages and 1 naming a missing page, and refuses a stray argument | `package: ./tools/schema-test`<br>`test: TestTheAddendaVerbChecksTheCommittedPages` | the Go test passes | `tools/schema-test/main_test.go:188` |
 | `none.unit.tooling.schema-test.the-addenda-verb-writes-every-page-and-removes-the-stale` | `gotest` | schema-test addenda writes every generated page, removes a stale one, and stops naming the page on a failed write or remove | `package: ./tools/schema-test`<br>`test: TestTheAddendaVerbWritesEveryPageAndRemovesTheStale` | the Go test passes | `tools/schema-test/main_test.go:213` |
 | `none.unit.tooling.schema-test.the-command-exits-non-zero-on-every-adapter-fault` | `gotest` | Go test TestTheCommandExitsNonZeroOnEveryAdapterFault in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheCommandExitsNonZeroOnEveryAdapterFault` | the Go test passes | `tools/schema-test/main_test.go:145` |
 | `none.unit.tooling.schema-test.the-command-exits-non-zero-on-every-fail-rule` | `gotest` | Go test TestTheCommandExitsNonZeroOnEveryFailRule in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheCommandExitsNonZeroOnEveryFailRule` | the Go test passes | `tools/schema-test/main_test.go:44` |
 | `none.unit.tooling.schema-test.write-ledger-keeps-the-skip-red-lines` | `gotest` | Go test TestWriteLedgerKeepsTheSkipRedLines in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestWriteLedgerKeepsTheSkipRedLines` | the Go test passes | `tools/schema-test/extract_test.go:44` |
+| `none.unit.tooling.schema-test.write-ledger-refuses-an-unreadable-tree` | `gotest` | Go test TestWriteLedgerRefusesAnUnreadableTree in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestWriteLedgerRefusesAnUnreadableTree` | the Go test passes | `tools/schema-test/extract_test.go:150` |
 
 #### `tooling` family `testreg`, 40 tests
 
@@ -83,21 +86,22 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.testreg.unrepresentable-is-data-not-a-name` | `gotest` | Go test TestUnrepresentableIsDataNotAName in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestUnrepresentableIsDataNotAName` | the Go test passes | `internal/testreg/run_test.go:162` |
 | `none.unit.tooling.testreg.wildcards-expand-to-an-explicit-list` | `gotest` | Go test TestWildcardsExpandToAnExplicitList in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestWildcardsExpandToAnExplicitList` | the Go test passes | `internal/testreg/run_test.go:279` |
 
-#### `tooling` family `testreg-extract`, 11 tests
+#### `tooling` family `testreg-extract`, 12 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.unit.tooling.testreg-extract.a-file-that-does-not-parse-is-named` | `gotest` | Go test TestAFileThatDoesNotParseIsNamed in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestAFileThatDoesNotParseIsNamed` | the Go test passes | `internal/testreg/extract/extract_test.go:124` |
-| `none.unit.tooling.testreg-extract.a-new-test-without-a-row-is-named` | `gotest` | Go test TestANewTestWithoutARowIsNamed in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestANewTestWithoutARowIsNamed` | the Go test passes | `internal/testreg/extract/extract_test.go:280` |
-| `none.unit.tooling.testreg-extract.a-skip-red-line-stays-while-its-skip-does` | `gotest` | Go test TestASkipRedLineStaysWhileItsSkipDoes in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestASkipRedLineStaysWhileItsSkipDoes` | the Go test passes | `internal/testreg/extract/extract_test.go:251` |
-| `none.unit.tooling.testreg-extract.check-holds-the-repository-the-registry-and-the-ledger-exactly` | `gotest` | Go test TestCheckHoldsTheRepositoryTheRegistryAndTheLedgerExactly in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestCheckHoldsTheRepositoryTheRegistryAndTheLedgerExactly` | the Go test passes | `internal/testreg/extract/extract_test.go:160` |
-| `none.unit.tooling.testreg-extract.every-test-is-a-row-or-in-the-ledger` | `gotest` | Go test TestEveryTestIsARowOrInTheLedger in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestEveryTestIsARowOrInTheLedger` | the Go test passes | `internal/testreg/extract/extract_test.go:345` |
-| `none.unit.tooling.testreg-extract.extract-finds-every-kind` | `gotest` | Go test TestExtractFindsEveryKind in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestExtractFindsEveryKind` | the Go test passes | `internal/testreg/extract/extract_test.go:81` |
-| `none.unit.tooling.testreg-extract.extract-refuses-a-non-root` | `gotest` | Go test TestExtractRefusesANonRoot in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestExtractRefusesANonRoot` | the Go test passes | `internal/testreg/extract/extract_test.go:147` |
-| `none.unit.tooling.testreg-extract.ledger-counts-what-is-unmoved` | `gotest` | Go test TestLedgerCountsWhatIsUnmoved in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestLedgerCountsWhatIsUnmoved` | the Go test passes | `internal/testreg/extract/extract_test.go:318` |
-| `none.unit.tooling.testreg-extract.read-ledger-refuses-a-bad-line` | `gotest` | Go test TestReadLedgerRefusesABadLine in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestReadLedgerRefusesABadLine` | the Go test passes | `internal/testreg/extract/extract_test.go:296` |
-| `none.unit.tooling.testreg-extract.skip-red-lines-are-held-to-their-skips` | `gotest` | Go test TestSkipRedLinesAreHeldToTheirSkips in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestSkipRedLinesAreHeldToTheirSkips` | the Go test passes | `internal/testreg/extract/extract_test.go:222` |
-| `none.unit.tooling.testreg-extract.the-ledger-only-shrinks` | `gotest` | Go test TestTheLedgerOnlyShrinks in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestTheLedgerOnlyShrinks` | the Go test passes | `internal/testreg/extract/extract_test.go:198` |
+| `none.unit.tooling.testreg-extract.a-file-that-does-not-parse-is-named` | `gotest` | Go test TestAFileThatDoesNotParseIsNamed in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestAFileThatDoesNotParseIsNamed` | the Go test passes | `internal/testreg/extract/extract_test.go:126` |
+| `none.unit.tooling.testreg-extract.a-new-test-without-a-row-is-named` | `gotest` | Go test TestANewTestWithoutARowIsNamed in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestANewTestWithoutARowIsNamed` | the Go test passes | `internal/testreg/extract/extract_test.go:309` |
+| `none.unit.tooling.testreg-extract.a-skip-red-line-stays-while-its-skip-does` | `gotest` | Go test TestASkipRedLineStaysWhileItsSkipDoes in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestASkipRedLineStaysWhileItsSkipDoes` | the Go test passes | `internal/testreg/extract/extract_test.go:254` |
+| `none.unit.tooling.testreg-extract.check-holds-the-repository-the-registry-and-the-ledger-exactly` | `gotest` | Go test TestCheckHoldsTheRepositoryTheRegistryAndTheLedgerExactly in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestCheckHoldsTheRepositoryTheRegistryAndTheLedgerExactly` | the Go test passes | `internal/testreg/extract/extract_test.go:162` |
+| `none.unit.tooling.testreg-extract.every-test-is-a-row-or-in-the-ledger` | `gotest` | Go test TestEveryTestIsARowOrInTheLedger in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestEveryTestIsARowOrInTheLedger` | the Go test passes | `internal/testreg/extract/extract_test.go:374` |
+| `none.unit.tooling.testreg-extract.extract-finds-every-kind` | `gotest` | Go test TestExtractFindsEveryKind in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestExtractFindsEveryKind` | the Go test passes | `internal/testreg/extract/extract_test.go:83` |
+| `none.unit.tooling.testreg-extract.extract-refuses-a-non-root` | `gotest` | Go test TestExtractRefusesANonRoot in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestExtractRefusesANonRoot` | the Go test passes | `internal/testreg/extract/extract_test.go:149` |
+| `none.unit.tooling.testreg-extract.ledger-counts-what-is-unmoved` | `gotest` | Go test TestLedgerCountsWhatIsUnmoved in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestLedgerCountsWhatIsUnmoved` | the Go test passes | `internal/testreg/extract/extract_test.go:347` |
+| `none.unit.tooling.testreg-extract.read-ledger-refuses-a-bad-line` | `gotest` | Go test TestReadLedgerRefusesABadLine in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestReadLedgerRefusesABadLine` | the Go test passes | `internal/testreg/extract/extract_test.go:325` |
+| `none.unit.tooling.testreg-extract.skip-red-lines-are-held-to-their-skips` | `gotest` | Go test TestSkipRedLinesAreHeldToTheirSkips in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestSkipRedLinesAreHeldToTheirSkips` | the Go test passes | `internal/testreg/extract/extract_test.go:224` |
+| `none.unit.tooling.testreg-extract.the-ledger-only-shrinks` | `gotest` | Go test TestTheLedgerOnlyShrinks in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestTheLedgerOnlyShrinks` | the Go test passes | `internal/testreg/extract/extract_test.go:200` |
+| `none.unit.tooling.testreg-extract.what-git-ignores-is-not-a-test` | `gotest` | Go test TestWhatGitIgnoresIsNotATest in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestWhatGitIgnoresIsNotATest` | the Go test passes | `internal/testreg/extract/extract_test.go:398` |
 
 #### `tooling` family `verify-bitphase`, 5 tests
 

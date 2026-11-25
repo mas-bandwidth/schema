@@ -23,7 +23,8 @@ const LedgerPath = "test/registry/unmoved.tsv"
 // extract finds in that test, and its reason names the red the skip hides and
 // the measurement that found it. The driver has no skip verdict, so the line
 // stays until the skip is gone: Check holds its count to the extract, and
-// KeepsSkipReds refuses a line that leaves while its skip is still there.
+// KeepsSkipReds refuses a line that is added, grows, or leaves while its
+// skip is still reached (a renamed or moved test takes its line along).
 const KindSkipRed = "skip-red"
 
 // SkipRedPlace is the place a skip-red line names for a Go test.
@@ -149,7 +150,7 @@ func Check(res *Result, reg *testreg.Registry, ledger []LedgerLine) []string {
 			n, ok := skips[l.Dir]
 			switch {
 			case !ok:
-				problems = append(problems, fmt.Sprintf("%s:%d: %s %s names a Go test the repository does not hold: write the line for the test that now holds the skip, or delete it with the test", LedgerPath, l.Line, l.Kind, l.Dir))
+				problems = append(problems, fmt.Sprintf("%s:%d: %s %s names a Go test the repository does not hold: if the test was renamed or moved, set the place to its new name; if it was deleted, delete the line", LedgerPath, l.Line, l.Kind, l.Dir))
 			case n == 0:
 				problems = append(problems, fmt.Sprintf("%s:%d: %s %s counts %d skips, and the test has none: its skip is gone, so delete the line", LedgerPath, l.Line, l.Kind, l.Dir, l.Count))
 			case n != l.Count:
@@ -234,27 +235,125 @@ func SkipReds(ledger []LedgerLine) []LedgerLine {
 	return out
 }
 
-// KeepsSkipReds holds the skip-red lines to the ledger they replace (main's):
-// a line may leave only when its test's skips are gone, or the test is. A
-// skip that hides a red never leaves the account while it still skips.
-func KeepsSkipReds(old, now []LedgerLine, res *Result) []string {
-	kept := map[string]bool{}
-	for _, l := range now {
-		if l.Kind == KindSkipRed {
-			kept[l.Dir] = true
-		}
+// KeepsSkipReds holds the skip-red lines to the ledger they replace (main's
+// ledger old, read against main's tree before; res is this tree). A line is
+// never added and never grows. It may leave only when its test's skips are
+// gone, or its test is gone and no test reaches its skips any more. A test
+// renamed or moved takes its line with it: the line under the new place is a
+// carry, not an addition, when the new test reaches a skip the old one
+// reached (the same file and condition) and counts no more skips. A skip is
+// told apart from its line number, which edits move, by its file and its
+// condition. Without before, a line whose test is gone cannot be told from a
+// rename, so it is refused.
+func KeepsSkipReds(old, now []LedgerLine, before, res *Result) []string {
+	was, is := map[string]LedgerLine{}, map[string]LedgerLine{}
+	for _, l := range SkipReds(old) {
+		was[l.Dir] = l
+	}
+	for _, l := range SkipReds(now) {
+		is[l.Dir] = l
 	}
 	skips := skipSites(res)
+	nowAt := skipKeys(res)
+	var beforeAt map[string]map[string]bool
+	if before != nil {
+		beforeAt = skipKeys(before)
+	}
+	shares := func(a, b map[string]bool) string {
+		var hit []string
+		for k := range a {
+			if b[k] {
+				hit = append(hit, k)
+			}
+		}
+		sort.Strings(hit)
+		if len(hit) == 0 {
+			return ""
+		}
+		return hit[0]
+	}
 	var problems []string
-	for _, l := range SkipReds(old) {
-		if kept[l.Dir] {
+	carried := map[string]bool{}
+	for _, l := range SkipReds(now) {
+		b, ok := was[l.Dir]
+		if ok {
+			if l.Count > b.Count {
+				problems = append(problems, fmt.Sprintf("%s:%d: %s %s grew from %d to %d skips: the ledger only shrinks, so add no skip to a test that hides a red", LedgerPath, l.Line, l.Kind, l.Dir, b.Count, l.Count))
+			}
 			continue
 		}
-		if n := skips[l.Dir]; n > 0 {
-			problems = append(problems, fmt.Sprintf("%s: %s %s left the ledger, and the test still has %d skips: a skip that hides a red stays counted until the skip is gone", LedgerPath, l.Kind, l.Dir, n))
+		from := ""
+		for _, d := range SkipReds(old) {
+			if _, stays := is[d.Dir]; stays || carried[d.Dir] || l.Count > d.Count {
+				continue
+			}
+			if _, exists := skips[d.Dir]; exists {
+				continue
+			}
+			if shares(beforeAt[d.Dir], nowAt[l.Dir]) != "" {
+				from = d.Dir
+				break
+			}
+		}
+		if from == "" {
+			problems = append(problems, fmt.Sprintf("%s:%d: %s %s is a new ledger line: the ledger only shrinks, so remove the skip and fix the red it hides", LedgerPath, l.Line, l.Kind, l.Dir))
+			continue
+		}
+		carried[from] = true
+	}
+	for _, l := range SkipReds(old) {
+		if _, kept := is[l.Dir]; kept || carried[l.Dir] {
+			continue
+		}
+		if n, ok := skips[l.Dir]; ok {
+			if n > 0 {
+				problems = append(problems, fmt.Sprintf("%s: %s %s left the ledger, and the test still has %d skips: a skip that hides a red stays counted until the skip is gone", LedgerPath, l.Kind, l.Dir, n))
+			}
+			continue
+		}
+		if before == nil {
+			problems = append(problems, fmt.Sprintf("%s: %s %s left the ledger with its test, and without main's tree (--since) a removal cannot be told from a rename: pass --since", LedgerPath, l.Kind, l.Dir))
+			continue
+		}
+		var by []string
+		for place, at := range nowAt {
+			if site := shares(beforeAt[l.Dir], at); site != "" {
+				by = append(by, place+" (at "+site+")")
+			}
+		}
+		sort.Strings(by)
+		if len(by) > 0 {
+			problems = append(problems, fmt.Sprintf("%s: %s %s left the ledger with its test, and its skip is still reached by %s: a renamed or moved test takes its line, so set the line's place to the test that holds the skip", LedgerPath, l.Kind, l.Dir, strings.Join(by, ", ")))
 		}
 	}
 	return problems
+}
+
+// skipKeys is every Go test's skips, each as "file condition": its place in
+// the source less the line number.
+func skipKeys(res *Result) map[string]map[string]bool {
+	out := map[string]map[string]bool{}
+	for _, it := range res.Items {
+		if it.Kind != KindGoTest {
+			continue
+		}
+		for _, g := range it.Gates {
+			site, ok := strings.CutPrefix(g, "skip: ")
+			if !ok {
+				continue
+			}
+			pos, cond, _ := strings.Cut(site, " ")
+			if i := strings.LastIndex(pos, ":"); i >= 0 {
+				pos = pos[:i]
+			}
+			place := SkipRedPlace(it.Dir, it.Name)
+			if out[place] == nil {
+				out[place] = map[string]bool{}
+			}
+			out[place][strings.TrimSpace(pos+" "+cond)] = true
+		}
+	}
+	return out
 }
 
 func names(its []Item, n int) string {
@@ -271,7 +370,7 @@ func names(its []Item, n int) string {
 
 // Shrinks holds a ledger to the one it replaces (main's): no line may count
 // more than it did, and no place may be added. A new test gets a registry
-// row, never a ledger line.
+// row, never a ledger line. Skip-red lines are held by KeepsSkipReds.
 func Shrinks(old, now []LedgerLine) []string {
 	before := map[string]LedgerLine{}
 	for _, l := range old {
@@ -279,12 +378,11 @@ func Shrinks(old, now []LedgerLine) []string {
 	}
 	var problems []string
 	for _, l := range now {
+		if l.Kind == KindSkipRed {
+			continue // KeepsSkipReds holds these
+		}
 		b, ok := before[l.key()]
 		switch {
-		case !ok && l.Kind == KindSkipRed:
-			problems = append(problems, fmt.Sprintf("%s:%d: %s %s is a new ledger line: the ledger only shrinks, so remove the skip and fix the red it hides", LedgerPath, l.Line, l.Kind, l.Dir))
-		case l.Count > b.Count && l.Kind == KindSkipRed:
-			problems = append(problems, fmt.Sprintf("%s:%d: %s %s grew from %d to %d skips: the ledger only shrinks, so add no skip to a test that hides a red", LedgerPath, l.Line, l.Kind, l.Dir, b.Count, l.Count))
 		case !ok:
 			problems = append(problems, fmt.Sprintf("%s:%d: %s %s is a new ledger line: the ledger only shrinks, so give its %d tests registry rows", LedgerPath, l.Line, l.Kind, l.Dir, l.Count))
 		case l.Count > b.Count:

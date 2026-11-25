@@ -61,6 +61,9 @@ func extractCmd(args []string, stdout io.Writer) error {
 	}
 	ledgerPath := filepath.Join(*root, extract.LedgerPath)
 	if *write {
+		if len(res.Unparsed) > 0 {
+			return fmt.Errorf("--write-ledger: %d files the extract could not read, first %s: %s; a ledger written now would miscount", len(res.Unparsed), res.Unparsed[0].File, res.Unparsed[0].Reason)
+		}
 		// the unmoved lines are counted again; the skip-red lines are
 		// measurements, not counts, so they carry over as they are
 		lines := extract.Ledger(res, reg, plan(reg))
@@ -83,20 +86,20 @@ func extractCmd(args []string, stdout io.Writer) error {
 		return err
 	}
 	problems := extract.Check(res, reg, ledger)
+	var before *extract.Result
+	if *since != "" {
+		if before, err = extract.Extract(*since); err != nil {
+			return fmt.Errorf("--since %s: %w", *since, err)
+		}
+		problems = append(problems, extract.NewWithoutRows(before, res, reg)...)
+	}
 	if *shrinks != "" {
 		old, err := extract.LoadLedger(*shrinks)
 		if err != nil {
 			return err
 		}
 		problems = append(problems, extract.Shrinks(old, ledger)...)
-		problems = append(problems, extract.KeepsSkipReds(old, ledger, res)...)
-	}
-	if *since != "" {
-		before, err := extract.Extract(*since)
-		if err != nil {
-			return fmt.Errorf("--since %s: %w", *since, err)
-		}
-		problems = append(problems, extract.NewWithoutRows(before, res, reg)...)
+		problems = append(problems, extract.KeepsSkipReds(old, ledger, before, res)...)
 	}
 	if len(problems) > 0 {
 		var b strings.Builder

@@ -206,9 +206,11 @@ The driver has no skip verdict. So when a test moves in, each of these facts
 becomes either its tier or a tool its runner must carry.
 
 Every test the extract finds is either a registry row or counted in the unmoved
-ledger, [`test/registry/unmoved.tsv`](../test/registry/unmoved.tsv). A ledger
-line is a kind, a place, an exact count, the layer that moves those tests in,
-and the reason they wait. Two checks hold this:
+ledger, [`test/registry/unmoved.tsv`](../test/registry/unmoved.tsv). The extract
+reads the files git tracks or would track: what git ignores (build output, a
+build's lock files, scratch) is not a test. A ledger line is a kind, a place,
+an exact count, the layer that moves those tests in, and the reason they wait.
+Two checks hold this:
 
 - `TestEveryTestIsARowOrInTheLedger` (unit tier, every pull request) holds the
   repository, the registry and the ledger to each other exactly. It goes red on:
@@ -228,12 +230,18 @@ extract finds in that test. Its reason names the red the skip hides and the run
 that measured it. Check holds the count to the extract, so the line must
 shrink as the test's skips go, and be deleted when the last one goes. Against
 main's ledger, a `skip-red` line may not be added or grow, and it may not leave
-while its test still skips. A skip that hides a red is therefore never a silent
-pass.
+while its test still skips. A test renamed or moved takes its line along: set
+the place to the new name. The line may leave with its test only when no test
+reaches its skips (the same file and condition) any more. A skip that hides a
+red is therefore never a silent pass. The extract sees only the skips a test
+reaches through its own package; a skip inside another package's helper (for
+example `slowtest`) is not counted, so such a red cannot be ledgered until
+that helper's skip moves into the test.
 
 `schema-test extract --json` prints every test, one JSON line each.
 `--write-ledger` rewrites the ledger to what is unmoved now, and keeps every
-`skip-red` line as it is. Use it only when tests move in or go away.
+`skip-red` line as it is. It refuses to write while any file does not parse.
+Use it only when tests move in or go away.
 
 ## Adding a test
 
