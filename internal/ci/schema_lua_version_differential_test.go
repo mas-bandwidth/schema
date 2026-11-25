@@ -1,13 +1,13 @@
 // The LUA VERSION DIFFERENTIAL's static half (make/schema-lua-version-
-// differential.mk; .github/workflows/schema-lua-version-differential.yml).
+// differential.mk; the differential and its control are nightly registry rows).
 //
 // The gate itself is a make target whose property is its exit status: it builds
 // the four official interpreters and runs the shared tables conformance corpus
 // under each. That is heavy and runs nightly. What rides every push is the
 // shape this file holds: the four pins and their sha256s, the loud refusal for
 // the versions the generated output cannot run on, the planted-divergence
-// negative control, and the workflow's split into a fast static job and a
-// scheduled heavy job.
+// negative control. The heavy target and its control run as nightly registry
+// rows (TestRetiredWorkflowsAreRegistryRows).
 package ci
 
 import (
@@ -87,42 +87,5 @@ func TestLuaVersionDifferentialNegativeControlCreatesBuildDir(t *testing.T) {
 	}
 	if mkdir > redirect {
 		t.Errorf("the negative control creates build/ after the log redirect; the clean-checkout run fails before the differential")
-	}
-}
-
-// TestLuaVersionDifferentialWorkflowIsSplitByCost holds the workflow to the
-// owner's CI rule: the heavy differential and its negative control are on the
-// nightly schedule/dispatch only, and the push/pull-request job is the static
-// Go test, which needs no interpreter and no network.
-func TestLuaVersionDifferentialWorkflowIsSplitByCost(t *testing.T) {
-	t.Parallel()
-	root := repoRoot(t)
-	data, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "schema-lua-version-differential.yml"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	body := string(data)
-	for _, want := range []string{
-		"schedule:",
-		"cron:",
-		"workflow_dispatch:",
-		"go test ./internal/ci -run 'LuaVersionDifferential'",
-		"make schema-lua-version-differential\n",
-		"make schema-lua-version-differential-negative-control",
-		"github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'",
-		"github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)",
-	} {
-		if !strings.Contains(body, want) {
-			t.Errorf("schema-lua-version-differential.yml does not carry %q", want)
-		}
-	}
-	// The heavy targets must not sit under the push/pull_request condition.
-	// Each job block is small enough to read between `name:` lines; the
-	// static job is the only one allowed to run on a push.
-	for _, block := range strings.Split(body, "\n  static:")[1:] {
-		before, _, _ := strings.Cut(block, "\n  differential:")
-		if strings.Contains(before, "make schema-lua-version-differential") {
-			t.Error("the static (push/pull_request) job runs the heavy differential")
-		}
 	}
 }

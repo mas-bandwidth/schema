@@ -8,7 +8,9 @@
 # deleted. Files are checked in parallel; nothing here shares state.
 #
 # usage: cpp-clean-format.sh <ratchet-file> <census|check> <tree>...
-# env:   CLANG_FORMAT, JOBS, OUT (scratch dir)
+# env:   CLANG_FORMAT, JOBS, OUT (scratch dir), SHARD (K/N: judge only the files
+#        make/checks/shard-filter.sh puts in shard K of N, and only their
+#        ratchet lines; empty: every file)
 set -eu -o pipefail
 ratchet=$1
 mode=$2
@@ -21,7 +23,10 @@ style="file:$(pwd)/.clang-format"
 export CLANG_FORMAT style
 
 mkdir -p "$OUT/format"
-find "$@" \( -name '*.h' -o -name '*.cpp' \) | sort > "$OUT/format/files.txt"
+shard=${SHARD-}
+# the whole gate's files are the universe every shard assigns from
+find "$@" \( -name '*.h' -o -name '*.cpp' \) | sort > "$OUT/format/all.txt"
+sh "$here/shard-filter.sh" "$shard" "$OUT/format/all.txt" < "$OUT/format/all.txt" > "$OUT/format/files.txt"
 [ -s "$OUT/format/files.txt" ] || { echo "tables-cpp-clean: no generated C++ under $*"; exit 1; }
 
 # one line per drifting file
@@ -30,7 +35,7 @@ xargs -P "$JOBS" -n 1 sh -c '"$CLANG_FORMAT" --style="$style" "$1" | cmp -s "$1"
 
 if [ "$mode" = census ]; then cat "$OUT/format/drift.txt"; exit 0; fi
 
-sed -e '/^#/d' -e '/^$/d' "$ratchet" | sort > "$OUT/format/allowed.txt"
+sed -e '/^#/d' -e '/^$/d' "$ratchet" | sh "$here/shard-filter.sh" "$shard" "$OUT/format/all.txt" | sort > "$OUT/format/allowed.txt"
 bad=0
 comm -13 "$OUT/format/allowed.txt" "$OUT/format/drift.txt" | while read -r f; do
 	echo "tables-cpp-clean: clang-format drift in $f, which $ratchet does not list (the list only shrinks)"
@@ -46,4 +51,4 @@ comm -23 "$OUT/format/allowed.txt" "$OUT/format/drift.txt" | while read -r f; do
 done > "$OUT/format/gone.txt"
 if [ -s "$OUT/format/gone.txt" ]; then head -40 "$OUT/format/gone.txt"; bad=1; fi
 [ $bad -eq 0 ] || exit 1
-echo "C++: clang-format clean over $*, $(wc -l < "$OUT/format/drift.txt" | tr -d ' ') table-emitter files still on the ratchet"
+echo "C++: clang-format clean over $*${shard:+ (shard $shard)}: $(wc -l < "$OUT/format/files.txt" | tr -d ' ') files checked, $(wc -l < "$OUT/format/drift.txt" | tr -d ' ') table-emitter files still on the ratchet"

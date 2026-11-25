@@ -1,6 +1,6 @@
 name: dist pins
 description: >
-  Puts the named interpreter pins (any of lua, luau, goose, lobster) at the
+  Puts the named interpreter pins (any of lua, luau, goose, lobster, squirrel) at the
   dist/ paths their make files name. On a hosted runner it runs
   `make dist-<pin>`, exactly as before. On a fleet runner the pin is built or
   fetched by that same target ONCE per runner, after the target's own sha256
@@ -13,7 +13,7 @@ description: >
   two-minute per-commit cap.
 inputs:
   pins:
-    description: space-separated pins to install (lua luau goose lobster)
+    description: space-separated pins to install (lua luau goose lobster squirrel)
     required: true
 runs:
   using: composite
@@ -32,7 +32,8 @@ runs:
             luau)    sha=$(var LUAU_ZIP_SHA);    dir=$(var LUAU_DIST) ;;
             goose)   sha=$(var GOOSE_TGZ_SHA);   dir=$(var GOOSE_DIST) ;;
             lobster) sha=$(var LOBSTER_ZIP_SHA); dir=$(var LOBSTER_DIST) ;;
-            *) echo "::error::dist-pins knows no pin '$pin' (lua luau goose lobster)"; exit 1 ;;
+            squirrel) sha=$(var SQUIRREL_SHA256); dir="$PWD/$(var SQUIRREL_DIR)" ;;
+            *) echo "::error::dist-pins knows no pin '$pin' (lua luau goose lobster squirrel)"; exit 1 ;;
           esac
           if [ -z "$sha" ] || [ -z "$dir" ]; then
             echo "::error::dist-pins: make names no sha256 or dist path for $pin"; exit 1

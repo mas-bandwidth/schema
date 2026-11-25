@@ -114,42 +114,10 @@ func TestLuaNightlyFuzzLane(t *testing.T) {
 		}
 	}
 
-	// The workflow: nightly and dispatch only, the heavy run on the schedule,
-	// the fast replay and control on dispatch, and the pinned interpreter built
-	// rather than assumed.
-	wf := readCI(t, root, ".github/workflows/schema-lua-nightly-fuzz.yml")
-	for _, want := range []string{
-		"cron:", "workflow_dispatch:",
-		"make dist-lua",
-		"make schema-lua-fuzz-replay",
-		"make schema-lua-fuzz-negative-control",
-		"make schema-lua-nightly-fuzz LUA_FUZZ_SECONDS=600",
-		"github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'",
-	} {
-		if !strings.Contains(wf, want) {
-			t.Errorf("the lua fuzz workflow does not carry %q", want)
-		}
-	}
-	for _, p := range luaHeavyLaneTriggerProblems(wf) {
-		t.Errorf("schema-lua-nightly-fuzz.yml: %s", p)
-	}
-	if len(luaHeavyLaneTriggerProblems(strings.Replace(wf, "\non:\n", "\non:\n  pull_request:\n", 1))) == 0 {
-		t.Error("nightly-only control: a restored pull_request trigger was not refused")
-	}
-	// The heavy run is guarded by the schedule/dispatch condition; the fast
-	// job must not invoke it.
-	at := strings.Index(wf, "  nightly:")
-	if at < 0 {
-		t.Fatal("the lua fuzz workflow has no nightly job")
-	}
-	nightly := wf[at:]
-	if !strings.Contains(nightly, "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'") {
-		t.Error("the nightly job is not guarded by schedule/workflow_dispatch")
-	}
-	fast := wf[strings.Index(wf, "  fast:"):strings.Index(wf, "  nightly:")]
-	if strings.Contains(fast, "make schema-lua-nightly-fuzz ") {
-		t.Error("the fast lane runs the heavy nightly target; replay only")
-	}
+	// The replay, the control and the ten-minute run (LUA_FUZZ_SECONDS=600,
+	// seeded from the run) are nightly registry rows
+	// (TestRetiredWorkflowsAreRegistryRows): the workflow that ran them is
+	// retired.
 }
 
 // luaFuzzHarness is the harness the make include embeds as base64 and decodes

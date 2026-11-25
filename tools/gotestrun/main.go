@@ -1,6 +1,6 @@
 // Command gotestrun runs `go test` and refuses a run that did not run a test.
 //
-//	go run ./tools/gotestrun [-each] [go test arguments...]
+//	go run ./tools/gotestrun [-each] [-red] [-dir DIR] [go test arguments...]
 //	make test-run PKG=./internal/foo RUN='^TestBar$'
 //
 // WHY. `go test -run <pattern>` that matches no test prints "ok" and exits 0
@@ -21,6 +21,27 @@
 //     opt-out. A test that is not to run is left out at the root (the one
 //     driver's query, tools/schema-test), never skipped below it.
 //
+// THE MAKE RECIPES' go test. Every recipe of the make files runs its go test
+// through this ($(GO_TEST) and $(GO_TEST_RED), Makefile): go test's plain
+// output prints nothing for a skipped test, so a recipe that ran it bare
+// could read a skip as a pass. -dir runs go test in DIR (the recipe's own
+// directory; the wrapper builds gotestrun in the checkout's root). Under -red,
+// gotestrun failing before a verdict is exit 0, NOT RED, since a control reads
+// any non-zero exit as its sabotage caught. The text written is what go test -v
+// prints, but that a package's result line ("ok  <pkg>  0.1s") carries
+// " (go test -json, read by gotestrun)", so a log of go test's bare plain
+// output still reads as one (tools/schema-test's make adapter refuses it).
+//
+// -v is dropped (-json writes what -v would); with -list the verdict is go
+// test's exit status, since a list runs no test.
+//
+// -red is for a negative control's go test, the run the control expects to
+// go red: it exits 1 (red) only when a test reported a failure and no test
+// skipped. A run in which nothing failed, a test skipped, or no test ran (a
+// build that did not compile, a -run that matched nothing) exits 0, so the
+// control that wanted red fails loudly instead of reading the skip, or the
+// broken build, as its sabotage caught.
+//
 // -each is for `./...` or several packages when every one of them is expected
 // to hold a test; without it the count is over the whole run, which is what a
 // -run pattern aimed at one package needs.
@@ -29,7 +50,7 @@
 // pass is not a run of the test.
 //
 // A trailing summary line is always printed: "gotestrun: ran N, passed P,
-// skipped S, failed F across K package(s)".
+// failed F across K package(s)", with ", skipped S" after P when S > 0.
 package main
 
 import (
@@ -41,9 +62,12 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"regexp"
 	"slices"
 	"sort"
 	"strings"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func main() {
@@ -67,7 +91,18 @@ type tally struct {
 	// skippedTests names every test ("package test") that skipped, in the
 	// order go test reported the skips.
 	skippedTests []string
+	// readErr is why the stream could not be read to its end, or nil.
+	readErr error
+	// missing is the first output line saying a test lacked its toolchain or
+	// pin (missingTool), or "".
+	missing string
 }
+
+// missingTool is a test failing because what it runs is absent, not because
+// what it checks is wrong: internal/slowtest.Missing's words, and the pinned
+// interpreters' (pyrun, rubyrun, luarun). A negative control red for this
+// reason caught no sabotage.
+var missingTool = regexp.MustCompile(regexp.QuoteMeta(slowtest.MissingWords) + `|does not resolve: \S+ is absent`)
 
 // read consumes a `go test -json` stream. Text that is not an event (a
 // toolchain message before the first package) is passed to text unchanged.
@@ -89,7 +124,10 @@ func read(in io.Reader, text io.Writer) tally {
 			}
 		}
 		if e.Action == "output" {
-			_, _ = io.WriteString(text, e.Output) // errdiscard: best-effort mirror of go test output; tally decides the verdict
+			if t.missing == "" && missingTool.MatchString(e.Output) {
+				t.missing = strings.TrimSpace(e.Output)
+			}
+			_, _ = io.WriteString(text, markResult(e)) // errdiscard: best-effort mirror of go test output; tally decides the verdict
 			continue
 		}
 		if e.Test == "" {
@@ -108,6 +146,7 @@ func read(in io.Reader, text io.Writer) tally {
 			t.failed++
 		}
 	}
+	t.readErr = sc.Err()
 	return t
 }
 
@@ -142,26 +181,96 @@ func verdict(exit int, t tally, each bool) (int, string) {
 	return 0, ""
 }
 
+// redVerdict decides a run a negative control expects to go red: red (1)
+// only when a test reported a failure, none skipped and none lacked its
+// toolchain; otherwise green (0), with why it is no red, so the control fails.
+func redVerdict(exit int, t tally) (int, string) {
+	switch {
+	case t.skipped > 0:
+		return 0, fmt.Sprintf("NOT RED: %d test(s) skipped, so the run proved nothing", t.skipped)
+	case t.missing != "":
+		return 0, fmt.Sprintf("NOT RED: a test lacked what it runs, so its red is no sabotage caught: %s", t.missing)
+	case t.ran == 0:
+		return 0, fmt.Sprintf("NOT RED: no test ran (go test exited %d): a build that failed or a -run that matched nothing is no red a test gave", exit)
+	case t.failed == 0:
+		return 0, fmt.Sprintf("NOT RED: no test failed (go test exited %d)", exit)
+	}
+	return 1, ""
+}
+
+// resultLine is a package's result line in go test's plain output.
+var resultLine = regexp.MustCompile(`^(ok|FAIL|\?)\s+\S+\s+(\d+(\.\d+)?s|\(cached\)|\[no test files\])`)
+
+// markResult is an output event's text, a package result line marked as
+// read from -json.
+func markResult(e event) string {
+	if e.Test != "" || !resultLine.MatchString(e.Output) {
+		return e.Output
+	}
+	return strings.TrimSuffix(e.Output, "\n") + " (go test -json, read by gotestrun)\n"
+}
+
+// summary is the run's last line. A count of skips is in it only when some
+// test skipped: the harnesses that read this log (testreg.RefuseSkips) refuse
+// any line that reports a skip, and "skipped 0" reports none, so it is not
+// written; "skipped 3" is, and is refused.
 func summary(t tally) string {
-	return fmt.Sprintf("gotestrun: ran %d, passed %d, skipped %d, failed %d across %d package(s)",
-		t.ran, t.passed, t.skipped, t.failed, len(t.perPackage))
+	skipped := ""
+	if t.skipped > 0 {
+		skipped = fmt.Sprintf(", skipped %d", t.skipped)
+	}
+	return fmt.Sprintf("gotestrun: ran %d, passed %d%s, failed %d across %d package(s)",
+		t.ran, t.passed, skipped, t.failed, len(t.perPackage))
 }
 
 func run(args []string, stdout, stderr io.Writer) int {
-	each := false
-	if len(args) > 0 && args[0] == "-each" {
-		each, args = true, args[1:]
+	each, red, dir := false, false, ""
+	for len(args) > 0 {
+		switch {
+		case args[0] == "-each":
+			each, args = true, args[1:]
+			continue
+		case args[0] == "-red":
+			red, args = true, args[1:]
+			continue
+		case args[0] == "-dir" && len(args) > 1:
+			dir, args = args[1], args[2:]
+			continue
+		}
+		break
 	}
-	if len(args) == 0 {
-		_, _ = fmt.Fprintln(stderr, "usage: gotestrun [-each] <go test arguments, e.g. -run '^TestX$' ./pkg>")
+	// broken is gotestrun failing before a verdict. Under -red it is exit 0,
+	// NOT RED: a control reads any non-zero exit as its sabotage caught, so a
+	// wrapper that could not run must never look like one.
+	broken := func(format string, a ...any) int {
+		msg := fmt.Sprintf(format, a...)
+		if red {
+			_, _ = fmt.Fprintf(stderr, "gotestrun: NOT RED: gotestrun could not run, so nothing was proved: %s\n", msg)
+			return 0
+		}
+		_, _ = fmt.Fprintf(stderr, "gotestrun: %s\n", msg)
 		return 2
 	}
-	for _, a := range args {
-		if a == "-json" || a == "-v" || a == "-list" || strings.HasPrefix(a, "-list=") || a == "-c" || strings.HasPrefix(a, "-exec") || a == "-n" {
-			_, _ = fmt.Fprintf(stderr, "gotestrun: %s is not for this wrapper (it already runs go test -json)\n", a)
-			return 2
-		}
+	if len(args) == 0 {
+		return broken("usage: gotestrun [-each] [-red] [-dir DIR] <go test arguments, e.g. -run '^TestX$' ./pkg>")
 	}
+	// -v is what -json writes already; -list lists and runs nothing, so its
+	// verdict is go test's own exit status
+	list := false
+	kept := args[:0:0]
+	for _, a := range args {
+		if a == "-json" || a == "-c" || strings.HasPrefix(a, "-exec") || a == "-n" {
+			return broken("%s is not for this wrapper (it already runs go test -json)", a)
+		}
+		if a == "-v" {
+			continue
+		}
+		if a == "-list" || strings.HasPrefix(a, "-list=") {
+			list = true
+		}
+		kept = append(kept, a)
+	}
+	args = kept
 	// a cached pass is not a run: a test that hands its input to a subprocess
 	// is not keyed on that input, so without -count=1 a stale "ok (cached)"
 	// stands after the input changed. A -count the caller named is kept.
@@ -172,23 +281,28 @@ func run(args []string, stdout, stderr io.Writer) int {
 		args = append([]string{"-count=1"}, args...)
 	}
 	cmd := exec.Command("go", append([]string{"test", "-json"}, args...)...)
+	cmd.Dir = dir
 	cmd.Stderr = stderr
 	pipe, err := cmd.StdoutPipe()
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "gotestrun: %v\n", err)
-		return 2
+		return broken("%v", err)
 	}
 	if err := cmd.Start(); err != nil {
-		_, _ = fmt.Fprintf(stderr, "gotestrun: %v\n", err)
-		return 2
+		return broken("%v", err)
 	}
 	t := read(pipe, stdout)
+	if t.readErr != nil {
+		// what go test still writes is drained, so it is not left blocked on
+		// a pipe nobody reads
+		_, _ = io.Copy(io.Discard, pipe) // errdiscard: the run is already broken; this only lets go test exit
+		_ = cmd.Wait()                   // errdiscard: as above
+		return broken("reading go test -json: %v", t.readErr)
+	}
 	exit := 0
 	if err := cmd.Wait(); err != nil {
 		var ee *exec.ExitError
 		if !errors.As(err, &ee) {
-			_, _ = fmt.Fprintf(stderr, "gotestrun: %v\n", err)
-			return 2
+			return broken("%v", err)
 		}
 		exit = ee.ExitCode()
 		if exit < 0 {
@@ -196,6 +310,15 @@ func run(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 	code, why := verdict(exit, t, each)
+	if red {
+		code, why = redVerdict(exit, t)
+	}
+	if list {
+		code, why = exit, ""
+		if exit != 0 {
+			why = fmt.Sprintf("go test -list exited %d", exit)
+		}
+	}
 	for _, n := range t.skippedTests {
 		_, _ = fmt.Fprintf(stderr, "SKIPPED %s\n", n)
 	}

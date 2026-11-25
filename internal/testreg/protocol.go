@@ -71,14 +71,45 @@ func FormatResult(r Result) string {
 	return ResultPrefix + string(b)
 }
 
-// skipWord finds a skip in a harness's log: there is no skipped verdict, and
-// a harness that says it skipped something has not run it.
-var skipWord = regexp.MustCompile(`(?i)\bskip(s|ped|ping)?\b`)
+// skipVerdicts find a skip VERDICT in a harness's log: there is no skipped
+// verdict, and a harness that says it skipped something has not run it. Only
+// a line that reports a skip counts, never the word inside a name or prose: a
+// case named conformance-blob-label-in-skipped-value, a vector named
+// message-skip-depth-at-limit and a summary of "0 skipped" report no skip.
+// A word is a name part when a letter, digit, '-', '_', '.' or '/' touches it.
+//
+//   - go test -json: an event whose Action is "skip";
+//   - a verdict marked SKIP in capitals (go test -v's "--- SKIP:", "SKIP: lua
+//     not found", "[SKIP]"), a TAP "# skip" in any case, a line that opens
+//     with skip, skipped or skipping, or the word after a colon, comma,
+//     semicolon or closing bracket ("x: skipped (no lua)", "lua not found,
+//     skipping", "[c] skipped");
+//   - a recognised summary with a non-zero skipped count ("3 skipped",
+//     "skipped: 2", "skips=1").
+var skipVerdicts = []*regexp.Regexp{
+	regexp.MustCompile(`"Action"\s*:\s*"skip"`),
+	regexp.MustCompile(`(^|[^\w./-])SKIP(PED)?([^\w./-]|$)`),
+	regexp.MustCompile(`(?i)^\s*(skip|skipped|skipping)(\s|$|:\s*[^\s0-9])`),
+	regexp.MustCompile(`(?i)#\s*skip([^\w./-]|$)`),
+	regexp.MustCompile(`(?i)[:,;\])]\s*(skip|skipped|skipping)([^\w./-]|\.?\s*$)`),
+	regexp.MustCompile(`(?i)(^|[^\w./-])0*[1-9][0-9]*\s+(tests?\s+)?skip(s|ped)?([^\w./-]|$)`),
+	regexp.MustCompile(`(?i)(^|[^\w./-])skip(s|ped)?\s*[:=]\s*0*[1-9]`),
+}
+
+// reportsASkip says whether one log line reports a skip verdict.
+func reportsASkip(l string) bool {
+	for _, re := range skipVerdicts {
+		if re.MatchString(l) {
+			return true
+		}
+	}
+	return false
+}
 
 // RefuseSkips is an error naming the first log line that reports a skip.
 func RefuseSkips(lines []string) error {
 	for _, l := range lines {
-		if skipWord.MatchString(l) {
+		if reportsASkip(l) {
 			return fmt.Errorf("the harness reported a skip, and nothing is ever skipped: %q", l)
 		}
 	}

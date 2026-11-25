@@ -16,7 +16,7 @@ gate. `conformance-cpp-positive-features` separately generates both binaries
 from those inputs with generated C++, asserts their native values and checks
 both wire and JSON bytes against the unchanged pins. The nightly artifact uses
 the C++ output after verifying that it matches the committed binary pins.
-`TestPopulatedFeatureWitnessNativePins` compares both representations without
+`TestPopulatedFeatureWitnessesMatchNativeGo` compares both representations without
 rewriting them. Its explicit `-update-feature-witnesses` flag is for reviewed
 fixture maintenance, never part of a normal gate or nightly run.
 

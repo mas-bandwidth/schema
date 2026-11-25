@@ -27,6 +27,15 @@ const priorManifest = "prior-connection p_past tblprior 0x01 ann.bin\n" +
 
 const priorStandIn = "printf 'p_past refused out_of_range\\np_inside 0a0b\\n'\n"
 
+// sharedAnswerParser is the one stdout-answer parser every stdout-answering
+// driver runs (test/conformance/answer-lines.pl, 7c5dda4eb0, which retired
+// moo/split.pl), named from the leg directory priorTree copies from.
+var sharedAnswerParser = filepath.Join("..", "answer-lines.pl")
+
+// lobsterAnswerMarker is the line the lobster driver reads answers after
+// (test/conformance/lobster/driver, marker; main.lobster, answer_marker).
+const lobsterAnswerMarker = "%%answers-begin%%"
+
 // priorTree is a scratch repository root holding the committed driver of leg
 // (and the extra committed files named), the manifest, and the fixtures it
 // names.
@@ -108,7 +117,7 @@ func mustPriorAnswers(t *testing.T, leg, out string) {
 
 func TestLuauDriverWritesPriorRefused(t *testing.T) {
 	t.Parallel()
-	dir, manifest, out := priorTree(t, "luau", "main.luau")
+	dir, manifest, out := priorTree(t, "luau", "main.luau", sharedAnswerParser)
 	luau := standIn(t, dir, "luau", priorStandIn)
 	runPriorDriver(t, dir, "luau", manifest, out, "LUAU="+luau)
 	mustPriorAnswers(t, "luau", out)
@@ -116,7 +125,7 @@ func TestLuauDriverWritesPriorRefused(t *testing.T) {
 
 func TestMooDriverWritesPriorRefused(t *testing.T) {
 	t.Parallel()
-	dir, manifest, out := priorTree(t, "moo", "main.moo", "stage.pl", "split.pl")
+	dir, manifest, out := priorTree(t, "moo", "main.moo", "stage.pl", sharedAnswerParser)
 	if err := os.MkdirAll(filepath.Join(dir, "gen", "tblprior"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +146,7 @@ func TestMooDriverWritesPriorRefused(t *testing.T) {
 
 func TestLobsterDriverWritesPriorRefused(t *testing.T) {
 	t.Parallel()
-	dir, manifest, out := priorTree(t, "lobster", "main.lobster")
+	dir, manifest, out := priorTree(t, "lobster", "main.lobster", "hooks.lobster", sharedAnswerParser)
 	unit := filepath.Join(dir, "units", "tblprior")
 	if err := os.MkdirAll(unit, 0o755); err != nil {
 		t.Fatal(err)
@@ -145,11 +154,15 @@ func TestLobsterDriverWritesPriorRefused(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(unit, "schema_tables.lobster"), nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	// the stand-in answers `list` with the surface and every unit run with the
-	// two lines; the driver joins each prior-message to its unit
-	lobster := standIn(t, dir, "lobster", `for a; do last=$prev; prev=$a; done
-if [ "$last" = list ]; then echo message-prior; exit 0; fi
-[ "$prev" = tblprior ] || { echo "stand-in: ran unit $prev" >&2; exit 1; }
+	// the driver runs `lobster <program> -- <root> <manifest> <surface> <unit>
+	// <case>` (<case> is - for every case) and reads only what follows its
+	// answer marker; the stand-in answers `list` with the surface and every
+	// unit run with the two lines; the driver joins each prior-message to its
+	// unit
+	lobster := standIn(t, dir, "lobster", `for a; do surface=$unit; unit=$arg; arg=$a; done
+echo '`+lobsterAnswerMarker+`'
+if [ "$surface" = list ]; then echo message-prior; exit 0; fi
+[ "$unit" = tblprior ] || { echo "stand-in: ran unit $unit" >&2; exit 1; }
 `+priorStandIn)
 	runPriorDriver(t, dir, "lobster", manifest, out, "LOBSTER="+lobster, "LOBSTER_CONFORMANCE_UNITS=units")
 	mustPriorAnswers(t, "lobster", out)
