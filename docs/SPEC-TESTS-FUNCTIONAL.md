@@ -5,7 +5,7 @@ Part of the specification: every test of tier `functional`, from the test regist
 
 **Tier functional:** uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it.
 
-Functional tests every language answers: 2560. Language-free tests: 2286.
+Functional tests every language answers: 2560. Language-free tests: 2290.
 
 Run this tier for a language with `schema-test run --tier functional --lang L`, one test with `schema-test run <full name>`.
 
@@ -4823,6 +4823,20 @@ one schema version reads or writes another's data.
 |---|---|---|---|---|---|
 | `none.functional.evolution.luautable.luau-fixed-unlawful-corpus` | `gotest` | Go test TestLuauFixedUnlawfulCorpus in ./internal/codegen/luautable | `package: ./internal/codegen/luautable`<br>`test: TestLuauFixedUnlawfulCorpus` | the Go test passes | `internal/codegen/luautable/fixed_unlawful_corpus_test.go:86` |
 | `none.functional.evolution.luautable.luau-fixed-versioning-kind-moved` | `gotest` | Go test TestLuauFixedVersioningKindMoved in ./internal/codegen/luautable | `package: ./internal/codegen/luautable`<br>`test: TestLuauFixedVersioningKindMoved` | the Go test passes | `internal/codegen/luautable/fixedversioning_kind_moved_test.go:14` |
+
+#### `evolution` family `pythontable`, 2 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.evolution.pythontable.python-fixed-r14` | `gotest` | R14 for python: the shared vector (a union tag grown 1 -&gt; 8) compiles whole through compilePythonFixedPlan, every reach inside the writer's 5-byte record, the writer's tag read at its 1-byte width; the plan run on the leg's runtime lands tag 1 in 8 bytes and the u32 whole, tag 0 as None, a forged tag 2 refuses out\_of\_range; twins tag 1 and 2 (Go test TestPythonFixedR14 in ./internal/codegen/pythontable) | `package: ./internal/codegen/pythontable`<br>`test: TestPythonFixedR14` | the Go test passes | `internal/codegen/pythontable/fixed_r14_test.go:84` |
+| `none.functional.evolution.pythontable.python-fixed-r14-lineage` | `gotest` | R14's lineage lane for python: a 1-byte-tag lock entry generated into a build whose tag grew to 8 lays a ready plan and fixed\_load reads arm 1, None and refuses a forged tag 2 out\_of\_range (Go test TestPythonFixedR14Lineage in ./internal/codegen/pythontable) | `package: ./internal/codegen/pythontable`<br>`test: TestPythonFixedR14Lineage` | the Go test passes | `internal/codegen/pythontable/fixed_r14_test.go:199` |
+
+#### `evolution` family `rubytable`, 2 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.evolution.rubytable.ruby-fixed-r14` | `gotest` | R14 for ruby: the shared vector (a union tag grown 1 -&gt; 8) compiles whole through compileRubyFixedPlan, every reach inside the writer's 5-byte record, the writer's tag read at its 1-byte width; the plan run on the leg's runtime lands tag 1 in 8 bytes and the u32 whole, tag 0 as None, a forged tag 2 refuses out\_of\_range; twins tag 1 and 2 (Go test TestRubyFixedR14 in ./internal/codegen/rubytable) | `package: ./internal/codegen/rubytable`<br>`test: TestRubyFixedR14` | the Go test passes | `internal/codegen/rubytable/fixed_r14_test.go:86` |
+| `none.functional.evolution.rubytable.ruby-fixed-r14-lineage` | `gotest` | R14's lineage lane for ruby: a 1-byte-tag lock entry generated into a build whose tag grew to 8 lays a ready plan and fixed\_load reads arm 1, None and refuses a forged tag 2 out\_of\_range (Go test TestRubyFixedR14Lineage in ./internal/codegen/rubytable) | `package: ./internal/codegen/rubytable`<br>`test: TestRubyFixedR14Lineage` | the Go test passes | `internal/codegen/rubytable/fixed_r14_test.go:203` |
 
 #### `evolution` family `rusttable`, 2 tests
 
