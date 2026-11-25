@@ -12,7 +12,7 @@
 #include <stdio.h> // the text form: number formatting
 #include <stdlib.h> // the text form: exact number conversion
 #include <locale.h> // the text form: numbers convert in the "C" locale
-#if defined(__APPLE__)
+#if defined( __APPLE__ )
 #include <xlocale.h> // newlocale, uselocale
 #endif
 #include <string> // the hand-editable text form (§16.9)
