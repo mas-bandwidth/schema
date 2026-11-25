@@ -45,10 +45,12 @@
 //                names (unit.goose, which the shell driver copies from
 //                units/<unit>.goose, or the empty unit.goose beside this file),
 //                and through the flat value table for every other root
-// The cook's and the block form's surfaces are accel.goose's: the shell
-// driver runs that program for them.
+// The cook's and the block form's surfaces are accel_lib.goose's: this
+// program answers them in a `batch` (run_accel), and accel.goose answers them
+// one at a time and runs the block lead gate and the forgery fuzzer.
 import os;
 import .conformance_unit;
+import .accel_lib;
 import .unit;
 import .wire_load;
 import .wire_save;
@@ -1357,7 +1359,7 @@ fn main() {
         var k: i64 = 4;
         while k < argv.len {
             write_stdout(str("#surface ", argv[k], "\n"));
-            if !run_surface(argv[k], blines, argv[3]) { exit(2); }
+            if !run_surface(argv[k], blines, argv[3]) && !run_accel(argv[k], blines, argv[3]) { exit(2); }
             write_stdout(str("#done ", argv[k], "\n"));
             k += 1;
         }
