@@ -331,7 +331,7 @@ func (g *tableGen) pf(format string, args ...any) {
 // trailing `// comment` stays with the statement before it.
 func splitStatements(s string) []string {
 	var out []string
-	for _, line := range strings.Split(s, "\n") {
+	for line := range strings.SplitSeq(s, "\n") {
 		line = strings.TrimSpace(line)
 		depth := 0
 		start := 0
