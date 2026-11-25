@@ -140,16 +140,20 @@ func gooseErrs(t *testing.T, mk string) []string {
 
 // TestGooseFuzzPartsAreTheWholeGate: the two verify-goose-fuzz parts run every
 // pass of _verify-goose-fuzz, the unit passes over both slices; the whole
-// roster at the full mutant count runs nightly (leg-gates-nightly.yml).
+// roster at the full mutant count runs nightly (a registry row of tier
+// nightly runs make verify-goose-fuzz-whole, whose one prerequisite is
+// verify-goose-fuzz).
 func TestGooseFuzzPartsAreTheWholeGate(t *testing.T) {
 	t.Parallel()
 	mk := readRepoRel(t, "make/verify-vm.mk")
-	nightly := readRepoRel(t, ".github/workflows/leg-gates-nightly.yml")
 	if errs := gooseErrs(t, mk); len(errs) > 0 {
 		t.Errorf("the Goose fuzz parts are not the whole gate: %s", strings.Join(errs, "; "))
 	}
-	if !strings.Contains(nightly, "          make verify-goose-fuzz\n") {
-		t.Error("leg-gates-nightly.yml does not run the whole Goose fuzz gate (make verify-goose-fuzz)")
+	if row, ok := registryMakeRows(t, repoRoot(t))["verify-goose-fuzz-whole"]; !ok || row.Tier != "nightly" {
+		t.Errorf("no registry row of tier nightly runs the whole Goose fuzz gate (make verify-goose-fuzz-whole): %+v", row)
+	}
+	if !regexp.MustCompile(`(?m)^verify-goose-fuzz-whole: verify-goose-fuzz$`).MatchString(mk) {
+		t.Error("verify-goose-fuzz-whole is not exactly the whole gate (its one prerequisite verify-goose-fuzz)")
 	}
 	// PLANTED: part 2 without the retain pass.
 	planted := strings.Replace(mk, "\t\t_verify-goose-fuzz-plain _verify-goose-fuzz-retain _verify-goose-fuzz-message \\\n\t\tGOOSE_FUZZ_SLICE=2/2", "\t\t_verify-goose-fuzz-plain _verify-goose-fuzz-message \\\n\t\tGOOSE_FUZZ_SLICE=2/2", 1)

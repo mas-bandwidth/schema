@@ -5,7 +5,7 @@ Part of the specification: every test of tier `functional`, from the test regist
 
 **Tier functional:** uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it.
 
-Functional tests every language answers: 2560. Language-free tests: 2303.
+Functional tests every language answers: 2560. Language-free tests: 2306.
 
 Run this tier for a language with `schema-test run --tier functional --lang L`, one test with `schema-test run <full name>`.
 
@@ -2936,7 +2936,7 @@ generated source compiles and is clean.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.functional.codegen.cpptable.every-generated-table-header-compiles-standalone` | `gotest` | Go test TestEveryGeneratedTableHeaderCompilesStandalone in ./internal/codegen/cpptable | `package: ./internal/codegen/cpptable`<br>`test: TestEveryGeneratedTableHeaderCompilesStandalone` | the Go test passes | `internal/codegen/cpptable/standalone_headers_test.go:31` |
+| `none.functional.codegen.cpptable.every-generated-table-header-compiles-standalone` | `gotest` | Go test TestEveryGeneratedTableHeaderCompilesStandalone in ./internal/codegen/cpptable; compiles the units of testdata/cpp-standalone too | `inputs.files` (227 bytes, held in the registry row's `inputs.files`)<br>`package: ./internal/codegen/cpptable`<br>`test: TestEveryGeneratedTableHeaderCompilesStandalone` | the Go test passes | `internal/codegen/cpptable/standalone_headers_test.go:31` |
 
 ### Type `golden`
 
@@ -4792,11 +4792,12 @@ one schema version reads or writes another's data.
 | `none.functional.evolution.gotable.fixed-versioning-kind-moved` | `gotest` | Go test TestFixedVersioningKindMoved in ./internal/codegen/gotable | `package: ./internal/codegen/gotable`<br>`test: TestFixedVersioningKindMoved` | the Go test passes | `internal/codegen/gotable/fixedversioning_kind_moved_test.go:14` |
 | `none.functional.evolution.gotable.json-walk-generated-go-tables` | `gotest` | every unit of the generated Go tables tree (build/tables-generated-go, which the row makes first) emits one generic JSON walker matching its reference profile; a run without the tree fails naming it (Go test TestJsonWalkGeneratedGoTables in ./internal/codegen/gotable) | `make: build/tables-generated-go/.stamp`<br>`package: ./internal/codegen/gotable`<br>`test: TestJsonWalkGeneratedGoTables` | the Go test passes | `internal/codegen/gotable/jsonwalk_test.go:329` |
 
-#### `evolution` family `javatable`, 2 tests
+#### `evolution` family `javatable`, 3 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.functional.evolution.javatable.fixed-versioning-kind-moved` | `gotest` | Go test TestFixedVersioningKindMoved in ./internal/codegen/javatable | `package: ./internal/codegen/javatable`<br>`test: TestFixedVersioningKindMoved` | the Go test passes | `internal/codegen/javatable/fixedversioning_kind_moved_test.go:17` |
+| `none.functional.evolution.javatable.java-compiled-plan-deprecated-variant-reads-default` | `gotest` | a deprecated enum variant reads as the default on the compiled plan (SPEC-TABLES 2.15): old.schema writes Old, current.schema retired it, the scalar reads Fierce and the array element None, nothing counted unknown (Go test TestJavaCompiledPlanDeprecatedVariantReadsDefault in ./internal/codegen/javatable; needs an external toolchain) | `inputs.files` (145 bytes, held in the registry row's `inputs.files`)<br>`package: ./internal/codegen/javatable`<br>`test: TestJavaCompiledPlanDeprecatedVariantReadsDefault` | the Go test passes | `internal/codegen/javatable/enum_deprecated_plan_test.go:20` |
 | `none.functional.evolution.javatable.java-fixed-unlawful-corpus` | `gotest` | Go test TestJavaFixedUnlawfulCorpus in ./internal/codegen/javatable | `package: ./internal/codegen/javatable`<br>`test: TestJavaFixedUnlawfulCorpus` | the Go test passes | `internal/codegen/javatable/fixed_unlawful_corpus_test.go:84` |
 
 #### `evolution` family `jstable`, 2 tests
@@ -4983,6 +4984,13 @@ a negative control: a named test run against a deliberately broken build must co
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.functional.plant.roadmap.update-paragraph-control` | `plant` | the roadmap gate refuses an "X update:" paragraph put back | `file: tools/roadmap/roadmap.mk`<br>`group: (excluded)`<br>`make: roadmap-check-negative-control` | the target exits 0 with no skip in its log | `tools/roadmap/roadmap.mk` |
+
+#### `plant` family `rubytable`, 2 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.plant.rubytable.ruby-fixed-proof-shapes-control-rows` | `gotest` | the negative control of every shape row of TestRubyFixedProofShapes: each sabotaged row fails (Go test TestRubyFixedProofShapesControlRows in ./internal/codegen/rubytable; needs the pinned Ruby interpreters and C++ fixed-form oracle) | `package: ./internal/codegen/rubytable`<br>`test: TestRubyFixedProofShapesControlRows` | the Go test passes | `internal/codegen/rubytable/fixed_proof_shapes_test.go:36` |
+| `none.functional.plant.rubytable.ruby-fixed-proof-unions-optionals-control-rows` | `gotest` | the negative control of every union and optional row of TestRubyFixedProofUnionsOptionals: each sabotaged row fails (Go test TestRubyFixedProofUnionsOptionalsControlRows in ./internal/codegen/rubytable; needs the pinned interpreters and live C++ fixed-form oracle) | `package: ./internal/codegen/rubytable`<br>`test: TestRubyFixedProofUnionsOptionalsControlRows` | the Go test passes | `internal/codegen/rubytable/fixed_proof_unions_optionals_test.go:109` |
 
 #### `plant` family `schema-dart-strict-analyze`, 1 test
 

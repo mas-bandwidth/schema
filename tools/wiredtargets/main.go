@@ -20,9 +20,11 @@
 //     takes every leg of internal/inputfamilies.Legs, since the leg matrices
 //     are computed by the plan job), and any other `${{ ... }}` or shell
 //     variable inside a word matched as a wildcard over one target name;
-//   - the run field of every .github/nightly-fast-rows.txt row (ci-fast.yml
-//     runs them per pull request) and every .github/nightly-gates.txt row
-//     (certify.yml runs them every night);
+//   - the run field of every .github/nightly-fast-rows.txt row;
+//   - every make target a test/registry/registry.jsonl row runs: a make
+//     row's target (each language's, for a {lang} target), a plant row's
+//     control and a per-language row's make gates (CI runs the registry:
+//     ci-fast.yml its pr group, schema-nightly.yml its nightly group);
 //   - every target in a `targets` list of make/negative-controls.json and
 //     make/negative-controls.d/*.json, which the negative-control jobs run
 //     (never one in `excluded`, the list of controls they do not run);
@@ -70,6 +72,8 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/internal/inputfamilies"
+	"github.com/mas-bandwidth/schema/v2/internal/testreg"
+	"github.com/mas-bandwidth/schema/v2/internal/testreg/extract"
 )
 
 // legs is every leg a computed leg matrix can name: the registry's, never a copy.
@@ -468,7 +472,7 @@ type sources struct {
 	workflows     []string // workflow and composite action texts
 	workflowNames []string
 	nightlyRows   string   // .github/nightly-fast-rows.txt
-	nightlyGates  string   // .github/nightly-gates.txt
+	rowTargets    []string // the make targets test/registry/registry.jsonl's rows run
 	controls      []string // negative-control JSON documents
 	legJSON       []string // test/conformance/<lang>/ci.json, the leg.yml matrix
 	legJSONNames  []string
@@ -498,11 +502,9 @@ func readSources(root string) (sources, error) {
 		return s, err
 	}
 	s.nightlyRows = string(b)
-	b, err = os.ReadFile(filepath.Join(root, ".github", "nightly-gates.txt"))
-	if err != nil {
+	if s.rowTargets, err = registryTargets(filepath.Join(root, filepath.FromSlash(testreg.DefaultPath))); err != nil {
 		return s, err
 	}
-	s.nightlyGates = string(b)
 	legFiles, _ := filepath.Glob(filepath.Join(root, "test", "conformance", "*", "ci.json")) // errdiscard: Glob fails only on a malformed pattern, and this is a constant
 	for _, f := range legFiles {
 		b, err := os.ReadFile(f)
@@ -525,6 +527,45 @@ func readSources(root string) (sources, error) {
 		s.controlNames = append(s.controlNames, rel)
 	}
 	return s, nil
+}
+
+// registryTargets is every make target a registry row runs: a make row's
+// target ({lang} expanded for each language of the registry), a plant row's
+// make control, and each language's make gates of a per-language row.
+func registryTargets(path string) ([]string, error) {
+	reg, err := testreg.Load(path)
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, t := range reg.Tests {
+		if gates, ok, err := extract.LangMakeGates(t.Inputs); ok {
+			if err != nil {
+				return nil, fmt.Errorf("%s:%d: %s: %w", reg.Path, t.Line, t.Key, err)
+			}
+			for _, gs := range gates {
+				for _, g := range gs {
+					out = append(out, g.Target)
+				}
+			}
+			continue
+		}
+		var in struct{ Target, Make string }
+		if json.Unmarshal(t.Inputs, &in) != nil {
+			continue
+		}
+		switch {
+		case t.Adapter == "plant" && in.Make != "":
+			out = append(out, in.Make)
+		case in.Target != "" && strings.Contains(in.Target, testreg.LangPlaceholder):
+			for _, l := range reg.LangNames() {
+				out = append(out, strings.ReplaceAll(in.Target, testreg.LangPlaceholder, l))
+			}
+		case t.Adapter == "make" && in.Target != "":
+			out = append(out, in.Target)
+		}
+	}
+	return out, nil
 }
 
 // result is what the check found.
@@ -582,9 +623,13 @@ func check(db database, src sources, ledger []ledgerEntry) (result, error) {
 			}
 		}
 	}
+	for _, t := range src.rowTargets {
+		if _, ok := db.rules[t]; ok {
+			addRoots(testreg.DefaultPath, []string{t})
+		}
+	}
 	for _, reg := range []struct{ name, text string }{
 		{".github/nightly-fast-rows.txt", src.nightlyRows},
-		{".github/nightly-gates.txt", src.nightlyGates},
 	} {
 		for line := range strings.SplitSeq(reg.text, "\n") {
 			if strings.HasPrefix(strings.TrimSpace(line), "#") {
@@ -771,7 +816,7 @@ func main() {
 		return
 	}
 	for _, n := range res.unwired {
-		fmt.Printf("UNWIRED %s: a test or control target no workflow, nightly-fast row, nightly gate or negative-control group reaches; wire it into CI (heavy: a .github/nightly-gates.txt row), or ledger it in %s with the reason it runs by hand\n", n, *ledgerFile)
+		fmt.Printf("UNWIRED %s: a test or control target no workflow, nightly-fast row, registry row or negative-control group reaches; wire it into CI (heavy: a make row of tier nightly in test/registry/registry.jsonl), or ledger it in %s with the reason it runs by hand\n", n, *ledgerFile)
 	}
 	for _, s := range res.stale {
 		fmt.Printf("STALE LEDGER %s %s\n", *ledgerFile, s)

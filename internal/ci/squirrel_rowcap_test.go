@@ -1,11 +1,6 @@
 package ci
 
 import (
-	"os"
-	"path/filepath"
-	"regexp"
-	"strconv"
-	"strings"
 	"testing"
 )
 
@@ -20,15 +15,27 @@ func recordedPartOverCap(seconds float64) bool {
 	return seconds > squirrelPerCommitCapSeconds
 }
 
+// squirrelCardParts are the squirrel card leg's parts, each a registry row
+// of its own, with the wall each measured as one row of the retired
+// leg-gates-nightly.yml (row-seconds test 93, conformance 103, negative 104;
+// the three negative controls together were the 104 s part). One leg-gate
+// row ran dist-squirrel, the facade tests, the card corpus and the three
+// negative controls together and measured 132 s wall (run 42599413205, job
+// 129101577381).
+var squirrelCardParts = map[string]float64{
+	"cards-squirrel-test":                                 93,
+	"cards-squirrel-conformance":                          103,
+	"cards-squirrel-conformance-negative-control":         104,
+	"cards-squirrel-conformance-upgrade-negative-control": 104,
+	"cards-squirrel-conformance-hash-negative-control":    104,
+}
+
 // TestSquirrelCardRowsFitTheCap holds the fixed-form squirrel card work to
-// the per-commit cap. One leg-gate row ran dist-squirrel, the facade tests,
-// the card corpus and the three negative controls together and measured 132 s
-// wall (run 42599413205, job 129101577381). The three parts each record a
-// time, and a part recorded past the cap fails here.
-//
-// The rows were ci-fast.yml's dispatch-only leg gates; they run every night
-// in leg-gates-nightly.yml now (2026-11-24), and keeping each part inside the
-// cap keeps it ready to return per pull request (docs/CI-TIERS.md, held).
+// the per-commit cap: each part is a registry row of its own (no row runs
+// them together), each part's recorded wall and each row's measured seconds
+// fit the cap. The rows run every night (schema-nightly.yml); keeping each
+// inside the cap keeps it ready to return per pull request
+// (docs/CI-TIERS.md, held).
 func TestSquirrelCardRowsFitTheCap(t *testing.T) {
 	if !recordedPartOverCap(132) {
 		t.Fatal("PLANTED: a recorded 132 s per-commit part must exceed the cap")
@@ -36,60 +43,23 @@ func TestSquirrelCardRowsFitTheCap(t *testing.T) {
 	if recordedPartOverCap(104) {
 		t.Fatal("PLANTED: a recorded 104 s part fits the cap")
 	}
-
-	body, err := os.ReadFile(filepath.Join(repoRoot(t), ".github", "workflows", "leg-gates-nightly.yml"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := string(body)
-	re := regexp.MustCompile(`(?m)^[ \t]*# row-seconds (\S+) ([0-9]+(?:\.[0-9]+)?)\s*$`)
-	got := map[string]float64{}
-	for _, m := range re.FindAllStringSubmatch(text, -1) {
-		n, err := strconv.ParseFloat(m[2], 64)
-		if err != nil {
-			t.Fatalf("row-seconds %s: %v", m[1], err)
+	rows := registryMakeRows(t, repoRoot(t))
+	seen := map[string]string{}
+	for target, recorded := range squirrelCardParts {
+		if recordedPartOverCap(recorded) {
+			t.Errorf("part %s records %.0f s, past the %d s per-commit cap", target, recorded, squirrelPerCommitCapSeconds)
 		}
-		if _, dup := got[m[1]]; dup {
-			t.Errorf("row-seconds %s is recorded twice", m[1])
+		row, ok := rows[target]
+		if !ok {
+			t.Errorf("no registry row runs make %s: the squirrel card part is run by nothing", target)
+			continue
 		}
-		got[m[1]] = n
-		if recordedPartOverCap(n) {
-			t.Errorf("row %s records %.0f s, past the %d s per-commit cap", m[1], n, squirrelPerCommitCapSeconds)
+		if prev, dup := seen[row.Key]; dup {
+			t.Errorf("row %s runs both %s and %s: the parts are rows of their own", row.Key, prev, target)
 		}
-	}
-	for _, part := range []string{"test", "conformance", "negative"} {
-		if _, ok := got[part]; !ok {
-			t.Errorf("leg-gates-nightly.yml records no row-seconds for the squirrel %s part", part)
+		seen[row.Key] = target
+		if recordedPartOverCap(row.Seconds) {
+			t.Errorf("row %s measured %.0f s, past the %d s per-commit cap", row.Key, row.Seconds, squirrelPerCommitCapSeconds)
 		}
-	}
-
-	const marker = "squirrel) make dist-squirrel"
-	i := strings.Index(text, marker)
-	if i < 0 {
-		t.Fatal("leg-gates-nightly.yml has no squirrel fixed-form arm")
-	}
-	arm := text[i:]
-	if end := strings.Index(arm, ";;"); end >= 0 {
-		arm = arm[:end]
-	}
-	negatives := []string{
-		"cards-squirrel-conformance-negative-control",
-		"cards-squirrel-conformance-upgrade-negative-control",
-		"cards-squirrel-conformance-hash-negative-control",
-	}
-	inArm := 0
-	for _, target := range negatives {
-		if strings.Contains(arm, target) {
-			inArm++
-		}
-		if !strings.Contains(text, target) {
-			t.Errorf("leg-gates-nightly.yml no longer runs %s", target)
-		}
-	}
-	if inArm == len(negatives) {
-		t.Error("the leg-gate squirrel arm still runs all three card negative controls in one row")
-	}
-	if !strings.Contains(text, "leg-gate-squirrel:") {
-		t.Error("leg-gates-nightly.yml has no leg-gate-squirrel job for the split rows")
 	}
 }

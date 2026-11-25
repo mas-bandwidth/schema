@@ -297,12 +297,13 @@ Nothing fails silently, in the tests or in the tools that run them:
 - **No test or control target is left out of CI.** `go run ./tools/wiredtargets`
   (a few seconds, in `ci-fast.yml`'s `lint-fast`) reads `make -pq` and refuses
   by name any target named like a test, gate or control that no workflow,
-  nightly-fast row, nightly gate, negative-control group, leg `ci.json` or
+  nightly-fast row, registry row, negative-control group, leg `ci.json` or
   planner reaches. Only what runs counts: a comment, a job or workflow that
   only `workflow_dispatch` starts, and a control's `excluded` entry are not
   wiring.
-  A heavy gate is wired as a row of `.github/nightly-gates.txt`, which
-  `certify.yml` runs every night. Only a target run by hand on purpose goes in
+  A heavy gate is wired as a make row of tier nightly in
+  `test/registry/registry.jsonl`, which `schema-nightly.yml` runs every
+  night. Only a target run by hand on purpose goes in
   `.github/unwired-targets.txt`, with its reason; a line there that excuses
   nothing is refused too.
 

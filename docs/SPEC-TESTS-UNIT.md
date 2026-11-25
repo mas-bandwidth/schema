@@ -2437,7 +2437,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.gotestreport.many-red-skips-are-counted-past-the-first-lines` | `gotest` | Go test TestManyRedSkipsAreCountedPastTheFirstLines in ./tools/gotestreport | `package: ./tools/gotestreport`<br>`test: TestManyRedSkipsAreCountedPastTheFirstLines` | the Go test passes | `tools/gotestreport/skips_test.go:69` |
 | `none.unit.tooling.gotestreport.slowest-skips-subtests-and-output-only-lines` | `gotest` | Go test TestSlowestSkipsSubtestsAndOutputOnlyLines in ./tools/gotestreport | `package: ./tools/gotestreport`<br>`test: TestSlowestSkipsSubtestsAndOutputOnlyLines` | the Go test passes | `tools/gotestreport/main_test.go:178` |
 | `none.unit.tooling.gotestreport.the-package-budget` | `gotest` | Go test TestThePackageBudget in ./tools/gotestreport | `package: ./tools/gotestreport`<br>`test: TestThePackageBudget` | the Go test passes | `tools/gotestreport/main_test.go:147` |
-| `none.unit.tooling.gotestreport.the-record-corpus` | `gotest` | Go test TestTheRecordCorpus in ./tools/gotestreport | `package: ./tools/gotestreport`<br>`test: TestTheRecordCorpus` | the Go test passes | `tools/gotestreport/records_test.go:70` |
+| `none.unit.tooling.gotestreport.the-record-corpus` | `gotest` | Go test TestTheRecordCorpus in ./tools/gotestreport; the records are the go test -json runs of testdata/plants/ledgertest (testdata/recordgen writes them) | `inputs.files` (119 bytes, held in the registry row's `inputs.files`)<br>`package: ./tools/gotestreport`<br>`test: TestTheRecordCorpus` | the Go test passes | `tools/gotestreport/records_test.go:70` |
 
 #### `tooling` family `gotestrows`, 21 tests
 
@@ -2964,7 +2964,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.negativecontrols.the-leg-runs-the-manifest-and-not-a-typed-list` | `gotest` | Go test TestTheLegRunsTheManifestAndNotATypedList in ./tools/negativecontrols | `package: ./tools/negativecontrols`<br>`test: TestTheLegRunsTheManifestAndNotATypedList` | the Go test passes | `tools/negativecontrols/negativecontrols_test.go:119` |
 | `none.unit.tooling.negativecontrols.toolchain-pins-match-the-conformance-registry` | `gotest` | Go test TestToolchainPinsMatchTheConformanceRegistry in ./tools/negativecontrols | `package: ./tools/negativecontrols`<br>`test: TestToolchainPinsMatchTheConformanceRegistry` | the Go test passes | `tools/negativecontrols/negativecontrols_test.go:600` |
 
-#### `tooling` family `nightlyrows`, 7 tests
+#### `tooling` family `nightlyrows`, 6 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -2974,7 +2974,6 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.nightlyrows.parse-refuses-by-line` | `gotest` | Go test TestParseRefusesByLine in ./internal/nightlyrows | `package: ./internal/nightlyrows`<br>`test: TestParseRefusesByLine` | the Go test passes | `internal/nightlyrows/nightlyrows_test.go:52` |
 | `none.unit.tooling.nightlyrows.select` | `gotest` | Go test TestSelect in ./internal/nightlyrows | `package: ./internal/nightlyrows`<br>`test: TestSelect` | the Go test passes | `internal/nightlyrows/nightlyrows_test.go:24` |
 | `none.unit.tooling.nightlyrows.selection-is-unchanged` | `gotest` | Go test TestSelectionIsUnchanged in ./tools/nightlyrows | `package: ./tools/nightlyrows`<br>`test: TestSelectionIsUnchanged` | the Go test passes | `tools/nightlyrows/main_test.go:106` |
-| `none.unit.tooling.nightlyrows.the-nightly-gates-registry-plans` | `gotest` | Go test TestTheNightlyGatesRegistryPlans in ./tools/nightlyrows | `package: ./tools/nightlyrows`<br>`test: TestTheNightlyGatesRegistryPlans` | the Go test passes | `tools/nightlyrows/main_test.go:133` |
 
 #### `tooling` family `packet`, 6 tests
 
@@ -3028,13 +3027,13 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.recipescan.early-exit-needs-pipefail` | `gotest` | Go test TestEarlyExitNeedsPipefail in ./internal/recipescan | `package: ./internal/recipescan`<br>`test: TestEarlyExitNeedsPipefail` | the Go test passes | `internal/recipescan/scan_test.go:194` |
 | `none.unit.tooling.recipescan.early-exit-read-all-is-green` | `gotest` | Go test TestEarlyExitReadAllIsGreen in ./internal/recipescan | `package: ./internal/recipescan`<br>`test: TestEarlyExitReadAllIsGreen` | the Go test passes | `internal/recipescan/scan_test.go:185` |
 | `none.unit.tooling.recipescan.early-exit-reader-in-condition-is-red` | `gotest` | Go test TestEarlyExitReaderInConditionIsRed in ./internal/recipescan | `package: ./internal/recipescan`<br>`test: TestEarlyExitReaderInConditionIsRed` | the Go test passes | `internal/recipescan/scan_test.go:168` |
-| `none.unit.tooling.recipescan.extensionless-script-found-by-shebang` | `gotest` | Go test TestExtensionlessScriptFoundByShebang in ./internal/recipescan | `package: ./internal/recipescan`<br>`test: TestExtensionlessScriptFoundByShebang` | the Go test passes | `internal/recipescan/scan_test.go:120` |
+| `none.unit.tooling.recipescan.extensionless-script-found-by-shebang` | `gotest` | Go test TestExtensionlessScriptFoundByShebang in ./internal/recipescan; scans the tree internal/recipescan/testdata/plants/tree | `inputs.files` (183 bytes, held in the registry row's `inputs.files`)<br>`package: ./internal/recipescan`<br>`test: TestExtensionlessScriptFoundByShebang` | the Go test passes | `internal/recipescan/scan_test.go:120` |
 | `none.unit.tooling.recipescan.loud-ok-needs-a-reason-and-a-finding` | `gotest` | Go test TestLoudOKNeedsAReasonAndAFinding in ./internal/recipescan | `package: ./internal/recipescan`<br>`test: TestLoudOKNeedsAReasonAndAFinding` | the Go test passes | `internal/recipescan/workflow_test.go:93` |
 | `none.unit.tooling.recipescan.shell-flags-root-is-red` | `gotest` | Go test TestShellFlagsRootIsRed in ./internal/recipescan | `package: ./internal/recipescan`<br>`test: TestShellFlagsRootIsRed` | the Go test passes | `internal/recipescan/scan_test.go:92` |
 | `none.unit.tooling.recipescan.shell-shebang` | `gotest` | Go test TestShellShebang in ./internal/recipescan | `package: ./internal/recipescan`<br>`test: TestShellShebang` | the Go test passes | `internal/recipescan/scan_test.go:137` |
-| `none.unit.tooling.recipescan.stamp-correct-is-green` | `gotest` | Go test TestStampCorrectIsGreen in ./internal/recipescan | `package: ./internal/recipescan`<br>`test: TestStampCorrectIsGreen` | the Go test passes | `internal/recipescan/scan_test.go:85` |
+| `none.unit.tooling.recipescan.stamp-correct-is-green` | `gotest` | Go test TestStampCorrectIsGreen in ./internal/recipescan; reads internal/recipescan/testdata/plants/stamp-correct.mk | `files: ["internal/recipescan/testdata/plants/stamp-correct.mk"]`<br>`package: ./internal/recipescan`<br>`test: TestStampCorrectIsGreen` | the Go test passes | `internal/recipescan/scan_test.go:85` |
 | `none.unit.tooling.recipescan.stamp-self-guard-is-red` | `gotest` | Go test TestStampSelfGuardIsRed in ./internal/recipescan | `package: ./internal/recipescan`<br>`test: TestStampSelfGuardIsRed` | the Go test passes | `internal/recipescan/scan_test.go:63` |
-| `none.unit.tooling.recipescan.stamp-touch-status-lost-is-red` | `gotest` | Go test TestStampTouchStatusLostIsRed in ./internal/recipescan | `package: ./internal/recipescan`<br>`test: TestStampTouchStatusLostIsRed` | the Go test passes | `internal/recipescan/scan_test.go:74` |
+| `none.unit.tooling.recipescan.stamp-touch-status-lost-is-red` | `gotest` | Go test TestStampTouchStatusLostIsRed in ./internal/recipescan; reads internal/recipescan/testdata/plants/stamp-touch-lost.mk | `files: ["internal/recipescan/testdata/plants/stamp-touch-lost.mk"]`<br>`package: ./internal/recipescan`<br>`test: TestStampTouchStatusLostIsRed` | the Go test passes | `internal/recipescan/scan_test.go:74` |
 | `none.unit.tooling.recipescan.subshell-swallow-is-red` | `gotest` | Go test TestSubshellSwallowIsRed in ./internal/recipescan | `package: ./internal/recipescan`<br>`test: TestSubshellSwallowIsRed` | the Go test passes | `internal/recipescan/workflow_test.go:84` |
 | `none.unit.tooling.recipescan.tree-has-no-gated-finding` | `gotest` | Go test TestTreeHasNoGatedFinding in ./internal/recipescan | `package: ./internal/recipescan`<br>`test: TestTreeHasNoGatedFinding` | the Go test passes | `internal/recipescan/scan_test.go:249` |
 | `none.unit.tooling.recipescan.tree-losing-pipefail-is-red` | `gotest` | Go test TestTreeLosingPipefailIsRed in ./internal/recipescan | `package: ./internal/recipescan`<br>`test: TestTreeLosingPipefailIsRed` | the Go test passes | `internal/recipescan/scan_test.go:258` |
@@ -3581,7 +3580,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.verify-tablegen.plant-tablegen-inverts-every-expected-answer` | `gotest` | Go test TestPlantTablegenInvertsEveryExpectedAnswer in ./test/verify-tablegen | `package: ./test/verify-tablegen`<br>`test: TestPlantTablegenInvertsEveryExpectedAnswer` | the Go test passes | `test/verify-tablegen/plant_test.go:12` |
 | `none.unit.tooling.verify-tablegen.sample-cases` | `gotest` | Go test TestSampleCases in ./test/verify-tablegen | `package: ./test/verify-tablegen`<br>`test: TestSampleCases` | the Go test passes | `test/verify-tablegen/sample_test.go:63` |
 
-#### `tooling` family `wiredtargets`, 7 tests
+#### `tooling` family `wiredtargets`, 8 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -3590,6 +3589,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.wiredtargets.cut-trailing-comment` | `gotest` | Go test TestCutTrailingComment in ./tools/wiredtargets | `package: ./tools/wiredtargets`<br>`test: TestCutTrailingComment` | the Go test passes | `tools/wiredtargets/main_test.go:200` |
 | `none.unit.tooling.wiredtargets.every-root-kind-reaches-its-gate` | `gotest` | Go test TestEveryRootKindReachesItsGate in ./tools/wiredtargets | `package: ./tools/wiredtargets`<br>`test: TestEveryRootKindReachesItsGate` | the Go test passes | `tools/wiredtargets/main_test.go:77` |
 | `none.unit.tooling.wiredtargets.only-scheduled-wiring-counts` | `gotest` | Go test TestOnlyScheduledWiringCounts in ./tools/wiredtargets | `package: ./tools/wiredtargets`<br>`test: TestOnlyScheduledWiringCounts` | the Go test passes | `tools/wiredtargets/main_test.go:142` |
+| `none.unit.tooling.wiredtargets.removing-a-registry-row-is-refused-by-name` | `gotest` | Go test TestRemovingARegistryRowIsRefusedByName in ./tools/wiredtargets | `package: ./tools/wiredtargets`<br>`test: TestRemovingARegistryRowIsRefusedByName` | the Go test passes | `tools/wiredtargets/main_test.go:104` |
 | `none.unit.tooling.wiredtargets.removing-a-wiring-is-refused-by-name` | `gotest` | Go test TestRemovingAWiringIsRefusedByName in ./tools/wiredtargets | `package: ./tools/wiredtargets`<br>`test: TestRemovingAWiringIsRefusedByName` | the Go test passes | `tools/wiredtargets/main_test.go:92` |
 | `none.unit.tooling.wiredtargets.scheduled-wiring-still-counts` | `gotest` | Go test TestScheduledWiringStillCounts in ./tools/wiredtargets | `package: ./tools/wiredtargets`<br>`test: TestScheduledWiringStillCounts` | the Go test passes | `tools/wiredtargets/main_test.go:174` |
 

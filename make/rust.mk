@@ -84,7 +84,7 @@ generated/rust/.stamp: bin/schema $(SCHEMAS)
 # and the install passes --no-self-update, so a nightly row never upgrades the
 # runner's own rustup (it did once, on vision, 2026-11-24).
 #
-# IT RUNS NIGHTLY (certify.yml nightly-gates row miri-rust, 2026-11-24; until then it was a
+# IT RUNS NIGHTLY (a registry row of tier nightly, 2026-11-24; until then it was a
 # by-hand gate no workflow ran): 51,940 mutants at the defaults measured 478 s
 # on arm64 macOS, which is not a per-push cost. What rides every push is the
 # NATIVE leg (tables-rust-fuzz), 409,746 mutants in 4.5 s at N=100000.

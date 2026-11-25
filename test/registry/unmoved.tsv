@@ -25,7 +25,7 @@ go-test	internal/codegen/goosetable	176	L5	per-language (goose) Go tests: goose'
 go-test	internal/codegen/gotable	378	L5	per-language (go) Go tests: go's adapter runs them when their families move in
 go-test	internal/codegen/gotable/fuzzunit	35	L5	per-language (go) Go tests: go's adapter runs them when their families move in
 go-test	internal/codegen/java	19	L5	per-language (java) Go tests: java's adapter runs them when their families move in
-go-test	internal/codegen/javatable	224	L5	per-language (java) Go tests: java's adapter runs them when their families move in
+go-test	internal/codegen/javatable	223	L5	per-language (java) Go tests: java's adapter runs them when their families move in
 go-test	internal/codegen/js	18	L5	per-language (js) Go tests: js's adapter runs them when their families move in
 go-test	internal/codegen/jstable	232	L5	per-language (js) Go tests: js's adapter runs them when their families move in
 go-test	internal/codegen/lobster	37	L5	per-language (lobster) Go tests: lobster's adapter runs them when their families move in
@@ -40,7 +40,7 @@ go-test	internal/codegen/mootable	239	L5	per-language (moo) Go tests: moo's adap
 go-test	internal/codegen/python	37	L5	per-language (python) Go tests: python's adapter runs them when their families move in
 go-test	internal/codegen/pythontable	518	L5	per-language (python) Go tests: python's adapter runs them when their families move in
 go-test	internal/codegen/ruby	17	L5	per-language (ruby) Go tests: ruby's adapter runs them when their families move in
-go-test	internal/codegen/rubytable	62	L5	per-language (ruby) Go tests: ruby's adapter runs them when their families move in
+go-test	internal/codegen/rubytable	60	L5	per-language (ruby) Go tests: ruby's adapter runs them when their families move in
 go-test	internal/codegen/rust	6	L5	per-language (rust) Go tests: rust's adapter runs them when their families move in
 go-test	internal/codegen/rusttable	227	L5	per-language (rust) Go tests: rust's adapter runs them when their families move in
 go-test	internal/codegen/squirrel	15	L5	per-language (squirrel) Go tests: squirrel's adapter runs them when their families move in
@@ -71,11 +71,10 @@ go-test	tools/treelock	1	L6	Go tests built only for another platform: a runner o
 make-target	Makefile	3	L3, L5, L6b, L7	make gates a per-PR job of another layer runs today (ci-policy: L3; go-test-touched and go-fixed-corpus: L5; lang-clean, lang-lint and generated-current: L6b), and the release workflow's publishing steps, which check nothing and never run under the driver (L7): each moves with its job
 make-target	make/go.mk	3	L3, L5, L6b, L7	make gates a per-PR job of another layer runs today (ci-policy: L3; go-test-touched and go-fixed-corpus: L5; lang-clean, lang-lint and generated-current: L6b), and the release workflow's publishing steps, which check nothing and never run under the driver (L7): each moves with its job
 negative-control	(excluded)	17	L6b, L7	the controls make/negative-controls.json excludes, each with its reason there (an alias, a parameterized worker, the body its wrapper calls, a leg that runs its own): none runs alone, so each moves in with the job that runs it
-workflow-job	.github/workflows/certify.yml	13	L7	workflow jobs: CI is generated from the registry
-workflow-job	.github/workflows/ci-fast.yml	7	L7	workflow jobs: CI is generated from the registry
+workflow-job	.github/workflows/certify.yml	11	L7	workflow jobs: CI is generated from the registry
+workflow-job	.github/workflows/ci-fast.yml	1	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/ci-full.yml	23	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/cla.yml	1	L7	workflow jobs: CI is generated from the registry
-workflow-job	.github/workflows/leg-gates-nightly.yml	6	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/leg.yml	2	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/lobster-fixed-proof-qualification.yml	2	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/nightly-conformance.yml	4	L7	workflow jobs: CI is generated from the registry
@@ -150,7 +149,6 @@ data-case	internal/codegen/javatable/testdata	1	L4	corpus data and harnesses: ea
 data-case	internal/codegen/javatable/testdata/cards	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	internal/codegen/javatable/testdata/compressed-float-f32	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	internal/codegen/javatable/testdata/count-below-min	3	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	internal/codegen/javatable/testdata/enum-deprecated-plan	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	internal/codegen/javatable/testdata/message-named-integer	3	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	internal/codegen/jstable/testdata	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	internal/codegen/jstable/testdata/blockbuild	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
@@ -240,10 +238,6 @@ data-case	internal/publicapi/testdata/client	2	L4	corpus data and harnesses: eac
 data-case	internal/publicapi/testdata/client/vocabulary	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	internal/publicapi/testdata/vocabulary	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	internal/recipescan/testdata	8	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	internal/recipescan/testdata/plants	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	internal/recipescan/testdata/plants/tree	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	internal/recipescan/testdata/plants/tree/test/conformance/fixture	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	internal/recipescan/testdata/plants/tree/tools	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	internal/recipescan/testdata/workflow	3	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	internal/tablepack/testdata/docclaims	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	internal/tablepack/testdata/docclaims/bound-shrunk	4	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
@@ -434,10 +428,6 @@ data-case	testdata/conformance/tables/message-verdict	2	L4	corpus data and harne
 data-case	testdata/conformance/tables/wire	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/conformance/text	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/conformance/write-refusal-int	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/cpp-standalone/ranged_bits	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/cpp-standalone/ranged_fixed	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/cpp-standalone/ranged_float	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/cpp-standalone/ranged_int	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/golangci-lint-classes	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/golangci-lint-classes/packet	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/golangci-lint-classes/tables	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
@@ -922,7 +912,6 @@ data-case	testdata/wire/tables/prior	3	L4	corpus data and harnesses: each langua
 data-case	testdata/wire/tables/storage-cap	5	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/wire/tables/storage-cap/wide	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	tools/gotestreport/testdata/recordgen	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	tools/gotestreport/testdata/plants/ledgertest	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	tools/gotestreport/testdata/records/f175-control-pass-twice	14	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	tools/gotestreport/testdata/records/f175-skip-then-pass	15	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	tools/gotestreport/testdata/records/f177-budget-only	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
@@ -2609,7 +2598,6 @@ tier	internal/codegen/javatable:TestJavaCarriesRequiredNestedGuards	1	L5	functio
 tier	internal/codegen/javatable:TestJavaCarriesTextList	1	L5	functional: needs compiles and runs generated Java text-list codecs (was slowtest.Gate)
 tier	internal/codegen/javatable:TestJavaCarriesTextListTotal	1	L5	functional: needs compiles and runs generated Java text-list-total codecs (was slowtest.Gate)
 tier	internal/codegen/javatable:TestJavaCarriesUnboundedText	1	L5	functional: needs compiles and runs generated Java unbounded-text codecs (was slowtest.Gate)
-tier	internal/codegen/javatable:TestJavaCompiledPlanDeprecatedVariantReadsDefault	1	L5	functional: needs an external toolchain (was slowtest.Gate)
 tier	internal/codegen/javatable:TestJavaCompressedFloatVariableAndJson	1	L5	functional: needs an external toolchain; the JDK (it compiles and runs the generated Java) (was slowtest.Gate)
 tier	internal/codegen/javatable:TestJavaCookExtentNegativeControl	1	L5	functional: needs an external toolchain; javac (cook extent negative controls); javac and java (it builds and runs the generated Java) (was slowtest.Gate)
 tier	internal/codegen/javatable:TestJavaCookMapFind	1	L5	functional: needs an external toolchain; javac (cooked map lookup); javac and java (it builds and runs the generated Java) (was slowtest.Gate)
@@ -4039,8 +4027,6 @@ tier	internal/codegen/rubytable:TestRubyFixedProofEvolutionNumeric	1	L5	nightly:
 tier	internal/codegen/rubytable:TestRubyFixedProofEvolutionStrict	1	L5	nightly: the rubytable heavy suite (go test reports 0.00 s for its parent, its parallel subtests uncounted on captain; the 15 together 488 s of package wall); needs pinned RuboCop and Steep (was slowtest.Gate)
 tier	internal/codegen/rubytable:TestRubyFixedProofEvolutionValues	1	L5	functional: needs the pinned Ruby interpreters and live C++ oracle (was slowtest.Gate)
 tier	internal/codegen/rubytable:TestRubyFixedProofShapes	1	L5	nightly: the rubytable heavy suite (160.19 s on captain; the 15 together 488 s of package wall); needs the pinned Ruby interpreters and C++ fixed-form oracle (was slowtest.Gate)
-tier	internal/codegen/rubytable:TestRubyFixedProofShapesControlRows	1	L5	functional: needs the pinned Ruby interpreters and C++ fixed-form oracle (the control rows of TestRubyFixedProofShapes, run once under their own name)
-tier	internal/codegen/rubytable:TestRubyFixedProofUnionsOptionalsControlRows	1	L5	functional: needs the pinned interpreters and live C++ fixed-form oracle (the control rows of TestRubyFixedProofUnionsOptionals, run once under their own name)
 tier	internal/codegen/rubytable:TestRubyFixedProofShapesArrayBounds	1	L5	functional: needs the pinned Ruby interpreters and C++ fixed-form oracle (was slowtest.Gate)
 tier	internal/codegen/rubytable:TestRubyFixedProofShapesNegativeControl	1	L5	functional: needs the pinned Ruby interpreters and C++ fixed-form oracle (was slowtest.Gate)
 tier	internal/codegen/rubytable:TestRubyFixedProofShapesText	1	L5	functional: needs the pinned Ruby interpreters and C++ fixed-form oracle (was slowtest.Gate)

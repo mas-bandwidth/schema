@@ -48,8 +48,7 @@ func write(t *testing.T, dir, name, text string) string {
 	return p
 }
 
-// -all prints every row, in file order, with each field as written: the
-// nightly-gates job runs every one of them.
+// -all prints every row, in file order, with each field as written.
 func TestAllPrintsEveryRow(t *testing.T) {
 	t.Parallel()
 	reg := write(t, t.TempDir(), "rows.txt", registry)
@@ -125,29 +124,5 @@ func TestSelectionIsUnchanged(t *testing.T) {
 	}
 	if code, _, _ := runIn(t, "-rows", reg, "-files", files); code != 2 {
 		t.Errorf("no -broad: exit %d, want 2", code)
-	}
-}
-
-// The real nightly registry plans, and every row it prints is one the file
-// names: the certify job's matrix is the file.
-func TestTheNightlyGatesRegistryPlans(t *testing.T) {
-	t.Parallel()
-	reg := filepath.Join("..", "..", ".github", "nightly-gates.txt")
-	code, rows, stderr := runIn(t, "-all", "-rows", reg)
-	if code != 0 {
-		t.Fatalf("exit %d: %s", code, stderr)
-	}
-	raw, err := os.ReadFile(reg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := 0
-	for l := range strings.SplitSeq(string(raw), "\n") {
-		if l = strings.TrimSpace(l); l != "" && !strings.HasPrefix(l, "#") {
-			want++
-		}
-	}
-	if want == 0 || len(rows) != want {
-		t.Errorf("planned %d rows, the file has %d", len(rows), want)
 	}
 }

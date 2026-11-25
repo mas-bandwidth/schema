@@ -53,12 +53,12 @@ func rubyReadinessFindings(files map[string]string) []string {
 		add("leg-pins")
 	}
 	certify := files[".github/workflows/certify.yml"]
-	// certify.yml runs Ruby in four jobs: the sharded `test` leg (`startsWith(matrix.shard, 'ruby-')`),
-	// `release-gates` (`tables-ruby-release` + `go test -race`),
-	// `negative-controls-nightly` (`matrix.ruby != ''`), and `nightly-gates`
-	// (`matrix.leg == 'ruby' || matrix.leg == 'all'`). (`inline-gate` runs only
-	// the five compiled inline-budget legs.)
-	if strings.Count(certify, "      - uses: ./.github/actions/ruby\n") < 4 ||
+	// certify.yml runs Ruby in three jobs: the sharded `test` leg (`startsWith(matrix.shard, 'ruby-')`),
+	// `release-gates` (`tables-ruby-release` + `go test -race`), and
+	// `negative-controls-nightly` (`matrix.ruby != ''`). (`inline-gate` runs only
+	// the five compiled inline-budget legs; the nightly gates it ran, the ruby
+	// fixed form among them, are registry rows schema-nightly.yml runs.)
+	if strings.Count(certify, "      - uses: ./.github/actions/ruby\n") < 3 ||
 		!strings.Contains(certify, "      - uses: ./.github/actions/ruby\n        if: startsWith(matrix.shard, 'ruby-')\n") ||
 		!strings.Contains(certify, "      - uses: ./.github/actions/ruby\n        if: matrix.ruby != ''\n") {
 		add("certify-pins")

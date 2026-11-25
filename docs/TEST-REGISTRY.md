@@ -710,8 +710,8 @@ of two.
   line; a change goes through the registry or the template.
 - Pinned in `test/registry/ci-pins.tsv` at its content's sha256: the
   workflows that run no test, the setup actions and the data files beside
-  them (`pinned`), and the ten test workflows a later layer generates
-  (`not-yet-generated`: certify, ci-full, leg-gates-nightly, leg,
+  them (`pinned`), and the nine test workflows a later layer generates
+  (`not-yet-generated`: certify, ci-full, leg,
   lobster-fixed-proof-qualification, nightly-conformance, python-leg-nightly,
   python-leg, ruby-leg, tla-nightly). A changed pinned file is a reviewed
   change: `ci --check` names the file, the pin's line and the line to write.

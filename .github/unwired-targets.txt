@@ -1,15 +1,11 @@
 # Make targets named like a test, gate or control that no workflow, nightly-fast
-# row, negative-control group or planner reaches (tools/wiredtargets).
+# row, registry row, negative-control group or planner reaches (tools/wiredtargets).
 # One line each: `target | reason`. Every reason starts `by-hand:`: an
 # authoring, pin, census, smoke or machine check a person runs on purpose, or a
 # part or alias of a gate CI runs whole. A real gate is never ledgered: wire it
-# (heavy: a .github/nightly-gates.txt row, run every night by certify.yml).
+# (heavy: a make row of tier nightly in test/registry/registry.jsonl).
 # A line that excuses nothing (the target is reached, gone, or not test-like)
 # fails the check, so this list can only shrink by wiring.
-bench-check | by-hand: checks an SDK install on one machine after nova-fleet sdk-toolchain
-bench-paired-gate | by-hand: paired benchmark gate on a quiet bench machine; timing is meaningless on shared runners
-bench-table-check | by-hand: verifies the pinned bench-table corpus after bench-table-corpus regenerates it
-build-conformance-elixir-from-shards | by-hand: assembles the Elixir driver from sharded artifacts when replaying a CI handoff locally
 cards-conformance-all | by-hand: every card leg at once, for a person; CI runs the legs as their own rows
 cards-conformance-all-goose | by-hand: the goose part of cards-conformance-all
 cards-conformance-create | by-hand: authoring, writes a new card conformance case
@@ -24,8 +20,6 @@ proof-write | by-hand: authoring, regenerates test/proof/proof.json
 python-fixed-proof-ci-patterns | by-hand: prints the CI patterns of the python fixed proof, runs no test
 python-fixed-proof-evolution | by-hand: aggregate of the evolution parts CI already runs one by one
 schema-go-generated-golangci-lint-gate-ratchet-regenerate | by-hand: authoring, regenerates the golangci-lint ratchet
-shape-gate | by-hand: alias; ci-full runs `go run ./bench/tools/shapegate` directly, not through make
-slow-gate-coverage | by-hand: the whole-tree audit; ci-full.yml runs it as slow-gate-coverage-codegen shards
 tables-c | by-hand: the whole C leg for a person; CI runs its parts as their own jobs and rows
 tables-cpp-clean-census | by-hand: census report, not a gate
 tables-cs-leg-debug-core | by-hand: one section of tables-cs-leg-debug, which ci-full.yml cs-tables (debug) runs whole

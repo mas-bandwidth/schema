@@ -831,10 +831,12 @@ func TestWhatGitIgnoresIsNotATest(t *testing.T) {
 }
 
 // TestADriverOnlyJobIsNotATest: a workflow job whose steps only check out,
-// move artifacts and call the driver runs no test of its own; a job that
+// move artifacts, use the repository's setup actions (testreg.SetupActions)
+// and call the driver runs no test of its own, and neither does a job whose
+// only work is setup actions (it builds what the rows read); a job that
 // also runs a make target (on its own line or after a shell operator),
-// uses another action, runs under another shell, or runs nothing at all is
-// still a test.
+// uses another action (a local one that is no setup action included), runs
+// under another shell, or runs nothing at all is still a test.
 func TestADriverOnlyJobIsNotATest(t *testing.T) {
 	t.Parallel()
 	wf := "on: [schedule]\njobs:\n" +
@@ -849,7 +851,10 @@ func TestADriverOnlyJobIsNotATest(t *testing.T) {
 		"  spaced:\n    runs-on: x\n    steps:\n      - run: go run ./tools/fullrun merge\n      -   run: make test-all\n" +
 		"  setchain:\n    runs-on: x\n    steps:\n      - run: |\n          set -e; make test-all\n          go run ./tools/fullrun merge\n" +
 		"  alias:\n    runs-on: x\n    steps:\n      - run: go run ./tools/fullrun merge\n      - *tests\n" +
-		"  empty:\n    runs-on: x\n"
+		"  empty:\n    runs-on: x\n" +
+		"  setup:\n    runs-on: x\n    steps:\n      - uses: actions/checkout@abc\n      - uses: ./.github/actions/merge-main\n      - uses: ./.github/actions/schema-test-setup\n        with:\n          lang: none\n      - run: go run ./tools/schema-test run --group pr --lang none --shard 1/2\n" +
+		"  produce:\n    runs-on: x\n    steps:\n      - uses: actions/checkout@abc\n      - uses: ./.github/actions/produce\n        with:\n          mode: produce\n" +
+		"  local:\n    runs-on: x\n    steps:\n      - uses: ./.github/actions/eslint\n      - run: go run ./tools/fullrun merge\n"
 	res, err := Extract(writeFixture(t, map[string]string{"go.mod": "module example.com/fx\n", ".github/workflows/n.yml": wf}))
 	if err != nil {
 		t.Fatal(err)
@@ -859,7 +864,7 @@ func TestADriverOnlyJobIsNotATest(t *testing.T) {
 		got = append(got, it.Name)
 	}
 	sort.Strings(got)
-	if want := []string{"action", "alias", "bare", "chained", "continued", "empty", "flow", "mixed", "setchain", "shell", "spaced"}; !slices.Equal(got, want) {
+	if want := []string{"action", "alias", "bare", "chained", "continued", "empty", "flow", "local", "mixed", "setchain", "shell", "spaced"}; !slices.Equal(got, want) {
 		t.Errorf("jobs counted as tests: %v, want %v", got, want)
 	}
 }

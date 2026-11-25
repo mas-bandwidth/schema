@@ -1328,7 +1328,7 @@ accelerator. Two forms: the byte-identity test in the compiler package and the
 symbol scan over the generated tree.
 
 **Reference.** `TestTablesMoveNoGeneratedPacketByte`
-(`compiler/tables_test.go:464`); `tables-zero-cost`; `tables-block-zero-cost`.
+(`compiler/tables_test.go:464`); `tables-zero-cost`; `tables-block-zero-cost-*`.
 
 **Proven in.** C++.
 

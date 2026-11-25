@@ -570,7 +570,7 @@ _verify-goose-fuzz-message: $(GOOSE_FUZZ_BASE) build/goose-wirefuzz-legs/.verify
 # race test and the JSON pass, once. The two parts cover every unit, every
 # seed and every pinned vector; what the cap leaves out is the long tail of
 # the enumerated and random passes, and the 60000-mutant whole-roster run is
-# nightly (leg-gates-nightly.yml, goose-fuzz-whole: `make verify-goose-fuzz`).
+# nightly (a registry row of tier nightly: `make verify-goose-fuzz-whole`).
 VERIFY_GOOSE_PR_MAX ?= 5000
 .PHONY: verify-goose-fuzz-part-1 verify-goose-fuzz-part-2
 verify-goose-fuzz-part-1:
@@ -582,6 +582,13 @@ verify-goose-fuzz-part-2:
 	@$(MAKE) $(VERIFY_JFLAG) --no-print-directory \
 		_verify-goose-fuzz-plain _verify-goose-fuzz-retain _verify-goose-fuzz-message \
 		GOOSE_FUZZ_SLICE=2/2 VERIFY_FUZZ_MAX_goose=$(VERIFY_GOOSE_PR_MAX)
+
+# The whole roster at the full mutant count, the nightly registry row:
+# verify-goose-fuzz under a rule of its own, since verify_vm_entrypoints
+# writes verify-goose-fuzz through $(eval), which the registry's extract
+# does not read as a rule.
+.PHONY: verify-goose-fuzz-whole
+verify-goose-fuzz-whole: verify-goose-fuzz
 
 # ---- 9. lobster ----
 

@@ -54,7 +54,7 @@ func fixtureSources() sources {
 		workflows:     []string{"jobs:\n  a:\n    steps:\n      - run: make tables-x-wf tables-x-parent tables-x-planted\n"},
 		workflowNames: []string{".github/workflows/fixture.yml"},
 		nightlyRows:   "# rows\nrow | - | ^x/ | make tables-x-row\n",
-		nightlyGates:  "# gates\nnight | - | - | make tables-x-night\n",
+		rowTargets:    []string{"tables-x-night"},
 		controls:      []string{`{"groups":[{"name":"g","when":"nightly","targets":["tables-x-nc-negative-control"]}]}`},
 		controlNames:  []string{"make/negative-controls.json"},
 	}
@@ -96,6 +96,18 @@ func TestRemovingAWiringIsRefusedByName(t *testing.T) {
 	res := fixtureCheck(t, src, []ledgerEntry{{target: "tables-x-byhand", reason: "by hand", line: 1}})
 	if !slices.Equal(res.unwired, []string{"tables-x-row"}) {
 		t.Errorf("with the row removed, unwired = %v, want [tables-x-row]", res.unwired)
+	}
+}
+
+// THE PLANT: take a registry row's target away and the gate it ran is refused
+// by name.
+func TestRemovingARegistryRowIsRefusedByName(t *testing.T) {
+	t.Parallel()
+	src := fixtureSources()
+	src.rowTargets = nil
+	res := fixtureCheck(t, src, []ledgerEntry{{target: "tables-x-byhand", reason: "by hand", line: 1}})
+	if !slices.Equal(res.unwired, []string{"tables-x-night"}) {
+		t.Errorf("with the row removed, unwired = %v, want [tables-x-night]", res.unwired)
 	}
 }
 

@@ -3,10 +3,9 @@
 //
 //	go run ./tools/nightlyrows -files diff-files.txt -legs "ruby lua" -broad no
 //
-// With -all it prints every row of the -rows registry instead: certify.yml's
-// nightly-gates job runs all of .github/nightly-gates.txt that way.
+// With -all it prints every row of the -rows registry instead.
 //
-//	go run ./tools/nightlyrows -all -rows .github/nightly-gates.txt
+//	go run ./tools/nightlyrows -all -rows .github/nightly-fast-rows.txt
 package main
 
 import (

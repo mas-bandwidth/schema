@@ -304,10 +304,13 @@ var driverCommands = []string{"go run ./tools/fullrun ", "go run ./tools/schema-
 
 // DriverOnly reports whether a workflow job's lines (below its key) run
 // nothing but the driver: at least one run step, every run line a driver
-// command (or a set -e line), every action one of driverActions, and no
-// shell but tools/pgroup's.
+// command (or a set -e line), every action one of driverActions or the
+// repository's setup actions (testreg.SetupActions, which run no test), and
+// no shell but tools/pgroup's. A job whose only work is setup actions (it
+// builds what the driver's rows read) is driver-only too.
 func DriverOnly(lines []string) bool {
 	runs := 0
+	setups := 0 // steps that use a setup action
 	block := -1 // the indent of a run: | step while inside its block
 	plain := -1 // the indent of a plain run: value's key, on the next line
 	bare := -1  // the indent of a run: key with its value on the lines below
@@ -356,6 +359,14 @@ func DriverOnly(lines []string) bool {
 			return false
 		case strings.HasPrefix(t, "uses:"):
 			u := strings.TrimSpace(strings.TrimPrefix(t, "uses:"))
+			if local, isLocal := strings.CutPrefix(u, "./.github/actions/"); isLocal {
+				name, _, _ := strings.Cut(local, " ")
+				if _, ok := testreg.SetupActions[name]; !ok {
+					return false // a local action that is no setup action may run a check
+				}
+				setups++
+				continue
+			}
 			ok := false
 			for _, a := range driverActions {
 				ok = ok || strings.HasPrefix(u, a)
@@ -384,7 +395,7 @@ func DriverOnly(lines []string) bool {
 			return false
 		}
 	}
-	return runs > 0
+	return runs > 0 || setups > 0
 }
 
 func driverCommand(cmd string) bool {

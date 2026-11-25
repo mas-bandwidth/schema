@@ -39,12 +39,10 @@ func TestNightlyFastRowsNameDefinedTargets(t *testing.T) {
 		}
 	}
 	mk := makeText.String()
-	// .github/nightly-gates.txt is certify.yml's nightly-gates job, which
-	// reads the same fields and also sets up every toolchain for leg "all".
 	for _, reg := range []struct {
 		path  string
 		extra string
-	}{{nightlyrows.RegistryPath, ""}, {".github/nightly-gates.txt", "all"}} {
+	}{{nightlyrows.RegistryPath, ""}} {
 		f, err := os.Open(filepath.Join(root, filepath.FromSlash(reg.path)))
 		if err != nil {
 			t.Fatal(err)

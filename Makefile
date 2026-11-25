@@ -1341,7 +1341,7 @@ tables-cook-fuzz-negative-control:
 # regenerate rather than a gigabyte in the tree.
 #
 # CI runs the first two, under the two-minute rule. THE GIGABYTE RUNS NIGHTLY
-# (`make tables-cook-scale-1gb`, certify.yml nightly-gates row cook-1gb): it
+# (`make tables-cook-scale-1gb`, a registry row of tier nightly): it
 # writes a 1.6 GB file, which is not per-push work. What runs here is
 # the TOOL's own scan, which is O(R + P log N) and not the O(1) the runtime
 # owes; this target's job is to produce the fixtures and prove they check.
@@ -1694,7 +1694,7 @@ tables-cook-valued: bin/schema
 		{ echo "the engine's uncook did not recover every value the fixture carries"; exit 1; }
 	@echo "valued cook: cookgen --values -> uncook -> cook is byte-identical, so every value survives the engine's own read"
 
-# THE GIGABYTE ARM (§7.5), nightly (certify.yml nightly-gates row cook-1gb,
+# THE GIGABYTE ARM (§7.5), nightly (a registry row of tier nightly,
 # 2026-11-24): a 1.5 GB fixture is not per-push work, and heavy work runs at
 # night rather than never.
 .PHONY: tables-cook-open-1gb
@@ -1865,9 +1865,9 @@ endef
 # ONE LANGUAGE PER TARGET. ci-full.yml's generated job runs these as matrix
 # rows: tables-block-zero-cost-cpp, tables-block-zero-cost-cs,
 # tables-block-zero-cost-c-heavy, and tables-block-zero-cost-c-rest.
-# The aggregate below still runs every language, which is what
-# `make test` and the registry's tables-block-zero-cost row (ci-fast.yml's
-# schema-test) ask for. Each target's commands
+# There is no aggregate: test-core-tables-3 (`make test`) names the four,
+# and each is a registry row of its own (one 108 s aggregate row was over
+# the per-PR shard budget). Each target's commands
 # are the same macros the old recipe expanded (tables_generate,
 # tables_generate_cs, tables_generate_c, tables_generate_c_collections), so a
 # unit added to a macro is a unit this gate compares. The symbol greps read
@@ -1901,10 +1901,10 @@ endef
 # the 132 files that run compared; the heavy row's floor is its own files.
 # Helper defines and per-language targets live at the end of this Makefile
 # so recipe line numbers above line 6049 remain invariant.
-.PHONY: tables-block-zero-cost tables-block-zero-cost-cpp tables-block-zero-cost-cs
+.PHONY: tables-block-zero-cost-cpp tables-block-zero-cost-cs
 .PHONY: tables-block-zero-cost-c tables-block-zero-cost-c-heavy tables-block-zero-cost-c-rest
-tables-block-zero-cost: tables-block-zero-cost-cpp tables-block-zero-cost-cs tables-block-zero-cost-c
-	@echo "block zero-cost gate: cpp, cs and c Table sources byte-identical with the block form removed"
+# (the gate is those rows: cpp, cs and c Table sources byte-identical with
+# the block form removed)
 
 
 # THE NEGATIVE CONTROL. The block-less comparison above is a gate with no blade
@@ -3790,7 +3790,7 @@ test-core-tables-3: build/mustrun build/schema_test_block build/schema_test_bloc
 	$(MAKE) tables-cook-open-lengths-negative-control
 	$(MAKE) tables-cook-open-root-negative-control
 	$(MAKE) tables-cook-open-walk-negative-control
-	$(MAKE) tables-block-zero-cost
+	$(MAKE) tables-block-zero-cost-cpp tables-block-zero-cost-cs tables-block-zero-cost-c
 	$(MAKE) tables-block-zero-cost-negative-control
 	$(MAKE) tables-cpp-names-negative-control
 	$(MAKE) tables-block-build-version
@@ -8516,7 +8516,7 @@ define tables_zero_cost_nl
 
 endef
 
-.PHONY: tables-block-zero-cost tables-block-zero-cost-cpp tables-block-zero-cost-cs tables-block-zero-cost-c tables-block-zero-cost-c-heavy tables-block-zero-cost-c-rest
+.PHONY: tables-block-zero-cost-cpp tables-block-zero-cost-cs tables-block-zero-cost-c tables-block-zero-cost-c-heavy tables-block-zero-cost-c-rest
 
 tables-block-zero-cost-cpp: export ZERO_COST_CPP_BLOCKFUL = $(call tables_generate,./bin/schema,$(BLOCKFUL_ROOT)/cpp)
 tables-block-zero-cost-cpp: export ZERO_COST_CPP_BLOCKLESS = $(call tables_generate,$(BLOCKLESS_SCHEMA),$(BLOCKLESS_ROOT)/cpp)

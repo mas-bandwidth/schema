@@ -545,12 +545,18 @@ func ciInvokesTarget(targets []string, name string) bool {
 // This tree splits the pull-request gate into ci-fast.yml (per push) and
 // ci-full.yml (per merge); the harnesses rode ci-fast.yml's per-leg fixed-form
 // jobs, which ran on a dispatch only: no pull request ever ran them. They do
-// not fit the two-minute cap, so they run every night over every leg in
-// leg-gates-nightly.yml (2026-11-24), and docs/CI-TIERS.md holds their
-// pull-request form as owed (held). This listing holds them to running there
-// until a fast shard of each joins ci-fast.yml, which also satisfies it.
+// not fit the two-minute cap, so they are registry rows of tier nightly
+// (schema-nightly.yml runs them every night over every leg; they ran in
+// leg-gates-nightly.yml until it was retired into the registry), and
+// docs/CI-TIERS.md holds their pull-request form as owed (held). This listing
+// holds them to a registry row until a fast shard of each joins ci-fast.yml,
+// which also satisfies it.
 func TestTheFixedFormHarnessesRunPerPullRequest(t *testing.T) {
-	targets := ciPullRequestMakeTargets(t, repoRoot(t), "ci-fast.yml", "leg-gates-nightly.yml")
+	root := repoRoot(t)
+	targets := ciPullRequestMakeTargets(t, root, "ci-fast.yml")
+	for target := range registryMakeRows(t, root) {
+		targets = append(targets, target)
+	}
 
 	// THE LISTING. Both harnesses the fixed form's build gate names, and the
 	// fast shard of each counts: `make test` still runs the pair with the
@@ -558,7 +564,7 @@ func TestTheFixedFormHarnessesRunPerPullRequest(t *testing.T) {
 	fixedFormHarnesses := []string{"tables-fixedform", "tables-c-fixedform"}
 	for _, harness := range fixedFormHarnesses {
 		if !ciInvokesTarget(targets, harness) {
-			t.Errorf("no job in ci-fast.yml or leg-gates-nightly.yml runs `make %s`: the fixed-form harness is built by no job, so two green pull requests can leave a red tip unseen (issue #857). Add a job that runs the harness — or a fast shard of it — to .github/workflows/ci-fast.yml.", harness)
+			t.Errorf("no job in ci-fast.yml and no registry row runs `make %s`: the fixed-form harness is built by no job, so two green pull requests can leave a red tip unseen (issue #857). Give the harness — or a fast shard of it — a registry row (test/registry/registry.jsonl).", harness)
 		}
 	}
 }
@@ -1228,15 +1234,13 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 		PlanLegs: planLegs,
 	}
 	// The leg gates (fixed form + versioning, every leg) are not light: they
-	// are leg-gates-nightly.yml's jobs (2026-11-24), on the schedule and a
-	// dispatch, and ci-fast.yml carries none of them.
+	// are registry rows of tier nightly (schema-nightly.yml runs them; they
+	// were leg-gates-nightly.yml's jobs until it was retired into the
+	// registry), and ci-fast.yml carries none of them.
 	fastJobsHere := yamlJobs(wfs["ci-fast.yml"])
 	for _, job := range []string{"leg-gate", "leg-gate-cpp", "leg-gate-lobster", "leg-gate-rust", "leg-gate-squirrel"} {
 		if _, ok := fastJobsHere[job]; ok {
-			errs = append(errs, fmt.Sprintf("ci-fast.yml has a %s job; the leg gates run in leg-gates-nightly.yml", job))
-		}
-		if _, ok := yamlJobs(wfs["leg-gates-nightly.yml"])[job]; !ok {
-			errs = append(errs, fmt.Sprintf("leg-gates-nightly.yml has no %s job", job))
+			errs = append(errs, fmt.Sprintf("ci-fast.yml has a %s job; the leg gates are the registry's nightly rows", job))
 		}
 	}
 	for _, wantKey := range ciFastJobKeys(wfs) {
@@ -1262,8 +1266,8 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 		PlanPkgs: planPkgs,
 		PlanLegs: planLegs,
 	}
-	// The fixed form + versioning leg gates are leg-gates-nightly.yml's jobs
-	// (2026-11-24): they run on the schedule and a dispatch only, which
+	// The fixed form + versioning leg gates are the registry's nightly rows:
+	// schema-nightly.yml runs them on the schedule and a dispatch only, which
 	// nightlyOnlyErrors holds above; no pull request or push starts them.
 	for _, wantKey := range ciFastJobKeys(wfs) {
 		wfName, jobName, _ := strings.Cut(wantKey, ":")
@@ -1322,7 +1326,6 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 		"ci-full.yml:go-test",
 		"ci-full.yml:leg-tagged",
 		"ci-full.yml:pins",
-		"leg-gates-nightly.yml:leg-gate",
 		"schema-nightly.yml:part",
 		"tla-nightly.yml:tlc",
 	} {
@@ -1395,8 +1398,6 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"certify.yml:inline-gate",
 		"certify.yml:negative-controls-nightly",
 		"certify.yml:negative-controls-nightly-matrix",
-		"certify.yml:nightly-gates",
-		"certify.yml:nightly-gates-plan",
 		"certify.yml:release-differential",
 		"certify.yml:release-gates",
 		"certify.yml:release-targets",
@@ -1429,12 +1430,6 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"ci-full.yml:verdict",
 		"ci-full.yml:vuln",
 		"cla.yml:caa",
-		"leg-gates-nightly.yml:goose-fuzz-whole",
-		"leg-gates-nightly.yml:leg-gate",
-		"leg-gates-nightly.yml:leg-gate-cpp",
-		"leg-gates-nightly.yml:leg-gate-lobster",
-		"leg-gates-nightly.yml:leg-gate-rust",
-		"leg-gates-nightly.yml:leg-gate-squirrel",
 		"leg.yml:leg-matrix",
 		"leg.yml:legs",
 		"lobster-fixed-proof-qualification.yml:baseline",
@@ -1521,13 +1516,6 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 			oldSubstr: "\non:\n",
 			newSubstr: "\non:\n  pull_request:\n",
 			wantErr:   "schema-nightly.yml triggers on pull_request",
-		},
-		{
-			name:      "restore a pull_request trigger on the leg gates",
-			workflow:  "leg-gates-nightly.yml",
-			oldSubstr: "\non:\n",
-			newSubstr: "\non:\n  pull_request:\n    branches: [ main, dev, fixed-table-form, 'sprint/**' ]\n",
-			wantErr:   "leg-gates-nightly.yml triggers on pull_request",
 		},
 		{
 			name:      "restore a push to main on the TLA+ nightly",

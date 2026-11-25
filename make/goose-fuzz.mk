@@ -58,7 +58,7 @@ GOOSE_LEGS_DIR := build/goose-wirefuzz-legs
 # dispatcher answers the rest absent and the harness prints their count.
 # Empty (the default, and the nightly's) builds every unit's leg. ci-fast.yml's
 # verify-leg (goose, fuzz) row takes one fixed slice at 5000 mutants
-# (make/verify-vm.mk verify-goose-fuzz-part-1 and -part-2); leg-gates-nightly.yml (goose-fuzz-whole) runs
+# (make/verify-vm.mk verify-goose-fuzz-part-1 and -part-2); a registry row of tier nightly (verify-goose-fuzz-whole) runs
 # the whole roster at 60000.
 GOOSE_FUZZ_SLICE ?=
 GOOSE_MFUZZ_LEGS_DIR := build/goose-messagefuzz-legs
