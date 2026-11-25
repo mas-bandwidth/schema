@@ -86,12 +86,12 @@ func TestFastPlanSelectsTableFixtures(t *testing.T) {
 	}
 }
 
-// TestFastPlanCoversStreamToDevAndSelectsRelevantWork verifies that ci-fast.yml's
-// plan job diffs every pull request against main, whatever its base (a lane PR
-// is checked out merged with current main, .github/actions/merge-main), defaults
-// to dev on workflow_dispatch, and selects only relevant packages and
-// legs without broadening a single-leg change into the full suite.
-func TestFastPlanCoversStreamToDevAndSelectsRelevantWork(t *testing.T) {
+// TestFastPlanCoversEveryBaseAndSelectsRelevantWork verifies that ci-fast.yml's
+// plan job diffs every pull request and every dispatch against main, whatever
+// its base (a lane PR is checked out merged with current main,
+// .github/actions/merge-main), and selects only relevant packages and legs
+// without broadening a single-leg change into the full suite.
+func TestFastPlanCoversEveryBaseAndSelectsRelevantWork(t *testing.T) {
 	t.Parallel()
 	data, err := os.ReadFile(filepath.Join(repoRoot(t), ".github/workflows/ci-fast.yml"))
 	if err != nil {
@@ -99,7 +99,7 @@ func TestFastPlanCoversStreamToDevAndSelectsRelevantWork(t *testing.T) {
 	}
 	wf := string(data)
 
-	const wantBaseLine = "BASE: ${{ github.event_name == 'pull_request' && 'main' || 'dev' }}"
+	const wantBaseLine = "          BASE: main\n"
 	if !strings.Contains(wf, wantBaseLine) {
 		t.Fatalf("ci-fast.yml plan does not set %q", wantBaseLine)
 	}
@@ -293,7 +293,8 @@ func TestFastPlanSelectsLanguageLints(t *testing.T) {
 		{"go leg", "internal/codegen/gotable/wire.go", `["go"]|./internal/codegen/gotable ./internal/goldens ./internal/fuzz`},
 		{"lua runtime, no .go file", "internal/codegen/luatable/runtime/wire.lua", `["lua"]|./internal/codegen/lua ./internal/codegen/luatable ./internal/goldens ./internal/fuzz`},
 		{"lua make file", "make/lua.mk", `["lua"]|./internal/recipescan ./internal/codegen/lua ./internal/codegen/luatable`},
-		{"dart lens make file", "make/schema-dart-generated-strict-analyze-gate.mk", `["dart"]|./internal/recipescan`},
+		// a make file named for a language selects that leg (THE PATH MAP, 2026-11-24)
+		{"dart lens make file", "make/schema-dart-generated-strict-analyze-gate.mk", `["dart"]|./internal/recipescan ./internal/codegen/darttable`},
 		{"docs only", "docs/TUTORIAL.md", `[]|./internal/docgate ./internal/tablepack ./compiler`},
 		// the compiler's own page-text tests read pages the docgate rule does
 		// not name: a nested page and the rulings file

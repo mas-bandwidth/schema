@@ -36,6 +36,57 @@ finishes within two minutes on a fleet runner (`timeout-minutes: 2`). A group
 that grows past that is cut into more rows or shards. It is never given a
 longer timeout, made report-only or skipped.
 
+
+**A push to main and a dispatch run every per-PR job** (the owner, 2026-11-24:
+"zero patience for tests not running when they are supposed to"). On a push to
+refs/heads/main, and on a dispatch whose `all` input is left at its default
+true, the plan sets `all=yes` and selects every group whatever the diff; the
+only job that may show SKIPPED then is `fork-pull-request`. A dispatch diffs
+against main, never dev. **`TestNoFastJobSkipsOnAMainPush`** evaluates every
+ci-fast.yml job for a main push with the plan's outputs empty and fails on any
+job but the fork guard that does not run; **`TestFastPlanDiffsAgainstMain`**
+holds the base and the dispatch input.
+
+**A pull request may still select by path, and says what it left out.** The
+plan's last step prints one line per group it does not run and the rule that
+left it out, for example `input-family left out: no rule for make/rust.mk`.
+Every file under `make/`, `test/`, `internal/codegen/` and `tools/` maps to a
+job (`make/<lang>*.mk` selects that leg; a shared `.mk` selects everything);
+**`TestPlanOmissionLogNamesEveryJob`** fails on a left-out job the log does not
+name, and **`TestEveryTreePathMapsToAJob`** on a file no rule maps. Path
+selection is temporary: `rowan/test-driver` replaces it with queries of the
+test registry (every test named, typed and tiered), and this paragraph changes
+with it.
+
+**Groups cut on 2026-11-24 to fit the cap** (main push run 45431445496 cut
+four jobs at two minutes; PR run 45437384482 two go-test-touched rows):
+
+- `verify-leg (goose, fuzz)` (130 s, cut) is `verify-goose-fuzz`: two halves of
+  the passes at 5000 cases each; the whole 60000-case gate runs nightly as
+  `goose-fuzz-whole` in `leg-gates-nightly.yml`.
+- `verify-leg (rust, fuzz)` (121 s, 79 s of it the driver's cargo build) builds
+  no driver now: it runs the wire passes (`verify-rust-fuzz-wire`), and the JSON
+  and message passes, which need the driver, run in verify-leg (rust,
+  conformance) (`verify-rust-conformance-and-driver-fuzz`), which already
+  builds it.
+- `input-family (conformance-corpus, squirrel)` (121 s) runs as three shards
+  (`squirrel 1/3` to `3/3`, round-robin over the surfaces);
+  `input-family-merge` folds the shards' records and holds them to the whole
+  account: nothing owed, opened or planted is dropped.
+- `input-family (conformance-corpus, elixir)` (123 s, about 80 s compiling) is
+  `input-family-elixir-conformance`, which reuses the elixir build `lang-clean`
+  uploads.
+- go-test-touched's `TestRustDriverAnswersWriteRefusal` row (105 s, a cold
+  driver build) rides `verify-leg (rust, conformance)` through the `rides`
+  directive of `.github/go-test-rows.txt`; the harness complement row (111 s)
+  is split into `^TestShared`, `^Test(WireFuzz|Framing|Cook|Canonical)` and the
+  rest.
+
+**The fixed form + versioning gates are nightly.** The five `leg-gate` jobs
+were ci-fast.yml jobs that ran on a dispatch only, so no pull request and no
+push to main ever ran them, and their rows take 54 to 900 s. They moved whole
+to `leg-gates-nightly.yml`; their pull-request form is held (the table below).
+
 The tiers:
 
 - **per-PR**: a same-repository pull request.
@@ -88,17 +139,15 @@ next table. Every job of every other workflow is a row here.
 | `build-cpp-conformance-account` | `ci-fast.yml` | per-PR, main, dispatch | plan: the cpp corpus account |
 | `input-family-cpp-conformance` | `ci-fast.yml` | per-PR, main, dispatch | plan: the cpp corpus account |
 | `input-family` | `ci-fast.yml` | per-PR, main, dispatch | plan: the input-family rows |
+| `verify-goose-fuzz` | `ci-fast.yml` | per-PR, main, dispatch | plan: the goose leg; two rows, `make verify-goose-fuzz-part-1` and `-2`, which together run every goose fuzz pass at 5000 cases |
+| `input-family-merge` | `ci-fast.yml` | per-PR, main, dispatch | plan: a sharded corpus account (`corpus_shards`); folds the shards' records into the whole account |
+| `input-family-elixir-conformance` | `ci-fast.yml` | per-PR, main, dispatch | plan: the elixir corpus account; runs on lang-clean's uploaded elixir build |
 | `block-gate` | `ci-fast.yml` | per-PR, main, dispatch | always |
 | `newleg-scaffold` | `ci-fast.yml` | per-PR, main, dispatch | plan: a new leg in the diff |
 | `go-fixed-corpus` | `ci-fast.yml` | per-PR, main, dispatch | plan: the tables-go-fixedform row |
 | `go-test-touched` | `ci-fast.yml` | per-PR, main, dispatch | plan: the touched packages' test rows |
 | `pins` | `ci-fast.yml` | per-PR, main, dispatch | plan: a diff that touches what the pins protect |
 | `verdict` | `ci-fast.yml` | per-PR, main, dispatch | always: the one required check |
-| `leg-gate` | `ci-fast.yml` | dispatch | the legs' fixed form and versioning (whole, in ci-full.yml nightly) |
-| `leg-gate-lobster` | `ci-fast.yml` | dispatch | as leg-gate |
-| `leg-gate-rust` | `ci-fast.yml` | dispatch | as leg-gate |
-| `leg-gate-squirrel` | `ci-fast.yml` | dispatch | as leg-gate |
-| `leg-gate-cpp` | `ci-fast.yml` | dispatch | as leg-gate |
 | `caa-self-test` | `caa-self-test.yml` | per-PR, main, dispatch | trigger paths: the CAA workflow, its script, tools/pgroup, go.mod |
 | `caa` | `cla.yml` | per-PR, fork-PR, comment | pull_request_target, and a signing or `recheck` comment |
 | `roadmap` | `roadmap.yml` | per-PR, main, nightly, dispatch | trigger paths: ROADMAP.md, docs/roadmap*, tools/roadmap |
@@ -181,6 +230,7 @@ Nightly times are the newest completed scheduled run of each workflow on the fle
 | `ci-full.yml` | covered | `go-test-touched`, `verify-leg`, `lang-clean`, `lang-lint`, `generated-current`, `block-gate`, `vet`, `golangci-lint-fast`, `lint-fast`, `nightly-fast`, `appendix-java-announcement-budgets`, `appendix-go-fixed`, `appendix-python-fixed`, `cs-block-compile`, `cs-block-compile-negative-control`, `hostile-lobster` | ci-fast is ci-full selected by path. `hostile-lobster` (24 s cold on a bench) is the lobster hostile corpus's pull-request form; go's (106 s, not light) and goose's (red on main) run nightly as certify.yml nightly-gates rows. Only the night sees windows, msvc, big-endian, the negative-controls matrix, pins and vuln: none has a two-minute form |
 | `python-leg-nightly.yml` | covered | `verify-leg`, `hostile-python`, `bounds-python` | test-python on macOS (2041 s) is nightly; the Linux rows run per Python diff |
 | `python-leg.yml` | covered | `verify-leg`, `hostile-python`, `bounds-python` | the dispatch form of the above |
+| `leg-gates-nightly.yml` | held | `verify-leg`, `input-family`, `go-fixed-corpus`, `nightly-fast` run parts of it per pull request | RED ON MAIN: run 43759152936 (dispatch on main, 2026-11-15): fifteen fixed form + versioning rows failed. The five leg-gate jobs moved here from ci-fast.yml, where they ran on a dispatch only; the whole goose fuzz gate (`goose-fuzz-whole`) runs here too. A per-leg fast form of each fixed-form harness, inside two minutes, joins ci-fast.yml when the nightly is green |
 | `leg.yml` | not-a-gate | | reusable (workflow_call); certify.yml calls it |
 | `release.yml` | not-a-gate | | cuts a release |
 

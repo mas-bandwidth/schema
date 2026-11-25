@@ -127,8 +127,8 @@ func TestCIFastAndCIFullRunOnPullRequestWhateverItsBase(t *testing.T) {
 	if ok, err := jobRunsInWorkflow(wfs["ci-fast.yml"], "verify-elixir-conformance", ev); err != nil || ok {
 		t.Fatalf("ci-fast.yml verify-elixir-conformance ran when the PR selected Go: ok=%v err=%v", ok, err)
 	}
-	if ok, err := jobRunsInWorkflow(wfs["ci-fast.yml"], "leg-gate", ev); err != nil || ok {
-		t.Fatalf("ci-fast.yml leg-gate ran below main on a pull request into %s: ok=%v err=%v", ev.Branch, ok, err)
+	if ok, err := jobRunsInWorkflow(wfs["ci-fast.yml"], "verify-goose-fuzz", ev); err != nil || ok {
+		t.Fatalf("ci-fast.yml verify-goose-fuzz ran on a pull request into %s that selected Go: ok=%v err=%v", ev.Branch, ok, err)
 	}
 	// ci-full.yml runs nightly and on dispatch only (the owner, 2026-11-15: "I
 	// want everything that is not light moved to nightly test now." "no
