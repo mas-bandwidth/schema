@@ -1,6 +1,7 @@
 package testreg
 
 import (
+	"encoding/json"
 	"go/scanner"
 	"go/token"
 	"os"
@@ -274,5 +275,43 @@ func TestEveryModuleBuiltAgainstBuildIsDeclared(t *testing.T) {
 	sort.Strings(missing)
 	if len(missing) > 0 {
 		t.Fatalf("%s declares no build for these packages of modules built against build/:\n%s", GoNeedsPath, strings.Join(missing, "\n"))
+	}
+}
+
+// TestNoRowMakesATargetTheNeedsTableDeclares: a gotest row's own "make" input is
+// built as one step, so a target that go-needs.txt declares as a chain of
+// steps (the generated tree, the driver) is never made through it: the row
+// would build the whole chain inside one step's limit. A row names what it
+// builds in go-needs.txt. Planted: the json-walk row with its old
+// "make": ".stamp" input is named.
+func TestNoRowMakesATargetTheNeedsTableDeclares(t *testing.T) {
+	t.Parallel()
+	root := filepath.Join("..", "..")
+	needs, err := LoadGoNeeds(filepath.Join(root, GoNeedsPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	declared := map[string]bool{}
+	for _, n := range needs {
+		declared[n.Target] = true
+	}
+	reg, err := Load(filepath.Join(root, DefaultPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range reg.Tests {
+		if row.Adapter != "gotest" {
+			continue
+		}
+		var in struct{ Make string }
+		if json.Unmarshal(row.Inputs, &in) != nil || in.Make == "" {
+			continue
+		}
+		if declared[in.Make] {
+			t.Errorf("%s makes %s in its own step, and %s declares it as a step of its own: declare the row's builds there", row.Key, in.Make, GoNeedsPath)
+		}
+	}
+	if len(needs) == 0 || len(reg.Tests) == 0 {
+		t.Fatal("the needs table or the registry is empty; the check holds nothing")
 	}
 }

@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
+	"sync"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testreg"
 )
@@ -57,13 +59,22 @@ func (a *goTestAdapter) buildNeeds(ctx context.Context, refs []goTestRef) (map[s
 	failed := map[string]error{}
 	seen := map[string]bool{}
 	for _, r := range refs {
+		// the targets are in build order: one built on a failed one is not
+		// run (it would only make the failed one again); the rows that read
+		// it are named for the first failure (needsFailure)
+		blocked := false
 		for _, target := range testreg.GoNeedsOf(needs, r.pkg, r.test) {
-			if seen[target] {
+			if _, bad := failed[target]; bad {
+				blocked = true
+				continue
+			}
+			if seen[target] || blocked {
 				continue
 			}
 			seen[target] = true
 			if err := run(ctx, needsStep(target)); err != nil {
 				failed[target] = err
+				blocked = true
 			}
 		}
 	}
@@ -99,14 +110,33 @@ func (a *goTestAdapter) needsSteps(refs []goTestRef) []testreg.PrepareStep {
 	run := a.builder()
 	var steps []testreg.PrepareStep
 	seen := map[string]bool{}
+	var mu sync.Mutex
+	failed := map[string]bool{} // a step whose build failed (not one its deadline cut short)
 	for _, r := range refs {
+		var before []string // the targets this test builds first
 		for _, target := range testreg.GoNeedsOf(needs, r.pkg, r.test) {
+			prior := slices.Clone(before)
+			before = append(before, target)
 			if seen[target] {
 				continue
 			}
 			seen[target] = true
 			steps = append(steps, testreg.PrepareStep{Name: target, Run: func(ctx context.Context) error {
-				_ = run(ctx, needsStep(target)) // a failure is recorded by the builder, Run names the rows
+				mu.Lock()
+				blocked := slices.ContainsFunc(prior, func(p string) bool { return failed[p] })
+				mu.Unlock()
+				if blocked {
+					// built on a failed build: not run again, Run names the rows
+					mu.Lock()
+					failed[target] = true
+					mu.Unlock()
+					return nil
+				}
+				if err := run(ctx, needsStep(target)); err != nil && ctx.Err() == nil {
+					mu.Lock()
+					failed[target] = true
+					mu.Unlock() // the builder recorded it, Run names the rows
+				}
 				return ctx.Err()
 			}})
 		}

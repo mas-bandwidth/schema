@@ -827,14 +827,15 @@ build/conformance-go: $(CONFORMANCE_GO_DEPS)
 # more on two CPUs, the limit a schema-test call has. Each warm step compiles a
 # quarter of those packages (every fourth, in `go list -deps` order) into the Go
 # build cache, so the driver's own build links what is already compiled. They
-# live in the generated tree so a fetched tree carries them: a shard that fetched
-# the produced leg finds them up to date and compiles nothing. build/conformance-go
-# does not depend on them: they only move the compile into steps that each fit
-# (test/registry/go-needs.txt runs them first).
+# live in the generated tree beside the stamp. The Go cache is the machine's own,
+# so a shard that fetched the produced tree compiles them cold, each step inside
+# its limit. build/conformance-go does not depend on them: they only move the
+# compile into steps that each fit (test/registry/go-needs.txt runs them first).
+# A go list that fails fails the step: the quarter is never taken as empty.
 CONFORMANCE_GO_WARM := build/tables-generated-go/.warm-1 build/tables-generated-go/.warm-2 build/tables-generated-go/.warm-3 build/tables-generated-go/.warm-4
 $(CONFORMANCE_GO_WARM): build/tables-generated-go/.warm-%: $(CONFORMANCE_GO_DEPS)
 	@mkdir -p build/tables-generated-go
-	cd test/conformance/go && pkgs=$$(go list -deps -f '{{if .DepOnly}}{{if not .Standard}}{{.ImportPath}}{{end}}{{end}}' . | awk -v n=$* 'NR % 4 == n % 4') && { [ -z "$$pkgs" ] || go build $$pkgs; }
+	cd test/conformance/go && all=$$(go list -deps -f '{{if .DepOnly}}{{if not .Standard}}{{.ImportPath}}{{end}}{{end}}' .) && pkgs=$$(printf '%s\n' "$$all" | awk -v n=$* 'NR % 4 == n % 4') && { [ -z "$$pkgs" ] || go build $$pkgs; }
 	@touch $@
 
 # THE GO LEG, CROSS-BUILT BIG-ENDIAN (docs/SPEC-TABLES.md §3, §19.1, §7). Go

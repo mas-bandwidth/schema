@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 2. Language-free tests: 3162.
+Unit tests every language answers: 2. Language-free tests: 3165.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -1933,7 +1933,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.cellmerge.resolve-leaves-a-hunk-it-cannot-merge-exactly` | `gotest` | Go test TestResolveLeavesAHunkItCannotMergeExactly in ./tools/cellmerge | `package: ./tools/cellmerge`<br>`test: TestResolveLeavesAHunkItCannotMergeExactly` | the Go test passes | `tools/cellmerge/main_test.go:68` |
 | `none.unit.tooling.cellmerge.resolve-merges-a-two-sided-row-cell-by-column` | `gotest` | Go test TestResolveMergesATwoSidedRowCellByColumn in ./tools/cellmerge | `package: ./tools/cellmerge`<br>`test: TestResolveMergesATwoSidedRowCellByColumn` | the Go test passes | `tools/cellmerge/main_test.go:54` |
 
-#### `tooling` family `ci`, 261 tests
+#### `tooling` family `ci`, 262 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -2196,6 +2196,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.ci.the-pr-shards-run-on-the-produced-legs` | `gotest` | Go test TestThePRShardsRunOnTheProducedLegs in ./internal/ci | `package: ./internal/ci`<br>`test: TestThePRShardsRunOnTheProducedLegs` | the Go test passes | `internal/ci/go_fixed_corpus_pipeline_test.go:88` |
 | `none.unit.tooling.ci.tla-runs-hash-every-model-and-config` | `gotest` | Go test TestTLARunsHashEveryModelAndConfig in ./internal/ci | `package: ./internal/ci`<br>`test: TestTLARunsHashEveryModelAndConfig` | the Go test passes | `internal/ci/strictonly_tla_test.go:107` |
 | `none.unit.tooling.ci.unrun-python-test-witness` | `gotest` | Go test TestUnrunPythonTestWitness in ./internal/ci | `package: ./internal/ci`<br>`test: TestUnrunPythonTestWitness` | the Go test passes | `internal/ci/python_tests_run_test.go:181` |
+| `none.unit.tooling.ci.warm-steps-fail-when-go-list-fails` | `gotest` | Go test TestWarmStepsFailWhenGoListFails in ./internal/ci | `package: ./internal/ci`<br>`test: TestWarmStepsFailWhenGoListFails` | the Go test passes | `internal/ci/go_warm_steps_test.go:45` |
 | `none.unit.tooling.ci.workflow-and-job-env-name-only-allowed-contexts` | `gotest` | Go test TestWorkflowAndJobEnvNameOnlyAllowedContexts in ./internal/ci | `package: ./internal/ci`<br>`test: TestWorkflowAndJobEnvNameOnlyAllowedContexts` | the Go test passes | `internal/ci/env_contexts_test.go:82` |
 | `none.unit.tooling.ci.workflow-names-parse-as-scalars` | `gotest` | Go test TestWorkflowNamesParseAsScalars in ./internal/ci | `package: ./internal/ci`<br>`test: TestWorkflowNamesParseAsScalars` | the Go test passes | `internal/ci/workflow_name_scalar_test.go:48` |
 
@@ -3147,7 +3148,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.runmatch.skips-follows-go` | `gotest` | Go test TestSkipsFollowsGo in ./internal/runmatch | `package: ./internal/runmatch`<br>`test: TestSkipsFollowsGo` | the Go test passes | `internal/runmatch/runmatch_test.go:107` |
 | `none.unit.tooling.runmatch.top-level-is-gos-split` | `gotest` | Go test TestTopLevelIsGosSplit in ./internal/runmatch | `package: ./internal/runmatch`<br>`test: TestTopLevelIsGosSplit` | the Go test passes | `internal/runmatch/runmatch_test.go:9` |
 
-#### `tooling` family `schema-test`, 148 tests
+#### `tooling` family `schema-test`, 149 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -3157,6 +3158,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.schema-test.a-copy-a-killed-run-left-is-swept` | `gotest` | Go test TestACopyAKilledRunLeftIsSwept in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestACopyAKilledRunLeftIsSwept` | the Go test passes | `tools/schema-test/plant_test.go:342` |
 | `none.unit.tooling.schema-test.a-database-read-in-part-fails-the-row` | `gotest` | Go test TestADatabaseReadInPartFailsTheRow in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestADatabaseReadInPartFailsTheRow` | the Go test passes | `tools/schema-test/make_test.go:499` |
 | `none.unit.tooling.schema-test.a-deleted-golden-is-missing` | `gotest` | Go test TestADeletedGoldenIsMissing in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestADeletedGoldenIsMissing` | the Go test passes | `tools/schema-test/golden_test.go:125` |
+| `none.unit.tooling.schema-test.a-failed-build-blocks-the-builds-declared-after-it` | `gotest` | Go test TestAFailedBuildBlocksTheBuildsDeclaredAfterIt in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAFailedBuildBlocksTheBuildsDeclaredAfterIt` | the Go test passes | `tools/schema-test/goneeds_test.go:325` |
 | `none.unit.tooling.schema-test.a-failed-writer-fails-only-its-own-rows` | `gotest` | Go test TestAFailedWriterFailsOnlyItsOwnRows in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAFailedWriterFailsOnlyItsOwnRows` | the Go test passes | `tools/schema-test/golden_test.go:334` |
 | `none.unit.tooling.schema-test.a-fuzz-row-takes-its-runs-seed` | `gotest` | Go test TestAFuzzRowTakesItsRunsSeed in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAFuzzRowTakesItsRunsSeed` | the Go test passes | `tools/schema-test/make_seed_test.go:19` |
 | `none.unit.tooling.schema-test.a-go-test-family-never-takes-the-corpus-prefix` | `gotest` | Go test TestAGoTestFamilyNeverTakesTheCorpusPrefix in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAGoTestFamilyNeverTakesTheCorpusPrefix` | the Go test passes | `tools/schema-test/gotest_test.go:196` |
@@ -3380,7 +3382,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.testproc.child-leads-its-own-group` | `gotest` | Go test TestChildLeadsItsOwnGroup in ./internal/testproc | `package: ./internal/testproc`<br>`test: TestChildLeadsItsOwnGroup` | the Go test passes | `internal/testproc/group_unix_test.go:17` |
 | `none.unit.tooling.testproc.grandchild-is-killed-when-the-child-exits-normally` | `gotest` | Go test TestGrandchildIsKilledWhenTheChildExitsNormally in ./internal/testproc | `package: ./internal/testproc`<br>`test: TestGrandchildIsKilledWhenTheChildExitsNormally` | the Go test passes | `internal/testproc/testproc_test.go:154` |
 
-#### `tooling` family `testreg`, 77 tests
+#### `tooling` family `testreg`, 78 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -3439,6 +3441,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.testreg.load-refuses-union-inputs-that-do-not-read` | `gotest` | Go test TestLoadRefusesUnionInputsThatDoNotRead in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestLoadRefusesUnionInputsThatDoNotRead` | the Go test passes | `internal/testreg/gotests_test.go:50` |
 | `none.unit.tooling.testreg.load-refuses-unrepresentable-for-a-language-that-does-not-exist` | `gotest` | Go test TestLoadRefusesUnrepresentableForALanguageThatDoesNotExist in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestLoadRefusesUnrepresentableForALanguageThatDoesNotExist` | the Go test passes | `internal/testreg/registry_test.go:93` |
 | `none.unit.tooling.testreg.load-refuses-unrepresentable-for-a-test-that-does-not-exist` | `gotest` | Go test TestLoadRefusesUnrepresentableForATestThatDoesNotExist in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestLoadRefusesUnrepresentableForATestThatDoesNotExist` | the Go test passes | `internal/testreg/registry_test.go:87` |
+| `none.unit.tooling.testreg.no-row-makes-a-target-the-needs-table-declares` | `gotest` | Go test TestNoRowMakesATargetTheNeedsTableDeclares in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestNoRowMakesATargetTheNeedsTableDeclares` | the Go test passes | `internal/testreg/goneeds_test.go:286` |
 | `none.unit.tooling.testreg.no-skip-mechanism-anywhere` | `gotest` | no skip mechanism anywhere in the repository: no Skip, testing.Short, skip or lane variable, early return on a gate or opt-out build tag in Go; no \|\| true, continue-on-error, if: false, branch skip, go test -skip or -short, skip variable or skip announcement in a script, recipe or workflow; no skip verdict in a driver of any language; no skip ledger file (Go test TestNoSkipMechanismAnywhere in ./internal/testreg) | `package: ./internal/testreg`<br>`test: TestNoSkipMechanismAnywhere` | the Go test passes: the scan names nothing | `internal/testreg/noskip_test.go:1862` |
 | `none.unit.tooling.testreg.no-skip-mechanism-is-planted` | `gotest` | one planted skip of each kind in a scratch tree is named by file, line and rule, and the scaffolding beside them (a wire reader's Skip, a value knob, a failing tool lookup, docs, testdata, comments) is not (Go test TestNoSkipMechanismIsPlanted in ./internal/testreg) | `package: ./internal/testreg`<br>`test: TestNoSkipMechanismIsPlanted` | the Go test passes | `internal/testreg/noskip_test.go:2006` |
 | `none.unit.tooling.testreg.no-skip-names-a-missing-fork-lane` | `gotest` | a workflow job kept off fork pull requests (by the head repository or the fork flag, on one line or over lines) is red when no job of a workflow that runs on pull requests runs on them by its own condition, and clean once such a fork-lane job exists; the same words in a step, a command, a comment or a push-only workflow are no lane (Go test TestNoSkipNamesAMissingForkLane in ./internal/testreg) | `package: ./internal/testreg`<br>`test: TestNoSkipNamesAMissingForkLane` | the Go test passes | `internal/testreg/noskip_test.go:2162` |

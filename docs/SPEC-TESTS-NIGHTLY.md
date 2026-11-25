@@ -1202,7 +1202,7 @@ one schema version reads or writes another's data.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.evolution.make-go.tables-go-versioning` | `make` | make tables-go-versioning (make/go.mk) exits 0 | `file: make/go.mk`<br>`target: tables-go-versioning` | the target exits 0 with no skip in its log | `make/go.mk:1321` |
+| `none.nightly.evolution.make-go.tables-go-versioning` | `make` | make tables-go-versioning (make/go.mk) exits 0 | `file: make/go.mk`<br>`target: tables-go-versioning` | the target exits 0 with no skip in its log | `make/go.mk:1322` |
 
 #### `evolution` family `make-java`, 1 test
 
@@ -1266,9 +1266,9 @@ seeded mutations.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.fuzz.make-go.fuzz-tables-diff` | `make` | make fuzz-tables-diff (make/go.mk) exits 0 | `file: make/go.mk`<br>`target: fuzz-tables-diff` | the target exits 0 with no skip in its log | `make/go.mk:1484` |
+| `none.nightly.fuzz.make-go.fuzz-tables-diff` | `make` | make fuzz-tables-diff (make/go.mk) exits 0 | `file: make/go.mk`<br>`target: fuzz-tables-diff` | the target exits 0 with no skip in its log | `make/go.mk:1485` |
 | `none.nightly.fuzz.make-go.fuzz-tables-go` | `make` | make fuzz-tables-go (make/go.mk) exits 0 | `file: make/go.mk`<br>`target: fuzz-tables-go` | the target exits 0 with no skip in its log | `make/go.mk:710` |
-| `none.nightly.fuzz.make-go.fuzz-tables-props` | `make` | make fuzz-tables-props (make/go.mk) exits 0 | `file: make/go.mk`<br>`target: fuzz-tables-props` | the target exits 0 with no skip in its log | `make/go.mk:1495` |
+| `none.nightly.fuzz.make-go.fuzz-tables-props` | `make` | make fuzz-tables-props (make/go.mk) exits 0 | `file: make/go.mk`<br>`target: fuzz-tables-props` | the target exits 0 with no skip in its log | `make/go.mk:1496` |
 
 #### `fuzz` family `make-python-wirefuzz`, 1 test
 
@@ -5075,7 +5075,7 @@ performance or timing.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.bench.make-go.tables-go-bench-gate` | `make` | make tables-go-bench-gate (make/go.mk) exits 0 | `file: make/go.mk`<br>`target: tables-go-bench-gate` | the target exits 0 with no skip in its log | `make/go.mk:1228` |
+| `none.nightly.bench.make-go.tables-go-bench-gate` | `make` | make tables-go-bench-gate (make/go.mk) exits 0 | `file: make/go.mk`<br>`target: tables-go-bench-gate` | the target exits 0 with no skip in its log | `make/go.mk:1229` |
 
 #### `bench` family `make-lobster-bench`, 1 test
 
@@ -5445,8 +5445,8 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 |---|---|---|---|---|---|
 | `none.nightly.harness-run.make-go.cards-corpus-check` | `make` | make cards-corpus-check (make/go.mk) exits 0 | `file: make/go.mk`<br>`target: cards-corpus-check` | the target exits 0 with no skip in its log | `make/go.mk:470` |
 | `none.nightly.harness-run.make-go.cards-test` | `make` | make cards-test (make/go.mk) exits 0 | `file: make/go.mk`<br>`target: cards-test` | the target exits 0 with no skip in its log | `make/go.mk:489` |
-| `none.nightly.harness-run.make-go.tables-go-fixed-form` | `make` | make tables-go-fixed-form (make/go.mk) exits 0 | `file: make/go.mk`<br>`target: tables-go-fixed-form` | the target exits 0 with no skip in its log | `make/go.mk:1298` |
-| `none.nightly.harness-run.make-go.test-go-packet` | `make` | make test-go-packet (make/go.mk) exits 0 | `file: make/go.mk`<br>`target: test-go-packet` | the target exits 0 with no skip in its log | `make/go.mk:1010` |
+| `none.nightly.harness-run.make-go.tables-go-fixed-form` | `make` | make tables-go-fixed-form (make/go.mk) exits 0 | `file: make/go.mk`<br>`target: tables-go-fixed-form` | the target exits 0 with no skip in its log | `make/go.mk:1299` |
+| `none.nightly.harness-run.make-go.test-go-packet` | `make` | make test-go-packet (make/go.mk) exits 0 | `file: make/go.mk`<br>`target: test-go-packet` | the target exits 0 with no skip in its log | `make/go.mk:1011` |
 
 #### `harness-run` family `make-goose`, 1 test
 
