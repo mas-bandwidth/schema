@@ -130,6 +130,7 @@ func producedFiles(inputs string, vars map[string]string, g makeRuleText) ([]str
 				return nil, fmt.Errorf("phony %s has no rule naming what it builds", w)
 			}
 			queue = append(queue, g.prereqs[w]...)
+			queue = append(queue, g.orderOnly[w]...)
 			continue
 		}
 		need[w] = true
@@ -244,8 +245,9 @@ func lintProducerProblems(workflow string, mk map[string]string) []string {
 // the shards unpack the tree instead of generating it. The plants are a
 // produce row gone, a row building another target, a row packing less than
 // its gate reads, a phony input standing for a tree the row does not pack, a
-// gate that stops reading its inputs, tables-lua-format no longer reading
-// the corpus, and a matrix that no longer reads as JSON: each is red by name.
+// phony input whose rule names nothing it builds, a gate that stops reading
+// its inputs, tables-lua-format no longer reading the corpus, and a matrix
+// that no longer reads as JSON: each is red by name.
 func TestEveryLintGateReadsAProducedTree(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
@@ -286,6 +288,7 @@ func TestEveryLintGateReadsAProducedTree(t *testing.T) {
 		{"producer builds the gate", "", `"name":"lint-js","target":"tables-js-clean-inputs"`, `"name":"lint-js","target":"tables-js-clean"`, "no row lint-js building tables-js-clean-inputs"},
 		{"row packs less than its gate reads", "", `"paths":"bin/schema build/tables-generated-rust build/tables-generated-rust-witnesses"`, `"paths":"bin/schema build/tables-generated-rust"`, "produce row lint-rust does not pack build/tables-generated-rust-witnesses/.stamp, which tables-rust-clippy reads"},
 		{"a phony input names a tree the row does not pack", "make/c.mk", "CARDS_C_STAMP := build/tables-generated-c/cards/.stamp\n", "CARDS_C_STAMP := build/cards-c/.stamp\n", "produce row lint-c does not pack build/cards-c/.stamp, which tables-c-clean reads"},
+		{"a phony input names nothing it builds", "make/c.mk", "cards-c-generate: $(CARDS_C_STAMP)\n", "cards-c-generate:\n", "phony cards-c-generate has no rule naming what it builds"},
 		{"the matrix does not read", "", `"name":"lint-js"`, `"name":lint-js"`, "no row lint-cpp building tables-cpp-clean-inputs"},
 		{"gate stops reading its inputs", "make/js.mk", "tables-js-clean: toolchain-js $(TABLES_JS_CLEAN_INPUTS)", "tables-js-clean: toolchain-js build/tables-generated-js/.stamp", "tables-js-clean does not read $(TABLES_JS_CLEAN_INPUTS)"},
 		{"lua format stops reading the corpus", "make/schema-lua-generated-luacheck-gate.mk", "tables-lua-format: dist-stylua $(LUA_LUACHECK_CORPUS)/.stamp\n", "tables-lua-format: dist-stylua\n", "tables-lua-format does not read $(LUA_LUACHECK_CORPUS)/.stamp"},
