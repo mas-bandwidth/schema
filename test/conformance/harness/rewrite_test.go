@@ -210,7 +210,7 @@ func TestRewriteDerivedManifestAndGenerateRoundTrip(t *testing.T) {
 	m, _, u := corpus(t)
 	tmp := t.TempDir()
 	derivedPath := filepath.Join(tmp, "manifest-rewrite.txt")
-	if err := deriveRewriteManifest(m, derivedPath); err != nil {
+	if err := deriveRewriteManifest(m, derivedPath, nil); err != nil {
 		t.Fatal(err)
 	}
 	derived, err := ReadManifest(derivedPath, filepath.Join(tmp, "json"))

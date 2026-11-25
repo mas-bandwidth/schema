@@ -306,6 +306,17 @@ One process per surface, so a runtime starts once rather than once per case.
 `wire` and `json-read` write a file named by the instance; `json-write` writes
 `<instance>.json`; the others write a file named by the case.
 
+**THE HARNESS ALSO SCORES ONE SURFACE NO DRIVER LISTS: `rewrite`** (docs/SPEC-TABLES.md
+§22, test/conformance/harness/rewrite.go). A leg that lists `wire` is handed a
+second manifest, the units and one `instance <case> <unit> <root> <input> no-text`
+line per `rewrite` row of the corpus, and runs its own `wire` surface over it
+(Load the input, Save, the bytes). Each answer is held to
+`rewrite/<case>.bin`, the canonical bytes the oracle writes for the value the
+read leaves. A driver needs nothing new: the inputs are reading wires that are
+not canonical (an evolution wire, a framing vector that reads, a reordering,
+the §22.7 edge vectors), so a leg whose Save is not the §22 write algorithm
+answers them wrong, by name.
+
 **FOUR RULES A PORT READS HERE AND NOWHERE ELSE** (docs/SPEC-CONFORMANCE.md §7):
 
 - **The `framing` surface reads its root through the root's VARIABLE TWIN.**

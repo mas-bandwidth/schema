@@ -2526,6 +2526,16 @@ write-refusal wref_enum_deprecated_ok           tabledemo Moods testdata/conform
 write-refusal-fixed fref_enum_deprecated        tabledemo Moods testdata/conformance/tables/save-wire/sp-enum-elem-deprecated-array.bin row[0] ordinal 2 refused
 write-refusal-fixed fref_enum_deprecated_ok     tabledemo Moods testdata/conformance/tables/save-wire/sp-enum-elem-deprecated-array.bin row[0] ordinal 3 wrote
 
+# THE MAP FORM of the deprecated-element rule (FL-19, docs/SPEC-TABLES.md §2.15 and §16.2): a map VALUE
+# naming a deprecated variant reads as the value default, None, as an array element does. Its own unit
+# (test/tables/moodmap), so the root re-locks nothing another case pins; OPT-IN, so a leg that has not
+# registered it counts these rows absent, never pass. The save-wire is the read's canonical write-back,
+# as for the array form, and the instance holds every leg to it on the wire and text surfaces.
+unit tblmoodmap test/tables/moodmap/MoodMap.schema
+opt-in tblmoodmap
+json-hostile sp-enum-elem-deprecated-map        tblmoodmap       MoodMap      testdata/conformance/tables/json-hostile/sp-enum-elem-deprecated-map read
+instance sp_enum_mood_map                       tblmoodmap MoodMap  testdata/conformance/tables/save-wire/sp-enum-elem-deprecated-map.bin
+
 # THE SCALAR HALF of the deprecated-variant rule (docs/SPEC-TABLES.md §2.15): on a scalar enum field a
 # deprecated variant reads as the field's DECLARED default (MoodField.mood = Fierce), where in an array
 # element it reads as None. The text, the fixed form read by the writer's own layout, the compiled plan

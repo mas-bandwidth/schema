@@ -26,11 +26,17 @@ import (
 	"sync/atomic"
 )
 
+// harnessSurfaces are the surfaces the harness scores that no driver lists:
+// each rides a surface the driver does list (rewrite rides wire, run.go), so
+// the README's surfaces table, which drivers hold their `list` to, leaves
+// them out and names them below it.
+var harnessSurfaces = []string{"rewrite"}
+
 // surfaces, in the order the matrix prints them.
 var surfaces = []string{"wire", "message", "message-prior", "report", "framing", "retain", "retain-save", "retain-refusal", "json-read", "json-write", "json-hostile",
 	"cook", "cook-write", "cook-foreign", "block", "block-foreign", "block-dump", "forgery", "cook-forgery",
 	"write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json",
-	"write-refusal-cook", "write-refusal-block", "write-refusal-shape", "announce", "read-into", "json-write-into"}
+	"write-refusal-cook", "write-refusal-block", "write-refusal-shape", "announce", "read-into", "json-write-into", "rewrite"}
 
 // shapeLegs are the legs whose writers refuse in every build (docs/SPEC.md
 // §5.1): each OWES every `write-refusal-shape` case, so a surface it leaves
@@ -748,6 +754,16 @@ func expectations(m *Manifest, surface string, reports map[string]string, jsonDi
 			}
 			out = append(out, expectation{name: r.Name, want: want, unrepresentable: r.Form == "fixed-nocap" || r.Form == "retain-fixed"})
 		}
+	case "rewrite":
+		// THE REWRITE SURFACE (rewrite.go): the leg's wire surface over the
+		// rewrite rows, each owing the canonical bytes the oracle writes
+		for _, rw := range m.Rewrites {
+			want, err := os.ReadFile(rw.Canonical)
+			if err != nil {
+				return nil, fmt.Errorf("rewrite %s: the canonical bytes: %w — run: make conformance-generate", rw.Name, err)
+			}
+			out = append(out, expectation{name: rw.Name, want: want})
+		}
 	case "json-write-into":
 		for _, j := range m.JSONWriteIntos {
 			inst, err := m.LookupInstance(j.Instance)
@@ -982,6 +998,9 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 		if err != nil {
 			return false, fmt.Errorf("%s: %w", d.lang, err)
 		}
+		// the rewrite surface is the wire surface over the rewrite rows
+		// (rewrite.go): a leg that lists wire is asked it
+		listed["rewrite"] = listed["wire"]
 		// rows on an opt-in unit the leg does not name are not asked (optin.go)
 		legDerived, notAsked, notOptedIn, err := legManifest(m, derived, d.lang, listed)
 		if err != nil {
@@ -1001,6 +1020,18 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 			stderr  string
 			err     error
 			aborted bool
+		}
+		// the rewrite rows a leg is handed: those on units it is asked
+		// (an opt-in unit it does not name is not, and its rows count absent)
+		legRewrite := filepath.Join(work, "manifest-rewrite-"+d.lang+".txt")
+		omit := map[string]bool{}
+		for key := range m.OptIn {
+			if !listed["unit "+key] {
+				omit[key] = true
+			}
+		}
+		if err := deriveRewriteManifest(m, legRewrite, omit); err != nil {
+			return false, err
 		}
 		runs := map[string]*surfaceRun{}
 		var active []*surfaceRun
@@ -1047,7 +1078,11 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 							sr.aborted = true
 							continue
 						}
-						sr.code, sr.stderr, sr.err = runDriver(d, legDerived, sr.surface, sr.out)
+						if sr.surface == "rewrite" {
+							sr.code, sr.stderr, sr.err = runDriver(d, legRewrite, "wire", sr.out)
+						} else {
+							sr.code, sr.stderr, sr.err = runDriver(d, legDerived, sr.surface, sr.out)
+						}
 						if failFast {
 							if sr.err != nil || (sr.code != 0 && sr.code != 2) {
 								failed.Store(true)

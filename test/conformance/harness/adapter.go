@@ -74,6 +74,7 @@ var surfaceTypes = map[string]string{
 	"announce":              "encode",
 	"read-into":             "decode",
 	"json-write-into":       "encode",
+	"rewrite":               "roundtrip",
 }
 
 // surfaceChecks says in one line what a row of each surface proves; the
@@ -108,6 +109,7 @@ var surfaceChecks = map[string]string{
 	"announce":              "the announcement is written as pinned",
 	"read-into":             "a read into an existing value leaves the oracle's value",
 	"json-write-into":       "a text write into an existing buffer gives the canonical text",
+	"rewrite":               "the input read and written back gives the oracle's canonical bytes (SPEC-TABLES §22)",
 }
 
 // corpusInputs is a conformance row's inputs: the surface, the case as the

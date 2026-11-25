@@ -45,8 +45,10 @@ func RewriteCanonical(jsonDir, name string) string {
 }
 
 // deriveRewriteManifest writes the manifest a leg's `wire` surface reads for
-// the rewrite rows: the units, and one instance line per rewrite row.
-func deriveRewriteManifest(m *Manifest, path string) error {
+// the rewrite rows: the units, and one instance line per rewrite row, but for
+// the rows on a unit in omit (an opt-in unit the leg does not name). The run
+// scores the leg's answers as the `rewrite` surface (run.go).
+func deriveRewriteManifest(m *Manifest, path string, omit map[string]bool) error {
 	var b strings.Builder
 	b.WriteString("# DERIVED, by `harness run` — do not edit, do not commit.\n")
 	b.WriteString("# The rewrite rows of the committed manifest as instance lines, which a\n")
@@ -55,6 +57,9 @@ func deriveRewriteManifest(m *Manifest, path string) error {
 		fmt.Fprintf(&b, "unit %s %s\n", u.Key, strings.Join(u.Paths, " "))
 	}
 	for _, rw := range m.Rewrites {
+		if omit[rw.Unit] {
+			continue
+		}
 		fmt.Fprintf(&b, "instance %s %s %s %s no-text\n", rw.Name, rw.Unit, rw.Root, rw.Wire)
 	}
 	return writeFileAtomic(path, []byte(b.String()))

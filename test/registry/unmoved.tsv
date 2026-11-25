@@ -1186,8 +1186,7 @@ data-case	testdata/conformance/tables/json-hostile-number-token/uint128-max	1	L4
 data-case	testdata/conformance/tables/json-hostile-number-token/uint128-negative	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/conformance/tables/json-hostile-number-token/uint128-over	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/conformance/tables/message-verdict	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/conformance/tables/rewrite	8	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/conformance/tables/save-wire	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
+data-case	testdata/conformance/tables/rewrite	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/conformance/tables/shapes-loose	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/conformance/tables/wire	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/conformance/text	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
@@ -1750,7 +1749,7 @@ data-case	testdata/wire/packet-end	3	L4	corpus data and harnesses: each language
 data-case	testdata/wire/pointer-target-type	5	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/wire/pointer-target-type/blobkind	6	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/wire/skipped-value	15	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/wire/tables	87	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
+data-case	testdata/wire/tables	80	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/wire/tables/framing	19	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/wire/tables/fuzz-vectors	125	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/wire/tables/nightly-fuzz-regressions	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
