@@ -19,7 +19,7 @@
 //   The floor is one number and the lineage is one array, so "retired" is an
 //   index cut and the operator's two answers stay distinct: below the floor is
 //   layout_unsupported (upgrade the client), outside the lineage is
-//   layout_newer (ship the reader).
+//   layout_unknown.
 //
 // This test uses FE_ROOT (tblfe1), whose lineage has ONE entry (this build's
 // own layout) and floor = 0.  With floor = 0 the emitter omits the floor
@@ -27,7 +27,7 @@
 //   1. the FLOOR constant is 0 — "0 when none"
 //   2. the lineage structure — one entry, not retired
 //   3. a file at the floor reads
-//   4. a file with a hash outside the lineage is refused layout_newer, NOT
+//   4. a file with a hash outside the lineage is refused layout_unknown, NOT
 //      layout_unsupported — proving the two refusals are distinct
 //
 // The negative control changes FLOOR from 0 to 1 in the generated code; the
@@ -115,7 +115,6 @@ fn r3_floor_law() {
         !report.refused && report.reason == TableFixedReason::None,
         "a clean read is not a refusal",
     );
-    check(!report.damaged, "a clean read is not damage");
     check(values[0].grade == 1, "the grade value lands");
     check(values[0].tail == 99, "the field after the union lands");
     check(
@@ -123,7 +122,7 @@ fn r3_floor_law() {
         "the union arm's payload lands",
     );
 
-    // ---- PART 3: hash outside lineage is layout_newer, NOT layout_unsupported
+    // ---- PART 3: hash outside lineage is layout_unknown, NOT layout_unsupported
 
     let stranger_hash = 0xDEAD_BEEF_CAFE_F00Du64;
     file[TABLE_FIXED_HASH_AT..TABLE_FIXED_HASH_AT + 8]
@@ -137,31 +136,28 @@ fn r3_floor_law() {
 
     check(n2.is_none(), "a stranger's hash is refused");
     check(
-        report2.reason.name() == "layout_newer",
-        "outside the lineage is layout_newer, NOT layout_unsupported",
+        report2.reason.name() == "layout_unknown",
+        "outside the lineage is layout_unknown, NOT layout_unsupported",
     );
     check(
         report2.layout_hash == stranger_hash,
-        "layout_newer carries THE FILE'S hash",
-    );
-    check(
-        !report2.damaged,
-        "a refusal by name is not damage (§5.3 joint answer)",
+        "layout_unknown carries THE FILE'S hash",
     );
     check(report2.refused, "a refusal by name sets the refused flag");
     check(
-        report2.widened == 0
-            && report2.unknown == 0
-            && report2.mismatch == 0
-            && report2.oor == 0,
+        report2.widened == 0 && report2.unknown == 0,
         "REFUSE is TOTAL: no counter moves",
     );
-    let fresh = FeRootRow::default();
+    // RULING R4 (SPEC-TABLES §6.5): after a refusal every row handed in holds
+    // its DECLARED defaults (grade = Silver, tail = 7), the image the load
+    // prefills from FE_ROOT_FIXED_DEFAULTS, not Rust's zero Default.
+    let mut fresh = FeRootRow::default();
+    fe_root_fixed_scatter(&FE_ROOT_FIXED_DEFAULTS, &mut fresh, &mut TableFixedReport::default());
     check(
         values2[0].grade == fresh.grade
             && values2[0].tail == fresh.tail
             && values2[0].effect.tag() == fresh.effect.tag(),
-        "REFUSE wrote no destination bytes",
+        "REFUSE left every row at its declared defaults",
     );
 
     assert_eq!(

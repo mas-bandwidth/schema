@@ -201,3 +201,20 @@ func TestTheRegistryLoads(t *testing.T) {
 		}
 	}
 }
+
+// TestLoadRefusesABadNeed: a need is a lowercase machine property named
+// once; a row needing an empty, upper-case or repeated property is refused
+// by line, and a row needing casefold loads with the need on it.
+func TestLoadRefusesABadNeed(t *testing.T) {
+	t.Parallel()
+	row := func(needs string) string {
+		return `{"rec":"test","key":"roundtrip.fam.x","type":"roundtrip","family":"fam","case":"x","tier":"unit","checks":"x","inputs":{"n":9},"expect":"x","needs":` + needs + "}\n"
+	}
+	for _, bad := range []string{`[""]`, `["CaseFold"]`, `["casefold","casefold"]`, `["case fold"]`} {
+		refused(t, fixture+row(bad), "fixture.jsonl:15:", "each need is a lowercase machine property, named once")
+	}
+	reg := load(t, fixture+row(`["casefold"]`))
+	if got, ok := reg.Test("roundtrip.fam.x"); !ok || !slices.Equal(got.Needs, []string{"casefold"}) {
+		t.Fatalf("a row needing casefold: %+v", got)
+	}
+}

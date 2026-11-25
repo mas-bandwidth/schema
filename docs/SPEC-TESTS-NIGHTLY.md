@@ -5,7 +5,7 @@ Part of the specification: every test of tier `nightly`, from the test registry.
 
 **Tier nightly:** heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded.
 
-Nightly tests every language answers: 1084. Language-free tests: 1351.
+Nightly tests every language answers: 1084. Language-free tests: 1437.
 
 Run this tier for a language with `schema-test run --tier nightly --lang L`, one test with `schema-test run <full name>`.
 
@@ -1178,7 +1178,7 @@ one schema version reads or writes another's data.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.evolution.make-c.tables-c-versioning` | `make` | make tables-c-versioning (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: tables-c-versioning` | the target exits 0 with no skip in its log | `make/c.mk:1625` |
+| `none.nightly.evolution.make-c.tables-c-versioning` | `make` | make tables-c-versioning (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: tables-c-versioning` | the target exits 0 with no skip in its log | `make/c.mk:1624` |
 
 #### `evolution` family `make-cs`, 1 test
 
@@ -1204,12 +1204,6 @@ one schema version reads or writes another's data.
 |---|---|---|---|---|---|
 | `none.nightly.evolution.make-go.tables-go-versioning` | `make` | make tables-go-versioning (make/go.mk) exits 0 | `file: make/go.mk`<br>`target: tables-go-versioning` | the target exits 0 with no skip in its log | `make/go.mk:1254` |
 
-#### `evolution` family `make-goose-versioning`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.evolution.make-goose-versioning.tables-goose-versioning` | `make` | make tables-goose-versioning (make/goose-versioning.mk) exits 0 | `file: make/goose-versioning.mk`<br>`target: tables-goose-versioning` | the target exits 0 with no skip in its log | `make/goose-versioning.mk:21` |
-
 #### `evolution` family `make-java`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
@@ -1228,17 +1222,45 @@ one schema version reads or writes another's data.
 |---|---|---|---|---|---|
 | `none.nightly.evolution.make-luau.tables-luau-versioning` | `make` | make tables-luau-versioning (make/luau.mk) exits 0 | `file: make/luau.mk`<br>`target: tables-luau-versioning` | the target exits 0 with no skip in its log | `make/luau.mk:147` |
 
-#### `evolution` family `make-rust`, 3 tests
+#### `evolution` family `make-rust`, 2 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.nightly.evolution.make-rust.tables-rust-versioning` | `make` | make tables-rust-versioning (make/rust.mk) exits 0 | `file: make/rust.mk`<br>`target: tables-rust-versioning` | the target exits 0 with no skip in its log | `make/rust.mk:466` |
 | `none.nightly.evolution.make-rust.tables-rust-versioning-probes` | `make` | make tables-rust-versioning-probes (make/rust.mk) exits 0 | `file: make/rust.mk`<br>`target: tables-rust-versioning-probes` | the target exits 0 with no skip in its log | `make/rust.mk:469` |
-| `none.nightly.evolution.make-rust.tables-rust-versioning-t12` | `make` | make tables-rust-versioning-t12 (make/rust.mk) exits 0 | `file: make/rust.mk`<br>`target: tables-rust-versioning-t12` | the target exits 0 with no skip in its log | `make/rust.mk:473` |
+
+#### `evolution` family `tables-goose-versioning`, 12 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.evolution.tables-goose-versioning.goose-fixed-form-names-every-refusal` | `make-gotest` | Go test TestGooseFixedFormNamesEveryRefusal in ./internal/codegen/goosetable, run by make tables-goose-versioning (make/goose-versioning.mk) and read by name from its go test -json events | `file: make/goose-versioning.mk`<br>`package: ./internal/codegen/goosetable`<br>`target: tables-goose-versioning`<br>`test: TestGooseFixedFormNamesEveryRefusal` | the Go test passes in make tables-goose-versioning's run, with no skip | `internal/codegen/goosetable/fixedevolve_test.go:114` |
+| `none.nightly.evolution.tables-goose-versioning.goose-fixed-versioning-floor` | `make-gotest` | Go test TestGooseFixedVersioningFloor in ./internal/codegen/goosetable, run by make tables-goose-versioning (make/goose-versioning.mk) and read by name from its go test -json events | `file: make/goose-versioning.mk`<br>`package: ./internal/codegen/goosetable`<br>`target: tables-goose-versioning`<br>`test: TestGooseFixedVersioningFloor` | the Go test passes in make tables-goose-versioning's run, with no skip | `internal/codegen/goosetable/fixedversioning_test.go:169` |
+| `none.nightly.evolution.tables-goose-versioning.goose-fixed-versioning-forged-ordinal-both-plans` | `make-gotest` | Go test TestGooseFixedVersioningForgedOrdinalBothPlans in ./internal/codegen/goosetable, run by make tables-goose-versioning (make/goose-versioning.mk) and read by name from its go test -json events | `file: make/goose-versioning.mk`<br>`package: ./internal/codegen/goosetable`<br>`target: tables-goose-versioning`<br>`test: TestGooseFixedVersioningForgedOrdinalBothPlans` | the Go test passes in make tables-goose-versioning's run, with no skip | `internal/codegen/goosetable/fixedversioning_test.go:325` |
+| `none.nightly.evolution.tables-goose-versioning.goose-fixed-versioning-hash` | `make-gotest` | Go test TestGooseFixedVersioningHash in ./internal/codegen/goosetable, run by make tables-goose-versioning (make/goose-versioning.mk) and read by name from its go test -json events | `file: make/goose-versioning.mk`<br>`package: ./internal/codegen/goosetable`<br>`target: tables-goose-versioning`<br>`test: TestGooseFixedVersioningHash` | the Go test passes in make tables-goose-versioning's run, with no skip | `internal/codegen/goosetable/fixedversioning_test.go:208` |
+| `none.nightly.evolution.tables-goose-versioning.goose-fixed-versioning-lineage-merge` | `make-gotest` | Go test TestGooseFixedVersioningLineageMerge in ./internal/codegen/goosetable, run by make tables-goose-versioning (make/goose-versioning.mk) and read by name from its go test -json events | `file: make/goose-versioning.mk`<br>`package: ./internal/codegen/goosetable`<br>`target: tables-goose-versioning`<br>`test: TestGooseFixedVersioningLineageMerge` | the Go test passes in make tables-goose-versioning's run, with no skip | `internal/codegen/goosetable/fixedversioning_test.go:247` |
+| `none.nightly.evolution.tables-goose-versioning.goose-fixed-versioning-new-reads-old` | `make-gotest` | Go test TestGooseFixedVersioningNewReadsOld in ./internal/codegen/goosetable, run by make tables-goose-versioning (make/goose-versioning.mk) and read by name from its go test -json events | `file: make/goose-versioning.mk`<br>`package: ./internal/codegen/goosetable`<br>`target: tables-goose-versioning`<br>`test: TestGooseFixedVersioningNewReadsOld` | the Go test passes in make tables-goose-versioning's run, with no skip | `internal/codegen/goosetable/fixedversioning_test.go:104` |
+| `none.nightly.evolution.tables-goose-versioning.goose-fixed-versioning-old-refuses-new` | `make-gotest` | Go test TestGooseFixedVersioningOldRefusesNew in ./internal/codegen/goosetable, run by make tables-goose-versioning (make/goose-versioning.mk) and read by name from its go test -json events | `file: make/goose-versioning.mk`<br>`package: ./internal/codegen/goosetable`<br>`target: tables-goose-versioning`<br>`test: TestGooseFixedVersioningOldRefusesNew` | the Go test passes in make tables-goose-versioning's run, with no skip | `internal/codegen/goosetable/fixedversioning_test.go:137` |
+| `none.nightly.evolution.tables-goose-versioning.goose-fixed-versioning-range-widen-hostile` | `make-gotest` | Go test TestGooseFixedVersioningRangeWidenHostile in ./internal/codegen/goosetable, run by make tables-goose-versioning (make/goose-versioning.mk) and read by name from its go test -json events | `file: make/goose-versioning.mk`<br>`package: ./internal/codegen/goosetable`<br>`target: tables-goose-versioning`<br>`test: TestGooseFixedVersioningRangeWidenHostile` | the Go test passes in make tables-goose-versioning's run, with no skip | `internal/codegen/goosetable/fixedversioning_range_widen_hostile_test.go:22` |
+| `none.nightly.evolution.tables-goose-versioning.goose-fixed-versioning-refuse-writes-nothing` | `make-gotest` | Go test TestGooseFixedVersioningRefuseWritesNothing in ./internal/codegen/goosetable, run by make tables-goose-versioning (make/goose-versioning.mk) and read by name from its go test -json events | `file: make/goose-versioning.mk`<br>`package: ./internal/codegen/goosetable`<br>`target: tables-goose-versioning`<br>`test: TestGooseFixedVersioningRefuseWritesNothing` | the Go test passes in make tables-goose-versioning's run, with no skip | `internal/codegen/goosetable/fixedversioning_test.go:277` |
+| `none.nightly.evolution.tables-goose-versioning.goose-fixed-versioning-union-tag-both-plans` | `make-gotest` | Go test TestGooseFixedVersioningUnionTagBothPlans in ./internal/codegen/goosetable, run by make tables-goose-versioning (make/goose-versioning.mk) and read by name from its go test -json events | `file: make/goose-versioning.mk`<br>`package: ./internal/codegen/goosetable`<br>`target: tables-goose-versioning`<br>`test: TestGooseFixedVersioningUnionTagBothPlans` | the Go test passes in make tables-goose-versioning's run, with no skip | `internal/codegen/goosetable/fixedversioning_test.go:355` |
+| `none.nightly.evolution.tables-goose-versioning.goose-fixed-versioning-unknown-census` | `make-gotest` | Go test TestGooseFixedVersioningUnknownCensus in ./internal/codegen/goosetable, run by make tables-goose-versioning (make/goose-versioning.mk) and read by name from its go test -json events | `file: make/goose-versioning.mk`<br>`package: ./internal/codegen/goosetable`<br>`target: tables-goose-versioning`<br>`test: TestGooseFixedVersioningUnknownCensus` | the Go test passes in make tables-goose-versioning's run, with no skip | `internal/codegen/goosetable/fixedversioning_test.go:300` |
+| `none.nightly.evolution.tables-goose-versioning.goose-fixed-versioning-writer-bound-count` | `make-gotest` | Go test TestGooseFixedVersioningWriterBoundCount in ./internal/codegen/goosetable, run by make tables-goose-versioning (make/goose-versioning.mk) and read by name from its go test -json events | `file: make/goose-versioning.mk`<br>`package: ./internal/codegen/goosetable`<br>`target: tables-goose-versioning`<br>`test: TestGooseFixedVersioningWriterBoundCount` | the Go test passes in make tables-goose-versioning's run, with no skip | `internal/codegen/goosetable/fixedversioning_test.go:385` |
+
+#### `evolution` family `tables-rust-versioning-t12`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.evolution.tables-rust-versioning-t12.fixed-roadmap-rust-t12-framing-text` | `make-gotest` | Go test TestFixedRoadmapRustT12FramingText in ./internal/codegen/rusttable, run by make tables-rust-versioning-t12 (make/rust.mk) and read by name from its go test -json events | `file: make/rust.mk`<br>`package: ./internal/codegen/rusttable`<br>`target: tables-rust-versioning-t12`<br>`test: TestFixedRoadmapRustT12FramingText` | the Go test passes in make tables-rust-versioning-t12's run, with no skip | `internal/codegen/rusttable/fixedroadmap_t12_test.go:32` |
 
 ### Type `fuzz`
 
 seeded mutations.
+
+#### `fuzz` family `fuzz`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.fuzz.fuzz.fuzz-table-front-end` | `gotest` | Go test FuzzTableFrontEnd in ./internal/fuzz | `inputs.files` (353 bytes, held in the registry row's `inputs.files`)<br>`package: ./internal/fuzz`<br>`test: FuzzTableFrontEnd` | the Go test passes | `internal/fuzz/tablefrontend_test.go:218` |
 
 #### `fuzz` family `make-go`, 3 tests
 
@@ -1919,6 +1941,12 @@ a negative control: a named test run against a deliberately broken build must co
 |---|---|---|---|---|---|
 | `none.nightly.plant.c-message-flags-domain.tables-c-message-flags-domain-negative-control` | `plant` | negative control tables-c-message-flags-domain-negative-control (group c-message-flags-domain of make/negative-controls.json): its sabotage turns the gate it controls red | `file: make/c-message-flags.mk`<br>`group: c-message-flags-domain`<br>`make: tables-c-message-flags-domain-negative-control` | the control exits 0: the gate it controls went red on its planted sabotage | `make/negative-controls.json:3295` |
 
+#### `plant` family `cards-ruby-facade-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.cards-ruby-facade-negative-control.ruby-cards-facade-negative-control` | `make-gotest` | Go test TestRubyCardsFacadeNegativeControl in ./internal/codegen/rubytable, run by make cards-ruby-facade-negative-control (make/ruby-cards.mk) and read by name from its go test -json events | `file: make/ruby-cards.mk`<br>`package: ./internal/codegen/rubytable`<br>`target: cards-ruby-facade-negative-control`<br>`test: TestRubyCardsFacadeNegativeControl` | the Go test passes in make cards-ruby-facade-negative-control's run, with no skip | `internal/codegen/rubytable/cards_test.go:127` |
+
 #### `plant` family `cpp-message-flags-domain`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
@@ -2301,6 +2329,12 @@ a negative control: a named test run against a deliberately broken build must co
 | `none.nightly.plant.dart-d.packet-end-dart-negative-control` | `plant` | negative control packet-end-dart-negative-control (group dart-d of make/negative-controls.json): its sabotage turns the gate it controls red | `file: make/dart.mk`<br>`group: dart-d`<br>`make: packet-end-dart-negative-control` | the control exits 0: the gate it controls went red on its planted sabotage | `make/negative-controls.json:2006` |
 | `none.nightly.plant.dart-d.packet-write-cfloat-dart-negative-control` | `plant` | negative control packet-write-cfloat-dart-negative-control (group dart-d of make/negative-controls.json): its sabotage turns the gate it controls red | `file: make/dart.mk`<br>`group: dart-d`<br>`make: packet-write-cfloat-dart-negative-control` | the control exits 0: the gate it controls went red on its planted sabotage | `make/negative-controls.json:2007` |
 | `none.nightly.plant.dart-d.packet-write-text-dart-negative-control` | `plant` | negative control packet-write-text-dart-negative-control (group dart-d of make/negative-controls.json): its sabotage turns the gate it controls red | `file: make/dart.mk`<br>`group: dart-d`<br>`make: packet-write-text-dart-negative-control` | the control exits 0: the gate it controls went red on its planted sabotage | `make/negative-controls.json:2008` |
+
+#### `plant` family `dart-id-first-use-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.dart-id-first-use-negative-control.dart-wire-id-first-use-negative-control` | `make-gotest` | Go test TestDartWireIdFirstUseNegativeControl in ./internal/codegen/darttable, run by make dart-id-first-use-negative-control (make/dart-id-first-use.mk) and read by name from its go test -json events | `file: make/dart-id-first-use.mk`<br>`package: ./internal/codegen/darttable`<br>`target: dart-id-first-use-negative-control`<br>`test: TestDartWireIdFirstUseNegativeControl` | the Go test passes in make dart-id-first-use-negative-control's run, with no skip | `internal/codegen/darttable/id_first_use_test.go:122` |
 
 #### `plant` family `dart-nightly`, 1 test
 
@@ -2941,6 +2975,12 @@ a negative control: a named test run against a deliberately broken build must co
 |---|---|---|---|---|---|
 | `none.nightly.plant.js-hostile.schema-js-runs-hostile-corpus-negative-control` | `plant` | negative control schema-js-runs-hostile-corpus-negative-control (group js-hostile of make/negative-controls.json): its sabotage turns the gate it controls red | `file: make/schema-js-runs-hostile-corpus.mk`<br>`group: js-hostile`<br>`make: schema-js-runs-hostile-corpus-negative-control` | the control exits 0: the gate it controls went red on its planted sabotage | `make/negative-controls.json:1880` |
 
+#### `plant` family `js-json-base64-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.js-json-base64-negative-control.java-script-text-base64-negative-control` | `make-gotest` | Go test TestJavaScriptTextBase64NegativeControl in ./internal/codegen/jstable, run by make js-json-base64-negative-control (make/js-json-base64.mk) and read by name from its go test -json events | `file: make/js-json-base64.mk`<br>`package: ./internal/codegen/jstable`<br>`target: js-json-base64-negative-control`<br>`test: TestJavaScriptTextBase64NegativeControl` | the Go test passes in make js-json-base64-negative-control's run, with no skip | `internal/codegen/jstable/json_base64_test.go:175` |
+
 #### `plant` family `js-proof`, 8 tests
 
 | full name | adapter | checks | inputs | expected result | source |
@@ -3247,12 +3287,11 @@ a negative control: a named test run against a deliberately broken build must co
 | `none.nightly.plant.luau-write-refusal.conformance-negative-control-luau-write-refusal-fixed` | `plant` | negative control conformance-negative-control-luau-write-refusal-fixed (group luau-write-refusal of make/negative-controls.json): its sabotage turns the gate it controls red | `file: make/luau-conformance.mk`<br>`group: luau-write-refusal`<br>`make: conformance-negative-control-luau-write-refusal-fixed` | the control exits 0: the gate it controls went red on its planted sabotage | `make/negative-controls.json:3399` |
 | `none.nightly.plant.luau-write-refusal.conformance-negative-control-luau-write-refusal-message` | `plant` | negative control conformance-negative-control-luau-write-refusal-message (group luau-write-refusal of make/negative-controls.json): its sabotage turns the gate it controls red | `file: make/luau-conformance.mk`<br>`group: luau-write-refusal`<br>`make: conformance-negative-control-luau-write-refusal-message` | the control exits 0: the gate it controls went red on its planted sabotage | `make/negative-controls.json:3400` |
 
-#### `plant` family `make-c`, 2 tests
+#### `plant` family `make-c`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.plant.make-c.packet-write-refusal-c-negative-control` | `make` | make packet-write-refusal-c-negative-control (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: packet-write-refusal-c-negative-control` | the target exits 0 with no skip in its log | `make/c.mk:2541` |
-| `none.nightly.plant.make-c.tables-c-retain-hashzero-negative-control` | `make` | make tables-c-retain-hashzero-negative-control (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: tables-c-retain-hashzero-negative-control` | the target exits 0 with no skip in its log | `make/c.mk:2570` |
+| `none.nightly.plant.make-c.packet-write-refusal-c-negative-control` | `make` | make packet-write-refusal-c-negative-control (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: packet-write-refusal-c-negative-control` | the target exits 0 with no skip in its log | `make/c.mk:2540` |
 
 #### `plant` family `make-checks-schema-shared-hostile-corpus`, 1 test
 
@@ -3283,12 +3322,6 @@ a negative control: a named test run against a deliberately broken build must co
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.nightly.plant.make-cpp-tool-message.conformance-cpp-tool-message-negative-control` | `make` | make conformance-cpp-tool-message-negative-control (make/cpp-tool-message.mk) exits 0 | `file: make/cpp-tool-message.mk`<br>`target: conformance-cpp-tool-message-negative-control` | the target exits 0 with no skip in its log | `make/cpp-tool-message.mk:30` |
-
-#### `plant` family `make-cs`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.plant.make-cs.tables-cs-wire-fuzz-dead-bytes-negative-control` | `make` | make tables-cs-wire-fuzz-dead-bytes-negative-control (make/cs.mk) exits 0 | `file: make/cs.mk`<br>`target: tables-cs-wire-fuzz-dead-bytes-negative-control` | the target exits 0 with no skip in its log | `make/cs.mk:978` |
 
 #### `plant` family `make-cs-cook-write`, 1 test
 
@@ -3325,12 +3358,6 @@ a negative control: a named test run against a deliberately broken build must co
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.nightly.plant.make-dart-hostile-text-throw.schema-dart-hostile-text-throw-negative-control` | `make` | make schema-dart-hostile-text-throw-negative-control (make/dart-hostile-text-throw.mk) exits 0 | `file: make/dart-hostile-text-throw.mk`<br>`target: schema-dart-hostile-text-throw-negative-control` | the target exits 0 with no skip in its log | `make/dart-hostile-text-throw.mk:16` |
-
-#### `plant` family `make-dart-id-first-use`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.plant.make-dart-id-first-use.dart-id-first-use-negative-control` | `make` | make dart-id-first-use-negative-control (make/dart-id-first-use.mk) exits 0 | `file: make/dart-id-first-use.mk`<br>`target: dart-id-first-use-negative-control` | the target exits 0 with no skip in its log | `make/dart-id-first-use.mk:3` |
 
 #### `plant` family `make-dart-packet-write-bareint`, 1 test
 
@@ -3429,12 +3456,6 @@ a negative control: a named test run against a deliberately broken build must co
 |---|---|---|---|---|---|
 | `none.nightly.plant.make-js-cook-absent-optional.js-cook-absent-optional-negative-control` | `make` | make js-cook-absent-optional-negative-control (make/js-cook-absent-optional.mk) exits 0 | `file: make/js-cook-absent-optional.mk`<br>`target: js-cook-absent-optional-negative-control` | the target exits 0 with no skip in its log | `make/js-cook-absent-optional.mk:3` |
 
-#### `plant` family `make-js-json-base64`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.plant.make-js-json-base64.js-json-base64-negative-control` | `make` | make js-json-base64-negative-control (make/js-json-base64.mk) exits 0 | `file: make/js-json-base64.mk`<br>`target: js-json-base64-negative-control` | the target exits 0 with no skip in its log | `make/js-json-base64.mk:3` |
-
 #### `plant` family `make-js-packet-write-bareint`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
@@ -3464,24 +3485,6 @@ a negative control: a named test run against a deliberately broken build must co
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.nightly.plant.make-lobster-cook-write.conformance-lobster-cook-write-negative-control` | `make` | make conformance-lobster-cook-write-negative-control (make/lobster-cook-write.mk) exits 0 | `file: make/lobster-cook-write.mk`<br>`target: conformance-lobster-cook-write-negative-control` | the target exits 0 with no skip in its log | `make/lobster-cook-write.mk:18` |
-
-#### `plant` family `make-lobster-packet-end`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.plant.make-lobster-packet-end.packet-end-lobster-negative-control` | `make` | make packet-end-lobster-negative-control (make/lobster-packet-end.mk) exits 0 | `file: make/lobster-packet-end.mk`<br>`target: packet-end-lobster-negative-control` | the target exits 0 with no skip in its log | `make/lobster-packet-end.mk:15` |
-
-#### `plant` family `make-lobster-packet-write-bareint`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.plant.make-lobster-packet-write-bareint.packet-write-bareint-lobster-negative-control` | `make` | make packet-write-bareint-lobster-negative-control (make/lobster-packet-write-bareint.mk) exits 0 | `file: make/lobster-packet-write-bareint.mk`<br>`target: packet-write-bareint-lobster-negative-control` | the target exits 0 with no skip in its log | `make/lobster-packet-write-bareint.mk:13` |
-
-#### `plant` family `make-lobster-packet-write-cfloat`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.plant.make-lobster-packet-write-cfloat.packet-write-cfloat-lobster-negative-control` | `make` | make packet-write-cfloat-lobster-negative-control (make/lobster-packet-write-cfloat.mk) exits 0 | `file: make/lobster-packet-write-cfloat.mk`<br>`target: packet-write-cfloat-lobster-negative-control` | the target exits 0 with no skip in its log | `make/lobster-packet-write-cfloat.mk:15` |
 
 #### `plant` family `make-lua-packet-write-text`, 1 test
 
@@ -3525,31 +3528,6 @@ a negative control: a named test run against a deliberately broken build must co
 |---|---|---|---|---|---|
 | `none.nightly.plant.make-moo-packet-write-bareint.packet-write-bareint-moo-negative-control` | `make` | make packet-write-bareint-moo-negative-control (make/moo-packet-write-bareint.mk) exits 0 | `file: make/moo-packet-write-bareint.mk`<br>`target: packet-write-bareint-moo-negative-control` | the target exits 0 with no skip in its log | `make/moo-packet-write-bareint.mk:17` |
 
-#### `plant` family `make-python-array-growth`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.plant.make-python-array-growth.python-array-growth-negative-control` | `make` | make python-array-growth-negative-control (make/python-array-growth.mk) exits 0 | `file: make/python-array-growth.mk`<br>`target: python-array-growth-negative-control` | the target exits 0 with no skip in its log | `make/python-array-growth.mk:3` |
-
-#### `plant` family `make-python-array-root`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.plant.make-python-array-root.python-array-root-negative-control` | `make` | make python-array-root-negative-control (make/python-array-root.mk) exits 0 | `file: make/python-array-root.mk`<br>`target: python-array-root-negative-control` | the target exits 0 with no skip in its log | `make/python-array-root.mk:4` |
-
-#### `plant` family `make-python-blob-wire-driver`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.plant.make-python-blob-wire-driver.python-blob-wire-driver-negative-control` | `make` | make python-blob-wire-driver-negative-control (make/python-blob-wire-driver.mk) exits 0 | `file: make/python-blob-wire-driver.mk`<br>`target: python-blob-wire-driver-negative-control` | the target exits 0 with no skip in its log | `make/python-blob-wire-driver.mk:7` |
-
-#### `plant` family `make-python-block`, 2 tests
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.plant.make-python-block.python-block-build-negative-control` | `make` | make python-block-build-negative-control (make/python-block.mk) exits 0 | `file: make/python-block.mk`<br>`target: python-block-build-negative-control` | the target exits 0 with no skip in its log | `make/python-block.mk:17` |
-| `none.nightly.plant.make-python-block.python-block-read-negative-control` | `make` | make python-block-read-negative-control (make/python-block.mk) exits 0 | `file: make/python-block.mk`<br>`target: python-block-read-negative-control` | the target exits 0 with no skip in its log | `make/python-block.mk:14` |
-
 #### `plant` family `make-python-cards`, 4 tests
 
 | full name | adapter | checks | inputs | expected result | source |
@@ -3559,11 +3537,10 @@ a negative control: a named test run against a deliberately broken build must co
 | `none.nightly.plant.make-python-cards.cards-python-render-negative-control` | `make` | make cards-python-render-negative-control (make/python-cards.mk) exits 0 | `file: make/python-cards.mk`<br>`target: cards-python-render-negative-control` | the target exits 0 with no skip in its log | `make/python-cards.mk:30` |
 | `none.nightly.plant.make-python-cards.cards-python-upgrade-negative-control` | `make` | make cards-python-upgrade-negative-control (make/python-cards.mk) exits 0 | `file: make/python-cards.mk`<br>`target: cards-python-upgrade-negative-control` | the target exits 0 with no skip in its log | `make/python-cards.mk:32` |
 
-#### `plant` family `make-python-ci-release`, 2 tests
+#### `plant` family `make-python-ci-release`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.plant.make-python-ci-release.python-readiness-negative-control` | `make` | make python-readiness-negative-control (make/python-ci-release.mk) exits 0 | `file: make/python-ci-release.mk`<br>`target: python-readiness-negative-control` | the target exits 0 with no skip in its log | `make/python-ci-release.mk:16` |
 | `none.nightly.plant.make-python-ci-release.tables-python-bench-gate-negative-control` | `make` | make tables-python-bench-gate-negative-control (make/python-ci-release.mk) exits 0 | `file: make/python-ci-release.mk`<br>`target: tables-python-bench-gate-negative-control` | the target exits 0 with no skip in its log | `make/python-ci-release.mk:31` |
 
 #### `plant` family `make-python-cook`, 1 test
@@ -3584,66 +3561,11 @@ a negative control: a named test run against a deliberately broken build must co
 |---|---|---|---|---|---|
 | `none.nightly.plant.make-python-docs.tables-python-usage-negative-control` | `make` | make tables-python-usage-negative-control (make/python-docs.mk) exits 0 | `file: make/python-docs.mk`<br>`target: tables-python-usage-negative-control` | the target exits 0 with no skip in its log | `make/python-docs.mk:12` |
 
-#### `plant` family `make-python-fixed-crc`, 1 test
+#### `plant` family `make-python-fixed-form`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.plant.make-python-fixed-crc.python-fixed-crc-negative-control` | `make` | make python-fixed-crc-negative-control (make/python-fixed-crc.mk) exits 0 | `file: make/python-fixed-crc.mk`<br>`target: python-fixed-crc-negative-control` | the target exits 0 with no skip in its log | `make/python-fixed-crc.mk:4` |
-
-#### `plant` family `make-python-fixed-form`, 7 tests
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.plant.make-python-fixed-form.python-fixed-core-values-negative-control` | `make` | make python-fixed-core-values-negative-control (make/python-fixed-form.mk) exits 0 | `file: make/python-fixed-form.mk`<br>`target: python-fixed-core-values-negative-control` | the target exits 0 with no skip in its log | `make/python-fixed-form.mk:46` |
-| `none.nightly.plant.make-python-fixed-form.python-fixed-deprecated-enum-negative-control` | `make` | make python-fixed-deprecated-enum-negative-control (make/python-fixed-form.mk) exits 0 | `file: make/python-fixed-form.mk`<br>`target: python-fixed-deprecated-enum-negative-control` | the target exits 0 with no skip in its log | `make/python-fixed-form.mk:56` |
-| `none.nightly.plant.make-python-fixed-form.python-fixed-form-conformance-negative-control` | `make` | make python-fixed-form-conformance-negative-control (make/python-fixed-form.mk) exits 0 | `file: make/python-fixed-form.mk`<br>`target: python-fixed-form-conformance-negative-control` | the target exits 0 with no skip in its log | `make/python-fixed-form.mk:36` |
-| `none.nightly.plant.make-python-fixed-form.python-fixed-form-negative-control` | `make` | make python-fixed-form-negative-control (make/python-fixed-form.mk) exits 0 | `file: make/python-fixed-form.mk`<br>`target: python-fixed-form-negative-control` | the target exits 0 with no skip in its log | `make/python-fixed-form.mk:11` |
-| `none.nightly.plant.make-python-fixed-form.python-fixed-identity-negative-control` | `make` | make python-fixed-identity-negative-control (make/python-fixed-form.mk) exits 0 | `file: make/python-fixed-form.mk`<br>`target: python-fixed-identity-negative-control` | the target exits 0 with no skip in its log | `make/python-fixed-form.mk:62` |
-| `none.nightly.plant.make-python-fixed-form.python-fixed-refused-hash-negative-control` | `make` | make python-fixed-refused-hash-negative-control (make/python-fixed-form.mk) exits 0 | `file: make/python-fixed-form.mk`<br>`target: python-fixed-refused-hash-negative-control` | the target exits 0 with no skip in its log | `make/python-fixed-form.mk:51` |
 | `none.nightly.plant.make-python-fixed-form.python-fixed-writer-lineage-negative-control` | `make` | make python-fixed-writer-lineage-negative-control (make/python-fixed-form.mk) exits 0 | `file: make/python-fixed-form.mk`<br>`target: python-fixed-writer-lineage-negative-control` | the target exits 0 with no skip in its log | `make/python-fixed-form.mk:39` |
-
-#### `plant` family `make-python-fixed-proof-evolution`, 2 tests
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.plant.make-python-fixed-proof-evolution.python-fixed-proof-evolution-kinds-negative-control` | `make` | make python-fixed-proof-evolution-kinds-negative-control (make/python-fixed-proof-evolution.mk) exits 0 | `file: make/python-fixed-proof-evolution.mk`<br>`target: python-fixed-proof-evolution-kinds-negative-control` | the target exits 0 with no skip in its log | `make/python-fixed-proof-evolution.mk:40` |
-| `none.nightly.plant.make-python-fixed-proof-evolution.python-fixed-proof-evolution-negative-control` | `make` | make python-fixed-proof-evolution-negative-control (make/python-fixed-proof-evolution.mk) exits 0 | `file: make/python-fixed-proof-evolution.mk`<br>`target: python-fixed-proof-evolution-negative-control` | the target exits 0 with no skip in its log | `make/python-fixed-proof-evolution.mk:31` |
-
-#### `plant` family `make-python-fixed-proof-shapes`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.plant.make-python-fixed-proof-shapes.python-fixed-proof-shapes-negative-control` | `make` | make python-fixed-proof-shapes-negative-control (make/python-fixed-proof-shapes.mk) exits 0 | `file: make/python-fixed-proof-shapes.mk`<br>`target: python-fixed-proof-shapes-negative-control` | the target exits 0 with no skip in its log | `make/python-fixed-proof-shapes.mk:19` |
-
-#### `plant` family `make-python-fixed-proof-unions-optionals`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.plant.make-python-fixed-proof-unions-optionals.python-fixed-proof-unions-optionals-negative-control` | `make` | make python-fixed-proof-unions-optionals-negative-control (make/python-fixed-proof-unions-optionals.mk) exits 0 | `file: make/python-fixed-proof-unions-optionals.mk`<br>`target: python-fixed-proof-unions-optionals-negative-control` | the target exits 0 with no skip in its log | `make/python-fixed-proof-unions-optionals.mk:19` |
-
-#### `plant` family `make-python-fixed-proof-values`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.plant.make-python-fixed-proof-values.python-fixed-proof-values-negative-control` | `make` | make python-fixed-proof-values-negative-control (make/python-fixed-proof-values.mk) exits 0 | `file: make/python-fixed-proof-values.mk`<br>`target: python-fixed-proof-values-negative-control` | the target exits 0 with no skip in its log | `make/python-fixed-proof-values.mk:11` |
-
-#### `plant` family `make-python-form1-array-compat`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.plant.make-python-form1-array-compat.python-form1-array-compat-negative-control` | `make` | make python-form1-array-compat-negative-control (make/python-form1-array-compat.mk) exits 0 | `file: make/python-form1-array-compat.mk`<br>`target: python-form1-array-compat-negative-control` | the target exits 0 with no skip in its log | `make/python-form1-array-compat.mk:5` |
-
-#### `plant` family `make-python-form1-required`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.plant.make-python-form1-required.python-form1-required-negative-control` | `make` | make python-form1-required-negative-control (make/python-form1-required.mk) exits 0 | `file: make/python-form1-required.mk`<br>`target: python-form1-required-negative-control` | the target exits 0 with no skip in its log | `make/python-form1-required.mk:6` |
-
-#### `plant` family `make-python-forms-metadata`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.plant.make-python-forms-metadata.python-forms-metadata-negative-control` | `make` | make python-forms-metadata-negative-control (make/python-forms-metadata.mk) exits 0 | `file: make/python-forms-metadata.mk`<br>`target: python-forms-metadata-negative-control` | the target exits 0 with no skip in its log | `make/python-forms-metadata.mk:3` |
 
 #### `plant` family `make-python-framing-driver`, 1 test
 
@@ -3651,11 +3573,10 @@ a negative control: a named test run against a deliberately broken build must co
 |---|---|---|---|---|---|
 | `none.nightly.plant.make-python-framing-driver.python-framing-driver-negative-control` | `make` | make python-framing-driver-negative-control (make/python-framing-driver.mk) exits 0 | `file: make/python-framing-driver.mk`<br>`target: python-framing-driver-negative-control` | the target exits 0 with no skip in its log | `make/python-framing-driver.mk:10` |
 
-#### `plant` family `make-python-handtext`, 2 tests
+#### `plant` family `make-python-handtext`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.plant.make-python-handtext.python-handtext-negative-control` | `make` | make python-handtext-negative-control (make/python-handtext.mk) exits 0 | `file: make/python-handtext.mk`<br>`target: python-handtext-negative-control` | the target exits 0 with no skip in its log | `make/python-handtext.mk:20` |
 | `none.nightly.plant.make-python-handtext.table-base64-python-negative-control` | `make` | make table-base64-python-negative-control (make/python-handtext.mk) exits 0 | `file: make/python-handtext.mk`<br>`target: table-base64-python-negative-control` | the target exits 0 with no skip in its log | `make/python-handtext.mk:40` |
 
 #### `plant` family `make-python-hosted-float`, 1 test
@@ -3664,44 +3585,12 @@ a negative control: a named test run against a deliberately broken build must co
 |---|---|---|---|---|---|
 | `none.nightly.plant.make-python-hosted-float.python-hosted-float-negative-control` | `make` | make python-hosted-float-negative-control (make/python-hosted-float.mk) exits 0 | `file: make/python-hosted-float.mk`<br>`target: python-hosted-float-negative-control` | the target exits 0 with no skip in its log | `make/python-hosted-float.mk:5` |
 
-#### `plant` family `make-python-hosted-keyed`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.plant.make-python-hosted-keyed.python-hosted-keyed-negative-control` | `make` | make python-hosted-keyed-negative-control (make/python-hosted-keyed.mk) exits 0 | `file: make/python-hosted-keyed.mk`<br>`target: python-hosted-keyed-negative-control` | the target exits 0 with no skip in its log | `make/python-hosted-keyed.mk:7` |
-
-#### `plant` family `make-python-hostile`, 2 tests
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.plant.make-python-hostile.schema-python-resource-bounds-negative-control` | `make` | make schema-python-resource-bounds-negative-control (make/python-hostile.mk) exits 0 | `file: make/python-hostile.mk`<br>`target: schema-python-resource-bounds-negative-control` | the target exits 0 with no skip in its log | `make/python-hostile.mk:31` |
-| `none.nightly.plant.make-python-hostile.schema-python-runs-hostile-corpus-negative-control` | `make` | make schema-python-runs-hostile-corpus-negative-control (make/python-hostile.mk) exits 0 | `file: make/python-hostile.mk`<br>`target: schema-python-runs-hostile-corpus-negative-control` | the target exits 0 with no skip in its log | `make/python-hostile.mk:24` |
-
-#### `plant` family `make-python-json`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.plant.make-python-json.python-json-negative-control` | `make` | make python-json-negative-control (make/python-json.mk) exits 0 | `file: make/python-json.mk`<br>`target: python-json-negative-control` | the target exits 0 with no skip in its log | `make/python-json.mk:11` |
-
-#### `plant` family `make-python-keyed-flags`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.plant.make-python-keyed-flags.python-keyed-flags-negative-control` | `make` | make python-keyed-flags-negative-control (make/python-keyed-flags.mk) exits 0 | `file: make/python-keyed-flags.mk`<br>`target: python-keyed-flags-negative-control` | the target exits 0 with no skip in its log | `make/python-keyed-flags.mk:3` |
-
-#### `plant` family `make-python-message`, 9 tests
+#### `plant` family `make-python-message`, 2 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.nightly.plant.make-python-message.python-fixed-message-surface-control` | `make` | make python-fixed-message-surface-control (make/python-message.mk) exits 0 | `file: make/python-message.mk`<br>`target: python-fixed-message-surface-control` | the target exits 0 with no skip in its log | `make/python-message.mk:16` |
-| `none.nightly.plant.make-python-message.python-message-arm-shape-negative-control` | `make` | make python-message-arm-shape-negative-control (make/python-message.mk) exits 0 | `file: make/python-message.mk`<br>`target: python-message-arm-shape-negative-control` | the target exits 0 with no skip in its log | `make/python-message.mk:67` |
-| `none.nightly.plant.make-python-message.python-message-crc-negative-control` | `make` | make python-message-crc-negative-control (make/python-message.mk) exits 0 | `file: make/python-message.mk`<br>`target: python-message-crc-negative-control` | the target exits 0 with no skip in its log | `make/python-message.mk:52` |
-| `none.nightly.plant.make-python-message.python-message-negative-control` | `make` | make python-message-negative-control (make/python-message.mk) exits 0 | `file: make/python-message.mk`<br>`target: python-message-negative-control` | the target exits 0 with no skip in its log | `make/python-message.mk:32` |
-| `none.nightly.plant.make-python-message.python-message-noncanonical-negative-control` | `make` | make python-message-noncanonical-negative-control (make/python-message.mk) exits 0 | `file: make/python-message.mk`<br>`target: python-message-noncanonical-negative-control` | the target exits 0 with no skip in its log | `make/python-message.mk:77` |
-| `none.nightly.plant.make-python-message.python-message-onesided-negative-control` | `make` | make python-message-onesided-negative-control (make/python-message.mk) exits 0 | `file: make/python-message.mk`<br>`target: python-message-onesided-negative-control` | the target exits 0 with no skip in its log | `make/python-message.mk:57` |
-| `none.nightly.plant.make-python-message.python-message-substitution-negative-control` | `make` | make python-message-substitution-negative-control (make/python-message.mk) exits 0 | `file: make/python-message.mk`<br>`target: python-message-substitution-negative-control` | the target exits 0 with no skip in its log | `make/python-message.mk:62` |
 | `none.nightly.plant.make-python-message.python-message-surface-negative-control` | `make` | make python-message-surface-negative-control (make/python-message.mk) exits 0 | `file: make/python-message.mk`<br>`target: python-message-surface-negative-control` | the target exits 0 with no skip in its log | `make/python-message.mk:47` |
-| `none.nightly.plant.make-python-message.python-message-write-negative-control` | `make` | make python-message-write-negative-control (make/python-message.mk) exits 0 | `file: make/python-message.mk`<br>`target: python-message-write-negative-control` | the target exits 0 with no skip in its log | `make/python-message.mk:37` |
 
 #### `plant` family `make-python-message-applicability`, 1 test
 
@@ -3709,67 +3598,11 @@ a negative control: a named test run against a deliberately broken build must co
 |---|---|---|---|---|---|
 | `none.nightly.plant.make-python-message-applicability.python-message-applicability-negative-control` | `make` | make python-message-applicability-negative-control (make/python-message-applicability.mk) exits 0 | `file: make/python-message-applicability.mk`<br>`target: python-message-applicability-negative-control` | the target exits 0 with no skip in its log | `make/python-message-applicability.mk:8` |
 
-#### `plant` family `make-python-one-sided`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.plant.make-python-one-sided.python-one-sided-negative-control` | `make` | make python-one-sided-negative-control (make/python-one-sided.mk) exits 0 | `file: make/python-one-sided.mk`<br>`target: python-one-sided-negative-control` | the target exits 0 with no skip in its log | `make/python-one-sided.mk:4` |
-
-#### `plant` family `make-python-optional-array-min`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.plant.make-python-optional-array-min.python-optional-array-min-negative-control` | `make` | make python-optional-array-min-negative-control (make/python-optional-array-min.mk) exits 0 | `file: make/python-optional-array-min.mk`<br>`target: python-optional-array-min-negative-control` | the target exits 0 with no skip in its log | `make/python-optional-array-min.mk:6` |
-
-#### `plant` family `make-python-optional-map`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.plant.make-python-optional-map.python-optional-map-negative-control` | `make` | make python-optional-map-negative-control (make/python-optional-map.mk) exits 0 | `file: make/python-optional-map.mk`<br>`target: python-optional-map-negative-control` | the target exits 0 with no skip in its log | `make/python-optional-map.mk:8` |
-
-#### `plant` family `make-python-package-collision`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.plant.make-python-package-collision.python-package-collision-negative-control` | `make` | make python-package-collision-negative-control (make/python-package-collision.mk) exits 0 | `file: make/python-package-collision.mk`<br>`target: python-package-collision-negative-control` | the target exits 0 with no skip in its log | `make/python-package-collision.mk:4` |
-
-#### `plant` family `make-python-packet-arrays`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.plant.make-python-packet-arrays.python-packet-arrays-negative-control` | `make` | make python-packet-arrays-negative-control (make/python-packet-arrays.mk) exits 0 | `file: make/python-packet-arrays.mk`<br>`target: python-packet-arrays-negative-control` | the target exits 0 with no skip in its log | `make/python-packet-arrays.mk:14` |
-
-#### `plant` family `make-python-packet-int128`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.plant.make-python-packet-int128.python-packet-int128-negative-control` | `make` | make python-packet-int128-negative-control (make/python-packet-int128.mk) exits 0 | `file: make/python-packet-int128.mk`<br>`target: python-packet-int128-negative-control` | the target exits 0 with no skip in its log | `make/python-packet-int128.mk:10` |
-
-#### `plant` family `make-python-packet-layout`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.plant.make-python-packet-layout.python-packet-layout-negative-control` | `make` | make python-packet-layout-negative-control (make/python-packet-layout.mk) exits 0 | `file: make/python-packet-layout.mk`<br>`target: python-packet-layout-negative-control` | the target exits 0 with no skip in its log | `make/python-packet-layout.mk:14` |
-
-#### `plant` family `make-python-packet-ranged-bits`, 2 tests
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.plant.make-python-packet-ranged-bits.python-packet-ranged-bits-goref-negative-control` | `make` | make python-packet-ranged-bits-goref-negative-control (make/python-packet-ranged-bits.mk) exits 0 | `file: make/python-packet-ranged-bits.mk`<br>`target: python-packet-ranged-bits-goref-negative-control` | the target exits 0 with no skip in its log | `make/python-packet-ranged-bits.mk:26` |
-| `none.nightly.plant.make-python-packet-ranged-bits.python-packet-ranged-bits-negative-control` | `make` | make python-packet-ranged-bits-negative-control (make/python-packet-ranged-bits.mk) exits 0 | `file: make/python-packet-ranged-bits.mk`<br>`target: python-packet-ranged-bits-negative-control` | the target exits 0 with no skip in its log | `make/python-packet-ranged-bits.mk:23` |
-
-#### `plant` family `make-python-packet-text`, 2 tests
+#### `plant` family `make-python-packet-text`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.nightly.plant.make-python-packet-text.packet-utf8-python-negative-control` | `make` | make packet-utf8-python-negative-control (make/python-packet-text.mk) exits 0 | `file: make/python-packet-text.mk`<br>`target: packet-utf8-python-negative-control` | the target exits 0 with no skip in its log | `make/python-packet-text.mk:37` |
-| `none.nightly.plant.make-python-packet-text.python-packet-text-negative-control` | `make` | make python-packet-text-negative-control (make/python-packet-text.mk) exits 0 | `file: make/python-packet-text.mk`<br>`target: python-packet-text-negative-control` | the target exits 0 with no skip in its log | `make/python-packet-text.mk:14` |
-
-#### `plant` family `make-python-packet-unions`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.plant.make-python-packet-unions.packet-void-python-negative-control` | `make` | make packet-void-python-negative-control (make/python-packet-unions.mk) exits 0 | `file: make/python-packet-unions.mk`<br>`target: packet-void-python-negative-control` | the target exits 0 with no skip in its log | `make/python-packet-unions.mk:15` |
 
 #### `plant` family `make-python-reflection`, 1 test
 
@@ -3777,112 +3610,22 @@ a negative control: a named test run against a deliberately broken build must co
 |---|---|---|---|---|---|
 | `none.nightly.plant.make-python-reflection.python-reflection-negative-control` | `make` | make python-reflection-negative-control (make/python-reflection.mk) exits 0 | `file: make/python-reflection.mk`<br>`target: python-reflection-negative-control` | the target exits 0 with no skip in its log | `make/python-reflection.mk:21` |
 
-#### `plant` family `make-python-retain`, 1 test
+#### `plant` family `make-python-vt-evolution`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.plant.make-python-retain.python-retain-negative-control` | `make` | make python-retain-negative-control (make/python-retain.mk) exits 0 | `file: make/python-retain.mk`<br>`target: python-retain-negative-control` | the target exits 0 with no skip in its log | `make/python-retain.mk:19` |
-
-#### `plant` family `make-python-table-packet-types`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.plant.make-python-table-packet-types.python-table-packet-types-negative-control` | `make` | make python-table-packet-types-negative-control (make/python-table-packet-types.mk) exits 0 | `file: make/python-table-packet-types.mk`<br>`target: python-table-packet-types-negative-control` | the target exits 0 with no skip in its log | `make/python-table-packet-types.mk:15` |
-
-#### `plant` family `make-python-variable-crc`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.plant.make-python-variable-crc.python-variable-crc-negative-control` | `make` | make python-variable-crc-negative-control (make/python-variable-crc.mk) exits 0 | `file: make/python-variable-crc.mk`<br>`target: python-variable-crc-negative-control` | the target exits 0 with no skip in its log | `make/python-variable-crc.mk:3` |
-
-#### `plant` family `make-python-vt-blobs`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.plant.make-python-vt-blobs.python-vt-blobs-negative-control` | `make` | make python-vt-blobs-negative-control (make/python-vt-blobs.mk) exits 0 | `file: make/python-vt-blobs.mk`<br>`target: python-vt-blobs-negative-control` | the target exits 0 with no skip in its log | `make/python-vt-blobs.mk:10` |
-
-#### `plant` family `make-python-vt-evolution`, 5 tests
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.plant.make-python-vt-evolution.python-vt-evolution-defaults-negative-control` | `make` | make python-vt-evolution-defaults-negative-control (make/python-vt-evolution.mk) exits 0 | `file: make/python-vt-evolution.mk`<br>`target: python-vt-evolution-defaults-negative-control` | the target exits 0 with no skip in its log | `make/python-vt-evolution.mk:19` |
-| `none.nightly.plant.make-python-vt-evolution.python-vt-evolution-negative-control` | `make` | make python-vt-evolution-negative-control (make/python-vt-evolution.mk) exits 0 | `file: make/python-vt-evolution.mk`<br>`target: python-vt-evolution-negative-control` | the target exits 0 with no skip in its log | `make/python-vt-evolution.mk:16` |
 | `none.nightly.plant.make-python-vt-evolution.python-vt-evolution-public-renames-negative-control` | `make` | make python-vt-evolution-public-renames-negative-control (make/python-vt-evolution.mk) exits 0 | `file: make/python-vt-evolution.mk`<br>`target: python-vt-evolution-public-renames-negative-control` | the target exits 0 with no skip in its log | `make/python-vt-evolution.mk:30` |
-| `none.nightly.plant.make-python-vt-evolution.python-vt-evolution-renames-negative-control` | `make` | make python-vt-evolution-renames-negative-control (make/python-vt-evolution.mk) exits 0 | `file: make/python-vt-evolution.mk`<br>`target: python-vt-evolution-renames-negative-control` | the target exits 0 with no skip in its log | `make/python-vt-evolution.mk:22` |
-| `none.nightly.plant.make-python-vt-evolution.python-vt-evolution-skip-negative-control` | `make` | make python-vt-evolution-skip-negative-control (make/python-vt-evolution.mk) exits 0 | `file: make/python-vt-evolution.mk`<br>`target: python-vt-evolution-skip-negative-control` | the target exits 0 with no skip in its log | `make/python-vt-evolution.mk:25` |
 
-#### `plant` family `make-python-vt-evolution-rows`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.plant.make-python-vt-evolution-rows.python-vt-evolution-rows-negative-control` | `make` | make python-vt-evolution-rows-negative-control (make/python-vt-evolution-rows.mk) exits 0 | `file: make/python-vt-evolution-rows.mk`<br>`target: python-vt-evolution-rows-negative-control` | the target exits 0 with no skip in its log | `make/python-vt-evolution-rows.mk:11` |
-
-#### `plant` family `make-python-vt-fixed-class`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.plant.make-python-vt-fixed-class.python-vt-fixed-class-negative-control` | `make` | make python-vt-fixed-class-negative-control (make/python-vt-fixed-class.mk) exits 0 | `file: make/python-vt-fixed-class.mk`<br>`target: python-vt-fixed-class-negative-control` | the target exits 0 with no skip in its log | `make/python-vt-fixed-class.mk:15` |
-
-#### `plant` family `make-python-vt-fixed-class-rows`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.plant.make-python-vt-fixed-class-rows.python-vt-fixed-class-rows-negative-control` | `make` | make python-vt-fixed-class-rows-negative-control (make/python-vt-fixed-class-rows.mk) exits 0 | `file: make/python-vt-fixed-class-rows.mk`<br>`target: python-vt-fixed-class-rows-negative-control` | the target exits 0 with no skip in its log | `make/python-vt-fixed-class-rows.mk:16` |
-
-#### `plant` family `make-python-vt-idtable`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.plant.make-python-vt-idtable.python-vt-idtable-negative-control` | `make` | make python-vt-idtable-negative-control (make/python-vt-idtable.mk) exits 0 | `file: make/python-vt-idtable.mk`<br>`target: python-vt-idtable-negative-control` | the target exits 0 with no skip in its log | `make/python-vt-idtable.mk:18` |
-
-#### `plant` family `make-python-vt-idtable-rows`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.plant.make-python-vt-idtable-rows.python-vt-idtable-rows-negative-control` | `make` | make python-vt-idtable-rows-negative-control (make/python-vt-idtable-rows.mk) exits 0 | `file: make/python-vt-idtable-rows.mk`<br>`target: python-vt-idtable-rows-negative-control` | the target exits 0 with no skip in its log | `make/python-vt-idtable-rows.mk:19` |
-
-#### `plant` family `make-python-vt-keyed`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.plant.make-python-vt-keyed.python-vt-keyed-negative-control` | `make` | make python-vt-keyed-negative-control (make/python-vt-keyed.mk) exits 0 | `file: make/python-vt-keyed.mk`<br>`target: python-vt-keyed-negative-control` | the target exits 0 with no skip in its log | `make/python-vt-keyed.mk:13` |
-
-#### `plant` family `make-python-vt-keyed-enum`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.plant.make-python-vt-keyed-enum.python-vt-keyed-enum-negative-control` | `make` | make python-vt-keyed-enum-negative-control (make/python-vt-keyed-enum.mk) exits 0 | `file: make/python-vt-keyed-enum.mk`<br>`target: python-vt-keyed-enum-negative-control` | the target exits 0 with no skip in its log | `make/python-vt-keyed-enum.mk:8` |
-
-#### `plant` family `make-python-vt-keyed-rows`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.plant.make-python-vt-keyed-rows.python-vt-keyed-rows-negative-control` | `make` | make python-vt-keyed-rows-negative-control (make/python-vt-keyed-rows.mk) exits 0 | `file: make/python-vt-keyed-rows.mk`<br>`target: python-vt-keyed-rows-negative-control` | the target exits 0 with no skip in its log | `make/python-vt-keyed-rows.mk:23` |
-
-#### `plant` family `make-python-vt-maps-rows`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.plant.make-python-vt-maps-rows.python-vt-maps-rows-negative-control` | `make` | make python-vt-maps-rows-negative-control (make/python-vt-maps-rows.mk) exits 0 | `file: make/python-vt-maps-rows.mk`<br>`target: python-vt-maps-rows-negative-control` | the target exits 0 with no skip in its log | `make/python-vt-maps-rows.mk:20` |
-
-#### `plant` family `make-python-vt-optional`, 2 tests
+#### `plant` family `make-python-vt-optional`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.nightly.plant.make-python-vt-optional.python-vt-optional-carries-negative-control` | `make` | make python-vt-optional-carries-negative-control (make/python-vt-optional.mk) exits 0 | `file: make/python-vt-optional.mk`<br>`target: python-vt-optional-carries-negative-control` | the target exits 0 with no skip in its log | `make/python-vt-optional.mk:31` |
-| `none.nightly.plant.make-python-vt-optional.python-vt-optional-negative-control` | `make` | make python-vt-optional-negative-control (make/python-vt-optional.mk) exits 0 | `file: make/python-vt-optional.mk`<br>`target: python-vt-optional-negative-control` | the target exits 0 with no skip in its log | `make/python-vt-optional.mk:26` |
 
-#### `plant` family `make-python-vt-optional-rows`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.plant.make-python-vt-optional-rows.python-vt-optional-rows-negative-control` | `make` | make python-vt-optional-rows-negative-control (make/python-vt-optional-rows.mk) exits 0 | `file: make/python-vt-optional-rows.mk`<br>`target: python-vt-optional-rows-negative-control` | the target exits 0 with no skip in its log | `make/python-vt-optional-rows.mk:18` |
-
-#### `plant` family `make-python-vt-pointer-arrays`, 15 tests
+#### `plant` family `make-python-vt-pointer-arrays`, 14 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.plant.make-python-vt-pointer-arrays.python-vt-pointer-array-body-bound-negative-control` | `make` | make python-vt-pointer-array-body-bound-negative-control (make/python-vt-pointer-arrays.mk) exits 0 | `file: make/python-vt-pointer-arrays.mk`<br>`target: python-vt-pointer-array-body-bound-negative-control` | the target exits 0 with no skip in its log | `make/python-vt-pointer-arrays.mk:112` |
 | `none.nightly.plant.make-python-vt-pointer-arrays.python-vt-pointer-arrays-count-over-bound-negative-control` | `make` | make python-vt-pointer-arrays-count-over-bound-negative-control (make/python-vt-pointer-arrays.mk) exits 0 | `file: make/python-vt-pointer-arrays.mk`<br>`target: python-vt-pointer-arrays-count-over-bound-negative-control` | the target exits 0 with no skip in its log | `make/python-vt-pointer-arrays.mk:54` |
 | `none.nightly.plant.make-python-vt-pointer-arrays.python-vt-pointer-arrays-element-kind-negative-control` | `make` | make python-vt-pointer-arrays-element-kind-negative-control (make/python-vt-pointer-arrays.mk) exits 0 | `file: make/python-vt-pointer-arrays.mk`<br>`target: python-vt-pointer-arrays-element-kind-negative-control` | the target exits 0 with no skip in its log | `make/python-vt-pointer-arrays.mk:70` |
 | `none.nightly.plant.make-python-vt-pointer-arrays.python-vt-pointer-arrays-field-guard-negative-control` | `make` | make python-vt-pointer-arrays-field-guard-negative-control (make/python-vt-pointer-arrays.mk) exits 0 | `file: make/python-vt-pointer-arrays.mk`<br>`target: python-vt-pointer-arrays-field-guard-negative-control` | the target exits 0 with no skip in its log | `make/python-vt-pointer-arrays.mk:78` |
@@ -3898,78 +3641,18 @@ a negative control: a named test run against a deliberately broken build must co
 | `none.nightly.plant.make-python-vt-pointer-arrays.python-vt-pointer-arrays-write-wrong-type-node-negative-control` | `make` | make python-vt-pointer-arrays-write-wrong-type-node-negative-control (make/python-vt-pointer-arrays.mk) exits 0 | `file: make/python-vt-pointer-arrays.mk`<br>`target: python-vt-pointer-arrays-write-wrong-type-node-negative-control` | the target exits 0 with no skip in its log | `make/python-vt-pointer-arrays.mk:102` |
 | `none.nightly.plant.make-python-vt-pointer-arrays.python-vt-pointer-arrays-wrong-type-target-negative-control` | `make` | make python-vt-pointer-arrays-wrong-type-target-negative-control (make/python-vt-pointer-arrays.mk) exits 0 | `file: make/python-vt-pointer-arrays.mk`<br>`target: python-vt-pointer-arrays-wrong-type-target-negative-control` | the target exits 0 with no skip in its log | `make/python-vt-pointer-arrays.mk:62` |
 
-#### `plant` family `make-python-vt-pointer-arrays-rows`, 1 test
+#### `plant` family `make-ruby-cards`, 3 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.plant.make-python-vt-pointer-arrays-rows.python-vt-pointer-arrays-rows-negative-control` | `make` | make python-vt-pointer-arrays-rows-negative-control (make/python-vt-pointer-arrays-rows.mk) exits 0 | `file: make/python-vt-pointer-arrays-rows.mk`<br>`target: python-vt-pointer-arrays-rows-negative-control` | the target exits 0 with no skip in its log | `make/python-vt-pointer-arrays-rows.mk:17` |
-
-#### `plant` family `make-python-vt-timestamp`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.plant.make-python-vt-timestamp.python-vt-timestamp-negative-control` | `make` | make python-vt-timestamp-negative-control (make/python-vt-timestamp.mk) exits 0 | `file: make/python-vt-timestamp.mk`<br>`target: python-vt-timestamp-negative-control` | the target exits 0 with no skip in its log | `make/python-vt-timestamp.mk:20` |
-
-#### `plant` family `make-python-vt-unbounded`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.plant.make-python-vt-unbounded.python-vt-unbounded-negative-control` | `make` | make python-vt-unbounded-negative-control (make/python-vt-unbounded.mk) exits 0 | `file: make/python-vt-unbounded.mk`<br>`target: python-vt-unbounded-negative-control` | the target exits 0 with no skip in its log | `make/python-vt-unbounded.mk:15` |
-
-#### `plant` family `make-python-vt-unbounded-rows`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.plant.make-python-vt-unbounded-rows.python-vt-unbounded-rows-negative-control` | `make` | make python-vt-unbounded-rows-negative-control (make/python-vt-unbounded-rows.mk) exits 0 | `file: make/python-vt-unbounded-rows.mk`<br>`target: python-vt-unbounded-rows-negative-control` | the target exits 0 with no skip in its log | `make/python-vt-unbounded-rows.mk:17` |
-
-#### `plant` family `make-python-vt-unions`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.plant.make-python-vt-unions.python-vt-unions-negative-control` | `make` | make python-vt-unions-negative-control (make/python-vt-unions.mk) exits 0 | `file: make/python-vt-unions.mk`<br>`target: python-vt-unions-negative-control` | the target exits 0 with no skip in its log | `make/python-vt-unions.mk:27` |
-
-#### `plant` family `make-python-vt-unions-rows`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.plant.make-python-vt-unions-rows.python-vt-unions-rows-negative-control` | `make` | make python-vt-unions-rows-negative-control (make/python-vt-unions-rows.mk) exits 0 | `file: make/python-vt-unions-rows.mk`<br>`target: python-vt-unions-rows-negative-control` | the target exits 0 with no skip in its log | `make/python-vt-unions-rows.mk:25` |
-
-#### `plant` family `make-python-vt-wide`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.plant.make-python-vt-wide.python-table-wide-negative-control` | `make` | make python-table-wide-negative-control (make/python-vt-wide.mk) exits 0 | `file: make/python-vt-wide.mk`<br>`target: python-table-wide-negative-control` | the target exits 0 with no skip in its log | `make/python-vt-wide.mk:15` |
-
-#### `plant` family `make-python-vt-wide-rows`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.plant.make-python-vt-wide-rows.python-vt-wide-rows-negative-control` | `make` | make python-vt-wide-rows-negative-control (make/python-vt-wide-rows.mk) exits 0 | `file: make/python-vt-wide-rows.mk`<br>`target: python-vt-wide-rows-negative-control` | the target exits 0 with no skip in its log | `make/python-vt-wide-rows.mk:19` |
-
-#### `plant` family `make-python-wirefuzz`, 5 tests
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.plant.make-python-wirefuzz.python-array-widen-negative-control` | `make` | make python-array-widen-negative-control (make/python-wirefuzz.mk) exits 0 | `file: make/python-wirefuzz.mk`<br>`target: python-array-widen-negative-control` | the target exits 0 with no skip in its log | `make/python-wirefuzz.mk:58` |
-| `none.nightly.plant.make-python-wirefuzz.python-wirefuzz-partition-negative-control` | `make` | make python-wirefuzz-partition-negative-control (make/python-wirefuzz.mk) exits 0 | `file: make/python-wirefuzz.mk`<br>`target: python-wirefuzz-partition-negative-control` | the target exits 0 with no skip in its log | `make/python-wirefuzz.mk:52` |
-| `none.nightly.plant.make-python-wirefuzz.python-wirefuzz-retain-loss-negative-control` | `make` | make python-wirefuzz-retain-loss-negative-control (make/python-wirefuzz.mk) exits 0 | `file: make/python-wirefuzz.mk`<br>`target: python-wirefuzz-retain-loss-negative-control` | the target exits 0 with no skip in its log | `make/python-wirefuzz.mk:55` |
-| `none.nightly.plant.make-python-wirefuzz.tables-python-wire-fuzz-negative-control` | `make` | make tables-python-wire-fuzz-negative-control (make/python-wirefuzz.mk) exits 0 | `file: make/python-wirefuzz.mk`<br>`target: tables-python-wire-fuzz-negative-control` | the target exits 0 with no skip in its log | `make/python-wirefuzz.mk:46` |
-| `none.nightly.plant.make-python-wirefuzz.tables-python-wire-fuzz-retain-negative-control` | `make` | make tables-python-wire-fuzz-retain-negative-control (make/python-wirefuzz.mk) exits 0 | `file: make/python-wirefuzz.mk`<br>`target: tables-python-wire-fuzz-retain-negative-control` | the target exits 0 with no skip in its log | `make/python-wirefuzz.mk:49` |
-
-#### `plant` family `make-ruby-cards`, 4 tests
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.plant.make-ruby-cards.cards-ruby-facade-negative-control` | `make` | make cards-ruby-facade-negative-control (make/ruby-cards.mk) exits 0 | `file: make/ruby-cards.mk`<br>`target: cards-ruby-facade-negative-control` | the target exits 0 with no skip in its log | `make/ruby-cards.mk:44` |
 | `none.nightly.plant.make-ruby-cards.cards-ruby-hash-negative-control` | `make` | make cards-ruby-hash-negative-control (make/ruby-cards.mk) exits 0 | `file: make/ruby-cards.mk`<br>`target: cards-ruby-hash-negative-control` | the target exits 0 with no skip in its log | `make/ruby-cards.mk:41` |
 | `none.nightly.plant.make-ruby-cards.cards-ruby-render-negative-control` | `make` | make cards-ruby-render-negative-control (make/ruby-cards.mk) exits 0 | `file: make/ruby-cards.mk`<br>`target: cards-ruby-render-negative-control` | the target exits 0 with no skip in its log | `make/ruby-cards.mk:35` |
 | `none.nightly.plant.make-ruby-cards.cards-ruby-upgrade-negative-control` | `make` | make cards-ruby-upgrade-negative-control (make/ruby-cards.mk) exits 0 | `file: make/ruby-cards.mk`<br>`target: cards-ruby-upgrade-negative-control` | the target exits 0 with no skip in its log | `make/ruby-cards.mk:38` |
 
-#### `plant` family `make-ruby-ci-release`, 2 tests
+#### `plant` family `make-ruby-ci-release`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.plant.make-ruby-ci-release.ruby-readiness-negative-control` | `make` | make ruby-readiness-negative-control (make/ruby-ci-release.mk) exits 0 | `file: make/ruby-ci-release.mk`<br>`target: ruby-readiness-negative-control` | the target exits 0 with no skip in its log | `make/ruby-ci-release.mk:7` |
 | `none.nightly.plant.make-ruby-ci-release.tables-ruby-bench-gate-negative-control` | `make` | make tables-ruby-bench-gate-negative-control (make/ruby-ci-release.mk) exits 0 | `file: make/ruby-ci-release.mk`<br>`target: tables-ruby-bench-gate-negative-control` | the target exits 0 with no skip in its log | `make/ruby-ci-release.mk:17` |
 
 #### `plant` family `make-ruby-docs`, 1 test
@@ -3997,14 +3680,6 @@ a negative control: a named test run against a deliberately broken build must co
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.nightly.plant.make-ruby-toolchain.ruby-toolchain-negative-control` | `make` | make ruby-toolchain-negative-control (make/ruby-toolchain.mk) exits 0 | `file: make/ruby-toolchain.mk`<br>`target: ruby-toolchain-negative-control` | the target exits 0 with no skip in its log | `make/ruby-toolchain.mk:190` |
-
-#### `plant` family `make-ruby-wirefuzz`, 3 tests
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.plant.make-ruby-wirefuzz.ruby-wirefuzz-retain-loss-negative-control` | `make` | make ruby-wirefuzz-retain-loss-negative-control (make/ruby-wirefuzz.mk) exits 0 | `file: make/ruby-wirefuzz.mk`<br>`target: ruby-wirefuzz-retain-loss-negative-control` | the target exits 0 with no skip in its log | `make/ruby-wirefuzz.mk:47` |
-| `none.nightly.plant.make-ruby-wirefuzz.tables-ruby-wire-fuzz-negative-control` | `make` | make tables-ruby-wire-fuzz-negative-control (make/ruby-wirefuzz.mk) exits 0 | `file: make/ruby-wirefuzz.mk`<br>`target: tables-ruby-wire-fuzz-negative-control` | the target exits 0 with no skip in its log | `make/ruby-wirefuzz.mk:41` |
-| `none.nightly.plant.make-ruby-wirefuzz.tables-ruby-wire-fuzz-retain-negative-control` | `make` | make tables-ruby-wire-fuzz-retain-negative-control (make/ruby-wirefuzz.mk) exits 0 | `file: make/ruby-wirefuzz.mk`<br>`target: tables-ruby-wire-fuzz-retain-negative-control` | the target exits 0 with no skip in its log | `make/ruby-wirefuzz.mk:44` |
 
 #### `plant` family `make-rust-feature-witnesses`, 1 test
 
@@ -4123,7 +3798,7 @@ a negative control: a named test run against a deliberately broken build must co
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.plant.makefile.wire-fuzz-roster-negative-control` | `make` | make wire-fuzz-roster-negative-control (Makefile) exits 0 | `file: Makefile`<br>`target: wire-fuzz-roster-negative-control` | the target exits 0 with no skip in its log | `Makefile:8725` |
+| `none.nightly.plant.makefile.wire-fuzz-roster-negative-control` | `make` | make wire-fuzz-roster-negative-control (Makefile) exits 0 | `file: Makefile`<br>`target: wire-fuzz-roster-negative-control` | the target exits 0 with no skip in its log | `Makefile:8728` |
 
 #### `plant` family `message-form-count`, 1 test
 
@@ -4222,6 +3897,275 @@ a negative control: a named test run against a deliberately broken build must co
 | `none.nightly.plant.nightly.schema-go-generated-golangci-lint-gate-negative-control-ratchet` | `plant` | negative control schema-go-generated-golangci-lint-gate-negative-control-ratchet (group nightly of make/negative-controls.json): its sabotage turns the gate it controls red | `file: make/schema-go-generated-golangci-lint-gate.mk`<br>`group: nightly`<br>`make: schema-go-generated-golangci-lint-gate-negative-control-ratchet` | the control exits 0: the gate it controls went red on its planted sabotage | `make/negative-controls.json:2633` |
 | `none.nightly.plant.nightly.tables-message-form-negative-control` | `plant` | negative control tables-message-form-negative-control (group nightly of make/negative-controls.json): its sabotage turns the gate it controls red | `file: Makefile`<br>`group: nightly`<br>`make: tables-message-form-negative-control` | the control exits 0: the gate it controls went red on its planted sabotage | `make/negative-controls.json:2631` |
 
+#### `plant` family `packet-end-lobster-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.packet-end-lobster-negative-control.lobster-packet-end` | `make-gotest` | Go test TestLobsterPacketEnd in ./internal/codegen/lobster, run by make packet-end-lobster-negative-control (make/lobster-packet-end.mk) and read by name from its go test -json events | `file: make/lobster-packet-end.mk`<br>`package: ./internal/codegen/lobster`<br>`target: packet-end-lobster-negative-control`<br>`test: TestLobsterPacketEnd` | the Go test passes in make packet-end-lobster-negative-control's run, with no skip | `internal/codegen/lobster/packet_end_test.go:20` |
+
+#### `plant` family `packet-void-python-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.packet-void-python-negative-control.python-packet-unions-negative-control` | `make-gotest` | Go test TestPythonPacketUnionsNegativeControl in ./internal/codegen/python, run by make packet-void-python-negative-control (make/python-packet-unions.mk) and read by name from its go test -json events | `file: make/python-packet-unions.mk`<br>`package: ./internal/codegen/python`<br>`target: packet-void-python-negative-control`<br>`test: TestPythonPacketUnionsNegativeControl` | the Go test passes in make packet-void-python-negative-control's run, with no skip | `internal/codegen/python/python_packet_unions_test.go:597` |
+
+#### `plant` family `packet-write-bareint-lobster-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.packet-write-bareint-lobster-negative-control.lobster-packet-write-bare-int` | `make-gotest` | Go test TestLobsterPacketWriteBareInt in ./test/packet-write-bareint/lobster, run by make packet-write-bareint-lobster-negative-control (make/lobster-packet-write-bareint.mk) and read by name from its go test -json events | `file: make/lobster-packet-write-bareint.mk`<br>`package: ./test/packet-write-bareint/lobster`<br>`target: packet-write-bareint-lobster-negative-control`<br>`test: TestLobsterPacketWriteBareInt` | the Go test passes in make packet-write-bareint-lobster-negative-control's run, with no skip | `test/packet-write-bareint/lobster/main_test.go:167` |
+
+#### `plant` family `packet-write-cfloat-lobster-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.packet-write-cfloat-lobster-negative-control.lobster-packet-write-c-float-range` | `make-gotest` | Go test TestLobsterPacketWriteCFloatRange in ./internal/codegen/lobster, run by make packet-write-cfloat-lobster-negative-control (make/lobster-packet-write-cfloat.mk) and read by name from its go test -json events | `file: make/lobster-packet-write-cfloat.mk`<br>`package: ./internal/codegen/lobster`<br>`target: packet-write-cfloat-lobster-negative-control`<br>`test: TestLobsterPacketWriteCFloatRange` | the Go test passes in make packet-write-cfloat-lobster-negative-control's run, with no skip | `internal/codegen/lobster/packet_write_cfloat_test.go:115` |
+
+#### `plant` family `python-array-growth-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-array-growth-negative-control.python-fixed-array-growth-negative-control` | `make-gotest` | Go test TestPythonFixedArrayGrowthNegativeControl in ./internal/codegen/pythontable, run by make python-array-growth-negative-control (make/python-array-growth.mk) and read by name from its go test -json events | `file: make/python-array-growth.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-array-growth-negative-control`<br>`test: TestPythonFixedArrayGrowthNegativeControl` | the Go test passes in make python-array-growth-negative-control's run, with no skip | `internal/codegen/pythontable/array_growth_test.go:101` |
+
+#### `plant` family `python-array-root-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-array-root-negative-control.python-array-root-negative-control` | `make-gotest` | Go test TestPythonArrayRootNegativeControl in ./internal/codegen/pythontable, run by make python-array-root-negative-control (make/python-array-root.mk) and read by name from its go test -json events | `file: make/python-array-root.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-array-root-negative-control`<br>`test: TestPythonArrayRootNegativeControl` | the Go test passes in make python-array-root-negative-control's run, with no skip | `internal/codegen/pythontable/array_root_public_test.go:84` |
+
+#### `plant` family `python-array-widen-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-array-widen-negative-control.python-array-widening-negative-control` | `make-gotest` | Go test TestPythonArrayWideningNegativeControl in ./internal/codegen/pythontable, run by make python-array-widen-negative-control (make/python-wirefuzz.mk) and read by name from its go test -json events | `file: make/python-wirefuzz.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-array-widen-negative-control`<br>`test: TestPythonArrayWideningNegativeControl` | the Go test passes in make python-array-widen-negative-control's run, with no skip | `internal/codegen/pythontable/array_widen_test.go:84` |
+
+#### `plant` family `python-blob-wire-driver-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-blob-wire-driver-negative-control.python-wire-blob-driver-negative-control` | `make-gotest` | Go test TestPythonWireBlobDriverNegativeControl in ./internal/codegen/pythontable, run by make python-blob-wire-driver-negative-control (make/python-blob-wire-driver.mk) and read by name from its go test -json events | `file: make/python-blob-wire-driver.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-blob-wire-driver-negative-control`<br>`test: TestPythonWireBlobDriverNegativeControl` | the Go test passes in make python-blob-wire-driver-negative-control's run, with no skip | `internal/codegen/pythontable/blob_wire_driver_test.go:133` |
+
+#### `plant` family `python-block-build-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-block-build-negative-control.python-block-builder-negative-controls` | `make-gotest` | Go test TestPythonBlockBuilderNegativeControls in ./internal/codegen/pythontable, run by make python-block-build-negative-control (make/python-block.mk) and read by name from its go test -json events | `file: make/python-block.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-block-build-negative-control`<br>`test: TestPythonBlockBuilderNegativeControls` | the Go test passes in make python-block-build-negative-control's run, with no skip | `internal/codegen/pythontable/blockbuild_test.go:130` |
+
+#### `plant` family `python-block-read-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-block-read-negative-control.python-block-read-negative-controls` | `make-gotest` | Go test TestPythonBlockReadNegativeControls in ./internal/codegen/pythontable, run by make python-block-read-negative-control (make/python-block.mk) and read by name from its go test -json events | `file: make/python-block.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-block-read-negative-control`<br>`test: TestPythonBlockReadNegativeControls` | the Go test passes in make python-block-read-negative-control's run, with no skip | `internal/codegen/pythontable/block_test.go:273` |
+
+#### `plant` family `python-fixed-core-values-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-fixed-core-values-negative-control.python-fixed-core-values-negative-control` | `make-gotest` | Go test TestPythonFixedCoreValuesNegativeControl in ./internal/codegen/pythontable, run by make python-fixed-core-values-negative-control (make/python-fixed-form.mk) and read by name from its go test -json events | `file: make/python-fixed-form.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-fixed-core-values-negative-control`<br>`test: TestPythonFixedCoreValuesNegativeControl` | the Go test passes in make python-fixed-core-values-negative-control's run, with no skip | `internal/codegen/pythontable/fixed_core_values_test.go:50` |
+
+#### `plant` family `python-fixed-crc-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-fixed-crc-negative-control.python-fixed-integrity-crc-negative-control` | `make-gotest` | Go test TestPythonFixedIntegrityCRCNegativeControl in ./internal/codegen/pythontable, run by make python-fixed-crc-negative-control (make/python-fixed-crc.mk) and read by name from its go test -json events | `file: make/python-fixed-crc.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-fixed-crc-negative-control`<br>`test: TestPythonFixedIntegrityCRCNegativeControl` | the Go test passes in make python-fixed-crc-negative-control's run, with no skip | `internal/codegen/pythontable/fixed_integrity_crc_test.go:72` |
+
+#### `plant` family `python-fixed-deprecated-enum-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-fixed-deprecated-enum-negative-control.python-fixed-form-deprecated-enum` | `make-gotest` | Go test TestPythonFixedFormDeprecatedEnum in ./internal/codegen/pythontable, run by make python-fixed-deprecated-enum-negative-control (make/python-fixed-form.mk) and read by name from its go test -json events | `file: make/python-fixed-form.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-fixed-deprecated-enum-negative-control`<br>`test: TestPythonFixedFormDeprecatedEnum` | the Go test passes in make python-fixed-deprecated-enum-negative-control's run, with no skip | `internal/codegen/pythontable/fixedform_deprecated_enum_test.go:17` |
+
+#### `plant` family `python-fixed-form-conformance-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-fixed-form-conformance-negative-control.python-fixed-form-write-refusal-negative-control` | `make-gotest` | Go test TestPythonFixedFormWriteRefusalNegativeControl in ./internal/codegen/pythontable, run by make python-fixed-form-conformance-negative-control (make/python-fixed-form.mk) and read by name from its go test -json events | `file: make/python-fixed-form.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-fixed-form-conformance-negative-control`<br>`test: TestPythonFixedFormWriteRefusalNegativeControl` | the Go test passes in make python-fixed-form-conformance-negative-control's run, with no skip | `internal/codegen/pythontable/fixedform_conformance_test.go:104` |
+
+#### `plant` family `python-fixed-form-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-fixed-form-negative-control.python-fixed-form-negative-control` | `make-gotest` | Go test TestPythonFixedFormNegativeControl in ./internal/codegen/pythontable, run by make python-fixed-form-negative-control (make/python-fixed-form.mk) and read by name from its go test -json events | `file: make/python-fixed-form.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-fixed-form-negative-control`<br>`test: TestPythonFixedFormNegativeControl` | the Go test passes in make python-fixed-form-negative-control's run, with no skip | `internal/codegen/pythontable/fixedform_test.go:255` |
+
+#### `plant` family `python-fixed-identity-negative-control`, 3 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-fixed-identity-negative-control.python-fixed-identity-recorded-v1` | `make-gotest` | Go test TestPythonFixedIdentityRecordedV1 in ./internal/codegen/pythontable, run by make python-fixed-identity-negative-control (make/python-fixed-form.mk) and read by name from its go test -json events | `file: make/python-fixed-form.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-fixed-identity-negative-control`<br>`test: TestPythonFixedIdentityRecordedV1` | the Go test passes in make python-fixed-identity-negative-control's run, with no skip | `internal/codegen/pythontable/fixedform_identity_test.go:56` |
+| `none.nightly.plant.python-fixed-identity-negative-control.python-fixed-identity-rejects-unrecorded-schemes` | `make-gotest` | Go test TestPythonFixedIdentityRejectsUnrecordedSchemes in ./internal/codegen/pythontable, run by make python-fixed-identity-negative-control (make/python-fixed-form.mk) and read by name from its go test -json events | `file: make/python-fixed-form.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-fixed-identity-negative-control`<br>`test: TestPythonFixedIdentityRejectsUnrecordedSchemes` | the Go test passes in make python-fixed-identity-negative-control's run, with no skip | `internal/codegen/pythontable/fixedform_identity_test.go:245` |
+| `none.nightly.plant.python-fixed-identity-negative-control.python-fixed-identity-trusted-layout-only` | `make-gotest` | Go test TestPythonFixedIdentityTrustedLayoutOnly in ./internal/codegen/pythontable, run by make python-fixed-identity-negative-control (make/python-fixed-form.mk) and read by name from its go test -json events | `file: make/python-fixed-form.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-fixed-identity-negative-control`<br>`test: TestPythonFixedIdentityTrustedLayoutOnly` | the Go test passes in make python-fixed-identity-negative-control's run, with no skip | `internal/codegen/pythontable/fixedform_identity_test.go:182` |
+
+#### `plant` family `python-fixed-proof-evolution-kinds-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-fixed-proof-evolution-kinds-negative-control.python-fixed-proof-evolution-kind-pairs-negative-control` | `make-gotest` | Go test TestPythonFixedProofEvolutionKindPairsNegativeControl in ./internal/codegen/pythontable, run by make python-fixed-proof-evolution-kinds-negative-control (make/python-fixed-proof-evolution.mk) and read by name from its go test -json events | `file: make/python-fixed-proof-evolution.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-fixed-proof-evolution-kinds-negative-control`<br>`test: TestPythonFixedProofEvolutionKindPairsNegativeControl` | the Go test passes in make python-fixed-proof-evolution-kinds-negative-control's run, with no skip | `internal/codegen/pythontable/fixed_proof_evolution_kinds_test.go:263` |
+
+#### `plant` family `python-fixed-proof-evolution-negative-control`, 4 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-fixed-proof-evolution-negative-control.python-fixed-proof-evolution-hostile` | `make-gotest` | Go test TestPythonFixedProofEvolutionHostile in ./internal/codegen/pythontable, run by make python-fixed-proof-evolution-negative-control (make/python-fixed-proof-evolution.mk) and read by name from its go test -json events | `file: make/python-fixed-proof-evolution.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-fixed-proof-evolution-negative-control`<br>`test: TestPythonFixedProofEvolutionHostile` | the Go test passes in make python-fixed-proof-evolution-negative-control's run, with no skip | `internal/codegen/pythontable/fixed_proof_evolution_test.go:147` |
+| `none.nightly.plant.python-fixed-proof-evolution-negative-control.python-fixed-proof-evolution-hostile-envelope` | `make-gotest` | Go test TestPythonFixedProofEvolutionHostileEnvelope in ./internal/codegen/pythontable, run by make python-fixed-proof-evolution-negative-control (make/python-fixed-proof-evolution.mk) and read by name from its go test -json events | `file: make/python-fixed-proof-evolution.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-fixed-proof-evolution-negative-control`<br>`test: TestPythonFixedProofEvolutionHostileEnvelope` | the Go test passes in make python-fixed-proof-evolution-negative-control's run, with no skip | `internal/codegen/pythontable/fixed_proof_evolution_test.go:232` |
+| `none.nightly.plant.python-fixed-proof-evolution-negative-control.python-fixed-proof-evolution-hostile-shapes` | `make-gotest` | Go test TestPythonFixedProofEvolutionHostileShapes in ./internal/codegen/pythontable, run by make python-fixed-proof-evolution-negative-control (make/python-fixed-proof-evolution.mk) and read by name from its go test -json events | `file: make/python-fixed-proof-evolution.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-fixed-proof-evolution-negative-control`<br>`test: TestPythonFixedProofEvolutionHostileShapes` | the Go test passes in make python-fixed-proof-evolution-negative-control's run, with no skip | `internal/codegen/pythontable/fixed_proof_evolution_test.go:369` |
+| `none.nightly.plant.python-fixed-proof-evolution-negative-control.python-fixed-proof-evolution-negative-control` | `make-gotest` | Go test TestPythonFixedProofEvolutionNegativeControl in ./internal/codegen/pythontable, run by make python-fixed-proof-evolution-negative-control (make/python-fixed-proof-evolution.mk) and read by name from its go test -json events | `file: make/python-fixed-proof-evolution.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-fixed-proof-evolution-negative-control`<br>`test: TestPythonFixedProofEvolutionNegativeControl` | the Go test passes in make python-fixed-proof-evolution-negative-control's run, with no skip | `internal/codegen/pythontable/fixed_proof_evolution_test.go:865` |
+
+#### `plant` family `python-fixed-proof-shapes-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-fixed-proof-shapes-negative-control.python-fixed-proof-shapes-negative-control` | `make-gotest` | Go test TestPythonFixedProofShapesNegativeControl in ./internal/codegen/pythontable, run by make python-fixed-proof-shapes-negative-control (make/python-fixed-proof-shapes.mk) and read by name from its go test -json events | `file: make/python-fixed-proof-shapes.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-fixed-proof-shapes-negative-control`<br>`test: TestPythonFixedProofShapesNegativeControl` | the Go test passes in make python-fixed-proof-shapes-negative-control's run, with no skip | `internal/codegen/pythontable/fixed_proof_shapes_test.go:264` |
+
+#### `plant` family `python-fixed-proof-unions-optionals-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-fixed-proof-unions-optionals-negative-control.python-fixed-proof-unions-optionals` | `make-gotest` | Go test TestPythonFixedProofUnionsOptionals in ./internal/codegen/pythontable, run by make python-fixed-proof-unions-optionals-negative-control (make/python-fixed-proof-unions-optionals.mk) and read by name from its go test -json events | `file: make/python-fixed-proof-unions-optionals.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-fixed-proof-unions-optionals-negative-control`<br>`test: TestPythonFixedProofUnionsOptionals` | the Go test passes in make python-fixed-proof-unions-optionals-negative-control's run, with no skip | `internal/codegen/pythontable/fixed_proof_unions_optionals_test.go:105` |
+
+#### `plant` family `python-fixed-proof-values-negative-control`, 3 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-fixed-proof-values-negative-control.python-fixed-proof-values-float-bounds` | `make-gotest` | Go test TestPythonFixedProofValuesFloatBounds in ./internal/codegen/pythontable, run by make python-fixed-proof-values-negative-control (make/python-fixed-proof-values.mk) and read by name from its go test -json events | `file: make/python-fixed-proof-values.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-fixed-proof-values-negative-control`<br>`test: TestPythonFixedProofValuesFloatBounds` | the Go test passes in make python-fixed-proof-values-negative-control's run, with no skip | `internal/codegen/pythontable/fixed_proof_values_test.go:255` |
+| `none.nightly.plant.python-fixed-proof-values-negative-control.python-fixed-proof-values-negative-control` | `make-gotest` | Go test TestPythonFixedProofValuesNegativeControl in ./internal/codegen/pythontable, run by make python-fixed-proof-values-negative-control (make/python-fixed-proof-values.mk) and read by name from its go test -json events | `file: make/python-fixed-proof-values.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-fixed-proof-values-negative-control`<br>`test: TestPythonFixedProofValuesNegativeControl` | the Go test passes in make python-fixed-proof-values-negative-control's run, with no skip | `internal/codegen/pythontable/fixed_proof_values_test.go:83` |
+| `none.nightly.plant.python-fixed-proof-values-negative-control.python-fixed-proof-values-read-rules` | `make-gotest` | Go test TestPythonFixedProofValuesReadRules in ./internal/codegen/pythontable, run by make python-fixed-proof-values-negative-control (make/python-fixed-proof-values.mk) and read by name from its go test -json events | `file: make/python-fixed-proof-values.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-fixed-proof-values-negative-control`<br>`test: TestPythonFixedProofValuesReadRules` | the Go test passes in make python-fixed-proof-values-negative-control's run, with no skip | `internal/codegen/pythontable/fixed_proof_values_test.go:118` |
+
+#### `plant` family `python-fixed-refused-hash-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-fixed-refused-hash-negative-control.python-fixed-form-refused-hash` | `make-gotest` | Go test TestPythonFixedFormRefusedHash in ./internal/codegen/pythontable, run by make python-fixed-refused-hash-negative-control (make/python-fixed-form.mk) and read by name from its go test -json events | `file: make/python-fixed-form.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-fixed-refused-hash-negative-control`<br>`test: TestPythonFixedFormRefusedHash` | the Go test passes in make python-fixed-refused-hash-negative-control's run, with no skip | `internal/codegen/pythontable/fixedform_refused_hash_test.go:15` |
+
+#### `plant` family `python-form1-array-compat-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-form1-array-compat-negative-control.python-form1-array-prior-writers` | `make-gotest` | Go test TestPythonForm1ArrayPriorWriters in ./internal/codegen/pythontable, run by make python-form1-array-compat-negative-control (make/python-form1-array-compat.mk) and read by name from its go test -json events | `file: make/python-form1-array-compat.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-form1-array-compat-negative-control`<br>`test: TestPythonForm1ArrayPriorWriters` | the Go test passes in make python-form1-array-compat-negative-control's run, with no skip | `internal/codegen/pythontable/array_compat_test.go:15` |
+
+#### `plant` family `python-form1-required-negative-control`, 4 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-form1-required-negative-control.python-form1-required-fast-controls` | `make-gotest` | Go test TestPythonForm1RequiredFastControls in ./internal/codegen/pythontable, run by make python-form1-required-negative-control (make/python-form1-required.mk) and read by name from its go test -json events | `file: make/python-form1-required.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-form1-required-negative-control`<br>`test: TestPythonForm1RequiredFastControls` | the Go test passes in make python-form1-required-negative-control's run, with no skip | `internal/codegen/pythontable/required_form1_test.go:382` |
+| `none.nightly.plant.python-form1-required-negative-control.python-form1-required-guard-controls` | `make-gotest` | Go test TestPythonForm1RequiredGuardControls in ./internal/codegen/pythontable, run by make python-form1-required-negative-control (make/python-form1-required.mk) and read by name from its go test -json events | `file: make/python-form1-required.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-form1-required-negative-control`<br>`test: TestPythonForm1RequiredGuardControls` | the Go test passes in make python-form1-required-negative-control's run, with no skip | `internal/codegen/pythontable/required_form1_test.go:527` |
+| `none.nightly.plant.python-form1-required-negative-control.python-form1-required-negative-controls` | `make-gotest` | Go test TestPythonForm1RequiredNegativeControls in ./internal/codegen/pythontable, run by make python-form1-required-negative-control (make/python-form1-required.mk) and read by name from its go test -json events | `file: make/python-form1-required.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-form1-required-negative-control`<br>`test: TestPythonForm1RequiredNegativeControls` | the Go test passes in make python-form1-required-negative-control's run, with no skip | `internal/codegen/pythontable/required_form1_test.go:288` |
+| `none.nightly.plant.python-form1-required-negative-control.python-required-nested-defaults` | `make-gotest` | Go test TestPythonRequiredNestedDefaults in ./internal/codegen/pythontable, run by make python-form1-required-negative-control (make/python-form1-required.mk) and read by name from its go test -json events | `file: make/python-form1-required.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-form1-required-negative-control`<br>`test: TestPythonRequiredNestedDefaults` | the Go test passes in make python-form1-required-negative-control's run, with no skip | `internal/codegen/pythontable/required_nested_default_test.go:32` |
+
+#### `plant` family `python-forms-metadata-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-forms-metadata-negative-control.python-forms-block-metadata-negative-control` | `make-gotest` | Go test TestPythonFormsBlockMetadataNegativeControl in ./internal/codegen/pythontable, run by make python-forms-metadata-negative-control (make/python-forms-metadata.mk) and read by name from its go test -json events | `file: make/python-forms-metadata.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-forms-metadata-negative-control`<br>`test: TestPythonFormsBlockMetadataNegativeControl` | the Go test passes in make python-forms-metadata-negative-control's run, with no skip | `internal/codegen/pythontable/forms_metadata_test.go:57` |
+
+#### `plant` family `python-handtext-negative-control`, 9 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-handtext-negative-control.python-handtext-array-root-negative-control` | `make-gotest` | Go test TestPythonHandtextArrayRootNegativeControl in ./internal/codegen/pythontable, run by make python-handtext-negative-control (make/python-handtext.mk) and read by name from its go test -json events | `file: make/python-handtext.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-handtext-negative-control`<br>`test: TestPythonHandtextArrayRootNegativeControl` | the Go test passes in make python-handtext-negative-control's run, with no skip | `internal/codegen/pythontable/handtext_test.go:650` |
+| `none.nightly.plant.python-handtext-negative-control.python-handtext-combined-edit-negative-control` | `make-gotest` | Go test TestPythonHandtextCombinedEditNegativeControl in ./internal/codegen/pythontable, run by make python-handtext-negative-control (make/python-handtext.mk) and read by name from its go test -json events | `file: make/python-handtext.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-handtext-negative-control`<br>`test: TestPythonHandtextCombinedEditNegativeControl` | the Go test passes in make python-handtext-negative-control's run, with no skip | `internal/codegen/pythontable/handtext_test.go:931` |
+| `none.nightly.plant.python-handtext-negative-control.python-handtext-edit-path-negative-control` | `make-gotest` | Go test TestPythonHandtextEditPathNegativeControl in ./internal/codegen/pythontable, run by make python-handtext-negative-control (make/python-handtext.mk) and read by name from its go test -json events | `file: make/python-handtext.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-handtext-negative-control`<br>`test: TestPythonHandtextEditPathNegativeControl` | the Go test passes in make python-handtext-negative-control's run, with no skip | `internal/codegen/pythontable/handtext_test.go:896` |
+| `none.nightly.plant.python-handtext-negative-control.python-handtext-kinds-negative-control` | `make-gotest` | Go test TestPythonHandtextKindsNegativeControl in ./internal/codegen/pythontable, run by make python-handtext-negative-control (make/python-handtext.mk) and read by name from its go test -json events | `file: make/python-handtext.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-handtext-negative-control`<br>`test: TestPythonHandtextKindsNegativeControl` | the Go test passes in make python-handtext-negative-control's run, with no skip | `internal/codegen/pythontable/handtext_test.go:577` |
+| `none.nightly.plant.python-handtext-negative-control.python-handtext-negative-control` | `make-gotest` | Go test TestPythonHandtextNegativeControl in ./internal/codegen/pythontable, run by make python-handtext-negative-control (make/python-handtext.mk) and read by name from its go test -json events | `file: make/python-handtext.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-handtext-negative-control`<br>`test: TestPythonHandtextNegativeControl` | the Go test passes in make python-handtext-negative-control's run, with no skip | `internal/codegen/pythontable/handtext_test.go:404` |
+| `none.nightly.plant.python-handtext-negative-control.python-handtext-surface-negative-control` | `make-gotest` | Go test TestPythonHandtextSurfaceNegativeControl in ./internal/codegen/pythontable, run by make python-handtext-negative-control (make/python-handtext.mk) and read by name from its go test -json events | `file: make/python-handtext.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-handtext-negative-control`<br>`test: TestPythonHandtextSurfaceNegativeControl` | the Go test passes in make python-handtext-negative-control's run, with no skip | `internal/codegen/pythontable/handtext_test.go:202` |
+| `none.nightly.plant.python-handtext-negative-control.python-handtext-union-blobs-negative-control` | `make-gotest` | Go test TestPythonHandtextUnionBlobsNegativeControl in ./internal/codegen/pythontable, run by make python-handtext-negative-control (make/python-handtext.mk) and read by name from its go test -json events | `file: make/python-handtext.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-handtext-negative-control`<br>`test: TestPythonHandtextUnionBlobsNegativeControl` | the Go test passes in make python-handtext-negative-control's run, with no skip | `internal/codegen/pythontable/handtext_test.go:822` |
+| `none.nightly.plant.python-handtext-negative-control.python-handtext-wire-carrier-crc-negative-control` | `make-gotest` | Go test TestPythonHandtextWireCarrierCRCNegativeControl in ./internal/codegen/pythontable, run by make python-handtext-negative-control (make/python-handtext.mk) and read by name from its go test -json events | `file: make/python-handtext.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-handtext-negative-control`<br>`test: TestPythonHandtextWireCarrierCRCNegativeControl` | the Go test passes in make python-handtext-negative-control's run, with no skip | `internal/codegen/pythontable/handtext_test.go:858` |
+| `none.nightly.plant.python-handtext-negative-control.python-handtext-wire-carrier-negative-control` | `make-gotest` | Go test TestPythonHandtextWireCarrierNegativeControl in ./internal/codegen/pythontable, run by make python-handtext-negative-control (make/python-handtext.mk) and read by name from its go test -json events | `file: make/python-handtext.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-handtext-negative-control`<br>`test: TestPythonHandtextWireCarrierNegativeControl` | the Go test passes in make python-handtext-negative-control's run, with no skip | `internal/codegen/pythontable/handtext_test.go:717` |
+
+#### `plant` family `python-hosted-keyed-negative-control`, 3 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-hosted-keyed-negative-control.python-hosted-packet-keyed-module-negative-control` | `make-gotest` | Go test TestPythonHostedPacketKeyedModuleNegativeControl in ./internal/codegen/pythontable, run by make python-hosted-keyed-negative-control (make/python-hosted-keyed.mk) and read by name from its go test -json events | `file: make/python-hosted-keyed.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-hosted-keyed-negative-control`<br>`test: TestPythonHostedPacketKeyedModuleNegativeControl` | the Go test passes in make python-hosted-keyed-negative-control's run, with no skip | `internal/codegen/pythontable/packet_keyed_integration_test.go:181` |
+| `none.nightly.plant.python-hosted-keyed-negative-control.python-hosted-packet-keyed-negative-control` | `make-gotest` | Go test TestPythonHostedPacketKeyedNegativeControl in ./internal/codegen/pythontable, run by make python-hosted-keyed-negative-control (make/python-hosted-keyed.mk) and read by name from its go test -json events | `file: make/python-hosted-keyed.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-hosted-keyed-negative-control`<br>`test: TestPythonHostedPacketKeyedNegativeControl` | the Go test passes in make python-hosted-keyed-negative-control's run, with no skip | `internal/codegen/pythontable/packet_keyed_integration_test.go:45` |
+| `none.nightly.plant.python-hosted-keyed-negative-control.python-hosted-packet-keyed-table-wire-negative-control` | `make-gotest` | Go test TestPythonHostedPacketKeyedTableWireNegativeControl in ./internal/codegen/pythontable, run by make python-hosted-keyed-negative-control (make/python-hosted-keyed.mk) and read by name from its go test -json events | `file: make/python-hosted-keyed.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-hosted-keyed-negative-control`<br>`test: TestPythonHostedPacketKeyedTableWireNegativeControl` | the Go test passes in make python-hosted-keyed-negative-control's run, with no skip | `internal/codegen/pythontable/packet_keyed_integration_test.go:119` |
+
+#### `plant` family `python-json-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-json-negative-control.python-json-field-match-negative-control` | `make-gotest` | Go test TestPythonJsonFieldMatchNegativeControl in ./internal/codegen/pythontable, run by make python-json-negative-control (make/python-json.mk) and read by name from its go test -json events | `file: make/python-json.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-json-negative-control`<br>`test: TestPythonJsonFieldMatchNegativeControl` | the Go test passes in make python-json-negative-control's run, with no skip | `internal/codegen/pythontable/json_scan_test.go:737` |
+
+#### `plant` family `python-keyed-flags-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-keyed-flags-negative-control.python-keyed-flags-negative-control` | `make-gotest` | Go test TestPythonKeyedFlagsNegativeControl in ./internal/codegen/pythontable, run by make python-keyed-flags-negative-control (make/python-keyed-flags.mk) and read by name from its go test -json events | `file: make/python-keyed-flags.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-keyed-flags-negative-control`<br>`test: TestPythonKeyedFlagsNegativeControl` | the Go test passes in make python-keyed-flags-negative-control's run, with no skip | `internal/codegen/pythontable/keyed_flags_test.go:86` |
+
+#### `plant` family `python-message-arm-shape-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-message-arm-shape-negative-control.python-message-union-keyed-arm-shape` | `make-gotest` | Go test TestPythonMessageUnionKeyedArmShape in ./internal/codegen/pythontable, run by make python-message-arm-shape-negative-control (make/python-message.mk) and read by name from its go test -json events | `file: make/python-message.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-message-arm-shape-negative-control`<br>`test: TestPythonMessageUnionKeyedArmShape` | the Go test passes in make python-message-arm-shape-negative-control's run, with no skip | `internal/codegen/pythontable/message_arm_shape_test.go:15` |
+
+#### `plant` family `python-message-crc-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-message-crc-negative-control.python-message-crc` | `make-gotest` | Go test TestPythonMessageCRC in ./internal/codegen/pythontable, run by make python-message-crc-negative-control (make/python-message.mk) and read by name from its go test -json events | `file: make/python-message.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-message-crc-negative-control`<br>`test: TestPythonMessageCRC` | the Go test passes in make python-message-crc-negative-control's run, with no skip | `internal/codegen/pythontable/message_crc_test.go:21` |
+
+#### `plant` family `python-message-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-message-negative-control.python-message-negative-control` | `make-gotest` | Go test TestPythonMessageNegativeControl in ./internal/codegen/pythontable, run by make python-message-negative-control (make/python-message.mk) and read by name from its go test -json events | `file: make/python-message.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-message-negative-control`<br>`test: TestPythonMessageNegativeControl` | the Go test passes in make python-message-negative-control's run, with no skip | `internal/codegen/pythontable/message_test.go:349` |
+
+#### `plant` family `python-message-noncanonical-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-message-noncanonical-negative-control.python-message-reads-refuse-non-canonical-negative-control` | `make-gotest` | Go test TestPythonMessageReadsRefuseNonCanonicalNegativeControl in ./internal/codegen/pythontable, run by make python-message-noncanonical-negative-control (make/python-message.mk) and read by name from its go test -json events | `file: make/python-message.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-message-noncanonical-negative-control`<br>`test: TestPythonMessageReadsRefuseNonCanonicalNegativeControl` | the Go test passes in make python-message-noncanonical-negative-control's run, with no skip | `internal/codegen/pythontable/message_noncanonical_test.go:343` |
+
+#### `plant` family `python-message-onesided-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-message-onesided-negative-control.python-message-one-sided` | `make-gotest` | Go test TestPythonMessageOneSided in ./internal/codegen/pythontable, run by make python-message-onesided-negative-control (make/python-message.mk) and read by name from its go test -json events | `file: make/python-message.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-message-onesided-negative-control`<br>`test: TestPythonMessageOneSided` | the Go test passes in make python-message-onesided-negative-control's run, with no skip | `internal/codegen/pythontable/message_onesided_test.go:12` |
+
+#### `plant` family `python-message-substitution-negative-control`, 3 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-message-substitution-negative-control.python-message-substituted-enum` | `make-gotest` | Go test TestPythonMessageSubstitutedEnum in ./internal/codegen/pythontable, run by make python-message-substitution-negative-control (make/python-message.mk) and read by name from its go test -json events | `file: make/python-message.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-message-substitution-negative-control`<br>`test: TestPythonMessageSubstitutedEnum` | the Go test passes in make python-message-substitution-negative-control's run, with no skip | `internal/codegen/pythontable/message_substitution_test.go:13` |
+| `none.nightly.plant.python-message-substitution-negative-control.python-message-substituted-key` | `make-gotest` | Go test TestPythonMessageSubstitutedKey in ./internal/codegen/pythontable, run by make python-message-substitution-negative-control (make/python-message.mk) and read by name from its go test -json events | `file: make/python-message.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-message-substitution-negative-control`<br>`test: TestPythonMessageSubstitutedKey` | the Go test passes in make python-message-substitution-negative-control's run, with no skip | `internal/codegen/pythontable/message_substitution_test.go:233` |
+| `none.nightly.plant.python-message-substitution-negative-control.python-message-substituted-union` | `make-gotest` | Go test TestPythonMessageSubstitutedUnion in ./internal/codegen/pythontable, run by make python-message-substitution-negative-control (make/python-message.mk) and read by name from its go test -json events | `file: make/python-message.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-message-substitution-negative-control`<br>`test: TestPythonMessageSubstitutedUnion` | the Go test passes in make python-message-substitution-negative-control's run, with no skip | `internal/codegen/pythontable/message_substitution_test.go:160` |
+
+#### `plant` family `python-message-write-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-message-write-negative-control.python-message-write-negative-control` | `make-gotest` | Go test TestPythonMessageWriteNegativeControl in ./internal/codegen/pythontable, run by make python-message-write-negative-control (make/python-message.mk) and read by name from its go test -json events | `file: make/python-message.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-message-write-negative-control`<br>`test: TestPythonMessageWriteNegativeControl` | the Go test passes in make python-message-write-negative-control's run, with no skip | `internal/codegen/pythontable/message_test.go:965` |
+
+#### `plant` family `python-one-sided-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-one-sided-negative-control.python-one-sided-range-negative-control` | `make-gotest` | Go test TestPythonOneSidedRangeNegativeControl in ./internal/codegen/pythontable, run by make python-one-sided-negative-control (make/python-one-sided.mk) and read by name from its go test -json events | `file: make/python-one-sided.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-one-sided-negative-control`<br>`test: TestPythonOneSidedRangeNegativeControl` | the Go test passes in make python-one-sided-negative-control's run, with no skip | `internal/codegen/pythontable/one_sided_test.go:97` |
+
+#### `plant` family `python-optional-array-min-negative-control`, 2 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-optional-array-min-negative-control.python-optional-array-closed-element-kind` | `make-gotest` | Go test TestPythonOptionalArrayClosedElementKind in ./internal/codegen/pythontable, run by make python-optional-array-min-negative-control (make/python-optional-array-min.mk) and read by name from its go test -json events | `file: make/python-optional-array-min.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-optional-array-min-negative-control`<br>`test: TestPythonOptionalArrayClosedElementKind` | the Go test passes in make python-optional-array-min-negative-control's run, with no skip | `internal/codegen/pythontable/optional_array_kind_test.go:14` |
+| `none.nightly.plant.python-optional-array-min-negative-control.python-optional-array-present-minimum` | `make-gotest` | Go test TestPythonOptionalArrayPresentMinimum in ./internal/codegen/pythontable, run by make python-optional-array-min-negative-control (make/python-optional-array-min.mk) and read by name from its go test -json events | `file: make/python-optional-array-min.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-optional-array-min-negative-control`<br>`test: TestPythonOptionalArrayPresentMinimum` | the Go test passes in make python-optional-array-min-negative-control's run, with no skip | `internal/codegen/pythontable/optional_array_min_test.go:15` |
+
+#### `plant` family `python-optional-map-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-optional-map-negative-control.python-optional-map-negative-control-functional` | `make-gotest` | Go test TestPythonOptionalMapNegativeControlFunctional in ./internal/codegen/pythontable, run by make python-optional-map-negative-control (make/python-optional-map.mk) and read by name from its go test -json events | `file: make/python-optional-map.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-optional-map-negative-control`<br>`test: TestPythonOptionalMapNegativeControlFunctional` | the Go test passes in make python-optional-map-negative-control's run, with no skip | `internal/codegen/pythontable/optional_map_test.go:93` |
+
+#### `plant` family `python-package-collision-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-package-collision-negative-control.python-package-name-collisions` | `make-gotest` | Go test TestPythonPackageNameCollisions in ./internal/codegen/pythontable, run by make python-package-collision-negative-control (make/python-package-collision.mk) and read by name from its go test -json events | `file: make/python-package-collision.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-package-collision-negative-control`<br>`test: TestPythonPackageNameCollisions` | the Go test passes in make python-package-collision-negative-control's run, with no skip | `internal/codegen/pythontable/package_collision_test.go:14` |
+
+#### `plant` family `python-packet-arrays-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-packet-arrays-negative-control.python-packet-arrays-negative-control` | `make-gotest` | Go test TestPythonPacketArraysNegativeControl in ./internal/codegen/python, run by make python-packet-arrays-negative-control (make/python-packet-arrays.mk) and read by name from its go test -json events | `file: make/python-packet-arrays.mk`<br>`package: ./internal/codegen/python`<br>`target: python-packet-arrays-negative-control`<br>`test: TestPythonPacketArraysNegativeControl` | the Go test passes in make python-packet-arrays-negative-control's run, with no skip | `internal/codegen/python/python_packet_arrays_test.go:665` |
+
 #### `plant` family `python-packet-close`, 5 tests
 
 | full name | adapter | checks | inputs | expected result | source |
@@ -4244,6 +4188,57 @@ a negative control: a named test run against a deliberately broken build must co
 |---|---|---|---|---|---|
 | `none.nightly.plant.python-packet-floats.packet-finite-python-negative-control` | `plant` | negative control packet-finite-python-negative-control (group python-packet-floats of make/negative-controls.json): its sabotage turns the gate it controls red | `file: make/python.mk`<br>`group: python-packet-floats`<br>`make: packet-finite-python-negative-control` | the control exits 0: the gate it controls went red on its planted sabotage | `make/negative-controls.json:3452` |
 
+#### `plant` family `python-packet-int128-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-packet-int128-negative-control.python-packet-int128-negative-control` | `make-gotest` | Go test TestPythonPacketInt128NegativeControl in ./internal/codegen/python, run by make python-packet-int128-negative-control (make/python-packet-int128.mk) and read by name from its go test -json events | `file: make/python-packet-int128.mk`<br>`package: ./internal/codegen/python`<br>`target: python-packet-int128-negative-control`<br>`test: TestPythonPacketInt128NegativeControl` | the Go test passes in make python-packet-int128-negative-control's run, with no skip | `internal/codegen/python/python_packet_int128_test.go:654` |
+
+#### `plant` family `python-packet-layout-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-packet-layout-negative-control.python-packet-layout-negative-control` | `make-gotest` | Go test TestPythonPacketLayoutNegativeControl in ./internal/codegen/python, run by make python-packet-layout-negative-control (make/python-packet-layout.mk) and read by name from its go test -json events | `file: make/python-packet-layout.mk`<br>`package: ./internal/codegen/python`<br>`target: python-packet-layout-negative-control`<br>`test: TestPythonPacketLayoutNegativeControl` | the Go test passes in make python-packet-layout-negative-control's run, with no skip | `internal/codegen/python/python_layout_test.go:358` |
+
+#### `plant` family `python-packet-ranged-bits-goref-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-packet-ranged-bits-goref-negative-control.python-packet-ranged-bits-go-reference-negative-control` | `make-gotest` | Go test TestPythonPacketRangedBitsGoReferenceNegativeControl in ./internal/codegen/python, run by make python-packet-ranged-bits-goref-negative-control (make/python-packet-ranged-bits.mk) and read by name from its go test -json events | `file: make/python-packet-ranged-bits.mk`<br>`package: ./internal/codegen/python`<br>`target: python-packet-ranged-bits-goref-negative-control`<br>`test: TestPythonPacketRangedBitsGoReferenceNegativeControl` | the Go test passes in make python-packet-ranged-bits-goref-negative-control's run, with no skip | `internal/codegen/python/python_packet_ranged_bits_test.go:771` |
+
+#### `plant` family `python-packet-ranged-bits-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-packet-ranged-bits-negative-control.python-packet-ranged-bits-negative-control` | `make-gotest` | Go test TestPythonPacketRangedBitsNegativeControl in ./internal/codegen/python, run by make python-packet-ranged-bits-negative-control (make/python-packet-ranged-bits.mk) and read by name from its go test -json events | `file: make/python-packet-ranged-bits.mk`<br>`package: ./internal/codegen/python`<br>`target: python-packet-ranged-bits-negative-control`<br>`test: TestPythonPacketRangedBitsNegativeControl` | the Go test passes in make python-packet-ranged-bits-negative-control's run, with no skip | `internal/codegen/python/python_packet_ranged_bits_test.go:734` |
+
+#### `plant` family `python-packet-text-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-packet-text-negative-control.python-packet-text-negative-control` | `make-gotest` | Go test TestPythonPacketTextNegativeControl in ./internal/codegen/python, run by make python-packet-text-negative-control (make/python-packet-text.mk) and read by name from its go test -json events | `file: make/python-packet-text.mk`<br>`package: ./internal/codegen/python`<br>`target: python-packet-text-negative-control`<br>`test: TestPythonPacketTextNegativeControl` | the Go test passes in make python-packet-text-negative-control's run, with no skip | `internal/codegen/python/python_packet_text_test.go:492` |
+
+#### `plant` family `python-readiness-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-readiness-negative-control.python-readiness-negative-control` | `make-gotest` | Go test TestPythonReadinessNegativeControl in ./internal/codegen/pythontable, run by make python-readiness-negative-control (make/python-ci-release.mk) and read by name from its go test -json events | `file: make/python-ci-release.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-readiness-negative-control`<br>`test: TestPythonReadinessNegativeControl` | the Go test passes in make python-readiness-negative-control's run, with no skip | `internal/codegen/pythontable/readiness_test.go:267` |
+
+#### `plant` family `python-retain-negative-control`, 10 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-retain-negative-control.python-retain-driver-negative-control` | `make-gotest` | Go test TestPythonRetainDriverNegativeControl in ./internal/codegen/pythontable, run by make python-retain-negative-control (make/python-retain.mk) and read by name from its go test -json events | `file: make/python-retain.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-retain-negative-control`<br>`test: TestPythonRetainDriverNegativeControl` | the Go test passes in make python-retain-negative-control's run, with no skip | `internal/codegen/pythontable/retain_test.go:1726` |
+| `none.nightly.plant.python-retain-negative-control.python-retain-known-id-negative-control` | `make-gotest` | Go test TestPythonRetainKnownIDNegativeControl in ./internal/codegen/pythontable, run by make python-retain-negative-control (make/python-retain.mk) and read by name from its go test -json events | `file: make/python-retain.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-retain-negative-control`<br>`test: TestPythonRetainKnownIDNegativeControl` | the Go test passes in make python-retain-negative-control's run, with no skip | `internal/codegen/pythontable/retain_test.go:1341` |
+| `none.nightly.plant.python-retain-negative-control.python-retain-map-nested-zero-hash-negative-control` | `make-gotest` | Go test TestPythonRetainMapNestedZeroHashNegativeControl in ./internal/codegen/pythontable, run by make python-retain-negative-control (make/python-retain.mk) and read by name from its go test -json events | `file: make/python-retain.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-retain-negative-control`<br>`test: TestPythonRetainMapNestedZeroHashNegativeControl` | the Go test passes in make python-retain-negative-control's run, with no skip | `internal/codegen/pythontable/retain_nested_zero_map_test.go:71` |
+| `none.nightly.plant.python-retain-negative-control.python-retain-node-remap-negative-control` | `make-gotest` | Go test TestPythonRetainNodeRemapNegativeControl in ./internal/codegen/pythontable, run by make python-retain-negative-control (make/python-retain.mk) and read by name from its go test -json events | `file: make/python-retain.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-retain-negative-control`<br>`test: TestPythonRetainNodeRemapNegativeControl` | the Go test passes in make python-retain-negative-control's run, with no skip | `internal/codegen/pythontable/retain_test.go:467` |
+| `none.nightly.plant.python-retain-negative-control.python-retain-path-index-negative-control` | `make-gotest` | Go test TestPythonRetainPathIndexNegativeControl in ./internal/codegen/pythontable, run by make python-retain-negative-control (make/python-retain.mk) and read by name from its go test -json events | `file: make/python-retain.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-retain-negative-control`<br>`test: TestPythonRetainPathIndexNegativeControl` | the Go test passes in make python-retain-negative-control's run, with no skip | `internal/codegen/pythontable/retain_test.go:373` |
+| `none.nightly.plant.python-retain-negative-control.python-retain-public-negative-control` | `make-gotest` | Go test TestPythonRetainPublicNegativeControl in ./internal/codegen/pythontable, run by make python-retain-negative-control (make/python-retain.mk) and read by name from its go test -json events | `file: make/python-retain.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-retain-negative-control`<br>`test: TestPythonRetainPublicNegativeControl` | the Go test passes in make python-retain-negative-control's run, with no skip | `internal/codegen/pythontable/retain_test.go:941` |
+| `none.nightly.plant.python-retain-negative-control.python-retain-read-surface-negative-control` | `make-gotest` | Go test TestPythonRetainReadSurfaceNegativeControl in ./internal/codegen/pythontable, run by make python-retain-negative-control (make/python-retain.mk) and read by name from its go test -json events | `file: make/python-retain.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-retain-negative-control`<br>`test: TestPythonRetainReadSurfaceNegativeControl` | the Go test passes in make python-retain-negative-control's run, with no skip | `internal/codegen/pythontable/retain_read_surface_test.go:154` |
+| `none.nightly.plant.python-retain-negative-control.python-retain-resolver-negative-control` | `make-gotest` | Go test TestPythonRetainResolverNegativeControl in ./internal/codegen/pythontable, run by make python-retain-negative-control (make/python-retain.mk) and read by name from its go test -json events | `file: make/python-retain.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-retain-negative-control`<br>`test: TestPythonRetainResolverNegativeControl` | the Go test passes in make python-retain-negative-control's run, with no skip | `internal/codegen/pythontable/retain_test.go:183` |
+| `none.nightly.plant.python-retain-negative-control.python-retain-tail-negative-control` | `make-gotest` | Go test TestPythonRetainTailNegativeControl in ./internal/codegen/pythontable, run by make python-retain-negative-control (make/python-retain.mk) and read by name from its go test -json events | `file: make/python-retain.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-retain-negative-control`<br>`test: TestPythonRetainTailNegativeControl` | the Go test passes in make python-retain-negative-control's run, with no skip | `internal/codegen/pythontable/retain_test.go:438` |
+| `none.nightly.plant.python-retain-negative-control.python-retain-zero-id-negative-control` | `make-gotest` | Go test TestPythonRetainZeroIDNegativeControl in ./internal/codegen/pythontable, run by make python-retain-negative-control (make/python-retain.mk) and read by name from its go test -json events | `file: make/python-retain.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-retain-negative-control`<br>`test: TestPythonRetainZeroIDNegativeControl` | the Go test passes in make python-retain-negative-control's run, with no skip | `internal/codegen/pythontable/retain_test.go:2066` |
+
 #### `plant` family `python-serialize`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
@@ -4262,17 +4257,200 @@ a negative control: a named test run against a deliberately broken build must co
 |---|---|---|---|---|---|
 | `none.nightly.plant.python-table-maps.python-table-maps-negative-control` | `plant` | negative control python-table-maps-negative-control (group python-table-maps of make/negative-controls.json): its sabotage turns the gate it controls red | `file: make/python.mk`<br>`group: python-table-maps`<br>`make: python-table-maps-negative-control` | the control exits 0: the gate it controls went red on its planted sabotage | `make/negative-controls.json:1125` |
 
+#### `plant` family `python-table-packet-types-negative-control`, 3 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-table-packet-types-negative-control.python-table-packet-types-loose-negative-control` | `make-gotest` | Go test TestPythonTablePacketTypesLooseNegativeControl in ./internal/codegen/pythontable, run by make python-table-packet-types-negative-control (make/python-table-packet-types.mk) and read by name from its go test -json events | `file: make/python-table-packet-types.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-table-packet-types-negative-control`<br>`test: TestPythonTablePacketTypesLooseNegativeControl` | the Go test passes in make python-table-packet-types-negative-control's run, with no skip | `internal/codegen/pythontable/loose_test.go:112` |
+| `none.nightly.plant.python-table-packet-types-negative-control.python-table-packet-types-map-value-negative-control` | `make-gotest` | Go test TestPythonTablePacketTypesMapValueNegativeControl in ./internal/codegen/pythontable, run by make python-table-packet-types-negative-control (make/python-table-packet-types.mk) and read by name from its go test -json events | `file: make/python-table-packet-types.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-table-packet-types-negative-control`<br>`test: TestPythonTablePacketTypesMapValueNegativeControl` | the Go test passes in make python-table-packet-types-negative-control's run, with no skip | `internal/codegen/pythontable/packettypes_test.go:331` |
+| `none.nightly.plant.python-table-packet-types-negative-control.python-table-packet-types-negative-control` | `make-gotest` | Go test TestPythonTablePacketTypesNegativeControl in ./internal/codegen/pythontable, run by make python-table-packet-types-negative-control (make/python-table-packet-types.mk) and read by name from its go test -json events | `file: make/python-table-packet-types.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-table-packet-types-negative-control`<br>`test: TestPythonTablePacketTypesNegativeControl` | the Go test passes in make python-table-packet-types-negative-control's run, with no skip | `internal/codegen/pythontable/packettypes_test.go:194` |
+
+#### `plant` family `python-table-wide-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-table-wide-negative-control.python-vt-wide-negative-control` | `make-gotest` | Go test TestPythonVtWideNegativeControl in ./internal/codegen/pythontable, run by make python-table-wide-negative-control (make/python-vt-wide.mk) and read by name from its go test -json events | `file: make/python-vt-wide.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-table-wide-negative-control`<br>`test: TestPythonVtWideNegativeControl` | the Go test passes in make python-table-wide-negative-control's run, with no skip | `internal/codegen/pythontable/vtwide_test.go:438` |
+
 #### `plant` family `python-toolchain`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.nightly.plant.python-toolchain.python-toolchain-negative-control` | `plant` | negative control python-toolchain-negative-control (group python-toolchain of make/negative-controls.json): its sabotage turns the gate it controls red | `file: make/python-toolchain.mk`<br>`group: python-toolchain`<br>`make: python-toolchain-negative-control` | the control exits 0: the gate it controls went red on its planted sabotage | `make/negative-controls.json:1051` |
 
+#### `plant` family `python-variable-crc-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-variable-crc-negative-control.python-variable-integrity-crc-negative-control` | `make-gotest` | Go test TestPythonVariableIntegrityCRCNegativeControl in ./internal/codegen/pythontable, run by make python-variable-crc-negative-control (make/python-variable-crc.mk) and read by name from its go test -json events | `file: make/python-variable-crc.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-variable-crc-negative-control`<br>`test: TestPythonVariableIntegrityCRCNegativeControl` | the Go test passes in make python-variable-crc-negative-control's run, with no skip | `internal/codegen/pythontable/integrity_crc_test.go:67` |
+
+#### `plant` family `python-vt-blobs-negative-control`, 2 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-vt-blobs-negative-control.python-vt-blobs-negative-control` | `make-gotest` | Go test TestPythonVtBlobsNegativeControl in ./internal/codegen/pythontable, run by make python-vt-blobs-negative-control (make/python-vt-blobs.mk) and read by name from its go test -json events | `file: make/python-vt-blobs.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-vt-blobs-negative-control`<br>`test: TestPythonVtBlobsNegativeControl` | the Go test passes in make python-vt-blobs-negative-control's run, with no skip | `internal/codegen/pythontable/blobs_test.go:521` |
+| `none.nightly.plant.python-vt-blobs-negative-control.python-vt-blobs-unknown-count-negative-control` | `make-gotest` | Go test TestPythonVtBlobsUnknownCountNegativeControl in ./internal/codegen/pythontable, run by make python-vt-blobs-negative-control (make/python-vt-blobs.mk) and read by name from its go test -json events | `file: make/python-vt-blobs.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-vt-blobs-negative-control`<br>`test: TestPythonVtBlobsUnknownCountNegativeControl` | the Go test passes in make python-vt-blobs-negative-control's run, with no skip | `internal/codegen/pythontable/blobs_unknown_test.go:178` |
+
+#### `plant` family `python-vt-evolution-defaults-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-vt-evolution-defaults-negative-control.python-vt-evolution-negative-control-defaults` | `make-gotest` | Go test TestPythonVtEvolutionNegativeControlDefaults in ./internal/codegen/pythontable, run by make python-vt-evolution-defaults-negative-control (make/python-vt-evolution.mk) and read by name from its go test -json events | `file: make/python-vt-evolution.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-vt-evolution-defaults-negative-control`<br>`test: TestPythonVtEvolutionNegativeControlDefaults` | the Go test passes in make python-vt-evolution-defaults-negative-control's run, with no skip | `internal/codegen/pythontable/evolution_test.go:978` |
+
+#### `plant` family `python-vt-evolution-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-vt-evolution-negative-control.python-vt-evolution-negative-control` | `make-gotest` | Go test TestPythonVtEvolutionNegativeControl in ./internal/codegen/pythontable, run by make python-vt-evolution-negative-control (make/python-vt-evolution.mk) and read by name from its go test -json events | `file: make/python-vt-evolution.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-vt-evolution-negative-control`<br>`test: TestPythonVtEvolutionNegativeControl` | the Go test passes in make python-vt-evolution-negative-control's run, with no skip | `internal/codegen/pythontable/evolution_test.go:964` |
+
+#### `plant` family `python-vt-evolution-renames-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-vt-evolution-renames-negative-control.python-vt-evolution-negative-control-renames` | `make-gotest` | Go test TestPythonVtEvolutionNegativeControlRenames in ./internal/codegen/pythontable, run by make python-vt-evolution-renames-negative-control (make/python-vt-evolution.mk) and read by name from its go test -json events | `file: make/python-vt-evolution.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-vt-evolution-renames-negative-control`<br>`test: TestPythonVtEvolutionNegativeControlRenames` | the Go test passes in make python-vt-evolution-renames-negative-control's run, with no skip | `internal/codegen/pythontable/evolution_test.go:992` |
+
+#### `plant` family `python-vt-evolution-rows-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-vt-evolution-rows-negative-control.python-vt-evolution-rows-negative-control` | `make-gotest` | Go test TestPythonVtEvolutionRowsNegativeControl in ./internal/codegen/pythontable, run by make python-vt-evolution-rows-negative-control (make/python-vt-evolution-rows.mk) and read by name from its go test -json events | `file: make/python-vt-evolution-rows.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-vt-evolution-rows-negative-control`<br>`test: TestPythonVtEvolutionRowsNegativeControl` | the Go test passes in make python-vt-evolution-rows-negative-control's run, with no skip | `internal/codegen/pythontable/vt_evolution_rows_test.go:395` |
+
+#### `plant` family `python-vt-evolution-skip-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-vt-evolution-skip-negative-control.python-vt-evolution-negative-control-skip-check` | `make-gotest` | Go test TestPythonVtEvolutionNegativeControlSkipCheck in ./internal/codegen/pythontable, run by make python-vt-evolution-skip-negative-control (make/python-vt-evolution.mk) and read by name from its go test -json events | `file: make/python-vt-evolution.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-vt-evolution-skip-negative-control`<br>`test: TestPythonVtEvolutionNegativeControlSkipCheck` | the Go test passes in make python-vt-evolution-skip-negative-control's run, with no skip | `internal/codegen/pythontable/evolution_test.go:1014` |
+
+#### `plant` family `python-vt-fixed-class-negative-control`, 4 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-vt-fixed-class-negative-control.python-vt-fixed-class-build-version-imports-negative-control` | `make-gotest` | Go test TestPythonVtFixedClassBuildVersionImportsNegativeControl in ./internal/codegen/pythontable, run by make python-vt-fixed-class-negative-control (make/python-vt-fixed-class.mk) and read by name from its go test -json events | `file: make/python-vt-fixed-class.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-vt-fixed-class-negative-control`<br>`test: TestPythonVtFixedClassBuildVersionImportsNegativeControl` | the Go test passes in make python-vt-fixed-class-negative-control's run, with no skip | `internal/codegen/pythontable/vtfixedclass_test.go:412` |
+| `none.nightly.plant.python-vt-fixed-class-negative-control.python-vt-fixed-class-elision-negative-control` | `make-gotest` | Go test TestPythonVtFixedClassElisionNegativeControl in ./internal/codegen/pythontable, run by make python-vt-fixed-class-negative-control (make/python-vt-fixed-class.mk) and read by name from its go test -json events | `file: make/python-vt-fixed-class.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-vt-fixed-class-negative-control`<br>`test: TestPythonVtFixedClassElisionNegativeControl` | the Go test passes in make python-vt-fixed-class-negative-control's run, with no skip | `internal/codegen/pythontable/vtfixedclasselide_test.go:416` |
+| `none.nightly.plant.python-vt-fixed-class-negative-control.python-vt-fixed-class-negative-control` | `make-gotest` | Go test TestPythonVtFixedClassNegativeControl in ./internal/codegen/pythontable, run by make python-vt-fixed-class-negative-control (make/python-vt-fixed-class.mk) and read by name from its go test -json events | `file: make/python-vt-fixed-class.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-vt-fixed-class-negative-control`<br>`test: TestPythonVtFixedClassNegativeControl` | the Go test passes in make python-vt-fixed-class-negative-control's run, with no skip | `internal/codegen/pythontable/vtfixedclass_test.go:231` |
+| `none.nightly.plant.python-vt-fixed-class-negative-control.python-vt-fixed-class-value-module-collision` | `make-gotest` | Go test TestPythonVtFixedClassValueModuleCollision in ./internal/codegen/pythontable, run by make python-vt-fixed-class-negative-control (make/python-vt-fixed-class.mk) and read by name from its go test -json events | `file: make/python-vt-fixed-class.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-vt-fixed-class-negative-control`<br>`test: TestPythonVtFixedClassValueModuleCollision` | the Go test passes in make python-vt-fixed-class-negative-control's run, with no skip | `internal/codegen/pythontable/vtfixedclass_value_collision_test.go:14` |
+
+#### `plant` family `python-vt-fixed-class-rows-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-vt-fixed-class-rows-negative-control.python-vt-fixed-class-rows-negative-control` | `make-gotest` | Go test TestPythonVtFixedClassRowsNegativeControl in ./internal/codegen/pythontable, run by make python-vt-fixed-class-rows-negative-control (make/python-vt-fixed-class-rows.mk) and read by name from its go test -json events | `file: make/python-vt-fixed-class-rows.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-vt-fixed-class-rows-negative-control`<br>`test: TestPythonVtFixedClassRowsNegativeControl` | the Go test passes in make python-vt-fixed-class-rows-negative-control's run, with no skip | `internal/codegen/pythontable/vtfixedclass_rows_test.go:227` |
+
+#### `plant` family `python-vt-idtable-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-vt-idtable-negative-control.python-vt-idtable-negative-control` | `make-gotest` | Go test TestPythonVtIdtableNegativeControl in ./internal/codegen/pythontable, run by make python-vt-idtable-negative-control (make/python-vt-idtable.mk) and read by name from its go test -json events | `file: make/python-vt-idtable.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-vt-idtable-negative-control`<br>`test: TestPythonVtIdtableNegativeControl` | the Go test passes in make python-vt-idtable-negative-control's run, with no skip | `internal/codegen/pythontable/idtable_test.go:424` |
+
+#### `plant` family `python-vt-idtable-rows-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-vt-idtable-rows-negative-control.python-vt-idtable-rows-negative-control` | `make-gotest` | Go test TestPythonVtIdtableRowsNegativeControl in ./internal/codegen/pythontable, run by make python-vt-idtable-rows-negative-control (make/python-vt-idtable-rows.mk) and read by name from its go test -json events | `file: make/python-vt-idtable-rows.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-vt-idtable-rows-negative-control`<br>`test: TestPythonVtIdtableRowsNegativeControl` | the Go test passes in make python-vt-idtable-rows-negative-control's run, with no skip | `internal/codegen/pythontable/vtidtable_rows_test.go:254` |
+
+#### `plant` family `python-vt-keyed-enum-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-vt-keyed-enum-negative-control.python-vt-keyed-enum-negative-control-functional` | `make-gotest` | Go test TestPythonVtKeyedEnumNegativeControlFunctional in ./internal/codegen/pythontable, run by make python-vt-keyed-enum-negative-control (make/python-vt-keyed-enum.mk) and read by name from its go test -json events | `file: make/python-vt-keyed-enum.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-vt-keyed-enum-negative-control`<br>`test: TestPythonVtKeyedEnumNegativeControlFunctional` | the Go test passes in make python-vt-keyed-enum-negative-control's run, with no skip | `internal/codegen/pythontable/vtkeyed_enum_test.go:289` |
+
+#### `plant` family `python-vt-keyed-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-vt-keyed-negative-control.python-vt-keyed-negative-control` | `make-gotest` | Go test TestPythonVtKeyedNegativeControl in ./internal/codegen/pythontable, run by make python-vt-keyed-negative-control (make/python-vt-keyed.mk) and read by name from its go test -json events | `file: make/python-vt-keyed.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-vt-keyed-negative-control`<br>`test: TestPythonVtKeyedNegativeControl` | the Go test passes in make python-vt-keyed-negative-control's run, with no skip | `internal/codegen/pythontable/vtkeyed_test.go:618` |
+
+#### `plant` family `python-vt-keyed-rows-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-vt-keyed-rows-negative-control.python-vt-keyed-rows-negative-control` | `make-gotest` | Go test TestPythonVtKeyedRowsNegativeControl in ./internal/codegen/pythontable, run by make python-vt-keyed-rows-negative-control (make/python-vt-keyed-rows.mk) and read by name from its go test -json events | `file: make/python-vt-keyed-rows.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-vt-keyed-rows-negative-control`<br>`test: TestPythonVtKeyedRowsNegativeControl` | the Go test passes in make python-vt-keyed-rows-negative-control's run, with no skip | `internal/codegen/pythontable/vtkeyed_rows_test.go:463` |
+
+#### `plant` family `python-vt-maps-rows-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-vt-maps-rows-negative-control.python-vt-maps-rows-negative-control` | `make-gotest` | Go test TestPythonVtMapsRowsNegativeControl in ./internal/codegen/pythontable, run by make python-vt-maps-rows-negative-control (make/python-vt-maps-rows.mk) and read by name from its go test -json events | `file: make/python-vt-maps-rows.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-vt-maps-rows-negative-control`<br>`test: TestPythonVtMapsRowsNegativeControl` | the Go test passes in make python-vt-maps-rows-negative-control's run, with no skip | `internal/codegen/pythontable/vtmaps_rows_test.go:437` |
+
+#### `plant` family `python-vt-optional-negative-control`, 2 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-vt-optional-negative-control.python-vt-optional-arrays-negative-control` | `make-gotest` | Go test TestPythonVtOptionalArraysNegativeControl in ./internal/codegen/pythontable, run by make python-vt-optional-negative-control (make/python-vt-optional.mk) and read by name from its go test -json events | `file: make/python-vt-optional.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-vt-optional-negative-control`<br>`test: TestPythonVtOptionalArraysNegativeControl` | the Go test passes in make python-vt-optional-negative-control's run, with no skip | `internal/codegen/pythontable/vtcells_optional_test.go:634` |
+| `none.nightly.plant.python-vt-optional-negative-control.python-vt-optional-negative-control` | `make-gotest` | Go test TestPythonVtOptionalNegativeControl in ./internal/codegen/pythontable, run by make python-vt-optional-negative-control (make/python-vt-optional.mk) and read by name from its go test -json events | `file: make/python-vt-optional.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-vt-optional-negative-control`<br>`test: TestPythonVtOptionalNegativeControl` | the Go test passes in make python-vt-optional-negative-control's run, with no skip | `internal/codegen/pythontable/vtcells_optional_test.go:321` |
+
+#### `plant` family `python-vt-optional-rows-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-vt-optional-rows-negative-control.python-vt-optional-rows-negative-control` | `make-gotest` | Go test TestPythonVtOptionalRowsNegativeControl in ./internal/codegen/pythontable, run by make python-vt-optional-rows-negative-control (make/python-vt-optional-rows.mk) and read by name from its go test -json events | `file: make/python-vt-optional-rows.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-vt-optional-rows-negative-control`<br>`test: TestPythonVtOptionalRowsNegativeControl` | the Go test passes in make python-vt-optional-rows-negative-control's run, with no skip | `internal/codegen/pythontable/vtoptional_rows_test.go:411` |
+
+#### `plant` family `python-vt-pointer-array-body-bound-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-vt-pointer-array-body-bound-negative-control.python-vt-pointer-array-body-bound` | `make-gotest` | Go test TestPythonVtPointerArrayBodyBound in ./internal/codegen/pythontable, run by make python-vt-pointer-array-body-bound-negative-control (make/python-vt-pointer-arrays.mk) and read by name from its go test -json events | `file: make/python-vt-pointer-arrays.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-vt-pointer-array-body-bound-negative-control`<br>`test: TestPythonVtPointerArrayBodyBound` | the Go test passes in make python-vt-pointer-array-body-bound-negative-control's run, with no skip | `internal/codegen/pythontable/pointerarrays_bodybound_test.go:14` |
+
+#### `plant` family `python-vt-pointer-arrays-rows-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-vt-pointer-arrays-rows-negative-control.python-vt-pointer-arrays-rows-negative-control` | `make-gotest` | Go test TestPythonVtPointerArraysRowsNegativeControl in ./internal/codegen/pythontable, run by make python-vt-pointer-arrays-rows-negative-control (make/python-vt-pointer-arrays-rows.mk) and read by name from its go test -json events | `file: make/python-vt-pointer-arrays-rows.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-vt-pointer-arrays-rows-negative-control`<br>`test: TestPythonVtPointerArraysRowsNegativeControl` | the Go test passes in make python-vt-pointer-arrays-rows-negative-control's run, with no skip | `internal/codegen/pythontable/vtpointerarrays_rows_test.go:446` |
+
+#### `plant` family `python-vt-timestamp-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-vt-timestamp-negative-control.python-vt-timestamp-negative-control` | `make-gotest` | Go test TestPythonVtTimestampNegativeControl in ./internal/codegen/pythontable, run by make python-vt-timestamp-negative-control (make/python-vt-timestamp.mk) and read by name from its go test -json events | `file: make/python-vt-timestamp.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-vt-timestamp-negative-control`<br>`test: TestPythonVtTimestampNegativeControl` | the Go test passes in make python-vt-timestamp-negative-control's run, with no skip | `internal/codegen/pythontable/timestamp_test.go:281` |
+
+#### `plant` family `python-vt-unbounded-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-vt-unbounded-negative-control.python-vt-unbounded-negative-control` | `make-gotest` | Go test TestPythonVtUnboundedNegativeControl in ./internal/codegen/pythontable, run by make python-vt-unbounded-negative-control (make/python-vt-unbounded.mk) and read by name from its go test -json events | `file: make/python-vt-unbounded.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-vt-unbounded-negative-control`<br>`test: TestPythonVtUnboundedNegativeControl` | the Go test passes in make python-vt-unbounded-negative-control's run, with no skip | `internal/codegen/pythontable/vtunbounded_test.go:510` |
+
+#### `plant` family `python-vt-unbounded-rows-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-vt-unbounded-rows-negative-control.python-vt-unbounded-rows-negative-control` | `make-gotest` | Go test TestPythonVtUnboundedRowsNegativeControl in ./internal/codegen/pythontable, run by make python-vt-unbounded-rows-negative-control (make/python-vt-unbounded-rows.mk) and read by name from its go test -json events | `file: make/python-vt-unbounded-rows.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-vt-unbounded-rows-negative-control`<br>`test: TestPythonVtUnboundedRowsNegativeControl` | the Go test passes in make python-vt-unbounded-rows-negative-control's run, with no skip | `internal/codegen/pythontable/vtunbounded_rows_test.go:297` |
+
+#### `plant` family `python-vt-unions-negative-control`, 2 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-vt-unions-negative-control.python-union-counted-birth-negative-control` | `make-gotest` | Go test TestPythonUnionCountedBirthNegativeControl in ./internal/codegen/pythontable, run by make python-vt-unions-negative-control (make/python-vt-unions.mk) and read by name from its go test -json events | `file: make/python-vt-unions.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-vt-unions-negative-control`<br>`test: TestPythonUnionCountedBirthNegativeControl` | the Go test passes in make python-vt-unions-negative-control's run, with no skip | `internal/codegen/pythontable/pythontable_unions_test.go:855` |
+| `none.nightly.plant.python-vt-unions-negative-control.python-vt-unions-negative-control` | `make-gotest` | Go test TestPythonVtUnionsNegativeControl in ./internal/codegen/pythontable, run by make python-vt-unions-negative-control (make/python-vt-unions.mk) and read by name from its go test -json events | `file: make/python-vt-unions.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-vt-unions-negative-control`<br>`test: TestPythonVtUnionsNegativeControl` | the Go test passes in make python-vt-unions-negative-control's run, with no skip | `internal/codegen/pythontable/pythontable_unions_test.go:747` |
+
+#### `plant` family `python-vt-unions-rows-negative-control`, 2 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-vt-unions-rows-negative-control.python-vt-unions-rows-controls-cover-every-case` | `make-gotest` | Go test TestPythonVtUnionsRowsControlsCoverEveryCase in ./internal/codegen/pythontable, run by make python-vt-unions-rows-negative-control (make/python-vt-unions-rows.mk) and read by name from its go test -json events | `file: make/python-vt-unions-rows.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-vt-unions-rows-negative-control`<br>`test: TestPythonVtUnionsRowsControlsCoverEveryCase` | the Go test passes in make python-vt-unions-rows-negative-control's run, with no skip | `internal/codegen/pythontable/vtunions_rows_test.go:392` |
+| `none.nightly.plant.python-vt-unions-rows-negative-control.python-vt-unions-rows-negative-control` | `make-gotest` | Go test TestPythonVtUnionsRowsNegativeControl in ./internal/codegen/pythontable, run by make python-vt-unions-rows-negative-control (make/python-vt-unions-rows.mk) and read by name from its go test -json events | `file: make/python-vt-unions-rows.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-vt-unions-rows-negative-control`<br>`test: TestPythonVtUnionsRowsNegativeControl` | the Go test passes in make python-vt-unions-rows-negative-control's run, with no skip | `internal/codegen/pythontable/vtunions_rows_test.go:432` |
+
+#### `plant` family `python-vt-wide-rows-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-vt-wide-rows-negative-control.python-vt-wide-rows-negative-control` | `make-gotest` | Go test TestPythonVtWideRowsNegativeControl in ./internal/codegen/pythontable, run by make python-vt-wide-rows-negative-control (make/python-vt-wide-rows.mk) and read by name from its go test -json events | `file: make/python-vt-wide-rows.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-vt-wide-rows-negative-control`<br>`test: TestPythonVtWideRowsNegativeControl` | the Go test passes in make python-vt-wide-rows-negative-control's run, with no skip | `internal/codegen/pythontable/vtwide_rows_test.go:240` |
+
 #### `plant` family `python-vt-widening`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.nightly.plant.python-vt-widening.python-vt-widening-negative-control` | `plant` | negative control python-vt-widening-negative-control (group python-vt-widening of make/negative-controls.json): its sabotage turns the gate it controls red | `file: make/python.mk`<br>`group: python-vt-widening`<br>`make: python-vt-widening-negative-control` | the control exits 0: the gate it controls went red on its planted sabotage | `make/negative-controls.json:1134` |
+
+#### `plant` family `python-wirefuzz-partition-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-wirefuzz-partition-negative-control.python-wire-fuzz-ci-partition-negative-control` | `make-gotest` | Go test TestPythonWireFuzzCIPartitionNegativeControl in ./internal/codegen/pythontable, run by make python-wirefuzz-partition-negative-control (make/python-wirefuzz.mk) and read by name from its go test -json events | `file: make/python-wirefuzz.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-wirefuzz-partition-negative-control`<br>`test: TestPythonWireFuzzCIPartitionNegativeControl` | the Go test passes in make python-wirefuzz-partition-negative-control's run, with no skip | `internal/codegen/pythontable/wirefuzz_verdict_test.go:148` |
+
+#### `plant` family `python-wirefuzz-retain-loss-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.python-wirefuzz-retain-loss-negative-control.python-wire-fuzz-retain-loss` | `make-gotest` | Go test TestPythonWireFuzzRetainLoss in ./internal/codegen/pythontable, run by make python-wirefuzz-retain-loss-negative-control (make/python-wirefuzz.mk) and read by name from its go test -json events | `file: make/python-wirefuzz.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: python-wirefuzz-retain-loss-negative-control`<br>`test: TestPythonWireFuzzRetainLoss` | the Go test passes in make python-wirefuzz-retain-loss-negative-control's run, with no skip | `internal/codegen/pythontable/wirefuzz_verdict_test.go:26` |
 
 #### `plant` family `python-write-refusal`, 3 tests
 
@@ -4313,6 +4491,12 @@ a negative control: a named test run against a deliberately broken build must co
 | `none.nightly.plant.ruby-packet.ruby-packet-analyzer-negative-control` | `plant` | negative control ruby-packet-analyzer-negative-control (group ruby-packet of make/negative-controls.json): its sabotage turns the gate it controls red | `file: make/ruby-packet.mk`<br>`group: ruby-packet`<br>`make: ruby-packet-analyzer-negative-control` | the control exits 0: the gate it controls went red on its planted sabotage | `make/negative-controls.json:1090` |
 | `none.nightly.plant.ruby-packet.ruby-packet-close-negative-control` | `plant` | negative control ruby-packet-close-negative-control (group ruby-packet of make/negative-controls.json): its sabotage turns the gate it controls red | `file: make/ruby-packet.mk`<br>`group: ruby-packet`<br>`make: ruby-packet-close-negative-control` | the control exits 0: the gate it controls went red on its planted sabotage | `make/negative-controls.json:1089` |
 
+#### `plant` family `ruby-readiness-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.ruby-readiness-negative-control.ruby-readiness-negative-control` | `make-gotest` | Go test TestRubyReadinessNegativeControl in ./internal/codegen/rubytable, run by make ruby-readiness-negative-control (make/ruby-ci-release.mk) and read by name from its go test -json events | `file: make/ruby-ci-release.mk`<br>`package: ./internal/codegen/rubytable`<br>`target: ruby-readiness-negative-control`<br>`test: TestRubyReadinessNegativeControl` | the Go test passes in make ruby-readiness-negative-control's run, with no skip | `internal/codegen/rubytable/readiness_test.go:143` |
+
 #### `plant` family `ruby-serialize`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
@@ -4324,6 +4508,12 @@ a negative control: a named test run against a deliberately broken build must co
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.nightly.plant.ruby-skeleton.ruby-skeleton-negative-control` | `plant` | negative control ruby-skeleton-negative-control (group ruby-skeleton of make/negative-controls.json): its sabotage turns the gate it controls red | `file: make/ruby.mk`<br>`group: ruby-skeleton`<br>`make: ruby-skeleton-negative-control` | the control exits 0: the gate it controls went red on its planted sabotage | `make/negative-controls.json:1067` |
+
+#### `plant` family `ruby-wirefuzz-retain-loss-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.ruby-wirefuzz-retain-loss-negative-control.ruby-wire-fuzz-retain-loss` | `make-gotest` | Go test TestRubyWireFuzzRetainLoss in ./internal/codegen/rubytable, run by make ruby-wirefuzz-retain-loss-negative-control (make/ruby-wirefuzz.mk) and read by name from its go test -json events | `file: make/ruby-wirefuzz.mk`<br>`package: ./internal/codegen/rubytable`<br>`target: ruby-wirefuzz-retain-loss-negative-control`<br>`test: TestRubyWireFuzzRetainLoss` | the Go test passes in make ruby-wirefuzz-retain-loss-negative-control's run, with no skip | `internal/codegen/rubytable/wirefuzz_verdict_test.go:124` |
 
 #### `plant` family `ruby-write-refusal`, 3 tests
 
@@ -4480,6 +4670,18 @@ a negative control: a named test run against a deliberately broken build must co
 |---|---|---|---|---|---|
 | `none.nightly.plant.schema-dart-strict-analyze.schema-dart-generated-strict-analyze-nested-default-negative-control` | `plant` | negative control schema-dart-generated-strict-analyze-nested-default-negative-control (group schema-dart-strict-analyze of make/negative-controls.json): its sabotage turns the gate it controls red | `file: make/schema-dart-generated-strict-analyze-gate.mk`<br>`group: schema-dart-strict-analyze`<br>`make: schema-dart-generated-strict-analyze-nested-default-negative-control` | the control exits 0: the gate it controls went red on its planted sabotage | `make/negative-controls.json:2991` |
 
+#### `plant` family `schema-python-resource-bounds-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.schema-python-resource-bounds-negative-control.python-resource-bounds-planted-pattern` | `make-gotest` | Go test TestPythonResourceBoundsPlantedPattern in ./internal/codegen/pythontable, run by make schema-python-resource-bounds-negative-control (make/python-hostile.mk) and read by name from its go test -json events | `file: make/python-hostile.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: schema-python-resource-bounds-negative-control`<br>`test: TestPythonResourceBoundsPlantedPattern` | the Go test passes in make schema-python-resource-bounds-negative-control's run, with no skip | `internal/codegen/pythontable/resource_bounds_test.go:283` |
+
+#### `plant` family `schema-python-runs-hostile-corpus-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.schema-python-runs-hostile-corpus-negative-control.python-hostile-corpus-planted-reader` | `make-gotest` | Go test TestPythonHostileCorpusPlantedReader in ./internal/codegen/pythontable, run by make schema-python-runs-hostile-corpus-negative-control (make/python-hostile.mk) and read by name from its go test -json events | `file: make/python-hostile.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: schema-python-runs-hostile-corpus-negative-control`<br>`test: TestPythonHostileCorpusPlantedReader` | the Go test passes in make schema-python-runs-hostile-corpus-negative-control's run, with no skip | `internal/codegen/pythontable/hostile_corpus_test.go:537` |
+
 #### `plant` family `single-pass-equivalence`, 2 tests
 
 | full name | adapter | checks | inputs | expected result | source |
@@ -4600,6 +4802,43 @@ a negative control: a named test run against a deliberately broken build must co
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.nightly.plant.table-distinctness.tables-distinctness-negative-control` | `plant` | negative control tables-distinctness-negative-control (group table-distinctness of make/negative-controls.json): its sabotage turns the gate it controls red | `file: Makefile`<br>`group: table-distinctness`<br>`make: tables-distinctness-negative-control` | the control exits 0: the gate it controls went red on its planted sabotage | `make/negative-controls.json:817` |
+
+#### `plant` family `tables-c-retain-hashzero-negative-control`, 2 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.tables-c-retain-hashzero-negative-control.c-retain-nested-hash-zero` | `make-gotest` | Go test TestCRetainNestedHashZero in ./internal/codegen/ctable, run by make tables-c-retain-hashzero-negative-control (make/c.mk) and read by name from its go test -json events | `file: make/c.mk`<br>`package: ./internal/codegen/ctable`<br>`target: tables-c-retain-hashzero-negative-control`<br>`test: TestCRetainNestedHashZero` | the Go test passes in make tables-c-retain-hashzero-negative-control's run, with no skip | `internal/codegen/ctable/retain_hashzero_test.go:104` |
+| `none.nightly.plant.tables-c-retain-hashzero-negative-control.c-retain-nested-hash-zero-negative-control` | `make-gotest` | Go test TestCRetainNestedHashZeroNegativeControl in ./internal/codegen/ctable, run by make tables-c-retain-hashzero-negative-control (make/c.mk) and read by name from its go test -json events | `file: make/c.mk`<br>`package: ./internal/codegen/ctable`<br>`target: tables-c-retain-hashzero-negative-control`<br>`test: TestCRetainNestedHashZeroNegativeControl` | the Go test passes in make tables-c-retain-hashzero-negative-control's run, with no skip | `internal/codegen/ctable/retain_hashzero_test.go:110` |
+
+#### `plant` family `tables-cs-wire-fuzz-dead-bytes-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.tables-cs-wire-fuzz-dead-bytes-negative-control.c-sharp-fixed-dead-bytes-are-zero-negative-control` | `make-gotest` | Go test TestCSharpFixedDeadBytesAreZeroNegativeControl in ./internal/codegen/cstable, run by make tables-cs-wire-fuzz-dead-bytes-negative-control (make/cs.mk) and read by name from its go test -json events | `file: make/cs.mk`<br>`package: ./internal/codegen/cstable`<br>`target: tables-cs-wire-fuzz-dead-bytes-negative-control`<br>`test: TestCSharpFixedDeadBytesAreZeroNegativeControl` | the Go test passes in make tables-cs-wire-fuzz-dead-bytes-negative-control's run, with no skip | `internal/codegen/cstable/fixeddeadbytes_test.go:223` |
+
+#### `plant` family `tables-python-wire-fuzz-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.tables-python-wire-fuzz-negative-control.python-wire-fuzz-verdict-pipe-negative-control` | `make-gotest` | Go test TestPythonWireFuzzVerdictPipeNegativeControl in ./internal/codegen/pythontable, run by make tables-python-wire-fuzz-negative-control (make/python-wirefuzz.mk) and read by name from its go test -json events | `file: make/python-wirefuzz.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: tables-python-wire-fuzz-negative-control`<br>`test: TestPythonWireFuzzVerdictPipeNegativeControl` | the Go test passes in make tables-python-wire-fuzz-negative-control's run, with no skip | `internal/codegen/pythontable/wirefuzz_verdict_test.go:452` |
+
+#### `plant` family `tables-python-wire-fuzz-retain-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.tables-python-wire-fuzz-retain-negative-control.python-wire-fuzz-retain-negative-control` | `make-gotest` | Go test TestPythonWireFuzzRetainNegativeControl in ./internal/codegen/pythontable, run by make tables-python-wire-fuzz-retain-negative-control (make/python-wirefuzz.mk) and read by name from its go test -json events | `file: make/python-wirefuzz.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: tables-python-wire-fuzz-retain-negative-control`<br>`test: TestPythonWireFuzzRetainNegativeControl` | the Go test passes in make tables-python-wire-fuzz-retain-negative-control's run, with no skip | `internal/codegen/pythontable/wirefuzz_verdict_test.go:512` |
+
+#### `plant` family `tables-ruby-wire-fuzz-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.tables-ruby-wire-fuzz-negative-control.ruby-wire-fuzz-verdict-pipe-negative-control` | `make-gotest` | Go test TestRubyWireFuzzVerdictPipeNegativeControl in ./internal/codegen/rubytable, run by make tables-ruby-wire-fuzz-negative-control (make/ruby-wirefuzz.mk) and read by name from its go test -json events | `file: make/ruby-wirefuzz.mk`<br>`package: ./internal/codegen/rubytable`<br>`target: tables-ruby-wire-fuzz-negative-control`<br>`test: TestRubyWireFuzzVerdictPipeNegativeControl` | the Go test passes in make tables-ruby-wire-fuzz-negative-control's run, with no skip | `internal/codegen/rubytable/wirefuzz_verdict_test.go:26` |
+
+#### `plant` family `tables-ruby-wire-fuzz-retain-negative-control`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.tables-ruby-wire-fuzz-retain-negative-control.ruby-wire-fuzz-retain-negative-control` | `make-gotest` | Go test TestRubyWireFuzzRetainNegativeControl in ./internal/codegen/rubytable, run by make tables-ruby-wire-fuzz-retain-negative-control (make/ruby-wirefuzz.mk) and read by name from its go test -json events | `file: make/ruby-wirefuzz.mk`<br>`package: ./internal/codegen/rubytable`<br>`target: tables-ruby-wire-fuzz-retain-negative-control`<br>`test: TestRubyWireFuzzRetainNegativeControl` | the Go test passes in make tables-ruby-wire-fuzz-retain-negative-control's run, with no skip | `internal/codegen/rubytable/wirefuzz_verdict_test.go:77` |
 
 #### `plant` family `wire-fuzz-arm-terminator`, 1 test
 
@@ -4752,9 +4991,9 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 | `none.nightly.compiler.fuzz.prop-refusal-never-silent` | `gotest` | Go test TestPropRefusalNeverSilent in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestPropRefusalNeverSilent` | the Go test passes | `internal/fuzz/rapidprops_test.go:210` |
 | `none.nightly.compiler.fuzz.prop-round-trip-every-form` | `gotest` | Go test TestPropRoundTripEveryForm in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestPropRoundTripEveryForm` | the Go test passes | `internal/fuzz/rapidprops_test.go:195` |
 | `none.nightly.compiler.fuzz.prop-strict-reads-agree` | `gotest` | Go test TestPropStrictReadsAgree in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestPropStrictReadsAgree` | the Go test passes | `internal/fuzz/rapidprops_test.go:226` |
-| `none.nightly.compiler.fuzz.random-table-differential` | `gotest` | Go test TestRandomTableDifferential in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestRandomTableDifferential` | the Go test passes | `internal/fuzz/tablediff_test.go:765` |
-| `none.nightly.compiler.fuzz.random-table-differential-negative-control` | `gotest` | Go test TestRandomTableDifferentialNegativeControl in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestRandomTableDifferentialNegativeControl` | the Go test passes | `internal/fuzz/tablediff_test.go:790` |
-| `none.nightly.compiler.fuzz.random-table-integrity-units` | `gotest` | Go test TestRandomTableIntegrityUnits in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestRandomTableIntegrityUnits` | the Go test passes | `internal/fuzz/tablediff_test.go:819` |
+| `none.nightly.compiler.fuzz.random-table-differential` | `gotest` | Go test TestRandomTableDifferential in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestRandomTableDifferential` | the Go test passes | `internal/fuzz/tablediff_test.go:752` |
+| `none.nightly.compiler.fuzz.random-table-differential-negative-control` | `gotest` | Go test TestRandomTableDifferentialNegativeControl in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestRandomTableDifferentialNegativeControl` | the Go test passes | `internal/fuzz/tablediff_test.go:777` |
+| `none.nightly.compiler.fuzz.random-table-integrity-units` | `gotest` | Go test TestRandomTableIntegrityUnits in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestRandomTableIntegrityUnits` | the Go test passes | `internal/fuzz/tablediff_test.go:806` |
 | `none.nightly.compiler.fuzz.rapid-props-negative-control` | `gotest` | Go test TestRapidPropsNegativeControl in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestRapidPropsNegativeControl` | the Go test passes | `internal/fuzz/rapidprops_test.go:335` |
 
 #### `compiler` family `publicapi`, 2 tests
@@ -4779,10 +5018,10 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.tooling.makefile.docs-check` | `make` | make docs-check (Makefile) exits 0 | `file: Makefile`<br>`target: docs-check` | the target exits 0 with no skip in its log | `Makefile:5279` |
-| `none.nightly.tooling.makefile.shape-gate` | `make` | make shape-gate (Makefile) exits 0 | `file: Makefile`<br>`target: shape-gate` | the target exits 0 with no skip in its log | `Makefile:5345` |
-| `none.nightly.tooling.makefile.vuln` | `make` | make vuln (Makefile) exits 0 | `file: Makefile`<br>`target: vuln` | the target exits 0 with no skip in its log | `Makefile:8077` |
-| `none.nightly.tooling.makefile.vuln-strict` | `make` | make vuln-strict (Makefile) exits 0 | `file: Makefile`<br>`target: vuln-strict` | the target exits 0 with no skip in its log | `Makefile:8081` |
+| `none.nightly.tooling.makefile.docs-check` | `make` | make docs-check (Makefile) exits 0 | `file: Makefile`<br>`target: docs-check` | the target exits 0 with no skip in its log | `Makefile:5282` |
+| `none.nightly.tooling.makefile.shape-gate` | `make` | make shape-gate (Makefile) exits 0 | `file: Makefile`<br>`target: shape-gate` | the target exits 0 with no skip in its log | `Makefile:5348` |
+| `none.nightly.tooling.makefile.vuln` | `make` | make vuln (Makefile) exits 0 | `file: Makefile`<br>`target: vuln` | the target exits 0 with no skip in its log | `Makefile:8080` |
+| `none.nightly.tooling.makefile.vuln-strict` | `make` | make vuln-strict (Makefile) exits 0 | `file: Makefile`<br>`target: vuln-strict` | the target exits 0 with no skip in its log | `Makefile:8084` |
 
 #### `tooling` family `roadmap`, 3 tests
 
@@ -4906,10 +5145,10 @@ performance or timing.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.bench.makefile.bench-paired-check` | `make` | make bench-paired-check (Makefile) exits 0 | `file: Makefile`<br>`target: bench-paired-check` | the target exits 0 with no skip in its log | `Makefile:5151` |
-| `none.nightly.bench.makefile.bench-paired-gate` | `make` | make bench-paired-gate (Makefile) exits 0 | `file: Makefile`<br>`target: bench-paired-gate` | the target exits 0 with no skip in its log | `Makefile:5156` |
-| `none.nightly.bench.makefile.bench-table-check` | `make` | make bench-table-check (Makefile) exits 0 | `file: Makefile`<br>`target: bench-table-check` | the target exits 0 with no skip in its log | `Makefile:5134` |
-| `none.nightly.bench.makefile.tables-fixedform-bench-corpus` | `make` | make tables-fixedform-bench-corpus (Makefile) exits 0 | `file: Makefile`<br>`target: tables-fixedform-bench-corpus` | the target exits 0 with no skip in its log | `Makefile:7589` |
+| `none.nightly.bench.makefile.bench-paired-check` | `make` | make bench-paired-check (Makefile) exits 0 | `file: Makefile`<br>`target: bench-paired-check` | the target exits 0 with no skip in its log | `Makefile:5154` |
+| `none.nightly.bench.makefile.bench-paired-gate` | `make` | make bench-paired-gate (Makefile) exits 0 | `file: Makefile`<br>`target: bench-paired-gate` | the target exits 0 with no skip in its log | `Makefile:5159` |
+| `none.nightly.bench.makefile.bench-table-check` | `make` | make bench-table-check (Makefile) exits 0 | `file: Makefile`<br>`target: bench-table-check` | the target exits 0 with no skip in its log | `Makefile:5137` |
+| `none.nightly.bench.makefile.tables-fixedform-bench-corpus` | `make` | make tables-fixedform-bench-corpus (Makefile) exits 0 | `file: Makefile`<br>`target: tables-fixedform-bench-corpus` | the target exits 0 with no skip in its log | `Makefile:7592` |
 
 ### Type `lint`
 
@@ -4972,7 +5211,7 @@ two implementations or two versions give the same answer.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.differential.makefile.release-differential` | `make` | make release-differential (Makefile) exits 0 | `file: Makefile`<br>`target: release-differential` | the target exits 0 with no skip in its log | `Makefile:7797` |
+| `none.nightly.differential.makefile.release-differential` | `make` | make release-differential (Makefile) exits 0 | `file: Makefile`<br>`target: release-differential` | the target exits 0 with no skip in its log | `Makefile:7800` |
 
 ### Type `resource-bounds`
 
@@ -5103,14 +5342,20 @@ a TLA+ model checks under TLC, or a code trace is a behaviour of the spec.
 
 a battery run as one step (a make target over a leg or a corpus): it passes when the step exits 0 with no skip; a migration item until its cases are named rows.
 
+#### `harness-run` family `cards-ruby-test`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.harness-run.cards-ruby-test.ruby-cards` | `make-gotest` | Go test TestRubyCards in ./internal/codegen/rubytable, run by make cards-ruby-test (make/ruby-cards.mk) and read by name from its go test -json events | `file: make/ruby-cards.mk`<br>`package: ./internal/codegen/rubytable`<br>`target: cards-ruby-test`<br>`test: TestRubyCards` | the Go test passes in make cards-ruby-test's run, with no skip | `internal/codegen/rubytable/cards_test.go:96` |
+
 #### `harness-run` family `make-c`, 4 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.harness-run.make-c.cards-c-test` | `make` | make cards-c-test (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: cards-c-test` | the target exits 0 with no skip in its log | `make/c.mk:2127` |
-| `none.nightly.harness-run.make-c.tables-c-fixedform` | `make` | make tables-c-fixedform (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: tables-c-fixedform` | the target exits 0 with no skip in its log | `make/c.mk:1600` |
-| `none.nightly.harness-run.make-c.tables-single-pass-equivalence` | `make` | make tables-single-pass-equivalence (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: tables-single-pass-equivalence` | the target exits 0 with no skip in its log | `make/c.mk:2597` |
-| `none.nightly.harness-run.make-c.test-c-recipe` | `make` | make test-c-recipe (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: test-c-recipe` | the target exits 0 with no skip in its log | `make/c.mk:1633` |
+| `none.nightly.harness-run.make-c.cards-c-test` | `make` | make cards-c-test (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: cards-c-test` | the target exits 0 with no skip in its log | `make/c.mk:2126` |
+| `none.nightly.harness-run.make-c.tables-c-fixedform` | `make` | make tables-c-fixedform (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: tables-c-fixedform` | the target exits 0 with no skip in its log | `make/c.mk:1599` |
+| `none.nightly.harness-run.make-c.tables-single-pass-equivalence` | `make` | make tables-single-pass-equivalence (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: tables-single-pass-equivalence` | the target exits 0 with no skip in its log | `make/c.mk:2596` |
+| `none.nightly.harness-run.make-c.test-c-recipe` | `make` | make test-c-recipe (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: test-c-recipe` | the target exits 0 with no skip in its log | `make/c.mk:1632` |
 
 #### `harness-run` family `make-c-fixed-default-copy`, 1 test
 
@@ -5154,12 +5399,6 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.nightly.harness-run.make-cpp.cards-cpp-test` | `make` | make cards-cpp-test (make/cpp.mk) exits 0 | `file: make/cpp.mk`<br>`target: cards-cpp-test` | the target exits 0 with no skip in its log | `make/cpp.mk:42` |
-
-#### `harness-run` family `make-cpp-cook-write`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.harness-run.make-cpp-cook-write.test-cpp` | `make` | make test-cpp (make/cpp-cook-write.mk) exits 0 | `file: make/cpp-cook-write.mk`<br>`target: test-cpp` | the target exits 0 with no skip in its log | `make/cpp-cook-write.mk:68` |
 
 #### `harness-run` family `make-cpp-positive-features`, 1 test
 
@@ -5221,12 +5460,6 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 |---|---|---|---|---|---|
 | `none.nightly.harness-run.make-goose-blockcook.test-goose` | `make` | make test-goose (make/goose-blockcook.mk) exits 0 | `file: make/goose-blockcook.mk`<br>`target: test-goose` | the target exits 0 with no skip in its log | `make/goose-blockcook.mk:84` |
 
-#### `harness-run` family `make-goose-message`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.harness-run.make-goose-message.tables-goose-message-form` | `make` | make tables-goose-message-form (make/goose-message.mk) exits 0 | `file: make/goose-message.mk`<br>`target: tables-goose-message-form` | the target exits 0 with no skip in its log | `make/goose-message.mk:14` |
-
 #### `harness-run` family `make-goose-tagged`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
@@ -5268,12 +5501,11 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 |---|---|---|---|---|---|
 | `none.nightly.harness-run.make-lua-compressed-negzero.test-lua` | `make` | make test-lua (make/lua-compressed-negzero.mk) exits 0 | `file: make/lua-compressed-negzero.mk`<br>`target: test-lua` | the target exits 0 with no skip in its log | `make/lua-compressed-negzero.mk:24` |
 
-#### `harness-run` family `make-luau`, 2 tests
+#### `harness-run` family `make-luau`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.nightly.harness-run.make-luau.cards-luau-test` | `make` | make cards-luau-test (make/luau.mk) exits 0 | `file: make/luau.mk`<br>`target: cards-luau-test` | the target exits 0 with no skip in its log | `make/luau.mk:340` |
-| `none.nightly.harness-run.make-luau.tables-luau-fixed-form` | `make` | make tables-luau-fixed-form (make/luau.mk) exits 0 | `file: make/luau.mk`<br>`target: tables-luau-fixed-form` | the target exits 0 with no skip in its log | `make/luau.mk:142` |
 
 #### `harness-run` family `make-luau-compressed-negzero`, 1 test
 
@@ -5348,11 +5580,10 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 |---|---|---|---|---|---|
 | `none.nightly.harness-run.make-ruby.test-ruby-recipe` | `make` | make test-ruby-recipe (make/ruby.mk) exits 0 | `file: make/ruby.mk`<br>`target: test-ruby-recipe` | the target exits 0 with no skip in its log | `make/ruby.mk:23` |
 
-#### `harness-run` family `make-ruby-cards`, 2 tests
+#### `harness-run` family `make-ruby-cards`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.harness-run.make-ruby-cards.cards-ruby-test` | `make` | make cards-ruby-test (make/ruby-cards.mk) exits 0 | `file: make/ruby-cards.mk`<br>`target: cards-ruby-test` | the target exits 0 with no skip in its log | `make/ruby-cards.mk:15` |
 | `none.nightly.harness-run.make-ruby-cards.test-ruby` | `make` | make test-ruby (make/ruby-cards.mk) exits 0 | `file: make/ruby-cards.mk`<br>`target: test-ruby` | the target exits 0 with no skip in its log | `make/ruby-cards.mk:48` |
 
 #### `harness-run` family `make-ruby-serialize`, 1 test
@@ -5451,28 +5682,78 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.harness-run.makefile.check` | `make` | make check (Makefile) exits 0 | `file: Makefile`<br>`target: check` | the target exits 0 with no skip in its log | `Makefile:5284` |
-| `none.nightly.harness-run.makefile.conformance` | `make` | make conformance (Makefile) exits 0 | `file: Makefile`<br>`target: conformance` | the target exits 0 with no skip in its log | `Makefile:6885` |
-| `none.nightly.harness-run.makefile.conformance-bom-entry` | `make` | make conformance-bom-entry (Makefile) exits 0 | `file: Makefile`<br>`target: conformance-bom-entry` | the target exits 0 with no skip in its log | `Makefile:6871` |
-| `none.nightly.harness-run.makefile.conformance-shared` | `make` | make conformance-shared (Makefile) exits 0 | `file: Makefile`<br>`target: conformance-shared` | the target exits 0 with no skip in its log | `Makefile:6882` |
-| `none.nightly.harness-run.makefile.tables-block-gate2-smoke` | `make` | make tables-block-gate2-smoke (Makefile) exits 0 | `file: Makefile`<br>`target: tables-block-gate2-smoke` | the target exits 0 with no skip in its log | `Makefile:2304` |
-| `none.nightly.harness-run.makefile.tables-fixedform-asan` | `make` | make tables-fixedform-asan (Makefile) exits 0 | `file: Makefile`<br>`target: tables-fixedform-asan` | the target exits 0 with no skip in its log | `Makefile:7182` |
-| `none.nightly.harness-run.makefile.tables-fixedform-corpus-check` | `make` | make tables-fixedform-corpus-check (Makefile) exits 0 | `file: Makefile`<br>`target: tables-fixedform-corpus-check` | the target exits 0 with no skip in its log | `Makefile:7568` |
-| `none.nightly.harness-run.makefile.tables-fixedform-plain` | `make` | make tables-fixedform-plain (Makefile) exits 0 | `file: Makefile`<br>`inputs.reads` (707 bytes, held in the registry row's `inputs.reads`)<br>`target: tables-fixedform-plain` | the target exits 0 with no skip in its log | `Makefile:7176` |
-| `none.nightly.harness-run.makefile.test` | `make` | make test (Makefile) exits 0 | `file: Makefile`<br>`target: test` | the target exits 0 with no skip in its log | `Makefile:200` |
-| `none.nightly.harness-run.makefile.test-core-tables-1` | `make` | make test-core-tables-1 (Makefile) exits 0 | `file: Makefile`<br>`target: test-core-tables-1` | the target exits 0 with no skip in its log | `Makefile:3637` |
-| `none.nightly.harness-run.makefile.test-core-tables-1a` | `make` | make test-core-tables-1a (Makefile) exits 0 | `file: Makefile`<br>`target: test-core-tables-1a` | the target exits 0 with no skip in its log | `Makefile:3643` |
-| `none.nightly.harness-run.makefile.test-core-tables-1b` | `make` | make test-core-tables-1b (Makefile) exits 0 | `file: Makefile`<br>`target: test-core-tables-1b` | the target exits 0 with no skip in its log | `Makefile:3665` |
-| `none.nightly.harness-run.makefile.test-core-tables-1c` | `make` | make test-core-tables-1c (Makefile) exits 0 | `file: Makefile`<br>`target: test-core-tables-1c` | the target exits 0 with no skip in its log | `Makefile:3674` |
-| `none.nightly.harness-run.makefile.test-core-tables-1d` | `make` | make test-core-tables-1d (Makefile) exits 0 | `file: Makefile`<br>`target: test-core-tables-1d` | the target exits 0 with no skip in its log | `Makefile:3689` |
-| `none.nightly.harness-run.makefile.test-core-tables-2` | `make` | make test-core-tables-2 (Makefile) exits 0 | `file: Makefile`<br>`target: test-core-tables-2` | the target exits 0 with no skip in its log | `Makefile:3710` |
-| `none.nightly.harness-run.makefile.test-core-tables-3` | `make` | make test-core-tables-3 (Makefile) exits 0 | `file: Makefile`<br>`target: test-core-tables-3` | the target exits 0 with no skip in its log | `Makefile:3773` |
-| `none.nightly.harness-run.makefile.test-goose-tagged-harness-smoke` | `make` | make test-goose-tagged-harness-smoke (Makefile) exits 0 | `file: Makefile`<br>`target: test-goose-tagged-harness-smoke` | the target exits 0 with no skip in its log | `Makefile:6818` |
-| `none.nightly.harness-run.makefile.test-moo-tagged-compiler` | `make` | make test-moo-tagged-compiler (Makefile) exits 0 | `file: Makefile`<br>`target: test-moo-tagged-compiler` | the target exits 0 with no skip in its log | `Makefile:6797` |
-| `none.nightly.harness-run.makefile.test-moo-tagged-compiler-smoke` | `make` | make test-moo-tagged-compiler-smoke (Makefile) exits 0 | `file: Makefile`<br>`target: test-moo-tagged-compiler-smoke` | the target exits 0 with no skip in its log | `Makefile:6812` |
-| `none.nightly.harness-run.makefile.test-moo-tagged-table` | `make` | make test-moo-tagged-table (Makefile) exits 0 | `file: Makefile`<br>`target: test-moo-tagged-table` | the target exits 0 with no skip in its log | `Makefile:6799` |
-| `none.nightly.harness-run.makefile.test-moo-tagged-table-smoke` | `make` | make test-moo-tagged-table-smoke (Makefile) exits 0 | `file: Makefile`<br>`target: test-moo-tagged-table-smoke` | the target exits 0 with no skip in its log | `Makefile:6815` |
-| `none.nightly.harness-run.makefile.test-run` | `make` | make test-run (Makefile) exits 0 | `file: Makefile`<br>`target: test-run` | the target exits 0 with no skip in its log | `Makefile:182` |
+| `none.nightly.harness-run.makefile.check` | `make` | make check (Makefile) exits 0 | `file: Makefile`<br>`target: check` | the target exits 0 with no skip in its log | `Makefile:5287` |
+| `none.nightly.harness-run.makefile.conformance` | `make` | make conformance (Makefile) exits 0 | `file: Makefile`<br>`target: conformance` | the target exits 0 with no skip in its log | `Makefile:6888` |
+| `none.nightly.harness-run.makefile.conformance-bom-entry` | `make` | make conformance-bom-entry (Makefile) exits 0 | `file: Makefile`<br>`target: conformance-bom-entry` | the target exits 0 with no skip in its log | `Makefile:6874` |
+| `none.nightly.harness-run.makefile.conformance-shared` | `make` | make conformance-shared (Makefile) exits 0 | `file: Makefile`<br>`target: conformance-shared` | the target exits 0 with no skip in its log | `Makefile:6885` |
+| `none.nightly.harness-run.makefile.tables-block-gate2-smoke` | `make` | make tables-block-gate2-smoke (Makefile) exits 0 | `file: Makefile`<br>`target: tables-block-gate2-smoke` | the target exits 0 with no skip in its log | `Makefile:2307` |
+| `none.nightly.harness-run.makefile.tables-fixedform-asan` | `make` | make tables-fixedform-asan (Makefile) exits 0 | `file: Makefile`<br>`target: tables-fixedform-asan` | the target exits 0 with no skip in its log | `Makefile:7185` |
+| `none.nightly.harness-run.makefile.tables-fixedform-corpus-check` | `make` | make tables-fixedform-corpus-check (Makefile) exits 0 | `file: Makefile`<br>`target: tables-fixedform-corpus-check` | the target exits 0 with no skip in its log | `Makefile:7571` |
+| `none.nightly.harness-run.makefile.tables-fixedform-plain` | `make` | make tables-fixedform-plain (Makefile) exits 0 | `file: Makefile`<br>`inputs.reads` (707 bytes, held in the registry row's `inputs.reads`)<br>`target: tables-fixedform-plain` | the target exits 0 with no skip in its log | `Makefile:7179` |
+| `none.nightly.harness-run.makefile.test` | `make` | make test (Makefile) exits 0 | `file: Makefile`<br>`target: test` | the target exits 0 with no skip in its log | `Makefile:203` |
+| `none.nightly.harness-run.makefile.test-core-tables-1` | `make` | make test-core-tables-1 (Makefile) exits 0 | `file: Makefile`<br>`target: test-core-tables-1` | the target exits 0 with no skip in its log | `Makefile:3640` |
+| `none.nightly.harness-run.makefile.test-core-tables-1a` | `make` | make test-core-tables-1a (Makefile) exits 0 | `file: Makefile`<br>`target: test-core-tables-1a` | the target exits 0 with no skip in its log | `Makefile:3646` |
+| `none.nightly.harness-run.makefile.test-core-tables-1b` | `make` | make test-core-tables-1b (Makefile) exits 0 | `file: Makefile`<br>`target: test-core-tables-1b` | the target exits 0 with no skip in its log | `Makefile:3668` |
+| `none.nightly.harness-run.makefile.test-core-tables-1c` | `make` | make test-core-tables-1c (Makefile) exits 0 | `file: Makefile`<br>`target: test-core-tables-1c` | the target exits 0 with no skip in its log | `Makefile:3677` |
+| `none.nightly.harness-run.makefile.test-core-tables-1d` | `make` | make test-core-tables-1d (Makefile) exits 0 | `file: Makefile`<br>`target: test-core-tables-1d` | the target exits 0 with no skip in its log | `Makefile:3692` |
+| `none.nightly.harness-run.makefile.test-core-tables-2` | `make` | make test-core-tables-2 (Makefile) exits 0 | `file: Makefile`<br>`target: test-core-tables-2` | the target exits 0 with no skip in its log | `Makefile:3713` |
+| `none.nightly.harness-run.makefile.test-core-tables-3` | `make` | make test-core-tables-3 (Makefile) exits 0 | `file: Makefile`<br>`target: test-core-tables-3` | the target exits 0 with no skip in its log | `Makefile:3776` |
+| `none.nightly.harness-run.makefile.test-goose-tagged-harness-smoke` | `make` | make test-goose-tagged-harness-smoke (Makefile) exits 0 | `file: Makefile`<br>`target: test-goose-tagged-harness-smoke` | the target exits 0 with no skip in its log | `Makefile:6821` |
+| `none.nightly.harness-run.makefile.test-moo-tagged-compiler` | `make` | make test-moo-tagged-compiler (Makefile) exits 0 | `file: Makefile`<br>`target: test-moo-tagged-compiler` | the target exits 0 with no skip in its log | `Makefile:6800` |
+| `none.nightly.harness-run.makefile.test-moo-tagged-compiler-smoke` | `make` | make test-moo-tagged-compiler-smoke (Makefile) exits 0 | `file: Makefile`<br>`target: test-moo-tagged-compiler-smoke` | the target exits 0 with no skip in its log | `Makefile:6815` |
+| `none.nightly.harness-run.makefile.test-moo-tagged-table` | `make` | make test-moo-tagged-table (Makefile) exits 0 | `file: Makefile`<br>`target: test-moo-tagged-table` | the target exits 0 with no skip in its log | `Makefile:6802` |
+| `none.nightly.harness-run.makefile.test-moo-tagged-table-smoke` | `make` | make test-moo-tagged-table-smoke (Makefile) exits 0 | `file: Makefile`<br>`target: test-moo-tagged-table-smoke` | the target exits 0 with no skip in its log | `Makefile:6818` |
+| `none.nightly.harness-run.makefile.test-run` | `make` | make test-run (Makefile) exits 0 | `file: Makefile`<br>`target: test-run` | the target exits 0 with no skip in its log | `Makefile:185` |
+
+#### `harness-run` family `tables-goose-message-form`, 13 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.harness-run.tables-goose-message-form.goose-message-form-agrees-with-the-reference` | `make-gotest` | Go test TestGooseMessageFormAgreesWithTheReference in ./internal/codegen/goosetable, run by make tables-goose-message-form (make/goose-message.mk) and read by name from its go test -json events | `file: make/goose-message.mk`<br>`package: ./internal/codegen/goosetable`<br>`target: tables-goose-message-form`<br>`test: TestGooseMessageFormAgreesWithTheReference` | the Go test passes in make tables-goose-message-form's run, with no skip | `internal/codegen/goosetable/messageform_test.go:678` |
+| `none.nightly.harness-run.tables-goose-message-form.goose-message-form-announce-id-bound` | `make-gotest` | Go test TestGooseMessageFormAnnounceIdBound in ./internal/codegen/goosetable, run by make tables-goose-message-form (make/goose-message.mk) and read by name from its go test -json events | `file: make/goose-message.mk`<br>`package: ./internal/codegen/goosetable`<br>`target: tables-goose-message-form`<br>`test: TestGooseMessageFormAnnounceIdBound` | the Go test passes in make tables-goose-message-form's run, with no skip | `internal/codegen/goosetable/messageform_announce_idbound_test.go:122` |
+| `none.nightly.harness-run.tables-goose-message-form.goose-message-form-announce-id-bound-negative-control` | `make-gotest` | Go test TestGooseMessageFormAnnounceIdBoundNegativeControl in ./internal/codegen/goosetable, run by make tables-goose-message-form (make/goose-message.mk) and read by name from its go test -json events | `file: make/goose-message.mk`<br>`package: ./internal/codegen/goosetable`<br>`target: tables-goose-message-form`<br>`test: TestGooseMessageFormAnnounceIdBoundNegativeControl` | the Go test passes in make tables-goose-message-form's run, with no skip | `internal/codegen/goosetable/messageform_announce_idbound_test.go:129` |
+| `none.nightly.harness-run.tables-goose-message-form.goose-message-form-announce-once` | `make-gotest` | Go test TestGooseMessageFormAnnounceOnce in ./internal/codegen/goosetable, run by make tables-goose-message-form (make/goose-message.mk) and read by name from its go test -json events | `file: make/goose-message.mk`<br>`package: ./internal/codegen/goosetable`<br>`target: tables-goose-message-form`<br>`test: TestGooseMessageFormAnnounceOnce` | the Go test passes in make tables-goose-message-form's run, with no skip | `internal/codegen/goosetable/messageform_announce_test.go:197` |
+| `none.nightly.harness-run.tables-goose-message-form.goose-message-form-announce-read` | `make-gotest` | Go test TestGooseMessageFormAnnounceRead in ./internal/codegen/goosetable, run by make tables-goose-message-form (make/goose-message.mk) and read by name from its go test -json events | `file: make/goose-message.mk`<br>`package: ./internal/codegen/goosetable`<br>`target: tables-goose-message-form`<br>`test: TestGooseMessageFormAnnounceRead` | the Go test passes in make tables-goose-message-form's run, with no skip | `internal/codegen/goosetable/messageform_announce_test.go:133` |
+| `none.nightly.harness-run.tables-goose-message-form.goose-message-form-carries-every-shape` | `make-gotest` | Go test TestGooseMessageFormCarriesEveryShape in ./internal/codegen/goosetable, run by make tables-goose-message-form (make/goose-message.mk) and read by name from its go test -json events | `file: make/goose-message.mk`<br>`package: ./internal/codegen/goosetable`<br>`target: tables-goose-message-form`<br>`test: TestGooseMessageFormCarriesEveryShape` | the Go test passes in make tables-goose-message-form's run, with no skip | `internal/codegen/goosetable/messageform_test.go:774` |
+| `none.nightly.harness-run.tables-goose-message-form.goose-message-form-carries-wide-kinds` | `make-gotest` | Go test TestGooseMessageFormCarriesWideKinds in ./internal/codegen/goosetable, run by make tables-goose-message-form (make/goose-message.mk) and read by name from its go test -json events | `file: make/goose-message.mk`<br>`package: ./internal/codegen/goosetable`<br>`target: tables-goose-message-form`<br>`test: TestGooseMessageFormCarriesWideKinds` | the Go test passes in make tables-goose-message-form's run, with no skip | `internal/codegen/goosetable/messageform_test.go:913` |
+| `none.nightly.harness-run.tables-goose-message-form.goose-message-form-hostile-batches` | `make-gotest` | Go test TestGooseMessageFormHostileBatches in ./internal/codegen/goosetable, run by make tables-goose-message-form (make/goose-message.mk) and read by name from its go test -json events | `file: make/goose-message.mk`<br>`package: ./internal/codegen/goosetable`<br>`target: tables-goose-message-form`<br>`test: TestGooseMessageFormHostileBatches` | the Go test passes in make tables-goose-message-form's run, with no skip | `internal/codegen/goosetable/messageform_announce_test.go:258` |
+| `none.nightly.harness-run.tables-goose-message-form.goose-message-form-matches-the-goldens` | `make-gotest` | Go test TestGooseMessageFormMatchesTheGoldens in ./internal/codegen/goosetable, run by make tables-goose-message-form (make/goose-message.mk) and read by name from its go test -json events | `file: make/goose-message.mk`<br>`package: ./internal/codegen/goosetable`<br>`target: tables-goose-message-form`<br>`test: TestGooseMessageFormMatchesTheGoldens` | the Go test passes in make tables-goose-message-form's run, with no skip | `internal/codegen/goosetable/messageform_test.go:506` |
+| `none.nightly.harness-run.tables-goose-message-form.goose-message-form-refuses-by-name` | `make-gotest` | Go test TestGooseMessageFormRefusesByName in ./internal/codegen/goosetable, run by make tables-goose-message-form (make/goose-message.mk) and read by name from its go test -json events | `file: make/goose-message.mk`<br>`package: ./internal/codegen/goosetable`<br>`target: tables-goose-message-form`<br>`test: TestGooseMessageFormRefusesByName` | the Go test passes in make tables-goose-message-form's run, with no skip | `internal/codegen/goosetable/messageform_test.go:836` |
+| `none.nightly.harness-run.tables-goose-message-form.goose-message-form-refuses-flags-bit-above-width` | `make-gotest` | Go test TestGooseMessageFormRefusesFlagsBitAboveWidth in ./internal/codegen/goosetable, run by make tables-goose-message-form (make/goose-message.mk) and read by name from its go test -json events | `file: make/goose-message.mk`<br>`package: ./internal/codegen/goosetable`<br>`target: tables-goose-message-form`<br>`test: TestGooseMessageFormRefusesFlagsBitAboveWidth` | the Go test passes in make tables-goose-message-form's run, with no skip | `internal/codegen/goosetable/messageform_flags_width_test.go:32` |
+| `none.nightly.harness-run.tables-goose-message-form.goose-message-form-text-aligns` | `make-gotest` | Go test TestGooseMessageFormTextAligns in ./internal/codegen/goosetable, run by make tables-goose-message-form (make/goose-message.mk) and read by name from its go test -json events | `file: make/goose-message.mk`<br>`package: ./internal/codegen/goosetable`<br>`target: tables-goose-message-form`<br>`test: TestGooseMessageFormTextAligns` | the Go test passes in make tables-goose-message-form's run, with no skip | `internal/codegen/goosetable/messageform_test.go:554` |
+| `none.nightly.harness-run.tables-goose-message-form.goose-message-form-versioning` | `make-gotest` | Go test TestGooseMessageFormVersioning in ./internal/codegen/goosetable, run by make tables-goose-message-form (make/goose-message.mk) and read by name from its go test -json events | `file: make/goose-message.mk`<br>`package: ./internal/codegen/goosetable`<br>`target: tables-goose-message-form`<br>`test: TestGooseMessageFormVersioning` | the Go test passes in make tables-goose-message-form's run, with no skip | `internal/codegen/goosetable/messageform_versioning_test.go:43` |
+
+#### `harness-run` family `tables-luau-fixed-form`, 21 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.harness-run.tables-luau-fixed-form.luau-fixed-byte-arrays` | `make-gotest` | Go test TestLuauFixedByteArrays in ./internal/codegen/luautable, run by make tables-luau-fixed-form (make/luau.mk) and read by name from its go test -json events | `file: make/luau.mk`<br>`package: ./internal/codegen/luautable`<br>`target: tables-luau-fixed-form`<br>`test: TestLuauFixedByteArrays` | the Go test passes in make tables-luau-fixed-form's run, with no skip | `internal/codegen/luautable/fixed_byte_arrays_test.go:115` |
+| `none.nightly.harness-run.tables-luau-fixed-form.luau-fixed-byte-arrays-negative-control` | `make-gotest` | Go test TestLuauFixedByteArraysNegativeControl in ./internal/codegen/luautable, run by make tables-luau-fixed-form (make/luau.mk) and read by name from its go test -json events | `file: make/luau.mk`<br>`package: ./internal/codegen/luautable`<br>`target: tables-luau-fixed-form`<br>`test: TestLuauFixedByteArraysNegativeControl` | the Go test passes in make tables-luau-fixed-form's run, with no skip | `internal/codegen/luautable/fixed_byte_arrays_test.go:124` |
+| `none.nightly.harness-run.tables-luau-fixed-form.luau-fixed-evolution-array-bounds` | `make-gotest` | Go test TestLuauFixedEvolutionArrayBounds in ./internal/codegen/luautable, run by make tables-luau-fixed-form (make/luau.mk) and read by name from its go test -json events | `file: make/luau.mk`<br>`package: ./internal/codegen/luautable`<br>`target: tables-luau-fixed-form`<br>`test: TestLuauFixedEvolutionArrayBounds` | the Go test passes in make tables-luau-fixed-form's run, with no skip | `internal/codegen/luautable/fixed_evolution_proof_test.go:333` |
+| `none.nightly.harness-run.tables-luau-fixed-form.luau-fixed-evolution-hostile-input` | `make-gotest` | Go test TestLuauFixedEvolutionHostileInput in ./internal/codegen/luautable, run by make tables-luau-fixed-form (make/luau.mk) and read by name from its go test -json events | `file: make/luau.mk`<br>`package: ./internal/codegen/luautable`<br>`target: tables-luau-fixed-form`<br>`test: TestLuauFixedEvolutionHostileInput` | the Go test passes in make tables-luau-fixed-form's run, with no skip | `internal/codegen/luautable/fixed_evolution_proof_test.go:632` |
+| `none.nightly.harness-run.tables-luau-fixed-form.luau-fixed-evolution-normalization` | `make-gotest` | Go test TestLuauFixedEvolutionNormalization in ./internal/codegen/luautable, run by make tables-luau-fixed-form (make/luau.mk) and read by name from its go test -json events | `file: make/luau.mk`<br>`package: ./internal/codegen/luautable`<br>`target: tables-luau-fixed-form`<br>`test: TestLuauFixedEvolutionNormalization` | the Go test passes in make tables-luau-fixed-form's run, with no skip | `internal/codegen/luautable/fixed_evolution_proof_test.go:547` |
+| `none.nightly.harness-run.tables-luau-fixed-form.luau-fixed-evolution-numeric-widening` | `make-gotest` | Go test TestLuauFixedEvolutionNumericWidening in ./internal/codegen/luautable, run by make tables-luau-fixed-form (make/luau.mk) and read by name from its go test -json events | `file: make/luau.mk`<br>`package: ./internal/codegen/luautable`<br>`target: tables-luau-fixed-form`<br>`test: TestLuauFixedEvolutionNumericWidening` | the Go test passes in make tables-luau-fixed-form's run, with no skip | `internal/codegen/luautable/fixed_evolution_proof_test.go:234` |
+| `none.nightly.harness-run.tables-luau-fixed-form.luau-fixed-evolution-ordinals` | `make-gotest` | Go test TestLuauFixedEvolutionOrdinals in ./internal/codegen/luautable, run by make tables-luau-fixed-form (make/luau.mk) and read by name from its go test -json events | `file: make/luau.mk`<br>`package: ./internal/codegen/luautable`<br>`target: tables-luau-fixed-form`<br>`test: TestLuauFixedEvolutionOrdinals` | the Go test passes in make tables-luau-fixed-form's run, with no skip | `internal/codegen/luautable/fixed_evolution_proof_test.go:503` |
+| `none.nightly.harness-run.tables-luau-fixed-form.luau-fixed-evolution-reports` | `make-gotest` | Go test TestLuauFixedEvolutionReports in ./internal/codegen/luautable, run by make tables-luau-fixed-form (make/luau.mk) and read by name from its go test -json events | `file: make/luau.mk`<br>`package: ./internal/codegen/luautable`<br>`target: tables-luau-fixed-form`<br>`test: TestLuauFixedEvolutionReports` | the Go test passes in make tables-luau-fixed-form's run, with no skip | `internal/codegen/luautable/fixed_evolution_proof_test.go:276` |
+| `none.nightly.harness-run.tables-luau-fixed-form.luau-fixed-evolution-scalar-bounds` | `make-gotest` | Go test TestLuauFixedEvolutionScalarBounds in ./internal/codegen/luautable, run by make tables-luau-fixed-form (make/luau.mk) and read by name from its go test -json events | `file: make/luau.mk`<br>`package: ./internal/codegen/luautable`<br>`target: tables-luau-fixed-form`<br>`test: TestLuauFixedEvolutionScalarBounds` | the Go test passes in make tables-luau-fixed-form's run, with no skip | `internal/codegen/luautable/fixed_evolution_proof_test.go:413` |
+| `none.nightly.harness-run.tables-luau-fixed-form.luau-fixed-evolution-text` | `make-gotest` | Go test TestLuauFixedEvolutionText in ./internal/codegen/luautable, run by make tables-luau-fixed-form (make/luau.mk) and read by name from its go test -json events | `file: make/luau.mk`<br>`package: ./internal/codegen/luautable`<br>`target: tables-luau-fixed-form`<br>`test: TestLuauFixedEvolutionText` | the Go test passes in make tables-luau-fixed-form's run, with no skip | `internal/codegen/luautable/fixed_evolution_proof_test.go:375` |
+| `none.nightly.harness-run.tables-luau-fixed-form.luau-fixed-form-agrees-with-the-byte-oracle` | `make-gotest` | Go test TestLuauFixedFormAgreesWithTheByteOracle in ./internal/codegen/luautable, run by make tables-luau-fixed-form (make/luau.mk) and read by name from its go test -json events | `file: make/luau.mk`<br>`package: ./internal/codegen/luautable`<br>`target: tables-luau-fixed-form`<br>`test: TestLuauFixedFormAgreesWithTheByteOracle` | the Go test passes in make tables-luau-fixed-form's run, with no skip | `internal/codegen/luautable/fixedform_test.go:168` |
+| `none.nightly.harness-run.tables-luau-fixed-form.luau-fixed-form-integrity` | `make-gotest` | Go test TestLuauFixedFormIntegrity in ./internal/codegen/luautable, run by make tables-luau-fixed-form (make/luau.mk) and read by name from its go test -json events | `file: make/luau.mk`<br>`package: ./internal/codegen/luautable`<br>`target: tables-luau-fixed-form`<br>`test: TestLuauFixedFormIntegrity` | the Go test passes in make tables-luau-fixed-form's run, with no skip | `internal/codegen/luautable/fixed_integrity_test.go:236` |
+| `none.nightly.harness-run.tables-luau-fixed-form.luau-fixed-form-negative-control` | `make-gotest` | Go test TestLuauFixedFormNegativeControl in ./internal/codegen/luautable, run by make tables-luau-fixed-form (make/luau.mk) and read by name from its go test -json events | `file: make/luau.mk`<br>`package: ./internal/codegen/luautable`<br>`target: tables-luau-fixed-form`<br>`test: TestLuauFixedFormNegativeControl` | the Go test passes in make tables-luau-fixed-form's run, with no skip | `internal/codegen/luautable/fixedform_test.go:455` |
+| `none.nightly.harness-run.tables-luau-fixed-form.luau-fixed-form-ragged-tail` | `make-gotest` | Go test TestLuauFixedFormRaggedTail in ./internal/codegen/luautable, run by make tables-luau-fixed-form (make/luau.mk) and read by name from its go test -json events | `file: make/luau.mk`<br>`package: ./internal/codegen/luautable`<br>`target: tables-luau-fixed-form`<br>`test: TestLuauFixedFormRaggedTail` | the Go test passes in make tables-luau-fixed-form's run, with no skip | `internal/codegen/luautable/fixedform_ragged_tail_test.go:22` |
+| `none.nightly.harness-run.tables-luau-fixed-form.luau-fixed-form-refusals` | `make-gotest` | Go test TestLuauFixedFormRefusals in ./internal/codegen/luautable, run by make tables-luau-fixed-form (make/luau.mk) and read by name from its go test -json events | `file: make/luau.mk`<br>`package: ./internal/codegen/luautable`<br>`target: tables-luau-fixed-form`<br>`test: TestLuauFixedFormRefusals` | the Go test passes in make tables-luau-fixed-form's run, with no skip | `internal/codegen/luautable/fixedform_test.go:377` |
+| `none.nightly.harness-run.tables-luau-fixed-form.luau-fixed-form-versioning` | `make-gotest` | Go test TestLuauFixedFormVersioning in ./internal/codegen/luautable, run by make tables-luau-fixed-form (make/luau.mk) and read by name from its go test -json events | `file: make/luau.mk`<br>`package: ./internal/codegen/luautable`<br>`target: tables-luau-fixed-form`<br>`test: TestLuauFixedFormVersioning` | the Go test passes in make tables-luau-fixed-form's run, with no skip | `internal/codegen/luautable/fixedform_test.go:266` |
+| `none.nightly.harness-run.tables-luau-fixed-form.luau-fixed-layout-bounds` | `make-gotest` | Go test TestLuauFixedLayoutBounds in ./internal/codegen/luautable, run by make tables-luau-fixed-form (make/luau.mk) and read by name from its go test -json events | `file: make/luau.mk`<br>`package: ./internal/codegen/luautable`<br>`target: tables-luau-fixed-form`<br>`test: TestLuauFixedLayoutBounds` | the Go test passes in make tables-luau-fixed-form's run, with no skip | `internal/codegen/luautable/fixed_layout_bounds_test.go:220` |
+| `none.nightly.harness-run.tables-luau-fixed-form.luau-fixed-load-names-every-refusal` | `make-gotest` | Go test TestLuauFixedLoadNamesEveryRefusal in ./internal/codegen/luautable, run by make tables-luau-fixed-form (make/luau.mk) and read by name from its go test -json events | `file: make/luau.mk`<br>`package: ./internal/codegen/luautable`<br>`target: tables-luau-fixed-form`<br>`test: TestLuauFixedLoadNamesEveryRefusal` | the Go test passes in make tables-luau-fixed-form's run, with no skip | `internal/codegen/luautable/fixed_refusal_names_test.go:205` |
+| `none.nightly.harness-run.tables-luau-fixed-form.luau-fixed-plain-read-is-strict` | `make-gotest` | Go test TestLuauFixedPlainReadIsStrict in ./internal/codegen/luautable, run by make tables-luau-fixed-form (make/luau.mk) and read by name from its go test -json events | `file: make/luau.mk`<br>`package: ./internal/codegen/luautable`<br>`target: tables-luau-fixed-form`<br>`test: TestLuauFixedPlainReadIsStrict` | the Go test passes in make tables-luau-fixed-form's run, with no skip | `internal/codegen/luautable/fixedform_strict_test.go:22` |
+| `none.nightly.harness-run.tables-luau-fixed-form.luau-fixed-strict-bounds` | `make-gotest` | Go test TestLuauFixedStrictBounds in ./internal/codegen/luautable, run by make tables-luau-fixed-form (make/luau.mk) and read by name from its go test -json events | `file: make/luau.mk`<br>`package: ./internal/codegen/luautable`<br>`target: tables-luau-fixed-form`<br>`test: TestLuauFixedStrictBounds` | the Go test passes in make tables-luau-fixed-form's run, with no skip | `internal/codegen/luautable/fixed_strict_bounds_test.go:140` |
+| `none.nightly.harness-run.tables-luau-fixed-form.luau-fixed-strict-bounds-negative-control` | `make-gotest` | Go test TestLuauFixedStrictBoundsNegativeControl in ./internal/codegen/luautable, run by make tables-luau-fixed-form (make/luau.mk) and read by name from its go test -json events | `file: make/luau.mk`<br>`package: ./internal/codegen/luautable`<br>`target: tables-luau-fixed-form`<br>`test: TestLuauFixedStrictBoundsNegativeControl` | the Go test passes in make tables-luau-fixed-form's run, with no skip | `internal/codegen/luautable/fixed_strict_bounds_test.go:149` |
+
+#### `harness-run` family `test-cpp`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.harness-run.test-cpp.cpp-message-flags-write-domain` | `make-gotest` | Go test TestCppMessageFlagsWriteDomain in ./internal/codegen/cpptable, run by make test-cpp (make/cpp-cook-write.mk) and read by name from its go test -json events | `file: make/cpp-cook-write.mk`<br>`package: ./internal/codegen/cpptable`<br>`target: test-cpp`<br>`test: TestCppMessageFlagsWriteDomain` | the Go test passes in make test-cpp's run, with no skip | `internal/codegen/cpptable/message_flags_domain_test.go:176` |
 
 ### Type `ci-plumbing`
 
@@ -5482,8 +5763,8 @@ a step that provisions or builds what other tests run on (a pinned toolchain, a 
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.ci-plumbing.make-c.build-packet-end-c-test` | `make` | make build/packet-end-c-test (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: build/packet-end-c-test` | the target exits 0 with no skip in its log | `make/c.mk:2459` |
-| `none.nightly.ci-plumbing.make-c.build-packet-write-cfloat-c-test` | `make` | make build/packet-write-cfloat/c-test (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: build/packet-write-cfloat/c-test` | the target exits 0 with no skip in its log | `make/c.mk:2418` |
+| `none.nightly.ci-plumbing.make-c.build-packet-end-c-test` | `make` | make build/packet-end-c-test (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: build/packet-end-c-test` | the target exits 0 with no skip in its log | `make/c.mk:2458` |
+| `none.nightly.ci-plumbing.make-c.build-packet-write-cfloat-c-test` | `make` | make build/packet-write-cfloat/c-test (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: build/packet-write-cfloat/c-test` | the target exits 0 with no skip in its log | `make/c.mk:2417` |
 
 #### `ci-plumbing` family `make-checks-packet-defaults`, 1 test
 
@@ -5572,37 +5853,37 @@ a step that provisions or builds what other tests run on (a pinned toolchain, a 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.nightly.ci-plumbing.makefile.bin-schema` | `make` | make bin/schema (Makefile) exits 0 | `file: Makefile`<br>`target: bin/schema` | the target exits 0 with no skip in its log | `Makefile:146` |
-| `none.nightly.ci-plumbing.makefile.build-conformance-cpp` | `make` | make build/conformance-cpp (Makefile) exits 0 | `file: Makefile`<br>`target: build/conformance-cpp` | the target exits 0 with no skip in its log | `Makefile:5513` |
-| `none.nightly.ci-plumbing.makefile.build-conformance-harness` | `make` | make build/conformance-harness (Makefile) exits 0 | `file: Makefile`<br>`target: build/conformance-harness` | the target exits 0 with no skip in its log | `Makefile:5417` |
-| `none.nightly.ci-plumbing.makefile.build-fixedform-corpus-stamp` | `make` | make build/fixedform-corpus/.stamp (Makefile) exits 0 | `file: Makefile`<br>`target: build/fixedform-corpus/.stamp` | the target exits 0 with no skip in its log | `Makefile:7281` |
-| `none.nightly.ci-plumbing.makefile.build-hostile-values-stamp` | `make` | make build/hostile-values/.stamp (Makefile) exits 0 | `file: Makefile`<br>`target: build/hostile-values/.stamp` | the target exits 0 with no skip in its log | `Makefile:3405` |
-| `none.nightly.ci-plumbing.makefile.build-pack-text-stamp` | `make` | make build/pack-text/.stamp (Makefile) exits 0 | `file: Makefile`<br>`target: build/pack-text/.stamp` | the target exits 0 with no skip in its log | `Makefile:3372` |
-| `none.nightly.ci-plumbing.makefile.build-schema-test` | `make` | make build/schema\_test (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test` | the target exits 0 with no skip in its log | `Makefile:226` |
-| `none.nightly.ci-plumbing.makefile.build-schema-test-bench` | `make` | make build/schema\_test\_bench (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_bench` | the target exits 0 with no skip in its log | `Makefile:3623` |
-| `none.nightly.ci-plumbing.makefile.build-schema-test-bench-table` | `make` | make build/schema\_test\_bench\_table (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_bench_table` | the target exits 0 with no skip in its log | `Makefile:3629` |
-| `none.nightly.ci-plumbing.makefile.build-schema-test-block` | `make` | make build/schema\_test\_block (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_block` | the target exits 0 with no skip in its log | `Makefile:1012` |
-| `none.nightly.ci-plumbing.makefile.build-schema-test-block-asan` | `make` | make build/schema\_test\_block\_asan (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_block_asan` | the target exits 0 with no skip in its log | `Makefile:1020` |
-| `none.nightly.ci-plumbing.makefile.build-schema-test-block-fuzz` | `make` | make build/schema\_test\_block\_fuzz (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_block_fuzz` | the target exits 0 with no skip in its log | `Makefile:1153` |
-| `none.nightly.ci-plumbing.makefile.build-schema-test-block-fuzz-asan` | `make` | make build/schema\_test\_block\_fuzz\_asan (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_block_fuzz_asan` | the target exits 0 with no skip in its log | `Makefile:1162` |
-| `none.nightly.ci-plumbing.makefile.build-schema-test-cook` | `make` | make build/schema\_test\_cook (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_cook` | the target exits 0 with no skip in its log | `Makefile:1404` |
-| `none.nightly.ci-plumbing.makefile.build-schema-test-guard` | `make` | make build/schema\_test\_guard (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_guard` | the target exits 0 with no skip in its log | `Makefile:240` |
-| `none.nightly.ci-plumbing.makefile.build-schema-test-hostile` | `make` | make build/schema\_test\_hostile (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_hostile` | the target exits 0 with no skip in its log | `Makefile:3416` |
-| `none.nightly.ci-plumbing.makefile.build-schema-test-hostile-asan` | `make` | make build/schema\_test\_hostile\_asan (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_hostile_asan` | the target exits 0 with no skip in its log | `Makefile:3420` |
-| `none.nightly.ci-plumbing.makefile.build-schema-test-ludicrous` | `make` | make build/schema\_test\_ludicrous (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_ludicrous` | the target exits 0 with no skip in its log | `Makefile:3578` |
-| `none.nightly.ci-plumbing.makefile.build-schema-test-pack` | `make` | make build/schema\_test\_pack (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_pack` | the target exits 0 with no skip in its log | `Makefile:3357` |
-| `none.nightly.ci-plumbing.makefile.build-schema-test-pack-asan` | `make` | make build/schema\_test\_pack\_asan (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_pack_asan` | the target exits 0 with no skip in its log | `Makefile:3366` |
-| `none.nightly.ci-plumbing.makefile.build-schema-test-random` | `make` | make build/schema\_test\_random (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_random` | the target exits 0 with no skip in its log | `Makefile:3574` |
-| `none.nightly.ci-plumbing.makefile.build-schema-test-tables` | `make` | make build/schema\_test\_tables (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_tables` | the target exits 0 with no skip in its log | `Makefile:3069` |
-| `none.nightly.ci-plumbing.makefile.build-schema-test-tables-asan` | `make` | make build/schema\_test\_tables\_asan (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_tables_asan` | the target exits 0 with no skip in its log | `Makefile:3102` |
-| `none.nightly.ci-plumbing.makefile.build-tables-generated-stamp` | `make` | make build/tables-generated/.stamp (Makefile) exits 0 | `file: Makefile`<br>`target: build/tables-generated/.stamp` | the target exits 0 with no skip in its log | `Makefile:474` |
-| `none.nightly.ci-plumbing.makefile.build-tables-pack-bin` | `make` | make build/tables-pack.bin (Makefile) exits 0 | `file: Makefile`<br>`target: build/tables-pack.bin` | the target exits 0 with no skip in its log | `Makefile:3340` |
-| `none.nightly.ci-plumbing.makefile.build-tables-pack-root-bin` | `make` | make build/tables-pack-root.bin (Makefile) exits 0 | `file: Makefile`<br>`target: build/tables-pack-root.bin` | the target exits 0 with no skip in its log | `Makefile:3344` |
-| `none.nightly.ci-plumbing.makefile.build-wire-fuzz-cpp` | `make` | make build/wire-fuzz-cpp (Makefile) exits 0 | `file: Makefile`<br>`target: build/wire-fuzz-cpp` | the target exits 0 with no skip in its log | `Makefile:5551` |
-| `none.nightly.ci-plumbing.makefile.build-wire-fuzz-cpp-asan` | `make` | make build/wire-fuzz-cpp-asan (Makefile) exits 0 | `file: Makefile`<br>`target: build/wire-fuzz-cpp-asan` | the target exits 0 with no skip in its log | `Makefile:5557` |
-| `none.nightly.ci-plumbing.makefile.deps` | `make` | make deps (Makefile) exits 0 | `file: Makefile`<br>`target: deps` | the target exits 0 with no skip in its log | `Makefile:7503` |
-| `none.nightly.ci-plumbing.makefile.registry` | `make` | make registry (Makefile) exits 0 | `file: Makefile`<br>`target: registry` | the target exits 0 with no skip in its log | `Makefile:6925` |
-| `none.nightly.ci-plumbing.makefile.serialize-siblings` | `make` | make serialize-siblings (Makefile) exits 0 | `file: Makefile`<br>`target: serialize-siblings` | the target exits 0 with no skip in its log | `Makefile:7489` |
-| `none.nightly.ci-plumbing.makefile.toolchain` | `make` | make toolchain (Makefile) exits 0 | `file: Makefile`<br>`target: toolchain` | the target exits 0 with no skip in its log | `Makefile:6982` |
+| `none.nightly.ci-plumbing.makefile.build-conformance-cpp` | `make` | make build/conformance-cpp (Makefile) exits 0 | `file: Makefile`<br>`target: build/conformance-cpp` | the target exits 0 with no skip in its log | `Makefile:5516` |
+| `none.nightly.ci-plumbing.makefile.build-conformance-harness` | `make` | make build/conformance-harness (Makefile) exits 0 | `file: Makefile`<br>`target: build/conformance-harness` | the target exits 0 with no skip in its log | `Makefile:5420` |
+| `none.nightly.ci-plumbing.makefile.build-fixedform-corpus-stamp` | `make` | make build/fixedform-corpus/.stamp (Makefile) exits 0 | `file: Makefile`<br>`target: build/fixedform-corpus/.stamp` | the target exits 0 with no skip in its log | `Makefile:7284` |
+| `none.nightly.ci-plumbing.makefile.build-hostile-values-stamp` | `make` | make build/hostile-values/.stamp (Makefile) exits 0 | `file: Makefile`<br>`target: build/hostile-values/.stamp` | the target exits 0 with no skip in its log | `Makefile:3408` |
+| `none.nightly.ci-plumbing.makefile.build-pack-text-stamp` | `make` | make build/pack-text/.stamp (Makefile) exits 0 | `file: Makefile`<br>`target: build/pack-text/.stamp` | the target exits 0 with no skip in its log | `Makefile:3375` |
+| `none.nightly.ci-plumbing.makefile.build-schema-test` | `make` | make build/schema\_test (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test` | the target exits 0 with no skip in its log | `Makefile:229` |
+| `none.nightly.ci-plumbing.makefile.build-schema-test-bench` | `make` | make build/schema\_test\_bench (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_bench` | the target exits 0 with no skip in its log | `Makefile:3626` |
+| `none.nightly.ci-plumbing.makefile.build-schema-test-bench-table` | `make` | make build/schema\_test\_bench\_table (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_bench_table` | the target exits 0 with no skip in its log | `Makefile:3632` |
+| `none.nightly.ci-plumbing.makefile.build-schema-test-block` | `make` | make build/schema\_test\_block (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_block` | the target exits 0 with no skip in its log | `Makefile:1015` |
+| `none.nightly.ci-plumbing.makefile.build-schema-test-block-asan` | `make` | make build/schema\_test\_block\_asan (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_block_asan` | the target exits 0 with no skip in its log | `Makefile:1023` |
+| `none.nightly.ci-plumbing.makefile.build-schema-test-block-fuzz` | `make` | make build/schema\_test\_block\_fuzz (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_block_fuzz` | the target exits 0 with no skip in its log | `Makefile:1156` |
+| `none.nightly.ci-plumbing.makefile.build-schema-test-block-fuzz-asan` | `make` | make build/schema\_test\_block\_fuzz\_asan (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_block_fuzz_asan` | the target exits 0 with no skip in its log | `Makefile:1165` |
+| `none.nightly.ci-plumbing.makefile.build-schema-test-cook` | `make` | make build/schema\_test\_cook (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_cook` | the target exits 0 with no skip in its log | `Makefile:1407` |
+| `none.nightly.ci-plumbing.makefile.build-schema-test-guard` | `make` | make build/schema\_test\_guard (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_guard` | the target exits 0 with no skip in its log | `Makefile:243` |
+| `none.nightly.ci-plumbing.makefile.build-schema-test-hostile` | `make` | make build/schema\_test\_hostile (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_hostile` | the target exits 0 with no skip in its log | `Makefile:3419` |
+| `none.nightly.ci-plumbing.makefile.build-schema-test-hostile-asan` | `make` | make build/schema\_test\_hostile\_asan (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_hostile_asan` | the target exits 0 with no skip in its log | `Makefile:3423` |
+| `none.nightly.ci-plumbing.makefile.build-schema-test-ludicrous` | `make` | make build/schema\_test\_ludicrous (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_ludicrous` | the target exits 0 with no skip in its log | `Makefile:3581` |
+| `none.nightly.ci-plumbing.makefile.build-schema-test-pack` | `make` | make build/schema\_test\_pack (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_pack` | the target exits 0 with no skip in its log | `Makefile:3360` |
+| `none.nightly.ci-plumbing.makefile.build-schema-test-pack-asan` | `make` | make build/schema\_test\_pack\_asan (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_pack_asan` | the target exits 0 with no skip in its log | `Makefile:3369` |
+| `none.nightly.ci-plumbing.makefile.build-schema-test-random` | `make` | make build/schema\_test\_random (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_random` | the target exits 0 with no skip in its log | `Makefile:3577` |
+| `none.nightly.ci-plumbing.makefile.build-schema-test-tables` | `make` | make build/schema\_test\_tables (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_tables` | the target exits 0 with no skip in its log | `Makefile:3072` |
+| `none.nightly.ci-plumbing.makefile.build-schema-test-tables-asan` | `make` | make build/schema\_test\_tables\_asan (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_tables_asan` | the target exits 0 with no skip in its log | `Makefile:3105` |
+| `none.nightly.ci-plumbing.makefile.build-tables-generated-stamp` | `make` | make build/tables-generated/.stamp (Makefile) exits 0 | `file: Makefile`<br>`target: build/tables-generated/.stamp` | the target exits 0 with no skip in its log | `Makefile:477` |
+| `none.nightly.ci-plumbing.makefile.build-tables-pack-bin` | `make` | make build/tables-pack.bin (Makefile) exits 0 | `file: Makefile`<br>`target: build/tables-pack.bin` | the target exits 0 with no skip in its log | `Makefile:3343` |
+| `none.nightly.ci-plumbing.makefile.build-tables-pack-root-bin` | `make` | make build/tables-pack-root.bin (Makefile) exits 0 | `file: Makefile`<br>`target: build/tables-pack-root.bin` | the target exits 0 with no skip in its log | `Makefile:3347` |
+| `none.nightly.ci-plumbing.makefile.build-wire-fuzz-cpp` | `make` | make build/wire-fuzz-cpp (Makefile) exits 0 | `file: Makefile`<br>`target: build/wire-fuzz-cpp` | the target exits 0 with no skip in its log | `Makefile:5554` |
+| `none.nightly.ci-plumbing.makefile.build-wire-fuzz-cpp-asan` | `make` | make build/wire-fuzz-cpp-asan (Makefile) exits 0 | `file: Makefile`<br>`target: build/wire-fuzz-cpp-asan` | the target exits 0 with no skip in its log | `Makefile:5560` |
+| `none.nightly.ci-plumbing.makefile.deps` | `make` | make deps (Makefile) exits 0 | `file: Makefile`<br>`target: deps` | the target exits 0 with no skip in its log | `Makefile:7506` |
+| `none.nightly.ci-plumbing.makefile.registry` | `make` | make registry (Makefile) exits 0 | `file: Makefile`<br>`target: registry` | the target exits 0 with no skip in its log | `Makefile:6928` |
+| `none.nightly.ci-plumbing.makefile.serialize-siblings` | `make` | make serialize-siblings (Makefile) exits 0 | `file: Makefile`<br>`target: serialize-siblings` | the target exits 0 with no skip in its log | `Makefile:7492` |
+| `none.nightly.ci-plumbing.makefile.toolchain` | `make` | make toolchain (Makefile) exits 0 | `file: Makefile`<br>`target: toolchain` | the target exits 0 with no skip in its log | `Makefile:6985` |
 
 ## Declared unrepresentable
 

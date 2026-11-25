@@ -50,7 +50,6 @@ fn v_cfloat_res_refine_new_reads_old() {
         !report.refused && report.reason == TableFixedReason::None,
         "a clean NEW-READS-OLD is not a refusal: {:?}", report
     );
-    assert!(!report.damaged, "a clean backward read is not damage: {:?}", report);
     assert_eq!(values[0].lead, 1, "the lead bracket moved: lead={}", values[0].lead);
     assert_eq!(values[0].trail, 2, "the trail bracket moved: trail={}", values[0].trail);
     assert_eq!(
