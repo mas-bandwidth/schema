@@ -22,6 +22,7 @@ docs/SPEC-TABLES.md	cpp	fragment	19
 docs/SPEC-TABLES.md	csharp	fragment	4
 docs/SPEC-TABLES.md	go	fragment	2
 docs/SPEC.md	cpp	fragment	1
+docs/TEST-REGISTRY.md	go	fragment	1
 docs/TUTORIAL.md	cpp	compile	26
 docs/TUTORIAL.md	cpp	fragment	37
 docs/TUTORIAL.md	go	compile	4
