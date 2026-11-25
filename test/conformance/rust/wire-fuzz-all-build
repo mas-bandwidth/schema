@@ -54,7 +54,10 @@ for unit in featurewitnesses:testdata/conformance/feature-witnesses/full/Feature
 	vocab9demo:tables/vocab9 \
 	vocabdemo:tables/vocab \
 	widelist:tables/widelist \
-	shapes:test/tables/shapes; do
+	shapes:test/tables/shapes \
+	tblsurf:test/tables/surfaces/Surfaces.schema \
+	packetunions:test/tables/packetunions/PacketUnions.schema \
+	tblvaluedefaults:test/tables/ValueDefaults.schema; do
 	name=${unit%%:*}
 	path=${unit#*:}
 	$gen generate --lang rust --out "$dir/gen/$name" "$path" 2>"$dir/gen-$name.log" || {
