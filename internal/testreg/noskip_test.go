@@ -28,15 +28,22 @@ import (
 // noSkips finds every skip mechanism under root, each as "file:line: rule:
 // text". The rules, each with a plant in TestNoSkipMechanismIsPlanted:
 //
-//	go-skip        a Skip, Skipf or SkipNow call on a testing value, or a
-//	               method of that name declared on a test double
+//	go-skip        a Skip, Skipf or SkipNow call on a testing value (under
+//	               whatever name the file imports testing as), a method of
+//	               that name declared on a test double, or in a _test.go file
+//	               any such call shaped like testing's (no argument, or a
+//	               message), whatever it is called on
 //	go-short       testing.Short()
 //	go-env-gate    an environment read, set or lookup of a skip or lane
 //	               variable (SCHEMA_SLOW, SCHEMA_REQUIRE_*, *SKIP*, ALLOC_ANY)
 //	go-early-out   in a function that takes a testing value, an if that reads
 //	               the environment, looks up a tool, stats a file, or reads
 //	               the platform, and then only returns (nothing, or zero
-//	               values) without failing: the body after it does not run
+//	               values) without failing: the body after it does not run;
+//	               nested ifs too, and an if on the world outside the tree
+//	               that only continues its loop; a helper's found-case return
+//	               before a failure at its end is not one, a Test's is; and a
+//	               TestMain that only prints and exits 0 on such an if
 //	go-build-tag   a build constraint on a _test.go file other than the
 //	               platform, cgo, a Go version or a schema_leg_* build variant
 //	or-true        `|| true`, `|| :`, `|| exit 0` in a script, recipe or step
@@ -49,6 +56,15 @@ import (
 //	skip-verdict   a harness driver (any language) that reports a row as
 //	               skipped instead of passing or failing it
 //	skip-ledger    a file that lists skips (known-skips.tsv, skip-ledger.txt)
+//	missing-exit0  `exit 0` on, or the line after, a probe for a tool
+//	make-ignore    a recipe line under make's `-`, or .IGNORE
+//	if-var         a workflow condition on vars. or env.
+//	native-skip    a test framework's own skip in a driver (it.skip, xit,
+//	               #[ignore], Skip = "...", @tag :skip, unittest.skip,
+//	               pytest.mark.skip, @Disabled, @Ignore, skip_if, skipTest)
+//
+// A driver is a source file in a harness language anywhere in the tree, or
+// a script whose first line runs python.
 //
 // Not scanned, each for its reason: version control and dependency and build
 // output (never source); third_party/ (vendored sibling code, owned by its
@@ -113,6 +129,17 @@ var (
 	// a driver's verdict word for a row it did not run
 	verdict = regexp.MustCompile(`["'](SKIP|SKIPPED|skip|skipped)["']|["'](?i:skipping|skipped)\b[^"']*["']|\bSKIP:`)
 	ledger  = regexp.MustCompile(`(?i)(^|[-_/])(known-)?skips?(-ledger)?\.(tsv|txt)$`)
+	// a variable named for skipping, set or read in a script
+	skipAssign = regexp.MustCompile(`\b[A-Z][A-Z0-9_]*SKIP[A-Z0-9_]*=|\$\{?[A-Z][A-Z0-9_]*SKIP[A-Z0-9_]*\b|^\s*-?\s*[A-Z][A-Z0-9_]*SKIP[A-Z0-9_]*\s*:`)
+	// success on a missing tool: `exit 0` beside a probe for one
+	exitZero  = regexp.MustCompile(`\bexit\s+0\b`)
+	toolProbe = regexp.MustCompile(`\bcommand\s+-v\b|\bwhich\s|\bhash\s|\btype\s+-[pP]\b|\[\s+!\s+-[xfed]\s`)
+	// make's ignore-errors: a recipe line under `-`, or .IGNORE
+	makeIgnore = regexp.MustCompile(`^\t[@+]*-[^-]|^\.IGNORE\s*:`)
+	// a workflow job or step run or not by a variable
+	ifVar = regexp.MustCompile(`^\s*-?\s*if\s*:.*\b(vars|env)\.`)
+	// a test framework's own skip
+	nativeSkip = regexp.MustCompile(`\b(it|test|describe|context)\.skip\b|\bx(it|describe|test)\s*\(|#\[ignore\b|\bSkip\s*=\s*"|@tag\s+:?skip\b|@moduletag\s+:?skip\b|\bunittest\.skip|\bpytest\.mark\.skip|@Disabled\b|@Ignore\b|\bskip_if\b|\bskipTest\(`)
 )
 
 // script-like files: their lines are commands
@@ -157,11 +184,14 @@ func noSkipsFile(path, rel string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	kind := scriptKind(rel, data[:min(len(data), 128)])
-	isDriver := driverExt[ext] && (strings.HasPrefix(rel, "test/") || strings.HasPrefix(rel, "tools/") || strings.HasPrefix(rel, "bench/"))
+	head := data[:min(len(data), 128)]
+	kind := scriptKind(rel, head)
+	firstLine, _, _ := bytes.Cut(head, []byte("\n"))
+	isDriver := driverExt[ext] || (bytes.HasPrefix(firstLine, []byte("#!")) && bytes.Contains(firstLine, []byte("python")))
 	if kind == "" && !isDriver {
 		return nil, nil
 	}
+	prev := ""
 	var out []string
 	hit := func(n int, rule, line string) {
 		out = append(out, fmt.Sprintf("%s:%d: %s: %s", rel, n, rule, strings.TrimSpace(line)))
@@ -184,6 +214,17 @@ func noSkipsFile(path, rel string) ([]string, error) {
 			if echo.MatchString(code) {
 				hit(n, "skip-echo", line)
 			}
+			// a missing tool answered by success, on the line or the one after
+			// the test for it
+			if exitZero.MatchString(code) && (toolProbe.MatchString(code) || toolProbe.MatchString(prev)) && !strings.HasPrefix(strings.TrimLeft(code, "\t @+-"), "#") {
+				hit(n, "missing-exit0", line)
+			}
+			if skipAssign.MatchString(code) {
+				hit(n, "skip-var", line)
+			}
+		}
+		if kind == "make" && makeIgnore.MatchString(code) && !strings.HasSuffix(strings.TrimRight(prev, " \t"), "\\") {
+			hit(n, "make-ignore", line)
 		}
 		if kind == "workflow" {
 			if contErr.MatchString(code) {
@@ -195,12 +236,21 @@ func noSkipsFile(path, rel string) ([]string, error) {
 			if branch.MatchString(code) {
 				hit(n, "branch-skip", line)
 			}
+			if ifVar.MatchString(code) {
+				hit(n, "if-var", line)
+			}
 		}
 		if skipVar.MatchString(code) {
 			hit(n, "skip-var", line)
 		}
 		if isDriver && verdict.MatchString(code) {
 			hit(n, "skip-verdict", line)
+		}
+		if isDriver && nativeSkip.MatchString(code) {
+			hit(n, "native-skip", line)
+		}
+		if strings.TrimSpace(line) != "" {
+			prev = line
 		}
 	}
 	return out, nil
@@ -209,7 +259,9 @@ func noSkipsFile(path, rel string) ([]string, error) {
 // testingTypes are the testing values a Skip can be called on.
 var testingTypes = map[string]bool{"T": true, "B": true, "F": true, "TB": true}
 
-func isTestingType(e ast.Expr) bool {
+// isTestingType is *testing.T and its kin, under the name the file imports
+// the testing package as.
+func isTestingType(e ast.Expr, testingName string) bool {
 	if s, ok := e.(*ast.StarExpr); ok {
 		e = s.X
 	}
@@ -218,7 +270,7 @@ func isTestingType(e ast.Expr) bool {
 		return false
 	}
 	pkg, ok := sel.X.(*ast.Ident)
-	return ok && pkg.Name == "testing" && testingTypes[sel.Sel.Name]
+	return ok && pkg.Name == testingName && testingTypes[sel.Sel.Name]
 }
 
 func goSkips(path, rel string) ([]string, error) {
@@ -235,6 +287,13 @@ func goSkips(path, rel string) ([]string, error) {
 	hit := func(pos token.Pos, rule, what string) {
 		out = append(out, fmt.Sprintf("%s:%d: %s: %s", rel, fset.Position(pos).Line, rule, what))
 	}
+	testingName := "testing"
+	for _, im := range f.Imports {
+		if im.Path.Value == `"testing"` && im.Name != nil {
+			testingName = im.Name.Name
+		}
+	}
+	isTesting := func(e ast.Expr) bool { return isTestingType(e, testingName) }
 	if strings.HasSuffix(rel, "_test.go") {
 		for _, cg := range f.Comments {
 			if cg.Pos() > f.Package {
@@ -265,13 +324,13 @@ func goSkips(path, rel string) ([]string, error) {
 	ast.Inspect(f, func(n ast.Node) bool {
 		switch x := n.(type) {
 		case *ast.Field:
-			if isTestingType(x.Type) {
+			if isTesting(x.Type) {
 				for _, nm := range x.Names {
 					tvals[nm.Name] = true
 				}
 			}
 		case *ast.ValueSpec:
-			if x.Type != nil && isTestingType(x.Type) {
+			if x.Type != nil && isTesting(x.Type) {
 				for _, nm := range x.Names {
 					tvals[nm.Name] = true
 				}
@@ -293,7 +352,7 @@ func goSkips(path, rel string) ([]string, error) {
 			}
 			if st, ok := ts.Type.(*ast.StructType); ok {
 				for _, fl := range st.Fields.List {
-					if len(fl.Names) == 0 && isTestingType(fl.Type) {
+					if len(fl.Names) == 0 && isTesting(fl.Type) {
 						doubles[ts.Name.Name] = true
 					}
 				}
@@ -320,19 +379,82 @@ func goSkips(path, rel string) ([]string, error) {
 	visitFunc = func(params, results *ast.FieldList, body *ast.BlockStmt, name string) {
 		takesT := false
 		for _, p := range params.List {
-			if isTestingType(p.Type) {
+			if isTesting(p.Type) {
 				takesT = true
 			}
 		}
-		if !takesT || endsInAFailure(body) {
+		// a helper that returns when what it needs is there and fails at
+		// its end when it is not (t18RequireJava's shape) skips nothing; a
+		// Test's early return is a skip whatever follows it
+		if !takesT || (!strings.HasPrefix(name, "Test") && endsInAFailure(body)) {
 			return
 		}
+		// every if in the body, nested too (a func literal is its own visit):
+		// a gate answered by a bare return, or by continue in a loop
+		ast.Inspect(body, func(n ast.Node) bool {
+			if _, ok := n.(*ast.FuncLit); ok {
+				return false
+			}
+			ifs, ok := n.(*ast.IfStmt)
+			if !ok || ifs.Else != nil || !readsAGate(ifs) {
+				return true
+			}
+			cond := string(src[fset.Position(ifs.Cond.Pos()).Offset:fset.Position(ifs.Cond.End()).Offset])
+			switch {
+			case onlyReturnsZero(ifs.Body):
+				hit(ifs.Pos(), "go-early-out", name+" returns before its body on a condition: "+cond)
+			case onlyContinues(ifs.Body) && readsAnOutsideGate(ifs):
+				hit(ifs.Pos(), "go-early-out", name+" passes over its work on a condition: "+cond)
+			}
+			return true
+		})
+	}
+	// TestMain that exits 0 on a gate, having done nothing but say so, runs
+	// no test of the package (a helper process that answers its parent and
+	// exits does work first, and is not this)
+	testMainExits := func(body *ast.BlockStmt) {
 		for _, st := range body.List {
 			ifs, ok := st.(*ast.IfStmt)
-			if !ok || ifs.Else != nil || !onlyReturnsZero(ifs.Body) || !readsAGate(ifs) {
+			if !ok || !readsAGate(ifs) || len(ifs.Body.List) == 0 {
 				continue
 			}
-			hit(ifs.Pos(), "go-early-out", name+" returns before its body on a condition: "+string(src[fset.Position(ifs.Cond.Pos()).Offset:fset.Position(ifs.Cond.End()).Offset]))
+			last := ifs.Body.List[len(ifs.Body.List)-1]
+			es, ok := last.(*ast.ExprStmt)
+			if !ok {
+				continue
+			}
+			call, ok := es.X.(*ast.CallExpr)
+			if !ok || len(call.Args) != 1 {
+				continue
+			}
+			sel, ok := call.Fun.(*ast.SelectorExpr)
+			lit, isLit := call.Args[0].(*ast.BasicLit)
+			if !ok || !isLit || lit.Value != "0" || sel.Sel.Name != "Exit" {
+				continue
+			}
+			if pkg, ok := sel.X.(*ast.Ident); !ok || pkg.Name != "os" {
+				continue
+			}
+			says := true
+			for _, before := range ifs.Body.List[:len(ifs.Body.List)-1] {
+				es, ok := before.(*ast.ExprStmt)
+				if !ok {
+					says = false
+					break
+				}
+				c, isCall := es.X.(*ast.CallExpr)
+				if !isCall {
+					says = false
+					break
+				}
+				s, ok := c.Fun.(*ast.SelectorExpr)
+				if !ok || !strings.HasPrefix(s.Sel.Name, "Print") && !strings.HasPrefix(s.Sel.Name, "Fprint") {
+					says = false
+				}
+			}
+			if says {
+				hit(call.Pos(), "go-early-out", "TestMain exits 0 on a condition, running no test")
+			}
 		}
 	}
 	ast.Inspect(f, func(n ast.Node) bool {
@@ -345,8 +467,14 @@ func goSkips(path, rel string) ([]string, error) {
 			recv, _ := sel.X.(*ast.Ident)
 			switch sel.Sel.Name {
 			case "Skip", "Skipf", "SkipNow":
-				if recv != nil && tvals[recv.Name] {
+				switch {
+				case recv != nil && tvals[recv.Name]:
 					hit(x.Pos(), "go-skip", recv.Name+"."+sel.Sel.Name)
+				case strings.HasSuffix(rel, "_test.go") && skipLikeArgs(sel.Sel.Name, x.Args):
+					// through a field, a conversion or a name this file does
+					// not declare: a Skip with no arguments or a message is a
+					// test's, never a wire reader's Skip(n)
+					hit(x.Pos(), "go-skip", string(src[fset.Position(sel.Pos()).Offset:fset.Position(sel.End()).Offset]))
 				}
 			case "Short":
 				if recv != nil && recv.Name == "testing" {
@@ -362,7 +490,9 @@ func goSkips(path, rel string) ([]string, error) {
 				}
 			}
 		case *ast.FuncDecl:
-			if x.Body != nil && x.Name.Name != "TestMain" {
+			if x.Body != nil && x.Name.Name == "TestMain" {
+				testMainExits(x.Body)
+			} else if x.Body != nil {
 				visitFunc(x.Type.Params, x.Type.Results, x.Body, x.Name.Name)
 			}
 		case *ast.FuncLit:
@@ -427,6 +557,71 @@ func onlyReturnsZero(b *ast.BlockStmt) bool {
 
 // readsAGate is an if whose init or condition reads the environment, looks
 // up a tool, stats a path or reads the platform.
+// onlyContinues is a block that logs at most and goes on to the next turn
+// of its loop.
+func onlyContinues(b *ast.BlockStmt) bool {
+	if len(b.List) == 0 {
+		return false
+	}
+	br, ok := b.List[len(b.List)-1].(*ast.BranchStmt)
+	if !ok || br.Tok != token.CONTINUE {
+		return false
+	}
+	for _, st := range b.List[:len(b.List)-1] {
+		es, ok := st.(*ast.ExprStmt)
+		if !ok {
+			return false
+		}
+		call, ok := es.X.(*ast.CallExpr)
+		if !ok {
+			return false
+		}
+		sel, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok || (sel.Sel.Name != "Log" && sel.Sel.Name != "Logf") {
+			return false
+		}
+	}
+	return true
+}
+
+// skipLikeArgs is a call shaped like testing's: SkipNow(), Skip(), Skip of a
+// message, Skipf of a format; never Skip(n) on a reader.
+func skipLikeArgs(name string, args []ast.Expr) bool {
+	if len(args) == 0 {
+		return true
+	}
+	lit, ok := args[0].(*ast.BasicLit)
+	if ok && lit.Kind == token.STRING {
+		return true
+	}
+	return name == "Skipf"
+}
+
+// readsAnOutsideGate is a gate on the world outside the tree: a variable,
+// a tool on PATH, the platform, -short. A loop that passes over a file the
+// tree does not hold is filtering its data, not skipping a test.
+func readsAnOutsideGate(ifs *ast.IfStmt) bool {
+	found := false
+	look := func(n ast.Node) bool {
+		sel, ok := n.(*ast.SelectorExpr)
+		if !ok {
+			return true
+		}
+		if pkg, ok := sel.X.(*ast.Ident); ok {
+			switch pkg.Name + "." + sel.Sel.Name {
+			case "os.Getenv", "os.LookupEnv", "exec.LookPath", "runtime.GOOS", "runtime.GOARCH", "testing.Short":
+				found = true
+			}
+		}
+		return true
+	}
+	if ifs.Init != nil {
+		ast.Inspect(ifs.Init, look)
+	}
+	ast.Inspect(ifs.Cond, look)
+	return found
+}
+
 func readsAGate(ifs *ast.IfStmt) bool {
 	found := false
 	look := func(n ast.Node) bool {
@@ -485,6 +680,25 @@ var noSkipPlants = []struct{ file, body, rule string }{
 	{"test/hostile/known-skips.tsv", "row-1\twaits\n", "skip-ledger"},
 	// a driver under a testdata/ directory is scanned like any other source
 	{"test/conformance/packet/testdata/drivers/run.sh", "#!/bin/sh\n./driver \"$@\" || true\n", "or-true"},
+	// testing imported under another name
+	{"p/i_test.go", "package p\n\nimport tt \"testing\"\n\nfunc TestI(t *tt.T) {\n\tt.Skip(\"later\")\n}\n", "go-skip"},
+	// a Skip reached through a field
+	{"p/j_test.go", "package p\n\nimport \"testing\"\n\ntype env struct{ tb testing.TB }\n\nfunc (e env) need() {\n\te.tb.SkipNow()\n}\n", "go-skip"},
+	// TestMain that runs nothing on a gate
+	{"p/k_test.go", "package p\n\nimport (\n\t\"os\"\n\t\"testing\"\n)\n\nfunc TestMain(m *testing.M) {\n\tif os.Getenv(\"CI\") == \"\" {\n\t\tos.Exit(0)\n\t}\n\tos.Exit(m.Run())\n}\n", "go-early-out"},
+	// a gate nested in the body, answered by continue
+	{"p/l_test.go", "package p\n\nimport (\n\t\"os/exec\"\n\t\"testing\"\n)\n\nfunc TestL(t *testing.T) {\n\tfor _, tool := range []string{\"cc\"} {\n\t\tif _, err := exec.LookPath(tool); err != nil {\n\t\t\tcontinue\n\t\t}\n\t\tt.Log(tool)\n\t}\n}\n", "go-early-out"},
+	// a Test returning early whatever it ends with
+	{"p/m_test.go", "package p\n\nimport (\n\t\"os\"\n\t\"testing\"\n)\n\nfunc TestM(t *testing.T) {\n\tif os.Getenv(\"CI\") == \"\" {\n\t\treturn\n\t}\n\tt.Fatal(\"x\")\n}\n", "go-early-out"},
+	{"make/w.mk", "w-test:\n\t-go test ./p\n", "make-ignore"},
+	{"make/v.mk", ".IGNORE: v-test\nv-test:\n\tgo test ./p\n", "make-ignore"},
+	{"scripts/probe.sh", "#!/bin/sh\nif ! command -v luau >/dev/null; then\n  exit 0\nfi\n", "missing-exit0"},
+	{"scripts/vars.sh", "#!/bin/sh\nRUN_SKIP_SLOW=1 ./drive\n", "skip-var"},
+	{"scripts/check", "#!/usr/bin/env python3\nprint(\"SKIP: no tool\")\n", "skip-verdict"},
+	{"runtime/js/x.test.js", "it.skip(\"slow\", () => {});\n", "native-skip"},
+	{"runtime/rust/lib.rs", "#[test]\n#[ignore]\nfn slow() {}\n", "native-skip"},
+	{"runtime/py/t.py", "import unittest\n@unittest.skip(\"slow\")\ndef test_x(): pass\n", "native-skip"},
+	{".github/workflows/cl.yml", "jobs:\n  a:\n    if: vars.RUN_SLOW == 'true'\n", "if-var"},
 }
 
 // TestNoSkipMechanismIsPlanted plants one skip of each kind in a scratch tree
@@ -512,6 +726,8 @@ func TestNoSkipMechanismIsPlanted(t *testing.T) {
 		"docs/RULES.md": "a test never skips: no t.Skip, no || true\n",
 		"make/z.mk":     "# a comment may say || true and SCHEMA_SLOW to explain the rule\nz-test:\n\tgo test ./q\n",
 		"test/c/rows.c": "/* skip unknown fields on the wire */\nstatic void skip_field(void) {}\n",
+		"q/n_test.go":   "package q\n\nimport (\n\t\"os/exec\"\n\t\"testing\"\n)\n\nfunc needCC(t testing.TB) {\n\tif _, err := exec.LookPath(\"cc\"); err == nil {\n\t\treturn\n\t}\n\tt.Fatal(\"cc is not on PATH\")\n}\n",
+		"q/o_test.go":   "package q\n\nimport \"testing\"\n\ntype rd struct{}\n\nfunc (rd) Skip(n int) {}\n\nfunc TestO(t *testing.T) { var r rd; r.Skip(4) }\n",
 	}
 	for f, body := range clean {
 		path := filepath.Join(root, f)
@@ -586,6 +802,10 @@ var noSkipsExempt = map[string]string{
 	// actions and skip variables are the plants it requires the checker to
 	// refuse or strip
 	"test/conformance/nightly_readiness_test.py": "plants for a checker that refuses skips",
+	// the checker itself: it reads `go test -json` actions, and a "skip"
+	// action is an error it reports; it strips SCHEMA_SKIP_LEGS from the
+	// environment it runs make under
+	"test/conformance/nightly-readiness": "a checker that refuses skips, naming the action it refuses",
 	// tools/gotestreport's record corpus: the real `go test -json` run of a
 	// test that skips once is what gotestreport must refuse (F-175)
 	"tools/gotestreport/testdata/recordgen/ledgertest/ledger_test.go": "a planted skip record gotestreport refuses",

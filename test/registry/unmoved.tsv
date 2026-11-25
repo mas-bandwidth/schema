@@ -98,6 +98,7 @@ go-test	internal/tabletext	91	L3	language-free Go tests: the gotest adapter runs
 go-test	internal/tablewire	233	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	internal/testinputs	4	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	internal/testproc	6	L3	language-free Go tests: the gotest adapter runs them when their package moves in
+go-test	internal/testselect	3	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	internal/vacuous	4	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	internal/version	3	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	internal/viewlisting	1	L3	language-free Go tests: the gotest adapter runs them when their package moves in
@@ -132,7 +133,7 @@ go-test	tools/agentsmap	8	L3	language-free Go tests: the gotest adapter runs the
 go-test	tools/cellmerge	2	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	tools/fixedtwin	16	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	tools/gotestreport	14	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tools/gotestrows	14	L3	language-free Go tests: the gotest adapter runs them when their package moves in
+go-test	tools/gotestrows	16	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	tools/gotestrun	4	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	tools/hostilecorpusexec	5	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	tools/hostileledger	8	L3	language-free Go tests: the gotest adapter runs them when their package moves in

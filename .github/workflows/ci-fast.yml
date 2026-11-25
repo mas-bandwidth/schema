@@ -1043,7 +1043,7 @@ jobs:
       # go-test-touched matrix rows that each fit the fleet's two-minute
       # per-commit cap. Light packages are packed together by their measured
       # seconds (.github/go-test-rows.txt); a package the table splits gets a
-      # row per named test pattern plus the complement row that skips them all,
+      # row per named test pattern plus the complement row that lists every other test by name,
       # so every selected test runs in exactly one row and a new test lands in
       # a row with no edit. gotable adds the two make rows below.
       - name: the go test rows
@@ -1280,7 +1280,7 @@ jobs:
   # another seventh the Python plan. So the package runs as three rows side
   # by side, each on its own runner with the cap to itself. The rows are
   # COMPLETE BY CONSTRUCTION: every row but `rest` selects with `-run`, and
-  # `rest` is `-skip` of exactly the union of those patterns, so a new test
+  # `rest` lists by name every test outside the union of those patterns (tools/gotestselect -not), so a new test
   # lands in `rest` unless it is named into a row.
   # TestCIPolicyShardsCoverEveryTest holds that union and checks every Test
   # function in the package is selected by exactly one row.
@@ -1304,7 +1304,7 @@ jobs:
           - shard: python-legs
             select: -run '^(TestPython|TestConformance|TestCertify|TestNo)'
           - shard: rest
-            select: ''
+            select: -run "$(go run ./tools/gotestselect -not '^(TestFastPlan|TestOptVerify|TestPython|TestConformance|TestCertify|TestNo)' ./internal/ci)"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/merge-main
@@ -2922,10 +2922,10 @@ jobs:
 
   # `go test` OF WHAT THE DIFF TOUCHES. The whole of `go test ./...` is 650 s
   # median and lives in ci-full.yml; this job runs the packages `plan` picked,
-  # which for a single-leg diff is one or two of them. The corpus-reading
-  # suites behave exactly as they do today: without build/fixedform-corpus and
-  # without the rule that nothing skips they skip themselves, and the leg gates
-  # below are where they are made to run.
+  # which for a single-leg diff is one or two of them. Nothing skips: a
+  # corpus-reading suite without build/fixedform-corpus fails by name, and a
+  # nightly-tier test is left out at the root (tools/gotestselect), never by
+  # the test itself.
   #
   # TestFixedForm* IS DIFFERENT (schema#1376). Those tests shell out through
   # runGenerated and skip without SCHEMA_SLOW; the go leg-gate that runs

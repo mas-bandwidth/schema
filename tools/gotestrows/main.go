@@ -4,8 +4,8 @@
 //	go run ./tools/gotestrows [-short] [-budget seconds] [-gotable-extras] [-dependents-of "<package>..."] [-changed-files <file>] [-packages-out <file>] [-rides-out <file>] <package>...
 //
 // It prints one line of JSON, a GitHub Actions matrix `include` list: one
-// object per row, {"row": "k/n", "packages": "...", "run": "...", "skip":
-// "...", "make": "..."}. A package argument of ./... is every package of the
+// object per row, {"row": "k/n", "packages": "...", "run": "...", "make":
+// "..."}; no row carries a skip (listed.go). A package argument of ./... is every package of the
 // main module (`go list ./...`). -dependents-of names the packages whose
 // non-test source the diff changed; every main-module package whose build or
 // tests depend on one of them (`go list -test`) is selected beside the
@@ -71,7 +71,7 @@ type Row struct {
 	Row      string `json:"row"`
 	Packages string `json:"packages"`
 	Run      string `json:"run"`
-	Skip     string `json:"skip"`
+	Skip     string `json:"-"` // plan's; listRows writes it into Run, so no row skips
 	Make     string `json:"make"`
 }
 
@@ -169,6 +169,17 @@ func run(argv []string, golist func() (string, error), exists func(string) bool,
 		// the two conformance halves are rows of their own: whole, the target ran
 		// 156 s on a loaded bench, past the two-minute cap
 		rows = append(rows, Row{Make: "tables-go-fixedform"}, Row{Make: "conformance-go-rows-a"}, Row{Make: "conformance-go-rows-b"}, Row{Make: "conformance-go-driver-unit"}, Row{Make: "cards-conformance-go-negative-control"})
+	}
+	root, err := moduleRoot()
+	if err != nil {
+		return err
+	}
+	nightly, err := nightlyPackages(root)
+	if err != nil {
+		return err
+	}
+	if rows, err = listRows(rows, nightly, selectLister(root)); err != nil {
+		return err
 	}
 	for i := range rows {
 		rows[i].Row = fmt.Sprintf("%d/%d", i+1, len(rows))

@@ -15,8 +15,10 @@ import (
 )
 
 // ciPolicyRowRe reads one row of ci-fast.yml's ci-policy matrix: the shard
-// name, then its `go test` selection, `-run` or `-skip` of `^(A|B|...)`.
-var ciPolicyRowRe = regexp.MustCompile(`(?m)^          - shard: ([a-z-]+)\n            select: -(run|skip) '\^\(([A-Za-z0-9_|]+)\)'\n`)
+// name, then its `go test` selection: `-run '^(A|B|...)'`, or the complement
+// listed by name, `-run "$(go run ./tools/gotestselect -not '^(A|B|...)'
+// ./internal/ci)"` (no row skips: Glenn, 2026-11-25, "NO SKIPS").
+var ciPolicyRowRe = regexp.MustCompile(`(?m)^          - shard: ([a-z-]+)\n            select: (?:-(run) '\^\(([A-Za-z0-9_|]+)\)'|-run "\$\(go run \./tools/gotestselect -(not) '\^\(([A-Za-z0-9_|]+)\)' \./internal/ci\)")\n`)
 
 type ciPolicyRow struct {
 	shard, flag string
@@ -26,12 +28,16 @@ type ciPolicyRow struct {
 func ciPolicyRows(wf string) []ciPolicyRow {
 	var rows []ciPolicyRow
 	for _, m := range ciPolicyRowRe.FindAllStringSubmatch(yamlJobs(wf)["ci-policy"], -1) {
-		rows = append(rows, ciPolicyRow{shard: m[1], flag: m[2], prefixes: strings.Split(m[3], "|")})
+		flag, prefixes := m[2], m[3]
+		if flag == "" {
+			flag, prefixes = m[4], m[5]
+		}
+		rows = append(rows, ciPolicyRow{shard: m[1], flag: flag, prefixes: strings.Split(prefixes, "|")})
 	}
 	return rows
 }
 
-// ciPolicyShardErrors holds the ci-policy rows complete: exactly one `-skip`
+// ciPolicyShardErrors holds the ci-policy rows complete: exactly one `-not`
 // row, named `rest`, whose prefixes are exactly the union of every `-run`
 // row's, no prefix in two rows, and every test name selected by exactly one
 // row, the way `go test` selects a top-level test.
@@ -43,7 +49,7 @@ func ciPolicyShardErrors(wf string, tests []string) []string {
 	}
 	rows := ciPolicyRows(wf)
 	if got := strings.Count(policy, "          - shard: "); got != len(rows) || len(rows) < 2 {
-		errs = append(errs, "ci-policy matrix rows must each be `- shard:` then `select: -run|-skip '^(A|B)'`")
+		errs = append(errs, "ci-policy matrix rows must each be `- shard:` then `select: -run '^(A|B)'` or the gotestselect -not '^(A|B)' complement")
 		return errs
 	}
 	var union, skip []string
@@ -57,22 +63,22 @@ func ciPolicyShardErrors(wf string, tests []string) []string {
 				}
 				union = append(union, p)
 			}
-		case "skip":
+		case "not":
 			skips++
 			skip = r.prefixes
 			if r.shard != "rest" {
-				errs = append(errs, "the -skip row must be named rest, not "+r.shard)
+				errs = append(errs, "the -not row must be named rest, not "+r.shard)
 			}
 		}
 	}
 	if skips != 1 {
-		errs = append(errs, "ci-policy needs exactly one -skip row")
+		errs = append(errs, "ci-policy needs exactly one -not row")
 	}
 	a, b := slices.Clone(union), slices.Clone(skip)
 	sort.Strings(a)
 	sort.Strings(b)
 	if !slices.Equal(a, b) {
-		errs = append(errs, "the rest row skips "+strings.Join(b, "|")+" but the -run rows select "+strings.Join(a, "|"))
+		errs = append(errs, "the rest row leaves out "+strings.Join(b, "|")+" but the -run rows select "+strings.Join(a, "|"))
 	}
 	for _, name := range tests {
 		n := 0
@@ -153,11 +159,11 @@ func TestCIPolicyShardsCoverEveryTest(t *testing.T) {
 	if errs := ciPolicyShardErrors(wf, tests); len(errs) != 0 {
 		t.Fatal(strings.Join(errs, "\n"))
 	}
-	// NEGATIVE CONTROLS: a prefix dropped from the rest row's skip (its tests
-	// would run twice), a prefix dropped from a -run row but still skipped
-	// (its tests would run nowhere), and a new test no row names.
+	// NEGATIVE CONTROLS: a prefix dropped from the rest row's -not (its tests
+	// would run twice), a prefix dropped from a -run row but still left out
+	// of rest (its tests would run nowhere), and a new test no row names.
 	for _, mutate := range []struct{ name, from, to string }{
-		{"skip loses a prefix", "-skip '^(TestFastPlan|", "-skip '^("},
+		{"not loses a prefix", "-not '^(TestFastPlan|", "-not '^("},
 		{"run loses a prefix", "-run '^(TestFastPlan|", "-run '^("},
 		{"go test unsharded", "run: go test ${{ matrix.select }} ./internal/ci/", "run: go test ./internal/ci/"},
 	} {

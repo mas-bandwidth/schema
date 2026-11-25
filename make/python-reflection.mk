@@ -12,7 +12,7 @@ test-python: python-reflection-core python-reflection-negative-control $(PYTHON_
 python-reflection: python-reflection-core $(PYTHON_REFLECTION_STRICT_ROWS)
 
 python-reflection-core: python-toolchain-check
-	go test -count=1 -timeout 600s -run '^TestPythonReflection' ./internal/codegen/pythontable/
+	go test -count=1 -timeout 600s -run "$$(go run ./tools/gotestselect -run '^TestPythonReflection' -not '^TestPythonReflectionStrictTypes$$' ./internal/codegen/pythontable/)" ./internal/codegen/pythontable/
 	go test -count=1 -timeout 600s -run '^TestPythonReflectionDriver' ./compiler/
 
 $(PYTHON_REFLECTION_STRICT_ROWS): python-ci-reflection-strict-%: python-toolchain-check

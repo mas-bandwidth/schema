@@ -8,12 +8,14 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
 
-// Exercise Go's actual hierarchical -run/-skip matcher. Parent discovery
-// repeats, but each leaf (including future on-disk corpus names) runs once.
+// Exercise Go's actual hierarchical -run matcher on the rows as the matrix
+// carries them (listRows: no -skip). Parent discovery repeats, but each leaf
+// (including future on-disk corpus names) runs once.
 func TestSubsplitRunsEverySeedExactlyOnce(t *testing.T) {
 	t.Parallel()
 	tb, err := readTable(filepath.Join("..", "..", tablePath))
@@ -57,14 +59,23 @@ func TestNew(t *testing.T) {}
 	for _, name := range []string{"named-seed", "0123abcd", "seed#123x"} {
 		write("testdata/fuzz/FuzzSeeds/"+name, "go test fuzz v1\nint(123)\n")
 	}
+	rows, err = listRows(rows, nil, func(pkgs []string, run, not string) (string, error) {
+		var keep []string
+		for _, n := range []string{"FuzzSeeds", "FuzzOther", "TestNew"} {
+			if (run == "" || regexp.MustCompile(run).MatchString(n)) && (not == "" || !regexp.MustCompile(not).MatchString(n)) {
+				keep = append(keep, n)
+			}
+		}
+		return "^(" + strings.Join(keep, "|") + ")$", nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	run := func(row Row) map[string]int {
 		t.Helper()
 		args := []string{"test", "-json", "-count=1", "-timeout=2m"}
 		if row.Run != "" {
 			args = append(args, "-run", row.Run)
-		}
-		if row.Skip != "" {
-			args = append(args, "-skip", row.Skip)
 		}
 		args = append(args, ".")
 		cmd := exec.Command("go", args...)

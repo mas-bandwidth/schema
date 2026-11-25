@@ -47,22 +47,21 @@ func nightlyFuzzCorpus(t *testing.T, path string) []string {
 }
 
 // nightlyCampaign returns the corpus file the nightly campaign reads (make
-// schema-squirrel-nightly-fuzz sets SCHEMA_SQUIRREL_FUZZ_CORPUS); unset, it
-// fails the test naming the variable. The test is a nightly-tier test.
+// schema-squirrel-nightly-fuzz sets SCHEMA_SQUIRREL_FUZZ_CORPUS); unset, the
+// Makefile's own rule writes it. The tests are nightly tier.
 func nightlyCampaign(t *testing.T) string {
 	t.Helper()
-	corpus := os.Getenv("SCHEMA_SQUIRREL_FUZZ_CORPUS")
-	if corpus == "" {
-		t.Fatal("SCHEMA_SQUIRREL_FUZZ_CORPUS is unset: the nightly corpus file is missing (make schema-squirrel-nightly-fuzz builds and names it)")
+	if corpus := os.Getenv("SCHEMA_SQUIRREL_FUZZ_CORPUS"); corpus != "" {
+		return corpus
 	}
-	return corpus
+	return nightlyCorpusFromMake(t)
 }
 
 // nightlyCorpusFromMake writes the corpus file the nightly target reads, with
 // the target's own rule (make/schema-squirrel-nightly-fuzz.mk), for a run that
-// requires the corpus (SCHEMA_REQUIRE_CORPUS) and was not handed one by
-// SCHEMA_SQUIRREL_FUZZ_CORPUS: the schema set stays the Makefile's, and a rule
-// that cannot write it is a red naming make's own words.
+// was not handed one by SCHEMA_SQUIRREL_FUZZ_CORPUS: the schema set stays the
+// Makefile's, and a rule that cannot write it is a red naming make's own
+// words. These tests are nightly tier: the root selects them, never a gate.
 func nightlyCorpusFromMake(t *testing.T) string {
 	t.Helper()
 	testinputs.Make(t)
@@ -87,9 +86,6 @@ func TestSquirrelNightlyFuzz(t *testing.T) {
 	t.Parallel()
 
 	corpus := nightlyCampaign(t)
-	if corpus == "" {
-		corpus = nightlyCorpusFromMake(t)
-	}
 	paths := nightlyFuzzCorpus(t, corpus)
 
 	n, err := runWireFuzzDifferential(t, nil)
