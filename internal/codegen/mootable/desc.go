@@ -338,6 +338,13 @@ func f64Pair(v float64) string {
 // enumVariants is an enum's variants as { name, wire id, deprecated }
 // triples: identity is the variant NAME's hash (§2.15, §5), and 0 for an
 // enum no table closure reaches, described by the unit view (§8.2).
+//
+// The list is cast to FieldDescriptor's own type for it, { { any } }: a
+// mixed { string, string, boolean } triple list checked against the
+// descriptor's expected type grows with the enum, and at the 4095 variants
+// an announced vocabulary may hold (test/tables/announce4096) moo-analyze
+// stops with "Code is too complex to typecheck" unless the literal carries
+// its type. The cast is erased at run time.
 func (g *Gen) enumVariants(e *ir.Enum) string {
 	parts := make([]string, len(e.Variants))
 	for i := range e.Variants {
@@ -348,7 +355,7 @@ func (g *Gen) enumVariants(e *ir.Enum) string {
 		}
 		parts[i] = fmt.Sprintf("{ %q, %s, %v }", e.Variants[i], IdLit(id), deprecated)
 	}
-	return "{ " + strings.Join(parts, ", ") + " }"
+	return "({ " + strings.Join(parts, ", ") + " } :: { { any } })"
 }
 
 // kindClass is the wide class a kind's raw value is held in by the runtime:

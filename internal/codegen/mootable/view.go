@@ -313,17 +313,21 @@ func (v *viewGen) declarations(b *strings.Builder, set string, decls []*ir.Struc
 	b.WriteString("\t},\n")
 }
 
-// vocabulary writes one ViewVocabulary row with its variant rows.
+// vocabulary writes one ViewVocabulary row with its variant rows. The variant
+// list carries its type, { ViewVariant }: at the 4096 rows an announced
+// vocabulary may hold (test/tables/announce4096) the untyped literal checked
+// inside constant({...}) stops moo-analyze with "Code is too complex to
+// typecheck". The cast is erased at run time.
 func (v *viewGen) vocabulary(b *strings.Builder, name string, max, bits, payloadOffset int64, rows []string, doc string, tags []string) {
 	fmt.Fprintf(b, "\t\t{\n\t\t\tname = %s, file = %s, max = %d, storage_bits = %d,", textLit(name), textLit(viewFile(v.u, name)), max, bits)
 	if payloadOffset != 0 {
 		fmt.Fprintf(b, " payload_offset = %d,", payloadOffset)
 	}
-	fmt.Fprintf(b, " %s,\n\t\t\tvariants = {\n", annotation(doc, tags))
+	fmt.Fprintf(b, " %s,\n\t\t\tvariants = ({\n", annotation(doc, tags))
 	for _, r := range rows {
 		fmt.Fprintf(b, "\t\t\t\t%s,\n", r)
 	}
-	b.WriteString("\t\t\t},\n\t\t},\n")
+	b.WriteString("\t\t\t} :: { ViewVariant }),\n\t\t},\n")
 }
 
 // variant is one ViewVariant row.
