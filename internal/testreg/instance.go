@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"sync"
 )
 
 // Instance is one test in one language. Its full name is
@@ -249,6 +250,30 @@ func (r *Registry) Select(q Query) (Selection, error) {
 	return sel, nil
 }
 
+// answeredIn holds, by a union row's inputs, the languages they name a Go
+// test for, or nil for inputs that are not a union's (or do not read): a cut
+// weighs each instance many times, and reading the inputs every time cost
+// ci more than half its run.
+var answeredIn sync.Map // string(inputs) -> map[string]bool
+
+// unionAnswers reports whether t runs a test in lang: false only for a union
+// row whose inputs name no Go test for lang.
+func unionAnswers(t Test, lang string) bool {
+	v, ok := answeredIn.Load(string(t.Inputs))
+	if !ok {
+		var langs map[string]bool
+		if tests, union, err := GoTestsOf(t); union && err == nil {
+			langs = map[string]bool{}
+			for l := range tests {
+				langs[l] = true
+			}
+		}
+		v, _ = answeredIn.LoadOrStore(string(t.Inputs), langs)
+	}
+	langs := v.(map[string]bool)
+	return langs == nil || langs[lang]
+}
+
 // DefaultSeconds is what a test with no measured run time weighs when a
 // list is cut into shards.
 const DefaultSeconds = 1.0
@@ -264,8 +289,14 @@ const ShardBudget = 60.0
 const minSeconds = 0.01
 
 // Weight is what an instance costs its shard: its test's measured seconds
-// (at least minSeconds), or DefaultSeconds when none was measured.
+// (at least minSeconds), or DefaultSeconds when none was measured. A union
+// row's instance in a language the row names no Go test for runs nothing (it
+// is red by name, with no go test call), so it costs its line of the run,
+// minSeconds, never the seconds another language's test measured.
 func Weight(inst Instance) float64 {
+	if !unionAnswers(inst.Test, inst.Lang) {
+		return minSeconds
+	}
 	if s := inst.Test.Seconds; s > 0 {
 		return max(s, minSeconds)
 	}
@@ -276,25 +307,32 @@ func Weight(inst Instance) float64 {
 // cut must not split, or "" for a row that stands alone. A golden row's
 // writer runs once for all the rows a shard holds of it, and each row's
 // seconds are its share of that run: rows of one writer cut across two
-// shards would cost each shard the writer whole. An env plant runs its target
-// row in the checkout, so its shard builds the target language's leg first
-// (Preparer): the env plants of one language are one block, measured cold, so
-// the shard that holds them is weighed with that build once.
+// shards would cost each shard the writer whole. An env plant stands alone:
+// the leg its target runs on comes built to every shard (ci-fast.yml's
+// produce job), and a leg built in the shard is built once per process
+// however many plants ask (the builder), so nothing is saved by keeping one
+// language's env plants together, and the go corpus plants together weigh
+// more than a shard. Gotest rows that name a subtest of one test share that
+// test's process, so a cut keeps them one block: splitting them would run
+// the process once per shard.
 func unitOf(inst Instance) string {
 	var in struct {
-		Writer string          `json:"writer"`
-		Env    json.RawMessage `json:"env"`
-		Target string          `json:"target"`
+		Writer  string `json:"writer"`
+		Package string `json:"package"`
+		Test    string `json:"test"`
+		Subtest string `json:"subtest"`
+	}
+	if a := inst.Test.Adapter; a != "golden" && a != "gotest" {
+		return "" // read nothing: a cut asks this of every instance
 	}
 	if json.Unmarshal(inst.Test.Inputs, &in) != nil {
 		return ""
 	}
-	switch {
-	case inst.Test.Adapter == "golden" && in.Writer != "":
+	if inst.Test.Adapter == "golden" && in.Writer != "" {
 		return "golden " + in.Writer
-	case inst.Test.Adapter == "plant" && len(in.Env) > 0 && in.Target != "":
-		lang, _, _ := strings.Cut(in.Target, ".")
-		return "plant env " + lang
+	}
+	if inst.Test.Adapter == "gotest" && in.Subtest != "" && in.Package != "" && in.Test != "" {
+		return "gotest " + in.Package + " " + in.Test
 	}
 	return ""
 }

@@ -68,6 +68,9 @@ type Unit struct {
 	Weight   float64  `json:"weight"`
 	Measured bool     `json:"measured,omitempty"`
 	Reason   string   `json:"reason,omitempty"`
+	// Needs is the make targets the unit's Go tests read (testreg.GoNeedsPath),
+	// run in the clone before the unit's own command.
+	Needs []string `json:"needs,omitempty"`
 }
 
 // Runs reports whether a shard runs the unit. Rides and unrunnable units
@@ -118,7 +121,16 @@ func buildUnits(root string) ([]Unit, error) {
 	if err != nil {
 		return nil, err
 	}
-	return planUnits(reg, res, ledger, weights, moduleOf(root))
+	needs, err := testreg.LoadGoNeeds(filepath.Join(root, testreg.GoNeedsPath))
+	if err != nil {
+		return nil, err
+	}
+	units, err := planUnits(reg, res, ledger, weights, moduleOf(root))
+	if err != nil {
+		return nil, err
+	}
+	applyNeeds(units, needs)
+	return units, nil
 }
 
 // moduleOf answers, for a directory under root, the directory of the

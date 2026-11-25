@@ -5,7 +5,7 @@ Part of the specification: every test of tier `functional`, from the test regist
 
 **Tier functional:** uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it.
 
-Functional tests every language answers: 5216. Language-free tests: 2173.
+Functional tests every language answers: 5270. Language-free tests: 2232.
 
 Run this tier for a language with `schema-test run --tier functional --lang L`, one test with `schema-test run <full name>`.
 
@@ -167,12 +167,6 @@ read bytes, write them back, same bytes.
 | `L.functional.roundtrip.bit-phase.valid-p7-v0` | bit-phase sweep Phase7 valid\_p7\_v0.bin: the oracle's valid wire is read and written back to the same bytes | `driver: test/verify-bitphase/{lang}/driver`<br>`file: valid_p7_v0.bin`<br>`files: ["test/verify-bitphase/BitPhase.schema"]`<br>`kind: valid`<br>`root: Phase7`<br>`schema: test/verify-bitphase/BitPhase.schema` | the leg reads the wire and writes back exactly its bytes | `test/verify-bitphase/main.go requiredRoster` |
 | `L.functional.roundtrip.bit-phase.valid-p7-v1` | bit-phase sweep Phase7 valid\_p7\_v1.bin: the oracle's valid wire is read and written back to the same bytes | `driver: test/verify-bitphase/{lang}/driver`<br>`file: valid_p7_v1.bin`<br>`files: ["test/verify-bitphase/BitPhase.schema"]`<br>`kind: valid`<br>`root: Phase7`<br>`schema: test/verify-bitphase/BitPhase.schema` | the leg reads the wire and writes back exactly its bytes | `test/verify-bitphase/main.go requiredRoster` |
 | `L.functional.roundtrip.bit-phase.valid-p7-v2` | bit-phase sweep Phase7 valid\_p7\_v2.bin: the oracle's valid wire is read and written back to the same bytes | `driver: test/verify-bitphase/{lang}/driver`<br>`file: valid_p7_v2.bin`<br>`files: ["test/verify-bitphase/BitPhase.schema"]`<br>`kind: valid`<br>`root: Phase7`<br>`schema: test/verify-bitphase/BitPhase.schema` | the leg reads the wire and writes back exactly its bytes | `test/verify-bitphase/main.go requiredRoster` |
-
-#### `roundtrip` family `blob-shared-strict`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.roundtrip.blob-shared-strict.blob-shared-strict` | strict read and write rules hold for shared blobs and per-value shared markers. | `tests: {"java":{"package":"./internal/codegen/javatable","test":"TestJavaBlobSharedStrict"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/blob_shared_strict_test.go:300` |
 
 #### `roundtrip` family `blob-span`, 1 test
 
@@ -400,12 +394,6 @@ read bytes, write them back, same bytes.
 |---|---|---|---|---|
 | `L.functional.roundtrip.compressedfloat-f32-negzero.compressed-float-f32-range-and-negative-zero` | a compressed float's declared range is compared at float32 and negative zero is held as positive zero. | `inputs.tests` (104 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/luatable/compressedfloat_f32_negzero_test.go:159` |
 
-#### `roundtrip` family `conformance-envelope`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.roundtrip.conformance-envelope.conformance-tool-envelope-report` | the conformance report driver routes a variable envelope through its region codec while keeping the fixed message codec in the same unit. | `tests: {"cpp":{"package":"./internal/codegen/cpptable","test":"TestCppConformanceToolEnvelopeReport"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/cpptable/conformance_envelope_test.go:19` |
-
 #### `roundtrip` family `conformance-form3`, 1 test
 
 | full name | checks | inputs | expected result | source |
@@ -448,12 +436,11 @@ read bytes, write them back, same bytes.
 |---|---|---|---|---|
 | `L.functional.roundtrip.conformance-optin.driver-answers-both-opt-in-legs` | the conformance driver answers the committed opt-in corpus both for a leg naming both opt-in units and for a leg naming neither. | `tests: {"java":{"package":"./internal/codegen/javatable","test":"TestJavaDriverAnswersBothOptInLegs"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/conformance_optin_test.go:18` |
 
-#### `roundtrip` family `conformance-report-retain`, 2 tests
+#### `roundtrip` family `conformance-report-retain`, 1 test
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.roundtrip.conformance-report-retain.driver-report-and-retain` | the conformance driver answers every report and retain row of the corpus correctly. | `tests: {"go":{"package":"./internal/codegen/gotable","test":"TestGoDriverReportAndRetain"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/conformance_report_retain_test.go:389` |
-| `L.functional.roundtrip.conformance-report-retain.driver-tool-envelope` | the conformance driver reaches the variable tool envelope root for its wire and report surfaces | `inputs.tests` (169 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/conformance_report_retain_test.go:432` |
 
 #### `roundtrip` family `conformance-retain`, 14 tests
 
@@ -977,6 +964,25 @@ read bytes, write them back, same bytes.
 |---|---|---|---|---|
 | `L.functional.roundtrip.cs-checked-build.tables-checked-build` | a generated table compiles and round-trips under checked arithmetic with no overflow exception. | `tests: {"cs":{"package":"./internal/codegen/cstable","test":"TestCSharpTablesCheckedBuild"}}` | the cs Go test for the case (inputs.tests) passes | `internal/codegen/cstable/checked_build_test.go:19` |
 
+#### `roundtrip` family `cs-rows`, 14 tests
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.functional.roundtrip.cs-rows.c12` | C# conformance row C12: its self-contained program (test/conformance/cs/rows/C12) builds against the generated units and passes its law; its files also index the C# leg's harness files (ci.json, driver and its two control scripts) where they live | `case: C12`<br>`driver: test/conformance/cs/rows/C12/C12.csproj`<br>`inputs.files` (227 bytes, held in the registry row's `inputs.files`) | the row program exits 0 (tools/conformancerows prints PASS cs/C12) | `test/conformance/cs/ci.json:1` |
+| `L.functional.roundtrip.cs-rows.c13` | C# conformance row C13: its self-contained program (test/conformance/cs/rows/C13) builds against the generated units and passes its law | `case: C13`<br>`driver: test/conformance/cs/rows/C13/C13.csproj`<br>`files: ["test/conformance/cs/rows/C13/C13.csproj","test/conformance/cs/rows/C13/Program.cs"]` | the row program exits 0 (tools/conformancerows prints PASS cs/C13) | `test/conformance/cs/rows/C13/C13.csproj:1` |
+| `L.functional.roundtrip.cs-rows.c8` | C# conformance row C8: its self-contained program (test/conformance/cs/rows/C8) builds against the generated units and passes its law | `case: C8`<br>`driver: test/conformance/cs/rows/C8/C8.csproj`<br>`files: ["test/conformance/cs/rows/C8/C8.csproj","test/conformance/cs/rows/C8/Program.cs"]` | the row program exits 0 (tools/conformancerows prints PASS cs/C8) | `test/conformance/cs/rows/C8/C8.csproj:1` |
+| `L.functional.roundtrip.cs-rows.compressedfloatsvaliddata` | C# conformance row CompressedFloatsValidData: its self-contained program (test/conformance/cs/rows/CompressedFloatsValidData) builds against the generated units and passes its law | `case: CompressedFloatsValidData`<br>`driver: test/conformance/cs/rows/CompressedFloatsValidData/CompressedFloatsValidData.csproj`<br>`inputs.files` (151 bytes, held in the registry row's `inputs.files`) | the row program exits 0 (tools/conformancerows prints PASS cs/CompressedFloatsValidData) | `test/conformance/cs/rows/CompressedFloatsValidData/CompressedFloatsValidData.csproj:1` |
+| `L.functional.roundtrip.cs-rows.e5` | C# conformance row E5: its self-contained program (test/conformance/cs/rows/E5) builds against the generated units and passes its law | `case: E5`<br>`driver: test/conformance/cs/rows/E5/E5.csproj`<br>`inputs.files` (134 bytes, held in the registry row's `inputs.files`) | the row program exits 0 (tools/conformancerows prints PASS cs/E5) | `test/conformance/cs/rows/E5/E5.csproj:1` |
+| `L.functional.roundtrip.cs-rows.f9` | C# conformance row F9: its self-contained program (test/conformance/cs/rows/F9) builds against the generated units and passes its law | `case: F9`<br>`driver: test/conformance/cs/rows/F9/F9.csproj`<br>`files: ["test/conformance/cs/rows/F9/F9.csproj","test/conformance/cs/rows/F9/Program.cs"]` | the row program exits 0 (tools/conformancerows prints PASS cs/F9) | `test/conformance/cs/rows/F9/F9.csproj:1` |
+| `L.functional.roundtrip.cs-rows.flagsvaluesvaliddata` | C# conformance row FlagsValuesValidData: its self-contained program (test/conformance/cs/rows/FlagsValuesValidData) builds against the generated units and passes its law | `case: FlagsValuesValidData`<br>`driver: test/conformance/cs/rows/FlagsValuesValidData/FlagsValuesValidData.csproj`<br>`inputs.files` (136 bytes, held in the registry row's `inputs.files`) | the row program exits 0 (tools/conformancerows prints PASS cs/FlagsValuesValidData) | `test/conformance/cs/rows/FlagsValuesValidData/FlagsValuesValidData.csproj:1` |
+| `L.functional.roundtrip.cs-rows.keyedarraysvaliddata` | C# conformance row KeyedArraysValidData: its self-contained program (test/conformance/cs/rows/KeyedArraysValidData) builds against the generated units and passes its law | `case: KeyedArraysValidData`<br>`driver: test/conformance/cs/rows/KeyedArraysValidData/KeyedArraysValidData.csproj`<br>`inputs.files` (136 bytes, held in the registry row's `inputs.files`) | the row program exits 0 (tools/conformancerows prints PASS cs/KeyedArraysValidData) | `test/conformance/cs/rows/KeyedArraysValidData/KeyedArraysValidData.csproj:1` |
+| `L.functional.roundtrip.cs-rows.r21` | C# conformance row R21: its self-contained program (test/conformance/cs/rows/R21) builds against the generated units and passes its law | `case: R21`<br>`driver: test/conformance/cs/rows/R21/R21.csproj`<br>`files: ["test/conformance/cs/rows/R21/Program.cs","test/conformance/cs/rows/R21/R21.csproj"]` | the row program exits 0 (tools/conformancerows prints PASS cs/R21) | `test/conformance/cs/rows/R21/Program.cs:1` |
+| `L.functional.roundtrip.cs-rows.r27` | C# conformance row R27: its self-contained program (test/conformance/cs/rows/R27) builds against the generated units and passes its law | `case: R27`<br>`driver: test/conformance/cs/rows/R27/R27.csproj`<br>`files: ["test/conformance/cs/rows/R27/Program.cs","test/conformance/cs/rows/R27/R27.csproj"]` | the row program exits 0 (tools/conformancerows prints PASS cs/R27) | `test/conformance/cs/rows/R27/Program.cs:1` |
+| `L.functional.roundtrip.cs-rows.r28` | C# conformance row R28: its self-contained program (test/conformance/cs/rows/R28) builds against the generated units and passes its law | `case: R28`<br>`driver: test/conformance/cs/rows/R28/R28.csproj`<br>`files: ["test/conformance/cs/rows/R28/Program.cs","test/conformance/cs/rows/R28/R28.csproj"]` | the row program exits 0 (tools/conformancerows prints PASS cs/R28) | `test/conformance/cs/rows/R28/Program.cs:1` |
+| `L.functional.roundtrip.cs-rows.r29` | C# conformance row R29: its self-contained program (test/conformance/cs/rows/R29) builds against the generated units and passes its law | `case: R29`<br>`driver: test/conformance/cs/rows/R29/R29.csproj`<br>`files: ["test/conformance/cs/rows/R29/Program.cs","test/conformance/cs/rows/R29/R29.csproj"]` | the row program exits 0 (tools/conformancerows prints PASS cs/R29) | `test/conformance/cs/rows/R29/Program.cs:1` |
+| `L.functional.roundtrip.cs-rows.scalardefaultsvaliddata` | C# conformance row ScalarDefaultsValidData: its self-contained program (test/conformance/cs/rows/ScalarDefaultsValidData) builds against the generated units and passes its law | `case: ScalarDefaultsValidData`<br>`driver: test/conformance/cs/rows/ScalarDefaultsValidData/ScalarDefaultsValidData.csproj`<br>`inputs.files` (145 bytes, held in the registry row's `inputs.files`) | the row program exits 0 (tools/conformancerows prints PASS cs/ScalarDefaultsValidData) | `test/conformance/cs/rows/ScalarDefaultsValidData/Program.cs:1` |
+| `L.functional.roundtrip.cs-rows.w14` | C# conformance row W14: its self-contained program (test/conformance/cs/rows/W14) builds against the generated units and passes its law | `case: W14`<br>`driver: test/conformance/cs/rows/W14/W14.csproj`<br>`files: ["test/conformance/cs/rows/W14/Program.cs","test/conformance/cs/rows/W14/W14.csproj"]` | the row program exits 0 (tools/conformancerows prints PASS cs/W14) | `test/conformance/cs/rows/W14/Program.cs:1` |
+
 #### `roundtrip` family `defaults-identity`, 1 test
 
 | full name | checks | inputs | expected result | source |
@@ -988,12 +994,6 @@ read bytes, write them back, same bytes.
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.roundtrip.degenerate128.degenerate128-fixed-reads-back-as-pair` | a degenerate 128-bit fixed value reads back as a pair | `inputs.tests` (109 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/squirrel/degenerate128_test.go:63` |
-
-#### `roundtrip` family `descriptordoc`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.roundtrip.descriptordoc.descriptor-doc-and-tags` | reported descriptors give every table, type, field and vocabulary row its declared doc and tags | `tests: {"java":{"package":"./internal/codegen/javatable","test":"TestJavaDescriptorDocAndTags"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/descriptordoc_test.go:236` |
 
 #### `roundtrip` family `duplicate-linear`, 1 test
 
@@ -1037,6 +1037,49 @@ read bytes, write them back, same bytes.
 |---|---|---|---|---|
 | `L.functional.roundtrip.feature-full-controls.feature-full-cook-matches-the-tool` | the cook writer produces the tool's bytes for the feature-full unit, bounded text list element records and unbounded text included. | `inputs.tests` (98 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/luautable/feature_full_controls_test.go:130` |
 | `L.functional.roundtrip.feature-full-controls.text-list-elements-from-the-text-write-back` | a text list read from text and written back keeps each element's own length and reproduces the expected value text | `inputs.tests` (105 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/luautable/feature_full_controls_test.go:215` |
+
+#### `roundtrip` family `feature-witnesses`, 38 tests
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.functional.roundtrip.feature-witnesses.array-root` | feature-witness corpus array-root: the cases its files name read and write as the corpus pins, answered by each language's own Go test | `inputs.answers` (197 bytes, held in the registry row's `inputs.answers`)<br>`dir: testdata/conformance/feature-witnesses/array-root`<br>`inputs.files` (129 bytes, held in the registry row's `inputs.files`) | the language's Go test(s) named in inputs.answers pass; a language with none is red by name | `testdata/conformance/feature-witnesses/array-root/cases.json:1` |
+| `L.functional.roundtrip.feature-witnesses.array-root-closure` | feature-witness corpus array-root/closure: the cases its files name read and write as the corpus pins, answered by each language's own Go test | `inputs.answers` (204 bytes, held in the registry row's `inputs.answers`)<br>`dir: testdata/conformance/feature-witnesses/array-root/closure`<br>`inputs.files` (145 bytes, held in the registry row's `inputs.files`) | the language's Go test(s) named in inputs.answers pass; a language with none is red by name | `testdata/conformance/feature-witnesses/array-root/closure/cases.json:1` |
+| `L.functional.roundtrip.feature-witnesses.blob-shared-report` | feature-witness corpus blob-shared-report: the cases its files name read and write as the corpus pins, answered by each language's own Go test | `answers: {"java":["TestJavaBlobSharedReportCensus"],"js":["TestJavaScriptBlobSharedReportCensus"]}`<br>`dir: testdata/conformance/feature-witnesses/blob-shared-report`<br>`inputs.files` (145 bytes, held in the registry row's `inputs.files`) | the language's Go test(s) named in inputs.answers pass; a language with none is red by name | `testdata/conformance/feature-witnesses/blob-shared-report/cases.json:1` |
+| `L.functional.roundtrip.feature-witnesses.compressed-negzero-writers` | feature-witness corpus compressed-negzero-writers: the cases its files name read and write as the corpus pins, answered by each language's own Go test | `inputs.answers` (137 bytes, held in the registry row's `inputs.answers`)<br>`dir: testdata/conformance/feature-witnesses/compressed-negzero-writers`<br>`inputs.files` (1001 bytes, held in the registry row's `inputs.files`) | the language's Go test(s) named in inputs.answers pass; a language with none is red by name | `testdata/conformance/feature-witnesses/compressed-negzero-writers/cases.tsv:1` |
+| `L.functional.roundtrip.feature-witnesses.compressed-range-write` | feature-witness corpus compressed-range-write: the cases its files name read and write as the corpus pins, answered by each language's own Go test | `answers: {"elixir":["TestElixirCompressedRangeWriteCorpus","TestElixirFixedCompressedStoresAreRanged"]}`<br>`dir: testdata/conformance/feature-witnesses/compressed-range-write`<br>`inputs.files` (794 bytes, held in the registry row's `inputs.files`) | the language's Go test(s) named in inputs.answers pass; a language with none is red by name | `testdata/conformance/feature-witnesses/compressed-range-write/cases.tsv:1` |
+| `L.functional.roundtrip.feature-witnesses.counted-minimum-message` | feature-witness corpus counted-minimum-message: the cases its files name read and write as the corpus pins, answered by each language's own Go test | `answers: {"c":["TestCCountedMinimumMessageCorpus"],"lobster":["TestLobsterCountedMinimumMessageCorpus"]}`<br>`dir: testdata/conformance/feature-witnesses/counted-minimum-message`<br>`inputs.files` (411 bytes, held in the registry row's `inputs.files`) | the language's Go test(s) named in inputs.answers pass; a language with none is red by name | `testdata/conformance/feature-witnesses/counted-minimum-message/cases.tsv:1` |
+| `L.functional.roundtrip.feature-witnesses.counted-minimum-shapes` | feature-witness corpus counted-minimum-shapes: the cases its files name read and write as the corpus pins, answered by each language's own Go test | `answers: {"rust":["TestRustCountedMinUnionAndPointerCarried"]}`<br>`dir: testdata/conformance/feature-witnesses/counted-minimum-shapes`<br>`inputs.files` (536 bytes, held in the registry row's `inputs.files`) | the language's Go test(s) named in inputs.answers pass; a language with none is red by name | `testdata/conformance/feature-witnesses/counted-minimum-shapes/cases.tsv:1` |
+| `L.functional.roundtrip.feature-witnesses.declared-deprecated-enum` | feature-witness corpus declared-deprecated-enum: the cases its files name read and write as the corpus pins, answered by each language's own Go test | `inputs.answers` (175 bytes, held in the registry row's `inputs.answers`)<br>`dir: testdata/conformance/feature-witnesses/declared-deprecated-enum`<br>`inputs.files` (156 bytes, held in the registry row's `inputs.files`) | the language's Go test(s) named in inputs.answers pass; a language with none is red by name | `testdata/conformance/feature-witnesses/declared-deprecated-enum/cases.txt:1` |
+| `L.functional.roundtrip.feature-witnesses.fixed-load-capacity` | feature-witness corpus fixed-load-capacity: the cases its files name read and write as the corpus pins, answered by each language's own Go test | `answers: {"go":["TestGoFixedLoadCapacityWitness"],"python":["TestPythonFixedLoadCapacityWitness"]}`<br>`dir: testdata/conformance/feature-witnesses/fixed-load-capacity`<br>`files: ["testdata/conformance/feature-witnesses/fixed-load-capacity/cases.txt"]` | the language's Go test(s) named in inputs.answers pass; a language with none is red by name | `testdata/conformance/feature-witnesses/fixed-load-capacity/cases.txt:1` |
+| `L.functional.roundtrip.feature-witnesses.forms` | feature-witness corpus forms: the cases its files name read and write as the corpus pins, answered by each language's own Go test | `answers: {"rust":["TestRustDeclaredFormsMixedClosure"]}`<br>`dir: testdata/conformance/feature-witnesses/forms`<br>`inputs.files` (187 bytes, held in the registry row's `inputs.files`) | the language's Go test(s) named in inputs.answers pass; a language with none is red by name | `testdata/conformance/feature-witnesses/forms/Allowed.schema:1` |
+| `L.functional.roundtrip.feature-witnesses.integrity-forms` | feature-witness corpus integrity-forms: the cases its files name read and write as the corpus pins, answered by each language's own Go test | `answers: {"dart":["TestDartIntegrityNative"],"rust":["TestRustIntegrityNative"]}`<br>`dir: testdata/conformance/feature-witnesses/integrity-forms`<br>`inputs.files` (298 bytes, held in the registry row's `inputs.files`) | the language's Go test(s) named in inputs.answers pass; a language with none is red by name | `testdata/conformance/feature-witnesses/integrity-forms/Probe.schema:1` |
+| `L.functional.roundtrip.feature-witnesses.map-value-shape` | feature-witness corpus map-value-shape: the cases its files name read and write as the corpus pins, answered by each language's own Go test | `answers: {"js":["TestJavaScriptMapValueShapeCorpus"],"rust":["TestRustMapValueShapeNative"]}`<br>`dir: testdata/conformance/feature-witnesses/map-value-shape`<br>`inputs.files` (139 bytes, held in the registry row's `inputs.files`) | the language's Go test(s) named in inputs.answers pass; a language with none is red by name | `testdata/conformance/feature-witnesses/map-value-shape/cases.json:1` |
+| `L.functional.roundtrip.feature-witnesses.message-integrity` | feature-witness corpus message-integrity: the cases its files name read and write as the corpus pins, answered by each language's own Go test | `dir: testdata/conformance/feature-witnesses/message-integrity`<br>`inputs.files` (212 bytes, held in the registry row's `inputs.files`) | the language's Go test(s) named in inputs.answers pass; a language with none is red by name | `testdata/conformance/feature-witnesses/message-integrity/cases.json:1` |
+| `L.functional.roundtrip.feature-witnesses.one-sided-range` | feature-witness corpus one-sided-range: the cases its files name read and write as the corpus pins, answered by each language's own Go test | `inputs.answers` (125 bytes, held in the registry row's `inputs.answers`)<br>`dir: testdata/conformance/feature-witnesses/one-sided-range`<br>`inputs.files` (138 bytes, held in the registry row's `inputs.files`) | the language's Go test(s) named in inputs.answers pass; a language with none is red by name | `testdata/conformance/feature-witnesses/one-sided-range/cases.tsv:1` |
+| `L.functional.roundtrip.feature-witnesses.optional-map` | feature-witness corpus optional-map: the cases its files name read and write as the corpus pins, answered by each language's own Go test | `inputs.answers` (198 bytes, held in the registry row's `inputs.answers`)<br>`dir: testdata/conformance/feature-witnesses/optional-map`<br>`inputs.files` (830 bytes, held in the registry row's `inputs.files`) | the language's Go test(s) named in inputs.answers pass; a language with none is red by name | `testdata/conformance/feature-witnesses/optional-map/Closure.schema:1` |
+| `L.functional.roundtrip.feature-witnesses.pointer-targets` | feature-witness corpus pointer-targets: the cases its files name read and write as the corpus pins, answered by each language's own Go test | `inputs.answers` (285 bytes, held in the registry row's `inputs.answers`)<br>`dir: testdata/conformance/feature-witnesses/pointer-targets`<br>`inputs.files` (139 bytes, held in the registry row's `inputs.files`) | the language's Go test(s) named in inputs.answers pass; a language with none is red by name | `testdata/conformance/feature-witnesses/pointer-targets/cases.json:1` |
+| `L.functional.roundtrip.feature-witnesses.region-closure` | feature-witness corpus region-closure: the cases its files name read and write as the corpus pins, answered by each language's own Go test | `answers: {"elixir":["TestRegionClosureElixir"]}`<br>`dir: testdata/conformance/feature-witnesses/region-closure`<br>`inputs.files` (137 bytes, held in the registry row's `inputs.files`) | the language's Go test(s) named in inputs.answers pass; a language with none is red by name | `testdata/conformance/feature-witnesses/region-closure/cases.json:1` |
+| `L.functional.roundtrip.feature-witnesses.required` | feature-witness corpus required: the cases its files name read and write as the corpus pins, answered by each language's own Go test | `answers: {"dart":["TestDartRequiredSharedPins"]}`<br>`dir: testdata/conformance/feature-witnesses/required`<br>`inputs.files` (566 bytes, held in the registry row's `inputs.files`) | the language's Go test(s) named in inputs.answers pass; a language with none is red by name | `testdata/conformance/feature-witnesses/required/Probe.schema:1` |
+| `L.functional.roundtrip.feature-witnesses.required-compressed-writers` | feature-witness corpus required/compressed-writers: the cases its files name read and write as the corpus pins, answered by each language's own Go test | `answers: {"rust":["TestRustCompressedVariableNative"]}`<br>`dir: testdata/conformance/feature-witnesses/required/compressed-writers`<br>`files: ["testdata/conformance/feature-witnesses/required/compressed-writers/Probe.schema"]` | the language's Go test(s) named in inputs.answers pass; a language with none is red by name | `testdata/conformance/feature-witnesses/required/compressed-writers/Probe.schema:1` |
+| `L.functional.roundtrip.feature-witnesses.required-cook-guard` | feature-witness corpus required/cook-guard: the cases its files name read and write as the corpus pins, answered by each language's own Go test | `answers: {"elixir":["TestRequiredCookGuardStorageElixir"]}`<br>`dir: testdata/conformance/feature-witnesses/required/cook-guard`<br>`inputs.files` (145 bytes, held in the registry row's `inputs.files`) | the language's Go test(s) named in inputs.answers pass; a language with none is red by name | `testdata/conformance/feature-witnesses/required/cook-guard/Probe.schema:1` |
+| `L.functional.roundtrip.feature-witnesses.required-default-writers` | feature-witness corpus required/default-writers: the cases its files name read and write as the corpus pins, answered by each language's own Go test | `answers: {"rust":["TestRustRequiredDefaultWritersNative"]}`<br>`dir: testdata/conformance/feature-witnesses/required/default-writers`<br>`inputs.files` (159 bytes, held in the registry row's `inputs.files`) | the language's Go test(s) named in inputs.answers pass; a language with none is red by name | `testdata/conformance/feature-witnesses/required/default-writers/Probe.schema:1` |
+| `L.functional.roundtrip.feature-witnesses.required-nested-guards` | feature-witness corpus required/nested-guards: the cases its files name read and write as the corpus pins, answered by each language's own Go test | `inputs.answers` (185 bytes, held in the registry row's `inputs.answers`)<br>`dir: testdata/conformance/feature-witnesses/required/nested-guards`<br>`inputs.files` (153 bytes, held in the registry row's `inputs.files`) | the language's Go test(s) named in inputs.answers pass; a language with none is red by name | `testdata/conformance/feature-witnesses/required/nested-guards/cases.json:1` |
+| `L.functional.roundtrip.feature-witnesses.required-range-writers` | feature-witness corpus required/range-writers: the cases its files name read and write as the corpus pins, answered by each language's own Go test | `answers: {"rust":["TestRustRequiredRangeWritersNative"]}`<br>`dir: testdata/conformance/feature-witnesses/required/range-writers`<br>`files: ["testdata/conformance/feature-witnesses/required/range-writers/Probe.schema"]` | the language's Go test(s) named in inputs.answers pass; a language with none is red by name | `testdata/conformance/feature-witnesses/required/range-writers/Probe.schema:1` |
+| `L.functional.roundtrip.feature-witnesses.required-rust-json` | feature-witness corpus required/rust-json: the cases its files name read and write as the corpus pins, answered by each language's own Go test | `answers: {"rust":["TestRustRequiredJSONNative"]}`<br>`dir: testdata/conformance/feature-witnesses/required/rust-json`<br>`inputs.files` (145 bytes, held in the registry row's `inputs.files`) | the language's Go test(s) named in inputs.answers pass; a language with none is red by name | `testdata/conformance/feature-witnesses/required/rust-json/cases.json:1` |
+| `L.functional.roundtrip.feature-witnesses.required-wire-presence` | feature-witness corpus required/wire-presence: the cases its files name read and write as the corpus pins, answered by each language's own Go test | `answers: {"rust":["TestRustRequiredWireReadNative"]}`<br>`dir: testdata/conformance/feature-witnesses/required/wire-presence`<br>`inputs.files` (153 bytes, held in the registry row's `inputs.files`) | the language's Go test(s) named in inputs.answers pass; a language with none is red by name | `testdata/conformance/feature-witnesses/required/wire-presence/cases.json:1` |
+| `L.functional.roundtrip.feature-witnesses.retained-replacement-fixed-table` | feature-witness corpus retained-replacement/fixed\_table: the cases its files name read and write as the corpus pins, answered by each language's own Go test | `answers: {"dart":["TestDartRetainedInlineReplacement"],"elixir":["TestRetainedReplacementCorpusElixir"]}`<br>`dir: testdata/conformance/feature-witnesses/retained-replacement/fixed_table`<br>`inputs.files` (173 bytes, held in the registry row's `inputs.files`) | the language's Go test(s) named in inputs.answers pass; a language with none is red by name | `testdata/conformance/feature-witnesses/retained-replacement/fixed_table/cases.json:1` |
+| `L.functional.roundtrip.feature-witnesses.retained-replacement-fixed-union` | feature-witness corpus retained-replacement/fixed\_union: the cases its files name read and write as the corpus pins, answered by each language's own Go test | `answers: {"dart":["TestDartRetainedInlineReplacement"],"elixir":["TestRetainedReplacementCorpusElixir"]}`<br>`dir: testdata/conformance/feature-witnesses/retained-replacement/fixed_union`<br>`inputs.files` (173 bytes, held in the registry row's `inputs.files`) | the language's Go test(s) named in inputs.answers pass; a language with none is red by name | `testdata/conformance/feature-witnesses/retained-replacement/fixed_union/cases.json:1` |
+| `L.functional.roundtrip.feature-witnesses.retained-replacement-keyed-table` | feature-witness corpus retained-replacement/keyed\_table: the cases its files name read and write as the corpus pins, answered by each language's own Go test | `answers: {"dart":["TestDartRetainedInlineReplacement"],"elixir":["TestRetainedReplacementCorpusElixir"]}`<br>`dir: testdata/conformance/feature-witnesses/retained-replacement/keyed_table`<br>`inputs.files` (173 bytes, held in the registry row's `inputs.files`) | the language's Go test(s) named in inputs.answers pass; a language with none is red by name | `testdata/conformance/feature-witnesses/retained-replacement/keyed_table/cases.json:1` |
+| `L.functional.roundtrip.feature-witnesses.retained-replacement-table` | feature-witness corpus retained-replacement/table: the cases its files name read and write as the corpus pins, answered by each language's own Go test | `answers: {"dart":["TestDartRetainedInlineReplacement"],"elixir":["TestRetainedReplacementCorpusElixir"]}`<br>`dir: testdata/conformance/feature-witnesses/retained-replacement/table`<br>`inputs.files` (161 bytes, held in the registry row's `inputs.files`) | the language's Go test(s) named in inputs.answers pass; a language with none is red by name | `testdata/conformance/feature-witnesses/retained-replacement/table/cases.json:1` |
+| `L.functional.roundtrip.feature-witnesses.retained-replacement-union` | feature-witness corpus retained-replacement/union: the cases its files name read and write as the corpus pins, answered by each language's own Go test | `answers: {"dart":["TestDartRetainedInlineReplacement"],"elixir":["TestRetainedReplacementCorpusElixir"]}`<br>`dir: testdata/conformance/feature-witnesses/retained-replacement/union`<br>`inputs.files` (161 bytes, held in the registry row's `inputs.files`) | the language's Go test(s) named in inputs.answers pass; a language with none is red by name | `testdata/conformance/feature-witnesses/retained-replacement/union/cases.json:1` |
+| `L.functional.roundtrip.feature-witnesses.text-list-total` | feature-witness corpus text-list-total: the cases its files name read and write as the corpus pins, answered by each language's own Go test | `answers: {"dart":["TestDartTextListTotalNative"],"rust":["TestRustTextTotalNative"]}`<br>`dir: testdata/conformance/feature-witnesses/text-list-total`<br>`inputs.files` (210 bytes, held in the registry row's `inputs.files`) | the language's Go test(s) named in inputs.answers pass; a language with none is red by name | `testdata/conformance/feature-witnesses/text-list-total/Probe.schema:1` |
+| `L.functional.roundtrip.feature-witnesses.text-lists` | feature-witness corpus text-lists: the cases its files name read and write as the corpus pins, answered by each language's own Go test | `answers: {"rust":["TestRustTextListsNative"]}`<br>`dir: testdata/conformance/feature-witnesses/text-lists`<br>`inputs.files` (130 bytes, held in the registry row's `inputs.files`) | the language's Go test(s) named in inputs.answers pass; a language with none is red by name | `testdata/conformance/feature-witnesses/text-lists/cases.jsonl:1` |
+| `L.functional.roundtrip.feature-witnesses.timestamp` | feature-witness corpus timestamp: the cases its files name read and write as the corpus pins, answered by each language's own Go test | `inputs.answers` (194 bytes, held in the registry row's `inputs.answers`)<br>`dir: testdata/conformance/feature-witnesses/timestamp`<br>`inputs.files` (127 bytes, held in the registry row's `inputs.files`) | the language's Go test(s) named in inputs.answers pass; a language with none is red by name | `testdata/conformance/feature-witnesses/timestamp/cases.json:1` |
+| `L.functional.roundtrip.feature-witnesses.timestamp-rust-boundaries` | feature-witness corpus timestamp/rust-boundaries: the cases its files name read and write as the corpus pins, answered by each language's own Go test | `inputs.answers` (159 bytes, held in the registry row's `inputs.answers`)<br>`dir: testdata/conformance/feature-witnesses/timestamp/rust-boundaries`<br>`inputs.files` (159 bytes, held in the registry row's `inputs.files`) | the language's Go test(s) named in inputs.answers pass; a language with none is red by name | `testdata/conformance/feature-witnesses/timestamp/rust-boundaries/cases.json:1` |
+| `L.functional.roundtrip.feature-witnesses.unbounded-text-complete` | feature-witness corpus unbounded-text/complete: the cases its files name read and write as the corpus pins, answered by each language's own Go test | `answers: {"rust":["TestRustUnboundedTextNative"]}`<br>`dir: testdata/conformance/feature-witnesses/unbounded-text/complete`<br>`files: ["testdata/conformance/feature-witnesses/unbounded-text/complete/Probe.schema"]` | the language's Go test(s) named in inputs.answers pass; a language with none is red by name | `testdata/conformance/feature-witnesses/unbounded-text/complete/Probe.schema:1` |
+| `L.functional.roundtrip.feature-witnesses.unbounded-text-cross-file` | feature-witness corpus unbounded-text/cross-file: the cases its files name read and write as the corpus pins, answered by each language's own Go test | `dir: testdata/conformance/feature-witnesses/unbounded-text/cross-file`<br>`inputs.files` (159 bytes, held in the registry row's `inputs.files`) | the language's Go test(s) named in inputs.answers pass; a language with none is red by name | `testdata/conformance/feature-witnesses/unbounded-text/cross-file/Note.schema:1` |
+| `L.functional.roundtrip.feature-witnesses.unbounded-text-list` | feature-witness corpus unbounded-text/list: the cases its files name read and write as the corpus pins, answered by each language's own Go test | `dir: testdata/conformance/feature-witnesses/unbounded-text/list`<br>`inputs.files` (216 bytes, held in the registry row's `inputs.files`) | the language's Go test(s) named in inputs.answers pass; a language with none is red by name | `testdata/conformance/feature-witnesses/unbounded-text/list/Probe.schema:1` |
+| `L.functional.roundtrip.feature-witnesses.unbounded-text-map` | feature-witness corpus unbounded-text/map: the cases its files name read and write as the corpus pins, answered by each language's own Go test | `dir: testdata/conformance/feature-witnesses/unbounded-text/map`<br>`inputs.files` (213 bytes, held in the registry row's `inputs.files`) | the language's Go test(s) named in inputs.answers pass; a language with none is red by name | `testdata/conformance/feature-witnesses/unbounded-text/map/Probe.schema:1` |
 
 #### `roundtrip` family `finite`, 1 test
 
@@ -1109,12 +1152,6 @@ read bytes, write them back, same bytes.
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.roundtrip.fixed-proof-suite.fixed-batch4097-roundtrip` | 4097 fixed records save and read back with no internal cap and refuse only when the caller supplies a smaller capacity | `inputs.tests` (192 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/luatable/fixed_proof_suite_test.go:108` |
-
-#### `roundtrip` family `fixed-proof-unions-optionals`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.roundtrip.fixed-proof-unions-optionals.fixed-proof-unions-optionals` | union and optional fixed-table rows round-trip and agree with the reference in values and evolution | `inputs.tests` (193 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/pythontable/fixed_proof_unions_optionals_test.go:105` |
 
 #### `roundtrip` family `fixed-proof-values`, 1 test
 
@@ -1316,11 +1353,10 @@ read bytes, write them back, same bytes.
 |---|---|---|---|---|
 | `L.functional.roundtrip.fixedroadmap-t19.fixed-roadmap-t19-payload-free-arms` | payload-free union arms round trip through the generated save and load, the tag landing and the arm storage staying zero | `inputs.tests` (182 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedroadmap_t19_test.go:72` |
 
-#### `roundtrip` family `fixedroottext`, 2 tests
+#### `roundtrip` family `fixedroottext`, 1 test
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.roundtrip.fixedroottext.fixed-root-text-and-cook` | a fixed root's text form equals the committed text and cooks back to the same value | `tests: {"rust":{"package":"./internal/codegen/rusttable","test":"TestRustFixedRootTextAndCook"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/rusttable/fixedroottext_test.go:19` |
 | `L.functional.roundtrip.fixedroottext.fixed-root-text-form` | a fixed root reads from its file, writes its text form equal to the committed JSON, and reads that JSON back to the same file | `tests: {"java":{"package":"./internal/codegen/javatable","test":"TestJavaFixedRootTextForm"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/fixedroottext_test.go:24` |
 
 #### `roundtrip` family `float-default-width`, 1 test
@@ -1669,12 +1705,11 @@ read bytes, write them back, same bytes.
 | `L.functional.roundtrip.maps.maps-match-the-wire` | every map instance row of the corpus loads then saves byte for byte, and the duplicate, widened and past-length cases report the reference counters | `inputs.tests` (97 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/squirreltable/maps_test.go:152` |
 | `L.functional.roundtrip.maps.region-maps` | maps with varied key and value kinds, nested maps, lists, pointers and fixed tables, save and load back unchanged | `tests: {"go":{"package":"./internal/codegen/gotable","test":"TestRegionMaps"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/maps_test.go:5` |
 
-#### `roundtrip` family `mapsarms`, 3 tests
+#### `roundtrip` family `mapsarms`, 2 tests
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.roundtrip.mapsarms.maps-and-union-arms-on-the-table-wire` | maps, union arms, optionals, keyed arrays and wide scalars on the table wire match the reference engine byte for byte | `inputs.tests` (499 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/rusttable/mapsarms_test.go:40` |
-| `L.functional.roundtrip.mapsarms.variable-map-corpus` | the variable-class map corpus fixtures load and save as the reference does | `tests: {"java":{"package":"./internal/codegen/javatable","test":"TestJavaVariableMapCorpus"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/mapsarms_test.go:284` |
 | `L.functional.roundtrip.mapsarms.variable-map-values` | variable maps of table, pointer and list values load and save as the reference does | `tests: {"java":{"package":"./internal/codegen/javatable","test":"TestJavaVariableMapValues"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/mapsarms_test.go:244` |
 
 #### `roundtrip` family `mapsjson`, 1 test
@@ -2394,6 +2429,16 @@ read bytes, write them back, same bytes.
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.roundtrip.textfixedexact.text-fixed-point-token-exact` | the hand-editable text form over fixed-point fields reads an in-range whole number, refuses a fraction finer than the field's resolution, and agrees with the reference engine on verdict and landed value | `tests: {"cpp":{"package":"./internal/codegen/cpptable","test":"TestCppTextFixedPointTokenExact"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/cpptable/textfixedexact_test.go:104` |
+
+#### `roundtrip` family `textform`, 5 tests
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.functional.roundtrip.textform.kinds` | textform kinds: the input reads to its typed-value oracle and rewrites byte for byte | `case: kinds`<br>`inputs.files` (180 bytes, held in the registry row's `inputs.files`) | the leg's value equals the .value.json oracle (with the contract defaults) and its rewrite equals the .rewrite.sexp bytes | `test/conformance/textform/contract.json:1` |
+| `L.functional.roundtrip.textform.layout` | textform layout: the input reads to its typed-value oracle and rewrites byte for byte | `case: layout`<br>`inputs.files` (275 bytes, held in the registry row's `inputs.files`) | the leg's value equals the .value.json oracle (with the contract defaults) and its rewrite equals the .rewrite.sexp bytes | `test/conformance/textform/contract.json:1` |
+| `L.functional.roundtrip.textform.roadmap` | textform roadmap: the input reads to its typed-value oracle and rewrites byte for byte | `case: roadmap`<br>`inputs.files` (280 bytes, held in the registry row's `inputs.files`) | the leg's value equals the .value.json oracle (with the contract defaults) and its rewrite equals the .rewrite.sexp bytes | `test/conformance/textform/contract.json:1` |
+| `L.functional.roundtrip.textform.unbounded` | textform unbounded: the input reads to its typed-value oracle and rewrites byte for byte | `case: unbounded`<br>`inputs.files` (143 bytes, held in the registry row's `inputs.files`) | the leg's value equals the .value.json oracle (with the contract defaults) and its rewrite equals the .rewrite.sexp bytes | `test/conformance/textform/contract.json:1` |
+| `L.functional.roundtrip.textform.variable` | textform variable: the input reads to its typed-value oracle and rewrites byte for byte | `case: variable`<br>`inputs.files` (240 bytes, held in the registry row's `inputs.files`) | the leg's value equals the .value.json oracle (with the contract defaults) and its rewrite equals the .rewrite.sexp bytes | `test/conformance/textform/contract.json:1` |
 
 #### `roundtrip` family `textlist-construct`, 1 test
 
@@ -3309,12 +3354,6 @@ a value written from scratch gives exactly the expected bytes.
 |---|---|---|---|---|
 | `L.functional.encode.cookdeadslots.cook-write-dead-slots-are-zero` | cook writing stores dead slots as zero. | `tests: {"lua":{"package":"./internal/codegen/luatable","test":"TestLuaCookWriteDeadSlotsAreZero"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/luatable/cookdeadslots_test.go:33` |
 
-#### `encode` family `cookextent`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.encode.cookextent.cook-map-writer-holds-the-sort` | the cook map writer holds entries sorted, so a value with reversed map entries cooks to the same golden bytes in both orders | `inputs.tests` (288 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/cookextent_test.go:106` |
-
 #### `encode` family `cookfixed`, 1 test
 
 | full name | checks | inputs | expected result | source |
@@ -4169,6 +4208,12 @@ bytes read give exactly the expected value.
 | `L.functional.decode.forgeryfuzz.cook-check-whole-map-keys` | cook-check accepts a cook with map regions of each key type | `tests: {"luau":{"package":"./internal/codegen/luautable","test":"TestLuauCookCheckWholeMapKeys"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/luautable/forgeryfuzz_test.go:733` |
 | `L.functional.decode.forgeryfuzz.cook-check-whole-unreachable-node` | cook-check also covers an attributed table unreachable from the root | `inputs.tests` (98 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/luautable/forgeryfuzz_test.go:664` |
 
+#### `decode` family `goose-leg`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.functional.decode.goose-leg.tabledemo` | goose tabledemo units glue: the leg's JSON conformance run (test/conformance/goose/json-conformance) answers the tabledemo roots through this glue; its files also index the goose leg's harness files where they live | `case: tabledemo`<br>`driver: test/conformance/goose/units/tabledemo.goose`<br>`inputs.files` (432 bytes, held in the registry row's `inputs.files`) | make tables-goose-json-conformance exits 0: every goose json-read, json-write and json-hostile answer equals the corpus's | `test/conformance/goose/units/tabledemo.goose:1` |
+
 #### `decode` family `id-first-use`, 2 tests
 
 | full name | checks | inputs | expected result | source |
@@ -4638,12 +4683,11 @@ writing a bad value is refused (debug assert in the assert legs; every build in 
 | `L.functional.write-refusal.blobnamedtwice.blob-named-twice-amplification` | a graph of 4096 slots naming one 64 KiB blob is refused by every writer and every read without copying the blob per slot. | `tests: {"go":{"package":"./internal/codegen/gotable","test":"TestBlobNamedTwiceAmplification"}}` | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `internal/codegen/gotable/blobnamedtwice_test.go:102` |
 | `L.functional.write-refusal.blobnamedtwice.blob-named-twice-writers` | every writer refuses a graph whose two slots name one blob, while the same value with two distinct blobs saves and round-trips. | `tests: {"go":{"package":"./internal/codegen/gotable","test":"TestBlobNamedTwiceWriters"}}` | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `internal/codegen/gotable/blobnamedtwice_test.go:73` |
 
-#### `write-refusal` family `blobshared`, 2 tests
+#### `write-refusal` family `blobshared`, 1 test
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.write-refusal.blobshared.blob-named-twice-is-blob-shared` | every writer refuses a graph whose two slots name one blob record by the name blob\_shared, while two distinct blobs with equal bytes save as two records. | `tests: {"lua":{"package":"./internal/codegen/luatable","test":"TestLuaBlobNamedTwiceIsBlobShared"}}` | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `internal/codegen/luatable/blobshared_test.go:20` |
-| `L.functional.write-refusal.blobshared.writers-refuse-a-shared-blob` | every writer refuses a value whose two blob slots hold one blob, while equal but distinct blobs are two records and save. | `tests: {"java":{"package":"./internal/codegen/javatable","test":"TestJavaWritersRefuseASharedBlob"}}` | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `internal/codegen/javatable/blobshared_test.go:24` |
 
 #### `write-refusal` family `block-build`, 1 test
 
@@ -5227,6 +5271,12 @@ writing a bad value is refused (debug assert in the assert legs; every build in 
 |---|---|---|---|---|
 | `L.functional.write-refusal.countmin.variable-save-refuses-count-below-min-and-arm-past-bound` | a variable save refuses a counted array below its minimum and a union arm past its bound | `inputs.tests` (128 bytes, held in the registry row's `inputs.tests`) | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `internal/codegen/squirreltable/countmin_test.go:51` |
 
+#### `write-refusal` family `cs-rows`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.functional.write-refusal.cs-rows.storage-debug` | C# storage-debug: the debug storage writer asserts each bad write it is handed (make write-refusal-storage-debug-cs) | `case: storage-debug`<br>`driver: test/conformance/cs/storage-debug/StorageDebug.csproj`<br>`inputs.files` (112 bytes, held in the registry row's `inputs.files`) | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `test/conformance/cs/storage-debug/WriteChecks.schema:1` |
+
 #### `write-refusal` family `csunity-verdicts`, 1 test
 
 | full name | checks | inputs | expected result | source |
@@ -5343,6 +5393,12 @@ writing a bad value is refused (debug assert in the assert legs; every build in 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.write-refusal.flatwire.table-save-refuses-a-cycle` | a table save writes a chain but refuses a node that names itself or nodes that name each other, as a cycle | `tests: {"moo":{"package":"./internal/codegen/mootable","test":"TestMooTableSaveRefusesACycle"}}` | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `internal/codegen/mootable/flatwire_test.go:53` |
+
+#### `write-refusal` family `goose-leg`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.functional.write-refusal.goose-leg.writerefusalpacket` | goose write-refusal packet probe: the generated packet writer refuses each bad value the probe hands it | `case: writerefusalpacket`<br>`driver: test/conformance/goose/writerefusalpacket/probe.goose` | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `test/conformance/goose/writerefusalpacket/probe.goose:1` |
 
 #### `write-refusal` family `id-cap`, 2 tests
 
@@ -5947,12 +6003,6 @@ hostile bytes are refused in every build, with the named reason.
 | `L.functional.load-refusal.bit-phase.hostile-trailpad-p56` | bit-phase sweep Phase56 hostile\_trailpad\_p56.bin: the oracle's hostile wire is refused | `driver: test/verify-bitphase/{lang}/driver`<br>`file: hostile_trailpad_p56.bin`<br>`files: ["test/verify-bitphase/BitPhase.schema"]`<br>`kind: refuse`<br>`root: Phase56`<br>`schema: test/verify-bitphase/BitPhase.schema` | refused on load, in every build (verdict only) | `test/verify-bitphase/main.go requiredRoster` |
 | `L.functional.load-refusal.bit-phase.hostile-trailpad-p63` | bit-phase sweep Phase63 hostile\_trailpad\_p63.bin: the oracle's hostile wire is refused | `driver: test/verify-bitphase/{lang}/driver`<br>`file: hostile_trailpad_p63.bin`<br>`files: ["test/verify-bitphase/BitPhase.schema"]`<br>`kind: refuse`<br>`root: Phase63`<br>`schema: test/verify-bitphase/BitPhase.schema` | refused on load, in every build (verdict only) | `test/verify-bitphase/main.go requiredRoster` |
 | `L.functional.load-refusal.bit-phase.hostile-trailpad-p7` | bit-phase sweep Phase7 hostile\_trailpad\_p7.bin: the oracle's hostile wire is refused | `driver: test/verify-bitphase/{lang}/driver`<br>`file: hostile_trailpad_p7.bin`<br>`files: ["test/verify-bitphase/BitPhase.schema"]`<br>`kind: refuse`<br>`root: Phase7`<br>`schema: test/verify-bitphase/BitPhase.schema` | refused on load, in every build (verdict only) | `test/verify-bitphase/main.go requiredRoster` |
-
-#### `load-refusal` family `bits-width-clamp`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.load-refusal.bits-width-clamp.bits-field-and-array-width-clamp` | a bits(N) field or array element whose wire value exceeds its width refuses the whole load on the plain and retaining reads. | `tests: {"java":{"package":"./internal/codegen/javatable","test":"TestBitsFieldAndArrayWidthClampJava"}}` | refused on load, in every build (verdict only) | `internal/codegen/javatable/bits_width_clamp_test.go:23` |
 
 #### `load-refusal` family `bitspastwidth`, 1 test
 
@@ -6922,12 +6972,11 @@ hostile bytes are refused in every build, with the named reason.
 |---|---|---|---|---|
 | `L.functional.load-refusal.depthmeasure.depth-load-measure-covers-framing` | the load measure equals the reference measure on a wire whose arm kind byte was changed, and the load refuses the whole wire as the reference does | `inputs.tests` (100 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/jstable/depthmeasure_test.go:25` |
 
-#### `load-refusal` family `discard`, 4 tests
+#### `load-refusal` family `discard`, 3 tests
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.load-refusal.discard.cyclic-wire-is-refused` | a cyclic wire is refused on every load path, including cycles through list, map and false-guard slots, while acyclic twins load | `inputs.tests` (163 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/ctable/discard_test.go:631` |
-| `L.functional.load-refusal.discard.damage-discards-the-whole-load` | damage discards the whole load, so every load entry point refuses and hands back nothing it decoded, only no value or declared defaults, with any retention store empty | `inputs.tests` (743 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/gotable/discard_test.go:101` |
 | `L.functional.load-refusal.discard.fixed-refusal-hands-back-nothing` | a refused fixed-form batch read leaves earlier records at their declared defaults and the report counters unchanged | `tests: {"cpp":{"package":"./internal/codegen/cpptable","test":"TestFixedRefusalHandsBackNothingCPP"}}` | refused on load, in every build (verdict only) | `internal/codegen/cpptable/discard_test.go:228` |
 | `L.functional.load-refusal.discard.refused-loads-hand-back-nothing` | a refused load such as a non-finite float leaves the builder root at defaults and the retaining store empty even with an unknown field kept | `tests: {"cpp":{"package":"./internal/codegen/cpptable","test":"TestRefusedLoadsHandBackNothingCPP"}}` | refused on load, in every build (verdict only) | `internal/codegen/cpptable/discard_test.go:174` |
 
@@ -7275,12 +7324,6 @@ hostile bytes are refused in every build, with the named reason.
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.load-refusal.fixedform-strict.fixed-plain-read-is-strict` | the plain fixed read refuses an unlawful lineage entry as layout malformed, and so does the tolerant walk, with no counter moved | `tests: {"luau":{"package":"./internal/codegen/luautable","test":"TestLuauFixedPlainReadIsStrict"}}` | refused on load, in every build (verdict only) | `internal/codegen/luautable/fixedform_strict_test.go:22` |
-
-#### `load-refusal` family `fixedform-under-20-bytes`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.load-refusal.fixedform-under-20-bytes.fixed-form-under20-bytes` | a fixed reader refuses a file shorter than the 20-byte fixed-form header: refused, -1 returned, every counter zero and nothing landed (the recommended name is truncated, and the form has no malformed flag) | `inputs.tests` (753 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/gotable/fixedform_under_20_bytes_test.go:17` |
 
 #### `load-refusal` family `fixedguard`, 3 tests
 
@@ -7671,12 +7714,6 @@ hostile bytes are refused in every build, with the named reason.
 |---|---|---|---|---|
 | `L.functional.load-refusal.keyedbodyexact.keyed-body-ends-at-its-last-slot` | a reader refuses an enum-keyed array body with bytes left after its last counted pair | `inputs.tests` (101 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/elixirtable/keyedbodyexact_test.go:22` |
 
-#### `load-refusal` family `keyedcountextreme`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.load-refusal.keyedcountextreme.fix-keyed-count-extreme` | a reader refuses a keyed body whose element count is 2^64-1, comparing the count unsigned | `tests: {"java":{"package":"./internal/codegen/javatable","test":"TestJavaFixKeyedCountExtreme"}}` | refused on load, in every build (verdict only) | `internal/codegen/javatable/keyedcountextreme_test.go:26` |
-
 #### `load-refusal` family `keyedslot`, 1 test
 
 | full name | checks | inputs | expected result | source |
@@ -7694,12 +7731,6 @@ hostile bytes are refused in every build, with the named reason.
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.load-refusal.layoutcontract.block-layout-contract-refuses-a-disagreeing-runtime` | a runtime whose struct layout disagrees with the compiler-derived layout is refused at initialisation naming the field | `inputs.tests` (106 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/gotable/layoutcontract_test.go:41` |
-
-#### `load-refusal` family `listcountpastbody`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.load-refusal.listcountpastbody.fix-list-count-past-body-in-map-value` | a reader refuses a list count past its body inside a map value where the reference framing refuses | `inputs.tests` (99 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/javatable/listcountpastbody_test.go:29` |
 
 #### `load-refusal` family `lists`, 2 tests
 
@@ -7740,12 +7771,6 @@ hostile bytes are refused in every build, with the named reason.
 |---|---|---|---|---|
 | `L.functional.load-refusal.loadmessages-over-capacity.load-messages-over-capacity-returns-zero` | a message batch whose count is above the caller's storage is refused by name, returns 0 and leaves every value at its declared default | `inputs.tests` (98 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/jstable/loadmessages_over_capacity_test.go:13` |
 
-#### `load-refusal` family `loadout-length-damage-refused`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.load-refusal.loadout-length-damage-refused.fix-loadout-length-damage-refused` | a mutant with a damaged length pass is refused by the load, discarding the whole load with no value and a refused or damaged report | `inputs.tests` (98 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/javatable/loadout_length_damage_refused_test.go:25` |
-
 #### `load-refusal` family `loadrefusalreasons`, 1 test
 
 | full name | checks | inputs | expected result | source |
@@ -7783,12 +7808,6 @@ hostile bytes are refused in every build, with the named reason.
 |---|---|---|---|---|
 | `L.functional.load-refusal.map-repeated-key-widen.map-repeated-key-last-kind-wins` | a repeated field id inside a map entry body is wire damage and refuses the whole load | `inputs.tests` (366 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/ctable/map_repeated_key_widen_test.go:19` |
 | `L.functional.load-refusal.map-repeated-key-widen.map-repeated-key-refused` | a map entry body that repeats a key refuses the whole load | `inputs.tests` (267 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/cpptable/map_repeated_key_widen_test.go:16` |
-
-#### `load-refusal` family `mapentry-damage-refused`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.load-refusal.mapentry-damage-refused.fix-map-entry-damage-refused` | a damaged map entry makes the load refuse, discarding the whole load | `tests: {"java":{"package":"./internal/codegen/javatable","test":"TestJavaFixMapEntryDamageRefused"}}` | refused on load, in every build (verdict only) | `internal/codegen/javatable/mapentry_damage_refused_test.go:23` |
 
 #### `load-refusal` family `mapkeybound`, 1 test
 
@@ -8732,12 +8751,6 @@ hostile bytes are refused in every build, with the named reason.
 |---|---|---|---|---|
 | `L.functional.load-refusal.strictonly.strict-read-reason` | a strict read reports its one typed refusal reason in the reference precedence | `tests: {"js":{"package":"./internal/codegen/jstable","test":"TestStrictReadReasonJavaScript"}}` | refused on load, in every build (verdict only) | `internal/codegen/jstable/strictonly_test.go:69` |
 
-#### `load-refusal` family `strictset`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.load-refusal.strictset.strict-read-refuses-what-go-refuses` | a strict read refuses every manifest input the reference engine refuses | `tests: {"lua":{"package":"./internal/codegen/luatable","test":"TestLuaStrictReadRefusesWhatGoRefuses"}}` | refused on load, in every build (verdict only) | `internal/codegen/luatable/strictset_test.go:297` |
-
 #### `load-refusal` family `strictwirefirst`, 1 test
 
 | full name | checks | inputs | expected result | source |
@@ -8821,6 +8834,36 @@ hostile bytes are refused in every build, with the named reason.
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.load-refusal.text-total.text-total` | text past a field's declared total is refused as a whole, never kept as a prefix, and writes past the total are refused | `inputs.tests` (156 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/cstable/text_total_test.go:31` |
+
+#### `load-refusal` family `textform`, 25 tests
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.functional.load-refusal.textform.bound-array` | textform refusal bound-array: the input is refused by the stable name its .reason names | `case: bound-array`<br>`inputs.files` (111 bytes, held in the registry row's `inputs.files`)<br>`refusal: true` | refused on load, in every build (verdict only) | `test/conformance/textform/refusals/bound-array.sexp:1` |
+| `L.functional.load-refusal.textform.bound-bytes` | textform refusal bound-bytes: the input is refused by the stable name its .reason names | `case: bound-bytes`<br>`inputs.files` (111 bytes, held in the registry row's `inputs.files`)<br>`refusal: true` | refused on load, in every build (verdict only) | `test/conformance/textform/refusals/bound-bytes.sexp:1` |
+| `L.functional.load-refusal.textform.bound-number` | textform refusal bound-number: the input is refused by the stable name its .reason names | `case: bound-number`<br>`inputs.files` (113 bytes, held in the registry row's `inputs.files`)<br>`refusal: true` | refused on load, in every build (verdict only) | `test/conformance/textform/refusals/bound-number.sexp:1` |
+| `L.functional.load-refusal.textform.bound-string` | textform refusal bound-string: the input is refused by the stable name its .reason names | `case: bound-string`<br>`inputs.files` (113 bytes, held in the registry row's `inputs.files`)<br>`refusal: true` | refused on load, in every build (verdict only) | `test/conformance/textform/refusals/bound-string.sexp:1` |
+| `L.functional.load-refusal.textform.comment-illformed` | textform refusal comment-illformed: the input is refused by the stable name its .reason names | `case: comment-illformed`<br>`inputs.files` (123 bytes, held in the registry row's `inputs.files`)<br>`refusal: true` | refused on load, in every build (verdict only) | `test/conformance/textform/refusals/comment-illformed.sexp:1` |
+| `L.functional.load-refusal.textform.duplicate-flag` | textform refusal duplicate-flag: the input is refused by the stable name its .reason names | `case: duplicate-flag`<br>`inputs.files` (117 bytes, held in the registry row's `inputs.files`)<br>`refusal: true` | refused on load, in every build (verdict only) | `test/conformance/textform/refusals/duplicate-flag.sexp:1` |
+| `L.functional.load-refusal.textform.duplicate-key` | textform refusal duplicate-key: the input is refused by the stable name its .reason names | `case: duplicate-key`<br>`inputs.files` (115 bytes, held in the registry row's `inputs.files`)<br>`refusal: true` | refused on load, in every build (verdict only) | `test/conformance/textform/refusals/duplicate-key.sexp:1` |
+| `L.functional.load-refusal.textform.duplicate-map` | textform refusal duplicate-map: the input is refused by the stable name its .reason names | `case: duplicate-map`<br>`inputs.files` (115 bytes, held in the registry row's `inputs.files`)<br>`refusal: true` | refused on load, in every build (verdict only) | `test/conformance/textform/refusals/duplicate-map.sexp:1` |
+| `L.functional.load-refusal.textform.encoding` | textform refusal encoding: the input is refused by the stable name its .reason names | `case: encoding`<br>`inputs.files` (105 bytes, held in the registry row's `inputs.files`)<br>`refusal: true` | refused on load, in every build (verdict only) | `test/conformance/textform/refusals/encoding.sexp:1` |
+| `L.functional.load-refusal.textform.forward-reference` | textform refusal forward-reference: the input is refused by the stable name its .reason names | `case: forward-reference`<br>`inputs.files` (123 bytes, held in the registry row's `inputs.files`)<br>`refusal: true` | refused on load, in every build (verdict only) | `test/conformance/textform/refusals/forward-reference.sexp:1` |
+| `L.functional.load-refusal.textform.fraction` | textform refusal fraction: the input is refused by the stable name its .reason names | `case: fraction`<br>`inputs.files` (105 bytes, held in the registry row's `inputs.files`)<br>`refusal: true` | refused on load, in every build (verdict only) | `test/conformance/textform/refusals/fraction.sexp:1` |
+| `L.functional.load-refusal.textform.kind` | textform refusal kind: the input is refused by the stable name its .reason names | `case: kind`<br>`inputs.files` (97 bytes, held in the registry row's `inputs.files`)<br>`refusal: true` | refused on load, in every build (verdict only) | `test/conformance/textform/refusals/kind.sexp:1` |
+| `L.functional.load-refusal.textform.reference-at-root` | textform refusal reference-at-root: the input is refused by the stable name its .reason names | `case: reference-at-root`<br>`inputs.files` (123 bytes, held in the registry row's `inputs.files`)<br>`refusal: true` | refused on load, in every build (verdict only) | `test/conformance/textform/refusals/reference-at-root.sexp:1` |
+| `L.functional.load-refusal.textform.short-fixed` | textform refusal short-fixed: the input is refused by the stable name its .reason names | `case: short-fixed`<br>`inputs.files` (111 bytes, held in the registry row's `inputs.files`)<br>`refusal: true` | refused on load, in every build (verdict only) | `test/conformance/textform/refusals/short-fixed.sexp:1` |
+| `L.functional.load-refusal.textform.surrogate` | textform refusal surrogate: the input is refused by the stable name its .reason names | `case: surrogate`<br>`inputs.files` (107 bytes, held in the registry row's `inputs.files`)<br>`refusal: true` | refused on load, in every build (verdict only) | `test/conformance/textform/refusals/surrogate.sexp:1` |
+| `L.functional.load-refusal.textform.symbol` | textform refusal symbol: the input is refused by the stable name its .reason names | `case: symbol`<br>`inputs.files` (101 bytes, held in the registry row's `inputs.files`)<br>`refusal: true` | refused on load, in every build (verdict only) | `test/conformance/textform/refusals/symbol.sexp:1` |
+| `L.functional.load-refusal.textform.timestamp` | textform refusal timestamp: the input is refused by the stable name its .reason names | `case: timestamp`<br>`inputs.files` (107 bytes, held in the registry row's `inputs.files`)<br>`refusal: true` | refused on load, in every build (verdict only) | `test/conformance/textform/refusals/timestamp.sexp:1` |
+| `L.functional.load-refusal.textform.trailing-form` | textform refusal trailing-form: the input is refused by the stable name its .reason names | `case: trailing-form`<br>`inputs.files` (115 bytes, held in the registry row's `inputs.files`)<br>`refusal: true` | refused on load, in every build (verdict only) | `test/conformance/textform/refusals/trailing-form.sexp:1` |
+| `L.functional.load-refusal.textform.union-shape` | textform refusal union-shape: the input is refused by the stable name its .reason names | `case: union-shape`<br>`inputs.files` (111 bytes, held in the registry row's `inputs.files`)<br>`refusal: true` | refused on load, in every build (verdict only) | `test/conformance/textform/refusals/union-shape.sexp:1` |
+| `L.functional.load-refusal.textform.unknown-key` | textform refusal unknown-key: the input is refused by the stable name its .reason names | `case: unknown-key`<br>`inputs.files` (111 bytes, held in the registry row's `inputs.files`)<br>`refusal: true` | refused on load, in every build (verdict only) | `test/conformance/textform/refusals/unknown-key.sexp:1` |
+| `L.functional.load-refusal.textform.unknown-keyed` | textform refusal unknown-keyed: the input is refused by the stable name its .reason names | `case: unknown-keyed`<br>`inputs.files` (115 bytes, held in the registry row's `inputs.files`)<br>`refusal: true` | refused on load, in every build (verdict only) | `test/conformance/textform/refusals/unknown-keyed.sexp:1` |
+| `L.functional.load-refusal.textform.unknown-variant` | textform refusal unknown-variant: the input is refused by the stable name its .reason names | `case: unknown-variant`<br>`inputs.files` (119 bytes, held in the registry row's `inputs.files`)<br>`refusal: true` | refused on load, in every build (verdict only) | `test/conformance/textform/refusals/unknown-variant.sexp:1` |
+| `L.functional.load-refusal.textform.unterminated-list` | textform refusal unterminated-list: the input is refused by the stable name its .reason names | `case: unterminated-list`<br>`inputs.files` (123 bytes, held in the registry row's `inputs.files`)<br>`refusal: true` | refused on load, in every build (verdict only) | `test/conformance/textform/refusals/unterminated-list.sexp:1` |
+| `L.functional.load-refusal.textform.unterminated-pair` | textform refusal unterminated-pair: the input is refused by the stable name its .reason names | `case: unterminated-pair`<br>`inputs.files` (123 bytes, held in the registry row's `inputs.files`)<br>`refusal: true` | refused on load, in every build (verdict only) | `test/conformance/textform/refusals/unterminated-pair.sexp:1` |
+| `L.functional.load-refusal.textform.unterminated-string` | textform refusal unterminated-string: the input is refused by the stable name its .reason names | `case: unterminated-string`<br>`inputs.files` (127 bytes, held in the registry row's `inputs.files`)<br>`refusal: true` | refused on load, in every build (verdict only) | `test/conformance/textform/refusals/unterminated-string.sexp:1` |
 
 #### `load-refusal` family `texthostile`, 1 test
 
@@ -9569,12 +9612,6 @@ generated source compiles and is clean.
 | `L.functional.codegen.lua-typedsave.typed-save-equals-descriptor-save` | the typed save body writes the same bytes as the descriptor walk for every unit | `tests: {"lua":{"package":"./internal/codegen/luatable","test":"TestLuaTypedSaveEqualsDescriptorSave"}}` | the lua Go test for the case (inputs.tests) passes | `internal/codegen/luatable/typedsave_test.go:96` |
 | `L.functional.codegen.lua-typedsave.typed-save-runs-fewer-instructions` | the typed save executes at most 70 percent of the descriptor walk's VM instructions | `tests: {"lua":{"package":"./internal/codegen/luatable","test":"TestLuaTypedSaveRunsFewerInstructions"}}` | the lua Go test for the case (inputs.tests) passes | `internal/codegen/luatable/typedsave_test.go:143` |
 
-#### `codegen` family `luatable`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.codegen.luatable.table-descriptors-load` | each generated table module loads and its descriptor has an entry for each field, with a fresh record born at the declared defaults | `inputs.tests` (547 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/luatable/luatable_test.go:26` |
-
 #### `codegen` family `luau-driver-absent`, 1 test
 
 | full name | checks | inputs | expected result | source |
@@ -10285,12 +10322,6 @@ the generated source or output for a schema and language equals its pinned file.
 |---|---|---|---|---|
 | `L.functional.golden.lobster-view-listing.unit-view-listing` | The generated unit view listing matches the committed reference listing for every corpus unit. | `tests: {"lobster":{"package":"./internal/codegen/lobstertable","test":"TestLobsterUnitViewListing"}}` | the lobster Go test for the case (inputs.tests) passes | `internal/codegen/lobstertable/view_listing_test.go:15` |
 
-#### `golden` family `messageform`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.golden.messageform.message-form-matches-the-goldens` | every fixed-root message row of the conformance corpus reads against its connection's announcement and saves back to the golden bytes | `inputs.tests` (397 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/luatable/messageform_test.go:98` |
-
 #### `golden` family `messageform-conformance`, 1 test
 
 | full name | checks | inputs | expected result | source |
@@ -10604,12 +10635,6 @@ one schema version reads or writes another's data.
 | `L.functional.evolution.fixed-proof-evolution.fixed-proof-evolution-writer-bounds` | the historical writer's bounds hold on the reference corpus, refusing hostile files, and removing the guards is detected | `inputs.tests` (106 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/pythontable/fixed_proof_evolution_test.go:686` |
 | `L.functional.evolution.fixed-proof-evolution.fixed-proof-group-e` | retirement, retired-runtime, optional-value, field-evolution, live-extent, writing, union-guard, plan-execution and interoperability rows agree with the reference | `tests: {"luau":{"package":"./internal/codegen/luautable","test":"TestLuauFixedProofGroupE"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/luautable/fixed_proof_evolution_test.go:324` |
 
-#### `evolution` family `fixed-proof-evolution-kinds`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.evolution.fixed-proof-evolution-kinds.fixed-proof-evolution-kind-pairs` | every ordered pair of numeric kinds reads an older file only when it is a lawful widening, with the same verdict and values as the reference | `inputs.tests` (199 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/pythontable/fixed_proof_evolution_kinds_test.go:187` |
-
 #### `evolution` family `fixed-proof-shapes`, 1 test
 
 | full name | checks | inputs | expected result | source |
@@ -10819,12 +10844,11 @@ one schema version reads or writes another's data.
 | `L.functional.evolution.fixedroadmap-t18.fixed-roadmap-t18-exact-counters` | a read counts one widened per widened field or element per record, moves no counter on a clean append, and refuses a count past the writer's bound, a forged ordinal and an unlawful removed-field entry with no counter moved | `inputs.tests` (188 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/cpptable/fixedroadmap_t18_test.go:729` |
 | `L.functional.evolution.fixedroadmap-t18.fixed-roadmap-t18-field-evolution` | a newer reader reads an older file with a deprecated field and with each appended field kind, landing declared defaults | `tests: {"cpp":{"package":"./internal/codegen/cpptable","test":"TestFixedRoadmapCppT18FieldEvolution"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/cpptable/fixedroadmap_t18_test.go:309` |
 
-#### `evolution` family `fixedversioning`, 17 tests
+#### `evolution` family `fixedversioning`, 16 tests
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.evolution.fixedversioning.fixed-compiled-plan-tag-past-arm-set` | a compiled plan reading two records, the second with its union tag forged past the writer's arm set, refuses the whole read as out\_of\_range with no counter moved | `inputs.tests` (193 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/darttable/fixedversioning_test.go:814` |
-| `L.functional.evolution.fixedversioning.fixed-versioning` | a newer reader reads an older fixed file and an older reader refuses a newer one across every versioning row (floors, hash identity, lineage merge) | `tests: {"cs":{"package":"./internal/codegen/cstable","test":"TestFixedVersioning"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/cstable/fixedversioning_test.go:148` |
 | `L.functional.evolution.fixedversioning.fixed-versioning-floor` | a file at the layout floor reads, a file one below the floor is refused as layout\_unsupported, and raising the floor by one refuses yesterdays file | `inputs.tests` (845 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedversioning_test.go:373` |
 | `L.functional.evolution.fixedversioning.fixed-versioning-forged-ordinal-both-plans` | a forged enum ordinal past the writers variants is read by both the compiled and the identity plan and both refuse or clamp it identically | `inputs.tests` (1109 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedversioning_test.go:669` |
 | `L.functional.evolution.fixedversioning.fixed-versioning-form-header` | a fixed load reads the form byte before the file length, so each form is named by its own refusal or acceptance | `tests: {"go":{"package":"./internal/codegen/gotable","test":"TestFixedVersioningFormHeader"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedversioning_test.go:590` |
@@ -10962,12 +10986,6 @@ one schema version reads or writes another's data.
 |---|---|---|---|---|
 | `L.functional.evolution.keyed-flags.keyed-flags` | a keyed array of flag masks widened from a narrower element reads from the older wire with the engine canonical bytes, and refuses damaged or mismatched slots and invalid masks | `tests: {"python":{"package":"./internal/codegen/pythontable","test":"TestPythonKeyedFlags"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/pythontable/keyed_flags_test.go:22` |
 
-#### `evolution` family `keyedscalarslotwidened`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.evolution.keyedscalarslotwidened.fix-keyed-scalar-slot-widened` | a keyed array whose wire element kind is narrower than the declaration is refused as the reference does when a slot length is not its kind width | `tests: {"java":{"package":"./internal/codegen/javatable","test":"TestJavaFixKeyedScalarSlotWidened"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/keyedscalarslotwidened_test.go:27` |
-
 #### `evolution` family `keyedwiden`, 2 tests
 
 | full name | checks | inputs | expected result | source |
@@ -11098,13 +11116,12 @@ one schema version reads or writes another's data.
 | `L.functional.evolution.retainwiden.pinned-union-arm-widening` | a pinned wire with a widened union arm loads and saves as pinned through a retaining read | `inputs.tests` (97 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/elixirtable/retainwiden_test.go:118` |
 | `L.functional.evolution.retainwiden.retaining-union-arm-widening` | a retaining read of a widened union arm keeps its unknown fields and saves them back | `inputs.tests` (100 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/elixirtable/retainwiden_test.go:18` |
 
-#### `evolution` family `scalar-widen`, 6 tests
+#### `evolution` family `scalar-widen`, 5 tests
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.evolution.scalar-widen.optional-scalar-widen` | a reader widening an optional int8 field to int32 reads the old writer's wire and counts the widening | `tests: {"python":{"package":"./internal/codegen/pythontable","test":"TestPythonOptionalScalarWiden"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/pythontable/scalar_widen_test.go:291` |
 | `L.functional.evolution.scalar-widen.scalar-widen-damage-and-control` | a damaged old-width scalar payload is refused, and the undamaged control widens int16 to int32 | `inputs.tests` (102 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/pythontable/scalar_widen_test.go:188` |
-| `L.functional.evolution.scalar-widen.scalar-widen-historical` | every historical scalar-width widening pair, in generic and specialised readers, reads the old wire as the widened value | `tests: {"python":{"package":"./internal/codegen/pythontable","test":"TestPythonScalarWidenHistorical"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/pythontable/scalar_widen_test.go:75` |
 | `L.functional.evolution.scalar-widen.scalar-widen-map-interaction` | a widened map key counts once per map and widened map values count once per entry | `inputs.tests` (100 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/pythontable/scalar_widen_test.go:244` |
 | `L.functional.evolution.scalar-widen.scalar-widen-non-finite` | widening float32 to float64 preserves a non-finite value and a damaged float is handled as the reference engine handles it | `tests: {"python":{"package":"./internal/codegen/pythontable","test":"TestPythonScalarWidenNonFinite"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/pythontable/scalar_widen_test.go:253` |
 | `L.functional.evolution.scalar-widen.scalar-widen-refusals` | narrowing, signedness change, a widening that violates the new range, and float narrowing are refused with kind\_mismatch or out\_of\_range | `tests: {"python":{"package":"./internal/codegen/pythontable","test":"TestPythonScalarWidenRefusals"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/pythontable/scalar_widen_test.go:143` |
@@ -11285,23 +11302,23 @@ seeded mutations.
 |---|---|---|---|---|
 | `L.functional.fuzz.integrity.integrity-wire-fuzz-leg` | the wire fuzz leg holds the short-body vector and corpus files for roots with an integrity trailer | `tests: {"goose":{"package":"./internal/codegen/goosetable","test":"TestGooseIntegrityWireFuzzLeg"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/goosetable/integrity_test.go:259` |
 
-#### `fuzz` family `messagefuzzarm`, 1 test
+#### `fuzz` family `luau-vectors`, 7 tests
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.fuzz.messagefuzzarm.message-fuzz-arm-honours-load-result` | the message wire-fuzz arm answers the verdict the public load gave, so a mutant that loads without a refusal is reported as loaded | `inputs.tests` (100 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/darttable/messagefuzzarm_test.go:38` |
+| `L.functional.fuzz.luau-vectors.keyed-header-count-past-length` | pinned Luau wire-fuzz vector keyed\_header\_count\_past\_length: test/conformance/luau/vectors/keyed\_header\_count\_past\_length.bin, read as a file of tabledemo.KeyedConfig, gets the oracle's answer | `inputs.files` (114 bytes, held in the registry row's `inputs.files`)<br>`root: KeyedConfig`<br>`unit: tabledemo`<br>`vector: keyed_header_count_past_length` | the leg's acceptance, report, measure and write-back equal the oracle's on the vector, in every configuration of the leg | `test/conformance/luau/wire-fuzz-vectors.txt:44` |
+| `L.functional.fuzz.luau-vectors.keyed-header-foreign-element-kind` | pinned Luau wire-fuzz vector keyed\_header\_foreign\_element\_kind: test/conformance/luau/vectors/keyed\_header\_foreign\_element\_kind.bin, read as a file of mapdemo.Depth, gets the oracle's answer | `inputs.files` (117 bytes, held in the registry row's `inputs.files`)<br>`root: Depth`<br>`unit: mapdemo`<br>`vector: keyed_header_foreign_element_kind` | the leg's acceptance, report, measure and write-back equal the oracle's on the vector, in every configuration of the leg | `test/conformance/luau/wire-fuzz-vectors.txt:37` |
+| `L.functional.fuzz.luau-vectors.map-header-count-past-length` | pinned Luau wire-fuzz vector map\_header\_count\_past\_length: test/conformance/luau/vectors/map\_header\_count\_past\_length.bin, read as a file of mapdemo.Slots, gets the oracle's answer; its files also index the Luau leg's harness files where they live | `inputs.files` (528 bytes, held in the registry row's `inputs.files`)<br>`root: Slots`<br>`unit: mapdemo`<br>`vector: map_header_count_past_length` | the leg's acceptance, report, measure and write-back equal the oracle's on the vector, in every configuration of the leg | `test/conformance/luau/wire-fuzz-vectors.txt:28` |
+| `L.functional.fuzz.luau-vectors.map-header-foreign-element-kind` | pinned Luau wire-fuzz vector map\_header\_foreign\_element\_kind: test/conformance/luau/vectors/map\_header\_foreign\_element\_kind.bin, read as a file of listdemo.Army, gets the oracle's answer | `inputs.files` (115 bytes, held in the registry row's `inputs.files`)<br>`root: Army`<br>`unit: listdemo`<br>`vector: map_header_foreign_element_kind` | the leg's acceptance, report, measure and write-back equal the oracle's on the vector, in every configuration of the leg | `test/conformance/luau/wire-fuzz-vectors.txt:33` |
+| `L.functional.fuzz.luau-vectors.map-key-foreign-kind` | pinned Luau wire-fuzz vector map\_key\_foreign\_kind: test/conformance/luau/vectors/map\_key\_foreign\_kind.bin, read as a file of listdemo.Army, gets the oracle's answer | `inputs.files` (104 bytes, held in the registry row's `inputs.files`)<br>`root: Army`<br>`unit: listdemo`<br>`vector: map_key_foreign_kind` | the leg's acceptance, report, measure and write-back equal the oracle's on the vector, in every configuration of the leg | `test/conformance/luau/wire-fuzz-vectors.txt:74` |
+| `L.functional.fuzz.luau-vectors.text-ill-formed-refuses` | pinned Luau wire-fuzz vector text\_ill\_formed\_refuses: test/conformance/luau/vectors/text\_ill\_formed\_refuses.bin, read as a file of tblw1.Fleet, gets the oracle's answer | `inputs.files` (107 bytes, held in the registry row's `inputs.files`)<br>`root: Fleet`<br>`unit: tblw1`<br>`vector: text_ill_formed_refuses` | the leg's acceptance, report, measure and write-back equal the oracle's on the vector, in every configuration of the leg | `test/conformance/luau/wire-fuzz-vectors.txt:57` |
+| `L.functional.fuzz.luau-vectors.text-ill-formed-repeat-reads-default` | pinned Luau wire-fuzz vector text\_ill\_formed\_repeat\_reads\_default: test/conformance/luau/vectors/text\_ill\_formed\_repeat\_reads\_default.bin, read as a file of backenddemo.StorePurchase, gets the oracle's answer | `inputs.files` (120 bytes, held in the registry row's `inputs.files`)<br>`root: StorePurchase`<br>`unit: backenddemo`<br>`vector: text_ill_formed_repeat_reads_default` | the leg's acceptance, report, measure and write-back equal the oracle's on the vector, in every configuration of the leg | `test/conformance/luau/wire-fuzz-vectors.txt:53` |
 
 #### `fuzz` family `packet-text-fuzz`, 1 test
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.fuzz.packet-text-fuzz.packet-text-hostile-fuzz` | the generated packet text read agrees with the reference oracle on every pinned seed and mutant | `tests: {"lobster":{"package":"./internal/codegen/lobster","test":"TestLobsterPacketTextHostileFuzz"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/lobster/packet_text_fuzz_test.go:197` |
-
-#### `fuzz` family `porting-parity`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.fuzz.porting-parity.forgery-fuzz` | mutated block and cook images are each refused or opened and walked without any read leaving the buffer | `inputs.tests` (420 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/pythontable/porting_parity_test.go:279` |
 
 #### `fuzz` family `wire-fuzz-vector`, 144 tests
 
@@ -11470,15 +11487,12 @@ seeded mutations.
 |---|---|---|---|---|
 | `L.functional.fuzz.wirefuzz-vectors-fault.wire-fuzz-vectors-reach-their-fault` | Each pinned fuzz vector replayed at its variable root gives the reference engine's reply, measured region included. | `inputs.tests` (99 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/luautable/wirefuzz_vectors_fault_test.go:242` |
 
-#### `fuzz` family `wirefuzz-verdict`, 5 tests
+#### `fuzz` family `wirefuzz-verdict`, 2 tests
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.fuzz.wirefuzz-verdict.wire-fuzz-file-dispatch` | The wire fuzz driver dispatches a fuzz input file to the right unit and root and answers the reference verdict. | `tests: {"python":{"package":"./internal/codegen/pythontable","test":"TestPythonWireFuzzFileDispatch"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/pythontable/wirefuzz_verdict_test.go:189` |
 | `L.functional.fuzz.wirefuzz-verdict.wire-fuzz-retain-loss` | the wire fuzz driver preserves the oracle's reported loss of an unretained record | `inputs.tests` (179 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/pythontable/wirefuzz_verdict_test.go:26` |
-| `L.functional.fuzz.wirefuzz-verdict.wire-fuzz-verdict-pipe` | the wire-fuzz verdict pipe agrees with the reference oracle on every mutant with zero divergences | `inputs.tests` (889 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/wirefuzz_verdict_test.go:646` |
-| `L.functional.fuzz.wirefuzz-verdict.wire-fuzz-verdict-pipe-mixed-builder` | The wire fuzz verdict pipe answers the reference verdict for a mixed builder run. | `inputs.tests` (106 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/pythontable/wirefuzz_verdict_test.go:308` |
-| `L.functional.fuzz.wirefuzz-verdict.wire-fuzz-verdict-pipe-retain` | The wire fuzz verdict pipe answers the reference verdict for a retaining run. | `inputs.tests` (100 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/pythontable/wirefuzz_verdict_test.go:321` |
 
 #### `fuzz` family `wirefuzzall`, 16 tests
 
@@ -11678,7 +11692,7 @@ a negative control: a named test run against a deliberately broken build must co
 |---|---|---|---|---|
 | `L.functional.plant.cards.cards-facade-negative-control` | corrupting the cards facade makes the cards probe go red | `inputs.tests` (195 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/pythontable/cards_test.go:322` |
 
-#### `plant` family `cards-strict`, 5 tests
+#### `plant` family `cards-strict`, 4 tests
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
@@ -11686,7 +11700,6 @@ a negative control: a named test run against a deliberately broken build must co
 | `L.functional.plant.cards-strict.cards-conformance-strict-negative-control` | a cards facade that falls back to a tolerant read or a retired report field must make the strict conformance check go red. | `inputs.tests` (106 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/luautable/cards_strict_test.go:319` |
 | `L.functional.plant.cards-strict.cards-read-then-write-negative-control` | a cards facade that falls back to a tolerant read or a retired report field must make the strict read-then-write check go red. | `inputs.tests` (99 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/mootable/cards_strict_test.go:321` |
 | `L.functional.plant.cards-strict.cards-strict-names-negative-control` | a cards facade that uses a tolerant read or a retired report field must make the strict names check go red. | `inputs.tests` (100 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/rusttable/cards_strict_test.go:353` |
-| `L.functional.plant.cards-strict.cards-strict-negative-control` | a cards facade that uses a tolerant read or a retired report field must make the strict check go red. | `tests: {"java":{"package":"./internal/codegen/javatable","test":"TestJavaCardsStrictNegativeControl"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/cards_strict_test.go:376` |
 
 #### `plant` family `carries`, 3 tests
 
@@ -11695,12 +11708,6 @@ a negative control: a named test run against a deliberately broken build must co
 | `L.functional.plant.carries.json-array-root-negative-control` | a JSON reader that loses the array-root mark must make the array-root check go red. | `tests: {"moo":{"package":"./internal/codegen/mootable","test":"TestMooJsonArrayRootNegativeControl"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/mootable/carries_test.go:284` |
 | `L.functional.plant.carries.json-required-negative-control` | a JSON reader that skips the required-key check must make the required check go red. | `tests: {"moo":{"package":"./internal/codegen/mootable","test":"TestMooJsonRequiredNegativeControl"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/mootable/carries_test.go:168` |
 | `L.functional.plant.carries.json-unbounded-text-negative-control` | a reader that clamps unbounded text to a capacity must make the unbounded-text check go red. | `inputs.tests` (98 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/mootable/carries_test.go:241` |
-
-#### `plant` family `cells-strict`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.plant.cells-strict.cells-strict-negative-control` | faults planted in the generated cells artifacts must make the strict cells probes go red on the rows they touch. | `inputs.tests` (101 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/elixirtable/cells_strict_test.go:530` |
 
 #### `plant` family `checkedbuild-leb`, 1 test
 
@@ -11713,12 +11720,6 @@ a negative control: a named test run against a deliberately broken build must co
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.plant.collections.collections-negative-control` | breaking the map header's collection kind in the emitted load runtime turns the collection comparison red on the map-key-widening row while the unpatched control stays green. | `inputs.tests` (104 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/lobstertable/collections_test.go:334` |
-
-#### `plant` family `conformance-form1`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.plant.conformance-form1.driver-refuses-form-one-framing-negative-control` | discarding the strict walk's verdict in the generated reader turns the framing battery red on exactly the strict rows. | `inputs.tests` (108 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/cpptable/conformance_form1_test.go:310` |
 
 #### `plant` family `conformance-form3`, 1 test
 
@@ -13547,12 +13548,6 @@ a negative control: a named test run against a deliberately broken build must co
 |---|---|---|---|---|
 | `L.functional.plant.vt-widening-cell.vt-widening-cell-negative-control` | Removing the trailing-bytes refusal from the emitted runtime makes the widening cell go red. | `inputs.tests` (98 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/luautable/vt_widening_cell_test.go:150` |
 
-#### `plant` family `vtcells`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.plant.vtcells.variable-table-cells-negative-control` | planted faults in the emitted variable-table save and load turn every cell red | `inputs.tests` (307 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/luatable/vtcells_test.go:288` |
-
 #### `plant` family `vtcells-optional`, 2 tests
 
 | full name | checks | inputs | expected result | source |
@@ -13814,12 +13809,6 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 |---|---|---|---|---|
 | `L.functional.compiler.goose-registry.registry-compiles` | the assembled registry compiles under the Goose compiler with the runtime and reads back in rank order | `tests: {"goose":{"package":"./internal/codegen/goosetable","test":"TestGooseRegistryCompiles"}}` | the goose Go test for the case (inputs.tests) passes | `internal/codegen/goosetable/registry_test.go:101` |
 
-#### `compiler` family `unity-fixed-harness`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.compiler.unity-fixed-harness.fixed-dialect-ms-build` | all shared fixed-proof schemas compile in the Unity dialect in Debug and Release with warnings as errors | `tests: {"unity":{"package":"./internal/codegen/unitytable","test":"TestUnityFixedDialectMSBuild"}}` | the unity Go test for the case (inputs.tests) passes | `internal/codegen/unitytable/fixed_harness_test.go:525` |
-
 ### Type `bench`
 
 performance or timing.
@@ -13938,11 +13927,10 @@ generated or runtime code is clean under the language's strict analyser.
 |---|---|---|---|---|
 | `L.functional.lint.moo-fixedform-rows.fixed-units-analyze-silent` | every unit the fixed form reads, with its lineage, passes the moo analyzer with no output | `tests: {"moo":{"package":"./internal/codegen/mootable","test":"TestMooFixedUnitsAnalyzeSilent"}}` | the moo Go test for the case (inputs.tests) passes | `internal/codegen/mootable/fixedform_rows_test.go:34` |
 
-#### `lint` family `moo-wire-packet-defaults`, 2 tests
+#### `lint` family `moo-wire-packet-defaults`, 1 test
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.lint.moo-wire-packet-defaults.generated-analyze-strict-gate` | The analyzer in strict mode reports nothing over every generated corpus unit and the vendored runtime. | `tests: {"moo":{"package":"./internal/codegen/moo","test":"TestMooGeneratedAnalyzeStrictGate"}}` | the moo Go test for the case (inputs.tests) passes | `internal/codegen/moo/strictgate_test.go:344` |
 | `L.functional.lint.moo-wire-packet-defaults.generated-code-is-analyzer-clean` | The analyzer reports nothing over the generated code of the corpus units. | `tests: {"moo":{"package":"./internal/codegen/moo","test":"TestMooGeneratedCodeIsAnalyzerClean"}}` | the moo Go test for the case (inputs.tests) passes | `internal/codegen/moo/analyze_test.go:41` |
 
 #### `lint` family `python-fixed-proof-ci-selection`, 1 test
@@ -14270,12 +14258,6 @@ two implementations or two versions give the same answer.
 |---|---|---|---|---|
 | `L.functional.differential.fixed-proof-scalars.fixed-proof-group-a` | scalar rows save byte-identical to the reference, load its file landing the row's values, and re-save to its bytes | `tests: {"luau":{"package":"./internal/codegen/luautable","test":"TestLuauFixedProofGroupA"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/luautable/fixed_proof_scalars_test.go:370` |
 
-#### `differential` family `fixed-proof-shapes`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.differential.fixed-proof-shapes.fixed-proof-shapes` | each fixed shape agrees with the reference writer and reader, including independent load values | `inputs.tests` (175 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/pythontable/fixed_proof_shapes_test.go:31` |
-
 #### `differential` family `fixed-proof-strict`, 1 test
 
 | full name | checks | inputs | expected result | source |
@@ -14492,12 +14474,6 @@ two implementations or two versions give the same answer.
 |---|---|---|---|---|
 | `L.functional.differential.json-verdicts-1122.json-verdicts-match-go` | JSON read and write verdicts match the reference on every row | `tests: {"luau":{"package":"./internal/codegen/luautable","test":"TestLuauJsonVerdictsMatchGo"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/luautable/json_verdicts_1122_test.go:180` |
 
-#### `differential` family `jsonhostile-clamp`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.differential.jsonhostile-clamp.json-hostile-report-clamp-counter` | a reader gives the reference verdict on every hostile JSON row of the conformance manifest | `inputs.tests` (98 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/jsonhostile_clamp_test.go:26` |
-
 #### `differential` family `jsonhostile-duplicate`, 1 test
 
 | full name | checks | inputs | expected result | source |
@@ -14509,12 +14485,6 @@ two implementations or two versions give the same answer.
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.differential.jsonref.json-reference-and-walk-agree` | the generated reader and the reference reader give the same verdict on every JSON case | `tests: {"go":{"package":"./internal/codegen/gotable","test":"TestJSONReferenceAndGoWalkAgree"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/jsonref_test.go:123` |
-
-#### `differential` family `jsonstrict`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.differential.jsonstrict.from-json-is-strict` | the plain JSON read gives the reference verdict on every JSON-bearing row of the manifest | `tests: {"lua":{"package":"./internal/codegen/luatable","test":"TestLuaFromJsonIsStrict"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/luatable/jsonstrict_test.go:115` |
 
 #### `differential` family `keyedindex`, 1 test
 
@@ -14939,13 +14909,12 @@ two implementations or two versions give the same answer.
 |---|---|---|---|---|
 | `L.functional.differential.vectorrules.pinned-vectors-agree-with-the-go-engine` | the pinned wire vectors give the same verdicts as the reference engine | `inputs.tests` (212 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/luatable/vectorrules_test.go:151` |
 
-#### `differential` family `view`, 3 tests
+#### `differential` family `view`, 2 tests
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.differential.view.view-descriptors-match-go` | Table descriptors in the generated view match the reference listing and the IR for every identity and descriptor column across the conformance units. | `tests: {"lua":{"package":"./internal/codegen/luatable","test":"TestLuaViewDescriptorsMatchGo"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/luatable/view_test.go:33` |
 | `L.functional.differential.view.view-doc-and-tags` | Generated table info and field descriptors carry the documentation comments and tags as the reference descriptors and IR state them, with shared empty doc and tag values on unannotated rows. | `tests: {"squirrel":{"package":"./internal/codegen/squirreltable","test":"TestSquirrelViewDocAndTags"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/squirreltable/view_test.go:480` |
-| `L.functional.differential.view.view-matches-the-go-view` | The generated view of every conformance unit equals the reference view of the same unit. | `inputs.tests` (101 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/squirreltable/view_test.go:132` |
 
 #### `differential` family `vt-blob-map-cells`, 1 test
 
@@ -15411,7 +15380,7 @@ the generated source or output for a schema and language equals its pinned file.
 | `none.functional.golden.fresh-wire-packet.wire-unsigned-probe-bin` | `golden` | testdata/wire/unsigned\_probe.bin is exactly what make pins-fresh-wire-packet writes from its generator | `files: ["testdata/wire/unsigned_probe.bin"]`<br>`writer: pins-fresh-wire-packet` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/wire/unsigned_probe.bin:1` |
 | `none.functional.golden.fresh-wire-packet.wire-unsigned-probe-bits` | `golden` | testdata/wire/unsigned\_probe.bits is exactly what make pins-fresh-wire-packet writes from its generator | `files: ["testdata/wire/unsigned_probe.bits"]`<br>`writer: pins-fresh-wire-packet` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/wire/unsigned_probe.bits:1` |
 
-#### `golden` family `source-c`, 30 tests
+#### `golden` family `source-c`, 40 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -15419,34 +15388,44 @@ the generated source or output for a schema and language equals its pinned file.
 | `none.functional.golden.source-c.golden-tables-block-c-blockdemoview-h` | `golden` | testdata/golden/tables/block-c/BlockdemoView.h is exactly what make pins-source-c writes from its generator | `files: ["testdata/golden/tables/block-c/BlockdemoView.h"]`<br>`writer: pins-source-c` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/block-c/BlockdemoView.h:1` |
 | `none.functional.golden.source-c.golden-tables-block-c-paddedtable-c` | `golden` | testdata/golden/tables/block-c/PaddedTable.c is exactly what make pins-source-c writes from its generator | `files: ["testdata/golden/tables/block-c/PaddedTable.c"]`<br>`writer: pins-source-c` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/block-c/PaddedTable.c:1` |
 | `none.functional.golden.source-c.golden-tables-block-c-paddedtable-h` | `golden` | testdata/golden/tables/block-c/PaddedTable.h is exactly what make pins-source-c writes from its generator | `files: ["testdata/golden/tables/block-c/PaddedTable.h"]`<br>`writer: pins-source-c` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/block-c/PaddedTable.h:1` |
+| `none.functional.golden.source-c.golden-tables-block-c-paddedtabledata-h` | `golden` | testdata/golden/tables/block-c/PaddedTableData.h is exactly what make pins-source-c writes from its generator | `files: ["testdata/golden/tables/block-c/PaddedTableData.h"]`<br>`writer: pins-source-c` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/block-c/PaddedTableData.h:1` |
 | `none.functional.golden.source-c.golden-tables-block-c-rendertable-c` | `golden` | testdata/golden/tables/block-c/RenderTable.c is exactly what make pins-source-c writes from its generator | `files: ["testdata/golden/tables/block-c/RenderTable.c"]`<br>`writer: pins-source-c` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/block-c/RenderTable.c:1` |
 | `none.functional.golden.source-c.golden-tables-block-c-rendertable-h` | `golden` | testdata/golden/tables/block-c/RenderTable.h is exactly what make pins-source-c writes from its generator | `files: ["testdata/golden/tables/block-c/RenderTable.h"]`<br>`writer: pins-source-c` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/block-c/RenderTable.h:1` |
+| `none.functional.golden.source-c.golden-tables-block-c-rendertabledata-h` | `golden` | testdata/golden/tables/block-c/RenderTableData.h is exactly what make pins-source-c writes from its generator | `files: ["testdata/golden/tables/block-c/RenderTableData.h"]`<br>`writer: pins-source-c` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/block-c/RenderTableData.h:1` |
 | `none.functional.golden.source-c.golden-tables-examples-c-guardedtable-c` | `golden` | testdata/golden/tables/examples-c/GuardedTable.c is exactly what make pins-source-c writes from its generator | `files: ["testdata/golden/tables/examples-c/GuardedTable.c"]`<br>`writer: pins-source-c` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/examples-c/GuardedTable.c:1` |
 | `none.functional.golden.source-c.golden-tables-examples-c-guardedtable-h` | `golden` | testdata/golden/tables/examples-c/GuardedTable.h is exactly what make pins-source-c writes from its generator | `files: ["testdata/golden/tables/examples-c/GuardedTable.h"]`<br>`writer: pins-source-c` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/examples-c/GuardedTable.h:1` |
 | `none.functional.golden.source-c.golden-tables-examples-c-keyedtable-c` | `golden` | testdata/golden/tables/examples-c/KeyedTable.c is exactly what make pins-source-c writes from its generator | `files: ["testdata/golden/tables/examples-c/KeyedTable.c"]`<br>`writer: pins-source-c` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/examples-c/KeyedTable.c:1` |
 | `none.functional.golden.source-c.golden-tables-examples-c-keyedtable-h` | `golden` | testdata/golden/tables/examples-c/KeyedTable.h is exactly what make pins-source-c writes from its generator | `files: ["testdata/golden/tables/examples-c/KeyedTable.h"]`<br>`writer: pins-source-c` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/examples-c/KeyedTable.h:1` |
+| `none.functional.golden.source-c.golden-tables-examples-c-keyedtabledata-h` | `golden` | testdata/golden/tables/examples-c/KeyedTableData.h is exactly what make pins-source-c writes from its generator | `files: ["testdata/golden/tables/examples-c/KeyedTableData.h"]`<br>`writer: pins-source-c` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/examples-c/KeyedTableData.h:1` |
 | `none.functional.golden.source-c.golden-tables-examples-c-nestedtable-c` | `golden` | testdata/golden/tables/examples-c/NestedTable.c is exactly what make pins-source-c writes from its generator | `files: ["testdata/golden/tables/examples-c/NestedTable.c"]`<br>`writer: pins-source-c` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/examples-c/NestedTable.c:1` |
 | `none.functional.golden.source-c.golden-tables-examples-c-nestedtable-h` | `golden` | testdata/golden/tables/examples-c/NestedTable.h is exactly what make pins-source-c writes from its generator | `files: ["testdata/golden/tables/examples-c/NestedTable.h"]`<br>`writer: pins-source-c` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/examples-c/NestedTable.h:1` |
+| `none.functional.golden.source-c.golden-tables-examples-c-nestedtabledata-h` | `golden` | testdata/golden/tables/examples-c/NestedTableData.h is exactly what make pins-source-c writes from its generator | `files: ["testdata/golden/tables/examples-c/NestedTableData.h"]`<br>`writer: pins-source-c` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/examples-c/NestedTableData.h:1` |
 | `none.functional.golden.source-c.golden-tables-examples-c-packtable-c` | `golden` | testdata/golden/tables/examples-c/PackTable.c is exactly what make pins-source-c writes from its generator | `files: ["testdata/golden/tables/examples-c/PackTable.c"]`<br>`writer: pins-source-c` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/examples-c/PackTable.c:1` |
 | `none.functional.golden.source-c.golden-tables-examples-c-packtable-h` | `golden` | testdata/golden/tables/examples-c/PackTable.h is exactly what make pins-source-c writes from its generator | `files: ["testdata/golden/tables/examples-c/PackTable.h"]`<br>`writer: pins-source-c` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/examples-c/PackTable.h:1` |
+| `none.functional.golden.source-c.golden-tables-examples-c-packtabledata-h` | `golden` | testdata/golden/tables/examples-c/PackTableData.h is exactly what make pins-source-c writes from its generator | `files: ["testdata/golden/tables/examples-c/PackTableData.h"]`<br>`writer: pins-source-c` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/examples-c/PackTableData.h:1` |
 | `none.functional.golden.source-c.golden-tables-examples-c-rangestable-c` | `golden` | testdata/golden/tables/examples-c/RangesTable.c is exactly what make pins-source-c writes from its generator | `files: ["testdata/golden/tables/examples-c/RangesTable.c"]`<br>`writer: pins-source-c` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/examples-c/RangesTable.c:1` |
 | `none.functional.golden.source-c.golden-tables-examples-c-rangestable-h` | `golden` | testdata/golden/tables/examples-c/RangesTable.h is exactly what make pins-source-c writes from its generator | `files: ["testdata/golden/tables/examples-c/RangesTable.h"]`<br>`writer: pins-source-c` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/examples-c/RangesTable.h:1` |
+| `none.functional.golden.source-c.golden-tables-examples-c-rangestabledata-h` | `golden` | testdata/golden/tables/examples-c/RangesTableData.h is exactly what make pins-source-c writes from its generator | `files: ["testdata/golden/tables/examples-c/RangesTableData.h"]`<br>`writer: pins-source-c` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/examples-c/RangesTableData.h:1` |
 | `none.functional.golden.source-c.golden-tables-examples-c-tabledemoview-c` | `golden` | testdata/golden/tables/examples-c/TabledemoView.c is exactly what make pins-source-c writes from its generator | `files: ["testdata/golden/tables/examples-c/TabledemoView.c"]`<br>`writer: pins-source-c` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/examples-c/TabledemoView.c:1` |
 | `none.functional.golden.source-c.golden-tables-examples-c-tabledemoview-h` | `golden` | testdata/golden/tables/examples-c/TabledemoView.h is exactly what make pins-source-c writes from its generator | `files: ["testdata/golden/tables/examples-c/TabledemoView.h"]`<br>`writer: pins-source-c` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/examples-c/TabledemoView.h:1` |
 | `none.functional.golden.source-c.golden-tables-examples-c-tablestable-c` | `golden` | testdata/golden/tables/examples-c/TablesTable.c is exactly what make pins-source-c writes from its generator | `files: ["testdata/golden/tables/examples-c/TablesTable.c"]`<br>`writer: pins-source-c` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/examples-c/TablesTable.c:1` |
 | `none.functional.golden.source-c.golden-tables-examples-c-tablestable-h` | `golden` | testdata/golden/tables/examples-c/TablesTable.h is exactly what make pins-source-c writes from its generator | `files: ["testdata/golden/tables/examples-c/TablesTable.h"]`<br>`writer: pins-source-c` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/examples-c/TablesTable.h:1` |
+| `none.functional.golden.source-c.golden-tables-examples-c-tablestabledata-h` | `golden` | testdata/golden/tables/examples-c/TablesTableData.h is exactly what make pins-source-c writes from its generator | `files: ["testdata/golden/tables/examples-c/TablesTableData.h"]`<br>`writer: pins-source-c` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/examples-c/TablesTableData.h:1` |
 | `none.functional.golden.source-c.golden-tables-examples-c-widetable-c` | `golden` | testdata/golden/tables/examples-c/WideTable.c is exactly what make pins-source-c writes from its generator | `files: ["testdata/golden/tables/examples-c/WideTable.c"]`<br>`writer: pins-source-c` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/examples-c/WideTable.c:1` |
 | `none.functional.golden.source-c.golden-tables-examples-c-widetable-h` | `golden` | testdata/golden/tables/examples-c/WideTable.h is exactly what make pins-source-c writes from its generator | `files: ["testdata/golden/tables/examples-c/WideTable.h"]`<br>`writer: pins-source-c` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/examples-c/WideTable.h:1` |
 | `none.functional.golden.source-c.golden-tables-pointers-c-graphdemoview-c` | `golden` | testdata/golden/tables/pointers-c/GraphdemoView.c is exactly what make pins-source-c writes from its generator | `files: ["testdata/golden/tables/pointers-c/GraphdemoView.c"]`<br>`writer: pins-source-c` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/pointers-c/GraphdemoView.c:1` |
 | `none.functional.golden.source-c.golden-tables-pointers-c-graphdemoview-h` | `golden` | testdata/golden/tables/pointers-c/GraphdemoView.h is exactly what make pins-source-c writes from its generator | `files: ["testdata/golden/tables/pointers-c/GraphdemoView.h"]`<br>`writer: pins-source-c` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/pointers-c/GraphdemoView.h:1` |
 | `none.functional.golden.source-c.golden-tables-pointers-c-graphtable-c` | `golden` | testdata/golden/tables/pointers-c/GraphTable.c is exactly what make pins-source-c writes from its generator | `files: ["testdata/golden/tables/pointers-c/GraphTable.c"]`<br>`writer: pins-source-c` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/pointers-c/GraphTable.c:1` |
 | `none.functional.golden.source-c.golden-tables-pointers-c-graphtable-h` | `golden` | testdata/golden/tables/pointers-c/GraphTable.h is exactly what make pins-source-c writes from its generator | `files: ["testdata/golden/tables/pointers-c/GraphTable.h"]`<br>`writer: pins-source-c` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/pointers-c/GraphTable.h:1` |
+| `none.functional.golden.source-c.golden-tables-pointers-c-graphtabledata-h` | `golden` | testdata/golden/tables/pointers-c/GraphTableData.h is exactly what make pins-source-c writes from its generator | `files: ["testdata/golden/tables/pointers-c/GraphTableData.h"]`<br>`writer: pins-source-c` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/pointers-c/GraphTableData.h:1` |
 | `none.functional.golden.source-c.golden-tables-pointers-c-markstable-c` | `golden` | testdata/golden/tables/pointers-c/MarksTable.c is exactly what make pins-source-c writes from its generator | `files: ["testdata/golden/tables/pointers-c/MarksTable.c"]`<br>`writer: pins-source-c` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/pointers-c/MarksTable.c:1` |
 | `none.functional.golden.source-c.golden-tables-pointers-c-markstable-h` | `golden` | testdata/golden/tables/pointers-c/MarksTable.h is exactly what make pins-source-c writes from its generator | `files: ["testdata/golden/tables/pointers-c/MarksTable.h"]`<br>`writer: pins-source-c` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/pointers-c/MarksTable.h:1` |
+| `none.functional.golden.source-c.golden-tables-pointers-c-markstabledata-h` | `golden` | testdata/golden/tables/pointers-c/MarksTableData.h is exactly what make pins-source-c writes from its generator | `files: ["testdata/golden/tables/pointers-c/MarksTableData.h"]`<br>`writer: pins-source-c` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/pointers-c/MarksTableData.h:1` |
 | `none.functional.golden.source-c.golden-tables-pointers-c-partstable-c` | `golden` | testdata/golden/tables/pointers-c/PartsTable.c is exactly what make pins-source-c writes from its generator | `files: ["testdata/golden/tables/pointers-c/PartsTable.c"]`<br>`writer: pins-source-c` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/pointers-c/PartsTable.c:1` |
 | `none.functional.golden.source-c.golden-tables-pointers-c-partstable-h` | `golden` | testdata/golden/tables/pointers-c/PartsTable.h is exactly what make pins-source-c writes from its generator | `files: ["testdata/golden/tables/pointers-c/PartsTable.h"]`<br>`writer: pins-source-c` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/pointers-c/PartsTable.h:1` |
+| `none.functional.golden.source-c.golden-tables-pointers-c-partstabledata-h` | `golden` | testdata/golden/tables/pointers-c/PartsTableData.h is exactly what make pins-source-c writes from its generator | `files: ["testdata/golden/tables/pointers-c/PartsTableData.h"]`<br>`writer: pins-source-c` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/pointers-c/PartsTableData.h:1` |
 
-#### `golden` family `source-cpp`, 81 tests
+#### `golden` family `source-cpp`, 102 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -15454,45 +15433,59 @@ the generated source or output for a schema and language equals its pinned file.
 | `none.functional.golden.source-cpp.golden-tables-arms-carrytable-h` | `golden` | testdata/golden/tables/arms/CarryTable.h is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/arms/CarryTable.h"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/arms/CarryTable.h:1` |
 | `none.functional.golden.source-cpp.golden-tables-arms-gatetable-cpp` | `golden` | testdata/golden/tables/arms/GateTable.cpp is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/arms/GateTable.cpp"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/arms/GateTable.cpp:1` |
 | `none.functional.golden.source-cpp.golden-tables-arms-gatetable-h` | `golden` | testdata/golden/tables/arms/GateTable.h is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/arms/GateTable.h"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/arms/GateTable.h:1` |
+| `none.functional.golden.source-cpp.golden-tables-arms-gatetabledata-h` | `golden` | testdata/golden/tables/arms/GateTableData.h is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/arms/GateTableData.h"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/arms/GateTableData.h:1` |
 | `none.functional.golden.source-cpp.golden-tables-arms-nesttable-cpp` | `golden` | testdata/golden/tables/arms/NestTable.cpp is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/arms/NestTable.cpp"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/arms/NestTable.cpp:1` |
 | `none.functional.golden.source-cpp.golden-tables-arms-nesttable-h` | `golden` | testdata/golden/tables/arms/NestTable.h is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/arms/NestTable.h"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/arms/NestTable.h:1` |
 | `none.functional.golden.source-cpp.golden-tables-arms-ringtable-cpp` | `golden` | testdata/golden/tables/arms/RingTable.cpp is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/arms/RingTable.cpp"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/arms/RingTable.cpp:1` |
 | `none.functional.golden.source-cpp.golden-tables-arms-ringtable-h` | `golden` | testdata/golden/tables/arms/RingTable.h is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/arms/RingTable.h"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/arms/RingTable.h:1` |
+| `none.functional.golden.source-cpp.golden-tables-arms-ringtabledata-h` | `golden` | testdata/golden/tables/arms/RingTableData.h is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/arms/RingTableData.h"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/arms/RingTableData.h:1` |
 | `none.functional.golden.source-cpp.golden-tables-blobs-assetstable-cpp` | `golden` | testdata/golden/tables/blobs/AssetsTable.cpp is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/blobs/AssetsTable.cpp"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/blobs/AssetsTable.cpp:1` |
 | `none.functional.golden.source-cpp.golden-tables-blobs-assetstable-h` | `golden` | testdata/golden/tables/blobs/AssetsTable.h is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/blobs/AssetsTable.h"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/blobs/AssetsTable.h:1` |
 | `none.functional.golden.source-cpp.golden-tables-block-paddedtable-cpp` | `golden` | testdata/golden/tables/block/PaddedTable.cpp is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/block/PaddedTable.cpp"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/block/PaddedTable.cpp:1` |
 | `none.functional.golden.source-cpp.golden-tables-block-paddedtable-h` | `golden` | testdata/golden/tables/block/PaddedTable.h is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/block/PaddedTable.h"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/block/PaddedTable.h:1` |
+| `none.functional.golden.source-cpp.golden-tables-block-paddedtabledata-h` | `golden` | testdata/golden/tables/block/PaddedTableData.h is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/block/PaddedTableData.h"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/block/PaddedTableData.h:1` |
 | `none.functional.golden.source-cpp.golden-tables-block-rendertable-cpp` | `golden` | testdata/golden/tables/block/RenderTable.cpp is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/block/RenderTable.cpp"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/block/RenderTable.cpp:1` |
 | `none.functional.golden.source-cpp.golden-tables-block-rendertable-h` | `golden` | testdata/golden/tables/block/RenderTable.h is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/block/RenderTable.h"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/block/RenderTable.h:1` |
+| `none.functional.golden.source-cpp.golden-tables-block-rendertabledata-h` | `golden` | testdata/golden/tables/block/RenderTableData.h is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/block/RenderTableData.h"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/block/RenderTableData.h:1` |
 | `none.functional.golden.source-cpp.golden-tables-blockhome-constantstable` | `golden` | testdata/golden/tables/blockhome/ConstantsTable.h is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/blockhome/ConstantsTable.h"]`<br>`writer: pins-source-cpp` | every file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/blockhome/ConstantsTable.h:1` |
 | `none.functional.golden.source-cpp.golden-tables-blockhome-datatable-cpp` | `golden` | testdata/golden/tables/blockhome/DataTable.cpp is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/blockhome/DataTable.cpp"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/blockhome/DataTable.cpp:1` |
 | `none.functional.golden.source-cpp.golden-tables-blockhome-datatable-h` | `golden` | testdata/golden/tables/blockhome/DataTable.h is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/blockhome/DataTable.h"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/blockhome/DataTable.h:1` |
 | `none.functional.golden.source-cpp.golden-tables-blockhome-frametable-cpp` | `golden` | testdata/golden/tables/blockhome/FrameTable.cpp is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/blockhome/FrameTable.cpp"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/blockhome/FrameTable.cpp:1` |
 | `none.functional.golden.source-cpp.golden-tables-blockhome-frametable-h` | `golden` | testdata/golden/tables/blockhome/FrameTable.h is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/blockhome/FrameTable.h"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/blockhome/FrameTable.h:1` |
+| `none.functional.golden.source-cpp.golden-tables-blockhome-frametabledata-h` | `golden` | testdata/golden/tables/blockhome/FrameTableData.h is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/blockhome/FrameTableData.h"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/blockhome/FrameTableData.h:1` |
 | `none.functional.golden.source-cpp.golden-tables-examples-guardedtable-cpp` | `golden` | testdata/golden/tables/examples/GuardedTable.cpp is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/examples/GuardedTable.cpp"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/examples/GuardedTable.cpp:1` |
 | `none.functional.golden.source-cpp.golden-tables-examples-guardedtable-h` | `golden` | testdata/golden/tables/examples/GuardedTable.h is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/examples/GuardedTable.h"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/examples/GuardedTable.h:1` |
 | `none.functional.golden.source-cpp.golden-tables-examples-keyedtable-cpp` | `golden` | testdata/golden/tables/examples/KeyedTable.cpp is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/examples/KeyedTable.cpp"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/examples/KeyedTable.cpp:1` |
 | `none.functional.golden.source-cpp.golden-tables-examples-keyedtable-h` | `golden` | testdata/golden/tables/examples/KeyedTable.h is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/examples/KeyedTable.h"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/examples/KeyedTable.h:1` |
+| `none.functional.golden.source-cpp.golden-tables-examples-keyedtabledata-h` | `golden` | testdata/golden/tables/examples/KeyedTableData.h is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/examples/KeyedTableData.h"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/examples/KeyedTableData.h:1` |
 | `none.functional.golden.source-cpp.golden-tables-examples-nestedtable-cpp` | `golden` | testdata/golden/tables/examples/NestedTable.cpp is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/examples/NestedTable.cpp"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/examples/NestedTable.cpp:1` |
 | `none.functional.golden.source-cpp.golden-tables-examples-nestedtable-h` | `golden` | testdata/golden/tables/examples/NestedTable.h is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/examples/NestedTable.h"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/examples/NestedTable.h:1` |
+| `none.functional.golden.source-cpp.golden-tables-examples-nestedtabledata-h` | `golden` | testdata/golden/tables/examples/NestedTableData.h is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/examples/NestedTableData.h"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/examples/NestedTableData.h:1` |
 | `none.functional.golden.source-cpp.golden-tables-examples-packtable-cpp` | `golden` | testdata/golden/tables/examples/PackTable.cpp is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/examples/PackTable.cpp"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/examples/PackTable.cpp:1` |
 | `none.functional.golden.source-cpp.golden-tables-examples-packtable-h` | `golden` | testdata/golden/tables/examples/PackTable.h is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/examples/PackTable.h"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/examples/PackTable.h:1` |
+| `none.functional.golden.source-cpp.golden-tables-examples-packtabledata-h` | `golden` | testdata/golden/tables/examples/PackTableData.h is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/examples/PackTableData.h"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/examples/PackTableData.h:1` |
 | `none.functional.golden.source-cpp.golden-tables-examples-rangestable-cpp` | `golden` | testdata/golden/tables/examples/RangesTable.cpp is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/examples/RangesTable.cpp"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/examples/RangesTable.cpp:1` |
 | `none.functional.golden.source-cpp.golden-tables-examples-rangestable-h` | `golden` | testdata/golden/tables/examples/RangesTable.h is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/examples/RangesTable.h"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/examples/RangesTable.h:1` |
+| `none.functional.golden.source-cpp.golden-tables-examples-rangestabledata-h` | `golden` | testdata/golden/tables/examples/RangesTableData.h is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/examples/RangesTableData.h"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/examples/RangesTableData.h:1` |
 | `none.functional.golden.source-cpp.golden-tables-examples-tablestable-cpp` | `golden` | testdata/golden/tables/examples/TablesTable.cpp is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/examples/TablesTable.cpp"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/examples/TablesTable.cpp:1` |
 | `none.functional.golden.source-cpp.golden-tables-examples-tablestable-h` | `golden` | testdata/golden/tables/examples/TablesTable.h is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/examples/TablesTable.h"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/examples/TablesTable.h:1` |
+| `none.functional.golden.source-cpp.golden-tables-examples-tablestabledata-h` | `golden` | testdata/golden/tables/examples/TablesTableData.h is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/examples/TablesTableData.h"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/examples/TablesTableData.h:1` |
 | `none.functional.golden.source-cpp.golden-tables-examples-widetable-cpp` | `golden` | testdata/golden/tables/examples/WideTable.cpp is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/examples/WideTable.cpp"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/examples/WideTable.cpp:1` |
 | `none.functional.golden.source-cpp.golden-tables-examples-widetable-h` | `golden` | testdata/golden/tables/examples/WideTable.h is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/examples/WideTable.h"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/examples/WideTable.h:1` |
 | `none.functional.golden.source-cpp.golden-tables-lists-holderstable-cpp` | `golden` | testdata/golden/tables/lists/HoldersTable.cpp is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/lists/HoldersTable.cpp"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/lists/HoldersTable.cpp:1` |
 | `none.functional.golden.source-cpp.golden-tables-lists-holderstable-h` | `golden` | testdata/golden/tables/lists/HoldersTable.h is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/lists/HoldersTable.h"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/lists/HoldersTable.h:1` |
+| `none.functional.golden.source-cpp.golden-tables-lists-holderstabledata-h` | `golden` | testdata/golden/tables/lists/HoldersTableData.h is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/lists/HoldersTableData.h"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/lists/HoldersTableData.h:1` |
 | `none.functional.golden.source-cpp.golden-tables-lists-migratetable-cpp` | `golden` | testdata/golden/tables/lists/MigrateTable.cpp is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/lists/MigrateTable.cpp"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/lists/MigrateTable.cpp:1` |
 | `none.functional.golden.source-cpp.golden-tables-lists-migratetable-h` | `golden` | testdata/golden/tables/lists/MigrateTable.h is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/lists/MigrateTable.h"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/lists/MigrateTable.h:1` |
+| `none.functional.golden.source-cpp.golden-tables-lists-migratetabledata-h` | `golden` | testdata/golden/tables/lists/MigrateTableData.h is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/lists/MigrateTableData.h"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/lists/MigrateTableData.h:1` |
 | `none.functional.golden.source-cpp.golden-tables-lists-reporttable-cpp` | `golden` | testdata/golden/tables/lists/ReportTable.cpp is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/lists/ReportTable.cpp"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/lists/ReportTable.cpp:1` |
 | `none.functional.golden.source-cpp.golden-tables-lists-reporttable-h` | `golden` | testdata/golden/tables/lists/ReportTable.h is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/lists/ReportTable.h"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/lists/ReportTable.h:1` |
 | `none.functional.golden.source-cpp.golden-tables-lists-savetable-cpp` | `golden` | testdata/golden/tables/lists/SaveTable.cpp is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/lists/SaveTable.cpp"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/lists/SaveTable.cpp:1` |
 | `none.functional.golden.source-cpp.golden-tables-lists-savetable-h` | `golden` | testdata/golden/tables/lists/SaveTable.h is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/lists/SaveTable.h"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/lists/SaveTable.h:1` |
+| `none.functional.golden.source-cpp.golden-tables-lists-savetabledata-h` | `golden` | testdata/golden/tables/lists/SaveTableData.h is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/lists/SaveTableData.h"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/lists/SaveTableData.h:1` |
 | `none.functional.golden.source-cpp.golden-tables-lists-sharedtable-cpp` | `golden` | testdata/golden/tables/lists/SharedTable.cpp is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/lists/SharedTable.cpp"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/lists/SharedTable.cpp:1` |
 | `none.functional.golden.source-cpp.golden-tables-lists-sharedtable-h` | `golden` | testdata/golden/tables/lists/SharedTable.h is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/lists/SharedTable.h"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/lists/SharedTable.h:1` |
+| `none.functional.golden.source-cpp.golden-tables-lists-sharedtabledata-h` | `golden` | testdata/golden/tables/lists/SharedTableData.h is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/lists/SharedTableData.h"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/lists/SharedTableData.h:1` |
 | `none.functional.golden.source-cpp.golden-tables-maps-cellstable-cpp` | `golden` | testdata/golden/tables/maps/CellsTable.cpp is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/maps/CellsTable.cpp"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/maps/CellsTable.cpp:1` |
 | `none.functional.golden.source-cpp.golden-tables-maps-cellstable-h` | `golden` | testdata/golden/tables/maps/CellsTable.h is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/maps/CellsTable.h"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/maps/CellsTable.h:1` |
 | `none.functional.golden.source-cpp.golden-tables-maps-chunkstable-cpp` | `golden` | testdata/golden/tables/maps/ChunksTable.cpp is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/maps/ChunksTable.cpp"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/maps/ChunksTable.cpp:1` |
@@ -15505,6 +15498,7 @@ the generated source or output for a schema and language equals its pinned file.
 | `none.functional.golden.source-cpp.golden-tables-maps-docstable-h` | `golden` | testdata/golden/tables/maps/DocsTable.h is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/maps/DocsTable.h"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/maps/DocsTable.h:1` |
 | `none.functional.golden.source-cpp.golden-tables-maps-fleettable-cpp` | `golden` | testdata/golden/tables/maps/FleetTable.cpp is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/maps/FleetTable.cpp"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/maps/FleetTable.cpp:1` |
 | `none.functional.golden.source-cpp.golden-tables-maps-fleettable-h` | `golden` | testdata/golden/tables/maps/FleetTable.h is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/maps/FleetTable.h"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/maps/FleetTable.h:1` |
+| `none.functional.golden.source-cpp.golden-tables-maps-fleettabledata-h` | `golden` | testdata/golden/tables/maps/FleetTableData.h is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/maps/FleetTableData.h"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/maps/FleetTableData.h:1` |
 | `none.functional.golden.source-cpp.golden-tables-maps-pairstable-cpp` | `golden` | testdata/golden/tables/maps/PairsTable.cpp is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/maps/PairsTable.cpp"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/maps/PairsTable.cpp:1` |
 | `none.functional.golden.source-cpp.golden-tables-maps-pairstable-h` | `golden` | testdata/golden/tables/maps/PairsTable.h is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/maps/PairsTable.h"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/maps/PairsTable.h:1` |
 | `none.functional.golden.source-cpp.golden-tables-maps-rowstable-cpp` | `golden` | testdata/golden/tables/maps/RowsTable.cpp is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/maps/RowsTable.cpp"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/maps/RowsTable.cpp:1` |
@@ -15521,16 +15515,22 @@ the generated source or output for a schema and language equals its pinned file.
 | `none.functional.golden.source-cpp.golden-tables-maps-trailstable-h` | `golden` | testdata/golden/tables/maps/TrailsTable.h is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/maps/TrailsTable.h"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/maps/TrailsTable.h:1` |
 | `none.functional.golden.source-cpp.golden-tables-messages-messagestable-cpp` | `golden` | testdata/golden/tables/messages/MessagesTable.cpp is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/messages/MessagesTable.cpp"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/messages/MessagesTable.cpp:1` |
 | `none.functional.golden.source-cpp.golden-tables-messages-messagestable-h` | `golden` | testdata/golden/tables/messages/MessagesTable.h is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/messages/MessagesTable.h"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/messages/MessagesTable.h:1` |
+| `none.functional.golden.source-cpp.golden-tables-messages-messagestabledata-h` | `golden` | testdata/golden/tables/messages/MessagesTableData.h is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/messages/MessagesTableData.h"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/messages/MessagesTableData.h:1` |
 | `none.functional.golden.source-cpp.golden-tables-pointers-graphtable-cpp` | `golden` | testdata/golden/tables/pointers/GraphTable.cpp is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/pointers/GraphTable.cpp"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/pointers/GraphTable.cpp:1` |
 | `none.functional.golden.source-cpp.golden-tables-pointers-graphtable-h` | `golden` | testdata/golden/tables/pointers/GraphTable.h is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/pointers/GraphTable.h"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/pointers/GraphTable.h:1` |
+| `none.functional.golden.source-cpp.golden-tables-pointers-graphtabledata-h` | `golden` | testdata/golden/tables/pointers/GraphTableData.h is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/pointers/GraphTableData.h"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/pointers/GraphTableData.h:1` |
 | `none.functional.golden.source-cpp.golden-tables-pointers-markstable-cpp` | `golden` | testdata/golden/tables/pointers/MarksTable.cpp is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/pointers/MarksTable.cpp"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/pointers/MarksTable.cpp:1` |
 | `none.functional.golden.source-cpp.golden-tables-pointers-markstable-h` | `golden` | testdata/golden/tables/pointers/MarksTable.h is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/pointers/MarksTable.h"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/pointers/MarksTable.h:1` |
+| `none.functional.golden.source-cpp.golden-tables-pointers-markstabledata-h` | `golden` | testdata/golden/tables/pointers/MarksTableData.h is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/pointers/MarksTableData.h"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/pointers/MarksTableData.h:1` |
 | `none.functional.golden.source-cpp.golden-tables-pointers-partstable-cpp` | `golden` | testdata/golden/tables/pointers/PartsTable.cpp is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/pointers/PartsTable.cpp"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/pointers/PartsTable.cpp:1` |
 | `none.functional.golden.source-cpp.golden-tables-pointers-partstable-h` | `golden` | testdata/golden/tables/pointers/PartsTable.h is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/pointers/PartsTable.h"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/pointers/PartsTable.h:1` |
+| `none.functional.golden.source-cpp.golden-tables-pointers-partstabledata-h` | `golden` | testdata/golden/tables/pointers/PartsTableData.h is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/pointers/PartsTableData.h"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/pointers/PartsTableData.h:1` |
 | `none.functional.golden.source-cpp.golden-tables-scalars-scalarstable-cpp` | `golden` | testdata/golden/tables/scalars/ScalarsTable.cpp is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/scalars/ScalarsTable.cpp"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/scalars/ScalarsTable.cpp:1` |
 | `none.functional.golden.source-cpp.golden-tables-scalars-scalarstable-h` | `golden` | testdata/golden/tables/scalars/ScalarsTable.h is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/scalars/ScalarsTable.h"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/scalars/ScalarsTable.h:1` |
+| `none.functional.golden.source-cpp.golden-tables-scalars-scalarstabledata-h` | `golden` | testdata/golden/tables/scalars/ScalarsTableData.h is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/scalars/ScalarsTableData.h"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/scalars/ScalarsTableData.h:1` |
 | `none.functional.golden.source-cpp.golden-tables-stream-streamtable-cpp` | `golden` | testdata/golden/tables/stream/StreamTable.cpp is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/stream/StreamTable.cpp"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/stream/StreamTable.cpp:1` |
 | `none.functional.golden.source-cpp.golden-tables-stream-streamtable-h` | `golden` | testdata/golden/tables/stream/StreamTable.h is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/stream/StreamTable.h"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/stream/StreamTable.h:1` |
+| `none.functional.golden.source-cpp.golden-tables-stream-streamtabledata-h` | `golden` | testdata/golden/tables/stream/StreamTableData.h is exactly what make pins-source-cpp writes from its generator | `files: ["testdata/golden/tables/stream/StreamTableData.h"]`<br>`writer: pins-source-cpp` | the file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/golden/tables/stream/StreamTableData.h:1` |
 
 #### `golden` family `source-cs`, 15 tests
 
@@ -17082,11 +17082,79 @@ the generated source or output for a schema and language equals its pinned file.
 
 one schema version reads or writes another's data.
 
+#### `evolution` family `cstable`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.evolution.cstable.c-sharp-fixed-r14-grown-union-tag` | `gotest` | Go test TestCSharpFixedR14GrownUnionTag in ./internal/codegen/cstable | `package: ./internal/codegen/cstable`<br>`test: TestCSharpFixedR14GrownUnionTag` | the Go test passes | `internal/codegen/cstable/fixed_r14_grown_tag_test.go:21` |
+
+#### `evolution` family `goosetable`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.evolution.goosetable.goose-fixed-r14-grown-tag-reads-writers-tag-width` | `gotest` | Go test TestGooseFixedR14GrownTagReadsWritersTagWidth in ./internal/codegen/goosetable | `package: ./internal/codegen/goosetable`<br>`test: TestGooseFixedR14GrownTagReadsWritersTagWidth` | the Go test passes | `internal/codegen/goosetable/fixed_r14_test.go:45` |
+
+#### `evolution` family `gorows`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.evolution.gorows.row-r14-grown-tag-reads-the-writers-tag-width` | `gotest` | Go test TestRowR14GrownTagReadsTheWritersTagWidth in ./test/conformance/go/rows | `package: ./test/conformance/go/rows`<br>`test: TestRowR14GrownTagReadsTheWritersTagWidth` | the Go test passes | `test/conformance/go/rows/R14_grown_test.go:178` |
+
 #### `evolution` family `gotable`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.functional.evolution.gotable.json-walk-generated-go-tables` | `gotest` | every unit of the generated Go tables tree (build/tables-generated-go, which the row makes first) emits one generic JSON walker matching its reference profile; a run without the tree fails naming it (Go test TestJsonWalkGeneratedGoTables in ./internal/codegen/gotable) | `make: build/tables-generated-go/.stamp`<br>`package: ./internal/codegen/gotable`<br>`test: TestJsonWalkGeneratedGoTables` | the Go test passes | `internal/codegen/gotable/jsonwalk_test.go:329` |
+
+#### `evolution` family `lobstertable`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.evolution.lobstertable.lobster-fixed-r14-grown-tag-reads-writers-tag-width` | `gotest` | Go test TestLobsterFixedR14GrownTagReadsWritersTagWidth in ./internal/codegen/lobstertable | `package: ./internal/codegen/lobstertable`<br>`test: TestLobsterFixedR14GrownTagReadsWritersTagWidth` | the Go test passes | `internal/codegen/lobstertable/fixed_r14_test.go:48` |
+
+#### `evolution` family `luatable`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.evolution.luatable.lua-fixed-r14-grown-tag-reads-the-writers-tag-width` | `gotest` | Go test TestLuaFixedR14GrownTagReadsTheWritersTagWidth in ./internal/codegen/luatable | `package: ./internal/codegen/luatable`<br>`test: TestLuaFixedR14GrownTagReadsTheWritersTagWidth` | the Go test passes | `internal/codegen/luatable/fixed_r14_test.go:235` |
+
+#### `evolution` family `luautable`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.evolution.luautable.luau-fixed-r14-grown-tag-reads-the-writers-tag-width` | `gotest` | Go test TestLuauFixedR14GrownTagReadsTheWritersTagWidth in ./internal/codegen/luautable | `package: ./internal/codegen/luautable`<br>`test: TestLuauFixedR14GrownTagReadsTheWritersTagWidth` | the Go test passes | `internal/codegen/luautable/fixed_r14_test.go:191` |
+
+#### `evolution` family `mootable`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.evolution.mootable.moo-fixed-r14-grown-tag-reads-writers-tag-width` | `gotest` | Go test TestMooFixedR14GrownTagReadsWritersTagWidth in ./internal/codegen/mootable | `package: ./internal/codegen/mootable`<br>`test: TestMooFixedR14GrownTagReadsWritersTagWidth` | the Go test passes | `internal/codegen/mootable/fixed_r14_test.go:45` |
+
+#### `evolution` family `pythontable`, 2 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.evolution.pythontable.python-fixed-r14` | `gotest` | R14 for python: the shared vector (a union tag grown 1 -&gt; 8) compiles whole through compilePythonFixedPlan, every reach inside the writer's 5-byte record, the writer's tag read at its 1-byte width; the plan run on the leg's runtime lands tag 1 in 8 bytes and the u32 whole, tag 0 as None, a forged tag 2 refuses out\_of\_range; twins tag 1 and 2 (Go test TestPythonFixedR14 in ./internal/codegen/pythontable) | `package: ./internal/codegen/pythontable`<br>`test: TestPythonFixedR14` | the Go test passes | `internal/codegen/pythontable/fixed_r14_test.go:84` |
+| `none.functional.evolution.pythontable.python-fixed-r14-lineage` | `gotest` | R14's lineage lane for python: a 1-byte-tag lock entry generated into a build whose tag grew to 8 lays a ready plan and fixed\_load reads arm 1, None and refuses a forged tag 2 out\_of\_range (Go test TestPythonFixedR14Lineage in ./internal/codegen/pythontable) | `package: ./internal/codegen/pythontable`<br>`test: TestPythonFixedR14Lineage` | the Go test passes | `internal/codegen/pythontable/fixed_r14_test.go:198` |
+
+#### `evolution` family `rubytable`, 2 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.evolution.rubytable.ruby-fixed-r14` | `gotest` | R14 for ruby: the shared vector (a union tag grown 1 -&gt; 8) compiles whole through compileRubyFixedPlan, every reach inside the writer's 5-byte record, the writer's tag read at its 1-byte width; the plan run on the leg's runtime lands tag 1 in 8 bytes and the u32 whole, tag 0 as None, a forged tag 2 refuses out\_of\_range; twins tag 1 and 2 (Go test TestRubyFixedR14 in ./internal/codegen/rubytable) | `package: ./internal/codegen/rubytable`<br>`test: TestRubyFixedR14` | the Go test passes | `internal/codegen/rubytable/fixed_r14_test.go:86` |
+| `none.functional.evolution.rubytable.ruby-fixed-r14-lineage` | `gotest` | R14's lineage lane for ruby: a 1-byte-tag lock entry generated into a build whose tag grew to 8 lays a ready plan and fixed\_load reads arm 1, None and refuses a forged tag 2 out\_of\_range (Go test TestRubyFixedR14Lineage in ./internal/codegen/rubytable) | `package: ./internal/codegen/rubytable`<br>`test: TestRubyFixedR14Lineage` | the Go test passes | `internal/codegen/rubytable/fixed_r14_test.go:202` |
+
+#### `evolution` family `squirreltable`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.evolution.squirreltable.squirrel-fixed-r14-grown-tag-reads-writers-tag-width` | `gotest` | Go test TestSquirrelFixedR14GrownTagReadsWritersTagWidth in ./internal/codegen/squirreltable | `package: ./internal/codegen/squirreltable`<br>`test: TestSquirrelFixedR14GrownTagReadsWritersTagWidth` | the Go test passes | `internal/codegen/squirreltable/fixed_r14_test.go:53` |
+
+#### `evolution` family `unitytable`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.evolution.unitytable.unity-fixed-r14-grown-union-tag` | `gotest` | Go test TestUnityFixedR14GrownUnionTag in ./internal/codegen/unitytable | `package: ./internal/codegen/unitytable`<br>`test: TestUnityFixedR14GrownUnionTag` | the Go test passes | `internal/codegen/unitytable/fixed_r14_grown_tag_test.go:34` |
 
 ### Type `fuzz`
 
@@ -17185,11 +17253,23 @@ a negative control: a named test run against a deliberately broken build must co
 |---|---|---|---|---|---|
 | `none.functional.plant.lua-format.tables-lua-format-negative-control` | `plant` | negative control tables-lua-format-negative-control (group lua-format of make/negative-controls.json): its sabotage turns the gate it controls red | `file: make/schema-lua-generated-luacheck-gate.mk`<br>`group: lua-format`<br>`make: tables-lua-format-negative-control` | the control exits 0: the gate it controls went red on its planted sabotage | `make/negative-controls.json:236` |
 
+#### `plant` family `make-cs-block-compile`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.plant.make-cs-block-compile.tables-cs-block-compile-negative-control` | `plant` | negative control tables-cs-block-compile-negative-control (excluded from the groups of make/negative-controls.json, its reason there): the cook row naming a table-only tag enum and a Begin overload naming a table storage class, planted in the C# emitter, each fail the C# block-pair build by name | `file: make/cs-block-compile.mk`<br>`group: (excluded)`<br>`make: tables-cs-block-compile-negative-control` | the control exits 0: the gate it controls went red on its planted sabotage | `make/negative-controls.json:3653` |
+
 #### `plant` family `moo`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.functional.plant.moo.schema-moo-generated-analyze-strict-gate-negative-control` | `plant` | negative control schema-moo-generated-analyze-strict-gate-negative-control (group moo of make/negative-controls.json): its sabotage turns the gate it controls red | `file: make/schema-moo-generated-analyze-strict-gate.mk`<br>`group: moo`<br>`make: schema-moo-generated-analyze-strict-gate-negative-control` | the control exits 0: the gate it controls went red on its planted sabotage | `make/negative-controls.json:3142` |
+
+#### `plant` family `roadmap`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.plant.roadmap.update-paragraph-control` | `plant` | the roadmap gate refuses an "X update:" paragraph put back | `file: tools/roadmap/roadmap.mk`<br>`group: (excluded)`<br>`make: roadmap-check-negative-control` | the target exits 0 with no skip in its log | `tools/roadmap/roadmap.mk` |
 
 #### `plant` family `schema-dart-strict-analyze`, 1 test
 
@@ -17377,7 +17457,7 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 | `none.functional.compiler.compiler.issue710-table-recovery` | `gotest` | Go test TestIssue710TableRecovery in ./compiler | `package: ./compiler`<br>`test: TestIssue710TableRecovery` | the Go test passes | `compiler/issue710_test.go:125` |
 | `none.functional.compiler.compiler.issue715-base64-reader-defaults` | `gotest` | Go test TestIssue715Base64ReaderDefaults in ./compiler | `package: ./compiler`<br>`test: TestIssue715Base64ReaderDefaults` | the Go test passes | `compiler/issue715_test.go:15` |
 | `none.functional.compiler.compiler.issue759-packet-bool-layout-agrees-with-table` | `gotest` | Go test TestIssue759PacketBoolLayoutAgreesWithTable in ./compiler | `package: ./compiler`<br>`test: TestIssue759PacketBoolLayoutAgreesWithTable` | the Go test passes | `compiler/issue759_test.go:37` |
-| `none.functional.compiler.compiler.java-units-named-like-platform-types-compile` | `gotest` | Go test TestJavaUnitsNamedLikePlatformTypesCompile in ./compiler | `package: ./compiler`<br>`test: TestJavaUnitsNamedLikePlatformTypesCompile` | the Go test passes | `compiler/javaplatform_test.go:468` |
+| `none.functional.compiler.compiler.java-units-named-like-platform-types-compile` | `gotest` | Go test TestJavaUnitsNamedLikePlatformTypesCompile in ./compiler | `package: ./compiler`<br>`test: TestJavaUnitsNamedLikePlatformTypesCompile` | the Go test passes | `compiler/javaplatform_test.go:476` |
 | `none.functional.compiler.compiler.js-declarations-beside-type-script-type-names-type-check` | `gotest` | Go test TestJsDeclarationsBesideTypeScriptTypeNamesTypeCheck in ./compiler | `package: ./compiler`<br>`test: TestJsDeclarationsBesideTypeScriptTypeNamesTypeCheck` | the Go test passes | `compiler/jsglobals_test.go:508` |
 | `none.functional.compiler.compiler.js-unit-declaring-every-global-runs-and-type-checks` | `gotest` | Go test TestJsUnitDeclaringEveryGlobalRunsAndTypeChecks in ./compiler | `package: ./compiler`<br>`test: TestJsUnitDeclaringEveryGlobalRunsAndTypeChecks` | the Go test passes | `compiler/jsglobals_test.go:420` |
 | `none.functional.compiler.compiler.new-leg-bench-scaffold-is-unavailable` | `gotest` | Go test TestNewLegBenchScaffoldIsUnavailable in ./compiler | `package: ./compiler`<br>`test: TestNewLegBenchScaffoldIsUnavailable` | the Go test passes | `compiler/newleg_test.go:141` |
@@ -17548,7 +17628,13 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.functional.tooling.bench-tools.table-pass-requires-every-requested-language` | `gotest` | Go test TestTablePassRequiresEveryRequestedLanguage in ./bench/tools | `package: ./bench/tools`<br>`test: TestTablePassRequiresEveryRequestedLanguage` | the Go test passes | `bench/tools/table_pass_test.go:79` |
 | `none.functional.tooling.bench-tools.two-regressed-files-in-one-commit-cannot-reset-the-axis` | `gotest` | Go test TestTwoRegressedFilesInOneCommitCannotResetTheAxis in ./bench/tools | `package: ./bench/tools`<br>`test: TestTwoRegressedFilesInOneCommitCannotResetTheAxis` | the Go test passes | `bench/tools/ledger_test.go:279` |
 
-#### `tooling` family `ci`, 59 tests
+#### `tooling` family `caa`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.tooling.caa.self-test` | `make` | the CAA allowlist is exactly the linked logins, and main's tip is covered (reads GitHub with GITHUB\_TOKEN) | `file: make/caa-self-test.mk`<br>`target: caa-self-test` | the target exits 0 with no skip in its log | `make/caa-self-test.mk:7` |
+
+#### `tooling` family `ci`, 51 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -17559,12 +17645,8 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.functional.tooling.ci.conformance-legs-rebuild-negative-control` | `gotest` | Go test TestConformanceLegsRebuildNegativeControl in ./internal/ci | `package: ./internal/ci`<br>`test: TestConformanceLegsRebuildNegativeControl` | the Go test passes | `internal/ci/conformancelegs_test.go:40` |
 | `none.functional.tooling.ci.constrained-test-gate-negative-control` | `gotest` | Go test TestConstrainedTestGateNegativeControl in ./internal/ci | `package: ./internal/ci`<br>`test: TestConstrainedTestGateNegativeControl` | the Go test passes | `internal/ci/silent_skips_test.go:276` |
 | `none.functional.tooling.ci.dist-python-stages-the-fleet-sdk` | `gotest` | Go test TestDistPythonStagesTheFleetSDK in ./internal/ci | `package: ./internal/ci`<br>`test: TestDistPythonStagesTheFleetSDK` | the Go test passes | `internal/ci/pythonsdk_test.go:23` |
+| `none.functional.tooling.ci.every-go-conformance-row-runs-exactly-once` | `gotest` | Go test TestEveryGoConformanceRowRunsExactlyOnce in ./internal/ci | `package: ./internal/ci`<br>`test: TestEveryGoConformanceRowRunsExactlyOnce` | the Go test passes | `internal/ci/go_rows_run_once_test.go:43` |
 | `none.functional.tooling.ci.every-run-pattern-matches-a-test` | `gotest` | Go test TestEveryRunPatternMatchesATest in ./internal/ci | `package: ./internal/ci`<br>`test: TestEveryRunPatternMatchesATest` | the Go test passes | `internal/ci/runpattern_test.go:612` |
-| `none.functional.tooling.ci.every-tree-path-maps-to-a-job` | `gotest` | Go test TestEveryTreePathMapsToAJob in ./internal/ci | `package: ./internal/ci`<br>`test: TestEveryTreePathMapsToAJob` | the Go test passes | `internal/ci/every_job_runs_test.go:304` |
-| `none.functional.tooling.ci.fast-lane-runs-card-added-go-fixed-form-tests` | `gotest` | Go test TestFastLaneRunsCardAddedGoFixedFormTests in ./internal/ci | `package: ./internal/ci`<br>`test: TestFastLaneRunsCardAddedGoFixedFormTests` | the Go test passes | `internal/ci/fast_go_test.go:34` |
-| `none.functional.tooling.ci.fast-plan-covers-every-base-and-selects-relevant-work` | `gotest` | Go test TestFastPlanCoversEveryBaseAndSelectsRelevantWork in ./internal/ci | `package: ./internal/ci`<br>`test: TestFastPlanCoversEveryBaseAndSelectsRelevantWork` | the Go test passes | `internal/ci/fast_plan_test.go:94` |
-| `none.functional.tooling.ci.fast-plan-diffs-against-main` | `gotest` | Go test TestFastPlanDiffsAgainstMain in ./internal/ci | `package: ./internal/ci`<br>`test: TestFastPlanDiffsAgainstMain` | the Go test passes | `internal/ci/every_job_runs_test.go:339` |
-| `none.functional.tooling.ci.fast-plan-selects-new-leg-scaffold` | `gotest` | Go test TestFastPlanSelectsNewLegScaffold in ./internal/ci | `package: ./internal/ci`<br>`test: TestFastPlanSelectsNewLegScaffold` | the Go test passes | `internal/ci/newleg_plan_test.go:22` |
 | `none.functional.tooling.ci.go-fixed-corpus-pipeline-keeps-complete-test-recipe` | `gotest` | Go test TestGoFixedCorpusPipelineKeepsCompleteTestRecipe in ./internal/ci | `package: ./internal/ci`<br>`test: TestGoFixedCorpusPipelineKeepsCompleteTestRecipe` | the Go test passes | `internal/ci/go_fixed_corpus_pipeline_test.go:10` |
 | `none.functional.tooling.ci.golden-rewrite-gate-over-a-fixture-tree` | `gotest` | Go test TestGoldenRewriteGateOverAFixtureTree in ./internal/ci | `package: ./internal/ci`<br>`test: TestGoldenRewriteGateOverAFixtureTree` | the Go test passes | `internal/ci/golden_rewrites_test.go:84` |
 | `none.functional.tooling.ci.lua-allocation-counter-counts` | `gotest` | Go test TestLuaAllocationCounterCounts in ./internal/ci | `package: ./internal/ci`<br>`test: TestLuaAllocationCounterCounts` | the Go test passes | `internal/ci/schema_lua_resource_bounds_test.go:198` |
@@ -17578,8 +17660,6 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.functional.tooling.ci.luau-resource-bounds-planted-pattern` | `gotest` | Go test TestLuauResourceBoundsPlantedPattern in ./internal/ci | `package: ./internal/ci`<br>`test: TestLuauResourceBoundsPlantedPattern` | the Go test passes | `internal/ci/schema_luau_resource_bounds_test.go:217` |
 | `none.functional.tooling.ci.luau-runs-hostile-corpus-planted-pattern` | `gotest` | Go test TestLuauRunsHostileCorpusPlantedPattern in ./internal/ci | `package: ./internal/ci`<br>`test: TestLuauRunsHostileCorpusPlantedPattern` | the Go test passes | `internal/ci/schema_luau_runs_hostile_corpus_test.go:738` |
 | `none.functional.tooling.ci.luau-vocabulary-default-entry-bound` | `gotest` | Go test TestLuauVocabularyDefaultEntryBound in ./internal/ci | `package: ./internal/ci`<br>`test: TestLuauVocabularyDefaultEntryBound` | the Go test passes | `internal/ci/schema_luau_runs_hostile_corpus_test.go:814` |
-| `none.functional.tooling.ci.no-fast-job-skips-on-a-main-push` | `gotest` | Go test TestNoFastJobSkipsOnAMainPush in ./internal/ci | `package: ./internal/ci`<br>`test: TestNoFastJobSkipsOnAMainPush` | the Go test passes | `internal/ci/every_job_runs_test.go:106` |
-| `none.functional.tooling.ci.plan-omission-log-names-every-job` | `gotest` | Go test TestPlanOmissionLogNamesEveryJob in ./internal/ci | `package: ./internal/ci`<br>`test: TestPlanOmissionLogNamesEveryJob` | the Go test passes | `internal/ci/every_job_runs_test.go:231` |
 | `none.functional.tooling.ci.python-and-ruby-wire-fuzz-rows-take-the-runs-seed` | `gotest` | Go test TestPythonAndRubyWireFuzzRowsTakeTheRunsSeed in ./internal/ci | `package: ./internal/ci`<br>`test: TestPythonAndRubyWireFuzzRowsTakeTheRunsSeed` | the Go test passes | `internal/ci/wirefuzz_seed_rows_test.go:83` |
 | `none.functional.tooling.ci.python-ci-corpus-provenance-and-damage-controls` | `gotest` | Go test TestPythonCICorpusProvenanceAndDamageControls in ./internal/ci | `package: ./internal/ci`<br>`test: TestPythonCICorpusProvenanceAndDamageControls` | the Go test passes | `internal/ci/python_ci_corpus_test.go:296` |
 | `none.functional.tooling.ci.python-ci-planner-provisions-fixed-corpus` | `gotest` | Go test TestPythonCIPlannerProvisionsFixedCorpus in ./internal/ci | `package: ./internal/ci`<br>`test: TestPythonCIPlannerProvisionsFixedCorpus` | the Go test passes | `internal/ci/python_ci_corpus_test.go:133` |
@@ -17593,7 +17673,6 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.functional.tooling.ci.python-usage-fragments-run-negative-control` | `gotest` | Go test TestPythonUsageFragmentsRunNegativeControl in ./internal/ci | `package: ./internal/ci`<br>`test: TestPythonUsageFragmentsRunNegativeControl` | the Go test passes | `internal/ci/python_usage_fragments_test.go:166` |
 | `none.functional.tooling.ci.registry-complete-negative-controls` | `gotest` | Go test TestRegistryCompleteNegativeControls in ./internal/ci | `package: ./internal/ci`<br>`test: TestRegistryCompleteNegativeControls` | the Go test passes | `internal/ci/registrycomplete_test.go:29` |
 | `none.functional.tooling.ci.registry-covers-every-target` | `gotest` | Go test TestRegistryCoversEveryTarget in ./internal/ci | `package: ./internal/ci`<br>`test: TestRegistryCoversEveryTarget` | the Go test passes | `internal/ci/registrycomplete_test.go:16` |
-| `none.functional.tooling.ci.ruby-generated-strict-gate` | `gotest` | Go test TestRubyGeneratedStrictGate in ./internal/ci | `package: ./internal/ci`<br>`test: TestRubyGeneratedStrictGate` | the Go test passes | `internal/ci/ruby_generated_strict_gate_test.go:120` |
 | `none.functional.tooling.ci.ruby-generated-strict-gate-fast` | `gotest` | Go test TestRubyGeneratedStrictGateFast in ./internal/ci | `package: ./internal/ci`<br>`test: TestRubyGeneratedStrictGateFast` | the Go test passes | `internal/ci/ruby_generated_strict_gate_test.go:264` |
 | `none.functional.tooling.ci.ruby-generated-strict-gate-planted-pattern` | `gotest` | Go test TestRubyGeneratedStrictGatePlantedPattern in ./internal/ci | `package: ./internal/ci`<br>`test: TestRubyGeneratedStrictGatePlantedPattern` | the Go test passes | `internal/ci/ruby_generated_strict_gate_test.go:154` |
 | `none.functional.tooling.ci.ruby-usage-fragments-run` | `gotest` | Go test TestRubyUsageFragmentsRun in ./internal/ci | `package: ./internal/ci`<br>`test: TestRubyUsageFragmentsRun` | the Go test passes | `internal/ci/ruby_usage_fragments_test.go:119` |
@@ -17608,7 +17687,6 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.functional.tooling.ci.siblings-present-make-deps-fetches-nothing` | `gotest` | Go test TestSiblingsPresentMakeDepsFetchesNothing in ./internal/ci | `package: ./internal/ci`<br>`test: TestSiblingsPresentMakeDepsFetchesNothing` | the Go test passes | `internal/ci/siblings_test.go:119` |
 | `none.functional.tooling.ci.squirrel-all-port-differential-leaves-uncomparable-answers-out` | `gotest` | Go test TestSquirrelAllPortDifferentialLeavesUncomparableAnswersOut in ./internal/ci | `package: ./internal/ci`<br>`test: TestSquirrelAllPortDifferentialLeavesUncomparableAnswersOut` | the Go test passes | `internal/ci/schema_squirrel_all_port_differential_test.go:482` |
 | `none.functional.tooling.ci.squirrel-runs-hostile-corpus-plant` | `gotest` | Go test TestSquirrelRunsHostileCorpusPlant in ./internal/ci | `package: ./internal/ci`<br>`test: TestSquirrelRunsHostileCorpusPlant` | the Go test passes | `internal/ci/schema_squirrel_runs_hostile_corpus_test.go:485` |
-| `none.functional.tooling.ci.touched-leg-reads-its-families-again` | `gotest` | Go test TestTouchedLegReadsItsFamiliesAgain in ./internal/ci | `package: ./internal/ci`<br>`test: TestTouchedLegReadsItsFamiliesAgain` | the Go test passes | `internal/ci/touched_leg_rows_test.go:17` |
 | `none.functional.tooling.ci.vuln-recipe-runs-the-pinned-scanner-singular` | `gotest` | Go test TestVulnRecipeRunsThePinnedScannerSingular in ./internal/ci | `package: ./internal/ci`<br>`test: TestVulnRecipeRunsThePinnedScannerSingular` | the Go test passes | `internal/ci/vuln_test.go:23` |
 | `none.functional.tooling.ci.wide-scalar-probe-module-boundary` | `gotest` | Go test TestWideScalarProbeModuleBoundary in ./internal/ci | `package: ./internal/ci`<br>`test: TestWideScalarProbeModuleBoundary` | the Go test passes | `internal/ci/probe_test.go:21` |
 
@@ -17629,7 +17707,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.functional.tooling.gotestrun.verdict` | `gotest` | Go test TestVerdict in ./tools/gotestrun | `package: ./tools/gotestrun`<br>`test: TestVerdict` | the Go test passes | `tools/gotestrun/main_test.go:48` |
+| `none.functional.tooling.gotestrun.verdict` | `gotest` | Go test TestVerdict in ./tools/gotestrun | `package: ./tools/gotestrun`<br>`test: TestVerdict` | the Go test passes | `tools/gotestrun/main_test.go:69` |
 
 #### `tooling` family `harness`, 57 tests
 
@@ -17704,8 +17782,8 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.functional.tooling.packet.packet-carrier` | `gotest` | Go test TestPacketCarrier in ./test/conformance/packet | `package: ./test/conformance/packet`<br>`test: TestPacketCarrier` | the Go test passes | `test/conformance/packet/native_test.go:161` |
-| `none.functional.tooling.packet.packet-constant-default-writers` | `gotest` | Go test TestPacketConstantDefaultWriters in ./test/conformance/packet | `package: ./test/conformance/packet`<br>`test: TestPacketConstantDefaultWriters` | the Go test passes | `test/conformance/packet/constant_defaults_test.go:14` |
+| `none.functional.tooling.packet.packet-carrier` | `gotest` | Go test TestPacketCarrier in ./test/conformance/packet | `inputs.files` (396 bytes, held in the registry row's `inputs.files`)<br>`package: ./test/conformance/packet`<br>`test: TestPacketCarrier` | the Go test passes | `test/conformance/packet/native_test.go:161` |
+| `none.functional.tooling.packet.packet-constant-default-writers` | `gotest` | Go test TestPacketConstantDefaultWriters in ./test/conformance/packet | `inputs.files` (297 bytes, held in the registry row's `inputs.files`)<br>`package: ./test/conformance/packet`<br>`test: TestPacketConstantDefaultWriters` | the Go test passes | `test/conformance/packet/constant_defaults_test.go:14` |
 
 #### `tooling` family `pgroup`, 4 tests
 
@@ -17716,19 +17794,36 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.functional.tooling.pgroup.orphan-outlives-a-bare-command` | `gotest` | Go test TestOrphanOutlivesABareCommand in ./tools/pgroup | `package: ./tools/pgroup`<br>`test: TestOrphanOutlivesABareCommand` | the Go test passes | `tools/pgroup/pgroup_test.go:81` |
 | `none.functional.tooling.pgroup.wall-stops-the-group` | `gotest` | Go test TestWallStopsTheGroup in ./tools/pgroup | `package: ./tools/pgroup`<br>`test: TestWallStopsTheGroup` | the Go test passes | `tools/pgroup/pgroup_test.go:97` |
 
-#### `tooling` family `roadmap`, 3 tests
+#### `tooling` family `roadmap`, 4 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.functional.tooling.roadmap.lisp-renderer-suite` | `gotest` | Go test TestLispRendererSuite in ./tools/roadmap | `package: ./tools/roadmap`<br>`test: TestLispRendererSuite` | the Go test passes | `tools/roadmap/tally_test.go:273` |
 | `none.functional.tooling.roadmap.regeneration-keeps-the-hand-text` | `gotest` | Go test TestRegenerationKeepsTheHandText in ./tools/roadmap | `package: ./tools/roadmap`<br>`test: TestRegenerationKeepsTheHandText` | the Go test passes | `tools/roadmap/tally_test.go:376` |
 | `none.functional.tooling.roadmap.roadmap-is-generated-from-the-data` | `gotest` | Go test TestRoadmapIsGeneratedFromTheData in ./tools/roadmap | `package: ./tools/roadmap`<br>`test: TestRoadmapIsGeneratedFromTheData` | the Go test passes | `tools/roadmap/tally_test.go:289` |
+| `none.functional.tooling.roadmap.suites` | `make` | the roadmap renderer and gate suites | `file: tools/roadmap/roadmap.mk`<br>`target: roadmap-test` | the target exits 0 with no skip in its log | `tools/roadmap/roadmap.mk:78` |
 
-#### `tooling` family `schema-test`, 1 test
+#### `tooling` family `schema-test`, 3 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
+| `none.functional.tooling.schema-test.a-planted-go-skip-is-red-through-the-adapter` | `gotest` | a real go test over a planted module: a test that calls t.Skip, a test whose subtest skips and a fuzz target with no seed each fail by name through the gotest adapter, and a test and a seeded fuzz target that run pass (Go test TestAPlantedGoSkipIsRedThroughTheAdapter in ./tools/schema-test) | `package: ./tools/schema-test`<br>`test: TestAPlantedGoSkipIsRedThroughTheAdapter` | the Go test passes | `tools/schema-test/gotest_test.go:472` |
+| `none.functional.tooling.schema-test.every-hostile-target-dry-runs-without-writing` | `gotest` | Go test TestEveryHostileTargetDryRunsWithoutWriting in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestEveryHostileTargetDryRunsWithoutWriting` | the Go test passes | `tools/schema-test/hostile_test.go:425` |
 | `none.functional.tooling.schema-test.run-name-build-reads-what-the-run-wrote` | `gotest` | Go test TestRunNameBuildReadsWhatTheRunWrote in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestRunNameBuildReadsWhatTheRunWrote` | the Go test passes | `tools/schema-test/namebuild_test.go:130` |
+
+#### `tooling` family `singlepasscheck`, 9 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.tooling.singlepasscheck.single-pass-check-dead-twins-and-elifdef` | `gotest` | Go test TestSinglePassCheckDeadTwinsAndElifdef in ./tools/singlepasscheck | `package: ./tools/singlepasscheck`<br>`test: TestSinglePassCheckDeadTwinsAndElifdef` | the Go test passes | `tools/singlepasscheck/check_test.go:261` |
+| `none.functional.tooling.singlepasscheck.single-pass-check-defines-the-project-names` | `gotest` | Go test TestSinglePassCheckDefinesTheProjectNames in ./tools/singlepasscheck | `package: ./tools/singlepasscheck`<br>`test: TestSinglePassCheckDefinesTheProjectNames` | the Go test passes | `tools/singlepasscheck/check_test.go:123` |
+| `none.functional.tooling.singlepasscheck.single-pass-check-names-a-branch-no-configuration-keeps` | `gotest` | Go test TestSinglePassCheckNamesABranchNoConfigurationKeeps in ./tools/singlepasscheck | `package: ./tools/singlepasscheck`<br>`test: TestSinglePassCheckNamesABranchNoConfigurationKeeps` | the Go test passes | `tools/singlepasscheck/check_test.go:105` |
+| `none.functional.tooling.singlepasscheck.single-pass-check-names-a-chain-no-configuration-reaches` | `gotest` | Go test TestSinglePassCheckNamesAChainNoConfigurationReaches in ./tools/singlepasscheck | `package: ./tools/singlepasscheck`<br>`test: TestSinglePassCheckNamesAChainNoConfigurationReaches` | the Go test passes | `tools/singlepasscheck/check_test.go:208` |
+| `none.functional.tooling.singlepasscheck.single-pass-check-names-the-file` | `gotest` | Go test TestSinglePassCheckNamesTheFile in ./tools/singlepasscheck | `package: ./tools/singlepasscheck`<br>`test: TestSinglePassCheckNamesTheFile` | the Go test passes | `tools/singlepasscheck/check_test.go:144` |
+| `none.functional.tooling.singlepasscheck.single-pass-check-passes-the-rewrite` | `gotest` | Go test TestSinglePassCheckPassesTheRewrite in ./tools/singlepasscheck | `package: ./tools/singlepasscheck`<br>`test: TestSinglePassCheckPassesTheRewrite` | the Go test passes | `tools/singlepasscheck/check_test.go:38` |
+| `none.functional.tooling.singlepasscheck.single-pass-check-refuses-a-preprocessor-error` | `gotest` | Go test TestSinglePassCheckRefusesAPreprocessorError in ./tools/singlepasscheck | `package: ./tools/singlepasscheck`<br>`test: TestSinglePassCheckRefusesAPreprocessorError` | the Go test passes | `tools/singlepasscheck/check_test.go:96` |
+| `none.functional.tooling.singlepasscheck.single-pass-check-refuses-a-wrong-rewrite` | `gotest` | Go test TestSinglePassCheckRefusesAWrongRewrite in ./tools/singlepasscheck | `package: ./tools/singlepasscheck`<br>`test: TestSinglePassCheckRefusesAWrongRewrite` | the Go test passes | `tools/singlepasscheck/check_test.go:60` |
+| `none.functional.tooling.singlepasscheck.single-pass-check-runs-each-distinct-configuration-once` | `gotest` | Go test TestSinglePassCheckRunsEachDistinctConfigurationOnce in ./tools/singlepasscheck | `package: ./tools/singlepasscheck`<br>`test: TestSinglePassCheckRunsEachDistinctConfigurationOnce` | the Go test passes | `tools/singlepasscheck/check_test.go:240` |
 
 #### `tooling` family `slowtest`, 1 test
 
@@ -17752,30 +17847,36 @@ performance or timing.
 
 generated or runtime code is clean under the language's strict analyser.
 
-#### `lint` family `make-c`, 1 test
+#### `lint` family `make-c`, 4 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.functional.lint.make-c.tables-c-clean` | `make` | make tables-c-clean (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: tables-c-clean`<br>`tools: ["clang-format"]` | the target exits 0 with no skip in its log | `make/c.mk:1676` |
+| `none.functional.lint.make-c.tables-c-clean-shard-1-of-4` | `make` | make tables-c-clean C\_FORMAT\_SHARD=1/4 (make/c.mk) exits 0: shard 1 of 4, and the 4 shards together judge every file once | `file: make/c.mk`<br>`target: tables-c-clean`<br>`tools: ["clang-format"]`<br>`vars: {"C_FORMAT_SHARD":"1/4"}` | the target exits 0 with no skip in its log | `make/c.mk:1719` |
+| `none.functional.lint.make-c.tables-c-clean-shard-2-of-4` | `make` | make tables-c-clean C\_FORMAT\_SHARD=2/4 (make/c.mk) exits 0: shard 2 of 4, and the 4 shards together judge every file once | `file: make/c.mk`<br>`target: tables-c-clean`<br>`tools: ["clang-format"]`<br>`vars: {"C_FORMAT_SHARD":"2/4"}` | the target exits 0 with no skip in its log | `make/c.mk:1719` |
+| `none.functional.lint.make-c.tables-c-clean-shard-3-of-4` | `make` | make tables-c-clean C\_FORMAT\_SHARD=3/4 (make/c.mk) exits 0: shard 3 of 4, and the 4 shards together judge every file once | `file: make/c.mk`<br>`target: tables-c-clean`<br>`tools: ["clang-format"]`<br>`vars: {"C_FORMAT_SHARD":"3/4"}` | the target exits 0 with no skip in its log | `make/c.mk:1719` |
+| `none.functional.lint.make-c.tables-c-clean-shard-4-of-4` | `make` | make tables-c-clean C\_FORMAT\_SHARD=4/4 (make/c.mk) exits 0: shard 4 of 4, and the 4 shards together judge every file once | `file: make/c.mk`<br>`target: tables-c-clean`<br>`tools: ["clang-format"]`<br>`vars: {"C_FORMAT_SHARD":"4/4"}` | the target exits 0 with no skip in its log | `make/c.mk:1719` |
 
-#### `lint` family `make-cpp`, 2 tests
+#### `lint` family `make-cpp`, 5 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.functional.lint.make-cpp.tables-cpp-format` | `make` | make tables-cpp-format (make/cpp.mk) exits 0 | `file: make/cpp.mk`<br>`target: tables-cpp-format`<br>`tools: ["clang-format"]` | the target exits 0 with no skip in its log | `make/cpp.mk:370` |
-| `none.functional.lint.make-cpp.tables-cpp-warnings` | `make` | make tables-cpp-warnings (make/cpp.mk) exits 0 | `file: make/cpp.mk`<br>`siblings: ["../serialize"]`<br>`target: tables-cpp-warnings` | the target exits 0 with no skip in its log | `make/cpp.mk:380` |
+| `none.functional.lint.make-cpp.tables-cpp-format-shard-1-of-4` | `make` | make tables-cpp-format CPP\_FORMAT\_SHARD=1/4 (make/cpp.mk) exits 0: shard 1 of 4, and the 4 shards together judge every file once | `file: make/cpp.mk`<br>`target: tables-cpp-format`<br>`tools: ["clang-format"]`<br>`vars: {"CPP_FORMAT_SHARD":"1/4"}` | the target exits 0 with no skip in its log | `make/cpp.mk:382` |
+| `none.functional.lint.make-cpp.tables-cpp-format-shard-2-of-4` | `make` | make tables-cpp-format CPP\_FORMAT\_SHARD=2/4 (make/cpp.mk) exits 0: shard 2 of 4, and the 4 shards together judge every file once | `file: make/cpp.mk`<br>`target: tables-cpp-format`<br>`tools: ["clang-format"]`<br>`vars: {"CPP_FORMAT_SHARD":"2/4"}` | the target exits 0 with no skip in its log | `make/cpp.mk:382` |
+| `none.functional.lint.make-cpp.tables-cpp-format-shard-3-of-4` | `make` | make tables-cpp-format CPP\_FORMAT\_SHARD=3/4 (make/cpp.mk) exits 0: shard 3 of 4, and the 4 shards together judge every file once | `file: make/cpp.mk`<br>`target: tables-cpp-format`<br>`tools: ["clang-format"]`<br>`vars: {"CPP_FORMAT_SHARD":"3/4"}` | the target exits 0 with no skip in its log | `make/cpp.mk:382` |
+| `none.functional.lint.make-cpp.tables-cpp-format-shard-4-of-4` | `make` | make tables-cpp-format CPP\_FORMAT\_SHARD=4/4 (make/cpp.mk) exits 0: shard 4 of 4, and the 4 shards together judge every file once | `file: make/cpp.mk`<br>`target: tables-cpp-format`<br>`tools: ["clang-format"]`<br>`vars: {"CPP_FORMAT_SHARD":"4/4"}` | the target exits 0 with no skip in its log | `make/cpp.mk:382` |
+| `none.functional.lint.make-cpp.tables-cpp-warnings` | `make` | make tables-cpp-warnings (make/cpp.mk) exits 0 | `file: make/cpp.mk`<br>`siblings: ["../serialize"]`<br>`target: tables-cpp-warnings` | the target exits 0 with no skip in its log | `make/cpp.mk:392` |
 
 #### `lint` family `make-js`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.functional.lint.make-js.tables-js-clean` | `make` | make tables-js-clean (make/js.mk) exits 0 | `file: make/js.mk`<br>`target: tables-js-clean`<br>`tools: ["node","eslint"]`<br>`vars: {"ESLINT":"eslint","NODE":"node"}` | the target exits 0 with no skip in its log | `make/js.mk:1388` |
+| `none.functional.lint.make-js.tables-js-clean` | `make` | make tables-js-clean (make/js.mk) exits 0 | `file: make/js.mk`<br>`target: tables-js-clean`<br>`tools: ["node","eslint"]`<br>`vars: {"ESLINT":"eslint","NODE":"node"}` | the target exits 0 with no skip in its log | `make/js.mk:1403` |
 
 #### `lint` family `make-rust`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.functional.lint.make-rust.tables-rust-clippy` | `make` | make tables-rust-clippy (make/rust.mk) exits 0 | `file: make/rust.mk`<br>`siblings: ["../serialize.rs"]`<br>`target: tables-rust-clippy`<br>`tools: ["cargo"]` | the target exits 0 with no skip in its log | `make/rust.mk:136` |
+| `none.functional.lint.make-rust.tables-rust-clippy` | `make` | make tables-rust-clippy (make/rust.mk) exits 0 | `file: make/rust.mk`<br>`siblings: ["../serialize.rs"]`<br>`target: tables-rust-clippy`<br>`tools: ["cargo"]` | the target exits 0 with no skip in its log | `make/rust.mk:146` |
 
 #### `lint` family `make-schema-dart-generated-strict-analyze-gate`, 2 tests
 
@@ -17788,7 +17889,7 @@ generated or runtime code is clean under the language's strict analyser.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.functional.lint.make-schema-go-generated-golangci-lint-gate.schema-go-generated-golangci-lint-gate` | `make` | make schema-go-generated-golangci-lint-gate (make/schema-go-generated-golangci-lint-gate.mk) exits 0 | `file: make/schema-go-generated-golangci-lint-gate.mk`<br>`siblings: ["../serialize.go"]`<br>`target: schema-go-generated-golangci-lint-gate`<br>`tools: ["golangci-lint"]` | the target exits 0 with no skip in its log | `make/schema-go-generated-golangci-lint-gate.mk:133` |
+| `none.functional.lint.make-schema-go-generated-golangci-lint-gate.schema-go-generated-golangci-lint-gate` | `make` | make schema-go-generated-golangci-lint-gate (make/schema-go-generated-golangci-lint-gate.mk) exits 0 | `file: make/schema-go-generated-golangci-lint-gate.mk`<br>`siblings: ["../serialize.go"]`<br>`target: schema-go-generated-golangci-lint-gate`<br>`tools: ["golangci-lint"]` | the target exits 0 with no skip in its log | `make/schema-go-generated-golangci-lint-gate.mk:146` |
 
 #### `lint` family `make-schema-lobster-generated-strict-gate`, 1 test
 
@@ -17800,8 +17901,8 @@ generated or runtime code is clean under the language's strict analyser.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.functional.lint.make-schema-lua-generated-luacheck-gate.tables-lua-format` | `make` | make tables-lua-format (make/schema-lua-generated-luacheck-gate.mk) exits 0 | `file: make/schema-lua-generated-luacheck-gate.mk`<br>`target: tables-lua-format` | the target exits 0 with no skip in its log | `make/schema-lua-generated-luacheck-gate.mk:199` |
-| `none.functional.lint.make-schema-lua-generated-luacheck-gate.tables-lua-luacheck` | `make` | make tables-lua-luacheck (make/schema-lua-generated-luacheck-gate.mk) exits 0 | `file: make/schema-lua-generated-luacheck-gate.mk`<br>`target: tables-lua-luacheck`<br>`tools: ["luacheck"]` | the target exits 0 with no skip in its log | `make/schema-lua-generated-luacheck-gate.mk:129` |
+| `none.functional.lint.make-schema-lua-generated-luacheck-gate.tables-lua-format` | `make` | make tables-lua-format (make/schema-lua-generated-luacheck-gate.mk) exits 0 | `file: make/schema-lua-generated-luacheck-gate.mk`<br>`target: tables-lua-format` | the target exits 0 with no skip in its log | `make/schema-lua-generated-luacheck-gate.mk:206` |
+| `none.functional.lint.make-schema-lua-generated-luacheck-gate.tables-lua-luacheck` | `make` | make tables-lua-luacheck (make/schema-lua-generated-luacheck-gate.mk) exits 0 | `file: make/schema-lua-generated-luacheck-gate.mk`<br>`target: tables-lua-luacheck`<br>`tools: ["luacheck"]` | the target exits 0 with no skip in its log | `make/schema-lua-generated-luacheck-gate.mk:136` |
 
 #### `lint` family `make-schema-luau-generated-analyze-strict-gate`, 1 test
 
@@ -17813,7 +17914,7 @@ generated or runtime code is clean under the language's strict analyser.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.functional.lint.make-schema-moo-generated-analyze-strict-gate.schema-moo-generated-analyze-strict-gate` | `make` | make schema-moo-generated-analyze-strict-gate (make/schema-moo-generated-analyze-strict-gate.mk) exits 0 | `file: make/schema-moo-generated-analyze-strict-gate.mk`<br>`target: schema-moo-generated-analyze-strict-gate` | the target exits 0 with no skip in its log | `make/schema-moo-generated-analyze-strict-gate.mk:50` |
+| `none.functional.lint.make-schema-moo-generated-analyze-strict-gate.schema-moo-generated-analyze-strict-gate` | `make` | make schema-moo-generated-analyze-strict-gate (make/schema-moo-generated-analyze-strict-gate.mk) exits 0 | `file: make/schema-moo-generated-analyze-strict-gate.mk`<br>`target: schema-moo-generated-analyze-strict-gate` | the target exits 0 with no skip in its log | `make/schema-moo-generated-analyze-strict-gate.mk:52` |
 
 ### Type `differential`
 
@@ -17823,7 +17924,7 @@ two implementations or two versions give the same answer.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.functional.differential.make-schema-squirrel-all-port-differential.schema-squirrel-all-port-differential-fast` | `make` | make schema-squirrel-all-port-differential-fast (make/schema-squirrel-all-port-differential.mk) exits 0 | `file: make/schema-squirrel-all-port-differential.mk`<br>`target: schema-squirrel-all-port-differential-fast` | the target exits 0 with no skip in its log | `make/schema-squirrel-all-port-differential.mk:50` |
+| `none.functional.differential.make-schema-squirrel-all-port-differential.schema-squirrel-all-port-differential-fast` | `make` | make schema-squirrel-all-port-differential-fast (make/schema-squirrel-all-port-differential.mk) exits 0 | `file: make/schema-squirrel-all-port-differential.mk`<br>`target: schema-squirrel-all-port-differential-fast` | the target exits 0 with no skip in its log | `make/schema-squirrel-all-port-differential.mk:65` |
 
 ### Type `resource-bounds`
 
@@ -17833,7 +17934,7 @@ memory, allocation and depth limits are held.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.functional.resource-bounds.make-python-hostile.schema-python-resource-bounds` | `make` | make schema-python-resource-bounds (make/python-hostile.mk) exits 0 | `file: make/python-hostile.mk`<br>`target: schema-python-resource-bounds` | the target exits 0 with no skip in its log | `make/python-hostile.mk:21` |
+| `none.functional.resource-bounds.make-python-hostile.schema-python-resource-bounds` | `make` | make schema-python-resource-bounds (make/python-hostile.mk) exits 0 | `file: make/python-hostile.mk`<br>`target: schema-python-resource-bounds` | the target exits 0 with no skip in its log | `make/python-hostile.mk:28` |
 
 #### `resource-bounds` family `make-schema-lua-resource-bounds`, 1 test
 
@@ -17851,7 +17952,7 @@ memory, allocation and depth limits are held.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.functional.resource-bounds.make-schema-ruby-runs-hostile-corpus.schema-ruby-resource-bounds` | `make` | make schema-ruby-resource-bounds (make/schema-ruby-runs-hostile-corpus.mk) exits 0 | `file: make/schema-ruby-runs-hostile-corpus.mk`<br>`target: schema-ruby-resource-bounds` | the target exits 0 with no skip in its log | `make/schema-ruby-runs-hostile-corpus.mk:12` |
+| `none.functional.resource-bounds.make-schema-ruby-runs-hostile-corpus.schema-ruby-resource-bounds` | `make` | make schema-ruby-resource-bounds (make/schema-ruby-runs-hostile-corpus.mk) exits 0 | `file: make/schema-ruby-runs-hostile-corpus.mk`<br>`target: schema-ruby-resource-bounds` | the target exits 0 with no skip in its log | `make/schema-ruby-runs-hostile-corpus.mk:19` |
 
 #### `resource-bounds` family `make-schema-squirrel-resource-bounds`, 1 test
 
@@ -17867,8 +17968,8 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.functional.harness-run.make-c.tables-c-soak-compile-modes` | `make` | make tables-c-soak-compile-modes (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: tables-c-soak-compile-modes` | the target exits 0 with no skip in its log | `make/c.mk:411` |
-| `none.functional.harness-run.make-c.tables-c-zero-cost` | `make` | make tables-c-zero-cost (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: tables-c-zero-cost` | the target exits 0 with no skip in its log | `make/c.mk:308` |
+| `none.functional.harness-run.make-c.tables-c-soak-compile-modes` | `make` | make tables-c-soak-compile-modes (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: tables-c-soak-compile-modes` | the target exits 0 with no skip in its log | `make/c.mk:429` |
+| `none.functional.harness-run.make-c.tables-c-zero-cost` | `make` | make tables-c-zero-cost (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: tables-c-zero-cost` | the target exits 0 with no skip in its log | `make/c.mk:317` |
 
 #### `harness-run` family `make-go`, 1 test
 
@@ -17876,17 +17977,19 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 |---|---|---|---|---|---|
 | `none.functional.harness-run.make-go.tables-go-fixedform` | `make` | make tables-go-fixedform (make/go.mk) exits 0 | `file: make/go.mk`<br>`siblings: ["../serialize"]`<br>`target: tables-go-fixedform` | the target exits 0 with no skip in its log | `make/go.mk:63` |
 
-#### `harness-run` family `makefile`, 7 tests
+#### `harness-run` family `makefile`, 9 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.functional.harness-run.makefile.generated-current` | `make` | make generated-current (Makefile) exits 0 | `file: Makefile`<br>`target: generated-current` | the target exits 0 with no skip in its log | `Makefile:5225` |
-| `none.functional.harness-run.makefile.pins-framing` | `make` | make pins-framing (Makefile) exits 0: every committed framing vector under testdata/wire/tables/framing is what its Go vector script writes, and no file there is hand-written | `file: Makefile`<br>`target: pins-framing` | the target exits 0 with no skip in its log | `Makefile:8273` |
-| `none.functional.harness-run.makefile.tables-block-zero-cost-c-heavy` | `make` | make tables-block-zero-cost-c-heavy (Makefile) exits 0 | `file: Makefile`<br>`target: tables-block-zero-cost-c-heavy` | the target exits 0 with no skip in its log | `Makefile:8506` |
-| `none.functional.harness-run.makefile.tables-block-zero-cost-c-rest` | `make` | make tables-block-zero-cost-c-rest (Makefile) exits 0 | `file: Makefile`<br>`target: tables-block-zero-cost-c-rest` | the target exits 0 with no skip in its log | `Makefile:8515` |
-| `none.functional.harness-run.makefile.tables-block-zero-cost-cpp` | `make` | make tables-block-zero-cost-cpp (Makefile) exits 0 | `file: Makefile`<br>`target: tables-block-zero-cost-cpp` | the target exits 0 with no skip in its log | `Makefile:8470` |
-| `none.functional.harness-run.makefile.tables-block-zero-cost-cs` | `make` | make tables-block-zero-cost-cs (Makefile) exits 0 | `file: Makefile`<br>`target: tables-block-zero-cost-cs` | the target exits 0 with no skip in its log | `Makefile:8481` |
-| `none.functional.harness-run.makefile.tables-fixedform-corpus` | `make` | make tables-fixedform-corpus (Makefile) exits 0 | `file: Makefile`<br>`siblings: ["../serialize"]`<br>`target: tables-fixedform-corpus` | the target exits 0 with no skip in its log | `Makefile:7186` |
+| `none.functional.harness-run.makefile.conformance-cpp-tu-budget` | `make` | make conformance-cpp-tu-budget (Makefile) exits 0 | `file: Makefile`<br>`target: conformance-cpp-tu-budget` | the target exits 0 with no skip in its log | `Makefile:5520` |
+| `none.functional.harness-run.makefile.generated-current` | `make` | make generated-current (Makefile) exits 0 | `file: Makefile`<br>`target: generated-current` | the target exits 0 with no skip in its log | `Makefile:5270` |
+| `none.functional.harness-run.makefile.pins-framing` | `make` | make pins-framing (Makefile) exits 0: every committed framing vector under testdata/wire/tables/framing is what its Go vector script writes, and no file there is hand-written | `file: Makefile`<br>`target: pins-framing` | the target exits 0 with no skip in its log | `Makefile:8280` |
+| `none.functional.harness-run.makefile.python-tooling-tests` | `make` | make python-tooling-tests (Makefile) exits 0: every \*\_test.py outside the vendored trees | `file: Makefile`<br>`target: python-tooling-tests` | the target exits 0 with no skip in its log | `Makefile:8732` |
+| `none.functional.harness-run.makefile.tables-block-zero-cost-c-heavy` | `make` | make tables-block-zero-cost-c-heavy (Makefile) exits 0 | `file: Makefile`<br>`target: tables-block-zero-cost-c-heavy` | the target exits 0 with no skip in its log | `Makefile:8557` |
+| `none.functional.harness-run.makefile.tables-block-zero-cost-c-rest` | `make` | make tables-block-zero-cost-c-rest (Makefile) exits 0 | `file: Makefile`<br>`target: tables-block-zero-cost-c-rest` | the target exits 0 with no skip in its log | `Makefile:8565` |
+| `none.functional.harness-run.makefile.tables-block-zero-cost-cpp` | `make` | make tables-block-zero-cost-cpp (Makefile) exits 0 | `file: Makefile`<br>`target: tables-block-zero-cost-cpp` | the target exits 0 with no skip in its log | `Makefile:8521` |
+| `none.functional.harness-run.makefile.tables-block-zero-cost-cs` | `make` | make tables-block-zero-cost-cs (Makefile) exits 0 | `file: Makefile`<br>`target: tables-block-zero-cost-cs` | the target exits 0 with no skip in its log | `Makefile:8532` |
+| `none.functional.harness-run.makefile.tables-fixedform-corpus` | `make` | make tables-fixedform-corpus (Makefile) exits 0 | `file: Makefile`<br>`siblings: ["../serialize"]`<br>`target: tables-fixedform-corpus` | the target exits 0 with no skip in its log | `Makefile:7298` |
 
 ## Declared unrepresentable
 
@@ -17979,7 +18082,6 @@ Each test's subject exists in one language only (that language's own generated s
 | `compiler.cs-checked-build.packet-checked-build` | `cs` | C# packet sources compiled with checked arithmetic raise no overflow |
 | `compiler.go-string-write.utf8-check-allocates-nothing` | `go` | Go string conversion heap allocation in the UTF-8 write check |
 | `compiler.goose-registry.registry-compiles` | `goose` | registry compiles under Goose compiler |
-| `compiler.unity-fixed-harness.fixed-dialect-ms-build` | `unity` | Unity C# 9 netstandard2.1 MSBuild |
 | `encode.go-blockbuild.block-builder-storage-and-parallel-fill` | `go` | the Go block builder's own storage and goroutine parallel fill |
 | `fuzz.go-fuzzunit.fuzz-unit-is-current` | `go` | the committed generated Go fuzz package must equal what the Go generator emits |
 | `golden.lobster-view-listing.unit-view-listing` | `lobster` | Lobster module listing of unit files |
@@ -17990,7 +18092,6 @@ Each test's subject exists in one language only (that language's own generated s
 | `lint.luau-review1121.list-of-pointers-type-matches-the-load` | `luau` | luau generated-source identifier, escape or type annotation shape |
 | `lint.luau-review1121.require-alias-never-collides` | `luau` | luau generated-source identifier, escape or type annotation shape |
 | `lint.moo-fixedform-rows.fixed-units-analyze-silent` | `moo` | moo-analyze linter gate, a moo-only tool |
-| `lint.moo-wire-packet-defaults.generated-analyze-strict-gate` | `moo` | moo-analyze linter gate, a moo-only tool |
 | `lint.moo-wire-packet-defaults.generated-code-is-analyzer-clean` | `moo` | moo-analyze linter gate, a moo-only tool |
 | `lint.python-fixed-proof-ci-selection.fixed-proof-ci-selection` | `python` | Python CI selection of the fixed-proof tests |
 | `lint.python-fixedform.fixed-form-strict` | `python` | Runs the Python strict type analyser over the generated fixed module, a check of Python's own toolchain. |

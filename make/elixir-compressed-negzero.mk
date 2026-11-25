@@ -15,10 +15,9 @@
 # reference engine's bytes for one inside it
 # (TestElixirCompressedRangeWriteCorpus; its fast twin is
 # TestElixirFixedCompressedStoresAreRanged).
-GO ?= go
 
 .PHONY: conformance-elixir-compressed-negzero
 conformance-elixir-compressed-negzero:
-	$(GO) test -count=1 -timeout=0 ./internal/codegen/elixirtable -run '^(TestElixirCompressedNegZeroCorpus|TestElixirCompressedRangeWriteCorpus)$$'
+	$(GO_TEST) -count=1 -timeout=0 ./internal/codegen/elixirtable -run '^(TestElixirCompressedNegZeroCorpus|TestElixirCompressedRangeWriteCorpus)$$'
 
 test-elixir: conformance-elixir-compressed-negzero

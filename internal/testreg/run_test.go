@@ -2,6 +2,7 @@ package testreg
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"runtime"
@@ -197,6 +198,39 @@ func TestExpectedNotRanFails(t *testing.T) {
 	wantRed(t, rep, "the fake adapter did not report it", "expected 3 instances to run, 2 ran")
 }
 
+// TestARunOfNoTestsFails: a run with no instance to run is red, by name: it
+// proves nothing, so it is never a pass of 0 (docs/rulings.json no-skips).
+// Planted: without the check, Expected == Ran == Passed == 0 reads green.
+func TestARunOfNoTestsFails(t *testing.T) {
+	t.Parallel()
+	reg := load(t, fixture)
+	wantRed(t, runner(reg, fake{}).Run(context.Background(), nil), "a run of 0 tests is no pass")
+	// the account alone, with no problem line: 0 == 0 == 0 is still red
+	if (&Report{}).OK() {
+		t.Error("an empty report reads green")
+	}
+}
+
+// TestAPassThatReportsASkipFails: a pass whose reason says it skipped did
+// not run what it passes for, so it fails by name; a pass whose reason
+// names a seed stays a pass. Planted: without the reason check, the first
+// row passes.
+func TestAPassThatReportsASkipFails(t *testing.T) {
+	t.Parallel()
+	reg := load(t, fixture)
+	skipReason := fake{run: func(_ context.Context, insts []Instance) ([]Result, error) {
+		out := passAll(insts)
+		out[0].Reason = "skipped: lua not found"
+		out[1].Reason = "seed 20261125"
+		return out, nil
+	}}
+	rep := runner(reg, skipReason).Run(context.Background(), selectQ(t, reg, Query{Langs: []string{"go"}}))
+	wantRed(t, rep, "a pass whose reason reports a skip")
+	if rep.Failed != 1 {
+		t.Errorf("want only the pass that skipped failed, got %d failed", rep.Failed)
+	}
+}
+
 func TestAResultNobodyAskedForFails(t *testing.T) {
 	t.Parallel()
 	reg := load(t, fixture)
@@ -288,6 +322,14 @@ func TestAHarnessSkipLineFails(t *testing.T) {
 		"Tests: 4 passed, 1 skipped",
 		"skipped: 2",
 		"skips=1",
+		// other runners' words for a test that did not run
+		"test tests::needs_net ... ignored",
+		"test result: ok. 1 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out",
+		"3 tests, 0 failures, 1 excluded",
+		"Tests: 1 todo, 3 passed",
+		"1 test pending",
+		"not run: 2",
+		"00:01 +3 ~1: All tests passed!",
 	} {
 		if !reportsASkip(l) {
 			t.Errorf("a planted skip verdict passed: %q", l)
@@ -307,6 +349,11 @@ func TestAHarnessSkipLineFails(t *testing.T) {
 		"reading testdata/skip_depth.bin",
 		"the unknown-skip walk refused depth 65",
 		"BITPHASE_OK go 1",
+		"test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out",
+		"3 tests, 0 failures, 0 excluded",
+		"00:01 +3: All tests passed!",
+		"the reader ignored field 7 as the schema says",
+		"pending_writes: 0",
 	} {
 		if reportsASkip(l) {
 			t.Errorf("a line that reports no skip was refused: %q", l)
@@ -452,6 +499,31 @@ func TestAHeavyTestLeavesNoPartEmpty(t *testing.T) {
 	}
 }
 
+// TestAnUnansweredUnionInstanceWeighsItsLine: a union row's instance in a
+// language the row names no Go test for runs nothing, so it weighs
+// minSeconds whether the row is measured or not; the answering language's
+// instance weighs the row's seconds (DefaultSeconds when unmeasured).
+func TestAnUnansweredUnionInstanceWeighsItsLine(t *testing.T) {
+	t.Parallel()
+	union := Test{Key: "f.c", Inputs: json.RawMessage(`{"tests":{"go":{"package":"./p","test":"TestX"}}}`)}
+	measured := union
+	measured.Seconds = 30
+	for _, c := range []struct {
+		lang string
+		test Test
+		want float64
+	}{
+		{"go", measured, 30},
+		{"c", measured, minSeconds},
+		{"go", union, DefaultSeconds},
+		{"c", union, minSeconds},
+	} {
+		if w := Weight(Instance{Full: c.lang + ".unit.f.c", Lang: c.lang, Test: c.test}); w != c.want {
+			t.Errorf("%s instance of a row measured at %v s weighs %v, want %v", c.lang, c.test.Seconds, w, c.want)
+		}
+	}
+}
+
 // TestAGoldenWritersRowsShareOneShard: a golden writer runs once for all the
 // rows a shard holds of it, so its rows are one block no cut splits, placed
 // where its first row is, even when another row sits between them; rows of
@@ -479,29 +551,28 @@ func TestAGoldenWritersRowsShareOneShard(t *testing.T) {
 	}
 }
 
-// TestAnEnvPlantsRowsShareOneShardByLanguage: the env plants of one
-// language run their target in the checkout after its leg is built, so they
-// are one block, as a golden writer's rows are.
-func TestAnEnvPlantsRowsShareOneShardByLanguage(t *testing.T) {
+// TestEnvPlantsOfOneLanguageAreCutLikeAnyRow: an env plant's leg comes built
+// to every shard, so one language's env plants are not one block: five go
+// plants of 20 s are cut across two shards, never one shard of 100 s and an
+// empty one (the go corpus plants, kept together, weighed 76 s).
+func TestEnvPlantsOfOneLanguageAreCutLikeAnyRow(t *testing.T) {
 	t.Parallel()
-	plant := func(name, target string) Instance {
-		return Instance{Full: name, Test: Test{Adapter: "plant", Seconds: 5, Inputs: []byte(`{"env":{"X":"y"},"target":"` + target + `","reason":"r"}`)}}
+	var all []Instance
+	for i := range 5 {
+		all = append(all, Instance{Full: fmt.Sprint("p", i), Test: Test{Adapter: "plant", Seconds: 20,
+			Inputs: []byte(`{"env":{"X":"y"},"target":"go.functional.roundtrip.f.c` + fmt.Sprint(i) + `","reason":"r"}`)}})
 	}
-	plain := func(name string) Instance {
-		return Instance{Full: name, Test: Test{Adapter: "gotest", Seconds: 5}}
-	}
-	all := []Instance{plain("a"), plant("p1", "go.functional.roundtrip.f.one"), plant("p2", "go.functional.roundtrip.f.two"), plain("b"),
-		plant("p3", "go.functional.roundtrip.f.three"), plant("q1", "lua.functional.roundtrip.f.one"), plain("c"), plain("d")}
-	var got []string
-	for _, p := range Parts(all, 3) {
-		var names []string
-		for _, i := range p {
-			names = append(names, i.Full)
+	parts := Parts(all, 2)
+	secs := PartSeconds(parts)
+	n := 0
+	for i, p := range parts {
+		n += len(p)
+		if len(p) == 0 || secs[i] > 60 {
+			t.Fatalf("part seconds %v: one language's env plants were kept as one block, so one shard carries them all", secs)
 		}
-		got = append(got, strings.Join(names, ","))
 	}
-	if strings.Join(got, " | ") != "a,p1,p2,p3 | b,q1 | c,d" {
-		t.Fatalf("parts %q, want go's three env plants together, and the rest cut by seconds", got)
+	if n != len(all) {
+		t.Fatalf("the parts hold %d of the %d plants", n, len(all))
 	}
 }
 
@@ -788,5 +859,30 @@ func TestARowsShareIsWhatTheCallTookBeyondTheTimedRows(t *testing.T) {
 		if o.Seconds != want[o.Full] {
 			t.Errorf("%s weighs %.2f s, want %.2f (its own or a half of the call's untimed 3 s, plus 2 s of Prepare)", o.Full, o.Seconds, want[o.Full])
 		}
+	}
+}
+
+// TestGoTestSubtestsOfOneParentShareOneShard: subtest rows of one Go test
+// share that test's process, so a cut keeps them one block, placed where
+// the first is, even when another row sits between them.
+func TestGoTestSubtestsOfOneParentShareOneShard(t *testing.T) {
+	t.Parallel()
+	sub := func(name, test string) Instance {
+		return Instance{Full: name, Test: Test{Adapter: "gotest", Seconds: 5, Inputs: []byte(`{"package":"./compiler","test":"` + test + `","subtest":"a.schema"}`)}}
+	}
+	plain := func(name string) Instance {
+		return Instance{Full: name, Test: Test{Adapter: "gotest", Seconds: 5}}
+	}
+	all := []Instance{plain("a"), sub("s1", "TestA"), sub("s2", "TestA"), plain("b"), sub("s3", "TestA"), sub("o1", "TestB"), plain("c"), plain("d")}
+	var got []string
+	for _, part := range Parts(all, 3) {
+		var names []string
+		for _, inst := range part {
+			names = append(names, inst.Full)
+		}
+		got = append(got, strings.Join(names, ","))
+	}
+	if strings.Join(got, " | ") != "a,s1,s2,s3 | b,o1 | c,d" {
+		t.Fatalf("parts %q, want TestA's three subtests together", got)
 	}
 }

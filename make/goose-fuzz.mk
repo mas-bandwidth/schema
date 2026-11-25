@@ -150,8 +150,15 @@ tables-goose-wire-fuzz-leb-negative-control tables-goose-wire-fuzz-utf8-negative
 GOOSE_HOSTILE_CORPUS ?= internal/ci/hostilecorpus/corpus
 
 .PHONY: schema-goose-runs-hostile-corpus
-schema-goose-runs-hostile-corpus: $(GOOSE_FUZZ_SCHEMA)
+# THE BUILD, DECLARED: the prerequisites the corpus target builds first.
+# tools/schema-test builds this target before a row's deadline starts (the
+# hostile harness's Build step), so what it builds is never a case's timeout;
+# what the run recipe itself still compiles is paid inside the run.
+.PHONY: schema-goose-runs-hostile-corpus-build
+schema-goose-runs-hostile-corpus-build: $(GOOSE_FUZZ_SCHEMA)
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
+
+schema-goose-runs-hostile-corpus: schema-goose-runs-hostile-corpus-build
 	@sh make/goose-hostile.sh --scorer tools/hostilecorpusexec/testdata/scorer-outcomes.tsv
 	$(call hostile_ledgered,goose,$(GOOSE_FUZZ_DIR)/hostile-run.log,sh make/goose-hostile.sh "$(GOOSE)" ./$(GOOSE_FUZZ_SCHEMA) $(GOOSE_HOSTILE_CORPUS) $(GOOSE_FUZZ_DIR)/hostile,$(GOOSE_HOSTILE_CORPUS),)
 

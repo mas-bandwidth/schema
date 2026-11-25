@@ -405,6 +405,7 @@ func (r *Runner) runUnit(ctx context.Context, u Unit, env map[string]string, log
 		return nil, err
 	}
 	defer func() { _ = f.Close() }()
+	bench := env // the needs build runs for the bench, never under the unit's GOOS
 	argv, env := unitArgv(u, r.SchemaTest, env)
 	switch u.Kind {
 	case KindRegistry, KindGoTest, KindGoBench:
@@ -412,11 +413,35 @@ func (r *Runner) runUnit(ctx context.Context, u Unit, env map[string]string, log
 	default:
 		return nil, fmt.Errorf("unit %s: a shard does not run a %s unit", u.ID, u.Kind)
 	}
+	logf(f, "# fullrun %s %s on %s, shard %s\n", r.M.Run, u.ID, r.M.Bench, r.M.Shard)
+	// what the unit's tests read is built first (testreg.GoNeedsPath); a build that
+	// fails fails every name, by the build's own first failing line, and
+	// the unit's command does not run
+	if len(u.Needs) > 0 {
+		mk := append([]string{"make", "--no-print-directory"}, u.Needs...)
+		logf(f, "# %s\n", strings.Join(mk, " "))
+		var out bytes.Buffer
+		start := r.Now()
+		err := r.Cmd(ctx, mk, bench, io.MultiWriter(f, &out))
+		secs := r.Now().Sub(start).Seconds()
+		logf(f, "\n# exit: %v, %.1fs\n", err, secs)
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		if err != nil {
+			first := clip("the build its tests read failed: " + firstFailLine(strings.Split(out.String(), "\n"), fmt.Sprintf("%s: %v", strings.Join(mk, " "), err)))
+			results := make([]Result, len(u.Names))
+			for i, n := range u.Names {
+				results[i] = Result{Name: n.Name, Unit: u.ID, Verdict: Fail, First: first, Log: logRel, Seconds: secs / float64(len(u.Names))}
+			}
+			return results, nil
+		}
+	}
 	shown := strings.Join(argv, " ")
 	if u.GOOS != "" {
 		shown = "GOOS=" + u.GOOS + " " + shown
 	}
-	logf(f, "# fullrun %s %s on %s, shard %s\n# %s\n", r.M.Run, u.ID, r.M.Bench, r.M.Shard, shown)
+	logf(f, "# %s\n", shown)
 	var out bytes.Buffer
 	start := r.Now()
 	runErr := r.Cmd(ctx, argv, env, io.MultiWriter(f, &out))

@@ -117,10 +117,10 @@ expect(f.ReadingFixedSave(records,3,new Uint8Array(fixed.length-1))===-1,"fixed 
 const plainRecords=records.map(x=>Object.assign(new f.PlainReading(),x));const plainOut=new Uint8Array(f.PlainReadingFixedMeasure(3));
 expect(f.PlainReadingFixedSave(plainRecords,3,plainOut)===plainOut.length && hex(plainOut)===spec.plainFixed,"plain fixed pin moved");
 function loadFixed(wire){const dst=Array.from({length:3},()=>{const x=new f.Reading();f.InitReading(x);x.x=777;return x;});const report=new f.TableFixedReport();const n=f.ReadingFixedLoad(dst,3,wire,wire.length,f.ReadingFixedNewPlan(4096,4096),report);return {n,dst,report};}
-const good=loadFixed(fixed);expect(good.n===3 && !good.report.damaged && good.dst[2].x===1002,"fixed integrity load");
+const good=loadFixed(fixed);expect(good.n===3 && good.report.refused===0 && good.dst[2].x===1002,"fixed integrity load");
 for(let i=1;i<fixed.length;i++){
  const bad=fixed.slice();bad[i]^=1;const result=loadFixed(bad);
- expect(result.n===-1 && result.report.damaged && f.TableFixedRefusalName(result.report.refused)==="integrity_mismatch" && result.dst.every(x=>x.x===0),"fixed damaged byte "+i);
+ expect(result.n===-1 && !("damaged" in result.report) && f.TableFixedRefusalName(result.report.refused)==="integrity_mismatch" && result.dst.every(x=>x.x===0),"fixed damaged byte "+i);
 }
 const vocab=new f.TableVocabulary();vocab.Init(new Array(f.TableMessageEntriesHere));const ar={};expect(f.AnnounceRead(vocab,bytes(spec.announcement),ar),"integrity announcement");
 const message=bytes(spec.message);const msgOut=new Uint8Array(f.ReadingMeasureMessages(records,{}));

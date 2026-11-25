@@ -10,13 +10,12 @@ import (
 
 // mooNightlyFuzzWiring holds the moo packet-wire fuzz's artefacts to the shape
 // that makes the nightly a gate rather than a script (make/moo-fuzz.mk,
-// make/schema-moo-nightly-fuzz.mk, .github/workflows/schema-moo-nightly-fuzz.yml):
-// a case-count budget and a seed, never a clock; a workflow that runs only on
-// the schedule and on dispatch (the owner, 2026-11-15), never on a push or a pull
-// request; the findings kept on a red night; the
-// planted patterns run beside the long run; and the control's manifest line
-// carrying its reason. It returns every way the files fall short.
-func mooNightlyFuzzWiring(leg, nightly, workflow, manifest string) []string {
+// make/schema-moo-nightly-fuzz.mk): a case-count budget and a seed, never a
+// clock; the findings kept on a red night; the planted patterns run beside
+// the long run; and the control's manifest line carrying its reason. (Its
+// workflow is gone, registry L7: the nightly run is a registry row.) It
+// returns every way the files fall short.
+func mooNightlyFuzzWiring(leg, nightly, manifest string) []string {
 	var bad []string
 	need := func(text, file string, wants ...string) {
 		for _, w := range wants {
@@ -43,21 +42,6 @@ func mooNightlyFuzzWiring(leg, nightly, workflow, manifest string) []string {
 	if strings.Contains(nightly, "-fuzztime") || strings.Contains(nightly, "SCHEMA_MOO_FUZZ_TIME") {
 		bad = append(bad, "make/schema-moo-nightly-fuzz.mk budgets by a clock; the budget is a case count")
 	}
-	need(workflow, "schema-moo-nightly-fuzz.yml",
-		"schedule:", "workflow_dispatch:",
-		"if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'",
-		"make schema-moo-nightly-fuzz MOO_NIGHTLY_FUZZ_SEED=${{ github.run_id }}",
-		"make schema-moo-nightly-fuzz-negative-control",
-		"uses: ./.github/actions/moo",
-		"serialize.go.git serialize.go",
-		"build/moo-nightly-fuzz/findings/",
-		"TestSchemaMooNightlyFuzzWiring")
-	// NIGHTLY AND DISPATCH ONLY (the owner, 2026-11-15: "I want everything that is
-	// not light moved to nightly test now." "no exceptions."): no push and no
-	// pull request starts the workflow.
-	for _, p := range nightlyOnlyTriggerProblems(workflow) {
-		bad = append(bad, "schema-moo-nightly-fuzz.yml: "+p)
-	}
 	var m struct {
 		Groups []struct {
 			Targets []string `json:"targets"`
@@ -74,8 +58,8 @@ func mooNightlyFuzzWiring(leg, nightly, workflow, manifest string) []string {
 	for _, e := range m.Excluded {
 		if e.Target == "schema-moo-nightly-fuzz-negative-control" {
 			found = true
-			if !strings.Contains(e.Reason, "TestMooWireFuzzWriteNegativeControl") || !strings.Contains(e.Reason, "schema-moo-nightly-fuzz.yml") {
-				bad = append(bad, "the moo fuzz control's exclusion does not name the go tests and the job that run it")
+			if !strings.Contains(e.Reason, "TestMooWireFuzzWriteNegativeControl") {
+				bad = append(bad, "the moo fuzz control's exclusion does not name the go tests that run it")
 			}
 		}
 	}
@@ -107,45 +91,32 @@ func readRepoFile(t *testing.T, root string, parts ...string) string {
 func TestSchemaMooNightlyFuzzWiring(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
-	wf, ok := workflows(t, root)["schema-moo-nightly-fuzz.yml"]
-	if !ok {
-		t.Fatal("no .github/workflows/schema-moo-nightly-fuzz.yml")
-	}
 	for _, b := range mooNightlyFuzzWiring(
 		readRepoFile(t, root, "make", "moo-fuzz.mk"),
 		readRepoFile(t, root, "make", "schema-moo-nightly-fuzz.mk"),
-		wf,
 		readRepoFile(t, root, "make", "negative-controls.json")) {
 		t.Error(b)
 	}
 }
 
-// TestSchemaMooNightlyFuzzWiringNegativeControl: the nightly job's depth run
-// taken out of the workflow, a clock put in as the budget, or a push trigger
-// restored, each turns the check red for that reason.
+// TestSchemaMooNightlyFuzzWiringNegativeControl: a clock put in as the budget,
+// or the control's manifest line moved into a group, each turns the check red
+// for that reason.
 func TestSchemaMooNightlyFuzzWiringNegativeControl(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
 	leg := readRepoFile(t, root, "make", "moo-fuzz.mk")
 	nightly := readRepoFile(t, root, "make", "schema-moo-nightly-fuzz.mk")
-	wf := workflows(t, root)["schema-moo-nightly-fuzz.yml"]
 	manifest := readRepoFile(t, root, "make", "negative-controls.json")
-	cut := strings.Replace(wf, "make schema-moo-nightly-fuzz MOO_NIGHTLY_FUZZ_SEED", "echo skipped", 1)
-	if cut == wf {
-		t.Fatal("the workflow's fuzz line moved; the control patches nothing")
-	}
-	if got := mooNightlyFuzzWiring(leg, nightly, cut, manifest); len(got) != 1 || !strings.Contains(got[0], "make schema-moo-nightly-fuzz MOO_NIGHTLY_FUZZ_SEED") {
-		t.Errorf("a workflow with no depth run: %v", got)
-	}
 	clock := nightly + "\nSCHEMA_MOO_FUZZ_TIME ?= 600\n"
-	if got := mooNightlyFuzzWiring(leg, clock, wf, manifest); len(got) != 1 || !strings.Contains(got[0], "a clock") {
+	if got := mooNightlyFuzzWiring(leg, clock, manifest); len(got) != 1 || !strings.Contains(got[0], "a clock") {
 		t.Errorf("a clock budget: %v", got)
 	}
-	pushed := strings.Replace(wf, "\non:\n", "\non:\n  push:\n", 1)
-	if pushed == wf {
-		t.Fatal("the workflow's on: block moved; the control patches nothing")
+	grouped := strings.Replace(manifest, `"groups": [`, `"groups": [{"targets": ["schema-moo-nightly-fuzz-negative-control"]}, `, 1)
+	if grouped == manifest {
+		t.Fatal("the manifest's groups list moved; the control patches nothing")
 	}
-	if got := mooNightlyFuzzWiring(leg, nightly, pushed, manifest); len(got) != 1 || !strings.Contains(got[0], "push:") {
-		t.Errorf("a restored push trigger: %v", got)
+	if got := mooNightlyFuzzWiring(leg, nightly, grouped); len(got) != 1 || !strings.Contains(got[0], "manifest group") {
+		t.Errorf("the control in a manifest group: %v", got)
 	}
 }

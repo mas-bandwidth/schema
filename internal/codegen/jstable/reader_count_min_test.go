@@ -100,13 +100,13 @@ for (const k of [0, 1]) {
   b[at] = k;
   const { n, r } = fixedLoad(b);
   if (n >= 0 || r.refused !== m.TableFixedRefusal.CountOverBound) {
-    fail("fixed read: a count of " + k + " below Min 2 was not refused count_over_bound (got " + n + ", refused " + r.refused + ", damaged " + r.damaged + ")");
+    fail("fixed read: a count of " + k + " below Min 2 was not refused count_over_bound (got " + n + ", refused " + r.refused + ")");
   }
 }
 for (const k of [2, 3, 4]) {
   const b = fixedBytes(k);
   const { n, r } = fixedLoad(b);
-  if (n !== 1 || r.refused || r.damaged) { fail("fixed read: a lawful count of " + k + " was refused (" + n + ")"); }
+  if (n !== 1 || r.refused || ("damaged" in r)) { fail("fixed read: a lawful count of " + k + " was refused (" + n + ")"); }
 }
 
 if (failures !== 0) { process.exit(1); }

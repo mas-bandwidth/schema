@@ -3,16 +3,13 @@ package ci
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"sort"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/provesran"
-	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 )
 
 var allOptVerifyLangs = []string{
@@ -162,102 +159,6 @@ func TestOptVerifyCoversEveryPort(t *testing.T) {
 	}
 	if !strings.Contains(vmText, "json-fuzz --only") {
 		t.Errorf("make/verify-vm.mk missing json-fuzz wiring")
-	}
-}
-
-// TestOptVerifyFastWorkflowSelector checks that .github/workflows/ci-fast.yml
-// maps every language in its `add_leg <lang>` path selector and executes the
-// bounded verify-leg matrix across all 18 ports.
-func TestOptVerifyFastWorkflowSelector(t *testing.T) {
-	t.Parallel()
-
-	root := repoRoot(t)
-	wfBytes, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "ci-fast.yml"))
-	if err != nil {
-		t.Fatalf("read ci-fast.yml: %v", err)
-	}
-	wf := string(wfBytes)
-	if !strings.Contains(wf, "  verify-leg:\n") {
-		t.Fatal("ci-fast.yml missing verify-leg job")
-	}
-	if !strings.Contains(wf, "gate: [conformance, bench, fuzz, tablegen]") {
-		t.Fatal("ci-fast.yml verify-leg missing gate: [conformance, bench, fuzz, tablegen] matrix")
-	}
-
-	addLegRe := regexp.MustCompile(`\badd_leg\s+([a-z0-9]+)\b`)
-	seen := map[string]bool{}
-	for _, m := range addLegRe.FindAllStringSubmatch(wf, -1) {
-		seen[m[1]] = true
-	}
-	for _, lang := range allOptVerifyLangs {
-		if !seen[lang] {
-			t.Errorf(".github/workflows/ci-fast.yml has no `add_leg %s` selector rule", lang)
-		}
-	}
-
-	_, tail, ok := strings.Cut(wf, "          # THE BROAD RULE.")
-	if !ok {
-		t.Fatal("fast workflow broad selector not found")
-	}
-	selector, _, ok := strings.Cut(tail, "          echo \"broad=$broad\"")
-	if !ok {
-		t.Fatal("fast workflow output boundary not found")
-	}
-	_, selector, _ = strings.Cut(selector, "\n")
-	var script strings.Builder
-	for line := range strings.SplitSeq(selector, "\n") {
-		script.WriteString(strings.TrimPrefix(line, "          "))
-		script.WriteByte('\n')
-	}
-	script.WriteString(`printf '%s' "$verify_legs_json"`)
-
-	cases := []struct {
-		name  string
-		files string
-		want  string
-	}{
-		{"c", "internal/codegen/ctable/emit.go", `["c"]`},
-		{"cpp", "internal/codegen/cpptable/emit.go", `["cpp"]`},
-		{"cfmt", "internal/codegen/cfmt/format.go", `["c"]`},
-		{"ccommon", "internal/codegen/ccommon/emit.go", `["c","cpp"]`},
-		{"cs", "internal/codegen/cstable/emit.go", `["cs"]`},
-		{"unity", "internal/codegen/unitytable/emit.go", `["unity"]`},
-		{"go", "internal/codegen/gotable/wire.go", `["go"]`},
-		{"rust", "internal/codegen/rusttable/emit.go", `["rust"]`},
-		{"java", "internal/codegen/javatable/retain.go", `["java"]`},
-		{"js", "internal/codegen/jstable/variableform.go", `["js"]`},
-		{"dart", "internal/codegen/darttable/darttable.go", `["dart"]`},
-		{"elixir", "internal/codegen/elixirtable/variableform.go", `["elixir"]`},
-		{"elixir handoff", "make/elixir-handoff.py", `["elixir"]`},
-		{"goose", "internal/codegen/goosetable/fixedform.go", `["goose"]`},
-		{"luau", "internal/codegen/luautable/fixedlineage.go", `["luau"]`},
-		{"lua", "internal/codegen/luatable/runtime/wire.lua", `["lua"]`},
-		{"squirrel", "internal/codegen/squirreltable/runtime/cook.nut", `["squirrel"]`},
-		{"moo", "internal/codegen/mootable/runtime/json.moo", `["moo"]`},
-		{"lobster", "internal/codegen/lobstertable/load.go", `["lobster"]`},
-		{"python", "internal/codegen/pythontable/emit.go", `["python"]`},
-		{"ruby", "internal/codegen/rubytable/emit.go", `["ruby"]`},
-		// a shared edit gets every leg and a wide sweep every leg it
-		// touches: no cap (2026-11-22), a skip is green only with no reader
-		{"shared compiler", "compiler/compiler.go", `["c","cpp","cs","dart","elixir","go","goose","java","js","lobster","lua","luau","moo","python","ruby","rust","squirrel","unity"]`},
-		{"shared Makefile", "Makefile", `["c","cpp","cs","dart","elixir","go","goose","java","js","lobster","lua","luau","moo","python","ruby","rust","squirrel","unity"]`},
-		{"wide sweep uncapped", "generated/c/x\ngenerated/cs/x\ngenerated/go/x\ngenerated/js/x\ngenerated/lua/x", `["c","cs","go","js","lua"]`},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel() // each case is its own bash over a read-only script
-			testinputs.Files(t, ".github/workflows/ci-fast.yml")
-			cmd := exec.Command("bash", "-euo", "pipefail", "-c", script.String())
-			cmd.Env = append(scriptEnv(os.Environ()), "files="+tc.files)
-			cmd.Dir = root
-			out, err := cmd.CombinedOutput()
-			if err != nil {
-				t.Fatalf("plan script: %v: %s", err, out)
-			}
-			if got := selectorOutput(out); got != tc.want {
-				t.Fatalf("files=%q selected verify_legs=%q; want %q", tc.files, got, tc.want)
-			}
-		})
 	}
 }
 

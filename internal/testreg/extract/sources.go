@@ -137,6 +137,23 @@ func (s *scan) registryMakeTargets() map[string]bool {
 	}
 	var langs, perLang []string
 	for line := range strings.SplitSeq(string(data), "\n") {
+		if strings.Contains(line, `"make":{`) {
+			// a per-language row's make gates run by name too
+			var row struct {
+				Rec    string          `json:"rec"`
+				Inputs json.RawMessage `json:"inputs"`
+			}
+			if json.Unmarshal([]byte(line), &row) == nil && row.Rec == "test" {
+				if gates, ok, err := LangMakeGates(row.Inputs); ok && err == nil {
+					for _, gs := range gates {
+						for _, g := range gs {
+							out[g.Target] = true
+						}
+					}
+				}
+			}
+			continue
+		}
 		isMake := strings.Contains(line, `"adapter":"make"`)
 		isLang := strings.Contains(line, `"rec":"lang"`)
 		if !isMake && !isLang && !strings.Contains(line, testreg.LangPlaceholder) {
@@ -206,6 +223,12 @@ func (s *scan) makeTargets(files []string, nc, ci map[string]bool) {
 					s.res.Rules = map[string]bool{}
 				}
 				s.res.Rules[RuleID(rel, name)] = true
+				if s.res.RuleLines == nil {
+					s.res.RuleLines = map[string]int{}
+				}
+				if _, ok := s.res.RuleLines[RuleID(rel, name)]; !ok {
+					s.res.RuleLines[RuleID(rel, name)] = n
+				}
 				if name == ".PHONY" || strings.HasPrefix(name, ".") || nc[name] || seen[name] || !checkTarget.MatchString(name) && !ci[name] {
 					continue
 				}

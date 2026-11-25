@@ -39,9 +39,17 @@ cycle)
 key-order)
     # the generated mapdemo text writer walks each map's entries in DESCENDING
     # key order (docs/SPEC-TABLES.md §16.14, W6): the stored order is untouched,
-    # so only the text moves
+    # so only the text moves. The writer also refuses a key that is not above
+    # the one before it (f259a7aa3a), which would turn the descending walk
+    # into a refusal of every map with two keys (json-write unanswered from
+    # the first such row, the named rows never compared), so that check goes
+    # with the walk: the break is a writer that WRITES keys out of order.
     source=$(grep -l '^func tableJSONWriteMap(' build/tables-generated-go/maps/*TableJson.go)
-    sed 's/at := unsafe.Add(base, int64(i)\*int64(f.ElemSize))/at := unsafe.Add(base, int64(count-1-i)*int64(f.ElemSize)) \/\/ SABOTAGED: descending keys/' "$source" > "$out/source.gotext"
+    sed 's/at := unsafe.Add(base, int64(i)\*int64(f.ElemSize))/at := unsafe.Add(base, int64(count-1-i)*int64(f.ElemSize)) \/\/ SABOTAGED: descending keys/; s/if !tableMapKeyValid(k, key) || i > 0 \&\& tableMapKeyOrder(prev, k, key) >= 0 {/if !tableMapKeyValid(k, key) || i < 0 \&\& tableMapKeyOrder(prev, k, key) >= 0 { \/\/ SABOTAGED: the order check goes with the walk/' "$source" > "$out/source.gotext"
+    grep -q 'SABOTAGED: descending keys' "$out/source.gotext" && grep -q 'SABOTAGED: the order check goes with the walk' "$out/source.gotext" || {
+        echo "negative control patched only part of the walk: $mode ($source)" >&2
+        exit 1
+    }
     ;;
 text-refusal)
     # the generated text writer WRITES storage that is not text instead of

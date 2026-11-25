@@ -33,8 +33,9 @@ type Adapter interface {
 // checkout's build is the run's cost, paid once, and never eats the deadline
 // of the call that happens to need it first. Each Prepare has a deadline of
 // its own, the limit a call has (Runner.Context, group "prepare <group>"),
-// starting when it starts: a build that outlasts it fails its group by name. A shard pays it whole, so the
-// rows that need it are measured cold and kept in one block (unitOf).
+// starting when it starts: a build that outlasts it fails its group by name. A shard pays it whole,
+// and its seconds are shared over its group's rows (the rows' weights), so a
+// cold build is in what the sharder cuts by.
 type Preparer interface {
 	Prepare(ctx context.Context, lang string, instances []Instance) error
 }
@@ -86,7 +87,7 @@ const (
 // Report is a run's whole account. Expected counts every selected instance
 // that is not declared unrepresentable; Ran counts those an adapter
 // reported. A run is green only when nothing failed, nothing is missing,
-// no adapter reported a stray result, and Expected == Ran == Passed.
+// no adapter reported a stray result, and Expected == Ran == Passed > 0.
 type Report struct {
 	Expected, Ran, Passed, Failed, Missing, Unrep int
 	Outcomes                                      []Outcome
@@ -95,7 +96,7 @@ type Report struct {
 
 // OK reports whether the run is green.
 func (r *Report) OK() bool {
-	return len(r.Problems) == 0 && r.Failed == 0 && r.Missing == 0 && r.Expected == r.Ran && r.Passed == r.Expected
+	return len(r.Problems) == 0 && r.Failed == 0 && r.Missing == 0 && r.Expected == r.Ran && r.Passed == r.Expected && r.Expected > 0
 }
 
 // Summary is the counts line every run prints.
@@ -346,11 +347,15 @@ func (rn *Runner) Run(parent context.Context, instances []Instance) *Report {
 			default:
 				got[res.Instance] = true
 				rep.Ran++
-				switch res.Verdict {
-				case Pass:
+				switch {
+				case res.Verdict == Pass && RefuseSkips(strings.Split(res.Reason, "\n")) != nil:
+					// a pass whose reason says it skipped did not run what it
+					// passes for
+					status[res.Instance] = Outcome{Full: res.Instance, Status: StatusFail, Reason: "a pass whose reason reports a skip, and nothing is ever skipped: " + res.Reason, Seconds: secondsOf(res)}
+				case res.Verdict == Pass:
 					// a pass keeps its reason: a fuzz row's names its seed
 					status[res.Instance] = Outcome{Full: res.Instance, Status: StatusPass, Reason: res.Reason, Seconds: secondsOf(res)}
-				case Fail:
+				case res.Verdict == Fail:
 					reason := res.Reason
 					if strings.TrimSpace(reason) == "" {
 						reason = "the adapter gave no reason"
@@ -392,6 +397,10 @@ func (rn *Runner) Run(parent context.Context, instances []Instance) *Report {
 	sort.SliceStable(rep.Outcomes, func(i, j int) bool { return rank(rep.Outcomes[i].Status) < rank(rep.Outcomes[j].Status) })
 	if rep.Expected != rep.Ran {
 		rep.Problems = append(rep.Problems, fmt.Sprintf("expected %d instances to run, %d ran", rep.Expected, rep.Ran))
+	}
+	// a run that ran nothing proves nothing: it is red, never a pass of 0
+	if rep.Expected == 0 {
+		rep.Problems = append(rep.Problems, "the run had no instance to run, and a run of 0 tests is no pass")
 	}
 	return rep
 }

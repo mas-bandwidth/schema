@@ -93,17 +93,18 @@ const cppT01F4 = cppT01Preface + `
     }
 `
 
-// ---- F7: malformed, under 20 bytes -----------------------------------------
+// ---- F7: truncated, under 20 bytes -----------------------------------------
 //
-// Fewer than a whole fixed header is the residue of a truncation: malformed,
-// no refusal by name, reason untouched, no counter moved.
+// Fewer than a whole fixed header REFUSES truncated (§5.3's refusal table), no
+// malformed flag ("There is no `malformed` flag on this form's report"), no
+// counter moved.
 const cppT01F7 = cppT01Preface + `
     for ( int64_t k = 0; k < head; ++k )
     {
         Lineage got[4];
         TableReport lr; memset( &lr, 0, sizeof( lr ) );
         int64_t m = LineageFixedLoad( got, 4, buffer, k, plan, 4096, NULL, &lr );
-        if ( m != -1 || lr.damaged != 1 || lr.refused )
+        if ( m != -1 || lr.damaged || !lr.refused )
             { printf( "F7: k=%lld m=%lld malformed=%d refused=%d\n", (long long) k, (long long) m, (int) lr.damaged, (int) lr.refused ); return 1; }
         if ( lr.reason != TableFixedReason::truncated ) { printf( "F7: k=%lld reason is %d, not truncated\n", (long long) k, (int) lr.reason ); return 1; }
         if ( lr.unknown != 0 || lr.widened != 0 )
@@ -111,10 +112,11 @@ const cppT01F7 = cppT01Preface + `
     }
 `
 
-// ---- F8: malformed, ragged tail --------------------------------------------
+// ---- F8: truncated, ragged tail --------------------------------------------
 //
 // Appending 1 .. record_bytes-1 bytes leaves a tail that is not a whole record:
-// malformed. Appending a WHOLE record is not a ragged tail; it walks off the
+// it REFUSES truncated (§5.3: "a ragged tail: rest mod record_bytes != 0 |
+// truncated | the name"), no malformed flag. Appending a WHOLE record is not a ragged tail; it walks off the
 // end into TableMessageReason::no_layout because the fifth record's hash names nothing.
 const cppT01F8 = cppT01Preface + `
     for ( int64_t extra = 1; extra < recbytes; ++extra )
@@ -122,7 +124,7 @@ const cppT01F8 = cppT01Preface + `
         Lineage got[4];
         TableReport lr; memset( &lr, 0, sizeof( lr ) );
         int64_t m = LineageFixedLoad( got, 8, buffer, written + extra, plan, 4096, NULL, &lr );
-        if ( m != -1 || lr.damaged != 1 || lr.refused )
+        if ( m != -1 || lr.damaged || !lr.refused )
             { printf( "F8: extra=%lld m=%lld malformed=%d refused=%d\n", (long long) extra, (long long) m, (int) lr.damaged, (int) lr.refused ); return 1; }
         if ( lr.reason != TableFixedReason::truncated ) { printf( "F8: extra=%lld reason is %d, not truncated\n", (long long) extra, (int) lr.reason ); return 1; }
         if ( lr.unknown != 0 || lr.widened != 0 )

@@ -872,6 +872,15 @@
       ]
     },
     {
+      "name": "single-pass-equivalence",
+      "when": "nightly",
+      "why": "the single-pass equivalence gate's controls (make/c.mk, tables-single-pass-equivalence): a wrong rewrite planted in a copy of internal/codegen/ccommon/singlepass.go under an overlay (tools/sabotage/single_pass.go: one drops each file's first #else branch, one moves a guarded #if ahead of the #define between it and its twin), the paired bench closure generated in C as emitted and with it, and tools/singlepasscheck must go red naming bench-paired-c/BenchTable.h. Go and the host gcc only; about 9 s each on amd-1 (2026-11-25).",
+      "targets": [
+        "tables-single-pass-drop-else-negative-control",
+        "tables-single-pass-hoist-define-negative-control"
+      ]
+    },
+    {
       "name": "base-c-finite",
       "when": "nightly",
       "why": "the C leg's FINITE TABLE FLOAT control (docs/SPEC-TABLES.md \u00a73.3, the 2026-10-27 finite rule): it blinds each check in the emitted C in turn (the variable read at both widths, the message read at both widths, the fixed finite pass, the retained unknown, and the file, message, fixed and cook writers) and requires exactly that check's rows of TestCFiniteFloats red and every other row green. Ten small cc builds of one probe unit, about 3 s together on the author's machine (arm64 macOS). Moved nightly: on the fleet its control step measured 99 s on run 42556155793 and 77 s on run 42554833739 (132-133 s wall), on top of the shared setup and build; that 3 s figure was the author's quiet machine and is not the fleet measurement. It is a single go test that blinds ten checks in turn, so no grouping can cut it further; it moves to the nightly tier (certify.yml), where it still runs in full, instead of leaving the per-commit leg.",
@@ -3639,6 +3648,10 @@
     {
       "target": "roadmap-check-negative-control",
       "reason": "the roadmap gate's drift control (tools/roadmap/roadmap.mk): it needs SBCL and full git history for $(ROADMAP_BASE), which the shared negative-control rows on hosted ubuntu-latest runners neither install nor clone, so running it there would refuse at the missing tool before the control ran. It runs in its own gate, .github/workflows/roadmap.yml's `roadmap` job, which fetches full history and checks that sbcl is present before running `make roadmap-check-negative-control` beside the roadmap-check and roadmap-test gates on the fleet runner, on every push to main and on every pull request that touches the roadmap files."
+    },
+    {
+      "target": "tables-cs-block-compile-negative-control",
+      "reason": "the C# block-pair compile control (make/cs-block-compile.mk): it plants both defects (#4843, #4854) into the C# emitter through go build -overlay and requires the three-unit C# block-pair build to fail on each by name. It was ci-fast.yml's nightly-fast row cs-block-compile-negative-control, a per-PR check, so its registry row (plant.make-cs-block-compile.tables-cs-block-compile-negative-control, the row test/registry/retired.tsv maps that row to) is tier functional and the pr group runs it on every pull request, on the language-free row, which carries the fleet SDK's dotnet and the pinned serialize.cs sibling. 3.8 s wall from an empty build directory on amd-3 (2026-11-25). A group would run it a second time."
     }
   ]
 }

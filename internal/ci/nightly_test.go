@@ -23,13 +23,12 @@ import (
 )
 
 // fastLaneWorkflows are the light workflows a push or a pull request may
-// start: the path-selected fast lane and the quick lints, plus the agreement
+// start: the registry's per-PR tier and the roadmap lint, plus the agreement
 // check and the promotion tag, which test nothing. Every one of their jobs is
 // held to two minutes.
 var fastLaneWorkflows = map[string]bool{
-	"ci-fast.yml":       true, // the path-selected fast lane
+	"ci-fast.yml":       true, // the registry's per-PR tier, generated
 	"roadmap.yml":       true, // the roadmap lint, by path
-	"caa-self-test.yml": true, // the agreement check's self-test
 	"cla.yml":           true, // the contributor agreement check
 	"promotion-tag.yml": true, // tags a promoted main commit
 }
@@ -171,7 +170,7 @@ func TestNightlyRunsHaveNoTimeout(t *testing.T) {
 		wfs   map[string]string
 	}{
 		{"unit-codegen given its fifteen minutes back", nightlyNoTimeoutErrors, plant("ci-full.yml", "\n  go-test:\n", "\n  go-test:\n    timeout-minutes: 15\n")},
-		{"a nightly go test given -timeout 600s", nightlyNoTimeoutErrors, plant("lobster-fixed-proof-qualification.yml", "-count=1 -timeout 0", "-count=1 -timeout 600s")},
+		{"a nightly go test given -timeout 600s", nightlyNoTimeoutErrors, plant("ci-full.yml", "go test -timeout 0 -v", "go test -timeout 600s -v")},
 		{"a nightly go test given -timeout=10m", nightlyNoTimeoutErrors, plant("nightly-conformance.yml", "-json -timeout=0", "-json -timeout=10m")},
 		{"the shim's lift dropped", nightlyNoTimeoutErrors, plant("certify.yml", "\n  PGROUP_GO_TEST_TIMEOUT: '0'\n", "\n")},
 		{"a job the verdict does not need", verdictErrors, plant("certify.yml", ", schema-legs, big-endian]", ", big-endian]")},
@@ -294,7 +293,7 @@ func TestOnlyTheFastLaneRunsOnPushOrPullRequest(t *testing.T) {
 		check func(map[string]string) []string
 		wfs   map[string]string
 	}{
-		{"a nightly fuzz back on push to main", nightlyOnlyErrors, plant("schema-python-nightly-fuzz.yml", "\non:\n", "\non:\n  push:\n    branches: [ main ]\n")},
+		{"the nightly registry run back on push to main", nightlyOnlyErrors, plant("schema-nightly.yml", "\non:\n", "\non:\n  push:\n    branches: [ main ]\n")},
 		{"ci-full back on pull requests", nightlyOnlyErrors, plant("ci-full.yml", "\non:\n", "\non:\n  pull_request:\n")},
 		{"python-leg back on pull requests", nightlyOnlyErrors, plant("python-leg.yml", "\non:\n", "\non:\n  pull_request:\n")},
 		{"python-leg back on push to main", nightlyOnlyErrors, plant("python-leg.yml", "\non:\n", "\non:\n  push:\n    branches: [ main ]\n")},

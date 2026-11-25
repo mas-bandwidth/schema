@@ -778,7 +778,7 @@ export function roundTripFixed(make, mut, measure, save, load, newPlan, makeRepo
   const rrep = makeReport();
   const count = load(dst, 1, buf, written, plan, rrep);
   assert.strictEqual(count, 1);
-  assert.strictEqual(rrep.damaged, false);
+  assert.strictEqual(("damaged" in rrep), false);
   assert.strictEqual(rrep.refused, 0);
   assert.deepStrictEqual(dst[0], src);
 }

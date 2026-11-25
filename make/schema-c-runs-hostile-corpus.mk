@@ -31,6 +31,8 @@ C_HOSTILE_JOBS     ?= $(shell nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null
 # its pipes to the reaper past the exec wait bound under load; two at a time
 # keeps each case's own verdict the only thing the run measures.
 C_HOSTILE_RUN_JOBS ?= 2
+# the harness build's spelling of every unit's table-entry inline hook (below)
+C_HOSTILE_INLINE_OVERRIDE ?= inline
 
 C_HOSTILE_UNITS := tabledemo:tables/examples \
 	messagedemo:tables/messages blobdemo:tables/blobs \
@@ -48,33 +50,61 @@ $(C_HOSTILE_BUILD)/generated/.stamp: bin/schema make/schema-c-runs-hostile-corpu
 		internal/ci/hostilecorpus/corpus/packet/hostile.schema test/tables/ValueDefaults.schema test/tables/moodmap/MoodMap.schema
 	@rm -rf $(C_HOSTILE_BUILD)/generated && mkdir -p $(C_HOSTILE_BUILD)/generated
 	@go run ./tools/hostilecorpusexec probe-schema $(C_HOSTILE_BUILD)/probe.schema
-	@for unit in $(C_HOSTILE_UNITS); do \
-		name=$${unit%%:*}; path=$${unit#*:}; \
-		./bin/schema generate --lang c --out $(C_HOSTILE_BUILD)/generated/$$name $$path >/dev/null 2>&1 || \
-			{ ./bin/schema generate --lang c --out $(C_HOSTILE_BUILD)/generated/$$name $$path; exit 1; }; \
-	done
+	@# one generator per unit, in parallel: each writes its own directory, and
+	@# the serial loop was 15 s of a cold build (1 to 2 s a unit)
+	@for unit in $(C_HOSTILE_UNITS); do echo "$${unit%%:*} $${unit#*:}"; done | \
+	xargs -P $(C_HOSTILE_JOBS) -L 1 sh -c './bin/schema generate --lang c --out $(C_HOSTILE_BUILD)/generated/$$0 $$1 >/dev/null 2>&1 || \
+		{ ./bin/schema generate --lang c --out $(C_HOSTILE_BUILD)/generated/$$0 $$1; exit 1; }'
 	@touch $@
 
 # Each unit's translation units see only that unit's generated directory, so
 # two units' identically named headers never meet. The objects build in
 # parallel; the link is the one serial step.
+#
+# THE INLINE OVERRIDE. A unit's header spells its table entries
+# SCHEMA_<UNIT>_TABLE_INLINE, always_inline unless the build defines it (the
+# header's own #ifndef). Forced inlining is a speed choice for shipped code;
+# under the sanitizers every forced copy of a reader is instrumented again at
+# every call site, and that was most of a cold build: the 15 unit_*.c harness
+# files were 124 of 224 compile seconds on one core (unit_tblvaluedefaults.c
+# alone 21 s, 7 s with plain inline). The harness defines the hook as plain
+# inline, so the compiler inlines where it judges and each reader is
+# instrumented once; the code, the checks and the sanitizers are the same. A
+# unit whose headers no longer carry the hook fails the build by name, so a
+# renamed hook cannot quietly turn the define into one that names nothing.
+# The unit_*.c files are still the longest compiles (4 to 14 s each against
+# about 1.3 s for a generated file), so they are queued first: on N cores the
+# long ones start together and the short ones fill in behind them.
 $(C_HOSTILE_BUILD)/case: $(C_HOSTILE_BUILD)/generated/.stamp $(wildcard test/c-hostile/*.c test/c-hostile/*.h)
 	@rm -rf $(C_HOSTILE_BUILD)/obj && mkdir -p $(C_HOSTILE_BUILD)/obj
-	@{ for unit in $(C_HOSTILE_UNITS); do \
+	@{ for unit in $(C_HOSTILE_UNITS); do echo "$${unit%%:*} test/c-hostile/unit_$${unit%%:*}.c"; done; \
+	for unit in $(C_HOSTILE_UNITS); do \
 		name=$${unit%%:*}; \
-		echo "$$name test/c-hostile/unit_$$name.c"; \
 		for src in $(C_HOSTILE_BUILD)/generated/$$name/*.c; do echo "$$name $$src"; done; \
 	done; echo "- test/c-hostile/main.c"; echo "- $(SERIALIZE_C)/serialize.c"; } | \
-	xargs -P $(C_HOSTILE_JOBS) -L 1 sh -c 'out=$(C_HOSTILE_BUILD)/obj/$$0-$$(basename $$1 .c).o; \
-		$(CC) $(C_HOSTILE_CFLAGS) -I$(C_HOSTILE_BUILD)/generated/$$0 -Itest/c-hostile -I$(SERIALIZE_C) -c $$1 -o $$out'
+	xargs -P $(C_HOSTILE_JOBS) -L 1 sh -c 'out=$(C_HOSTILE_BUILD)/obj/$$0-$$(basename $$1 .c).o; inl=; \
+		if [ "$$0" != - ]; then \
+			hook=SCHEMA_$$(echo $$0 | tr a-z A-Z)_TABLE_INLINE; \
+			grep -qs "^#ifndef $$hook\$$" $(C_HOSTILE_BUILD)/generated/$$0/*.h || \
+				{ echo "c hostile build: no header of unit $$0 carries #ifndef $$hook, so the inline override would name nothing"; exit 255; }; \
+			inl=-D$$hook=$(C_HOSTILE_INLINE_OVERRIDE); \
+		fi; \
+		$(CC) $(C_HOSTILE_CFLAGS) $$inl -I$(C_HOSTILE_BUILD)/generated/$$0 -Itest/c-hostile -I$(SERIALIZE_C) -c $$1 -o $$out'
 	$(CC) $(C_HOSTILE_SANITIZE) $(C_HOSTILE_BUILD)/obj/*.o -o $@ -lpthread -lm
 
 $(C_HOSTILE_BUILD)/hostilecorpusexec: $(wildcard tools/hostilecorpusexec/*.go internal/ci/hostilecorpus/*.go)
 	@mkdir -p $(C_HOSTILE_BUILD)
 	go build -o $@ ./tools/hostilecorpusexec
 
+# THE BUILD, DECLARED: the prerequisites the corpus target builds first.
+# tools/schema-test builds this target before a row's deadline starts (the
+# hostile harness's Build step), so what it builds is never a case's timeout;
+# what the run recipe itself still compiles is paid inside the run.
+.PHONY: schema-c-runs-hostile-corpus-build
+schema-c-runs-hostile-corpus-build: $(C_HOSTILE_BUILD)/case $(C_HOSTILE_BUILD)/hostilecorpusexec
+
 .PHONY: schema-c-runs-hostile-corpus
-schema-c-runs-hostile-corpus: $(C_HOSTILE_BUILD)/case $(C_HOSTILE_BUILD)/hostilecorpusexec
+schema-c-runs-hostile-corpus: schema-c-runs-hostile-corpus-build
 	$(C_HOSTILE_BUILD)/hostilecorpusexec run -port c -exec $(C_HOSTILE_BUILD)/case \
 		-jobs $(C_HOSTILE_RUN_JOBS) \
 		-corpus "$(C_HOSTILE_CORPUS)"

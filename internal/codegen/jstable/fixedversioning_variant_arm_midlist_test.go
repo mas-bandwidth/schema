@@ -87,7 +87,7 @@ for (let pass = 0; pass < 2; pass++) {
   plan.image.fill(0x5A);
   const r = new TableFixedReport();
   const n = TLoad(back, back.length, data, data.length, plan, r);
-  if (n !== -1 || r.refused !== TableFixedRefusal.LayoutMalformed || r.damaged) {
+  if (n !== -1 || r.refused !== TableFixedRefusal.LayoutMalformed || ("damaged" in r)) {
     fail("E7 pass " + pass + ": V1's entry is UNLAWFUL to V2 (a moved kind, b removed) and refuses layout_malformed: n=" + n + " " + reason(r));
   }
   if (r.unknown || r.mismatch || r.widened || r.oor || r.repeated) {
@@ -144,7 +144,7 @@ const plan = TNewPlan(8192, 8192);
 // alike over zeros.
 plan.image.fill(0x5A);
 const n = TLoad(back, back.length, data, data.length, plan, report);
-if (!(n === 1 && !r.damaged && r.refused === 0)) {
+if (!(n === 1 && !("damaged" in r) && r.refused === 0)) {
   fail("E7: V2 read the older record through a compiled plan: n=" + n + " " + reason(r));
 }
 if (r.unknown !== 0 || r.mismatch !== 0) { fail("E7: a lawful entry counts nothing: " + reason(r)); }

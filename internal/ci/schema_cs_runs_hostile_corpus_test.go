@@ -90,24 +90,3 @@ func TestSchemaCsRunsHostileCorpusWiring(t *testing.T) {
 		}
 	}
 }
-
-// nightlyOnlyTriggerProblems names every way a heavy workflow's top-level on:
-// block breaks the nightly-and-dispatch-only rule (the owner, 2026-11-15: "I want
-// everything that is not light moved to nightly test now." "no exceptions."):
-// it must carry schedule and workflow_dispatch, and must not carry push,
-// pull_request or pull_request_target.
-func nightlyOnlyTriggerProblems(wf string) []string {
-	triggers := workflowTriggerBranches(wf)
-	var problems []string
-	for _, need := range []string{"schedule", "workflow_dispatch"} {
-		if _, ok := triggers[need]; !ok {
-			problems = append(problems, "the on: block has no "+need+": trigger")
-		}
-	}
-	for _, banned := range []string{"push", "pull_request", "pull_request_target"} {
-		if _, ok := triggers[banned]; ok {
-			problems = append(problems, "the on: block carries a "+banned+": trigger; heavy suites run nightly and on dispatch only")
-		}
-	}
-	return problems
-}

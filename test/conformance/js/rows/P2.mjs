@@ -108,7 +108,7 @@ function read(bytes, count) {
   const plan = ChainFixedNewPlan(4096, 4096);
   const n = ChainFixedLoad(values, count, bytes, bytes.length, plan, report);
   check(n === count, `read: ChainFixedLoad answers ${count} records (got ${n})`);
-  check(!report.damaged && report.refused === TableFixedRefusal.None,
+  check(!("damaged" in report) && report.refused === TableFixedRefusal.None,
     "read: a clean read moves no refusal");
   return values;
 }
