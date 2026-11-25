@@ -604,3 +604,77 @@ func TestCoverageShowsEveryCell(t *testing.T) {
 		t.Fatalf("%d MISSING, want 3 (c has no adapter)", c.Missing())
 	}
 }
+
+// stepClock is a clock that moves on by step each time it is read.
+type stepClock struct {
+	mu   sync.Mutex
+	t    time.Time
+	step time.Duration
+}
+
+func (c *stepClock) now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.t = c.t.Add(c.step)
+	return c.t
+}
+
+// TestEachWriterAndPlantIsACallOfItsOwn: a golden writer's rows are one
+// call and each plant is one, each under its own deadline, never the whole
+// shard's writers or plants under one.
+func TestEachWriterAndPlantIsACallOfItsOwn(t *testing.T) {
+	t.Parallel()
+	var mu sync.Mutex
+	calls := map[string][]string{}
+	counting := func(name string) fake {
+		return fake{run: func(_ context.Context, instances []Instance) ([]Result, error) {
+			var names []string
+			for _, inst := range instances {
+				names = append(names, inst.Full)
+			}
+			mu.Lock()
+			calls[name] = append(calls[name], strings.Join(names, ","))
+			mu.Unlock()
+			return passAll(instances), nil
+		}}
+	}
+	row := func(full, adapter, inputs string) Instance {
+		return Instance{Full: full, Lang: LangFree, Test: Test{Key: full, Scope: LangFree, Adapter: adapter, Family: "f", Inputs: []byte(inputs)}}
+	}
+	rn := &Runner{Reg: load(t, fixture), Adapters: map[string]Adapter{"golden": counting("golden"), "plant": counting("plant")}, Context: WithTimeout(0)}
+	rep := rn.Run(context.Background(), []Instance{
+		row("w1", "golden", `{"writer":"pins-x","files":["a"]}`), row("v1", "golden", `{"writer":"pins-y","files":["b"]}`),
+		row("w2", "golden", `{"writer":"pins-x","files":["c"]}`), row("p1", "plant", `{"edits":[]}`), row("p2", "plant", `{"edits":[]}`),
+	})
+	if !rep.OK() {
+		t.Fatalf("the run is red: %v", rep.Problems)
+	}
+	slices.Sort(calls["golden"])
+	slices.Sort(calls["plant"])
+	if g, p := strings.Join(calls["golden"], " | "), strings.Join(calls["plant"], " | "); g != "v1 | w1,w2" || p != "p1 | p2" {
+		t.Fatalf("golden calls %q, plant calls %q; want one per writer and one per plant", g, p)
+	}
+}
+
+// TestARowsSecondsAreItsCallsShareAndItsPrepares: a row its adapter gives
+// no seconds for is weighed at its share of the call's time plus its share
+// of its group's Prepare, so a cold build is in the weight the sharder cuts
+// by. The clock moves 6 s a read: Prepare 6 s and the call 6 s, over three
+// rows, are 4 s a row.
+func TestARowsSecondsAreItsCallsShareAndItsPrepares(t *testing.T) {
+	t.Parallel()
+	log := &eventLog{}
+	rn := stagedRunner(t, log, func(parent context.Context) (context.Context, context.CancelFunc) { return context.WithCancel(parent) }, staged{name: "a", log: log})
+	rn.Now = (&stepClock{step: 6 * time.Second}).now
+	one, two, three := freeInstance("a"), freeInstance("a"), freeInstance("a")
+	two.Full, three.Full = "none.unit.tooling.a.two", "none.unit.tooling.a.three"
+	rep := rn.Run(context.Background(), []Instance{one, two, three})
+	if !rep.OK() {
+		t.Fatalf("the run is red: %v", rep.Problems)
+	}
+	for _, o := range rep.Outcomes {
+		if o.Seconds != 4 {
+			t.Errorf("%s weighs %.2f s, want 4 (6 s of call and 6 s of Prepare over 3 rows)", o.Full, o.Seconds)
+		}
+	}
+}

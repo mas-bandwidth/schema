@@ -136,6 +136,21 @@ type Runner struct {
 	// parent; it carries the deadline. Time is an argument: a test hands in
 	// a context whose deadline has already passed instead of waiting.
 	Context func(parent context.Context, group string) (context.Context, context.CancelFunc)
+	// Now, when set, is the clock the runner times each call and each
+	// Prepare by: a row an adapter gives no seconds for is given its call's
+	// time shared over the call's rows, and every row its share of its
+	// group's Prepare, so the sharder weighs what a cold shard pays. Nil
+	// measures nothing (time is an argument: a test hands in its own clock).
+	Now func() time.Time
+}
+
+// clock is Now, or a stopped clock when there is none, so every time
+// measured is 0.
+func (rn *Runner) clock() time.Time {
+	if rn.Now == nil {
+		return time.Time{}
+	}
+	return rn.Now()
 }
 
 // WithTimeout is the usual Context: a deadline d from now, or none when d is 0.
@@ -221,6 +236,9 @@ func (rn *Runner) Plan(instances []Instance) *Plan {
 			p.Missing++
 			continue
 		}
+		if u := callUnit(inst); u != "" {
+			name += " (" + u + ")"
+		}
 		i, seen := idx[name]
 		if !seen {
 			i = len(p.groups)
@@ -242,18 +260,21 @@ func (rn *Runner) Run(parent context.Context, instances []Instance) *Report {
 	type groupRun struct {
 		results []Result
 		err     error
+		seconds float64 // the call's own time, when the runner has a clock
 	}
 	runs := make([]groupRun, len(plan.groups))
-	prepared := rn.prepare(parent, plan.groups)
+	prepared, prepSeconds := rn.prepare(parent, plan.groups)
 	call := func(gi int) {
 		g := plan.groups[gi]
 		if prepared[gi] != nil {
-			runs[gi] = groupRun{nil, prepared[gi]}
+			runs[gi] = groupRun{nil, prepared[gi], 0}
 			return
 		}
 		ctx, cancel := rn.Context(parent, g.name)
 		defer cancel()
+		start := rn.clock()
 		res, err := rn.Adapters[g.adapter].Run(ctx, g.lang, g.instances)
+		seconds := rn.clock().Sub(start).Seconds()
 		timedOut := errors.Is(ctx.Err(), context.DeadlineExceeded) || errors.Is(err, context.DeadlineExceeded)
 		switch {
 		case timedOut && err == nil:
@@ -263,7 +284,7 @@ func (rn *Runner) Run(parent context.Context, instances []Instance) *Report {
 		case err != nil:
 			err = fmt.Errorf("adapter %s crashed: %w", g.adapter, err)
 		}
-		runs[gi] = groupRun{res, err}
+		runs[gi] = groupRun{res, err, seconds}
 	}
 	var serial []int
 	var wg sync.WaitGroup
@@ -287,6 +308,19 @@ func (rn *Runner) Run(parent context.Context, instances []Instance) *Report {
 		for _, inst := range g.instances {
 			asked[inst.Full] = true
 		}
+		// a row's seconds: its adapter's, else its share of the call's,
+		// and its share of its group's Prepare either way
+		share := 0.0
+		if n := len(run.results); n > 0 {
+			share = run.seconds / float64(n)
+		}
+		prep := prepSeconds[gi] / float64(len(g.instances))
+		secondsOf := func(res Result) float64 {
+			if res.Seconds > 0 {
+				return res.Seconds + prep
+			}
+			return share + prep
+		}
 		got := map[string]bool{}
 		for _, res := range run.results {
 			switch {
@@ -301,13 +335,13 @@ func (rn *Runner) Run(parent context.Context, instances []Instance) *Report {
 				rep.Ran++
 				switch res.Verdict {
 				case Pass:
-					status[res.Instance] = Outcome{Full: res.Instance, Status: StatusPass, Seconds: res.Seconds}
+					status[res.Instance] = Outcome{Full: res.Instance, Status: StatusPass, Seconds: secondsOf(res)}
 				case Fail:
 					reason := res.Reason
 					if strings.TrimSpace(reason) == "" {
 						reason = "the adapter gave no reason"
 					}
-					status[res.Instance] = Outcome{Full: res.Instance, Status: StatusFail, Reason: reason, Seconds: res.Seconds}
+					status[res.Instance] = Outcome{Full: res.Instance, Status: StatusFail, Reason: reason, Seconds: secondsOf(res)}
 				default:
 					// there is no skipped verdict: a test passes or fails
 					status[res.Instance] = Outcome{Full: res.Instance, Status: StatusFail, Reason: fmt.Sprintf("verdict %q is not pass or fail", res.Verdict)}
@@ -350,25 +384,29 @@ func (rn *Runner) Run(parent context.Context, instances []Instance) *Report {
 
 // prepare runs each group's Prepare (Preparer), one after another, under the
 // run's own context and no call's deadline, and returns each group's error.
-func (rn *Runner) prepare(parent context.Context, groups []group) []error {
+func (rn *Runner) prepare(parent context.Context, groups []group) ([]error, []float64) {
 	out := make([]error, len(groups))
+	seconds := make([]float64, len(groups))
 	for gi, g := range groups {
 		p, ok := rn.Adapters[g.adapter].(Preparer)
 		if !ok {
 			continue
 		}
+		start := rn.clock()
 		if err := p.Prepare(parent, g.lang, g.instances); err != nil {
 			out[gi] = fmt.Errorf("adapter %s could not prepare %s: %w", g.adapter, g.name, err)
 		}
+		seconds[gi] = rn.clock().Sub(start).Seconds()
 	}
-	return out
+	return out, seconds
 }
 
 // Prepare builds what the instances' calls need (Preparer), as Run does
 // before its first call: a plant prepares the rows it runs before its own
 // call starts.
 func (rn *Runner) Prepare(parent context.Context, instances []Instance) error {
-	return errors.Join(rn.prepare(parent, rn.Plan(instances).groups)...)
+	errs, _ := rn.prepare(parent, rn.Plan(instances).groups)
+	return errors.Join(errs...)
 }
 
 func firstLine(s string) string {

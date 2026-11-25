@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testreg"
 )
@@ -51,6 +52,10 @@ type plantAdapter struct {
 	// run the names there, returning each name's status. A unit test hands
 	// in its own, so no unit test copies a tree or starts a process.
 	tree func(ctx context.Context, edits []plantEdit, names []string) (plantRun, error)
+	// now times each plant, its baseline and its sabotaged run, which its
+	// result carries as Seconds, so the sharder weighs a plant by what it
+	// costs; nil measures nothing (a unit test hands in its own clock).
+	now func() time.Time
 }
 
 // outcome is one name's status and reason, as its run reported them.
@@ -78,7 +83,7 @@ type plantEdit struct {
 func newPlantAdapter(rn *testreg.Runner) plantAdapter {
 	serial := newMakeAdapter()
 	serial.jobs = 0 // the controls ran with no -j
-	return plantAdapter{rn: rn, make: serial, tree: plantInTree}
+	return plantAdapter{rn: rn, make: serial, tree: plantInTree, now: time.Now}
 }
 
 // minPlantReason is the shortest stated reason a plant may give.
@@ -140,6 +145,7 @@ func (a plantAdapter) Run(ctx context.Context, _ string, instances []testreg.Ins
 		if err != nil {
 			return out, fmt.Errorf("%s: inputs: %w", inst.Full, err)
 		}
+		start := a.clock()
 		var r testreg.Result
 		switch form {
 		case "env":
@@ -165,9 +171,18 @@ func (a plantAdapter) Run(ctx context.Context, _ string, instances []testreg.Ins
 		if err != nil {
 			return out, err
 		}
+		r.Seconds = a.clock().Sub(start).Seconds()
 		out = append(out, r)
 	}
 	return out, nil
+}
+
+// clock is now, or a stopped clock, so a plant with none measures 0.
+func (a plantAdapter) clock() time.Time {
+	if a.now == nil {
+		return time.Time{}
+	}
+	return a.now()
 }
 
 func (a plantAdapter) runEnv(ctx context.Context, inst testreg.Instance, in plantInputs) (testreg.Result, error) {

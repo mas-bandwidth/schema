@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testreg"
 )
@@ -473,5 +474,31 @@ func TestAPlantPreparesTheRowsItRunsInTheCheckout(t *testing.T) {
 		if strings.Join(p.asked, ",") != target {
 			t.Errorf("plant %s prepared %q, want its row %s", raw, p.asked, target)
 		}
+	}
+}
+
+// TestAPlantResultCarriesItsMeasuredSeconds: a plant's result is weighed
+// by its baseline and its sabotaged run together, so the sharder cuts by
+// what a plant costs, not the 1 s default. The clock moves 5 s a read.
+func TestAPlantResultCarriesItsMeasuredSeconds(t *testing.T) {
+	t.Parallel()
+	reg, err := testreg.Load(cliRegistry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := json.Marshal(plantInputs{Env: map[string]string{"X": "y"}, Target: "go.functional.roundtrip.fam.one", Reason: "x is y, as planted"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	inst := testreg.Instance{Full: "none.functional.plant.fam.p", Lang: testreg.LangFree, Test: testreg.Test{Scope: testreg.LangFree, Type: "plant", Adapter: "plant", Inputs: raw}}
+	var at time.Time
+	a := plantAdapter{rn: &testreg.Runner{Reg: reg, Adapters: map[string]testreg.Adapter{"fake": &preparing{}}, Context: testreg.WithTimeout(0)},
+		now: func() time.Time { at = at.Add(5 * time.Second); return at }}
+	res, err := a.Run(context.Background(), testreg.LangFree, []testreg.Instance{inst})
+	if err != nil || len(res) != 1 {
+		t.Fatalf("%v %+v", err, res)
+	}
+	if res[0].Seconds != 5 {
+		t.Fatalf("the plant weighs %.2f s, want the 5 s its run took", res[0].Seconds)
 	}
 }

@@ -189,7 +189,7 @@ func runErr(ctx context.Context, args []string, stdout io.Writer, ads map[string
 	if err != nil {
 		return err
 	}
-	rn := &testreg.Runner{Reg: reg, Adapters: ads, Context: testreg.WithTimeout(*timeout)}
+	rn := &testreg.Runner{Reg: reg, Adapters: ads, Context: testreg.WithTimeout(*timeout), Now: time.Now}
 	withRunner(ads, rn)
 	if sub == "coverage" {
 		if !q.Empty() || *group != "" || *shard != "" {
