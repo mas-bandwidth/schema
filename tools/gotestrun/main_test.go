@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testreg"
 )
 
 const noMatch = `{"Action":"start","Package":"p/a"}
@@ -150,5 +152,24 @@ func TestAResultLineIsMarkedAsReadFromJSON(t *testing.T) {
 		if !strings.Contains(text.String(), want) {
 			t.Errorf("text %q holds no %q", text.String(), want)
 		}
+	}
+}
+
+// TestTheSummaryReportsASkipOnlyWhenOneHappened: the harnesses that read a
+// recipe's log refuse any line that reports a skip (testreg.RefuseSkips). The
+// summary of a run with no skip must pass that check, or every green recipe
+// reads as a skip; the summary of a run with one must still be refused.
+func TestTheSummaryReportsASkipOnlyWhenOneHappened(t *testing.T) {
+	t.Parallel()
+	clean := summary(tally{ran: 2, passed: 2, perPackage: map[string]int{"p/a": 2}})
+	if err := testreg.RefuseSkips([]string{clean}); err != nil {
+		t.Errorf("a run with no skip reads as a skip: %v", err)
+	}
+	skipped := summary(tally{ran: 3, passed: 2, skipped: 1, perPackage: map[string]int{"p/a": 2}})
+	if !strings.Contains(skipped, "skipped 1") {
+		t.Errorf("summary %q does not count its skip", skipped)
+	}
+	if err := testreg.RefuseSkips([]string{skipped}); err == nil {
+		t.Errorf("a run with a skip is not refused: %q", skipped)
 	}
 }

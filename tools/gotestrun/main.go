@@ -210,9 +210,17 @@ func markResult(e event) string {
 	return strings.TrimSuffix(e.Output, "\n") + " (go test -json, read by gotestrun)\n"
 }
 
+// summary is the run's last line. A count of skips is in it only when some
+// test skipped: the harnesses that read this log (testreg.RefuseSkips) refuse
+// any line that reports a skip, and "skipped 0" reports none, so it is not
+// written; "skipped 3" is, and is refused.
 func summary(t tally) string {
-	return fmt.Sprintf("gotestrun: ran %d, passed %d, skipped %d, failed %d across %d package(s)",
-		t.ran, t.passed, t.skipped, t.failed, len(t.perPackage))
+	skipped := ""
+	if t.skipped > 0 {
+		skipped = fmt.Sprintf(", skipped %d", t.skipped)
+	}
+	return fmt.Sprintf("gotestrun: ran %d, passed %d%s, failed %d across %d package(s)",
+		t.ran, t.passed, skipped, t.failed, len(t.perPackage))
 }
 
 func run(args []string, stdout, stderr io.Writer) int {
