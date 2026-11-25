@@ -47,6 +47,9 @@ func (a *goTestAdapter) runUnion(ctx context.Context, lang string, instances []t
 	if err != nil {
 		return nil, err
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, err // a build the deadline cut short is the deadline's
+	}
 	for _, inst := range instances {
 		tests, ok, err := testreg.GoTestsOf(inst.Test)
 		if !ok || err != nil {

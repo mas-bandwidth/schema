@@ -39,9 +39,11 @@ func (a *goTestAdapter) builder() func(context.Context, []string) error {
 	return a.build
 }
 
-// needsStep is the make command that builds target.
+// needsStep is the make command that builds target: the argv a row's own
+// "make" input runs (goTestAdapter.Prepare), so the run's builder makes a
+// target either names once.
 func needsStep(target string) []string {
-	return []string{"make", "--no-print-directory", target}
+	return []string{"make", target}
 }
 
 // buildNeeds builds every target the refs read, each once, and returns the

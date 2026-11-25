@@ -162,6 +162,20 @@ type builder struct {
 	mu   sync.Mutex
 	log  io.Writer
 	done map[string]error
+	// step runs one build command and returns its combined output; nil
+	// runs it (execStep), a unit test hands in its own
+	step func(ctx context.Context, argv []string) ([]byte, error)
+}
+
+// execStep runs one build command, bounded, for its combined output.
+func execStep(ctx context.Context, argv []string) ([]byte, error) {
+	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
+	bound(cmd)
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &out
+	err := cmd.Run()
+	return out.Bytes(), err
 }
 
 func (b *builder) run(ctx context.Context, argv []string) error {
@@ -178,16 +192,19 @@ func (b *builder) run(ctx context.Context, argv []string) error {
 		return fmt.Errorf("build step %q: %w", strings.Join(argv, " "), err)
 	}
 	defer release()
-	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
-	bound(cmd)
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &out
-	err = cmd.Run()
-	if err != nil {
-		err = fmt.Errorf("build step %q: %w\n%s", strings.Join(argv, " "), err, tail(out.String(), 40))
+	step := b.step
+	if step == nil {
+		step = execStep
 	}
-	b.done[key] = err
+	out, err := step(ctx, argv)
+	if err != nil {
+		err = fmt.Errorf("build step %q: %w\n%s", strings.Join(argv, " "), err, tail(string(out), 40))
+	}
+	// a step its deadline cut short gave no answer: it is never recorded as
+	// a build that failed, and the next call to ask for it runs it again
+	if ctx.Err() == nil {
+		b.done[key] = err
+	}
 	return err
 }
 

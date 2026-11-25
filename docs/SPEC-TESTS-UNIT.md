@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 2. Language-free tests: 2944.
+Unit tests every language answers: 2. Language-free tests: 2946.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -2977,10 +2977,11 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.runmatch.skips-follows-go` | `gotest` | Go test TestSkipsFollowsGo in ./internal/runmatch | `package: ./internal/runmatch`<br>`test: TestSkipsFollowsGo` | the Go test passes | `internal/runmatch/runmatch_test.go:107` |
 | `none.unit.tooling.runmatch.top-level-is-gos-split` | `gotest` | Go test TestTopLevelIsGosSplit in ./internal/runmatch | `package: ./internal/runmatch`<br>`test: TestTopLevelIsGosSplit` | the Go test passes | `internal/runmatch/runmatch_test.go:9` |
 
-#### `tooling` family `schema-test`, 101 tests
+#### `tooling` family `schema-test`, 103 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
+| `none.unit.tooling.schema-test.a-build-its-deadline-cut-short-is-run-again` | `gotest` | Go test TestABuildItsDeadlineCutShortIsRunAgain in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestABuildItsDeadlineCutShortIsRunAgain` | the Go test passes | `tools/schema-test/goneeds_test.go:206` |
 | `none.unit.tooling.schema-test.a-build-step-already-run-never-waits-for-the-checkout` | `gotest` | Go test TestABuildStepAlreadyRunNeverWaitsForTheCheckout in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestABuildStepAlreadyRunNeverWaitsForTheCheckout` | the Go test passes | `tools/schema-test/make_test.go:551` |
 | `none.unit.tooling.schema-test.a-build-step-runs-in-prepare` | `gotest` | Go test TestABuildStepRunsInPrepare in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestABuildStepRunsInPrepare` | the Go test passes | `tools/schema-test/make_test.go:550` |
 | `none.unit.tooling.schema-test.a-copy-a-killed-run-left-is-swept` | `gotest` | Go test TestACopyAKilledRunLeftIsSwept in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestACopyAKilledRunLeftIsSwept` | the Go test passes | `tools/schema-test/plant_test.go:342` |
@@ -3077,6 +3078,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.schema-test.the-pr-shards-fit-their-jobs` | `gotest` | Go test TestThePRShardsFitTheirJobs in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestThePRShardsFitTheirJobs` | the Go test passes | `tools/schema-test/shards_test.go:80` |
 | `none.unit.tooling.schema-test.the-registry-holds-every-hostile-case` | `gotest` | Go test TestTheRegistryHoldsEveryHostileCase in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheRegistryHoldsEveryHostileCase` | the Go test passes | `tools/schema-test/hostile_test.go:45` |
 | `none.unit.tooling.schema-test.the-runs-seed-is-printed-and-handed-to-every-adapter` | `gotest` | Go test TestTheRunsSeedIsPrintedAndHandedToEveryAdapter in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheRunsSeedIsPrintedAndHandedToEveryAdapter` | the Go test passes | `tools/schema-test/seed_cli_test.go:32` |
+| `none.unit.tooling.schema-test.the-union-harness-prepare-builds-what-its-rows-read` | `gotest` | Go test TestTheUnionHarnessPrepareBuildsWhatItsRowsRead in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheUnionHarnessPrepareBuildsWhatItsRowsRead` | the Go test passes | `tools/schema-test/goneeds_test.go:262` |
 | `none.unit.tooling.schema-test.the-writer-writes-every-golden-afresh` | `gotest` | Go test TestTheWriterWritesEveryGoldenAfresh in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheWriterWritesEveryGoldenAfresh` | the Go test passes | `tools/schema-test/golden_test.go:188` |
 | `none.unit.tooling.schema-test.update-repins-only-the-named-goldens` | `gotest` | Go test TestUpdateRepinsOnlyTheNamedGoldens in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestUpdateRepinsOnlyTheNamedGoldens` | the Go test passes | `tools/schema-test/golden_test.go:150` |
 | `none.unit.tooling.schema-test.update-with-a-stray-pin-repins-nothing` | `gotest` | Go test TestUpdateWithAStrayPinRepinsNothing in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestUpdateWithAStrayPinRepinsNothing` | the Go test passes | `tools/schema-test/golden_test.go:241` |

@@ -197,3 +197,90 @@ func TestAPrepareCutShortByItsDeadlineSaysSo(t *testing.T) {
 		t.Fatalf("Prepare under an ended deadline: %v, want the context's error", err)
 	}
 }
+
+// TestABuildItsDeadlineCutShortIsRunAgain: a build step its deadline ended
+// is not recorded as a failed build: the next call runs it again and takes
+// its answer. Run and the union harness return the deadline's error, never
+// the killed build's as a row's failure. Planted: with every answer
+// recorded, the second call answers "signal: killed" without running.
+func TestABuildItsDeadlineCutShortIsRunAgain(t *testing.T) {
+	t.Parallel()
+	ran := 0
+	var cancel context.CancelFunc
+	b := &builder{log: io.Discard, done: map[string]error{}, step: func(ctx context.Context, _ []string) ([]byte, error) {
+		ran++
+		if cancel != nil {
+			cancel()
+			return nil, errors.New("signal: killed")
+		}
+		return nil, nil
+	}}
+	var ctx context.Context
+	ctx, cancel = context.WithCancel(context.Background())
+	if err := b.run(ctx, needsStep("corpus")); err == nil {
+		t.Fatal("the killed step answered nil")
+	}
+	cancel = nil
+	if err := b.run(context.Background(), needsStep("corpus")); err != nil || ran != 2 {
+		t.Fatalf("after a step its deadline killed: %v, ran %d times, want it run again and passed", err, ran)
+	}
+	if err := b.run(context.Background(), needsStep("corpus")); err != nil || ran != 2 {
+		t.Fatalf("a step that passed: %v, ran %d times, want it answered from the record", err, ran)
+	}
+
+	root := needsRoot(t)
+	inst := testreg.Instance{Full: "none.unit.g.TestReads", Test: testreg.Test{Seconds: 10, Inputs: []byte(`{"package":"./g","test":"TestReads"}`)}}
+	union := testreg.Instance{Full: "moo.unit.roundtrip.reads", Lang: "moo", Test: testreg.Test{Key: "roundtrip.reads", Family: "fam", Seconds: 10, Inputs: []byte(`{"tests":{"moo":{"package":"./g","test":"TestReads"}}}`)}}
+	for _, tc := range []struct {
+		name string
+		run  func(*goTestAdapter, context.Context) ([]testreg.Result, error)
+	}{
+		{"Run", func(a *goTestAdapter, ctx context.Context) ([]testreg.Result, error) {
+			return a.Run(ctx, "", []testreg.Instance{inst})
+		}},
+		{"runUnion", func(a *goTestAdapter, ctx context.Context) ([]testreg.Result, error) {
+			return a.runUnion(ctx, "moo", []testreg.Instance{union})
+		}},
+	} {
+		ctx, cut := context.WithCancel(context.Background())
+		a := newGoTestAdapterBuilding(io.Discard, root, 1, func(context.Context, []string) error {
+			cut()
+			return errors.New("build step: signal: killed")
+		})
+		runs := stubGoTest(a)
+		res, err := tc.run(a, ctx)
+		if !errors.Is(err, context.Canceled) || len(*runs) != 0 {
+			t.Fatalf("%s with its build killed by the deadline: %v %+v (go test ran %d times), want the context's error", tc.name, err, res, len(*runs))
+		}
+	}
+}
+
+// TestTheUnionHarnessPrepareBuildsWhatItsRowsRead: the corpus adapter's
+// Prepare builds, through its builder, what a union row's Go test reads, and
+// a deadline that ends the build is Prepare's error. Planted: without the
+// union step in harnessAdapter.Prepare, nothing is built.
+func TestTheUnionHarnessPrepareBuildsWhatItsRowsRead(t *testing.T) {
+	t.Chdir(needsRoot(t)) // the harness reads the needs table at the checkout root
+	var built []string
+	b := &builder{log: io.Discard, done: map[string]error{}, step: func(_ context.Context, argv []string) ([]byte, error) {
+		built = append(built, strings.Join(argv, " "))
+		return nil, nil
+	}}
+	union := testreg.Instance{Full: "moo.unit.roundtrip.reads", Lang: "moo", Test: testreg.Test{Key: "roundtrip.reads", Family: "fam", Seconds: 10, Inputs: []byte(`{"tests":{"moo":{"package":"./g","test":"TestReads"}}}`)}}
+	h := &harnessAdapter{build: b, log: io.Discard}
+	if err := h.Prepare(context.Background(), "moo", []testreg.Instance{union}); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(built, ";") != "make corpus" {
+		t.Fatalf("Prepare built %q, want the union row's need, make corpus", built)
+	}
+
+	ctx, cut := context.WithCancel(context.Background())
+	killed := &harnessAdapter{log: io.Discard, build: &builder{log: io.Discard, done: map[string]error{}, step: func(context.Context, []string) ([]byte, error) {
+		cut()
+		return nil, errors.New("signal: killed")
+	}}}
+	if err := killed.Prepare(ctx, "moo", []testreg.Instance{union}); !errors.Is(err, context.Canceled) {
+		t.Fatalf("a union Prepare its deadline cut short: %v, want the context's error", err)
+	}
+}

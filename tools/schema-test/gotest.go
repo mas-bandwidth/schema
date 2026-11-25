@@ -211,14 +211,19 @@ func (a *goTestAdapter) Run(ctx context.Context, _ string, instances []testreg.I
 	if err != nil {
 		return nil, err
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, err // a build the deadline cut short is the deadline's
+	}
 	calls := goTestCalls{}
-	var unrun []testreg.Result // rows naming a data file the tree does not hold, or reading a build that failed
+	var unrun []testreg.Result // rows reading a build that failed, or naming a data file the tree does not hold
 	for i, inst := range instances {
-		if why := missingFiles(a.root, ins[i].Files); why != "" {
+		// the failed build first: a data file it would have made is not
+		// the cause
+		if why := a.needsFailure(failed, refs[i]); why != "" {
 			unrun = append(unrun, testreg.Result{Instance: inst.Full, Verdict: testreg.Fail, Reason: why})
 			continue
 		}
-		if why := a.needsFailure(failed, refs[i]); why != "" {
+		if why := missingFiles(a.root, ins[i].Files); why != "" {
 			unrun = append(unrun, testreg.Result{Instance: inst.Full, Verdict: testreg.Fail, Reason: why})
 			continue
 		}
