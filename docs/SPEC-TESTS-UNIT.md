@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 2. Language-free tests: 2787.
+Unit tests every language answers: 2. Language-free tests: 2789.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -3033,7 +3033,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.testproc.child-leads-its-own-group` | `gotest` | Go test TestChildLeadsItsOwnGroup in ./internal/testproc | `package: ./internal/testproc`<br>`test: TestChildLeadsItsOwnGroup` | the Go test passes | `internal/testproc/group_unix_test.go:17` |
 | `none.unit.tooling.testproc.grandchild-is-killed-when-the-child-exits-normally` | `gotest` | Go test TestGrandchildIsKilledWhenTheChildExitsNormally in ./internal/testproc | `package: ./internal/testproc`<br>`test: TestGrandchildIsKilledWhenTheChildExitsNormally` | the Go test passes | `internal/testproc/testproc_test.go:154` |
 
-#### `tooling` family `testreg`, 53 tests
+#### `tooling` family `testreg`, 55 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -3053,11 +3053,13 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.testreg.an-adapter-schema-test-does-not-have-fails` | `gotest` | Go test TestAnAdapterSchemaTestDoesNotHaveFails in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestAnAdapterSchemaTestDoesNotHaveFails` | the Go test passes | `internal/testreg/run_test.go:146` |
 | `none.unit.tooling.testreg.an-adapter-timeout-fails` | `gotest` | Go test TestAnAdapterTimeoutFails in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestAnAdapterTimeoutFails` | the Go test passes | `internal/testreg/run_test.go:233` |
 | `none.unit.tooling.testreg.an-instance-with-no-answer-and-no-declaration-fails` | `gotest` | Go test TestAnInstanceWithNoAnswerAndNoDeclarationFails in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestAnInstanceWithNoAnswerAndNoDeclarationFails` | the Go test passes | `internal/testreg/run_test.go:155` |
+| `none.unit.tooling.testreg.an-intrinsic-test-has-one-instance` | `gotest` | Go test TestAnIntrinsicTestHasOneInstance in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestAnIntrinsicTestHasOneInstance` | the Go test passes | `internal/testreg/gotests_test.go:76` |
 | `none.unit.tooling.testreg.coverage-shows-every-cell` | `gotest` | Go test TestCoverageShowsEveryCell in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestCoverageShowsEveryCell` | the Go test passes | `internal/testreg/run_test.go:408` |
 | `none.unit.tooling.testreg.every-driver-test-is-registered` | `gotest` | Go test TestEveryDriverTestIsRegistered in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestEveryDriverTestIsRegistered` | the Go test passes | `internal/testreg/policy_test.go:81` |
 | `none.unit.tooling.testreg.expected-not-ran-fails` | `gotest` | Go test TestExpectedNotRanFails in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestExpectedNotRanFails` | the Go test passes | `internal/testreg/run_test.go:188` |
 | `none.unit.tooling.testreg.load-accepts-a-union-row` | `gotest` | Go test TestLoadAcceptsAUnionRow in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestLoadAcceptsAUnionRow` | the Go test passes | `internal/testreg/gotests_test.go:14` |
 | `none.unit.tooling.testreg.load-accepts-the-fixture` | `gotest` | Go test TestLoadAcceptsTheFixture in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestLoadAcceptsTheFixture` | the Go test passes | `internal/testreg/registry_test.go:56` |
+| `none.unit.tooling.testreg.load-refuses-a-bad-intrinsic` | `gotest` | Go test TestLoadRefusesABadIntrinsic in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestLoadRefusesABadIntrinsic` | the Go test passes | `internal/testreg/gotests_test.go:109` |
 | `none.unit.tooling.testreg.load-refuses-a-contract-on-a-tier` | `gotest` | a tier row carrying an adapter contract is refused by the loader, naming the line | `package: ./internal/testreg`<br>`test: TestLoadRefusesAContractOnATier` | the Go test passes | `internal/testreg/addenda_test.go:233` |
 | `none.unit.tooling.testreg.load-refuses-a-duplicate-key` | `gotest` | Go test TestLoadRefusesADuplicateKey in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestLoadRefusesADuplicateKey` | the Go test passes | `internal/testreg/registry_test.go:69` |
 | `none.unit.tooling.testreg.load-refuses-a-go-test-two-union-rows-name` | `gotest` | Go test TestLoadRefusesAGoTestTwoUnionRowsName in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestLoadRefusesAGoTestTwoUnionRowsName` | the Go test passes | `internal/testreg/gotests_test.go:41` |
@@ -3341,3 +3343,7 @@ memory, allocation and depth limits are held.
 ## Declared unrepresentable
 
 None: every language answers every test of tier `unit`.
+
+## Intrinsic to one language
+
+None of tier `unit`.

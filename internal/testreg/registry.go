@@ -87,7 +87,42 @@ type Test struct {
 	// weighs it by, so each part of a stored query fits its job. A test with
 	// none weighs DefaultSeconds.
 	Seconds float64 `json:"seconds,omitempty"`
-	Line    int     `json:"-"`
+	// Intrinsic, on a per-language row, says its subject exists in one
+	// language only (that language's own generated source or runtime): the
+	// row has that language's instance and no other, and every other
+	// language is unrepresentable with the reason. It is declared data, as
+	// an unrepresentable line is, never a runtime result
+	// (docs/TEST-REGISTRY.md, "Language-intrinsic tests").
+	Intrinsic *Intrinsic `json:"intrinsic,omitempty"`
+	Line      int        `json:"-"`
+}
+
+// boilerplateReasons say nothing about a test's subject: an intrinsic
+// reason that is one of them, or under four words, is refused.
+var boilerplateReasons = []string{
+	"intrinsic", "language-specific", "language specific", "format behaviour",
+	"format behavior", "n/a", "tbd", "todo", "none", "exists in this language only",
+	"only in this language", "no counterpart in other languages", "language intrinsic",
+}
+
+func boilerplate(reason string) bool {
+	r := strings.ToLower(strings.Trim(strings.TrimSpace(reason), ".:;- "))
+	if len(strings.Fields(r)) < 4 {
+		return true
+	}
+	for _, b := range boilerplateReasons {
+		if r == b || strings.TrimPrefix(r, "it ") == b {
+			return true
+		}
+	}
+	return false
+}
+
+// Intrinsic names the one language a test's subject exists in, and why no
+// other language has it.
+type Intrinsic struct {
+	Lang   string `json:"lang"`
+	Reason string `json:"reason"`
 }
 
 // LangFree is the scope, and the language part of the full name, of a test
@@ -344,8 +379,27 @@ func Parse(name string, r io.Reader) (*Registry, error) {
 			unionTest[id] = t.Key
 		}
 	}
+	for _, t := range reg.Tests {
+		if t.Intrinsic == nil {
+			continue
+		}
+		if reg.lang[t.Intrinsic.Lang] == 0 || t.Intrinsic.Lang == LangFree {
+			fail(t.Line, "test %s is intrinsic to %q, which is not a language of the registry", t.Key, t.Intrinsic.Lang)
+		}
+		if tests, ok, err := GoTestsOf(t); ok && err == nil {
+			for lang := range tests {
+				if lang != t.Intrinsic.Lang {
+					fail(t.Line, "test %s is intrinsic to %s but names a Go test for %s", t.Key, t.Intrinsic.Lang, lang)
+				}
+			}
+		}
+	}
 	for _, u := range reg.Unreps {
 		k := [2]string{u.Test, u.Lang}
+		if i := reg.test[u.Test]; i != 0 && reg.Tests[i-1].Intrinsic != nil {
+			fail(u.Line, "unrepresentable %s for %s: the test is intrinsic to %s, which already declares every other language", u.Test, u.Lang, reg.Tests[i-1].Intrinsic.Lang)
+			continue
+		}
 		switch {
 		case reg.test[u.Test] == 0:
 			fail(u.Line, "unrepresentable: test %q does not exist", u.Test)
@@ -423,6 +477,12 @@ func checkTest(t Test, tiers, types map[string]int) string {
 		return "is language-free and names no adapter"
 	case t.Scope == "" && t.Adapter != "":
 		return "names an adapter, but a per-language test runs through each language's adapter"
+	case t.Intrinsic != nil && t.Scope != "":
+		return "is intrinsic to one language, so it is a per-language row, not scoped " + strconv.Quote(t.Scope)
+	case t.Intrinsic != nil && strings.TrimSpace(t.Intrinsic.Reason) == "":
+		return "is intrinsic to " + t.Intrinsic.Lang + " but gives no reason"
+	case t.Intrinsic != nil && boilerplate(t.Intrinsic.Reason):
+		return fmt.Sprintf("is intrinsic to %s with the boilerplate reason %q: say what the subject is and why no other language has it", t.Intrinsic.Lang, t.Intrinsic.Reason)
 	case t.Seconds < 0:
 		return fmt.Sprintf("seconds %v is negative: it is a measured run time", t.Seconds)
 	}
@@ -451,9 +511,32 @@ func (r *Registry) Test(key string) (Test, bool) {
 	return r.Tests[i-1], true
 }
 
+// Declared is every unrepresentable pair: the unrepresentable lines, and
+// for each intrinsic test every language but its own, with the reason.
+func (r *Registry) Declared() []Unrep {
+	out := slices.Clone(r.Unreps)
+	for _, t := range r.Tests {
+		if t.Intrinsic == nil {
+			continue
+		}
+		for _, l := range r.Langs {
+			if l.Name != t.Intrinsic.Lang {
+				reason, _ := r.Unrepresentable(t.Key, l.Name)
+				out = append(out, Unrep{Test: t.Key, Lang: l.Name, Reason: reason, Line: t.Line})
+			}
+		}
+	}
+	return out
+}
+
 // Unrepresentable returns the declared reason a language cannot express a
 // test, if it declared one.
 func (r *Registry) Unrepresentable(key, lang string) (string, bool) {
+	if i := r.test[key]; i != 0 {
+		if in := r.Tests[i-1].Intrinsic; in != nil && in.Lang != lang {
+			return "intrinsic to " + in.Lang + ": " + in.Reason, true
+		}
+	}
 	line := r.unrep[[2]string{key, lang}]
 	if line == 0 {
 		return "", false

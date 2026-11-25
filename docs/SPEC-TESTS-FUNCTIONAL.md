@@ -3290,3 +3290,7 @@ memory, allocation and depth limits are held.
 ## Declared unrepresentable
 
 None: every language answers every test of tier `functional`.
+
+## Intrinsic to one language
+
+None of tier `functional`.
