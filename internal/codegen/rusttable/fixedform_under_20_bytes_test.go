@@ -9,23 +9,21 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
-// F7 (schema#876, matrix row GGGGGGGGG) is fixed_form_under_20_bytes: a file
-// shorter than the pinned header plus its own length word is MALFORMED, the
-// RESIDUE answer, not a refusal by name. It was a gap on all nine legs; five
-// (go, c, dart, js, cpp) have landed and rust is one of four that remain. The
-// doc (docs/FIXED-FORM-ALGORITHM.md) draws the two answers as exclusive:
-// refused plus reason is one answer, malformed is the other, and they are
-// NEVER both set. So reason stays UNTOUCHED (TableFixedReason::None), and
-// asserting layout_malformed here would be wrong: layout_malformed is a
-// REFUSAL by name, the other answer. k == 0 is guarded on this leg by the
-// SEPARATE empty guard emitted above the form-byte read (fixedform.go:1090),
-// and it owes the same five-part answer as k = 1..19; the test measures that
-// instead of trimming the loop. The destination is poisoned first, then every
-// caller row must hold the schema's declared defaults after malformed damage.
-// The nonzero w=77 default distinguishes a correct reset from zero-filling.
-// CONTROL 2 deletes the short-file guard (fixedform.go:1104) and, on safe
-// Rust, the reader PANICS on a slice index instead of producing a swapped
-// report.
+// F7 (schema#876) is fixed_form_under_20_bytes: a file shorter than the pinned
+// header plus its own length word is REFUSED with nothing landed, and its
+// recommended name is `truncated` (docs/FIXED-FORM-ALGORITHM.md §5.3 steps 1
+// and 2, and the condition table: "no bytes at all" and "shorter than 20
+// bytes" are both `truncated`). The verdict is compared across legs and the
+// name is diagnostic, and THIS FORM'S REPORT HAS NO MALFORMED FLAG, so damaged
+// stays false. Until 2026-11-25 this test asserted the off-spec answer,
+// malformed with reason untouched. k == 0 is guarded on this leg by the
+// SEPARATE empty guard emitted above the form-byte read, and it owes the same
+// answer as k = 1..19; the test measures that instead of trimming the loop.
+// The destination is poisoned first, then every caller row must hold the
+// schema's declared defaults after the refusal (SPEC-TABLES §6.5). The nonzero
+// w=77 default distinguishes a correct reset from zero-filling. CONTROL:
+// delete the short-file guard in fixedform.go and, on safe Rust, the reader
+// PANICS on a slice index.
 
 func TestFixedFormUnder20Bytes(t *testing.T) {
 
@@ -33,13 +31,13 @@ func TestFixedFormUnder20Bytes(t *testing.T) {
 
 	tests := fmt.Sprintf(`
 /// fixed_form_under_20_bytes: a file shorter than the pinned header plus its own
-/// length word is MALFORMED, the RESIDUE answer, never a refusal by name. The
+/// length word is REFUSED by the name truncated (§5.3 steps 1 and 2). The
 /// doc's twenty is TABLE_FIXED_HEADER_BYTES (16) plus the layout's own u32
 /// length (the next 4). A clean read at the FULL length first proves the
 /// fixture, then every prefix from 0 up to that bound is handed to the reader
-/// and must land every part of the malformed row: malformed true, refused
-/// false, reason UNTOUCHED (TableFixedReason::None), the call None, all four
-/// counters zero, and every destination row reset to its declared defaults.
+/// and must land every part of the refusal: refused true, reason Truncated,
+/// damaged false, the call None, the counters zero, and every destination row
+/// reset to its declared defaults.
 #[test]
 fn v_fixed_form_under_20_bytes() {
     let data = std::fs::read(%q).expect("the reference's new_field_append.bin");
@@ -61,7 +59,7 @@ fn v_fixed_form_under_20_bytes() {
         assert!(values[0].w == 777, "the full file lost its value: w={}", values[0].w);
     }
     // EVERY PREFIX UNDER THE TWENTY. The empty guard and the short-file guard
-    // are SEPARATE, so k == 0 owes the same five-part answer as k = 1..19.
+    // are SEPARATE, so k == 0 owes the same answer as k = 1..19.
     for k in 0..TABLE_FIXED_HEADER_BYTES + 4 {
         let short = &data[..k];
         let mut values = vec![ROWTYPE::default(); 8];
@@ -78,13 +76,14 @@ fn v_fixed_form_under_20_bytes() {
         let mut remap = vec![0u16; 4096];
         let mut report = TableFixedReport::default();
         let n = LOADFN(&mut values, short, &mut plan, &mut remap, &mut report);
-        assert!(n.is_none(), "a {k}-byte file is malformed, never read: {:?} {:?}", n, report);
-        assert!(report.damaged, "a {k}-byte file sets damaged: {:?}", report);
-        assert!(!report.refused, "a short file is the RESIDUE, never a refusal by name: {:?}", report);
+        assert!(n.is_none(), "a {k}-byte file is refused, never read: {:?} {:?}", n, report);
+        assert!(report.refused, "a {k}-byte file is a refusal (§5.3 steps 1, 2): {:?}", report);
         assert_eq!(
-            report.reason, TableFixedReason::None,
-            "a short file leaves reason UNTOUCHED, never layout_damaged: {:?}", report.reason
+            report.reason, TableFixedReason::Truncated,
+            "a short file is refused by the name truncated: {:?}", report.reason
         );
+        assert!(!report.damaged, "this form's report has no malformed flag: {:?}", report);
+        assert_eq!(report.layout_hash, 0, "truncated carries no hash: {:?}", report);
         assert!(
             report.widened == 0 && report.unknown == 0,
             "a short file moves no counter: {:?}", report

@@ -301,7 +301,7 @@ pub const FIXED_TABLE_FIXED_LINEAGE: [TableFixedKnown; 1] = [
 
 /// THE FLOOR: 1 + the highest RETIRED index, 0 when none is (§5.2). Below it
 /// a file is `layout_unsupported` — upgrade the client; outside the lineage
-/// altogether it is `layout_newer` — ship the reader. A retired entry stays
+/// altogether it is `layout_unknown`. A retired entry stays
 /// in the lineage forever, which is what keeps the two answers distinct.
 pub const FIXED_TABLE_FIXED_FLOOR: usize = 0;
 /// THE INDEX OF THIS BUILD'S OWN LAYOUT, which takes the IDENTITY plan.
@@ -398,9 +398,11 @@ fn fixed_table_fixed_load_records(
     remap: &mut [u16],
     report: &mut TableFixedReport,
 ) -> Option<usize> {
+    // FRAMING DAMAGE IS A REFUSAL BY NAME (docs/FIXED-FORM-ALGORITHM.md §5.3,
+    // the condition table): this form's report has no malformed flag, so no
+    // first byte at all is `truncated`.
     if data.is_empty() {
-        report.damaged = true;
-        return None;
+        return report.refuse(TableFixedReason::Truncated);
     }
     // THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):
     // the registry is ordered, so a byte this reader does not carry is named
@@ -415,14 +417,15 @@ fn fixed_table_fixed_load_records(
             _ => TableFixedReason::NewerForm,         // a byte no form defines
         });
     }
+    // FEWER THAN 20 BYTES — the 16-byte header and the layout's length word —
+    // is `truncated` (§5.3 step 2), the form byte having already answered.
     if data.len() < TABLE_FIXED_HEADER_BYTES + 4 {
-        report.damaged = true;
-        return None;
+        return report.refuse(TableFixedReason::Truncated);
     }
-    // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3).
+    // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3 step 2):
+    // `reserved_not_zero`.
     if data[1..TABLE_FIXED_HASH_AT].iter().any(|&b| b != 0) {
-        report.damaged = true;
-        return None;
+        return report.refuse(TableFixedReason::ReservedNotZero);
     }
     let block_bytes = u32::from_le_bytes(
         data[TABLE_FIXED_HEADER_BYTES..TABLE_FIXED_HEADER_BYTES + 4]
@@ -444,11 +447,12 @@ fn fixed_table_fixed_load_records(
     // fixed table reads BACKWARD and never forward: the hash the header
     // carries is TAKEN AS GIVEN — the definitions digest is not on the wire,
     // so the number cannot be re-derived from a file — and it is looked up in
-    // the lineage the BUILD laid down. A hash no entry holds is a writer ahead
-    // of this reader, and there is nothing to try.
+    // the lineage the BUILD laid down. A hash no entry holds is `layout_unknown`
+    // (§5.3 step 5, SPEC-TABLES §21.3): nothing in the lineage proves it newer,
+    // and `layout_newer` is retired. There is nothing to try.
     let Some(found) = FIXED_TABLE_FIXED_LINEAGE.iter().position(|k| k.hash == hash) else {
-        // THE FILE'S HASH, AND NOTHING ELSE (bill §12.4).
-        return report.refuse_layout(TableFixedReason::LayoutNewer, hash);
+        // THE FILE'S HASH, AND NOTHING ELSE (§5.9 #7).
+        return report.refuse_layout(TableFixedReason::LayoutUnknown, hash);
     };
     // NOTHING IS RETIRED, so the floor is 0 and the check below it cannot
     // fire: a comparison no value satisfies is not emitted, for the same
@@ -480,11 +484,11 @@ fn fixed_table_fixed_load_records(
     // the caller's slice stays in the signature as the capacity it always was.
     let _ = remap;
     // A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (§5.3 step 9, §22.6):
-    // a header and a layout followed by no record is truncation, at any
-    // capacity. A record size of 8 or less, or a ragged tail, is the same.
+    // a header and a layout followed by no record is `truncated`, at any
+    // capacity. A record size of 8 or less, or a ragged tail, is the same
+    // refusal by the same name (§5.3 step 9, the condition table).
     if rest.is_empty() || record_bytes <= 8 || !rest.len().is_multiple_of(record_bytes) {
-        report.damaged = true;
-        return None;
+        return report.refuse(TableFixedReason::Truncated);
     }
     let n = rest.len() / record_bytes;
     if n > values.len() {

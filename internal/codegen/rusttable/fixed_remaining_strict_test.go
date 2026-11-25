@@ -209,7 +209,7 @@ fn main() {
     }
 
     // 3. P3: Hostile byte-mutation sweep — every mutation across the image
-    //    produces one of the three strict verdicts (landed, damaged, or refused),
+    //    produces one of the strict answers (landed, damaged, or refused),
     //    never a fourth, and every damaged read resets caller rows to declared defaults.
     let mut landed = 0usize;
     let mut damaged = 0usize;
@@ -241,7 +241,11 @@ fn main() {
             }
         }
     }
-    assert!(landed > 0 && damaged > 0 && refused > 0, "P3 sweep must witness all three strict answers: landed={landed} damaged={damaged} refused={refused}");
+    // THE TWO VERDICTS (SPEC-TABLES §6.5: refused, or a read that lands) must
+    // both fire. Framing damage is a refusal by name (docs/FIXED-FORM-ALGORITHM.md
+    // §5.3: truncated, reserved_not_zero), so this fixture, with no bool,
+    // present byte or dead slot in reach, has nothing left to answer damaged.
+    assert!(landed > 0 && refused > 0, "P3 sweep must witness both verdicts: landed={landed} damaged={damaged} refused={refused}");
     println!("RUST_FIXED_REMAINING_STRICT ok landed={landed} damaged={damaged} refused={refused}");
 }
 `

@@ -6,8 +6,11 @@ import (
 	"testing"
 )
 
-// A malformed read returns no records and resets caller storage. A named
-// preflight refusal resets every row handed in too (ruling R4). A read clears the
+// Framing damage — no first byte, a short header, a nonzero reserved byte — is
+// a refusal BY NAME (docs/FIXED-FORM-ALGORITHM.md §5.3 steps 1 and 2:
+// truncated, truncated, reserved_not_zero; this form's report has no malformed
+// flag), and it returns no records and resets caller storage. A named preflight
+// refusal resets every row handed in too (ruling R4). A read clears the
 // report it is handed (SPEC-TABLES §6.5, §6.6): an earlier read's damage bit neither
 // turns a later valid read into damage nor survives it.
 func TestFixedLoadDamageDefaultsAndReportReuseRust(t *testing.T) {
@@ -26,15 +29,17 @@ func TestFixedLoadDamageDefaultsAndReportReuseRust(t *testing.T) {
     let poison = || RootRow { a: 77, inner: InnerRow { ok: true, n: 77 }, b: 77, f: 0.0 };
     let mut reserved = valid.clone(); reserved[3] = 1;
     let mut failures = Vec::new();
-    for (name, data) in [("empty", &[][..]), ("short-form3", &[3][..]), ("reserved-byte3", &reserved[..])] {
+    for (name, data, reason) in [("empty", &[][..], TableFixedReason::Truncated),
+                                 ("short-form3", &[3][..], TableFixedReason::Truncated),
+                                 ("reserved-byte3", &reserved[..], TableFixedReason::ReservedNotZero)] {
         let mut values = vec![poison(); 2];
         let mut report = TableFixedReport::default();
         let got = root_fixed_load(&mut values, data, &mut plan, &mut remap, &mut report);
-        if got.is_some() || !report.damaged || report.refused {
-            failures.push(format!("{name}: expected malformed without usable records"));
+        if got.is_some() || report.damaged || !report.refused || report.reason != reason {
+            failures.push(format!("{name}: expected the refusal {} without usable records: {report:?}", reason.name()));
         }
         if values.iter().any(|v| v.a != 0 || v.b != 0 || v.inner.n != 0 || v.inner.ok || v.f != 0.0) {
-            failures.push(format!("{name}: damaged load left caller values"));
+            failures.push(format!("{name}: refused load left caller values"));
         }
     }
     for (form, reason) in [(0u8, TableFixedReason::NewerForm),

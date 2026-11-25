@@ -147,9 +147,9 @@ fn v_t01_f10() {
     }
 }
 
-/// R8 (§5.3 step 4): "a hash in no entry is layout_newer", reporting THE FILE'S
-/// HASH AND NOTHING ELSE: the whole report is exactly refused, the reason and
-/// the hash.
+/// R8 (§5.3 step 5): "a hash in no entry is layout_unknown" (layout_newer is
+/// retired, SPEC-TABLES §21.3), reporting THE FILE'S HASH AND NOTHING ELSE: the
+/// whole report is exactly refused, the reason and the hash.
 #[test]
 fn v_t01_r8() {
     for forged in [0xDEAD_BEEF_CAFE_F00Du64, 0, u64::MAX] {
@@ -159,12 +159,12 @@ fn v_t01_r8() {
         assert!(n.is_none(), "a hash in no entry must refuse: {:?}", report);
         let want = TableFixedReport {
             refused: true,
-            reason: TableFixedReason::LayoutNewer,
+            reason: TableFixedReason::LayoutUnknown,
             layout_hash: forged,
             ..TableFixedReport::default()
         };
-        assert_eq!(report, want, "layout_newer reports the file's hash {forged:#018x} and NOTHING ELSE");
-        assert!(t01_defaulted(&values), "layout_newer left a row off its declared default");
+        assert_eq!(report, want, "layout_unknown reports the file's hash {forged:#018x} and NOTHING ELSE");
+        assert!(t01_defaulted(&values), "layout_unknown left a row off its declared default");
     }
 }
 
@@ -257,7 +257,13 @@ fn v_t01_r13() {
         ("previous_form", edit(&|d| d[0] = 1), 3, 4096, "previous_form"),
         ("message_form_as_file", edit(&|d| d[0] = 2), 3, 4096, "message_form_as_file"),
         ("newer_form", edit(&|d| d[0] = 9), 3, 4096, "newer_form"),
-        ("layout_newer", edit(&|d| d[8] ^= 0xFF), 3, 4096, "layout_newer"),
+        ("layout_unknown", edit(&|d| d[8] ^= 0xFF), 3, 4096, "layout_unknown"),
+        // FRAMING DAMAGE IS A REFUSAL BY NAME (§5.3 steps 1, 2 and 9): this
+        // form's report has no malformed flag.
+        ("no first byte", Vec::new(), 3, 4096, "truncated"),
+        ("under 20 bytes", own[..19].to_vec(), 3, 4096, "truncated"),
+        ("a nonzero reserved byte", edit(&|d| d[3] = 1), 3, 4096, "reserved_not_zero"),
+        ("a ragged tail", edit(&|d| d.push(0)), 3, 4096, "truncated"),
         ("layout_malformed", edit(&|d| d[TABLE_FIXED_HEADER_BYTES + 4] ^= 0xFF), 3, 4096, "layout_malformed"),
         ("layout_past_the_file", edit(&|d| d[TABLE_FIXED_HEADER_BYTES..TABLE_FIXED_HEADER_BYTES + 4].copy_from_slice(&u32::MAX.to_le_bytes())), 3, 4096, "layout_malformed"),
         ("batch_too_large", own.clone(), 2, 4096, "batch_too_large"),
@@ -269,28 +275,9 @@ fn v_t01_r13() {
         assert!(n.is_none(), "{label}: a refusal reads nothing: {:?}", report);
         assert!(report.refused, "{label}: refused is set: {:?}", report);
         assert_eq!(report.reason.name(), name, "{label}");
-        assert!(!report.damaged, "{label}: refused and malformed are never both set: {:?}", report);
+        assert!(!report.damaged, "{label}: this form's report has no malformed flag: {:?}", report);
         assert!(t01_total(&report), "{label}: every counter stays zero: {:?}", report);
         assert!(t01_defaulted(&values), "{label}: a row is not its declared default");
-    }
-    // THE OTHER ANSWER: malformed is never a refusal and never carries a name.
-    let malformed: Vec<(&str, Vec<u8>)> = vec![
-        ("no first byte", Vec::new()),
-        ("under 20 bytes", own[..19].to_vec()),
-        ("a nonzero reserved byte", edit(&|d| d[3] = 1)),
-        ("a ragged tail", edit(&|d| d.push(0))),
-    ];
-    for (label, d) in malformed {
-        let (n, report, values) = t01_read(&d, 3, 4096);
-        assert!(n.is_none(), "{label}: malformed reads nothing: {:?}", report);
-        assert!(report.damaged, "{label}: malformed is set: {:?}", report);
-        assert!(!report.refused && report.reason == TableFixedReason::None, "{label}: never both set: {:?}", report);
-        assert!(t01_total(&report), "{label}: every counter stays zero: {:?}", report);
-        // VNEW_field_append.schema declares x/y/z=0 and w=77.
-        assert!(
-            values.iter().all(|v| v.x == 0 && v.y == 0 && v.z == 0 && v.w == 77),
-            "{label}: malformed input did not restore every declared default"
-        );
     }
 }
 `, filepath.Join(corpus, "new_field_append.bin"))

@@ -351,7 +351,7 @@ fn the_negative_controls(dir: &str) {
         );
     }
 
-    // 2b. A HEADER THAT LIES ABOUT THE LAYOUT BEHIND IT is `layout_newer`, AND
+    // 2b. A HEADER THAT LIES ABOUT THE LAYOUT BEHIND IT is `layout_unknown`, AND
     //     THAT IS THE BETTER CONTROL (§5.3's own row). The hash is TAKEN AS
     //     GIVEN and nothing is recomputed from the wire, so a flipped hash is
     //     simply a version this build's lineage does not hold: the refusal
@@ -370,8 +370,8 @@ fn the_negative_controls(dir: &str) {
         let n = tblfx1::fx_root_fixed_load(&mut values, &lying, &mut plan, &mut remap, &mut report);
         check(n.is_none(), "the header's hash: a lying header is refused");
         check(
-            report.refused && report.reason == tblfx1::TableFixedReason::LayoutNewer,
-            "the header's hash: refused BY NAME — layout_newer, because the hash is taken AS GIVEN",
+            report.refused && report.reason == tblfx1::TableFixedReason::LayoutUnknown,
+            "the header's hash: refused BY NAME — layout_unknown, because the hash is taken AS GIVEN",
         );
         check(
             report.layout_hash == flipped,
@@ -444,8 +444,9 @@ fn the_negative_controls(dir: &str) {
         }
     }
 
-    // 4. BYTES LEFT OVER ARE `malformed`, which is §3's rule for the same
-    //    reason: the two ends of the file have met.
+    // 4. BYTES LEFT OVER ARE REFUSED `truncated` (docs/FIXED-FORM-ALGORITHM.md
+    //    §5.3 step 9): the two ends of the file have met. This form's report
+    //    has no malformed flag.
     {
         let mut ragged = slurp(dir, "fx1.bin");
         ragged.push(0);
@@ -455,7 +456,10 @@ fn the_negative_controls(dir: &str) {
         let mut report = tblfx1::TableFixedReport::default();
         let n = tblfx1::fx_root_fixed_load(&mut values, &ragged, &mut plan, &mut remap, &mut report);
         check(n.is_none(), "a ragged tail: refused");
-        check(report.damaged, "a ragged tail: malformed, because the two ends of the file met");
+        check(
+            report.refused && report.reason == tblfx1::TableFixedReason::Truncated && !report.damaged,
+            "a ragged tail: refused truncated, because the two ends of the file met",
+        );
     }
 
     // 5. MORE RECORDS THAN THE CALLER HAS ROOM FOR: nothing is decoded.
@@ -526,12 +530,12 @@ fn all_declared_defaults(values: &[tblfx1::FxRootRow]) -> bool {
     })
 }
 
+/// Every framing answer is a named refusal (docs/FIXED-FORM-ALGORITHM.md §5.3,
+/// the condition table): this form's report has no malformed flag.
 #[derive(Clone, Copy)]
 enum FormProbe {
     /// A named refusal: `refused` with this reason, `malformed` clear.
     Named(tblfx1::TableFixedReason),
-    /// The residue: `malformed` set, no named reason, not a refusal by name.
-    Malformed,
 }
 
 fn form_probe(label: &str, file: &[u8], want: FormProbe) {
@@ -558,23 +562,17 @@ fn form_probe(label: &str, file: &[u8], want: FormProbe) {
                 &format!("{label}: `{}` by name and nothing else claims the read", reason.name()),
             );
         }
-        FormProbe::Malformed => {
-            check(
-                all_declared_defaults(&values),
-                &format!("{label}: malformed input restores every declared default"),
-            );
-            check(
-                report.damaged && !report.refused,
-                &format!("{label}: `malformed`, and no named reason claims the read"),
-            );
-        }
     }
 }
 
 fn the_form_header_probes(dir: &str) {
-    // 1. EMPTY-FILE: ZERO BYTES. There is no first byte to earn a name, so this
-    //    is the residue, `malformed`, and not a named refusal.
-    form_probe("empty-file (zero bytes)", &[], FormProbe::Malformed);
+    // 1. EMPTY-FILE: ZERO BYTES. There is no first byte to read, so this is
+    //    `truncated` (§5.3 step 1).
+    form_probe(
+        "empty-file (zero bytes)",
+        &[],
+        FormProbe::Named(tblfx1::TableFixedReason::Truncated),
+    );
 
     // 2. SHORT-FORM1: A TEN-BYTE FORM-1 FILE, the size a committed variable-form
     //    file actually is. The form byte is read FIRST, so this is
@@ -607,14 +605,15 @@ fn the_form_header_probes(dir: &str) {
     }
 
     // 5. RESERVED-BYTE3: a valid form-3 fixture with reserved byte 3 set
-    //    nonzero. The reserved bytes are REFUSED, not ignored: `malformed`.
+    //    nonzero. The reserved bytes are REFUSED, not ignored:
+    //    `reserved_not_zero` (§5.3 step 2).
     {
         let mut reserved = slurp(dir, "fx1.bin");
         reserved[3] = 1;
         form_probe(
             "reserved-byte3 (a valid form-3 fixture, reserved byte 3 set nonzero)",
             &reserved,
-            FormProbe::Malformed,
+            FormProbe::Named(tblfx1::TableFixedReason::ReservedNotZero),
         );
     }
 }
@@ -745,7 +744,7 @@ fn the_layout_validation() {
     // THE BUILD'S OWN FILE, which is the only file a break can still be the one
     // thing that moved in. It used to be FX2's, read by FX1 through a plan
     // compiled from it — and that compile is exactly what §5.6 retired: FX1
-    // handed FX2's file now answers `layout_newer` and never reaches a rule. So
+    // handed FX2's file now answers `layout_unknown` and never reaches a rule. So
     // FX1 writes it and FX1 reads it, its own hash resolves in its own lineage,
     // and the ONE case §5.3 keeps — a KNOWN hash whose layout bytes are not the
     // lock's — is reachable.
@@ -797,7 +796,7 @@ fn the_layout_validation() {
 //
 // THE LAYOUT HERE IS INTERNALLY VALID: hand-built out of this build's own
 // field ids, passing all seven rules. After COMPILE-from-lock (#916), LOAD
-// never parses a stranger — unknown hash is `layout_newer` — so the bound is
+// never parses a stranger — unknown hash is `layout_unknown` — so the bound is
 // asserted on `table_fixed_compile` directly, which is the path a known older
 // writer still takes. A Load of the same bytes still refuses, and sets nothing.
 //
@@ -883,7 +882,7 @@ fn the_record_bound() {
         let n = tblfx1::fx_root_fixed_load(&mut values, &f, &mut plan, &mut remap, &mut report);
         check(
             n.is_none() && report.refused,
-            "W10: LOAD of the same bytes is REFUSED (hash selects; a stranger is layout_newer)",
+            "W10: LOAD of the same bytes is REFUSED (hash selects; a stranger is layout_unknown)",
         );
         check(
             report.unknown == 0
@@ -1784,14 +1783,14 @@ fn the_hostile_sweep(dir: &str) {
     );
 
     // AND THE LENGTH IS STRANGER-CONTROLLED TOO: one byte off the end is a
-    // ragged tail — `malformed`, never a silent short read.
+    // ragged tail — refused `truncated` (§5.3 step 9), never a silent short read.
     let mut short = golden.clone();
     short.pop();
     let mut report = tblfx1::TableFixedReport::default();
     let n = tblfx1::fx_root_fixed_load(&mut values, &short, &mut plan, &mut remap, &mut report);
     check(
-        n.is_none() && report.damaged && !report.refused,
-        "P3 hostile sweep: a one-byte-short file is DAMAGE, not a short read",
+        n.is_none() && report.refused && report.reason == tblfx1::TableFixedReason::Truncated && !report.damaged,
+        "P3 hostile sweep: a one-byte-short file is refused truncated, not a short read",
     );
     println!(
         "P3 hostile sweep: {total} mutations over {} bytes — refused={refused} malformed={damaged} landed={landed}, three answers never a fourth",

@@ -1,12 +1,13 @@
-// F8.rs — rust/F8: malformed, ragged tail (docs/FIXED-FORM-ALGORITHM.md:894)
+// F8.rs — rust/F8: the ragged tail (docs/FIXED-FORM-ALGORITHM.md §5.3 step 9)
 //
-// THE LAW:
-//   "a ragged tail: rest mod record_bytes != 0 | — | malformed, and -1"
+// THE LAW (the §5.3 condition table):
+//   "a ragged tail: rest mod record_bytes != 0 | truncated | the name"
 //
 // A fixed-form file whose remaining bytes after the header and layout block are not
-// an exact multiple of the record size is MALFORMED, the RESIDUE answer, never a refusal
-// by name. The reader sets report.damaged = true, returns None, leaves report.reason
-// untouched as TableFixedReason::None, and moves no counters.
+// an exact multiple of the record size is REFUSED, recommended name `truncated`, and
+// this form's report has no malformed flag. The reader returns None, sets refused and
+// reason TableFixedReason::Truncated, leaves damaged false, and moves no counters.
+// (Until 2026-11-25 this row asserted the off-spec answer, malformed with no name.)
 //
 // THE PRODUCTION PATH:
 //   padded_row_fixed_save / padded_row_fixed_load in blockdemo (tables/block/Padded.schema).
@@ -17,8 +18,8 @@
 //   For each extra byte length from 1 to record_bytes - 1:
 //     Append `extra` bytes to the valid file.
 //     Call padded_row_fixed_load on the ragged file.
-//     Assert: returns None, report.damaged is true, report.refused is false,
-//     report.reason is TableFixedReason::None, all counters zero, and the row
+//     Assert: returns None, report.refused is true, report.damaged is false,
+//     report.reason is TableFixedReason::Truncated, all counters zero, and the row
 //     handed in (pre-poisoned off its defaults) holds its declared defaults
 //     (ruling R4).
 //
@@ -111,12 +112,12 @@ fn test_row_f8_ragged_tail() {
         let n = padded_row_fixed_load(&mut values, &ragged, &mut plan, &mut remap, &mut report);
 
         assert!(n.is_none(), "ragged tail at +{extra} bytes must return None, got {n:?}");
-        assert!(report.damaged, "ragged tail at +{extra} bytes must set malformed: true");
-        assert!(!report.refused, "ragged tail at +{extra} bytes must not set refused");
+        assert!(report.refused, "ragged tail at +{extra} bytes is a refusal");
+        assert!(!report.damaged, "this form's report has no malformed flag (+{extra} bytes)");
         assert_eq!(
             report.reason,
-            TableFixedReason::None,
-            "ragged tail leaves reason untouched as None: {:?}", report.reason
+            TableFixedReason::Truncated,
+            "ragged tail is refused by the name truncated: {:?}", report.reason
         );
         assert_eq!(report.widened, 0, "ragged tail moves no widened counter");
         assert_eq!(report.unknown, 0, "ragged tail moves no unknown counter");
@@ -158,5 +159,5 @@ fn test_row_f8_ragged_tail() {
 
 fn main() {
     test_row_f8_ragged_tail();
-    println!("PASS: cell rust/F8 ragged tail correctly rejected as malformed by fixed-table decoder");
+    println!("PASS: cell rust/F8 ragged tail correctly refused truncated by fixed-table decoder");
 }

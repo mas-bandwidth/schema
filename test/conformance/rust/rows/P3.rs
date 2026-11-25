@@ -225,20 +225,20 @@ fn p3_all_three_answers_fire() {
 // silent short read and never a refusal dressed as one.
 #[test]
 fn p3_a_one_byte_short_file_is_damage() {
-    println!("P3: a one-byte-short file is DAMAGE, not a short read");
+    // A ragged tail is REFUSED by the name `truncated`
+    // (docs/FIXED-FORM-ALGORITHM.md §5.3 step 9, the condition table), and
+    // this form's report has no malformed flag.
+    println!("P3: a one-byte-short file is refused truncated, not a short read");
     let file = lawful_file();
     let mut short = file.clone();
     short.pop();
     let (n, _, report) = load(&short);
     assert_eq!(n, None, "the short file does not land: {report:?}");
-    assert!(report.damaged, "one byte off the end is malformed: {report:?}");
-    assert!(
-        !report.refused,
-        "a ragged tail is damage, not a refusal: {report:?}"
-    );
+    assert!(report.refused, "one byte off the end is a refusal: {report:?}");
     assert_eq!(
         report.reason,
-        TableFixedReason::None,
-        "and it carries no refusal name: {report:?}"
+        TableFixedReason::Truncated,
+        "a ragged tail is refused by the name truncated: {report:?}"
     );
+    assert!(!report.damaged, "this form's report has no malformed flag: {report:?}");
 }

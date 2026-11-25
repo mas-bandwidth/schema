@@ -387,11 +387,16 @@ func t05R18(t *testing.T) {
 
 // ---- rust/C3 -----------------------------------------------------------------
 
-// t05C3 holds rust/C3 to docs/FIXED-FORM-ALGORITHM.md §4.5's `text` row: "cap
-// := size; v := SLE(4, record+src) clamped into [0, cap], COUNT clamped
-// if it fired". The cap the plan carries is the WRITER's span
-// (§4.1), the length word is a four-byte little-endian integer, and the
-// identity read's own scatter clamps the length to the declared bound.
+// t05C3 holds rust/C3 to docs/FIXED-FORM-ALGORITHM.md §4.5's `text` row: "v :=
+// SLE(4, record+src); if v < 0 or v > size then REFUSE length_over_bound —
+// before any destination byte is written". An over-long text REFUSES and is
+// never clamped and landed. This leg holds the length into [0, cap] only to
+// keep the scatter's slice in bounds, counts one `held` when that moved it,
+// and the load refuses the whole batch out_of_range on any held count before
+// it returns, so no clamped length ever reaches the caller (the verdict is
+// compared; the name is diagnostic). The cap the plan carries is the WRITER's
+// span (§4.1) and the length word is a four-byte little-endian integer.
+// test/conformance/rust/rows/C3.rs runs the refusal through the load.
 func t05C3(t *testing.T) {
 	runtime := string(fixedRuntimeBody)
 	text := t05Arm(runtime, "TableFixedOp::Text => {")
@@ -399,14 +404,18 @@ func t05C3(t *testing.T) {
 		t.Fatal("C3: the Text arm is not in the runtime")
 	}
 	t04Has(t, text, "let held = raw.clamp(0, p.aux as i32);",
-		"C3 the length is clamped to the plan's cap")
-	t04Has(t, text, "if held != raw {", "C3 the clamp counts when it fires")
-	t04Has(t, text, "report.held += 1;", "C3 the clamp counts once")
+		"C3 the length is held inside the plan's cap")
+	t04Has(t, text, "if held != raw {", "C3 a length past the cap is seen")
+	t04Has(t, text, "report.held += 1;", "C3 a length past the cap counts held")
 	t04Has(t, runtime, "aux: bytes,",
 		"C3 the cap is the writer's span in BYTES (§4.1)")
 	mod := t05Module(t, "package probe\n\nfixed table Lineage\n{\n    s string(8)\n}\n")
 	t04Has(t, mod, "let held = raw.clamp(0, 8);",
-		"C3 the identity read clamps the length to the declared bound")
+		"C3 the identity read holds the length inside the declared bound")
+	// AND THE HELD COUNT REFUSES: no clamped length is ever landed (§4.5).
+	load := t04Fn(mod, "lineage_fixed_load")
+	t04Has(t, load, "if report.held != 0 {\n            report.widened = widened_before;\n            return report.refuse(TableFixedReason::OutOfRange);",
+		"C3 a length past the bound refuses the whole read, never clamps")
 }
 
 // ---- rust/C4 -----------------------------------------------------------------

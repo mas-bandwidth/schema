@@ -1,89 +1,113 @@
-// cell rust/C3 — text length clamp
+// cell rust/C3 — the text length is held to its bound, and past it the read REFUSES
 //
-// The SPEC says:
-//   text: unit := (meta == wide) ? 2 : 1; cap := size / unit;
-//   v := SLE(4, record+src) clamped into [0, cap], COUNT clamped if it fired.
+// THE LAW (docs/FIXED-FORM-ALGORITHM.md §4.5, the `text` row):
+//   v := SLE(4, record+src); if v < 0 or v > size then REFUSE length_over_bound
+//   — before any destination byte is written.
 //
-// PaddedRow has `label string(15)`, so cap = 15, unit = 1.
-// The generated reader in padded_row_fixed_scatter reads i32 at offset 14,
-// clamps to [0, 15], and counts clamped when it fires.
-// This test proves the clamp works: forged bytes with label_length > 15
-// land at 15 with clamped=1, and in-range bytes land verbatim.
+// An over-long (or negative) text length REFUSES the whole read: it is never
+// clamped to the cap and landed. The verdict is compared across legs and the name
+// is diagnostic; this leg answers the refusal by its strict-only name,
+// out_of_range (or text_ill_formed when the forged span is not text), and every row handed in goes back to its declared defaults
+// (SPEC-TABLES §6.5). Until 2026-11-25 this row called the scatter directly and
+// asserted the retired clamp-and-count answer (and named a report field, `oor`,
+// that the report no longer has).
+//
+// PaddedRow has `label string(15)`, so size = 15. The record body follows the
+// header, the layout block and the record's eight-byte hash; label_length is
+// the four-byte signed LE word at body offset 14.
+//
+// To run:
+//   rustc --edition 2024 --test -L test/conformance/rust/target/debug/deps \
+//     --extern blockdemo=$(ls test/conformance/rust/target/debug/deps/libblockdemo-*.rlib | head -n 1) \
+//     test/conformance/rust/rows/C3.rs -o build/rows-rust-C3 && ./build/rows-rust-C3
 
 use blockdemo::{
-    PaddedRowRow, PADDED_ROW_FIXED_BODY_BYTES,
-    padded_row_fixed_scatter, TableFixedReport,
+    padded_row_fixed_load, padded_row_fixed_measure, padded_row_fixed_save,
+    padded_row_fixed_scatter, PaddedRowRow, TableFixedEntry, TableFixedReason,
+    TableFixedReport, PADDED_ROW_FIXED_DEFAULTS,
 };
 
-fn test_label_length_clamped() {
-    // body is 50 bytes of zeros (the declared default)
-    let mut body = [0u8; PADDED_ROW_FIXED_BODY_BYTES];
-    // label_length lives at offset 14 as a 4-byte signed LE i32 (padded_fixed.rs:97)
-    // Set it to 20, past the cap of 15
-    body[14..18].copy_from_slice(&(20i32).to_le_bytes());
-    // also put some content so label[idx] is non-zero, though not required
-    body[18] = b'A';
+/// The offset of label_length inside the record body (padded_fixed.rs).
+const LABEL_LENGTH_AT: usize = 14;
 
+/// The row at its declared defaults, as the reader's own reset scatters them.
+fn declared_defaults() -> PaddedRowRow {
+    let mut want = PaddedRowRow::default();
+    padded_row_fixed_scatter(&PADDED_ROW_FIXED_DEFAULTS, &mut want, &mut TableFixedReport::default());
+    want
+}
+
+/// A one-record file whose label is `text`, and the offset of its label_length.
+fn file_with_label(text: &[u8]) -> (Vec<u8>, usize) {
     let mut row = PaddedRowRow::default();
+    row.tag = 42;
+    row.id = 12345;
+    row.label[..text.len()].copy_from_slice(text);
+    row.label_length = text.len() as i32;
+    let measure = padded_row_fixed_measure(1);
+    let mut file = vec![0u8; measure];
+    let written = padded_row_fixed_save(&[row], &mut file).expect("padded_row_fixed_save writes the record");
+    assert_eq!(written, measure, "written bytes must match the measured size");
+    let layout = u32::from_le_bytes(file[16..20].try_into().unwrap()) as usize;
+    (file, 20 + layout + 8 + LABEL_LENGTH_AT)
+}
+
+/// Loads `file` into one row poisoned off its defaults.
+fn load(file: &[u8]) -> (Option<usize>, TableFixedReport, PaddedRowRow) {
+    let mut values = [PaddedRowRow::default(); 1];
+    values[0].tag = 0x5A;
+    values[0].id = 0x5A5A_5A5A;
+    values[0].label_length = 0x5A;
+    let mut plan = [TableFixedEntry::default(); 512];
+    let mut remap = [0u16; 512];
     let mut report = TableFixedReport::default();
-    padded_row_fixed_scatter(&body, &mut row, &mut report);
-
-    assert_eq!(row.label_length, 15, "text length must clamp to cap=15");
-    assert_eq!(report.oor, 1, "COUNT clamped must fire once");
+    let n = padded_row_fixed_load(&mut values, file, &mut plan, &mut remap, &mut report);
+    (n, report, values[0])
 }
 
-fn test_label_length_in_range() {
-    let mut body = [0u8; PADDED_ROW_FIXED_BODY_BYTES];
-    // label_length = 5, inside [0, 15]
-    body[14..18].copy_from_slice(&(5i32).to_le_bytes());
-    body[18..23].copy_from_slice(b"Hello");
-
-    let mut row = PaddedRowRow::default();
-    let mut report = TableFixedReport::default();
-    padded_row_fixed_scatter(&body, &mut row, &mut report);
-
-    assert_eq!(row.label_length, 5, "in-range length must not change");
-    assert_eq!(report.oor, 0, "no clamp for in-range length");
+fn assert_refused(label: &str, file: &[u8]) {
+    let (n, report, row) = load(file);
+    let defaults = declared_defaults();
+    assert_eq!(n, None, "{label}: an out-of-bound text length refuses the read: {report:?}");
+    assert!(report.refused, "{label}: the read is refused, never clamped: {report:?}");
+    // The verdict is compared and the name is diagnostic (§5.3): this leg names a
+    // length past the bound out_of_range, or text_ill_formed when the bytes the
+    // forged length would cover are not text — either way a refusal by name.
+    assert!(
+        matches!(report.reason, TableFixedReason::OutOfRange | TableFixedReason::TextIllFormed),
+        "{label}: a refusal by name: {report:?}"
+    );
+    assert!(!report.damaged, "{label}: this form's report has no malformed flag: {report:?}");
+    assert!(
+        row.tag == defaults.tag && row.id == defaults.id && row.label_length == defaults.label_length,
+        "{label}: the row handed in is back at its declared defaults, nothing clamped landed"
+    );
 }
 
-fn test_label_length_negative() {
-    // A NEGATIVE SLE(4) value clamps to 0 per [0, cap] (fix 16).
-    let mut body = [0u8; PADDED_ROW_FIXED_BODY_BYTES];
-    body[14..18].copy_from_slice(&(-1i32).to_le_bytes());
-
-    let mut row = PaddedRowRow::default();
-    let mut report = TableFixedReport::default();
-    padded_row_fixed_scatter(&body, &mut row, &mut report);
-
-    assert_eq!(row.label_length, 0, "negative length clamps to 0");
-    assert!(report.oor >= 1, "negative length fires clamp");
+#[test]
+fn test_label_length_past_the_bound_refuses() {
+    let (mut file, at) = file_with_label(b"Hello");
+    file[at..at + 4].copy_from_slice(&20i32.to_le_bytes());
+    assert_refused("length 20 against string(15)", &file);
+    file[at..at + 4].copy_from_slice(&16i32.to_le_bytes());
+    assert_refused("length 16, one past string(15)", &file);
 }
 
-fn test_label_length_zero() {
-    // Zero is the empty string, valid at the boundary.
-    let mut body = [0u8; PADDED_ROW_FIXED_BODY_BYTES];
-    body[14..18].copy_from_slice(&(0i32).to_le_bytes());
-
-    let mut row = PaddedRowRow::default();
-    let mut report = TableFixedReport::default();
-    padded_row_fixed_scatter(&body, &mut row, &mut report);
-
-    assert_eq!(row.label_length, 0, "length 0 must stay 0");
-    assert_eq!(report.oor, 0, "length 0 fires no clamp");
+#[test]
+fn test_label_length_negative_refuses() {
+    let (mut file, at) = file_with_label(b"");
+    file[at..at + 4].copy_from_slice(&(-1i32).to_le_bytes());
+    assert_refused("length -1", &file);
 }
 
-fn main() {
-    test_label_length_clamped();
-    test_label_length_in_range();
-    test_label_length_negative();
-    test_label_length_zero();
-    println!("PASS text length clamp: all four cases");
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn run() {
-        super::main();
+#[test]
+fn test_label_length_in_range_reads() {
+    for text in [&b""[..], &b"Hello"[..], &b"fifteen bytes!!"[..]] {
+        let (file, _) = file_with_label(text);
+        let (n, report, row) = load(&file);
+        assert_eq!(n, Some(1), "length {} reads: {report:?}", text.len());
+        assert!(!report.refused && !report.damaged, "length {}: {report:?}", text.len());
+        assert_eq!(row.label_length as usize, text.len(), "the used length lands verbatim");
+        assert_eq!(&row.label[..text.len()], text, "the used bytes land verbatim");
     }
 }

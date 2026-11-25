@@ -342,7 +342,7 @@ func t12R27(t *testing.T, corpus string) {
 // so those mutations count as malformed rather than landed.
 func t12P3(t *testing.T, corpus string) {
 	out := t12FixedFormRun(t, corpus)
-	const wantSweep = "P3 hostile sweep: 2334 mutations over 389 bytes — refused=1625 malformed=274 landed=435, three answers never a fourth"
+	const wantSweep = "P3 hostile sweep: 2334 mutations over 389 bytes — refused=1660 malformed=239 landed=435, three answers never a fourth"
 	if strings.Contains(out, "FAIL:") {
 		t.Fatalf("rust/P3: test/rust-fixedform reported a failure:\n%s", out)
 	}
@@ -771,7 +771,7 @@ fn check_r27() -> Result<(), String> {
 }
 
 fn check_p4() -> Result<(), String> {
-    // 1. VOLD_int_widen loading new_int_widen.bin refuses layout_newer with
+    // 1. VOLD_int_widen loading new_int_widen.bin refuses layout_unknown with
     //    the file's hash and touches nothing.
     let new_widen = std::fs::read(format!("{CORPUS}/new_int_widen.bin"))
         .map_err(|e| format!("read new_int_widen.bin: {e}"))?;
@@ -785,13 +785,13 @@ fn check_p4() -> Result<(), String> {
     let mut remap = vec![0u16; 4096];
     let mut rep = TableFixedReport::default();
     if widen_old::int_widen_fixed_load(&mut dst, &new_widen, &mut plan, &mut remap, &mut rep).is_some() {
-        return Err("VOLD_int_widen accepted new_int_widen.bin instead of refusing layout_newer".into());
+        return Err("VOLD_int_widen accepted new_int_widen.bin instead of refusing layout_unknown".into());
     }
-    if !rep.refused || rep.damaged || rep.reason != TableFixedReason::LayoutNewer || rep.layout_hash != new_hash {
-        return Err("VOLD_int_widen did not report LayoutNewer with the file's hash".into());
+    if !rep.refused || rep.damaged || rep.reason != TableFixedReason::LayoutUnknown || rep.layout_hash != new_hash {
+        return Err("VOLD_int_widen did not report LayoutUnknown with the file's hash".into());
     }
     if !is_reset(&dst[0], widen_old::int_widen_fixed_scatter, &widen_old::INT_WIDEN_FIXED_DEFAULTS) {
-        return Err("VOLD_int_widen left the row off its declared default on LayoutNewer (R4)".into());
+        return Err("VOLD_int_widen left the row off its declared default on LayoutUnknown (R4)".into());
     }
 
     // 2. Running VOLD_int_widen's identity plan directly over new_int_widen.bin's
