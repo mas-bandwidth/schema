@@ -573,10 +573,25 @@ end
 
 -- ---- the COOK WRITE surface (docs/SPEC-TABLES.md §7.6, §19.1) -------------
 --
--- Load the instance's wire, measure the cook, then cook it in both byte
--- orders; `<case>` is the little-endian file and `<case>-be` the big. The
--- build version the header records is the unit's own
+-- Load the instance's wire with the strict read, measure the cook, then cook
+-- it in both byte orders; `<case>` is the little-endian file and `<case>-be`
+-- the big. The build version the header records is the unit's own
 -- (TableMessageBuildVersion), handed to the cook before it writes.
+--
+-- A SHARED BLOB IS BUILT, NEVER READ (docs/SPEC-TABLES.md §2.5, §6.5;
+-- docs/rulings.json strict-only-read): the derived line is
+-- `cook-write <instance> <input> <source> <alias>` (test/conformance/harness
+-- run.go). When it names a share, no read hands back a value whose two slots
+-- name one blob, so the value is the construction input's text read strictly,
+-- and the alias slot is then pointed at the source slot's one buffer, the value
+-- the cook writes once (§7.6).
+local function slotNamed(d: any, field: string): string
+	for _, fd in d.fields do
+		if fd.name == field then return fd.slot end
+	end
+	error("cook-write: " .. tostring(d.name) .. " declares no field " .. field)
+end
+
 local function surfaceCookWrite(lines: { { string } })
 	local instances: { [string]: { string } } = {}
 	for _, f in kind(lines, "instance") do
@@ -593,9 +608,22 @@ local function surfaceCookWrite(lines: { { string } })
 			say(f[2], nil)
 			say(f[2] .. "-be", nil)
 		else
-			local v = u.load.loadWalk(inst[4], file(inst[5]), report())
-			if v == nil then
-				error(f[2] .. ": cook input did not load")
+			local v: any = nil
+			local source, alias = f[4], f[5]
+			if source ~= nil and source ~= "-" then
+				if f[3] == nil or f[3] == "-" or alias == nil or alias == "-" then
+					error(f[2] .. ": a share needs a construction input and two fields")
+				end
+				v = u.json.FromJson(inst[4], file(f[3]), report())
+				if v == nil then
+					error(f[2] .. ": the cook's construction input did not read")
+				end
+				v[slotNamed(d, alias)] = v[slotNamed(d, source)]
+			else
+				v = u.load.load(inst[4], file(inst[5]), report())
+				if v == nil then
+					error(f[2] .. ": cook input did not load")
+				end
 			end
 			u.cook.BuildVersion = u.modules[1].TableMessageBuildVersion
 			local size = u.cook.CookMeasure(d, v)
