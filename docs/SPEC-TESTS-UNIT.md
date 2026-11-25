@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 0. Language-free tests: 100.
+Unit tests every language answers: 0. Language-free tests: 101.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -23,14 +23,14 @@ Each runs once, as `none.unit.<type>.<family>.<case>`, through the adapter its r
 
 CI policy, docs, roadmap, repo-structure and harness self-tests.
 
-#### `tooling` family `schema-test`, 41 tests
+#### `tooling` family `schema-test`, 42 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.unit.tooling.schema-test.a-deleted-golden-is-missing` | `gotest` | Go test TestADeletedGoldenIsMissing in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestADeletedGoldenIsMissing` | the Go test passes | `tools/schema-test/golden_test.go:125` |
 | `none.unit.tooling.schema-test.a-golden-edited-by-hand-fails` | `gotest` | Go test TestAGoldenEditedByHandFails in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAGoldenEditedByHandFails` | the Go test passes | `tools/schema-test/golden_test.go:81` |
 | `none.unit.tooling.schema-test.a-golden-nothing-writes-fails` | `gotest` | Go test TestAGoldenNothingWritesFails in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAGoldenNothingWritesFails` | the Go test passes | `tools/schema-test/golden_test.go:105` |
-| `none.unit.tooling.schema-test.a-golden-still-holding-the-marker-was-not-written` | `gotest` | Go test TestAGoldenStillHoldingTheMarkerWasNotWritten in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAGoldenStillHoldingTheMarkerWasNotWritten` | the Go test passes | `tools/schema-test/golden_test.go:219` |
+| `none.unit.tooling.schema-test.a-golden-the-writer-left-untouched-was-not-written` | `gotest` | Go test TestAGoldenTheWriterLeftUntouchedWasNotWritten in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAGoldenTheWriterLeftUntouchedWasNotWritten` | the Go test passes | `tools/schema-test/golden_test.go:228` |
 | `none.unit.tooling.schema-test.a-make-row-lacking-a-tool-or-a-sibling-fails-naming-the-runner` | `gotest` | Go test TestAMakeRowLackingAToolOrASiblingFailsNamingTheRunner in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAMakeRowLackingAToolOrASiblingFailsNamingTheRunner` | the Go test passes | `tools/schema-test/make_test.go:198` |
 | `none.unit.tooling.schema-test.a-make-row-runs-with-the-cores-and-a-control-without` | `gotest` | Go test TestAMakeRowRunsWithTheCoresAndAControlWithout in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAMakeRowRunsWithTheCoresAndAControlWithout` | the Go test passes | `tools/schema-test/make_test.go:139` |
 | `none.unit.tooling.schema-test.a-make-row-sets-its-variables-on-the-command-line` | `gotest` | Go test TestAMakeRowSetsItsVariablesOnTheCommandLine in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAMakeRowSetsItsVariablesOnTheCommandLine` | the Go test passes | `tools/schema-test/make_test.go:163` |
@@ -44,6 +44,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.schema-test.a-reason-echoed-by-a-broken-build-is-not-the-plants` | `gotest` | Go test TestAReasonEchoedByABrokenBuildIsNotThePlants in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAReasonEchoedByABrokenBuildIsNotThePlants` | the Go test passes | `tools/schema-test/plant_test.go:217` |
 | `none.unit.tooling.schema-test.a-run-that-selects-nothing-still-prints-its-counts` | `gotest` | Go test TestARunThatSelectsNothingStillPrintsItsCounts in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestARunThatSelectsNothingStillPrintsItsCounts` | the Go test passes | `tools/schema-test/main_test.go:169` |
 | `none.unit.tooling.schema-test.a-sabotage-that-reddens-an-unnamed-row-fails` | `gotest` | Go test TestASabotageThatReddensAnUnnamedRowFails in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestASabotageThatReddensAnUnnamedRowFails` | the Go test passes | `tools/schema-test/plant_test.go:96` |
+| `none.unit.tooling.schema-test.a-seeded-golden-reports-whether-it-was-written` | `gotest` | Go test TestASeededGoldenReportsWhetherItWasWritten in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestASeededGoldenReportsWhetherItWasWritten` | the Go test passes | `tools/schema-test/golden_test.go:271` |
 | `none.unit.tooling.schema-test.a-target-specific-variable-is-not-a-rule` | `gotest` | Go test TestATargetSpecificVariableIsNotARule in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestATargetSpecificVariableIsNotARule` | the Go test passes | `tools/schema-test/make_test.go:262` |
 | `none.unit.tooling.schema-test.an-anchor-that-drifted-fails-by-name` | `gotest` | Go test TestAnAnchorThatDriftedFailsByName in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAnAnchorThatDriftedFailsByName` | the Go test passes | `tools/schema-test/plant_test.go:37` |
 | `none.unit.tooling.schema-test.an-anchor-written-twice-fails` | `gotest` | Go test TestAnAnchorWrittenTwiceFails in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAnAnchorWrittenTwiceFails` | the Go test passes | `tools/schema-test/plant_test.go:52` |
