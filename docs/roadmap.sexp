@@ -4597,7 +4597,7 @@
    "Historical report at b7ab66a8; current completion has not been reconciled.")
   (:id "java/hostile-corpus" :type :task :title "the Java port runs the shared hostile-input corpus" :state :done
    :evidence ("make/schema-java-runs-hostile-corpus.mk: schema-java-runs-hostile-corpus (192 cases: 192 pass; no list carries a finding)" "schema-java-runs-hostile-corpus-negative-control (make/negative-controls.json java-tables-more)" "internal/ci/schema_java_runs_hostile_corpus_test.go: TestSchemaJavaRunsHostileCorpusWiring" "tools/schema-test/hostile.go")
-   :note "Every manifest case runs through the generated Java reader (test/java-hostile/Runner.java). The vocabulary's maxEntries bound was fixed on the way (TestMessageFormAnnounceJava 2.3). All 192 cases pass, and no case is carried in test/java-hostile/known-findings.tsv.")
+   :note "Every manifest case runs through the generated Java reader (test/java-hostile/Runner.java). The vocabulary's maxEntries bound was fixed on the way (TestMessageFormAnnounceJava 2.3). All 192 cases pass, and no list carries a finding.")
   (:id "hostile-input/java" :type :work-set :children ("java/P3" "java/P4" "java/hostile-corpus"))
   (:id "js/P3" :type :task :title "hostile bytes, sweep + sanitizer" :state :unknown :evidence nil
    :audit-item "P3" :reported-state "weak" :reported-source

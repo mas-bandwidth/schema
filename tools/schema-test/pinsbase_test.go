@@ -80,6 +80,7 @@ func mainTreeBaseProblems(action string) []string {
 	for _, want := range []string{
 		`ref=$(go run ./tools/schema-test ci --pins-base-ref)`,
 		`if ! git fetch --quiet --depth 1 origin "$ref"; then`,
+		"has no base\"\n          exit 1\n        fi\n",
 		`base_sha=$(git rev-parse FETCH_HEAD)`,
 		`git archive "$base_sha" | tar -x -C "$base"`,
 		`echo "base=$base" >> "$GITHUB_OUTPUT"`,
@@ -114,6 +115,7 @@ func TestTheMainTreeActionExportsTheBaseTheEventNames(t *testing.T) {
 		{"the ref chosen in the shell", `ref=$(go run ./tools/schema-test ci --pins-base-ref)`, `ref=main`},
 		{"the ref overwritten", `ref=$(go run ./tools/schema-test ci --pins-base-ref)` + "\n", `ref=$(go run ./tools/schema-test ci --pins-base-ref)` + "\n        ref=main\n"},
 		{"the tree exported from main", `git archive "$base_sha" | tar -x -C "$base"`, `git archive "$main" | tar -x -C "$base"`},
+		{"a failed fetch that goes on", "has no base\"\n          exit 1\n", "has no base\"\n          true\n"},
 	} {
 		if !strings.Contains(action, p.old) {
 			t.Errorf("%s: the plant's anchor is not there", p.name)

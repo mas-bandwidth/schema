@@ -305,7 +305,8 @@ func fits(parts [][]testreg.Instance, budget float64) bool {
 }
 
 // generatedWorkflowFiles are the workflows ciFiles writes, by repository
-// path (TestTheNotYetGeneratedListOnlyShrinks holds the two to each other).
+// path (TestTheBaseLeavesOutExactlyTheGeneratedWorkflows holds the two to
+// each other).
 var generatedWorkflowFiles = []string{fastWorkflow, roadmapFile, nightlyWorkflow}
 
 // pinsBaseRef is the commit a change merges into, which `extract
