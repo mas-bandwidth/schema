@@ -1129,6 +1129,7 @@ jobs:
           if [ "$CPP_CORPUS" != true ]; then
             omit build-cpp-conformance-account "no conformance-corpus input and no C++ accounting file changed"
             omit input-family-cpp-conformance "no conformance-corpus input and no C++ accounting file changed"
+            omit stage-compiler "no conformance-corpus input and no C++ accounting file changed: the C++ accounting build is what reads the staged compiler"
           fi
           [ "$ELIXIR_CORPUS" = true ] || omit input-family-elixir-conformance "no conformance-corpus input and no elixir leg"
           [ "$INPUT_ROWS" != '[]' ] || omit input-family "no input of an input family changed and no touched leg reads one (tools/inputfamilies)"
