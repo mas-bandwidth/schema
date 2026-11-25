@@ -432,7 +432,7 @@ func (rn *Runner) prepare(parent context.Context, groups []group) ([]error, []fl
 	seconds := make([]float64, len(groups))
 	for gi, g := range groups {
 		if sp, ok := rn.Adapters[g.adapter].(StepPreparer); ok {
-			out[gi], seconds[gi] = rn.prepareSteps(parent, g, sp)
+			seconds[gi], out[gi] = rn.prepareSteps(parent, g, sp)
 			continue
 		}
 		p, ok := rn.Adapters[g.adapter].(Preparer)
@@ -458,7 +458,7 @@ func (rn *Runner) prepare(parent context.Context, groups []group) ([]error, []fl
 // prepareSteps runs a group's steps, each under a deadline of its own named
 // "prepare <group> <step>", and returns the group's error (the first step's
 // that failed or timed out, naming it) and the seconds all the steps took.
-func (rn *Runner) prepareSteps(parent context.Context, g group, sp StepPreparer) (error, float64) {
+func (rn *Runner) prepareSteps(parent context.Context, g group, sp StepPreparer) (float64, error) {
 	var total float64
 	for _, step := range sp.PrepareSteps(g.lang, g.instances) {
 		name := "prepare " + g.name + " " + step.Name
@@ -470,12 +470,12 @@ func (rn *Runner) prepareSteps(parent context.Context, g group, sp StepPreparer)
 		cancel()
 		switch {
 		case err != nil && timedOut:
-			return fmt.Errorf("adapter %s timed out in %s: %w", g.adapter, name, err), total
+			return total, fmt.Errorf("adapter %s timed out in %s: %w", g.adapter, name, err)
 		case err != nil:
-			return fmt.Errorf("adapter %s could not %s: %w", g.adapter, name, err), total
+			return total, fmt.Errorf("adapter %s could not %s: %w", g.adapter, name, err)
 		}
 	}
-	return nil, total
+	return total, nil
 }
 
 // Prepare builds what the instances' calls need (Preparer), as Run does

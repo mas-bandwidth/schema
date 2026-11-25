@@ -913,7 +913,7 @@ func TestEachPrepareStepHasItsOwnLimitAndAStepThatOutlastsItFailsByName(t *testi
 			t.Errorf("no deadline made for %q: %q", g, log.ev)
 		}
 	}
-	if !(log.at("step build/one") < log.at("step build/two") && log.at("step build/two") < log.at("step build/slow")) {
+	if log.at("step build/one") >= log.at("step build/two") || log.at("step build/two") >= log.at("step build/slow") {
 		t.Errorf("the steps did not run in the order declared: %q", log.ev)
 	}
 	if log.has("step build/after") || log.has("start a") {
