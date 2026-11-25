@@ -5,7 +5,7 @@ Part of the specification: every test of tier `functional`, from the test regist
 
 **Tier functional:** uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it.
 
-Functional tests every language answers: 2256. Language-free tests: 2203.
+Functional tests every language answers: 2256. Language-free tests: 2241.
 
 Run this tier for a language with `schema-test run --tier functional --lang L`, one test with `schema-test run <full name>`.
 
@@ -4441,6 +4441,25 @@ seeded mutations.
 |---|---|---|---|---|---|
 | `none.functional.fuzz.fuzz.fuzz-generated-compiles` | `gotest` | Go test FuzzGeneratedCompiles in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: FuzzGeneratedCompiles` | the Go test passes | `internal/fuzz/compile_test.go:150` |
 
+#### `fuzz` family `make-schema-lua-nightly-fuzz`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.fuzz.make-schema-lua-nightly-fuzz.schema-lua-fuzz-replay` | `make` | make schema-lua-fuzz-replay (make/schema-lua-nightly-fuzz.mk) exits 0 | `file: make/schema-lua-nightly-fuzz.mk`<br>`target: schema-lua-fuzz-replay` | the target exits 0 with no skip in its log | `make/schema-lua-nightly-fuzz.mk:164` |
+
+#### `fuzz` family `make-schema-luau-nightly-fuzz`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.fuzz.make-schema-luau-nightly-fuzz.luau-nightly-fuzz-replay` | `make` | make luau-nightly-fuzz-replay (make/schema-luau-nightly-fuzz.mk) exits 0 | `file: make/schema-luau-nightly-fuzz.mk`<br>`target: luau-nightly-fuzz-replay` | the target exits 0 with no skip in its log | `make/schema-luau-nightly-fuzz.mk:712` |
+
+#### `fuzz` family `make-verify-vm`, 2 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.fuzz.make-verify-vm.verify-goose-fuzz-part-1` | `make` | make verify-goose-fuzz-part-1 (make/verify-vm.mk) exits 0 | `file: make/verify-vm.mk`<br>`target: verify-goose-fuzz-part-1` | the target exits 0 with no skip in its log | `make/verify-vm.mk:576` |
+| `none.functional.fuzz.make-verify-vm.verify-goose-fuzz-part-2` | `make` | make verify-goose-fuzz-part-2 (make/verify-vm.mk) exits 0 | `file: make/verify-vm.mk`<br>`target: verify-goose-fuzz-part-2` | the target exits 0 with no skip in its log | `make/verify-vm.mk:581` |
+
 ### Type `plant`
 
 a negative control: a named test run against a deliberately broken build must come out red.
@@ -4451,6 +4470,12 @@ a negative control: a named test run against a deliberately broken build must co
 |---|---|---|---|---|---|
 | `none.functional.plant.align-arrays.go-valid-row-run-as-refuse` | `plant` | the go align-arrays harness reports a row red when its expectation is turned around: the run cannot pass a row it did not check | `env: {"SCHEMA_TEST_PLANT_BITPHASE_EXPECT_REFUSE":"aa_phase63_valid_ab-e-acute.bin"}`<br>`reason: accepted aa_phase63_valid_ab-e-acute.bin`<br>`target: go.functional.roundtrip.align-arrays.phase63-ab-e-acute` | the target runs and fails: it accepted the row turned into a refusal | `test/verify-bitphase/adapter.go PlantEnv` |
 | `none.functional.plant.align-arrays.lua-valid-row-run-as-refuse` | `plant` | the lua align-arrays harness reports a row red when its expectation is turned around: the run cannot pass a row it did not check | `env: {"SCHEMA_TEST_PLANT_BITPHASE_EXPECT_REFUSE":"aa_phase31_valid_nested.bin"}`<br>`reason: accepted aa_phase31_valid_nested.bin`<br>`target: lua.functional.roundtrip.align-arrays.phase31-nested` | the target runs and fails: it accepted the row turned into a refusal | `test/verify-bitphase/adapter.go PlantEnv` |
+
+#### `plant` family `base-c-format`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.plant.base-c-format.tables-cpp-format-negative-control` | `plant` | negative control tables-cpp-format-negative-control (group base-c-format of make/negative-controls.json): its sabotage turns the gate it controls red | `file: make/cpp.mk`<br>`group: base-c-format`<br>`make: tables-cpp-format-negative-control`<br>`tools: ["clang-format"]` | the control exits 0: the gate it controls went red on its planted sabotage | `make/negative-controls.json:870` |
 
 #### `plant` family `corpus-plants`, 7 tests
 
@@ -4463,6 +4488,50 @@ a negative control: a named test run against a deliberately broken build must co
 | `none.functional.plant.corpus-plants.go-wrong-byte-rewrite-frame-empty-table` | `plant` | the go leg's framing read writes frame\_empty\_table back with its first byte flipped: the rewrite surface, which answers a framed rewrite row from the leg's framing write-back, must turn that rewrite instance red | `env: {"SCHEMA_TEST_PLANT_CONFORMANCE_GO":"wrong-byte:frame_empty_table"}`<br>`reason: not the corpus's`<br>`target: go.functional.roundtrip.conformance-rewrite.frame-empty-table` | the target runs and fails: the answer is not the corpus's | `test/conformance/go/main.go plantEnv` |
 | `none.functional.plant.corpus-plants.go-wrong-byte-root-full` | `plant` | the go leg's wire reader writes root\_full back with its first byte flipped: the corpus adapter must turn exactly that instance red | `env: {"SCHEMA_TEST_PLANT_CONFORMANCE_GO":"wrong-byte:root_full"}`<br>`reason: not the corpus's`<br>`target: go.functional.roundtrip.conformance-wire.root-full` | the target runs and fails: the answer is not the corpus's | `test/conformance/go/main.go plantEnv` |
 | `none.functional.plant.corpus-plants.goose-batch-wrong-byte-root-full` | `plant` | the goose driver hands back root\_full from its one-compile batch with its first hex digit flipped: the corpus adapter must turn exactly that instance red, which holds that the scored wire answers are the batch's | `env: {"SCHEMA_TEST_PLANT_CONFORMANCE_GOOSE":"wrong-byte:root_full"}`<br>`reason: not the corpus's`<br>`target: goose.functional.roundtrip.conformance-wire.root-full` | the target runs and fails: the answer is not the corpus's | `test/conformance/goose/driver batch_section` |
+
+#### `plant` family `excluded`, 3 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.plant.excluded.schema-luau-generated-analyze-strict-gate-negative-control` | `plant` | negative control schema-luau-generated-analyze-strict-gate-negative-control (the excluded list of make/negative-controls.json, run here as its own row): its sabotage turns the gate it controls red | `file: make/schema-luau-generated-analyze-strict-gate.mk`<br>`group: (excluded)`<br>`make: schema-luau-generated-analyze-strict-gate-negative-control` | the control exits 0: the gate it controls went red on its planted sabotage | `make/negative-controls.json:3611` |
+| `none.functional.plant.excluded.schema-luau-resource-bounds-negative-control` | `plant` | negative control schema-luau-resource-bounds-negative-control (the excluded list of make/negative-controls.json, run here as its own row): its sabotage turns the gate it controls red | `file: make/schema-luau-resource-bounds.mk`<br>`group: (excluded)`<br>`make: schema-luau-resource-bounds-negative-control` | the control exits 0: the gate it controls went red on its planted sabotage | `make/negative-controls.json:3615` |
+| `none.functional.plant.excluded.tables-lua-luacheck-negative-control` | `plant` | negative control tables-lua-luacheck-negative-control (the excluded list of make/negative-controls.json, run here as its own row): its sabotage turns the gate it controls red | `file: make/schema-lua-generated-luacheck-gate.mk`<br>`group: (excluded)`<br>`make: tables-lua-luacheck-negative-control`<br>`tools: ["luacheck"]` | the control exits 0: the gate it controls went red on its planted sabotage | `make/negative-controls.json:3607` |
+
+#### `plant` family `go-proof-4`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.plant.go-proof-4.cards-conformance-go-negative-control` | `plant` | negative control cards-conformance-go-negative-control (group go-proof-4 of make/negative-controls.json): its sabotage turns the gate it controls red | `file: make/go.mk`<br>`group: go-proof-4`<br>`make: cards-conformance-go-negative-control` | the control exits 0: the gate it controls went red on its planted sabotage | `make/negative-controls.json:2852` |
+
+#### `plant` family `lobster`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.plant.lobster.schema-lobster-generated-strict-gate-negative-control` | `plant` | negative control schema-lobster-generated-strict-gate-negative-control (group lobster of make/negative-controls.json): its sabotage turns the gate it controls red | `file: make/schema-lobster-generated-strict-gate.mk`<br>`group: lobster`<br>`make: schema-lobster-generated-strict-gate-negative-control` | the control exits 0: the gate it controls went red on its planted sabotage | `make/negative-controls.json:3109` |
+
+#### `plant` family `lua-a`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.plant.lua-a.schema-lua-resource-bounds-negative-control` | `plant` | negative control schema-lua-resource-bounds-negative-control (group lua-a of make/negative-controls.json): its sabotage turns the gate it controls red | `file: make/schema-lua-resource-bounds.mk`<br>`group: lua-a`<br>`make: schema-lua-resource-bounds-negative-control` | the control exits 0: the gate it controls went red on its planted sabotage | `make/negative-controls.json:281` |
+
+#### `plant` family `lua-format`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.plant.lua-format.tables-lua-format-negative-control` | `plant` | negative control tables-lua-format-negative-control (group lua-format of make/negative-controls.json): its sabotage turns the gate it controls red | `file: make/schema-lua-generated-luacheck-gate.mk`<br>`group: lua-format`<br>`make: tables-lua-format-negative-control` | the control exits 0: the gate it controls went red on its planted sabotage | `make/negative-controls.json:236` |
+
+#### `plant` family `moo`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.plant.moo.schema-moo-generated-analyze-strict-gate-negative-control` | `plant` | negative control schema-moo-generated-analyze-strict-gate-negative-control (group moo of make/negative-controls.json): its sabotage turns the gate it controls red | `file: make/schema-moo-generated-analyze-strict-gate.mk`<br>`group: moo`<br>`make: schema-moo-generated-analyze-strict-gate-negative-control` | the control exits 0: the gate it controls went red on its planted sabotage | `make/negative-controls.json:3142` |
+
+#### `plant` family `schema-dart-strict-analyze`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.plant.schema-dart-strict-analyze.schema-dart-generated-strict-analyze-gate-negative-control` | `plant` | negative control schema-dart-generated-strict-analyze-gate-negative-control (group schema-dart-strict-analyze of make/negative-controls.json): its sabotage turns the gate it controls red | `file: make/schema-dart-generated-strict-analyze-gate.mk`<br>`group: schema-dart-strict-analyze`<br>`make: schema-dart-generated-strict-analyze-gate-negative-control`<br>`tools: ["dart"]`<br>`vars: {"DART":"dart"}` | the control exits 0: the gate it controls went red on its planted sabotage | `make/negative-controls.json:2991` |
 
 ### Type `compiler`
 
@@ -5034,6 +5103,83 @@ performance or timing.
 | `none.functional.bench.bench-paired.local-process-monitor` | `gotest` | Go test TestLocalProcessMonitor in ./bench/paired | `package: ./bench/paired`<br>`test: TestLocalProcessMonitor` | the Go test passes | `bench/paired/window_test.go:113` |
 | `none.functional.bench.bench-paired.quiet-window-stops-owned-runner-and-retains-refusal` | `gotest` | Go test TestQuietWindowStopsOwnedRunnerAndRetainsRefusal in ./bench/paired | `package: ./bench/paired`<br>`test: TestQuietWindowStopsOwnedRunnerAndRetainsRefusal` | the Go test passes | `bench/paired/window_test.go:400` |
 
+### Type `lint`
+
+generated or runtime code is clean under the language's strict analyser.
+
+#### `lint` family `make-c`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.lint.make-c.tables-c-clean` | `make` | make tables-c-clean (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: tables-c-clean`<br>`tools: ["clang-format"]` | the target exits 0 with no skip in its log | `make/c.mk:1676` |
+
+#### `lint` family `make-cpp`, 2 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.lint.make-cpp.tables-cpp-format` | `make` | make tables-cpp-format (make/cpp.mk) exits 0 | `file: make/cpp.mk`<br>`target: tables-cpp-format`<br>`tools: ["clang-format"]` | the target exits 0 with no skip in its log | `make/cpp.mk:370` |
+| `none.functional.lint.make-cpp.tables-cpp-warnings` | `make` | make tables-cpp-warnings (make/cpp.mk) exits 0 | `file: make/cpp.mk`<br>`siblings: ["../serialize"]`<br>`target: tables-cpp-warnings` | the target exits 0 with no skip in its log | `make/cpp.mk:380` |
+
+#### `lint` family `make-js`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.lint.make-js.tables-js-clean` | `make` | make tables-js-clean (make/js.mk) exits 0 | `file: make/js.mk`<br>`target: tables-js-clean`<br>`tools: ["node","eslint"]`<br>`vars: {"ESLINT":"eslint","NODE":"node"}` | the target exits 0 with no skip in its log | `make/js.mk:1388` |
+
+#### `lint` family `make-rust`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.lint.make-rust.tables-rust-clippy` | `make` | make tables-rust-clippy (make/rust.mk) exits 0 | `file: make/rust.mk`<br>`siblings: ["../serialize.rs"]`<br>`target: tables-rust-clippy`<br>`tools: ["cargo"]` | the target exits 0 with no skip in its log | `make/rust.mk:136` |
+
+#### `lint` family `make-schema-dart-generated-strict-analyze-gate`, 2 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.lint.make-schema-dart-generated-strict-analyze-gate.schema-dart-generated-strict-analyze-gate` | `make` | make schema-dart-generated-strict-analyze-gate (make/schema-dart-generated-strict-analyze-gate.mk) exits 0 | `file: make/schema-dart-generated-strict-analyze-gate.mk`<br>`target: schema-dart-generated-strict-analyze-gate`<br>`tools: ["dart"]`<br>`vars: {"DART":"dart"}` | the target exits 0 with no skip in its log | `make/schema-dart-generated-strict-analyze-gate.mk:157` |
+| `none.functional.lint.make-schema-dart-generated-strict-analyze-gate.schema-dart-generated-strict-analyze-gate-all` | `make` | make schema-dart-generated-strict-analyze-gate-all (make/schema-dart-generated-strict-analyze-gate.mk) exits 0 | `file: make/schema-dart-generated-strict-analyze-gate.mk`<br>`target: schema-dart-generated-strict-analyze-gate-all` | the target exits 0 with no skip in its log | `make/schema-dart-generated-strict-analyze-gate.mk:184` |
+
+#### `lint` family `make-schema-go-generated-golangci-lint-gate`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.lint.make-schema-go-generated-golangci-lint-gate.schema-go-generated-golangci-lint-gate` | `make` | make schema-go-generated-golangci-lint-gate (make/schema-go-generated-golangci-lint-gate.mk) exits 0 | `file: make/schema-go-generated-golangci-lint-gate.mk`<br>`siblings: ["../serialize.go"]`<br>`target: schema-go-generated-golangci-lint-gate`<br>`tools: ["golangci-lint"]` | the target exits 0 with no skip in its log | `make/schema-go-generated-golangci-lint-gate.mk:133` |
+
+#### `lint` family `make-schema-lobster-generated-strict-gate`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.lint.make-schema-lobster-generated-strict-gate.tables-lobster-clean` | `make` | make tables-lobster-clean (make/schema-lobster-generated-strict-gate.mk) exits 0 | `file: make/schema-lobster-generated-strict-gate.mk`<br>`target: tables-lobster-clean` | the target exits 0 with no skip in its log | `make/schema-lobster-generated-strict-gate.mk:64` |
+
+#### `lint` family `make-schema-lua-generated-luacheck-gate`, 2 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.lint.make-schema-lua-generated-luacheck-gate.tables-lua-format` | `make` | make tables-lua-format (make/schema-lua-generated-luacheck-gate.mk) exits 0 | `file: make/schema-lua-generated-luacheck-gate.mk`<br>`target: tables-lua-format` | the target exits 0 with no skip in its log | `make/schema-lua-generated-luacheck-gate.mk:199` |
+| `none.functional.lint.make-schema-lua-generated-luacheck-gate.tables-lua-luacheck` | `make` | make tables-lua-luacheck (make/schema-lua-generated-luacheck-gate.mk) exits 0 | `file: make/schema-lua-generated-luacheck-gate.mk`<br>`target: tables-lua-luacheck`<br>`tools: ["luacheck"]` | the target exits 0 with no skip in its log | `make/schema-lua-generated-luacheck-gate.mk:129` |
+
+#### `lint` family `make-schema-luau-generated-analyze-strict-gate`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.lint.make-schema-luau-generated-analyze-strict-gate.schema-luau-generated-analyze-strict-gate` | `make` | make schema-luau-generated-analyze-strict-gate (make/schema-luau-generated-analyze-strict-gate.mk) exits 0 | `file: make/schema-luau-generated-analyze-strict-gate.mk`<br>`target: schema-luau-generated-analyze-strict-gate` | the target exits 0 with no skip in its log | `make/schema-luau-generated-analyze-strict-gate.mk:32` |
+
+#### `lint` family `make-schema-moo-generated-analyze-strict-gate`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.lint.make-schema-moo-generated-analyze-strict-gate.schema-moo-generated-analyze-strict-gate` | `make` | make schema-moo-generated-analyze-strict-gate (make/schema-moo-generated-analyze-strict-gate.mk) exits 0 | `file: make/schema-moo-generated-analyze-strict-gate.mk`<br>`target: schema-moo-generated-analyze-strict-gate` | the target exits 0 with no skip in its log | `make/schema-moo-generated-analyze-strict-gate.mk:50` |
+
+### Type `differential`
+
+two implementations or two versions give the same answer.
+
+#### `differential` family `make-schema-squirrel-all-port-differential`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.differential.make-schema-squirrel-all-port-differential.schema-squirrel-all-port-differential-fast` | `make` | make schema-squirrel-all-port-differential-fast (make/schema-squirrel-all-port-differential.mk) exits 0 | `file: make/schema-squirrel-all-port-differential.mk`<br>`target: schema-squirrel-all-port-differential-fast` | the target exits 0 with no skip in its log | `make/schema-squirrel-all-port-differential.mk:50` |
+
 ### Type `resource-bounds`
 
 memory, allocation and depth limits are held.
@@ -5113,6 +5259,36 @@ memory, allocation and depth limits are held.
 |---|---|---|---|---|---|
 | `none.functional.resource-bounds.luautable.luau-json-write-depth-cap-counts-every-container` | `gotest` | Go test TestLuauJsonWriteDepthCapCountsEveryContainer in ./internal/codegen/luautable | `package: ./internal/codegen/luautable`<br>`test: TestLuauJsonWriteDepthCapCountsEveryContainer` | the Go test passes | `internal/codegen/luautable/json_write_depth_test.go:73` |
 
+#### `resource-bounds` family `make-python-hostile`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.resource-bounds.make-python-hostile.schema-python-resource-bounds` | `make` | make schema-python-resource-bounds (make/python-hostile.mk) exits 0 | `file: make/python-hostile.mk`<br>`target: schema-python-resource-bounds` | the target exits 0 with no skip in its log | `make/python-hostile.mk:21` |
+
+#### `resource-bounds` family `make-schema-lua-resource-bounds`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.resource-bounds.make-schema-lua-resource-bounds.schema-lua-resource-bounds` | `make` | make schema-lua-resource-bounds (make/schema-lua-resource-bounds.mk) exits 0 | `file: make/schema-lua-resource-bounds.mk`<br>`target: schema-lua-resource-bounds` | the target exits 0 with no skip in its log | `make/schema-lua-resource-bounds.mk:20` |
+
+#### `resource-bounds` family `make-schema-luau-resource-bounds`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.resource-bounds.make-schema-luau-resource-bounds.schema-luau-resource-bounds` | `make` | make schema-luau-resource-bounds (make/schema-luau-resource-bounds.mk) exits 0 | `file: make/schema-luau-resource-bounds.mk`<br>`target: schema-luau-resource-bounds` | the target exits 0 with no skip in its log | `make/schema-luau-resource-bounds.mk:20` |
+
+#### `resource-bounds` family `make-schema-ruby-runs-hostile-corpus`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.resource-bounds.make-schema-ruby-runs-hostile-corpus.schema-ruby-resource-bounds` | `make` | make schema-ruby-resource-bounds (make/schema-ruby-runs-hostile-corpus.mk) exits 0 | `file: make/schema-ruby-runs-hostile-corpus.mk`<br>`target: schema-ruby-resource-bounds` | the target exits 0 with no skip in its log | `make/schema-ruby-runs-hostile-corpus.mk:12` |
+
+#### `resource-bounds` family `make-schema-squirrel-resource-bounds`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.resource-bounds.make-schema-squirrel-resource-bounds.schema-squirrel-resource-bounds-fast` | `make` | make schema-squirrel-resource-bounds-fast (make/schema-squirrel-resource-bounds.mk) exits 0 | `file: make/schema-squirrel-resource-bounds.mk`<br>`target: schema-squirrel-resource-bounds-fast` | the target exits 0 with no skip in its log | `make/schema-squirrel-resource-bounds.mk:30` |
+
 #### `resource-bounds` family `mootable`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
@@ -5153,15 +5329,30 @@ memory, allocation and depth limits are held.
 
 a battery run as one step (a make target over a leg or a corpus): it passes when the step exits 0 with no skip; a migration item until its cases are named rows.
 
-#### `harness-run` family `makefile`, 5 tests
+#### `harness-run` family `make-c`, 2 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
+| `none.functional.harness-run.make-c.tables-c-soak-compile-modes` | `make` | make tables-c-soak-compile-modes (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: tables-c-soak-compile-modes` | the target exits 0 with no skip in its log | `make/c.mk:411` |
+| `none.functional.harness-run.make-c.tables-c-zero-cost` | `make` | make tables-c-zero-cost (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: tables-c-zero-cost` | the target exits 0 with no skip in its log | `make/c.mk:308` |
+
+#### `harness-run` family `make-go`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.harness-run.make-go.tables-go-fixedform` | `make` | make tables-go-fixedform (make/go.mk) exits 0 | `file: make/go.mk`<br>`siblings: ["../serialize"]`<br>`target: tables-go-fixedform` | the target exits 0 with no skip in its log | `make/go.mk:63` |
+
+#### `harness-run` family `makefile`, 7 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.harness-run.makefile.generated-current` | `make` | make generated-current (Makefile) exits 0 | `file: Makefile`<br>`target: generated-current` | the target exits 0 with no skip in its log | `Makefile:5225` |
 | `none.functional.harness-run.makefile.pins-framing` | `make` | make pins-framing (Makefile) exits 0: every committed framing vector under testdata/wire/tables/framing is what its Go vector script writes, and no file there is hand-written | `file: Makefile`<br>`target: pins-framing` | the target exits 0 with no skip in its log | `Makefile:8273` |
 | `none.functional.harness-run.makefile.tables-block-zero-cost-c-heavy` | `make` | make tables-block-zero-cost-c-heavy (Makefile) exits 0 | `file: Makefile`<br>`target: tables-block-zero-cost-c-heavy` | the target exits 0 with no skip in its log | `Makefile:8506` |
 | `none.functional.harness-run.makefile.tables-block-zero-cost-c-rest` | `make` | make tables-block-zero-cost-c-rest (Makefile) exits 0 | `file: Makefile`<br>`target: tables-block-zero-cost-c-rest` | the target exits 0 with no skip in its log | `Makefile:8515` |
 | `none.functional.harness-run.makefile.tables-block-zero-cost-cpp` | `make` | make tables-block-zero-cost-cpp (Makefile) exits 0 | `file: Makefile`<br>`target: tables-block-zero-cost-cpp` | the target exits 0 with no skip in its log | `Makefile:8470` |
 | `none.functional.harness-run.makefile.tables-block-zero-cost-cs` | `make` | make tables-block-zero-cost-cs (Makefile) exits 0 | `file: Makefile`<br>`target: tables-block-zero-cost-cs` | the target exits 0 with no skip in its log | `Makefile:8481` |
+| `none.functional.harness-run.makefile.tables-fixedform-corpus` | `make` | make tables-fixedform-corpus (Makefile) exits 0 | `file: Makefile`<br>`siblings: ["../serialize"]`<br>`target: tables-fixedform-corpus` | the target exits 0 with no skip in its log | `Makefile:7186` |
 
 ## Declared unrepresentable
 

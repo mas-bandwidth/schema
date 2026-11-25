@@ -3372,7 +3372,12 @@ jobs:
           git clone --quiet --depth 1 --branch "$SERIALIZE_RS_TAG" https://github.com/mas-bandwidth/serialize.rs.git serialize.rs
       - uses: ./.github/actions/dist-pins
         with:
-          pins: lua luau goose lobster
+          pins: lua luau goose lobster squirrel
+      # the toolchains the functional lint, resource-bounds and replay rows
+      # run on (their gates' own workflows installed them before L6b)
+      - uses: ./.github/actions/python
+      - uses: ./.github/actions/ruby
+      - uses: ./.github/actions/moo
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: go-fixed-corpus-${{ github.run_id }}-${{ github.sha }}
