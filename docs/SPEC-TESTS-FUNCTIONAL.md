@@ -5987,7 +5987,7 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.functional.harness-run.make-fixed-corpus-identity.fixed-corpus-identity` | `make` | make fixed-corpus-identity (make/fixed-corpus-identity.mk) exits 0: the shared fixed corpora keep the bytes the producer wrote: a copy verifies whole against its snapshot, and a rebuild of both corpus stamps leaves every file as it was | `file: make/fixed-corpus-identity.mk`<br>`target: fixed-corpus-identity` | the target exits 0 with no skip in its log | `make/fixed-corpus-identity.mk:23` |
+| `none.functional.harness-run.make-fixed-corpus-identity.fixed-corpus-identity` | `make` | make fixed-corpus-identity (make/fixed-corpus-identity.mk) exits 0: the shared fixed corpora keep the bytes the producer wrote: the corpora are snapshotted, then both corpus stamps removed and rebuilt from scratch leave every file as it was | `file: make/fixed-corpus-identity.mk`<br>`target: fixed-corpus-identity` | the target exits 0 with no skip in its log | `make/fixed-corpus-identity.mk:24` |
 
 #### `harness-run` family `make-go`, 1 test
 

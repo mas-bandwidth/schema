@@ -9,10 +9,11 @@
 # driver, by name (test/registry: harness-run.make-fixed-corpus-identity.*):
 #
 #   1. the corpora are made, then copied aside as the reference and snapshotted;
-#   2. the checkout's own tree verifies against the snapshot (the copy is whole);
-#   3. make rebuilds both corpus stamps, the consumer the checkout runs most,
-#      and the tree verifies again: a rebuild that rewrote, dropped or added a
-#      corpus file is red here, by the file's name.
+#   2. both stamps are removed, so make runs both corpus recipes again (the
+#      consumer the checkout runs most), from scratch;
+#   3. the rebuilt corpora are copied aside and verified against the snapshot:
+#      a rebuild that rewrote, dropped or added a corpus file is red here, by
+#      the file's name.
 #
 # The script's own refusals (a changed, missing or extra file, a changed
 # reference) are held by internal/ci's TestNightlyFixedCorpusMetadata.
@@ -24,6 +25,6 @@ fixed-corpus-identity: build/fixedform-corpus/.stamp build/fixedform-bench-corpu
 	@rm -rf $(FIXED_CORPUS_IDENTITY_DIR) && mkdir -p $(FIXED_CORPUS_IDENTITY_DIR)/reference
 	cp -R build/fixedform-corpus build/fixedform-bench-corpus $(FIXED_CORPUS_IDENTITY_DIR)/reference/
 	python3 -I test/conformance/fixed-corpus-identity.py snapshot $(FIXED_CORPUS_IDENTITY_DIR)/reference $(FIXED_CORPUS_IDENTITY_DIR)/receipt.json
-	python3 -I test/conformance/fixed-corpus-identity.py verify $(FIXED_CORPUS_IDENTITY_DIR)/reference $(FIXED_CORPUS_IDENTITY_DIR)/receipt.json --consumer build --phase copy
-	$(MAKE) --no-print-directory build/fixedform-corpus/.stamp build/fixedform-bench-corpus/.stamp
-	python3 -I test/conformance/fixed-corpus-identity.py verify $(FIXED_CORPUS_IDENTITY_DIR)/reference $(FIXED_CORPUS_IDENTITY_DIR)/receipt.json --consumer build --phase rebuild
+	rm -f build/fixedform-corpus/.stamp build/fixedform-bench-corpus/.stamp && $(MAKE) --no-print-directory build/fixedform-corpus/.stamp build/fixedform-bench-corpus/.stamp
+	mkdir -p $(FIXED_CORPUS_IDENTITY_DIR)/rebuilt && cp -R build/fixedform-corpus build/fixedform-bench-corpus $(FIXED_CORPUS_IDENTITY_DIR)/rebuilt/
+	python3 -I test/conformance/fixed-corpus-identity.py verify $(FIXED_CORPUS_IDENTITY_DIR)/rebuilt $(FIXED_CORPUS_IDENTITY_DIR)/receipt.json --consumer build --phase rebuild
