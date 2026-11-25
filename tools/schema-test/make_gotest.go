@@ -218,7 +218,7 @@ func (a makeGoTestAdapter) runTarget(ctx context.Context, file, name string, row
 	// test the target runs writes its events (a negative control's
 	// $(GO_TEST_RED) writes none: its red is the control's, which make's
 	// exit carries)
-	if _, text := db.reach(name); !goTestWriter.MatchString(strings.Join(text, "\n")) {
+	if _, text, _ := db.reach(name); !goTestWriter.MatchString(strings.Join(text, "\n")) {
 		return failAll(rows, fmt.Sprintf("make %s runs no go test through $(GO_TEST), so it writes no go test -json events for these rows: a make-gotest row's target runs its Go tests through $(GO_TEST)", name)), nil
 	}
 
