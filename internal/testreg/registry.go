@@ -95,7 +95,14 @@ type Test struct {
 	// an unrepresentable line is, never a runtime result
 	// (docs/TEST-REGISTRY.md, "Language-intrinsic tests").
 	Intrinsic *Intrinsic `json:"intrinsic,omitempty"`
-	Line      int        `json:"-"`
+	// Needs are the machine properties the test needs from the bench that
+	// runs it (casefold: a volume that folds names by case, which captain,
+	// WSL2 with no ext4 casefold, cannot have). The fleet's benches declare
+	// what they provide, and the full run (tools/fullrun) never sends a row
+	// to a bench that lacks one; a need no bench of a run provides is red by
+	// name there, never skipped. It is a fact of the test, like its tier.
+	Needs []string `json:"needs,omitempty"`
+	Line  int      `json:"-"`
 }
 
 // fillerWords say nothing about a test's subject. An intrinsic reason is
@@ -210,6 +217,8 @@ var WriteRules = []string{"assert", "refuse"}
 var (
 	nameRE = regexp.MustCompile(`^[a-z][a-z0-9]*(-[a-z0-9]+)*$`)
 	caseRE = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
+	// needRE is a machine property a test needs (Test.Needs)
+	needRE = nameRE
 )
 
 // Load reads and validates the registry at path.
@@ -532,6 +541,11 @@ func checkTest(t Test, tiers, types map[string]int) string {
 		return fmt.Sprintf("is intrinsic to %s with the boilerplate reason %q: say what the subject is and why no other language has it", t.Intrinsic.Lang, t.Intrinsic.Reason)
 	case t.Seconds < 0:
 		return fmt.Sprintf("seconds %v is negative: it is a measured run time", t.Seconds)
+	}
+	for i, n := range t.Needs {
+		if !needRE.MatchString(n) || slices.Contains(t.Needs[:i], n) {
+			return fmt.Sprintf("needs %q: each need is a lowercase machine property, named once", t.Needs)
+		}
 	}
 	return ""
 }

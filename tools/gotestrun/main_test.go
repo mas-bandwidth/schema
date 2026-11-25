@@ -306,3 +306,37 @@ func TestTheSummaryReportsASkipOnlyWhenOneHappened(t *testing.T) {
 		t.Errorf("a run with a skip is not refused: %q", skipped)
 	}
 }
+
+// TestTheEventsFileGetsEveryEventLine: with an events file, every go test
+// -json event line reaches it whole, as go test wrote it, one line each,
+// and a line that is no event (a toolchain note) does not; a file that will
+// not take a line is the run's error. The driver's make-gotest rows read
+// their verdicts from this file. Planted: an events writer that drops the
+// output events leaves the file short of the stream's events.
+func TestTheEventsFileGetsEveryEventLine(t *testing.T) {
+	var text, events bytes.Buffer
+	stream := "# toolchain note\n" + onePass
+	tl := readTo(strings.NewReader(stream), &text, &events)
+	if tl.writeErr != nil {
+		t.Fatal(tl.writeErr)
+	}
+	var want []string
+	for l := range strings.SplitSeq(onePass, "\n") {
+		if strings.HasPrefix(l, "{") {
+			want = append(want, l)
+		}
+	}
+	if got := strings.Split(strings.TrimSuffix(events.String(), "\n"), "\n"); strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Errorf("events file:\n%s\nwant every event line of the stream:\n%s", events.String(), strings.Join(want, "\n"))
+	}
+	if strings.Contains(events.String(), "toolchain note") {
+		t.Error("a line that is no event reached the events file")
+	}
+	if tl = readTo(strings.NewReader(onePass), &bytes.Buffer{}, failingWriter{}); tl.writeErr == nil {
+		t.Error("an events file that took no line was not the run's error")
+	}
+}
+
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("disk full") }

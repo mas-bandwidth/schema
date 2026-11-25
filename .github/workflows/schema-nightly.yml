@@ -10,8 +10,13 @@ name: schema nightly
 # nightly". This workflow calls nothing but the launcher.
 #
 # THE PARTS: each `part` job runs one deterministic part of the plan on the
-# schema runner it lands on (fullrun launch --bench local=2 --part I/24), and
-# uploads its run: the shard logs and the results. A part runs on Linux, so
+# schema runner it lands on (fullrun launch --bench local=2+casefold --part
+# I/24), and uploads its run: the shard logs and the results. `+casefold`
+# declares the fleet's case-folding scratch, which a test that needs it
+# (registry "needs": ["casefold"]) runs on; fullrun probes the declaration
+# on the runner, and a runner without the volume (captain: WSL2 has no ext4
+# casefold) has it refused, so those tests are NOT RUN there, by name, never
+# passed. A part runs on Linux, so
 # it holds no test built only for another OS: the `windows` job runs every
 # test built only for Windows (fullrun launch --bench local=1+windows --part
 # windows) on captain, whose runners are Linux under WSL and run a Windows
@@ -66,7 +71,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: fullrun launch, part ${{ matrix.part }} of 24
-        run: go run ./tools/fullrun launch --sha "$GITHUB_SHA" --repo https://github.com/mas-bandwidth/schema.git --bench local=2 --part "${{ matrix.part }}/24" --work "$RUNNER_TEMP/fullrun-work" --out "$RUNNER_TEMP/fullrun"
+        run: go run ./tools/fullrun launch --sha "$GITHUB_SHA" --repo https://github.com/mas-bandwidth/schema.git --bench local=2+casefold --part "${{ matrix.part }}/24" --work "$RUNNER_TEMP/fullrun-work" --out "$RUNNER_TEMP/fullrun"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:

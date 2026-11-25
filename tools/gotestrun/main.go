@@ -70,6 +70,11 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
+// EventsEnv names a file every go test -json event of the run is appended to:
+// the driver's make-gotest rows (tools/schema-test) set it, and read each Go
+// test's verdict from it by name. Unset, nothing is written.
+const EventsEnv = "SCHEMA_GOTEST_JSON"
+
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
@@ -93,6 +98,9 @@ type tally struct {
 	skippedTests []string
 	// readErr is why the stream could not be read to its end, or nil.
 	readErr error
+	// writeErr is why an event could not be appended to the events file, or
+	// nil: a run whose events did not all reach the file is refused.
+	writeErr error
 	// missing is the first output line saying a test lacked its toolchain or
 	// pin (missingTool), or "".
 	missing string
@@ -107,7 +115,13 @@ var missingTool = regexp.MustCompile(regexp.QuoteMeta(slowtest.MissingWords) + `
 // read consumes a `go test -json` stream. Text that is not an event (a
 // toolchain message before the first package) is passed to text unchanged.
 // Output events are written to text as go test would have printed them.
-func read(in io.Reader, text io.Writer) tally {
+func read(in io.Reader, text io.Writer) tally { return readTo(in, text, nil) }
+
+// readTo is read that also appends every event line, as go test wrote it, to
+// events (nil: none): the file $(GO_TEST) writes for the driver's make-gotest
+// rows (EventsEnv). One write per line, so the lines of go tests that run
+// side by side under make -j never interleave within a line.
+func readTo(in io.Reader, text, events io.Writer) tally {
 	t := tally{perPackage: map[string]int{}}
 	sc := bufio.NewScanner(in)
 	sc.Buffer(make([]byte, 1<<20), 64<<20)
@@ -117,6 +131,11 @@ func read(in io.Reader, text io.Writer) tally {
 		if len(line) == 0 || line[0] != '{' || json.Unmarshal(line, &e) != nil || e.Action == "" {
 			_, _ = text.Write(append(bytes.Clone(line), '\n')) // errdiscard: best-effort mirror of go test output; tally decides the verdict
 			continue
+		}
+		if events != nil && t.writeErr == nil {
+			if _, err := events.Write(append(bytes.Clone(line), '\n')); err != nil {
+				t.writeErr = err
+			}
 		}
 		if e.Package != "" {
 			if _, ok := t.perPackage[e.Package]; !ok {
@@ -290,7 +309,31 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if err := cmd.Start(); err != nil {
 		return broken("%v", err)
 	}
-	t := read(pipe, stdout)
+	// the events file the driver reads its make-gotest verdicts from
+	// (EventsEnv); a control's red run (-red) writes none, since its red is
+	// the control's and not a verdict of the tests it ran
+	var events *os.File
+	if p := os.Getenv(EventsEnv); p != "" && !red {
+		f, err := os.OpenFile(p, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o644)
+		if err != nil {
+			_ = cmd.Process.Kill() // errdiscard: the run is refused; this only stops go test
+			_ = cmd.Wait()         // errdiscard: as above
+			return broken("%s=%s: %v", EventsEnv, p, err)
+		}
+		defer f.Close() // errdiscard: every line was written by its own Write, each checked
+		events = f
+	}
+	var t tally
+	if events != nil {
+		t = readTo(pipe, stdout, events)
+	} else {
+		t = read(pipe, stdout)
+	}
+	if t.writeErr != nil {
+		_, _ = io.Copy(io.Discard, pipe) // errdiscard: the run is already broken; this only lets go test exit
+		_ = cmd.Wait()                   // errdiscard: as above
+		return broken("writing go test events to %s: %v", events.Name(), t.writeErr)
+	}
 	if t.readErr != nil {
 		// what go test still writes is drained, so it is not left blocked on
 		// a pipe nobody reads

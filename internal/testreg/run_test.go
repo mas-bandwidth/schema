@@ -789,3 +789,65 @@ func TestARowsShareIsWhatTheCallTookBeyondTheTimedRows(t *testing.T) {
 		}
 	}
 }
+
+// TestADriverTimeoutNamesTheLimitAndTheRows: a call the driver's own
+// deadline kills is named a timeout, never a crash, with the limit the call
+// had and how long it ran, and every row it left unreported fails by its
+// own name carrying that line. The clock is the runner's (a stand-in that
+// moves 1 s when the call's wait ends), and the adapter blocks on a
+// channel until the deadline, which the stand-in context has already
+// passed, so no real time passes.
+// The plant is the old wording ("adapter fake timed out" alone): neither
+// the limit nor the time it ran is in the report.
+func TestADriverTimeoutNamesTheLimitAndTheRows(t *testing.T) {
+	t.Parallel()
+	reg := load(t, fixture)
+	start := time.Date(2026, 11, 25, 6, 0, 0, 0, time.UTC)
+	var mu sync.Mutex
+	now := start
+	hang := fake{run: func(ctx context.Context, _ []Instance) ([]Result, error) {
+		<-ctx.Done()
+		mu.Lock()
+		now = start.Add(time.Second) // the second the call waited
+		mu.Unlock()
+		return nil, ctx.Err()
+	}}
+	rn := runner(reg, hang)
+	rn.Now = func() time.Time {
+		mu.Lock()
+		defer mu.Unlock()
+		return now
+	}
+	rn.Context = func(parent context.Context, _ string) (context.Context, context.CancelFunc) {
+		ctx, cancel := context.WithCancel(parent)
+		cancel() // the deadline has passed: a stand-in for one second's wait
+		return deadlineCtx{ctx, start.Add(time.Second)}, func() {}
+	}
+	insts := selectQ(t, reg, Query{Langs: []string{"go"}})
+	rep := rn.Run(context.Background(), insts)
+	wantRed(t, rep, "TIMED OUT", "limit of 1s", "after it ran 1s")
+	for _, o := range rep.Outcomes {
+		if o.Status != StatusFail || !strings.Contains(o.Reason, "TIMED OUT") || strings.Contains(o.Reason, "crashed") {
+			t.Errorf("row %s of a killed call: %+v", o.Full, o)
+		}
+	}
+	if len(rep.Outcomes) != len(insts) {
+		t.Errorf("%d outcomes for %d rows", len(rep.Outcomes), len(insts))
+	}
+}
+
+// deadlineCtx is a context whose deadline is a fixed time and whose Err is
+// DeadlineExceeded once it is done, as a real deadline's is.
+type deadlineCtx struct {
+	context.Context
+	at time.Time
+}
+
+func (c deadlineCtx) Deadline() (time.Time, bool) { return c.at, true }
+
+func (c deadlineCtx) Err() error {
+	if c.Context.Err() != nil {
+		return context.DeadlineExceeded
+	}
+	return nil
+}

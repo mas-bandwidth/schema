@@ -138,6 +138,7 @@ func adapters(log io.Writer) map[string]testreg.Adapter {
 		"corpus":      &harnessAdapter{build: b, log: log},
 		"gotest":      newGoTestAdapterBuilding(log, ".", goTestJobs(), b.run),
 		"make":        newMakeAdapter(),
+		"make-gotest": newMakeGoTestAdapter("."),
 		"golden":      newGoldenAdapter(),
 		"model-check": modelCheckAdapter{build: b, log: log},
 	}
@@ -150,6 +151,10 @@ func withRunner(ads map[string]testreg.Adapter, rn *testreg.Runner) {
 	if g, ok := ads["golden"].(goldenAdapter); ok {
 		g.reg = rn.Reg
 		ads["golden"] = g
+	}
+	if m, ok := ads["make-gotest"].(makeGoTestAdapter); ok {
+		m.reg = rn.Reg
+		ads["make-gotest"] = m
 	}
 }
 

@@ -5,7 +5,7 @@ Part of the specification: every test of tier `functional`, from the test regist
 
 **Tier functional:** uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it.
 
-Functional tests every language answers: 2468. Language-free tests: 2245.
+Functional tests every language answers: 2468. Language-free tests: 2249.
 
 Run this tier for a language with `schema-test run --tier functional --lang L`, one test with `schema-test run <full name>`.
 
@@ -4690,12 +4690,21 @@ seeded mutations.
 |---|---|---|---|---|---|
 | `none.functional.fuzz.make-schema-luau-nightly-fuzz.luau-nightly-fuzz-replay` | `make` | make luau-nightly-fuzz-replay (make/schema-luau-nightly-fuzz.mk) exits 0 | `file: make/schema-luau-nightly-fuzz.mk`<br>`target: luau-nightly-fuzz-replay` | the target exits 0 with no skip in its log | `make/schema-luau-nightly-fuzz.mk:712` |
 
-#### `fuzz` family `make-verify-vm`, 2 tests
+#### `fuzz` family `make-verify-vm`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.functional.fuzz.make-verify-vm.verify-goose-fuzz-part-1` | `make` | make verify-goose-fuzz-part-1 (make/verify-vm.mk) exits 0 | `file: make/verify-vm.mk`<br>`target: verify-goose-fuzz-part-1` | the target exits 0 with no skip in its log | `make/verify-vm.mk:576` |
 | `none.functional.fuzz.make-verify-vm.verify-goose-fuzz-part-2` | `make` | make verify-goose-fuzz-part-2 (make/verify-vm.mk) exits 0 | `file: make/verify-vm.mk`<br>`target: verify-goose-fuzz-part-2` | the target exits 0 with no skip in its log | `make/verify-vm.mk:581` |
+
+#### `fuzz` family `verify-goose-fuzz-part-1`, 5 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.fuzz.verify-goose-fuzz-part-1.dispatch-delivers-every-reply-before-a-stall` | `make-gotest` | Go test TestDispatchDeliversEveryReplyBeforeAStall in ./test/conformance/goose/wirefuzzdispatch, run by make verify-goose-fuzz-part-1 (make/verify-vm.mk) and read by name from its go test -json events | `file: make/verify-vm.mk`<br>`package: ./test/conformance/goose/wirefuzzdispatch`<br>`target: verify-goose-fuzz-part-1`<br>`test: TestDispatchDeliversEveryReplyBeforeAStall` | the Go test passes in make verify-goose-fuzz-part-1's run, with no skip | `test/conformance/goose/wirefuzzdispatch/main_test.go:246` |
+| `none.functional.fuzz.verify-goose-fuzz-part-1.dispatch-refuses-a-mutant-for-an-absent-entry` | `make-gotest` | Go test TestDispatchRefusesAMutantForAnAbsentEntry in ./test/conformance/goose/wirefuzzdispatch, run by make verify-goose-fuzz-part-1 (make/verify-vm.mk) and read by name from its go test -json events | `file: make/verify-vm.mk`<br>`package: ./test/conformance/goose/wirefuzzdispatch`<br>`target: verify-goose-fuzz-part-1`<br>`test: TestDispatchRefusesAMutantForAnAbsentEntry` | the Go test passes in make verify-goose-fuzz-part-1's run, with no skip | `test/conformance/goose/wirefuzzdispatch/main_test.go:190` |
+| `none.functional.fuzz.verify-goose-fuzz-part-1.dispatch-refuses-a-truncated-roster` | `make-gotest` | Go test TestDispatchRefusesATruncatedRoster in ./test/conformance/goose/wirefuzzdispatch, run by make verify-goose-fuzz-part-1 (make/verify-vm.mk) and read by name from its go test -json events | `file: make/verify-vm.mk`<br>`package: ./test/conformance/goose/wirefuzzdispatch`<br>`target: verify-goose-fuzz-part-1`<br>`test: TestDispatchRefusesATruncatedRoster` | the Go test passes in make verify-goose-fuzz-part-1's run, with no skip | `test/conformance/goose/wirefuzzdispatch/main_test.go:201` |
+| `none.functional.fuzz.verify-goose-fuzz-part-1.dispatch-refuses-an-entry-two-children-claim` | `make-gotest` | Go test TestDispatchRefusesAnEntryTwoChildrenClaim in ./test/conformance/goose/wirefuzzdispatch, run by make verify-goose-fuzz-part-1 (make/verify-vm.mk) and read by name from its go test -json events | `file: make/verify-vm.mk`<br>`package: ./test/conformance/goose/wirefuzzdispatch`<br>`target: verify-goose-fuzz-part-1`<br>`test: TestDispatchRefusesAnEntryTwoChildrenClaim` | the Go test passes in make verify-goose-fuzz-part-1's run, with no skip | `test/conformance/goose/wirefuzzdispatch/main_test.go:178` |
+| `none.functional.fuzz.verify-goose-fuzz-part-1.dispatch-routes-every-entry-to-its-unit-and-arm-in-order` | `make-gotest` | Go test TestDispatchRoutesEveryEntryToItsUnitAndArmInOrder in ./test/conformance/goose/wirefuzzdispatch, run by make verify-goose-fuzz-part-1 (make/verify-vm.mk) and read by name from its go test -json events | `file: make/verify-vm.mk`<br>`package: ./test/conformance/goose/wirefuzzdispatch`<br>`target: verify-goose-fuzz-part-1`<br>`test: TestDispatchRoutesEveryEntryToItsUnitAndArmInOrder` | the Go test passes in make verify-goose-fuzz-part-1's run, with no skip | `test/conformance/goose/wirefuzzdispatch/main_test.go:146` |
 
 ### Type `plant`
 
@@ -5509,12 +5518,6 @@ memory, allocation and depth limits are held.
 |---|---|---|---|---|---|
 | `none.functional.resource-bounds.luautable.luau-json-write-depth-cap-counts-every-container` | `gotest` | Go test TestLuauJsonWriteDepthCapCountsEveryContainer in ./internal/codegen/luautable | `package: ./internal/codegen/luautable`<br>`test: TestLuauJsonWriteDepthCapCountsEveryContainer` | the Go test passes | `internal/codegen/luautable/json_write_depth_test.go:73` |
 
-#### `resource-bounds` family `make-python-hostile`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.functional.resource-bounds.make-python-hostile.schema-python-resource-bounds` | `make` | make schema-python-resource-bounds (make/python-hostile.mk) exits 0 | `file: make/python-hostile.mk`<br>`target: schema-python-resource-bounds` | the target exits 0 with no skip in its log | `make/python-hostile.mk:21` |
-
 #### `resource-bounds` family `make-schema-lua-resource-bounds`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
@@ -5562,6 +5565,12 @@ memory, allocation and depth limits are held.
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.functional.resource-bounds.rusttable.rust-write-depth-cap-counts-every-container` | `gotest` | Go test TestRustWriteDepthCapCountsEveryContainer in ./internal/codegen/rusttable | `package: ./internal/codegen/rusttable`<br>`test: TestRustWriteDepthCapCountsEveryContainer` | the Go test passes | `internal/codegen/rusttable/depth_write_rust_test.go:71` |
+
+#### `resource-bounds` family `schema-python-resource-bounds`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.resource-bounds.schema-python-resource-bounds.python-resource-bounds-hostile-shapes` | `make-gotest` | Go test TestPythonResourceBoundsHostileShapes in ./internal/codegen/pythontable, run by make schema-python-resource-bounds (make/python-hostile.mk) and read by name from its go test -json events | `file: make/python-hostile.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: schema-python-resource-bounds`<br>`test: TestPythonResourceBoundsHostileShapes` | the Go test passes in make schema-python-resource-bounds's run, with no skip | `internal/codegen/pythontable/resource_bounds_test.go:249` |
 
 #### `resource-bounds` family `squirreltable`, 1 test
 
