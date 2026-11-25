@@ -3872,10 +3872,14 @@ func relayNeeded(l string, toks []jtok) bool {
 			return true
 		}
 	}
-	if !javaCompactSmell.MatchString(javaStrings.ReplaceAllString(t, `""`)) {
+	// the token join is the cheap half of the test, and a line it leaves as
+	// written needs no relay whatever the smell says: it goes first, so the
+	// smell's regular expressions run only on the lines the join would change
+	// (they were half of java's generate time)
+	if joinTokens(toks) == t {
 		return false
 	}
-	return joinTokens(toks) != t
+	return javaCompactSmell.MatchString(javaStrings.ReplaceAllString(t, `""`))
 }
 
 var (

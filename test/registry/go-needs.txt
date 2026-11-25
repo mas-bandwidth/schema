@@ -40,7 +40,7 @@ needs ./internal/fixedvector .* tables-fixedform-corpus
 # test in the order they are declared, each under its own per-call limit
 # ("prepare <group> <target>"), so a cold checkout is built as steps that each fit
 # it and never as one step that builds the others inside it. The generated tree is
-# declared as the compiler, its four generation groups, the stamp that writes
+# declared as the compiler, its eight generation groups, the stamp that writes
 # the modules, the cards unit, the driver's compile in four warm steps, then the
 # conformance binary that links it.
 needs ./test/conformance/go .* bin/schema
@@ -48,6 +48,10 @@ needs ./test/conformance/go .* build/tables-generated-go/.gen-1
 needs ./test/conformance/go .* build/tables-generated-go/.gen-2
 needs ./test/conformance/go .* build/tables-generated-go/.gen-3
 needs ./test/conformance/go .* build/tables-generated-go/.gen-4
+needs ./test/conformance/go .* build/tables-generated-go/.gen-5
+needs ./test/conformance/go .* build/tables-generated-go/.gen-6
+needs ./test/conformance/go .* build/tables-generated-go/.gen-7
+needs ./test/conformance/go .* build/tables-generated-go/.gen-8
 needs ./test/conformance/go .* build/tables-generated-go/.stamp
 needs ./test/conformance/go .* cards-generate
 needs ./test/conformance/go .* build/tables-generated-go/.warm-1
@@ -60,6 +64,10 @@ needs ./test/conformance/go/rows .* build/tables-generated-go/.gen-1
 needs ./test/conformance/go/rows .* build/tables-generated-go/.gen-2
 needs ./test/conformance/go/rows .* build/tables-generated-go/.gen-3
 needs ./test/conformance/go/rows .* build/tables-generated-go/.gen-4
+needs ./test/conformance/go/rows .* build/tables-generated-go/.gen-5
+needs ./test/conformance/go/rows .* build/tables-generated-go/.gen-6
+needs ./test/conformance/go/rows .* build/tables-generated-go/.gen-7
+needs ./test/conformance/go/rows .* build/tables-generated-go/.gen-8
 needs ./test/conformance/go/rows .* build/tables-generated-go/.stamp
 needs ./test/conformance/go/rows .* cards-generate
 needs ./test/conformance/go/rows .* build/tables-generated-go/.warm-1
@@ -72,6 +80,10 @@ needs ./test/go-tables .* build/tables-generated-go/.gen-1
 needs ./test/go-tables .* build/tables-generated-go/.gen-2
 needs ./test/go-tables .* build/tables-generated-go/.gen-3
 needs ./test/go-tables .* build/tables-generated-go/.gen-4
+needs ./test/go-tables .* build/tables-generated-go/.gen-5
+needs ./test/go-tables .* build/tables-generated-go/.gen-6
+needs ./test/go-tables .* build/tables-generated-go/.gen-7
+needs ./test/go-tables .* build/tables-generated-go/.gen-8
 needs ./test/go-tables .* build/tables-generated-go/.stamp
 
 # the legs, harness and toolchain the all-port differential's own make of its
