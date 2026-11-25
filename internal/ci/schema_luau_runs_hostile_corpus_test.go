@@ -1,4 +1,4 @@
-// TestLuauRunsHostileCorpus is the Luau port's runner over the SHARED HOSTILE
+// TestHostileCorpus_luau is the Luau port's runner over the SHARED HOSTILE
 // INPUT CORPUS (docs/HOSTILE-CORPUS.md; schema-shared-hostile-corpus). It reads
 // the committed manifest and its raw inputs, generates the Luau reader for each
 // schema the manifest names, runs every carrier through that reader, and holds
@@ -549,6 +549,7 @@ func runHostileCorpus(t *testing.T, root, corpusDir string, plant bool) []string
 	sort.Strings(schemas)
 	var findings []string
 	var ran []string
+	failed := map[string]string{} // by case, for the registry's verdicts
 	for _, schema := range schemas {
 		group := bySchema[schema]
 		packet := group[0].carrier == "packet"
@@ -589,13 +590,22 @@ func runHostileCorpus(t *testing.T, root, corpusDir string, plant bool) []string
 			g, ok := got[c.name]
 			if !ok {
 				findings = append(findings, fmt.Sprintf("FIX-CARD: luau-hostile-corpus: %s the runner printed no verdict", c.name))
+				failed[c.name] = "the runner printed no verdict"
 				continue
 			}
 			if kind, digest := luauHostileGrade(c, g); kind != "" {
+				failed[c.name] = fmt.Sprintf("[%s] got %s/%s/%s want %s/%s/%s", kind, g[1], g[2], digest, c.verdict, c.reason, c.digest)
 				findings = append(findings, fmt.Sprintf(
 					"FIX-CARD: luau-hostile-corpus: %s [%s] got %s/%s/%s want %s/%s/%s",
 					c.name, kind, g[1], g[2], digest, c.verdict, c.reason, c.digest))
 			}
+		}
+	}
+	// the per-case verdicts the registry reads (hostilecorpus.WriteVerdicts):
+	// the unplanted run's, every disagreement a FAIL, carried or not
+	if !plant {
+		if err := hostilecorpus.WriteVerdicts(hostilecorpus.VerdictsPath(t.TempDir()), ran, failed); err != nil {
+			t.Fatal(err)
 		}
 	}
 	// THE LEDGER (internal/ci/hostilecorpus/ledger.go): the cases the Luau
@@ -691,10 +701,10 @@ func luauHostileCarriedFinding(rest string) bool {
 	return false
 }
 
-// TestLuauRunsHostileCorpus runs every manifest input through the Luau reader
+// TestHostileCorpus_luau runs every manifest input through the Luau reader
 // at the manifest's carrier and holds it to the committed verdict, or to a
 // carried finding.
-func TestLuauRunsHostileCorpus(t *testing.T) {
+func TestHostileCorpus_luau(t *testing.T) {
 	t.Parallel()
 	root, err := filepath.Abs("../..")
 	if err != nil {

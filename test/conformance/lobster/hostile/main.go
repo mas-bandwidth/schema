@@ -523,11 +523,20 @@ func main() {
 	for _, line := range stale {
 		fmt.Println(line)
 	}
-	fmt.Printf("lobster hostile corpus: %d pass, %d carried, %d absent, %d fail, %d stale, of %d cases\n", pass, carried, missing, len(bad), len(stale), len(cases))
+	// the per-case block (internal/ci/hostilecorpus/verdicts.go): a ran
+	// line per case the reader answered, the ledger, then the end
+	for _, c := range cases {
+		if _, ok := answers[c.Schema][c.Name]; ok {
+			fmt.Printf("hostile-ledger ran %s\n", c.Name)
+		}
+	}
 	lerr := ledger.Check()
 	if lerr != nil {
 		fmt.Printf("FAIL lobster %v\n", lerr)
-	} else {
+	}
+	fmt.Println("hostile-ledger end")
+	fmt.Printf("lobster hostile corpus: %d pass, %d carried, %d absent, %d fail, %d stale, of %d cases\n", pass, carried, missing, len(bad), len(stale), len(cases))
+	if lerr == nil {
 		fmt.Printf("lobster hostile-corpus ledger: %s\n", ledger.Summary())
 	}
 	if len(bad) > 0 || len(stale) > 0 || lerr != nil {

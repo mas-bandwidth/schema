@@ -539,15 +539,27 @@ func TestSchemaLuaHostileScorerOutcomes(t *testing.T) {
 	}
 }
 
-// TestSchemaLuaRunsHostileCorpus is the unit-tier gate: every corpus input
+// TestHostileCorpus_lua is the unit-tier gate: every corpus input
 // reaches the manifest's verdict and decoded-value digest, or is a
 // carried finding whose fix card and actual verdict are pinned here.
-func TestSchemaLuaRunsHostileCorpus(t *testing.T) {
+func TestHostileCorpus_lua(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
 	corpusDir := luaHostileCorpusDir(t, root)
 	cases := luaHostileCorpusCases(t, corpusDir)
 	answers := luaHostileRun(t, root, corpusDir, cases, false)
+	// the per-case verdicts the registry reads (hostilecorpus.WriteVerdicts):
+	// every disagreement is a FAIL there, carried or not
+	failed := map[string]string{}
+	for _, c := range cases {
+		a, ok := answers[c.Name]
+		if why, _ := luaHostileGrade(c, a, ok); why != "" {
+			failed[c.Name] = why
+		}
+	}
+	if err := hostilecorpus.WriteVerdicts(hostilecorpus.VerdictsPath(t.TempDir()), slices.Collect(maps.Keys(answers)), failed); err != nil {
+		t.Fatal(err)
+	}
 	bad := luaHostileCompare(t, cases, answers)
 	if len(bad) != 0 {
 		t.Fatalf("the Lua port disagrees with %d of %d hostile-corpus cases:\n  %s",
@@ -603,7 +615,7 @@ func TestSchemaLuaHostileCorpusLane(t *testing.T) {
 		"test-lua: schema-lua-runs-hostile-corpus",
 		"sh test/slowgate/proof schema-lua-runs-hostile-corpus",
 		"sh test/slowgate/proof schema-lua-runs-hostile-corpus-planted",
-		"TestSchemaLuaRunsHostileCorpus",
+		"TestHostileCorpus_lua",
 		"TestSchemaLuaHostileCorpusPlantedReader",
 	} {
 		if !strings.Contains(mk, want) {

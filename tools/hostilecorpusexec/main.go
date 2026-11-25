@@ -257,10 +257,22 @@ func run(port, binary, corpus, findingsPath, only string, jobs int, budget time.
 			stale++
 		}
 	}
+	// the per-case block (internal/ci/hostilecorpus/verdicts.go): a ran
+	// line per case the binary answered, then the ledger, then the end, so
+	// a ledger that does not close is inside the block the registry reads
+	for i, c := range cases {
+		if k := answers[i].kind; k != "skip" && k != "" {
+			fmt.Printf("hostile-ledger ran %s\n", c.Name)
+		}
+	}
+	ledgerErr := ledger.Check()
+	if ledgerErr != nil {
+		fmt.Printf("FAIL %s %v\n", port, ledgerErr)
+	}
+	fmt.Println("hostile-ledger end")
 	fmt.Printf("%s: %d cases: %d pass, %d carried as FIX-CARD, %d skipped, %d unexplained, %d stale\n",
 		port, len(cases), pass, carried, skipped, unexplained, stale)
-	if err := ledger.Check(); err != nil {
-		fmt.Printf("FAIL %s %v\n", port, err)
+	if ledgerErr != nil {
 		return false, nil
 	}
 	fmt.Printf("%s hostile-corpus ledger: %s\n", port, ledger.Summary())

@@ -91,6 +91,8 @@ func harnessFor(t testreg.Test) (harness, bool) {
 		return bomEntry, true
 	case family == nameBuild.Name:
 		return nameBuild, true
+	case family == hostileHarness.Name:
+		return hostileHarness, true
 	}
 	return harness{}, false
 }

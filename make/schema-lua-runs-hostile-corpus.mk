@@ -17,8 +17,8 @@ schema-lua-runs-hostile-corpus: toolchain-lua
 	fi
 	@echo "lua hostile corpus: every verdict and decoded-value digest; a refusal on its verdict alone (Lua $(LUA_VERSION))"
 	GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 nice -n 19 sh test/slowgate/proof schema-lua-runs-hostile-corpus \
-		'TestSchemaLuaRunsHostileCorpus TestSchemaLuaHostileCorpusPlantedReader TestSchemaLuaHostileCorpusLane TestSchemaLuaHostileScorerOutcomes' \
-		./internal/ci -run '^(TestSchemaLuaRunsHostileCorpus|TestSchemaLuaHostileCorpusPlantedReader|TestSchemaLuaHostileCorpusLane|TestSchemaLuaHostileScorerOutcomes)$$' -count=1 -timeout 600s
+		'TestHostileCorpus_lua TestSchemaLuaHostileScorerOutcomes' \
+		./internal/ci -run '^(TestHostileCorpus_lua|TestSchemaLuaHostileScorerOutcomes)$$' -count=1 -timeout 600s
 
 # THE PLANTED-BAD-PATTERN CONTROL: a wire reader bug goes into a scratch copy of
 # the emitted fixed.lua (the form gate refuses the form it carries, so the

@@ -14,7 +14,7 @@
 // corpus (docs/HOSTILE-CORPUS.md).
 //
 // THE INTERPRETER. The two tests that run the pinned interpreter
-// (TestSquirrelRunsHostileCorpus and TestSquirrelRunsHostileCorpusPlant) are
+// (TestHostileCorpus_squirrel and TestSquirrelRunsHostileCorpusPlant) are
 // functional: on a machine without dist/squirrel-3.2/bin/sq they FAIL naming
 // it (sqrun.Interpreter), never skip and never pass vacuously. `make
 // schema-squirrel-runs-hostile-corpus` builds dist-squirrel first and runs them
@@ -281,10 +281,10 @@ func TestSquirrelHostileScorerOutcomes(t *testing.T) {
 	}
 }
 
-// TestSquirrelRunsHostileCorpus is the port's runner: every input of the
+// TestHostileCorpus_squirrel is the port's runner: every input of the
 // committed corpus reaches the manifest's verdict through the generated
 // Squirrel reader.
-func TestSquirrelRunsHostileCorpus(t *testing.T) {
+func TestHostileCorpus_squirrel(t *testing.T) {
 	t.Parallel()
 	n, mismatchNames, findingLines := squirrelRunHostileCorpus(t, nil)
 	// Keep the exact expected defects visible in the verbose unit target, but
@@ -418,10 +418,16 @@ func squirrelRunHostileCorpus(t *testing.T, plant func(files map[string][]byte))
 
 	mismatchNames := make([]string, 0, len(squirrelExpectedHostileMismatches))
 	var findingLines []string
+	failed := map[string]string{} // by case, for the registry's verdicts
+	var ran []string
 	for _, c := range cases {
 		expected := c.verdict + " " + c.reason
+		if _, ok := got[c.name]; ok {
+			ran = append(ran, c.name)
+		}
 		if why, ok := unsupported[c.schema]; ok {
 			actual := fmt.Sprintf("generator refuses %s; no reader verdict", c.schema)
+			failed[c.name] = fmt.Sprintf("expected %s, actual %s (%s)", expected, actual, why)
 			if m, known := squirrelExpectedHostileMismatchFor(c.name); known && m.actual != actual {
 				findingLines = append(findingLines, fmt.Sprintf("FIX-CARD: %s: %s carried actual verdict changed: expected %q, actual %q",
 					m.fixCard, c.input, m.actual, actual))
@@ -435,11 +441,13 @@ func squirrelRunHostileCorpus(t *testing.T, plant func(files map[string][]byte))
 		if !ok {
 			findingLines = append(findingLines, fmt.Sprintf("FIX-CARD: %s: %s expected %s, actual the runner printed no verdict",
 				squirrelExpectedHostileFixCard(c.name), c.input, expected))
+			failed[c.name] = fmt.Sprintf("expected %s, actual the runner printed no verdict", expected)
 			mismatchNames = append(mismatchNames, c.name)
 			continue
 		}
 		rowFindings := squirrelHostileFindings(c, g)
 		if len(rowFindings) > 0 {
+			failed[c.name] = strings.Join(rowFindings, "; ")
 			name := c.name
 			if m, known := squirrelExpectedHostileMismatchFor(c.name); known {
 				if actual := g.verdict + " " + g.reason; actual != m.actual {
@@ -452,6 +460,13 @@ func squirrelRunHostileCorpus(t *testing.T, plant func(files map[string][]byte))
 			for _, f := range rowFindings {
 				findingLines = append(findingLines, fmt.Sprintf("FIX-CARD: %s: %s", squirrelExpectedHostileFixCard(c.name), f))
 			}
+		}
+	}
+	// the per-case verdicts the registry reads (hostilecorpus.WriteVerdicts):
+	// the gate's run (no plant), every disagreement a FAIL, carried or not
+	if plant == nil {
+		if err := hostilecorpus.WriteVerdicts(hostilecorpus.VerdictsPath(t.TempDir()), ran, failed); err != nil {
+			t.Fatal(err)
 		}
 	}
 	// THE LEDGER (internal/ci/hostilecorpus/ledger.go): the cases the Squirrel

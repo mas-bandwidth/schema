@@ -19,8 +19,8 @@
 # skipped run can never pass as green.
 schema-luau-runs-hostile-corpus: toolchain-luau
 	sh test/slowgate/proof schema-luau-runs-hostile-corpus \
-		'TestLuauRunsHostileCorpus TestLuauVocabularyDefaultEntryBound TestLuauHostileScorerOutcomes' \
-		./internal/ci -run '^(TestLuauRunsHostileCorpus|TestLuauVocabularyDefaultEntryBound|TestLuauHostileScorerOutcomes)$$' -count=1 -timeout 600s
+		'TestHostileCorpus_luau TestLuauHostileScorerOutcomes' \
+		./internal/ci -run '^(TestHostileCorpus_luau|TestLuauHostileScorerOutcomes)$$' -count=1 -timeout 600s
 
 schema-luau-runs-hostile-corpus-negative-control: toolchain-luau
 	sh test/slowgate/proof schema-luau-runs-hostile-corpus-negative-control \

@@ -8,7 +8,7 @@ landed.
 
 ## The corpus runner
 
-`TestPythonRunsHostileCorpus` (internal/codegen/pythontable/hostile_corpus_test.go)
+`TestHostileCorpus_python` (internal/codegen/pythontable/hostile_corpus_test.go)
 reads the committed manifest and one raw input per case. It emits one generated
 package per schema the manifest names — through the compiler driver, so a fixed
 root keeps the recorded layouts its `schema.lock` carries — and runs one probe

@@ -38,7 +38,7 @@ go-test	internal/codegen/moo	26	L5	per-language (moo) Go tests: moo's adapter ru
 go-test	internal/codegen/moo/moorun	1	L5	per-language (moo) Go tests: moo's adapter runs them when their families move in
 go-test	internal/codegen/mootable	239	L5	per-language (moo) Go tests: moo's adapter runs them when their families move in
 go-test	internal/codegen/python	37	L5	per-language (python) Go tests: python's adapter runs them when their families move in
-go-test	internal/codegen/pythontable	519	L5	per-language (python) Go tests: python's adapter runs them when their families move in
+go-test	internal/codegen/pythontable	518	L5	per-language (python) Go tests: python's adapter runs them when their families move in
 go-test	internal/codegen/ruby	17	L5	per-language (ruby) Go tests: ruby's adapter runs them when their families move in
 go-test	internal/codegen/rubytable	62	L5	per-language (ruby) Go tests: ruby's adapter runs them when their families move in
 go-test	internal/codegen/rust	6	L5	per-language (rust) Go tests: rust's adapter runs them when their families move in
@@ -4126,7 +4126,6 @@ tier	internal/codegen/pythontable:TestPythonRetainUnionEnumArrayArm	1	L5	functio
 tier	internal/codegen/pythontable:TestPythonRetainUnionUnionArrayArm	1	L5	functional: needs both pinned Python interpreters (was slowtest.Gate)
 tier	internal/codegen/pythontable:TestPythonRetainZeroIDField	1	L5	functional: needs both pinned Python interpreters (was slowtest.Gate)
 tier	internal/codegen/pythontable:TestPythonRetainZeroIDNegativeControl	1	L5	functional: needs both pinned Python interpreters (was slowtest.Gate)
-tier	internal/codegen/pythontable:TestPythonRunsHostileCorpus	1	L5	functional: needs both pinned Python interpreters (was slowtest.Gate)
 tier	internal/codegen/pythontable:TestPythonScalarWidenDamageAndControl	1	L5	functional: needs scalar widening malformed input and planted control (was slowtest.Gate)
 tier	internal/codegen/pythontable:TestPythonScalarWidenHistorical	1	L5	functional: needs historical scalar widening on both Python pins (was slowtest.Gate)
 tier	internal/codegen/pythontable:TestPythonScalarWidenMapInteraction	1	L5	functional: needs scalar values and map keys widen independently (was slowtest.Gate)

@@ -544,15 +544,31 @@ func TestSchemaMooHostileScorerOutcomes(t *testing.T) {
 	}
 }
 
-// TestSchemaMooRunsHostileCorpus is the unit-tier gate: every corpus input
+// TestHostileCorpus_moo is the unit-tier gate: every corpus input
 // reaches the manifest's verdict and decoded-value digest, or is a carried
 // finding whose fix card and actual verdict are pinned here.
-func TestSchemaMooRunsHostileCorpus(t *testing.T) {
+func TestHostileCorpus_moo(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
 	corpusDir := mooHostileCorpusDir(root)
 	cases := mooHostileCorpusCases(t, corpusDir)
 	answers := mooHostileRun(t, root, corpusDir, cases, false)
+	// the per-case verdicts the registry reads (hostilecorpus.WriteVerdicts):
+	// every disagreement is a FAIL there, carried or not
+	failed := map[string]string{}
+	var ran []string
+	for _, c := range cases {
+		a, ok := answers[c.Name]
+		if ok {
+			ran = append(ran, c.Name)
+		}
+		if why := mooHostileGrade(c, a, ok, c.Carrier == "packet"); why != "" {
+			failed[c.Name] = why
+		}
+	}
+	if err := hostilecorpus.WriteVerdicts(hostilecorpus.VerdictsPath(t.TempDir()), ran, failed); err != nil {
+		t.Fatal(err)
+	}
 	bad := mooHostileCompare(cases, answers)
 	if len(bad) != 0 {
 		t.Fatalf("the moo port disagrees with %d of %d hostile-corpus cases:\n  %s",
@@ -617,7 +633,7 @@ func TestSchemaMooHostileCorpusLane(t *testing.T) {
 		"test-moo: schema-moo-runs-hostile-corpus",
 		"sh test/slowgate/proof schema-moo-runs-hostile-corpus",
 		"sh test/slowgate/proof schema-moo-runs-hostile-corpus-negative-control",
-		"TestSchemaMooRunsHostileCorpus",
+		"TestHostileCorpus_moo",
 		"TestSchemaMooHostileScorerOutcomes",
 		"TestSchemaMooRunsHostileCorpusPlantedReader",
 	} {

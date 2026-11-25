@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 2. Language-free tests: 2884.
+Unit tests every language answers: 2. Language-free tests: 2890.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -2054,7 +2054,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.ci.workflow-and-job-env-name-only-allowed-contexts` | `gotest` | Go test TestWorkflowAndJobEnvNameOnlyAllowedContexts in ./internal/ci | `package: ./internal/ci`<br>`test: TestWorkflowAndJobEnvNameOnlyAllowedContexts` | the Go test passes | `internal/ci/env_contexts_test.go:82` |
 | `none.unit.tooling.ci.workflow-names-parse-as-scalars` | `gotest` | Go test TestWorkflowNamesParseAsScalars in ./internal/ci | `package: ./internal/ci`<br>`test: TestWorkflowNamesParseAsScalars` | the Go test passes | `internal/ci/workflow_name_scalar_test.go:48` |
 
-#### `tooling` family `ci-hostilecorpus`, 10 tests
+#### `tooling` family `ci-hostilecorpus`, 12 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -2066,8 +2066,10 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.ci-hostilecorpus.manifest-input-stays-inside-corpus-negative-control` | `gotest` | Go test TestManifestInputStaysInsideCorpusNegativeControl in ./internal/ci/hostilecorpus | `package: ./internal/ci/hostilecorpus`<br>`test: TestManifestInputStaysInsideCorpusNegativeControl` | the Go test passes | `internal/ci/hostilecorpus/inputpath_test.go:119` |
 | `none.unit.tooling.ci-hostilecorpus.packet-rows-and-empty-guard` | `gotest` | Go test TestPacketRowsAndEmptyGuard in ./internal/ci/hostilecorpus | `package: ./internal/ci/hostilecorpus`<br>`test: TestPacketRowsAndEmptyGuard` | the Go test passes | `internal/ci/hostilecorpus/packet_rows_test.go:16` |
 | `none.unit.tooling.ci-hostilecorpus.ran-every-reads-the-folder` | `gotest` | Go test TestRanEveryReadsTheFolder in ./internal/ci/hostilecorpus | `package: ./internal/ci/hostilecorpus`<br>`test: TestRanEveryReadsTheFolder` | the Go test passes | `internal/ci/hostilecorpus/ledger_test.go:66` |
+| `none.unit.tooling.ci-hostilecorpus.read-verdicts-counts-only-the-blocks` | `gotest` | Go test TestReadVerdictsCountsOnlyTheBlocks in ./internal/ci/hostilecorpus | `package: ./internal/ci/hostilecorpus`<br>`test: TestReadVerdictsCountsOnlyTheBlocks` | the Go test passes | `internal/ci/hostilecorpus/verdicts_test.go:44` |
 | `none.unit.tooling.ci-hostilecorpus.wide-bounds-corpus-covers` | `gotest` | Go test TestWideBoundsCorpusCovers in ./internal/ci/hostilecorpus | `package: ./internal/ci/hostilecorpus`<br>`test: TestWideBoundsCorpusCovers` | the Go test passes | `internal/ci/hostilecorpus/wide_corpus_test.go:32` |
 | `none.unit.tooling.ci-hostilecorpus.wide-bounds-corpus-verify` | `gotest` | Go test TestWideBoundsCorpusVerify in ./internal/ci/hostilecorpus | `package: ./internal/ci/hostilecorpus`<br>`test: TestWideBoundsCorpusVerify` | the Go test passes | `internal/ci/hostilecorpus/wide_corpus_test.go:17` |
+| `none.unit.tooling.ci-hostilecorpus.written-verdicts-read-back-by-case` | `gotest` | Go test TestWrittenVerdictsReadBackByCase in ./internal/ci/hostilecorpus | `package: ./internal/ci/hostilecorpus`<br>`test: TestWrittenVerdictsReadBackByCase` | the Go test passes | `internal/ci/hostilecorpus/verdicts_test.go:14` |
 
 #### `tooling` family `conformancerows`, 7 tests
 
@@ -2939,7 +2941,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.runmatch.skips-follows-go` | `gotest` | Go test TestSkipsFollowsGo in ./internal/runmatch | `package: ./internal/runmatch`<br>`test: TestSkipsFollowsGo` | the Go test passes | `internal/runmatch/runmatch_test.go:107` |
 | `none.unit.tooling.runmatch.top-level-is-gos-split` | `gotest` | Go test TestTopLevelIsGosSplit in ./internal/runmatch | `package: ./internal/runmatch`<br>`test: TestTopLevelIsGosSplit` | the Go test passes | `internal/runmatch/runmatch_test.go:9` |
 
-#### `tooling` family `schema-test`, 87 tests
+#### `tooling` family `schema-test`, 91 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -3004,6 +3006,8 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.schema-test.go-test-events-give-one-verdict-each` | `gotest` | Go test TestGoTestEventsGiveOneVerdictEach in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestGoTestEventsGiveOneVerdictEach` | the Go test passes | `tools/schema-test/main_test.go:105` |
 | `none.unit.tooling.schema-test.go-test-plain-output-in-the-log-fails` | `gotest` | Go test TestGoTestPlainOutputInTheLogFails in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestGoTestPlainOutputInTheLogFails` | the Go test passes | `tools/schema-test/make_test.go:466` |
 | `none.unit.tooling.schema-test.go-test-runs-to-the-drivers-deadline` | `gotest` | Go test TestGoTestRunsToTheDriversDeadline in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestGoTestRunsToTheDriversDeadline` | the Go test passes | `tools/schema-test/gotest_test.go:214` |
+| `none.unit.tooling.schema-test.hostile-case-keys-are-distinct` | `gotest` | Go test TestHostileCaseKeysAreDistinct in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestHostileCaseKeysAreDistinct` | the Go test passes | `tools/schema-test/hostile_test.go:116` |
+| `none.unit.tooling.schema-test.hostile-plan-refuses-what-is-no-case` | `gotest` | Go test TestHostilePlanRefusesWhatIsNoCase in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestHostilePlanRefusesWhatIsNoCase` | the Go test passes | `tools/schema-test/hostile_test.go:259` |
 | `none.unit.tooling.schema-test.langs-is-the-registrys-list` | `gotest` | Go test TestLangsIsTheRegistrysList in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestLangsIsTheRegistrysList` | the Go test passes | `tools/schema-test/main_test.go:207` |
 | `none.unit.tooling.schema-test.make-inputs-name-one-target-of-a-make-file` | `gotest` | Go test TestMakeInputsNameOneTargetOfAMakeFile in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestMakeInputsNameOneTargetOfAMakeFile` | the Go test passes | `tools/schema-test/make_test.go:115` |
 | `none.unit.tooling.schema-test.move-carries-the-tier-and-drops-its-line` | `gotest` | Go test TestMoveCarriesTheTierAndDropsItsLine in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestMoveCarriesTheTierAndDropsItsLine` | the Go test passes | `tools/schema-test/extract_test.go:216` |
@@ -3012,6 +3016,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.schema-test.name-buildability-is-l4s` | `gotest` | Go test TestNameBuildabilityIsL4s in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestNameBuildabilityIsL4s` | the Go test passes | `tools/schema-test/extract_test.go:178` |
 | `none.unit.tooling.schema-test.plant-inputs-are-one-form` | `gotest` | Go test TestPlantInputsAreOneForm in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestPlantInputsAreOneForm` | the Go test passes | `tools/schema-test/plant_test.go:163` |
 | `none.unit.tooling.schema-test.rows-are-named-from-their-go-tests` | `gotest` | Go test TestRowsAreNamedFromTheirGoTests in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestRowsAreNamedFromTheirGoTests` | the Go test passes | `tools/schema-test/gotest_test.go:137` |
+| `none.unit.tooling.schema-test.run-hostile-reads-each-case-from-its-run` | `gotest` | Go test TestRunHostileReadsEachCaseFromItsRun in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestRunHostileReadsEachCaseFromItsRun` | the Go test passes | `tools/schema-test/hostile_test.go:159` |
 | `none.unit.tooling.schema-test.seconds-are-read-from-a-runs-log` | `gotest` | Go test TestSecondsAreReadFromARunsLog in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestSecondsAreReadFromARunsLog` | the Go test passes | `tools/schema-test/gotest_test.go:170` |
 | `none.unit.tooling.schema-test.seeding-ages-the-committed-goldens` | `gotest` | Go test TestSeedingAgesTheCommittedGoldens in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestSeedingAgesTheCommittedGoldens` | the Go test passes | `tools/schema-test/golden_test.go:312` |
 | `none.unit.tooling.schema-test.the-addenda-verb-checks-the-committed-pages` | `gotest` | schema-test addenda --check exits 0 against the repository's pages and 1 naming a missing page, and refuses a stray argument | `package: ./tools/schema-test`<br>`test: TestTheAddendaVerbChecksTheCommittedPages` | the Go test passes | `tools/schema-test/main_test.go:261` |
@@ -3025,6 +3030,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.schema-test.the-planted-runs-report-is-its-verdict` | `gotest` | Go test TestThePlantedRunsReportIsItsVerdict in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestThePlantedRunsReportIsItsVerdict` | the Go test passes | `tools/schema-test/plant_test.go:368` |
 | `none.unit.tooling.schema-test.the-pr-jobs-split-the-group-by-language` | `gotest` | Go test TestThePRJobsSplitTheGroupByLanguage in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestThePRJobsSplitTheGroupByLanguage` | the Go test passes | `tools/schema-test/shards_test.go:183` |
 | `none.unit.tooling.schema-test.the-pr-shards-fit-their-jobs` | `gotest` | Go test TestThePRShardsFitTheirJobs in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestThePRShardsFitTheirJobs` | the Go test passes | `tools/schema-test/shards_test.go:80` |
+| `none.unit.tooling.schema-test.the-registry-holds-every-hostile-case` | `gotest` | Go test TestTheRegistryHoldsEveryHostileCase in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheRegistryHoldsEveryHostileCase` | the Go test passes | `tools/schema-test/hostile_test.go:35` |
 | `none.unit.tooling.schema-test.the-writer-writes-every-golden-afresh` | `gotest` | Go test TestTheWriterWritesEveryGoldenAfresh in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheWriterWritesEveryGoldenAfresh` | the Go test passes | `tools/schema-test/golden_test.go:188` |
 | `none.unit.tooling.schema-test.update-repins-only-the-named-goldens` | `gotest` | Go test TestUpdateRepinsOnlyTheNamedGoldens in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestUpdateRepinsOnlyTheNamedGoldens` | the Go test passes | `tools/schema-test/golden_test.go:150` |
 | `none.unit.tooling.schema-test.update-with-a-stray-pin-repins-nothing` | `gotest` | Go test TestUpdateWithAStrayPinRepinsNothing in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestUpdateWithAStrayPinRepinsNothing` | the Go test passes | `tools/schema-test/golden_test.go:241` |
