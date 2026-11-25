@@ -685,6 +685,17 @@ jobs:
           if [ "$schema_corpus" = yes ] || case " $touched_legs " in *" rust "*) true ;; *) false ;; esac; then
             clean_legs="$clean_legs rust"
           fi
+          # THE C++ CLEAN GATE ON THE PULL REQUEST (#424). tables-cpp-clean ran
+          # only in leg-gate-cpp, which runs on workflow_dispatch alone, so a
+          # pull request that added generated C++ table units (#4501: announce,
+          # packetunions, prior, shapes, surfaces) landed without it and main
+          # went red. Any diff that can change the emitted C++ — the corpus,
+          # the C++ leg's own paths (its emitters, generated trees, make files,
+          # the two allow lists, the gate's scripts, .clang-format) or a broad
+          # path such as compiler/ — runs both halves here, each its own row.
+          if [ "$schema_corpus" = yes ] || [ "$broad" = yes ] || case " $touched_legs " in *" cpp "*) true ;; *) false ;; esac; then
+            clean_legs="$clean_legs cpp-format cpp-warnings"
+          fi
           clean_legs_json=$(printf '%s' "$clean_legs" | xargs -n1 2>/dev/null | sort -u | awk 'BEGIN{printf "["} NF{printf "%s\"%s\"", (n++?",":""), $1} END{printf "]"}')
           [ -n "$clean_legs_json" ] || clean_legs_json='[]'
 
@@ -1176,6 +1187,13 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/merge-main
+      - name: Check out the C++ serialize reference (cpp-warnings)
+        if: matrix.lang == 'cpp-warnings'
+        run: |
+          set -euo pipefail
+          cd ..
+          rm -rf serialize
+          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git serialize
       - name: Check out the Rust runtime sibling (rust clippy)
         if: matrix.lang == 'rust'
         run: |
@@ -1247,6 +1265,28 @@ jobs:
               ;;
             rust)
               make -j"$(nproc)" tables-rust-clippy RUSTUP_BIN="$(dirname "$(command -v cargo)")"
+              ;;
+            cpp-format)
+              pin="$(sed -n 's/^CLANG_FORMAT_PIN *?= *//p' make/c.mk)"
+              major="$(sed -n 's/^CLANG_FORMAT_MAJOR *?= *//p' make/c.mk)"
+              cf=""
+              if command -v clang-format >/dev/null 2>&1 && [ "$(clang-format --version | sed -n 's/.*version \([0-9.]*\).*/\1/p')" = "$pin" ]; then
+                cf="$(command -v clang-format)"
+              else
+                if python3 -m venv "$RUNNER_TEMP/clang-format" >/dev/null 2>&1; then
+                  "$RUNNER_TEMP/clang-format/bin/pip" install --quiet "clang-format==$pin"
+                else
+                  rm -rf "$RUNNER_TEMP/clang-format"
+                  python3 -m venv --without-pip "$RUNNER_TEMP/clang-format"
+                  python3 -m pip --python "$RUNNER_TEMP/clang-format/bin/python3" install --quiet "clang-format==$pin"
+                fi
+                cf="$RUNNER_TEMP/clang-format/bin/clang-format"
+              fi
+              "$cf" --version
+              make -j"$(nproc)" tables-cpp-format SCHEMA_REQUIRE_CLANG_FORMAT=1 CLANG_FORMAT="$cf"
+              ;;
+            cpp-warnings)
+              make -j"$(nproc)" tables-cpp-warnings SCHEMA_REQUIRE_CLANGXX=1
               ;;
             elixir-offsets|elixir-agreement-[0-9]*)
               case "$LANG_ROW" in

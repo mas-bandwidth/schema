@@ -372,14 +372,23 @@ func TestFastPlanSelectsCodegenAndLanguageCleanGates(t *testing.T) {
 		{"rust codegen", "internal/codegen/rusttable/mapsarms.go", `yes|["rust"]`},
 		{"elixir codegen", "internal/codegen/elixirtable/block.go", `yes|["elixir-agreement-1","elixir-agreement-2","elixir-agreement-3","elixir-agreement-4","elixir-offsets"]`},
 		{"dart codegen", "internal/codegen/darttable/textform.go", `yes|[]`},
-		{"generated tree file", "generated/cpp/Types.h", `yes|[]`},
-		{"tables schema", "tables/stream/Stream.schema", `yes|["c","elixir-agreement-1","elixir-agreement-2","elixir-agreement-3","elixir-agreement-4","elixir-offsets","js","rust"]`},
-		{"packet schema", "examples/Types.schema", `yes|["c","elixir-agreement-1","elixir-agreement-2","elixir-agreement-3","elixir-agreement-4","elixir-offsets","js","rust"]`},
-		{"compiler go", "compiler/compiler.go", `yes|["elixir-agreement-1","elixir-agreement-2","elixir-agreement-3","elixir-agreement-4"]`},
+		{"generated tree file", "generated/cpp/Types.h", `yes|["cpp-format","cpp-warnings"]`},
+		{"tables schema", "tables/stream/Stream.schema", `yes|["c","cpp-format","cpp-warnings","elixir-agreement-1","elixir-agreement-2","elixir-agreement-3","elixir-agreement-4","elixir-offsets","js","rust"]`},
+		{"packet schema", "examples/Types.schema", `yes|["c","cpp-format","cpp-warnings","elixir-agreement-1","elixir-agreement-2","elixir-agreement-3","elixir-agreement-4","elixir-offsets","js","rust"]`},
+		{"compiler go", "compiler/compiler.go", `yes|["cpp-format","cpp-warnings","elixir-agreement-1","elixir-agreement-2","elixir-agreement-3","elixir-agreement-4"]`},
 		{"ci policy only", "internal/ci/ci_test.go", `no|[]`},
 		{"docs only", "README.md", `no|[]`},
 		{"c format allowlist", "make/c-format-allow.txt", `no|["c"]`},
 		{"eslint config", "eslint.config.mjs", `no|["js"]`},
+		// THE C++ CLEAN GATE RUNS ON THE PULL REQUEST (#424): #4501 added
+		// generated C++ table units (a new test/tables/ schema) and the gate,
+		// then on workflow_dispatch only, never ran
+		{"new C++ table unit", "test/tables/announce4096/Announce.schema", `yes|["c","cpp-format","cpp-warnings","elixir-agreement-1","elixir-agreement-2","elixir-agreement-3","elixir-agreement-4","elixir-offsets","js","rust"]`},
+		{"cpp table codegen", "internal/codegen/cpptable/json.go", `yes|["cpp-format","cpp-warnings"]`},
+		{"committed C++ table pin", "generated/bench/tables/cpp/BenchTableTable.h", `yes|["cpp-format","cpp-warnings"]`},
+		{"cpp format allowlist", "make/cpp-format-allow.txt", `no|["cpp-format","cpp-warnings"]`},
+		{"cpp warn allowlist", "make/cpp-warn-allow.txt", `no|["cpp-format","cpp-warnings"]`},
+		{"cpp gate script", "make/checks/cpp-clean-format.sh", `no|["cpp-format","cpp-warnings"]`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel() // each case is its own bash over a read-only script
