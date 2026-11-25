@@ -20,6 +20,7 @@ import (
 	"sync/atomic"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testreg"
+	"github.com/mas-bandwidth/schema/v2/internal/testreg/extract"
 )
 
 // makeAdapter runs make gates: a test whose inputs are {"file": "make/c.mk",
@@ -86,6 +87,9 @@ type makeInputs struct {
 	Tools    []string          `json:"tools,omitempty"`
 	Siblings []string          `json:"siblings,omitempty"`
 	Reads    []string          `json:"reads,omitempty"`
+	// ReadPlant is the key of the read plant that proves what Reads
+	// credits (extract.CreditPlant): a read with no plant credits nothing.
+	ReadPlant string `json:"read_plant,omitempty"`
 	// Seed names the make variable a fuzz row's random pass takes its seed
 	// in (LUA_FUZZ_SEED). The seed is the run's, read from SeedEnv in the
 	// context's environment, set on make's command line and named in the
@@ -201,8 +205,12 @@ func decodeMakeInputs(raw json.RawMessage) (makeInputs, error) {
 		}
 	}
 	for _, r := range in.Reads {
-		if r == "" || r != path.Clean(r) || path.IsAbs(r) || strings.HasPrefix(r, "../") || strings.ContainsAny(r, " \t\n\\") {
-			return in, fmt.Errorf("reads %q: want a file of the repository by its path", r)
+		if extract.IsTreeRead(r) {
+			return in, fmt.Errorf("reads %q: a make row reads one directory, written with one trailing /, never a tree", r)
+		}
+		p := strings.TrimSuffix(r, "/")
+		if p == "" || p != path.Clean(p) || path.IsAbs(p) || p == ".." || strings.HasPrefix(p, "../") || strings.ContainsAny(p, " \t\n\\") {
+			return in, fmt.Errorf("reads %q: want a file of the repository by its path, or a directory written with one trailing /", r)
 		}
 	}
 	return in, nil
@@ -380,11 +388,20 @@ func (a makeAdapter) vet(ctx context.Context, in makeInputs) (string, error) {
 	if err != nil {
 		return fmt.Sprintf("make %s cannot be read before it runs: %v", in.Target, err), nil
 	}
-	files, text := db.reach(in.Target)
+	files, text, named := db.reach(in.Target)
+	reach := newMakeReach(files, named)
 	var why []string
 	for _, r := range in.Reads {
-		if !files[r] {
-			why = append(why, fmt.Sprintf("the row says make %s reads %s, and nothing make %s makes depends on it", in.Target, r, in.Target))
+		if extract.IsDirRead(r) {
+			// a directory the recipes work on bare: cd into it, a glob
+			// in it, the directory as an argument
+			if !extract.NamesBareDir(reach.text, strings.TrimSuffix(r, "/")) {
+				why = append(why, fmt.Sprintf("the row says make %s reads %s, and no recipe make %s runs works on that directory itself", in.Target, r, in.Target))
+			}
+			continue
+		}
+		if !reach.names(r) {
+			why = append(why, fmt.Sprintf("the row says make %s reads %s, and nothing make %s makes depends on it or names it", in.Target, r, in.Target))
 		}
 	}
 	if line := goTestOutsideTheWrapper(strings.Join(text, "\n")); line != "" {

@@ -9,6 +9,7 @@ import (
 	"maps"
 	"os"
 	"path"
+	"regexp"
 	"slices"
 	"sort"
 	"strconv"
@@ -176,7 +177,39 @@ func LangMakeGates(inputs json.RawMessage) (map[string][]LangGate, bool, error) 
 // claim holds.
 //
 // Each kind's rows join this as its layer moves it in.
+//
+// A read is a proposal, not yet a credit: CoveredIn keeps a credit a read
+// makes only where the row's read plant proves it (creditPlants).
 func Covered(reg *testreg.Registry) (map[string]string, []string) {
+	out, _, problems := covered(reg)
+	return out, problems
+}
+
+// readCredit records the credits reads make: the rows that read each item,
+// in registry order, and the items a read (no exclusive claim) credits.
+type readCredit struct {
+	readers map[string][]string
+	byRead  map[string]bool
+	// files is the files each make row reads by name, and whole the items
+	// a directory, tree or Go read holds whole, by row: a reader whose
+	// plant proves an item must read all of it (creditPlants)
+	files map[string]map[string]bool
+	whole map[string]map[string]bool
+}
+
+// readsWhole reports whether row key reads every file of an item.
+func (rc readCredit) readsWhole(id, key string, files []string) bool {
+	return rc.whole[id][key] || !slices.ContainsFunc(files, func(f string) bool { return !rc.files[key][f] })
+}
+
+func (rc readCredit) reads(id, key string) {
+	if !slices.Contains(rc.readers[id], key) {
+		rc.readers[id] = append(rc.readers[id], key)
+	}
+}
+
+func covered(reg *testreg.Registry) (map[string]string, readCredit, []string) {
+	rc := readCredit{readers: map[string][]string{}, byRead: map[string]bool{}, files: map[string]map[string]bool{}, whole: map[string]map[string]bool{}}
 	out := map[string]string{}
 	var problems []string
 	// a data case several golden rows share: one row per pinned file, and
@@ -302,13 +335,27 @@ func Covered(reg *testreg.Registry) (map[string]string, []string) {
 			} else {
 				sh.by[k] = t.Key
 			}
+			if t.Type == "plant" && len(in.Reads) > 0 {
+				// a negative control is red by design: a broken input
+				// cannot turn it red, so what it reads is no credit
+				problems = append(problems, fmt.Sprintf("%s:%d: %s reads %v, and a negative control (type plant) is red by design, so its reads credit nothing: drop them", reg.Path, t.Line, t.Key, in.Reads))
+				continue
+			}
 			for _, f := range in.Reads {
+				if IsDirRead(f) {
+					continue // a directory: CoveredIn credits what it holds
+				}
 				dir, name := path.Split(f)
 				if !isDataPath(f) || name == "" || f != path.Clean(f) {
 					problems = append(problems, fmt.Sprintf("%s:%d: %s reads %s, which is no data case's file", reg.Path, t.Line, t.Key, f))
 					continue
 				}
 				id := Item{Kind: KindDataCase, Dir: strings.TrimSuffix(dir, "/"), Name: DataStem(name)}.ID()
+				rc.reads(id, t.Key)
+				if rc.files[t.Key] == nil {
+					rc.files[t.Key] = map[string]bool{}
+				}
+				rc.files[t.Key][f] = true
 				if _, seen := readCase[id]; !seen {
 					readCase[id] = t.Key
 					readOrder = append(readOrder, id)
@@ -409,9 +456,10 @@ func Covered(reg *testreg.Registry) (map[string]string, []string) {
 	for _, id := range readOrder {
 		if _, held := out[id]; !held {
 			out[id] = readCase[id]
+			rc.byRead[id] = true
 		}
 	}
-	return out, problems
+	return out, rc, problems
 }
 
 // makeShard reads a make row's shard: the one var named *_SHARD and its K/N.
@@ -452,9 +500,20 @@ func firstShard(by map[int]string) int {
 // "already runs" against the golden row. A make row that reads a file no
 // case of the extract holds names a test that does not exist, by name.
 func CoveredIn(res *Result, reg *testreg.Registry) (map[string]string, []string) {
-	out, problems := Covered(reg)
+	out, rc, problems := covered(reg)
 	problems = append(problems, perLangClaims(res, reg, out)...)
-	named := map[string]bool{}
+	problems = append(problems, coverWhole(res, reg, out)...)
+	problems = append(problems, readCredits(res, reg, out, rc)...)
+	problems = append(problems, creditPlants(res, reg, out, rc)...)
+	return out, problems
+}
+
+// coverWhole takes from out each data case not every file of which is
+// pinned or read (CoveredIn), and names a read of a file no case holds.
+func coverWhole(res *Result, reg *testreg.Registry, out map[string]string) []string {
+	var problems []string
+	pinned := map[string]bool{}            // a file some golden row pins
+	readBy := map[string]map[string]bool{} // the files each make row reads
 	held := map[string]bool{}
 	for _, files := range res.CaseFiles {
 		for _, f := range files {
@@ -472,27 +531,609 @@ func CoveredIn(res *Result, reg *testreg.Registry) (map[string]string, []string)
 			continue // Covered named it
 		}
 		for _, f := range in.Files {
-			named[f] = true
+			pinned[f] = true
 		}
 		for _, f := range in.Reads {
-			named[f] = true
+			if IsDirRead(f) {
+				continue // a directory: readCredits holds it
+			}
+			if readBy[t.Key] == nil {
+				readBy[t.Key] = map[string]bool{}
+			}
+			readBy[t.Key][f] = true
 			if !held[f] && isDataPath(f) {
 				problems = append(problems, fmt.Sprintf("%s:%d: %s reads %s, which the repository does not hold", reg.Path, t.Line, t.Key, f))
 			}
 		}
 	}
-	for id := range out {
+	// each file of a case is pinned or read: a case credited to a make row
+	// is read whole by that row (with what golden rows pin), since two make
+	// rows that each read half of a case run none of it whole. A case
+	// credited to a golden row is pinned whole: another row's read of the
+	// rest is a read credit, and a read counts only through its own plant,
+	// which creditPlants holds to the item the row credits, never to a case
+	// a golden row holds
+	for id, key := range out {
 		if !strings.HasPrefix(id, KindDataCase+" ") {
 			continue
 		}
 		for _, f := range res.CaseFiles[id] {
-			if !named[f] {
+			if !pinned[f] && !readBy[key][f] {
 				delete(out, id)
 				break
 			}
 		}
 	}
-	return out, problems
+	return problems
+}
+
+// ReadCredits is what the rows' reads would credit with no plant asked of
+// them: each item a read credits, by the row that reads it first. It is the
+// proposal a read plant is written from (schema-test reads --plant).
+func ReadCredits(res *Result, reg *testreg.Registry) map[string]string {
+	out, rc, _ := covered(reg)
+	_ = perLangClaims(res, reg, out)
+	_ = coverWhole(res, reg, out)
+	_ = readCredits(res, reg, out, rc)
+	credits := map[string]string{}
+	for id := range rc.byRead {
+		if k, ok := out[id]; ok {
+			credits[id] = k
+		}
+	}
+	return credits
+}
+
+// ItemFiles is what a read credit's plant deletes for item id: a data
+// case's files, or a driver's source files, sorted; nil for an item with
+// none (a case of a .jsonl line), which no plant can prove.
+func ItemFiles(res *Result, id string) []string {
+	files := res.CaseFiles[id]
+	if len(files) == 0 {
+		files = res.DriverFiles[id]
+	}
+	if len(files) == 0 {
+		return nil
+	}
+	return slices.Sorted(slices.Values(files))
+}
+
+// CreditPlant is a read plant's inputs (tools/schema-test, the plant
+// adapter's credit form): the row whose reads it proves, and the deletions,
+// each one item's files, each of which must turn that row red.
+type CreditPlant struct {
+	Credits string     `json:"credits"`
+	Delete  [][]string `json:"delete"`
+}
+
+// ReadPlantOf is the read plant a row names in its inputs ("read_plant"),
+// or "".
+func ReadPlantOf(t testreg.Test) string {
+	var in struct {
+		ReadPlant string `json:"read_plant"`
+	}
+	if json.Unmarshal(t.Inputs, &in) != nil {
+		return ""
+	}
+	return in.ReadPlant
+}
+
+// CreditPlantOf is t's inputs as a read plant; ok is false for any other row.
+func CreditPlantOf(t testreg.Test) (CreditPlant, bool) {
+	var in CreditPlant
+	if t.Type != "plant" || t.Adapter != "plant" || json.Unmarshal(t.Inputs, &in) != nil || in.Credits == "" {
+		return CreditPlant{}, false
+	}
+	return in, true
+}
+
+// groupKey is one deletion's files as one key, in any order.
+func groupKey(files []string) string {
+	return strings.Join(slices.Sorted(slices.Values(files)), "\n")
+}
+
+// creditPlants holds every credit a read makes to a mutation plant: a read
+// credit counts only where its row names a read plant ("read_plant": the
+// key of a plant row, tier nightly, whose inputs are {"credits": <the row>,
+// "delete": [[files]...]}) and one deletion of that plant is exactly the
+// item's files (ItemFiles). The plant deletes each group in a copy of the
+// tree and requires the row red, by name, each time; a deletion that leaves
+// the row green fails the nightly by name, and taking that group out of the
+// plant takes the credit back to the ledger here. Where several rows read an
+// item, the first that reads all of it and whose plant deletes it holds it. A credit with no plant is no credit:
+// its item stays in the ledger. A plant that names no row, a row whose
+// read_plant is not the plant that credits it, a plant off the nightly tier
+// and a deletion that is no credit of its row are problems by name.
+func creditPlants(res *Result, reg *testreg.Registry, out map[string]string, rc readCredit) []string {
+	var problems []string
+	byKey := map[string]testreg.Test{}
+	rowPlant := map[string]string{}
+	for _, t := range reg.Tests {
+		byKey[t.Key] = t
+		if p := ReadPlantOf(t); p != "" {
+			rowPlant[t.Key] = p
+		}
+	}
+	plants := map[string]map[string]bool{} // the groups each row's plant deletes
+	plantLine := map[string]testreg.Test{}
+	for _, t := range reg.Tests {
+		in, ok := CreditPlantOf(t)
+		if !ok {
+			continue
+		}
+		row, known := byKey[in.Credits]
+		switch {
+		case !known || row.Type == "plant":
+			problems = append(problems, fmt.Sprintf("%s:%d: %s proves the reads of %s, which is no row that is not a plant", reg.Path, t.Line, t.Key, in.Credits))
+			continue
+		case t.Tier != "nightly":
+			problems = append(problems, fmt.Sprintf("%s:%d: %s is a read plant of tier %s: read plants run in the nightly tier", reg.Path, t.Line, t.Key, t.Tier))
+			continue
+		case rowPlant[in.Credits] != t.Key:
+			problems = append(problems, fmt.Sprintf("%s:%d: %s proves the reads of %s, which names its read plant as %q: a credit names its plant (read_plant)", reg.Path, t.Line, t.Key, in.Credits, rowPlant[in.Credits]))
+			continue
+		case plants[in.Credits] != nil:
+			problems = append(problems, fmt.Sprintf("%s:%d: %s proves the reads of %s, which %s already proves: one read plant per row", reg.Path, t.Line, t.Key, in.Credits, plantLine[in.Credits].Key))
+			continue
+		}
+		groups := map[string]bool{}
+		for _, g := range in.Delete {
+			groups[groupKey(g)] = true
+		}
+		plants[in.Credits] = groups
+		plantLine[in.Credits] = t
+	}
+	for _, row := range slices.Sorted(maps.Keys(rowPlant)) {
+		if plants[row] == nil {
+			t := byKey[row]
+			problems = append(problems, fmt.Sprintf("%s:%d: %s names the read plant %q, which is no read plant of it (type plant, tier nightly, credits %s)", reg.Path, t.Line, row, rowPlant[row], row))
+		}
+	}
+	used := map[string]map[string]bool{}
+	for _, id := range slices.Sorted(maps.Keys(rc.byRead)) {
+		if _, ok := out[id]; !ok {
+			continue // not credited after all (a case not read whole)
+		}
+		files := ItemFiles(res, id)
+		g := groupKey(files)
+		// a reader proves the item only by a plant of exactly its files and a
+		// read of all of them: a row that reads one file of a case runs none
+		// of it whole, whatever its plant deletes
+		owner := ""
+		for _, r := range rc.readers[id] {
+			if len(files) == 0 || !plants[r][g] || !rc.readsWhole(id, r, files) {
+				continue
+			}
+			if owner == "" {
+				owner = r
+			}
+			if used[r] == nil {
+				used[r] = map[string]bool{}
+			}
+			used[r][g] = true // a second planted reader's proof is no stale deletion
+		}
+		if owner == "" {
+			delete(out, id) // a read with no plant: the item stays in the ledger
+			continue
+		}
+		out[id] = owner
+	}
+	for _, row := range slices.Sorted(maps.Keys(plants)) {
+		for _, g := range slices.Sorted(maps.Keys(plants[row])) {
+			if !used[row][g] {
+				t := plantLine[row]
+				problems = append(problems, fmt.Sprintf("%s:%d: %s deletes %s, which is no data case or driver the reads of %s credit: the deletion is stale", reg.Path, t.Line, t.Key, strings.ReplaceAll(g, "\n", " "), row))
+			}
+		}
+	}
+	return problems
+}
+
+// IsDirRead reports whether a row's read names a directory: it is written
+// with a trailing "/" (test/rust-soak/), or "/..." for a tree a Go test
+// walks (IsTreeRead), so a read says which it means.
+func IsDirRead(r string) bool { return strings.HasSuffix(r, "/") || IsTreeRead(r) }
+
+// IsTreeRead reports whether a row's read names a directory tree a Go test
+// walks: it is written with a trailing "/..." (testdata/name-buildability/...),
+// and holds every data case and driver below the directory that no driver
+// below it holds. Only a gotest or union row's read may be a tree: a Go
+// test that reads every case of a tree names each case it fails on, which
+// its plant shows; a make row's directory read is one directory.
+func IsTreeRead(r string) bool { return strings.HasSuffix(r, "/...") }
+
+// readDir is the directory a directory read names.
+func readDir(r string) string { return strings.TrimSuffix(strings.TrimSuffix(r, "..."), "/") }
+
+// readCredits adds to out what a row's "reads" credit beyond Covered's
+// make file reads, each filling only what no claim holds already (and
+// nothing a corpus row runs: Indexed's is that row's). A credit holds only
+// where breaking the credited file can turn the row red:
+//
+//   - a directory read (test/packet-end/rust/) credits the data cases and
+//     the driver in that directory itself, never one below it: a case
+//     added in a subdirectory is the ledger's until a row reads it.
+//   - a make row's directory read is held to a make file working on the
+//     bare directory (NamesBareDir: cd test/x, test/x/*.schema, test/x as
+//     an argument), comments aside; a make file that only names a file in
+//     it names that file, which a file read credits. The make adapter holds
+//     it to the recipes its own target reaches, and schema-test reads
+//     regenerates it.
+//   - a gotest or union row's read, a file, a directory, or a tree
+//     (IsTreeRead): the Go test reads it. A data case is credited by file
+//     reads only when the row reads every file of it. The source of the
+//     row's packages, or a module package they import, must name the read
+//     as a whole path (sourceNames).
+//
+// A read that credits nothing (it holds no data case and no driver, or all
+// it holds another row already runs or reads), or that its row's make files
+// or source do not name, is a problem by name: a reads list goes stale the
+// day what it names moves.
+func readCredits(res *Result, reg *testreg.Registry, out map[string]string, rc readCredit) []string {
+	var problems []string
+	drivers := map[string]bool{}
+	for _, it := range res.Items {
+		if it.Kind == KindDriver {
+			drivers[it.Dir] = true
+		}
+	}
+	indexed := Indexed(reg)
+	take := func(t testreg.Test, id string, held, n *int) {
+		*held++
+		if _, ok := indexed[id]; ok {
+			return
+		}
+		if rc.whole[id] == nil {
+			rc.whole[id] = map[string]bool{}
+		}
+		rc.whole[id][t.Key] = true
+		if _, ok := out[id]; ok {
+			if rc.byRead[id] {
+				rc.reads(id, t.Key) // another reader: its plant may prove it (creditPlants)
+			}
+			return
+		}
+		rc.reads(id, t.Key)
+		rc.byRead[id] = true
+		out[id] = t.Key
+		*n++
+	}
+	verdict := func(t testreg.Test, r string, held, n int) {
+		switch {
+		case held == 0:
+			problems = append(problems, fmt.Sprintf("%s:%d: %s reads %s, which holds no data case and no driver of the repository, or not every file of one", reg.Path, t.Line, t.Key, r))
+		case n == 0:
+			problems = append(problems, fmt.Sprintf("%s:%d: %s reads %s, and another row already runs or reads everything it holds: the read credits nothing", reg.Path, t.Line, t.Key, r))
+		}
+	}
+	creditDir := func(t testreg.Test, r string) {
+		held, n := 0, 0
+		d := readDir(r)
+		holds := func(dir string) bool { return dir == d }
+		if IsTreeRead(r) {
+			holds = func(dir string) bool { return TreeHolds(dir, d, drivers) }
+		}
+		for _, it := range res.Items {
+			if (it.Kind == KindDataCase || it.Kind == KindDriver) && holds(it.Dir) {
+				take(t, it.ID(), &held, &n)
+			}
+		}
+		verdict(t, r, held, n)
+	}
+	// creditFiles credits each data case every file of which the row reads
+	creditFiles := func(t testreg.Test, files []string) {
+		read := map[string]bool{}
+		for _, f := range files {
+			read[f] = true
+		}
+		// each case once: the second file of a case read whole is the
+		// same credit as the first, not another row's
+		type tally struct{ held, n int }
+		byCase := map[string]*tally{}
+		for _, f := range files {
+			dir, name := path.Split(f)
+			id := Item{Kind: KindDataCase, Dir: strings.TrimSuffix(dir, "/"), Name: DataStem(name)}.ID()
+			c, seen := byCase[id]
+			if !seen {
+				c = &tally{}
+				byCase[id] = c
+				if cf := res.CaseFiles[id]; slices.Contains(cf, f) && !slices.ContainsFunc(cf, func(g string) bool { return !read[g] }) {
+					take(t, id, &c.held, &c.n)
+				}
+			}
+			verdict(t, f, c.held, c.n)
+		}
+	}
+	for _, t := range reg.Tests {
+		switch t.Adapter {
+		case "make":
+			var in struct{ Reads []string }
+			if json.Unmarshal(t.Inputs, &in) != nil || t.Type == "plant" {
+				continue // Covered named it
+			}
+			for _, r := range in.Reads {
+				if !IsDirRead(r) {
+					continue // a file: Covered's, held to what make's target reaches
+				}
+				if IsTreeRead(r) {
+					problems = append(problems, fmt.Sprintf("%s:%d: %s reads %s: a make row's directory read is one directory, written with one trailing /; only a Go test's read may be a tree", reg.Path, t.Line, t.Key, r))
+					continue
+				}
+				if !cleanRead(r) {
+					problems = append(problems, fmt.Sprintf("%s:%d: %s reads %s: want a clean repository directory, written with one trailing /", reg.Path, t.Line, t.Key, r))
+					continue
+				}
+				if !NamesBareDir(res.MakeText, readDir(r)) {
+					problems = append(problems, fmt.Sprintf("%s:%d: %s reads %s, and no make file works on that directory itself (cd, a glob in it, or the directory as an argument): the read is stale", reg.Path, t.Line, t.Key, r))
+					continue
+				}
+				creditDir(t, r)
+			}
+		default:
+			// a gotest row, or a union row: the Go tests it runs read it
+			var in struct {
+				Package string
+				Reads   []string
+			}
+			if json.Unmarshal(t.Inputs, &in) != nil || len(in.Reads) == 0 {
+				continue
+			}
+			if t.Type == "plant" {
+				problems = append(problems, fmt.Sprintf("%s:%d: %s reads %v, and a negative control (type plant) is red by design, so its reads credit nothing: drop them", reg.Path, t.Line, t.Key, in.Reads))
+				continue
+			}
+			var pkgs []string
+			if tests, ok, err := testreg.GoTestsOf(t); ok {
+				if err != nil {
+					continue // Covered named it
+				}
+				for _, g := range tests {
+					pkgs = append(pkgs, strings.TrimPrefix(g.Package, "./"))
+				}
+			} else if t.Adapter == "gotest" {
+				pkgs = []string{strings.TrimPrefix(in.Package, "./")}
+			} else {
+				problems = append(problems, fmt.Sprintf("%s:%d: %s reads %v, and only a make, gotest or union row's reads are credited", reg.Path, t.Line, t.Key, in.Reads))
+				continue
+			}
+			slices.Sort(pkgs)
+			var files []string
+			for _, r := range in.Reads {
+				if !cleanRead(r) {
+					problems = append(problems, fmt.Sprintf("%s:%d: %s reads %s: want a clean repository file, a directory written with one trailing /, or a tree written with a trailing /...", reg.Path, t.Line, t.Key, r))
+					continue
+				}
+				if !slices.ContainsFunc(pkgs, func(p string) bool { return sourceNames(res.GoStrings[p], p, readDir(r)) }) {
+					problems = append(problems, fmt.Sprintf("%s:%d: %s reads %s, which no string in the source of %s names as a whole path: the read is stale", reg.Path, t.Line, t.Key, r, strings.Join(pkgs, ", ")))
+					continue
+				}
+				if IsDirRead(r) {
+					creditDir(t, r)
+				} else {
+					files = append(files, r)
+				}
+			}
+			creditFiles(t, files)
+		}
+	}
+	return problems
+}
+
+// TreeHolds reports whether a tree read of d holds an item in dir: dir is
+// d or below it, with no driver between them other than d's own (a driver
+// below d is a harness of its own, read by whoever runs it).
+func TreeHolds(dir, d string, drivers map[string]bool) bool {
+	if dir != d && !strings.HasPrefix(dir, d+"/") {
+		return false
+	}
+	for x := dir; x != d; x = path.Dir(x) {
+		if drivers[x] {
+			return false
+		}
+	}
+	return true
+}
+
+// StripMakeComments is make text without its comments, which name nothing
+// a target reads. In a recipe line (one starting with a tab) the shell's
+// comment is dropped: from a # that starts a word to the end of the line.
+// In any other line make's is: from the first # no backslash escapes. A
+// comment whose line ends in a backslash goes on into the next line, and
+// that line is dropped too. Quotes are not followed, so a # inside one
+// drops the rest of its line: what is dropped names nothing, which errs on
+// the side of no credit.
+func StripMakeComments(text string) string {
+	var out []string
+	inComment := false
+	for l := range strings.SplitSeq(text, "\n") {
+		if inComment {
+			inComment = strings.HasSuffix(l, `\`)
+			continue
+		}
+		at := -1
+		if strings.HasPrefix(l, "\t") {
+			for i := 1; i < len(l); i++ {
+				if l[i] == '#' && strings.TrimLeft(l[:i], " \t@-+") == "" || l[i] == '#' && (l[i-1] == ' ' || l[i-1] == '\t') {
+					at = i
+					break
+				}
+			}
+		} else {
+			for i := 0; i < len(l); i++ {
+				if l[i] == '#' && (i == 0 || l[i-1] != '\\') {
+					at = i
+					break
+				}
+			}
+		}
+		if at >= 0 {
+			inComment = strings.HasSuffix(l, `\`)
+			l = l[:at]
+		}
+		out = append(out, l)
+	}
+	return strings.Join(out, "\n")
+}
+
+// NamesPath reports whether text names p as a whole repository path: not
+// as a part of a longer name (test/rust-soak or test/rust.d for test/rust),
+// not below another directory (src/test/rust, $(BUILD)/test/rust), not
+// only through a path below it, and not as the start of a word make or the
+// shell goes on to build ($(addprefix test/rust,...), test/rust$(X),
+// test/rust%). A "/" before it is a boundary only after ./ or the
+// checkout's own $(CURDIR)/.
+func NamesPath(text, p string) bool {
+	return namesAt(text, p, func(end int) bool { return pathEnd(text, end) })
+}
+
+// NamesBareDir reports whether text works on directory d itself, as
+// NamesPath says, or with one trailing / (test/x/), or as a glob in it
+// (test/x/*.schema): a cd into it, a list of it, the directory as an
+// argument. A path of one file in it names that file, not d, and a word
+// make or the shell builds on test/x/ (test/x/$(F).c, test/x/%.c,
+// $(addprefix test/x/,a.c)) names no directory.
+//
+// A directory a variable is given (D=test/x, X := test/x) or a make
+// function is handed to build on ($(addsuffix /a.c,test/x)) is not worked
+// on bare: what is done with it is a longer path, so a word after = or
+// before a closing bracket names no directory.
+func NamesBareDir(text, d string) bool {
+	end := func(i int) bool {
+		return pathEnd(text, i) && (i == len(text) || text[i] != ')' && text[i] != '}')
+	}
+	return namesAtFrom(text, d, func(at int) bool { return pathStart(text, at) && (at == 0 || text[at-1] != '=') }, func(i int) bool {
+		if end(i) {
+			return true
+		}
+		if text[i] != '/' {
+			return false
+		}
+		// after d/, a word ends, or a glob in d starts; a quote here
+		// starts a name in d (test/x/"a b"), so it names no directory
+		i++
+		return i == len(text) || text[i] == '*' || text[i] != '"' && text[i] != '\'' && end(i)
+	})
+}
+
+// pathEnd reports whether a word holding a path ends at text[i]: the end of
+// the text, white space, a shell operator, a closing bracket or quote, the
+// : of a make rule, or the \n of a printf string.
+func pathEnd(text string, i int) bool {
+	if i == len(text) {
+		return true
+	}
+	return strings.IndexByte(" \t\n\r;&|<>)}'\":", text[i]) >= 0 || strings.HasPrefix(text[i:], `\n`)
+}
+
+// namesAt reports whether text holds p at a whole-path start, with after
+// judging what follows it.
+func namesAt(text, p string, after func(end int) bool) bool {
+	return namesAtFrom(text, p, func(at int) bool { return pathStart(text, at) }, after)
+}
+
+// namesAtFrom is namesAt with start judging where p may start.
+func namesAtFrom(text, p string, start func(at int) bool, after func(end int) bool) bool {
+	if p == "" {
+		return false
+	}
+	for i := 0; ; {
+		j := strings.Index(text[i:], p)
+		if j < 0 {
+			return false
+		}
+		at := i + j
+		if start(at) && after(at+len(p)) {
+			return true
+		}
+		i = at + 1
+	}
+}
+
+// makeAssign is a make variable assignment: a line that is no recipe's,
+// its name, and its value.
+var makeAssign = regexp.MustCompile(`^(?:override\s+|export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*(\+=|\?=|::=|:=|!=|=)\s*(.*)$`)
+
+// makeRef is a reference to a variable by its plain name, $(NAME) or
+// ${NAME}.
+var makeRef = regexp.MustCompile(`\$\(([A-Za-z_][A-Za-z0-9_]*)\)|\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
+
+// SubstMakeVars is s with each $(NAME) or ${NAME} that vars defines put in
+// place, and again in what that gives, a few levels deep: the words make
+// runs, so a variable holding a directory names that directory only where
+// it is used bare.
+func SubstMakeVars(s string, vars map[string]string) string {
+	for range 8 {
+		t := makeRef.ReplaceAllStringFunc(s, func(m string) string {
+			if v, ok := vars[m[2:len(m)-1]]; ok {
+				return strings.TrimSpace(v)
+			}
+			return m
+		})
+		if t == s {
+			break
+		}
+		s = t
+	}
+	return s
+}
+
+// ExpandMakeText is make file text as make runs it, for what it names: the
+// variables its assignments set (each line that is no recipe's and sets
+// one, backslash continuations joined) put in place where they are used,
+// and the assignments themselves dropped, since a value names nothing until
+// it is used.
+func ExpandMakeText(text string) string {
+	var lines []string
+	for _, l := range strings.Split(text, "\n") {
+		if n := len(lines); n > 0 && strings.HasSuffix(lines[n-1], `\`) && !strings.HasPrefix(lines[n-1], "\t") {
+			lines[n-1] = strings.TrimSuffix(lines[n-1], `\`) + " " + strings.TrimSpace(l)
+			continue
+		}
+		lines = append(lines, l)
+	}
+	vars := map[string]string{}
+	var rest []string
+	for _, l := range lines {
+		if !strings.HasPrefix(l, "\t") {
+			if m := makeAssign.FindStringSubmatch(strings.TrimSpace(l)); m != nil {
+				if m[2] == "+=" && vars[m[1]] != "" {
+					vars[m[1]] += " " + m[3]
+				} else {
+					vars[m[1]] = m[3]
+				}
+				continue
+			}
+		}
+		rest = append(rest, l)
+	}
+	for i, l := range rest {
+		rest[i] = SubstMakeVars(l, vars)
+	}
+	return strings.Join(rest, "\n")
+}
+
+// pathStart reports whether a repository path may start at text[at]: at
+// the start, after a byte no path holds, or after ./ or $(CURDIR)/ or
+// ${CURDIR}/.
+func pathStart(text string, at int) bool {
+	if at == 0 || !nameByte(text[at-1]) && text[at-1] != '/' {
+		return true
+	}
+	if text[at-1] != '/' {
+		return false
+	}
+	before := text[:at-1]
+	for _, v := range []string{"$(CURDIR)", "${CURDIR}"} {
+		if strings.HasSuffix(before, v) {
+			return true
+		}
+	}
+	return strings.HasSuffix(before, ".") && (len(before) == 1 || !nameByte(before[len(before)-2]) && before[len(before)-2] != '/')
+}
+
+// nameByte is a byte a path element may hold.
+func nameByte(b byte) bool {
+	return b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z' || b >= '0' && b <= '9' || b == '_' || b == '-' || b == '.'
 }
 
 // perLangClaims adds to out what a per-language row's one run per language
@@ -577,6 +1218,43 @@ func perLangClaims(res *Result, reg *testreg.Registry, out map[string]string) []
 		}
 	}
 	return problems
+}
+
+// cleanRead is a read written as a clean repository path: a file, a
+// directory with one trailing "/", or a tree with a trailing "/...".
+func cleanRead(r string) bool {
+	p := r
+	if IsDirRead(r) {
+		p = readDir(r)
+	}
+	return p != "" && p == path.Clean(p) && !path.IsAbs(p) && p != ".." && !strings.HasPrefix(p, "../")
+}
+
+// sourceNames reports whether a package's string literals name p as a
+// whole path: a literal that is p from the repository root, from the
+// package directory pkg, or from a directory below the root ("../../" in
+// front of p). filepath.Join and path.Join calls of literals only are one
+// literal (gotests.go). Words that together spell p ("testdata", "x") do
+// not name it: each may be anything.
+func sourceNames(lits map[string]bool, pkg, p string) bool {
+	for l := range lits {
+		c := path.Clean(strings.ReplaceAll(l, `\`, "/"))
+		up := c
+		for strings.HasPrefix(up, "../") {
+			up = up[3:]
+		}
+		if c == "." || up == ".." || path.IsAbs(c) {
+			continue // "", ".", "/" or only steps up: a place or a separator, never a path it names
+		}
+		if c == p || path.Join(pkg, c) == p {
+			return true
+		}
+		c = up
+		if strings.Contains(c, "/") && c == p {
+			return true
+		}
+	}
+	return false
 }
 
 // makeDefines reports whether a make file writes a rule for target: by its

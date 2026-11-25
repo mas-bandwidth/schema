@@ -57,6 +57,50 @@ func TestASubtestThatSkipsFailsItsParent(t *testing.T) {
 	}
 }
 
+// TestAParentRedThroughASubtestNamesItFirst: a test with hundreds of
+// passing cases and one failing one is red with the failing case and its
+// own failure on the reason's first line, ahead of the other cases' lines,
+// so a plant that breaks one case can show that case red by name; a test
+// red with no subtests leads with its own first line of output.
+func TestAParentRedThroughASubtestNamesItFirst(t *testing.T) {
+	t.Parallel()
+	var b strings.Builder
+	b.WriteString(`{"Action":"run","Test":"TestCorpus"}` + "\n")
+	for i := range 40 {
+		fmt.Fprintf(&b, `{"Action":"output","Test":"TestCorpus/case_%d","Output":"=== RUN   TestCorpus/case_%d\n"}`+"\n", i, i)
+		if i == 7 {
+			b.WriteString(`{"Action":"output","Test":"TestCorpus/case_7","Output":"    x_test.go:9: case_7: schema check refused it\n"}` + "\n")
+			b.WriteString(`{"Action":"fail","Test":"TestCorpus/case_7"}` + "\n")
+			continue
+		}
+		fmt.Fprintf(&b, `{"Action":"output","Test":"TestCorpus/case_%d","Output":"--- PASS: TestCorpus/case_%d (0.00s)\n"}`+"\n", i, i)
+		fmt.Fprintf(&b, `{"Action":"pass","Test":"TestCorpus/case_%d"}`+"\n", i)
+	}
+	b.WriteString(`{"Action":"fail","Test":"TestCorpus","Elapsed":0.1}` + "\n")
+	res, err := goTestResults(strings.NewReader(b.String()), map[string]string{"TestCorpus": "c"})
+	if err != nil || len(res) != 1 {
+		t.Fatal(res, err)
+	}
+	first, _, _ := strings.Cut(res[0].Reason, "\n")
+	if res[0].Verdict != testreg.Fail || first != "failed: TestCorpus/case_7: x_test.go:9: case_7: schema check refused it" {
+		t.Errorf("first line %q, verdict %v", first, res[0].Verdict)
+	}
+	// a test red with no subtests: its own first line leads, not "=== RUN"
+	own := `{"Action":"output","Test":"TestOne","Output":"=== RUN   TestOne\n"}
+{"Action":"output","Test":"TestOne","Output":"=== PAUSE TestOne\n"}
+{"Action":"output","Test":"TestOne","Output":"    x_test.go:58: text-names-bytes: the engine answers read=false\n"}
+{"Action":"output","Test":"TestOne","Output":"--- FAIL: TestOne (0.02s)\n"}
+{"Action":"fail","Test":"TestOne","Elapsed":0.02}
+`
+	res, err = goTestResults(strings.NewReader(own), map[string]string{"TestOne": "o"})
+	if err != nil || len(res) != 1 {
+		t.Fatal(res, err)
+	}
+	if first, _, _ = strings.Cut(res[0].Reason, "\n"); first != "failed: x_test.go:58: text-names-bytes: the engine answers read=false" {
+		t.Errorf("a test red with no subtests: first line %q", first)
+	}
+}
+
 // TestAGoTestsSecondsCountItsParallelSubtests: a test weighs what it costs
 // run alone: its own Elapsed plus every parallel subtest's under it, at any
 // depth. go test -json gives TestGate an Elapsed of its body alone (0.01 s)

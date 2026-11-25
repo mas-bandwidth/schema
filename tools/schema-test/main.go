@@ -10,6 +10,13 @@
 //	schema-test langs [--ready]
 //	schema-test addenda [--check] [--root DIR]
 //	schema-test seconds [--registry PATH] LOG...
+//	schema-test reads [--write] [--plant ROW]... [--registry PATH]
+//
+// reads proposes read credits (reads.go): it works out the make rows' file
+// reads from make's database and fails when the registry's are not those,
+// --write writes them, --plant ROW writes the read plant that proves ROW's
+// credits; it prints Go reads to consider and credits with no plant.
+//
 //	schema-test ci [--check] [--verdict] [--root DIR]
 //
 // ci writes .github/workflows/ci-fast.yml and docs/CI-TIERS.md from the
@@ -72,6 +79,7 @@ const usage = `usage:
   schema-test langs [--ready]   the registry's languages as a JSON list (a CI matrix)
   schema-test addenda [--check] [--root DIR]
   schema-test seconds [--registry PATH] LOG...
+  schema-test reads [--write] [--plant ROW]... [--registry PATH]   propose read credits; --plant writes a row's read plant
   schema-test ci [--check] [--verdict]   write (or --check) ci-fast.yml and docs/CI-TIERS.md from the registry
   NAME is <lang>.<tier>.<type>.<family>.<case>; a PATTERN has "*" in it
   --group G         a stored query of the registry (rec "group"); --lang narrows it
@@ -160,6 +168,9 @@ func runErr(ctx context.Context, args []string, stdout io.Writer, ads map[string
 	}
 	if sub == "seconds" {
 		return secondsCmd(args[1:], stdout)
+	}
+	if sub == "reads" {
+		return readsCmd(ctx, args[1:], stdout)
 	}
 	if sub == "ci" {
 		return ciCmd(args[1:], stdout)

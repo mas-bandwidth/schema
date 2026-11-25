@@ -175,8 +175,10 @@ func tablesCaseFor(dir, name string, files []string) (slug, schema, verdict stri
 // tablesRows are the registry rows of every unmoved data case in the
 // card's places, in key order. A case another family's row already names
 // every file of (the conformance units among the top-level schemas) is
-// that family's, and no row here reads it again. Two cases that spell
-// one registry case are refused, naming both.
+// that family's, and no row here reads it again. A read credit (a row's
+// "reads") never takes a case from here: a tables row runs the case
+// itself, which a credit, planted or not, only infers. Two
+// cases that spell one registry case are refused, naming both.
 func tablesRows(root string, reg *testreg.Registry) ([]testreg.Test, error) {
 	res, err := extract.Extract(root)
 	if err != nil {
@@ -189,15 +191,11 @@ func tablesRows(root string, reg *testreg.Registry) ([]testreg.Test, error) {
 		}
 		var in struct {
 			Files []string `json:"files"`
-			Reads []string `json:"reads"`
 		}
 		if json.Unmarshal(t.Inputs, &in) != nil {
 			continue
 		}
 		for _, f := range in.Files {
-			named[f] = true
-		}
-		for _, f := range in.Reads {
 			named[f] = true
 		}
 	}
