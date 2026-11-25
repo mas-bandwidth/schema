@@ -132,7 +132,8 @@ inline int TableJsonFormatG( char * text, size_t size, int digits, double value 
 {
     return _snprintf_l( text, size, "%.*g", TableJsonCLocale(), digits, value );
 }
-#else
+#endif
+#if !( defined( _WIN32 ) )
 inline locale_t TableJsonCLocale()
 {
     static locale_t c = newlocale( LC_ALL_MASK, "C", nullptr );
