@@ -966,3 +966,15 @@ rebuilds the block compares its build to the image byte for byte.
 | rule | case | the leg it was red on before its fix |
 |---|---|---|
 | SPEC-TABLES §19.3: an absent optional's value slot is written as held, so a block rebuilt from its own read equals the image | `block_padded` (row 2 `counter`), `TestLobsterBlockForm` (`internal/codegen/lobstertable`, slow tier) | red before its fix on Lobster: `block_write_field` returned early for an absent optional, writing the presence byte and leaving the value zero, so the rebuild differed at byte 312 |
+
+### A block build names the non-finite float it refuses
+
+A block float is finite (SPEC-TABLES §3.3): the read refuses a NaN or an
+infinity on its raw bits and the builder refuses one in the value, and both
+name the field, `<Owner>.<field>`. The verdict is shared and already held by
+every leg; the name is a leg's own report (docs/rulings.json
+refusal-verdict-only), so the case is the leg's unit test.
+
+| rule | case | the leg it was red on before its fix |
+|---|---|---|
+| SPEC-TABLES §3.3: the block builder refuses a NaN or an infinity and names the field, as the block read does | Go unit test `TestLobsterTablesAreFiniteOnly` (`internal/codegen/lobstertable`, slow tier; no shared case: the verdict was already `refused`, and the corpus judges the verdict alone) | red before its fix on Lobster: the range check in `block_write_field` ran first and answered `invalid_value` for a NaN, so the build named no field while the read named `PaddedRow.value` |
