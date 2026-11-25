@@ -5,7 +5,7 @@ Part of the specification: every test of tier `functional`, from the test regist
 
 **Tier functional:** uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it.
 
-Functional tests every language answers: 2468. Language-free tests: 2242.
+Functional tests every language answers: 2468. Language-free tests: 2249.
 
 Run this tier for a language with `schema-test run --tier functional --lang L`, one test with `schema-test run <full name>`.
 
@@ -5301,6 +5301,20 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.functional.tooling.harness.write-refusal-packet` | `gotest` | Go test TestWriteRefusalPacket in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestWriteRefusalPacket` | the Go test passes | `test/conformance/harness/writerefusalpacket_test.go:30` |
 | `none.functional.tooling.harness.write-refusal-packet-surface` | `gotest` | Go test TestWriteRefusalPacketSurface in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestWriteRefusalPacketSurface` | the Go test passes | `test/conformance/harness/writerefusalpacket_test.go:67` |
 
+#### `tooling` family `inputaccount`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.tooling.inputaccount.conformance-cpp` | `make` | inputaccount -family conformance-corpus -leg cpp -check-extra and -canary wrong (the input-family-cpp-conformance step) | `file: make/lint-fast.mk`<br>`target: check-inputaccount-cpp` | the target exits 0 with no skip in its log | `make/lint-fast.mk:37` |
+
+#### `tooling` family `lint-fast`, 3 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.tooling.lint-fast.bench-run-sh` | `make` | bash -n bench/run.sh accepts the script (the ci-policy bench step) | `file: make/lint-fast.mk`<br>`target: check-bench-run-sh` | the target exits 0 with no skip in its log | `make/lint-fast.mk:33` |
+| `none.functional.tooling.lint-fast.go-mod-tidy` | `make` | go mod tidy -diff reports no change (the lint-fast tidy step) | `file: make/lint-fast.mk`<br>`target: check-go-mod-tidy` | the target exits 0 with no skip in its log | `make/lint-fast.mk:16` |
+| `none.functional.tooling.lint-fast.wiredtargets` | `make` | go run ./tools/wiredtargets finds every test target wired (the lint-fast wiredtargets step) | `file: make/lint-fast.mk`<br>`target: check-wiredtargets` | the target exits 0 with no skip in its log | `make/lint-fast.mk:29` |
+
 #### `tooling` family `memceiling`, 2 tests
 
 | full name | adapter | checks | inputs | expected result | source |
@@ -5361,6 +5375,13 @@ performance or timing.
 ### Type `lint`
 
 generated or runtime code is clean under the language's strict analyser.
+
+#### `lint` family `lint-fast`, 2 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.lint.lint-fast.gofmt` | `make` | gofmt -l . lists no file (the lint-fast gofmt step) | `file: make/lint-fast.mk`<br>`target: check-gofmt` | the target exits 0 with no skip in its log | `make/lint-fast.mk:7` |
+| `none.functional.lint.lint-fast.modernize` | `make` | modernize 0.23.0 ./... reports nothing (the lint-fast modernize step) | `file: make/lint-fast.mk`<br>`target: check-modernize` | the target exits 0 with no skip in its log | `make/lint-fast.mk:20` |
 
 #### `lint` family `make-c`, 1 test
 
@@ -5424,6 +5445,12 @@ generated or runtime code is clean under the language's strict analyser.
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.functional.lint.make-schema-moo-generated-analyze-strict-gate.schema-moo-generated-analyze-strict-gate` | `make` | make schema-moo-generated-analyze-strict-gate (make/schema-moo-generated-analyze-strict-gate.mk) exits 0 | `file: make/schema-moo-generated-analyze-strict-gate.mk`<br>`target: schema-moo-generated-analyze-strict-gate` | the target exits 0 with no skip in its log | `make/schema-moo-generated-analyze-strict-gate.mk:50` |
+
+#### `lint` family `makefile`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.lint.makefile.errdiscard` | `make` | go run ./tools/errdiscard finds no unexplained dropped error (the lint-fast errdiscard step) | `file: Makefile`<br>`target: errdiscard` | the target exits 0 with no skip in its log | `Makefile:8041` |
 
 ### Type `differential`
 

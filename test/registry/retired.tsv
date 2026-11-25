@@ -119,16 +119,16 @@ schema-squirrel-runs-hostile-corpus.yml	nightly	make	dist-squirrel	ci-plumbing.m
 schema-squirrel-runs-hostile-corpus.yml	nightly	make	schema-squirrel-runs-hostile-corpus-negative-control	plant.squirrel-tools-2.schema-squirrel-runs-hostile-corpus-negative-control	squirrel
 schema-unity-runs-hostile-corpus.yml	corpus	make	schema-unity-runs-hostile-corpus	load-refusal.hostile.announce-bytes-too-large	unity
 schema-unity-runs-hostile-corpus.yml	negative-control	make	schema-unity-runs-hostile-corpus-negative-control	plant.make-schema-unity-runs-hostile-corpus.schema-unity-runs-hostile-corpus-negative-control	unity
-ci-fast.yml	lint-fast	script	gofmt -l .	-	none
-ci-fast.yml	lint-fast	script	go mod tidy -diff	-	none
-ci-fast.yml	lint-fast	script	modernize ./... (pinned 0.23.0)	-	none
-ci-fast.yml	lint-fast	script	go run ./tools/errdiscard	-	none
-ci-fast.yml	lint-fast	script	go run ./tools/wiredtargets	-	none
+ci-fast.yml	lint-fast	make	check-gofmt	lint.lint-fast.gofmt	none
+ci-fast.yml	lint-fast	make	check-go-mod-tidy	tooling.lint-fast.go-mod-tidy	none
+ci-fast.yml	lint-fast	make	check-modernize	lint.lint-fast.modernize	none
+ci-fast.yml	lint-fast	make	errdiscard	lint.makefile.errdiscard	none
+ci-fast.yml	lint-fast	make	check-wiredtargets	tooling.lint-fast.wiredtargets	none
 ci-fast.yml	vet	script	go vet ./...	-	none
 ci-fast.yml	golangci-lint-fast	script	golangci-lint run --allow-parallel-runners (the main module packages)	-	none
-ci-fast.yml	ci-policy	script	bash -n bench/run.sh	-	none
+ci-fast.yml	ci-policy	make	check-bench-run-sh	tooling.lint-fast.bench-run-sh	none
 ci-fast.yml	ci-policy	make	python-tooling-tests	harness-run.makefile.python-tooling-tests	none
-ci-fast.yml	generated-current	make	generated-current	-	none
+ci-fast.yml	generated-current	make	generated-current	harness-run.makefile.generated-current	none
 ci-fast.yml	lang-clean	make	tables-c-zero-cost	-	none
 ci-fast.yml	lang-clean	make	tables-c-clean	-	none
 ci-fast.yml	lang-clean	make	tables-c-soak-compile-modes	-	none
@@ -276,7 +276,7 @@ ci-fast.yml	verify-dart-conformance	script	python3 make/conformance-handoff.py p
 ci-fast.yml	input-family-dart-conformance	make	_conformance-corpus-dart	-	none
 ci-fast.yml	verify-dart-fuzz	make	_verify-dart-fuzz	-	none
 ci-fast.yml	build-cpp-conformance-account	script	python3 make/conformance-handoff.py produce --leg cpp --prebuilt-compiler	-	none
-ci-fast.yml	input-family-cpp-conformance	script	inputaccount -family conformance-corpus -leg cpp (and its canaries)	-	none
+ci-fast.yml	input-family-cpp-conformance	make	check-inputaccount-cpp	tooling.inputaccount.conformance-cpp	none
 ci-fast.yml	input-family-elixir-conformance	script	inputaccount -family conformance-corpus -leg elixir (and its canaries)	-	none
 ci-fast.yml	input-family-merge	script	inputaccount: the conformance-corpus shard records' union holds every input owed	-	none
 ci-fast.yml	conformance-rows	make	conformance-rows-c	-	none
