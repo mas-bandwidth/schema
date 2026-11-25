@@ -17,9 +17,10 @@
 #   walk    schema_json.luau's field-key match never matches the first
 #           declared field: the text READER's two surfaces red (`luau /
 #           json-read`, and `luau / json-hostile`, which reads through the same
-#           match) and nothing else; `json-write`, `wire` and `cook-write`
-#           green, so the break is the text walk's and the matrix localizes it
-#           (I11).
+#           match), and `cook-write` on exactly its shared-blob rows, whose
+#           value is built from its input text (pinned by name), and nothing
+#           else; `json-write` and `wire` green, so the break is the text
+#           walk's and the matrix localizes it (I11).
 #
 # main.luau finds its staged inputs and the generated units by paths relative
 # to itself (../../../build/...), so the sabotaged units run under a MIRROR of
@@ -117,7 +118,7 @@ fi
 red=$(grep -oE '^ *luau / [a-z-]+' "$out/log" | sed 's/^ *luau \/ //' | sort -u | tr '\n' ' ')
 case "$mode" in
 report) want="framing read-into report retain retain-refusal retain-save rewrite " ; green="wire json-read cook-write" ;;
-walk)   want="json-hostile json-read " ; green="wire json-write cook-write" ;;
+walk)   want="cook-write json-hostile json-read " ; green="wire json-write" ;;
 framing) want="framing " ; green="wire report" ;;
 cycle) want="framing " ; green="wire report" ;;
 esac
@@ -148,6 +149,23 @@ if [ "$mode" = report ]; then
 		fi
 	done
 fi
+# the walk sabotage reaches cook-write only through the rows that build a
+# shared blob from their construction input's text (blob_shared, both byte
+# orders: the driver reads that text through FromJson); the cycle sabotage
+# reaches framing only through the rows whose graph closes a cycle. Exactly
+# those rows, by name, so a row the sabotage does not decide stays green.
+pinned() {
+	got=$(grep -oE "^ *luau / $1: [A-Za-z0-9_-]+" "$out/log" | sed "s/.*: //" | LC_ALL=C sort -u | xargs echo)
+	if [ "$got" != "$2" ]; then
+		echo "NEGATIVE CONTROL FAILED: the luau $mode sabotage turned $1 rows [$got] red; it must turn exactly [$2] red" >&2
+		cat "$out/log" >&2
+		exit 1
+	fi
+}
+case "$mode" in
+walk) pinned cook-write "blob_shared blob_shared-be" ;;
+cycle) pinned framing "graph_listnode_unknown_self graph_unknown_to_root graph_unknown_type_pair graph_unknown_type_self node_cycle_mid node_cycle_self node_cycle_to_root" ;;
+esac
 for surface in $green; do
 	if ! grep -qE "^$surface +pass" "$out/log"; then
 		echo "NEGATIVE CONTROL FAILED: the luau $mode sabotage did not leave $surface green" >&2

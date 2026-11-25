@@ -323,13 +323,18 @@ local function surfaceFraming(lines: { { string } })
 					local jr = report()
 					local json = u.json.ToJson(f[4], v, jr)
 					if json == nil then
-						error(f[2] .. ": ToJson refused the value (" .. tostring(jr.reason) .. ")")
+						-- the row answers, and fails by name, rather than ending
+						-- the driver: one row's refused text is that row's red,
+						-- never every framing row's
+						sayText(f[2], text .. "ToJson refused the value (" .. tostring(jr.reason) .. ")\n")
+						continue
 					end
 					text = text .. buffer.tostring(json)
 				end
 				local saved, why = u.save.save(u.S.lookup(f[4]), v)
 				if saved == nil then
-					error(f[2] .. ": save refused the value (" .. tostring(why and why.name) .. ")")
+					sayText(f[2], text .. "save refused the value (" .. tostring(why and why.name) .. ")\n")
+					continue
 				end
 				say(f[2] .. ".wire", saved)
 				sayText(f[2], text)

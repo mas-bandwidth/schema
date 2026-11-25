@@ -64,13 +64,14 @@ conformance-negative-control-luau: build/conformance-harness build/conformance-l
 #                                            rewrite red, wire green)
 # conformance-negative-control-luau-walk     the text walk's field-key match (I11:
 #                                            json-read and json-hostile red,
-#                                            json-write and wire green)
+#                                            cook-write red on its shared-blob
+#                                            rows, json-write and wire green)
 # conformance-negative-control-luau-framing  the id table's 4096-entry bound
 #                                            (docs/LAYERS/1-framing.md: framing
 #                                            red, wire and report green)
 # conformance-negative-control-luau-cycle    the cycle check (docs/SPEC-TABLES.md
-#                                            §3.1, §4: framing red on
-#                                            node_cycle_*, wire and report green)
+#                                            §3.1, §4: framing red on its cycle
+#                                            rows, by name; wire and report green)
 .PHONY: conformance-negative-control-luau-emitter conformance-negative-control-luau-walk conformance-negative-control-luau-framing conformance-negative-control-luau-cycle
 conformance-negative-control-luau-emitter: build/conformance-harness $(LUAU_CONFORMANCE_DRIVER)/units.luau
 	@if [ ! -x "$(LUAU)" ]; then $(MAKE) dist-luau; fi
