@@ -96,7 +96,7 @@ async function main() {
   // §5.3 step 7: the per-record hash check fires before any decode, so the
   // record is refused under its own name and the malformed flag never moves.
   check(
-    n === -1 && r.refused === R.NoLayout && !r.damaged,
+    n === -1 && r.refused === R.NoLayout && !("damaged" in r),
     "REFUSE by name: a record whose hash names no held layout refuses no_layout, and malformed is FALSE"
   );
 

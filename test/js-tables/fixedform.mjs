@@ -263,7 +263,7 @@ function forgedCounts(check, bench, fixed, corpusDir) {
   // refusal that fired on every record would read as a pass below.
   {
     const r = read(oneRecord());
-    check(r.n === 1 && r.report.refused === 0 && !r.report.damaged && r.report.oor === 0,
+    check(r.n === 1 && r.report.refused === 0 && r.report.oor === 0,
       `IDENTITY REFUSE: an untouched record of the reference's corpus reads clean (n=${r.n} refused=${r.report.refused})`);
     // and the record is NOT its defaults, so the reset checks below are not vacuous
     check(deepDiff(r.whole, new bench.FixedTable()) !== null,
@@ -303,7 +303,7 @@ function forgedCounts(check, bench, fixed, corpusDir) {
     const bytes = oneRecord();
     new DataView(bytes.buffer).setInt32(BODY + AT_ENTITIES, 8, true);
     const r = read(bytes);
-    check(r.n === 1 && r.v.entitiesCount === 8 && r.report.refused === 0 && !r.report.damaged && r.report.oor === 0,
+    check(r.n === 1 && r.v.entitiesCount === 8 && r.report.refused === 0 && r.report.oor === 0,
       `IDENTITY REFUSE: a count AT the bound reads and moves no counter (n=${r.n} refused=${r.report.refused})`);
   }
   {
@@ -311,7 +311,7 @@ function forgedCounts(check, bench, fixed, corpusDir) {
     new DataView(bytes.buffer).setInt32(BODY + AT_NAME, 15, true);
     bytes.fill(0x61, BODY + AT_NAME + 4, BODY + AT_NAME + 4 + 15);
     const r = read(bytes);
-    check(r.n === 1 && r.v.playerNameLength === 15 && r.report.refused === 0 && !r.report.damaged && r.report.oor === 0,
+    check(r.n === 1 && r.v.playerNameLength === 15 && r.report.refused === 0 && r.report.oor === 0,
       `IDENTITY REFUSE: a player_name length AT the bound reads and moves no counter (n=${r.n} refused=${r.report.refused})`);
   }
 
@@ -326,7 +326,7 @@ function forgedCounts(check, bench, fixed, corpusDir) {
     const bytes = oneRecord();
     bytes[BODY + AT_HAS_EXTRA] = 1;
     const r = read(bytes);
-    check(r.n === 1 && r.v.hasExtra === true && r.report.refused === 0 && !r.report.damaged && r.report.oor === 0,
+    check(r.n === 1 && r.v.hasExtra === true && r.report.refused === 0 && r.report.oor === 0,
       `IDENTITY REFUSE: a bool byte of 1 reads true and moves no counter (n=${r.n} refused=${r.report.refused})`);
   }
 }
@@ -365,7 +365,7 @@ export function duplicateNeverRaised(check, bench, fixed) {
   // THE CLEAN READ: the form's own writer, read back, raises no repeated.
   {
     const r = read(out);
-    check(r.n === 1 && r.report.refused === 0 && !r.report.damaged && r.report.repeated === 0,
+    check(r.n === 1 && r.report.refused === 0 && r.report.repeated === 0,
       `E9 repeated: a clean fixed read raises no repeated (n ${r.n}, repeated ${r.report.repeated})`);
   }
 
@@ -423,7 +423,7 @@ export function fixedPointShiftBits(check, bench, fixed) {
   };
   const reads = (what, bytes, get, want) => {
     const r = read(bytes);
-    check(r.n === 1 && r.report.refused === 0 && !r.report.damaged && r.report.oor === 0 && get(r.v) === want,
+    check(r.n === 1 && r.report.refused === 0 && r.report.oor === 0 && get(r.v) === want,
       `${what} reads ${want} and moves no counter (n ${r.n}, refused ${r.report.refused}, got ${get(r.v)})`);
   };
   const refuses = (what, bytes) => {
@@ -439,7 +439,7 @@ export function fixedPointShiftBits(check, bench, fixed) {
   // THE POSITIVE CONTROL FIRST: untouched storage is in range and reads.
   {
     const r = read(oneRecord());
-    check(r.n === 1 && r.report.refused === 0 && !r.report.damaged && r.report.oor === 0,
+    check(r.n === 1 && r.report.refused === 0 && r.report.oor === 0,
       `C8 F-SHIFT: an untouched record reads clean (n ${r.n}, refused ${r.report.refused})`);
   }
 
@@ -538,7 +538,7 @@ async function pairedCorpus(check, bench, fixed, corpusDir) {
   const report = new bench.TableFixedReport();
   const n = fixed.FixedTableFixedLoad(values, Count, corpus, corpus.length, plan, report);
   check(n === Count, `fixed form: ${Count} records read (got ${n})`);
-  check(!report.damaged && report.refused === 0, "fixed form: the reference's own file is not refused");
+  check(report.refused === 0, "fixed form: the reference's own file is not refused");
   check(report.unknown === 0 && report.mismatch === 0 && report.oor === 0 && report.widened === 0,
     "fixed form: a same-schema read moves no counter");
 
@@ -944,7 +944,7 @@ function versioning(check, fx1, fx2, fx1home, fx2home) {
 //
 // §5.3 step 1 reads the FORM BYTE BEFORE THE FILE'S LENGTH: a committed form-1
 // file is TEN bytes and a form-2 batch THREE, so a reader that measured first
-// would answer `damaged` for every real file of the two forms it is supposed
+// would answer `truncated` for every real file of the two forms it is supposed
 // to name, and SPEC-TABLES §3.4's promise ("a fixed reader given 1 answers
 // `previous_form`, given 2 answers `message_form_as_file`") would hold for no
 // file anyone has. Step 2 is the twenty-byte minimum and then the seven
@@ -956,9 +956,11 @@ function versioning(check, fx1, fx2, fx1home, fx2home) {
 // a stranger's layout through a compiled plan, and every case here is answered
 // at the header, before a hash is looked up, so none of it is owed to the
 // lineage harness. THE PROBES RUN THE READER, and each asserts three things:
-// the refusal by name (or `damaged`, which has no name), that the joint
-// answer holds (§5.3: a refusal by name never ALSO sets `damaged`), and that
-// not one destination field was written — REFUSE is total.
+// the refusal by name (framing damage included: `truncated` and
+// `reserved_not_zero`, §5.3's refusal table), that the report carries no
+// second answer channel ("There is no `malformed` flag on this form's
+// report", §5.3), and that not one destination field was written — REFUSE is
+// total.
 function formHeaderProbes(check, fx1, fx1home) {
   const R = fx1home.TableFixedRefusal;
 
@@ -996,36 +998,22 @@ function formHeaderProbes(check, fx1, fx1home) {
     poison(values[0]);
     const r = new fx1home.TableFixedReport();
     const n = fx1.FxRootFixedLoad(values, 1, bytes, bytes.length, fx1.FxRootFixedNewPlan(), r);
-    check(n === -1 && r.refused === reason && !r.damaged,
-      `form header: ${what} is ${fx1home.TableFixedRefusalName(reason)}, and damaged does not fire`);
+    check(n === -1 && r.refused === reason && !("damaged" in r),
+      `form header: ${what} is ${fx1home.TableFixedRefusalName(reason)}, and the report has no malformed flag`);
     check(r.unknown === 0 && r.mismatch === 0 && r.widened === 0 && r.oor === 0,
       `form header: ${what} moves no counter`);
     check(untouched(values[0]),
       `form header: ${what} hands the destination back at its declared default`);
   };
 
-  const damagedFile = (what, bytes) => {
-    const values = [new fx1home.FxRoot()];
-    poison(values[0]);
-    const r = new fx1home.TableFixedReport();
-    const n = fx1.FxRootFixedLoad(values, 1, bytes, bytes.length, fx1.FxRootFixedNewPlan(), r);
-    check(n === -1 && r.damaged && r.refused === R.None,
-      `form header: ${what} is damaged, with no other answer claiming success`);
-    check(r.unknown === 0 && r.mismatch === 0 && r.widened === 0 && r.oor === 0,
-      `form header: ${what} moves no counter`);
-    check(untouched(values[0]),
-      `form header: ${what} hands the destination back at its declared default`);
-  };
-
-  // 1. ZERO BYTES: there is no first byte to earn a name, so the residue is
-  //    `damaged` and no reason is claimed.
-  damagedFile("zero bytes", new Uint8Array(0));
+  // 1. ZERO BYTES: there is no first byte to read, `truncated` (§5.3).
+  refusedByName("zero bytes", new Uint8Array(0), R.Truncated);
 
   // 2. A TEN-byte form-1 file: the form byte earns `previous_form` BEFORE the
-  //    length is measured. Measured first it would be `damaged`.
+  //    length is measured. Measured first it would be `truncated`.
   refusedByName("a ten-byte form-1 file", new Uint8Array([1, 0, 0, 0, 0, 0, 0, 0, 0, 0]), R.PreviousForm);
 
-  // 3. A THREE-byte form-2 batch: `message_form_as_file`, not `damaged`.
+  // 3. A THREE-byte form-2 batch: `message_form_as_file`, not `truncated`.
   refusedByName("a three-byte form-2 batch", new Uint8Array([2, 1, 0]), R.MessageFormAsFile);
 
   // 4. FORM BYTE 0 with the otherwise-valid fixture tail: no form defines it,
@@ -1037,11 +1025,21 @@ function formHeaderProbes(check, fx1, fx1home) {
   }
 
   // 5. A RESERVED BYTE NONZERO on an otherwise-valid form-3 file: the seven
-  //    reserved bytes are REFUSED, not ignored — `damaged`, no name.
+  //    reserved bytes are REFUSED, not ignored — `reserved_not_zero`.
   {
     const bad = Uint8Array.from(w1);
     bad[3] = 1;
-    damagedFile("reserved byte 3 set nonzero", bad);
+    refusedByName("reserved byte 3 set nonzero", bad, R.ReservedNotZero);
+  }
+
+  // 6. A FORM-3 FILE UNDER THE 20-BYTE HEADER: `truncated`, by name.
+  refusedByName("a ten-byte form-3 file", Uint8Array.from(w1.subarray(0, 10)), R.Truncated);
+
+  // 7. A RAGGED TAIL, rest mod record_bytes != 0: `truncated`, by name.
+  {
+    const bad = new Uint8Array(w1.length + 1);
+    bad.set(w1);
+    refusedByName("a ragged tail", bad, R.Truncated);
   }
 }
 
@@ -1093,8 +1091,8 @@ function refuseTotalProbe(check, fx1, fx1home) {
   const r = new fx1home.TableFixedReport();
   const n = fx1.FxRootFixedLoad(values, 1, bad, bad.length, plan, r);
 
-  check(n === -1 && r.refused === R.NoLayout && !r.damaged,
-    "REFUSE is total: a record whose hash names no held layout refuses no_layout, and damaged does not fire");
+  check(n === -1 && r.refused === R.NoLayout,
+    "REFUSE is total: a record whose hash names no held layout refuses no_layout, and nothing else");
   check(r.unknown === 0 && r.mismatch === 0 && r.oor === 0 && r.widened === 0 && r.repeated === 0,
     "REFUSE is total: no counter moves");
   check(plan.image.every((b) => b === 0x5A),
@@ -1759,7 +1757,7 @@ function referenceOracleIdentity(check, fx1, fx1home, oracleDir) {
     const v = [new fx1home.FxRoot(), new fx1home.FxRoot()];
     const r = new fx1home.TableFixedReport();
     const n = fx1.FxRootFixedLoad(v, 2, file, file.length, fx1.FxRootFixedNewPlan(), r);
-    check(n === 2 && !r.damaged, `reference oracle: fx1.bin holds two records, got ${n}`);
+    check(n === 2 && r.refused === 0, `reference oracle: fx1.bin holds two records, got ${n}`);
     if (n !== 2) { return; }
 
     // the values the reference states, checked INDEPENDENTLY of the bytes: a
@@ -1925,10 +1923,11 @@ function liveCountSlack(check, fx1, fx1home) {
 // a union tag, a nested body's position. Every byte of a form-3 file is flipped
 // to a hostile value here and handed to THIS build's identity reader. UNDER THE
 // STRICT READ (docs/plans/strict-only.md) there are exactly TWO answers: a CLEAN
-// read — n records, nothing refused, nothing damaged, no counter moved, every
+// read — n records, nothing refused, no counter moved, every
 // landed field inside the bound the schema declares — or a REFUSAL, n = -1 with
-// a reason named or `damaged` set (or both). A throw, a negative read with
-// neither, a landed read that moved `oor`, or an out-of-bound field is a third
+// a reason named — framing damage included, which refuses `truncated` or
+// `reserved_not_zero` by name (§5.3: "There is no `malformed` flag on this
+// form's report"). A throw, a negative read with no name, a landed read that moved `oor`, or an out-of-bound field is a third
 // answer, which is what this refuses.
 //
 // REFUSE IS TOTAL, and the sweep holds it on every refusal: the destination is
@@ -1975,8 +1974,8 @@ export function hostileByteSweep(check, fx1, fx1home) {
   {
     const r = new fx1home.TableFixedReport();
     const n = fx1.FxRootFixedLoad(lawful, 1, file, file.length, fx1.FxRootFixedNewPlan(), r);
-    check(n === 1 && !r.damaged && r.refused === 0 && r.oor === 0 && r.widened === 0,
-      `P3 hostile bytes: the lawful record reads clean (n ${n}, refused ${r.refused}, damaged ${r.damaged}, oor ${r.oor})`);
+    check(n === 1 && r.refused === 0 && r.oor === 0 && r.widened === 0,
+      `P3 hostile bytes: the lawful record reads clean (n ${n}, refused ${r.refused}, oor ${r.oor})`);
     check(fx1HostileIssue(lawful[0]) === null,
       `P3 hostile bytes: the lawful record lands every field in bound (${fx1HostileIssue(lawful[0])})`);
     check(deepDiff(lawful[0], fresh) !== null,
@@ -1993,7 +1992,7 @@ export function hostileByteSweep(check, fx1, fx1home) {
   };
 
   const POISON = [0x00, 0x01, 0x02, 0x7f, 0x80, 0xff];
-  let named = 0, damagedOnly = 0, landed = 0, threw = 0, divergences = 0;
+  let named = 0, landed = 0, threw = 0, divergences = 0;
   const seen = new Map(); // refusal name -> count
   const fail = (msg) => { divergences++; if (divergences <= 20) { check(false, msg); } };
   for (let at = 0; at < file.length; at++) {
@@ -2013,17 +2012,16 @@ export function hostileByteSweep(check, fx1, fx1home) {
         continue;
       }
       if (n < 0) {
-        if (r.refused === 0 && !r.damaged) {
-          fail(`P3 hostile bytes: ${where} answered a THIRD way: n ${n} with no reason and no damage`);
+        if (r.refused === 0) {
+          fail(`P3 hostile bytes: ${where} answered a THIRD way: n ${n} with no reason named`);
           continue;
         }
-        if (r.refused !== 0) {
-          named++;
-          const name = fx1home.TableFixedRefusalName(r.refused);
-          seen.set(name, (seen.get(name) || 0) + 1);
-        } else {
-          damagedOnly++;
+        if ("damaged" in r) {
+          fail(`P3 hostile bytes: ${where} grew a malformed flag the fixed form's report does not have (§5.3)`);
         }
+        named++;
+        const name = fx1home.TableFixedRefusalName(r.refused);
+        seen.set(name, (seen.get(name) || 0) + 1);
         if (r.oor !== 0 || r.widened !== 0 || r.unknown !== 0 || r.mismatch !== 0 || r.repeated !== 0) {
           fail(`P3 hostile bytes: ${where} refused and still moved a counter (oor ${r.oor}, widened ${r.widened})`);
         }
@@ -2034,8 +2032,8 @@ export function hostileByteSweep(check, fx1, fx1home) {
         continue;
       }
       landed++;
-      if (n !== 1 || r.refused !== 0 || r.damaged || r.oor !== 0 || r.widened !== 0) {
-        fail(`P3 hostile bytes: ${where} read n ${n} but is not clean (refused ${r.refused}, damaged ${r.damaged}, oor ${r.oor}, widened ${r.widened})`);
+      if (n !== 1 || r.refused !== 0 || r.oor !== 0 || r.widened !== 0) {
+        fail(`P3 hostile bytes: ${where} read n ${n} but is not clean (refused ${r.refused}, oor ${r.oor}, widened ${r.widened})`);
       }
       const issue = fx1HostileIssue(back[0]);
       if (issue !== null) {
@@ -2043,19 +2041,19 @@ export function hostileByteSweep(check, fx1, fx1home) {
       }
     }
   }
-  // NOT VACUOUS: each answer must actually have been SEEN — a clean read, a
-  // refusal by name, a damaged read — and each refusal the strict read owes in
-  // place of a clamp must have fired on this file at least once.
+  // NOT VACUOUS: each answer must actually have been SEEN — a clean read and a
+  // refusal by name — and each refusal the strict read owes in place of a
+  // clamp, and the framing refusal a flipped reserved byte owes, must have
+  // fired on this file at least once.
   check(named > 0, `P3 hostile bytes: the sweep saw a named refusal (${named})`);
-  check(damagedOnly > 0, `P3 hostile bytes: the sweep saw a damaged read (${damagedOnly})`);
   check(landed > 0, `P3 hostile bytes: the sweep saw clean reads (${landed})`);
-  for (const reason of [R.CountOverBound, R.LengthOverBound, R.OutOfRange]) {
+  for (const reason of [R.CountOverBound, R.LengthOverBound, R.OutOfRange, R.ReservedNotZero]) {
     const name = fx1home.TableFixedRefusalName(reason);
     check((seen.get(name) || 0) > 0, `P3 hostile bytes: the sweep saw the strict refusal ${name} (${seen.get(name) || 0})`);
   }
   check(divergences === 0, `P3 hostile bytes: ${divergences} divergences`);
   console.log(`P3 hostile bytes: ${file.length} bytes x ${POISON.length} poisons — ${named} refused by name ` +
-    `(${[...seen].map(([k, c]) => `${k} ${c}`).join(", ")}), ${damagedOnly} damaged, ${landed} clean reads, ` +
+    `(${[...seen].map(([k, c]) => `${k} ${c}`).join(", ")}), ${landed} clean reads, ` +
     `${threw} throws, ${divergences} divergences`);
 }
 
@@ -2146,7 +2144,7 @@ function bytesArrayConventionIdentity(check, fx1, fx1home) {
   const ri = new fx1home.TableFixedReport();
   check(fx1.FxRootFixedLoad(ident, 1, w1, w1.length, fx1.FxRootFixedNewPlan(), ri) === 1,
     "bytes(N) identity: the identity path reads the record");
-  check(!ri.damaged && ri.refused === 0,
+  check(ri.refused === 0,
     "bytes(N) identity: the identity read moves no refusal counter");
   check(ident[0].blobLength === 4,
     `bytes(N) identity: the used length lands, got ${ident[0].blobLength}`);
@@ -2354,7 +2352,7 @@ function optionalBytes(check, o, dir) {
     const r = new fo1home.TableFixedReport();
     check(fo1.OptRootFixedLoad(back, 4, ref, ref.length, fo1.OptRootFixedNewPlan(), r) === 4,
       "optionals: the reference's four records read");
-    check(r.oor === 0 && r.unknown === 0 && r.mismatch === 0 && !r.damaged && r.refused === 0,
+    check(r.oor === 0 && r.unknown === 0 && r.mismatch === 0 && r.refused === 0,
       "optionals: a clean read of the reference's own corpus moves no counter");
 
     check(back[0].optPresent && back[0].opt.v === 11 && back[0].opt.tagLength === 2 &&
@@ -2603,7 +2601,7 @@ export function rangedScalarClamp(check, o) {
   // IN RANGE: the value stands, the neighbour lands, nothing moves.
   const reads = (planted) => {
     const { n, v, r } = read(planted);
-    check(n === 1 && r.refused === 0 && !r.damaged && r.oor === 0 && v.plain === planted,
+    check(n === 1 && r.refused === 0 && r.oor === 0 && v.plain === planted,
       `C7 RANGED: a value of ${planted} reads as itself and moves no counter (n ${n}, refused ${r.refused}, got ${v.plain})`);
     check(v.tail === 203,
       `C7 RANGED: a value of ${planted} leaves the neighbour behind it untouched (got ${v.tail})`);

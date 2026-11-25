@@ -1,17 +1,20 @@
 package jstable
 
 // fixed_form_under_20_bytes is F7 of schema#876: a file SHORTER than the fixed
-// header is "malformed", and no leg tests it — its matrix row is GGGGGGGGG, a
-// gap on all nine legs. "malformed" and "refused" are the reader's TWO answers
-// and are NEVER both set: "refused" plus "reason" is one answer, "malformed" is
-// the other, and the counters are a third thing again. A short file is the
-// RESIDUE, not a refusal by name, so "refused" stays false and "reason" stays
-// UNTOUCHED — asserting "layout_malformed" here would assert the OPPOSITE of the
-// contract: that name is a KNOWN hash whose layout bytes lie, never a file with
-// no header. The destination is proved untouched with a sentinel, not assumed,
-// and a FRESH report is compared whole. CONTROL 2 (the emitter's short-file
-// guard disabled) turns this row RED with a WRONG REPORT — refused=layout_malformed,
-// malformed=false — not a thrown exception: array reads return undefined, not panic.
+// header REFUSES, recommended name `truncated`, with nothing landed
+// (docs/FIXED-FORM-ALGORITHM.md §5.3's refusal table: "no bytes at all — there
+// is no first byte to read | truncated" and "shorter than 20 bytes, the form
+// byte having already answered | truncated"; "There is no `malformed` flag on
+// this form's report"). The verdict is the cross-language answer and the name
+// is this leg's diagnostic. Asserting `layout_malformed` here would be wrong:
+// that name is a KNOWN hash whose layout bytes lie, never a file with no
+// header. The destination is proved untouched with a sentinel, not assumed,
+// and the report is compared WHOLE against a fresh report whose only change is
+// refused = Truncated: no counter moves, no layout hash, no second channel.
+//
+// PLANT: the emitter's short-file guard `report.refused = TableFixedRefusal.Truncated`
+// put back to `report.damaged = true` turns this row RED (refused=none and the
+// whole-report compare differs).
 
 import (
 	"fmt"
@@ -35,7 +38,7 @@ const plan = TNewPlan(4096, 4096);
 
 const first = new TableFixedReport();
 const clean = TLoad(back, back.length, data, data.length, plan, first);
-if (clean < 1 || first.damaged || first.refused !== 0) {
+if (clean < 1 || first.refused !== 0) {
   fail("the corpus file must read cleanly first: n=" + clean + " " + reason(first));
 }
 
@@ -43,24 +46,22 @@ const SENT = 0x5A5A5A5A;
 for (let k = 0; k < 8; k++) { back[k].X = SENT; back[k].Y = SENT; back[k].Z = SENT; }
 
 const fresh = new TableFixedReport();
-fresh.damaged = true;
+fresh.refused = TableFixedRefusal.Truncated;
 
 for (let k = 0; k < TableFixedHeaderBytes + TableFixedLayoutHeaderBytes; k++) {
   const short = data.subarray(0, k);
   const report = new TableFixedReport();
   const n = TLoad(back, back.length, short, short.length, plan, report);
   if (n !== -1) { fail("k=" + k + ": a file shorter than the header returns -1, got n=" + n); }
-  if (report.damaged !== true) {
-    fail("k=" + k + ": a file shorter than the header is malformed=true, got malformed=" + report.damaged);
+  if (report.refused !== TableFixedRefusal.Truncated) {
+    fail("k=" + k + ": a file shorter than the header refuses truncated, got refused=" + TableFixedRefusalName(report.refused));
   }
-  if (report.refused !== TableFixedRefusal.None) {
-    fail("k=" + k + ": a short file is the residue, not a refusal: refused=" + TableFixedRefusalName(report.refused));
+  if (TableFixedRefusalName(report.refused) !== "truncated") {
+    fail("k=" + k + ": the name is spelled truncated, got " + TableFixedRefusalName(report.refused));
   }
-  if (TableFixedRefusalName(report.refused) !== "none") {
-    fail("k=" + k + ": reason stays untouched, got " + TableFixedRefusalName(report.refused));
-  }
+  if ("damaged" in report) { fail("k=" + k + ": the fixed form's report has no malformed flag (§5.3): damaged=" + report.damaged); }
   if (show(report) !== show(fresh)) {
-    fail("k=" + k + ": the report is not the fresh report plus malformed=true: " + show(report));
+    fail("k=" + k + ": the report is not the fresh report plus refused=truncated: " + show(report));
   }
   for (let r = 0; r < 8; r++) {
     if (back[r].X !== SENT || back[r].Y !== SENT || back[r].Z !== SENT) {
@@ -72,6 +73,6 @@ for (let k = 0; k < TableFixedHeaderBytes + TableFixedLayoutHeaderBytes; k++) {
 
 	out, err := jsRunVersionProbe(t, node, older, nil, 0, table, body)
 	if err != nil {
-		t.Fatalf("a file under the header is malformed, not refused: %v\n%s", err, out)
+		t.Fatalf("a file under the header refuses truncated: %v\n%s", err, out)
 	}
 }

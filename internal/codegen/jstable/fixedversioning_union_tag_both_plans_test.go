@@ -55,7 +55,7 @@ func TestFixedVersioningUnionTagBothPlans(t *testing.T) {
 	// and never the writer's 1; the neighbour seq stays 15; no other counter
 	// moves.
 	landing := `
-if (n !== -1 || r.refused !== TableFixedRefusal.OutOfRange || r.damaged || r.oor !== 0) {
+if (n !== -1 || r.refused !== TableFixedRefusal.OutOfRange || ("damaged" in r) || r.oor !== 0) {
   fail("a forged tag past the writer's arm set refuses out_of_range: n=" + n + " " + reason(r));
 }
 if (r.unknown !== 0 || r.mismatch !== 0 || r.widened !== 0 || r.repeated !== 0) {

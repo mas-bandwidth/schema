@@ -140,11 +140,11 @@ export const TableFixedRefusal = globalThis.Object.freeze({
   LayoutTooDeep: 12,
   PlanTooLarge: 13,     // a layout whose compiled plan does not fit the caller's storage
   BatchTooLarge: 14,    // more records than the caller's capacity
-  // RETIRED (docs/FIXED-FORM-ALGORITHM.md §5.3 step 5, SPEC-TABLES §21.3,
-  // decided 2026-11-03): nothing in the lineage proves a hash newer, so no read
-  // answers layout_newer. It keeps its ordinal so no other number shifts; a
-  // step-5 miss is LayoutUnknown, below.
-  LayoutNewer: 15,
+  // 15 IS RESERVED AND NAMES NOTHING: layout_newer is RETIRED
+  // (docs/FIXED-FORM-ALGORITHM.md §5.3 step 5, SPEC-TABLES §21.3, decided
+  // 2026-11-03): nothing in the lineage proves a hash newer, so no read
+  // answers it, and the name is gone from this table. The ordinal stays
+  // unused so no other number shifts; a step-5 miss is LayoutUnknown, below.
   // Below the floor: a layout this build served and has retired — upgrade the
   // client (§5.3 step 6).
   LayoutUnsupported: 16,
@@ -178,6 +178,14 @@ export const TableFixedRefusal = globalThis.Object.freeze({
   // reports THE FILE'S hash and nothing else. Appended, so no ordinal above
   // moves (§5.9 #14: the names are the contract, the integers each leg pair's).
   LayoutUnknown: 25,
+  // FRAMING DAMAGE IS A REFUSAL LIKE ANY OTHER, EACH BY ITS OWN NAME
+  // (docs/FIXED-FORM-ALGORITHM.md §5.3's refusal table: no first byte, a file
+  // under 20 bytes, no record, a ragged tail 'rest mod record_bytes != 0' are
+  // 'truncated'; a nonzero reserved byte is 'reserved_not_zero'). "There is no
+  // 'malformed' flag on this form's report": the verdict is refused, and these
+  // are its recommended names. Appended, so no ordinal above moves.
+  Truncated: 26,
+  ReservedNotZero: 27,
 });
 
 // THE REFUSAL'S OWN NAME, matching the C++ reference's spellings exactly.
@@ -198,7 +206,6 @@ export function TableFixedRefusalName(r) {
     case TableFixedRefusal.LayoutTooDeep: return "layout_too_deep";
     case TableFixedRefusal.PlanTooLarge: return "plan_too_large";
     case TableFixedRefusal.BatchTooLarge: return "batch_too_large";
-    case TableFixedRefusal.LayoutNewer: return "layout_newer";
     case TableFixedRefusal.LayoutUnsupported: return "layout_unsupported";
     case TableFixedRefusal.TextIllFormed: return "text_ill_formed";
     case TableFixedRefusal.NonFiniteFloat: return "non_finite_float";
@@ -209,15 +216,18 @@ export function TableFixedRefusalName(r) {
     case TableFixedRefusal.WireDamaged: return "wire_damaged";
     case TableFixedRefusal.KindMismatch: return "kind_mismatch";
     case TableFixedRefusal.LayoutUnknown: return "layout_unknown";
+    case TableFixedRefusal.Truncated: return "truncated";
+    case TableFixedRefusal.ReservedNotZero: return "reserved_not_zero";
     default: return "???";
   }
 }
 
 // A REPORT is §4's six counters and the refusal beside them. The caller owns
-// it and the codec never makes one.
+// it and the codec never makes one. THERE IS NO 'malformed' FLAG ON THIS
+// FORM'S REPORT (docs/FIXED-FORM-ALGORITHM.md §5.3): framing damage refuses
+// by name like every other refusal, so 'refused' is the one answer channel.
 export class TableFixedReport {
   constructor() {
-    this.damaged = false;
     this.refused = 0;
     this.unknown = 0;
     this.mismatch = 0;
@@ -239,7 +249,6 @@ export class TableFixedReport {
 }
 
 export function TableFixedResetReport(report) {
-  report.damaged = false;
   report.refused = 0;
   report.unknown = 0;
   report.mismatch = 0;
