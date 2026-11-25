@@ -149,3 +149,28 @@ func TestAStartBesideALiveShardRefuses(t *testing.T) {
 		t.Fatalf("the live shard's temporary files went: %v", err)
 	}
 }
+
+// TestRereadRefusesAShardThatHoldsItsLock: a shard that still holds its
+// out directory may be writing results; reread waits for it to let go.
+//
+// Serial, not parallel, for the reason TestOneShardAtATimeInAnOutDirectory
+// gives.
+func TestRereadRefusesAShardThatHoldsItsLock(t *testing.T) {
+	out := t.TempDir()
+	for p, body := range map[string]string{"manifest.json": `{"run":"r","shard":"h-1"}`, doneFile: "", resultsFile: ""} {
+		if err := os.WriteFile(out+"/"+p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	unlock, err := lockOut(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := reread(out, io.Discard); err == nil || !strings.Contains(err.Error(), "another shard runs") {
+		t.Errorf("reread of a held shard: %v", err)
+	}
+	unlock()
+	if err := reread(out, io.Discard); err != nil {
+		t.Errorf("reread of a shard let go: %v", err)
+	}
+}

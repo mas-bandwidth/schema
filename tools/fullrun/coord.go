@@ -753,6 +753,8 @@ func part(units []Unit, k, n int) ([]Unit, error) {
 	if n < 1 || k < 1 || k > n {
 		return nil, fmt.Errorf("--part %d/%d: want 1 <= i <= n", k, n)
 	}
+	// a part runs on a Linux runner: a unit built for another GOOS is in no
+	// part, and the merge reports it NOT RUN, naming the bench it needs
 	bins := make([]Bench, n)
 	for i := range bins {
 		bins[i] = Bench{Host: fmt.Sprintf("part%d", i+1), Shards: 1}
