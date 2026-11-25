@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -18,6 +17,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirreltable"
 	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -41,7 +41,7 @@ func fixedCorpus(t *testing.T) string {
 	}
 	corpus := filepath.Join(root, "build", "fixedform-corpus")
 	fixedCorpusBuild.once.Do(func() {
-		cmd := exec.Command("make", "--no-print-directory", "tables-fixedform-corpus")
+		cmd := testproc.Command(t, "make", "--no-print-directory", "tables-fixedform-corpus")
 		cmd.Dir = root
 		fixedCorpusBuild.out, fixedCorpusBuild.err = cmd.CombinedOutput()
 	})
