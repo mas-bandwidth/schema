@@ -398,3 +398,7 @@ a TLA+ model checks under TLC, or a code trace is a behaviour of the spec.
 ## Declared unrepresentable
 
 None: every language answers every test of tier `nightly`.
+
+## Intrinsic to one language
+
+None of tier `nightly`.

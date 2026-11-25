@@ -62,7 +62,7 @@ var conformance = harness{
 // wireFuzzHarness is the wire fuzz's (make/wire-fuzz-rows.mk): make
 // wire-fuzz-deps-<lang> builds the leg's wire-fuzz driver, and make
 // wire-fuzz-adapter-<lang> answers the families wire-fuzz-vector (every
-// pinned vector, replayed exactly) and wire-fuzz (every arm at every seed)
+// pinned vector, replayed exactly) and wire-fuzz (every arm at the run's seed)
 // in every configuration of the leg (test/conformance/harness/wirefuzz_registry.go).
 var wireFuzzHarness = harness{
 	Name:  "wire-fuzz",
@@ -79,15 +79,36 @@ var wireFuzzFamilies = map[string]bool{"wire-fuzz": true, "wire-fuzz-vector": tr
 // bitphase_rows.go), which the same --adapter answers.
 const bitPhaseFamily = "bit-phase"
 
-// harnessFor is the harness that runs a family, if one does. Which languages
-// answer a family is the registry's (its lang rows and unrepresentable
-// declarations), never the harness's.
-func harnessFor(family string) (harness, bool) {
+// bomEntry is the BOM entry gate's adapter (test/conformance/bom-entry
+// --adapter): the harness's adapter mode over
+// testdata/conformance/tables/bom-entry/MANIFEST.txt, the leg listing its
+// json-hostile surface alone. Its rows are the bom-entry family
+// (test/conformance/harness/adapter.go, bomFamily).
+var bomEntry = harness{
+	Name: "bom-entry",
+	Build: func(lang string) [][]string {
+		return [][]string{{"make", "conformance-leg-" + lang}}
+	},
+	Cmd: func(lang, work string) []string {
+		return []string{"sh", "test/conformance/bom-entry", "--adapter", lang, work}
+	},
+}
+
+// harnessFor is the harness that runs a test, if one does: a union row's
+// (its inputs name each language's Go test) is goUnion, and every other
+// row's is its family's. Which languages answer a family is the registry's
+// (its lang rows and unrepresentable declarations), never the harness's.
+func harnessFor(t testreg.Test) (harness, bool) {
+	family := t.Family
 	switch {
+	case isUnion(t):
+		return goUnion, true
 	case family == alignArrays.Name || family == bitPhaseFamily:
 		return alignArrays, true
 	case strings.HasPrefix(family, conformanceFamilyPrefix):
 		return conformance, true
+	case family == bomEntry.Name:
+		return bomEntry, true
 	case family == nameBuild.Name:
 		return nameBuild, true
 	case wireFuzzFamilies[family]:
@@ -164,7 +185,7 @@ type harnessAdapter struct {
 }
 
 func (a *harnessAdapter) Answers(t testreg.Test) bool {
-	_, ok := harnessFor(t.Family)
+	_, ok := harnessFor(t)
 	return ok && t.PerLang()
 }
 
@@ -174,7 +195,7 @@ func (a *harnessAdapter) Run(ctx context.Context, lang string, instances []testr
 	byHarness := map[string][]testreg.Instance{}
 	var names []string
 	for _, inst := range instances {
-		h, ok := harnessFor(inst.Test.Family)
+		h, ok := harnessFor(inst.Test)
 		if !ok {
 			return nil, fmt.Errorf("%s: no harness for family %s", inst.Full, inst.Test.Family)
 		}
@@ -185,7 +206,7 @@ func (a *harnessAdapter) Run(ctx context.Context, lang string, instances []testr
 	}
 	var all []testreg.Result
 	for _, name := range names {
-		h, _ := harnessFor(byHarness[name][0].Test.Family)
+		h, _ := harnessFor(byHarness[name][0].Test)
 		fam := h.Name
 		for _, step := range h.Build(lang) {
 			if err := a.build.run(ctx, step); err != nil {

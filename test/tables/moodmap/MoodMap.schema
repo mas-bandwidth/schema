@@ -1,0 +1,18 @@
+package tblmoodmap
+
+// FL-19, the map form (docs/SPEC-TABLES.md §2.15 and §16.2): a map VALUE that
+// names a deprecated variant reads as the value default, None, as an array
+// element does (tables/examples, Moods). The case is
+// sp-enum-elem-deprecated-map in testdata/conformance/tables/MANIFEST.txt. It
+// is a unit of its own so that its root re-locks no unit another case pins.
+enum Mood
+{
+    Calm
+    Old | deprecated
+    Fierce
+}
+
+table MoodMap
+{
+    by map[string(8)]Mood
+}
