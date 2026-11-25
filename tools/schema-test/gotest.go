@@ -87,6 +87,7 @@ type goTestInputs struct {
 	Test    string `json:"test"`
 	// Subtest is one subtest of Test, as go test names it. A space in the
 	// t.Run argument is an underscore in that name. Empty means the top-level test.
+	// Set, the row's verdict is that subtest's own (gotest_case.go).
 	Subtest string `json:"subtest,omitempty"`
 	// Files are the committed data files the test reads (a case folder it
 	// replays): the registry indexes them where they are
@@ -115,8 +116,8 @@ func goTestInputsOf(t testreg.Test) (goTestInputs, error) {
 	if in.Make != "" && !makeTarget.MatchString(in.Make) {
 		return in, fmt.Errorf("inputs: make wants one make target, got %q", in.Make)
 	}
-	if in.Subtest != "" && (strings.Contains(in.Subtest, "/") || strings.TrimSpace(in.Subtest) != in.Subtest) {
-		return in, fmt.Errorf("inputs: subtest wants one subtest name, got %q", in.Subtest)
+	if in.Subtest != "" && (strings.TrimSpace(in.Subtest) != in.Subtest || strings.ContainsAny(in.Subtest, "/\r\n")) {
+		return in, fmt.Errorf("inputs: subtest wants one Go subtest name, got %q", in.Subtest)
 	}
 	return in, nil
 }
@@ -226,6 +227,7 @@ func (a *goTestAdapter) Run(ctx context.Context, _ string, instances []testreg.I
 		return nil, err // a build the deadline cut short is the deadline's
 	}
 	calls := goTestCalls{}
+	var cases []goTestCase     // rows that name a subtest (gotest_case.go)
 	var unrun []testreg.Result // rows reading a build that failed, or naming a data file the tree does not hold
 	for i, inst := range instances {
 		// the failed build first: a data file it would have made is not
@@ -238,14 +240,15 @@ func (a *goTestAdapter) Run(ctx context.Context, _ string, instances []testreg.I
 			unrun = append(unrun, testreg.Result{Instance: inst.Full, Verdict: testreg.Fail, Reason: why})
 			continue
 		}
-		name := ins[i].Test
 		if ins[i].Subtest != "" {
-			name = ins[i].Test + "/" + ins[i].Subtest
+			cases = append(cases, goTestCase{in: ins[i], inst: inst})
+			continue
 		}
-		calls.add(goTestPackage{pkg: ins[i].Package}, name, inst, a.callBudget())
+		calls.add(goTestPackage{pkg: ins[i].Package}, ins[i].Test, inst, a.callBudget())
 	}
 	res, err := a.runCalls(ctx, calls)
-	return append(res, unrun...), err
+	cres, cerr := a.runGoTestCases(ctx, cases)
+	return append(append(res, cres...), unrun...), errors.Join(err, cerr)
 }
 
 // goTestPackage is one go test invocation's package and its build tags.

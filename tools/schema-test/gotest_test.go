@@ -510,7 +510,7 @@ func TestASubtestRowTakesThatSubtestsVerdict(t *testing.T) {
 		t.Fatalf("a skipped subtest: %+v", got["skip"])
 	}
 
-	root := t.TempDir()
+	root := noNeedsRoot(t)
 	for name, src := range map[string]string{
 		"go.mod":      "module x\n\ngo 1.25\n",
 		"p/a_test.go": "package p\n\nimport \"testing\"\n\nfunc TestP(t *testing.T) {}\n",

@@ -236,6 +236,10 @@ func Covered(reg *testreg.Registry) (map[string]string, []string) {
 			}
 			// the parent row claims the top-level test. A row that names a
 			// subtest claims that subtest, so the two are not the same run.
+			if in.Subtest != "" && (strings.TrimSpace(in.Subtest) != in.Subtest || strings.ContainsAny(in.Subtest, "/\r\n")) {
+				problems = append(problems, fmt.Sprintf("%s:%d: %s names subtest %q, which is not one Go subtest name", reg.Path, t.Line, t.Key, in.Subtest))
+				continue
+			}
 			name := in.Test
 			if in.Subtest != "" {
 				name = in.Test + "/" + in.Subtest
