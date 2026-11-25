@@ -24,13 +24,18 @@ import (
 
 // goTestAdapter runs language-free Go tests: a test whose inputs are
 // {"package": "./internal/x", "test": "TestY"} is one top-level Go test.
+// A row that also names "subtest" is that subtest of the test.
 //
 // It batches by package: `go test -json -run '^(A|B|...)$'` per package, cut
 // into calls of at most callBudget measured seconds (so no call outweighs
 // its shard), several packages at once and a package's calls one after
 // another, each given what is left of the driver's deadline as -timeout,
-// and maps every event to its row by the test's full name. A go test that
-// exits non-zero with every test passed fails its rows (packageVerdict).
+// and maps every event to its row by the test's full name. A row with no
+// subtest is that top-level test, and a subtest's events count against it
+// (goTestResults). A row that names a subtest runs as `-run '^T$/^(sub)$'`
+// and takes that subtest's own pass or fail (goTestSubtestResults); a parent
+// event does not flip it. A go test that exits non-zero with every top-level
+// test passed fails those rows (packageVerdict).
 // A package in a module of its own (a go.mod below the root) runs
 // from that module's directory. A row whose test is not in its package's
 // source is MISSING (Answers); a row whose test is in the source but never
@@ -74,6 +79,9 @@ func newGoTestAdapterBuilding(log io.Writer, root string, jobs int, build func(c
 type goTestInputs struct {
 	Package string `json:"package"`
 	Test    string `json:"test"`
+	// Subtest is one subtest of Test, as go test names it. A space in the
+	// t.Run argument is an underscore in that name. Empty means the top-level test.
+	Subtest string `json:"subtest,omitempty"`
 	// Files are the committed data files the test reads (a case folder it
 	// replays): the registry indexes them where they are
 	// (internal/testreg/extract, Indexed).
@@ -100,6 +108,9 @@ func goTestInputsOf(t testreg.Test) (goTestInputs, error) {
 	}
 	if in.Make != "" && !makeTarget.MatchString(in.Make) {
 		return in, fmt.Errorf("inputs: make wants one make target, got %q", in.Make)
+	}
+	if in.Subtest != "" && (strings.Contains(in.Subtest, "/") || strings.TrimSpace(in.Subtest) != in.Subtest) {
+		return in, fmt.Errorf("inputs: subtest wants one subtest name, got %q", in.Subtest)
 	}
 	return in, nil
 }
@@ -201,7 +212,11 @@ func (a *goTestAdapter) Run(ctx context.Context, _ string, instances []testreg.I
 			absent = append(absent, testreg.Result{Instance: inst.Full, Verdict: testreg.Fail, Reason: why})
 			continue
 		}
-		calls.add(goTestPackage{pkg: in.Package}, in.Test, inst, a.callBudget())
+		name := in.Test
+		if in.Subtest != "" {
+			name = in.Test + "/" + in.Subtest
+		}
+		calls.add(goTestPackage{pkg: in.Package}, name, inst, a.callBudget())
 	}
 	res, err := a.runCalls(ctx, calls)
 	return append(res, absent...), err
@@ -266,7 +281,12 @@ func (a *goTestAdapter) runCalls(ctx context.Context, calls goTestCalls) ([]test
 	return out, errors.Join(errs...)
 }
 
-// runPackage runs one package's asked tests in one go test.
+// runPackage runs one package's asked tests. Rows that name a top-level test
+// share one go test. Rows that name a subtest share one go test per parent
+// test, because -run splits on / and a mixed pattern would select the wrong
+// tests. A package's tests were written to run in one process at a time
+// (some write fixed paths under build/), so the gotest and go-union harnesses
+// never run go test on one package at once.
 func (a *goTestAdapter) runPackage(ctx context.Context, p goTestPackage, tests map[string]string) ([]testreg.Result, error) {
 	pkg := p.pkg
 	if ctx.Err() != nil {
@@ -276,26 +296,106 @@ func (a *goTestAdapter) runPackage(ctx context.Context, p goTestPackage, tests m
 	if err != nil {
 		return nil, err
 	}
-	args := goTestArgs(p, rel, tests, goTestTimeout(ctx, time.Now()))
-	// a package's tests were written to run in one process at a time (some
-	// write fixed paths under build/), so the gotest and go-union harnesses
-	// never run go test on one package at once
+	plain, byParent := splitGoTests(tests)
 	unlock := lockGoTestPackage(filepath.Join(dir, rel))
 	defer unlock()
+	var out []testreg.Result
+	var errs []error
+	if len(plain) > 0 {
+		res, err := a.finishGoTest(ctx, pkg, dir, goTestArgs(p, rel, plain, goTestTimeout(ctx, time.Now())), func(stdout, stderr string, runErr error) ([]testreg.Result, error) {
+			res, err := goTestResults(strings.NewReader(stdout), plain)
+			if err != nil {
+				return res, fmt.Errorf("go test %s: %w", pkg, err)
+			}
+			if ctx.Err() != nil {
+				return res, fmt.Errorf("go test %s: %w", pkg, ctx.Err())
+			}
+			return packageVerdict(pkg, res, runErr, stdout, stderr)
+		})
+		out = append(out, res...)
+		if err != nil {
+			errs = append(errs, err)
+		}
+	}
+	var parents []string
+	for parent := range byParent {
+		parents = append(parents, parent)
+	}
+	slices.Sort(parents)
+	for _, parent := range parents {
+		if ctx.Err() != nil {
+			errs = append(errs, fmt.Errorf("go test %s: %w", pkg, ctx.Err()))
+			break
+		}
+		want := byParent[parent]
+		args := goTestSubtestArgs(p, rel, parent, subtestNames(parent, want), goTestTimeout(ctx, time.Now()))
+		res, err := a.finishGoTest(ctx, pkg, dir, args, func(stdout, stderr string, runErr error) ([]testreg.Result, error) {
+			res, other, err := goTestSubtestResults(strings.NewReader(stdout), want)
+			if err != nil {
+				return res, fmt.Errorf("go test %s: %w", pkg, err)
+			}
+			if ctx.Err() != nil {
+				return res, fmt.Errorf("go test %s: %w", pkg, ctx.Err())
+			}
+			// a failing subtest exits non-zero, and its event says so. A
+			// parent check after the subtests exits non-zero too; that does
+			// not flip a subtest that passed. A run that answered nothing
+			// failed before its tests.
+			if runErr != nil && len(res) == 0 {
+				return res, fmt.Errorf("go test %s: %w\n%s%s", pkg, runErr, tail(stderr, 40), tail(strings.Join(other, "\n"), 40))
+			}
+			return res, nil
+		})
+		out = append(out, res...)
+		if err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return out, errors.Join(errs...)
+}
+
+// finishGoTest runs one go test in dir and maps its output. The package lock
+// is the caller's.
+func (a *goTestAdapter) finishGoTest(ctx context.Context, pkg, dir string, args []string, verdict func(stdout, stderr string, runErr error) ([]testreg.Result, error)) ([]testreg.Result, error) {
+	if ctx.Err() != nil {
+		return nil, fmt.Errorf("go test %s: %w", pkg, ctx.Err())
+	}
 	run := a.goTest
 	if run == nil {
 		run = execGoTest
 	}
 	var stdout, stderr bytes.Buffer
 	runErr := run(ctx, dir, args, &stdout, &stderr)
-	res, err := goTestResults(&stdout, tests)
-	if err != nil {
-		return res, fmt.Errorf("go test %s: %w", pkg, err)
+	return verdict(stdout.String(), stderr.String(), runErr)
+}
+
+// splitGoTests separates top-level test names from Test/subtest names. The
+// subtest map is keyed by the full Go name, grouped by the top-level test.
+func splitGoTests(tests map[string]string) (plain map[string]string, byParent map[string]map[string]string) {
+	plain = map[string]string{}
+	byParent = map[string]map[string]string{}
+	for name, inst := range tests {
+		parent, _, ok := strings.Cut(name, "/")
+		if !ok {
+			plain[name] = inst
+			continue
+		}
+		if byParent[parent] == nil {
+			byParent[parent] = map[string]string{}
+		}
+		byParent[parent][name] = inst
 	}
-	if ctx.Err() != nil {
-		return res, fmt.Errorf("go test %s: %w", pkg, ctx.Err())
+	return plain, byParent
+}
+
+// subtestNames is the subtest half of each full Go name under parent.
+func subtestNames(parent string, want map[string]string) []string {
+	subs := make([]string, 0, len(want))
+	prefix := parent + "/"
+	for name := range want {
+		subs = append(subs, strings.TrimPrefix(name, prefix))
 	}
-	return packageVerdict(pkg, res, runErr, stdout.String(), stderr.String())
+	return subs
 }
 
 // execGoTest runs go with args in dir.
@@ -327,6 +427,23 @@ func goTestArgs(p goTestPackage, rel string, tests map[string]string, timeout st
 		args = append(args, "-tags", p.tags)
 	}
 	return append(args, "-run", "^("+strings.Join(names, "|")+")$", rel)
+}
+
+// goTestSubtestArgs is the go test command line for one parent test's
+// subtests. -run splits on unbracketed slashes, so the pattern is
+// ^Parent$/^(sub|...)$ and not a mix with the top-level names.
+func goTestSubtestArgs(p goTestPackage, rel, parent string, subs []string, timeout string) []string {
+	slices.Sort(subs)
+	quoted := make([]string, len(subs))
+	for i, s := range subs {
+		quoted[i] = regexp.QuoteMeta(s)
+	}
+	pattern := "^" + regexp.QuoteMeta(parent) + "$/^(" + strings.Join(quoted, "|") + ")$"
+	args := []string{"test", "-count=1", "-json", "-timeout", timeout}
+	if p.tags != "" {
+		args = append(args, "-tags", p.tags)
+	}
+	return append(args, "-run", pattern, rel)
 }
 
 var goTestPackageLocks sync.Map // package directory -> *sync.Mutex
@@ -364,9 +481,11 @@ func packageVerdict(pkg string, res []testreg.Result, runErr error, stdout, stde
 	return out, nil
 }
 
-// goTestResults reads go test -json events into one result per asked test.
-// A subtest's events count against its top-level test: its output joins the
-// reason, and a subtest that skips fails its parent.
+// goTestResults reads go test -json events into one result per asked
+// top-level test. A subtest's events count against its top-level test: its
+// output joins the reason, and a subtest that skips fails its parent. A row
+// that names a subtest is mapped by goTestSubtestResults instead, so this
+// folding stays the verdict of every row that does not.
 func goTestResults(r io.Reader, tests map[string]string) ([]testreg.Result, error) {
 	type event struct {
 		Action, Test, Output string
@@ -418,6 +537,47 @@ func goTestResults(r io.Reader, tests map[string]string) ([]testreg.Result, erro
 		}
 	}
 	return out, nil
+}
+
+// goTestSubtestResults reads go test -json events and answers each asked
+// subtest by its own pass or fail event, the same way nameBuildResults does.
+// A skip is a failure. A parent event and any subtest that was not asked are
+// ignored, so a check the parent runs after its subtests does not flip a
+// subtest that passed. An asked subtest with no verdict is left out, and the
+// runner reports it as not reported. other is what the rest of the run said.
+func goTestSubtestResults(r io.Reader, want map[string]string) (out []testreg.Result, other []string, err error) {
+	type event struct {
+		Action, Test, Output string
+		Elapsed              float64
+	}
+	output := map[string][]string{}
+	dec := json.NewDecoder(r)
+	for {
+		var ev event
+		if err := dec.Decode(&ev); err == io.EOF {
+			break
+		} else if err != nil {
+			return out, other, fmt.Errorf("go test -json: %w", err)
+		}
+		inst, asked := want[ev.Test]
+		if !asked {
+			if (ev.Action == "output" || ev.Action == "build-output") && ev.Output != "" {
+				other = append(other, strings.TrimRight(ev.Output, "\n"))
+			}
+			continue
+		}
+		switch ev.Action {
+		case "output":
+			output[ev.Test] = append(output[ev.Test], strings.TrimRight(ev.Output, "\n"))
+		case "pass":
+			out = append(out, testreg.Result{Instance: inst, Verdict: testreg.Pass, Seconds: max(ev.Elapsed, goTestTick)})
+		case "fail":
+			out = append(out, testreg.Result{Instance: inst, Verdict: testreg.Fail, Reason: tail(strings.Join(output[ev.Test], "\n"), 20), Seconds: ev.Elapsed})
+		case "skip":
+			out = append(out, testreg.Result{Instance: inst, Verdict: testreg.Fail, Reason: "the Go test skipped, and nothing is ever skipped: " + tail(strings.Join(output[ev.Test], "\n"), 5)})
+		}
+	}
+	return out, other, nil
 }
 
 // goTestTimeout is go test's -timeout for one package's run: what is left of
