@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -96,7 +97,9 @@ func TestTheCorpusAdapterAnswersEveryRequestOnce(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	runner := func(string) (legRun, error) {
+	var gotCases map[caseKey]bool
+	runner := func(_ string, cases map[caseKey]bool) (legRun, error) {
+		gotCases = cases
 		return legRun{results: map[string]*result{"wire": {cases: map[string]string{"ok": outcomePass, "bad": outcomeFail}}}}, nil
 	}
 	var out bytes.Buffer
@@ -110,10 +113,14 @@ func TestTheCorpusAdapterAnswersEveryRequestOnce(t *testing.T) {
 	if len(results) != 2 || results[0].Instance != "a" || results[0].Verdict != testreg.Pass || results[1].Instance != "b" || results[1].Verdict != testreg.Fail {
 		t.Errorf("results %+v, want a pass then b fail", results)
 	}
+	// the leg is asked the requested cases, never run whole
+	if want := map[caseKey]bool{{"wire", "ok"}: true, {"wire", "bad"}: true}; !reflect.DeepEqual(gotCases, want) {
+		t.Errorf("the leg was asked %v, want the two requested cases %v", gotCases, want)
+	}
 	if err := adapterMain(strings.NewReader(""), &out, &bytes.Buffer{}, nil, "go", runner); err == nil {
 		t.Error("a call with no request ran")
 	}
-	broken := func(string) (legRun, error) { return legRun{}, errors.New("no driver") }
+	broken := func(string, map[caseKey]bool) (legRun, error) { return legRun{}, errors.New("no driver") }
 	in.Reset()
 	if err := enc.Encode(corpusReq("a", "go", "wire", "ok")); err != nil {
 		t.Fatal(err)
@@ -242,5 +249,27 @@ func TestTheRegistryCheckGoesRedOnEachDrift(t *testing.T) {
 	}
 	if p := compareCorpusRows(want, map[string]string{"a": `{"k":"a"}`, "b": `{"k":"b"}`}); len(p) != 0 {
 		t.Errorf("an exact registry: %q", p)
+	}
+}
+
+// TestEachCaseCarriesItsShareOfItsSurfaceTime: a case's seconds are the
+// driver's time on its surface shared among the cases asked there, which is
+// what schema-test seconds records and the sharder weighs (adapter.go). A
+// surface the leg did not run gives its cases no time.
+func TestEachCaseCarriesItsShareOfItsSurfaceTime(t *testing.T) {
+	run := legRun{results: map[string]*result{
+		"wire":  {seconds: 6, cases: map[string]string{"a": outcomePass, "b": outcomePass, "c": outcomeFail}},
+		"block": {seconds: 1.5, cases: map[string]string{"x": outcomePass}},
+		"cook":  {absent: true, cases: map[string]string{"k": outcomeAbsent}},
+	}}
+	reqs := []testreg.Request{
+		corpusReq("a", "go", "wire", "a"), corpusReq("b", "go", "wire", "b"), corpusReq("c", "go", "wire", "c"),
+		corpusReq("x", "go", "block", "x"), corpusReq("k", "go", "cook", "k"),
+	}
+	want := map[string]float64{"a": 2, "b": 2, "c": 2, "x": 1.5, "k": 0}
+	for _, res := range adapterResults("go", reqs, run) {
+		if res.Seconds != want[res.Instance] {
+			t.Errorf("%s: %v seconds, want %v", res.Instance, res.Seconds, want[res.Instance])
+		}
 	}
 }

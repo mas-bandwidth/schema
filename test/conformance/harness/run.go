@@ -24,6 +24,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 // surfaces, in the order the matrix prints them.
@@ -90,6 +91,10 @@ type result struct {
 	// (tools/matrix proof) reads it from the --results file, so a cell can name
 	// the exact case that holds it and the exact case that is still absent.
 	cases map[string]string
+	// seconds is how long the leg's driver took over the surface, on the
+	// clock: what the corpus adapter shares among the cases it was asked on
+	// the surface (adapter.go), so the registry can weigh each case.
+	seconds float64
 }
 
 // The four things a case can come to.
@@ -827,6 +832,11 @@ type runOptions struct {
 	// failures once the run is scored: the corpus adapter (adapter.go) reads
 	// each case's verdict from it.
 	capture func(results map[string]map[string]*result, legFailures map[string][]string)
+	// cases, when set, is the cases this run asks: the corpus adapter's
+	// requests (adapter.go). Each leg is handed a manifest of the rows that
+	// carry them and the rows their verdicts depend on (scope.go), runs the
+	// surfaces those rows sit on and no other, and is scored on them alone.
+	cases map[caseKey]bool
 }
 
 // parseSurfaces reads --surfaces: a comma-separated subset of surfaces, or
@@ -990,6 +1000,35 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 		if len(notOptedIn) > 0 {
 			_, _ = io.WriteString(w, "conformance OPT-IN "+d.lang+": `list` names no unit "+strings.Join(notOptedIn, ", ")+", so its rows count absent\n")
 		}
+		// each surface's rows as this leg is asked them: the json-hostile
+		// battery's verdicts are the leg's own (hostileExpectations)
+		legWants := map[string][]expectation{}
+		exemptions := map[string][]string{}
+		for _, s := range surfaces {
+			legWants[s] = want[s]
+			if s == "json-hostile" {
+				legWants[s], exemptions[s] = hostileExpectations(m, d.lang)
+				if err := attachHostileSaves(m, legWants[s]); err != nil {
+					return false, err
+				}
+			}
+		}
+		// a run asked for some cases runs only the surfaces and rows they and
+		// their verdicts need (scope.go)
+		only := opts.only
+		var scope map[caseKey]bool
+		if opts.cases != nil {
+			scope = closeScope(opts.cases, legWants, disc, wireRefusals)
+			only = map[string]bool{}
+			for key := range scope {
+				if opts.only == nil || opts.only[key.surface] {
+					only[key.surface] = true
+				}
+			}
+			if legDerived, err = scopeManifest(legDerived, d.lang, scope, legWants, notAsked); err != nil {
+				return false, fmt.Errorf("%s: %w", d.lang, err)
+			}
+		}
 		sent, err := sentRows(legDerived)
 		if err != nil {
 			return false, err
@@ -1001,11 +1040,12 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 			stderr  string
 			err     error
 			aborted bool
+			seconds float64
 		}
 		runs := map[string]*surfaceRun{}
 		var active []*surfaceRun
 		for _, s := range surfaces {
-			if opts.only != nil && !opts.only[s] {
+			if only != nil && !only[s] {
 				continue
 			}
 			if !listed[s] {
@@ -1047,7 +1087,9 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 							sr.aborted = true
 							continue
 						}
+						began := time.Now()
 						sr.code, sr.stderr, sr.err = runDriver(d, legDerived, sr.surface, sr.out)
+						sr.seconds = time.Since(began).Seconds()
 						if failFast {
 							if sr.err != nil || (sr.code != 0 && sr.code != 2) {
 								failed.Store(true)
@@ -1056,7 +1098,7 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 								// canary input as an absence or diff with exit 0 still stop early.
 								probe := &result{total: len(want[sr.surface])}
 								for _, e := range want[sr.surface] {
-									if notAsked.has(sr.surface, e.name) {
+									if notAsked.has(sr.surface, e.name) || (scope != nil && !scope[caseKey{sr.surface, e.name}]) {
 										continue
 									}
 									scoreAnswer(d.lang, sr.surface, sr.out, e, wireRefusals[e.name], probe)
@@ -1072,16 +1114,14 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 			wg.Wait()
 		}
 		for _, s := range surfaces {
-			if opts.only != nil && !opts.only[s] {
+			if only != nil && !only[s] {
 				continue
 			}
-			legWant := want[s]
-			var exemptions []string
-			if s == "json-hostile" {
-				legWant, exemptions = hostileExpectations(m, d.lang)
-				if err := attachHostileSaves(m, legWant); err != nil {
-					return false, err
-				}
+			legWant := legWants[s]
+			if scope != nil {
+				legWant = slices.DeleteFunc(slices.Clone(legWant), func(e expectation) bool {
+					return !scope[caseKey{s, e.name}]
+				})
 			}
 			r := &result{total: len(legWant)}
 			results[d.lang][s] = r
@@ -1114,6 +1154,7 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 			if err != nil {
 				return false, err
 			}
+			r.seconds = sr.seconds
 			if code == 2 {
 				if why := crashNotAbsence(out, stderr); why != "" {
 					// EXIT 2 IS ALSO HOW A GO PANIC ENDS. An absence says it
@@ -1160,7 +1201,7 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 					describeExit(code), len(unanswered), len(legWant), nameRows(unanswered), indent(stderr, "    ")))
 				continue
 			}
-			for _, line := range exemptions {
+			for _, line := range exemptions[s] {
 				_, _ = io.WriteString(w, "conformance EXEMPTS "+line+"\n")
 			}
 			// A SURFACE A LEG LISTS AND RUNS OVER NO ROWS IS A FAILURE, NOT A
