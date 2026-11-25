@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 2. Language-free tests: 3139.
+Unit tests every language answers: 2. Language-free tests: 3141.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -3140,7 +3140,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.runmatch.skips-follows-go` | `gotest` | Go test TestSkipsFollowsGo in ./internal/runmatch | `package: ./internal/runmatch`<br>`test: TestSkipsFollowsGo` | the Go test passes | `internal/runmatch/runmatch_test.go:107` |
 | `none.unit.tooling.runmatch.top-level-is-gos-split` | `gotest` | Go test TestTopLevelIsGosSplit in ./internal/runmatch | `package: ./internal/runmatch`<br>`test: TestTopLevelIsGosSplit` | the Go test passes | `internal/runmatch/runmatch_test.go:9` |
 
-#### `tooling` family `schema-test`, 138 tests
+#### `tooling` family `schema-test`, 140 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -3225,6 +3225,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.schema-test.extract-refuses-a-test-that-skips` | `gotest` | Go test TestExtractRefusesATestThatSkips in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestExtractRefusesATestThatSkips` | the Go test passes | `tools/schema-test/extract_test.go:97` |
 | `none.unit.tooling.schema-test.feature-witness-plan` | `gotest` | Go test TestFeatureWitnessPlan in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestFeatureWitnessPlan` | the Go test passes | `tools/schema-test/featurewitness_test.go:173` |
 | `none.unit.tooling.schema-test.feature-witness-rows-cover-the-corpus` | `gotest` | Go test TestFeatureWitnessRowsCoverTheCorpus in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestFeatureWitnessRowsCoverTheCorpus` | the Go test passes | `tools/schema-test/featurewitness_test.go:132` |
+| `none.unit.tooling.schema-test.go-answered-none-wraps-the-run-error` | `gotest` | Go test TestGoAnsweredNoneWrapsTheRunError in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestGoAnsweredNoneWrapsTheRunError` | the Go test passes | `tools/schema-test/a4_test.go:153` |
 | `none.unit.tooling.schema-test.go-test-events-give-one-verdict-each` | `gotest` | Go test TestGoTestEventsGiveOneVerdictEach in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestGoTestEventsGiveOneVerdictEach` | the Go test passes | `tools/schema-test/main_test.go:105` |
 | `none.unit.tooling.schema-test.go-test-plain-output-in-the-log-fails` | `gotest` | Go test TestGoTestPlainOutputInTheLogFails in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestGoTestPlainOutputInTheLogFails` | the Go test passes | `tools/schema-test/make_test.go:475` |
 | `none.unit.tooling.schema-test.go-test-runs-to-the-drivers-deadline` | `gotest` | Go test TestGoTestRunsToTheDriversDeadline in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestGoTestRunsToTheDriversDeadline` | the Go test passes | `tools/schema-test/gotest_test.go:293` |
@@ -3264,6 +3265,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.schema-test.the-database-is-read-once-per-run` | `gotest` | Go test TestTheDatabaseIsReadOncePerRun in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheDatabaseIsReadOncePerRun` | the Go test passes | `tools/schema-test/make_test.go:520` |
 | `none.unit.tooling.schema-test.the-main-tree-action-exports-the-base-the-event-names` | `gotest` | Go test TestTheMainTreeActionExportsTheBaseTheEventNames in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheMainTreeActionExportsTheBaseTheEventNames` | the Go test passes | `tools/schema-test/pinsbase_test.go:103` |
 | `none.unit.tooling.schema-test.the-matrix-is-the-pr-group` | `gotest` | Go test TestTheMatrixIsThePRGroup in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheMatrixIsThePRGroup` | the Go test passes | `tools/schema-test/ci_test.go:1` |
+| `none.unit.tooling.schema-test.the-matrix-plans-headroom-under-the-limit` | `gotest` | Go test TestTheMatrixPlansHeadroomUnderTheLimit in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheMatrixPlansHeadroomUnderTheLimit` | the Go test passes | `tools/schema-test/ci_test.go:155` |
 | `none.unit.tooling.schema-test.the-not-yet-generated-list-only-shrinks` | `gotest` | Go test TestTheNotYetGeneratedListOnlyShrinks in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheNotYetGeneratedListOnlyShrinks` | the Go test passes | `tools/schema-test/cipins_test.go:1` |
 | `none.unit.tooling.schema-test.the-planted-copy-finds-its-siblings` | `gotest` | Go test TestThePlantedCopyFindsItsSiblings in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestThePlantedCopyFindsItsSiblings` | the Go test passes | `tools/schema-test/plant_test.go:258` |
 | `none.unit.tooling.schema-test.the-planted-runs-report-is-its-verdict` | `gotest` | Go test TestThePlantedRunsReportIsItsVerdict in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestThePlantedRunsReportIsItsVerdict` | the Go test passes | `tools/schema-test/plant_test.go:368` |

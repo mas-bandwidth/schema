@@ -127,13 +127,15 @@ func jsontestRows(root string) ([]testreg.Test, error) {
 	for _, file := range names {
 		accept := suite.Accept[file]
 		reason := ""
-		if row, ok := suite.Rows[file]; ok {
+		row, ok := suite.Rows[file]
+		switch {
+		case ok:
 			reason = row.Reason
-		} else if strings.HasPrefix(file, "y_") {
+		case strings.HasPrefix(file, "y_"):
 			reason = "a y_ file is accepted"
-		} else if strings.HasPrefix(file, "n_") {
+		case strings.HasPrefix(file, "n_"):
 			reason = "an n_ file is refused"
-		} else {
+		default:
 			return nil, fmt.Errorf("%s: an i_ file with no row in the standard", file)
 		}
 		in, err := json.Marshal(jsontestInputs{
@@ -170,9 +172,7 @@ func jsontestRows(root string) ([]testreg.Test, error) {
 var jsontestHarness = harness{
 	Name:  jsontestFamily,
 	Build: func(string) [][]string { return nil },
-	Run: func(ctx context.Context, lang string, instances []testreg.Instance, log io.Writer) ([]testreg.Result, error) {
-		return runJSONTest(ctx, lang, instances, log)
-	},
+	Run:   runJSONTest,
 }
 
 // jsontestPlantEnv is the plant hook's variable for one language: its

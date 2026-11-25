@@ -80,9 +80,7 @@ type featureWitnessInputs struct {
 var featureWitness = harness{
 	Name:  featureWitnessFamily,
 	Build: func(string) [][]string { return nil },
-	Run: func(ctx context.Context, lang string, instances []testreg.Instance, log io.Writer) ([]testreg.Result, error) {
-		return runFeatureWitnesses(ctx, lang, instances, log)
-	},
+	Run:   runFeatureWitnesses,
 }
 
 // featureWitnessCase is a corpus directory as a registry case: its path

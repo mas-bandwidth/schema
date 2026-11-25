@@ -5,7 +5,7 @@ Part of the specification: every test of tier `nightly`, from the test registry.
 
 **Tier nightly:** heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded.
 
-Nightly tests every language answers: 1084. Language-free tests: 1353.
+Nightly tests every language answers: 1084. Language-free tests: 1352.
 
 Run this tier for a language with `schema-test run --tier nightly --lang L`, one test with `schema-test run <full name>`.
 
@@ -5180,12 +5180,6 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 | `none.nightly.harness-run.make-cs.cards-cs-test` | `make` | make cards-cs-test (make/cs.mk) exits 0 | `file: make/cs.mk`<br>`target: cards-cs-test` | the target exits 0 with no skip in its log | `make/cs.mk:1388` |
 | `none.nightly.harness-run.make-cs.tables-cs-leg` | `make` | make tables-cs-leg (make/cs.mk) exits 0 | `file: make/cs.mk`<br>`target: tables-cs-leg` | the target exits 0 with no skip in its log | `make/cs.mk:642` |
 | `none.nightly.harness-run.make-cs.tables-cs-leg-debug` | `make` | make tables-cs-leg-debug (make/cs.mk) exits 0 | `file: make/cs.mk`<br>`target: tables-cs-leg-debug` | the target exits 0 with no skip in its log | `make/cs.mk:646` |
-
-#### `harness-run` family `make-cs-block-compile`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.harness-run.make-cs-block-compile.tables-cs-block-compile-negative-control` | `make` | make tables-cs-block-compile-negative-control (make/cs-block-compile.mk) exits 0 | `file: make/cs-block-compile.mk`<br>`target: tables-cs-block-compile-negative-control` | the target exits 0 with no skip in its log | `make/cs-block-compile.mk:46` |
 
 #### `harness-run` family `make-dart`, 4 tests
 
