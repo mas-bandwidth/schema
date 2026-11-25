@@ -605,7 +605,7 @@ negative-control	write-refusal-storage-debug-dart	1	L6	negative controls: the pl
 negative-control	write-refusal-storage-debug-java	1	L6	negative controls: the plant adapter runs them
 workflow-job	.github/workflows/caa-self-test.yml	1	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/certify.yml	11	L7	workflow jobs: CI is generated from the registry
-workflow-job	.github/workflows/ci-fast.yml	29	L7	workflow jobs: CI is generated from the registry
+workflow-job	.github/workflows/ci-fast.yml	30	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/ci-full.yml	23	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/cla.yml	1	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/leg.yml	2	L7	workflow jobs: CI is generated from the registry

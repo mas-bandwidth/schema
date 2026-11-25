@@ -149,9 +149,11 @@ func (s *scan) makeTargets(files []string, nc, ci map[string]bool) {
 
 // workflowJobs emits every job of every workflow: the keys two spaces in
 // under the top-level jobs: key. A job whose steps run the driver
-// (`go run ./tools/schema-test ...`: run, coverage, extract) is the
-// registry running, not a test of its own: its tests are the rows it selects
-// and the registry it holds, and it is not emitted.
+// (`go run ./tools/schema-test run|coverage|extract`) is the registry
+// running, not a test of its own: its tests are the rows it selects and the
+// registry it holds, and it is not emitted. A job that only names the
+// driver's directory, or runs another of its commands (langs, addenda), is a
+// job like any other.
 func (s *scan) workflowJobs(files []string) {
 	for _, rel := range files {
 		data, err := os.ReadFile(filepath.Join(s.root, rel))
@@ -177,7 +179,7 @@ func (s *scan) workflowJobs(files []string) {
 			if !in {
 				continue
 			}
-			if len(jobs) > 0 && !strings.HasPrefix(strings.TrimSpace(line), "#") && strings.Contains(line, driverRun) {
+			if len(jobs) > 0 && !strings.HasPrefix(strings.TrimSpace(line), "#") && driverRun.MatchString(line) {
 				jobs[len(jobs)-1].runsDriver = true
 			}
 			if len(line) < 3 || line[:2] != "  " || line[2] == ' ' || line[2] == '#' {
@@ -205,8 +207,9 @@ func (s *scan) workflowJobs(files []string) {
 	}
 }
 
-// driverRun is the command a workflow job runs the registry with.
-const driverRun = "tools/schema-test "
+// driverRun is the command a workflow job runs the registry with: one of
+// the driver's verbs that runs or holds the registry's tests.
+var driverRun = regexp.MustCompile(`go run \./tools/schema-test (run|coverage|extract)\b`)
 
 // dataCases emits each line of a .jsonl file and each other data file,
 // files that share a stem in one directory (case.in, case.out) being one
