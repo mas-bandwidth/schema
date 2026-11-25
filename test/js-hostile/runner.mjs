@@ -2,13 +2,12 @@
 //
 // One raw input per manifest line, the port's generated readers underneath, and
 // the Go engine's committed verdict as the oracle. The corpus is read as files:
-// no network, no clock, no outside service. The runner prints one FIX-CARD line
-// per carried disagreement, a FAIL line per disagreement no FIX-CARD names, a
-// STALE line per FIX-CARD whose row has gone green, and one summary line; it
-// exits 1 on any FAIL or STALE, so the carried list cannot rot into silence.
+// no network, no clock, no outside service. The runner prints one FAIL line
+// per disagreement, naming its case, and one summary line; it exits 1 on any
+// FAIL. A disagreement is never excused by name.
 //
 //   node test/js-hostile/runner.mjs generate <corpus-dir> <generated-dir> <schema-binary>
-//   node test/js-hostile/runner.mjs run <corpus-dir> <generated-dir> <serialize.js-dir> [known-findings.tsv]
+//   node test/js-hostile/runner.mjs run <corpus-dir> <generated-dir> <serialize.js-dir>
 //   node test/js-hostile/runner.mjs show <corpus-dir> <generated-dir> <serialize.js-dir> <row>
 //
 // The working directory is the repository root. `generate` writes one unit per
@@ -83,7 +82,7 @@ const HERE = dirname(new URL(import.meta.url).pathname);
 const MODES = ["development", "production"];
 const TIERS = ["runtime", "flat"];
 
-// ---- the manifest and the carried findings ----
+// ---- the manifest ----
 
 function rows(path) {
   return readFileSync(path, "utf8")
@@ -713,7 +712,7 @@ function scorer(path) {
   process.exit(wrong === 0 && cases.length > 0 ? 0 : 1);
 }
 
-async function run(corpus, genDir, serializeJs, findingsPath) {
+async function run(corpus, genDir, serializeJs) {
   if (sha256Hex(Buffer.from("abc")) !== "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad") {
     console.error("the runner's SHA-256 fails its own known-answer test");
     process.exit(1);
@@ -721,20 +720,6 @@ async function run(corpus, genDir, serializeJs, findingsPath) {
   const budget = Number(process.env.HOSTILE_CASE_BUDGET_MS || 5000);
   const jobs = Number(process.env.HOSTILE_JS_JOBS || Math.max(1, Math.min(4, Math.floor(availableParallelism() / 2))));
   const cases = manifestCases(corpus);
-  // known findings: name<TAB>slug<TAB>input<TAB>answer<TAB>one line, where the
-  // answer is what this port gives the row today, `accept <digest>` or
-  // `refuse` (docs/HOSTILE-CORPUS.md). A finding carries that answer and no
-  // other (F-079).
-  const findings = new Map();
-  if (findingsPath && existsSync(findingsPath)) {
-    for (const f of rows(findingsPath)) {
-      if (f.length !== 5 || !/^(accept \S+|refuse)$/.test(f[3])) {
-        console.error(`${findingsPath}: a finding is name, slug, input, answer (accept <digest> or refuse) and one line, tab-separated: ${f.join("\t")}`);
-        process.exit(2);
-      }
-      findings.set(f[0], f);
-    }
-  }
   const all = caseRows(cases);
   const noReader = all.filter((r) => !CARRIERS.has(r.carrier));
   const live = all.filter((r) => CARRIERS.has(r.carrier));
@@ -748,9 +733,8 @@ async function run(corpus, genDir, serializeJs, findingsPath) {
   const answers = await Promise.all(live.map((row) =>
     pools.get(row.mode).submit(row, readFileSync(join(corpus, row.input)))));
 
-  let passed = 0, carried = 0;
-  const bad = [], stale = [], unbound = [];
-  const seen = new Set(all.map((r) => r.id));
+  let passed = 0;
+  const bad = [], unbound = [];
   for (const r of noReader) {
     console.log(`FAIL ${r.id}: carrier ${r.carrier} has no JavaScript reader`);
   }
@@ -770,34 +754,15 @@ async function run(corpus, genDir, serializeJs, findingsPath) {
     }
     ranRows.push(row.id);
     const w = want(row);
-    const finding = findings.get(row.id);
     if (agrees(got, w)) {
-      if (finding !== undefined) {
-        console.log(`STALE ${row.id}: FIX-CARD ${finding[1]} no longer reproduces`);
-        stale.push(row.id);
-      } else {
-        passed++;
-      }
-      // A FINDING CARRIES THE ANSWER IT RECORDS, and no other: never an
-      // execution failure (F-070: a worker over budget, a crash, a throw), and
-      // never a different verdict or digest (F-079: a refusal under a finding
-      // for a wrong digest).
-    } else if (finding !== undefined && ((finding[3] === "refuse" && got.verdict === "refuse") || (got.verdict === "accept" && finding[3] === show(got)))) {
-      console.log(`FIX-CARD: ${finding[1]}: ${finding[2]} ${finding[4]} (got ${show(got)})`);
-      carried++;
+      passed++;
     } else {
       console.log(`FAIL ${row.id} carrier=${row.carrier} got=${show(got)} want=${show(w)}`);
       bad.push(row.id);
     }
   });
-  for (const name of findings.keys()) {
-    if (!seen.has(name)) {
-      console.log(`STALE ${name}: FIX-CARD names no row the manifest carries`);
-      stale.push(name);
-    }
-  }
-  console.log(`${cases.length} cases, ${all.length} rows: ${passed} pass, ${carried} carried as FIX-CARD, ` +
-    `${bad.length} unexplained, ${stale.length} stale, ${noReader.length} with no reader, ${unbound.length} unbound`);
+  console.log(`${cases.length} cases, ${all.length} rows: ${passed} pass, ` +
+    `${bad.length} unexplained, ${noReader.length} with no reader, ${unbound.length} unbound`);
   for (const id of ranRows) {
     console.log(`hostile-ledger ran ${id}`);
   }
@@ -806,13 +771,13 @@ async function run(corpus, genDir, serializeJs, findingsPath) {
   // count to the one the recipe registers for the committed corpus, so an
   // emptied or shortened manifest is red; a row no JavaScript reader carries
   // is a failure here.
-  const failed = bad.length + stale.length + unbound.length + noReader.length;
+  const failed = bad.length + unbound.length + noReader.length;
   console.log(`ran ${live.length}, failed ${failed}`);
   process.exit(failed > 0 || live.length === 0 ? 1 : 0);
 }
 
 // `show <row>` runs one row on this thread and prints the port's canonical
-// text for it, to diff by hand against the engine's when a FIX-CARD is worked.
+// text for it, to diff by hand against the engine's when a FAIL is worked.
 // A packet row runs in the mode this process was started in.
 async function showRow(corpus, genDir, serializeJs, id) {
   const row = caseRows(manifestCases(corpus)).find((r) => r.id === id);
@@ -831,8 +796,8 @@ async function main(args) {
   if (args[0] === "generate" && args.length === 4) {
     return generate(args[1], args[2], args[3]);
   }
-  if (args[0] === "run" && (args.length === 4 || args.length === 5)) {
-    return run(args[1], args[2], args[3], args[4]);
+  if (args[0] === "run" && args.length === 4) {
+    return run(args[1], args[2], args[3]);
   }
   if (args[0] === "show" && args.length === 5) {
     return showRow(args[1], args[2], args[3], args[4]);
@@ -841,7 +806,7 @@ async function main(args) {
     return scorer(args[1]);
   }
   console.error("usage: runner.mjs generate <corpus-dir> <generated-dir> <schema-binary>");
-  console.error("       runner.mjs run <corpus-dir> <generated-dir> <serialize.js-dir> [known-findings.tsv]");
+  console.error("       runner.mjs run <corpus-dir> <generated-dir> <serialize.js-dir>");
   console.error("       runner.mjs show <corpus-dir> <generated-dir> <serialize.js-dir> <row>");
   console.error("       runner.mjs scorer <scorer-outcomes.tsv>");
   process.exit(2);

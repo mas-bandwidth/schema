@@ -3,12 +3,11 @@
 // One raw input per manifest line, the port's generated reader underneath, and
 // the Go engine's committed verdict as the oracle. The corpus is read as files:
 // no network, no clock read by any reader. The runner prints one PASS line per
-// case it agrees with, one FIX-CARD line per carried disagreement, and fails
-// on a case whose carrier the port has no reader for (a FAIL line, never a
-// pass) and on a disagreement no FIX-CARD names (or a FIX-CARD whose case
-// has gone green).
+// case it agrees with and one FAIL line per case it does not, and fails on a
+// case whose carrier the port has no reader for (a FAIL line, never a pass).
+// A disagreement is never excused by name: every one is a FAIL.
 //
-// usage: cshostile <corpus-dir> <known-findings.tsv>
+// usage: cshostile <corpus-dir>
 //        cshostile --scorer <scorer-outcomes.tsv>
 //
 // A refusal conforms on its verdict alone (docs/rulings.json
@@ -147,12 +146,12 @@ static class Runner
     {
         if (args.Length == 2 && args[0] == "--worker") { return Worker(args[1]); }
         if (args.Length == 2 && args[0] == "--scorer") { return Scorer(args[1]); }
-        if (args.Length != 2)
+        if (args.Length != 1)
         {
-            Console.Error.WriteLine("usage: cshostile <corpus-dir> <known-findings.tsv>");
+            Console.Error.WriteLine("usage: cshostile <corpus-dir>");
             return 2;
         }
-        return Parent(args[0], args[1]);
+        return Parent(args[0]);
     }
 
     // ---- the scorer's own outcome cases ----
@@ -339,24 +338,8 @@ static class Runner
         return int.TryParse(v, out int n) && n > 0 ? n : fallback;
     }
 
-    static int Parent(string corpus, string findingsPath)
+    static int Parent(string corpus)
     {
-        var findings = new Dictionary<string, string[]>();
-        if (File.Exists(findingsPath))
-        {
-            // known findings: name<TAB>slug<TAB>input<TAB>answer<TAB>one line,
-            // where the answer is what this port gives the case today,
-            // `accept <digest>` or `refuse` (docs/HOSTILE-CORPUS.md). A finding
-            // carries that answer and no other (F-079).
-            foreach (string[] f in Rows(findingsPath, 5))
-            {
-                if (f[3] != "refuse" && !(f[3].StartsWith("accept ", StringComparison.Ordinal) && f[3].Length > 7 && f[3].IndexOf(' ', 7) < 0))
-                {
-                    throw new InvalidDataException(findingsPath + ": a finding's answer is `accept <digest>` or `refuse`: " + string.Join("\t", f));
-                }
-                findings[f[0]] = f;
-            }
-        }
         var cases = new List<Case>();
         foreach (string[] f in Rows(Path.Combine(corpus, "manifest.tsv"), 9))
         {
@@ -388,9 +371,8 @@ static class Runner
         }
         foreach (Thread t in threads) { t.Join(); }
 
-        int passed = 0, carried = 0;
+        int passed = 0;
         var bad = new List<string>();
-        var stale = new List<string>();
         // THE LEDGER (docs/HOSTILE-CORPUS.md): the cases a reader answered, by
         // name, which tools/hostileledger holds to the corpus folder. A case
         // whose carrier has no reader is no answer, and it fails below.
@@ -402,7 +384,6 @@ static class Runner
                 ranNames.Add(c.Name);
             }
             string want = H.Want(c.Verdict, c.Carrier, c.Reason, c.Digest);
-            findings.TryGetValue(c.Name, out string[] finding);
             if (c.Got.StartsWith("skip: ", StringComparison.Ordinal))
             {
                 // a carrier this port has no reader for is a failure, never a skip
@@ -411,25 +392,8 @@ static class Runner
             }
             else if (H.Agrees(c.Got, want))
             {
-                if (finding != null)
-                {
-                    Console.WriteLine("STALE " + c.Name + ": FIX-CARD " + finding[1] + " no longer reproduces");
-                    stale.Add(c.Name);
-                }
-                else
-                {
-                    Console.WriteLine("PASS " + c.Name);
-                    passed++;
-                }
-            }
-            // A FINDING CARRIES THE ANSWER IT RECORDS, and no other: never an
-            // execution failure (F-070: a timeout, a crash or a runner error),
-            // and never a different verdict or digest (F-079: a refusal under
-            // a finding for a wrong digest).
-            else if (finding != null && (finding[3] == "refuse" ? c.Got.StartsWith("refuse ", StringComparison.Ordinal) : c.Got == finding[3]))
-            {
-                Console.WriteLine("FIX-CARD: " + finding[1] + ": " + finding[2] + " " + finding[4] + " (got " + c.Got + ")");
-                carried++;
+                Console.WriteLine("PASS " + c.Name);
+                passed++;
             }
             else
             {
@@ -437,27 +401,18 @@ static class Runner
                 bad.Add(c.Name);
             }
         }
-        foreach (string name in findings.Keys)
-        {
-            if (!cases.Exists(c => c.Name == name))
-            {
-                Console.WriteLine("STALE " + name + ": FIX-CARD names a case the manifest no longer carries");
-                stale.Add(name);
-            }
-        }
-        Console.WriteLine(cases.Count + " cases: " + passed + " pass, " + carried + " carried as FIX-CARD, "
-            + bad.Count + " unexplained, " + stale.Count + " stale");
+        Console.WriteLine(cases.Count + " cases: " + passed + " pass, " + bad.Count + " unexplained");
         foreach (string name in ranNames)
         {
             Console.WriteLine("hostile-ledger ran " + name);
         }
         Console.WriteLine("hostile-ledger end");
         // The count line build/mustrun reads: a case is RUN when the port
-        // answered it (a pass or a carried FIX-CARD) or failed it. A case
+        // answered it (a pass) or failed it. A case
         // with no reader for its carrier is a failure, and an empty manifest
         // runs nothing and is red.
-        int ran = passed + carried + bad.Count;
-        Console.WriteLine("cs-hostile: ran " + ran + ", failed " + (bad.Count + stale.Count));
-        return bad.Count == 0 && stale.Count == 0 && ran > 0 ? 0 : 1;
+        int ran = passed + bad.Count;
+        Console.WriteLine("cs-hostile: ran " + ran + ", failed " + bad.Count);
+        return bad.Count == 0 && ran > 0 ? 0 : 1;
     }
 }

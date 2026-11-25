@@ -10,10 +10,8 @@
 # Reads files only: no network, no clock. Each case runs in its own process
 # under a heap cap and a 5 s budget (HOSTILE_CASE_BUDGET_MS overrides).
 #
-# A disagreement the port already owes is carried, by name, in
-# test/elixir-hostile/known-findings.tsv, and printed as a FIX-CARD. A
-# disagreement no FIX-CARD names is a failure, and a FIX-CARD that has gone
-# green is a failure too, so the list cannot rot into silence.
+# A disagreement is never excused by name: every one is a FAIL line naming its
+# case.
 #
 # The planted-bad-pattern control (nightly) changes the generated text reader
 # in a scratch copy so an accepted input is refused, and requires the runner to
@@ -22,7 +20,6 @@
 
 ELIXIR_HOSTILE_CORPUS ?= internal/ci/hostilecorpus/corpus
 ELIXIR_HOSTILE_BUILD  ?= build/elixir-hostile
-ELIXIR_HOSTILE_FINDINGS ?= test/elixir-hostile/known-findings.tsv
 
 ELIXIR_HOSTILE_UNITS := tabledemo:tables/examples \
 	messagedemo:tables/messages blobdemo:tables/blobs \
@@ -67,8 +64,7 @@ ELIXIR_HOSTILE_CASES ?= $(shell grep -vc '^\#' $(ELIXIR_HOSTILE_CORPUS)/manifest
 .PHONY: schema-elixir-runs-hostile-corpus
 schema-elixir-runs-hostile-corpus: build/mustrun $(ELIXIR_HOSTILE_BUILD)/ebin/.stamp $(ELIXIR_HOSTILE_BUILD)/packet/.stamp
 	$(ELIXIR) test/elixir-hostile/runner.exs --scorer tools/hostilecorpusexec/testdata/scorer-outcomes.tsv
-	$(call hostile_ledgered,elixir,$(ELIXIR_HOSTILE_BUILD)/run.log,SCHEMA_ELIXIR_HOSTILE_FINDINGS=$(ELIXIR_HOSTILE_FINDINGS) $(MUSTRUN) -name schema-elixir-runs-hostile-corpus -count $(ELIXIR_HOSTILE_CASES) -- $(ELIXIR) test/elixir-hostile/runner.exs "$(ELIXIR_HOSTILE_CORPUS)" "$(CURDIR)/$(ELIXIR_HOSTILE_BUILD)/ebin" "$(CURDIR)/$(ELIXIR_HOSTILE_BUILD)/packet",$(ELIXIR_HOSTILE_CORPUS))
-	sh make/checks/hostile-carry-controls.sh elixir findings $(ELIXIR_HOSTILE_BUILD)/carry 'SCHEMA_ELIXIR_HOSTILE_FINDINGS="$$CARRY_FINDINGS" $(ELIXIR) test/elixir-hostile/runner.exs "$$CARRY_CORPUS" "$(CURDIR)/$(ELIXIR_HOSTILE_BUILD)/ebin" "$(CURDIR)/$(ELIXIR_HOSTILE_BUILD)/packet"'
+	$(call hostile_ledgered,elixir,$(ELIXIR_HOSTILE_BUILD)/run.log,$(MUSTRUN) -name schema-elixir-runs-hostile-corpus -count $(ELIXIR_HOSTILE_CASES) -- $(ELIXIR) test/elixir-hostile/runner.exs "$(ELIXIR_HOSTILE_CORPUS)" "$(CURDIR)/$(ELIXIR_HOSTILE_BUILD)/ebin" "$(CURDIR)/$(ELIXIR_HOSTILE_BUILD)/packet",$(ELIXIR_HOSTILE_CORPUS))
 
 # The port's normal unit target runs the corpus: this file is included after
 # make/elixir.mk by the Makefile's wildcard, so the prerequisite lands here and
@@ -84,7 +80,7 @@ schema-elixir-runs-hostile-corpus-negative-control: $(ELIXIR_HOSTILE_BUILD)/ebin
 	@if cmp -s $(ELIXIR_HOSTILE_BUILD)/generated/tabledemo/Table.ex $(ELIXIR_HOSTILE_BUILD)/plant/generated/tabledemo/Table.ex; then \
 		echo 'NEGATIVE CONTROL FAILED: the planted reader bug did not apply'; exit 1; fi
 	$(ELIXIRC) -o $(ELIXIR_HOSTILE_BUILD)/plant/ebin $(ELIXIR_HOSTILE_BUILD)/plant/generated/*/*.ex
-	@if SCHEMA_ELIXIR_HOSTILE_FINDINGS=$(ELIXIR_HOSTILE_FINDINGS) \
+	@if \
 			$(ELIXIR) test/elixir-hostile/runner.exs "$(ELIXIR_HOSTILE_CORPUS)" \
 			"$(CURDIR)/$(ELIXIR_HOSTILE_BUILD)/plant/ebin" "$(CURDIR)/$(ELIXIR_HOSTILE_BUILD)/packet" \
 			> $(ELIXIR_HOSTILE_BUILD)/plant/log 2>&1; then \
@@ -93,7 +89,7 @@ schema-elixir-runs-hostile-corpus-negative-control: $(ELIXIR_HOSTILE_BUILD)/ebin
 	@grep -q '^FAIL ' $(ELIXIR_HOSTILE_BUILD)/plant/log || \
 		{ echo 'NEGATIVE CONTROL FAILED: the runner went red without naming an unexplained case'; \
 		  cat $(ELIXIR_HOSTILE_BUILD)/plant/log; exit 1; }
-	@if HOSTILE_CASE_BUDGET_MS=0 SCHEMA_ELIXIR_HOSTILE_FINDINGS=$(ELIXIR_HOSTILE_FINDINGS) \
+	@if HOSTILE_CASE_BUDGET_MS=0 \
 			$(ELIXIR) test/elixir-hostile/runner.exs "$(ELIXIR_HOSTILE_CORPUS)" \
 			"$(CURDIR)/$(ELIXIR_HOSTILE_BUILD)/ebin" "$(CURDIR)/$(ELIXIR_HOSTILE_BUILD)/packet" \
 			> $(ELIXIR_HOSTILE_BUILD)/plant/budget.log 2>&1; then \

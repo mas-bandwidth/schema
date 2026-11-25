@@ -438,20 +438,6 @@ func mooHostileRun(t *testing.T, root, corpusDir string, cases []mooHostileCase,
 	return answers
 }
 
-// mooHostileCarried is the exact expected-mismatch list: a case here is a
-// finding owned by a fix card, with the verdict this port actually reaches.
-// A carried row that starts matching the manifest is drift and fails (drop
-// the row); a carried row whose actual verdict moves is drift and fails too.
-type mooHostileCarried struct {
-	verdict string
-	reason  string
-	fix     string
-}
-
-func mooHostileCarriedList() map[string]mooHostileCarried {
-	return map[string]mooHostileCarried{}
-}
-
 // mooHostileGrade grades one answer against its case and returns "" when it
 // conforms, else the disagreement. A refusal conforms on its verdict alone,
 // whatever reason either side names (docs/rulings.json refusal-verdict-only);
@@ -482,35 +468,15 @@ func mooHostileGrade(c mooHostileCase, a mooHostileAnswer, answered bool, packet
 	return ""
 }
 
-// mooHostileCompare returns every disagreement with the manifest unless it is
-// a carried finding at its recorded verdict; carried rows that no longer
-// disagree are drift.
+// mooHostileCompare returns every disagreement with the manifest, by case.
+// No list carries a finding (docs/rulings.json no-skips): a disagreement the
+// port already owes is red by its case's name like any other.
 func mooHostileCompare(cases []mooHostileCase, answers map[string]mooHostileAnswer) []string {
-	carried := mooHostileCarriedList()
-	seen := map[string]bool{}
 	var bad []string
 	for _, c := range cases {
 		a, ok := answers[c.Name]
-		why := mooHostileGrade(c, a, ok, c.Carrier == "packet")
-		if why == "" {
-			if _, isCarried := carried[c.Name]; isCarried {
-				bad = append(bad, fmt.Sprintf("%s now matches the manifest; drop it from the carried list", c.Name))
-			}
-			continue
-		}
-		want, exists := carried[c.Name]
-		if !ok || !exists {
+		if why := mooHostileGrade(c, a, ok, c.Carrier == "packet"); why != "" {
 			bad = append(bad, why)
-			continue
-		}
-		seen[c.Name] = true
-		if a.verdict != want.verdict || (a.verdict != mooHostileRefuse && a.reason != want.reason) {
-			bad = append(bad, fmt.Sprintf("%s: carried as %s/%s (%s), now %s/%s", c.Name, want.verdict, want.reason, want.fix, a.verdict, a.reason))
-		}
-	}
-	for name, want := range carried {
-		if !seen[name] {
-			bad = append(bad, fmt.Sprintf("%s is carried (%s) but did not disagree", name, want.fix))
 		}
 	}
 	return bad
@@ -545,8 +511,8 @@ func TestSchemaMooHostileScorerOutcomes(t *testing.T) {
 }
 
 // TestHostileCorpus_moo is the unit-tier gate: every corpus input
-// reaches the manifest's verdict and decoded-value digest, or is a carried
-// finding whose fix card and actual verdict are pinned here.
+// reaches the manifest's verdict and decoded-value digest; every case that
+// does not is red by its name.
 func TestHostileCorpus_moo(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
@@ -554,7 +520,7 @@ func TestHostileCorpus_moo(t *testing.T) {
 	cases := mooHostileCorpusCases(t, corpusDir)
 	answers := mooHostileRun(t, root, corpusDir, cases, false)
 	// the per-case verdicts the registry reads (hostilecorpus.WriteVerdicts):
-	// every disagreement is a FAIL there, carried or not
+	// every disagreement is a FAIL there
 	failed := map[string]string{}
 	var ran []string
 	for _, c := range cases {
@@ -574,11 +540,7 @@ func TestHostileCorpus_moo(t *testing.T) {
 		t.Fatalf("the moo port disagrees with %d of %d hostile-corpus cases:\n  %s",
 			len(bad), len(cases), strings.Join(bad, "\n  "))
 	}
-	carried := mooHostileCarriedList()
-	for name, want := range carried {
-		t.Logf("FIX-CARD: %s: %s (%s/%s)", want.fix, name, want.verdict, want.reason)
-	}
-	t.Logf("%d hostile-corpus cases; %d carried findings", len(cases), len(carried))
+	t.Logf("%d hostile-corpus cases", len(cases))
 }
 
 // TestSchemaMooRunsHostileCorpusPlantedReader plants a text-reader bug in a

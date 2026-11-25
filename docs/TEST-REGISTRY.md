@@ -336,6 +336,42 @@ ruling, 2026-11-25, easy for Glenn to overrule):
   for the case is red, never left out
   (`TestLoadRefusesAnUnrepresentableLineOnAUnionRow`).
 
+### The hostile corpus
+
+Every case of the shared hostile corpus (internal/ci/hostilecorpus/corpus,
+docs/HOSTILE-CORPUS.md) is one registry test per language:
+`<type>.hostile.<case>` for manifest.tsv, and
+`<type>.hostile-number-token.<case>` for number-token.tsv (the wide integers
+written as bare number tokens, which each port reads once its own reader
+refuses them). The type is load-refusal for a refuse verdict and decode for
+an accept. The rows are nightly: each needs the language's toolchain, and
+each run is the whole manifest (tools/schema-test/hostile.go).
+
+- A language's instances of a family are answered by one run of the family's
+  make target for that language (`make schema-<lang>-runs-hostile-corpus`,
+  `make schema-<lang>-runs-hostile-number-token`), which runs every case once.
+  The run prints a block of verdict lines (`FAIL <case> ...`,
+  `hostile-ledger ran <case>`, `hostile-ledger end`); a runner written as a Go
+  test writes the same lines to the file `$SCHEMA_HOSTILE_VERDICTS` names
+  (hostilecorpus.WriteVerdicts). A case passes when the block says it ran and
+  no FAIL line names it. Lines after the last `end` are the target's own
+  controls, never the corpus run's.
+- A case no line names fails ("gave the case no verdict"). A run with no
+  block (a target that does not exist yet, a build that broke) or with a line
+  in its block that is no case's verdict (a carried FIX-CARD, a ledger that
+  did not close) fails every asked case with what the run said. A target that
+  exits non-zero with every case passing is the run's error.
+- No case runs twice: the per-case rows are the make target's only rows, and
+  their inputs name the Go test a Go-written target runs (`go_tests`), so
+  `schema-test extract` counts the target and the test as the rows'.
+- `TestTheRegistryHoldsEveryHostileCase` holds the rows to the manifests field
+  for field (`-update-hostile` rewrites them). A number-token row names the
+  conformance tree its case copies (`files`), so the tree is a data case the
+  registry reads.
+- Retired with this: the per-language schema-<lang>-runs-hostile-corpus.yml
+  workflows and schema-shared-hostile-corpus.yml; each control is its own
+  registry row.
+
 ## How each kind of test fits
 
 Every test of every kind is a registry row run by this driver; a kind that fits

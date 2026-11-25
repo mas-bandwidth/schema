@@ -28,8 +28,18 @@ func hostileRowLine(t testreg.Test) (string, error) {
 	return `{"rec":"test",` + string(b[1:]), nil
 }
 
+// isHostileFamily says whether a family is one of the hostile sets'.
+func isHostileFamily(family string) bool {
+	for _, s := range hostileSets {
+		if s.family == family {
+			return true
+		}
+	}
+	return false
+}
+
 // TestTheRegistryHoldsEveryHostileCase holds the registry's hostile rows to
-// the corpus manifest field for field: a case with no row, a row with no
+// the corpus manifests field for field: a case with no row, a row with no
 // case and a row that differs are each red by key. -update-hostile rewrites
 // them (keeping each row's measured seconds).
 func TestTheRegistryHoldsEveryHostileCase(t *testing.T) {
@@ -47,7 +57,7 @@ func TestTheRegistryHoldsEveryHostileCase(t *testing.T) {
 	}
 	have := map[string]testreg.Test{}
 	for _, row := range reg.Tests {
-		if row.Family == hostileFamily {
+		if isHostileFamily(row.Family) {
 			have[row.Key] = row
 		}
 	}
@@ -82,7 +92,7 @@ func TestTheRegistryHoldsEveryHostileCase(t *testing.T) {
 	}
 }
 
-// rewriteHostileRows drops every hostile row from the registry file and
+// rewriteHostileRows drops every hostile family's row from the registry file and
 // appends want, each keeping the seconds its old row measured.
 func rewriteHostileRows(path string, want []testreg.Test, have map[string]testreg.Test) error {
 	data, err := os.ReadFile(path)
@@ -95,7 +105,7 @@ func rewriteHostileRows(path string, want []testreg.Test, have map[string]testre
 		if err := json.Unmarshal([]byte(line), &head); err != nil {
 			return fmt.Errorf("%s: %w", path, err)
 		}
-		if head.Rec == "test" && head.Family == hostileFamily {
+		if head.Rec == "test" && isHostileFamily(head.Family) {
 			continue
 		}
 		out.WriteString(line + "\n")
@@ -151,10 +161,11 @@ func hostileInstance(t *testing.T, lang, name string) testreg.Instance {
 	}
 }
 
-// TestRunHostileReadsEachCaseFromItsRun drives runHostileWith with a
+// TestRunHostileReadsEachCaseFromItsRun drives hostileMain.runWith with a
 // stand-in make: each case's verdict is its line in the run, the lines a
 // Go-written runner leaves in the verdicts file count as the output's do,
-// and every way a run can fail to give a case its verdict is red by name.
+// and every way a run can fail to give a case its verdict is red by name,
+// each asked case failing with what the run said.
 // It runs from the repository root, where the corpus folder is.
 func TestRunHostileReadsEachCaseFromItsRun(t *testing.T) {
 	t.Chdir("../..")
@@ -195,10 +206,12 @@ func TestRunHostileReadsEachCaseFromItsRun(t *testing.T) {
 		{name: "row-ids-are-their-cases", out: "hostile-ledger ran " + a + "@tier1\n" + ranAll(a) + "hostile-ledger end\n", want: []string{"pass", "pass", "pass"}},
 		{name: "go-runner-file", out: "PROOF ok\n", file: "FAIL " + b + " want refuse\n" + ranAll() + "hostile-ledger end\n", want: []string{"pass", "fail", "pass"}},
 		{name: "lines-after-the-block-are-not-the-run", out: ranAll() + "hostile-ledger end\nFAIL " + a + " a carry control's scratch case\n", want: []string{"pass", "pass", "pass"}},
-		{name: "no-block", out: ranAll(), errHas: "closed no hostile-ledger block"},
-		{name: "carried-finding", out: "FIX-CARD: slug: inputs/x.bin\n" + ranAll() + "hostile-ledger end\n", errHas: "no case's verdict"},
-		{name: "ledger-did-not-close", out: ranAll() + "FAIL c hostile-corpus ledger: short\nhostile-ledger end\n", errHas: "no case's verdict"},
-		{name: "unregistered-case", out: "hostile-ledger ran no-such-case\n" + ranAll() + "hostile-ledger end\n", errHas: "no case's verdict"},
+		{name: "no-block", out: ranAll(), want: []string{"fail", "fail", "fail"}, reasonA: "closed no hostile-ledger block"},
+		{name: "no-target", out: "make: *** No rule to make target 'schema-go-runs-hostile-corpus'.  Stop.\n", exit: errors.New("exit status 2"),
+			want: []string{"fail", "fail", "fail"}, reasonA: "No rule to make target"},
+		{name: "carried-finding", out: "FIX-CARD: slug: inputs/x.bin\n" + ranAll() + "hostile-ledger end\n", want: []string{"fail", "fail", "fail"}, reasonA: "no case's verdict"},
+		{name: "ledger-did-not-close", out: ranAll() + "FAIL c hostile-corpus ledger: short\nhostile-ledger end\n", want: []string{"fail", "fail", "fail"}, reasonA: "no case's verdict"},
+		{name: "unregistered-case", out: "hostile-ledger ran no-such-case\n" + ranAll() + "hostile-ledger end\n", want: []string{"fail", "fail", "fail"}, reasonA: "no case's verdict"},
 		{name: "exit-with-every-case-green", out: ranAll() + "hostile-ledger end\n", exit: errors.New("exit status 2"), want: []string{"pass", "pass", "pass"}, errHas: "failed with every case passing"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -218,7 +231,7 @@ func TestRunHostileReadsEachCaseFromItsRun(t *testing.T) {
 			}
 			insts := []testreg.Instance{hostileInstance(t, "go", a), hostileInstance(t, "go", b), hostileInstance(t, "go", c)}
 			var log bytes.Buffer
-			res, err := runHostileWith(context.Background(), stand, t.TempDir(), "go", insts, &log)
+			res, err := hostileMain.runWith(context.Background(), stand, t.TempDir(), "go", insts, &log)
 			if got := strings.Join(argv, " "); got != "make -s schema-go-runs-hostile-corpus" {
 				t.Errorf("ran %q", got)
 			}
@@ -270,12 +283,63 @@ func TestHostilePlanRefusesWhatIsNoCase(t *testing.T) {
 		"twice":           {good, other},
 		"nothing":         nil,
 	} {
-		if _, _, err := hostilePlan("go", insts); err == nil {
+		if _, _, err := hostileMain.plan("go", insts); err == nil {
 			t.Errorf("%s: planned", name)
 		}
 	}
-	target, want, err := hostilePlan("lua", []testreg.Instance{good})
+	target, want, err := hostileMain.plan("lua", []testreg.Instance{good})
 	if err != nil || target != "schema-lua-runs-hostile-corpus" || want["wire-valid"] != good.Full {
 		t.Errorf("plan: %q %v %v", target, want, err)
+	}
+}
+
+// TestNumberTokenCasesAreRowsThatReadTheirTrees: every case of the
+// number-token manifest is a row of its own family, naming the conformance
+// tree it copies (so the tree is a data case the registry reads), and a
+// port with no number-token target fails each asked case by name, naming the
+// missing target, without stopping the run.
+func TestNumberTokenCasesAreRowsThatReadTheirTrees(t *testing.T) {
+	t.Chdir("../..")
+	dir := filepath.FromSlash(hostileCorpus)
+	cases, err := hostileNumberToken.cases(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, err := hostileNumberToken.rows(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != len(cases) {
+		t.Fatalf("%d rows for %d cases", len(rows), len(cases))
+	}
+	var insts []testreg.Instance
+	for _, r := range rows {
+		var in hostileInputs
+		if err := json.Unmarshal(r.Inputs, &in); err != nil {
+			t.Fatal(err)
+		}
+		if r.Family != hostileNumberToken.family || len(in.Files) != 1 || !strings.HasPrefix(in.Files[0], "testdata/conformance/tables/json-hostile-number-token/") {
+			t.Errorf("%s: family %s, files %v: want the number-token family reading its tree", r.Key, r.Family, in.Files)
+		}
+		insts = append(insts, testreg.Instance{Full: "go.nightly." + r.Key, Test: r})
+	}
+	stand := func(ctx context.Context, args []string) (string, error) {
+		if got := strings.Join(args, " "); got != "make -s schema-go-runs-hostile-number-token" {
+			t.Errorf("ran %q", got)
+		}
+		return "make: *** No rule to make target 'schema-go-runs-hostile-number-token'.  Stop.\n", errors.New("exit status 2")
+	}
+	var log bytes.Buffer
+	res, err := hostileNumberToken.runWith(context.Background(), stand, t.TempDir(), "go", insts, &log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res) != len(insts) {
+		t.Fatalf("%d results for %d instances", len(res), len(insts))
+	}
+	for _, r := range res {
+		if r.Verdict != testreg.Fail || !strings.Contains(r.Reason, "schema-go-runs-hostile-number-token") {
+			t.Errorf("%s: %s (%s), want a fail naming the missing target", r.Instance, r.Verdict, r.Reason)
+		}
 	}
 }

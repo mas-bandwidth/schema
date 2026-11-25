@@ -602,7 +602,7 @@ func runHostileCorpus(t *testing.T, root, corpusDir string, plant bool) []string
 		}
 	}
 	// the per-case verdicts the registry reads (hostilecorpus.WriteVerdicts):
-	// the unplanted run's, every disagreement a FAIL, carried or not
+	// the unplanted run's, every disagreement a FAIL
 	if !plant {
 		if err := hostilecorpus.WriteVerdicts(hostilecorpus.VerdictsPath(t.TempDir()), ran, failed); err != nil {
 			t.Fatal(err)
@@ -683,55 +683,17 @@ func TestLuauHostileScorerOutcomes(t *testing.T) {
 	}
 }
 
-// luauHostileCarried is the exact list of carried findings: each row is a
-// case name, the start of its finding line after the case name (the
-// mismatched component and the verdict the port reaches), and the card that
-// owes the fix. A carried row that stops disagreeing, or disagrees
-// differently, is drift and fails.
-var luauHostileCarried = []struct{ name, got, fix string }{}
-
-// luauHostileCarriedFinding: a finding line (after its FIX-CARD prefix) that
-// a carried row names.
-func luauHostileCarriedFinding(rest string) bool {
-	for _, c := range luauHostileCarried {
-		if strings.HasPrefix(rest, c.name+" "+c.got) {
-			return true
-		}
-	}
-	return false
-}
-
 // TestHostileCorpus_luau runs every manifest input through the Luau reader
-// at the manifest's carrier and holds it to the committed verdict, or to a
-// carried finding.
+// at the manifest's carrier and holds it to the committed verdict. No list
+// carries a finding (docs/rulings.json no-skips): every mismatch is red by its
+// case's name.
 func TestHostileCorpus_luau(t *testing.T) {
 	t.Parallel()
 	root, err := filepath.Abs("../..")
 	if err != nil {
 		t.Fatal(err)
 	}
-	findings := runHostileCorpus(t, root, filepath.Join(root, "internal", "ci", "hostilecorpus", "corpus"), false)
-	carried := map[string]bool{}
-	var bad []string
-	for _, f := range findings {
-		rest, _ := strings.CutPrefix(f, "FIX-CARD: luau-hostile-corpus: ")
-		known := false
-		for _, c := range luauHostileCarried {
-			if strings.HasPrefix(rest, c.name+" "+c.got) {
-				known = true
-				carried[c.name] = true
-				t.Logf("FIX-CARD: %s: %s", c.fix, rest)
-			}
-		}
-		if !known {
-			bad = append(bad, f)
-		}
-	}
-	for _, c := range luauHostileCarried {
-		if !carried[c.name] {
-			bad = append(bad, fmt.Sprintf("%s is carried (%s) but no longer disagrees as %q: drop or correct its row", c.name, c.fix, c.got))
-		}
-	}
+	bad := runHostileCorpus(t, root, filepath.Join(root, "internal", "ci", "hostilecorpus", "corpus"), false)
 	for _, f := range bad {
 		t.Error(f)
 	}
@@ -768,9 +730,6 @@ func TestLuauRunsHostileCorpusPlantedPattern(t *testing.T) {
 			t.Fatalf("NEGATIVE CONTROL FAILED: a finding without its FIX-CARD line: %s", f)
 		}
 		name, _, _ := strings.Cut(rest, " ")
-		if !want[name] && luauHostileCarriedFinding(rest) {
-			continue // a carried finding the plant cannot reach: red with or without it
-		}
 		got[name] = true
 	}
 	for name := range want {

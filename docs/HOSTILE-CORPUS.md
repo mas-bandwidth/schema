@@ -156,22 +156,15 @@ driven by `tools/hostilecorpusexec`, which runs each case in its own process
 with a 512 KiB case-thread stack and the per-case budget, so a crash, a
 sanitizer report or a hang fails only that case; a retaining load of a
 fixed-storage root, which neither port has, answers `SKIP`, and a skip fails
-the run: no list lets one pass). Each carries the disagreements
-its port still owes in a `known-findings.tsv` beside the runner and prints them
-as FIX-CARDs. A disagreement no FIX-CARD names fails the run, and so does a
-FIX-CARD whose case has gone green.
+the run: no list lets one pass).
 
-A finding is `name`, `slug`, `input`, `answer` and one line, tab-separated. The
-answer is what the port gives the case today: `accept <digest>` (its own
-digest), or `refuse` (a refusal, whatever reason it names: the ruling
-`refusal-verdict-only`). A finding carries that answer and no other. A
-different digest, an accept where it records a refusal, a refusal where it
-records an accept, and any execution failure (a timeout, a crash, a writer
-that threw after an accept) are disagreements no FIX-CARD names, and fail the
-run (F-070, F-079). Every runner replays the committed carry controls in
-`internal/ci/hostilecorpus/testdata/carry` before its corpus run
-(`make/checks/hostile-carry-controls.sh`): a finding whose answer matches is
-carried, and one whose answer differs, or that records none, fails.
+No list carries a finding (docs/rulings.json `no-skips`). Every disagreement
+with the manifest, and every execution failure (a timeout, a crash, a writer
+that threw after an accept), is a `FAIL` line that names its case, and the
+registry reads each one as that case's red row
+(`internal/ci/hostilecorpus/verdicts.go`). No runner reads a findings file,
+and a `FIX-CARD` or `STALE` line inside the per-case block is no case's
+verdict, so it fails every case the run was asked for.
 
 ## The ledger
 

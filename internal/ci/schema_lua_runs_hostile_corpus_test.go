@@ -430,23 +430,6 @@ func luaHostileRun(t *testing.T, root, corpusDir string, cases []luaHostileCase,
 	return answers
 }
 
-// luaHostileCarried is the exact expected-mismatch list: a case here is a
-// finding owned by a fix card, with the verdict this port actually reaches.
-// A carried row that starts matching the manifest is drift and fails (drop
-// the row); a carried row whose actual verdict moves is drift and fails too.
-type luaHostileCarried struct {
-	verdict string
-	reason  string
-	fix     string
-}
-
-func luaHostileCarriedList(_ []luaHostileCase) map[string]luaHostileCarried {
-	out := map[string]luaHostileCarried{}
-	// The message reader has no caller storage bound.
-	out["message-batch-too-large"] = luaHostileCarried{"accept", "-", "schema-lua-message-honors-storage-bound-r"}
-	return out
-}
-
 // luaHostileGrade grades one answer against its case and returns "" when it
 // conforms, else the disagreement. A refusal conforms on its verdict alone,
 // whatever reason either side names (docs/rulings.json refusal-verdict-only,
@@ -472,40 +455,16 @@ func luaHostileGrade(c luaHostileCase, a luaHostileAnswer, answered bool) (why s
 	return "", true
 }
 
-// luaHostileCompare returns every disagreement with the manifest unless it is
-// a carried finding at its recorded verdict; carried rows that no longer
-// disagree are drift.
+// luaHostileCompare returns every disagreement with the manifest, by case.
+// No list carries a finding (docs/rulings.json no-skips): a disagreement the
+// port already owes is red by its case's name like any other.
 func luaHostileCompare(t *testing.T, cases []luaHostileCase, answers map[string]luaHostileAnswer) []string {
 	t.Helper()
-	carried := luaHostileCarriedList(cases)
-	seenCarried := map[string]bool{}
 	var bad []string
 	for _, c := range cases {
 		a, ok := answers[c.Name]
-		why, _ := luaHostileGrade(c, a, ok)
-		if !ok {
+		if why, _ := luaHostileGrade(c, a, ok); why != "" {
 			bad = append(bad, why)
-			continue
-		}
-		if why == "" {
-			if _, isCarried := carried[c.Name]; isCarried {
-				bad = append(bad, fmt.Sprintf("%s now matches the manifest; drop it from the carried list", c.Name))
-			}
-			continue
-		}
-		want, exists := carried[c.Name]
-		if !exists {
-			bad = append(bad, why)
-			continue
-		}
-		seenCarried[c.Name] = true
-		if a.verdict != want.verdict || (a.verdict != luaHostileRefuse && a.reason != want.reason) {
-			bad = append(bad, fmt.Sprintf("%s: carried as %s/%s (%s), now %s/%s", c.Name, want.verdict, want.reason, want.fix, a.verdict, a.reason))
-		}
-	}
-	for name, want := range carried {
-		if !seenCarried[name] {
-			bad = append(bad, fmt.Sprintf("%s is carried (%s) but did not disagree", name, want.fix))
 		}
 	}
 	return bad
@@ -540,8 +499,8 @@ func TestSchemaLuaHostileScorerOutcomes(t *testing.T) {
 }
 
 // TestHostileCorpus_lua is the unit-tier gate: every corpus input
-// reaches the manifest's verdict and decoded-value digest, or is a
-// carried finding whose fix card and actual verdict are pinned here.
+// reaches the manifest's verdict and decoded-value digest; every case that
+// does not is red by its name.
 func TestHostileCorpus_lua(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
@@ -549,7 +508,7 @@ func TestHostileCorpus_lua(t *testing.T) {
 	cases := luaHostileCorpusCases(t, corpusDir)
 	answers := luaHostileRun(t, root, corpusDir, cases, false)
 	// the per-case verdicts the registry reads (hostilecorpus.WriteVerdicts):
-	// every disagreement is a FAIL there, carried or not
+	// every disagreement is a FAIL there
 	failed := map[string]string{}
 	for _, c := range cases {
 		a, ok := answers[c.Name]
@@ -565,12 +524,6 @@ func TestHostileCorpus_lua(t *testing.T) {
 		t.Fatalf("the Lua port disagrees with %d of %d hostile-corpus cases:\n  %s",
 			len(bad), len(cases), strings.Join(bad, "\n  "))
 	}
-	carried := luaHostileCarriedList(cases)
-	for _, c := range cases {
-		if want, ok := carried[c.Name]; ok {
-			t.Logf("FIX-CARD: %s: %s (%s/%s)", want.fix, c.Input, want.verdict, want.reason)
-		}
-	}
 	// THE LEDGER (internal/ci/hostilecorpus/ledger.go): the cases the Lua
 	// reader answered against the cases the folder registers, per carrier.
 	summary, err := hostilecorpus.RanEvery(corpusDir, slices.Collect(maps.Keys(answers)))
@@ -578,26 +531,31 @@ func TestHostileCorpus_lua(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Logf("lua hostile-corpus ledger: %s", summary)
-	t.Logf("%d hostile-corpus cases; %d carried findings with their fix cards", len(cases), len(carried))
+	t.Logf("%d hostile-corpus cases", len(cases))
 }
 
 // TestSchemaLuaHostileCorpusPlantedReader plants a wire-reader bug in a
 // scratch copy of the generated reader (the fixed form gate refuses form 3) and
-// requires the corpus comparison to go red: red with the plant in, green with
-// it out. The red line is kept in the failure message.
+// requires the corpus comparison to go red on a case the clean run answers
+// right: the plant is seen by a disagreement the reader without it does not
+// have. The red line is kept in the failure message.
 func TestSchemaLuaHostileCorpusPlantedReader(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
 	corpusDir := luaHostileCorpusDir(t, root)
 	cases := luaHostileCorpusCases(t, corpusDir)
-	clean := luaHostileRun(t, root, corpusDir, cases, false)
-	if bad := luaHostileCompare(t, cases, clean); len(bad) != 0 {
-		t.Fatalf("with the plant out the runner must be green:\n  %s", strings.Join(bad, "\n  "))
+	clean := map[string]bool{}
+	for _, why := range luaHostileCompare(t, cases, luaHostileRun(t, root, corpusDir, cases, false)) {
+		clean[why] = true
 	}
-	planted := luaHostileRun(t, root, corpusDir, cases, true)
-	bad := luaHostileCompare(t, cases, planted)
+	var bad []string
+	for _, why := range luaHostileCompare(t, cases, luaHostileRun(t, root, corpusDir, cases, true)) {
+		if !clean[why] {
+			bad = append(bad, why)
+		}
+	}
 	if len(bad) == 0 {
-		t.Fatalf("the planted reader bug (the fixed form gate refuses form 3) was not observed: the corpus stayed green")
+		t.Fatalf("the planted reader bug (the fixed form gate refuses form 3) was not observed: no case the clean reader answers right went red")
 	}
 	t.Logf("the planted reader bug is red: %s", bad[0])
 }

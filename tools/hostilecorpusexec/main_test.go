@@ -13,8 +13,7 @@ import (
 )
 
 // The child is a deterministic case binary; it does not execute a reader.
-// Exercise the real subprocess/parser/aggregate path, including an existing
-// finding, so an infrastructure failure cannot hide behind a semantic waiver.
+// Exercise the real subprocess/parser/aggregate path.
 func TestMain(m *testing.M) {
 	if mode := os.Getenv("SCHEMA_HOSTILE_RUNNER_TEST_ANSWER"); mode != "" {
 		// the corpus's second case always answers, so a run whose first case
@@ -73,13 +72,17 @@ func TestMain(m *testing.M) {
 
 var realBudget = startBudget
 
-func TestKnownFindingCannotHideExecutionFailure(t *testing.T) {
+// TestEveryDisagreementAndFailureIsRed runs the committed scenario corpus:
+// one manifest case and one row per scenario. No list carries a finding
+// (docs/rulings.json no-skips), so a disagreement is red like a crash, a
+// sanitizer report, a hang or a broken answer, and the case's FAIL line
+// names it; only the matching answer (a refusal on its verdict alone) is
+// green.
+func TestEveryDisagreementAndFailureIsRed(t *testing.T) {
 	binary, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
 	}
-	// the committed scenario corpus: one manifest case, the finding that
-	// carries it, and one row per scenario
 	scenarios := filepath.Join("testdata", "scenarios")
 	corpus := filepath.Join(scenarios, "corpus")
 	data, err := os.ReadFile(filepath.Join(scenarios, "scenarios.tsv"))
@@ -92,18 +95,10 @@ func TestKnownFindingCannotHideExecutionFailure(t *testing.T) {
 			continue
 		}
 		f := strings.Split(line, "\t")
-		if len(f) != 5 {
-			t.Fatalf("scenarios.tsv line %d: %d fields, want 5", n+1, len(f))
+		if len(f) != 4 {
+			t.Fatalf("scenarios.tsv line %d: %d fields, want 4", n+1, len(f))
 		}
-		name, mode, budget, carried, want := f[0], f[1], f[2], f[3], f[4]
-		findings := ""
-		switch carried {
-		case "known":
-			findings = filepath.Join(scenarios, "findings.tsv")
-		case "none":
-		default:
-			t.Fatalf("scenarios.tsv line %d: findings %q", n+1, carried)
-		}
+		name, mode, budget, want := f[0], f[1], f[2], f[3]
 		if budget != "spent" && budget != "never" {
 			t.Fatalf("scenarios.tsv line %d: budget %q", n+1, budget)
 		}
@@ -124,92 +119,18 @@ func TestKnownFindingCannotHideExecutionFailure(t *testing.T) {
 				return nil, func() bool { return true }
 			}
 			t.Cleanup(func() { startBudget = realBudget })
-			ok, err := run("test", binary, corpus, findings, "", 1, time.Hour)
+			ok, err := run("test", binary, corpus, "", 1, time.Hour)
 			if err != nil {
 				t.Fatal(err)
 			}
 			if ok != (want == "true") {
-				t.Fatalf("%s (child %s, budget %s, findings %s): success=%v, want %s", name, mode, budget, carried, ok, want)
+				t.Fatalf("%s (child %s, budget %s): success=%v, want %s", name, mode, budget, ok, want)
 			}
 		})
 	}
 	// an over-budget refusal is only proven beside a completed run that passes
 	if seen["spent/false"] == 0 || seen["never/true"] == 0 {
 		t.Errorf("the scenario corpus needs an over-budget failure and a completed success; it holds %v", seen)
-	}
-}
-
-// TestAFindingCarriesTheAnswerItRecords is F-079: a finding names the answer
-// the port gives today, and carries that answer and no other. Before, any
-// accept or refusal was carried under any finding, so a port that changed from
-// refusing to accepting (or to another digest) stayed green. The controls are
-// the findings that record the very answer given; a finding with no answer is
-// refused outright.
-func TestAFindingCarriesTheAnswerItRecords(t *testing.T) {
-	binary, err := os.Executable()
-	if err != nil {
-		t.Fatal(err)
-	}
-	corpus := testCorpus(t, "probe", "answers")
-	// a refusal is graded by its verdict alone (F-222), so a refusal is a
-	// disagreement to carry only where the case expects an accept
-	accepting := testCorpus(t, "probe", "answers")
-	manifest := filepath.Join(accepting, "manifest.tsv")
-	data, err := os.ReadFile(manifest)
-	if err != nil {
-		t.Fatal(err)
-	}
-	data = []byte(strings.Replace(string(data), "inputs/probe.bin\ttest\trefuse\tdamaged\t-", "inputs/probe.bin\ttest\taccept\t-\t"+strings.Repeat("a", 64), 1))
-	if err := os.WriteFile(manifest, data, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	write := func(answer string) string {
-		p := filepath.Join(t.TempDir(), "known-findings.tsv")
-		if err := os.WriteFile(p, []byte("probe\ttest-probe\tinputs/probe.bin\t"+answer+"\tknown disagreement\n"), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		return p
-	}
-	for _, c := range []struct {
-		name, mode, answer string
-		accepts            bool
-		want               bool
-	}{
-		{"CONTROL: an accept under the accept it records", "accept", "accept -", false, true},
-		{"CONTROL: a refusal under refuse, whatever its reason", "otherreason", "refuse", true, true},
-		{"an accept under refuse", "accept", "refuse", false, false},
-		{"an accept under another digest", "accept", "accept " + strings.Repeat("b", 64), false, false},
-		{"a refusal under an accept", "otherreason", "accept -", true, false},
-	} {
-		t.Run(c.name, func(t *testing.T) {
-			t.Setenv("SCHEMA_HOSTILE_RUNNER_TEST_ANSWER", c.mode)
-			dir := corpus
-			if c.accepts {
-				dir = accepting
-			}
-			ok, err := run("test", binary, dir, write(c.answer), "", 1, 5*time.Second)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if ok != c.want {
-				t.Fatalf("success=%v, want %v", ok, c.want)
-			}
-		})
-	}
-	old := filepath.Join(t.TempDir(), "known-findings.tsv")
-	if err := os.WriteFile(old, []byte("probe\ttest-probe\tinputs/probe.bin\tknown disagreement\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if _, _, err := loadFindings(old); err == nil {
-		t.Error("a finding that records no answer was read: it would carry any answer")
-	}
-	for _, carry := range []string{"answer-matches", "answer-refuse", "answer-other-digest"} {
-		if _, _, err := loadFindings(filepath.Join("..", "..", "internal", "ci", "hostilecorpus", "testdata", "carry", "findings", carry+".tsv")); err != nil {
-			t.Errorf("the committed carry control %s does not read: %v", carry, err)
-		}
-	}
-	if _, _, err := loadFindings(filepath.Join("..", "..", "internal", "ci", "hostilecorpus", "testdata", "carry", "findings", "no-answer.tsv")); err == nil {
-		t.Error("the committed no-answer carry control reads: it must be refused")
 	}
 }
 
@@ -231,7 +152,7 @@ func TestASkipIsAFailure(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			t.Setenv("SCHEMA_HOSTILE_RUNNER_TEST_ANSWER", c.mode)
-			ok, err := run("test", binary, corpus, "", "", 1, 5*time.Second)
+			ok, err := run("test", binary, corpus, "", 1, 5*time.Second)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -273,19 +194,19 @@ func TestARunOfNothingIsRed(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("SCHEMA_HOSTILE_RUNNER_TEST_ANSWER", "match")
-	ok, err := run("test", binary, testCorpus(t, "probe"), "", "", 1, 5*time.Second)
+	ok, err := run("test", binary, testCorpus(t, "probe"), "", 1, 5*time.Second)
 	if err != nil || !ok {
 		t.Fatalf("CONTROL FAILED: one case that answers: success=%v, %v", ok, err)
 	}
 	t.Setenv("SCHEMA_HOSTILE_RUNNER_TEST_ANSWER", "skip")
-	ok, err = run("test", binary, testCorpus(t, "probe"), "", "", 1, 5*time.Second)
+	ok, err = run("test", binary, testCorpus(t, "probe"), "", 1, 5*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if ok {
 		t.Error("a run whose every case is skipped passed: it compared nothing")
 	}
-	if _, err := run("test", binary, testCorpus(t), "", "", 1, 5*time.Second); err == nil || !strings.Contains(err.Error(), "registers no case") {
+	if _, err := run("test", binary, testCorpus(t), "", 1, 5*time.Second); err == nil || !strings.Contains(err.Error(), "registers no case") {
 		t.Errorf("a corpus with no case is not refused: %v", err)
 	}
 }

@@ -10,7 +10,7 @@ import (
 // TestSchemaCsRunsHostileCorpusWiring holds the card's blades without
 // needing a .NET SDK in the Go unit tier: the make target exists and is a
 // prerequisite of the port's normal unit target, its runner reads the committed
-// manifest and every FIX-CARD names a case the manifest carries. The corpus
+// manifest and no list carries a finding (every disagreement is red by name). The corpus
 // runs as the registry's per-case hostile rows (tools/schema-test/hostile.go).
 func TestSchemaCsRunsHostileCorpusWiring(t *testing.T) {
 	t.Parallel()
@@ -40,7 +40,7 @@ func TestSchemaCsRunsHostileCorpusWiring(t *testing.T) {
 	// The runner isolates every case in a worker process on a 512 KiB stack
 	// thread: a stack overflow cannot be caught in .NET, so the pool is the
 	// blade that keeps one crash from hiding the rest.
-	for _, want := range []string{"manifest.tsv", "FIX-CARD", "known-findings.tsv", "--worker", "512 * 1024", "HOSTILE_CASE_BUDGET_MS"} {
+	for _, want := range []string{"manifest.tsv", "--worker", "512 * 1024", "HOSTILE_CASE_BUDGET_MS"} {
 		if !strings.Contains(string(runner), want) {
 			t.Errorf("test/cs-hostile/Runner.cs does not carry %q", want)
 		}
@@ -78,30 +78,15 @@ func TestSchemaCsRunsHostileCorpusWiring(t *testing.T) {
 		t.Fatal("the manifest names no case — this gate would pass over an empty corpus")
 	}
 
-	findingsBytes, err := os.ReadFile(filepath.Join(root, "test", "cs-hostile", "known-findings.tsv"))
-	if err != nil {
-		t.Fatalf("the carried-findings list is missing: %v", err)
+	// NO LIST CARRIES A FINDING (docs/rulings.json no-skips): every
+	// disagreement is red by its case's name, so neither a findings file nor
+	// a runner that reads one is wired here
+	if _, err := os.Stat(filepath.Join(root, "test", "cs-hostile", "known-findings.tsv")); !os.IsNotExist(err) {
+		t.Errorf("test/cs-hostile/known-findings.tsv is present: a list that carries findings by name (%v)", err)
 	}
-	// An empty list is valid once every corpus case agrees. The native runner
-	// still rejects unexplained disagreements and stale carried findings.
-	for line := range strings.SplitSeq(string(findingsBytes), "\n") {
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		f := strings.Split(line, "\t")
-		if len(f) != 5 {
-			t.Fatalf("carried finding has %d fields, want 5 (name, slug, input, answer, one line): %q", len(f), line)
-		}
-		input, ok := cases[f[0]]
-		if !ok {
-			t.Errorf("carried finding %q names a case the manifest does not carry", f[0])
-			continue
-		}
-		if f[2] != input {
-			t.Errorf("carried finding %q names input %q, manifest says %q", f[0], f[2], input)
-		}
-		if !strings.HasPrefix(f[1], "cs-hostile-") || strings.TrimSpace(f[3]) == "" {
-			t.Errorf("carried finding %q has no FIX-CARD slug and one line: %q", f[0], line)
+	for _, carry := range []string{"known-findings", "FIX-CARD", "STALE"} {
+		if strings.Contains(string(runner), carry) {
+			t.Errorf("test/cs-hostile/Runner.cs carries %q: a finding is never carried", carry)
 		}
 	}
 }

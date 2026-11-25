@@ -11,10 +11,8 @@
 # case runs on its own 512 KiB-stack thread inside a 5 s budget
 # (HOSTILE_CASE_BUDGET_MS overrides).
 #
-# A disagreement the port already owes is carried, by name, in
-# test/java-hostile/known-findings.tsv, and printed as a FIX-CARD. A
-# disagreement no FIX-CARD names is a failure, and a FIX-CARD that has gone
-# green is a failure too, so the list cannot rot into silence.
+# A disagreement is never excused by name: every one is a FAIL line naming its
+# case.
 #
 # The planted-bad-pattern control changes the generated text reader in a
 # scratch copy so an accepted input is refused, and requires the runner to go
@@ -23,7 +21,6 @@
 
 JAVA_HOSTILE_CORPUS ?= internal/ci/hostilecorpus/corpus
 JAVA_HOSTILE_BUILD  ?= build/java-hostile
-JAVA_HOSTILE_FINDINGS ?= test/java-hostile/known-findings.tsv
 
 JAVA_HOSTILE_UNITS := tabledemo:tables/examples \
 	messagedemo:tables/messages blobdemo:tables/blobs \
@@ -70,8 +67,7 @@ JAVA_HOSTILE_CASES ?= $(shell grep -vc '^\#' $(JAVA_HOSTILE_CORPUS)/manifest.tsv
 .PHONY: schema-java-runs-hostile-corpus
 schema-java-runs-hostile-corpus: build/mustrun $(JAVA_HOSTILE_BUILD)/classes/.stamp $(JAVA_HOSTILE_BUILD)/packet/.stamp
 	$(JAVA) -cp $(JAVA_HOSTILE_BUILD)/classes Runner --scorer tools/hostilecorpusexec/testdata/scorer-outcomes.tsv
-	$(call hostile_ledgered,java,$(JAVA_HOSTILE_BUILD)/run.log,$(MUSTRUN) -name schema-java-runs-hostile-corpus -count $(JAVA_HOSTILE_CASES) -- $(JAVA) -cp $(JAVA_HOSTILE_BUILD)/classes Runner "$(JAVA_HOSTILE_CORPUS)" "$(JAVA_HOSTILE_FINDINGS)" "$(JAVA_HOSTILE_BUILD)/packet",$(JAVA_HOSTILE_CORPUS))
-	sh make/checks/hostile-carry-controls.sh java findings $(JAVA_HOSTILE_BUILD)/carry '$(JAVA) -cp $(JAVA_HOSTILE_BUILD)/classes Runner "$$CARRY_CORPUS" "$$CARRY_FINDINGS" "$(JAVA_HOSTILE_BUILD)/packet"'
+	$(call hostile_ledgered,java,$(JAVA_HOSTILE_BUILD)/run.log,$(MUSTRUN) -name schema-java-runs-hostile-corpus -count $(JAVA_HOSTILE_CASES) -- $(JAVA) -cp $(JAVA_HOSTILE_BUILD)/classes Runner "$(JAVA_HOSTILE_CORPUS)" "$(JAVA_HOSTILE_BUILD)/packet",$(JAVA_HOSTILE_CORPUS))
 
 # The port's normal unit target runs the corpus: this file is included after
 # make/java.mk by the Makefile's wildcard, so the prerequisite lands here and
@@ -89,7 +85,7 @@ schema-java-runs-hostile-corpus-negative-control: $(JAVA_HOSTILE_BUILD)/classes/
 		echo 'NEGATIVE CONTROL FAILED: the planted reader bug did not apply'; exit 1; fi
 	$(JAVAC) --release 17 -Xlint:all -Werror -d $(JAVA_HOSTILE_BUILD)/plant/classes \
 		$(JAVA_HOSTILE_BUILD)/plant/generated/*/*.java test/java-hostile/Runner.java
-	@if $(JAVA) -cp $(JAVA_HOSTILE_BUILD)/plant/classes Runner "$(JAVA_HOSTILE_CORPUS)" "$(JAVA_HOSTILE_FINDINGS)" \
+	@if $(JAVA) -cp $(JAVA_HOSTILE_BUILD)/plant/classes Runner "$(JAVA_HOSTILE_CORPUS)" \
 			"$(JAVA_HOSTILE_BUILD)/packet" > $(JAVA_HOSTILE_BUILD)/plant/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: a text reader that refuses accepted inputs left the corpus green'; \
 		cat $(JAVA_HOSTILE_BUILD)/plant/log; exit 1; fi
@@ -97,7 +93,7 @@ schema-java-runs-hostile-corpus-negative-control: $(JAVA_HOSTILE_BUILD)/classes/
 		{ echo 'NEGATIVE CONTROL FAILED: the runner went red without naming an unexplained case'; \
 		  cat $(JAVA_HOSTILE_BUILD)/plant/log; exit 1; }
 	@if HOSTILE_CASE_BUDGET_MS=1 $(JAVA) -cp $(JAVA_HOSTILE_BUILD)/classes Runner "$(JAVA_HOSTILE_CORPUS)" \
-			"$(JAVA_HOSTILE_FINDINGS)" "$(JAVA_HOSTILE_BUILD)/packet" > $(JAVA_HOSTILE_BUILD)/plant/budget.log 2>&1; then \
+			"$(JAVA_HOSTILE_BUILD)/packet" > $(JAVA_HOSTILE_BUILD)/plant/budget.log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: a 1 ms case budget left the corpus green'; \
 		cat $(JAVA_HOSTILE_BUILD)/plant/budget.log; exit 1; fi
 	@grep -q '^FAIL .* got=over budget' $(JAVA_HOSTILE_BUILD)/plant/budget.log || \
