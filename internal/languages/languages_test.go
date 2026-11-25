@@ -42,7 +42,7 @@ func skipTaggedBuild(t *testing.T) {
 	targets := compiler.New().Targets()
 	for _, tag := range sourceTagged(t) {
 		if slices.Contains(targets, tag) {
-			t.Skipf("this build registers %s (tag %s%s); the pages state the default build", tag, TagPrefix, tag)
+			t.Fatalf("this build registers %s (tag %s%s); the pages state the default build", tag, TagPrefix, tag)
 		}
 	}
 }

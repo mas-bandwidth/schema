@@ -185,7 +185,7 @@ func runUnionByteArrayCsProbe(t *testing.T, files map[string][]byte) {
 			if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
 				t.Fatalf("serialize.cs runtime missing at %s: %v", path, err)
 			}
-			t.Skipf("serialize.cs runtime not staged at %s: %v", path, err)
+			t.Fatalf("serialize.cs runtime not staged at %s: %v", path, err)
 		}
 		sources = append(sources, path)
 	}
@@ -237,7 +237,7 @@ func csUnionBytesToolchain(t *testing.T) (csc string, refs []string, runtime str
 	t.Helper()
 	path, err := exec.LookPath(csUnionBytesDotnet())
 	if err != nil {
-		t.Skipf("dotnet not found: %v", err)
+		t.Fatalf("dotnet not found: %v", err)
 	}
 	resolved, err := filepath.EvalSymlinks(path)
 	if err != nil {

@@ -2,6 +2,7 @@ package modulemove
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -63,11 +64,19 @@ func TestCompare(t *testing.T) {
 }
 
 // TestFirstV3ModuleTagParses: the boundary, once set, is a release tag of
-// major 3, with no pre-release or build suffix.
+// major 3, with no pre-release or build suffix; while it is unset, go.mod has
+// not moved to /v3.
 func TestFirstV3ModuleTagParses(t *testing.T) {
 	t.Parallel()
 	if FirstV3ModuleTag == "" {
-		t.Skip("FirstV3ModuleTag is unset: go.mod has not moved to /v3, so there is no boundary tag to parse")
+		mod, err := os.ReadFile("../../go.mod")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(mod), "/v3\n") {
+			t.Fatalf("go.mod has moved to /v3 and FirstV3ModuleTag is unset: set it to the first v3 release tag")
+		}
+		return
 	}
 	if Major(FirstV3ModuleTag) != "3" || strings.ContainsAny(FirstV3ModuleTag, "-+") || strings.Count(FirstV3ModuleTag, ".") != 2 {
 		t.Errorf("FirstV3ModuleTag = %q; want a v3.Y.Z release tag", FirstV3ModuleTag)

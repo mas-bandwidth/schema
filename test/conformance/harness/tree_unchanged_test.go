@@ -24,6 +24,10 @@ func TestMain(m *testing.M) {
 	if mode := os.Getenv("SCHEMA_HARNESS_FAKE_DRIVER"); mode != "" {
 		os.Exit(fakeDriver(mode, os.Args[1:]))
 	}
+	// THE TEST BINARY AS A JSON FUZZ DRIVER (jsonfuzz_test.go), the same way.
+	if os.Getenv("SCHEMA_JSONFUZZ_TEST_DRIVER") == "1" {
+		os.Exit(jsonFuzzSyntheticDriver())
+	}
 	root, err := treeRoot()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)

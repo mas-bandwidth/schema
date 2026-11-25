@@ -319,7 +319,7 @@ func TestCertifyParallelShardsCoverFullMakeTest(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
 	if _, err := exec.LookPath("make"); err != nil {
-		t.Skip("no make on PATH")
+		t.Fatal("no make on PATH")
 	}
 
 	legs := registeredTestLegs(t, root)

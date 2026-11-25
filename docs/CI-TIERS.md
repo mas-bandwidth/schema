@@ -73,7 +73,8 @@ next table. Every job of every other workflow is a row here.
 | `ci-policy` | `ci-fast.yml` | per-PR, main, dispatch | always: internal/ci and the policy packages, sharded |
 | `lint-fast` | `ci-fast.yml` | per-PR, main, dispatch | always |
 | `vet` | `ci-fast.yml` | per-PR, main, dispatch | always |
-| `schema-test` | `ci-fast.yml` | per-PR, main, dispatch | always: the registry's coverage matrix and `schema-test run --group pr` |
+| `schema-test` | `ci-fast.yml` | per-PR, main, dispatch | always: the registry's coverage matrix and `schema-test extract` |
+| `schema-test-pr` | `ci-fast.yml` | per-PR, main, dispatch | always: `schema-test run --group pr --shard i/N`, the registry's unit and functional tests cut by measured seconds |
 | `golangci-lint-fast` | `ci-fast.yml` | per-PR, main, dispatch | plan: the diff's Go packages |
 | `generated-current` | `ci-fast.yml` | per-PR, main, dispatch | plan: a codegen diff |
 | `lang-clean` | `ci-fast.yml` | per-PR, main, dispatch | plan: the touched legs' clean gates |
@@ -90,7 +91,7 @@ next table. Every job of every other workflow is a row here.
 | `input-family` | `ci-fast.yml` | per-PR, main, dispatch | plan: the input-family rows |
 | `block-gate` | `ci-fast.yml` | per-PR, main, dispatch | always |
 | `newleg-scaffold` | `ci-fast.yml` | per-PR, main, dispatch | plan: a new leg in the diff |
-| `go-fixed-corpus` | `ci-fast.yml` | per-PR, main, dispatch | plan: the tables-go-fixedform row |
+| `go-fixed-corpus` | `ci-fast.yml` | per-PR, main, dispatch | always: the schema-test-pr shards and the tables-go-fixedform row read it |
 | `go-test-touched` | `ci-fast.yml` | per-PR, main, dispatch | plan: the touched packages' test rows |
 | `pins` | `ci-fast.yml` | per-PR, main, dispatch | plan: a diff that touches what the pins protect |
 | `verdict` | `ci-fast.yml` | per-PR, main, dispatch | always: the one required check |

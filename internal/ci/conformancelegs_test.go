@@ -28,7 +28,7 @@ import (
 func TestConformanceLegsRebuildFromTheirInputs(t *testing.T) {
 	t.Parallel()
 	if _, err := exec.LookPath("make"); err != nil {
-		t.Skipf("this gate reads make's prerequisite graph: %v", err)
+		t.Fatalf("this gate reads make's prerequisite graph: %v", err)
 	}
 	if red := conformanceLegGaps(t, nil); len(red) > 0 {
 		for _, r := range red {
@@ -40,7 +40,7 @@ func TestConformanceLegsRebuildFromTheirInputs(t *testing.T) {
 func TestConformanceLegsRebuildNegativeControl(t *testing.T) {
 	t.Parallel()
 	if _, err := exec.LookPath("make"); err != nil {
-		t.Skipf("this gate reads make's prerequisite graph: %v", err)
+		t.Fatalf("this gate reads make's prerequisite graph: %v", err)
 	}
 	src, err := os.ReadFile(filepath.Join(repoRootDir(t), "make", "goose.mk"))
 	if err != nil {

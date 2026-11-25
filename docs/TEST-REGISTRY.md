@@ -63,6 +63,8 @@ schema-test run  NAME|PATTERN... [--lang L]... [--tier T]... [--type Y]... [--fa
 schema-test run  --group G [--shard i/n]
 schema-test list (the same)
 schema-test coverage
+schema-test extract [--json] [--write-ledger] [--shrinks-from LEDGER] [--since MAIN-TREE] [--move LAYER]
+schema-test seconds [--registry PATH] LOG...
 schema-test addenda [--check] [--root DIR]
 ```
 
@@ -77,8 +79,16 @@ name in it runs and passes or fails; nothing downstream drops a name.
   whose adapter has landed. `--lang none` selects the language-free tests.
 - `--group G` runs a stored query. The workflows run groups, so which tests a
   job runs is data here, never a list in a workflow: `pr` and `nightly`.
-- `--shard i/n` runs the i-th of n parts of the expanded list: name k goes to
-  part k mod n + 1, so the parts cover every name exactly once. An empty part fails.
+- `--shard i/n` runs the i-th of n parts of the expanded list. The parts are
+  contiguous in registry order (one Go package's tests stay together) and cut
+  by each test's measured seconds (its `"seconds"`; a test with none weighs
+  1 s): the heaviest part is as light as a contiguous cut allows, and the
+  others end near their share of what is left. The parts cover every name
+  exactly once. An empty part fails.
+- `--write-seconds` records each passing test's measured seconds in the
+  registry; `schema-test seconds LOG...` does the same from the logs of runs
+  on fleet runners (each outcome line carries `(1.23s)`), which is where the
+  numbers come from: a bench's seconds are not a runner's.
 - Adapters for different languages run in parallel within one run.
 - `coverage` prints the matrix of every per-language test times every language,
   each cell `ok` (answered), `un` (declared unrepresentable) or `MISS`, then
@@ -154,7 +164,7 @@ Built today:
 | adapter | for | how |
 |---|---|---|
 | `go`, `lua` | per-language rows of family `align-arrays` | `make bin/schema build/verify-bitphase-bin`, then `verify-bitphase --adapter --lang L` |
-| `gotest` | language-free Go tests; inputs `{"package", "test"}` | `go test -json -run '^(...)$' <package>`, one verdict per top-level test; skip is fail |
+| `gotest` | language-free Go tests; inputs `{"package", "test"}` | one `go test -count=1 -json -run '^(A|B|...)$' <package>` per package, several packages at once, every event mapped to its row by full name, with `SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1` set (a test's tier says what it needs; under the driver no gate skips). A test or subtest that skips fails; a row whose test is not in its package's source is MISSING; one that never reports fails. A package in a module of its own runs from that module |
 | `plant` | negative controls; inputs `{"target", "env"}` | runs the target by name with `env` set, which breaks what the target checks; passes only when the target runs and fails |
 
 ## How each kind of test fits
@@ -234,6 +244,14 @@ pass.
 `schema-test extract --json` prints every test, one JSON line each.
 `--write-ledger` rewrites the ledger to what is unmoved now, and keeps every
 `skip-red` line as it is. Use it only when tests move in or go away.
+`--move L` gives every test on layer L's ledger lines that the driver can
+run its registry row (a language-free Go test becomes a `gotest` row, tier
+from its gates) and rewrites the ledger.
+
+A registry row's test cannot skip: `TestEveryTestIsARowOrInTheLedger` refuses
+a row whose test reaches a `Skip` or reads `testing.Short()`, and one that
+opens the slow gate (it needs a toolchain) with tier unit. A skip in a moved
+test becomes a failure that names its cause, or a fact of its tier.
 
 ## Adding a test
 
@@ -280,8 +298,13 @@ every pull request.
 
 ## CI
 
-- Per PR: ci-fast.yml job `schema-test` prints `coverage`, then runs
-  `--group pr`: unit and functional, every ready language, every language-free test.
+- Per PR: ci-fast.yml job `schema-test` prints `coverage` and runs `extract`
+  against main's ledger. Job `schema-test-pr` is a matrix of shards, each
+  `schema-test run --group pr --shard i/N`: unit and functional, every ready
+  language, every language-free test. `TestThePRShardsFitTheirJobs` holds the
+  matrix to exactly 1/N..N/N, each shard within its 60 s of measured tests.
+  A workflow job that runs the driver is not itself an unmoved test: its tests
+  are the rows it selects.
 - Nightly: `schema-test-nightly.yml` runs `--group nightly` (every tier, every
   language, no timeout) and names every MISSING instance red. It is red by
   intent until every language has an adapter: its MISSING list is the
@@ -322,7 +345,11 @@ load-refusal rows), through the `go` and `lua` adapters, plus a plant for each.
 Each layer is one pull request, and each moves its tests out of the unmoved
 ledger and into rows:
 
-- **L3:** the language-free Go tests, through `gotest`, batched by package.
+- **L3 (done):** the language-free Go tests, through `gotest`, batched by
+  package. Left in the ledger: Go benchmarks (L6, the bench adapter), Go tests
+  in modules of their own beside generated Go (L5), and the tests that still
+  skip without a build, environment or volume a make target or runner
+  provides (L6).
 - **L4:** one adapter per language over the conformance drivers' protocol,
   corpus families first.
 - **L5:** the per-language Go tests, through each language's adapter.

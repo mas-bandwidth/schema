@@ -103,7 +103,7 @@ func runMergeMain(t *testing.T, dir, event, base string) (string, error) {
 func TestMergeMainChecksALanePullRequestAgainstCurrentMain(t *testing.T) {
 	t.Parallel()
 	if runtime.GOOS == "windows" {
-		t.Skip("merge-main.sh is a POSIX shell script (bash), run on the Linux fleet runners")
+		t.Fatal("merge-main.sh is a POSIX shell script (bash), run on the Linux fleet runners")
 	}
 	origin := mergeMainRepo(t, func(git func(...string) string, write func(string, string)) {
 		write("main-only.txt", "landed on main after the lane forked\n")
@@ -171,7 +171,7 @@ func TestMergeMainChecksALanePullRequestAgainstCurrentMain(t *testing.T) {
 func TestMergeMainFailsALaneThatConflictsWithMain(t *testing.T) {
 	t.Parallel()
 	if runtime.GOOS == "windows" {
-		t.Skip("merge-main.sh is a POSIX shell script (bash), run on the Linux fleet runners")
+		t.Fatal("merge-main.sh is a POSIX shell script (bash), run on the Linux fleet runners")
 	}
 	origin := mergeMainRepo(t, func(git func(...string) string, write func(string, string)) {
 		write("shared.txt", "main's line\n")

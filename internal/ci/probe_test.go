@@ -23,7 +23,7 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 	slowtest.Gate(t, "make and the Go toolchain (it builds cmd/schema and runs the wide-scalar probe recipe)")
 	t.Parallel()
 	if _, err := exec.LookPath("make"); err != nil {
-		t.Skipf("probe recipe requires make: %v", err)
+		t.Fatalf("probe recipe requires make: %v", err)
 	}
 	root, fixture := repoRoot(t), t.TempDir()
 	for _, dir := range []string{"cmd", "internal", "ir", "compiler", "bin", "tables"} {

@@ -22,11 +22,11 @@ func TestCTablePointerHeaderIncludesFromCxx(t *testing.T) {
 	slowtest.Gate(t, "the C and C++ compilers, once per generated table header")
 	cc, err := exec.LookPath("cc")
 	if err != nil {
-		t.Skip("generated C compilation requires cc")
+		t.Fatal("generated C compilation requires cc")
 	}
 	cxx, err := exec.LookPath("c++")
 	if err != nil {
-		t.Skip("generated C++ inclusion requires c++")
+		t.Fatal("generated C++ inclusion requires c++")
 	}
 	for _, path := range []string{"../tables/pointers", "../tables/blobs"} {
 		t.Run(filepath.Base(path), func(t *testing.T) {

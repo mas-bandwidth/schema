@@ -97,9 +97,10 @@ func TestJSONFuzzPlantedNegativeControls(t *testing.T) {
 		t.Helper()
 		script := filepath.Join(t.TempDir(), "synthetic-driver.sh")
 		body := "#!/bin/sh\n" +
-			"export SCHEMA_JSONFUZZ_TEST_DRIVER=1\n" +
+			"SCHEMA_JSONFUZZ_TEST_DRIVER=1\n" + // TestMain's helper-process variable
+			"export SCHEMA_JSONFUZZ_TEST_DRIVER\n" +
 			"export SCHEMA_JSONFUZZ_SABOTAGE=" + sabotage + "\n" +
-			"exec \"" + exe + "\" -test.run=^TestJSONFuzzSyntheticDriverHelper$ -- \"$@\"\n"
+			"exec \"" + exe + "\" -- \"$@\"\n"
 		if err := os.WriteFile(script, []byte(body), 0o755); err != nil {
 			t.Fatalf("write synthetic driver: %v", err)
 		}
@@ -156,10 +157,10 @@ func TestJSONFuzzPlantedNegativeControls(t *testing.T) {
 	}
 }
 
-func TestJSONFuzzSyntheticDriverHelper(t *testing.T) {
-	if os.Getenv("SCHEMA_JSONFUZZ_TEST_DRIVER") != "1" {
-		t.Skip("helper for TestJSONFuzzPlantedNegativeControls")
-	}
+// jsonFuzzSyntheticDriver is the test binary run as a JSON fuzz driver
+// (TestJSONFuzzPlantedNegativeControls's synthetic-driver.sh): TestMain
+// answers with it, before any test runs, when SCHEMA_JSONFUZZ_TEST_DRIVER=1.
+func jsonFuzzSyntheticDriver() int {
 	var args []string
 	for i, a := range os.Args {
 		if a == "--" {
@@ -254,7 +255,8 @@ func TestJSONFuzzSyntheticDriverHelper(t *testing.T) {
 		}
 	case "json-write":
 		if len(lines) == 0 {
-			t.Fatal("lines is empty: the loop below would check nothing")
+			os.Stderr.WriteString("json-write: the manifest is empty, so the loop below would check nothing\n")
+			return 1
 		}
 		for _, line := range lines {
 			f := strings.Fields(strings.TrimSpace(line))
@@ -282,7 +284,7 @@ func TestJSONFuzzSyntheticDriverHelper(t *testing.T) {
 			_ = os.WriteFile(filepath.Join(outDir, name+".json"), jb, 0o644)
 		}
 	}
-	os.Exit(0)
+	return 0
 }
 
 func chdirRepoRoot(t *testing.T) {

@@ -56,7 +56,7 @@ func TestRegistryCompleteNegativeControls(t *testing.T) {
 func registryComplete(t *testing.T, args ...string) (string, error) {
 	t.Helper()
 	if _, err := exec.LookPath("make"); err != nil {
-		t.Skipf("this gate reads the make registry: %v", err)
+		t.Fatalf("this gate reads the make registry: %v", err)
 	}
 	testinputs.Make(t)
 	cmd := exec.Command("make", append([]string{"--no-print-directory", "-s", "registry-complete"}, args...)...)
@@ -71,7 +71,7 @@ func registryComplete(t *testing.T, args ...string) (string, error) {
 func registryNA(t *testing.T) string {
 	t.Helper()
 	if _, err := exec.LookPath("make"); err != nil {
-		t.Skipf("this gate reads the make registry: %v", err)
+		t.Fatalf("this gate reads the make registry: %v", err)
 	}
 	testinputs.Make(t)
 	cmd := exec.Command("make", "--no-print-directory", "-s", "registry-na")

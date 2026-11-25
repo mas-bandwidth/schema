@@ -88,7 +88,7 @@ func TestIssue611(t *testing.T) {
 	t.Run("cs", func(t *testing.T) {
 		dotnet := findDotnet()
 		if dotnet == "" {
-			t.Skip("dotnet unavailable")
+			t.Fatal("dotnet unavailable")
 		}
 		files, err := c.Generate(u, "cs", Options{})
 		if err != nil {

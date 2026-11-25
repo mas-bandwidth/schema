@@ -447,7 +447,7 @@ func TestPinTargetBoundary(t *testing.T) {
 func TestPinReadOnlyDirectoryChangesNothing(t *testing.T) {
 	t.Parallel()
 	if os.Geteuid() == 0 {
-		t.Skip("root writes into a read-only directory; TestPinPublishAllOrNothing covers the same rule through its seam")
+		t.Fatal("root writes into a read-only directory; TestPinPublishAllOrNothing covers the same rule through its seam")
 	}
 	bin := buildCLI(t)
 	root := t.TempDir()

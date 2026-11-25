@@ -83,7 +83,7 @@ func TestOutputInputsCorpus(t *testing.T) {
 			}
 			for rel, target := range tc.Layout.Symlinks {
 				if err := os.Symlink(target, filepath.Join(work, rel)); err != nil {
-					t.Skipf("symlinks unavailable: %v", err)
+					t.Fatalf("symlinks unavailable: %v", err)
 				}
 			}
 			for rel, of := range tc.Layout.Hardlinks {

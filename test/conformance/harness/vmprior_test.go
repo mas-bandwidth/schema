@@ -36,7 +36,7 @@ func priorTree(t *testing.T, leg string, extra ...string) (dir, manifest, out st
 	t.Helper()
 	for _, tool := range []string{"sh", "perl", "awk"} {
 		if _, err := exec.LookPath(tool); err != nil {
-			t.Skipf("no %s on PATH", tool)
+			t.Fatalf("no %s on PATH", tool)
 		}
 	}
 	root := filepath.Join("..", "..", "..")

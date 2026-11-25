@@ -27,7 +27,7 @@ import (
 func TestCFormatGateProvesItRan(t *testing.T) {
 	t.Parallel()
 	if runtime.GOOS == "windows" {
-		t.Skip("the engine is a POSIX shell script; the C lane that runs it is Linux and macOS")
+		t.Fatal("the engine is a POSIX shell script; the C lane that runs it is Linux and macOS")
 	}
 	root := repoRoot(t)
 	script := filepath.Join(root, "make", "checks", "c-clean-format.sh")

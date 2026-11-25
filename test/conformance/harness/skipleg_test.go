@@ -28,7 +28,7 @@ func TestSkippedLegIsNotAConformancePrerequisite(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := exec.LookPath("make"); err != nil {
-		t.Skipf("no make on PATH")
+		t.Fatalf("no make on PATH")
 	}
 
 	conformance := func(skip string) []string {

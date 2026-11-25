@@ -104,7 +104,7 @@ func TestOwedArms(t *testing.T) {
 // The runner must hand both successful and failed harness exits to the scorer.
 func TestRunnerScoresHarnessExit(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		t.Skip("the release runner fixture requires POSIX executable permissions")
+		t.Fatal("the release runner fixture requires POSIX executable permissions")
 	}
 	runner, err := filepath.Abs("../../make/checks/wire-fuzz-release-run.sh")
 	if err != nil {

@@ -100,7 +100,7 @@ func referenceCompileRun(t *testing.T, files map[string][]byte, source string, f
 	slowtest.Gate(t, "the C++ compiler")
 	compiler, err := exec.LookPath("c++")
 	if err != nil {
-		t.Skipf("c++ unavailable: %v", err)
+		t.Fatalf("c++ unavailable: %v", err)
 	}
 	runtime := os.Getenv("SERIALIZE")
 	if runtime == "" {

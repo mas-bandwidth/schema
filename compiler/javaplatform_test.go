@@ -472,7 +472,7 @@ func TestJavaUnitsNamedLikePlatformTypesCompile(t *testing.T) {
 	if javac == "" {
 		p, err := exec.LookPath("javac")
 		if err != nil {
-			t.Skip("no javac (set JAVAC or install a JDK)")
+			t.Fatal("no javac (set JAVAC or install a JDK)")
 		}
 		javac = p
 	}

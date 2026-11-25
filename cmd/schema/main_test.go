@@ -258,7 +258,7 @@ func treeNames(t *testing.T, dir string) []string {
 func TestReadOnlyTreeRunsEveryReadingCommand(t *testing.T) {
 	slowtest.Gate(t, "go build and the compiled schema binary")
 	if os.Geteuid() == 0 {
-		t.Skip("root writes through a read-only directory, so the mode proves nothing")
+		t.Fatal("root writes through a read-only directory, so the mode proves nothing")
 	}
 	bin := buildCLI(t)
 	work := t.TempDir()

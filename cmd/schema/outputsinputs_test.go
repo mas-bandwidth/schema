@@ -68,7 +68,7 @@ func TestOutputsRefusedInsideTheInputTree(t *testing.T) {
 				root, tree, elsewhere := inputTree(t)
 				alias := filepath.Join(root, "alias")
 				if err := os.Symlink("tree", alias); err != nil {
-					t.Skipf("symlinks unavailable: %v", err)
+					t.Fatalf("symlinks unavailable: %v", err)
 				}
 				outside := filepath.Join(elsewhere, "points-in.bin")
 				if err := os.Symlink(filepath.Join(tree, "level.json"), outside); err != nil {
@@ -181,7 +181,7 @@ func TestOutputsRefusedOverASchemaSource(t *testing.T) {
 			writeTestFile(t, source, demoSchema)
 			writeTestFile(t, filepath.Join(unit, "Other.schema"), "package demo\n")
 			if err := os.Symlink("unit", filepath.Join(root, "alias")); err != nil {
-				t.Skipf("symlinks unavailable: %v", err)
+				t.Fatalf("symlinks unavailable: %v", err)
 			}
 			twin := filepath.Join(root, "twin.bin")
 			if err := os.Link(source, twin); err != nil {
@@ -318,7 +318,7 @@ func entryPutBack(t *testing.T, sideFlag, payloadFlag, kind string, failing func
 	side := filepath.Join(dir, "side.bin")
 	if kind == "symbolic link" {
 		if err := os.Symlink("target.bin", side); err != nil {
-			t.Skipf("symlinks unavailable: %v", err)
+			t.Fatalf("symlinks unavailable: %v", err)
 		}
 	} else {
 		writeTestFile(t, side, oldSide)

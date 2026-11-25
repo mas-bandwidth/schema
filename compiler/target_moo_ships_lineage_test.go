@@ -82,7 +82,7 @@ func mooLineageCorpus(t *testing.T) string {
 	if slowtest.CorpusRequired() {
 		t.Fatal(why)
 	}
-	t.Skip(why)
+	t.Fatal(why)
 	return ""
 }
 

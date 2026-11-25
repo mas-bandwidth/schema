@@ -266,7 +266,7 @@ func runCRefOrdinal(t *testing.T, files map[string][]byte, driver, binary, runFa
 	slowtest.Gate(t, "the C compiler (cc)")
 	cc, err := exec.LookPath("cc")
 	if err != nil {
-		t.Skip("the generated save path is C: no cc on PATH")
+		t.Fatal("the generated save path is C: no cc on PATH")
 	}
 	dir := t.TempDir()
 	for name, data := range files {

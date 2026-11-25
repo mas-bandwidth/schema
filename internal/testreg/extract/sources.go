@@ -148,7 +148,9 @@ func (s *scan) makeTargets(files []string, nc, ci map[string]bool) {
 }
 
 // workflowJobs emits every job of every workflow: the keys two spaces in
-// under the top-level jobs: key.
+// under the top-level jobs: key. A job whose steps run the driver
+// (`schema-test run`) is the registry running, not a test of its own: its
+// tests are the rows it selects, and it is not emitted.
 func (s *scan) workflowJobs(files []string) {
 	for _, rel := range files {
 		data, err := os.ReadFile(filepath.Join(s.root, rel))
@@ -156,7 +158,13 @@ func (s *scan) workflowJobs(files []string) {
 			s.fail(rel, "read: %v", err)
 			continue
 		}
-		in, found := false, 0
+		type job struct {
+			name       string
+			line       int
+			runsDriver bool
+		}
+		var jobs []job
+		in := false
 		for i, line := range strings.Split(string(data), "\n") {
 			switch {
 			case line == "jobs:":
@@ -165,25 +173,39 @@ func (s *scan) workflowJobs(files []string) {
 			case in && line != "" && !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "#"):
 				in = false
 			}
-			if !in || len(line) < 3 || line[:2] != "  " || line[2] == ' ' || line[2] == '#' {
+			if !in {
+				continue
+			}
+			if len(jobs) > 0 && !strings.HasPrefix(strings.TrimSpace(line), "#") && strings.Contains(line, driverRun) {
+				jobs[len(jobs)-1].runsDriver = true
+			}
+			if len(line) < 3 || line[:2] != "  " || line[2] == ' ' || line[2] == '#' {
 				continue
 			}
 			name, _, ok := strings.Cut(strings.TrimSpace(line), ":")
 			if !ok {
 				continue
 			}
-			found++
-			tier := "functional"
-			if !strings.Contains(string(data), "pull_request") {
-				tier = "nightly"
-			}
-			s.add(Item{Kind: KindWorkflowJob, Dir: rel, Name: name, Source: rel + ":" + strconv.Itoa(i+1), Tier: tier})
+			jobs = append(jobs, job{name: name, line: i + 1})
 		}
-		if found == 0 {
+		if len(jobs) == 0 {
 			s.fail(rel, "no jobs: key with jobs under it")
+		}
+		tier := "functional"
+		if !strings.Contains(string(data), "pull_request") {
+			tier = "nightly"
+		}
+		for _, j := range jobs {
+			if j.runsDriver {
+				continue
+			}
+			s.add(Item{Kind: KindWorkflowJob, Dir: rel, Name: j.name, Source: rel + ":" + strconv.Itoa(j.line), Tier: tier})
 		}
 	}
 }
+
+// driverRun is the command a workflow job runs the registry's rows with.
+const driverRun = "tools/schema-test run "
 
 // dataCases emits each line of a .jsonl file and each other data file,
 // files that share a stem in one directory (case.in, case.out) being one

@@ -24,7 +24,7 @@ func TestDistPythonStagesTheFleetSDK(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "make (dist-python against a fake fleet SDK)")
 	if _, err := exec.LookPath("make"); err != nil {
-		t.Skipf("dist-python shells out to make: %v", err)
+		t.Fatalf("dist-python shells out to make: %v", err)
 	}
 	mk, err := os.ReadFile(filepath.Join(repoRoot(t), "make", "python-toolchain.mk"))
 	if err != nil {

@@ -79,7 +79,7 @@ func TestCUfixedBridgeRuntimeAgainstSerializeC(t *testing.T) {
 	slowtest.Gate(t, "the C compiler (cc)")
 	cc, err := exec.LookPath("cc")
 	if err != nil {
-		t.Skip("cc unavailable")
+		t.Fatal("cc unavailable")
 	}
 	root, err := filepath.Abs("..")
 	if err != nil {
@@ -90,7 +90,7 @@ func TestCUfixedBridgeRuntimeAgainstSerializeC(t *testing.T) {
 		serializeC = filepath.Join(filepath.Dir(root), "serialize.c")
 	}
 	if _, err := os.Stat(filepath.Join(serializeC, "serialize.h")); err != nil {
-		t.Skipf("serialize.c not found at %s", serializeC)
+		t.Fatalf("serialize.c not found at %s", serializeC)
 	}
 
 	c := New()

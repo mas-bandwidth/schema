@@ -167,7 +167,7 @@ func TestNewLegZigYieldsABuildingTestingSkeleton(t *testing.T) {
 	slowtest.Gate(t, "go build, go vet and make over a copied tree")
 	for _, tool := range []string{"make", "go"} {
 		if _, err := exec.LookPath(tool); err != nil {
-			t.Skipf("no %s on PATH", tool)
+			t.Fatalf("no %s on PATH", tool)
 		}
 	}
 	root, err := filepath.Abs("../..")
@@ -352,7 +352,7 @@ func plantSymlink(t *testing.T, target, link string) {
 		t.Fatal(err)
 	}
 	if err := os.Symlink(target, link); err != nil {
-		t.Skipf("cannot create a symlink here: %v", err)
+		t.Fatalf("cannot create a symlink here: %v", err)
 	}
 }
 
@@ -481,7 +481,7 @@ func TestScaffoldRefusesASymlinkedParentDirectory(t *testing.T) {
 // is written, where an os.Stat check read it as absence and went on writing.
 func TestScaffoldReportsALookupErrorThatIsNotAbsence(t *testing.T) {
 	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
-		t.Skip("needs POSIX permissions that bind the caller")
+		t.Fatal("needs POSIX permissions that bind the caller")
 	}
 	files := zigLeg(t)
 	root := schemaTree(t)

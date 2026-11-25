@@ -264,7 +264,7 @@ func sbclOrSkip(t *testing.T) string {
 	t.Helper()
 	sbcl, err := exec.LookPath("sbcl")
 	if err != nil {
-		t.Skip("sbcl not installed on host; skipping the Lisp renderer (make roadmap-check runs it where sbcl is)")
+		t.Fatal("sbcl not installed on host; skipping the Lisp renderer (make roadmap-check runs it where sbcl is)")
 	}
 	return sbcl
 }

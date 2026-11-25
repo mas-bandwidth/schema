@@ -569,7 +569,7 @@ func TestGeneratedConstantsCompileToCheckerValues(t *testing.T) {
 		t.Parallel()
 		dotnet := findDotnet()
 		if dotnet == "" {
-			t.Skip("dotnet unavailable")
+			t.Fatal("dotnet unavailable")
 		}
 		dir := agreeGenerate(t, constsOnly, "cs", "")
 		agreeWrite(t, filepath.Join(dir, "probe.csproj"), `<Project Sdk="Microsoft.NET.Sdk">
@@ -721,7 +721,7 @@ func agreeTool(t *testing.T, name string) string {
 	t.Helper()
 	p, err := exec.LookPath(name)
 	if err != nil {
-		t.Skipf("%s unavailable: %v", name, err)
+		t.Fatalf("%s unavailable: %v", name, err)
 	}
 	return p
 }

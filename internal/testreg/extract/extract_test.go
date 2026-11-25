@@ -45,19 +45,21 @@ func Testhelper(t *testing.T) {}
 
 func TestMain(m *testing.M) {}
 `,
-	"pkg/b_test.go":                 "//go:build linux\n\npackage pkg_test\n\nimport \"testing\"\n\nfunc TestLinux(t *testing.T) {}\n",
-	"pkg/testdata/fixture_test.go":  "package fixture\n\nimport \"testing\"\n\nfunc TestNotATest(t *testing.T) {}\n",
-	"Makefile":                      "test-all: build\n\tgo test ./...\n\nbuild:\n\tgo build\n\nprep:\n\ttrue\n\nnc-one:\n\ttrue\n\nlib-check: ; true\n",
-	"make/negative-controls.json":   `{"groups": [{"name": "g1", "when": "pull-request", "targets": ["nc-one"]}], "excluded": [{"target": "nc-two", "reason": "slow"}]}`,
-	".github/workflows/ci.yml":      "on: [pull_request]\njobs:\n  lint:\n    runs-on: x\n    steps:\n      - run: make prep && make -j 4 test-all X=1\n  # a comment\n  build:\n    runs-on: x\n",
-	"testdata/corpus/cases.jsonl":   "{\"name\": \"one\"}\n\n{\"id\": \"two\"}\n{\"v\": 3}\n",
-	"testdata/corpus/x.in":          "in",
-	"testdata/corpus/x.out":         "out",
-	"testdata/corpus/README.md":     "doc",
-	"test/conformance/zz/driver.py": "print()",
-	"test/conformance/zz/src/a.py":  "print()",
-	"tla/m/MCSpec.cfg":              "INIT Init",
-	"working/x_test.go":             "package x\n\nimport \"testing\"\n\nfunc TestScratch(t *testing.T) {}\n",
+	"pkg/b_test.go":                  "//go:build linux\n\npackage pkg_test\n\nimport \"testing\"\n\nfunc TestLinux(t *testing.T) {}\n",
+	"pkg/testdata/fixture_test.go":   "package fixture\n\nimport \"testing\"\n\nfunc TestNotATest(t *testing.T) {}\n",
+	"Makefile":                       "test-all: build\n\tgo test ./...\n\nbuild:\n\tgo build\n\nprep:\n\ttrue\n\nnc-one:\n\ttrue\n\nlib-check: ; true\n",
+	"make/negative-controls.json":    `{"groups": [{"name": "g1", "when": "pull-request", "targets": ["nc-one"]}], "excluded": [{"target": "nc-two", "reason": "slow"}]}`,
+	".github/workflows/ci.yml":       "on: [pull_request]\njobs:\n  lint:\n    runs-on: x\n    steps:\n      - run: make prep && make -j 4 test-all X=1\n  # a comment\n  build:\n    runs-on: x\n  rows:\n    runs-on: x\n    steps:\n      - run: go run ./tools/schema-test run --group pr --shard 1/2\n",
+	"testdata/corpus/cases.jsonl":    "{\"name\": \"one\"}\n\n{\"id\": \"two\"}\n{\"v\": 3}\n",
+	"testdata/corpus/x.in":           "in",
+	"testdata/corpus/x.out":          "out",
+	"testdata/corpus/README.md":      "doc",
+	"test/conformance/zz/driver.py":  "print()",
+	"test/conformance/zz/src/a.py":   "print()",
+	"tla/m/MCSpec.cfg":               "INIT Init",
+	"working/x_test.go":              "package x\n\nimport \"testing\"\n\nfunc TestScratch(t *testing.T) {}\n",
+	"test/u/obj/Debug/gen.cs":        "// a dotnet build output file, never a test\n",
+	"test/u/bin/Debug/x/u.deps.json": "{}\n",
 }
 
 func writeFixture(t *testing.T, files map[string]string) string {
@@ -77,7 +79,9 @@ func writeFixture(t *testing.T, files map[string]string) string {
 
 // TestExtractFindsEveryKind: the fixture's tests, each of its kind, with
 // the gates that decide its tier; fixtures under testdata, scratch under
-// working/, TestMain and a lower-case Testhelper are not tests.
+// working/, build output under obj/, TestMain and a lower-case Testhelper
+// are not tests, and nor is
+// a workflow job that runs the driver (its tests are the rows it runs).
 func TestExtractFindsEveryKind(t *testing.T) {
 	t.Parallel()
 	res, err := Extract(writeFixture(t, fixture))
@@ -190,6 +194,41 @@ func TestCheckHoldsTheRepositoryTheRegistryAndTheLedgerExactly(t *testing.T) {
 		if !strings.Contains(strings.Join(p, "\n"), c.says) {
 			t.Errorf("%s: want %q in:\n%s", name, c.says, strings.Join(p, "\n"))
 		}
+	}
+}
+
+// TestARegisteredTestCannotSkip: a test a registry row runs that can still
+// skip, that reads testing.Short(), or that opens the slow gate while its row
+// is tier unit, is named; the same test with none of those passes. Each case
+// is the bug planted back into an otherwise exact account.
+func TestARegisteredTestCannotSkip(t *testing.T) {
+	t.Parallel()
+	row := gotestRow("tooling.a.row", "./a", "TestRow")
+	row.Tier = "unit"
+	reg := &testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{row}}
+	account := func(gates ...string) []string {
+		res := &Result{Items: []Item{{Kind: KindGoTest, Dir: "a", Name: "TestRow", Source: "a/x_test.go:1", Gates: gates}}}
+		return Check(res, reg, nil)
+	}
+	if p := account(); len(p) != 0 {
+		t.Fatalf("a registered test with no gate: %v", p)
+	}
+	if p := account("build: linux"); len(p) != 0 {
+		t.Fatalf("a build constraint is no skip: %v", p)
+	}
+	for gate, says := range map[string]string{
+		"skip: a/x_test.go:9 if no cc": "registry row tooling.a.row runs TestRow, which can skip at a/x_test.go:9 if no cc",
+		"short":                        "registry row tooling.a.row runs TestRow, which reads testing.Short()",
+		"slow":                         "registry row tooling.a.row runs TestRow, which opens the slow gate (it needs a toolchain), and is tier unit",
+	} {
+		if p := account(gate); !strings.Contains(strings.Join(p, "\n"), says) {
+			t.Errorf("gate %q: want %q in %v", gate, says, p)
+		}
+	}
+	row.Tier = "functional"
+	reg = &testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{row}}
+	if p := account("slow"); len(p) != 0 {
+		t.Fatalf("a slow-gated test of tier functional: %v", p)
 	}
 }
 
@@ -322,7 +361,7 @@ func TestLedgerCountsWhatIsUnmoved(t *testing.T) {
 		t.Fatal(err)
 	}
 	reg := &testreg.Registry{Tests: []testreg.Test{gotestRow("tooling.pkg.plain", "./pkg", "TestPlain")}}
-	lines := Ledger(res, reg, func(kind, dir string) (string, string) { return "L9", "fixture" })
+	lines := Ledger(res, reg, func(kind, dir string, _ []Item) (string, string) { return "L9", "fixture" })
 	var b strings.Builder
 	if err := WriteLedger(&b, "# h\n", lines); err != nil {
 		t.Fatal(err)

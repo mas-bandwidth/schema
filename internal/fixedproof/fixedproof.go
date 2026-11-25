@@ -1700,7 +1700,7 @@ func findFixedCorpus(t *testing.T, repoRoot string) (string, map[string]int) {
 		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
 			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and %s is absent: %v", mPath, err)
 		}
-		t.Skipf("fixedform-corpus not built (%v)", err)
+		t.Fatalf("fixedform-corpus not built (%v)", err)
 	}
 	records := map[string]int{}
 	for line := range strings.SplitSeq(string(data), "\n") {

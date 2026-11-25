@@ -114,7 +114,7 @@ fixed table Root {
 				slowtest.Gate(t, "dotnet")
 				dotnet := findDotnet()
 				if dotnet == "" {
-					t.Skip("dotnet unavailable")
+					t.Fatal("dotnet unavailable")
 				}
 				runtime, err := filepath.Abs("../../serialize.cs")
 				if err != nil {

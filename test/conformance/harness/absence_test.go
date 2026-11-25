@@ -163,7 +163,7 @@ func needShell(t *testing.T) {
 
 	t.Helper()
 	if _, err := exec.LookPath("sh"); err != nil {
-		t.Skip("no sh on PATH")
+		t.Fatal("no sh on PATH")
 	}
 }
 

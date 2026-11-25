@@ -33,11 +33,12 @@ func TestGoUnitViewCorpus(t *testing.T) {
 		if !ok {
 			t.Fatalf("VIEW_CORPUS entry %q is not dir:package", entry)
 		}
+		if path == "wide" {
+			// the wide-text unit is retired: it is no case here
+			continue
+		}
 		t.Run(path, func(t *testing.T) {
 			c := New()
-			if path == "wide" {
-				t.Skip("the wide-text unit is retired")
-			}
 			source := "../tables/" + path
 			paths, err := filepath.Glob(source + "/*.schema")
 			if err != nil {

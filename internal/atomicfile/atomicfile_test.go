@@ -177,7 +177,7 @@ func TestAFailedRenameLeavesTheOriginal(t *testing.T) {
 func TestAReadOnlyFileRefusesTheWholeCommit(t *testing.T) {
 	t.Parallel()
 	if os.Geteuid() == 0 {
-		t.Skip("root writes into a read-only file")
+		t.Fatal("root writes into a read-only file")
 	}
 	dir := tempDir(t)
 	a, b := filepath.Join(dir, "a.txt"), filepath.Join(dir, "b.txt")
@@ -219,7 +219,7 @@ func TestASymbolicLinkIsFollowed(t *testing.T) {
 		filepath.Join(dir, "dangling"):     filepath.Join("real", "new.txt"),
 	} {
 		if err := os.Symlink(target, link); err != nil {
-			t.Skipf("symlinks unavailable: %v", err)
+			t.Fatalf("symlinks unavailable: %v", err)
 		}
 	}
 	for i, path := range []string{
@@ -385,7 +385,7 @@ func TestARootConfinesEveryName(t *testing.T) {
 		"within":   "inside.txt",
 	} {
 		if err := os.Symlink(target, filepath.Join(dir, link)); err != nil {
-			t.Skipf("symlinks unavailable: %v", err)
+			t.Fatalf("symlinks unavailable: %v", err)
 		}
 	}
 	for _, name := range []string{"absolute", "climbs", filepath.Join("..", "outside.txt")} {
@@ -429,7 +429,7 @@ func TestALaterWriteToOneFileWins(t *testing.T) {
 	path := filepath.Join(dir, "a.txt")
 	put(t, path, "old", 0o644)
 	if err := os.Symlink("a.txt", filepath.Join(dir, "link")); err != nil {
-		t.Skipf("symlinks unavailable: %v", err)
+		t.Fatalf("symlinks unavailable: %v", err)
 	}
 	txn := New()
 	txn.Write(path, []byte("first"), 0o644)
@@ -511,7 +511,7 @@ func TestADistinctCommitRefusesTwoNamesForOneFile(t *testing.T) {
 			t.Fatal(err)
 		}
 		if err := os.Symlink("real", filepath.Join(dir, "alias")); err != nil {
-			t.Skipf("symlinks unavailable: %v", err)
+			t.Fatalf("symlinks unavailable: %v", err)
 		}
 		first, second := filepath.Join(dir, "alias", "out.bin"), filepath.Join(target, "out.bin")
 		txn := New()

@@ -307,7 +307,7 @@ func TestCPPTableStringArrays(t *testing.T) {
 	slowtest.Gate(t, "the C++ compiler")
 	cxx, err := exec.LookPath("c++")
 	if err != nil {
-		t.Skip("the generated save path is C++: no c++ on PATH")
+		t.Fatal("the generated save path is C++: no c++ on PATH")
 	}
 	files, err := New().Generate(unitFromSource(t, cppStringArraysSchema), "cpp", Options{})
 	if err != nil {

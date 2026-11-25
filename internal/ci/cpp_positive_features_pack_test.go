@@ -18,7 +18,7 @@ import (
 func TestCppPositiveFeatureCorpusPack(t *testing.T) {
 	t.Parallel()
 	if runtime.GOOS == "windows" {
-		t.Skip("nightly corpus packaging runs in Bash on Linux")
+		t.Fatal("nightly corpus packaging runs in Bash on Linux")
 	}
 	root := repoRoot(t)
 	raw, err := os.ReadFile(filepath.Join(root, ".github/workflows/nightly-conformance.yml"))

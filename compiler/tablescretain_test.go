@@ -122,7 +122,7 @@ func TestCTableRetainRefusedByName(t *testing.T) {
 	slowtest.Gate(t, "the C compiler (cc)")
 	cc, err := exec.LookPath("cc")
 	if err != nil {
-		t.Skip("requires C compiler")
+		t.Fatal("requires C compiler")
 	}
 	u := unitFromSource(t, "package probe\nfixed table Fixed { x uint32 }\ntable Variable { next *Variable }\n")
 	files, err := generateCUnqualified(u)

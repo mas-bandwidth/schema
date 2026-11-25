@@ -29,7 +29,7 @@ func TestCPPTextFormDocumentVectors(t *testing.T) {
 	slowtest.Gate(t, "the C++ compiler")
 	cxx, err := exec.LookPath("c++")
 	if err != nil {
-		t.Skip("the generated read is C++: no c++ on PATH")
+		t.Fatal("the generated read is C++: no c++ on PATH")
 	}
 	files, err := New().Generate(unitFromSource(t, cppTextFormKindsSchema()), "cpp", Options{})
 	if err != nil {

@@ -404,7 +404,7 @@ func TestProbeAddressSpaceCeilingFunctional(t *testing.T) {
 	slowtest.Gate(t, "the C++ compiler")
 	apply := addressSpaceCeilingApply()
 	if apply == "" {
-		t.Skip("platform has no kernel address-space ceiling")
+		t.Fatal("platform has no kernel address-space ceiling")
 	}
 	dir := t.TempDir()
 	cpp := filepath.Join(dir, "ceil.cpp")

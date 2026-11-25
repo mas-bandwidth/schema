@@ -62,7 +62,7 @@ func TestCppConformanceProducerReusesTheVerifiedBlockCompiler(t *testing.T) {
 func TestFastInputAccountingKeepsBothCanaries(t *testing.T) {
 	t.Parallel()
 	if runtime.GOOS == "windows" {
-		t.Skip("the Linux input accounting lane runs its recipe in a POSIX host's Bash")
+		t.Fatal("the Linux input accounting lane runs its recipe in a POSIX host's Bash")
 	}
 	data, err := os.ReadFile(filepath.Join(repoRoot(t), ".github/workflows/ci-fast.yml"))
 	if err != nil {
@@ -117,7 +117,7 @@ func TestFastInputAccountingKeepsBothCanaries(t *testing.T) {
 func TestFastPlanSplitsSquirrelCorpusAccountingRows(t *testing.T) {
 	t.Parallel()
 	if runtime.GOOS == "windows" {
-		t.Skip("the Linux input accounting lane runs its recipe in a POSIX host's Bash")
+		t.Fatal("the Linux input accounting lane runs its recipe in a POSIX host's Bash")
 	}
 	data := readCI(t, repoRoot(t), ".github/workflows/ci-fast.yml")
 	_, plan, ok := strings.Cut(data, "# Keep Squirrel's independent wrong-input control within its own job budget.\n")
@@ -179,7 +179,7 @@ func TestDartConformanceHandoffSelection(t *testing.T) {
 func TestFastPlanSelectsConformanceHandoffChanges(t *testing.T) {
 	t.Parallel()
 	if runtime.GOOS == "windows" {
-		t.Skip("the Linux input accounting lane runs its recipe in a POSIX host's Bash")
+		t.Fatal("the Linux input accounting lane runs its recipe in a POSIX host's Bash")
 	}
 	root := repoRoot(t)
 	data, err := os.ReadFile(filepath.Join(root, ".github/workflows/ci-fast.yml"))

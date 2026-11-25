@@ -234,7 +234,7 @@ func builtCorpus(t *testing.T) string {
 		if slowtest.CorpusRequired() {
 			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set (or CI runs the slow half) and the reference's corpus is not in %s: %v", dir, err)
 		}
-		t.Skip("the reference's corpus is not built: make tables-fixedform-corpus")
+		t.Fatal("the reference's corpus is not built: make tables-fixedform-corpus")
 	}
 	return dir
 }
@@ -306,7 +306,7 @@ func fixedCorpus(t *testing.T) string {
 		if slowtest.CorpusRequired() {
 			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set (or CI runs the slow half) and the fixed-form corpus is not built in %s: %v", dir, err)
 		}
-		t.Skip("the fixed-form corpus is not built: make tables-fixedform-corpus")
+		t.Fatal("the fixed-form corpus is not built: make tables-fixedform-corpus")
 	}
 	return dir
 }

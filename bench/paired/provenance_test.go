@@ -170,7 +170,7 @@ func TestCompletedPassRejectsMissingExtraOrMixedSamples(t *testing.T) {
 					t.Fatal(err)
 				}
 				if err = os.Symlink(filepath.Join(f.assets, "external.csv"), path); err != nil {
-					t.Skipf("symlink unavailable: %v", err)
+					t.Fatalf("symlink unavailable: %v", err)
 				}
 			}
 			if err := verifyPass(f.dir); err == nil {

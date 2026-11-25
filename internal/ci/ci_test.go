@@ -1501,6 +1501,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"ci-fast.yml:pins",
 		"ci-fast.yml:plan",
 		"ci-fast.yml:schema-test",
+		"ci-fast.yml:schema-test-pr",
 		"ci-fast.yml:verdict",
 		"ci-fast.yml:verify-cpp-conformance",
 		"ci-fast.yml:verify-dart-conformance",

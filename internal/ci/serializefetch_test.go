@@ -36,10 +36,10 @@ func TestSerializeFetchTriesTheMirrorFirst(t *testing.T) {
 	slowtest.Gate(t, "make and git (a local fetch of the runtime)")
 
 	if _, err := exec.LookPath("make"); err != nil {
-		t.Skipf("the fetch gate shells out to make: %v", err)
+		t.Fatalf("the fetch gate shells out to make: %v", err)
 	}
 	if _, err := exec.LookPath("git"); err != nil {
-		t.Skipf("the fetch gate shells out to git: %v", err)
+		t.Fatalf("the fetch gate shells out to git: %v", err)
 	}
 
 	root := repoRoot(t)
@@ -51,19 +51,20 @@ func TestSerializeFetchTriesTheMirrorFirst(t *testing.T) {
 
 	t.Run("the C++ runtime", func(t *testing.T) {
 		t.Parallel()
-		sibling := filepath.Join(root, "..", "serialize", "serialize.h")
-		if _, err := os.Stat(sibling); err == nil {
-			t.Skipf("a sibling C++ serialize checkout at %s resolves SERIALIZE, so the fetch is not reached", sibling)
-		}
 		pin := makePin(t, makefile, "SERIALIZE_PIN")
 		tmp := t.TempDir()
+		// a copy of the make workspace, so no sibling C++ serialize checkout
+		// beside the real one resolves SERIALIZE and keeps the fetch from
+		// being reached
+		makeRoot := filepath.Join(tmp, "repo")
+		copyMakeWorkspace(t, root, makeRoot)
 		mirrors := filepath.Join(tmp, "mirrors")
 		makeBareRuntime(t, filepath.Join(mirrors, "mas-bandwidth", "serialize.git"), pin,
 			map[string]string{"serialize.h": "// the pinned serialize runtime\n"})
 		fetched := filepath.Join(tmp, "out", "serialize")
 		header := filepath.Join(fetched, "serialize.h")
 
-		out, err := runMakeFetch(t, root, []string{
+		out, err := runMakeFetch(t, makeRoot, []string{
 			"NOVA_MIRRORS=" + mirrors,
 			"SERIALIZE_REPO=/nonexistent/serialize.git",
 			"SERIALIZE_FETCHED=" + fetched,
