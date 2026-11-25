@@ -121,6 +121,7 @@ func fullPlan(ev ciEvent) ciEvent {
 	ev.PlanVerifyLegs = legs
 	ev.PlanDartCorpus = "true"
 	ev.PlanCppCorpus = "true"
+	ev.PlanElixirCorpus = "true"
 	ev.PRPins = "yes"
 	ev.PRCS = "yes"
 	return ev
@@ -433,7 +434,7 @@ func TestEveryJobHasItsTierInCITiers(t *testing.T) {
 		{"a group dropped from ci-fast.yml", dropJob("ci-fast.yml", "verify-leg"), doc},
 		{"a job with no row", wfs, plantDoc(verifyRow, "| `verify-leg-gone` | `ci-fast.yml` | per-PR, main, dispatch |")},
 		{"a row with the wrong tiers", wfs, plantDoc(verifyRow, "| `verify-leg` | `ci-fast.yml` | main |")},
-		{"a dispatch-only gate called per-PR", wfs, plantDoc("| `leg-gate` | `ci-fast.yml` | dispatch |", "| `leg-gate` | `ci-fast.yml` | per-PR, main, dispatch |")},
+		{"a nightly-only job called per-PR", wfs, plantDoc("| `page` | `roadmap.yml` | nightly, dispatch |", "| `page` | `roadmap.yml` | per-PR, main, nightly, dispatch |")},
 	} {
 		if len(tierTableErrors(c.wfs, c.doc)) == 0 {
 			t.Errorf("PLANTED %q left the gate green", c.name)
@@ -499,13 +500,13 @@ func TestEveryPerPRGroupRunsOnEveryPullRequest(t *testing.T) {
 	}
 	m := maps.Clone(wfs)
 	m["ci-fast.yml"] = strings.Replace(m["ci-fast.yml"], yamlJobs(m["ci-fast.yml"])["verify-leg"], "", 1)
-	verifyIf := "    if: (needs.plan.outputs.verify_legs != '[]'"
+	verifyIf := "    if: ((needs.plan.outputs.all == 'yes' || needs.plan.outputs.verify_legs != '[]')"
 	for _, c := range []struct {
 		name string
 		wfs  map[string]string
 	}{
 		{"a group dropped from ci-fast.yml", m},
-		{"the sprint/ skip put back on a group", plant(verifyIf, "    if: startsWith(github.head_ref, 'sprint/') == false && (needs.plan.outputs.verify_legs != '[]'")},
+		{"the sprint/ skip put back on a group", plant(verifyIf, "    if: startsWith(github.head_ref, 'sprint/') == false && ((needs.plan.outputs.all == 'yes' || needs.plan.outputs.verify_legs != '[]')")},
 		{"a group given three minutes", plant("  vet:\n", "  vet:\n    timeout-minutes: 3\n")},
 	} {
 		if len(perPRGroupErrors(c.wfs, doc)) == 0 {

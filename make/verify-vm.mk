@@ -284,7 +284,7 @@ _verify-js-conformance: verify-toolchain-js build/conformance-harness-vm build/t
 
 _verify-js-bench: bench-js-gate tables-js-bench-gate verify-deep-js verify-cards-js
 
-_verify-js-fuzz: verify-toolchain-js build/conformance-harness-vm build/tables-generated-js/.stamp cards-js-generate
+_verify-js-fuzz: verify-toolchain-js build/conformance-harness-vm build/tables-generated-js/.stamp cards-js-generate _verify-js-fuzz-message
 	@mkdir -p build/verify
 	NODE="$(NODE)" ./build/conformance-harness-vm wire-fuzz $(WFR_FLAGS_js) \
 		--driver "$(WFR_DRIVER_js)" \
@@ -297,6 +297,12 @@ _verify-js-fuzz: verify-toolchain-js build/conformance-harness-vm build/tables-g
 	NODE="$(NODE)" ./build/conformance-harness-vm json-fuzz --only js \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_JSON_FUZZ_N) \
 		--failed build/verify/json-fuzz-js
+
+# the message-fuzz gate, a target of its own so its negative control
+# (verify-message-fuzz-negative-control-js) runs it alone
+.PHONY: _verify-js-fuzz-message
+_verify-js-fuzz-message: verify-toolchain-js build/conformance-harness-vm build/tables-generated-js/.stamp cards-js-generate
+	@mkdir -p build/verify
 	NODE="$(NODE)" ./build/conformance-harness-vm message-fuzz --only js \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_MESSAGE_FUZZ_N) \
 		--failed build/verify/message-fuzz-js
@@ -310,7 +316,7 @@ _verify-python-conformance: verify-toolchain-python build/conformance-harness-vm
 
 _verify-python-bench: verify-toolchain-python bench-python-gate tables-python-bench-gate verify-deep-python verify-cards-python
 
-_verify-python-fuzz: verify-toolchain-python build/conformance-harness-vm build/conformance-python
+_verify-python-fuzz: verify-toolchain-python build/conformance-harness-vm build/conformance-python _verify-python-fuzz-message
 	@mkdir -p build/verify
 	./build/conformance-harness-vm wire-fuzz \
 		--driver "$(WFR_DRIVER_python)" \
@@ -323,6 +329,12 @@ _verify-python-fuzz: verify-toolchain-python build/conformance-harness-vm build/
 	PYTHON="$(PYTHON)" ./build/conformance-harness-vm json-fuzz --only python \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_JSON_FUZZ_N) \
 		--failed build/verify/json-fuzz-python
+
+# the message-fuzz gate, a target of its own so its negative control
+# (verify-message-fuzz-negative-control-python) runs it alone
+.PHONY: _verify-python-fuzz-message
+_verify-python-fuzz-message: verify-toolchain-python build/conformance-harness-vm build/conformance-python
+	@mkdir -p build/verify
 	PYTHON="$(PYTHON)" ./build/conformance-harness-vm message-fuzz --only python \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_MESSAGE_FUZZ_N) \
 		--failed build/verify/message-fuzz-python
@@ -336,7 +348,7 @@ _verify-ruby-conformance: verify-toolchain-ruby build/conformance-harness-vm bui
 
 _verify-ruby-bench: verify-toolchain-ruby bench-ruby-gate tables-ruby-bench-gate verify-deep-ruby verify-cards-ruby
 
-_verify-ruby-fuzz: verify-toolchain-ruby build/conformance-harness-vm build/conformance-ruby
+_verify-ruby-fuzz: verify-toolchain-ruby build/conformance-harness-vm build/conformance-ruby _verify-ruby-fuzz-message
 	@mkdir -p build/verify
 	./build/conformance-harness-vm wire-fuzz \
 		--driver "$(WFR_DRIVER_ruby)" \
@@ -349,6 +361,12 @@ _verify-ruby-fuzz: verify-toolchain-ruby build/conformance-harness-vm build/conf
 	RUBY="$(RUBY)" ./build/conformance-harness-vm json-fuzz --only ruby \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_JSON_FUZZ_N) \
 		--failed build/verify/json-fuzz-ruby
+
+# the message-fuzz gate, a target of its own so its negative control
+# (verify-message-fuzz-negative-control-ruby) runs it alone
+.PHONY: _verify-ruby-fuzz-message
+_verify-ruby-fuzz-message: verify-toolchain-ruby build/conformance-harness-vm build/conformance-ruby
+	@mkdir -p build/verify
 	RUBY="$(RUBY)" ./build/conformance-harness-vm message-fuzz --only ruby \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_MESSAGE_FUZZ_N) \
 		--failed build/verify/message-fuzz-ruby
@@ -362,7 +380,7 @@ _verify-lua-conformance: verify-toolchain-lua build/conformance-harness-vm build
 
 _verify-lua-bench: verify-toolchain-lua bench-lua-gate tables-lua-bench-gate verify-deep-lua verify-cards-lua
 
-_verify-lua-fuzz: verify-toolchain-lua build/conformance-harness-vm build/conformance-lua
+_verify-lua-fuzz: verify-toolchain-lua build/conformance-harness-vm build/conformance-lua _verify-lua-fuzz-message
 	@mkdir -p build/verify
 	./build/conformance-harness-vm wire-fuzz \
 		--driver "$(WFR_DRIVER_lua)" \
@@ -375,6 +393,12 @@ _verify-lua-fuzz: verify-toolchain-lua build/conformance-harness-vm build/confor
 	LUA="$(LUA)" ./build/conformance-harness-vm json-fuzz --only lua \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_JSON_FUZZ_N) \
 		--failed build/verify/json-fuzz-lua
+
+# the message-fuzz gate, a target of its own so its negative control
+# (verify-message-fuzz-negative-control-lua) runs it alone
+.PHONY: _verify-lua-fuzz-message
+_verify-lua-fuzz-message: verify-toolchain-lua build/conformance-harness-vm build/conformance-lua
+	@mkdir -p build/verify
 	LUA="$(LUA)" ./build/conformance-harness-vm message-fuzz --only lua \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_MESSAGE_FUZZ_N) \
 		--failed build/verify/message-fuzz-lua
@@ -388,7 +412,7 @@ _verify-luau-conformance: verify-toolchain-luau build/conformance-harness-vm bui
 
 _verify-luau-bench: verify-toolchain-luau bench-luau-gate tables-luau-bench-gate verify-deep-luau verify-cards-luau
 
-_verify-luau-fuzz: verify-toolchain-luau build/conformance-harness-vm build/conformance-luau build/luau-driver/units.luau build/luaufuzzhost/luaufuzzhost
+_verify-luau-fuzz: verify-toolchain-luau build/conformance-harness-vm build/conformance-luau build/luau-driver/units.luau build/luaufuzzhost/luaufuzzhost _verify-luau-fuzz-message
 	@mkdir -p build/verify
 	$(WFR_ENV_luau) LUAU="$(LUAU)" ./build/conformance-harness-vm wire-fuzz \
 		--driver "$(WFR_DRIVER_luau)" \
@@ -401,6 +425,12 @@ _verify-luau-fuzz: verify-toolchain-luau build/conformance-harness-vm build/conf
 	LUAU="$(LUAU)" ./build/conformance-harness-vm json-fuzz --only luau \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_JSON_FUZZ_N) \
 		--failed build/verify/json-fuzz-luau
+
+# the message-fuzz gate, a target of its own so its negative control
+# (verify-message-fuzz-negative-control-luau) runs it alone
+.PHONY: _verify-luau-fuzz-message
+_verify-luau-fuzz-message: verify-toolchain-luau build/conformance-harness-vm build/conformance-luau build/luau-driver/units.luau build/luaufuzzhost/luaufuzzhost
+	@mkdir -p build/verify
 	$(WFR_ENV_luau) LUAU="$(LUAU)" ./build/conformance-harness-vm message-fuzz --only luau \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_MESSAGE_FUZZ_N) \
 		--failed build/verify/message-fuzz-luau
@@ -415,7 +445,7 @@ _verify-squirrel-conformance: verify-toolchain-squirrel build/conformance-harnes
 _verify-squirrel-bench: verify-toolchain-squirrel bench-squirrel-gate tables-squirrel-bench-gate verify-deep-squirrel verify-cards-squirrel
 
 # Squirrel splits fixed-class roots (plain arm) and variable-class roots (`builder` / --builder).
-_verify-squirrel-fuzz: verify-toolchain-squirrel build/conformance-harness-vm build/conformance-squirrel
+_verify-squirrel-fuzz: verify-toolchain-squirrel build/conformance-harness-vm build/conformance-squirrel _verify-squirrel-fuzz-message
 	@mkdir -p build/verify
 	./build/conformance-harness-vm wire-fuzz \
 		--driver "$(SQ) test/conformance/squirrel/wirefuzz.nut" \
@@ -432,6 +462,12 @@ _verify-squirrel-fuzz: verify-toolchain-squirrel build/conformance-harness-vm bu
 	SQ="$(SQ)" ./build/conformance-harness-vm json-fuzz --only squirrel \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_JSON_FUZZ_N) \
 		--failed build/verify/json-fuzz-squirrel
+
+# the message-fuzz gate, a target of its own so its negative control
+# (verify-message-fuzz-negative-control-squirrel) runs it alone
+.PHONY: _verify-squirrel-fuzz-message
+_verify-squirrel-fuzz-message: verify-toolchain-squirrel build/conformance-harness-vm build/conformance-squirrel
+	@mkdir -p build/verify
 	SQ="$(SQ)" ./build/conformance-harness-vm message-fuzz --only squirrel \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_MESSAGE_FUZZ_N) \
 		--failed build/verify/message-fuzz-squirrel
@@ -445,7 +481,7 @@ _verify-moo-conformance: verify-toolchain-moo build/conformance-harness-vm build
 
 _verify-moo-bench: verify-toolchain-moo bench-moo-gate tables-moo-bench-gate verify-deep-moo verify-cards-moo
 
-_verify-moo-fuzz: verify-toolchain-moo build/conformance-harness-vm build/conformance-moo
+_verify-moo-fuzz: verify-toolchain-moo build/conformance-harness-vm build/conformance-moo _verify-moo-fuzz-message
 	@$(MAKE) --no-print-directory $(MOOFUZZHOST) MOO_BUILD_JOBS=$(VERIFY_JOBS)
 	@mkdir -p build/verify
 	$(WFR_ENV_moo) MOO="$(MOO)" ./build/conformance-harness-vm wire-fuzz \
@@ -459,6 +495,12 @@ _verify-moo-fuzz: verify-toolchain-moo build/conformance-harness-vm build/confor
 	MOO="$(MOO)" MOO_ANALYZE="$(MOO_ANALYZE)" ./build/conformance-harness-vm json-fuzz --only moo \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_JSON_FUZZ_N) \
 		--failed build/verify/json-fuzz-moo
+
+# the message-fuzz gate, a target of its own so its negative control
+# (verify-message-fuzz-negative-control-moo) runs it alone
+.PHONY: _verify-moo-fuzz-message
+_verify-moo-fuzz-message: verify-toolchain-moo build/conformance-harness-vm build/conformance-moo
+	@mkdir -p build/verify
 	$(WFR_ENV_moo) MOO="$(MOO)" ./build/conformance-harness-vm message-fuzz --only moo \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_MESSAGE_FUZZ_N) \
 		--failed build/verify/message-fuzz-moo
@@ -530,6 +572,33 @@ _verify-goose-fuzz-message: $(GOOSE_FUZZ_BASE) build/goose-wirefuzz-legs/.verify
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_MESSAGE_FUZZ_N) \
 		--failed build/verify/message-fuzz-goose
 
+# THE PER-COMMIT GOOSE FUZZ, IN TWO PARTS (2026-11-24). As the ci-fast.yml row
+# (goose, fuzz) `verify-goose-fuzz` was cut at the two-minute cap on main's
+# push run 45431445496: the job spent 2 s before make, 30 s on the race test,
+# the harness and the JSON pass, and was still building the 46 unit legs
+# (`goose build -O2` each) and running the 60000-mutant wire passes when the
+# fleet killed it. On bench vision the three leg passes alone are 46 s at
+# 60000 mutants and 12 s at 5000.
+#
+# So a commit runs two jobs, each building half the legs (GOOSE_FUZZ_SLICE,
+# make/goose-fuzz.mk) and fuzzing them at the 5000-mutant cap every compiled
+# leg uses (VERIFY_FUZZ_MAX, make/verify-compiled.mk). Part 1 also runs the
+# race test and the JSON pass, once. The two parts cover every unit, every
+# seed and every pinned vector; what the cap leaves out is the long tail of
+# the enumerated and random passes, and the 60000-mutant whole-roster run is
+# nightly (leg-gates-nightly.yml, goose-fuzz-whole: `make verify-goose-fuzz`).
+VERIFY_GOOSE_PR_MAX ?= 5000
+.PHONY: verify-goose-fuzz-part-1 verify-goose-fuzz-part-2
+verify-goose-fuzz-part-1:
+	@$(MAKE) $(VERIFY_JFLAG) --no-print-directory _verify-goose-fuzz-race _verify-goose-fuzz-json \
+		_verify-goose-fuzz-plain _verify-goose-fuzz-retain _verify-goose-fuzz-message \
+		GOOSE_FUZZ_SLICE=1/2 VERIFY_FUZZ_MAX_goose=$(VERIFY_GOOSE_PR_MAX)
+
+verify-goose-fuzz-part-2:
+	@$(MAKE) $(VERIFY_JFLAG) --no-print-directory \
+		_verify-goose-fuzz-plain _verify-goose-fuzz-retain _verify-goose-fuzz-message \
+		GOOSE_FUZZ_SLICE=2/2 VERIFY_FUZZ_MAX_goose=$(VERIFY_GOOSE_PR_MAX)
+
 # ---- 9. lobster ----
 
 .PHONY: _verify-lobster-conformance _verify-lobster-bench _verify-lobster-fuzz
@@ -539,7 +608,7 @@ _verify-lobster-conformance: verify-toolchain-lobster build/conformance-harness-
 
 _verify-lobster-bench: verify-toolchain-lobster bench-lobster-gate tables-lobster-bench-gate verify-deep-lobster verify-cards-lobster
 
-_verify-lobster-fuzz: verify-toolchain-lobster build/conformance-harness-vm build/conformance-lobster build/lobster-wirefuzzhost
+_verify-lobster-fuzz: verify-toolchain-lobster build/conformance-harness-vm build/conformance-lobster build/lobster-wirefuzzhost _verify-lobster-fuzz-message
 	@mkdir -p build/verify
 	LOBSTER="$(LOBSTER)" ./build/conformance-harness-vm wire-fuzz \
 		--driver "$(WFR_DRIVER_lobster)" \
@@ -552,6 +621,12 @@ _verify-lobster-fuzz: verify-toolchain-lobster build/conformance-harness-vm buil
 	LOBSTER="$(LOBSTER)" ./build/conformance-harness-vm json-fuzz --only lobster \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_JSON_FUZZ_N) \
 		--failed build/verify/json-fuzz-lobster
+
+# the message-fuzz gate, a target of its own so its negative control
+# (verify-message-fuzz-negative-control-lobster) runs it alone
+.PHONY: _verify-lobster-fuzz-message
+_verify-lobster-fuzz-message: verify-toolchain-lobster build/conformance-harness-vm build/conformance-lobster build/lobster-wirefuzzhost
+	@mkdir -p build/verify
 	LOBSTER="$(LOBSTER)" ./build/conformance-harness-vm message-fuzz --only lobster \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_MESSAGE_FUZZ_N) \
 		--failed build/verify/message-fuzz-lobster
@@ -687,7 +762,7 @@ _conformance-corpus-luau: verify-toolchain-luau build/conformance-harness-vm bui
 
 _conformance-corpus-squirrel: verify-toolchain-squirrel build/conformance-harness-vm build/conformance-squirrel
 	@rm -rf build/verify/conformance-corpus-squirrel && mkdir -p build/verify/conformance-corpus-squirrel $(VERIFY_RESULTS_DIR)
-	SQ="$(SQ)" ./build/conformance-harness-vm run --only squirrel --claims --work build/verify/conformance-corpus-squirrel --results $(VERIFY_RESULTS_DIR)/squirrel.json
+	SQ="$(SQ)" ./build/conformance-harness-vm run --only squirrel --claims --work build/verify/conformance-corpus-squirrel --results $(VERIFY_RESULTS_DIR)/squirrel.json $(if $(CONFORMANCE_SHARDS),--shard $(CONFORMANCE_SHARD) --shards $(CONFORMANCE_SHARDS))
 
 _conformance-corpus-moo: verify-toolchain-moo build/conformance-harness-vm build/conformance-moo
 	@rm -rf build/verify/conformance-corpus-moo && mkdir -p build/verify/conformance-corpus-moo $(VERIFY_RESULTS_DIR)

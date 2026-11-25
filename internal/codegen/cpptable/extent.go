@@ -715,7 +715,7 @@ func (g *tableGen) emitUnionWireExtent(un *ir.Union) {
 		}
 		switch {
 		case v.Body() && g.hasExtent(v.Ref):
-			g.pf("        case 0x%016xull: if ( !%sWireExtent( arm_body, (int64_t) arm_len, at, r.ids, reason ) ) { return false; } break; // %s\n",
+			g.pf("        case 0x%016xull:\n            if ( !%sWireExtent( arm_body, (int64_t) arm_len, at, r.ids, reason ) ) { return false; }\n            break; // %s\n",
 				ir.TableWireId(v.WireName()), v.Type, v.Name)
 		default:
 			inner, isUnion := v.F.Type.Ref.(*ir.Union)
@@ -1222,10 +1222,10 @@ func (g *tableGen) emitUnreachedUnionExtentRefusal(f *ir.Field, ev edgeVisitor) 
 	if f.Array != ir.ArrayCounted {
 		return
 	}
-	g.pf("    if (%s.%s_count < 0 || %s.%s_count > %d) { return false; }\n", ev.read, f.Name, ev.read, f.Name, f.ArrayBound)
-	g.pf("    for (int32_t i = %s.%s_count; i < %d; i++) // hidden union slots have no extent placement\n    {\n", ev.read, f.Name, f.ArrayBound)
+	g.pf("    if ( %s.%s_count < 0 || %s.%s_count > %d ) { return false; }\n", ev.read, f.Name, ev.read, f.Name, f.ArrayBound)
+	g.pf("    for ( int32_t i = %s.%s_count; i < %d; i++ ) // hidden union slots have no extent placement\n    {\n", ev.read, f.Name, f.ArrayBound)
 	probe := extentVisitor{descend: func(table string, expr edgeExpr, ind string) {
-		g.pf("%sif (!TableExtentUnreachedEmpty(%sExtent(ctx,%s))) { return false; }\n", ind, table, expr.Src)
+		g.pf("%sif ( !TableExtentUnreachedEmpty( %sExtent( ctx, %s ) ) ) { return false; }\n", ind, table, expr.Src)
 	}}
 	g.emitUnionArmWalk(f.Type.Ref.(*ir.Union), g.elementExpr(ev, f, "i"), g.extentArmVisitor(ev, probe), f.Name, "        ")
 	g.pf("    }\n")

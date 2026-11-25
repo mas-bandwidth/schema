@@ -126,7 +126,7 @@ func TestIntegrityCSharp(t *testing.T) {
  for(int at=1;at<fixedBytes.Length;at++)for(int bit=0;bit<8;bit++){
   byte[] corrupt=(byte[])fixedBytes.Clone();corrupt[at]^=(byte)(1<<bit);
   fixedBack[0].Value=77;fixedBack[1].Value=88;var r=new Probe.TableReport();
-  if(Probe.Schema.FixedRowFixedLoad(fixedBack,corrupt,new Probe.TableFixedEntry[8],r)!=-1||fixedBack[0].Value!=77||fixedBack[1].Value!=88)throw new Exception("damaged fixed file touched output");Damage(r);
+  if(Probe.Schema.FixedRowFixedLoad(fixedBack,corrupt,new Probe.TableFixedEntry[8],r)!=-1||fixedBack[0].Value!=new Probe.FixedRow().Value||fixedBack[1].Value!=new Probe.FixedRow().Value)throw new Exception("damaged fixed file left a handed row off its declared defaults (SPEC-TABLES §6.5, R4)");Damage(r);
  }
  for(int n=1;n<5;n++){var r=new Probe.TableReport();byte[] shortFixed=new byte[n];shortFixed[0]=3;
   if(Probe.Schema.FixedRowFixedLoad(fixedBack,shortFixed,new Probe.TableFixedEntry[8],r)!=-1)throw new Exception("short fixed accepted");Damage(r);}
@@ -139,7 +139,7 @@ func TestIntegrityCSharp(t *testing.T) {
  for(int at=1;at<message.Length;at++)for(int bit=0;bit<8;bit++){
   byte[] corrupt=(byte[])message.Clone();corrupt[at]^=(byte)(1<<bit);
   fixedBack[0].Value=77;fixedBack[1].Value=88;var r=new Probe.TableReport();
-  if(Probe.Schema.FixedRowLoadMessages(fixedBack,corrupt,vocabulary,r,out count)!=Probe.Schema.TableWire.Verdict.Damaged||count!=0||fixedBack[0].Value!=77||fixedBack[1].Value!=88)throw new Exception("damaged message touched output");Damage(r);
+  if(Probe.Schema.FixedRowLoadMessages(fixedBack,corrupt,vocabulary,r,out count)!=Probe.Schema.TableWire.Verdict.Damaged||count!=0||fixedBack[0].Value!=new Probe.FixedRow().Value||fixedBack[1].Value!=new Probe.FixedRow().Value)throw new Exception("damaged message left a handed row off its declared defaults (SPEC-TABLES §6.5, R4)");Damage(r);
  }
  var messageWrong=(byte[])message.Clone();messageWrong[0]=1;var messageFormReport=new Probe.TableReport();
  if(Probe.Schema.FixedRowLoadMessages(fixedBack,messageWrong,vocabulary,messageFormReport,out count)!=Probe.Schema.TableWire.Verdict.Refused||messageFormReport.Damaged||messageFormReport.Reason!="newer_form")throw new Exception("message form precedence");

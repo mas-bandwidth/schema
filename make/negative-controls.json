@@ -864,9 +864,10 @@
       "name": "base-c-format",
       "when": "pull-request",
       "clang_format": "pin",
-      "why": "the C format gate's drift control (docs/PORTING.md J4): one K&R struct brace planted in the C packet emitter under an overlay, the examples corpus generated with it, and tables-c-clean's engine (make/checks/c-clean-format.sh) must go red naming Types.h. It needs the pinned clang-format, which this row alone installs.",
+      "why": "the C and C++ format gates' drift controls (docs/PORTING.md J4): one K&R struct brace planted in the C, then the C++, packet emitter under an overlay, the examples corpus generated with it, and tables-c-clean's and tables-cpp-format's engines (make/checks/c-clean-format.sh, make/checks/cpp-clean-format.sh) must go red naming Types.h. Both need the pinned clang-format, which this row alone installs. The C++ control ran only in ci-fast.yml's dispatch-only leg-gate-cpp until 2026-11-24, which no night starts.",
       "targets": [
-        "tables-c-format-negative-control"
+        "tables-c-format-negative-control",
+        "tables-cpp-format-negative-control"
       ]
     },
     {
@@ -3459,6 +3460,78 @@
       "why": "the Ruby variable-table, conformance, wire-fuzz, hostile-corpus, resource-bounds, cards, strict-analyzer, readiness, bench and usage-fragment controls (make/*ruby*.mk, docs/PORT-RUBY.md, R6-R16) under both pinned CRuby 3.4.12 and 4.0.9 interpreters. Nightly because a cache miss builds both CRubies from source tarballs.",
       "targets": [],
       "ruby": "pin"
+    },
+    {
+      "name": "gate-controls-bitphase",
+      "dart": "3.13.2", "dotnet": "pin", "elixir": "1.20.4", "otp": "29.0.5", "java": "21", "lobster": "v2026.8", "lua": "5.4.8", "luau": "0.741", "moo": "pin", "node": "26", "python": "pin", "ruby": "pin", "rust": "stable", "squirrel": "3.2",
+      "when": "nightly",
+      "why": "the bitphase shared gate's negative control on EVERY leg (make/widen-18-gate-controls.mk, 2026-11-24): the oracle is planted wrong through SCHEMA_GATE_PLANT and each of the 18 legs' own gate target must go red on the plant. 18 gate runs, each its leg's whole gate target, so the night runs them; no pull request runs them (heavy is nightly only).",
+      "targets": [
+        "verify-bitphase-negative-control-every-leg"
+      ]
+    },
+    {
+      "name": "gate-controls-canonical",
+      "dart": "3.13.2", "dotnet": "pin", "elixir": "1.20.4", "otp": "29.0.5", "java": "21", "lobster": "v2026.8", "lua": "5.4.8", "luau": "0.741", "moo": "pin", "node": "26", "python": "pin", "ruby": "pin", "rust": "stable", "squirrel": "3.2",
+      "when": "nightly",
+      "why": "the canonical shared gate's negative control on EVERY leg (make/widen-18-gate-controls.mk, 2026-11-24): the oracle is planted wrong through SCHEMA_GATE_PLANT and each of the 18 legs' own gate target must go red on the plant. 18 gate runs, each its leg's whole gate target, so the night runs them; no pull request runs them (heavy is nightly only).",
+      "targets": [
+        "verify-canonical-negative-control-every-leg"
+      ]
+    },
+    {
+      "name": "gate-controls-tablegen",
+      "dart": "3.13.2", "dotnet": "pin", "elixir": "1.20.4", "otp": "29.0.5", "java": "21", "lobster": "v2026.8", "lua": "5.4.8", "luau": "0.741", "moo": "pin", "node": "26", "python": "pin", "ruby": "pin", "rust": "stable", "squirrel": "3.2",
+      "when": "nightly",
+      "why": "the tablegen shared gate's negative control on EVERY leg (make/widen-18-gate-controls.mk, 2026-11-24): the oracle is planted wrong through SCHEMA_GATE_PLANT and each of the 18 legs' own gate target must go red on the plant. 18 gate runs, each its leg's whole gate target, so the night runs them; no pull request runs them (heavy is nightly only).",
+      "targets": [
+        "verify-tablegen-negative-control-every-leg"
+      ]
+    },
+    {
+      "name": "gate-controls-message-fuzz",
+      "dart": "3.13.2", "dotnet": "pin", "elixir": "1.20.4", "otp": "29.0.5", "java": "21", "lobster": "v2026.8", "lua": "5.4.8", "luau": "0.741", "moo": "pin", "node": "26", "python": "pin", "ruby": "pin", "rust": "stable", "squirrel": "3.2",
+      "when": "nightly",
+      "why": "the message-fuzz shared gate's negative control on EVERY leg (make/widen-18-gate-controls.mk, 2026-11-24): the oracle is planted wrong through SCHEMA_GATE_PLANT and each of the 18 legs' own gate target must go red on the plant. 18 gate runs, each its leg's whole gate target, so the night runs them; no pull request runs them (heavy is nightly only).",
+      "targets": [
+        "verify-message-fuzz-negative-control-every-leg"
+      ]
+    },
+    {
+      "name": "gate-controls-sabotage-packet",
+      "dart": "3.13.2", "dotnet": "pin", "elixir": "1.20.4", "otp": "29.0.5", "java": "21", "lobster": "v2026.8", "lua": "5.4.8", "luau": "0.741", "moo": "pin", "node": "26", "python": "pin", "ruby": "pin", "rust": "stable", "squirrel": "3.2",
+      "when": "nightly",
+      "why": "the sabotage-packet shared gate's negative control on EVERY leg (make/widen-18-gate-controls.mk, 2026-11-24): the oracle is planted wrong through SCHEMA_GATE_PLANT and each of the 18 legs' own gate target must go red on the plant. 18 gate runs, each its leg's whole gate target, so the night runs them; no pull request runs them (heavy is nightly only).",
+      "targets": [
+        "verify-sabotage-packet-negative-control-every-leg"
+      ]
+    },
+    {
+      "name": "gate-controls-sabotage-fixed",
+      "dart": "3.13.2", "dotnet": "pin", "elixir": "1.20.4", "otp": "29.0.5", "java": "21", "lobster": "v2026.8", "lua": "5.4.8", "luau": "0.741", "moo": "pin", "node": "26", "python": "pin", "ruby": "pin", "rust": "stable", "squirrel": "3.2",
+      "when": "nightly",
+      "why": "the sabotage-fixed shared gate's negative control on EVERY leg (make/widen-18-gate-controls.mk, 2026-11-24): the oracle is planted wrong through SCHEMA_GATE_PLANT and each of the 18 legs' own gate target must go red on the plant. 18 gate runs, each its leg's whole gate target, so the night runs them; no pull request runs them (heavy is nightly only).",
+      "targets": [
+        "verify-sabotage-fixed-negative-control-every-leg"
+      ]
+    },
+    {
+      "name": "gate-controls-sabotage-variable",
+      "dart": "3.13.2", "dotnet": "pin", "elixir": "1.20.4", "otp": "29.0.5", "java": "21", "lobster": "v2026.8", "lua": "5.4.8", "luau": "0.741", "moo": "pin", "node": "26", "python": "pin", "ruby": "pin", "rust": "stable", "squirrel": "3.2",
+      "when": "nightly",
+      "why": "the sabotage-variable shared gate's negative control on EVERY leg (make/widen-18-gate-controls.mk, 2026-11-24): the oracle is planted wrong through SCHEMA_GATE_PLANT and each of the 18 legs' own gate target must go red on the plant. 18 gate runs, each its leg's whole gate target, so the night runs them; no pull request runs them (heavy is nightly only).",
+      "targets": [
+        "verify-sabotage-variable-negative-control-every-leg"
+      ]
+    },
+    {
+      "name": "gate-controls-sabotage-retain",
+      "dart": "3.13.2", "dotnet": "pin", "elixir": "1.20.4", "otp": "29.0.5", "java": "21", "lobster": "v2026.8", "lua": "5.4.8", "luau": "0.741", "moo": "pin", "node": "26", "python": "pin", "ruby": "pin", "rust": "stable", "squirrel": "3.2",
+      "when": "nightly",
+      "why": "the sabotage-retain shared gate's negative control on EVERY leg (make/widen-18-gate-controls.mk, 2026-11-24): the oracle is planted wrong through SCHEMA_GATE_PLANT and each of the 18 legs' own gate target must go red on the plant. 18 gate runs, each its leg's whole gate target, so the night runs them; no pull request runs them (heavy is nightly only).",
+      "targets": [
+        "verify-sabotage-retain-negative-control-every-leg"
+      ]
     }
   ],
   "excluded": [
@@ -3561,10 +3634,6 @@
     {
       "target": "packet-end-moo-negative-control",
       "reason": "the moo leg's one-packet end-check control (make/moo-packet.mk, SPEC \u00a75 'Read termination'): the emitted public read's end call is dropped, so trailing data and non-zero final-byte padding must both fail by name. It is a prerequisite of test-moo, which certify.yml's make test reaches through TEST_LEGS on the runners that build the moo pin (.github/actions/moo). This leg's matrix has no moo toolchain row yet: the group that carries one is the moo port's layer 7 (docs/PORT-MOO.md, THE LAYERS), which moves this control into it."
-    },
-    {
-      "target": "tables-cpp-format-negative-control",
-      "reason": "the C++ format gate's drift control (docs/PORTING.md J4): the emitter writes one struct brace K&R and tables-cpp-format's engine must go red naming Types.h. It needs the pinned clang-format (make/c.mk CLANG_FORMAT_PIN), which the base rows do not install, so it refuses by name where the pin does not resolve and runs in the leg that does: ci-fast.yml's `fixed form and versioning rows` step for the cpp leg, beside tables-cpp-clean itself, as the Java drift control rides test-java."
     },
     {
       "target": "roadmap-check-negative-control",

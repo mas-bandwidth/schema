@@ -864,6 +864,26 @@ func parseSurfaces(list string) (map[string]bool, error) {
 	return set, nil
 }
 
+// shardSurfaces deals the registered surfaces round-robin into shards and
+// returns shard's set (zero-based). Every surface lands in exactly one shard,
+// in the registry's order, so the shards of one run are a partition of a whole
+// run and a surface added to the registry lands in one of them with no edit.
+func shardSurfaces(shard, shards int) (map[string]bool, error) {
+	if shards < 1 || shard < 0 || shard >= shards {
+		return nil, fmt.Errorf("shard %d of %d: the shard must be in [0, shards) and shards positive", shard, shards)
+	}
+	if shards > len(surfaces) {
+		return nil, fmt.Errorf("%d shards over %d surfaces would leave a shard empty", shards, len(surfaces))
+	}
+	set := map[string]bool{}
+	for i, s := range surfaces {
+		if i%shards == shard {
+			set[s] = true
+		}
+	}
+	return set, nil
+}
+
 // emptySelection refuses a run whose filters (--only, --skip, --surfaces)
 // left no row to compare (every selected surface holds zero expectations) or
 // no leg that ran any selected surface (every selected cell was absent). Both
@@ -936,6 +956,9 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 			return false, err
 		}
 		want[s] = e
+	}
+	if err := plantExpectations(want); err != nil {
+		return false, err
 	}
 
 	// THE DISCRIMINATION PROOF (discriminate.go): a must-refuse row with no

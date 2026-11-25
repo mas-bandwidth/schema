@@ -15,6 +15,12 @@
 #       matched by any bucket. Parent discovery repeats; each child runs once.
 #       The package complement excludes the whole parent. Each regexp names
 #       one hierarchy level (no slash).
+#   rides <package> <top-level test regexp> <leg>
+#       the test runs in verify-leg (<leg>, conformance), on the native driver
+#       that row builds, and every row of the package here skips it; the plan
+#       selects that row whenever the package is selected (gotestrows
+#       -rides-out), and TestEveryRideRunsInItsLegsRow holds the row's make
+#       target to running it.
 #
 # MEASURED 2026-11-08 on the schema fleet runners, one package per job, runs
 # 42492071587 and 42493376287 (rowan/ci-measure-gotest, never merged). The
@@ -189,8 +195,20 @@ split ./compiler ^Test.*(Carries|Carriers|IsShipped)
 # a name range after the lines above takes only what they left (gotestrows:
 # a split line skips every earlier one); the complement keeps the rest
 split ./compiler ^Test[A-L]
-# The Rust refusal probe builds a native driver; keep its cold build out of
-# the otherwise small harness row.
-split ./test/conformance/harness ^TestRustDriverAnswersWriteRefusal$
+# The Rust refusal probe answers on the native Rust driver. As a row of its own
+# it built that driver cold, 105 s of a two-minute job (PR #5007, run
+# 45437384482, row 18 of 23), so it rides verify-leg (rust, conformance),
+# which builds the driver anyway (make/verify-compiled.mk
+# _verify-rust-driver-write-refusal): no row here runs it, and the plan selects
+# that row whenever this package is selected (gotestrows -rides-out).
+rides ./test/conformance/harness ^TestRustDriverAnswersWriteRefusal$ rust
 split ./test/conformance/harness ^TestOriginalImplementationUsesAllRequiredConstructs$
+# THE HARNESS COMPLEMENT IN THREE (2026-11-24). The complement row ran 111.6 s
+# of go test and was cut at the cap with the package's ok printed (PR #5007,
+# run 45437384482, row 20 of 23, load1 72): 236 s of top-level test time
+# across the package's parallel tests. The shared-fixture tests (68 s), the
+# wire-fuzz, framing, cook and canonical-JSON tests (71 s) and the rest (98 s)
+# are a row each.
+split ./test/conformance/harness ^TestShared
+split ./test/conformance/harness ^Test(WireFuzz|Framing|Cook|Canonical)
 split ./internal/goldens ^TestGeneratedTextNamesNoMachine$

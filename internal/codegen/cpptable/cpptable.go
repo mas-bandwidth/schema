@@ -324,11 +324,74 @@ func (g *tableGen) pf(format string, args ...any) {
 	g.body.WriteString(s)
 }
 
+// splitStatements separates a run of C++ statements written as one string
+// ("a = 1; return false;", or the same across lines) into one statement each,
+// so a caller's onBad lays out as clang-format lays out a block: a block of
+// one statement stays on the line, a longer one opens on its own lines. A
+// trailing `// comment` stays with the statement before it.
+func splitStatements(s string) []string {
+	var out []string
+	for line := range strings.SplitSeq(s, "\n") {
+		line = strings.TrimSpace(line)
+		depth := 0
+		start := 0
+		for i := 0; i < len(line); i++ {
+			switch line[i] {
+			case '(':
+				depth++
+			case ')':
+				depth--
+			case ';':
+				if depth != 0 {
+					continue
+				}
+				rest := strings.TrimSpace(line[i+1:])
+				if strings.HasPrefix(rest, "//") {
+					out = append(out, strings.TrimSpace(line[start:]))
+					start = len(line)
+					i = len(line)
+					continue
+				}
+				out = append(out, strings.TrimSpace(line[start:i+1]))
+				start = i + 1
+			}
+		}
+		if rest := strings.TrimSpace(line[start:]); rest != "" {
+			out = append(out, rest)
+		}
+	}
+	return out
+}
+
+// emitIfBlock writes `head { body }tail` the way clang-format keeps it: one
+// statement on the head's line, more than one as an Allman block with the
+// tail (a trailing comment) after the closing brace.
+func (g *tableGen) emitIfBlock(ind, head, body, tail string) {
+	stmts := splitStatements(body)
+	if len(stmts) == 1 {
+		g.pf("%s%s { %s }%s\n", ind, head, stmts[0], tail)
+		return
+	}
+	g.pf("%s%s\n%s{\n", ind, head, ind)
+	for _, st := range stmts {
+		g.pf("%s    %s\n", ind, st)
+	}
+	g.pf("%s}%s\n", ind, tail)
+}
+
+// emitStatements writes a run of statements one to a line, as clang-format
+// does; a trailing comment stays on the last statement's line.
+func (g *tableGen) emitStatements(ind, run string) {
+	for _, st := range splitStatements(run) {
+		g.pf("%s%s\n", ind, st)
+	}
+}
+
 // emitIfActions lays out an already-separated sequence of C++ statements.
 // The caller owns the statements; this only supplies the block and indentation.
 func (g *tableGen) emitIfActions(ind, condition string, actions ...string) {
 	if len(actions) == 1 {
-		g.pf("%sif ( %s ) { %s }\n", ind, condition, actions[0])
+		g.pf("%[1]sif ( %[2]s )\n%[1]s{\n%[1]s    %[3]s\n%[1]s}\n", ind, condition, actions[0])
 		return
 	}
 	g.pf("%sif ( %s )\n%s{\n", ind, condition, ind)
@@ -534,12 +597,12 @@ struct TableKeyed
     T & operator[]( E key )
     {
         RefuseKey( key );
-        return slots[ (int32_t) key - 1 ];
+        return slots[(int32_t) key - 1];
     }
     const T & operator[]( E key ) const
     {
         RefuseKey( key );
-        return slots[ (int32_t) key - 1 ];
+        return slots[(int32_t) key - 1];
     }
 
     // THE REFUSAL, and it stands in EVERY BUILD, AT BOTH ENDS. The storage
@@ -580,15 +643,27 @@ struct TableKeyed
     // generated corpus had: 536 headers and 986 KB, in a header whose whole
     // remaining set is 123. begin(), end() and size() need none of it.
 
-    struct Entry { E key; T & element; };
-    struct ConstEntry { E key; const T & element; };
+    struct Entry
+    {
+        E key;
+        T & element;
+    };
+    struct ConstEntry
+    {
+        E key;
+        const T & element;
+    };
 
     struct Iterator
     {
         T * slots;
         int32_t index; // the STORAGE index; the key it holds is index + 1
         Entry operator*() const { return Entry{ (E) ( index + 1 ), slots[index] }; }
-        Iterator & operator++() { index++; return *this; }
+        Iterator & operator++()
+        {
+            index++;
+            return *this;
+        }
         bool operator==( const Iterator & other ) const { return index == other.index; }
         bool operator!=( const Iterator & other ) const { return index != other.index; }
     };
@@ -598,7 +673,11 @@ struct TableKeyed
         const T * slots;
         int32_t index; // the STORAGE index; the key it holds is index + 1
         ConstEntry operator*() const { return ConstEntry{ (E) ( index + 1 ), slots[index] }; }
-        ConstIterator & operator++() { index++; return *this; }
+        ConstIterator & operator++()
+        {
+            index++;
+            return *this;
+        }
         bool operator==( const ConstIterator & other ) const { return index == other.index; }
         bool operator!=( const ConstIterator & other ) const { return index != other.index; }
     };
@@ -1604,26 +1683,36 @@ struct TableReader
             case 2:
             case 6:
             case 20:
-            case 25: if ( r.has( 1 ) ) { r.offset += 1; } return false;
+            case 25:
+                if ( r.has( 1 ) ) { r.offset += 1; }
+                return false;
             case 3:
             case 7:
             case 21:
-            case 26: if ( r.has( 2 ) ) { r.offset += 2; } return false;
+            case 26:
+                if ( r.has( 2 ) ) { r.offset += 2; }
+                return false;
             case 4:
             case 8:
             case 10:
             case 22:
-            case 27: if ( r.has( 4 ) ) { r.offset += 4; } return false;
+            case 27:
+                if ( r.has( 4 ) ) { r.offset += 4; }
+                return false;
             case 5:
             case 9:
             case 11:
             case 23:
             case 28:
-            case 36: if ( r.has( 8 ) ) { r.offset += 8; } return false;
+            case 36:
+                if ( r.has( 8 ) ) { r.offset += 8; }
+                return false;
             case 18:
             case 19:
             case 24:
-            case 29: if ( r.has( 16 ) ) { r.offset += 16; } return false;
+            case 29:
+                if ( r.has( 16 ) ) { r.offset += 16; }
+                return false;
             case 17:
             case 30:
             {
@@ -2013,8 +2102,16 @@ inline bool TableFloatFinite( double d ) { return TableBitsFinite64( table_doubl
 // float, the +0 bits for its -0 and the bits as held for any other value. A
 // plain float never comes here: its -0 is a value and rides bit-exact. The Go
 // oracle is internal/tabletext's StoredFloat.
-inline uint32_t TableStoredFloatBits( float f ) { const uint32_t b = table_float_to_bits( f ); return b == 0x80000000u ? 0u : b; }
-inline uint64_t TableStoredFloatBits( double d ) { const uint64_t b = table_double_to_bits( d ); return b == 0x8000000000000000ull ? 0u : b; }
+inline uint32_t TableStoredFloatBits( float f )
+{
+    const uint32_t b = table_float_to_bits( f );
+    return b == 0x80000000u ? 0u : b;
+}
+inline uint64_t TableStoredFloatBits( double d )
+{
+    const uint64_t b = table_double_to_bits( d );
+    return b == 0x8000000000000000ull ? 0u : b;
+}
 ` + tableFixedRuntime + fixed128 + tableIntegrityRuntime + `
 } // namespace ` + pkg + `
 
@@ -2533,7 +2630,7 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 			c.WriteString("#include <stdio.h> // the text form: number formatting\n")
 			c.WriteString("#include <stdlib.h> // the text form: exact number conversion\n")
 			c.WriteString("#include <locale.h> // the text form: numbers convert in the \"C\" locale\n")
-			c.WriteString("#if defined(__APPLE__)\n#include <xlocale.h> // newlocale, uselocale\n#endif\n")
+			c.WriteString("#if defined( __APPLE__ )\n#include <xlocale.h> // newlocale, uselocale\n#endif\n")
 			c.WriteString("#include <string> // the hand-editable text form (§16.9)\n")
 			c.WriteString("#include <vector> // the hand-editable text form (§16.9)\n")
 			c.WriteString("#include <string.h> // the hand-editable text form (§16.9)\n\n")
