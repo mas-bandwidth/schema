@@ -928,7 +928,7 @@ tables-js-fixed-roadmap-negative-control:
 		echo "NEGATIVE CONTROL FAILED: the second layout read as the held one and the gate stayed green"; \
 		cat build/js-roadmap-sabotage/log; exit 1; \
 	fi
-	@grep -q "TestFixedRoadmapJsT13LayoutHashCollision" build/js-roadmap-sabotage/log || \
+	@grep -q -- "--- FAIL: TestFixedRoadmapJsT13LayoutHashCollision" build/js-roadmap-sabotage/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the roadmap gate went red for another reason"; \
 		  cat build/js-roadmap-sabotage/log; exit 1; }
 	@echo 'tables JS fixed roadmap negative control: the second layout under a held hash reds without the byte comparison'

@@ -449,14 +449,15 @@ func Check(res *Result, reg *testreg.Registry, ledger []LedgerLine) []string {
 }
 
 // NewWithoutRows names each test res holds that before (main's tree) did
-// not, and that no registry row runs. A count tells a ledger line it grew;
-// this tells which test grew it.
+// not, and that no registry row runs or reads (Runs, what the ledger counts
+// as moved). A count tells a ledger line it grew; this tells which test grew
+// it.
 func NewWithoutRows(before, res *Result, reg *testreg.Registry) []string {
 	old := map[string]bool{}
 	for _, it := range before.Items {
 		old[it.ID()] = true
 	}
-	covered, _ := CoveredIn(res, reg)
+	covered := Runs(res, reg)
 	var problems []string
 	for _, it := range res.Items {
 		if old[it.ID()] {

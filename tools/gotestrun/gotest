@@ -3,6 +3,31 @@
 # go test -json and read back by tools/gotestrun, so a skip is never read as
 # a pass. It runs from whatever directory the recipe cd'd into (-dir), with
 # gotestrun built from the checkout this script is in.
-set -euo pipefail
-root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
-exec go run -C "$root" ./tools/gotestrun -dir "$PWD" "$@"
+#
+# gotestrun is built and then run, never `go run`: go run turns every exit
+# status of the program into 1, and 1 is what -red ($(GO_TEST_RED)) means by
+# "a test failed", so a gotestrun that refused or did not build would read
+# as a negative control's sabotage caught. Under -red, a gotestrun that did
+# not build is exit 0, NOT RED, as gotestrun's own refusals are.
+set -uo pipefail
+red=0
+[ "${1:-}" = -red ] && red=1
+broken() {
+	if [ "$red" = 1 ]; then
+		echo "gotest: NOT RED: $1, so nothing was proved" >&2
+		exit 0
+	fi
+	echo "gotest: $1" >&2
+	exit 2
+}
+root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd) || broken "the checkout this script is in was not found"
+tmp=$(mktemp -d) || broken "no temporary directory for gotestrun"
+trap 'rm -r -f "$tmp"' EXIT
+go build -C "$root" -o "$tmp/gotestrun" ./tools/gotestrun || broken "tools/gotestrun did not build"
+"$tmp/gotestrun" -dir "$PWD" "$@"
+rc=$?
+# under -red only 1 is a red; anything else (a signal, a crash) proved nothing
+if [ "$red" = 1 ] && [ "$rc" != 0 ] && [ "$rc" != 1 ]; then
+	broken "gotestrun exited $rc"
+fi
+exit "$rc"

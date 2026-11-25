@@ -870,9 +870,11 @@ tables-view-negative-controls: build/tables-generated/.stamp test/tables/view_ma
 		-DVIEW_HEADER='"TabledemoView.h"' -DVIEW_NAMESPACE=tabledemo -DVIEW_UNFLATTENED \
 		test/tables/view_main.cpp build/tables-generated/examples/TabledemoView.cpp -o build/view-negative/prog-unflattened
 	./build/view-negative/prog-unflattened > build/view-negative/tabledemo.listing
-	@if SCHEMA_VIEW_LISTING_DIR=$$PWD/build/view-negative SCHEMA_VIEW_LISTING_UNITS=tabledemo $(GO_TEST_RED) ./internal/viewlisting -run TestUnitViewListingMatchesTheIR > /dev/null 2>&1; then \
+	@if SCHEMA_VIEW_LISTING_DIR=$$PWD/build/view-negative SCHEMA_VIEW_LISTING_UNITS=tabledemo $(GO_TEST_RED) ./internal/viewlisting -run TestUnitViewListingMatchesTheIR > build/view-negative/control-1.log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: an unflattened multi-line doc did not take the corpus gate down"; exit 1; \
 	fi
+	@grep -q "listing is not the compiler's" build/view-negative/control-1.log || \
+		{ echo "NEGATIVE CONTROL FAILED: control 1 went red, but not on the listing"; cat build/view-negative/control-1.log; exit 1; }
 	@echo "unit registry negative control 1: a multi-line doc printed unflattened takes the corpus gate down"
 	@rm -rf build/view-dropped && mkdir -p build/view-dropped
 	./bin/schema generate --lang cpp --out build/view-dropped/examples tables/examples
@@ -883,9 +885,11 @@ tables-view-negative-controls: build/tables-generated/.stamp test/tables/view_ma
 		-DVIEW_HEADER='"TabledemoView.h"' -DVIEW_NAMESPACE=tabledemo \
 		test/tables/view_main.cpp build/view-dropped/examples/TabledemoView.cpp -o build/view-dropped/prog
 	./build/view-dropped/prog > build/view-negative/tabledemo.listing
-	@if SCHEMA_VIEW_LISTING_DIR=$$PWD/build/view-negative SCHEMA_VIEW_LISTING_UNITS=tabledemo $(GO_TEST_RED) ./internal/viewlisting -run TestUnitViewListingMatchesTheIR > /dev/null 2>&1; then \
+	@if SCHEMA_VIEW_LISTING_DIR=$$PWD/build/view-negative SCHEMA_VIEW_LISTING_UNITS=tabledemo $(GO_TEST_RED) ./internal/viewlisting -run TestUnitViewListingMatchesTheIR > build/view-negative/control-2.log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a declaration dropped from the registry did not take the corpus gate down"; exit 1; \
 	fi
+	@grep -q "listing is not the compiler's" build/view-negative/control-2.log || \
+		{ echo "NEGATIVE CONTROL FAILED: control 2 went red, but not on the listing"; cat build/view-negative/control-2.log; exit 1; }
 	@echo "unit registry negative control 2: one declaration dropped from the registry takes the corpus gate down"
 	@rm -rf build/view-armoffset && mkdir -p build/view-armoffset
 	./bin/schema generate --lang cpp --out build/view-armoffset/arms tables/arms
@@ -896,9 +900,11 @@ tables-view-negative-controls: build/tables-generated/.stamp test/tables/view_ma
 		-DVIEW_HEADER='"ArmdemoView.h"' -DVIEW_NAMESPACE=armdemo \
 		test/tables/view_main.cpp build/view-armoffset/arms/ArmdemoView.cpp -o build/view-armoffset/prog
 	./build/view-armoffset/prog > build/view-negative/armdemo.listing
-	@if SCHEMA_VIEW_LISTING_DIR=$$PWD/build/view-negative SCHEMA_VIEW_LISTING_UNITS=armdemo $(GO_TEST_RED) ./internal/viewlisting -run TestUnitViewListingMatchesTheIR > /dev/null 2>&1; then \
+	@if SCHEMA_VIEW_LISTING_DIR=$$PWD/build/view-negative SCHEMA_VIEW_LISTING_UNITS=armdemo $(GO_TEST_RED) ./internal/viewlisting -run TestUnitViewListingMatchesTheIR > build/view-negative/control-3.log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a general arm's moved offset did not take the corpus gate down"; exit 1; \
 	fi
+	@grep -q "listing is not the compiler's" build/view-negative/control-3.log || \
+		{ echo "NEGATIVE CONTROL FAILED: control 3 went red, but not on the listing"; cat build/view-negative/control-3.log; exit 1; }
 	@echo "unit registry negative control 3: a general arm's moved offset takes the corpus gate down"
 
 # THE CONTAINMENT GATE (docs/SPEC-TABLES.md §8.4, §8.7), in §2.2's shape: not

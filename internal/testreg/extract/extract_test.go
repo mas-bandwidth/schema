@@ -442,8 +442,9 @@ func TestATestThatSkipsIsRefused(t *testing.T) {
 }
 
 // TestANewTestWithoutARowIsNamed: against main's tree, a test main lacks and
-// no row runs is named with its place; one with a row, and one main has, are
-// not.
+// no row runs or reads is named with its place; one with a row, a data case a
+// per-language row reads (Indexed, as the ledger counts it), and one main
+// has, are not.
 func TestANewTestWithoutARowIsNamed(t *testing.T) {
 	t.Parallel()
 	before := &Result{Items: []Item{{Kind: KindGoTest, Dir: "a", Name: "TestOld", Source: "a/x_test.go:1"}}}
@@ -451,8 +452,10 @@ func TestANewTestWithoutARowIsNamed(t *testing.T) {
 		{Kind: KindGoTest, Dir: "a", Name: "TestOld", Source: "a/x_test.go:1"},
 		{Kind: KindGoTest, Dir: "a", Name: "TestRow", Source: "a/x_test.go:5"},
 		{Kind: KindGoTest, Dir: "a", Name: "TestPlanted", Source: "a/y_test.go:3"},
+		{Kind: KindDataCase, Dir: "testdata/corpus", Name: "x", Source: "testdata/corpus/x.in:1"},
 	}}
-	reg := &testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{gotestRow("tooling.a.row", "./a", "TestRow")}}
+	perLang := testreg.Test{Key: "roundtrip.conformance-wire.x", Inputs: []byte(`{"surface":"wire","case":"x","files":["testdata/corpus/x.in"],"driver":"test/conformance/{lang}/driver"}`)}
+	reg := &testreg.Registry{Path: "r.jsonl", Langs: []testreg.Lang{{Name: "zz", Adapter: "corpus"}}, Tests: []testreg.Test{gotestRow("tooling.a.row", "./a", "TestRow"), perLang}}
 	p := NewWithoutRows(before, now, reg)
 	if len(p) != 1 || !strings.Contains(p[0], "go-test a TestPlanted at a/y_test.go:3 is a new test with no registry row") {
 		t.Fatalf("want exactly TestPlanted named: %v", p)

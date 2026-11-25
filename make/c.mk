@@ -1102,13 +1102,10 @@ tables-c-json-label-negative-control:
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/ctable/graph_json.go":"%s/build/c-json-label-nc/emitter.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/c-json-label-nc/overlay.json
-	@if go test -v -overlay build/c-json-label-nc/overlay.json -count=1 ./compiler \
+	@if $(GO_TEST_RED) -overlay build/c-json-label-nc/overlay.json -count=1 ./compiler \
 			-run '^TestCTableWireGraphIdentity$$' > build/c-json-label-nc/log 2>&1; then \
-		if grep -q -- '--- SKIP' build/c-json-label-nc/log || ! grep -q -- '--- PASS' build/c-json-label-nc/log; then \
-			echo "NEGATIVE CONTROL FAILED: TestCTableWireGraphIdentity did not run (skipped), so this control is watching nothing"; \
-			cat build/c-json-label-nc/log; exit 1; \
-		fi; \
-		echo "NEGATIVE CONTROL FAILED: TestCTableWireGraphIdentity stayed green under the sabotage"; cat build/c-json-label-nc/log; exit 1; \
+		echo "NEGATIVE CONTROL FAILED: TestCTableWireGraphIdentity did not go red under the sabotage (it stayed green, skipped, or did not run)"; \
+		cat build/c-json-label-nc/log; exit 1; \
 	fi
 	@grep -q -- '--- FAIL: TestCTableWireGraphIdentity' build/c-json-label-nc/log && grep -qF '$(C_JSON_LABEL_RED)' build/c-json-label-nc/log || \
 		{ echo "NEGATIVE CONTROL FAILED: it went red, but not on its own CHECK"; cat build/c-json-label-nc/log; exit 1; }

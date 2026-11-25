@@ -399,12 +399,16 @@ func (a makeAdapter) database(ctx context.Context) (*makeDB, error) {
 // test/conformance", a path).
 var goTestCommand = regexp.MustCompile(`(^|[\s;&|(@])go\s+test(\s|$)`)
 
+// goTestJSONFlag is -json as a flag of its own, not "-json" inside a path
+// (build/c-json-label-nc/overlay.json) or a file name (x-json.log).
+var goTestJSONFlag = regexp.MustCompile(`(^|\s)--?json(=true)?(\s|$)`)
+
 // goTestWithoutJSON is the first command of recipe text that runs go test
 // without -json, its continuation lines joined, or "".
 func goTestWithoutJSON(recipes string) string {
 	joined := strings.ReplaceAll(recipes, "\\\n", " ")
 	for line := range strings.SplitSeq(joined, "\n") {
-		if goTestCommand.MatchString(line) && !strings.Contains(line, "-json") {
+		if goTestCommand.MatchString(line) && !goTestJSONFlag.MatchString(line) {
 			return strings.TrimSpace(line)
 		}
 	}
