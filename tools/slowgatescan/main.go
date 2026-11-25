@@ -1237,10 +1237,19 @@ var makeAppend = regexp.MustCompile(`^(?:([A-Za-z_][A-Za-z0-9_]*)[ \t]*\+=|(?:ov
 
 var makeReference = regexp.MustCompile(`\$[({]([A-Za-z_][A-Za-z0-9_]*)[)}]`)
 
+// goTestWrappers are the Makefile's go test wrappers (tools/gotestrun):
+// $(GO_TEST) and $(GO_TEST_RED) run go test -json and judge its stream. They
+// read as the go test they run, never as the wrapper's path, at every level
+// of expansion: a recipe (or a variable it names) that runs go test through
+// them is still a go test line, and the slow-gate audit judges it as one.
+var goTestWrappers = strings.NewReplacer("$(GO_TEST_RED)", "go test", "${GO_TEST_RED}", "go test", "$(GO_TEST)", "go test", "${GO_TEST}", "go test")
+
 // expandMakeVariables replaces every reference to a known simple variable, a
-// few levels deep. An unknown reference is left as written.
+// few levels deep. An unknown reference is left as written; the go test
+// wrappers read as go test (goTestWrappers), whatever the variables hold.
 func expandMakeVariables(cmd string, vars map[string]string) string {
 	for range 4 {
+		cmd = goTestWrappers.Replace(cmd)
 		next := makeReference.ReplaceAllStringFunc(cmd, func(ref string) string {
 			if v, ok := vars[ref[2:len(ref)-1]]; ok {
 				return v

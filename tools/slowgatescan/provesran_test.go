@@ -531,3 +531,31 @@ func TestMakeVariablesReadsOnlyWhatItCanReadWhole(t *testing.T) {
 		t.Errorf("expandMakeVariables = %q", got)
 	}
 }
+
+// TestGoTestWrappersReadAsGoTest: a recipe that runs go test through the
+// Makefile's wrappers ($(GO_TEST), $(GO_TEST_RED), tools/gotestrun) is a go
+// test line, at every level of expansion, even though the Makefile defines
+// the wrappers as a path. Read as the path, the line is no go test at all and
+// the slow-gate audit never judges it.
+func TestGoTestWrappersReadAsGoTest(t *testing.T) {
+	t.Parallel()
+	vars := map[string]string{
+		"GO_TEST":     "$(CURDIR)/tools/gotestrun/gotest",
+		"GO_TEST_RED": "$(CURDIR)/tools/gotestrun/gotest -red",
+		"EXTRA":       "SCHEMA_SLOW=1 $(GO_TEST) -count=1 ./leg",
+	}
+	for in, want := range map[string]string{
+		"$(GO_TEST) -run X ./leg":     "go test -run X ./leg",
+		"${GO_TEST} -run X ./leg":     "go test -run X ./leg",
+		"$(GO_TEST_RED) -run X ./leg": "go test -run X ./leg",
+		"$(EXTRA) -run Y":             "SCHEMA_SLOW=1 go test -count=1 ./leg -run Y",
+	} {
+		got := expandMakeVariables(in, vars)
+		if got != want {
+			t.Errorf("expandMakeVariables(%q) = %q, want %q", in, got, want)
+		}
+		if !goTestCommand.MatchString(got) {
+			t.Errorf("expandMakeVariables(%q) = %q is not read as a go test command", in, got)
+		}
+	}
+}
