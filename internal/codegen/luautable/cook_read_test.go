@@ -176,6 +176,40 @@ func buildCookUnit(t *testing.T, units map[string][]string, key string) *cookUni
 	return &cookUnit{g: g, m: tabletext.NewModel(u), u: u, build: ir.BuildVersion(u)}
 }
 
+// cookRowOracle decodes one instance row's wire with the Go engine, the
+// oracle a cook is made from. A row the manifest marks wire-refused (one blob
+// named from two slots, a count below its minimum, a value off its range, a
+// non-finite float) has no value to cook: there is no tolerant read
+// (docs/SPEC-TABLES.md §6.5; docs/rulings.json strict-only-read), so the
+// oracle must refuse it and the Luau strict read must refuse it too, compared
+// by verdict only (refusal-verdict-only); it returns nil. Any other row must
+// decode, and it returns the value.
+func cookRowOracle(t *testing.T, cu *cookUnit, row reportRow, wire []byte) *tabletext.Instance {
+	t.Helper()
+	table := cu.m.Lookup(row.root)
+	if table == nil {
+		t.Fatalf("%s: the unit has no table %s", row.caseName, row.root)
+	}
+	inst := cu.m.New(table)
+	var report tabletext.Report
+	ok, err := tablewire.Decode(cu.m, inst, wire, &report)
+	if !row.blobShared {
+		if err != nil {
+			t.Fatalf("decode %s: %v", row.caseName, err)
+		}
+		return inst
+	}
+	if ok || !tablewire.ReadRefusal(err) {
+		t.Fatalf("%s: the manifest marks the wire refused, but the oracle reads it: ok=%t err=%v", row.caseName, ok, err)
+	}
+	// runProbe, not runCase: the cached unit's own directory belongs to the
+	// subtest that built it
+	if got := runProbe(t, cu.g, loadProbe(cu.g, row.root), map[string][]byte{"wire": wire}); got != "refused" {
+		t.Fatalf("%s: the oracle refuses the wire (%v), the Luau strict read says %s", row.caseName, err, got)
+	}
+	return nil
+}
+
 // runProbe writes a fresh copy of one unit's modules, adds main.luau, and
 // runs it under the pinned interpreter.
 func runProbe(t *testing.T, g *generatedUnit, main string, inputs map[string][]byte) string {
@@ -202,7 +236,7 @@ func TestLuauCookOpenAgreesWithGo(t *testing.T) {
 	t.Parallel()
 	units, _ := readManifest(t)
 	cache := map[string]*cookUnit{}
-	compared, refused := 0, 0
+	compared, refused, wireRefused := 0, 0, 0
 	damaged := false
 	for _, row := range manifestRows(t) {
 		if row.kind != "instance" {
@@ -224,15 +258,15 @@ func TestLuauCookOpenAgreesWithGo(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			inst := cu.m.New(table)
-			var report tabletext.Report
-			if _, err := tablewire.Decode(cu.m, inst, wire, &report); err != nil {
-				t.Fatalf("decode %s: %v", row.caseName, err)
+			inst := cookRowOracle(t, cu, row, wire)
+			if inst == nil {
+				wireRefused++
+				return
 			}
 			cooked, err := tablecook.Cook(cu.m, inst, tablecook.Options{})
 			if err != nil {
 				// The strict read accepted this instance, so it has a cook:
-				// the refused rows left by name above. An error here is the
+				// the refused rows answered by verdict above. An error here is the
 				// tool failing on an eligible case, never a row to skip.
 				t.Fatalf("the tool wrote no cook for %s, which the strict read accepts: %v", row.caseName, err)
 			}
@@ -278,9 +312,10 @@ func TestLuauCookOpenAgreesWithGo(t *testing.T) {
 		})
 	}
 	// Every probe runs, so the floor always holds.
-	if compared == 0 || refused == 0 {
-		t.Fatalf("comparisons %d, refusals %d", compared, refused)
+	if compared == 0 || refused == 0 || wireRefused == 0 {
+		t.Fatalf("comparisons %d, refusals %d, wire-refused rows refused by both reads %d", compared, refused, wireRefused)
 	}
+	t.Logf("%d cooks compared value for value, %d damaged cooks refused, %d wire-refused rows refused by the oracle and the Luau read", compared, refused, wireRefused)
 }
 
 func mutate(in []byte, f func([]byte)) []byte {
