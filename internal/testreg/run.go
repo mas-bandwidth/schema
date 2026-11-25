@@ -33,8 +33,9 @@ type Adapter interface {
 // checkout's build is the run's cost, paid once, and never eats the deadline
 // of the call that happens to need it first. Each Prepare has a deadline of
 // its own, the limit a call has (Runner.Context, group "prepare <group>"),
-// starting when it starts: a build that outlasts it fails its group by name. A shard pays it whole, so the
-// rows that need it are measured cold and kept in one block (unitOf).
+// starting when it starts: a build that outlasts it fails its group by name. A shard pays it whole,
+// and its seconds are shared over its group's rows (the rows' weights), so a
+// cold build is in what the sharder cuts by.
 type Preparer interface {
 	Prepare(ctx context.Context, lang string, instances []Instance) error
 }

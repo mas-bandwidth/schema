@@ -432,7 +432,7 @@ jobs:
             # cs row above intact for TestCIFullPRSelectMatchesTheFastPlan).
             case "$f" in
               internal/codegen/ccommon/*) add_leg cpp; add_leg c ;;
-              generated/cpp-*/*|bench/cpp/*|bench/tables/cpp/*|tables/cards/cpp/*|test/cpp/*|test/conformance/cpp/*|test/packet-*/cpp/*) add_leg cpp ;;
+              generated/cpp-*/*|bench/cpp/*|bench/tables/cpp/*|tables/cards/cpp/*|test/cpp/*|test/conformance/cpp/*|tools/compile-seconds.pl|test/packet-*/cpp/*) add_leg cpp ;;
               generated/c-*/*|generated/bench/c/*|generated/bench/tables/c/*|generated/bench/paired/c/*|bench/c/*|bench/tables/c/*|tables/cards/c/*|test/c/*|test/c-*/*|test/conformance/c/*|test/packet-*/c/*) add_leg c ;;
               generated/cs-*/*|generated/bench/cs/*|generated/bench/tables/cs/*|generated/bench/paired/cs/*|bench/cs/*|bench/tables/cs/*|tables/cards/cs/*|test/cs/*|test/cs-*/*|test/conformance/cs/*|test/packet-*/cs/*) add_leg cs ;;
               internal/codegen/unitytable/*|internal/codegen/unity/*|generated/unity/*|generated/unity-*/*|generated/bench/unity/*|generated/bench/tables/unity/*|bench/unity/*|bench/tables/unity/*|tables/cards/unity/*|test/unity/*|test/unity-*/*|test/conformance/unity/*|test/packet-*/unity/*|make/unity.mk|make/unity-*.mk) add_leg unity ;;
@@ -959,7 +959,7 @@ jobs:
           echo "clean_legs=$clean_legs_json"   >> "$GITHUB_OUTPUT"
           echo "dart_corpus_account=$dart_corpus_account" >> "$GITHUB_OUTPUT"
           cpp_corpus_account=$(jq -r 'any(.[]; .family == "conformance-corpus" and .leg == "cpp")' <<<"$input_rows")
-          if grep -Eqx 'make/conformance-handoff\.py|test/conformance/cpp/(main\.cpp|driver)|test/tables/cook_main\.cpp|tools/inputaccount/(main|watch_linux)\.go' "$RUNNER_TEMP/diff-files.txt"; then
+          if grep -Eqx 'make/conformance-handoff\.py|test/conformance/cpp/(main\.cpp|driver|driver_[a-z0-9_]+\.cpp|driver\.h|manifest\.h|block_walk\.h)|tools/compile-seconds\.pl|test/tables/cook_main\.cpp|tools/inputaccount/(main|watch_linux)\.go' "$RUNNER_TEMP/diff-files.txt"; then
             cpp_corpus_account=true
           fi
           input_rows=$(jq -c 'map(select(.family != "conformance-corpus" or .leg != "cpp"))' <<<"$input_rows")
@@ -3237,7 +3237,13 @@ jobs:
   #
   # Measured cold on captain (2026-11-25, load 5-7, 64 cores): the go leg
   # 55.0 s, the goose leg 9.3 s; replayed, make rebuilds nothing but the go
-  # driver's own `go build` (its rule names the phony cards-generate).
+  # driver's own `go build` (its rule names the phony cards-generate). The
+  # cpp leg, the reference driver in its translation units (Makefile,
+  # CONFORMANCE_DRIVER_TUS), 72.2 s cold under make -j4 on 4 of
+  # captain's cores; replayed, make rebuilds nothing. Its row also holds
+  # every driver unit to the compile budget beside that list (`make
+  # conformance-cpp-tu-budget`): a unit that grows back toward the old
+  # single one is red by name here before the leg stops fitting.
   # schema-test-pr's env plants run these legs (plant.corpus-plants.*); the
   # plants' own Prepare then finds them built.
   produce:
@@ -3261,6 +3267,10 @@ jobs:
             target: conformance-leg-goose
             pins: goose
             paths: bin/schema build/conformance-goose build/conformance-harness-vm build/schema-goose
+          - name: conformance-leg-cpp
+            target: conformance-leg-cpp
+            pins: ''
+            paths: bin/schema build/conformance-cpp build/conformance-cpp-objs build/conformance-harness-vm build/schema_test_cook build/tables-generated
           - name: lint-cpp
             target: tables-cpp-clean-inputs
             pins: ''
@@ -3319,6 +3329,13 @@ jobs:
         env:
           TARGET: ${{ matrix.target }}
         run: make -j"$(nproc)" --no-print-directory "$TARGET"
+      # every driver unit's recorded compile seconds (the build above wrote
+      # them beside the objects, or the kept tree carries the ones its own
+      # build wrote) held to CONFORMANCE_DRIVER_TU_BUDGET; a unit with no
+      # timing is red
+      - name: the C++ driver's compile budget, per unit
+        if: matrix.name == 'conformance-leg-cpp'
+        run: make --no-print-directory conformance-cpp-tu-budget
       - name: pack the tree
         env:
           NAME: ${{ matrix.name }}
@@ -3364,7 +3381,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: ["1/74", "2/74", "3/74", "4/74", "5/74", "6/74", "7/74", "8/74", "9/74", "10/74", "11/74", "12/74", "13/74", "14/74", "15/74", "16/74", "17/74", "18/74", "19/74", "20/74", "21/74", "22/74", "23/74", "24/74", "25/74", "26/74", "27/74", "28/74", "29/74", "30/74", "31/74", "32/74", "33/74", "34/74", "35/74", "36/74", "37/74", "38/74", "39/74", "40/74", "41/74", "42/74", "43/74", "44/74", "45/74", "46/74", "47/74", "48/74", "49/74", "50/74", "51/74", "52/74", "53/74", "54/74", "55/74", "56/74", "57/74", "58/74", "59/74", "60/74", "61/74", "62/74", "63/74", "64/74", "65/74", "66/74", "67/74", "68/74", "69/74", "70/74", "71/74", "72/74", "73/74", "74/74"]
+        shard: ["1/77", "2/77", "3/77", "4/77", "5/77", "6/77", "7/77", "8/77", "9/77", "10/77", "11/77", "12/77", "13/77", "14/77", "15/77", "16/77", "17/77", "18/77", "19/77", "20/77", "21/77", "22/77", "23/77", "24/77", "25/77", "26/77", "27/77", "28/77", "29/77", "30/77", "31/77", "32/77", "33/77", "34/77", "35/77", "36/77", "37/77", "38/77", "39/77", "40/77", "41/77", "42/77", "43/77", "44/77", "45/77", "46/77", "47/77", "48/77", "49/77", "50/77", "51/77", "52/77", "53/77", "54/77", "55/77", "56/77", "57/77", "58/77", "59/77", "60/77", "61/77", "62/77", "63/77", "64/77", "65/77", "66/77", "67/77", "68/77", "69/77", "70/77", "71/77", "72/77", "73/77", "74/77", "75/77", "76/77", "77/77"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/merge-main
