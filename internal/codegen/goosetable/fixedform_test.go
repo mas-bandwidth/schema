@@ -4,8 +4,8 @@ package goosetable
 // ROADMAP.md, Fixed Tables). The bytes are the C++ reference's:
 // `make tables-fixedform-corpus` writes build/fixedform-corpus, and the record
 // count of each file is read from its manifest.txt, never from the bytes under
-// test (§5.9 #32). A bare tree is a SKIP; SCHEMA_REQUIRE_CORPUS=1 (the gate's
-// environment) makes a missing corpus a FAILURE, never a silent pass.
+// test (§5.9 #32). A missing corpus is a FAILURE
+// by name, never a skip or a silent pass.
 //
 // Both ways, under the pinned compiler: a generated Goose program READS each
 // reference file through <Root>FixedLoad (the framing, the scan, the run and
@@ -31,7 +31,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -53,9 +52,8 @@ var fixedVectors = []struct {
 	{"fu2.bin", "test/tables/FU2.schema", "FuRoot"},
 }
 
-// fixedCorpus resolves build/fixedform-corpus, failing under
-// SCHEMA_REQUIRE_CORPUS=1 and skipping otherwise (the house rule for a shared
-// oracle: a bare tree has no C++ reference to compare with).
+// fixedCorpus resolves build/fixedform-corpus, failing the test by name when
+// it is not built.
 func fixedCorpus(t *testing.T) string {
 	t.Helper()
 	dir, err := filepath.Abs(filepath.Join(fixedRoot, "build", "fixedform-corpus"))
@@ -65,10 +63,7 @@ func fixedCorpus(t *testing.T) string {
 		}
 	}
 	why := fmt.Sprintf("the C++ reference's byte oracle is not built: make tables-fixedform-corpus (%v)", err)
-	if slowtest.CorpusRequired() {
-		t.Fatal(why)
-	}
-	t.Skip(why)
+	t.Fatal(why)
 	return ""
 }
 
@@ -451,9 +446,8 @@ func TestGooseFixedFormRoundTripsEveryFixedRoot(t *testing.T) {
 	}
 	t.Cleanup(func() {
 		t.Logf("%d fixed roots round-tripped through the Goose reader and writer", roots.Load())
-		// every round trip shells out to the Goose toolchain and skips when the
-		// slow half is off, so the floor holds only where the probes ran
-		if slowtest.Enabled() && roots.Load() < 20 {
+		// every round trip shells out to the Goose toolchain; the floor always holds
+		if roots.Load() < 20 {
 			t.Errorf("only %d fixed roots round-tripped: the sweep found too few to stand for every kind", roots.Load())
 		}
 	})

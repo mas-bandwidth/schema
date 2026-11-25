@@ -25,7 +25,7 @@ import (
 // struct's own module, refusing None (key 0), keys past E.Max (including a
 // key past every named variant), negative keys, and non-integer keys with an
 // ArgumentError that names the field, the key, and the bound.
-// Functional (elixirBinary): run with SCHEMA_REQUIRE_CORPUS=1.
+// Functional (elixirBinary): a missing toolchain fails by name.
 func TestKeyedAccessorCoversBothEndsElixir(t *testing.T) {
 	t.Parallel()
 	elixirBin := elixirBinary(t)

@@ -1,7 +1,6 @@
 package rusttable
 
 import (
-	"os"
 	"os/exec"
 	"strings"
 	"testing"
@@ -14,10 +13,7 @@ import (
 func TestFixedLoadDamageDefaultsAndReportReuseRust(t *testing.T) {
 	t.Parallel()
 	if _, err := exec.LookPath("rustc"); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatal(err)
-		}
-		t.Skipf("rustc is not on PATH: %v", err)
+		t.Fatal(err)
 	}
 	u := unitFrom(t, rustDiscardUnit)
 	body := `

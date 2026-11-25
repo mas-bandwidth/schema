@@ -51,10 +51,7 @@ func TestCJsonNumberAnyLength(t *testing.T) {
 	t.Parallel()
 	cc, err := exec.LookPath("cc")
 	if err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and cc is not found: %v", err)
-		}
-		t.Skipf("cc: %v", err)
+		t.Fatalf("cc is not found: %v", err)
 	}
 	rows := []cJsonNumberRow{
 		{"experience-1.509-zeros", `{"experience": 1.`, '0', 509, `}`, "refused"},

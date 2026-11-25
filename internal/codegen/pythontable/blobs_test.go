@@ -487,7 +487,7 @@ func stringIdentityFailures(t *testing.T, mutate func(*testing.T, map[string][]b
 // TestPythonVtBlobs is the blob row and the string-identity row: every manifest
 // blob instance and the equal-value cases, under both pinned interpreters.
 //
-// Functional (python pins): run with SCHEMA_SLOW=1.
+// Functional (python pins).
 func TestPythonVtBlobs(t *testing.T) {
 	t.Parallel()
 	fails, held := blobManifestFailures(t, nil)

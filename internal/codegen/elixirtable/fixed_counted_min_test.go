@@ -13,7 +13,7 @@ import (
 // It now holds [Min, Max], on the identity read and on a read through a
 // lineage (the older writer's layout).
 //
-// It runs elixir, so it is a functional test behind slowtest.Gate.
+// It runs elixir, so it is a functional test.
 func TestFixedCountedArrayBelowMinRefuses(t *testing.T) {
 	t.Parallel()
 	bin := elixirBinary(t)

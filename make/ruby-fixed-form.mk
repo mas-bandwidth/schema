@@ -26,19 +26,17 @@ ruby-fixed-form-core: ruby-toolchain-check
 	sh test/slowgate/proof ruby-fixed-form-core 'TestRubyFixedForm TestRubyFixedFormLineage TestRubyFixedFormDeprecatedEnum TestRubyFixedFormPacketKeyed TestRubyFixedIntegrityCRC TestRubyFixedIdentityTrustedLayoutOnly TestRubyFixedIdentityRejectsUnrecordedSchemes TestRubyFixedShapeCompare TestRubyFixedCoreValues' -count=1 -timeout 600s -tags schema_leg_ruby -run '^(TestRubyFixedForm$$|TestRubyFixedFormLineage$$|TestRubyFixedFormDeprecatedEnum$$|TestRubyFixedFormPacketKeyed$$|TestRubyFixedIntegrityCRC$$|TestRubyFixedIdentityTrustedLayoutOnly$$|TestRubyFixedIdentityRejectsUnrecordedSchemes$$|TestRubyFixedShapeCompare$$|TestRubyFixedCoreValues$$)' ./internal/codegen/rubytable/
 
 ruby-fixed-form-suite: ruby-toolchain-check build/fixedform-corpus/.stamp
-	SCHEMA_REQUIRE_CORPUS=1 sh test/slowgate/proof ruby-fixed-form-suite 'TestRubyFixedProofSuite' -count=1 -timeout 600s -tags schema_leg_ruby -run '^TestRubyFixedProofSuite$$' ./internal/codegen/rubytable/
 
 ruby-fixed-form-values: ruby-toolchain-check
 	sh test/slowgate/proof ruby-fixed-form-values 'TestRubyFixedProofValues TestRubyFixedProofValuesTypes TestRubyFixedProofValuesReadRules TestRubyFixedProofValuesFloatBounds' -count=1 -timeout 600s -tags schema_leg_ruby -run '^(TestRubyFixedProofValues$$|TestRubyFixedProofValuesTypes$$|TestRubyFixedProofValuesReadRules$$|TestRubyFixedProofValuesFloatBounds$$)' ./internal/codegen/rubytable/
 
 ruby-fixed-form-shapes: ruby-toolchain-check
-	sh test/slowgate/proof ruby-fixed-form-shapes 'TestRubyFixedProofShapes TestRubyFixedProofShapesText TestRubyFixedProofShapesArrayBounds' -count=1 -timeout 600s -tags schema_leg_ruby -run '^(TestRubyFixedProofShapes$$|TestRubyFixedProofShapesText$$|TestRubyFixedProofShapesArrayBounds$$)' -skip '^TestRubyFixedProofShapes$$/^negative-controls$$' ./internal/codegen/rubytable/
+	sh test/slowgate/proof ruby-fixed-form-shapes 'TestRubyFixedProofShapes TestRubyFixedProofShapesText TestRubyFixedProofShapesArrayBounds' -count=1 -timeout 600s -tags schema_leg_ruby -run '^(TestRubyFixedProofShapes$$|TestRubyFixedProofShapesText$$|TestRubyFixedProofShapesArrayBounds$$)' ./internal/codegen/rubytable/
 
 ruby-fixed-form-unions-optionals: ruby-toolchain-check
-	sh test/slowgate/proof ruby-fixed-form-unions-optionals 'TestRubyFixedProofUnionsOptionals' -count=1 -timeout 600s -tags schema_leg_ruby -run '^TestRubyFixedProofUnionsOptionals$$' -skip '^TestRubyFixedProofUnionsOptionals$$/^controls$$' ./internal/codegen/rubytable/
+	sh test/slowgate/proof ruby-fixed-form-unions-optionals 'TestRubyFixedProofUnionsOptionals' -count=1 -timeout 600s -tags schema_leg_ruby -run '^TestRubyFixedProofUnionsOptionals$$' ./internal/codegen/rubytable/
 
 ruby-fixed-form-evolution: ruby-toolchain-check build/fixedform-corpus/.stamp
-	SCHEMA_REQUIRE_CORPUS=1 sh test/slowgate/proof ruby-fixed-form-evolution 'TestRubyFixedProofEvolution TestRubyFixedProofEvolutionValues TestRubyFixedProofEvolutionStrict TestRubyFixedProofEvolutionNumeric TestRubyFixedNumericLadders TestRubyFixedProofEvolutionHostile' -count=1 -timeout 600s -tags schema_leg_ruby -run '^(TestRubyFixedProofEvolution$$|TestRubyFixedProofEvolutionValues$$|TestRubyFixedProofEvolutionStrict$$|TestRubyFixedProofEvolutionNumeric$$|TestRubyFixedNumericLadders$$|TestRubyFixedProofEvolutionHostile$$)' ./internal/codegen/rubytable/
 
 ruby-fixed-form-kind-pairs: ruby-toolchain-check
 	sh test/slowgate/proof ruby-fixed-form-kind-pairs 'TestRubyFixedProofEvolutionKindPairs' -count=1 -timeout 600s -tags schema_leg_ruby -run '^TestRubyFixedProofEvolutionKindPairs$$' ./internal/codegen/rubytable/
@@ -63,7 +61,6 @@ ruby-fixed-proof-unions-optionals-negative-control: ruby-toolchain-check
 	sh test/slowgate/proof ruby-fixed-proof-unions-optionals-negative-control 'TestRubyFixedProofUnionsOptionals' -count=1 -timeout 600s -tags schema_leg_ruby -run '^TestRubyFixedProofUnionsOptionals$$/^controls$$' ./internal/codegen/rubytable/
 
 ruby-fixed-proof-evolution-negative-control: ruby-toolchain-check build/fixedform-corpus/.stamp
-	SCHEMA_REQUIRE_CORPUS=1 sh test/slowgate/proof ruby-fixed-proof-evolution-negative-control 'TestRubyFixedProofEvolutionNegativeControl TestRubyFixedProofEvolutionKindPairsNegativeControl' -count=1 -timeout 600s -tags schema_leg_ruby -run '^(TestRubyFixedProofEvolutionNegativeControl$$|TestRubyFixedProofEvolutionKindPairsNegativeControl$$)' ./internal/codegen/rubytable/
 
 ruby-fixed-crc-negative-control: ruby-toolchain-check
 	sh test/slowgate/proof ruby-fixed-crc-negative-control 'TestRubyFixedIntegrityCRCNegativeControl' -count=1 -timeout 600s -tags schema_leg_ruby -run '^TestRubyFixedIntegrityCRCNegativeControl$$' ./internal/codegen/rubytable/

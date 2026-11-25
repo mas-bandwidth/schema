@@ -362,7 +362,7 @@ func idtableRun(t *testing.T, files map[string][]byte) string {
 	return got
 }
 
-// Functional (pythonBinary): run with SCHEMA_SLOW=1.
+// Functional (pythonBinary).
 func TestPythonVtIdtable(t *testing.T) {
 	t.Parallel()
 	u := loadUnit(t, idtableSchema)
@@ -420,7 +420,7 @@ func TestPythonVtIdtable(t *testing.T) {
 // zero-length check, unknown-enum past-table check and unknown enum array
 // walk. Each must turn the probe red by name under each pinned interpreter.
 //
-// Functional (pythonBinary): run with SCHEMA_SLOW=1.
+// Functional (pythonBinary).
 func TestPythonVtIdtableNegativeControl(t *testing.T) {
 	t.Parallel()
 	u := loadUnit(t, idtableSchema)

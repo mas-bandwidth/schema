@@ -9,8 +9,7 @@
 # $LUA_BENCH_GEN, build/tables-bench-lua by default (the committed tree carries no copy of it: the unit
 # is the runtime modules plus one table module, regenerated in a second). The
 # interpreter is $LUA, else dist/lua-5.4.8 (`make dist-lua`); a leg whose
-# toolchain is absent answers 2 and the pass skips it when it was not asked
-# for by name.
+# toolchain is absent answers 2, and the pass fails, naming it.
 set -e
 
 # LUA_BENCH_GEN lets a control build its own copy beside a running gate

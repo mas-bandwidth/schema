@@ -21,7 +21,7 @@ import (
 // unknown grade names and 2,000 distinct unknown arm names are each refused
 // with the atom count at most a small constant above where it started.
 //
-// It runs elixir, so it is a functional test: under SCHEMA_REQUIRE_CORPUS=1 a
+// It runs elixir, so it is a functional test: a
 // missing toolchain fails by name (elixirBinary).
 func TestElixirFixedSaveLooksUpNamesWithoutAtoms(t *testing.T) {
 	t.Parallel()

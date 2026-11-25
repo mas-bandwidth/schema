@@ -405,9 +405,6 @@ fixed table Root
 	for _, c := range cases {
 		t.Run(c.id, func(t *testing.T) {
 			t.Parallel()
-			if c.skip != "" {
-				t.Skipf("UNPORTED: %s", c.skip)
-			}
 			dir := t.TempDir()
 			schemaPath := filepath.Join(dir, c.pkg+".schema")
 			if err := os.WriteFile(schemaPath, []byte(c.schema), 0o644); err != nil {

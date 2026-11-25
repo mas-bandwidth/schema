@@ -31,7 +31,7 @@ build/verify-bitphase/corpus/.stamp: build/verify-bitphase-bin bin/schema
 	@mkdir -p build/verify-bitphase
 	@lockdir="build/verify-bitphase/.corpus.lock"; \
 	while ! mkdir "$$lockdir" 2>/dev/null; do sleep 1; done; \
-	trap 'rmdir "$$lockdir" 2>/dev/null || true' EXIT INT TERM HUP; \
+	trap '[ ! -d "$$lockdir" ] || rmdir "$$lockdir"' EXIT INT TERM HUP; \
 	status=0; current=1; \
 	for p in $^; do test "$@" -nt "$$p" || current=0; done; \
 	if test "$$current" -eq 0; then \
@@ -42,7 +42,7 @@ build/verify-bitphase/corpus/.stamp: build/verify-bitphase-bin bin/schema
 			--work build/verify-bitphase/corpus-gen \
 			--corpus build/verify-bitphase/corpus; then touch "$@"; else status=$$?; fi; \
 	fi; \
-	rmdir "$$lockdir" 2>/dev/null || true; \
+	[ ! -d "$$lockdir" ] || rmdir "$$lockdir"; \
 	trap - EXIT INT TERM HUP; \
 	exit $$status
 
@@ -54,7 +54,7 @@ build/verify-canonical/corpus/.stamp: build/verify-canonical-bin
 	@mkdir -p build/verify-canonical
 	@lockdir="build/verify-canonical/.corpus.lock"; \
 	while ! mkdir "$$lockdir" 2>/dev/null; do sleep 1; done; \
-	trap 'rmdir "$$lockdir" 2>/dev/null || true' EXIT INT TERM HUP; \
+	trap '[ ! -d "$$lockdir" ] || rmdir "$$lockdir"' EXIT INT TERM HUP; \
 	status=0; current=1; \
 	for p in $^; do test "$@" -nt "$$p" || current=0; done; \
 	if test "$$current" -eq 0; then \
@@ -64,7 +64,7 @@ build/verify-canonical/corpus/.stamp: build/verify-canonical-bin
 			--work build/verify-canonical/corpus-gen \
 			--corpus build/verify-canonical/corpus; then touch "$@"; else status=$$?; fi; \
 	fi; \
-	rmdir "$$lockdir" 2>/dev/null || true; \
+	[ ! -d "$$lockdir" ] || rmdir "$$lockdir"; \
 	trap - EXIT INT TERM HUP; \
 	exit $$status
 
@@ -79,7 +79,7 @@ build/verify-tablegen/corpus/.stamp: build/verify-tablegen-bin bin/schema
 	@mkdir -p build/verify-tablegen
 	@lockdir="build/verify-tablegen/.corpus.lock"; \
 	while ! mkdir "$$lockdir" 2>/dev/null; do sleep 1; done; \
-	trap 'rmdir "$$lockdir" 2>/dev/null || true' EXIT INT TERM HUP; \
+	trap '[ ! -d "$$lockdir" ] || rmdir "$$lockdir"' EXIT INT TERM HUP; \
 	status=0; current=1; \
 	for p in $^; do test "$@" -nt "$$p" || current=0; done; \
 	if test "$$current" -eq 0; then \
@@ -92,7 +92,7 @@ build/verify-tablegen/corpus/.stamp: build/verify-tablegen-bin bin/schema
 			--work build/verify-tablegen/corpus-gen \
 			--corpus build/verify-tablegen/corpus; then touch "$@"; else status=$$?; fi; \
 	fi; \
-	rmdir "$$lockdir" 2>/dev/null || true; \
+	[ ! -d "$$lockdir" ] || rmdir "$$lockdir"; \
 	trap - EXIT INT TERM HUP; \
 	exit $$status
 

@@ -22,7 +22,6 @@ import (
 // counters are schema-go's own engine (internal/tablewire and
 // internal/tabletext) over the same unit, never typed by hand.
 func TestLuauDefaultReadIsStrict(t *testing.T) {
-	t.Skip("layer 4 (luau): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 
 	const schemaSrc = `package probe

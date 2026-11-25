@@ -441,10 +441,7 @@ var (
 func goWireFuzzRoot(t *testing.T) string {
 	t.Helper()
 	if _, err := exec.LookPath("go"); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and go is not found: %v", err)
-		}
-		t.Skipf("go: %v", err)
+		t.Fatalf("go is not found on PATH: %v", err)
 	}
 	root, err := filepath.Abs(filepath.Join("..", "..", ".."))
 	if err != nil {

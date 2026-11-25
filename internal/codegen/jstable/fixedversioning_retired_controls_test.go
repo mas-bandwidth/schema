@@ -186,7 +186,7 @@ for (const [flag, present] of [[2,1],[1,7],[2,7],[255,128]]) {
 
 // Build the existing independent optional corpus in a temporary directory. The
 // ordinary native gate runs before make's external fixtures, so this must not
-// depend on a prior build/js-fixed-optional or silently skip it in required mode.
+// depend on a prior build/js-fixed-optional; a missing compiler fails by name.
 func jsFixedCPPFiles(t *testing.T, schemas map[string]string, driver string, outputs []string) string {
 	t.Helper()
 	cxx := os.Getenv("CXX")
@@ -195,10 +195,7 @@ func jsFixedCPPFiles(t *testing.T, schemas map[string]string, driver string, out
 	}
 	tool, err := exec.LookPath(cxx)
 	if err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("C++ optional oracle requires %s: %v", cxx, err)
-		}
-		t.Skip("C++ optional oracle requires a C++ compiler")
+		t.Fatalf("C++ optional oracle requires %s: %v", cxx, err)
 	}
 	dir := t.TempDir()
 	args := []string{"-std=c++17", "-O0"}

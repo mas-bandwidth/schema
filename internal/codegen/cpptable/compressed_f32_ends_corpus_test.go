@@ -152,7 +152,7 @@ func TestCppCompressedF32EndsCorpus(t *testing.T) {
 		cxx = "c++"
 	}
 	if _, err := exec.LookPath(cxx); err != nil {
-		t.Skipf("generated C++ execution requires %s", cxx)
+		t.Fatalf("generated C++ execution requires %s", cxx)
 	}
 	src, err := os.ReadFile(filepath.Join(cppF32EndsCorpusDir, "Probe.schema"))
 	if err != nil {

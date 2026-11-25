@@ -21,8 +21,8 @@ package fuzz_test
 //	TestPropStrictReadsAgree     on a clean Save and a clean ToJSON every read
 //	                             accepts, gives the same value and reports clean.
 //
-// The property is expensive (it compiles a unit per check), so it is behind
-// slowtest.Gate and the make target sets a bounded -rapid.checks. A default
+// The property is expensive (it compiles a unit per check), so its tier is
+// nightly, and the make target sets a bounded -rapid.checks. A default
 // run caps rapid at a few checks so `go test ./internal/fuzz/` stays cheap.
 
 import (
@@ -171,16 +171,6 @@ func joinLines(vals []string) string {
 	return out
 }
 
-// rapidPropsGate keeps the property tests out of ci-fast and ci-full: they
-// compile a unit per check, so they are a nightly campaign. The make target and
-// an explicit SCHEMA_RAPID_PROPS=1 opt them in.
-func rapidPropsGate(t *testing.T) {
-	t.Helper()
-	if os.Getenv("CI") != "" && os.Getenv("SCHEMA_RAPID_PROPS") != "1" {
-		t.Skip("the property-based random-schema tests are nightly only; run them with make fuzz-tables-props")
-	}
-}
-
 // rapidDrawnFixed reports whether the drawn unit emits the fixed form: the
 // `fixed table Root` wire form (and, for a fixed Root, the message form). The
 // properties only exercise the forms the unit declares, so they count fixed
@@ -204,7 +194,6 @@ func coverageFloor(t *testing.T, what string, count int) {
 // same bytes.
 func TestPropRoundTripEveryForm(t *testing.T) {
 	t.Parallel()
-	rapidPropsGate(t)
 	fixed := 0
 	rapid.Check(t, func(rt *rapid.T) {
 		src, unit, vals := rapidDrawUnit(rt)
@@ -220,7 +209,6 @@ func TestPropRoundTripEveryForm(t *testing.T) {
 // report, and the region and builder wire reads give the same verdict.
 func TestPropRefusalNeverSilent(t *testing.T) {
 	t.Parallel()
-	rapidPropsGate(t)
 	fixed := 0
 	rapid.Check(t, func(rt *rapid.T) {
 		src, unit, vals := rapidDrawUnit(rt)
@@ -237,7 +225,6 @@ func TestPropRefusalNeverSilent(t *testing.T) {
 // accept, give the same value and report clean.
 func TestPropStrictReadsAgree(t *testing.T) {
 	t.Parallel()
-	rapidPropsGate(t)
 	fixed := 0
 	rapid.Check(t, func(rt *rapid.T) {
 		src, unit, vals := rapidDrawUnit(rt)
@@ -347,7 +334,6 @@ const maxShrunkSchemaBytes = 512
 // schema under maxShrunkSchemaBytes.
 func TestRapidPropsNegativeControl(t *testing.T) {
 	t.Parallel()
-	rapidPropsGate(t)
 	rec := &rapidRecorder{}
 	rapid.Check(rec, func(rt *rapid.T) {
 		src, unit, vals := rapidDrawUnit(rt)

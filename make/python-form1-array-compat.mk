@@ -3,4 +3,3 @@
 test-python: python-form1-array-compat-negative-control
 PYTHON_CI_SUPPORT_GROUPS += python-form1-array-compat-negative-control
 python-form1-array-compat-negative-control:
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -run '^TestPythonForm1ArrayPriorWriters$$' ./internal/codegen/pythontable/

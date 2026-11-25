@@ -22,7 +22,7 @@ import (
 //
 // Every refusal has its lawful twin at the same boundary, which writes. Each
 // row is named, so a planted old behaviour goes red on its own row. It runs
-// elixir, so it is a functional test: it skips by name without the toolchain.
+// elixir, so it is a functional test: it fails by name without the toolchain.
 func TestElixirSaveChecksEveryField(t *testing.T) {
 	t.Parallel()
 

@@ -27,8 +27,8 @@ import (
 // The COMMITTED oracle bytes are the reference's own wire, so every instance
 // is loaded, re-saved byte for byte and (where the corpus pins one) round
 // tripped through the committed JSON text. It runs the leg's own toolchain, so
-// it is a FUNCTIONAL test and SCHEMA_REQUIRE_CORPUS=1 turns a missing toolchain
-// into a failure, never a skip.
+// it is a FUNCTIONAL test: a missing toolchain is a
+// failure, never a skip.
 func TestFixedClassOnTableWireElixir(t *testing.T) {
 	t.Parallel()
 	elixirBin := elixirtable.ElixirBinaryForTest(t)

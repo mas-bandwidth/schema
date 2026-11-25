@@ -3585,7 +3585,7 @@ int main( int argc, char ** argv )
     const std::string surface = argv[2];
     if ( surface == "list" )
     {
-        printf( "wire\nmessage\nmessage-prior\nreport\nframing\nretain\nretain-save\nretain-refusal\njson-read\njson-write\njson-hostile\ncook-write\nblock\nblock-foreign\nblock-dump\nforgery\nblock-reason\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n"
+        printf( "wire\nmessage\nmessage-prior\nreport\nframing\nretain\nretain-save\nretain-refusal\njson-read\njson-write\njson-hostile\ncook-write\nblock\nblock-foreign\nblock-dump\nforgery\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n"
                 "write-refusal-cook\nwrite-refusal-block\nwrite-refusal-shape\nannounce\nread-into\njson-write-into\n" );
         // the opt-in units this leg answers (MANIFEST.txt `opt-in`)
         printf( "unit shapes\n" );

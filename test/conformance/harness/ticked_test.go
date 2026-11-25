@@ -36,7 +36,8 @@ func TestTickedAbsentFails(t *testing.T) {
 }
 
 // TestUntickedAbsentIsCoverage: the same absence where the row is ticked only
-// for another leg, or a different row is ticked, stays green.
+// for another leg, or a different row is ticked, is not a TICKED failure and
+// counts as not carried; the run is red for the absence itself.
 func TestUntickedAbsentIsCoverage(t *testing.T) {
 	needShell(t)
 	for name, ticks := range map[string]tickSet{
@@ -48,10 +49,10 @@ func TestUntickedAbsentIsCoverage(t *testing.T) {
 			c := newFakeCorpus(t)
 			drivers := c.committed(t, map[string]fakeLeg{referenceLang: {}, "zz": {caseGone: true}})
 			out, ok, rows := c.runClaimed(t, drivers, tickedClaims(ticks))
-			if !ok {
-				t.Fatalf("an absence on an unticked row turned the run red:\n%s", out)
+			if ok {
+				t.Fatalf("an absence on an unticked row left the run green:\n%s", out)
 			}
-			mustSay(t, out, []string{notAllAnswered, "pass 0/1 +1a"}, []string{"TICKED", footer})
+			mustSay(t, out, []string{notAllAnswered, "NOT CONFORMING", "pass 0/1 +1a"}, []string{"TICKED", footer})
 			if r, _ := findRow(rows, "zz", "wire"); r.NotCarried != 1 || r.AbsentClaimed != 0 {
 				t.Errorf("the coverage row does not count the absence as not carried: %+v", r)
 			}
@@ -60,8 +61,8 @@ func TestUntickedAbsentIsCoverage(t *testing.T) {
 }
 
 // TestTickedAbsentSurfaceFails: a surface left out of `list`, or exited 2 on,
-// fails the leg when the row its cases read is ticked for it; unticked, it is
-// still only a missing surface.
+// fails the leg by name when the row its cases read is ticked for it;
+// unticked, it is not a TICKED failure, and the run is red for the absence.
 func TestTickedAbsentSurfaceFails(t *testing.T) {
 	needShell(t)
 	for name, leg := range map[string]fakeLeg{
@@ -83,9 +84,10 @@ func TestTickedAbsentSurfaceFails(t *testing.T) {
 			c = newFakeCorpus(t)
 			drivers = c.committed(t, map[string]fakeLeg{referenceLang: {}, "zz": leg})
 			out, ok, _ = c.runClaimed(t, drivers, tickedClaims(tickSet{"variable-tables/text-form": {"yy": true}}))
-			if !ok {
-				t.Fatalf("an unticked absent surface turned the run red:\n%s", out)
+			if ok {
+				t.Fatalf("an unticked absent surface left the run green:\n%s", out)
 			}
+			mustSay(t, out, []string{"NOT CONFORMING"}, []string{"TICKED and the surface answered ABSENT", footer})
 		})
 	}
 }
@@ -198,7 +200,7 @@ func TestSurfacesRestrictTheRun(t *testing.T) {
 		t.Fatal(err)
 	}
 	var out strings.Builder
-	ok, err := runWith(&out, c.m, c.manifest, c.jsonDir, c.reports, drivers, t.TempDir()+"/work", "", "",
+	ok, err := runWith(&out, c.m, c.manifest, c.jsonDir, c.reports, drivers, t.TempDir()+"/work", "",
 		runOptions{claims: tickedClaims(tickSet{"variable-tables/text-form": {"zz": true}}), only: only})
 	if err != nil {
 		t.Fatal(err)

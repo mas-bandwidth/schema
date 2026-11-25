@@ -15,9 +15,7 @@ package cpptable
 // body with bytes after its terminator (L3) and an unknown node table in a
 // reader with no reference that could reach a node (T1, T4).
 //
-// It builds and runs the real driver, so it is a functional test: it skips
-// by name without SCHEMA_SLOW, and fails by name under
-// SCHEMA_REQUIRE_CORPUS=1 when make or the C++ compiler is missing.
+// It builds and runs the real driver, so it is a functional test: it fails by name when make or the C++ compiler is missing.
 
 import (
 	"bytes"
@@ -242,10 +240,7 @@ func cppConformanceRoot(t *testing.T) string {
 	t.Helper()
 	for _, tool := range []string{"make", "c++"} {
 		if _, err := exec.LookPath(tool); err != nil {
-			if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-				t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and %s is not found: %v", tool, err)
-			}
-			t.Skipf("%s: %v", tool, err)
+			t.Fatalf("%s is not found: %v", tool, err)
 		}
 	}
 	root, err := filepath.Abs(filepath.Join("..", "..", ".."))

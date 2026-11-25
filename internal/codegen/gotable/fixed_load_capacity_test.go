@@ -52,9 +52,6 @@ func TestFixedLoadCapacities(t *testing.T) {
             var observed string
             switch row[1] {
             case "load":
-                if row[2] == "omitted" {
-                    t.Skip("BatchFixedLoad requires a destination slice whose length is the capacity")
-                }
                 capacity, err := strconv.Atoi(row[2])
                 if err != nil { t.Fatal(err) }
                 values := make([]Batch, capacity)

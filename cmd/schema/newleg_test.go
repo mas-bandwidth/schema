@@ -155,7 +155,7 @@ func TestHelpListsNewLeg(t *testing.T) {
 // runs the verb there, and then asks the tree what a porter would — does it
 // build, does vet pass, does the new package's fixture test pass, does the
 // Makefile's wildcard include discover test-zig. It builds a whole tree and
-// runs the Go toolchain over it, so it sits behind slowtest.Gate.
+// runs the Go toolchain over it, so its tier is functional.
 //
 // The controls below are the review's confinement (schema#1859 item 1): every
 // output stays inside --root and is created exclusively. Each holds the same
@@ -165,7 +165,7 @@ func TestHelpListsNewLeg(t *testing.T) {
 func TestNewLegZigYieldsABuildingTestingSkeleton(t *testing.T) {
 	for _, tool := range []string{"make", "go"} {
 		if _, err := exec.LookPath(tool); err != nil {
-			t.Skipf("no %s on PATH", tool)
+			t.Fatalf("no %s on PATH", tool)
 		}
 	}
 	root, err := filepath.Abs("../..")
@@ -343,14 +343,14 @@ func zigLeg(t *testing.T) map[string][]byte {
 	return files
 }
 
-// plantSymlink plants a link, or skips where the platform refuses one.
+// plantSymlink plants a link, or fails where the platform refuses one.
 func plantSymlink(t *testing.T, target, link string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Symlink(target, link); err != nil {
-		t.Skipf("cannot create a symlink here: %v", err)
+		t.Fatalf("cannot create a symlink here: %v", err)
 	}
 }
 
@@ -478,9 +478,6 @@ func TestScaffoldRefusesASymlinkedParentDirectory(t *testing.T) {
 // a path is free. A directory the tool cannot search is reported, and nothing
 // is written, where an os.Stat check read it as absence and went on writing.
 func TestScaffoldReportsALookupErrorThatIsNotAbsence(t *testing.T) {
-	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
-		t.Skip("needs POSIX permissions that bind the caller")
-	}
 	files := zigLeg(t)
 	root := schemaTree(t)
 	mk := filepath.Join(root, "make")

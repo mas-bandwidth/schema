@@ -13,8 +13,7 @@ package ci
 // the port. Files are read; nothing here uses a socket, a clock or a service.
 //
 // When the corpus is not on this base the runner names the dependency and
-// fails under SCHEMA_REQUIRE_CORPUS (which the make target sets), rather than
-// passing over an absent corpus. The route note on this card says the corpus
+// fails, rather than passing over an absent corpus. The route note on this card says the corpus
 // arrives through lua-base-forward-merge-schema-go-r.
 
 import (
@@ -606,7 +605,6 @@ func TestSchemaLuaHostileCorpusLane(t *testing.T) {
 		"sh test/slowgate/proof schema-lua-runs-hostile-corpus-planted",
 		"TestSchemaLuaRunsHostileCorpus",
 		"TestSchemaLuaHostileCorpusPlantedReader",
-		"SCHEMA_REQUIRE_CORPUS=1",
 	} {
 		if !strings.Contains(mk, want) {
 			t.Errorf("make/schema-lua-runs-hostile-corpus.mk does not carry %q", want)

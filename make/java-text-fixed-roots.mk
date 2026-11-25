@@ -12,7 +12,7 @@ JAVA_TEXT_FIXED_ROOTS := build/conformance-java-text-fixed-roots
 conformance-java-text-fixed-roots: build/conformance-harness build-conformance-java
 	@rm -rf $(JAVA_TEXT_FIXED_ROOTS) && mkdir -p $(JAVA_TEXT_FIXED_ROOTS)
 # loud-ok: the harness's status covers every surface of the leg; this target's verdict is the named row read from the log below, and a missing row is red
-	JAVA=$(JAVA) ./build/conformance-harness run --only java --work $(JAVA_TEXT_FIXED_ROOTS)/work > $(JAVA_TEXT_FIXED_ROOTS)/log 2>&1 || true
+	JAVA=$(JAVA) ./build/conformance-harness run --only java --work $(JAVA_TEXT_FIXED_ROOTS)/work > $(JAVA_TEXT_FIXED_ROOTS)/log 2>&1; echo "exited $$? (the verdict is read from $(JAVA_TEXT_FIXED_ROOTS)/log below)"
 	@grep -E '^json-(read|write) ' $(JAVA_TEXT_FIXED_ROOTS)/log || \
 		{ cat $(JAVA_TEXT_FIXED_ROOTS)/log; echo "conformance-java-text-fixed-roots: the run printed no json-read or json-write line"; exit 1; }
 	@grep -qE '^json-read +pass ([0-9]+)/\1 *$$' $(JAVA_TEXT_FIXED_ROOTS)/log || \
@@ -40,7 +40,7 @@ conformance-java-text-fixed-roots-negative-control: build/conformance-harness bu
 	@printf 'java %s/driver\n' "$(CURDIR)/$(JAVA_TEXT_FIXED_ROOTS_SABOTAGE)" > $(JAVA_TEXT_FIXED_ROOTS_SABOTAGE)/drivers.txt
 # loud-ok: the harness's status covers every surface of the leg; this target's verdict is the named row read from the log below, and a missing row is red
 	./build/conformance-harness run --drivers $(JAVA_TEXT_FIXED_ROOTS_SABOTAGE)/drivers.txt \
-		--work $(JAVA_TEXT_FIXED_ROOTS_SABOTAGE)/work > $(JAVA_TEXT_FIXED_ROOTS_SABOTAGE)/log 2>&1 || true
+		--work $(JAVA_TEXT_FIXED_ROOTS_SABOTAGE)/work > $(JAVA_TEXT_FIXED_ROOTS_SABOTAGE)/log 2>&1; echo "exited $$? (the verdict is read from $(JAVA_TEXT_FIXED_ROOTS_SABOTAGE)/log below)"
 	@if grep -qE '^json-write +pass ([0-9]+)/\1 *$$' $(JAVA_TEXT_FIXED_ROOTS_SABOTAGE)/log; then \
 		echo "NEGATIVE CONTROL FAILED: a fixed root's text writer with a field dropped left the Java json-write line green"; \
 		cat $(JAVA_TEXT_FIXED_ROOTS_SABOTAGE)/log; exit 1; \

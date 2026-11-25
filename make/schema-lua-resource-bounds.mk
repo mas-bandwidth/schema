@@ -13,7 +13,7 @@
 # they call the emitted runtime and the port's own generator.
 
 # THE HEAVY SWEEP and the planted-bad-pattern control both run under the
-# slow-gate proof script: SCHEMA_SLOW=1 so the gate is not skipped, a skip in
+# slow-gate proof script: the rule that nothing skips so the gate is not skipped, a skip in
 # the log is a failure, and every gate this target names must print a named
 # --- PASS. A skipped test is not a pass.
 .PHONY: schema-lua-resource-bounds

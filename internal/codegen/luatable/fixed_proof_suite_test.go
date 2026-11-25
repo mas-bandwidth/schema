@@ -16,7 +16,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// Functional (luaBinary): run with SCHEMA_SLOW=1.
+// Functional (luaBinary): needs the pinned Lua.
 //
 // TestLuaFixedProofSuiteValues runs all 49 contract-independent fixed-table
 // rows through the shared fixedproof value suite against the live C++ oracle.
@@ -25,7 +25,7 @@ func TestLuaFixedProofSuiteValues(t *testing.T) {
 	fixedproof.RunValueSuite(t, luaFixedProofRunner{})
 }
 
-// Functional (luaBinary): run with SCHEMA_SLOW=1.
+// Functional (luaBinary): needs the pinned Lua.
 //
 // TestLuaFixedProofSuiteNegativeControl runs both the file negative control
 // and the writer negative control across all 49 rows under a hard 2 GiB memory
@@ -35,7 +35,7 @@ func TestLuaFixedProofSuiteNegativeControl(t *testing.T) {
 	fixedproof.RunNegativeControlSuite(t, luaFixedProofRunner{})
 }
 
-// Functional (luaBinary): run with SCHEMA_SLOW=1.
+// Functional (luaBinary): needs the pinned Lua.
 //
 // TestLuaFixedProofEvolution runs the shared non-value fixed-table rows
 // (fixed-file-roundtrip and 14 of the 15 evolution/layout/plan/lineage/file
@@ -53,7 +53,7 @@ func TestLuaFixedProofEvolution(t *testing.T) {
 		"union-guards", "plan-execution", "interoperability")
 }
 
-// Functional (luaBinary): run with SCHEMA_SLOW=1.
+// Functional (luaBinary): needs the pinned Lua.
 //
 // TestLuaFixedLiveExtents runs the live-extents claim on the dead-byte rule:
 // the clean image reads, a count that makes another slot live reads its value,
@@ -99,7 +99,7 @@ func TestLuaFixedLiveExtents(t *testing.T) {
 	}
 }
 
-// Functional (luaBinary): run with SCHEMA_SLOW=1.
+// Functional (luaBinary): needs the pinned Lua.
 //
 // TestLuaFixedBatch4097Roundtrip proves that 4,097 fixed records save and read
 // back when the caller sets capacity 4,097 or omits it (an omitted or nil

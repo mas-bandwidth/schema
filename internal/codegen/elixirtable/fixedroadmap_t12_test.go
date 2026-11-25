@@ -17,7 +17,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -42,19 +41,15 @@ func TestFixedRoadmapElixirT12OrdinalsArms(t *testing.T) {
 // ---- interoperability/elixir/R27 --------------------------------------------
 
 // t12R27 holds R27 to the corpus manifest (`build/fixedform-corpus/manifest.txt`,
-// §5.7 step 1 and §5.9 #32) as the single value oracle: under
-// SCHEMA_REQUIRE_CORPUS=1 a missing corpus or manifest is a test failure, never
-// a skip; every versioning row's brackets in the manifest match the corpus
+// §5.7 step 1 and §5.9 #32) as the single value oracle: a
+// missing corpus or manifest is a test failure, never a skip; every versioning row's brackets in the manifest match the corpus
 // bytes; and the Elixir fixed-form reader loads `fx1.bin` to the exact values
 // the manifest records for `file=fx1.bin`.
 func t12R27(t *testing.T) {
 	corpus := fixedCorpus(t)
 	manifestPath := filepath.Join(corpus, "manifest.txt")
 	if _, err := os.Stat(manifestPath); err != nil {
-		if slowtest.CorpusRequired() {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set (or CI runs the slow half) and the corpus manifest is not in %s: %v", manifestPath, err)
-		}
-		t.Skip("the tree carries no corpus manifest: make tables-fixedform-corpus")
+		t.Fatalf("the corpus manifest is not in %s: %v", manifestPath, err)
 	}
 
 	fired := 0

@@ -14,7 +14,7 @@ import (
 )
 
 // runLongNumberUnit generates and runs the probe in a t.TempDir(), the house
-// pattern. The caller places this toolchain test behind the slow-half gate.
+// pattern. It shells out to the Go toolchain (functional).
 func runLongNumberUnit(t *testing.T, schema, testSource string) {
 	t.Helper()
 	u := unitFrom(t, schema)

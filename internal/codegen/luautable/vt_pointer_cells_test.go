@@ -12,7 +12,7 @@ package luautable_test
 // bodies are luau-conformance-read-then-write's harness, not these rows.
 // This file does not touch that harness.
 //
-// Functional: the pinned Luau interpreter. SCHEMA_SLOW=1, or slowtest.Gate skips.
+// Functional: the pinned Luau interpreter; a missing one fails.
 
 import (
 	"bytes"

@@ -131,7 +131,7 @@ func serializeRSPath(t *testing.T) string {
 			return p
 		}
 	}
-	t.Skip("no serialize.rs runtime: set SERIALIZE_RS or stage the sibling checkout")
+	t.Fatal("no serialize.rs runtime: set SERIALIZE_RS or stage the sibling checkout")
 	return ""
 }
 
@@ -155,6 +155,6 @@ func cargoPath(t *testing.T) string {
 			return c
 		}
 	}
-	t.Skip("no cargo toolchain")
+	t.Fatal("no cargo toolchain")
 	return ""
 }

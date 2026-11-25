@@ -11,7 +11,7 @@ conformance-elixir-cook-write: build/conformance-harness build-conformance-elixi
 	@rm -rf $(CONFORMANCE_ELIXIR_COOK_WRITE) && mkdir -p $(CONFORMANCE_ELIXIR_COOK_WRITE)
 # loud-ok: the harness's status covers every surface of the leg; this target's verdict is the named row read from the log below, and a missing row is red
 	@./build/conformance-harness run --only elixir --work $(CONFORMANCE_ELIXIR_COOK_WRITE)/work \
-		> $(CONFORMANCE_ELIXIR_COOK_WRITE)/log 2>&1 || true
+		> $(CONFORMANCE_ELIXIR_COOK_WRITE)/log 2>&1; echo "exited $$? (the verdict is read from $(CONFORMANCE_ELIXIR_COOK_WRITE)/log below)"
 	@sh test/conformance/elixir/cook-write-gate $(CONFORMANCE_ELIXIR_COOK_WRITE)/log $(CONFORMANCE_ELIXIR_COOK_WRITE)/work
 
 # Its control re-emits the leg's cook writer, under build/ only, with a counted
@@ -24,7 +24,7 @@ conformance-elixir-cook-write-negative-control: build/conformance-harness
 	$(call ELIXIR_SABOTAGED_BUILD,$(CONFORMANCE_NEGATIVE_ELIXIR_COOK_WRITE),internal/codegen/elixirtable/cookwrite.go,ELIXIR_COOK_WRITE_DEAD_SED)
 # loud-ok: the harness's status covers every surface of the leg; this target's verdict is the named row read from the log below, and a missing row is red
 	@ELIXIR_TABLES_EBIN=$(CURDIR)/$(CONFORMANCE_NEGATIVE_ELIXIR_COOK_WRITE)/ebin ./build/conformance-harness run --only elixir \
-		--work $(CONFORMANCE_NEGATIVE_ELIXIR_COOK_WRITE)/work > $(CONFORMANCE_NEGATIVE_ELIXIR_COOK_WRITE)/log 2>&1 || true
+		--work $(CONFORMANCE_NEGATIVE_ELIXIR_COOK_WRITE)/work > $(CONFORMANCE_NEGATIVE_ELIXIR_COOK_WRITE)/log 2>&1; echo "exited $$? (the verdict is read from $(CONFORMANCE_NEGATIVE_ELIXIR_COOK_WRITE)/log below)"
 	@if sh test/conformance/elixir/cook-write-gate $(CONFORMANCE_NEGATIVE_ELIXIR_COOK_WRITE)/log $(CONFORMANCE_NEGATIVE_ELIXIR_COOK_WRITE)/work; then \
 		echo "NEGATIVE CONTROL FAILED: dead counted slots written nonzero left the cook-write gate green"; exit 1; \
 	fi
@@ -44,7 +44,7 @@ conformance-elixir-cook-share-negative-control: build/conformance-harness build-
 	@! cmp -s test/conformance/elixir/driver_impl.ex build/elixir-cook-share-negative/driver_impl.ex
 	@$(ELIXIRC) --ignore-module-conflict -pa build/elixir-cook-share-negative/ebin -o build/elixir-cook-share-negative/ebin build/elixir-cook-share-negative/driver_impl.ex
 # loud-ok: the harness's status covers every surface of the leg; this target's verdict is the named row read from the log below, and a missing row is red
-	@ELIXIR_TABLES_EBIN=$(CURDIR)/build/elixir-cook-share-negative/ebin ./build/conformance-harness run --only elixir --work build/elixir-cook-share-negative/work > build/elixir-cook-share-negative/log 2>&1 || true
+	@ELIXIR_TABLES_EBIN=$(CURDIR)/build/elixir-cook-share-negative/ebin ./build/conformance-harness run --only elixir --work build/elixir-cook-share-negative/work > build/elixir-cook-share-negative/log 2>&1; echo "exited $$? (the verdict is read from build/elixir-cook-share-negative/log below)"
 	@if sh test/conformance/elixir/cook-write-gate build/elixir-cook-share-negative/log build/elixir-cook-share-negative/work; then echo 'NEGATIVE CONTROL FAILED: erased sharing left cook gate green'; exit 1; fi
 	@grep -q 'elixir / cook-write: blob_shared:' build/elixir-cook-share-negative/log
 	@grep -q 'elixir / cook-write: blob_shared-be:' build/elixir-cook-share-negative/log

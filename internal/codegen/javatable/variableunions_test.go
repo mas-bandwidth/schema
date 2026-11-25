@@ -34,7 +34,7 @@ func TestVariableUnionArmNamedTagCompiles(t *testing.T) {
 		t.Parallel()
 		javac, _ := javaTools(t)
 		if javac == "" {
-			t.Skip("javac not available")
+			t.Fatal("javac not available: set JAVAC/JAVA or install a JDK")
 		}
 		dir := t.TempDir()
 		var sources []string

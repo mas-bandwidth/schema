@@ -7,7 +7,7 @@ package javatable
 // wire. The eleven cells this card closes are held two ways, both against
 // the real artifacts:
 //
-//   - At runtime (under SCHEMA_SLOW=1), javaVariableCellsStrictRun compiles
+//   - At runtime, javaVariableCellsStrictRun compiles
 //     and runs the generated Java codecs over V1/V2 schemas exercising
 //     cook-write, text-form, fixed-class, defaults-and-table-rename, maps,
 //     renames, union-arms-any, union-table-arms, wide-scalars, wstring and

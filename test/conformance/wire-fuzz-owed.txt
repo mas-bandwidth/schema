@@ -1,5 +1,0 @@
-# THE RELEASE WIRE-FUZZ GATE'S OWED ARMS (make/wire-fuzz-release.mk). One line
-# per arm a leg does not carry yet: `<leg> <arm> <why>`, where <arm> is plain or
-# retain and <why> names what is owed. An owed arm still runs where the leg has a
-# driver; once it runs green the gate is red until its line is removed here.
-# Nothing else may be skipped: a divergence on an arm the leg carries is RED.

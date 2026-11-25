@@ -9,8 +9,7 @@ package cpp
 // buffer one byte short is refused, so the read is the whole value or a
 // refusal.
 //
-// This is a functional test: it shells out to a C++ compiler, so it skips by
-// name without SCHEMA_SLOW. It carries its own strict bit-stream header
+// This is a functional test: it shells out to a C++ compiler, so it fails by name when the compiler is missing. It carries its own strict bit-stream header
 // instead of a sibling serialize checkout, so the generated unit (the real
 // artifact) is always what is compiled; the test pins that this stub's bytes
 // are the checked-in C++ pins before it trusts any read.
@@ -711,10 +710,7 @@ func runCppPacketDefaults(t *testing.T, files map[string][]byte) ([]byte, error)
 		cxx = "c++"
 	}
 	if _, err := exec.LookPath(cxx); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and %s is not found: %v", cxx, err)
-		}
-		t.Skipf("%s: %v", cxx, err)
+		t.Fatalf("%s is not found: %v", cxx, err)
 	}
 	dir := t.TempDir()
 	for name, data := range files {

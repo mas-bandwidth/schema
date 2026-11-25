@@ -22,7 +22,7 @@ package elixirtable
 // artifact proves nothing about the unplanted one.
 //
 // It compiles and runs the generated units with the real Elixir toolchain,
-// so it is a functional test gated by slowtest.
+// so it is a functional test.
 
 import (
 	"encoding/binary"

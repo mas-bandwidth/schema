@@ -111,10 +111,7 @@ func runUnionByteArrayProbe(t *testing.T, files map[string][]byte) ([]byte, erro
 	t.Helper()
 	serialize, ok := setterSerializeDir(t)
 	if !ok {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("serialize.h is not staged at %s (SERIALIZE_C, else the sibling checkout); SCHEMA_REQUIRE_CORPUS says this probe must run", serialize)
-		}
-		t.Skipf("serialize.h is not staged at %s (SERIALIZE_C, else the sibling checkout): the probe cannot compile", serialize)
+		t.Fatalf("serialize.h is not staged at %s (SERIALIZE_C, else the sibling checkout)", serialize)
 	}
 
 	dir := t.TempDir()

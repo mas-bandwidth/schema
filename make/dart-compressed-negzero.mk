@@ -18,7 +18,7 @@
 #                                      its fast twin in the ordinary go test run.
 .PHONY: conformance-dart-compressed-negzero
 conformance-dart-compressed-negzero: toolchain-dart
-	DART=$(DART) SCHEMA_REQUIRE_CORPUS=1 sh test/slowgate/proof conformance-dart-compressed-negzero 'TestDartCompressedNegZeroWriters' \
+	DART=$(DART) sh test/slowgate/proof conformance-dart-compressed-negzero 'TestDartCompressedNegZeroWriters' \
 		-count=1 -timeout 600s ./internal/codegen/darttable/ -run '^TestDartCompressedNegZeroWriters$$'
 
 test-dart: conformance-dart-compressed-negzero

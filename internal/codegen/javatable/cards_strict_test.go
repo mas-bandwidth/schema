@@ -20,8 +20,8 @@ import (
 
 // TestJavaCardsStrict pins the Java cards facade, driver, and tests
 // (tables/cards/java) to the strict TableVariable.Report names and strict read
-// (docs/SPEC-TABLES.md §4, §6.5; docs/plans/strict-only.md), and (when javac
-// and java are available under SCHEMA_SLOW=1, as a functional test) compiles
+// (docs/SPEC-TABLES.md §4, §6.5; docs/plans/strict-only.md), and (as a functional
+// test that fails by name without javac and java) compiles
 // and runs CardsTest plus all nine card conformance surfaces (load, save,
 // render, parse, bounds, upgrade, edit, taskhash, view) against
 // tables/cards/conformance/expected/.
@@ -73,7 +73,7 @@ func findJavaToolsForCards(t *testing.T) (javac, java string, ok bool) {
 	if err1 == nil && err2 == nil {
 		return javac, java, true
 	}
-	t.Skipf("javac/java not on PATH: javac=%v java=%v", err1, err2)
+	t.Fatalf("javac/java not on PATH: javac=%v java=%v", err1, err2)
 	return "", "", false
 }
 

@@ -8,10 +8,10 @@ package moo_test
 // (testdata/table_fixed_before.moo, sha256 pinned below), interleaved pairs,
 // median ns per record. moo has no clock (it is deterministic), so each run
 // times the interpreter process from Go and subtracts a run of zero
-// iterations. A functional bench, never a unit test: it uses real time, and it
-// runs only on a quiet fleet bench with SCHEMA_MOO_FIXED_BENCH=1 set:
+// iterations. A functional bench, never a unit test: it uses real time, so its
+// tier is nightly, on a quiet fleet bench:
 //
-//   SCHEMA_SLOW=1 SCHEMA_MOO_FIXED_BENCH=1 go test -count=1 -v -timeout 900s \
+//   go test -count=1 -v -timeout 900s \
 //     -tags schema_leg_moo ./bench/tables/moo/ \
 //     -run '^TestMooFixedHotPathBench$'
 //
@@ -168,9 +168,6 @@ func benchMedian(xs []float64) float64 {
 }
 
 func TestMooFixedHotPathBench(t *testing.T) {
-	if os.Getenv("SCHEMA_MOO_FIXED_BENCH") == "" {
-		t.Skip("SCHEMA_MOO_FIXED_BENCH unset: a timed run belongs on a quiet fleet bench")
-	}
 	before, err := os.ReadFile("testdata/table_fixed_before.moo")
 	if err != nil {
 		t.Fatal(err)

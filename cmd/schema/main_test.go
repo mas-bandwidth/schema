@@ -251,9 +251,6 @@ func treeNames(t *testing.T, dir string) []string {
 }
 
 func TestReadOnlyTreeRunsEveryReadingCommand(t *testing.T) {
-	if os.Geteuid() == 0 {
-		t.Skip("root writes through a read-only directory, so the mode proves nothing")
-	}
 	bin := buildCLI(t)
 	work := t.TempDir()
 	dir, path := writeUnit(t, filepath.Join(work, "unit"))
@@ -284,29 +281,6 @@ func TestReadOnlyTreeRunsEveryReadingCommand(t *testing.T) {
 		out := filepath.Join(work, "generated", target)
 		run(t, bin, "generate", "--lang", target, "--out", out, dir)
 		before.unchanged(t, path, "schema generate --lang "+target)
-	}
-}
-
-// TestSubprocessTestsAreGated checks that the helper building and running
-// the compiled CLI is gated, so a default test run spawns no subprocess.
-func TestSubprocessTestsAreGated(t *testing.T) {
-	t.Parallel()
-	data, err := os.ReadFile("main_test.go")
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := string(data)
-	start := strings.Index(text, "func buildCLI")
-	if start < 0 {
-		t.Fatal("buildCLI not found")
-	}
-	rest := text[start:]
-	before, _, ok := strings.Cut(rest, "\n}\n")
-	if !ok {
-		t.Fatal("buildCLI body not found")
-	}
-	if !strings.Contains(before, "slowtest.Gate(") {
-		t.Errorf("buildCLI spawns a subprocess but does not call slowtest.Gate")
 	}
 }
 

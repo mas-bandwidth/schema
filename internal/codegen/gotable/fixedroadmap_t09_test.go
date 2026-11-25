@@ -19,10 +19,9 @@ package gotable
 // Then it actually WRITES a record with the field at its non-default boundary
 // and READS it back through the leg's own emitted `TFixedSave`/`TFixedLoad`,
 // compiling and running the generated unit in a throwaway module. That half
-// goes through slowtest.Gate (it shells out to the Go toolchain) and so runs
-// where a gate promises it: SCHEMA_REQUIRE_CORPUS=1 (the card's own STEP 13
-// gate) or SCHEMA_SLOW=1. A width whose storage is the sibling `serialize.go`
-// runtime (128-bit) names that runtime and skips rather than fakes it.
+// shells out to the Go toolchain (functional) and always runs. A width whose
+// storage is the sibling `serialize.go` runtime (128-bit) needs that runtime
+// and fails by name without it.
 
 import (
 	"fmt"
@@ -216,9 +215,8 @@ func t09CaseByID(id string) (t09Case, bool) {
 // TestFixed128BitRowsRunWithTheSerializeSibling resolves the sibling
 // serialize.go runtime as t09Run does and runs the signed-128 and unsigned-128
 // valid-data rows. Those rows compile generated code against the sibling, so
-// this is a functional test behind slowtest.Gate, never a unit test. With
-// SCHEMA_REQUIRE_CORPUS set and the sibling absent the row fails by name;
-// unset, it skips by name.
+// this is a functional test, never a unit test. With the sibling absent the
+// row fails by name.
 func TestFixed128BitRowsRunWithTheSerializeSibling(t *testing.T) {
 	t.Parallel()
 	for _, id := range []string{"signed-128/go/valid-data", "unsigned-128/go/valid-data"} {

@@ -19,7 +19,7 @@ import (
 // needs exactly 4096, which the read accepts. The unit is
 // tablewire.IdCapSchema: 4095, 4096 and 4097 ids.
 //
-// A FUNCTIONAL TEST: it runs the generated Dart, behind slowtest.Gate.
+// A FUNCTIONAL TEST: it runs the generated Dart; a missing SDK fails by name.
 func TestDartWriterRefusesMoreThan4096Ids(t *testing.T) {
 	t.Parallel()
 	u := unitFrom(t, tablewire.IdCapSchema())

@@ -8,7 +8,8 @@
 // test that started and never reported (the row was killed while it ran); and
 // the slowest tests, so the next split of a slow row is read off the log.
 //
-// It exits 1 when a test or a package started and never reported. A package
+// It exits 1 when a test or a package started and never reported, and when
+// any test skipped: a skip is a failure, named with its test (skips.go). A package
 // whose test binary ran longer than its budget is NAMED (OVER BUDGET) and is
 // not a failure: a nightly has no time limit (the owner, 2026-11-16 and
 // 2026-11-21; the 2-minute per-commit limit is tools/pgroup's PGROUP_WALL, not
@@ -25,7 +26,6 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -63,7 +63,6 @@ type result struct {
 	finished bool          // its latest start/run reported
 	failed   bool          // some run of it failed, even when a later run passed
 	budget   time.Duration // 0: none
-	out      []byte        // a test's own output since its latest run, kept until it passes or fails (skips.go)
 }
 
 type report struct {
@@ -128,21 +127,8 @@ func (r *report) event(ev event, budget time.Duration) {
 	switch ev.Action {
 	case "start", "run", "pass", "fail", "skip":
 		r.events[len(r.events)-1]++
-	case "output":
-		// a test's own lines are where a skip says why (skips.go); a line is
-		// kept only for a test that is running, and only its last
-		// maxSkipOutput bytes: t.Skip prints its reason at the END of what
-		// the test logged, so a test that logs 70 KB and then skips keeps
-		// the reason, not the head of its log
-		if res := r.tests[k]; ev.Test != "" && res != nil && !res.finished {
-			res.out = append(res.out, ev.Output...)
-			if len(res.out) > 2*maxSkipOutput {
-				res.out = append([]byte(nil), tail(res.out)...)
-			}
-		}
-		return
 	default:
-		return // pause, cont, bench: no verdict in them
+		return // output, pause, cont, bench: no verdict in them
 	}
 	m := r.tests
 	if ev.Test == "" {
@@ -161,7 +147,7 @@ func (r *report) event(ev event, budget time.Duration) {
 		// A new run (-count>1, or a package started again in this record)
 		// owes its own verdict: what an earlier run reported does not stand
 		// for it.
-		res.verdict, res.finished, res.elapsed, res.out = "", false, 0, nil
+		res.verdict, res.finished, res.elapsed = "", false, 0
 	case "pass", "fail", "skip":
 		res.verdict = ev.Action
 		res.finished = true
@@ -170,9 +156,8 @@ func (r *report) event(ev event, budget time.Duration) {
 			res.failed = true
 		}
 		if ev.Action == "skip" && ev.Test != "" {
-			r.skips = append(r.skips, skipped{k, tail(res.out)})
+			r.skips = append(r.skips, skipped{k})
 		}
-		res.out = nil // a skip's output is kept with the skip; nothing else is read
 	}
 }
 
@@ -275,6 +260,10 @@ func (r *report) findings(slowest int) findings {
 		}
 	}
 
+	sf := r.skipFindings(multi)
+	b.WriteString(sf.text)
+	red = red || sf.red
+
 	if slowest > 0 {
 		done := make([]key, 0, len(tests))
 		for _, k := range tests {
@@ -343,31 +332,12 @@ func run(args []string, stdout, stderr io.Writer, summary string) int {
 	fs.SetOutput(stderr)
 	budget := fs.Duration("budget", 10*time.Minute, "the package budget for a record that names none (0: no budget)")
 	slowest := fs.Int("slowest", 15, "how many of the slowest tests to list")
-	skips := fs.String("skips", "", "the skip ledger (.github/skip-ledger.txt): every skip is read against it, and a skip with no reason, a reason no line names, or a reason this lane satisfies is red")
-	provides := fs.String("provides", "", "with -skips: the ledger classes this lane satisfies, space-separated (a lane with elixir installed provides tool:elixir)")
 	requireRecord := fs.Bool("require-record", false, "a row with no go test record is red, and so is a record file that holds no go test event (a lane whose step always runs go test)")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 	if fs.NArg() == 0 {
-		_, _ = fmt.Fprintln(stderr, "usage: gotestreport [-budget 10m] [-slowest 15] [-skips <ledger> [-provides \"<class>...\"]] [-require-record] <dir>...")
-		return 2
-	}
-	var led *ledger
-	if *skips != "" {
-		f, err := os.Open(*skips)
-		if err != nil {
-			_, _ = fmt.Fprintf(stderr, "gotestreport: %v\n", err)
-			return 2
-		}
-		led, err = readLedger(f, *skips, strings.Fields(*provides))
-		_ = f.Close()
-		if err != nil {
-			_, _ = fmt.Fprintf(stderr, "gotestreport: %v\n", err)
-			return 2
-		}
-	} else if *provides != "" {
-		_, _ = fmt.Fprintln(stderr, "gotestreport: -provides needs -skips")
+		_, _ = fmt.Fprintln(stderr, "usage: gotestreport [-budget 10m] [-slowest 15] [-require-record] <dir>...")
 		return 2
 	}
 	r := newReport()
@@ -420,11 +390,6 @@ func run(args []string, stdout, stderr io.Writer, summary string) int {
 		f.text += fmt.Sprintf("  NO RECORD       %d of %d record file(s) hold no go test event (record #%v): the recorder started and recorded no run\n", len(empty), r.records, empty)
 		f.red = true
 	}
-	if led != nil {
-		sf := r.skipFindings(led)
-		f.text += sf.text
-		f.red = f.red || sf.red
-	}
 	_, _ = fmt.Fprint(stdout, f.text)
 	if summary != "" {
 		// a summary the step was told to write and did not is a report
@@ -438,23 +403,6 @@ func run(args []string, stdout, stderr io.Writer, summary string) int {
 		return 1
 	}
 	return 0
-}
-
-// tail is the last maxSkipOutput bytes of a test's output, from the start of
-// a line: a line cut in the middle is dropped, so its end is never read as an
-// entry of its own.
-func tail(out []byte) []byte {
-	if len(out) <= maxSkipOutput {
-		return out
-	}
-	cut := len(out) - maxSkipOutput
-	if out[cut-1] == '\n' {
-		return out[cut:]
-	}
-	if i := bytes.IndexByte(out[cut:], '\n'); i >= 0 {
-		return out[cut+i+1:]
-	}
-	return out[cut:]
 }
 
 // emptyRecords are the records (1-based, in the order read) that hold no

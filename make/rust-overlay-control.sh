@@ -17,7 +17,7 @@ if cmp -s "$file" "$dir/src.go.txt"; then
 	exit 1
 fi
 printf '{"Replace":{"%s/%s":"%s/%s/src.go.txt"}}\n' "$PWD" "$file" "$PWD" "$dir" > "$dir/overlay.json"
-if SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s -overlay="$dir/overlay.json" \
+if go test -count=1 -timeout 600s -overlay="$dir/overlay.json" \
 	-run "$run" ./internal/codegen/rusttable/ > "$dir/log" 2>&1; then
 	echo "NEGATIVE CONTROL FAILED ($name): $run stayed green with $file sabotaged"
 	exit 1

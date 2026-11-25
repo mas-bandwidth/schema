@@ -23,7 +23,7 @@ import (
 // to even, and a fixed field reads 0.5 padded with zeros and refuses it with a
 // 1 at the end.
 //
-// It runs elixir, so it is a functional test behind slowtest.Gate.
+// It runs elixir, so it is a functional test.
 func TestElixirJSONDecimalWorkIsBounded(t *testing.T) {
 	u := unitFrom(t, `package jdec
 

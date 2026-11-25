@@ -282,7 +282,7 @@ func vtOptionalFailures(t *testing.T, c vtOptionalCell, mutate func(*testing.T, 
 // TestPythonVtOptionalRows holds both optional rows over every manifest
 // instance and construct they name, under both pinned interpreters.
 //
-// Functional (both pinned interpreters): run with SCHEMA_SLOW=1.
+// Functional (both pinned interpreters).
 func TestPythonVtOptionalRows(t *testing.T) {
 	t.Parallel()
 	for _, c := range vtOptionalCells {
@@ -407,7 +407,7 @@ func vtOptionalCellOf(name string) string {
 // pointer-against-optional kind_mismatch verdicts, are the shared table
 // frame's (load.py, fixedform.py's form gate) and are held by verdict here.
 //
-// Functional (both pinned interpreters): run with SCHEMA_SLOW=1.
+// Functional (both pinned interpreters).
 func TestPythonVtOptionalRowsNegativeControl(t *testing.T) {
 	t.Parallel()
 	controlled := map[string]int{}

@@ -65,7 +65,7 @@ var subsetForms = []struct {
 //     declarations in them survives the form's omission, so every form omitted
 //     here is really gone.
 //
-// It runs under the default gate (no SCHEMA_SLOW): the compile is a local go
+// It always runs: the compile is a local go
 // build against the sibling serialize.go runtime, as the other
 // generated-compile tests in this package resolve it.
 func TestGoTableCompilesWithAnySubsetOfItsForms(t *testing.T) {

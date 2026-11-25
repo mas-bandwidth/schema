@@ -1,34 +1,26 @@
 #!/bin/sh
-# THE POSITIVE GATE'S RUN-PROOF (schema#988, G5).
+# THE NAMED-PASS RUN-PROOF (schema#988, G5).
 #
-# internal/slowtest.Gate SKIPS a test that shells out to a foreign toolchain or
-# reads the C++ reference corpus unless SCHEMA_SLOW=1 (or SCHEMA_REQUIRE_CORPUS)
-# is set — and a skipped test makes `go test` exit 0. A POSITIVE gate target
-# that ran a bare `go test` therefore went green having run nothing. Fourteen
-# did.
+# A test that does not run makes `go test` exit 0 just as one that passed: a
+# target that runs a bare `go test` can go green having run nothing. So a
+# target that names the tests it proves calls its `go test` THROUGH HERE, and
+# this script does two things no exit code can do on its own:
 #
-# So every positive gate target calls its `go test` THROUGH HERE, and this
-# script does three things no exit code can do on its own:
-#
-#   1. it SETS SCHEMA_SLOW=1, so the gate the target names actually runs,
-#   2. it REFUSES A GATE SKIP: one slowtest skip line in the log is a failure,
-#      even at exit 0 — inside a positive gate target a skip is the defect,
-#   3. it REQUIRES A NAMED `--- PASS` PER GATE, because Go prints `--- PASS`
-#      for the PARENT of a skipped subtest, so the parent's PASS proves nothing
-#      about `TestCppVariableWideAlignment/direct`. The names are matched with
-#      their trailing ` (` so a prefix (TestRetain) cannot stand in for the
-#      whole (TestRetainUnknownNodeRecord).
-#
-# A `t.Skip` for a RETIRED test is not a gate skip and is not touched here: only
-# slowtest's own skip line is a failure. That distinction is the whole point —
-# the check must see the gate that stopped running, not the test somebody
-# deliberately retired with a reason.
+#   1. it REFUSES ANY SKIP: one `--- SKIP:` line in the log is a failure, even
+#      at exit 0. No test may skip (a test that is not to run is left out at
+#      the root, the one driver's query in tools/schema-test, never inside it),
+#   2. it REQUIRES A NAMED `--- PASS` PER TEST, because a test that does not
+#      exist never prints one, and Go prints `--- PASS` for the PARENT of a
+#      subtest that did not pass, so the parent's PASS proves nothing about
+#      `TestCppVariableWideAlignment/direct`. The names are matched with their
+#      trailing ` (` so a prefix (TestRetain) cannot stand in for the whole
+#      (TestRetainUnknownNodeRecord).
 #
 # usage: sh test/slowgate/proof <label> '<required --- PASS names>' <go test args...>
 #
-# The log is build/slowgate/<label>.log. Output is bounded by design (one line
-# on success, the log only on failure): a target's receipt is a count, not a
-# transcript.
+# The log is build/slowgate/<label>.log (SLOWGATE_LOG_DIR moves it). Output is
+# bounded by design (one line on success, the log only on failure): a target's
+# receipt is a count, not a transcript.
 set -e
 
 label="$1"; shift || true
@@ -39,7 +31,7 @@ if [ -z "$label" ] || [ $# -eq 0 ]; then
 	exit 2
 fi
 if [ -z "$required" ]; then
-	echo "test/slowgate/proof: $label names no required gate. A positive gate target that cannot name one gated test it proves does not belong here: run it with a bare \`go test\` and say so in make/slow-gate-exceptions.txt." >&2
+	echo "test/slowgate/proof: $label names no required test. A target that cannot name one test it proves does not belong here." >&2
 	exit 2
 fi
 
@@ -48,17 +40,17 @@ mkdir -p "$logdir"
 log="$logdir/$label.log"
 
 rc=0
-SCHEMA_SLOW=1 go test -v "$@" > "$log" 2>&1 || rc=$?
+go test -v "$@" > "$log" 2>&1 || rc=$?
 
 if [ "$rc" -ne 0 ]; then
 	cat "$log"
-	echo "SLOW GATE $label: go test exited $rc — the gate ran and is RED. Fix the red; do not loosen the gate."
+	echo "PROOF $label: go test exited $rc: the tests ran and are RED. Fix the red; do not loosen the check."
 	exit "$rc"
 fi
 
-if grep -q 'SCHEMA_SLOW: this test shells out' "$log"; then
-	echo "SLOW GATE $label FAILED: a test skipped at internal/slowtest.Gate INSIDE A POSITIVE GATE TARGET, so this target is watching nothing (schema#988). SCHEMA_SLOW=1 was set by this script, so the environment was lost between here and the test binary:"
-	grep -n 'SCHEMA_SLOW: this test shells out' "$log"
+if grep -q -e '--- SKIP:' "$log"; then
+	echo "PROOF $label FAILED: a test skipped, and a skip is a failure (no test may decide not to run; leave a test out at the root, tools/schema-test):"
+	grep -n -e '--- SKIP:' "$log"
 	exit 1
 fi
 
@@ -69,11 +61,11 @@ for want in $required; do
 	fi
 done
 if [ -n "$missing" ]; then
-	echo "SLOW GATE $label FAILED: no \`--- PASS\` for the gate(s) this target names, so the target proved nothing about them (schema#988):$missing"
-	echo "(a parent's --- PASS is printed even when a named subtest skipped, which is why the name is required verbatim)"
+	echo "PROOF $label FAILED: no \`--- PASS\` for the test(s) this target names, so the target proved nothing about them (a test that does not exist fails):$missing"
+	echo "(a parent's --- PASS is printed even when a named subtest did not pass, which is why the name is required verbatim)"
 	cat "$log"
 	exit 1
 fi
 
 count=$(printf '%s\n' $required | wc -l | tr -d ' ')
-echo "SLOW GATE $label: $count named gate(s) ran and PASS under SCHEMA_SLOW=1 ($log)"
+echo "PROOF $label: $count named test(s) ran and PASS ($log)"

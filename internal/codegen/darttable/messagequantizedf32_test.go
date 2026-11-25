@@ -41,8 +41,7 @@ fixed table Box
 
 func TestMessageQuantizedFloat32ReadDart(t *testing.T) {
 	t.Parallel()
-	// The toolchain comes through dartBinary, so a bare `go test` skips by name
-	// and SCHEMA_REQUIRE_CORPUS=1 makes a missing SDK a failure.
+	// The toolchain comes through dartBinary; a missing SDK fails by name.
 	dartBinary(t)
 	for _, tc := range []struct {
 		name string

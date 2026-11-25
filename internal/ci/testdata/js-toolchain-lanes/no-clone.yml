@@ -1,4 +1,4 @@
-# The go-test job declares both tools but never stages serialize.js, so every
+# The go-test job never stages serialize.js, so every
 # node half that imports the runtime would fail on a clean runner.
 name: fixture
 on: workflow_dispatch
@@ -6,9 +6,6 @@ jobs:
   go-test:
     name: go-test (${{ matrix.group }})
     runs-on: [self-hosted, Linux, X64, fleet, schema]
-    env:
-      SCHEMA_REQUIRE_NODE: '1'
-      SCHEMA_REQUIRE_TSC: '1'
     steps:
       - name: Check out the runtimes
         run: |

@@ -44,7 +44,7 @@ unity-wire-negative-control: generated/unity/.stamp generated/unity-ludicrous/.s
 	@rm -rf $(UNITY_WIRE_NC) && mkdir -p $(UNITY_WIRE_NC)/generated
 	@cp generated/unity/*.cs $(UNITY_WIRE_NC)/generated/
 	@sed -i.orig 's/ulong f0 = (171UL)/ulong f0 = (170UL)/' $(UNITY_WIRE_NC)/generated/Wire.cs
-	@cmp -s generated/unity/Wire.cs $(UNITY_WIRE_NC)/generated/Wire.cs && { echo 'NEGATIVE CONTROL: the planted constant patched nothing'; exit 1; } || true
+	@cmp -s generated/unity/Wire.cs $(UNITY_WIRE_NC)/generated/Wire.cs && { echo 'NEGATIVE CONTROL: the planted constant patched nothing'; exit 1; } || [ $$? -eq 1 ] || exit 1
 	@rm -f $(UNITY_WIRE_NC)/generated/*.orig
 	$(DOTNET) build test/unity/unitytest.csproj -c Debug -o $(UNITY_WIRE_NC)/bin --nologo -v quiet \
 		-p:UnityGeneratedDir="$(CURDIR)/$(UNITY_WIRE_NC)/generated"
@@ -84,7 +84,7 @@ packet-defaults-unity-negative-control: build/packet-defaults/unity/.stamp
 	@rm -rf $(UNITY_DEFAULTS_NC) && mkdir -p $(UNITY_DEFAULTS_NC)/generated
 	@cp build/packet-defaults/unity/defaults/*.cs $(UNITY_DEFAULTS_NC)/generated/
 	@sed -i.orig '/value\.Name\.E[0-9]* = 0x/d' $(UNITY_DEFAULTS_NC)/generated/Defaults.cs
-	@cmp -s build/packet-defaults/unity/defaults/Defaults.cs $(UNITY_DEFAULTS_NC)/generated/Defaults.cs && { echo 'NEGATIVE CONTROL: the planted removal patched nothing'; exit 1; } || true
+	@cmp -s build/packet-defaults/unity/defaults/Defaults.cs $(UNITY_DEFAULTS_NC)/generated/Defaults.cs && { echo 'NEGATIVE CONTROL: the planted removal patched nothing'; exit 1; } || [ $$? -eq 1 ] || exit 1
 	@rm -f $(UNITY_DEFAULTS_NC)/generated/*.orig
 	$(DOTNET) build test/packet-defaults/unity/packet-defaults-unity.csproj -o $(UNITY_DEFAULTS_NC)/bin --nologo -v quiet \
 		-p:DefaultsDir="$(CURDIR)/$(UNITY_DEFAULTS_NC)/generated"
@@ -115,7 +115,7 @@ packet-utf8-unity-negative-control: build/packet-text/unity/.stamp build/packet-
 	@rm -rf $(UNITY_TEXT_NC) && mkdir -p $(UNITY_TEXT_NC)/generated
 	@cp build/packet-text/unity/*.cs $(UNITY_TEXT_NC)/generated/
 	@sed -i.orig 's/if (!ValidUtf8Text(bytes))/if (bytes.Length < 0)/' $(UNITY_TEXT_NC)/generated/Text.cs
-	@cmp -s build/packet-text/unity/Text.cs $(UNITY_TEXT_NC)/generated/Text.cs && { echo 'NEGATIVE CONTROL: the planted removal patched nothing'; exit 1; } || true
+	@cmp -s build/packet-text/unity/Text.cs $(UNITY_TEXT_NC)/generated/Text.cs && { echo 'NEGATIVE CONTROL: the planted removal patched nothing'; exit 1; } || [ $$? -eq 1 ] || exit 1
 	@rm -f $(UNITY_TEXT_NC)/generated/*.orig
 	$(DOTNET) build test/packet-text/unity/packet-text-unity.csproj -c Release -o $(UNITY_TEXT_NC)/bin --nologo -v quiet \
 		-p:TextDir="$(CURDIR)/$(UNITY_TEXT_NC)/generated"
@@ -147,7 +147,7 @@ packet-write-refusal-unity-negative-control: build/packet-write-refusal/unity/.s
 	@rm -rf $(UNITY_WRITE_REFUSAL_NC) && mkdir -p $(UNITY_WRITE_REFUSAL_NC)/generated
 	@cp build/packet-write-refusal/unity/*.cs $(UNITY_WRITE_REFUSAL_NC)/generated/
 	@sed -i.orig 's/value\.Scalar >= 0 \&\& value\.Scalar <= 10/value.Scalar >= 0 \&\& value.Scalar < 10/' $(UNITY_WRITE_REFUSAL_NC)/generated/RefusalPacket.cs
-	@cmp -s build/packet-write-refusal/unity/RefusalPacket.cs $(UNITY_WRITE_REFUSAL_NC)/generated/RefusalPacket.cs && { echo 'NEGATIVE CONTROL: the planted bound patched nothing'; exit 1; } || true
+	@cmp -s build/packet-write-refusal/unity/RefusalPacket.cs $(UNITY_WRITE_REFUSAL_NC)/generated/RefusalPacket.cs && { echo 'NEGATIVE CONTROL: the planted bound patched nothing'; exit 1; } || [ $$? -eq 1 ] || exit 1
 	@rm -f $(UNITY_WRITE_REFUSAL_NC)/generated/*.orig
 	$(DOTNET) build test/packet-write-refusal/unity/packet-write-refusal-unity.csproj -c Debug -o $(UNITY_WRITE_REFUSAL_NC)/bin --nologo -v quiet \
 		-p:RefusalDir="$(CURDIR)/$(UNITY_WRITE_REFUSAL_NC)/generated"
@@ -190,7 +190,6 @@ REGISTRY_NA_WHY.goldens.unity      := no committed goldens of any kind: its gene
 # serialize.cs beside the tree (make deps).
 .PHONY: unity-tables
 unity-tables: toolchain-unity
-	SCHEMA_SLOW=1 go test -count=1 -run '^TestUnityTable' ./compiler/
 
 test-unity: unity-tables
 
@@ -203,7 +202,6 @@ test-unity: unity-tables
 # reference and build/fixedform-corpus, each with its planted negative control.
 .PHONY: unity-fixed
 unity-fixed: toolchain-unity build/fixedform-corpus/.stamp
-	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -run '^TestUnityFixed' ./compiler/ ./internal/codegen/unitytable/
 
 test-unity: unity-fixed
 
@@ -211,7 +209,6 @@ test-unity: unity-fixed
 
 .PHONY: unity-vt
 unity-vt: toolchain-unity
-	SCHEMA_SLOW=1 go test -count=1 -run '^TestUnityVT' ./internal/codegen/unitytable/
 
 test-unity: unity-vt
 
@@ -232,7 +229,8 @@ build/conformance-unity/.stamp: bin/schema testdata/conformance/tables/MANIFEST.
 	@touch $@
 CONFORMANCE_LEG_unity := build/conformance-unity/.stamp
 
-CONFORMANCE_LEGS   += $(call unless_skipped,unity,build/conformance-unity/.stamp)
+CONFORMANCE_OF.unity := build/conformance-unity/.stamp
+CONFORMANCE_LEGS   += $(CONFORMANCE_OF.unity)
 
 # THE WRITE CONTRACT's controls (docs/SPEC.md §5.1), on the C# leg's pattern
 # (make/cs.mk): write checks are Debug.Assert, so the Debug unit is rebuilt

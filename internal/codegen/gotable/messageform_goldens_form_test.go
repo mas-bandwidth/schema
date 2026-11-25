@@ -16,8 +16,8 @@ import (
 )
 
 // TestMessageFormGoldensCarryTheBuildVersionForm pins the announce goldens to
-// the current ir.BuildVersionForm (docs/SPEC-TABLES.md §20.2). It runs in the
-// plain gate — no slowtest.Gate — so the next form bump cannot leave the
+// the current ir.BuildVersionForm (docs/SPEC-TABLES.md §20.2). It needs no
+// toolchain, so the next form bump cannot leave the
 // goldens stale unseen: it computes the expected word from
 // ir.BuildVersion(unit), so bumping the form without regenerating fails it.
 func TestMessageFormGoldensCarryTheBuildVersionForm(t *testing.T) {

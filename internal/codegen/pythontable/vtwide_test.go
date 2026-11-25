@@ -363,7 +363,7 @@ func wideCellFailures(t *testing.T, mutate func(map[string][]byte)) (fails []str
 	return fails, held
 }
 
-// Functional (pyrun): run with SCHEMA_SLOW=1.
+// Functional (pyrun).
 func TestPythonVtWide(t *testing.T) {
 	t.Parallel()
 	fails, held := wideCellFailures(t, nil)
@@ -382,7 +382,7 @@ func TestPythonVtWide(t *testing.T) {
 // wide payload refuses by name, and an out-of-range write raises InvalidValue
 // before writing a byte and leaves the caller's value untouched.
 //
-// Functional (pyrun): run with SCHEMA_SLOW=1.
+// Functional (pyrun).
 func TestPythonVtWideRefused(t *testing.T) {
 	t.Parallel()
 	const schema = `package wide
@@ -434,7 +434,7 @@ table Narrow
 // save then renumbers its fields). Each control's finding names the construct
 // and the pin.
 //
-// Functional (pyrun): run with SCHEMA_SLOW=1.
+// Functional (pyrun).
 func TestPythonVtWideNegativeControl(t *testing.T) {
 	t.Parallel()
 	plant := func(file, from, to string) func(map[string][]byte) {

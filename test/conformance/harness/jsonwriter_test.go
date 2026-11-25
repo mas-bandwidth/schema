@@ -195,10 +195,8 @@ func TestCanonicalJSONWriterCodegenStrict(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// a missing node was a quiet return: the test passed over a node half
-	// that never ran. It is a named skip now, and a failure in a lane that
-	// sets SCHEMA_REQUIRE_NODE=1.
-	nodeBin := slowtest.Program(t, "node", "NODE", "SCHEMA_REQUIRE_NODE")
+	// a missing node fails the test naming it
+	nodeBin := slowtest.Program(t, "node", "NODE")
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "package.json"), []byte(`{"type":"module"}`), 0o600); err != nil {
 		t.Fatal(err)

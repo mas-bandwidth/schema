@@ -21,16 +21,12 @@ import (
 )
 
 // runCProbeCapture is runCProbe with the probe's output. A test that compiles C
-// is a functional test: it is gated on SCHEMA_SLOW, and a missing cc fails by
-// name when SCHEMA_REQUIRE_CORPUS says the corpus is required.
+// is a functional test: a missing cc fails by name.
 func runCProbeCapture(t *testing.T, schema, probe string) string {
 	t.Helper()
 	cc, err := exec.LookPath("cc")
 	if err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and cc is not found: %v", err)
-		}
-		t.Skipf("the generated C reader is built with cc: %v", err)
+		t.Fatalf("cc is not found: %v", err)
 	}
 	u := unitFrom(t, schema)
 	files, err := cgen.Generate(u)

@@ -11,7 +11,7 @@ import (
 func TestDartRetainingRosterAllRoots(t *testing.T) {
 	driver := os.Getenv("SCHEMA_DART_ROSTER_DRIVER")
 	if driver == "" {
-		t.Skip("run make tables-dart-wire-fuzz to build the native driver")
+		t.Fatal("SCHEMA_DART_ROSTER_DRIVER names no built native driver: make tables-dart-wire-fuzz builds it")
 	}
 	t.Chdir("../../..")
 	manifest, err := ReadManifest(defaultManifest, "testdata/conformance/tables/json")
@@ -56,7 +56,7 @@ func TestDartRetainingRosterAllRoots(t *testing.T) {
 func TestDartPlainRosterAllRoots(t *testing.T) {
 	driver := os.Getenv("SCHEMA_DART_ROSTER_DRIVER")
 	if driver == "" {
-		t.Skip("run make tables-dart-wire-fuzz to build the native driver")
+		t.Fatal("SCHEMA_DART_ROSTER_DRIVER names no built native driver: make tables-dart-wire-fuzz builds it")
 	}
 	t.Chdir("../../..")
 	manifest, err := ReadManifest(defaultManifest, "testdata/conformance/tables/json")
@@ -92,7 +92,7 @@ func TestDartPlainRosterAllRoots(t *testing.T) {
 func TestDartBuilderRefusalAndRetentionVectors(t *testing.T) {
 	driver := os.Getenv("SCHEMA_DART_ROSTER_DRIVER")
 	if driver == "" {
-		t.Skip("run make tables-dart-wire-fuzz to build the native driver")
+		t.Fatal("SCHEMA_DART_ROSTER_DRIVER names no built native driver: make tables-dart-wire-fuzz builds it")
 	}
 	t.Chdir("../../..")
 	manifest, err := ReadManifest(defaultManifest, "testdata/conformance/tables/json")
@@ -125,7 +125,7 @@ func TestDartBuilderRefusalAndRetentionVectors(t *testing.T) {
 func TestDartReservedNodeTypeVectors(t *testing.T) {
 	driver := os.Getenv("SCHEMA_DART_ROSTER_DRIVER")
 	if driver == "" {
-		t.Skip("run make tables-dart-wire-fuzz to build the native driver")
+		t.Fatal("SCHEMA_DART_ROSTER_DRIVER names no built native driver: make tables-dart-wire-fuzz builds it")
 	}
 	t.Chdir("../../..")
 	manifest, err := ReadManifest(defaultManifest, "testdata/conformance/tables/json")

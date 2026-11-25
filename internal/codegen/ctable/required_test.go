@@ -18,7 +18,7 @@ func runCProbe(t *testing.T, schema, probe string) {
 	t.Helper()
 	cc, err := exec.LookPath("cc")
 	if err != nil {
-		t.Skip("cc not found")
+		t.Fatal("cc not found")
 	}
 	u := unitFrom(t, schema)
 	files, err := cgen.Generate(u)

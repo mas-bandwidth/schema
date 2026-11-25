@@ -10,9 +10,7 @@ package rusttable
 //
 // A FUNCTIONAL TEST: it compiles and runs the generated Rust twice, once for
 // the host (usize = 64) and once for a 32-bit target rustc has installed, and
-// compares both verdicts with the engine's. It skips by name when rustc or a
-// 32-bit target is absent and SCHEMA_REQUIRE_CORPUS is unset, and fails by
-// name when SCHEMA_REQUIRE_CORPUS=1.
+// compares both verdicts with the engine's. It fails by name when rustc or a 32-bit target is absent.
 
 import (
 	"encoding/binary"
@@ -253,10 +251,7 @@ func rust32BitTarget(t *testing.T) string {
 		}
 		t.Logf("passing over %s: its standard library is not installed", triple)
 	}
-	if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-		t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and rustc has no 32-bit target with std installed, so the wire lengths and references cannot be compared across usize widths")
-	}
-	t.Skipf("rustc has no 32-bit target with std installed and SCHEMA_REQUIRE_CORPUS is unset: this is a functional test that builds and runs Rust for a 32-bit target")
+	t.Fatalf("rustc has no 32-bit target with std installed, so the wire lengths and references cannot be compared across usize widths")
 	return ""
 }
 
@@ -394,10 +389,7 @@ func runWire32Probe(t *testing.T, bin, dir string) map[string]bool {
 func TestRustWireLengthsOn32BitTargets(t *testing.T) {
 	t.Parallel()
 	if _, err := exec.LookPath("rustc"); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and rustc is not on PATH, so the wire lengths cannot be built or run: %v", err)
-		}
-		t.Skipf("rustc is not on PATH and SCHEMA_REQUIRE_CORPUS is unset: this is a functional test that compiles and runs Rust: %v", err)
+		t.Fatalf("rustc is not on PATH, so the wire lengths cannot be built or run: %v", err)
 	}
 
 	u := unitFrom(t, wireLengths32BitSchema)
@@ -422,19 +414,13 @@ func TestRustWireLengthsOn32BitTargets(t *testing.T) {
 	target := rust32BitTarget(t)
 	targetBin := filepath.Join(t.TempDir(), "wire32-target")
 	if err := buildWire32Probe(t, dir, target, targetBin); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("the probe did not build for the 32-bit target %s: %v", target, err)
-		}
-		t.Skipf("the probe did not build for the 32-bit target %s and SCHEMA_REQUIRE_CORPUS is unset: %v", target, err)
+		t.Fatalf("the probe did not build for the 32-bit target %s: %v", target, err)
 	}
 	run := targetCommand(t, target, targetBin)
 	run.Dir = dir
 	out, err := run.CombinedOutput()
 	if err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("the probe did not run for the 32-bit target %s (%s): %v\n%s", target, run.String(), err, out)
-		}
-		t.Skipf("the probe did not run for the 32-bit target %s and SCHEMA_REQUIRE_CORPUS is unset: %v\n%s", target, err, out)
+		t.Fatalf("the probe did not run for the 32-bit target %s (%s): %v\n%s", target, run.String(), err, out)
 	}
 	wide := wire32Verdicts(out)
 	t.Logf("ran the probe for the 32-bit target %s as %s", target, run.String())

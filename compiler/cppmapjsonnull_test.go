@@ -189,7 +189,7 @@ func TestCPPOptionalMapJsonNullResetsToEmpty(t *testing.T) {
 	t.Parallel()
 	cxx, err := exec.LookPath("c++")
 	if err != nil {
-		t.Skip("the generated C++ is compiled and run: no c++ on PATH")
+		t.Fatal("the generated C++ is compiled and run: no c++ on PATH")
 	}
 	if out, err := cppMapJsonNullRun(t, cxx, false); err != nil {
 		t.Fatalf("the null reset probe failed: %v\n%s", err, out)

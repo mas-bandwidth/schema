@@ -3,10 +3,9 @@
 //
 // It never looks on PATH. A pin resolves from its environment variable ($RUBY,
 // $RUBY_FLOOR, $RUBOCOP, $STEEP, $RBS; make/ruby-toolchain.mk exports the
-// pins), else the repository's dist/ builds (make dist-ruby). A test that runs
-// one is behind the slow gate (internal/slowtest); with the gate on, a pin
-// that does not resolve FAILS the test and names make dist-ruby. It never
-// skips there, because a leg that skips is a gate with no blade (issue #599).
+// pins), else the repository's dist/ builds (make dist-ruby). A pin that
+// does not resolve FAILS the test and names make dist-ruby. It never skips,
+// because a leg that skips is a gate with no blade (issue #599).
 //
 // Every interpreter runs isolated: --disable-gems, and RUBYOPT, RUBYLIB,
 // GEM_HOME and GEM_PATH removed from its environment, so no user gem,
@@ -23,8 +22,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -77,9 +74,6 @@ func RBS(t testing.TB) string {
 
 func pinBin(t testing.TB, env, version, bin string) string {
 	t.Helper()
-	if !slowtest.Enabled() {
-		t.Skipf("SCHEMA_SLOW: this test shells out to the pinned %s; set SCHEMA_SLOW=1 to run it (make test-ruby does)", env)
-	}
 	if p := os.Getenv(env); p != "" {
 		if _, err := os.Stat(p); err != nil {
 			t.Fatalf("%s=%s does not resolve (%v): run make dist-ruby (docs/PORT-RUBY.md, THE PIN)", env, p, err)

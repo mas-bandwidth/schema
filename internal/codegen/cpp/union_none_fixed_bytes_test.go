@@ -5,8 +5,7 @@ package cpp
 // This test generates C++ for such a type, writes it with the union at None,
 // and pins both the packed bytes and a round trip.
 //
-// This is a functional test: it shells out to a C++ compiler, so it skips by
-// name without SCHEMA_SLOW.
+// This is a functional test: it shells out to a C++ compiler, so it fails by name when the compiler is missing.
 
 import (
 	"bytes"
@@ -123,10 +122,7 @@ func runCppUnionNoneFixedBytes(t *testing.T, files map[string][]byte) ([]byte, e
 		cxx = "c++"
 	}
 	if _, err := exec.LookPath(cxx); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and %s is not found: %v", cxx, err)
-		}
-		t.Skipf("%s: %v", cxx, err)
+		t.Fatalf("%s is not found: %v", cxx, err)
 	}
 	dir := t.TempDir()
 	for name, data := range files {

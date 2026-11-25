@@ -1695,10 +1695,7 @@ func findFixedCorpus(t *testing.T, repoRoot string) (string, map[string]int) {
 	mPath := filepath.Join(corpus, "manifest.txt")
 	data, err := os.ReadFile(mPath)
 	if err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and %s is absent: %v", mPath, err)
-		}
-		t.Skipf("fixedform-corpus not built (%v)", err)
+		t.Fatalf("the fixed-form corpus is not built (make tables-fixedform-corpus): %s: %v", mPath, err)
 	}
 	records := map[string]int{}
 	for line := range strings.SplitSeq(string(data), "\n") {

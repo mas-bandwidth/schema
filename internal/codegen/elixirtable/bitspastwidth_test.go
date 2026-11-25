@@ -16,9 +16,8 @@ import (
 // retaining read refuses it too. The old read accepted the over-wide value (PR
 // #2775 clamped it to the top of the field), so the probe is red on that code.
 //
-// It runs elixir, so it is a functional test: make tables-elixir-... runs it
-// under SCHEMA_REQUIRE_CORPUS=1, where a missing toolchain fails by name;
-// without that variable and without Elixir it skips by name (elixirBinary).
+// It runs elixir, so it is a functional test: make tables-elixir-... runs it;
+// a missing toolchain fails by name (elixirBinary).
 func TestElixirBitsPastWidthRefuses(t *testing.T) {
 	t.Parallel()
 

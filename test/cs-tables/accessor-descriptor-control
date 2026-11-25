@@ -142,7 +142,8 @@ CS
 
 sabotage() {
     sed "$1" internal/codegen/cstable/codecs.go > "$control/codecs.gotext"
-    count=$(grep -c 'SABOTAGED' "$control/codecs.gotext" || true)
+    # grep -c exits 1 on a zero count (the check below names it); any other status fails
+    count=$(grep -c 'SABOTAGED' "$control/codecs.gotext") || [ "$?" -eq 1 ]
     if [ "$count" != "1" ]; then
         echo "NEGATIVE CONTROL FAILED: the sabotage patched $count sites, not one"
         exit 1

@@ -11,8 +11,7 @@ package squirreltable_test
 // fault in a copy of runtime/json.nut (the emitted schema_table_json.nut) and
 // runs sqrun to verify the strict read goes red.
 //
-// Functional: runs the pinned Squirrel interpreter via sqrun under
-// slowtest.Gate; the source gate takes no real time, sockets, or network.
+// Functional: runs the pinned Squirrel interpreter via sqrun; the source gate takes no real time, sockets, or network.
 
 import (
 	"fmt"

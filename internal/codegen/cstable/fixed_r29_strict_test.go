@@ -13,8 +13,7 @@ package cstable
 // interpreter, socket or network. The companion negative control plants the
 // pre-fix fault (the writer's bound turned back into a clamp, its refusal
 // removed, and the refusal's reset dropped) in that same emitted artifact and
-// requires this check to go red. The behavioural forge-and-read half runs in
-// TestFixedRoadmapCSharpT12PlansVersions/cs/R29 under SCHEMA_REQUIRE_CORPUS.
+// requires this check to go red. The behavioural forge-and-read half runs in TestFixedRoadmapCSharpT12PlansVersions/cs/R29.
 
 import (
 	"slices"

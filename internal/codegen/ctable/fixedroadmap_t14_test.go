@@ -59,7 +59,7 @@ func TestFixedRoadmapCT14CompressedFloats(t *testing.T) {
 			cc = "cc"
 		}
 		if _, err := exec.LookPath(cc); err != nil {
-			t.Skipf("cc: %v", err)
+			t.Fatalf("cc: %v", err)
 		}
 		t14CiteCoarser(t)
 		src := t14Emit(t, t14Old, nil)

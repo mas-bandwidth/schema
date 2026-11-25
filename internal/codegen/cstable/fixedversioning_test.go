@@ -58,7 +58,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/csharp"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -707,16 +706,8 @@ func csFixedCorpus(t *testing.T) string {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "old_field_append.bin")); err != nil {
-		// THE SKIP IS A FAILURE WHEN SOMETHING PROMISED THE CORPUS. A bare
-		// `go test ./...` on a tree that never built the oracle has nothing to
-		// read and says so; `make tables-cs-versioning` builds the corpus first
-		// and sets SCHEMA_REQUIRE_CORPUS=1, so under that target a missing file
-		// means the build did not do what the target says it did — and a suite
-		// that skips itself there would report green over §5 having never run.
-		if slowtest.CorpusRequired() {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set (or CI runs the slow half) and the reference's byte oracle is not in %s: %v", dir, err)
-		}
-		t.Skip("the reference's byte oracle is not built: make tables-fixedform-corpus")
+		// A missing oracle is a failure by name (`make tables-fixedform-corpus` builds it): a suite that skipped here would report green over §5 having never run.
+		t.Fatalf("the reference's byte oracle is not in %s: %v", dir, err)
 	}
 	return dir
 }

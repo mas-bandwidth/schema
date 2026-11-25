@@ -106,5 +106,5 @@ jobs:
         if: failure()
         run: |
           set -eu
-          ls -l build/lua-fuzz/findings || true
+          if [ -d build/lua-fuzz/findings ]; then ls -l build/lua-fuzz/findings; else echo "no build/lua-fuzz/findings directory"; fi
           for f in build/lua-fuzz/findings/*.case; do [ -e "$f" ] && { echo "--- $f"; cat "$f"; }; done

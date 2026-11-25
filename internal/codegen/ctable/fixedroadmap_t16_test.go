@@ -10,8 +10,7 @@ package ctable
 // MaxUint32, and a remap past the uint16 length word refused by name.
 //
 // Assertions on the emitted header are unit tests. The compiled probe is a
-// functional test: slowtest.Gate first, then the compiler by exec.LookPath,
-// skipping by name when it is absent.
+// functional test: the compiler by exec.LookPath, failing by name when it is absent.
 
 import (
 	"fmt"
@@ -96,7 +95,7 @@ func t16CR31(t *testing.T) {
 		cc = "cc"
 	}
 	if _, err := exec.LookPath(cc); err != nil {
-		t.Skipf("the C compiler %q is absent: %v", cc, err)
+		t.Fatalf("the C compiler %q is absent: %v", cc, err)
 	}
 	writer := unitFrom(t, t16CWriterSchema())
 	wst := writer.Tables["Root"]

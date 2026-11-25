@@ -14,10 +14,10 @@ package gotable
 // leg's own writer produced.
 //
 // The bytes are the C++ reference's: `make tables-fixedform-corpus` writes
-// build/fixedform-corpus, read through fixedCorpus (a SKIP on a bare tree, a
-// FAILURE under SCHEMA_REQUIRE_CORPUS=1). The record count of each file is read
+// build/fixedform-corpus, read through fixedCorpus (a FAILURE when it is
+// absent). The record count of each file is read
 // from manifest.txt, never from the bytes under test (§5.9 #32). Each vector
-// compiles and runs the leg's own emitted unit, packet types included, through fixedOracleRun (SCHEMA_SLOW=1).
+// compiles and runs the leg's own emitted unit, packet types included, through fixedOracleRun.
 
 import (
 	"fmt"

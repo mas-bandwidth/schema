@@ -442,9 +442,7 @@ var (
 
 // t06WideRun generates the 257-arm unit, writes records through the generated
 // writer and reads them back on both plans, in one dotnet run shared by the
-// subtests that read its rows. A missing runtime checkout or SDK is a skip and
-// is a failure under SCHEMA_REQUIRE_CORPUS, which `make tables-cs-versioning`
-// sets: a target that needs a sibling runtime is named as not run, never faked.
+// subtests that read its rows. A missing runtime checkout or SDK is a failure by name, never faked.
 func t06WideRun(t *testing.T) ([]byte, error) {
 
 	t.Helper()
@@ -463,10 +461,7 @@ func t06WideRun(t *testing.T) ([]byte, error) {
 		missing = "no dotnet SDK: " + err.Error()
 	}
 	if missing != "" {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and %s", missing)
-		}
-		t.Skip(missing)
+		t.Fatalf("%s", missing)
 	}
 	t06WideOnce.Do(func() { t06WideOut, t06WideErr = t06WideBuildAndRun(t, runtime, dotnet) })
 	return t06WideOut, t06WideErr

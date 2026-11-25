@@ -158,7 +158,7 @@ func TestCCompressedF32EndsCorpus(t *testing.T) {
 	if cc == "" {
 		var err error
 		if cc, err = exec.LookPath("cc"); err != nil {
-			t.Skip("generated C execution requires cc")
+			t.Fatal("generated C execution requires cc")
 		}
 	}
 	src, err := os.ReadFile(filepath.Join(cF32EndsCorpusDir, "Probe.schema"))

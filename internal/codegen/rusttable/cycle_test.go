@@ -30,10 +30,7 @@ import (
 func TestCyclicWireIsDamageRust(t *testing.T) {
 	t.Parallel()
 	if _, err := exec.LookPath("rustc"); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and rustc is not on PATH: %v", err)
-		}
-		t.Skipf("rustc is not on PATH: %v", err)
+		t.Fatalf("rustc is not on PATH: %v", err)
 	}
 	out, err := runRustCycleProbe(t, nil)
 	if err != nil {
@@ -48,10 +45,7 @@ func TestCyclicWireIsDamageRust(t *testing.T) {
 func TestCyclicWireIsDamageRustNegativeControl(t *testing.T) {
 	t.Parallel()
 	if _, err := exec.LookPath("rustc"); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and rustc is not on PATH: %v", err)
-		}
-		t.Skipf("rustc is not on PATH: %v", err)
+		t.Fatalf("rustc is not on PATH: %v", err)
 	}
 	const sig = "if report.cycle_on_save { report.damaged = true; return None; }"
 	out, err := runRustCycleProbe(t, func(src string) string {

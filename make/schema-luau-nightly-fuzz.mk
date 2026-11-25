@@ -533,8 +533,8 @@ mkdir -p "$$(dirname "$$out")"
 } > "$$out"
 # a seed table with no wire seed or no text seed starts the campaign from
 # nothing: both finds above end in a pipe, so an empty tree is not an error
-bins=$$(grep -c 'kind = "bin"' "$$out" || true)
-txts=$$(grep -c 'kind = "txt"' "$$out" || true)
+bins=$$(grep -c 'kind = "bin"' "$$out") || [ $$? -eq 1 ] || exit 1
+txts=$$(grep -c 'kind = "txt"' "$$out") || [ $$? -eq 1 ] || exit 1
 if [ "$$bins" -eq 0 ] || [ "$$txts" -eq 0 ]; then
 	echo "luau fuzz seeds: $$bins wire seed(s) and $$txts text seed(s); both must be non-zero" >&2
 	exit 1

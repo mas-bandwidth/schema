@@ -10,7 +10,7 @@ package elixirtable
 // bytes read, including the canonical spelling written with JSON escapes,
 // which the engine pins to unescape before the base64 rule
 // (internal/tabletext/base64escape_test.go). Running the generated Elixir
-// makes this a functional test, gated by slowtest.
+// makes this a functional test.
 
 import (
 	"bufio"

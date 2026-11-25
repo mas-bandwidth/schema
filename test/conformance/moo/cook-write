@@ -23,7 +23,7 @@ root=$(pwd)
 # check <log>: the cook-write verdict of one harness log
 check() {
     log=$1
-    line=$(grep -E '^cook-write +' "$log" || true)
+    line=$(grep -E '^cook-write +' "$log") || [ $? -eq 1 ]
     if [ -z "$line" ]; then
         echo "moo cook-write: the log carries no cook-write line" >&2
         return 1
@@ -36,7 +36,7 @@ check() {
     set -- $line
     if [ "$#" -ne 3 ] || [ "$2" != pass ]; then
         echo "moo cook-write: the cook-write line is not a plain pass: $line" >&2
-        grep 'moo / cook-write' "$log" >&2 || true
+        grep 'moo / cook-write' "$log" >&2 || echo "moo cook-write: $log names no moo / cook-write case" >&2
         return 1
     fi
     got=${3%/*}
@@ -56,7 +56,7 @@ run)
     out=build/conformance-moo-cook-write
     rm -rf "$out"
     mkdir -p "$out"
-    build/conformance-harness run --only moo --work "$out/work" > "$out/log" 2>&1 || true
+    build/conformance-harness run --only moo --work "$out/work" > "$out/log" 2>&1 || echo "moo cook-write: the harness exited $? over the whole leg; this verdict reads the cook-write line alone" >&2
     check "$out/log"
     ;;
 control)
@@ -88,7 +88,7 @@ control)
         "$out" "$out" "$moo" "$root" > "$out/driver"
     chmod +x "$out/driver"
     printf 'moo %s/driver\n' "$out" > "$out/drivers.txt"
-    build/conformance-harness run --drivers "$out/drivers.txt" --work "$out/work" > "$out/log" 2>&1 || true
+    build/conformance-harness run --drivers "$out/drivers.txt" --work "$out/work" > "$out/log" 2>&1 || echo "moo cook-write: the harness exited $? over the whole leg; this verdict reads the cook-write line alone" >&2
     if check "$out/log" > "$out/check" 2>&1; then
         echo "NEGATIVE CONTROL FAILED: the cook-write gate is green with the cook writer's zeroing removed" >&2
         cat "$out/check" >&2

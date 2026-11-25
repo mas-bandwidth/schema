@@ -36,8 +36,8 @@ import (
 
 // t08DartBinary is THE LEG'S OWN TOOLCHAIN, the same chain dartBinary holds,
 // plus the PATH's `dart` as the last fallback so a self-contained round-trip
-// runs on a bench that never unpacked dist/. A bare `go test ./...` on a tree
-// with no dart anywhere still skips, which is the package's standing rule.
+// runs on a bench that never unpacked dist/. With no dart anywhere the test
+// fails by name.
 func t08DartBinary(t *testing.T) string {
 
 	t.Helper()
@@ -52,7 +52,7 @@ func t08DartBinary(t *testing.T) string {
 	if p, err := exec.LookPath("dart"); err == nil {
 		return p
 	}
-	t.Skip("the Dart SDK is not unpacked in dist/ and dart is not on PATH: see make/dart.mk")
+	t.Fatal("the Dart SDK is not unpacked in dist/ and dart is not on PATH: see make/dart.mk")
 	return ""
 }
 

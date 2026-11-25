@@ -846,17 +846,7 @@ func jsFixedCorpus(t *testing.T) string {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "old_field_append.bin")); err != nil {
-		// THE SKIP IS A FAILURE WHEN SOMETHING PROMISED THE CORPUS. A bare
-		// `go test ./...` on a tree that never built the oracle has nothing to
-		// read and says so; but `make tables-js-versioning` builds the corpus
-		// first and sets SCHEMA_REQUIRE_CORPUS=1, so under that target a missing
-		// file means the build did not do what the target says it did — and a
-		// suite that skips itself there would report green over §5 having never
-		// run, which is the whole reason this gate exists.
-		if slowtest.CorpusRequired() {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set (or CI runs the slow half) and the reference's byte oracle is not in %s: %v", dir, err)
-		}
-		t.Skip("the reference's byte oracle is not built: make tables-fixedform-corpus")
+		t.Fatalf("the reference's byte oracle is not in %s (%v): make tables-fixedform-corpus", dir, err)
 	}
 	return dir
 }
@@ -880,9 +870,8 @@ func jsNode(t *testing.T) string {
 	if n, err := exec.LookPath("node"); err == nil {
 		return n
 	}
-	// a failure under SCHEMA_REQUIRE_NODE=1 or SCHEMA_REQUIRE_CORPUS: make
-	// dist, or NODE=node
-	slowtest.Require(t, "SCHEMA_REQUIRE_NODE", "no node toolchain: see make/js.mk's NODE")
+	// a missing node fails by name: make dist, or NODE=node
+	slowtest.Missing(t, "no node toolchain: set NODE, see make/js.mk")
 	return ""
 }
 

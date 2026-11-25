@@ -259,7 +259,7 @@ func luaVTCellFailures(t *testing.T, c luaVTCell, mutate func(*testing.T, map[st
 	return fails, held
 }
 
-// Functional (luaBinary): run with SCHEMA_SLOW=1.
+// Functional (luaBinary): needs the pinned Lua.
 func TestLuaVariableTableCells(t *testing.T) {
 	t.Parallel()
 	for _, c := range luaVTCells {
@@ -284,7 +284,7 @@ func TestLuaVariableTableCells(t *testing.T) {
 // requires every row's subtest to go red
 // under each: no row's gate is green by holding nothing.
 //
-// Functional (luaBinary): run with SCHEMA_SLOW=1.
+// Functional (luaBinary): needs the pinned Lua.
 func TestLuaVariableTableCellsNegativeControl(t *testing.T) {
 	t.Parallel()
 	plant := func(file, from, to string) func(*testing.T, map[string][]byte) {

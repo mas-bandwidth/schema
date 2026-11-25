@@ -119,7 +119,7 @@ int main(void){TableRetain retain={0};TableRetainId ids[256];TableReport report=
 func TestCTableRetainRefusedByName(t *testing.T) {
 	cc, err := exec.LookPath("cc")
 	if err != nil {
-		t.Skip("requires C compiler")
+		t.Fatal("no cc on PATH")
 	}
 	u := unitFromSource(t, "package probe\nfixed table Fixed { x uint32 }\ntable Variable { next *Variable }\n")
 	files, err := generateCUnqualified(u)

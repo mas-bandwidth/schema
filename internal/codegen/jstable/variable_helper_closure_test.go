@@ -19,10 +19,7 @@ func TestJavaScriptVariableHelperClosure(t *testing.T) {
 	}
 	eslint, err := exec.LookPath(tool)
 	if err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatal(err)
-		}
-		t.Skipf("eslint unavailable: %v", err)
+		t.Fatalf("eslint unavailable (set ESLINT or put eslint on PATH): %v", err)
 	}
 	config, err := filepath.Abs("../../../eslint.config.mjs")
 	if err != nil {

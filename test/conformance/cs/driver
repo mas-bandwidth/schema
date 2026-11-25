@@ -35,7 +35,6 @@ list)
     dotnet "$CONF_DLL" "$manifest" list
     echo cook
     echo cook-foreign
-    echo cook-reason
     echo cook-forgery
     ;;
 cook)

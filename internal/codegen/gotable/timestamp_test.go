@@ -45,7 +45,7 @@ func TestTimestampKindInGo(t *testing.T) {
 	// THE UNIT READS AND GENERATES: at BASE `timestamp` is an undefined type and
 	// unitFrom stops here. These checks need no toolchain, so they run in every
 	// leg; the round trips below compile and run the generated unit and so need
-	// SCHEMA_SLOW=1, which the make legs set.
+	// the Go toolchain.
 	u := unitFrom(t, timestampSchema)
 	files, err := Generate(u)
 	if err != nil {

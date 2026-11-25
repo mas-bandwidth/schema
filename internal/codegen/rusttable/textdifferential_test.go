@@ -215,10 +215,7 @@ const rustTextDifferentialRowsDraw = `for _ in 0..3 {
 func runRustTextDifferential(t *testing.T, schema string, rows bool, seeds []uint64, n int, edit func(map[string][]byte)) ([]byte, error) {
 	t.Helper()
 	if _, err := exec.LookPath("rustc"); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and rustc is not on PATH: %v", err)
-		}
-		t.Skipf("rustc is not on PATH: %v", err)
+		t.Fatalf("rustc is not on PATH: %v", err)
 	}
 	u := unitFrom(t, schema)
 	modules, err := Generate(u)

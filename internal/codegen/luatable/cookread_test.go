@@ -25,7 +25,7 @@ func TestLuaCookRead(t *testing.T) {
 	repo := filepath.Join("..", "..", "..")
 	manifest := filepath.Join(repo, "testdata", "conformance", "tables", "MANIFEST.txt")
 	units := manifestUnits(t, manifest)
-	wireRefused := manifestWireRefusalRows(t, manifest)
+	_ = manifestWireRefusalRows(t, manifest)
 	rows := manifestRows(t, manifest, "instance")
 	if len(rows) == 0 {
 		t.Fatal("the manifest names no instance row: no cook was read")
@@ -42,7 +42,7 @@ func TestLuaCookRead(t *testing.T) {
 			if err != nil {
 				// the Lua target refuses this unit's kinds (docs/PORT-LUA.md);
 				// it emits no cook surface to read.
-				t.Skipf("the Lua table backend does not generate this unit: %v", err)
+				t.Errorf("the Lua table backend does not generate this unit: %v", err)
 			}
 			m := tabletext.NewModel(u)
 			wire, err := os.ReadFile(filepath.Join(repo, row.wire))
@@ -56,11 +56,6 @@ func TestLuaCookRead(t *testing.T) {
 			inst := m.New(root)
 			var report tabletext.Report
 			if _, err := tablewire.Decode(m, inst, wire, &report); err != nil {
-				if wireRefused[row.caseName] || strings.HasPrefix(tablewire.RefusalReason(err), "blob_shared") {
-					// a wire-refused row (testdata/conformance/tables/FORMAT.md): the
-					// strict read refuses it, so the tool writes no cook to read
-					t.Skip("layer 4 (lua): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
-				}
 				t.Fatalf("decode %s: %v", row.caseName, err)
 			}
 			cooked, err := tablecook.Cook(m, inst, tablecook.Options{})

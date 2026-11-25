@@ -25,7 +25,7 @@ func TestRegistryDiscoversAPlantedLanguage(t *testing.T) {
 	}
 	for _, tool := range []string{"make", "sh"} {
 		if _, err := exec.LookPath(tool); err != nil {
-			t.Skipf("no %s on PATH", tool)
+			t.Fatalf("no %s on PATH", tool)
 		}
 	}
 

@@ -113,7 +113,7 @@ run() {
 		cat "$dir/$1.$2.err" >&2
 		return 0
 	fi
-	split_diagnostics "$dir/$1.$2.raw" >/dev/null || :
+	split_diagnostics "$dir/$1.$2.raw" >/dev/null || echo "lobster driver: $1 over $2 ended before its answer marker" >&2
 	case "$1" in
 	write-refusal*) ;;
 	*)

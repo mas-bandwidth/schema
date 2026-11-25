@@ -67,10 +67,8 @@ func RepoRoot() (string, error) {
 	}
 }
 
-// Require is the Squirrel leg's gate at the shared door: it skips the calling
-// test unless the slow half is enabled (internal/slowtest) and then resolves
-// the pinned interpreter, failing the test by name when it is not built — a
-// run that is supposed to happen (SCHEMA_SLOW=1) never silently skips. Every
+// Require resolves the pinned interpreter, failing the test by name when it
+// is not built; it never skips. Every
 // test that runs sq calls it first (Run calls it itself).
 func Require(t *testing.T) string {
 	t.Helper()
@@ -82,7 +80,7 @@ func Require(t *testing.T) string {
 }
 
 // interpreterFor is Require's edge for a test that carries only a testing.TB:
-// it gates the same way, so a benchmark skips at the same door.
+// it fails the same way.
 func interpreterFor(t testing.TB) string {
 	t.Helper()
 	sq, err := Interpreter()
@@ -96,8 +94,7 @@ func interpreterFor(t testing.TB) string {
 // table of name -> blob, which also defines ::hexline(b), the probe's way of
 // printing bytes as one lowercase hex line — then runs dir/main under the
 // pinned interpreter with dir as its working directory and returns stdout.
-// It gates at Require first: under a plain go test the test skips at the
-// shared door, and under SCHEMA_SLOW=1 a missing interpreter fails it by name.
+// It resolves the interpreter first; a missing one fails the test by name.
 func Run(t testing.TB, dir, main string, inputs map[string][]byte) []byte {
 	t.Helper()
 	sq := interpreterFor(t)

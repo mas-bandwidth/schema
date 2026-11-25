@@ -150,7 +150,6 @@ func squirrelReport(t *testing.T, dir, key, module, wire string) string {
 // for byte against the wire, and the duplicate, widened and past-L report
 // cases answer the same counters as internal/tablewire for the same bytes.
 func TestSquirrelMapsMatchTheWire(t *testing.T) {
-	t.Skip("layer 4 (squirrel): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 	root, err := sqrun.RepoRoot()
 	if err != nil {
@@ -272,7 +271,6 @@ func TestSquirrelMapsMatchTheWire(t *testing.T) {
 // refuse — the verdict testdata/conformance/tables/MANIFEST.txt holds for it
 // (docs/SPEC-TABLES.md §2.8, §4).
 func TestSquirrelMapWireCountRefusal(t *testing.T) {
-	t.Skip("layer 4 (squirrel): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 	unit := loadSource(t, "package probemap\n\ntable Root\n{\n    entries map[int32]int32\n}\n")
 	dir := t.TempDir()

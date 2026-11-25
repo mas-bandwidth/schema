@@ -95,7 +95,7 @@ schema-rust-runs-hostile-corpus: build/mustrun schema-rust-runs-hostile-corpus-b
 		$(RUST_HOSTILE_TARGET)/$$profile/rust-hostile --scorer tools/hostilecorpusexec/testdata/scorer-outcomes.tsv || status=1; \
 		$(MUSTRUN) -name "schema-rust-runs-hostile-corpus ($$profile)" -count $(RUST_HOSTILE_CASES) -- $(RUST_HOSTILE_TARGET)/$$profile/rust-hostile "$(RUST_HOSTILE_CORPUS)" "$(RUST_HOSTILE_FINDINGS)" $$profile || status=1; \
 	done; \
-	[ $$status -eq 0 ],$(RUST_HOSTILE_CORPUS),-runs $(words $(RUST_HOSTILE_PROFILES)) -skips test/rust-hostile/known-skips.tsv)
+	[ $$status -eq 0 ],$(RUST_HOSTILE_CORPUS),-runs $(words $(RUST_HOSTILE_PROFILES)))
 	sh make/checks/hostile-carry-controls.sh rust findings $(RUST_HOSTILE_BUILD)/carry '$(RUST_HOSTILE_TARGET)/$(firstword $(RUST_HOSTILE_PROFILES))/rust-hostile "$$CARRY_CORPUS" "$$CARRY_FINDINGS" $(firstword $(RUST_HOSTILE_PROFILES))'
 
 # The port's normal unit target runs the corpus: this file is included after

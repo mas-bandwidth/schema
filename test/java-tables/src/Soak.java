@@ -22,8 +22,7 @@
     reported, not gated.
 
     It refuses to certify off the pinned JDK, exactly as modeAllocator does;
-    SCHEMA_JAVA_ALLOC_ANY_JDK=1 is honoured as observation only — it reports and
-    does not certify.
+    there is no observation-only mode.
 
     Negative control: SCHEMA_JAVA_SOAK_PLANT=1 plants a matched allocation pair
     per iteration, which must turn the count red while the drift stays green.
@@ -155,7 +154,6 @@ public final class Soak {
                 pin = 21;
             }
         }
-        boolean anyJdk = "1".equals(System.getenv("SCHEMA_JAVA_ALLOC_ANY_JDK"));
         boolean plant = "1".equals(System.getenv("SCHEMA_JAVA_SOAK_PLANT"));
 
         java.lang.management.ThreadMXBean base = ManagementFactory.getThreadMXBean();
@@ -168,11 +166,7 @@ public final class Soak {
             counterPresent = true;
         }
 
-        if (anyJdk) {
-            System.err.println("NOT CERTIFIED: soak observations on JDK " + Runtime.version()
-                    + (counterPresent ? "" : " (no per-thread allocation counter)")
-                    + "; reporting, not certifying");
-        } else if (found != pin) {
+        if (found != pin) {
             fail("soak certification requires JDK " + pin + ", running " + Runtime.version());
         } else if (!counterPresent) {
             fail("the JVM exposes no per-thread allocation counter, so the soak cannot certify a floor it cannot measure");

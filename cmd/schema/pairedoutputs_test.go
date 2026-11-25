@@ -153,7 +153,7 @@ func TestPairedOutputsRefuseSymlinkedDirectoryAlias(t *testing.T) {
 			dir, payload, _ := pairFixture(t)
 			alias := filepath.Join(t.TempDir(), "alias")
 			if err := os.Symlink(dir, alias); err != nil {
-				t.Skipf("symlinks unavailable: %v", err)
+				t.Fatalf("symlinks unavailable: %v", err)
 			}
 			viaAlias := filepath.Join(alias, filepath.Base(payload))
 			err := refuseOutputsIntoInputs(cmd.verb, []outputPath{{cmd.side, viaAlias}, {cmd.payload, payload}}, nil)
@@ -232,13 +232,13 @@ func TestPairedOutputsSideFailureKeepsThePayload(t *testing.T) {
 
 // One directory entry under two spellings the file system treats as one name
 // (APFS: composed and decomposed é). Only the file system can say so, so the
-// test runs where it does and is skipped, named, where it does not.
+// test runs where it does and fails, named, where it does not.
 func TestPairedOutputsRefuseNormalizationAlias(t *testing.T) {
 	const composed, decomposed = "café.bin", "café.bin"
 	probe := t.TempDir()
 	writeTestFile(t, filepath.Join(probe, composed), "probe")
 	if _, err := os.Lstat(filepath.Join(probe, decomposed)); err != nil {
-		t.Skipf("this file system keeps %q and %q apart, so they are two files here: %v", composed, decomposed, err)
+		t.Fatalf("this file system keeps %q and %q apart, so they are two files here: %v", composed, decomposed, err)
 	}
 	for _, cmd := range pairedCommands {
 		t.Run(cmd.verb+"/existing", func(t *testing.T) {
@@ -270,7 +270,7 @@ func TestCookRefusesOutputOverSymlinkedInput(t *testing.T) {
 	writeTestFile(t, real, oldPayload)
 	link := filepath.Join(dir, "link.bin")
 	if err := os.Symlink("real.bin", link); err != nil {
-		t.Skipf("symlinks unavailable: %v", err)
+		t.Fatalf("symlinks unavailable: %v", err)
 	}
 	side := filepath.Join(dir, "side.bin")
 	in := []outputPath{{"--in", link}}

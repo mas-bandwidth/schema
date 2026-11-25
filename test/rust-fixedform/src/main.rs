@@ -49,7 +49,7 @@ fn slurp(dir: &str, name: &str) -> Vec<u8> {
 }
 
 // ---------------------------------------------------------------------------
-// WHAT §5.6 RETIRED, SKIPPED BY NAME AND NEVER DELETED.
+// WHAT §5.6 RETIRED, FAILED BY NAME AND NEVER DELETED.
 //
 // docs/FIXED-FORM-ALGORITHM.md §5 made the fixed reader read BACKWARD: it takes
 // the header's hash AS GIVEN, looks it up in the lineage the BUILD laid down,
@@ -57,7 +57,8 @@ fn slurp(dir: &str, name: &str) -> Vec<u8> {
 // read a file written under ANOTHER schema through the load, and every case that
 // broke a layout and asked for its §1.1 name, is asserting a reader that no
 // longer exists — and a deleted test is a coverage claim nobody can audit. Each
-// one keeps its code and prints where its coverage went instead: `retired`
+// one keeps its code and FAILS by name, saying where its coverage went (a case
+// not run is never a pass; a case is left out only at the root): `retired`
 // returns true so the case returns early, or false-at-the-guard so the block
 // stays compiled and stays readable.
 // ---------------------------------------------------------------------------
@@ -71,7 +72,7 @@ const THE_LOCK: &str =
     "the LOCK's validation of what it records, plus the oracle's validation of the corpus";
 
 fn retired(case: &str, because: &str, coverage: &str) -> bool {
-    println!("SKIP {case}: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — {because} — and the coverage now lives in {coverage}.");
+    check(false, &format!("RETIRED, NOT RUN {case}: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — {because} — and the coverage now lives in {coverage}."));
     true
 }
 

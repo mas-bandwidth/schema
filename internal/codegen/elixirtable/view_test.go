@@ -35,7 +35,7 @@ func loadDirUnit(t *testing.T, dir string) *ir.Unit {
 // Every VIEW_CORPUS unit is then also compared with internal/viewlisting's IR
 // listing; the five `schema generate --lang elixir` still refuses by name
 // (make/elixir.mk VIEW_ELIXIR_REGISTRY_ONLY) are listed from UnitView alone.
-// Functional (elixirBinary): run with SCHEMA_REQUIRE_CORPUS=1.
+// Functional (elixirBinary): a missing toolchain fails by name.
 func TestUnitViewDescriptorsElixir(t *testing.T) {
 
 	t.Parallel()

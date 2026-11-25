@@ -68,7 +68,7 @@ func TestOutputsRefusedInsideTheInputTree(t *testing.T) {
 				root, tree, elsewhere := inputTree(t)
 				alias := filepath.Join(root, "alias")
 				if err := os.Symlink("tree", alias); err != nil {
-					t.Skipf("symlinks unavailable: %v", err)
+					t.Fatalf("symlinks unavailable: %v", err)
 				}
 				outside := filepath.Join(elsewhere, "points-in.bin")
 				if err := os.Symlink(filepath.Join(tree, "level.json"), outside); err != nil {
@@ -125,7 +125,7 @@ func TestOutputsRefusedInsideTheInputTree(t *testing.T) {
 
 // The same refusal under a spelling only the file system makes equal: a case
 // fold or a Unicode normalization of the tree's own name. Runs where the
-// volume aliases the two names and is skipped, named, where it keeps them
+// volume aliases the two names and fails, named, where it keeps them
 // apart (there they are two directories and the output is outside the tree).
 func TestOutputsRefusedInsideTheInputTreeBySpelling(t *testing.T) {
 	for _, sp := range []struct{ name, made, other string }{
@@ -137,7 +137,7 @@ func TestOutputsRefusedInsideTheInputTreeBySpelling(t *testing.T) {
 			tree := filepath.Join(root, sp.made)
 			writeTestFile(t, filepath.Join(tree, "level.json"), "7")
 			if _, err := os.Lstat(filepath.Join(root, sp.other)); err != nil {
-				t.Skipf("this file system keeps %q and %q apart, so they are two directories here: %v", sp.made, sp.other, err)
+				t.Fatalf("this file system keeps %q and %q apart, so they are two directories here: %v", sp.made, sp.other, err)
 			}
 			ins := []outputPath{{"--in", tree}}
 			for _, bad := range []string{filepath.Join(root, sp.other, "level.json"), filepath.Join(root, sp.other, "fresh.bin")} {
@@ -181,7 +181,7 @@ func TestOutputsRefusedOverASchemaSource(t *testing.T) {
 			writeTestFile(t, source, demoSchema)
 			writeTestFile(t, filepath.Join(unit, "Other.schema"), "package demo\n")
 			if err := os.Symlink("unit", filepath.Join(root, "alias")); err != nil {
-				t.Skipf("symlinks unavailable: %v", err)
+				t.Fatalf("symlinks unavailable: %v", err)
 			}
 			twin := filepath.Join(root, "twin.bin")
 			if err := os.Link(source, twin); err != nil {
@@ -318,7 +318,7 @@ func entryPutBack(t *testing.T, sideFlag, payloadFlag, kind string, failing func
 	side := filepath.Join(dir, "side.bin")
 	if kind == "symbolic link" {
 		if err := os.Symlink("target.bin", side); err != nil {
-			t.Skipf("symlinks unavailable: %v", err)
+			t.Fatalf("symlinks unavailable: %v", err)
 		}
 	} else {
 		writeTestFile(t, side, oldSide)

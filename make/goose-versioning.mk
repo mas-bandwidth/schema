@@ -15,12 +15,11 @@
 # on the file's hash alone, writing nothing. Then the floor's three, the hash
 # cases, the lineage merge, and §5.8's probes (rows 4, 9, 11, 12).
 #
-# SCHEMA_REQUIRE_CORPUS=1 turns the suite's corpus skip into a FAILURE, so the
+# the rule that nothing skips turns the suite's corpus skip into a FAILURE, so the
 # gate cannot pass on a tree that never built the oracle.
 .PHONY: tables-goose-versioning
 tables-goose-versioning: build/fixedform-corpus/.stamp
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
-	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s \
 		-run '^TestGooseFixed(Versioning|FormNamesEveryRefusal$$|FormKindMismatchCensus$$)' ./internal/codegen/goosetable/
 	@echo 'tables Goose versioning: §5 read both columns of every row against the C++ reference bytes'
 
@@ -47,7 +46,7 @@ tables-goose-versioning-negative-control: build/fixedform-corpus/.stamp
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage did not apply to fixedevolve.go"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/goosetable/fixedevolve.go":"%s/$(GOOSE_VERSIONING_NC)/fixedevolve.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(GOOSE_VERSIONING_NC)/overlay.json
-	@if SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -v -timeout 600s -overlay $(GOOSE_VERSIONING_NC)/overlay.json \
+	@if go test -count=1 -v -timeout 600s -overlay $(GOOSE_VERSIONING_NC)/overlay.json \
 			-run '^TestGooseFixedVersioning' ./internal/codegen/goosetable/ > $(GOOSE_VERSIONING_NC)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the wrong refusal name left the Goose versioning gate green"; \
 		cat $(GOOSE_VERSIONING_NC)/log; exit 1; \

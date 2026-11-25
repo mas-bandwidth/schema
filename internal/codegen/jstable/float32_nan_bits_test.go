@@ -23,7 +23,7 @@ import (
 // it. A retained unknown float is tested like a known one (ruling 3).
 //
 // The text half holds the NaN payload surgery (docs/PORTING.md M21) gone from
-// every generated module; the node half runs the behaviour under SCHEMA_SLOW.
+// every generated module; the node half runs the behaviour.
 func TestJsFloat32CellsAreBitTransparent(t *testing.T) {
 	t.Parallel()
 	u := unitFrom(t, jsFloatProbeSchema)

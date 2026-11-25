@@ -17,8 +17,8 @@ package luatable
 // textdifferential_test.go): two floats, a nested type of two, a bounded list of
 // float32, an unbounded list of each width.
 //
-// It runs the pinned interpreter, so it is a functional test behind the slow
-// gate: make tables-lua-text-differential runs it through test/slowgate/proof.
+// It runs the pinned interpreter, so it is a functional test: make
+// tables-lua-text-differential runs it through test/slowgate/proof.
 
 import (
 	"bytes"

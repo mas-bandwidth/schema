@@ -24,10 +24,7 @@ func TestCppWidelistWarningInventory(t *testing.T) {
 		clang = "clang++"
 	}
 	if _, err := exec.LookPath(clang); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and clang++ (%s) is absent: %v", clang, err)
-		}
-		t.Skip("clang++ is not installed")
+		t.Fatalf("clang++ (%s) is absent: %v", clang, err)
 	}
 	serialize := os.Getenv("SERIALIZE")
 	if serialize == "" {
@@ -38,10 +35,7 @@ func TestCppWidelistWarningInventory(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(serialize, "serialize.h")); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and serialize.h is absent at %s: %v", serialize, err)
-		}
-		t.Skip("serialize.h is not installed")
+		t.Fatalf("serialize.h is absent at %s: %v", serialize, err)
 	}
 	repo, err := filepath.Abs("../../..")
 	if err != nil {

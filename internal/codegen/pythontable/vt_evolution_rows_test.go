@@ -306,7 +306,7 @@ func vtEvoRowFailures(t *testing.T, r vtEvoRow, plant *vtEvoPlant) (fails []stri
 	return fails, held
 }
 
-// Functional (both pinned interpreters): run with SCHEMA_SLOW=1.
+// Functional (both pinned interpreters).
 func TestPythonVtEvolutionRows(t *testing.T) {
 	t.Parallel()
 
@@ -391,7 +391,7 @@ func vtEvoDropWas(u *ir.Unit) {
 //	                        names and the renamed units' files no longer read
 //	                        back
 //
-// Functional (both pinned interpreters): run with SCHEMA_SLOW=1.
+// Functional (both pinned interpreters).
 func TestPythonVtEvolutionRowsNegativeControl(t *testing.T) {
 	t.Parallel()
 	edit := func(suffix, from, to string) func(*testing.T, map[string][]byte) {

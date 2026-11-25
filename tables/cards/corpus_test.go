@@ -222,22 +222,32 @@ func addConsumer(t *testing.T, b *CardBuilder, list *TableList[ConsumerRow], kin
 }
 
 // TestCorpusFixtureWrite authors the committed corpus fixtures into the named
-// source directory. It runs only under CARDS_UPDATE_CORPUS=1; ordinary tests
-// read the committed evidence and never generate it (docs/SPEC-TABLES.md §6.6).
+// source directory under CARDS_UPDATE_CORPUS=1, never under CI; otherwise it
+// holds the committed fixtures to what the builders make (docs/SPEC-TABLES.md §6.6).
 func TestCorpusFixtureWrite(t *testing.T) {
-	if os.Getenv("CARDS_UPDATE_CORPUS") != "1" {
-		t.Skip("corpus fixture update requires CARDS_UPDATE_CORPUS=1")
-	}
-	if os.Getenv("CI") != "" {
+	rewrite := os.Getenv("CARDS_UPDATE_CORPUS") == "1"
+	if rewrite && os.Getenv("CI") != "" {
 		t.Fatal("CARDS_UPDATE_CORPUS=1 under CI: a lane that rewrites the committed evidence compares nothing against it; unset it")
 	}
 	src := filepath.Join("..", "..", "..", "tables", "cards", "corpus")
 	write := func(caseName, fixture string, wire, json []byte) {
 		dir := filepath.Join(src, caseName)
+		wirePath := filepath.Join(dir, fixture+".wire")
+		if !rewrite {
+			for path, want := range map[string][]byte{wirePath: wire, filepath.Join(dir, fixture+".json"): json} {
+				got, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatalf("the committed fixture %s is absent: %v", path, err)
+				}
+				if !bytes.Equal(got, want) {
+					t.Errorf("the committed fixture %s is not what the builder makes", path)
+				}
+			}
+			return
+		}
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		wirePath := filepath.Join(dir, fixture+".wire")
 		if _, err := os.Stat(wirePath); err == nil {
 			t.Fatalf("refusing to overwrite existing case %s/%s", caseName, fixture)
 		}

@@ -19,7 +19,7 @@ import (
 // multiple of its own size, and a lawful batch read four times larger must
 // cost at most six times the words (linear is four).
 //
-// It runs elixir, so it is a functional test behind slowtest.Gate.
+// It runs elixir, so it is a functional test.
 func TestElixirLoadMessagesWorkIsLinear(t *testing.T) {
 	u := unitFrom(t, `package msglin
 

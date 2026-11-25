@@ -31,10 +31,7 @@ func TestWidelistExtentAlign16C(t *testing.T) {
 	t.Parallel()
 	ser, ok := cSerializeDir(t)
 	if !ok {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("the sibling runtime serialize.c is absent at %s", ser)
-		}
-		t.Skipf("named as not run: serialize.c is not staged at %s", ser)
+		t.Fatalf("the sibling runtime serialize.c is absent at %s", ser)
 	}
 	schemaBytes, err := os.ReadFile(filepath.Join("..", "..", "..", "tables", "widelist", "Wides.schema"))
 	if err != nil {

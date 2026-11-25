@@ -231,7 +231,7 @@ func compilePacketTextDriver(t *testing.T, dir string, leg packetTextLeg, defect
 	t.Helper()
 	compiler, err := exec.LookPath(leg.compiler)
 	if err != nil {
-		t.Skipf("%s unavailable: %v", leg.compiler, err)
+		t.Fatalf("no %s on PATH: %v", leg.compiler, err)
 	}
 	u := unitFromSource(t, "package p\n\ntype Text { label string(8) }\n")
 	files, err := New().Generate(u, leg.lang, Options{})

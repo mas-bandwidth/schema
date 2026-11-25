@@ -688,7 +688,7 @@ func unionFailures(t *testing.T, u *ir.Unit, mutate func(map[string][]byte) erro
 	return fails
 }
 
-// Functional (python pins): run with SCHEMA_SLOW=1.
+// Functional (python pins).
 func TestPythonVtUnions(t *testing.T) {
 	t.Parallel()
 	u := loadUnit(t, unionsSchema)
@@ -743,7 +743,7 @@ var unionControls = []struct {
 // TestPythonVtUnionsNegativeControl plants each of unionControls in turn and
 // requires the probe to lose the line that names the planted check.
 //
-// Functional (python pins): run with SCHEMA_SLOW=1.
+// Functional (python pins).
 func TestPythonVtUnionsNegativeControl(t *testing.T) {
 	t.Parallel()
 	u := loadUnit(t, unionsSchema)

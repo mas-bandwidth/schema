@@ -101,7 +101,7 @@ layout)
     # whose struct disagrees with the compiler's model is no longer refused
     overlay_one internal/codegen/gotable/block.go 's|g.hf("\\t\\tpanic(fmt.Sprintf(\\"schema block layout: |g.hf("\\t\\t_ = (fmt.Sprintf(\\"SABOTAGED schema block layout: |'
     overlay_write
-    run_red "$out/log" env SCHEMA_SLOW=1 go test -count=1 -overlay "$root/$out/overlay.json" ./internal/codegen/gotable -run '^TestBlockLayoutContractRefusesADisagreeingRuntime$'
+    run_red "$out/log" go test -count=1 -overlay "$root/$out/overlay.json" ./internal/codegen/gotable -run '^TestBlockLayoutContractRefusesADisagreeingRuntime$'
     expect_words "$out/log" 'a runtime whose layout disagrees with the compiler'
     ;;
 graph-label)
@@ -109,7 +109,7 @@ graph-label)
     # definition, no reference, and the text no longer carries the identity
     overlay_one internal/codegen/gotable/jsongraph.go 's/ if entry.refs<2{return tableJSONWriteValue(/ if entry.refs<2||entry.refs>0 \/* SABOTAGED *\/{return tableJSONWriteValue(/'
     overlay_write
-    run_red "$out/log" env SCHEMA_SLOW=1 go test -count=1 -overlay "$root/$out/overlay.json" ./internal/codegen/gotable -run '^TestRegionGraphs$'
+    run_red "$out/log" go test -count=1 -overlay "$root/$out/overlay.json" ./internal/codegen/gotable -run '^TestRegionGraphs$'
     expect_words "$out/log" '--- FAIL: TestRegionGraphs' 'text sharing'
     ;;
 usage)

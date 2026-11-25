@@ -5,8 +5,8 @@
 #   bench/lobster/run [--csv] [--gate] [--round K] [--quick] [--iterations N]
 #                     [--wire-dir <dir>] [--variant-dir <dir>]
 #
-# Exit 2 (run.sh prints SKIP) when the pinned toolchain or the generated unit is
-# absent. LOBSTER overrides the toolchain, as everywhere in the repo.
+# Exit 2 (a failure; run.sh stops on it) when the pinned toolchain or the
+# generated unit is absent. LOBSTER overrides the toolchain, as everywhere in the repo.
 #
 # THE BUILD IT MEASURES. bench/lobster/main.lobster under the pin's DEFAULT JIT
 # (TinyCC) with --runtime-no-asserts — the release leg, `checks=contract`, and

@@ -82,10 +82,7 @@ func csVerdictsBuild(t *testing.T, mainSrc string, debug bool) string {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(runtimeDir, "src", "Serialize.cs")); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and the C# runtime checkout is not at %s", runtimeDir)
-		}
-		t.Skipf("the C# runtime checkout is not at %s", runtimeDir)
+		t.Fatalf("the C# runtime checkout is not at %s", runtimeDir)
 	}
 	u := unitFrom(t, csVerdictsSchema)
 	files, err := csharp.Generate(u)

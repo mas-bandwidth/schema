@@ -9,7 +9,7 @@ package darttable
 // The rows are the vectors in testdata/wire/json-integers: every accept row
 // reads and writes the committed canonical text byte for byte, and every
 // refuse row refuses the whole read. Running the generated program makes this
-// a functional test behind slowtest.Gate.
+// a functional test; a missing toolchain fails by name.
 
 import (
 	"fmt"

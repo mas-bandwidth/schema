@@ -5,7 +5,7 @@ package luautable_test
 // carries: the exact command, the host load before and during, and both
 // before/after tables.
 //
-// Command (SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1):
+// Command:
 //   benchslot -- go test -count=1 -v -timeout 600s \
 //     ./internal/codegen/luautable/ -run '^TestLuauFixedHotPathBenchEvidence$'
 // Load average (1m/5m/15m): before 2.83/2.64/2.00 (other work, under half the

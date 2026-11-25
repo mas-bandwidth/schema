@@ -12,7 +12,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
 )
 
-// Functional (luaBinary): run with SCHEMA_SLOW=1.
+// Functional (luaBinary): needs the pinned Lua.
 //
 // TestFixedLuaReadFixedOnePath holds docs/FIXED-FORM-ALGORITHM.md §4 ("ONE
 // path") and §5.3 step 11 on the Lua leg: ReadFixed is the strict load at a

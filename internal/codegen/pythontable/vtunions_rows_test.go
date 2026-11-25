@@ -302,7 +302,7 @@ func tabletextWire(t *testing.T, u *ir.Unit, root, text string) []byte {
 	return wire
 }
 
-// Functional (both pinned interpreters): run with SCHEMA_SLOW=1.
+// Functional (both pinned interpreters).
 func TestPythonVtUnionsRows(t *testing.T) {
 	t.Parallel()
 	for _, r := range vtUnionRows {
@@ -428,7 +428,7 @@ func TestPythonVtUnionsRowsControlsCoverEveryCase(t *testing.T) {
 // COPY of the emitted runtime and requires every case it names to go red,
 // with every row's cases covered by some control.
 //
-// Functional (both pinned interpreters): run with SCHEMA_SLOW=1.
+// Functional (both pinned interpreters).
 func TestPythonVtUnionsRowsNegativeControl(t *testing.T) {
 	t.Parallel()
 	for _, ctl := range vtUnionControls {

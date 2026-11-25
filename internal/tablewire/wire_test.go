@@ -489,7 +489,7 @@ func TestVariableRootRidesTheWire(t *testing.T) {
 		}
 		return
 	}
-	t.Skip("the pointers corpus declares no variable-length root")
+	t.Fatal("the pointers corpus declares no variable-length root: nothing was checked")
 }
 
 // AN OPTIONAL ARRAY DECLARED BEFORE A POINTER, in a table the pointer makes

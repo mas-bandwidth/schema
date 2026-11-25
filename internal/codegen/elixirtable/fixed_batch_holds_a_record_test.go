@@ -16,7 +16,7 @@ import (
 // (docs/rulings.json write-refusal). Only the verdict is compared, never a
 // reason (refusal-verdict-only).
 //
-// This is a functional test: it runs the generated Elixir behind SCHEMA_SLOW.
+// This is a functional test: it runs the generated Elixir.
 func TestElixirFixedBatchHoldsARecord(t *testing.T) {
 	t.Parallel()
 	bin := elixirBinary(t)

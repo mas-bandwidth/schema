@@ -135,7 +135,11 @@ final List<(String, void Function(Floats, double))> writeSlots = [
 
 void writeRefusals() {
   if (!assertsEnabled) {
-    return; // the release writer trusts by design
+    check(
+      false,
+      'writeRefusals: asserts are off in this build: this row needs the assert build',
+    );
+    return;
   }
   for (final (slot, set) in writeSlots) {
     for (final (name, x) in nonFinite) {

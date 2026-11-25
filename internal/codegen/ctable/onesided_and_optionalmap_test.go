@@ -295,7 +295,7 @@ func TestCOptionalMapJsonNullResetsToEmpty(t *testing.T) {
 	t.Parallel()
 	cc, err := exec.LookPath("cc")
 	if err != nil {
-		t.Skip("the generated C is compiled and run: no cc on PATH")
+		t.Fatal("the generated C is compiled and run: no cc on PATH")
 	}
 	if out, err := cMapJsonRun(t, cc, cMapJsonNullProbe, false); err != nil {
 		t.Fatalf("the null reset probe failed: %v\n%s", err, out)

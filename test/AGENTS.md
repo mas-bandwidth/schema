@@ -88,7 +88,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `rust-soak/` | Rust tables soak, allocator call count | `make tables-rust-soak` | `make tables-rust-soak` |
 | `rust-view/` | Rust unit-view listing driver | `make tables-rust-view` | `make tables-rust-view` |
 | `skipped-value/` | skipped-value validation fixtures | `go test -run TestSpecSkippedValueIsValidated ./compiler/` | `go test -run TestSpecSkippedValueIsValidated ./compiler/` |
-| `slowgate/` | SCHEMA_SLOW proof wrapper | `make slow-gate-scan` | `make slow-gate-scan` |
+| `slowgate/` | proof wrapper: each named test printed --- PASS, and no test skipped | `go test ./internal/ci` | `sh test/slowgate/proof LABEL 'TestA TestB' ./pkg -run ...` |
 | `table-base64/` | table base64 gates | `make test` | `make test` |
 | `tables/` | C++ table tests | `make test` | `./build/schema_test_tables` |
 | `testguard/` | tools/testguard configs, baselines and coverage tables for the ci-policy rows | `go test ./tools/testguard` | `go run ./tools/testguard check --config test/testguard/ci-policy-rest.tsv RECORD...` |

@@ -283,7 +283,7 @@ func runCPPProbeWithPrelude(t *testing.T, u *ir.Unit, prelude, body string) ([]b
 		cxx = "c++"
 	}
 	if _, err := exec.LookPath(cxx); err != nil {
-		t.Skip("generated C++ execution requires c++")
+		t.Fatal("generated C++ execution requires c++")
 	}
 	files, err := cpp.Generate(u)
 	if err != nil {

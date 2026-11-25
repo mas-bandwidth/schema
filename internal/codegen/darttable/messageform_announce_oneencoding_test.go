@@ -266,7 +266,7 @@ void main() {
 }
 
 // announceOneEncodingDartBinary is the leg's own Dart. A missing toolchain is
-// a failure when SCHEMA_REQUIRE_CORPUS promised one, and never a green.
+// a failure by name, and never a green.
 func announceOneEncodingDartBinary(t *testing.T) string {
 
 	t.Helper()
@@ -281,9 +281,6 @@ func announceOneEncodingDartBinary(t *testing.T) string {
 	if dart, err := exec.LookPath("dart"); err == nil {
 		return dart
 	}
-	if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-		t.Fatal("SCHEMA_REQUIRE_CORPUS is set and the Dart SDK is not at dist/dart-sdk-3.13.2 or on the PATH")
-	}
-	t.Skip("no Dart toolchain: set DART, unpack dist/dart-sdk-3.13.2, or put dart on the PATH")
+	t.Fatal("no Dart toolchain: set DART, unpack dist/dart-sdk-3.13.2, or put dart on the PATH")
 	return ""
 }

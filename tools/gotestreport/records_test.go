@@ -17,14 +17,14 @@ import (
 // empty and budget-only files a cut recorder leaves, and case.txt:
 //
 //	# what the case shows
-//	args: <flags>        the lane's flags, after -slowest 0 -skips <the shipped ledger>
+//	args: <flags>        the lane's flags, after -slowest 0
 //	exit: <0|1>          the verdict
 //	want: <text>         a line of the report (any number of them)
 //
-// The report runs on each exactly as ci-fast.yml's ledger step runs it, read
-// against .github/skip-ledger.txt. A defect case is beside its control: the
-// one that is red on the defect and the one that was always right.
-const recordCases = 14
+// The report runs on each exactly as a lane's report step runs it. A defect
+// case is beside its control: the one that is red on the defect and the one
+// that was always right.
+const recordCases = 7
 
 type recordCase struct {
 	args []string
@@ -70,7 +70,6 @@ func readRecordCase(path string) (recordCase, error) {
 func TestTheRecordCorpus(t *testing.T) {
 	t.Parallel()
 	root := filepath.Join("testdata", "records")
-	ledger := filepath.Join("..", "..", ".github", "skip-ledger.txt")
 	dirs, err := os.ReadDir(root)
 	if err != nil {
 		t.Fatal(err)
@@ -88,7 +87,7 @@ func TestTheRecordCorpus(t *testing.T) {
 			continue
 		}
 		ran++
-		args := append(append([]string{"-slowest", "0", "-skips", ledger}, c.args...), dir)
+		args := append(append([]string{"-slowest", "0"}, c.args...), dir)
 		var stdout, stderr bytes.Buffer
 		if got := run(args, &stdout, &stderr, ""); got != c.exit {
 			t.Errorf("%s: exit %d, want %d\n%s%s", d.Name(), got, c.exit, stdout.String(), stderr.String())

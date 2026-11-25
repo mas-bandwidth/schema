@@ -3,7 +3,7 @@ description: >
   Installs the google-java-format release pinned in make/java.mk
   (GOOGLE_JAVA_FORMAT_VERSION / GOOGLE_JAVA_FORMAT_SHA256) at
   dist/google-java-format-1.37.0-all-deps.jar, which is where make/java.mk looks
-  for it. `make test-java` sets JAVA_REQUIRE_FORMATTER=1, so a runner without
+  for it. tables-java-clean always requires the formatter, so a runner without
   the jar fails tables-java-clean by name. Run this after actions/setup-java.
   The download is checked against the pinned sha256 and the step FAILS on a
   mismatch; the jar is never used unchecked.

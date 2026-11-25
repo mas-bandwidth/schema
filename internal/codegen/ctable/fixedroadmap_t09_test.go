@@ -36,8 +36,7 @@ package ctable
 // environment variable the Makefile's c leg uses (make/c.mk:6), else the
 // directory beside this checkout: where it is staged the row compiles, runs and
 // exercises nonzero high 64-bit limbs and declared range edges on the fixed
-// wire; where it is absent the row skips by name, and fails by name when
-// SCHEMA_REQUIRE_CORPUS says the corpus was built and means to prove it.
+// wire; where it is absent the row fails by name.
 
 import (
 	"os"
@@ -637,10 +636,7 @@ int main(void)
 			if tc.needsSerialize {
 				ser, ok := cSerializeDir(t)
 				if !ok {
-					if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-						t.Fatalf("the sibling runtime serialize.c is absent at %s (SPEC-TABLES.md §3.4: the generated header includes serialize.h by name for the 128-bit storage)", ser)
-					}
-					t.Skipf("named as not run: the sibling serialize.c runtime is not staged at %s, so the generated header's 128-bit storage type does not resolve; stage the checkout to run this row", ser)
+					t.Fatalf("the sibling runtime serialize.c is absent at %s (SPEC-TABLES.md §3.4: the generated header includes serialize.h by name for the 128-bit storage)", ser)
 				}
 				runCGenerated(t, tc.schema, tc.main, append(identityCCFlags(t), "-I", ser)...)
 				return

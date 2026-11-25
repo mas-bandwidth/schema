@@ -148,8 +148,8 @@ func measureAllocRows(t *testing.T, patch func(unit string) map[string][]byte) [
 // THE PINNED RUNTIME (docs/PORTING.md I14). A floor measured on whatever
 // binary a PATH lookup found says nothing about the runtime the claim is for:
 // the gate reads the interpreter's own version first and, on any other than the
-// pinned one, refuses before it measures. SCHEMA_LUA_ALLOC_ANY_LUA=1 prints the
-// rows under NOT CERTIFIED and never asserts them.
+// pinned one, refuses before it measures. There is no observe-only mode: a gate that
+// measures and asserts nothing is a gate that did not run.
 func allocPinRefusal(have, want string) error {
 	if have == want {
 		return nil
@@ -170,23 +170,17 @@ func interpreterVersion(t *testing.T) string {
 	return f[1]
 }
 
-// pinned answers whether the gate may certify; off the pin it refuses unless
-// the escape hatch is set, in which case it says it does not certify.
-func pinned(t *testing.T) bool {
+// pinned refuses, before anything is measured, an interpreter off the pin.
+func pinned(t *testing.T) {
 	t.Helper()
 	if err := allocPinRefusal(interpreterVersion(t), luarun.PinnedVersion); err != nil {
-		if os.Getenv("SCHEMA_LUA_ALLOC_ANY_LUA") == "" {
-			t.Fatal(err)
-		}
-		t.Logf("NOT CERTIFIED: %v", err)
-		return false
+		t.Fatal(err)
 	}
-	return true
 }
 
 func TestLuaLoadAllocationFloor(t *testing.T) {
 	t.Parallel()
-	certify := pinned(t)
+	pinned(t)
 	got := measureAllocRows(t, nil)
 	for i, r := range allocRows {
 		licence := "licenses nothing"
@@ -194,7 +188,7 @@ func TestLuaLoadAllocationFloor(t *testing.T) {
 			licence = "licenses " + r.licence
 		}
 		t.Logf("%-42s %9.1f bytes a load (ceiling %.0f, %s)", r.name, got[i], r.ceiling, licence)
-		if certify && got[i] > r.ceiling {
+		if got[i] > r.ceiling {
 			t.Errorf("row %q allocates %.1f bytes a load against a ceiling of %.0f: a read that fills caller-owned storage allocates only what the row licenses (docs/PORTING.md M1)", r.name, got[i], r.ceiling)
 		}
 	}
@@ -222,9 +216,7 @@ func TestLuaLoadAllocationRefusesOffThePin(t *testing.T) {
 // pointer row and the empty root stay green).
 func TestLuaLoadAllocationNegativeControl(t *testing.T) {
 	t.Parallel()
-	if !pinned(t) {
-		return
-	}
+	pinned(t)
 	clean := measureAllocRows(t, nil)
 	plants := []struct {
 		name, anchor, plant string

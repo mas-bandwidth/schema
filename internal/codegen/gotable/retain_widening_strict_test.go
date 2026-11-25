@@ -18,8 +18,7 @@ package gotable_test
 //
 // Like TestGoDriverReportAndRetain (conformance_report_retain_test.go), this is
 // a functional test: it builds and drives the real generated Go driver, so it
-// skips by name without SCHEMA_SLOW, and fails by name under
-// SCHEMA_REQUIRE_CORPUS=1 when make or the Go toolchain is missing.
+// fails by name when make or the Go toolchain is missing.
 
 import (
 	"bytes"

@@ -10,10 +10,10 @@ each cause, when:
 1. **a test failed or the run is incomplete.** A failure, an error, a test that
    started and never ended, a count line with failures, a TAP bail-out or unmet
    plan, or a go package that failed outside its tests.
-2. **a skip is not in the ledger.** Every skipped, ignored or pending test must
-   be listed in the config with a reason. The match is on the exact set: a
-   ledgered skip that now runs, or is gone, is red too, so the ledger only
-   shrinks when the tests are fixed.
+2. **a test skipped.** Every skipped, ignored or pending test is red, and no
+   config line allows one: a test that is not to run is left out at the root
+   (the one driver's query, tools/schema-test), never skipped inside it. A
+   config with a `skip` line is refused.
 3. **a suite is missing or empty.** Every suite the config registers must be in
    the results and run at least one test, and every suite that ran tests must be
    registered, so its disappearance cannot go unseen.
@@ -67,7 +67,6 @@ to the working directory.
 # tests/testguard.tsv
 suite	example.com/wire
 suite	cards (lua)
-skip	example.com/wire	TestBigEndian	needs a big-endian runner; covered nightly
 cover	corpus	rows	file	tests/corpus-roots.txt
 cover	corpus	columns	run	ls drivers
 cover	corpus	pairs	run	sh tests/covered-pairs.sh
@@ -78,7 +77,6 @@ baseline	tests/testguard
 | Entry | Fields | |
 |---|---|---|
 | `suite` | NAME | a suite that must run at least one test; a config has one at least |
-| `skip` | SUITE, TEST, REASON | a skip that is allowed, and must happen |
 | `cover` | TABLE, `rows`, `columns` or `pairs`, `file` or `run`, PATH or COMMAND | one source of a coverage table; a table names all three |
 | `gap` | TABLE, ROW, COLUMN, REASON | a pair allowed to be uncovered |
 | `baseline` | DIR | the baseline directory; required |
@@ -126,7 +124,7 @@ testguard check --config tests/testguard.tsv go.json
 Each finding is one line (a test is named `SUITE<TAB>TEST`), then a summary:
 
 ```text
-RED skip example.com/wire	TestBigEndian: skipped, and the ledger does not hold it; fix: make it run, or add the line skip<TAB>SUITE<TAB>TEST<TAB>REASON to tests/testguard.tsv
+RED skip example.com/wire	TestBigEndian: skipped, and a skip is a failure; fix: make it run; a test that is not to run is left out at the root (tools/schema-test), never skipped
 RED uncovered corpus fx2 x lua: no test covers this pair, and no gap holds it; fix: cover it, or add a gap line with the reason to tests/testguard.tsv
 RED: 2 findings (skip 1, uncovered 1); read 1 result files: 4 suites, 812 tests run, 1 skipped; 1 coverage tables, 38 pairs
 ```
@@ -137,8 +135,7 @@ The rules a finding names:
 |---|---|
 | `failed` | a test that failed or never ended; a count line with failures |
 | `incomplete` | a bail-out, an unmet or missing plan, a repeated test number, a package that failed outside its tests |
-| `skip` | a skipped test the ledger does not hold |
-| `stale-skip` | a ledgered skip that did not skip |
+| `skip` | a skipped test: every skip is a failure |
 | `missing-suite` | a registered suite absent from every result file |
 | `empty-suite` | a registered suite that ran 0 tests |
 | `unregistered-suite` | a suite that ran tests and is not registered |

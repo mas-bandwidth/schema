@@ -10,7 +10,7 @@ package elixirtable
 // name and never written (R17). The engine is the oracle; only its verdict is
 // compared, never a refusal's name.
 //
-// Functional (elixirBinary): run with SCHEMA_REQUIRE_CORPUS=1.
+// Functional (elixirBinary): a missing toolchain fails by name.
 
 import (
 	"encoding/binary"

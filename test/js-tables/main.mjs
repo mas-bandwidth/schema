@@ -916,28 +916,21 @@ function gateAllocation(measured, where) {
 // another. That is not fussiness: an allocation one major optimizes away can be
 // steady at sixteen bytes a call on another — a generated body sitting over
 // that engine's inlining threshold — and a number read on whatever `node` a
-// PATH lookup found says nothing about the runtime the claim is for. Pass
-// SCHEMA_JS_ALLOC_ANY_NODE=1 to read the numbers on another runtime; the gate
-// then reports and does not certify.
+// PATH lookup found says nothing about the runtime the claim is for. There is
+// no observation-only mode.
 const PinnedNodeMajor = "26";
 
 function checkAllocation(iterations) {
   let bad = false;
   const major = process.versions.node.split(".")[0];
-  const anyNode = process.env.SCHEMA_JS_ALLOC_ANY_NODE === "1";
-  if (major !== PinnedNodeMajor && !anyNode) {
+  if (major !== PinnedNodeMajor) {
     console.log("FAILED: this gate holds an allocation floor for node " + PinnedNodeMajor +
       ", which is the version CI pins, and it is running on node " + process.versions.node +
       ". V8 inlines generated bodies differently between majors, and a body left over the " +
       "inlining threshold boxes its double store — so a floor measured here says nothing about " +
-      "the runtime the claim is for. Unpack the pinned runtime into dist/ (make/js.mk says how) and re-run, or set " +
-      "SCHEMA_JS_ALLOC_ANY_NODE=1 to read the numbers without certifying them.");
+      "the runtime the claim is for. Unpack the pinned runtime into dist/ (make/js.mk says how) and re-run.");
     failed = true;
     return;
-  }
-  if (anyNode && major !== PinnedNodeMajor) {
-    process.stderr.write("node " + process.versions.node + " is not the pinned " + PinnedNodeMajor +
-      ".x — reporting, not certifying\n");
   }
   const measured = measureAllocationSettled(iterations);
   reportAllocation("WHAT ALLOCATES, bytes per iteration (an empty body at the same sample interval, subtracted)", measured);
@@ -1017,9 +1010,9 @@ async function checkSoak(passes) {
     return;
   }
   const major = process.versions.node.split(".")[0];
-  if (major !== PinnedNodeMajor && process.env.SCHEMA_JS_ALLOC_ANY_NODE !== "1") {
+  if (major !== PinnedNodeMajor) {
     console.log("FAILED: the soak holds the allocation floor of node " + PinnedNodeMajor +
-      " and is running on node " + process.versions.node + " (set SCHEMA_JS_ALLOC_ANY_NODE=1 to observe without certifying)");
+      " and is running on node " + process.versions.node);
     failed = true;
     return;
   }

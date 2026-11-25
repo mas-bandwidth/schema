@@ -15,8 +15,7 @@ import (
 )
 
 // These are FUNCTIONAL tests: they start real processes and wait on real
-// time, so they run under SCHEMA_SLOW=1 (ci-full.yml's go-test steps) and skip
-// in a default `go test`.
+// time, so their tier is functional.
 
 func buildPgroup(t *testing.T) string {
 	t.Helper()

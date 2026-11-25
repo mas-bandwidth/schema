@@ -155,5 +155,5 @@ func TestRandomTableGenFixedPointPlantClamp(t *testing.T) {
 		}
 		return
 	}
-	t.Skip("no fixed/ufixed root field over seeds 0..399")
+	t.Fatal("no fixed/ufixed root field over seeds 0..399: the plant checked nothing")
 }

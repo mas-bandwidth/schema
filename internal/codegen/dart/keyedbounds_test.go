@@ -101,8 +101,7 @@ func keyedUnit(t *testing.T) *ir.Unit {
 
 // dartBinaryDart is the Dart SDK the run half uses, following the leg's own
 // convention (fixedversioning_test.go): DART wins, then dist/dart-sdk, and a
-// missing SDK skips by name unless SCHEMA_REQUIRE_CORPUS makes the skip a
-// failure.
+// missing SDK fails the test by name.
 func dartBinaryDart(t *testing.T) string {
 	t.Helper()
 	if env := os.Getenv("DART"); env != "" {
@@ -113,10 +112,7 @@ func dartBinaryDart(t *testing.T) string {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(dart); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and the Dart SDK is not at %s: %v", dart, err)
-		}
-		t.Skip("the Dart SDK is not unpacked in dist/: see make/dart.mk")
+		t.Fatalf("the Dart SDK is not at %s (%v): set DART or unpack it, see make/dart.mk", dart, err)
 	}
 	return dart
 }

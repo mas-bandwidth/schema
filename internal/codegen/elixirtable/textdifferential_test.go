@@ -19,10 +19,8 @@ package elixirtable
 // the fixed class is not on the Elixir table wire yet, and the variable class
 // carries an unbounded list besides the bounded one.
 //
-// This test runs elixir, so it is a functional test: make
-// tables-elixir-json-differential runs it under SCHEMA_REQUIRE_CORPUS=1, where
-// a missing toolchain fails by name; without that variable and without Elixir
-// it skips by name (elixirBinary).
+// This test runs elixir, so it is a functional test: a
+// missing toolchain fails by name (elixirBinary).
 
 import (
 	"bytes"

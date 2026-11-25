@@ -28,10 +28,7 @@ func TestCppRetainKeepsDepth128(t *testing.T) {
 		cxx = "c++"
 	}
 	if _, err := exec.LookPath(cxx); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and %s is not on PATH: %v", cxx, err)
-		}
-		t.Skipf("%s is not on PATH: %v", cxx, err)
+		t.Fatalf("%s is not on PATH: %v", cxx, err)
 	}
 
 	root, err := filepath.Abs(filepath.Join("..", "..", ".."))

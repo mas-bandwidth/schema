@@ -208,8 +208,7 @@ func TestIssue715(t *testing.T) {
 	t.Run("cs", func(t *testing.T) {
 		dotnet := findDotnet()
 		if dotnet == "" {
-			// Without dotnet on PATH, this behavioral test covers C++, C, and Go (3 languages); CI runs all 4.
-			t.Skip("dotnet unavailable")
+			t.Fatal("no dotnet on PATH or in ~/.dotnet")
 		}
 		files, err := c.Generate(u, "cs", Options{})
 		if err != nil {
@@ -319,7 +318,7 @@ func findDotnet() string {
 func issue715CompileRun(t *testing.T, dir, compiler, ext, source string) {
 	t.Helper()
 	if _, err := exec.LookPath(compiler); err != nil {
-		t.Skipf("%s unavailable: %v", compiler, err)
+		t.Fatalf("no %s on PATH: %v", compiler, err)
 	}
 	path := filepath.Join(dir, "test"+ext)
 	bin := filepath.Join(dir, "test")

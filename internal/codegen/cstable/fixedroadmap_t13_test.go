@@ -120,10 +120,7 @@ const t13Body = `
             }
 `
 
-// t13Discover locates dotnet and the Roslyn toolchain, skipping the test when
-// the toolchain is absent (or failing by name under SCHEMA_REQUIRE_CORPUS, the
-// same discipline the corpus-dependent harnesses use: a promised toolchain that
-// is not here is a failure, never a silent pass).
+// t13Discover locates dotnet and the Roslyn toolchain, failing the test by name when the toolchain is absent: a toolchain that is not here is a failure, never a silent pass.
 var (
 	t13dotnet, t13csc, t13refDir, t13refVersion string
 )
@@ -131,17 +128,13 @@ var (
 func t13Discover(t *testing.T) {
 
 	t.Helper()
-	require := os.Getenv("SCHEMA_REQUIRE_CORPUS") != ""
 	t13dotnet = os.Getenv("DOTNET")
 	if t13dotnet == "" {
 		t13dotnet = "dotnet"
 	}
 	resolved, err := exec.LookPath(t13dotnet)
 	if err != nil {
-		if require {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and no dotnet on PATH: %v", err)
-		}
-		t.Skipf("no dotnet on PATH (set DOTNET): %v", err)
+		t.Fatalf("no dotnet on PATH (set DOTNET): %v", err)
 	}
 	real, err := filepath.EvalSymlinks(resolved)
 	if err != nil {
@@ -150,18 +143,12 @@ func t13Discover(t *testing.T) {
 	root := filepath.Dir(real)
 	cscs, _ := filepath.Glob(filepath.Join(root, "sdk", "*", "Roslyn", "bincore", "csc.dll"))
 	if len(cscs) == 0 {
-		if require {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and no Roslyn csc.dll under %s", root)
-		}
-		t.Skipf("no Roslyn csc.dll under %s", root)
+		t.Fatalf("no Roslyn csc.dll under %s", root)
 	}
 	t13csc = cscs[0]
 	refs, _ := filepath.Glob(filepath.Join(root, "packs", "Microsoft.NETCore.App.Ref", "*", "ref", "net10.0"))
 	if len(refs) == 0 {
-		if require {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and no .NET ref pack under %s", root)
-		}
-		t.Skipf("no .NET ref pack under %s", root)
+		t.Fatalf("no .NET ref pack under %s", root)
 	}
 	t13refDir = refs[0]
 	t13refVersion = filepath.Base(filepath.Dir(filepath.Dir(refs[0])))

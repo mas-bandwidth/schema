@@ -130,7 +130,7 @@ func issue759SyntaxCheckWire(t *testing.T, files map[string][]byte) {
 	t.Helper()
 	cc, err := exec.LookPath("cc")
 	if err != nil {
-		t.Skip("generated C syntax check requires cc")
+		t.Fatal("generated C syntax check requires cc")
 	}
 	root, err := filepath.Abs("..")
 	if err != nil {
@@ -138,7 +138,7 @@ func issue759SyntaxCheckWire(t *testing.T, files map[string][]byte) {
 	}
 	serializeC := filepath.Join(filepath.Dir(root), "serialize.c")
 	if _, err := os.Stat(filepath.Join(serializeC, "serialize.h")); err != nil {
-		t.Skip("serialize.c runtime header not at the sibling path")
+		t.Fatal("serialize.c runtime header not at the sibling path")
 	}
 	dir := t.TempDir()
 	for name, data := range files {

@@ -29,7 +29,6 @@ func TestFixedFormLayoutRules(t *testing.T) {
 	// unknown hash is layout_unknown. The seven rules stay as the LOCK'S
 	// validation of what it records and the oracle's of the corpus, and that is
 	// where this coverage is owed next.
-	t.Skip("retired by docs/FIXED-FORM-ALGORITHM.md §5.6; the seven rules are the lock's validation now")
 	fx1, err := os.ReadFile("../../../test/tables/FX1.schema")
 	if err != nil {
 		t.Fatal(err)

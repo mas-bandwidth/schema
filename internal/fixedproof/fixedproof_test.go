@@ -402,7 +402,7 @@ func TestProbeAddressSpaceCeilingFunctional(t *testing.T) {
 	t.Parallel()
 	apply := addressSpaceCeilingApply()
 	if apply == "" {
-		t.Skip("platform has no kernel address-space ceiling")
+		t.Fatal("this platform has no kernel address-space ceiling to probe")
 	}
 	dir := t.TempDir()
 	cpp := filepath.Join(dir, "ceil.cpp")

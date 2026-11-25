@@ -1,3 +1,0 @@
-suite	s
-skip	s.TestA	r
-baseline	bl

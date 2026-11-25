@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 )
 
@@ -33,18 +32,6 @@ func readPage(t *testing.T, page string) string {
 		t.Fatalf("read %s: %v", page, err)
 	}
 	return string(b)
-}
-
-// skipTaggedBuild skips a check about which generators are tagged in a build
-// that registers a tagged one: under the tag that language is a built one.
-func skipTaggedBuild(t *testing.T) {
-	t.Helper()
-	targets := compiler.New().Targets()
-	for _, tag := range sourceTagged(t) {
-		if slices.Contains(targets, tag) {
-			t.Skipf("this build registers %s (tag %s%s); the pages state the default build", tag, TagPrefix, tag)
-		}
-	}
 }
 
 // sourceTagged returns every target whose compiler/target_<t>.go is behind a
@@ -142,7 +129,6 @@ func TestSpecRuntimeTableNamesEveryLanguage(t *testing.T) {
 // target file sits behind its schema_leg_ tag. A row with no generator at all
 // would otherwise be printed as a language that exists behind a tag.
 func TestTaggedLanguagesAreTheTaggedSources(t *testing.T) {
-	skipTaggedBuild(t)
 	var got []string
 	for _, l := range All() {
 		if l.Tag != "" {

@@ -23,7 +23,7 @@ import (
 // behaviour planted back (the element kind ignored, no kind check at an arm,
 // the refusal spelled as damage) must turn the probe red on a check.
 //
-// It runs elixir, so it is a functional test behind slowtest.Gate.
+// It runs elixir, so it is a functional test.
 func TestElixirMessageElementKindRefusesTheBatch(t *testing.T) {
 	t.Parallel()
 	elixirBin := elixirBinary(t)

@@ -616,7 +616,7 @@ func luaFuzzWiresFile(mutants []luaFuzzMutant) []byte {
 	return b
 }
 
-// luaFuzzCost is what the slow half pays for these tests (internal/slowtest):
+// luaFuzzCost is what these tests cost:
 // the pinned Lua interpreter over every mutant, tens of CPU-seconds, most of it
 // tabledemo wide_blob's 210 KB instance read 200 times.
 const luaFuzzCost = "the pinned Lua interpreter (dist/lua-5.4.8, make dist-lua) over every mutant of the corpus"

@@ -172,7 +172,7 @@ func sharedRun(t *testing.T, u *ir.Unit, testSource string, rt Runtime, edit fun
 			t.Fatal(err)
 		}
 	}
-	// not behind slowtest.Gate: the card's gate names this test and requires it
+	// the card's gate names this test and requires it
 	// to RUN, and it compiles two small units, as runGenerated does.
 	cmd := testproc.Command(t, "go", "test", "-count=1", "-v", ".")
 	cmd.Dir = dir

@@ -83,7 +83,12 @@ mark() { printf '%s %s %s\n' "$$" "$nonce" "$1" > "$state"; }
 if [ "${TREELOCK_HELD:-}" != "1" ]; then
 	treelock=build/treelock
 	if [ ! -x "$treelock" ]; then
-		top=$(git rev-parse --show-toplevel 2>/dev/null || true)
+		# outside a git work tree there is no top level; inside one, a failing
+		# rev-parse is a failure
+		top=
+		if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+			top=$(git rev-parse --show-toplevel)
+		fi
 		if [ -n "$top" ] && [ -x "$top/build/treelock" ]; then
 			treelock="$top/build/treelock"
 		elif [ -n "$top" ] && [ -d "$top/tools/treelock" ]; then
@@ -104,12 +109,20 @@ fi
 # exclusive ownership is held.
 old_lpid=; old_lnonce=
 if [ -f "$lock/owner" ]; then
-	read -r old_lpid old_lnonce < "$lock/owner" 2>/dev/null || true
+	# cat fails loudly on an unreadable file; the here-document always ends in a
+	# newline, so read answers 0 for an empty or newline-less owner line too
+	owner_line=$(cat "$lock/owner")
+	read -r old_lpid old_lnonce <<EOF_OWNER
+$owner_line
+EOF_OWNER
 fi
 
 spid=; snonce=; sphase=
 if [ -f "$state" ]; then
-	read -r spid snonce sphase < "$state" 2>/dev/null || true
+	state_line=$(cat "$state")
+	read -r spid snonce sphase <<EOF_STATE
+$state_line
+EOF_STATE
 fi
 
 # If a previous lock owner and state marker both exist, ensure they name the same run:
@@ -239,8 +252,13 @@ restore() {
 	fi
 }
 cleanup() {
-	restore || true
+	restore_status=0
+	restore || restore_status=$?
 	rm -f "$state" "$lock/owner"
+	if [ "$restore_status" -ne 0 ]; then
+		printf 'FAILED — restoring generated/ failed (status %s); see the REFUSED line above.\n' "$restore_status" >&2
+		exit "$restore_status"
+	fi
 }
 trap cleanup EXIT HUP INT TERM
 

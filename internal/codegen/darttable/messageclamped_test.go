@@ -32,10 +32,7 @@ func TestMessageClampedCountDart(t *testing.T) {
 		t.Fatal("no login_full message row in the manifest")
 	}
 	u := batchUnit(t, row.path)
-	st := findTable(t, u, row.root)
-	if !st.IsTable || !st.FixedDeclared {
-		t.Skipf("§3.3 is a fixed table's; %s is a variable table", row.root)
-	}
+	findTable(t, u, row.root)
 	// The Go oracle answers the same bytes: decode the mutant with
 	// tablewire.DecodeMessages and read its clamped count, so the Dart report
 	// is compared to the reference, never to a literal.

@@ -29,9 +29,8 @@ package elixirtable
 // form, and the writer's, in turn, and each sabotage must red exactly its own
 // rows and no other.
 //
-// It runs elixir, so it is a functional test: make tables-elixir-finite-float
-// runs it under SCHEMA_REQUIRE_CORPUS=1, where a missing toolchain fails by
-// name; without that variable and without Elixir it skips by name.
+// It runs elixir, so it is a functional test: a missing
+// toolchain fails by name.
 
 import (
 	"maps"

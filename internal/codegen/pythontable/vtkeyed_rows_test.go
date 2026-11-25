@@ -402,7 +402,7 @@ func pyKeyedRowsFailures(t *testing.T, jobs []pyKeyedRowsJob, mutate func(*testi
 	return fails, held
 }
 
-// Functional (both pinned interpreters): run with SCHEMA_SLOW=1.
+// Functional (both pinned interpreters).
 func TestPythonVtKeyedRows(t *testing.T) {
 	t.Parallel()
 
@@ -459,7 +459,7 @@ func TestPythonVtKeyedRows(t *testing.T) {
 // present slots on its form: a row whose keyed arrays hold one present slot,
 // or mirror-equal slots, reads the same either way.
 //
-// Functional (both pinned interpreters): run with SCHEMA_SLOW=1.
+// Functional (both pinned interpreters).
 func TestPythonVtKeyedRowsNegativeControl(t *testing.T) {
 	t.Parallel()
 	const fixedRead = `        values = [_decode(elem, data, at + index * elem["size"]) for index in range(n)]`

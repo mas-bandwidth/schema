@@ -60,13 +60,13 @@ defmodule Leg do
     :persistent_term.put({__MODULE__, :fails}, [name | :persistent_term.get({__MODULE__, :fails})])
   end
 
-  # RETIRED BY §5.6, AND THE SKIP IS A PRINTED LINE (§5.9 #23). This suite is a
-  # SCRIPT that counts failures and has no skip verb, so a retired case is named
-  # HERE, AT ITS CALL SITE, with §5.6 and where the coverage is owed — and the
+  # RETIRED BY §5.6, AND THE RETIREMENT IS A FAILURE (§5.9 #23): a case not run
+  # is never a pass, and a case is left out only at the root. A retired case is
+  # named HERE, AT ITS CALL SITE, as a FAIL, with §5.6 and where the coverage is owed — and the
   # function itself stays in the tree and stays compiling. A deleted test is a
   # coverage claim nobody can audit.
   def retired(name, owed) do
-    IO.puts("  SKIP #{name} — RETIRED by docs/FIXED-FORM-ALGORITHM.md §5.6; #{owed}")
+    fail(name, "RETIRED by docs/FIXED-FORM-ALGORITHM.md §5.6 and not run; #{owed}")
 
     :persistent_term.put(
       {__MODULE__, :retired},

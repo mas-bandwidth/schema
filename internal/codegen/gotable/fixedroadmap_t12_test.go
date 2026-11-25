@@ -14,9 +14,8 @@ package gotable
 // The bytes are the C++ reference's own corpus: `make tables-fixedform-corpus`
 // writes build/fixedform-corpus (fx1.bin and manifest.txt among it), and every
 // subtest below gets them through fixedCorpus (fixedversioning_test.go) — the
-// same gate the versioning rows use, so a missing corpus is a SKIP on a bare
-// `go test ./...` and a FAILURE under SCHEMA_REQUIRE_CORPUS=1 (the make leg
-// gate). The manifest is read PER FILE and in DECIMAL, never from the bytes
+// same gate the versioning rows use, so a missing corpus is a FAILURE by
+// name. The manifest is read PER FILE and in DECIMAL, never from the bytes
 // under test (§5.9 #32). Each subtest compiles and runs the leg's own emitted
 // unit against the reference bytes through t09Run, so the assertion is a byte
 // fact, not a spelling one.

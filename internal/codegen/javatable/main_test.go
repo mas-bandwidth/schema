@@ -51,8 +51,8 @@ func TestMain(m *testing.M) {
 
 // capJavaTools finds the JDK the tests would find (JAVAC and JAVA, else PATH)
 // and points JAVAC, JAVA and PATH at wrappers that pass the processor cap on
-// the command line. With no JDK it changes nothing, and the tests skip or
-// fail exactly as they would have.
+// the command line. With no JDK it changes nothing, and the tests fail
+// exactly as they would have.
 func capJavaTools() (string, error) {
 	javac, java := os.Getenv("JAVAC"), os.Getenv("JAVA")
 	if javac == "" || java == "" {

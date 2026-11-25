@@ -103,12 +103,12 @@ func serializeJS(t *testing.T) string {
 			return index
 		}
 	}
-	slowtest.Require(t, "SCHEMA_REQUIRE_NODE", "no serialize.js runtime: set SERIALIZE_JS or stage the sibling checkout")
+	slowtest.Missing(t, "no serialize.js runtime: set SERIALIZE_JS or stage the sibling checkout")
 	return ""
 }
 
 // nodeBinary is the leg's toolchain: $NODE, then node on PATH. A missing node
-// is a skip with the reason, never a pass.
+// fails the test naming it.
 func nodeBinary(t *testing.T) string {
 	t.Helper()
 	if n := os.Getenv("NODE"); n != "" {
@@ -121,8 +121,8 @@ func nodeBinary(t *testing.T) string {
 
 // runWriteRefusalPacketJS generates RefusalPacket.schema for JavaScript,
 // writes the probe beside the two generated modules and runs it over rows.txt
-// in each tier under each build mode. Behind slowtest.Gate: it shells out to
-// node.
+// in each tier under each build mode. Its tier is functional: it shells
+// out to node.
 func runWriteRefusalPacketJS(t *testing.T) {
 	t.Helper()
 	node := nodeBinary(t)

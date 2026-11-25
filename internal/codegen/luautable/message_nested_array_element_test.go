@@ -152,7 +152,7 @@ func appendBits(dst []byte, bitLen int, value uint64, width int) ([]byte, int) {
 }
 
 // TestLuauMessageNestedArrayElement is a functional test: the pinned Luau
-// interpreter, behind SCHEMA_SLOW=1. LoadMessages on an array of arrays
+// interpreter. LoadMessages on an array of arrays
 // agrees with the generated Go reader for outer counts 0, 1 and 3.
 func TestLuauMessageNestedArrayElement(t *testing.T) {
 	t.Parallel()

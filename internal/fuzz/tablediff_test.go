@@ -278,8 +278,6 @@ func runGeneratedTableUnit(t *testing.T, u *ir.Unit, testSource string, env map[
 			return nil, err
 		}
 	}
-	if !tableDiffOptedIn(os.Getenv) {
-	}
 	args := append([]string{"test", "-count=1"}, flags...)
 	cmd := exec.Command("go", append(args, ".")...)
 	cmd.Dir = dir
@@ -762,31 +760,10 @@ func shorten(s string) string {
 	return s
 }
 
-// tableDiffOptIn skips the two tests below unless SCHEMA_TABLE_DIFF=1 (or an
-// explicit seed range SCHEMA_TABLE_DIFF_FROM / SCHEMA_TABLE_DIFF_TO is set).
-// They compile and run a generated unit per seed under -race, so they are a
-// nightly campaign (certify.yml), never part of ci-fast or ci-full: ci-full's
-// SCHEMA_SLOW=1 `go test` over ./internal/fuzz still runs the crasher corpus
-// and the property and oracle tests, and skips only these two here.
-func tableDiffOptIn(t *testing.T) {
-	t.Helper()
-	if !tableDiffOptedIn(os.Getenv) {
-		t.Skip("SCHEMA_TABLE_DIFF: the random-schema table differential is a nightly campaign; run it with make fuzz-tables-diff (it sets SCHEMA_TABLE_DIFF=1)")
-	}
-}
-
-// tableDiffOptedIn reports whether the two tests below run in this process:
-// when SCHEMA_TABLE_DIFF=1 or an explicit seed range is given, never on
-// SCHEMA_SLOW=1 alone.
-func tableDiffOptedIn(getenv func(string) string) bool {
-	return getenv("SCHEMA_TABLE_DIFF") == "1" || getenv("SCHEMA_TABLE_DIFF_FROM") != "" || getenv("SCHEMA_TABLE_DIFF_TO") != ""
-}
-
 // TestRandomTableDifferential is the gate: seeds SCHEMA_TABLE_DIFF_FROM..TO
 // (default 0..4), each generated, compiled and run under -race.
 func TestRandomTableDifferential(t *testing.T) {
 	t.Parallel()
-	tableDiffOptIn(t)
 	from, to := slowtest.EnvSeedRange(t, 0, 4)
 	for _, c := range expectedClasses {
 		t.Logf("expected class owned by %s: %s", c.id, c.why)
@@ -812,7 +789,6 @@ func TestRandomTableDifferential(t *testing.T) {
 // error.
 func TestRandomTableDifferentialNegativeControl(t *testing.T) {
 	t.Parallel()
-	tableDiffOptIn(t)
 	unexpected, _ := runSeed(t, rand.New(rand.NewSource(0)), 0, true)
 	if len(unexpected) == 0 {
 		t.Fatalf("NEGATIVE CONTROL FAILED: a flipped probe comparison left the gate green")
@@ -842,9 +818,6 @@ func integritySeeds(n int) []int {
 // integrity-read-clean.
 func TestRandomTableIntegrityUnits(t *testing.T) {
 	t.Parallel()
-	if os.Getenv("CI") != "" && !tableDiffOptedIn(os.Getenv) {
-		t.Skip("the random-schema table differential is nightly only; CI is set and SCHEMA_TABLE_DIFF is not")
-	}
 	seeds := integritySeeds(3)
 	if len(seeds) < 3 {
 		t.Fatalf("found %d integrity seeds in 0..399, want at least 3", len(seeds))

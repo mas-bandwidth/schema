@@ -135,8 +135,8 @@ func TestCardsCheckComparesEverySurface(t *testing.T) {
 
 // TestCardsCheckRefusesARequiredAbsence pins the required-absence rule at both
 // grains: a whole surface answered exit 2, and a single case answered
-// <case>.absent — each fails a required surface, while a non-required absence
-// is printed and green.
+// <case>.absent — each fails the surface, whether or not --require
+// names it: an absence is never a pass.
 func TestCardsCheckRefusesARequiredAbsence(t *testing.T) {
 	t.Parallel()
 
@@ -182,7 +182,7 @@ func TestCardsCheckRefusesARequiredAbsence(t *testing.T) {
 		}
 	})
 
-	t.Run("non-required absence is green", func(t *testing.T) {
+	t.Run("an absence on a surface --require does not name is red", func(t *testing.T) {
 		corpus := t.TempDir()
 		writeCardsCorpus(t, corpus)
 		driver := func(manifest, surface, outdir string) int {
@@ -196,11 +196,11 @@ func TestCardsCheckRefusesARequiredAbsence(t *testing.T) {
 		if err != nil {
 			t.Fatalf("runCards: %v", err)
 		}
-		if !ok {
-			t.Fatalf("a non-required surface's absence went red:\n%s", buf.String())
+		if ok {
+			t.Fatalf("an absence on a surface --require does not name stayed green:\n%s", buf.String())
 		}
-		if !strings.Contains(buf.String(), "cards render absent") || !strings.Contains(buf.String(), "cards load pass 1/1") {
-			t.Fatalf("the non-required absence was not printed beside a green pass:\n%s", buf.String())
+		if !strings.Contains(buf.String(), "cards render FAIL: the driver answered the surface absent") || !strings.Contains(buf.String(), "cards load pass 1/1") {
+			t.Fatalf("the absence was not named beside the passing surface:\n%s", buf.String())
 		}
 	})
 }

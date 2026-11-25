@@ -158,10 +158,7 @@ func ensureUnityToolchain(t *testing.T) unityToolchainState {
 		unityTC, unityTCErr = initUnityToolchain(t)
 	})
 	if unityTCErr != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and Unity toolchain unavailable: %v", unityTCErr)
-		}
-		t.Skipf("Unity toolchain unavailable: %v", unityTCErr)
+		t.Fatalf("Unity toolchain unavailable: %v", unityTCErr)
 	}
 	return unityTC
 }

@@ -44,7 +44,7 @@ fixed table Bits
 }
 `
 
-// Functional (luaBinary): run with SCHEMA_SLOW=1.
+// Functional (luaBinary): needs the pinned Lua.
 func TestLuaFixedOlderLayoutLandsBitsField(t *testing.T) {
 	t.Parallel()
 	src := t.TempDir()

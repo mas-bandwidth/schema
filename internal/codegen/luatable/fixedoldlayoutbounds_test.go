@@ -56,7 +56,7 @@ fixed table Bounds
 }
 `
 
-// Functional (luaBinary): run with SCHEMA_SLOW=1.
+// Functional (luaBinary): needs the pinned Lua.
 func TestLuaFixedOlderLayoutHoldsBounds(t *testing.T) {
 	t.Parallel()
 	src := t.TempDir()

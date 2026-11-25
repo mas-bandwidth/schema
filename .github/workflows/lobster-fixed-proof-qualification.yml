@@ -44,9 +44,6 @@ jobs:
       - name: Build the C++ fixed-form corpus
         run: make -j4 tables-fixedform-corpus
       - name: Compare the four fixed-proof gates with the live C++ oracle
-        env:
-          SCHEMA_SLOW: '1'
-          SCHEMA_REQUIRE_CORPUS: '1'
         run: |
           export LOBSTER="$PWD/dist/lobster-v2026.8/bin/lobster"
           go test ./internal/codegen/lobstertable -run '^(TestLobsterFixedProofSuiteValues|TestLobsterFixedProofSuiteNegativeControl|TestLobsterFixedProofEvolution|TestLobsterFixedNestedUnionGuardNames)$' -count=1 -timeout 0 -v

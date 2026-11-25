@@ -14,8 +14,7 @@
 //      before the marker, writes `gcgate: steady phase begins` to stderr, runs
 //      `n` passes of `<phase>`, and writes `gcgate: steady phase ends`.
 //   2. Suite driver (`gcgate drive <dart-bin> <aot-bin> [n]`): enforces the
-//      pinned SDK rule (PORTING.md I14: Dart 3.13.2, with
-//      SCHEMA_DART_ALLOC_ANY_SDK=1 as the observation-only escape hatch),
+//      pinned SDK rule (PORTING.md I14: Dart 3.13.2, refused on any other),
 //      runs every row under the AOT executable (`DART_VM_OPTIONS`) and under
 //      the JIT (`$(DART)` with `DART_GC_FLAGS`), settles once if a cold runner
 //      scavenges during the first AOT pass, prints the AOT and JIT counts
@@ -542,7 +541,6 @@ void _drive(List<String> args) {
   final runningSdk =
       Platform.environment['SCHEMA_DART_ALLOC_SDK_VERSION'] ??
       Platform.version.split(' ').first;
-  final anySdk = Platform.environment['SCHEMA_DART_ALLOC_ANY_SDK'] == '1';
   final plantRow = Platform.environment['SCHEMA_DART_ALLOC_PLANT'] ?? '';
 
   stdout.writeln(
@@ -598,21 +596,12 @@ void _drive(List<String> args) {
     );
     exit(1);
   }
-  if (runningSdk != pinnedDartSdk && !anySdk) {
+  if (runningSdk != pinnedDartSdk) {
     stdout.writeln(
-      'FAILED: allocation certification requires Dart SDK $pinnedDartSdk (pinned in make/dart.mk), running $runningSdk; set SCHEMA_DART_ALLOC_ANY_SDK=1 to report observations without certifying',
+      'FAILED: allocation certification requires Dart SDK $pinnedDartSdk (pinned in make/dart.mk), running $runningSdk',
     );
     stdout.writeln('NOT CERTIFIED');
     exit(1);
-  }
-  if (anySdk) {
-    stdout.writeln(
-      'Dart allocation observation mode (SCHEMA_DART_ALLOC_ANY_SDK=1 on SDK $runningSdk, pinned $pinnedDartSdk): reporting observations only, NOT CERTIFIED',
-    );
-    if (failed) {
-      exit(1);
-    }
-    return;
   }
   if (failed) {
     stdout.writeln('FAILED: one or more gated rows scavenged under AOT');

@@ -156,7 +156,7 @@ func blobUnknownFailures(t *testing.T, mutate func(*testing.T, map[string][]byte
 	return fails
 }
 
-// Functional (python pins): run with SCHEMA_SLOW=1.
+// Functional (python pins).
 func TestPythonVtBlobsUnknownCount(t *testing.T) {
 	t.Parallel()
 	for _, f := range blobUnknownFailures(t, nil) {
@@ -174,7 +174,7 @@ func TestPythonVtBlobsUnknownCount(t *testing.T) {
 //     reader does not declare refuses instead of reading None;
 //     bytes_slot_names_undeclared_table must go red.
 //
-// Functional (python pins): run with SCHEMA_SLOW=1.
+// Functional (python pins).
 func TestPythonVtBlobsUnknownCountNegativeControl(t *testing.T) {
 	t.Parallel()
 	const file = "probe/_schema/load.py"

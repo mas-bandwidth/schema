@@ -64,7 +64,7 @@ while IFS= read -r package; do
   if [ "$package" = "github.com/mas-bandwidth/schema/v2/internal/codegen/pythontable" ]; then
     names=$(printf '%s\n' "$names" | sed '/^TestPythonWireFuzzVerdictPipe$/d')
   fi
-  skip=
+  split_test=
   if [ "$package" = "github.com/mas-bandwidth/schema/v2/internal/codegen/python" ]; then
     printf '%s\n' "$names" | grep -x TestPythonPacketCore >/dev/null || { echo "missing TestPythonPacketCore" >&2; exit 1; }
     for part in 0 1 2 3 4 5 6 7; do
@@ -86,7 +86,7 @@ while IFS= read -r package; do
       [ "$(printf '%s\n' "$support" | grep -cx "python-ci-reflection-strict-$part")" -eq 1 ] || { echo "missing or duplicate reflection strict shard $part" >&2; exit 1; }
     done
     names=$(printf '%s\n' "$names" | sed '/^TestPythonScalarWidenHistorical$/d; /^TestPythonContainerWidenHistorical$/d; /^TestPythonMapShapeBench$/d; /^TestPythonReflectionStrictTypes$/d')
-    skip=TestPythonVtFixedClassBuildVersionImports
+    split_test=TestPythonVtFixedClassBuildVersionImports
     units=$(awk '$1 == "unit" { print $2 }' testdata/conformance/tables/MANIFEST.txt)
     [ -n "$units" ] || { echo "missing table corpus units" >&2; exit 1; }
     if printf '%s\n' "$units" | grep -v '^[A-Za-z0-9_]*$' >/dev/null; then echo "invalid table corpus unit name" >&2; exit 1; fi
@@ -106,7 +106,7 @@ while IFS= read -r package; do
     case "$package" in */internal/codegen/python) shards=16 ;; */internal/codegen/pythontable) shards=32 ;; esac
     shard=0
     while [ "$shard" -lt "$shards" ]; do
-      selected=$(printf '%s\n' "$names" | awk -v shard="$shard" -v shards="$shards" -v skip="$skip" '(NR-1)%shards == shard && $0 != skip' | paste -sd '|' -)
+      selected=$(printf '%s\n' "$names" | awk -v shard="$shard" -v shards="$shards" -v split_test="$split_test" '(NR-1)%shards == shard && $0 != split_test' | paste -sd '|' -)
       if [ -n "$selected" ]; then
         jq -cn --arg name "$package shard $((shard+1))/$shards" --arg package "$package" --arg test "^($selected)$" --argjson corpus "$corpus" '{name:$name,target:"",package:$package,test:$test,corpus:$corpus}' >> "$rows"
       fi

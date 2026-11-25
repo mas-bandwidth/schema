@@ -20,7 +20,7 @@ import (
 // WHOLE batch OUT OF RANGE by name — it never lands the clamped value. These
 // tests hold that rule in the REAL ARTIFACT — the exact Rust source the schema
 // compiler emits for VNEW_range_widen with VOLD_range_widen in its lineage —
-// and, when rustc is available under SCHEMA_SLOW=1 (functional test), compile
+// and, as a functional test, compile
 // and execute the generated Rust reader across R29 (writer's range on numeric
 // evolution), C7 (scalar bounds), and P3 (hostile-input mutation sweep).
 
@@ -259,8 +259,7 @@ fn main() {
 }
 
 // TestRustFixedRemainingRowsStrict holds the strict read's one rule in the
-// real artifact and (when rustc is available under SCHEMA_SLOW=1, as a
-// functional test) at runtime: the emitted fixed read for the writer's-range
+// real artifact and (as a functional test) at runtime: the emitted fixed read for the writer's-range
 // row refuses a value past its bound whole, out_of_range, never landing the
 // clamp, and hostile byte mutations answer only the three strict verdicts.
 // This is the evidence for the Rust leg's numeric-evolution (R29),
@@ -272,7 +271,7 @@ func TestRustFixedRemainingRowsStrict(t *testing.T) {
 	}
 	t.Run("FunctionalRustc", func(t *testing.T) {
 		if _, err := exec.LookPath("rustc"); err != nil {
-			t.Skipf("rustc not on PATH: %v", err)
+			t.Fatalf("rustc not on PATH: %v", err)
 		}
 		out, err := runRangeWidenStrictProbe(t, oldFiles, newFiles)
 		if err != nil || !strings.Contains(out, "RUST_FIXED_REMAINING_STRICT ok") {
@@ -283,8 +282,7 @@ func TestRustFixedRemainingRowsStrict(t *testing.T) {
 
 // TestRustFixedRemainingRowsStrictNegativeControl plants the pre-strict
 // tolerant fault — drop the OutOfRange batch refusal so clamped values land —
-// in the SAME real artifact, and requires both the artifact check and (when
-// rustc is available under SCHEMA_SLOW=1) the functional probe to go red on it.
+// in the SAME real artifact, and requires both the artifact check and the functional probe to go red on it.
 func TestRustFixedRemainingRowsStrictNegativeControl(t *testing.T) {
 	oldFiles, newFiles, fixedName := rangeWidenLineageFiles(t)
 	src := string(newFiles[fixedName])
@@ -301,7 +299,7 @@ func TestRustFixedRemainingRowsStrictNegativeControl(t *testing.T) {
 	}
 	t.Run("FunctionalRustc", func(t *testing.T) {
 		if _, err := exec.LookPath("rustc"); err != nil {
-			t.Skipf("rustc not on PATH: %v", err)
+			t.Fatalf("rustc not on PATH: %v", err)
 		}
 		sabotagedFiles := make(map[string][]byte, len(newFiles))
 		maps.Copy(sabotagedFiles, newFiles)

@@ -25,8 +25,7 @@ import (
 // retained and its retained save is byte-exact.
 //
 // A FUNCTIONAL TEST: it compiles and runs Rust with rustc, in release (-O) and
-// with overflow checks enabled. It skips by name when rustc is absent and
-// SCHEMA_REQUIRE_CORPUS is unset, and fails by name when it is set.
+// with overflow checks enabled. It fails by name when rustc is absent.
 const retainWalkProbe = `
 mod variable_runtime;
 mod table_enums;
@@ -66,10 +65,7 @@ fn main() {
 func TestRustRetainWalkLengthBounds(t *testing.T) {
 	t.Parallel()
 	if _, err := exec.LookPath("rustc"); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and rustc is not on PATH, so the retaining walk's bounds cannot be built or run: %v", err)
-		}
-		t.Skipf("rustc is not on PATH and SCHEMA_REQUIRE_CORPUS is unset: this is a functional test that compiles and runs Rust: %v", err)
+		t.Fatalf("rustc is not on PATH, so the retaining walk's bounds cannot be built or run: %v", err)
 	}
 
 	schema := testdataCards(t, "older.schema")

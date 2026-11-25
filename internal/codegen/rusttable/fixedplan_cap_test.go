@@ -14,8 +14,7 @@ package rusttable
 // so the load must land it; a plan capacity guessed from the record's byte size
 // refuses it `plan_too_large` instead.
 //
-// A FUNCTIONAL TEST: it compiles and runs the generated Rust with rustc, so it
-// is gated by slowtest and runs under SCHEMA_SLOW=1.
+// A FUNCTIONAL TEST: it compiles and runs the generated Rust with rustc, so it fails by name without rustc.
 
 import (
 	"encoding/binary"

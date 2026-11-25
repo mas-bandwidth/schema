@@ -55,6 +55,7 @@ public final class Main {
     // fires (checked twin only — the release writer trusts by design).
     static void expectAssert(Runnable fn, String what) {
         if (!assertsEnabled) {
+            check(false, what + ": asserts are off in this build: this row needs the assert build");
             return;
         }
         try {

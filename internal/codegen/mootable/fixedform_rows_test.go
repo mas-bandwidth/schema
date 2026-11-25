@@ -6,7 +6,7 @@ package mootable_test
 // the lineage merge, the compile census over many records, the forged
 // ordinal on both plans, the compressed float's reader-side bounds pass, and
 // hostile bool and present bytes. The bytes are the C++ reference's corpus
-// (SCHEMA_REQUIRE_CORPUS=1 makes its absence a failure) or a moo-saved record
+// (its absence is a failure) or a moo-saved record
 // forged in place. Every generated unit passes moo-analyze with no output.
 
 import (

@@ -15,7 +15,7 @@ package mootable_test
 //   - MOO-2: a field's json key is emitted as a moo string literal, so every
 //     key schema check admits keeps its bytes.
 //
-// Each runs the generated moo, so each is gated by slowtest.
+// Each runs the generated moo, so each is a functional test.
 
 import (
 	"encoding/hex"

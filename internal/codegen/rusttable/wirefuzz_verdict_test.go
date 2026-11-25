@@ -16,7 +16,7 @@ package rusttable
 // checks — and requires each plant to turn the verdict pipe red.
 //
 // THIS IS A FUNCTIONAL TEST: it compiles and runs the emitted Rust with rustc,
-// so it takes a real toolchain and names it through slowtest.Gate.
+// so it takes a real toolchain and fails by name without it.
 
 import (
 	"fmt"

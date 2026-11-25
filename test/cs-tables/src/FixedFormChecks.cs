@@ -16,16 +16,22 @@ using UT = Tblut;
 
 static partial class Program
 {
-    // THE SKIP COUNT §5.9 #23 asks a suite with no skip verb to print at the
-    // end, beside the printed line at each retired test's call site.
-    static int skipped;
+    // A RETIRED TEST FAILS BY NAME (§5.6): a test not run is never a pass, and
+    // a test is left out only at the root. The count is printed at the end.
+    static int retired;
+
+    static void Retired(string what)
+    {
+        retired++;
+        Check(false, "RETIRED, NOT RUN: " + what);
+    }
 
     static void TestFixedForm()
     {
         TestFixedValidDataRows();
         TestFixedLittleEndianCopies();
         TestFixedFxCase();
-        // SKIPPED BY NAME, NOT DELETED (§5.6, §5.9 #23). Both cases are ENTIRELY
+        // RETIRED BY NAME, NOT DELETED, AND A FAILURE (§5.6, §5.9 #23). Both cases are ENTIRELY
         // a forward/compiled read across two generations with no lineage between
         // them — V2 reading a V1 file, P3 reading a P1 file — which §5 retires: the
         // answer is layout_newer, by name, before a plan exists. THE COVERAGE MOVES
@@ -33,9 +39,8 @@ static partial class Program
         // an arm inserted mid-list, a renamed field, a keyed slot that slid, an
         // optional added) is a row of §5.7 with its own two columns, read against
         // the C++ reference's own bytes rather than against a file this test wrote.
-        Console.WriteLine("SKIPPED: TestFixedVCase — §5.6 retires the compiled read of another generation's layout; the coverage moves to the lineage harness");
-        Console.WriteLine("SKIPPED: TestFixedPCase — §5.6 retires the compiled read of another generation's layout; the coverage moves to the lineage harness");
-        skipped += 2;
+        Retired("TestFixedVCase — §5.6 retires the compiled read of another generation's layout; the coverage moves to the lineage harness");
+        Retired("TestFixedPCase — §5.6 retires the compiled read of another generation's layout; the coverage moves to the lineage harness");
         TestFixedWide128Case();
         TestFixedSignedLowEndCase();
         TestFixedFoldedArraysCase();
@@ -44,7 +49,7 @@ static partial class Program
         TestFixedNegativeControl();
         TestFixedFormHeaderProbes();
         TestFixedHashOracleCase();
-        // SKIPPED BY NAME, NOT DELETED (docs/FIXED-FORM-ALGORITHM.md §5.6, and
+        // RETIRED BY NAME, NOT DELETED, AND A FAILURE (docs/FIXED-FORM-ALGORITHM.md §5.6, and
         // §5.9 #23 for a suite whose verb is a printed line): TestFixedLayoutValidation
         // asserts the RUN-TIME WALK of a stranger's layout, which §5 retires —
         // a layout arriving on the wire is no longer walked at all, so §1.1's
@@ -53,14 +58,13 @@ static partial class Program
         // VALIDATION of what it records, and by the oracle's validation of the
         // corpus. The function stays in the tree and stays compiling: a deleted
         // test is a coverage claim nobody can audit.
-        Console.WriteLine("SKIPPED: TestFixedLayoutValidation — §5.6 retires the run-time walk of a stranger's layout; §1.1's seven rules move to the LOCK's validation of what it records");
-        skipped++;
+        Retired("TestFixedLayoutValidation — §5.6 retires the run-time walk of a stranger's layout; §1.1's seven rules move to the LOCK's validation of what it records");
         TestFixedHostileBoolCase();
         TestFixedGuardComparedAtArgW();
         TestFixedAbsentOptionalCase();
-        if (skipped > 0)
+        if (retired > 0)
         {
-            Console.WriteLine("cs fixed form: " + skipped + " test(s) skipped by name, §5.6");
+            Console.WriteLine("cs fixed form: " + retired + " test(s) retired by name, §5.6, each a failure");
         }
     }
 
@@ -164,18 +168,17 @@ static partial class Program
                   "same schema: a clean read moves no counter");
         }
 
-        // SKIPPED BY NAME, NOT DELETED (§5.6, §5.9 #23). The rest of this case is
+        // RETIRED BY NAME, NOT DELETED, AND A FAILURE (§5.6, §5.9 #23). The rest of this case is
         // the PLAN PATH ACROSS TWO GENERATIONS — FX2 reading an FX1 file and FX1
         // reading an FX2 one — which §5 retires: with no lineage between the two
         // builds each file is layout_newer, correctly, and the compiled read those
         // rows assert cannot be reached from a bare pair of generated units at all.
         // THE COVERAGE MOVES TO THE LINEAGE HARNESS, where the newer unit is handed
         // the older unit's locked entry and the row owes both of §5.7's columns.
-        Console.WriteLine("SKIPPED: TestFixedFxCrossGeneration — §5.6 retires the run-time walk of a stranger's layout; the coverage moves to the lineage harness");
-        skipped++;
+        Retired("TestFixedFxCrossGeneration — §5.6 retires the run-time walk of a stranger's layout; the coverage moves to the lineage harness");
     }
 
-    // RETIRED BY §5.6 AND KEPT: the skip at its call site says why.
+    // RETIRED BY §5.6 AND KEPT: the failure at its call site says why.
     static void TestFixedFxCrossGeneration(byte[] w1)
     {
         // 2, 4, 5. FX2 READS FX1 — a plan compiled from FX1's block
@@ -371,7 +374,7 @@ static partial class Program
             }
         }
 
-        // SKIPPED BY NAME, NOT DELETED (§5.6, and §5.9 #23 for a suite whose skip
+        // RETIRED BY NAME, NOT DELETED, AND A FAILURE (§5.6, and §5.9 #23 for a suite whose retired
         // verb is a printed line). Every row of TestFixedNegativeControlForwardRead
         // asks FX1 to read an FX2 FILE — a FORWARD read, which is the whole of what
         // §5 retires: FX2's hash is in no lineage entry of this build, so the answer
@@ -380,8 +383,7 @@ static partial class Program
         // HARNESS, where the reader is handed FX1's lineage and each of these is a
         // row with its own two columns. The function stays in the tree and stays
         // compiling: a deleted test is a coverage claim nobody can audit.
-        Console.WriteLine("SKIPPED: TestFixedNegativeControlForwardRead — §5.6 retires the forward read; the coverage moves to the lineage harness");
-        skipped++;
+        Retired("TestFixedNegativeControlForwardRead — §5.6 retires the forward read; the coverage moves to the lineage harness");
     }
 
     // THE FIVE FORM-HEADER PROBES (card 411411, schema#876; the model is
@@ -520,7 +522,7 @@ static partial class Program
         }
     }
 
-    // RETIRED BY §5.6 AND KEPT: the skip at its call site, above, says why and
+    // RETIRED BY §5.6 AND KEPT: the failure at its call site, above, says why and
     // where the coverage is owed.
     static void TestFixedNegativeControlForwardRead(byte[] w2)
     {

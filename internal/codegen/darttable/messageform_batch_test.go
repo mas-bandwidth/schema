@@ -244,14 +244,7 @@ func TestMessageFormBatchDart(t *testing.T) {
 			t.Run(row.unit+"/"+row.name, func(t *testing.T) {
 				t.Parallel()
 				u := batchUnit(t, row.path)
-				st := findTable(t, u, row.root)
-				if !st.IsTable || !st.FixedDeclared {
-					// "THE FORM IS A FIXED TABLE'S ... a variable table may
-					// not" (docs/SPEC-TABLES.md §3.3): the manifest carries a
-					// `message` row for the variable root Scene, and what the
-					// Dart leg owes a variable root is reported, not decided.
-					t.Skipf("§3.3 is a fixed table's; %s is a variable table", row.root)
-				}
+				findTable(t, u, row.root)
 				out, err := runBatchProbe(t, u, row.root, roundTripBody(row.root, row.announce, row.message))
 				if err != nil {
 					t.Fatalf("%s/%s round trip did not run green: %v\n%s", row.unit, row.name, err, out)

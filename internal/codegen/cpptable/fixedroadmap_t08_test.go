@@ -14,8 +14,7 @@ package cpptable
 // oracle (build/fixedform-corpus, docs/SPEC-TABLES.md §3.4): the cpp runtime the
 // emitter lays down reads and writes the same bytes the reference wrote, so the
 // assertion is a byte fact and not a spelling one. The corpus is built by
-// `make tables-fixedform-corpus`; where it is absent the test SKIPS exactly the
-// way fixedversioning_test.go does (never a green over an unrun row).
+// `make tables-fixedform-corpus`; where it is absent the test fails by name, as fixedversioning_test.go does.
 
 import (
 	"bufio"
