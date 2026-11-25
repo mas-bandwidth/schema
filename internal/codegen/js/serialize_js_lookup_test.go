@@ -61,10 +61,6 @@ func (r *lookupVerdictTB) Fatalf(format string, args ...any) {
 	r.verdict, r.text = "fail", fmt.Sprintf(format, args...)
 }
 
-func (r *lookupVerdictTB) Skip(args ...any) {
-	r.verdict, r.text = "skip", fmt.Sprint(args...)
-}
-
 // TestSerializeJSLookupHoldsTheLanePromise: a missing runtime fails naming the
 // runtime; nothing skips; a staged runtime is found from $SERIALIZE_JS or a
 // sibling. There are no lanes: no variable makes a missing runtime anything
