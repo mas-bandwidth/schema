@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -206,12 +207,18 @@ func registryCorpusLines(t *testing.T, path string) map[string]string {
 	return got
 }
 
+// measuredSeconds is a row's measured run time as `schema-test seconds`
+// writes it (testreg.WriteSeconds): the line's last field. It is measured,
+// not the corpus's, so the comparison sets it aside.
+var measuredSeconds = regexp.MustCompile(`,"seconds":[0-9.e+-]+\}$`)
+
 // compareCorpusRows names every disagreement between the corpus's rows and
-// the registry's, by key.
+// the registry's, by key. A registry row's measured seconds are not compared.
 func compareCorpusRows(want, got map[string]string) []string {
 	var out []string
 	for k, w := range want {
 		g, ok := got[k]
+		g = measuredSeconds.ReplaceAllString(g, "}")
 		switch {
 		case !ok:
 			out = append(out, k+": a corpus case with no registry row: run `build/conformance-harness-vm registry-rows` and put its line in test/registry/registry.jsonl")
@@ -235,9 +242,10 @@ func TestTheRegistryCheckGoesRedOnEachDrift(t *testing.T) {
 		got  map[string]string
 		says string
 	}{
-		"a case with no row": {map[string]string{"a": `{"k":"a"}`}, "b: a corpus case with no registry row"},
-		"a row with no case": {map[string]string{"a": `{"k":"a"}`, "b": `{"k":"b"}`, "c": `{}`}, "c: a registry row whose case"},
-		"a row that differs": {map[string]string{"a": `{"k":"a"}`, "b": `{"k":"B"}`}, "b: the registry row is not the corpus's"},
+		"a case with no row":                    {map[string]string{"a": `{"k":"a"}`}, "b: a corpus case with no registry row"},
+		"a row with no case":                    {map[string]string{"a": `{"k":"a"}`, "b": `{"k":"b"}`, "c": `{}`}, "c: a registry row whose case"},
+		"a row that differs":                    {map[string]string{"a": `{"k":"a"}`, "b": `{"k":"B"}`}, "b: the registry row is not the corpus's"},
+		"a row that differs beside its seconds": {map[string]string{"a": `{"k":"a"}`, "b": `{"k":"B","seconds":0.5}`}, "b: the registry row is not the corpus's"},
 	} {
 		problems := compareCorpusRows(want, c.got)
 		if len(problems) != 1 || !strings.Contains(problems[0], c.says) {
@@ -246,6 +254,9 @@ func TestTheRegistryCheckGoesRedOnEachDrift(t *testing.T) {
 	}
 	if p := compareCorpusRows(want, map[string]string{"a": `{"k":"a"}`, "b": `{"k":"b"}`}); len(p) != 0 {
 		t.Errorf("an exact registry: %q", p)
+	}
+	if p := compareCorpusRows(want, map[string]string{"a": `{"k":"a","seconds":0.01}`, "b": `{"k":"b","seconds":2.72}`}); len(p) != 0 {
+		t.Errorf("a registry that differs only in measured seconds: %q", p)
 	}
 }
 
