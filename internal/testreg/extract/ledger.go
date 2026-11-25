@@ -188,8 +188,8 @@ func Covered(reg *testreg.Registry) (map[string]string, []string) {
 // owns.
 //
 // Only what runs counts: a row indexes its files only when some language
-// answers it (a ready language, one with an adapter, that neither owes it nor
-// declares it unrepresentable), and its driver only for those languages. A
+// answers it (a ready language, one with an adapter, that does not declare it
+// unrepresentable), and its driver only for those languages. A
 // row no adapter answers, and the driver of a language with no adapter, stay
 // unmoved.
 func Indexed(reg *testreg.Registry) map[string]string {

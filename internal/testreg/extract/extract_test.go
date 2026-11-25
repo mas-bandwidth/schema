@@ -407,7 +407,7 @@ func TestEveryTestIsARowOrInTheLedger(t *testing.T) {
 // language that answers the row. A language-free row's inputs index nothing,
 // and a data case no row reads is still unmoved. Only what runs counts: the
 // driver of a language with no adapter is unmoved, and a row no ready
-// language answers (none has an adapter, or each owes it) indexes nothing.
+// language answers (none has an adapter, or each declares it unrepresentable) indexes nothing.
 func TestARowIndexesTheCorpusItReads(t *testing.T) {
 	t.Parallel()
 	res := &Result{Items: []Item{

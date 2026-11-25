@@ -82,7 +82,7 @@ name in it runs and passes or fails; nothing downstream drops a name.
   (`squirrel.*`, `*.unit.roundtrip.align-arrays.*`). Names and patterns are
   alternatives; the filters then narrow them (within a filter the values are
   alternatives, across filters all must hold). `--ready` keeps the languages
-  whose adapter has landed, less what each owes. `--lang none` selects the language-free tests.
+  whose adapter has landed. `--lang none` selects the language-free tests.
 - `--group G` runs a stored query. The workflows run groups, so which tests a
   job runs is data here, never a list in a workflow: `pr` and `nightly`.
   `--lang L` narrows a group to one language (a CI row); a language the

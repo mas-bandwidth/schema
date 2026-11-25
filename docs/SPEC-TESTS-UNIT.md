@@ -2671,12 +2671,12 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.unit.tooling.namebuild.every-target-has-its-test` | `gotest` | Go test TestEveryTargetHasItsTest in ./tools/namebuild | `package: ./tools/namebuild`<br>`test: TestEveryTargetHasItsTest` | the Go test passes | `tools/namebuild/namebuild_test.go:77` |
-| `none.unit.tooling.namebuild.plan-covers-the-corpus` | `gotest` | Go test TestPlanCoversTheCorpus in ./tools/namebuild | `package: ./tools/namebuild`<br>`test: TestPlanCoversTheCorpus` | the Go test passes | `tools/namebuild/namebuild_test.go:32` |
+| `none.unit.tooling.namebuild.every-target-has-its-test` | `gotest` | Go test TestEveryTargetHasItsTest in ./tools/namebuild | `package: ./tools/namebuild`<br>`test: TestEveryTargetHasItsTest` | the Go test passes | `tools/namebuild/namebuild_test.go:74` |
+| `none.unit.tooling.namebuild.plan-covers-the-corpus` | `gotest` | Go test TestPlanCoversTheCorpus in ./tools/namebuild | `package: ./tools/namebuild`<br>`test: TestPlanCoversTheCorpus` | the Go test passes | `tools/namebuild/namebuild_test.go:29` |
 | `none.unit.tooling.namebuild.read-rows-refuses-names-go-test-renames` | `gotest` | Go test TestReadRowsRefusesNamesGoTestRenames in ./tools/namebuild | `package: ./tools/namebuild`<br>`test: TestReadRowsRefusesNamesGoTestRenames` | the Go test passes | `tools/namebuild/namebuild_test.go:209` |
-| `none.unit.tooling.namebuild.registry-cases-are-distinct` | `gotest` | Go test TestRegistryCasesAreDistinct in ./tools/namebuild | `package: ./tools/namebuild`<br>`test: TestRegistryCasesAreDistinct` | the Go test passes | `tools/namebuild/namebuild_test.go:140` |
-| `none.unit.tooling.namebuild.registry-holds-every-builds-row` | `gotest` | Go test TestRegistryHoldsEveryBuildsRow in ./tools/namebuild | `package: ./tools/namebuild`<br>`test: TestRegistryHoldsEveryBuildsRow` | the Go test passes | `tools/namebuild/namebuild_test.go:160` |
-| `none.unit.tooling.namebuild.targets-are-the-generators` | `gotest` | Go test TestTargetsAreTheGenerators in ./tools/namebuild | `package: ./tools/namebuild`<br>`test: TestTargetsAreTheGenerators` | the Go test passes | `tools/namebuild/namebuild_test.go:59` |
+| `none.unit.tooling.namebuild.registry-cases-are-distinct` | `gotest` | Go test TestRegistryCasesAreDistinct in ./tools/namebuild | `package: ./tools/namebuild`<br>`test: TestRegistryCasesAreDistinct` | the Go test passes | `tools/namebuild/namebuild_test.go:137` |
+| `none.unit.tooling.namebuild.registry-holds-every-builds-row` | `gotest` | Go test TestRegistryHoldsEveryBuildsRow in ./tools/namebuild | `package: ./tools/namebuild`<br>`test: TestRegistryHoldsEveryBuildsRow` | the Go test passes | `tools/namebuild/namebuild_test.go:157` |
+| `none.unit.tooling.namebuild.targets-are-the-generators` | `gotest` | Go test TestTargetsAreTheGenerators in ./tools/namebuild | `package: ./tools/namebuild`<br>`test: TestTargetsAreTheGenerators` | the Go test passes | `tools/namebuild/namebuild_test.go:56` |
 
 #### `tooling` family `negativecontrols`, 22 tests
 
