@@ -221,6 +221,7 @@ test-goose: tables-goose-strict tables-goose-runtime-home
 GOOSE_NAMES_DIR := build/goose-names-control
 .PHONY: tables-goose-names tables-goose-names-negative-control
 tables-goose-names:
+	go test -count=1 -timeout 600s -run '^(TestGooseEveryPackageNameIsClaimed|TestGooseNamesScanSeesTheRuntime)$$' ./internal/codegen/goosetable/
 tables-goose-names-negative-control:
 	@rm -rf $(GOOSE_NAMES_DIR) && mkdir -p $(GOOSE_NAMES_DIR)
 	@sed 's|^func (g \*Gen) Declare(name string) {$$|func (g *Gen) Declare(name string) { if strings.HasSuffix(name, "CookOpen") { return } // SABOTAGED: unclaimed|' \

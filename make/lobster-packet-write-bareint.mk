@@ -8,6 +8,7 @@ PACKET_WRITE_BAREINT_LOBSTER_NEG := build/packet-write-bareint/lobster-negative
 
 .PHONY: packet-write-bareint-lobster packet-write-bareint-lobster-negative-control
 packet-write-bareint-lobster: toolchain-lobster
+	go test -count=1 -run '^TestLobsterPacketWriteBareInt$$' ./test/packet-write-bareint/lobster
 
 packet-write-bareint-lobster-negative-control: packet-write-bareint-lobster
 	@mkdir -p $(PACKET_WRITE_BAREINT_LOBSTER_NEG)

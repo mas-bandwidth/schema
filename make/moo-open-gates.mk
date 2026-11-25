@@ -106,8 +106,10 @@ tables-moo-release: toolchain-moo build/conformance-harness build/conformance-mo
 # conformance surfaces over the corpus's arms and the wire-fuzz differential.
 .PHONY: tables-moo-arms tables-moo-arms-negative-control
 tables-moo-arms:
+	go test ./internal/codegen/mootable/ -run '^TestMooArmIsAFieldLine$$' -count=1
 
 tables-moo-arms-negative-control:
+	go test ./internal/codegen/mootable/ -run '^TestMooArmFieldLineNegativeControl$$' -count=1
 
 test-moo: tables-moo-arms tables-moo-arms-negative-control
 
@@ -115,13 +117,17 @@ test-moo: tables-moo-arms tables-moo-arms-negative-control
 # every projection/row byte touched, then the reflective read. Cook is pending.
 .PHONY: tables-moo-block-forgery-fuzz tables-moo-block-forgery-fuzz-negative-control
 tables-moo-block-forgery-fuzz: toolchain-moo
+	go test ./internal/codegen/mootable -run '^TestMooBlockForgeryFuzz$$' -count=1 -v -timeout 600s
 tables-moo-block-forgery-fuzz-negative-control: tables-moo-block-forgery-fuzz
+	go test ./internal/codegen/mootable -run '^TestMooBlockForgeryFuzzNegativeControl$$' -count=1 -v -timeout 600s
 
 test-moo: tables-moo-block-forgery-fuzz
 
 # I5: every block image at every lead 0..64, including the second aligned base.
 .PHONY: tables-moo-block-lead tables-moo-block-lead-negative-control
 tables-moo-block-lead: toolchain-moo
+	go test ./internal/codegen/mootable -run '^TestMooBlockLead$$' -count=1 -v
 tables-moo-block-lead-negative-control: tables-moo-block-lead
+	go test ./internal/codegen/mootable -run '^TestMooBlockLeadNegativeControl$$' -count=1 -v
 
 test-moo: tables-moo-block-lead tables-moo-block-lead-negative-control

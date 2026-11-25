@@ -5,9 +5,12 @@ PYTHON_CI_SUPPORT_GROUPS += python-ci-widen-container $(PYTHON_WIDEN_SCALAR_SHAR
 
 .PHONY: python-ci-widen-container $(PYTHON_WIDEN_SCALAR_SHARDS)
 python-ci-widen-container:
+	go test -v -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonContainerWidenHistorical$$' ./internal/codegen/pythontable/
 
 $(PYTHON_WIDEN_SCALAR_SHARDS): python-ci-widen-scalar-%:
+	PYTHON_SCALAR_WIDEN_SHARD=$* go test -v -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonScalarWidenHistorical$$' ./internal/codegen/pythontable/
 
 PYTHON_CI_SUPPORT_GROUPS += python-ci-widen-coverage
 .PHONY: python-ci-widen-coverage
 python-ci-widen-coverage:
+	go test -count=1 -run '^TestPythonWidenCIPlan$$' ./internal/ci/

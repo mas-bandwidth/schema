@@ -84,6 +84,7 @@ test-go: tables-go-textform
 # unit's wires and reports.
 .PHONY: go-runtime tables-go-shared-runtime
 go-runtime:
+	SCHEMA_WRITE_GORUNTIME=1 go test -count=1 -timeout 600s ./internal/codegen/gotable -run TestGoSharedRuntimePackageIsCurrent
 
 tables-go-shared-runtime:
 	sh test/slowgate/proof tables-go-shared-runtime \
@@ -166,6 +167,7 @@ conformance-go-rows-negative-control: build/tables-generated-go/.stamp build/fix
 
 .PHONY: tables-go-json-walk
 tables-go-json-walk: build/tables-generated-go/.stamp
+	SCHEMA_GO_JSON_WALK_DIR="$(CURDIR)/build/tables-generated-go" \
 		SCHEMA_GO_JSON_WALK_OUT="$(CURDIR)/build/json-walk-go" \
 		go test -count=1 -v ./internal/codegen/gotable -run '^TestGoJsonWalk(IsOneGenericRuntime|NegativeControl)$$'
 
@@ -927,6 +929,7 @@ REGISTRY_NA_WHY.toolchain.go := go.mod's go line sets the floor and the go comma
 
 .PHONY: tables-go-wire-fuzz tables-go-wire-fuzz-negative-control
 tables-go-wire-fuzz: build/conformance-harness build/conformance-go
+	go test -count=1 -timeout 600s ./internal/codegen/gotable -run '^TestGoFileLoadOfDamagedFeedChainIsRefused$$'
 	./build/conformance-harness wire-fuzz --driver 'build/conformance-go wire-fuzz' --seed $(SEED) --n $(N)
 
 tables-go-wire-fuzz-negative-control: build/conformance-harness build/conformance-go
@@ -1143,6 +1146,7 @@ GO_FUZZ_DRIVER ?= build/conformance-go
 GO_RELEASE_N ?= 100000
 .PHONY: tables-go-release-fuzz tables-go-release-negative-control
 tables-go-release-fuzz: build/conformance-harness build/conformance-go
+	go test -count=1 -timeout 600s ./internal/codegen/gotable -run '^TestGoFileLoadOfDamagedFeedChainIsRefused$$'
 	./build/conformance-harness wire-fuzz --driver '$(GO_FUZZ_DRIVER) wire-fuzz' --seed $(GO_RELEASE_SEED) --n $(GO_RELEASE_N)
 	./build/conformance-harness wire-fuzz --retain --driver '$(GO_FUZZ_DRIVER) wire-fuzz' --seed $(GO_RELEASE_SEED) --n $(GO_RELEASE_N)
 	$(MAKE) tables-go-builders N=$(GO_RELEASE_N) SEED=$(GO_RELEASE_SEED)
@@ -1226,6 +1230,7 @@ test-go: tables-go-versioning
 # name a missing corpus can never pass silently.
 .PHONY: tables-go-versioning
 tables-go-versioning: tables-fixedform-corpus $(SERIALIZE_GO_RUNTIME)/go.mod
+	go test ./internal/codegen/gotable/ -count=1 -run 'TestFixedVersioning|TestHash|TestFixedRoadmapGoT02Plans|TestFixedRoadmapGoT12ConformanceHostile'
 	@echo 'tables Go versioning: §5 read both columns of every row against the C++ reference bytes'
 
 # ITS NEGATIVE CONTROL: move one byte of the WRITE TEMPLATE and the leg must go
@@ -1294,6 +1299,7 @@ test-go: tables-go-keyed tables-go-keyed-negative-control
 # panicking, and the gate must go red on the disagreeing runtime it now loads.
 .PHONY: tables-go-layout-contract tables-go-layout-contract-negative-control
 tables-go-layout-contract:
+	go test -count=1 ./internal/codegen/gotable -run '^TestBlockLayoutContractRefusesADisagreeingRuntime$$'
 tables-go-layout-contract-negative-control:
 	sh test/go-tables/negative-control layout
 test-go: tables-go-layout-contract tables-go-layout-contract-negative-control
@@ -1357,7 +1363,9 @@ test-go: tables-go-subsets
 # base.
 .PHONY: tables-go-text-differential tables-go-text-differential-negative-control
 tables-go-text-differential:
+	go test ./internal/codegen/gotable -run '^TestTextDifferential$$' -count=1
 tables-go-text-differential-negative-control:
+	go test ./internal/codegen/gotable -run '^TestTextDifferentialNegativeControl$$' -count=1
 test-go: tables-go-text-differential tables-go-text-differential-negative-control
 
 # FINITE TABLE FLOATS (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27: "Tables go
@@ -1368,7 +1376,9 @@ test-go: tables-go-text-differential tables-go-text-differential-negative-contro
 # writer's clause in turn, and each must turn the probe red on its own half.
 .PHONY: tables-go-finite-float tables-go-finite-float-negative-control
 tables-go-finite-float:
+	go test ./internal/codegen/gotable -run '^TestGoPlainFloatSpecialValuesAgreeAcrossForms$$' -count=1
 tables-go-finite-float-negative-control:
+	go test ./internal/codegen/gotable -run '^TestGoFiniteFloatNegativeControl$$' -count=1
 test-go: tables-go-finite-float
 
 # The random-schema table differential (card
@@ -1382,6 +1392,8 @@ TABLE_DIFF_FROM ?= 0
 TABLE_DIFF_TO ?= 200
 .PHONY: fuzz-tables-diff
 fuzz-tables-diff:
+	SCHEMA_TABLE_DIFF=1 SCHEMA_TABLE_DIFF_FROM=$(TABLE_DIFF_FROM) SCHEMA_TABLE_DIFF_TO=$(TABLE_DIFF_TO) go test -count=1 -timeout 600s ./internal/fuzz/ -run '^TestRandomTableDifferential$$' -v
+	SCHEMA_TABLE_DIFF=1 go test -count=1 -timeout 600s ./internal/fuzz/ -run '^TestRandomTableDifferentialNegativeControl$$' -v
 
 # The property-based random-schema tests (card schema-go-rapid-property-tests):
 # rapid drives the SAME generator as the differential above, so a failure
@@ -1391,6 +1403,8 @@ fuzz-tables-diff:
 # them).
 .PHONY: fuzz-tables-props
 fuzz-tables-props:
+	SCHEMA_RAPID_PROPS=1 go test -count=1 -timeout 600s ./internal/fuzz/ -run '^TestProp' -rapid.checks=24 -v
+	SCHEMA_RAPID_PROPS=1 go test -count=1 -timeout 600s ./internal/fuzz/ -run '^TestRapidPropsNegativeControl$$' -rapid.checks=4 -v
 
 .PHONY: test-go
 test-go: deps
@@ -1407,6 +1421,7 @@ conformance-negative-control-go-message: build/conformance-harness build/conform
 # generated source and requires its gate's probe red on its own message.
 .PHONY: tables-go-message-form-negative-controls
 tables-go-message-form-negative-controls:
+	go test ./internal/codegen/gotable -count=1 -timeout 600s \
 		-run '^(TestGoMessageFormGoldensNegativeControl|TestGoMessageFormRefusalsNegativeControl|TestGoMessageFormStrictNegativeControl|TestGoMessageFormVersioningNegativeControl|TestGoMessageFormFixedOnlyNegativeControl|TestGoWireIntegrityMessageFormNegativeControl)$$'
 
 test-go: conformance-negative-control-go-message tables-go-message-form-negative-controls

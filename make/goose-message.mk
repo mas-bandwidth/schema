@@ -13,6 +13,7 @@
 .PHONY: tables-goose-message-form
 tables-goose-message-form: build/fixedform-corpus/.stamp
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
+	go test -count=1 -timeout 600s -run '^TestGooseMessageForm' ./internal/codegen/goosetable/
 	@echo 'tables Goose message form: the goldens, the Go reference and the refusals'
 
 # THE MESSAGE FORM's NEGATIVE CONTROL (make/negative-controls.json, group

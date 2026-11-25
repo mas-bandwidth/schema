@@ -11,3 +11,4 @@ PYTHON_CI_SUPPORT_GROUPS += python-ci-vt-keyed
 python-ci-vt-keyed: python-vt-keyed-negative-control
 
 python-vt-keyed-negative-control:
+	go test -tags schema_leg_python -run 'TestPythonVtKeyedNegativeControl' ./internal/codegen/pythontable/ -count=1

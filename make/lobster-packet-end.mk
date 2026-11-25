@@ -10,6 +10,7 @@
 # red by name, and the exact row green.
 .PHONY: packet-end-lobster packet-end-lobster-negative-control
 packet-end-lobster: toolchain-lobster
+	go test -count=1 -run '^TestLobsterPacketEnd$$' ./internal/codegen/lobster/
 
 packet-end-lobster-negative-control: packet-end-lobster
 	@rm -rf build/packet-end/lobster-negative && mkdir -p build/packet-end/lobster-negative

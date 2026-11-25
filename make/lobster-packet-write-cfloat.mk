@@ -10,6 +10,7 @@ PACKET_WRITE_CFLOAT_LOBSTER_NEG := build/packet-write-cfloat/lobster-negative
 
 .PHONY: packet-write-cfloat-lobster packet-write-cfloat-lobster-negative-control
 packet-write-cfloat-lobster: toolchain-lobster
+	LOBSTER=$(LOBSTER) go test -count=1 -timeout 600s ./internal/codegen/lobster/ -run '^TestLobsterPacketWriteCFloatRange$$'
 
 packet-write-cfloat-lobster-negative-control: packet-write-cfloat-lobster
 	@mkdir -p $(PACKET_WRITE_CFLOAT_LOBSTER_NEG)

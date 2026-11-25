@@ -47,6 +47,7 @@ toolchain-moo:
 # network: inputs go in as source.
 .PHONY: test-moo update-goldens-moo
 test-moo: toolchain-moo
+	go test -count=1 ./internal/codegen/moo/...
 update-goldens-moo: ;
 
 TEST_LEGS          += test-moo
@@ -85,6 +86,7 @@ cards-moo-test: toolchain-moo cards-moo-generate build/cards-driver-moo cards-co
 	$(MUSTRUN) -name cards-moo-test -count 11 -- cat build/cards-moo-unit/unit.txt
 
 cards-moo-conformance: toolchain-moo cards-moo-generate build/cards-driver-moo build/conformance-harness cards-corpus-check
+	SCHEMA_CARDS_SURFACES=$(CARDS_MOO_REQUIRE) ./build/conformance-harness cards --work build/cards-moo-conformance --corpus tables/cards/conformance --driver tables/cards/moo/driver --require $(CARDS_MOO_REQUIRE)
 
 cards-moo-conformance-negative-control: cards-moo-test cards-moo-conformance
 	sh tables/cards/moo/negative-control.sh render

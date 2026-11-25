@@ -13,5 +13,7 @@ PYTHON_CI_SUPPORT_GROUPS += python-vt-optional-rows python-vt-optional-rows-nega
 test-python: python-vt-optional-rows python-vt-optional-rows-negative-control
 
 python-vt-optional-rows:
+	go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonVtOptionalRows$$' ./internal/codegen/pythontable/
 
 python-vt-optional-rows-negative-control:
+	go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonVtOptionalRowsNegativeControl$$' ./internal/codegen/pythontable/

@@ -25,6 +25,7 @@ tables-goose-block-lead: build/conformance-goose
 .PHONY: tables-goose-block-negative-control
 tables-goose-block-negative-control:
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
+	go test -count=1 -run '^TestGooseBlockNegativeControl$$' ./internal/codegen/goosetable/
 
 # THE ACCELERATORS' HARNESS CONTROLS (group goose-blockcook): one clause of
 # the runtime broken in a copy of the generated units, and the harness must
@@ -157,6 +158,7 @@ GOOSE_AGREE_DIR := build/goose-agree-control
 .PHONY: tables-goose-accessor-descriptor-agreement tables-goose-accessor-negative-control
 tables-goose-accessor-descriptor-agreement:
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
+	go test -count=1 -timeout 600s -run '^TestGooseAccessorsAgreeWithDescriptors$$' ./internal/codegen/goosetable/
 tables-goose-accessor-negative-control:
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
 	@rm -rf $(GOOSE_AGREE_DIR) && mkdir -p $(GOOSE_AGREE_DIR)

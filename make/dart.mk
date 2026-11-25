@@ -917,6 +917,7 @@ tables-dart-fixed-form: build/retiredskips build/dart-fixed/.stamp build/fixedfo
 # the rule that nothing skips, under which that skip is a FAILURE.
 .PHONY: tables-dart-versioning
 tables-dart-versioning: tables-fixedform-corpus
+	DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -run 'TestFixedVersioning|TestFixedCompiledPlanTagPastArmSet'
 	@echo 'tables Dart versioning: §5 read both columns of every row against the C++ reference bytes'
 
 .PHONY: tables-dart-fixed-form-negative-control
@@ -1014,6 +1015,7 @@ test-dart: tables-dart-keyed-negative-control
 # when the SDK is absent; the rule that nothing skips makes that skip a failure.
 .PHONY: tables-dart-variable-class
 tables-dart-variable-class:
+	DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout=0 -run 'TestVariableClassBeyondCardConstructsDart|TestOtherVariableConstructsAreRefusedByName'
 	@echo 'tables Dart variable class: pointers, blobs, lists and the scalar kinds against the oracle bytes'
 
 test-dart: tables-dart-variable-class
@@ -1196,6 +1198,7 @@ test-dart: tables-dart-float-jit tables-dart-float-jit-negative-control tables-d
 .PHONY: tables-dart-cook-map-field
 tables-dart-cook-map-field:
 	@mkdir -p build/dart-cook-map-field
+	DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout=0 -v -run 'TestCookMapFieldExposesItsEntriesLikeGo' > build/dart-cook-map-field/log 2>&1 || { cat build/dart-cook-map-field/log; exit 1; }
 	@grep 'lines agree' build/dart-cook-map-field/log | sed 's/^ *//'
 	@echo 'tables Dart cook: every map entry read as the Go cook reads it'
 
@@ -1212,8 +1215,10 @@ test-dart: tables-dart-cook-map-field
 # corpus stamp is a prerequisite.
 .PHONY: tables-dart-text-differential tables-dart-text-differential-negative-control
 tables-dart-text-differential:
+	DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout=0 -run '^TestDartTextDifferentialAgainstTheGoEngine$$'
 	@echo 'tables Dart text differential: the generated text writer agrees with the engine byte for byte, both directions'
 tables-dart-text-differential-negative-control:
+	DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout=0 -run '^TestDartTextDifferentialNegativeControl$$'
 	@echo 'tables Dart text differential negative control: a float32 capped at six digits reds the text comparison'
 
 test-dart: tables-dart-text-differential tables-dart-text-differential-negative-control
@@ -1229,6 +1234,7 @@ test-dart: tables-dart-text-differential tables-dart-text-differential-negative-
 # corpus a failure rather than a skip.
 .PHONY: tables-dart-block-build
 tables-dart-block-build: build/tables-generated-dart/.stamp cards-dart-generate
+	DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout=0 -run '^(TestBlockBuildAndCookWriteDart|TestCookWriteFixedDart|TestCookWriteGuardedAndTextArrayRootsDart|TestCookWriteAnswersEveryCookWriteRowDart)$$'
 	@echo 'tables Dart block build and cook write: begin, the fixed root, the guarded and text-array roots and every cook-write row'
 
 test-dart: tables-dart-block-build
@@ -1241,6 +1247,7 @@ test-dart: tables-dart-block-build
 # the rule that nothing skips makes a missing SDK a failure.
 .PHONY: tables-dart-variable-arms
 tables-dart-variable-arms:
+	DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout=0 -run 'TestMapsAndUnionArmsOnTheTableWireDart|TestOtherVariableConstructsAreRefusedByName'
 	@echo 'tables Dart variable arms: maps, unions, keyed arrays, optionals and the wide scalars against the oracle bytes'
 
 test-dart: tables-dart-variable-arms
@@ -1251,6 +1258,7 @@ test-dart: tables-dart-variable-arms
 # skips when the SDK is absent; the rule that nothing skips makes that a failure.
 .PHONY: tables-dart-message-batch
 tables-dart-message-batch:
+	DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout=0 -run 'TestMessageFormBatchDart|TestFixedHomeDefinesItsTableArmUnionsDart|TestNestedDefaultMessageBytesMatchGoEmitter'
 	@echo 'tables Dart message batch: every fixed-root message row against the reference bytes, and the default nested body against the Go emitter'
 
 test-dart: tables-dart-message-batch
@@ -1265,6 +1273,7 @@ test-dart: tables-dart-message-batch
 # is absent; the rule that nothing skips makes that a failure.
 .PHONY: tables-dart-widening
 tables-dart-widening:
+	DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout=0 -run '^TestWideningReasonsDart$$'
 	@echo 'tables Dart widening: every narrower kind widens as the Go engine reads it, and every refusal names the reference leg reason'
 
 test-dart: tables-dart-widening
@@ -1274,6 +1283,7 @@ test-dart: tables-dart-widening
 # aliases against the Go oracle (docs/SPEC-TABLES.md §3, §5).
 .PHONY: tables-dart-variable-fixed-class
 tables-dart-variable-fixed-class:
+	DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout=0 -run TestFixedClassOnTableWireDart
 
 test-dart: tables-dart-variable-fixed-class
 
@@ -1288,8 +1298,10 @@ test-dart: tables-dart-variable-fixed-class
 # EXACTLY the read vectors to go red, the writers and -0 staying green.
 .PHONY: tables-dart-finite-float tables-dart-finite-float-negative-control
 tables-dart-finite-float:
+	DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout=0 -run '^TestDartFiniteFloatsEveryForm$$'
 	@echo 'tables Dart finite floats: every read and every writer refuses a NaN or an infinity, and -0 rides'
 tables-dart-finite-float-negative-control:
+	DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout=0 -run '^TestDartFiniteFloatNegativeControl$$'
 	@echo 'negative control: with the read-side bit tests removed, exactly the Dart read vectors go red'
 
 test-dart: tables-dart-finite-float tables-dart-finite-float-negative-control
@@ -1302,6 +1314,7 @@ test-dart: tables-dart-finite-float tables-dart-finite-float-negative-control
 # of the generated source and requires the probe red, naming both.
 .PHONY: tables-dart-descriptors
 tables-dart-descriptors:
+	DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout=0 -run '^TestDartDescriptorsAreConstants$$'
 	@echo 'tables Dart descriptors: every registry is const, identical across reads and unmodifiable, and the finals witness goes red'
 
 test-dart: tables-dart-descriptors
@@ -1313,9 +1326,11 @@ test-dart: tables-dart-descriptors
 # red on the cycle alone.
 .PHONY: tables-dart-identity tables-dart-identity-negative-control
 tables-dart-identity:
+	DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout=0 -run '^TestWireIdentityMapDart$$'
 	@echo 'tables Dart identity map: a shared node is one record, a cycle is refused, and the blinded witness goes red'
 
 tables-dart-identity-negative-control:
+	DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout=0 -run '^TestWireIdentityMapDartNegativeControl$$'
 	@echo 'negative control: with the OPEN-entry test out of the generated runtime, the identity probe goes red on the cycle alone'
 
 test-dart: tables-dart-identity tables-dart-identity-negative-control
@@ -1328,9 +1343,11 @@ test-dart: tables-dart-identity tables-dart-identity-negative-control
 # cyclic rows alone.
 .PHONY: tables-dart-cycle tables-dart-cycle-negative-control
 tables-dart-cycle:
+	DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout=0 -run '^TestCyclicWireIsDamageDart$$'
 	@echo 'tables Dart cycle: a cyclic wire is refused whole on every load, a chain and a diamond chain load'
 
 tables-dart-cycle-negative-control:
+	DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout=0 -run '^TestCyclicWireIsDamageDartNegativeControl$$'
 	@echo 'negative control: with cyclic() answering false, the probe goes red on the three cyclic rows alone'
 
 test-dart: tables-dart-cycle tables-dart-cycle-negative-control
@@ -1341,9 +1358,11 @@ test-dart: tables-dart-cycle tables-dart-cycle-negative-control
 # requires the scan to name exactly that call.
 .PHONY: tables-dart-byte-order tables-dart-byte-order-negative-control
 tables-dart-byte-order:
+	go test ./internal/codegen/darttable/ -count=1 -run '^TestDartByteOrderIsExplicit$$'
 	@echo 'tables Dart byte order: every multi-byte ByteData call names its byte order'
 
 tables-dart-byte-order-negative-control:
+	go test ./internal/codegen/darttable/ -count=1 -run '^TestDartByteOrderIsExplicitNegativeControl$$'
 	@echo 'negative control: one generated call stripped of Endian.little, and the scan names it'
 
 test-dart: tables-dart-byte-order tables-dart-byte-order-negative-control
@@ -1354,9 +1373,11 @@ test-dart: tables-dart-byte-order tables-dart-byte-order-negative-control
 # The reversed witness leaves the entries in stored order and requires red.
 .PHONY: tables-dart-map-sort tables-dart-map-sort-negative-control
 tables-dart-map-sort:
+	DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout=0 -run '^TestMapWriterSortDart$$'
 	@echo 'tables Dart map sort: the writer sorts a map built out of order, and the unsorted witness goes red'
 
 tables-dart-map-sort-negative-control:
+	DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout=0 -run '^TestMapWriterSortDartNegativeControl$$'
 	@echo 'negative control: with the writer sort a no-op in the generated runtime, the map-sort probe goes red on the saved bytes'
 
 test-dart: tables-dart-map-sort tables-dart-map-sort-negative-control
@@ -1876,6 +1897,7 @@ test-dart: dart-chunk-queue-test dart-chunk-queue-negative-control
 DART_DISCARD_NC := build/dart-discard-nc
 .PHONY: tables-dart-discard tables-dart-discard-negative-control
 tables-dart-discard:
+	DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout=0 -run '^TestDamageDiscardsTheWholeLoadDart$$'
 	@echo 'tables Dart discard: every damaged load hands back nothing it decoded'
 tables-dart-discard-negative-control:
 	@rm -rf $(DART_DISCARD_NC) && mkdir -p $(DART_DISCARD_NC)

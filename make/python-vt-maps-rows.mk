@@ -15,5 +15,7 @@ python-ci-vt-maps-rows: python-vt-maps-rows python-vt-maps-rows-negative-control
 test-python: python-vt-maps-rows python-vt-maps-rows-negative-control
 
 python-vt-maps-rows: python-toolchain-check
+	go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonVtMapsRows$$' ./internal/codegen/pythontable/
 
 python-vt-maps-rows-negative-control: python-toolchain-check
+	go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonVtMapsRowsNegativeControl$$' ./internal/codegen/pythontable/

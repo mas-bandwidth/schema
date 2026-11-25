@@ -1503,8 +1503,10 @@ test-c tables-c: tables-c-accessor-descriptor-agreement tables-c-accessor-negati
 # FAILURE rather than a skip.
 .PHONY: tables-c-text-differential tables-c-text-differential-negative-control
 tables-c-text-differential:
+	go test ./internal/codegen/ctable/ -count=1 -timeout 600s -v -run '^TestCTextDifferentialAgainstTheGoEngine$$'
 	@echo 'tables C text differential: 200 random float instances agree with the Go engine byte for byte, both directions'
 tables-c-text-differential-negative-control:
+	go test ./internal/codegen/ctable/ -count=1 -timeout 600s -v -run '^TestCTextDifferentialNegativeControl$$'
 	@echo 'tables C text differential negative control: a six-digit float32 writer is red on the text comparison'
 
 # THE C LEG of `make test` (docs/SPEC-TABLES.md; test/conformance/README.md):
@@ -1607,6 +1609,7 @@ tables-c-fixedform: build/retiredskips build/schema_test_c_fixedform build/schem
 # and the former TestFixedVersioning filter left them outside the gate.
 .PHONY: tables-c-versioning
 tables-c-versioning: tables-fixedform-corpus
+	go test ./internal/codegen/ctable/ -count=1
 	@echo 'tables C corpus: ctable checks the C++ reference bytes, including §5 and fixed roadmap framing'
 
 .PHONY: test-c test-c-recipe
