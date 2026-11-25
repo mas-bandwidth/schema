@@ -93,7 +93,7 @@ func TestCConformanceChildrenWriteNoCore(t *testing.T) {
 			continue
 		}
 		checked[e.Name()] = true
-		if err := checkChildNotDumpable(e.Name(), string(b)); err != nil {
+		if err := checkChildNotDumpable(e.Name(), string(b)); err != nil && e.Name() != "wref.c" && e.Name() != "storage_debug.c" {
 			t.Error(err)
 		}
 	}
@@ -111,6 +111,17 @@ func TestCConformanceChildrenWriteNoCore(t *testing.T) {
 			}
 			if err := checkChildNotDumpable(name, string(b)); (err == nil) != wantOK {
 				t.Errorf("testdata/c-no-core-children/%s: check = %v, want ok=%v", name, err, wantOK)
+			}
+		})
+	}
+	for _, name := range []string{"wref.c", "storage_debug.c"} {
+		t.Run(name, func(t *testing.T) {
+			b, err := os.ReadFile(filepath.Join(dir, name))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := checkChildNotDumpable(name, string(b)); err != nil {
+				t.Error(err)
 			}
 		})
 	}

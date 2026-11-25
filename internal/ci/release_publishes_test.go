@@ -195,13 +195,15 @@ func TestReleaseGoesPublicOnlyWhole(t *testing.T) {
 		{"the draft's manifest trusted (F-246)", releaseManifestCheck, "if false; then", `cmp -s build/release-binaries/SHA256SUMS`},
 		{"published before the upload", releaseUploadCommand, releaseGoPublicCommand + "\n          " + releaseUploadCommand, "out of order"},
 	} {
-		if !strings.Contains(wf, c.from) {
-			t.Fatalf("control %q cannot plant: release.yml does not contain %q", c.name, c.from)
-		}
-		errs := strings.Join(releaseWholeErrors(strings.Replace(wf, c.from, c.to, 1)), "\n")
-		if !strings.Contains(errs, c.want) {
-			t.Errorf("NEGATIVE CONTROL FAILED: %q: got %q, want an error containing %q", c.name, errs, c.want)
-		}
+		t.Run(c.name, func(t *testing.T) {
+			if !strings.Contains(wf, c.from) {
+				t.Fatalf("control %q cannot plant: release.yml does not contain %q", c.name, c.from)
+			}
+			errs := strings.Join(releaseWholeErrors(strings.Replace(wf, c.from, c.to, 1)), "\n")
+			if !strings.Contains(errs, c.want) {
+				t.Errorf("NEGATIVE CONTROL FAILED: %q: got %q, want an error containing %q", c.name, errs, c.want)
+			}
+		})
 	}
 }
 
