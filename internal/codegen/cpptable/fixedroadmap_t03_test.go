@@ -223,7 +223,7 @@ fixed table T
 	t03Has(t, hdr, "if ( root.size == 0u || root.size > kTableFixedRecordMaxBytes )\n    {\n        why = layout_record_too_large;\n        return false;\n    }", "R14 the zero root and the 65536 bound")
 	t03Has(t, hdr, "c.record = TableFixedEntryAt( theirs, 0 ).size;", "R14 the writer's own declared record is the compiler's bound")
 	t03Has(t, hdr, "if ( c.hostile && report != NULL ) { report->reason = layout_record_too_large; }", "R14 an entry reaching past the writer's record is named layout_record_too_large")
-	t03Has(t, hdr, "report->reason = ( made == -2 ) ? TableMessageReason::layout_record_too_large : ( made == -3 ) ? TableMessageReason::layout_malformed : ( made == -4 ) ? TableMessageReason::kind_mismatch : TableMessageReason::plan_too_large;", "R14 the plan is refused WHOLE")
+	t03Has(t, hdr, "report->reason = TableMessageReason::plan_too_large;\n                if ( made == -2 ) { report->reason = TableMessageReason::layout_record_too_large; }\n                if ( made == -3 ) { report->reason = TableMessageReason::layout_malformed; }\n                if ( made == -4 ) { report->reason = TableMessageReason::kind_mismatch; }\n                return -1;", "R14 the plan is refused WHOLE")
 }
 
 // ---- cpp/R22 ---------------------------------------------------------------
