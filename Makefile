@@ -451,18 +451,22 @@ tables_includes = -I$(1)/examples -I$(1)/pointers -I$(1)/block -I$(1)/blockhome 
 # <VAR> -- a generate macro's expansion -- side by side, ONE PROCESS PER --out
 # DIRECTORY: the lines that write one directory run in it one after another,
 # in the macro's order, joined by &&, so a directory is never written by two
-# processes at once (the versioning law's units all go to vnum). Comment lines
-# are dropped, a line with no --out is an error by name, and xargs fails when
-# any group fails. Run one after another, the C++ tree's 155 generate calls
-# were 20 s of the conformance-leg-cpp build before any compiler started
-# (captain, 2026-11-25, 4 cores), inside the produce job's two minutes.
+# processes at once (the versioning law's units all go to vnum). The longest
+# group starts first: vnum's 59 calls are 4.6 s on one core, the rest 0.5 s or
+# less each, and started in the macro's order vnum waited behind them and the
+# phase took 11.8 s on 4 cores. Comment lines are dropped, a line with no
+# --out is an error by name, and xargs fails when any group fails. Run one
+# after another, the C++ tree's 155 generate calls were 20 s of the
+# conformance-leg-cpp build before any compiler started (captain, 2026-11-25,
+# 4 cores), inside the produce job's two minutes.
 define tables_generate_by_dir
 	@awk 'BEGIN { n = split( ENVIRON["$(1)"], lines, "\n" ); k = 0; \
 		for ( i = 1; i <= n; i++ ) { l = lines[i]; sub( /^[ \t]+/, "", l ); if ( l == "" || l ~ /^#/ ) continue; \
 			if ( !match( l, /--out [^ ]+/ ) ) { print "tables_generate_by_dir: a line with no --out: " l > "/dev/stderr"; exit 1 } \
-			d = substr( l, RSTART + 6, RLENGTH - 6 ); if ( !( d in group ) ) { order[++k] = d; group[d] = l } else group[d] = group[d] " && " l } \
+			d = substr( l, RSTART + 6, RLENGTH - 6 ); if ( !( d in group ) ) { order[++k] = d; group[d] = l; size[d] = 1 } \
+			else { group[d] = group[d] " && " l; size[d]++ } if ( size[d] > most ) most = size[d] } \
 		if ( k == 0 ) { print "tables_generate_by_dir: $(1) names no generate line" > "/dev/stderr"; exit 1 } \
-		for ( j = 1; j <= k; j++ ) print group[order[j]] }' > $(2)
+		for ( c = most; c >= 1; c-- ) for ( j = 1; j <= k; j++ ) if ( size[order[j]] == c ) print group[order[j]] }' > $(2)
 	tr '\n' '\0' < $(2) | xargs -0 -P 16 -n 1 sh -c 'echo "$$0"; eval "$$0"'
 endef
 
