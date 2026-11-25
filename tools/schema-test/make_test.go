@@ -434,16 +434,16 @@ func TestAMakeRowReadsOnlyWhatItsTargetDependsOn(t *testing.T) {
 func TestARecipeThatRunsGoTestWithoutJSONFails(t *testing.T) {
 	t.Parallel()
 	for recipe, fails := range map[string]bool{
-		"\tSCHEMA_SLOW=1 go test ./internal/x -run '^TestA$$' -count=1":                                     true,
-		"\t@if go test -count=1 ./x > log 2>&1; then exit 1; fi":                                           true,
-		"\tcd sub && go  test ./...":                                                                        true,
-		"\t$(call RUN_GO,./x)":                                                                              true,
-		"\t$(MAKE) --no-print-directory gate-inner":                                                         true,
-		"\tgo test -count=1 \\\n\t\t-json ./internal/x -run '^TestA$$'":                                     false,
-		"\tgo test -json ./x | tee build/x.json":                                                            false,
-		"\t$(GO_TEST_JSON) ./x":                                                                             false,
-		"\tprintf 'go test/conformance/go/driver\\n' > build/solo.txt":                                      false,
-		"\techo no go here":                                                                                 false,
+		"\tSCHEMA_SLOW=1 go test ./internal/x -run '^TestA$$' -count=1": true,
+		"\t@if go test -count=1 ./x > log 2>&1; then exit 1; fi":        true,
+		"\tcd sub && go  test ./...":                                    true,
+		"\t$(call RUN_GO,./x)":                                          true,
+		"\t$(MAKE) --no-print-directory gate-inner":                     true,
+		"\tgo test -count=1 \\\n\t\t-json ./internal/x -run '^TestA$$'": false,
+		"\tgo test -json ./x | tee build/x.json":                        false,
+		"\t$(GO_TEST_JSON) ./x":                                         false,
+		"\tprintf 'go test/conformance/go/driver\\n' > build/solo.txt":  false,
+		"\techo no go here":                                             false,
 	} {
 		db := fakeDatabase("GO_TEST_JSON = go test -json\ndefine RUN_GO\ngo test $(1)\nendef\n", "",
 			"gate-check:\n"+recipe+"\n\ngate-inner:\n\tgo test ./inner\n")
@@ -466,9 +466,9 @@ func TestARecipeThatRunsGoTestWithoutJSONFails(t *testing.T) {
 func TestGoTestPlainOutputInTheLogFails(t *testing.T) {
 	t.Parallel()
 	for log, fails := range map[string]bool{
-		"ok  \tgithub.com/mas-bandwidth/schema/v2/internal/x\t0.123s\n":                                      true,
-		"ok  \tgithub.com/mas-bandwidth/schema/v2/internal/x\t(cached)\n":                                     true,
-		"?   \tgithub.com/mas-bandwidth/schema/v2/internal/y\t[no test files]\n":                              true,
+		"ok  \tgithub.com/mas-bandwidth/schema/v2/internal/x\t0.123s\n":                                    true,
+		"ok  \tgithub.com/mas-bandwidth/schema/v2/internal/x\t(cached)\n":                                  true,
+		"?   \tgithub.com/mas-bandwidth/schema/v2/internal/y\t[no test files]\n":                           true,
 		`{"Action":"pass","Package":"github.com/mas-bandwidth/schema/v2/internal/x","Elapsed":0.1}` + "\n": false,
 		"ok, every row checked\n": false,
 	} {

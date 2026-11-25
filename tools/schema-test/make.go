@@ -90,14 +90,14 @@ type makeInputs struct {
 
 func newMakeAdapter() makeAdapter {
 	return makeAdapter{
-		exec: execMake,
+		exec:  execMake,
 		plan:  execMake,
 		cache: &makeDBCache{},
-		read: func(p string) ([]byte, error) { return os.ReadFile(filepath.FromSlash(p)) },
-		jobs: runtime.NumCPU(),
-		look: exec.LookPath,
-		stat: os.Stat,
-		host: os.Hostname,
+		read:  func(p string) ([]byte, error) { return os.ReadFile(filepath.FromSlash(p)) },
+		jobs:  runtime.NumCPU(),
+		look:  exec.LookPath,
+		stat:  os.Stat,
+		host:  os.Hostname,
 	}
 }
 
@@ -338,6 +338,9 @@ func makeRules(data []byte) (map[string]bool, error) {
 // -json. It returns
 // why the row fails, or "", and an error only when the context ended.
 func (a makeAdapter) vet(ctx context.Context, in makeInputs) (string, error) {
+	if a.plan == nil {
+		return "", errors.New("the make adapter has no way to read make's database")
+	}
 	db, err := a.database(ctx)
 	if ctx.Err() != nil {
 		return "", fmt.Errorf("make -p for %s: %w", in.Target, ctx.Err())
