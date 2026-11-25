@@ -388,13 +388,29 @@ func packageVerdict(pkg string, res []testreg.Result, runErr error, stdout, stde
 // goTestResults reads go test -json events into one result per asked test.
 // A subtest's events count against its top-level test: its output joins the
 // reason, and a subtest that skips fails its parent.
+//
+// A result's seconds are the test's wall time: from its last "run" or
+// "cont" event to its "pass" or "fail", by the events' own clock. go test's
+// Elapsed for a parent leaves out its parallel subtests, which run after
+// the parent's body returns, so a test made of parallel subtests would weigh
+// its body alone (the Ruby strict gate: 4.24 s of a 612 s run); the larger
+// of the two is the measure.
 func goTestResults(r io.Reader, tests map[string]string) ([]testreg.Result, error) {
 	type event struct {
+		Time                 time.Time
 		Action, Test, Output string
 		Elapsed              float64
 	}
 	output := map[string][]string{}
 	skipped := map[string][]string{}
+	started := map[string]time.Time{} // a top-level test's last run or cont
+	seconds := func(top string, ev event) float64 {
+		st, ok := started[top]
+		if !ok || st.IsZero() || ev.Time.IsZero() {
+			return ev.Elapsed
+		}
+		return max(ev.Elapsed, ev.Time.Sub(st).Seconds())
+	}
 	var out []testreg.Result
 	dec := json.NewDecoder(r)
 	for {
@@ -410,6 +426,10 @@ func goTestResults(r io.Reader, tests map[string]string) ([]testreg.Result, erro
 			continue // the package's own lines
 		}
 		switch ev.Action {
+		case "run", "cont":
+			if !isSub {
+				started[top] = ev.Time
+			}
 		case "output":
 			output[top] = append(output[top], strings.TrimRight(ev.Output, "\n"))
 		case "skip":
@@ -430,12 +450,12 @@ func goTestResults(r io.Reader, tests map[string]string) ([]testreg.Result, erro
 			// 0.00 s was measured, at under goTestTick, and is recorded so
 			// (`--write-seconds`, `schema-test seconds`), never left to
 			// weigh DefaultSeconds as if it had never run
-			out = append(out, testreg.Result{Instance: inst, Verdict: testreg.Pass, Seconds: max(ev.Elapsed, goTestTick)})
+			out = append(out, testreg.Result{Instance: inst, Verdict: testreg.Pass, Seconds: max(seconds(top, ev), goTestTick)})
 		case "fail":
 			if isSub {
 				continue
 			}
-			out = append(out, testreg.Result{Instance: inst, Verdict: testreg.Fail, Reason: tail(strings.Join(output[top], "\n"), 20), Seconds: ev.Elapsed})
+			out = append(out, testreg.Result{Instance: inst, Verdict: testreg.Fail, Reason: tail(strings.Join(output[top], "\n"), 20), Seconds: seconds(top, ev)})
 		}
 	}
 	return out, nil

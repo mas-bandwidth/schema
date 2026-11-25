@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 2. Language-free tests: 2943.
+Unit tests every language answers: 2. Language-free tests: 2944.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -2977,7 +2977,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.runmatch.skips-follows-go` | `gotest` | Go test TestSkipsFollowsGo in ./internal/runmatch | `package: ./internal/runmatch`<br>`test: TestSkipsFollowsGo` | the Go test passes | `internal/runmatch/runmatch_test.go:107` |
 | `none.unit.tooling.runmatch.top-level-is-gos-split` | `gotest` | Go test TestTopLevelIsGosSplit in ./internal/runmatch | `package: ./internal/runmatch`<br>`test: TestTopLevelIsGosSplit` | the Go test passes | `internal/runmatch/runmatch_test.go:9` |
 
-#### `tooling` family `schema-test`, 100 tests
+#### `tooling` family `schema-test`, 101 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -2993,6 +2993,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.schema-test.a-go-test-rows-make-target-is-built-first` | `gotest` | a gotest row naming a make target in its inputs has it made once in Prepare before any call; a target that does not make fails naming the row; a make input that is not one target is refused (Go test TestAGoTestRowsMakeTargetIsBuiltFirst in ./tools/schema-test) | `package: ./tools/schema-test`<br>`test: TestAGoTestRowsMakeTargetIsBuiltFirst` | the Go test passes | `tools/schema-test/gotest_test.go:309` |
 | `none.unit.tooling.schema-test.a-go-test-that-exits-non-zero-fails-its-rows` | `gotest` | Go test TestAGoTestThatExitsNonZeroFailsItsRows in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAGoTestThatExitsNonZeroFailsItsRows` | the Go test passes | `tools/schema-test/gotest_test.go:235` |
 | `none.unit.tooling.schema-test.a-go-tests-declared-build-fails-only-the-rows-that-read-it` | `gotest` | Go test TestAGoTestsDeclaredBuildFailsOnlyTheRowsThatReadIt in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAGoTestsDeclaredBuildFailsOnlyTheRowsThatReadIt` | the Go test passes | `tools/schema-test/goneeds_test.go:83` |
+| `none.unit.tooling.schema-test.a-go-tests-seconds-count-its-parallel-subtests` | `gotest` | Go test TestAGoTestsSecondsCountItsParallelSubtests in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAGoTestsSecondsCountItsParallelSubtests` | the Go test passes | `tools/schema-test/gotest_test.go:65` |
 | `none.unit.tooling.schema-test.a-golden-edited-by-hand-fails` | `gotest` | Go test TestAGoldenEditedByHandFails in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAGoldenEditedByHandFails` | the Go test passes | `tools/schema-test/golden_test.go:81` |
 | `none.unit.tooling.schema-test.a-golden-nothing-writes-fails` | `gotest` | Go test TestAGoldenNothingWritesFails in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAGoldenNothingWritesFails` | the Go test passes | `tools/schema-test/golden_test.go:105` |
 | `none.unit.tooling.schema-test.a-golden-the-writer-left-untouched-was-not-written` | `gotest` | Go test TestAGoldenTheWriterLeftUntouchedWasNotWritten in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAGoldenTheWriterLeftUntouchedWasNotWritten` | the Go test passes | `tools/schema-test/golden_test.go:228` |
