@@ -8321,14 +8321,62 @@ pins-framing:
 
 PINS_WIRE_TABLES_DIRS := examples pointers v1 v2 p1 p2 p3 jsonkeys messages stream blobs m1 m2 a1 a2 g1 k1 k2 w1 w2 r1 r2 f1 scalars backend vocab vocab9 bases
 
+# THE TABLES SUITE IN PARTS (test/tables/main.cpp, "THE SUITE IN PARTS"). Its one
+# translation unit was this row's long pole: 63 of its 83 s were one compile of
+# main.cpp, nearly all of it code generation. Built once per part with
+# -DTABLES_PART=<n>, each compile carries its part's tests, the parts and the
+# generated sources compile side by side, and the parts run one after another
+# in block order, which is the order the one-unit binary runs them in. The
+# per-PR tables rows keep the one-unit build, so the suite is still checked
+# whole; internal/ci's TestTablesSuitePartsCoverMain holds this list to the
+# blocks main() names.
+TABLES_PARTS := 1 2 3 4 5 6 7 8
+
+define pins_compile_tables_parts
+	@# loud-ok: a core count for the job width (nproc, else sysctl, else 4); the work decides the status
+	@set -eu; \
+	objdir="build/pins-tmp/tables-parts-objs"; \
+	rm -rf "$$objdir" && mkdir -p "$$objdir"; \
+	procs=$$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4); \
+	if [ "$$procs" -gt 8 ]; then procs=8; fi; \
+	jobs=''; idx=0; shared=''; \
+	for p in $(TABLES_PARTS); do jobs="$$jobs part:$$p"; done; \
+	for src in $(TABLES_JSON_SOURCES); do jobs="$$jobs src:$$src"; done; \
+	slot=0; pids=''; fail=0; \
+	for job in $$jobs; do \
+		case "$$job" in \
+			part:*) p=$${job#part:}; \
+				$(CXX) $(TABLES_CXXFLAGS) $(TABLES_INCLUDES) -DTABLES_PART=$$p -c test/tables/main.cpp -o "$$objdir/part$$p.o" & ;; \
+			src:*) idx=$$((idx+1)); src=$${job#src:}; shared="$$shared $$objdir/$$idx.o"; \
+				$(CXX) $(TABLES_CXXFLAGS) $(TABLES_INCLUDES) -c "$$src" -o "$$objdir/$$idx.o" & ;; \
+		esac; \
+		pids="$$pids $$!"; \
+		slot=$$((slot+1)); \
+		if [ "$$slot" -ge "$$procs" ]; then \
+			for pid in $$pids; do wait "$$pid" || fail=1; done; \
+			pids=''; slot=0; \
+		fi; \
+	done; \
+	for pid in $$pids; do wait "$$pid" || fail=1; done; \
+	[ "$$fail" = 0 ]; \
+	pids=''; \
+	for p in $(TABLES_PARTS); do \
+		$(CXX) $(TABLES_CXXFLAGS) "$$objdir/part$$p.o" $$shared -o build/schema_test_tables_part$$p & \
+		pids="$$pids $$!"; \
+	done; \
+	for pid in $$pids; do wait "$$pid" || fail=1; done; \
+	[ "$$fail" = 0 ]; \
+	rm -rf "$$objdir"
+endef
+
 .PHONY: pins-wire-tables
 pins-wire-tables: export PINS_CPP_GENERATE = $(call tables_generate,./bin/schema,build/tables-generated)
 pins-wire-tables: bin/schema test/tables/main.cpp test/tables/message_form.h
 	@rm -rf build/tables-generated && mkdir -p testdata/wire/tables build/tables-generated
 	$(call pins_generate_dirs,PINS_CPP_GENERATE,$(PINS_WIRE_TABLES_DIRS),wire-tables)
 	@touch build/tables-generated/.stamp
-	$(call pins_compile_cxx,build/schema_test_tables,$(TABLES_CXXFLAGS) $(TABLES_INCLUDES),test/tables/main.cpp $(TABLES_JSON_SOURCES),wire-tables)
-	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_tables
+	$(call pins_compile_tables_parts)
+	@set -eu; for p in $(TABLES_PARTS); do SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_tables_part$$p; done
 
 PINS_WIRE_FORMS_DIRS := block maps lists arms rt1 rt2 rt3
 

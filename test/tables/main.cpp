@@ -4596,7 +4596,7 @@ static void test_json_key_attribute()
 // ---- the tokenizer under a mutation fuzz: no input, however malformed,
 // ---- may crash, hang, or read past the text it was handed
 
-#if TABLES_IN_PART( 5 )
+#if TABLES_IN_PART( 7 )
 static void test_json_fuzz_tokenizer()
 {
     // one seed corpus, mutated deterministically: the point is not coverage
@@ -4676,7 +4676,7 @@ static void test_json_fuzz_tokenizer()
 // and the pretty-printed shape — is pinned to the page rather than to the
 // code's own opinion of itself.
 
-#if TABLES_IN_PART( 3 )
+#if TABLES_IN_PART( 4 )
 static void test_json_pinned_text()
 {
     tabledemo::LoadoutConfig loadout;
@@ -5031,7 +5031,7 @@ static void test_json_no_infinity_reaches_storage()
 }
 #endif // TABLES_IN_PART
 
-#if TABLES_IN_PART( 3 )
+#if TABLES_IN_PART( 4 )
 static void test_json_duplicate_arrays_refuse()
 {
     // A REPEATED KEY REFUSES THE WHOLE READ (docs/SPEC-TABLES.md §16.2), an
@@ -5088,7 +5088,7 @@ static void test_json_duplicate_arrays_refuse()
 }
 #endif // TABLES_IN_PART
 
-#if TABLES_IN_PART( 3 )
+#if TABLES_IN_PART( 4 )
 static void test_json_null_is_a_kind_mismatch()
 {
     // null is a JSON value with no field kind to land in — there is no
@@ -5136,7 +5136,7 @@ static void test_json_null_is_a_kind_mismatch()
 // TableJsonGuardHolds actually has to parse — "active && !has_target" — was
 // never reached by this suite. Patrol reaches all four states.
 
-#if TABLES_IN_PART( 3 )
+#if TABLES_IN_PART( 4 )
 static void test_json_nested_guards()
 {
     struct { bool active; bool has_target; } states[] = {
@@ -5265,7 +5265,7 @@ static tabledemo::KeyedConfig json_keyed_instance()
     return cfg;
 }
 
-#if TABLES_IN_PART( 3 )
+#if TABLES_IN_PART( 4 )
 static void test_json_keyed_and_optional_round_trip()
 {
     tabledemo::KeyedConfig cfg = json_keyed_instance();
@@ -5290,7 +5290,7 @@ static void test_json_keyed_and_optional_round_trip()
 }
 #endif // TABLES_IN_PART
 
-#if TABLES_IN_PART( 3 )
+#if TABLES_IN_PART( 4 )
 static void test_json_optional_presence()
 {
     // an absent optional writes NO KEY: nothing else would read back absent
@@ -5377,7 +5377,7 @@ static void test_json_optional_presence()
 }
 #endif // TABLES_IN_PART
 
-#if TABLES_IN_PART( 3 )
+#if TABLES_IN_PART( 4 )
 static void test_json_keyed_arrays()
 {
     // an absent key keeps that slot's defaults; the others still land
@@ -5480,7 +5480,7 @@ static void test_json_keyed_arrays()
 
 // ---- the pinned texts for both constructs -------------------------------
 
-#if TABLES_IN_PART( 3 )
+#if TABLES_IN_PART( 4 )
 static void test_json_pinned_keyed_and_optional()
 {
     // an optional PRESENT, and the object it writes
@@ -5979,7 +5979,7 @@ static void check_graph_text_round_trip( const char * what, void ( *build )( gra
     }
 }
 
-#if TABLES_IN_PART( 3 )
+#if TABLES_IN_PART( 4 )
 static void test_json_variable_class()
 {
     check_graph_text_round_trip( "graph_tree", build_graph_tree );
@@ -6194,7 +6194,7 @@ static void test_json_variable_class()
 // a slot and no ledger to count it in. It took the pack engine's two-sided
 // gate to find the old uncounted repeat; the strict read makes it loud.
 
-#if TABLES_IN_PART( 3 )
+#if TABLES_IN_PART( 4 )
 static void test_json_keyed_duplicate_keys()
 {
     // one variant named twice refuses, and nothing of either lands
@@ -6437,7 +6437,7 @@ static void pin_fixed_golden( const char * name, const T & value,
 // pins one wire per arm and the manifest reads them under A2
 static int64_t save_a1_arm( uint8_t * buffer, int64_t capacity, tbla1::ValueType arm );
 
-#if TABLES_IN_PART( 3 )
+#if TABLES_IN_PART( 4 )
 static void test_message_golden_wire()
 {
     {
@@ -6565,7 +6565,7 @@ static void reload_stream_golden( const char * name )
     free( region );
 }
 
-#if TABLES_IN_PART( 3 )
+#if TABLES_IN_PART( 4 )
 static void test_message_golden_reload()
 {
     reload_table_golden( "message_open", messagedemo::ToolMessageLoad, messagedemo::ToolMessageSave );
@@ -6616,7 +6616,7 @@ static int64_t save_a1_arm( uint8_t * buffer, int64_t capacity, tbla1::ValueType
     return tbla1::RootSave( value, buffer, capacity );
 }
 
-#if TABLES_IN_PART( 4 )
+#if TABLES_IN_PART( 5 )
 static void test_arm_retype_controls()
 {
     uint8_t buffer[256];
@@ -6696,7 +6696,7 @@ static void test_arm_retype_controls()
 // A SET ARM ALWAYS RIDES, whatever it holds (docs/SPEC-TABLES.md §2.6): a zero
 // scalar arm rides as its four zero bytes and an empty string arm as L = 0,
 // because selection is presence and only the None tag elides.
-#if TABLES_IN_PART( 4 )
+#if TABLES_IN_PART( 5 )
 static void test_arm_empty_payloads()
 {
     uint8_t buffer[256];
@@ -6757,7 +6757,7 @@ static Order host_byte_order( Order little, Order big )
 
 // the three depths, through the wire, the text and the cook: what goes in at
 // every depth comes back at every depth, in every form
-#if TABLES_IN_PART( 4 )
+#if TABLES_IN_PART( 5 )
 static void test_message_three_depths()
 {
     messagedemo::ToolMessage m;
@@ -6814,7 +6814,7 @@ static void test_message_three_depths()
 #endif // TABLES_IN_PART
 
 // the evolution pair, both directions, one fresh report per read
-#if TABLES_IN_PART( 4 )
+#if TABLES_IN_PART( 5 )
 static void test_message_evolution()
 {
     static uint8_t wire[1024];
@@ -6877,7 +6877,7 @@ static void test_message_evolution()
 
 // the descriptors: a table arm's column points at the TABLE's descriptor, the
 // same column a type arm gets
-#if TABLES_IN_PART( 4 )
+#if TABLES_IN_PART( 5 )
 static void test_message_reflection()
 {
     const messagedemo::TableTypeInfo * type = messagedemo::ToolMessageTableType();
@@ -6903,7 +6903,7 @@ static void test_message_reflection()
 #endif // TABLES_IN_PART
 
 // the text form's refusals over a table arm: the union rules, unchanged
-#if TABLES_IN_PART( 4 )
+#if TABLES_IN_PART( 5 )
 static void test_message_json_hostile()
 {
     messagedemo::ToolMessage value;
@@ -6942,7 +6942,7 @@ static void test_message_json_hostile()
 
 // a VARIABLE arm: the mode runs through the union (§2.2), so Feed is a
 // builder and a region, and the set arm is a by-value edge every walk descends
-#if TABLES_IN_PART( 4 )
+#if TABLES_IN_PART( 5 )
 static void test_message_variable_arm()
 {
     static uint8_t wire[4096];
@@ -7077,7 +7077,7 @@ static void check_stream_parts( const streamdemo::Feed * feed )
     }
 }
 
-#if TABLES_IN_PART( 4 )
+#if TABLES_IN_PART( 5 )
 static void test_pointer_arrays()
 {
     static uint8_t wire[4096];
@@ -7159,7 +7159,7 @@ static void test_pointer_arrays()
 // the wire, `{ "ack": null }` in the text, and the tag value with no accessor
 // in C++. It rides like any other selected arm — selection is presence — and
 // the eight bytes it costs are the field header, the arm id and the length.
-#if TABLES_IN_PART( 4 )
+#if TABLES_IN_PART( 5 )
 static void test_payload_free_arm()
 {
     uint8_t buffer[256];
@@ -7204,7 +7204,7 @@ static void test_payload_free_arm()
 // of its type would carry, its offsets taken inside the union's storage, and
 // its payload descriptor is NULL. Exactly one of the two is set on a set arm;
 // a payload-free arm has neither.
-#if TABLES_IN_PART( 4 )
+#if TABLES_IN_PART( 5 )
 static void test_general_arm_reflection()
 {
     const messagedemo::TableTypeInfo * info = messagedemo::ToolMessageTableType();
@@ -7325,7 +7325,7 @@ static void check_stream_arm_first_layout( const streamdemo::Feed * feed )
     CHECK( at_a > 0 && at_a < at_b && at_b < at_c );
 }
 
-#if TABLES_IN_PART( 4 )
+#if TABLES_IN_PART( 6 )
 static void test_pointer_walk_order()
 {
     static uint8_t wire[4096];
@@ -7415,7 +7415,7 @@ static void check_stream_arm_pointer( const streamdemo::Feed * feed )
     CHECK( feed->parts_count == 2 );
 }
 
-#if TABLES_IN_PART( 4 )
+#if TABLES_IN_PART( 6 )
 static void test_pointer_arm_shares_a_node()
 {
     static uint8_t wire[4096];
@@ -7461,7 +7461,7 @@ static void test_pointer_arm_shares_a_node()
 // all-null fixed array write nothing, so a Feed with neither is byte-identical
 // to one declared before the arrays existed; a counted array of null slots is
 // content and rides
-#if TABLES_IN_PART( 4 )
+#if TABLES_IN_PART( 5 )
 static void test_pointer_arrays_elision()
 {
     static uint8_t wire[4096];
@@ -7504,7 +7504,7 @@ static void test_pointer_arrays_elision()
 // The form byte is read FIRST, before the trailer and before any body, so a
 // file that is both a newer form and damaged is a refusal and never damage.
 // These three rows are pinned as shared report rows every leg reads.
-#if TABLES_IN_PART( 4 )
+#if TABLES_IN_PART( 5 )
 static void test_form_byte_refusals()
 {
     tblv1::Cfg src;
@@ -7595,7 +7595,7 @@ static void test_form_byte_refusals()
 // variable-length, `Guarded.optional` is `?Wrapped`, and the numbering, the
 // pack measure and the pack gate on the presence companion, so an absent
 // optional's table is not descended (schema#526, test_absent_optional_is_not_descended).
-#if TABLES_IN_PART( 4 )
+#if TABLES_IN_PART( 6 )
 static void test_unwritten_fields_are_not_edges()
 {
     static uint8_t wire[512];
@@ -7669,7 +7669,7 @@ static void test_unwritten_fields_are_not_edges()
 // The control is the same value with the optional PRESENT: two records where
 // the absent one writes a single record, and the byte counts say which walk
 // ran. The pins are the tool's, so a plain conformance run holds the rule.
-#if TABLES_IN_PART( 4 )
+#if TABLES_IN_PART( 6 )
 static void test_absent_optional_is_not_descended()
 {
     static uint8_t wire[512];
@@ -7740,7 +7740,7 @@ static void test_absent_optional_is_not_descended()
 // kind 7, and kind 7 where it declares kind 30. Both fields stay at their
 // declared defaults, and no raw value is ever read as a variant name: the read refuses whole as kind_mismatch. The wire is pinned as a
 // shared report row every leg reads.
-#if TABLES_IN_PART( 4 )
+#if TABLES_IN_PART( 6 )
 static void test_enum_kind_against_the_raw_integer()
 {
     tblk1::Root src;
@@ -7782,7 +7782,7 @@ static void test_enum_kind_against_the_raw_integer()
 // element kind, the whole load refuses wire_damaged, exactly as it refuses 33
 // and 34. Kind 32 where a declaration says otherwise is an ordinary kind
 // mismatch. Each row is pinned so every leg answers the same bytes.
-#if TABLES_IN_PART( 4 )
+#if TABLES_IN_PART( 6 )
 static void test_held_kind31_and_payload_free_kinds()
 {
     // (1) AT A FIELD THE READER CANNOT NAME: damage, the whole load refuses
@@ -7978,7 +7978,7 @@ static void test_held_kind31_and_payload_free_kinds()
 // a kind mismatch, which refuses the whole load, siblings included.
 // The fourth is the LENGTH pin — a reference-shaped arm whose L is not the
 // byte count of the reference it frames is that arm's own framing damage.
-#if TABLES_IN_PART( 4 )
+#if TABLES_IN_PART( 6 )
 static void test_arm_kind_pins()
 {
     struct Row { const char * name; const char * arm; uint8_t kind; };
@@ -8072,7 +8072,7 @@ static void test_arm_kind_pins()
 // the element-kind separation (§3, §3.1): `parts` arriving as an array of
 // uint32 — element kind 8 where this reader declares 17 — is a kind mismatch
 // that refuses the whole load; nothing reads a number as an index
-#if TABLES_IN_PART( 4 )
+#if TABLES_IN_PART( 6 )
 static void test_pointer_arrays_element_kind_mismatch()
 {
     uint8_t wire[64];
@@ -8101,7 +8101,7 @@ static void test_pointer_arrays_element_kind_mismatch()
 // a count past the READER's bound is out of range and refuses the whole load
 // (§4): five slots against a bound of four, never a kept prefix. The wire is
 // pinned as a shared report row every leg reads.
-#if TABLES_IN_PART( 4 )
+#if TABLES_IN_PART( 6 )
 static void test_pointer_arrays_count_past_bound()
 {
     uint8_t wire[64];
@@ -8129,7 +8129,7 @@ static void test_pointer_arrays_count_past_bound()
 
 // AN INDEX OUT OF RANGE is malformed and refuses the whole load (§3.1, §4):
 // index 7 where no node exists. The wire stays pinned for cross-language checks.
-#if TABLES_IN_PART( 4 )
+#if TABLES_IN_PART( 6 )
 static void test_pointer_arrays_index_out_of_range()
 {
     uint8_t wire[64];
@@ -8216,7 +8216,7 @@ static void check_message_batch( const messagedemo::ToolMessage & m )
 
 // the three depths through the wire, the text and the cook, pinned as the
 // shared instance the harness reads
-#if TABLES_IN_PART( 4 )
+#if TABLES_IN_PART( 6 )
 static void test_union_arrays()
 {
     messagedemo::ToolMessage m;
@@ -8291,7 +8291,7 @@ static void test_union_arrays()
 // byte-identical to the pinned message_transaction, which is the wire from
 // before the arrays were declared — and a counted array of live None
 // elements is content and rides
-#if TABLES_IN_PART( 4 )
+#if TABLES_IN_PART( 6 )
 static void test_union_arrays_elision()
 {
     static uint8_t wire[4096];
@@ -8321,7 +8321,7 @@ static void test_union_arrays_elision()
 // element kind 13 where this reader declares 15 — is a kind mismatch that
 // refuses the load; `[N]Body` ⇄ `[N]Table` is refused by name. The
 // wire is pinned as a shared report row every leg reads.
-#if TABLES_IN_PART( 5 )
+#if TABLES_IN_PART( 7 )
 static void test_union_arrays_element_kind_mismatch()
 {
     uint8_t wire[64];
@@ -8350,7 +8350,7 @@ static void test_union_arrays_element_kind_mismatch()
 // an arm this reader cannot name, inside an element (§4): the element reads
 // None, the body skips by its length, unknown counts — and the slot is LIVE,
 // so the count keeps it. The wire is pinned as a shared report row.
-#if TABLES_IN_PART( 5 )
+#if TABLES_IN_PART( 7 )
 static void test_union_arrays_unknown_arm()
 {
     uint8_t wire[64];
@@ -8380,7 +8380,7 @@ static void test_union_arrays_unknown_arm()
 #endif // TABLES_IN_PART
 
 // the text refusals over an element: the union row's rules, per element
-#if TABLES_IN_PART( 5 )
+#if TABLES_IN_PART( 7 )
 static void test_union_arrays_json_hostile()
 {
     messagedemo::ToolMessage value;
@@ -8471,7 +8471,7 @@ static void check_message_trace( const messagedemo::ToolMessage & m )
 
 // the three depths through the wire, the text and the cook, pinned as the
 // shared instance the harness reads
-#if TABLES_IN_PART( 5 )
+#if TABLES_IN_PART( 7 )
 static void test_optional_arrays()
 {
     messagedemo::ToolMessage m;
@@ -8554,7 +8554,7 @@ static void test_optional_arrays()
 // pinned message_transaction, the wire from before the fields were declared —
 // and a PRESENT one always rides: the fixed spelling whole at all defaults,
 // the counted spelling as its live count, zero included
-#if TABLES_IN_PART( 5 )
+#if TABLES_IN_PART( 7 )
 static void test_optional_arrays_elision()
 {
     static uint8_t wire[4096];
@@ -8618,7 +8618,7 @@ static void test_optional_arrays_elision()
 // the element-kind separation under `?` (§2.3, §3): `trace` arriving with
 // element kind 8 where this reader declares 13 is a kind mismatch that
 // refuses the load, the field left ABSENT — its declared default. The wire is pinned as a shared report row every leg reads.
-#if TABLES_IN_PART( 5 )
+#if TABLES_IN_PART( 7 )
 static void test_optional_arrays_element_kind_mismatch()
 {
     uint8_t wire[64];
@@ -8646,7 +8646,7 @@ static void test_optional_arrays_element_kind_mismatch()
 // a count past the bound under `?` (§4) is out of range and refuses the whole
 // load: no prefix is kept and the field is not left present. The wire is
 // pinned as a shared report row every leg reads.
-#if TABLES_IN_PART( 5 )
+#if TABLES_IN_PART( 7 )
 static void test_optional_arrays_count_past_bound()
 {
     uint8_t wire[96];
@@ -8679,7 +8679,7 @@ static void test_optional_arrays_count_past_bound()
 // None, the read counts it unknown, and the field is PRESENT — it rode with
 // its own element kind, and a fixed array has no count to clamp. The wire is
 // pinned as a shared report row every leg reads.
-#if TABLES_IN_PART( 5 )
+#if TABLES_IN_PART( 7 )
 static void test_optional_arrays_enum_unknown_variant()
 {
     uint8_t wire[64];
@@ -8711,7 +8711,7 @@ static void test_optional_arrays_enum_unknown_variant()
 // names has no wire identity and the measure refuses the whole value rather
 // than writing a hash it cannot make. Presence is what puts the slots in
 // reach: the same value with the field absent measures fine.
-#if TABLES_IN_PART( 5 )
+#if TABLES_IN_PART( 7 )
 static void test_optional_arrays_enum_element_unnameable()
 {
     static uint8_t wire[4096];
@@ -8731,7 +8731,7 @@ static void test_optional_arrays_enum_element_unnameable()
 // the text form's three hostile shapes (§16.2): `null` is the absence, and a
 // wrong shape under the key or in an element is a kind mismatch that refuses
 // the whole read
-#if TABLES_IN_PART( 5 )
+#if TABLES_IN_PART( 7 )
 static void test_optional_arrays_json_hostile()
 {
     // the wrong shape under the key refuses, and leaves the field absent
@@ -8835,7 +8835,7 @@ static void check_blob_catalog_arena( blobdemo::CatalogBuilder & builder )
     CHECK( note.data != NULL && strcmp( note.data, "hello blobs" ) == 0 );
 }
 
-#if TABLES_IN_PART( 5 )
+#if TABLES_IN_PART( 7 )
 static void test_blob_lifecycle()
 {
     blobdemo::CatalogBuilder builder;
@@ -8895,7 +8895,7 @@ static void test_blob_lifecycle()
 // ONE BLOB RECORD NAMED FROM TWO SLOTS is blob_shared (docs/SPEC-TABLES.md
 // §2.5, §16.7): every writer refuses the graph by name, and every read refuses
 // the corpus's pinned shared wire, a hand-built input, by the same name.
-#if TABLES_IN_PART( 5 )
+#if TABLES_IN_PART( 7 )
 static void test_blob_shared_node()
 {
     blobdemo::CatalogBuilder shared;
@@ -8935,7 +8935,7 @@ static void test_blob_shared_node()
 
 // null and empty are TWO VALUES (§2.5): a null reference elides, a present
 // blob of length zero rides, and the views tell them apart
-#if TABLES_IN_PART( 5 )
+#if TABLES_IN_PART( 7 )
 static void test_blob_null_and_empty()
 {
     blobdemo::CatalogBuilder null_builder;
@@ -8974,7 +8974,7 @@ static void test_blob_null_and_empty()
 
 // a blob past one 64 KiB slab takes a span of the arena's own (§6.5's
 // authoring path), and the bytes survive the wire and the cook intact
-#if TABLES_IN_PART( 5 )
+#if TABLES_IN_PART( 7 )
 static void test_blob_past_slab()
 {
     const int64_t big = 66000; // past kTableSlabBytes = 64 KiB
@@ -9038,7 +9038,7 @@ static void test_blob_past_slab()
 //
 // Red where the cap is not checked: the storage comes back as a size a caller
 // would then try to allocate.
-#if TABLES_IN_PART( 5 )
+#if TABLES_IN_PART( 7 )
 static void test_blob_over_size_cap()
 {
     blobdemo::TableRefuseReason reason = blobdemo::ok;
@@ -9058,7 +9058,7 @@ static void test_blob_over_size_cap()
 }
 #endif // TABLES_IN_PART
 
-#if TABLES_IN_PART( 5 )
+#if TABLES_IN_PART( 7 )
 static void test_blob_record_length_off_by_one()
 {
     blobdemo::CatalogBuilder builder;
@@ -9120,7 +9120,7 @@ static void test_blob_record_length_off_by_one()
 // slot is a wrong-type pointer target, which is damage, and a `bytes(N)` array
 // under a `*bytes` slot is kind 14 against kind 17 — a mismatch in both
 // directions, nothing misdecodes
-#if TABLES_IN_PART( 5 )
+#if TABLES_IN_PART( 7 )
 static void test_blob_kind_mismatch()
 {
     // a Catalog whose note (a *string blob) is named by thumb (*bytes):
@@ -9174,7 +9174,7 @@ static void test_blob_kind_mismatch()
 
 // the cook (§7): every blob laid out header-plus-bytes in the region, views
 // one add from the slot, and the round trip back to the wire byte-identical
-#if TABLES_IN_PART( 5 )
+#if TABLES_IN_PART( 7 )
 static void test_blob_cook()
 {
     blobdemo::CatalogBuilder builder;
@@ -9204,7 +9204,7 @@ static void test_blob_cook()
 // the text form (§16.2, §2.5): a *bytes is inline base64, a *string is a
 // string, null and "" are two texts, and a SHARED blob has no spelling —
 // the writer refuses the graph
-#if TABLES_IN_PART( 5 )
+#if TABLES_IN_PART( 7 )
 static void test_blob_json()
 {
     blobdemo::CatalogBuilder builder;
@@ -9330,7 +9330,7 @@ static void test_blob_json()
 
 // reflection: a blob field is kind 17 with NO target table — the pair of
 // facts a generic walk tells a byte buffer from a pointer to a table by
-#if TABLES_IN_PART( 5 )
+#if TABLES_IN_PART( 7 )
 static void test_blob_reflection()
 {
     const blobdemo::TableTypeInfo * type = blobdemo::CatalogTableType();
@@ -9398,7 +9398,7 @@ static void check_blob_terminated( const blobdemo::Catalog * root, int64_t lengt
 // the same string at 8 and at 16, read back off the LOCKED region and off a
 // region a wire load sized and filled: the node pays for its own terminator on
 // both paths, or the byte after the data belongs to the next node
-#if TABLES_IN_PART( 5 )
+#if TABLES_IN_PART( 7 )
 static void test_blob_string_terminator()
 {
     const int64_t lengths[2] = { 8, 16 };
@@ -9426,7 +9426,7 @@ static void test_blob_string_terminator()
 #endif // TABLES_IN_PART
 
 // the pinned wires the conformance harness reads (testdata/wire/tables)
-#if TABLES_IN_PART( 5 )
+#if TABLES_IN_PART( 7 )
 static void test_blob_golden_wire()
 {
     static uint8_t buffer[1 << 17];
@@ -9503,7 +9503,7 @@ static void reload_blob_golden( const char * name )
     }
 }
 
-#if TABLES_IN_PART( 5 )
+#if TABLES_IN_PART( 7 )
 static void test_blob_golden_reload()
 {
     reload_blob_golden( "blob_small" );
@@ -9889,6 +9889,8 @@ int main()
     RUN( test_json_number_grammar );
     RUN( test_json_integral_spellings );
     RUN( test_json_no_infinity_reaches_storage );
+#endif
+#if TABLES_IN_PART( 4 )
     RUN( test_json_duplicate_arrays_refuse );
     RUN( test_json_null_is_a_kind_mismatch );
     RUN( test_json_nested_guards );
@@ -9902,7 +9904,7 @@ int main()
     RUN( test_message_golden_wire );
     RUN( test_message_golden_reload );
 #endif
-#if TABLES_IN_PART( 4 )
+#if TABLES_IN_PART( 5 )
     RUN( test_message_three_depths );
     RUN( test_arm_retype_controls );
     RUN( test_arm_empty_payloads );
@@ -9915,6 +9917,8 @@ int main()
     RUN( test_pointer_arrays );
     RUN( test_pointer_arrays_elision );
     RUN( test_form_byte_refusals );
+#endif
+#if TABLES_IN_PART( 6 )
     RUN( test_unwritten_fields_are_not_edges );
     RUN( test_absent_optional_is_not_descended );
     RUN( test_enum_kind_against_the_raw_integer );
@@ -9928,7 +9932,7 @@ int main()
     RUN( test_union_arrays );
     RUN( test_union_arrays_elision );
 #endif
-#if TABLES_IN_PART( 5 )
+#if TABLES_IN_PART( 7 )
     RUN( test_union_arrays_element_kind_mismatch );
     RUN( test_union_arrays_unknown_arm );
     RUN( test_union_arrays_json_hostile );
@@ -9956,7 +9960,7 @@ int main()
 #endif
 
     // THE MESSAGE FORM (docs/SPEC-TABLES.md §3.3)
-#if TABLES_IN_PART( 6 )
+#if TABLES_IN_PART( 8 )
     RUN( test_message_form_goldens );
     RUN( test_message_form_batch );
     RUN( test_message_form_reload );
