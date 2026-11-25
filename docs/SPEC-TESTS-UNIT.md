@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 0. Language-free tests: 2815.
+Unit tests every language answers: 0. Language-free tests: 2816.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -3038,11 +3038,12 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.testproc.child-leads-its-own-group` | `gotest` | Go test TestChildLeadsItsOwnGroup in ./internal/testproc | `package: ./internal/testproc`<br>`test: TestChildLeadsItsOwnGroup` | the Go test passes | `internal/testproc/group_unix_test.go:17` |
 | `none.unit.tooling.testproc.grandchild-is-killed-when-the-child-exits-normally` | `gotest` | Go test TestGrandchildIsKilledWhenTheChildExitsNormally in ./internal/testproc | `package: ./internal/testproc`<br>`test: TestGrandchildIsKilledWhenTheChildExitsNormally` | the Go test passes | `internal/testproc/testproc_test.go:154` |
 
-#### `tooling` family `testreg`, 55 tests
+#### `tooling` family `testreg`, 56 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.unit.tooling.testreg.a-full-name-is-never-filtered-out` | `gotest` | Go test TestAFullNameIsNeverFilteredOut in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestAFullNameIsNeverFilteredOut` | the Go test passes | `internal/testreg/run_test.go:120` |
+| `none.unit.tooling.testreg.a-golden-writers-rows-share-one-shard` | `gotest` | Go test TestAGoldenWritersRowsShareOneShard in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestAGoldenWritersRowsShareOneShard` | the Go test passes | `internal/testreg/run_test.go:411` |
 | `none.unit.tooling.testreg.a-hand-edit-to-an-addendum-is-red` | `gotest` | plant: a hand edit to a generated addendum makes the drift check fail, naming the page and the line | `package: ./internal/testreg`<br>`test: TestAHandEditToAnAddendumIsRed` | the Go test passes | `internal/testreg/addenda_test.go:85` |
 | `none.unit.tooling.testreg.a-harness-skip-line-fails` | `gotest` | Go test TestAHarnessSkipLineFails in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestAHarnessSkipLineFails` | the Go test passes | `internal/testreg/run_test.go:261` |
 | `none.unit.tooling.testreg.a-heavy-test-leaves-no-part-empty` | `gotest` | Go test TestAHeavyTestLeavesNoPartEmpty in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestAHeavyTestLeavesNoPartEmpty` | the Go test passes | `internal/testreg/run_test.go:396` |
