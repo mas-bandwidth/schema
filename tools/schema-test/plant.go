@@ -430,7 +430,7 @@ func plantInTree(ctx context.Context, edits []plantEdit, names []string) (plantR
 	runErr := cmd.Run() // red by design: the report, not the exit, is the verdict
 	data, err := os.ReadFile(reportPath)
 	if err != nil {
-		return plantRun{log: out.String()}, fmt.Errorf("the planted run wrote no report (%v): %w", runErr, err)
+		return plantRun{log: out.String()}, fmt.Errorf("the planted run wrote no report (%w): %w", runErr, err)
 	}
 	var rep testreg.Report
 	if err := json.Unmarshal(data, &rep); err != nil {
