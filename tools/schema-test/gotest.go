@@ -394,28 +394,25 @@ func packageVerdict(pkg string, res []testreg.Result, runErr error, stdout, stde
 // A subtest's events count against its top-level test: its output joins the
 // reason, and a subtest that skips fails its parent.
 //
-// A result's seconds are the test's wall time: from its last "run" or
-// "cont" event to its "pass" or "fail", by the events' own clock. go test's
-// Elapsed for a parent leaves out its parallel subtests, which run after
-// the parent's body returns, so a test made of parallel subtests would weigh
-// its body alone (the Ruby strict gate: 4.24 s of a 612 s run); the larger
-// of the two is the measure.
+// A result's seconds are what the test costs run alone, which the sharder
+// sums: its own Elapsed plus the Elapsed of every parallel subtest under it
+// (one that paused for t.Parallel). go test's Elapsed for a test leaves out
+// its parallel subtests, which run after its body returns, so a test made
+// of them would weigh its body alone (the Ruby strict gate: 4.24 s of a
+// 612 s run). A subtest that did not pause ran inside its parent's body and
+// is in the parent's Elapsed already. Never the wall time between events:
+// tests of one call run side by side, and the wall of each holds the
+// others' work.
 func goTestResults(r io.Reader, tests map[string]string) ([]testreg.Result, error) {
 	type event struct {
-		Time                 time.Time
 		Action, Test, Output string
 		Elapsed              float64
 	}
 	output := map[string][]string{}
 	skipped := map[string][]string{}
-	started := map[string]time.Time{} // a top-level test's last run or cont
-	seconds := func(top string, ev event) float64 {
-		st, ok := started[top]
-		if !ok || st.IsZero() || ev.Time.IsZero() {
-			return ev.Elapsed
-		}
-		return max(ev.Elapsed, ev.Time.Sub(st).Seconds())
-	}
+	paused := map[string]bool{}      // the subtests that paused for t.Parallel
+	parallel := map[string]float64{} // a top-level test's parallel subtests' Elapsed
+	seconds := func(top string, ev event) float64 { return ev.Elapsed + parallel[top] }
 	var out []testreg.Result
 	dec := json.NewDecoder(r)
 	for {
@@ -431,9 +428,9 @@ func goTestResults(r io.Reader, tests map[string]string) ([]testreg.Result, erro
 			continue // the package's own lines
 		}
 		switch ev.Action {
-		case "run", "cont":
-			if !isSub {
-				started[top] = ev.Time
+		case "pause":
+			if isSub {
+				paused[ev.Test] = true
 			}
 		case "output":
 			output[top] = append(output[top], strings.TrimRight(ev.Output, "\n"))
@@ -445,6 +442,9 @@ func goTestResults(r io.Reader, tests map[string]string) ([]testreg.Result, erro
 			out = append(out, testreg.Result{Instance: inst, Verdict: testreg.Fail, Reason: "the Go test skipped, and nothing is ever skipped: " + tail(strings.Join(output[top], "\n"), 5)})
 		case "pass":
 			if isSub {
+				if paused[ev.Test] {
+					parallel[top] += ev.Elapsed
+				}
 				continue
 			}
 			if s := skipped[top]; len(s) > 0 {
@@ -458,6 +458,9 @@ func goTestResults(r io.Reader, tests map[string]string) ([]testreg.Result, erro
 			out = append(out, testreg.Result{Instance: inst, Verdict: testreg.Pass, Seconds: max(seconds(top, ev), goTestTick)})
 		case "fail":
 			if isSub {
+				if paused[ev.Test] {
+					parallel[top] += ev.Elapsed
+				}
 				continue
 			}
 			out = append(out, testreg.Result{Instance: inst, Verdict: testreg.Fail, Reason: tail(strings.Join(output[top], "\n"), 20), Seconds: seconds(top, ev)})

@@ -54,36 +54,43 @@ func TestASubtestThatSkipsFailsItsParent(t *testing.T) {
 	}
 }
 
-// TestAGoTestsSecondsCountItsParallelSubtests: a test's seconds are its
-// wall time, its parallel subtests included. go test -json gives the parent
-// TestGate an Elapsed of its body alone (0.01 s) though its two parallel
-// subtests ran 30 s after it, and the result weighs 30.01 s. A top-level
-// test that paused for t.Parallel weighs from its cont, never its wait
-// (TestPaused: 5 s, not 105). A failing test weighs the same way. The
-// clock is the fixture's events', never the run's. Planted: with Elapsed
-// alone, TestGate weighs 0.01 s.
+// TestAGoTestsSecondsCountItsParallelSubtests: a test weighs what it costs
+// run alone: its own Elapsed plus every parallel subtest's under it, at any
+// depth. go test -json gives TestGate an Elapsed of its body alone (0.01 s)
+// though its parallel subtests a (29.99 s) and b (30 s, holding a parallel
+// b/x of 5 s and a serial b/y already in b's 30 s) ran after it: it weighs
+// 65 s. A paused top-level test weighs its Elapsed, never its wait (TestPaused:
+// 5 s). A failing parent weighs the same way (TestRed: 7 s). The wall time
+// between events counts nothing: TestPaused's events are 105 s apart.
+// Planted: with Elapsed alone, TestGate weighs 0.01 s and TestRed 0.
 func TestAGoTestsSecondsCountItsParallelSubtests(t *testing.T) {
 	t.Parallel()
 	events := `{"Time":"2026-11-25T10:00:00Z","Action":"run","Test":"TestGate"}
 {"Time":"2026-11-25T10:00:00Z","Action":"run","Test":"TestPaused"}
 {"Time":"2026-11-25T10:00:00Z","Action":"pause","Test":"TestPaused"}
-{"Time":"2026-11-25T10:00:00Z","Action":"run","Test":"TestGate/a"}
-{"Time":"2026-11-25T10:00:00Z","Action":"pause","Test":"TestGate/a"}
-{"Time":"2026-11-25T10:00:00.005Z","Action":"run","Test":"TestGate/b"}
-{"Time":"2026-11-25T10:00:00.005Z","Action":"pause","Test":"TestGate/b"}
-{"Time":"2026-11-25T10:00:00.01Z","Action":"cont","Test":"TestGate/a"}
-{"Time":"2026-11-25T10:00:00.01Z","Action":"cont","Test":"TestGate/b"}
-{"Time":"2026-11-25T10:00:30Z","Action":"pass","Test":"TestGate/a","Elapsed":29.99}
-{"Time":"2026-11-25T10:00:30.01Z","Action":"pass","Test":"TestGate/b","Elapsed":30}
-{"Time":"2026-11-25T10:00:30.01Z","Action":"pass","Test":"TestGate","Elapsed":0.01}
+{"Action":"run","Test":"TestGate/a"}
+{"Action":"pause","Test":"TestGate/a"}
+{"Action":"run","Test":"TestGate/b"}
+{"Action":"pause","Test":"TestGate/b"}
+{"Action":"cont","Test":"TestGate/a"}
+{"Action":"cont","Test":"TestGate/b"}
+{"Action":"run","Test":"TestGate/b/x"}
+{"Action":"pause","Test":"TestGate/b/x"}
+{"Action":"run","Test":"TestGate/b/y"}
+{"Action":"pass","Test":"TestGate/b/y","Elapsed":3}
+{"Action":"cont","Test":"TestGate/b/x"}
+{"Action":"pass","Test":"TestGate/b/x","Elapsed":5}
+{"Action":"pass","Test":"TestGate/a","Elapsed":29.99}
+{"Action":"pass","Test":"TestGate/b","Elapsed":30}
+{"Action":"pass","Test":"TestGate","Elapsed":0.01}
 {"Time":"2026-11-25T10:01:40Z","Action":"cont","Test":"TestPaused"}
 {"Time":"2026-11-25T10:01:45Z","Action":"pass","Test":"TestPaused","Elapsed":5}
-{"Time":"2026-11-25T10:01:45Z","Action":"run","Test":"TestRed"}
-{"Time":"2026-11-25T10:01:45Z","Action":"run","Test":"TestRed/a"}
-{"Time":"2026-11-25T10:01:45Z","Action":"pause","Test":"TestRed/a"}
-{"Time":"2026-11-25T10:01:45Z","Action":"cont","Test":"TestRed/a"}
-{"Time":"2026-11-25T10:01:52Z","Action":"fail","Test":"TestRed/a","Elapsed":7}
-{"Time":"2026-11-25T10:01:52Z","Action":"fail","Test":"TestRed","Elapsed":0}
+{"Action":"run","Test":"TestRed"}
+{"Action":"run","Test":"TestRed/a"}
+{"Action":"pause","Test":"TestRed/a"}
+{"Action":"cont","Test":"TestRed/a"}
+{"Action":"fail","Test":"TestRed/a","Elapsed":7}
+{"Action":"fail","Test":"TestRed","Elapsed":0}
 `
 	res, err := goTestResults(strings.NewReader(events), map[string]string{"TestGate": "gate", "TestPaused": "paused", "TestRed": "red"})
 	if err != nil {
@@ -94,11 +101,11 @@ func TestAGoTestsSecondsCountItsParallelSubtests(t *testing.T) {
 		got[r.Instance] = r
 	}
 	near := func(a, b float64) bool { return a-b < 1e-6 && b-a < 1e-6 }
-	if g := got["gate"]; g.Verdict != testreg.Pass || !near(g.Seconds, 30.01) {
-		t.Errorf("a parent of parallel subtests weighs %v s, want its wall 30.01 s: %+v", g.Seconds, g)
+	if g := got["gate"]; g.Verdict != testreg.Pass || !near(g.Seconds, 65) {
+		t.Errorf("a parent of parallel subtests weighs %v s, want 65 s: %+v", g.Seconds, g)
 	}
 	if p := got["paused"]; p.Verdict != testreg.Pass || !near(p.Seconds, 5) {
-		t.Errorf("a paused parallel test weighs %v s, want 5 s from its cont: %+v", p.Seconds, p)
+		t.Errorf("a paused parallel test weighs %v s, want its Elapsed, 5 s: %+v", p.Seconds, p)
 	}
 	if r := got["red"]; r.Verdict != testreg.Fail || !near(r.Seconds, 7) {
 		t.Errorf("a failing parent of a parallel subtest weighs %v s, want 7 s: %+v", r.Seconds, r)
