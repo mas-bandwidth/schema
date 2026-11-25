@@ -91,6 +91,11 @@ type tally struct {
 	// skippedTests names every test ("package test") that skipped, in the
 	// order go test reported the skips.
 	skippedTests []string
+	// subRuns counts the subtests that ran under each top-level test
+	// ("package test"); seedless names every fuzz target that passed having
+	// run no seed input (each seed is a subtest), so tested nothing.
+	subRuns  map[string]int
+	seedless []string
 	// readErr is why the stream could not be read to its end, or nil.
 	readErr error
 	// missing is the first output line saying a test lacked its toolchain or
@@ -108,7 +113,7 @@ var missingTool = regexp.MustCompile(regexp.QuoteMeta(slowtest.MissingWords) + `
 // toolchain message before the first package) is passed to text unchanged.
 // Output events are written to text as go test would have printed them.
 func read(in io.Reader, text io.Writer) tally {
-	t := tally{perPackage: map[string]int{}}
+	t := tally{perPackage: map[string]int{}, subRuns: map[string]int{}}
 	sc := bufio.NewScanner(in)
 	sc.Buffer(make([]byte, 1<<20), 64<<20)
 	for sc.Scan() {
@@ -133,12 +138,19 @@ func read(in io.Reader, text io.Writer) tally {
 		if e.Test == "" {
 			continue // a package-level verdict is not a test
 		}
+		top, _, isSub := strings.Cut(e.Test, "/")
 		switch e.Action {
 		case "run":
 			t.ran++
+			if isSub {
+				t.subRuns[e.Package+" "+top]++
+			}
 		case "pass":
 			t.passed++
 			t.perPackage[e.Package]++
+			if !isSub && strings.HasPrefix(top, "Fuzz") && t.subRuns[e.Package+" "+top] == 0 {
+				t.seedless = append(t.seedless, e.Package+" "+top)
+			}
 		case "skip":
 			t.skipped++
 			t.skippedTests = append(t.skippedTests, e.Package+" "+e.Test)
@@ -162,6 +174,9 @@ func verdict(exit int, t tally, each bool) (int, string) {
 	}
 	if t.skipped > 0 {
 		return 1, fmt.Sprintf("SKIPPED: %d test(s) of this selection skipped themselves, so they did not run; a skip is a failure, and a test that is not to run is left out at the root", t.skipped)
+	}
+	if len(t.seedless) > 0 {
+		return 1, fmt.Sprintf("NO SEED: fuzz target(s) ran no seed input (no f.Add and no testdata/fuzz corpus), so they tested nothing: %s", strings.Join(t.seedless, ", "))
 	}
 	if t.passed == 0 {
 		return 1, "go test exited 0 but no test passed"

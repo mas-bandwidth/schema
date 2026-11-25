@@ -89,7 +89,9 @@ func FormatResult(r Result) string {
 //   - other runners' words for a test not run: a non-zero count of ignored
 //     (cargo), excluded (ExUnit), pending or todo, or not run ("1 ignored",
 //     "excluded: 2"), cargo's "test x ... ignored", and the dart reporter's
-//     skip count ("+3 ~1:").
+//     skip count ("+3 ~1:"). These are matched on any log line, not only a
+//     runner summary: a harness that logs "3 pending" for its own reasons
+//     is refused too, and says it another way.
 var skipVerdicts = []*regexp.Regexp{
 	regexp.MustCompile(`"Action"\s*:\s*"skip"`),
 	regexp.MustCompile(`(^|[^\w./-])SKIP(PED)?([^\w./-]|$)`),

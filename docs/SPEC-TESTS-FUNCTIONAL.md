@@ -5235,7 +5235,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.functional.tooling.gotestrun.verdict` | `gotest` | Go test TestVerdict in ./tools/gotestrun | `package: ./tools/gotestrun`<br>`test: TestVerdict` | the Go test passes | `tools/gotestrun/main_test.go:48` |
+| `none.functional.tooling.gotestrun.verdict` | `gotest` | Go test TestVerdict in ./tools/gotestrun | `package: ./tools/gotestrun`<br>`test: TestVerdict` | the Go test passes | `tools/gotestrun/main_test.go:69` |
 
 #### `tooling` family `harness`, 57 tests
 
