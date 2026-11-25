@@ -1936,6 +1936,20 @@ local function loadBody(root: string, bytes: buffer, report: any): any
 	return loadOpened(root, bytes, report, o)
 end
 
+-- NO TOLERANT READ UNDER ANY NAME (docs/SPEC-TABLES.md §6.5, docs/rulings.json
+-- strict-only-read): the walk hands back no value once a counter that
+-- refuses has moved (a blob named from two slots, a value past its bound, a
+-- kind mismatch, a repeated key, a missing required field, a non-finite
+-- float). It counts, as the strict read's ranking needs, but never returns
+-- the partial or clamped value.
+local function walkRefuses(report: any): boolean
+	if report.malformed == true or report.nonFiniteFloat ~= nil then return true end
+	for _, k in { "missingRequired", "blobShared", "clamped", "kindMismatch", "duplicate" } do
+		if (report[k] or 0) > 0 then return true end
+	end
+	return false
+end
+
 -- A ROOT THAT DECLARES INTEGRITY (docs/SPEC-TABLES.md §2.14) opens its
 -- trailer first, as the strict read does; a trailer that does not match is the
 -- whole-file damage named integrity_mismatch.
@@ -1965,6 +1979,7 @@ function L.loadWalk(root: string, bytes: buffer, report: any, outNodes: { any }?
 		report.clamped = (report.clamped or 0) + (fx.clamped or 0)
 		report.widened = (report.widened or 0) + (fx.widened or 0)
 		report.duplicate = (report.duplicate or 0) + (fx.duplicate or 0)
+		if walkRefuses(report) then return nil end
 		return out[1]
 	end
 	if d.integrity ~= nil and d.integrity ~= "" and bytes ~= nil and buffer.len(bytes) >= 1 and buffer.readu8(bytes, 0) == 1 then
@@ -1977,6 +1992,7 @@ function L.loadWalk(root: string, bytes: buffer, report: any, outNodes: { any }?
 		bytes = body
 	end
 	local res = loadBody(root, bytes, report)
+	if res ~= nil and walkRefuses(report) then return nil end
 	if res ~= nil and outNodes ~= nil then
 		for idx, nd in _nodes do
 			if nd ~= nil and nd.kind == "t" then outNodes[idx] = nd.v end
