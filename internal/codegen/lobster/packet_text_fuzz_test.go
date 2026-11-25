@@ -100,7 +100,7 @@ func packetFuzzOracle(payload []byte) bool {
 	return utf8.Valid(payload) && bytes.IndexByte(payload, 0) < 0
 }
 
-const packetFuzzDriver = `import .Narrow
+const packetFuzzDriver = `import .Text
 import .serialize
 
 def unhex(s:string) -> string:

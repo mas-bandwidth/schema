@@ -39,7 +39,7 @@ fixed table Ship
 #include <cstring>
 #include <cstdio>
 
-using namespace p;
+using namespace px;
 
 int main(void) {
     // THE READ IS STRICT (docs/SPEC-TABLES.md §4, §16.8): text that is not
@@ -233,7 +233,7 @@ func TestIssue715(t *testing.T) {
 		}
 		program := `using System;
 using System.Text;
-using P;
+using Px;
 
 class Program {
     static int Main() {

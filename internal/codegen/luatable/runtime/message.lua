@@ -1885,7 +1885,13 @@ end
 
 -- loadMessages is the strict batch read (docs/SPEC-TABLES.md §6.5).
 -- Damage discards every body (§4).
-local function load_messages_impl(T, root, vocab, data, report)
+--
+-- capacity is the caller's storage, the length of the values table it hands
+-- in (into), or nil for a read that returns a fresh table: M ABOVE THE
+-- CALLER'S CAPACITY IS A REFUSAL BY NAME (docs/SPEC-TABLES.md §3.3, "The batch
+-- surface's four answers"), batch_too_large, read off the count before any
+-- body is decoded.
+local function load_messages_impl(T, root, vocab, data, report, capacity)
   message_root(T, root)
   report = report or {}
   -- THE PLAIN NAME'S REPORT IS THIS READ'S ALONE (docs/SPEC-TABLES.md §6.5):
@@ -1929,6 +1935,11 @@ local function load_messages_impl(T, root, vocab, data, report)
     return nil
   end
   local count = string.byte(data, 2) + 1
+  if capacity ~= nil and count > capacity then
+    report.refused = 1
+    report.reason = "batch_too_large"
+    return nil
+  end
   local R = new_reader(data, 16)
   local values = {}
   for i = 1, count do
@@ -1965,7 +1976,7 @@ end
 -- the first value of a batch holding a retired variant (docs/SPEC-TABLES.md
 -- §2.15) or a value off the write contract (docs/SPEC.md §5.1), refused by name
 function M.loadMessages(T, root, vocab, data, report, _strict, into)
-  local out = load_messages_impl(T, root, vocab, data, report)
+  local out = load_messages_impl(T, root, vocab, data, report, into ~= nil and #into or nil)
   if into ~= nil then
     local new = T["New" .. root]
     local refused = out == nil
@@ -1980,9 +1991,9 @@ function M.loadMessages(T, root, vocab, data, report, _strict, into)
       end
       return nil
     end
+    -- the batch fits the caller's storage (refused above when it does not)
     local n = #out
     for i = 1, n do
-      if into[i] == nil then into[i] = new() end
       D.copy_into(into[i], out[i])
     end
     for i = n + 1, #into do

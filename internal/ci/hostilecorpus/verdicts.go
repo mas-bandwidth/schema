@@ -150,3 +150,45 @@ func caseOf(id string) string {
 	name, _, _ := strings.Cut(strings.TrimSpace(id), "@")
 	return name
 }
+
+// NameUnanswered is the guard that keeps every failure a case's
+// (docs/HOSTILE-CORPUS.md, "The ledger"): it reads a runner's log, which the
+// runner left with exit status exit, and returns a FAIL line for every
+// registered case the log neither ran nor failed, closed by an end line, so
+// the registry reads each as that case's failure rather than a run that
+// answered nothing. A log that never closed a block is read whole: the
+// runner stopped inside it. It returns an error when the runner exited
+// non-zero and no line, the log's or these, names a case's failure: a
+// runner that fails in something no case shows is a defect of the runner.
+func NameUnanswered(cases []Case, log string, exit int) ([]string, error) {
+	names := make([]string, 0, len(cases))
+	for _, c := range cases {
+		names = append(names, c.Name)
+	}
+	text := strings.ReplaceAll(log, "\r\n", "\n")
+	if !strings.Contains("\n"+text, "\n"+verdictEnd+"\n") && !strings.HasSuffix("\n"+text, "\n"+verdictEnd) {
+		text += "\n" + verdictEnd + "\n"
+	}
+	v, err := ReadVerdicts(strings.NewReader(text), names)
+	if err != nil {
+		return nil, err
+	}
+	why := "the runner gave it no verdict"
+	if exit != 0 {
+		why = fmt.Sprintf("the runner exited %d before it answered the case", exit)
+	}
+	var out []string
+	for _, c := range cases {
+		if _, failed := v.Failed[c.Name]; failed || v.Ran[c.Name] {
+			continue
+		}
+		out = append(out, fmt.Sprintf("%s%s %s (%s carrier)", verdictFail, c.Name, why, c.Carrier))
+	}
+	if len(out) > 0 {
+		out = append(out, verdictEnd)
+	}
+	if exit != 0 && len(v.Failed) == 0 && len(out) == 0 {
+		return out, fmt.Errorf("the runner exited %d and every registered case ran with no FAIL line naming one: the runner failed in something no case shows, which is a defect of the runner (every failure names its case)", exit)
+	}
+	return out, nil
+}

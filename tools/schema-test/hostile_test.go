@@ -296,53 +296,54 @@ func TestHostilePlanRefusesWhatIsNoCase(t *testing.T) {
 	}
 }
 
-// TestNumberTokenCasesAreRowsThatReadTheirTrees: every case of the
-// number-token manifest is a row of its own family, naming the conformance
-// tree it copies (so the tree is a data case the registry reads), and a
-// port with no number-token target fails each asked case by name, naming the
-// missing target, without stopping the run.
+// TestNumberTokenCasesAreRowsThatReadTheirTrees: every bare number-token
+// conformance vector (testdata/conformance/tables/JSON-HOSTILE-NUMBER-TOKEN.txt)
+// is a case of the one corpus manifest, so every port's corpus run answers it
+// (make schema-<lang>-runs-hostile-corpus), and its row names the tree it
+// copies, so the tree is a data case the registry reads. A vector the corpus
+// does not carry is red by name, and so is a row naming another tree.
 func TestNumberTokenCasesAreRowsThatReadTheirTrees(t *testing.T) {
 	t.Chdir("../..")
-	dir := filepath.FromSlash(hostileCorpus)
-	cases, err := hostileNumberToken.cases(dir)
+	data, err := os.ReadFile("testdata/conformance/tables/JSON-HOSTILE-NUMBER-TOKEN.txt")
 	if err != nil {
 		t.Fatal(err)
 	}
-	rows, err := hostileNumberToken.rows(".")
+	vectors := map[string]bool{}
+	for line := range strings.SplitSeq(string(data), "\n") {
+		f := strings.Fields(line)
+		if len(f) == 6 && f[0] == "json-hostile" {
+			if !strings.HasPrefix(f[4]+"/", hostileNumberTokenTrees) {
+				t.Fatalf("JSON-HOSTILE-NUMBER-TOKEN.txt: %s lives at %s, outside %s", f[1], f[4], hostileNumberTokenTrees)
+			}
+			vectors[f[4]+"/"+f[3]+".json"] = true
+		}
+	}
+	if len(vectors) == 0 {
+		t.Fatal("JSON-HOSTILE-NUMBER-TOKEN.txt lists no vector")
+	}
+	rows, err := hostileMain.rows(".")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rows) != len(cases) {
-		t.Fatalf("%d rows for %d cases", len(rows), len(cases))
-	}
-	var insts []testreg.Instance
+	read := map[string]string{}
 	for _, r := range rows {
 		var in hostileInputs
 		if err := json.Unmarshal(r.Inputs, &in); err != nil {
 			t.Fatal(err)
 		}
-		if r.Family != hostileNumberToken.family || len(in.Files) != 1 || !strings.HasPrefix(in.Files[0], "testdata/conformance/tables/json-hostile-number-token/") {
-			t.Errorf("%s: family %s, files %v: want the number-token family reading its tree", r.Key, r.Family, in.Files)
+		if in.Target != hostileTarget {
+			t.Errorf("%s: target %s, want %s", r.Key, in.Target, hostileTarget)
 		}
-		insts = append(insts, testreg.Instance{Full: "go.nightly." + r.Key, Test: r})
-	}
-	stand := func(ctx context.Context, args []string) (string, error) {
-		if got := strings.Join(args, " "); got != "make -s schema-go-runs-hostile-number-token" {
-			t.Errorf("ran %q", got)
+		for _, f := range in.Files {
+			if !vectors[f] {
+				t.Errorf("%s names %s, which JSON-HOSTILE-NUMBER-TOKEN.txt does not list", r.Key, f)
+			}
+			read[f] = r.Key
 		}
-		return "make: *** No rule to make target 'schema-go-runs-hostile-number-token'.  Stop.\n", errors.New("exit status 2")
 	}
-	var log bytes.Buffer
-	res, err := hostileNumberToken.runWith(context.Background(), stand, t.TempDir(), "go", insts, &log)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(res) != len(insts) {
-		t.Fatalf("%d results for %d instances", len(res), len(insts))
-	}
-	for _, r := range res {
-		if r.Verdict != testreg.Fail || !strings.Contains(r.Reason, "schema-go-runs-hostile-number-token") {
-			t.Errorf("%s: %s (%s), want a fail naming the missing target", r.Instance, r.Verdict, r.Reason)
+	for v := range vectors {
+		if read[v] == "" {
+			t.Errorf("the number-token vector %s is no case of %s/%s: no port's corpus run answers it", v, hostileCorpus, hostilecorpus.ManifestName)
 		}
 	}
 }

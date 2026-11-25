@@ -49,7 +49,7 @@ func TestFlagsElementWidening(t *testing.T) {
 		}
 	}
 	var probe strings.Builder
-	probe.WriteString("#include <cstdio>\n#include <cstdlib>\n#include \"ProbeTable.h\"\nusing namespace p;\nint main(){const uint8_t wire[]={")
+	probe.WriteString("#include <cstdio>\n#include <cstdlib>\n#include \"ProbeTable.h\"\nusing namespace px;\nint main(){const uint8_t wire[]={")
 	for _, b := range wire {
 		fmt.Fprintf(&probe, "%d,", b)
 	}
