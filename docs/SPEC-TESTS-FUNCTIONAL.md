@@ -5334,7 +5334,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.functional.tooling.schema-test.run-name-build-reads-what-the-run-wrote` | `gotest` | Go test TestRunNameBuildReadsWhatTheRunWrote in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestRunNameBuildReadsWhatTheRunWrote` | the Go test passes | `tools/schema-test/namebuild_test.go:130` |
-| `none.functional.tooling.schema-test.the-registrys-directory-reads-are-current` | `gotest` | Go test TestTheRegistrysDirectoryReadsAreCurrent in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheRegistrysDirectoryReadsAreCurrent` | the Go test passes | `tools/schema-test/reads_test.go:155` |
+| `none.functional.tooling.schema-test.the-registrys-directory-reads-are-current` | `gotest` | Go test TestTheRegistrysDirectoryReadsAreCurrent in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheRegistrysDirectoryReadsAreCurrent` | the Go test passes | `tools/schema-test/reads_test.go:141` |
 
 #### `tooling` family `slowtest`, 1 test
 

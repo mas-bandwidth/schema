@@ -68,6 +68,45 @@ func TestMakeReadsCreditWhatTheReachNames(t *testing.T) {
 	}
 }
 
+// TestARegenerationKeepsAReadItsRowStillReaches: a read a make row writes
+// stays on that row while its reach names it, though a narrower row reaches
+// it too; a read its reach no longer names is dropped; and an item no row
+// reads goes to the narrowest row that reaches it.
+func TestARegenerationKeepsAReadItsRowStillReaches(t *testing.T) {
+	t.Parallel()
+	v1 := extract.Item{Kind: extract.KindDataCase, Dir: "test/tables", Name: "V1"}
+	v2 := extract.Item{Kind: extract.KindDataCase, Dir: "test/tables", Name: "V2"}
+	res := &extract.Result{
+		Items:     []extract.Item{v1, v2},
+		CaseFiles: map[string][]string{v1.ID(): {"test/tables/V1.schema"}, v2.ID(): {"test/tables/V2.schema"}},
+		MakeText:  "check:\n\tschema check test/tables/V1.schema test/tables/V2.schema\n",
+	}
+	db, err := parseMakeDB(fakeDatabase("", "",
+		"wide: check\n\t./wide\n\ncheck:\n\tschema check test/tables/V1.schema test/tables/V2.schema\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := `{"rec":"lang","name":"go","write":"refuse","adapter":""}
+{"rec":"tier","name":"nightly","what":"long"}
+{"rec":"type","name":"harness-run","what":"a make target"}
+{"rec":"test","key":"harness-run.m.wide","type":"harness-run","family":"m","case":"wide","tier":"nightly","checks":"make wide","inputs":{"file":"Makefile","target":"wide","reads":["test/gone/a.schema","test/tables/V1.schema"]},"expect":"exits 0","source":"Makefile:1","scope":"none","adapter":"make"}
+{"rec":"test","key":"harness-run.m.check","type":"harness-run","family":"m","case":"check","tier":"nightly","checks":"make check","inputs":{"file":"Makefile","target":"check"},"expect":"exits 0","source":"Makefile:4","scope":"none","adapter":"make"}
+`
+	want, _, text, err := regenerateReads(src, "r.jsonl", res, db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(want, map[string][]string{
+		"harness-run.m.wide":  {"test/tables/V1.schema"},
+		"harness-run.m.check": {"test/tables/V2.schema"},
+	}) {
+		t.Errorf("reads %v", want)
+	}
+	if !strings.Contains(text, `"target":"wide","reads":["test/tables/V1.schema"]`) || strings.Contains(text, "test/gone/") {
+		t.Errorf("regenerated:\n%s", text)
+	}
+}
+
 // TestWithReadsReplacesAMakeRowsReads: rewriting a make row's reads
 // replaces them all; a line whose reads are already the ones asked for is
 // left byte for byte, and a negative control's line is not a make row's.
@@ -141,7 +180,7 @@ func TestTheRegistrysDirectoryReadsAreCurrent(t *testing.T) {
 // TestAReadTheRegenerationDoesNotGiveIsStale: a make row's read that the
 // regeneration does not give that row is stale, by line; a read it gives
 // that the registry does not write is unwritten, not stale; a negative
-// control's reads are its own.
+// control is no make row here (the extract refuses its reads).
 func TestAReadTheRegenerationDoesNotGiveIsStale(t *testing.T) {
 	t.Parallel()
 	src := `{"rec":"lang","name":"go","write":"refuse","adapter":""}

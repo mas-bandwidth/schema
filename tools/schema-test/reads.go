@@ -30,10 +30,11 @@ import (
 //     directory ("test/packet-end/rust/"), which credits the cases and the
 //     driver in it and nothing below it. A driver is credited only so.
 //
-// Of the rows that reach an item, the one that makes the least is chosen:
-// the most specific gate. Comments name nothing. A negative control's row
+// A read a row already writes stays on it while its reach still names it
+// as above (readHolds); of the rows that reach an item no row reads, the
+// one that makes the least is chosen: the most specific gate. Comments name nothing. A negative control's row
 // (type plant) is never the reader: a corrupted input does not turn it red,
-// and its own reads are left as written.
+// and the extract refuses any read written on it (extract.Covered).
 //
 // Without --write it fails when a make row reads what the regeneration
 // does not give it (staleReads): a read a make file change left stale, or
@@ -162,6 +163,21 @@ func makeReads(res *extract.Result, reg *testreg.Registry, reach map[string]make
 	return out, none
 }
 
+// readHolds reports whether a make row whose target reaches r still reads
+// x: a file the reach names, or a directory a recipe of the reach and a make
+// file both work on bare. A read written so is kept where it is; only an
+// item no row reads goes to the narrowest row.
+func readHolds(res *extract.Result, r makeReach, x string) bool {
+	if extract.IsTreeRead(x) {
+		return false
+	}
+	if extract.IsDirRead(x) {
+		d := strings.TrimSuffix(x, "/")
+		return extract.NamesBareDir(r.text, d) && extract.NamesBareDir(res.MakeText, d)
+	}
+	return r.names(x)
+}
+
 // testdataOwner is the package directory whose testdata holds dir.
 func testdataOwner(dir string) (string, bool) {
 	s := "/" + dir + "/"
@@ -177,7 +193,7 @@ func testdataOwner(dir string) (string, bool) {
 
 // withReads rewrites a make row's line with its reads replaced by reads;
 // ok is false for a line that is not a make row, or is a negative
-// control's (type plant), whose reads are its own.
+// control's (type plant), which reads nothing (extract.Covered).
 func withReads(line string, t testreg.Test, reads []string) (string, bool, error) {
 	if t.Adapter != "make" || t.Type == "plant" {
 		return line, false, nil
@@ -266,7 +282,7 @@ func readsCmd(ctx context.Context, args []string, stdout io.Writer) error {
 // staleReads holds the make rows' reads in registry text src to want, the
 // reads a regeneration gives each row: a read want does not give the row is
 // stale, by line; a read want gives that src does not write is unwritten.
-// A negative control's reads (type plant) are its own.
+// A negative control (type plant) is no make row here: the extract refuses its reads.
 func staleReads(src, path string, want map[string][]string) (stale, unwritten []string, err error) {
 	reg, err := testreg.Parse(path, strings.NewReader(src))
 	if err != nil {
@@ -302,29 +318,43 @@ func regenerateReads(src, path string, res *extract.Result, db *makeDB) (map[str
 	if err != nil {
 		return nil, nil, "", err
 	}
-	// the registry with no make row's reads: what is left to credit
+	// the registry with each make row's reads cut to those its reach still
+	// names: what is left to credit
 	stripped := slices.Clone(lines)
 	reach := map[string]makeReach{}
+	kept := map[string][]string{}
 	for _, t := range reg.Tests {
-		l, ok, err := withReads(lines[t.Line-1], t, nil)
-		if err != nil {
-			return nil, nil, "", err
-		}
-		if !ok {
+		if t.Adapter != "make" || t.Type == "plant" {
 			continue
 		}
-		stripped[t.Line-1] = l
-		var in struct{ Target string }
+		var in struct {
+			Target string
+			Reads  []string
+		}
 		if err := json.Unmarshal(t.Inputs, &in); err != nil {
 			return nil, nil, "", fmt.Errorf("%s: inputs: %w", t.Key, err)
 		}
-		reach[t.Key] = newMakeReach(db.reach(in.Target))
+		r := newMakeReach(db.reach(in.Target))
+		reach[t.Key] = r
+		for _, x := range in.Reads {
+			if readHolds(res, r, x) {
+				kept[t.Key] = append(kept[t.Key], x)
+			}
+		}
+		l, _, err := withReads(lines[t.Line-1], t, kept[t.Key])
+		if err != nil {
+			return nil, nil, "", err
+		}
+		stripped[t.Line-1] = l
 	}
 	bare, err := testreg.Parse(path, strings.NewReader(strings.Join(stripped, "\n")))
 	if err != nil {
 		return nil, nil, "", err
 	}
 	want, none := makeReads(res, bare, reach)
+	for k, rs := range kept {
+		want[k] = slices.Compact(slices.Sorted(slices.Values(append(rs, want[k]...))))
+	}
 	// each item goes to one row, as a file read or as the one read of its
 	// directory, and only when no row runs or reads it: no read written
 	// here credits nothing

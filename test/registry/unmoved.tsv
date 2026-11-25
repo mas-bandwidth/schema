@@ -386,7 +386,7 @@ data-case	test/conformance/lobster	1	L4	corpus data and harnesses: each language
 data-case	test/conformance/lua	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/conformance/luau	11	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/conformance/luau/vectors	7	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	test/conformance/moo	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
+data-case	test/conformance/moo	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/conformance/packet/testdata/constant-defaults/hexadecimal-addition	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/conformance/packet/testdata/constant-defaults/unsigned-subtraction	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/conformance/packet/testdata/drivers/c	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
@@ -403,6 +403,7 @@ data-case	test/conformance/textform	7	L4	corpus data and harnesses: each languag
 data-case	test/conformance/textform/refusals	25	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/conformance/unity	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/conformance/write-refusal-packet	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
+data-case	test/cs/finite-controls	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/fixed-empty-batch	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/generated-tree	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/go-hostile	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
@@ -427,12 +428,10 @@ data-case	test/proof	2	L4	corpus data and harnesses: each language's adapter ans
 data-case	test/rust-hostile/registry	3	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/skipped-value/writer	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/table-base64	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	test/tables	126	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
+data-case	test/tables	110	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/tables/enumbound	13	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/tables/fnz	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/tables/inner	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	test/tables/lawful/fx1l	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	test/tables/lawful/v1l	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/tables/r14	4	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/tables/r14/AtInt64	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/tables/r14/ChildValue	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
@@ -788,6 +787,7 @@ driver	test/js-view	1	L4	corpus data and harnesses: each language's adapter answ
 driver	test/js/binding-names	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 driver	test/lua	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 driver	test/luau-ludicrous	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
+driver	test/packet-defaults	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 driver	test/packet-defaults/cs	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 driver	test/packet-defaults/goose	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 driver	test/packet-defaults/java	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in

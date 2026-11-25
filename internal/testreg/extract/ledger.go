@@ -199,6 +199,12 @@ func Covered(reg *testreg.Registry) (map[string]string, []string) {
 				continue
 			}
 			claim(t, Item{Kind: KindMakeTarget, Dir: in.File, Name: in.Target}, "make "+in.Target)
+			if t.Type == "plant" && len(in.Reads) > 0 {
+				// a negative control is red by design: a broken input
+				// cannot turn it red, so what it reads is no credit
+				problems = append(problems, fmt.Sprintf("%s:%d: %s reads %v, and a negative control (type plant) is red by design, so its reads credit nothing: drop them", reg.Path, t.Line, t.Key, in.Reads))
+				continue
+			}
 			for _, f := range in.Reads {
 				if IsDirRead(f) {
 					continue // a directory: CoveredIn credits what it holds
@@ -444,7 +450,7 @@ func readCredits(res *Result, reg *testreg.Registry, out map[string]string) []st
 		switch t.Adapter {
 		case "make":
 			var in struct{ Reads []string }
-			if json.Unmarshal(t.Inputs, &in) != nil {
+			if json.Unmarshal(t.Inputs, &in) != nil || t.Type == "plant" {
 				continue // Covered named it
 			}
 			for _, r := range in.Reads {
@@ -526,14 +532,41 @@ func TreeHolds(dir, d string, drivers map[string]bool) bool {
 	return true
 }
 
-// StripMakeComments is make text without its comment lines: a line whose
-// first word, after a recipe's tab and its @, - or + prefixes, starts with
-// #. A comment names nothing a target reads.
+// StripMakeComments is make text without its comments, which name nothing
+// a target reads. In a recipe line (one starting with a tab) the shell's
+// comment is dropped: from a # that starts a word to the end of the line.
+// In any other line make's is: from the first # no backslash escapes. A
+// comment whose line ends in a backslash goes on into the next line, and
+// that line is dropped too. Quotes are not followed, so a # inside one
+// drops the rest of its line: what is dropped names nothing, which errs on
+// the side of no credit.
 func StripMakeComments(text string) string {
 	var out []string
+	inComment := false
 	for l := range strings.SplitSeq(text, "\n") {
-		if strings.HasPrefix(strings.TrimLeft(l, " \t@-+"), "#") {
+		if inComment {
+			inComment = strings.HasSuffix(l, `\`)
 			continue
+		}
+		at := -1
+		if strings.HasPrefix(l, "\t") {
+			for i := 1; i < len(l); i++ {
+				if l[i] == '#' && strings.TrimLeft(l[:i], " \t@-+") == "" || l[i] == '#' && (l[i-1] == ' ' || l[i-1] == '\t') {
+					at = i
+					break
+				}
+			}
+		} else {
+			for i := 0; i < len(l); i++ {
+				if l[i] == '#' && (i == 0 || l[i-1] != '\\') {
+					at = i
+					break
+				}
+			}
+		}
+		if at >= 0 {
+			inComment = strings.HasSuffix(l, `\`)
+			l = l[:at]
 		}
 		out = append(out, l)
 	}
@@ -542,28 +575,44 @@ func StripMakeComments(text string) string {
 
 // NamesPath reports whether text names p as a whole repository path: not
 // as a part of a longer name (test/rust-soak or test/rust.d for test/rust),
-// not below another directory (src/test/rust, $(BUILD)/test/rust), and not
-// only through a path below it. A "/" before it is a boundary only after
-// ./ or the checkout's own $(CURDIR)/.
+// not below another directory (src/test/rust, $(BUILD)/test/rust), not
+// only through a path below it, and not as the start of a word make or the
+// shell goes on to build ($(addprefix test/rust,...), test/rust$(X),
+// test/rust%). A "/" before it is a boundary only after ./ or the
+// checkout's own $(CURDIR)/.
 func NamesPath(text, p string) bool {
-	return namesAt(text, p, func(end int) bool { return end == len(text) || !nameByte(text[end]) && text[end] != '/' })
+	return namesAt(text, p, func(end int) bool { return pathEnd(text, end) })
 }
 
 // NamesBareDir reports whether text works on directory d itself, as
 // NamesPath says, or with one trailing / (test/x/), or as a glob in it
 // (test/x/*.schema): a cd into it, a list of it, the directory as an
-// argument. A path of one file in it names that file, not d.
+// argument. A path of one file in it names that file, not d, and a word
+// make or the shell builds on test/x/ (test/x/$(F).c, test/x/%.c,
+// $(addprefix test/x/,a.c)) names no directory.
 func NamesBareDir(text, d string) bool {
 	return namesAt(text, d, func(end int) bool {
-		if end == len(text) || !nameByte(text[end]) && text[end] != '/' {
+		if pathEnd(text, end) {
 			return true
 		}
 		if text[end] != '/' {
 			return false
 		}
+		// after d/, a word ends, or a glob in d starts; a quote here
+		// starts a name in d (test/x/"a b"), so it names no directory
 		end++
-		return end == len(text) || text[end] == '*' || !nameByte(text[end]) && text[end] != '/'
+		return end == len(text) || text[end] == '*' || text[end] != '"' && text[end] != '\'' && pathEnd(text, end)
 	})
+}
+
+// pathEnd reports whether a word holding a path ends at text[i]: the end of
+// the text, white space, a shell operator, a closing bracket or quote, the
+// : of a make rule, or the \n of a printf string.
+func pathEnd(text string, i int) bool {
+	if i == len(text) {
+		return true
+	}
+	return strings.IndexByte(" \t\n\r;&|<>)}'\":", text[i]) >= 0 || strings.HasPrefix(text[i:], `\n`)
 }
 
 // namesAt reports whether text holds p at a whole-path start, with after
@@ -712,12 +761,17 @@ func cleanRead(r string) bool {
 func sourceNames(lits map[string]bool, pkg, p string) bool {
 	for l := range lits {
 		c := path.Clean(strings.ReplaceAll(l, `\`, "/"))
+		up := c
+		for strings.HasPrefix(up, "../") {
+			up = up[3:]
+		}
+		if c == "." || up == ".." {
+			continue // "", "." or only steps up: a place, never a path it names
+		}
 		if c == p || path.Join(pkg, c) == p {
 			return true
 		}
-		for strings.HasPrefix(c, "../") {
-			c = c[3:]
-		}
+		c = up
 		if strings.Contains(c, "/") && c == p {
 			return true
 		}

@@ -425,6 +425,40 @@ func TestAMakeRowReadsOnlyWhatItsTargetDependsOn(t *testing.T) {
 	}
 }
 
+// TestAMakeRowsDirectoryReadIsADirectoryItsRecipesWorkOnBare: a directory
+// read holds only where a recipe the target runs works on the directory
+// itself (a cd into it, a glob in it); a directory its target reaches only
+// through files in it, or names only in a comment, fails the row before the
+// target runs. A tree read is no make row's: its inputs do not decode.
+func TestAMakeRowsDirectoryReadIsADirectoryItsRecipesWorkOnBare(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		recipe string
+		says   string
+	}{
+		{"\tcd test/tables && ./build/bin", ""},
+		{"\t./build/bin test/tables/*.schema", ""},
+		{"\t./build/bin", "reads test/tables/, and no recipe make gate-check runs works on that directory itself"},
+		{"\t./build/bin test/tables/$(F).schema", "reads test/tables/, and no recipe make gate-check runs works on that directory itself"},
+		{"\t./build/bin # cd test/tables", "reads test/tables/, and no recipe make gate-check runs works on that directory itself"},
+	} {
+		r, ran := vetRun(t, makeInputs{File: "make/x.mk", Target: "gate-check", Reads: []string{"test/tables/"}}, gateDatabase(c.recipe), "")
+		if c.says == "" {
+			if r.Verdict != testreg.Pass || !ran {
+				t.Errorf("%q: %+v, ran %v", c.recipe, r, ran)
+			}
+			continue
+		}
+		if r.Verdict != testreg.Fail || ran || !strings.Contains(r.Reason, c.says) {
+			t.Errorf("%q: %+v, ran %v, want a fail saying %q before the target runs", c.recipe, r, ran, c.says)
+		}
+	}
+	_, err := decodeMakeInputs(json.RawMessage(`{"file":"make/x.mk","target":"a","reads":["test/tables/..."]}`))
+	if err == nil || !strings.Contains(err.Error(), "a make row reads one directory, written with one trailing /, never a tree") {
+		t.Errorf("a make row's tree read: %v, want it refused", err)
+	}
+}
+
 // TestARecipeThatRunsGoTestWithoutJSONFails: go test's plain output prints
 // nothing for a skipped test, so a target whose recipes (its own, its
 // prerequisites', a variable they expand, a target made by $(MAKE)) run go

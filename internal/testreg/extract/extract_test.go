@@ -420,6 +420,7 @@ func TestDirectoryAndGoTestReadsCreditWhatTheyHold(t *testing.T) {
 		GoStrings: map[string]map[string]bool{
 			"internal/check":         {"../../testdata/name-buildability": true, "..": true, "testdata": true, "wire": true, "json-integers": true},
 			"internal/codegen/table": {"../../testdata/wire/json-integers/wide.json": true, "../../testdata/wire/json-integers/pair.bin": true},
+			"internal/lone":          {"": true, ".": true, "..": true, "../..": true},
 		},
 		MakeText: StripMakeComments("packet-end-rust-test:\n\tcd test/packet-end/rust && cargo test\n" +
 			"# test/packet-end-x is read by nobody\n" +
@@ -466,6 +467,12 @@ func TestDirectoryAndGoTestReadsCreditWhatTheyHold(t *testing.T) {
 			"k.d reads ../name-buildability/: want a clean repository file"},
 		"one file of a two-file case": {testreg.Test{Key: "k.h", Adapter: "gotest", Inputs: []byte(`{"package":"./internal/codegen/table","test":"TestX","reads":["testdata/wire/json-integers/pair.bin"]}`)},
 			"k.h reads testdata/wire/json-integers/pair.bin, which holds no data case and no driver of the repository, or not every file of one"},
+		"a Go read named only by an empty literal, the package's own place": {testreg.Test{Key: "k.j", Adapter: "gotest", Inputs: []byte(`{"package":"./internal/lone","test":"TestX","reads":["internal/lone/"]}`)},
+			"k.j reads internal/lone/, which no string in the source of internal/lone names as a whole path"},
+		"a Go read named only by steps up": {testreg.Test{Key: "k.k", Adapter: "gotest", Inputs: []byte(`{"package":"./internal/lone","test":"TestX","reads":["internal/"]}`)},
+			"k.k reads internal/, which no string in the source of internal/lone names as a whole path"},
+		"a negative control's reads": {testreg.Test{Key: "k.i", Type: "plant", Adapter: "make", Inputs: []byte(`{"file":"m.mk","target":"t","reads":["test/packet-end/rust/Cargo.toml","test/packet-end/rust/Cargo.lock"]}`)},
+			"k.i reads [test/packet-end/rust/Cargo.toml test/packet-end/rust/Cargo.lock], and a negative control (type plant) is red by design"},
 	} {
 		covered, p := CoveredIn(res, &testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{mk, c.row}})
 		if !strings.Contains(strings.Join(p, "\n"), c.says) {
@@ -506,6 +513,27 @@ func TestNamesPathAndNamesBareDir(t *testing.T) {
 		"cd test/rust.d":              {false, false},
 		"x/./test/rust":               {false, false},
 		"\t@# cd test/rust, a remark": {false, false},
+		// a word make or the shell goes on to build names no directory
+		"\tcc test/rust/$(F).c":             {false, false},
+		"$(addprefix test/rust/,a.schema)":  {false, false},
+		"$(addprefix test/rust,/a.schema)":  {false, false},
+		"build/%.o: test/rust/%.c":          {false, false},
+		"cc test/rust$(SUFFIX)":             {false, false},
+		"cat test/rust/\"a b\"":             {false, false},
+		"$(wildcard test/rust/*.c)":         {false, true},
+		"cd \"test/rust\" && go test":       {true, true},
+		"(cd test/rust; make)":              {true, true},
+		`printf 'rust test/rust\n' > d.txt`: {true, true},
+		`cc test/rust\x`:                    {false, false},
+		"test/rust: x":                      {true, true},
+		// a comment after a word, or carried on by a backslash, names nothing
+		"\ttrue # cd test/rust":              {false, false},
+		"foo: bar # test/rust is here":       {false, false},
+		"V := 1 # test/rust":                 {false, false},
+		"# a remark \\\ncd test/rust":        {false, false},
+		"\t@# a remark \\\n\tcd test/rust":   {false, false},
+		"V := \\# test/rust":                 {true, true},
+		"\techo hi\n\tcd test/rust # remark": {true, true},
 	} {
 		text = StripMakeComments(text)
 		if got := NamesPath(text, "test/rust"); got != want[0] {
