@@ -2006,7 +2006,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("};\n\n")
 	g.pf("// THE FLOOR: below it a layout this build once served is RETIRED, and the\n")
 	g.pf("// answer is layout_unsupported — upgrade the client — rather than\n")
-	g.pf("// layout_newer, which is ship the reader (§5.2).\n")
+	g.pf("// layout_unknown, a hash in no lineage entry (§5.3 step 5).\n")
 	g.pf("public const int %sFixedFloor = %d;\n\n", name, floor)
 	g.pf("// ONE PLAN PER LINEAGE ENTRY, laid down from THE LOCK'S bytes in this\n")
 	g.pf("// type's static initializer: nothing compiles on the load path, and there\n")
