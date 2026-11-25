@@ -419,6 +419,50 @@ engine's gotest rows for the same corpora, which name every file).
   are not the directory's files, and a held-elsewhere directory with no
   answering row are each red.
 
+### The JSONTestSuite corpus
+
+Every file of the vendored JSONTestSuite corpus
+(testdata/jsontestsuite/test_parsing, docs/SPEC-TABLES.md section 16.12)
+is one registry test per language: `<type>.jsontestsuite.<case>`. The
+type is decode for a file the JSON layer accepts and load-refusal for
+one it refuses: a y_ file accepts, an n_ file refuses, and an i_ file
+takes the verdict its section 16.12 row declares. The rows are nightly:
+each run is the whole corpus (tools/schema-test/jsontest.go).
+
+- A language's instances are answered by one run of its whole-corpus
+  Go test, which runs every file once: go by
+  internal/codegen/gotable's TestJSONTestSuiteGenerated, python by
+  internal/codegen/pythontable's TestPythonJsonScanPolicy, moo by
+  internal/codegen/mootable's TestMooJSONTestSuite and luau by
+  internal/codegen/luautable's TestLuauJSONTestSuite. Each instance's
+  verdict is the case's line in that run: a case passes when the run
+  names no disagreement for it, and a mismatch line and a pending line
+  each fail it, since the registry allows no pending list. A run that
+  never reports its test, or that fails with no case failing by name,
+  fails every asked case with what the run said.
+- A language with no whole-corpus test yet gives each case no
+  verdict, and each instance fails by name (no JSONTestSuite runner
+  for the language). Those reds are the per-language work list: the
+  case is unanswered there until its test is written.
+- A case is its file name without .json, lower case, each underscore
+  a separator and each hyphen, dot, plus and hash named (dash, dot,
+  plus, hash), so two files never share a case by folding alone;
+  jsontestKeys refuses any two that still meet, naming both. A row's
+  inputs name its one corpus file in files, and schema-test extract
+  indexes that file where it stands.
+- TestTheRegistryHoldsEveryJSONTestSuiteCase holds the rows to the
+  corpus field for field (-update-jsontest rewrites them, keeping
+  each row's measured seconds). The loader checks every byte against
+  SHA256SUMS, so a removed case file is refused by name there and by
+  the held test's row with no case.
+- Plants: SCHEMA_TEST_PLANT_JSONTEST_<LANG> as flip:<file> turns
+  that case's answer around and as absent:<file> drops it; the
+  driver must turn exactly that instance red, by its own reason.
+- Retired with this: nothing. The whole-corpus Go tests are the
+  runners this harness runs, and the make gate that also runs one
+  (make/luau.mk's tables-luau-jsontestsuite) stays until L5 counts
+  its run against the driver's.
+
 ## How each kind of test fits
 
 Every test of every kind is a registry row run by this driver; a kind that fits

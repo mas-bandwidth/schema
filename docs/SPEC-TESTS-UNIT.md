@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 2. Language-free tests: 3030.
+Unit tests every language answers: 2. Language-free tests: 3036.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -3048,7 +3048,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.runmatch.skips-follows-go` | `gotest` | Go test TestSkipsFollowsGo in ./internal/runmatch | `package: ./internal/runmatch`<br>`test: TestSkipsFollowsGo` | the Go test passes | `internal/runmatch/runmatch_test.go:107` |
 | `none.unit.tooling.runmatch.top-level-is-gos-split` | `gotest` | Go test TestTopLevelIsGosSplit in ./internal/runmatch | `package: ./internal/runmatch`<br>`test: TestTopLevelIsGosSplit` | the Go test passes | `internal/runmatch/runmatch_test.go:9` |
 
-#### `tooling` family `schema-test`, 127 tests
+#### `tooling` family `schema-test`, 133 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -3135,6 +3135,11 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.schema-test.go-test-runs-to-the-drivers-deadline` | `gotest` | Go test TestGoTestRunsToTheDriversDeadline in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestGoTestRunsToTheDriversDeadline` | the Go test passes | `tools/schema-test/gotest_test.go:214` |
 | `none.unit.tooling.schema-test.hostile-case-keys-are-distinct` | `gotest` | Go test TestHostileCaseKeysAreDistinct in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestHostileCaseKeysAreDistinct` | the Go test passes | `tools/schema-test/hostile_test.go:126` |
 | `none.unit.tooling.schema-test.hostile-plan-refuses-what-is-no-case` | `gotest` | Go test TestHostilePlanRefusesWhatIsNoCase in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestHostilePlanRefusesWhatIsNoCase` | the Go test passes | `tools/schema-test/hostile_test.go:275` |
+| `none.unit.tooling.schema-test.json-test-case-keys-are-distinct` | `gotest` | Go test TestJSONTestCaseKeysAreDistinct in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestJSONTestCaseKeysAreDistinct` | the Go test passes | `tools/schema-test/jsontest_test.go:114` |
+| `none.unit.tooling.schema-test.json-test-harness-fails-every-case-when-its-runner-gives-no-verdict` | `gotest` | Go test TestJSONTestHarnessFailsEveryCaseWhenItsRunnerGivesNoVerdict in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestJSONTestHarnessFailsEveryCaseWhenItsRunnerGivesNoVerdict` | the Go test passes | `tools/schema-test/jsontest_test.go:167` |
+| `none.unit.tooling.schema-test.json-test-harness-gives-each-case-its-verdict` | `gotest` | Go test TestJSONTestHarnessGivesEachCaseItsVerdict in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestJSONTestHarnessGivesEachCaseItsVerdict` | the Go test passes | `tools/schema-test/jsontest_test.go:146` |
+| `none.unit.tooling.schema-test.json-test-no-runner-language-fails-by-name` | `gotest` | Go test TestJSONTestNoRunnerLanguageFailsByName in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestJSONTestNoRunnerLanguageFailsByName` | the Go test passes | `tools/schema-test/jsontest_test.go:211` |
+| `none.unit.tooling.schema-test.json-test-plants-turn-exactly-one-case-red` | `gotest` | Go test TestJSONTestPlantsTurnExactlyOneCaseRed in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestJSONTestPlantsTurnExactlyOneCaseRed` | the Go test passes | `tools/schema-test/jsontest_test.go:186` |
 | `none.unit.tooling.schema-test.langs-is-the-registrys-list` | `gotest` | Go test TestLangsIsTheRegistrysList in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestLangsIsTheRegistrysList` | the Go test passes | `tools/schema-test/main_test.go:207` |
 | `none.unit.tooling.schema-test.make-inputs-name-one-target-of-a-make-file` | `gotest` | Go test TestMakeInputsNameOneTargetOfAMakeFile in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestMakeInputsNameOneTargetOfAMakeFile` | the Go test passes | `tools/schema-test/make_test.go:115` |
 | `none.unit.tooling.schema-test.move-carries-the-tier-and-drops-its-line` | `gotest` | Go test TestMoveCarriesTheTierAndDropsItsLine in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestMoveCarriesTheTierAndDropsItsLine` | the Go test passes | `tools/schema-test/extract_test.go:216` |
@@ -3169,6 +3174,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.schema-test.the-registry-holds-every-a4-case` | `gotest` | Go test TestTheRegistryHoldsEveryA4Case in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheRegistryHoldsEveryA4Case` | the Go test passes | `tools/schema-test/a4_test.go:59` |
 | `none.unit.tooling.schema-test.the-registry-holds-every-feature-witness-case` | `gotest` | Go test TestTheRegistryHoldsEveryFeatureWitnessCase in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheRegistryHoldsEveryFeatureWitnessCase` | the Go test passes | `tools/schema-test/featurewitness_test.go:24` |
 | `none.unit.tooling.schema-test.the-registry-holds-every-hostile-case` | `gotest` | Go test TestTheRegistryHoldsEveryHostileCase in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheRegistryHoldsEveryHostileCase` | the Go test passes | `tools/schema-test/hostile_test.go:45` |
+| `none.unit.tooling.schema-test.the-registry-holds-every-json-test-suite-case` | `gotest` | Go test TestTheRegistryHoldsEveryJSONTestSuiteCase in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheRegistryHoldsEveryJSONTestSuiteCase` | the Go test passes | `tools/schema-test/jsontest_test.go:33` |
 | `none.unit.tooling.schema-test.the-registry-holds-every-tables-case` | `gotest` | Go test TestTheRegistryHoldsEveryTablesCase in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheRegistryHoldsEveryTablesCase` | the Go test passes | `tools/schema-test/tables_test.go:31` |
 | `none.unit.tooling.schema-test.the-runs-seed-is-printed-and-handed-to-every-adapter` | `gotest` | Go test TestTheRunsSeedIsPrintedAndHandedToEveryAdapter in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheRunsSeedIsPrintedAndHandedToEveryAdapter` | the Go test passes | `tools/schema-test/seed_cli_test.go:32` |
 | `none.unit.tooling.schema-test.the-shard-jobs-fit-githubs-matrix-limit` | `gotest` | Go test TestTheShardJobsFitGitHubsMatrixLimit in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheShardJobsFitGitHubsMatrixLimit` | the Go test passes | `tools/schema-test/ci_test.go:1` |

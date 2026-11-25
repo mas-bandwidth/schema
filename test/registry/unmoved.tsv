@@ -447,7 +447,6 @@ data-case	testdata/golangci-lint-classes	2	L4	corpus data and harnesses: each la
 data-case	testdata/golangci-lint-classes/packet	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/golangci-lint-classes/tables	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/jsontestsuite	3	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/jsontestsuite/test_parsing	310	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/lua-nightly-fuzz	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/lua-nightly-fuzz/replay-controls/good	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/lua-nightly-fuzz/replay-controls/malformed-base64	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in

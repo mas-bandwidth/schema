@@ -126,6 +126,8 @@ func harnessFor(t testreg.Test) (harness, bool) {
 		return wireFuzzHarness, true
 	case family == tablesHarness.Name:
 		return tablesHarness, true
+	case family == jsontestFamily:
+		return jsontestHarness, true
 	}
 	return hostileHarnessFor(family)
 }
