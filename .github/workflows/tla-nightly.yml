@@ -89,7 +89,7 @@ jobs:
       # and the runner's three controls and the model-check plants are `plant`
       # rows. schema-test extract holds every config to a row. They run here,
       # so this job is red when, and only when, a model or a control is:
-      # schema-test-nightly.yml runs them too, inside --group nightly, which
+      # schema-nightly.yml runs them too, inside --group nightly, which
       # is red by intent until every language has an adapter.
       - name: run TLC over tla/, every config held to its RUNS.tsv row
         run: go run ./tools/schema-test run --type model --timeout 0

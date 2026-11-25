@@ -86,7 +86,7 @@ const quiet = (r) => r.oor === 0 && r.unknown === 0 && r.mismatch === 0 && r.wid
 // ---- POSITIVE CONTROLS: every lawful tag reads, the last arm included ----
 for (const tag of [0, 1, 2]) {
   const r = read(lawfulFile(tag));
-  assert(r.n === 1 && r.report.refused === 0 && !r.report.damaged && quiet(r.report) &&
+  assert(r.n === 1 && r.report.refused === 0 && !("damaged" in r.report) && quiet(r.report) &&
     r.v.effect.type === tag && r.v.penetration === 5,
     `a lawful tag ${tag} reads as written (n=${r.n}, type=${r.v.effect.type}, refused=${r.report.refused})`);
 }
@@ -100,7 +100,7 @@ for (const forged of [3, 9, 255]) {
   }
   file[bodyAt + AT_TAG] = forged;
   const r = read(file);
-  assert(r.n === -1 && r.report.refused === OUT_OF_RANGE && !r.report.damaged,
+  assert(r.n === -1 && r.report.refused === OUT_OF_RANGE && !("damaged" in r.report),
     `tag ${forged} past the 2 arms refuses out_of_range, never None (n=${r.n}, refused=${home.TableFixedRefusalName(r.report.refused)})`);
   assert(quiet(r.report), `tag ${forged}: a refusal moves no counter (clamped ${r.report.oor}, unknown ${r.report.unknown})`);
   assert(atDefaults(r.v),

@@ -7,6 +7,14 @@
 PACKET_WRITE_REFUSAL_CS := build/packet-write-refusal/cs
 PACKET_WRITE_REFUSAL_CS_NEG := build/packet-write-refusal/cs-negative
 
+# The .NET builds here write under build/ (test/packet-write-refusal/
+# Directory.Build.props), never into the checkout; each target ends by
+# refusing an obj/ or bin/ left beside the projects.
+define packet_write_refusal_out_of_tree
+	@found=$$(find test/packet-write-refusal \( -name bin -o -name obj \) -type d); \
+	if [ -n "$$found" ]; then echo "packet write-refusal: the .NET build wrote into the checkout: $$found"; exit 1; fi
+endef
+
 build/packet-write-refusal/cs/.stamp: bin/schema test/packet-write-refusal/RefusalPacket.schema make/cs-packet-write-refusal.mk
 	@rm -rf $(PACKET_WRITE_REFUSAL_CS) && mkdir -p $(PACKET_WRITE_REFUSAL_CS)
 	./bin/schema generate --lang cs --out $(PACKET_WRITE_REFUSAL_CS) test/packet-write-refusal/RefusalPacket.schema
@@ -16,6 +24,7 @@ build/packet-write-refusal/cs/.stamp: bin/schema test/packet-write-refusal/Refus
 packet-write-refusal-cs: build/packet-write-refusal/cs/.stamp
 	$(DOTNET) run --project test/packet-write-refusal/cs/packet-write-refusal.csproj -- test/packet-write-refusal/cases.txt
 	@echo 'write-refusal-packet C#: every refused value asserted and every lawful twin written'
+	$(packet_write_refusal_out_of_tree)
 
 # The control removes the bits(N) width assert from the emitter through a go
 # build overlay, regenerates the shared schema, and requires the driver to go
@@ -37,5 +46,6 @@ packet-write-refusal-cs-negative-control: packet-write-refusal-cs
 		{ echo 'NEGATIVE CONTROL FAILED: removing the bits(N) check did not red exactly bits_wide'; cat $(PACKET_WRITE_REFUSAL_CS_NEG)/log; exit 1; }
 	@grep '^FAILED: ' $(PACKET_WRITE_REFUSAL_CS_NEG)/log
 	@echo 'write-refusal-packet C# negative control: removing the bits(N) write check turns bits_wide red and nothing else'
+	$(packet_write_refusal_out_of_tree)
 
 test-cs: packet-write-refusal-cs packet-write-refusal-cs-negative-control

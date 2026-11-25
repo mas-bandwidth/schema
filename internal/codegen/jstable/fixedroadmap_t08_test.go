@@ -334,7 +334,7 @@ const plan = TFixedNewPlan(4096, 4096);
 const report = new TableFixedReport();
 const read = TFixedLoad(back, 1, bytes, bytes.length, plan, report);
 if (read !== 1) { fail("load answered " + read + " " + TableFixedRefusalName(report.refused)); }
-if (report.refused !== 0 || report.damaged) { fail("a clean round trip refused: " + TableFixedRefusalName(report.refused)); }
+if (report.refused !== 0 || ("damaged" in report)) { fail("a clean round trip refused: " + TableFixedRefusalName(report.refused)); }
 %s
 const again = new Uint8Array(TFixedMeasure(1));
 TFixedSave(back, 1, again);

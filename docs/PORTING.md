@@ -1176,7 +1176,7 @@ the block's is held by `block_base_unaligned` (#387), one image one byte past an
 aligned base, so the reference holds the check and a port still holds it itself.
 
 **Reference.** `testdata/conformance/tables/MANIFEST.txt`
-(`block_base_unaligned`); `test/conformance/cpp/main.cpp` (the pointer column
+(`block_base_unaligned`); `test/conformance/cpp/driver_blocks.cpp` (the pointer column
 of the block forgery battery); `test/conformance/elixir/driver_impl.ex:740-741`
 (`BlockLead.run/1`: every image × every lead); the enumerated pass in the
 reference fuzzer at `test/tables/block_fuzz_main.cpp:940`.

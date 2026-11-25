@@ -135,7 +135,7 @@ func adapters(log io.Writer) map[string]testreg.Adapter {
 		// every language row names corpus: one adapter routes each family
 		// to its harness for any language, and a case a language does not
 		// answer yet runs and is red
-		"corpus":      &harnessAdapter{build: b, log: log},
+		"corpus":      newHarnessAdapter(b, log),
 		"gotest":      newGoTestAdapterBuilding(log, ".", goTestJobs(), b.run),
 		"make":        newMakeAdapter(),
 		"golden":      newGoldenAdapter(),
@@ -162,6 +162,20 @@ type builder struct {
 	mu   sync.Mutex
 	log  io.Writer
 	done map[string]error
+	// step runs one build command and returns its combined output; nil
+	// runs it (execStep), a unit test hands in its own
+	step func(ctx context.Context, argv []string) ([]byte, error)
+}
+
+// execStep runs one build command, bounded, for its combined output.
+func execStep(ctx context.Context, argv []string) ([]byte, error) {
+	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
+	bound(cmd)
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &out
+	err := cmd.Run()
+	return out.Bytes(), err
 }
 
 func (b *builder) run(ctx context.Context, argv []string) error {
@@ -178,16 +192,19 @@ func (b *builder) run(ctx context.Context, argv []string) error {
 		return fmt.Errorf("build step %q: %w", strings.Join(argv, " "), err)
 	}
 	defer release()
-	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
-	bound(cmd)
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &out
-	err = cmd.Run()
-	if err != nil {
-		err = fmt.Errorf("build step %q: %w\n%s", strings.Join(argv, " "), err, tail(out.String(), 40))
+	step := b.step
+	if step == nil {
+		step = execStep
 	}
-	b.done[key] = err
+	out, err := step(ctx, argv)
+	if err != nil {
+		err = fmt.Errorf("build step %q: %w\n%s", strings.Join(argv, " "), err, tail(string(out), 40))
+	}
+	// a step its deadline cut short gave no answer: it is never recorded as
+	// a build that failed, and the next call to ask for it runs it again
+	if ctx.Err() == nil {
+		b.done[key] = err
+	}
 	return err
 }
 
@@ -198,6 +215,15 @@ const workRoot = "build/schema-test-work"
 type harnessAdapter struct {
 	build *builder
 	log   io.Writer
+	// mk runs a per-language row's make gates (langmake.go); controls runs
+	// the ones that are negative controls, with no -j as their job ran them
+	mk, controls makeAdapter
+}
+
+func newHarnessAdapter(b *builder, log io.Writer) *harnessAdapter {
+	controls := newMakeAdapter()
+	controls.jobs = 0
+	return &harnessAdapter{build: b, log: log, mk: newMakeAdapter(), controls: controls}
 }
 
 // Serial: the harness takes the checkout for its whole run (runHarness), so
@@ -206,6 +232,9 @@ type harnessAdapter struct {
 func (a *harnessAdapter) Serial() bool { return true }
 
 func (a *harnessAdapter) Answers(t testreg.Test) bool {
+	if _, has, err := langMakeGates(t); has {
+		return err == nil
+	}
 	_, ok := harnessFor(t)
 	return ok && t.PerLang()
 }
@@ -226,16 +255,32 @@ func (a *harnessAdapter) Prepare(ctx context.Context, lang string, instances []t
 				return err
 			}
 		}
+		// the builds the union rows' Go tests read (goneeds.go); one that
+		// fails fails the rows that read it, in Run
+		if h.Name == goUnion.Name {
+			if _, err := newGoTestAdapterBuilding(a.log, ".", 1, a.build.run).buildNeeds(ctx, unionRefs(lang, instances)); err != nil {
+				return err
+			}
+			if err := ctx.Err(); err != nil {
+				return err // the deadline's, never a build failure
+			}
+		}
 	}
 	return nil
 }
 
 func (a *harnessAdapter) Run(ctx context.Context, lang string, instances []testreg.Instance) ([]testreg.Result, error) {
+	ctx = withBuilder(ctx, a.build)
 	// one call per harness: the conformance harness scores every surface
 	// of a leg in one run, so its families go to it together
 	byHarness := map[string][]testreg.Instance{}
 	var names []string
+	var gated []testreg.Instance
 	for _, inst := range instances {
+		if _, has, _ := langMakeGates(inst.Test); has {
+			gated = append(gated, inst)
+			continue
+		}
 		h, ok := harnessFor(inst.Test)
 		if !ok {
 			return nil, fmt.Errorf("%s: no harness for family %s", inst.Full, inst.Test.Family)
@@ -246,6 +291,13 @@ func (a *harnessAdapter) Run(ctx context.Context, lang string, instances []testr
 		byHarness[h.Name] = append(byHarness[h.Name], inst)
 	}
 	var all []testreg.Result
+	if len(gated) > 0 {
+		res, err := runLangMake(ctx, a.mk, a.controls, lang, gated)
+		all = append(all, res...)
+		if err != nil {
+			return all, err
+		}
+	}
 	for _, name := range names {
 		h, _ := harnessFor(byHarness[name][0].Test)
 		fam := h.Name

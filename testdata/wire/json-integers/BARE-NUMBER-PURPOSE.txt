@@ -10,4 +10,16 @@
 
 testdata/wire/json-integers/NUMBER-TOKEN.tsv # the refused number-token vectors of the json-integers unit
 testdata/conformance/tables/JSON-HOSTILE-NUMBER-TOKEN.txt # the json-hostile vectors that write a wide value as a bare number token
-internal/ci/hostilecorpus/corpus/number-token.tsv # the shared hostile corpus's copies of the JSON-HOSTILE-NUMBER-TOKEN.txt vectors
+internal/ci/hostilecorpus/corpus/manifest.tsv conformance-fixed-at-bound # the shared hostile corpus's copy of the JSON-HOSTILE-NUMBER-TOKEN.txt vector
+internal/ci/hostilecorpus/corpus/manifest.tsv conformance-fixed-integral-token # the shared hostile corpus's copy of the JSON-HOSTILE-NUMBER-TOKEN.txt vector
+internal/ci/hostilecorpus/corpus/manifest.tsv conformance-fixed-nested-type # the shared hostile corpus's copy of the JSON-HOSTILE-NUMBER-TOKEN.txt vector
+internal/ci/hostilecorpus/corpus/manifest.tsv conformance-int128-beyond-int64 # the shared hostile corpus's copy of the JSON-HOSTILE-NUMBER-TOKEN.txt vector
+internal/ci/hostilecorpus/corpus/manifest.tsv conformance-int128-over-range # the shared hostile corpus's copy of the JSON-HOSTILE-NUMBER-TOKEN.txt vector
+internal/ci/hostilecorpus/corpus/manifest.tsv conformance-num-int64-extremes # the shared hostile corpus's copy of the JSON-HOSTILE-NUMBER-TOKEN.txt vector
+internal/ci/hostilecorpus/corpus/manifest.tsv conformance-num-int64-min # the shared hostile corpus's copy of the JSON-HOSTILE-NUMBER-TOKEN.txt vector
+internal/ci/hostilecorpus/corpus/manifest.tsv conformance-num-int64-past-extremes # the shared hostile corpus's copy of the JSON-HOSTILE-NUMBER-TOKEN.txt vector
+internal/ci/hostilecorpus/corpus/manifest.tsv conformance-num-uint64-max # the shared hostile corpus's copy of the JSON-HOSTILE-NUMBER-TOKEN.txt vector
+internal/ci/hostilecorpus/corpus/manifest.tsv conformance-num-uint64-two-to-63 # the shared hostile corpus's copy of the JSON-HOSTILE-NUMBER-TOKEN.txt vector
+internal/ci/hostilecorpus/corpus/manifest.tsv conformance-uint128-max # the shared hostile corpus's copy of the JSON-HOSTILE-NUMBER-TOKEN.txt vector
+internal/ci/hostilecorpus/corpus/manifest.tsv conformance-uint128-negative # the shared hostile corpus's copy of the JSON-HOSTILE-NUMBER-TOKEN.txt vector
+internal/ci/hostilecorpus/corpus/manifest.tsv conformance-uint128-over # the shared hostile corpus's copy of the JSON-HOSTILE-NUMBER-TOKEN.txt vector

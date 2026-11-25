@@ -61,7 +61,7 @@ const w = m.MsgFixedSave([src], 1, buf);
 const dst = [new m.Msg()];
 const rep = new m.TableFixedReport();
 const n = m.MsgFixedLoad(dst, 1, buf, w, m.MsgFixedNewPlan(64, 64), rep);
-if (n !== 1 || rep.damaged || rep.refused !== 0) { bad.push("round trip refused"); }
+if (n !== 1 || ("damaged" in rep) || rep.refused !== 0) { bad.push("round trip refused"); }
 else if (!isDeepStrictEqual(dst[0], src)) { bad.push("loaded " + JSON.stringify(dst[0]) + ", saved " + JSON.stringify(src)); }
 console.log(bad.length === 0 ? "OK" : bad.join("\n"));
 `

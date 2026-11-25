@@ -52,7 +52,7 @@ view.setUint32(found + 4, 0xFFFFFFFF, true); /* the forge: -1 as the little-endi
 const back = []; for (let k = 0; k < 8; k++) { back.push(new T()); InitT(back[k]); }
 const report = new TableFixedReport(); const r = report;
 const n = TLoad(back, back.length, data, data.length, TNewPlan(4096, 4096), report);
-if (n !== -1 || r.refused !== TableFixedRefusal.CountOverBound || r.damaged || r.oor !== 0) {
+if (n !== -1 || r.refused !== TableFixedRefusal.CountOverBound || ("damaged" in r) || r.oor !== 0) {
   fail("count_clamp_ends C1: a negative count owes count_over_bound: n=" + n + " " + reason(r));
 }
 if (r.unknown !== 0 || r.mismatch !== 0 || r.widened !== 0 || r.repeated !== 0) {
@@ -88,7 +88,7 @@ view.setUint32(found + 4, 9, true); /* the forge */
 const back = []; for (let k = 0; k < 8; k++) { back.push(new T()); InitT(back[k]); }
 const report = new TableFixedReport(); const r = report;
 const n = TLoad(back, back.length, data, data.length, TNewPlan(4096, 4096), report);
-if (n !== -1 || r.refused !== TableFixedRefusal.CountOverBound || r.damaged || r.oor !== 0) {
+if (n !== -1 || r.refused !== TableFixedRefusal.CountOverBound || ("damaged" in r) || r.oor !== 0) {
   fail("count_clamp_ends C2: a count past the bound owes count_over_bound: n=" + n + " " + reason(r));
 }
 if (r.unknown !== 0 || r.mismatch !== 0 || r.widened !== 0 || r.repeated !== 0) {

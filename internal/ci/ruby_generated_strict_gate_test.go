@@ -271,7 +271,8 @@ func TestRubyGeneratedStrictGateFast(t *testing.T) {
 	allDir := t.TempDir()
 	all, rcPaths := rubyStrictFastPlan(t, allDir, units)
 	// the fast form may not lint less than it did (ruby_strict_fast_guard_test.go)
-	if err := rubyStrictFastGuard(len(units), len(rcPaths), rubyStrictFastConfig(t, root)); err != nil {
+	tu, tf := rubyStrictFastTree(t, units)
+	if err := rubyStrictFastGuard(len(units), len(rcPaths), tu, tf, rubyStrictFastConfig(t, root)); err != nil {
 		t.Fatal(err)
 	}
 	// this run's part of the work (ruby_strict_fast_shard_test.go); 1/1 is all of it

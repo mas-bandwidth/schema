@@ -39,19 +39,22 @@ func TestJsonFixturesHoldNoBareWideInteger(t *testing.T) {
 		t.Fatal(err)
 	}
 	var fixtures []wideFixture
+	// a fixture no manifest binds is a finding by name, and the walk goes
+	// on over every fixture that is bound
+	var findings []string
 	for _, g := range []struct {
 		source string
-		gather func(string) ([]wideFixture, error)
+		gather func(string) ([]wideFixture, []string, error)
 	}{
-		{"tables/pack", gatherPackFixtures},
-		{"tables/cards", gatherCardFixtures},
+		{"tables/pack", bindsAll(gatherPackFixtures)},
+		{"tables/cards", bindsAll(gatherCardFixtures)},
 		{"testdata/conformance/tables", gatherConformanceFixtures},
-		{"testdata/wire/json-integers", gatherJSONIntegerFixtures},
-		{"testdata/wire/json-comment-text-rules", gatherCommentRuleFixtures},
-		{"internal/ci/hostilecorpus", gatherHostileCorpusFixtures},
-		{"testdata/conformance/feature-witnesses", gatherFeatureWitnessFixtures},
+		{"testdata/wire/json-integers", bindsAll(gatherJSONIntegerFixtures)},
+		{"testdata/wire/json-comment-text-rules", bindsAll(gatherCommentRuleFixtures)},
+		{"internal/ci/hostilecorpus", bindsAll(gatherHostileCorpusFixtures)},
+		{"testdata/conformance/feature-witnesses", bindsAll(gatherFeatureWitnessFixtures)},
 	} {
-		got, err := g.gather(root)
+		got, unbound, err := g.gather(root)
 		if err != nil {
 			t.Fatalf("%s: %v", g.source, err)
 		}
@@ -60,11 +63,11 @@ func TestJsonFixturesHoldNoBareWideInteger(t *testing.T) {
 			t.Fatalf("%s: no fixture bound; the source moved or its manifest changed shape", g.source)
 		}
 		fixtures = append(fixtures, got...)
+		findings = append(findings, unbound...)
 	}
 
 	used := map[string]bool{}
 	units := map[string]*ir.Unit{}
-	var findings []string
 	for _, fx := range fixtures {
 		if key, ok := exempt.covers(fx); ok {
 			used[key] = true
@@ -119,6 +122,26 @@ func TestJsonFixturesHoldNoBareWideInteger(t *testing.T) {
 	sort.Strings(findings)
 	for _, f := range findings {
 		t.Error(f)
+	}
+}
+
+// TestUnboundFixturesNamesEveryOne holds the unbound-fixture report to naming
+// every file no row binds, in order, and only those: a report that stops at
+// the first unbound file, or names a bound one, fails here.
+func TestUnboundFixturesNamesEveryOne(t *testing.T) {
+	t.Parallel()
+	all := []string{"d/a.json", "d/b.json", "d/c.json", "d/e.json"}
+	bound := []wideFixture{{file: "d/b.json"}, {file: "d/e.json"}}
+	got := unboundFixtures(all, bound)
+	want := []string{
+		"d/a.json: no manifest row binds this JSON file to a schema",
+		"d/c.json: no manifest row binds this JSON file to a schema",
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("unboundFixtures = %q, want %q", got, want)
+	}
+	if got := unboundFixtures(all[1:2], bound); len(got) != 0 {
+		t.Errorf("a bound file is reported: %q", got)
 	}
 }
 
@@ -596,9 +619,11 @@ func gatherCardFixtures(root string) ([]wideFixture, error) {
 // gatherConformanceFixtures binds every JSON file a row of the tables
 // conformance manifests names: a json-hostile tree and its value golden, an
 // instance's text, a report's and a retain's value, a rewrite's text, a framing
-// row's value and a cook-write row's input. A JSON file under the directory
-// that no row binds fails, so a fixture cannot sit outside the walk.
-func gatherConformanceFixtures(root string) ([]wideFixture, error) {
+// row's value, a cook-write row's input and an authored-text row's
+// hand-authored text. A JSON file under the directory that no row binds is
+// returned as a finding naming it (unboundFixtures), so a fixture cannot sit
+// outside the walk, and every such file is named.
+func gatherConformanceFixtures(root string) ([]wideFixture, []string, error) {
 	const dir = "testdata/conformance/tables"
 	unitPath := map[string]string{}
 	type bound struct{ unit, table string }
@@ -621,7 +646,7 @@ func gatherConformanceFixtures(root string) ([]wideFixture, error) {
 			if os.IsNotExist(err) && manifest != dir+"/MANIFEST.txt" {
 				continue
 			}
-			return nil, err
+			return nil, nil, err
 		}
 		for _, f := range rows {
 			if f[0] == "unit" && len(f) >= 3 {
@@ -648,6 +673,11 @@ func gatherConformanceFixtures(root string) ([]wideFixture, error) {
 				}
 			case "instance":
 				files = append(files, dir+"/json/"+name+".json")
+			case "authored-text":
+				// <case> <unit> <root> <wire>: a hand-authored text whose map
+				// keys arrive out of order, at json/<case>.json like an
+				// instance's (test/conformance/harness/jsontext.go)
+				files = append(files, dir+"/json/"+name+".json")
 			case "message-batch":
 				// <case> <connection> <root> <sent json>: the sent value is read
 				// at the connection's unit
@@ -664,8 +694,7 @@ func gatherConformanceFixtures(root string) ([]wideFixture, error) {
 			case "retain":
 				files = append(files, dir+"/retain-values/"+name+".json")
 			case "rewrite":
-				// and the hand-authored out-of-order text of the same value
-				files = append(files, dir+"/rewrite/"+name+".json", dir+"/rewrite/"+name+"_unsorted.json")
+				files = append(files, dir+"/rewrite/"+name+".json")
 			case "framing":
 				if len(f) >= 7 && f[6] != "-" {
 					files = append(files, f[6])
@@ -675,7 +704,7 @@ func gatherConformanceFixtures(root string) ([]wideFixture, error) {
 					if input, ok := strings.CutPrefix(opt, "input="); ok {
 						b, ok := instances[name]
 						if !ok {
-							return nil, fmt.Errorf("%s: cook-write %s names no instance", manifest, name)
+							return nil, nil, fmt.Errorf("%s: cook-write %s names no instance", manifest, name)
 						}
 						unit, table = b.unit, b.table
 						files = append(files, input)
@@ -687,29 +716,42 @@ func gatherConformanceFixtures(root string) ([]wideFixture, error) {
 					continue // a refused or binary-only row writes no text
 				}
 				if err := bind(manifest, name, unit, table, file); err != nil {
-					return nil, err
+					return nil, nil, err
 				}
 			}
 		}
 	}
 	all, err := jsonFiles(root, dir)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+	return out, unboundFixtures(all, out), nil
+}
+
+// bindsAll is a gatherer that binds every file it lists (its source has no
+// file outside its manifest), as one that also names the unbound files.
+func bindsAll(gather func(string) ([]wideFixture, error)) func(string) ([]wideFixture, []string, error) {
+	return func(root string) ([]wideFixture, []string, error) {
+		out, err := gather(root)
+		return out, nil, err
+	}
+}
+
+// unboundFixtures is one finding per file in all that no fixture in bound
+// binds, each naming its file, in the order of all: every one is reported,
+// never only the first.
+func unboundFixtures(all []string, bound []wideFixture) []string {
 	seen := map[string]bool{}
-	for _, fx := range out {
+	for _, fx := range bound {
 		seen[fx.file] = true
 	}
-	var unbound []string
+	var findings []string
 	for _, file := range all {
 		if !seen[file] {
-			unbound = append(unbound, file)
+			findings = append(findings, file+": no manifest row binds this JSON file to a schema")
 		}
 	}
-	if len(unbound) > 0 {
-		return nil, fmt.Errorf("no manifest row binds these JSON files to a schema: %s", strings.Join(unbound, ", "))
-	}
-	return out, nil
+	return findings
 }
 
 // gatherJSONIntegerFixtures binds the json-integers vectors to their unit,
@@ -750,14 +792,10 @@ func gatherHostileCorpusFixtures(root string) ([]wideFixture, error) {
 	var out []wideFixture
 	for _, manifest := range []string{
 		"internal/ci/hostilecorpus/corpus/manifest.tsv",
-		"internal/ci/hostilecorpus/corpus/number-token.tsv",
 		"internal/ci/hostilecorpus/wide/manifest.tsv",
 	} {
 		data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(manifest)))
 		if err != nil {
-			if os.IsNotExist(err) && strings.HasSuffix(manifest, "/number-token.tsv") {
-				continue // as above: its exemption line then binds nothing
-			}
 			return nil, err
 		}
 		for line := range strings.SplitSeq(string(data), "\n") {

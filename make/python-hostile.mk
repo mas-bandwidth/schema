@@ -11,7 +11,14 @@
 # scratch copy, each required red by name.
 
 .PHONY: schema-python-runs-hostile-corpus schema-python-runs-hostile-corpus-negative-control
-schema-python-runs-hostile-corpus: python-toolchain-check
+# THE BUILD, DECLARED: the prerequisites the corpus target builds first.
+# tools/schema-test builds this target before a row's deadline starts (the
+# hostile harness's Build step), so what it builds is never a case's timeout;
+# what the run recipe itself still compiles is paid inside the run.
+.PHONY: schema-python-runs-hostile-corpus-build
+schema-python-runs-hostile-corpus-build: python-toolchain-check
+
+schema-python-runs-hostile-corpus: schema-python-runs-hostile-corpus-build
 	$(GO_TEST) -count=1 -timeout 600s -tags schema_leg_python -run '^(TestHostileCorpus_python|TestPythonHostileScorerOutcomes)$$' ./internal/codegen/pythontable/
 
 schema-python-runs-hostile-corpus-negative-control: python-toolchain-check

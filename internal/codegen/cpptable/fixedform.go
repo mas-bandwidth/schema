@@ -864,14 +864,15 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    TableReport local;\n    if ( report == NULL ) { report = &local; }\n")
 	// STEP 1 AND STEP 2 (§5.3): THE FORM BYTE IS READ BEFORE THE FILE'S LENGTH.
 	// A committed form-1 file is TEN bytes and a form-2 batch THREE, so a reader
-	// that measured first would answer `malformed` for every real file of the two
-	// forms it is supposed to name. Only a file with NO FIRST BYTE is malformed
+	// that measured first would answer `truncated` for every real file of the two
+	// forms it is supposed to name. Only a file with NO FIRST BYTE is truncated
 	// before the byte is read; the twenty-byte minimum and the seven reserved
 	// bytes follow it.
 	g.pf("    // EVERY REFUSAL OF THE FIXED LOAD HAS A NAME, THE FRAMING-DAMAGE RETURNS\n")
-	g.pf("    // INCLUDED (docs/FIXED-FORM-ALGORITHM.md §5.3): a damage return keeps\n")
-	g.pf("    // malformed set BESIDE the name, so a caller switching on reason sees it.\n")
-	g.pf("    if ( data == NULL || bytes < 1 )\n    {\n        report->damaged = true;\n        report->reason = TableFixedReason::truncated;\n        return -1;\n    }\n")
+	g.pf("    // INCLUDED (docs/FIXED-FORM-ALGORITHM.md §5.3's refusal table): framing\n")
+	g.pf("    // damage refuses by name like every other refusal, and \"there is no\n")
+	g.pf("    // malformed flag on this form's report\": damaged is never set here.\n")
+	g.pf("    if ( data == NULL || bytes < 1 )\n    {\n        report->refused = true;\n        report->reason = TableFixedReason::truncated;\n        return -1;\n    }\n")
 	g.pf("    if ( data[0] != kTableFixedForm )\n    {\n")
 	g.pf("        report->refused = true;\n")
 	g.pf("        report->reason = data[0] == kTableWireForm ? TableMessageReason::previous_form\n")
@@ -881,22 +882,23 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	if st.Integrity != "" {
 		// THE INTEGRITY TRAILER, AFTER THE FORM BYTE AND BEFORE ANYTHING ELSE
 		// (docs/SPEC-TABLES.md §2.14, §3.4 THE FRAMING): a missing or mismatched
-		// trailer is whole-file damage named integrity_mismatch, with no layout
-		// compared and no record touched, exactly as the Go oracle's
-		// integrityfixed_test.go and internal/codegen/gotable/fixedform.go have
-		// it. A file too short to hold the trailer is that same damage.
+		// trailer is REFUSED integrity_mismatch (SPEC-TABLES §2.14: "refused,
+		// integrity_mismatch"), with no layout compared and no record touched.
+		// A file too short to hold the trailer is that same refusal. Like every
+		// refusal of this form it sets no malformed flag
+		// (docs/FIXED-FORM-ALGORITHM.md §5.3).
 		g.pf("    if ( !schema_integrity_holds( data, bytes ) )\n    {\n")
-		g.pf("        report->damaged = true;\n")
-		g.pf("        report->damage_reason = integrity_mismatch;\n")
+		g.pf("        report->refused = true;\n")
+		g.pf("        report->reason = integrity_mismatch;\n")
 		g.pf("        return -1;\n    }\n")
 		g.pf("    bytes -= 4; // the trailer is not part of the layout or the records\n")
 	}
-	g.pf("    if ( bytes < kTableFixedHeaderBytes + 4 )\n    {\n        report->damaged = true;\n        report->reason = TableFixedReason::truncated;\n        return -1;\n    }\n")
+	g.pf("    if ( bytes < kTableFixedHeaderBytes + 4 )\n    {\n        report->refused = true;\n        report->reason = TableFixedReason::truncated;\n        return -1;\n    }\n")
 	g.pf("    // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3): a nonzero\n")
-	g.pf("    // one is `malformed`, NAMED TableFixedReason::reserved_not_zero, which is what keeps them\n")
+	g.pf("    // one refuses TableFixedReason::reserved_not_zero, which is what keeps them\n")
 	g.pf("    // spendable later.\n")
 	g.pf("    for ( int32_t i = 1; i < kTableFixedHashAt; ++i )\n")
-	g.pf("    {\n        if ( data[i] != 0 )\n        {\n            report->damaged = true;\n            report->reason = TableFixedReason::reserved_not_zero;\n            return -1;\n        }\n    }\n")
+	g.pf("    {\n        if ( data[i] != 0 )\n        {\n            report->refused = true;\n            report->reason = TableFixedReason::reserved_not_zero;\n            return -1;\n        }\n    }\n")
 	g.pf("    const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );\n")
 	g.pf("    if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes )\n    {\n        report->refused = true;\n        report->reason = TableMessageReason::layout_malformed;\n        return -1;\n    }\n")
 	g.pf("    const uint8_t * layout = data + kTableFixedHeaderBytes + 4;\n")
@@ -980,7 +982,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	// A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (docs/SPEC-TABLES.md §3.4,
 	// §22.6; docs/FIXED-FORM-ALGORITHM.md §5.3 step 9): a header and a layout
 	// followed by no record is `truncated`, never a batch of none.
-	g.pf("    if ( rest == 0 || record_bytes <= 8 || rest %% record_bytes != 0 )\n    {\n        report->damaged = true;\n        report->reason = TableFixedReason::truncated;\n        return -1;\n    }\n")
+	g.pf("    if ( rest == 0 || record_bytes <= 8 || rest %% record_bytes != 0 )\n    {\n        report->refused = true;\n        report->reason = TableFixedReason::truncated;\n        return -1;\n    }\n")
 	g.pf("    const int64_t n = rest / record_bytes;\n")
 	g.pf("    if ( n > capacity )\n    {\n        report->refused = true;\n        report->reason = TableMessageReason::batch_too_large;\n        return -1;\n    }\n")
 	g.pf("    // STEP 11: EVERY RECORD'S COUNT AND TEXT FIRST, in a pass of its own\n")

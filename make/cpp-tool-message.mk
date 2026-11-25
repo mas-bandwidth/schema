@@ -43,8 +43,9 @@ conformance-cpp-tool-message-negative-control: build/conformance-harness build/c
 	fi
 	$(CXX) $(TABLES_CXXFLAGS) $(subst -Ibuild/tables-generated/messages,-I$(CPP_TOOL_MESSAGE_NEGATIVE)/messages,$(CONFORMANCE_INCLUDES)) \
 		-c $(CPP_TOOL_MESSAGE_NEGATIVE)/messages/MessagesTable.cpp -o $(CPP_TOOL_MESSAGE_NEGATIVE)/MessagesTable.o
-	$(CXX) $(TABLES_CXXFLAGS) $(subst -Ibuild/tables-generated/messages,-I$(CPP_TOOL_MESSAGE_NEGATIVE)/messages,$(CONFORMANCE_INCLUDES)) \
-		test/conformance/cpp/main.cpp \
+	$(call conformance_driver_objects,$(CPP_TOOL_MESSAGE_NEGATIVE)/driver-objs,$(subst -Ibuild/tables-generated/messages,-I$(CPP_TOOL_MESSAGE_NEGATIVE)/messages,$(CONFORMANCE_INCLUDES)))
+	$(CXX) $(TABLES_CXXFLAGS) \
+		$(call conformance_driver_objects_in,$(CPP_TOOL_MESSAGE_NEGATIVE)/driver-objs) \
 		$(filter-out build/conformance-cpp-objs/messages/MessagesTable.o,$(CONFORMANCE_OBJECTS)) \
 		$(CPP_TOOL_MESSAGE_NEGATIVE)/MessagesTable.o -o $(CPP_TOOL_MESSAGE_NEGATIVE)/driver-bin
 	@printf '#!/bin/sh\nexec "%s/driver-bin" "$$@"\n' "$(CURDIR)/$(CPP_TOOL_MESSAGE_NEGATIVE)" > $(CPP_TOOL_MESSAGE_NEGATIVE)/driver

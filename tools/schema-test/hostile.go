@@ -26,16 +26,13 @@ import (
 // rows are the target's only rows, and the Go test a target runs is claimed
 // by them too (inputs "go_tests"; extract.CoveredIn).
 //
-// Two manifests, two families:
-//
-//	hostile               manifest.tsv, make schema-<lang>-runs-hostile-corpus
-//	hostile-number-token  number-token.tsv, make schema-<lang>-runs-hostile-number-token
-//
-// number-token.tsv is the corpus copy of the conformance vectors that write a
-// wide integer as a bare number token (testdata/conformance/tables/
-// JSON-HOSTILE-NUMBER-TOKEN.txt, docs/SPEC-TABLES.md §16.2). A port answers it
-// once its runner reads that manifest through its own target; a port with no
-// such target gives each case no verdict, and each instance is red by name.
+// One manifest, one family: hostile, manifest.tsv, make
+// schema-<lang>-runs-hostile-corpus. The cases that copy a conformance vector
+// writing a wide integer as a bare number token (testdata/conformance/tables/
+// JSON-HOSTILE-NUMBER-TOKEN.txt, docs/SPEC-TABLES.md §16.2) are cases of it
+// like any other, and every port's corpus run answers them; each names the
+// conformance tree it copies (inputs "files"), since no other runner reads
+// those trees.
 const (
 	// hostileCorpus is the corpus folder the rows are read from.
 	hostileCorpus = "internal/ci/hostilecorpus/corpus"
@@ -43,6 +40,14 @@ const (
 	hostileFamily = "hostile"
 	// hostileTarget is every language's corpus target.
 	hostileTarget = "schema-" + testreg.LangPlaceholder + "-runs-hostile-corpus"
+	// hostileBuildSuffix names the target that builds everything a
+	// language's corpus target runs: <target>-build, which the target
+	// depends on, declared in the language's make file
+	// (TestEveryHostileTargetDeclaresItsBuild).
+	hostileBuildSuffix = "-build"
+	// hostileNumberTokenTrees holds the bare number-token conformance trees
+	// (JSON-HOSTILE-NUMBER-TOKEN.txt), which only the hostile rows read.
+	hostileNumberTokenTrees = "testdata/conformance/tables/json-hostile-number-token/"
 )
 
 // hostileGoTests are the Go tests a Go-written corpus target runs, by
@@ -59,9 +64,10 @@ type hostileSet struct {
 	manifest string   // the manifest's file in hostileCorpus
 	target   string   // the make target, {lang} for the language
 	goTests  []string // the Go tests the target runs, by package
-	// tree: a row names the conformance tree its case copies (the
-	// manifest's provenance), so the tree is a data case the rows read
-	tree bool
+	// treeDir: a case whose provenance names a conformance tree under this
+	// folder names that tree in its row (inputs "files"), so the tree is a
+	// data case the row reads; "" names none
+	treeDir string
 }
 
 var (
@@ -70,14 +76,9 @@ var (
 		manifest: hostilecorpus.ManifestName,
 		target:   hostileTarget,
 		goTests:  hostileGoTests,
+		treeDir:  hostileNumberTokenTrees,
 	}
-	hostileNumberToken = hostileSet{
-		family:   "hostile-number-token",
-		manifest: "number-token.tsv",
-		target:   "schema-" + testreg.LangPlaceholder + "-runs-hostile-number-token",
-		tree:     true,
-	}
-	hostileSets = []hostileSet{hostileMain, hostileNumberToken}
+	hostileSets = []hostileSet{hostileMain}
 )
 
 // hostileInputs is a hostile row's inputs.
@@ -89,11 +90,17 @@ type hostileInputs struct {
 	Files   []string `json:"files,omitempty"`
 }
 
-// harness is the set's harness: its target builds what it runs.
+// harness is the set's harness. Its Build is the target's declared build
+// (<target>-build), which the driver runs before any row's deadline starts
+// (harnessAdapter.Prepare): a cold sanitizer build is the run's cost, never
+// a case's timeout. The target depends on its build, so a make run on its
+// own still builds first.
 func (s hostileSet) harness() harness {
 	return harness{
-		Name:  s.family,
-		Build: func(string) [][]string { return nil },
+		Name: s.family,
+		Build: func(lang string) [][]string {
+			return [][]string{{"make", "-s", strings.ReplaceAll(s.target, testreg.LangPlaceholder, lang) + hostileBuildSuffix}}
+		},
 		Run: func(ctx context.Context, lang string, instances []testreg.Instance, log io.Writer) ([]testreg.Result, error) {
 			return s.runWith(ctx, execMake, workRoot, lang, instances, log)
 		},
@@ -196,11 +203,7 @@ func (s hostileSet) rows(root string) ([]testreg.Test, error) {
 			Input:   hostileCorpus + "/" + c.Input,
 			GoTests: s.goTests,
 		}
-		if s.tree {
-			tree := hostileTree(c)
-			if tree == "" {
-				return nil, fmt.Errorf("%s: case %s names no conformance tree in its provenance %q", s.manifest, c.Name, c.Provenance)
-			}
+		if tree := hostileTree(c); s.treeDir != "" && strings.HasPrefix(tree, s.treeDir) {
 			if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(tree))); err != nil {
 				return nil, fmt.Errorf("%s: case %s: %w", s.manifest, c.Name, err)
 			}

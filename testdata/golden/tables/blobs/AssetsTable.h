@@ -3537,8 +3537,8 @@ inline uint64_t TableStoredFloatBits( double d )
 
 // THE FIXED FORM'S THREE REASON NAMES THE COOKED FORM ALSO SPELLS
 // (docs/FIXED-FORM-ALGORITHM.md §5.3, docs/SPEC-TABLES.md §3.4, §11): every
-// -1 of <T>FixedLoad carries one, and a framing-damage return keeps
-// "malformed" set BESIDE it. They are the one vocabulary's own values
+// -1 of <T>FixedLoad carries one with refused set, a framing-damage return
+// included: there is no malformed flag on this form's report. They are the one vocabulary's own values
 // (TableRefuseReason, §6.5), named here as well so the fixed form's callers
 // keep the spelling they already read.
 #define SCHEMA_HAS_FIXED_REASON_NAMES 1

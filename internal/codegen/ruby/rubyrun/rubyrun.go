@@ -3,7 +3,10 @@
 //
 // It never looks on PATH. A pin resolves from its environment variable ($RUBY,
 // $RUBY_FLOOR, $RUBOCOP, $STEEP, $RBS; make/ruby-toolchain.mk exports the
-// pins), else the repository's dist/ builds (make dist-ruby). A pin that
+// pins), else the repository's dist/ builds (make dist-ruby). An analyzer
+// with no variable of its own sits beside $RUBY when that is set, as
+// make/ruby-toolchain.mk and make/sdk-check.sh hold it: the fleet SDK's
+// env.sh exports RUBY and RUBY_FLOOR and never the analyzers. A pin that
 // does not resolve FAILS the test and names make dist-ruby. It never skips,
 // because a leg that skips is a gate with no blade (issue #599).
 //
@@ -57,19 +60,41 @@ func Floor(t testing.TB) string {
 // RuboCop returns the pinned RuboCop analyzer, or fails t.
 func RuboCop(t testing.TB) string {
 	t.Helper()
-	return pinBin(t, "RUBOCOP", CurrentVersion, "rubocop")
+	return analyzerBin(t, "RUBOCOP", "rubocop")
 }
 
 // Steep returns the pinned Steep type checker, or fails t.
 func Steep(t testing.TB) string {
 	t.Helper()
-	return pinBin(t, "STEEP", CurrentVersion, "steep")
+	return analyzerBin(t, "STEEP", "steep")
 }
 
 // RBS returns the pinned RBS CLI, or fails t.
 func RBS(t testing.TB) string {
 	t.Helper()
-	return pinBin(t, "RBS", CurrentVersion, "rbs")
+	return analyzerBin(t, "RBS", "rbs")
+}
+
+// analyzerBin is an analyzer's pin: $env, else bin beside $RUBY, else the
+// current interpreter's dist/ build.
+func analyzerBin(t testing.TB, env, bin string) string {
+	t.Helper()
+	if os.Getenv(env) == "" {
+		if ruby := os.Getenv("RUBY"); ruby != "" {
+			p := besideRuby(ruby, bin)
+			if _, err := os.Stat(p); err != nil {
+				t.Fatalf("the pinned %s does not resolve: %s is absent beside RUBY=%s and %s is unset; run make dist-ruby (docs/PORT-RUBY.md, THE PIN)", env, p, ruby, env)
+			}
+			return p
+		}
+	}
+	return pinBin(t, env, CurrentVersion, bin)
+}
+
+// besideRuby is the analyzer bin in the directory of the interpreter ruby,
+// make/ruby-toolchain.mk's $(dir $(RUBY))bin.
+func besideRuby(ruby, bin string) string {
+	return filepath.Join(filepath.Dir(ruby), bin)
 }
 
 func pinBin(t testing.TB, env, version, bin string) string {

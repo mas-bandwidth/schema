@@ -57,6 +57,12 @@ type goTestAdapter struct {
 
 	// goTest runs go test; nil is execGoTest (a test stands in for it)
 	goTest func(ctx context.Context, dir string, args []string, stdout, stderr io.Writer) error
+
+	// the builds the tests read (goneeds.go), declared in testreg.GoNeedsPath
+	// and run through build (one of the adapter's own when build is nil)
+	needsOnce  sync.Once
+	needsTable []testreg.GoNeed
+	needsErr   error
 }
 
 func newGoTestAdapter(log io.Writer, root string, jobs int) *goTestAdapter {
@@ -126,7 +132,7 @@ func (a *goTestAdapter) Prepare(ctx context.Context, _ string, instances []testr
 			return fmt.Errorf("%s: %w", inst.Full, err)
 		}
 	}
-	return nil
+	return a.prepareNeeds(ctx, instances)
 }
 
 // declared is the set of top-level functions a package's _test.go files
@@ -190,21 +196,41 @@ func (a *goTestAdapter) moduleOf(pkg string) (string, string, error) {
 }
 
 func (a *goTestAdapter) Run(ctx context.Context, _ string, instances []testreg.Instance) ([]testreg.Result, error) {
-	calls := goTestCalls{}
-	var absent []testreg.Result // rows naming a data file the tree does not hold
-	for _, inst := range instances {
+	ins := make([]goTestInputs, len(instances))
+	refs := make([]goTestRef, len(instances))
+	for i, inst := range instances {
 		in, err := goTestInputsOf(inst.Test)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", inst.Full, err)
 		}
-		if why := missingFiles(a.root, in.Files); why != "" {
-			absent = append(absent, testreg.Result{Instance: inst.Full, Verdict: testreg.Fail, Reason: why})
+		ins[i], refs[i] = in, goTestRef{in.Package, in.Test}
+	}
+	// what the tests read is built first (goneeds.go); Prepare has built it,
+	// and the builder answers a step it ran at once
+	failed, err := a.buildNeeds(ctx, refs)
+	if err != nil {
+		return nil, err
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err // a build the deadline cut short is the deadline's
+	}
+	calls := goTestCalls{}
+	var unrun []testreg.Result // rows reading a build that failed, or naming a data file the tree does not hold
+	for i, inst := range instances {
+		// the failed build first: a data file it would have made is not
+		// the cause
+		if why := a.needsFailure(failed, refs[i]); why != "" {
+			unrun = append(unrun, testreg.Result{Instance: inst.Full, Verdict: testreg.Fail, Reason: why})
 			continue
 		}
-		calls.add(goTestPackage{pkg: in.Package}, in.Test, inst, a.callBudget())
+		if why := missingFiles(a.root, ins[i].Files); why != "" {
+			unrun = append(unrun, testreg.Result{Instance: inst.Full, Verdict: testreg.Fail, Reason: why})
+			continue
+		}
+		calls.add(goTestPackage{pkg: ins[i].Package}, ins[i].Test, inst, a.callBudget())
 	}
 	res, err := a.runCalls(ctx, calls)
-	return append(res, absent...), err
+	return append(res, unrun...), err
 }
 
 // goTestPackage is one go test invocation's package and its build tags.
@@ -368,6 +394,17 @@ func packageVerdict(pkg string, res []testreg.Result, runErr error, stdout, stde
 // A subtest's events count against its top-level test: its output joins the
 // reason, and a subtest that skips fails its parent. A fuzz target that ran
 // no seed input fails.
+//
+// A result's seconds are what the test costs run alone, which the sharder
+// sums: its own Elapsed plus the Elapsed of every parallel subtest under it
+// (one that paused for t.Parallel) whose every ancestor below the top-level
+// test paused too. go test's Elapsed for a test leaves out its parallel
+// subtests, which run after its body returns, so a test made of them would
+// weigh its body alone (the Ruby strict gate: 4.24 s of a 612 s run). A
+// subtest that did not pause ran inside its parent's body, and its whole
+// run, parallel children and all, is in the parent's Elapsed already. Never the wall time between events:
+// tests of one call run side by side, and the wall of each holds the
+// others' work.
 func goTestResults(r io.Reader, tests map[string]string) ([]testreg.Result, error) {
 	type event struct {
 		Action, Test, Output string
@@ -375,7 +412,20 @@ func goTestResults(r io.Reader, tests map[string]string) ([]testreg.Result, erro
 	}
 	output := map[string][]string{}
 	skipped := map[string][]string{}
-	subRuns := map[string]int{} // a top-level test's subtests that ran
+	subRuns := map[string]int{}      // a top-level test's subtests that ran
+	paused := map[string]bool{}      // the subtests that paused for t.Parallel
+	parallel := map[string]float64{} // a top-level test's parallel subtests' Elapsed
+	seconds := func(top string, ev event) float64 { return ev.Elapsed + parallel[top] }
+	// outside is whether a paused subtest's time is in no Elapsed counted
+	// yet: every test between it and the top-level one paused as well
+	outside := func(name string) bool {
+		for n := name; strings.Contains(n, "/"); n = n[:strings.LastIndex(n, "/")] {
+			if !paused[n] {
+				return false
+			}
+		}
+		return true
+	}
 	var out []testreg.Result
 	dec := json.NewDecoder(r)
 	for {
@@ -395,6 +445,10 @@ func goTestResults(r io.Reader, tests map[string]string) ([]testreg.Result, erro
 			if isSub {
 				subRuns[top]++
 			}
+		case "pause":
+			if isSub {
+				paused[ev.Test] = true
+			}
 		case "output":
 			output[top] = append(output[top], strings.TrimRight(ev.Output, "\n"))
 		case "skip":
@@ -405,6 +459,9 @@ func goTestResults(r io.Reader, tests map[string]string) ([]testreg.Result, erro
 			out = append(out, testreg.Result{Instance: inst, Verdict: testreg.Fail, Reason: "the Go test skipped, and nothing is ever skipped: " + tail(strings.Join(output[top], "\n"), 5)})
 		case "pass":
 			if isSub {
+				if outside(ev.Test) {
+					parallel[top] += ev.Elapsed
+				}
 				continue
 			}
 			if s := skipped[top]; len(s) > 0 {
@@ -421,12 +478,15 @@ func goTestResults(r io.Reader, tests map[string]string) ([]testreg.Result, erro
 			// 0.00 s was measured, at under goTestTick, and is recorded so
 			// (`--write-seconds`, `schema-test seconds`), never left to
 			// weigh DefaultSeconds as if it had never run
-			out = append(out, testreg.Result{Instance: inst, Verdict: testreg.Pass, Seconds: max(ev.Elapsed, goTestTick)})
+			out = append(out, testreg.Result{Instance: inst, Verdict: testreg.Pass, Seconds: max(seconds(top, ev), goTestTick)})
 		case "fail":
 			if isSub {
+				if outside(ev.Test) {
+					parallel[top] += ev.Elapsed
+				}
 				continue
 			}
-			out = append(out, testreg.Result{Instance: inst, Verdict: testreg.Fail, Reason: tail(strings.Join(output[top], "\n"), 20), Seconds: ev.Elapsed})
+			out = append(out, testreg.Result{Instance: inst, Verdict: testreg.Fail, Reason: tail(strings.Join(output[top], "\n"), 20), Seconds: seconds(top, ev)})
 		}
 	}
 	return out, nil

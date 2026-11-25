@@ -78,7 +78,7 @@ func TestExtractNamesANewTestSinceMain(t *testing.T) {
 	t.Parallel()
 	main, root := extractRoot(t), extractRoot(t)
 	var out bytes.Buffer
-	if err := extractCmd([]string{"--root", root, "--since", main}, &out); err != nil {
+	if err := extractCmd([]string{"--root", root, "--since", main, "--pins-base", main}, &out); err != nil {
 		t.Fatalf("the same tree: %v\n%s", err, out.String())
 	}
 	planted := "package pkg\n\nimport \"testing\"\n\nfunc TestPlantedNew(t *testing.T) {}\n"
@@ -86,7 +86,7 @@ func TestExtractNamesANewTestSinceMain(t *testing.T) {
 		t.Fatal(err)
 	}
 	out.Reset()
-	err := extractCmd([]string{"--root", root, "--since", main}, &out)
+	err := extractCmd([]string{"--root", root, "--since", main, "--pins-base", main}, &out)
 	if err == nil || !strings.Contains(out.String(), "go-test pkg TestPlantedNew at pkg/z_test.go:5 is a new test with no registry row") {
 		t.Fatalf("a new test without a row was not named (err %v):\n%s", err, out.String())
 	}

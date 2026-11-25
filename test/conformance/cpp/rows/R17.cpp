@@ -15,7 +15,7 @@
 // the leg's own assertion, built from the leg's own tabledemo unit the same
 // way the driver reaches that code: the generated PackTable.cpp on the
 // CONFORMANCE_INCLUDES path, the root the driver's codec table itself names
-// (test/conformance/cpp/main.cpp, CODEC( "tabledemo", tabledemo, PackConfig )).
+// (test/conformance/cpp/driver_examples.cpp, CODEC( "tabledemo", tabledemo, PackConfig )).
 //
 // THE PRODUCTION PATH, whole: tabledemo::PackConfigFixedLoad (the generated
 // fixed-form reader) -> TableFixedRun (the one read loop every plan walks)

@@ -178,6 +178,14 @@ export const TableFixedRefusal = globalThis.Object.freeze({
   // reports THE FILE'S hash and nothing else. Appended, so no ordinal above
   // moves (§5.9 #14: the names are the contract, the integers each leg pair's).
   LayoutUnknown: 25,
+  // FRAMING DAMAGE IS A REFUSAL LIKE ANY OTHER, EACH BY ITS OWN NAME
+  // (docs/FIXED-FORM-ALGORITHM.md §5.3's refusal table: no first byte, a file
+  // under 20 bytes, no record, a ragged tail 'rest mod record_bytes != 0' are
+  // 'truncated'; a nonzero reserved byte is 'reserved_not_zero'). "There is no
+  // 'malformed' flag on this form's report": the verdict is refused, and these
+  // are its recommended names. Appended, so no ordinal above moves.
+  Truncated: 26,
+  ReservedNotZero: 27,
 });
 
 // THE REFUSAL'S OWN NAME, matching the C++ reference's spellings exactly.
@@ -209,15 +217,18 @@ export function TableFixedRefusalName(r) {
     case TableFixedRefusal.WireDamaged: return "wire_damaged";
     case TableFixedRefusal.KindMismatch: return "kind_mismatch";
     case TableFixedRefusal.LayoutUnknown: return "layout_unknown";
+    case TableFixedRefusal.Truncated: return "truncated";
+    case TableFixedRefusal.ReservedNotZero: return "reserved_not_zero";
     default: return "???";
   }
 }
 
 // A REPORT is §4's six counters and the refusal beside them. The caller owns
-// it and the codec never makes one.
+// it and the codec never makes one. THERE IS NO 'malformed' FLAG ON THIS
+// FORM'S REPORT (docs/FIXED-FORM-ALGORITHM.md §5.3): framing damage refuses
+// by name like every other refusal, so 'refused' is the one answer channel.
 export class TableFixedReport {
   constructor() {
-    this.damaged = false;
     this.refused = 0;
     this.unknown = 0;
     this.mismatch = 0;
@@ -239,7 +250,6 @@ export class TableFixedReport {
 }
 
 export function TableFixedResetReport(report) {
-  report.damaged = false;
   report.refused = 0;
   report.unknown = 0;
   report.mismatch = 0;
