@@ -16,7 +16,7 @@ The registry and the driver are described in [TEST-REGISTRY.md](TEST-REGISTRY.md
 |---|---|---|---|---|
 | `unit` | [SPEC-TESTS-UNIT.md](SPEC-TESTS-UNIT.md) | no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory | 2 | 2884 |
 | `functional` | [SPEC-TESTS-FUNCTIONAL.md](SPEC-TESTS-FUNCTIONAL.md) | uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it | 2256 | 2203 |
-| `nightly` | [SPEC-TESTS-NIGHTLY.md](SPEC-TESTS-NIGHTLY.md) | heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded | 199 | 1368 |
+| `nightly` | [SPEC-TESTS-NIGHTLY.md](SPEC-TESTS-NIGHTLY.md) | heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded | 200 | 1368 |
 
 ## Names
 
