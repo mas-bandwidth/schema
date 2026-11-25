@@ -1,5 +1,5 @@
-/* UT2.s half of TWO LANES (docs/SPEC-TABLES.md §3.4). UT2 inserted an arm IN
-   THE MIDDLE, so its string(8) is arm 3: the text entry.s guard is that
+/* UT2's half of TWO LANES (docs/SPEC-TABLES.md §3.4). UT2 inserted an arm IN
+   THE MIDDLE, so its string(8) is arm 3: the text entry's guard is that
    ordinal and its flavour is neither number, and the shared-lane control below
    watches one lane read the same record wrong. This translation unit is the ONLY one
    that names tblut2's types; see fixedform.h for why there is more than one. */

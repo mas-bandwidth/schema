@@ -1709,7 +1709,7 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("/// Returns the records read, or None on a refusal `report` names.\n")
 	g.pf("///\n")
 	g.pf("/// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): a read that\n")
-	g.pf("/// meets damage anywhere answers None with `malformed` set, and every record\n")
+	g.pf("/// meets damage anywhere answers None, refused `wire_damaged`, and every record\n")
 	g.pf("/// in `values` goes back to its declared defaults, so nothing the read\n")
 	g.pf("/// decoded before or after the damage is a value to use.\n")
 	g.pf("///\n")

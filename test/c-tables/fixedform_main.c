@@ -22,7 +22,7 @@ void fixed_check( int ok, const char * what )
 
 /* WHAT §5.6 RETIRED HAS LEFT THIS PROGRAM (docs/FIXED-FORM-ALGORITHM.md §5.6).
    Under §5 a file whose hash this build's LINEAGE does not hold comes back
-   layout_newer, so every check that handed one generation's file to another
+   layout_unknown, so every check that handed one generation's file to another
    generation BUILT WITH NO LINEAGE asserted a reader that no longer exists:
    FX2 reading FX1 (and its plan cache and compiled bounds pass), FX1 reading
    FX2, V2 reading V1, UT1 and UT2 reading each other, FU2 reading FU1, and
@@ -87,7 +87,7 @@ int main( void )
             for ( b = 0; b < 8; b++ )
             {
                 g_buffer[i] ^= (uint8_t) ( 1u << b );
-                fixed_fx2_probe( g_buffer, n ); /* every flip is layout_newer or layout_malformed now: still inside the buffer */
+                fixed_fx2_probe( g_buffer, n ); /* every flip is layout_unknown or layout_malformed now: still inside the buffer */
                 g_buffer[i] ^= (uint8_t) ( 1u << b );
             }
         }
