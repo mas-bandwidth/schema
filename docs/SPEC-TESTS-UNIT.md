@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 0. Language-free tests: 2854.
+Unit tests every language answers: 0. Language-free tests: 2855.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -1758,7 +1758,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.cellmerge.resolve-leaves-a-hunk-it-cannot-merge-exactly` | `gotest` | Go test TestResolveLeavesAHunkItCannotMergeExactly in ./tools/cellmerge | `package: ./tools/cellmerge`<br>`test: TestResolveLeavesAHunkItCannotMergeExactly` | the Go test passes | `tools/cellmerge/main_test.go:68` |
 | `none.unit.tooling.cellmerge.resolve-merges-a-two-sided-row-cell-by-column` | `gotest` | Go test TestResolveMergesATwoSidedRowCellByColumn in ./tools/cellmerge | `package: ./tools/cellmerge`<br>`test: TestResolveMergesATwoSidedRowCellByColumn` | the Go test passes | `tools/cellmerge/main_test.go:54` |
 
-#### `tooling` family `ci`, 276 tests
+#### `tooling` family `ci`, 277 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -1801,6 +1801,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.ci.disguised-skip-gate-negative-control` | `gotest` | Go test TestDisguisedSkipGateNegativeControl in ./internal/ci | `package: ./internal/ci`<br>`test: TestDisguisedSkipGateNegativeControl` | the Go test passes | `internal/ci/silent_skips_test.go:390` |
 | `none.unit.tooling.ci.driver-stamp-rebuilds-only-when-content-moves` | `gotest` | Go test TestDriverStampRebuildsOnlyWhenContentMoves in ./internal/ci | `package: ./internal/ci`<br>`test: TestDriverStampRebuildsOnlyWhenContentMoves` | the Go test passes | `internal/ci/driver_stamp_test.go:77` |
 | `none.unit.tooling.ci.driver-stamp-records-nothing-for-a-failed-build` | `gotest` | Go test TestDriverStampRecordsNothingForAFailedBuild in ./internal/ci | `package: ./internal/ci`<br>`test: TestDriverStampRecordsNothingForAFailedBuild` | the Go test passes | `internal/ci/driver_stamp_test.go:139` |
+| `none.unit.tooling.ci.each-c-zero-cost-row-starts-from-an-empty-tree` | `gotest` | Go test TestEachCZeroCostRowStartsFromAnEmptyTree in ./internal/ci | `package: ./internal/ci`<br>`test: TestEachCZeroCostRowStartsFromAnEmptyTree` | the Go test passes | `internal/ci/zero_cost_c_rows_test.go:16` |
 | `none.unit.tooling.ci.elixir-gates-fail-on-a-planted-warning` | `gotest` | Go test TestElixirGatesFailOnAPlantedWarning in ./internal/ci | `package: ./internal/ci`<br>`test: TestElixirGatesFailOnAPlantedWarning` | the Go test passes | `internal/ci/elixir_gates_warning_test.go:17` |
 | `none.unit.tooling.ci.elixir-gc-trace-meters-flush-trace-delivered` | `gotest` | Go test TestElixirGCTraceMetersFlushTraceDelivered in ./internal/ci | `package: ./internal/ci`<br>`test: TestElixirGCTraceMetersFlushTraceDelivered` | the Go test passes | `internal/ci/elixir_gc_trace_delivered_test.go:53` |
 | `none.unit.tooling.ci.elixir-table-units-are-listed-once` | `gotest` | Go test TestElixirTableUnitsAreListedOnce in ./internal/ci | `package: ./internal/ci`<br>`test: TestElixirTableUnitsAreListedOnce` | the Go test passes | `internal/ci/elixir_table_units_once_test.go:35` |

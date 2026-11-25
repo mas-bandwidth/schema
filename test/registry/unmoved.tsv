@@ -86,7 +86,7 @@ negative-control	lua-format	1	L5, L6b	negative controls a per-PR job of another 
 negative-control	schema-dart-strict-analyze	1	L5, L6b	negative controls a per-PR job of another layer runs today (lang-lint: L6b; go-test-touched: L5): each moves in with its job
 workflow-job	.github/workflows/caa-self-test.yml	1	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/certify.yml	13	L7	workflow jobs: CI is generated from the registry
-workflow-job	.github/workflows/ci-fast.yml	31	L7	workflow jobs: CI is generated from the registry
+workflow-job	.github/workflows/ci-fast.yml	32	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/ci-full.yml	23	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/cla.yml	1	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/leg-gates-nightly.yml	6	L7	workflow jobs: CI is generated from the registry
