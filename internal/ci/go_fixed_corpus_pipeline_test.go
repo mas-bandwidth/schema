@@ -1,6 +1,7 @@
 package ci
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -169,11 +170,91 @@ func TestThePRShardsRunOnTheProducedLegs(t *testing.T) {
 
 // producedLegProblems names every way ci-fast.yml and the produce action
 // break the producer and consumer contract.
+// cppBudgetRow is the registry row that holds the C++ conformance driver's
+// translation units to their compile budget (Makefile,
+// CONFORMANCE_DRIVER_TU_BUDGET).
+const cppBudgetRow = "harness-run.makefile.conformance-cpp-tu-budget"
+
+// cppBudgetProblems names what keeps the compile budget from running on the
+// produced cpp leg in every pull request: no registry row runs `make
+// conformance-cpp-tu-budget`, or the row is outside the pr group (tiers unit
+// and functional), or it is scoped to a language, whose shards do not fetch
+// the produced trees and so hold no timings to read.
+func cppBudgetProblems(registry string) []string {
+	var row map[string]any
+	for _, line := range strings.Split(registry, "\n") {
+		if !strings.Contains(line, `"key":"`+cppBudgetRow+`"`) {
+			continue
+		}
+		if err := json.Unmarshal([]byte(line), &row); err != nil {
+			return []string{cppBudgetRow + ": " + err.Error()}
+		}
+	}
+	if row == nil {
+		return []string{"no registry row " + cppBudgetRow + " holds the C++ driver's units to their compile budget"}
+	}
+	var bad []string
+	inputs, _ := row["inputs"].(map[string]any)
+	if row["adapter"] != "make" || inputs["target"] != "conformance-cpp-tu-budget" || inputs["file"] != "Makefile" {
+		bad = append(bad, cppBudgetRow+" does not run make conformance-cpp-tu-budget")
+	}
+	if tier := row["tier"]; tier != "unit" && tier != "functional" {
+		bad = append(bad, fmt.Sprintf("%s is tier %v, outside the pr group: the budget would not run on a pull request", cppBudgetRow, tier))
+	}
+	if row["scope"] != "none" {
+		bad = append(bad, fmt.Sprintf("%s is scoped %v: only the language-free shards fetch the produced cpp leg whose timings it reads", cppBudgetRow, row["scope"]))
+	}
+	return bad
+}
+
+// TestTheCppCompileBudgetRunsOnTheProducedLeg: the produce job builds the
+// cpp conformance leg, whose build records every driver unit's compile
+// seconds, and the registry's pr group holds those seconds to the budget in
+// a language-free shard, after the produced trees are fetched
+// (TestThePRShardsRunOnTheProducedLegs holds the fetch before the driver).
+// The plants: the row gone, moved to the nightly tier, scoped to cpp, and
+// running another target.
+func TestTheCppCompileBudgetRunsOnTheProducedLeg(t *testing.T) {
+	t.Parallel()
+	data, err := os.ReadFile(filepath.Join(repoRoot(t), "test/registry/registry.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	reg := string(data)
+	if bad := cppBudgetProblems(reg); len(bad) > 0 {
+		t.Fatalf("the compile budget does not run on the produced leg:\n  %s", strings.Join(bad, "\n  "))
+	}
+	var line string
+	for _, l := range strings.Split(reg, "\n") {
+		if strings.Contains(l, `"key":"`+cppBudgetRow+`"`) {
+			line = l
+		}
+	}
+	for _, p := range []struct{ name, old, new, want string }{
+		{"the row gone", line + "\n", "", "no registry row"},
+		{"the row moved to nightly", `"tier":"functional"`, `"tier":"nightly"`, "outside the pr group"},
+		{"the row scoped to cpp", `"scope":"none"`, `"scope":"cpp"`, "only the language-free shards"},
+		{"the row runs another target", `"target":"conformance-cpp-tu-budget"`, `"target":"conformance-leg-cpp"`, "does not run make conformance-cpp-tu-budget"},
+	} {
+		planted := strings.Replace(reg, line, strings.Replace(line, p.old, p.new, 1), 1)
+		if p.old == line+"\n" {
+			planted = strings.Replace(reg, p.old, p.new, 1)
+		}
+		if planted == reg {
+			t.Errorf("%s: the plant's anchor is not in the row", p.name)
+			continue
+		}
+		if got := strings.Join(cppBudgetProblems(planted), "\n"); !strings.Contains(got, p.want) {
+			t.Errorf("PLANTED PATTERN %q: the check reported %q, want %q", p.name, got, p.want)
+		}
+	}
+}
+
 func producedLegProblems(wf, action string) []string {
 	var bad []string
 	jobs := yamlJobs(wf)
 	producer := jobs["produce"]
-	for _, want := range []string{"timeout-minutes: 2", `"name":"conformance-leg-go"`, `"name":"conformance-leg-goose"`, "uses: ./.github/actions/produce", "mode: produce", "name: ${{ matrix.name }}", "target: ${{ matrix.target }}", "paths: ${{ matrix.paths }}"} {
+	for _, want := range []string{"timeout-minutes: 2", `"name":"conformance-leg-go"`, `"name":"conformance-leg-goose"`, `"name":"conformance-leg-cpp","target":"conformance-leg-cpp"`, "uses: ./.github/actions/produce", "mode: produce", "name: ${{ matrix.name }}", "target: ${{ matrix.target }}", "paths: ${{ matrix.paths }}"} {
 		if !strings.Contains(producer, want) {
 			bad = append(bad, "the produce job misses "+want)
 		}

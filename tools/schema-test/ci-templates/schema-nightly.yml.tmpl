@@ -15,9 +15,17 @@ name: schema nightly
 #
 # THE PARTS: each `part` job runs one deterministic part of the plan on the
 # schema runner it lands on (fullrun launch --bench local=2 --part I/[[.Parts]]), and
-# uploads its run: the shard logs and the results. The `verdict` job merges
-# every part against the whole plan (fullrun merge): a test no part ran is
-# NOT RUN, a part that uploaded nothing is a red, and the job is red when
+# uploads its run: the shard logs and the results. A part runs on Linux, so
+# it holds no test built only for another OS: the `windows` job runs every
+# test built only for Windows (fullrun launch --bench local=1+windows --part
+# windows) on captain, whose runners are Linux under WSL and run a Windows
+# test binary through WSL interop; it reaches captain by the runner label
+# `wsl-windows`, which only captain's schema runners carry.
+#
+# The `verdict` job merges every part, numbered and named, against the
+# whole plan (fullrun merge): a test no part ran is NOT RUN, a part that
+# uploaded nothing is a red (PART MISSING windows when the windows job
+# uploaded nothing), and the job is red when
 # REDS.tsv holds any red or expected != ran. It uploads REDS.tsv,
 # SUMMARY.txt and results.tsv.
 #
@@ -70,8 +78,25 @@ jobs:
           path: ${{ runner.temp }}/fullrun
           if-no-files-found: error
 
+  windows:
+    if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [self-hosted, Linux, X64, fleet, schema, wsl-windows]
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: fullrun launch, the tests built only for windows
+        run: go run ./tools/fullrun launch --sha "$GITHUB_SHA" --repo https://github.com/mas-bandwidth/schema.git --bench local=1+windows --part windows --work "$RUNNER_TEMP/fullrun-work" --out "$RUNNER_TEMP/fullrun"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: fullrun-part-windows
+          path: ${{ runner.temp }}/fullrun
+          if-no-files-found: error
+
   verdict:
-    needs: part
+    needs: [part, windows]
     if: always() && !cancelled() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     defaults:

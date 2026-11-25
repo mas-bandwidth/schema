@@ -206,7 +206,7 @@ func t05R17(t *testing.T) {
 		t.Fatalf("R17: the saved record is not the declared-order body this test forges (body at %d of %d): % x", body, len(raw), raw[min(body, len(raw)):])
 	}
 	for _, probe := range []string{"Probe_refuses", "Probe_reads"} {
-		if lawful := runProbe(t, classes, probe, clean); lawful.n != 1 || lawful.refused || lawful.damaged {
+		if lawful := runProbe(t, classes, probe, clean); lawful.n != 1 || lawful.refused {
 			t.Fatalf("R17 %s: the lawful file must read: %+v", probe, lawful)
 		}
 	}
@@ -313,7 +313,7 @@ func t05R30(t *testing.T) {
 	})
 	out := t03RunSaveLoad(t, classes, "Probe_capability")
 	r := parseProbe(t, out)
-	if r.n != 1 || r.refused || r.damaged {
+	if r.n != 1 || r.refused {
 		t.Fatalf("R30: the round trip did not read: %+v", r)
 	}
 	if got := parseDumpedFloatBits(t, r.value["aim"]); got != 0x3E99999A {
@@ -372,7 +372,8 @@ func t05R31(t *testing.T) {
 		"e.arg2 = chainArg[chainLen - 2];",
 		"e.argw2 = chainArgw[chainLen - 2];",
 		"if (chainAt < 0) { chainAt = layGuards(); }",
-		"if (p.gcount > 2 && !chainHolds(p, src, srcAt, srcLength, report)) {",
+		"final int chain = chainHolds(p, src, srcAt, srcLength);",
+		"if (chain == chainMissed) { continue; }",
 	} {
 		if !javaCarries(src, want) {
 			t.Errorf("R31: the outer tag is not conjoined on a second guard lane — %q is not emitted", want)
@@ -416,7 +417,7 @@ func t05R31(t *testing.T) {
 	})
 	out := t03RunSaveLoad(t, classes, "Probe_capability")
 	r := parseProbe(t, out)
-	if r.n != 1 || r.refused || r.damaged {
+	if r.n != 1 || r.refused {
 		t.Fatalf("R31: the round trip did not read: %+v", r)
 	}
 	if got := r.value["tier"]; got != "256" {

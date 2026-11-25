@@ -1454,6 +1454,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"ruby-leg.yml:test",
 		"schema-nightly.yml:part",
 		"schema-nightly.yml:verdict",
+		"schema-nightly.yml:windows",
 		"tla-nightly.yml:tlc",
 	}
 	if strings.Join(gotKeys, ",") != strings.Join(wantKeys, ",") {

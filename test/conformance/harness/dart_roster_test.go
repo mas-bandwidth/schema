@@ -1,7 +1,6 @@
 package main
 
 import (
-	"os"
 	"strings"
 	"testing"
 )
@@ -9,10 +8,7 @@ import (
 // The streaming protocol may answer roots absent. A successful fuzz pass must
 // not hide a missing retaining binding, including the populated array root.
 func TestDartRetainingRosterAllRoots(t *testing.T) {
-	driver := os.Getenv("SCHEMA_DART_ROSTER_DRIVER")
-	if driver == "" {
-		t.Fatal("SCHEMA_DART_ROSTER_DRIVER names no built native driver: make tables-dart-wire-fuzz builds it")
-	}
+	driver := nativeDriver(t, "SCHEMA_DART_ROSTER_DRIVER", "build/conformance-dart", "test/conformance/dart")
 	t.Chdir("../../..")
 	manifest, err := ReadManifest(defaultManifest, "testdata/conformance/tables/json")
 	if err != nil {
@@ -54,10 +50,7 @@ func TestDartRetainingRosterAllRoots(t *testing.T) {
 // line nobody gates (tblvaluedefaults FixedDefaults and packetunions ShapeMsg
 // were absent until the driver bound their fixed codecs, 2026-11-24).
 func TestDartPlainRosterAllRoots(t *testing.T) {
-	driver := os.Getenv("SCHEMA_DART_ROSTER_DRIVER")
-	if driver == "" {
-		t.Fatal("SCHEMA_DART_ROSTER_DRIVER names no built native driver: make tables-dart-wire-fuzz builds it")
-	}
+	driver := nativeDriver(t, "SCHEMA_DART_ROSTER_DRIVER", "build/conformance-dart", "test/conformance/dart")
 	t.Chdir("../../..")
 	manifest, err := ReadManifest(defaultManifest, "testdata/conformance/tables/json")
 	if err != nil {
@@ -90,10 +83,7 @@ func TestDartPlainRosterAllRoots(t *testing.T) {
 // These pinned inputs distinguish the builder profile from region decoding
 // and prove that retained union frames survive the native adapter.
 func TestDartBuilderRefusalAndRetentionVectors(t *testing.T) {
-	driver := os.Getenv("SCHEMA_DART_ROSTER_DRIVER")
-	if driver == "" {
-		t.Fatal("SCHEMA_DART_ROSTER_DRIVER names no built native driver: make tables-dart-wire-fuzz builds it")
-	}
+	driver := nativeDriver(t, "SCHEMA_DART_ROSTER_DRIVER", "build/conformance-dart", "test/conformance/dart")
 	t.Chdir("../../..")
 	manifest, err := ReadManifest(defaultManifest, "testdata/conformance/tables/json")
 	if err != nil {
@@ -123,10 +113,7 @@ func TestDartBuilderRefusalAndRetentionVectors(t *testing.T) {
 // region read alike, as the engine does
 // (TestHeldReservedTypeVectorsAnswerTheEngine).
 func TestDartReservedNodeTypeVectors(t *testing.T) {
-	driver := os.Getenv("SCHEMA_DART_ROSTER_DRIVER")
-	if driver == "" {
-		t.Fatal("SCHEMA_DART_ROSTER_DRIVER names no built native driver: make tables-dart-wire-fuzz builds it")
-	}
+	driver := nativeDriver(t, "SCHEMA_DART_ROSTER_DRIVER", "build/conformance-dart", "test/conformance/dart")
 	t.Chdir("../../..")
 	manifest, err := ReadManifest(defaultManifest, "testdata/conformance/tables/json")
 	if err != nil {

@@ -107,7 +107,7 @@ public final class Main {
         FixedStampFixed.Value[] fBack = {new FixedStampFixed.Value()};
         TableFixed.Report fRep = new TableFixed.Report();
         check(FixedStampFixed.load(fBack, 1, fWire, TableFixed.plan(1 << 14), new short[1 << 14], FixedStampFixed.image(), fRep) == 1, "FixedStampFixed.load");
-        check(!fRep.damaged && !fRep.refused && fBack[0].at == 1_000_000_000L && fBack[0].tag == -2_000_000_000L, "FixedStampFixed values");
+        check(!fRep.refused && fBack[0].at == 1_000_000_000L && fBack[0].tag == -2_000_000_000L, "FixedStampFixed values");
 
         byte[] ann = new byte[TableVocabulary.announceMeasure()];
         check(TableVocabulary.announce(ann) == ann.length, "Announce.write");

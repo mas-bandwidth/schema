@@ -479,29 +479,28 @@ func TestAGoldenWritersRowsShareOneShard(t *testing.T) {
 	}
 }
 
-// TestAnEnvPlantsRowsShareOneShardByLanguage: the env plants of one
-// language run their target in the checkout after its leg is built, so they
-// are one block, as a golden writer's rows are.
-func TestAnEnvPlantsRowsShareOneShardByLanguage(t *testing.T) {
+// TestEnvPlantsOfOneLanguageAreCutLikeAnyRow: an env plant's leg comes built
+// to every shard, so one language's env plants are not one block: five go
+// plants of 20 s are cut across two shards, never one shard of 100 s and an
+// empty one (the go corpus plants, kept together, weighed 76 s).
+func TestEnvPlantsOfOneLanguageAreCutLikeAnyRow(t *testing.T) {
 	t.Parallel()
-	plant := func(name, target string) Instance {
-		return Instance{Full: name, Test: Test{Adapter: "plant", Seconds: 5, Inputs: []byte(`{"env":{"X":"y"},"target":"` + target + `","reason":"r"}`)}}
+	var all []Instance
+	for i := range 5 {
+		all = append(all, Instance{Full: fmt.Sprint("p", i), Test: Test{Adapter: "plant", Seconds: 20,
+			Inputs: []byte(`{"env":{"X":"y"},"target":"go.functional.roundtrip.f.c` + fmt.Sprint(i) + `","reason":"r"}`)}})
 	}
-	plain := func(name string) Instance {
-		return Instance{Full: name, Test: Test{Adapter: "gotest", Seconds: 5}}
-	}
-	all := []Instance{plain("a"), plant("p1", "go.functional.roundtrip.f.one"), plant("p2", "go.functional.roundtrip.f.two"), plain("b"),
-		plant("p3", "go.functional.roundtrip.f.three"), plant("q1", "lua.functional.roundtrip.f.one"), plain("c"), plain("d")}
-	var got []string
-	for _, p := range Parts(all, 3) {
-		var names []string
-		for _, i := range p {
-			names = append(names, i.Full)
+	parts := Parts(all, 2)
+	secs := PartSeconds(parts)
+	n := 0
+	for i, p := range parts {
+		n += len(p)
+		if len(p) == 0 || secs[i] > 60 {
+			t.Fatalf("part seconds %v: one language's env plants were kept as one block, so one shard carries them all", secs)
 		}
-		got = append(got, strings.Join(names, ","))
 	}
-	if strings.Join(got, " | ") != "a,p1,p2,p3 | b,q1 | c,d" {
-		t.Fatalf("parts %q, want go's three env plants together, and the rest cut by seconds", got)
+	if n != len(all) {
+		t.Fatalf("the parts hold %d of the %d plants", n, len(all))
 	}
 }
 

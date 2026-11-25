@@ -57,7 +57,7 @@ func javaUnlawfulRequired(t *testing.T, name string) string {
 // lineage entry, poisons every row with `poison` (Java statements on `v`), and
 // loads `file` three times: a fresh report, a second fresh report, and the
 // first report handed back. Each load must answer -1, refused by
-// layoutMalformed, not damaged, unknown and widened zero, and every one of the
+// layoutMalformed, unknown and widened zero, and every one of the
 // eight rows at its declared defaults (`defaults`, a Java boolean on `v`). The
 // probe first proves its own oracle: a fresh value IS at defaults and a
 // poisoned one is NOT.
@@ -102,7 +102,7 @@ public final class %[1]s {
             int at = 0;
             for (int k = 0; k < vals.length; k++) { if (atDefaults(vals[k])) { at++; } }
             System.out.println("LOAD" + pass + " n=" + n
-                + " refused=" + r.refused + " damaged=" + r.damaged + " reason=" + r.reason
+                + " refused=" + r.refused + " reason=" + r.reason
                 + " unknown=" + r.unknown + " widened=" + r.widened + " atDefaults=" + at);
         }
     }
@@ -157,9 +157,9 @@ public final class %[1]s {
 		if n := num("n"); n != -1 {
 			t.Errorf("%s %s: the UNLAWFUL entry LOADED n=%d, want -1 (no plan is laid, §5.4)", row, tag, n)
 		}
-		if kv["refused"] != "true" || kv["reason"] != "layoutMalformed" || kv["damaged"] != "false" {
-			t.Errorf("%s %s: refused=%s reason=%s damaged=%s, want refused by layoutMalformed and not damaged",
-				row, tag, kv["refused"], kv["reason"], kv["damaged"])
+		if kv["refused"] != "true" || kv["reason"] != "layoutMalformed" {
+			t.Errorf("%s %s: refused=%s reason=%s, want refused by layoutMalformed",
+				row, tag, kv["refused"], kv["reason"])
 		}
 		if u, w := num("unknown"), num("widened"); u != 0 || w != 0 {
 			t.Errorf("%s %s: a refusal moved a counter: unknown=%d widened=%d, want 0 and 0 (there is no compile census, §5.9 #30)",

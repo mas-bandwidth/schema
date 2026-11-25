@@ -1,0 +1,46 @@
+# test/registry/go-needs.txt (testreg.GoNeedsPath): the builds a Go test
+# reads and does not make itself. Whatever runs the test builds them first:
+# schema-test's gotest adapter and union harness in Prepare (testreg.Preparer),
+# and tools/fullrun before a Go test the registry does not hold yet. What the
+# test reads is built before it runs, never left to what ran there before.
+# TestEveryBuiltReadIsDeclared (internal/testreg) holds every package whose
+# tests open a build output by path to a line here.
+#
+#   needs ./<package> <top-level test regexp, whole name> <make target>
+
+# the C++ reference's fixed-form byte oracle, build/fixedform-corpus
+needs ./compiler Test(Moo|Goose)ReadsTheLockedOlderLayout tables-fixedform-corpus
+needs ./internal/codegen/cpptable .* tables-fixedform-corpus
+needs ./internal/codegen/cstable .* tables-fixedform-corpus
+needs ./internal/codegen/ctable .* tables-fixedform-corpus
+needs ./internal/codegen/darttable .* tables-fixedform-corpus
+needs ./internal/codegen/elixirtable .* tables-fixedform-corpus
+needs ./internal/codegen/goosetable .* tables-fixedform-corpus
+needs ./internal/codegen/gotable .* tables-fixedform-corpus
+needs ./internal/codegen/javatable .* tables-fixedform-corpus
+needs ./internal/codegen/jstable .* tables-fixedform-corpus
+needs ./internal/codegen/lobstertable .* tables-fixedform-corpus
+needs ./internal/codegen/luatable .* tables-fixedform-corpus
+needs ./internal/codegen/luautable .* tables-fixedform-corpus
+needs ./internal/codegen/mootable .* tables-fixedform-corpus
+needs ./internal/codegen/pythontable .* tables-fixedform-corpus
+needs ./internal/codegen/rubytable .* tables-fixedform-corpus
+needs ./internal/codegen/rusttable .* tables-fixedform-corpus
+needs ./internal/codegen/squirreltable .* tables-fixedform-corpus
+needs ./internal/codegen/unitytable .* tables-fixedform-corpus
+needs ./internal/fixedproof .* tables-fixedform-corpus
+needs ./internal/fixedvector .* tables-fixedform-corpus
+
+
+# Nested modules whose go.mod replaces its imports with generated trees under
+# build/ (fullrun runs them with go -C <module>): the build that writes those
+# trees. build/conformance-go is every tree test/conformance/go builds
+# against (the generated tables, the framing, r19 and announce modules, cards).
+needs ./test/conformance/go .* build/conformance-go
+needs ./test/conformance/go/rows .* build/conformance-go
+needs ./test/go-tables .* build/tables-generated-go/.stamp
+
+# the legs, harness and toolchain the all-port differential's own make of its
+# answer tree builds from: shared with the run's other makes, so built first,
+# under the driver's hold on the checkout
+needs ./internal/ci TestSchemaSquirrelAllPortDifferential schema-squirrel-all-port-differential-legs

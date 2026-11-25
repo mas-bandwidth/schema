@@ -139,7 +139,6 @@ public final class W4 {
 
         check("load returns 1 record", n == 1);
         check("no refusal", !report.refused);
-        check("no malformed", !report.damaged);
         check("no unknown", report.unknown == 0);
 
         PaddedFrameFixed.Value loaded = out[0];
@@ -209,7 +208,7 @@ public final class W4 {
         // Only the verdict is asserted: the forged frame also walks 0xFF slack
         // into a float, and which of several conditions names the refusal is
         // per-language detail (docs/plans/strict-only.md, decision 3).
-        check("negative control: count > max refuses the load", n2 == -1 && report2.refused && !report2.damaged);
+        check("negative control: count > max refuses the load", n2 == -1 && report2.refused);
 
         System.out.println("\n" + passed + " passed, " + failed + " failed");
         System.exit(failed > 0 ? 1 : 0);

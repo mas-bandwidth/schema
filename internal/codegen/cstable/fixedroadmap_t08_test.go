@@ -690,11 +690,11 @@ if (!w1.AsSpan().SequenceEqual(w2.AsSpan())) { bad += ProbeLog.Fail("P2: the wri
 
 // t08P3: P3 [owed] "hostile bytes, sweep + sanitizer" — FIXED-FORM-ALGORITHM §7
 // item 5: "a byte-flip fuzz over the whole file ... every byte, one bit at a
-// time, is answered one of three ways and never a fourth: a refusal by name, a
-// malformed read, or a read that lands values". The managed runtime is the
-// sanitizer: the sweep is wrapped so a load that THROWS — the fourth answer —
-// fails by name. All three answers must occur, so the sweep is proven to have
-// reached the refusal, framing and value paths.
+// time, is answered one of two ways and never a third: a refusal by one name,
+// or a read that lands values". The managed runtime is the sanitizer: the sweep
+// is wrapped so a load that THROWS fails by name. A flip must never set the
+// malformed flag (there is none on this form's report, §5.3), and the sweep
+// must reach a refusal, a FRAMING refusal by name and a landed read.
 func t08P3(t *testing.T) {
 	t08CSOK(t, `package probe
 
@@ -708,7 +708,7 @@ Probe.Schema.TableReset(v);
 v.A = 12345; v.B = -67890;
 byte[] good = new byte[Probe.Schema.TFixedMeasure(1)];
 if (Probe.Schema.TFixedSave(v, good) != good.Length) { bad += ProbeLog.Fail("P3: save did not fill the measure"); }
-int refusals = 0, malformed = 0, landed = 0;
+int refusals = 0, framing = 0, landed = 0;
 for (int off = 0; off < good.Length; ++off)
 {
     for (int bit = 0; bit < 8; ++bit)
@@ -722,8 +722,8 @@ for (int off = 0; off < good.Length; ++off)
             Probe.TableReport r = new Probe.TableReport();
             Probe.TableFixedEntry[] plan = new Probe.TableFixedEntry[64];
             long n = Probe.Schema.TFixedLoad(back, f, plan, r);
-            if (r.Refused) { refusals++; }
-            else if (r.Damaged) { malformed++; }
+            if (r.Damaged) { bad += ProbeLog.Fail("P3: flip at " + off + "/" + bit + " set the malformed flag, which this form's report does not have (§5.3)"); }
+            if (r.Refused) { refusals++; if (r.Reason == "truncated" || r.Reason == "reserved_not_zero") { framing++; } }
             else if (n >= 1) { landed++; }
             else { bad += ProbeLog.Fail("P3: flip at " + off + "/" + bit + " is a fourth answer: n=" + n + " reason=" + r.Reason); }
         }
@@ -733,9 +733,9 @@ for (int off = 0; off < good.Length; ++off)
         }
     }
 }
-if (refusals == 0 || malformed == 0 || landed == 0)
+if (refusals == 0 || framing == 0 || landed == 0)
 {
-    bad += ProbeLog.Fail("P3: sweep saw refusals=" + refusals + " malformed=" + malformed + " landed=" + landed + ", want all three answers and never a fourth");
+    bad += ProbeLog.Fail("P3: sweep saw refusals=" + refusals + " framing=" + framing + " landed=" + landed + ", want a refusal, a framing refusal by name (truncated or reserved_not_zero) and a landed read, and never a fourth answer");
 }`)
 }
 

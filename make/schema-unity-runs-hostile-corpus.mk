@@ -43,7 +43,14 @@ $(UNITY_HOSTILE_BUILD)/bin/.stamp: $(UNITY_HOSTILE_BUILD)/generated/.stamp test/
 # that starts skipping is red. A commit that adds a hostile case changes it.
 UNITY_HOSTILE_CASES ?= $(shell grep -vc '^\#' $(UNITY_HOSTILE_CORPUS)/manifest.tsv)
 .PHONY: schema-unity-runs-hostile-corpus
-schema-unity-runs-hostile-corpus: build/mustrun $(UNITY_HOSTILE_BUILD)/bin/.stamp
+# THE BUILD, DECLARED: the prerequisites the corpus target builds first.
+# tools/schema-test builds this target before a row's deadline starts (the
+# hostile harness's Build step), so what it builds is never a case's timeout;
+# what the run recipe itself still compiles is paid inside the run.
+.PHONY: schema-unity-runs-hostile-corpus-build
+schema-unity-runs-hostile-corpus-build: build/mustrun $(UNITY_HOSTILE_BUILD)/bin/.stamp
+
+schema-unity-runs-hostile-corpus: schema-unity-runs-hostile-corpus-build
 	$(DOTNET) $(UNITY_HOSTILE_BUILD)/bin/unityhostile.dll --scorer tools/hostilecorpusexec/testdata/scorer-outcomes.tsv
 	$(call hostile_ledgered,unity,$(UNITY_HOSTILE_BUILD)/run.log,$(MUSTRUN) -name schema-unity-runs-hostile-corpus -count $(UNITY_HOSTILE_CASES) -- $(DOTNET) $(UNITY_HOSTILE_BUILD)/bin/unityhostile.dll "$(UNITY_HOSTILE_CORPUS)",$(UNITY_HOSTILE_CORPUS))
 

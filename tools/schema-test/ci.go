@@ -82,7 +82,16 @@ var setupActions = map[string]string{
 //
 // Measured cold on captain (2026-11-25, load 5-7, 64 cores): the go leg
 // 55.0 s, the goose leg 9.3 s; replayed, make rebuilds nothing but the go
-// driver's own go build.
+// driver's own go build. The cpp leg, the reference driver in its
+// translation units (Makefile, CONFORMANCE_DRIVER_TUS), 72.2 s cold under
+// make -j4 on 4 of captain's cores; replayed, make rebuilds nothing. Its
+// tree carries each unit's recorded compile seconds, which the registry row
+// harness-run.makefile.conformance-cpp-tu-budget holds to the budget beside
+// that list in a language-free shard, after the fetch: a unit that grows
+// back toward the old single one is red by name before the leg stops
+// fitting. The lint rows build exactly the tree each lint gate reads
+// (internal/ci TestEveryLintGateReadsAProducedTree), so a shard pays the
+// lint and never the generation in front of it.
 type producer struct {
 	Name   string `json:"name"`
 	Target string `json:"target"`
@@ -92,6 +101,11 @@ type producer struct {
 var producers = []producer{
 	{"conformance-leg-go", "conformance-leg-go", "bin/schema build/conformance-go build/conformance-harness-vm build/tables-counted-min-variable build/tables-generated-go build/tables-generated-go-announce build/tables-generated-go-framing build/tables-generated-go-r19 build/tables-lists-variable build/tables-r1-variable"},
 	{"conformance-leg-goose", "conformance-leg-goose", "bin/schema build/conformance-goose build/conformance-harness-vm build/schema-goose"},
+	{"conformance-leg-cpp", "conformance-leg-cpp", "bin/schema build/conformance-cpp build/conformance-cpp-objs build/conformance-harness-vm build/schema_test_cook build/tables-generated"},
+	{"lint-cpp", "tables-cpp-clean-inputs", "bin/schema build/tables-generated generated/cpp generated/bench/cpp generated/bench/tables/cpp generated/bench/paired/cpp"},
+	{"lint-js", "tables-js-clean-inputs", "bin/schema build/tables-generated-js generated/js generated/js-ludicrous generated/bench/js generated/bench/paired/js"},
+	{"lint-rust", "tables-rust-clippy-inputs", "bin/schema build/tables-generated-rust build/tables-generated-rust-witnesses"},
+	{"lint-lua", "tables-lua-luacheck-inputs", "bin/schema build/lua-luacheck-corpus build/lua-luacheck.rc"},
 }
 
 // ciRow is one job of ci-fast.yml's schema-test-pr matrix.

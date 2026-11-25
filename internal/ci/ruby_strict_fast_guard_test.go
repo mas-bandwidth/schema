@@ -94,16 +94,25 @@ var (
 )
 
 // rubyStrictFastGuard returns an error naming why the strict-ruby fast form
-// would lint less than it does today: fewer units or files than the pins, a
-// cop turned off that is not in the pinned list, any Exclude/Include/inherit
-// key in rubocop.yml, or NewCops no longer enabled.
-func rubyStrictFastGuard(units, files int, rubocopYML string) error {
+// would lint less than it does today: fewer units or files than the current
+// tree generates (treeUnits, treeFiles: rubyStrictFastTree), a tree smaller
+// than the pins, a cop turned off that is not in the pinned list, any
+// Exclude/Include/inherit key in rubocop.yml, or NewCops no longer enabled.
+// The tree, not the pins, is what the fast form is held to, so a tree that
+// grew past the pins still turns every dropped unit or file red.
+func rubyStrictFastGuard(units, files, treeUnits, treeFiles int, rubocopYML string) error {
 	var errs []string
-	if units < rubyStrictFastMinUnits {
-		errs = append(errs, fmt.Sprintf("the fast form covers %d generated units, the pin is %d", units, rubyStrictFastMinUnits))
+	if units < treeUnits {
+		errs = append(errs, fmt.Sprintf("the fast form covers %d generated units, the tree generates %d", units, treeUnits))
 	}
-	if files < rubyStrictFastMinFiles {
-		errs = append(errs, fmt.Sprintf("RuboCop is handed %d distinct files, the pin is %d", files, rubyStrictFastMinFiles))
+	if files < treeFiles {
+		errs = append(errs, fmt.Sprintf("RuboCop is handed %d distinct files, the tree holds %d", files, treeFiles))
+	}
+	if treeUnits < rubyStrictFastMinUnits {
+		errs = append(errs, fmt.Sprintf("the tree generates %d generated units, the pin is %d", treeUnits, rubyStrictFastMinUnits))
+	}
+	if treeFiles < rubyStrictFastMinFiles {
+		errs = append(errs, fmt.Sprintf("the tree holds %d distinct files for RuboCop, the pin is %d", treeFiles, rubyStrictFastMinFiles))
 	}
 	pinned := map[string]bool{}
 	for _, c := range rubyStrictFastDisabledCops {
@@ -129,6 +138,34 @@ func rubyStrictFastGuard(units, files int, rubocopYML string) error {
 		return fmt.Errorf("the strict-ruby fast form would lint less than it did:\n  %s", strings.Join(errs, "\n  "))
 	}
 	return nil
+}
+
+// rubyStrictFastTree counts what the tree's generated units hold for RuboCop,
+// read from the units themselves and not from the plan: the units, and the
+// distinct files once each unit's module name is set aside (the shared
+// runtime counts once). The guard holds the plan to these counts.
+func rubyStrictFastTree(t *testing.T, units map[string]map[string][]byte) (int, int) {
+	t.Helper()
+	modLine := regexp.MustCompile(`(?m)^module (\w+)`)
+	distinct := map[string]bool{}
+	for label, files := range units {
+		pkg := ""
+		for name := range files {
+			if path.Dir(name) == "." && strings.HasSuffix(name, ".rb") && !strings.HasPrefix(name, "_") && (pkg == "" || name > pkg+".rb") {
+				pkg = strings.TrimSuffix(name, ".rb")
+			}
+		}
+		m := modLine.FindSubmatch(files[pkg+".rb"])
+		if pkg == "" || m == nil {
+			t.Fatalf("%s: no top-level <pkg>.rb naming a module", label)
+		}
+		for name, src := range files {
+			if strings.HasSuffix(name, ".rb") {
+				distinct[strings.ReplaceAll(string(src), string(m[1]), "SchemaUnit")] = true
+			}
+		}
+	}
+	return len(units), len(distinct)
 }
 
 // rubyStrictFastUnit is one generated unit written to disk for the fast form.
@@ -191,7 +228,8 @@ func TestRubyStrictFastGuard(t *testing.T) {
 	root := repoRoot(t)
 	units := rubyStrictGateUnits(t, root)
 	_, rcPaths := rubyStrictFastPlan(t, t.TempDir(), units)
-	if err := rubyStrictFastGuard(len(units), len(rcPaths), rubyStrictFastConfig(t, root)); err != nil {
+	tu, tf := rubyStrictFastTree(t, units)
+	if err := rubyStrictFastGuard(len(units), len(rcPaths), tu, tf, rubyStrictFastConfig(t, root)); err != nil {
 		t.Fatal(err)
 	}
 	// the pinned disabled list is exactly today's: a cop turned back ON leaves
@@ -213,8 +251,12 @@ func TestRubyStrictFastGuardWitness(t *testing.T) {
 	units := rubyStrictGateUnits(t, root)
 	_, rcPaths := rubyStrictFastPlan(t, t.TempDir(), units)
 	n, f := len(units), len(rcPaths)
+	// every plant is measured against the tree as it is, never the pins, so
+	// a tree that grew cannot turn a plant green (fullrun ab1e1e195a: the
+	// tree outgrew the pins and "a file dropped" stayed green)
+	tu, tf := rubyStrictFastTree(t, units)
 
-	if err := rubyStrictFastGuard(n, f, yml); err != nil {
+	if err := rubyStrictFastGuard(n, f, tu, tf, yml); err != nil {
 		t.Fatalf("the guard is red on the real set, so its witnesses prove nothing: %v", err)
 	}
 	// a real unit left out of the plan
@@ -234,10 +276,14 @@ func TestRubyStrictFastGuardWitness(t *testing.T) {
 		"a config inherited":    {n, f, "inherit_from: other.yml\n" + yml, "inherit_from"},
 		"the whole set emptied": {0, 0, "", "generated units"},
 	} {
-		err := rubyStrictFastGuard(c.units, c.files, c.yml)
+		err := rubyStrictFastGuard(c.units, c.files, tu, tf, c.yml)
 		if err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Errorf("%s: want the guard red naming %q, got %v", name, c.want, err)
 		}
+	}
+	// the tree itself below the pins: generation that lost units or files
+	if err := rubyStrictFastGuard(rubyStrictFastMinUnits-1, rubyStrictFastMinFiles-1, rubyStrictFastMinUnits-1, rubyStrictFastMinFiles-1, yml); err == nil || !strings.Contains(err.Error(), "the pin is") {
+		t.Errorf("a tree below the pins: want the guard red naming the pin, got %v", err)
 	}
 	if len(shortPaths) >= f {
 		t.Errorf("dropping a unit left %d files, want fewer than %d: the witness unit has no files of its own", len(shortPaths), f)

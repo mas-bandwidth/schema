@@ -30,9 +30,9 @@ the same.
 
 | tier | tests | what it is |
 |---|---|---|
-| `unit` | 2918 | no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory |
-| `functional` | 4710 | uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it |
-| `nightly` | 1973 | heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded |
+| `unit` | 2955 | no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory |
+| `functional` | 4709 | uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it |
+| `nightly` | 1975 | heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded |
 
 ## The per-PR matrix
 
@@ -333,81 +333,82 @@ one job, in jobs of at most `256` rows (GitHub's limit on one matrix),
 | `lobster` | 14/16 | 2 | 46.2 |
 | `lobster` | 15/16 | 2 | 35.2 |
 | `lobster` | 16/16 | 2 | 48.4 |
-| `none` | 1/74 | 73 | 50.8 |
-| `none` | 2/74 | 66 | 50.7 |
-| `none` | 3/74 | 3 | 52.4 |
-| `none` | 4/74 | 1 | 14.6 |
-| `none` | 5/74 | 1 | 48.5 |
-| `none` | 6/74 | 98 | 57.9 |
-| `none` | 7/74 | 45 | 43.2 |
-| `none` | 8/74 | 394 | 55.2 |
-| `none` | 9/74 | 66 | 31.7 |
-| `none` | 10/74 | 151 | 45.3 |
-| `none` | 11/74 | 966 | 58.0 |
-| `none` | 12/74 | 3 | 40.0 |
-| `none` | 13/74 | 23 | 51.1 |
-| `none` | 14/74 | 5 | 58.2 |
-| `none` | 15/74 | 33 | 49.5 |
-| `none` | 16/74 | 47 | 51.3 |
-| `none` | 17/74 | 51 | 51.0 |
-| `none` | 18/74 | 4 | 53.4 |
-| `none` | 19/74 | 161 | 51.3 |
-| `none` | 20/74 | 78 | 55.8 |
-| `none` | 21/74 | 10 | 59.0 |
-| `none` | 22/74 | 6 | 56.8 |
-| `none` | 23/74 | 27 | 57.2 |
-| `none` | 24/74 | 22 | 58.9 |
-| `none` | 25/74 | 6 | 56.7 |
-| `none` | 26/74 | 14 | 55.6 |
-| `none` | 27/74 | 19 | 54.8 |
-| `none` | 28/74 | 3 | 50.2 |
-| `none` | 29/74 | 6 | 50.5 |
-| `none` | 30/74 | 101 | 50.0 |
-| `none` | 31/74 | 25 | 50.9 |
-| `none` | 32/74 | 46 | 50.5 |
-| `none` | 33/74 | 85 | 57.7 |
-| `none` | 34/74 | 19 | 56.8 |
-| `none` | 35/74 | 18 | 57.1 |
-| `none` | 36/74 | 42 | 53.9 |
-| `none` | 37/74 | 88 | 49.8 |
-| `none` | 38/74 | 152 | 57.2 |
-| `none` | 39/74 | 196 | 59.0 |
-| `none` | 40/74 | 85 | 57.8 |
-| `none` | 41/74 | 92 | 57.2 |
-| `none` | 42/74 | 107 | 57.9 |
-| `none` | 43/74 | 56 | 53.0 |
-| `none` | 44/74 | 70 | 59.0 |
-| `none` | 45/74 | 269 | 53.3 |
-| `none` | 46/74 | 14 | 57.6 |
-| `none` | 47/74 | 33 | 47.1 |
-| `none` | 48/74 | 24 | 54.6 |
-| `none` | 49/74 | 50 | 51.8 |
-| `none` | 50/74 | 227 | 54.0 |
-| `none` | 51/74 | 230 | 58.9 |
-| `none` | 52/74 | 124 | 58.9 |
-| `none` | 53/74 | 29 | 58.4 |
-| `none` | 54/74 | 66 | 53.5 |
-| `none` | 55/74 | 89 | 43.9 |
-| `none` | 56/74 | 2 | 56.0 |
-| `none` | 57/74 | 117 | 43.6 |
-| `none` | 58/74 | 97 | 53.5 |
-| `none` | 59/74 | 38 | 57.4 |
-| `none` | 60/74 | 2 | 47.8 |
-| `none` | 61/74 | 2 | 43.1 |
-| `none` | 62/74 | 10 | 45.9 |
-| `none` | 63/74 | 1 | 38.5 |
-| `none` | 64/74 | 1 | 38.5 |
-| `none` | 65/74 | 1 | 38.5 |
-| `none` | 66/74 | 1 | 38.5 |
-| `none` | 67/74 | 1 | 38.5 |
-| `none` | 68/74 | 1 | 38.5 |
-| `none` | 69/74 | 1 | 38.5 |
-| `none` | 70/74 | 1 | 38.5 |
-| `none` | 71/74 | 13 | 47.5 |
-| `none` | 72/74 | 39 | 48.0 |
-| `none` | 73/74 | 51 | 48.0 |
-| `none` | 74/74 | 60 | 47.1 |
-| **every row** | **362 jobs** | **49618** | **18541.8** |
+| `none` | 1/75 | 4 | 40.4 |
+| `none` | 2/75 | 131 | 47.3 |
+| `none` | 3/75 | 2 | 48.3 |
+| `none` | 4/75 | 3 | 55.0 |
+| `none` | 5/75 | 97 | 37.9 |
+| `none` | 6/75 | 45 | 41.8 |
+| `none` | 7/75 | 394 | 51.2 |
+| `none` | 8/75 | 66 | 29.0 |
+| `none` | 9/75 | 151 | 45.3 |
+| `none` | 10/75 | 966 | 48.3 |
+| `none` | 11/75 | 3 | 38.7 |
+| `none` | 12/75 | 27 | 51.8 |
+| `none` | 13/75 | 15 | 57.5 |
+| `none` | 14/75 | 40 | 58.8 |
+| `none` | 15/75 | 85 | 55.9 |
+| `none` | 16/75 | 2 | 43.6 |
+| `none` | 17/75 | 4 | 41.9 |
+| `none` | 18/75 | 144 | 47.5 |
+| `none` | 19/75 | 18 | 58.4 |
+| `none` | 20/75 | 17 | 51.9 |
+| `none` | 21/75 | 62 | 52.0 |
+| `none` | 22/75 | 8 | 48.8 |
+| `none` | 23/75 | 6 | 56.8 |
+| `none` | 24/75 | 27 | 57.2 |
+| `none` | 25/75 | 22 | 58.9 |
+| `none` | 26/75 | 6 | 56.7 |
+| `none` | 27/75 | 14 | 55.6 |
+| `none` | 28/75 | 19 | 54.8 |
+| `none` | 29/75 | 3 | 50.2 |
+| `none` | 30/75 | 12 | 50.6 |
+| `none` | 31/75 | 95 | 49.9 |
+| `none` | 32/75 | 25 | 50.9 |
+| `none` | 33/75 | 46 | 50.5 |
+| `none` | 34/75 | 86 | 58.7 |
+| `none` | 35/75 | 19 | 56.8 |
+| `none` | 36/75 | 18 | 57.1 |
+| `none` | 37/75 | 42 | 53.9 |
+| `none` | 38/75 | 89 | 49.8 |
+| `none` | 39/75 | 169 | 58.3 |
+| `none` | 40/75 | 181 | 59.0 |
+| `none` | 41/75 | 84 | 58.7 |
+| `none` | 42/75 | 92 | 57.2 |
+| `none` | 43/75 | 107 | 57.9 |
+| `none` | 44/75 | 56 | 53.0 |
+| `none` | 45/75 | 70 | 59.0 |
+| `none` | 46/75 | 269 | 53.3 |
+| `none` | 47/75 | 14 | 57.6 |
+| `none` | 48/75 | 33 | 47.1 |
+| `none` | 49/75 | 24 | 54.6 |
+| `none` | 50/75 | 50 | 51.8 |
+| `none` | 51/75 | 228 | 55.0 |
+| `none` | 52/75 | 230 | 58.9 |
+| `none` | 53/75 | 124 | 58.9 |
+| `none` | 54/75 | 29 | 58.4 |
+| `none` | 55/75 | 66 | 53.5 |
+| `none` | 56/75 | 95 | 44.0 |
+| `none` | 57/75 | 2 | 56.0 |
+| `none` | 58/75 | 117 | 43.6 |
+| `none` | 59/75 | 97 | 53.5 |
+| `none` | 60/75 | 38 | 57.4 |
+| `none` | 61/75 | 2 | 47.8 |
+| `none` | 62/75 | 2 | 43.1 |
+| `none` | 63/75 | 9 | 42.6 |
+| `none` | 64/75 | 1 | 38.5 |
+| `none` | 65/75 | 1 | 38.5 |
+| `none` | 66/75 | 1 | 38.5 |
+| `none` | 67/75 | 1 | 38.5 |
+| `none` | 68/75 | 1 | 38.5 |
+| `none` | 69/75 | 1 | 38.5 |
+| `none` | 70/75 | 1 | 38.5 |
+| `none` | 71/75 | 1 | 38.5 |
+| `none` | 72/75 | 15 | 49.5 |
+| `none` | 73/75 | 41 | 50.0 |
+| `none` | 74/75 | 52 | 49.0 |
+| `none` | 75/75 | 77 | 50.0 |
+| **every row** | **363 jobs** | **49654** | **18573.1** |
 
 To change the matrix, change the registry (a row, or its measured
 `seconds`: `schema-test run ... --write-seconds` on a fleet runner, or

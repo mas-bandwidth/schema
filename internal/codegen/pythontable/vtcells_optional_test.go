@@ -128,7 +128,7 @@ func optionalProbeInputs(t *testing.T, u *ir.Unit) map[string][]byte {
 	return inputs
 }
 
-const optionalProbe = `from optional import D, InvalidValue, Node, Refused, Root, Pair
+const optionalProbe = `from optionalx import D, InvalidValue, Node, Refused, Root, Pair
 
 def wire(name):
     with open(name, "rb") as f:
@@ -306,7 +306,7 @@ func TestPythonVtOptional(t *testing.T) {
 	if !strings.Contains(got, "damaged wire_damaged\n") {
 		t.Errorf("the truncated wire did not refuse as wire_damaged:\n%s", got)
 	}
-	if out, err := pyrun.Analyze(t, dir, "optional"); err != nil {
+	if out, err := pyrun.Analyze(t, dir, "optionalx"); err != nil {
 		t.Fatalf("mypy --strict over the generated package:\n%s", out)
 	}
 	if out, err := pyrun.Analyze(t, dir, "optionalx/_schema"); err != nil {

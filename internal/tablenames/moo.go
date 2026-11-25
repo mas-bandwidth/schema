@@ -35,8 +35,8 @@ func init() {
 // control).
 var mooModuleKeys = map[string][]string{
 	"a schema file's table module (<Base>Table.moo)": {
-		"TableMessageAnnouncement", "TableMessageAnnouncementLength", "TableMessageBuildVersion",
-		"TableMessageEntriesHere", "TableMessageRefBits",
+		"Announce", "AnnounceMeasure", "TableMessageAnnouncement", "TableMessageAnnouncementLength",
+		"TableMessageBuildVersion", "TableMessageEntriesHere", "TableMessageRefBits",
 	},
 	"the unit's view module (<Package>View.moo)": {"UnitView"},
 	"json.moo": {"extra", "formatFloat32", "formatFloat64", "fromJson", "jsonLayerAccepts", "parseFloat32",
@@ -46,12 +46,12 @@ var mooModuleKeys = map[string][]string{
 	"table_blockread.moo": {"BlockOpen", "Read", "ReadAt", "Triple", "info"},
 	"table_cookread.moo":  {"layout", "open", "read", "record", "regionAlign", "union", "unionLayout", "unit", "version"},
 	"table_cookwrite.moo": {"cook", "measure"},
-	"table_fixed.moo":     {"Names", "check", "fixed", "load", "measure", "save"},
+	"table_fixed.moo":     {"Names", "check", "fixed", "load", "loadInto", "measure", "save"},
 	"table_load.moo": {"ReadStrict", "integrityOpen", "load", "newReport", "nonFinite",
 		"resetReport", "setRetain", "wireCheckAnnouncement"},
-	"table_message.moo": {"AnnounceRead", "LoadMessages", "MeasureMessages", "NewVocabulary", "SaveMessages",
+	"table_message.moo": {"AnnounceRead", "LoadMessages", "LoadMessagesInto", "MeasureMessages", "NewVocabulary", "SaveMessages",
 		"resetReport", "slots", "unit"},
-	"table_refusal.moo": {"ReadStrict", "ReadStrictNames"},
+	"table_refusal.moo": {"ReadStrict", "ReadStrictInto", "ReadStrictNames"},
 	"table_retain.moo": {"FixedClassRefusal", "LoadRetain", "MeasureRetain", "SaveRetain", "ids", "newStore",
 		"used"},
 	"table_save.moo": {"guardHolds", "keyLess", "mapOrder", "measure", "number", "save", "setRetain"},

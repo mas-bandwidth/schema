@@ -26,7 +26,14 @@ LOBSTER_HOSTILE_BUILD ?= build/lobster-hostile
 LOBSTER_HOSTILE_PACKET := internal_ci_hostilecorpus_corpus_packet_hostile_schema/hostile.lobster
 
 .PHONY: schema-lobster-runs-hostile-corpus schema-lobster-runs-hostile-corpus-negative-control
-schema-lobster-runs-hostile-corpus: lobster-dist-present
+# THE BUILD, DECLARED: the prerequisites the corpus target builds first.
+# tools/schema-test builds this target before a row's deadline starts (the
+# hostile harness's Build step), so what it builds is never a case's timeout;
+# what the run recipe itself still compiles is paid inside the run.
+.PHONY: schema-lobster-runs-hostile-corpus-build
+schema-lobster-runs-hostile-corpus-build: lobster-dist-present
+
+schema-lobster-runs-hostile-corpus: schema-lobster-runs-hostile-corpus-build
 	$(GO_TEST) -count=1 -run '^TestScorerOutcomes$$' ./test/conformance/lobster/hostile
 	go run ./test/conformance/lobster/hostile --units $(LOBSTER_HOSTILE_BUILD)
 

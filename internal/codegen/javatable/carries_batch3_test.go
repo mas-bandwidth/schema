@@ -137,16 +137,16 @@ public final class Main {
         FixedLedgerFixed.Value[] fBack = {new FixedLedgerFixed.Value()};
         TableFixed.Report fRep = new TableFixed.Report();
         check(FixedLedgerFixed.load(fBack, 1, fWire, TableFixed.plan(1 << 14), new short[1 << 14], FixedLedgerFixed.image(), fRep) == 1, "FixedLedgerFixed.load");
-        check(!fRep.damaged && !fRep.refused && fBack[0].n == 1000 && fBack[0].count == 7, "FixedLedgerFixed values");
+        check(!fRep.refused && fBack[0].n == 1000 && fBack[0].count == 7, "FixedLedgerFixed values");
         for (int i = 0; i < fWire.length; i++) {
             byte[] bad = Arrays.copyOf(fWire, fWire.length);
             bad[i] ^= 1;
             fRep.reset();
             check(FixedLedgerFixed.load(fBack, 1, bad, TableFixed.plan(1 << 14), new short[1 << 14], FixedLedgerFixed.image(), fRep) == -1, "FixedLedgerFixed flip " + i);
             if (i == 0) {
-                check(fRep.refused && !fRep.damaged, "FixedLedgerFixed byte 0 flip is refused");
+                check(fRep.refused, "FixedLedgerFixed byte 0 flip is refused");
             } else {
-                check(fRep.damaged && !fRep.refused, "FixedLedgerFixed byte " + i + " flip is damaged");
+                check(fRep.refused && fRep.reason == TableFixed.Reason.integrityMismatch, "FixedLedgerFixed byte " + i + " flip is refused integrityMismatch (docs/FIXED-FORM-ALGORITHM.md §5.3; no malformed flag on this form's report): " + fRep.reason);
             }
         }
 

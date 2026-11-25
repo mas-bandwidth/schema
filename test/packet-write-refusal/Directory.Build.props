@@ -1,0 +1,12 @@
+<Project>
+  <!-- The packet write-refusal drivers (make/cs-packet-write-refusal.mk,
+       make/unity.mk) build into build/, never into the checkout: the SDK's
+       obj/ and bin/ for each project here go under
+       build/packet-write-refusal/dotnet/<project>/. Set before the SDK's
+       props, as BaseIntermediateOutputPath must be, so restore uses it too. -->
+  <PropertyGroup>
+    <PacketWriteRefusalDotnet>$(MSBuildThisFileDirectory)../../build/packet-write-refusal/dotnet/$(MSBuildProjectName)/</PacketWriteRefusalDotnet>
+    <BaseIntermediateOutputPath>$(PacketWriteRefusalDotnet)obj/</BaseIntermediateOutputPath>
+    <BaseOutputPath>$(PacketWriteRefusalDotnet)bin/</BaseOutputPath>
+  </PropertyGroup>
+</Project>

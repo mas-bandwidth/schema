@@ -5,7 +5,7 @@ Part of the specification: every test of tier `functional`, from the test regist
 
 **Tier functional:** uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it.
 
-Functional tests every language answers: 2468. Language-free tests: 2242.
+Functional tests every language answers: 2468. Language-free tests: 2241.
 
 Run this tier for a language with `schema-test run --tier functional --lang L`, one test with `schema-test run <full name>`.
 
@@ -5155,8 +5155,8 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.functional.tooling.bench-tools.render-awk-and-the-pair-lock-agree-on-the-same-sitting` | `gotest` | Go test TestRenderAwkAndThePairLockAgreeOnTheSameSitting in ./bench/tools | `package: ./bench/tools`<br>`test: TestRenderAwkAndThePairLockAgreeOnTheSameSitting` | the Go test passes | `bench/tools/ledger_test.go:425` |
 | `none.functional.tooling.bench-tools.table-pass-interleaves-after-every-build` | `gotest` | Go test TestTablePassInterleavesAfterEveryBuild in ./bench/tools | `package: ./bench/tools`<br>`test: TestTablePassInterleavesAfterEveryBuild` | the Go test passes | `bench/tools/table_pass_test.go:44` |
 | `none.functional.tooling.bench-tools.table-pass-refuses-failed-producer-without-publishing-rows` | `gotest` | Go test TestTablePassRefusesFailedProducerWithoutPublishingRows in ./bench/tools | `package: ./bench/tools`<br>`test: TestTablePassRefusesFailedProducerWithoutPublishingRows` | the Go test passes | `bench/tools/table_pass_test.go:63` |
+| `none.functional.tooling.bench-tools.table-pass-refuses-unavailable-scaffold` | `gotest` | Go test TestTablePassRefusesUnavailableScaffold in ./bench/tools | `package: ./bench/tools`<br>`test: TestTablePassRefusesUnavailableScaffold` | the Go test passes | `bench/tools/table_pass_test.go:98` |
 | `none.functional.tooling.bench-tools.table-pass-requires-every-requested-language` | `gotest` | Go test TestTablePassRequiresEveryRequestedLanguage in ./bench/tools | `package: ./bench/tools`<br>`test: TestTablePassRequiresEveryRequestedLanguage` | the Go test passes | `bench/tools/table_pass_test.go:79` |
-| `none.functional.tooling.bench-tools.table-pass-skips-unavailable-scaffold-only-during-discovery` | `gotest` | Go test TestTablePassSkipsUnavailableScaffoldOnlyDuringDiscovery in ./bench/tools | `package: ./bench/tools`<br>`test: TestTablePassSkipsUnavailableScaffoldOnlyDuringDiscovery` | the Go test passes | `bench/tools/table_pass_test.go:94` |
 | `none.functional.tooling.bench-tools.two-regressed-files-in-one-commit-cannot-reset-the-axis` | `gotest` | Go test TestTwoRegressedFilesInOneCommitCannotResetTheAxis in ./bench/tools | `package: ./bench/tools`<br>`test: TestTwoRegressedFilesInOneCommitCannotResetTheAxis` | the Go test passes | `bench/tools/ledger_test.go:279` |
 
 #### `tooling` family `caa`, 1 test
@@ -5165,7 +5165,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 |---|---|---|---|---|---|
 | `none.functional.tooling.caa.self-test` | `make` | the CAA allowlist is exactly the linked logins, and main's tip is covered (reads GitHub with GITHUB\_TOKEN) | `file: make/caa-self-test.mk`<br>`target: caa-self-test` | the target exits 0 with no skip in its log | `make/caa-self-test.mk` |
 
-#### `tooling` family `ci`, 52 tests
+#### `tooling` family `ci`, 50 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -5203,7 +5203,6 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.functional.tooling.ci.python-usage-fragments-run-negative-control` | `gotest` | Go test TestPythonUsageFragmentsRunNegativeControl in ./internal/ci | `package: ./internal/ci`<br>`test: TestPythonUsageFragmentsRunNegativeControl` | the Go test passes | `internal/ci/python_usage_fragments_test.go:166` |
 | `none.functional.tooling.ci.registry-complete-negative-controls` | `gotest` | Go test TestRegistryCompleteNegativeControls in ./internal/ci | `package: ./internal/ci`<br>`test: TestRegistryCompleteNegativeControls` | the Go test passes | `internal/ci/registrycomplete_test.go:29` |
 | `none.functional.tooling.ci.registry-covers-every-target` | `gotest` | Go test TestRegistryCoversEveryTarget in ./internal/ci | `package: ./internal/ci`<br>`test: TestRegistryCoversEveryTarget` | the Go test passes | `internal/ci/registrycomplete_test.go:16` |
-| `none.functional.tooling.ci.ruby-generated-strict-gate` | `gotest` | Go test TestRubyGeneratedStrictGate in ./internal/ci | `package: ./internal/ci`<br>`test: TestRubyGeneratedStrictGate` | the Go test passes | `internal/ci/ruby_generated_strict_gate_test.go:120` |
 | `none.functional.tooling.ci.ruby-generated-strict-gate-fast` | `gotest` | Go test TestRubyGeneratedStrictGateFast in ./internal/ci | `package: ./internal/ci`<br>`test: TestRubyGeneratedStrictGateFast` | the Go test passes | `internal/ci/ruby_generated_strict_gate_test.go:264` |
 | `none.functional.tooling.ci.ruby-generated-strict-gate-planted-pattern` | `gotest` | Go test TestRubyGeneratedStrictGatePlantedPattern in ./internal/ci | `package: ./internal/ci`<br>`test: TestRubyGeneratedStrictGatePlantedPattern` | the Go test passes | `internal/ci/ruby_generated_strict_gate_test.go:154` |
 | `none.functional.tooling.ci.ruby-usage-fragments-run` | `gotest` | Go test TestRubyUsageFragmentsRun in ./internal/ci | `package: ./internal/ci`<br>`test: TestRubyUsageFragmentsRun` | the Go test passes | `internal/ci/ruby_usage_fragments_test.go:119` |
@@ -5213,7 +5212,6 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.functional.tooling.ci.schema-ruby-hostile-corpus-planted-reader` | `gotest` | Go test TestSchemaRubyHostileCorpusPlantedReader in ./internal/ci | `package: ./internal/ci`<br>`test: TestSchemaRubyHostileCorpusPlantedReader` | the Go test passes | `internal/ci/schema_ruby_runs_hostile_corpus_test.go:529` |
 | `none.functional.tooling.ci.schema-ruby-resource-bounds-hostile-shapes` | `gotest` | Go test TestSchemaRubyResourceBoundsHostileShapes in ./internal/ci | `package: ./internal/ci`<br>`test: TestSchemaRubyResourceBoundsHostileShapes` | the Go test passes | `internal/ci/schema_ruby_runs_hostile_corpus_test.go:769` |
 | `none.functional.tooling.ci.schema-ruby-resource-bounds-planted-pattern` | `gotest` | Go test TestSchemaRubyResourceBoundsPlantedPattern in ./internal/ci | `package: ./internal/ci`<br>`test: TestSchemaRubyResourceBoundsPlantedPattern` | the Go test passes | `internal/ci/schema_ruby_runs_hostile_corpus_test.go:797` |
-| `none.functional.tooling.ci.schema-squirrel-all-port-differential` | `gotest` | Go test TestSchemaSquirrelAllPortDifferential in ./internal/ci | `package: ./internal/ci`<br>`test: TestSchemaSquirrelAllPortDifferential` | the Go test passes | `internal/ci/schema_squirrel_all_port_differential_test.go:548` |
 | `none.functional.tooling.ci.serialize-fetch-tries-the-mirror-first` | `gotest` | Go test TestSerializeFetchTriesTheMirrorFirst in ./internal/ci | `package: ./internal/ci`<br>`test: TestSerializeFetchTriesTheMirrorFirst` | the Go test passes | `internal/ci/serializefetch_test.go:33` |
 | `none.functional.tooling.ci.serialize-go-runtime-when-the-sibling-arrives-mid-run` | `gotest` | Go test TestSerializeGoRuntimeWhenTheSiblingArrivesMidRun in ./internal/ci | `package: ./internal/ci`<br>`test: TestSerializeGoRuntimeWhenTheSiblingArrivesMidRun` | the Go test passes | `internal/ci/serializegorace_test.go:30` |
 | `none.functional.tooling.ci.siblings-present-make-deps-fetches-nothing` | `gotest` | Go test TestSiblingsPresentMakeDepsFetchesNothing in ./internal/ci | `package: ./internal/ci`<br>`test: TestSiblingsPresentMakeDepsFetchesNothing` | the Go test passes | `internal/ci/siblings_test.go:119` |
@@ -5598,10 +5596,11 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 |---|---|---|---|---|---|
 | `none.functional.harness-run.make-go.tables-go-fixedform` | `make` | make tables-go-fixedform (make/go.mk) exits 0 | `file: make/go.mk`<br>`siblings: ["../serialize"]`<br>`target: tables-go-fixedform` | the target exits 0 with no skip in its log | `make/go.mk:63` |
 
-#### `harness-run` family `makefile`, 8 tests
+#### `harness-run` family `makefile`, 9 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
+| `none.functional.harness-run.makefile.conformance-cpp-tu-budget` | `make` | make conformance-cpp-tu-budget (Makefile) exits 0 | `file: Makefile`<br>`target: conformance-cpp-tu-budget` | the target exits 0 with no skip in its log | `Makefile:5510` |
 | `none.functional.harness-run.makefile.generated-current` | `make` | make generated-current (Makefile) exits 0 | `file: Makefile`<br>`target: generated-current` | the target exits 0 with no skip in its log | `Makefile:5225` |
 | `none.functional.harness-run.makefile.pins-framing` | `make` | make pins-framing (Makefile) exits 0: every committed framing vector under testdata/wire/tables/framing is what its Go vector script writes, and no file there is hand-written | `file: Makefile`<br>`target: pins-framing` | the target exits 0 with no skip in its log | `Makefile:8273` |
 | `none.functional.harness-run.makefile.python-tooling-tests` | `make` | make python-tooling-tests (Makefile) exits 0: every \*\_test.py outside the vendored trees | `file: Makefile`<br>`target: python-tooling-tests` | the target exits 0 with no skip in its log | `Makefile` |
