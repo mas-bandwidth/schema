@@ -80,8 +80,15 @@ type prRunTiming struct {
 	Run float64
 }
 
-// prTiming is the pr job's, as measured: PRTIMING_MEASURED.
-var prTiming = prRunTiming{Jobs: 4, Setup: 0, Run: 0}
+// prTiming is the pr job's, as measured on hetzner1 on 2026-11-26, from a
+// fresh depth-1 clone with the SDK's environment, 4 lanes, and a Go build
+// cache that was empty (a second clone on the then-warm cache measured
+// 31.7 s of setup and a 30.8 s run). Setup is 47.3 s: the clone 1.14 s, the
+// pinned siblings cloned at once 1.79 s, the driver's build 42.30 s, and the
+// runner's own job set-up and merge of main, 1 s each in ci-fast run
+// 45548347714's schema-test job. Run is the run step's 30.96 s, bin/schema
+// built cold inside it; the rows' lang_seconds are that run's.
+var prTiming = prRunTiming{Jobs: 4, Setup: 47.3, Run: 31.0}
 
 const (
 	fastWorkflow    = ".github/workflows/ci-fast.yml"
@@ -457,10 +464,10 @@ var fastTemplate = template.Must(template.New("ci-fast.yml").Delims("[[", "]]").
 # is the registry and the driver.
 #
 # THE PER-PR JOB. Every pull request, and every push to main, runs the
-# registry's pr group whole in one job, [[.Job]]: for every language one
-# compile row and one happy-path round-trip row, and nothing else, the
-# languages run side by side, the whole job (setup and run) measured at most
-# [[.Budget]] s, and capped at two minutes.
+# registry's pr group whole in one job, [[.Job]]: for every language one row,
+# make happy-<lang> (make/happy-path.mk), its compile and its happy path, and
+# nothing else, the languages side by side, the whole job (setup and run)
+# measured at most [[.Budget]] s, and capped at two minutes.
 # Every other row runs in the nightly workflows. Nothing selects by path or
 # branch. Every step that runs a test calls schema-test, and only it
 # (TestEveryWorkflowStepCallsOnlySchemaTest). release.yml's fast lane is
@@ -542,7 +549,7 @@ jobs:
         run: go run ./tools/schema-test extract --since "$MAIN_TREE" --pins-base "$BASE_TREE"
 
   # THE REGISTRY'S PR GROUP, one job (docs/CI-TIERS.md): every language's
-  # compile row and happy-path row
+  # make happy-<lang>, its compile and its happy path
   [[.Job]]:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, Linux, X64, fleet, schema]

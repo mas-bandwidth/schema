@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -442,5 +443,33 @@ func TestARunWritesItsReportWhenAsked(t *testing.T) {
 	}
 	if code, out := cli(t, envFake{}, "list", "*", "--report", path); code != 2 || !strings.Contains(out, "--report writes a run's report") {
 		t.Fatalf("list --report: exit %d:\n%s", code, out)
+	}
+}
+
+// TestRunJobsReachesTheRunner: run --jobs N is how many harness calls the
+// run's runner takes at once once their builds are done; left out, it is
+// the machine's cores. The plant drops the flag on the way to the runner.
+func TestRunJobsReachesTheRunner(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		args []string
+		want int
+	}{
+		{[]string{"run", "go.functional.roundtrip.fam.one", "--jobs", "3"}, 3},
+		{[]string{"run", "--jobs", "1", "go.functional.roundtrip.fam.one"}, 1},
+		{[]string{"run", "go.functional.roundtrip.fam.one"}, runtime.NumCPU()},
+	} {
+		ads := map[string]testreg.Adapter{"fake": envFake{}}
+		var out bytes.Buffer
+		if code := run(context.Background(), append(c.args, "--registry", cliRegistry), &out, &out, ads); code != 0 {
+			t.Fatalf("%v: exit %d, want 0:\n%s", c.args, code, out.String())
+		}
+		p, ok := ads["plant"].(plantAdapter)
+		if !ok || p.rn == nil {
+			t.Fatalf("%v: the run handed no runner to the plant adapter", c.args)
+		}
+		if p.rn.Jobs != c.want {
+			t.Errorf("%v: the runner takes %d calls at once, want %d", c.args, p.rn.Jobs, c.want)
+		}
 	}
 }

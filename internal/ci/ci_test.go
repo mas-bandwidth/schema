@@ -1173,7 +1173,7 @@ func jobSelectsSelfHosted(wfData, job string, ev ciEvent) (bool, error) {
 // pull request into any base runs, every one of them: the fixed jobs and
 // the pr job (schema-test-pr).
 func ciFastJobKeys(wfs map[string]string) []string {
-	keys := []string{"ci-fast.yml:fixed-corpus", "ci-fast.yml:produce", "ci-fast.yml:schema-test", "ci-fast.yml:verdict"}
+	keys := []string{"ci-fast.yml:schema-test", "ci-fast.yml:verdict"}
 	for _, j := range prShardJobs(yamlJobs(wfs["ci-fast.yml"])) {
 		keys = append(keys, "ci-fast.yml:"+j)
 	}
@@ -1399,8 +1399,6 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"certify.yml:test",
 		"certify.yml:verdict",
 		"certify.yml:vuln",
-		"ci-fast.yml:fixed-corpus",
-		"ci-fast.yml:produce",
 		"ci-fast.yml:schema-test",
 		"ci-fast.yml:schema-test-pr",
 		"ci-fast.yml:verdict",
@@ -1501,8 +1499,8 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 			newSubstr: "  schema-test:\n    if: github.event_name != 'schedule'\n",
 			wantErr:   "ci-fast.yml:schema-test admits fork PR",
 		},
-		// schema-test-pr carries always(), so a skipped fixed-corpus does not
-		// skip it: its own guard is the second layer, and dropping every
+		// schema-test-pr needs no job, so nothing upstream skips it
+		// for a fork: its own guard is the second layer, and dropping every
 		// same-repository guard admits it.
 		{
 			name:      "drop every ci-fast same-repo PR guard",

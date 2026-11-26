@@ -8,12 +8,14 @@
 # value, every field compared. The program prints `happy <lang>: ok (N bytes)`
 # and any failure is a non-zero exit. Each target does that and nothing more:
 # the gates, corpora, fuzz, lints and conformance legs run nightly
-# (ci-fast-nightly.yml, ci-full.yml and the per-language nightly workflows).
+# (schema-nightly.yml, ci-full.yml and the per-language nightly workflows).
 #
-# ci-fast.yml's one job runs `make happy-<lang>` for every leg `make -s
-# happy-legs` prints, and times each. internal/ci TestPerPRIsTheHappyPathOnly
-# holds HAPPY_LEGS to the languages of test/registry/registry.jsonl and to the
-# targets below, so a leg added there without its happy path is red.
+# ci-fast.yml's one job runs the registry's pr group: one row per language,
+# roundtrip.happy-path.ship-create (test/registry/registry.jsonl), which
+# tools/schema-test runs as `make -s happy-<lang>` and passes only on its ok
+# line. tools/schema-test TestThePRGroupIsOneHappyPathRowPerLanguage holds the
+# group to exactly one such row for every language of the registry, so a
+# language added there without its target below is red.
 HAPPY_LEGS := c cpp cs dart elixir go goose java js lobster lua luau moo python ruby rust squirrel unity
 
 .PHONY: happy happy-legs

@@ -14,9 +14,9 @@ The registry and the driver are described in [TEST-REGISTRY.md](TEST-REGISTRY.md
 
 | tier | page | what the tier is | tests every language answers | language-free tests |
 |---|---|---|---|---|
-| `unit` | [SPEC-TESTS-UNIT.md](SPEC-TESTS-UNIT.md) | no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory | 643 | 3182 |
-| `functional` | [SPEC-TESTS-FUNCTIONAL.md](SPEC-TESTS-FUNCTIONAL.md) | uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it | 5164 | 2361 |
-| `nightly` | [SPEC-TESTS-NIGHTLY.md](SPEC-TESTS-NIGHTLY.md) | heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded | 1119 | 1494 |
+| `unit` | [SPEC-TESTS-UNIT.md](SPEC-TESTS-UNIT.md) | no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory | 623 | 3188 |
+| `functional` | [SPEC-TESTS-FUNCTIONAL.md](SPEC-TESTS-FUNCTIONAL.md) | uses a real thing: a compiler or VM, a toolchain, generated code built and run; runs nightly, and per pull request only as the pr group names it (one compile row and one happy path per language) | 5044 | 2360 |
+| `nightly` | [SPEC-TESTS-NIGHTLY.md](SPEC-TESTS-NIGHTLY.md) | heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded | 1119 | 1732 |
 
 ## Names
 
@@ -86,7 +86,7 @@ A workflow runs a group by name (`schema-test run --group G`); which tests a job
 
 | group | what | query |
 |---|---|---|
-| `pr` | the pull-request tier: unit and functional tests of every language whose adapter has landed, and every language-free test | `{"tiers":["unit","functional"],"ready":true}` |
+| `pr` | the pull-request job: for every language one row, make happy-&lt;lang&gt; (make/happy-path.mk), which is both its compile and its happy path, and nothing else (Glenn, 2026-11-25: just compile it, run a simple happy path per-language); every other row runs in the nightly group | `{"names":["c.functional.roundtrip.happy-path.ship-create","cpp.functional.roundtrip.happy-path.ship-create","cs.functional.roundtrip.happy-path.ship-create","unity.functional.roundtrip.happy-path.ship-create","go.functional.roundtrip.happy-path.ship-create","rust.functional.roundtrip.happy-path.ship-create","java.functional.roundtrip.happy-path.ship-create","dart.functional.roundtrip.happy-path.ship-create","elixir.functional.roundtrip.happy-path.ship-create","js.functional.roundtrip.happy-path.ship-create","python.functional.roundtrip.happy-path.ship-create","ruby.functional.roundtrip.happy-path.ship-create","lua.functional.roundtrip.happy-path.ship-create","luau.functional.roundtrip.happy-path.ship-create","squirrel.functional.roundtrip.happy-path.ship-create","moo.functional.roundtrip.happy-path.ship-create","goose.functional.roundtrip.happy-path.ship-create","lobster.functional.roundtrip.happy-path.ship-create"]}` |
 | `nightly` | everything, every language: a language with no adapter is red here, and its red count is its remaining work | `{"tiers":["unit","functional","nightly"]}` |
 
 ## The adapter contract

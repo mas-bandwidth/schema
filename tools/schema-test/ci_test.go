@@ -176,8 +176,8 @@ func TestThePRGroupIsOneHappyPathRowPerLanguage(t *testing.T) {
 }
 
 // TestTheRepositorysPRGroupFitsTheJob: the registry's own pr group is one
-// compile row and one happy-path row for each of its languages, within the
-// job's budget.
+// happy-path row for each of its languages, within the job's measured
+// budget.
 func TestTheRepositorysPRGroupFitsTheJob(t *testing.T) {
 	t.Parallel()
 	reg := loadRepoRegistry(t)
@@ -211,7 +211,7 @@ func TestCIFastRunsThePRGroupInOneJob(t *testing.T) {
 	}
 	for what, c := range map[string]struct{ text, want string }{
 		"a second test-running job": {second, "2 steps run tests per pull request, and the pr group runs in one job, one step"},
-		"a shard of the group":      {sharded, `the pr job runs "go run ./tools/schema-test run --group pr", the pr group whole, and nothing else`},
+		"a shard of the group":      {sharded, fmt.Sprintf("the pr job runs %q, the pr group whole, and nothing else", prRunLine)},
 		"no run":                    {none, "no step runs"},
 	} {
 		if p := checkFastRuns([]byte(c.text)); !strings.Contains(strings.Join(p, "\n"), c.want) {

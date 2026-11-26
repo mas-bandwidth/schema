@@ -3,9 +3,9 @@
 
 Part of the specification: every test of tier `functional`, from the test registry. The adapter contract, the languages, the types and the other tiers are in [SPEC-TESTS.md](SPEC-TESTS.md).
 
-**Tier functional:** uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it.
+**Tier functional:** uses a real thing: a compiler or VM, a toolchain, generated code built and run; runs nightly, and per pull request only as the pr group names it (one compile row and one happy path per language).
 
-Functional tests every language answers: 5164. Language-free tests: 2361.
+Functional tests every language answers: 5044. Language-free tests: 2360.
 
 Run this tier for a language with `schema-test run --tier functional --lang L`, one test with `schema-test run <full name>`.
 
@@ -63,12 +63,6 @@ read bytes, write them back, same bytes.
 |---|---|---|---|---|
 | `L.functional.roundtrip.announce-skip-bounds.announcement-skip-field-is-bounded` | skipping an announcement field is bounded, so a length pointing back at the field's own reference byte cannot loop forever. | `inputs.tests` (114 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/rusttable/announce_skip_bounds_test.go:85` |
 
-#### `roundtrip` family `announce-text-element`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.roundtrip.announce-text-element.announce-reads-text-element` | an announcement carrying a text element reads back. | `inputs.tests` (108 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/announce_text_element_test.go:53` |
-
 #### `roundtrip` family `arm-min`, 1 test
 
 | full name | checks | inputs | expected result | source |
@@ -117,7 +111,7 @@ read bytes, write them back, same bytes.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.roundtrip.arrayroot.json-array-root` | a table declared with a JSON array root writes and reads as a bare JSON array, and an object at the root is refused | `inputs.tests` (567 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/ctable/arrayroot_test.go:150` |
+| `L.functional.roundtrip.arrayroot.json-array-root` | a table declared with a JSON array root writes and reads as a bare JSON array, and an object at the root is refused | `inputs.tests` (471 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/ctable/arrayroot_test.go:150` |
 
 #### `roundtrip` family `arrayroot-closure`, 1 test
 
@@ -167,12 +161,6 @@ read bytes, write them back, same bytes.
 | `L.functional.roundtrip.bit-phase.valid-p7-v0` | bit-phase sweep Phase7 valid\_p7\_v0.bin: the oracle's valid wire is read and written back to the same bytes | `driver: test/verify-bitphase/{lang}/driver`<br>`file: valid_p7_v0.bin`<br>`files: ["test/verify-bitphase/BitPhase.schema"]`<br>`kind: valid`<br>`root: Phase7`<br>`schema: test/verify-bitphase/BitPhase.schema` | the leg reads the wire and writes back exactly its bytes | `test/verify-bitphase/main.go requiredRoster` |
 | `L.functional.roundtrip.bit-phase.valid-p7-v1` | bit-phase sweep Phase7 valid\_p7\_v1.bin: the oracle's valid wire is read and written back to the same bytes | `driver: test/verify-bitphase/{lang}/driver`<br>`file: valid_p7_v1.bin`<br>`files: ["test/verify-bitphase/BitPhase.schema"]`<br>`kind: valid`<br>`root: Phase7`<br>`schema: test/verify-bitphase/BitPhase.schema` | the leg reads the wire and writes back exactly its bytes | `test/verify-bitphase/main.go requiredRoster` |
 | `L.functional.roundtrip.bit-phase.valid-p7-v2` | bit-phase sweep Phase7 valid\_p7\_v2.bin: the oracle's valid wire is read and written back to the same bytes | `driver: test/verify-bitphase/{lang}/driver`<br>`file: valid_p7_v2.bin`<br>`files: ["test/verify-bitphase/BitPhase.schema"]`<br>`kind: valid`<br>`root: Phase7`<br>`schema: test/verify-bitphase/BitPhase.schema` | the leg reads the wire and writes back exactly its bytes | `test/verify-bitphase/main.go requiredRoster` |
-
-#### `roundtrip` family `blob-shared-strict`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.roundtrip.blob-shared-strict.blob-shared-strict` | strict read and write rules hold for shared blobs and per-value shared markers. | `inputs.tests` (100 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/blob_shared_strict_test.go:300` |
 
 #### `roundtrip` family `blob-span`, 1 test
 
@@ -230,14 +218,13 @@ read bytes, write them back, same bytes.
 | `L.functional.roundtrip.cards.cards` | the cards schema reads and writes every answer in the card manifest through its generated facade | `tests: {"python":{"package":"./internal/codegen/pythontable","seconds":6.41,"test":"TestPythonCards"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/pythontable/cards_test.go:23` |
 | `L.functional.roundtrip.cards.cards-facade` | the cards facade over the generated cards modules parses card briefs, refuses malformed ones, and handles the future-note wire, on the current and the floor runtime | `inputs.tests` (101 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/rubytable/cards_test.go:96` |
 
-#### `roundtrip` family `cards-strict`, 6 tests
+#### `roundtrip` family `cards-strict`, 5 tests
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.roundtrip.cards-strict.cards-conformance` | the cards facade reads strictly and passes conformance on the card corpus. | `inputs.tests` (112 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/squirreltable/cards_strict_test.go:264` |
 | `L.functional.roundtrip.cards-strict.cards-conformance-strict` | the cards facade reads strictly and passes conformance on the card corpus. | `inputs.tests` (106 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/luautable/cards_strict_test.go:275` |
 | `L.functional.roundtrip.cards-strict.cards-read-then-write` | the cards facade reads strictly and reads then writes the card unchanged. | `inputs.tests` (99 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/mootable/cards_strict_test.go:275` |
-| `L.functional.roundtrip.cards-strict.cards-strict` | the cards facade reads strictly, refusing damaged or lossy input, and round-trips the card. | `tests: {"java":{"package":"./internal/codegen/javatable","seconds":2.15,"test":"TestJavaCardsStrict"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/cards_strict_test.go:357` |
 | `L.functional.roundtrip.cards-strict.cards-strict-names` | the cards facade reads strictly by the report's field names and round-trips the card. | `inputs.tests` (100 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/rusttable/cards_strict_test.go:339` |
 | `L.functional.roundtrip.cards-strict.cards-strict-report` | the cards facade reads strictly by the report's field names and round-trips the card. | `inputs.tests` (100 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/cstable/cards_strict_test.go:108` |
 
@@ -252,8 +239,8 @@ read bytes, write them back, same bytes.
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.roundtrip.cardsretain.card-constructs-retain-store-resets` | loading into a retention buffer resets its records, used bytes and id list, keeping only the caller's capacities. | `inputs.tests` (115 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/elixirtable/cardsretain_test.go:237` |
-| `L.functional.roundtrip.cardsretain.card-constructs-retain-unknown-fields` | a retained load keeps the newer declaration's unknown scalar and string fields, re-emits them so the newer declaration rereads every value equal, and reports the excluded classes as loss | `inputs.tests` (561 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/rusttable/cardsretain_test.go:423` |
-| `L.functional.roundtrip.cardsretain.retention-capacity-is-a-loss` | a retention buffer or id list one entry short drops the retained records whole and counts each dropped record as a retain loss | `inputs.tests` (515 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/rusttable/cardsretain_test.go:501` |
+| `L.functional.roundtrip.cardsretain.card-constructs-retain-unknown-fields` | a retained load keeps the newer declaration's unknown scalar and string fields, re-emits them so the newer declaration rereads every value equal, and reports the excluded classes as loss | `inputs.tests` (449 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/rusttable/cardsretain_test.go:423` |
+| `L.functional.roundtrip.cardsretain.retention-capacity-is-a-loss` | a retention buffer or id list one entry short drops the retained records whole and counts each dropped record as a retain loss | `inputs.tests` (412 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/rusttable/cardsretain_test.go:501` |
 
 #### `roundtrip` family `carried-contracts`, 1 test
 
@@ -269,36 +256,18 @@ read bytes, write them back, same bytes.
 | `L.functional.roundtrip.carries.carries-integrity-crc32-c` | a table declared with crc32c integrity saves, loads, and reports an integrity mismatch when a byte is flipped. | `inputs.tests` (109 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/goosetable/carries_test.go:128` |
 | `L.functional.roundtrip.carries.json-unbounded-text` | unbounded text elements and keys are never clamped and read whole, and a bounded list past its count or at zero refuses. | `inputs.tests` (98 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/mootable/carries_test.go:231` |
 
-#### `roundtrip` family `carries-batch2`, 3 tests
+#### `roundtrip` family `carries-batch4`, 1 test
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.roundtrip.carries-batch2.optional-map-carry` | optional map fields and optional map values round-trip through the wire, JSON, cook and retention forms. | `inputs.tests` (100 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/carries_batch2_test.go:167` |
-| `L.functional.roundtrip.carries-batch2.required-carry` | required fields, enums and ranges round-trip and a missing required value is refused. | `inputs.tests` (97 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/carries_batch2_test.go:289` |
-| `L.functional.roundtrip.carries-batch2.timestamp-carry` | timestamp fields round-trip through the wire, JSON, cook and retention forms at the boundaries. | `inputs.tests` (98 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/carries_batch2_test.go:13` |
-
-#### `roundtrip` family `carries-batch3`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.roundtrip.carries-batch3.integrity-carry` | an integrity-sealed table round-trips and refuses a damaged checksum. | `inputs.tests` (98 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/carries_batch3_test.go:7` |
-
-#### `roundtrip` family `carries-batch4`, 5 tests
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.roundtrip.carries-batch4.carries-required-nested-guards` | required fields nested under guards round-trip and a missing required value under a live guard is refused. | `inputs.tests` (111 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/carries_batch4_test.go:578` |
-| `L.functional.roundtrip.carries-batch4.carries-text-list` | text lists round-trip, and elements past their bound are refused or clamped as the format says. | `inputs.tests` (99 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/carries_batch4_test.go:15` |
-| `L.functional.roundtrip.carries-batch4.carries-text-list-total` | text lists with a declared total round-trip and refuse a total past the bound. | `inputs.tests` (103 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/carries_batch4_test.go:226` |
-| `L.functional.roundtrip.carries-batch4.carries-unbounded-text` | unbounded text elements and keys round-trip whole. | `inputs.tests` (104 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/carries_batch4_test.go:409` |
-| `L.functional.roundtrip.carries-batch4.populated-feature-witnesses` | the populated feature-witness values write and read back byte-for-byte equal to the reference wire and JSON | `inputs.tests` (217 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/carries_batch4_test.go:649` |
+| `L.functional.roundtrip.carries-batch4.populated-feature-witnesses` | the populated feature-witness values write and read back byte-for-byte equal to the reference wire and JSON | `inputs.tests` (109 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/carries_batch4_test.go:649` |
 
 #### `roundtrip` family `carry-constructs`, 3 tests
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.roundtrip.carry-constructs.array-root` | a table declared with a JSON array root writes and reads as a bare array, with out-of-range values and wrong root shapes refused | `inputs.tests` (189 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/cstable/carry_constructs_test.go:235` |
-| `L.functional.roundtrip.carry-constructs.one-sided-range` | a value past a one-sided min or max bound is refused on read while values within the bound are accepted | `inputs.tests` (293 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/cstable/carry_constructs_test.go:20` |
+| `L.functional.roundtrip.carry-constructs.one-sided-range` | a value past a one-sided min or max bound is refused on read while values within the bound are accepted | `inputs.tests` (197 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/cstable/carry_constructs_test.go:20` |
 | `L.functional.roundtrip.carry-constructs.optional-map` | optional map fields round-trip, and a truncated wire is refused. | `tests: {"cs":{"package":"./internal/codegen/cstable","seconds":1.96,"test":"TestOptionalMapCSharp"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/cstable/carry_constructs_test.go:50` |
 
 #### `roundtrip` family `carry-optional-map`, 1 test
@@ -370,12 +339,6 @@ read bytes, write them back, same bytes.
 |---|---|---|---|---|
 | `L.functional.roundtrip.compressed-float-f32-ends.compressed-float-float32-ends` | a compressed float's declared range is compared at float32 width, so values at the float32 ends are accepted and written as float32. | `inputs.tests` (110 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/rubytable/compressed_float_f32_ends_test.go:51` |
 
-#### `roundtrip` family `compressed-float-f32-negzero`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.roundtrip.compressed-float-f32-negzero.compressed-float-variable-and-json` | compressed floats in variable and JSON forms write and read the committed cases, and the emitted source has the expected shape. | `inputs.tests` (114 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/compressed_float_f32_negzero_test.go:199` |
-
 #### `roundtrip` family `compressed-float-negzero-f32`, 1 test
 
 | full name | checks | inputs | expected result | source |
@@ -441,12 +404,6 @@ read bytes, write them back, same bytes.
 | `L.functional.roundtrip.conformance-message.vocab9-low` | conformance message vocab9\_low: the message is read against its announced table and written back to the same bytes, or refused by name | `case: vocab9_low`<br>`driver: test/conformance/{lang}/driver`<br>`inputs.files` (320 bytes, held in the registry row's `inputs.files`)<br>`surface: message` | the leg's answer equals the corpus's expectation (test/conformance/README.md) | `testdata/conformance/tables/MANIFEST.txt` |
 | `L.functional.roundtrip.conformance-message.vocab9-wide` | conformance message vocab9\_wide: the message is read against its announced table and written back to the same bytes, or refused by name | `case: vocab9_wide`<br>`driver: test/conformance/{lang}/driver`<br>`inputs.files` (323 bytes, held in the registry row's `inputs.files`)<br>`surface: message` | the leg's answer equals the corpus's expectation (test/conformance/README.md) | `testdata/conformance/tables/MANIFEST.txt` |
 | `L.functional.roundtrip.conformance-message.widenbound-msg` | conformance message widenbound\_msg: the message is read against its announced table and written back to the same bytes, or refused by name | `case: widenbound_msg`<br>`driver: test/conformance/{lang}/driver`<br>`inputs.files` (421 bytes, held in the registry row's `inputs.files`)<br>`surface: message` | the leg's answer equals the corpus's expectation (test/conformance/README.md) | `testdata/conformance/tables/MANIFEST.txt` |
-
-#### `roundtrip` family `conformance-optin`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.roundtrip.conformance-optin.driver-answers-both-opt-in-legs` | the conformance driver answers the committed opt-in corpus both for a leg naming both opt-in units and for a leg naming neither. | `inputs.tests` (107 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/conformance_optin_test.go:18` |
 
 #### `roundtrip` family `conformance-report-retain`, 2 tests
 
@@ -932,7 +889,7 @@ read bytes, write them back, same bytes.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.roundtrip.cookfind.cook-map-find` | a cooked map is searched in place by key, answering each entry and a missing key | `inputs.tests` (191 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/cookfind_test.go:70` |
+| `L.functional.roundtrip.cookfind.cook-map-find` | a cooked map is searched in place by key, answering each entry and a missing key | `inputs.tests` (97 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/cookfind_test.go:70` |
 
 #### `roundtrip` family `cookmapfield`, 1 test
 
@@ -1007,12 +964,6 @@ read bytes, write them back, same bytes.
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.roundtrip.degenerate128.degenerate128-fixed-reads-back-as-pair` | a degenerate 128-bit fixed value reads back as a pair | `inputs.tests` (124 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/squirrel/degenerate128_test.go:63` |
-
-#### `roundtrip` family `descriptordoc`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.roundtrip.descriptordoc.descriptor-doc-and-tags` | reported descriptors give every table, type, field and vocabulary row its declared doc and tags | `inputs.tests` (105 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/descriptordoc_test.go:236` |
 
 #### `roundtrip` family `duplicate-linear`, 1 test
 
@@ -1218,7 +1169,7 @@ read bytes, write them back, same bytes.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.roundtrip.fixedclass.fixed-class-on-table-wire` | a closure holding a fixed table loads and re-saves its oracle wires byte for byte | `inputs.tests` (530 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/rusttable/fixedclass_test.go:49` |
+| `L.functional.roundtrip.fixedclass.fixed-class-on-table-wire` | a closure holding a fixed table loads and re-saves its oracle wires byte for byte | `inputs.tests` (425 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/rusttable/fixedclass_test.go:49` |
 
 #### `roundtrip` family `fixedcorpus-roundtrip`, 2 tests
 
@@ -1240,7 +1191,7 @@ read bytes, write them back, same bytes.
 | `L.functional.roundtrip.fixeddeprecatedslot.fixed-deprecated-field-is-carried` | a deprecated fixed field is carried: it reads, writes and saves back its stored value and a refused kind is refused | `inputs.tests` (435 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixeddeprecatedslot_test.go:15` |
 | `L.functional.roundtrip.fixeddeprecatedslot.fixed-deprecated-field-is-carried-enum-flags-keyed` | A deprecated enum, flags or keyed-array field is carried: save stores the held value, load lands it, and a deprecated enum ordinal past its set is refused. | `inputs.tests` (119 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixeddeprecatedslot_test.go:212` |
 
-#### `roundtrip` family `fixedform`, 9 tests
+#### `roundtrip` family `fixedform`, 8 tests
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
@@ -1252,7 +1203,6 @@ read bytes, write them back, same bytes.
 | `L.functional.roundtrip.fixedform.fixed-form-write-read-write-is-byte-identical` | Saving, loading and saving again yields byte-identical output, including partly used text, partly filled counted arrays, absent optionals and a union's narrower arm. | `inputs.tests` (114 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedform_test.go:336` |
 | `L.functional.roundtrip.fixedform.fixed-table-save-and-load-are-form-three` | A declared fixed table's plain save writes form 3 and its plain load reads it back, while a form-1 file is refused as previous\_form at both loads. | `inputs.tests` (109 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedform_test.go:768` |
 | `L.functional.roundtrip.fixedform.form1-of-variable-table-still-loads` | A variable table with a pointer still saves and loads in form 1 alongside fixed tables. | `inputs.tests` (106 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedform_test.go:868` |
-| `L.functional.roundtrip.fixedform.identity-compiled-bytes-n` | a fixed read through the identity plan and through a compiled plan agree on a bytes field, and a counted array's slack is zero after load | `inputs.tests` (101 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/fixedform_test.go:115` |
 
 #### `roundtrip` family `fixedform-deprecated-enum`, 1 test
 
@@ -1278,12 +1228,6 @@ read bytes, write them back, same bytes.
 |---|---|---|---|---|
 | `L.functional.roundtrip.fixedform-strict.fixed-form-sources-strict` | the fixed read source carries no tolerant spellings, and the shared corpus rows read whole or refuse by name through the strict read | `inputs.tests` (97 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/ctable/fixedform_strict_test.go:327` |
 
-#### `roundtrip` family `fixedroadmap-t05`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.roundtrip.fixedroadmap-t05.fixed-roadmap-t05-bounds` | a fixed read holds each ranged field and counted array to its declared bounds | `inputs.tests` (105 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/fixedroadmap_t05_test.go:59` |
-
 #### `roundtrip` family `fixedroadmap-t06`, 2 tests
 
 | full name | checks | inputs | expected result | source |
@@ -1291,15 +1235,14 @@ read bytes, write them back, same bytes.
 | `L.functional.roundtrip.fixedroadmap-t06.fixed-roadmap-t06-bounds` | the generated fixed reader, over records saved and then forged past a declared bound, clamps or refuses each value as the spec says and counts each event exactly | `tests: {"c":{"package":"./internal/codegen/ctable","seconds":0.23,"test":"TestFixedRoadmapCT06Bounds"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/ctable/fixedroadmap_t06_test.go:173` |
 | `L.functional.roundtrip.fixedroadmap-t06.fixed-roadmap-t06-bounds-emitted` | the emitted fixed-form reader carries the clamp, count and normalisation code the spec's bounds rules require for ranged scalars, counts, union tags, enum ordinals, bools and present flags | `inputs.tests` (718 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/cpptable/fixedroadmap_t06_test.go:100` |
 
-#### `roundtrip` family `fixedroadmap-t07`, 3 tests
+#### `roundtrip` family `fixedroadmap-t07`, 2 tests
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.roundtrip.fixedroadmap-t07.fixed-roadmap-t07-conformance-integers` | valid bool, signed, unsigned, 128-bit and ranged integer values are written and read back at their boundaries | `inputs.tests` (118 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/fixedroadmap_t07_test.go:30` |
 | `L.functional.roundtrip.fixedroadmap-t07.fixed-roadmap-t07-writes` | the fixed-form writer writes every field kind and a union arm chain, and the written bytes read back to the same values | `inputs.tests` (102 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/cpptable/fixedroadmap_t07_test.go:134` |
 | `L.functional.roundtrip.fixedroadmap-t07.fixed-roadmap-t07-writes-emitted` | the emitted fixed-form writer lays the declared template, stores each field kind and writes a union's tag and taken arm only, as the spec's write rules state | `inputs.tests` (513 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/cstable/fixedroadmap_t07_test.go:180` |
 
-#### `roundtrip` family `fixedroadmap-t08`, 5 tests
+#### `roundtrip` family `fixedroadmap-t08`, 4 tests
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
@@ -1307,7 +1250,6 @@ read bytes, write them back, same bytes.
 | `L.functional.roundtrip.fixedroadmap-t08.fixed-roadmap-t08-conformance-integers` | fixed-table integer values written and read back follow the conformance rows for widths and bit-packing | `inputs.tests` (116 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/cstable/fixedroadmap_t08_test.go:92` |
 | `L.functional.roundtrip.fixedroadmap-t08.fixed-roadmap-t08-conformance-integers-emitted` | the emitted fixed-form plan and layout follow the conformance rows for integer widths and plan execution | `inputs.tests` (124 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/elixirtable/fixedroadmap_t08_test.go:466` |
 | `L.functional.roundtrip.fixedroadmap-t08.fixed-roadmap-t08-conformance-unions` | valid integer, float and union values are written and read back at their boundaries | `inputs.tests` (116 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/darttable/fixedroadmap_t08_test.go:125` |
-| `L.functional.roundtrip.fixedroadmap-t08.fixed-roadmap-t08-floats-unions` | valid float, compressed float, fixed-point and union field arm values are written and read back | `inputs.tests` (111 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/fixedroadmap_t08_test.go:436` |
 
 #### `roundtrip` family `fixedroadmap-t09`, 6 tests
 
@@ -1316,7 +1258,7 @@ read bytes, write them back, same bytes.
 | `L.functional.roundtrip.fixedroadmap-t09.fixed-roadmap-t09-floats-unions` | a fixed table of floats, flags, nested types, keyed arrays and unions saves and loads back the same values | `inputs.tests` (117 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/elixirtable/fixedroadmap_t09_test.go:147` |
 | `L.functional.roundtrip.fixedroadmap-t09.fixed-roadmap-t09-floats-unions-emitted` | the emitted C# codec carries the value surface, plan entry and bounds pass for floats, flags, nested types, keyed arrays and unions | `inputs.tests` (109 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/cstable/fixedroadmap_t09_test.go:22` |
 | `L.functional.roundtrip.fixedroadmap-t09.fixed-roadmap-t09-integers-floats` | each integer and float value row round trips by save then load, holding non-default and boundary values and refusing out\_of\_range past each declared bound | `inputs.tests` (431 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedroadmap_t09_test.go:147` |
-| `L.functional.roundtrip.fixedroadmap-t09.fixed-roadmap-t09-optionals` | fixed tables with optionals, optional arrays and defaults round trip through the generated save and load | `inputs.tests` (215 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/fixedroadmap_t09_test.go:34` |
+| `L.functional.roundtrip.fixedroadmap-t09.fixed-roadmap-t09-optionals` | fixed tables with optionals, optional arrays and defaults round trip through the generated save and load | `inputs.tests` (108 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/fixedroadmap_t09_test.go:34` |
 | `L.functional.roundtrip.fixedroadmap-t09.fixed-roadmap-t09-unions-optionals` | valid payload-free arms, union arrays, optional arrays, scalar defaults and text or bytes defaults are written and read back | `inputs.tests` (108 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/jstable/fixedroadmap_t09_test.go:50` |
 | `L.functional.roundtrip.fixedroadmap-t09.fixed128-bit-rows-run-with-the-serialize-sibling` | signed and unsigned 128-bit fixed rows are written and read back through the serialize runtime | `inputs.tests` (117 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedroadmap_t09_test.go:220` |
 
@@ -1336,11 +1278,10 @@ read bytes, write them back, same bytes.
 | `L.functional.roundtrip.fixedroadmap-t11.fixed-roadmap-t11-optionals` | valid optional scalar, nested optional and optional array values and defaults are written and read back | `inputs.tests` (99 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/ctable/fixedroadmap_t11_test.go:34` |
 | `L.functional.roundtrip.fixedroadmap-t11.fixed-roadmap-t11-unions-optionals` | fixed tables with union field arms and optionals round trip through the generated save and load | `inputs.tests` (218 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedroadmap_t11_test.go:23` |
 
-#### `roundtrip` family `fixedroadmap-t12`, 5 tests
+#### `roundtrip` family `fixedroadmap-t12`, 4 tests
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.roundtrip.fixedroadmap-t12.fixed-roadmap-t12-batches-unions` | valid union field arms, payload-free arms, union arrays and optional arrays are written and read back | `inputs.tests` (112 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/fixedroadmap_t12_test.go:664` |
 | `L.functional.roundtrip.fixedroadmap-t12.fixed-roadmap-t12-extents-writes-guards` | a fixed read walks live counts only, and extents, writes and guards behave per the format | `inputs.tests` (118 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/darttable/fixedroadmap_t12_test.go:129` |
 | `L.functional.roundtrip.fixedroadmap-t12.fixed-roadmap-t12-framing-writes` | fixed framing and write behaviour round-trip per the format, and short files refuse as wire damaged | `inputs.tests` (103 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/ctable/fixedroadmap_t12_test.go:318` |
 | `L.functional.roundtrip.fixedroadmap-t12.fixed-roadmap-t12-guards-wide-text` | a direct text, bytes and array union arm is written at non-default and boundary values and read back | `inputs.tests` (107 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/jstable/fixedroadmap_t12_test.go:46` |
@@ -1350,7 +1291,7 @@ read bytes, write them back, same bytes.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.roundtrip.fixedroadmap-t15.fixed-roadmap-t15-guard-chain` | a chain of nested unions guards each inner arm by the tag of every outer arm it rides in on, and reads and writes through the chain | `inputs.tests` (527 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedroadmap_t15_test.go:83` |
+| `L.functional.roundtrip.fixedroadmap-t15.fixed-roadmap-t15-guard-chain` | a chain of nested unions guards each inner arm by the tag of every outer arm it rides in on, and reads and writes through the chain | `inputs.tests` (419 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedroadmap_t15_test.go:83` |
 
 #### `roundtrip` family `fixedroadmap-t16`, 1 test
 
@@ -1362,7 +1303,7 @@ read bytes, write them back, same bytes.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.roundtrip.fixedroadmap-t17.fixed-roadmap-t17-plan-partition` | the compiled read plan puts every unguarded entry before every guarded one | `inputs.tests` (328 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedroadmap_t17_test.go:22` |
+| `L.functional.roundtrip.fixedroadmap-t17.fixed-roadmap-t17-plan-partition` | the compiled read plan puts every unguarded entry before every guarded one | `inputs.tests` (217 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedroadmap_t17_test.go:22` |
 
 #### `roundtrip` family `fixedroadmap-t18`, 2 tests
 
@@ -1377,12 +1318,11 @@ read bytes, write them back, same bytes.
 |---|---|---|---|---|
 | `L.functional.roundtrip.fixedroadmap-t19.fixed-roadmap-t19-payload-free-arms` | payload-free union arms round trip through the generated save and load, the tag landing and the arm storage staying zero | `inputs.tests` (212 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedroadmap_t19_test.go:72` |
 
-#### `roundtrip` family `fixedroottext`, 2 tests
+#### `roundtrip` family `fixedroottext`, 1 test
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.roundtrip.fixedroottext.fixed-root-text-and-cook` | a fixed root's text form equals the committed text and cooks back to the same value | `inputs.tests` (105 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/rusttable/fixedroottext_test.go:19` |
-| `L.functional.roundtrip.fixedroottext.fixed-root-text-form` | a fixed root reads from its file, writes its text form equal to the committed JSON, and reads that JSON back to the same file | `inputs.tests` (101 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/fixedroottext_test.go:24` |
 
 #### `roundtrip` family `float-default-width`, 1 test
 
@@ -1447,6 +1387,12 @@ read bytes, write them back, same bytes.
 | `L.functional.roundtrip.handtext-reference.handtext-go-corpus-functional` | every positive handtext document gives the same values and canonical JSON bytes as the reference Go reader | `inputs.tests` (116 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/pythontable/handtext_reference_test.go:136` |
 | `L.functional.roundtrip.handtext-reference.handtext-references-functional` | handtext source gives the same typed output and canonical JSON, final newline included, as the reference readers | `inputs.tests` (118 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/pythontable/handtext_reference_test.go:26` |
 | `L.functional.roundtrip.handtext-reference.handtext-unbounded-references-functional` | unbounded handtext arrays read identically to the reference readers | `inputs.tests` (127 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/pythontable/handtext_reference_test.go:324` |
+
+#### `roundtrip` family `happy-path`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.functional.roundtrip.happy-path.ship-create` | make happy-&lt;lang&gt; (make/happy-path.mk): test/happy/Happy.schema generated, compiled with the language's program in test/happy/&lt;lang&gt;, and one ShipCreate written, read back and compared field by field | `driver: test/happy/{lang}/main`<br>`files: ["test/happy/Happy.schema","test/happy/go/go.mod"]`<br>`make: make/happy-path.mk`<br>`schema: test/happy/Happy.schema` | the program prints happy &lt;lang&gt;: ok and exits 0 | `make/happy-path.mk:17` |
 
 #### `roundtrip` family `hostile-corpus`, 1 test
 
@@ -1599,12 +1545,6 @@ read bytes, write them back, same bytes.
 |---|---|---|---|---|
 | `L.functional.roundtrip.json-wire.json-wire-surfaces` | each JSON read and write surface reads and writes the same text | `inputs.tests` (97 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/mootable/json_wire_test.go:31` |
 
-#### `roundtrip` family `jsonevery`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.roundtrip.jsonevery.table-json-every-table` | every table of the example units writes to JSON text and reads back the same value | `inputs.tests` (103 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/jsonevery_test.go:60` |
-
 #### `roundtrip` family `jsonfloat-locale`, 1 test
 
 | full name | checks | inputs | expected result | source |
@@ -1730,13 +1670,11 @@ read bytes, write them back, same bytes.
 | `L.functional.roundtrip.maps.maps-match-the-wire` | every map instance row of the corpus loads then saves byte for byte, and the duplicate, widened and past-length cases report the reference counters | `inputs.tests` (112 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/squirreltable/maps_test.go:152` |
 | `L.functional.roundtrip.maps.region-maps` | maps with varied key and value kinds, nested maps, lists, pointers and fixed tables, save and load back unchanged | `tests: {"go":{"package":"./internal/codegen/gotable","seconds":2.12,"test":"TestRegionMaps"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/maps_test.go:5` |
 
-#### `roundtrip` family `mapsarms`, 3 tests
+#### `roundtrip` family `mapsarms`, 1 test
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.roundtrip.mapsarms.maps-and-union-arms-on-the-table-wire` | maps, union arms, optionals, keyed arrays and wide scalars on the table wire match the reference engine byte for byte | `inputs.tests` (575 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/rusttable/mapsarms_test.go:40` |
-| `L.functional.roundtrip.mapsarms.variable-map-corpus` | the variable-class map corpus fixtures load and save as the reference does | `inputs.tests` (101 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/mapsarms_test.go:284` |
-| `L.functional.roundtrip.mapsarms.variable-map-values` | variable maps of table, pointer and list values load and save as the reference does | `inputs.tests` (98 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/mapsarms_test.go:244` |
+| `L.functional.roundtrip.mapsarms.maps-and-union-arms-on-the-table-wire` | maps, union arms, optionals, keyed arrays and wide scalars on the table wire match the reference engine byte for byte | `inputs.tests` (461 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/rusttable/mapsarms_test.go:40` |
 
 #### `roundtrip` family `mapsjson`, 1 test
 
@@ -1841,13 +1779,13 @@ read bytes, write them back, same bytes.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.roundtrip.messageform-announce.message-form-announce` | the generated message-form announcement surface meets each clause of the spec: the announcement constant equals the manifest bytes and reads back as the reference does | `inputs.tests` (520 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/rusttable/messageform_announce_test.go:37` |
+| `L.functional.roundtrip.messageform-announce.message-form-announce` | the generated message-form announcement surface meets each clause of the spec: the announcement constant equals the manifest bytes and reads back as the reference does | `inputs.tests` (417 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/rusttable/messageform_announce_test.go:37` |
 
 #### `roundtrip` family `messageform-batch`, 2 tests
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.roundtrip.messageform-batch.message-form-batch` | the generated message-form batch surface loads, measures and saves every manifest message row to the reference bytes | `inputs.tests` (505 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/rusttable/messageform_batch_test.go:49` |
+| `L.functional.roundtrip.messageform-batch.message-form-batch` | the generated message-form batch surface loads, measures and saves every manifest message row to the reference bytes | `inputs.tests` (406 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/rusttable/messageform_batch_test.go:49` |
 | `L.functional.roundtrip.messageform-batch.message-form-nested-default-elides` | a nested table whose fields are all default is not written, so the batch equals one for a table without that field | `inputs.tests` (114 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/darttable/messageform_batch_test.go:585` |
 
 #### `roundtrip` family `messageform-fixedpointsign`, 1 test
@@ -1925,12 +1863,6 @@ read bytes, write them back, same bytes.
 |---|---|---|---|---|
 | `L.functional.roundtrip.optionalvariable.optional-variable-closure` | an optional value over a variable closure is not descended when absent and saves byte for byte as the reference | `inputs.tests` (323 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/elixirtable/optionalvariable_test.go:34` |
 | `L.functional.roundtrip.optionalvariable.optional-variable-closure-table` | an absent optional over a variable closure owns no node and a present one then cleared writes no stale node | `inputs.tests` (217 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/optionalvariable_test.go:19` |
-
-#### `roundtrip` family `optionalvariable-g1`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.roundtrip.optionalvariable-g1.optional-variable-closure-g1` | an absent optional over a variable closure is not descended: save, text and cook output equal the absent load's even with a stale pointer left inside, and planted walks go red | `inputs.tests` (109 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/optionalvariable_g1_test.go:31` |
 
 #### `roundtrip` family `packet-finite`, 1 test
 
@@ -2174,7 +2106,7 @@ read bytes, write them back, same bytes.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.roundtrip.retain-depth-128.retain-keeps-depth128` | a retaining load reads unknown fields nested to the 128-level bound and refuses shapes one level deeper | `inputs.tests` (712 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/cpptable/retain_depth_128_test.go:24` |
+| `L.functional.roundtrip.retain-depth-128.retain-keeps-depth128` | a retaining load reads unknown fields nested to the 128-level bound and refuses shapes one level deeper | `inputs.tests` (610 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/cpptable/retain_depth_128_test.go:24` |
 
 #### `roundtrip` family `retain-hashzero`, 1 test
 
@@ -2211,12 +2143,6 @@ read bytes, write them back, same bytes.
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.roundtrip.retain-message-strict.retain-on-message-form` | the strict message-form retaining read keeps unknown fields and saves the reference bytes, refusing damaged wires | `inputs.tests` (114 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/squirreltable/retain_message_strict_test.go:374` |
-
-#### `roundtrip` family `retain-nameable`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.roundtrip.retain-nameable.retain-names-every-own-id` | a retaining save charges an id this build can name to its own table and never to the caller id list, comparing ids as unsigned | `inputs.tests` (105 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/retain_nameable_test.go:23` |
 
 #### `roundtrip` family `retain-nested-zero-map`, 1 test
 
@@ -2279,12 +2205,6 @@ read bytes, write them back, same bytes.
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.roundtrip.retainroots.retains-unknown-on-every-root` | every retain row of the conformance manifest round-trips through the retaining load and save with the reference saved bytes | `inputs.tests` (111 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/jstable/retainroots_test.go:26` |
-
-#### `roundtrip` family `retainsave`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.roundtrip.retainsave.retain-save` | a retaining read and save write the reference saved bytes, load counters and retain loss for the pinned wire | `tests: {"java":{"package":"./internal/codegen/javatable","seconds":7.53,"test":"TestRetainSaveJava"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/retainsave_test.go:23` |
 
 #### `roundtrip` family `retainunknown`, 1 test
 
@@ -2461,12 +2381,6 @@ read bytes, write them back, same bytes.
 |---|---|---|---|---|
 | `L.functional.roundtrip.toolmessage.reads-every-tool-message-instance` | every instance of the tool message corpus reads to the reference value | `inputs.tests` (109 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/cpptable/toolmessage_test.go:116` |
 
-#### `roundtrip` family `transport-id-order`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.roundtrip.transport-id-order.transport-id-first-use` | a table's transport ids must first appear in order; out-of-order first use is refused as damage and in-order use reads | `inputs.tests` (103 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/transport_id_order_test.go:205` |
-
 #### `roundtrip` family `truncated-payload`, 2 tests
 
 | full name | checks | inputs | expected result | source |
@@ -2546,12 +2460,6 @@ read bytes, write them back, same bytes.
 |---|---|---|---|---|
 | `L.functional.roundtrip.unit-registry.unit-view-lists-the-unit` | the unit view lists the unit's declarations entry for entry as the reference listing does | `inputs.tests` (104 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/luautable/unit_registry_test.go:24` |
 
-#### `roundtrip` family `unitview`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.roundtrip.unitview.unit-view-registry` | the unit view registry names every declaration and the listing the program prints is byte-identical to the compiler's own | `inputs.tests` (100 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/unitview_test.go:23` |
-
 #### `roundtrip` family `unknownkeyedwalk`, 1 test
 
 | full name | checks | inputs | expected result | source |
@@ -2588,42 +2496,23 @@ read bytes, write them back, same bytes.
 |---|---|---|---|---|
 | `L.functional.roundtrip.variable-class.variable-class` | the variable class (pointers, arrays of pointers, unions with table arms, payload-free arms, arrays of unions) loads, saves and reloads to the reference engine's reports and values | `inputs.tests` (107 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/lobstertable/variable_class_test.go:117` |
 
-#### `roundtrip` family `variablearrays`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.roundtrip.variablearrays.unbounded-arrays-round-trip` | Unbounded scalar, string, enum and flags arrays are saved on the variable wire, loaded back and re-saved byte for byte. | `inputs.tests` (107 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/variablearrays_test.go:17` |
-
 #### `roundtrip` family `variableclass`, 1 test
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.roundtrip.variableclass.variable-class-beyond-card-constructs` | variable-class constructs beyond the card (pointers, blobs, lists, id-table wire, scalar kinds) load, save and render text byte for byte against the reference engine | `inputs.tests` (589 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/rusttable/variableclass_test.go:56` |
+| `L.functional.roundtrip.variableclass.variable-class-beyond-card-constructs` | variable-class constructs beyond the card (pointers, blobs, lists, id-table wire, scalar kinds) load, save and render text byte for byte against the reference engine | `inputs.tests` (473 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/rusttable/variableclass_test.go:56` |
 
 #### `roundtrip` family `variablecodec`, 1 test
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.roundtrip.variablecodec.card-constructs-round-trip-the-variable-form` | the committed card-populated wire loads to the values the committed JSON names and re-saves byte for byte | `inputs.tests` (587 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/rusttable/variablecodec_test.go:48` |
-
-#### `roundtrip` family `variablegraph`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.roundtrip.variablegraph.pointer-graph-shares-once-refuses-cycles-and-labels-nodes` | A node named by two pointers is written once, a cycle is refused on save while a diamond saves and loads as one shared object, and the text form labels a shared node, all matching the reference bytes and text. | `inputs.tests` (133 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/variablegraph_test.go:32` |
-
-#### `roundtrip` family `variableoptional`, 2 tests
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.roundtrip.variableoptional.variable-keyed-values` | Keyed arrays of scalars, enums and tables read from text and wire and write back to the same values, with missing slots at defaults. | `inputs.tests` (103 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/variableoptional_test.go:65` |
-| `L.functional.roundtrip.variableoptional.variable-optional-values` | Optional scalars, tables, fixed arrays and counted arrays distinguish absent from present-at-default and round-trip both through text and wire. | `inputs.tests` (106 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/variableoptional_test.go:50` |
+| `L.functional.roundtrip.variablecodec.card-constructs-round-trip-the-variable-form` | the committed card-populated wire loads to the values the committed JSON names and re-saves byte for byte | `inputs.tests` (470 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/rusttable/variablecodec_test.go:48` |
 
 #### `roundtrip` family `variabletext`, 1 test
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.roundtrip.variabletext.card-text-form-matches-go` | the card text form renders the committed wire as the committed JSON byte for byte, reads it back to the same wire, and refuses an unknown property, out-of-range enum and over-bound string | `inputs.tests` (500 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/rusttable/variabletext_test.go:18` |
+| `L.functional.roundtrip.variabletext.card-text-form-matches-go` | the card text form renders the committed wire as the committed JSON byte for byte, reads it back to the same wire, and refuses an unknown property, out-of-range enum and over-bound string | `inputs.tests` (400 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/rusttable/variabletext_test.go:18` |
 
 #### `roundtrip` family `verdicts-1122`, 1 test
 
@@ -2816,12 +2705,6 @@ read bytes, write them back, same bytes.
 |---|---|---|---|---|
 | `L.functional.roundtrip.wire-json-integers.wide-integers-are-strings` | testdata/wire/json-integers: a wide integer is written and read as a JSON string, and every refused vector is refused | `inputs.tests` (1736 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/jsonwideintegers_test.go:37` |
 
-#### `roundtrip` family `wire-non-canonical`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.roundtrip.wire-non-canonical.variable-form-runtime-compiles-and-round-trips` | A variable-form wire holding a field, the terminator and the id-table trailer writes and reads back to the same values. | `inputs.tests` (120 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/variableform_test.go:18` |
-
 #### `roundtrip` family `wire-packet-defaults`, 8 tests
 
 | full name | checks | inputs | expected result | source |
@@ -2861,7 +2744,7 @@ a value written from scratch gives exactly the expected bytes.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.encode.blockbuild.block-build-and-cook-write` | a block builder writes the same image bytes as the reference builder | `inputs.tests` (535 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/rusttable/blockbuild_test.go:374` |
+| `L.functional.encode.blockbuild.block-build-and-cook-write` | a block builder writes the same image bytes as the reference builder | `inputs.tests` (429 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/rusttable/blockbuild_test.go:374` |
 | `L.functional.encode.blockbuild.block-builder` | the block builder lays out an aligned extent whose bytes equal the reference builder's image for the same counts | `inputs.tests` (193 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/pythontable/blockbuild_test.go:29` |
 
 #### `encode` family `compressed-negzero-store`, 1 test
@@ -3347,13 +3230,7 @@ a value written from scratch gives exactly the expected bytes.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.encode.cookextent.cook-map-writer-holds-the-sort` | the cook map writer holds entries sorted, so a value with reversed map entries cooks to the same golden bytes in both orders | `inputs.tests` (333 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/cookextent_test.go:106` |
-
-#### `encode` family `cookfixed`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.encode.cookfixed.cook-write-fixed-roots` | cooking fixed roots writes both byte orders equal to the committed cook-write fixtures. | `inputs.tests` (103 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/cookfixed_test.go:23` |
+| `L.functional.encode.cookextent.cook-map-writer-holds-the-sort` | the cook map writer holds entries sorted, so a value with reversed map entries cooks to the same golden bytes in both orders | `inputs.tests` (226 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/cookextent_test.go:106` |
 
 #### `encode` family `cookguardstorage`, 1 test
 
@@ -3397,7 +3274,7 @@ a value written from scratch gives exactly the expected bytes.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.encode.counted-birth-elides.counted-birth-elides` | a writer elides a counted array held at its birth count and writes it once one element is live, with the same bytes as the reference engine | `inputs.tests` (298 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/counted_birth_elides_test.go:150` |
+| `L.functional.encode.counted-birth-elides.counted-birth-elides` | a writer elides a counted array held at its birth count and writes it once one element is live, with the same bytes as the reference engine | `inputs.tests` (197 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/counted_birth_elides_test.go:150` |
 
 #### `encode` family `counted-birth-engine`, 2 tests
 
@@ -3410,7 +3287,7 @@ a value written from scratch gives exactly the expected bytes.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.encode.counted-min-elems.counted-min-elements-elide-at-born-state` | a counted array whose elements are at the born state is elided by the writer with the same bytes as the reference engine | `inputs.tests` (464 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/cpptable/counted_min_elems_cpp_test.go:145` |
+| `L.functional.encode.counted-min-elems.counted-min-elements-elide-at-born-state` | a counted array whose elements are at the born state is elided by the writer with the same bytes as the reference engine | `inputs.tests` (347 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/cpptable/counted_min_elems_cpp_test.go:145` |
 
 #### `encode` family `counted-min-table-elems`, 1 test
 
@@ -3423,7 +3300,7 @@ a value written from scratch gives exactly the expected bytes.
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.encode.countedbirth.counted-array-birth-value` | a counted array at its birth value is elided and one with a live element is written, with the same bytes as the reference engine | `inputs.tests` (410 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/ctable/countedbirth_test.go:127` |
-| `L.functional.encode.countedbirth.counted-array-born-at-its-minimum` | a counted array born at its minimum is elided by every writer form at exactly the birth value and stored once one element is live or the count grows | `inputs.tests` (904 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/countedbirth_test.go:64` |
+| `L.functional.encode.countedbirth.counted-array-born-at-its-minimum` | a counted array born at its minimum is elided by every writer form at exactly the birth value and stored once one element is live or the count grows | `inputs.tests` (793 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/countedbirth_test.go:64` |
 | `L.functional.encode.countedbirth.counted-arrays-born-at-minimum` | a counted array is born at its minimum count, and a fresh value saves the reference encoding in fixed and variable classes | `inputs.tests` (104 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/countedbirth_test.go:24` |
 | `L.functional.encode.countedbirth.counted-pointer-birth-and-live-value` | a counted array of pointers is born at its minimum and a live value saves the reference bytes | `inputs.tests` (108 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/countedbirth_test.go:75` |
 
@@ -3451,12 +3328,6 @@ a value written from scratch gives exactly the expected bytes.
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.encode.fixednegzero.fixed-compressed-neg-zero-write` | a compressed float's negative zero is written as positive zero while a plain float's negative zero is written bit-exact | `inputs.tests` (103 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixednegzero_test.go:10` |
-
-#### `encode` family `fixedroadmap-t06`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.encode.fixedroadmap-t06.fixed-roadmap-t06-writes` | fixed writes of bounds, counts and framing produce the bytes the format specifies | `inputs.tests` (105 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/fixedroadmap_t06_test.go:65` |
 
 #### `encode` family `flat-compressed-float`, 1 test
 
@@ -3522,7 +3393,7 @@ a value written from scratch gives exactly the expected bytes.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.encode.mapwritersort.map-writer-sort` | a map built out of key order saves in ascending key order | `inputs.tests` (612 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/darttable/mapwritersort_test.go:22` |
+| `L.functional.encode.mapwritersort.map-writer-sort` | a map built out of key order saves in ascending key order | `inputs.tests` (508 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/darttable/mapwritersort_test.go:22` |
 
 #### `encode` family `message`, 2 tests
 
@@ -3537,12 +3408,6 @@ a value written from scratch gives exactly the expected bytes.
 |---|---|---|---|---|
 | `L.functional.encode.message-integrity.message-form-integrity` | a message batch for a table declaring a CRC-32C integrity check carries the CRC-32C trailer and equals the reference batch plus that trailer | `inputs.tests` (104 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/luautable/message_integrity_test.go:46` |
 | `L.functional.encode.message-integrity.message-integrity` | a message batch for a table declaring a CRC-32C integrity check carries the CRC-32C trailer and equals the reference batch plus that trailer | `inputs.tests` (109 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/lobstertable/message_integrity_test.go:17` |
-
-#### `encode` family `message-save-fits-its-measure`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.encode.message-save-fits-its-measure.message-save-fits-its-measure` | the bytes a message save writes fit the size the measure reported, for default and seeded values, and equal the reference encoding | `inputs.tests` (109 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/message_save_fits_its_measure_test.go:26` |
 
 #### `encode` family `message-string-default`, 1 test
 
@@ -3655,7 +3520,7 @@ bytes read give exactly the expected value.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.decode.blob-shared-report.blob-shared-report-census` | reading each shared-blob report case gives the case's stated verdict, refusing a shared or mis-kinded blob | `inputs.tests` (318 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/blob_shared_report_test.go:24` |
+| `L.functional.decode.blob-shared-report.blob-shared-report-census` | reading each shared-blob report case gives the case's stated verdict, refusing a shared or mis-kinded blob | `inputs.tests` (213 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/blob_shared_report_test.go:24` |
 
 #### `decode` family `blobrecord-unknown`, 1 test
 
@@ -4139,7 +4004,7 @@ bytes read give exactly the expected value.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.decode.count-refusal.json-leading-bom-boundary` | a reader accepts exactly one leading UTF-8 byte-order mark in JSON with the same value as plain JSON, refuses a doubled, misplaced or truncated mark, and keeps a U+FEFF inside string values | `inputs.tests` (507 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/ctable/count_refusal_test.go:419` |
+| `L.functional.decode.count-refusal.json-leading-bom-boundary` | a reader accepts exactly one leading UTF-8 byte-order mark in JSON with the same value as plain JSON, refuses a doubled, misplaced or truncated mark, and keeps a U+FEFF inside string values | `inputs.tests` (402 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/ctable/count_refusal_test.go:419` |
 
 #### `decode` family `cross-leg-cells`, 1 test
 
@@ -4163,7 +4028,7 @@ bytes read give exactly the expected value.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.decode.fixed-negzero.fixed-compressed-neg-zero-read` | a compressed float's negative zero reads as positive zero with nothing refused, and is written back as the canonical positive-zero bytes | `inputs.tests` (1146 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixed_negzero_test.go:17` |
+| `L.functional.decode.fixed-negzero.fixed-compressed-neg-zero-read` | a compressed float's negative zero reads as positive zero with nothing refused, and is written back as the canonical positive-zero bytes | `inputs.tests` (1041 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixed_negzero_test.go:17` |
 
 #### `decode` family `fixedbytescount`, 1 test
 
@@ -4298,12 +4163,6 @@ bytes read give exactly the expected value.
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.decode.json-read-takes-bytes.json-read-takes-bytes` | a text read takes bytes, refuses invalid UTF-8 forms and reads clean UTF-8 to the same value as the string entry | `tests: {"js":{"package":"./internal/codegen/jstable","seconds":0.04,"test":"TestJsJsonReadTakesBytes"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/jstable/json_read_takes_bytes_test.go:19` |
-
-#### `decode` family `json-root-whole-text`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.decode.json-root-whole-text.json-root-is-whole-text` | whitespace and comments after the root object are part of the text and any other trailing byte is not a read | `inputs.tests` (103 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/json_root_whole_text_test.go:20` |
 
 #### `decode` family `json-scan`, 2 tests
 
@@ -4460,12 +4319,6 @@ bytes read give exactly the expected value.
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.decode.message-default-field.message-default-changed-shape` | a reader accepts a lawful value from a sender that claims the reader's build but carries another complete shape, including a nested child's shape, and does not refuse it as a false declared-default | `inputs.tests` (101 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/ctable/message_default_field_test.go:204` |
-
-#### `decode` family `message-kind31-boundary`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.decode.message-kind31-boundary.message-known-kind-reserves31` | the announcement vocabulary's closed-kind predicate reserves kind 31 between the enum and void declaration kinds | `inputs.tests` (110 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/message_kind31_boundary_test.go:13` |
 
 #### `decode` family `message-load-fresh-verdict`, 1 test
 
@@ -4660,12 +4513,11 @@ writing a bad value is refused (debug assert in the assert legs; every build in 
 | `L.functional.write-refusal.blobnamedtwice.blob-named-twice-amplification` | a graph of 4096 slots naming one 64 KiB blob is refused by every writer and every read without copying the blob per slot. | `inputs.tests` (102 bytes, held in the registry row's `inputs.tests`) | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `internal/codegen/gotable/blobnamedtwice_test.go:102` |
 | `L.functional.write-refusal.blobnamedtwice.blob-named-twice-writers` | every writer refuses a graph whose two slots name one blob, while the same value with two distinct blobs saves and round-trips. | `inputs.tests` (97 bytes, held in the registry row's `inputs.tests`) | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `internal/codegen/gotable/blobnamedtwice_test.go:73` |
 
-#### `write-refusal` family `blobshared`, 2 tests
+#### `write-refusal` family `blobshared`, 1 test
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.write-refusal.blobshared.blob-named-twice-is-blob-shared` | every writer refuses a graph whose two slots name one blob record by the name blob\_shared, while two distinct blobs with equal bytes save as two records. | `inputs.tests` (107 bytes, held in the registry row's `inputs.tests`) | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `internal/codegen/luatable/blobshared_test.go:20` |
-| `L.functional.write-refusal.blobshared.writers-refuse-a-shared-blob` | every writer refuses a value whose two blob slots hold one blob, while equal but distinct blobs are two records and save. | `inputs.tests` (107 bytes, held in the registry row's `inputs.tests`) | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `internal/codegen/javatable/blobshared_test.go:24` |
 
 #### `write-refusal` family `block-build`, 1 test
 
@@ -5201,12 +5053,6 @@ writing a bad value is refused (debug assert in the assert legs; every build in 
 | `L.functional.write-refusal.conformance-write-refusal-shape.shref-v-whole-null` | conformance write-refusal-shape shref\_v\_whole\_null: writing a value of the wrong shape is refused | `case: shref_v_whole_null`<br>`driver: test/conformance/{lang}/driver`<br>`inputs.files` (146 bytes, held in the registry row's `inputs.files`)<br>`surface: write-refusal-shape` | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `testdata/conformance/tables/MANIFEST.txt` |
 | `L.functional.write-refusal.conformance-write-refusal-shape.shref-v-whole-text` | conformance write-refusal-shape shref\_v\_whole\_text: writing a value of the wrong shape is refused | `case: shref_v_whole_text`<br>`driver: test/conformance/{lang}/driver`<br>`inputs.files` (146 bytes, held in the registry row's `inputs.files`)<br>`surface: write-refusal-shape` | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `testdata/conformance/tables/MANIFEST.txt` |
 
-#### `write-refusal` family `conformance-writerefusal-int`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.write-refusal.conformance-writerefusal-int.driver-checks-every-integer-assignment` | a conformance write mutation is checked against the declared integer kind on every path a row can reach an integer: scalar field, array element, channel-array element, map key and value, and nested record field. | `inputs.tests` (118 bytes, held in the registry row's `inputs.tests`) | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `internal/codegen/javatable/conformance_writerefusal_int_test.go:26` |
-
 #### `write-refusal` family `cook-write`, 1 test
 
 | full name | checks | inputs | expected result | source |
@@ -5224,12 +5070,6 @@ writing a bad value is refused (debug assert in the assert legs; every build in 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.write-refusal.cookwrite.cook-write-refusals` | a cook writer refuses by name a non-finite float, a data cycle, a list under an absent optional or false guard, and a map with repeated keys, and writes nothing partial | `inputs.tests` (98 bytes, held in the registry row's `inputs.tests`) | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `internal/codegen/mootable/cookwrite_test.go:563` |
-
-#### `write-refusal` family `cookwrite-unions`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.write-refusal.cookwrite-unions.cook-write-union-tag-refused` | a cook writer refuses a union whose tag no arm carries, measuring failure and naming invalid value, while the undamaged value cooks | `inputs.tests` (108 bytes, held in the registry row's `inputs.tests`) | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `internal/codegen/javatable/cookwrite_unions_test.go:93` |
 
 #### `write-refusal` family `counted-min-write`, 1 test
 
@@ -5271,7 +5111,7 @@ writing a bad value is refused (debug assert in the assert legs; every build in 
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.write-refusal.deprecatedwrite.deprecated-variant-never-written` | every writer refuses a deprecated variant and writes its replacement | `inputs.tests` (219 bytes, held in the registry row's `inputs.tests`) | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `internal/codegen/javatable/deprecatedwrite_test.go:164` |
+| `L.functional.write-refusal.deprecatedwrite.deprecated-variant-never-written` | every writer refuses a deprecated variant and writes its replacement | `inputs.tests` (107 bytes, held in the registry row's `inputs.tests`) | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `internal/codegen/javatable/deprecatedwrite_test.go:164` |
 
 #### `write-refusal` family `discard`, 1 test
 
@@ -5335,12 +5175,6 @@ writing a bad value is refused (debug assert in the assert legs; every build in 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.write-refusal.fixedsave-offcontract.fixed-save-refuses-off-contract` | the fixed-form writer refuses every value a field declaration does not admit before the first byte is written and leaves the buffer untouched, while boundary values write and read back | `inputs.tests` (227 bytes, held in the registry row's `inputs.tests`) | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `internal/codegen/jstable/fixedsave_offcontract_test.go:22` |
-
-#### `write-refusal` family `fixedsave-write-contract`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.write-refusal.fixedsave-write-contract.fixed-save-write-contract` | a fixed save honours the write contract: it refuses values the contract forbids and writes the rest | `inputs.tests` (106 bytes, held in the registry row's `inputs.tests`) | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `internal/codegen/javatable/fixedsave_write_contract_test.go:251` |
 
 #### `write-refusal` family `flagsnamedbits`, 1 test
 
@@ -5495,12 +5329,6 @@ writing a bad value is refused (debug assert in the assert legs; every build in 
 |---|---|---|---|---|
 | `L.functional.write-refusal.messageform-text-refusal.save-messages-refuses-text-off-shape` | a message-form writer refuses a text value that is off its declared shape instead of writing it | `inputs.tests` (121 bytes, held in the registry row's `inputs.tests`) | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `internal/codegen/elixirtable/messageform_text_refusal_test.go:24` |
 
-#### `write-refusal` family `messageform-write-contract`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.write-refusal.messageform-write-contract.save-messages-write-contract` | a message-form writer refuses a value outside its declared contract only through the debug assert, while the lawful twin of each case saves and loads back equal | `inputs.tests` (109 bytes, held in the registry row's `inputs.tests`) | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `internal/codegen/javatable/messageform_write_contract_test.go:26` |
-
 #### `write-refusal` family `messagemeasure-contract`, 1 test
 
 | full name | checks | inputs | expected result | source |
@@ -5654,12 +5482,11 @@ writing a bad value is refused (debug assert in the assert legs; every build in 
 |---|---|---|---|---|
 | `L.functional.write-refusal.texttotalwrite.text-total-refuses-the-write` | save, measure and the text writers refuse a text list value past its total and write one at the total | `inputs.tests` (120 bytes, held in the registry row's `inputs.tests`) | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `internal/codegen/squirreltable/texttotalwrite_test.go:112` |
 
-#### `write-refusal` family `variable-save-write-contract`, 2 tests
+#### `write-refusal` family `variable-save-write-contract`, 1 test
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.write-refusal.variable-save-write-contract.variable-save-holds-the-write-contract` | The variable-form save refuses each off-contract value with an invalid-value verdict and no bytes, and each lawful boundary value saves, loads and re-saves byte for byte, at every field position. | `inputs.tests` (126 bytes, held in the registry row's `inputs.tests`) | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `internal/codegen/lobstertable/variable_save_write_contract_test.go:209` |
-| `L.functional.write-refusal.variable-save-write-contract.variable-save-write-contract` | The variable-form save holds the write contract on every field shape: rows the language checks only in debug builds are asserted there and nothing else, the always-refused rows refuse in every build, and each refused case has a lawful boundary twin that saves and loads back equal. | `inputs.tests` (109 bytes, held in the registry row's `inputs.tests`) | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `internal/codegen/javatable/variable_save_write_contract_test.go:31` |
 
 #### `write-refusal` family `variable-write-range-assert`, 1 test
 
@@ -5784,18 +5611,6 @@ writing a bad value is refused (debug assert in the assert legs; every build in 
 
 hostile bytes are refused in every build, with the named reason.
 
-#### `load-refusal` family `a1armbody-damage-refused`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.load-refusal.a1armbody-damage-refused.fix-a1-arm-body-as-a2-damage-refused` | a reader refuses a wire whose union header occurrence is damaged, discarding the whole load as the reference engine does. | `inputs.tests` (113 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/javatable/a1armbody_damage_refused_test.go:25` |
-
-#### `load-refusal` family `absent-spill`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.load-refusal.absent-spill.blob-shared-conformance-driver-answers-the-wire-refusal` | the conformance driver answers refused for a strict shared blob and the unnamed absence for a missing unit, with the wire surface green. | `inputs.tests` (132 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/javatable/absent_spill_test.go:74` |
-
 #### `load-refusal` family `accel`, 1 test
 
 | full name | checks | inputs | expected result | source |
@@ -5903,7 +5718,7 @@ hostile bytes are refused in every build, with the named reason.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.load-refusal.array-element-kinds.array-element-kinds-closed` | a strict load refuses an array or keyed body whose element kind is outside the closed list, under any count, and reads the on-list controls | `inputs.tests` (1080 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/cpptable/array_element_kinds_test.go:26` |
+| `L.functional.load-refusal.array-element-kinds.array-element-kinds-closed` | a strict load refuses an array or keyed body whose element kind is outside the closed list, under any count, and reads the on-list controls | `inputs.tests` (974 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/cpptable/array_element_kinds_test.go:26` |
 
 #### `load-refusal` family `base64canonical`, 1 test
 
@@ -5968,12 +5783,6 @@ hostile bytes are refused in every build, with the named reason.
 | `L.functional.load-refusal.bit-phase.hostile-trailpad-p56` | bit-phase sweep Phase56 hostile\_trailpad\_p56.bin: the oracle's hostile wire is refused | `driver: test/verify-bitphase/{lang}/driver`<br>`file: hostile_trailpad_p56.bin`<br>`files: ["test/verify-bitphase/BitPhase.schema"]`<br>`kind: refuse`<br>`root: Phase56`<br>`schema: test/verify-bitphase/BitPhase.schema` | refused on load, in every build (verdict only) | `test/verify-bitphase/main.go requiredRoster` |
 | `L.functional.load-refusal.bit-phase.hostile-trailpad-p63` | bit-phase sweep Phase63 hostile\_trailpad\_p63.bin: the oracle's hostile wire is refused | `driver: test/verify-bitphase/{lang}/driver`<br>`file: hostile_trailpad_p63.bin`<br>`files: ["test/verify-bitphase/BitPhase.schema"]`<br>`kind: refuse`<br>`root: Phase63`<br>`schema: test/verify-bitphase/BitPhase.schema` | refused on load, in every build (verdict only) | `test/verify-bitphase/main.go requiredRoster` |
 | `L.functional.load-refusal.bit-phase.hostile-trailpad-p7` | bit-phase sweep Phase7 hostile\_trailpad\_p7.bin: the oracle's hostile wire is refused | `driver: test/verify-bitphase/{lang}/driver`<br>`file: hostile_trailpad_p7.bin`<br>`files: ["test/verify-bitphase/BitPhase.schema"]`<br>`kind: refuse`<br>`root: Phase7`<br>`schema: test/verify-bitphase/BitPhase.schema` | refused on load, in every build (verdict only) | `test/verify-bitphase/main.go requiredRoster` |
-
-#### `load-refusal` family `bits-width-clamp`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.load-refusal.bits-width-clamp.bits-field-and-array-width-clamp` | a bits(N) field or array element whose wire value exceeds its width refuses the whole load on the plain and retaining reads. | `inputs.tests` (111 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/javatable/bits_width_clamp_test.go:23` |
 
 #### `load-refusal` family `bitspastwidth`, 1 test
 
@@ -6070,12 +5879,6 @@ hostile bytes are refused in every build, with the named reason.
 |---|---|---|---|---|
 | `L.functional.load-refusal.carries.json-required` | a JSON object that omits a required key is refused at any depth, and a key of mismatched kind is refused. | `tests: {"moo":{"package":"./internal/codegen/mootable","seconds":0.1,"test":"TestMooJsonRequired"}}` | refused on load, in every build (verdict only) | `internal/codegen/mootable/carries_test.go:159` |
 | `L.functional.load-refusal.carries.wire-required-refuses-absence` | a wire written before a field became required refuses the strict read by name, and the same wire with the field written reads. | `inputs.tests` (107 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/mootable/carries_test.go:186` |
-
-#### `load-refusal` family `clamped-array-not-malformed`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.load-refusal.clamped-array-not-malformed.fix-clamped-array-not-malformed` | a reader refuses the whole load, returning no value, when a bounded array's stored count exceeds its bound. | `inputs.tests` (111 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/javatable/clamped_array_not_malformed_test.go:23` |
 
 #### `load-refusal` family `clampednamefield`, 1 test
 
@@ -6755,12 +6558,6 @@ hostile bytes are refused in every build, with the named reason.
 | `L.functional.load-refusal.conformance-retain-refusal.retain-refusal-kind31` | conformance retain-refusal retain\_refusal\_kind31: the retaining read refuses the row | `case: retain_refusal_kind31`<br>`driver: test/conformance/{lang}/driver`<br>`inputs.files` (342 bytes, held in the registry row's `inputs.files`)<br>`surface: retain-refusal` | refused on load, in every build (verdict only) | `testdata/conformance/tables/MANIFEST.txt` |
 | `L.functional.load-refusal.conformance-retain-refusal.retain-refusal-short` | conformance retain-refusal retain\_refusal\_short: the retaining read refuses the row | `case: retain_refusal_short`<br>`driver: test/conformance/{lang}/driver`<br>`inputs.files` (320 bytes, held in the registry row's `inputs.files`)<br>`surface: retain-refusal` | refused on load, in every build (verdict only) | `testdata/conformance/tables/MANIFEST.txt` |
 
-#### `load-refusal` family `conformance-strict`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.load-refusal.conformance-strict.driver-surfaces-strict` | the conformance driver surfaces strict refusals over the whole corpus matrix. | `inputs.tests` (105 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/javatable/conformance_strict_test.go:71` |
-
 #### `load-refusal` family `conformance-verdict`, 1 test
 
 | full name | checks | inputs | expected result | source |
@@ -6809,7 +6606,7 @@ hostile bytes are refused in every build, with the named reason.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.load-refusal.count-below-min.count-below-min-refused` | a reader refuses a counted array whose count is below its minimum and reads the lawful twin | `inputs.tests` (404 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/javatable/count_below_min_test.go:38` |
+| `L.functional.load-refusal.count-below-min.count-below-min-refused` | a reader refuses a counted array whose count is below its minimum and reads the lawful twin | `inputs.tests` (301 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/javatable/count_below_min_test.go:38` |
 
 #### `load-refusal` family `count-cap`, 2 tests
 
@@ -6852,12 +6649,6 @@ hostile bytes are refused in every build, with the named reason.
 |---|---|---|---|---|
 | `L.functional.load-refusal.countmin.reads-refuse-count-below-min` | a read refuses a counted array whose count is below its declared minimum | `inputs.tests` (120 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/squirreltable/countmin_test.go:117` |
 
-#### `load-refusal` family `countpastlength-refused`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.load-refusal.countpastlength-refused.fix-count-past-length-refused` | an array count past the array's own length but inside the enclosing body is damage and the whole load is refused | `inputs.tests` (109 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/javatable/countpastlength_refused_test.go:24` |
-
 #### `load-refusal` family `countprefix`, 1 test
 
 | full name | checks | inputs | expected result | source |
@@ -6888,7 +6679,7 @@ hostile bytes are refused in every build, with the named reason.
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.load-refusal.cycle.cycle-slot-kinds` | a stored-slot shape whose final referent closes a cycle is refused while its clean acyclic twin loads | `inputs.tests` (105 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/elixirtable/cycle_test.go:265` |
-| `L.functional.load-refusal.cycle.cyclic-wire-is-damage` | a cyclic wire is damage and every load path refuses the whole read | `inputs.tests` (716 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/rusttable/cycle_test.go:30` |
+| `L.functional.load-refusal.cycle.cyclic-wire-is-damage` | a cyclic wire is damage and every load path refuses the whole read | `inputs.tests` (615 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/rusttable/cycle_test.go:30` |
 
 #### `load-refusal` family `cycle-damage`, 1 test
 
@@ -6948,7 +6739,7 @@ hostile bytes are refused in every build, with the named reason.
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.load-refusal.discard.cyclic-wire-is-refused` | a cyclic wire is refused on every load path, including cycles through list, map and false-guard slots, while acyclic twins load | `inputs.tests` (193 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/ctable/discard_test.go:631` |
-| `L.functional.load-refusal.discard.damage-discards-the-whole-load` | damage discards the whole load, so every load entry point refuses and hands back nothing it decoded, only no value or declared defaults, with any retention store empty | `inputs.tests` (864 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/gotable/discard_test.go:101` |
+| `L.functional.load-refusal.discard.damage-discards-the-whole-load` | damage discards the whole load, so every load entry point refuses and hands back nothing it decoded, only no value or declared defaults, with any retention store empty | `inputs.tests` (754 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/gotable/discard_test.go:101` |
 | `L.functional.load-refusal.discard.fixed-refusal-hands-back-nothing` | a refused fixed-form batch read leaves earlier records at their declared defaults and the report counters unchanged | `inputs.tests` (108 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/cpptable/discard_test.go:228` |
 | `L.functional.load-refusal.discard.refused-loads-hand-back-nothing` | a refused load such as a non-finite float leaves the builder root at defaults and the retaining store empty even with an unknown field kept | `inputs.tests` (108 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/cpptable/discard_test.go:174` |
 
@@ -6993,14 +6784,13 @@ hostile bytes are refused in every build, with the named reason.
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.load-refusal.finitefloat.finite-float` | every read and write form refuses a non-finite float | `inputs.tests` (196 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/rusttable/finitefloat_test.go:629` |
-| `L.functional.load-refusal.finitefloat.finite-floats` | every read and write form refuses a non-finite float | `inputs.tests` (182 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/ctable/finitefloat_test.go:420` |
+| `L.functional.load-refusal.finitefloat.finite-floats` | every read and write form refuses a non-finite float | `tests: {"c":{"package":"./internal/codegen/ctable","seconds":5.15,"test":"TestCFiniteFloats"}}` | refused on load, in every build (verdict only) | `internal/codegen/ctable/finitefloat_test.go:420` |
 
-#### `load-refusal` family `fix-container-count-measure-refusal`, 2 tests
+#### `load-refusal` family `fix-container-count-measure-refusal`, 1 test
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.load-refusal.fix-container-count-measure-refusal.fix-container-count-measure-refusal` | a reader refuses a map count that runs past its body, returning no value | `inputs.tests` (115 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/javatable/java_fix_container_count_measure_refusal_test.go:25` |
-| `L.functional.load-refusal.fix-container-count-measure-refusal.load-refusal-pins` | every row of the shared load-refusal pin table loads or refuses as pinned, with no value returned on a refusal | `inputs.tests` (206 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/javatable/java_fix_container_count_measure_refusal_test.go:319` |
+| `L.functional.load-refusal.fix-container-count-measure-refusal.load-refusal-pins` | every row of the shared load-refusal pin table loads or refuses as pinned, with no value returned on a refusal | `inputs.tests` (108 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/javatable/java_fix_container_count_measure_refusal_test.go:319` |
 
 #### `load-refusal` family `fixed-batch-capacity`, 1 test
 
@@ -7013,12 +6803,6 @@ hostile bytes are refused in every build, with the named reason.
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.load-refusal.fixed-bits-top.fixed-bits-top-every-width` | a fixed read round trips 2^N - 1 in a bits(N) field and refuses 2^N or all ones in the field's bytes, at widths 12, 52, 53, 60 and 63 | `inputs.tests` (106 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/luautable/fixed_bits_top_test.go:220` |
-
-#### `load-refusal` family `fixed-bits-unsigned-bound`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.load-refusal.fixed-bits-unsigned-bound.fixed-bits-unsigned-bound` | a fixed read refuses bits fields whose stored value exceeds 2^N - 1, including top-bit forgeries, and reads the maximum | `inputs.tests` (102 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/javatable/fixed_bits_unsigned_bound_test.go:82` |
 
 #### `load-refusal` family `fixed-bool-byte`, 1 test
 
@@ -7096,12 +6880,6 @@ hostile bytes are refused in every build, with the named reason.
 | `L.functional.load-refusal.fixed-proof-values.fixed-proof-values-float-bounds` | a fixed reader refuses out-of-range compressed floats and non-finite wire values | `inputs.tests` (111 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/pythontable/fixed_proof_values_test.go:255` |
 | `L.functional.load-refusal.fixed-proof-values.fixed-proof-values-read-rules` | a fixed reader refuses invalid scalar representations on the strict read | `inputs.tests` (110 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/pythontable/fixed_proof_values_test.go:118` |
 
-#### `load-refusal` family `fixed-r27-strict`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.load-refusal.fixed-r27-strict.fixed-r27-oracle-hostile` | a fixed reader refuses hostile files that exceed the writer's bounds, matching the reference | `inputs.tests` (105 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/javatable/fixed_r27_strict_test.go:148` |
-
 #### `load-refusal` family `fixed-read-one-path`, 1 test
 
 | full name | checks | inputs | expected result | source |
@@ -7112,13 +6890,7 @@ hostile bytes are refused in every build, with the named reason.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.load-refusal.fixed-refusal-leaves-destination.fixed-refusal-leaves-destination` | a refused fixed load resets every value of the caller's batch to its declared defaults | `inputs.tests` (222 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/javatable/fixed_refusal_leaves_destination_test.go:108` |
-
-#### `load-refusal` family `fixed-refusal-resets-rows`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.load-refusal.fixed-refusal-resets-rows.fixed-refusal-resets-every-row` | after any refusal every row handed in holds its declared default, the whole span, while a clean read lands its records | `inputs.tests` (113 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/unitytable/fixed_refusal_resets_rows_test.go:17` |
+| `L.functional.load-refusal.fixed-refusal-leaves-destination.fixed-refusal-leaves-destination` | a refused fixed load resets every value of the caller's batch to its declared defaults | `inputs.tests` (114 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/javatable/fixed_refusal_leaves_destination_test.go:108` |
 
 #### `load-refusal` family `fixed-remaining-strict`, 1 test
 
@@ -7174,7 +6946,7 @@ hostile bytes are refused in every build, with the named reason.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.load-refusal.fixedboolbytes-strict.fixed-bool-bytes-strict` | a fixed reader refuses a bool byte above 1 | `inputs.tests` (203 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/javatable/fixedboolbytes_strict_test.go:110` |
+| `L.functional.load-refusal.fixedboolbytes-strict.fixed-bool-bytes-strict` | a fixed reader refuses a bool byte above 1 | `inputs.tests` (104 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/javatable/fixedboolbytes_strict_test.go:110` |
 
 #### `load-refusal` family `fixedbound`, 2 tests
 
@@ -7229,7 +7001,7 @@ hostile bytes are refused in every build, with the named reason.
 |---|---|---|---|---|
 | `L.functional.load-refusal.fixedevolve-strict.fixed-evolve-load-refuses-never-clamps` | A lineage fixed load refuses an out-of-range value and never clamps it. | `inputs.tests` (120 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/goosetable/fixedevolve_strict_test.go:242` |
 
-#### `load-refusal` family `fixedform`, 11 tests
+#### `load-refusal` family `fixedform`, 10 tests
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
@@ -7242,7 +7014,6 @@ hostile bytes are refused in every build, with the named reason.
 | `L.functional.load-refusal.fixedform.fixed-form-refuse-is-total` | A refused fixed load moves no counter, decodes nothing and leaves every row at its declared default. | `inputs.tests` (98 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/gotable/fixedform_test.go:825` |
 | `L.functional.load-refusal.fixedform.fixed-form-refuses-by-name` | Fixed files cut from the reference corpus each refuse by their own name, malformed exactly where specified, reporting the file's hash, with nothing landing, while the uncut file reads. | `inputs.tests` (103 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/mootable/fixedform_test.go:669` |
 | `L.functional.load-refusal.fixedform.fixed-form-refuses-the-forged-na-n` | A fixed read refuses a forged signalling NaN in a widened float as non\_finite\_float naming the field, before widening anything. | `inputs.tests` (109 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/mootable/fixedform_test.go:532` |
-| `L.functional.load-refusal.fixedform.fixed-hostile-guard-and-ordinal` | A fixed read treats a two-byte union tag, an eight-byte enum ordinal and a very large enum as hostile by width, signedness and table length, landing none or refusing rather than reading a stranger's record. | `inputs.tests` (107 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/javatable/fixedform_test.go:694` |
 | `L.functional.load-refusal.fixedform.read-strict-dispatches-the-form` | a strict read dispatches on the form byte: a fixed root reads form 3 and refuses forms 1, 2 and any other byte, and a variable root reads form 1 and refuses form 3 as newer | `inputs.tests` (108 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/mootable/fixedform_test.go:772` |
 
 #### `load-refusal` family `fixedform-identity`, 1 test
@@ -7255,7 +7026,7 @@ hostile bytes are refused in every build, with the named reason.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.load-refusal.fixedform-ragged-tail.fixed-form-ragged-tail` | a fixed reader refuses a record region that is not a whole number of records: refused, -1 returned, every counter zero and nothing landed (the recommended name is truncated, and the form has no malformed flag) | `inputs.tests` (866 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/cstable/fixedform_ragged_tail_test.go:29` |
+| `L.functional.load-refusal.fixedform-ragged-tail.fixed-form-ragged-tail` | a fixed reader refuses a record region that is not a whole number of records: refused, -1 returned, every counter zero and nothing landed (the recommended name is truncated, and the form has no malformed flag) | `inputs.tests` (769 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/cstable/fixedform_ragged_tail_test.go:29` |
 
 #### `load-refusal` family `fixedform-refused-hash`, 1 test
 
@@ -7275,7 +7046,7 @@ hostile bytes are refused in every build, with the named reason.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.load-refusal.fixedform-under-20-bytes.fixed-form-under20-bytes`, every language but `elixir` (tier `nightly`) | a fixed reader refuses a file shorter than the 20-byte fixed-form header: refused, -1 returned, every counter zero and nothing landed (the recommended name is truncated, and the form has no malformed flag) | `inputs.tests` (904 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/gotable/fixedform_under_20_bytes_test.go:17` |
+| `L.functional.load-refusal.fixedform-under-20-bytes.fixed-form-under20-bytes`, every language but `elixir` (tier `nightly`) | a fixed reader refuses a file shorter than the 20-byte fixed-form header: refused, -1 returned, every counter zero and nothing landed (the recommended name is truncated, and the form has no malformed flag) | `inputs.tests` (805 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/gotable/fixedform_under_20_bytes_test.go:17` |
 
 #### `load-refusal` family `fixedguard`, 3 tests
 
@@ -7338,7 +7109,7 @@ hostile bytes are refused in every build, with the named reason.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.load-refusal.fixedroadmap-t01.fixed-roadmap-t01-framing` | the fixed read procedure's framing steps refuse or mark malformed each damaged file envelope, batch capacity and plan selection case | `inputs.tests` (897 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/gotable/fixedroadmap_t01_test.go:16` |
+| `L.functional.load-refusal.fixedroadmap-t01.fixed-roadmap-t01-framing` | the fixed read procedure's framing steps refuse or mark malformed each damaged file envelope, batch capacity and plan selection case | `inputs.tests` (796 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/gotable/fixedroadmap_t01_test.go:16` |
 
 #### `load-refusal` family `fixedroadmap-t12`, 1 test
 
@@ -7353,12 +7124,6 @@ hostile bytes are refused in every build, with the named reason.
 | `L.functional.load-refusal.fixedroadmap-t13.fixed-roadmap-t13-layout-hash-collision` | a valid file reads, and a copy whose header holds a known hash over different layout bytes or a different layout length is refused as layout\_malformed before any record, leaving every row at its default | `inputs.tests` (229 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/rusttable/fixedroadmap_t13_test.go:257` |
 | `L.functional.load-refusal.fixedroadmap-t13.fixed-roadmap-t13-second-layout-for-a-held-hash` | a known layout hash over different layout bytes refuses as layout malformed before any record is parsed | `inputs.tests` (121 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/cstable/fixedroadmap_t13_test.go:281` |
 | `L.functional.load-refusal.fixedroadmap-t13.fixed-roadmap-t13-second-layout-under-held-hash` | a known layout hash over different layout bytes, or a layout of the wrong length, refuses as layout malformed with rows defaulted and counters untouched | `inputs.tests` (118 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/gotable/fixedroadmap_t13_test.go:22` |
-
-#### `load-refusal` family `fixedroadmap-t18`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.load-refusal.fixedroadmap-t18.fixed-roadmap-t18-oracle-hostile` | hostile fixed files from the shared oracle are refused under the format's names | `inputs.tests` (112 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/javatable/fixedroadmap_t18_test.go:165` |
 
 #### `load-refusal` family `fixedrootceiling`, 1 test
 
@@ -7438,7 +7203,7 @@ hostile bytes are refused in every build, with the named reason.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.load-refusal.held-escape-refused.held-kind31-refuses-the-load` | a reader refuses the whole load when it meets the held kind 31 anywhere, as damage | `inputs.tests` (429 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/cstable/held_escape_refused_test.go:21` |
+| `L.functional.load-refusal.held-escape-refused.held-kind31-refuses-the-load` | a reader refuses the whole load when it meets the held kind 31 anywhere, as damage | `inputs.tests` (322 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/cstable/held_escape_refused_test.go:21` |
 
 #### `load-refusal` family `hostilecorpus-residual`, 1 test
 
@@ -7457,12 +7222,6 @@ hostile bytes are refused in every build, with the named reason.
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.load-refusal.id-order.wire-id-order` | a wire reader accepts an id table only in first-use order, counting ids of unknown fields and variants, and refuses a misordered or incomplete one | `tests: {"c":{"package":"./internal/codegen/ctable","seconds":3.65,"test":"TestCWireIdOrder"}}` | refused on load, in every build (verdict only) | `internal/codegen/ctable/id_order_test.go:12` |
-
-#### `load-refusal` family `id-table-distinct-probe`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.load-refusal.id-table-distinct-probe.id-table-distinct-probe-functional` | a reader proves id table entries distinct with one bounded probe: a 4096-entry table loads, a repeated id or a count over the bound is damage, and ids colliding in the probe's low bits stay legal | `inputs.tests` (114 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/javatable/id_table_distinct_probe_test.go:31` |
 
 #### `load-refusal` family `idtablebound`, 2 tests
 
@@ -7489,12 +7248,6 @@ hostile bytes are refused in every build, with the named reason.
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.load-refusal.integrity.integrity-engine-output-single-trailer` | a file already carrying the one configured trailer is read as is, and a flipped trailer byte is refused as an integrity mismatch | `inputs.tests` (115 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/luatable/integrity_test.go:119` |
-
-#### `load-refusal` family `javatextreaddepth`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.load-refusal.javatextreaddepth.text-read-depth-cap` | a text reader accepts nesting to depth 128, refuses depth 129, and refuses a very deep text without crashing | `inputs.tests` (100 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/javatable/javatextreaddepth_test.go:140` |
 
 #### `load-refusal` family `json-depth-cap`, 1 test
 
@@ -7582,12 +7335,6 @@ hostile bytes are refused in every build, with the named reason.
 |---|---|---|---|---|
 | `L.functional.load-refusal.json-shapes.json-shapes-verdicts` | a reader refuses a JSON counted array below its minimum count and reads one at the minimum, matching the conformance verdicts | `inputs.tests` (111 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/lobstertable/json_shapes_test.go:19` |
 
-#### `load-refusal` family `json-skip-depth-boundary`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.load-refusal.json-skip-depth-boundary.json-skipped-value-depth-boundary` | a reader refuses a skipped value nested past the depth bound and reads one exactly at the bound | `inputs.tests` (113 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/javatable/json_skip_depth_boundary_test.go:71` |
-
 #### `load-refusal` family `json-skip-separators`, 1 test
 
 | full name | checks | inputs | expected result | source |
@@ -7622,7 +7369,7 @@ hostile bytes are refused in every build, with the named reason.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.load-refusal.json-wide-positions.json-wide-number-positions` | a wide integer in any field position reads from a JSON string and a JSON number there is refused | `inputs.tests` (431 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/javatable/json_wide_positions_test.go:9` |
+| `L.functional.load-refusal.json-wide-positions.json-wide-number-positions` | a wide integer in any field position reads from a JSON string and a JSON number there is refused | `inputs.tests` (325 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/javatable/json_wide_positions_test.go:9` |
 
 #### `load-refusal` family `jsonfloatrange`, 1 test
 
@@ -7660,12 +7407,6 @@ hostile bytes are refused in every build, with the named reason.
 |---|---|---|---|---|
 | `L.functional.load-refusal.keyedbodyexact.keyed-body-ends-at-its-last-slot` | a reader refuses an enum-keyed array body with bytes left after its last counted pair | `inputs.tests` (117 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/elixirtable/keyedbodyexact_test.go:22` |
 
-#### `load-refusal` family `keyedcountextreme`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.load-refusal.keyedcountextreme.fix-keyed-count-extreme` | a reader refuses a keyed body whose element count is 2^64-1, comparing the count unsigned | `inputs.tests` (104 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/javatable/keyedcountextreme_test.go:26` |
-
 #### `load-refusal` family `keyedslot`, 1 test
 
 | full name | checks | inputs | expected result | source |
@@ -7683,12 +7424,6 @@ hostile bytes are refused in every build, with the named reason.
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.load-refusal.layoutcontract.block-layout-contract-refuses-a-disagreeing-runtime` | a runtime whose struct layout disagrees with the compiler-derived layout is refused at initialisation naming the field | `inputs.tests` (121 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/gotable/layoutcontract_test.go:41` |
-
-#### `load-refusal` family `listcountpastbody`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.load-refusal.listcountpastbody.fix-list-count-past-body-in-map-value` | a reader refuses a list count past its body inside a map value where the reference framing refuses | `inputs.tests` (113 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/javatable/listcountpastbody_test.go:29` |
 
 #### `load-refusal` family `lists`, 2 tests
 
@@ -7729,23 +7464,11 @@ hostile bytes are refused in every build, with the named reason.
 |---|---|---|---|---|
 | `L.functional.load-refusal.loadmessages-over-capacity.load-messages-over-capacity-returns-zero` | a message batch whose count is above the caller's storage is refused by name, returns 0 and leaves every value at its declared default | `inputs.tests` (113 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/jstable/loadmessages_over_capacity_test.go:13` |
 
-#### `load-refusal` family `loadout-length-damage-refused`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.load-refusal.loadout-length-damage-refused.fix-loadout-length-damage-refused` | a mutant with a damaged length pass is refused by the load, discarding the whole load with no value and a refused or damaged report | `inputs.tests` (113 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/javatable/loadout_length_damage_refused_test.go:25` |
-
 #### `load-refusal` family `loadrefusalreasons`, 1 test
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.load-refusal.loadrefusalreasons.load-refusal-reason-pins` | a reader's verdict on each pinned row is accept or refuse as pinned, and a refused count-cap row leaves the load report with no counter moved | `inputs.tests` (97 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/gotable/loadrefusalreasons_test.go:18` |
-
-#### `load-refusal` family `loginrequest-damagedcount-refused`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.load-refusal.loginrequest-damagedcount-refused.fix-login-request-damaged-count-refused` | a bytes field with a damaged count makes the load refuse, discarding the whole load | `inputs.tests` (118 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/javatable/loginrequest_damagedcount_refused_test.go:22` |
 
 #### `load-refusal` family `lua-blockeligibility`, 2 tests
 
@@ -7770,14 +7493,8 @@ hostile bytes are refused in every build, with the named reason.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.load-refusal.map-repeated-key-widen.map-repeated-key-last-kind-wins` | a repeated field id inside a map entry body is wire damage and refuses the whole load | `inputs.tests` (426 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/ctable/map_repeated_key_widen_test.go:19` |
+| `L.functional.load-refusal.map-repeated-key-widen.map-repeated-key-last-kind-wins` | a repeated field id inside a map entry body is wire damage and refuses the whole load | `inputs.tests` (317 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/ctable/map_repeated_key_widen_test.go:19` |
 | `L.functional.load-refusal.map-repeated-key-widen.map-repeated-key-refused` | a map entry body that repeats a key refuses the whole load | `inputs.tests` (312 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/cpptable/map_repeated_key_widen_test.go:16` |
-
-#### `load-refusal` family `mapentry-damage-refused`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.load-refusal.mapentry-damage-refused.fix-map-entry-damage-refused` | a damaged map entry makes the load refuse, discarding the whole load | `inputs.tests` (108 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/javatable/mapentry_damage_refused_test.go:23` |
 
 #### `load-refusal` family `mapkeybound`, 1 test
 
@@ -7797,12 +7514,6 @@ hostile bytes are refused in every build, with the named reason.
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.load-refusal.mapshape.map-value-shape-preserves-presence` | a map of optional values reads null as absent, refuses another wrong shape as kind\_mismatch and a repeated key as malformed | `inputs.tests` (120 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/elixirtable/mapshape_test.go:11` |
-
-#### `load-refusal` family `matchresultfile-damage-refused`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.load-refusal.matchresultfile-damage-refused.fix-match-result-file-damage-refused` | a damaged result file read is refused, discarding the whole load | `inputs.tests` (115 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/javatable/matchresultfile_damage_refused_test.go:26` |
 
 #### `load-refusal` family `measuredamage`, 1 test
 
@@ -7848,7 +7559,7 @@ hostile bytes are refused in every build, with the named reason.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.load-refusal.message-announce-shape-bounds.announce-shape-bounds-unsigned` | announce shape bounds hold wire values as unsigned, including values at or above 2^63 | `inputs.tests` (218 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/cpptable/message_announce_shape_bounds_test.go:187` |
+| `L.functional.load-refusal.message-announce-shape-bounds.announce-shape-bounds-unsigned` | announce shape bounds hold wire values as unsigned, including values at or above 2^63 | `inputs.tests` (108 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/cpptable/message_announce_shape_bounds_test.go:187` |
 
 #### `load-refusal` family `message-announced-kind`, 1 test
 
@@ -7872,7 +7583,7 @@ hostile bytes are refused in every build, with the named reason.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.load-refusal.message-depth-boundary.generated-message-depth-boundary` | the message reader accepts nesting at the depth limit and refuses nesting one level past it, and a shifted depth guard turns the probe red | `inputs.tests` (958 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/gotable/message_depth_boundary_test.go:296` |
+| `L.functional.load-refusal.message-depth-boundary.generated-message-depth-boundary` | the message reader accepts nesting at the depth limit and refuses nesting one level past it, and a shifted depth guard turns the probe red | `inputs.tests` (850 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/gotable/message_depth_boundary_test.go:296` |
 
 #### `load-refusal` family `message-form-rules`, 1 test
 
@@ -7915,12 +7626,6 @@ hostile bytes are refused in every build, with the named reason.
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.load-refusal.message-named-integer.message-named-integer-held-whole` | a message integer read by name is rebuilt whole and refused out\_of\_range when outside the announced or reader's kind and never masked, and a skipped union field written with arm reference 0 is refused | `inputs.tests` (106 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/jstable/message_named_integer_test.go:59` |
-
-#### `load-refusal` family `message-named-integer-whole`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.load-refusal.message-named-integer-whole.message-named-integer-held-whole-and-union-field-arm-zero` | a message integer read by name is rebuilt whole and refused out\_of\_range when outside the announced or reader's kind and never masked, and a skipped union field written with arm reference 0 is refused | `inputs.tests` (132 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/javatable/message_named_integer_whole_test.go:136` |
 
 #### `load-refusal` family `message-prior-shapes`, 1 test
 
@@ -8000,25 +7705,17 @@ hostile bytes are refused in every build, with the named reason.
 | `L.functional.load-refusal.messageform.message-form-damage-refuses-the-batch` | damage inside one body of a message batch discards the whole batch on both the tolerant and the strict read | `inputs.tests` (116 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/luautable/messageform_test.go:305` |
 | `L.functional.load-refusal.messageform.message-form-is-fixed-tables-only` | the message batch verbs refuse a variable root by name, while a fixed root is not refused | `inputs.tests` (328 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/luatable/messageform_test.go:336` |
 
-#### `load-refusal` family `messageform-announce`, 3 tests
+#### `load-refusal` family `messageform-announce`, 1 test
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.load-refusal.messageform-announce.announce-id-table-count` | an announcement reader enforces the id table's count and distinctness, as the reference does | `inputs.tests` (104 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/darttable/messageform_announce_test.go:441` |
-| `L.functional.load-refusal.messageform-announce.announcement-budgets` | an announcement reader enforces the announcement's byte and entry budgets | `inputs.tests` (103 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/javatable/messageform_announce_test.go:304` |
-| `L.functional.load-refusal.messageform-announce.message-form-announce-r9-max-bytes` | an announcement reader enforces the maximum announcement byte size | `inputs.tests` (113 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/javatable/messageform_announce_test.go:248` |
 
 #### `load-refusal` family `messageform-announce-capacity`, 1 test
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.load-refusal.messageform-announce-capacity.announce-entry-capacity` | an announcement larger than the receiving vocabulary's entry capacity is refused by name without raising, and a list of exactly the capacity is accepted | `inputs.tests` (105 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/darttable/messageform_announce_capacity_test.go:28` |
-
-#### `load-refusal` family `messageform-announce-fileread`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.load-refusal.messageform-announce-fileread.announce-read-is-a-file-read` | the announcement reader gives the file reader's verdicts and unknown count for each case, as the reference does | `inputs.tests` (107 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/javatable/messageform_announce_fileread_test.go:170` |
 
 #### `load-refusal` family `messageform-announce-oneencoding`, 1 test
 
@@ -8091,7 +7788,7 @@ hostile bytes are refused in every build, with the named reason.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.load-refusal.messageform-repeated-id.message-body-repeated-field-refuses` | a message body that names one field twice is refused | `inputs.tests` (229 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/rusttable/messageform_repeated_id_test.go:49` |
+| `L.functional.load-refusal.messageform-repeated-id.message-body-repeated-field-refuses` | a message body that names one field twice is refused | `inputs.tests` (115 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/rusttable/messageform_repeated_id_test.go:49` |
 
 #### `load-refusal` family `messageform-reset`, 1 test
 
@@ -8124,12 +7821,6 @@ hostile bytes are refused in every build, with the named reason.
 | `L.functional.load-refusal.messageform-strict.message-batch-strict-read` | the strict message batch read refuses a value past its declared range as out\_of\_range with no messages, while a clean value reads | `inputs.tests` (97 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/cpptable/message_form_strict_test.go:160` |
 | `L.functional.load-refusal.messageform-strict.message-form-strict` | a strict announcement refuses an endpoint of another build version with a typed error, while the default stays tolerant | `inputs.tests` (198 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/gotable/messageform_strict_test.go:10` |
 
-#### `load-refusal` family `messageform-strictversion`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.load-refusal.messageform-strictversion.announce-strict-build-version` | under the strict announcement rule a refusal carries both build versions on the report and is terminal, while the default is unchanged | `inputs.tests` (110 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/javatable/messageform_strictversion_test.go:25` |
-
 #### `load-refusal` family `messageform-text`, 1 test
 
 | full name | checks | inputs | expected result | source |
@@ -8142,17 +7833,11 @@ hostile bytes are refused in every build, with the named reason.
 |---|---|---|---|---|
 | `L.functional.load-refusal.messageform-text-shape.load-messages-refuses-text-off-shape` | a message-form reader refuses a whole batch in which a text value is off its declared shape, while a lawful batch still loads | `inputs.tests` (121 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/elixirtable/messageform_text_shape_test.go:67` |
 
-#### `load-refusal` family `messageform-unknown-reference`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.load-refusal.messageform-unknown-reference.fix-message-unknown-reference-refused` | a message-form reader refuses a batch whose body names a reference the announcement never announced | `inputs.tests` (117 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/javatable/messageform_unknown_reference_test.go:37` |
-
 #### `load-refusal` family `messageform-zero-width-run`, 1 test
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.load-refusal.messageform-zero-width-run.message-zero-width-run-is-bounded` | a message announcement that makes a run of zero-width elements huge is bounded and refused instead of looping or allocating without limit | `inputs.tests` (340 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/rusttable/messageform_zero_width_run_test.go:51` |
+| `L.functional.load-refusal.messageform-zero-width-run.message-zero-width-run-is-bounded` | a message announcement that makes a run of zero-width elements huge is bounded and refused instead of looping or allocating without limit | `inputs.tests` (229 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/rusttable/messageform_zero_width_run_test.go:51` |
 
 #### `load-refusal` family `messageheld`, 1 test
 
@@ -8164,7 +7849,7 @@ hostile bytes are refused in every build, with the named reason.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.load-refusal.messageintdomain.message-integer-held-to-reader-kind` | a message-form integer is rebuilt as base plus offset and held to the reader's own bound, so a value outside it refuses the batch while a lawful widening still reads | `inputs.tests` (345 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/gotable/messageintdomain_test.go:12` |
+| `L.functional.load-refusal.messageintdomain.message-integer-held-to-reader-kind` | a message-form integer is rebuilt as base plus offset and held to the reader's own bound, so a value outside it refuses the batch while a lawful widening still reads | `inputs.tests` (233 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/gotable/messageintdomain_test.go:12` |
 
 #### `load-refusal` family `messageoneencoding`, 1 test
 
@@ -8231,12 +7916,6 @@ hostile bytes are refused in every build, with the named reason.
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.load-refusal.nested-union-trailing.nested-union-arm-trailing-bytes-refused` | a reader refuses a nested union arm that has trailing bytes after its body | `inputs.tests` (112 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/cpptable/nested_union_trailing_test.go:81` |
-
-#### `load-refusal` family `nestedbody-overlong-refused`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.load-refusal.nestedbody-overlong-refused.fix-nested-body-over-long-refused` | a message-form reader refuses a union arm whose table body's length runs past its own terminator and discards the whole load | `inputs.tests` (112 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/javatable/nestedbody_overlong_refused_test.go:27` |
 
 #### `load-refusal` family `node-record-terminator`, 2 tests
 
@@ -8366,7 +8045,7 @@ hostile bytes are refused in every build, with the named reason.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.load-refusal.r17-flags-past-width.r17-flags-past-width-refuse` | a flags value with bits past the reader's declared width is refused out\_of\_range while an in-width value reads | `inputs.tests` (424 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/cstable/r17_flags_past_width_test.go:105` |
+| `L.functional.load-refusal.r17-flags-past-width.r17-flags-past-width-refuse` | a flags value with bits past the reader's declared width is refused out\_of\_range while an in-width value reads | `inputs.tests` (319 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/cstable/r17_flags_past_width_test.go:105` |
 
 #### `load-refusal` family `range-construct`, 1 test
 
@@ -8467,23 +8146,11 @@ hostile bytes are refused in every build, with the named reason.
 |---|---|---|---|---|
 | `L.functional.load-refusal.region-load-wire-finite.region-load-wire-finite` | a region load refuses a wire holding a non-finite float in the managed, region and builder paths while a finite float loads | `inputs.tests` (99 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/cstable/region_load_wire_finite_test.go:38` |
 
-#### `load-refusal` family `repeatedarrayfield-damage-refused`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.load-refusal.repeatedarrayfield-damage-refused.fix-repeated-array-field-damage-refused` | a wire repeating a top-level array field with the later occurrence damaged is refused whole and yields no value | `inputs.tests` (118 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/javatable/repeatedarrayfield_damage_refused_test.go:18` |
-
 #### `load-refusal` family `repeatedtextillformed`, 1 test
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.load-refusal.repeatedtextillformed.wire-repeated-text-ill-formed-resets` | a wire repeating a text field whose later copy holds a zero byte or invalid UTF-8 is refused and the read resets | `inputs.tests` (115 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/darttable/repeatedtextillformed_test.go:37` |
-
-#### `load-refusal` family `report-reset-damage-cycle`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.load-refusal.report-reset-damage-cycle.report-reset-damage-reason-and-cook-cycle` | a read resets its report at the start, framing damage reports wire\_damaged, and a cyclic pointer graph is refused as data\_cycle on cook | `inputs.tests` (119 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/javatable/java_report_reset_damage_cycle_test.go:15` |
 
 #### `load-refusal` family `required`, 6 tests
 
@@ -8602,12 +8269,6 @@ hostile bytes are refused in every build, with the named reason.
 |---|---|---|---|---|
 | `L.functional.load-refusal.sharedblobstrict.every-read-refuses-shared-blob` | every read form refuses a blob node named by two slots, while the same data with independently owned blobs reads | `inputs.tests` (117 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/elixirtable/sharedblobstrict_test.go:107` |
 
-#### `load-refusal` family `shortarray-damage-refused`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.load-refusal.shortarray-damage-refused.fix-short-array-damage-refused` | a bytes(N) array body shorter than its declared count is damage and the load is refused with no value | `inputs.tests` (110 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/javatable/shortarray_damage_refused_test.go:24` |
-
 #### `load-refusal` family `simstatekind-refused`, 1 test
 
 | full name | checks | inputs | expected result | source |
@@ -8711,12 +8372,6 @@ hostile bytes are refused in every build, with the named reason.
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.load-refusal.strictwirefirst.strict-read-checks-wire-first` | a strict read of a value whose first field is repeated after a long string is refused as wire damage before the string work is counted | `inputs.tests` (121 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/squirreltable/strictwirefirst_test.go:20` |
-
-#### `load-refusal` family `tblw-fleet-nodetable-kind-refused`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.load-refusal.tblw-fleet-nodetable-kind-refused.fix-tblw-fleet-node-table-kind-refused` | a node-table field whose kind byte is wrong is damage and the load is refused with no value | `inputs.tests` (115 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/javatable/tblw_fleet_nodetable_kind_refused_test.go:24` |
 
 #### `load-refusal` family `text-comma`, 1 test
 
@@ -8836,7 +8491,7 @@ hostile bytes are refused in every build, with the named reason.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.load-refusal.textread-unknown-key-once.text-repeated-key-every-object` | a JSON text read refuses a repeated key in every object it walks, whether or not the key names a field | `inputs.tests` (221 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/javatable/textread_unknown_key_once_test.go:57` |
+| `L.functional.load-refusal.textread-unknown-key-once.text-repeated-key-every-object` | a JSON text read refuses a repeated key in every object it walks, whether or not the key names a field | `inputs.tests` (112 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/javatable/textread_unknown_key_once_test.go:57` |
 
 #### `load-refusal` family `textrefusal`, 2 tests
 
@@ -8893,12 +8548,6 @@ hostile bytes are refused in every build, with the named reason.
 |---|---|---|---|---|
 | `L.functional.load-refusal.variableloadnames-closedrefusalreasons.variable-load-names-closed-refusal-reasons` | The variable-form loader names the refused form as message-form-as-file for form 2 and newer-form for every other form byte it does not carry. | `inputs.tests` (113 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/gotable/variableloadnames_closedrefusalreasons_test.go:11` |
 
-#### `load-refusal` family `variablemaps`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.load-refusal.variablemaps.variable-map-damage-and-retention` | A variable-form reader refuses damaged map entries (unknown ids, slack bytes, repeated keys) and keeps the retained fields of a map it must preserve. | `inputs.tests` (113 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/javatable/variablemaps_test.go:52` |
-
 #### `load-refusal` family `vt-text-cook-message`, 1 test
 
 | full name | checks | inputs | expected result | source |
@@ -8910,7 +8559,7 @@ hostile bytes are refused in every build, with the named reason.
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.load-refusal.vtcells-strict.variable-cells-refuse-the-framing-vectors` | Every framing vector owned by each of the variable cells is refused by the strict load. | `inputs.tests` (117 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/luatable/vtcells_strict_test.go:69` |
-| `L.functional.load-refusal.vtcells-strict.variable-cells-strict` | the strict one-read rule holds for the variable-table cells: a read returns the whole value or refuses | `inputs.tests` (599 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/ctable/vtcells_strict_test.go:275` |
+| `L.functional.load-refusal.vtcells-strict.variable-cells-strict` | the strict one-read rule holds for the variable-table cells: a read returns the whole value or refuses | `inputs.tests` (497 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/ctable/vtcells_strict_test.go:275` |
 | `L.functional.load-refusal.vtcells-strict.variable-shape-cells-strict` | the strict one-read rule holds for the variable-shape cells: a read returns the whole value or refuses the whole load | `inputs.tests` (209 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/gotable/vtcells_strict_test.go:124` |
 
 #### `load-refusal` family `vtwide`, 1 test
@@ -9135,7 +8784,7 @@ generated source compiles and is clean.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.codegen.cardsretain.card-descriptors-name-every-field` | the generated card descriptors name every field in declaration order with its kind, shape and bound, against a vocabulary pinned in the test | `inputs.tests` (541 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/rusttable/cardsretain_test.go:42` |
+| `L.functional.codegen.cardsretain.card-descriptors-name-every-field` | the generated card descriptors name every field in declaration order with its kind, shape and bound, against a vocabulary pinned in the test | `inputs.tests` (433 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/rusttable/cardsretain_test.go:42` |
 
 #### `codegen` family `cook`, 1 test
 
@@ -9196,12 +8845,6 @@ generated source compiles and is clean.
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.codegen.enumtypeword.enum-variant-type-words` | an enum whose variants are named like reserved words generates, compiles, and round-trips binary, base64 and JSON text | `inputs.tests` (98 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/enumtypeword_test.go:18` |
-
-#### `codegen` family `fixed-dead-bytes`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.codegen.fixed-dead-bytes.fixed-optional-reset-uses-static-wide-union-default` | the reset of an absent optional uses the static default of a wide union member | `inputs.tests` (124 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/fixed_dead_bytes_test.go:93` |
 
 #### `codegen` family `fixed-float32-default`, 1 test
 
@@ -9275,7 +8918,7 @@ generated source compiles and is clean.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.codegen.forms.declared-forms` | each declared set of forms generates the matching runtime files and only those | `inputs.tests` (285 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/cstable/forms_test.go:13` |
+| `L.functional.codegen.forms.declared-forms` | each declared set of forms generates the matching runtime files and only those | `inputs.tests` (189 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/cstable/forms_test.go:13` |
 | `L.functional.codegen.forms.forms-declaration` | a forms declaration admits only the closed vocabulary of forms and wire bytes match the engine on the same schema | `inputs.tests` (100 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/luautable/forms_test.go:109` |
 | `L.functional.codegen.forms.table-honours-the-forms-declaration` | a table emits only the forms its declaration names and refuses the others | `inputs.tests` (124 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/lobstertable/forms_test.go:91` |
 
@@ -9296,12 +8939,6 @@ generated source compiles and is clean.
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.codegen.generalarm.unit-view-general-arm-descriptors-functional` | a unit view carries the general-arm descriptors with the right widths and ranges | `inputs.tests` (120 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/luatable/generalarm_test.go:87` |
-
-#### `codegen` family `generationheadroom`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.codegen.generationheadroom.wire-check-generation-headroom` | generation leaves headroom in the wire-check so the generated code compiles for the boundary sizes | `inputs.tests` (111 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/generationheadroom_test.go:181` |
 
 #### `codegen` family `go-array-length-cache`, 1 test
 
@@ -9447,12 +9084,6 @@ generated source compiles and is clean.
 | `L.functional.codegen.java-maxbits.giant-aligned-max-bits-literal-compiles` | a schema with a giant aligned max-bits literal generates source that compiles | `inputs.tests` (113 bytes, held in the registry row's `inputs.tests`) | the java Go test for the case (inputs.tests) passes | `internal/codegen/java/maxbits_test.go:84` |
 | `L.functional.codegen.java-maxbits.giant-max-bits-literal-compiles` | a schema with a giant max-bits literal generates source that compiles | `inputs.tests` (106 bytes, held in the registry row's `inputs.tests`) | the java Go test for the case (inputs.tests) passes | `internal/codegen/java/maxbits_test.go:38` |
 
-#### `codegen` family `java-variableunions`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.codegen.java-variableunions.variable-union-arm-named-tag-compiles` | A union arm named like the discriminator member gets a distinct member name and the generated source compiles. | `inputs.tests` (112 bytes, held in the registry row's `inputs.tests`) | the java Go test for the case (inputs.tests) passes | `internal/codegen/javatable/variableunions_test.go:18` |
-
 #### `codegen` family `js-builtin-shadow`, 2 tests
 
 | full name | checks | inputs | expected result | source |
@@ -9490,12 +9121,6 @@ generated source compiles and is clean.
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.codegen.keyedbounds.keyed-arrays-are-held-at-both-ends` | a keyed array holds exactly one slot per named variant, with key k in slot k-1 and both ends outside refused | `inputs.tests` (230 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/dart/keyedbounds_test.go:27` |
-
-#### `codegen` family `keyedindex`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.codegen.keyedindex.keyed-array-indexing` | a keyed array accessor behaves correctly at both ends in unchecked and checked builds | `inputs.tests` (102 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/keyedindex_test.go:180` |
 
 #### `codegen` family `layoutagree`, 1 test
 
@@ -9602,12 +9227,6 @@ generated source compiles and is clean.
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.codegen.matched-width.matched-scalar-width-shape` | the generated load of a scalar read at its matched width uses fixed-width reads and keeps the kind switch to the widen arm | `inputs.tests` (195 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/matched_width_test.go:15` |
-
-#### `codegen` family `message-vocabulary-array-of-integer-arrays`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.codegen.message-vocabulary-array-of-integer-arrays.message-vocabulary-array-of-integer-arrays` | the message vocabulary announces and reads an array whose elements are integer arrays | `inputs.tests` (121 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/message_vocabulary_array_of_integer_arrays_test.go:22` |
 
 #### `codegen` family `messageform-fixedonly`, 1 test
 
@@ -9898,12 +9517,6 @@ generated source compiles and is clean.
 |---|---|---|---|---|
 | `L.functional.codegen.textformwrite.hand-editable-text-write` | a text form read answers a document that retains the source bytes, so an unedited document writes back byte for byte and an edit of one scalar changes only that value's token span, matching the reference writer | `inputs.tests` (102 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/luatable/textformwrite_test.go:22` |
 
-#### `codegen` family `textint64domain`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.codegen.textint64domain.text-int64-domain-before-cast` | a text read checks a string holding an int64 against the int64 domain before converting, so bare numerics, fractions, exponents and out-of-domain strings are refused and in-domain endpoints keep their value | `inputs.tests` (109 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/textint64domain_test.go:21` |
-
 #### `codegen` family `textlinear`, 1 test
 
 | full name | checks | inputs | expected result | source |
@@ -9941,23 +9554,11 @@ generated source compiles and is clean.
 | `L.functional.codegen.textnumber-linear.text-long-number-token-functional` | a very long number token in text is read in linear time and gets the reference verdict | `inputs.tests` (113 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/darttable/textnumber_linear_test.go:150` |
 | `L.functional.codegen.textnumber-linear.text-number-token-verdicts` | number tokens in text, across a broad set of spellings, get the same verdict as the reference engine | `inputs.tests` (107 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/darttable/textnumber_linear_test.go:158` |
 
-#### `codegen` family `textread-large-map`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.codegen.textread-large-map.text-large-map-functional` | a text read of very large maps, including repeated-key twins, agrees with the reference engine in verdict and value | `inputs.tests` (106 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/textread_large_map_test.go:91` |
-
 #### `codegen` family `texttransport`, 1 test
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.codegen.texttransport.table-wire-over-a-text-transport` | a table has two text carriers, the base64 of the wire and the JSON text form, and both round-trip byte for byte against the binary wire and refuse damaged or newer input by name | `inputs.tests` (103 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/texttransport_test.go:14` |
-
-#### `codegen` family `textwrite-unnamed-values`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.codegen.textwrite-unnamed-values.to-json-asserts-named-values` | the text writer asserts that every enum value and flag bit it writes is named, while a lawful twin writes the reference text and reads back equal | `inputs.tests` (108 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/textwrite_unnamed_values_test.go:193` |
 
 #### `codegen` family `textzero`, 1 test
 
@@ -10005,12 +9606,6 @@ generated source compiles and is clean.
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.codegen.u64topjson.json-reads-in-range-u64-top-unclamped` | a JSON read of an in-range uint64 above int64 max is unclamped, and a value below the minimum still clamps to the minimum | `inputs.tests` (109 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/u64topjson_test.go:10` |
-
-#### `codegen` family `uint64json`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.codegen.uint64json.from-json-keeps-uint64-above-int64-max` | JSON reads of uint64 values above int64 max keep them exactly, in fields, lists and union arms, matching the reference engine's values, saved bytes and verdicts, with int64 staying signed | `inputs.tests` (116 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/uint64json_test.go:26` |
 
 #### `codegen` family `unbounded-maps-strict`, 1 test
 
@@ -10114,23 +9709,11 @@ generated source compiles and is clean.
 | `L.functional.codegen.values.union-arm-payloads` | union arm payloads of every kind round-trip | `tests: {"go":{"package":"./internal/codegen/gotable","seconds":1.99,"test":"TestUnionArmPayloads"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/values_test.go:154` |
 | `L.functional.codegen.values.wide-values` | wide integer and fixed-point values round-trip at their extremes | `tests: {"go":{"package":"./internal/codegen/gotable","seconds":1.17,"test":"TestWideValues"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/values_test.go:328` |
 
-#### `codegen` family `variableconformance`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.codegen.variableconformance.stage-variable-conformance` | The native variable codecs generate for the shared fixture units and compile. | `inputs.tests` (108 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/variableconformance_test.go:17` |
-
-#### `codegen` family `variableoptional`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.codegen.variableoptional.fixed-general-arm-payloads` | A fixed table holding a union with general arm payloads generates storage by the same field walk as a table member and round-trips each arm. | `inputs.tests` (107 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/variableoptional_test.go:82` |
-
 #### `codegen` family `view`, 2 tests
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.codegen.view.unit-view-descriptors` | the emitted unit view carries descriptors for the unit's tables and types with the fields, vocabulary and constants the schema declares | `inputs.tests` (519 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/rusttable/view_test.go:30` |
+| `L.functional.codegen.view.unit-view-descriptors` | the emitted unit view carries descriptors for the unit's tables and types with the fields, vocabulary and constants the schema declares | `inputs.tests` (417 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/rusttable/view_test.go:30` |
 | `L.functional.codegen.view.unit-view-packet-storage` | a type no table reaches has a view descriptor whose fields carry no table-wire identity | `inputs.tests` (305 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/view_test.go:5` |
 
 #### `codegen` family `viewdoctags-carry`, 1 test
@@ -10144,12 +9727,6 @@ generated source compiles and is clean.
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.codegen.viewvocabid.view-ids-key-on-the-vocabulary` | A field's variant id and key id are keyed on the vocabulary a table closure reaches, so a vocabulary no table reaches answers zero everywhere. | `inputs.tests` (101 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/viewvocabid_test.go:10` |
-
-#### `codegen` family `vocabulary-constructed`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.codegen.vocabulary-constructed.vocabulary-usable-as-constructed` | A freshly constructed vocabulary has announced no storage and its announce and batch checks answer as the reference zero vocabulary does. | `inputs.tests` (113 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/vocabulary_constructed_test.go:192` |
 
 #### `codegen` family `vtfixedclass`, 1 test
 
@@ -10455,12 +10032,6 @@ one schema version reads or writes another's data.
 |---|---|---|---|---|
 | `L.functional.evolution.defaults-renames.defaults-and-renames` | string, bytes and flags defaults, renames of tables, fields, variants and arms, and a retired variant agree with the reference engine on an old wire, including re-load and re-save | `inputs.tests` (111 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/lobstertable/defaults_renames_test.go:348` |
 
-#### `evolution` family `enum-deprecated-plan`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.evolution.enum-deprecated-plan.compiled-plan-deprecated-variant-reads-default` | a retired enum variant reads as the field default and the array element default on the compiled plan, with nothing counted unknown | `inputs.tests` (125 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/enum_deprecated_plan_test.go:20` |
-
 #### `evolution` family `evolution`, 1 test
 
 | full name | checks | inputs | expected result | source |
@@ -10526,20 +10097,20 @@ one schema version reads or writes another's data.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.evolution.fixed-evolution-rows.fixed-row-array-bounds` | a fixed row reads the writer's counted-array bound, refusing counts past it even when inside the reader's wider bound and reading at exactly the writer's bound | `inputs.tests` (217 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/unitytable/fixed_evolution_rows_test.go:489` |
-| `L.functional.evolution.fixed-evolution-rows.fixed-row-hostile-input` | every byte of a fixed record poisoned several ways either refuses by a declared name or lands within bounds, a bad hash on the last record refuses the batch, and the wrong plan is refused | `inputs.tests` (219 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/unitytable/fixed_evolution_rows_test.go:571` |
-| `L.functional.evolution.fixed-evolution-rows.fixed-row-normalization` | a fixed row refuses a bool or present byte other than 0 or 1 as wire damage and refuses a nonzero byte in an absent optional's payload | `inputs.tests` (221 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/unitytable/fixed_evolution_rows_test.go:349` |
-| `L.functional.evolution.fixed-evolution-rows.fixed-row-numeric-evolution` | a fixed row widens an older writer's narrower integer and float exactly, counts each widening once per record, and lands added fields at their defaults | `inputs.tests` (228 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/unitytable/fixed_evolution_rows_test.go:126` |
-| `L.functional.evolution.fixed-evolution-rows.fixed-row-ordinals` | a fixed row refuses an enum ordinal or union tag past the writer's variants or arms on every plan, even when the reader declares more | `inputs.tests` (211 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/unitytable/fixed_evolution_rows_test.go:297` |
-| `L.functional.evolution.fixed-evolution-rows.fixed-row-reports` | a fixed row's report resets per load and counts nothing when an unlawful lineage entry that drops a writer field is refused | `inputs.tests` (209 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/unitytable/fixed_evolution_rows_test.go:405` |
-| `L.functional.evolution.fixed-evolution-rows.fixed-row-scalar-bounds` | a fixed row refuses a ranged integer one past either end of its range and a compressed float outside its range, and lands values inside it | `inputs.tests` (219 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/unitytable/fixed_evolution_rows_test.go:199` |
-| `L.functional.evolution.fixed-evolution-rows.fixed-row-text` | a fixed row refuses a text length past capacity, ill-formed UTF-8, a zero in used bytes and a nonzero byte in the dead slack | `inputs.tests` (203 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/unitytable/fixed_evolution_rows_test.go:528` |
+| `L.functional.evolution.fixed-evolution-rows.fixed-row-array-bounds` | a fixed row reads the writer's counted-array bound, refusing counts past it even when inside the reader's wider bound and reading at exactly the writer's bound | `inputs.tests` (112 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/unitytable/fixed_evolution_rows_test.go:489` |
+| `L.functional.evolution.fixed-evolution-rows.fixed-row-hostile-input` | every byte of a fixed record poisoned several ways either refuses by a declared name or lands within bounds, a bad hash on the last record refuses the batch, and the wrong plan is refused | `inputs.tests` (113 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/unitytable/fixed_evolution_rows_test.go:571` |
+| `L.functional.evolution.fixed-evolution-rows.fixed-row-normalization` | a fixed row refuses a bool or present byte other than 0 or 1 as wire damage and refuses a nonzero byte in an absent optional's payload | `inputs.tests` (114 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/unitytable/fixed_evolution_rows_test.go:349` |
+| `L.functional.evolution.fixed-evolution-rows.fixed-row-numeric-evolution` | a fixed row widens an older writer's narrower integer and float exactly, counts each widening once per record, and lands added fields at their defaults | `inputs.tests` (117 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/unitytable/fixed_evolution_rows_test.go:126` |
+| `L.functional.evolution.fixed-evolution-rows.fixed-row-ordinals` | a fixed row refuses an enum ordinal or union tag past the writer's variants or arms on every plan, even when the reader declares more | `inputs.tests` (109 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/unitytable/fixed_evolution_rows_test.go:297` |
+| `L.functional.evolution.fixed-evolution-rows.fixed-row-reports` | a fixed row's report resets per load and counts nothing when an unlawful lineage entry that drops a writer field is refused | `inputs.tests` (108 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/unitytable/fixed_evolution_rows_test.go:405` |
+| `L.functional.evolution.fixed-evolution-rows.fixed-row-scalar-bounds` | a fixed row refuses a ranged integer one past either end of its range and a compressed float outside its range, and lands values inside it | `inputs.tests` (113 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/unitytable/fixed_evolution_rows_test.go:199` |
+| `L.functional.evolution.fixed-evolution-rows.fixed-row-text` | a fixed row refuses a text length past capacity, ill-formed UTF-8, a zero in used bytes and a nonzero byte in the dead slack | `inputs.tests` (105 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/unitytable/fixed_evolution_rows_test.go:528` |
 
 #### `evolution` family `fixed-grown-bound`, 2 tests
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.evolution.fixed-grown-bound.fixed-form-grown-bound` | records written by the reference under a smaller fixed array bound read under the grown bound with every grown slot holding its born element | `inputs.tests` (322 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/unitytable/fixed_grown_bound_test.go:14` |
+| `L.functional.evolution.fixed-grown-bound.fixed-form-grown-bound` | records written by the reference under a smaller fixed array bound read under the grown bound with every grown slot holding its born element | `inputs.tests` (217 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/unitytable/fixed_grown_bound_test.go:14` |
 | `L.functional.evolution.fixed-grown-bound.fixed-form-grown-bound-on-the-reference-bytes` | a counted array grown by a newer schema reads the older writer's reference bytes with the absent slots zero-filled | `inputs.tests` (119 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/luatable/fixed_grown_bound_test.go:81` |
 
 #### `evolution` family `fixed-lineage-kind-moved`, 1 test
@@ -10559,7 +10130,7 @@ one schema version reads or writes another's data.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.evolution.fixed-proof-evolution.fixed-proof-evolution` | the shared fixed-table evolution, plan and file-envelope rows read and write correctly against the reference corpus | `inputs.tests` (640 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/unitytable/fixed_proof_evolution_test.go:16` |
+| `L.functional.evolution.fixed-proof-evolution.fixed-proof-evolution` | the shared fixed-table evolution, plan and file-envelope rows read and write correctly against the reference corpus | `inputs.tests` (535 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/unitytable/fixed_proof_evolution_test.go:16` |
 | `L.functional.evolution.fixed-proof-evolution.fixed-proof-evolution-numeric` | signed and float widening of an older file agrees with independently generated reference files and a changed widening plan is detected | `inputs.tests` (225 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/pythontable/fixed_proof_evolution_test.go:31` |
 | `L.functional.evolution.fixed-proof-evolution.fixed-proof-evolution-retirement-control` | a retirement floor refuses a known old writer's file, and removing the floor is detected | `inputs.tests` (126 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/pythontable/fixed_proof_evolution_test.go:763` |
 | `L.functional.evolution.fixed-proof-evolution.fixed-proof-evolution-widening-corpus` | the reference's old files read through new readers, widening every numeric kind, using the old declarations as writer snapshots | `inputs.tests` (123 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/pythontable/fixed_proof_evolution_test.go:563` |
@@ -10631,11 +10202,10 @@ one schema version reads or writes another's data.
 |---|---|---|---|---|
 | `L.functional.evolution.fixedevolve.fixed-form-evolution` | A newer reader reads an older writer's fixed files through its lineage and an older reader refuses newer files, for every version row of the corpus. | `inputs.tests` (111 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/lobstertable/fixedevolve_test.go:107` |
 
-#### `evolution` family `fixedform`, 4 tests
+#### `evolution` family `fixedform`, 3 tests
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.evolution.fixedform.fixed-form-fu1-fu2` | Text in a union's second arm is read by a compiled plan after the schema appends a field. | `tests: {"java":{"package":"./internal/codegen/javatable","seconds":1.99,"test":"TestFixedFormFU1FU2"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/fixedform_test.go:383` |
 | `L.functional.evolution.fixedform.fixed-form-lineage` | a newer reader reads an older fixed-table record, widening its fields and filling the new one | `inputs.tests` (204 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/pythontable/fixedform_test.go:233` |
 | `L.functional.evolution.fixedform.fixed-form-optional-versus-plain-nesting` | A reader declaring an optional reads a writer's plain nesting as present with the payload exact. | `inputs.tests` (111 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedform_test.go:2264` |
 | `L.functional.evolution.fixedform.fixed-versioning-wrong-plan-goes-red` | The old fixed plan run over a newer record does not reproduce it, an unlocked hash is refused as layout\_unknown with no counter moved, and the same-shape control reads. | `inputs.tests` (107 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedform_test.go:2352` |
@@ -10670,7 +10240,7 @@ one schema version reads or writes another's data.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.evolution.fixedlineage-kind-moved.lineage-kind-moved-refuses` | the generated reader refuses a lineage entry whose field kind moved as layout\_malformed instead of planning it | `inputs.tests` (211 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/cstable/fixedlineage_kind_moved_test.go:116` |
+| `L.functional.evolution.fixedlineage-kind-moved.lineage-kind-moved-refuses` | the generated reader refuses a lineage entry whose field kind moved as layout\_malformed instead of planning it | `inputs.tests` (105 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/cstable/fixedlineage_kind_moved_test.go:116` |
 
 #### `evolution` family `fixedlineage-stride`, 2 tests
 
@@ -10728,20 +10298,18 @@ one schema version reads or writes another's data.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.evolution.fixedroadmap-t02.fixed-roadmap-t02-plans` | the fixed read procedure selects its lineage plan correctly, with the record size, plan limit, lane and member rules | `inputs.tests` (882 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedroadmap_t02_test.go:43` |
+| `L.functional.evolution.fixedroadmap-t02.fixed-roadmap-t02-plans` | the fixed read procedure selects its lineage plan correctly, with the record size, plan limit, lane and member rules | `inputs.tests` (783 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedroadmap_t02_test.go:43` |
 
-#### `evolution` family `fixedroadmap-t03`, 2 tests
+#### `evolution` family `fixedroadmap-t03`, 1 test
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.evolution.fixedroadmap-t03.fixed-roadmap-t03-plans-versions` | the fixed read procedure refuses below the retired-entry floor with the file's hash, enforces the fixed closure rule, and walks no stranger's layout at run time | `inputs.tests` (428 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedroadmap_t03_test.go:711` |
-| `L.functional.evolution.fixedroadmap-t03.fixed-roadmap-t03-versions` | fixed reads across layout versions land correctly, including array element growth and widened required fields | `inputs.tests` (103 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/fixedroadmap_t03_test.go:68` |
 
-#### `evolution` family `fixedroadmap-t04`, 3 tests
+#### `evolution` family `fixedroadmap-t04`, 2 tests
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.evolution.fixedroadmap-t04.fixed-roadmap-t04-evolution` | fixed reads of appended and deprecated fields land correctly under the backward-read contract | `tests: {"java":{"package":"./internal/codegen/javatable","test":"TestFixedRoadmapJavaT04Evolution"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/fixedroadmap_t04_test.go:418` |
 | `L.functional.evolution.fixedroadmap-t04.fixed-roadmap-t04-versions` | the fixed read procedure handles the required widen-ladder version changes and an optional's present byte, and the writer stores an absent optional's payload never | `inputs.tests` (622 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/ctable/fixedroadmap_t04_test.go:546` |
 | `L.functional.evolution.fixedroadmap-t04.fixed-roadmap-t04-versions-evolution` | the generated fixed-table code gives an optional a present byte plain nesting lacks, stores its payload only when present, keeps wire identity across a rename through was, raises no repeated counter, and emits no clamp that cannot fire | `inputs.tests` (222 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedroadmap_t04_test.go:43` |
 
@@ -10768,7 +10336,7 @@ one schema version reads or writes another's data.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.evolution.fixedroadmap-t14.fixed-roadmap-t14-compressed-floats` | a compressed float written by an older layout lands with the writer own bits and is never requantized by the reader | `inputs.tests` (671 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedroadmap_t14_test.go:47` |
+| `L.functional.evolution.fixedroadmap-t14.fixed-roadmap-t14-compressed-floats` | a compressed float written by an older layout lands with the writer own bits and is never requantized by the reader | `inputs.tests` (557 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedroadmap_t14_test.go:47` |
 
 #### `evolution` family `fixedroadmap-t18`, 2 tests
 
@@ -10777,27 +10345,26 @@ one schema version reads or writes another's data.
 | `L.functional.evolution.fixedroadmap-t18.fixed-roadmap-t18-exact-counters` | a read counts one widened per widened field or element per record, moves no counter on a clean append, and refuses a count past the writer's bound, a forged ordinal and an unlawful removed-field entry with no counter moved | `inputs.tests` (218 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/cpptable/fixedroadmap_t18_test.go:729` |
 | `L.functional.evolution.fixedroadmap-t18.fixed-roadmap-t18-field-evolution` | a newer reader reads an older file with a deprecated field and with each appended field kind, landing declared defaults | `inputs.tests` (110 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/cpptable/fixedroadmap_t18_test.go:309` |
 
-#### `evolution` family `fixedversioning`, 17 tests
+#### `evolution` family `fixedversioning`, 16 tests
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.evolution.fixedversioning.fixed-compiled-plan-tag-past-arm-set` | a compiled plan reading two records, the second with its union tag forged past the writer's arm set, refuses the whole read as out\_of\_range with no counter moved | `inputs.tests` (223 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/darttable/fixedversioning_test.go:814` |
 | `L.functional.evolution.fixedversioning.fixed-versioning` | a newer reader reads an older fixed file and an older reader refuses a newer one across every versioning row (floors, hash identity, lineage merge) | `tests: {"cs":{"package":"./internal/codegen/cstable","seconds":16.3,"test":"TestFixedVersioning"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/cstable/fixedversioning_test.go:148` |
-| `L.functional.evolution.fixedversioning.fixed-versioning-floor` | a file at the layout floor reads, a file one below the floor is refused as layout\_unsupported, and raising the floor by one refuses yesterdays file | `inputs.tests` (795 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedversioning_test.go:373` |
-| `L.functional.evolution.fixedversioning.fixed-versioning-forged-ordinal-both-plans` | a forged enum ordinal past the writers variants is read by both the compiled and the identity plan and both refuse or clamp it identically | `inputs.tests` (1040 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedversioning_test.go:669` |
+| `L.functional.evolution.fixedversioning.fixed-versioning-floor` | a file at the layout floor reads, a file one below the floor is refused as layout\_unsupported, and raising the floor by one refuses yesterdays file | `inputs.tests` (697 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedversioning_test.go:373` |
+| `L.functional.evolution.fixedversioning.fixed-versioning-forged-ordinal-both-plans` | a forged enum ordinal past the writers variants is read by both the compiled and the identity plan and both refuse or clamp it identically | `inputs.tests` (924 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedversioning_test.go:669` |
 | `L.functional.evolution.fixedversioning.fixed-versioning-form-header` | a fixed load reads the form byte before the file length, so each form is named by its own refusal or acceptance | `inputs.tests` (101 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedversioning_test.go:590` |
-| `L.functional.evolution.fixedversioning.fixed-versioning-hash` | a layout hash in no lineage entry is refused as layout\_unknown, a known hash with different bytes as layout\_malformed, and the reader's own hash selects the identity plan | `inputs.tests` (689 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/ctable/fixedversioning_test.go:328` |
-| `L.functional.evolution.fixedversioning.fixed-versioning-lineage-merge` | after two branches append different fields and merge, both pre-merge files read on the merged build | `inputs.tests` (852 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedversioning_test.go:538` |
+| `L.functional.evolution.fixedversioning.fixed-versioning-hash` | a layout hash in no lineage entry is refused as layout\_unknown, a known hash with different bytes as layout\_malformed, and the reader's own hash selects the identity plan | `inputs.tests` (591 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/ctable/fixedversioning_test.go:328` |
+| `L.functional.evolution.fixedversioning.fixed-versioning-lineage-merge` | after two branches append different fields and merge, both pre-merge files read on the merged build | `inputs.tests` (746 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedversioning_test.go:538` |
 | `L.functional.evolution.fixedversioning.fixed-versioning-new-reads-old` | a new reader reads each old corpus file with nothing refused, unknown at zero, widened at zero for an append and nonzero for a widening row | `inputs.tests` (841 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedversioning_test.go:155` |
 | `L.functional.evolution.fixedversioning.fixed-versioning-old-refuses-new` | an older reader refuses a newer layout as layout\_unknown before any record, reporting the file hash and nothing else, except where the edit moved no layout byte | `inputs.tests` (753 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/ctable/fixedversioning_test.go:239` |
-| `L.functional.evolution.fixedversioning.fixed-versioning-plan-too-large` | a plan slice too small for the selected lineage plan is refused as plan\_too\_large with no counter moved, while sufficient capacity reads the same file | `inputs.tests` (217 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/fixedversioning_test.go:1492` |
-| `L.functional.evolution.fixedversioning.fixed-versioning-refuse-writes-nothing` | a read whose per-record hash is forged under the selected lineage entry refuses no\_layout with every counter zero and no value from the file returned | `inputs.tests` (1013 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedversioning_test.go:731` |
-| `L.functional.evolution.fixedversioning.fixed-versioning-rows` | every versioning row, old to new and new to old, matches the reference engine bytes and values | `inputs.tests` (100 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/fixedversioning_test.go:784` |
+| `L.functional.evolution.fixedversioning.fixed-versioning-plan-too-large` | a plan slice too small for the selected lineage plan is refused as plan\_too\_large with no counter moved, while sufficient capacity reads the same file | `inputs.tests` (111 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/fixedversioning_test.go:1492` |
+| `L.functional.evolution.fixedversioning.fixed-versioning-refuse-writes-nothing` | a read whose per-record hash is forged under the selected lineage entry refuses no\_layout with every counter zero and no value from the file returned | `inputs.tests` (900 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedversioning_test.go:731` |
 | `L.functional.evolution.fixedversioning.fixed-versioning-text-cap` | a forged text length grown past the older writer bound is refused by the fixed reader | `inputs.tests` (102 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/rusttable/fixedversioning_test.go:293` |
-| `L.functional.evolution.fixedversioning.fixed-versioning-text-under-arm` | a text field under a union arm reads correctly through the compiled lineage plan across generations | `inputs.tests` (213 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/rusttable/fixedversioning_test.go:310` |
-| `L.functional.evolution.fixedversioning.fixed-versioning-text-under-arm-true-bytes` | a text field under a union arm reads correctly from noncanonical true bytes through the compiled lineage plan | `inputs.tests` (231 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/rusttable/fixedversioning_test.go:314` |
+| `L.functional.evolution.fixedversioning.fixed-versioning-text-under-arm` | a text field under a union arm reads correctly through the compiled lineage plan across generations | `inputs.tests` (107 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/rusttable/fixedversioning_test.go:310` |
+| `L.functional.evolution.fixedversioning.fixed-versioning-text-under-arm-true-bytes` | a text field under a union arm reads correctly from noncanonical true bytes through the compiled lineage plan | `inputs.tests` (116 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/rusttable/fixedversioning_test.go:314` |
 | `L.functional.evolution.fixedversioning.fixed-versioning-union-arm-text` | a text field under a union arm reads across two generations with the guard holding the writers ordinal | `inputs.tests` (215 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/elixirtable/fixedversioning_test.go:558` |
-| `L.functional.evolution.fixedversioning.fixed-versioning-writer-bound-count` | a count word forged between the writer bound and the reader bound is refused | `inputs.tests` (987 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedversioning_test.go:245` |
+| `L.functional.evolution.fixedversioning.fixed-versioning-writer-bound-count` | a count word forged between the writer bound and the reader bound is refused | `inputs.tests` (877 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedversioning_test.go:245` |
 
 #### `evolution` family `fixedversioning-arm-text`, 1 test
 
@@ -10809,19 +10376,19 @@ one schema version reads or writes another's data.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.evolution.fixedversioning-cfloat-range-widen.fixed-versioning-cfloat-range-widen` | a reader that widens a compressed float range reads files written under the narrower range | `inputs.tests` (985 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedversioning_cfloat_range_widen_test.go:27` |
+| `L.functional.evolution.fixedversioning-cfloat-range-widen.fixed-versioning-cfloat-range-widen` | a reader that widens a compressed float range reads files written under the narrower range | `inputs.tests` (875 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedversioning_cfloat_range_widen_test.go:27` |
 
 #### `evolution` family `fixedversioning-cfloat-res-refine`, 1 test
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.evolution.fixedversioning-cfloat-res-refine.fixed-versioning-cfloat-res-refine` | a reader that refines a compressed float resolution reads files written at the coarser resolution | `inputs.tests` (978 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedversioning_cfloat_res_refine_test.go:26` |
+| `L.functional.evolution.fixedversioning-cfloat-res-refine.fixed-versioning-cfloat-res-refine` | a reader that refines a compressed float resolution reads files written at the coarser resolution | `inputs.tests` (869 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedversioning_cfloat_res_refine_test.go:26` |
 
 #### `evolution` family `fixedversioning-count-clamp-ends`, 1 test
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.evolution.fixedversioning-count-clamp-ends.fixed-versioning-count-clamp-ends` | a count forged below zero or past the writer's bound refuses the whole load with nothing landed and no counter moved | `inputs.tests` (968 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedversioning_count_clamp_ends_test.go:20` |
+| `L.functional.evolution.fixedversioning-count-clamp-ends.fixed-versioning-count-clamp-ends` | a count forged below zero or past the writer's bound refuses the whole load with nothing landed and no counter moved | `inputs.tests` (861 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedversioning_count_clamp_ends_test.go:20` |
 
 #### `evolution` family `fixedversioning-nested-union-forged-tag`, 1 test
 
@@ -10839,7 +10406,7 @@ one schema version reads or writes another's data.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.evolution.fixedversioning-range-widen-hostile.fixed-versioning-range-widen-hostile` | a reader with a widened range still refuses a value outside the selected writer range | `inputs.tests` (991 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedversioning_range_widen_hostile_test.go:12` |
+| `L.functional.evolution.fixedversioning-range-widen-hostile.fixed-versioning-range-widen-hostile` | a reader with a widened range still refuses a value outside the selected writer range | `inputs.tests` (880 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedversioning_range_widen_hostile_test.go:12` |
 
 #### `evolution` family `fixedversioning-retired-controls`, 5 tests
 
@@ -10855,25 +10422,25 @@ one schema version reads or writes another's data.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.evolution.fixedversioning-union-tag-both-plans.fixed-versioning-union-tag-both-plans` | a union tag past the arm set is handled identically by the compiled and the identity plan | `inputs.tests` (994 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedversioning_union_tag_both_plans_test.go:30` |
+| `L.functional.evolution.fixedversioning-union-tag-both-plans.fixed-versioning-union-tag-both-plans` | a union tag past the arm set is handled identically by the compiled and the identity plan | `inputs.tests` (883 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedversioning_union_tag_both_plans_test.go:30` |
 
 #### `evolution` family `fixedversioning-union-unselected-arm-row`, 1 test
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.evolution.fixedversioning-union-unselected-arm-row.fixed-versioning-union-unselected-arm` | a union read through both the compiled and the identity plan lands the tag and the selected arm, and asserts nothing about the arms the tag did not select | `inputs.tests` (1005 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedversioning_union_unselected_arm_row_test.go:23` |
+| `L.functional.evolution.fixedversioning-union-unselected-arm-row.fixed-versioning-union-unselected-arm` | a union read through both the compiled and the identity plan lands the tag and the selected arm, and asserts nothing about the arms the tag did not select | `inputs.tests` (893 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedversioning_union_unselected_arm_row_test.go:23` |
 
 #### `evolution` family `fixedversioning-unknown-census`, 1 test
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.evolution.fixedversioning-unknown-census.fixed-versioning-unknown-census` | a handed lineage that removed a field is unlawful and the whole load refuses before any record lands, with no census or other counter | `inputs.tests` (959 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedversioning_unknown_census_test.go:12` |
+| `L.functional.evolution.fixedversioning-unknown-census.fixed-versioning-unknown-census` | a handed lineage that removed a field is unlawful and the whole load refuses before any record lands, with no census or other counter | `inputs.tests` (852 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedversioning_unknown_census_test.go:12` |
 
 #### `evolution` family `fixedversioning-unknown-census-many`, 1 test
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.evolution.fixedversioning-unknown-census-many.fixed-versioning-unknown-census-many-records` | a handed lineage that removed a field is unlawful and a load of many records refuses before any record lands, with no census or other counter | `inputs.tests` (1057 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedversioning_unknown_census_many_test.go:12` |
+| `L.functional.evolution.fixedversioning-unknown-census-many.fixed-versioning-unknown-census-many-records` | a handed lineage that removed a field is unlawful and a load of many records refuses before any record lands, with no census or other counter | `inputs.tests` (939 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedversioning_unknown_census_many_test.go:12` |
 
 #### `evolution` family `fixedversioning-variant-arm-midlist`, 1 test
 
@@ -10886,7 +10453,7 @@ one schema version reads or writes another's data.
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.evolution.fixedversioning-writer-bound-count-two-endpoints.fixed-versioning-writer-bound-count-two-endpoints` | a count forged past the bound of the writer that wrote the file is refused even when it fits a later lineage entry | `inputs.tests` (126 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/luautable/fixedversioning_writer_bound_count_two_endpoints_test.go:13` |
-| `L.functional.evolution.fixedversioning-writer-bound-count-two-endpoints.fixed-versioning-writer-bound-count-two-remotes` | with two lineage endpoints of different bounds handed in, a count forged past the writing endpoint's bound refuses the whole load | `inputs.tests` (953 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedversioning_writer_bound_count_two_endpoints_test.go:18` |
+| `L.functional.evolution.fixedversioning-writer-bound-count-two-endpoints.fixed-versioning-writer-bound-count-two-remotes` | with two lineage endpoints of different bounds handed in, a count forged past the writing endpoint's bound refuses the whole load | `inputs.tests` (833 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedversioning_writer_bound_count_two_endpoints_test.go:18` |
 
 #### `evolution` family `fixedwiden128`, 1 test
 
@@ -10920,12 +10487,6 @@ one schema version reads or writes another's data.
 |---|---|---|---|---|
 | `L.functional.evolution.keyed-flags.keyed-flags` | a keyed array of flag masks widened from a narrower element reads from the older wire with the engine canonical bytes, and refuses damaged or mismatched slots and invalid masks | `inputs.tests` (100 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/pythontable/keyed_flags_test.go:22` |
 
-#### `evolution` family `keyedscalarslotwidened`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.evolution.keyedscalarslotwidened.fix-keyed-scalar-slot-widened` | a keyed array whose wire element kind is narrower than the declaration is refused as the reference does when a slot length is not its kind width | `inputs.tests` (109 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/keyedscalarslotwidened_test.go:27` |
-
 #### `evolution` family `keyedwiden`, 2 tests
 
 | full name | checks | inputs | expected result | source |
@@ -10945,12 +10506,6 @@ one schema version reads or writes another's data.
 |---|---|---|---|---|
 | `L.functional.evolution.map-key-widen-wire.map-key-widen-kinds` | a map whose key kind widens between schema versions reads with the reference value and counts each widening | `inputs.tests` (106 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/pythontable/map_key_widen_wire_test.go:76` |
 | `L.functional.evolution.map-key-widen-wire.map-key-widen-manifest` | a pinned wire with widened map keys reads to the canonical save wire and reports the reference counters | `inputs.tests` (109 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/pythontable/map_key_widen_wire_test.go:61` |
-
-#### `evolution` family `mapwiden-then-damage-refused`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.evolution.mapwiden-then-damage-refused.fix-map-widen-then-damage-refused` | a map whose first key widens and whose entry scan then runs into framing damage is refused, discarding the whole load | `inputs.tests` (112 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/mapwiden_then_damage_refused_test.go:23` |
 
 #### `evolution` family `matched-width`, 1 test
 
@@ -11075,18 +10630,6 @@ one schema version reads or writes another's data.
 |---|---|---|---|---|
 | `L.functional.evolution.textlist-construct.list-widened-region-measure` | a list widened to a larger element type in a newer schema reads old data and measures the widened region correctly | `inputs.tests` (114 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/elixirtable/textlist_construct_test.go:160` |
 
-#### `evolution` family `textwide-linear`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.evolution.textwide-linear.text-long-wide-number-functional` | reading very long wide-number tokens and numeric map keys gives the reference verdict and value in time bounded by the significant digits | `inputs.tests` (112 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/textwide_linear_test.go:67` |
-
-#### `evolution` family `unionarmkindwidened`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.evolution.unionarmkindwidened.fix-union-arm-kind-widened` | a union arm whose wire kind is widened is refused as the reference engine refuses it, with a length that must be the incoming kind's width | `inputs.tests` (106 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/unionarmkindwidened_test.go:22` |
-
 #### `evolution` family `variable-compat`, 2 tests
 
 | full name | checks | inputs | expected result | source |
@@ -11112,19 +10655,6 @@ one schema version reads or writes another's data.
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.evolution.variable-presence-evolution.variable-presence-evolution` | A field that is required, optional or absent in an older writer reads under the current schema as the value a plain reader elides, for every field shape. | `inputs.tests` (103 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/variable_presence_evolution_test.go:10` |
-
-#### `evolution` family `variableoptional`, 2 tests
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.evolution.variableoptional.variable-keyed-union-retention` | Unknown keyed slots and unknown union arms of a retained read are preserved and written back, and a frame without them reads as the known values. | `inputs.tests` (111 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/variableoptional_test.go:133` |
-| `L.functional.evolution.variableoptional.variable-keyed-widening` | Keyed 64-bit integer and float arrays read values written at narrower kinds, widened to the declared kind. | `inputs.tests` (104 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/variableoptional_test.go:105` |
-
-#### `evolution` family `variablewide-widen-ladder-gap`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.evolution.variablewide-widen-ladder-gap.fix-widen-ladder-gap` | A flags field whose wire carries a narrower unsigned kind is read as one widened value with the value kept, as the reference engine reads it. | `inputs.tests` (101 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/variablewide_widen_ladder_gap_test.go:23` |
 
 #### `evolution` family `vt-evolution-rows`, 1 test
 
@@ -11182,7 +10712,7 @@ one schema version reads or writes another's data.
 |---|---|---|---|---|
 | `L.functional.evolution.widening.widening-float32-under-float64` | A float32 value written under a float32 declaration reads under a float64 declaration as the reference engine reads it, for finite, infinite, NaN and zero payloads. | `inputs.tests` (120 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/lobstertable/widening_test.go:210` |
 | `L.functional.evolution.widening.widening-ladder` | the widening ladder reads each lawful widening and refuses the others | `inputs.tests` (301 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/mootable/widening_test.go:292` |
-| `L.functional.evolution.widening.widening-reasons` | widening and refusal reasons use the vocabulary of the reference engine's refusals | `inputs.tests` (401 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/widening_test.go:63` |
+| `L.functional.evolution.widening.widening-reasons` | widening and refusal reasons use the vocabulary of the reference engine's refusals | `inputs.tests` (303 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/widening_test.go:63` |
 
 #### `evolution` family `wire`, 1 test
 
@@ -11434,7 +10964,7 @@ seeded mutations.
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.fuzz.wirefuzz-verdict.wire-fuzz-file-dispatch` | The wire fuzz driver dispatches a fuzz input file to the right unit and root and answers the reference verdict. | `inputs.tests` (110 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/pythontable/wirefuzz_verdict_test.go:189` |
-| `L.functional.fuzz.wirefuzz-verdict.wire-fuzz-verdict-pipe`, every language but `goose` (tier `nightly`) | the wire-fuzz verdict pipe agrees with the reference oracle on every mutant with zero divergences | `inputs.tests` (1043 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/wirefuzz_verdict_test.go:646` |
+| `L.functional.fuzz.wirefuzz-verdict.wire-fuzz-verdict-pipe`, every language but `goose` (tier `nightly`) | the wire-fuzz verdict pipe agrees with the reference oracle on every mutant with zero divergences | `inputs.tests` (940 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/wirefuzz_verdict_test.go:646` |
 | `L.functional.fuzz.wirefuzz-verdict.wire-fuzz-verdict-pipe-mixed-builder` | The wire fuzz verdict pipe answers the reference verdict for a mixed builder run. | `inputs.tests` (122 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/pythontable/wirefuzz_verdict_test.go:308` |
 | `L.functional.fuzz.wirefuzz-verdict.wire-fuzz-verdict-pipe-retain` | The wire fuzz verdict pipe answers the reference verdict for a retaining run. | `inputs.tests` (116 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/pythontable/wirefuzz_verdict_test.go:321` |
 
@@ -11508,12 +11038,6 @@ a negative control: a named test run against a deliberately broken build must co
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.plant.bitspastwidth.bits-past-width-refuses-negative-control` | removing the text-read clamp tail lets a past-width text value through and turns the probe red. | `inputs.tests` (125 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/elixirtable/bitspastwidth_test.go:38` |
-
-#### `plant` family `blob-shared-strict`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.plant.blob-shared-strict.blob-shared-strict-negative-control` | planting faults in shared blob detection, shared bytes refusal and per-slot string numbering turns each probe red. | `inputs.tests` (116 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/blob_shared_strict_test.go:310` |
 
 #### `plant` family `blob-span`, 1 test
 
@@ -11599,7 +11123,7 @@ a negative control: a named test run against a deliberately broken build must co
 |---|---|---|---|---|
 | `L.functional.plant.cards.cards-facade-negative-control` | corrupting the cards facade makes the cards probe go red | `inputs.tests` (116 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/pythontable/cards_test.go:322` |
 
-#### `plant` family `cards-strict`, 5 tests
+#### `plant` family `cards-strict`, 4 tests
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
@@ -11607,7 +11131,6 @@ a negative control: a named test run against a deliberately broken build must co
 | `L.functional.plant.cards-strict.cards-conformance-strict-negative-control` | a cards facade that falls back to a tolerant read or a retired report field must make the strict conformance check go red. | `inputs.tests` (121 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/luautable/cards_strict_test.go:319` |
 | `L.functional.plant.cards-strict.cards-read-then-write-negative-control` | a cards facade that falls back to a tolerant read or a retired report field must make the strict read-then-write check go red. | `inputs.tests` (114 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/mootable/cards_strict_test.go:321` |
 | `L.functional.plant.cards-strict.cards-strict-names-negative-control` | a cards facade that uses a tolerant read or a retired report field must make the strict names check go red. | `inputs.tests` (115 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/rusttable/cards_strict_test.go:353` |
-| `L.functional.plant.cards-strict.cards-strict-negative-control` | a cards facade that uses a tolerant read or a retired report field must make the strict check go red. | `inputs.tests` (110 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/cards_strict_test.go:376` |
 
 #### `plant` family `carries`, 3 tests
 
@@ -11653,12 +11176,11 @@ a negative control: a named test run against a deliberately broken build must co
 |---|---|---|---|---|
 | `L.functional.plant.conformance-report-retain.driver-report-and-retain-negative-control` | sabotaging the driver's report and retain handling turns the report and retain rows red. | `inputs.tests` (114 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/conformance_report_retain_test.go:398` |
 
-#### `plant` family `conformance-strict`, 3 tests
+#### `plant` family `conformance-strict`, 2 tests
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.plant.conformance-strict.driver-reads-strict-and-writes-back-negative-control` | planting a tolerant read or a dropped write-back in the conformance driver makes its strict-read check go red | `inputs.tests` (397 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/darttable/conformance_strict_test.go:121` |
-| `L.functional.plant.conformance-strict.driver-surfaces-strict-negative-control` | sabotaging strict handling in the driver turns the strict rows of the corpus red. | `inputs.tests` (119 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/conformance_strict_test.go:155` |
 | `L.functional.plant.conformance-strict.forged-wire-refused` | a previous-form wire at a fixed root, the historical form-1 wire and a repeated-id framing vector are each refused by the driver and leave no write-back wire | `inputs.tests` (262 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/cstable/conformance_strict_test.go:129` |
 
 #### `plant` family `conformance-verdict`, 1 test
@@ -11737,18 +11259,6 @@ a negative control: a named test run against a deliberately broken build must co
 |---|---|---|---|---|
 | `L.functional.plant.cook-write.cook-region-writer-negative-control` | breaking one clause of the region writer per control turns the gate that owns it red: text lengths, wide-string code unit order, and each bound. | `inputs.tests` (118 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/goosetable/cook_write_test.go:591` |
 
-#### `plant` family `cookextent`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.plant.cookextent.cook-extent-negative-control` | planting each layout-model rule violation into the generated cook writer turns the map and list cook rows red. | `inputs.tests` (109 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/cookextent_test.go:25` |
-
-#### `plant` family `cookfind`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.plant.cookfind.cook-map-find-negative-control` | reversing the order in a generated map Find turns the map find probe red. | `inputs.tests` (110 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/cookfind_test.go:77` |
-
 #### `plant` family `cookwrite`, 3 tests
 
 | full name | checks | inputs | expected result | source |
@@ -11762,12 +11272,6 @@ a negative control: a named test run against a deliberately broken build must co
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.plant.cookwrite-strict.cook-write-strict-negative-control` | planting a one-based list fault in each runtime module that touches a byte array makes the strict load, save and cook gate go red | `inputs.tests` (114 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/luautable/cookwrite_strict_test.go:218` |
-
-#### `plant` family `cookwrite-unions`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.plant.cookwrite-unions.cook-write-unions-reversed` | planting each old cook-writer behaviour for unions (arm skipped, optional slot overrun, dead counted bytes filled, absent optional stored, 128-bit halves swapped) turns its row red | `inputs.tests` (107 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/cookwrite_unions_test.go:31` |
 
 #### `plant` family `count-cap`, 4 tests
 
@@ -11837,12 +11341,6 @@ a negative control: a named test run against a deliberately broken build must co
 |---|---|---|---|---|
 | `L.functional.plant.defaults-renames.defaults-and-renames-negative-control` | patching the retired-variant default line makes the deprecated row diverge from the reference | `inputs.tests` (126 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/lobstertable/defaults_renames_test.go:486` |
 
-#### `plant` family `deprecatedwrite`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.plant.deprecatedwrite.deprecated-variant-negative-control` | dropping each writer's deprecated-variant assert turns exactly that writer's refusal checks red | `inputs.tests` (117 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/deprecatedwrite_test.go:177` |
-
 #### `plant` family `descriptors`, 1 test
 
 | full name | checks | inputs | expected result | source |
@@ -11853,7 +11351,7 @@ a negative control: a named test run against a deliberately broken build must co
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.plant.discard.damage-discards-the-whole-load-negative-control` | removing the discard guard from a load entry point turns the damage-discard check red on that entry point | `inputs.tests` (241 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/ctable/discard_test.go:325` |
+| `L.functional.plant.discard.damage-discards-the-whole-load-negative-control` | removing the discard guard from a load entry point turns the damage-discard check red on that entry point | `inputs.tests` (116 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/ctable/discard_test.go:325` |
 
 #### `plant` family `doc-tags-pin`, 2 tests
 
@@ -11962,7 +11460,7 @@ a negative control: a named test run against a deliberately broken build must co
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.plant.fixed-proof-suite.fixed-proof-suite-negative-control` | a planted file fault is detected on every fixed row, and a planted writer fault is detected | `inputs.tests` (701 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/unitytable/fixed_proof_suite_test.go:18` |
+| `L.functional.plant.fixed-proof-suite.fixed-proof-suite-negative-control` | a planted file fault is detected on every fixed row, and a planted writer fault is detected | `inputs.tests` (585 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/unitytable/fixed_proof_suite_test.go:18` |
 
 #### `plant` family `fixed-proof-unions-optionals`, 1 test
 
@@ -11981,12 +11479,6 @@ a negative control: a named test run against a deliberately broken build must co
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.plant.fixed-r11-c14.fixed-array-bounds-and-live-extents-negative-control` | planting each array-bound and live-extent fault in the emitted artifact makes the matching probe go red | `inputs.tests` (123 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixed_r11_c14_test.go:378` |
-
-#### `plant` family `fixed-r27-strict`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.plant.fixed-r27-strict.fixed-r27-oracle-hostile-negative-control` | bypassing the writer-bound check in the emitted reader makes the hostile corpus check go red | `inputs.tests` (120 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/fixed_r27_strict_test.go:155` |
 
 #### `plant` family `fixed-remaining-strict`, 1 test
 
@@ -12122,7 +11614,7 @@ a negative control: a named test run against a deliberately broken build must co
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.plant.floatspecial.finite-float-negative-control` | sabotaging a part of the finite float rule in the generated code makes the probe go red on exactly the rows that part owns | `inputs.tests` (964 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/floatspecial_test.go:1110` |
+| `L.functional.plant.floatspecial.finite-float-negative-control` | sabotaging a part of the finite float rule in the generated code makes the probe go red on exactly the rows that part owns | `inputs.tests` (855 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/floatspecial_test.go:1110` |
 
 #### `plant` family `forms`, 2 tests
 
@@ -13082,12 +12574,6 @@ a negative control: a named test run against a deliberately broken build must co
 |---|---|---|---|---|
 | `L.functional.plant.texttotalwrite.text-total-refuses-the-write-negative-control` | removing the total checks from both writers turns every past-the-total row red while rows at the total stay green | `inputs.tests` (135 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/squirreltable/texttotalwrite_test.go:125` |
 
-#### `plant` family `transport-id-order`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.plant.transport-id-order.transport-id-negative-control` | disabling the transport id first-use check makes every out-of-order case read, so the check cannot be removed unnoticed | `inputs.tests` (110 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/transport_id_order_test.go:224` |
-
 #### `plant` family `type-view`, 1 test
 
 | full name | checks | inputs | expected result | source |
@@ -13156,12 +12642,6 @@ a negative control: a named test run against a deliberately broken build must co
 |---|---|---|---|---|
 | `L.functional.plant.variable-class.union-arm-negative-control` | breaking the union arm read so it lands no value turns the value comparison red | `inputs.tests` (116 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/lobstertable/variable_class_test.go:289` |
 | `L.functional.plant.variable-class.variable-class-negative-control` | Removing the pointer node-table index shift from the emitted runtime makes the value dump of a pointer unit go red while the unpatched runtime stays green. | `inputs.tests` (121 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/lobstertable/variable_class_test.go:226` |
-
-#### `plant` family `variablegraph`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.plant.variablegraph.pointer-graph-negative-control` | Planting out each pointer-graph check from the generated runtime (open-entry cycle refusal, one write per shared node, node labels) makes the driver go red on that property by name. | `inputs.tests` (111 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/variablegraph_test.go:43` |
 
 #### `plant` family `variablesave-offcontract`, 1 test
 
@@ -13247,7 +12727,7 @@ a negative control: a named test run against a deliberately broken build must co
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.plant.vtcells-strict.variable-cells-refuse-the-framing-vectors-negative-control` | With the wire-alone check switched off every framing vector reads and no other framing row changes. | `inputs.tests` (132 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/luatable/vtcells_strict_test.go:100` |
-| `L.functional.plant.vtcells-strict.variable-cells-strict-negative-control` | planted faults in the real artifacts for the strict variable-table cells turn the cell gates red | `inputs.tests` (691 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/ctable/vtcells_strict_test.go:393` |
+| `L.functional.plant.vtcells-strict.variable-cells-strict-negative-control` | planted faults in the real artifacts for the strict variable-table cells turn the cell gates red | `inputs.tests` (574 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/ctable/vtcells_strict_test.go:393` |
 | `L.functional.plant.vtcells-strict.variable-shape-cells-strict-negative-control` | planted faults in the generated artifact turn the matching variable-shape cell gate red | `inputs.tests` (238 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/vtcells_strict_test.go:422` |
 
 #### `plant` family `vtmaps`, 1 test
@@ -13324,7 +12804,7 @@ a negative control: a named test run against a deliberately broken build must co
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.plant.wirefuzz-verdict.wire-fuzz-verdict-pipe-negative-control` | a planted fault in the driver or generated artifact turns the wire-fuzz verdict pipe red | `inputs.tests` (1051 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/wirefuzz_verdict_test.go:685` |
+| `L.functional.plant.wirefuzz-verdict.wire-fuzz-verdict-pipe-negative-control` | a planted fault in the driver or generated artifact turns the wire-fuzz verdict pipe red | `inputs.tests` (934 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/wirefuzz_verdict_test.go:685` |
 
 #### `plant` family `wireidentity`, 1 test
 
@@ -13397,12 +12877,6 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.compiler.goose-registry.registry-compiles` | the assembled registry compiles under the Goose compiler with the runtime and reads back in rank order | `inputs.tests` (103 bytes, held in the registry row's `inputs.tests`) | the goose Go test for the case (inputs.tests) passes | `internal/codegen/goosetable/registry_test.go:101` |
-
-#### `compiler` family `unity-fixed-harness`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.compiler.unity-fixed-harness.fixed-dialect-ms-build` | all shared fixed-proof schemas compile in the Unity dialect in Debug and Release with warnings as errors | `inputs.tests` (106 bytes, held in the registry row's `inputs.tests`) | the unity Go test for the case (inputs.tests) passes | `internal/codegen/unitytable/fixed_harness_test.go:525` |
 
 ### Type `bench`
 
@@ -13804,12 +13278,6 @@ two implementations or two versions give the same answer.
 |---|---|---|---|---|
 | `L.functional.differential.feednodetablerepeated.wire-feed-node-table-repeated` | repeated node-table feed vectors measure and load with verdicts equal to the reference engine | `inputs.tests` (109 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/darttable/feednodetablerepeated_test.go:35` |
 
-#### `differential` family `fix-map-text-malformed-overflag`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.differential.fix-map-text-malformed-overflag.fix-map-text-malformed-overflag` | a length-pass mutant of a map-text value gets the reference engine's verdict, and where both keep the value the same unknown and widened counts and saved bytes | `inputs.tests` (111 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/java_fix_map_text_malformed_overflag_test.go:28` |
-
 #### `differential` family `fixed-integrity-crc`, 1 test
 
 | full name | checks | inputs | expected result | source |
@@ -13868,7 +13336,7 @@ two implementations or two versions give the same answer.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.differential.fixed-proof-suite.fixed-proof-suite-values` | every fixed-table value row agrees with the live reference oracle | `inputs.tests` (647 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/unitytable/fixed_proof_suite_test.go:13` |
+| `L.functional.differential.fixed-proof-suite.fixed-proof-suite-values` | every fixed-table value row agrees with the live reference oracle | `inputs.tests` (540 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/unitytable/fixed_proof_suite_test.go:13` |
 
 #### `differential` family `fixed-proof-values`, 1 test
 
@@ -14074,18 +13542,6 @@ two implementations or two versions give the same answer.
 |---|---|---|---|---|
 | `L.functional.differential.json-verdicts-1122.json-verdicts-match-go` | JSON read and write verdicts match the reference on every row | `inputs.tests` (103 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/luautable/json_verdicts_1122_test.go:180` |
 
-#### `differential` family `jsonhostile-clamp`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.differential.jsonhostile-clamp.json-hostile-report-clamp-counter` | a reader gives the reference verdict on every hostile JSON row of the conformance manifest | `inputs.tests` (114 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/jsonhostile_clamp_test.go:26` |
-
-#### `differential` family `jsonhostile-duplicate`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.differential.jsonhostile-duplicate.json-hostile-report-duplicate-counter` | a reader refuses every repeated-key JSON row as the reference does | `inputs.tests` (117 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/jsonhostile_duplicate_test.go:54` |
-
 #### `differential` family `jsonref`, 1 test
 
 | full name | checks | inputs | expected result | source |
@@ -14097,12 +13553,6 @@ two implementations or two versions give the same answer.
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.differential.jsonstrict.from-json-is-strict` | the plain JSON read gives the reference verdict on every JSON-bearing row of the manifest | `inputs.tests` (98 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/luatable/jsonstrict_test.go:115` |
-
-#### `differential` family `keyedindex`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.differential.keyedindex.keyed-form-wire-code-matches-unkeyed-in-tree` | the keyed form and the positional form of the same unit give identical fixed bytes, agree on saved and loaded values, and match the reference engine bytes | `inputs.tests` (117 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/keyedindex_test.go:871` |
 
 #### `differential` family `layoutagree`, 1 test
 
@@ -14209,12 +13659,6 @@ two implementations or two versions give the same answer.
 |---|---|---|---|---|
 | `L.functional.differential.loadmeasureframing.load-measure-covers-variable-framing` | the variable-form load measure equals the reference file region measure, byte for byte, on the variable-class corpus roots | `inputs.tests` (118 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/jstable/loadmeasureframing_test.go:22` |
 
-#### `differential` family `mapkeykind5-malformed`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.differential.mapkeykind5-malformed.fix-map-key-kind5-malformed` | a map key of the wrong kind is skipped and a later key still reads, with saved bytes and counters equal to the reference, or the load is refused when the reference reads damage | `inputs.tests` (108 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/mapkeykind5_malformed_test.go:29` |
-
 #### `differential` family `maprepeat`, 1 test
 
 | full name | checks | inputs | expected result | source |
@@ -14238,12 +13682,6 @@ two implementations or two versions give the same answer.
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.differential.measure-length-past-end.measure-length-past-body-end` | a measure with a length past the body end gives the reference's answer | `inputs.tests` (108 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/rusttable/measure_length_past_end_test.go:177` |
-
-#### `differential` family `measure-renamed-node-table`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.differential.measure-renamed-node-table.fix-measure-renamed-node-table` | the load measure of a root with a renamed node table equals the reference file region measure | `inputs.tests` (110 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/measure_renamed_node_table_test.go:47` |
 
 #### `differential` family `measurelists`, 1 test
 
@@ -14490,12 +13928,6 @@ two implementations or two versions give the same answer.
 | `L.functional.differential.text-differential.engine-agrees` | I13: random instances written as text by the leg and by the compiler's engine are byte-identical, and each reads the other's text back | `inputs.tests` (1685 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/textdifferential_test.go:188` |
 | `L.functional.differential.text-differential.negative-control` | I13's control: a planted difference between the leg's text and the engine's is caught by the differential | `inputs.tests` (1835 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/textdifferential_test.go:199` |
 
-#### `differential` family `text-read-oracle`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.differential.text-read-oracle.text-read-agrees-with-engine` | the text read of each probe text agrees with the reference engine: it accepts with the same canonical text and wire, or refuses | `inputs.tests` (107 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/text_read_oracle_test.go:107` |
-
 #### `differential` family `unit-view-corpus`, 1 test
 
 | full name | checks | inputs | expected result | source |
@@ -14568,19 +14000,19 @@ two implementations or two versions give the same answer.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.differential.wire-json-base64-canonical.json-base64-canonical` | the JSON read accepts a bytes value only as canonical base64 and agrees with the reference engine on verdict and bytes | `inputs.tests` (925 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/ctable/jsonbase64canonical_test.go:57` |
+| `L.functional.differential.wire-json-base64-canonical.json-base64-canonical` | the JSON read accepts a bytes value only as canonical base64 and agrees with the reference engine on verdict and bytes | `inputs.tests` (826 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/ctable/jsonbase64canonical_test.go:57` |
 
 #### `differential` family `wire-json-comment-text-rules`, 1 test
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.differential.wire-json-comment-text-rules.json-comment-is-well-formed-utf8` | a JSON comment with ill-formed UTF-8 or a NUL refuses the read, with the same verdict as the reference engine on every vector | `inputs.tests` (995 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/ctable/json_comment_utf8_test.go:74` |
+| `L.functional.differential.wire-json-comment-text-rules.json-comment-is-well-formed-utf8` | a JSON comment with ill-formed UTF-8 or a NUL refuses the read, with the same verdict as the reference engine on every vector | `inputs.tests` (885 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/ctable/json_comment_utf8_test.go:74` |
 
 #### `differential` family `wire-json-flags-name-once`, 1 test
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.differential.wire-json-flags-name-once.json-flags-name-once` | a JSON flags array naming one known variant twice refuses the read, with the same verdict as the reference engine | `inputs.tests` (1212 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/ctable/json_flags_name_once_test.go:78` |
+| `L.functional.differential.wire-json-flags-name-once.json-flags-name-once` | a JSON flags array naming one known variant twice refuses the read, with the same verdict as the reference engine | `inputs.tests` (1112 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/ctable/json_flags_name_once_test.go:78` |
 
 #### `differential` family `wire-packet-defaults`, 1 test
 
@@ -14685,18 +14117,6 @@ memory, allocation and depth limits are held.
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.resource-bounds.idtablebound.id-distinctness-work` | a reader's id distinctness check does bounded work per id | `inputs.tests` (104 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/goosetable/idtablebound_test.go:297` |
-
-#### `resource-bounds` family `java-fixedloadalloc`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.resource-bounds.java-fixedloadalloc.fixed-load-allocates-once` | after a first load warms the plan, repeated fixed loads allocate nothing | `inputs.tests` (106 bytes, held in the registry row's `inputs.tests`) | the java Go test for the case (inputs.tests) passes | `internal/codegen/javatable/fixedloadalloc_test.go:26` |
-
-#### `resource-bounds` family `javasave-longpointerchain`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.resource-bounds.javasave-longpointerchain.save-long-pointer-chain` | a chain of 200,000 pointer nodes saves to the engine's bytes and loads back, and writes as text only by refusing past the cap | `inputs.tests` (104 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/javasave_longpointerchain_test.go:66` |
 
 #### `resource-bounds` family `json-longnumber`, 1 test
 
@@ -17365,7 +16785,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 |---|---|---|---|---|---|
 | `none.functional.tooling.caa.self-test` | `make` | the CAA allowlist is exactly the linked logins, and main's tip is covered (reads GitHub with GITHUB\_TOKEN) | `file: make/caa-self-test.mk`<br>`target: caa-self-test` | the target exits 0 with no skip in its log | `make/caa-self-test.mk:7` |
 
-#### `tooling` family `ci`, 51 tests
+#### `tooling` family `ci`, 50 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -17378,7 +16798,6 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.functional.tooling.ci.dist-python-stages-the-fleet-sdk` | `gotest` | Go test TestDistPythonStagesTheFleetSDK in ./internal/ci | `package: ./internal/ci`<br>`test: TestDistPythonStagesTheFleetSDK` | the Go test passes | `internal/ci/pythonsdk_test.go:23` |
 | `none.functional.tooling.ci.every-go-conformance-row-runs-exactly-once` | `gotest` | Go test TestEveryGoConformanceRowRunsExactlyOnce in ./internal/ci | `package: ./internal/ci`<br>`test: TestEveryGoConformanceRowRunsExactlyOnce` | the Go test passes | `internal/ci/go_rows_run_once_test.go:45` |
 | `none.functional.tooling.ci.every-run-pattern-matches-a-test` | `gotest` | Go test TestEveryRunPatternMatchesATest in ./internal/ci | `package: ./internal/ci`<br>`test: TestEveryRunPatternMatchesATest` | the Go test passes | `internal/ci/runpattern_test.go:612` |
-| `none.functional.tooling.ci.go-fixed-corpus-pipeline-keeps-complete-test-recipe` | `gotest` | Go test TestGoFixedCorpusPipelineKeepsCompleteTestRecipe in ./internal/ci | `package: ./internal/ci`<br>`test: TestGoFixedCorpusPipelineKeepsCompleteTestRecipe` | the Go test passes | `internal/ci/go_fixed_corpus_pipeline_test.go:10` |
 | `none.functional.tooling.ci.golden-rewrite-gate-over-a-fixture-tree` | `gotest` | Go test TestGoldenRewriteGateOverAFixtureTree in ./internal/ci | `package: ./internal/ci`<br>`test: TestGoldenRewriteGateOverAFixtureTree` | the Go test passes | `internal/ci/golden_rewrites_test.go:84` |
 | `none.functional.tooling.ci.lua-allocation-counter-counts` | `gotest` | Go test TestLuaAllocationCounterCounts in ./internal/ci | `package: ./internal/ci`<br>`test: TestLuaAllocationCounterCounts` | the Go test passes | `internal/ci/schema_lua_resource_bounds_test.go:198` |
 | `none.functional.tooling.ci.lua-binary-rebuilds-when-runtime-changes` | `gotest` | Go test TestLuaBinaryRebuildsWhenRuntimeChanges in ./internal/ci | `package: ./internal/ci`<br>`test: TestLuaBinaryRebuildsWhenRuntimeChanges` | the Go test passes | `internal/ci/luabinaryrebuild_test.go:29` |
@@ -17874,7 +17293,6 @@ Each test's subject exists in one language only (that language's own generated s
 | `codegen.java-jdkshadow.platform-names-survive-same-named-schema-types` | `java` | Java platform class names and package java shadowing in generated Java |
 | `codegen.java-maxbits.giant-aligned-max-bits-literal-compiles` | `java` | javac compile of giant max-bits literals in generated Java |
 | `codegen.java-maxbits.giant-max-bits-literal-compiles` | `java` | javac compile of giant max-bits literals in generated Java |
-| `codegen.java-variableunions.variable-union-arm-named-tag-compiles` | `java` | Java member naming (tagArm) to avoid colliding with the discriminator member |
 | `codegen.js-builtin-shadow.builtins-survive-same-named-schema-types` | `js` | JS builtin names shadowed by schema type names in generated JS source |
 | `codegen.js-builtin-shadow.table-builtins-survive-same-named-schema-types` | `js` | JS builtin names shadowed by schema type names in generated JS source |
 | `codegen.js-cursor-names.fields-named-after-the-flat-cursor-generate` | `js` | identifiers sb, wi, br collide with the JS generated flat cursor |
@@ -17915,7 +17333,6 @@ Each test's subject exists in one language only (that language's own generated s
 | `compiler.cs-checked-build.packet-checked-build` | `cs` | C# packet sources compiled with checked arithmetic raise no overflow |
 | `compiler.go-string-write.utf8-check-allocates-nothing` | `go` | Go string conversion heap allocation in the UTF-8 write check |
 | `compiler.goose-registry.registry-compiles` | `goose` | registry compiles under Goose compiler |
-| `compiler.unity-fixed-harness.fixed-dialect-ms-build` | `unity` | Unity C# 9 netstandard2.1 MSBuild |
 | `encode.go-blockbuild.block-builder-storage-and-parallel-fill` | `go` | the Go block builder's own storage and goroutine parallel fill |
 | `fuzz.go-fuzzunit.fuzz-unit-is-current` | `go` | the committed generated Go fuzz package must equal what the Go generator emits |
 | `golden.lobster-view-listing.unit-view-listing` | `lobster` | Lobster module listing of unit files |
@@ -17966,7 +17383,6 @@ Each test's subject exists in one language only (that language's own generated s
 | `resource-bounds.go-strictdefault-alloc.plain-reads-allocate-nothing` | `go` | Go allocation count of strict reads |
 | `resource-bounds.go-strictreadalloc.strict-read-allocates-by-input` | `go` | Go arena allocation size of the strict read |
 | `resource-bounds.goose-diewithparent.die-with-parent` | `goose` | test child process dies with parent |
-| `resource-bounds.java-fixedloadalloc.fixed-load-allocates-once` | `java` | JVM allocation behaviour of generated Java codecs |
 | `resource-bounds.lua-alloc.load-allocation-floor` | `lua` | Lua load allocation floor |
 | `resource-bounds.lua-blocklayoutonce.block-layout-is-built-once` | `lua` | the Lua runtime caches its block layout table instead of rebuilding it per load |
 | `resource-bounds.python-retain.retain-output-allocation-shape` | `python` | allocation shape of the Python retain output |

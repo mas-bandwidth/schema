@@ -801,8 +801,8 @@ plant from what its reads credit.
 
 ## Sharding: the parts of a run, by measured seconds
 
-The per-PR job runs the pr group whole, one compile row and one happy path
-per language, unsharded ("CI" below); the nightly parts and `--shard` use this
+The per-PR job runs the pr group whole, one happy-path row per language,
+unsharded ("CI" below); the nightly parts and `--shard` use this
 design. This is the one sharding design. Other layers
 (L6's make and golden rows among them) use it as it is. Its API and its
 seconds format stay stable. A change to either changes this section in the
@@ -814,7 +814,13 @@ was measured, else on a bench (the run that measured it is named in the
 commit that wrote it).
 - A test with no `seconds` weighs `testreg.DefaultSeconds` (1 s).
 - A measured test weighs at least 0.01 s.
-- Every instance of a per-language test weighs its row's seconds.
+- A per-language row that is not a union row may also carry
+  `"lang_seconds":{"<lang>":S,...}`, each language's own measured seconds,
+  written just before `seconds` (which is then the row's heaviest language).
+  `Load` refuses it on any other row, for a language the registry does not
+  name, or with a value not above 0.
+- Every instance of a per-language test weighs its language's `lang_seconds`
+  where the row has one, else its row's seconds.
 
 `schema-test run ... --write-seconds` writes the field for every passing
 test it ran. `schema-test seconds LOG...` writes it from the logs of driver
@@ -834,7 +840,8 @@ file (`TestWriteSecondsKeepsEveryOtherByte`).
 **The budget.** A part carries at most 60 s of measured tests
 (`testreg.ShardBudget`: the most one adapter call carries, and the line past
 which a union row's language carries its own nightly tier). The per-PR job
-is not cut into parts: its budget is the pr group's whole sum, 120 s ("CI"
+is not cut into parts: its budget is the whole job's measured wall time,
+setup plus the critical path of its rows run side by side, 120 s ("CI"
 below). A test with no `seconds` weighs 1 s until a run measures it.
 
 **A weight is per test, not per call.** A corpus row's seconds are its
@@ -910,27 +917,30 @@ and line, on any difference, so a hand edit is red.
 
 - Per PR: ci-fast.yml. Job `schema-test` runs `ci --check`, prints `coverage`
   and runs `extract` against main's ledger. One job, `schema-test-pr`, runs
-  `schema-test run --group pr`, the pr group whole (Glenn, 2026-11-25: "just
-  compile it, run a simple happy path per-language"): for every language one
-  compile row (type `codegen`, `codegen.name-buildability.ctl`) and one
-  happy-path round-trip row (type `roundtrip`,
-  `roundtrip.conformance-wire.scalars-full`), and nothing else, their
-  recorded seconds summed at most 120 s, the job's two minutes (about 6.7 s a
-  language). `schema-test ci` refuses any other pr group by name: another
-  row, a language-free row, a language missing either row, an unmeasured
-  row, or the sum past 120 s (`TestThePRGroupIsOneCompileAndOneHappyPathRowPerLanguage`);
-  a language past its share gets faster, and no row moves out to fit. The
-  generated ci-fast.yml runs tests in that one step only
-  (`TestCIFastRunsThePRGroupInOneJob`). Every other row, unit and
-  functional included, runs in the nightly workflows by its tier. Two jobs
-  build what the pr job reads and
-  run no test: `fixed-corpus` (the go fixed corpus, through the
-  `fixed-corpus` setup action) and `produce`, one job per producer (the
-  conformance-leg-go and conformance-leg-goose trees the env plants run),
-  each built once per run through the `produce` setup action, kept in the
-  runner's cache by `tools/produce.sh identity`, and fetched by the pr job
-  before its run; the pr job needs both green
-  (`TestThePRShardsRunOnTheProducedLegs`). Job `verdict` is green only when
+  `schema-test run --group pr --jobs 4`, the pr group whole (Glenn,
+  2026-11-25: "just compile it, run a simple happy path per-language"): for
+  every language one row, `roundtrip.happy-path.ship-create` (family
+  `happy-path`), which the driver runs as `make -s happy-<lang>`
+  (make/happy-path.mk: generate test/happy/Happy.schema, compile it, one
+  round trip) and passes only on its `happy <lang>: ok` line
+  (`TestTheHappyPathPassesOnlyOnItsOkLine`), and nothing else. The rows
+  share the checkout (`make bin/schema` is built once first) and run four at
+  once (`--jobs`; `TestSharedCheckoutCallsRunSideBySideAfterTheWriters`).
+  The budget is the whole job's wall time, measured on a fresh clone and
+  recorded in `prTiming` (tools/schema-test/ci.go): setup (checkout, the
+  pinned siblings, the driver's build) plus the longer of the measured run
+  and the critical path of the rows' `lang_seconds` at four at once, at most
+  120 s. `schema-test ci` refuses any other pr group by name: another row, a
+  language-free row, a language missing its row or with two, a row not
+  measured for its own language, or the job past 120 s
+  (`TestThePRGroupIsOneHappyPathRowPerLanguage`); a language past its share
+  gets faster, and no row moves out to fit. docs/CI-TIERS.md prints the
+  serial sum and the critical path. The generated ci-fast.yml runs tests in
+  that one step only (`TestCIFastRunsThePRGroupInOneJob`). Every other row,
+  unit and functional included, the conformance legs' compile rows among
+  them, runs in the nightly workflows by its tier. The pr job builds what it
+  runs and fetches nothing: no producer job, no fixed corpus, no needs
+  (`TestThePRJobBuildsWhatItRunsAndFetchesNothing`). Job `verdict` is green only when
   every job passed, and the needs hold exactly the jobs the workflow
   generates (`schema-test ci --verdict`,
   `TestTheVerdictNeedsEveryJobGreen`); the pr job's run already fails on
@@ -1007,8 +1017,8 @@ retired `go test` step left with no row, or a check whose row is outside
 the nightly group and run by name by no per-PR workflow, is red by the line
 that names it, so a coverage drop cannot pass unseen. A check that ran on
 every pull request (ci-fast.yml, caa-self-test.yml, roadmap.yml's roadmap
-job) runs at night like every other since the pr group became one compile
-row and one happy path per language (Glenn, 2026-11-25).
+job) runs at night like every other since the pr group became one happy
+path per language (Glenn, 2026-11-25).
 
 A check no row runs yet has a line with row `-`, and the test is red on it
 by name until a row runs it; nothing excuses it. The old ci-fast.yml's own
@@ -1134,8 +1144,8 @@ What does not match yet, and why:
 
   The jobs that ran no check of their own: plan (it chose the legs),
   stage-compiler (it built the compiler the cpp legs read) and
-  go-fixed-corpus (now the `fixed-corpus` job). The kept jobs are
-  `schema-test`, the `schema-test-pr-N` shard jobs, `produce` and `verdict`.
+  go-fixed-corpus (the pr job reads no fixed corpus). The kept jobs are
+  `schema-test`, `schema-test-pr` and `verdict`.
 - schema-test-nightly.yml ran one check, `schema-test run --group nightly`;
   schema-nightly.yml runs the same group through `go run ./tools/fullrun`,
   so it has no retired line: the check moved, whole, to the workflow that
