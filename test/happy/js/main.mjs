@@ -1,6 +1,6 @@
 // The per-PR happy path for JavaScript: one ShipCreate written with the
 // generated packet writer, read back with the generated reader, every field
-// compared. Run by make/happy-path-js.mk after it generates build/happy/js.
+// compared. Run by make/happy-path.mk after it generates build/happy/js.
 import { WriteStream, ReadStream } from "../../../../serialize.js/src/index.js";
 import * as happy from "../../../build/happy/js/Happy.js";
 

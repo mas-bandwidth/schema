@@ -1,4 +1,4 @@
-// The per-PR happy path, Java leg (make/happy-path-java.mk): one ShipCreate
+// The per-PR happy path, Java leg (make/happy-path.mk): one ShipCreate
 // written with the generated packet writer, read back into a fresh value,
 // every field compared. Run under -ea so the write contracts are live.
 

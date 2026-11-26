@@ -2,7 +2,7 @@
 
 # The per-PR happy path for Ruby: one ShipCreate written with the generated
 # packet writer, read back with the generated reader, every field compared.
-# Run by make/happy-path-ruby.mk with the generated directory on -I.
+# Run by make/happy-path.mk with the generated directory on -I.
 require "happy"
 
 def fail!(why)

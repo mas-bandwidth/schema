@@ -1,4 +1,4 @@
-// The per-PR happy path, Dart leg (make/happy-path-dart.mk): one ShipCreate
+// The per-PR happy path, Dart leg (make/happy-path.mk): one ShipCreate
 // written with the generated packet writer, read back into a fresh value,
 // every field compared. Run with --enable-asserts so the write contracts
 // are live.

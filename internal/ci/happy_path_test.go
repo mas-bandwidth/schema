@@ -39,7 +39,51 @@ var happyMakeCall = regexp.MustCompile(`(?:^|[\s;&|(!])make((?:\s+[^\s;&|)]+)*)`
 var happyAllowedUses = []string{"actions/checkout@", "./.github/actions/merge-main", "actions/setup-go@"}
 
 // happyForbiddenRun are commands that would run a check beyond the happy path.
-var happyForbiddenRun = regexp.MustCompile(`\bgo (?:test|vet|run)\b|\bschema-test\b|\bcargo\b|\bnpm\b|\bctest\b|\bpytest\b|\bgolangci-lint\b|\./tools/`)
+var happyForbiddenRun = regexp.MustCompile(`\bgo (?:test|vet|run)(?:\s|$)|\bschema-test\b|\bcargo\b|\bnpm\b|\bctest\b|\bpytest\b|\bgolangci-lint\b|\./tools/`)
+
+// happyBlockScalar is a YAML block scalar header: |, >, with any chomping
+// and indentation indicator (|-, |+, |2, >-2 ...).
+var happyBlockScalar = regexp.MustCompile(`^[|>][-+0-9]*$`)
+
+// happyShell is the one shell the happy-path job's steps run under.
+const happyShell = "go run ./tools/pgroup -- bash -e -o pipefail {0}"
+
+// happyRecipeForbidden are what a happy-<lang> recipe may not run: another
+// make (a heavy target behind the happy name) or a test runner.
+var happyRecipeForbidden = regexp.MustCompile(`\$\(MAKE\)|\$\{MAKE\}|(?:^|[\s;&|(])make\s|\bgo (?:test|vet|run)(?:\s|$)|\bcargo\b|\bmix test\b|\bdotnet test\b|\bschema-test\b|\bnpm\b|\bctest\b|\bpytest\b|\./tools/`)
+
+// happyRuleErrors holds each happy-<lang> rule of make/happy-path.mk to the
+// happy path: its prerequisites are bin/schema and toolchain-<lang> only, and
+// its recipe runs no other make and no test runner.
+func happyRuleErrors(mk string, legs []string) []string {
+	var errs []string
+	lines := strings.Split(mk, "\n")
+	for _, l := range legs {
+		head := "happy-" + l + ":"
+		found := false
+		for i, line := range lines {
+			rest, ok := strings.CutPrefix(line, head)
+			if !ok {
+				continue
+			}
+			found = true
+			for p := range strings.FieldsSeq(rest) {
+				if p != "bin/schema" && p != "toolchain-"+l {
+					errs = append(errs, fmt.Sprintf("make/happy-path.mk:%d: happy-%s needs %s; a happy path needs bin/schema and toolchain-%s only", i+1, l, p, l))
+				}
+			}
+			for j := i + 1; j < len(lines) && strings.HasPrefix(lines[j], "\t"); j++ {
+				if m := happyRecipeForbidden.FindString(lines[j]); m != "" {
+					errs = append(errs, fmt.Sprintf("make/happy-path.mk:%d: happy-%s runs %q: the happy path compiles and runs one round trip, nothing more", j+1, l, strings.TrimSpace(m)))
+				}
+			}
+		}
+		if !found {
+			errs = append(errs, fmt.Sprintf("make/happy-path.mk has no happy-%s rule", l))
+		}
+	}
+	return errs
+}
 
 func happyPathErrors(wfs map[string]string, mk string, langs []string) []string {
 	var errs []string
@@ -68,9 +112,20 @@ func happyPathErrors(wfs map[string]string, mk string, langs []string) []string 
 		if strings.HasPrefix(trimmed, "#") || trimmed == "" {
 			continue
 		}
-		if u, ok := strings.CutPrefix(strings.TrimPrefix(trimmed, "- "), "uses:"); ok {
-			u = strings.TrimSpace(u)
-			if !slices.ContainsFunc(happyAllowedUses, func(p string) bool { return strings.HasPrefix(u, p) }) {
+		if s, ok := strings.CutPrefix(strings.TrimPrefix(trimmed, "- "), "shell:"); ok && !inRun {
+			if strings.TrimSpace(s) != happyShell {
+				errs = append(errs, fmt.Sprintf("ci-fast.yml:happy-path sets shell %q; the happy path runs under %q only", strings.TrimSpace(s), happyShell))
+			}
+			continue
+		}
+		if u, ok := strings.CutPrefix(strings.TrimPrefix(trimmed, "- "), "uses:"); ok && !inRun {
+			u = strings.Trim(strings.TrimSpace(strings.SplitN(u, "#", 2)[0]), `"'`)
+			if !slices.ContainsFunc(happyAllowedUses, func(p string) bool {
+				if strings.HasSuffix(p, "@") {
+					return strings.HasPrefix(u, p)
+				}
+				return u == p
+			}) {
 				errs = append(errs, fmt.Sprintf("ci-fast.yml:happy-path uses %s; the happy path uses only %v", u, happyAllowedUses))
 			}
 			continue
@@ -78,7 +133,7 @@ func happyPathErrors(wfs map[string]string, mk string, langs []string) []string 
 		line := trimmed
 		if r, ok := strings.CutPrefix(strings.TrimPrefix(trimmed, "- "), "run:"); ok {
 			r = strings.TrimSpace(r)
-			if r == "|" || r == ">" || r == "|-" || r == ">-" {
+			if happyBlockScalar.MatchString(r) {
 				inRun, runIndent = true, indent
 				continue
 			}
@@ -120,12 +175,67 @@ func happyPathErrors(wfs map[string]string, mk string, langs []string) []string 
 	if !slices.Equal(sortedLegs, langs) {
 		errs = append(errs, fmt.Sprintf("make/happy-path.mk HAPPY_LEGS is %v; the registry's languages are %v: every language gets its happy path, per pull request", sortedLegs, langs))
 	}
-	for _, l := range legs {
-		if !regexp.MustCompile(`(?m)^happy-` + regexp.QuoteMeta(l) + `:`).MatchString(mk) {
-			errs = append(errs, fmt.Sprintf("make/happy-path.mk has no happy-%s rule", l))
+	return append(errs, happyRuleErrors(mk, legs)...)
+}
+
+// happyPlantMk replaces from with to in make/happy-path.mk, failing the test
+// when from is not there (a plant that changes nothing proves nothing).
+func happyPlantMk(t *testing.T, mk, from, to string) string {
+	t.Helper()
+	if !strings.Contains(mk, from) {
+		t.Fatalf("control cannot plant: make/happy-path.mk does not contain %q", from)
+	}
+	return strings.Replace(mk, from, to, 1)
+}
+
+// scheduleSkips lists the ci-fast-nightly.yml jobs a schedule run with every
+// plan output set would skip. The schedule is the old per-PR lane's only
+// regular run, so a job it skips runs nowhere; the verdict refuses any skip on
+// a schedule, and this holds the job conditions to that.
+func scheduleSkips(wf string) ([]string, int, error) {
+	ev := fullPlan(ciEvent{Name: "schedule", Branch: "main", Repo: "mas-bandwidth/schema"})
+	var skips []string
+	n := 0
+	for _, job := range slices.Sorted(maps.Keys(yamlJobs(wf))) {
+		if job == "fork-pull-request" {
+			continue
+		}
+		n++
+		runs, err := jobRunsInWorkflow(wf, job, ev)
+		if err != nil {
+			return nil, 0, fmt.Errorf("%s: %w", job, err)
+		}
+		if !runs {
+			skips = append(skips, job)
 		}
 	}
-	return errs
+	return skips, n, nil
+}
+
+func TestTheScheduleRunsEveryNightlyJob(t *testing.T) {
+	t.Parallel()
+	wf, ok := workflows(t, repoRoot(t))["ci-fast-nightly.yml"]
+	if !ok {
+		t.Fatal("there is no .github/workflows/ci-fast-nightly.yml")
+	}
+	skips, n, err := scheduleSkips(wf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n < 20 {
+		t.Fatalf("ci-fast-nightly.yml parsed as %d jobs; the old per-PR lane had more than 20: the job scan matched too little", n)
+	}
+	for _, job := range skips {
+		t.Errorf("ci-fast-nightly.yml:%s is skipped on the schedule with every plan output set: it runs nowhere", job)
+	}
+	from := "if: (needs.plan.outputs.legs != '[]' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'))"
+	if !strings.Contains(wf, from) {
+		t.Fatalf("control cannot plant: ci-fast-nightly.yml leg-gate has no %q", from)
+	}
+	planted := strings.Replace(wf, from, "if: (needs.plan.outputs.legs != '[]' && github.event_name == 'workflow_dispatch')", 1)
+	if skips, _, err := scheduleSkips(planted); err != nil || !slices.Contains(skips, "leg-gate") {
+		t.Errorf("PLANTED leg-gate off the schedule left the gate green (skips %v, err %v)", skips, err)
+	}
 }
 
 // registryLangs reads the lang rows of test/registry/registry.jsonl.
@@ -196,6 +306,16 @@ func TestPerPRIsTheHappyPathOnly(t *testing.T) {
 		{"another action in the happy path", plant("      - uses: ./.github/actions/merge-main\n", "      - uses: ./.github/actions/merge-main\n      - uses: actions/cache@v4\n"), mk},
 		{"a leg dropped from HAPPY_LEGS", wfs, strings.Replace(mk, " unity\n", "\n", 1)},
 		{"a leg with no rule", wfs, strings.Replace(mk, "\nhappy-unity:", "\nhappy-unity-gone:", 1)},
+		{"a go test behind a |+ block scalar", plant("        run: make bin/schema\n", "        run: |+\n          make bin/schema\n          go test ./...\n"), mk},
+		{"a step-level shell in the happy path", plant("        run: make bin/schema\n", "        shell: bash\n        run: make bin/schema\n"), mk},
+		{"a look-alike action in the happy path", plant("      - uses: ./.github/actions/merge-main\n", "      - uses: ./.github/actions/merge-main-and-test\n"), mk},
+		{"a heavy prerequisite on a happy rule", wfs, happyPlantMk(t, mk, "happy-go: bin/schema\n", "happy-go: bin/schema test-go\n")},
+		{"another make in a happy recipe", wfs, happyPlantMk(t, mk, "\t./build/happy/c/happy\n", "\t./build/happy/c/happy\n\t$(MAKE) test-c\n")},
+		{"a plain make in a happy recipe", wfs, happyPlantMk(t, mk, "\t./build/happy/c/happy\n", "\t./build/happy/c/happy\n\tmake test-c\n")},
+		{"go test in a happy recipe", wfs, happyPlantMk(t, mk, "\t./build/happy/go/happy-bin\n", "\t./build/happy/go/happy-bin\n\tgo test ./internal/...\n")},
+		{"cargo in a happy recipe", wfs, happyPlantMk(t, mk, "\t./build/happy/rust/happy_rust\n", "\t./build/happy/rust/happy_rust\n\tcargo test\n")},
+		{"mix test in a happy recipe", wfs, happyPlantMk(t, mk, "\t$(ELIXIR) test/happy/elixir/main.exs build/happy/elixir\n", "\t$(ELIXIR) test/happy/elixir/main.exs build/happy/elixir\n\tmix test\n")},
+		{"dotnet test in a happy recipe", wfs, happyPlantMk(t, mk, "\t$(DOTNET) exec build/happy/cs/happy.dll\n", "\t$(DOTNET) exec build/happy/cs/happy.dll\n\tdotnet test\n")},
 	} {
 		if len(happyPathErrors(c.wfs, c.mk, langs)) == 0 {
 			t.Errorf("PLANTED %q left the gate green", c.name)

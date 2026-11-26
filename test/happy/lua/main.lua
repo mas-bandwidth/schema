@@ -1,4 +1,4 @@
--- The Lua leg's per-PR happy path (make/happy-path-lua.mk): one ShipCreate
+-- The Lua leg's per-PR happy path (make/happy-path.mk): one ShipCreate
 -- written and read back through the generated module.
 -- usage: lua main.lua <generated dir>
 local dir = assert(arg[1], "usage: lua main.lua <generated dir>")

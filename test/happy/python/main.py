@@ -1,6 +1,6 @@
 # The per-PR happy path for Python: one ShipCreate written with the generated
 # packet writer, read back with the generated reader, every field compared.
-# Run by make/happy-path-python.mk with the generated package on PYTHONPATH.
+# Run by make/happy-path.mk with the generated package on PYTHONPATH.
 import sys
 
 from happy import ShipCreate, ShipType

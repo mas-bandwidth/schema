@@ -1,5 +1,5 @@
 --!strict
--- The Luau leg's per-PR happy path (make/happy-path-luau.mk): one ShipCreate
+-- The Luau leg's per-PR happy path (make/happy-path.mk): one ShipCreate
 -- written and read back through the generated module. The recipe copies this
 -- file beside the generated modules (Luau requires are file-relative); a
 -- failure raises, which exits the interpreter non-zero.

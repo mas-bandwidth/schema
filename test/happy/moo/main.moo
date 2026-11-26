@@ -1,5 +1,5 @@
 --!strict
--- The per-PR happy path, the moo leg (make/happy-path-moo.mk): one ShipCreate
+-- The per-PR happy path, the moo leg (make/happy-path.mk): one ShipCreate
 -- written with the generated write, read back into a fresh value with the
 -- generated read, every field compared. A float64 is its binary64 pattern, a
 -- serialize.Uint64 (low half, high half). Any failure prints

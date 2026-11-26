@@ -11,7 +11,7 @@
 # (ci-fast-nightly.yml, ci-full.yml and the per-language nightly workflows).
 #
 # ci-fast.yml's one job runs `make happy-<lang>` for every leg `make -s
-# happy-legs` prints, and times each. internal/ci TestHappyPathCoversEveryLeg
+# happy-legs` prints, and times each. internal/ci TestPerPRIsTheHappyPathOnly
 # holds HAPPY_LEGS to the languages of test/registry/registry.jsonl and to the
 # targets below, so a leg added there without its happy path is red.
 HAPPY_LEGS := c cpp cs dart elixir go goose java js lobster lua luau moo python ruby rust squirrel unity

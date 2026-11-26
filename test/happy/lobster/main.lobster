@@ -1,4 +1,4 @@
-// The per-PR happy path, the Lobster leg (make/happy-path-lobster.mk): one
+// The per-PR happy path, the Lobster leg (make/happy-path.mk): one
 // ShipCreate written with the generated write, read back into a fresh value
 // with the generated read, every field compared. Any failure prints
 // "FAILED: <what>" and exits 1.

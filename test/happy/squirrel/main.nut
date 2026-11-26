@@ -1,4 +1,4 @@
-// The Squirrel leg's per-PR happy path (make/happy-path-squirrel.mk): one
+// The Squirrel leg's per-PR happy path (make/happy-path.mk): one
 // ShipCreate written and read back through the generated module.
 // usage: sq main.nut <serialize runtime dir> <generated dir>
 // sq exits 0 on a runtime error, so the recipe requires the final ok line:

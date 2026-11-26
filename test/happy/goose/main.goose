@@ -1,4 +1,4 @@
-// The Goose leg's per-PR happy path (make/happy-path-goose.mk): one ShipCreate
+// The Goose leg's per-PR happy path (make/happy-path.mk): one ShipCreate
 // written and read back through the generated module. The recipe copies this
 // file beside the generated modules (Goose imports are file-relative).
 import os;

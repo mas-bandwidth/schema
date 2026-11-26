@@ -1,4 +1,4 @@
-// The per-PR happy path, C# leg (make/happy-path-cs.mk): one ShipCreate
+// The per-PR happy path, C# leg (make/happy-path.mk): one ShipCreate
 // written with the generated packet writer, read back into a fresh value,
 // every field compared.
 using System;

@@ -1,6 +1,6 @@
 # The per-PR happy path for Elixir: one ShipCreate written with the generated
 # packet writer, read back with the generated reader, every field compared.
-# Run by make/happy-path-elixir.mk with the generated directory as argument.
+# Run by make/happy-path.mk with the generated directory as argument.
 [dir] = System.argv()
 Enum.each(["PacketRuntime.ex", "Happy.ex"], &Code.require_file(&1, dir))
 

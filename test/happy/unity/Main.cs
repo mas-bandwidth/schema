@@ -1,4 +1,4 @@
-// The per-PR happy path, Unity C# leg (make/happy-path-unity.mk), compiled in the
+// The per-PR happy path, Unity C# leg (make/happy-path.mk), compiled in the
 // Unity dialect (C# 9 over netstandard2.1): one ShipCreate
 // written with the generated packet writer, read back into a fresh value,
 // every field compared.

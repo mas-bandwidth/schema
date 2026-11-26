@@ -283,9 +283,18 @@ jobs:
           REF: ${{ github.ref }}
         run: |
           set -euo pipefail
+          # THE SCHEDULE TOUCHES EVERY FILE (2026-11-25). The nightly has no
+          # diff to select by, and diffing against a lane would select what
+          # that lane happens to differ by (nothing at all, once it is level
+          # with main). So a scheduled run takes every tracked file as its
+          # diff: every package, every leg, every row and the new-leg
+          # scaffold, by the same rules a diff is selected by. The verdict
+          # refuses any skip on the schedule.
           # a push diffs against the tip it replaced; a new ref (all-zero
           # before) or a before sha this clone lacks gets the broad selection
-          if [ -n "$BEFORE" ]; then
+          if [ "${EVENT:-}" = schedule ]; then
+            files=$(git ls-files)
+          elif [ -n "$BEFORE" ]; then
             if [ "${BEFORE//0/}" != "" ] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
               files=$(git diff --name-only "$BEFORE" HEAD)
             else
@@ -3172,8 +3181,13 @@ jobs:
           set -euo pipefail
           jq -r 'to_entries[] | "\(.value.result)\t\(.key)"' <<<"$NEEDS" | sort
           out() { jq -r --arg k "$1" '.plan.outputs[$k] // ""' <<<"$NEEDS"; }
-          # a skip is green only for the job whose selection came out empty
+          # a skip is green only for the job whose selection came out empty;
+          # ON THE SCHEDULE NOTHING MAY SKIP but the fork job, which no
+          # schedule starts: the plan took every file, so every job is selected
           may_skip() {
+            if [ "$EVENT" = schedule ] && [ "$1" != fork-pull-request ]; then
+              return 1
+            fi
             case "$1" in
               fork-pull-request) return 0 ;;
               golangci-lint-fast) [ -z "$(out lint_packages)" ] ;;
