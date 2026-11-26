@@ -112,6 +112,8 @@ func atomicWriteProblems(files map[string]string) []string {
 		bad = append(bad, atomicCorpusFile+": "+target+" does not write build/fixedform-corpus.next.$$$$ and set the live one aside as build/fixedform-corpus.prev.$$$$")
 	case !strings.Contains(recipe, "$(CORPUS_RENAME) $$live $$prev.$$try ") || !strings.Contains(recipe, "$(CORPUS_RENAME) $$next $$live ") || !strings.Contains(recipe, "$(CORPUS_RENAME) $$p $$live ") || !corpusRenameIsRename(files[atomicCorpusFile]) || anyMv.MatchString(recipe):
 		bad = append(bad, atomicCorpusFile+": "+target+" does not swap the corpus (and put it back on a failure) with rename(2) (CORPUS_RENAME), never mv, which moves a directory inside one another build put in first")
+	case !strings.Contains(recipe, "$(CORPUS_RENAME) $$p $$live 0 ENOTEMPTY EEXIST || {"):
+		bad = append(bad, atomicCorpusFile+": "+target+" puts the live corpus back on a failure with a rename whose status nothing reads, so a corpus it could not put back goes unnamed")
 	case !strings.Contains(recipe, `printf '%s\n' "$$sum" > $$next/.stamp`) || !strings.Contains(recipe, `test "$$(cat $$live/.stamp)" = "$$sum"`):
 		bad = append(bad, atomicCorpusFile+": "+target+" does not record its inputs in .stamp and keep another build's corpus only when that record is its own")
 	}
@@ -159,6 +161,8 @@ func TestSharedBuildProductsAreWrittenAtomically(t *testing.T) {
 		{"Makefile", `prev=build/fixedform-corpus.prev.$$$$;`, `prev=build/fixedform-corpus.prev;`, "fixedform-corpus/.stamp"},
 		{"Makefile", `$(CORPUS_RENAME) $$next $$live 3 ENOTEMPTY EEXIST; rc=$$?;`, `mv $$next $$live; rc=$$?;`, "fixedform-corpus/.stamp"},
 		{"Makefile", `then $(CORPUS_RENAME) $$p $$live 0 ENOTEMPTY EEXIST || {`, `then mv $$p $$live || {`, "fixedform-corpus/.stamp"},
+		// the restore's status dropped, as it was before
+		{"Makefile", ` || { lost="$$lost (and $$p could not be put back as $$live: it is left where it is)"; continue; }`, ``, "fixedform-corpus/.stamp"},
 		{"Makefile", `exit 0 if rename($$f, $$t);`, `exit 0 if system("mv", $$f, $$t) == 0;`, "fixedform-corpus/.stamp"},
 		// another build's corpus kept whatever it was built from
 		{"Makefile", `test "$$(cat $$live/.stamp)" = "$$sum"`, `true`, "fixedform-corpus/.stamp"},

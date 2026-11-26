@@ -7320,7 +7320,7 @@ build/fixedform-corpus/.stamp: build/schema_test_fixedform_dump test/tables/fnz/
 	fail() { rm -rf $$next; lost=; \
 	  for p in $$prev.2 $$prev.1; do \
 	    if test -d $$p; then \
-	      if test ! -e $$live; then $(CORPUS_RENAME) $$p $$live 0 ENOTEMPTY EEXIST || { lost=" (and $$p could not be put back as $$live: it is left where it is)"; continue; }; fi; \
+	      if test ! -e $$live; then $(CORPUS_RENAME) $$p $$live 0 ENOTEMPTY EEXIST || { lost="$$lost (and $$p could not be put back as $$live: it is left where it is)"; continue; }; fi; \
 	      rm -rf $$p; \
 	    fi; \
 	  done; \

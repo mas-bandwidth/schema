@@ -18,6 +18,7 @@ import (
 // the element default None (0), and nothing is counted unknown: the variant is
 // known, only retired. The ordinal op used to land the retired variant by name.
 func TestJavaCompiledPlanDeprecatedVariantReadsDefault(t *testing.T) {
+	t.Parallel()
 	const dir = "testdata/enum-deprecated-plan"
 	oldUnit := versioningSchemaUnit(t, dir+"/old.schema")
 	wm := tabletext.NewModel(oldUnit)

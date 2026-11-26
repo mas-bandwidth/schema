@@ -336,7 +336,9 @@ referenced as its own netstandard2.1 assembly. A small .NET host drives it:
   tables, fixed/counted/keyed arrays, unions and guards, optionals, defaults,
   compiled lineage evolution, retirement, reports, CRC-32C integrity and hostile
   sweeps) against the live C++ reference and `build/fixedform-corpus`, with
-  planted negative controls.
+  planted negative controls: the unitytable tests no other registry row runs,
+  each a row of its own (the compiler's TestUnityFixedForm* tests and three
+  unitytable tests run as gotest rows).
 - `make unity-vt` — variable-table, message-form, `retain-unknown`, strict JSON,
   `Block`, `Cook`, descriptor and `UnitView` proofs compiled in the Unity
   dialect with planted negative controls.

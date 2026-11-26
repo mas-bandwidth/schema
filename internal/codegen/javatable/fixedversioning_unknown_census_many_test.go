@@ -11,6 +11,7 @@ package javatable
 import "testing"
 
 func TestFixedVersioningUnknownCensusManyRecords(t *testing.T) {
+	t.Parallel()
 	file := javaUnlawfulRequired(t, "many_unknown_census.bin")
 	javaUnlawfulRun(t, "unknown_census", file, javaUnlawfulCensusPoison, javaUnlawfulCensusDefaults)
 }

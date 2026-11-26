@@ -59,6 +59,7 @@ func fixedRecordBytes(t *testing.T, dir, classes, pkg, root string) int {
 }
 
 func TestFixedFormRaggedTail(t *testing.T) {
+	t.Parallel()
 	corpus := corpusDir(t)
 	oldFile := filepath.Join(corpus, "old_array_bounded_grow.bin")
 	raw, err := os.ReadFile(oldFile)

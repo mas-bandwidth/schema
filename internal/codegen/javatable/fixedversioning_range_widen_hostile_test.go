@@ -20,6 +20,7 @@ import (
 // primitive array as one `list:` value, so the expected elements are joined
 // the same way.
 func TestFixedVersioningRangeWidenHostile(t *testing.T) {
+	t.Parallel()
 	corpus := corpusDir(t)
 	for _, vec := range fixedvector.WriterRange {
 		t.Run(vec.Name, func(t *testing.T) {

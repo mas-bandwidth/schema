@@ -15,6 +15,7 @@ import (
 )
 
 func TestFixedVersioningForgedOrdinalBothPlans(t *testing.T) {
+	t.Parallel()
 	corpus := corpusDir(t)
 	oldFile := filepath.Join(corpus, "old_enum_append.bin")
 	raw, err := os.ReadFile(oldFile)

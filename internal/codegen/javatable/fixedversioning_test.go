@@ -778,6 +778,7 @@ func runProbe(t *testing.T, classes, class, file string) probeRun {
 // TestFixedVersioningRows is §5.7's two columns, every row, against the C++
 // reference's bytes.
 func TestFixedVersioningRows(t *testing.T) {
+	t.Parallel()
 	corpus := corpusDir(t)
 	nonFinite := manifestNonFinite(t, corpus)
 	for _, row := range versioningRows {
@@ -1047,6 +1048,7 @@ func assertCounters(t *testing.T, column string, row versioningRow, r probeRun) 
 // yesterday's file refuse today. Three layouts of one table, the reader always
 // the newest, and the retire count walks the floor up through them.
 func TestFixedVersioningFloor(t *testing.T) {
+	t.Parallel()
 	corpus := corpusDir(t)
 	oldFile := filepath.Join(corpus, "old_floor.bin")
 	midFile := filepath.Join(corpus, "mid_floor.bin")
@@ -1117,6 +1119,7 @@ func TestFixedVersioningFloor(t *testing.T) {
 // `layout_unknown`, a known hash whose bytes differ is `layout_malformed`, and
 // the reader's own hash selects the identity plan.
 func TestFixedVersioningHash(t *testing.T) {
+	t.Parallel()
 	corpus := corpusDir(t)
 	own := filepath.Join(corpus, "new_field_append.bin")
 	if _, err := os.Stat(own); err != nil {
@@ -1174,6 +1177,7 @@ func TestFixedVersioningHash(t *testing.T) {
 // append different fields, and after the merge BOTH pre-merge files read on the
 // merged build (the name-subset rule, bill §8a.1).
 func TestFixedVersioningLineageMerge(t *testing.T) {
+	t.Parallel()
 	corpus := corpusDir(t)
 	files := []string{"old_lineage_merge.bin", "a_lineage_merge.bin", "b_lineage_merge.bin", "new_lineage_merge.bin"}
 	for _, f := range files {
@@ -1200,10 +1204,12 @@ func TestFixedVersioningLineageMerge(t *testing.T) {
 // Exercise its second-arm text, signed/float widenings, and noncanonical true
 // bytes against the C++ fu1.bin corpus on both identity (FU1) and compiled (FU2) paths.
 func TestFixedVersioningTextUnderArm(t *testing.T) {
+	t.Parallel()
 	runFixedVersioningTextUnderArm(t, false)
 }
 
 func TestFixedVersioningTextUnderArmTrueBytes(t *testing.T) {
+	t.Parallel()
 	runFixedVersioningTextUnderArm(t, true)
 }
 
@@ -1480,6 +1486,7 @@ public final class ArmProbe {
 // poisoned row handed in back at its declared default, while the same file
 // reads cleanly at sufficient capacity.
 func TestFixedVersioningPlanTooLarge(t *testing.T) {
+	t.Parallel()
 
 	corpus := corpusDir(t)
 	fu1Bin := filepath.Join(corpus, "fu1.bin")

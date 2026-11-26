@@ -452,7 +452,10 @@ func Shard(instances []Instance, i, n int) ([]Instance, error) {
 // names names long, n ways): a caller that reads every shard of one cut
 // cuts once.
 func ShardOf(parts [][]Instance, i, n, names int) ([]Instance, error) {
-	if n < 1 || i < 1 || i > n || len(parts) != n {
+	if n >= 1 && len(parts) != n {
+		return nil, fmt.Errorf("shard %d/%d: the cut has %d parts, want %d", i, n, len(parts), n)
+	}
+	if n < 1 || i < 1 || i > n {
 		return nil, fmt.Errorf("shard %d/%d: want 1 <= i <= n", i, n)
 	}
 	out := parts[i-1]
