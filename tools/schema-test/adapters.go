@@ -128,6 +128,8 @@ func harnessFor(t testreg.Test) (harness, bool) {
 		return featureWitness, true
 	case family == nameBuild.Name:
 		return nameBuild, true
+	case family == happyFamily:
+		return happyPath, true
 	case wireFuzzFamilies[family]:
 		return wireFuzzHarness, true
 	case family == tablesHarness.Name:

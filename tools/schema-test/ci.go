@@ -47,9 +47,10 @@ import (
 // THE PER-PR JOB (Glenn, 2026-11-25: "just compile it, run a simple happy
 // path per-language"; the whole pr group is one job of two minutes or less,
 // about 6.7 s a language). The pr group is exactly, for every language row,
-// one compile row (prCompileType) and one happy-path round-trip row
-// (prHappyType): no other row, no language-free row, and none twice. Every
-// other row runs in the nightly workflows, by its tier. prGroup holds the
+// one instance of the happy-path family (happyFamily: make happy-<lang>,
+// which is both the language's compile and its happy path): no other row, no
+// language-free row, and none twice. Every other row runs in the nightly
+// workflows, by its tier. prGroup holds the
 // group to that, and to the job's budget: the job's whole wall time, its
 // setup (prTiming.Setup, measured) and the parallel run's critical path,
 // at most prJobBudget, each row measured (an unmeasured row weighs nothing
@@ -58,8 +59,6 @@ import (
 // smaller unit); no row moves out, and the budget is never raised.
 const (
 	prJobBudget    = 120.0
-	prCompileType  = "codegen"
-	prHappyType    = "roundtrip"
 	prJob          = "schema-test-pr"
 	prJobRunPrefix = "go run ./tools/schema-test run"
 )
@@ -72,8 +71,7 @@ type prRunTiming struct {
 	Jobs int
 	// Setup is the job's measured time before the run step: the runner's
 	// job set-up, the checkout, the merge of main, the pinned siblings, the
-	// SDK's environment, the produced legs fetched and unpacked, and the
-	// driver's build.
+	// SDK's environment, and the driver's build.
 	Setup float64
 	// Run is the run step's measured wall time, which the critical path
 	// computed from the rows' seconds is held beside: the builds the run
@@ -107,7 +105,7 @@ var setupActions = map[string]string{
 	"merge-main":        "merges current main into a lane pull request's checkout",
 	"schema-test-setup": "the sibling runtimes, the runner's SDK and the row's interpreter pins",
 	"fixed-corpus":      "builds and shares the fixed corpus, held to the checkout's source",
-	"produce":           "builds and shares a producer's tree (a leg the env plants run), held to the checkout's source",
+	"produce":           "builds and shares a producer's tree (a conformance leg), held to the checkout's source",
 	"main-tree":         "exports main's tree and ledger for schema-test extract",
 	"dist-pins":         "the lua, luau, goose and lobster pins",
 	"python":            "the python pins",
@@ -115,61 +113,25 @@ var setupActions = map[string]string{
 	"moo":               "the moo pin",
 }
 
-// producer is one row of ci-fast.yml's produce matrix: a tree a later job
-// reads, built once per run (.github/actions/produce), never in every shard
-// that needs it. Target is the make target that builds it, Paths what it
-// makes. The language-free shards run the env plants
-// (plant.corpus-plants.*), whose Prepare then finds these legs built.
-//
-// Measured cold on captain (2026-11-25, load 5-7, 64 cores): the go leg
-// 55.0 s, the goose leg 9.3 s; replayed, make rebuilds nothing but the go
-// driver's own go build. The cpp leg, the reference driver in its
-// translation units (Makefile, CONFORMANCE_DRIVER_TUS), 72.2 s cold under
-// make -j4 on 4 of captain's cores; replayed, make rebuilds nothing. Its
-// tree carries each unit's recorded compile seconds, which the registry row
-// harness-run.makefile.conformance-cpp-tu-budget holds to the budget beside
-// that list in a language-free shard, after the fetch: a unit that grows
-// back toward the old single one is red by name before the leg stops
-// fitting. The lint rows build exactly the tree each lint gate reads
-// (internal/ci TestEveryLintGateReadsAProducedTree), so a shard pays the
-// lint and never the generation in front of it.
-type producer struct {
-	Name   string `json:"name"`
-	Target string `json:"target"`
-	Paths  string `json:"paths"`
-}
-
-var producers = []producer{
-	{"conformance-leg-go", "conformance-leg-go", "bin/schema build/conformance-go build/conformance-harness-vm build/tables-counted-min-variable build/tables-generated-go build/tables-generated-go-announce build/tables-generated-go-framing build/tables-generated-go-r19 build/tables-lists-variable build/tables-r1-variable"},
-	{"conformance-leg-goose", "conformance-leg-goose", "bin/schema build/conformance-goose build/conformance-harness-vm build/schema-goose"},
-	{"conformance-leg-cpp", "conformance-leg-cpp", "bin/schema build/conformance-cpp build/conformance-cpp-objs build/conformance-harness-vm build/schema_test_cook build/tables-generated"},
-	{"lint-c", "tables-c-clean-inputs", "bin/schema build/tables-generated-c generated/c generated/c-ludicrous generated/bench/c generated/bench/tables/c generated/bench/paired/c"},
-	{"lint-cpp", "tables-cpp-clean-inputs", "bin/schema build/tables-generated generated/cpp generated/bench/cpp generated/bench/tables/cpp generated/bench/paired/cpp"},
-	{"lint-js", "tables-js-clean-inputs", "bin/schema build/tables-generated-js generated/js generated/js-ludicrous generated/bench/js generated/bench/paired/js"},
-	{"lint-rust", "tables-rust-clippy-inputs", "bin/schema build/tables-generated-rust build/tables-generated-rust-witnesses"},
-	{"lint-lua", "tables-lua-luacheck-inputs", "bin/schema build/lua-luacheck-corpus build/lua-luacheck.rc"},
-}
-
-// prRow is one language's two rows in the pr group: its compile row and its
-// happy-path row, by instance name, with their recorded seconds summed.
+// prRow is one language's row in the pr group: its happy path, by instance
+// name, with its recorded seconds.
 type prRow struct {
 	Lang    string
-	Compile string
 	Happy   string
 	Seconds float64
 }
 
 // prGroup reads the registry's pr group and holds it to the per-PR rule: for
-// every language row, exactly one instance of the compile type and one of
-// the happy-path type, and nothing else; every instance measured; the
-// recorded seconds, summed, within prJobBudget. Each break is named. The
-// rows come back in the registry's language order.
+// every language row, exactly one instance of the happy-path family, and
+// nothing else; every instance measured, by its language's own seconds; the
+// job's setup and the run's critical path within prJobBudget. Each break is
+// named. The rows come back in the registry's language order.
 func prGroup(reg *testreg.Registry) ([]prRow, []string) {
 	return prGroupTimed(reg, prTiming)
 }
 
 // prCriticalPath is the parallel run's wall time from the rows' recorded
-// seconds: each language's two rows are one harness call, and the calls go
+// seconds: each language's row is one harness call, and the calls go
 // longest first to the least loaded of jobs lanes, as the run's shared
 // lanes take them; the busiest lane is the path.
 func prCriticalPath(rows []prRow, jobs int) float64 {
@@ -211,7 +173,7 @@ func prGroupTimed(reg *testreg.Registry, timing prRunTiming) ([]prRow, []string)
 	for _, inst := range sel.Instances {
 		r, ok := byLang[inst.Lang]
 		if !ok {
-			problems = append(problems, fmt.Sprintf("%s is in the pr group, and the pr group holds per language one compile row and one happy-path row, never a language-free row: it runs nightly", inst.Full))
+			problems = append(problems, fmt.Sprintf("%s is in the pr group, and the pr group holds per language one happy-path row (family %s), never a language-free row: it runs nightly", inst.Full, happyFamily))
 			continue
 		}
 		if !measured(inst) {
@@ -220,30 +182,20 @@ func prGroupTimed(reg *testreg.Registry, timing prRunTiming) ([]prRow, []string)
 		w := testreg.Weight(inst)
 		total += w
 		r.Seconds += w
-		var slot *string
-		switch inst.Test.Type {
-		case prCompileType:
-			slot = &r.Compile
-		case prHappyType:
-			slot = &r.Happy
+		switch {
+		case inst.Test.Family != happyFamily:
+			problems = append(problems, fmt.Sprintf("%s is family %s, and the pr group holds per language one happy-path row (family %s: make happy-<lang>, the compile and the happy path), nothing else: it runs nightly", inst.Full, inst.Test.Family, happyFamily))
+		case r.Happy != "":
+			problems = append(problems, fmt.Sprintf("%s and %s are both happy paths of %s: the pr group holds one per language", r.Happy, inst.Full, inst.Lang))
 		default:
-			problems = append(problems, fmt.Sprintf("%s is type %s, and the pr group holds per language one compile row (type %s) and one happy-path row (type %s), nothing else: it runs nightly", inst.Full, inst.Test.Type, prCompileType, prHappyType))
-			continue
+			r.Happy = inst.Full
 		}
-		if *slot != "" {
-			problems = append(problems, fmt.Sprintf("%s and %s are both type %s in %s: the pr group holds one of each per language", *slot, inst.Full, inst.Test.Type, inst.Lang))
-			continue
-		}
-		*slot = inst.Full
 	}
 	var rows []prRow
 	for _, l := range langs {
 		r := byLang[l]
-		if r.Compile == "" {
-			problems = append(problems, fmt.Sprintf("%s has no compile row (type %s) in the pr group", l, prCompileType))
-		}
 		if r.Happy == "" {
-			problems = append(problems, fmt.Sprintf("%s has no happy-path row (type %s) in the pr group", l, prHappyType))
+			problems = append(problems, fmt.Sprintf("%s has no happy-path row (family %s) in the pr group", l, happyFamily))
 		}
 		rows = append(rows, *r)
 	}
@@ -318,14 +270,10 @@ var sumRe40 = regexp.MustCompile(`^[0-9a-f]{40}$`)
 func ciFiles(reg *testreg.Registry) (map[string][]byte, error) {
 	rows, problems := prGroup(reg)
 	if len(problems) > 0 {
-		return nil, fmt.Errorf("the pr group is not one compile row and one happy-path row per language within the job's %.0f s:\n  %s", prJobBudget, strings.Join(problems, "\n  "))
-	}
-	produce, err := json.Marshal(producers)
-	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("the pr group is not one happy-path row per language within the job's %.0f s:\n  %s", prJobBudget, strings.Join(problems, "\n  "))
 	}
 	var wf bytes.Buffer
-	if err := fastTemplate.Execute(&wf, map[string]any{"Job": prJob, "Producers": string(produce), "Budget": prJobBudget, "Run": prRunLine}); err != nil {
+	if err := fastTemplate.Execute(&wf, map[string]any{"Job": prJob, "Budget": prJobBudget, "Run": prRunLine}); err != nil {
 		return nil, err
 	}
 	if p := checkFastRuns(wf.Bytes()); len(p) > 0 {
@@ -470,25 +418,28 @@ workflows, by its tier.
 	fmt.Fprintf(&b, `
 ## The per-PR job
 
-One job, `+"`%s`"+`, runs `+"`schema-test run --group pr`"+`: for every language, one
-compile row (type `+"`%s`"+`) and one happy-path round-trip row (type `+"`%s`"+`),
-and nothing else. Their recorded seconds (each row measured alone on a fleet
-runner, its language's own in a union row) sum to at most %.0f s, the job's
-two minutes; a language past its %.1f s share gets faster, building only what
-its happy path needs from a smaller unit, and no row moves out to fit.
+One job, `+"`%s`"+`, runs `+"`%s`"+`: for every language, one row,
+`+"`make happy-<lang>`"+` (`+"`make/happy-path.mk`"+`), which generates one small schema,
+compiles it with that language's program and does one round trip: the
+language's compile and its happy path, and nothing else. The languages run
+side by side, %d at once. The whole job, its setup (%.1f s, measured) and the
+run's critical path (the longer of the path the rows' seconds give and the
+run's measured %.1f s), is at most %.0f s, the job's two minutes; a language
+past its %.1f s serial share gets faster, and no row moves out to fit.
 
-| language | compile row | happy-path row | measured seconds |
-|---|---|---|---|
-`, prJob, prCompileType, prHappyType, prJobBudget, prJobBudget/float64(max(1, len(rows))))
+| language | happy-path row | measured seconds |
+|---|---|---|
+`, prJob, prRunLine, prTiming.Jobs, prTiming.Setup, prTiming.Run, prJobBudget, prJobBudget/float64(max(1, len(rows))))
 	secs := 0.0
 	for _, r := range rows {
-		fmt.Fprintf(&b, "| `%s` | `%s` | `%s` | %.1f |\n", r.Lang, r.Compile, r.Happy, r.Seconds)
+		fmt.Fprintf(&b, "| `%s` | `%s` | %.1f |\n", r.Lang, r.Happy, r.Seconds)
 		secs += r.Seconds
 	}
-	fmt.Fprintf(&b, "| **every language** | | | **%.1f** |\n", secs)
+	fmt.Fprintf(&b, "| **every language, one after another** | | **%.1f** |\n", secs)
+	fmt.Fprintf(&b, "| **the run's critical path, %d at once** | | **%.1f** |\n", prTiming.Jobs, prCriticalPath(rows, prTiming.Jobs))
 	b.WriteString(`
 To change the job, change the registry's ` + "`pr`" + ` group (its query names
-the rows) or a row's measured ` + "`seconds`" + ` (` + "`schema-test run ... --write-seconds`" + `
+the rows) or a row's measured ` + "`lang_seconds`" + ` (` + "`schema-test run ... --write-seconds`" + `
 on a fleet runner, or ` + "`schema-test seconds LOG...`" + ` from a run's log), then run
 ` + "`go run ./tools/schema-test ci`" + `.
 `)
@@ -590,63 +541,10 @@ jobs:
           BASE_TREE: ${{ steps.main.outputs.base }}
         run: go run ./tools/schema-test extract --since "$MAIN_TREE" --pins-base "$BASE_TREE"
 
-  # the complete fixed corpus the language-free Go tests read, built once
-  fixed-corpus:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, Linux, X64, fleet, schema]
-    timeout-minutes: 2
-    defaults:
-      run:
-        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/merge-main
-      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
-        if: runner.environment == 'github-hosted'
-        with:
-          go-version: '1.26'
-          cache: false
-      - uses: ./.github/actions/fixed-corpus
-        with:
-          mode: produce
-
-  # the producers' trees (the legs the env plants run), each built once per
-  # run, kept in the runner's cache by what it is built from, and shared
-  produce:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    name: produce (${{ matrix.name }})
-    runs-on: [self-hosted, Linux, X64, fleet, schema]
-    timeout-minutes: 2
-    defaults:
-      run:
-        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
-    strategy:
-      fail-fast: false
-      matrix:
-        include: [[.Producers]]
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/merge-main
-      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
-        if: runner.environment == 'github-hosted'
-        with:
-          go-version: '1.26'
-          cache: false
-      - uses: ./.github/actions/schema-test-setup
-        with:
-          lang: none
-      - uses: ./.github/actions/produce
-        with:
-          mode: produce
-          name: ${{ matrix.name }}
-          target: ${{ matrix.target }}
-          paths: ${{ matrix.paths }}
-
   # THE REGISTRY'S PR GROUP, one job (docs/CI-TIERS.md): every language's
   # compile row and happy-path row
   [[.Job]]:
-    needs: [produce]
-    if: (always() && !cancelled() && needs.produce.result == 'success' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 2
     defaults:
@@ -663,17 +561,13 @@ jobs:
       - uses: ./.github/actions/schema-test-setup
         with:
           lang: all
-      - uses: ./.github/actions/produce
-        with:
-          mode: fetch
-          names: conformance-leg-*
       - name: schema-test run --group pr
         run: [[.Run]]
 
   # green only when every job above ran and passed: the pr job's run fails on
   # expected != ran, and ci --check holds the job to the whole pr group
   verdict:
-    needs: [fork-pull-request, schema-test, fixed-corpus, produce, [[.Job]]]
+    needs: [fork-pull-request, schema-test, [[.Job]]]
     if: (always() && !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 2
@@ -725,7 +619,7 @@ func checkFastRuns(data []byte) []string {
 
 // verdictJobs are the jobs the verdict job needs, every one of ci-fast.yml's
 // others.
-var verdictJobs = []string{"fork-pull-request", "schema-test", "fixed-corpus", "produce", prJob}
+var verdictJobs = []string{"fork-pull-request", "schema-test", prJob}
 
 // verdict reads the needs context of the verdict job: every job passed, and
 // the fork guard alone may be skipped (it runs only for a fork's pull

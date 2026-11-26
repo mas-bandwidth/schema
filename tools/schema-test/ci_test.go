@@ -74,9 +74,7 @@ func prRegistry(t *testing.T, tests, query string) *testreg.Registry {
 {"rec":"lang","name":"go","write":"refuse","adapter":"fake"}
 {"rec":"tier","name":"functional","what":"a toolchain"}
 {"rec":"tier","name":"nightly","what":"heavy"}
-{"rec":"type","name":"codegen","what":"it builds"}
 {"rec":"type","name":"roundtrip","what":"same bytes back"}
-{"rec":"type","name":"decode","what":"bytes read"}
 {"rec":"type","name":"tooling","what":"policy"}
 ` + tests + `{"rec":"group","name":"pr","what":"per pull request","query":` + query + `}
 `
@@ -90,78 +88,75 @@ func prRegistry(t *testing.T, tests, query string) *testreg.Registry {
 	return reg
 }
 
-// prTestLines: a compile row and a happy-path row every language answers,
-// each language measured at the seconds given, and a decode row, a second
-// round trip, a row measured only as a whole, an unmeasured row and a
-// language-free row.
-func prTestLines(compile, happy float64) string {
-	return fmt.Sprintf(`{"rec":"test","key":"codegen.fam.builds","type":"codegen","family":"fam","case":"builds","tier":"nightly","checks":"x","inputs":{"n":1},"expect":"builds","lang_seconds":{"c":%g,"go":%g},"seconds":%g}
-{"rec":"test","key":"roundtrip.fam.happy","type":"roundtrip","family":"fam","case":"happy","tier":"functional","checks":"x","inputs":{"n":2},"expect":"same","lang_seconds":{"c":%g,"go":%g},"seconds":%g}
-{"rec":"test","key":"roundtrip.fam.second","type":"roundtrip","family":"fam","case":"second","tier":"functional","checks":"x","inputs":{"n":3},"expect":"same","lang_seconds":{"c":1,"go":1}}
-{"rec":"test","key":"decode.fam.read","type":"decode","family":"fam","case":"read","tier":"functional","checks":"x","inputs":{"n":4},"expect":"read","lang_seconds":{"c":1,"go":1}}
-{"rec":"test","key":"roundtrip.fam.whole","type":"roundtrip","family":"fam","case":"whole","tier":"functional","checks":"x","inputs":{"n":7},"expect":"same","seconds":1}
-{"rec":"test","key":"roundtrip.fam.unmeasured","type":"roundtrip","family":"fam","case":"unmeasured","tier":"functional","checks":"x","inputs":{"n":5},"expect":"same"}
+// prTestLines: the happy-path row every language answers, each language
+// measured at the seconds given, and beside it a second happy path, a
+// conformance round trip, a row measured only as a whole, an unmeasured
+// happy path and a language-free row.
+func prTestLines(c, gol float64) string {
+	return fmt.Sprintf(`{"rec":"test","key":"roundtrip.happy-path.ship","type":"roundtrip","family":"happy-path","case":"ship","tier":"functional","checks":"x","inputs":{"n":1},"expect":"ok","lang_seconds":{"c":%g,"go":%g}}
+{"rec":"test","key":"roundtrip.happy-path.second","type":"roundtrip","family":"happy-path","case":"second","tier":"functional","checks":"x","inputs":{"n":2},"expect":"ok","lang_seconds":{"c":1,"go":1}}
+{"rec":"test","key":"roundtrip.conformance-wire.full","type":"roundtrip","family":"conformance-wire","case":"full","tier":"functional","checks":"x","inputs":{"n":3},"expect":"same","lang_seconds":{"c":1,"go":1}}
+{"rec":"test","key":"roundtrip.happy-path.whole","type":"roundtrip","family":"happy-path","case":"whole","tier":"functional","checks":"x","inputs":{"n":4},"expect":"ok","seconds":1}
+{"rec":"test","key":"roundtrip.happy-path.unmeasured","type":"roundtrip","family":"happy-path","case":"unmeasured","tier":"functional","checks":"x","inputs":{"n":5},"expect":"ok"}
 {"rec":"test","key":"tooling.fam.free","type":"tooling","family":"fam","case":"free","tier":"functional","scope":"none","adapter":"fake","checks":"x","inputs":{"n":6},"expect":"passes","seconds":1}
-`, compile, compile, compile, happy, happy, happy)
+`, c, gol)
 }
 
 // prFixtureTiming is a pr job of two lanes, 10 s of setup, and a run
 // measured at 5 s.
 var prFixtureTiming = prRunTiming{Jobs: 2, Setup: 10, Run: 5}
 
-// TestThePRGroupIsOneCompileAndOneHappyPathRowPerLanguage: the pr group
-// holds, for every language, exactly one compile row and one happy-path
-// round-trip row, each measured, their seconds summed within the job's
-// budget; each break is named. The plants: a second round trip, a decode
-// row, a language-free row, a language missing its happy path, an unmeasured
-// row, and the sum past the budget.
-func TestThePRGroupIsOneCompileAndOneHappyPathRowPerLanguage(t *testing.T) {
+// TestThePRGroupIsOneHappyPathRowPerLanguage: the pr group holds, for every
+// language, exactly one happy-path row (make happy-<lang>, the language's
+// compile and its happy path), measured by its language's own seconds, and
+// the job, its setup and the run's critical path, within the budget; each
+// break is named. The plants: a second happy path, a conformance row, a
+// language-free row, a language missing its happy path, a row measured only
+// as a whole, an unmeasured row, the critical path past the budget, and the
+// measured run past it.
+func TestThePRGroupIsOneHappyPathRowPerLanguage(t *testing.T) {
 	t.Parallel()
-	both := []string{"c.nightly.codegen.fam.builds", "go.nightly.codegen.fam.builds", "c.functional.roundtrip.fam.happy", "go.functional.roundtrip.fam.happy"}
-	names := func(extra ...string) string {
+	both := []string{"c.functional.roundtrip.happy-path.ship", "go.functional.roundtrip.happy-path.ship"}
+	names := func(rows ...string) string {
 		var q []string
-		for _, n := range append(append([]string{}, both...), extra...) {
+		for _, n := range rows {
 			q = append(q, fmt.Sprintf("%q", n))
 		}
 		return `{"names":[` + strings.Join(q, ",") + `]}`
 	}
-	rows, p := prGroupTimed(prRegistry(t, prTestLines(3, 3), names()), prFixtureTiming)
+	with := func(extra ...string) string { return names(append(append([]string{}, both...), extra...)...) }
+	rows, p := prGroupTimed(prRegistry(t, prTestLines(3, 4), with()), prFixtureTiming)
 	if len(p) > 0 {
-		t.Fatalf("a pr group of one compile row and one happy path per language: %v", p)
+		t.Fatalf("a pr group of one happy path per language: %v", p)
 	}
-	if len(rows) != 2 || rows[0].Lang != "c" || rows[0].Compile != "c.nightly.codegen.fam.builds" || rows[0].Happy != "c.functional.roundtrip.fam.happy" || rows[0].Seconds != 6 {
+	if len(rows) != 2 || rows[0].Lang != "c" || rows[0].Happy != "c.functional.roundtrip.happy-path.ship" || rows[0].Seconds != 3 || rows[1].Seconds != 4 {
 		t.Errorf("the rows: %+v", rows)
 	}
 	for _, c := range []struct {
 		what, tests, query, want string
+		timing                   prRunTiming
 	}{
-		{"a second round trip", prTestLines(3, 3), names("c.functional.roundtrip.fam.second"),
-			"c.functional.roundtrip.fam.happy and c.functional.roundtrip.fam.second are both type roundtrip in c: the pr group holds one of each per language"},
-		{"a decode row", prTestLines(3, 3), names("go.functional.decode.fam.read"),
-			"go.functional.decode.fam.read is type decode, and the pr group holds per language one compile row (type codegen) and one happy-path row (type roundtrip), nothing else: it runs nightly"},
-		{"a language-free row", prTestLines(3, 3), names("none.functional.tooling.fam.free"),
-			"none.functional.tooling.fam.free is in the pr group, and the pr group holds per language one compile row and one happy-path row, never a language-free row: it runs nightly"},
-		{"a language missing its happy path", prTestLines(3, 3), `{"names":["c.nightly.codegen.fam.builds","go.nightly.codegen.fam.builds","c.functional.roundtrip.fam.happy"]}`,
-			"go has no happy-path row (type roundtrip) in the pr group"},
-		{"a language missing its compile row", prTestLines(3, 3), `{"names":["c.nightly.codegen.fam.builds","c.functional.roundtrip.fam.happy","go.functional.roundtrip.fam.happy"]}`,
-			"go has no compile row (type codegen) in the pr group"},
-		{"an unmeasured row", prTestLines(3, 3), `{"names":["c.nightly.codegen.fam.builds","go.nightly.codegen.fam.builds","c.functional.roundtrip.fam.unmeasured","go.functional.roundtrip.fam.happy"]}`,
-			"c.functional.roundtrip.fam.unmeasured has no measured seconds"},
-		{"a row measured only as a whole", prTestLines(3, 3), `{"names":["c.nightly.codegen.fam.builds","go.nightly.codegen.fam.builds","c.functional.roundtrip.fam.whole","go.functional.roundtrip.fam.happy"]}`,
-			"c.functional.roundtrip.fam.whole has no measured seconds"},
-		{"the critical path past the budget", prTestLines(60, 50.5), names(),
-			"the pr job takes 120.5 s, past its 120 s: setup 10.0 s and the run's critical path 110.5 s on 2 lanes"},
+		{"a second happy path", prTestLines(3, 4), with("c.functional.roundtrip.happy-path.second"),
+			"c.functional.roundtrip.happy-path.ship and c.functional.roundtrip.happy-path.second are both happy paths of c: the pr group holds one per language", prFixtureTiming},
+		{"a conformance row", prTestLines(3, 4), with("go.functional.roundtrip.conformance-wire.full"),
+			"go.functional.roundtrip.conformance-wire.full is family conformance-wire, and the pr group holds per language one happy-path row (family happy-path: make happy-<lang>, the compile and the happy path), nothing else: it runs nightly", prFixtureTiming},
+		{"a language-free row", prTestLines(3, 4), with("none.functional.tooling.fam.free"),
+			"none.functional.tooling.fam.free is in the pr group, and the pr group holds per language one happy-path row (family happy-path), never a language-free row: it runs nightly", prFixtureTiming},
+		{"a language missing its happy path", prTestLines(3, 4), names("c.functional.roundtrip.happy-path.ship"),
+			"go has no happy-path row (family happy-path) in the pr group", prFixtureTiming},
+		{"a row measured only as a whole", prTestLines(3, 4), names("c.functional.roundtrip.happy-path.whole", "go.functional.roundtrip.happy-path.ship"),
+			"c.functional.roundtrip.happy-path.whole has no measured seconds", prFixtureTiming},
+		{"an unmeasured row", prTestLines(3, 4), names("c.functional.roundtrip.happy-path.unmeasured", "go.functional.roundtrip.happy-path.ship"),
+			"c.functional.roundtrip.happy-path.unmeasured has no measured seconds", prFixtureTiming},
+		{"the critical path past the budget", prTestLines(110.5, 3), with(),
+			"the pr job takes 120.5 s, past its 120 s: setup 10.0 s and the run's critical path 110.5 s on 2 lanes", prFixtureTiming},
+		{"the measured run past the budget", prTestLines(3, 4), with(),
+			"the pr job takes 120.5 s, past its 120 s", prRunTiming{Jobs: 2, Setup: 10, Run: 110.5}},
 	} {
-		_, p := prGroupTimed(prRegistry(t, c.tests, c.query), prFixtureTiming)
+		_, p := prGroupTimed(prRegistry(t, c.tests, c.query), c.timing)
 		if !strings.Contains(strings.Join(p, "\n"), c.want) {
 			t.Errorf("%s: want %q, got %v", c.what, c.want, p)
 		}
-	}
-	// the job's wall is its setup and the longer of the computed and the
-	// measured run: the measured run past the budget is red even when the
-	// rows' seconds fit
-	if _, p := prGroupTimed(prRegistry(t, prTestLines(3, 3), names()), prRunTiming{Jobs: 2, Setup: 10, Run: 110.5}); !strings.Contains(strings.Join(p, "\n"), "the pr job takes 120.5 s") {
-		t.Errorf("a measured run past the budget: %v", p)
 	}
 	// the calls go longest first to the least loaded lane: c 9 s, go 6 s and
 	// two of 4 s on two lanes is 9+4 and 6+4, 13 s; one lane is the sum
@@ -376,7 +371,7 @@ func TestEveryWorkflowStepCallsOnlySchemaTest(t *testing.T) {
 // unreadable needs context are each named.
 func TestTheVerdictNeedsEveryJobGreen(t *testing.T) {
 	t.Parallel()
-	green := `{"fork-pull-request":{"result":"skipped"},"schema-test":{"result":"success"},"fixed-corpus":{"result":"success"},"produce":{"result":"success"},"schema-test-pr":{"result":"success"}}`
+	green := `{"fork-pull-request":{"result":"skipped"},"schema-test":{"result":"success"},"schema-test-pr":{"result":"success"}}`
 	if err := verdict([]byte(green)); err != nil {
 		t.Fatalf("an all-green run: %v", err)
 	}
@@ -384,7 +379,7 @@ func TestTheVerdictNeedsEveryJobGreen(t *testing.T) {
 		strings.Replace(green, `"schema-test-pr":{"result":"success"}`, `"schema-test-pr":{"result":"failure"}`, 1):       "schema-test-pr: failure",
 		strings.Replace(green, `"schema-test-pr":{"result":"success"}`, `"schema-test-pr":{"result":"skipped"}`, 1):       "schema-test-pr: skipped",
 		strings.Replace(green, `"schema-test":{"result":"success"}`, `"schema-test":{"result":"cancelled"}`, 1):           "schema-test: cancelled",
-		strings.Replace(green, `"produce":{"result":"success"}`, `"produce":{"result":"failure"}`, 1):                     "produce: failure",
+		strings.Replace(green, `}}`, `},"produce":{"result":"success"}}`, 1):                                              "produce: a job ci-fast.yml does not generate",
 		strings.Replace(green, `"fork-pull-request":{"result":"skipped"}`, `"fork-pull-request":{"result":"failure"}`, 1): "fork-pull-request: failure",
 		strings.Replace(green, `,"schema-test-pr":{"result":"success"}`, "", 1):                                           "has no job schema-test-pr",
 		strings.Replace(green, `}}`, `},"schema-test-pr-2":{"result":"success"}}`, 1):                                     "schema-test-pr-2: a job ci-fast.yml does not generate",
