@@ -104,6 +104,7 @@ var pythonVTMapRows = []string{
 	"torture_wide_cook",
 	"torture_wide_cook_extremes",
 	"widenbound_evodoc",
+	"sp_enum_mood_map",
 	"vd_var_defaults",
 	"vd_var_values",
 }

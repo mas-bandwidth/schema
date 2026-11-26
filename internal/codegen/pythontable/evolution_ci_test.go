@@ -38,8 +38,12 @@ func evolutionCINames() []string {
 	return names
 }
 
+// evolutionCICoverage reads the selectors from the recipes' go test lines.
+// Every recipe runs go test through $(GO_TEST) (docs/TEST-REGISTRY.md, the
+// make-gotest adapter), never a bare `go test`, so a bare line is no
+// selector and the count of three is held over the $(GO_TEST) lines.
 func evolutionCICoverage(names []string, source string) error {
-	rows := regexp.MustCompile(`(?m)^\tgo test[^\n]+-run '([^']+)'[^\n]*$`).FindAllStringSubmatch(source, -1)
+	rows := regexp.MustCompile(`(?m)^\t\$\(GO_TEST\)[^\n]+-run '([^']+)'[^\n]*$`).FindAllStringSubmatch(source, -1)
 	if len(rows) != 3 || len(names) == 0 {
 		return fmt.Errorf("Evolution rows=%d, cases=%d", len(rows), len(names))
 	}
@@ -93,7 +97,7 @@ func TestPythonVtEvolutionCICoverage(t *testing.T) {
 	if err := evolutionCICoverage(names, source); err != nil {
 		t.Fatal(err)
 	}
-	row := regexp.MustCompile(`(?m)^\tgo test[^\n]+$`).FindString(source)
+	row := regexp.MustCompile(`(?m)^\t\$\(GO_TEST\)[^\n]+$`).FindString(source)
 	for label, changed := range map[string]string{
 		"deleted":   strings.Replace(source, row, "", 1),
 		"duplicate": source + "\n" + row,
