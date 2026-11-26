@@ -87,12 +87,12 @@ schema-moo-runs-hostile-corpus.yml	negative-control	make	schema-moo-runs-hostile
 schema-python-resource-bounds.yml	fast	make	dist-python	ci-plumbing.make-python-toolchain.dist-python	none
 schema-python-resource-bounds.yml	fast	make	schema-python-resource-bounds-negative-control	plant.schema-python-resource-bounds-negative-control.python-resource-bounds-planted-pattern	python
 schema-python-resource-bounds.yml	nightly	make	dist-python	ci-plumbing.make-python-toolchain.dist-python	none
-schema-python-resource-bounds.yml	nightly	make	schema-python-resource-bounds	resource-bounds.make-python-hostile.schema-python-resource-bounds	python
+schema-python-resource-bounds.yml	nightly	make	schema-python-resource-bounds	resource-bounds.schema-python-resource-bounds.python-resource-bounds-hostile-shapes	python
 schema-python-runs-hostile-corpus.yml	fast	make	dist-python	ci-plumbing.make-python-toolchain.dist-python	none
-schema-python-runs-hostile-corpus.yml	fast	make	schema-python-runs-hostile-corpus-negative-control	plant.make-python-hostile.schema-python-runs-hostile-corpus-negative-control	python
+schema-python-runs-hostile-corpus.yml	fast	make	schema-python-runs-hostile-corpus-negative-control	plant.schema-python-runs-hostile-corpus-negative-control.python-hostile-corpus-planted-reader	python
 schema-python-runs-hostile-corpus.yml	nightly	make	dist-python	ci-plumbing.make-python-toolchain.dist-python	none
 schema-python-runs-hostile-corpus.yml	nightly	make	schema-python-runs-hostile-corpus	load-refusal.hostile.announce-bytes-too-large	python
-schema-python-runs-hostile-corpus.yml	nightly	make	schema-python-runs-hostile-corpus-negative-control	plant.make-python-hostile.schema-python-runs-hostile-corpus-negative-control	python
+schema-python-runs-hostile-corpus.yml	nightly	make	schema-python-runs-hostile-corpus-negative-control	plant.schema-python-runs-hostile-corpus-negative-control.python-hostile-corpus-planted-reader	python
 schema-ruby-resource-bounds.yml	nightly	make	schema-ruby-resource-bounds-negative-control	plant.make-schema-ruby-runs-hostile-corpus.schema-ruby-resource-bounds-negative-control	ruby
 schema-ruby-resource-bounds.yml	nightly	make	schema-ruby-resource-bounds	resource-bounds.make-schema-ruby-runs-hostile-corpus.schema-ruby-resource-bounds	ruby
 schema-ruby-runs-hostile-corpus.yml	nightly	make	schema-ruby-runs-hostile-corpus	load-refusal.hostile.announce-bytes-too-large	ruby
@@ -161,7 +161,7 @@ ci-fast.yml	nightly-fast	make	schema-lobster-runs-hostile-corpus	-	none
 ci-fast.yml	nightly-fast	make	schema-luau-runs-hostile-corpus	load-refusal.hostile.announce-bytes-too-large	luau
 ci-fast.yml	nightly-fast	make	schema-moo-runs-hostile-corpus	load-refusal.hostile.announce-bytes-too-large	moo
 ci-fast.yml	nightly-fast	make	schema-python-runs-hostile-corpus	load-refusal.hostile.announce-bytes-too-large	python
-ci-fast.yml	nightly-fast	make	schema-python-runs-hostile-corpus-negative-control	plant.make-python-hostile.schema-python-runs-hostile-corpus-negative-control	python
+ci-fast.yml	nightly-fast	make	schema-python-runs-hostile-corpus-negative-control	plant.schema-python-runs-hostile-corpus-negative-control.python-hostile-corpus-planted-reader	python
 ci-fast.yml	nightly-fast	make	schema-ruby-runs-hostile-corpus	load-refusal.hostile.announce-bytes-too-large	ruby
 ci-fast.yml	nightly-fast	make	schema-rust-runs-hostile-corpus	load-refusal.hostile.announce-bytes-too-large	rust
 ci-fast.yml	nightly-fast	make	dist-squirrel	ci-plumbing.make-squirrel.dist-squirrel	none
@@ -171,7 +171,7 @@ ci-fast.yml	nightly-fast	make	schema-lua-resource-bounds	resource-bounds.make-sc
 ci-fast.yml	nightly-fast	make	schema-lua-resource-bounds-negative-control	plant.lua-a.schema-lua-resource-bounds-negative-control	lua
 ci-fast.yml	nightly-fast	make	schema-luau-resource-bounds	resource-bounds.make-schema-luau-resource-bounds.schema-luau-resource-bounds	luau
 ci-fast.yml	nightly-fast	make	schema-luau-resource-bounds-negative-control	plant.excluded.schema-luau-resource-bounds-negative-control	luau
-ci-fast.yml	nightly-fast	make	schema-python-resource-bounds	resource-bounds.make-python-hostile.schema-python-resource-bounds	python
+ci-fast.yml	nightly-fast	make	schema-python-resource-bounds	resource-bounds.schema-python-resource-bounds.python-resource-bounds-hostile-shapes	python
 ci-fast.yml	nightly-fast	make	schema-ruby-resource-bounds	resource-bounds.make-schema-ruby-runs-hostile-corpus.schema-ruby-resource-bounds	ruby
 ci-fast.yml	nightly-fast	make	dist-squirrel	ci-plumbing.make-squirrel.dist-squirrel	none
 ci-fast.yml	nightly-fast	make	schema-squirrel-resource-bounds-fast	resource-bounds.make-schema-squirrel-resource-bounds.schema-squirrel-resource-bounds-fast	squirrel
@@ -199,7 +199,7 @@ ci-fast.yml	nightly-fast	make	appendix-go-fixed	-	none
 ci-fast.yml	nightly-fast	make	table-optional-array-resize-go	-	none
 ci-fast.yml	nightly-fast	make	appendix-python-fixed	-	none
 ci-fast.yml	nightly-fast	make	tables-cs-block-compile	-	none
-ci-fast.yml	nightly-fast	make	tables-cs-block-compile-negative-control	harness-run.make-cs-block-compile.tables-cs-block-compile-negative-control	none
+ci-fast.yml	nightly-fast	make	tables-cs-block-compile-negative-control	plant.make-cs-block-compile.tables-cs-block-compile-negative-control	none
 ci-fast.yml	verify-leg	make	verify-c-conformance	-	none
 ci-fast.yml	verify-leg	make	verify-c-bench	-	none
 ci-fast.yml	verify-leg	make	verify-c-fuzz	-	none
@@ -391,7 +391,7 @@ ci-fast.yml	input-family	script	inputaccount -family conformance-corpus -leg rub
 ci-fast.yml	newleg-scaffold	gotest	cmd/schema TestNewLegZigWritesSkeletonAndFixturePasses	compiler.cmd-schema.new-leg-zig-writes-skeleton-and-fixture-passes	none
 ci-fast.yml	go-test-touched	make	tables-go-fixedform	harness-run.make-go.tables-go-fixedform	none
 ci-fast.yml	go-test-touched	make	conformance-go-rows-a	-	none
-ci-fast.yml	go-test-touched	make	conformance-go-rows-b	harness-run.make-go.conformance-go-rows-b	none
+ci-fast.yml	go-test-touched	make	conformance-go-rows-b	harness-run.conformance-go-rows-b.row-r20	none
 ci-fast.yml	go-test-touched	make	conformance-go-driver-unit	harness-run.make-go.conformance-go-driver-unit	none
 ci-fast.yml	go-test-touched	make	cards-conformance-go-negative-control	plant.go-proof-4.cards-conformance-go-negative-control	none
 ci-fast.yml	go-test-touched	gotest	go test ./bench/tables/moo (1 Go tests the unmoved ledger holds, L5)	-	none
@@ -407,491 +407,20 @@ ci-fast.yml	go-test-touched	gotest	go test ./internal/codegen/javatable (224 Go 
 ci-fast.yml	go-test-touched	gotest	go test ./internal/codegen/lobstertable (194 Go tests the unmoved ledger holds, L5)	-	none
 ci-fast.yml	go-test-touched	gotest	go test ./internal/codegen/luatable (262 Go tests the unmoved ledger holds, L5)	-	none
 ci-fast.yml	go-test-touched	gotest	go test ./internal/codegen/luautable (265 Go tests the unmoved ledger holds, L5)	-	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/c TestBulkBytesEmission	compiler.codegen-c.bulk-bytes-emission	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/c TestBulkBytesMatchesAnalysis	compiler.codegen-c.bulk-bytes-matches-analysis	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/c TestExprBounds	compiler.codegen-c.expr-bounds	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/c TestExprConstDefines	compiler.codegen-c.expr-const-defines	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/c TestExprHostileDirect	compiler.codegen-c.expr-hostile-direct	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/c TestExtremeLiterals	compiler.codegen-c.extreme-literals	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/c TestExtremeSpellingsAbsent	compiler.codegen-c.extreme-spellings-absent	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/c TestFixedByteArrayAfterUnionWireC	compiler.codegen-c.fixed-byte-array-after-union-wire-c	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/c TestNameCorpusBuildsC	compiler.codegen-c.name-corpus-builds-c	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/c TestPayloadFreeUnionStorageAndDispatch	compiler.codegen-c.payload-free-union-storage-and-dispatch	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/c TestRangedOffsetsSubtractUnsigned	compiler.codegen-c.ranged-offsets-subtract-unsigned	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/c TestReadBoundsAreSymbolic	compiler.codegen-c.read-bounds-are-symbolic	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/c TestReadRefusalsLatchTheStream	compiler.codegen-c.read-refusals-latch-the-stream	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/c TestUnionArmSetterSetsTagAndArmC	compiler.codegen-c.union-arm-setter-sets-tag-and-arm-c	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/c TestUnionReadUsesDeclaredInitialValues	compiler.codegen-c.union-read-uses-declared-initial-values	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/c TestValueDefaultConstruction	compiler.codegen-c.value-default-construction	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/c TestWideConstAndReservedC	compiler.codegen-c.wide-const-and-reserved-c	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/cpp TestCStringLitEscapes	compiler.codegen-cpp.c-string-lit-escapes	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/cpp TestConstEmissionOrderFree	compiler.codegen-cpp.const-emission-order-free	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/cpp TestCppNativeHeaderIsIncludedWhenAMappingIsLive	compiler.codegen-cpp.cpp-native-header-is-included-when-a-mapping-is-live	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/cpp TestCppNativeQualifiedNameEmitsVerbatim	compiler.codegen-cpp.cpp-native-qualified-name-emits-verbatim	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/cpp TestCppPacketDefaults	compiler.codegen-cpp.cpp-packet-defaults	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/cpp TestCppPacketDefaultsNegativeControl	compiler.codegen-cpp.cpp-packet-defaults-negative-control	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/cpp TestCppRangeAssertWideStorage	compiler.codegen-cpp.cpp-range-assert-wide-storage	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/cpp TestCppUnionNoneFixedBytesLayout	compiler.codegen-cpp.cpp-union-none-fixed-bytes-layout	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/cpp TestExtremeDefaultInitializers	compiler.codegen-cpp.extreme-default-initializers	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/cpp TestExtremeSpellingsAbsentCpp	compiler.codegen-cpp.extreme-spellings-absent-cpp	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/cpp TestFlagAppendHelperOncePerFile	compiler.codegen-cpp.flag-append-helper-once-per-file	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/cpp TestGenerateRefusesHeaderCycleAndWireCollision	compiler.codegen-cpp.generate-refuses-header-cycle-and-wire-collision	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/cpp TestHeadersUseTheRuntimesCSpellings	compiler.codegen-cpp.headers-use-the-runtimes-c-spellings	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/cpp TestNameCorpusBuildsCpp	compiler.codegen-cpp.name-corpus-builds-cpp	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/cpp TestNativeMappingIsCppOnly	compiler.codegen-cpp.native-mapping-is-cpp-only	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/cpp TestNestedCallsUseTheObjectMacros	compiler.codegen-cpp.nested-calls-use-the-object-macros	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/cpp TestRangeAssertWideStorageComparesIn64Bits	compiler.codegen-cpp.range-assert-wide-storage-compares-in64-bits	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/cpp TestRangeAssertsDropTautologies	compiler.codegen-cpp.range-asserts-drop-tautologies	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/cpp TestRangeShapesPastInt32	compiler.codegen-cpp.range-shapes-past-int32	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/cpp TestSpecBulkBytesAndInlining	compiler.codegen-cpp.spec-bulk-bytes-and-inlining	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/cpp TestSpecSerializeIncludeRule	compiler.codegen-cpp.spec-serialize-include-rule	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/cpp TestUnionArmSetterLeavesTheWireUnmoved	compiler.codegen-cpp.union-arm-setter-leaves-the-wire-unmoved	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/cpp TestUnionArmSetterRefusesACollidingName	compiler.codegen-cpp.union-arm-setter-refuses-a-colliding-name	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/cpp TestUnionArmSetterSetsTagAndArm	compiler.codegen-cpp.union-arm-setter-sets-tag-and-arm	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/cpp TestUnionPlacementIncludeStaysInWireHeader	compiler.codegen-cpp.union-placement-include-stays-in-wire-header	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/cpp TestUntakenBranchZeroesFloatsAndUnions	compiler.codegen-cpp.untaken-branch-zeroes-floats-and-unions	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/cpp TestUntakenBranchZeroesNestedStructsMemberwise	compiler.codegen-cpp.untaken-branch-zeroes-nested-structs-memberwise	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/cpp TestZeroWireAndStoragelessBodies	compiler.codegen-cpp.zero-wire-and-storageless-bodies	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/dart TestDartCompressedFloatClampsTheTopOfRange	compiler.codegen-dart.dart-compressed-float-clamps-the-top-of-range	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/dart TestDartFloatBitsAreAtTheAssignment	compiler.codegen-dart.dart-float-bits-are-at-the-assignment	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/dart TestDartKeyedArraysAreHeldAtBothEnds	compiler.codegen-dart.dart-keyed-arrays-are-held-at-both-ends	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/dart TestDartPacketReadReportsBitsConsumed	compiler.codegen-dart.dart-packet-read-reports-bits-consumed	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/dart TestDartPacketWriteValidatesStringContent	compiler.codegen-dart.dart-packet-write-validates-string-content	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/dart TestDartWriteAssertsBitsWidth	compiler.codegen-dart.dart-write-asserts-bits-width	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/dart TestDartZeroBitReadFunctionalRefusesBadBounds	compiler.codegen-dart.dart-zero-bit-read-functional-refuses-bad-bounds	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/dart TestFieldDefaultNamingShadowedConstant	compiler.codegen-dart.field-default-naming-shadowed-constant	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/dart TestFixedDefaultIsRawNotDoubleScaled	compiler.codegen-dart.fixed-default-is-raw-not-double-scaled	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/dart TestReservedDeclarationNamesRefused	compiler.codegen-dart.reserved-declaration-names-refused	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/dart TestTableOnlyUnitEmitsInt128Support	compiler.codegen-dart.table-only-unit-emits-int128-support	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/dart TestTableUnionArmEmitsInt128Support	compiler.codegen-dart.table-union-arm-emits-int128-support	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/dart TestUnionSelectionInitializesConstructionDefaults	compiler.codegen-dart.union-selection-initializes-construction-defaults	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/elixir TestElixirLoopHelperPerOwnerAndField	compiler.codegen-elixir.elixir-loop-helper-per-owner-and-field	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/elixir TestElixirPacketEmptyElementCompilesClean	compiler.codegen-elixir.elixir-packet-empty-element-compiles-clean	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/elixir TestElixirPacketReadRefusesNegativeBitCount	compiler.codegen-elixir.elixir-packet-read-refuses-negative-bit-count	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/elixir TestElixirPacketWriteEmitsTheIntegerCheck	compiler.codegen-elixir.elixir-packet-write-emits-the-integer-check	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/elixir TestElixirPacketWriteRefusesBareIntOutsideWidth	compiler.codegen-elixir.elixir-packet-write-refuses-bare-int-outside-width	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/elixir TestElixirPacketWriteRefusesNonInteger	compiler.codegen-elixir.elixir-packet-write-refuses-non-integer	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/elixir TestElixirPacketWriteRefusesWideBits	compiler.codegen-elixir.elixir-packet-write-refuses-wide-bits	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/elixir TestFileModuleNoCollisionKeepsBaseName	compiler.codegen-elixir.file-module-no-collision-keeps-base-name	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/elixir TestFileModuleRefusesATakenBaseFileName	compiler.codegen-elixir.file-module-refuses-a-taken-base-file-name	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/elixir TestFileModuleStepsAsideByteIdenticalToBase	compiler.codegen-elixir.file-module-steps-aside-byte-identical-to-base	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/elixir TestFileModuleYieldsToAFixedTableValueModule	compiler.codegen-elixir.file-module-yields-to-a-fixed-table-value-module	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/elixir TestFileModuleYieldsToASameNamedDeclaration	compiler.codegen-elixir.file-module-yields-to-a-same-named-declaration	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/elixir TestNameCorpusBuildsElixir	compiler.codegen-elixir.name-corpus-builds-elixir	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/goose TestGooseCompressedFloatBuildMatchesGo	compiler.codegen-goose.goose-compressed-float-build-matches-go	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/goose TestGooseEveryScalarFieldIsBornAtItsIRDefault	compiler.codegen-goose.goose-every-scalar-field-is-born-at-its-ir-default	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/goose TestGooseExamplesAgreeWithTheWireGoldens	compiler.codegen-goose.goose-examples-agree-with-the-wire-goldens	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/goose TestGooseLudicrousAgreesWithTheWireGoldens	compiler.codegen-goose.goose-ludicrous-agrees-with-the-wire-goldens	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/goose TestGooseRefusesByName	compiler.codegen-goose.goose-refuses-by-name	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/goose TestGooseTypesConstructAtTheirDefaults	compiler.codegen-goose.goose-types-construct-at-their-defaults	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/goose TestGooseVendoredSerializeIsThePin	compiler.codegen-goose.goose-vendored-serialize-is-the-pin	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/goose TestGooseWriteIntoShortStreamRefuses	compiler.codegen-goose.goose-write-into-short-stream-refuses	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/goose TestGooseWriteIntoShortStreamRefusesNegativeControl	compiler.codegen-goose.goose-write-into-short-stream-refuses-negative-control	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/goose TestSkeletonFixture	compiler.codegen-goose.skeleton-fixture	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/gotable/fuzzunit FuzzFixedLoad	fuzz.codegen-gotable-fuzzunit.fuzz-fixed-load	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/gotable/fuzzunit FuzzFromJSON	fuzz.codegen-gotable-fuzzunit.fuzz-from-json	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/gotable/fuzzunit FuzzLoad	fuzz.codegen-gotable-fuzzunit.fuzz-load	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/gotable/fuzzunit FuzzLoadMessages	fuzz.codegen-gotable-fuzzunit.fuzz-load-messages	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/gotable/fuzzunit FuzzLoadText	fuzz.codegen-gotable-fuzzunit.fuzz-load-text	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/gotable/fuzzunit FuzzOpen	fuzz.codegen-gotable-fuzzunit.fuzz-open	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/gotable/fuzzunit FuzzReadStrict	fuzz.codegen-gotable-fuzzunit.fuzz-read-strict	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/gotable/fuzzunit TestGeneratedAnnouncementDuplicateEntries	compiler.codegen-gotable-fuzzunit.generated-announcement-duplicate-entries	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/gotable/fuzzunit TestGeneratedAnnouncementRefusesHeldEscape	compiler.codegen-gotable-fuzzunit.generated-announcement-refuses-held-escape	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/gotable/fuzzunit TestGeneratedFixedAgreesWithEngine	compiler.codegen-gotable-fuzzunit.generated-fixed-agrees-with-engine	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/gotable/fuzzunit TestGeneratedFixedLoadRefusesForm1	compiler.codegen-gotable-fuzzunit.generated-fixed-load-refuses-form1	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/gotable/fuzzunit TestGeneratedFixedOneVerdictEveryByte	compiler.codegen-gotable-fuzzunit.generated-fixed-one-verdict-every-byte	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/gotable/fuzzunit TestGeneratedFixedSlackNegativeControl	compiler.codegen-gotable-fuzzunit.generated-fixed-slack-negative-control	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/gotable/fuzzunit TestGeneratedJSONCommentIsWellFormedUTF8	compiler.codegen-gotable-fuzzunit.generated-json-comment-is-well-formed-utf8	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/gotable/fuzzunit TestGeneratedJSONFlagsRepeatedNameNegativeControl	compiler.codegen-gotable-fuzzunit.generated-json-flags-repeated-name-negative-control	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/gotable/fuzzunit TestGeneratedJSONFlagsRepeatedNameRefused	compiler.codegen-gotable-fuzzunit.generated-json-flags-repeated-name-refused	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/gotable/fuzzunit TestGeneratedJSONLongMantissaReadsByValue	compiler.codegen-gotable-fuzzunit.generated-json-long-mantissa-reads-by-value	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/gotable/fuzzunit TestGeneratedJSONRepeatedDecodedKeysRefuse	compiler.codegen-gotable-fuzzunit.generated-json-repeated-decoded-keys-refuse	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/gotable/fuzzunit TestGeneratedKindHeldEscapeRefuses	compiler.codegen-gotable-fuzzunit.generated-kind-held-escape-refuses	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/gotable/fuzzunit TestGeneratedMessageCountsHeldToAnnouncedMax	compiler.codegen-gotable-fuzzunit.generated-message-counts-held-to-announced-max	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/gotable/fuzzunit TestGeneratedMessageRangedHeldToAnnouncedKind	compiler.codegen-gotable-fuzzunit.generated-message-ranged-held-to-announced-kind	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/gotable/fuzzunit TestGeneratedMessageRefusesRepeatedFieldId	compiler.codegen-gotable-fuzzunit.generated-message-refuses-repeated-field-id	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/gotable/fuzzunit TestGeneratedMessageRefusesRepeatedKeyedSlot	compiler.codegen-gotable-fuzzunit.generated-message-refuses-repeated-keyed-slot	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/gotable/fuzzunit TestGeneratedMessageRepeatNegativeControl	compiler.codegen-gotable-fuzzunit.generated-message-repeat-negative-control	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/gotable/fuzzunit TestGeneratedMessageSetsNest	compiler.codegen-gotable-fuzzunit.generated-message-sets-nest	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/gotable/fuzzunit TestGeneratedMessageSkipKeyedAllocatesNothing	compiler.codegen-gotable-fuzzunit.generated-message-skip-keyed-allocates-nothing	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/gotable/fuzzunit TestGeneratedMessageSkipKeyedRepeat	compiler.codegen-gotable-fuzzunit.generated-message-skip-keyed-repeat	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/gotable/fuzzunit TestGeneratedMessageSkipRangedElements	compiler.codegen-gotable-fuzzunit.generated-message-skip-ranged-elements	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/gotable/fuzzunit TestGeneratedMessageSkipUnionFieldNone	compiler.codegen-gotable-fuzzunit.generated-message-skip-union-field-none	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/gotable/fuzzunit TestGeneratedMessageStringHeldToAnnouncedMax	compiler.codegen-gotable-fuzzunit.generated-message-string-held-to-announced-max	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/gotable/fuzzunit TestGeneratedMessageWriterNeverTruncates	compiler.codegen-gotable-fuzzunit.generated-message-writer-never-truncates	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/gotable/fuzzunit TestGeneratedSaveRefusesAnOutOfSetEnumElement	compiler.codegen-gotable-fuzzunit.generated-save-refuses-an-out-of-set-enum-element	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/gotable/fuzzunit TestGoSaveLoadAgreeWithTheEngine	compiler.codegen-gotable-fuzzunit.go-save-load-agree-with-the-engine	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/gotable/fuzzunit TestGoSaveLoadAgreeWithTheEngineNegativeControl	compiler.codegen-gotable-fuzzunit.go-save-load-agree-with-the-engine-negative-control	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/gotable/fuzzunit TestTargetsLoadTheirSeeds	compiler.codegen-gotable-fuzzunit.targets-load-their-seeds	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/java TestCanonicalLaysOutTheQualifiedShapes	compiler.codegen-java.canonical-lays-out-the-qualified-shapes	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/java TestCanonicalLaysOutTheTemplatesShapes	compiler.codegen-java.canonical-lays-out-the-templates-shapes	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/java TestCanonicalLeavesNestedGenericsWhole	compiler.codegen-java.canonical-leaves-nested-generics-whole	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/java TestCanonicalMovesLayoutNotTokens	compiler.codegen-java.canonical-moves-layout-not-tokens	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/java TestDeepBodiesNeverAbsorbsOneMisIndentedLine	compiler.codegen-java.deep-bodies-never-absorbs-one-mis-indented-line	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/java TestDocCommentEscapeCompiles	compiler.codegen-java.doc-comment-escape-compiles	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/java TestDocCommentHasNoUnicodeEscape	compiler.codegen-java.doc-comment-has-no-unicode-escape	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/java TestDocCommentKeepsItsText	compiler.codegen-java.doc-comment-keeps-its-text	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/java TestJavaBulkBytesAlignmentGuard	compiler.codegen-java.java-bulk-bytes-alignment-guard	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/java TestJavaCompressedFloatClampsTheTopOfRange	compiler.codegen-java.java-compressed-float-clamps-the-top-of-range	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/java TestJavaGiantAlignedMaxBitsLiteralCompiles	compiler.codegen-java.java-giant-aligned-max-bits-literal-compiles	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/java TestJavaGiantMaxBitsLiteralCompiles	compiler.codegen-java.java-giant-max-bits-literal-compiles	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/java TestJavaPlatformNamesSurviveSameNamedSchemaTypes	compiler.codegen-java.java-platform-names-survive-same-named-schema-types	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/java TestJavaReadBoundsGuardsAreEmitted	compiler.codegen-java.java-read-bounds-guards-are-emitted	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/java TestJavaReadBoundsRefuseHostileInput	compiler.codegen-java.java-read-bounds-refuse-hostile-input	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/java TestJavaRefusesAPlatformNameObscuredByAClassNamedJava	compiler.codegen-java.java-refuses-a-platform-name-obscured-by-a-class-named-java	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/java TestJavaWriteAssertsBitsWidth	compiler.codegen-java.java-write-asserts-bits-width	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/java TestRelayoutLaysOutCompactTemplatesOnly	compiler.codegen-java.relayout-lays-out-compact-templates-only	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/java TestUnionSelectionInitializesConstructionDefaults	compiler.codegen-java.union-selection-initializes-construction-defaults	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/js TestArmInitializationUsesConstructionValuesInBothTiers	compiler.codegen-js.arm-initialization-uses-construction-values-in-both-tiers	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/js TestBulkByteArrayWriteRefusesShortStorage	compiler.codegen-js.bulk-byte-array-write-refuses-short-storage	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/js TestDeclarationsMatchTheModules	compiler.codegen-js.declarations-match-the-modules	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/js TestJsBuiltinsSurviveSameNamedSchemaTypes	compiler.codegen-js.js-builtins-survive-same-named-schema-types	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/js TestJsFieldsNamedAfterTheFlatCursorGenerate	compiler.codegen-js.js-fields-named-after-the-flat-cursor-generate	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/js TestJsFlatCompressedFloatClampsTheTopOfRange	compiler.codegen-js.js-flat-compressed-float-clamps-the-top-of-range	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/js TestJsFlatCursorGuardsStillCatchTheCursor	compiler.codegen-js.js-flat-cursor-guards-still-catch-the-cursor	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/js TestJsFlatReadReportsBitsConsumed	compiler.codegen-js.js-flat-read-reports-bits-consumed	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/js TestJsFlatRefusesNonFiniteBareFloats	compiler.codegen-js.js-flat-refuses-non-finite-bare-floats	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/js TestJsFlatWriteRefusesNonFiniteFloats	compiler.codegen-js.js-flat-write-refuses-non-finite-floats	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/js TestJsFlatWriteRefusesWideBits	compiler.codegen-js.js-flat-write-refuses-wide-bits	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/js TestJsFlatWriterChecksEveryBuild	compiler.codegen-js.js-flat-writer-checks-every-build	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/js TestJsPacketWriteGuardsTheValueBeforeItNarrows	compiler.codegen-js.js-packet-write-guards-the-value-before-it-narrows	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/js TestJsRuntimeWriteRefusesNonFiniteAndWideRangeInProduction	compiler.codegen-js.js-runtime-write-refuses-non-finite-and-wide-range-in-production	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/js TestJsWideRangeWriteTestsBothBounds	compiler.codegen-js.js-wide-range-write-tests-both-bounds	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/js TestPacketWritersCheckStringText	compiler.codegen-js.packet-writers-check-string-text	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/js TestSerializeJSLookupHoldsTheLanePromise	compiler.codegen-js.serialize-js-lookup-holds-the-lane-promise	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/js TestUnionThenFixedByteArrayWire	compiler.codegen-js.union-then-fixed-byte-array-wire	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestBlockBuildAndCookWriteJavaScript	compiler.codegen-jstable.block-build-and-cook-write-java-script	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestBlockFloat32AccessorCallsNoClosure	compiler.codegen-jstable.block-float32-accessor-calls-no-closure	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestBoolByteAboveOneIsMalformedJavaScript	compiler.codegen-jstable.bool-byte-above-one-is-malformed-java-script	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestCardConstructsRetainUnknownFields	compiler.codegen-jstable.card-constructs-retain-unknown-fields	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestCardConstructsRoundTripTheVariableForm	compiler.codegen-jstable.card-constructs-round-trip-the-variable-form	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestCardDescriptorsNameEveryField	compiler.codegen-jstable.card-descriptors-name-every-field	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestCardTextFormMatchesGo	compiler.codegen-jstable.card-text-form-matches-go	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestCookMapFindJavaScript	compiler.codegen-jstable.cook-map-find-java-script	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestCookMapWriterHoldsTheSortJavaScript	compiler.codegen-jstable.cook-map-writer-holds-the-sort-java-script	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestCookWriteAnswersEveryCookWriteRowJavaScript	compiler.codegen-jstable.cook-write-answers-every-cook-write-row-java-script	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestCountCapRefusesWithoutDamageJavaScript	compiler.codegen-jstable.count-cap-refuses-without-damage-java-script	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestCyclicWireIsDamageJavaScript	compiler.codegen-jstable.cyclic-wire-is-damage-java-script	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestDamageDiscardsTheWholeLoadJavaScript	compiler.codegen-jstable.damage-discards-the-whole-load-java-script	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestDamagedWireLoadsNothingJavaScript	compiler.codegen-jstable.damaged-wire-loads-nothing-java-script	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestDecodeClampsEnumOrdinalAndRangedInt	compiler.codegen-jstable.decode-clamps-enum-ordinal-and-ranged-int	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestDecodeCountedArrayWalksLiveCount	compiler.codegen-jstable.decode-counted-array-walks-live-count	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestDepthLoadMeasureCoversFramingJavaScript	compiler.codegen-jstable.depth-load-measure-covers-framing-java-script	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestEveryJavaScriptRoadmapTestIsRunByAMakeTarget	compiler.codegen-jstable.every-java-script-roadmap-test-is-run-by-a-make-target	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestFixedBytesRowIsTheCountedArrayRow	compiler.codegen-jstable.fixed-bytes-row-is-the-counted-array-row	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestFixedClassOnTableWireJavaScript	compiler.codegen-jstable.fixed-class-on-table-wire-java-script	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestFixedCompressedNegZeroRead	compiler.codegen-jstable.fixed-compressed-neg-zero-read	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestFixedFormLoadPrefillsThePlanHoles	compiler.codegen-jstable.fixed-form-load-prefills-the-plan-holes	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestFixedGuardComparedAtArgW	compiler.codegen-jstable.fixed-guard-compared-at-arg-w	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestFixedIdentityPlanIsElevenLanes	compiler.codegen-jstable.fixed-identity-plan-is-eleven-lanes	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestFixedImageIsContiguous	compiler.codegen-jstable.fixed-image-is-contiguous	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestFixedJsTextRefusalIsTotal	compiler.codegen-jstable.fixed-js-text-refusal-is-total	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestFixedLayoutMatchesReference	compiler.codegen-jstable.fixed-layout-matches-reference	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestFixedOptionalRowsMatchReference	compiler.codegen-jstable.fixed-optional-rows-match-reference	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestFixedPlanDestinationsAreThePortsOwnOffsets	compiler.codegen-jstable.fixed-plan-destinations-are-the-ports-own-offsets	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestFixedPrefillCarriesDeclaredDefaults	compiler.codegen-jstable.fixed-prefill-carries-declared-defaults	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestFixedRoadmapJsT03PlansVersions	compiler.codegen-jstable.fixed-roadmap-js-t03-plans-versions	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestFixedRoadmapJsT04Versions	compiler.codegen-jstable.fixed-roadmap-js-t04-versions	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestFixedRoadmapJsT05Evolution	compiler.codegen-jstable.fixed-roadmap-js-t05-evolution	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestFixedRoadmapJsT06Bounds	compiler.codegen-jstable.fixed-roadmap-js-t06-bounds	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestFixedRoadmapJsT07Writes	compiler.codegen-jstable.fixed-roadmap-js-t07-writes	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestFixedRoadmapJsT08ConformanceComposites	compiler.codegen-jstable.fixed-roadmap-js-t08-conformance-composites	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestFixedRoadmapJsT09UnionsOptionals	compiler.codegen-jstable.fixed-roadmap-js-t09-unions-optionals	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestFixedRoadmapJsT12GuardsWideText	compiler.codegen-jstable.fixed-roadmap-js-t12-guards-wide-text	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestFixedRoadmapJsT13LayoutHashCollision	compiler.codegen-jstable.fixed-roadmap-js-t13-layout-hash-collision	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestFixedRoadmapJsT15GuardChain	compiler.codegen-jstable.fixed-roadmap-js-t15-guard-chain	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestFixedRoadmapT01Framing	compiler.codegen-jstable.fixed-roadmap-t01-framing	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestFixedRoadmapT02Plans	compiler.codegen-jstable.fixed-roadmap-t02-plans	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestFixedRootsAndRefusalAgree	compiler.codegen-jstable.fixed-roots-and-refusal-agree	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestFixedUnitRootsFalseWithoutAFixedTable	compiler.codegen-jstable.fixed-unit-roots-false-without-a-fixed-table	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestFixedUnitWithRefusedVariableConstructStillGenerates	compiler.codegen-jstable.fixed-unit-with-refused-variable-construct-still-generates	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestFixedVersioningCfloatRangeWiden	compiler.codegen-jstable.fixed-versioning-cfloat-range-widen	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestFixedVersioningRangeWidenHostile	compiler.codegen-jstable.fixed-versioning-range-widen-hostile	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestFixedVersioningUnionTagBothPlans	compiler.codegen-jstable.fixed-versioning-union-tag-both-plans	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestFixedVersioningUnknownCensusManyRecords	compiler.codegen-jstable.fixed-versioning-unknown-census-many-records	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestGeneratedMessageDepthBoundary	compiler.codegen-jstable.generated-message-depth-boundary	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJSCountedBirthElides	compiler.codegen-jstable.js-counted-birth-elides	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJSFixedFormRaggedTail	compiler.codegen-jstable.js-fixed-form-ragged-tail	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJSFixedFormUnder20Bytes	compiler.codegen-jstable.js-fixed-form-under20-bytes	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJSFixedInPlaceEqualsSharedPath	compiler.codegen-jstable.js-fixed-in-place-equals-shared-path	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJSFixedLaneCountIsReadFromTheRuntime	compiler.codegen-jstable.js-fixed-lane-count-is-read-from-the-runtime	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJSFixedLanesAgree	compiler.codegen-jstable.js-fixed-lanes-agree	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJSFixedLineageLockBugFailsTheBuild	compiler.codegen-jstable.js-fixed-lineage-lock-bug-fails-the-build	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJSFixedNoFormMeansNoLineageToParse	compiler.codegen-jstable.js-fixed-no-form-means-no-lineage-to-parse	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJSFixedVersioningArmTextControls	compiler.codegen-jstable.js-fixed-versioning-arm-text-controls	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJSFixedVersioningBytesAndDefaults	compiler.codegen-jstable.js-fixed-versioning-bytes-and-defaults	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJSFixedVersioningCfloatResRefine	compiler.codegen-jstable.js-fixed-versioning-cfloat-res-refine	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJSFixedVersioningCountClampEnds	compiler.codegen-jstable.js-fixed-versioning-count-clamp-ends	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJSFixedVersioningFloor	compiler.codegen-jstable.js-fixed-versioning-floor	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJSFixedVersioningForgedOrdinalBothPlans	compiler.codegen-jstable.js-fixed-versioning-forged-ordinal-both-plans	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJSFixedVersioningHash	compiler.codegen-jstable.js-fixed-versioning-hash	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJSFixedVersioningLineageMerge	compiler.codegen-jstable.js-fixed-versioning-lineage-merge	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJSFixedVersioningNewReadsOld	compiler.codegen-jstable.js-fixed-versioning-new-reads-old	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJSFixedVersioningOldRefusesNew	compiler.codegen-jstable.js-fixed-versioning-old-refuses-new	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJSFixedVersioningOptionalControls	compiler.codegen-jstable.js-fixed-versioning-optional-controls	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJSFixedVersioningOptionalGuardChain	compiler.codegen-jstable.js-fixed-versioning-optional-guard-chain	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJSFixedVersioningReferenceForwardRefusal	compiler.codegen-jstable.js-fixed-versioning-reference-forward-refusal	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJSFixedVersioningRefuseWritesNothing	compiler.codegen-jstable.js-fixed-versioning-refuse-writes-nothing	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJSFixedVersioningUnionArmText	compiler.codegen-jstable.js-fixed-versioning-union-arm-text	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJSFixedVersioningUnionUnselectedArm	compiler.codegen-jstable.js-fixed-versioning-union-unselected-arm	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJSFixedVersioningUnknownCensus	compiler.codegen-jstable.js-fixed-versioning-unknown-census	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJSFixedVersioningVariantArmMidList	compiler.codegen-jstable.js-fixed-versioning-variant-arm-mid-list	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJSFixedVersioningWriterBoundCount	compiler.codegen-jstable.js-fixed-versioning-writer-bound-count	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJSFixedVersioningWriterBoundCountTwoRemotes	compiler.codegen-jstable.js-fixed-versioning-writer-bound-count-two-remotes	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJSManifestWideLiteralChecksEveryCodeUnit	compiler.codegen-jstable.js-manifest-wide-literal-checks-every-code-unit	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJSMessageWriterOrderEvolution	compiler.codegen-jstable.js-message-writer-order-evolution	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJSVariableHistoricalFieldCompatibility	compiler.codegen-jstable.js-variable-historical-field-compatibility	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJSVariableKeyedEnumReordering	compiler.codegen-jstable.js-variable-keyed-enum-reordering	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJavaScriptArrayRootClosureCorpus	compiler.codegen-jstable.java-script-array-root-closure-corpus	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJavaScriptArrayRootConstruct	compiler.codegen-jstable.java-script-array-root-construct	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJavaScriptBlobSharedReportCensus	compiler.codegen-jstable.java-script-blob-shared-report-census	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJavaScriptCompressedF32EndsShape	compiler.codegen-jstable.java-script-compressed-f32-ends-shape	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJavaScriptDescriptorsAreConstants	compiler.codegen-jstable.java-script-descriptors-are-constants	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJavaScriptDriverToolEnvelope	compiler.codegen-jstable.java-script-driver-tool-envelope	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJavaScriptErrNamesARepeatedKey	compiler.codegen-jstable.java-script-err-names-a-repeated-key	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJavaScriptFixedBatchCheckNegativeControl	compiler.codegen-jstable.java-script-fixed-batch-check-negative-control	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJavaScriptFixedBatchRefusalUntouched	compiler.codegen-jstable.java-script-fixed-batch-refusal-untouched	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJavaScriptFixedBatchResetNegativeControl	compiler.codegen-jstable.java-script-fixed-batch-reset-negative-control	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJavaScriptFixedNestedArrayCheck	compiler.codegen-jstable.java-script-fixed-nested-array-check	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJavaScriptFormsConstruct	compiler.codegen-jstable.java-script-forms-construct	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJavaScriptIntegrityConstruct	compiler.codegen-jstable.java-script-integrity-construct	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJavaScriptJSONMapReadIsLinear	compiler.codegen-jstable.java-script-json-map-read-is-linear	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJavaScriptJSONWideFractionDigitsRefusedEarly	compiler.codegen-jstable.java-script-json-wide-fraction-digits-refused-early	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJavaScriptJsonArrayRefusalReport	compiler.codegen-jstable.java-script-json-array-refusal-report	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJavaScriptJsonNumberAnyLength	compiler.codegen-jstable.java-script-json-number-any-length	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJavaScriptMapRepeatedKeyRefused	compiler.codegen-jstable.java-script-map-repeated-key-refused	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJavaScriptMapRepeatedKeyRefusedNegativeControl	compiler.codegen-jstable.java-script-map-repeated-key-refused-negative-control	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJavaScriptMapValueShapeCorpus	compiler.codegen-jstable.java-script-map-value-shape-corpus	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJavaScriptNestedRequiredGuards	compiler.codegen-jstable.java-script-nested-required-guards	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJavaScriptOneSidedRangeConstruct	compiler.codegen-jstable.java-script-one-sided-range-construct	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJavaScriptOneSidedRangeFixedConstruct	compiler.codegen-jstable.java-script-one-sided-range-fixed-construct	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJavaScriptOptionalMapConstruct	compiler.codegen-jstable.java-script-optional-map-construct	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJavaScriptRequiredConstruct	compiler.codegen-jstable.java-script-required-construct	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJavaScriptRequiredFixedConstruct	compiler.codegen-jstable.java-script-required-fixed-construct	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJavaScriptRetainNestedHashZero	compiler.codegen-jstable.java-script-retain-nested-hash-zero	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJavaScriptTextBOMMatchesGo	compiler.codegen-jstable.java-script-text-bom-matches-go	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJavaScriptTextBase64MatchesEngine	compiler.codegen-jstable.java-script-text-base64-matches-engine	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJavaScriptTextBase64NegativeControl	compiler.codegen-jstable.java-script-text-base64-negative-control	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJavaScriptTextFlagsNameOnce	compiler.codegen-jstable.java-script-text-flags-name-once	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJavaScriptTextListConstruct	compiler.codegen-jstable.java-script-text-list-construct	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJavaScriptTextListStrictNegativeControl	compiler.codegen-jstable.java-script-text-list-strict-negative-control	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJavaScriptTextRepeatedKeyEveryObject	compiler.codegen-jstable.java-script-text-repeated-key-every-object	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJavaScriptTextTotalTailConstruct	compiler.codegen-jstable.java-script-text-total-tail-construct	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJavaScriptTimestampConstruct	compiler.codegen-jstable.java-script-timestamp-construct	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJavaScriptTimestampFixedConstruct	compiler.codegen-jstable.java-script-timestamp-fixed-construct	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJavaScriptTimestampMessageConstruct	compiler.codegen-jstable.java-script-timestamp-message-construct	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJavaScriptUnboundedTextConstruct	compiler.codegen-jstable.java-script-unbounded-text-construct	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJavaScriptVariableHelperClosure	compiler.codegen-jstable.java-script-variable-helper-closure	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsAnnounceKeepsTwoDeclaredShapesThatDeriveOneQuantization	compiler.codegen-jstable.js-announce-keeps-two-declared-shapes-that-derive-one-quantization	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsAnnounceReadOverCapacityTouchesNoEntry	compiler.codegen-jstable.js-announce-read-over-capacity-touches-no-entry	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsArrayElementKindsClosed	compiler.codegen-jstable.js-array-element-kinds-closed	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsCompressedFloatNegZeroAndFloat32Ends	compiler.codegen-jstable.js-compressed-float-neg-zero-and-float32-ends	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsCountBelowMinRefused	compiler.codegen-jstable.js-count-below-min-refused	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsDeprecatedVariantNeverWritten	compiler.codegen-jstable.js-deprecated-variant-never-written	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsEnumNoneSpellingsWriteTheSameBytes	compiler.codegen-jstable.js-enum-none-spellings-write-the-same-bytes	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsFieldsNamedLikeUnbindableNamesRoundTrip	compiler.codegen-jstable.js-fields-named-like-unbindable-names-round-trip	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsFiniteFloatNegativeControl	compiler.codegen-jstable.js-finite-float-negative-control	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsFixedCheckEmitsNoEmptyBlocks	compiler.codegen-jstable.js-fixed-check-emits-no-empty-blocks	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsFixedFloat32DefaultIsTheStoredFloat32	compiler.codegen-jstable.js-fixed-float32-default-is-the-stored-float32	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsFixedLoadRefusesNeverClamps	compiler.codegen-jstable.js-fixed-load-refuses-never-clamps	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsFixedLoadRefusesNeverClampsNegativeControl	compiler.codegen-jstable.js-fixed-load-refuses-never-clamps-negative-control	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsFixedRoadmapRowsStrict	compiler.codegen-jstable.js-fixed-roadmap-rows-strict	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsFixedRoadmapRowsStrictNegativeControl	compiler.codegen-jstable.js-fixed-roadmap-rows-strict-negative-control	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsFixedRootJsonReadsIntoTheMessageWriter	compiler.codegen-jstable.js-fixed-root-json-reads-into-the-message-writer	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsFixedSaveRefusesOffContract	compiler.codegen-jstable.js-fixed-save-refuses-off-contract	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsFixedTablesPrivate	compiler.codegen-jstable.js-fixed-tables-private	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsFixedWriterRefusesBareIntOffWidth	compiler.codegen-jstable.js-fixed-writer-refuses-bare-int-off-width	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsFlagsPastWidthRefuse	compiler.codegen-jstable.js-flags-past-width-refuse	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsFloat32CellsAreBitTransparent	compiler.codegen-jstable.js-float32-cells-are-bit-transparent	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsGraphCheckedOverEveryPointer	compiler.codegen-jstable.js-graph-checked-over-every-pointer	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsJsonFlagsWriterRefusesNonMasks	compiler.codegen-jstable.js-json-flags-writer-refuses-non-masks	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsJsonReadTakesBytes	compiler.codegen-jstable.js-json-read-takes-bytes	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsJsonStringEntryRefusesLoneSurrogateInComment	compiler.codegen-jstable.js-json-string-entry-refuses-lone-surrogate-in-comment	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsJsonWideIntegerSites	compiler.codegen-jstable.js-json-wide-integer-sites	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsJsonWriterRefusesFloat32PastRange	compiler.codegen-jstable.js-json-writer-refuses-float32-past-range	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsLoadMessagesOverCapacityReturnsZero	compiler.codegen-jstable.js-load-messages-over-capacity-returns-zero	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsMessageBatchRefusedWhole	compiler.codegen-jstable.js-message-batch-refused-whole	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsMessageInnerBoundRefused	compiler.codegen-jstable.js-message-inner-bound-refused	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsMessageLoadRefusesKindMismatchBatch	compiler.codegen-jstable.js-message-load-refuses-kind-mismatch-batch	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsMessageLoadRefusesOutOfRangeBatch	compiler.codegen-jstable.js-message-load-refuses-out-of-range-batch	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsMessageNamedIntegerHeldWhole	compiler.codegen-jstable.js-message-named-integer-held-whole	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsMessageNamedReadRefusesOverBound	compiler.codegen-jstable.js-message-named-read-refuses-over-bound	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsMessagePriorWriterShapes	compiler.codegen-jstable.js-message-prior-writer-shapes	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsMessageRangedScalarReadRefuses	compiler.codegen-jstable.js-message-ranged-scalar-read-refuses	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsMessageReadNeverClampsOrCounts	compiler.codegen-jstable.js-message-read-never-clamps-or-counts	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsMessageSkipHoldsTextToTheAnnouncedMax	compiler.codegen-jstable.js-message-skip-holds-text-to-the-announced-max	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsMessageSkipHoldsTextToTheTextRule	compiler.codegen-jstable.js-message-skip-holds-text-to-the-text-rule	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsMessageSkipOfZeroWidthElementsIsBounded	compiler.codegen-jstable.js-message-skip-of-zero-width-elements-is-bounded	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsMessageSkipTextIsBytes	compiler.codegen-jstable.js-message-skip-text-is-bytes	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsPlainReadRefusesPastDepthBound	compiler.codegen-jstable.js-plain-read-refuses-past-depth-bound	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsReadersRefuseCountBelowMin	compiler.codegen-jstable.js-readers-refuse-count-below-min	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsReadsRefuseNonCanonicalBoundaries	compiler.codegen-jstable.js-reads-refuse-non-canonical-boundaries	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsRefusedFormByteLoadsNothing	compiler.codegen-jstable.js-refused-form-byte-loads-nothing	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsRetainAndWideningStrict	compiler.codegen-jstable.js-retain-and-widening-strict	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsRetainAndWideningStrictNegativeControl	compiler.codegen-jstable.js-retain-and-widening-strict-negative-control	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsRetainKeepsDepth128	compiler.codegen-jstable.js-retain-keeps-depth128	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsSaveElidesACountedArrayAtItsBirth	compiler.codegen-jstable.js-save-elides-a-counted-array-at-its-birth	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsSaveMessagesRefusesOffContract	compiler.codegen-jstable.js-save-messages-refuses-off-contract	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsSaveMessagesWriteContractRefusesOffContract	compiler.codegen-jstable.js-save-messages-write-contract-refuses-off-contract	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsScalarOutOfRangeRefusedAsTheOracle	compiler.codegen-jstable.js-scalar-out-of-range-refused-as-the-oracle	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsTableBuiltinsSurviveSameNamedSchemaTypes	compiler.codegen-jstable.js-table-builtins-survive-same-named-schema-types	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsTableFloat32DefaultIsItsFloat32	compiler.codegen-jstable.js-table-float32-default-is-its-float32	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsTableJsonKeySpellingABuiltinIsKeptVerbatim	compiler.codegen-jstable.js-table-json-key-spelling-a-builtin-is-kept-verbatim	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsTableWritersRefuseWrongShapes	compiler.codegen-jstable.js-table-writers-refuse-wrong-shapes	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsTextReadDepthAndLabelsAgreeWithEngine	compiler.codegen-jstable.js-text-read-depth-and-labels-agree-with-engine	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsTextReadDepthCountsPlacedMapAndUnion	compiler.codegen-jstable.js-text-read-depth-counts-placed-map-and-union	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsUnknownUnionCountsItsLevel	compiler.codegen-jstable.js-unknown-union-counts-its-level	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsVariableClassStrict	compiler.codegen-jstable.js-variable-class-strict	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsVariableClassStrictNegativeControl	compiler.codegen-jstable.js-variable-class-strict-negative-control	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsVariableConformanceCellsStrict	compiler.codegen-jstable.js-variable-conformance-cells-strict	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsVariableConformanceCellsStrictNegativeControl	compiler.codegen-jstable.js-variable-conformance-cells-strict-negative-control	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsVariableReadZeroesTheReport	compiler.codegen-jstable.js-variable-read-zeroes-the-report	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsVariableSaveRefusesOffContract	compiler.codegen-jstable.js-variable-save-refuses-off-contract	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestJsWritersRefuseSilentDrops	compiler.codegen-jstable.js-writers-refuse-silent-drops	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestKeyedArrayAccessorsJavaScript	compiler.codegen-jstable.keyed-array-accessors-java-script	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestListSaveLoadMeasureCoversFramingJavaScript	compiler.codegen-jstable.list-save-load-measure-covers-framing-java-script	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestLoadMeasureCoversVariableFramingJavaScript	compiler.codegen-jstable.load-measure-covers-variable-framing-java-script	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestMapWriterSortJavaScript	compiler.codegen-jstable.map-writer-sort-java-script	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestMapsAndUnionArmsOnTheTableWireJavaScript	compiler.codegen-jstable.maps-and-union-arms-on-the-table-wire-java-script	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestMessageFormAnnounceJavaScript	compiler.codegen-jstable.message-form-announce-java-script	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestMessageFormBatchJavaScript	compiler.codegen-jstable.message-form-batch-java-script	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestMessageFormConformanceJavaScript	compiler.codegen-jstable.message-form-conformance-java-script	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestMessageStringDefaultElidedOnlyWhenEqual	compiler.codegen-jstable.message-string-default-elided-only-when-equal	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestNestedTypesAndFixedArraysOnTheTableWireJavaScript	compiler.codegen-jstable.nested-types-and-fixed-arrays-on-the-table-wire-java-script	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestNodeRecordReservedTypeRefusedJavaScript	compiler.codegen-jstable.node-record-reserved-type-refused-java-script	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestOptionalFixedArraySlotIsTheElementDefault	compiler.codegen-jstable.optional-fixed-array-slot-is-the-element-default	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestOptionalVariableClosureJavaScript	compiler.codegen-jstable.optional-variable-closure-java-script	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestOtherVariableConstructsAreRefusedByName	compiler.codegen-jstable.other-variable-constructs-are-refused-by-name	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestRetainsUnknownOnEveryRootJavaScript	compiler.codegen-jstable.retains-unknown-on-every-root-java-script	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestRetentionCapacityIsALoss	compiler.codegen-jstable.retention-capacity-is-a-loss	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestSimStateKindPassDamageRefusedJavaScript	compiler.codegen-jstable.sim-state-kind-pass-damage-refused-java-script	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestSpecInPlaceListHasAGuard	compiler.codegen-jstable.spec-in-place-list-has-a-guard	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestStoredTextZeroRefusalJavaScript	compiler.codegen-jstable.stored-text-zero-refusal-java-script	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestStreamCountPastBodyClampsLikeGoJavaScript	compiler.codegen-jstable.stream-count-past-body-clamps-like-go-java-script	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestStrictReadReasonJavaScript	compiler.codegen-jstable.strict-read-reason-java-script	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestUnionClassesImportTheTablesTheyBuild	compiler.codegen-jstable.union-classes-import-the-tables-they-build	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestUnitViewDescriptorsJavaScript	compiler.codegen-jstable.unit-view-descriptors-java-script	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestVariableClassBeyondCardConstructsJavaScript	compiler.codegen-jstable.variable-class-beyond-card-constructs-java-script	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestWideningReasonsJavaScript	compiler.codegen-jstable.widening-reasons-java-script	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestWireFuzzAllTargetJavaScript	compiler.codegen-jstable.wire-fuzz-all-target-java-script	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestWireFuzzArrayTailNamesTheRefusalJavaScript	compiler.codegen-jstable.wire-fuzz-array-tail-names-the-refusal-java-script	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestWireFuzzBuilderCountReportJavaScript	compiler.codegen-jstable.wire-fuzz-builder-count-report-java-script	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestWireFuzzCodecFailsByNameJavaScript	compiler.codegen-jstable.wire-fuzz-codec-fails-by-name-java-script	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestWireFuzzCountCapNamesTheRefusalJavaScript	compiler.codegen-jstable.wire-fuzz-count-cap-names-the-refusal-java-script	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestWireFuzzEmptyMessageNamesTheRefusalJavaScript	compiler.codegen-jstable.wire-fuzz-empty-message-names-the-refusal-java-script	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestWireFuzzFixedRootNamesPreviousFormJavaScript	compiler.codegen-jstable.wire-fuzz-fixed-root-names-previous-form-java-script	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestWireFuzzKindMismatchNamesTheRefusalJavaScript	compiler.codegen-jstable.wire-fuzz-kind-mismatch-names-the-refusal-java-script	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestWireFuzzMalformedMeasureReportJavaScript	compiler.codegen-jstable.wire-fuzz-malformed-measure-report-java-script	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestWireFuzzMapKeyOrderNamesTheRefusalJavaScript	compiler.codegen-jstable.wire-fuzz-map-key-order-names-the-refusal-java-script	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestWireFuzzMessageAdaptersAnswerThePublicVerdict	compiler.codegen-jstable.wire-fuzz-message-adapters-answer-the-public-verdict	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestWireFuzzMessageSaveMatchesTheOracleJavaScript	compiler.codegen-jstable.wire-fuzz-message-save-matches-the-oracle-java-script	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestWireFuzzRecordBodyTailNamesTheRefusalJavaScript	compiler.codegen-jstable.wire-fuzz-record-body-tail-names-the-refusal-java-script	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestWireFuzzUnknownArmNamesItsEdgesJavaScript	compiler.codegen-jstable.wire-fuzz-unknown-arm-names-its-edges-java-script	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestWireFuzzUnknownBlobEdgeNamesTheShareJavaScript	compiler.codegen-jstable.wire-fuzz-unknown-blob-edge-names-the-share-java-script	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestWireFuzzUnknownMapBlobEdgeNamesTheShareJavaScript	compiler.codegen-jstable.wire-fuzz-unknown-map-blob-edge-names-the-share-java-script	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestWireFuzzUnknownNodeEdgesKeepTheChildJavaScript	compiler.codegen-jstable.wire-fuzz-unknown-node-edges-keep-the-child-java-script	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestWireFuzzUnknownUnionNamesItsEdgesJavaScript	compiler.codegen-jstable.wire-fuzz-unknown-union-names-its-edges-java-script	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/jstable TestWireRowsConformanceJavaScript	compiler.codegen-jstable.wire-rows-conformance-java-script	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/lobster TestLobsterConstNamesNeverShadowGeneratedLocals	compiler.codegen-lobster.lobster-const-names-never-shadow-generated-locals	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/lobster TestLobsterEveryScalarFieldIsBornAtItsIRDefault	compiler.codegen-lobster.lobster-every-scalar-field-is-born-at-its-ir-default	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/lobster TestLobsterImportsResolveInsideTheUnitOnly	compiler.codegen-lobster.lobster-imports-resolve-inside-the-unit-only	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/lobster TestLobsterNumberModel	compiler.codegen-lobster.lobster-number-model	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/lobster TestLobsterPacketArmDefaults	compiler.codegen-lobster.lobster-packet-arm-defaults	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/lobster TestLobsterPacketArmDefaultsNegativeControl	compiler.codegen-lobster.lobster-packet-arm-defaults-negative-control	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/lobster TestLobsterPacketConstants	compiler.codegen-lobster.lobster-packet-constants	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/lobster TestLobsterPacketConstantsNegativeControl	compiler.codegen-lobster.lobster-packet-constants-negative-control	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/lobster TestLobsterPacketDefaults	compiler.codegen-lobster.lobster-packet-defaults	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/lobster TestLobsterPacketDefaultsNegativeControl	compiler.codegen-lobster.lobster-packet-defaults-negative-control	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/lobster TestLobsterPacketEnd	compiler.codegen-lobster.lobster-packet-end	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/lobster TestLobsterPacketFiniteFloats	compiler.codegen-lobster.lobster-packet-finite-floats	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/lobster TestLobsterPacketFiniteFloatsNegativeControls	compiler.codegen-lobster.lobster-packet-finite-floats-negative-controls	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/lobster TestLobsterPacketProtocolID	compiler.codegen-lobster.lobster-packet-protocol-id	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/lobster TestLobsterPacketProtocolIDNegativeControl	compiler.codegen-lobster.lobster-packet-protocol-id-negative-control	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/lobster TestLobsterPacketText	compiler.codegen-lobster.lobster-packet-text	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/lobster TestLobsterPacketTextHostileFuzz	compiler.codegen-lobster.lobster-packet-text-hostile-fuzz	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/lobster TestLobsterPacketTextHostileFuzzNegativeControl	compiler.codegen-lobster.lobster-packet-text-hostile-fuzz-negative-control	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/lobster TestLobsterPacketTextNegativeControls	compiler.codegen-lobster.lobster-packet-text-negative-controls	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/lobster TestLobsterPacketUnionBeforeByteArray	compiler.codegen-lobster.lobster-packet-union-before-byte-array	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/lobster TestLobsterPacketUnionBeforeByteArrayNegativeControl	compiler.codegen-lobster.lobster-packet-union-before-byte-array-negative-control	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/lobster TestLobsterPacketVoidArms	compiler.codegen-lobster.lobster-packet-void-arms	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/lobster TestLobsterPacketVoidArmsNegativeControls	compiler.codegen-lobster.lobster-packet-void-arms-negative-controls	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/lobster TestLobsterPacketWideGoldens	compiler.codegen-lobster.lobster-packet-wide-goldens	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/lobster TestLobsterPacketWideGoldensNegativeControl	compiler.codegen-lobster.lobster-packet-wide-goldens-negative-control	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/lobster TestLobsterPacketWriteCFloatRange	compiler.codegen-lobster.lobster-packet-write-c-float-range	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/lobster TestLobsterRuntimeGlobalNamesAreRefused	compiler.codegen-lobster.lobster-runtime-global-names-are-refused	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/lobster TestLobsterTypeWireReadNegativeControls	compiler.codegen-lobster.lobster-type-wire-read-negative-controls	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/lobster TestLobsterTypeWireReadsTheGoldens	compiler.codegen-lobster.lobster-type-wire-reads-the-goldens	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/lobster TestLobsterTypeWireWriteNegativeControl	compiler.codegen-lobster.lobster-type-wire-write-negative-control	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/lobster TestLobsterTypeWireWritesTheGoldens	compiler.codegen-lobster.lobster-type-wire-writes-the-goldens	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/lobster TestLobsterTypesConstructAtTheirDefaults	compiler.codegen-lobster.lobster-types-construct-at-their-defaults	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/lobster TestLobsterUnsignedFixedGoldens	compiler.codegen-lobster.lobster-unsigned-fixed-goldens	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/lobster TestLobsterUnsignedFixedGoldensNegativeControl	compiler.codegen-lobster.lobster-unsigned-fixed-goldens-negative-control	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/lobster TestLobsterVendoredSerializeIsThePin	compiler.codegen-lobster.lobster-vendored-serialize-is-the-pin	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/lobster TestLobsterWriteMechanismPlaced	compiler.codegen-lobster.lobster-write-mechanism-placed	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/lobster TestSkeletonFixture	compiler.codegen-lobster.skeleton-fixture	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/lua TestByteStringUsesStyLuaQuotePreference	compiler.codegen-lua.byte-string-uses-sty-lua-quote-preference	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/lua TestFormatSplitsAStringWithoutChangingIt	compiler.codegen-lua.format-splits-a-string-without-changing-it	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/lua TestFormatWritesStyLuasShapes	compiler.codegen-lua.format-writes-sty-luas-shapes	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/lua TestLuaPacketWriteRefusesRowsOneToSix	compiler.codegen-lua.lua-packet-write-refuses-rows-one-to-six	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/lua TestLuaReadPreludeKeepsOnlyUsedSymbols	compiler.codegen-lua.lua-read-prelude-keeps-only-used-symbols	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/lua TestLuaTypeWireReadNegativeControl	compiler.codegen-lua.lua-type-wire-read-negative-control	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/lua TestLuaTypeWireReadsTheGoldens	compiler.codegen-lua.lua-type-wire-reads-the-goldens	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/lua TestLuaTypeWireRefusesNonIntegerArrayCount	compiler.codegen-lua.lua-type-wire-refuses-non-integer-array-count	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/lua TestLuaTypeWireWideFixedRoundTrip	compiler.codegen-lua.lua-type-wire-wide-fixed-round-trip	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/lua TestLuaTypeWireWriteNegativeControl	compiler.codegen-lua.lua-type-wire-write-negative-control	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/lua TestLuaTypeWireWritesTheGoldens	compiler.codegen-lua.lua-type-wire-writes-the-goldens	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/lua TestLuaTypesConstructAtTheirDefaults	compiler.codegen-lua.lua-types-construct-at-their-defaults	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/lua TestLuaZeroFixedStructArrayStaysInScope	compiler.codegen-lua.lua-zero-fixed-struct-array-stays-in-scope	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/lua TestQuotedReDecidesSingleQuotedPieces	compiler.codegen-lua.quoted-re-decides-single-quoted-pieces	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/lua TestSkeletonFixture	compiler.codegen-lua.skeleton-fixture	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/lua TestVendoredLuaSerializeIsThePin	compiler.codegen-lua.vendored-lua-serialize-is-the-pin	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/luau TestLuauByteArraysBulkCopyOnlyOnAByteBoundary	compiler.codegen-luau.luau-byte-arrays-bulk-copy-only-on-a-byte-boundary	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/luau TestLuauEveryScalarFieldIsBornAtItsIRDefault	compiler.codegen-luau.luau-every-scalar-field-is-born-at-its-ir-default	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/luau TestLuauFloat32DefaultsRoundAsGo	compiler.codegen-luau.luau-float32-defaults-round-as-go	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/luau TestLuauGeneratedNamesAreCaseInsensitiveUnique	compiler.codegen-luau.luau-generated-names-are-case-insensitive-unique	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/luau TestLuauPacketWriteRefusesRatherThanRaises	compiler.codegen-luau.luau-packet-write-refuses-rather-than-raises	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/luau TestLuauRequiresResolveInsideTheUnitOnly	compiler.codegen-luau.luau-requires-resolve-inside-the-unit-only	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/luau TestLuauRuntimeRefusesWithoutIntegerType	compiler.codegen-luau.luau-runtime-refuses-without-integer-type	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/luau TestLuauSelectedArmStartsAtItsDefaults	compiler.codegen-luau.luau-selected-arm-starts-at-its-defaults	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/luau TestLuauStringLit	compiler.codegen-luau.luau-string-lit	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/luau TestLuauTypeWireReadNegativeControl	compiler.codegen-luau.luau-type-wire-read-negative-control	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/luau TestLuauTypeWireReadsTheGoldens	compiler.codegen-luau.luau-type-wire-reads-the-goldens	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/luau TestLuauTypeWireWriteNegativeControl	compiler.codegen-luau.luau-type-wire-write-negative-control	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/luau TestLuauTypeWireWritesTheGoldens	compiler.codegen-luau.luau-type-wire-writes-the-goldens	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/luau TestLuauTypesConstructAtTheirDefaults	compiler.codegen-luau.luau-types-construct-at-their-defaults	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/luau TestLuauUnionBeforeByteArrayUsesPerByteWire	compiler.codegen-luau.luau-union-before-byte-array-uses-per-byte-wire	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/luau TestLuauUntakenBranchZeroesByteArrays	compiler.codegen-luau.luau-untaken-branch-zeroes-byte-arrays	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/luau TestSkeletonFixture	compiler.codegen-luau.skeleton-fixture	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/luau TestVendoredLuauBitpackerFamilyLoads	compiler.codegen-luau.vendored-luau-bitpacker-family-loads	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/luau TestVendoredLuauHasNoDiscardedBitpackerProbe	compiler.codegen-luau.vendored-luau-has-no-discarded-bitpacker-probe	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/luau TestVendoredLuauSerializeIsThePin	compiler.codegen-luau.vendored-luau-serialize-is-the-pin	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/moo TestFixedNumberLiteralIsExact	compiler.codegen-moo.fixed-number-literal-is-exact	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/moo TestMooAnalyzerGateNegativeControl	compiler.codegen-moo.moo-analyzer-gate-negative-control	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/moo TestMooFloatConstOneValue	compiler.codegen-moo.moo-float-const-one-value	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/moo TestMooGeneratedAnalyzeStrictGate	compiler.codegen-moo.moo-generated-analyze-strict-gate	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/moo TestMooGeneratedAnalyzeStrictGatePinNegativeControl	compiler.codegen-moo.moo-generated-analyze-strict-gate-pin-negative-control	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/moo TestMooGeneratedAnalyzeStrictGatePlantedPattern	compiler.codegen-moo.moo-generated-analyze-strict-gate-planted-pattern	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/moo TestMooGeneratedCodeIsAnalyzerClean	compiler.codegen-moo.moo-generated-code-is-analyzer-clean	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/moo TestMooGenerationIsDeterministic	compiler.codegen-moo.moo-generation-is-deterministic	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/moo TestMooLudicrousWire	compiler.codegen-moo.moo-ludicrous-wire	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/moo TestMooRefusesARuntimeCollision	compiler.codegen-moo.moo-refuses-a-runtime-collision	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/moo TestMooRuntimeIsTheVendoredPin	compiler.codegen-moo.moo-runtime-is-the-vendored-pin	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/moo TestMooStrictGateResolvesThePinnedAnalyzer	compiler.codegen-moo.moo-strict-gate-resolves-the-pinned-analyzer	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/moo TestMooTypeWireReadRefusalLatchesTheStream	compiler.codegen-moo.moo-type-wire-read-refusal-latches-the-stream	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/moo TestMooTypeWireReadRefusalLatchesTheStreamNegativeControl	compiler.codegen-moo.moo-type-wire-read-refusal-latches-the-stream-negative-control	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/moo TestMooTypeWireReadsTheGoldens	compiler.codegen-moo.moo-type-wire-reads-the-goldens	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/moo TestMooTypeWireRefusesHostileValues	compiler.codegen-moo.moo-type-wire-refuses-hostile-values	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/moo TestMooTypeWireRefusesTruncation	compiler.codegen-moo.moo-type-wire-refuses-truncation	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/moo TestMooTypeWireWriteNegativeControl	compiler.codegen-moo.moo-type-wire-write-negative-control	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/moo TestMooTypeWireWriteRefusesOutOfContract	compiler.codegen-moo.moo-type-wire-write-refuses-out-of-contract	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/moo TestMooTypeWireWriteRefusesWrongStorage	compiler.codegen-moo.moo-type-wire-write-refuses-wrong-storage	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/moo TestMooTypeWireWriteRefusesWrongStorageNegativeControl	compiler.codegen-moo.moo-type-wire-write-refuses-wrong-storage-negative-control	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/moo TestMooTypeWireWritesTheGoldens	compiler.codegen-moo.moo-type-wire-writes-the-goldens	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/moo TestMooWireFuzzAgreesWithTheGoTarget	compiler.codegen-moo.moo-wire-fuzz-agrees-with-the-go-target	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/moo TestMooWireFuzzReadNegativeControl	compiler.codegen-moo.moo-wire-fuzz-read-negative-control	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/moo TestMooWireFuzzWriteNegativeControl	compiler.codegen-moo.moo-wire-fuzz-write-negative-control	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/moo TestWideNewIsLeastSignificantLimbFirst	compiler.codegen-moo.wide-new-is-least-significant-limb-first	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/moo/moorun TestAnalyzeOutcomeRefusesSilentFailure	compiler.codegen-moo-moorun.analyze-outcome-refuses-silent-failure	none
+ci-fast.yml	go-test-touched	gotest	go test ./internal/codegen/c (18 Go tests the unmoved ledger holds, L5)	-	none
+ci-fast.yml	go-test-touched	gotest	go test ./internal/codegen/cpp (28 Go tests the unmoved ledger holds, L5)	-	none
+ci-fast.yml	go-test-touched	gotest	go test ./internal/codegen/dart (13 Go tests the unmoved ledger holds, L5)	-	none
+ci-fast.yml	go-test-touched	gotest	go test ./internal/codegen/elixir (13 Go tests the unmoved ledger holds, L5)	-	none
+ci-fast.yml	go-test-touched	gotest	go test ./internal/codegen/goose (10 Go tests the unmoved ledger holds, L5)	-	none
+ci-fast.yml	go-test-touched	gotest	go test ./internal/codegen/gotable/fuzzunit (35 Go tests the unmoved ledger holds, L5)	-	none
+ci-fast.yml	go-test-touched	gotest	go test ./internal/codegen/java (19 Go tests the unmoved ledger holds, L5)	-	none
+ci-fast.yml	go-test-touched	gotest	go test ./internal/codegen/js (18 Go tests the unmoved ledger holds, L5)	-	none
+ci-fast.yml	go-test-touched	gotest	go test ./internal/codegen/jstable (232 Go tests the unmoved ledger holds, L5)	-	none
+ci-fast.yml	go-test-touched	gotest	go test ./internal/codegen/lobster (37 Go tests the unmoved ledger holds, L5)	-	none
+ci-fast.yml	go-test-touched	gotest	go test ./internal/codegen/lua (16 Go tests the unmoved ledger holds, L5)	-	none
+ci-fast.yml	go-test-touched	gotest	go test ./internal/codegen/luau (20 Go tests the unmoved ledger holds, L5)	-	none
+ci-fast.yml	go-test-touched	gotest	go test ./internal/codegen/moo (26 Go tests the unmoved ledger holds, L5)	-	none
+ci-fast.yml	go-test-touched	gotest	go test ./internal/codegen/moo/moorun (1 Go tests the unmoved ledger holds, L5)	-	none
 ci-fast.yml	go-test-touched	gotest	go test ./internal/codegen/mootable (239 Go tests the unmoved ledger holds, L5)	-	none
 ci-fast.yml	go-test-touched	gotest	go test ./internal/codegen/python (37 Go tests the unmoved ledger holds, L5)	-	none
 ci-fast.yml	go-test-touched	gotest	go test ./internal/codegen/pythontable (519 Go tests the unmoved ledger holds, L5)	-	none
