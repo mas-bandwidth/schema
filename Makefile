@@ -7317,14 +7317,14 @@ build/schema_test_fixedform_dump: build/tables-generated/.stamp test/tables/fixe
 CORPUS_RENAME = perl -e 'my ($$f, $$t, $$code, @ok) = @ARGV; exit 0 if rename($$f, $$t); for my $$e (@ok) { exit $$code if $$!{$$e} } die "rename $$f -> $$t: $$!\n"'
 build/fixedform-corpus/.stamp: build/schema_test_fixedform_dump test/tables/fnz/negative_zero.bin test/tables/fnz/negative_zero_control.bin
 	@next=build/fixedform-corpus.next.$$$$; prev=build/fixedform-corpus.prev.$$$$; live=build/fixedform-corpus; \
-	fail() { rm -rf $$next; \
+	fail() { rm -rf $$next; lost=; \
 	  for p in $$prev.2 $$prev.1; do \
 	    if test -d $$p; then \
-	      if test ! -e $$live; then $(CORPUS_RENAME) $$p $$live 0 ENOTEMPTY EEXIST; fi; \
+	      if test ! -e $$live; then $(CORPUS_RENAME) $$p $$live 0 ENOTEMPTY EEXIST || { lost=" (and $$p could not be put back as $$live: it is left where it is)"; continue; }; fi; \
 	      rm -rf $$p; \
 	    fi; \
 	  done; \
-	  echo "corpus: $$1" >&2; exit 1; }; \
+	  echo "corpus: $$1$$lost" >&2; exit 1; }; \
 	find build -mindepth 1 -maxdepth 1 -name 'fixedform-corpus.*.*' -mmin +60 -exec rm -rf {} + || fail "cannot sweep what killed builds left"; \
 	sum=$$(cksum build/schema_test_fixedform_dump test/tables/fnz/negative_zero.bin test/tables/fnz/negative_zero_control.bin) || fail "cannot read the dump's inputs"; \
 	{ rm -rf $$next && mkdir -p $$next; } || fail "cannot make $$next"; \

@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 2. Language-free tests: 3201.
+Unit tests every language answers: 2. Language-free tests: 3205.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -1954,12 +1954,13 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.cellmerge.resolve-leaves-a-hunk-it-cannot-merge-exactly` | `gotest` | Go test TestResolveLeavesAHunkItCannotMergeExactly in ./tools/cellmerge | `package: ./tools/cellmerge`<br>`test: TestResolveLeavesAHunkItCannotMergeExactly` | the Go test passes | `tools/cellmerge/main_test.go:68` |
 | `none.unit.tooling.cellmerge.resolve-merges-a-two-sided-row-cell-by-column` | `gotest` | Go test TestResolveMergesATwoSidedRowCellByColumn in ./tools/cellmerge | `package: ./tools/cellmerge`<br>`test: TestResolveMergesATwoSidedRowCellByColumn` | the Go test passes | `tools/cellmerge/main_test.go:54` |
 
-#### `tooling` family `ci`, 271 tests
+#### `tooling` family `ci`, 274 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.unit.tooling.ci.a-c-format-shard-holds-its-ratchet-lines` | `gotest` | Go test TestACFormatShardHoldsItsRatchetLines in ./internal/ci | `package: ./internal/ci`<br>`test: TestACFormatShardHoldsItsRatchetLines` | the Go test passes | `internal/ci/lint_shard_test.go:148` |
 | `none.unit.tooling.ci.a-directory-shard-is-whole-and-weighs-its-source` | `gotest` | Go test TestADirectoryShardIsWholeAndWeighsItsSource in ./internal/ci | `package: ./internal/ci`<br>`test: TestADirectoryShardIsWholeAndWeighsItsSource` | the Go test passes | `internal/ci/lint_shard_test.go:248` |
+| `none.unit.tooling.ci.a-failed-lto-compile-fails-the-leg-build` | `gotest` | Go test TestAFailedLTOCompileFailsTheLegBuild in ./internal/ci | `package: ./internal/ci`<br>`test: TestAFailedLTOCompileFailsTheLegBuild` | the Go test passes | `internal/ci/goose_cc_lto_test.go:131` |
 | `none.unit.tooling.ci.air-c-fixed-table-reference-build-record` | `gotest` | Go test TestAirCFixedTableReferenceBuildRecord in ./internal/ci | `package: ./internal/ci`<br>`test: TestAirCFixedTableReferenceBuildRecord` | the Go test passes | `internal/ci/air_c_reference_build_test.go:18` |
 | `none.unit.tooling.ci.base-reds-ledger-names-real-tests` | `gotest` | Go test TestBaseRedsLedgerNamesRealTests in ./internal/ci | `package: ./internal/ci`<br>`test: TestBaseRedsLedgerNamesRealTests` | the Go test passes | `internal/ci/basereds_test.go:20` |
 | `none.unit.tooling.ci.c-conformance-children-write-no-core` | `gotest` | Go test TestCConformanceChildrenWriteNoCore in ./internal/ci | `package: ./internal/ci`<br>`test: TestCConformanceChildrenWriteNoCore` | the Go test passes | `internal/ci/c_no_core_children_test.go:76` |
@@ -2214,9 +2215,11 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.ci.tables-suite-parts-refuse-each-gap` | `gotest` | Go test TestTablesSuitePartsRefuseEachGap in ./internal/ci | `package: ./internal/ci`<br>`test: TestTablesSuitePartsRefuseEachGap` | the Go test passes | `internal/ci/tables_suite_parts_test.go:50` |
 | `none.unit.tooling.ci.test-main-gate-negative-control` | `gotest` | Go test TestTestMainGateNegativeControl in ./internal/ci | `package: ./internal/ci`<br>`test: TestTestMainGateNegativeControl` | the Go test passes | `internal/ci/silent_skips_test.go:155` |
 | `none.unit.tooling.ci.the-cpp-compile-budget-runs-on-the-produced-leg` | `gotest` | Go test TestTheCppCompileBudgetRunsOnTheProducedLeg in ./internal/ci | `package: ./internal/ci`<br>`test: TestTheCppCompileBudgetRunsOnTheProducedLeg` | the Go test passes | `internal/ci/go_fixed_corpus_pipeline_test.go:217` |
+| `none.unit.tooling.ci.the-dart-analyze-tree-holds-what-the-readers-import` | `gotest` | Go test TestTheDartAnalyzeTreeHoldsWhatTheReadersImport in ./internal/ci | `package: ./internal/ci`<br>`test: TestTheDartAnalyzeTreeHoldsWhatTheReadersImport` | the Go test passes | `internal/ci/dart_analyze_tree_test.go:129` |
 | `none.unit.tooling.ci.the-fixed-form-harnesses-run-per-pull-request` | `gotest` | Go test TestTheFixedFormHarnessesRunPerPullRequest in ./internal/ci | `package: ./internal/ci`<br>`test: TestTheFixedFormHarnessesRunPerPullRequest` | the Go test passes | `internal/ci/ci_test.go:590` |
 | `none.unit.tooling.ci.the-go-test-job-clones-serialize-js` | `gotest` | Go test TestTheGoTestJobClonesSerializeJS in ./internal/ci | `package: ./internal/ci`<br>`test: TestTheGoTestJobClonesSerializeJS` | the Go test passes | `internal/ci/js_toolchain_lane_test.go:57` |
 | `none.unit.tooling.ci.the-go-test-job-clones-serialize-js-negative-control` | `gotest` | Go test TestTheGoTestJobClonesSerializeJSNegativeControl in ./internal/ci | `package: ./internal/ci`<br>`test: TestTheGoTestJobClonesSerializeJSNegativeControl` | the Go test passes | `internal/ci/js_toolchain_lane_test.go:72` |
+| `none.unit.tooling.ci.the-goose-lto-compiler-fails-loudly` | `gotest` | Go test TestTheGooseLTOCompilerFailsLoudly in ./internal/ci | `package: ./internal/ci`<br>`test: TestTheGooseLTOCompilerFailsLoudly` | the Go test passes | `internal/ci/goose_cc_lto_test.go:89` |
 | `none.unit.tooling.ci.the-lint-shards-judge-every-line-once` | `gotest` | Go test TestTheLintShardsJudgeEveryLineOnce in ./internal/ci | `package: ./internal/ci`<br>`test: TestTheLintShardsJudgeEveryLineOnce` | the Go test passes | `internal/ci/lint_shard_test.go:72` |
 | `none.unit.tooling.ci.the-parity-table-is-covered` | `gotest` | Go test TestTheParityTableIsCovered in ./internal/ci | `package: ./internal/ci`<br>`test: TestTheParityTableIsCovered` | the Go test passes | `internal/ci/parity_table_test.go:18` |
 | `none.unit.tooling.ci.the-pr-shards-run-on-the-produced-legs` | `gotest` | Go test TestThePRShardsRunOnTheProducedLegs in ./internal/ci | `package: ./internal/ci`<br>`test: TestThePRShardsRunOnTheProducedLegs` | the Go test passes | `internal/ci/go_fixed_corpus_pipeline_test.go:88` |
@@ -3181,7 +3184,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.runmatch.skips-follows-go` | `gotest` | Go test TestSkipsFollowsGo in ./internal/runmatch | `package: ./internal/runmatch`<br>`test: TestSkipsFollowsGo` | the Go test passes | `internal/runmatch/runmatch_test.go:107` |
 | `none.unit.tooling.runmatch.top-level-is-gos-split` | `gotest` | Go test TestTopLevelIsGosSplit in ./internal/runmatch | `package: ./internal/runmatch`<br>`test: TestTopLevelIsGosSplit` | the Go test passes | `internal/runmatch/runmatch_test.go:9` |
 
-#### `tooling` family `schema-test`, 166 tests
+#### `tooling` family `schema-test`, 167 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -3328,6 +3331,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.schema-test.the-copy-is-the-checkout-as-it-stands` | `gotest` | Go test TestTheCopyIsTheCheckoutAsItStands in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheCopyIsTheCheckoutAsItStands` | the Go test passes | `tools/schema-test/plant_test.go:447` |
 | `none.unit.tooling.schema-test.the-database-is-read-once-per-run` | `gotest` | Go test TestTheDatabaseIsReadOncePerRun in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheDatabaseIsReadOncePerRun` | the Go test passes | `tools/schema-test/make_test.go:520` |
 | `none.unit.tooling.schema-test.the-main-tree-action-exports-the-base-the-event-names` | `gotest` | Go test TestTheMainTreeActionExportsTheBaseTheEventNames in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheMainTreeActionExportsTheBaseTheEventNames` | the Go test passes | `tools/schema-test/pinsbase_test.go:103` |
+| `none.unit.tooling.schema-test.the-matrix-account-cuts-each-language-once-per-count` | `gotest` | Go test TestTheMatrixAccountCutsEachLanguageOncePerCount in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheMatrixAccountCutsEachLanguageOncePerCount` | the Go test passes | `tools/schema-test/ci_test.go:222` |
 | `none.unit.tooling.schema-test.the-matrix-is-the-pr-group` | `gotest` | Go test TestTheMatrixIsThePRGroup in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheMatrixIsThePRGroup` | the Go test passes | `tools/schema-test/ci_test.go:1` |
 | `none.unit.tooling.schema-test.the-matrix-plans-headroom-under-the-limit` | `gotest` | Go test TestTheMatrixPlansHeadroomUnderTheLimit in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheMatrixPlansHeadroomUnderTheLimit` | the Go test passes | `tools/schema-test/ci_test.go:155` |
 | `none.unit.tooling.schema-test.the-not-yet-generated-list-only-shrinks` | `gotest` | Go test TestTheNotYetGeneratedListOnlyShrinks in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheNotYetGeneratedListOnlyShrinks` | the Go test passes | `tools/schema-test/cipins_test.go:1` |

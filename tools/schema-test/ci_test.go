@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testreg"
@@ -65,20 +66,87 @@ func TestTheCIFilesAreCurrent(t *testing.T) {
 	}
 }
 
+// repoPRMatrix is the repository's pr matrix, cut once for every test of the
+// package that reads it (ciMatrix, whose account runs too), so the cut is
+// made once per test binary rather than once per test. Its registry is the
+// readers' to read only: a plant edits a registry of its own.
+var repoPRMatrix = sync.OnceValues(func() (prMatrix, error) {
+	reg, err := testreg.Load(filepath.Join(repoRoot, testreg.DefaultPath))
+	if err != nil {
+		return prMatrix{}, err
+	}
+	rows, problems := ciMatrix(reg, prShards)
+	return prMatrix{reg: reg, rows: rows, problems: problems}, nil
+})
+
+type prMatrix struct {
+	reg      *testreg.Registry
+	rows     []ciRow
+	problems []string
+}
+
+func loadRepoPRMatrix(t *testing.T) prMatrix {
+	t.Helper()
+	m, err := repoPRMatrix()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(m.problems) > 0 {
+		t.Fatalf("the pr group does not cut into shards that fit:\n  %s", strings.Join(m.problems, "\n  "))
+	}
+	return m
+}
+
+// matrixFixture is a small registry to plant on: two ready languages, each
+// with three unit tests of 10 s, and six language-free tests of 20 s (120 s,
+// cut into three shards of two under the 50 s plan). A plant on it reads in
+// milliseconds where the repository's registry takes seconds per account.
+func matrixFixture(t *testing.T) *testreg.Registry {
+	t.Helper()
+	var b strings.Builder
+	b.WriteString(`{"rec":"lang","name":"aa","write":"refuse","adapter":"aa"}
+{"rec":"lang","name":"bb","write":"refuse","adapter":"bb"}
+{"rec":"tier","name":"unit","what":"fast"}
+{"rec":"tier","name":"functional","what":"a toolchain"}
+{"rec":"tier","name":"nightly","what":"heavy"}
+{"rec":"type","name":"roundtrip","what":"same bytes","contract":"equal"}
+{"rec":"type","name":"tooling","what":"a tool","contract":"passes"}
+{"rec":"group","name":"pr","what":"the pull-request tier","query":{"ready":true,"tiers":["unit","functional"]}}
+`)
+	for i := 1; i <= 3; i++ {
+		fmt.Fprintf(&b, `{"rec":"test","key":"roundtrip.f.c%d","type":"roundtrip","family":"f","case":"c%d","tier":"unit","checks":"c","inputs":{},"expect":"same","source":"x.go:1","seconds":10}`+"\n", i, i)
+	}
+	for i := 1; i <= 6; i++ {
+		fmt.Fprintf(&b, `{"rec":"test","key":"tooling.f.n%d","type":"tooling","family":"f","case":"n%d","tier":"unit","scope":"none","adapter":"gotest","checks":"n","inputs":{"package":"./x","test":"TestN%d"},"expect":"passes","source":"x_test.go:1","seconds":20}`+"\n", i, i, i)
+	}
+	reg, err := testreg.Parse("matrix.jsonl", strings.NewReader(b.String()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return reg
+}
+
 // TestTheMatrixIsThePRGroup: the generated rows, run as the jobs run them
 // (--group pr --lang L --shard i/N), cover the registry's pr group exactly:
 // every name once, none twice, none left out, and no shard past its budget
-// (matrixAccount, which ci --check runs too). The plants: a row dropped, a
-// row doubled, a shard cut too coarse, and a test heavier than a shard.
+// (matrixAccount, which ci --check runs too), held on the repository's
+// matrix once. The plants, on a small registry (matrixFixture), so the test
+// is fast: a row dropped, a row doubled, a shard cut too coarse, one cut too
+// fine, a language cut two ways, a shard that does not read, one past its
+// count, and a test heavier than a shard.
 func TestTheMatrixIsThePRGroup(t *testing.T) {
 	t.Parallel()
-	reg := loadRepoRegistry(t)
+	m := loadRepoPRMatrix(t)
+	if len(m.rows) == 0 {
+		t.Fatal("the repository's pr matrix has no rows")
+	}
+	reg := matrixFixture(t)
 	rows, problems := ciMatrix(reg, prShards)
 	if len(problems) > 0 {
-		t.Fatalf("the pr group does not cut into shards that fit:\n  %s", strings.Join(problems, "\n  "))
+		t.Fatalf("the fixture does not cut into shards that fit:\n  %s", strings.Join(problems, "\n  "))
 	}
-	if p := matrixAccount(reg, rows, prShards); len(p) > 0 {
-		t.Fatalf("the matrix is not the pr group:\n  %s", strings.Join(p, "\n  "))
+	if got := fmt.Sprint(rows); !strings.Contains(got, "none 3/3") || strings.Contains(got, "none 4/") {
+		t.Fatalf("the fixture's language-free tests are not cut three ways: %v", rows)
 	}
 	has := func(p []string, s string) bool { return strings.Contains(strings.Join(p, "\n"), s) }
 	// plant: one row dropped
@@ -101,7 +169,7 @@ func TestTheMatrixIsThePRGroup(t *testing.T) {
 		t.Errorf("a shard past its budget is not named: %v", p)
 	}
 	// plant: a language cut into one shard more than it needs (the
-	// language-free rows, which every registry has, cut n+1 ways)
+	// language-free rows cut n+1 ways)
 	var extra []ciRow
 	n := 0
 	for _, o := range rows {
@@ -110,9 +178,6 @@ func TestTheMatrixIsThePRGroup(t *testing.T) {
 		} else {
 			n++
 		}
-	}
-	if n == 0 {
-		t.Fatal("the matrix has no language-free shard to plant on")
 	}
 	for i := 1; i <= n+1; i++ {
 		extra = append(extra, ciRow{Lang: testreg.LangFree, Shard: fmt.Sprintf("%d/%d", i, n+1)})
@@ -135,10 +200,8 @@ func TestTheMatrixIsThePRGroup(t *testing.T) {
 	// plant: a test heavier than a shard
 	for i, tt := range reg.Tests {
 		if tt.Scope == testreg.LangFree && tt.Tier == "unit" {
-			was := tt.Seconds
 			reg.Tests[i].Seconds = shardBudget + 1
 			_, p := ciMatrix(reg, prShards)
-			reg.Tests[i].Seconds = was
 			if want := "none.unit." + tt.Key + " weighs 61.0 s, past one shard's 60 s budget"; !has(p, want) {
 				t.Errorf("a test heavier than a shard was not named (want %q): %v", want, p)
 			}
@@ -147,30 +210,89 @@ func TestTheMatrixIsThePRGroup(t *testing.T) {
 	}
 }
 
+// TestTheMatrixAccountCutsEachLanguageOncePerCount: the account reads every
+// row of a language from one cut per count, never a cut per row. A cut weighs
+// every name of the language, and the language-free names are cut into a
+// hundred shards and more, so a cut per row made TestTheMatrixIsThePRGroup,
+// which accounts the matrix and its plants several times over, take 71 s on a
+// bench. On the small registry (matrixFixture), whose language-free tests are
+// cut three ways: the account is the jobs' cut all the same, each row's part
+// the part testreg.Shard gives that job. The plant (the account cutting per
+// row again) is red here, naming the language and count cut three times.
+func TestTheMatrixAccountCutsEachLanguageOncePerCount(t *testing.T) {
+	t.Parallel()
+	reg := matrixFixture(t)
+	rows, problems := ciMatrix(reg, prShards)
+	if len(problems) > 0 {
+		t.Fatalf("the fixture does not cut into shards that fit:\n  %s", strings.Join(problems, "\n  "))
+	}
+	if !slices.ContainsFunc(rows, func(r ciRow) bool { return r.Shard == "2/3" }) {
+		t.Fatalf("the fixture has no language cut more than once, so a cut per row would not show: %v", rows)
+	}
+	cuts := map[string]int{}
+	counting := func(insts []testreg.Instance, n int) [][]testreg.Instance {
+		lang := ""
+		if len(insts) > 0 {
+			lang = insts[0].Lang
+		}
+		cuts[fmt.Sprintf("%s %d", lang, n)]++
+		return testreg.Parts(insts, n)
+	}
+	if p := matrixAccountCutting(reg, rows, prShards, counting); len(p) > 0 {
+		t.Fatalf("the matrix is not the pr group:\n  %s", strings.Join(p, "\n  "))
+	}
+	if len(cuts) == 0 {
+		t.Fatal("the account made no cut: it read no row's part")
+	}
+	for k, c := range cuts {
+		if c > 1 {
+			t.Errorf("the account cut %s %d times: one cut per language and count", k, c)
+		}
+	}
+	// each row's part is the job's: the part testreg.Shard gives --shard i/N
+	g, _ := reg.Group("pr")
+	for _, r := range rows {
+		var i, n int
+		if _, err := fmt.Sscanf(r.Shard, "%d/%d", &i, &n); err != nil {
+			t.Fatalf("%s %s: %v", r.Lang, r.Shard, err)
+		}
+		q := g.Query()
+		q.Langs = []string{r.Lang}
+		sel, err := reg.Select(q)
+		if err != nil {
+			t.Fatal(err)
+		}
+		job, err := testreg.Shard(sel.Instances, i, n)
+		if err != nil {
+			t.Fatalf("%s %s: %v", r.Lang, r.Shard, err)
+		}
+		if len(job) != r.Tests {
+			t.Errorf("%s %s: the matrix counts %d tests, the job runs %d", r.Lang, r.Shard, r.Tests, len(job))
+		}
+	}
+}
+
 // TestTheMatrixPlansHeadroomUnderTheLimit: the generated matrix cuts
 // every shard of more than one test to the 50 s plan, under the 60 s limit,
-// and a part of one test may carry up to the limit. The plants: the
-// repository's matrix cut to the limit alone (no headroom), which the
-// account names past the plan; and fits over hand-made parts, by the rule.
+// and a part of one test may carry up to the limit. The plants: a
+// small registry's matrix (matrixFixture) cut to the limit alone (no
+// headroom), which the account names past the plan; and fits over hand-made parts, by the rule.
 func TestTheMatrixPlansHeadroomUnderTheLimit(t *testing.T) {
 	t.Parallel()
 	if shardPlan >= shardBudget {
 		t.Fatalf("the plan (%.0f s) leaves no headroom under the limit (%.0f s)", shardPlan, shardBudget)
 	}
-	reg := loadRepoRegistry(t)
-	rows, problems := ciMatrix(reg, prShards)
-	if len(problems) > 0 {
-		t.Fatalf("the pr group does not cut into shards that fit:\n  %s", strings.Join(problems, "\n  "))
-	}
-	for _, r := range rows {
+	for _, r := range loadRepoPRMatrix(t).rows {
 		if r.Seconds > shardPlan && r.Tests > 1 {
 			t.Errorf("%s %s carries %.1f s over %d tests, past the %.0f s plan", r.Lang, r.Shard, r.Seconds, r.Tests, shardPlan)
 		}
 	}
-	// plant: the matrix cut to the limit, with no headroom
+	// plant: the matrix cut to the limit, with no headroom (on the small
+	// registry: its language-free 120 s cut two ways at 60 s)
+	reg := matrixFixture(t)
 	tight, problems := ciMatrix(reg, shardBudgets{plan: shardBudget, limit: shardBudget})
 	if len(problems) > 0 {
-		t.Fatalf("the pr group does not cut to the limit:\n  %s", strings.Join(problems, "\n  "))
+		t.Fatalf("the fixture does not cut to the limit:\n  %s", strings.Join(problems, "\n  "))
 	}
 	if p := matrixAccount(reg, tight, prShards); !strings.Contains(strings.Join(p, "\n"), "plan") {
 		t.Errorf("a matrix cut to the limit, with no headroom, is not named past the plan: %v", p)

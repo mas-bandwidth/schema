@@ -158,7 +158,7 @@ func TestSharedBuildProductsAreWrittenAtomically(t *testing.T) {
 		{"Makefile", `next=build/fixedform-corpus.next.$$$$;`, `next=build/fixedform-corpus.next;`, "fixedform-corpus/.stamp"},
 		{"Makefile", `prev=build/fixedform-corpus.prev.$$$$;`, `prev=build/fixedform-corpus.prev;`, "fixedform-corpus/.stamp"},
 		{"Makefile", `$(CORPUS_RENAME) $$next $$live 3 ENOTEMPTY EEXIST; rc=$$?;`, `mv $$next $$live; rc=$$?;`, "fixedform-corpus/.stamp"},
-		{"Makefile", `then $(CORPUS_RENAME) $$p $$live 0 ENOTEMPTY EEXIST; fi;`, `then mv $$p $$live; fi;`, "fixedform-corpus/.stamp"},
+		{"Makefile", `then $(CORPUS_RENAME) $$p $$live 0 ENOTEMPTY EEXIST || {`, `then mv $$p $$live || {`, "fixedform-corpus/.stamp"},
 		{"Makefile", `exit 0 if rename($$f, $$t);`, `exit 0 if system("mv", $$f, $$t) == 0;`, "fixedform-corpus/.stamp"},
 		// another build's corpus kept whatever it was built from
 		{"Makefile", `test "$$(cat $$live/.stamp)" = "$$sum"`, `true`, "fixedform-corpus/.stamp"},
