@@ -7,7 +7,9 @@ description: >
   its make target (a no-op on a cache hit), packs it and uploads it; "fetch"
   downloads every producer's tree and unpacks it, which refuses a tree built
   from other source by name and stands what it holds newer than this
-  checkout. Runs no test.
+  checkout. "fetch" with names takes only the producers whose names match
+  that pattern (the pr job reads the conformance legs, never the lint
+  trees). Runs no test.
 inputs:
   mode:
     description: produce or fetch
@@ -24,6 +26,10 @@ inputs:
     description: what the target makes, space-separated (produce only)
     required: false
     default: ''
+  names:
+    description: the producers to fetch, as a pattern of their names (fetch only; every producer by default)
+    required: false
+    default: '*'
 runs:
   using: composite
   steps:
@@ -77,7 +83,7 @@ runs:
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
       if: inputs.mode == 'fetch'
       with:
-        pattern: produce-*-${{ github.run_id }}-${{ github.sha }}
+        pattern: produce-${{ inputs.names }}-${{ github.run_id }}-${{ github.sha }}
         path: build/produce
         merge-multiple: true
     - name: the produced trees, stood newer than this checkout

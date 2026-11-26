@@ -69,6 +69,14 @@ type Serial interface {
 	Serial() bool
 }
 
+// SharedCheckout is a Serial adapter whose calls, once their group is
+// prepared, only read the checkout (a harness run on what Prepare built):
+// they run side by side with each other, up to the Runner's Jobs at once,
+// after every other Serial group, never beside a call that writes it.
+type SharedCheckout interface {
+	SharesCheckout() bool
+}
+
 // Verdicts an adapter may report.
 const (
 	Pass = "pass"
@@ -164,6 +172,10 @@ type Runner struct {
 	// group's Prepare, so the sharder weighs what a cold shard pays. Nil
 	// measures nothing (time is an argument: a test hands in its own clock).
 	Now func() time.Time
+	// Jobs is how many SharedCheckout calls run at once: the cores of the
+	// machine the run has. 0 or 1 runs them one after another, as every
+	// other Serial group runs.
+	Jobs int
 }
 
 // clock is Now, or a stopped clock when there is none, so every time
@@ -328,10 +340,14 @@ func (rn *Runner) Run(parent context.Context, instances []Instance) *Report {
 		}
 		runs[gi] = groupRun{res, err, seconds}
 	}
-	var serial []int
+	var serial, shared []int
 	var wg sync.WaitGroup
 	for gi, g := range plan.groups {
 		if s, ok := rn.Adapters[g.adapter].(Serial); ok && s.Serial() {
+			if sh, ok := rn.Adapters[g.adapter].(SharedCheckout); ok && sh.SharesCheckout() {
+				shared = append(shared, gi)
+				continue
+			}
 			serial = append(serial, gi)
 			continue
 		}
@@ -341,6 +357,18 @@ func (rn *Runner) Run(parent context.Context, instances []Instance) *Report {
 		for _, gi := range serial {
 			call(gi)
 		}
+		// the calls that only read the checkout, up to Jobs at once, after
+		// every call that writes it
+		lanes := make(chan struct{}, rn.lanes())
+		var side sync.WaitGroup
+		for _, gi := range shared {
+			lanes <- struct{}{}
+			side.Go(func() {
+				defer func() { <-lanes }()
+				call(gi)
+			})
+		}
+		side.Wait()
 	})
 	wg.Wait()
 
@@ -523,4 +551,9 @@ func rank(s string) int {
 	default:
 		return 3
 	}
+}
+
+// lanes is how many SharedCheckout calls run at once: Jobs, at least one.
+func (rn *Runner) lanes() int {
+	return max(rn.Jobs, 1)
 }

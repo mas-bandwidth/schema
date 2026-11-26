@@ -26,7 +26,7 @@ func loadRepoRegistry(t *testing.T) *testreg.Registry {
 
 // TestTheCIFilesAreCurrent: ci-fast.yml and docs/CI-TIERS.md are exactly
 // what the registry generates (schema-test ci). The plant is a hand edit of
-// one generated matrix row in a copy of the tree: red, by file and line.
+// the generated pr job in a copy of the tree: red, by file and line.
 func TestTheCIFilesAreCurrent(t *testing.T) {
 	t.Parallel()
 	reg := loadRepoRegistry(t)
@@ -51,9 +51,9 @@ func TestTheCIFilesAreCurrent(t *testing.T) {
 		t.Fatalf("a copy of the generated files differs from them: %v", p)
 	}
 	wf := string(files[fastWorkflow])
-	edited := strings.Replace(wf, `"shard":"1/`, `"shard":"9/`, 1)
+	edited := strings.Replace(wf, "lang: all\n", "lang: none\n", 1)
 	if edited == wf {
-		t.Fatal("the generated matrix has no shard 1: the plant has nothing to edit")
+		t.Fatal("the generated pr job sets up no language: the plant has nothing to edit")
 	}
 	if err := os.WriteFile(filepath.Join(root, fastWorkflow), []byte(edited), 0o644); err != nil {
 		t.Fatal(err)
@@ -61,185 +61,167 @@ func TestTheCIFilesAreCurrent(t *testing.T) {
 	want := fastWorkflow + ":"
 	p := diffFiles(root, files)
 	if len(p) != 1 || !strings.HasPrefix(p[0], want) || !strings.Contains(p[0], "is not what the registry generates") {
-		t.Errorf("a hand edit to the generated matrix is not named red by file and line: %v", p)
+		t.Errorf("a hand edit to the generated pr job is not named red by file and line: %v", p)
 	}
 }
 
-// TestTheMatrixIsThePRGroup: the generated rows, run as the jobs run them
-// (--group pr --lang L --shard i/N), cover the registry's pr group exactly:
-// every name once, none twice, none left out, and no shard past its budget
-// (matrixAccount, which ci --check runs too). The plants: a row dropped, a
-// row doubled, a shard cut too coarse, and a test heavier than a shard.
-func TestTheMatrixIsThePRGroup(t *testing.T) {
-	t.Parallel()
-	reg := loadRepoRegistry(t)
-	rows, problems := ciMatrix(reg, prShards)
-	if len(problems) > 0 {
-		t.Fatalf("the pr group does not cut into shards that fit:\n  %s", strings.Join(problems, "\n  "))
+// prRegistry writes a registry of two languages with the given test lines
+// and pr group query, and loads it.
+func prRegistry(t *testing.T, tests, query string) *testreg.Registry {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "registry.jsonl")
+	lines := `{"rec":"lang","name":"c","write":"assert","adapter":"fake"}
+{"rec":"lang","name":"go","write":"refuse","adapter":"fake"}
+{"rec":"tier","name":"functional","what":"a toolchain"}
+{"rec":"tier","name":"nightly","what":"heavy"}
+{"rec":"type","name":"codegen","what":"it builds"}
+{"rec":"type","name":"roundtrip","what":"same bytes back"}
+{"rec":"type","name":"decode","what":"bytes read"}
+{"rec":"type","name":"tooling","what":"policy"}
+` + tests + `{"rec":"group","name":"pr","what":"per pull request","query":` + query + `}
+`
+	if err := os.WriteFile(path, []byte(lines), 0o644); err != nil {
+		t.Fatal(err)
 	}
-	if p := matrixAccount(reg, rows, prShards); len(p) > 0 {
-		t.Fatalf("the matrix is not the pr group:\n  %s", strings.Join(p, "\n  "))
+	reg, err := testreg.Load(path)
+	if err != nil {
+		t.Fatal(err)
 	}
-	has := func(p []string, s string) bool { return strings.Contains(strings.Join(p, "\n"), s) }
-	// plant: one row dropped
-	if p := matrixAccount(reg, rows[1:], prShards); !has(p, "left out") {
-		t.Errorf("a matrix one row short is not named: %v", p)
-	}
-	// plant: one row doubled
-	if p := matrixAccount(reg, append([]ciRow{rows[0]}, rows...), prShards); !has(p, "runs in 2 jobs, not 1") {
-		t.Errorf("a matrix with a row twice is not named: %v", p)
-	}
-	// plant: a language's shards merged into one, past the budget
-	var coarse []ciRow
-	for _, r := range rows {
-		if r.Lang != testreg.LangFree {
-			coarse = append(coarse, r)
-		}
-	}
-	coarse = append(coarse, ciRow{Lang: testreg.LangFree, Shard: "1/1"})
-	if p := matrixAccount(reg, coarse, prShards); !has(p, "none 1/1 carries") || !has(p, "a shard of several tests is split into more shards, never moved to the night") {
-		t.Errorf("a shard of several past its budget is not named, with the split it needs: %v", p)
-	}
-	// plant: a language cut into one shard more than it needs (the
-	// language-free rows, which every registry has, cut n+1 ways)
-	var extra []ciRow
-	n := 0
-	for _, o := range rows {
-		if o.Lang != testreg.LangFree {
-			extra = append(extra, o)
-		} else {
-			n++
-		}
-	}
-	if n == 0 {
-		t.Fatal("the matrix has no language-free shard to plant on")
-	}
-	for i := 1; i <= n+1; i++ {
-		extra = append(extra, ciRow{Lang: testreg.LangFree, Shard: fmt.Sprintf("%d/%d", i, n+1)})
-	}
-	if p := matrixAccount(reg, extra, prShards); !has(p, fmt.Sprintf("%s is cut into %d shards, and %d fit", testreg.LangFree, n+1, n)) {
-		t.Errorf("a language cut into more shards than fit is not named: %v", p)
-	}
-	// plant: one language's shards cut two ways
-	if p := matrixAccount(reg, append(append([]ciRow{}, rows...), ciRow{Lang: rows[0].Lang, Shard: "1/999"}), prShards); !has(p, "one count per language") {
-		t.Errorf("a language cut two ways is not named: %v", p)
-	}
-	// plant: a row whose shard does not read
-	if p := matrixAccount(reg, append(append([]ciRow{}, rows...), ciRow{Lang: rows[0].Lang, Shard: "x"}), prShards); !has(p, rows[0].Lang+" x: the shard does not read") {
-		t.Errorf("a shard that does not read is not named: %v", p)
-	}
-	// plant: a shard past the language's count
-	if p := matrixAccount(reg, append(append([]ciRow{}, rows...), ciRow{Lang: rows[0].Lang, Shard: "9/1"}), prShards); !has(p, rows[0].Lang+" 9/1:") {
-		t.Errorf("a shard past its count is not named: %v", p)
-	}
-	// plant: a test heavier than a shard
-	for i, tt := range reg.Tests {
-		if tt.Scope == testreg.LangFree && tt.Tier == "unit" {
-			was := tt.Seconds
-			reg.Tests[i].Seconds = shardBudget + 1
-			_, p := ciMatrix(reg, prShards)
-			reg.Tests[i].Seconds = was
-			want := "none.unit." + tt.Key + " weighs 61.0 s, past one shard's 60 s budget on its own: make it faster, or move it to the nightly tier with its measured seconds (the row's \"tier\":\"nightly\", with its \"seconds\")"
-			if !has(p, want) {
-				t.Errorf("a test heavier than a shard was not named (want %q): %v", want, p)
-			}
-			break
-		}
-	}
+	return reg
 }
 
-// TestTheMatrixPlansHeadroomUnderTheLimit: the generated matrix cuts
-// every shard of more than one test to the 50 s plan, under the 60 s limit,
-// and a part of one test may carry up to the limit. The plants: the
-// repository's matrix cut to the limit alone (no headroom), which the
-// account names past the plan; and fits over hand-made parts, by the rule.
-func TestTheMatrixPlansHeadroomUnderTheLimit(t *testing.T) {
+// prTestLines: a compile row and a happy-path row every language answers,
+// each language measured at the seconds given, and a decode row, a second
+// round trip, a row measured only as a whole, an unmeasured row and a
+// language-free row.
+func prTestLines(compile, happy float64) string {
+	return fmt.Sprintf(`{"rec":"test","key":"codegen.fam.builds","type":"codegen","family":"fam","case":"builds","tier":"nightly","checks":"x","inputs":{"n":1},"expect":"builds","lang_seconds":{"c":%g,"go":%g},"seconds":%g}
+{"rec":"test","key":"roundtrip.fam.happy","type":"roundtrip","family":"fam","case":"happy","tier":"functional","checks":"x","inputs":{"n":2},"expect":"same","lang_seconds":{"c":%g,"go":%g},"seconds":%g}
+{"rec":"test","key":"roundtrip.fam.second","type":"roundtrip","family":"fam","case":"second","tier":"functional","checks":"x","inputs":{"n":3},"expect":"same","lang_seconds":{"c":1,"go":1}}
+{"rec":"test","key":"decode.fam.read","type":"decode","family":"fam","case":"read","tier":"functional","checks":"x","inputs":{"n":4},"expect":"read","lang_seconds":{"c":1,"go":1}}
+{"rec":"test","key":"roundtrip.fam.whole","type":"roundtrip","family":"fam","case":"whole","tier":"functional","checks":"x","inputs":{"n":7},"expect":"same","seconds":1}
+{"rec":"test","key":"roundtrip.fam.unmeasured","type":"roundtrip","family":"fam","case":"unmeasured","tier":"functional","checks":"x","inputs":{"n":5},"expect":"same"}
+{"rec":"test","key":"tooling.fam.free","type":"tooling","family":"fam","case":"free","tier":"functional","scope":"none","adapter":"fake","checks":"x","inputs":{"n":6},"expect":"passes","seconds":1}
+`, compile, compile, compile, happy, happy, happy)
+}
+
+// prFixtureTiming is a pr job of two lanes, 10 s of setup, and a run
+// measured at 5 s.
+var prFixtureTiming = prRunTiming{Jobs: 2, Setup: 10, Run: 5}
+
+// TestThePRGroupIsOneCompileAndOneHappyPathRowPerLanguage: the pr group
+// holds, for every language, exactly one compile row and one happy-path
+// round-trip row, each measured, their seconds summed within the job's
+// budget; each break is named. The plants: a second round trip, a decode
+// row, a language-free row, a language missing its happy path, an unmeasured
+// row, and the sum past the budget.
+func TestThePRGroupIsOneCompileAndOneHappyPathRowPerLanguage(t *testing.T) {
 	t.Parallel()
-	if shardPlan >= shardBudget {
-		t.Fatalf("the plan (%.0f s) leaves no headroom under the limit (%.0f s)", shardPlan, shardBudget)
-	}
-	reg := loadRepoRegistry(t)
-	rows, problems := ciMatrix(reg, prShards)
-	if len(problems) > 0 {
-		t.Fatalf("the pr group does not cut into shards that fit:\n  %s", strings.Join(problems, "\n  "))
-	}
-	for _, r := range rows {
-		if r.Seconds > shardPlan && r.Tests > 1 {
-			t.Errorf("%s %s carries %.1f s over %d tests, past the %.0f s plan", r.Lang, r.Shard, r.Seconds, r.Tests, shardPlan)
+	both := []string{"c.nightly.codegen.fam.builds", "go.nightly.codegen.fam.builds", "c.functional.roundtrip.fam.happy", "go.functional.roundtrip.fam.happy"}
+	names := func(extra ...string) string {
+		var q []string
+		for _, n := range append(append([]string{}, both...), extra...) {
+			q = append(q, fmt.Sprintf("%q", n))
 		}
+		return `{"names":[` + strings.Join(q, ",") + `]}`
 	}
-	// plant: the matrix cut to the limit, with no headroom
-	tight, problems := ciMatrix(reg, shardBudgets{plan: shardBudget, limit: shardBudget})
-	if len(problems) > 0 {
-		t.Fatalf("the pr group does not cut to the limit:\n  %s", strings.Join(problems, "\n  "))
+	rows, p := prGroupTimed(prRegistry(t, prTestLines(3, 3), names()), prFixtureTiming)
+	if len(p) > 0 {
+		t.Fatalf("a pr group of one compile row and one happy path per language: %v", p)
 	}
-	if p := matrixAccount(reg, tight, prShards); !strings.Contains(strings.Join(p, "\n"), "plan") {
-		t.Errorf("a matrix cut to the limit, with no headroom, is not named past the plan: %v", p)
+	if len(rows) != 2 || rows[0].Lang != "c" || rows[0].Compile != "c.nightly.codegen.fam.builds" || rows[0].Happy != "c.functional.roundtrip.fam.happy" || rows[0].Seconds != 6 {
+		t.Errorf("the rows: %+v", rows)
 	}
-	inst := func(secs float64) testreg.Instance {
-		return testreg.Instance{Test: testreg.Test{Seconds: secs}}
-	}
-	for _, tc := range []struct {
-		what  string
-		parts [][]testreg.Instance
-		want  bool
+	for _, c := range []struct {
+		what, tests, query, want string
 	}{
-		{"two tests under the plan", [][]testreg.Instance{{inst(20), inst(25)}}, true},
-		{"two tests past the plan, under the limit", [][]testreg.Instance{{inst(30), inst(25)}}, false},
-		{"one test past the plan, under the limit", [][]testreg.Instance{{inst(55)}}, true},
-		{"one test past the limit", [][]testreg.Instance{{inst(61)}}, false},
-		{"an empty part", [][]testreg.Instance{{inst(1)}, {}}, false},
+		{"a second round trip", prTestLines(3, 3), names("c.functional.roundtrip.fam.second"),
+			"c.functional.roundtrip.fam.happy and c.functional.roundtrip.fam.second are both type roundtrip in c: the pr group holds one of each per language"},
+		{"a decode row", prTestLines(3, 3), names("go.functional.decode.fam.read"),
+			"go.functional.decode.fam.read is type decode, and the pr group holds per language one compile row (type codegen) and one happy-path row (type roundtrip), nothing else: it runs nightly"},
+		{"a language-free row", prTestLines(3, 3), names("none.functional.tooling.fam.free"),
+			"none.functional.tooling.fam.free is in the pr group, and the pr group holds per language one compile row and one happy-path row, never a language-free row: it runs nightly"},
+		{"a language missing its happy path", prTestLines(3, 3), `{"names":["c.nightly.codegen.fam.builds","go.nightly.codegen.fam.builds","c.functional.roundtrip.fam.happy"]}`,
+			"go has no happy-path row (type roundtrip) in the pr group"},
+		{"a language missing its compile row", prTestLines(3, 3), `{"names":["c.nightly.codegen.fam.builds","c.functional.roundtrip.fam.happy","go.functional.roundtrip.fam.happy"]}`,
+			"go has no compile row (type codegen) in the pr group"},
+		{"an unmeasured row", prTestLines(3, 3), `{"names":["c.nightly.codegen.fam.builds","go.nightly.codegen.fam.builds","c.functional.roundtrip.fam.unmeasured","go.functional.roundtrip.fam.happy"]}`,
+			"c.functional.roundtrip.fam.unmeasured has no measured seconds"},
+		{"a row measured only as a whole", prTestLines(3, 3), `{"names":["c.nightly.codegen.fam.builds","go.nightly.codegen.fam.builds","c.functional.roundtrip.fam.whole","go.functional.roundtrip.fam.happy"]}`,
+			"c.functional.roundtrip.fam.whole has no measured seconds"},
+		{"the critical path past the budget", prTestLines(60, 50.5), names(),
+			"the pr job takes 120.5 s, past its 120 s: setup 10.0 s and the run's critical path 110.5 s on 2 lanes"},
 	} {
-		if got := fits(tc.parts, prShards); got != tc.want {
-			t.Errorf("fits(%s) = %v, want %v", tc.what, got, tc.want)
+		_, p := prGroupTimed(prRegistry(t, c.tests, c.query), prFixtureTiming)
+		if !strings.Contains(strings.Join(p, "\n"), c.want) {
+			t.Errorf("%s: want %q, got %v", c.what, c.want, p)
 		}
+	}
+	// the job's wall is its setup and the longer of the computed and the
+	// measured run: the measured run past the budget is red even when the
+	// rows' seconds fit
+	if _, p := prGroupTimed(prRegistry(t, prTestLines(3, 3), names()), prRunTiming{Jobs: 2, Setup: 10, Run: 110.5}); !strings.Contains(strings.Join(p, "\n"), "the pr job takes 120.5 s") {
+		t.Errorf("a measured run past the budget: %v", p)
+	}
+	// the calls go longest first to the least loaded lane: c 9 s, go 6 s and
+	// two of 4 s on two lanes is 9+4 and 6+4, 13 s; one lane is the sum
+	for _, c := range []struct {
+		jobs int
+		want float64
+	}{{2, 13}, {1, 23}, {0, 23}, {4, 9}} {
+		rows := []prRow{{Lang: "a", Seconds: 4}, {Lang: "c", Seconds: 9}, {Lang: "d", Seconds: 4}, {Lang: "go", Seconds: 6}}
+		if got := prCriticalPath(rows, c.jobs); got != c.want {
+			t.Errorf("%d lanes: the critical path is %v s, want %v s", c.jobs, got, c.want)
+		}
+	}
+	// the budget is the job's two minutes, never more
+	if prJobBudget != 120 {
+		t.Errorf("the pr job's budget is %.0f s, and Glenn's is 120 s", prJobBudget)
 	}
 }
 
-// TestTheShardJobsFitGitHubsMatrixLimit: matrixJobs cuts the rows, in
-// order, into jobs of at most maxMatrixJobs each, a language kept whole when
-// it fits; the generated workflow's shard jobs are within the limit and,
-// joined, are the whole matrix. The plant: a language past the limit alone,
-// which is split, never left as one matrix past it.
-func TestTheShardJobsFitGitHubsMatrixLimit(t *testing.T) {
+// TestTheRepositorysPRGroupFitsTheJob: the registry's own pr group is one
+// compile row and one happy-path row for each of its languages, within the
+// job's budget.
+func TestTheRepositorysPRGroupFitsTheJob(t *testing.T) {
 	t.Parallel()
 	reg := loadRepoRegistry(t)
-	rows, problems := ciMatrix(reg, prShards)
-	if len(problems) > 0 {
-		t.Fatalf("the pr group does not cut into shards that fit:\n  %s", strings.Join(problems, "\n  "))
+	rows, p := prGroup(reg)
+	if len(p) > 0 {
+		t.Fatalf("the registry's pr group:\n  %s", strings.Join(p, "\n  "))
 	}
-	check := func(what string, rows []ciRow) [][]ciRow {
-		t.Helper()
-		jobs := matrixJobs(rows)
-		var joined []ciRow
-		for i, j := range jobs {
-			if len(j) == 0 || len(j) > maxMatrixJobs {
-				t.Errorf("%s: job %d has %d rows, want 1 to %d", what, i+1, len(j), maxMatrixJobs)
-			}
-			joined = append(joined, j...)
+	if len(rows) != len(reg.LangNames()) {
+		t.Errorf("%d languages in the pr job, and the registry has %d", len(rows), len(reg.LangNames()))
+	}
+}
+
+// TestCIFastRunsThePRGroupInOneJob: the generated ci-fast.yml runs tests in
+// one step, schema-test run --group pr, whole. The plants: a second
+// test-running job, a shard of the group, and no run at all.
+func TestCIFastRunsThePRGroupInOneJob(t *testing.T) {
+	t.Parallel()
+	files, err := ciFiles(loadRepoRegistry(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wf := string(files[fastWorkflow])
+	if p := checkFastRuns([]byte(wf)); len(p) > 0 {
+		t.Fatalf("the generated ci-fast.yml: %v", p)
+	}
+	second := wf + "\n  schema-test-pr-2:\n    runs-on: x\n    steps:\n      - name: more\n        run: go run ./tools/schema-test run --group pr --lang c\n"
+	sharded := strings.Replace(wf, "run: "+prRunLine+"\n", "run: "+prRunLine+" --shard 1/2\n", 1)
+	none := strings.Replace(wf, "run: "+prRunLine+"\n", "run: go run ./tools/schema-test ci --check\n", 1)
+	if sharded == wf || none == wf {
+		t.Fatal("the generated ci-fast.yml has no pr run line to plant")
+	}
+	for what, c := range map[string]struct{ text, want string }{
+		"a second test-running job": {second, "2 steps run tests per pull request, and the pr group runs in one job, one step"},
+		"a shard of the group":      {sharded, `the pr job runs "go run ./tools/schema-test run --group pr", the pr group whole, and nothing else`},
+		"no run":                    {none, "no step runs"},
+	} {
+		if p := checkFastRuns([]byte(c.text)); !strings.Contains(strings.Join(p, "\n"), c.want) {
+			t.Errorf("%s: want %q, got %v", what, c.want, p)
 		}
-		if !slices.Equal(joined, rows) {
-			t.Errorf("%s: the jobs joined are not the matrix in order", what)
-		}
-		return jobs
-	}
-	check("the registry's matrix", rows)
-	var big []ciRow
-	for i := range maxMatrixJobs + 10 {
-		big = append(big, ciRow{Lang: "c", Shard: fmt.Sprintf("%d/%d", i+1, maxMatrixJobs+10)})
-	}
-	big = append(big, ciRow{Lang: "go", Shard: "1/1"})
-	if jobs := check("a language past the limit", big); len(jobs) != 2 || len(jobs[1]) != 11 {
-		t.Errorf("a language past the limit: want jobs of %d and 11 rows, got %d jobs", maxMatrixJobs, len(jobs))
-	}
-	// a language that does not fit what is left starts the next job whole
-	var two []ciRow
-	for i := range maxMatrixJobs - 1 {
-		two = append(two, ciRow{Lang: "c", Shard: fmt.Sprintf("%d/%d", i+1, maxMatrixJobs-1)})
-	}
-	two = append(two, ciRow{Lang: "go", Shard: "1/2"}, ciRow{Lang: "go", Shard: "2/2"})
-	if jobs := check("a language that does not fit what is left", two); len(jobs) != 2 || len(jobs[1]) != 2 {
-		t.Errorf("a language that does not fit what is left: want it whole in a second job, got %d jobs", len(jobs))
 	}
 }
 
@@ -390,27 +372,26 @@ func TestEveryWorkflowStepCallsOnlySchemaTest(t *testing.T) {
 
 // TestTheVerdictNeedsEveryJobGreen: the verdict passes only when every job
 // it needs passed, with the fork guard alone skipped; a failed, cancelled or
-// skipped job, a missing job and an unreadable needs context are each named.
+// skipped job, a missing job, a job the workflow does not generate and an
+// unreadable needs context are each named.
 func TestTheVerdictNeedsEveryJobGreen(t *testing.T) {
 	t.Parallel()
-	green := `{"fork-pull-request":{"result":"skipped"},"schema-test":{"result":"success"},"fixed-corpus":{"result":"success"},"produce":{"result":"success"},"schema-test-pr-1":{"result":"success"},"schema-test-pr-2":{"result":"success"}}`
-	if err := verdict([]byte(green), 2); err != nil {
+	green := `{"fork-pull-request":{"result":"skipped"},"schema-test":{"result":"success"},"fixed-corpus":{"result":"success"},"produce":{"result":"success"},"schema-test-pr":{"result":"success"}}`
+	if err := verdict([]byte(green)); err != nil {
 		t.Fatalf("an all-green run: %v", err)
 	}
 	for in, says := range map[string]string{
-		strings.Replace(green, `"schema-test-pr-2":{"result":"success"}`, `"schema-test-pr-2":{"result":"failure"}`, 1):   "schema-test-pr-2: failure",
-		strings.Replace(green, `"schema-test-pr-1":{"result":"success"}`, `"schema-test-pr-1":{"result":"skipped"}`, 1):   "schema-test-pr-1: skipped",
+		strings.Replace(green, `"schema-test-pr":{"result":"success"}`, `"schema-test-pr":{"result":"failure"}`, 1):       "schema-test-pr: failure",
+		strings.Replace(green, `"schema-test-pr":{"result":"success"}`, `"schema-test-pr":{"result":"skipped"}`, 1):       "schema-test-pr: skipped",
 		strings.Replace(green, `"schema-test":{"result":"success"}`, `"schema-test":{"result":"cancelled"}`, 1):           "schema-test: cancelled",
 		strings.Replace(green, `"produce":{"result":"success"}`, `"produce":{"result":"failure"}`, 1):                     "produce: failure",
 		strings.Replace(green, `"fork-pull-request":{"result":"skipped"}`, `"fork-pull-request":{"result":"failure"}`, 1): "fork-pull-request: failure",
-		strings.Replace(green, `,"schema-test-pr-1":{"result":"success"}`, "", 1):                                         "has no job schema-test-pr-1",
-		strings.Replace(green, `"schema-test-pr-2":{"result":"success"}}`, `"schema-test-pr-3":{"result":"success"}}`, 1): "has no job schema-test-pr-2",
-		strings.Replace(green, `,"schema-test-pr-2":{"result":"success"}`, "", 1):                                         "has no job schema-test-pr-2",
-		strings.Replace(green, `}}`, `},"schema-test-pr-3":{"result":"success"}}`, 1):                                     "has 3 shard jobs, and the registry cuts the pr group into 2",
+		strings.Replace(green, `,"schema-test-pr":{"result":"success"}`, "", 1):                                           "has no job schema-test-pr",
+		strings.Replace(green, `}}`, `},"schema-test-pr-2":{"result":"success"}}`, 1):                                     "schema-test-pr-2: a job ci-fast.yml does not generate",
 		`{"schema-test":{"result":"success"}}`:                                                                            "has no job",
 		`not json`:                                                                                                        "does not read",
 	} {
-		if err := verdict([]byte(in), 2); err == nil || !strings.Contains(err.Error(), says) {
+		if err := verdict([]byte(in)); err == nil || !strings.Contains(err.Error(), says) {
 			t.Errorf("%s: want %q, got %v", in, says, err)
 		}
 	}
@@ -435,56 +416,4 @@ func readWorkflows(root string) (map[string][]byte, error) {
 		out[e.Name()] = data
 	}
 	return out, nil
-}
-
-// TestATestPastAShardSaysWhereItsTierGoes: a single test past one shard's
-// limit is told to get faster or move to nightly with its measured seconds,
-// by its union row language's own "tier" when it is a union row's, by the
-// row's tier otherwise. The plant is one wording for both: a language-free
-// row is told to set a tier in inputs.tests, which it has none of.
-func TestATestPastAShardSaysWhereItsTierGoes(t *testing.T) {
-	t.Parallel()
-	union := testreg.Instance{Full: "go.unit.roundtrip.f.c", Lang: "go", Test: testreg.Test{Key: "roundtrip.f.c", Inputs: []byte(`{"tests":{"go":{"package":"./p","test":"TestC"}}}`)}}
-	free := testreg.Instance{Full: "none.unit.tooling.f.c", Lang: testreg.LangFree, Test: testreg.Test{Key: "tooling.f.c", Adapter: "gotest", Inputs: []byte(`{"package":"./p","test":"TestC"}`)}}
-	for _, c := range []struct {
-		inst testreg.Instance
-		want string
-	}{
-		{union, `(the language's "tier":"nightly" beside its "seconds" in inputs.tests.go)`},
-		{free, `(the row's "tier":"nightly", with its "seconds")`},
-	} {
-		inst, want := c.inst, c.want
-		got := pastBudget(inst, 61, prShards)
-		if !strings.HasPrefix(got, inst.Full+" weighs 61.0 s, past one shard's 60 s budget on its own: make it faster, or move it to the nightly tier with its measured seconds ") || !strings.HasSuffix(got, want) {
-			t.Errorf("%s: %q, want it to end %q", inst.Full, got, want)
-		}
-	}
-}
-
-// TestAShardOfOneTestPastTheLimitIsNamedAsThatTest: the account of a matrix
-// whose shard holds one test past the limit names that test and where its
-// tier goes (pastBudget), never a split of a shard that cannot be cut. The
-// plant is the one-test case gone: the shard is told to split.
-func TestAShardOfOneTestPastTheLimitIsNamedAsThatTest(t *testing.T) {
-	t.Parallel()
-	path := filepath.Join(t.TempDir(), "registry.jsonl")
-	lines := `{"rec":"lang","name":"go","write":"refuse","adapter":"fake"}
-{"rec":"tier","name":"functional","what":"a toolchain"}
-{"rec":"type","name":"roundtrip","what":"same bytes back"}
-{"rec":"test","key":"roundtrip.fam.heavy","type":"roundtrip","family":"fam","case":"heavy","tier":"functional","checks":"x","inputs":{"n":1},"expect":"same","seconds":61}
-{"rec":"test","key":"roundtrip.fam.light","type":"roundtrip","family":"fam","case":"light","tier":"functional","checks":"x","inputs":{"n":2},"expect":"same","seconds":1}
-{"rec":"group","name":"pr","what":"per pull request","query":{"tiers":["functional"]}}
-`
-	if err := os.WriteFile(path, []byte(lines), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	reg, err := testreg.Load(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	p := strings.Join(matrixAccount(reg, []ciRow{{Lang: "go", Shard: "1/2"}, {Lang: "go", Shard: "2/2"}}, prShards), "\n")
-	want := `go 1/2: go.functional.roundtrip.fam.heavy weighs 61.0 s, past one shard's 60 s budget on its own: make it faster, or move it to the nightly tier with its measured seconds (the row's "tier":"nightly", with its "seconds")`
-	if !strings.Contains(p, want) || strings.Contains(p, "split into more shards") {
-		t.Errorf("the account: %s\nwant %q and no split", p, want)
-	}
 }

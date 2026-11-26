@@ -1171,7 +1171,7 @@ func jobSelectsSelfHosted(wfData, job string, ev ciEvent) (bool, error) {
 // breaking any single guard or trigger is caught by name.
 // ciFastJobKeys are ci-fast.yml's self-hosted jobs, which a same-repository
 // pull request into any base runs, every one of them: the fixed jobs and
-// every shard job (schema-test-pr-1, -2, ...).
+// the pr job (schema-test-pr).
 func ciFastJobKeys(wfs map[string]string) []string {
 	keys := []string{"ci-fast.yml:fixed-corpus", "ci-fast.yml:produce", "ci-fast.yml:schema-test", "ci-fast.yml:verdict"}
 	for _, j := range prShardJobs(yamlJobs(wfs["ci-fast.yml"])) {
@@ -1385,11 +1385,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 	shJobs := enumerateSelfHostedJobs(wfs)
 	var gotKeys []string
 	for _, sh := range shJobs {
-		// the shard jobs past the first are the same job, cut at GitHub's
-		// matrix limit; ciFastJobKeys holds every one of them
-		if k := sh.Key(); !strings.HasPrefix(k, "ci-fast.yml:schema-test-pr-") || k == "ci-fast.yml:schema-test-pr-1" {
-			gotKeys = append(gotKeys, k)
-		}
+		gotKeys = append(gotKeys, sh.Key())
 	}
 	wantKeys := []string{
 		"certify.yml:inline-gate",
@@ -1406,7 +1402,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"ci-fast.yml:fixed-corpus",
 		"ci-fast.yml:produce",
 		"ci-fast.yml:schema-test",
-		"ci-fast.yml:schema-test-pr-1",
+		"ci-fast.yml:schema-test-pr",
 		"ci-fast.yml:verdict",
 		"ci-full.yml:conformance",
 		"ci-full.yml:conformance-matrix",
@@ -1513,7 +1509,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 			workflow:  "ci-fast.yml",
 			oldSubstr: "github.event.pull_request.head.repo.full_name == github.repository",
 			newSubstr: "github.repository == github.repository",
-			wantErr:   "ci-fast.yml:schema-test-pr-1 admits fork PR",
+			wantErr:   "ci-fast.yml:schema-test-pr admits fork PR",
 		},
 		{
 			name:      "restore a pull_request trigger on the nightly registry run",

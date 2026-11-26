@@ -272,9 +272,34 @@ func TestEveryCorpusFamilyHasItsHarness(t *testing.T) {
 	if a.Answers(testreg.Test{Family: "conformance-wire", Scope: testreg.LangFree}) {
 		t.Error("the corpus adapter answers a language-free test")
 	}
-	// the toolchains install once per process, before any language runs
-	if got := nameBuild.Build("lua"); len(got) != 1 || strings.Join(got[0], " ") != "make name-buildability-deps" {
-		t.Errorf("name-buildability build for lua: %q", got)
+	// a language's own toolchain installs once per process, before the
+	// language runs, and only when it is not in place; a language with no
+	// pinned toolchain installs nothing; and the compiler the run links is
+	// built before any call, so calls side by side never build it at once
+	for _, l := range []string{"lua", "c"} {
+		if got := nameBuild.Build(l); len(got) != 2 || strings.Join(got[0], " ") != "make name-buildability-deps-"+l || strings.Join(got[1], " ") != "make build/schema-moo" {
+			t.Errorf("name-buildability build for %s: %q", l, got)
+		}
+	}
+	nb, err := os.ReadFile("../../make/name-buildability.mk")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"name-buildability-deps-lua:\n\t@[ -x \"$(LUA)\" ] || $(MAKE) --no-print-directory dist-lua\n",
+		"name-buildability-deps-luau:\n\t@{ [ -x \"$(LUAU)\" ] && [ -x \"$(LUAU_ANALYZE)\" ]; } || $(MAKE) --no-print-directory dist-luau\n",
+		"name-buildability-deps-moo: $(MOO_DIST)/PIN\n",
+		"name-buildability-deps-squirrel:\n\t@[ -x \"$(SQ)\" ] || $(MAKE) --no-print-directory dist-squirrel\n",
+		"name-buildability-deps-goose:\n\t@[ -x \"$(GOOSE)\" ] || $(MAKE) --no-print-directory dist-goose\n",
+		"name-buildability-deps-lobster:\n\t@[ -x \"$(LOBSTER)\" ] || $(MAKE) --no-print-directory dist-lobster\n",
+		"name-buildability-deps-%:\n\t@:\n",
+		// the compiler make keeps current, built once, never linked per call
+		"name-buildability-run: build/schema-moo\n",
+		"NAMEBUILD_SCHEMA=\"$(abspath build/schema-moo)\"",
+	} {
+		if !strings.Contains(string(nb), want) {
+			t.Errorf("make/name-buildability.mk does not carry %q", want)
+		}
 	}
 	if got := conformance.Build("lua"); len(got) != 1 || strings.Join(got[0], " ") != "make conformance-leg-lua" {
 		t.Errorf("conformance build for lua: %q", got)

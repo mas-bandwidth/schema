@@ -256,6 +256,12 @@ func newHarnessAdapter(b *builder, log io.Writer) *harnessAdapter {
 // inside its own deadline (testreg.Serial).
 func (a *harnessAdapter) Serial() bool { return true }
 
+// SharesCheckout: once its group's build steps ran in Prepare, a harness
+// call only reads the checkout (runHarness holds it shared, and each call
+// works in a folder of its own under workRoot), so harness calls run side
+// by side, up to the run's --jobs (testreg.SharedCheckout).
+func (a *harnessAdapter) SharesCheckout() bool { return true }
+
 func (a *harnessAdapter) Answers(t testreg.Test) bool {
 	if _, has, err := langMakeGates(t); has {
 		return err == nil
@@ -365,8 +371,9 @@ func (a *harnessAdapter) Run(ctx context.Context, lang string, instances []testr
 // results it did write.
 func runHarness(ctx context.Context, argv []string, instances []testreg.Instance, log io.Writer) ([]testreg.Result, error) {
 	// the harness runs bin/schema and what the build steps made: no make
-	// in the checkout relinks them under it
-	release, err := holdCheckout(ctx)
+	// in the checkout relinks them under it, and other harnesses, which
+	// only read them too, run beside it
+	release, err := holdCheckoutShared(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("%q: %w", strings.Join(argv, " "), err)
 	}

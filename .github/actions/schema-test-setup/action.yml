@@ -10,7 +10,7 @@ description: >
   "CI").
 inputs:
   lang:
-    description: the row's language, or none for the language-free tests
+    description: the row's language, none for the language-free tests, or all for the pr job (every language, on the runner's SDK's toolchains)
     required: true
 runs:
   using: composite
@@ -19,16 +19,31 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        grep -v '^#' SIBLINGS | while read -r path url tag commit; do
+        # every sibling cloned at once (one after another took 5.9 s of
+        # the pr job's setup: measured on hetzner1, 2026-11-25); each
+        # clone's own check fails the step by name
+        pids=()
+        while read -r path url tag commit; do
           [ -n "$path" ] || continue
-          rm -rf "$path"
-          git clone --quiet --depth 1 --branch "$tag" "$url" "$path"
-          got=$(git -C "$path" rev-parse HEAD)
-          if [ "$got" != "$commit" ]; then
-            echo "::error::$path at tag $tag is $got, not the pinned $commit (SIBLINGS)"
-            exit 1
-          fi
+          (
+            rm -rf "$path"
+            git clone --quiet --depth 1 --branch "$tag" "$url" "$path"
+            got=$(git -C "$path" rev-parse HEAD)
+            if [ "$got" != "$commit" ]; then
+              echo "::error::$path at tag $tag is $got, not the pinned $commit (SIBLINGS)"
+              exit 1
+            fi
+          ) &
+          pids+=("$!")
+        done < <(grep -v '^#' SIBLINGS)
+        failed=0
+        for pid in "${pids[@]}"; do
+          wait "$pid" || failed=1
         done
+        if [ "$failed" != 0 ]; then
+          echo "::error::a pinned sibling runtime did not clone at its pin (SIBLINGS)"
+          exit 1
+        fi
     - name: the runner's SDK, every variable it exports
       shell: bash
       run: |
@@ -64,5 +79,21 @@ runs:
       if: inputs.lang == 'python'
     - uses: ./.github/actions/ruby
       if: inputs.lang == 'ruby'
+    - name: the SDK's toolchains, which the pr job runs every language on
+      if: inputs.lang == 'all'
+      shell: bash
+      run: |
+        set -euo pipefail
+        # the pr job installs no toolchain: the runner's SDK has every
+        # interpreter pin (env.sh names each, and the step above handed them
+        # on), so one it does not name fails here, by name
+        missing=""
+        for v in LUA LUAU LUAU_ANALYZE GOOSE LOBSTER SQ PYTHON PYTHON_FLOOR RUBY RUBY_FLOOR MOO MOO_ANALYZE MOO_CHECKED; do
+          if [ -z "${!v:-}" ] || [ ! -x "${!v}" ]; then missing="$missing $v"; fi
+        done
+        if [ -n "$missing" ]; then
+          echo "::error::the runner's SDK (/opt/nova/sdk/env.sh) names no executable for:$missing"
+          exit 1
+        fi
     - uses: ./.github/actions/moo
       if: inputs.lang == 'moo'

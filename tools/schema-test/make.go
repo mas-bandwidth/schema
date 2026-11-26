@@ -149,6 +149,40 @@ func holdCheckout(ctx context.Context) (func(), error) {
 	}
 }
 
+// sharedCheckout counts the calls that hold the checkout to read it
+// (holdCheckoutShared): the first takes checkoutMake for all of them and the
+// last gives it back, so they run side by side and never beside a make.
+var sharedCheckout struct {
+	sync.Mutex
+	n int
+}
+
+// holdCheckoutShared takes the checkout to read it (a harness running what
+// the build steps made) and returns its release: any number of readers hold
+// it at once, and no make runs while one does. The first reader's wait ends
+// with ctx, as holdCheckout's does.
+func holdCheckoutShared(ctx context.Context) (func(), error) {
+	sharedCheckout.Lock()
+	defer sharedCheckout.Unlock()
+	if sharedCheckout.n == 0 {
+		select {
+		case checkoutMake <- struct{}{}:
+			checkoutHolds.Add(1)
+		case <-ctx.Done():
+			return nil, fmt.Errorf("waiting for the checkout, which another make of this run holds: %w", ctx.Err())
+		}
+	}
+	sharedCheckout.n++
+	return func() {
+		sharedCheckout.Lock()
+		defer sharedCheckout.Unlock()
+		sharedCheckout.n--
+		if sharedCheckout.n == 0 {
+			<-checkoutMake
+		}
+	}, nil
+}
+
 func execMake(ctx context.Context, argv []string) (string, error) {
 	release, err := holdCheckout(ctx)
 	if err != nil {

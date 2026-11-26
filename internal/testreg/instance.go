@@ -324,10 +324,14 @@ const minSeconds = 0.01
 
 // Weight is what an instance costs its shard: its test's measured seconds
 // (at least minSeconds), or DefaultSeconds when none was measured; a union
-// row's instance weighs by its own language (unionWeight).
+// row's instance weighs by its own language (unionWeight), and any other
+// row's by its language's own lang_seconds when it has them.
 func Weight(inst Instance) float64 {
 	if w, union := unionWeight(inst.Test, inst.Lang); union {
 		return w
+	}
+	if s := inst.Test.LangSeconds[inst.Lang]; s > 0 {
+		return max(s, minSeconds)
 	}
 	if s := inst.Test.Seconds; s > 0 {
 		return max(s, minSeconds)

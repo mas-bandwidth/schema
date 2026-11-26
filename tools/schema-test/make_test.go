@@ -767,3 +767,38 @@ func TestAMakeRowNamesItsGoTestsWithTheirPackage(t *testing.T) {
 		t.Errorf("one test name in two packages: %v", err)
 	}
 }
+
+// TestHarnessesShareTheCheckoutAndMakesWaitForThem: a harness call holds
+// the checkout to read it, and another harness takes it beside the first
+// without waiting (its context already done), while a make, which writes
+// it, waits until the last reader lets go. The plant takes it whole for a
+// reader, so the second reader waits and its done context fails it.
+func TestHarnessesShareTheCheckoutAndMakesWaitForThem(t *testing.T) {
+	t.Parallel()
+	done, cancel := context.WithCancel(context.Background())
+	cancel()
+	first, err := holdCheckoutShared(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := holdCheckoutShared(done)
+	if err != nil {
+		first()
+		t.Fatalf("a second harness waited for the checkout a harness holds to read: %v", err)
+	}
+	if release, err := holdCheckout(done); err == nil {
+		release()
+		t.Fatal("a make took the checkout while harnesses were reading it")
+	}
+	first()
+	if release, err := holdCheckout(done); err == nil {
+		release()
+		t.Fatal("a make took the checkout while a harness was still reading it")
+	}
+	second()
+	release, err := holdCheckout(context.Background())
+	if err != nil {
+		t.Fatalf("a make could not take the checkout once the harnesses let go: %v", err)
+	}
+	release()
+}

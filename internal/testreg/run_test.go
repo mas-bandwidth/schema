@@ -595,6 +595,70 @@ func TestAUnionRowsSecondsAreEachLanguages(t *testing.T) {
 	refused(t, fixture+strings.Replace(row, `"test":"TestB"}`, `"test":"TestB","seconds":-1}`, 1), "fixture.jsonl:", "give seconds -1")
 }
 
+// TestAPerLanguageRowsSecondsAreEachLanguages: a per-language row that is
+// not a union row records each language's own measured seconds in its
+// lang_seconds, beside the row's longest, and each instance weighs by its
+// own language's; a language-free row has no language's seconds, and
+// lang_seconds on a union row, on a language-free row, for a language the
+// registry does not list, or of no positive time, does not load.
+func TestAPerLanguageRowsSecondsAreEachLanguages(t *testing.T) {
+	t.Parallel()
+	row := `{"rec":"test","key":"roundtrip.p.one","type":"roundtrip","family":"p","case":"one","tier":"unit","checks":"x","inputs":{"n":1},"expect":"x"}` + "\n"
+	path := filepath.Join(t.TempDir(), "r.jsonl")
+	if err := os.WriteFile(path, []byte(fixture+row), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	reg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byName := map[string]Instance{}
+	for _, inst := range reg.Instances() {
+		byName[inst.Full] = inst
+	}
+	rows, langs, err := SplitSeconds(byName, map[string]float64{"go.unit.roundtrip.p.one": 2.001, "lua.unit.roundtrip.p.one": 7})
+	if err != nil || rows["roundtrip.p.one"] != 7 || langs["roundtrip.p.one"]["go"] != 2.001 || langs["roundtrip.p.one"]["lua"] != 7 {
+		t.Fatalf("split %v %v %v, want the row's longest and each language's", rows, langs, err)
+	}
+	if n, err := WriteSeconds(path, rows, langs); err != nil || n != 1 {
+		t.Fatalf("WriteSeconds: %d %v", n, err)
+	}
+	// a later measure of one language replaces its seconds and keeps the
+	// other's
+	if n, err := WriteSeconds(path, map[string]float64{"roundtrip.p.one": 7}, map[string]map[string]float64{"roundtrip.p.one": {"go": 1.5}}); err != nil || n != 1 {
+		t.Fatalf("WriteSeconds: %d %v", n, err)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := fixture + strings.Replace(row, `"expect":"x"}`, `"expect":"x","lang_seconds":{"go":1.5,"lua":7},"seconds":7}`, 1)
+	if string(got) != want {
+		t.Fatalf("file:\n%s\nwant:\n%s", got, want)
+	}
+	reg, err = Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, inst := range reg.Instances() {
+		if inst.Test.Key != "roundtrip.p.one" {
+			continue
+		}
+		want := map[string]float64{"go": 1.5, "lua": 7, "c": 7}[inst.Lang]
+		if w := Weight(inst); w != want {
+			t.Errorf("%s weighs %v, want %v", inst.Full, w, want)
+		}
+	}
+	if _, err := WriteSeconds(path, nil, map[string]map[string]float64{"tooling.self.check": {"go": 1}}); err == nil || !strings.Contains(err.Error(), "a language-free row has no language's seconds") {
+		t.Errorf("a language-free row's language seconds were written: %v", err)
+	}
+	union := `{"rec":"test","key":"roundtrip.u.one","type":"roundtrip","family":"u","case":"one","tier":"unit","checks":"x","inputs":{"tests":{"go":{"package":"./p","test":"TestA"}}},"expect":"x","lang_seconds":{"go":1}}` + "\n"
+	refused(t, fixture+union, "fixture.jsonl:", "is a union row with lang_seconds")
+	refused(t, strings.Replace(fixture, `"scope":"none","adapter":"fake"}`, `"scope":"none","adapter":"fake","lang_seconds":{"go":1}}`, 1), "fixture.jsonl:", `gives lang_seconds but is scoped "none"`)
+	refused(t, fixture+strings.Replace(row, `"expect":"x"}`, `"expect":"x","lang_seconds":{"cobol":1}}`, 1), "fixture.jsonl:", `lang_seconds for "cobol", which is not a language of the registry`)
+	refused(t, fixture+strings.Replace(row, `"expect":"x"}`, `"expect":"x","lang_seconds":{"go":0}}`, 1), "fixture.jsonl:", "go lang_seconds 0: a measured run time is a positive number")
+}
+
 // TestAGoldenWritersRowsShareOneShard: a golden writer runs once for all the
 // rows a shard holds of it, so its rows are one block no cut splits, placed
 // where its first row is, even when another row sits between them; rows of
@@ -719,6 +783,43 @@ func stagedRunner(t *testing.T, log *eventLog, deadline func(parent context.Cont
 		log.add("deadline " + group)
 		return deadline(parent)
 	}}
+}
+
+// sharing is a staged adapter whose calls only read the checkout
+// (SharedCheckout).
+type sharing struct{ staged }
+
+func (sharing) SharesCheckout() bool { return true }
+
+// TestSharedCheckoutCallsRunSideBySideAfterTheWriters: the calls that only
+// read the checkout run up to Jobs at once (the machine's cores; at least
+// one), after every Serial call that writes it, and every one of them runs.
+// The plant is one lane whatever Jobs says.
+func TestSharedCheckoutCallsRunSideBySideAfterTheWriters(t *testing.T) {
+	t.Parallel()
+	for jobs, want := range map[int]int{0: 1, 1: 1, 2: 2, 16: 16} {
+		if got := (&Runner{Jobs: jobs}).lanes(); got != want {
+			t.Errorf("Jobs %d runs %d shared calls at once, want %d", jobs, got, want)
+		}
+	}
+	log := &eventLog{}
+	m := map[string]Adapter{"w": staged{name: "w", serial: true, log: log}}
+	var instances []Instance
+	for _, name := range []string{"r1", "r2", "r3"} {
+		m[name] = sharing{staged{name: name, serial: true, log: log}}
+		instances = append(instances, freeInstance(name))
+	}
+	instances = append(instances, freeInstance("w"))
+	rn := &Runner{Reg: load(t, fixture), Adapters: m, Context: WithTimeout(0), Jobs: 2}
+	rep := rn.Run(context.Background(), instances)
+	if !rep.OK() || rep.Passed != len(instances) {
+		t.Fatalf("%s, want every call to pass", rep.Summary())
+	}
+	for _, name := range []string{"r1", "r2", "r3"} {
+		if !log.has("end "+name) || log.at("start "+name) < log.at("end w") {
+			t.Errorf("shared call %s ran beside, or before, the writer, or not at all: %q", name, log.ev)
+		}
+	}
 }
 
 // TestPrepareRunsBeforeAnyCallOutsideItsDeadline: a cold build happens

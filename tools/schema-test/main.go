@@ -51,6 +51,7 @@ import (
 	"io"
 	"os"
 	"regexp"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -88,6 +89,8 @@ const usage = `usage:
   --report FILE     run: also write the run's report (every outcome and run-level problem) to FILE as JSON
   --registry PATH   the registry (default ` + testreg.DefaultPath + `)
   --timeout D       one adapter call's limit, 0 for none (default 90s)
+  --jobs N          run: how many harness calls run at once once their builds
+                    are done (default: the machine's cores)
   --seed N          the run's seed, handed to every adapter as SCHEMA_TEST_SEED
                     (default: the UTC date as YYYYMMDD, printed before the run);
                     a red fuzz row re-runs by name with the seed its run printed
@@ -195,6 +198,7 @@ func runErr(ctx context.Context, args []string, stdout io.Writer, ads map[string
 	shard := fs.String("shard", "", "")
 	path := fs.String("registry", testreg.DefaultPath, "")
 	timeout := fs.Duration("timeout", 90*time.Second, "")
+	jobs := fs.Int("jobs", runtime.NumCPU(), "")
 	update := fs.Bool("update", false, "")
 	report := fs.String("report", "", "")
 	writeSeconds := fs.Bool("write-seconds", false, "")
@@ -221,7 +225,7 @@ func runErr(ctx context.Context, args []string, stdout io.Writer, ads map[string
 	if err != nil {
 		return err
 	}
-	rn := &testreg.Runner{Reg: reg, Adapters: ads, Context: testreg.WithTimeout(*timeout), Now: time.Now}
+	rn := &testreg.Runner{Reg: reg, Adapters: ads, Context: testreg.WithTimeout(*timeout), Now: time.Now, Jobs: *jobs}
 	withRunner(ads, rn)
 	if sub == "coverage" {
 		if !q.Empty() || *group != "" || *shard != "" {
