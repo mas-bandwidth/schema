@@ -254,11 +254,12 @@ func TestRowW13(t *testing.T) {
 	}
 
 	layoutBytes := binary.LittleEndian.Uint32(file[tblp3.TableFixedHeaderBytes : tblp3.TableFixedHeaderBytes+4])
-	if uint32(len(chainLayout)) != layoutBytes {
+	switch {
+	case uint32(len(chainLayout)) != layoutBytes:
 		t.Errorf("W13: the layout's length word is not the C++ reference's: got=%d want=%d", layoutBytes, len(chainLayout))
-	} else if !bytes.Equal(file[tblp3.TableFixedHeaderBytes+4:tblp3.TableFixedHeaderBytes+4+int(layoutBytes)], chainLayout) {
+	case !bytes.Equal(file[tblp3.TableFixedHeaderBytes+4:tblp3.TableFixedHeaderBytes+4+int(layoutBytes)], chainLayout):
 		t.Errorf("W13: the file's layout bytes are not the C++ reference's, byte for byte")
-	} else {
+	default:
 		t.Logf("W13: the layout behind its u32 length at 16: %d bytes, the C++ reference's", layoutBytes)
 	}
 
