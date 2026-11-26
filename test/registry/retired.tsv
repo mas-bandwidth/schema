@@ -394,8 +394,19 @@ ci-fast.yml	go-test-touched	make	conformance-go-rows-a	-	none
 ci-fast.yml	go-test-touched	make	conformance-go-rows-b	harness-run.make-go.conformance-go-rows-b	none
 ci-fast.yml	go-test-touched	make	conformance-go-driver-unit	harness-run.make-go.conformance-go-driver-unit	none
 ci-fast.yml	go-test-touched	make	cards-conformance-go-negative-control	plant.go-proof-4.cards-conformance-go-negative-control	none
-ci-fast.yml	go-test-touched	gotest	bench/tables/moo TestMooFixedHotPathBench	-	none
+ci-fast.yml	go-test-touched	gotest	go test ./bench/tables/moo (1 Go tests the unmoved ledger holds, L5)	-	none
 ci-fast.yml	go-test-touched	gotest	go test ./compiler (9 Go tests the unmoved ledger holds, L5)	-	none
+ci-fast.yml	go-test-touched	gotest	go test ./internal/codegen/cpptable (165 Go tests the unmoved ledger holds, L5)	-	none
+ci-fast.yml	go-test-touched	gotest	go test ./internal/codegen/cstable (153 Go tests the unmoved ledger holds, L5)	-	none
+ci-fast.yml	go-test-touched	gotest	go test ./internal/codegen/ctable (170 Go tests the unmoved ledger holds, L5)	-	none
+ci-fast.yml	go-test-touched	gotest	go test ./internal/codegen/darttable (261 Go tests the unmoved ledger holds, L5)	-	none
+ci-fast.yml	go-test-touched	gotest	go test ./internal/codegen/elixirtable (273 Go tests the unmoved ledger holds, L5)	-	none
+ci-fast.yml	go-test-touched	gotest	go test ./internal/codegen/goosetable (176 Go tests the unmoved ledger holds, L5)	-	none
+ci-fast.yml	go-test-touched	gotest	go test ./internal/codegen/gotable (378 Go tests the unmoved ledger holds, L5)	-	none
+ci-fast.yml	go-test-touched	gotest	go test ./internal/codegen/javatable (224 Go tests the unmoved ledger holds, L5)	-	none
+ci-fast.yml	go-test-touched	gotest	go test ./internal/codegen/lobstertable (194 Go tests the unmoved ledger holds, L5)	-	none
+ci-fast.yml	go-test-touched	gotest	go test ./internal/codegen/luatable (262 Go tests the unmoved ledger holds, L5)	-	none
+ci-fast.yml	go-test-touched	gotest	go test ./internal/codegen/luautable (265 Go tests the unmoved ledger holds, L5)	-	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/c TestBoolStorageIsBoolAndReadUsesIntTemp	compiler.codegen-c.bool-storage-is-bool-and-read-uses-int-temp	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/c TestBulkBytesEmission	compiler.codegen-c.bulk-bytes-emission	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/c TestBulkBytesMatchesAnalysis	compiler.codegen-c.bulk-bytes-matches-analysis	none
@@ -481,7 +492,6 @@ ci-fast.yml	go-test-touched	gotest	internal/codegen/cpptable TestCppCompressedFl
 ci-fast.yml	go-test-touched	gotest	internal/codegen/cpptable TestCppCompressedFloatRangeHeldAtFloat32	compiler.codegen-cpptable.cpp-compressed-float-range-held-at-float32	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/cpptable TestCppConformanceDriverHasEveryMessageCodec	compiler.codegen-cpptable.cpp-conformance-driver-has-every-message-codec	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/cpptable TestCppConformanceDriverReadsThroughGeneratedReader	compiler.codegen-cpptable.cpp-conformance-driver-reads-through-generated-reader	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/cpptable TestCppConformanceToolEnvelopeReport	-	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/cpptable TestCppCookWriteZeroesDeadSlots	compiler.codegen-cpptable.cpp-cook-write-zeroes-dead-slots	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/cpptable TestCppCountedArrayBelowItsMinimumIsRefused	compiler.codegen-cpptable.cpp-counted-array-below-its-minimum-is-refused	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/cpptable TestCppCountedArrayElidesItsBirthValue	compiler.codegen-cpptable.cpp-counted-array-elides-its-birth-value	none
@@ -538,7 +548,6 @@ ci-fast.yml	go-test-touched	gotest	internal/codegen/cpptable TestCppVariableKeye
 ci-fast.yml	go-test-touched	gotest	internal/codegen/cpptable TestCppVariableSaveAssertsTheWriteContract	compiler.codegen-cpptable.cpp-variable-save-asserts-the-write-contract	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/cpptable TestCppVariableWriteRangeAssert	compiler.codegen-cpptable.cpp-variable-write-range-assert	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/cpptable TestCppVariableWriteRangeAssertCompiled	compiler.codegen-cpptable.cpp-variable-write-range-assert-compiled	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/cpptable TestCppVariableWriterEvolution	-	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/cpptable TestCppWidelistWarningInventory	compiler.codegen-cpptable.cpp-widelist-warning-inventory	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/cpptable TestCppWritersAssertARangedFloatInsideItsRange	compiler.codegen-cpptable.cpp-writers-assert-a-ranged-float-inside-its-range	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/cpptable TestCyclicWireIsRefusedCPP	compiler.codegen-cpptable.cyclic-wire-is-refused-cpp	none
@@ -585,7 +594,6 @@ ci-fast.yml	go-test-touched	gotest	internal/codegen/cpptable TestFixedVersioning
 ci-fast.yml	go-test-touched	gotest	internal/codegen/cpptable TestFunctionalCppLongPointerChain	compiler.codegen-cpptable.functional-cpp-long-pointer-chain	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/cpptable TestGeneratedMessageDepthBoundary	compiler.codegen-cpptable.generated-message-depth-boundary	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/cpptable TestJsonLeadingBOMBoundaryCPP	compiler.codegen-cpptable.json-leading-bom-boundary-cpp	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/cpptable TestMessageFormHeldCPP	-	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/cpptable TestMessageFormSkipDepthCPP	compiler.codegen-cpptable.message-form-skip-depth-cpp	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/cpptable TestMessageLebTenthByteRefusalEmitted	compiler.codegen-cpptable.message-leb-tenth-byte-refusal-emitted	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/cpptable TestNestedTableUnionDefinitionOrder	compiler.codegen-cpptable.nested-table-union-definition-order	none
@@ -619,7 +627,6 @@ ci-fast.yml	go-test-touched	gotest	internal/codegen/cstable TestCSharpCardsStric
 ci-fast.yml	go-test-touched	gotest	internal/codegen/cstable TestCSharpCardsStrictReportNegativeControl	compiler.codegen-cstable.c-sharp-cards-strict-report-negative-control	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/cstable TestCSharpCountedArrayBirthValue	compiler.codegen-cstable.c-sharp-counted-array-birth-value	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/cstable TestCSharpCountedMinElementsElideAtBornState	compiler.codegen-cstable.c-sharp-counted-min-elements-elide-at-born-state	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/cstable TestCSharpDriverReadsStrictAndWritesBack	-	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/cstable TestCSharpDriverReadsStrictAndWritesBackNegativeControl	compiler.codegen-cstable.c-sharp-driver-reads-strict-and-writes-back-negative-control	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/cstable TestCSharpEmittedStringLiteralsUseCSharpEscapes	compiler.codegen-cstable.c-sharp-emitted-string-literals-use-c-sharp-escapes	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/cstable TestCSharpEmittedStringLiteralsUseCSharpEscapesNegativeControl	compiler.codegen-cstable.c-sharp-emitted-string-literals-use-c-sharp-escapes-negative-control	none
@@ -772,7 +779,6 @@ ci-fast.yml	go-test-touched	gotest	internal/codegen/ctable TestCCountedArrayBorn
 ci-fast.yml	go-test-touched	gotest	internal/codegen/ctable TestCCountedMinimumBornBytesMatchTheEngine	compiler.codegen-ctable.c-counted-minimum-born-bytes-match-the-engine	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/ctable TestCCountedMinimumHolds	compiler.codegen-ctable.c-counted-minimum-holds	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/ctable TestCCountedMinimumMessageCorpus	compiler.codegen-ctable.c-counted-minimum-message-corpus	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/ctable TestCFiniteFloatNegativeControl	-	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/ctable TestCFiniteFloats	compiler.codegen-ctable.c-finite-floats	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/ctable TestCFirstJSONMapEntry	compiler.codegen-ctable.c-first-json-map-entry	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/ctable TestCFixedDeadExtentOwnership	compiler.codegen-ctable.c-fixed-dead-extent-ownership	none
@@ -859,7 +865,6 @@ ci-fast.yml	go-test-touched	gotest	internal/codegen/ctable TestCountRefusalDisca
 ci-fast.yml	go-test-touched	gotest	internal/codegen/ctable TestCycleOrdinalBoundaryC	compiler.codegen-ctable.cycle-ordinal-boundary-c	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/ctable TestCyclicWireIsRefusedC	compiler.codegen-ctable.cyclic-wire-is-refused-c	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/ctable TestDamageDiscardsTheWholeLoadC	compiler.codegen-ctable.damage-discards-the-whole-load-c	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/ctable TestDamageDiscardsTheWholeLoadCNegativeControl	-	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/ctable TestDiamondChainLoadsLinearC	compiler.codegen-ctable.diamond-chain-loads-linear-c	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/ctable TestFixedAbsentOptionalPayloadHasPresentLane	compiler.codegen-ctable.fixed-absent-optional-payload-has-present-lane	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/ctable TestFixedCT18DirectArmLines	compiler.codegen-ctable.fixed-ct18-direct-arm-lines	none
@@ -958,7 +963,6 @@ ci-fast.yml	go-test-touched	gotest	internal/codegen/darttable TestCookMapFieldEx
 ci-fast.yml	go-test-touched	gotest	internal/codegen/darttable TestCookRowCursorMembersNativeDart	compiler.codegen-darttable.cook-row-cursor-members-native-dart	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/darttable TestCookWriteAnswersEveryCookWriteRowDart	compiler.codegen-darttable.cook-write-answers-every-cook-write-row-dart	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/darttable TestCookWriteDartFloatHelpersDoNotClaimTableNames	compiler.codegen-darttable.cook-write-dart-float-helpers-do-not-claim-table-names	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/darttable TestCookWriteEveryConstructDart	-	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/darttable TestCookWriteFixedDart	compiler.codegen-darttable.cook-write-fixed-dart	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/darttable TestCookWriteGuardedAndTextArrayRootsDart	compiler.codegen-darttable.cook-write-guarded-and-text-array-roots-dart	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/darttable TestCookWriteUnboundedArray	compiler.codegen-darttable.cook-write-unbounded-array	none
@@ -1096,7 +1100,6 @@ ci-fast.yml	go-test-touched	gotest	internal/codegen/darttable TestDartWriteContr
 ci-fast.yml	go-test-touched	gotest	internal/codegen/darttable TestDecodeCountedArrayWalksLiveCount	compiler.codegen-darttable.decode-counted-array-walks-live-count	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/darttable TestFixedClassOnTableWireDart	compiler.codegen-darttable.fixed-class-on-table-wire-dart	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/darttable TestFixedCompiledPlanTagPastArmSet	compiler.codegen-darttable.fixed-compiled-plan-tag-past-arm-set	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/darttable TestFixedCorpusRoundTripsByteIdenticalDart	-	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/darttable TestFixedDeadBytesNestedArrays	compiler.codegen-darttable.fixed-dead-bytes-nested-arrays	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/darttable TestFixedFloat32ArrayWordViewsPreserveBits	compiler.codegen-darttable.fixed-float32-array-word-views-preserve-bits	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/darttable TestFixedFloat32CellsStoreBitsNotDoubles	compiler.codegen-darttable.fixed-float32-cells-store-bits-not-doubles	none
@@ -1158,7 +1161,6 @@ ci-fast.yml	go-test-touched	gotest	internal/codegen/darttable TestMessageFormNes
 ci-fast.yml	go-test-touched	gotest	internal/codegen/darttable TestMessageFormSkipDepthDart	compiler.codegen-darttable.message-form-skip-depth-dart	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/darttable TestMessageFormSkipRangedDart	compiler.codegen-darttable.message-form-skip-ranged-dart	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/darttable TestMessageFormWideScalarsMatchTheCppReferenceDart	compiler.codegen-darttable.message-form-wide-scalars-match-the-cpp-reference-dart	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/darttable TestMessageFuzzArmHonoursLoadResultDart	-	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/darttable TestMessageMalformedOverflagDart	compiler.codegen-darttable.message-malformed-overflag-dart	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/darttable TestMessageMalformedUnderflagDart	compiler.codegen-darttable.message-malformed-underflag-dart	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/darttable TestMessageQuantizedFloat32ReadDart	compiler.codegen-darttable.message-quantized-float32-read-dart	none
@@ -1227,7 +1229,6 @@ ci-fast.yml	go-test-touched	gotest	internal/codegen/elixirtable TestArrayRootEli
 ci-fast.yml	go-test-touched	gotest	internal/codegen/elixirtable TestBlobIsNumberedByItsSlotElixir	compiler.codegen-elixirtable.blob-is-numbered-by-its-slot-elixir	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/elixirtable TestBlobOwnershipUsesFinalSlotsElixir	compiler.codegen-elixirtable.blob-ownership-uses-final-slots-elixir	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/elixirtable TestBlobOwnershipUsesLiveGuardsElixir	compiler.codegen-elixirtable.blob-ownership-uses-live-guards-elixir	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/elixirtable TestBlockBuildAndCookWriteElixir	-	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/elixirtable TestBoundedBytesCountBeforePayloadElixir	compiler.codegen-elixirtable.bounded-bytes-count-before-payload-elixir	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/elixirtable TestBytesNDstRowIsAnArray	compiler.codegen-elixirtable.bytes-n-dst-row-is-an-array	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/elixirtable TestCardConstructsAreNotRefused	compiler.codegen-elixirtable.card-constructs-are-not-refused	none
@@ -1239,7 +1240,6 @@ ci-fast.yml	go-test-touched	gotest	internal/codegen/elixirtable TestCardTextForm
 ci-fast.yml	go-test-touched	gotest	internal/codegen/elixirtable TestCardsCommandReachesTheTableBackend	compiler.codegen-elixirtable.cards-command-reaches-the-table-backend	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/elixirtable TestCookMapWriterHoldsTheSortElixir	compiler.codegen-elixirtable.cook-map-writer-holds-the-sort-elixir	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/elixirtable TestCookNumbersABlobByItsSlotElixir	compiler.codegen-elixirtable.cook-numbers-a-blob-by-its-slot-elixir	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/elixirtable TestCookWriteMapsAndListsElixir	-	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/elixirtable TestCountPastTheBoundRefusesElixir	compiler.codegen-elixirtable.count-past-the-bound-refuses-elixir	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/elixirtable TestCountedBornStateElides	compiler.codegen-elixirtable.counted-born-state-elides	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/elixirtable TestCountedMinElementsMatchEngineElixir	compiler.codegen-elixirtable.counted-min-elements-match-engine-elixir	none
@@ -1263,11 +1263,9 @@ ci-fast.yml	go-test-touched	gotest	internal/codegen/elixirtable TestElixirCookOp
 ci-fast.yml	go-test-touched	gotest	internal/codegen/elixirtable TestElixirCookWriteCostIsLinearInCookedSize	compiler.codegen-elixirtable.elixir-cook-write-cost-is-linear-in-cooked-size	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/elixirtable TestElixirCookWriteZeroesDeadAndAbsentBytes	compiler.codegen-elixirtable.elixir-cook-write-zeroes-dead-and-absent-bytes	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/elixirtable TestElixirCountedMinimumHoldsOnEveryPath	compiler.codegen-elixirtable.elixir-counted-minimum-holds-on-every-path	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/elixirtable TestElixirDriverReadsStrictAndWritesBack	-	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/elixirtable TestElixirDriverReadsStrictAndWritesBackNegativeControl	compiler.codegen-elixirtable.elixir-driver-reads-strict-and-writes-back-negative-control	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/elixirtable TestElixirEveryReadRefusesSharedBlob	compiler.codegen-elixirtable.elixir-every-read-refuses-shared-blob	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/elixirtable TestElixirFiniteFloat	compiler.codegen-elixirtable.elixir-finite-float	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/elixirtable TestElixirFiniteFloatNegativeControl	-	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/elixirtable TestElixirFixedBytesCountFillsItsLength	compiler.codegen-elixirtable.elixir-fixed-bytes-count-fills-its-length	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/elixirtable TestElixirFixedClassFormThree	compiler.codegen-elixirtable.elixir-fixed-class-form-three	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/elixirtable TestElixirFixedClassFormThreeNegativeControl	compiler.codegen-elixirtable.elixir-fixed-class-form-three-negative-control	none
@@ -1354,7 +1352,6 @@ ci-fast.yml	go-test-touched	gotest	internal/codegen/elixirtable TestFixedCounted
 ci-fast.yml	go-test-touched	gotest	internal/codegen/elixirtable TestFixedCountedArrayLiveExtent	compiler.codegen-elixirtable.fixed-counted-array-live-extent	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/elixirtable TestFixedFormRaggedTail	compiler.codegen-elixirtable.fixed-form-ragged-tail	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/elixirtable TestFixedFormSkipsWhatItCannotCarry	compiler.codegen-elixirtable.fixed-form-skips-what-it-cannot-carry	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/elixirtable TestFixedFormUnder20Bytes	-	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/elixirtable TestFixedGenerationIsDeterministic	compiler.codegen-elixirtable.fixed-generation-is-deterministic	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/elixirtable TestFixedGuardComparesAtItsOwnWidth	compiler.codegen-elixirtable.fixed-guard-compares-at-its-own-width	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/elixirtable TestFixedImageIsContiguous	compiler.codegen-elixirtable.fixed-image-is-contiguous	none
@@ -1388,8 +1385,6 @@ ci-fast.yml	go-test-touched	gotest	internal/codegen/elixirtable TestFixedVersion
 ci-fast.yml	go-test-touched	gotest	internal/codegen/elixirtable TestFixedVersioningForgedOrdinalBothPlans	compiler.codegen-elixirtable.fixed-versioning-forged-ordinal-both-plans	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/elixirtable TestFixedVersioningHash	compiler.codegen-elixirtable.fixed-versioning-hash	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/elixirtable TestFixedVersioningLineageMerge	compiler.codegen-elixirtable.fixed-versioning-lineage-merge	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/elixirtable TestFixedVersioningNewReadsOld	-	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/elixirtable TestFixedVersioningOldRefusesNew	-	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/elixirtable TestFixedVersioningPlanTooLarge	compiler.codegen-elixirtable.fixed-versioning-plan-too-large	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/elixirtable TestFixedVersioningRangeWidenHostile	compiler.codegen-elixirtable.fixed-versioning-range-widen-hostile	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/elixirtable TestFixedVersioningReadsTheManifest	compiler.codegen-elixirtable.fixed-versioning-reads-the-manifest	none
@@ -1421,16 +1416,13 @@ ci-fast.yml	go-test-touched	gotest	internal/codegen/elixirtable TestKeyedElement
 ci-fast.yml	go-test-touched	gotest	internal/codegen/elixirtable TestListWidenedRegionMeasureElixir	compiler.codegen-elixirtable.list-widened-region-measure-elixir	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/elixirtable TestListdemoNamesUncarriedRoots	compiler.codegen-elixirtable.listdemo-names-uncarried-roots	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/elixirtable TestMapKeyAdmissionElixir	compiler.codegen-elixirtable.map-key-admission-elixir	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/elixirtable TestMapsAndUnionArmsOnTheTableWireElixir	-	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/elixirtable TestMessageFormAnnounceElixir	compiler.codegen-elixirtable.message-form-announce-elixir	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/elixirtable TestMessageFormBatchElixir	-	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/elixirtable TestMessageFormConformanceElixir	compiler.codegen-elixirtable.message-form-conformance-elixir	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/elixirtable TestMessageQuantizedFloatAndEnumKeyedArray	compiler.codegen-elixirtable.message-quantized-float-and-enum-keyed-array	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/elixirtable TestNestedBodyEndingEarlyIsDamageElixir	compiler.codegen-elixirtable.nested-body-ending-early-is-damage-elixir	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/elixirtable TestNoPlanClampOp	compiler.codegen-elixirtable.no-plan-clamp-op	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/elixirtable TestNodeRecordListCountRefusalElixir	compiler.codegen-elixirtable.node-record-list-count-refusal-elixir	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/elixirtable TestNodeTableWrongKindElixir	compiler.codegen-elixirtable.node-table-wrong-kind-elixir	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/elixirtable TestOffsetsComposeFromHalvesElixir	-	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/elixirtable TestOneSidedRangeClosureElixir	compiler.codegen-elixirtable.one-sided-range-closure-elixir	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/elixirtable TestOneSidedRangeConstructElixir	compiler.codegen-elixirtable.one-sided-range-construct-elixir	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/elixirtable TestOptionalMapConstructElixir	compiler.codegen-elixirtable.optional-map-construct-elixir	none
@@ -1535,7 +1527,6 @@ ci-fast.yml	go-test-touched	gotest	internal/codegen/goosetable TestGooseDriverVe
 ci-fast.yml	go-test-touched	gotest	internal/codegen/goosetable TestGooseEmittedStringLiteralsUseGooseEscapes	compiler.codegen-goosetable.goose-emitted-string-literals-use-goose-escapes	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/goosetable TestGooseEmittedStringLiteralsUseGooseEscapesNegativeControl	compiler.codegen-goosetable.goose-emitted-string-literals-use-goose-escapes-negative-control	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/goosetable TestGooseEmptyDocIsOneDefinition	compiler.codegen-goosetable.goose-empty-doc-is-one-definition	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/goosetable TestGooseEveryPackageNameIsClaimed	-	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/goosetable TestGooseFixedAbsentRecordOptionalIsZero	compiler.codegen-goosetable.goose-fixed-absent-record-optional-is-zero	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/goosetable TestGooseFixedClosure	compiler.codegen-goosetable.goose-fixed-closure	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/goosetable TestGooseFixedCompiledPlans	compiler.codegen-goosetable.goose-fixed-compiled-plans	none
@@ -1650,10 +1641,7 @@ ci-fast.yml	go-test-touched	gotest	internal/codegen/goosetable TestGooseSaveSign
 ci-fast.yml	go-test-touched	gotest	internal/codegen/goosetable TestGooseSaveSignedBoundsNegativeControl	compiler.codegen-goosetable.goose-save-signed-bounds-negative-control	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/goosetable TestGooseStringIdentity	compiler.codegen-goosetable.goose-string-identity	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/goosetable TestGooseStringIdentityNegativeControl	compiler.codegen-goosetable.goose-string-identity-negative-control	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/goosetable TestGooseTableDescriptorsLoad	-	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/goosetable TestGooseTableFreeUnitAddsNothing	compiler.codegen-goosetable.goose-table-free-unit-adds-nothing	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/goosetable TestGooseTableWireMatchesTheCorpus	-	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/goosetable TestGooseTableWireNegativeControl	-	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/goosetable TestGooseTagListNamesDoNotCollide	compiler.codegen-goosetable.goose-tag-list-names-do-not-collide	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/goosetable TestGooseTestsStartProcessesThroughGooserun	compiler.codegen-goosetable.goose-tests-start-processes-through-gooserun	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/goosetable TestGooseTestsStartProcessesThroughGooserunNegativeControl	compiler.codegen-goosetable.goose-tests-start-processes-through-gooserun-negative-control	none
@@ -1671,7 +1659,6 @@ ci-fast.yml	go-test-touched	gotest	internal/codegen/goosetable TestGooseVariable
 ci-fast.yml	go-test-touched	gotest	internal/codegen/goosetable TestGooseVariableSaveHoldsTheDeclaration	compiler.codegen-goosetable.goose-variable-save-holds-the-declaration	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/goosetable TestGooseWideningLadder	compiler.codegen-goosetable.goose-widening-ladder	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/goosetable TestGooseWideningNegativeControl	compiler.codegen-goosetable.goose-widening-negative-control	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/goosetable TestGooseWireFuzzVerdictPipe	-	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/goosetable TestGooseWireFuzzVerdictPipeNegativeControl	compiler.codegen-goosetable.goose-wire-fuzz-verdict-pipe-negative-control	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/goosetable TestGooseWireLoadZeroExtendsUnsignedTopBit	compiler.codegen-goosetable.goose-wire-load-zero-extends-unsigned-top-bit	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/goosetable TestGooseWireSignalingNaNWideningAndLEBOverflow	compiler.codegen-goosetable.goose-wire-signaling-na-n-widening-and-leb-overflow	none
@@ -1894,7 +1881,6 @@ ci-fast.yml	go-test-touched	gotest	internal/codegen/gotable TestGoMessageDiffere
 ci-fast.yml	go-test-touched	gotest	internal/codegen/gotable TestGoMessageDuplicateTestsAreOneLook	compiler.codegen-gotable.go-message-duplicate-tests-are-one-look	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/gotable TestGoMessageFormFixedOnly	compiler.codegen-gotable.go-message-form-fixed-only	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/gotable TestGoMessageFormFixedOnlyNegativeControl	compiler.codegen-gotable.go-message-form-fixed-only-negative-control	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/gotable TestGoMessageFormGoldens	-	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/gotable TestGoMessageFormGoldensNegativeControl	compiler.codegen-gotable.go-message-form-goldens-negative-control	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/gotable TestGoMessageFormRefusals	compiler.codegen-gotable.go-message-form-refusals	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/gotable TestGoMessageFormRefusalsNegativeControl	compiler.codegen-gotable.go-message-form-refusals-negative-control	none
@@ -1936,7 +1922,6 @@ ci-fast.yml	go-test-touched	gotest	internal/codegen/gotable TestGoRequiredPast51
 ci-fast.yml	go-test-touched	gotest	internal/codegen/gotable TestGoRetainAndWideningStrict	compiler.codegen-gotable.go-retain-and-widening-strict	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/gotable TestGoRetainAndWideningStrictNegativeControl	compiler.codegen-gotable.go-retain-and-widening-strict-negative-control	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/gotable TestGoSharedRuntimeAllConstructs	compiler.codegen-gotable.go-shared-runtime-all-constructs	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/gotable TestGoSharedRuntimeCoversTheCorpora	-	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/gotable TestGoSharedRuntimeIsOptionalAndEquivalent	compiler.codegen-gotable.go-shared-runtime-is-optional-and-equivalent	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/gotable TestGoSharedRuntimeIsTheDefault	compiler.codegen-gotable.go-shared-runtime-is-the-default	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/gotable TestGoSharedRuntimePackageIsCurrent	compiler.codegen-gotable.go-shared-runtime-package-is-current	none
@@ -2110,7 +2095,6 @@ ci-fast.yml	go-test-touched	gotest	internal/codegen/java TestRelayoutLaysOutComp
 ci-fast.yml	go-test-touched	gotest	internal/codegen/java TestUnionSelectionInitializesConstructionDefaults	compiler.codegen-java.union-selection-initializes-construction-defaults	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestAnnouncementBudgetsJava	compiler.codegen-javatable.announcement-budgets-java	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestBitsFieldAndArrayWidthClampJava	compiler.codegen-javatable.bits-field-and-array-width-clamp-java	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestBlockBuildAndCookWriteJava	-	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestBytesNDstRowIsAnArray	compiler.codegen-javatable.bytes-n-dst-row-is-an-array	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestCanonicalMovesLayoutNotTokens	compiler.codegen-javatable.canonical-moves-layout-not-tokens	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestCardConstructsRetainUnknownFields	compiler.codegen-javatable.card-constructs-retain-unknown-fields	none
@@ -2118,12 +2102,8 @@ ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestCardConstructs
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestCardDescriptorsNameEveryField	compiler.codegen-javatable.card-descriptors-name-every-field	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestCardTextFormMatchesGo	compiler.codegen-javatable.card-text-form-matches-go	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestCookWriteUnionTagRefusedJava	compiler.codegen-javatable.cook-write-union-tag-refused-java	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestCookWriteUnionsJavaReversed	-	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestDamageDiscardsTheWholeLoadJava	-	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestDamageDiscardsTheWholeLoadJavaNegativeControl	-	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestFixedBitsUnsignedBound	compiler.codegen-javatable.fixed-bits-unsigned-bound	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestFixedBoolBytesStrict	compiler.codegen-javatable.fixed-bool-bytes-strict	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestFixedClassOnTableWireJava	-	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestFixedCompressedNegZeroRead	compiler.codegen-javatable.fixed-compressed-neg-zero-read	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestFixedFormFU1FU2	compiler.codegen-javatable.fixed-form-fu1-fu2	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestFixedFormRaggedTail	compiler.codegen-javatable.fixed-form-ragged-tail	none
@@ -2159,7 +2139,6 @@ ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestFixedVersionin
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestFixedVersioningPlanTooLarge	compiler.codegen-javatable.fixed-versioning-plan-too-large	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestFixedVersioningRangeWidenHostile	compiler.codegen-javatable.fixed-versioning-range-widen-hostile	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestFixedVersioningRefuseWritesNothing	compiler.codegen-javatable.fixed-versioning-refuse-writes-nothing	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestFixedVersioningRows	-	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestFixedVersioningTextUnderArm	compiler.codegen-javatable.fixed-versioning-text-under-arm	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestFixedVersioningTextUnderArmTrueBytes	compiler.codegen-javatable.fixed-versioning-text-under-arm-true-bytes	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestFixedVersioningUnionTagBothPlans	compiler.codegen-javatable.fixed-versioning-union-tag-both-plans	none
@@ -2178,10 +2157,8 @@ ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaAnnounceRe
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaAnnounceShapeBoundsUnsigned	compiler.codegen-javatable.java-announce-shape-bounds-unsigned	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaAnnounceStrictBuildVersion	compiler.codegen-javatable.java-announce-strict-build-version	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaArrayElementKindsClosed	compiler.codegen-javatable.java-array-element-kinds-closed	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaBlobSharedConformanceDriverAnswersTheWireRefusal	-	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaBlobSharedReportCensus	compiler.codegen-javatable.java-blob-shared-report-census	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaBlobSharedStrict	compiler.codegen-javatable.java-blob-shared-strict	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaBlobSharedStrictNegativeControl	-	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaCardsStrict	compiler.codegen-javatable.java-cards-strict	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaCardsStrictNegativeControl	compiler.codegen-javatable.java-cards-strict-negative-control	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaCarriesRequiredNestedGuards	compiler.codegen-javatable.java-carries-required-nested-guards	none
@@ -2191,43 +2168,35 @@ ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaCarriesUnb
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaCompiledPlanDeprecatedVariantReadsDefault	compiler.codegen-javatable.java-compiled-plan-deprecated-variant-reads-default	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaCompressedF32EndsShape	compiler.codegen-javatable.java-compressed-f32-ends-shape	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaCompressedFloatVariableAndJson	compiler.codegen-javatable.java-compressed-float-variable-and-json	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaCookExtentNegativeControl	-	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaCookMapFind	compiler.codegen-javatable.java-cook-map-find	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaCookMapFindNegativeControl	compiler.codegen-javatable.java-cook-map-find-negative-control	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaCookMapWriterHoldsTheSort	compiler.codegen-javatable.java-cook-map-writer-holds-the-sort	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaCookWriteFixedRoots	-	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaCountBelowMinRefused	compiler.codegen-javatable.java-count-below-min-refused	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaCountedArrayBornAtItsMinimum	compiler.codegen-javatable.java-counted-array-born-at-its-minimum	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaCountedBirthElides	compiler.codegen-javatable.java-counted-birth-elides	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaCountedMinElementsElideAtBornState	compiler.codegen-javatable.java-counted-min-elements-elide-at-born-state	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaCyclicWireIsDamage	compiler.codegen-javatable.java-cyclic-wire-is-damage	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaDeclaredForms	compiler.codegen-javatable.java-declared-forms	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaDeprecatedVariantNegativeControl	-	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaDeprecatedVariantNeverWritten	compiler.codegen-javatable.java-deprecated-variant-never-written	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaDescriptorDocAndTags	-	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaDescriptorReportsDeclaredBound	compiler.codegen-javatable.java-descriptor-reports-declared-bound	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaDriverAnswersBothOptInLegs	compiler.codegen-javatable.java-driver-answers-both-opt-in-legs	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaDriverChecksEveryIntegerAssignment	compiler.codegen-javatable.java-driver-checks-every-integer-assignment	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaDriverLoadsFixedRootFormThree	compiler.codegen-javatable.java-driver-loads-fixed-root-form-three	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaDriverSurfacesStrict	compiler.codegen-javatable.java-driver-surfaces-strict	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaDriverSurfacesStrictNegativeControl	compiler.codegen-javatable.java-driver-surfaces-strict-negative-control	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaFiniteFloatNegativeControl	-	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaFiniteFloats	compiler.codegen-javatable.java-finite-floats	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaFixA1ArmBodyAsA2DamageRefused	compiler.codegen-javatable.java-fix-a1-arm-body-as-a2-damage-refused	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaFixClampedArrayNotMalformed	compiler.codegen-javatable.java-fix-clamped-array-not-malformed	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaFixContainerCountMeasureRefusal	compiler.codegen-javatable.java-fix-container-count-measure-refusal	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaFixCountPastLengthRefused	compiler.codegen-javatable.java-fix-count-past-length-refused	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaFixKeyedCountExtreme	compiler.codegen-javatable.java-fix-keyed-count-extreme	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaFixKeyedScalarSlotWidened	-	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaFixListCountPastBodyInMapValue	compiler.codegen-javatable.java-fix-list-count-past-body-in-map-value	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaFixLoadoutLengthDamageRefused	compiler.codegen-javatable.java-fix-loadout-length-damage-refused	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaFixLoginRequestDamagedCountRefused	compiler.codegen-javatable.java-fix-login-request-damaged-count-refused	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaFixMapEntryDamageRefused	compiler.codegen-javatable.java-fix-map-entry-damage-refused	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaFixMapKeyKind5Malformed	-	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaFixMapTextMalformedOverflag	compiler.codegen-javatable.java-fix-map-text-malformed-overflag	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaFixMapWidenThenDamageRefused	compiler.codegen-javatable.java-fix-map-widen-then-damage-refused	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaFixMatchResultFileDamageRefused	compiler.codegen-javatable.java-fix-match-result-file-damage-refused	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaFixMeasureRenamedNodeTable	-	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaFixMessageUnknownReferenceRefused	compiler.codegen-javatable.java-fix-message-unknown-reference-refused	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaFixNestedBodyOverLongRefused	compiler.codegen-javatable.java-fix-nested-body-over-long-refused	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaFixRepeatedArrayFieldDamageRefused	compiler.codegen-javatable.java-fix-repeated-array-field-damage-refused	none
@@ -2239,7 +2208,6 @@ ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaFixedGener
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaFixedLayoutIsTheReferenceLayout	compiler.codegen-javatable.java-fixed-layout-is-the-reference-layout	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaFixedR27OracleHostile	compiler.codegen-javatable.java-fixed-r27-oracle-hostile	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaFixedR27OracleHostileNegativeControl	compiler.codegen-javatable.java-fixed-r27-oracle-hostile-negative-control	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaFixedRootTextForm	-	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaFixedSaveWriteContract	compiler.codegen-javatable.java-fixed-save-write-contract	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaFromFixedClearsTheBornMinimum	compiler.codegen-javatable.java-from-fixed-clears-the-born-minimum	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaIdTableDistinctProbeFunctional	compiler.codegen-javatable.java-id-table-distinct-probe-functional	none
@@ -2273,7 +2241,6 @@ ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaReadHoldsA
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaReportResetDamageReasonAndCookCycle	compiler.codegen-javatable.java-report-reset-damage-reason-and-cook-cycle	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaRequiredCarry	compiler.codegen-javatable.java-required-carry	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaRetainKeepsDepth128	compiler.codegen-javatable.java-retain-keeps-depth128	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaRetainNamesEveryOwnId	-	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaSaveLongPointerChain	compiler.codegen-javatable.java-save-long-pointer-chain	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaSaveMessagesWriteContract	compiler.codegen-javatable.java-save-messages-write-contract	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaTextInt64DomainBeforeCast	compiler.codegen-javatable.java-text-int64-domain-before-cast	none
@@ -2302,16 +2269,11 @@ ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaWireCheckG
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaWireFuzzVerdictPipe	compiler.codegen-javatable.java-wire-fuzz-verdict-pipe	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaWireFuzzVerdictPipeNegativeControl	compiler.codegen-javatable.java-wire-fuzz-verdict-pipe-negative-control	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJavaWritersRefuseASharedBlob	compiler.codegen-javatable.java-writers-refuse-a-shared-blob	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJsonHostileReportClampCounterJava	-	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJsonHostileReportDuplicateCounterJava	compiler.codegen-javatable.json-hostile-report-duplicate-counter-java	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestJsonLeadingBOMBoundaryJava	compiler.codegen-javatable.json-leading-bom-boundary-java	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestKeyedArrayIndexingJava	compiler.codegen-javatable.keyed-array-indexing-java	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestKeyedFormWireCodeMatchesUnkeyedInTree	-	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestManifestNonFinite	compiler.codegen-javatable.manifest-non-finite	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestMapsAndUnionArmsOnTheTableWireJava	-	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestMessageFormAnnounceJava	-	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestMessageFormAnnounceJavaR9MaxBytes	compiler.codegen-javatable.message-form-announce-java-r9-max-bytes	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestMessageFormBatchJava	-	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestOtherVariableConstructsAreRefusedByName	compiler.codegen-javatable.other-variable-constructs-are-refused-by-name	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestRetainSaveJava	compiler.codegen-javatable.retain-save-java	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestRetentionCapacityIsALoss	compiler.codegen-javatable.retention-capacity-is-a-loss	none
@@ -2321,8 +2283,6 @@ ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestStageJavaVaria
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestTableJsonEveryTableJava	compiler.codegen-javatable.table-json-every-table-java	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestTimestampKindIsSkippedAtEightBytesJava	compiler.codegen-javatable.timestamp-kind-is-skipped-at-eight-bytes-java	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestUnboundedArraysRoundTripJava	compiler.codegen-javatable.unbounded-arrays-round-trip-java	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestUnitViewDescriptorsJava	-	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestUnitViewRegistryJava	-	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestVariableClassBeyondCardConstructsJava	compiler.codegen-javatable.variable-class-beyond-card-constructs-java	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestVariableFormRuntimeCompilesAndRoundTrips	compiler.codegen-javatable.variable-form-runtime-compiles-and-round-trips	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/javatable TestVariableKeyedAndUnionSaveNoScratch	compiler.codegen-javatable.variable-keyed-and-union-save-no-scratch	none
@@ -2700,8 +2660,6 @@ ci-fast.yml	go-test-touched	gotest	internal/codegen/lobstertable TestLobsterFlag
 ci-fast.yml	go-test-touched	gotest	internal/codegen/lobstertable TestLobsterFlagsPastWidthRefusedByEveryWriter	compiler.codegen-lobstertable.lobster-flags-past-width-refused-by-every-writer	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/lobstertable TestLobsterFloat32RangeHeldAtFloat32	compiler.codegen-lobstertable.lobster-float32-range-held-at-float32	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/lobstertable TestLobsterFloatOutOfRangeIsTheRangeEnd	compiler.codegen-lobstertable.lobster-float-out-of-range-is-the-range-end	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/lobstertable TestLobsterForgeryFuzz	-	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/lobstertable TestLobsterForgeryFuzzNegativeControl	-	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/lobstertable TestLobsterHoldsACountMinimumInsideEachCountedChild	compiler.codegen-lobstertable.lobster-holds-a-count-minimum-inside-each-counted-child	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/lobstertable TestLobsterIdSetHoldsItsContract	compiler.codegen-lobstertable.lobster-id-set-holds-its-contract	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/lobstertable TestLobsterJSONFeatureValues	compiler.codegen-lobstertable.lobster-json-feature-values	none
@@ -2927,7 +2885,6 @@ ci-fast.yml	go-test-touched	gotest	internal/codegen/luatable TestLuaForeignOrder
 ci-fast.yml	go-test-touched	gotest	internal/codegen/luatable TestLuaForgeryFuzz	compiler.codegen-luatable.lua-forgery-fuzz	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/luatable TestLuaForgeryFuzzNegativeControl	compiler.codegen-luatable.lua-forgery-fuzz-negative-control	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/luatable TestLuaFramingReadsEveryFixedRootThroughItsTwin	compiler.codegen-luatable.lua-framing-reads-every-fixed-root-through-its-twin	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/luatable TestLuaFromJsonIsStrict	-	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/luatable TestLuaFromJsonStrictAgreesWithTheCorpus	compiler.codegen-luatable.lua-from-json-strict-agrees-with-the-corpus	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/luatable TestLuaFromJsonStrictAgreesWithTheCorpusNegativeControl	compiler.codegen-luatable.lua-from-json-strict-agrees-with-the-corpus-negative-control	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/luatable TestLuaHandEditableTextRead	compiler.codegen-luatable.lua-hand-editable-text-read	none
@@ -2937,7 +2894,6 @@ ci-fast.yml	go-test-touched	gotest	internal/codegen/luatable TestLuaIdTableNegat
 ci-fast.yml	go-test-touched	gotest	internal/codegen/luatable TestLuaIntegrityEngineOutputSingleTrailer	compiler.codegen-luatable.lua-integrity-engine-output-single-trailer	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/luatable TestLuaIntegrityVariableForm	compiler.codegen-luatable.lua-integrity-variable-form	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/luatable TestLuaJSONKeyLiteralsLoad	compiler.codegen-luatable.lua-json-key-literals-load	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/luatable TestLuaJsonAgreesWithTheCorpus	-	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/luatable TestLuaJsonArrayRoot	compiler.codegen-luatable.lua-json-array-root	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/luatable TestLuaJsonBytesReadCanonicalBase64Only	compiler.codegen-luatable.lua-json-bytes-read-canonical-base64-only	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/luatable TestLuaJsonCommentIsWellFormedUTF8	compiler.codegen-luatable.lua-json-comment-is-well-formed-utf8	none
@@ -3023,7 +2979,6 @@ ci-fast.yml	go-test-touched	gotest	internal/codegen/luatable TestLuaRuntimeBuild
 ci-fast.yml	go-test-touched	gotest	internal/codegen/luatable TestLuaSaveMessagesOnUnannouncedVocabulary	compiler.codegen-luatable.lua-save-messages-on-unannounced-vocabulary	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/luatable TestLuaStrictLoadAnswersTheFramingVectors	compiler.codegen-luatable.lua-strict-load-answers-the-framing-vectors	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/luatable TestLuaStrictReadRefusesByName	compiler.codegen-luatable.lua-strict-read-refuses-by-name	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/luatable TestLuaStrictReadRefusesWhatGoRefuses	-	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/luatable TestLuaTableDamagedReportsAndResavesAgree	compiler.codegen-luatable.lua-table-damaged-reports-and-resaves-agree	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/luatable TestLuaTableDescriptorsLoad	compiler.codegen-luatable.lua-table-descriptors-load	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/luatable TestLuaTableDescriptorsNegativeControlFunctional	compiler.codegen-luatable.lua-table-descriptors-negative-control-functional	none
@@ -3033,10 +2988,8 @@ ci-fast.yml	go-test-touched	gotest	internal/codegen/luatable TestLuaTableFixedRo
 ci-fast.yml	go-test-touched	gotest	internal/codegen/luatable TestLuaTableFixedRootReadBoundaryNegativeControl	compiler.codegen-luatable.lua-table-fixed-root-read-boundary-negative-control	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/luatable TestLuaTableJsonHonoursGuards	compiler.codegen-luatable.lua-table-json-honours-guards	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/luatable TestLuaTableLoadKeepsANullListElementAndAPointerMapValue	compiler.codegen-luatable.lua-table-load-keeps-a-null-list-element-and-a-pointer-map-value	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/luatable TestLuaTableLoadMatchesTheReports	-	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/luatable TestLuaTableLoadMeasureMatchesTheEngine	compiler.codegen-luatable.lua-table-load-measure-matches-the-engine	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/luatable TestLuaTableLoadMeasureNegativeControl	compiler.codegen-luatable.lua-table-load-measure-negative-control	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/luatable TestLuaTableLoadNegativeControl	-	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/luatable TestLuaTableSaveBlobArms	compiler.codegen-luatable.lua-table-save-blob-arms	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/luatable TestLuaTableSaveKeepsBlobIdentity	compiler.codegen-luatable.lua-table-save-keeps-blob-identity	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/luatable TestLuaTableSaveNegativeControl	compiler.codegen-luatable.lua-table-save-negative-control	none
@@ -3183,7 +3136,6 @@ ci-fast.yml	go-test-touched	gotest	internal/codegen/luautable TestLuauFixedFormN
 ci-fast.yml	go-test-touched	gotest	internal/codegen/luautable TestLuauFixedFormRaggedTail	compiler.codegen-luautable.luau-fixed-form-ragged-tail	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/luautable TestLuauFixedFormRefusals	compiler.codegen-luautable.luau-fixed-form-refusals	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/luautable TestLuauFixedFormVersioning	compiler.codegen-luautable.luau-fixed-form-versioning	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/luautable TestLuauFixedHotPathBenchEvidence	-	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/luautable TestLuauFixedInt128LayoutReversedWitness	compiler.codegen-luautable.luau-fixed-int128-layout-reversed-witness	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/luautable TestLuauFixedLayoutBounds	compiler.codegen-luautable.luau-fixed-layout-bounds	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/luautable TestLuauFixedLineageHoldsWriterRanges	compiler.codegen-luautable.luau-fixed-lineage-holds-writer-ranges	none
@@ -3219,7 +3171,6 @@ ci-fast.yml	go-test-touched	gotest	internal/codegen/luautable TestLuauFixedVersi
 ci-fast.yml	go-test-touched	gotest	internal/codegen/luautable TestLuauFixedVersioningWriterBoundCountTwoEndpoints	compiler.codegen-luautable.luau-fixed-versioning-writer-bound-count-two-endpoints	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/luautable TestLuauFlagsMaskHeldToItsWidth	compiler.codegen-luautable.luau-flags-mask-held-to-its-width	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/luautable TestLuauForgeryFuzz	compiler.codegen-luautable.luau-forgery-fuzz	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/luautable TestLuauForgeryFuzzNegativeControl	-	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/luautable TestLuauFormsDeclaration	compiler.codegen-luautable.luau-forms-declaration	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/luautable TestLuauFormsDeclarationNegativeControl	compiler.codegen-luautable.luau-forms-declaration-negative-control	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/luautable TestLuauHoldsTheCountMinimumAtEveryDepth	compiler.codegen-luautable.luau-holds-the-count-minimum-at-every-depth	none
@@ -3323,7 +3274,6 @@ ci-fast.yml	go-test-touched	gotest	internal/codegen/luautable TestLuauSaveWrites
 ci-fast.yml	go-test-touched	gotest	internal/codegen/luautable TestLuauStrictReadNamesCoverEveryReason	compiler.codegen-luautable.luau-strict-read-names-cover-every-reason	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/luautable TestLuauStrictReadRefusesByName	compiler.codegen-luautable.luau-strict-read-refuses-by-name	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/luautable TestLuauStringLiteralsAreLuauSyntax	compiler.codegen-luautable.luau-string-literals-are-luau-syntax	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/luautable TestLuauTableDescriptorsLoad	-	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/luautable TestLuauTableFieldsDocAndTagsMatchTheReference	compiler.codegen-luautable.luau-table-fields-doc-and-tags-match-the-reference	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/luautable TestLuauTableFieldsDocAndTagsMatchTheReferenceNegativeControl	compiler.codegen-luautable.luau-table-fields-doc-and-tags-match-the-reference-negative-control	none
 ci-fast.yml	go-test-touched	gotest	internal/codegen/luautable TestLuauTableFreeUnitAddsNothing	compiler.codegen-luautable.luau-table-free-unit-adds-nothing	none

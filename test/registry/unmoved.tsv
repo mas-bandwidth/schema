@@ -58,7 +58,7 @@ make-target	Makefile	3	L3, L5, L6b, L7	make gates a per-PR job of another layer 
 make-target	make/go.mk	1	L3, L5, L6b, L7	make gates a per-PR job of another layer runs today (ci-policy: L3; go-test-touched and go-fixed-corpus: L5; lang-clean, lang-lint and generated-current: L6b), and the release workflow's publishing steps, which check nothing and never run under the driver (L7): each moves with its job
 negative-control	(excluded)	17	L6b, L7	the controls make/negative-controls.json excludes, each with its reason there (an alias, a parameterized worker, the body its wrapper calls, a leg that runs its own): none runs alone, so each moves in with the job that runs it
 workflow-job	.github/workflows/certify.yml	13	L7	workflow jobs: CI is generated from the registry
-workflow-job	.github/workflows/ci-fast.yml	7	L7	workflow jobs: CI is generated from the registry
+workflow-job	.github/workflows/ci-fast.yml	9	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/ci-full.yml	23	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/cla.yml	1	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/leg-gates-nightly.yml	6	L7	workflow jobs: CI is generated from the registry
@@ -1461,6 +1461,7 @@ driver	test/unity	1	L4	corpus data and harnesses: each language's adapter answer
 driver	test/unity-hostile	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 driver	test/unity-hostile/units	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 driver	test/unity/serialize	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
+tier	bench/tables/moo:TestMooFixedHotPathBench	1	L5	nightly: SCHEMA_MOO_FIXED_BENCH gate removed: timed bench on a quiet host
 tier	compiler:TestMooGeneratesTheConstructsItCarries	1	L3	functional: built with -tags schema_leg_moo
 tier	compiler:TestMooModuleKeyScanGoesRed	1	L3	functional: built with -tags schema_leg_moo
 tier	compiler:TestMooModuleNamesAtCheck	1	L3	functional: built with -tags schema_leg_moo
@@ -1470,6 +1471,62 @@ tier	compiler:TestMooShipsTheLockLineage	1	L3	functional: built with -tags schem
 tier	compiler:TestMooTableModuleKeysAreClaimed	1	L3	functional: built with -tags schema_leg_moo
 tier	compiler:TestMooTargetCarriesTheTableCorpus	1	L3	functional: built with -tags schema_leg_moo
 tier	compiler:TestTableRuntimeNamesAreClaimedMoo	1	L3	functional: built with -tags schema_leg_moo
+tier	internal/codegen/cpptable:TestCppConformanceToolEnvelopeReport	1	L5	functional: needs make and the C++ compiler (it builds and runs the C++ conformance driver) (was slowtest.Gate)
+tier	internal/codegen/cpptable:TestCppVariableWriterEvolution	1	L5	functional: needs an external toolchain (was slowtest.Gate)
+tier	internal/codegen/cpptable:TestMessageFormHeldCPP	1	L5	functional: needs an external toolchain (was slowtest.Gate)
+tier	internal/codegen/cstable:TestCSharpDriverReadsStrictAndWritesBack	1	L5	functional: needs dotnet and the conformance corpus (was slowtest.Gate)
+tier	internal/codegen/ctable:TestCFiniteFloatNegativeControl	1	L5	functional: needs the C compiler (cc) (was slowtest.Gate)
+tier	internal/codegen/ctable:TestDamageDiscardsTheWholeLoadCNegativeControl	1	L5	functional: needs the C compiler (cc) (was slowtest.Gate)
+tier	internal/codegen/darttable:TestCookWriteEveryConstructDart	1	L5	functional: needs dart (was slowtest.Gate)
+tier	internal/codegen/darttable:TestFixedCorpusRoundTripsByteIdenticalDart	1	L5	functional: needs an external toolchain (was slowtest.Gate)
+tier	internal/codegen/darttable:TestMessageFuzzArmHonoursLoadResultDart	1	L5	functional: needs an external toolchain (was slowtest.Gate)
+tier	internal/codegen/elixirtable:TestBlockBuildAndCookWriteElixir	1	L5	functional: needs an external toolchain (was slowtest.Gate)
+tier	internal/codegen/elixirtable:TestCookWriteMapsAndListsElixir	1	L5	functional: needs an external toolchain; the Elixir toolchain (was slowtest.Gate)
+tier	internal/codegen/elixirtable:TestElixirDriverReadsStrictAndWritesBack	1	L5	functional: needs the Elixir toolchain and the conformance corpus (was slowtest.Gate)
+tier	internal/codegen/elixirtable:TestElixirFiniteFloatNegativeControl	1	L5	functional: needs an external toolchain (was slowtest.Gate)
+tier	internal/codegen/elixirtable:TestFixedFormUnder20Bytes	1	L5	functional: needs an external toolchain (was slowtest.Gate)
+tier	internal/codegen/elixirtable:TestFixedVersioningNewReadsOld	1	L5	functional: needs an external toolchain (was slowtest.Gate)
+tier	internal/codegen/elixirtable:TestFixedVersioningOldRefusesNew	1	L5	functional: needs an external toolchain (was slowtest.Gate)
+tier	internal/codegen/elixirtable:TestMapsAndUnionArmsOnTheTableWireElixir	1	L5	functional: needs an external toolchain (was slowtest.Gate)
+tier	internal/codegen/elixirtable:TestMessageFormBatchElixir	1	L5	functional: needs an external toolchain (was slowtest.Gate)
+tier	internal/codegen/elixirtable:TestOffsetsComposeFromHalvesElixir	1	L5	functional: needs an external toolchain (was slowtest.Gate)
+tier	internal/codegen/goosetable:TestGooseEveryPackageNameIsClaimed	1	L5	functional: needs no toolchain, but the whole-manifest name sweep (one generation per unit per emitted name) (was slowtest.Gate)
+tier	internal/codegen/goosetable:TestGooseTableWireMatchesTheCorpus	1	L5	functional: needs the Goose toolchain (was slowtest.Gate)
+tier	internal/codegen/goosetable:TestGooseTableWireNegativeControl	1	L5	functional: needs the Goose toolchain (was slowtest.Gate)
+tier	internal/codegen/goosetable:TestGooseWireFuzzVerdictPipe	1	L5	functional: needs the Goose toolchain (it builds and runs the wire-fuzz verdict pipe) (was slowtest.Gate)
+tier	internal/codegen/gotable:TestGoMessageFormGoldens	1	L5	functional: needs the Go toolchain (it compiles and runs the generated goldens) (was slowtest.Gate)
+tier	internal/codegen/gotable:TestGoSharedRuntimeCoversTheCorpora	1	L5	functional: needs every table corpus through the shared runtime (was slowtest.Gate)
+tier	internal/codegen/javatable:TestBlockBuildAndCookWriteJava	1	L5	functional: needs an external toolchain (was slowtest.Gate)
+tier	internal/codegen/javatable:TestCookWriteUnionsJavaReversed	1	L5	functional: needs an external toolchain; the JDK (it compiles and runs the generated Java) (was slowtest.Gate)
+tier	internal/codegen/javatable:TestDamageDiscardsTheWholeLoadJava	1	L5	functional: needs an external toolchain; javac and java (it builds and runs the generated Java) (was slowtest.Gate)
+tier	internal/codegen/javatable:TestDamageDiscardsTheWholeLoadJavaNegativeControl	1	L5	functional: needs an external toolchain; javac and java (it builds and runs the generated Java) (was slowtest.Gate)
+tier	internal/codegen/javatable:TestFixedClassOnTableWireJava	1	L5	functional: needs an external toolchain (was slowtest.Gate)
+tier	internal/codegen/javatable:TestFixedVersioningRows	1	L5	functional: needs an external toolchain (was slowtest.Gate)
+tier	internal/codegen/javatable:TestJavaBlobSharedConformanceDriverAnswersTheWireRefusal	1	L5	functional: needs an external toolchain; the JDK (it compiles and runs the generated Java) (was slowtest.Gate)
+tier	internal/codegen/javatable:TestJavaBlobSharedStrictNegativeControl	1	L5	functional: needs an external toolchain; the JDK (it compiles and runs the generated Java) (was slowtest.Gate)
+tier	internal/codegen/javatable:TestJavaCookExtentNegativeControl	1	L5	functional: needs an external toolchain; javac (cook extent negative controls); javac and java (it builds and runs the generated Java) (was slowtest.Gate)
+tier	internal/codegen/javatable:TestJavaCookWriteFixedRoots	1	L5	functional: needs an external toolchain; the JDK (it compiles and runs the generated Java) (was slowtest.Gate)
+tier	internal/codegen/javatable:TestJavaDeprecatedVariantNegativeControl	1	L5	functional: needs an external toolchain; the JDK (it compiles and runs the generated Java) (was slowtest.Gate)
+tier	internal/codegen/javatable:TestJavaDescriptorDocAndTags	1	L5	functional: needs an external toolchain (was slowtest.Gate)
+tier	internal/codegen/javatable:TestJavaFiniteFloatNegativeControl	1	L5	functional: needs an external toolchain; the JDK (it compiles and runs the generated Java) (was slowtest.Gate)
+tier	internal/codegen/javatable:TestJavaFixKeyedScalarSlotWidened	1	L5	functional: needs an external toolchain (was slowtest.Gate)
+tier	internal/codegen/javatable:TestJavaFixMapKeyKind5Malformed	1	L5	functional: needs an external toolchain (was slowtest.Gate)
+tier	internal/codegen/javatable:TestJavaFixMeasureRenamedNodeTable	1	L5	functional: needs an external toolchain (was slowtest.Gate)
+tier	internal/codegen/javatable:TestJavaFixedRootTextForm	1	L5	functional: needs an external toolchain; the JDK (it compiles and runs the generated Java) (was slowtest.Gate)
+tier	internal/codegen/javatable:TestJavaRetainNamesEveryOwnId	1	L5	functional: needs an external toolchain; the JDK (it compiles and runs the generated Java) (was slowtest.Gate)
+tier	internal/codegen/javatable:TestJsonHostileReportClampCounterJava	1	L5	functional: needs an external toolchain (was slowtest.Gate)
+tier	internal/codegen/javatable:TestKeyedFormWireCodeMatchesUnkeyedInTree	1	L5	functional: needs an external toolchain (was slowtest.Gate)
+tier	internal/codegen/javatable:TestMapsAndUnionArmsOnTheTableWireJava	1	L5	functional: needs an external toolchain (was slowtest.Gate)
+tier	internal/codegen/javatable:TestMessageFormAnnounceJava	1	L5	functional: needs an external toolchain (was slowtest.Gate)
+tier	internal/codegen/javatable:TestMessageFormBatchJava	1	L5	functional: needs an external toolchain (was slowtest.Gate)
+tier	internal/codegen/javatable:TestUnitViewDescriptorsJava	1	L5	functional: needs an external toolchain (was slowtest.Gate)
+tier	internal/codegen/javatable:TestUnitViewRegistryJava	1	L5	functional: needs an external toolchain (was slowtest.Gate)
+tier	internal/codegen/lobstertable:TestLobsterForgeryFuzz	1	L5	functional: needs the Lobster toolchain (it runs the forgery fuzz over the generated Lobster) (was slowtest.Gate)
+tier	internal/codegen/lobstertable:TestLobsterForgeryFuzzNegativeControl	1	L5	functional: needs the Lobster toolchain (it runs the forgery fuzz over the generated Lobster) (was slowtest.Gate)
+tier	internal/codegen/luatable:TestLuaFromJsonIsStrict	1	L5	functional: needs go and the pinned lua (was slowtest.Gate)
+tier	internal/codegen/luatable:TestLuaStrictReadRefusesWhatGoRefuses	1	L5	functional: needs go and the pinned lua (was slowtest.Gate)
+tier	internal/codegen/luautable:TestLuauFixedHotPathBenchEvidence	1	L5	functional: needs the pinned Luau interpreter and live C++ fixed-form oracle (was slowtest.Gate)
+tier	internal/codegen/luautable:TestLuauForgeryFuzzNegativeControl	1	L5	functional: needs the pinned Luau interpreter (dist/luau-0.741, make dist-luau) over every mutant of the block and cook images (was slowtest.Gate)
 tier	internal/codegen/mootable:TestFixedCompressedNegZeroRead	1	L5	functional: needs moo (it runs the emitted fixed-form runtime) (was slowtest.Gate)
 tier	internal/codegen/mootable:TestFixedDeprecatedFieldIsCarried	1	L5	functional: needs moo (it runs the emitted fixed-form runtime) (was slowtest.Gate)
 tier	internal/codegen/mootable:TestMessageStringDefaultElidedOnlyWhenEqual	1	L5	functional: needs moo (it runs the emitted table_message.moo) (was slowtest.Gate)
