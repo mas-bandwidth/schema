@@ -174,7 +174,7 @@ fixed table T
 func t04R19(t *testing.T) {
 	runtime := t04Runtime()
 	for _, want := range []string{
-		"unknown = 0; widened = 0; damaged = false;",
+		"unknown = 0; widened = 0; refused = false;",
 		"refused = false; reason = Reason.none; layoutHash = 0;",
 	} {
 		t04Has(t, runtime, want, "R19 a clean read moves nothing")
@@ -299,9 +299,12 @@ fixed table T
 	}
 	t04No(t, runtime, "java.lang.Math.min(theirN, myN)", "R16 a shrunk array is unlawful and is never truncated to the reader (§5.1, §5.4)")
 	// COPY, CONST, PRESENT AND ORDINAL MOVE NOTHING: the opCopy case carries no
-	// counter bump at all (only its framing-damage `malformed` guard), so the
-	// only counters the run loop can move are the widen, count/text clamp and
-	// forged-ordinal bumps the clauses above name.
+	// counter bump at all, so the only counters the run loop can move are the
+	// widen, count/text clamp and forged-ordinal bumps the clauses above name.
+	// Its one refusal is the plan-reach guard, layoutMalformed ("a known hash
+	// whose LINEAGE ENTRY would not build", docs/FIXED-FORM-ALGORITHM.md §5.3):
+	// the plan and the record size both come from the build's lineage, so no
+	// file trips it, and this form's report has no damage flag to set instead.
 	runtime = javaTokens(runtime)
 	start := strings.Index(runtime, javaTokens("case opCopy: {"))
 	end := strings.Index(runtime, javaTokens("case opCount: {"))
@@ -309,6 +312,11 @@ fixed table T
 		t.Fatal("R16: the run loop has no opCopy/opCount cases to bound")
 	}
 	copyBody := runtime[start:end]
+	reach := javaTokens("report.refuse(Reason.layoutMalformed);")
+	if strings.Count(copyBody, reach) != 1 {
+		t.Errorf("R16: opCopy's plan-reach guard is not the one layoutMalformed refusal")
+	}
+	copyBody = strings.Replace(copyBody, reach, "", 1)
 	for _, bad := range []string{"refuse(", "widened++", "unknown++"} {
 		if strings.Contains(copyBody, bad) {
 			t.Errorf("R16: opCopy moves a counter or refuses (%s); copy lands its bytes and moves nothing", bad)
