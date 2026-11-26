@@ -158,8 +158,10 @@ func (db *makeDB) pattern(file string) *makeRule {
 }
 
 // makeVarRef is a variable a recipe expands: $(NAME), ${NAME}, $(call
-// NAME,...).
-var makeVarRef = regexp.MustCompile(`\$[({](?:call\s+)?([A-Za-z_][A-Za-z0-9_]*)`)
+// NAME,...). A make name may hold - and . (define moo-wire-fuzz-run), so
+// the name runs to the first character no name holds: a name cut at its
+// first - is another variable, or none, and what its body names goes unread.
+var makeVarRef = regexp.MustCompile(`\$[({](?:call\s+)?([A-Za-z_][A-Za-z0-9_.-]*)`)
 
 // reach is everything make would make for target: its prerequisites, all
 // the way down, through the pattern rules and the targets its recipes make

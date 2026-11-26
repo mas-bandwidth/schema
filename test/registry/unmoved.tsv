@@ -50,23 +50,12 @@ go-test	internal/tablewire	3	L6	Go benchmarks: the bench adapter runs them
 go-test	tables/cards	36	L5	Go tests in a module of their own, run beside the generated Go they test: go's adapter runs them
 go-test	tables/cards/example	1	L5	Go tests in a module of their own, run beside the generated Go they test: go's adapter runs them
 go-test	tables/goruntime	3	L5	per-language (go) Go tests: go's adapter runs them when their families move in
-go-test	test/conformance/elixir	2	L5	per-language (elixir) Go tests: elixir's adapter runs them when their families move in
 go-test	test/conformance/go	4	L5	per-language (go) Go tests: go's adapter runs them when their families move in
-go-test	test/conformance/go/rows	47	L5	per-language (go) Go tests: go's adapter runs them when their families move in
-go-test	test/conformance/goose/writerefusalpacket	2	L5	per-language (goose) Go tests: goose's adapter runs them when their families move in
-go-test	test/conformance/js	2	L5	per-language (js) Go tests: js's adapter runs them when their families move in
-go-test	test/conformance/lobster	2	L5	per-language (lobster) Go tests: lobster's adapter runs them when their families move in
 go-test	test/conformance/lobster/hostile	1	L5	per-language (lobster) Go tests: lobster's adapter runs them when their families move in
-go-test	test/conformance/lua	2	L5	per-language (lua) Go tests: lua's adapter runs them when their families move in
-go-test	test/conformance/luau	2	L5	per-language (luau) Go tests: luau's adapter runs them when their families move in
-go-test	test/conformance/moo	2	L5	per-language (moo) Go tests: moo's adapter runs them when their families move in
-go-test	test/conformance/python	2	L5	per-language (python) Go tests: python's adapter runs them when their families move in
-go-test	test/conformance/ruby	2	L5	per-language (ruby) Go tests: ruby's adapter runs them when their families move in
-go-test	test/conformance/squirrel	2	L5	per-language (squirrel) Go tests: squirrel's adapter runs them when their families move in
 go-test	test/go-tables	18	L5	Go tests in a module of their own, run beside the generated Go they test: go's adapter runs them
 go-test	tools/treelock	1	L6	Go tests built only for another platform: a runner of that platform runs them
 make-target	Makefile	3	L3, L5, L6b, L7	make gates a per-PR job of another layer runs today (ci-policy: L3; go-test-touched and go-fixed-corpus: L5; lang-clean, lang-lint and generated-current: L6b), and the release workflow's publishing steps, which check nothing and never run under the driver (L7): each moves with its job
-make-target	make/go.mk	3	L3, L5, L6b, L7	make gates a per-PR job of another layer runs today (ci-policy: L3; go-test-touched and go-fixed-corpus: L5; lang-clean, lang-lint and generated-current: L6b), and the release workflow's publishing steps, which check nothing and never run under the driver (L7): each moves with its job
+make-target	make/go.mk	1	L3, L5, L6b, L7	make gates a per-PR job of another layer runs today (ci-policy: L3; go-test-touched and go-fixed-corpus: L5; lang-clean, lang-lint and generated-current: L6b), and the release workflow's publishing steps, which check nothing and never run under the driver (L7): each moves with its job
 negative-control	(excluded)	17	L6b, L7	the controls make/negative-controls.json excludes, each with its reason there (an alias, a parameterized worker, the body its wrapper calls, a leg that runs its own): none runs alone, so each moves in with the job that runs it
 workflow-job	.github/workflows/certify.yml	13	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/ci-fast.yml	7	L7	workflow jobs: CI is generated from the registry
@@ -110,7 +99,6 @@ data-case	compiler/testdata/lock-retirement	1	L4	corpus data and harnesses: each
 data-case	compiler/testdata/refordinal	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	compiler/testdata/registration	3	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	compiler/testdata/savecache	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	editors/testdata/grammar	3	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	internal/ci/testdata/c-no-core-children	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	internal/ci/testdata/f171	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	internal/ci/testdata/f180-lanes	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
@@ -313,13 +301,13 @@ data-case	test/conformance/js/testdata/message-verdict	1	L4	corpus data and harn
 data-case	test/conformance/lobster	4	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/conformance/lobster/vectors	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/conformance/lua	3	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	test/conformance/moo	6	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
+data-case	test/conformance/moo	5	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/conformance/python	7	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/conformance/ruby	4	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/conformance/rust	5	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	test/conformance/squirrel	7	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
+data-case	test/conformance/squirrel	3	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/conformance/storage-release	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	test/conformance/unity	3	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
+data-case	test/conformance/unity	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/conformance/write-refusal-packet	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/cpp-hostile/bounds	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/cpp-hostile/contract	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
@@ -329,7 +317,6 @@ data-case	test/cs/finite-controls	2	L4	corpus data and harnesses: each language'
 data-case	test/dart-hostile	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/dart-tables	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/elixir-hostile	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	test/fixed-empty-batch	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/generated-tree	5	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/go	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/go-hostile	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
@@ -344,9 +331,7 @@ data-case	test/js-hostile	1	L4	corpus data and harnesses: each language's adapte
 data-case	test/js/binding-names	5	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/lobster-runtime-home	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/luau-runtime-home	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	test/message-one-encoding	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/moo-runtime-home	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	test/non-canonical	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/packet-cfloat-endpoints	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/packet-cfloat-endpoints/go	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/packet-defaults/go	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
@@ -362,7 +347,6 @@ data-case	test/packet-finite/luau	3	L4	corpus data and harnesses: each language'
 data-case	test/packet-finite/moo	3	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/packet-finite/python	3	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/packet-finite/ruby	3	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	test/packet-finite/squirrel	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/packet-text	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/packet-text/go	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/packet-void/python	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
@@ -370,7 +354,6 @@ data-case	test/packet-void/ruby	2	L4	corpus data and harnesses: each language's 
 data-case	test/packet-write-bareint	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/packet-write-bareint/js	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/packet-write-bareint/moo	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	test/packet-write-bareint/squirrel	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/packet-write-cfloat	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/packet-write-cfloat/lua	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/packet-write-cfloat/rust	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
@@ -384,7 +367,6 @@ data-case	test/packet-write-text/js	1	L4	corpus data and harnesses: each languag
 data-case	test/packet-write-text/lua	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/pointer-target-type/blobkind/writer	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/pointer-target-type/writer	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	test/proof	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/rust	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/rust-agree	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/rust-alloc	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
@@ -866,8 +848,6 @@ data-case	testdata/name-buildability/u_beacon_BeaconType	1	L4	corpus data and ha
 data-case	testdata/name-buildability/u_pick	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/name-buildability/v_None_	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/wire/json-integers	13	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/wire/message-one-encoding	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/wire/non-canonical/canonical	3	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/wire/packet-end	3	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/wire/pointer-target-type	5	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/wire/pointer-target-type/blobkind	6	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
@@ -3870,32 +3850,3 @@ tier	internal/codegen/unitytable:TestUnityVTTextFormAndJsonStrict	1	L5	functiona
 tier	internal/codegen/unitytable:TestUnityVTUnsortedMapEntriesSortCanonicallyAndRefuseDuplicates	1	L5	functional: needs dotnet Roslyn csc Unity dialect unsorted map canonical save (was slowtest.Gate)
 tier	internal/codegen/unitytable:TestUnityVariableWriterStoresCompressedNegZeroAsPositive	1	L5	functional: needs dotnet Roslyn csc Unity dialect compressed -0 on the variable writer (was slowtest.Gate)
 tier	internal/codegen/unitytable:TestUnityVerdicts	1	L5	functional: needs dotnet Roslyn csc Unity dialect verdicts (was slowtest.Gate)
-tier	test/conformance/elixir:TestWriteRefusalPacketElixir	1	L5	functional: needs the Elixir toolchain (it compiles and runs the generated packet writer) (was slowtest.Gate)
-tier	test/conformance/elixir:TestWriteRefusalPacketElixirSurface	1	L5	functional: needs the Elixir toolchain (it compiles and runs the generated packet writer) (was slowtest.Gate)
-tier	test/conformance/go/rows:TestRowF8	1	L5	functional: shells out to go and bin/schema (SCHEMA_SLOW gate removed)
-tier	test/conformance/go/rows:TestRowF8NegativeControl	1	L5	functional: shells out to go and bin/schema (SCHEMA_SLOW gate removed)
-tier	test/conformance/go/rows:TestRowF8RaggedTailByName	1	L5	functional: shells out to go and bin/schema (SCHEMA_SLOW gate removed)
-tier	test/conformance/go/rows:TestRowR20	1	L5	functional: shells out to go and bin/schema (SCHEMA_SLOW gate removed)
-tier	test/conformance/go/rows:TestRowR20AddedFieldDefault	1	L5	functional: shells out to go and bin/schema (SCHEMA_SLOW gate removed)
-tier	test/conformance/go/rows:TestRowR20DroppedFieldUnknown	1	L5	functional: shells out to go and bin/schema (SCHEMA_SLOW gate removed)
-tier	test/conformance/go/rows:TestRowR20FloatWidensExactly	1	L5	functional: shells out to go and bin/schema (SCHEMA_SLOW gate removed)
-tier	test/conformance/go/rows:TestRowR20ShortStringSlackZeros	1	L5	functional: shells out to go and bin/schema (SCHEMA_SLOW gate removed)
-tier	test/conformance/go/rows:TestRowR20VocabularyIdentity	1	L5	functional: shells out to go and bin/schema (SCHEMA_SLOW gate removed)
-tier	test/conformance/go/rows:TestRowR6	1	L5	functional: shells out to go and bin/schema (SCHEMA_SLOW gate removed)
-tier	test/conformance/go/rows:TestRowW13	1	L5	functional: shells out to go and bin/schema (SCHEMA_SLOW gate removed)
-tier	test/conformance/goose/writerefusalpacket:TestWriteRefusalPacketGoose	1	L5	functional: needs the Goose toolchain (it compiles and runs the generated packet writer) (was slowtest.Gate)
-tier	test/conformance/goose/writerefusalpacket:TestWriteRefusalPacketGooseSurface	1	L5	functional: needs the Goose toolchain (it compiles and runs the generated packet writer) (was slowtest.Gate)
-tier	test/conformance/js:TestWriteRefusalPacketJS	1	L5	functional: needs node (it runs the generated packet writer in both tiers) (was slowtest.Gate)
-tier	test/conformance/js:TestWriteRefusalPacketJSSurface	1	L5	functional: needs node (it runs the generated packet writer in both tiers) (was slowtest.Gate)
-tier	test/conformance/lobster:TestWriteRefusalPacketLobster	1	L5	functional: needs the Lobster toolchain (it runs the generated packet writer) (was slowtest.Gate)
-tier	test/conformance/lobster:TestWriteRefusalPacketLobsterSurface	1	L5	functional: needs the Lobster toolchain (it runs the generated packet writer) (was slowtest.Gate)
-tier	test/conformance/lua:TestWriteRefusalPacketLua	1	L5	functional: needs the pinned Lua interpreter (it runs the generated packet writer) (was slowtest.Gate)
-tier	test/conformance/lua:TestWriteRefusalPacketLuaSurface	1	L5	functional: needs the pinned Lua interpreter (it runs the generated packet writer) (was slowtest.Gate)
-tier	test/conformance/luau:TestWriteRefusalPacketLuau	1	L5	functional: needs the pinned Luau interpreter (it runs the generated packet writer) (was slowtest.Gate)
-tier	test/conformance/luau:TestWriteRefusalPacketLuauSurface	1	L5	functional: needs the pinned Luau interpreter (it runs the generated packet writer) (was slowtest.Gate)
-tier	test/conformance/moo:TestWriteRefusalPacketMoo	1	L5	functional: needs the pinned moo interpreter (it runs the generated packet writer) (was slowtest.Gate)
-tier	test/conformance/moo:TestWriteRefusalPacketMooSurface	1	L5	functional: needs the pinned moo interpreter (it runs the generated packet writer) (was slowtest.Gate)
-tier	test/conformance/python:TestWriteRefusalPacketPython	1	L5	functional: needs the pinned Python interpreter (it runs the generated packet writer) (was slowtest.Gate)
-tier	test/conformance/python:TestWriteRefusalPacketPythonSurface	1	L5	functional: needs the pinned Python interpreter (it runs the generated packet writer) (was slowtest.Gate)
-tier	test/conformance/ruby:TestWriteRefusalPacketRuby	1	L5	functional: needs the pinned Ruby interpreter (it runs the generated packet writer) (was slowtest.Gate)
-tier	test/conformance/ruby:TestWriteRefusalPacketRubySurface	1	L5	functional: needs the pinned Ruby interpreter (it runs the generated packet writer) (was slowtest.Gate)
