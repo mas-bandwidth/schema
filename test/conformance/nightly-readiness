@@ -565,9 +565,11 @@ def run_python_packets(runner):
 
 # A recipe's go test: bare, or through the make files' wrappers $(GO_TEST)
 # and $(GO_TEST_RED) (Makefile, tools/gotestrun/gotest), which hand every
-# argument on to go test. A recipe running go test through a wrapper is a
-# recipe running go test: missing one would leave its suite cap in place.
-GO_TEST_CALL = re.compile(r"(?:\$\(GO_TEST(?:_RED)?\)|\bgo test)(?= )")
+# argument after gotestrun's own leading flags (-each, -red) on to go test. A
+# recipe running go test through a wrapper is a recipe running go test:
+# missing one would leave its suite cap in place. The match takes in those
+# leading flags, so -timeout=0 lands after them, where go test reads it.
+GO_TEST_CALL = re.compile(r"(?:\$\(GO_TEST(?:_RED)?\)(?: -each| -red)*|\bgo test)(?= )")
 
 
 def runs_go_test(text):

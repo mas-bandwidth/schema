@@ -577,6 +577,18 @@ class Contracts(unittest.TestCase):
         finally:
             m.Runner=real
 
+    def test_uncap_reads_every_go_test_spelling(self):
+        # a bare go test and both wrappers are go test calls; -timeout=0 goes
+        # after the wrapper's own leading flags, where go test reads it
+        for line,want in (("\tgo test ./p -run X\n","\tgo test -timeout=0 ./p -run X\n"),
+                          ("\t$(GO_TEST) -count=1 ./p\n","\t$(GO_TEST) -timeout=0 -count=1 ./p\n"),
+                          ("\t$(GO_TEST_RED) ./p\n","\t$(GO_TEST_RED) -timeout=0 ./p\n"),
+                          ("\t$(GO_TEST) -each -run X ./p\n","\t$(GO_TEST) -each -timeout=0 -run X ./p\n")):
+            self.assertTrue(m.runs_go_test(line),line)
+            self.assertEqual(m.uncap_go_test(line),want)
+        for line in ("\tgo run ./tools/gotestselect\n","\t$(GO_TESTS) ./p\n","\t@echo go tested\n"):
+            self.assertFalse(m.runs_go_test(line),line)
+
     def test_goose_dist_matches_the_go_pin(self):
         source=(ROOT/"internal/codegen/goose/gooserun").glob("*.go")
         text="".join(p.read_text() for p in source)

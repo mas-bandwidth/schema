@@ -79,9 +79,10 @@ func w13RepoRoot(t *testing.T) string {
 
 // w13RefFixed parses the C++ reference backend's emitted constants for one
 // table: the handed hash and the record body size out of the generated
-// <T>Table.h, and the layout bytes out of <T>TableData.h, the file of its own
-// the emitter writes the fixed form's constant arrays to (<T>Table.h names
-// them; internal/codegen/cpptable, fixedform.go).
+// P3Table.h, and the layout bytes out of P3TableData.h, the one file per
+// schema the emitter writes every table's fixed-form constant arrays to,
+// which P3Table.h includes (internal/codegen/cpptable: cpptable.go writes
+// the file and the include, fixedform.go the arrays).
 func w13RefFixed(t *testing.T, header, data []byte, table string) (hash uint64, layout []byte, body int64) {
 	t.Helper()
 	name := regexp.QuoteMeta(table)
