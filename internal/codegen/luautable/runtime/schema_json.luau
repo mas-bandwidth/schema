@@ -20,6 +20,12 @@ type Input = { t: string, p: number, bad: boolean, zero: boolean?, notutf8: bool
 
 local MAX_DEPTH = 128
 local MAX_KEY = 255
+
+-- AN ABSENT `?T` MAP VALUE (docs/SPEC-TABLES.md §16.2, the map row): `null`
+-- is the one spelling of an absent value, and its key is still an entry.
+-- The walk holds it as this sentinel: a Lua table cannot hold nil, and false
+-- is a present value (a bool, an enum's None).
+local ABSENT_VALUE = table.freeze({})
 local BASE64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
 
 -- A float32's text is C's %.*g at the fewest digits from 6 up to this cap that
@@ -1396,18 +1402,23 @@ local function read_map(T: any, fd: any, inp: Input, holder: any, key: any, dept
     -- reference map reader keeps it.
     local vf = fd.value_field
     local null_ref = false
+    local absent = false
     if not skip and value_shape(inp) == 'z' and (vf.shape == "pointer"
         or vf.shape == "string_blob" or vf.shape == "bytes_blob") then
       null_ref = true
+    elseif not skip and value_shape(inp) == 'z' and vf.optional then
+      -- a `?T` VALUE (`map[K]?T`): `null` is the entry with its value
+      -- ABSENT, and any other value is present (§16.2 map row, §2.3)
+      absent = true
     elseif not skip and not shape_matches(shape_of(T, vf), value_shape(inp)) then
       report.kindMismatch = report.kindMismatch + 1
       skip = true
     end
-    if null_ref then
+    if null_ref or absent then
       literal(inp, "null")
       if seen[kval] then report.duplicate = report.duplicate + 1 end
       seen[kval] = true
-      out[kval] = false
+      out[kval] = if absent then ABSENT_VALUE else false
     elseif skip then
       if not skip_value(inp, depth + 1, graph, true) then return false end
     else
@@ -2421,7 +2432,9 @@ edge_value = function(T: any, fd: any, val: any, holder: any, name: any, out: { 
     local d = T.Tables[fd.entry]
     if d then
       for _, key in ipairs(map_entries(cache, fd, val)) do
-        local tmp = { [fd.key_field.name] = key, [fd.value_field.name] = val[key] }
+        local mv = val[key]
+        if mv == ABSENT_VALUE then mv = nil end
+        local tmp = { [fd.key_field.name] = key, [fd.value_field.name] = mv }
         edges(T, d, tmp, out, cache)
         -- the value field's own pointer is reached through the entry above
       end
@@ -2654,7 +2667,13 @@ local function write_map(T: any, fd: any, val: any, depth: number, g: any, w: an
       write_string(w, int_text(kf, key))
     end
     raw(w, ": ")
-    if not write_value(T, fd.value_field, val[key], depth + 1, g, w, true) then return false end
+    local mv = val[key]
+    if mv == ABSENT_VALUE then
+      -- an absent `?T` value is written `null` (§16.2 map row)
+      raw(w, "null")
+    elseif not write_value(T, fd.value_field, mv, depth + 1, g, w, true) then
+      return false
+    end
   end
   line(w, depth)
   put(w, '}')
@@ -3070,6 +3089,16 @@ local function conv_to_lua(fd: any, x: any, A: any, memo: any): any
         -- pointer field is, so Save names no node for it; the walk's false
         -- (a Lua table cannot hold nil) is never converted as a node. A
         -- `*bytes`/`*string` value's false already converts to nil.
+        local vf = fd.value_field
+        if vf.optional then
+          -- a `?T` value carries its presence in the entry's present slot
+          -- (§2.3): the walk's ABSENT_VALUE is the entry with no value
+          e[vf.raw.present] = v ~= ABSENT_VALUE
+          if v == ABSENT_VALUE then
+            out[#out + 1] = e
+            continue
+          end
+        end
         local cv = nil
         if fd.value_field.shape ~= "pointer" or v ~= false then
           cv = conv_to_lua(fd.value_field, v, A, memo)
@@ -3209,6 +3238,13 @@ local function conv_from_lua(fd: any, x: any, A: any, memo: any): any
           memo.len[kv] = e[fd.key_field.raw.slot .. "Length"] or 0
         end
         local k = conv_from_lua(fd.key_field, kv, A, memo)
+        if fd.value_field.optional and not e[fd.value_field.raw.present] then
+          -- a `?T` value the entry does not hold is absent, written `null`
+          -- (§16.2 map row): the key is still an entry
+          if out[k] ~= nil then memo.invalid = true; refuse_reason = "repeated_key" end
+          out[k] = ABSENT_VALUE
+          continue
+        end
         local vv = e[fd.value_field.raw.slot]
         if fd.value_field.raw.s == "str" or fd.value_field.raw.s == "bytes" then
           memo.len[vv] = e[fd.value_field.raw.slot .. "Length"] or 0

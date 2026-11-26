@@ -876,6 +876,9 @@ read_map = function(fd: any, r: any, report: any, v: any): boolean
 							local x = scalar_at(body, efd, kind, report)
 							if x == nil then break end
 							if efd.slot ~= nil then vals[efd.slot] = x end
+							-- a `?T` value that rode is present (§2.3), as a
+							-- table field's is
+							if efd.present ~= nil then vals[efd.present] = true end
 							report.widened = report.widened + 1; noteField("widened", mapName)
 						else
 							report.kindMismatch = report.kindMismatch + 1; noteField("kindMismatch", mapName)
@@ -883,7 +886,14 @@ read_map = function(fd: any, r: any, report: any, v: any): boolean
 							note_payload(body.b, payloadAt, body.at, kind, 0)
 						end
 					else
-						if not read_field(efd, body, vals) then break end
+						local ok, selected = read_field(efd, body, vals)
+						if not ok then break end
+						-- a `?T` VALUE THAT RODE IS PRESENT (docs/SPEC-TABLES.md
+						-- §2.3, §2.8), exactly as read_body marks a table field:
+						-- the map entry is a body of its own, and without the
+						-- mark a present value read back absent and the next
+						-- save dropped it
+						if efd.present ~= nil and selected ~= false then vals[efd.present] = true end
 					end
 				end
 				-- THE KEY IS THE ENTRY'S OWN FIELD (docs/SPEC-TABLES.md §2.8):
