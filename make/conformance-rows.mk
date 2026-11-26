@@ -63,11 +63,6 @@ test-$(1): conformance-rows-$(1)
 endef
 $(foreach leg,$(CONFORMANCE_ROWS_LEGS),$(eval $(call conformance_rows_rule,$(leg))))
 
-# One name before the colon. The eval writes conformance-rows-$(1), which
-# the extract does not record; the recipe stays the eval's.
-conformance-rows-elixir:
-
-
 # ci-fast.yml's conformance-rows-elixir job takes the generated corpus
 # compiled strictly by lang-clean's agreement shards (make/elixir.mk
 # build-conformance-elixir-from-shards verifies each shard's identity and
@@ -93,3 +88,9 @@ appendix-go-fixed:
 appendix-python-fixed:
 	sh test/slowgate/proof $@ 'TestPythonFixedLoadCapacityWitness' \
 		-count=1 ./internal/codegen/pythontable -run '^TestPythonFixedLoadCapacityWitness$$'
+
+# One name before the colon. The eval writes conformance-rows-$(1), which
+# the extract does not record; the recipe stays the eval's.
+conformance-rows-elixir:
+
+

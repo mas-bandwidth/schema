@@ -120,13 +120,6 @@ endef
 
 $(foreach leg,$(VERIFY_COMPILED_LEGS),$(eval $(call verify_compiled_fuzz_rules,$(leg))))
 
-# One name before the colon. The eval writes verify-$(1)-conformance and
-# _verify-$(1)-fuzz, which the extract does not record; the recipe stays the eval's.
-verify-elixir-conformance:
-
-_verify-dart-fuzz:
-
-
 # ---- cpp ----
 
 # THE C++ CONFORMANCE GATE IS TWO PARTS (2026-11-24). As one ci-fast.yml row
@@ -159,11 +152,8 @@ _verify-cpp-conformance-1: build/schema_test build/schema_test_ludicrous packet-
 
 _verify-cpp-conformance-2: build/conformance-harness build/conformance-cpp build/schema_test_cook table-base64-cpp
 
-verify-cpp-conformance-1:
-	@$(MAKE) $(VERIFY_JFLAG) --no-print-directory _verify-cpp-conformance-1
-
-verify-cpp-conformance-2:
-	@$(MAKE) $(VERIFY_JFLAG) --no-print-directory _verify-cpp-conformance-2
+verify-cpp-conformance-1: ; @$(MAKE) $(VERIFY_JFLAG) --no-print-directory _verify-cpp-conformance-1
+verify-cpp-conformance-2: ; @$(MAKE) $(VERIFY_JFLAG) --no-print-directory _verify-cpp-conformance-2
 
 _verify-cpp-bench: bin/schema generated/bench/cpp/.stamp generated/bench/tables/cpp/.stamp tables-cpp-bench-gate cards-cpp-conformance tables-view packet-end-cpp packet-write-cfloat-cpp packet-write-text-cpp
 	@mkdir -p build/verify build/bench && rm -f build/verify/bench-cpp.csv
@@ -398,3 +388,11 @@ _conformance-corpus-dart: toolchain-dart build/conformance-harness build/conform
 _conformance-corpus-elixir: toolchain-elixir build/conformance-harness $(VERIFY_ELIXIR_BUILD)
 	@rm -rf build/verify/conformance-corpus-elixir && mkdir -p build/verify/conformance-corpus-elixir $(VERIFY_RESULTS_DIR)
 	BEAM_PATH="$(BEAM_PATH)" ELIXIR_TABLES_EBIN="$(CURDIR)/$(VERIFY_ELIXIR_EBIN)" ./build/conformance-harness run --only elixir --claims --work build/verify/conformance-corpus-elixir --results $(VERIFY_RESULTS_DIR)/elixir.json
+
+# One name before the colon. The eval writes verify-$(1)-conformance and
+# _verify-$(1)-fuzz, which the extract does not record; the recipe stays the eval's.
+verify-elixir-conformance:
+
+_verify-dart-fuzz:
+
+

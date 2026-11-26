@@ -5,7 +5,7 @@ Part of the specification: every test of tier `nightly`, from the test registry.
 
 **Tier nightly:** heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded.
 
-Nightly tests every language answers: 1109. Language-free tests: 1747.
+Nightly tests every language answers: 1109. Language-free tests: 1746.
 
 Tests some languages run in this tier, their own measured seconds being past one shard's budget, each named by its languages' instances: 11.
 
@@ -1717,12 +1717,6 @@ seeded mutations.
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.nightly.fuzz.make-schema-squirrel-nightly-fuzz.schema-squirrel-nightly-fuzz` | `make` | make schema-squirrel-nightly-fuzz (make/schema-squirrel-nightly-fuzz.mk) exits 0 | `file: make/schema-squirrel-nightly-fuzz.mk`<br>`seed: SQUIRREL_FUZZ_SEED`<br>`target: schema-squirrel-nightly-fuzz` | the target exits 0 with no skip in its log | `make/schema-squirrel-nightly-fuzz.mk:63` |
-
-#### `fuzz` family `make-verify-vm`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.fuzz.make-verify-vm.verify-goose-fuzz-part-1` | `make` | make verify-goose-fuzz-part-1 (make/verify-vm.mk), the ci-fast verify-goose-fuzz part 1 | `file: make/verify-vm.mk`<br>`target: verify-goose-fuzz-part-1` | the target exits 0 with no skip in its log | `make/verify-vm.mk:591` |
 
 ### Type `plant`
 
@@ -5883,8 +5877,8 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.harness-run.make-conformance-rows.conformance-rows-elixir` | `make` | make conformance-rows-elixir (make/conformance-rows.mk), the ci-fast conformance-rows-elixir step | `file: make/conformance-rows.mk`<br>`target: conformance-rows-elixir` | make conformance-rows-elixir exits 2: eight row files failed (BoolValuesValidData, F8, P1, P3, R16, W12, W5, W9) | `make/conformance-rows.mk:68` |
-| `none.nightly.harness-run.make-conformance-rows.conformance-rows-elixir-ebin-from-shards` | `make` | make conformance-rows-elixir-ebin-from-shards (make/conformance-rows.mk) exits 0 | `file: make/conformance-rows.mk`<br>`inputs.reads` (105 bytes, held in the registry row's `inputs.reads`)<br>`target: conformance-rows-elixir-ebin-from-shards` | the target exits 0 with no skip in its log | `make/conformance-rows.mk:77` |
+| `none.nightly.harness-run.make-conformance-rows.conformance-rows-elixir` | `make` | make conformance-rows-elixir (make/conformance-rows.mk), the ci-fast conformance-rows-elixir step | `file: make/conformance-rows.mk`<br>`target: conformance-rows-elixir` | make conformance-rows-elixir exits 2: eight row files failed (BoolValuesValidData, F8, P1, P3, R16, W12, W5, W9) | `make/conformance-rows.mk:94` |
+| `none.nightly.harness-run.make-conformance-rows.conformance-rows-elixir-ebin-from-shards` | `make` | make conformance-rows-elixir-ebin-from-shards (make/conformance-rows.mk) exits 0 | `file: make/conformance-rows.mk`<br>`inputs.reads` (105 bytes, held in the registry row's `inputs.reads`)<br>`target: conformance-rows-elixir-ebin-from-shards` | the target exits 0 with no skip in its log | `make/conformance-rows.mk:72` |
 
 #### `harness-run` family `make-cpp`, 1 test
 
@@ -6133,12 +6127,12 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.harness-run.make-verify-compiled.verify-cpp-conformance-1` | `make` | make verify-cpp-conformance-1 (make/verify-compiled.mk), the ci-fast verify-cpp-conformance part 1 | `file: make/verify-compiled.mk`<br>`target: verify-cpp-conformance-1` | the target exits 0 with no skip in its log | `make/verify-compiled.mk:162` |
-| `none.nightly.harness-run.make-verify-compiled.verify-cpp-conformance-2` | `make` | make verify-cpp-conformance-2 (make/verify-compiled.mk), the ci-fast verify-cpp-conformance part 2 | `file: make/verify-compiled.mk`<br>`target: verify-cpp-conformance-2` | the target exits 0 with no skip in its log | `make/verify-compiled.mk:165` |
-| `none.nightly.harness-run.make-verify-compiled.verify-elixir-conformance` | `make` | make verify-elixir-conformance (make/verify-compiled.mk), the ci-fast verify-elixir-conformance step | `file: make/verify-compiled.mk`<br>`target: verify-elixir-conformance` | the target exits 0 with no skip in its log | `make/verify-compiled.mk:125` |
-| `none.nightly.harness-run.make-verify-compiled.verify-rust-conformance-and-driver-fuzz` | `make` | make verify-rust-conformance-and-driver-fuzz (make/verify-compiled.mk) exits 0 | `file: make/verify-compiled.mk`<br>`reads: ["test/packet-text/Text.schema"]`<br>`target: verify-rust-conformance-and-driver-fuzz` | the target exits 0 with no skip in its log | `make/verify-compiled.mk:256` |
-| `none.nightly.harness-run.make-verify-compiled.verify-rust-fuzz-driver` | `make` | make verify-rust-fuzz-driver (make/verify-compiled.mk) exits 0 | `file: make/verify-compiled.mk`<br>`reads: ["test/conformance/rust/Cargo.toml"]`<br>`target: verify-rust-fuzz-driver` | the target exits 0 with no skip in its log | `make/verify-compiled.mk:249` |
-| `none.nightly.harness-run.make-verify-compiled.verify-rust-fuzz-wire` | `make` | make verify-rust-fuzz-wire (make/verify-compiled.mk) exits 0 | `file: make/verify-compiled.mk`<br>`read_plant: plant.read-credits.harness-run-make-verify-compiled-verify-rust-fuzz-wire`<br>`reads: ["test/conformance/rust/wire-fuzz-all-build"]`<br>`target: verify-rust-fuzz-wire` | the target exits 0 with no skip in its log | `make/verify-compiled.mk:246` |
+| `none.nightly.harness-run.make-verify-compiled.verify-cpp-conformance-1` | `make` | make verify-cpp-conformance-1 (make/verify-compiled.mk), the ci-fast verify-cpp-conformance part 1 | `file: make/verify-compiled.mk`<br>`target: verify-cpp-conformance-1` | the target exits 0 with no skip in its log | `make/verify-compiled.mk:155` |
+| `none.nightly.harness-run.make-verify-compiled.verify-cpp-conformance-2` | `make` | make verify-cpp-conformance-2 (make/verify-compiled.mk), the ci-fast verify-cpp-conformance part 2 | `file: make/verify-compiled.mk`<br>`target: verify-cpp-conformance-2` | the target exits 0 with no skip in its log | `make/verify-compiled.mk:156` |
+| `none.nightly.harness-run.make-verify-compiled.verify-elixir-conformance` | `make` | make verify-elixir-conformance (make/verify-compiled.mk), the ci-fast verify-elixir-conformance step | `file: make/verify-compiled.mk`<br>`target: verify-elixir-conformance` | the target exits 0 with no skip in its log | `make/verify-compiled.mk:394` |
+| `none.nightly.harness-run.make-verify-compiled.verify-rust-conformance-and-driver-fuzz` | `make` | make verify-rust-conformance-and-driver-fuzz (make/verify-compiled.mk) exits 0 | `file: make/verify-compiled.mk`<br>`reads: ["test/packet-text/Text.schema"]`<br>`target: verify-rust-conformance-and-driver-fuzz` | the target exits 0 with no skip in its log | `make/verify-compiled.mk:246` |
+| `none.nightly.harness-run.make-verify-compiled.verify-rust-fuzz-driver` | `make` | make verify-rust-fuzz-driver (make/verify-compiled.mk) exits 0 | `file: make/verify-compiled.mk`<br>`reads: ["test/conformance/rust/Cargo.toml"]`<br>`target: verify-rust-fuzz-driver` | the target exits 0 with no skip in its log | `make/verify-compiled.mk:239` |
+| `none.nightly.harness-run.make-verify-compiled.verify-rust-fuzz-wire` | `make` | make verify-rust-fuzz-wire (make/verify-compiled.mk) exits 0 | `file: make/verify-compiled.mk`<br>`read_plant: plant.read-credits.harness-run-make-verify-compiled-verify-rust-fuzz-wire`<br>`reads: ["test/conformance/rust/wire-fuzz-all-build"]`<br>`target: verify-rust-fuzz-wire` | the target exits 0 with no skip in its log | `make/verify-compiled.mk:236` |
 
 #### `harness-run` family `make-verify-vm`, 27 tests
 

@@ -32,7 +32,7 @@ workflows, by its tier.
 |---|---|---|
 | `unit` | 3815 | no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory |
 | `functional` | 7413 | uses a real thing: a compiler or VM, a toolchain, generated code built and run; runs nightly, and per pull request only as the pr group names it (one happy-path row per language, make happy-<lang>) |
-| `nightly` | 2856 | heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded |
+| `nightly` | 2855 | heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded |
 
 ## The per-PR job
 

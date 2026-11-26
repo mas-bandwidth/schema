@@ -267,7 +267,7 @@ ci-fast.yml	verify-leg	make	verify-lobster-conformance	-	none
 ci-fast.yml	verify-leg	make	verify-lobster-bench	-	none
 ci-fast.yml	verify-leg	make	verify-lobster-fuzz	-	none
 ci-fast.yml	verify-leg	make	verify-lobster-tablegen	-	none
-ci-fast.yml	verify-goose-fuzz	make	verify-goose-fuzz-part-1	fuzz.make-verify-vm.verify-goose-fuzz-part-1	none
+ci-fast.yml	verify-goose-fuzz	make	verify-goose-fuzz-part-1	-	none
 ci-fast.yml	verify-goose-fuzz	make	verify-goose-fuzz-part-2	fuzz.make-verify-vm.verify-goose-fuzz-part-2	none
 ci-fast.yml	verify-cpp-conformance	make	verify-cpp-conformance-1	harness-run.make-verify-compiled.verify-cpp-conformance-1	none
 ci-fast.yml	verify-cpp-conformance	make	verify-cpp-conformance-2	harness-run.make-verify-compiled.verify-cpp-conformance-2	none
