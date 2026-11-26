@@ -77,33 +77,52 @@ func TestElixirVariableWritersRefuseCountBelowMinAndNonList(t *testing.T) {
 	if err != nil || !strings.HasSuffix(strings.TrimSpace(out), "ok") {
 		t.Fatalf("probe: %v\n%s", err, out)
 	}
+	type patch struct{ anchor, replacement string }
 	controls := []struct {
-		name, anchor, replacement, assertion string
+		name      string
+		patches   []patch
+		assertion string
 	}{
 		{
-			name:        "save-min",
-			anchor:      "if Map.get(f, :array) == :counted and n < Map.get(f, :min_count, 0),\n      do: throw(:invalid_value)\n\n    required_value(f, v)",
-			replacement: "required_value(f, v)",
-			assertion:   "save: a count below Min did not return invalid_value",
+			// write_value holds a counted array to [Min, Max] for every writer
+			name: "save-min",
+			patches: []patch{{
+				"(n < Map.get(f, :min_count, 0) or n > f.array_bound),",
+				"n > f.array_bound,",
+			}},
+			assertion: "save: a count below Min did not return invalid_value",
 		},
 		{
-			name:        "json-non-list",
-			anchor:      "defp json_field(%{t: :list}, _other, _depth), do: throw(:invalid_value)",
-			replacement: "defp json_field(%{t: :list}, _other, _depth), do: \"[]\"",
-			assertion:   "to_json: a non-list in a list field did not return invalid_value",
+			// two layers refuse a non-list: the record check every writer
+			// runs first, and the text writer's own list clause; the old
+			// writer had neither, so both are planted out
+			name: "json-non-list",
+			patches: []patch{
+				{
+					"      not is_list(values) ->\n        throw(:invalid_value)\n",
+					"      not is_list(values) ->\n        :ok\n",
+				},
+				{
+					"defp json_field(%{t: :list}, _other, _depth), do: throw(:invalid_value)",
+					"defp json_field(%{t: :list}, _other, _depth), do: \"[]\"",
+				},
+			},
+			assertion: "to_json: a non-list in a list field did not return invalid_value",
 		},
 	}
 	for _, control := range controls {
 		t.Run(control.name, func(t *testing.T) {
 			files := generateElixir(t, cmwUnit(t))
-			matches := 0
-			for _, file := range files {
-				matches += strings.Count(string(file), control.anchor)
+			for _, p := range control.patches {
+				matches := 0
+				for _, file := range files {
+					matches += strings.Count(string(file), p.anchor)
+				}
+				if matches != 1 {
+					t.Fatalf("expected one writer control anchor %q, found %d", p.anchor, matches)
+				}
+				elixirPatch(t, files, p.anchor, p.replacement)
 			}
-			if matches != 1 {
-				t.Fatalf("expected one writer control anchor, found %d", matches)
-			}
-			elixirPatch(t, files, control.anchor, control.replacement)
 			out, err := runArmProbe(t, elixirBin, files, countedMinWriteProbe)
 			if err == nil || !strings.Contains(out, "FAIL: "+control.assertion) {
 				t.Fatalf("the probe did not fail at %q: %v\n%s", control.assertion, err, out)

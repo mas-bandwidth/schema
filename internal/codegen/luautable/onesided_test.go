@@ -7,6 +7,7 @@
 package luautable_test
 
 import (
+	"bytes"
 	"encoding/hex"
 	"maps"
 	"math"
@@ -34,14 +35,37 @@ table OneSided
 }
 `
 
+// oneSidedRangeFree is the RANGE-FREE TWIN: the same names and kinds with no
+// range, so the engine's writer (which refuses a value off its range,
+// invalid_value) can still write the off-contract wire the reads are held to.
+const oneSidedRangeFree = `package probe
+
+table OneSided
+{
+    a int64
+    b uint16
+}
+`
+
+// The probe prints every Luau read's verdict (the plain load, the walk it is
+// built on, the strict read), then, only when the walk keeps a value, that
+// value's counters, fields and save.
 const oneSidedProbe = `local inputs = require("./inputs")
 local load = require("./schema_load")
+local R = require("./schema_refusal")
 local save = require("./schema_save")
 local St = require("./schema_tables")
 require("./ProbeTable")
 
-local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
+local function fresh()
+	return { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
+end
+local report = fresh()
 local v = load.loadWalk("OneSided", inputs.wire, report)
+local plain = load.load("OneSided", inputs.wire, fresh())
+local strict = R.ReadStrict(nil, "OneSided", inputs.wire, fresh())
+print("reads " .. tostring(plain ~= nil) .. " " .. tostring(v ~= nil) .. " " .. tostring(strict ~= nil))
+if v == nil then return end
 print("accepted " .. tostring(v ~= nil and not report.malformed and report.refused == 0))
 print("clamped " .. tostring(report.clamped))
 print("a " .. tostring(v.A))
@@ -91,62 +115,110 @@ func oneSidedUnit(t *testing.T) (*ir.Unit, *generatedUnit) {
 	return u, g
 }
 
-// oneSidedOracle writes one raw value on one field, decodes that wire through
-// schema-go's engine, and returns its verdict, clamp count, field values, wire
-// and save of the loaded instance.
-func oneSidedOracle(t *testing.T, model *tabletext.Model, u *ir.Unit, tc oneSidedCase) (wire, saved []byte, accepted bool, clamped int, a int64, b uint64) {
+// oneSidedRangeFreeUnit compiles the range-free twin for the engine's writer.
+func oneSidedRangeFreeUnit(t *testing.T) *ir.Unit {
 	t.Helper()
-	st := u.Tables["OneSided"]
+	path := filepath.Join(t.TempDir(), "Probe.schema")
+	if err := os.WriteFile(path, []byte(oneSidedRangeFree), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	u, err := compiler.New().Load([]string{path})
+	if err != nil {
+		t.Fatalf("the range-free twin does not load: %v", err)
+	}
+	return u
+}
+
+// oneSidedOracle writes one raw value on one field through the range-free
+// twin (checking that the twin writes the ranged schema's own bytes wherever
+// the ranged writer accepts the value), decodes that wire through schema-go's
+// engine under the ranged schema, and returns its verdict and, when it reads
+// the wire, the clamp count, field values and save of the loaded instance.
+func oneSidedOracle(t *testing.T, model, rawModel *tabletext.Model, u, rawU *ir.Unit, tc oneSidedCase) (wire, saved []byte, accepted bool, clamped int, a int64, b uint64) {
+	t.Helper()
 	idx := 0
 	if tc.field == "b" {
 		idx = 1
 	}
+	raw := rawModel.New(rawU.Tables["OneSided"])
+	raw.Fields[idx].Cell.I = int64(tc.raw)
+	raw.Fields[idx].Cell.U = tc.raw
+	wire, err := tablewire.Encode(rawModel, raw)
+	if err != nil {
+		t.Fatalf("%s: the range-free twin does not encode: %v", tc.name, err)
+	}
+	st := u.Tables["OneSided"]
 	write := model.New(st)
 	write.Fields[idx].Cell.I = int64(tc.raw)
 	write.Fields[idx].Cell.U = tc.raw
-	wire, err := tablewire.Encode(model, write)
-	if err != nil {
-		t.Fatalf("%s: encode: %v", tc.name, err)
+	if ranged, err := tablewire.Encode(model, write); err == nil && !bytes.Equal(ranged, wire) {
+		t.Fatalf("%s: the range-free twin wrote %x, the ranged schema %x", tc.name, wire, ranged)
 	}
 	read := model.New(st)
 	var report tabletext.Report
-	var ok bool
-	if ok, err = tablewire.Decode(model, read, wire, &report); !ok || err != nil {
-		t.Fatalf("%s: the schema-go engine refused its own wire: ok=%v err=%v", tc.name, ok, err)
+	ok, err := tablewire.Decode(model, read, wire, &report)
+	if !ok || err != nil || report.Refused {
+		return wire, nil, false, 0, 0, 0
 	}
 	saved, err = tablewire.Encode(model, read)
 	if err != nil {
 		t.Fatalf("%s: re-encode: %v", tc.name, err)
 	}
-	return wire, saved, ok, 0, read.Fields[0].Cell.I, read.Fields[1].Cell.U
+	return wire, saved, true, 0, read.Fields[0].Cell.I, read.Fields[1].Cell.U
 }
 
+// TestLuauOneSidedIntegerRange holds the one-sided range on every Luau read,
+// strict only (docs/rulings.json strict-only-read): a value past its one
+// bound, or past the bound at the kind's own limit, is refused by the Go engine
+// and by every Luau read (load, loadWalk, R.ReadStrict), compared by verdict
+// alone (refusal-verdict-only); a value at or inside the bounds, and the
+// unbounded side at the kind's limit, reads to the engine's value and saves
+// the engine's bytes.
 func TestLuauOneSidedIntegerRange(t *testing.T) {
 	t.Parallel()
 	u, g := oneSidedUnit(t)
 	model := tabletext.NewModel(u)
+	rawU := oneSidedRangeFreeUnit(t)
+	rawModel := tabletext.NewModel(rawU)
 	if err := os.WriteFile(filepath.Join(g.dir, "main.luau"), []byte(oneSidedProbe), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cases := []oneSidedCase{
-		{"a below min", "a", ^uint64(0)},
-		{"a at min", "a", 0},
-		{"a above min", "a", 1},
-		{"a unbounded side at the kind limit", "a", uint64(math.MaxInt64)},
-		{"b below max", "b", 8},
-		{"b at max", "b", 9},
-		{"b above max", "b", 10},
-		{"b above max at the kind limit", "b", uint64(math.MaxUint16)},
-		{"b unbounded side at the kind limit", "b", 0},
+	cases := []struct {
+		oneSidedCase
+		refused bool // the verdict the bound owes, held against the engine's
+	}{
+		{oneSidedCase{"a below min", "a", ^uint64(0)}, true},
+		{oneSidedCase{"a at min", "a", 0}, false},
+		{oneSidedCase{"a above min", "a", 1}, false},
+		{oneSidedCase{"a unbounded side at the kind limit", "a", uint64(math.MaxInt64)}, false},
+		{oneSidedCase{"b below max", "b", 8}, false},
+		{oneSidedCase{"b at max", "b", 9}, false},
+		{oneSidedCase{"b above max", "b", 10}, true},
+		{oneSidedCase{"b above max at the kind limit", "b", uint64(math.MaxUint16)}, true},
+		{oneSidedCase{"b unbounded side at the kind limit", "b", 0}, false},
 	}
-	for _, tc := range cases {
+	for _, c := range cases {
+		tc := c.oneSidedCase
 		t.Run(tc.name, func(t *testing.T) {
-			wire, wantSaved, wantAccepted, wantClamped, wantA, wantB := oneSidedOracle(t, model, u, tc)
+			wire, wantSaved, wantAccepted, wantClamped, wantA, wantB := oneSidedOracle(t, model, rawModel, u, rawU, tc)
+			if wantAccepted == c.refused {
+				t.Fatalf("the Go engine's verdict is accepted=%v; the one-sided bound owes refused=%v", wantAccepted, c.refused)
+			}
 			out := strings.TrimSpace(string(luaurun.Run(t, g.dir, "main.luau", map[string][]byte{"wire": wire})))
 			lines := strings.Split(out, "\n")
-			if len(lines) != 5 {
-				t.Fatalf("the probe printed %d lines, want 5:\n%s", len(lines), out)
+			if !wantAccepted {
+				if len(lines) != 1 || lines[0] != "reads false false false" {
+					t.Fatalf("the Go engine refuses this wire, and every Luau read owes the refusal (load, loadWalk, ReadStrict):\n%s", out)
+				}
+				return
 			}
+			if len(lines) != 6 {
+				t.Fatalf("the probe printed %d lines, want 6:\n%s", len(lines), out)
+			}
+			if lines[0] != "reads true true true" {
+				t.Errorf("the Luau reads (load, loadWalk, ReadStrict) answer %q; the Go engine reads this wire", lines[0])
+			}
+			lines = lines[1:]
 			if want := "accepted " + strconv.FormatBool(wantAccepted); lines[0] != want {
 				t.Errorf("the Luau load verdict is %q, schema-go's is %q", lines[0], want)
 			}

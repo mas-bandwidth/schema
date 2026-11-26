@@ -15,6 +15,7 @@ import (
 // counter, Reason, the verdict and any field added later to its zero value at
 // once.
 func TestFixedFormUnder20Bytes(t *testing.T) {
+	t.Parallel() // its own TempDir and go test; nothing shared (make tables-go-fixedform)
 	runGenerated(t, `package probe
 fixed table Point {
     x int32 = 1

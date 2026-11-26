@@ -511,12 +511,8 @@ func TestLuauStrictReadRefusesByName(t *testing.T) {
 			}
 			reason, field := parts[1], parts[2]
 			if c.want == anyRefusal {
-				_, carried := luauReportCarried[c.key]
-				switch {
-				case reason == "ok" && !carried:
+				if reason == "ok" {
 					t.Errorf("%s: the strict read reads a row the engine refuses (%s)", c.key, lines[i])
-				case reason != "ok" && carried:
-					t.Errorf("%s is carried in luauReportCarried but now refuses: drop it", c.key)
 				}
 				continue
 			}

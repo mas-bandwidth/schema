@@ -18,6 +18,7 @@ import (
 )
 
 func TestFixedVersioningRefuseWritesNothing(t *testing.T) {
+	t.Parallel() // reads the corpus, writes only its own TempDir (make tables-c-versioning)
 	corpus := cFixedCorpus(t)
 	newer := cReadSchema(t, "VNEW_nested_append")
 	older := cReadSchema(t, "VOLD_nested_append")

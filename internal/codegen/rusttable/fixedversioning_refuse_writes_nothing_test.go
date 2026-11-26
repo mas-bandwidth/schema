@@ -57,7 +57,6 @@ fn v_refuse_writes_nothing() {
     assert!(n.is_none(), "a record whose hash names no layout must refuse: {:?} {:?}", n, report);
     assert_eq!(report.reason.name(), "no_block", "the refusal is no_block, not {:?}", report.reason);
     assert!(report.refused, "a refusal by name sets refused: {:?}", report);
-    assert!(!report.damaged, "a refusal by name never sets malformed too: {:?}", report);
     assert!(
         report.widened == 0 && report.unknown == 0,
         "REFUSE is TOTAL: no counter moves: {:?}", report

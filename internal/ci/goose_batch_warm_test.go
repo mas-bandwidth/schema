@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mas-bandwidth/schema/v2/internal/provesran"
 	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 )
 
@@ -102,7 +103,14 @@ echo "case1 00"
 	}
 	// a call with nothing to warm starts no fill: an empty unit's fill
 	// leaves .lock or .out behind
-	strays, err := filepath.Glob(filepath.Join(units+".driver", "batch", "*", ".*"))
+	// no stray is the sound answer, so the ledger is held to the batch
+	// directories the strays would sit in: none of those is a scan of nothing
+	looked := provesran.NewLedger("the run's batch directories, for a fill's stray .lock or .out")
+	if _, err := looked.Glob(filepath.Join(units+".driver", "batch", "*")); err != nil {
+		t.Fatal(err)
+	}
+	looked.Check(t)
+	strays, err := looked.Glob(filepath.Join(units+".driver", "batch", "*", ".*"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,7 +121,7 @@ echo "case1 00"
 	// on) is named and taken, never waited on: the cache of unit asked is
 	// made stale by its time alone (no clock is read), so a third call warms
 	// it again under a lock a dead process left
-	dirs, err := filepath.Glob(filepath.Join(units+".driver", "batch", "*-*"))
+	dirs, err := provesran.Glob(filepath.Join(units+".driver", "batch", "*-*"))
 	if err != nil || len(dirs) != 1 {
 		t.Fatalf("want the run's one batch directory, got %q (%v)", dirs, err)
 	}

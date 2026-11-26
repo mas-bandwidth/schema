@@ -168,8 +168,8 @@ func t07W4(t *testing.T) {
 		t.Fatalf("W4: Generate: %v", err)
 	}
 	body := t07Filter(t, out)
-	t07Has(t, body, "R.text(binary_part(b_name, 0, min(max(n_name, 0), 8))", "W4 the read decodes the used bytes of a string(N)")
-	t07Has(t, body, "binary_part(b_blob, 0, min(max(n_blob, 0), 6))", "W4 the read lands the used bytes of a bytes(N)")
+	t07Has(t, body, "R.text(binary_part(b_name, 0, n_name)", "W4 the read decodes the used bytes of a string(N)")
+	t07Has(t, body, "binary_part(b_blob, 0, n_blob)", "W4 the read lands the used bytes of a bytes(N)")
 }
 
 // ---- elixir/W9 --------------------------------------------------------------

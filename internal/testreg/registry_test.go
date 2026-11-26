@@ -124,7 +124,7 @@ func TestWriteSecondsKeepsEveryOtherByte(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, s := range []float64{3.001, 0.5} {
-		if n, err := WriteSeconds(path, map[string]float64{"roundtrip.fam.two": s}); err != nil || n != 1 {
+		if n, err := WriteSeconds(path, map[string]float64{"roundtrip.fam.two": s}, nil); err != nil || n != 1 {
 			t.Fatalf("WriteSeconds: %d %v", n, err)
 		}
 	}
@@ -140,7 +140,7 @@ func TestWriteSecondsKeepsEveryOtherByte(t *testing.T) {
 	if tt, _ := reg.Test("roundtrip.fam.two"); tt.Seconds != 0.5 {
 		t.Fatalf("seconds read back as %v", tt.Seconds)
 	}
-	if _, err := WriteSeconds(path, map[string]float64{"roundtrip.fam.nine": 1}); err == nil || !strings.Contains(err.Error(), "no test line for roundtrip.fam.nine") {
+	if _, err := WriteSeconds(path, map[string]float64{"roundtrip.fam.nine": 1}, nil); err == nil || !strings.Contains(err.Error(), "no test line for roundtrip.fam.nine") {
 		t.Fatalf("a key with no line: %v", err)
 	}
 }
@@ -157,7 +157,7 @@ func TestWriteSecondsTouchesOnlyTheLastField(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, s := range []float64{2, 3} {
-		if n, err := WriteSeconds(path, map[string]float64{"tooling.a.b": s}); err != nil || n != 1 {
+		if n, err := WriteSeconds(path, map[string]float64{"tooling.a.b": s}, nil); err != nil || n != 1 {
 			t.Fatalf("WriteSeconds: %d %v", n, err)
 		}
 	}
@@ -199,5 +199,22 @@ func TestTheRegistryLoads(t *testing.T) {
 		if _, ok := reg.Group(name); !ok {
 			t.Errorf("the registry has no group %q, which the workflows run", name)
 		}
+	}
+}
+
+// TestLoadRefusesABadNeed: a need is a lowercase machine property named
+// once; a row needing an empty, upper-case or repeated property is refused
+// by line, and a row needing casefold loads with the need on it.
+func TestLoadRefusesABadNeed(t *testing.T) {
+	t.Parallel()
+	row := func(needs string) string {
+		return `{"rec":"test","key":"roundtrip.fam.x","type":"roundtrip","family":"fam","case":"x","tier":"unit","checks":"x","inputs":{"n":9},"expect":"x","needs":` + needs + "}\n"
+	}
+	for _, bad := range []string{`[""]`, `["CaseFold"]`, `["casefold","casefold"]`, `["case fold"]`} {
+		refused(t, fixture+row(bad), "fixture.jsonl:15:", "each need is a lowercase machine property, named once")
+	}
+	reg := load(t, fixture+row(`["casefold"]`))
+	if got, ok := reg.Test("roundtrip.fam.x"); !ok || !slices.Equal(got.Needs, []string{"casefold"}) {
+		t.Fatalf("a row needing casefold: %+v", got)
 	}
 }

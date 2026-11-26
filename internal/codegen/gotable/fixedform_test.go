@@ -2,20 +2,16 @@ package gotable
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
-
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestFixedFormEmitsSurface(t *testing.T) {
+	t.Parallel() // its own TempDir and go test; nothing shared (make tables-go-fixedform)
 	files := generate(t, `package probe
 fixed table Point {
     x int32
@@ -103,6 +99,7 @@ fixed table Point {
 // previous_form and reads form 3. The schema says the keyword and the fixture
 // walks the real parser: there is no second way to say the class here.
 func TestFixedFormForm1RefusalLivesInFixedLoad(t *testing.T) {
+	t.Parallel() // its own TempDir and go test; nothing shared (make tables-go-fixedform)
 	files := generate(t, `package probe
 fixed table Point {
     x int32
@@ -129,6 +126,7 @@ fixed table Point {
 }
 
 func TestFixedFormRoundTrip(t *testing.T) {
+	t.Parallel() // its own TempDir and go test; nothing shared (make tables-go-fixedform)
 	runGenerated(t, `package probe
 fixed table Point {
     x int32 = 1
@@ -334,6 +332,7 @@ func TestHashIncludesTheCountWord(t *testing.T) {
 // poison, the "on a POISONED destination it fails louder" of the dead-byte rule.
 // If a byte differs, the failure names which field's span it falls in.
 func TestFixedFormWriteReadWriteIsByteIdentical(t *testing.T) {
+	t.Parallel() // its own TempDir and go test; nothing shared (make tables-go-fixedform)
 	runGenerated(t, `package probe
 union Pick
 {
@@ -460,6 +459,7 @@ func fixedBodySpan(off int) string {
 // (519-527). This is that reasoning in the Go leg's generated-probe idiom; the
 // taken-as-given half is also the generator's own §5.3 shape (fixedform.go:750).
 func TestFixedFormHashCheckedLast(t *testing.T) {
+	t.Parallel() // its own TempDir and go test; nothing shared (make tables-go-fixedform)
 	runGenerated(t, `package probe
 fixed table Point {
     x int32 = 1
@@ -509,257 +509,6 @@ func TestHashCheckedLast(t *testing.T) {
 	}
 }
 `)
-}
-
-// RETIRED BY §5.6, AND OWED AGAIN ON THE LINEAGE HARNESS. This test and the two
-// below read a file written under ANOTHER schema's layout WITHOUT that layout
-// being in the reader's lineage, and they assert the run-time walk of a
-// stranger's layout — the seven §1.1 names, and a forward read. §5.6 retires
-// exactly that: "Reading a layout the lock has never seen. The run-time walk of
-// a stranger's layout ... the recompute of the header's hash". Under §5 every
-// one of these files comes back layout_unknown, which is the new law and not a
-// regression. What is OWED is the same coverage on the lineage harness
-// (fixedversioning_test.go's runVersionProbe): the plan path with the endpoint's
-// entry handed to the reader as its lock, and §1.1's seven rules moved to the
-// LOCK's validation of what it records.
-func TestFixedFormPlanPath(t *testing.T) {
-
-	fx1, err := os.ReadFile("../../../test/tables/FX1.schema")
-	if err != nil {
-		t.Fatal(err)
-	}
-	fx2, err := os.ReadFile("../../../test/tables/FX2.schema")
-	if err != nil {
-		t.Fatal(err)
-	}
-	dir := t.TempDir()
-	runtime := slowtest.SerializeGo(t, "../../../")
-	writeUnit(t, filepath.Join(dir, "fx1"), "tblfx1", string(fx1), runtime)
-	writeUnit(t, filepath.Join(dir, "fx2"), "tblfx2", string(fx2), runtime)
-	testDir := filepath.Join(dir, "test")
-	if err := os.MkdirAll(testDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	mod := "module fixedformtest\n\ngo 1.26\n\nrequire (\n\ttblfx1 v0.0.0\n\ttblfx2 v0.0.0\n)\nreplace tblfx1 => ../fx1\nreplace tblfx2 => ../fx2\n"
-	if err := os.WriteFile(filepath.Join(testDir, "go.mod"), []byte(mod), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	src := `package fixedformtest
-
-import (
-	"testing"
-
-	"tblfx1"
-	"tblfx2"
-)
-
-func TestPlanPath(t *testing.T) {
-	one := tblfx1.FxRoot{}
-	tblfx1.FxRootReset(&one)
-	one.Keep = 4242
-	one.Narrow = 40000
-	one.Renamed = 321
-	one.Gone = 654
-	one.Nested.A = 111
-	one.Nested.B = 222
-	w1 := make([]byte, tblfx1.FxRootFixedMeasure(1))
-	if n := tblfx1.FxRootFixedSave([]tblfx1.FxRoot{one}, w1); n != int64(len(w1)) {
-		t.Fatalf("FX1 save %d", n)
-	}
-
-	{
-		back := make([]tblfx1.FxRoot, 1)
-		var r tblfx1.TableReport
-		plan := make([]tblfx1.TableFixedEntry, 1024)
-		n := tblfx1.FxRootFixedLoad(back, w1, plan, &r)
-		if n != 1 || back[0].Keep != 4242 || back[0].Narrow != 40000 || back[0].Renamed != 321 || back[0].Gone != 654 {
-			t.Fatalf("same schema: %+v n=%d r=%+v", back[0], n, r)
-		}
-		if back[0].Nested.A != 111 || back[0].Nested.B != 222 || r != (tblfx1.TableReport{}) {
-			t.Fatalf("same schema nesting/report: %+v %+v", back[0].Nested, r)
-		}
-	}
-
-	{
-		poison := tblfx1.FxRoot{}
-		tblfx1.FxRootReset(&poison)
-		poison.Keep = 1
-		poison.Renamed = 5000
-		poison.Gone = -7
-		poison.Nested.A = 111
-		poison.Nested.B = 222
-		wb := make([]byte, tblfx1.FxRootFixedMeasure(1))
-		if n := tblfx1.FxRootFixedSave([]tblfx1.FxRoot{poison}, wb); n != int64(len(wb)) {
-			t.Fatalf("bounds save %d", n)
-		}
-		back := make([]tblfx1.FxRoot, 1)
-		var r tblfx1.TableReport
-		plan := make([]tblfx1.TableFixedEntry, 1024)
-		if n := tblfx1.FxRootFixedLoad(back, wb, plan, &r); n != 1 {
-			t.Fatalf("RANGE identity n=%d %+v", n, r)
-		}
-		if back[0].Renamed != 1000 || back[0].Gone != 0 || !r.Refused() {
-			t.Fatalf("RANGE identity: renamed=%d gone=%d clamped=%d", back[0].Renamed, back[0].Gone, r.Refusal)
-		}
-		back2 := make([]tblfx2.FxRoot, 1)
-		var r2 tblfx2.TableReport
-		plan2 := make([]tblfx2.TableFixedEntry, 2048)
-		if n := tblfx2.FxRootFixedLoad(back2, wb, plan2, &r2); n != 1 {
-			t.Fatalf("RANGE compiled n=%d %+v", n, r2)
-		}
-		if back2[0].RenamedTo != 1000 || !r2.Refused() {
-			t.Fatalf("RANGE compiled: renamed_to=%d clamped=%d (gone is a field FX2 cannot name)", back2[0].RenamedTo, r2.Refusal)
-		}
-	}
-
-	{
-		back := make([]tblfx2.FxRoot, 1)
-		back[0].Added = 99
-		back[0].Keep = 1
-		var r tblfx2.TableReport
-		plan := make([]tblfx2.TableFixedEntry, 1024)
-		n := tblfx2.FxRootFixedLoad(back, w1, plan, &r)
-		if n != 1 {
-			t.Fatalf("older writer n=%d r=%+v", n, r)
-		}
-		if back[0].Keep != 4242 {
-			t.Fatalf("unmoved %d", back[0].Keep)
-		}
-		if back[0].Narrow != 40000 || r.Widened != 1 {
-			t.Fatalf("widened %d report %+v", back[0].Narrow, r)
-		}
-		if back[0].RenamedTo != 321 {
-			t.Fatalf("renamed %d", back[0].RenamedTo)
-		}
-		if back[0].Added != 11 {
-			t.Fatalf("missing default %d", back[0].Added)
-		}
-		if back[0].Nested.A != 111 || back[0].Nested.B != 222 {
-			t.Fatalf("nesting %+v", back[0].Nested)
-		}
-		if r.Unknown != 1 {
-			t.Fatalf("unknown %d", r.Unknown)
-		}
-	}
-
-	two := tblfx2.FxRoot{}
-	tblfx2.FxRootReset(&two)
-	two.Keep = 5150
-	two.Narrow = 70000
-	two.RenamedTo = 808
-	two.Added = 909
-	two.Nested.A = 33
-	two.Nested.B = 44
-	two.Extra.X = 55
-	two.Extra.Y = 66
-	w2 := make([]byte, tblfx2.FxRootFixedMeasure(1))
-	if n := tblfx2.FxRootFixedSave([]tblfx2.FxRoot{two}, w2); n != int64(len(w2)) {
-		t.Fatalf("FX2 save %d", n)
-	}
-	{
-		back := make([]tblfx1.FxRoot, 1)
-		back[0].Gone = 99
-		back[0].Narrow = 99
-		var r tblfx1.TableReport
-		plan := make([]tblfx1.TableFixedEntry, 1024)
-		n := tblfx1.FxRootFixedLoad(back, w2, plan, &r)
-		if n != 1 {
-			t.Fatalf("newer writer n=%d r=%+v", n, r)
-		}
-		if back[0].Keep != 5150 || back[0].Renamed != 808 {
-			t.Fatalf("newer %+v", back[0])
-		}
-		if back[0].Gone != 9 {
-			t.Fatalf("dropped default %d", back[0].Gone)
-		}
-		if back[0].Nested.A != 33 || back[0].Nested.B != 44 {
-			t.Fatalf("nesting past unknown type %+v", back[0].Nested)
-		}
-		if r.Unknown != 2 {
-			t.Fatalf("unknown %d", r.Unknown)
-		}
-		if !r.Refused() {
-			t.Fatalf("kind_mismatch %d", r.Refusal)
-		}
-		if back[0].Narrow != 3 {
-			t.Fatalf("narrowing left default %d", back[0].Narrow)
-		}
-	}
-
-	{
-		broken := append([]byte(nil), w2...)
-		broken[tblfx1.TableFixedHeaderBytes+4] ^= 0xFF
-		var r tblfx1.TableReport
-		plan := make([]tblfx1.TableFixedEntry, 1024)
-		v := make([]tblfx1.FxRoot, 1)
-		n := tblfx1.FxRootFixedLoad(v, broken, plan, &r)
-		// RULE 1 BY ITS OWN NAME: 4 + 17*count is not the length given. The
-		// seven rules run before the header's hash is checked, so a broken
-		// layout is never reported as a lying header (§1.1, §2.1 step 5).
-		if n >= 0 || r.Reason != "layout_count_mismatch" || r.Unknown != 0 || (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") {
-			t.Fatalf("layout_count_mismatch: n=%d %+v", n, r)
-		}
-	}
-	{
-		other := append([]byte(nil), w2...)
-		other[0] = 4
-		var r tblfx1.TableReport
-		plan := make([]tblfx1.TableFixedEntry, 1024)
-		v := make([]tblfx1.FxRoot, 1)
-		n := tblfx1.FxRootFixedLoad(v, other, plan, &r)
-		if n >= 0 || r.Reason != "newer_form" || (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") {
-			t.Fatalf("newer_form: n=%d %+v", n, r)
-		}
-	}
-	{
-		var r tblfx1.TableReport
-		tiny := make([]tblfx1.TableFixedEntry, 1)
-		v := make([]tblfx1.FxRoot, 1)
-		n := tblfx1.FxRootFixedLoad(v, w2, tiny, &r)
-		if n >= 0 || r.Reason != "plan_too_large" {
-			t.Fatalf("plan_too_large: n=%d %+v", n, r)
-		}
-	}
-}
-`
-	if err := os.WriteFile(filepath.Join(testDir, "plan_test.go"), []byte(src), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	cmd := testproc.Command(t, "go", "test", "-count=1", ".")
-	cmd.Dir = testDir
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("plan path: %v\n%s", err, out)
-	}
-}
-
-func writeUnit(t *testing.T, out, pkg, schema, runtime string) {
-	t.Helper()
-	u := unitFrom(t, schema)
-	packet, err := golang.Generate(u)
-	if err != nil {
-		t.Fatal(err)
-	}
-	tables, err := Generate(u)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(out, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	for name, data := range packet {
-		if err := os.WriteFile(filepath.Join(out, name), data, 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	for name, data := range tables {
-		if err := os.WriteFile(filepath.Join(out, name), data, 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	mod := fmt.Sprintf("module %s\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\nreplace github.com/mas-bandwidth/serialize.go/v2 => %q\n", pkg, runtime)
-	if err := os.WriteFile(filepath.Join(out, "go.mod"), []byte(mod), 0o600); err != nil {
-		t.Fatal(err)
-	}
 }
 
 // TestFixedTableSaveAndLoadAreFormThree is the runtime half: a DECLARED fixed
@@ -823,6 +572,7 @@ func TestFixedTableSaveAndLoadAreFormThree(t *testing.T) {
 // the reset is visible, and after the refusal it equals a zero value put
 // through PointReset. Every counter is zero at the same time.
 func TestFixedFormRefuseIsTotal(t *testing.T) {
+	t.Parallel() // its own TempDir and go test; nothing shared (make tables-go-fixedform)
 	runGenerated(t, `package probe
 fixed table Point {
     x int32 = 1
@@ -918,6 +668,7 @@ func TestForm1VariableLoad(t *testing.T) {
 // down, and the plan the compiler builds when a writer's layout is not this
 // build's. The control is the same record with every byte 0 or 1, which reads.
 func TestFixedFormHostileBoolByte(t *testing.T) {
+	t.Parallel() // its own TempDir and go test; nothing shared (make tables-go-fixedform)
 	runGenerated(t, `package probe
 fixed table Host {
     on bool
@@ -1013,6 +764,7 @@ func TestHostileBoolControl(t *testing.T) {
 // byte in that span refuses the whole load (docs/rulings.json
 // fixed-dead-bytes-are-zero).
 func TestFixedFormHostileUnionTag(t *testing.T) {
+	t.Parallel() // its own TempDir and go test; nothing shared (make tables-go-fixedform)
 	runGenerated(t, `package probe
 type Hit { damage int32 }
 type Chat { volume int32 }
@@ -1116,6 +868,7 @@ func TestTagPastTheArmsRefuses(t *testing.T) {
 // CONTROL 2, below, disconnects the pass from the loop to prove it — and not
 // some other check — is what holds the value back.
 func TestFixedFormHostileByteSweep(t *testing.T) {
+	t.Parallel() // its own TempDir and go test; nothing shared (make tables-go-fixedform)
 	runGenerated(t, `package probe
 fixed table Host {
     small int32 = 5 | min = 0, max = 1000
@@ -1265,110 +1018,11 @@ func TestHostileByteSweep(t *testing.T) {
 `)
 }
 
-// TestFixedFormArgLaneTextUnderSecondArm is reference-fix 12's probe (Rowan,
-// Java #833 read): a string(8) under a union's SECOND arm. Write on the
-// identity path, read with a compiled plan from a different layout. If Arg
-// is both the guard's arm ordinal and the text flavour, the compiled read
-// drops the string silently.
-func TestFixedFormArgLaneTextUnderSecondArm(t *testing.T) {
-	dir := t.TempDir()
-	runtime := slowtest.SerializeGo(t, "../../../")
-	writer := `package tblw
-type ArmA { n int32 }
-type ArmB { s string(8) }
-union Pick
-{
-    a ArmA
-    b ArmB
-}
-fixed table Root {
-    pick Pick
-}
-`
-	reader := `package tblr
-type ArmA { n int32 }
-type ArmB { s string(8) }
-union Pick
-{
-    a ArmA
-    b ArmB
-}
-fixed table Root {
-    pick Pick
-    tail int32 = 7
-}
-`
-	writeUnit(t, filepath.Join(dir, "w"), "tblw", writer, runtime)
-	writeUnit(t, filepath.Join(dir, "r"), "tblr", reader, runtime)
-	testDir := filepath.Join(dir, "test")
-	if err := os.MkdirAll(testDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	mod := fmt.Sprintf("module arglanetest\n\ngo 1.26\n\nrequire (\n\ttblw v0.0.0\n\ttblr v0.0.0\n\tgithub.com/mas-bandwidth/serialize.go/v2 v2.0.0\n)\nreplace tblw => ../w\nreplace tblr => ../r\nreplace github.com/mas-bandwidth/serialize.go/v2 => %q\n", runtime)
-	if err := os.WriteFile(filepath.Join(testDir, "go.mod"), []byte(mod), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	src := `package arglanetest
-
-import (
-	"testing"
-
-	"tblr"
-	"tblw"
-)
-
-func TestArgLane(t *testing.T) {
-	one := tblw.Root{}
-	tblw.RootReset(&one)
-	one.Pick.Type = tblw.PickTypeB
-	copy(one.Pick.B.S[:], "hi")
-	one.Pick.B.SLength = 2
-	buf := make([]byte, tblw.RootFixedMeasure(1))
-	if n := tblw.RootFixedSave([]tblw.Root{one}, buf); n != int64(len(buf)) {
-		t.Fatalf("identity save %d", n)
-	}
-
-	// same-layout identity read: the string must survive or the fixture is wrong
-	same := make([]tblw.Root, 1)
-	var wr tblw.TableReport
-	wplan := make([]tblw.TableFixedEntry, 256)
-	if n := tblw.RootFixedLoad(same, buf, wplan, &wr); n != 1 || same[0].Pick.Type != tblw.PickTypeB || string(same[0].Pick.B.S[:same[0].Pick.B.SLength]) != "hi" {
-		t.Fatalf("identity: n=%d %+v %+v", n, same[0], wr)
-	}
-
-	got := make([]tblr.Root, 1)
-	got[0].Tail = 99
-	var r tblr.TableReport
-	plan := make([]tblr.TableFixedEntry, 256)
-	if n := tblr.RootFixedLoad(got, buf, plan, &r); n != 1 {
-		t.Fatalf("compiled n=%d %+v", n, r)
-	}
-	if got[0].Pick.Type != tblr.PickTypeB {
-		t.Fatalf("compiled arm %d, want B; report %+v", got[0].Pick.Type, r)
-	}
-	if string(got[0].Pick.B.S[:got[0].Pick.B.SLength]) != "hi" {
-		t.Fatalf("ARG LANE BITES: compiled read of string under union arm 2 landed %q (len %d), identity had hi; report %+v", got[0].Pick.B.S[:got[0].Pick.B.SLength], got[0].Pick.B.SLength, r)
-	}
-	if got[0].Tail != 7 {
-		t.Fatalf("reader tail default %d", got[0].Tail)
-	}
-}
-`
-	if err := os.WriteFile(filepath.Join(testDir, "arg_lane_test.go"), []byte(src), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	cmd := testproc.Command(t, "go", "test", "-count=1", ".")
-	cmd.Dir = testDir
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("arg-lane probe:\n%s", out)
-	}
-}
-
 // TestFixedFormArgLaneOldEncodingControl plants the OLD encoding: flavour in
 // Arg, Meta unused. A compiled text-under-arm-2 read must DROP the string —
 // putting flavour in Arg must not stay green.
 func TestFixedFormArgLaneOldEncodingControl(t *testing.T) {
+	t.Parallel() // its own TempDir and go test; nothing shared (make tables-go-fixedform)
 	runGenerated(t, `package probe
 type ArmA { n int32 }
 type ArmB { s string(8) }
@@ -1469,6 +1123,7 @@ func TestOldArgLaneControl(t *testing.T) {
 // guarded entry has its split at the END, not at zero. The case runs in the
 // generated probe package because that is where the plan symbols live.
 func TestFixedFormPlanPartition(t *testing.T) {
+	t.Parallel() // its own TempDir and go test; nothing shared (make tables-go-fixedform)
 	runGenerated(t, `package probe
 type ArmA { n int32 }
 type ArmB {
@@ -1625,6 +1280,7 @@ func TestPlanPartition(t *testing.T) {
 // reader whose field carries a live count subtracts four from zero: the elements
 // land past a record that ends at four.
 func TestFixedFormRecordBound(t *testing.T) {
+	t.Parallel() // its own TempDir and go test; nothing shared (make tables-go-fixedform)
 	runGenerated(t, `package probe
 fixed table Host {
     keep  uint32 = 7
@@ -1780,6 +1436,7 @@ func tableFile(files map[string][]byte) string {
 }
 
 func TestFixedFormBoundsPassShape(t *testing.T) {
+	t.Parallel() // its own TempDir and go test; nothing shared (make tables-go-fixedform)
 	tagOnly := generate(t, `package probe
 type Boost { power int32 = 0 }
 type Ward { charge float32 = 0.0 }
@@ -1847,6 +1504,7 @@ fixed table Cfg {
 }
 
 func TestFixedFormBoundsLiveCount(t *testing.T) {
+	t.Parallel() // its own TempDir and go test; nothing shared (make tables-go-fixedform)
 	runGenerated(t, `package probe
 enum Grade { Bronze, Gold }
 type ArmA { n int32 = 0 | min = 0, max = 10 }
@@ -2055,6 +1713,7 @@ func byteSpell(b []byte) string {
 // (kind 12), so the case tells the two apart and is not matching whatever entry
 // it happens to find first.
 func TestFixedFormBytesIsLayoutKind14(t *testing.T) {
+	t.Parallel() // its own TempDir and go test; nothing shared (make tables-go-fixedform)
 	u := unitFrom(t, `package probe
 fixed table Carrier {
     tag bytes(6)
@@ -2102,6 +1761,7 @@ fixed table Carrier {
 }
 
 func TestFixedFormLayoutMalformedTruncated(t *testing.T) {
+	t.Parallel() // its own TempDir and go test; nothing shared (make tables-go-fixedform)
 	runGenerated(t, `package probe
 fixed table Point {
     x int32 = 1
@@ -2177,6 +1837,7 @@ func TestLayoutMalformedTruncated(t *testing.T) {
 // length standing and the counters silent — a silently WRONG REPORT, measured
 // in CONTROL 2 below.
 func TestFixedFormTextLengthClamp(t *testing.T) {
+	t.Parallel() // its own TempDir and go test; nothing shared (make tables-go-fixedform)
 	runGenerated(t, `package probe
 fixed table Text {
     lead  uint32 = 1
@@ -2262,6 +1923,7 @@ func TestTextLengthClamp(t *testing.T) {
 // unit's locked entry as its lineage, which is the only way a versioned read is
 // reached now (docs/FIXED-FORM-ALGORITHM.md §5.6).
 func TestFixedFormOptionalVersusPlainNesting(t *testing.T) {
+	t.Parallel() // its own TempDir and go test; nothing shared (make tables-go-fixedform)
 	dir := t.TempDir()
 	file := filepath.Join(dir, "optional_add.bin")
 	old := readSchema(t, "VOLD_optional_add")
@@ -2479,6 +2141,7 @@ func TestWrongPlanGoesRed(t *testing.T) {
 // wire — so the check is about the flag and not about the writer never having
 // written a payload at all.
 func TestFixedFormAbsentOptionalSkipsStore(t *testing.T) {
+	t.Parallel() // its own TempDir and go test; nothing shared (make tables-go-fixedform)
 	runGenerated(t, `package probe
 fixed table Link
 {
@@ -2566,6 +2229,7 @@ func TestAbsentOptionalSkipsStore(t *testing.T) {
 // (test/tables/fixedform_main.cpp:781-854), whose negative control is the OLD
 // row: the two columns swapped on a copy of this build's own rows.
 func TestFixedFormBytesNTakesTheArrayRow(t *testing.T) {
+	t.Parallel() // its own TempDir and go test; nothing shared (make tables-go-fixedform)
 	runGenerated(t, `package probe
 fixed table Probe
 {
@@ -2637,6 +2301,7 @@ func TestBytesRow(t *testing.T) {
 // what reaches the reader) and the read-side pass over STORAGE is what holds it. The legitimate value the rule admits is the
 // CONTROL and must not move the counter.
 func TestFixedFormBoundsShiftFixedAndBits(t *testing.T) {
+	t.Parallel() // its own TempDir and go test; nothing shared (make tables-go-fixedform)
 	runGenerated(t, `package probe
 fixed table Probe {
     tilt fixed(12, 4) | min = -8, max = 7
@@ -2703,6 +2368,7 @@ func TestShiftAndBits(t *testing.T) {
 // fixture asserts the counters that EXIST on this leg's report, by name, on
 // both the identity plan and the compiled plan path.
 func TestFixedFormDuplicateNeverRaised(t *testing.T) {
+	t.Parallel() // its own TempDir and go test; nothing shared (make tables-go-fixedform)
 	runGenerated(t, `package probe
 enum Key { a, b, c }
 fixed table Child {
@@ -2770,6 +2436,7 @@ func TestDuplicateStaysZero(t *testing.T) {
 // garbage in either is refused as wire_damaged and writes nothing; the writer's
 // own zeroed image reads.
 func TestFixedFormNonZeroSlackRefused(t *testing.T) {
+	t.Parallel() // its own TempDir and go test; nothing shared (make tables-go-fixedform)
 	runGenerated(t, `package probe
 fixed table Slack {
     label string(8)
@@ -2982,6 +2649,7 @@ func TestWriteSideRefusesByName(t *testing.T) {
 // the two landed values differ (and the counters move), which is exactly what
 // the row exists to catch.
 func TestFixedFormIdentityEqualsCompiled(t *testing.T) {
+	t.Parallel() // its own TempDir and go test; nothing shared (make tables-go-fixedform)
 	runGenerated(t, `package probe
 enum Grade { Bronze, Gold }
 fixed table Root {
@@ -3081,6 +2749,7 @@ func TestIdentityEqualsCompiled(t *testing.T) {
 // wide-arm half, whose slot is legitimately full, so the zero check is a fact
 // about the NARROW arm and not a buffer that is universally zero.
 func TestFixedFormZeroBehindNarrowerArm(t *testing.T) {
+	t.Parallel() // its own TempDir and go test; nothing shared (make tables-go-fixedform)
 	runGenerated(t, `package probe
 type NarrowArm { a int8 = 0 }
 type WideArm { b int64 = 0 }

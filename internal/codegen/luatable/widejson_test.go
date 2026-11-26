@@ -32,39 +32,55 @@ var wideJSONFields = []string{"i128", "u128", "f0", "f16", "f64", "uf16"}
 // wideJSONRows are internal/tabletext/wide_test.go's rows, mapped onto the
 // schema's fields by kind and F: the integral and exponent forms, the exact
 // and the too-fine fraction, the negative zero and the negative unsigned,
-// the 128-bit edge and the magnitudes past it.
+// the 128-bit edge and the magnitudes past it. refused is the verdict the
+// strict read gives (docs/SPEC-TABLES.md §6.5, §16.2): a too-fine fraction,
+// a magnitude past the kind or the declared range, a negative unsigned, and
+// a BARE number token for a kind whose storage is wider than 32 bits (the
+// 128-bit integers and fixed(32, 32)), which reads as a STRING only. Each
+// wide kind's value is carried again in its string spelling, where the
+// string grammar's own refusals are pinned too.
 var wideJSONRows = []struct {
-	field string
-	token string
+	field   string
+	token   string
+	refused bool
 }{
-	{"f16", "1.0"},
-	{"f16", "-0.5"},
-	{"f16", "0.1"},
-	{"f16", "2"},
-	{"f16", "15e-1"},
-	{"f0", "1e3"},
-	{"f16", "-0.0"},
-	{"uf16", "-0"},
-	{"uf16", "-0.5"},
-	{"f16", "1e999999999"},
-	{"uf16", "-1e400"},
-	{"f16", "1e-999999999"},
-	{"f16", "0.0000152587890625"},
-	{"u128", "340282366920938463463374607431768211455"},
-	{"u128", "340282366920938463463374607431768211456"},
-	{"u128", "-1"},
-	{"i128", "1.5"},
-	{"u128", "3e38"},
-	{"i128", "-170141183460469231731687303715884105729"},
-	{"f64", "99.99999999976716935634613037109375"},
+	{"f16", "1.0", false},
+	{"f16", "-0.5", false},
+	{"f16", "0.1", true},
+	{"f16", "2", false},
+	{"f16", "15e-1", false},
+	{"f0", "1e3", false},
+	{"f16", "-0.0", false},
+	{"uf16", "-0", false},
+	{"uf16", "-0.5", true},
+	{"f16", "1e999999999", true},
+	{"uf16", "-1e400", true},
+	{"f16", "1e-999999999", true},
+	{"f16", "0.0000152587890625", false},
+	{"u128", "340282366920938463463374607431768211455", true},
+	{"u128", "340282366920938463463374607431768211456", true},
+	{"u128", "-1", true},
+	{"i128", "1.5", true},
+	{"u128", "3e38", true},
+	{"i128", "-170141183460469231731687303715884105729", true},
+	{"f64", "99.99999999976716935634613037109375", true},
+	{"u128", `"340282366920938463463374607431768211455"`, false},
+	{"u128", `"340282366920938463463374607431768211456"`, true},
+	{"u128", `"-1"`, true},
+	{"i128", `"1.5"`, true},
+	{"u128", `"3e38"`, true},
+	{"i128", `"-170141183460469231731687303715884105728"`, false},
+	{"i128", `"-170141183460469231731687303715884105729"`, true},
+	{"f64", `"99.99999999976716935634613037109375"`, false},
 }
 
 // TestLuaWideKindsJson pins the wide kinds in the JSON text form
 // (docs/SPEC-TABLES.md §16.2: 128-bit integers are decimal integers and fixed
 // point is whole units, exact in both directions and never through a double).
-// For every row the Go reference engine reads the token and writes the
-// instance; the Lua leg must read the same text to the same raw halves and
-// write the same text, with the same verdict counters.
+// For every row the strict read accepts, the Go reference engine reads the
+// token and writes the instance; the Lua leg must read the same text to the
+// same raw halves and write the same text, with the same verdict counters.
+// For every row it refuses, the Go engine and the Lua leg both refuse.
 func TestLuaWideKindsJson(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -89,7 +105,17 @@ func TestLuaWideKindsJson(t *testing.T) {
 			text := []byte(`{ "` + row.field + `": ` + row.token + ` }`)
 			inst := model.New(root)
 			var report tabletext.Report
-			if ok := model.Read(inst, text, &report); !ok {
+			ok := model.Read(inst, text, &report)
+			if row.refused {
+				// verdict only, never the reason (docs/rulings.json
+				// refusal-verdict-only): the oracle and the leg both refuse
+				if ok {
+					t.Fatalf("the Go engine read %s, which the strict read refuses", text)
+				}
+				requireLuaJSONRefused(t, out, ModuleName(u), text)
+				return
+			}
+			if !ok {
 				t.Fatalf("the Go engine refused %s: %+v", text, report)
 			}
 			wantText, err := model.Write(inst)
@@ -138,6 +164,24 @@ print((text:gsub(".", function(c) return string.format("%02x", c:byte()) end)))
 				t.Errorf("Lua wide text differs from the Go engine for %s\n--- got ---\n%s--- want ---\n%s", text, got, want.String())
 			}
 		})
+	}
+}
+
+// requireLuaJSONRefused runs the Lua leg's plain JSON read (THE STRICT READ,
+// docs/SPEC-TABLES.md §6.5) over text and requires it to refuse: no value.
+func requireLuaJSONRefused(t *testing.T, out, module string, text []byte) {
+	t.Helper()
+	probe := `local T = require("` + module + `")
+local J = require("json")
+local inputs = require("inputs")
+local v = J.FromJson(T, "Root", inputs.text, {})
+print(v == nil and "refused" or "read")
+`
+	if err := os.WriteFile(filepath.Join(out, "main.lua"), []byte(probe), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.TrimSpace(string(luarun.Run(t, out, "main.lua", map[string][]byte{"text": text}))); got != "refused" {
+		t.Errorf("the Lua JSON read answered %q on %s, which the Go engine refuses; want refused", got, text)
 	}
 }
 

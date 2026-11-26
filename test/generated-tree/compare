@@ -173,5 +173,5 @@ if [ "$fail" -ne 0 ]; then
 	exit 1
 fi
 
-printf 'generated/ tree is current: %s emitted file(s) byte-identical, %s named exception(s), %s ignored path(s).\n' \
+printf 'generated/ tree is current: %s emitted file(s) byte-identical, %s named exception(s), %s untracked build path(s) (.gitignore build products, never tracked), judged on neither side.\n' \
 	"$(count "$work/common")" "$(count "$work/allowed")" "$(count "$work/ignored")"

@@ -4,10 +4,10 @@
 //	retiredskips -leg c -- ./build/schema_test_c_fixedform
 //
 // docs/FIXED-FORM-ALGORITHM.md §5.6 retired the run-time walk of a stranger's
-// layout, and each leg's fixed-form program may still keep retired checks in
-// the tree, SKIPPED BY NAME with a printed line (§5.7 step 5, §5.9 #23). A
-// skip is a test that did not run, and nothing excuses one: there is no
-// ledger. The gate, at every tier it runs, is red on:
+// layout, and a check it retired LEAVES each leg's fixed-form program
+// (§5.7 step 5, §5.9 #23: a retired test leaves the suite). A skip is a
+// test that did not run, and nothing excuses one: there is no ledger. The
+// gate, at every tier it runs, is red on:
 //
 //   - any printed skip or retirement line (a SKIP, SKIPPED or RETIRED line);
 //   - the gate's own failure (its exit status is passed through).

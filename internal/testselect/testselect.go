@@ -112,6 +112,7 @@ func Nightly(root string) (map[string]bool, error) {
 			Inputs                          struct {
 				Package, Test string
 				GoTests       []string `json:"go_tests"`
+				Tests         map[string]struct{ Package, Test, Tier string }
 			}
 		}
 		if err := json.Unmarshal(rs.Bytes(), &row); err != nil {
@@ -119,6 +120,13 @@ func Nightly(root string) (map[string]bool, error) {
 		}
 		if row.Rec == "lang" && row.Name != testreg.LangFree {
 			langs = append(langs, row.Name)
+		}
+		// a union row's language runs its Go test in its own tier when it
+		// has one (testreg.Test.TierIn), else in the row's
+		for _, g := range row.Inputs.Tests {
+			if g.Tier == "nightly" || (g.Tier == "" && row.Tier == "nightly") {
+				out[strings.TrimPrefix(g.Package, "./")+":"+g.Test] = true
+			}
 		}
 		if row.Rec != "test" || row.Tier != "nightly" {
 			continue

@@ -42,7 +42,7 @@
 // conformance-go-rows-a and -b, each a row of its own.
 //
 // -registry names the test registry (test/registry/registry.jsonl): a test
-// with a gotest row runs in ci-fast's schema-test-pr shards, so it is left
+// with a gotest row runs through the driver (the nightly group), so it is left
 // out here (registered.go). A package whose every test is a row leaves the
 // selection, and a package with tests no row runs yet gets one row running
 // only those.

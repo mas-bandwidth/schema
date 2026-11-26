@@ -1,6 +1,7 @@
 package testreg
 
 import (
+	"encoding/json"
 	"go/scanner"
 	"go/token"
 	"os"
@@ -15,6 +16,23 @@ import (
 // itself, and the make target that writes it.
 var builtReads = map[string]string{
 	"fixedform-corpus": "tables-fixedform-corpus",
+}
+
+// builtJoinReads is each build output a Go test opens only as
+// filepath.Join(.., "build", frag, ...), and the make target that writes it.
+// Its repo-relative spelling ("build/" + frag) is no read here: it is how
+// internal/ci's tests quote Makefile text, how tools/schema-test names a make
+// argument it builds itself, and how the harness hands a driver a path at run
+// time. Undeclared, each red its test the first time it ran alone (the dart
+// cook-write rows, the elixir message conformance, the luau wire-fuzz pipe).
+// A test that also makes the output itself (csConformanceBuild) is held too:
+// the declared build runs before its call, so the call is the test's time.
+var builtJoinReads = map[string]string{
+	"tables-generated-dart":         "build/tables-generated-dart/.stamp",
+	"tables-generated-dart-framing": "build/tables-generated-dart-framing/countedmin/.stamp",
+	"elixir-tables-ebin":            "build-conformance-elixir",
+	"luaufuzzhost":                  "build/luaufuzzhost/luaufuzzhost",
+	"conformance-harness":           "build/conformance-harness",
 }
 
 // TestEveryBuiltReadIsDeclared: a package whose Go tests open a build output
@@ -88,6 +106,11 @@ func TestEveryBuiltReadIsDeclared(t *testing.T) {
 					p.reads[target] = rel
 				}
 			}
+			for frag, target := range builtJoinReads {
+				if prev == "build" && lit == frag {
+					p.reads[target] = rel
+				}
+			}
 		}
 		return nil
 	})
@@ -115,7 +138,9 @@ func TestEveryBuiltReadIsDeclared(t *testing.T) {
 	}
 	sort.Strings(missing)
 	if len(missing) > 0 {
-		t.Fatalf("%s does not declare what these Go tests read:\n%s", GoNeedsPath, strings.Join(missing, "\n"))
+		// one line, so a run's first line of the failure names each missing
+		// declaration (a plant matches its reason there)
+		t.Fatalf("%s does not declare what these Go tests read: %s", GoNeedsPath, strings.Join(missing, "; "))
 	}
 }
 
@@ -170,7 +195,7 @@ func TestGoNeedsSelectByPackageAndWholeTestName(t *testing.T) {
 		{"./internal/x", "TestA", "corpus"},
 		{"./internal/x", "TestAB", ""},
 		{"./internal/x", "TestB", ""},
-		{"./internal/y", "TestA", "corpus,other"},
+		{"./internal/y", "TestA", "other,corpus"},
 		{"./internal/z", "TestA", ""},
 	} {
 		if got := strings.Join(GoNeedsOf(needs, c.pkg, c.test), ","); got != c.want {
@@ -274,5 +299,43 @@ func TestEveryModuleBuiltAgainstBuildIsDeclared(t *testing.T) {
 	sort.Strings(missing)
 	if len(missing) > 0 {
 		t.Fatalf("%s declares no build for these packages of modules built against build/:\n%s", GoNeedsPath, strings.Join(missing, "\n"))
+	}
+}
+
+// TestNoRowMakesATargetTheNeedsTableDeclares: a gotest row's own "make" input is
+// built as one step, so a target that go-needs.txt declares as a chain of
+// steps (the generated tree, the driver) is never made through it: the row
+// would build the whole chain inside one step's limit. A row names what it
+// builds in go-needs.txt. Planted: the json-walk row with its old
+// "make": ".stamp" input is named.
+func TestNoRowMakesATargetTheNeedsTableDeclares(t *testing.T) {
+	t.Parallel()
+	root := filepath.Join("..", "..")
+	needs, err := LoadGoNeeds(filepath.Join(root, GoNeedsPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	declared := map[string]bool{}
+	for _, n := range needs {
+		declared[n.Target] = true
+	}
+	reg, err := Load(filepath.Join(root, DefaultPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range reg.Tests {
+		if row.Adapter != "gotest" {
+			continue
+		}
+		var in struct{ Make string }
+		if json.Unmarshal(row.Inputs, &in) != nil || in.Make == "" {
+			continue
+		}
+		if declared[in.Make] {
+			t.Errorf("%s makes %s in its own step, and %s declares it as a step of its own: declare the row's builds there", row.Key, in.Make, GoNeedsPath)
+		}
+	}
+	if len(needs) == 0 || len(reg.Tests) == 0 {
+		t.Fatal("the needs table or the registry is empty; the check holds nothing")
 	}
 }

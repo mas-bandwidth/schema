@@ -77,7 +77,9 @@ func cDeadBytesBody(vec fixedvector.DeadVector, snake string) string {
 func TestFixedAbsentOptionalPayloadHasPresentLane(t *testing.T) {
 	t.Parallel()
 	const snake = "dead_root"
-	header := cT12Header(t, cReadSchema(t, "DeadBytes"))
+	src := cReadSchema(t, "DeadBytes")
+	header := cT12Header(t, src)
+	u := unitFrom(t, src)
 	cases := []struct{ comment, want string }{
 		{"label", "1u"},      /* text inside the absent optional's payload */
 		{"nums count", "1u"}, /* counted array inside it */
@@ -87,7 +89,7 @@ func TestFixedAbsentOptionalPayloadHasPresentLane(t *testing.T) {
 		{"opt present, absent payload defaults", "0u"},   /* the outermost flag is under no optional */
 	}
 	for _, c := range cases {
-		line := cDeadPlanLine(t, header, snake, c.comment)
+		line := cDeadPlanLine(t, header, u, "DeadRoot", snake, c.comment)
 		inner := line[strings.Index(line, "{")+1 : strings.LastIndex(line, "}")]
 		fields := strings.Split(inner, ",")
 		got := strings.TrimSpace(fields[len(fields)-1])
@@ -97,24 +99,9 @@ func TestFixedAbsentOptionalPayloadHasPresentLane(t *testing.T) {
 	}
 }
 
-// cDeadPlanLine is the one published plan entry whose comment is `comment`.
-func cDeadPlanLine(t *testing.T, header, snake, comment string) string {
+// cDeadPlanLine is the one published plan entry of the fixed root named
+// root (published as snake) that the plan walk names note.
+func cDeadPlanLine(t *testing.T, header string, u *ir.Unit, root, snake, note string) string {
 	t.Helper()
-	marker := snake + "_fixed_plan[] = {\n"
-	at := strings.Index(header, marker)
-	if at < 0 {
-		t.Fatalf("the header publishes no %s_fixed_plan", snake)
-	}
-	body := header[at+len(marker):]
-	before, _, ok := strings.Cut(body, "};")
-	if !ok {
-		t.Fatalf("the header's %s_fixed_plan has no closing brace", snake)
-	}
-	for line := range strings.SplitSeq(before, "\n") {
-		if strings.Contains(line, "/* "+comment+" */") {
-			return line
-		}
-	}
-	t.Fatalf("the %s_fixed_plan has no entry commented %s", snake, comment)
-	return ""
+	return cFixedRow(t, header, snake+"_fixed_plan[] = {\n", cFixedPlanNotes(u, cNamedFixedRoot(t, u, root)), note)
 }

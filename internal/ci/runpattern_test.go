@@ -438,7 +438,8 @@ type runPatternException struct {
 // separate Go module whose generated replacements do not exist until `make`
 // builds them; and two are $(3) templates with no value until the caller
 // expands it; and two pair an empty -run '^$' with -fuzz so only the fuzz
-// target runs.
+// target runs; and three are make-gotest targets' lists of exact names, each
+// name a registry row the make-gotest adapter reads by that name.
 var runPatternExceptions = []runPatternException{
 	{"make/python-fixed-proof-evolution.mk python-fixed-proof-evolution", "Make expands this aggregate selector; TestPythonFixedEvolutionCICoverage checks the expanded tagged test list and every selected case", "$(PYTHON_FIXED_EVOLUTION_AGGREGATE)"},
 	{"make/python-fixed-proof-evolution.mk $(PYTHON_FIXED_EVOLUTION_TARGETS)", "Make expands this per-row selector; TestPythonFixedEvolutionCICoverage checks every tagged test and subcase exactly once, with omission and duplicate controls", "$(PYTHON_FIXED_EVOLUTION_PATTERN_$(@:python-fixed-proof-evolution-row-%=%))"},
@@ -455,6 +456,8 @@ var runPatternExceptions = []runPatternException{
 	{"make/go.mk tables-go-release", "same separate test/go-tables module, -run '^TestSoak$$'", "^TestSoak$"},
 	{"make/go.mk tables-go-usage", "same separate test/go-tables module, -run '^TestUsage$$'", "^TestUsage$"},
 	{"make/go.mk tables-go-keyed", "same separate test/go-tables module, -run '^TestKeyed'", "^TestKeyed"},
+	{"make/go.mk conformance-go-rows-a", "cd test/conformance/go && go test ... ./rows/ — test/conformance/go is a separate Go module, so -list cannot run from the repo root; the pattern is make's $(call go_rows_run,...) over the registry's make-gotest rows, each of which reads its own test's pass by name from go test -json (a test that does not run fails its row)", "$(call"},
+	{"make/go.mk conformance-go-rows-b", "same separate test/conformance/go module, the second half of the rows", "$(call"},
 	{"make/go.mk fuzz-tables-go", "-run '^$$' runs no test on purpose: the recipe runs the fuzz target FuzzTableFrontEnd alone", "^$"},
 	{"make/go.mk fuzz-generated-readers-go", "-run '^$$' runs no test on purpose: the recipe runs a fuzz target alone", "^$"},
 	{"make/moo-text.mk tables-moo-json", "-run '$(MOO_TEXT_GATES)' is a make variable defined at the top of make/moo-text.mk; the gate reads the recipe's literal text, so the pattern has no value until make expands it", "$(MOO_TEXT_GATES)"},
@@ -464,6 +467,9 @@ var runPatternExceptions = []runPatternException{
 	{"make/name-buildability.mk name-buildability-run", "-run \"$$NAME_BUILDABILITY_RUN\" is the pattern schema-test sets per run (tools/schema-test/namebuild.go, runNameBuild), one alternative per asked case; TestRunNameBuildReadsWhatTheRunWrote holds that every asked subtest answers, and an answer of none fails by name", "$NAME_BUILDABILITY_RUN"},
 	{"Makefile define message_form_control", "inside define message_form_control: $(3) is the caller's test name, so the pattern has no value until expansion", "^$(3)$"},
 	{"make/js.mk define js_jstable_control", "inside define js_jstable_control: $(3) is the caller's test pattern and $(4) its package, so the pattern has no value until expansion", "$(3)"},
+	{"make/c.mk tables-c-versioning", "Make expands this list of exact names; each name is a make-gotest registry row of the target, read by that name from the run's go test -json events, so a name that matches no test fails its row (TestAMakeGoTestRowIsReadByItsExactName), a listed name that no row names fails TestAMakeGoTestTargetsListIsExactlyItsRows, and a test the target runs that no row names fails every row", "^($(subst $(eval) ,|,$(strip $(C_VERSIONING_TESTS))))$"},
+	{"make/java.mk tables-java-package", "Make expands this list of exact names; each name is a make-gotest registry row of the target, read by that name from the run's go test -json events, so a name that matches no test fails its row (TestAMakeGoTestRowIsReadByItsExactName), a listed name that no row names fails TestAMakeGoTestTargetsListIsExactlyItsRows, and a test the target runs that no row names fails every row", "^($(subst $(eval) ,|,$(strip $(JAVA_PACKAGE_TESTS))))$"},
+	{"make/unity.mk unity-fixed", "Make expands this list of exact names; each name is a make-gotest registry row of the target, read by that name from the run's go test -json events, so a name that matches no test fails its row (TestAMakeGoTestRowIsReadByItsExactName), a listed name that no row names fails TestAMakeGoTestTargetsListIsExactlyItsRows, and a test the target runs that no row names fails every row", "^($(subst $(eval) ,|,$(strip $(UNITY_FIXED_TESTS))))$"},
 }
 
 type runRecipeBound struct {

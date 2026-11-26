@@ -26,6 +26,7 @@ import (
 const fileHeaderBytes = 16
 
 func TestFixedFormUnder20Bytes(t *testing.T) {
+	t.Parallel()
 	corpus := corpusDir(t)
 	oldFile := filepath.Join(corpus, "old_array_bounded_grow.bin")
 	raw, err := os.ReadFile(oldFile)

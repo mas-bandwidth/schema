@@ -28,7 +28,9 @@
 // directory; the wrapper builds gotestrun in the checkout's root). Under -red,
 // gotestrun failing before a verdict is exit 0, NOT RED, since a control reads
 // any non-zero exit as its sabotage caught. The text written is what go test -v
-// prints, but that a package's result line ("ok  <pkg>  0.1s") carries
+// prints, each package's output whole and in the order the packages started
+// (go test -json interleaves packages that run at once; its plain output does
+// not), but that a package's result line ("ok  <pkg>  0.1s") carries
 // " (go test -json, read by gotestrun)", so a log of go test's bare plain
 // output still reads as one (tools/schema-test's make adapter refuses it).
 //
@@ -70,6 +72,11 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
+// EventsEnv names a file every go test -json event of the run is appended to:
+// the driver's make-gotest rows (tools/schema-test) set it, and read each Go
+// test's verdict from it by name. Unset, nothing is written.
+const EventsEnv = "SCHEMA_GOTEST_JSON"
+
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
@@ -91,8 +98,16 @@ type tally struct {
 	// skippedTests names every test ("package test") that skipped, in the
 	// order go test reported the skips.
 	skippedTests []string
+	// subRuns counts the subtests that ran under each top-level test
+	// ("package test"); seedless names every fuzz target that passed having
+	// run no seed input (each seed is a subtest), so tested nothing.
+	subRuns  map[string]int
+	seedless []string
 	// readErr is why the stream could not be read to its end, or nil.
 	readErr error
+	// writeErr is why an event could not be appended to the events file, or
+	// nil: a run whose events did not all reach the file is refused.
+	writeErr error
 	// missing is the first output line saying a test lacked its toolchain or
 	// pin (missingTool), or "".
 	missing string
@@ -106,9 +121,23 @@ var missingTool = regexp.MustCompile(regexp.QuoteMeta(slowtest.MissingWords) + `
 
 // read consumes a `go test -json` stream. Text that is not an event (a
 // toolchain message before the first package) is passed to text unchanged.
-// Output events are written to text as go test would have printed them.
-func read(in io.Reader, text io.Writer) tally {
-	t := tally{perPackage: map[string]int{}}
+// Output events are written to text as go test would have printed them, each
+// package's output whole and ending in its result line, in the order the
+// packages started: go test -json interleaves the events of packages that run
+// at once, where its plain output does not, and a reader of the log (the make
+// adapter's go_tests check, tools/schema-test) credits a --- PASS line to the
+// package whose result line follows it. The first unfinished package's
+// output streams; a later one's is held until every package before it ends.
+func read(in io.Reader, text io.Writer) tally { return readTo(in, text, nil) }
+
+// readTo is read that also appends every event line, as go test wrote it, to
+// events (nil: none): the file $(GO_TEST) writes for the driver's make-gotest
+// rows (EventsEnv). One write per line, so the lines of go tests that run
+// side by side under make -j never interleave within a line.
+func readTo(in io.Reader, text, events io.Writer) tally {
+	t := tally{perPackage: map[string]int{}, subRuns: map[string]int{}}
+	out := packageOrder{text: text, held: map[string]*bytes.Buffer{}, done: map[string]bool{}}
+	defer out.flush()
 	sc := bufio.NewScanner(in)
 	sc.Buffer(make([]byte, 1<<20), 64<<20)
 	for sc.Scan() {
@@ -118,27 +147,50 @@ func read(in io.Reader, text io.Writer) tally {
 			_, _ = text.Write(append(bytes.Clone(line), '\n')) // errdiscard: best-effort mirror of go test output; tally decides the verdict
 			continue
 		}
+		if events != nil && t.writeErr == nil {
+			if _, err := events.Write(append(bytes.Clone(line), '\n')); err != nil {
+				t.writeErr = err
+			}
+		}
+		if e.Action == "build-output" {
+			// a build's own text (the compiler's errors) comes as
+			// build-output with an ImportPath and no Package: it is the
+			// named cause of the package's [build failed], so it is written
+			out.write("", e.Output)
+			continue
+		}
 		if e.Package != "" {
 			if _, ok := t.perPackage[e.Package]; !ok {
 				t.perPackage[e.Package] = 0
 			}
+			out.see(e.Package)
 		}
 		if e.Action == "output" {
 			if t.missing == "" && missingTool.MatchString(e.Output) {
 				t.missing = strings.TrimSpace(e.Output)
 			}
-			_, _ = io.WriteString(text, markResult(e)) // errdiscard: best-effort mirror of go test output; tally decides the verdict
+			out.write(e.Package, markResult(e))
 			continue
 		}
 		if e.Test == "" {
+			if e.Action == "pass" || e.Action == "fail" || e.Action == "skip" {
+				out.end(e.Package)
+			}
 			continue // a package-level verdict is not a test
 		}
+		top, _, isSub := strings.Cut(e.Test, "/")
 		switch e.Action {
 		case "run":
 			t.ran++
+			if isSub {
+				t.subRuns[e.Package+" "+top]++
+			}
 		case "pass":
 			t.passed++
 			t.perPackage[e.Package]++
+			if !isSub && strings.HasPrefix(top, "Fuzz") && t.subRuns[e.Package+" "+top] == 0 {
+				t.seedless = append(t.seedless, e.Package+" "+top)
+			}
 		case "skip":
 			t.skipped++
 			t.skippedTests = append(t.skippedTests, e.Package+" "+e.Test)
@@ -162,6 +214,9 @@ func verdict(exit int, t tally, each bool) (int, string) {
 	}
 	if t.skipped > 0 {
 		return 1, fmt.Sprintf("SKIPPED: %d test(s) of this selection skipped themselves, so they did not run; a skip is a failure, and a test that is not to run is left out at the root", t.skipped)
+	}
+	if len(t.seedless) > 0 {
+		return 1, fmt.Sprintf("NO SEED: fuzz target(s) ran no seed input (no f.Add and no testdata/fuzz corpus), so they tested nothing: %s", strings.Join(t.seedless, ", "))
 	}
 	if t.passed == 0 {
 		return 1, "go test exited 0 but no test passed"
@@ -290,13 +345,44 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if err := cmd.Start(); err != nil {
 		return broken("%v", err)
 	}
-	t := read(pipe, stdout)
+	// the events file the driver reads its make-gotest verdicts from
+	// (EventsEnv); a control's red run (-red) writes none, since its red is
+	// the control's and not a verdict of the tests it ran
+	var events *os.File
+	if p := os.Getenv(EventsEnv); p != "" && !red {
+		f, err := os.OpenFile(p, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o644)
+		if err != nil {
+			_ = cmd.Process.Kill() // errdiscard: the run is refused; this only stops go test
+			_ = cmd.Wait()         // errdiscard: as above
+			return broken("%s=%s: %v", EventsEnv, p, err)
+		}
+		// closed on every path; the success path closes it first and checks
+		defer func() { _ = f.Close() }() // errdiscard: a second Close of a closed file, or the close of a run already broken
+		events = f
+	}
+	var t tally
+	if events != nil {
+		t = readTo(pipe, stdout, events)
+	} else {
+		t = read(pipe, stdout)
+	}
+	if t.writeErr != nil {
+		_, _ = io.Copy(io.Discard, pipe) // errdiscard: the run is already broken; this only lets go test exit
+		_ = cmd.Wait()                   // errdiscard: as above
+		return broken("writing go test events to %s: %v", events.Name(), t.writeErr)
+	}
 	if t.readErr != nil {
 		// what go test still writes is drained, so it is not left blocked on
 		// a pipe nobody reads
 		_, _ = io.Copy(io.Discard, pipe) // errdiscard: the run is already broken; this only lets go test exit
 		_ = cmd.Wait()                   // errdiscard: as above
 		return broken("reading go test -json: %v", t.readErr)
+	}
+	if events != nil {
+		if err := events.Close(); err != nil {
+			_ = cmd.Wait() // errdiscard: the run is already broken; this only lets go test exit
+			return broken("closing go test events %s: %v", events.Name(), err)
+		}
 	}
 	exit := 0
 	if err := cmd.Wait(); err != nil {
@@ -327,4 +413,69 @@ func run(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintf(stderr, "gotestrun: REFUSED: %s\n", why)
 	}
 	return code
+}
+
+// packageOrder writes each package's output whole, in the order the packages
+// started: the first unfinished package's output goes straight to text, and
+// a later package's is held until every package started before it has ended.
+type packageOrder struct {
+	text  io.Writer
+	order []string                 // packages, in the order first seen
+	at    map[string]int           // each package's place in order
+	head  int                      // order[head] is the package streaming now
+	held  map[string]*bytes.Buffer // output of packages behind the head
+	done  map[string]bool          // packages whose verdict event came
+}
+
+// see records a package the first time an event names it.
+func (o *packageOrder) see(pkg string) {
+	if _, ok := o.held[pkg]; ok {
+		return
+	}
+	if o.at == nil {
+		o.at = map[string]int{}
+	}
+	o.at[pkg] = len(o.order)
+	o.held[pkg] = &bytes.Buffer{}
+	o.order = append(o.order, pkg)
+}
+
+// write writes one package's output, or holds it behind the head. Output with
+// no package, of the head, or of a package before the head (one already
+// written out) goes straight through; a package behind the head that ended
+// keeps its place.
+func (o *packageOrder) write(pkg, s string) {
+	if pkg != "" {
+		o.see(pkg)
+	}
+	if pkg == "" || o.at[pkg] <= o.head {
+		_, _ = io.WriteString(o.text, s) // errdiscard: best-effort mirror of go test output; tally decides the verdict
+		return
+	}
+	o.held[pkg].WriteString(s)
+}
+
+// end marks a package finished; when it is the head, the packages behind it
+// are written out in order until one that has not finished, which streams.
+func (o *packageOrder) end(pkg string) {
+	o.done[pkg] = true
+	for o.head < len(o.order) && o.done[o.order[o.head]] {
+		o.head++
+		if o.head < len(o.order) {
+			o.release(o.order[o.head])
+		}
+	}
+}
+
+// release writes a package's held output.
+func (o *packageOrder) release(pkg string) {
+	_, _ = o.text.Write(o.held[pkg].Bytes()) // errdiscard: best-effort mirror of go test output; tally decides the verdict
+	o.held[pkg].Reset()
+}
+
+// flush writes whatever is still held, in order, when the stream ends.
+func (o *packageOrder) flush() {
+	for ; o.head < len(o.order); o.head++ {
+		o.release(o.order[o.head])
+	}
 }

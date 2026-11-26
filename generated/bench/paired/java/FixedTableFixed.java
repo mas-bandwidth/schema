@@ -439,7 +439,8 @@ public final class FixedTableFixed {
 
         // STEPS 9 AND 10: the file's own tail arithmetic — a record size of eight
         // or less, a header and layout followed by no record, and a ragged tail
-        // refuse truncated by name (§5.3; no malformed flag) — and the caller's capacity,
+        // refuse truncated by name (§5.3; the report has no damage flag) — and the caller's
+        // capacity,
         // which refuses batchTooLarge.
         final long rest = data.length - head.recordsAt;
         if (recordSize <= 8 || rest == 0 || rest % recordSize != 0) {

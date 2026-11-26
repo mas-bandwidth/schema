@@ -124,8 +124,13 @@ const THEIRS_LO = 0xfeedface, THEIRS_HI = 0x0badc0de;
 const known = [new TableFixedKnownLayout(THEIRS_LO, THEIRS_HI, theirs, theirs.length, 8 + 20)];
 const lane = TableFixedLineagePlans(known, keyed.TeamConfigFixedHashLo, keyed.TeamConfigFixedHashHi,
   own, Int32Array.from(dstRows), body)[0];
-check(lane !== null && lane.ready === true && lane.why === 0 && lane.unknown === 0 && lane.mismatch === 0,
-  `absent field: the pre-spawn writer's layout compiles to a plan of ${lane && lane.count} entries, nothing unknown`);
+// A LAWFUL ENTRY IS ONE THAT LAYS A PLAN (§5.2 MATCH/EMIT, §5.4, §5.9 #30):
+// an unlawful one lays none and its lane carries layout_malformed (or
+// kind_mismatch) in `why`. The plan's unknown/mismatch counters this row once
+// read are the compile census §5.8 row 11 retired (jstable 8265da2bd2); a
+// lane no longer has them, so `ready`, `why` and the entry count are the law.
+check(lane !== null && lane.ready === true && lane.why === 0 && lane.count === 2,
+  `absent field: the pre-spawn writer's layout compiles to a plan of ${lane && lane.count} entries, nothing refused`);
 
 // ---- 3: the unwritten ranges are EXACTLY the absent field's bytes ----
 

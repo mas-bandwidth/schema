@@ -105,7 +105,7 @@ func TestPythonMapKeyWidenKinds(t *testing.T) {
 	// Valid framing with duplicate widened keys must still refuse structurally.
 	source := loadUnit(t, "package probe\ntable Root { values map[int8]int32 }\n")
 	target := loadUnit(t, "package probe\ntable Root { values map[int32]int32 }\n")
-	mapKeyWireProbe(t, target, "Root", pythonVTMapKeyedWire(t, source, "Root", []int64{2, 2}), nil, 0, "wire_damaged")
+	mapKeyWireProbe(t, target, "Root", pythonVTMapSplicedWire(t, source, target, "Root", 0x5a, 0x6b, 1, true), nil, 0, "wire_damaged")
 }
 
 func TestPythonMapKeyWidenCountNegativeControl(t *testing.T) {

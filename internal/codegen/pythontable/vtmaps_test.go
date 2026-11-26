@@ -296,37 +296,56 @@ func pythonVTMapEngineWire(t *testing.T, u *ir.Unit, root, text string) []byte {
 }
 
 // pythonVTMapDamagedWire is a wire of the construct's first map that no
-// conforming writer emits. "duplicate" holds one key twice, through the
-// engine's own encoder (its stable sort keeps both entries). "descending"
-// holds two keys in descending order: the encoder always writes ascending, so
-// the wire is the engine's for two distinctive int32 keys with the keys' four
-// bytes swapped in place, which keeps every length and frame intact.
+// conforming writer emits. "duplicate" holds one key twice; "descending" holds
+// two keys in descending order. The engine's writer refuses a repeated key
+// (invalid_value) and always writes ascending, so each is the engine's wire for
+// two distinctive int32 keys with the keys' bytes spliced in place, which keeps
+// every length and frame intact (pythonVTMapSplicedWire).
 func pythonVTMapDamagedWire(t *testing.T, u *ir.Unit, root, label string) []byte {
 	t.Helper()
+	const low, high = 0x3c3c0102, 0x3c3c0203
 	switch label {
 	case "duplicate":
-		return pythonVTMapKeyedWire(t, u, root, []int64{2, 2})
+		return pythonVTMapSplicedWire(t, u, u, root, low, high, 4, true)
 	case "descending":
-		const low, high = 0x3c3c0102, 0x3c3c0203
-		wire := pythonVTMapKeyedWire(t, u, root, []int64{low, high})
-		a := binary.LittleEndian.AppendUint32(nil, low)
-		b := binary.LittleEndian.AppendUint32(nil, high)
-		if bytes.Count(wire, a) != 1 || bytes.Count(wire, b) != 1 {
-			t.Fatalf("the keys' bytes are not unique in the engine's wire %x", wire)
-		}
-		i, j := bytes.Index(wire, a), bytes.Index(wire, b)
-		if i >= j {
-			t.Fatalf("the engine's wire is not ascending: %x", wire)
-		}
-		copy(wire[i:], b)
-		copy(wire[j:], a)
-		return wire
+		return pythonVTMapSplicedWire(t, u, u, root, low, high, 4, false)
 	}
 	t.Fatalf("no damaged wire %q", label)
 	return nil
 }
 
-// pythonVTMapKeyedWire writes a map whose entries carry the keys given,
+// pythonVTMapSplicedWire is the engine's wire of writer's map holding the two
+// keys low < high (each width bytes on the wire, little-endian), with high's
+// bytes overwritten by low's (duplicate) or the two swapped (descending). The
+// Go engine's read under reader must refuse it: the oracle and the leg both
+// refuse, verdict only (docs/SPEC-TABLES.md §6.5).
+func pythonVTMapSplicedWire(t *testing.T, writer, reader *ir.Unit, root string, low, high int64, width int, duplicate bool) []byte {
+	t.Helper()
+	wire := pythonVTMapKeyedWire(t, writer, root, []int64{low, high})
+	le := func(v int64) []byte { return binary.LittleEndian.AppendUint64(nil, uint64(v))[:width] }
+	a, b := le(low), le(high)
+	if bytes.Count(wire, a) != 1 || bytes.Count(wire, b) != 1 {
+		t.Fatalf("the keys' bytes are not unique in the engine's wire %x", wire)
+	}
+	i, j := bytes.Index(wire, a), bytes.Index(wire, b)
+	if i >= j {
+		t.Fatalf("the engine's wire is not ascending: %x", wire)
+	}
+	if duplicate {
+		copy(wire[j:], a)
+	} else {
+		copy(wire[i:], b)
+		copy(wire[j:], a)
+	}
+	m := tabletext.NewModel(reader)
+	var rep tabletext.Report
+	if ok, err := tablewire.Decode(m, m.New(reader.Tables[root]), wire, &rep); ok || err == nil {
+		t.Fatalf("the Go engine reads the spliced map wire %x (duplicate=%v): %v", wire, duplicate, err)
+	}
+	return wire
+}
+
+// pythonVTMapKeyedWire writes a map whose entries carry the distinct keys given,
 // through the engine's own encoder, which writes them in ascending order.
 func pythonVTMapKeyedWire(t *testing.T, u *ir.Unit, root string, keys []int64) []byte {
 	t.Helper()

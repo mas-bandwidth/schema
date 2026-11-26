@@ -270,7 +270,7 @@ fixed table T
 	}
 	t06Has(t, scatter, "if b[at] > 1 && report.slack == 0 {",
 		"C12 a live bool byte past 1 is checked")
-	t06Has(t, scatter, "report.damaged = true;", "C12 a live bool byte past 1 is damage")
+	t06Has(t, scatter, "report.wire_damage += 1;", "C12 a live bool byte past 1 is damage")
 	t06Has(t, scatter, "value.ok = b[at] == 1;", "C12 a bool byte lands as `byte == 1`")
 }
 
@@ -293,7 +293,7 @@ fixed table T
 	}
 	t06Has(t, scatter, "if b[0] > 1 && report.slack == 0 {",
 		"C13 a live present byte past 1 is checked")
-	t06Has(t, scatter, "report.damaged = true;", "C13 a live present byte past 1 is damage")
+	t06Has(t, scatter, "report.wire_damage += 1;", "C13 a live present byte past 1 is damage")
 	t06Has(t, scatter, "value.link_present = b[0] == 1;",
 		"C13 a present flag byte lands as `byte == 1`")
 	if present, payload := strings.Index(scatter, "value.link_present = b[0] == 1;"),
@@ -318,7 +318,7 @@ func t06R17(t *testing.T) {
 			t.Fatalf("R17 %s: t_fixed_scatter is not emitted", tc.name)
 		}
 		t06Has(t, scatter, tc.check, "R17 a live byte past 1 is checked")
-		t06Has(t, scatter, "report.damaged = true;", "R17 a live byte past 1 is damage")
+		t06Has(t, scatter, "report.wire_damage += 1;", "R17 a live byte past 1 is damage")
 		t06Has(t, scatter, tc.want, "R17 the byte lands as `== 1`")
 		if strings.Contains(scatter, "report.held") {
 			t.Errorf("R17 %s: a non-0/1 byte COUNTED held; it is damage, never a held count:\n%s", tc.name, scatter)
@@ -480,7 +480,7 @@ fixed table T
 	load := t06Load(t, text, "T")
 	t06Has(t, load, "let n = rest.len() / record_bytes;",
 		"R11 the record count is the file's, divided by the LOCK's record size")
-	t06Has(t, load, "table_fixed_run(entries, guards, table, &record[8..], &mut image, report);",
+	t06Has(t, load, "if !table_fixed_run(entries, guards, table, &record[8..], &mut image, report) {",
 		"R11 one plan runs per read, selected for its lineage entry")
 }
 

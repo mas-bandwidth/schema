@@ -180,9 +180,10 @@ abstract final class TableFixedRefusal {
   static const int batchTooLarge = 14;
 
   /// THE TWO LAYOUT REFUSALS OF §5, and the operator's two distinct answers:
-  /// a hash NO lineage entry of this build holds is 'layout_newer' — ship the
-  /// reader — and a hash the lineage holds BELOW THE FLOOR is
-  /// 'layout_unsupported' — upgrade the client. Both report the FILE'S hash.
+  /// a hash NO lineage entry of this build holds is 'layout_unknown'
+  /// (25, below; 'layout_newer' is retired) — and a hash the lineage
+  /// holds BELOW THE FLOOR is 'layout_unsupported' — upgrade the client.
+  /// Both report the FILE'S hash.
   /// The NAMES are the contract and the integers are this leg's own, taken in
   /// the order §5.3 names them (§5.9 #14).
   static const int layoutNewer = 15;
@@ -208,6 +209,13 @@ abstract final class TableFixedRefusal {
   /// A WRITER'S OPTIONAL READ INTO A READER'S BARE FIELD refuses by name: the
   /// reader cannot hold an absent value (rulings 2026-11-22, R2).
   static const int wrongKind = 24;
+
+  /// A HASH NO LINEAGE ENTRY OF THIS BUILD HOLDS (docs/FIXED-FORM-ALGORITHM.md
+  /// §5.3 step 5, SPEC-TABLES §21.3): nothing in the lineage proves it newer,
+  /// so the answer is 'layout_unknown' in every leg, reporting THE FILE'S hash
+  /// and nothing else. 'layout_newer' keeps 15 and no read answers it; this
+  /// is appended so no integer moves.
+  static const int layoutUnknown = 25;
 
   /// The refusal's own name, for a report a person reads.
   static String name(int refusal) {
@@ -262,6 +270,8 @@ abstract final class TableFixedRefusal {
         return 'length_over_bound';
       case wrongKind:
         return 'kind_mismatch';
+      case layoutUnknown:
+        return 'layout_unknown';
       default:
         return '???';
     }
@@ -285,7 +295,7 @@ final class TableFixedReport {
   String nonFiniteFloat = '';
 
   /// THE FILE'S HASH, and the LAST member of the report: it is set by the two
-  /// LAYOUT refusals — 'layout_newer' and 'layout_unsupported' — and is zero on
+  /// LAYOUT refusals — 'layout_unknown' and 'layout_unsupported' — and is zero on
   /// every other path (§5.9 #15). An operator deciding between "ship the
   /// reader" and "upgrade the client" needs the number in both answers.
   int layoutHash = 0;

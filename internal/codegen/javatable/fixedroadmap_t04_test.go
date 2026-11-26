@@ -174,7 +174,7 @@ fixed table T
 func t04R19(t *testing.T) {
 	runtime := t04Runtime()
 	for _, want := range []string{
-		"unknown = 0; widened = 0; damaged = false;",
+		"unknown = 0; widened = 0; refused = false;",
 		"refused = false; reason = Reason.none; layoutHash = 0;",
 	} {
 		t04Has(t, runtime, want, "R19 a clean read moves nothing")
@@ -299,9 +299,14 @@ fixed table T
 	}
 	t04No(t, runtime, "java.lang.Math.min(theirN, myN)", "R16 a shrunk array is unlawful and is never truncated to the reader (§5.1, §5.4)")
 	// COPY, CONST, PRESENT AND ORDINAL MOVE NOTHING: the opCopy case carries no
-	// counter bump at all (only its framing-damage `malformed` guard), so the
-	// only counters the run loop can move are the widen, count/text clamp and
-	// forged-ordinal bumps the clauses above name.
+	// counter bump at all, so the only counters the run loop can move are the
+	// widen, count/text clamp and forged-ordinal bumps the clauses above name.
+	// Its one refusal is the plan-reach guard, pinned whole with its condition
+	// (an entry reaching past the writer's record): the plan and the record
+	// size both come from the build's lineage, so no file trips it. Today it
+	// answers layoutMalformed; §5.3 names layout_record_too_large for an entry
+	// past the writer's record and §5.8 owes that rename, so either name passes
+	// here and nothing else does.
 	runtime = javaTokens(runtime)
 	start := strings.Index(runtime, javaTokens("case opCopy: {"))
 	end := strings.Index(runtime, javaTokens("case opCount: {"))
@@ -309,6 +314,15 @@ fixed table T
 		t.Fatal("R16: the run loop has no opCopy/opCount cases to bound")
 	}
 	copyBody := runtime[start:end]
+	guards := 0
+	for _, why := range []string{"layoutMalformed", "layoutRecordTooLarge"} {
+		reach := javaTokens("if (p.size < 0 || p.src < 0 || p.src + p.size > srcLength) { report.refuse(Reason." + why + "); return; }")
+		guards += strings.Count(copyBody, reach)
+		copyBody = strings.Replace(copyBody, reach, "", 1)
+	}
+	if guards != 1 {
+		t.Errorf("R16: opCopy carries %d plan-reach guards, want exactly one, with its condition as emitted", guards)
+	}
 	for _, bad := range []string{"refuse(", "widened++", "unknown++"} {
 		if strings.Contains(copyBody, bad) {
 			t.Errorf("R16: opCopy moves a counter or refuses (%s); copy lands its bytes and moves nothing", bad)

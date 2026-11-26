@@ -9,15 +9,14 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
-// F8 (schema#876, matrix row G~GGPPPP~) is fixed_form_ragged_tail: a record
-// region that is not a whole number of records is MALFORMED, the RESIDUE answer,
-// not a refusal by name. It is a gap on go, cpp and cs, only partial on c and
-// elixir. It is F7's direct sibling — the very next guard in the same emitted
-// function — and go closed it in #1291. The doc draws the two answers as
-// exclusive: refused plus reason is one answer, malformed is the other, and
-// they are NEVER both set. So reason stays UNTOUCHED (TableFixedReason::None),
-// and asserting layout_malformed here would be wrong: layout_malformed is a
-// REFUSAL by name, the other answer. The guard's first arm, record_bytes <= 8,
+// F8 (schema#876) is fixed_form_ragged_tail: a record region that is not a
+// whole number of records is REFUSED, and its recommended name is `truncated`
+// (docs/FIXED-FORM-ALGORITHM.md §5.3 step 9 and its condition table: "a ragged
+// tail: rest mod record_bytes != 0 | truncated"). The verdict is compared
+// across legs and the name is diagnostic, and THIS FORM'S REPORT HAS NO
+// MALFORMED FLAG (§5.3, "There is no `malformed` flag on this form's report"),
+// so damaged stays false. Until 2026-11-25 this test asserted the off-spec
+// answer, malformed with reason untouched. The guard's first arm, record_bytes <= 8,
 // is NOT reachable from a file at all: record_bytes is the SELECTED LINEAGE
 // ENTRY's record size, compiled into the reader (LINEAGE_FIXED_RECORD_BYTES),
 // and a reader whose own lineage declared a record under nine bytes is a
@@ -27,10 +26,10 @@ import (
 // record_bytes-1 bytes to a real corpus file. extra == record_bytes is one more
 // whole record, not a ragged tail, so it owes batch_too_large (a refusal) and
 // is measured separately. The destination is poisoned first, then every row
-// must hold the declared defaults after malformed damage. CONTROL 2
-// disables the ragged arm (fixedform.go:1187) and the row must go RED: with the
-// arm gone the reader computes n := rest / record_bytes, reads one whole record
-// off a file with a byte too many, and REPORTS SUCCESS (malformed false).
+// must hold the declared defaults after the refusal (SPEC-TABLES §6.5).
+// CONTROL: disable the ragged arm in fixedform.go and the row goes RED: with
+// the arm gone the reader computes n := rest / record_bytes, reads one whole
+// record off a file with a byte too many, and REPORTS SUCCESS.
 
 func TestFixedFormRaggedTail(t *testing.T) {
 
@@ -38,9 +37,8 @@ func TestFixedFormRaggedTail(t *testing.T) {
 
 	tests := fmt.Sprintf(`
 /// fixed_form_ragged_tail: a record region that is not a whole number of
-/// records is MALFORMED, the RESIDUE answer, never a refusal by name. The
-/// reader's two answers are exclusive: refused plus reason is one, malformed is
-/// the other, and they are NEVER both set. record_bytes is the SELECTED LINEAGE
+/// records is REFUSED by the name truncated (FIXED-FORM-ALGORITHM §5.3 step
+/// 9), and this form's report has no malformed flag. record_bytes is the SELECTED LINEAGE
 /// ENTRY's record size, compiled into the reader (LINEAGE_FIXED_RECORD_BYTES),
 /// so the guard's record_bytes <= 8 arm is NOT reachable from a file at all.
 /// rest is the file's bytes after the header and the layout block, so this row
@@ -48,9 +46,9 @@ func TestFixedFormRaggedTail(t *testing.T) {
 /// appending 1 to record_bytes-1 bytes to a REAL corpus file. extra ==
 /// record_bytes is one more whole record, not a ragged tail, so it owes a
 /// different answer and is measured separately. A clean read at the FULL length
-/// first proves the fixture, then every ragged tail must land malformed true,
-/// refused false, reason UNTOUCHED (TableFixedReason::None), the call None, all
-/// four counters zero, and every destination row reset to its declared defaults.
+/// first proves the fixture, then every ragged tail must land refused true,
+/// reason Truncated, damaged false, the call None, the counters zero, and every
+/// destination row reset to its declared defaults.
 #[test]
 fn v_fixed_form_ragged_tail() {
     let data = std::fs::read(%q).expect("the reference's new_field_append.bin");
@@ -66,7 +64,7 @@ fn v_fixed_form_ragged_tail() {
         ));
         assert!(n >= 1, "the full file lands at least one record, not {n}");
         assert!(
-            !report.refused && report.reason == TableFixedReason::None && !report.damaged,
+            !report.refused && report.reason == TableFixedReason::None,
             "the full file is neither a refusal nor damage: {:?}", report
         );
         assert!(values[0].w == 777, "the full file lost its value: w={}", values[0].w);
@@ -92,13 +90,13 @@ fn v_fixed_form_ragged_tail() {
         let mut remap = vec![0u16; 4096];
         let mut report = TableFixedReport::default();
         let n = LOADFN(&mut values, &ragged, &mut plan, &mut remap, &mut report);
-        assert!(n.is_none(), "a {extra}-byte ragged tail is malformed, never read: {:?} {:?}", n, report);
-        assert!(report.damaged, "a {extra}-byte ragged tail sets damaged: {:?}", report);
-        assert!(!report.refused, "a ragged tail is the RESIDUE, never a refusal by name: {:?}", report);
+        assert!(n.is_none(), "a {extra}-byte ragged tail is refused, never read: {:?} {:?}", n, report);
+        assert!(report.refused, "a {extra}-byte ragged tail is a refusal (§5.3 step 9): {:?}", report);
         assert_eq!(
-            report.reason, TableFixedReason::None,
-            "a ragged tail leaves reason UNTOUCHED, never layout_damaged: {:?}", report.reason
+            report.reason, TableFixedReason::Truncated,
+            "a ragged tail is refused by the name truncated: {:?}", report.reason
         );
+        assert_eq!(report.layout_hash, 0, "truncated carries no hash: {:?}", report);
         assert!(
             report.widened == 0 && report.unknown == 0,
             "a ragged tail moves no counter: {:?}", report
@@ -110,8 +108,7 @@ fn v_fixed_form_ragged_tail() {
         );
     }
     // extra == record_bytes IS ONE MORE WHOLE RECORD, not a ragged tail: the
-    // reader owes batch_too_large, a REFUSAL by name, and the damage flag
-    // stays false.
+    // reader owes batch_too_large, a different name.
     {
         let mut whole = data.clone();
         whole.extend_from_slice(&vec![0u8; record_bytes]);
@@ -126,7 +123,6 @@ fn v_fixed_form_ragged_tail() {
             "extra == record_bytes is one more whole record, owed batch_too_large, not {:?}", report.reason
         );
         assert!(report.refused, "extra == record_bytes sets refused: {:?}", report);
-        assert!(!report.damaged, "a refusal by name never sets malformed too: {:?}", report);
     }
 }
 `, filepath.Join(corpus, "new_field_append.bin"))

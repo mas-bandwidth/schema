@@ -64,7 +64,6 @@ fn %[1]s() {
             report.reason.name(), "layout_malformed",
             "%[5]s pass {pass}: the refusal is layout_malformed: {:?}", report
         );
-        assert!(!report.damaged, "%[5]s pass {pass}: a refusal by name is not damage: {:?}", report);
         assert!(
             report.unknown == 0 && report.widened == 0,
             "%[5]s pass {pass}: a refusal moved a counter: unknown={} widened={}", report.unknown, report.widened
