@@ -39,6 +39,10 @@ runs:
           ) &
           pids+=("$!")
         done <<< "$siblings"
+        if [ "${#pids[@]}" -eq 0 ]; then
+          echo "::error::SIBLINGS names no sibling runtime"
+          exit 1
+        fi
         failed=0
         for pid in "${pids[@]}"; do
           wait "$pid" || failed=1

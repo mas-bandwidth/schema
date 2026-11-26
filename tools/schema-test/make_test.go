@@ -806,7 +806,8 @@ func TestHarnessesShareTheCheckoutAndMakesWaitForThem(t *testing.T) {
 // TestAReaderWaitingBehindAnotherEndsWithItsOwnContext: while a make holds
 // the checkout, one reader waits for it on behalf of all, and a second
 // reader whose context is done fails at once, naming the wait, never stuck
-// behind the first. The plant holds the readers' mutex through the wait.
+// behind the first. The plant leaves the waiting reader's context out of
+// its wait.
 func TestAReaderWaitingBehindAnotherEndsWithItsOwnContext(t *testing.T) {
 	t.Parallel()
 	release, err := holdCheckout(context.Background())
@@ -824,7 +825,9 @@ func TestAReaderWaitingBehindAnotherEndsWithItsOwnContext(t *testing.T) {
 		first <- err
 	}()
 	waiting := func() bool {
-		sharedCheckout.Lock()
+		if !sharedCheckout.TryLock() {
+			return false // a reader holding the mutex through its wait is red below, by name
+		}
 		defer sharedCheckout.Unlock()
 		return sharedCheckout.taking != nil
 	}
