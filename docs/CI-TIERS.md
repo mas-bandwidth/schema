@@ -1,9 +1,21 @@
 # CI tiers: what a pull request runs, and what waits for the night
 
-The pull-request tier (`.github/workflows/ci-fast.yml`) keeps every job within
-two minutes. Anything heavier runs in a workflow that starts only on a schedule
-or on `gh workflow run` (nightly-only). A gate that runs **only** there checks
-nothing a pull request changes until the night after it lands.
+**The pull-request tier is the happy path, and only the happy path** (the
+owner, 2026-11-25, live: per pull request, schema runs ONLY compile + one
+simple happy path per language, one job of two minutes or less; everything
+else is nightly). `.github/workflows/ci-fast.yml` is one job, `happy-path`: it
+builds `bin/schema` once and runs `make happy-<lang>` for every language
+(make/happy-path.mk: generate `test/happy/Happy.schema`, compile it with
+`test/happy/<lang>`, write one value, read it back, compare), timing each.
+`internal/ci` `TestPerPRIsTheHappyPathOnly` refuses any other job, action,
+make target or test runner in it.
+
+Everything else runs in a workflow that starts only on a schedule or on `gh
+workflow run` (nightly-only). The jobs that were the per-PR lane until
+2026-11-25 are `.github/workflows/ci-fast-nightly.yml`, which on its schedule
+selects every package and every leg. A gate that runs **only** there checks
+nothing a pull request changes until the night after it lands; since
+2026-11-25 that is every gate but the happy path, by the owner's ruling.
 
 That happened on 2026-11-22. The strict Ruby gate
 (`schema-ruby-generated-strict-gate`: `ruby -w`, RuboCop, RBS, Steep) ran only in
@@ -64,41 +76,12 @@ next table. Every job of every other workflow is a row here.
     evaluated from its triggers and `if:` with every plan output set.
 - **`TestEveryPerPRGroupRunsOnEveryPullRequest`** fails for a per-PR row that
   is not a ci-fast.yml job, or that a pull request from a `sprint/` branch does
-  not run.
+  not run, and for any per-PR group but the one, `happy-path`.
 
 | Job | Workflow | Tiers | Selected by |
 |---|---|---|---|
 | `fork-pull-request` | `ci-fast.yml` | fork-PR | always red: a fork's pull request runs no code here |
-| `plan` | `ci-fast.yml` | per-PR, main, dispatch | always: names the diff, the packages and the legs |
-| `ci-policy` | `ci-fast.yml` | per-PR, main, dispatch | always: internal/ci and the policy packages, sharded |
-| `lint-fast` | `ci-fast.yml` | per-PR, main, dispatch | always |
-| `vet` | `ci-fast.yml` | per-PR, main, dispatch | always |
-| `schema-test` | `ci-fast.yml` | per-PR, main, dispatch | always: the registry's coverage matrix and `schema-test run --group pr` |
-| `golangci-lint-fast` | `ci-fast.yml` | per-PR, main, dispatch | plan: the diff's Go packages |
-| `generated-current` | `ci-fast.yml` | per-PR, main, dispatch | plan: a codegen diff |
-| `lang-clean` | `ci-fast.yml` | per-PR, main, dispatch | plan: the touched legs' clean gates |
-| `lang-lint` | `ci-fast.yml` | per-PR, main, dispatch | plan: the touched legs' lints |
-| `nightly-fast` | `ci-fast.yml` | per-PR, main, dispatch | plan: rows of `.github/nightly-fast-rows.txt` |
-| `verify-leg` | `ci-fast.yml` | per-PR, main, dispatch | plan: the touched legs' verify rows |
-| `verify-elixir-conformance` | `ci-fast.yml` | per-PR, main, dispatch | plan: the elixir leg |
-| `verify-dart-conformance` | `ci-fast.yml` | per-PR, main, dispatch | plan: the dart leg or its corpus account |
-| `verify-cpp-conformance` | `ci-fast.yml` | per-PR, main, dispatch | plan: the cpp leg; two rows, `make verify-cpp-conformance-1` (the standalone C++ test binaries) and `-2` (the harness --claims run), which together are `make verify-cpp-conformance` |
-| `verify-dart-fuzz` | `ci-fast.yml` | per-PR, main, dispatch | plan: the dart leg; `_verify-dart-fuzz` whole (seed 1, both 2500-mutant wire passes, JSON and message fuzz) on the same-run Dart build verify-dart-conformance uploads |
-| `input-family-dart-conformance` | `ci-fast.yml` | per-PR, main, dispatch | plan: the dart leg or its corpus account |
-| `build-cpp-conformance-account` | `ci-fast.yml` | per-PR, main, dispatch | plan: the cpp corpus account |
-| `input-family-cpp-conformance` | `ci-fast.yml` | per-PR, main, dispatch | plan: the cpp corpus account |
-| `input-family` | `ci-fast.yml` | per-PR, main, dispatch | plan: the input-family rows |
-| `block-gate` | `ci-fast.yml` | per-PR, main, dispatch | always |
-| `newleg-scaffold` | `ci-fast.yml` | per-PR, main, dispatch | plan: a new leg in the diff |
-| `go-fixed-corpus` | `ci-fast.yml` | per-PR, main, dispatch | plan: the tables-go-fixedform row |
-| `go-test-touched` | `ci-fast.yml` | per-PR, main, dispatch | plan: the touched packages' test rows |
-| `pins` | `ci-fast.yml` | per-PR, main, dispatch | plan: a diff that touches what the pins protect |
-| `verdict` | `ci-fast.yml` | per-PR, main, dispatch | always: the one required check |
-| `leg-gate` | `ci-fast.yml` | dispatch | the legs' fixed form and versioning (whole, in ci-full.yml nightly) |
-| `leg-gate-lobster` | `ci-fast.yml` | dispatch | as leg-gate |
-| `leg-gate-rust` | `ci-fast.yml` | dispatch | as leg-gate |
-| `leg-gate-squirrel` | `ci-fast.yml` | dispatch | as leg-gate |
-| `leg-gate-cpp` | `ci-fast.yml` | dispatch | as leg-gate |
+| `happy-path` | `ci-fast.yml` | per-PR, main, dispatch | always: compile + one round trip per language, `make happy-<lang>` for every leg of make/happy-path.mk, each timed |
 | `caa-self-test` | `caa-self-test.yml` | per-PR, main, dispatch | trigger paths: the CAA workflow, its script, tools/pgroup, go.mod |
 | `caa` | `cla.yml` | per-PR, fork-PR, comment | pull_request_target, and a signing or `recheck` comment |
 | `roadmap` | `roadmap.yml` | per-PR, main, nightly, dispatch | trigger paths: ROADMAP.md, docs/roadmap*, tools/roadmap |
@@ -109,8 +92,14 @@ next table. Every job of every other workflow is a row here.
 
 Every nightly-only workflow gets one decision, recorded in the table below.
 
+Since 2026-11-25 the fast and covered forms below are jobs and rows of
+`ci-fast-nightly.yml`, which runs nightly too: they are each gate's light
+form, run every night beside the gate itself, and no longer per pull request.
+The pull-request tier is `ci-fast.yml` `happy-path` alone.
+
 | Decision | What it means |
 |---|---|
+| happy-path | The old per-PR lane (`ci-fast-nightly.yml`), nightly by the owner's ruling of 2026-11-25. Its per-PR form is `ci-fast.yml` `happy-path`. |
 | fast | The gate has a **pull-request form**: rows of [`.github/nightly-fast-rows.txt`](../.github/nightly-fast-rows.txt). The `nightly-fast` job of ci-fast.yml runs a row when the diff touches the row's leg, a path it names, or the broad rule. Each row fits two minutes. The nightly workflow still runs the whole gate and its planted controls. |
 | covered | Named ci-fast.yml jobs (or rows) already run the same check on the pull-request tier. The notes say what, if anything, only the night still sees. |
 | held | A fast form exists but is kept off the pull-request tier because the gate is red on main. The row names the red run; it joins the PR tier when main is green. |
@@ -181,6 +170,7 @@ Nightly times are the newest completed scheduled run of each workflow on the fle
 | `ci-full.yml` | covered | `go-test-touched`, `verify-leg`, `lang-clean`, `lang-lint`, `generated-current`, `block-gate`, `vet`, `golangci-lint-fast`, `lint-fast`, `nightly-fast`, `appendix-java-announcement-budgets`, `appendix-go-fixed`, `appendix-python-fixed` | ci-fast is ci-full selected by path. Only the night sees windows, msvc, big-endian, the negative-controls matrix, pins and vuln: none has a two-minute form |
 | `python-leg-nightly.yml` | covered | `verify-leg`, `hostile-python`, `bounds-python` | test-python on macOS (2041 s) is nightly; the Linux rows run per Python diff |
 | `python-leg.yml` | covered | `verify-leg`, `hostile-python`, `bounds-python` | the dispatch form of the above |
+| `ci-fast-nightly.yml` | happy-path | `happy-path` | every job of the old per-PR lane, unchanged in what it checks; on the schedule the plan selects every package and every leg (the leg gates too), with no timeout (the nightly rule) |
 | `leg.yml` | not-a-gate | | reusable (workflow_call); certify.yml calls it |
 | `release.yml` | not-a-gate | | cuts a release |
 

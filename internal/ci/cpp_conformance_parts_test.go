@@ -2,11 +2,11 @@ package ci
 
 // THE C++ CONFORMANCE GATE RUNS IN TWO PARTS, AND THE DART FUZZ GATE ON THE
 // SAME-RUN DART BUILD (2026-11-24; make/verify-compiled.mk "THE C++
-// CONFORMANCE GATE IS TWO PARTS", ci-fast.yml verify-cpp-conformance and
+// CONFORMANCE GATE IS TWO PARTS", ci-fast-nightly.yml verify-cpp-conformance and
 // verify-dart-fuzz). Both were verify-leg rows that ran past two minutes on
 // unloaded runners. This holds that the split drops nothing: the two parts'
 // prerequisites cover every prerequisite the one-row gate had, the gate is
-// both parts, and ci-fast.yml runs each part and the whole fuzz target on
+// both parts, and ci-fast-nightly.yml runs each part and the whole fuzz target on
 // every pull request that selects the leg.
 
 import (
@@ -81,11 +81,11 @@ func cppPartsErrors(mk, fast string) []string {
 	jobs := yamlJobs(fast)
 	cpp := jobs["verify-cpp-conformance"]
 	if !regexp.MustCompile(`(?m)^        part: \[1, 2\]$`).MatchString(cpp) || !strings.Contains(cpp, `make "verify-cpp-conformance-${{ matrix.part }}"`) {
-		errs = append(errs, "ci-fast.yml verify-cpp-conformance does not run both parts, one per row (matrix part: [1, 2], make verify-cpp-conformance-<part>)")
+		errs = append(errs, "ci-fast-nightly.yml verify-cpp-conformance does not run both parts, one per row (matrix part: [1, 2], make verify-cpp-conformance-<part>)")
 	}
 	dart := jobs["verify-dart-fuzz"]
 	if !strings.Contains(dart, "make/conformance-handoff.py consume") || !strings.Contains(dart, " _verify-dart-fuzz DART=dart") {
-		errs = append(errs, "ci-fast.yml verify-dart-fuzz does not run _verify-dart-fuzz whole on the same-run Dart build")
+		errs = append(errs, "ci-fast-nightly.yml verify-dart-fuzz does not run _verify-dart-fuzz whole on the same-run Dart build")
 	}
 	for _, ex := range []string{"          - leg: cpp\n            gate: conformance\n", "          - leg: dart\n            gate: fuzz\n"} {
 		if !strings.Contains(jobs["verify-leg"], ex) {
@@ -102,7 +102,7 @@ func TestCppConformancePartsCoverTheGate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fastData, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "ci-fast.yml"))
+	fastData, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "ci-fast-nightly.yml"))
 	if err != nil {
 		t.Fatal(err)
 	}

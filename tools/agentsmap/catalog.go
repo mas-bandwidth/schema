@@ -248,6 +248,7 @@ var catalog = []Entry{
 
 	// test/
 	e("test/bench", "C++ bench drivers", "make test", "./build/schema_test_bench"),
+	e("test/happy", "per-PR happy path: one round trip per language (make/happy-path.mk)", "make happy-c", "make happy-<lang>"),
 	e("test/c", "C packet tests", "make test-c", "make test-c"),
 	e("test/c-ludicrous", "C int128 tests", "make test-c", "make test-c"),
 	e("test/c-hostile", "C hostile-corpus runner", "make schema-c-runs-hostile-corpus", "make schema-c-runs-hostile-corpus"),
