@@ -5,7 +5,7 @@ Part of the specification: every test of tier `functional`, from the test regist
 
 **Tier functional:** uses a real thing: a compiler or VM, a toolchain, generated code built and run; runs nightly, and per pull request only as the pr group names it (one happy-path row per language, make happy-&lt;lang&gt;).
 
-Functional tests every language answers: 5044. Language-free tests: 2367.
+Functional tests every language answers: 5044. Language-free tests: 2369.
 
 Run this tier for a language with `schema-test run --tier functional --lang L`, one test with `schema-test run <full name>`.
 
@@ -17096,7 +17096,7 @@ generated or runtime code is clean under the language's strict analyser.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.functional.lint.makefile.errdiscard` | `make` | go run ./tools/errdiscard finds no unexplained dropped error (the lint-fast errdiscard step) | `file: Makefile`<br>`target: errdiscard` | the target exits 0 with no skip in its log | `Makefile:8041` |
+| `none.functional.lint.makefile.errdiscard` | `make` | go run ./tools/errdiscard finds no unexplained dropped error (the lint-fast errdiscard step) | `file: Makefile`<br>`target: errdiscard` | the target exits 0 with no skip in its log | `Makefile:8098` |
 
 ### Type `differential`
 
@@ -17227,6 +17227,13 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.functional.harness-run.make-unity-consumers.conformance-unity` | `make` | make conformance-unity (make/unity-consumers.mk) exits 0: the Unity leg answers the conformance corpus through test/conformance/unity/driver | `file: make/unity-consumers.mk`<br>`read_plant: plant.read-credits.harness-run-make-unity-consumers-conformance-unity`<br>`reads: ["test/conformance/unity/driver"]`<br>`target: conformance-unity` | the target exits 0 with no skip in its log | `make/unity-consumers.mk:98` |
+
+#### `harness-run` family `make-verify-compiled`, 2 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.harness-run.make-verify-compiled.conformance-corpus-dart` | `make` | make \_conformance-corpus-dart (make/verify-compiled.mk), the ci-fast input-family-dart-conformance step | `file: make/lint-fast.mk`<br>`target: check-conformance-corpus-dart` | the target exits 0 with no skip in its log | `make/lint-fast.mk:59` |
+| `none.functional.harness-run.make-verify-compiled.verify-dart-fuzz` | `make` | make \_verify-dart-fuzz (make/verify-compiled.mk), the ci-fast verify-dart-fuzz step | `file: make/lint-fast.mk`<br>`target: check-verify-dart-fuzz` | the target exits 0 with no skip in its log | `make/lint-fast.mk:63` |
 
 #### `harness-run` family `make-verify-reuse`, 18 tests
 
