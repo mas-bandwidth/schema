@@ -7,24 +7,26 @@
 
 VERIFY_REUSE_ALL_18_LEGS := cpp c cs unity go rust java dart elixir js python ruby lua luau squirrel moo goose lobster
 
-VERIFY_REUSE_DEPS_cpp      := bin/schema
-VERIFY_REUSE_DEPS_c        := bin/schema
-VERIFY_REUSE_DEPS_cs       := toolchain-cs bin/schema
-VERIFY_REUSE_DEPS_unity    := toolchain-unity bin/schema
-VERIFY_REUSE_DEPS_go       := bin/schema
-VERIFY_REUSE_DEPS_rust     := bin/schema
-VERIFY_REUSE_DEPS_java     := toolchain-java bin/schema
-VERIFY_REUSE_DEPS_dart     := toolchain-dart bin/schema
-VERIFY_REUSE_DEPS_elixir   := toolchain-elixir bin/schema
-VERIFY_REUSE_DEPS_js       := verify-toolchain-js bin/schema
-VERIFY_REUSE_DEPS_python   := verify-toolchain-python bin/schema
-VERIFY_REUSE_DEPS_ruby     := verify-toolchain-ruby bin/schema
-VERIFY_REUSE_DEPS_lua      := verify-toolchain-lua bin/schema
-VERIFY_REUSE_DEPS_luau     := verify-toolchain-luau bin/schema
-VERIFY_REUSE_DEPS_squirrel := verify-toolchain-squirrel bin/schema
-VERIFY_REUSE_DEPS_moo      := verify-toolchain-moo build/schema-moo
-VERIFY_REUSE_DEPS_goose    := verify-toolchain-goose bin/schema
-VERIFY_REUSE_DEPS_lobster  := verify-toolchain-lobster bin/schema
+# Each leg's gate is a rule of its own, written out by name (with the leg's
+# toolchain), so a scan of the make files reads every gate the registry runs.
+verify-reuse-cpp: bin/schema
+verify-reuse-c: bin/schema
+verify-reuse-cs: toolchain-cs bin/schema
+verify-reuse-unity: toolchain-unity bin/schema
+verify-reuse-go: bin/schema
+verify-reuse-rust: bin/schema
+verify-reuse-java: toolchain-java bin/schema
+verify-reuse-dart: toolchain-dart bin/schema
+verify-reuse-elixir: toolchain-elixir bin/schema
+verify-reuse-js: verify-toolchain-js bin/schema
+verify-reuse-python: verify-toolchain-python bin/schema
+verify-reuse-ruby: verify-toolchain-ruby bin/schema
+verify-reuse-lua: verify-toolchain-lua bin/schema
+verify-reuse-luau: verify-toolchain-luau bin/schema
+verify-reuse-squirrel: verify-toolchain-squirrel bin/schema
+verify-reuse-moo: verify-toolchain-moo build/schema-moo
+verify-reuse-goose: verify-toolchain-goose bin/schema
+verify-reuse-lobster: verify-toolchain-lobster bin/schema
 
 VERIFY_REUSE_ENV = \
 	SERIALIZE="$(abspath $(SERIALIZE_RUNTIME))" SERIALIZE_GO="$(abspath $(SERIALIZE_GO_RUNTIME))" \
@@ -59,19 +61,15 @@ build/verify-reuse/corpus/.stamp: build/verify-reuse-bin bin/schema
 	trap - EXIT INT TERM HUP; \
 	exit $$status
 
-define verify_reuse_18_rules
-.PHONY: verify-reuse-$(1)
-
-verify-reuse-$(1): build/verify-reuse-bin build/verify-reuse/corpus/.stamp $$(VERIFY_REUSE_DEPS_$(1))
-	$$(VERIFY_REUSE_ENV) CARGO_TARGET_DIR="$$(CURDIR)/build/verify-reuse/cargo-$(1)" \
-		./build/verify-reuse-bin --lang $(1) \
+VERIFY_REUSE_GATES := $(addprefix verify-reuse-,$(VERIFY_REUSE_ALL_18_LEGS))
+.PHONY: $(VERIFY_REUSE_GATES)
+$(VERIFY_REUSE_GATES): verify-reuse-%: build/verify-reuse-bin build/verify-reuse/corpus/.stamp
+	$(VERIFY_REUSE_ENV) CARGO_TARGET_DIR="$(CURDIR)/build/verify-reuse/cargo-$*" \
+		./build/verify-reuse-bin --lang $* \
 		--schema ./bin/schema --schema-moo ./build/schema-moo \
 		--work build/verify-reuse --corpus build/verify-reuse/corpus
 
-_verify-$(1)-bench: verify-reuse-$(1)
-endef
-
-$(foreach L,$(VERIFY_REUSE_ALL_18_LEGS),$(eval $(call verify_reuse_18_rules,$(L))))
+$(foreach L,$(VERIFY_REUSE_ALL_18_LEGS),$(eval _verify-$(L)-bench: verify-reuse-$(L)))
 
 # ---- Sabotage Negative Control for Dirty-Instance & Sub-Slice Reuse Gate ----
 

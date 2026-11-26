@@ -298,6 +298,9 @@ build/tables-generated/messages/MessagesBlock.cpp old-style-cast
 build/tables-generated/messages/MessagesBlock.h cast-align,old-style-cast
 build/tables-generated/messages/MessagesTable.cpp float-equal,nrvo,old-style-cast,sign-conversion,switch-default,unused-macros
 build/tables-generated/messages/MessagesTable.h cast-align,comma,covered-switch-default,implicit-int-conversion,implicit-int-float-conversion,nested-anon-types,old-style-cast,sign-conversion,switch-default,switch-enum
+build/tables-generated/moodmap/MoodMap.h covered-switch-default
+build/tables-generated/moodmap/MoodMapTable.cpp cast-align,float-equal,nrvo,old-style-cast,sign-conversion,switch-default,unused-macros
+build/tables-generated/moodmap/MoodMapTable.h cast-align,comma,covered-switch-default,implicit-int-conversion,implicit-int-float-conversion,old-style-cast,switch-default
 build/tables-generated/p1/P1Block.cpp old-style-cast
 build/tables-generated/p1/P1Block.h cast-align,old-style-cast
 build/tables-generated/p1/P1Table.cpp float-equal,nrvo,old-style-cast,sign-conversion,switch-default,unused-macros

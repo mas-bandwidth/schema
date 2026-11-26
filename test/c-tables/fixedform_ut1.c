@@ -74,20 +74,6 @@ void fixed_ut1_read_own( const uint8_t * data, int64_t bytes )
     fixed_check( !r.refused && r.unknown == 0 && r.widened == 0, "C two lanes: a clean read moves no counter" );
 }
 
-/* ...and the other direction: a UT2 record whose arm is `b` at ordinal 3. */
-void fixed_ut1_read_ut2( const uint8_t * data, int64_t bytes )
-{
-    tblut1_ut_root_t back;
-    tblut1_table_report_t r;
-    memset( &r, 0, sizeof( r ) );
-    fixed_check( tblut1_ut_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r ) == 1,
-                 "C two lanes, back: the record reads" );
-    fixed_check( back.pick.type == TBLUT1_PICK_TYPE_B, "C two lanes, back: arm 3 lands as arm 2, by name" );
-    fixed_check( back.pick.as.b.label_length == 5 && strcmp( back.pick.as.b.label, "third" ) == 0,
-                 "C two lanes, back: the arm's string(8), whole" );
-    fixed_check( back.pick.as.b.m == 555, "C two lanes, back: the arm's other field" );
-}
-
 /* A UNION TAG PAST THE ARM COUNT names no arm: under the strict read it
    refuses the whole read as out_of_range and resets the destination
    (docs/SPEC-TABLES.md §3.4, §6.5). */

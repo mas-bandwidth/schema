@@ -30,11 +30,14 @@ package elixirtable
 //
 // elixir/R18 [weak]: a clamp that cannot fire is not emitted and nothing moves.
 //
-// elixir/C3 [weak]: text length clamp.
+// elixir/C3: a text length past its bound REFUSES `length_over_bound`, never
+// clamped (docs/FIXED-FORM-ALGORITHM.md §5.3 refusal table: "a length past the
+// plan's cap (§4.5) | length_over_bound"; corrected by the L5 parity sweep,
+// 2026-11-25; executed by TestFixedFormRefusalNamesElixir).
 //
 // elixir/C4 [weak]: text content refuses BY NAME. elixir/R24 [owed]: ill-formed
 // text in the USED units refuses by name (`text_ill_formed`), text is counted in
-// bytes with the clamp in units, and slack is unspecified on read and not a
+// bytes with its cap in units, and slack is unspecified on read and not a
 // refusal. Both are proved here by docs/FIXED-FORM-ALGORITHM.md §4.5 fix 11,
 // which is THE RULING where that page and SPEC-TABLES §3.4 disagree (§5.8 row 8
 // names the disagreement: "ill-formed text zeroes the field ... where the ruling
@@ -295,8 +298,9 @@ fixed table Cfg
 
 // ---- elixir/C3 ---------------------------------------------------------------
 
-// t05C3 holds elixir/C3: a text length is clamped ONCE in the bounds pass, at
-// the field's declared capacity.
+// t05C3 holds elixir/C3: a text length past the field's declared capacity
+// REFUSES BY NAME, `length_over_bound`, and is never clamped (§5.3 refusal
+// table, §4.5 "Nothing is clamped").
 func t05C3(t *testing.T) {
 	out, err := Generate(unitFrom(t, `package probe
 
@@ -309,8 +313,10 @@ fixed table T
 		t.Fatalf("C3: Generate: %v", err)
 	}
 	body := string(out["ProbeFixed.ex"])
-	t05Has(t, body, "R.clamps(c, n_label, 0, 8)", "C3 a string(N)'s length clamps to its bound")
-	t05Has(t, t05Runtime(t), "def clamps(acc, v, lo, hi) when v < lo or v > hi, do: acc + 1", "C3 the clamp counts once")
+	t05Has(t, body, "R.held_len(c, n_label, 8)", "C3 a string(N)'s length is held to its bound")
+	t05No(t, body, "R.clamps(c, n_label", "C3 a string(N)'s length is never clamped")
+	t05Has(t, t05Runtime(t), "def held_len(_acc, v, cap) when v < 0 or v > cap, do: throw({:refuse, :length_over_bound})", "C3 a length past the cap refuses length_over_bound")
+	t05Has(t, fixedRuntimeBody, "_ = held_len(0, raw, cap)", "C3 the compiled plan's text op refuses the same length")
 }
 
 // ---- elixir/C4 ---------------------------------------------------------------
@@ -342,8 +348,8 @@ fixed table T
 // ---- elixir/R24 --------------------------------------------------------------
 
 // t05R24 holds elixir/R24 to all three clauses: ill-formed text in the USED
-// units refuses by name (`text_ill_formed`); the length and its clamp are
-// counted in BYTES; and the bytes behind the used length are DEAD, so a
+// units refuses by name (`text_ill_formed`); the length and its cap are
+// counted in BYTES, a length past the cap refusing `length_over_bound`; and the bytes behind the used length are DEAD, so a
 // non-zero one refuses the whole load (docs/FIXED-FORM-ALGORITHM.md §5.3 step
 // 11, docs/SPEC-TABLES.md §3.4), while the content rule still reads the used
 // units only.
@@ -355,8 +361,8 @@ func t05R24(t *testing.T) {
 	// content check still reads the USED units only.
 	t05Has(t, runtime, "if text_ok?(flavour, binary_part(take, 0, v)) do", "R24 the content check holds the USED units and not the slack")
 	t05Has(t, runtime, "defp dead_run([{:dead_text", "R24 a non-zero dead byte behind a text refuses")
-	// (2) the length and the clamp are BYTES: the cap is the span.
-	t05Has(t, runtime, "cap = size", "R24 the clamp is the byte span")
+	// (2) the length and its cap are BYTES: the cap is the span.
+	t05Has(t, runtime, "cap = size", "R24 the cap is the byte span")
 	out, err := Generate(unitFrom(t, `package probe
 
 fixed table T
@@ -368,8 +374,8 @@ fixed table T
 		t.Fatalf("R24: Generate: %v", err)
 	}
 	body := string(out["ProbeFixed.ex"])
-	t05Has(t, body, "R.clamps(c, n_label, 0, 8)", "R24 a byte string's length clamps to its unit bound")
-	t05Has(t, body, "binary_part(b_label, 0, min(max(n_label, 0), 8))", "R24 the used bytes are the length's own, never the slack")
+	t05Has(t, body, "R.held_len(c, n_label, 8)", "R24 a byte string's length past its unit bound refuses")
+	t05Has(t, body, "binary_part(b_label, 0, n_label)", "R24 the used bytes are the length's own, never the slack")
 }
 
 // ---- the card's test --------------------------------------------------------

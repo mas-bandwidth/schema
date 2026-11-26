@@ -50,6 +50,12 @@ func TestLuaCookOpenAndCheck(t *testing.T) {
 					t.Fatal(err)
 				}
 				inst := m.New(m.Lookup(r.root))
+				if r.wireRefused {
+					// No cook exists for a wire-refused instance: the strict
+					// read refuses it everywhere (docs/SPEC-TABLES.md §6.5).
+					requireWireRefusedBothRefuse(t, repo, paths, r, m, inst, wire)
+					return
+				}
 				var report tabletext.Report
 				if _, err := tablewire.Decode(m, inst, wire, &report); err != nil {
 					t.Fatalf("decode %s: %v", r.caseName, err)
@@ -204,6 +210,22 @@ func TestLuaCookOpenAndCheck(t *testing.T) {
 func runCookProbe(t *testing.T, u *ir.Unit, root string, cooked []byte) string {
 	t.Helper()
 	return runCookVerb(t, u, cooked, "cook.Check(T, \""+root+"\", inputs.cook)")
+}
+
+// requireWireRefusedBothRefuse holds a wire-refused manifest instance
+// (testdata/conformance/tables/FORMAT.md) to the strict-only read
+// (docs/rulings.json strict-only-read, refusal-verdict-only): the Go oracle
+// refuses the wire AND the Lua leg's plain read refuses it. Only the verdict
+// is compared, never the reason text.
+func requireWireRefusedBothRefuse(t *testing.T, repo string, paths []string, row manifestRow, m *tabletext.Model, inst *tabletext.Instance, wire []byte) {
+	t.Helper()
+	var report tabletext.Report
+	if _, err := tablewire.Decode(m, inst, wire, &report); err == nil {
+		t.Fatalf("%s: the Go oracle read a wire the manifest marks wire-refused", row.caseName)
+	}
+	if got := loadRow(t, repo, paths, row, nil); got != "refused" {
+		t.Fatalf("%s: the Lua read answered %q on a wire the Go oracle refuses, want refused", row.caseName, got)
+	}
 }
 
 // runCookVerb runs one cook call (a Lua expression over T, cook and inputs)

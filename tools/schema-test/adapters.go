@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -30,9 +31,15 @@ type harness struct {
 
 // alignArrays is test/verify-bitphase --adapter: the align-arrays family's
 // driver for every leg, reading its rows from the requests (alignarrays.go).
+// Its build is the leg's own: make verify-align-arrays-deps-<lang>
+// (make/verify-widen-18.mk) builds the driver, bin/schema and what
+// VERIFY_WIDEN_DEPS_<lang> names, build/schema-moo for moo among them, so
+// every path Cmd names exists before it runs.
 var alignArrays = harness{
-	Name:  "align-arrays",
-	Build: func(string) [][]string { return [][]string{{"make", "bin/schema", "build/verify-bitphase-bin"}} },
+	Name: "align-arrays",
+	Build: func(lang string) [][]string {
+		return [][]string{{"make", "verify-align-arrays-deps-" + lang}}
+	},
 	Cmd: func(lang, work string) []string {
 		return []string{"./build/verify-bitphase-bin", "--adapter", "--lang", lang,
 			"--schema", "./bin/schema", "--schema-moo", "./build/schema-moo",
@@ -104,16 +111,32 @@ func harnessFor(t testreg.Test) (harness, bool) {
 	switch {
 	case isUnion(t):
 		return goUnion, true
+	case family == textformFamily:
+		return textformHarness, true
+	case family == csRowsFamily:
+		return csRowsHarness, true
+	case family == gooseFamily:
+		return gooseHarness, true
+	case family == luauVecFamily:
+		return luauHarness, true
 	case family == alignArrays.Name || family == bitPhaseFamily:
 		return alignArrays, true
 	case strings.HasPrefix(family, conformanceFamilyPrefix):
 		return conformance, true
 	case family == bomEntry.Name:
 		return bomEntry, true
+	case family == featureWitnessFamily:
+		return featureWitness, true
 	case family == nameBuild.Name:
 		return nameBuild, true
+	case family == happyFamily:
+		return happyPath, true
 	case wireFuzzFamilies[family]:
 		return wireFuzzHarness, true
+	case family == tablesHarness.Name:
+		return tablesHarness, true
+	case family == jsontestFamily:
+		return jsontestHarness, true
 	}
 	return hostileHarnessFor(family)
 }
@@ -138,6 +161,7 @@ func adapters(log io.Writer) map[string]testreg.Adapter {
 		"corpus":      newHarnessAdapter(b, log),
 		"gotest":      newGoTestAdapterBuilding(log, ".", goTestJobs(), b.run),
 		"make":        newMakeAdapter(),
+		"make-gotest": newMakeGoTestAdapterBuilding(".", b.run),
 		"golden":      newGoldenAdapter(),
 		"model-check": modelCheckAdapter{build: b, log: log},
 	}
@@ -150,6 +174,10 @@ func withRunner(ads map[string]testreg.Adapter, rn *testreg.Runner) {
 	if g, ok := ads["golden"].(goldenAdapter); ok {
 		g.reg = rn.Reg
 		ads["golden"] = g
+	}
+	if m, ok := ads["make-gotest"].(makeGoTestAdapter); ok {
+		m.reg = rn.Reg
+		ads["make-gotest"] = m
 	}
 }
 
@@ -230,6 +258,16 @@ func newHarnessAdapter(b *builder, log io.Writer) *harnessAdapter {
 // it runs between the other checkout-taking groups, never waiting for one
 // inside its own deadline (testreg.Serial).
 func (a *harnessAdapter) Serial() bool { return true }
+
+// SharesCheckout: a group of happy paths only reads the checkout once
+// Prepare built bin/schema (runHappyWith holds it shared, and make
+// happy-<lang> writes only build/happy/<lang>), so those calls run side by
+// side, up to the run's --jobs (testreg.SharedCheckout). Every other
+// harness family may make in the checkout (a gated row's make, name
+// buildability, the hostile targets), so its group stays Serial.
+func (a *harnessAdapter) SharesCheckout(instances []testreg.Instance) bool {
+	return len(instances) > 0 && !slices.ContainsFunc(instances, func(i testreg.Instance) bool { return i.Test.Family != happyFamily })
+}
 
 func (a *harnessAdapter) Answers(t testreg.Test) bool {
 	if _, has, err := langMakeGates(t); has {
@@ -340,8 +378,9 @@ func (a *harnessAdapter) Run(ctx context.Context, lang string, instances []testr
 // results it did write.
 func runHarness(ctx context.Context, argv []string, instances []testreg.Instance, log io.Writer) ([]testreg.Result, error) {
 	// the harness runs bin/schema and what the build steps made: no make
-	// in the checkout relinks them under it
-	release, err := holdCheckout(ctx)
+	// in the checkout relinks them under it (its group is Serial, so no
+	// other call runs beside it: SharesCheckout)
+	release, err := holdCheckoutShared(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("%q: %w", strings.Join(argv, " "), err)
 	}

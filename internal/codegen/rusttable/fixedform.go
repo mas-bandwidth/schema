@@ -393,7 +393,8 @@ func (g *gen) fixedCeilingRoots() []*ir.Struct {
 
 // emitFixedCeilingRoot emits only the refusing fixed loader for a table past
 // the ceiling: form 3 is refused as layout_record_too_large, the older forms
-// are refused by name as at every fixed root, and an empty file is damage.
+// are refused by name as at every fixed root, and an empty file is refused
+// truncated (docs/FIXED-FORM-ALGORITHM.md §5.3 step 1).
 // Nothing is decoded on any path, and every path is a refusal, so (ruling R4)
 // every row handed in goes back to its declared default, which for a Row is
 // its Default, before the refusal is named.
@@ -421,8 +422,7 @@ func (g *gen) emitFixedCeilingRoot(st *ir.Struct) {
 	g.pf("        *value = %sRow::default();\n", st.Name)
 	g.pf("    }\n")
 	g.pf("    if data.is_empty() {\n")
-	g.pf("        report.damaged = true;\n")
-	g.pf("        return None;\n    }\n")
+	g.pf("        return report.refuse(TableFixedReason::Truncated);\n    }\n")
 	g.pf("    if data[0] == TABLE_FIXED_FORM {\n")
 	g.pf("        return report.refuse(TableFixedReason::LayoutRecordTooLarge);\n    }\n")
 	g.pf("    report.refuse(match data[0] {\n")
@@ -772,7 +772,7 @@ func (g *gen) emitFixedScatterField(f *ir.Field, off int64) {
 		// A PRESENT BYTE OTHER THAN 0 OR 1 IS DAMAGE (docs/FIXED-FORM-ALGORITHM.md
 		// §4.5), and the payload under an absent one is slack (§3.4): unspecified
 		// on read, never a refusal, so the scatter lands it at slack depth.
-		g.pf("    if b[%d] > 1 && report.slack == 0 {\n        report.damaged = true;\n    }\n", base)
+		g.pf("    if b[%d] > 1 && report.slack == 0 {\n        report.wire_damage += 1;\n    }\n", base)
 		slackOff := base
 		g.pf("    value.%s_present = b[%d] == 1;\n", f.Name, base)
 		g.pf("    let _slack_%d = u32::from(!value.%s_present);\n", slackOff, f.Name)
@@ -877,7 +877,7 @@ func (g *gen) emitFixedScatterElement(f *ir.Field, at, dst string, indent int) {
 	case ir.TBool:
 		// A BOOL BYTE OTHER THAN 0 OR 1 IS DAMAGE (docs/FIXED-FORM-ALGORITHM.md
 		// §4.5), on live bytes only (§3.4's slack rule).
-		g.pf("%s    if b[at] > 1 && report.slack == 0 {\n%s        report.damaged = true;\n%s    }\n", ind, ind, ind)
+		g.pf("%s    if b[at] > 1 && report.slack == 0 {\n%s        report.wire_damage += 1;\n%s    }\n", ind, ind, ind)
 		g.pf("%s", set(ind+"    ", "b[at] == 1"))
 	case ir.TFloat32:
 		g.pf("%s", set(ind+"    ", "f32::from_le_bytes(b[at..at + 4].try_into().expect(\"four bytes\"))"))
@@ -1532,7 +1532,7 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("];\n\n")
 	g.pf("/// THE FLOOR: 1 + the highest RETIRED index, 0 when none is (§5.2). Below it\n")
 	g.pf("/// a file is `layout_unsupported` — upgrade the client; outside the lineage\n")
-	g.pf("/// altogether it is `layout_newer` — ship the reader. A retired entry stays\n")
+	g.pf("/// altogether it is `layout_unknown`. A retired entry stays\n")
 	g.pf("/// in the lineage forever, which is what keeps the two answers distinct.\n")
 	g.pf("pub const %s_FIXED_FLOOR: usize = %d;\n", up, floor)
 	g.pf("/// THE INDEX OF THIS BUILD'S OWN LAYOUT, which takes the IDENTITY plan.\n")
@@ -1709,7 +1709,7 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("/// Returns the records read, or None on a refusal `report` names.\n")
 	g.pf("///\n")
 	g.pf("/// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): a read that\n")
-	g.pf("/// meets damage anywhere answers None with `malformed` set, and every record\n")
+	g.pf("/// meets damage anywhere answers None, refused `wire_damaged`, and every record\n")
 	g.pf("/// in `values` goes back to its declared defaults, so nothing the read\n")
 	g.pf("/// decoded before or after the damage is a value to use.\n")
 	g.pf("///\n")
@@ -1738,7 +1738,10 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    remap: &mut [u16],\n")
 	g.pf("    report: &mut TableFixedReport,\n")
 	g.pf(") -> Option<usize> {\n")
-	g.pf("    if data.is_empty() {\n        report.damaged = true;\n        return None;\n    }\n")
+	g.pf("    // FRAMING DAMAGE IS A REFUSAL BY NAME (docs/FIXED-FORM-ALGORITHM.md §5.3,\n")
+	g.pf("    // the condition table): this form's report has no malformed flag, so no\n")
+	g.pf("    // first byte at all is `truncated`.\n")
+	g.pf("    if data.is_empty() {\n        return report.refuse(TableFixedReason::Truncated);\n    }\n")
 	g.pf("    // THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):\n")
 	g.pf("    // the registry is ordered, so a byte this reader does not carry is named\n")
 	g.pf("    // by where it sits relative to this form and never by one word for both.\n")
@@ -1753,11 +1756,14 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("        });\n")
 	g.pf("    }\n")
 	if st.Integrity == "crc32c" {
-		g.pf("    let Some(data) = table_integrity_body(data, 5) else { report.damaged = true; return report.refuse(TableFixedReason::IntegrityMismatch); };\n")
+		g.pf("    let Some(data) = table_integrity_body(data, 5) else { return report.refuse(TableFixedReason::IntegrityMismatch); };\n")
 	}
-	g.pf("    if data.len() < TABLE_FIXED_HEADER_BYTES + 4 {\n        report.damaged = true;\n        return None;\n    }\n")
-	g.pf("    // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3).\n")
-	g.pf("    if data[1..TABLE_FIXED_HASH_AT].iter().any(|&b| b != 0) {\n        report.damaged = true;\n        return None;\n    }\n")
+	g.pf("    // FEWER THAN 20 BYTES — the 16-byte header and the layout's length word —\n")
+	g.pf("    // is `truncated` (§5.3 step 2), the form byte having already answered.\n")
+	g.pf("    if data.len() < TABLE_FIXED_HEADER_BYTES + 4 {\n        return report.refuse(TableFixedReason::Truncated);\n    }\n")
+	g.pf("    // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3 step 2):\n")
+	g.pf("    // `reserved_not_zero`.\n")
+	g.pf("    if data[1..TABLE_FIXED_HASH_AT].iter().any(|&b| b != 0) {\n        return report.refuse(TableFixedReason::ReservedNotZero);\n    }\n")
 	g.pf("    let block_bytes = u32::from_le_bytes(\n")
 	g.pf("        data[TABLE_FIXED_HEADER_BYTES..TABLE_FIXED_HEADER_BYTES + 4]\n")
 	g.pf("            .try_into()\n            .expect(\"four bytes\"),\n    ) as usize;\n")
@@ -1772,15 +1778,16 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    // fixed table reads BACKWARD and never forward: the hash the header\n")
 	g.pf("    // carries is TAKEN AS GIVEN — the definitions digest is not on the wire,\n")
 	g.pf("    // so the number cannot be re-derived from a file — and it is looked up in\n")
-	g.pf("    // the lineage the BUILD laid down. A hash no entry holds is a writer ahead\n")
-	g.pf("    // of this reader, and there is nothing to try.\n")
+	g.pf("    // the lineage the BUILD laid down. A hash no entry holds is `layout_unknown`\n")
+	g.pf("    // (§5.3 step 5, SPEC-TABLES §21.3): nothing in the lineage proves it newer,\n")
+	g.pf("    // and `layout_newer` is retired. There is nothing to try.\n")
 	g.pf("    let Some(found) = %s_FIXED_LINEAGE.iter().position(|k| k.hash == hash) else {\n", up)
-	g.pf("        // THE FILE'S HASH, AND NOTHING ELSE (bill §12.4).\n")
-	g.pf("        return report.refuse_layout(TableFixedReason::LayoutNewer, hash);\n    };\n")
+	g.pf("        // THE FILE'S HASH, AND NOTHING ELSE (§5.9 #7).\n")
+	g.pf("        return report.refuse_layout(TableFixedReason::LayoutUnknown, hash);\n    };\n")
 	if floor > 0 {
 		g.pf("    if found < %s_FIXED_FLOOR {\n", up)
 		g.pf("        // RETIRED: the entry stays in the lineage forever, so this answer stays\n")
-		g.pf("        // distinct from `layout_newer`, and it reports the hash too (§5.9 #7).\n")
+		g.pf("        // distinct from `layout_unknown`, and it reports the hash too (§5.9 #7).\n")
 		g.pf("        return report.refuse_layout(TableFixedReason::LayoutUnsupported, hash);\n    }\n")
 	} else {
 		g.pf("    // NOTHING IS RETIRED, so the floor is 0 and the check below it cannot\n")
@@ -1840,16 +1847,17 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    // the caller's slice stays in the signature as the capacity it always was.\n")
 	g.pf("    let _ = remap;\n")
 	g.pf("    // A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (§5.3 step 9, §22.6):\n")
-	g.pf("    // a header and a layout followed by no record is truncation, at any\n")
-	g.pf("    // capacity. A record size of 8 or less, or a ragged tail, is the same.\n")
+	g.pf("    // a header and a layout followed by no record is `truncated`, at any\n")
+	g.pf("    // capacity. A record size of 8 or less, or a ragged tail, is the same\n")
+	g.pf("    // refusal by the same name (§5.3 step 9, the condition table).\n")
 	g.pf("    if rest.is_empty() || record_bytes <= 8 || !rest.len().is_multiple_of(record_bytes) {\n")
-	g.pf("        report.damaged = true;\n        return None;\n    }\n")
+	g.pf("        return report.refuse(TableFixedReason::Truncated);\n    }\n")
 	g.pf("    let n = rest.len() / record_bytes;\n")
 	g.pf("    if n > values.len() {\n        return report.refuse(TableFixedReason::BatchTooLarge);\n    }\n")
 	g.pf("    // THE DEAD-BYTE CHECK PASS (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5,\n")
 	g.pf("    // §5.3 step 11; docs/rulings.json fixed-dead-bytes-are-zero): every byte\n")
 	g.pf("    // no live value covers is zero, and a non-zero one refuses the whole load\n")
-	g.pf("    // BEFORE any record lands. An absent optional's payload, a counted array's\n")
+	g.pf("    // BEFORE any record lands, as wire_damaged. An absent optional's payload, a counted array's\n")
 	g.pf("    // slots past its count, a text's or bytes' units past its length, and an\n")
 	g.pf("    // inactive union arm are the four dead regions.\n")
 	// Identity walks this build's own layout: its plan is one Copy and cannot
@@ -1862,16 +1870,14 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	}
 	g.pf("%sfor k in 0..n {\n", deadInd)
 	g.pf("%s    if %s(&rest[k * record_bytes + 8..(k + 1) * record_bytes]) {\n", deadInd, fn(st.Name, "fixed_dead"))
-	g.pf("%s        report.damaged = true;\n", deadInd)
-	g.pf("%s        return None;\n", deadInd)
+	g.pf("%s        return report.refuse(TableFixedReason::WireDamaged);\n", deadInd)
 	g.pf("%s    }\n", deadInd)
 	g.pf("%s}\n", deadInd)
 	if len(lineage) > 1 {
 		g.pf("    } else {\n")
 		g.pf("        for k in 0..n {\n")
 		g.pf("            if table_fixed_dead(entries, guards, &rest[k * record_bytes + 8..(k + 1) * record_bytes]) {\n")
-		g.pf("                report.damaged = true;\n")
-		g.pf("                return None;\n")
+		g.pf("                return report.refuse(TableFixedReason::WireDamaged);\n")
 		g.pf("            }\n")
 		g.pf("        }\n")
 		g.pf("    }\n")
@@ -1896,11 +1902,16 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("            let z = h.size as usize;\n")
 	g.pf("            image[o..o + z].copy_from_slice(&%s_FIXED_DEFAULTS[o..o + z]);\n", up)
 	g.pf("        }\n")
-	g.pf("        table_fixed_run(entries, guards, table, &record[8..], &mut image, report);\n")
+	g.pf("        if !table_fixed_run(entries, guards, table, &record[8..], &mut image, report) {\n")
+	g.pf("            report.widened = widened_before;\n")
+	g.pf("            return report.refuse(TableFixedReason::WireDamaged);\n        }\n")
 	g.pf("        %s(&image, &mut values[k], report);\n", fn(st.Name, "fixed_scatter"))
-	g.pf("        // DAMAGE DISCARDS THE WHOLE LOAD: a bool or present byte other than\n")
-	g.pf("        // 0 or 1 on live data (FIXED-FORM-ALGORITHM §4.5); the caller resets.\n")
-	g.pf("        if report.damaged {\n            return None;\n        }\n")
+	g.pf("        // DAMAGE REFUSES THE WHOLE LOAD BY NAME: a bool or present byte other\n")
+	g.pf("        // than 0 or 1 on live data, or a plan reach past the record\n")
+	g.pf("        // (FIXED-FORM-ALGORITHM §4.5, §5.3); the caller resets.\n")
+	g.pf("        if report.wire_damage != 0 {\n")
+	g.pf("            report.widened = widened_before;\n")
+	g.pf("            return report.refuse(TableFixedReason::WireDamaged);\n        }\n")
 	if finite {
 		g.pf("        // A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): the finite pass runs\n")
 		g.pf("        // FIRST, before the bounds pass, over the storage the run just wrote,\n")

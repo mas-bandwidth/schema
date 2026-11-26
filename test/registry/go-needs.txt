@@ -31,16 +31,108 @@ needs ./internal/codegen/unitytable .* tables-fixedform-corpus
 needs ./internal/fixedproof .* tables-fixedform-corpus
 needs ./internal/fixedvector .* tables-fixedform-corpus
 
+# the Java conformance driver and the harness that runs it, which the javatable
+# tests that run the driver make for themselves first (javaConformanceBuild):
+# built before their call, so the call is the tests' time
+needs ./internal/codegen/javatable TestJavaDriver(SurfacesStrict|SurfacesStrictNegativeControl|AnswersBothOptInLegs|ChecksEveryIntegerAssignment)|TestJavaWireFuzzVerdictPipe(NegativeControl)? build/conformance-harness
+needs ./internal/codegen/javatable TestJavaDriver(SurfacesStrict|SurfacesStrictNegativeControl|AnswersBothOptInLegs|ChecksEveryIntegerAssignment)|TestJavaWireFuzzVerdictPipe(NegativeControl)? build-conformance-java
+
+
+# the generated Go tables tree the JSON walk reads, in build order
+needs ./internal/codegen/gotable TestJsonWalkGeneratedGoTables bin/schema
+needs ./internal/codegen/gotable TestJsonWalkGeneratedGoTables build/tables-generated-go/.gen-1
+needs ./internal/codegen/gotable TestJsonWalkGeneratedGoTables build/tables-generated-go/.gen-2
+needs ./internal/codegen/gotable TestJsonWalkGeneratedGoTables build/tables-generated-go/.gen-3
+needs ./internal/codegen/gotable TestJsonWalkGeneratedGoTables build/tables-generated-go/.gen-4
+needs ./internal/codegen/gotable TestJsonWalkGeneratedGoTables build/tables-generated-go/.gen-5
+needs ./internal/codegen/gotable TestJsonWalkGeneratedGoTables build/tables-generated-go/.gen-6
+needs ./internal/codegen/gotable TestJsonWalkGeneratedGoTables build/tables-generated-go/.gen-7
+needs ./internal/codegen/gotable TestJsonWalkGeneratedGoTables build/tables-generated-go/.gen-8
+needs ./internal/codegen/gotable TestJsonWalkGeneratedGoTables build/tables-generated-go/.stamp
 
 # Nested modules whose go.mod replaces its imports with generated trees under
 # build/ (fullrun runs them with go -C <module>): the build that writes those
 # trees. build/conformance-go is every tree test/conformance/go builds
 # against (the generated tables, the framing, r19 and announce modules, cards).
+# THE ORDER IS THE BUILD ORDER (testreg.GoNeedsOf): the run builds the steps of a
+# test in the order they are declared, each under its own per-call limit
+# ("prepare <group> <target>"), so a cold checkout is built as steps that each fit
+# it and never as one step that builds the others inside it. The generated tree is
+# declared as the compiler, its eight generation groups, the stamp that writes
+# the modules, the cards unit, the driver's compile in four warm steps, then the
+# conformance binary that links it.
+needs ./test/conformance/go .* bin/schema
+needs ./test/conformance/go .* build/tables-generated-go/.gen-1
+needs ./test/conformance/go .* build/tables-generated-go/.gen-2
+needs ./test/conformance/go .* build/tables-generated-go/.gen-3
+needs ./test/conformance/go .* build/tables-generated-go/.gen-4
+needs ./test/conformance/go .* build/tables-generated-go/.gen-5
+needs ./test/conformance/go .* build/tables-generated-go/.gen-6
+needs ./test/conformance/go .* build/tables-generated-go/.gen-7
+needs ./test/conformance/go .* build/tables-generated-go/.gen-8
+needs ./test/conformance/go .* build/tables-generated-go/.stamp
+needs ./test/conformance/go .* cards-generate
+needs ./test/conformance/go .* build/tables-generated-go/.warm-1
+needs ./test/conformance/go .* build/tables-generated-go/.warm-2
+needs ./test/conformance/go .* build/tables-generated-go/.warm-3
+needs ./test/conformance/go .* build/tables-generated-go/.warm-4
 needs ./test/conformance/go .* build/conformance-go
+needs ./test/conformance/go/rows .* bin/schema
+needs ./test/conformance/go/rows .* build/tables-generated-go/.gen-1
+needs ./test/conformance/go/rows .* build/tables-generated-go/.gen-2
+needs ./test/conformance/go/rows .* build/tables-generated-go/.gen-3
+needs ./test/conformance/go/rows .* build/tables-generated-go/.gen-4
+needs ./test/conformance/go/rows .* build/tables-generated-go/.gen-5
+needs ./test/conformance/go/rows .* build/tables-generated-go/.gen-6
+needs ./test/conformance/go/rows .* build/tables-generated-go/.gen-7
+needs ./test/conformance/go/rows .* build/tables-generated-go/.gen-8
+needs ./test/conformance/go/rows .* build/tables-generated-go/.stamp
+needs ./test/conformance/go/rows .* cards-generate
+needs ./test/conformance/go/rows .* build/tables-generated-go/.warm-1
+needs ./test/conformance/go/rows .* build/tables-generated-go/.warm-2
+needs ./test/conformance/go/rows .* build/tables-generated-go/.warm-3
+needs ./test/conformance/go/rows .* build/tables-generated-go/.warm-4
 needs ./test/conformance/go/rows .* build/conformance-go
+needs ./test/go-tables .* bin/schema
+needs ./test/go-tables .* build/tables-generated-go/.gen-1
+needs ./test/go-tables .* build/tables-generated-go/.gen-2
+needs ./test/go-tables .* build/tables-generated-go/.gen-3
+needs ./test/go-tables .* build/tables-generated-go/.gen-4
+needs ./test/go-tables .* build/tables-generated-go/.gen-5
+needs ./test/go-tables .* build/tables-generated-go/.gen-6
+needs ./test/go-tables .* build/tables-generated-go/.gen-7
+needs ./test/go-tables .* build/tables-generated-go/.gen-8
 needs ./test/go-tables .* build/tables-generated-go/.stamp
 
 # the legs, harness and toolchain the all-port differential's own make of its
 # answer tree builds from: shared with the run's other makes, so built first,
 # under the driver's hold on the checkout
-needs ./internal/ci TestSchemaSquirrelAllPortDifferential schema-squirrel-all-port-differential-legs
+needs ./internal/ci/squirreldiff TestSchemaSquirrelAllPortDifferential schema-squirrel-all-port-differential-legs
+
+# the generated Dart corpus the cook-write row test copies and runs the
+# driver over (build/tables-generated-dart and its -scalars tree, both written
+# by the .stamp rule), the cards unit beside it, then the counted-minimum
+# framing unit the driver imports from build/, in build order
+needs ./internal/codegen/darttable TestCookWriteAnswersEveryCookWriteRowDart bin/schema
+needs ./internal/codegen/darttable TestCookWriteAnswersEveryCookWriteRowDart build/tables-generated-dart/.stamp
+needs ./internal/codegen/darttable TestCookWriteAnswersEveryCookWriteRowDart cards-dart-generate
+needs ./internal/codegen/darttable TestCookWriteAnswersEveryCookWriteRowDart build/tables-generated-dart-framing/countedmin/.stamp
+
+# the conformance harness and the compiled Elixir leg (build/elixir-tables-ebin)
+# the message-form test runs the message surface with, in build order
+needs ./internal/codegen/elixirtable TestMessageFormConformanceElixir build/conformance-harness
+needs ./internal/codegen/elixirtable TestMessageFormConformanceElixir bin/schema
+needs ./internal/codegen/elixirtable TestMessageFormConformanceElixir build/tables-generated-elixir/.stamp
+needs ./internal/codegen/elixirtable TestMessageFormConformanceElixir build-conformance-elixir
+
+# the native Luau fuzz host the verdict pipe and its control run the driver
+# under (its rule fetches and checks the pinned Luau source first)
+needs ./internal/codegen/luautable TestLuauWireFuzzVerdictPipe(NegativeControl)? build/luaufuzzhost/luaufuzzhost
+
+# the conformance harness the C# strict driver tests run the leg under, which
+# they make for themselves too (csConformanceBuild): built before their call
+needs ./internal/codegen/cstable TestCSharpDriverReadsStrictAndWritesBack(NegativeControl)? build/conformance-harness
+
+# the conformance harness the Elixir strict driver tests run the leg under, which
+# they make for themselves too (elixirConformanceBuild): built before their call
+needs ./internal/codegen/elixirtable TestElixirDriverReadsStrictAndWritesBack(NegativeControl)? build/conformance-harness

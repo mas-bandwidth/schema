@@ -93,7 +93,33 @@ module SchemaRuntimeUnit
     body
   end
 
+  # A READ PAST THE BYTES IT WAS HANDED REFUSES BY NAME, in every build. A
+  # byteslice past the end of a record is SHORT or nil, not an error, in Ruby:
+  # an integer read there came back 0, a copy landed fewer bytes and shrank the
+  # image, and a dead span read as zero, so a plan reaching past a short record
+  # answered a wrong value SILENTLY. No lawful plan reaches there (every entry
+  # is bounded by the WRITER's declared record at generate time,
+  # docs/FIXED-FORM-ALGORITHM.md §4.2 and §5.2 PLAN, fix 3); a forged one
+  # refuses layout_record_too_large, the name §5.2 gives an entry that reaches
+  # past the writer's record.
+  def self._s_fixed_within(data, at, stop)
+    return unless at.negative? || stop > data.bytesize
+
+    raise Refused.new("layout_record_too_large", "a plan entry reads past the writer's record")
+  end
+
+  # How many record bytes past src one op reads: a const reads none.
+  def self._s_fixed_reach(kind, size)
+    case kind
+    when "copy", "widen", "ordinal" then size
+    when "widenf", "count" then 4
+    when "text" then 4 + size
+    else 0
+    end
+  end
+
   def self._s_fixed_int(data, at, width, signed)
+    _s_fixed_within(data, at, at + width)
     if width == 1
       return data.getbyte(at) || 0 unless signed
       v1 = (data.byteslice(at, 1) || "".b).unpack1("c") #: Integer?
@@ -148,6 +174,7 @@ module SchemaRuntimeUnit
   end
 
   def self._s_fixed_dead(data, from, stop)
+    _s_fixed_within(data, from, stop)
     i = from
     while i < stop
       if (data.getbyte(i) || 0) != 0
@@ -158,6 +185,7 @@ module SchemaRuntimeUnit
   end
 
   def self._s_fixed_bool(data, at)
+    _s_fixed_within(data, at, at + 1)
     value = data.getbyte(at) || 0
     if value > 1
       raise Refused.new("wire_damaged", "a bool or presence byte is not 0 or 1")
@@ -508,6 +536,7 @@ module SchemaRuntimeUnit
     dst = op["dst"]
     size = op["size"]
     kind = op["op"]
+    _s_fixed_within(source, src, src + _s_fixed_reach(kind, size))
     if kind == "copy"
       image[dst, size] = source.byteslice(src, size) || "".b if size > 0
     elsif kind == "widen"

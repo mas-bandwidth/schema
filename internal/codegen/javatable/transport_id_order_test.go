@@ -203,6 +203,7 @@ func javaIdOrderAnswers(t *testing.T, mutate bool) map[string]string {
 	return answers
 }
 func TestJavaTransportIDFirstUse(t *testing.T) {
+	t.Parallel()
 	got := javaIdOrderAnswers(t, false)
 	allIdOrderCases := idOrderCases(t)
 	if len(allIdOrderCases) == 0 {
@@ -222,6 +223,7 @@ func TestJavaTransportIDFirstUse(t *testing.T) {
 	}
 }
 func TestJavaTransportIDNegativeControl(t *testing.T) {
+	t.Parallel()
 	got := javaIdOrderAnswers(t, true)
 	allIdOrderCases := idOrderCases(t)
 	if len(allIdOrderCases) == 0 {

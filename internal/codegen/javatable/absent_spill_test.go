@@ -90,6 +90,8 @@ func TestJavaBlobSharedConformanceDriverAnswersTheWireRefusal(t *testing.T) {
 		{"tblvarevo1", filepath.Join(repo, "test", "tables", "varevo", "VarEvo1.schema")},
 		{"tblvarevo2", filepath.Join(repo, "test", "tables", "varevo", "VarEvo2.schema")},
 		{"cooktorture", filepath.Join(repo, "test", "tables", "cooktorture", "CookTorture.schema")},
+		// the read-into rows (7c40faf800) name the surfaces unit directly
+		{"surfaces", filepath.Join(repo, "test", "tables", "surfaces")},
 	}
 	for _, unit := range units {
 		u := unitFromDir(t, unit.path)

@@ -189,34 +189,79 @@ print("bounds read back")
 	}
 }
 
+// The message writer holds a ranged integer twice: V.toRaw refuses it off its
+// declared range, and the packed write refuses a biased value (value - min)
+// that does not fit the field's bits. Above the range the biased value still
+// fits (6 - -5 = 11 in bitsReq(-5, 5) = 4 bits), so only V.toRaw refuses it;
+// below the range it is negative and the packing guard refuses it too. The
+// control therefore removes the range check first and requires range-above
+// written by every writer and range-below written by every writer but the
+// message one, which the packing guard alone still refuses; then it removes
+// the packing guard as well and requires range-below written everywhere.
 func TestMooWritersRefuseOffContractNegativeControl(t *testing.T) {
 	t.Parallel()
 	g := generateFiles(t, map[string]string{"Probe.schema": writerContractSchema})
 	const anchor = "\tif fd.lo ~= nil and (V.rawCmp(x, fd.lo, kw, signed) < 0 or V.rawCmp(x, fd.hi, kw, signed) > 0) then return nil end\n"
-	path := filepath.Join(g.dir, "table_values.moo")
-	src := string(g.files["table_values.moo"])
-	if strings.Count(src, anchor) != 1 {
-		t.Fatalf("the narrow-kind range check anchor matched %d times, want once", strings.Count(src, anchor))
-	}
-	if err := os.WriteFile(path, []byte(strings.Replace(src, anchor, "", 1)), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	ranged := []writerMutation{writerMutations[0], writerMutations[1]}
-	got := strings.Split(g.run(t, writerContractProgram(g, ranged), nil), "\n")
-	if len(got) != len(ranged) {
-		t.Fatalf("the patched probe returned %d rows for %d mutations:\n%s", len(got), len(ranged), strings.Join(got, "\n"))
-	}
-	for i, m := range ranged {
-		f := strings.Split(got[i], "\t")
-		if len(f) != 6 {
-			t.Errorf("%s: malformed row: %q", m.name, got[i])
-			continue
+	const packAnchor = "\tif bits > 0 and bits < 64 and (shape.packing == 1 or not e.signed) then\n"
+	patch := func(file, from, to string) {
+		t.Helper()
+		src, err := os.ReadFile(filepath.Join(g.dir, file))
+		if err != nil {
+			t.Fatal(err)
 		}
-		for _, verdict := range f[1:] {
-			if verdict != "written" {
-				t.Errorf("%s: removing the emitted range check did not make every writer accept it: %q", m.name, got[i])
-				break
+		if n := strings.Count(string(src), from); n != 1 {
+			t.Fatalf("%s: the anchor %q matched %d times, want once", file, from, n)
+		}
+		if err := os.WriteFile(filepath.Join(g.dir, file), []byte(strings.Replace(string(src), from, to, 1)), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	probe := func(ranged []writerMutation) [][]string {
+		t.Helper()
+		got := strings.Split(g.run(t, writerContractProgram(g, ranged), nil), "\n")
+		if len(got) != len(ranged) {
+			t.Fatalf("the patched probe returned %d rows for %d mutations:\n%s", len(got), len(ranged), strings.Join(got, "\n"))
+		}
+		rows := make([][]string, len(got))
+		for i, line := range got {
+			rows[i] = strings.Split(line, "\t")
+			if len(rows[i]) != 6 || rows[i][0] != ranged[i].name {
+				t.Fatalf("%s: malformed row: %q", ranged[i].name, line)
 			}
+		}
+		return rows
+	}
+	above, below := writerMutations[0], writerMutations[1]
+	if above.name != "range-above" || below.name != "range-below" {
+		t.Fatalf("the first two mutations are %s and %s, want range-above and range-below", above.name, below.name)
+	}
+	// the message writer is column 3 (fixed, variable, message, json fixed, json variable)
+	const messageColumn = 3
+
+	patch("table_values.moo", anchor, "")
+	rows := probe([]writerMutation{above, below})
+	for _, verdict := range rows[0][1:] {
+		if verdict != "written" {
+			t.Errorf("range-above: removing the emitted range check did not make every writer accept it: %q", strings.Join(rows[0], "\t"))
+			break
+		}
+	}
+	for col, verdict := range rows[1][1:] {
+		want := "written"
+		if col+1 == messageColumn {
+			want = "refused"
+		}
+		if verdict != want {
+			t.Errorf("range-below: without the range check column %d answers %q, want %q (only the message packing guard still refuses): %q", col+1, verdict, want, strings.Join(rows[1], "\t"))
+		}
+	}
+
+	patch("table_message.moo", packAnchor, "\tif false then\n")
+	rows = probe([]writerMutation{below})
+	for _, verdict := range rows[0][1:] {
+		if verdict != "written" {
+			t.Errorf("range-below: removing the range check and the packing guard did not make every writer accept it: %q", strings.Join(rows[0], "\t"))
+			break
 		}
 	}
 }

@@ -35,8 +35,10 @@ var cookWriteAbsentDart = map[string]string{}
 // in each order. A row is a passing cook or a named absence; never a skip.
 //
 // It runs the driver over the generated corpus in build/tables-generated-dart,
-// which make's tables-dart-block-build builds first; without the corpus the
-// test fails by name.
+// beside the counted-minimum framing unit, which make's
+// tables-dart-block-build builds first (test/registry/go-needs.txt declares
+// the same builds for the registry's run); without either the test fails by
+// name.
 func TestCookWriteAnswersEveryCookWriteRowDart(t *testing.T) {
 
 	t.Parallel()
@@ -55,6 +57,11 @@ func TestCookWriteAnswersEveryCookWriteRowDart(t *testing.T) {
 			if _, err := os.Stat(filepath.Join(repo, "build", "tables-generated-dart", need)); err != nil {
 				t.Fatalf("the generated Dart corpus lacks %s: run make tables-dart-block-build", need)
 			}
+		}
+		// the driver also imports the counted-minimum framing unit, read in
+		// place from build/ (the rewrite below points it there)
+		if _, err := os.Stat(filepath.Join(repo, "build", "tables-generated-dart-framing", "countedmin", ".stamp")); err != nil {
+			t.Fatalf("the generated Dart framing unit lacks countedmin/.stamp: run make tables-dart-block-build")
 		}
 		if err := os.CopyFS(corpusDart, os.DirFS(filepath.Join(repo, "build", "tables-generated-dart"))); err != nil {
 			t.Fatalf("stage tables-generated-dart copy: %v", err)

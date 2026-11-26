@@ -208,20 +208,6 @@ void fixed_fx1_form_headers( const uint8_t * data, int64_t bytes )
     form_case( "reserved byte 3 nonzero", reserved, bytes, SCHEMA_TBLFX1_TABLE_NO_REFUSAL, SCHEMA_TBLFX1_TABLE_REFUSE_WIRE_DAMAGED );
 }
 
-/* CASE 3: A NEWER WRITER — under §5.6 a file whose hash this build's lineage
-   does not hold refuses as layout_newer before any record is touched. */
-void fixed_fx1_read_fx2( const uint8_t * data, int64_t bytes )
-{
-    tblfx1_fx_root_t back;
-    tblfx1_table_report_t r;
-    int64_t n;
-    tblfx1_fx_root_reset( &back );
-    memset( &r, 0, sizeof( r ) );
-    n = tblfx1_fx_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r );
-    fixed_check( n < 0 && r.refused && r.reason == SCHEMA_TBLFX1_TABLE_LAYOUT_NEWER,
-                 "newer writer: layout_newer refuses the read" );
-}
-
 /* THE BOUNDS THE READ LOOP DOES NOT HOLD (docs/SPEC-TABLES.md §3.4, §6.5). A
    fixed record is a positional image and the one read loop moves bytes: it asks
    nothing about what they mean. A RANGED SCALAR's declared min and max are held

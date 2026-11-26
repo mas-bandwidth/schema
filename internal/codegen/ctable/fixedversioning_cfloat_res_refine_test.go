@@ -21,6 +21,7 @@ import (
 // and one that cannot tell 0.3 from the float32 beside it. The manifest carries
 // the reference's own answer, bits and all.
 func TestFixedVersioningCfloatResRefine(t *testing.T) {
+	t.Parallel() // reads the corpus, writes only its own TempDir (make tables-c-versioning)
 	corpus := cFixedCorpus(t)
 	newer := cReadSchema(t, "VNEW_cfloat_res_refine")
 	older := cReadSchema(t, "VOLD_cfloat_res_refine")

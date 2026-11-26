@@ -3,6 +3,7 @@
 package ci
 
 import (
+	"encoding/json"
 	"fmt"
 	"maps"
 	"os"
@@ -191,7 +192,7 @@ func TestACFormatShardHoldsItsRatchetLines(t *testing.T) {
 		}
 		cmd := exec.Command("sh", "make/checks/c-clean-format.sh", "allow.txt", "gen")
 		cmd.Dir = dir
-		cmd.Env = append(os.Environ(), "CLANG_FORMAT="+filepath.Join(dir, "format"), "OUT="+filepath.Join(dir, "out"), "SHARD="+shard)
+		cmd.Env = append(os.Environ(), "CLANG_FORMAT="+filepath.Join(dir, "format"), "OUT="+filepath.Join(dir, "out"), "SHARD="+shard, "FILE_SECONDS=5")
 		out, err := cmd.CombinedOutput()
 		return string(out), err
 	}
@@ -308,5 +309,160 @@ func TestADirectoryShardIsWholeAndWeighsItsSource(t *testing.T) {
 	}
 	if after := split(); !maps.Equal(before, after) {
 		t.Errorf("a target/ and a Cargo.lock moved the split:\nbefore %v\nafter  %v", before, after)
+	}
+}
+
+// shardRowProblems names each way the registry's sharded make rows fail to
+// judge their gate whole: a make row sets a *_SHARD var to K/N, and the
+// rows of one gate (its file, target, tools and other vars) must be shards
+// 1..N of one N, each once, with no whole row of the gate beside them.
+func shardRowProblems(lines []string) []string {
+	type row struct {
+		key        string
+		gate       string // file, target, tools and every non-shard var
+		shardVar   string
+		k, n       int
+		file, targ string
+	}
+	var rows []row
+	var problems []string
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		var r struct {
+			Rec     string `json:"rec"`
+			Key     string `json:"key"`
+			Adapter string `json:"adapter"`
+			Inputs  struct {
+				File   string            `json:"file"`
+				Target string            `json:"target"`
+				Tools  []string          `json:"tools"`
+				Vars   map[string]string `json:"vars"`
+			} `json:"inputs"`
+		}
+		if json.Unmarshal([]byte(line), &r) != nil || r.Rec != "test" || r.Adapter != "make" {
+			continue
+		}
+		var shardVars, rest []string
+		for name, v := range r.Inputs.Vars {
+			if strings.HasSuffix(name, "_SHARD") {
+				shardVars = append(shardVars, name)
+			} else {
+				rest = append(rest, name+"="+v)
+			}
+		}
+		slices.Sort(rest)
+		gate := fmt.Sprintf("%s %s tools=%v vars=%v", r.Inputs.File, r.Inputs.Target, r.Inputs.Tools, rest)
+		x := row{key: r.Key, gate: gate, file: r.Inputs.File, targ: r.Inputs.Target}
+		switch len(shardVars) {
+		case 0:
+		case 1:
+			x.shardVar = shardVars[0]
+			kn := strings.Split(r.Inputs.Vars[x.shardVar], "/")
+			k, errK := strconv.Atoi(kn[0])
+			n, errN := 0, error(nil)
+			if len(kn) == 2 {
+				n, errN = strconv.Atoi(kn[1])
+			}
+			if len(kn) != 2 || errK != nil || errN != nil || n < 2 || k < 1 || k > n {
+				problems = append(problems, fmt.Sprintf("%s: %s=%q is not a shard K/N with 1 <= K <= N and N >= 2", r.Key, x.shardVar, r.Inputs.Vars[x.shardVar]))
+				continue
+			}
+			x.k, x.n = k, n
+		default:
+			slices.Sort(shardVars)
+			problems = append(problems, fmt.Sprintf("%s: sets %d shard vars %v; a row is one shard of one gate", r.Key, len(shardVars), shardVars))
+			continue
+		}
+		rows = append(rows, x)
+	}
+	shards := map[string][]row{}
+	whole := map[string][]string{}
+	for _, r := range rows {
+		if r.shardVar == "" {
+			whole[r.file+" "+r.targ] = append(whole[r.file+" "+r.targ], r.key)
+			continue
+		}
+		shards[r.gate+" "+r.shardVar] = append(shards[r.gate+" "+r.shardVar], r)
+	}
+	for _, g := range slices.Sorted(maps.Keys(shards)) {
+		rs := shards[g]
+		n := rs[0].n
+		seen := map[int][]string{}
+		for _, r := range rs {
+			if r.n != n {
+				problems = append(problems, fmt.Sprintf("%s: shards %s as %d/%d, but %s shards it into %d", r.key, g, r.k, r.n, rs[0].key, n))
+				continue
+			}
+			seen[r.k] = append(seen[r.k], r.key)
+		}
+		for k := 1; k <= n; k++ {
+			switch len(seen[k]) {
+			case 0:
+				problems = append(problems, fmt.Sprintf("%s: no row runs shard %d of %d, so its files are never judged", g, k, n))
+			case 1:
+			default:
+				problems = append(problems, fmt.Sprintf("%s: shard %d of %d is run by %d rows %v", g, k, n, len(seen[k]), seen[k]))
+			}
+		}
+		if w := whole[rs[0].file+" "+rs[0].targ]; len(w) > 0 {
+			problems = append(problems, fmt.Sprintf("%s: whole rows %v judge it again beside its shards", g, w))
+		}
+	}
+	return problems
+}
+
+// TestEveryShardedGateIsJudgedWhole: the registry's sharded make rows of a
+// gate are shards 1..N of one N, each run once, with no whole row of the
+// gate beside them, so the shards together judge every file once. The plants
+// (a shard row gone, a shard run twice, a whole row left beside its shards,
+// a shard of another N, a shard out of range) are each red by name.
+func TestEveryShardedGateIsJudgedWhole(t *testing.T) {
+	t.Parallel()
+	data, err := os.ReadFile(filepath.Join(repoRoot(t), "test/registry/registry.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(string(data), "\n")
+	for _, p := range shardRowProblems(lines) {
+		t.Error(p)
+	}
+	sharded := 0
+	for _, l := range lines {
+		if strings.Contains(l, `_SHARD":"`) {
+			sharded++
+		}
+	}
+	if sharded == 0 {
+		t.Fatal("the registry has no sharded make row, so this check judged nothing")
+	}
+
+	mk := func(key, target, shard string) string {
+		vars := ""
+		if shard != "" {
+			vars = fmt.Sprintf(`,"vars":{"X_SHARD":%q}`, shard)
+		}
+		return fmt.Sprintf(`{"rec":"test","key":%q,"adapter":"make","inputs":{"file":"make/x.mk","target":%q%s}}`, key, target, vars)
+	}
+	good := []string{mk("a1", "gate", "1/3"), mk("a2", "gate", "2/3"), mk("a3", "gate", "3/3"), mk("other", "other", "")}
+	if p := shardRowProblems(good); len(p) != 0 {
+		t.Fatalf("a whole set of shards was refused: %v", p)
+	}
+	plants := []struct {
+		name string
+		rows []string
+		want string
+	}{
+		{"a shard row gone", []string{good[0], good[2]}, "no row runs shard 2 of 3"},
+		{"a shard run twice", append(slices.Clone(good), mk("a2b", "gate", "2/3")), "shard 2 of 3 is run by 2 rows"},
+		{"a whole row beside its shards", append(slices.Clone(good), mk("whole", "gate", "")), "whole rows [whole] judge it again"},
+		{"a shard of another N", append(slices.Clone(good), mk("a4", "gate", "1/4")), "shards it into 3"},
+		{"a shard out of range", append(slices.Clone(good), mk("a0", "gate", "0/3")), `X_SHARD="0/3" is not a shard`},
+	}
+	for _, pl := range plants {
+		if got := strings.Join(shardRowProblems(pl.rows), "\n"); !strings.Contains(got, pl.want) {
+			t.Errorf("%s: the check reported %q, want %q", pl.name, got, pl.want)
+		}
 	}
 }

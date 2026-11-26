@@ -76,7 +76,8 @@ func deadCppHeader(t *testing.T, src string) (string, map[string][]byte) {
 	if !ok {
 		t.Fatal("the cpp target emitted no ProbeTable.h")
 	}
-	return string(header), files
+	// the header includes ProbeTableData.h, which holds the fixed form's arrays
+	return string(header) + string(files["ProbeTableData.h"]), files
 }
 
 func TestCppTableBlobThunksFollowTheCensus(t *testing.T) {

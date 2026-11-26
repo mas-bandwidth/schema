@@ -322,7 +322,13 @@ read_map = function(ctx, f, at)
     read_record(ctx, inst, entry, start + i * entry.size)
     local key = inst[kf.name]
     local value = inst[vf.name]
-    if value == nil and (vf.shape == "pointer" or vf.shape == "string_blob" or vf.shape == "bytes_blob") then
+    -- a null reference, and an enum at None (read None, or a variant retired
+    -- in place read as the value's declared default, §2.15), is still an
+    -- entry (§2.8): false, as the load holds it; nil would drop the key
+    if
+      value == nil
+      and (vf.shape == "pointer" or vf.shape == "string_blob" or vf.shape == "bytes_blob" or vf.shape == "enum")
+    then
       value = false
     end
     out[key] = value

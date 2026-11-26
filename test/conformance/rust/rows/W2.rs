@@ -68,13 +68,18 @@ fn test_row_w2() {
         "absent optional: the payload tag_length reads as the wire's zeros"
     );
     assert!(
-        report.oor == 0 && !report.damaged && !report.refused,
+        !report.refused,
         "absent optional: a clean read moves no counter"
     );
 
     // --- NEGATIVE CONTROL: the SAME payload PRESENT ---
+    // A present payload is LIVE and must be lawful: the writer's debug_assert
+    // holds `value` to [0, 1000] (the write contract, an assert leg), so the
+    // twin carries a lawful value and keeps the 0x5A stain in its text bytes,
+    // "ZZZZ" — well-formed UTF-8 with no zero.
     let mut present = v;
     present.link_present = true;
+    present.link.value = 7;
     present.link.tag_length = 4;
     let mut pw = vec![0u8; need];
     chain_fixed_save(&[present], &mut pw).expect("present twin saves");

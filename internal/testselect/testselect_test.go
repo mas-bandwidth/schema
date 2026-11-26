@@ -170,3 +170,23 @@ func TestANameNightlyInOnePackageOnlyFails(t *testing.T) {
 		t.Errorf("q alone: %q, %v", got, err)
 	}
 }
+
+// TestAUnionRowsNightlyLanguagesAreNightly: a union row's Go tests run in
+// each language's own tier when it has one and in the row's otherwise
+// (testreg.Test.TierIn): language A's test, moved to nightly on its own, and
+// a nightly union row's test are left out of a per-change selection, while
+// language B's, in the row's unit tier, stays in. The plant is Nightly
+// reading only the row's tier: TestA is selected per change.
+func TestAUnionRowsNightlyLanguagesAreNightly(t *testing.T) {
+	t.Parallel()
+	root, dir := plant(t, "",
+		`{"rec":"test","key":"u","tier":"unit","inputs":{"tests":{"A":{"package":"./p","test":"TestA","seconds":75,"tier":"nightly"},"B":{"package":"./p","test":"TestB","seconds":3}}}}`+"\n"+
+			`{"rec":"test","key":"n","tier":"nightly","inputs":{"tests":{"A":{"package":"./p","test":"TestX"}}}}`+"\n")
+	got, err := Select(linux(), root, []string{dir}, nil, regexp.MustCompile(`^(Example|Fuzz)`), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "^(TestB)$"; got != want {
+		t.Errorf("select: %q, want %q (TestA runs nightly in A, TestX in a nightly row)", got, want)
+	}
+}

@@ -80,7 +80,7 @@ fn arg_and_meta_are_two_lanes() {
     // runs — and it lands the utf8 BYTES.
     let mut image = [0u8; 12];
     let mut report = TableFixedReport::default();
-    table_fixed_run(&[text_utf8], &[guard], &[], &record, &mut image, &mut report);
+    let ran = table_fixed_run(&[text_utf8], &[guard], &[], &record, &mut image, &mut report);
     check(
         image[0..4] == 5u32.to_le_bytes(),
         "arg-v-meta: the used length 5 lands",
@@ -90,8 +90,8 @@ fn arg_and_meta_are_two_lanes() {
         "arg-v-meta: the five utf8 BYTES land under arm 2",
     );
     check(
-        !report.damaged && report.oor == 0 && !report.refused,
-        "arg-v-meta: nothing damaged, clamped or refused",
+        ran && !report.refused,
+        "arg-v-meta: the run lands with no damage and nothing refused",
     );
 
     // NEGATIVE CONTROL — the OLD one-lane encoding, planted: stamp the utf8
@@ -105,7 +105,11 @@ fn arg_and_meta_are_two_lanes() {
     old_guard.arg = 1; // the flavour, stamped over the arm ordinal
     let mut lost = [0u8; 12];
     let mut lost_report = TableFixedReport::default();
-    table_fixed_run(&[text_utf8], &[old_guard], &[], &record, &mut lost, &mut lost_report);
+    let lost_ran = table_fixed_run(&[text_utf8], &[old_guard], &[], &record, &mut lost, &mut lost_report);
+    check(
+        lost_ran && !lost_report.refused,
+        "NEGATIVE CONTROL: the run with the old encoding completes (the guard misses, nothing is damaged)",
+    );
     check(
         lost == [0u8; 12],
         "NEGATIVE CONTROL: flavour in the arg lane does NOT land the string under arm 2",

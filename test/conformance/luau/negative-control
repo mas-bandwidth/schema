@@ -10,15 +10,17 @@
 #
 #   report  schema_load.luau marks the load malformed at every unknown field
 #           it skips: every surface whose rows carry an unknown field red
-#           (`report`, `retain`, `retain-save`, and `framing` on exactly its
-#           unknown-field rows, pinned by name) and nothing else; `wire`,
+#           (`report`, `retain`, `retain-save`, and `framing`, `retain-refusal`,
+#           `read-into` and `rewrite` on exactly their unknown-field rows,
+#           pinned by name) and nothing else; `wire`,
 #           `json-read` and `cook-write` green (their wires carry none).
 #   walk    schema_json.luau's field-key match never matches the first
 #           declared field: the text READER's two surfaces red (`luau /
 #           json-read`, and `luau / json-hostile`, which reads through the same
-#           match) and nothing else; `json-write`, `wire` and `cook-write`
-#           green, so the break is the text walk's and the matrix localizes it
-#           (I11).
+#           match), and `cook-write` on exactly its shared-blob rows, whose
+#           value is built from its input text (pinned by name), and nothing
+#           else; `json-write` and `wire` green, so the break is the text
+#           walk's and the matrix localizes it (I11).
 #
 # main.luau finds its staged inputs and the generated units by paths relative
 # to itself (../../../build/...), so the sabotaged units run under a MIRROR of
@@ -115,8 +117,8 @@ if build/conformance-harness run --drivers "$out/drivers.txt" --work "$out/work"
 fi
 red=$(grep -oE '^ *luau / [a-z-]+' "$out/log" | sed 's/^ *luau \/ //' | sort -u | tr '\n' ' ')
 case "$mode" in
-report) want="framing report retain retain-save " ; green="wire json-read cook-write" ; rows="graph_reach_unknown_field graph_reach_unknown_keyed_slot graph_reach_unknown_nested graph_reach_unknown_union_arm node_type_undeclared" ;;
-walk)   want="json-hostile json-read " ; green="wire json-write cook-write" ;;
+report) want="framing read-into report retain retain-refusal retain-save rewrite " ; green="wire json-read cook-write" ;;
+walk)   want="cook-write json-hostile json-read " ; green="wire json-write" ;;
 framing) want="framing " ; green="wire report" ;;
 cycle) want="framing " ; green="wire report" ;;
 esac
@@ -125,18 +127,45 @@ if [ "$red" != "$want" ]; then
 	cat "$out/log" >&2
 	exit 1
 fi
-# the load sabotage reaches framing only through the rows whose wire carries
-# an unknown field (graph_reach_unknown_*, and node_type_undeclared, whose
-# pointer names an undeclared table, reads null and counts unknown): exactly
-# those rows, by name, so a framing row the skip does not decide stays green
+# the load sabotage reaches framing, retain-refusal, read-into and rewrite only
+# through the rows whose wire carries an unknown field (graph_reach_unknown_*,
+# and node_type_undeclared, whose pointer names an undeclared table, reads null
+# and counts unknown; varevo_v3_compat_as_v1, whose v3 fields a v1 reader does
+# not know; the retain-refusal rows' and ri_retain's lawful retaining wires):
+# exactly those rows, by name, so a row the skip does not decide stays green
 if [ "$mode" = report ]; then
-	got=$(grep -oE "^ *luau / framing: [A-Za-z0-9_]+" "$out/log" | sed "s/.*: //" | sort -u | xargs echo)
-	if [ "$got" != "$rows" ]; then
-		echo "NEGATIVE CONTROL FAILED: the luau report sabotage turned framing rows [$got] red; it must turn exactly the unknown-field rows [$rows] red" >&2
+	unknownrows="graph_reach_unknown_field graph_reach_unknown_keyed_slot graph_reach_unknown_nested graph_reach_unknown_union_arm node_type_undeclared"
+	for pin in \
+		"framing:$unknownrows" \
+		"rewrite:$unknownrows varevo_v3_compat_as_v1" \
+		"retain-refusal:retain_refusal_body retain_refusal_empty retain_refusal_form_two retain_refusal_frame retain_refusal_short" \
+		"read-into:ri_retain"; do
+		surface=${pin%%:*} rows=${pin#*:}
+		got=$(grep -oE "^ *luau / $surface: [A-Za-z0-9_]+" "$out/log" | sed "s/.*: //" | sort -u | xargs echo)
+		if [ "$got" != "$rows" ]; then
+			echo "NEGATIVE CONTROL FAILED: the luau report sabotage turned $surface rows [$got] red; it must turn exactly the unknown-field rows [$rows] red" >&2
+			cat "$out/log" >&2
+			exit 1
+		fi
+	done
+fi
+# the walk sabotage reaches cook-write only through the rows that build a
+# shared blob from their construction input's text (blob_shared, both byte
+# orders: the driver reads that text through FromJson); the cycle sabotage
+# reaches framing only through the rows whose graph closes a cycle. Exactly
+# those rows, by name, so a row the sabotage does not decide stays green.
+pinned() {
+	got=$(grep -oE "^ *luau / $1: [A-Za-z0-9_-]+" "$out/log" | sed "s/.*: //" | LC_ALL=C sort -u | xargs echo)
+	if [ "$got" != "$2" ]; then
+		echo "NEGATIVE CONTROL FAILED: the luau $mode sabotage turned $1 rows [$got] red; it must turn exactly [$2] red" >&2
 		cat "$out/log" >&2
 		exit 1
 	fi
-fi
+}
+case "$mode" in
+walk) pinned cook-write "blob_shared blob_shared-be" ;;
+cycle) pinned framing "graph_listnode_unknown_self graph_unknown_to_root graph_unknown_type_pair graph_unknown_type_self node_cycle_mid node_cycle_self node_cycle_to_root" ;;
+esac
 for surface in $green; do
 	if ! grep -qE "^$surface +pass" "$out/log"; then
 		echo "NEGATIVE CONTROL FAILED: the luau $mode sabotage did not leave $surface green" >&2

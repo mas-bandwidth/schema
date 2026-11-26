@@ -10,7 +10,7 @@ step of theirs that runs one calls only `schema-test`:
 
 | workflow | when | what it runs |
 |---|---|---|
-| `ci-fast.yml` | every pull request, every push to main, dispatch | `schema-test run --group pr --lang L --shard i/N`, one job per row below; `schema-test extract` against main's ledger; `schema-test ci --check`; the `verdict` job |
+| `ci-fast.yml` | every pull request, every push to main, dispatch | `schema-test run --group pr`, one job: the rows below; `schema-test extract` against main's ledger; `schema-test ci --check`; the `verdict` job |
 | `schema-nightly.yml` | nightly, dispatch | `schema-test run --group nightly`: every tier, every language, through `go run ./tools/fullrun`; a language that does not answer a row is red by name |
 | `roadmap.yml` | pull requests touching the roadmap, pushes to main | `schema-test run none.nightly.tooling.roadmap.check`, the row that reads the commit range, with full history |
 
@@ -23,482 +23,52 @@ and their data, and the workflows that run none:
 - `release.yml`: the release: tags and builds a release on a green CI fast run at the commit (the fast lane), never a test of its own.
 
 Nothing selects by path or branch: every pull request runs the whole `pr`
-group, every ready test of tiers unit and functional, and a push to main runs
-the same.
+group, and a push to main runs the same. Every other row runs in the nightly
+workflows, by its tier.
 
 ## The tiers
 
 | tier | tests | what it is |
 |---|---|---|
-| `unit` | 3329 | no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory |
-| `functional` | 5774 | uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it |
-| `nightly` | 1975 | heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded |
+| `unit` | 4062 | no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory |
+| `functional` | 7622 | uses a real thing: a compiler or VM, a toolchain, generated code built and run; runs nightly, and per pull request only as the pr group names it (one happy-path row per language, make happy-<lang>) |
+| `nightly` | 2826 | heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded |
 
-## The per-PR matrix
+## The per-PR job
 
-The `pr` group is cut per language into the fewest shards whose every part
-carries at most 60 s of measured test time (each test's `seconds` in the
-registry; a test with none weighs 1 s until a run measures it, so a shard of
-unmeasured tests is held to the budget only once they are measured). Each row is
-one job, in jobs of at most `256` rows (GitHub's limit on one matrix),
-`schema-test run --group pr --lang L --shard i/N`.
+One job, `schema-test-pr`, runs `go run ./tools/schema-test run --group pr --jobs 4`: for every language, one row,
+`make happy-<lang>` (`make/happy-path.mk`), which generates one small schema,
+compiles it with that language's program and does one round trip: the
+language's compile and its happy path, and nothing else. The languages run
+side by side, 4 at once. The whole job, its setup (47.3 s, measured) and the
+run's critical path (the longer of the path the rows' seconds give and the
+run's measured 31.0 s), is at most 120 s, the job's two minutes; a language
+past its 6.7 s serial share gets faster, and no row moves out to fit.
 
-| language | shard | tests | measured seconds |
-|---|---|---|---|
-| `c` | 1/16 | 43 | 53.1 |
-| `c` | 2/16 | 292 | 54.7 |
-| `c` | 3/16 | 379 | 54.6 |
-| `c` | 4/16 | 740 | 54.7 |
-| `c` | 5/16 | 427 | 54.6 |
-| `c` | 6/16 | 387 | 54.7 |
-| `c` | 7/16 | 54 | 54.0 |
-| `c` | 8/16 | 54 | 54.0 |
-| `c` | 9/16 | 54 | 54.0 |
-| `c` | 10/16 | 24 | 53.7 |
-| `c` | 11/16 | 4 | 52.0 |
-| `c` | 12/16 | 3 | 48.6 |
-| `c` | 13/16 | 3 | 50.2 |
-| `c` | 14/16 | 2 | 46.2 |
-| `c` | 15/16 | 2 | 35.2 |
-| `c` | 16/16 | 2 | 48.4 |
-| `cpp` | 1/16 | 43 | 53.1 |
-| `cpp` | 2/16 | 292 | 54.7 |
-| `cpp` | 3/16 | 379 | 54.6 |
-| `cpp` | 4/16 | 740 | 54.7 |
-| `cpp` | 5/16 | 427 | 54.6 |
-| `cpp` | 6/16 | 387 | 54.7 |
-| `cpp` | 7/16 | 54 | 54.0 |
-| `cpp` | 8/16 | 54 | 54.0 |
-| `cpp` | 9/16 | 54 | 54.0 |
-| `cpp` | 10/16 | 24 | 53.7 |
-| `cpp` | 11/16 | 4 | 52.0 |
-| `cpp` | 12/16 | 3 | 48.6 |
-| `cpp` | 13/16 | 3 | 50.2 |
-| `cpp` | 14/16 | 2 | 46.2 |
-| `cpp` | 15/16 | 2 | 35.2 |
-| `cpp` | 16/16 | 2 | 48.4 |
-| `cs` | 1/16 | 43 | 53.1 |
-| `cs` | 2/16 | 292 | 54.7 |
-| `cs` | 3/16 | 379 | 54.6 |
-| `cs` | 4/16 | 740 | 54.7 |
-| `cs` | 5/16 | 427 | 54.6 |
-| `cs` | 6/16 | 387 | 54.7 |
-| `cs` | 7/16 | 54 | 54.0 |
-| `cs` | 8/16 | 54 | 54.0 |
-| `cs` | 9/16 | 54 | 54.0 |
-| `cs` | 10/16 | 24 | 53.7 |
-| `cs` | 11/16 | 4 | 52.0 |
-| `cs` | 12/16 | 3 | 48.6 |
-| `cs` | 13/16 | 3 | 50.2 |
-| `cs` | 14/16 | 2 | 46.2 |
-| `cs` | 15/16 | 2 | 35.2 |
-| `cs` | 16/16 | 2 | 48.4 |
-| `unity` | 1/16 | 43 | 53.1 |
-| `unity` | 2/16 | 292 | 54.7 |
-| `unity` | 3/16 | 379 | 54.6 |
-| `unity` | 4/16 | 740 | 54.7 |
-| `unity` | 5/16 | 427 | 54.6 |
-| `unity` | 6/16 | 387 | 54.7 |
-| `unity` | 7/16 | 54 | 54.0 |
-| `unity` | 8/16 | 54 | 54.0 |
-| `unity` | 9/16 | 54 | 54.0 |
-| `unity` | 10/16 | 24 | 53.7 |
-| `unity` | 11/16 | 4 | 52.0 |
-| `unity` | 12/16 | 3 | 48.6 |
-| `unity` | 13/16 | 3 | 50.2 |
-| `unity` | 14/16 | 2 | 46.2 |
-| `unity` | 15/16 | 2 | 35.2 |
-| `unity` | 16/16 | 2 | 48.4 |
-| `go` | 1/16 | 43 | 53.1 |
-| `go` | 2/16 | 292 | 54.7 |
-| `go` | 3/16 | 379 | 54.6 |
-| `go` | 4/16 | 740 | 54.7 |
-| `go` | 5/16 | 427 | 54.6 |
-| `go` | 6/16 | 387 | 54.7 |
-| `go` | 7/16 | 54 | 54.0 |
-| `go` | 8/16 | 54 | 54.0 |
-| `go` | 9/16 | 54 | 54.0 |
-| `go` | 10/16 | 24 | 53.7 |
-| `go` | 11/16 | 4 | 52.0 |
-| `go` | 12/16 | 3 | 48.6 |
-| `go` | 13/16 | 3 | 50.2 |
-| `go` | 14/16 | 2 | 46.2 |
-| `go` | 15/16 | 2 | 35.2 |
-| `go` | 16/16 | 2 | 48.4 |
-| `rust` | 1/16 | 43 | 53.1 |
-| `rust` | 2/16 | 292 | 54.7 |
-| `rust` | 3/16 | 379 | 54.6 |
-| `rust` | 4/16 | 740 | 54.7 |
-| `rust` | 5/16 | 427 | 54.6 |
-| `rust` | 6/16 | 387 | 54.7 |
-| `rust` | 7/16 | 54 | 54.0 |
-| `rust` | 8/16 | 54 | 54.0 |
-| `rust` | 9/16 | 54 | 54.0 |
-| `rust` | 10/16 | 24 | 53.7 |
-| `rust` | 11/16 | 4 | 52.0 |
-| `rust` | 12/16 | 3 | 48.6 |
-| `rust` | 13/16 | 3 | 50.2 |
-| `rust` | 14/16 | 2 | 46.2 |
-| `rust` | 15/16 | 2 | 35.2 |
-| `rust` | 16/16 | 2 | 48.4 |
-| `java` | 1/16 | 43 | 53.1 |
-| `java` | 2/16 | 292 | 54.7 |
-| `java` | 3/16 | 379 | 54.6 |
-| `java` | 4/16 | 740 | 54.7 |
-| `java` | 5/16 | 427 | 54.6 |
-| `java` | 6/16 | 387 | 54.7 |
-| `java` | 7/16 | 54 | 54.0 |
-| `java` | 8/16 | 54 | 54.0 |
-| `java` | 9/16 | 54 | 54.0 |
-| `java` | 10/16 | 24 | 53.7 |
-| `java` | 11/16 | 4 | 52.0 |
-| `java` | 12/16 | 3 | 48.6 |
-| `java` | 13/16 | 3 | 50.2 |
-| `java` | 14/16 | 2 | 46.2 |
-| `java` | 15/16 | 2 | 35.2 |
-| `java` | 16/16 | 2 | 48.4 |
-| `dart` | 1/16 | 43 | 53.1 |
-| `dart` | 2/16 | 292 | 54.7 |
-| `dart` | 3/16 | 379 | 54.6 |
-| `dart` | 4/16 | 740 | 54.7 |
-| `dart` | 5/16 | 427 | 54.6 |
-| `dart` | 6/16 | 387 | 54.7 |
-| `dart` | 7/16 | 54 | 54.0 |
-| `dart` | 8/16 | 54 | 54.0 |
-| `dart` | 9/16 | 54 | 54.0 |
-| `dart` | 10/16 | 24 | 53.7 |
-| `dart` | 11/16 | 4 | 52.0 |
-| `dart` | 12/16 | 3 | 48.6 |
-| `dart` | 13/16 | 3 | 50.2 |
-| `dart` | 14/16 | 2 | 46.2 |
-| `dart` | 15/16 | 2 | 35.2 |
-| `dart` | 16/16 | 2 | 48.4 |
-| `elixir` | 1/16 | 43 | 53.1 |
-| `elixir` | 2/16 | 292 | 54.7 |
-| `elixir` | 3/16 | 379 | 54.6 |
-| `elixir` | 4/16 | 740 | 54.7 |
-| `elixir` | 5/16 | 427 | 54.6 |
-| `elixir` | 6/16 | 387 | 54.7 |
-| `elixir` | 7/16 | 54 | 54.0 |
-| `elixir` | 8/16 | 54 | 54.0 |
-| `elixir` | 9/16 | 54 | 54.0 |
-| `elixir` | 10/16 | 24 | 53.7 |
-| `elixir` | 11/16 | 4 | 52.0 |
-| `elixir` | 12/16 | 3 | 48.6 |
-| `elixir` | 13/16 | 3 | 50.2 |
-| `elixir` | 14/16 | 2 | 46.2 |
-| `elixir` | 15/16 | 2 | 35.2 |
-| `elixir` | 16/16 | 2 | 48.4 |
-| `js` | 1/16 | 43 | 53.1 |
-| `js` | 2/16 | 292 | 54.7 |
-| `js` | 3/16 | 379 | 54.6 |
-| `js` | 4/16 | 740 | 54.7 |
-| `js` | 5/16 | 427 | 54.6 |
-| `js` | 6/16 | 387 | 54.7 |
-| `js` | 7/16 | 54 | 54.0 |
-| `js` | 8/16 | 54 | 54.0 |
-| `js` | 9/16 | 54 | 54.0 |
-| `js` | 10/16 | 24 | 53.7 |
-| `js` | 11/16 | 4 | 52.0 |
-| `js` | 12/16 | 3 | 48.6 |
-| `js` | 13/16 | 3 | 50.2 |
-| `js` | 14/16 | 2 | 46.2 |
-| `js` | 15/16 | 2 | 35.2 |
-| `js` | 16/16 | 2 | 48.4 |
-| `python` | 1/16 | 43 | 53.1 |
-| `python` | 2/16 | 292 | 54.7 |
-| `python` | 3/16 | 379 | 54.6 |
-| `python` | 4/16 | 740 | 54.7 |
-| `python` | 5/16 | 427 | 54.6 |
-| `python` | 6/16 | 387 | 54.7 |
-| `python` | 7/16 | 54 | 54.0 |
-| `python` | 8/16 | 54 | 54.0 |
-| `python` | 9/16 | 54 | 54.0 |
-| `python` | 10/16 | 24 | 53.7 |
-| `python` | 11/16 | 4 | 52.0 |
-| `python` | 12/16 | 3 | 48.6 |
-| `python` | 13/16 | 3 | 50.2 |
-| `python` | 14/16 | 2 | 46.2 |
-| `python` | 15/16 | 2 | 35.2 |
-| `python` | 16/16 | 2 | 48.4 |
-| `ruby` | 1/16 | 43 | 53.1 |
-| `ruby` | 2/16 | 292 | 54.7 |
-| `ruby` | 3/16 | 379 | 54.6 |
-| `ruby` | 4/16 | 740 | 54.7 |
-| `ruby` | 5/16 | 427 | 54.6 |
-| `ruby` | 6/16 | 387 | 54.7 |
-| `ruby` | 7/16 | 54 | 54.0 |
-| `ruby` | 8/16 | 54 | 54.0 |
-| `ruby` | 9/16 | 54 | 54.0 |
-| `ruby` | 10/16 | 24 | 53.7 |
-| `ruby` | 11/16 | 4 | 52.0 |
-| `ruby` | 12/16 | 3 | 48.6 |
-| `ruby` | 13/16 | 3 | 50.2 |
-| `ruby` | 14/16 | 2 | 46.2 |
-| `ruby` | 15/16 | 2 | 35.2 |
-| `ruby` | 16/16 | 2 | 48.4 |
-| `lua` | 1/16 | 43 | 53.1 |
-| `lua` | 2/16 | 292 | 54.7 |
-| `lua` | 3/16 | 379 | 54.6 |
-| `lua` | 4/16 | 740 | 54.7 |
-| `lua` | 5/16 | 427 | 54.6 |
-| `lua` | 6/16 | 387 | 54.7 |
-| `lua` | 7/16 | 54 | 54.0 |
-| `lua` | 8/16 | 54 | 54.0 |
-| `lua` | 9/16 | 54 | 54.0 |
-| `lua` | 10/16 | 24 | 53.7 |
-| `lua` | 11/16 | 4 | 52.0 |
-| `lua` | 12/16 | 3 | 48.6 |
-| `lua` | 13/16 | 3 | 50.2 |
-| `lua` | 14/16 | 2 | 46.2 |
-| `lua` | 15/16 | 2 | 35.2 |
-| `lua` | 16/16 | 2 | 48.4 |
-| `luau` | 1/16 | 43 | 53.1 |
-| `luau` | 2/16 | 292 | 54.7 |
-| `luau` | 3/16 | 379 | 54.6 |
-| `luau` | 4/16 | 740 | 54.7 |
-| `luau` | 5/16 | 427 | 54.6 |
-| `luau` | 6/16 | 387 | 54.7 |
-| `luau` | 7/16 | 54 | 54.0 |
-| `luau` | 8/16 | 54 | 54.0 |
-| `luau` | 9/16 | 54 | 54.0 |
-| `luau` | 10/16 | 24 | 53.7 |
-| `luau` | 11/16 | 4 | 52.0 |
-| `luau` | 12/16 | 3 | 48.6 |
-| `luau` | 13/16 | 3 | 50.2 |
-| `luau` | 14/16 | 2 | 46.2 |
-| `luau` | 15/16 | 2 | 35.2 |
-| `luau` | 16/16 | 2 | 48.4 |
-| `squirrel` | 1/16 | 43 | 53.1 |
-| `squirrel` | 2/16 | 292 | 54.7 |
-| `squirrel` | 3/16 | 379 | 54.6 |
-| `squirrel` | 4/16 | 740 | 54.7 |
-| `squirrel` | 5/16 | 427 | 54.6 |
-| `squirrel` | 6/16 | 387 | 54.7 |
-| `squirrel` | 7/16 | 54 | 54.0 |
-| `squirrel` | 8/16 | 54 | 54.0 |
-| `squirrel` | 9/16 | 54 | 54.0 |
-| `squirrel` | 10/16 | 24 | 53.7 |
-| `squirrel` | 11/16 | 4 | 52.0 |
-| `squirrel` | 12/16 | 3 | 48.6 |
-| `squirrel` | 13/16 | 3 | 50.2 |
-| `squirrel` | 14/16 | 2 | 46.2 |
-| `squirrel` | 15/16 | 2 | 35.2 |
-| `squirrel` | 16/16 | 2 | 48.4 |
-| `moo` | 1/16 | 43 | 53.1 |
-| `moo` | 2/16 | 292 | 54.7 |
-| `moo` | 3/16 | 379 | 54.6 |
-| `moo` | 4/16 | 740 | 54.7 |
-| `moo` | 5/16 | 427 | 54.6 |
-| `moo` | 6/16 | 387 | 54.7 |
-| `moo` | 7/16 | 54 | 54.0 |
-| `moo` | 8/16 | 54 | 54.0 |
-| `moo` | 9/16 | 54 | 54.0 |
-| `moo` | 10/16 | 24 | 53.7 |
-| `moo` | 11/16 | 4 | 52.0 |
-| `moo` | 12/16 | 3 | 48.6 |
-| `moo` | 13/16 | 3 | 50.2 |
-| `moo` | 14/16 | 2 | 46.2 |
-| `moo` | 15/16 | 2 | 35.2 |
-| `moo` | 16/16 | 2 | 48.4 |
-| `goose` | 1/16 | 43 | 53.1 |
-| `goose` | 2/16 | 292 | 54.7 |
-| `goose` | 3/16 | 379 | 54.6 |
-| `goose` | 4/16 | 740 | 54.7 |
-| `goose` | 5/16 | 427 | 54.6 |
-| `goose` | 6/16 | 387 | 54.7 |
-| `goose` | 7/16 | 54 | 54.0 |
-| `goose` | 8/16 | 54 | 54.0 |
-| `goose` | 9/16 | 54 | 54.0 |
-| `goose` | 10/16 | 24 | 53.7 |
-| `goose` | 11/16 | 4 | 52.0 |
-| `goose` | 12/16 | 3 | 48.6 |
-| `goose` | 13/16 | 3 | 50.2 |
-| `goose` | 14/16 | 2 | 46.2 |
-| `goose` | 15/16 | 2 | 35.2 |
-| `goose` | 16/16 | 2 | 48.4 |
-| `lobster` | 1/16 | 43 | 53.1 |
-| `lobster` | 2/16 | 292 | 54.7 |
-| `lobster` | 3/16 | 379 | 54.6 |
-| `lobster` | 4/16 | 740 | 54.7 |
-| `lobster` | 5/16 | 427 | 54.6 |
-| `lobster` | 6/16 | 387 | 54.7 |
-| `lobster` | 7/16 | 54 | 54.0 |
-| `lobster` | 8/16 | 54 | 54.0 |
-| `lobster` | 9/16 | 54 | 54.0 |
-| `lobster` | 10/16 | 24 | 53.7 |
-| `lobster` | 11/16 | 4 | 52.0 |
-| `lobster` | 12/16 | 3 | 48.6 |
-| `lobster` | 13/16 | 3 | 50.2 |
-| `lobster` | 14/16 | 2 | 46.2 |
-| `lobster` | 15/16 | 2 | 35.2 |
-| `lobster` | 16/16 | 2 | 48.4 |
-| `none` | 1/163 | 4 | 40.4 |
-| `none` | 2/163 | 131 | 47.3 |
-| `none` | 3/163 | 2 | 48.3 |
-| `none` | 4/163 | 3 | 55.0 |
-| `none` | 5/163 | 97 | 37.9 |
-| `none` | 6/163 | 45 | 41.8 |
-| `none` | 7/163 | 394 | 51.2 |
-| `none` | 8/163 | 66 | 29.0 |
-| `none` | 9/163 | 151 | 45.3 |
-| `none` | 10/163 | 966 | 48.3 |
-| `none` | 11/163 | 3 | 38.7 |
-| `none` | 12/163 | 27 | 51.8 |
-| `none` | 13/163 | 14 | 57.2 |
-| `none` | 14/163 | 41 | 59.1 |
-| `none` | 15/163 | 85 | 55.9 |
-| `none` | 16/163 | 2 | 43.6 |
-| `none` | 17/163 | 5 | 59.5 |
-| `none` | 18/163 | 149 | 51.4 |
-| `none` | 19/163 | 15 | 53.3 |
-| `none` | 20/163 | 31 | 50.3 |
-| `none` | 21/163 | 48 | 55.5 |
-| `none` | 22/163 | 8 | 55.0 |
-| `none` | 23/163 | 8 | 53.2 |
-| `none` | 24/163 | 30 | 51.0 |
-| `none` | 25/163 | 16 | 55.6 |
-| `none` | 26/163 | 4 | 45.2 |
-| `none` | 27/163 | 14 | 55.6 |
-| `none` | 28/163 | 19 | 54.8 |
-| `none` | 29/163 | 3 | 50.2 |
-| `none` | 30/163 | 18 | 50.8 |
-| `none` | 31/163 | 89 | 49.7 |
-| `none` | 32/163 | 25 | 50.9 |
-| `none` | 33/163 | 46 | 50.5 |
-| `none` | 34/163 | 86 | 58.7 |
-| `none` | 35/163 | 19 | 56.8 |
-| `none` | 36/163 | 15 | 51.3 |
-| `none` | 37/163 | 45 | 59.7 |
-| `none` | 38/163 | 90 | 51.1 |
-| `none` | 39/163 | 152 | 56.4 |
-| `none` | 40/163 | 197 | 59.6 |
-| `none` | 41/163 | 84 | 58.7 |
-| `none` | 42/163 | 92 | 57.2 |
-| `none` | 43/163 | 107 | 57.9 |
-| `none` | 44/163 | 51 | 49.3 |
-| `none` | 45/163 | 74 | 56.7 |
-| `none` | 46/163 | 270 | 59.4 |
-| `none` | 47/163 | 14 | 57.6 |
-| `none` | 48/163 | 34 | 48.9 |
-| `none` | 49/163 | 23 | 52.8 |
-| `none` | 50/163 | 50 | 51.8 |
-| `none` | 51/163 | 196 | 50.3 |
-| `none` | 52/163 | 241 | 59.0 |
-| `none` | 53/163 | 117 | 58.7 |
-| `none` | 54/163 | 52 | 57.2 |
-| `none` | 55/163 | 71 | 59.6 |
-| `none` | 56/163 | 96 | 48.4 |
-| `none` | 57/163 | 1 | 51.6 |
-| `none` | 58/163 | 137 | 49.8 |
-| `none` | 59/163 | 85 | 50.1 |
-| `none` | 60/163 | 35 | 59.6 |
-| `none` | 61/163 | 2 | 47.8 |
-| `none` | 62/163 | 10 | 47.2 |
-| `none` | 63/163 | 1 | 38.5 |
-| `none` | 64/163 | 1 | 38.5 |
-| `none` | 65/163 | 1 | 38.5 |
-| `none` | 66/163 | 1 | 38.5 |
-| `none` | 67/163 | 1 | 38.5 |
-| `none` | 68/163 | 1 | 38.5 |
-| `none` | 69/163 | 1 | 38.5 |
-| `none` | 70/163 | 1 | 38.5 |
-| `none` | 71/163 | 1 | 38.5 |
-| `none` | 72/163 | 16 | 50.5 |
-| `none` | 73/163 | 45 | 54.0 |
-| `none` | 74/163 | 39 | 58.8 |
-| `none` | 75/163 | 51 | 51.0 |
-| `none` | 76/163 | 71 | 57.4 |
-| `none` | 77/163 | 8 | 55.2 |
-| `none` | 78/163 | 49 | 46.1 |
-| `none` | 79/163 | 2 | 55.2 |
-| `none` | 80/163 | 31 | 59.7 |
-| `none` | 81/163 | 69 | 56.5 |
-| `none` | 82/163 | 17 | 59.2 |
-| `none` | 83/163 | 17 | 50.7 |
-| `none` | 84/163 | 30 | 53.8 |
-| `none` | 85/163 | 10 | 59.1 |
-| `none` | 86/163 | 5 | 59.4 |
-| `none` | 87/163 | 16 | 49.5 |
-| `none` | 88/163 | 15 | 50.2 |
-| `none` | 89/163 | 31 | 59.2 |
-| `none` | 90/163 | 10 | 58.1 |
-| `none` | 91/163 | 8 | 50.6 |
-| `none` | 92/163 | 11 | 54.1 |
-| `none` | 93/163 | 9 | 49.8 |
-| `none` | 94/163 | 7 | 55.1 |
-| `none` | 95/163 | 4 | 58.7 |
-| `none` | 96/163 | 5 | 57.4 |
-| `none` | 97/163 | 8 | 58.3 |
-| `none` | 98/163 | 26 | 59.5 |
-| `none` | 99/163 | 17 | 59.6 |
-| `none` | 100/163 | 15 | 57.9 |
-| `none` | 101/163 | 47 | 59.5 |
-| `none` | 102/163 | 8 | 59.3 |
-| `none` | 103/163 | 19 | 49.4 |
-| `none` | 104/163 | 8 | 52.9 |
-| `none` | 105/163 | 17 | 38.5 |
-| `none` | 106/163 | 5 | 45.6 |
-| `none` | 107/163 | 15 | 49.6 |
-| `none` | 108/163 | 17 | 48.2 |
-| `none` | 109/163 | 14 | 50.2 |
-| `none` | 110/163 | 28 | 48.1 |
-| `none` | 111/163 | 5 | 46.3 |
-| `none` | 112/163 | 22 | 49.4 |
-| `none` | 113/163 | 12 | 56.2 |
-| `none` | 114/163 | 11 | 55.3 |
-| `none` | 115/163 | 6 | 53.1 |
-| `none` | 116/163 | 3 | 55.5 |
-| `none` | 117/163 | 19 | 45.8 |
-| `none` | 118/163 | 7 | 56.2 |
-| `none` | 119/163 | 4 | 40.6 |
-| `none` | 120/163 | 3 | 43.9 |
-| `none` | 121/163 | 6 | 36.5 |
-| `none` | 122/163 | 2 | 49.0 |
-| `none` | 123/163 | 6 | 57.1 |
-| `none` | 124/163 | 5 | 58.3 |
-| `none` | 125/163 | 10 | 57.9 |
-| `none` | 126/163 | 4 | 45.0 |
-| `none` | 127/163 | 1 | 55.6 |
-| `none` | 128/163 | 17 | 42.3 |
-| `none` | 129/163 | 24 | 45.5 |
-| `none` | 130/163 | 8 | 48.6 |
-| `none` | 131/163 | 8 | 48.4 |
-| `none` | 132/163 | 1 | 54.0 |
-| `none` | 133/163 | 8 | 38.2 |
-| `none` | 134/163 | 3 | 55.5 |
-| `none` | 135/163 | 2 | 18.1 |
-| `none` | 136/163 | 7 | 46.1 |
-| `none` | 137/163 | 32 | 43.7 |
-| `none` | 138/163 | 10 | 48.8 |
-| `none` | 139/163 | 21 | 17.7 |
-| `none` | 140/163 | 1 | 53.5 |
-| `none` | 141/163 | 37 | 49.3 |
-| `none` | 142/163 | 5 | 37.7 |
-| `none` | 143/163 | 15 | 53.4 |
-| `none` | 144/163 | 25 | 53.3 |
-| `none` | 145/163 | 27 | 50.2 |
-| `none` | 146/163 | 23 | 50.7 |
-| `none` | 147/163 | 23 | 50.0 |
-| `none` | 148/163 | 22 | 52.2 |
-| `none` | 149/163 | 66 | 54.4 |
-| `none` | 150/163 | 26 | 57.8 |
-| `none` | 151/163 | 13 | 55.4 |
-| `none` | 152/163 | 66 | 52.6 |
-| `none` | 153/163 | 28 | 51.4 |
-| `none` | 154/163 | 15 | 45.6 |
-| `none` | 155/163 | 2 | 55.3 |
-| `none` | 156/163 | 16 | 51.2 |
-| `none` | 157/163 | 2 | 58.4 |
-| `none` | 158/163 | 3 | 53.7 |
-| `none` | 159/163 | 9 | 47.0 |
-| `none` | 160/163 | 40 | 39.5 |
-| `none` | 161/163 | 15 | 59.6 |
-| `none` | 162/163 | 52 | 59.7 |
-| `none` | 163/163 | 1 | 23.2 |
-| **every row** | **451 jobs** | **51093** | **23069.1** |
+| language | happy-path row | measured seconds |
+|---|---|---|
+| `c` | `c.functional.roundtrip.happy-path.ship-create` | 7.8 |
+| `cpp` | `cpp.functional.roundtrip.happy-path.ship-create` | 6.0 |
+| `cs` | `cs.functional.roundtrip.happy-path.ship-create` | 8.8 |
+| `unity` | `unity.functional.roundtrip.happy-path.ship-create` | 10.1 |
+| `go` | `go.functional.roundtrip.happy-path.ship-create` | 6.9 |
+| `rust` | `rust.functional.roundtrip.happy-path.ship-create` | 6.3 |
+| `java` | `java.functional.roundtrip.happy-path.ship-create` | 7.3 |
+| `dart` | `dart.functional.roundtrip.happy-path.ship-create` | 6.2 |
+| `elixir` | `elixir.functional.roundtrip.happy-path.ship-create` | 11.3 |
+| `js` | `js.functional.roundtrip.happy-path.ship-create` | 5.7 |
+| `python` | `python.functional.roundtrip.happy-path.ship-create` | 4.6 |
+| `ruby` | `ruby.functional.roundtrip.happy-path.ship-create` | 4.3 |
+| `lua` | `lua.functional.roundtrip.happy-path.ship-create` | 4.0 |
+| `luau` | `luau.functional.roundtrip.happy-path.ship-create` | 4.6 |
+| `squirrel` | `squirrel.functional.roundtrip.happy-path.ship-create` | 4.5 |
+| `moo` | `moo.functional.roundtrip.happy-path.ship-create` | 5.5 |
+| `goose` | `goose.functional.roundtrip.happy-path.ship-create` | 4.2 |
+| `lobster` | `lobster.functional.roundtrip.happy-path.ship-create` | 2.9 |
+| **every language, one after another** | | **110.8** |
+| **the run's critical path, 4 at once** | | **29.2** |
 
-To change the matrix, change the registry (a row, or its measured
-`seconds`: `schema-test run ... --write-seconds` on a fleet runner, or
-`schema-test seconds LOG...` from a run's log), then run
+To change the job, change the registry's `pr` group (its query names
+the rows) or a row's measured `lang_seconds` (`schema-test run ... --write-seconds`
+on a fleet runner, or `schema-test seconds LOG...` from a run's log), then run
 `go run ./tools/schema-test ci`.

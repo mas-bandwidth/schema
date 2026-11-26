@@ -213,9 +213,14 @@ test-goose: tables-goose-strict tables-goose-runtime-home
 # THE CLAIMED NAMES (docs/PORTING.md I6), Goose's form: the runtime declares
 # into schema_rt, which no package can take, and every name the target writes
 # into the package's namespace is claimed through goose.Gen.Declare, which
-# refuses a second declaration by name. The gate declares each emitted
-# top-level name in turn as a schema type beside every manifest unit and
-# requires the unit refused. Its control lets every <T>CookOpen through
+# refuses a second declaration by name. The gate holds every emitted
+# top-level name of every manifest unit to the names the two surfaces claimed
+# through Declare, and declares as a schema type beside the unit, requiring
+# the unit refused, every unclaimed name and the first claimed name of each
+# module. The registry's nightly row
+# name-check.goosetable.goose-every-package-name-refuses-end-to-end
+# (TestGooseEveryPackageNameRefusesEndToEnd) declares EVERY emitted name that
+# way, trusting no claim map. Its control lets every <T>CookOpen through
 # Declare unclaimed (go test -overlay of internal/codegen/goose/goose.go), and
 # the gate must name a CookOpen it writes without claiming.
 GOOSE_NAMES_DIR := build/goose-names-control

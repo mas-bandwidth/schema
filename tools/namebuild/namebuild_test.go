@@ -227,3 +227,33 @@ func TestReadRowsRefusesNamesGoTestRenames(t *testing.T) {
 		}
 	}
 }
+
+// TestTheCompilerIsMakesWhenNamed: a compiler make names is used as it is,
+// with no build; with none named, the run builds its own; a named path that
+// is relative, missing or a directory is an error by name. The plant: the
+// named compiler ignored, so every run links its own.
+func TestTheCompilerIsMakesWhenNamed(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	made := filepath.Join(dir, "schema-moo")
+	if err := os.WriteFile(made, []byte("x"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	built := 0
+	build := func(string) error { built++; return nil }
+	if got, err := compiler(made, filepath.Join(dir, "own"), build); err != nil || got != made || built != 0 {
+		t.Errorf("a named compiler: got %q %v, built %d times", got, err, built)
+	}
+	if got, err := compiler("", filepath.Join(dir, "own"), build); err != nil || got != filepath.Join(dir, "own") || built != 1 {
+		t.Errorf("no named compiler: got %q %v, built %d times", got, err, built)
+	}
+	for named, want := range map[string]string{
+		"build/schema-moo":            "is not an absolute path",
+		filepath.Join(dir, "missing"): "no such file",
+		dir:                           "is a directory",
+	} {
+		if _, err := compiler(named, filepath.Join(dir, "own"), build); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%s: want %q, got %v", named, want, err)
+		}
+	}
+}

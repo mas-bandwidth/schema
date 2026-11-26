@@ -1926,6 +1926,10 @@ end
 -- loadWalk returns a value only when the wire is whole. walk
 -- evolution is not damage: malformed input is discarded on every read (§4).
 local integrityOpen: (buffer) -> buffer?
+-- wireAloneRefuses is the strict read's judgement of the conditions the value
+-- walk does not judge (the root body's terminator against the id table, and
+-- wireDamage below), defined beside the strict read
+local wireAloneRefuses: (buffer, any) -> boolean
 
 -- loadBody is the walk read of a file whose integrity trailer, if its
 -- root declares one, is already off: the id table, the node table and the
@@ -1936,10 +1940,44 @@ local function loadBody(root: string, bytes: buffer, report: any): any
 	return loadOpened(root, bytes, report, o)
 end
 
+-- NO TOLERANT READ UNDER ANY NAME (docs/SPEC-TABLES.md §6.5, docs/rulings.json
+-- strict-only-read): the walk hands back no value once a counter that
+-- refuses has moved (a blob named from two slots, a value past its bound, a
+-- kind mismatch, a repeated key, a missing required field, a non-finite
+-- float). It counts, as the strict read's ranking needs, but never returns
+-- the partial or clamped value.
+-- the counters that refuse, in TableReport.Err()'s order (docs/SPEC-TABLES.md
+-- §6.5), each with its §11 name; schema_load.luau spells kind_mismatch kindMismatch.
+-- blob_shared sits where Go's Err() checks BlobShared, between malformed and
+-- clamped (§2.5), so a wire that is both clamped and blob-shared refuses as
+-- blob_shared.
+-- A REPEATED MAP KEY IS DAMAGE (docs/plans/strict-only.md decision 5): the
+-- strict read refuses it as malformed, never last-wins.
+local REFUSING = { "missingRequired", "malformed", "blobShared", "clamped", "kindMismatch", "duplicate" }
+
+-- The walk refuses on the strict read's own list, so the two never drift
+-- apart; a caller's report may leave a counter unset, which is zero.
+local function walkRefuses(report: any): boolean
+	if report.nonFiniteFloat ~= nil then return true end
+	for _, k in ipairs(REFUSING) do
+		if k == "malformed" then
+			if report.malformed == true then return true end
+		elseif (report[k] or 0) > 0 then
+			return true
+		end
+	end
+	return false
+end
+
+-- walkUnjudged is the walk before the strict read's wire-alone judgement: the
+-- value (nil once a refusing counter moved) and, for a variable root, the
+-- bytes that judgement reads (the integrity trailer off). L.loadWalk judges
+-- at once; the retaining walk judges after its capture, so a retained
+-- unknown field it names keeps its name (schema_retain.luau).
 -- A ROOT THAT DECLARES INTEGRITY (docs/SPEC-TABLES.md §2.14) opens its
 -- trailer first, as the strict read does; a trailer that does not match is the
 -- whole-file damage named integrity_mismatch.
-function L.loadWalk(root: string, bytes: buffer, report: any, outNodes: { any }?): any
+local function walkUnjudged(root: string, bytes: buffer, report: any, outNodes: { any }?): (any, buffer?)
 	local d = S.lookup(root)
 	if d ~= nil and d.fixed then
 		if bytes == nil or buffer.len(bytes) < 1 then
@@ -1965,6 +2003,7 @@ function L.loadWalk(root: string, bytes: buffer, report: any, outNodes: { any }?
 		report.clamped = (report.clamped or 0) + (fx.clamped or 0)
 		report.widened = (report.widened or 0) + (fx.widened or 0)
 		report.duplicate = (report.duplicate or 0) + (fx.duplicate or 0)
+		if walkRefuses(report) then return nil end
 		return out[1]
 	end
 	if d.integrity ~= nil and d.integrity ~= "" and bytes ~= nil and buffer.len(bytes) >= 1 and buffer.readu8(bytes, 0) == 1 then
@@ -1977,22 +2016,47 @@ function L.loadWalk(root: string, bytes: buffer, report: any, outNodes: { any }?
 		bytes = body
 	end
 	local res = loadBody(root, bytes, report)
+	if res ~= nil and walkRefuses(report) then return nil end
 	if res ~= nil and outNodes ~= nil then
 		for idx, nd in _nodes do
 			if nd ~= nil and nd.kind == "t" then outNodes[idx] = nd.v end
 		end
 	end
+	return res, bytes
+end
+
+-- judgeWalk is the walk's share of the strict read: the wire-alone damage
+-- the strict read refuses (a blob record no pointer reaches, bytes left
+-- inside an array's L, a second node table, a non-finite float in a field
+-- this reader does not declare, ...) refuses the walk too, so no walk hands
+-- back what the strict read refuses (docs/SPEC-TABLES.md §6.5; docs/rulings.json
+-- strict-only-read). judged is walkUnjudged's second answer; a fixed root's
+-- walk has none and is judged whole by its own read.
+local function judgeWalk(res: any, judged: buffer?, report: any, outNodes: { any }?): any
+	if res ~= nil and judged ~= nil and wireAloneRefuses(judged, report) then
+		if outNodes ~= nil then table.clear(outNodes) end
+		return nil
+	end
 	return res
 end
 
--- the counters that refuse, in TableReport.Err()'s order (docs/SPEC-TABLES.md
--- §6.5), each with its §11 name; schema_load.luau spells kind_mismatch kindMismatch.
--- blob_shared sits where Go's Err() checks BlobShared, between malformed and
--- clamped (§2.5), so a wire that is both clamped and blob-shared refuses as
--- blob_shared.
--- A REPEATED MAP KEY IS DAMAGE (docs/plans/strict-only.md decision 5): the
--- strict read refuses it as malformed, never last-wins.
-local REFUSING = { "missingRequired", "malformed", "blobShared", "clamped", "kindMismatch", "duplicate" }
+-- the retaining walk's two halves (schema_retain.luau): the walk, then the
+-- judgement once its capture has run
+L.walkUnjudged = walkUnjudged
+L.judgeWalk = judgeWalk
+
+-- EVERY READ ZEROES A SUPPLIED REPORT IN FULL as its first act
+-- (docs/SPEC-TABLES.md §6.5), as ReadStrict does: walkRefuses and judgeWalk
+-- read the counters this report holds, so a report left dirty by an earlier
+-- refused read would refuse a whole wire. The retaining walk
+-- (schema_retain.luau) resets its report itself and calls walkUnjudged, so
+-- the retained and retainLost it sets are not wiped here.
+function L.loadWalk(root: string, bytes: buffer, report: any, outNodes: { any }?): any
+	L.resetReport(report)
+	local res, judged = walkUnjudged(root, bytes, report, outNodes)
+	return judgeWalk(res, judged, report, outNodes)
+end
+
 local NAMES: { [string]: string } = {
 	missingRequired = "missing_required",
 	malformed = "malformed",
@@ -2531,6 +2595,68 @@ local function wireDamage(b: buffer, top: any, ids: { integer }, rep: any): bool
 	return false
 end
 
+-- frameTop is the id table and the root body's field list, the framing the
+-- strict read and the walk's judgement both start from: nil, nil when the id
+-- table does not frame; top nil when the root body does not walk.
+local function frameTop(b: buffer): (any, any)
+	local fr = frame(b)
+	local top = fr ~= nil and walkBody(b, 1, fr.e, fr.ids) or nil
+	return fr, top
+end
+
+-- frameDamaged: the id table does not frame, or the root body's terminator
+-- does not sit where the id table starts (docs/SPEC-TABLES.md §3). The one
+-- spelling of the check, for the strict read and the walk's judgement alike.
+local function frameDamaged(fr: any, top: any): boolean
+	if fr == nil or (top ~= nil and top.term + 1 ~= fr.e) then
+		return true
+	end
+	return false
+end
+
+-- WIRE-ALONE DAMAGE (docs/SPEC-TABLES.md §6.5): the conditions the value
+-- walk does not judge are declared after the named refusals, so an over-cap
+-- array/map count (count_over_extent_cap, §2.9) and a NaN or infinity
+-- (non_finite_float, §3.3) answer their own names and never fall through to
+-- wire_damaged. It answers true, the report named, when the wire refuses.
+local function wireDamageRefuses(b: buffer, top: any, fr: any, rep: any): boolean
+	local damaged = wireDamage(b, top, fr.ids, rep)
+	if rep.nonFiniteFloat ~= nil then
+		rep.reason = "non_finite_float"
+		rep.field = rep.nonFiniteFloat
+		return true
+	end
+	if _countRefused then
+		-- the wire-alone walk's count refusal (§2.9): name it as the value
+		-- walk does, so a refusal is never silent
+		restoreCount(rep)
+		rep.refused = (rep.refused or 0) + 1
+		rep.reason = "count_over_extent_cap"
+		return true
+	end
+	if damaged then
+		if rep.reason == "blob_over_size_cap" then return true end
+		rep.malformed = true
+		rep.reason = "wire_damaged"
+		return true
+	end
+	return false
+end
+
+-- THE WALK'S SHARE OF THE STRICT READ'S FRAMING (docs/SPEC-TABLES.md §6.5):
+-- L.loadWalk hands back a value only after this answers false, so the walk
+-- refuses every wire-alone condition the strict read refuses. bytes is the
+-- file with any integrity trailer already off.
+wireAloneRefuses = function(b: buffer, rep: any): boolean
+	local fr, top = frameTop(b)
+	if frameDamaged(fr, top) then
+		rep.malformed = true
+		rep.reason = "wire_damaged"
+		return true
+	end
+	return top ~= nil and wireDamageRefuses(b, top, fr, rep)
+end
+
 -- the variable-form half of the strict read, shared by ReadStrict (a
 -- non-fixed root, or a fixed root's form-3 dispatch above it) and by
 -- ReadStrictVariable (a fixed root handed form-1 bytes, for the framing
@@ -2546,9 +2672,8 @@ local function strictVariable(root: string, bytes: buffer, rep: any, d: any): an
 		if body == nil then rep.malformed = true; rep.reason = "integrity_mismatch"; return nil end
 		b = body
 	end
-	local fr = frame(b)
-	local top = fr ~= nil and walkBody(b, 1, fr.e, fr.ids) or nil
-	if fr == nil or (top ~= nil and top.term + 1 ~= fr.e) then
+	local fr, top = frameTop(b)
+	if frameDamaged(fr, top) then
 		rep.malformed = true
 		rep.reason = "wire_damaged"
 		return nil
@@ -2570,33 +2695,7 @@ local function strictVariable(root: string, bytes: buffer, rep: any, d: any): an
 		-- already named it count_over_extent_cap and set refused
 		return nil
 	end
-	-- WIRE-ALONE DAMAGE (docs/SPEC-TABLES.md §6.5): the conditions the value
-	-- walk does not judge are declared after the named refusals, so an over-cap
-	-- array/map count (count_over_extent_cap, §2.9) and a NaN or infinity
-	-- (non_finite_float, §3.3) answer their own names and never fall through to
-	-- wire_damaged.
-	if top ~= nil then
-		local damaged = wireDamage(b, top, fr.ids, rep)
-		if rep.nonFiniteFloat ~= nil then
-			rep.reason = "non_finite_float"
-			rep.field = rep.nonFiniteFloat
-			return nil
-		end
-		if _countRefused then
-			-- the wire-alone walk's count refusal (§2.9): name it as the value
-			-- walk does, so a refusal is never silent
-			restoreCount(rep)
-			rep.refused = (rep.refused or 0) + 1
-			rep.reason = "count_over_extent_cap"
-			return nil
-		end
-		if damaged then
-			if rep.reason == "blob_over_size_cap" then return nil end
-			rep.malformed = true
-			rep.reason = "wire_damaged"
-			return nil
-		end
-	end
+	if top ~= nil and wireDamageRefuses(b, top, fr, rep) then return nil end
 	for _, k in REFUSING do
 		if moved(rep, k) then
 			if k == "missingRequired" then

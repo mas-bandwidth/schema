@@ -10,7 +10,7 @@ package ctable
 //	                 of them zero, because an append the reader knows is not an
 //	                 event.
 //	OLD-REFUSES-NEW  the older reader given the widened writer's file refuses
-//	                 `layout_newer` BEFORE any record, reporting THE FILE'S
+//	                 `layout_unknown` BEFORE any record, reporting THE FILE'S
 //	                 HASH and nothing else, with no counter moved and
 //	                 `malformed` clear (§5.3's joint answer).
 //
@@ -189,6 +189,7 @@ var cVersionRows = []cVersionRow{
 // row silently stopping to assert a value.
 
 func TestFixedVersioningNewReadsOld(t *testing.T) {
+	t.Parallel() // reads the corpus, writes only its own TempDir (make tables-c-versioning)
 	corpus := cFixedCorpus(t)
 	for _, r := range cVersionRows {
 		t.Run(r.row, func(t *testing.T) {
@@ -237,6 +238,7 @@ func TestFixedVersioningNewReadsOld(t *testing.T) {
 // ---- OLD-REFUSES-NEW --------------------------------------------------------
 
 func TestFixedVersioningOldRefusesNew(t *testing.T) {
+	t.Parallel() // reads the corpus, writes only its own TempDir (make tables-c-versioning)
 	corpus := cFixedCorpus(t)
 	for _, r := range cVersionRows {
 		t.Run(r.row, func(t *testing.T) {
@@ -255,8 +257,8 @@ func TestFixedVersioningOldRefusesNew(t *testing.T) {
 			} else {
 				body = `
     if ( n != -1 ) { printf( "the older reader did not refuse the newer writer's file: n=%lld\n", (long long) n ); return 1; }
-    if ( r.reason != SCHEMA_TABLE_LAYOUT_NEWER ) { printf( "a hash in no lineage entry owes layout_newer, not %d\n", r.reason ); return 1; }
-    if ( r.layout_hash != want ) { printf( "layout_newer reports THE FILE'S hash\n" ); return 1; }
+    if ( r.reason != SCHEMA_TABLE_LAYOUT_UNKNOWN ) { printf( "a hash in no lineage entry owes layout_unknown, not %d\n", r.reason ); return 1; }
+    if ( r.layout_hash != want ) { printf( "layout_unknown reports THE FILE'S hash\n" ); return 1; }
     if ( !r.refused || r.refuse_reason != 0 )
         { printf( "a refusal by name is refused with no wire_damaged beside it (§5.3, the joint answer): refused=%d refuse_reason=%d\n", r.refused, r.refuse_reason ); return 1; }
     if ( r.widened != 0 || r.unknown != 0 )
@@ -277,9 +279,10 @@ func TestFixedVersioningOldRefusesNew(t *testing.T) {
 // The floor is ONE NUMBER and the lineage is ONE ARRAY, so "retired" is an
 // index cut and the operator's two answers stay distinct: below the floor is
 // `layout_unsupported` (upgrade the client), outside the lineage is
-// `layout_newer` (ship the reader). §5.2, §5.7's three floor rows.
+// `layout_unknown`. §5.2, §5.7's three floor rows.
 
 func TestFixedVersioningFloor(t *testing.T) {
+	t.Parallel() // reads the corpus, writes only its own TempDir (make tables-c-versioning)
 	corpus := cFixedCorpus(t)
 	older := cReadSchema(t, "VOLD_floor")
 	mid := cReadSchema(t, "VMID_floor")
@@ -326,17 +329,18 @@ func TestFixedVersioningFloor(t *testing.T) {
 // ---- the hash ---------------------------------------------------------------
 
 func TestFixedVersioningHash(t *testing.T) {
+	t.Parallel() // reads the corpus, writes only its own TempDir (make tables-c-versioning)
 	corpus := cFixedCorpus(t)
 	newer := cReadSchema(t, "VNEW_field_append")
 	older := cReadSchema(t, "VOLD_field_append")
 
-	// hash_unknown: a hash in no lineage refuses layout_newer, on the FILE's
+	// hash_unknown: a hash in no lineage refuses layout_unknown, on the FILE's
 	// hash alone. The probe stamps a hash nothing can hold over the header.
 	t.Run("hash_unknown", func(t *testing.T) {
 		t.Parallel()
 		out, err := cRunVersionProbe(t, newer, []string{older}, 0,
 			filepath.Join(corpus, "old_field_append.bin"), `
-    if ( n != -1 || r.reason != SCHEMA_TABLE_LAYOUT_NEWER || r.layout_hash != 0xDEADBEEFCAFEF00Dull || !r.refused || r.refuse_reason != 0 )
+    if ( n != -1 || r.reason != SCHEMA_TABLE_LAYOUT_UNKNOWN || r.layout_hash != 0xDEADBEEFCAFEF00Dull || !r.refused || r.refuse_reason != 0 )
         { printf( "hash_unknown: n=%lld refused=%d reason=%d refuse_reason=%d\n", (long long) n, r.refused, r.reason, r.refuse_reason ); return 1; }
 `, "", `
     memcpy( data + kTableFixedHashAt, &(uint64_t){ 0xDEADBEEFCAFEF00Dull }, 8 );
@@ -384,6 +388,7 @@ func TestFixedVersioningHash(t *testing.T) {
 // read on the merged build (the name-subset rule, bill §8a.1).
 
 func TestFixedVersioningLineageMerge(t *testing.T) {
+	t.Parallel() // reads the corpus, writes only its own TempDir (make tables-c-versioning)
 	corpus := cFixedCorpus(t)
 	merged := cReadSchema(t, "VNEW_lineage_merge")
 	a := cReadSchema(t, "VBRA_lineage_merge")
@@ -415,6 +420,7 @@ func TestFixedVersioningLineageMerge(t *testing.T) {
 // and every destination slot keeps its reset image. C names that refusal
 // out_of_range; the verdict, not the name, is the contract (SPEC-TABLES §6.5).
 func TestFixedVersioningWriterBoundCount(t *testing.T) {
+	t.Parallel() // reads the corpus, writes only its own TempDir (make tables-c-versioning)
 	corpus := cFixedCorpus(t)
 	newer := cReadSchema(t, "VNEW_array_bounded_grow")
 	older := cReadSchema(t, "VOLD_array_bounded_grow")
@@ -464,6 +470,7 @@ func TestFixedVersioningWriterBoundCount(t *testing.T) {
 // body is `03 09 00 00 00` (tier=Gold, seq=9), asserted to occur exactly once
 // and to BE the tail of the file, as the Go leg's row does (#1123).
 func TestFixedVersioningForgedOrdinalBothPlans(t *testing.T) {
+	t.Parallel() // reads the corpus, writes only its own TempDir (make tables-c-versioning)
 	corpus := cFixedCorpus(t)
 	newer := cReadSchema(t, "VNEW_enum_append")
 	older := cReadSchema(t, "VOLD_enum_append")

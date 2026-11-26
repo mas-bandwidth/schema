@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"path"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -271,7 +273,13 @@ func compact(v any) (string, error) {
 // ordered by key.
 func tierTests(reg *Registry, tier string) (perLang, free []Test) {
 	for _, t := range reg.Tests {
-		if t.Tier != tier {
+		// a union row is on the page of each tier one of its languages runs
+		// it in (Test.TierIn)
+		in := t.Tier == tier
+		for _, g := range unionTests(t) {
+			in = in || g.Tier == tier
+		}
+		if !in {
 			continue
 		}
 		if t.PerLang() {
@@ -302,7 +310,18 @@ func tierPage(reg *Registry, tier Tier) []byte {
 	fmt.Fprintf(&b, "Part of the specification: every test of tier `%s`, from the test registry. "+
 		"The adapter contract, the languages, the types and the other tiers are in [SPEC-TESTS.md](SPEC-TESTS.md).\n\n", tier.Name)
 	fmt.Fprintf(&b, "**Tier %s:** %s.\n\n", tier.Name, cell(tier.What))
-	fmt.Fprintf(&b, "%s tests every language answers: %d. Language-free tests: %d.\n\n", title, len(perLang), len(free))
+	// a union row here only for languages that run it in this tier of their
+	// own is not a test every language answers in it
+	some := 0
+	for _, t := range perLang {
+		if t.Tier != tier.Name {
+			some++
+		}
+	}
+	fmt.Fprintf(&b, "%s tests every language answers: %d. Language-free tests: %d.\n\n", title, len(perLang)-some, len(free))
+	if some > 0 {
+		fmt.Fprintf(&b, "Tests some languages run in this tier, their own measured seconds being past one shard's budget, each named by its languages' instances: %d.\n\n", some)
+	}
 	fmt.Fprintf(&b, "Run this tier for a language with `schema-test run --tier %s --lang L`, one test with `schema-test run <full name>`.\n\n", tier.Name)
 
 	b.WriteString("## Tests every language answers\n\n")
@@ -392,7 +411,7 @@ func writeTests(b *strings.Builder, reg *Registry, tier string, tests []Test, la
 					// Addenda refused this registry before any page is written
 					panic(err)
 				}
-				name := code(lang + "." + tier + "." + t.Key)
+				name := pageName(t, tier, lang)
 				if adapterColumn {
 					fmt.Fprintf(b, "| %s | %s | %s | %s | %s | %s |\n", name, code(t.Adapter), cell(t.Checks), in, expected(t), sourceCell(t.Source))
 				} else {
@@ -402,6 +421,37 @@ func writeTests(b *strings.Builder, reg *Registry, tier string, tests []Test, la
 			b.WriteString("\n")
 		}
 	}
+}
+
+// pageName is a row's full name on tier's page: L.<tier>.<key> for every
+// language. A union row whose language runs in a tier of its own (Test.TierIn)
+// names that language's instance on that tier's page, and on the row's own
+// page names the row for every language but those.
+func pageName(t Test, tier, lang string) string {
+	moved := map[string]string{} // language -> its own tier
+	for l, g := range unionTests(t) {
+		if g.Tier != "" && g.Tier != t.Tier {
+			moved[l] = g.Tier
+		}
+	}
+	if len(moved) == 0 {
+		return code(lang + "." + tier + "." + t.Key)
+	}
+	langs := slices.Sorted(maps.Keys(moved))
+	if tier == t.Tier {
+		var except []string
+		for _, l := range langs {
+			except = append(except, code(l)+" (tier "+code(moved[l])+")")
+		}
+		return code(lang+"."+tier+"."+t.Key) + ", every language but " + strings.Join(except, ", ")
+	}
+	var names []string
+	for _, l := range langs {
+		if moved[l] == tier {
+			names = append(names, code(l+"."+tier+"."+t.Key))
+		}
+	}
+	return strings.Join(names, ", ")
 }
 
 func sourceCell(s string) string {

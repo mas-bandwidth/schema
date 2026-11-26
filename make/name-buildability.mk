@@ -47,17 +47,46 @@ name-buildability: $(NAME_BUILDABILITY_DEPS)
 .PHONY: name-buildability-deps
 name-buildability-deps: $(NAME_BUILDABILITY_DEPS)
 
+# name-buildability-deps-<lang>: the one toolchain <lang>'s subtests run, and
+# only when it is not in place: a pin already at the path its make file names
+# (put there by dist-pins in CI, or by an earlier run on a bench) is used as
+# it is. Each pin's path names its version, and moo's PIN file its commit, so
+# a pin moved in its make file is installed again. A language with no pinned
+# toolchain installs nothing. schema-test's name-buildability harness runs it
+# once per language before that language's subtests, so a language's compile
+# row pays for its own toolchain only, never the other five, each of which
+# name-buildability-deps rebuilds or fetches on every call (moo's cmake build
+# from source was most of every row's time: measured on hetzner2,
+# 2026-11-25). The whole nightly target above keeps name-buildability-deps.
+.PHONY: name-buildability-deps-lua name-buildability-deps-luau name-buildability-deps-moo \
+	name-buildability-deps-squirrel name-buildability-deps-goose name-buildability-deps-lobster
+name-buildability-deps-lua:
+	@[ -x "$(LUA)" ] || $(MAKE) --no-print-directory dist-lua
+name-buildability-deps-luau:
+	@{ [ -x "$(LUAU)" ] && [ -x "$(LUAU_ANALYZE)" ]; } || $(MAKE) --no-print-directory dist-luau
+name-buildability-deps-moo: $(MOO_DIST)/PIN
+name-buildability-deps-squirrel:
+	@[ -x "$(SQ)" ] || $(MAKE) --no-print-directory dist-squirrel
+name-buildability-deps-goose:
+	@[ -x "$(GOOSE)" ] || $(MAKE) --no-print-directory dist-goose
+name-buildability-deps-lobster:
+	@[ -x "$(LOBSTER)" ] || $(MAKE) --no-print-directory dist-lobster
+name-buildability-deps-%:
+	@:
+
 # name-buildability-run: the subtests the go test -run pattern in
 # NAME_BUILDABILITY_RUN names, as go test -json events written to the file
 # NAME_BUILDABILITY_JSON (both from the environment). It exits as go test
 # does: non-zero when a subtest fails, and the events say which. It installs
 # no toolchain: the dist targets rebuild on every call, so languages run side
 # by side would install the same one at once; name-buildability-deps comes
-# first, once (schema-test's builder runs it).
+# first, once (schema-test's builder runs it). The compiler is
+# build/schema-moo, which make keeps current and builds once (NAMEBUILD_SCHEMA:
+# the test links no compiler of its own per call).
 .PHONY: name-buildability-run
-name-buildability-run:
+name-buildability-run: build/schema-moo
 	@if [ -z "$$NAME_BUILDABILITY_RUN" ] || [ -z "$$NAME_BUILDABILITY_JSON" ]; then \
 		echo "name-buildability-run: NAME_BUILDABILITY_RUN (the subtest pattern) and NAME_BUILDABILITY_JSON (the events file) are both required" >&2; exit 2; \
 	fi
-	@$(NAME_BUILDABILITY_ENV) \
+	@$(NAME_BUILDABILITY_ENV) NAMEBUILD_SCHEMA="$(abspath build/schema-moo)" \
 	go test -count=1 -timeout=0 -json -parallel $(NAME_BUILDABILITY_PARALLEL) -run "$$NAME_BUILDABILITY_RUN" ./tools/namebuild >"$$NAME_BUILDABILITY_JSON"

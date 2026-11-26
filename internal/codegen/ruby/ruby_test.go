@@ -170,7 +170,20 @@ func driverSurfaceContract(t *testing.T, driver, surfacesDir, dir string) error 
 	if err != nil {
 		return fmt.Errorf("%s list: %w\n%s", driver, err, out)
 	}
-	listed := strings.Fields(string(out))
+	// THE LIST PROTOCOL (test/conformance/harness optin.go): one surface name
+	// per line, and a line `unit <key>` names an opt-in unit the leg answers
+	// (MANIFEST.txt `opt-in <key>`), which is no surface
+	var listed []string
+	for line := range strings.SplitSeq(string(out), "\n") {
+		switch f := strings.Fields(line); {
+		case len(f) == 0:
+		case len(f) == 2 && f[0] == "unit":
+		case len(f) == 1 && f[0] != "unit":
+			listed = append(listed, f[0])
+		default:
+			return fmt.Errorf("%s list printed %q, neither a surface nor `unit <key>`", driver, line)
+		}
+	}
 	if len(listed) == 0 {
 		return fmt.Errorf("%s list returned no surfaces", driver)
 	}

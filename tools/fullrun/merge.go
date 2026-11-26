@@ -159,14 +159,7 @@ func mergeParts(units []Unit, sha, partsDir, out string, now func() time.Time, l
 	if err := collect(m, log); err != nil {
 		return err
 	}
-	b, err := os.ReadFile(filepath.Join(out, "REDS.tsv"))
-	if err != nil {
-		return err
-	}
-	if n := strings.Count(strings.TrimRight(string(b), "\n"), "\n"); n > 0 {
-		return fmt.Errorf("%d reds in %s", n, filepath.Join(out, "REDS.tsv"))
-	}
-	return nil
+	return redsErr(out)
 }
 
 // firstDiff is the first unit ID in one sorted list and not the other.

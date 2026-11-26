@@ -21,12 +21,18 @@ import (
 // a language is the subtest <case> of tools/namebuild's
 // TestNameBuildability_<lang>, which make name-buildability-run runs with the
 // toolchains the make files name, writing go test -json events. Its Build
-// installs those toolchains once per process (the builder), so languages run
-// side by side never install one at the same time.
+// installs the language's own toolchain, and only when it is not in place
+// (make name-buildability-deps-<lang>), once per process (the builder): a
+// language's compile row, which the pr job runs, never pays for the other
+// languages' toolchains; and it builds the compiler make
+// name-buildability-run links (build/schema-moo), once, before any call, so
+// calls running side by side never build it at once.
 var nameBuild = harness{
-	Name:  namebuild.Family,
-	Build: func(string) [][]string { return [][]string{{"make", "name-buildability-deps"}} },
-	Run:   runNameBuild,
+	Name: namebuild.Family,
+	Build: func(lang string) [][]string {
+		return [][]string{{"make", "name-buildability-deps-" + lang}, {"make", "build/schema-moo"}}
+	},
+	Run: runNameBuild,
 }
 
 // nameBuildPlan maps each requested subtest's full Go name to its instance

@@ -46,6 +46,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `goose-hostile/` | Goose hostile-corpus runner | `make schema-goose-runs-hostile-corpus` | `make schema-goose-runs-hostile-corpus` |
 | `goose-ludicrous/` | Goose int128 tests | `make test-goose` | `make test-goose` |
 | `guard/` | C++ include-guard test | `./build/schema_test_guard` | `./build/schema_test_guard` |
+| `happy/` | per-PR happy path: one round trip per language (make/happy-path.mk) | `make happy-c` | `make happy-<lang>` |
 | `java/` | Java packet tests | `make test-java` | `make test-java` |
 | `java-fixedform/` | Java fixed-form tests | `make test-java` | `make test-java` |
 | `java-hostile/` | Java hostile-corpus runner | `make schema-java-runs-hostile-corpus` | `make schema-java-runs-hostile-corpus` |

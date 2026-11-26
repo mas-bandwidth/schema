@@ -20,8 +20,9 @@ const retainReadSurfaceLoadAnchor = "        return load_table(cls, data, report
 
 // runRetainReadSurface generates RT1 (sabotaged by plant when non-nil), runs
 // the conformance driver's retain surface over every retain row of the shared
-// manifest on both pins, and returns each pin's answers by case.
-func runRetainReadSurface(t *testing.T, plant func(files map[string][]byte) int) (string, []string, []map[string][]byte) {
+// manifest on both pins, and returns each pin's answers by case and the cases
+// whose manifest verdict is refused (the row's eighth field).
+func runRetainReadSurface(t *testing.T, plant func(files map[string][]byte) int) (string, []string, []map[string][]byte, map[string]bool) {
 	t.Helper()
 	root, err := filepath.Abs(filepath.Join("..", "..", ".."))
 	if err != nil {
@@ -36,6 +37,7 @@ func runRetainReadSurface(t *testing.T, plant func(files map[string][]byte) int)
 	seenUnit := map[string]bool{"tblrt1": true}
 	var stripped strings.Builder
 	var cases []string
+	refused := map[string]bool{}
 	for line := range strings.SplitSeq(string(manifestBytes), "\n") {
 		fields := strings.Fields(line)
 		if len(fields) >= 3 && fields[0] == "unit" {
@@ -44,6 +46,9 @@ func runRetainReadSurface(t *testing.T, plant func(files map[string][]byte) int)
 		if len(fields) >= 7 && fields[0] == "retain" {
 			stripped.WriteString(strings.Join(fields[:7], " ") + "\n")
 			cases = append(cases, fields[1])
+			if len(fields) >= 8 && fields[7] == "refused" {
+				refused[fields[1]] = true
+			}
 			if !seenUnit[fields[2]] {
 				seenUnit[fields[2]] = true
 				neededUnits = append(neededUnits, fields[2])
@@ -99,14 +104,21 @@ func runRetainReadSurface(t *testing.T, plant func(files map[string][]byte) int)
 		}
 		answers = append(answers, got)
 	}
-	return root, cases, answers
+	return root, cases, answers, refused
 }
 
-// retainReadSurfaceDiff names the first case whose answer is not "read" and
-// the known value at retain-values/<case>.json, or returns "".
-func retainReadSurfaceDiff(t *testing.T, root string, cases []string, got map[string][]byte) string {
+// retainReadSurfaceDiff names the first case whose answer is not its
+// manifest verdict: "refused" for a refused row, else "read" and the known
+// value at retain-values/<case>.json; or returns "".
+func retainReadSurfaceDiff(t *testing.T, root string, cases []string, refused map[string]bool, got map[string][]byte) string {
 	t.Helper()
 	for _, name := range cases {
+		if refused[name] {
+			if string(got[name]) != "refused\n" {
+				return name + ": the manifest refuses this row and the answer is not a refusal: " + string(got[name])
+			}
+			continue
+		}
 		text, ok := bytes.CutPrefix(got[name], []byte("read\n"))
 		if !ok {
 			return name + ": the answer is not a read: " + string(got[name])
@@ -140,9 +152,9 @@ func retainReadSurfaceDiff(t *testing.T, root string, cases []string, got map[st
 // complete known value pinned at retain-values/<case>.json (FORMAT.md, retain).
 func TestPythonRetainReadSurface(t *testing.T) {
 	t.Parallel()
-	root, cases, answers := runRetainReadSurface(t, nil)
+	root, cases, answers, refused := runRetainReadSurface(t, nil)
 	for _, got := range answers {
-		if diff := retainReadSurfaceDiff(t, root, cases, got); diff != "" {
+		if diff := retainReadSurfaceDiff(t, root, cases, refused, got); diff != "" {
 			t.Fatal(diff)
 		}
 	}
@@ -153,7 +165,7 @@ func TestPythonRetainReadSurface(t *testing.T) {
 // gate must see the lost known value by case name.
 func TestPythonRetainReadSurfaceNegativeControl(t *testing.T) {
 	t.Parallel()
-	root, cases, answers := runRetainReadSurface(t, func(files map[string][]byte) int {
+	root, cases, answers, refused := runRetainReadSurface(t, func(files map[string][]byte) int {
 		planted := 0
 		for name, data := range files {
 			if !strings.HasPrefix(name, "tblrt1/") || strings.Contains(name, "/_schema/") {
@@ -168,7 +180,7 @@ func TestPythonRetainReadSurfaceNegativeControl(t *testing.T) {
 		return planted
 	})
 	for _, got := range answers {
-		diff := retainReadSurfaceDiff(t, root, cases, got)
+		diff := retainReadSurfaceDiff(t, root, cases, refused, got)
 		if !strings.Contains(diff, "retain_round_trip: retained read value differs") {
 			t.Fatalf("planted default-root retaining load was not caught by name: %q", diff)
 		}

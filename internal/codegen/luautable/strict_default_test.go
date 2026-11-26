@@ -1,6 +1,7 @@
 package luautable_test
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -17,8 +18,10 @@ import (
 // TestLuauDefaultReadIsStrict holds docs/SPEC-TABLES.md §6.5's rule that THE
 // PLAIN NAME IS THE STRICT READ on the Luau leg: L.load refuses what
 // R.ReadStrict refuses and hands back no recovered value, naming the same
-// reason, while the tolerant walk lives under its own L.loadWalk name and
-// keeps an evolved value, but discards a damaged load (§4). The wires and the
+// reason. Strict only (docs/rulings.json strict-only-read): what the Go engine
+// refuses, every Luau read refuses, L.loadWalk included, compared by verdict
+// alone (refusal-verdict-only); what the engine reads, every Luau read keeps
+// with the engine's value and counters. The wires and the
 // counters are schema-go's own engine (internal/tablewire and
 // internal/tabletext) over the same unit, never typed by hand.
 func TestLuauDefaultReadIsStrict(t *testing.T) {
@@ -48,9 +51,25 @@ table Var
 	setInt(t, cleanInst, "n", 3)
 	clean := encodeWire(t, model, cleanInst)
 
-	clampedInst := model.New(st)
+	// A VALUE PAST ITS RANGE: the engine's writer refuses n = 100 (invalid_value),
+	// so the off-contract wire comes from a RANGE-FREE TWIN with the same name
+	// and kind. The twin's wire for an in-range value is the ranged schema's own
+	// bytes, so the two wires differ only in the value.
+	rangeFreeModel, rangeFreeSt := goReferenceUnit(t, "Var.schema", `package probe
+
+table Var
+{
+    n int32 = 1
+}
+`)
+	twinInst := rangeFreeModel.New(rangeFreeSt)
+	setInt(t, twinInst, "n", 3)
+	if twin := encodeWire(t, rangeFreeModel, twinInst); !bytes.Equal(twin, clean) {
+		t.Fatalf("the range-free twin does not write the ranged schema's bytes:\ntwin   %x\nranged %x", twin, clean)
+	}
+	clampedInst := rangeFreeModel.New(rangeFreeSt)
 	setInt(t, clampedInst, "n", 100)
-	clamped := encodeWire(t, model, clampedInst)
+	clamped := encodeWire(t, rangeFreeModel, clampedInst)
 
 	widerInst := widerModel.New(widerSt)
 	setInt(t, widerInst, "n", 1)
@@ -73,8 +92,10 @@ table Var
 	}
 
 	// THE REFERENCE'S VERDICT for every wire, counted by schema-go's decoder.
+	// Strict only (docs/rulings.json strict-only-read): a wire the engine
+	// refuses is a verdict, compared by verdict alone (refusal-verdict-only).
 	type oracle struct {
-		want     string
+		refused  bool
 		counters string
 		n        int64
 	}
@@ -83,17 +104,21 @@ table Var
 		inst := model.New(st)
 		var report tabletext.Report
 		ok, err := tablewire.Decode(model, inst, wire, &report)
-		if err != nil {
-			t.Fatalf("%s: the Go reference refused the wire: %v", name, err)
+		refused := !ok || err != nil || report.Refused
+		o := oracle{refused: refused}
+		if !refused {
+			o.counters = fmt.Sprintf("%d,%d,%d,%d,%d,%s", report.Unknown, 0, report.Widened, 0, 0, boolText(report.Refused))
+			o.n = fieldInt(t, inst, "n")
 		}
-		oracles[name] = oracle{
-			want:     referenceReason(report, ok),
-			counters: fmt.Sprintf("%d,%d,%d,%d,%d,%s", report.Unknown, 0, report.Widened, 0, 0, boolText(report.Refused)),
-			n:        fieldInt(t, inst, "n"),
-		}
+		oracles[name] = o
 	}
-	if got := oracles["clean"]; got.want != "" || got.counters != "0,0,0,0,0,false" || got.n != 3 {
+	if got := oracles["clean"]; got.refused || got.counters != "0,0,0,0,0,false" || got.n != 3 {
 		t.Fatalf("the Go reference does not read the clean wire silently: %+v", got)
+	}
+	for _, name := range []string{"clamped", "truncated"} {
+		if !oracles[name].refused {
+			t.Fatalf("%s: the Go reference read the wire; strict-only refuses it", name)
+		}
 	}
 
 	main := `local inputs = require("./inputs")
@@ -147,67 +172,58 @@ end
 		tolerantValue, tolerantCounters := fields[4], fields[5]
 		readValue, readReason := fields[6], fields[7]
 
-		// Tolerant evolution keeps a value; damage refuses it under either name (§4).
-		if strings.HasSuffix(oracle.counters, ",true") {
-			if tolerantValue != "nil" || !strings.HasSuffix(tolerantCounters, ",true") {
-				t.Errorf("%s: damaged tolerant load returned value=%s counters=%s", name, tolerantValue, tolerantCounters)
+		if oracle.refused {
+			// EVERY LUAU READ REFUSES what the engine refuses (§6.5, no
+			// tolerant read under any name): the plain load, the walk it is
+			// built on, and R.ReadStrict, by verdict alone.
+			if strictValue != "nil" {
+				t.Errorf("%s: the plain L.load handed back %s; the Go reference refuses this wire", name, strictValue)
 			}
-		} else {
-			if tolerantValue == "nil" {
-				t.Fatalf("%s: L.loadWalk handed back no recovered value", name)
+			if tolerantValue != "nil" {
+				t.Errorf("%s: L.loadWalk handed back %s; the Go reference refuses this wire", name, tolerantValue)
 			}
-			if tolerantCounters != oracle.counters {
-				t.Errorf("%s: L.loadWalk counters are %s, the Go reference says %s", name, tolerantCounters, oracle.counters)
+			if readValue != "nil" {
+				t.Errorf("%s: R.ReadStrict handed back %s; the Go reference refuses this wire", name, readValue)
 			}
-			if tolerantValue != fmt.Sprint(oracle.n) {
-				t.Errorf("%s: L.loadWalk recovered n=%s, the Go reference says %d", name, tolerantValue, oracle.n)
+			// Damage discards the whole load with malformed counted (§4).
+			if name == "truncated" && !strings.HasSuffix(tolerantCounters, ",true") {
+				t.Errorf("%s: the damaged walk counts %s, and damage owes malformed", name, tolerantCounters)
 			}
-		}
-
-		// R.ReadStrict IS THE NAME §6.5 GIVES: L.load must answer the same one.
-		if oracle.want == "" {
-			if readValue == "nil" {
-				t.Errorf("%s: R.ReadStrict refused a clean wire: %s", name, readReason)
+			// R.ReadStrict IS THE NAME §6.5 GIVES: L.load answers the same one,
+			// with this read's own counters.
+			if strictReason == "nil" || strictReason != readReason {
+				t.Errorf("%s: the plain L.load named %s, R.ReadStrict named %s", name, strictReason, readReason)
 			}
-		} else if readValue != "nil" || readReason != oracle.want {
-			t.Errorf("%s: R.ReadStrict answered value=%s reason=%s, the Go reference says %q", name, readValue, readReason, oracle.want)
-		}
-
-		if name == "clean" {
-			if strictValue == "nil" || strictReason != "nil" {
-				t.Fatalf("clean: the plain L.load refused a clean wire: value=%s reason=%s", strictValue, strictReason)
-			}
-			if strictValue != tolerantValue {
-				t.Fatalf("clean: L.load gave %s and L.loadWalk gave %s", strictValue, tolerantValue)
-			}
-			if strictCounters != oracle.counters {
-				t.Errorf("clean: the plain L.load counters are %s, the Go reference says %s", strictCounters, oracle.counters)
+			if strictCounters != tolerantCounters {
+				t.Errorf("%s: the plain L.load counters are %s, not this read's walk counters %s", name, strictCounters, tolerantCounters)
 			}
 			continue
 		}
-		if strictValue != "nil" {
-			t.Errorf("%s: the plain L.load handed back the recovered value %s; §6.5 says it refuses", name, strictValue)
-		}
-		if strictReason != oracle.want {
-			t.Errorf("%s: the plain L.load named %s, the Go reference says %s", name, strictReason, oracle.want)
-		}
-		if strictReason != readReason {
-			t.Errorf("%s: the plain L.load named %s, R.ReadStrict named %s", name, strictReason, readReason)
-		}
-		if strictCounters != tolerantCounters {
-			t.Errorf("%s: the plain L.load counters are %s, not this read's tolerant counters %s", name, strictCounters, tolerantCounters)
-		}
-	}
-}
 
-// referenceReason is the §6.5 name the Go report owes under the strict read's
-// order: a refusal names malformed; a sound read names nothing.
-func referenceReason(report tabletext.Report, ok bool) string {
-	switch {
-	case report.Refused, !ok:
-		return "malformed"
+		// A wire the engine reads: every Luau read keeps the engine's value
+		// and counters.
+		if tolerantValue == "nil" {
+			t.Fatalf("%s: L.loadWalk handed back no value; the Go reference reads this wire", name)
+		}
+		if tolerantCounters != oracle.counters {
+			t.Errorf("%s: L.loadWalk counters are %s, the Go reference says %s", name, tolerantCounters, oracle.counters)
+		}
+		if tolerantValue != fmt.Sprint(oracle.n) {
+			t.Errorf("%s: L.loadWalk recovered n=%s, the Go reference says %d", name, tolerantValue, oracle.n)
+		}
+		if readValue == "nil" {
+			t.Errorf("%s: R.ReadStrict refused a wire the Go reference reads: %s", name, readReason)
+		}
+		if strictValue == "nil" || strictReason != "nil" {
+			t.Fatalf("%s: the plain L.load refused a wire the Go reference reads: value=%s reason=%s", name, strictValue, strictReason)
+		}
+		if strictValue != tolerantValue {
+			t.Fatalf("%s: L.load gave %s and L.loadWalk gave %s", name, strictValue, tolerantValue)
+		}
+		if strictCounters != oracle.counters {
+			t.Errorf("%s: the plain L.load counters are %s, the Go reference says %s", name, strictCounters, oracle.counters)
+		}
 	}
-	return ""
 }
 
 func boolText(v bool) string {

@@ -1,6 +1,9 @@
 package extract
 
 import (
+	"encoding/json"
+	"go/parser"
+	"go/token"
 	"maps"
 	"os"
 	"os/exec"
@@ -210,6 +213,52 @@ func TestCheckHoldsTheRepositoryTheRegistryAndTheLedgerExactly(t *testing.T) {
 	}
 }
 
+// TestASubtestRowClaimsItsSubtest: the parent gotest row claims the top-level
+// test and a row that names a subtest claims that subtest, so the two are not
+// "already runs". The extract lists the top-level test, which holds the
+// subtest claim. A second row for the same subtest is refused, and a subtest
+// whose top-level test the repository does not hold is named. The subtest
+// row's files index the data case; the parent, naming none, does not.
+func TestASubtestRowClaimsItsSubtest(t *testing.T) {
+	t.Parallel()
+	top := Item{Kind: KindGoTest, Dir: "internal/baseline", Name: "TestCommittedEditPairs", Source: "internal/baseline/editpairs_test.go:19"}
+	res := &Result{Items: []Item{
+		top,
+		{Kind: KindDataCase, Dir: "internal/baseline/testdata/editpairs/f058-fixed-to-bounded", Name: "want", Source: "internal/baseline/testdata/editpairs/f058-fixed-to-bounded/want.txt:1"},
+	}}
+	parent := gotestRow("tooling.baseline.committed-edit-pairs", "./internal/baseline", "TestCommittedEditPairs")
+	child := testreg.Test{Key: "tooling.baseline.edit-pair-f058-fixed-to-bounded", Scope: testreg.LangFree, Adapter: "gotest", Inputs: []byte(`{"package":"./internal/baseline","test":"TestCommittedEditPairs","subtest":"f058-fixed-to-bounded","files":["internal/baseline/testdata/editpairs/f058-fixed-to-bounded/want.txt"]}`)}
+	sib := testreg.Test{Key: "tooling.baseline.edit-pair-f058-control-bounded-to-map", Scope: testreg.LangFree, Adapter: "gotest", Inputs: []byte(`{"package":"./internal/baseline","test":"TestCommittedEditPairs","subtest":"f058-control-bounded-to-map"}`)}
+	reg := &testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{parent, child, sib}}
+	out, problems := Covered(reg)
+	if len(problems) != 0 {
+		t.Fatalf("parent and its subtests: %v", problems)
+	}
+	if out[top.ID()] != parent.Key {
+		t.Fatalf("parent claim %q, want %s", out[top.ID()], parent.Key)
+	}
+	sub := Item{Kind: KindGoTest, Dir: "internal/baseline", Name: "TestCommittedEditPairs/f058-fixed-to-bounded"}
+	if out[sub.ID()] != child.Key {
+		t.Fatalf("subtest claim %q, want %s", out[sub.ID()], child.Key)
+	}
+	if p := Check(res, reg, nil); len(p) != 0 {
+		t.Fatalf("the top-level test holds its subtests: %v", p)
+	}
+	if got := Indexed(reg)[Item{Kind: KindDataCase, Dir: "internal/baseline/testdata/editpairs/f058-fixed-to-bounded", Name: "want"}.ID()]; got != child.Key {
+		t.Fatalf("the case file is indexed by %q, want the subtest row", got)
+	}
+	dup := testreg.Test{Key: "tooling.baseline.edit-pair-again", Adapter: "gotest", Inputs: child.Inputs}
+	if _, problems := Covered(&testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{child, dup}}); len(problems) != 1 || !strings.Contains(problems[0], "already runs") {
+		t.Fatalf("two rows for one subtest: %v", problems)
+	}
+	gone := &Result{}
+	p := Check(gone, reg, nil)
+	joined := strings.Join(p, "\n")
+	if !strings.Contains(joined, "tooling.baseline.edit-pair-f058-fixed-to-bounded runs go-test internal/baseline TestCommittedEditPairs/f058-fixed-to-bounded, which the repository does not hold") {
+		t.Fatalf("a subtest whose test is gone:\n%s", joined)
+	}
+}
+
 // TestMakePlantAndGoldenRowsCoverTheirTests: a make row covers its make
 // target, a plant row its negative control, a golden row the data case its
 // files are; each row naming a test the repository does not hold is named.
@@ -249,6 +298,44 @@ func TestMakePlantAndGoldenRowsCoverTheirTests(t *testing.T) {
 		"a make row with no file": {row("harness-run.makefile.nofile", "make", `{"target":"prep"}`), "is a make row without a file and a target"},
 	} {
 		p := Check(res, &testreg.Registry{Path: "r.jsonl", Tests: append(slices.Clone(good), c.extra)}, nil)
+		if !strings.Contains(strings.Join(p, "\n"), c.says) {
+			t.Errorf("%s: want %q in:\n%s", name, c.says, strings.Join(p, "\n"))
+		}
+	}
+}
+
+// TestTheShardRowsOfAGateShareItsTarget: the rows of a sharded make gate,
+// each setting one *_SHARD var to K/N, together cover its target once; a
+// shard run twice, a shard of another N, a shard row gone, a whole row
+// beside the shards, two shard vars on one row, and a value that is not K/N
+// are each named.
+func TestTheShardRowsOfAGateShareItsTarget(t *testing.T) {
+	t.Parallel()
+	res := &Result{Items: []Item{{Kind: KindMakeTarget, Dir: "make/x.mk", Name: "lint", Source: "make/x.mk:1"}}}
+	shard := func(key, vars string) testreg.Test {
+		return testreg.Test{Key: key, Adapter: "make", Inputs: []byte(`{"file":"make/x.mk","target":"lint","vars":{` + vars + `}}`)}
+	}
+	good := []testreg.Test{
+		shard("lint.x.lint-shard-1-of-3", `"X_SHARD":"1/3","OTHER":"y"`),
+		shard("lint.x.lint-shard-2-of-3", `"X_SHARD":"2/3","OTHER":"y"`),
+		shard("lint.x.lint-shard-3-of-3", `"X_SHARD":"3/3","OTHER":"y"`),
+	}
+	if p := Check(res, &testreg.Registry{Path: "r.jsonl", Tests: good}, nil); len(p) != 0 {
+		t.Fatalf("the exact account: %v", p)
+	}
+	for name, c := range map[string]struct {
+		tests []testreg.Test
+		says  string
+	}{
+		"a shard run twice":          {append(slices.Clone(good), shard("lint.x.again", `"X_SHARD":"2/3"`)), "lint.x.again runs shard 2/3 of make lint, which lint.x.lint-shard-2-of-3 already runs"},
+		"a shard of another N":       {append(slices.Clone(good), shard("lint.x.four", `"X_SHARD":"1/4"`)), "lint.x.four shards make lint as X_SHARD=1/4, but lint.x.lint-shard-1-of-3 shards it as X_SHARD of 3"},
+		"a shard row gone":           {[]testreg.Test{good[0], good[2]}, "no row runs shard 2/3 of make lint (X_SHARD)"},
+		"a whole row after":          {append(slices.Clone(good), shard("lint.x.whole", `"OTHER":"y"`)), "lint.x.whole runs make lint, which lint.x.lint-shard-1-of-3 already runs"},
+		"a whole row before":         {append([]testreg.Test{shard("lint.x.whole", `"OTHER":"y"`)}, good...), "lint.x.lint-shard-1-of-3 runs shard 1/3 of make lint, which lint.x.whole already runs whole"},
+		"two shard vars":             {append(slices.Clone(good), shard("lint.x.two", `"X_SHARD":"1/3","Y_SHARD":"1/2"`)), "lint.x.two: sets two shard vars, X_SHARD and Y_SHARD"},
+		"a shard that is not K of N": {append(slices.Clone(good), shard("lint.x.zero", `"X_SHARD":"0/3"`)), `lint.x.zero: X_SHARD="0/3" is not a shard K/N`},
+	} {
+		p := Check(res, &testreg.Registry{Path: "r.jsonl", Tests: c.tests}, nil)
 		if !strings.Contains(strings.Join(p, "\n"), c.says) {
 			t.Errorf("%s: want %q in:\n%s", name, c.says, strings.Join(p, "\n"))
 		}
@@ -348,7 +435,7 @@ func TestAMakeRowsReadsCoverTheCasesItRuns(t *testing.T) {
 		return testreg.Test{Key: "harness-run.makefile.gate", Adapter: "make", Inputs: []byte(`{"file":"Makefile","target":"gate","reads":[` + reads + `]}`)}
 	}
 	golden := testreg.Test{Key: "golden.p.h", Adapter: "golden", Inputs: []byte(`{"writer":"pins-x","files":["testdata/pins/p.h"]}`)}
-	reg := &testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{golden, mk(`"test/tables/VNEW_a.schema","testdata/pins/p.h","test/tables/pair.in"`)}}
+	reg := &testreg.Registry{Path: "r.jsonl", Tests: append([]testreg.Test{golden}, withPlant(mk(`"test/tables/VNEW_a.schema","testdata/pins/p.h","test/tables/pair.in"`), []string{"test/tables/VNEW_a.schema"})...)}
 	covered, p := CoveredIn(res, reg)
 	if len(p) != 0 {
 		t.Fatalf("a golden row and a make row on one case: %v", p)
@@ -373,6 +460,335 @@ func TestAMakeRowsReadsCoverTheCasesItRuns(t *testing.T) {
 		if !strings.Contains(strings.Join(p, "\n"), c.says) {
 			t.Errorf("%s: want %q in:\n%s", name, c.says, strings.Join(p, "\n"))
 		}
+	}
+}
+
+// TestDirectoryAndGoTestReadsCreditWhatTheyHold: a credit holds only where
+// breaking the credited file can turn the row red. A make row's directory
+// read credits the cases and the driver in that directory, never one below
+// it, when a make file works on the bare directory (a comment, a path of
+// one file in it, or $(BUILD)/ in front names nothing). A gotest row's read
+// credits what it holds when the package's source names it as a whole
+// path: a file read credits a case only when the row reads every file of
+// it, a directory read the directory's own items, a tree read ("/...")
+// every item below that no driver below holds; a union row's read the
+// same, when one of its languages' packages names it. A read that holds
+// nothing, one whose every item another row already holds, and a read
+// nothing names are each a problem by name, and credit nothing.
+func TestDirectoryAndGoTestReadsCreditWhatTheyHold(t *testing.T) {
+	t.Parallel()
+	drv := Item{Kind: KindDriver, Dir: "test/packet-end/rust", Name: "rust"}
+	cargo := Item{Kind: KindDataCase, Dir: "test/packet-end/rust", Name: "Cargo"}
+	// below the driver's directory: not the directory's read
+	vec := Item{Kind: KindDataCase, Dir: "test/packet-end/rust/vectors", Name: "v"}
+	sib := Item{Kind: KindDataCase, Dir: "test/packet-end-x", Name: "a"}
+	// a driver below a tree read's directory is a harness of its own
+	nbInner := Item{Kind: KindDriver, Dir: "testdata/name-buildability/inner", Name: "inner"}
+	nbInnerData := Item{Kind: KindDataCase, Dir: "testdata/name-buildability/inner/rows", Name: "r"}
+	nb := Item{Kind: KindDataCase, Dir: "testdata/name-buildability/b_x", Name: "x"}
+	tsv := Item{Kind: KindDataCase, Dir: "testdata/name-buildability", Name: "cases"}
+	one := Item{Kind: KindDataCase, Dir: "testdata/wire/json-integers", Name: "wide"}
+	// two files: read whole or not at all
+	pair := Item{Kind: KindDataCase, Dir: "testdata/wire/json-integers", Name: "pair"}
+	res := &Result{
+		Items:       []Item{drv, cargo, vec, sib, nb, tsv, one, pair, nbInner, nbInnerData},
+		DriverFiles: map[string][]string{drv.ID(): {"test/packet-end/rust/src/main.rs"}},
+		CaseFiles: map[string][]string{
+			cargo.ID():       {"test/packet-end/rust/Cargo.toml", "test/packet-end/rust/Cargo.lock"},
+			vec.ID():         {"test/packet-end/rust/vectors/v.bin"},
+			sib.ID():         {"test/packet-end-x/a.schema"},
+			nb.ID():          {"testdata/name-buildability/b_x/x.schema"},
+			tsv.ID():         {"testdata/name-buildability/cases.tsv"},
+			one.ID():         {"testdata/wire/json-integers/wide.json"},
+			pair.ID():        {"testdata/wire/json-integers/pair.bin", "testdata/wire/json-integers/pair.json"},
+			nbInnerData.ID(): {"testdata/name-buildability/inner/rows/r.bin"},
+		},
+		GoStrings: map[string]map[string]bool{
+			"internal/check":         {"../../testdata/name-buildability": true, "..": true, "testdata": true, "wire": true, "json-integers": true},
+			"internal/codegen/table": {"../../testdata/wire/json-integers/wide.json": true, "../../testdata/wire/json-integers/pair.bin": true, "../../testdata/wire/json-integers/pair.json": true},
+			"internal/lone":          {"": true, ".": true, "/": true, `\`: true, "..": true, "../..": true},
+		},
+		MakeText: StripMakeComments("packet-end-rust-test:\n\tcd test/packet-end/rust && cargo test\n" +
+			"# test/packet-end-x is read by nobody\n" +
+			"other:\n\t@# test/packet-end-x/ too\n\tls $(BUILD)/test/packet-end-x build/test/packet-end-x test/packet-end-x/a.schema\n"),
+	}
+	mk := testreg.Test{Key: "harness-run.rust.packet-end-rust-test", Adapter: "make", Line: 1,
+		Inputs: []byte(`{"file":"make/rust.mk","target":"packet-end-rust-test","reads":["test/packet-end/rust/"]}`)}
+	corpus := testreg.Test{Key: "compiler.check.name-buildability-corpus", Adapter: "gotest", Line: 2,
+		Inputs: []byte(`{"package":"./internal/check","test":"TestNameBuildabilityCorpus","reads":["testdata/name-buildability/..."]}`)}
+	file := testreg.Test{Key: "roundtrip.wire-json-integers.wide", Line: 3,
+		Inputs: []byte(`{"tests":{"go":{"package":"./internal/codegen/table","test":"TestWide"}},"reads":["testdata/wire/json-integers/wide.json"]}`)}
+	// a row reading both files of a two-file case credits it once
+	both := testreg.Test{Key: "roundtrip.wire-json-integers.pair", Adapter: "gotest", Line: 4,
+		Inputs: []byte(`{"package":"./internal/codegen/table","test":"TestPair","reads":["testdata/wire/json-integers/pair.bin","testdata/wire/json-integers/pair.json"]}`)}
+	var rows []testreg.Test
+	rows = append(rows, withPlant(mk, []string{"test/packet-end/rust/src/main.rs"}, []string{"test/packet-end/rust/Cargo.lock", "test/packet-end/rust/Cargo.toml"})...)
+	rows = append(rows, withPlant(corpus, []string{"testdata/name-buildability/b_x/x.schema"}, []string{"testdata/name-buildability/cases.tsv"})...)
+	rows = append(rows, withPlant(file, []string{"testdata/wire/json-integers/wide.json"})...)
+	rows = append(rows, withPlant(both, []string{"testdata/wire/json-integers/pair.json", "testdata/wire/json-integers/pair.bin"})...)
+	covered, p := CoveredIn(res, &testreg.Registry{Path: "r.jsonl", Tests: rows})
+	if len(p) != 0 {
+		t.Fatalf("problems: %v", p)
+	}
+	want := map[string]string{
+		drv.ID(): mk.Key, cargo.ID(): mk.Key,
+		nb.ID(): corpus.Key, tsv.ID(): corpus.Key,
+		one.ID(): file.Key, pair.ID(): both.Key,
+	}
+	for id, key := range want {
+		if covered[id] != key {
+			t.Errorf("%s is credited to %q, want %s", id, covered[id], key)
+		}
+	}
+	for _, it := range []Item{vec, sib, nbInner, nbInnerData} {
+		if k, ok := covered[it.ID()]; ok {
+			t.Errorf("%s is below or beside the read directory, under a driver of its own, or not read whole, and is credited to %s", it.ID(), k)
+		}
+	}
+	for name, c := range map[string]struct {
+		row  testreg.Test
+		says string
+	}{
+		"a directory that holds nothing": {testreg.Test{Key: "k.a", Adapter: "make", Inputs: []byte(`{"file":"m.mk","target":"t","reads":["test/packet-end/rust/gone/"]}`)},
+			"k.a reads test/packet-end/rust/gone/, and no make file works on that directory itself"},
+		"a directory make text names only in comments, below $(BUILD)/ or build/, or by one file in it": {testreg.Test{Key: "k.b", Adapter: "make", Inputs: []byte(`{"file":"m.mk","target":"t","reads":["test/packet-end-x/"]}`)},
+			"k.b reads test/packet-end-x/, and no make file works on that directory itself"},
+		"a make tree read": {testreg.Test{Key: "k.e", Adapter: "make", Inputs: []byte(`{"file":"m.mk","target":"t","reads":["test/packet-end/rust/..."]}`)},
+			"k.e reads test/packet-end/rust/...: a make row's directory read is one directory"},
+		"a Go read spelled only by separate words": {testreg.Test{Key: "k.f", Adapter: "gotest", Inputs: []byte(`{"package":"./internal/check","test":"TestX","reads":["testdata/wire/json-integers/"]}`)},
+			"k.f reads testdata/wire/json-integers/, which no string in the source of internal/check names as a whole path"},
+		"an unclean read": {testreg.Test{Key: "k.d", Adapter: "gotest", Inputs: []byte(`{"package":"./internal/check","test":"TestX","reads":["../name-buildability/"]}`)},
+			"k.d reads ../name-buildability/: want a clean repository file"},
+		"one file of a two-file case": {testreg.Test{Key: "k.h", Adapter: "gotest", Inputs: []byte(`{"package":"./internal/codegen/table","test":"TestX","reads":["testdata/wire/json-integers/pair.bin"]}`)},
+			"k.h reads testdata/wire/json-integers/pair.bin, which holds no data case and no driver of the repository, or not every file of one"},
+		"a Go read named only by an empty literal, the package's own place": {testreg.Test{Key: "k.j", Adapter: "gotest", Inputs: []byte(`{"package":"./internal/lone","test":"TestX","reads":["internal/lone/"]}`)},
+			"k.j reads internal/lone/, which no string in the source of internal/lone names as a whole path"},
+		"a Go read named only by steps up": {testreg.Test{Key: "k.k", Adapter: "gotest", Inputs: []byte(`{"package":"./internal/lone","test":"TestX","reads":["internal/"]}`)},
+			"k.k reads internal/, which no string in the source of internal/lone names as a whole path"},
+		"a negative control's Go reads": {testreg.Test{Key: "k.l", Type: "plant", Adapter: "gotest", Inputs: []byte(`{"package":"./internal/codegen/table","test":"TestX","reads":["testdata/wire/json-integers/wide.json"]}`)},
+			"k.l reads [testdata/wire/json-integers/wide.json], and a negative control (type plant) is red by design"},
+		"a negative control's reads": {testreg.Test{Key: "k.i", Type: "plant", Adapter: "make", Inputs: []byte(`{"file":"m.mk","target":"t","reads":["test/packet-end/rust/Cargo.toml","test/packet-end/rust/Cargo.lock"]}`)},
+			"k.i reads [test/packet-end/rust/Cargo.toml test/packet-end/rust/Cargo.lock], and a negative control (type plant) is red by design"},
+	} {
+		covered, p := CoveredIn(res, &testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{mk, c.row}})
+		if !strings.Contains(strings.Join(p, "\n"), c.says) {
+			t.Errorf("%s: want %q in:\n%s", name, c.says, strings.Join(p, "\n"))
+		}
+		for id, key := range covered {
+			if key == c.row.Key && !strings.HasPrefix(id, KindGoTest) && !strings.HasPrefix(id, KindMakeTarget) {
+				t.Errorf("%s: credits %s", name, id)
+			}
+		}
+	}
+	// two make rows that each read one file of a two-file case run none of it whole
+	half1 := testreg.Test{Key: "k.m", Adapter: "make", Line: 6, Inputs: []byte(`{"file":"m.mk","target":"a","reads":["testdata/wire/json-integers/pair.bin"]}`)}
+	half2 := testreg.Test{Key: "k.n", Adapter: "make", Line: 7, Inputs: []byte(`{"file":"m.mk","target":"b","reads":["testdata/wire/json-integers/pair.json"]}`)}
+	if covered, _ := CoveredIn(res, &testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{half1, half2}}); covered[pair.ID()] != "" {
+		t.Errorf("a case two make rows each read half of is credited to %s", covered[pair.ID()])
+	}
+	// a second read of what the first row already holds credits nothing
+	again := testreg.Test{Key: "k.g", Adapter: "make", Line: 5, Inputs: []byte(`{"file":"m.mk","target":"t","reads":["test/packet-end/rust/"]}`)}
+	if _, p := CoveredIn(res, &testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{mk, again}}); !strings.Contains(strings.Join(p, "\n"), "k.g reads test/packet-end/rust/, and another row already runs or reads everything it holds") {
+		t.Errorf("a read of what another row holds: want it named in:\n%s", strings.Join(p, "\n"))
+	}
+}
+
+// withPlant is row naming its read plant, and that plant: tier nightly,
+// deleting each of groups.
+func withPlant(row testreg.Test, groups ...[]string) []testreg.Test {
+	key := "plant.read-credits." + strings.ReplaceAll(row.Key, ".", "-")
+	row.Inputs = []byte(strings.TrimSuffix(string(row.Inputs), "}") + `,"read_plant":"` + key + `"}`)
+	in, err := json.Marshal(CreditPlant{Credits: row.Key, Delete: groups})
+	if err != nil {
+		panic(err)
+	}
+	return []testreg.Test{row, {Key: key, Type: "plant", Adapter: "plant", Tier: "nightly", Scope: testreg.LangFree, Line: row.Line + 100, Inputs: in}}
+}
+
+// TestAReadCreditCountsOnlyWithItsPlant: a read proposes a credit; the
+// credit counts only where the row names its read plant and the plant
+// deletes exactly the item's files. With no plant the item is not covered
+// (it stays in the ledger) and nothing is a problem; a second reader whose
+// plant proves the item holds it where the first reader has none. A plant
+// off the nightly tier, one its row does not name, one for no row, a row
+// naming a plant that does not prove it, and a deletion that is no credit
+// of its row are problems by name. A case a golden row pins part of is
+// covered only when golden rows pin it whole.
+func TestAReadCreditCountsOnlyWithItsPlant(t *testing.T) {
+	t.Parallel()
+	a := Item{Kind: KindDataCase, Dir: "test/tables", Name: "A"}
+	pair := Item{Kind: KindDataCase, Dir: "test/tables", Name: "P"}
+	res := &Result{Items: []Item{a, pair}, CaseFiles: map[string][]string{
+		a.ID():    {"test/tables/A.schema"},
+		pair.ID(): {"test/tables/P.in", "test/tables/P.out"},
+	}}
+	mk := func(key string, line int) testreg.Test {
+		return testreg.Test{Key: key, Adapter: "make", Line: line, Inputs: []byte(`{"file":"Makefile","target":"` + key + `","reads":["test/tables/A.schema","test/tables/P.in","test/tables/P.out"]}`)}
+	}
+	first, second := mk("k.first", 1), mk("k.second", 2)
+	reg := func(rows ...testreg.Test) *testreg.Registry { return &testreg.Registry{Path: "r.jsonl", Tests: rows} }
+
+	covered, p := CoveredIn(res, reg(first))
+	if len(p) != 0 || covered[a.ID()] != "" || covered[pair.ID()] != "" {
+		t.Errorf("reads with no plant: covered %v, problems %v; want nothing covered and no problem", covered, p)
+	}
+	covered, p = CoveredIn(res, reg(withPlant(first, []string{"test/tables/A.schema"}, []string{"test/tables/P.out", "test/tables/P.in"})...))
+	if len(p) != 0 || covered[a.ID()] != first.Key || covered[pair.ID()] != first.Key {
+		t.Errorf("planted reads: covered %v, problems %v; want both cases the row's", covered, p)
+	}
+	covered, p = CoveredIn(res, reg(withPlant(first, []string{"test/tables/A.schema"})...))
+	if len(p) != 0 || covered[a.ID()] != first.Key || covered[pair.ID()] != "" {
+		t.Errorf("one deletion taken out: covered %v, problems %v; want only A the row's", covered, p)
+	}
+	covered, _ = CoveredIn(res, reg(append([]testreg.Test{first}, withPlant(second, []string{"test/tables/A.schema"})...)...))
+	if covered[a.ID()] != second.Key {
+		t.Errorf("a second reader with the plant: A is credited to %q, want %s", covered[a.ID()], second.Key)
+	}
+
+	planted := withPlant(first, []string{"test/tables/A.schema"})
+	offTier := slices.Clone(planted)
+	offTier[1].Tier = "unit"
+	unnamed := []testreg.Test{first, planted[1]}
+	noRow := planted[1]
+	noRow.Inputs = []byte(`{"credits":"k.gone","delete":[["test/tables/A.schema"]]}`)
+	stale := withPlant(first, []string{"test/tables/A.schema"}, []string{"test/tables/P.in"})
+	for name, c := range map[string]struct {
+		rows []testreg.Test
+		says string
+	}{
+		"a plant off the nightly tier":  {offTier, "is a read plant of tier unit: read plants run in the nightly tier"},
+		"a plant its row does not name": {unnamed, `proves the reads of k.first, which names its read plant as "": a credit names its plant`},
+		"a plant for no row":            {[]testreg.Test{noRow}, "proves the reads of k.gone, which is no row that is not a plant"},
+		"a row naming no plant of it":   {planted[:1], `k.first names the read plant "plant.read-credits.k-first", which is no read plant of it`},
+		"a deletion that is no credit":  {stale, "deletes test/tables/P.in, which is no data case or driver the reads of k.first credit: the deletion is stale"},
+	} {
+		if _, p := CoveredIn(res, reg(c.rows...)); !strings.Contains(strings.Join(p, "\n"), c.says) {
+			t.Errorf("%s: want %q in:\n%s", name, c.says, strings.Join(p, "\n"))
+		}
+	}
+	if covered, _ := CoveredIn(res, reg(stale...)); covered[pair.ID()] != "" {
+		t.Errorf("a stale deletion of part of a case credits it to %s", covered[pair.ID()])
+	}
+	// a row that reads one file of a case runs none of it whole, though its
+	// plant deletes the case and a whole reader stands before it unplanted
+	part := testreg.Test{Key: "k.part", Adapter: "make", Line: 3, Inputs: []byte(`{"file":"Makefile","target":"part","reads":["test/tables/P.in"]}`)}
+	if covered, _ := CoveredIn(res, reg(append([]testreg.Test{first}, withPlant(part, []string{"test/tables/P.in", "test/tables/P.out"})...)...)); covered[pair.ID()] != "" {
+		t.Errorf("a planted reader of one file of a case is credited it: %s", covered[pair.ID()])
+	}
+	// two planted readers: the first holds it, and the second's plant is no stale deletion
+	if covered, p := CoveredIn(res, reg(append(withPlant(first, []string{"test/tables/A.schema"}), withPlant(second, []string{"test/tables/A.schema"})...)...)); covered[a.ID()] != first.Key || len(p) != 0 {
+		t.Errorf("two planted readers: A is %q, problems %v; want %s and none", covered[a.ID()], p, first.Key)
+	}
+	// a case a golden row pins part of is the golden row's: a read of the
+	// rest by another row is a credit with no plant of that case, so it
+	// leaves the case uncovered, planted or not
+	pin := testreg.Test{Key: "k.golden", Adapter: "golden", Line: 4, Inputs: []byte(`{"writer":"pins-x","files":["test/tables/P.in"]}`)}
+	rest := testreg.Test{Key: "k.rest", Adapter: "make", Line: 5, Inputs: []byte(`{"file":"Makefile","target":"rest","reads":["test/tables/P.out"]}`)}
+	if covered, _ := CoveredIn(res, reg(pin, rest)); covered[pair.ID()] != "" {
+		t.Errorf("a golden pin of P.in and an unplanted read of P.out cover P: %s", covered[pair.ID()])
+	}
+	if covered, _ := CoveredIn(res, reg(pin)); covered[pair.ID()] != "" {
+		t.Errorf("a golden pin of one file of P covers it: %s", covered[pair.ID()])
+	}
+}
+
+// TestNamesPathAndNamesBareDir: a path is named by text that holds it as a
+// whole path: at the start of a word, or after ./ or $(CURDIR)/; never as
+// part of a longer name, below another directory or a variable's
+// directory, or only through a path below it. A directory is worked on
+// bare when it is named so, or with a trailing / or a glob in it.
+func TestNamesPathAndNamesBareDir(t *testing.T) {
+	t.Parallel()
+	for text, want := range map[string][2]bool{ // NamesPath, NamesBareDir
+		"cd test/rust && cargo test":  {true, true},
+		"ls test/rust/ | wc":          {false, true},
+		"check test/rust/*.schema":    {false, true},
+		"$(CURDIR)/test/rust":         {true, true},
+		"${CURDIR}/test/rust":         {true, true},
+		"./test/rust":                 {true, true},
+		"$(BUILD)/test/rust":          {false, false},
+		"cd test/rust-soak":           {false, false},
+		"cd src/test/rust":            {false, false},
+		"cc test/rust/main.c":         {false, false},
+		"mkdir -p build/test/rust":    {false, false},
+		"cd test/rust.d":              {false, false},
+		"x/./test/rust":               {false, false},
+		"\t@# cd test/rust, a remark": {false, false},
+		// a word make or the shell goes on to build names no directory
+		"\tcc test/rust/$(F).c":             {false, false},
+		"$(addprefix test/rust/,a.schema)":  {false, false},
+		"$(addprefix test/rust,/a.schema)":  {false, false},
+		"build/%.o: test/rust/%.c":          {false, false},
+		"cc test/rust$(SUFFIX)":             {false, false},
+		"cat test/rust/\"a b\"":             {false, false},
+		"$(wildcard test/rust/*.c)":         {false, true},
+		"cd \"test/rust\" && go test":       {true, true},
+		"(cd test/rust; make)":              {true, true},
+		`printf 'rust test/rust\n' > d.txt`: {true, true},
+		`cc test/rust\x`:                    {false, false},
+		"test/rust: x":                      {true, true},
+		// a comment after a word, or carried on by a backslash, names nothing
+		"\ttrue # cd test/rust":            {false, false},
+		"foo: bar # test/rust is here":     {false, false},
+		"V := 1 # test/rust":               {false, false},
+		"# a remark \\\ncd test/rust":      {false, false},
+		"\t@# a remark \\\n\tcd test/rust": {false, false},
+		"foo: \\# test/rust":               {true, true},
+		// a directory a variable is given is worked on bare only where it is used bare
+		"X := test/rust\n\tcat $(X)/a.schema": {false, false},
+		"X := test/rust\n\tcd $(X) && make":   {true, true},
+		"X = test/rust\nY := $(X)\n\tcd ${Y}": {true, true},
+		"\tD=test/rust; cat $$D/a.schema":     {true, false},
+		"$(addsuffix /a.schema,test/rust)":    {true, false},
+		"tool --root=test/rust":               {true, false},
+		"\techo hi\n\tcd test/rust # remark":  {true, true},
+	} {
+		text = ExpandMakeText(StripMakeComments(text))
+		if got := NamesPath(text, "test/rust"); got != want[0] {
+			t.Errorf("NamesPath(%q, test/rust) = %v, want %v", text, got, want[0])
+		}
+		if got := NamesBareDir(text, "test/rust"); got != want[1] {
+			t.Errorf("NamesBareDir(%q, test/rust) = %v, want %v", text, got, want[1])
+		}
+	}
+	if !NamesPath("cc test/rust/main.c -o x", "test/rust/main.c") {
+		t.Error("NamesPath does not name a file by its whole path")
+	}
+}
+
+// TestALiteralJoinIsOneLiteral: each run of string literals side by side in
+// a filepath.Join or path.Join call is recorded as the path it makes; a
+// variable between them breaks the run.
+func TestALiteralJoinIsOneLiteral(t *testing.T) {
+	t.Parallel()
+	f, err := parser.ParseFile(token.NewFileSet(), "x_test.go", `package x
+import ("path"; "path/filepath")
+var a = filepath.Join("..", "..", "testdata", "name-buildability")
+var b = path.Join("testdata", dir, "x")
+var c = filepath.Join(root, "testdata", "wire", "fixed", name)
+`, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	set := map[string]bool{}
+	addLiterals(set, f)
+	if !set["../../testdata/name-buildability"] || !set["testdata/wire/fixed"] {
+		t.Errorf("the literal join is not recorded: %v", set)
+	}
+	for l := range set {
+		if strings.HasPrefix(l, "testdata/") && l != "testdata/wire/fixed" {
+			t.Errorf("a join with a variable is recorded as %q", l)
+		}
+	}
+	// the words of a run are the run's, not paths of their own; a lone
+	// literal beside a variable is still itself
+	for _, w := range []string{"..", "wire", "fixed", "name-buildability"} {
+		if set[w] {
+			t.Errorf("a word of a literal run is recorded alone: %q", w)
+		}
+	}
+	if !set["testdata"] || !set["x"] {
+		t.Errorf("a lone literal in a join is not recorded: %v", set)
 	}
 }
 
@@ -621,7 +1037,18 @@ func TestLedgerCountsWhatIsUnmoved(t *testing.T) {
 func TestEveryTestIsARowOrInTheLedger(t *testing.T) {
 	t.Parallel()
 	root := "../../.."
-	res, err := Extract(root)
+	// the generated workflows as committed: ci --check (and
+	// TestTheCIFilesAreCurrent) holds them to what the registry generates,
+	// and schema-test extract passes what it generates
+	generated := map[string][]byte{}
+	for _, p := range GeneratedWorkflows {
+		data, err := os.ReadFile(filepath.Join(root, p))
+		if err != nil {
+			t.Fatal(err)
+		}
+		generated[p] = data
+	}
+	res, err := ExtractGenerated(root, generated)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -780,6 +1207,38 @@ func TestADriverOnlyJobIsNotATest(t *testing.T) {
 	}
 }
 
+// TestAMakeRowCoversTheGoTestsItNames: a make row that names the Go tests
+// of a module of its own (tables/cards) covers them, so they leave the
+// ledger; a test the repository does not hold, and one another row already
+// covers, are each named.
+func TestAMakeRowCoversTheGoTestsItNames(t *testing.T) {
+	t.Parallel()
+	res := &Result{Items: []Item{
+		{Kind: KindMakeTarget, Dir: "make/go.mk", Name: "cards-test", Source: "make/go.mk:1"},
+		{Kind: KindGoTest, Dir: "tables/cards", Name: "TestA", Source: "tables/cards/a_test.go:1"},
+		{Kind: KindGoTest, Dir: "tables/cards", Name: "TestB", Source: "tables/cards/a_test.go:9"},
+	}}
+	row := func(key, inputs string) testreg.Test {
+		return testreg.Test{Key: key, Adapter: "make", Inputs: []byte(inputs)}
+	}
+	good := row("harness-run.make-go.cards-test", `{"file":"make/go.mk","target":"cards-test","go_tests":["./tables/cards TestA","./tables/cards TestB"]}`)
+	if p := Check(res, &testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{good}}, nil); len(p) != 0 {
+		t.Fatalf("the exact account: %v", p)
+	}
+	short := row("harness-run.make-go.cards-test", `{"file":"make/go.mk","target":"cards-test","go_tests":["./tables/cards TestA"]}`)
+	if p := strings.Join(Check(res, &testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{short}}, nil), "\n"); !strings.Contains(p, "TestB") {
+		t.Errorf("a test the row leaves out is not named:\n%s", p)
+	}
+	gone := row("harness-run.make-go.cards-test", `{"file":"make/go.mk","target":"cards-test","go_tests":["./tables/cards TestA","./tables/cards TestB","./tables/cards TestGone"]}`)
+	if p := strings.Join(Check(res, &testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{gone}}, nil), "\n"); !strings.Contains(p, "TestGone, which the repository does not hold") {
+		t.Errorf("a test the repository does not hold is not named:\n%s", p)
+	}
+	twice := testreg.Test{Key: "tooling.cards.a", Adapter: "gotest", Inputs: []byte(`{"package":"./tables/cards","test":"TestA"}`)}
+	if p := strings.Join(Check(res, &testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{good, twice}}, nil), "\n"); !strings.Contains(p, "already") {
+		t.Errorf("a test two rows cover is not named:\n%s", p)
+	}
+}
+
 // TestAPerLanguageRowsTargetNoMakeFileDefinesIsNamed: a per-language row
 // whose make target, {lang} expanded, no make file writes runs nothing in
 // that language, so the extract names it (once per target) rather than
@@ -813,5 +1272,175 @@ func TestAPerLanguageRowsTargetNoMakeFileDefinesIsNamed(t *testing.T) {
 	// the pattern rules empty stem is no match: runs--text is not runs-%-texts
 	if makeDefines(map[string]bool{}, []string{"runs-%-text"}, "runs--text") {
 		t.Errorf("an empty stem matched a pattern rule")
+	}
+}
+
+// TestARowNamingAJsonlFileReadsEveryLine: a .jsonl file's lines are cases
+// of their own (dataCases names each for its line), so a row naming the
+// file claims no stem for it; it reads every line, so each line case counts
+// as the row's in Check, and a line case no row's file names is unmoved.
+func TestARowNamingAJsonlFileReadsEveryLine(t *testing.T) {
+	t.Parallel()
+	res := &Result{Items: []Item{
+		{Kind: KindDataCase, Dir: "testdata/corpus", Name: "cases/line1", Source: "testdata/corpus/cases.jsonl:1"},
+		{Kind: KindDataCase, Dir: "testdata/corpus", Name: "cases/line2", Source: "testdata/corpus/cases.jsonl:2"},
+		{Kind: KindDataCase, Dir: "testdata/other", Name: "cases/line1", Source: "testdata/other/cases.jsonl:1"},
+	}}
+	row := testreg.Test{Key: "roundtrip.conformance-wire.cases", Inputs: []byte(`{"surface":"wire","case":"cases","files":["testdata/corpus/cases.jsonl"],"driver":"test/conformance/{lang}/driver"}`)}
+	reg := &testreg.Registry{Path: "r.jsonl", Langs: []testreg.Lang{{Name: "zz", Adapter: "corpus"}}, Tests: []testreg.Test{row}}
+	ledger := []LedgerLine{{Kind: KindDataCase, Dir: "testdata/other", Count: 1}}
+	if p := Check(res, reg, ledger); len(p) != 0 {
+		t.Fatalf("the exact account: %v", p)
+	}
+	// the row gone, its two line cases are unmoved again
+	if p := Check(res, &testreg.Registry{Path: "r.jsonl", Langs: reg.Langs}, ledger); !strings.Contains(strings.Join(p, "\n"), "testdata/corpus: 2 tests are neither registry rows") {
+		t.Fatalf("a dropped row: %v", p)
+	}
+	// a row no ready language answers reads nothing
+	idle := &testreg.Registry{Path: "r.jsonl", Langs: []testreg.Lang{{Name: "zz"}}, Tests: []testreg.Test{row}}
+	if p := Check(res, idle, ledger); !strings.Contains(strings.Join(p, "\n"), "testdata/corpus: 2 tests are neither registry rows") {
+		t.Fatalf("an unanswered row: %v", p)
+	}
+}
+
+// TestAGoTestSubtestRowClaimsTheSubtest: a row that names a subtest claims
+// Test/sub, and the parent row still claims Test. The subtest is held when
+// that Test exists. It does not cover the parent, and a second row for the
+// same subtest is named. A subtest whose test the repository does not hold
+// is named. A subtest name with a slash is not a claim.
+func TestAGoTestSubtestRowClaimsTheSubtest(t *testing.T) {
+	t.Parallel()
+	res := &Result{Items: []Item{
+		{Kind: KindGoTest, Dir: "compiler", Name: "TestParent", Source: "compiler/x_test.go:1"},
+	}}
+	parent := gotestRow("compiler.compiler.parent", "./compiler", "TestParent")
+	child := testreg.Test{Key: "compiler.compiler.child", Adapter: "gotest", Inputs: []byte(`{"package":"./compiler","test":"TestParent","subtest":"Player.schema"}`)}
+	reg := &testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{parent, child}}
+	if p := Check(res, reg, nil); len(p) != 0 {
+		t.Fatalf("parent and its subtest: %v", p)
+	}
+	covered, problems := Covered(reg)
+	if len(problems) != 0 {
+		t.Fatal(problems)
+	}
+	if covered["go-test compiler TestParent"] != "compiler.compiler.parent" {
+		t.Errorf("parent claim: %v", covered)
+	}
+	if covered["go-test compiler TestParent/Player.schema"] != "compiler.compiler.child" {
+		t.Errorf("subtest claim: %v", covered)
+	}
+	onlyChild := &testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{child}}
+	p := Check(res, onlyChild, nil)
+	joined := strings.Join(p, "\n")
+	if !strings.Contains(joined, "TestParent") || strings.Contains(joined, "does not hold") {
+		t.Fatalf("a subtest row does not cover its parent, and the subtest is held: %v", p)
+	}
+	again := child
+	again.Key = "compiler.compiler.again"
+	p = Check(res, &testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{parent, child, again}}, nil)
+	if !strings.Contains(strings.Join(p, "\n"), "already runs") {
+		t.Fatalf("two rows for one subtest: %v", p)
+	}
+	orphan := testreg.Test{Key: "compiler.compiler.orphan", Adapter: "gotest", Inputs: []byte(`{"package":"./compiler","test":"TestGone","subtest":"X.schema"}`)}
+	p = Check(res, &testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{parent, orphan}}, nil)
+	if !strings.Contains(strings.Join(p, "\n"), "registry row compiler.compiler.orphan runs go-test compiler TestGone/X.schema, which the repository does not hold") {
+		t.Fatalf("orphan subtest: %v", p)
+	}
+	slash := testreg.Test{Key: "compiler.compiler.slash", Adapter: "gotest", Inputs: []byte(`{"package":"./compiler","test":"TestParent","subtest":"a/b"}`)}
+	p = Check(res, &testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{parent, slash}}, nil)
+	if !strings.Contains(strings.Join(p, "\n"), `names subtest "a/b"`) {
+		t.Fatalf("slash: %v", p)
+	}
+}
+
+// TestAMakeRowsSourceIsHeldToItsRulesLine: a make row's source is the file
+// and the first line its target's rule is written on; a source on another
+// line, with no line, or in another file is named with the line to set, and
+// a row naming the right line, a per-language row and a rule no make file
+// writes are not named here. Planted: without MakeSourceProblems in Check, a
+// stale line passes.
+func TestAMakeRowsSourceIsHeldToItsRulesLine(t *testing.T) {
+	t.Parallel()
+	root := writeFixture(t, fixture)
+	res, err := Extract(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	row := func(key, target, source string) testreg.Test {
+		return testreg.Test{Key: key, Adapter: "make", Source: source, Inputs: []byte(`{"file":"Makefile","target":"` + target + `"}`)}
+	}
+	reg := &testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{
+		row("a.right", "prep", "Makefile:7"),
+		row("a.stale", "prep", "Makefile:8"),
+		row("a.noline", "quoted", "Makefile"),
+		row("a.elsewhere", "build", "make/x.mk:4"),
+		row("a.none", "no-such-rule", "Makefile:1"),
+		{Key: "a.perlang", Adapter: "make", Source: "Makefile:99", Inputs: []byte(`{"file":"Makefile","target":"runs-{lang}-x"}`)},
+	}}
+	got := MakeSourceProblems(res, reg)
+	want := []string{
+		`r.jsonl:0: a.stale source is "Makefile:8", and prep is written at Makefile:7: set source to "Makefile:7"`,
+		`r.jsonl:0: a.noline source is "Makefile", and quoted is written at Makefile:10: set source to "Makefile:10"`,
+		`r.jsonl:0: a.elsewhere source is "make/x.mk:4", and build is written at Makefile:4: set source to "Makefile:4"`,
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("make row sources:\n  %s\nwant:\n  %s", strings.Join(got, "\n  "), strings.Join(want, "\n  "))
+	}
+	// Check carries them: the stale row is named by Check
+	found := false
+	for _, p := range Check(res, reg, nil) {
+		if strings.Contains(p, "a.stale source is") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("Check does not name a make row whose source line is stale")
+	}
+}
+
+// TestAGeneratedJobIsTheRegistry: a workflow job exactly as schema-test ci
+// generates it (key and every line) is the registry rebuilt and no item; a
+// job written by hand in the same file is one, and so is a generated job
+// edited by hand, so a job added by hand grows the file's ledger line and
+// fails --shrinks-from. Without the generated text every job counts. The
+// plant is the generated job counted: the file's line is 2 jobs, not 1.
+func TestAGeneratedJobIsTheRegistry(t *testing.T) {
+	t.Parallel()
+	const path = ".github/workflows/ci-fast.yml"
+	gen := "  gen:\n    runs-on: x\n    steps:\n      - run: make a\n"
+	generated := map[string][]byte{path: []byte("on: [pull_request]\njobs:\n" + gen)}
+	jobs := func(wf string, generated map[string][]byte) ([]string, *Result) {
+		t.Helper()
+		res, err := ExtractGenerated(writeFixture(t, map[string]string{"go.mod": "module example.com/fx\n", path: wf}), generated)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var names []string
+		for _, it := range res.Items {
+			if it.Kind == KindWorkflowJob {
+				names = append(names, it.Name)
+			}
+		}
+		sort.Strings(names)
+		return names, res
+	}
+	if got, _ := jobs("on: [pull_request]\njobs:\n"+gen, generated); len(got) != 0 {
+		t.Errorf("the generated file's jobs counted: %v", got)
+	}
+	hand := "  hand:\n    runs-on: x\n    steps:\n      - run: make b\n"
+	got, res := jobs("on: [pull_request]\njobs:\n"+hand+gen, generated)
+	if !slices.Equal(got, []string{"hand"}) {
+		t.Errorf("with a job written by hand: %v, want [hand]", got)
+	}
+	plan := func(string, string, []Item) (string, string) { return "L7", "workflow jobs" }
+	now := Ledger(res, &testreg.Registry{Path: "r.jsonl"}, plan)
+	if p := strings.Join(Shrinks(nil, now), "\n"); !strings.Contains(p, "workflow-job "+path+" is a new ledger line") {
+		t.Errorf("a job written by hand into the generated file passes --shrinks-from: %q", p)
+	}
+	if got, _ := jobs("on: [pull_request]\njobs:\n"+strings.Replace(gen, "make a", "make a && make b", 1), generated); !slices.Equal(got, []string{"gen"}) {
+		t.Errorf("a generated job edited by hand: %v, want [gen]", got)
+	}
+	if got, _ := jobs("on: [pull_request]\njobs:\n"+hand+gen, nil); !slices.Equal(got, []string{"gen", "hand"}) {
+		t.Errorf("with no generated text: %v, want [gen hand]", got)
 	}
 }

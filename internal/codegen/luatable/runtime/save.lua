@@ -228,6 +228,9 @@ local function at_default(fd, v)
   -- A PLAIN FLOAT COMPARES BY ITS BIT PATTERN (§3.3, "-0 IS A VALUE, AND IT
   -- RIDES"), at its own width: -0 under a +0 default rides.
   if s == "float" then return same_float(fd.f32, D.cf(fd, x), D.cf(fd, fd.default)) end
+  -- an enum's None is nil, and false in a map entry's value (a key cannot
+  -- hold nil): both are a None default
+  if s == "enum" and x == false then x = nil end
   return x == fd.default
 end
 
@@ -381,7 +384,11 @@ write_field = function(T, ids, nodes, fd, v, w)
     if (fd.optional or fd.required) or not at_default(fd, v) then
       local ref = id_ref(ids, fd.id)
       local vref = 0
-      if x ~= nil then
+      -- None is nil, and false in a map entry's value (a key cannot hold
+      -- nil), as at_default and write_element read it: a None that rides
+      -- writes the zero variant reference, never a refusal (§3)
+      local none = x == nil or x == false
+      if not none then
         for _, var in ipairs(fd.variants) do
           if var[1] == x then
             vref = id_ref(ids, var[2])
@@ -389,7 +396,7 @@ write_field = function(T, ids, nodes, fd, v, w)
           end
         end
       end
-      if vref == 0 and x ~= nil then return false end
+      if vref == 0 and not none then return false end
       w_leb(w, ref)
       w_u8(w, 30)
       w_leb(w, vref)
