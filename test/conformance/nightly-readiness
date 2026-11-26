@@ -563,6 +563,24 @@ def run_python_packets(runner):
         runner.make("packet-features", PYTHON_PACKET_FEATURES, makefile=makefile)
 
 
+# A recipe's go test: bare, or through the make files' wrappers $(GO_TEST)
+# and $(GO_TEST_RED) (Makefile, tools/gotestrun/gotest), which hand every
+# argument after gotestrun's own leading flags (-each, -red) on to go test. A
+# recipe running go test through a wrapper is a recipe running go test:
+# missing one would leave its suite cap in place. The match takes in those
+# leading flags, so -timeout=0 lands after them, where go test reads it.
+GO_TEST_CALL = re.compile(r"(?:\$\(GO_TEST(?:_RED)?\)(?: -each| -red)*|\bgo test)(?= )")
+
+
+def runs_go_test(text):
+    return GO_TEST_CALL.search(text) is not None
+
+
+def uncap_go_test(text):
+    """Every go test call in text, with -timeout=0 as its first argument."""
+    return GO_TEST_CALL.sub(lambda m: m.group(0) + " -timeout=0", text)
+
+
 def python_uncapped_makefile(runner, targets, phase):
     """The Python gates' make recipes, with only their Go suite cap lifted.
 
@@ -584,14 +602,14 @@ def python_uncapped_makefile(runner, targets, phase):
             return None
         recipe = found[0][1][1]
         lines = recipe.splitlines(keepends=True)
-        runs_go = [i for i, line in enumerate(lines) if "go test " in line or "test/slowgate/proof " in line]
+        runs_go = [i for i, line in enumerate(lines) if runs_go_test(line) or "test/slowgate/proof " in line]
         if not runs_go:
             continue
         for i in runs_go:
             if " -timeout 600s" in lines[i]:
                 lines[i] = lines[i].replace(" -timeout 600s", " -timeout=0")
-            elif "go test " in lines[i] and "-timeout" not in lines[i]:
-                lines[i] = lines[i].replace("go test ", "go test -timeout=0 ")
+            elif runs_go_test(lines[i]) and "-timeout" not in lines[i]:
+                lines[i] = uncap_go_test(lines[i])
             if re.search(r"-timeout[= ](?!0(?:\s|$))", lines[i]) or not re.search(r"-timeout=0(?:\s|$)", lines[i]):
                 runner.missing(phase, "the reviewed Python recipe carries another suite cap: " + target)
                 return None
@@ -642,14 +660,14 @@ def ruby_uncapped_makefile(runner, targets, phase):
             return None
         recipe = found[0][1][1]
         lines = recipe.splitlines(keepends=True)
-        runs_go = [i for i, line in enumerate(lines) if "go test " in line or "test/slowgate/proof " in line]
+        runs_go = [i for i, line in enumerate(lines) if runs_go_test(line) or "test/slowgate/proof " in line]
         if not runs_go:
             continue
         for i in runs_go:
             if " -timeout 600s" in lines[i]:
                 lines[i] = lines[i].replace(" -timeout 600s", " -timeout=0")
-            elif "go test " in lines[i] and "-timeout" not in lines[i]:
-                lines[i] = lines[i].replace("go test ", "go test -timeout=0 ")
+            elif runs_go_test(lines[i]) and "-timeout" not in lines[i]:
+                lines[i] = uncap_go_test(lines[i])
             if re.search(r"-timeout[= ](?!0(?:\s|$))", lines[i]) or not re.search(r"-timeout=0(?:\s|$)", lines[i]):
                 runner.missing(phase, "the reviewed Ruby recipe carries another suite cap: " + target)
                 return None
@@ -681,12 +699,12 @@ def moo_uncapped_makefile(runner, targets):
             runner.missing("external-table-gates", "the reviewed MOO recipe is not unique: " + target)
             return None
         recipe = found[0][1][1]
-        if "go test " not in recipe:
+        if not runs_go_test(recipe):
             continue
         if re.search(r"-timeout[= ]", recipe):
             runner.missing("external-table-gates", "the reviewed MOO recipe carries a suite cap: " + target)
             return None
-        amended = recipe.replace("go test ", "go test -timeout=0 ")
+        amended = uncap_go_test(recipe)
         text += target + ":\n" + amended
         replaced[target] = {"source": str(found[0][0].relative_to(runner.root)),
                             "source_sha256": hashlib.sha256(recipe.encode()).hexdigest(),
@@ -718,9 +736,9 @@ def goose_uncapped_makefile(runner, targets):
             runner.missing("external-table-gates", "the reviewed Goose recipe is not unique: " + target)
             return None
         recipe = found[0][1][1]
-        if "go test " not in recipe:
+        if not runs_go_test(recipe):
             continue
-        amended = recipe.replace(" -timeout 600s", "").replace("go test ", "go test -timeout=0 ")
+        amended = uncap_go_test(recipe.replace(" -timeout 600s", ""))
         if re.search(r"-timeout[= ](?!0 )", amended):
             runner.missing("external-table-gates", "the reviewed Goose recipe carries another suite cap: " + target)
             return None
@@ -765,12 +783,12 @@ def run_external(runner, lang):
     # build/lists-cooks/army.cook where that recipe writes it.
     original = (runner.root / "Makefile").read_text()
     replacements = {
-        "SCHEMA_VIEW_LISTING_DIR=$$PWD/build/view go test ./internal/viewlisting -run TestUnitViewListingMatchesTheIR":
-        "SCHEMA_VIEW_LISTING_DIR=$$PWD/build/view go test -timeout=0 -count=1 ./internal/viewlisting -run TestUnitViewListingMatchesTheIR",
-        "go test ./tools/fixedtwin -count=1":
-        "go test -timeout=0 ./tools/fixedtwin -count=1",
-        "go test -count=1 -run '^TestCookCheckReadsTheReferencesMapHoldingCook$$' ./internal/tablecook/":
-        "go test -timeout=0 -count=1 -run '^TestCookCheckReadsTheReferencesMapHoldingCook$$' ./internal/tablecook/",
+        "SCHEMA_VIEW_LISTING_DIR=$$PWD/build/view $(GO_TEST) ./internal/viewlisting -run TestUnitViewListingMatchesTheIR":
+        "SCHEMA_VIEW_LISTING_DIR=$$PWD/build/view $(GO_TEST) -timeout=0 -count=1 ./internal/viewlisting -run TestUnitViewListingMatchesTheIR",
+        "$(GO_TEST) ./tools/fixedtwin -count=1":
+        "$(GO_TEST) -timeout=0 ./tools/fixedtwin -count=1",
+        "$(GO_TEST) -count=1 -run '^TestCookCheckReadsTheReferencesMapHoldingCook$$' ./internal/tablecook/":
+        "$(GO_TEST) -timeout=0 -count=1 -run '^TestCookCheckReadsTheReferencesMapHoldingCook$$' ./internal/tablecook/",
     }
     amended = original
     for before, after in replacements.items():

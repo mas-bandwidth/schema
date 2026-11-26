@@ -908,7 +908,28 @@ tables-elixir-alloc-runtime-negative-control:
 		echo "NEGATIVE CONTROL FAILED: the audit measured before it refused"; cat build/elixir-alloc-runtime/log; exit 1; fi
 	@echo 'elixir alloc runtime negative control: the audit on a pin nothing is running refuses, names 0.0.0 and measures nothing'
 
-test-elixir: tables-elixir-alloc-audit tables-elixir-alloc-negative-control tables-elixir-alloc-runtime-negative-control
+
+# THE AUDIT'S REFUSAL CONTROL: a wire-refused instance is held to its refusal
+# (test/elixir-alloc/main.exs), named and not measured; one the codec carries
+# is FAILED, never measured as if refused nor passed over. The control marks a
+# case the codec carries (sp_enum_moods) wire-refused in a copy of the
+# manifest, and the audit must refuse, naming that case and why.
+CONFORMANCE_ELIXIR_ALLOC_REFUSAL := build/elixir-alloc-refusal
+.PHONY: tables-elixir-alloc-refusal-negative-control
+tables-elixir-alloc-refusal-negative-control: build/conformance-elixir-manifest/manifest.txt build/elixir-tables-ebin/.stamp
+	@mkdir -p $(CONFORMANCE_ELIXIR_ALLOC_REFUSAL)
+	@sed -e 's|^\(instance sp_enum_moods .*\.bin\)$$|\1 wire-refused|' build/conformance-elixir-manifest/manifest.txt > $(CONFORMANCE_ELIXIR_ALLOC_REFUSAL)/manifest.txt
+	@grep -q '^instance sp_enum_moods .* wire-refused$$' $(CONFORMANCE_ELIXIR_ALLOC_REFUSAL)/manifest.txt || \
+		{ echo "NEGATIVE CONTROL FAILED: the plant matched no sp_enum_moods instance in the manifest"; exit 1; }
+	@if ELIXIR_TABLES_EBIN=$(CURDIR)/build/elixir-tables-ebin $(ELIXIR) test/elixir-alloc/main.exs \
+			$(CONFORMANCE_ELIXIR_ALLOC_REFUSAL)/manifest.txt $(ELIXIR_PIN_OTP) $(ELIXIR_PIN_ELIXIR) audit $(ELIXIR_ALLOC_BUDGET) \
+			> $(CONFORMANCE_ELIXIR_ALLOC_REFUSAL)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the audit passed with a carried case marked wire-refused"; \
+		cat $(CONFORMANCE_ELIXIR_ALLOC_REFUSAL)/log; exit 1; fi
+	@grep -Eq '^FAILED: sp_enum_moods +not measured: the corpus marks it wire-refused' $(CONFORMANCE_ELIXIR_ALLOC_REFUSAL)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the audit failed, but not by naming sp_enum_moods as carried though marked wire-refused"; cat $(CONFORMANCE_ELIXIR_ALLOC_REFUSAL)/log; exit 1; }
+	@echo 'elixir alloc refusal negative control: a carried case marked wire-refused is named and fails the audit'
+test-elixir: tables-elixir-alloc-audit tables-elixir-alloc-negative-control tables-elixir-alloc-runtime-negative-control tables-elixir-alloc-refusal-negative-control
 
 # THE ELIXIR TABLES SOAK (docs/PORTING.md I9), test/elixir-soak/main.exs over
 # the derived manifest and the generated ebin: one PASS is one iteration of
@@ -1580,13 +1601,14 @@ tables-elixir-versioning: tables-fixedform-corpus
 
 # ITS NEGATIVE CONTROL (§5.9 #11: a gate nobody has watched fail may be
 # comparing a file with itself). The sabotage replaces the ONE name that carries
-# §5's whole direction — a hash no lineage entry holds is `layout_newer`, ship
-# the reader — with `layout_malformed`, on a file OUTSIDE the lineage, and the
-# OLD-REFUSES-NEW column must go red naming it.
+# §5's whole direction — a hash no lineage entry holds is `layout_unknown`
+# (docs/FIXED-FORM-ALGORITHM.md §5.3 step 5; `layout_newer` is retired) — with
+# `layout_malformed`, on a file OUTSIDE the lineage, and the OLD-REFUSES-NEW
+# column must go red naming it.
 .PHONY: tables-elixir-versioning-negative-control
 tables-elixir-versioning-negative-control: tables-fixedform-corpus
 	@rm -rf build/elixir-versioning-nc && mkdir -p build/elixir-versioning-nc
-	@sed 's|{:error, :layout_newer, hash}|{:error, :layout_malformed, hash}|' \
+	@sed 's|{:error, :layout_unknown, hash}|{:error, :layout_malformed, hash}|' \
 		internal/codegen/elixirtable/fixedruntime.go > build/elixir-versioning-nc/fixedruntime.go.txt
 	@cmp -s internal/codegen/elixirtable/fixedruntime.go build/elixir-versioning-nc/fixedruntime.go.txt && \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the emitter moved"; exit 1; } || [ $$? -eq 1 ] || exit 1
@@ -1599,7 +1621,7 @@ tables-elixir-versioning-negative-control: tables-fixedform-corpus
 		echo "NEGATIVE CONTROL FAILED: the wrong refusal name left the versioning gate green"; \
 		cat build/elixir-versioning-nc/log; exit 1; \
 	fi
-	@grep -q 'owes layout_newer' build/elixir-versioning-nc/log || \
+	@grep -q 'owes layout_unknown' build/elixir-versioning-nc/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the versioning gate went red for another reason"; \
 		  cat build/elixir-versioning-nc/log; exit 1; }
 	@echo 'negative control: the wrong name for a hash outside the lineage reds the Elixir versioning gate'
@@ -1610,7 +1632,7 @@ tables-elixir-versioning-negative-control: tables-fixedform-corpus
 # bytes and the file header — with no corpus file, so this target needs only
 # the compiled fixed-form beams. It is the leg's on-GENERATED-code assertion
 # that a held hash over different bytes is refused `:layout_malformed`, changes
-# nothing and is never `:layout_newer`.
+# nothing and is never `:layout_unknown`.
 .PHONY: tables-elixir-row-f12
 tables-elixir-row-f12: build/elixir-fixedform/.stamp
 	$(ELIXIR) test/conformance/elixir/rows/F12.exs
@@ -1619,7 +1641,7 @@ tables-elixir-row-f12: build/elixir-fixedform/.stamp
 # its vectors from T.lineage_fixed_known/0 rather than the corpus: every byte of
 # the held layout bent in turn, the other lock entry's real layout under this
 # build's hash, and this build's layout under the older entry's hash, each
-# `:layout_malformed`, plus the `:layout_newer` contrast. It runs the leg's own
+# `:layout_malformed`, plus the `:layout_unknown` contrast. It runs the leg's own
 # Elixir, so it runs exactly like tables-elixir-versioning: a missing corpus is
 # a FAILURE that names it (docs/rulings.json no-skips).
 .PHONY: tables-elixir-t13
@@ -2235,7 +2257,7 @@ ELIXIR_CONFORMANCE_FRAMING_SED := -e 's~    if count > 4096 or count > div(size 
 ELIXIR_CONFORMANCE_FRAMING_SHARE_SED := -e 's|Enum.reduce(Map.get(parents, idx, \[\]), {pending, ready}, fn|Enum.reduce(Enum.take(Map.get(parents, idx, []), 1), {pending, ready}, fn|'
 .PHONY: conformance-elixir-framing conformance-negative-control-elixir-framing
 conformance-elixir-framing: build/conformance-harness build-conformance-elixir
-	$(GO) test -timeout=0 ./internal/codegen/elixirtable -run '^(TestCyclicWireIsDamageElixir|TestCycleSlotKindsElixir)$$'
+	$(GO_TEST) -timeout=0 ./internal/codegen/elixirtable -run '^(TestCyclicWireIsDamageElixir|TestCycleSlotKindsElixir)$$'
 	sh test/conformance/framing/gate elixir test/conformance/elixir/driver build/conformance-elixir-framing
 conformance-negative-control-elixir-framing: build/conformance-harness
 	$(call ELIXIR_CONFORMANCE_CONTROL,build/elixir-conformance-negative-framing,internal/codegen/elixirtable/variableform.go,ELIXIR_CONFORMANCE_FRAMING_SED,framing,report,an id table past 4096 entries and a cyclic wire read as legal)

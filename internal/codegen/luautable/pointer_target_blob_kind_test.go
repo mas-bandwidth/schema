@@ -12,14 +12,16 @@ package luautable_test
 // Every row of testdata/wire/pointer-target-type/blobkind/MANIFEST.tsv runs
 // through the plain (strict) and the retaining read, generating each row's
 // unit into t.TempDir() and feeding the vector files to the leg's own reader;
-// the rows that read also run through the recovering reads (loadWalk and
-// loadRetainWalk), which must agree on the unknown count. Rows 8, 9 and 10 of
+// every row also runs through the recovering reads (loadWalk and
+// loadRetainWalk), which answer the same verdict and, on a row that reads,
+// agree on the unknown count. Rows 8, 9 and 10 of
 // testdata/conformance/feature-witnesses/pointer-targets/cases.json (a
 // declared table or blob kind outside the root's closure, named from a
-// declared slot) run through the same four reads: the strict and retaining
-// reads refuse, and the recovering reads answer the row's pinned kind_mismatch
-// and unknown counts with the slot null. Only the verdict and the pinned
-// counters are compared; a refusal's reason is logged, never compared
+// declared slot) run through the same four reads, and all four refuse: the
+// recovering reads count the kind_mismatch but hand back no value once a
+// refusing counter has moved (docs/SPEC-TABLES.md §6.5, docs/rulings.json
+// strict-only-read). Only the verdict and the pinned
+// counters of a row that reads are compared; a refusal's reason is logged, never compared
 // (docs/rulings.json refusal-verdict-only). The Go engine is the oracle: each
 // wire is checked against tablewire.Decode first.
 //
@@ -233,18 +235,17 @@ func blobKindReads(t *testing.T, rows []blobKindCase) []blobKindRead {
 	return reads
 }
 
-// blobKindProblems names every answer that is not the row's verdict. The
-// strict and retaining reads answer the manifest's verdict; on a row that
-// reads, the recovering reads also read, with the pinned unknown count and no
+// blobKindProblems names every answer that is not the row's verdict. All
+// four reads answer the manifest's verdict: the recovering reads refuse what
+// the strict read refuses, wire-alone damage such as an orphan blob record
+// included (docs/SPEC-TABLES.md §6.5; docs/rulings.json strict-only-read),
+// and on a row that reads they read with the pinned unknown count and no
 // kind_mismatch. The one pointer is present on text-canonical and null on
 // text-unknown-field-bytes.
 func blobKindProblems(rows []blobKindCase, got map[string]blobKindAnswer) []string {
 	var problems []string
 	for _, row := range rows {
-		entries := blobKindStrictEntries
-		if row.verdict == "read" {
-			entries = append(append([]string(nil), blobKindStrictEntries...), blobKindWalkEntries...)
-		}
+		entries := append(append([]string(nil), blobKindStrictEntries...), blobKindWalkEntries...)
 		for _, entry := range entries {
 			answer, ok := got[row.name+" "+entry]
 			if !ok {
@@ -345,21 +346,16 @@ func blobKindWitnessReads(t *testing.T) ([]blobKindWitness, []blobKindRead) {
 }
 
 // blobKindWitnessProblems names every answer that is not the witness row's:
-// the strict and retaining reads refuse; the recovering reads answer the
-// row's kind_mismatch and unknown counts with the slot null.
+// every read refuses, the strict and retaining reads and the recovering
+// reads alike, compared by verdict only (docs/SPEC-TABLES.md §6.5,
+// docs/rulings.json strict-only-read, refusal-verdict-only).
 func blobKindWitnessProblems(rows []blobKindWitness, got map[string]blobKindAnswer) []string {
 	var problems []string
 	for _, row := range rows {
 		name := strings.ReplaceAll(row.Name, " ", "-")
-		for _, entry := range blobKindStrictEntries {
+		for _, entry := range append(append([]string(nil), blobKindStrictEntries...), blobKindWalkEntries...) {
 			if a, ok := got[name+" "+entry]; !ok || a.verdict != "refused" {
 				problems = append(problems, fmt.Sprintf("%s %s: %+v, want refused", name, entry, a))
-			}
-		}
-		for _, entry := range blobKindWalkEntries {
-			a, ok := got[name+" "+entry]
-			if !ok || a.verdict != "read" || a.kindMismatch != row.KindMismatch || a.unknown != row.Unknown || !a.null {
-				problems = append(problems, fmt.Sprintf("%s %s: %+v, want kind_mismatch %d unknown %d and the slot null", name, entry, a, row.KindMismatch, row.Unknown))
 			}
 		}
 	}
@@ -402,6 +398,34 @@ func TestLuauPointerTargetBlobKindRefused(t *testing.T) {
 			} else {
 				t.Logf("the planted old rule went red by name: %v", problems)
 			}
+		})
+
+		t.Run(unit+" negative control: the walk skips the strict read's wire-alone damage", func(t *testing.T) {
+			planted := copyGeneratedUnit(t, g)
+			plantLuau(t, planted, "if res ~= nil and judged ~= nil and wireAloneRefuses(judged, report) then", "if false then")
+			problems := blobKindProblems(unitRows, blobKindProbe(t, planted, reads))
+			found := false
+			for _, row := range unitRows {
+				if row.name != "text-orphan-bytes" {
+					continue
+				}
+				found = true
+				for _, entry := range blobKindWalkEntries {
+					named := false
+					for _, p := range problems {
+						if strings.HasPrefix(p, row.name+" "+entry+":") {
+							named = true
+						}
+					}
+					if !named {
+						t.Errorf("a walk that does not judge wire-alone damage left %s %s green: %v", row.name, entry, problems)
+					}
+				}
+			}
+			if !found {
+				t.Fatalf("unit %s holds no text-orphan-bytes row: the control would check nothing", unit)
+			}
+			t.Logf("the planted walk went red: %v", problems)
 		})
 
 		if unit != "test/pointer-target-type/blobkind/reader" {
@@ -456,15 +480,31 @@ func TestLuauPointerTargetBlobKindRefused(t *testing.T) {
 			t.Error(p)
 		}
 
-		t.Run("negative control: a declared placeholder also counted unknown", func(t *testing.T) {
+		// The witness rows refuse because a placeholder of a type this
+		// reader declares, named from a slot that is not its target, counts
+		// kind_mismatch, and every read refuses on that counter (the walk
+		// through walkRefuses). The control takes that count out: the
+		// declared placeholder then reads as evolution, and the gate must go
+		// red by name on each witness row, the recovering reads included.
+		t.Run("negative control: a declared placeholder counted no kind_mismatch", func(t *testing.T) {
 			planted := copyGeneratedUnit(t, g)
-			plantLuau(t, planted, "report.unknown = report.unknown - 1", "")
+			plantLuau(t, planted, "if n.declared then\n\t\t\t\t\t\t\treport.kindMismatch = report.kindMismatch + 1\n", "if n.declared then\n")
 			problems := blobKindWitnessProblems(wrows, blobKindProbe(t, planted, wreads))
-			if len(problems) == 0 {
-				t.Error("the gate passed a recovering read that counts a declared placeholder unknown")
-			} else {
-				t.Logf("the planted double count went red: %v", problems)
+			for _, row := range wrows {
+				name := strings.ReplaceAll(row.Name, " ", "-")
+				for _, entry := range blobKindWalkEntries {
+					named := false
+					for _, p := range problems {
+						if strings.HasPrefix(p, name+" "+entry+":") {
+							named = true
+						}
+					}
+					if !named {
+						t.Errorf("the gate passed %s %s with a declared placeholder that counts no kind_mismatch: %v", name, entry, problems)
+					}
+				}
 			}
+			t.Logf("the planted missing count went red: %v", problems)
 		})
 	})
 }

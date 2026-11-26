@@ -12,6 +12,14 @@ package jstable
 // json-read and json-write rows, through the same modules, passed. So the
 // table is held to the manifest's own pairs, minus a NAMED set of pairs this
 // target does not generate, each with the reason beside it.
+//
+// The rewrite surface (docs/SPEC-TABLES.md §22) reaches this leg the same way:
+// the harness hands its rows to the wire surface as instance lines
+// (test/conformance/harness/rewrite.go, deriveRewriteManifest), so a rewrite
+// pair the table leaves out answers `.absent` where the row owes the canonical
+// bytes. graphdemo/ListNode, listdemo/Ints, listdemo/Squad and mapdemo/EdgeRow
+// sat there, unbound, on seven rewrite rows, because this check read only the
+// instance and report lines. It reads the rewrite lines too.
 
 import (
 	"bufio"
@@ -33,7 +41,7 @@ import (
 var wireRowsUncarried = map[string]string{}
 
 // TestWireRowsConformanceJavaScript holds the driver's wireRows table to the
-// manifest's instance and report pairs, less the named uncarried set.
+// manifest's instance, report and rewrite pairs, less the named uncarried set.
 func TestWireRowsConformanceJavaScript(t *testing.T) {
 	t.Parallel()
 
@@ -53,7 +61,9 @@ func TestWireRowsConformanceJavaScript(t *testing.T) {
 	// must be named too. A check that passes both plantings guards nothing.
 	t.Run("reversed_witness", func(t *testing.T) {
 		t.Parallel()
-		for _, dropped := range []string{"streamdemo/Feed", "listdemo/Save", "tbla2/Root", "backenddemo/LoginRequest", "messagedemo/ToolEnvelope"} {
+		for _, dropped := range []string{"streamdemo/Feed", "listdemo/Save", "tbla2/Root", "backenddemo/LoginRequest", "messagedemo/ToolEnvelope",
+			// pairs only a rewrite row names: the seven rows that answered `.absent`
+			"graphdemo/ListNode", "listdemo/Ints", "listdemo/Squad", "mapdemo/EdgeRow"} {
 			if !slices.Contains(driver, dropped) {
 				t.Fatalf("the witness pair %s is not in the driver's wireRows table", dropped)
 			}
@@ -111,7 +121,8 @@ func wireRowGaps(manifest, driver []string, uncarried map[string]string) []strin
 }
 
 // manifestWireRoots is the manifest's distinct (unit, root) pairs over its
-// `instance` and `report` lines, the rows the wire and report surfaces read.
+// `instance`, `report` and `rewrite` lines, the rows the wire and report
+// surfaces read (a rewrite row is read as an instance line, rewrite.go).
 func manifestWireRoots(t *testing.T) []string {
 	t.Helper()
 	f, err := os.Open(filepath.Join("..", "..", "..", "testdata", "conformance", "tables", "MANIFEST.txt"))
@@ -124,7 +135,7 @@ func manifestWireRoots(t *testing.T) []string {
 	s := bufio.NewScanner(f)
 	for s.Scan() {
 		fields := strings.Fields(s.Text())
-		if len(fields) < 4 || (fields[0] != "instance" && fields[0] != "report") {
+		if len(fields) < 4 || (fields[0] != "instance" && fields[0] != "report" && fields[0] != "rewrite") {
 			continue
 		}
 		key := fields[2] + "/" + fields[3]
@@ -138,7 +149,7 @@ func manifestWireRoots(t *testing.T) []string {
 	}
 	sort.Strings(roots)
 	if len(roots) == 0 {
-		t.Fatal("the manifest names no instance or report row — this gate would pass over the empty set")
+		t.Fatal("the manifest names no instance, report or rewrite row — this gate would pass over the empty set")
 	}
 	return roots
 }

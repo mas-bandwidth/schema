@@ -20,6 +20,7 @@ import (
 // CONTROL 2 turns the ragged-tail arm (rest%recordBytes != 0) into false and
 // the row must go RED.
 func TestFixedFormRaggedTail(t *testing.T) {
+	t.Parallel() // its own TempDir and go test; nothing shared (make tables-go-fixedform)
 	runGenerated(t, `package probe
 fixed table Point {
     x int32 = 1

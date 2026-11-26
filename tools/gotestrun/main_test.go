@@ -52,6 +52,20 @@ const passAndToolSkip = `{"Action":"run","Package":"p/a","Test":"TestFast"}
 {"Action":"skip","Package":"p/a","Test":"TestCargo"}
 `
 
+// a fuzz target with no seed input passes having run nothing; one with a
+// seed runs it as a subtest.
+const seedlessFuzz = `{"Action":"run","Package":"p/a","Test":"FuzzNoSeeds"}
+{"Action":"pass","Package":"p/a","Test":"FuzzNoSeeds"}
+{"Action":"pass","Package":"p/a"}
+`
+
+const seededFuzz = `{"Action":"run","Package":"p/a","Test":"FuzzSeeded"}
+{"Action":"run","Package":"p/a","Test":"FuzzSeeded/seed#0"}
+{"Action":"pass","Package":"p/a","Test":"FuzzSeeded/seed#0"}
+{"Action":"pass","Package":"p/a","Test":"FuzzSeeded"}
+{"Action":"pass","Package":"p/a"}
+`
+
 func TestVerdict(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -70,6 +84,8 @@ func TestVerdict(t *testing.T) {
 		{"go test failure keeps its status", 3, onePass, false, 3, "exited 3"},
 		{"each: a package with no passing test is named", 0, onePass, true, 1, "p/b"},
 		{"each: not asked, a bare package is fine", 0, onePass, false, 0, ""},
+		{"a fuzz target that ran no seed is red and named", 0, seedlessFuzz, false, 1, "NO SEED: fuzz target(s) ran no seed input (no f.Add and no testdata/fuzz corpus), so they tested nothing: p/a FuzzNoSeeds"},
+		{"a fuzz target that ran its seed passes", 0, seededFuzz, false, 0, ""},
 	}
 	for _, c := range cases {
 		var text bytes.Buffer
@@ -306,3 +322,159 @@ func TestTheSummaryReportsASkipOnlyWhenOneHappened(t *testing.T) {
 		t.Errorf("a run with a skip is not refused: %q", skipped)
 	}
 }
+
+// TestReadWritesEachPackageWhole: go test -json interleaves the events of
+// packages that run at once; the text is each package's output whole, ending
+// in its result line, in the order the packages started, so a --- PASS line
+// belongs to the package whose result line follows it. The first package
+// streams before anything after it ends, and a stream cut short still writes
+// what it held.
+func TestReadWritesEachPackageWhole(t *testing.T) {
+	t.Parallel()
+	ev := func(action, pkg, test, output string) string {
+		b, err := json.Marshal(event{Action: action, Package: pkg, Test: test, Output: output})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b) + "\n"
+	}
+	stream := ev("start", "a", "", "") + ev("start", "b", "", "") +
+		ev("run", "b", "TestB", "") + ev("output", "b", "TestB", "--- PASS: TestB (0.00s)\n") + ev("pass", "b", "TestB", "") +
+		ev("run", "a", "TestA", "") + ev("output", "a", "TestA", "--- PASS: TestA (0.00s)\n") + ev("pass", "a", "TestA", "") +
+		ev("start", "c", "", "") + ev("output", "c", "", "ok  \tc\t0.01s\n") + ev("pass", "c", "", "") +
+		ev("output", "b", "", "ok  \tb\t0.01s\n") + ev("pass", "b", "", "") +
+		ev("output", "a", "", "ok  \ta\t0.01s\n") + ev("pass", "a", "", "")
+	var text bytes.Buffer
+	read(strings.NewReader(stream), &text)
+	var lines []string
+	for l := range strings.Lines(text.String()) {
+		lines = append(lines, strings.TrimSuffix(strings.TrimSuffix(l, "\n"), " (go test -json, read by gotestrun)"))
+	}
+	want := []string{"--- PASS: TestA (0.00s)", "ok  \ta\t0.01s", "--- PASS: TestB (0.00s)", "ok  \tb\t0.01s", "ok  \tc\t0.01s"}
+	if strings.Join(lines, "|") != strings.Join(want, "|") {
+		t.Errorf("text %q, want %q", lines, want)
+	}
+
+	// the head streams: a's pass is written before a ends, b's is held
+	text.Reset()
+	cut := ev("start", "a", "", "") + ev("start", "b", "", "") +
+		ev("output", "b", "TestB", "--- PASS: TestB (0.00s)\n") + ev("output", "a", "TestA", "--- PASS: TestA (0.00s)\n")
+	var streamed bytes.Buffer
+	o := packageOrder{text: &streamed, held: map[string]*bytes.Buffer{}, done: map[string]bool{}}
+	o.see("a")
+	o.see("b")
+	o.write("b", "held\n")
+	o.write("a", "streamed\n")
+	if streamed.String() != "streamed\n" {
+		t.Errorf("before a ends the text is %q, want only a's output", streamed.String())
+	}
+	o.flush()
+	if streamed.String() != "streamed\nheld\n" {
+		t.Errorf("after the flush the text is %q, want a's then b's", streamed.String())
+	}
+	read(strings.NewReader(cut), &text)
+	if text.String() != "--- PASS: TestA (0.00s)\n--- PASS: TestB (0.00s)\n" {
+		t.Errorf("a stream cut short wrote %q, want a's output then b's", text.String())
+	}
+}
+
+// TestAPackageBehindTheHeadIsWrittenWhenTheHeadEnds: when the streaming
+// package ends, by a pass, a fail or a skip, the held output of the package
+// behind it is written at once, before anything later in the stream, not
+// only when the stream ends; and output of a package behind the head that
+// already ended keeps its place.
+func TestAPackageBehindTheHeadIsWrittenWhenTheHeadEnds(t *testing.T) {
+	t.Parallel()
+	ev := func(action, pkg, test, output string) string {
+		b, err := json.Marshal(event{Action: action, Package: pkg, Test: test, Output: output})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b) + "\n"
+	}
+	for _, end := range []string{"pass", "fail", "skip"} {
+		stream := ev("start", "a", "", "") + ev("start", "b", "", "") +
+			ev("output", "b", "", "B1\n") + ev("output", "a", "", "A1\n") + ev(end, "a", "", "") +
+			"# after a ended\n" + ev("output", "b", "", "B2\n") + ev("pass", "b", "", "")
+		var text bytes.Buffer
+		read(strings.NewReader(stream), &text)
+		if want := "A1\nB1\n# after a ended\nB2\n"; text.String() != want {
+			t.Errorf("a ends by %s: text %q, want %q", end, text.String(), want)
+		}
+	}
+
+	// c ends behind the head b: its later output stays behind b's
+	var text bytes.Buffer
+	o := packageOrder{text: &text, held: map[string]*bytes.Buffer{}, done: map[string]bool{}}
+	o.see("a")
+	o.see("b")
+	o.see("c")
+	o.write("c", "C1\n")
+	o.end("c")
+	o.write("c", "C2\n")
+	o.write("b", "B1\n")
+	o.end("a")
+	if text.String() != "B1\n" {
+		t.Errorf("before b ends the text is %q, want only b's output", text.String())
+	}
+	o.end("b")
+	if text.String() != "B1\nC1\nC2\n" {
+		t.Errorf("after b ends the text is %q, want b's output then all of c's", text.String())
+	}
+}
+
+// TestReadWritesTheBuildsErrors: go test -json (Go 1.24 and later) reports
+// a build's own text, the compiler's errors, as build-output events with an
+// ImportPath and no Package; they are the named cause of the package's
+// [build failed] line, so the text carries them.
+func TestReadWritesTheBuildsErrors(t *testing.T) {
+	t.Parallel()
+	stream := `{"ImportPath":"brk [brk.test]","Action":"build-output","Output":"# brk [brk.test]\n"}
+{"ImportPath":"brk [brk.test]","Action":"build-output","Output":"./x_test.go:5:28: undefined: undefinedThing\n"}
+{"ImportPath":"brk [brk.test]","Action":"build-fail"}
+{"Action":"start","Package":"brk"}
+{"Action":"output","Package":"brk","Output":"FAIL\tbrk [build failed]\n"}
+{"Action":"fail","Package":"brk","FailedBuild":"brk [brk.test]"}
+`
+	var text bytes.Buffer
+	read(strings.NewReader(stream), &text)
+	got := text.String()
+	cause := strings.Index(got, "./x_test.go:5:28: undefined: undefinedThing\n")
+	if cause < 0 || cause > strings.Index(got, "[build failed]") {
+		t.Errorf("text %q, want the compiler's error before the package's [build failed] line", got)
+	}
+}
+
+// TestTheEventsFileGetsEveryEventLine: with an events file, every go test
+// -json event line reaches it whole, as go test wrote it, one line each,
+// and a line that is no event (a toolchain note) does not; a file that will
+// not take a line is the run's error. The driver's make-gotest rows read
+// their verdicts from this file. Planted: an events writer that drops the
+// output events leaves the file short of the stream's events.
+func TestTheEventsFileGetsEveryEventLine(t *testing.T) {
+	var text, events bytes.Buffer
+	stream := "# toolchain note\n" + onePass
+	tl := readTo(strings.NewReader(stream), &text, &events)
+	if tl.writeErr != nil {
+		t.Fatal(tl.writeErr)
+	}
+	var want []string
+	for l := range strings.SplitSeq(onePass, "\n") {
+		if strings.HasPrefix(l, "{") {
+			want = append(want, l)
+		}
+	}
+	if got := strings.Split(strings.TrimSuffix(events.String(), "\n"), "\n"); strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Errorf("events file:\n%s\nwant every event line of the stream:\n%s", events.String(), strings.Join(want, "\n"))
+	}
+	if strings.Contains(events.String(), "toolchain note") {
+		t.Error("a line that is no event reached the events file")
+	}
+	if tl = readTo(strings.NewReader(onePass), &bytes.Buffer{}, failingWriter{}); tl.writeErr == nil {
+		t.Error("an events file that took no line was not the run's error")
+	}
+}
+
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("disk full") }

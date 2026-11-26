@@ -91,6 +91,7 @@ func TestFixedDeadBytesAreZero(t *testing.T) {
 }
 
 func TestFixedOptionalResetUsesStaticWideUnionDefault(t *testing.T) {
+	t.Parallel()
 	files := generate(t, `package probe
 
 union Choice

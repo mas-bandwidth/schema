@@ -811,9 +811,9 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct, surfaces Surfaces)
 	straight := scalarOnly(st) || fast
 	if surfaces.Fixed && fixedRootAdmitted(u, st) {
 		b.WriteString("\n    fixed_plan_max: ClassVar[int] = 0\n")
-		fmt.Fprintf(b, "\n    @classmethod\n    def fixed_load(cls, data: bytes | bytearray | memoryview, capacity: int | None = None, report: LoadReport | None = None, plan_capacity: int | None = None) -> list[Self]:\n        return _s_fixed_load(cls, data, capacity, report, plan_capacity)\n")
-		fmt.Fprintf(b, "\n    @classmethod\n    def fixed_load_into(cls, targets: list[Self], data: bytes | bytearray | memoryview, capacity: int | None = None, report: LoadReport | None = None, plan_capacity: int | None = None) -> int:\n        return _s_fixed_load_into(cls, targets, data, capacity, report, plan_capacity)\n")
-		fmt.Fprintf(b, "\n    @classmethod\n    def fixed_save(cls, values: list[Self]) -> bytes:\n        return _s_fixed_save(cls, values)\n")
+		fmt.Fprintf(b, "\n    @classmethod\n    def fixed_load(cls, data: bytes | bytearray | memoryview, capacity: int | None = None, report: LoadReport | None = None, plan_capacity: int | None = None) -> _s_list[Self]:\n        return _s_fixed_load(cls, data, capacity, report, plan_capacity)\n")
+		fmt.Fprintf(b, "\n    @classmethod\n    def fixed_load_into(cls, targets: _s_list[Self], data: bytes | bytearray | memoryview, capacity: int | None = None, report: LoadReport | None = None, plan_capacity: int | None = None) -> int:\n        return _s_fixed_load_into(cls, targets, data, capacity, report, plan_capacity)\n")
+		fmt.Fprintf(b, "\n    @classmethod\n    def fixed_save(cls, values: _s_list[Self]) -> bytes:\n        return _s_fixed_save(cls, values)\n")
 		fmt.Fprintf(b, "\n    @classmethod\n    def fixed_measure(cls, count: int) -> int:\n        return _s_fixed_measure(cls, count)\n")
 	}
 	b.WriteString("\n    @classmethod\n")

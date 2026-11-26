@@ -14,9 +14,13 @@ import (
 // A COMPRESSED FLOAT'S DECLARED RANGE IS THE FIXED SAVE'S CONTRACT
 // (docs/SPEC-TABLES.md §3.3, §3.4). The Go reference engine refuses a fixed
 // save of a compressed float outside [min, max] (invalid_value) and writes
-// nothing; this leg's write-side checks refuse in every build, and its fixed
-// save refuses a breached contract by raising ArgumentError, the way it
-// already does for a ranged integer (R.ranged) and a count (R.count). Before
+// nothing; this leg's write-side checks refuse in every build. The runtime's
+// store raises ArgumentError on a breached contract, the way it already does
+// for a ranged integer (R.ranged) and a count (R.count), and the fixed save
+// answers that as {:error, :invalid_value}, never a raise (fixedclasswire.go,
+// fixedRootSaveClause). The probe holds the VERDICT alone
+// (docs/rulings.json refusal-verdict-only): a refused row answers
+// {:error, :invalid_value}, and the reason text is never compared. Before
 // this, the leaf, array, counted, keyed and union-arm stores went through
 // cf32_bits alone and wrote the out-of-range value.
 //
@@ -89,18 +93,23 @@ end
 {:ok, base, _} = mod.from_json("Fix", File.read!([BASE]))
 
 for {name, path, v, expect} <- [ROWS] do
+  # save/2 never raises: a raise is a failure of its own
   got =
     try do
       mod.save("Fix", set.(base, path, v))
     rescue
-      e in ArgumentError -> {:refused, Exception.message(e)}
+      e -> {:raised, Exception.message(e)}
     end
 
+  # the refusal is the verdict (docs/SPEC.md §5.1); each refused row's lawful
+  # twin at the same bound writes the reference bytes, so the refusal is the
+  # range's
   case {expect, got} do
-    {:refused, {:refused, why}} ->
-      if String.contains?(why, "outside the declared range"),
-        do: IO.puts("ok #{name}"),
-        else: fail.("#{name}: refused for another reason: #{why}")
+    {_, {:raised, why}} ->
+      fail.("#{name}: the fixed save of #{v} raised instead of answering: #{why}")
+
+    {:refused, {:error, :invalid_value}} ->
+      IO.puts("ok #{name}")
 
     {:refused, other} ->
       fail.("#{name}: the fixed save of #{v} was not refused: #{inspect(other, limit: 8)}")
@@ -130,8 +139,7 @@ func TestElixirCompressedRangeWriteCorpus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var rows, names []string
-	refused := 0
+	var rows, names, refusedNames []string
 	for i, line := range strings.Split(string(text), "\n") {
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
@@ -143,7 +151,7 @@ func TestElixirCompressedRangeWriteCorpus(t *testing.T) {
 		name, path, value, expect := f[0], f[2], f[3], f[4]
 		want := ":refused"
 		if expect == "refused" {
-			refused++
+			refusedNames = append(refusedNames, name)
 		} else {
 			want = fmt.Sprintf("%q", filepath.Join(dir, expect+".fixed.bin"))
 		}
@@ -154,44 +162,75 @@ func TestElixirCompressedRangeWriteCorpus(t *testing.T) {
 		names = append(names, name)
 		rows = append(rows, fmt.Sprintf("{%q, %s, %s, %s}", name, negZeroPath(t, path), elixirFloat(v), want))
 	}
-	if len(rows) == 0 || refused == 0 || refused == len(rows) {
-		t.Fatalf("cases.tsv: %d rows, %d refused; want both kinds", len(rows), refused)
+	if len(rows) == 0 || len(refusedNames) == 0 || len(refusedNames) == len(rows) {
+		t.Fatalf("cases.tsv: %d rows, %d refused; want both kinds", len(rows), len(refusedNames))
 	}
 
 	files := generateElixir(t, loadUnit(t, filepath.Join(dir, "Probe.schema")))
-	src, ebin := t.TempDir(), t.TempDir()
-	var modules []string
-	for name, data := range files {
-		if strings.Contains(name, "/") || !strings.HasSuffix(name, ".ex") {
-			continue
-		}
-		if err := os.WriteFile(filepath.Join(src, name), data, 0o600); err != nil {
-			t.Fatal(err)
-		}
-		modules = append(modules, name)
-	}
 	env := append(os.Environ(), "PATH="+otpBin(t)+string(os.PathListSeparator)+os.Getenv("PATH"))
-	compile := testproc.Command(t, elixirc, append([]string{"--ignore-module-conflict", "-o", ebin}, sortedRuntimeFirst(modules)...)...)
-	compile.Dir, compile.Env = src, env
-	if out, err := compile.CombinedOutput(); err != nil {
-		t.Fatalf("elixirc: %v\n%s", err, out)
-	}
-	probe := filepath.Join(t.TempDir(), "probe.exs")
 	body := strings.Replace(rangeWriteProbe, "[ROWS]", "[\n  "+strings.Join(rows, ",\n  ")+"\n]", 1)
 	body = strings.Replace(body, "[BASE]", fmt.Sprintf("%q", filepath.Join(dir, "base.json")), 1)
-	if err := os.WriteFile(probe, []byte(body), 0o600); err != nil {
-		t.Fatal(err)
+	runProbe := func(files map[string][]byte) (string, error) {
+		t.Helper()
+		src, ebin := t.TempDir(), t.TempDir()
+		var modules []string
+		for name, data := range files {
+			if strings.Contains(name, "/") || !strings.HasSuffix(name, ".ex") {
+				continue
+			}
+			if err := os.WriteFile(filepath.Join(src, name), data, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			modules = append(modules, name)
+		}
+		compile := testproc.Command(t, elixirc, append([]string{"--ignore-module-conflict", "-o", ebin}, sortedRuntimeFirst(modules)...)...)
+		compile.Dir, compile.Env = src, env
+		if out, err := compile.CombinedOutput(); err != nil {
+			t.Fatalf("elixirc: %v\n%s", err, out)
+		}
+		probe := filepath.Join(t.TempDir(), "probe.exs")
+		if err := os.WriteFile(probe, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		run := testproc.Command(t, elixirBin, "-pa", ebin, probe)
+		run.Env = env
+		out, err := run.CombinedOutput()
+		return string(out), err
 	}
-	run := testproc.Command(t, elixirBin, "-pa", ebin, probe)
-	run.Env = env
-	out, err := run.CombinedOutput()
-	if err != nil || !strings.Contains(string(out), "ok: the compressed range write corpus") {
+	out, err := runProbe(files)
+	if err != nil || !strings.Contains(out, "ok: the compressed range write corpus") {
 		t.Fatalf("probe: %v\n%s", err, out)
 	}
 	for _, name := range names {
-		if !strings.Contains(string(out), "ok "+name+"\n") {
+		if !strings.Contains(out, "ok "+name+"\n") {
 			t.Errorf("%s: the probe did not answer the row\n%s", name, out)
 		}
 	}
-	t.Log(strings.TrimSpace(string(out)))
+	t.Log(strings.TrimSpace(out))
+
+	// REVERSED WITNESSES: the probe goes red, naming every refused row, when
+	// the runtime's range check is planted out (the save writes the value),
+	// and when the save raises instead of answering {:error, :invalid_value}.
+	for _, plant := range []struct{ old, new, want string }{
+		{"    if n < lo or n > hi do\n", "    if false and (n < lo or n > hi) do\n", "was not refused"},
+		{"ArgumentError -> {:error, :invalid_value}", "ArgumentError -> reraise ArgumentError, __STACKTRACE__", "raised instead of answering"},
+	} {
+		planted := make(map[string][]byte, len(files))
+		for name, data := range files {
+			planted[name] = data
+		}
+		elixirPatch(t, planted, plant.old, plant.new)
+		out, err := runProbe(planted)
+		if err == nil {
+			t.Errorf("REVERSED WITNESS FAILED: the plant %q left the probe green\n%s", plant.new, out)
+			continue
+		}
+		for _, name := range refusedNames {
+			_, line, _ := strings.Cut(out, "FAIL "+name+": ")
+			line, _, _ = strings.Cut(line, "\n")
+			if !strings.Contains(line, plant.want) {
+				t.Errorf("REVERSED WITNESS FAILED: the plant %q did not turn %s red (%s)\n%s", plant.new, name, plant.want, out)
+			}
+		}
+	}
 }

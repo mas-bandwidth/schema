@@ -168,9 +168,10 @@ abstract final class TableFixedRefusal {
   static const int batchTooLarge = 14;
 
   /// THE TWO LAYOUT REFUSALS OF §5, and the operator's two distinct answers:
-  /// a hash NO lineage entry of this build holds is 'layout_newer' — ship the
-  /// reader — and a hash the lineage holds BELOW THE FLOOR is
-  /// 'layout_unsupported' — upgrade the client. Both report the FILE'S hash.
+  /// a hash NO lineage entry of this build holds is 'layout_unknown'
+  /// (25, below; 'layout_newer' is retired) — and a hash the lineage
+  /// holds BELOW THE FLOOR is 'layout_unsupported' — upgrade the client.
+  /// Both report the FILE'S hash.
   /// The NAMES are the contract and the integers are this leg's own, taken in
   /// the order §5.3 names them (§5.9 #14).
   static const int layoutNewer = 15;
@@ -196,6 +197,13 @@ abstract final class TableFixedRefusal {
   /// A WRITER'S OPTIONAL READ INTO A READER'S BARE FIELD refuses by name: the
   /// reader cannot hold an absent value (rulings 2026-11-22, R2).
   static const int wrongKind = 24;
+
+  /// A HASH NO LINEAGE ENTRY OF THIS BUILD HOLDS (docs/FIXED-FORM-ALGORITHM.md
+  /// §5.3 step 5, SPEC-TABLES §21.3): nothing in the lineage proves it newer,
+  /// so the answer is 'layout_unknown' in every leg, reporting THE FILE'S hash
+  /// and nothing else. 'layout_newer' keeps 15 and no read answers it; this
+  /// is appended so no integer moves.
+  static const int layoutUnknown = 25;
 
   /// The refusal's own name, for a report a person reads.
   static String name(int refusal) {
@@ -250,6 +258,8 @@ abstract final class TableFixedRefusal {
         return 'length_over_bound';
       case wrongKind:
         return 'kind_mismatch';
+      case layoutUnknown:
+        return 'layout_unknown';
       default:
         return '???';
     }
@@ -273,7 +283,7 @@ final class TableFixedReport {
   String nonFiniteFloat = '';
 
   /// THE FILE'S HASH, and the LAST member of the report: it is set by the two
-  /// LAYOUT refusals — 'layout_newer' and 'layout_unsupported' — and is zero on
+  /// LAYOUT refusals — 'layout_unknown' and 'layout_unsupported' — and is zero on
   /// every other path (§5.9 #15). An operator deciding between "ship the
   /// reader" and "upgrade the client" needs the number in both answers.
   int layoutHash = 0;
@@ -6875,7 +6885,7 @@ const int tableEntityFixedIdentitySplit = 1;
 /// THE CURRENT ONE LAST (§5.2). A file is matched on its header's hash
 /// against these and on nothing else; the layout it carries is COMPARED
 /// with the bytes the lock recorded and never parsed. A hash no entry holds
-/// is `layout_newer` — ship the reader.
+/// is `layout_unknown` (§5.3 step 5).
 // dart format off
 final List<TableFixedKnownLayout> tableEntityFixedKnown = <TableFixedKnownLayout>[
   TableFixedKnownLayout(0x5eac483826ba8dad, Uint8List.fromList(const <int>[
@@ -6928,7 +6938,7 @@ final List<TableFixedKnownLayout> tableEntityFixedKnown = <TableFixedKnownLayout
 
 /// THE FLOOR: 1 + the highest RETIRED index, 0 when none is (§5.2). Below
 /// it a layout this build once served is retired and the answer is
-/// `layout_unsupported` — upgrade the client — rather than `layout_newer`.
+/// `layout_unsupported` — upgrade the client — rather than `layout_unknown`.
 const int tableEntityFixedFloor = 0;
 
 /// ONE PLAN PER LINEAGE ENTRY, built from THE LOCK'S bytes the first time
@@ -7085,7 +7095,7 @@ int tableEntityFixedLoad(
   final pick = tableFixedSelect(tableEntityFixedKnown, hash);
   if (pick < 0) {
     report.layoutHash = hash;
-    report.refused = TableFixedRefusal.layoutNewer;
+    report.refused = TableFixedRefusal.layoutUnknown;
     return refuse();
   }
   if (pick < tableEntityFixedFloor) {
@@ -7404,7 +7414,7 @@ const int tableStatFixedIdentitySplit = 1;
 /// THE CURRENT ONE LAST (§5.2). A file is matched on its header's hash
 /// against these and on nothing else; the layout it carries is COMPARED
 /// with the bytes the lock recorded and never parsed. A hash no entry holds
-/// is `layout_newer` — ship the reader.
+/// is `layout_unknown` (§5.3 step 5).
 // dart format off
 final List<TableFixedKnownLayout> tableStatFixedKnown = <TableFixedKnownLayout>[
   TableFixedKnownLayout(0x85b325df6d7f019, Uint8List.fromList(const <int>[
@@ -7419,7 +7429,7 @@ final List<TableFixedKnownLayout> tableStatFixedKnown = <TableFixedKnownLayout>[
 
 /// THE FLOOR: 1 + the highest RETIRED index, 0 when none is (§5.2). Below
 /// it a layout this build once served is retired and the answer is
-/// `layout_unsupported` — upgrade the client — rather than `layout_newer`.
+/// `layout_unsupported` — upgrade the client — rather than `layout_unknown`.
 const int tableStatFixedFloor = 0;
 
 /// ONE PLAN PER LINEAGE ENTRY, built from THE LOCK'S bytes the first time
@@ -7572,7 +7582,7 @@ int tableStatFixedLoad(
   final pick = tableFixedSelect(tableStatFixedKnown, hash);
   if (pick < 0) {
     report.layoutHash = hash;
-    report.refused = TableFixedRefusal.layoutNewer;
+    report.refused = TableFixedRefusal.layoutUnknown;
     return refuse();
   }
   if (pick < tableStatFixedFloor) {
@@ -8171,7 +8181,7 @@ const int tableMixedFixedIdentitySplit = 9;
 /// THE CURRENT ONE LAST (§5.2). A file is matched on its header's hash
 /// against these and on nothing else; the layout it carries is COMPARED
 /// with the bytes the lock recorded and never parsed. A hash no entry holds
-/// is `layout_newer` — ship the reader.
+/// is `layout_unknown` (§5.3 step 5).
 // dart format off
 final List<TableFixedKnownLayout> tableMixedFixedKnown = <TableFixedKnownLayout>[
   TableFixedKnownLayout(0xd9aba5d49eb0840c, Uint8List.fromList(const <int>[
@@ -8288,7 +8298,7 @@ final List<TableFixedKnownLayout> tableMixedFixedKnown = <TableFixedKnownLayout>
 
 /// THE FLOOR: 1 + the highest RETIRED index, 0 when none is (§5.2). Below
 /// it a layout this build once served is retired and the answer is
-/// `layout_unsupported` — upgrade the client — rather than `layout_newer`.
+/// `layout_unsupported` — upgrade the client — rather than `layout_unknown`.
 const int tableMixedFixedFloor = 0;
 
 /// ONE PLAN PER LINEAGE ENTRY, built from THE LOCK'S bytes the first time
@@ -8447,7 +8457,7 @@ int tableMixedFixedLoad(
   final pick = tableFixedSelect(tableMixedFixedKnown, hash);
   if (pick < 0) {
     report.layoutHash = hash;
-    report.refused = TableFixedRefusal.layoutNewer;
+    report.refused = TableFixedRefusal.layoutUnknown;
     return refuse();
   }
   if (pick < tableMixedFixedFloor) {

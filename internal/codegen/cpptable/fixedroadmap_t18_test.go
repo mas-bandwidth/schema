@@ -171,7 +171,8 @@ func t18TableHeader(t *testing.T, u *ir.Unit, lock *lockfile.Unit) string {
 	}
 	for name, data := range files {
 		if strings.HasSuffix(name, "Table.h") && !strings.Contains(name, "/") {
-			return string(data)
+			// the header includes <Base>TableData.h, which holds the fixed form's arrays
+			return string(data) + string(files[strings.TrimSuffix(name, ".h")+"Data.h"])
 		}
 	}
 	t.Fatalf("no Table.h was emitted for %s", u.Package)

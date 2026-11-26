@@ -21,6 +21,7 @@ import (
 )
 
 func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
+	t.Parallel()
 	corpus := corpusDir(t)
 	for _, name := range []string{
 		"old_cfloat_range_widen.bin",

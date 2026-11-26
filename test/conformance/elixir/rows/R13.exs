@@ -9,12 +9,12 @@
 #   `refused` plus `reason` is one answer; `malformed` is the other; they are
 #   NEVER both set, and the counters are a third thing again.
 #
-# On this leg the two answers are the reason atom alone (the strict report
-# carries no `malformed` flag): a refusal by name comes back
-# `{:error, name, report}` with a name that is not `:malformed`, and a
-# malformed read comes back `{:error, :malformed, report}` — the residue
-# beside a named reason, or a named reason on a malformed read, is
-# the failure §5.3 row 8 names. The destination is the returned values term, so
+# On this leg the answer is the reason atom alone (the strict report carries
+# no `malformed` flag): every refusal comes back `{:error, name, report}`, and
+# FRAMING DAMAGE is a refusal like any other, each by its own name — no first
+# byte, a short header and a ragged tail are `truncated`, a nonzero reserved
+# byte `reserved_not_zero` (docs/FIXED-FORM-ALGORITHM.md §5.3 refusal table).
+# No read answers `:malformed`. The destination is the returned values term, so
 # "not one destination byte written" is the SHAPE of every refusal here: a
 # 3-tuple `{:error, _, _}` with no values in it, the prefill (`R.run`'s third
 # argument) never reached.
@@ -119,20 +119,6 @@ named_refusal = fn label, data, want, want_layout_hash ->
   end
 end
 
-malformed_read = fn label, data ->
-  case load.(data) do
-    {:error, :malformed, report} ->
-      check.(label, counters_zero?.(report) and report.layout_hash == 0)
-
-    other ->
-      check.(
-        label <>
-          " — wanted {:error, :malformed, _} (the residue, no name), got #{inspect(other)}",
-        false
-      )
-  end
-end
-
 # ---- the positive control: a lawful read lands, no counter moved ----
 
 own_file = header.(hash, layout) <> layout <> record.(hash)
@@ -180,7 +166,7 @@ named_refusal.(
   0
 )
 
-# a hash no lineage entry holds — layout_newer reports THE FILE'S HASH and
+# a hash no lineage entry holds — layout_unknown reports THE FILE'S HASH and
 # nothing else (§5.9 #7)
 stranger = Bitwise.bxor(hash, 0xDEADBEEF)
 
@@ -190,9 +176,9 @@ check.(
 )
 
 named_refusal.(
-  "a hash outside the lineage refuses layout_newer, layout_hash the file's hash, no counter",
+  "a hash outside the lineage refuses layout_unknown, layout_hash the file's hash, no counter",
   header.(stranger, layout) <> layout <> record.(stranger),
-  :layout_newer,
+  :layout_unknown,
   stranger
 )
 
@@ -217,21 +203,35 @@ named_refusal.(
   0
 )
 
-# ---- MALFORMED: the residue, the :malformed reason, no name beside it ----
-# (docs/FIXED-FORM-ALGORITHM.md:906, the table's second row)
+# ---- FRAMING DAMAGE: a refusal like any other, each by its own name ----
+# (docs/FIXED-FORM-ALGORITHM.md §5.3 refusal table; this form has no malformed
+# flag, and `truncated` is the recommended name for a short input or ragged tail)
 
-# no first byte — there is no form byte to name
-malformed_read.("an empty file is malformed, counters zero", <<>>)
+# no first byte — "no bytes at all | truncated"
+named_refusal.("an empty file is truncated, counters zero", <<>>, :truncated, 0)
 
-# under 20 bytes, the form byte having already answered
-malformed_read.("a 5-byte form-3 file is malformed, counters zero", <<3, 0, 0, 0, 0>>)
+# under 20 bytes, the form byte having already answered — step 2 measures first
+named_refusal.("a 5-byte form-3 file is truncated, counters zero", <<3, 0, 0, 0, 0>>, :truncated, 0)
 
-# any reserved byte 1..7 nonzero — the reserved clause stands before the length
-# clause, so eight bytes are enough to name it
-malformed_read.("a nonzero reserved byte is malformed, counters zero", <<3, 0, 0, 0, 0, 0, 0, 1>>)
+named_refusal.(
+  "an 8-byte form-3 file with a nonzero reserved byte is truncated (length first, §5.3 step 2)",
+  <<3, 0, 0, 0, 0, 0, 0, 1>>,
+  :truncated,
+  0
+)
+
+# any reserved byte 1..7 nonzero, on a file of 20 bytes or more
+<<own_form, _::binary-size(7), own_tail::binary>> = own_file
+
+named_refusal.(
+  "a nonzero reserved byte is reserved_not_zero, counters zero",
+  <<own_form, 0, 0, 0, 0, 0, 0, 1, own_tail::binary>>,
+  :reserved_not_zero,
+  0
+)
 
 # a ragged tail: rest mod record_bytes != 0
-malformed_read.("a ragged tail is malformed, counters zero", own_file <> <<1, 2, 3>>)
+named_refusal.("a ragged tail is truncated, counters zero", own_file <> <<1, 2, 3>>, :truncated, 0)
 
 {count, fails} = Agent.get(checker, & &1)
 Agent.stop(checker)

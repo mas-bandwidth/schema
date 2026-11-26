@@ -693,10 +693,15 @@ local function int_value(r: ResolverT, v: Node, f: any): boolean
 	else
 		v.canon = bn_digits(bn_from_u128(raw))
 	end
-	if f.fbits ~= nil or (f.kw or 8) == 16 then
-		r:raw(v.text)
+	-- the JSON the walk places is the JSON text form's own (§16.2): a kind
+	-- WIDER than 32 bits (int64, uint64, int128, uint128, bits(33..64), a
+	-- fixed kind stored in 64 or 128 bits) is a JSON STRING, and the strict
+	-- walk refuses a bare number there kind_mismatch
+	local spelled = if f.fbits ~= nil then v.text else v.canon
+	if (f.kw or 8) > 4 then
+		json_string(r, spelled)
 	else
-		r:raw(v.canon)
+		r:raw(spelled)
 	end
 	return true
 end

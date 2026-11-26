@@ -14,9 +14,10 @@ import (
 // registry row the file names. The plants, each red by the line that names
 // the check: the row removed, one language's gate dropped from a
 // per-language row, a language-free row's target renamed, a Go test's row
-// pointed at another test, a per-PR check whose row runs only at night, a
-// check no row runs yet, and a line that does not read; and a per-PR
-// workflow that runs the nightly row by name keeps it per PR.
+// pointed at another test, a check whose row no workflow runs (outside the
+// nightly group), a check no row runs yet, and a line that does not read;
+// and a per-PR workflow that runs a row outside the nightly group by name
+// runs it.
 func TestEveryRetiredCheckIsStillRun(t *testing.T) {
 	t.Parallel()
 	reg := loadRepoRegistry(t)
@@ -39,12 +40,12 @@ func TestEveryRetiredCheckIsStillRun(t *testing.T) {
 
 	gates := `{"make":{"c":[{"file":"make/c.mk","target":"schema-c-x"}],"lua":[{"file":"make/lua.mk","target":"schema-lua-x"}]}}`
 	fixture := func() *testreg.Registry {
-		return &testreg.Registry{Tiers: []testreg.Tier{{Name: "unit"}, {Name: "functional"}, {Name: "nightly"}}, Langs: []testreg.Lang{{Name: "c", Adapter: "corpus"}, {Name: "lua", Adapter: "corpus"}}, Groups: []testreg.Group{{Name: "pr", Stored: testreg.GroupQuery{Tiers: []string{"unit", "functional"}}}}, Tests: []testreg.Test{
-			{Key: "load-refusal.x.runs", Inputs: []byte(gates)},
-			{Key: "tooling.x.free", Scope: testreg.LangFree, Adapter: "make", Inputs: []byte(`{"file":"Makefile","target":"free-check"}`)},
+		return &testreg.Registry{Tiers: []testreg.Tier{{Name: "unit"}, {Name: "functional"}, {Name: "nightly"}}, Langs: []testreg.Lang{{Name: "c", Adapter: "corpus"}, {Name: "lua", Adapter: "corpus"}}, Groups: []testreg.Group{{Name: "nightly", Stored: testreg.GroupQuery{Tiers: []string{"unit", "functional", "nightly"}}}}, Tests: []testreg.Test{
+			{Key: "load-refusal.x.runs", Tier: "functional", Inputs: []byte(gates)},
+			{Key: "tooling.x.free", Tier: "functional", Scope: testreg.LangFree, Adapter: "make", Inputs: []byte(`{"file":"Makefile","target":"free-check"}`)},
 			{Key: "tooling.ci.wiring", Tier: "unit", Scope: testreg.LangFree, Adapter: "gotest", Inputs: []byte(`{"package":"./internal/ci","test":"TestXWiring"}`)},
-			// a pr-group row no retired line names, so the group is never empty
-			{Key: "tooling.x.pr", Tier: "unit", Scope: testreg.LangFree, Adapter: "gotest", Inputs: []byte(`{"package":"./internal/ci","test":"TestXPR"}`)},
+			// a nightly-group row no retired line names, so the group is never empty
+			{Key: "tooling.x.night", Tier: "unit", Scope: testreg.LangFree, Adapter: "gotest", Inputs: []byte(`{"package":"./internal/ci","test":"TestXNight"}`)},
 		}}
 	}
 	file := "# retired\n" +
@@ -73,10 +74,10 @@ func TestEveryRetiredCheckIsStillRun(t *testing.T) {
 			r.Tests[2].Inputs = []byte(`{"package":"./internal/ci","test":"TestXOther"}`)
 			return file
 		}, retiredPath + ":5: x.yml wiring ran internal/ci TestXWiring, and row tooling.ci.wiring runs ./internal/ci TestXOther, not internal/ci TestXWiring"},
-		"a per-PR check moved to the night": {func(r *testreg.Registry) string {
-			r.Tests[2].Tier = "nightly"
+		"a check whose row no workflow runs": {func(r *testreg.Registry) string {
+			r.Tests[2].Tier = "soak"
 			return file + "ci-fast.yml\tgo-test\tgotest\tinternal/ci TestXWiring\ttooling.ci.wiring\tnone\n"
-		}, retiredPath + ":6: ci-fast.yml go-test ran internal/ci TestXWiring, and row tooling.ci.wiring is tier nightly in none, outside the pr group"},
+		}, retiredPath + ":6: ci-fast.yml go-test ran internal/ci TestXWiring, and row tooling.ci.wiring is tier soak in none, outside the nightly group"},
 		"a check no row runs yet": {func(r *testreg.Registry) string { return file + "ci-fast.yml\tlint-fast\tmake\tgofmt-check\t-\tnone\n" },
 			retiredPath + ":6: ci-fast.yml lint-fast ran gofmt-check, and no registry row runs it yet"},
 		"a line that does not read": {func(r *testreg.Registry) string { return file + "short\tline\n" },
@@ -107,10 +108,17 @@ func TestEveryRetiredCheckIsStillRun(t *testing.T) {
 			t.Errorf("%s: want %q in:\n  %s", name, c.says, strings.Join(p, "\n  "))
 		}
 	}
+	// a per-PR check whose row runs at night is run: the pr group is one
+	// compile row and one happy path per language, and the rest is nightly
+	rn := fixture()
+	rn.Tests[2].Tier = "nightly"
+	if p := checkRetired(rn, []byte(file+"ci-fast.yml\tgo-test\tgotest\tinternal/ci TestXWiring\ttooling.ci.wiring\tnone\n"), nil); len(p) > 0 {
+		t.Errorf("a per-PR check whose row runs nightly is named red: %v", p)
+	}
 	// a per-language row of one target, {lang} spelled per language, runs
 	// that language's target; the plant: another language's line for it
 	r0 := fixture()
-	r0.Tests = append(r0.Tests, testreg.Test{Key: "decode.x.case", Inputs: []byte(`{"target":"schema-{lang}-y","case":"a"}`)})
+	r0.Tests = append(r0.Tests, testreg.Test{Key: "decode.x.case", Tier: "functional", Inputs: []byte(`{"target":"schema-{lang}-y","case":"a"}`)})
 	one := file + "schema-lua-y.yml\tcorpus\tmake\tschema-lua-y\tdecode.x.case\tlua\n"
 	if p := checkRetired(r0, []byte(one), nil); len(p) > 0 {
 		t.Errorf("a {lang} target row is named red for its own language: %v", p)
@@ -118,9 +126,10 @@ func TestEveryRetiredCheckIsStillRun(t *testing.T) {
 	if p := checkRetired(r0, []byte(file+"schema-lua-y.yml\tcorpus\tmake\tschema-lua-y\tdecode.x.case\tc\n"), nil); !strings.Contains(strings.Join(p, "\n"), "row decode.x.case runs schema-c-y, not schema-lua-y") {
 		t.Errorf("a {lang} target row is not named red for another language's target: %v", p)
 	}
-	// a nightly row a per-PR workflow runs by name stays per PR
+	// a row outside the nightly group a per-PR workflow runs by name is run
 	r := fixture()
 	r.Tests[2].Tier = "nightly"
+	r.Groups[0].Stored.Tiers = []string{"unit", "functional"}
 	pr := file + "roadmap.yml\troadmap\tgotest\tinternal/ci TestXWiring\ttooling.ci.wiring\tnone\n"
 	step := "      - run: go run ./tools/schema-test run none.nightly.tooling.ci.wiring\n"
 	roadmap := "name: r\non:\n  pull_request:\njobs:\n  roadmap:\n    runs-on: x\n    steps:\n" + step + "  page:\n    runs-on: x\n    steps:\n      - run: go run ./tools/schema-test run none.nightly.tooling.x.page\n"
@@ -141,23 +150,23 @@ func TestEveryRetiredCheckIsStillRun(t *testing.T) {
 		"run by name at another tier":       strings.Replace(roadmap, "none.nightly.tooling.ci.wiring", "none.unit.tooling.ci.wiring", 1),
 		"run by name only in another job":   strings.Replace(strings.Replace(roadmap, step, "      - run: go run ./tools/schema-test ci --check\n", 1), "tooling.x.page", "tooling.ci.wiring", 1),
 	} {
-		if p := checkRetired(r, []byte(pr), keysRunByName(map[string][]byte{"roadmap.yml": []byte(text)})); !strings.Contains(strings.Join(p, "\n"), "a per-PR check moved to the night") {
+		if p := checkRetired(r, []byte(pr), keysRunByName(map[string][]byte{"roadmap.yml": []byte(text)})); !strings.Contains(strings.Join(p, "\n"), "a check no workflow runs") {
 			t.Errorf("%s: the nightly row is not named red: %v", name, p)
 		}
 	}
-	// a per-PR check in a language the pr group does not run is not per PR,
+	// a check in a language the nightly group does not run is not run,
 	// whatever the row's tier
 	r = fixture()
 	r.Tests[0].Tier = "unit"
 	r.Groups[0].Stored.Langs = []string{"c"}
 	lua := file + "ci-fast.yml\tlang-lint\tmake\tschema-lua-x\tload-refusal.x.runs\tlua\n"
-	if p := checkRetired(r, []byte(lua), nil); !strings.Contains(strings.Join(p, "\n"), retiredPath+":6: ci-fast.yml lang-lint ran schema-lua-x, and row load-refusal.x.runs is tier unit in lua, outside the pr group") {
-		t.Errorf("a per-PR check in a language outside the pr group is not named red: %v", p)
+	if p := checkRetired(r, []byte(lua), nil); !strings.Contains(strings.Join(p, "\n"), retiredPath+":6: ci-fast.yml lang-lint ran schema-lua-x, and row load-refusal.x.runs is tier unit in lua, outside the nightly group") {
+		t.Errorf("a check in a language outside the nightly group is not named red: %v", p)
 	}
-	r.Groups[0].Stored.Langs = nil
-	r.Groups[0].Stored.Ready = true
-	r.Langs = []testreg.Lang{{Name: "c", Adapter: "c"}, {Name: "lua"}}
-	if p := checkRetired(r, []byte(lua), nil); !strings.Contains(strings.Join(p, "\n"), "is tier unit in lua, outside the pr group") {
-		t.Errorf("a per-PR check in a language with no adapter is not named red: %v", p)
+	// the nightly group gone: every check is unrun
+	r = fixture()
+	r.Groups = nil
+	if p := checkRetired(r, []byte(file), nil); !strings.Contains(strings.Join(p, "\n"), "the registry has no group nightly") {
+		t.Errorf("a registry with no nightly group is not named red: %v", p)
 	}
 }

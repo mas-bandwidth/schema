@@ -53,6 +53,7 @@ import (
 )
 
 func TestFixedVersioningUnionTagBothPlans(t *testing.T) {
+	t.Parallel()
 	corpus := corpusDir(t)
 	oldFile := filepath.Join(corpus, "old_union_append.bin")
 	raw, err := os.ReadFile(oldFile)

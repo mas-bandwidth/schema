@@ -48,6 +48,10 @@ type messageFuzzOptions struct {
 	seed       uint64
 	n          int
 	maxMutants int
+	// units, when set, is the roster cut to these units' roots: a leg
+	// built for part of the units (make GOOSE_FUZZ_SLICE) is asked about
+	// exactly the roots it was built for (selectMessageFuzzUnits).
+	units []string
 }
 
 type messageFuzzTarget struct {
@@ -353,6 +357,9 @@ func messageFuzz(w io.Writer, m *Manifest, opts messageFuzzOptions) error {
 	if err != nil {
 		return fmt.Errorf("message-fuzz: %w", err)
 	}
+	if len(opts.units) > 0 {
+		_, _ = fmt.Fprintf(w, "message-fuzz: --units: %d roots of the %d-entry roster, in %d units; the rest are asked by another slice\n", len(roots), len(messageFuzzTargets), len(opts.units))
+	}
 
 	leg, err := startMessageFuzzLeg(driverCmd, extraEnv, roots)
 	if err != nil {
@@ -545,8 +552,40 @@ func saveFailedMessageFrame(path string, frame []byte) {
 	_ = writeFileAtomic(path, frame)
 }
 
+// selectMessageFuzzUnits cuts the roster to the roots of the named units.
+// Every named unit must be one of the manifest's, and the cut must keep at
+// least one root: a slice with nothing to fuzz is a failure, never a pass.
+// The roots kept are held to MF-ROSTER as the whole roster is: a dead one
+// fails the run.
+func selectMessageFuzzUnits(m *Manifest, targets []messageFuzzTarget, units []string) ([]messageFuzzTarget, error) {
+	want := map[string]bool{}
+	for _, name := range units {
+		if _, err := m.LookupUnit(name); err != nil {
+			return nil, fmt.Errorf("--units: %w", err)
+		}
+		want[name] = true
+	}
+	var kept []messageFuzzTarget
+	for _, t := range targets {
+		if want[t.unit] {
+			kept = append(kept, t)
+		}
+	}
+	if len(kept) == 0 {
+		return nil, fmt.Errorf("--units %s: no roster root is in these units, so nothing would be fuzzed", strings.Join(units, ","))
+	}
+	return kept, nil
+}
+
 func buildMessageFuzzRoots(u *units, opts messageFuzzOptions) ([]*messageFuzzRoot, map[string]int, error) {
 	targets := messageFuzzTargets
+	if len(opts.units) > 0 {
+		cut, err := selectMessageFuzzUnits(u.m, targets, opts.units)
+		if err != nil {
+			return nil, nil, err
+		}
+		targets = cut
+	}
 	if opts.replay != "" && opts.unit != "" && opts.root != "" {
 		found := false
 		for _, t := range targets {
@@ -1640,3 +1679,14 @@ var (
 	_ = sort.Strings
 	_ = strconv.Itoa
 )
+
+// splitUnits is a --units value as unit names; empty is no cut.
+func splitUnits(s string) []string {
+	var out []string
+	for _, f := range strings.Split(s, ",") {
+		if f = strings.TrimSpace(f); f != "" {
+			out = append(out, f)
+		}
+	}
+	return out
+}

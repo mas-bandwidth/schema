@@ -2550,7 +2550,7 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("\n")
 	g.pf("        // STEPS 9 AND 10: the file's own tail arithmetic — a record size of eight\n")
 	g.pf("        // or less, a header and layout followed by no record, and a ragged tail\n")
-	g.pf("        // refuse truncated by name (§5.3; no malformed flag) — and the caller's capacity,\n")
+	g.pf("        // refuse truncated by name (§5.3; the report has no damage flag) — and the caller's capacity,\n")
 	g.pf("        // which refuses batchTooLarge.\n")
 	g.pf("        final long rest = data.length - head.recordsAt;\n")
 	g.pf("        if (recordSize <= 8 || rest == 0 || rest %% recordSize != 0) { report.refuse(TableFixed.Reason.truncated); return -1; }\n")

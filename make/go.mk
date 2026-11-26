@@ -107,10 +107,17 @@ test-go: tables-go-shared-runtime
 #
 # THE NAMES ARE READ OFF THE ROWS DIRECTORY, never copied: every
 # `func TestRow…(t *testing.T)` in test/conformance/go/rows, sorted, split into
-# two halves by count. A row added is a row run, and the run-proof requires a
-# `--- PASS` for each. (The hand-copied halves this replaced listed 46 of the
+# two halves by count. A row added is a row run, and each half's make-gotest
+# rows (test/registry) read a pass for each by name. (The hand-copied halves this replaced listed 46 of the
 # 47 rows; TestRowR20FloatWidensExactly was in neither.)
-GO_ROWS        := $(sort $(shell sed -n 's/^func \(TestRow[A-Za-z0-9_]*\)(t \*testing\.T).*/\1/p' test/conformance/go/rows/*_test.go))
+#
+# A row the registry holds on its own (a gotest row naming this package and the
+# test, test/registry/registry.jsonl) runs through schema-test, and is read off
+# the registry just as the names are read off the directory: it is left out of
+# the halves, or it would run twice, once here and once as its registry row
+# (TestRowR14GrownTagReadsTheWritersTagWidth did). Each row runs exactly once.
+GO_ROWS_REGISTERED := $(shell sed -n '/"adapter":"gotest"/s/.*"package":"\.\/test\/conformance\/go\/rows","test":"\(TestRow[A-Za-z0-9_]*\)".*/\1/p' test/registry/registry.jsonl)
+GO_ROWS        := $(sort $(filter-out $(GO_ROWS_REGISTERED),$(shell sed -n 's/^func \(TestRow[A-Za-z0-9_]*\)(t \*testing\.T).*/\1/p' test/conformance/go/rows/*_test.go)))
 GO_ROWS_N      := $(words $(GO_ROWS))
 GO_ROWS_HALF   := $(shell expr \( $(GO_ROWS_N) + 1 \) / 2)
 GO_ROWS_A      := $(wordlist 1,$(GO_ROWS_HALF),$(GO_ROWS))
@@ -120,14 +127,14 @@ GO_ROWS_SPACE  := $(GO_ROWS_EMPTY) $(GO_ROWS_EMPTY)
 go_rows_run     = '^($(subst $(GO_ROWS_SPACE),|,$(strip $(1))))$$'
 conformance-go-rows-a: build/tables-generated-go/.stamp tables-go-sibling-runtime
 	@test -n "$(GO_ROWS_A)" || { echo "conformance-go-rows-a: no TestRow function found in test/conformance/go/rows"; exit 1; }
-	cd test/conformance/go && SLOWGATE_LOG_DIR="$(CURDIR)/build/slowgate" sh $(CURDIR)/test/slowgate/proof conformance-go-rows-a \
-		'$(GO_ROWS_A)' \
-		./rows/ -count=1 -timeout 600s -run $(call go_rows_run,$(GO_ROWS_A))
+	cd test/conformance/go && $(GO_TEST) \
+		./rows/ -count=1 -timeout 600s \
+		-run $(call go_rows_run,$(GO_ROWS_A))
 conformance-go-rows-b: build/tables-generated-go/.stamp tables-go-sibling-runtime
 	@test -n "$(GO_ROWS_B)" || { echo "conformance-go-rows-b: no TestRow function found in test/conformance/go/rows"; exit 1; }
-	cd test/conformance/go && SLOWGATE_LOG_DIR="$(CURDIR)/build/slowgate" sh $(CURDIR)/test/slowgate/proof conformance-go-rows-b \
-		'$(GO_ROWS_B)' \
-		./rows/ -count=1 -timeout 600s -run $(call go_rows_run,$(GO_ROWS_B))
+	cd test/conformance/go && $(GO_TEST) \
+		./rows/ -count=1 -timeout 600s \
+		-run $(call go_rows_run,$(GO_ROWS_B))
 conformance-go-rows: conformance-go-rows-a conformance-go-rows-b
 test-go: conformance-go-rows
 
@@ -175,63 +182,113 @@ tables-go-json-walk: build/tables-generated-go/.stamp
 # a generated package names its schema's `package` and Go resolves an import by
 # module path — so the conformance leg's go.mod replaces one path per unit,
 # exactly as test/go/go.mod already does for the packet corpus.
-build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/RT1.schema test/tables/P2.schema test/tables/W1.schema test/tables/W2.schema test/tables/G1.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema $(wildcard test/tables/[MAKR][12].schema) tables/scalars/Scalars.schema test/tables/Scalars2.schema tables/messages/Messages.schema tables/backend/Backend.schema tables/vocab/Vocab.schema tables/vocab9/Vocab9.schema $(wildcard tables/stream/*.schema tables/blobs/*.schema tables/lists/*.schema tables/maps/*.schema tables/widelist/*.schema) test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/cooktorture/CookTorture.schema testdata/conformance/table-write-bounds/TableWriteBounds.schema test/tables/cooktorturewide/CookTortureWide.schema testdata/conformance/feature-witnesses/full/Features.schema testdata/conformance/r19/old/R19.schema testdata/conformance/r19/new/R19.schema testdata/conformance/r19/new/schema.lock test/tables/surfaces/Surfaces.schema test/tables/announce4096/Announce.schema test/tables/announce4097/Announce.schema test/tables/ValueDefaults.schema test/tables/packetunions/PacketUnions.schema
+# THE UNITS GENERATE IN 8 GROUPS, each its own step with its own stamp, so a cold
+# checkout builds them as 8 steps that each fit the per-call limit with room to
+# spare on a busy bench (schema-test runs each declared build step under that
+# limit by itself, go-needs.txt) and a parallel make runs them side by side. The
+# groups share the stamp rule's prerequisites. Each group's generations are
+# independent (one xargs, 8 wide); the stamp rule below writes every unit's
+# go.mod after all of them.
+GO_TABLES_GEN_DEPS = bin/schema make/go.mk test/tables/RT1.schema test/tables/P2.schema test/tables/W1.schema test/tables/W2.schema test/tables/G1.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema $(wildcard test/tables/[MAKR][12].schema) tables/scalars/Scalars.schema test/tables/Scalars2.schema tables/messages/Messages.schema tables/backend/Backend.schema tables/vocab/Vocab.schema tables/vocab9/Vocab9.schema $(wildcard tables/stream/*.schema tables/blobs/*.schema tables/lists/*.schema tables/maps/*.schema tables/widelist/*.schema) test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/cooktorture/CookTorture.schema testdata/conformance/table-write-bounds/TableWriteBounds.schema test/tables/cooktorturewide/CookTortureWide.schema testdata/conformance/feature-witnesses/full/Features.schema testdata/conformance/r19/old/R19.schema testdata/conformance/r19/new/R19.schema testdata/conformance/r19/new/schema.lock test/tables/surfaces/Surfaces.schema test/tables/announce4096/Announce.schema test/tables/announce4097/Announce.schema test/tables/ValueDefaults.schema test/tables/packetunions/PacketUnions.schema
+GO_TABLES_GEN_STAMPS := build/tables-generated-go/.gen-1 build/tables-generated-go/.gen-2 build/tables-generated-go/.gen-3 build/tables-generated-go/.gen-4 build/tables-generated-go/.gen-5 build/tables-generated-go/.gen-6 build/tables-generated-go/.gen-7 build/tables-generated-go/.gen-8
+build/tables-generated-go/.gen-1: $(GO_TABLES_GEN_DEPS)
 	@mkdir -p build/tables-generated-go
-	# EVERY UNIT GENERATES AT ONCE (one xargs, 8 wide): the generations are
-	# independent, and run one after another they alone passed the 110 s
-	# per-commit wall on a loaded runner (CI full 43662375199, hulk-2). The
-	# pointer corpus exercises the wire, region and cook read surfaces. Each
-	# unit's go.mod is written below, after every generation has finished.
 	printf '%s\n' \
 		'build/tables-generated-go/examples tables/examples' \
-		'build/tables-generated-go/pointers tables/pointers' \
-		'build/tables-generated-go/block tables/block' \
-		'build/tables-generated-go/blockhome tables/blockhome' \
-		'build/tables-generated-go/v1 test/tables/V1.schema' \
-		'build/tables-generated-go/v2 test/tables/V2.schema' \
-		'build/tables-generated-go/p1 test/tables/P1.schema' \
-		'build/tables-generated-go/p3 test/tables/P3.schema' \
 		'build/tables-generated-go/p2 test/tables/P2.schema' \
-		'build/tables-generated-go/w1 test/tables/W1.schema' \
-		'build/tables-generated-go/w2 test/tables/W2.schema' \
-		'build/tables-generated-go/g1 test/tables/G1.schema' \
-		'build/tables-generated-go/m1 test/tables/M1.schema' \
-		'build/tables-generated-go/m2 test/tables/M2.schema' \
-		'build/tables-generated-go/a1 test/tables/A1.schema' \
-		'build/tables-generated-go/a2 test/tables/A2.schema' \
 		'build/tables-generated-go/k1 test/tables/K1.schema' \
-		'build/tables-generated-go/k2 test/tables/K2.schema' \
-		'build/tables-generated-go/r1 test/tables/R1.schema' \
-		'build/tables-generated-go/r2 test/tables/R2.schema' \
-		'build/tables-generated-go/scalars tables/scalars' \
-		'build/tables-generated-go/scalars2 test/tables/Scalars2.schema' \
-		'build/tables-generated-go/fixedevo test/tables/fixedevo' \
-		'build/tables-generated-go/valuedefaults test/tables/ValueDefaults.schema' \
 		'build/tables-generated-go/varevo1 test/tables/varevo/VarEvo1.schema' \
-		'build/tables-generated-go/varevo2 test/tables/varevo/VarEvo2.schema' \
-		'build/tables-generated-go/varevo3 test/tables/varevo/VarEvo3.schema' \
-		'build/tables-generated-go/prior test/tables/prior/PriorNarrow.schema' \
-		'build/tables-generated-go/cooktorture test/tables/cooktorture/CookTorture.schema' \
-		'build/tables-generated-go/writebounds testdata/conformance/table-write-bounds/TableWriteBounds.schema' \
-		'build/tables-generated-go/cooktorturewide test/tables/cooktorturewide/CookTortureWide.schema' \
-		'build/tables-generated-go/shapes test/tables/shapes/Shapes.schema' \
 		'build/tables-generated-go/moodmap test/tables/moodmap/MoodMap.schema' \
-		'build/tables-generated-go/packetunions test/tables/packetunions/PacketUnions.schema' \
-		'build/tables-generated-go/messages tables/messages' \
-		'build/tables-generated-go/stream tables/stream' \
-		'build/tables-generated-go/blobs tables/blobs' \
-		'build/tables-generated-go/lists tables/lists' \
-		'build/tables-generated-go/widelist tables/widelist' \
-		'build/tables-generated-go/featurewitnesses testdata/conformance/feature-witnesses/full/Features.schema' \
 		'build/tables-generated-go/maps tables/maps' \
+		| xargs -P 8 -L 1 sh -c './bin/schema generate --lang go --out "$$0" "$$1"'
+	@touch $@
+
+build/tables-generated-go/.gen-2: $(GO_TABLES_GEN_DEPS)
+	@mkdir -p build/tables-generated-go
+	printf '%s\n' \
+		'build/tables-generated-go/pointers tables/pointers' \
+		'build/tables-generated-go/w1 test/tables/W1.schema' \
+		'build/tables-generated-go/k2 test/tables/K2.schema' \
+		'build/tables-generated-go/varevo2 test/tables/varevo/VarEvo2.schema' \
+		'build/tables-generated-go/packetunions test/tables/packetunions/PacketUnions.schema' \
 		'build/tables-generated-go/backend tables/backend' \
+		| xargs -P 8 -L 1 sh -c './bin/schema generate --lang go --out "$$0" "$$1"'
+	@touch $@
+
+build/tables-generated-go/.gen-3: $(GO_TABLES_GEN_DEPS)
+	@mkdir -p build/tables-generated-go
+	printf '%s\n' \
+		'build/tables-generated-go/block tables/block' \
+		'build/tables-generated-go/w2 test/tables/W2.schema' \
+		'build/tables-generated-go/r1 test/tables/R1.schema' \
+		'build/tables-generated-go/varevo3 test/tables/varevo/VarEvo3.schema' \
+		'build/tables-generated-go/messages tables/messages' \
 		'build/tables-generated-go/vocab tables/vocab' \
+		| xargs -P 8 -L 1 sh -c './bin/schema generate --lang go --out "$$0" "$$1"'
+	@touch $@
+
+build/tables-generated-go/.gen-4: $(GO_TABLES_GEN_DEPS)
+	@mkdir -p build/tables-generated-go
+	printf '%s\n' \
+		'build/tables-generated-go/blockhome tables/blockhome' \
+		'build/tables-generated-go/g1 test/tables/G1.schema' \
+		'build/tables-generated-go/r2 test/tables/R2.schema' \
+		'build/tables-generated-go/prior test/tables/prior/PriorNarrow.schema' \
+		'build/tables-generated-go/stream tables/stream' \
 		'build/tables-generated-go/vocab9 tables/vocab9' \
+		| xargs -P 8 -L 1 sh -c './bin/schema generate --lang go --out "$$0" "$$1"'
+	@touch $@
+
+build/tables-generated-go/.gen-5: $(GO_TABLES_GEN_DEPS)
+	@mkdir -p build/tables-generated-go
+	printf '%s\n' \
+		'build/tables-generated-go/v1 test/tables/V1.schema' \
+		'build/tables-generated-go/m1 test/tables/M1.schema' \
+		'build/tables-generated-go/scalars tables/scalars' \
+		'build/tables-generated-go/cooktorture test/tables/cooktorture/CookTorture.schema' \
+		'build/tables-generated-go/blobs tables/blobs' \
 		'build/tables-generated-go/rt1 test/tables/RT1.schema' \
+		| xargs -P 8 -L 1 sh -c './bin/schema generate --lang go --out "$$0" "$$1"'
+	@touch $@
+
+build/tables-generated-go/.gen-6: $(GO_TABLES_GEN_DEPS)
+	@mkdir -p build/tables-generated-go
+	printf '%s\n' \
+		'build/tables-generated-go/v2 test/tables/V2.schema' \
+		'build/tables-generated-go/m2 test/tables/M2.schema' \
+		'build/tables-generated-go/scalars2 test/tables/Scalars2.schema' \
+		'build/tables-generated-go/writebounds testdata/conformance/table-write-bounds/TableWriteBounds.schema' \
+		'build/tables-generated-go/lists tables/lists' \
 		'build/tables-generated-go/surfaces test/tables/surfaces' \
+		| xargs -P 8 -L 1 sh -c './bin/schema generate --lang go --out "$$0" "$$1"'
+	@touch $@
+
+build/tables-generated-go/.gen-7: $(GO_TABLES_GEN_DEPS)
+	@mkdir -p build/tables-generated-go
+	printf '%s\n' \
+		'build/tables-generated-go/p1 test/tables/P1.schema' \
+		'build/tables-generated-go/a1 test/tables/A1.schema' \
+		'build/tables-generated-go/fixedevo test/tables/fixedevo' \
+		'build/tables-generated-go/cooktorturewide test/tables/cooktorturewide/CookTortureWide.schema' \
+		'build/tables-generated-go/widelist tables/widelist' \
 		'build/tables-generated-go-announce/4096 test/tables/announce4096' \
+		| xargs -P 8 -L 1 sh -c './bin/schema generate --lang go --out "$$0" "$$1"'
+	@touch $@
+
+build/tables-generated-go/.gen-8: $(GO_TABLES_GEN_DEPS)
+	@mkdir -p build/tables-generated-go
+	printf '%s\n' \
+		'build/tables-generated-go/p3 test/tables/P3.schema' \
+		'build/tables-generated-go/a2 test/tables/A2.schema' \
+		'build/tables-generated-go/valuedefaults test/tables/ValueDefaults.schema' \
+		'build/tables-generated-go/shapes test/tables/shapes/Shapes.schema' \
+		'build/tables-generated-go/featurewitnesses testdata/conformance/feature-witnesses/full/Features.schema' \
 		'build/tables-generated-go-announce/4097 test/tables/announce4097' \
 		| xargs -P 8 -L 1 sh -c './bin/schema generate --lang go --out "$$0" "$$1"'
+	@touch $@
+
+build/tables-generated-go/.stamp: $(GO_TABLES_GEN_DEPS) $(GO_TABLES_GEN_STAMPS)
+	@mkdir -p build/tables-generated-go
 	$(call go_table_module,p2,tblp2)
 	$(call go_table_module,w1,tblw1)
 	$(call go_table_module,w2,tblw2)
@@ -434,7 +491,6 @@ cards-test: cards-generate cards-corpus-check
 	cd build/tables-generated-go/cards && go vet ./... && CARDS_DOC_PATH=$(CURDIR)/docs/CARDS.md CARDS_DECL_PATH=$(CURDIR)/tables/cards/Card.schema CARDS_SOURCE_ROOT=$(CURDIR) $(GO_TEST) -v -count=1 -timeout 600s ./...
 	cd build/tables-generated-go/cards-initial && go vet ./...
 	cd build/tables-generated-go/cards-future && go vet ./...
-	$(GO_TEST) -count=1 -timeout 600s ./internal/ci/ ./tools/agentsmap/
 
 # ---------------------------------------------------------------------------
 # THE CARD CONFORMANCE SET (the-card-corpus-is-a-language-neutral-conformance-set)
@@ -760,9 +816,26 @@ generated/bench/go/.stamp: bin/schema $(SCHEMAS_BENCH)
 
 # the serialize.go runtime is a sibling checkout the module replaces into place:
 # an edit there must rebuild the driver
-build/conformance-go: build/tables-generated-go/.stamp cards-generate $(wildcard test/conformance/go/*.go) test/conformance/go/go.mod $(wildcard $(SERIALIZE_GO_RUNTIME)/*.go)
+CONFORMANCE_GO_DEPS = build/tables-generated-go/.stamp cards-generate $(wildcard test/conformance/go/*.go) test/conformance/go/go.mod $(wildcard $(SERIALIZE_GO_RUNTIME)/*.go)
+build/conformance-go: $(CONFORMANCE_GO_DEPS)
 	@mkdir -p build
 	cd test/conformance/go && go build -o ../../../$@ .
+
+# THE DRIVER'S COMPILE IN FOUR STEPS. Cold, the one go build above compiles
+# the sixty-odd generated packages the driver imports and took 76 to 90 s and
+# more on two CPUs, the limit a schema-test call has. Each warm step compiles a
+# quarter of those packages (every fourth, in `go list -deps` order) into the Go
+# build cache, so the driver's own build links what is already compiled. They
+# live in the generated tree beside the stamp. The Go cache is the machine's own,
+# so a shard that fetched the produced tree compiles them cold, each step inside
+# its limit. build/conformance-go does not depend on them: they only move the
+# compile into steps that each fit (test/registry/go-needs.txt runs them first).
+# A go list that fails fails the step: the quarter is never taken as empty.
+CONFORMANCE_GO_WARM := build/tables-generated-go/.warm-1 build/tables-generated-go/.warm-2 build/tables-generated-go/.warm-3 build/tables-generated-go/.warm-4
+$(CONFORMANCE_GO_WARM): build/tables-generated-go/.warm-%: $(CONFORMANCE_GO_DEPS)
+	@mkdir -p build/tables-generated-go
+	cd test/conformance/go && all=$$(go list -deps -f '{{if .DepOnly}}{{if not .Standard}}{{.ImportPath}}{{end}}{{end}}' .) && pkgs=$$(printf '%s\n' "$$all" | awk -v n=$* 'NR % 4 == n % 4') && { [ -z "$$pkgs" ] || go build $$pkgs; }
+	@touch $@
 
 # THE GO LEG, CROSS-BUILT BIG-ENDIAN (docs/SPEC-TABLES.md §3, §19.1, §7). Go
 # cross-compiles, and the pinned emulator is already installed for the C++

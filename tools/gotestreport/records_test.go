@@ -13,7 +13,7 @@ import (
 
 // THE RECORD CORPUS. Each directory of testdata/records is one lane record as
 // a recorder leaves it: the .jsonl files of real `go test -json` runs
-// (testdata/recordgen writes them from testdata/recordgen/ledgertest), or the
+// (testdata/recordgen writes them from testdata/plants/ledgertest), or the
 // empty and budget-only files a cut recorder leaves, and case.txt:
 //
 //	# what the case shows

@@ -63,6 +63,7 @@ behaviour.
 | `TableFixedPlanCache * cache` | `TableFixedPlanCache & cache` | `TableFixedPlanCache REF cache` |
 | `(uint8_t) kTableFixedClamp` | `kTableFixedClamp` | `kTableFixedClamp` |
 | `(uint8_t) 8` in `table_fixed_tag_at` | `8u` | `8u` |
+| `N * (int) sizeof( TableFixedGuardLink )` in a plan row | `N * static_cast<int>( sizeof( TableFixedGuardLink ) )` | the C spelling (C++ writes no C-style cast: -Wold-style-cast) |
 | union-arm `my_arm = mi + 1` then `c.argw =` | `c.argw =` then `my_arm = mi + 1` | my_arm then argw |
 | `const T * p` in the runtime | `const T & p` | `T REF` |
 | `TableFixedEntryLands( &plan[i] )` | `TableFixedEntryLands( plan[i] )` | `TableFixedEntryLands( plan[i] )` — same pointer/ref as Apply, for the prefill's cover-minus-plan |
@@ -75,7 +76,7 @@ behaviour.
 | `SCHEMA_TABLE_STATIC_ASSERT(tag, cond, msg)` | `static_assert(cond, msg)` | `static_assert` |
 | `/* … */` | `// …` | stripped |
 | trailing commas in enumerators | trailing commas | dropped |
-| C restates the refusal names inside the runtime (`SCHEMA_TABLE_MESSAGE_REASONS` and the form-3 reason enum) because it has no `TableMessageReason` in scope yet | those names live above the runtime | dropped from the C runtime extract |
+| C restates the refusal names inside the runtime (`SCHEMA_TABLE_MESSAGE_REASONS` and the form-3 reason enum, which ends at `text_ill_formed = 20`, or at `SCHEMA_TABLE_LAYOUT_UNKNOWN = 22` since the C load answers §5.3 step 5 by that name) because it has no `TableMessageReason` in scope yet | those names live above the runtime | dropped from the C runtime extract |
 | restrict / force-inline feature tests | restrict / force-inline feature tests | dropped; the names they define are mapped |
 
 A line the map rewrites to equality is not a remaining difference.

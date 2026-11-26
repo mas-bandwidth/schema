@@ -3,6 +3,7 @@ package testvolume
 import (
 	"errors"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -57,5 +58,38 @@ func TestFoldsLeavesTheDirectoryAsItWas(t *testing.T) {
 	}
 	if len(left) != 0 {
 		t.Fatalf("Folds left %d entries in %s", len(left), dir)
+	}
+}
+
+// TestProbeNamesAMachineWithNoFoldingVolume: a machine with neither the
+// variable nor the fleet scratch has no folding volume, and Probe says so;
+// with the variable set, Probe's verdict is Folds' on that volume (a Linux
+// bench's own temporary directory keeps the two spellings apart, an APFS one
+// folds them). tools/fullrun refuses a bench's casefold declaration on this.
+// Planted: a probe that answered nil with no volume would send a casefold
+// test to captain.
+func TestProbeNamesAMachineWithNoFoldingVolume(t *testing.T) {
+	none := func(string) string { return "" }
+	noDir := func(string) bool { return false }
+	if err := probe(none, noDir); err == nil || !strings.Contains(err.Error(), "no case-folding volume") {
+		t.Fatalf("a machine with no folding volume: %v", err)
+	}
+	dir := t.TempDir()
+	env := func(k string) string {
+		if k == EnvVar {
+			return dir
+		}
+		return ""
+	}
+	want := Folds(dir)
+	got := probe(env, noDir)
+	if (got == nil) != (want == nil) {
+		t.Fatalf("probe of %s: %v; Folds there: %v", dir, got, want)
+	}
+	if got != nil && !strings.Contains(got.Error(), "does not fold names") {
+		t.Fatalf("a volume that keeps the spellings apart: %v", got)
+	}
+	if left, err := os.ReadDir(dir); err != nil || len(left) != 0 {
+		t.Fatalf("the probe left %v behind (%v)", left, err)
 	}
 }

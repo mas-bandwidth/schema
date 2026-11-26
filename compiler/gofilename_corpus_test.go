@@ -16,23 +16,20 @@ import (
 func TestGoBasenameCorpus(t *testing.T) {
 	t.Parallel()
 	const root = "testdata/go-basenames"
-	manifest, err := os.Open(filepath.Join(root, "MANIFEST.tsv"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer manifest.Close()
-	reader := csv.NewReader(manifest)
-	reader.Comma = '\t'
-	reader.Comment = '#'
-	reader.FieldsPerRecord = 4
-	rows, err := reader.ReadAll()
-	if err != nil || len(rows) == 0 {
-		t.Fatalf("basename manifest: %d rows, error %v", len(rows), err)
-	}
-	var named []string
-	for _, row := range rows {
+	t.Run("MANIFEST.tsv", func(t *testing.T) {
+		rows := readGoBasenameManifest(t, root)
+		var named []string
+		for _, row := range rows {
+			named = append(named, filepath.Join(root, row[0]))
+		}
+		slices.Sort(named)
+		onDisk, err := filepath.Glob(filepath.Join(root, "*.schema"))
+		if err != nil || !slices.Equal(named, onDisk) {
+			t.Fatalf("manifest inputs %v, on disk %v, error %v", named, onDisk, err)
+		}
+	})
+	for _, row := range readGoBasenameManifest(t, root) {
 		path := filepath.Join(root, row[0])
-		named = append(named, path)
 		t.Run(row[0], func(t *testing.T) {
 			c := New()
 			name := strings.TrimSuffix(row[0], ".schema") + ".go"
@@ -82,9 +79,24 @@ func TestGoBasenameCorpus(t *testing.T) {
 			}
 		})
 	}
-	slices.Sort(named)
-	onDisk, err := filepath.Glob(filepath.Join(root, "*.schema"))
-	if err != nil || !slices.Equal(named, onDisk) {
-		t.Fatalf("manifest inputs %v, on disk %v, error %v", named, onDisk, err)
+}
+
+// readGoBasenameManifest is the manifest read. TestGoBasenameCorpus runs it
+// inside t.Run("MANIFEST.tsv"), and again to name the per-file subtests.
+func readGoBasenameManifest(t *testing.T, root string) [][]string {
+	t.Helper()
+	manifest, err := os.Open(filepath.Join(root, "MANIFEST.tsv"))
+	if err != nil {
+		t.Fatal(err)
 	}
+	defer manifest.Close()
+	reader := csv.NewReader(manifest)
+	reader.Comma = '\t'
+	reader.Comment = '#'
+	reader.FieldsPerRecord = 4
+	rows, err := reader.ReadAll()
+	if err != nil || len(rows) == 0 {
+		t.Fatalf("basename manifest: %d rows, error %v", len(rows), err)
+	}
+	return rows
 }

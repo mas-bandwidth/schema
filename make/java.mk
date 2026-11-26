@@ -889,20 +889,125 @@ tables-java-fixed-t18: tables-fixedform-corpus
 		$(GO_TEST) ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run 'TestFixedRoadmapJavaT18OracleHostile'
 	@echo 'tables Java fixed t18: the shared byte oracle and hostile input rows pass (java/W13, java/R27, java/P3, java/P4)'
 
-# THE WHOLE JAVATABLE PACKAGE, ONCE, WITH THE CORPUS ALREADY BUILT. Ten of the
-# package's test files read the C++ reference's byte oracle out of
+# THE JAVATABLE PACKAGE'S TESTS, BY NAME, WITH THE CORPUS ALREADY BUILT. Ten of
+# the package's test files read the C++ reference's byte oracle out of
 # build/fixedform-corpus (corpusDir in fixedversioning_test.go), which only
-# `tables-fixedform-corpus` writes, so on a fresh clone every TestFixed* goes
-# red until that target is run by hand. `test-java` does depend on the corpus but
-# runs only named -run subsets, never the whole package; card gates and the
-# heavy reads run the whole package, and this is the one target that builds the
-# corpus first and then runs it all; a missing oracle fails by name
-# (docs/rulings.json no-skips) and can never pass silently.
+# `tables-fixedform-corpus` writes; `test-java` runs only named -run subsets,
+# and this is the one target that runs the rest of the package. Run whole, it
+# ran past its own -timeout 900s on a bench (the limit is never raised): every
+# test the package holds, one after another but for the ones marked parallel.
+# Each test below is a registry row of its own (make-gotest, read by name from
+# this run's go test -json events), of the nightly tier, where this target
+# runs (.github/nightly-gates.txt, roadmap-java): the adapter builds the
+# corpus, and the Java conformance driver the TestJavaDriver and
+# TestJavaWireFuzzVerdictPipe tests run, first as prepare steps
+# (test/registry/go-needs.txt), and this target's call is the tests alone. The
+# tests that read only those shared inputs and write their own TempDir run in
+# parallel; the six that make the conformance driver themselves stay serial.
+# A test that hangs or slows is red by name; a missing oracle fails by name
+# (docs/rulings.json no-skips). The package's tests that have registry rows of
+# their own (gotest, and the union rows) are not run here twice.
+JAVA_PACKAGE_TESTS := TestAnnouncementBudgetsJava TestBitsFieldAndArrayWidthClampJava TestBlockBuildAndCookWriteJava \
+	TestBytesNDstRowIsAnArray TestCanonicalMovesLayoutNotTokens TestCardConstructsRetainUnknownFields \
+	TestCardConstructsRoundTripTheVariableForm TestCardDescriptorsNameEveryField \
+	TestCardTextFormMatchesGo TestCookWriteUnionTagRefusedJava TestCookWriteUnionsJavaReversed \
+	TestDamageDiscardsTheWholeLoadJava TestDamageDiscardsTheWholeLoadJavaNegativeControl \
+	TestFixedBitsUnsignedBound TestFixedBoolBytesStrict TestFixedClassOnTableWireJava \
+	TestFixedCompressedNegZeroRead TestFixedFormFU1FU2 TestFixedFormRaggedTail \
+	TestFixedFormUnder20Bytes TestFixedHostileGuardAndOrdinal TestFixedJavaLoadAllocatesOnce \
+	TestFixedJavaT18BoundReadsThePlan TestFixedJavaT18ManifestAndHeader TestFixedLoadPrefillsHolesOnly \
+	TestFixedOptionalResetUsesStaticWideUnionDefault TestFixedRefusalLeavesDestination \
+	TestFixedRoadmapJavaT04Evolution TestFixedRoadmapJavaT05Bounds TestFixedRoadmapJavaT06Writes \
+	TestFixedRoadmapJavaT07ConformanceIntegers TestFixedRoadmapJavaT08FloatsUnions \
+	TestFixedRoadmapJavaT09Optionals TestFixedRoadmapJavaT12BatchesUnions \
+	TestFixedRoadmapJavaT14CompressedFloats TestFixedRoadmapJavaT15GuardChain \
+	TestFixedRoadmapJavaT17PlanPartition TestFixedRoadmapJavaT18OracleHostile \
+	TestFixedRoadmapT01Framing TestFixedRoadmapT02Plans TestFixedRoadmapT03Versions \
+	TestFixedVersioningCfloatRangeWiden TestFixedVersioningCfloatResRefine \
+	TestFixedVersioningCountClampEnds TestFixedVersioningFloor \
+	TestFixedVersioningForgedOrdinalBothPlans TestFixedVersioningHash TestFixedVersioningLineageMerge \
+	TestFixedVersioningPlanTooLarge TestFixedVersioningRangeWidenHostile \
+	TestFixedVersioningRefuseWritesNothing TestFixedVersioningRows TestFixedVersioningTextUnderArm \
+	TestFixedVersioningTextUnderArmTrueBytes TestFixedVersioningUnionTagBothPlans \
+	TestFixedVersioningUnionUnselectedArm TestFixedVersioningUnknownCensus \
+	TestFixedVersioningUnknownCensusManyRecords TestFixedVersioningWriterBoundCount \
+	TestFixedVersioningWriterBoundCountTwoRemotes TestFromJsonKeepsUint64AboveInt64MaxJava \
+	TestGeneratedMessageDepthBoundary TestHeldKind31RefusesTheLoadJava TestIdentityCompiledBytesN \
+	TestJavaAbsentSpillEveryMarkerGoesThroughTheAbsenceWriters TestJavaAnnounceReadIsAFileRead \
+	TestJavaAnnounceReadsTextElement TestJavaAnnounceShapeBoundsUnsigned \
+	TestJavaAnnounceStrictBuildVersion TestJavaArrayElementKindsClosed \
+	TestJavaBlobSharedConformanceDriverAnswersTheWireRefusal TestJavaBlobSharedReportCensus \
+	TestJavaBlobSharedStrict TestJavaBlobSharedStrictNegativeControl TestJavaCardsStrict \
+	TestJavaCardsStrictNegativeControl TestJavaCarriesRequiredNestedGuards TestJavaCarriesTextList \
+	TestJavaCarriesTextListTotal TestJavaCarriesUnboundedText \
+	TestJavaCompiledPlanDeprecatedVariantReadsDefault TestJavaCompressedF32EndsShape \
+	TestJavaCompressedFloatVariableAndJson TestJavaCookExtentNegativeControl TestJavaCookMapFind \
+	TestJavaCookMapFindNegativeControl TestJavaCookMapWriterHoldsTheSort TestJavaCookWriteFixedRoots \
+	TestJavaCountBelowMinRefused TestJavaCountedArrayBornAtItsMinimum TestJavaCountedBirthElides \
+	TestJavaCountedMinElementsElideAtBornState TestJavaCyclicWireIsDamage TestJavaDeclaredForms \
+	TestJavaDeprecatedVariantNegativeControl TestJavaDeprecatedVariantNeverWritten \
+	TestJavaDescriptorDocAndTags TestJavaDescriptorReportsDeclaredBound \
+	TestJavaDriverAnswersBothOptInLegs TestJavaDriverChecksEveryIntegerAssignment \
+	TestJavaDriverLoadsFixedRootFormThree TestJavaDriverSurfacesStrict \
+	TestJavaDriverSurfacesStrictNegativeControl TestJavaFiniteFloatNegativeControl \
+	TestJavaFiniteFloats TestJavaFixA1ArmBodyAsA2DamageRefused TestJavaFixClampedArrayNotMalformed \
+	TestJavaFixContainerCountMeasureRefusal TestJavaFixCountPastLengthRefused \
+	TestJavaFixKeyedCountExtreme TestJavaFixKeyedScalarSlotWidened \
+	TestJavaFixListCountPastBodyInMapValue TestJavaFixLoadoutLengthDamageRefused \
+	TestJavaFixLoginRequestDamagedCountRefused TestJavaFixMapEntryDamageRefused \
+	TestJavaFixMapKeyKind5Malformed TestJavaFixMapTextMalformedOverflag \
+	TestJavaFixMapWidenThenDamageRefused TestJavaFixMatchResultFileDamageRefused \
+	TestJavaFixMeasureRenamedNodeTable TestJavaFixMessageUnknownReferenceRefused \
+	TestJavaFixNestedBodyOverLongRefused TestJavaFixRepeatedArrayFieldDamageRefused \
+	TestJavaFixShortArrayDamageRefused TestJavaFixTblwFleetNodeTableKindRefused \
+	TestJavaFixUnionArmKindWidened TestJavaFixWidenLadderGap TestJavaFixedGeneralArmPayloads \
+	TestJavaFixedLayoutIsTheReferenceLayout TestJavaFixedR27OracleHostile \
+	TestJavaFixedR27OracleHostileNegativeControl TestJavaFixedRootTextForm \
+	TestJavaFixedSaveWriteContract TestJavaFromFixedClearsTheBornMinimum \
+	TestJavaIdTableDistinctProbeFunctional TestJavaIntegrityCarry TestJavaJsonArrayRoot \
+	TestJavaJsonBase64Canonical TestJavaJsonCommentIsWellFormedUTF8 TestJavaJsonFlagsNameOnce \
+	TestJavaJsonRootIsWholeText TestJavaJsonSkippedValueDepthBoundary TestJavaJsonWideNumberPositions \
+	TestJavaLineageKindMovedRefuses TestJavaLoadRefusalPins TestJavaMapRepeatedKeyLastKindWins \
+	TestJavaMapWriterHoldsTheSort TestJavaMessageBodyRepeatedFieldRefuses \
+	TestJavaMessageIntegerHeldToReaderKind TestJavaMessageKnownKindReserves31 \
+	TestJavaMessageNamedIntegerHeldWholeAndUnionFieldArmZero TestJavaMessageSaveFitsItsMeasure \
+	TestJavaMessageVocabularyArrayOfIntegerArrays TestJavaMessageZeroWidthRunIsBounded \
+	TestJavaOneSidedRange TestJavaOptionalMapCarry TestJavaOptionalVariableClosureG1 \
+	TestJavaPointerGraphNegativeControl TestJavaPointerGraphSharesOnceRefusesCyclesAndLabelsNodes \
+	TestJavaPopulatedFeatureWitnesses TestJavaR17FlagsPastWidthRefuse \
+	TestJavaReadHoldsACountMinimumAtAnyDepth TestJavaReportResetDamageReasonAndCookCycle \
+	TestJavaRequiredCarry TestJavaRetainKeepsDepth128 TestJavaRetainNamesEveryOwnId \
+	TestJavaSaveLongPointerChain TestJavaSaveMessagesWriteContract TestJavaTextInt64DomainBeforeCast \
+	TestJavaTextLargeMapFunctional TestJavaTextLongWideNumberFunctional \
+	TestJavaTextReadAgreesWithEngine TestJavaTextReadDepthCap TestJavaTextRepeatedKeyEveryObject \
+	TestJavaTimestampCarry TestJavaToJsonAssertsNamedValues TestJavaTransportIDFirstUse \
+	TestJavaTransportIDNegativeControl TestJavaVariableCellsStrict \
+	TestJavaVariableCellsStrictNegativeControl TestJavaVariableKeyedUnionRetention \
+	TestJavaVariableKeyedValues TestJavaVariableKeyedWidening \
+	TestJavaVariableLoadRefusesFixedRootWithoutFileForm TestJavaVariableMapCorpus \
+	TestJavaVariableMapDamageAndRetention TestJavaVariableMapValues TestJavaVariableOptionalValues \
+	TestJavaVariableSaveWriteContract TestJavaVocabularyUsableAsConstructed \
+	TestJavaWireCheckGenerationHeadroom TestJavaWireFuzzVerdictPipe \
+	TestJavaWireFuzzVerdictPipeNegativeControl TestJavaWritersRefuseASharedBlob \
+	TestJsonHostileReportClampCounterJava TestJsonHostileReportDuplicateCounterJava \
+	TestJsonLeadingBOMBoundaryJava TestKeyedArrayIndexingJava \
+	TestKeyedFormWireCodeMatchesUnkeyedInTree TestManifestNonFinite \
+	TestMapsAndUnionArmsOnTheTableWireJava TestMessageFormAnnounceJava \
+	TestMessageFormAnnounceJavaR9MaxBytes TestMessageFormBatchJava \
+	TestOtherVariableConstructsAreRefusedByName TestRetainSaveJava TestRetentionCapacityIsALoss \
+	TestRowPointerSlotSabotageAnchorUniqueJava TestScatterCountedArrayWalksLiveCount \
+	TestStageJavaVariableConformance TestTableJsonEveryTableJava \
+	TestTimestampKindIsSkippedAtEightBytesJava TestUnboundedArraysRoundTripJava \
+	TestUnitViewDescriptorsJava TestUnitViewRegistryJava TestVariableClassBeyondCardConstructsJava \
+	TestVariableFormRuntimeCompilesAndRoundTrips TestVariableKeyedAndUnionSaveNoScratch \
+	TestVariableOpenWireCheckReuseJava TestVariableSaveAndMeasureOwnNoScratchJava \
+	TestVariableUnionArmNamedTagCompiles TestViewConstantCarriesItsSignedValueJava \
+	TestWideningReasonsJava TestWriteAndScatterWalkLiveCount
 .PHONY: tables-java-package
 tables-java-package: tables-fixedform-corpus
 	JAVAC=$(JAVAC) JAVA=$(JAVA) \
-		$(GO_TEST) ./internal/codegen/javatable/ -count=1 -timeout 900s
-	@echo 'tables Java package: the whole javatable package passes with the fixed-form corpus built first'
+		$(GO_TEST) ./internal/codegen/javatable/ -count=1 -timeout 900s -run '^($(subst $(eval) ,|,$(strip $(JAVA_PACKAGE_TESTS))))$$'
+	@echo 'tables Java package: the javatable tests no other row runs pass, with the fixed-form corpus built first'
 
 
 # THE COMPRESSED-FLOAT FP-CONTRACT GATE (java/R30, T14): the witness that the

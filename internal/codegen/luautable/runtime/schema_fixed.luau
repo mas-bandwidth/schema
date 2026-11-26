@@ -175,8 +175,14 @@ local function parseNode(layout: { LayoutEntry }, i: number, off: number): (Node
 		for _, c in kids do
 			if c.size > widest then widest = c.size end
 		end
+		-- THE WRITER'S TAG WIDTH IS ITS OWN LAYOUT'S: their_tag := te.size -
+		-- widest arm (docs/FIXED-FORM-ALGORITHM.md §5.2 EMIT kind 15). A width
+		-- that is not an ordinal width, 1, 2, 4 or 8 (§1's union row), is no
+		-- tag a lock records (§5.9 #36): the lane refuses layout_malformed, and
+		-- nothing clamps it — a 9-byte tag read at 8 reads its last byte as the
+		-- arm's (TestLuauFixedR14GrownTagReadsTheWritersTagWidth).
 		local tagw = e.size - widest
-		if tagw < 1 then tagw = 1 end
+		if tagw ~= 1 and tagw ~= 2 and tagw ~= 4 and tagw ~= 8 then error(refuse("layout_malformed"), 0) end
 		local function shift(c: Node, d: number)
 			c.off = c.off + d
 			for _, k in c.children do shift(k, d) end
@@ -360,11 +366,10 @@ local function widestArm(n: Node): number
 	return widest
 end
 
+-- the WRITER's tag width, te.size - widest arm (§5.2 EMIT kind 15): 1, 2, 4 or 8
+-- on every tree parseNode laid, which refuses any other width
 local function tagWidth(n: Node): number
-	local w = n.size - widestArm(n)
-	if w < 1 then w = 1 end
-	if w > 8 then w = 8 end
-	return w
+	return n.size - widestArm(n)
 end
 
 local function childIndexById(children: { Node }, id: integer): number

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -369,7 +370,12 @@ func vetRun(t *testing.T, in makeInputs, db string, log string) (testreg.Result,
 	ran := false
 	var asked []string
 	a := makeAdapter{
-		read: func(string) ([]byte, error) { return []byte(fakeRules), nil },
+		read: func(p string) ([]byte, error) {
+			if strings.HasSuffix(p, "go.mod") {
+				return fakeModules(p)
+			}
+			return []byte(fakeRules), nil
+		},
 		plan: func(_ context.Context, argv []string) (string, error) {
 			asked = argv
 			return db, errors.New("exit status 2")
@@ -425,29 +431,98 @@ func TestAMakeRowReadsOnlyWhatItsTargetDependsOn(t *testing.T) {
 	}
 }
 
-// TestARecipeThatRunsGoTestWithoutJSONFails: go test's plain output prints
-// nothing for a skipped test, so a target whose recipes (its own, its
-// prerequisites', a variable they expand, a target made by $(MAKE)) run go
-// test without -json fails before it runs, naming the command; -json on a
-// continuation line or in the variable counts, and a path that starts "go
-// test/" is no go test.
-func TestARecipeThatRunsGoTestWithoutJSONFails(t *testing.T) {
+// TestAMakeRowReadsWhatAFunctionWithAHyphenatedNameNames: a recipe that
+// calls a define whose name holds a - (moo-wire-fuzz-run) reaches what the
+// define names, so a row reading the driver it runs passes the vet.
+func TestAMakeRowReadsWhatAFunctionWithAHyphenatedNameNames(t *testing.T) {
+	t.Parallel()
+	db := fakeDatabase("define wire-fuzz-run\n\t./build/harness wire-fuzz --driver test/conformance/x/wirefuzz-driver $(1)\nendef\n", "",
+		"gate-check: gate-plain\n\ngate-plain:\n\t$(call wire-fuzz-run,--seed 1)\n")
+	r, ran := vetRun(t, makeInputs{File: "make/x.mk", Target: "gate-check", Reads: []string{"test/conformance/x/wirefuzz-driver"}}, db, "")
+	if r.Verdict != testreg.Pass || !ran {
+		t.Errorf("%+v, ran %v: the define the recipe calls names the driver", r, ran)
+	}
+}
+
+// TestAMakeRowsDirectoryReadIsADirectoryItsRecipesWorkOnBare: a directory
+// read holds only where a recipe the target runs works on the directory
+// itself (a cd into it, a glob in it); a directory its target reaches only
+// through files in it, or names only in a comment, fails the row before the
+// target runs. A tree read is no make row's: its inputs do not decode.
+func TestAMakeRowsDirectoryReadIsADirectoryItsRecipesWorkOnBare(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		recipe string
+		says   string
+	}{
+		{"\tcd test/tables && ./build/bin", ""},
+		{"\t./build/bin test/tables/*.schema", ""},
+		{"\t./build/bin", "reads test/tables/, and no recipe make gate-check runs works on that directory itself"},
+		{"\t./build/bin test/tables/$(F).schema", "reads test/tables/, and no recipe make gate-check runs works on that directory itself"},
+		{"\t./build/bin # cd test/tables", "reads test/tables/, and no recipe make gate-check runs works on that directory itself"},
+	} {
+		r, ran := vetRun(t, makeInputs{File: "make/x.mk", Target: "gate-check", Reads: []string{"test/tables/"}}, gateDatabase(c.recipe), "")
+		if c.says == "" {
+			if r.Verdict != testreg.Pass || !ran {
+				t.Errorf("%q: %+v, ran %v", c.recipe, r, ran)
+			}
+			continue
+		}
+		if r.Verdict != testreg.Fail || ran || !strings.Contains(r.Reason, c.says) {
+			t.Errorf("%q: %+v, ran %v, want a fail saying %q before the target runs", c.recipe, r, ran, c.says)
+		}
+	}
+	// a directory a variable holds is worked on bare only where the
+	// recipe uses the variable bare, never by the variable's value alone
+	for _, c := range []struct {
+		recipe string
+		pass   bool
+	}{
+		{"\tcd $(FIXTURE) && ./build/bin", true},
+		{"\t./build/bin $(FIXTURE)/a.schema", false},
+	} {
+		db := fakeDatabase("GO_TEST_JSON = go test -json\nFIXTURE := test/tables\n",
+			"build/objs/%.o: test/tables/%.cpp build/gen/.stamp\n\t$(CXX) -c $< -o $@\n",
+			"gate-check: build/bin\n"+c.recipe+"\n\nbuild/bin: build/objs/main.o\n\nbuild/gen/.stamp: bin/schema test/tables/VNEW_a.schema\n\t./bin/schema generate $^\n\nbuild/objs/main.o:\n#  Implicit rule search has not been done.\n")
+		r, ran := vetRun(t, makeInputs{File: "make/x.mk", Target: "gate-check", Reads: []string{"test/tables/"}}, db, "")
+		if c.pass != (r.Verdict == testreg.Pass && ran) {
+			t.Errorf("%q with FIXTURE := test/tables: %+v, ran %v, want pass %v", c.recipe, r, ran, c.pass)
+		}
+	}
+	_, err := decodeMakeInputs(json.RawMessage(`{"file":"make/x.mk","target":"a","reads":["test/tables/..."]}`))
+	if err == nil || !strings.Contains(err.Error(), "a make row reads one directory, written with one trailing /, never a tree") {
+		t.Errorf("a make row's tree read: %v, want it refused", err)
+	}
+}
+
+// TestARecipeThatRunsGoTestOutsideTheWrapperFails: only $(GO_TEST)
+// (tools/gotestrun) reads every go test event back, so a target whose
+// recipes (its own, its prerequisites', a variable they expand, a target
+// made by $(MAKE)) run go test any other way fails before it runs, naming
+// the command: plain output prints nothing for a skipped test, a -json run
+// sent to a file never reaches the log, and a -json run that matches no
+// test passes having run nothing. go, $(GO) and ${GO} all count, and a path
+// that starts "go test/" is no go test.
+func TestARecipeThatRunsGoTestOutsideTheWrapperFails(t *testing.T) {
 	t.Parallel()
 	for recipe, fails := range map[string]bool{
-		"\tSCHEMA_SLOW=1 go test ./internal/x -run '^TestA$$' -count=1": true,
-		"\t@if go test -count=1 ./x > log 2>&1; then exit 1; fi":        true,
-		"\tcd sub && go  test ./...":                                    true,
-		"\t$(call RUN_GO,./x)":                                          true,
-		"\t$(MAKE) --no-print-directory gate-inner":                     true,
-		// -json in a path is no -json flag
+		"\tSCHEMA_SLOW=1 go test ./internal/x -run '^TestA$$' -count=1":                            true,
+		"\t@if go test -count=1 ./x > log 2>&1; then exit 1; fi":                                   true,
+		"\tcd sub && go  test ./...":                                                               true,
+		"\t$(call RUN_GO,./x)":                                                                     true,
+		"\t$(MAKE) --no-print-directory gate-inner":                                                true,
 		"\t@if go test -v -overlay build/c-json-label-nc/overlay.json ./compiler; then exit 1; fi": true,
-		"\tgo test ./x > build/x-json.log":                              true,
-		"\tgo test -json=true ./x":                                      false,
-		"\tgo test -count=1 \\\n\t\t-json ./internal/x -run '^TestA$$'": false,
-		"\tgo test -json ./x | tee build/x.json":                        false,
-		"\t$(GO_TEST_JSON) ./x":                                         false,
-		"\tprintf 'go test/conformance/go/driver\\n' > build/solo.txt":  false,
-		"\techo no go here":                                             false,
+		"\tgo test ./x > build/x-json.log":                                                         true,
+		"\tgo test -json=true ./x":                                                                 true,
+		"\tgo test -count=1 \\\n\t\t-json ./internal/x -run '^TestA$$'":                            true,
+		"\tgo test -json ./x > build/events.json":                                                  true,
+		"\tgo test -json -run '^TestNope$$' ./x":                                                   true,
+		"\t$(GO_TEST_JSON) ./x":                                                                    true,
+		"\t$(GO) test -count=1 ./x":                                                                true,
+		"\t${GO} test -count=1 ./x":                                                                true,
+		"\t$(GO_TEST) -count=1 ./x -run '^TestA$$'":                                                false,
+		"\tprintf 'go test/conformance/go/driver\\n' > build/solo.txt":                             false,
+		"\techo no go here":                                                                        false,
 	} {
 		db := fakeDatabase("GO_TEST_JSON = go test -json\ndefine RUN_GO\ngo test $(1)\nendef\n", "",
 			"gate-check:\n"+recipe+"\n\ngate-inner:\n\tgo test ./inner\n")
@@ -458,7 +533,7 @@ func TestARecipeThatRunsGoTestWithoutJSONFails(t *testing.T) {
 			}
 			continue
 		}
-		if r.Verdict != testreg.Fail || ran || !strings.Contains(r.Reason, "runs go test without -json") {
+		if r.Verdict != testreg.Fail || ran || !strings.Contains(r.Reason, "runs go test outside $(GO_TEST)") {
 			t.Errorf("%q: %+v, ran %v, want a fail before the target runs", recipe, r, ran)
 		}
 	}
@@ -579,5 +654,244 @@ func TestABuildStepRunsInPrepare(t *testing.T) {
 	}
 	if err := (modelCheckAdapter{build: b, log: io.Discard}).Prepare(context.Background(), testreg.LangFree, nil); !errors.Is(err, planted) {
 		t.Errorf("the model-check adapter's Prepare returned %v, want the harness build's failure", err)
+	}
+}
+
+// TestAMakeRowNamingItsGoTestsPassesOnlyWhenEachReportsAPass: a row that
+// names the Go tests of a module of its own (tables/cards, tested as the
+// generated module "cards", its go_import) passes only when each reports
+// --- PASS at the top level of its own package's output in the target log;
+// one that does not report, or fails, or passes only as a subtest, or passes
+// only in another package the target runs (the source module's name is
+// another package), fails the row by name. A package go_import does not name
+// is named by its go.mod.
+func TestAMakeRowNamingItsGoTestsPassesOnlyWhenEachReportsAPass(t *testing.T) {
+	t.Parallel()
+	in := makeInputs{File: "make/x.mk", Target: "gate-check", GoTests: []string{"./tables/cards TestA", "./tables/cards TestB"}, GoImport: map[string]string{"./tables/cards": "cards"}}
+	const ok = "ok  \tcards\t0.21s (go test -json, read by gotestrun)\n"
+	const source = "ok  \tcards-source\t0.21s (go test -json, read by gotestrun)\n"
+	const other = "ok  \tgithub.com/mas-bandwidth/schema/v2/tables\t0.10s (go test -json, read by gotestrun)\n"
+	for log, missing := range map[string]string{
+		"--- PASS: TestA (0.01s)\n--- PASS: TestB (0.20s)\n" + ok:                                       "",
+		"--- PASS: TestB (0.01s)\n" + other + "--- PASS: TestA (0.01s)\n--- PASS: TestB (0.20s)\n" + ok: "",
+		"--- PASS: TestA (0.01s)\n" + ok:                                                                "./tables/cards TestB",
+		"--- PASS: TestA (0.01s)\n--- FAIL: TestB (0.01s)\n" + ok:                                       "./tables/cards TestB",
+		"--- PASS: TestA (0.01s)\n    --- PASS: TestB (0.01s)\n" + ok:                                   "./tables/cards TestB",
+		"--- PASS: TestAB (0.01s)\n--- PASS: TestB (0.01s)\n" + ok:                                      "./tables/cards TestA",
+		"--- PASS: TestA (0.01s)\n--- PASS: TestB (0.01s)\n":                                            "./tables/cards TestA",
+		"--- PASS: TestA (0.01s)\n" + ok + "--- PASS: TestB (0.01s)\n" + other:                          "./tables/cards TestB",
+		"--- PASS: TestA (0.01s)\n--- PASS: TestB (0.01s)\nFAIL\tcards\t0.2s\n":                         "",
+		"--- PASS: TestA (0.01s)\n--- PASS: TestB (0.01s)\n" + source:                                   "./tables/cards TestA",
+	} {
+		r, _ := vetRun(t, in, gateDatabase("\ttrue"), log)
+		if missing == "" {
+			if r.Verdict != testreg.Pass {
+				t.Errorf("%q: %+v, want a pass", log, r)
+			}
+			continue
+		}
+		if r.Verdict != testreg.Fail || !strings.Contains(r.Reason, "did not report --- PASS: "+missing) {
+			t.Errorf("%q: %+v, want a fail naming %s", log, r, missing)
+		}
+	}
+	// a package go_import does not name is named by its go.mod
+	ex := makeInputs{File: "make/x.mk", Target: "gate-check", GoTests: []string{"./tables/cards/example TestE"}}
+	if r, _ := vetRun(t, ex, gateDatabase("\ttrue"), "--- PASS: TestE (0.01s)\nok  \tcardsexample\t0.1s (go test -json, read by gotestrun)\n"); r.Verdict != testreg.Pass {
+		t.Errorf("a pass in its go.mod's module: %+v, want a pass", r)
+	}
+	if r, _ := vetRun(t, ex, gateDatabase("\ttrue"), "--- PASS: TestE (0.01s)\nok  \tcards\t0.1s (go test -json, read by gotestrun)\n"); r.Verdict != testreg.Fail {
+		t.Errorf("a pass in another module: %+v, want a fail", r)
+	}
+}
+
+// TestAGoTestsPackageIsNamedByItsModule: a go_tests package's import path is
+// the path of the nearest go.mod's module and the directory below it.
+func TestAGoTestsPackageIsNamedByItsModule(t *testing.T) {
+	t.Parallel()
+	for dir, want := range map[string]string{
+		"tables/cards":            "cards-source",
+		"tables/cards/example":    "cardsexample",
+		"tables/cards/sub":        "cards-source/sub",
+		"internal/codegen/golang": "github.com/mas-bandwidth/schema/v2/internal/codegen/golang",
+	} {
+		if got, err := importPath(fakeModules, dir); err != nil || got != want {
+			t.Errorf("%s: %q %v, want %q", dir, got, err, want)
+		}
+	}
+	if got, err := importPath(func(string) ([]byte, error) { return nil, fs.ErrNotExist }, "tables/cards"); err == nil {
+		t.Errorf("a tree with no go.mod named %q", got)
+	}
+	if got, err := importPath(func(string) ([]byte, error) { return []byte("go 1.26\n"), nil }, "tables/cards"); err == nil {
+		t.Errorf("a go.mod with no module directive named %q", got)
+	}
+}
+
+// fakeModules reads the go.mod files of a tree with a root module and the
+// two modules of tables/cards.
+func fakeModules(p string) ([]byte, error) {
+	switch p {
+	case "go.mod":
+		return []byte("module github.com/mas-bandwidth/schema/v2\n\ngo 1.26\n"), nil
+	case "tables/cards/go.mod":
+		return []byte("// the cards source\nmodule cards-source\n"), nil
+	case "tables/cards/example/go.mod":
+		return []byte("module \"cardsexample\"\n"), nil
+	}
+	return nil, fs.ErrNotExist
+}
+
+// TestAMakeRowNamesItsGoTestsWithTheirPackage: tests come with the package
+// they are in, written ./<dir>, each a Go test named once.
+func TestAMakeRowNamesItsGoTestsWithTheirPackage(t *testing.T) {
+	t.Parallel()
+	for _, in := range []string{
+		`{"file":"make/x.mk","target":"a","go_tests":["TestA"]}`,
+		`{"file":"make/x.mk","target":"a","go_tests":["./tables/cards"]}`,
+		`{"file":"make/x.mk","target":"a","go_tests":["tables/cards TestA"]}`,
+		`{"file":"make/x.mk","target":"a","go_tests":["./tables/../cards TestA"]}`,
+		`{"file":"make/x.mk","target":"a","go_tests":["./tables/cards Helper"]}`,
+		`{"file":"make/x.mk","target":"a","go_tests":["./tables/cards TestA","./tables/cards TestA"]}`,
+		`{"file":"make/x.mk","target":"a","go_tests":["./tables/cards TestA"],"go_import":{"./tables/other":"cards"}}`,
+		`{"file":"make/x.mk","target":"a","go_tests":["./tables/cards TestA"],"go_import":{"./tables/cards":""}}`,
+		`{"file":"make/x.mk","target":"a","go_tests":["./tables/cards TestA"],"go_import":{"./tables/cards":"two words"}}`,
+	} {
+		if _, err := decodeMakeInputs(json.RawMessage(in)); err == nil {
+			t.Errorf("%s decoded", in)
+		}
+	}
+	if _, err := decodeMakeInputs(json.RawMessage(`{"file":"make/x.mk","target":"a","go_tests":["./tables/cards TestA","./tables/cards FuzzB"],"go_import":{"./tables/cards":"cards"}}`)); err != nil {
+		t.Errorf("a lawful row: %v", err)
+	}
+	// one name in two packages is two tests
+	if _, err := decodeMakeInputs(json.RawMessage(`{"file":"make/x.mk","target":"a","go_tests":["./tables/cards TestA","./tables/other TestA"]}`)); err != nil {
+		t.Errorf("one test name in two packages: %v", err)
+	}
+}
+
+// TestHarnessesShareTheCheckoutAndMakesWaitForThem: a harness call holds
+// the checkout to read it, and another harness takes it beside the first
+// without waiting (its context already done), while a make, which writes
+// it, waits until the last reader lets go. The plant takes it whole for a
+// reader, so the second reader waits and its done context fails it.
+func TestHarnessesShareTheCheckoutAndMakesWaitForThem(t *testing.T) {
+	t.Parallel()
+	done, cancel := context.WithCancel(context.Background())
+	cancel()
+	first, err := holdCheckoutShared(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := holdCheckoutShared(done)
+	if err != nil {
+		first()
+		t.Fatalf("a second harness waited for the checkout a harness holds to read: %v", err)
+	}
+	if release, err := holdCheckout(done); err == nil {
+		release()
+		t.Fatal("a make took the checkout while harnesses were reading it")
+	}
+	first()
+	if release, err := holdCheckout(done); err == nil {
+		release()
+		t.Fatal("a make took the checkout while a harness was still reading it")
+	}
+	second()
+	release, err := holdCheckout(context.Background())
+	if err != nil {
+		t.Fatalf("a make could not take the checkout once the harnesses let go: %v", err)
+	}
+	release()
+}
+
+// TestAReaderWaitingBehindAnotherEndsWithItsOwnContext: while a make holds
+// the checkout, one reader waits for it on behalf of all, and a second
+// reader whose context is done fails at once, naming the wait, never stuck
+// behind the first. The plant leaves the waiting reader's context out of
+// its wait.
+func TestAReaderWaitingBehindAnotherEndsWithItsOwnContext(t *testing.T) {
+	t.Parallel()
+	release, err := holdCheckout(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	firstCtx, stop := context.WithCancel(context.Background())
+	first := make(chan error, 1)
+	go func() {
+		r, err := holdCheckoutShared(firstCtx)
+		if err == nil {
+			r()
+		}
+		first <- err
+	}()
+	waiting := func() bool {
+		if !sharedCheckout.TryLock() {
+			return false // a reader holding the mutex through its wait is red below, by name
+		}
+		defer sharedCheckout.Unlock()
+		return sharedCheckout.taking != nil
+	}
+	for i := 0; !waiting(); i++ {
+		if i == 1_000_000 {
+			t.Fatal("the first reader never waited for the checkout")
+		}
+		runtime.Gosched()
+	}
+	done, cancel := context.WithCancel(context.Background())
+	cancel()
+	second := make(chan error, 1)
+	go func() {
+		r, err := holdCheckoutShared(done)
+		if err == nil {
+			r()
+		}
+		second <- err
+	}()
+	var got error
+	answered := false
+	for i := 0; i < 1_000_000 && !answered; i++ {
+		select {
+		case got = <-second:
+			answered = true
+		default:
+			runtime.Gosched()
+		}
+	}
+	stop()
+	if err := <-first; err == nil {
+		t.Error("the first reader took the checkout a make holds")
+	}
+	switch {
+	case !answered:
+		t.Fatal("a reader whose context is done stayed stuck behind another reader's wait")
+	case got == nil || !strings.Contains(got.Error(), "waiting for the checkout"):
+		t.Errorf("a reader whose context is done: %v, want the wait named", got)
+	}
+}
+
+// TestOnlyHappyPathGroupsShareTheCheckout: the harness adapter lets a group
+// run beside others only when every instance is a happy path (make
+// happy-<lang> reads bin/schema and writes only build/happy/<lang>); a
+// group with any other harness family, which may make in the checkout, and
+// an empty group stay Serial. The plant shares every group.
+func TestOnlyHappyPathGroupsShareTheCheckout(t *testing.T) {
+	t.Parallel()
+	inst := func(family string) testreg.Instance {
+		return testreg.Instance{Full: "c.functional.roundtrip." + family + ".x", Lang: "c", Test: testreg.Test{Family: family}}
+	}
+	a := &harnessAdapter{}
+	for _, c := range []struct {
+		what  string
+		group []testreg.Instance
+		want  bool
+	}{
+		{"happy paths", []testreg.Instance{inst(happyFamily), inst(happyFamily)}, true},
+		{"a name-buildability row", []testreg.Instance{inst("name-buildability")}, false},
+		{"a happy path and a hostile row", []testreg.Instance{inst(happyFamily), inst("hostile")}, false},
+		{"no instance", nil, false},
+	} {
+		if got := a.SharesCheckout(c.group); got != c.want {
+			t.Errorf("%s: shares the checkout %t, want %t", c.what, got, c.want)
+		}
 	}
 }

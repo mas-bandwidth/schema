@@ -3,7 +3,6 @@ package luautable_test
 import (
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -14,14 +13,15 @@ import (
 )
 
 // A 64-BIT INTEGER TOKEN LANDS EXACTLY IN ITS DOMAIN (docs/SPEC-TABLES.md
-// §16.2: an integral token in range is that integer; a magnitude past the
-// domain saturates and counts clamped). The Luau text read holds a uint64 at
-// or past 2^63 as a negative 64-bit integer, so every bound it is checked
-// against is compared unsigned; a token past the field's domain lands at the
-// end its sign names, counted as the engine counts it. Each row's wire and clamped count are the Go engine's
-// (internal/tabletext, internal/tablewire) over the same unit. The reversed
-// witness puts the signed compare back and holds that it is red on exactly
-// the uint64 tokens at and past 2^63.
+// §16.2: an integral token in range is that integer). The Luau text read
+// holds a uint64 at or past 2^63 as a negative 64-bit integer, so every bound
+// it is checked against is compared unsigned. A token past the field's domain
+// is out of range, which the strict read refuses (docs/SPEC-TABLES.md §6.5,
+// docs/rulings.json strict-only-read): the Go engine and both Luau reads
+// refuse it, compared by verdict only. Each in-range row's wire is the Go
+// engine's (internal/tabletext, internal/tablewire) over the same unit. The
+// reversed witness puts the signed compare back and holds that it is red on
+// exactly the in-range uint64 tokens at and past 2^63.
 const jsonInt64Schema = `package px
 
 table Root
@@ -49,6 +49,20 @@ var jsonInt64Texts = []string{
 	`{"s": "-99999999999999999999999"}`,
 }
 
+// jsonInt64Refused is every text past its field's domain: the Go engine
+// refuses each out_of_range.
+var jsonInt64Refused = map[string]bool{
+	`{"u": "18446744073709551616"}`:     true,
+	`{"u": "-1"}`:                       true,
+	`{"s": "9223372036854775808"}`:      true,
+	`{"s": "-9223372036854775809"}`:     true,
+	`{"s": "99999999999999999999999"}`:  true,
+	`{"w": 4294967296}`:                 true,
+	`{"w": 18446744073709551615}`:       true,
+	`{"w": -99999999999999999999999}`:   true,
+	`{"s": "-99999999999999999999999"}`: true,
+}
+
 const jsonInt64Probe = `local json = require("./schema_json")
 local save = require("./schema_save")
 local St = require("./schema_tables")
@@ -56,12 +70,19 @@ local inputs = require("./inputs")
 for _, text in ipairs(string.split(buffer.tostring(inputs.texts), "\n")) do
 	local r = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
 	local v = json.fromJsonWalk("Root", buffer.fromstring(text), r)
-	local b = save.save(St.lookup("Root"), v)
-	local parts = table.create(buffer.len(b))
-	for i = 0, buffer.len(b) - 1 do
-		parts[i + 1] = string.format("%02x", buffer.readu8(b, i))
+	local plain = json.FromJson("Root", buffer.fromstring(text))
+	if v == nil and plain == nil then
+		print("refused")
+	elseif v == nil or plain == nil then
+		print("the walk and FromJson disagree")
+	else
+		local b = save.save(St.lookup("Root"), v)
+		local parts = table.create(buffer.len(b))
+		for i = 0, buffer.len(b) - 1 do
+			parts[i + 1] = string.format("%02x", buffer.readu8(b, i))
+		end
+		print(tostring(r.clamped) .. " " .. table.concat(parts))
 	end
-	print(tostring(r.clamped) .. " " .. table.concat(parts))
 end
 `
 
@@ -88,40 +109,24 @@ func jsonInt64Oracle(t *testing.T) []string {
 	}
 	model := tabletext.NewModel(u)
 	var want []string
-	clampedOf := map[string]string{
-		`{"u": "18446744073709551616"}`:     `{"u": "18446744073709551615"}`,
-		`{"u": "-1"}`:                       `{"u": "0"}`,
-		`{"s": "9223372036854775808"}`:      `{"s": "9223372036854775807"}`,
-		`{"s": "-9223372036854775809"}`:     `{"s": "-9223372036854775808"}`,
-		`{"s": "99999999999999999999999"}`:  `{"s": "9223372036854775807"}`,
-		`{"w": 4294967296}`:                 `{"w": 4294967295}`,
-		`{"w": 18446744073709551615}`:       `{"w": 4294967295}`,
-		`{"w": -99999999999999999999999}`:   `{"w": 0}`,
-		`{"s": "-99999999999999999999999"}`: `{"s": "-9223372036854775808"}`,
-	}
 	for _, text := range jsonInt64Texts {
 		inst := model.New(model.Lookup("Root"))
 		var rep tabletext.Report
-		clamped := 0
 		if !model.Read(inst, []byte(text), &rep) {
-			alt, ok := clampedOf[text]
-			if !ok || !strings.HasPrefix(rep.Reason, "out_of_range:") {
+			if !jsonInt64Refused[text] || !strings.HasPrefix(rep.Reason, "out_of_range:") {
 				t.Fatalf("%s: the Go reference refused the text (%+v)", text, rep)
 			}
-			clamped = 1
-			if strings.Contains(text, "99999999999999999999999") {
-				clamped = 2
-			}
-			var rep2 tabletext.Report
-			if !model.Read(inst, []byte(alt), &rep2) {
-				t.Fatalf("%s -> %s: the Go reference refused the clamped text (%+v)", text, alt, rep2)
-			}
+			want = append(want, "refused")
+			continue
+		}
+		if jsonInt64Refused[text] {
+			t.Fatalf("%s: the Go reference read a text past its domain (%+v)", text, rep)
 		}
 		wire, err := tablewire.Encode(model, inst)
 		if err != nil {
 			t.Fatalf("%s: the Go reference wire: %v", text, err)
 		}
-		want = append(want, strconv.Itoa(clamped)+" "+hexBytes(wire))
+		want = append(want, "0 "+hexBytes(wire))
 	}
 	return want
 }
@@ -166,7 +171,10 @@ func TestLuauJsonUint64SignedCompareNegativeControl(t *testing.T) {
 			red = append(red, jsonInt64Texts[i])
 		}
 	}
-	wantRed := []string{jsonInt64Texts[1], jsonInt64Texts[2], jsonInt64Texts[3]}
+	// the signed compare moves the in-range tokens at and past 2^63 to 0 and
+	// counts them clamped, so the strict read refuses what the Go engine
+	// reads; the token past 2^64 is refused by both with or without it
+	wantRed := []string{jsonInt64Texts[1], jsonInt64Texts[2]}
 	if strings.Join(red, " | ") != strings.Join(wantRed, " | ") {
 		t.Fatalf("the signed compare is red on %q, want exactly %q", red, wantRed)
 	}

@@ -128,6 +128,7 @@ var catalog = []Entry{
 	e("internal/tabletext", "table JSON text", "go test ./internal/tabletext", "go test ./internal/tabletext"),
 	e("internal/testinputs", "repository files a test's child process reads, recorded for the go test cache", "go test ./internal/testinputs", "go test ./internal/testinputs"),
 	e("internal/testproc", "bounded child processes for tests", "go test ./internal/testproc", "go test ./internal/testproc"),
+	e("internal/testvolume", "a test working directory on a case-folding volume (Probe/probe, composed/decomposed é), as APFS and NTFS fold", "go test ./internal/testvolume", "go test ./internal/testvolume"),
 	e("internal/testselect", "a -run/-not selection listed as test names at the root, less the nightly tier", "go test ./internal/testselect", "go run ./tools/gotestselect -not X ./pkg"),
 	e("internal/testreg", "the test registry: load, select, shard, run, cover, extract", "go run ./tools/schema-test run --group pr", "go run ./tools/schema-test coverage"),
 	e("internal/tablewire", "table wire codecs", "go test ./internal/tablewire", "go test ./internal/tablewire"),
@@ -246,6 +247,7 @@ var catalog = []Entry{
 	e("tools/retiredskips", "fails a fixed-form gate on any skip line it prints", "go test ./tools/retiredskips", "build/retiredskips -leg LEG -- cmd"),
 	e("tools/roadmap", "ROADMAP.md table honesty", "go test ./tools/roadmap", "go test ./tools/roadmap"),
 	e("tools/sabotage", "negative-control sabotages", "go test ./tools/negativecontrols", "go run ./tools/sabotage"),
+	e("tools/singlepasscheck", "holds the C/C++ single-pass conditional rewrite to the emitted form: same tokens under every configuration, every branch kept", "go test ./tools/singlepasscheck", "make tables-single-pass-equivalence"),
 	e("tools/schema-test", "the one test driver: run, list, coverage, extract", "go run ./tools/schema-test run --group pr", "go run ./tools/schema-test run --group nightly"),
 	e("tools/tlcrun", "TLC runner held to tla/RUNS.tsv", "go test ./tools/tlcrun", "bash tla/run-tlc.sh"),
 	e("tools/treelock", "generated-tree lock", "go test ./tools/treelock", "go test ./tools/treelock"),
@@ -256,6 +258,7 @@ var catalog = []Entry{
 
 	// test/
 	e("test/bench", "C++ bench drivers", "make test", "./build/schema_test_bench"),
+	e("test/happy", "per-PR happy path: one round trip per language (make/happy-path.mk)", "make happy-c", "make happy-<lang>"),
 	e("test/c", "C packet tests", "make test-c", "make test-c"),
 	e("test/c-ludicrous", "C int128 tests", "make test-c", "make test-c"),
 	e("test/c-hostile", "C hostile-corpus runner", "make schema-c-runs-hostile-corpus", "make schema-c-runs-hostile-corpus"),

@@ -143,7 +143,7 @@ fn r28_guard_chain_outer_tag_guards_inner_entries() {
     let rec = record(1, 1, 42, 7);
     let mut image = [0u8; 10];
     let mut report = TableFixedReport::default();
-    table_fixed_run(&plan, &guards, remap, &rec, &mut image, &mut report);
+    let ran = table_fixed_run(&plan, &guards, remap, &rec, &mut image, &mut report);
 
     check(image[0] == 1, "guard chain GREEN: inner tag 1 written under the chain");
     check(
@@ -155,8 +155,8 @@ fn r28_guard_chain_outer_tag_guards_inner_entries() {
         "guard chain GREEN: tail 7 lands unguarded",
     );
     check(
-        !report.damaged && !report.refused,
-        "guard chain GREEN: no damage or refusal",
+        ran && !report.refused,
+        "guard chain GREEN: the run reaches nothing past the record, no refusal",
     );
 
     // NEGATIVE CONTROL: outer tag is 2 (arm 'other'). The OUTER link does

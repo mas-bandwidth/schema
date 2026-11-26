@@ -10,22 +10,28 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"text/template"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testreg"
+	"github.com/mas-bandwidth/schema/v2/internal/testreg/extract"
 )
 
 // CI is generated from the registry (docs/TEST-REGISTRY.md, "CI"). Three
 // workflows run tests, and every step of theirs that runs one calls only
 // schema-test:
 //
-//   - ci-fast.yml, per pull request and on main: the registry's pr group, one
-//     job per (language, shard). This file writes it whole, with
+//   - ci-fast.yml, per pull request and on main: the registry's pr group in
+//     one job, per language one row, make happy-<lang>, and nothing else
+//     (prGroup), side by side, the job's measured setup and the run's
+//     critical path within its two minutes. This file writes it whole, with
 //     docs/CI-TIERS.md, from the registry and the seconds its tests were
 //     measured at; TestTheCIFilesAreCurrent regenerates both and diffs, so a
 //     hand edit is red.
@@ -37,12 +43,51 @@ import (
 // workflow that runs anything but schema-test is red by file and line, and
 // so is a schedule anywhere but schema-nightly.yml.
 
-// shardBudget is the measured test seconds one ci-fast shard may carry:
-// testreg's, the one budget the driver cuts calls by, so the two cannot
-// drift. The job's cap is two minutes on a cold runner; the rest is the
-// job's setup. A language's leg build is inside its adapter's first call, so
-// it is inside the measured seconds.
-const shardBudget = testreg.ShardBudget
+// THE PER-PR JOB (Glenn, 2026-11-25: "just compile it, run a simple happy
+// path per-language"; the whole pr group is one job of two minutes or less,
+// about 6.7 s a language). The pr group is exactly, for every language row,
+// one instance of the happy-path family (happyFamily: make happy-<lang>,
+// which is both the language's compile and its happy path): no other row, no
+// language-free row, and none twice. Every other row runs in the nightly
+// workflows, by its tier. prGroup holds the
+// group to that, and to the job's budget: the job's whole wall time, its
+// setup (prTiming.Setup, measured) and the parallel run's critical path,
+// at most prJobBudget, each row measured (an unmeasured row weighs nothing
+// honest). A language over its serial share (prJobBudget over the
+// languages) gets faster (it builds only what its happy path needs, from a
+// smaller unit); no row moves out, and the budget is never raised.
+const (
+	prJobBudget    = 120.0
+	prJob          = "schema-test-pr"
+	prJobRunPrefix = "go run ./tools/schema-test run"
+)
+
+// prRunTiming is what the pr job's wall time is made of besides its rows'
+// own seconds.
+type prRunTiming struct {
+	// Jobs is how many languages' calls the run makes at once (its --jobs,
+	// testreg.Runner.Jobs): a fleet runner's share of its host's cores.
+	Jobs int
+	// Setup is the job's measured time before the run step: the runner's
+	// job set-up, the checkout, the merge of main, the pinned siblings, the
+	// SDK's environment, and the driver's build.
+	Setup float64
+	// Run is the run step's measured wall time, which the critical path
+	// computed from the rows' seconds is held beside: the builds the run
+	// prepares one after another before its calls are in the rows' seconds
+	// as shares, so the measured wall is the floor of what the job pays.
+	Run float64
+}
+
+// prTiming is the pr job's, as measured on hetzner1 on 2026-11-26, from a
+// fresh depth-1 clone with the SDK's environment, 4 lanes, and a Go build
+// cache that was empty (a second clone on the then-warm cache measured
+// 31.7 s of setup and a 30.8 s run). Setup is 47.3 s: the clone 1.14 s, the
+// pinned siblings cloned at once 1.79 s, the driver's build 42.30 s, and the
+// runner's own job set-up and merge of main, 1 s each in ci-fast run
+// 45548347714's schema-test job. Run is the run step's 30.96 s, bin/schema
+// built cold inside it; the rows' lang_seconds are that run's.
+var prTiming = prRunTiming{Jobs: 4, Setup: 47.3, Run: 31.0}
 
 const (
 	fastWorkflow    = ".github/workflows/ci-fast.yml"
@@ -66,7 +111,7 @@ var setupActions = map[string]string{
 	"merge-main":        "merges current main into a lane pull request's checkout",
 	"schema-test-setup": "the sibling runtimes, the runner's SDK and the row's interpreter pins",
 	"fixed-corpus":      "builds and shares the fixed corpus, held to the checkout's source",
-	"produce":           "builds and shares a producer's tree (a leg the env plants run), held to the checkout's source",
+	"produce":           "builds and shares a producer's tree (a conformance leg), held to the checkout's source",
 	"main-tree":         "exports main's tree and ledger for schema-test extract",
 	"dist-pins":         "the lua, luau, goose and lobster pins",
 	"python":            "the python pins",
@@ -74,240 +119,133 @@ var setupActions = map[string]string{
 	"moo":               "the moo pin",
 }
 
-// producer is one row of ci-fast.yml's produce matrix: a tree a later job
-// reads, built once per run (.github/actions/produce), never in every shard
-// that needs it. Target is the make target that builds it, Paths what it
-// makes. The language-free shards run the env plants
-// (plant.corpus-plants.*), whose Prepare then finds these legs built.
-//
-// Measured cold on captain (2026-11-25, load 5-7, 64 cores): the go leg
-// 55.0 s, the goose leg 9.3 s; replayed, make rebuilds nothing but the go
-// driver's own go build. The cpp leg, the reference driver in its
-// translation units (Makefile, CONFORMANCE_DRIVER_TUS), 72.2 s cold under
-// make -j4 on 4 of captain's cores; replayed, make rebuilds nothing. Its
-// tree carries each unit's recorded compile seconds, which the registry row
-// harness-run.makefile.conformance-cpp-tu-budget holds to the budget beside
-// that list in a language-free shard, after the fetch: a unit that grows
-// back toward the old single one is red by name before the leg stops
-// fitting. The lint rows build exactly the tree each lint gate reads
-// (internal/ci TestEveryLintGateReadsAProducedTree), so a shard pays the
-// lint and never the generation in front of it.
-type producer struct {
-	Name   string `json:"name"`
-	Target string `json:"target"`
-	Paths  string `json:"paths"`
+// prRow is one language's row in the pr group: its happy path, by instance
+// name, with its recorded seconds.
+type prRow struct {
+	Lang    string
+	Happy   string
+	Seconds float64
 }
 
-var producers = []producer{
-	{"conformance-leg-go", "conformance-leg-go", "bin/schema build/conformance-go build/conformance-harness-vm build/tables-counted-min-variable build/tables-generated-go build/tables-generated-go-announce build/tables-generated-go-framing build/tables-generated-go-r19 build/tables-lists-variable build/tables-r1-variable"},
-	{"conformance-leg-goose", "conformance-leg-goose", "bin/schema build/conformance-goose build/conformance-harness-vm build/schema-goose"},
-	{"conformance-leg-cpp", "conformance-leg-cpp", "bin/schema build/conformance-cpp build/conformance-cpp-objs build/conformance-harness-vm build/schema_test_cook build/tables-generated"},
-	{"lint-cpp", "tables-cpp-clean-inputs", "bin/schema build/tables-generated generated/cpp generated/bench/cpp generated/bench/tables/cpp generated/bench/paired/cpp"},
-	{"lint-js", "tables-js-clean-inputs", "bin/schema build/tables-generated-js generated/js generated/js-ludicrous generated/bench/js generated/bench/paired/js"},
-	{"lint-rust", "tables-rust-clippy-inputs", "bin/schema build/tables-generated-rust build/tables-generated-rust-witnesses"},
-	{"lint-lua", "tables-lua-luacheck-inputs", "bin/schema build/lua-luacheck-corpus build/lua-luacheck.rc"},
+// prGroup reads the registry's pr group and holds it to the per-PR rule: for
+// every language row, exactly one instance of the happy-path family, and
+// nothing else; every instance measured, by its language's own seconds; the
+// job's setup and the run's critical path within prJobBudget. Each break is
+// named. The rows come back in the order the run starts them (the
+// registry's, so its languages' for one row), then any language left out.
+func prGroup(reg *testreg.Registry) ([]prRow, []string) {
+	return prGroupTimed(reg, prTiming)
 }
 
-// ciRow is one job of ci-fast.yml's schema-test-pr matrix.
-type ciRow struct {
-	Lang    string  `json:"lang"`
-	Shard   string  `json:"shard"`
-	Tests   int     `json:"-"`
-	Seconds float64 `json:"-"`
+// prCriticalPath is the parallel run's wall time from the rows' recorded
+// seconds: each language's row is one harness call, and the calls start in
+// the rows' order (the registry's languages, the run's plan order), each
+// on the first of jobs lanes to come free, as the run's shared lanes take
+// them (testreg.SharedCheckout); the busiest lane is the path.
+func prCriticalPath(rows []prRow, jobs int) float64 {
+	lanes := make([]float64, max(jobs, 1))
+	for _, r := range rows {
+		s := r.Seconds
+		least := 0
+		for i := range lanes {
+			if lanes[i] < lanes[least] {
+				least = i
+			}
+		}
+		lanes[least] += s
+	}
+	return slices.Max(lanes)
 }
 
-// ciMatrix cuts the pr group into rows: per language (and "none" for the
-// language-free tests), the fewest shards whose every part carries at most
-// budget measured seconds. The parts are testreg.Parts of exactly the list
-// `schema-test run --group pr --lang L` selects, so the job runs what this
-// counted. A test heavier than a shard is named: it fits no shard, however
-// many there are, and is split into rows that fit, never moved out of the
-// pull-request tier to fit.
-func ciMatrix(reg *testreg.Registry, budget float64) ([]ciRow, []string) {
+// prGroupTimed is prGroup with the job's timing given.
+func prGroupTimed(reg *testreg.Registry, timing prRunTiming) ([]prRow, []string) {
 	g, ok := reg.Group("pr")
 	if !ok {
 		return nil, []string{"the registry has no group pr"}
 	}
-	all, err := reg.Select(g.Query())
+	sel, err := reg.Select(g.Query())
 	if err != nil {
 		return nil, []string{fmt.Sprintf("group pr: %v", err)}
 	}
-	// a language none of whose tests is in the pr group has no job (the
-	// nightly runs them); Select refuses a query that matches nothing
-	perLang := map[string]int{}
-	for _, inst := range all.Instances {
-		perLang[inst.Lang]++
-	}
-	langs := append(reg.LangNames(), testreg.LangFree)
-	var rows []ciRow
 	var problems []string
+	byLang := map[string]*prRow{}
+	langs := reg.LangNames()
 	for _, l := range langs {
-		if perLang[l] == 0 {
+		byLang[l] = &prRow{Lang: l}
+	}
+	total := 0.0
+	var runOrder []string // the languages in the order the run starts them
+	for _, inst := range sel.Instances {
+		r, ok := byLang[inst.Lang]
+		if ok && !slices.Contains(runOrder, inst.Lang) {
+			runOrder = append(runOrder, inst.Lang)
+		}
+		if !ok {
+			problems = append(problems, fmt.Sprintf("%s is in the pr group, and the pr group holds per language one happy-path row (family %s), never a language-free row: it runs nightly", inst.Full, happyFamily))
 			continue
 		}
-		q := g.Query()
-		q.Langs = []string{l}
-		sel, err := reg.Select(q)
-		if err != nil {
-			problems = append(problems, fmt.Sprintf("group pr, language %s: %v", l, err))
-			continue
+		if !measured(inst) {
+			problems = append(problems, fmt.Sprintf("%s has no measured seconds: a pr row is measured alone on a fleet runner, so the job's sum is honest", inst.Full))
 		}
-		insts := sel.Instances
-		heavy := false
-		for _, inst := range insts {
-			if w := testreg.Weight(inst); w > budget {
-				problems = append(problems, fmt.Sprintf("%s weighs %.1f s, past one shard's %.0f s budget: split it into rows that fit (by package or target); a nightly tier is not the way under the budget", inst.Full, w, budget))
-				heavy = true
-			}
-		}
-		if heavy {
-			continue
-		}
-		n := 1
-		for ; n < len(insts); n++ {
-			if fits(testreg.Parts(insts, n), budget) {
-				break
-			}
-		}
-		parts := testreg.Parts(insts, n)
-		secs := testreg.PartSeconds(parts)
-		for i := range parts {
-			rows = append(rows, ciRow{Lang: l, Shard: fmt.Sprintf("%d/%d", i+1, n), Tests: len(parts[i]), Seconds: secs[i]})
+		w := testreg.Weight(inst)
+		total += w
+		r.Seconds += w
+		switch {
+		case inst.Test.Family != happyFamily:
+			problems = append(problems, fmt.Sprintf("%s is family %s, and the pr group holds per language one happy-path row (family %s: make happy-<lang>, the compile and the happy path), nothing else: it runs nightly", inst.Full, inst.Test.Family, happyFamily))
+		case r.Happy != "":
+			problems = append(problems, fmt.Sprintf("%s and %s are both happy paths of %s: the pr group holds one per language", r.Happy, inst.Full, inst.Lang))
+		default:
+			r.Happy = inst.Full
 		}
 	}
-	if len(problems) == 0 {
-		problems = append(problems, matrixAccount(reg, rows, budget)...)
+	// the rows in the order the run starts them, which the critical path
+	// follows, then any language the group left out
+	var rows []prRow
+	for _, l := range langs {
+		if !slices.Contains(runOrder, l) {
+			runOrder = append(runOrder, l)
+		}
+	}
+	for _, l := range runOrder {
+		r := byLang[l]
+		if r.Happy == "" {
+			problems = append(problems, fmt.Sprintf("%s has no happy-path row (family %s) in the pr group", l, happyFamily))
+		}
+		rows = append(rows, *r)
+	}
+	path := prCriticalPath(rows, timing.Jobs)
+	if wall := timing.Setup + max(path, timing.Run); wall > prJobBudget {
+		var each []string
+		for _, r := range rows {
+			if r.Seconds > prJobBudget/float64(len(rows)) {
+				each = append(each, fmt.Sprintf("%s %.1f s", r.Lang, r.Seconds))
+			}
+		}
+		problems = append(problems, fmt.Sprintf("the pr job takes %.1f s, past its %.0f s: setup %.1f s and the run's critical path %.1f s on %d lanes (computed %.1f s from the rows, measured %.1f s; the rows sum to %.1f s); a language past its %.1f s serial share gets faster (build only what its happy path needs, from a smaller unit), never moves a row out, and the budget is never raised; past the share: %s",
+			wall, prJobBudget, timing.Setup, max(path, timing.Run), timing.Jobs, path, timing.Run, total, prJobBudget/float64(max(1, len(rows))), strings.Join(each, ", ")))
 	}
 	return rows, problems
 }
 
-// matrixAccount runs the matrix as its jobs will (--group pr --lang L
-// --shard i/N) and holds it to the pr group: every name in exactly one job,
-// none left out, no shard past budget. Each break is named.
-func matrixAccount(reg *testreg.Registry, rows []ciRow, budget float64) []string {
-	g, ok := reg.Group("pr")
-	if !ok {
-		return []string{"the registry has no group pr"}
+// measured: the instance's own seconds are recorded: its language's, in a
+// union row's Go test or another row's lang_seconds. A row's one number is
+// its slowest language's, never this language's own.
+func measured(inst testreg.Instance) bool {
+	if tests, union, err := testreg.GoTestsOf(inst.Test); union && err == nil {
+		return tests[inst.Lang].Seconds > 0
 	}
-	all, err := reg.Select(g.Query())
-	if err != nil {
-		return []string{fmt.Sprintf("group pr: %v", err)}
-	}
-	var bad []string
-	seen := map[string]int{}
-	count := map[string]int{} // a language's shard count, from its first row
-	for _, r := range rows {
-		q := g.Query()
-		q.Langs = []string{r.Lang}
-		sel, err := reg.Select(q)
-		if err != nil {
-			bad = append(bad, fmt.Sprintf("%s %s: %v", r.Lang, r.Shard, err))
-			continue
-		}
-		var i, n int
-		if _, err := fmt.Sscanf(r.Shard, "%d/%d", &i, &n); err != nil {
-			bad = append(bad, fmt.Sprintf("%s %s: the shard does not read: %v", r.Lang, r.Shard, err))
-			continue
-		}
-		// the fewest shards that fit: one fewer than n would fit too is a
-		// job too many, so the count moves down as rows get lighter or move
-		if c, ok := count[r.Lang]; !ok {
-			count[r.Lang] = n
-			for m := 1; m < n; m++ {
-				if fits(testreg.Parts(sel.Instances, m), budget) {
-					bad = append(bad, fmt.Sprintf("%s is cut into %d shards, and %d fit: the matrix is the fewest shards that fit", r.Lang, n, m))
-					break
-				}
-			}
-		} else if c != n {
-			bad = append(bad, fmt.Sprintf("%s %s: the language's shards are cut %d ways and %d ways: one count per language", r.Lang, r.Shard, c, n))
-		}
-		part, err := testreg.Shard(sel.Instances, i, n)
-		if err != nil {
-			bad = append(bad, fmt.Sprintf("%s %s: %v", r.Lang, r.Shard, err))
-			continue
-		}
-		secs := 0.0
-		for _, inst := range part {
-			seen[inst.Full]++
-			secs += testreg.Weight(inst)
-		}
-		if secs > budget {
-			bad = append(bad, fmt.Sprintf("%s %s carries %.1f s, past %.0f s", r.Lang, r.Shard, secs, budget))
-		}
-	}
-	missing := 0
-	for _, inst := range all.Instances {
-		switch seen[inst.Full] {
-		case 1:
-		case 0:
-			missing++
-		default:
-			bad = append(bad, fmt.Sprintf("%s runs in %d jobs, not 1", inst.Full, seen[inst.Full]))
-		}
-	}
-	if missing > 0 || len(seen) != len(all.Instances) {
-		bad = append(bad, fmt.Sprintf("the jobs run %d of the pr group's %d names: %d left out", len(seen), len(all.Instances), missing))
-	}
-	return bad
+	return inst.Test.LangSeconds[inst.Lang] > 0
 }
 
 // maxMatrixJobs is the most jobs GitHub Actions lets one matrix make; a
 // matrix past it fails the whole run before any job starts.
 const maxMatrixJobs = 256
 
-// prJobPrefix names the shard jobs: schema-test-pr-1, schema-test-pr-2, ...
-const prJobPrefix = "schema-test-pr-"
-
-// prJob is one shard job of ci-fast.yml: its name and its matrix.
-type prJob struct {
-	Name    string
-	Include string
-}
-
-// matrixJobs cuts the matrix rows, in order, into jobs of at most
-// maxMatrixJobs rows each. A language's shards stay in one job when they fit
-// in what is left of it; a language past the limit on its own is split.
-func matrixJobs(rows []ciRow) [][]ciRow {
-	var jobs [][]ciRow
-	var cur []ciRow
-	for start := 0; start < len(rows); {
-		end := start
-		for end < len(rows) && rows[end].Lang == rows[start].Lang {
-			end++
-		}
-		lang := rows[start:end]
-		if len(cur)+len(lang) > maxMatrixJobs && len(cur) > 0 {
-			jobs = append(jobs, cur)
-			cur = nil
-		}
-		for len(lang) > maxMatrixJobs {
-			jobs = append(jobs, lang[:maxMatrixJobs])
-			lang = lang[maxMatrixJobs:]
-		}
-		cur = append(cur, lang...)
-		start = end
-	}
-	if len(cur) > 0 {
-		jobs = append(jobs, cur)
-	}
-	return jobs
-}
-
-// fits: every part runs a test and carries at most budget seconds.
-func fits(parts [][]testreg.Instance, budget float64) bool {
-	for i, s := range testreg.PartSeconds(parts) {
-		if len(parts[i]) == 0 || s > budget {
-			return false
-		}
-	}
-	return true
-}
-
 // generatedWorkflowFiles are the workflows ciFiles writes, by repository
 // path (TestTheBaseLeavesOutExactlyTheGeneratedWorkflows holds the two to
-// each other).
-var generatedWorkflowFiles = []string{fastWorkflow, roadmapFile, nightlyWorkflow}
+// each other): the extract's list, whose jobs as generated are no items.
+var generatedWorkflowFiles = extract.GeneratedWorkflows
 
 // pinsBaseRef is the commit a change merges into, which `extract
 // --pins-base` holds the not-yet-generated list to, from the GitHub event
@@ -345,31 +283,22 @@ var sumRe40 = regexp.MustCompile(`^[0-9a-f]{40}$`)
 
 // ciFiles are the generated files, by repository path.
 func ciFiles(reg *testreg.Registry) (map[string][]byte, error) {
-	rows, problems := ciMatrix(reg, shardBudget)
+	rows, problems := prGroup(reg)
 	if len(problems) > 0 {
-		return nil, fmt.Errorf("the pr group does not cut into shards that fit:\n  %s", strings.Join(problems, "\n  "))
-	}
-	var jobs []prJob
-	for i, chunk := range matrixJobs(rows) {
-		include, err := json.Marshal(chunk)
-		if err != nil {
-			return nil, err
-		}
-		jobs = append(jobs, prJob{Name: fmt.Sprintf("%s%d", prJobPrefix, i+1), Include: string(include)})
-	}
-	produce, err := json.Marshal(producers)
-	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("the pr group is not one happy-path row per language within the job's %.0f s:\n  %s", prJobBudget, strings.Join(problems, "\n  "))
 	}
 	var wf bytes.Buffer
-	if err := fastTemplate.Execute(&wf, map[string]any{"Jobs": jobs, "Producers": string(produce), "Budget": shardBudget, "MaxJobs": maxMatrixJobs}); err != nil {
+	if err := fastTemplate.Execute(&wf, map[string]any{"Job": prJob, "Budget": prJobBudget, "Run": prRunLine}); err != nil {
 		return nil, err
+	}
+	if p := checkFastRuns(wf.Bytes()); len(p) > 0 {
+		return nil, fmt.Errorf("%s:\n  %s", fastWorkflow, strings.Join(p, "\n  "))
 	}
 	road, err := roadmapWorkflow(reg)
 	if err != nil {
 		return nil, err
 	}
-	night, err := nightlyWorkflowText()
+	night, err := nightlyWorkflowText(reg)
 	if err != nil {
 		return nil, err
 	}
@@ -426,18 +355,34 @@ func roadmapWorkflow(reg *testreg.Registry) ([]byte, error) {
 }
 
 // nightlyWorkflowText is schema-nightly.yml: nightlyParts part jobs of the
-// full run, and the verdict that merges them.
-func nightlyWorkflowText() ([]byte, error) {
+// full run, and the verdict that merges them. Every machine property a row
+// of the registry needs (Test.Needs) is a runner label each part job asks
+// for, and a property its bench declares to fullrun (--bench local=2+P),
+// which fullrun probes on the runner: a part lands only on a runner whose
+// label says it has the property, and holds it to the machine.
+func nightlyWorkflowText(reg *testreg.Registry) ([]byte, error) {
 	parts := make([]string, nightlyParts)
 	for i := range parts {
 		parts[i] = fmt.Sprint(i + 1)
 	}
-	return execTemplate("schema-nightly.yml.tmpl", map[string]any{"Parts": nightlyParts, "PartList": "[" + strings.Join(parts, ", ") + "]"})
+	needs := map[string]bool{}
+	for _, t := range reg.Tests {
+		for _, n := range t.Needs {
+			needs[n] = true
+		}
+	}
+	var labels, provides string
+	for _, n := range slices.Sorted(maps.Keys(needs)) {
+		labels += ", " + n
+		provides += "+" + n
+	}
+	return execTemplate("schema-nightly.yml.tmpl", map[string]any{"Parts": nightlyParts, "PartList": "[" + strings.Join(parts, ", ") + "]",
+		"Labels": labels, "Provides": provides})
 }
 
 // tiersPage is docs/CI-TIERS.md: the three test-running workflows, each
-// tier's counts, and every row of the per-PR matrix with what it carries.
-func tiersPage(reg *testreg.Registry, rows []ciRow) []byte {
+// tier's counts, and the per-PR job's rows, per language.
+func tiersPage(reg *testreg.Registry, rows []prRow) []byte {
 	var b strings.Builder
 	b.WriteString(`# CI tiers: what a pull request runs, and what waits for the night
 
@@ -451,7 +396,7 @@ step of theirs that runs one calls only ` + "`schema-test`" + `:
 
 | workflow | when | what it runs |
 |---|---|---|
-| ` + "`ci-fast.yml`" + ` | every pull request, every push to main, dispatch | ` + "`schema-test run --group pr --lang L --shard i/N`" + `, one job per row below; ` + "`schema-test extract`" + ` against main's ledger; ` + "`schema-test ci --check`" + `; the ` + "`verdict`" + ` job |
+| ` + "`ci-fast.yml`" + ` | every pull request, every push to main, dispatch | ` + "`schema-test run --group pr`" + `, one job: the rows below; ` + "`schema-test extract`" + ` against main's ledger; ` + "`schema-test ci --check`" + `; the ` + "`verdict`" + ` job |
 | ` + "`schema-nightly.yml`" + ` | nightly, dispatch | ` + "`schema-test run --group nightly`" + `: every tier, every language, through ` + "`go run ./tools/fullrun`" + `; a language that does not answer a row is red by name |
 | ` + "`roadmap.yml`" + ` | pull requests touching the roadmap, pushes to main | ` + "`schema-test run none.nightly.tooling.roadmap.check`" + `, the row that reads the commit range, with full history |
 
@@ -470,8 +415,8 @@ and their data, and the workflows that run none:
 	}
 	b.WriteString(`
 Nothing selects by path or branch: every pull request runs the whole ` + "`pr`" + `
-group, every ready test of tiers unit and functional, and a push to main runs
-the same.
+group, and a push to main runs the same. Every other row runs in the nightly
+workflows, by its tier.
 
 ## The tiers
 
@@ -486,30 +431,31 @@ the same.
 		fmt.Fprintf(&b, "| `%s` | %d | %s |\n", t.Name, count[t.Name], cell(t.What))
 	}
 	fmt.Fprintf(&b, `
-## The per-PR matrix
+## The per-PR job
 
-The `+"`pr`"+` group is cut per language into the fewest shards whose every part
-carries at most %.0f s of measured test time (each test's `+"`seconds`"+` in the
-registry; a test with none weighs %.0f s until a run measures it, so a shard of
-unmeasured tests is held to the budget only once they are measured). Each row is
-one job, in jobs of at most `+"`%d`"+` rows (GitHub's limit on one matrix),
-`+"`schema-test run --group pr --lang L --shard i/N`"+`.
+One job, `+"`%s`"+`, runs `+"`%s`"+`: for every language, one row,
+`+"`make happy-<lang>`"+` (`+"`make/happy-path.mk`"+`), which generates one small schema,
+compiles it with that language's program and does one round trip: the
+language's compile and its happy path, and nothing else. The languages run
+side by side, %d at once. The whole job, its setup (%.1f s, measured) and the
+run's critical path (the longer of the path the rows' seconds give and the
+run's measured %.1f s), is at most %.0f s, the job's two minutes; a language
+past its %.1f s serial share gets faster, and no row moves out to fit.
 
-| language | shard | tests | measured seconds |
-|---|---|---|---|
-`, shardBudget, testreg.DefaultSeconds, maxMatrixJobs)
-	jobs, tests, secs := 0, 0, 0.0
+| language | happy-path row | measured seconds |
+|---|---|---|
+`, prJob, prRunLine, prTiming.Jobs, prTiming.Setup, prTiming.Run, prJobBudget, prJobBudget/float64(max(1, len(rows))))
+	secs := 0.0
 	for _, r := range rows {
-		fmt.Fprintf(&b, "| `%s` | %s | %d | %.1f |\n", r.Lang, r.Shard, r.Tests, r.Seconds)
-		jobs++
-		tests += r.Tests
+		fmt.Fprintf(&b, "| `%s` | `%s` | %.1f |\n", r.Lang, r.Happy, r.Seconds)
 		secs += r.Seconds
 	}
-	fmt.Fprintf(&b, "| **every row** | **%d jobs** | **%d** | **%.1f** |\n", jobs, tests, secs)
+	fmt.Fprintf(&b, "| **every language, one after another** | | **%.1f** |\n", secs)
+	fmt.Fprintf(&b, "| **the run's critical path, %d at once** | | **%.1f** |\n", prTiming.Jobs, prCriticalPath(rows, prTiming.Jobs))
 	b.WriteString(`
-To change the matrix, change the registry (a row, or its measured
-` + "`seconds`" + `: ` + "`schema-test run ... --write-seconds`" + ` on a fleet runner, or
-` + "`schema-test seconds LOG...`" + ` from a run's log), then run
+To change the job, change the registry's ` + "`pr`" + ` group (its query names
+the rows) or a row's measured ` + "`lang_seconds`" + ` (` + "`schema-test run ... --write-seconds`" + `
+on a fleet runner, or ` + "`schema-test seconds LOG...`" + ` from a run's log), then run
 ` + "`go run ./tools/schema-test ci`" + `.
 `)
 	return []byte(b.String())
@@ -525,11 +471,13 @@ var fastTemplate = template.Must(template.New("ci-fast.yml").Delims("[[", "]]").
 # difference. docs/CI-TIERS.md says what each job runs; docs/TEST-REGISTRY.md
 # is the registry and the driver.
 #
-# THE PER-PR TIER. Every pull request, and every push to main, runs the
-# registry's pr group whole: every ready test of tiers unit and functional,
-# cut per language into shards of at most [[.Budget]] s of measured test time
-# (an unmeasured test weighs 1 s), each job capped at two minutes. Nothing
-# selects by path or branch. Every step that runs a test calls schema-test, and only it
+# THE PER-PR JOB. Every pull request, and every push to main, runs the
+# registry's pr group whole in one job, [[.Job]]: for every language one row,
+# make happy-<lang> (make/happy-path.mk), its compile and its happy path, and
+# nothing else, the languages side by side, the whole job (setup and run)
+# measured at most [[.Budget]] s, and capped at two minutes.
+# Every other row runs in the nightly workflows. Nothing selects by path or
+# branch. Every step that runs a test calls schema-test, and only it
 # (TestEveryWorkflowStepCallsOnlySchemaTest). release.yml's fast lane is
 # locked on a green run of this workflow at the commit.
 #
@@ -608,8 +556,9 @@ jobs:
           BASE_TREE: ${{ steps.main.outputs.base }}
         run: go run ./tools/schema-test extract --since "$MAIN_TREE" --pins-base "$BASE_TREE"
 
-  # the complete fixed corpus the language-free Go tests read, built once
-  fixed-corpus:
+  # THE REGISTRY'S PR GROUP, one job (docs/CI-TIERS.md): every language's
+  # make happy-<lang>, its compile and its happy path
+  [[.Job]]:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 2
@@ -624,89 +573,16 @@ jobs:
         with:
           go-version: '1.26'
           cache: false
-      - uses: ./.github/actions/fixed-corpus
-        with:
-          mode: produce
-
-  # the producers' trees (the legs the env plants run), each built once per
-  # run, kept in the runner's cache by what it is built from, and shared
-  produce:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    name: produce (${{ matrix.name }})
-    runs-on: [self-hosted, Linux, X64, fleet, schema]
-    timeout-minutes: 2
-    defaults:
-      run:
-        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
-    strategy:
-      fail-fast: false
-      matrix:
-        include: [[.Producers]]
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/merge-main
-      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
-        if: runner.environment == 'github-hosted'
-        with:
-          go-version: '1.26'
-          cache: false
       - uses: ./.github/actions/schema-test-setup
         with:
-          lang: none
-      - uses: ./.github/actions/produce
-        with:
-          mode: produce
-          name: ${{ matrix.name }}
-          target: ${{ matrix.target }}
-          paths: ${{ matrix.paths }}
+          lang: all
+      - name: schema-test run --group pr
+        run: [[.Run]]
 
-[[- range .Jobs]]
-
-  # THE REGISTRY'S PR GROUP, one job per row of docs/CI-TIERS.md's matrix,
-  # cut into jobs of at most [[$.MaxJobs]] rows (GitHub's limit on one matrix)
-  [[.Name]]:
-    needs: [fixed-corpus, produce]
-    if: (always() && !cancelled() && needs.fixed-corpus.result == 'success' && needs.produce.result == 'success' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
-    name: schema-test-pr (${{ matrix.lang }} ${{ matrix.shard }})
-    runs-on: [self-hosted, Linux, X64, fleet, schema]
-    timeout-minutes: 2
-    defaults:
-      run:
-        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
-    strategy:
-      fail-fast: false
-      matrix:
-        include: [[.Include]]
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/merge-main
-      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
-        if: runner.environment == 'github-hosted'
-        with:
-          go-version: '1.26'
-          cache: false
-      - uses: ./.github/actions/schema-test-setup
-        with:
-          lang: ${{ matrix.lang }}
-      - uses: ./.github/actions/fixed-corpus
-        if: matrix.lang == 'none'
-        with:
-          mode: fetch
-      - uses: ./.github/actions/produce
-        if: matrix.lang == 'none'
-        with:
-          mode: fetch
-      - name: schema-test run --group pr --lang ${{ matrix.lang }} --shard ${{ matrix.shard }}
-        env:
-          # tooling.caa.self-test reads main's tip from GitHub, as caa-self-test.yml did
-          GITHUB_TOKEN: ${{ github.token }}
-        run: go run ./tools/schema-test run --group pr --lang "${{ matrix.lang }}" --shard "${{ matrix.shard }}"
-[[- end]]
-
-  # green only when every job above ran and passed: each shard's run fails on
-  # expected != ran, and ci --check holds the matrix to the whole pr group
+  # green only when every job above ran and passed: the pr job's run fails on
+  # expected != ran, and ci --check holds the job to the whole pr group
   verdict:
-    needs: [fork-pull-request, schema-test, fixed-corpus, produce[[range .Jobs]], [[.Name]][[end]]]
+    needs: [fork-pull-request, schema-test, [[.Job]]]
     if: (always() && !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 2
@@ -727,41 +603,61 @@ jobs:
         run: go run ./tools/schema-test ci --verdict
 `))
 
+// prRunLine is the one test run ci-fast.yml makes: the pr group, whole, in
+// one job.
+var prRunLine = prJobRunPrefix + " --group pr --jobs " + strconv.Itoa(prTiming.Jobs)
+
+// checkFastRuns holds ci-fast.yml to one test run per pull request: exactly
+// one step runs schema-test run, and it runs the pr group whole (no shard,
+// no language, no other selection). A second test-running step, which is a
+// second per-PR test job or a job split in two, is named by its line.
+func checkFastRuns(data []byte) []string {
+	var runs []string
+	for _, st := range workflowSteps(fastWorkflow, data) {
+		for _, c := range st.cmds {
+			if strings.HasPrefix(c.text, prJobRunPrefix) {
+				runs = append(runs, fmt.Sprintf("%d: %s", c.line, c.text))
+			}
+		}
+	}
+	switch {
+	case len(runs) == 0:
+		return []string{fmt.Sprintf("no step runs %q: the pr group has no job", prRunLine)}
+	case len(runs) > 1:
+		return []string{fmt.Sprintf("%d steps run tests per pull request, and the pr group runs in one job, one step: %s", len(runs), strings.Join(runs, "; "))}
+	}
+	if _, text, _ := strings.Cut(runs[0], ": "); text != prRunLine {
+		return []string{fmt.Sprintf("line %s: the pr job runs %q, the pr group whole, and nothing else", runs[0], prRunLine)}
+	}
+	return nil
+}
+
+// verdictJobs are the jobs the verdict job needs, every one of ci-fast.yml's
+// others.
+var verdictJobs = []string{"fork-pull-request", "schema-test", prJob}
+
 // verdict reads the needs context of the verdict job: every job passed, and
 // the fork guard alone may be skipped (it runs only for a fork's pull
-// request). A job skipped, cancelled or failed is named. shardJobs is how
-// many shard jobs the registry cuts the pr group into: the needs context
-// holds exactly those, so a dropped last job is named too.
-func verdict(needs []byte, shardJobs int) error {
+// request). A job skipped, cancelled or failed is named, and so is a job
+// missing from the context or one the workflow does not generate.
+func verdict(needs []byte) error {
 	var m map[string]struct {
 		Result string `json:"result"`
 	}
 	if err := json.Unmarshal(needs, &m); err != nil {
 		return fmt.Errorf("the needs context does not read: %w", err)
 	}
-	for _, want := range []string{"fork-pull-request", "schema-test", "fixed-corpus", "produce", prJobPrefix + "1"} {
+	for _, want := range verdictJobs {
 		if _, ok := m[want]; !ok {
 			return fmt.Errorf("the needs context has no job %s", want)
 		}
 	}
-	// the shard jobs are numbered 1..shardJobs: a dropped one is named, and
-	// so is one the registry does not cut
-	shards := 0
-	for job := range m {
-		if strings.HasPrefix(job, prJobPrefix) {
-			shards++
-		}
-	}
-	for i := 1; i <= shardJobs; i++ {
-		if _, ok := m[fmt.Sprintf("%s%d", prJobPrefix, i)]; !ok {
-			return fmt.Errorf("the needs context has no job %s%d", prJobPrefix, i)
-		}
-	}
-	if shards != shardJobs {
-		return fmt.Errorf("the needs context has %d shard jobs, and the registry cuts the pr group into %d", shards, shardJobs)
-	}
 	var bad []string
 	for job, v := range m {
+		if !slices.Contains(verdictJobs, job) {
+			bad = append(bad, fmt.Sprintf("%s: a job ci-fast.yml does not generate", job))
+			continue
+		}
 		if job == "fork-pull-request" && v.Result == "skipped" {
 			continue
 		}
@@ -1225,11 +1121,10 @@ func ciCmd(args []string, stdout io.Writer) error {
 		return err
 	}
 	if *verdictFlag {
-		rows, problems := ciMatrix(reg, shardBudget)
-		if len(problems) > 0 {
-			return fmt.Errorf("the pr group does not cut into shards that fit:\n  %s", strings.Join(problems, "\n  "))
+		if _, problems := prGroup(reg); len(problems) > 0 {
+			return fmt.Errorf("the pr group is not one happy-path row per language within the job's %.0f s:\n  %s", prJobBudget, strings.Join(problems, "\n  "))
 		}
-		if err := verdict([]byte(os.Getenv("NEEDS")), len(matrixJobs(rows))); err != nil {
+		if err := verdict([]byte(os.Getenv("NEEDS"))); err != nil {
 			return err
 		}
 		_, err := fmt.Fprintln(stdout, "schema-test ci: every job of this run passed")

@@ -949,17 +949,14 @@ defmodule Bench.BenchFixed do
     c = R.clamps(c, f_frame_tick, 0, 281_474_976_710_655)
     c = R.clamps(c, f_server_time, 0, 16_776_960)
     c = R.held_min(c, n_entities, 1)
-    c = R.clamps(c, n_entities, 1, 8)
-    {l_entities, c, m} = mixed_entity_fixed_list(b_entities, min(max(n_entities, 0), 8), c, m)
-    c = R.clamps(c, n_stats, 0, 80)
-    {l_stats, c, m} = mixed_stat_fixed_list(b_stats, min(max(n_stats, 0), 80), c, m)
+    c = R.held_count(c, n_entities, 1, 8)
+    {l_entities, c, m} = mixed_entity_fixed_list(b_entities, n_entities, c, m)
+    c = R.held_count(c, n_stats, 0, 80)
+    {l_stats, c, m} = mixed_stat_fixed_list(b_stats, n_stats, c, m)
     {f_game_event, c, m} = mixed_event_fixed_decode(b_game_event, c, m)
-    c = R.clamps(c, n_player_name, 0, 15)
-
-    {t_player_name, m} =
-      R.text(binary_part(b_player_name, 0, min(max(n_player_name, 0), 15)), <<>>, m, true)
-
-    c = R.clamps(c, n_payload, 0, 16)
+    c = R.held_len(c, n_player_name, 15)
+    {t_player_name, m} = R.text(binary_part(b_player_name, 0, n_player_name), <<>>, m, true)
+    c = R.held_len(c, n_payload, 16)
     c = R.fclamps(c, R.f32_value(f_aim_x), -1.0, 1.0)
     c = R.fclamps(c, R.f32_value(f_aim_y), -1.0, 1.0)
     c = R.fclamps(c, R.f32_value(f_aim_z), -1.0, 1.0)
@@ -992,7 +989,7 @@ defmodule Bench.BenchFixed do
        game_event: f_game_event,
        loadout: [f_loadout_0, f_loadout_1, f_loadout_2, f_loadout_3],
        player_name: t_player_name,
-       payload: binary_part(b_payload, 0, min(max(n_payload, 0), 16)),
+       payload: binary_part(b_payload, 0, n_payload),
        aim_x: R.fclamp(R.f32_value(f_aim_x), -1.0, 1.0),
        aim_y: R.fclamp(R.f32_value(f_aim_y), -1.0, 1.0),
        aim_z: R.fclamp(R.f32_value(f_aim_z), -1.0, 1.0),

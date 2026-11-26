@@ -106,30 +106,90 @@ func textListWire(t *testing.T, m *tabletext.Model, text string) []byte {
 	return wire
 }
 
+// textListsBoundFree is the BOUND-FREE TWIN of textListsSchema: the same names
+// and kinds with no bound on the rules elements, so the engine's writer (which
+// refuses an element past M, invalid_value) can still write the off-contract
+// wire the reads are held to.
+var textListsBoundFree = strings.Replace(textListsSchema, "rules [..4]string(8)", "rules [..4]string", 1)
+
 // textListRawWire encodes one instance built by hand so a wire can carry what
 // no JSON text places: an element past M, or an element that is not UTF-8.
+// The element is written through the bound-free twin as a same-length
+// placeholder and spliced in; the twin writes the bounded schema's own bytes
+// wherever the bounded writer accepts the value, which is checked here.
 func textListRawWire(t *testing.T, m *tabletext.Model, value string) []byte {
 	t.Helper()
-	inst := m.New(m.Lookup("Lists"))
-	idx := -1
-	for i := range inst.Fields {
-		if inst.Fields[i].Def.Name == "rules" {
-			idx = i
-		}
+	if textListsBoundFree == textListsSchema {
+		t.Fatal("the bound-free twin did not drop the rules bound")
 	}
-	if idx < 0 {
-		t.Fatal("no rules field")
+	dir := t.TempDir()
+	path := filepath.Join(dir, "Lists.schema")
+	if err := os.WriteFile(path, []byte(textListsBoundFree), 0o644); err != nil {
+		t.Fatal(err)
 	}
-	placeholder := strings.Repeat("a", len(value))
-	fv := &inst.Fields[idx]
-	fv.Count = 1
-	fv.Elems[0].Tab.Fields[0].Cell.Str = []byte(placeholder)
-	fv.Elems[0].Tab.Fields[0].Count = len(placeholder)
-	wire, err := tablewire.Encode(m, inst)
+	u, err := compiler.New().Load([]string{path})
 	if err != nil {
-		t.Fatalf("the raw value does not encode: %v", err)
+		t.Fatalf("the bound-free twin does not load: %v", err)
+	}
+	twin := tabletext.NewModel(u)
+	placeholder := strings.Repeat("a", len(value))
+	encode := func(m *tabletext.Model) ([]byte, error) {
+		inst := m.New(m.Lookup("Lists"))
+		idx := -1
+		for i := range inst.Fields {
+			if inst.Fields[i].Def.Name == "rules" {
+				idx = i
+			}
+		}
+		if idx < 0 {
+			t.Fatal("no rules field")
+		}
+		fv := &inst.Fields[idx]
+		fv.Count = 1
+		fv.Elems[0].Tab.Fields[0].Cell.Str = []byte(placeholder)
+		fv.Elems[0].Tab.Fields[0].Count = len(placeholder)
+		return tablewire.Encode(m, inst)
+	}
+	wire, err := encode(twin)
+	if err != nil {
+		t.Fatalf("the raw value does not encode through the bound-free twin: %v", err)
+	}
+	if bounded, err := encode(m); err == nil && !bytes.Equal(bounded, wire) {
+		t.Fatalf("the bound-free twin wrote %x, the bounded schema %x", wire, bounded)
 	}
 	return bytes.Replace(wire, []byte(placeholder), []byte(value), 1)
+}
+
+// textListReadsProbe prints every Luau read's verdict on one wire: the plain
+// load, the walk it is built on, and the strict read.
+const textListReadsProbe = `local inputs = require("./inputs")
+local load = require("./schema_load")
+local R = require("./schema_refusal")
+require("./ListsTable")
+local function fresh()
+	return { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
+end
+print(tostring(load.load("Lists", inputs.wire, fresh()) ~= nil) .. " " ..
+	tostring(load.loadWalk("Lists", inputs.wire, fresh()) ~= nil) .. " " ..
+	tostring(R.ReadStrict(nil, "Lists", inputs.wire, fresh()) ~= nil))
+`
+
+// requireTextListRefused holds a wire the Go engine refuses to the refusal of
+// every Luau read (load, loadWalk, ReadStrict), by verdict alone
+// (docs/rulings.json strict-only-read, refusal-verdict-only).
+func requireTextListRefused(t *testing.T, g *generatedUnit, m *tabletext.Model, wire []byte) {
+	t.Helper()
+	var report tabletext.Report
+	if ok, err := tablewire.Decode(m, m.New(m.Lookup("Lists")), wire, &report); ok && err == nil && !report.Refused {
+		t.Fatalf("the Go load reads the wire; strict-only refuses it: %+v", report)
+	}
+	if err := os.WriteFile(filepath.Join(g.dir, "reads.luau"), []byte(textListReadsProbe), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := strings.TrimSpace(string(luaurun.Run(t, g.dir, "reads.luau", map[string][]byte{"wire": wire})))
+	if out != "false false false" {
+		t.Errorf("the Go load refuses the wire, and the Luau reads (load, loadWalk, ReadStrict) answer %q; every read owes the refusal", out)
+	}
 }
 
 type textListRun struct {
@@ -182,9 +242,10 @@ func goReportText(r tabletext.Report) string {
 
 // TestLuauTableTextLists holds docs/SPEC-TABLES.md §2.13 in the Luau table
 // surface over the text-list tables of TestGoTableStringArraysAndJSONArrayRoot:
-// every value saves the Go engine's bytes and loads back equal, an element past
-// M clamps as the Go load clamps it, and an element that is not UTF-8 is
-// damage, refused as the Go load refuses it. Every expected wire and verdict is computed here from
+// every value (an element at M included) saves the Go engine's bytes and loads
+// back equal; an element past M, and an element that is not UTF-8, are refused
+// by the Go load and by every Luau read (strict only, docs/rulings.json
+// strict-only-read; verdict only). Every expected wire and verdict is computed here from
 // internal/tabletext and internal/tablewire, never typed by hand.
 func TestLuauTableTextLists(t *testing.T) {
 	t.Parallel()
@@ -208,26 +269,30 @@ func TestLuauTableTextLists(t *testing.T) {
 		}
 	})
 
-	t.Run("element past M clamps", func(t *testing.T) {
-		raw := textListRawWire(t, m, "123456789")
+	// STRICT ONLY (docs/rulings.json strict-only-read): an element past M is
+	// refused by the Go load and by every Luau read; nothing is clamped.
+	t.Run("element past M refuses", func(t *testing.T) {
+		requireTextListRefused(t, g, m, textListRawWire(t, m, "123456789"))
+	})
+
+	// An element AT M is in contract: it saves the Go writer's bytes and
+	// loads back equal.
+	t.Run("element at M", func(t *testing.T) {
+		raw := textListRawWire(t, m, "12345678")
 		back := m.New(m.Lookup("Lists"))
 		var report tabletext.Report
-		if ok, err := tablewire.Decode(m, back, raw, &report); !ok || err != nil {
-			t.Fatalf("the Go load refuses the wire: ok=%v err=%v", ok, err)
-		}
-		want, err := tablewire.Encode(m, back)
-		if err != nil {
-			t.Fatalf("the Go clamped value does not encode: %v", err)
+		if ok, err := tablewire.Decode(m, back, raw, &report); !ok || err != nil || report.Refused {
+			t.Fatalf("the Go load refuses the wire: ok=%v err=%v report=%+v", ok, err, report)
 		}
 		got := runTextListProbe(t, g, raw)
 		if got.report != goReportText(report) {
 			t.Errorf("the load report is %s, want the Go engine's %s", got.report, goReportText(report))
 		}
-		if string(got.saved) != string(want) {
-			t.Errorf("the clamp is not the Go clamp: %d saved, %d wanted; %s", len(got.saved), len(want), firstDiff(got.saved, want))
+		if string(got.saved) != string(raw) {
+			t.Errorf("the save is not the Go writer's bytes: %d saved, %d written; %s", len(got.saved), len(raw), firstDiff(got.saved, raw))
 		}
-		if string(got.resaved) != string(want) {
-			t.Errorf("the clamped value does not load back equal: %d bytes; %s", len(got.resaved), firstDiff(got.resaved, want))
+		if string(got.resaved) != string(raw) {
+			t.Errorf("the value does not load back equal: %d bytes; %s", len(got.resaved), firstDiff(got.resaved, raw))
 		}
 	})
 
@@ -246,5 +311,6 @@ func TestLuauTableTextLists(t *testing.T) {
 		if !strings.HasSuffix(got.report, ",true") {
 			t.Errorf("the load report is %s, and a damaged load owes malformed", got.report)
 		}
+		requireTextListRefused(t, g, m, raw)
 	})
 }

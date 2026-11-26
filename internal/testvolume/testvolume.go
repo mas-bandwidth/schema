@@ -109,3 +109,31 @@ func Folds(dir string) error {
 	}
 	return nil
 }
+
+// Probe reports why this machine cannot give a test a folding directory, or
+// nil when it can: the directory Folding would use ($SCHEMA_CASEFOLD_DIR,
+// else FleetScratch) must be there and fold names. A machine with neither
+// cannot: the test's own temporary directory folds only on APFS and NTFS,
+// never on a Linux bench. tools/fullrun probes a bench that declares the
+// casefold property with this before it sends a casefold test there.
+func Probe() error {
+	return probe(os.Getenv, isDir)
+}
+
+func probe(getenv func(string) string, isDir func(string) bool) error {
+	b, why := base(getenv, isDir)
+	if b == "" {
+		return fmt.Errorf("%s is not set and %s is not a directory: this machine has no case-folding volume", EnvVar, FleetScratch)
+	}
+	work, err := os.MkdirTemp(b, "testvolume-probe-")
+	if err != nil {
+		return fmt.Errorf("%s: %w", why, err)
+	}
+	defer func() {
+		_ = os.RemoveAll(work) // errdiscard: a probe directory left behind is the scratch's to clear; the verdict is Folds'
+	}()
+	if err := Folds(work); err != nil {
+		return fmt.Errorf("%s does not fold names: %w", why, err)
+	}
+	return nil
+}

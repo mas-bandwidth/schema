@@ -574,8 +574,8 @@ public final class TableFixed {
         /**
          * FRAMING DAMAGE, BY NAME (docs/FIXED-FORM-ALGORITHM.md §5.3's refusal table): no bytes at
          * all, shorter than 20 bytes after the form byte answered, a header and layout followed by
-         * no record, and a ragged tail (rest mod record_bytes != 0). There is no malformed flag on
-         * this form's report.
+         * no record, and a ragged tail (rest mod record_bytes != 0). This form's report has no
+         * damage flag: framing damage is a refusal by name.
          */
         truncated,
         /** any reserved header byte 1..7 nonzero (§5.3's refusal table). */
@@ -596,8 +596,8 @@ public final class TableFixed {
         public int widened;
 
         /**
-         * a refusal. Every answer that is not a read is one, framing damage included: "There is
-         * no malformed flag on this form's report" (docs/FIXED-FORM-ALGORITHM.md §5.3).
+         * a refusal. Every answer that is not a read is one, framing damage included: this form's
+         * report has no damage flag (docs/FIXED-FORM-ALGORITHM.md §5.3).
          */
         public boolean refused;
 

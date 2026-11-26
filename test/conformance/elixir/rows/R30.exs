@@ -27,7 +27,7 @@
 #     different _fixed_hash constants. The resolution moves the digest.
 #  2. COARSER REFUSES BY NAME: the older (coarser, resolution = 0.1) reader
 #     given a file whose header hash is the newer (finer, resolution = 0.01)
-#     schema's hash refuses layout_newer — the hashes differ because the
+#     schema's hash refuses layout_unknown — the hashes differ because the
 #     resolution is in the digest.
 #  3. COMPRESSED FLOAT RIDES AS THE FLOAT (the header clause): the schemas used
 #     are the existing VOLD/VNEW_cfloat_res_refine schemas from the corpus, which
@@ -43,7 +43,7 @@
 #   - the refusal is produced by the fixed_load/2 generated for each root,
 #     which compares the file's header hash against @<root>_known (a lineage
 #     tuple). When the hashes differ — as they do when resolution changes — the
-#     reader returns {:error, :layout_newer, report}. The generated code lives
+#     reader returns {:error, :layout_unknown, report}. The generated code lives
 #     in build/tables-generated-elixir/<unit>/<Root>Fixed.ex; the refusal
 #     logic is in FixedRuntime.run/4 (internal/codegen/elixirtable/fixedruntime.go).
 #
@@ -126,13 +126,13 @@ defmodule R30 do
   end
 
   # 2. Coarser refuses by name: the older (coarser) reader given a file whose
-  #    header hash is the finer schema's hash must refuse layout_newer.
+  #    header hash is the finer schema's hash must refuse layout_unknown.
   #
   #    THE VECTOR is built from the law (§5.3): the 20-byte header (form 3,
   #    seven reserved zeros, the FINE hash as u64 LE, the fine layout length as
   #    u32 LE), the fine layout bytes, then one record (the fine hash as u64 LE
   #    plus the body). The coarse reader has no lineage entry for the fine hash
-  #    → layout_newer.
+  #    → layout_unknown.
   defp assert_coarser_refuses_by_name do
     fine_hash = apply(@fine_mod, :cfloat_res_refine_fixed_hash, [])
     fine_layout = apply(@fine_mod, :cfloat_res_refine_fixed_layout, [])
@@ -146,12 +146,12 @@ defmodule R30 do
 
     # The coarse reader (VOLD schema, resolution = 0.1) tries to read the
     # fine writer's file (VNEW schema, resolution = 0.01). The hashes differ
-    # so the lineage lookup fails → layout_newer.
+    # so the lineage lookup fails → layout_unknown.
     result = apply(@coarse_mod, :cfloat_res_refine_fixed_load, [fine_file])
 
     ok =
       case result do
-        {:error, :layout_newer, report} ->
+        {:error, :layout_unknown, report} ->
           report.layout_hash == fine_hash and
             report.widened == 0 and report.unknown == 0 and
             report.retained == 0 and report.retain_lost == 0

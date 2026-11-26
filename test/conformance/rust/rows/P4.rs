@@ -49,7 +49,7 @@ fn wrong_plan_goes_red() {
     let mut image = [0u8; FX_ROOT_FIXED_BODY_BYTES];
     image.copy_from_slice(&FX_ROOT_FIXED_DEFAULTS);
     let mut report = TableFixedReport::default();
-    table_fixed_run(&FX_ROOT_FIXED_PLAN, &[], &body, &mut image, &mut report);
+    let ran = table_fixed_run(&FX_ROOT_FIXED_PLAN, &[], &[], &body, &mut image, &mut report);
 
     let mut row = FxRootRow::default();
     fx_root_fixed_scatter(&image, &mut row, &mut report);
@@ -73,11 +73,11 @@ fn wrong_plan_goes_red() {
         "keep is at the same offset in both schemas, so it lands correctly"
     );
 
-    // The plan did NOT report any damage — the identity plan is a plain Copy,
+    // The run did NOT stop on damage — the identity plan is a plain Copy,
     // so no op could fail.  The wrong answer is silent, which is exactly why
     // the plan path must be tested: a silent wrong is worse than a loud refusal.
     assert!(
-        !report.damaged && !report.refused,
+        ran && !report.refused,
         "the wrong plan must NOT be loud — it silently produces wrong values"
     );
 }
@@ -91,8 +91,9 @@ fn right_plan_goes_green() {
     let mut image = [0u8; tblfx2::FX_ROOT_FIXED_BODY_BYTES];
     image.copy_from_slice(&tblfx2::FX_ROOT_FIXED_DEFAULTS);
     let mut report = tblfx2::TableFixedReport::default();
-    tblfx2::table_fixed_run(
+    let ran = tblfx2::table_fixed_run(
         &tblfx2::FX_ROOT_FIXED_PLAN,
+        &[],
         &[],
         &body,
         &mut image,
@@ -106,8 +107,5 @@ fn right_plan_goes_green() {
     assert_eq!(row.narrow, 9999, "right plan: narrow lands correctly");
     assert_eq!(row.renamed_to, 321, "right plan: renamed_to lands correctly");
     assert_eq!(row.added, 11, "right plan: added lands correctly");
-    assert!(
-        !report.damaged && !report.refused,
-        "right plan: clean read"
-    );
+    assert!(ran && !report.refused, "right plan: clean read");
 }

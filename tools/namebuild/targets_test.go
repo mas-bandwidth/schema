@@ -130,6 +130,30 @@ func record(j Job, err error) {
 	summary.failures = append(summary.failures, fmt.Sprintf("%-28s %-9s %s", j.Case, j.Target, FirstError(err)))
 }
 
+// compilerEnv names a compiler make built (build/schema-moo, the same
+// go build -tags schema_leg_moo ./cmd/schema, kept current with the source by
+// make and built once, never once per run: make name-buildability-run names
+// it, so a language's compile row in the pr job pays no link of its own).
+const compilerEnv = "NAMEBUILD_SCHEMA"
+
+// compiler is the compiler the run uses: the one named (an absolute path to
+// a file), or, with none named, one build writes to out. A named path that is
+// relative, missing or a directory is an error by name, never a fallback.
+func compiler(named, out string, build func(out string) error) (string, error) {
+	if named == "" {
+		return out, build(out)
+	}
+	if !filepath.IsAbs(named) {
+		return "", fmt.Errorf("%s %q is not an absolute path", compilerEnv, named)
+	}
+	if fi, err := os.Stat(named); err != nil {
+		return "", fmt.Errorf("%s: %w", compilerEnv, err)
+	} else if fi.IsDir() {
+		return "", fmt.Errorf("%s %s is a directory, not a compiler", compilerEnv, named)
+	}
+	return named, nil
+}
+
 // setup builds the compiler once and finds the toolchains and runtimes; a
 // runtime that is absent fails every test that needs it, by name.
 func setup(t *testing.T) {
@@ -184,11 +208,16 @@ func setupOnce(t *testing.T) error {
 		return err
 	}
 	shared.work = work
-	schema := filepath.Join(work, "schema")
-	build := testproc.Command(t, "go", "build", "-tags", "schema_leg_moo", "-o", schema, "./cmd/schema")
-	build.Dir = absRoot
-	if out, err := build.CombinedOutput(); err != nil {
-		return fmt.Errorf("building the compiler: %w\n%s", err, out)
+	schema, err := compiler(os.Getenv(compilerEnv), filepath.Join(work, "schema"), func(out string) error {
+		build := testproc.Command(t, "go", "build", "-tags", "schema_leg_moo", "-o", out, "./cmd/schema")
+		build.Dir = absRoot
+		if out, err := build.CombinedOutput(); err != nil {
+			return fmt.Errorf("building the compiler: %w\n%s", err, out)
+		}
+		return nil
+	})
+	if err != nil {
+		return err
 	}
 	shared.env = env
 	shared.schema = schema

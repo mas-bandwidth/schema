@@ -431,8 +431,9 @@ func launch(ctx context.Context, o Options, rm Remote, sleep func(time.Duration)
 			logf(log, "fullrun: bench %s left out: %v\n", p.b.Host, p.err)
 			continue
 		}
-		st.Benches = append(st.Benches, p.b)
-		logf(log, "fullrun: bench %s ready, %d shards\n", p.b.Host, p.b.Shards)
+		b := probeBench(ctx, rm, st, p.b, log)
+		st.Benches = append(st.Benches, b)
+		logf(log, "fullrun: bench %s ready, %d shards\n", b.Host, b.Shards)
 	}
 	if len(st.Benches) == 0 {
 		return st, errors.New("no bench could be prepared")
@@ -510,6 +511,27 @@ func launch(ctx context.Context, o Options, rm Remote, sleep func(time.Duration)
 		return st, err
 	}
 	return st, watch(ctx, st, rm, sleep, now, log)
+}
+
+// probeBench holds each property a bench declares to the machine: fullrun
+// probe PROPERTY runs on the bench, and a property it refuses leaves the
+// bench's Provides for its Refused, with the probe's words, so no unit that
+// needs it is sent there (casefold declared on captain, which has no
+// case-folding volume). The bench still takes every other unit.
+func probeBench(ctx context.Context, rm Remote, st *State, b Bench, log io.Writer) Bench {
+	var kept []string
+	for _, p := range b.Provides {
+		out, err := rm.Run(ctx, b.Host, hp(st.runDir()+"/bin/fullrun")+" probe "+p, nil)
+		if err != nil {
+			why := firstLineOf(strings.TrimSpace(string(out) + " " + err.Error()))
+			b.Refused = append(b.Refused, p+": "+why)
+			logf(log, "fullrun: bench %s declares %s, and its probe refused it: %s\n", b.Host, p, why)
+			continue
+		}
+		kept = append(kept, p)
+	}
+	b.Provides = kept
+	return b
 }
 
 // narrow applies --only and, for a re-test, exactly the names of the
@@ -770,7 +792,7 @@ func part(units []Unit, k, n int) ([]Unit, error) {
 	// numbered part; it is in the part named for its GOOS (goosPart)
 	bins := make([]Bench, n)
 	for i := range bins {
-		bins[i] = Bench{Host: fmt.Sprintf("part%d", i+1), Shards: 1}
+		bins[i] = Bench{Host: fmt.Sprintf("part%d", i+1), Shards: 1, Provides: partProvides}
 	}
 	shards, err := assign(units, bins)
 	if err != nil {

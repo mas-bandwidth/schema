@@ -51,6 +51,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `testproc/` | bounded child processes for tests | `go test ./internal/testproc` | `go test ./internal/testproc` |
 | `testreg/` | the test registry: load, select, shard, run, cover, extract | `go run ./tools/schema-test run --group pr` | `go run ./tools/schema-test coverage` |
 | `testselect/` | a -run/-not selection listed as test names at the root, less the nightly tier | `go test ./internal/testselect` | `go run ./tools/gotestselect -not X ./pkg` |
+| `testvolume/` | a test working directory on a case-folding volume (Probe/probe, composed/decomposed é), as APFS and NTFS fold | `go test ./internal/testvolume` | `go test ./internal/testvolume` |
 | `vacuous/` | Go tests that pass checking nothing | `go test ./internal/vacuous` | `go test ./internal/ci -run TestEveryGoTestCanFail` |
 | `version/` | binary version stamp | `go test ./internal/version` | `go test ./internal/version` |
 | `viewlisting/` | view listing vs IR | `go test ./internal/viewlisting` | `go test ./internal/viewlisting` |
