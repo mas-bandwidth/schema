@@ -391,7 +391,7 @@ ci-fast.yml	input-family	script	inputaccount -family conformance-corpus -leg rub
 ci-fast.yml	newleg-scaffold	gotest	cmd/schema TestNewLegZigWritesSkeletonAndFixturePasses	compiler.cmd-schema.new-leg-zig-writes-skeleton-and-fixture-passes	none
 ci-fast.yml	go-test-touched	make	tables-go-fixedform	harness-run.make-go.tables-go-fixedform	none
 ci-fast.yml	go-test-touched	make	conformance-go-rows-a	-	none
-ci-fast.yml	go-test-touched	make	conformance-go-rows-b	harness-run.conformance-go-rows-b.row-r20	none
+ci-fast.yml	go-test-touched	make	conformance-go-rows-b	-	none
 ci-fast.yml	go-test-touched	make	conformance-go-driver-unit	harness-run.make-go.conformance-go-driver-unit	none
 ci-fast.yml	go-test-touched	make	cards-conformance-go-negative-control	plant.go-proof-4.cards-conformance-go-negative-control	none
 ci-fast.yml	go-test-touched	gotest	go test ./bench/tables/moo (1 Go tests the unmoved ledger holds, L5)	-	none
