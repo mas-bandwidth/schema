@@ -138,32 +138,10 @@ func TestTheMatrixIsThePRGroup(t *testing.T) {
 			was := tt.Seconds
 			reg.Tests[i].Seconds = shardBudget + 1
 			_, p := ciMatrix(reg, prShards)
+			reg.Tests[i].Seconds = was
 			want := "none.unit." + tt.Key + " weighs 61.0 s, past one shard's 60 s budget on its own: make it faster, or move it to the nightly tier with its measured seconds (the row's \"tier\":\"nightly\", with its \"seconds\")"
 			if !has(p, want) {
 				t.Errorf("a test heavier than a shard was not named (want %q): %v", want, p)
-			}
-			// the account of a matrix that gives it a shard of its own says
-			// the same, never that one test is split into more shards
-			g, _ := reg.Group("pr")
-			q := g.Query()
-			q.Langs = []string{testreg.LangFree}
-			sel, err := reg.Select(q)
-			if err != nil {
-				t.Fatal(err)
-			}
-			var alone []ciRow
-			for _, r := range rows {
-				if r.Lang != testreg.LangFree {
-					alone = append(alone, r)
-				}
-			}
-			for k := 1; k <= len(sel.Instances); k++ {
-				alone = append(alone, ciRow{Lang: testreg.LangFree, Shard: fmt.Sprintf("%d/%d", k, len(sel.Instances))})
-			}
-			p = matrixAccount(reg, alone, prShards)
-			reg.Tests[i].Seconds = was
-			if !has(p, want) || has(p, "carries 61.0 s") {
-				t.Errorf("a shard of the one test past the limit is not named as that test (want %q): %v", want, p)
 			}
 			break
 		}
@@ -480,5 +458,33 @@ func TestATestPastAShardSaysWhereItsTierGoes(t *testing.T) {
 		if !strings.HasPrefix(got, inst.Full+" weighs 61.0 s, past one shard's 60 s budget on its own: make it faster, or move it to the nightly tier with its measured seconds ") || !strings.HasSuffix(got, want) {
 			t.Errorf("%s: %q, want it to end %q", inst.Full, got, want)
 		}
+	}
+}
+
+// TestAShardOfOneTestPastTheLimitIsNamedAsThatTest: the account of a matrix
+// whose shard holds one test past the limit names that test and where its
+// tier goes (pastBudget), never a split of a shard that cannot be cut. The
+// plant is the one-test case gone: the shard is told to split.
+func TestAShardOfOneTestPastTheLimitIsNamedAsThatTest(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "registry.jsonl")
+	lines := `{"rec":"lang","name":"go","write":"refuse","adapter":"fake"}
+{"rec":"tier","name":"functional","what":"a toolchain"}
+{"rec":"type","name":"roundtrip","what":"same bytes back"}
+{"rec":"test","key":"roundtrip.fam.heavy","type":"roundtrip","family":"fam","case":"heavy","tier":"functional","checks":"x","inputs":{"n":1},"expect":"same","seconds":61}
+{"rec":"test","key":"roundtrip.fam.light","type":"roundtrip","family":"fam","case":"light","tier":"functional","checks":"x","inputs":{"n":2},"expect":"same","seconds":1}
+{"rec":"group","name":"pr","what":"per pull request","query":{"tiers":["functional"]}}
+`
+	if err := os.WriteFile(path, []byte(lines), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	reg, err := testreg.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := strings.Join(matrixAccount(reg, []ciRow{{Lang: "go", Shard: "1/2"}, {Lang: "go", Shard: "2/2"}}, prShards), "\n")
+	want := `go 1/2: go.functional.roundtrip.fam.heavy weighs 61.0 s, past one shard's 60 s budget on its own: make it faster, or move it to the nightly tier with its measured seconds (the row's "tier":"nightly", with its "seconds")`
+	if !strings.Contains(p, want) || strings.Contains(p, "split into more shards") {
+		t.Errorf("the account: %s\nwant %q and no split", p, want)
 	}
 }

@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 679. Language-free tests: 3144.
+Unit tests every language answers: 679. Language-free tests: 3145.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -131,7 +131,7 @@ bytes read give exactly the expected value.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.unit.decode.fixedversioning.manifest-non-finite` | the manifest reader reports the first NaN or infinity a files values spell at either width and nothing for finite floats | `inputs.tests` (176 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/cstable/fixedversioning_test.go:850` |
+| `L.unit.decode.fixedversioning.manifest-non-finite` | the manifest reader reports the first NaN or infinity a files values spell at either width and nothing for finite floats | `inputs.tests` (191 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/cstable/fixedversioning_test.go:850` |
 
 #### `decode` family `jsonlongmantissa`, 1 test
 
@@ -321,7 +321,7 @@ hostile bytes are refused in every build, with the named reason.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.unit.load-refusal.goose-registry.registry-refuses-by-name` | every malformed registry fragment is refused naming the file, the line and the defect | `tests: {"goose":{"package":"./internal/codegen/goosetable","test":"TestGooseRegistryRefusesByName"}}` | refused on load, in every build (verdict only) | `internal/codegen/goosetable/registry_test.go:76` |
+| `L.unit.load-refusal.goose-registry.registry-refuses-by-name` | every malformed registry fragment is refused naming the file, the line and the defect | `inputs.tests` (108 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/goosetable/registry_test.go:76` |
 
 #### `load-refusal` family `heldescape`, 1 test
 
@@ -547,7 +547,7 @@ generated source compiles and is clean.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.unit.codegen.c-zero-width.table-never-emits-zero-width-integer` | Generation never emits a zero-width integer for any conformance schema. | `inputs.tests` (106 bytes, held in the registry row's `inputs.tests`) | the c Go test for the case (inputs.tests) passes | `internal/codegen/ctable/zero_width_test.go:77` |
+| `L.unit.codegen.c-zero-width.table-never-emits-zero-width-integer` | Generation never emits a zero-width integer for any conformance schema. | `inputs.tests` (105 bytes, held in the registry row's `inputs.tests`) | the c Go test for the case (inputs.tests) passes | `internal/codegen/ctable/zero_width_test.go:77` |
 
 #### `codegen` family `cardsform`, 9 tests
 
@@ -605,7 +605,7 @@ generated source compiles and is clean.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.unit.codegen.compressed-float.stores-are-guarded` | every generated store of a compressed float normalises -0 to +0 before taking its bits, and a plain float's store does not (the control) | `inputs.tests` (1905 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/compressed_negzero_writers_test.go:189` |
+| `L.unit.codegen.compressed-float.stores-are-guarded` | every generated store of a compressed float normalises -0 to +0 before taking its bits, and a plain float's store does not (the control) | `inputs.tests` (1950 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/compressed_negzero_writers_test.go:189` |
 
 #### `codegen` family `compressed-float-f32-range`, 1 test
 
@@ -1072,7 +1072,7 @@ generated source compiles and is clean.
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.unit.codegen.fixedroadmap-t18.fixed-t18-arm-lines` | the emitted fixed form gives a union's direct text, bytes, fixed array and counted array arms their storage and gives its payload-free arms none | `inputs.tests` (197 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/cstable/fixedroadmap_t18_test.go:65` |
-| `L.unit.codegen.fixedroadmap-t18.fixed-t18-manifest-and-header` | the oracle manifest reader returns forged and plain values and names refused rows, and a hand-built header parses to its hash and layout with a one-byte flip caught | `tests: {"java":{"package":"./internal/codegen/javatable","test":"TestFixedJavaT18ManifestAndHeader"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/fixedroadmap_t18_test.go:36` |
+| `L.unit.codegen.fixedroadmap-t18.fixed-t18-manifest-and-header` | the oracle manifest reader returns forged and plain values and names refused rows, and a hand-built header parses to its hash and layout with a one-byte flip caught | `inputs.tests` (109 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/fixedroadmap_t18_test.go:36` |
 
 #### `codegen` family `fixedroadmap-t19`, 1 test
 
@@ -1251,8 +1251,8 @@ generated source compiles and is clean.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.unit.codegen.goose-registry.registry-assembles-by-rank` | the registry assembles fragments ordered by rank, then fragment name, then line, with each entry attributed to its fragment | `tests: {"goose":{"package":"./internal/codegen/goosetable","test":"TestGooseRegistryAssemblesByRank"}}` | the goose Go test for the case (inputs.tests) passes | `internal/codegen/goosetable/registry_test.go:39` |
-| `L.unit.codegen.goose-registry.registry-no-fragment-leaves-the-runtime-as-written` | with no registry fragments the runtime module is emitted byte for byte as written and the registry directory is not emitted | `inputs.tests` (115 bytes, held in the registry row's `inputs.tests`) | the goose Go test for the case (inputs.tests) passes | `internal/codegen/goosetable/registry_test.go:18` |
+| `L.unit.codegen.goose-registry.registry-assembles-by-rank` | the registry assembles fragments ordered by rank, then fragment name, then line, with each entry attributed to its fragment | `inputs.tests` (110 bytes, held in the registry row's `inputs.tests`) | the goose Go test for the case (inputs.tests) passes | `internal/codegen/goosetable/registry_test.go:39` |
+| `L.unit.codegen.goose-registry.registry-no-fragment-leaves-the-runtime-as-written` | with no registry fragments the runtime module is emitted byte for byte as written and the registry directory is not emitted | `inputs.tests` (130 bytes, held in the registry row's `inputs.tests`) | the goose Go test for the case (inputs.tests) passes | `internal/codegen/goosetable/registry_test.go:18` |
 
 #### `codegen` family `handtext`, 1 test
 
@@ -1310,14 +1310,14 @@ generated source compiles and is clean.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.unit.codegen.java-absent-spill.absent-spill-every-marker-goes-through-the-absence-writers` | the conformance driver writes every absence marker through its two absence writers and no surface writes one itself. | `inputs.tests` (119 bytes, held in the registry row's `inputs.tests`) | the java Go test for the case (inputs.tests) passes | `internal/codegen/javatable/absent_spill_test.go:21` |
+| `L.unit.codegen.java-absent-spill.absent-spill-every-marker-goes-through-the-absence-writers` | the conformance driver writes every absence marker through its two absence writers and no surface writes one itself. | `inputs.tests` (134 bytes, held in the registry row's `inputs.tests`) | the java Go test for the case (inputs.tests) passes | `internal/codegen/javatable/absent_spill_test.go:21` |
 
 #### `codegen` family `java-doc-unicode-escape`, 2 tests
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.unit.codegen.java-doc-unicode-escape.doc-comment-has-no-unicode-escape` | generated doc comments carry no escape that the compiler would translate | `tests: {"java":{"package":"./internal/codegen/java","test":"TestDocCommentHasNoUnicodeEscape"}}` | the java Go test for the case (inputs.tests) passes | `internal/codegen/java/doc_unicode_escape_test.go:101` |
-| `L.unit.codegen.java-doc-unicode-escape.doc-comment-keeps-its-text` | every committed doc reads back as its own text from a comment line carrying no translatable escape | `tests: {"java":{"package":"./internal/codegen/java","test":"TestDocCommentKeepsItsText"}}` | the java Go test for the case (inputs.tests) passes | `internal/codegen/java/doc_unicode_escape_test.go:123` |
+| `L.unit.codegen.java-doc-unicode-escape.doc-comment-has-no-unicode-escape` | generated doc comments carry no escape that the compiler would translate | `inputs.tests` (103 bytes, held in the registry row's `inputs.tests`) | the java Go test for the case (inputs.tests) passes | `internal/codegen/java/doc_unicode_escape_test.go:101` |
+| `L.unit.codegen.java-doc-unicode-escape.doc-comment-keeps-its-text` | every committed doc reads back as its own text from a comment line carrying no translatable escape | `inputs.tests` (97 bytes, held in the registry row's `inputs.tests`) | the java Go test for the case (inputs.tests) passes | `internal/codegen/java/doc_unicode_escape_test.go:123` |
 
 #### `codegen` family `java-loadfixedroot`, 1 test
 
@@ -1329,7 +1329,7 @@ generated source compiles and is clean.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.unit.codegen.java-variablenoscratch.variable-keyed-and-union-save-no-scratch` | The emitted keyed-field and union-arm save methods allocate no scratch buffers. | `inputs.tests` (115 bytes, held in the registry row's `inputs.tests`) | the java Go test for the case (inputs.tests) passes | `internal/codegen/javatable/variablenoscratch_test.go:90` |
+| `L.unit.codegen.java-variablenoscratch.variable-keyed-and-union-save-no-scratch` | The emitted keyed-field and union-arm save methods allocate no scratch buffers. | `inputs.tests` (114 bytes, held in the registry row's `inputs.tests`) | the java Go test for the case (inputs.tests) passes | `internal/codegen/javatable/variablenoscratch_test.go:90` |
 | `L.unit.codegen.java-variablenoscratch.variable-open-wire-check-reuse` | The emitted open routine reuses a per-thread wire-check with grow-only scratch instead of allocating on every call. | `inputs.tests` (110 bytes, held in the registry row's `inputs.tests`) | the java Go test for the case (inputs.tests) passes | `internal/codegen/javatable/variablenoscratch_test.go:146` |
 | `L.unit.codegen.java-variablenoscratch.variable-save-and-measure-own-no-scratch` | The emitted variable-form save and measure routines write and walk nested bodies in place with no per-node scratch allocation. | `inputs.tests` (118 bytes, held in the registry row's `inputs.tests`) | the java Go test for the case (inputs.tests) passes | `internal/codegen/javatable/variablenoscratch_test.go:20` |
 
@@ -1416,8 +1416,8 @@ generated source compiles and is clean.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.unit.codegen.loadfixedroot.fixed-layout-is-the-reference-layout` | the layout and layout hash a fixed-root writer puts into a file header equal the compiler's reference layout for every fixed root of the conformance corpus | `inputs.tests` (115 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/loadfixedroot_test.go:116` |
-| `L.unit.codegen.loadfixedroot.variable-load-refuses-fixed-root-without-file-form` | a variable-form load of a fixed root whose record is past the fixed file-form ceiling refuses with previous\_form, and no other root's variable load does | `inputs.tests` (128 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/loadfixedroot_test.go:149` |
+| `L.unit.codegen.loadfixedroot.fixed-layout-is-the-reference-layout` | the layout and layout hash a fixed-root writer puts into a file header equal the compiler's reference layout for every fixed root of the conformance corpus | `inputs.tests` (114 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/loadfixedroot_test.go:116` |
+| `L.unit.codegen.loadfixedroot.variable-load-refuses-fixed-root-without-file-form` | a variable-form load of a fixed root whose record is past the fixed file-form ceiling refuses with previous\_form, and no other root's variable load does | `inputs.tests` (127 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/loadfixedroot_test.go:149` |
 
 #### `codegen` family `lobster-accelerator-overlay`, 1 test
 
@@ -1532,15 +1532,15 @@ generated source compiles and is clean.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.unit.codegen.luau-stringlit.string-lit` | generated string literals use the standard quoted spelling except \\u{X} where it would write an escape Luau rejects, matching the committed corpus | `tests: {"luau":{"package":"./internal/codegen/luau","test":"TestLuauStringLit"}}` | the luau Go test for the case (inputs.tests) passes | `internal/codegen/luau/stringlit_test.go:13` |
+| `L.unit.codegen.luau-stringlit.string-lit` | generated string literals use the standard quoted spelling except \\u{X} where it would write an escape Luau rejects, matching the committed corpus | `tests: {"luau":{"package":"./internal/codegen/luau","seconds":0.01,"test":"TestLuauStringLit"}}` | the luau Go test for the case (inputs.tests) passes | `internal/codegen/luau/stringlit_test.go:13` |
 
 #### `codegen` family `luautable`, 3 tests
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.unit.codegen.luautable.refuses-by-name` | generation refuses a module cycle or a name colliding with a runtime module, naming the cause | `inputs.tests` (202 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/luautable/luautable_test.go:219` |
-| `L.unit.codegen.luautable.scalar-and-duplicate-names` | generation refuses a package named for a Goose scalar type and a name declared twice in the namespace, naming the cause | `tests: {"goose":{"package":"./internal/codegen/goose","test":"TestGooseRefusesByName"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/goose/goose_test.go:236` |
-| `L.unit.codegen.luautable.table-free-unit-adds-nothing` | a unit with no tables generates no table module and no table runtime | `inputs.tests` (307 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/luautable/luautable_test.go:267` |
+| `L.unit.codegen.luautable.scalar-and-duplicate-names` | generation refuses a package named for a Goose scalar type and a name declared twice in the namespace, naming the cause | `tests: {"goose":{"package":"./internal/codegen/goose","seconds":0.01,"test":"TestGooseRefusesByName"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/goose/goose_test.go:236` |
+| `L.unit.codegen.luautable.table-free-unit-adds-nothing` | a unit with no tables generates no table module and no table runtime | `inputs.tests` (322 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/luautable/luautable_test.go:267` |
 
 #### `codegen` family `mapsortcost`, 1 test
 
@@ -1668,7 +1668,7 @@ generated source compiles and is clean.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.unit.codegen.moo-tablesmoonames.table-module-keys-are-claimed` | every module-table key in the emitted moo is claimed in the list and every listed name is emitted | `inputs.tests` (98 bytes, held in the registry row's `inputs.tests`) | the moo Go test for the case (inputs.tests) passes | `compiler/tablesmoonames_test.go:160` |
+| `L.unit.codegen.moo-tablesmoonames.table-module-keys-are-claimed` | every module-table key in the emitted moo is claimed in the list and every listed name is emitted | `inputs.tests` (113 bytes, held in the registry row's `inputs.tests`) | the moo Go test for the case (inputs.tests) passes | `compiler/tablesmoonames_test.go:160` |
 
 #### `codegen` family `moo-unit-lock-scope`, 1 test
 
@@ -1790,7 +1790,7 @@ generated source compiles and is clean.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.unit.codegen.read-bounds.read-bounds-guards-are-emitted` | the zero-bit type's read entry carries its validation and the bulk read's fused bound check cannot wrap | `tests: {"java":{"package":"./internal/codegen/java","test":"TestJavaReadBoundsGuardsAreEmitted"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/java/read_bounds_test.go:55` |
+| `L.unit.codegen.read-bounds.read-bounds-guards-are-emitted` | the zero-bit type's read entry carries its validation and the bulk read's fused bound check cannot wrap | `inputs.tests` (105 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/java/read_bounds_test.go:55` |
 
 #### `codegen` family `reflection`, 1 test
 
@@ -1802,7 +1802,7 @@ generated source compiles and is clean.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.unit.codegen.refusal.strict-read-names-cover-every-reason` | the strict read's named refusal reasons are exactly the reasons the runtime can answer | `inputs.tests` (100 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/luautable/refusal_test.go:563` |
+| `L.unit.codegen.refusal.strict-read-names-cover-every-reason` | the strict read's named refusal reasons are exactly the reasons the runtime can answer | `inputs.tests` (115 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/luautable/refusal_test.go:563` |
 
 #### `codegen` family `resource-bounds`, 8 tests
 
@@ -1875,8 +1875,8 @@ generated source compiles and is clean.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.unit.codegen.ruby-fixedchunk.fixed-literal-chunks-long-arrays` | A long array literal in generated fixed source is chunked. | `inputs.tests` (97 bytes, held in the registry row's `inputs.tests`) | the ruby Go test for the case (inputs.tests) passes | `internal/codegen/rubytable/fixedchunk_test.go:13` |
-| `L.unit.codegen.ruby-fixedchunk.fixed-literal-chunks-nested-long-arrays` | A long array nested inside a hash inside an array in generated fixed source is chunked at every level that is long. | `inputs.tests` (103 bytes, held in the registry row's `inputs.tests`) | the ruby Go test for the case (inputs.tests) passes | `internal/codegen/rubytable/fixedchunk_test.go:52` |
+| `L.unit.codegen.ruby-fixedchunk.fixed-literal-chunks-long-arrays` | A long array literal in generated fixed source is chunked. | `inputs.tests` (112 bytes, held in the registry row's `inputs.tests`) | the ruby Go test for the case (inputs.tests) passes | `internal/codegen/rubytable/fixedchunk_test.go:13` |
+| `L.unit.codegen.ruby-fixedchunk.fixed-literal-chunks-nested-long-arrays` | A long array nested inside a hash inside an array in generated fixed source is chunked at every level that is long. | `inputs.tests` (118 bytes, held in the registry row's `inputs.tests`) | the ruby Go test for the case (inputs.tests) passes | `internal/codegen/rubytable/fixedchunk_test.go:52` |
 
 #### `codegen` family `rulings-r2-r5-r9`, 2 tests
 
@@ -2069,7 +2069,7 @@ generated source compiles and is clean.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.unit.codegen.viewbound.descriptor-reports-declared-bound` | A bounded array field, fixed or counted or keyed, reports its declared bound in the generated field descriptor. | `inputs.tests` (115 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/viewbound_test.go:16` |
+| `L.unit.codegen.viewbound.descriptor-reports-declared-bound` | A bounded array field, fixed or counted or keyed, reports its declared bound in the generated field descriptor. | `inputs.tests` (114 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/viewbound_test.go:16` |
 
 #### `codegen` family `viewnegconst`, 2 tests
 
@@ -2242,19 +2242,19 @@ a schema's names are accepted or refused by the name checker.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.unit.name-check.goose-names.names-scan-sees-the-runtime` | the runtime modules declare only into their own runtime namespace, so a package never meets them | `tests: {"goose":{"package":"./internal/codegen/goosetable","test":"TestGooseNamesScanSeesTheRuntime"}}` | the goose Go test for the case (inputs.tests) passes | `internal/codegen/goosetable/names_test.go:155` |
+| `L.unit.name-check.goose-names.names-scan-sees-the-runtime` | the runtime modules declare only into their own runtime namespace, so a package never meets them | `inputs.tests` (110 bytes, held in the registry row's `inputs.tests`) | the goose Go test for the case (inputs.tests) passes | `internal/codegen/goosetable/names_test.go:155` |
 
 #### `name-check` family `java-jdkshadow`, 1 test
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.unit.name-check.java-jdkshadow.refuses-a-platform-name-obscured-by-a-class-named` | generation refuses a type, union, enum, flags set, field or union arm named java, by name | `inputs.tests` (109 bytes, held in the registry row's `inputs.tests`) | the java Go test for the case (inputs.tests) passes | `internal/codegen/java/jdkshadow_test.go:86` |
+| `L.unit.name-check.java-jdkshadow.refuses-a-platform-name-obscured-by-a-class-named` | generation refuses a type, union, enum, flags set, field or union arm named java, by name | `inputs.tests` (124 bytes, held in the registry row's `inputs.tests`) | the java Go test for the case (inputs.tests) passes | `internal/codegen/java/jdkshadow_test.go:86` |
 
 #### `name-check` family `js-wirerows-conformance`, 1 test
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.unit.name-check.js-wirerows-conformance.wire-rows-conformance` | The driver's wire rows table matches the manifest's instance and report pairs, less the named uncarried set. | `tests: {"js":{"package":"./internal/codegen/jstable","test":"TestWireRowsConformanceJavaScript"}}` | the js Go test for the case (inputs.tests) passes | `internal/codegen/jstable/wirerows_conformance_test.go:37` |
+| `L.unit.name-check.js-wirerows-conformance.wire-rows-conformance` | The driver's wire rows table matches the manifest's instance and report pairs, less the named uncarried set. | `inputs.tests` (105 bytes, held in the registry row's `inputs.tests`) | the js Go test for the case (inputs.tests) passes | `internal/codegen/jstable/wirerows_conformance_test.go:37` |
 
 #### `name-check` family `lobster-descriptor-overlay`, 1 test
 
@@ -2272,7 +2272,7 @@ a schema's names are accepted or refused by the name checker.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.unit.name-check.luau-casecollision.generated-names-are-case-insensitive-unique` | generated file names equal ignoring case are refused by name, runtime modules included. | `inputs.tests` (102 bytes, held in the registry row's `inputs.tests`) | the luau Go test for the case (inputs.tests) passes | `internal/codegen/luau/casecollision_test.go:56` |
+| `L.unit.name-check.luau-casecollision.generated-names-are-case-insensitive-unique` | generated file names equal ignoring case are refused by name, runtime modules included. | `inputs.tests` (117 bytes, held in the registry row's `inputs.tests`) | the luau Go test for the case (inputs.tests) passes | `internal/codegen/luau/casecollision_test.go:56` |
 
 #### `name-check` family `luau-collision`, 1 test
 
@@ -2376,7 +2376,7 @@ one schema version reads or writes another's data.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.unit.evolution.widen-bound-message.message-widened-fixed-array-bound-pads-one-default-per-slot` | A message read by a reader whose fixed array bound has grown pads each new slot with one default value of its element. | `inputs.tests` (119 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/luautable/widen_bound_message_test.go:70` |
+| `L.unit.evolution.widen-bound-message.message-widened-fixed-array-bound-pads-one-default-per-slot` | A message read by a reader whose fixed array bound has grown pads each new slot with one default value of its element. | `inputs.tests` (134 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/luautable/widen_bound_message_test.go:70` |
 
 ### Type `fuzz`
 
@@ -2441,7 +2441,7 @@ a negative control: a named test run against a deliberately broken build must co
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.unit.plant.armfield.arm-field-line-negative-control` | a sabotage that breaks the rule that a union arm is read as a field line makes the arm-field-line check go red | `inputs.tests` (325 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/luautable/armfield_test.go:98` |
+| `L.unit.plant.armfield.arm-field-line-negative-control` | a sabotage that breaks the rule that a union arm is read as a field line makes the arm-field-line check go red | `inputs.tests` (340 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/luautable/armfield_test.go:98` |
 
 #### `plant` family `blockbuild`, 1 test
 
@@ -2551,13 +2551,13 @@ a negative control: a named test run against a deliberately broken build must co
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.unit.plant.goose-gooserun-use.tests-start-processes-through-gooserun-negative-control` | source that starts a process directly is refused by the bounded-runner check | `inputs.tests` (121 bytes, held in the registry row's `inputs.tests`) | the goose Go test for the case (inputs.tests) passes | `internal/codegen/goosetable/gooserun_use_test.go:88` |
+| `L.unit.plant.goose-gooserun-use.tests-start-processes-through-gooserun-negative-control` | source that starts a process directly is refused by the bounded-runner check | `inputs.tests` (136 bytes, held in the registry row's `inputs.tests`) | the goose Go test for the case (inputs.tests) passes | `internal/codegen/goosetable/gooserun_use_test.go:88` |
 
 #### `plant` family `java-variablenoscratch`, 1 test
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.unit.plant.java-variablenoscratch.row-pointer-slot-sabotage-anchor-unique` | The emitter source line that the pointer-slot sabotage control targets appears exactly once. | `inputs.tests` (103 bytes, held in the registry row's `inputs.tests`) | the java Go test for the case (inputs.tests) passes | `internal/codegen/javatable/variablenoscratch_test.go:176` |
+| `L.unit.plant.java-variablenoscratch.row-pointer-slot-sabotage-anchor-unique` | The emitter source line that the pointer-slot sabotage control targets appears exactly once. | `inputs.tests` (118 bytes, held in the registry row's `inputs.tests`) | the java Go test for the case (inputs.tests) passes | `internal/codegen/javatable/variablenoscratch_test.go:176` |
 
 #### `plant` family `loadverdict-percall`, 1 test
 
@@ -2611,7 +2611,7 @@ a negative control: a named test run against a deliberately broken build must co
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.unit.plant.serialize-vendor.vendored-serialize-pin-goes-red` | a changed byte or an unlisted module in the vendored serialize runtime breaks the pin by name | `inputs.tests` (202 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/python/serialize_vendor_test.go:121` |
+| `L.unit.plant.serialize-vendor.vendored-serialize-pin-goes-red` | a changed byte or an unlisted module in the vendored serialize runtime breaks the pin by name | `inputs.tests` (217 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/python/serialize_vendor_test.go:121` |
 
 #### `plant` family `standalone-headers`, 1 test
 
@@ -2629,7 +2629,7 @@ a negative control: a named test run against a deliberately broken build must co
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.unit.plant.stringlit.emitted-string-literals-use-escapes-negative-control` | an escape spelling the target language excludes is refused by the literal scanner by name | `inputs.tests` (385 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/cpptable/stringlit_test.go:355` |
+| `L.unit.plant.stringlit.emitted-string-literals-use-escapes-negative-control` | an escape spelling the target language excludes is refused by the literal scanner by name | `inputs.tests` (400 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/cpptable/stringlit_test.go:355` |
 
 #### `plant` family `unboundeddescriptor`, 1 test
 
@@ -2758,7 +2758,7 @@ generated or runtime code is clean under the language's strict analyser.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.unit.lint.armfield.arm-is-a-field-line` | the runtime source reads a union arm as a field line, with no violation found by the arm-field scanner | `inputs.tests` (384 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/luatable/armfield_test.go:76` |
+| `L.unit.lint.armfield.arm-is-a-field-line` | the runtime source reads a union arm as a field line, with no violation found by the arm-field scanner | `inputs.tests` (399 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/luatable/armfield_test.go:76` |
 
 #### `lint` family `cards-strict`, 1 test
 
@@ -2802,23 +2802,23 @@ generated or runtime code is clean under the language's strict analyser.
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.unit.lint.goose-gooserun-use.tests-start-processes-through-gooserun` | tests start processes only through the bounded process runner | `inputs.tests` (121 bytes, held in the registry row's `inputs.tests`) | the goose Go test for the case (inputs.tests) passes | `internal/codegen/goosetable/gooserun_use_test.go:63` |
-| `L.unit.lint.goose-gooserun-use.tests-start-processes-through-gooserun-policy-corpus` | the bounded-runner check agrees with the shared child-process policy corpus | `inputs.tests` (118 bytes, held in the registry row's `inputs.tests`) | the goose Go test for the case (inputs.tests) passes | `internal/codegen/goosetable/gooserun_use_test.go:116` |
+| `L.unit.lint.goose-gooserun-use.tests-start-processes-through-gooserun-policy-corpus` | the bounded-runner check agrees with the shared child-process policy corpus | `inputs.tests` (133 bytes, held in the registry row's `inputs.tests`) | the goose Go test for the case (inputs.tests) passes | `internal/codegen/goosetable/gooserun_use_test.go:116` |
 
 #### `lint` family `java-canonical`, 2 tests
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.unit.lint.java-canonical.canonical-moves-layout-not-tokens` | the canonical pass changes only whitespace and comments of generated Java and a second pass changes nothing. | `inputs.tests` (109 bytes, held in the registry row's `inputs.tests`) | the java Go test for the case (inputs.tests) passes | `internal/codegen/javatable/canonical_test.go:18` |
-| `L.unit.lint.java-canonical.relayout-lays-out-compact-templates-only` | the relayout pass lays out a compact template and leaves lines already in the formatter's shape unchanged. | `tests: {"java":{"package":"./internal/codegen/java","test":"TestRelayoutLaysOutCompactTemplatesOnly"}}` | the java Go test for the case (inputs.tests) passes | `internal/codegen/java/canonical_test.go:111` |
+| `L.unit.lint.java-canonical.relayout-lays-out-compact-templates-only` | the relayout pass lays out a compact template and leaves lines already in the formatter's shape unchanged. | `inputs.tests` (110 bytes, held in the registry row's `inputs.tests`) | the java Go test for the case (inputs.tests) passes | `internal/codegen/java/canonical_test.go:111` |
 
 #### `lint` family `java-canonical-shapes`, 4 tests
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.unit.lint.java-canonical-shapes.canonical-lays-out-the-qualified-shapes` | the canonical pass lays out qualified-name shapes as the formatter does. | `tests: {"java":{"package":"./internal/codegen/java","test":"TestCanonicalLaysOutTheQualifiedShapes"}}` | the java Go test for the case (inputs.tests) passes | `internal/codegen/java/canonical_shapes_test.go:32` |
-| `L.unit.lint.java-canonical-shapes.canonical-lays-out-the-templates-shapes` | the canonical pass lays out the shapes the table templates write as the formatter does. | `tests: {"java":{"package":"./internal/codegen/java","test":"TestCanonicalLaysOutTheTemplatesShapes"}}` | the java Go test for the case (inputs.tests) passes | `internal/codegen/java/canonical_shapes_test.go:19` |
-| `L.unit.lint.java-canonical-shapes.canonical-leaves-nested-generics-whole` | the canonical pass never splits a nested generic inside its brackets. | `tests: {"java":{"package":"./internal/codegen/java","test":"TestCanonicalLeavesNestedGenericsWhole"}}` | the java Go test for the case (inputs.tests) passes | `internal/codegen/java/canonical_shapes_test.go:107` |
-| `L.unit.lint.java-canonical-shapes.deep-bodies-never-absorbs-one-mis-indented-line` | a method body is moved only whole and never absorbs one mis-indented line. | `inputs.tests` (100 bytes, held in the registry row's `inputs.tests`) | the java Go test for the case (inputs.tests) passes | `internal/codegen/java/canonical_shapes_test.go:78` |
+| `L.unit.lint.java-canonical-shapes.canonical-lays-out-the-qualified-shapes` | the canonical pass lays out qualified-name shapes as the formatter does. | `inputs.tests` (109 bytes, held in the registry row's `inputs.tests`) | the java Go test for the case (inputs.tests) passes | `internal/codegen/java/canonical_shapes_test.go:32` |
+| `L.unit.lint.java-canonical-shapes.canonical-lays-out-the-templates-shapes` | the canonical pass lays out the shapes the table templates write as the formatter does. | `inputs.tests` (109 bytes, held in the registry row's `inputs.tests`) | the java Go test for the case (inputs.tests) passes | `internal/codegen/java/canonical_shapes_test.go:19` |
+| `L.unit.lint.java-canonical-shapes.canonical-leaves-nested-generics-whole` | the canonical pass never splits a nested generic inside its brackets. | `inputs.tests` (109 bytes, held in the registry row's `inputs.tests`) | the java Go test for the case (inputs.tests) passes | `internal/codegen/java/canonical_shapes_test.go:107` |
+| `L.unit.lint.java-canonical-shapes.deep-bodies-never-absorbs-one-mis-indented-line` | a method body is moved only whole and never absorbs one mis-indented line. | `inputs.tests` (115 bytes, held in the registry row's `inputs.tests`) | the java Go test for the case (inputs.tests) passes | `internal/codegen/java/canonical_shapes_test.go:78` |
 
 #### `lint` family `java-wire-packet-defaults`, 1 test
 
@@ -2830,7 +2830,7 @@ generated or runtime code is clean under the language's strict analyser.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.unit.lint.luau-overlay-fixed.overlay-fixed-c-rows-are-evidenced` | each group C fixed overlay row is present in the roadmap evidence, marked done, carries a full revision hash and cites test functions that exist | `inputs.tests` (98 bytes, held in the registry row's `inputs.tests`) | the luau Go test for the case (inputs.tests) passes | `internal/codegen/luautable/overlay_fixed_c_test.go:36` |
+| `L.unit.lint.luau-overlay-fixed.overlay-fixed-c-rows-are-evidenced` | each group C fixed overlay row is present in the roadmap evidence, marked done, carries a full revision hash and cites test functions that exist | `inputs.tests` (113 bytes, held in the registry row's `inputs.tests`) | the luau Go test for the case (inputs.tests) passes | `internal/codegen/luautable/overlay_fixed_c_test.go:36` |
 
 #### `lint` family `luau-overlay-fixed-a`, 1 test
 
@@ -2842,7 +2842,7 @@ generated or runtime code is clean under the language's strict analyser.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.unit.lint.luau-overlay-fixed-b.overlay-fixed-b-rows-are-evidenced` | each group B overlay row is present in the roadmap evidence, marked done, carries a full revision hash and cites test functions that exist | `inputs.tests` (98 bytes, held in the registry row's `inputs.tests`) | the luau Go test for the case (inputs.tests) passes | `internal/codegen/luautable/overlay_fixed_b_test.go:35` |
+| `L.unit.lint.luau-overlay-fixed-b.overlay-fixed-b-rows-are-evidenced` | each group B overlay row is present in the roadmap evidence, marked done, carries a full revision hash and cites test functions that exist | `inputs.tests` (113 bytes, held in the registry row's `inputs.tests`) | the luau Go test for the case (inputs.tests) passes | `internal/codegen/luautable/overlay_fixed_b_test.go:35` |
 
 #### `lint` family `luau-overlay-fixed-d`, 1 test
 
@@ -2860,7 +2860,7 @@ generated or runtime code is clean under the language's strict analyser.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.unit.lint.luau-serialize-bitpacker-present.vendored-has-no-discarded-bitpacker-probe` | the vendored Luau serialize runtime does not probe the bitpacker family with a discarded pcall | `inputs.tests` (100 bytes, held in the registry row's `inputs.tests`) | the luau Go test for the case (inputs.tests) passes | `internal/codegen/luau/serialize_bitpacker_present_test.go:22` |
+| `L.unit.lint.luau-serialize-bitpacker-present.vendored-has-no-discarded-bitpacker-probe` | the vendored Luau serialize runtime does not probe the bitpacker family with a discarded pcall | `inputs.tests` (115 bytes, held in the registry row's `inputs.tests`) | the luau Go test for the case (inputs.tests) passes | `internal/codegen/luau/serialize_bitpacker_present_test.go:22` |
 
 #### `lint` family `luau-wire-packet-defaults`, 1 test
 
@@ -2930,7 +2930,7 @@ two implementations or two versions give the same answer.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.unit.differential.fixedagree.generated-fixed-agrees-with-engine` | The generated fixed read agrees with the engine's over every fixed root of the examples and thousands of mutated records: one verdict per input including dead bytes, and the same value where both accept. | `inputs.tests` (116 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fuzzunit/fixedagree_test.go:27` |
+| `L.unit.differential.fixedagree.generated-fixed-agrees-with-engine` | The generated fixed read agrees with the engine's over every fixed root of the examples and thousands of mutated records: one verdict per input including dead bytes, and the same value where both accept. | `inputs.tests` (115 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fuzzunit/fixedagree_test.go:27` |
 
 #### `differential` family `hashof-oracle`, 1 test
 
@@ -6088,7 +6088,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.runmatch.skips-follows-go` | `gotest` | Go test TestSkipsFollowsGo in ./internal/runmatch | `package: ./internal/runmatch`<br>`test: TestSkipsFollowsGo` | the Go test passes | `internal/runmatch/runmatch_test.go:107` |
 | `none.unit.tooling.runmatch.top-level-is-gos-split` | `gotest` | Go test TestTopLevelIsGosSplit in ./internal/runmatch | `package: ./internal/runmatch`<br>`test: TestTopLevelIsGosSplit` | the Go test passes | `internal/runmatch/runmatch_test.go:9` |
 
-#### `tooling` family `schema-test`, 154 tests
+#### `tooling` family `schema-test`, 155 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -6150,13 +6150,14 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.schema-test.a-run-writes-its-report-when-asked` | `gotest` | Go test TestARunWritesItsReportWhenAsked in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestARunWritesItsReportWhenAsked` | the Go test passes | `tools/schema-test/main_test.go:286` |
 | `none.unit.tooling.schema-test.a-sabotage-that-reddens-an-unnamed-row-fails` | `gotest` | Go test TestASabotageThatReddensAnUnnamedRowFails in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestASabotageThatReddensAnUnnamedRowFails` | the Go test passes | `tools/schema-test/plant_test.go:96` |
 | `none.unit.tooling.schema-test.a-seeded-golden-reports-whether-it-was-written` | `gotest` | Go test TestASeededGoldenReportsWhetherItWasWritten in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestASeededGoldenReportsWhetherItWasWritten` | the Go test passes | `tools/schema-test/golden_test.go:271` |
+| `none.unit.tooling.schema-test.a-shard-of-one-test-past-the-limit-is-named-as-that-test` | `gotest` | Go test TestAShardOfOneTestPastTheLimitIsNamedAsThatTest in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAShardOfOneTestPastTheLimitIsNamedAsThatTest` | the Go test passes | `tools/schema-test/ci_test.go:468` |
 | `none.unit.tooling.schema-test.a-stray-pin-is-judged-against-what-is-committed` | `gotest` | Go test TestAStrayPinIsJudgedAgainstWhatIsCommitted in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAStrayPinIsJudgedAgainstWhatIsCommitted` | the Go test passes | `tools/schema-test/golden_test.go:298` |
 | `none.unit.tooling.schema-test.a-subtest-name-with-a-slash-is-refused` | `gotest` | Go test TestASubtestNameWithASlashIsRefused in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestASubtestNameWithASlashIsRefused` | the Go test passes | `tools/schema-test/gotest_case_test.go:123` |
 | `none.unit.tooling.schema-test.a-subtest-row-keeps-its-own-verdict` | `gotest` | Go test TestASubtestRowKeepsItsOwnVerdict in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestASubtestRowKeepsItsOwnVerdict` | the Go test passes | `tools/schema-test/gotest_case_test.go:15` |
 | `none.unit.tooling.schema-test.a-subtest-row-takes-that-subtests-verdict` | `gotest` | Go test TestASubtestRowTakesThatSubtestsVerdict in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestASubtestRowTakesThatSubtestsVerdict` | the Go test passes | `tools/schema-test/gotest_test.go:399` |
 | `none.unit.tooling.schema-test.a-subtest-that-skips-fails-its-parent` | `gotest` | Go test TestASubtestThatSkipsFailsItsParent in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestASubtestThatSkipsFailsItsParent` | the Go test passes | `tools/schema-test/gotest_test.go:20` |
 | `none.unit.tooling.schema-test.a-target-specific-variable-is-not-a-rule` | `gotest` | Go test TestATargetSpecificVariableIsNotARule in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestATargetSpecificVariableIsNotARule` | the Go test passes | `tools/schema-test/make_test.go:265` |
-| `none.unit.tooling.schema-test.a-test-past-a-shard-says-where-its-tier-goes` | `gotest` | Go test TestATestPastAShardSaysWhereItsTierGoes in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestATestPastAShardSaysWhereItsTierGoes` | the Go test passes | `tools/schema-test/ci_test.go:467` |
+| `none.unit.tooling.schema-test.a-test-past-a-shard-says-where-its-tier-goes` | `gotest` | Go test TestATestPastAShardSaysWhereItsTierGoes in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestATestPastAShardSaysWhereItsTierGoes` | the Go test passes | `tools/schema-test/ci_test.go:445` |
 | `none.unit.tooling.schema-test.a-union-call-carries-its-build-tags` | `gotest` | Go test TestAUnionCallCarriesItsBuildTags in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAUnionCallCarriesItsBuildTags` | the Go test passes | `tools/schema-test/gounion_test.go:63` |
 | `none.unit.tooling.schema-test.a-union-call-runs-under-its-package-lock-with-its-tags` | `gotest` | Go test TestAUnionCallRunsUnderItsPackageLockWithItsTags in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAUnionCallRunsUnderItsPackageLockWithItsTags` | the Go test passes | `tools/schema-test/gounion_test.go:80` |
 | `none.unit.tooling.schema-test.a-union-language-with-no-go-test-is-red` | `gotest` | Go test TestAUnionLanguageWithNoGoTestIsRed in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAUnionLanguageWithNoGoTestIsRed` | the Go test passes | `tools/schema-test/gounion_test.go:18` |
