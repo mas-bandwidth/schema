@@ -18,6 +18,19 @@ var builtReads = map[string]string{
 	"fixedform-corpus": "tables-fixedform-corpus",
 }
 
+// builtJoinReads is each build output a Go test opens only as
+// filepath.Join(.., "build", frag, ...), and the make target that writes it.
+// Its repo-relative spelling ("build/" + frag) is no read here: it is how
+// internal/ci's tests quote Makefile text, how tools/schema-test names a make
+// argument it builds itself, and how the harness hands a driver a path at run
+// time. Undeclared, each red its test the first time it ran alone (the dart
+// cook-write rows, the elixir message conformance, the luau wire-fuzz pipe).
+var builtJoinReads = map[string]string{
+	"tables-generated-dart": "build/tables-generated-dart/.stamp",
+	"elixir-tables-ebin":    "build-conformance-elixir",
+	"luaufuzzhost":          "build/luaufuzzhost/luaufuzzhost",
+}
+
 // TestEveryBuiltReadIsDeclared: a package whose Go tests open a build output
 // by path has a GoNeedsPath line naming the target that writes it, and a line
 // whose tests are named reads it from one of them. A package reads an output
@@ -89,6 +102,11 @@ func TestEveryBuiltReadIsDeclared(t *testing.T) {
 					p.reads[target] = rel
 				}
 			}
+			for frag, target := range builtJoinReads {
+				if prev == "build" && lit == frag {
+					p.reads[target] = rel
+				}
+			}
 		}
 		return nil
 	})
@@ -116,7 +134,9 @@ func TestEveryBuiltReadIsDeclared(t *testing.T) {
 	}
 	sort.Strings(missing)
 	if len(missing) > 0 {
-		t.Fatalf("%s does not declare what these Go tests read:\n%s", GoNeedsPath, strings.Join(missing, "\n"))
+		// one line, so a run's first line of the failure names each missing
+		// declaration (a plant matches its reason there)
+		t.Fatalf("%s does not declare what these Go tests read: %s", GoNeedsPath, strings.Join(missing, "; "))
 	}
 }
 

@@ -108,3 +108,24 @@ needs ./test/go-tables .* build/tables-generated-go/.stamp
 # answer tree builds from: shared with the run's other makes, so built first,
 # under the driver's hold on the checkout
 needs ./internal/ci/squirreldiff TestSchemaSquirrelAllPortDifferential schema-squirrel-all-port-differential-legs
+
+# the generated Dart corpus the cook-write row test copies and runs the
+# driver over (build/tables-generated-dart and its -scalars tree, both written
+# by the .stamp rule), the cards unit beside it, then the counted-minimum
+# framing unit the driver imports from build/, in build order
+needs ./internal/codegen/darttable TestCookWriteAnswersEveryCookWriteRowDart bin/schema
+needs ./internal/codegen/darttable TestCookWriteAnswersEveryCookWriteRowDart build/tables-generated-dart/.stamp
+needs ./internal/codegen/darttable TestCookWriteAnswersEveryCookWriteRowDart cards-dart-generate
+needs ./internal/codegen/darttable TestCookWriteAnswersEveryCookWriteRowDart build/tables-generated-dart-framing/countedmin/.stamp
+
+# the conformance harness and the compiled Elixir leg (build/elixir-tables-ebin)
+# the message-form test runs the message surface with, in build order
+needs ./internal/codegen/elixirtable TestMessageFormConformanceElixir build/conformance-harness
+needs ./internal/codegen/elixirtable TestMessageFormConformanceElixir bin/schema
+needs ./internal/codegen/elixirtable TestMessageFormConformanceElixir build/tables-generated-elixir/.stamp
+needs ./internal/codegen/elixirtable TestMessageFormConformanceElixir build-conformance-elixir
+
+# the native Luau fuzz host the verdict pipe and its control run the driver
+# under: the pinned Luau source, then the host linked against it
+needs ./internal/codegen/luautable TestLuauWireFuzzVerdictPipe(NegativeControl)? build/luau-src-0.741/.stamp
+needs ./internal/codegen/luautable TestLuauWireFuzzVerdictPipe(NegativeControl)? build/luaufuzzhost/luaufuzzhost

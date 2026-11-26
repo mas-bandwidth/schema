@@ -1233,7 +1233,7 @@ test-dart: tables-dart-text-differential tables-dart-text-differential-negative-
 # so the corpus is built first; a missing SDK or corpus is a failure that names
 # it, never a skip (docs/rulings.json no-skips).
 .PHONY: tables-dart-block-build
-tables-dart-block-build: build/tables-generated-dart/.stamp cards-dart-generate
+tables-dart-block-build: build/tables-generated-dart/.stamp cards-dart-generate build/tables-generated-dart-framing/countedmin/.stamp
 	DART=$(DART) $(GO_TEST) ./internal/codegen/darttable/ -count=1 -timeout=0 -run '^(TestBlockBuildAndCookWriteDart|TestCookWriteFixedDart|TestCookWriteGuardedAndTextArrayRootsDart|TestCookWriteAnswersEveryCookWriteRowDart)$$'
 	@echo 'tables Dart block build and cook write: begin, the fixed root, the guarded and text-array roots and every cook-write row'
 
