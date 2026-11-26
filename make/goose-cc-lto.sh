@@ -18,5 +18,9 @@
 # -O2, as before. With clang as cc, -flto=auto is full LTO, which does not run in parallel:
 # no speedup there.
 #
-# GOOSE_LEG_CC names the compiler (default cc).
+# GOOSE_LEG_CC names the compiler (default cc). The script fails loudly: set -e,
+# and exec hands the make cc's own exit status, so a compile that fails fails
+# goose build, make/goose-wirefuzz-build.sh and the make that runs it
+# (TestTheGooseLTOCompilerFailsLoudly, internal/ci).
+set -eu
 exec "${GOOSE_LEG_CC:-cc}" "$@" -flto=auto

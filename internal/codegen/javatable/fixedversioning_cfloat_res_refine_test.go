@@ -18,6 +18,7 @@ import (
 )
 
 func TestFixedVersioningCfloatResRefine(t *testing.T) {
+	t.Parallel()
 	corpus := corpusDir(t)
 	oldFile := filepath.Join(corpus, "old_cfloat_res_refine.bin")
 	if _, err := os.Stat(oldFile); err != nil {

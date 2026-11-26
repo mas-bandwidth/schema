@@ -27,6 +27,7 @@ import (
 const poison32 = "1515870810" // 0x5A5A5A5A
 
 func TestFixedVersioningRefuseWritesNothing(t *testing.T) {
+	t.Parallel()
 
 	corpus := corpusDir(t)
 	oldFile := filepath.Join(corpus, "old_nested_append.bin")

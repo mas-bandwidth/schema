@@ -419,6 +419,7 @@ func javaVariableCellsStrictRun(t *testing.T, undermine func(pkg string, files m
 }
 
 func TestJavaVariableCellsStrict(t *testing.T) {
+	t.Parallel()
 	sources := javaVarCellSources(t)
 	for _, finding := range javaVarCellsFindings(sources) {
 		t.Error(finding)
@@ -434,6 +435,7 @@ func TestJavaVariableCellsStrict(t *testing.T) {
 }
 
 func TestJavaVariableCellsStrictNegativeControl(t *testing.T) {
+	t.Parallel()
 	base := javaVarCellSources(t)
 	if got := javaVarCellsFindings(base); len(got) != 0 {
 		t.Fatalf("the unplanted real artifacts already fail the gate: %v", got)

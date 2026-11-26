@@ -24,6 +24,7 @@ import (
 )
 
 func TestFixedVersioningUnionUnselectedArm(t *testing.T) {
+	t.Parallel()
 
 	corpus := corpusDir(t)
 	oldFile := filepath.Join(corpus, "old_union_append.bin")

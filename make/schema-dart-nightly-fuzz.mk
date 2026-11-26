@@ -93,20 +93,20 @@ schema-dart-nightly-fuzz: toolchain-dart $(DART_NIGHTLY_FUZZ_BUILD)/registry.dar
 		--seeds $(DART_NIGHTLY_FUZZ_BUILD)/seeds
 
 # THE READERS ARE ANALYZER-CLEAN. The corpus is generated into
-# build/nightly-fuzz/gen, but the harness imports only the <Base>Wire.dart
-# readers (each is self-contained: dart:convert and dart:typed_data). Analyze
-# exactly those, in a scratch tree, the way make/dart.mk analyses its table
-# tree without tables/scalars' Fixed library: a table-only 128-bit unit imports
-# an Int128.dart the packet emitter does not write (a known form-3 gap, noted
-# in make/dart.mk), and that library is not one a reader imports.
+# build/nightly-fuzz/gen, and the harness imports the <Base>Wire.dart readers.
+# A reader is not self-contained: its enums are the packet library's (Dart 3
+# extension types, declared once), so it imports the unit's packet file, which
+# imports Schema.dart. Analyze the readers and exactly what they import
+# (make/dart-analyze-tree.sh), in a scratch tree, the way make/dart.mk analyses
+# its table tree without tables/scalars' Fixed library: a table-only 128-bit
+# unit imports an Int128.dart the packet emitter does not write (a known form-3
+# gap, noted in make/dart.mk), and that library is not one a reader imports.
+# A library a reader imports that the corpus did not generate fails the tree
+# by name, before the analyzer runs.
 .PHONY: schema-dart-nightly-fuzz-analyze
 schema-dart-nightly-fuzz-analyze: toolchain-dart $(DART_NIGHTLY_FUZZ_BUILD)/registry.dart
 	@rm -rf $(DART_NIGHTLY_FUZZ_BUILD)/analyze && mkdir -p $(DART_NIGHTLY_FUZZ_BUILD)/analyze
-	@set -e; for f in $(DART_NIGHTLY_FUZZ_BUILD)/gen/*/*Wire.dart; do \
-		unit=$$(basename "$$(dirname "$$f")"); \
-		mkdir -p $(DART_NIGHTLY_FUZZ_BUILD)/analyze/$$unit; \
-		cp "$$f" $(DART_NIGHTLY_FUZZ_BUILD)/analyze/$$unit/; \
-	done
+	@sh make/dart-analyze-tree.sh $(DART_NIGHTLY_FUZZ_BUILD)/gen $(DART_NIGHTLY_FUZZ_BUILD)/analyze
 	@$(DART) analyze $(DART_NIGHTLY_FUZZ_BUILD)/analyze
 	@echo "nightly fuzz readers: analyzer clean"
 

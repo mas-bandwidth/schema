@@ -21,6 +21,7 @@ import (
 // with one copy of the body and never reads those columns, so only the compiled
 // path saw it.
 func TestBytesNDstRowIsAnArray(t *testing.T) {
+	t.Parallel()
 	u := unitFrom(t, `package probe
 
 fixed table Probe
@@ -62,6 +63,7 @@ fixed table Probe
 // THE PREFILL IS THE BYTES THE PLAN DOES NOT WRITE. Identity's hole list is
 // empty; the load still runs the hole loop rather than skipping the prefill.
 func TestFixedLoadPrefillsHolesOnly(t *testing.T) {
+	t.Parallel()
 	files, err := Generate(unitFrom(t, `package probe
 
 fixed table ByRoot
@@ -90,6 +92,7 @@ fixed table ByRoot
 }
 
 func TestWriteAndScatterWalkLiveCount(t *testing.T) {
+	t.Parallel()
 	files, err := Generate(unitFrom(t, `package probe
 
 fixed table ByRoot
@@ -113,6 +116,7 @@ fixed table ByRoot
 // Pin identity==compiled on a sibling ByRoot `blob bytes(N)`, and the live-count
 // stain: count=1, slack 0xFF, after load object slack is zeros.
 func TestIdentityCompiledBytesN(t *testing.T) {
+	t.Parallel()
 
 	javac, err := exec.LookPath("javac")
 	if err != nil {
@@ -321,6 +325,7 @@ func methodBody(src, sig string) string {
 // and compiled share this scatter; clamp and ordinal counters live in it, so
 // a loop over ArrayBound would count slack. Write still stores MAX (Dart #834).
 func TestScatterCountedArrayWalksLiveCount(t *testing.T) {
+	t.Parallel()
 	files := generate(t, `package probe
 
 enum Grade
@@ -381,6 +386,7 @@ fixed table LiveRoot
 // `make tables-java-fixedform-arm-negative-control`, whose case reads a record
 // through parse/compile/run directly and not through the load path.
 func TestFixedFormFU1FU2(t *testing.T) {
+	t.Parallel()
 
 	fu1Files, err := Generate(schemaUnit(t, "FU1.schema"))
 	if err != nil {
@@ -692,6 +698,7 @@ const fu1fu2Driver = `public final class Driver {
 //     14). Capped at 255 it lost the 256th variant on, each landing None as
 //     though this reader did not name it.
 func TestFixedHostileGuardAndOrdinal(t *testing.T) {
+	t.Parallel()
 
 	javac, javaBin := javaTools(t)
 	u := schemaUnit(t, "FU1.schema")

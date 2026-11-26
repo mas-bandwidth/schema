@@ -352,6 +352,14 @@ func Weight(inst Instance) float64 {
 // test's process, so a cut keeps them one block: splitting them would run
 // the process once per shard.
 func unitOf(inst Instance) string {
+	// only these three adapters keep rows together: every other row stands
+	// alone, read without decoding its inputs (a cut weighs every row of the
+	// registry, many times over, so a decode per row is most of a cut)
+	switch inst.Test.Adapter {
+	case "golden", "make-gotest", "gotest":
+	default:
+		return ""
+	}
 	var in struct {
 		Writer  string `json:"writer"`
 		File    string `json:"file"`
@@ -507,9 +515,22 @@ func Shard(instances []Instance, i, n int) ([]Instance, error) {
 	if n < 1 || i < 1 || i > n {
 		return nil, fmt.Errorf("shard %d/%d: want 1 <= i <= n", i, n)
 	}
-	out := Parts(instances, n)[i-1]
+	return ShardOf(Parts(instances, n), i, n, len(instances))
+}
+
+// ShardOf is Shard read from a cut already made (parts, Parts of a list of
+// names names long, n ways): a caller that reads every shard of one cut
+// cuts once.
+func ShardOf(parts [][]Instance, i, n, names int) ([]Instance, error) {
+	if n >= 1 && len(parts) != n {
+		return nil, fmt.Errorf("shard %d/%d: the cut has %d parts, want %d", i, n, len(parts), n)
+	}
+	if n < 1 || i < 1 || i > n {
+		return nil, fmt.Errorf("shard %d/%d: want 1 <= i <= n", i, n)
+	}
+	out := parts[i-1]
 	if len(out) == 0 {
-		return nil, fmt.Errorf("shard %d/%d of %d names matches 0 tests", i, n, len(instances))
+		return nil, fmt.Errorf("shard %d/%d of %d names matches 0 tests", i, n, names)
 	}
 	return out, nil
 }

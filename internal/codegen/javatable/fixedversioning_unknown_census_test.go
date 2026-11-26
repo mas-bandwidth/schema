@@ -173,6 +173,7 @@ public final class %[1]s {
 }
 
 func TestFixedVersioningUnknownCensus(t *testing.T) {
+	t.Parallel()
 	file := javaUnlawfulRequired(t, "old_unknown_census.bin")
 	javaUnlawfulRun(t, "unknown_census", file, javaUnlawfulCensusPoison, javaUnlawfulCensusDefaults)
 }
