@@ -802,3 +802,93 @@ func TestHarnessesShareTheCheckoutAndMakesWaitForThem(t *testing.T) {
 	}
 	release()
 }
+
+// TestAReaderWaitingBehindAnotherEndsWithItsOwnContext: while a make holds
+// the checkout, one reader waits for it on behalf of all, and a second
+// reader whose context is done fails at once, naming the wait, never stuck
+// behind the first. The plant holds the readers' mutex through the wait.
+func TestAReaderWaitingBehindAnotherEndsWithItsOwnContext(t *testing.T) {
+	t.Parallel()
+	release, err := holdCheckout(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	firstCtx, stop := context.WithCancel(context.Background())
+	first := make(chan error, 1)
+	go func() {
+		r, err := holdCheckoutShared(firstCtx)
+		if err == nil {
+			r()
+		}
+		first <- err
+	}()
+	waiting := func() bool {
+		sharedCheckout.Lock()
+		defer sharedCheckout.Unlock()
+		return sharedCheckout.taking != nil
+	}
+	for i := 0; !waiting(); i++ {
+		if i == 1_000_000 {
+			t.Fatal("the first reader never waited for the checkout")
+		}
+		runtime.Gosched()
+	}
+	done, cancel := context.WithCancel(context.Background())
+	cancel()
+	second := make(chan error, 1)
+	go func() {
+		r, err := holdCheckoutShared(done)
+		if err == nil {
+			r()
+		}
+		second <- err
+	}()
+	var got error
+	answered := false
+	for i := 0; i < 1_000_000 && !answered; i++ {
+		select {
+		case got = <-second:
+			answered = true
+		default:
+			runtime.Gosched()
+		}
+	}
+	stop()
+	if err := <-first; err == nil {
+		t.Error("the first reader took the checkout a make holds")
+	}
+	switch {
+	case !answered:
+		t.Fatal("a reader whose context is done stayed stuck behind another reader's wait")
+	case got == nil || !strings.Contains(got.Error(), "waiting for the checkout"):
+		t.Errorf("a reader whose context is done: %v, want the wait named", got)
+	}
+}
+
+// TestOnlyHappyPathGroupsShareTheCheckout: the harness adapter lets a group
+// run beside others only when every instance is a happy path (make
+// happy-<lang> reads bin/schema and writes only build/happy/<lang>); a
+// group with any other harness family, which may make in the checkout, and
+// an empty group stay Serial. The plant shares every group.
+func TestOnlyHappyPathGroupsShareTheCheckout(t *testing.T) {
+	t.Parallel()
+	inst := func(family string) testreg.Instance {
+		return testreg.Instance{Full: "c.functional.roundtrip." + family + ".x", Lang: "c", Test: testreg.Test{Family: family}}
+	}
+	a := &harnessAdapter{}
+	for _, c := range []struct {
+		what  string
+		group []testreg.Instance
+		want  bool
+	}{
+		{"happy paths", []testreg.Instance{inst(happyFamily), inst(happyFamily)}, true},
+		{"a name-buildability row", []testreg.Instance{inst("name-buildability")}, false},
+		{"a happy path and a hostile row", []testreg.Instance{inst(happyFamily), inst("hostile")}, false},
+		{"no instance", nil, false},
+	} {
+		if got := a.SharesCheckout(c.group); got != c.want {
+			t.Errorf("%s: shares the checkout %t, want %t", c.what, got, c.want)
+		}
+	}
+}

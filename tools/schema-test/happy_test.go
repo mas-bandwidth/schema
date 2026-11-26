@@ -11,7 +11,8 @@ import (
 
 // TestTheHappyPathPassesOnlyOnItsOkLine: a language's happy path passes
 // when make happy-<lang> exits 0 and printed that language's ok line; an
-// exit 0 with no ok line ran no round trip, a failing exit and a reported
+// exit 0 with no ok line of its own (another language's, or the words inside
+// another line) ran no round trip, a failing exit and a reported
 // skip fail, each by name, and two rows of one language are refused. Each
 // stand-in is a shell line in place of make. The plant takes any exit 0 for
 // a pass.
@@ -32,6 +33,8 @@ func TestTheHappyPathPassesOnlyOnItsOkLine(t *testing.T) {
 	for line, want := range map[string]string{
 		"echo built":                                   `never printed "happy c: ok"`,
 		"echo 'happy go: ok (26 bytes)'":               `never printed "happy c: ok"`,
+		"echo 'unhappy c: ok'":                         `never printed "happy c: ok"`,
+		"echo 'happy c: okay'":                         `never printed "happy c: ok"`,
 		"echo 'happy c: ok (26 bytes)'; exit 1":        "exit status 1",
 		"echo 'SKIP: no compiler'; echo 'happy c: ok'": "nothing is ever skipped",
 	} {

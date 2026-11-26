@@ -158,12 +158,14 @@ func TestThePRGroupIsOneHappyPathRowPerLanguage(t *testing.T) {
 			t.Errorf("%s: want %q, got %v", c.what, c.want, p)
 		}
 	}
-	// the calls go longest first to the least loaded lane: c 9 s, go 6 s and
-	// two of 4 s on two lanes is 9+4 and 6+4, 13 s; one lane is the sum
+	// the calls start in the rows' order, each on the first lane to come
+	// free, as the run takes them: a 4, c 9, d 4 and go 6 on two lanes is
+	// a+d+go and c, 14 s (longest first would be 13 s, which the run never
+	// does); one lane is the sum
 	for _, c := range []struct {
 		jobs int
 		want float64
-	}{{2, 13}, {1, 23}, {0, 23}, {4, 9}} {
+	}{{2, 14}, {1, 23}, {0, 23}, {4, 9}, {3, 10}} {
 		rows := []prRow{{Lang: "a", Seconds: 4}, {Lang: "c", Seconds: 9}, {Lang: "d", Seconds: 4}, {Lang: "go", Seconds: 6}}
 		if got := prCriticalPath(rows, c.jobs); got != c.want {
 			t.Errorf("%d lanes: the critical path is %v s, want %v s", c.jobs, got, c.want)

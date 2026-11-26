@@ -925,12 +925,15 @@ and line, on any difference, so a hand edit is red.
   round trip) and passes only on its `happy <lang>: ok` line
   (`TestTheHappyPathPassesOnlyOnItsOkLine`), and nothing else. The rows
   share the checkout (`make bin/schema` is built once first) and run four at
-  once (`--jobs`; `TestSharedCheckoutCallsRunSideBySideAfterTheWriters`).
+  once (`--jobs`; `TestSharedCheckoutCallsRunSideBySideAfterTheWriters`); only
+  a group of happy paths shares it, and every other harness group, which may
+  make in the checkout, runs alone (`TestOnlyHappyPathGroupsShareTheCheckout`).
   The budget is the whole job's wall time, measured on a fresh clone and
   recorded in `prTiming` (tools/schema-test/ci.go): setup (checkout, the
   pinned siblings, the driver's build) plus the longer of the measured run
-  and the critical path of the rows' `lang_seconds` at four at once, at most
-  120 s. `schema-test ci` refuses any other pr group by name: another row, a
+  and the critical path of the rows' `lang_seconds` at four at once (each row
+  started in the registry's order on the first lane to come free, as the run
+  starts them), at most 120 s. `schema-test ci` refuses any other pr group by name: another row, a
   language-free row, a language missing its row or with two, a row not
   measured for its own language, or the job past 120 s
   (`TestThePRGroupIsOneHappyPathRowPerLanguage`); a language past its share

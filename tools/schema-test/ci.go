@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"cmp"
 	"crypto/sha256"
 	"embed"
 	"encoding/json"
@@ -30,9 +29,9 @@ import (
 // schema-test:
 //
 //   - ci-fast.yml, per pull request and on main: the registry's pr group in
-//     one job, per language one compile row and one happy-path round-trip
-//     row and nothing else (prGroup), their recorded seconds summed within
-//     the job's two minutes. This file writes it whole, with
+//     one job, per language one row, make happy-<lang>, and nothing else
+//     (prGroup), side by side, the job's measured setup and the run's
+//     critical path within its two minutes. This file writes it whole, with
 //     docs/CI-TIERS.md, from the registry and the seconds its tests were
 //     measured at; TestTheCIFilesAreCurrent regenerates both and diffs, so a
 //     hand edit is red.
@@ -132,23 +131,21 @@ type prRow struct {
 // every language row, exactly one instance of the happy-path family, and
 // nothing else; every instance measured, by its language's own seconds; the
 // job's setup and the run's critical path within prJobBudget. Each break is
-// named. The rows come back in the registry's language order.
+// named. The rows come back in the order the run starts them (the
+// registry's, so its languages' for one row), then any language left out.
 func prGroup(reg *testreg.Registry) ([]prRow, []string) {
 	return prGroupTimed(reg, prTiming)
 }
 
 // prCriticalPath is the parallel run's wall time from the rows' recorded
-// seconds: each language's row is one harness call, and the calls go
-// longest first to the least loaded of jobs lanes, as the run's shared
-// lanes take them; the busiest lane is the path.
+// seconds: each language's row is one harness call, and the calls start in
+// the rows' order (the registry's languages, the run's plan order), each
+// on the first of jobs lanes to come free, as the run's shared lanes take
+// them (testreg.SharedCheckout); the busiest lane is the path.
 func prCriticalPath(rows []prRow, jobs int) float64 {
-	secs := make([]float64, 0, len(rows))
-	for _, r := range rows {
-		secs = append(secs, r.Seconds)
-	}
-	slices.SortFunc(secs, func(a, b float64) int { return cmp.Compare(b, a) })
 	lanes := make([]float64, max(jobs, 1))
-	for _, s := range secs {
+	for _, r := range rows {
+		s := r.Seconds
 		least := 0
 		for i := range lanes {
 			if lanes[i] < lanes[least] {
@@ -177,8 +174,12 @@ func prGroupTimed(reg *testreg.Registry, timing prRunTiming) ([]prRow, []string)
 		byLang[l] = &prRow{Lang: l}
 	}
 	total := 0.0
+	var runOrder []string // the languages in the order the run starts them
 	for _, inst := range sel.Instances {
 		r, ok := byLang[inst.Lang]
+		if ok && !slices.Contains(runOrder, inst.Lang) {
+			runOrder = append(runOrder, inst.Lang)
+		}
 		if !ok {
 			problems = append(problems, fmt.Sprintf("%s is in the pr group, and the pr group holds per language one happy-path row (family %s), never a language-free row: it runs nightly", inst.Full, happyFamily))
 			continue
@@ -198,8 +199,15 @@ func prGroupTimed(reg *testreg.Registry, timing prRunTiming) ([]prRow, []string)
 			r.Happy = inst.Full
 		}
 	}
+	// the rows in the order the run starts them, which the critical path
+	// follows, then any language the group left out
 	var rows []prRow
 	for _, l := range langs {
+		if !slices.Contains(runOrder, l) {
+			runOrder = append(runOrder, l)
+		}
+	}
+	for _, l := range runOrder {
 		r := byLang[l]
 		if r.Happy == "" {
 			problems = append(problems, fmt.Sprintf("%s has no happy-path row (family %s) in the pr group", l, happyFamily))
@@ -1114,7 +1122,7 @@ func ciCmd(args []string, stdout io.Writer) error {
 	}
 	if *verdictFlag {
 		if _, problems := prGroup(reg); len(problems) > 0 {
-			return fmt.Errorf("the pr group is not one compile row and one happy-path row per language within the job's %.0f s:\n  %s", prJobBudget, strings.Join(problems, "\n  "))
+			return fmt.Errorf("the pr group is not one happy-path row per language within the job's %.0f s:\n  %s", prJobBudget, strings.Join(problems, "\n  "))
 		}
 		if err := verdict([]byte(os.Getenv("NEEDS"))); err != nil {
 			return err

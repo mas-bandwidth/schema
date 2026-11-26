@@ -624,8 +624,9 @@ func TestAPerLanguageRowsSecondsAreEachLanguages(t *testing.T) {
 		t.Fatalf("WriteSeconds: %d %v", n, err)
 	}
 	// a later measure of one language replaces its seconds and keeps the
-	// other's
-	if n, err := WriteSeconds(path, map[string]float64{"roundtrip.p.one": 7}, map[string]map[string]float64{"roundtrip.p.one": {"go": 1.5}}); err != nil || n != 1 {
+	// other's, and the row's seconds stay its heaviest language's, though
+	// this run's longest (what SplitSeconds gives) is the lighter one
+	if n, err := WriteSeconds(path, map[string]float64{"roundtrip.p.one": 1.5}, map[string]map[string]float64{"roundtrip.p.one": {"go": 1.5}}); err != nil || n != 1 {
 		t.Fatalf("WriteSeconds: %d %v", n, err)
 	}
 	got, err := os.ReadFile(path)
@@ -786,15 +787,65 @@ func stagedRunner(t *testing.T, log *eventLog, deadline func(parent context.Cont
 }
 
 // sharing is a staged adapter whose calls only read the checkout
-// (SharedCheckout).
+// (SharedCheckout) when every instance of the group is of family reads; a
+// group of any other family it is not sure of, and that runs Serial.
 type sharing struct{ staged }
 
-func (sharing) SharesCheckout() bool { return true }
+func (sharing) SharesCheckout(instances []Instance) bool {
+	return !slices.ContainsFunc(instances, func(i Instance) bool { return i.Test.Family != "reads" })
+}
+
+// readInstance is a language-free instance of adapter, of family reads.
+func readInstance(adapter string) Instance {
+	inst := freeInstance(adapter)
+	inst.Test.Family = "reads"
+	return inst
+}
+
+// overlap counts the shared calls in flight. Each call waits, by yielding and
+// never by the clock, for a second call to be in flight beside it, so a
+// runner that ran the shared calls one at a time leaves met open and the
+// test red by name, not hung.
+type overlap struct {
+	mu      sync.Mutex
+	in, top int
+	met     chan struct{}
+}
+
+func (o *overlap) during() {
+	o.mu.Lock()
+	o.in++
+	o.top = max(o.top, o.in)
+	if o.in == 2 {
+		select {
+		case <-o.met:
+		default:
+			close(o.met)
+		}
+	}
+	o.mu.Unlock()
+	for range 1_000_000 {
+		select {
+		case <-o.met:
+		default:
+			runtime.Gosched()
+			continue
+		}
+		break
+	}
+	o.mu.Lock()
+	o.in--
+	o.mu.Unlock()
+}
 
 // TestSharedCheckoutCallsRunSideBySideAfterTheWriters: the calls that only
-// read the checkout run up to Jobs at once (the machine's cores; at least
-// one), after every Serial call that writes it, and every one of them runs.
-// The plant is one lane whatever Jobs says.
+// read the checkout run side by side, up to Jobs at once (the machine's
+// cores; at least one) and never more, after every Serial call that writes
+// it, and every one of them runs; one at a time they start in the plan's
+// order, which the pr job's critical path assumes. A group its adapter does
+// not say only reads runs Serial, before them. The plants: one lane
+// whatever Jobs says, the calls run one after another, and every group of
+// the adapter shared.
 func TestSharedCheckoutCallsRunSideBySideAfterTheWriters(t *testing.T) {
 	t.Parallel()
 	for jobs, want := range map[int]int{0: 1, 1: 1, 2: 2, 16: 16} {
@@ -803,22 +854,45 @@ func TestSharedCheckoutCallsRunSideBySideAfterTheWriters(t *testing.T) {
 		}
 	}
 	log := &eventLog{}
+	o := &overlap{met: make(chan struct{})}
 	m := map[string]Adapter{"w": staged{name: "w", serial: true, log: log}}
 	var instances []Instance
 	for _, name := range []string{"r1", "r2", "r3"} {
-		m[name] = sharing{staged{name: name, serial: true, log: log}}
-		instances = append(instances, freeInstance(name))
+		m[name] = sharing{staged{name: name, serial: true, log: log, during: o.during}}
+		instances = append(instances, readInstance(name))
 	}
-	instances = append(instances, freeInstance("w"))
+	m["x"] = sharing{staged{name: "x", serial: true, log: log}}
+	instances = append(instances, freeInstance("x"), freeInstance("w"))
 	rn := &Runner{Reg: load(t, fixture), Adapters: m, Context: WithTimeout(0), Jobs: 2}
 	rep := rn.Run(context.Background(), instances)
 	if !rep.OK() || rep.Passed != len(instances) {
 		t.Fatalf("%s, want every call to pass", rep.Summary())
 	}
 	for _, name := range []string{"r1", "r2", "r3"} {
-		if !log.has("end "+name) || log.at("start "+name) < log.at("end w") {
-			t.Errorf("shared call %s ran beside, or before, the writer, or not at all: %q", name, log.ev)
+		if !log.has("end "+name) || log.at("start "+name) < log.at("end w") || log.at("start "+name) < log.at("end x") {
+			t.Errorf("shared call %s ran beside, or before, a writer, or not at all: %q", name, log.ev)
 		}
+	}
+	switch {
+	case o.top < 2:
+		t.Errorf("the shared calls ran one at a time on 2 lanes: %q", log.ev)
+	case o.top > 2:
+		t.Errorf("%d shared calls ran at once on 2 lanes", o.top)
+	}
+	// one lane: the shared calls start in the plan's order
+	log = &eventLog{}
+	m = map[string]Adapter{}
+	instances = nil
+	for _, name := range []string{"r1", "r2", "r3"} {
+		m[name] = sharing{staged{name: name, serial: true, log: log}}
+		instances = append(instances, readInstance(name))
+	}
+	rn = &Runner{Reg: load(t, fixture), Adapters: m, Context: WithTimeout(0), Jobs: 1}
+	if rep := rn.Run(context.Background(), instances); !rep.OK() {
+		t.Fatalf("%s, want every call to pass", rep.Summary())
+	}
+	if want := []string{"start r1", "end r1", "start r2", "end r2", "start r3", "end r3"}; !slices.Equal(log.ev[len(log.ev)-6:], want) {
+		t.Errorf("one lane ran %q, want the plan's order %q", log.ev, want)
 	}
 }
 

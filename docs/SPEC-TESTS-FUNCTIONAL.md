@@ -3,7 +3,7 @@
 
 Part of the specification: every test of tier `functional`, from the test registry. The adapter contract, the languages, the types and the other tiers are in [SPEC-TESTS.md](SPEC-TESTS.md).
 
-**Tier functional:** uses a real thing: a compiler or VM, a toolchain, generated code built and run; runs nightly, and per pull request only as the pr group names it (one compile row and one happy path per language).
+**Tier functional:** uses a real thing: a compiler or VM, a toolchain, generated code built and run; runs nightly, and per pull request only as the pr group names it (one happy-path row per language, make happy-&lt;lang&gt;).
 
 Functional tests every language answers: 5044. Language-free tests: 2360.
 

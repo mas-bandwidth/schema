@@ -22,6 +22,9 @@ runs:
         # every sibling cloned at once (one after another took 5.9 s of
         # the pr job's setup: measured on hetzner1, 2026-11-25); each
         # clone's own check fails the step by name
+        # read first: a SIBLINGS missing, or with no line, fails the step here
+        # (a command in a process substitution would fail unseen)
+        siblings=$(grep -v '^#' SIBLINGS)
         pids=()
         while read -r path url tag commit; do
           [ -n "$path" ] || continue
@@ -35,7 +38,7 @@ runs:
             fi
           ) &
           pids+=("$!")
-        done < <(grep -v '^#' SIBLINGS)
+        done <<< "$siblings"
         failed=0
         for pid in "${pids[@]}"; do
           wait "$pid" || failed=1

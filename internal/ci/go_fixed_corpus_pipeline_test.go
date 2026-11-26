@@ -92,8 +92,8 @@ const cppBudgetRow = "harness-run.makefile.conformance-cpp-tu-budget"
 // cppBudgetProblems names what keeps the compile budget from running every
 // night: no registry row runs `make conformance-cpp-tu-budget`, the row is
 // scoped to a language (the budget is the leg's, read once), or its tier is
-// outside the nightly group's. The pr group holds one compile row and one
-// happy path per language and nothing else (tools/schema-test ci), so the
+// outside the nightly group's. The pr group holds one happy-path row per
+// language (make happy-<lang>) and nothing else (tools/schema-test ci), so the
 // budget is never per pull request; a row in it is named too.
 func cppBudgetProblems(registry string) []string {
 	var row map[string]any
@@ -140,7 +140,7 @@ func cppBudgetProblems(registry string) []string {
 	}
 	for _, n := range prNames {
 		if strings.HasSuffix(n, "."+cppBudgetRow) {
-			bad = append(bad, fmt.Sprintf("%s is in the pr group as %s: the pr group is one compile row and one happy path per language, and the budget runs nightly", cppBudgetRow, n))
+			bad = append(bad, fmt.Sprintf("%s is in the pr group as %s: the pr group is one happy-path row per language, and the budget runs nightly", cppBudgetRow, n))
 		}
 	}
 	return bad
@@ -149,8 +149,7 @@ func cppBudgetProblems(registry string) []string {
 // TestTheCppCompileBudgetRunsNightly: the cpp conformance leg's build
 // records every driver unit's compile seconds, and the registry holds them
 // to the budget every night, in a language-free row of a tier the nightly
-// group runs, never in the per-PR job (one compile row and one happy path
-// per language). It replaces TestTheCppCompileBudgetRunsOnTheProducedLeg,
+// group runs, never in the per-PR job (one happy-path row per language). It replaces TestTheCppCompileBudgetRunsOnTheProducedLeg,
 // whose language-free per-PR shards are gone. The plants: the row gone, a
 // tier the nightly group does not run, scoped to cpp, running another
 // target, and named in the pr group.

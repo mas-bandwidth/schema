@@ -77,9 +77,22 @@ func runHappyWith(ctx context.Context, argv []string, lang string, instances []t
 	case runErr != nil:
 		return []testreg.Result{{Instance: instances[0].Full, Verdict: testreg.Fail,
 			Reason: fmt.Sprintf("%s: %v\n%s", strings.Join(argv, " "), runErr, tail(out.String(), 20))}}, nil
-	case !strings.Contains(out.String(), happyOK(lang)):
+	case !printedOK(out.String(), lang):
 		return []testreg.Result{{Instance: instances[0].Full, Verdict: testreg.Fail,
 			Reason: fmt.Sprintf("%s exited 0 and never printed %q: no round trip came back\n%s", strings.Join(argv, " "), happyOK(lang), tail(out.String(), 20))}}, nil
 	}
 	return []testreg.Result{{Instance: instances[0].Full, Verdict: testreg.Pass}}, nil
+}
+
+// printedOK reports whether out has the language's ok line as a line of its
+// own: the line itself, or it and what follows a space (the byte count).
+func printedOK(out, lang string) bool {
+	ok := happyOK(lang)
+	for _, l := range strings.Split(out, "\n") {
+		l = strings.TrimSuffix(l, "\r")
+		if l == ok || strings.HasPrefix(l, ok+" ") {
+			return true
+		}
+	}
+	return false
 }

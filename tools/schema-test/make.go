@@ -152,35 +152,69 @@ func holdCheckout(ctx context.Context) (func(), error) {
 // sharedCheckout counts the calls that hold the checkout to read it
 // (holdCheckoutShared): the first takes checkoutMake for all of them and the
 // last gives it back, so they run side by side and never beside a make.
+// taking is open while one reader waits for checkoutMake on behalf of all:
+// the others wait on it, each under its own context, never on the mutex.
 var sharedCheckout struct {
 	sync.Mutex
-	n int
+	n      int
+	taking chan struct{}
 }
 
 // holdCheckoutShared takes the checkout to read it (a harness running what
 // the build steps made) and returns its release: any number of readers hold
-// it at once, and no make runs while one does. The first reader's wait ends
-// with ctx, as holdCheckout's does.
+// it at once, and no make runs while one does. Every reader's wait ends
+// with its own ctx, as holdCheckout's does: one reader waits for the
+// checkout, and the rest wait for it to have it, or to give up, and then
+// look again.
 func holdCheckoutShared(ctx context.Context) (func(), error) {
-	sharedCheckout.Lock()
-	defer sharedCheckout.Unlock()
-	if sharedCheckout.n == 0 {
+	for {
+		sharedCheckout.Lock()
+		if sharedCheckout.n > 0 {
+			sharedCheckout.n++
+			sharedCheckout.Unlock()
+			return releaseCheckoutShared, nil
+		}
+		if wait := sharedCheckout.taking; wait != nil {
+			sharedCheckout.Unlock()
+			select {
+			case <-wait:
+				continue
+			case <-ctx.Done():
+				return nil, fmt.Errorf("waiting for the checkout, which another make of this run holds: %w", ctx.Err())
+			}
+		}
+		taking := make(chan struct{})
+		sharedCheckout.taking = taking
+		sharedCheckout.Unlock()
+		var err error
 		select {
 		case checkoutMake <- struct{}{}:
 			checkoutHolds.Add(1)
 		case <-ctx.Done():
-			return nil, fmt.Errorf("waiting for the checkout, which another make of this run holds: %w", ctx.Err())
+			err = fmt.Errorf("waiting for the checkout, which another make of this run holds: %w", ctx.Err())
 		}
-	}
-	sharedCheckout.n++
-	return func() {
 		sharedCheckout.Lock()
-		defer sharedCheckout.Unlock()
-		sharedCheckout.n--
-		if sharedCheckout.n == 0 {
-			<-checkoutMake
+		sharedCheckout.taking = nil
+		if err == nil {
+			sharedCheckout.n++
 		}
-	}, nil
+		close(taking)
+		sharedCheckout.Unlock()
+		if err != nil {
+			return nil, err
+		}
+		return releaseCheckoutShared, nil
+	}
+}
+
+// releaseCheckoutShared lets one reader go; the last gives the checkout back.
+func releaseCheckoutShared() {
+	sharedCheckout.Lock()
+	defer sharedCheckout.Unlock()
+	sharedCheckout.n--
+	if sharedCheckout.n == 0 {
+		<-checkoutMake
+	}
 }
 
 func execMake(ctx context.Context, argv []string) (string, error) {

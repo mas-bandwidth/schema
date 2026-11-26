@@ -785,6 +785,9 @@ func WriteSeconds(path string, seconds map[string]float64, langSeconds map[strin
 			for lang, v := range ls {
 				merged[lang] = roundSeconds(v)
 			}
+			// the row's seconds are its heaviest language's, of every
+			// language it records, not only of the ones this run measured
+			s, rowSeconds = slices.Max(slices.Collect(maps.Values(merged))), true
 			enc, err := json.Marshal(merged) // encoding/json writes map keys sorted
 			if err != nil {
 				return 0, err

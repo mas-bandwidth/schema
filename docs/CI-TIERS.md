@@ -30,8 +30,8 @@ workflows, by its tier.
 
 | tier | tests | what it is |
 |---|---|---|
-| `unit` | 3811 | no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory |
-| `functional` | 7404 | uses a real thing: a compiler or VM, a toolchain, generated code built and run; runs nightly, and per pull request only as the pr group names it (one compile row and one happy path per language) |
+| `unit` | 3813 | no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory |
+| `functional` | 7404 | uses a real thing: a compiler or VM, a toolchain, generated code built and run; runs nightly, and per pull request only as the pr group names it (one happy-path row per language, make happy-<lang>) |
 | `nightly` | 2840 | heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded |
 
 ## The per-PR job
@@ -66,7 +66,7 @@ past its 6.7 s serial share gets faster, and no row moves out to fit.
 | `goose` | `goose.functional.roundtrip.happy-path.ship-create` | 4.2 |
 | `lobster` | `lobster.functional.roundtrip.happy-path.ship-create` | 2.9 |
 | **every language, one after another** | | **110.8** |
-| **the run's critical path, 4 at once** | | **29.6** |
+| **the run's critical path, 4 at once** | | **29.2** |
 
 To change the job, change the registry's `pr` group (its query names
 the rows) or a row's measured `lang_seconds` (`schema-test run ... --write-seconds`

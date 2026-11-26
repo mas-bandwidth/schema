@@ -14,8 +14,8 @@ The registry and the driver are described in [TEST-REGISTRY.md](TEST-REGISTRY.md
 
 | tier | page | what the tier is | tests every language answers | language-free tests |
 |---|---|---|---|---|
-| `unit` | [SPEC-TESTS-UNIT.md](SPEC-TESTS-UNIT.md) | no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory | 623 | 3188 |
-| `functional` | [SPEC-TESTS-FUNCTIONAL.md](SPEC-TESTS-FUNCTIONAL.md) | uses a real thing: a compiler or VM, a toolchain, generated code built and run; runs nightly, and per pull request only as the pr group names it (one compile row and one happy path per language) | 5044 | 2360 |
+| `unit` | [SPEC-TESTS-UNIT.md](SPEC-TESTS-UNIT.md) | no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory | 623 | 3190 |
+| `functional` | [SPEC-TESTS-FUNCTIONAL.md](SPEC-TESTS-FUNCTIONAL.md) | uses a real thing: a compiler or VM, a toolchain, generated code built and run; runs nightly, and per pull request only as the pr group names it (one happy-path row per language, make happy-&lt;lang&gt;) | 5044 | 2360 |
 | `nightly` | [SPEC-TESTS-NIGHTLY.md](SPEC-TESTS-NIGHTLY.md) | heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded | 1119 | 1732 |
 
 ## Names

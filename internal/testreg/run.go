@@ -69,12 +69,14 @@ type Serial interface {
 	Serial() bool
 }
 
-// SharedCheckout is a Serial adapter whose calls, once their group is
-// prepared, only read the checkout (a harness run on what Prepare built):
-// they run side by side with each other, up to the Runner's Jobs at once,
-// after every other Serial group, never beside a call that writes it.
+// SharedCheckout is a Serial adapter that says, group by group, whether a
+// call, once its group is prepared, only reads the checkout (a harness run on
+// what Prepare built): those calls run side by side with each other, up to
+// the Runner's Jobs at once, in the plan's order, after every other Serial
+// group, never beside a call that writes it. A group it is not sure of is
+// Serial.
 type SharedCheckout interface {
-	SharesCheckout() bool
+	SharesCheckout(instances []Instance) bool
 }
 
 // Verdicts an adapter may report.
@@ -344,7 +346,7 @@ func (rn *Runner) Run(parent context.Context, instances []Instance) *Report {
 	var wg sync.WaitGroup
 	for gi, g := range plan.groups {
 		if s, ok := rn.Adapters[g.adapter].(Serial); ok && s.Serial() {
-			if sh, ok := rn.Adapters[g.adapter].(SharedCheckout); ok && sh.SharesCheckout() {
+			if sh, ok := rn.Adapters[g.adapter].(SharedCheckout); ok && sh.SharesCheckout(g.instances) {
 				shared = append(shared, gi)
 				continue
 			}

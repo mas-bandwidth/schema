@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 623. Language-free tests: 3188.
+Unit tests every language answers: 623. Language-free tests: 3190.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -5847,7 +5847,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.runmatch.skips-follows-go` | `gotest` | Go test TestSkipsFollowsGo in ./internal/runmatch | `package: ./internal/runmatch`<br>`test: TestSkipsFollowsGo` | the Go test passes | `internal/runmatch/runmatch_test.go:107` |
 | `none.unit.tooling.runmatch.top-level-is-gos-split` | `gotest` | Go test TestTopLevelIsGosSplit in ./internal/runmatch | `package: ./internal/runmatch`<br>`test: TestTopLevelIsGosSplit` | the Go test passes | `internal/runmatch/runmatch_test.go:9` |
 
-#### `tooling` family `schema-test`, 175 tests
+#### `tooling` family `schema-test`, 177 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -5913,6 +5913,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.schema-test.a-read-plant-is-one-whole-form` | `gotest` | Go test TestAReadPlantIsOneWholeForm in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAReadPlantIsOneWholeForm` | the Go test passes | `tools/schema-test/plant_test.go:772` |
 | `none.unit.tooling.schema-test.a-read-plant-is-the-row-red-for-each-deletion` | `gotest` | Go test TestAReadPlantIsTheRowRedForEachDeletion in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAReadPlantIsTheRowRedForEachDeletion` | the Go test passes | `tools/schema-test/plant_test.go:711` |
 | `none.unit.tooling.schema-test.a-read-the-regeneration-does-not-give-is-stale` | `gotest` | Go test TestAReadTheRegenerationDoesNotGiveIsStale in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAReadTheRegenerationDoesNotGiveIsStale` | the Go test passes | `tools/schema-test/reads_test.go:184` |
+| `none.unit.tooling.schema-test.a-reader-waiting-behind-another-ends-with-its-own-context` | `gotest` | Go test TestAReaderWaitingBehindAnotherEndsWithItsOwnContext in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAReaderWaitingBehindAnotherEndsWithItsOwnContext` | the Go test passes | `tools/schema-test/make_test.go:810` |
 | `none.unit.tooling.schema-test.a-reason-echoed-by-a-broken-build-is-not-the-plants` | `gotest` | Go test TestAReasonEchoedByABrokenBuildIsNotThePlants in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAReasonEchoedByABrokenBuildIsNotThePlants` | the Go test passes | `tools/schema-test/plant_test.go:217` |
 | `none.unit.tooling.schema-test.a-recipe-that-runs-go-test-outside-the-wrapper-fails` | `gotest` | a make row whose recipes run go test any way but through $(GO\_TEST) fails before it runs, naming the command (Go test TestARecipeThatRunsGoTestOutsideTheWrapperFails in ./tools/schema-test) | `package: ./tools/schema-test`<br>`test: TestARecipeThatRunsGoTestOutsideTheWrapperFails` | the Go test passes | `tools/schema-test/make_test.go:436` |
 | `none.unit.tooling.schema-test.a-regeneration-keeps-a-read-its-row-still-reaches` | `gotest` | Go test TestARegenerationKeepsAReadItsRowStillReaches in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestARegenerationKeepsAReadItsRowStillReaches` | the Go test passes | `tools/schema-test/reads_test.go:75` |
@@ -5980,6 +5981,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.schema-test.name-build-results-reads-the-events` | `gotest` | Go test TestNameBuildResultsReadsTheEvents in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestNameBuildResultsReadsTheEvents` | the Go test passes | `tools/schema-test/namebuild_test.go:82` |
 | `none.unit.tooling.schema-test.name-buildability-is-l4s` | `gotest` | Go test TestNameBuildabilityIsL4s in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestNameBuildabilityIsL4s` | the Go test passes | `tools/schema-test/extract_test.go:178` |
 | `none.unit.tooling.schema-test.number-token-cases-are-rows-that-read-their-trees` | `gotest` | Go test TestNumberTokenCasesAreRowsThatReadTheirTrees in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestNumberTokenCasesAreRowsThatReadTheirTrees` | the Go test passes | `tools/schema-test/hostile_test.go:309` |
+| `none.unit.tooling.schema-test.only-happy-path-groups-share-the-checkout` | `gotest` | Go test TestOnlyHappyPathGroupsShareTheCheckout in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestOnlyHappyPathGroupsShareTheCheckout` | the Go test passes | `tools/schema-test/make_test.go:874` |
 | `none.unit.tooling.schema-test.pins-base-ref-is-the-commit-the-change-merges-into` | `gotest` | Go test TestPinsBaseRefIsTheCommitTheChangeMergesInto in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestPinsBaseRefIsTheCommitTheChangeMergesInto` | the Go test passes | `tools/schema-test/pinsbase_test.go:18` |
 | `none.unit.tooling.schema-test.plant-inputs-are-one-form` | `gotest` | Go test TestPlantInputsAreOneForm in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestPlantInputsAreOneForm` | the Go test passes | `tools/schema-test/plant_test.go:163` |
 | `none.unit.tooling.schema-test.planted-marker-is-text-the-edits-write-and-no-anchor-holds` | `gotest` | Go test TestPlantedMarkerIsTextTheEditsWriteAndNoAnchorHolds in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestPlantedMarkerIsTextTheEditsWriteAndNoAnchorHolds` | the Go test passes | `tools/schema-test/plant_test.go:328` |
