@@ -17,7 +17,8 @@ import (
 // (make tables-c-wire-fuzz: "wire-fuzz roster incomplete").
 
 var (
-	cCodecDefinition = regexp.MustCompile(`(?m)^const ConformanceCodec \* ?conformance_codecs_([a-z0-9_]+) ?\( ?int \* ?count ?\)\s*\{`)
+	cCodecDefinition = regexp.MustCompile(`conformance_codecs_([a-z0-9_]+)\s*\(\s*int\s*\*\s*\w+\s*\)\s*\{`)
+	cComment         = regexp.MustCompile(`(?s)/\*.*?\*/|//[^\n]*`)
 	cUnitsMacro      = regexp.MustCompile(`(?s)#define CONFORMANCE_C_UNITS \\\n(.*?)\n\n`)
 	cCodecName       = regexp.MustCompile(`conformance_codecs_([a-z0-9_]+)`)
 )
@@ -38,8 +39,9 @@ func cUnitListProblems(files map[string]string) []string {
 	if m == nil {
 		return []string{"test/conformance/c/driver.h: no #define CONFORMANCE_C_UNITS"}
 	}
+	// a name commented out of the list is not listed
 	listed := map[string]int{}
-	for _, n := range cCodecName.FindAllStringSubmatch(m[1], -1) {
+	for _, n := range cCodecName.FindAllStringSubmatch(cComment.ReplaceAllString(m[1], ""), -1) {
 		listed[n[1]]++
 	}
 	for unit, path := range defined {
@@ -72,7 +74,7 @@ func quoteLine(s string) string { return "`" + strings.ReplaceAll(s, "\n", `\n`)
 func readCUnitSources(t *testing.T, root string) map[string]string {
 	t.Helper()
 	files := map[string]string{}
-	for _, glob := range []string{"test/conformance/c/*.c", "test/conformance/c/*.h", "test/c-tables/*.c"} {
+	for _, glob := range []string{"test/conformance/c/*.c", "test/conformance/c/*.h", "test/conformance/c/rows/*.c", "test/c-tables/*.c", "test/c-tables/*.cpp"} {
 		paths, err := filepath.Glob(filepath.Join(root, glob))
 		if err != nil || len(paths) == 0 {
 			t.Fatalf("%s: no files (%v)", glob, err)
@@ -113,18 +115,19 @@ func TestTheCDriversShareOneUnitList(t *testing.T) {
 // a driver back on a hand-kept array, a name listed twice.
 func TestTheCDriversShareOneUnitListRefusesEachDrift(t *testing.T) {
 	t.Parallel()
-	real := readCUnitSources(t, repoRoot(t))
-	if p := cUnitListProblems(real); len(p) != 0 {
+	sources := readCUnitSources(t, repoRoot(t))
+	if p := cUnitListProblems(sources); len(p) != 0 {
 		t.Fatalf("the real sources already fail: %v", p)
 	}
 	for _, tc := range []struct{ name, path, from, to, want string }{
 		{"a unit dropped from the list", "test/conformance/c/driver.h", ", conformance_codecs_tblmoodmap\n", "\n", "conformance_codecs_tblmoodmap is defined and CONFORMANCE_C_UNITS (driver.h) does not list it"},
 		{"the wire fuzz on a hand-kept array", "test/c-tables/wire_fuzz_main.c", "{ CONFORMANCE_C_UNITS }", "{ conformance_codecs_tblw1 }", "test/c-tables/wire_fuzz_main.c: its unit array is not CONFORMANCE_C_UNITS"},
 		{"the conformance driver on a hand-kept array", "test/conformance/c/main.c", "{ CONFORMANCE_C_UNITS }", "{ conformance_codecs_tblw1 }", "test/conformance/c/main.c: its unit array is not CONFORMANCE_C_UNITS"},
+		{"a unit commented out of the list", "test/conformance/c/driver.h", "conformance_codecs_tblmoodmap\n", "/* conformance_codecs_tblmoodmap */\n", "conformance_codecs_tblmoodmap is defined and CONFORMANCE_C_UNITS (driver.h) does not list it"},
 		{"a name listed twice", "test/conformance/c/driver.h", "conformance_codecs_tblmoodmap\n", "conformance_codecs_tblmoodmap, conformance_codecs_tblmoodmap\n", "lists conformance_codecs_tblmoodmap more than once"},
 	} {
 		planted := map[string]string{}
-		for k, v := range real {
+		for k, v := range sources {
 			planted[k] = v
 		}
 		if strings.Count(planted[tc.path], tc.from) == 0 {
