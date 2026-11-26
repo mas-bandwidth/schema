@@ -1631,16 +1631,14 @@ tables-c-fixedform: build/retiredskips build/schema_test_c_fixedform build/schem
 # not run here twice. The whole package, these tests and the roadmap tests among them, still
 # runs in ci-full.yml's three unit-codegen ctable steps (^TestC, ^TestFixe and
 # the rest), which build the corpus first.
-C_VERSIONING_TESTS := TestFixedVersioningCfloatRangeWiden TestFixedVersioningCfloatResRefine \
-	TestFixedVersioningCountClampEnds TestFixedVersioningFloor TestFixedVersioningForgedOrdinalBothPlans \
-	TestFixedVersioningHash TestFixedVersioningLineageMerge TestFixedVersioningNewReadsOld \
-	TestFixedVersioningOldRefusesNew TestFixedVersioningRangeWidenHostile TestFixedVersioningRefuseWritesNothing \
-	TestFixedVersioningUnionTagBothPlans TestFixedVersioningUnionUnselectedArm TestFixedVersioningUnknownCensus \
-	TestFixedVersioningUnknownCensusManyRecords TestFixedVersioningWriterBoundCount \
-	TestFixedVersioningWriterBoundCountTwoRemotes
+#
+# The -run pattern is written out, not built from a make variable:
+# internal/ci's TestEveryRunPatternMatchesATest reads each recipe's literal
+# -run text and lists it against the package's tests, and a pattern that
+# exists only after make expands it matches nothing there.
 .PHONY: tables-c-versioning
 tables-c-versioning: tables-fixedform-corpus
-	$(GO_TEST) ./internal/codegen/ctable/ -count=1 -run '^($(subst $(eval) ,|,$(strip $(C_VERSIONING_TESTS))))$$'
+	$(GO_TEST) ./internal/codegen/ctable/ -count=1 -run '^TestFixedVersioning(CfloatRangeWiden|CfloatResRefine|CountClampEnds|Floor|ForgedOrdinalBothPlans|Hash|LineageMerge|NewReadsOld|OldRefusesNew|RangeWidenHostile|RefuseWritesNothing|UnionTagBothPlans|UnionUnselectedArm|UnknownCensus|UnknownCensusManyRecords|WriterBoundCount|WriterBoundCountTwoRemotes)$$'
 	@echo 'tables C corpus: ctable checks the C++ reference bytes of every §5 versioning row'
 
 .PHONY: test-c test-c-recipe
