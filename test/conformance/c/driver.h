@@ -331,6 +331,30 @@ const ConformanceUnit1122 * conformance_unit1122_backenddemo( void );
 const ConformanceUnit1122 * conformance_unit1122_tblfixedevo( void );
 const ConformanceCodec * conformance_codecs_tblsurf( int * count );
 
+/* EVERY UNIT THE C LEG ANSWERS, written once: the conformance driver (main.c)
+   and the wire-fuzz driver (test/c-tables/wire_fuzz_main.c) both look a root
+   up in this list, so a unit the leg gains is in the wire fuzz's roster the
+   moment it is here. Two hand-kept lists drifted: the wire fuzz lacked six
+   units and the harness counted their roots as seeds absent.
+   internal/ci's TestTheCDriversShareOneUnitList holds every
+   conformance_codecs_<unit> defined in the C leg to this list, once, and both
+   drivers to it. */
+#define CONFORMANCE_C_UNITS \
+    conformance_codecs_mapdemo, conformance_codecs_listdemo, conformance_codecs_armdemo, \
+    conformance_codecs_tblw1, conformance_codecs_tblw2, conformance_codecs_messagedemo, \
+    conformance_codecs_tblm1, conformance_codecs_tblm2, conformance_codecs_tbla1, conformance_codecs_tbla2, \
+    conformance_codecs_tblk1, conformance_codecs_tblk2, conformance_codecs_tblr1, conformance_codecs_tblr2, \
+    conformance_codecs_backenddemo, conformance_codecs_vocabdemo, conformance_codecs_vocab9demo, \
+    conformance_codecs_tabledemo, conformance_codecs_tblv1, conformance_codecs_tblv2, \
+    conformance_codecs_tblp1, conformance_codecs_tblp3, conformance_codecs_scalars, \
+    conformance_codecs_graphdemo, conformance_codecs_blobdemo, conformance_codecs_tblg1, conformance_codecs_tblp2, \
+    conformance_codecs_streamdemo, conformance_codecs_tblscalars2, conformance_codecs_tblfixedevo, \
+    conformance_codecs_widelist, conformance_codecs_featurewitnesses, \
+    conformance_codecs_tblvarevo1, conformance_codecs_tblvarevo2, conformance_codecs_tblvarevo3, \
+    conformance_codecs_cooktorture, conformance_codecs_cooktorturewide, conformance_codecs_shapes, \
+    conformance_codecs_tblprior, conformance_codecs_tblsurf, conformance_codecs_tblvaluedefaults, \
+    conformance_codecs_packetunions, conformance_codecs_tblmoodmap
+
 
 /* THE RETAIN-REFUSAL SEQUENCE (test/conformance/README.md): ONE retention
    store through LoadRetain of the first wire, SaveRetain, LoadRetain of the

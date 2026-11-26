@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 2. Language-free tests: 3203.
+Unit tests every language answers: 2. Language-free tests: 3205.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -1955,7 +1955,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.cellmerge.resolve-leaves-a-hunk-it-cannot-merge-exactly` | `gotest` | Go test TestResolveLeavesAHunkItCannotMergeExactly in ./tools/cellmerge | `package: ./tools/cellmerge`<br>`test: TestResolveLeavesAHunkItCannotMergeExactly` | the Go test passes | `tools/cellmerge/main_test.go:68` |
 | `none.unit.tooling.cellmerge.resolve-merges-a-two-sided-row-cell-by-column` | `gotest` | Go test TestResolveMergesATwoSidedRowCellByColumn in ./tools/cellmerge | `package: ./tools/cellmerge`<br>`test: TestResolveMergesATwoSidedRowCellByColumn` | the Go test passes | `tools/cellmerge/main_test.go:54` |
 
-#### `tooling` family `ci`, 271 tests
+#### `tooling` family `ci`, 273 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -2214,6 +2214,8 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.ci.tables-suite-parts-cover-main` | `gotest` | Go test TestTablesSuitePartsCoverMain in ./internal/ci | `package: ./internal/ci`<br>`test: TestTablesSuitePartsCoverMain` | the Go test passes | `internal/ci/tables_suite_parts_test.go:20` |
 | `none.unit.tooling.ci.tables-suite-parts-refuse-each-gap` | `gotest` | Go test TestTablesSuitePartsRefuseEachGap in ./internal/ci | `package: ./internal/ci`<br>`test: TestTablesSuitePartsRefuseEachGap` | the Go test passes | `internal/ci/tables_suite_parts_test.go:50` |
 | `none.unit.tooling.ci.test-main-gate-negative-control` | `gotest` | Go test TestTestMainGateNegativeControl in ./internal/ci | `package: ./internal/ci`<br>`test: TestTestMainGateNegativeControl` | the Go test passes | `internal/ci/silent_skips_test.go:155` |
+| `none.unit.tooling.ci.the-c-drivers-share-one-unit-list` | `gotest` | Go test TestTheCDriversShareOneUnitList in ./internal/ci | `package: ./internal/ci`<br>`test: TestTheCDriversShareOneUnitList` | the Go test passes | `internal/ci/c_driver_units_test.go:95` |
+| `none.unit.tooling.ci.the-c-drivers-share-one-unit-list-refuses-each-drift` | `gotest` | Go test TestTheCDriversShareOneUnitListRefusesEachDrift in ./internal/ci | `package: ./internal/ci`<br>`test: TestTheCDriversShareOneUnitListRefusesEachDrift` | the Go test passes | `internal/ci/c_driver_units_test.go:114` |
 | `none.unit.tooling.ci.the-cpp-compile-budget-runs-on-the-produced-leg` | `gotest` | Go test TestTheCppCompileBudgetRunsOnTheProducedLeg in ./internal/ci | `package: ./internal/ci`<br>`test: TestTheCppCompileBudgetRunsOnTheProducedLeg` | the Go test passes | `internal/ci/go_fixed_corpus_pipeline_test.go:217` |
 | `none.unit.tooling.ci.the-fixed-form-harnesses-run-per-pull-request` | `gotest` | Go test TestTheFixedFormHarnessesRunPerPullRequest in ./internal/ci | `package: ./internal/ci`<br>`test: TestTheFixedFormHarnessesRunPerPullRequest` | the Go test passes | `internal/ci/ci_test.go:590` |
 | `none.unit.tooling.ci.the-go-test-job-clones-serialize-js` | `gotest` | Go test TestTheGoTestJobClonesSerializeJS in ./internal/ci | `package: ./internal/ci`<br>`test: TestTheGoTestJobClonesSerializeJS` | the Go test passes | `internal/ci/js_toolchain_lane_test.go:57` |
