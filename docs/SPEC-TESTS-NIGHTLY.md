@@ -5,7 +5,7 @@ Part of the specification: every test of tier `nightly`, from the test registry.
 
 **Tier nightly:** heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded.
 
-Nightly tests every language answers: 1108. Language-free tests: 1743.
+Nightly tests every language answers: 1109. Language-free tests: 1742.
 
 Tests some languages run in this tier, their own measured seconds being past one shard's budget, each named by its languages' instances: 11.
 
@@ -341,7 +341,7 @@ hostile bytes are refused in every build, with the named reason.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `elixir.nightly.load-refusal.fixedform-under-20-bytes.fixed-form-under20-bytes` | a fixed reader refuses a file shorter than the 20-byte fixed-form header: refused, -1 returned, every counter zero and nothing landed (the recommended name is truncated, and the form has no malformed flag) | `inputs.tests` (707 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/gotable/fixedform_under_20_bytes_test.go:17` |
+| `elixir.nightly.load-refusal.fixedform-under-20-bytes.fixed-form-under20-bytes` | a fixed reader refuses a file shorter than the 20-byte fixed-form header: refused, -1 returned, every counter zero and nothing landed (the recommended name is truncated, and the form has no malformed flag) | `inputs.tests` (805 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/gotable/fixedform_under_20_bytes_test.go:17` |
 
 #### `load-refusal` family `hostile`, 262 tests
 
@@ -1308,6 +1308,12 @@ two implementations or two versions give the same answer.
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `ruby.nightly.differential.fixed-proof-shapes.fixed-proof-shapes` | each fixed shape agrees with the reference writer and reader, including independent load values | `inputs.tests` (224 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/pythontable/fixed_proof_shapes_test.go:31` |
+
+#### `differential` family `fixedoneverdict`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.nightly.differential.fixedoneverdict.generated-fixed-one-verdict-every-byte` | substituting every value of every byte past the header of each fixed root's record, the generated fixed read gives the engine's verdict | `inputs.tests` (119 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fuzzunit/fixedoneverdict_test.go:19` |
 
 ## Language-free tests
 
@@ -3384,7 +3390,7 @@ a negative control: a named test run against a deliberately broken build must co
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.plant.js-json-base64-negative-control.java-script-text-base64-negative-control` | `make` | make js-json-base64-negative-control (make/js-json-base64.mk) exits 0 | `file: make/js-json-base64.mk`<br>`target: js-json-base64-negative-control` | the target exits 0 with no skip in its log | `make/js-json-base64.mk:3` |
+| `none.nightly.plant.js-json-base64-negative-control.java-script-text-base64-negative-control` | `make-gotest` | Go test TestJavaScriptTextBase64NegativeControl in ./internal/codegen/jstable, run by make js-json-base64-negative-control (make/js-json-base64.mk) and read by name from its go test -json events | `file: make/js-json-base64.mk`<br>`package: ./internal/codegen/jstable`<br>`target: js-json-base64-negative-control`<br>`test: TestJavaScriptTextBase64NegativeControl` | the Go test passes in make js-json-base64-negative-control's run, with no skip | `internal/codegen/jstable/json_base64_test.go:175` |
 
 #### `plant` family `js-proof`, 8 tests
 
@@ -4321,7 +4327,7 @@ a negative control: a named test run against a deliberately broken build must co
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.plant.packet-end-lobster-negative-control.lobster-packet-end` | `make` | make packet-end-lobster-negative-control (make/lobster-packet-end.mk) exits 0 | `file: make/lobster-packet-end.mk`<br>`target: packet-end-lobster-negative-control` | the target exits 0 with no skip in its log | `make/lobster-packet-end.mk:15` |
+| `none.nightly.plant.packet-end-lobster-negative-control.lobster-packet-end` | `make-gotest` | Go test TestLobsterPacketEnd in ./internal/codegen/lobster, run by make packet-end-lobster-negative-control (make/lobster-packet-end.mk) and read by name from its go test -json events | `file: make/lobster-packet-end.mk`<br>`package: ./internal/codegen/lobster`<br>`target: packet-end-lobster-negative-control`<br>`test: TestLobsterPacketEnd` | the Go test passes in make packet-end-lobster-negative-control's run, with no skip | `internal/codegen/lobster/packet_end_test.go:20` |
 
 #### `plant` family `packet-void-python-negative-control`, 1 test
 
@@ -4339,7 +4345,7 @@ a negative control: a named test run against a deliberately broken build must co
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.plant.packet-write-cfloat-lobster-negative-control.lobster-packet-write-c-float-range` | `make` | make packet-write-cfloat-lobster-negative-control (make/lobster-packet-write-cfloat.mk) exits 0 | `file: make/lobster-packet-write-cfloat.mk`<br>`target: packet-write-cfloat-lobster-negative-control` | the target exits 0 with no skip in its log | `make/lobster-packet-write-cfloat.mk:15` |
+| `none.nightly.plant.packet-write-cfloat-lobster-negative-control.lobster-packet-write-c-float-range` | `make-gotest` | Go test TestLobsterPacketWriteCFloatRange in ./internal/codegen/lobster, run by make packet-write-cfloat-lobster-negative-control (make/lobster-packet-write-cfloat.mk) and read by name from its go test -json events | `file: make/lobster-packet-write-cfloat.mk`<br>`package: ./internal/codegen/lobster`<br>`target: packet-write-cfloat-lobster-negative-control`<br>`test: TestLobsterPacketWriteCFloatRange` | the Go test passes in make packet-write-cfloat-lobster-negative-control's run, with no skip | `internal/codegen/lobster/packet_write_cfloat_test.go:115` |
 
 #### `plant` family `python-array-growth-negative-control`, 1 test
 
@@ -5918,14 +5924,13 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 |---|---|---|---|---|---|
 | `none.nightly.harness-run.make-elixir-compressed-negzero.test-elixir` | `make` | make test-elixir (make/elixir-compressed-negzero.mk) exits 0 | `file: make/elixir-compressed-negzero.mk`<br>`inputs.reads` (308 bytes, held in the registry row's `inputs.reads`)<br>`target: test-elixir` | the target exits 0 with no skip in its log | `make/elixir-compressed-negzero.mk:23` |
 
-#### `harness-run` family `make-go`, 6 tests
+#### `harness-run` family `make-go`, 5 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.nightly.harness-run.make-go.cards-corpus-check` | `make` | make cards-corpus-check (make/go.mk) exits 0 | `file: make/go.mk`<br>`target: cards-corpus-check` | the target exits 0 with no skip in its log | `make/go.mk:470` |
 | `none.nightly.harness-run.make-go.cards-example` | `make` | make cards-example (make/go.mk) exits 0: a separate customer module imports only the generated cards package and the standard library, and its Go test reports a pass | `file: make/go.mk`<br>`go_tests: ["./tables/cards/example TestCardsCustomerExample"]`<br>`target: cards-example` | the target exits 0 with no skip in its log | `make/go.mk:454` |
 | `none.nightly.harness-run.make-go.cards-test` | `make` | make cards-test (make/go.mk) exits 0, and each of the cards module Go tests it names reports a pass, run beside the generated Go cards module | `file: make/go.mk`<br>`go_import: {"./tables/cards":"cards"}`<br>`inputs.go_tests` (1660 bytes, held in the registry row's `inputs.go_tests`)<br>`target: cards-test` | the target exits 0 with no skip in its log | `make/go.mk:489` |
-| `none.nightly.harness-run.make-go.conformance-go-rows-a` | `make` | make conformance-go-rows-a (make/go.mk) exits 0 | `file: make/go.mk`<br>`inputs.go_tests` (1134 bytes, held in the registry row's `inputs.go_tests`)<br>`siblings: ["../serialize"]`<br>`target: conformance-go-rows-a` | the target exits 0 with no skip in its log | `make/go.mk:128` |
 | `none.nightly.harness-run.make-go.tables-go-fixed-form` | `make` | make tables-go-fixed-form (make/go.mk) exits 0 | `file: make/go.mk`<br>`target: tables-go-fixed-form` | the target exits 0 with no skip in its log | `make/go.mk:1298` |
 | `none.nightly.harness-run.make-go.test-go-packet` | `make` | make test-go-packet (make/go.mk) exits 0 | `file: make/go.mk`<br>`target: test-go-packet` | the target exits 0 with no skip in its log | `make/go.mk:1010` |
 
