@@ -78,9 +78,11 @@ func w13RepoRoot(t *testing.T) string {
 }
 
 // w13RefFixed parses the C++ reference backend's emitted constants for one
-// table out of the generated <T>Table.h: the handed hash, the layout bytes
-// and the record body size.
-func w13RefFixed(t *testing.T, header []byte, table string) (hash uint64, layout []byte, body int64) {
+// table: the handed hash and the record body size out of the generated
+// <T>Table.h, and the layout bytes out of <T>TableData.h, the file of its own
+// the emitter writes the fixed form's constant arrays to (<T>Table.h names
+// them; internal/codegen/cpptable, fixedform.go).
+func w13RefFixed(t *testing.T, header, data []byte, table string) (hash uint64, layout []byte, body int64) {
 	t.Helper()
 	name := regexp.QuoteMeta(table)
 	m := regexp.MustCompile(name + `FixedHash = 0x([0-9a-fA-F]+)ull`).FindSubmatch(header)
@@ -99,9 +101,9 @@ func w13RefFixed(t *testing.T, header []byte, table string) (hash uint64, layout
 	if err != nil {
 		t.Fatalf("W13: the C++ reference's %sFixedBodyBytes is not a number: %v", table, err)
 	}
-	block := regexp.MustCompile(name + `FixedLayout\[\] = \{\n(?s)(.*?)\n\};`).FindSubmatch(header)
+	block := regexp.MustCompile(name + `FixedLayout\[\] = \{\n(?s)(.*?)\n\};`).FindSubmatch(data)
 	if block == nil {
-		t.Fatalf("W13: the C++ reference names no %sFixedLayout in its generated header", table)
+		t.Fatalf("W13: the C++ reference names no %sFixedLayout in its generated P3TableData.h", table)
 	}
 	for _, f := range regexp.MustCompile(`0x([0-9a-fA-F]{1,2})`).FindAllSubmatch(block[1], -1) {
 		b, err := strconv.ParseUint(string(f[1]), 16, 8)
@@ -136,9 +138,13 @@ func TestRowW13(t *testing.T) {
 	if err != nil {
 		t.Fatalf("W13: the C++ reference's generated header is not readable: %v", err)
 	}
+	data, err := os.ReadFile(filepath.Join(out, "P3TableData.h"))
+	if err != nil {
+		t.Fatalf("W13: the C++ reference's generated P3TableData.h is not readable: %v", err)
+	}
 
-	chainHash, chainLayout, chainBody := w13RefFixed(t, header, "Chain")
-	linkHash, linkLayout, linkBody := w13RefFixed(t, header, "Link")
+	chainHash, chainLayout, chainBody := w13RefFixed(t, header, data, "Chain")
+	linkHash, linkLayout, linkBody := w13RefFixed(t, header, data, "Link")
 
 	// The form byte is one more constant both sides hold (§3.4's first byte).
 	m := regexp.MustCompile(`kTableFixedForm = (\d+);`).FindSubmatch(header)
