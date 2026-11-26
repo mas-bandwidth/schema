@@ -380,7 +380,7 @@ class Contracts(unittest.TestCase):
         runner.temporary.cleanup()
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp)
-            (root/"Makefile").write_text(original.replace("go test ./tools/fixedtwin -count=1","changed recipe"))
+            (root/"Makefile").write_text(original.replace("$(GO_TEST) ./tools/fixedtwin -count=1","changed recipe"))
             runner=FakeRunner(root,"cpp")
             with contextlib.redirect_stdout(io.StringIO()):
                 m.run_external(runner,"cpp")
@@ -481,7 +481,7 @@ class Contracts(unittest.TestCase):
                          "tables-cs-pack-negative-control tables-cs-retain-negative-control")
         def outer_calls(name):
             return sum(1 for line in blocks[name]
-                       if not line.lstrip().startswith("#") and m.re.search(r"\bgo test\b|test/slowgate/proof",line))
+                       if not line.lstrip().startswith("#") and (m.runs_go_test(line) or "test/slowgate/proof" in line))
         outer={name for name in targets if outer_calls(name)}
         # Goose's gates run go test in their own recipes; the readiness run
         # executes them through goose_uncapped_makefile, which uncaps each.
@@ -503,7 +503,7 @@ class Contracts(unittest.TestCase):
         runner.temporary.cleanup()
         for name in sorted(cpp_outer):
             for line in blocks[name]:
-                if m.re.search(r"\bgo test\b",line):
+                if m.runs_go_test(line):
                     self.assertTrue(any(before in line for before in reviewed),
                                     f"{name}: outer go test not uncapped by run_external: {line.strip()}")
         # The exact count of outer Go calls per C++ target: the readiness run
@@ -592,13 +592,15 @@ class Contracts(unittest.TestCase):
         for target in m.FIXED_GATES["goose"].split():
             block=m.re.search(r"^"+m.re.escape(target)+r":\n((?:\t[^\n]*\n)+)",text,m.re.MULTILINE)
             self.assertIsNotNone(block,target)
-            self.assertNotIn("go test -count",block[1])
-            self.assertIn("go test -timeout=0 ",block[1])
+            calls=list(m.GO_TEST_CALL.finditer(block[1]))
+            self.assertTrue(calls,target)
+            for call in calls:
+                self.assertTrue(block[1].startswith(" -timeout=0 ",call.end()),(target,block[1]))
         runner.temporary.cleanup()
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);(root/"make").mkdir()
             for f in (ROOT/"make").glob("goose*.mk"):
-                (root/"make"/f.name).write_text(f.read_text().replace("go test -count=1 -timeout 600s","go test -count=1 -timeout 900s"))
+                (root/"make"/f.name).write_text(f.read_text().replace("$(GO_TEST) -count=1 -timeout 600s","$(GO_TEST) -count=1 -timeout 900s"))
             runner=FakeRunner(root,"goose")
             with contextlib.redirect_stdout(io.StringIO()):
                 self.assertIsNone(m.goose_uncapped_makefile(runner,m.FIXED_GATES["goose"]))
@@ -667,13 +669,15 @@ class Contracts(unittest.TestCase):
         for target in m.FIXED_GATES["moo"].split():
             block=m.re.search(r"^"+m.re.escape(target)+r":\n((?:\t[^\n]*\n)+)",text,m.re.MULTILINE)
             self.assertIsNotNone(block,target)
-            self.assertNotIn("go test -count",block[1])
-            self.assertIn("go test -timeout=0 ",block[1])
+            calls=list(m.GO_TEST_CALL.finditer(block[1]))
+            self.assertTrue(calls,target)
+            for call in calls:
+                self.assertTrue(block[1].startswith(" -timeout=0 ",call.end()),(target,block[1]))
         runner.temporary.cleanup()
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);(root/"make").mkdir()
             for f in (ROOT/"make").glob("moo*.mk"):
-                (root/"make"/f.name).write_text(f.read_text().replace("go test -count=1 ","go test -count=1 -timeout 600s "))
+                (root/"make"/f.name).write_text(f.read_text().replace("$(GO_TEST) -count=1 ","$(GO_TEST) -count=1 -timeout 600s "))
             runner=FakeRunner(root,"moo")
             with contextlib.redirect_stdout(io.StringIO()):
                 self.assertIsNone(m.moo_uncapped_makefile(runner,m.FIXED_GATES["moo"]))
@@ -766,10 +770,10 @@ class Contracts(unittest.TestCase):
                 block=m.re.search(r"^"+m.re.escape(target)+r":\n((?:\t[^\n]*\n)+)",text,m.re.MULTILINE)
                 self.assertIsNotNone(block,target)
                 for line in block[1].splitlines():
-                    if "go test " in line or "test/slowgate/proof " in line:
+                    if m.runs_go_test(line) or "test/slowgate/proof " in line:
                         self.assertRegex(line,r"-timeout=0(\s|$)")
         runner.temporary.cleanup()
-        for before,after in (("go test -count=1 -timeout 600s","go test -count=1 -timeout 900s"),
+        for before,after in (("$(GO_TEST) -count=1 -timeout 600s","$(GO_TEST) -count=1 -timeout 900s"),
                              ("-count=1 -timeout 600s -tags","-count=1 -timeout=10m -tags")):
             with tempfile.TemporaryDirectory() as tmp:
                 root=Path(tmp);(root/"make").mkdir()
