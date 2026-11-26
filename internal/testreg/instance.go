@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"sync"
 )
 
 // Instance is one test in one language. Its full name is
@@ -37,7 +38,7 @@ func (r *Registry) Instances() []Instance {
 			if _, unrep := r.Unrepresentable(t.Key, l.Name); unrep {
 				continue
 			}
-			out = append(out, Instance{Full: FullName(l.Name, t), Lang: l.Name, Test: t})
+			out = append(out, instanceIn(l.Name, t))
 		}
 	}
 	return out
@@ -54,8 +55,8 @@ func (r *Registry) Resolve(full string) (Instance, error) {
 	if !ok {
 		return Instance{}, fmt.Errorf("unknown test %q: no test has the key %q", full, parts[2])
 	}
-	if t.Tier != parts[1] {
-		return Instance{}, fmt.Errorf("unknown test %q: %s is tier %s, not %s", full, t.Key, t.Tier, parts[1])
+	if tier := t.TierIn(parts[0]); tier != parts[1] {
+		return Instance{}, fmt.Errorf("unknown test %q: %s is tier %s in %s, not %s", full, t.Key, tier, parts[0], parts[1])
 	}
 	if !t.PerLang() {
 		if parts[0] != LangFree {
@@ -70,7 +71,15 @@ func (r *Registry) Resolve(full string) (Instance, error) {
 	if reason, unrep := r.Unrepresentable(t.Key, l.Name); unrep {
 		return Instance{}, fmt.Errorf("unknown test %q: %s declares %s unrepresentable (%s), so it has no such instance", full, l.Name, t.Key, reason)
 	}
-	return Instance{Full: full, Lang: l.Name, Test: t}, nil
+	return instanceIn(l.Name, t), nil
+}
+
+// instanceIn is t's instance in lang, with the tier it has there
+// (Test.TierIn): its Test is the row with that tier, so a query by tier, a
+// shard and a report each see the instance's own.
+func instanceIn(lang string, t Test) Instance {
+	t.Tier = t.TierIn(lang)
+	return Instance{Full: FullName(lang, t), Lang: lang, Test: t}
 }
 
 // Query selects instances. Names are full names or wildcard patterns ("*"
@@ -249,6 +258,52 @@ func (r *Registry) Select(q Query) (Selection, error) {
 	return sel, nil
 }
 
+// answeredIn holds, by a union row's inputs, the Go test each language they
+// name answers with (its measured seconds and its own tier), or nil for
+// inputs that are not a union's (or do not read): a cut weighs each instance
+// many times, and reading the inputs every time cost ci more than half its
+// run.
+var answeredIn sync.Map // string(inputs) -> map[string]GoTest
+
+// unionTests is answeredIn's entry for t, read once.
+func unionTests(t Test) map[string]GoTest {
+	v, ok := answeredIn.Load(string(t.Inputs))
+	if !ok {
+		var langs map[string]GoTest
+		if tests, union, err := GoTestsOf(t); union && err == nil {
+			langs = tests
+		}
+		v, _ = answeredIn.LoadOrStore(string(t.Inputs), langs)
+	}
+	return v.(map[string]GoTest)
+}
+
+// unionTier is the tier a union row's Go test for lang names for its
+// instance, or "" (another row, no test for lang, or the row's own tier).
+func unionTier(t Test, lang string) string {
+	return unionTests(t)[lang].Tier
+}
+
+// unionWeight is what a union row's instance in lang costs, and whether t is
+// a union row at all: a language the row names no Go test for runs nothing
+// (red by name, no go test call), so it costs its line of the run,
+// minSeconds; a language that answers costs its own test's measured seconds,
+// or DefaultSeconds unmeasured.
+func unionWeight(t Test, lang string) (float64, bool) {
+	langs := unionTests(t)
+	if langs == nil {
+		return 0, false
+	}
+	g, answered := langs[lang]
+	switch {
+	case !answered:
+		return minSeconds, true
+	case g.Seconds > 0:
+		return max(g.Seconds, minSeconds), true
+	}
+	return DefaultSeconds, true
+}
+
 // DefaultSeconds is what a test with no measured run time weighs when a
 // list is cut into shards.
 const DefaultSeconds = 1.0
@@ -259,13 +314,25 @@ const DefaultSeconds = 1.0
 // binaries. An adapter that batches its rows cuts no call heavier than this.
 const ShardBudget = 60.0
 
+// NightlyTier is the tier a test past one shard's budget on its own moves to
+// (a union row's language, GoTest.Tier).
+const NightlyTier = "nightly"
+
 // minSeconds is the least a measured test weighs: a test the clock saw as 0 s
 // still costs its line of the run.
 const minSeconds = 0.01
 
 // Weight is what an instance costs its shard: its test's measured seconds
-// (at least minSeconds), or DefaultSeconds when none was measured.
+// (at least minSeconds), or DefaultSeconds when none was measured; a union
+// row's instance weighs by its own language (unionWeight), and any other
+// row's by its language's own lang_seconds when it has them.
 func Weight(inst Instance) float64 {
+	if w, union := unionWeight(inst.Test, inst.Lang); union {
+		return w
+	}
+	if s := inst.Test.LangSeconds[inst.Lang]; s > 0 {
+		return max(s, minSeconds)
+	}
 	if s := inst.Test.Seconds; s > 0 {
 		return max(s, minSeconds)
 	}
@@ -300,6 +367,9 @@ func unitOf(inst Instance) string {
 		Package string `json:"package"`
 		Test    string `json:"test"`
 		Subtest string `json:"subtest"`
+	}
+	if a := inst.Test.Adapter; a != "golden" && a != "gotest" && a != "make-gotest" {
+		return "" // read nothing: a cut asks this of every instance
 	}
 	if json.Unmarshal(inst.Test.Inputs, &in) != nil {
 		return ""

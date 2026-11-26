@@ -241,7 +241,7 @@ Built today:
 | `corpus` | every language row: each per-language family a harness exists for, routed by family | below |
 | `gotest` | language-free Go tests; inputs `{"package", "test", "subtest", "files", "make"}` (`make` optional: a make target, such as a generated tree's stamp, that Prepare makes once before any call) | `go test -count=1 -json -run '^(A|B|...)$' <package>` per package, cut into calls of at most `testreg.ShardBudget` measured seconds, run one after another within a package and several packages at once, each given the driver's remaining deadline less a 10 s margin as `-timeout`; a row a call never reports fails by name, and a call that exits non-zero with every test passed (a `TestMain` check) fails its rows, every event mapped to its row by full name. A row that names subtest runs `-run '^Test$/^(sub)$'` and takes that subtest's own pass or fail; the parent row still claims the top-level test. That call uses the same non-zero-exit rule: when every asked subtest passed, those rows fail with go test's words, and a subtest that failed does not flip a sibling that passed (a test's tier says what it needs; nothing in a test decides whether it runs). A test or subtest that skips fails; a row whose test is not in its package's source is MISSING; one that never reports fails. A package in a module of its own runs from that module. A file in `files` that the tree does not hold fails that row by name before go test runs. A row that does not name a subtest is still the top-level test, subtest events included |
 | `plant` | negative controls; inputs `{"target", "env", "reason"}`, `{"edits", "red", "run", "reason"}` , `{"make", "file", "group"}` or `{"credits", "delete"}` (a read plant: see "Read credits") | env form: runs the target with `env` set; edit form: applies each edit (its anchor exactly once, every copy reached) to a copy of the tracked tree and runs the named tests there, so each builds with its own leg's flags. Passes only when every named row passes on the tree as it is, and then under the sabotage exactly the named targets fail with a reason whose first line holds `reason` (16 characters or more), every other name passes and the run has no run-level problem: a red for another cause (a missing tool, a broken build), or a row red already, fails the plant. The edit form's copy is a git worktree of HEAD with the checkout's files over it and the checkouts beside the checkout (`../serialize.go`) linked beside it, its run is that tree's own schema-test, and its verdict is read from that run's `--report` JSON. A make row cannot be named red (its reason is its exit status, which any failure gives); a copy of an anchor in a file of the same source family (C and C++ sources and headers are one) that no edit names fails the plant. Make form: a control of `make/negative-controls.json`, whose recipe holds its own gate red |
-| `make` | make gates; inputs `{"file", "target"}` plus optional `"vars"` (make variables on the command line), `"tools"` (programs that must be on PATH) and `"siblings"` (checkouts such as `../serialize.go`) and `"reads"` (the data cases the target runs, which the extract counts covered beside any golden row of the same case) | the target must be a rule its file writes, else FAIL; a missing tool or sibling FAILS naming the runner before make runs; the target's dry run (`make -n -B`) must name every file of `reads` and run no `go test` without `-json` (plain go test output prints nothing for a skipped test), else FAIL before it runs; `make -jN target VAR=value...` passes on exit 0 with no skip in the log and no line of go test's plain output |
+| `make` | make gates; inputs `{"file", "target"}` plus optional `"vars"` (make variables on the command line), `"tools"` (programs that must be on PATH) and `"siblings"` (checkouts such as `../serialize.go`) and `"reads"` (the data cases the target runs, which the extract counts covered beside any golden row of the same case), and `"go_tests"` (the Go tests the target runs, each `"<package> <Test>`" as the hostile rows spell them, such as those of a module of its own run beside the generated Go they test, tables/cards; the extract counts them covered by this row; each must report `--- PASS` in its own package's output, the package named by the nearest go.mod, or by `"go_import"` for one the target tests under another module: `{"./tables/cards": "cards"}`) | the target must be a rule its file writes, else FAIL; a missing tool or sibling FAILS naming the runner before make runs; the target's dry run (`make -n -B`) must name every file of `reads` and run no `go test` without `-json` (plain go test output prints nothing for a skipped test), else FAIL before it runs; `make -jN target VAR=value...` passes on exit 0 with no skip in the log and no line of go test's plain output; a row naming `go_tests` also FAILS, naming each, when one does not report `--- PASS` at the top level of its own package's output (gotestrun writes each package's output whole, ending in its result line) |
 | `make-gotest` | the Go tests a make target's recipe runs, one row per test; inputs `{"file", "target", "package", "test"}` plus the make row's optional `"vars"`, `"tools"` and `"siblings"` (no `"seed"` and no `"reads"`) | the rows of one target are one call and one fullrun unit: the builds its rows' Go tests read (`test/registry/go-needs.txt`) are made first, as prepare steps named by their targets, so the call's time is the tests'; the make row's checks hold first, and the target's recipes must run go test through `$(GO_TEST)`, else every row fails before make runs; make runs the target once with `SCHEMA_GOTEST_JSON` naming `build/registry-gotest/<target>.jsonl`, to which `$(GO_TEST)` appends its go test -json events, and each row's verdict is its own test's, read by import path and exact name: a test the events do not show run, a skip of the test or a subtest, a failure, a run of 0 tests, or a Go test the target ran that no row of it names fails by name; go test's own timeout fails as the gotest adapter's does; make failing with every row passed fails every row with make's words. The extract credits each row with its one Go test and the target with the rows together, never the package |
 | `golden` | goldens and pins; inputs `{"writer", "files"}` | the `pins-*` writer runs once per run in a copy of the tracked tree, with every file its rows name aged first so a file it leaves untouched shows it was not written; each file is compared byte for byte; a file it no longer writes, or wrote differently, FAILS; a pin it writes that no row names FAILS every row of the writer; a row whose file is not committed is MISSING; a writer that fails FAILS its own rows with its error, and the other writers' rows are judged as usual; `run --update <names>` re-pins only those rows. A copy a killed run left beside the checkout (named with its process id) is removed by the next run |
 | `model-check` | TLA+ model checks (type `model`); inputs `{"config", "workers"}`, or `{"controls": true}` | `go build ./tools/tlcrun`, then `tlcrun -adapter`: TLC over `tla/<config>`, judged against its `tla/RUNS.tsv` row (an exhaustive run explores the recorded distinct states with no error; a reversed witness violates exactly the invariant its row names). The controls row runs the judge's three broken-tree controls. No TLC jar or no java fails every instance naming the runner. `SCHEMA_TEST_TLC_PLANT_APPEND` is the plant hook: its text is appended to the config in a scratch copy of `tla/` |
@@ -387,6 +387,189 @@ ruling, 2026-11-25, easy for Glenn to overrule):
   for the case is red, never left out
   (`TestLoadRefusesAnUnrepresentableLineOnAUnionRow`).
 
+The intrinsic rows, grouped by subject, each group with its one-line reason
+(the rows carry their own reasons; `schema-test coverage` lists them):
+
+
+#### Timing and benchmarks (14 rows)
+
+A timing comparison of the language's own code shapes or its runtime's speed; it measures that language's code, and no format rule is in it.
+
+| language | families (rows) |
+|---|---|
+| python | enumbench, evolution-shape, fixed-proof-suite, json-scan, mapbench (2), message, shape-compare (2), unionbench, vtunbounded |
+| ruby | fixed-proof-suite, packet |
+| unity | misc |
+
+#### Memory, allocation, GC and concurrency (47 rows)
+
+The language runtime's own memory model: allocation counts and budgets, garbage collection, reference counting, atom tables, race detection; other runtimes have none of these to test.
+
+| language | families (rows) |
+|---|---|
+| cpp | review-coverage |
+| cs | cstable |
+| elixir | alloc-budget (2), allocaudit, fixed-keyed-save-keys, fixedsave-names, offsets |
+| go | alloc (7), array-length-cache, blockbuild, fixedloadallocs, goleg-size-core, messagesets, sizebudget, soak (3), strictdefault-alloc, strictreadalloc, string-write |
+| java | fixedloadalloc, variablenoscratch (3) |
+| js | float32-accessor-shape |
+| lobster | release (4) |
+| lua | alloc (4), fixedlineage, soak (2) |
+| moo | fixedform-unit-lock, unit-lock-scope |
+| python | retain |
+| rust | message-review |
+
+#### Toolchain verdicts on generated code (74 rows)
+
+A formatter, linter, analyser or compiler check that exists only for that language (gofmt, vet, clippy, rustfmt, mypy, rubocop, stylua, luau-analyze, dart analyze, google-java-format, compiler warnings).
+
+| language | families (rows) |
+|---|---|
+| c | format (7), matched-width, misc, strict-c11-locale, vt-strict-api |
+| cpp | reasonenum, widelist-warning-inventory |
+| cs | checked-build (2), cstable |
+| dart | cookarms-analyze, fixedanalyze, int128-table (2), messageform-batch |
+| elixir | emitformat (2), emptyelement, retainpointerwarnings, retainwarnings, specialized-runtime, variableformat |
+| go | declaredforms, fixedoracle, generatedtext, subsets, surface, usagerecipe |
+| goose | registry (2) |
+| java | canonical (2), canonical-shapes (4), maxbits (2), wire-packet-defaults |
+| js | fixedcheck-empty-blocks, variable-helper-closure |
+| lua | format (3) |
+| luau | strict-analyze |
+| moo | analyze, analyze-outcome, fixedform-rows, strictgate (3), tablesmoo (3), wire-packet-defaults (2) |
+| python | fixedform, misc (2), packet, reflection-corpus |
+| ruby | rubytable |
+| rust | arraymin-len-zero, bool-condition-parens, fixedclass, generated-lint, hostile-corpus, message-clippy |
+
+#### Modules, packages and loading (97 rows)
+
+How the language finds and loads code: module and package names, require paths, imports, include placement, file layout, vendored runtime files.
+
+| language | families (rows) |
+|---|---|
+| c | fixedroadmap-t18, header-guard (2), qualify (4), runtime-header |
+| cpp | misc, nativemapping, review-coverage, review-fixes, spec-agreement |
+| cs | leb |
+| elixir | cardsgate-external, filemodule (5) |
+| go | announce-cap-modes, fuzzunit, header, leb, runtimehome, sharedruntime, soak, uncoveredemitters |
+| goose | names (2) |
+| java | jdkshadow (2) |
+| js | binding-names, dts, union-import |
+| lobster | accelerator-overlay, descriptor-overlay, fixed-overlay, lobstertable, misc, reflection-names (2), runtime-definitions, runtime-package-names (2), unit-view (3), unit-view-vocabulary, unit-view-zero-cost (2), view-listing |
+| lua | blockeligibility (2), blocklayoutonce, constants, read, standalone (2), typeview |
+| luau | casecollision, collision, misc (2), overlay-fixed, overlay-fixed-a, overlay-fixed-b, overlay-fixed-d, overlay-fixed-e, serialize-bitpacker-present (2), wire-packet-defaults |
+| moo | analyze, cards-evidence, emitter-names, json-golden, misc, tablesmoo, tablesmoonames (2) |
+| python | misc (3), package-collision, porting-parity (2), reflection-corpus, runtime-names-reserved, vtfixedclass-value-collision |
+| ruby | misc |
+| rust | cardsform, misc, rusttable (2) |
+| squirrel | loader, misc, runtime-rebuild |
+
+#### Names the language reserves (33 rows)
+
+Generated names that would collide with the language's own keywords, builtins or class members; the collision set is the language's.
+
+| language | families (rows) |
+|---|---|
+| c | qualify (3) |
+| cpp | armsetter (2), misc, qualify, review-fixes, spec-agreement |
+| dart | blockbuild-names, cooknames, cookwrite, misc, rowmembers, rowmembers-native |
+| go | initialisms (2), reservedescape, unions |
+| java | variableunions |
+| js | builtin-shadow (2), cursor-names (2), fixedform-inplace |
+| lobster | fixed-guard-names, runtime-global-names |
+| python | message, misc |
+| ruby | identifier-corpus |
+| rust | fixedclass |
+| squirrel | misc |
+| unity | misc |
+
+#### Emitted source shape (66 rows)
+
+The shape of the source the language's emitter writes (literal suffixes, guards, accessor and constructor forms, emitter line budgets), which has no counterpart in another language's source.
+
+| language | families (rows) |
+|---|---|
+| c | control-grep, expr (3), fixedform-r2, identity, offsets, vt-strict-api, zero-width |
+| cpp | conformance-driver-reads-generated, expr, hostile-corpus-rules, json-utf8-comment, review-coverage (4), review-fixes (2), spec-agreement, union-invalid-tag-save |
+| cs | cstable (2), elem-cache, fixedform-csunions (2) |
+| dart | byteorder |
+| elixir | fixedform (5), helper-name |
+| go | jsonseams, measurebody (2), prune, putleb, refat (3), requirednodefault, retain, sourceseams (2), tidy (3), unreferencedhelpers |
+| java | doc-unicode-escape (3), variablenoscratch |
+| js | fixedlanes-agree |
+| lua | jsonkeyliteral, typedsave |
+| luau | review1121 (3), stringlit |
+| moo | misc (2) |
+| python | wire-packet-defaults |
+| ruby | fixedchunk (2) |
+| unity | misc |
+
+#### Runtime internals (18 rows)
+
+A detail of the language's own runtime or bridge (stream latches, typed tables, integer libraries, report objects) that no other runtime has.
+
+| language | families (rows) |
+|---|---|
+| cs | elem-cache |
+| go | announce-cap-modes, array-length-cache, sharedruntime (4) |
+| goose | registry, value-bridge |
+| js | serialize-lookup, wirerows-conformance |
+| lua | armslot, constants |
+| luau | fixed-hotpath-bench |
+| moo | checkedbuild (2), fixed-hotpath-bench |
+| squirrel | unpinnedvm |
+
+#### Build, CI and test-driver wiring (34 rows)
+
+The language leg's own make targets, CI lanes, conformance-driver plumbing, test helpers and negative-control recipes, which wire that language's tests and carry no format rule.
+
+| language | families (rows) |
+|---|---|
+| c | retain-emit, sabotage-anchor |
+| cpp | discard-controls (2) |
+| cs | checked-build, fixedrows-target |
+| elixir | messageform-batch-target |
+| go | writerefusal-store (2) |
+| goose | diewithparent, gooserun-use (2), main (5) |
+| java | absent-spill, loadfixedroot |
+| js | gatecoverage, messageverdict-wiring |
+| lua | constants, typedsave |
+| luau | driver-absent (2) |
+| python | evolution-ci, fixed-proof-ci-selection, hostile-corpus, scalar-widen, wire-packet-defaults, wirefuzz-verdict (2) |
+| squirrel | misc |
+| unity | fixed-harness |
+
+#### Language semantics the generated code must respect (19 rows)
+
+A rule of the language itself (integer overflow, struct padding and alignment, number model, operator ambiguity, constant shadowing, enum underlying types) that the generated code works within.
+
+| language | families (rows) |
+|---|---|
+| c | bool, identity (2), json-placed, offsets |
+| cpp | range-assert-wide, reasonenum |
+| cs | checked-build, fixedform, wideclamp |
+| dart | floatinline |
+| lobster | const-names (2), misc |
+| lua | read |
+| rust | misc (2) |
+| squirrel | interpreter-pin, misc |
+
+#### Generator details (29 rows)
+
+How that language's generator builds or prunes its output (reset methods, helper pruning, emission order, string splitting, instruction counts), with no counterpart in another generator.
+
+| language | families (rows) |
+|---|---|
+| c | expr, misc |
+| cpp | misc, nativemapping, reset, review-coverage, spec-agreement, unbounded-map-insert |
+| cs | fixedform |
+| dart | byteorder |
+| elixir | fixedform |
+| go | blockbuild, countedtail (2), godoc, refuseenumfixed, sizebudget, surface, unreferencedhelpers (2) |
+| goose | gooserun-use, registry |
+| lua | blockeligibility, fixedorder, format, typedsave, view-unit-retained |
+| python | pointer-graph-equality |
+| unity | misc |
 ### The hostile corpus
 
 Every case of the shared hostile corpus (internal/ci/hostilecorpus/corpus,
@@ -616,9 +799,11 @@ row's own test function names whole as suggestions (written by hand), and
 prints every read credit with no plant. `--plant <row>` writes the row's read
 plant from what its reads credit.
 
-## Sharding: the per-PR shards, by measured seconds
+## Sharding: the parts of a run, by measured seconds
 
-This is the one sharding design for every per-PR group. Other layers
+The per-PR job runs the pr group whole, one happy-path row per language,
+unsharded ("CI" below); the nightly parts and `--shard` use this
+design. This is the one sharding design. Other layers
 (L6's make and golden rows among them) use it as it is. Its API and its
 seconds format stay stable. A change to either changes this section in the
 same commit.
@@ -629,7 +814,13 @@ was measured, else on a bench (the run that measured it is named in the
 commit that wrote it).
 - A test with no `seconds` weighs `testreg.DefaultSeconds` (1 s).
 - A measured test weighs at least 0.01 s.
-- Every instance of a per-language test weighs its row's seconds.
+- A per-language row that is not a union row may also carry
+  `"lang_seconds":{"<lang>":S,...}`, each language's own measured seconds,
+  written just before `seconds` (which is then the row's heaviest language).
+  `Load` refuses it on any other row, for a language the registry does not
+  name, or with a value not above 0.
+- Every instance of a per-language test weighs its language's `lang_seconds`
+  where the row has one, else its row's seconds.
 
 `schema-test run ... --write-seconds` writes the field for every passing
 test it ran. `schema-test seconds LOG...` writes it from the logs of driver
@@ -646,13 +837,12 @@ file (`TestWriteSecondsKeepsEveryOtherByte`).
 - `PartSeconds([][]Instance) []float64` is each part's weight.
 - `schema-test run --group G --shard i/n` runs part i of n.
 
-**The budget.** A per-PR shard carries at most 60 s of measured tests (the
-two-minute job less its setup). `schema-test ci` picks each language's N
-from the measured seconds, and `TestTheMatrixIsThePRGroup` holds ci-fast's
-shard matrix to exactly 1/N..N/N per language, with every part within the
-budget. When the pr group grows, `schema-test ci` adds shards. A test with
-no `seconds` weighs 1 s until a run measures it, so a shard of unmeasured
-tests is held to the budget only once they are measured.
+**The budget.** A part carries at most 60 s of measured tests
+(`testreg.ShardBudget`: the most one adapter call carries, and the line past
+which a union row's language carries its own nightly tier). The per-PR job
+is not cut into parts: its budget is the whole job's measured wall time,
+setup plus the critical path of its rows run side by side, 120 s ("CI"
+below). A test with no `seconds` weighs 1 s until a run measures it.
 
 **A weight is per test, not per call.** A corpus row's seconds are its
 language leg's wall time divided by the rows the leg answered, and the
@@ -726,31 +916,42 @@ CI is generated from the registry. `schema-test ci` writes
 and line, on any difference, so a hand edit is red.
 
 - Per PR: ci-fast.yml. Job `schema-test` runs `ci --check`, prints `coverage`
-  and runs `extract` against main's ledger. Jobs `schema-test-pr-1`,
-  `schema-test-pr-2`, ... are one matrix cut at GitHub's limit of 256 jobs
-  per matrix (a language's shards kept in one job where they fit;
-  `TestTheShardJobsFitGitHubsMatrixLimit`, and the policy names any inline
-  matrix past the limit by file and line), with one row per language (and
-  `none`) and shard: `schema-test run --group
-  pr --lang L --shard i/N`, N the fewest parts that each carry at most 60 s of
-  measured tests (L3's `Parts`, the one sharder). `TestTheMatrixIsThePRGroup`
-  holds the matrix to the pr group exactly: every name in one job, none
-  twice, no shard past its budget. Two jobs build what the shards read and
-  run no test: `fixed-corpus` (the go fixed corpus, through the
-  `fixed-corpus` setup action) and `produce`, one job per producer (the
-  conformance-leg-go and conformance-leg-goose trees the env plants run),
-  each built once per run through the `produce` setup action, kept in the
-  runner's cache by `tools/produce.sh identity`, and fetched by every shard
-  before its run; a shard needs both green
-  (`TestThePRShardsRunOnTheProducedLegs`). Job `verdict` is green only when
-  every job passed, and the needs hold exactly the shard jobs the registry
-  cuts (`schema-test ci --verdict`,
-  `TestTheVerdictNeedsEveryJobGreen`); each shard's run already fails on
+  and runs `extract` against main's ledger. One job, `schema-test-pr`, runs
+  `schema-test run --group pr --jobs 4`, the pr group whole (Glenn,
+  2026-11-25: "just compile it, run a simple happy path per-language"): for
+  every language one row, `roundtrip.happy-path.ship-create` (family
+  `happy-path`), which the driver runs as `make -s happy-<lang>`
+  (make/happy-path.mk: generate test/happy/Happy.schema, compile it, one
+  round trip) and passes only on its `happy <lang>: ok` line
+  (`TestTheHappyPathPassesOnlyOnItsOkLine`), and nothing else. The rows
+  share the checkout (`make bin/schema` is built once first) and run four at
+  once (`--jobs`; `TestSharedCheckoutCallsRunSideBySideAfterTheWriters`); only
+  a group of happy paths shares it, and every other harness group, which may
+  make in the checkout, runs alone (`TestOnlyHappyPathGroupsShareTheCheckout`).
+  The budget is the whole job's wall time, measured on a fresh clone and
+  recorded in `prTiming` (tools/schema-test/ci.go): setup (checkout, the
+  pinned siblings, the driver's build) plus the longer of the measured run
+  and the critical path of the rows' `lang_seconds` at four at once (each row
+  started in the registry's order on the first lane to come free, as the run
+  starts them), at most 120 s. `schema-test ci` refuses any other pr group by name: another row, a
+  language-free row, a language missing its row or with two, a row not
+  measured for its own language, or the job past 120 s
+  (`TestThePRGroupIsOneHappyPathRowPerLanguage`); a language past its share
+  gets faster, and no row moves out to fit. docs/CI-TIERS.md prints the
+  serial sum and the critical path. The generated ci-fast.yml runs tests in
+  that one step only (`TestCIFastRunsThePRGroupInOneJob`). Every other row,
+  unit and functional included, the conformance legs' compile rows among
+  them, runs in the nightly workflows by its tier. The pr job builds what it
+  runs and fetches nothing: no producer job, no fixed corpus, no needs
+  (`TestThePRJobBuildsWhatItRunsAndFetchesNothing`). Job `verdict` is green only when
+  every job passed, and the needs hold exactly the jobs the workflow
+  generates (`schema-test ci --verdict`,
+  `TestTheVerdictNeedsEveryJobGreen`); the pr job's run already fails on
   expected != ran. A workflow job that runs the driver is not itself an
   unmoved test: its tests are the rows it selects.
 - On pull requests that touch the roadmap, and pushes to main, with history:
   roadmap.yml runs the one row that reads the commit
-  range (`tooling.roadmap.check`) with full history, because ci-fast's shards
+  range (`tooling.roadmap.check`) with full history, because ci-fast's jobs
   check out one commit. The row is tier nightly, so the pr group leaves it to
   that job; its control and suites are pr-group rows.
 - Nightly: `schema-nightly.yml` (the full-run layer's) runs the nightly group,
@@ -815,11 +1016,12 @@ run in CI.
 row that runs it now (workflow, job, kind, check, row, language).
 `TestEveryRetiredCheckIsStillRun` holds every line: a row removed, a
 language's gate dropped from a per-language row, a target renamed, a
-retired `go test` step left with no row, or a check that ran on every pull
-request (ci-fast.yml, caa-self-test.yml, roadmap.yml's roadmap job) whose row
-is outside the pr group and run by name by no per-PR workflow, is red by the
-line that names it, so a coverage drop, including a move to the night,
-cannot pass unseen.
+retired `go test` step left with no row, or a check whose row is outside
+the nightly group and run by name by no per-PR workflow, is red by the line
+that names it, so a coverage drop cannot pass unseen. A check that ran on
+every pull request (ci-fast.yml, caa-self-test.yml, roadmap.yml's roadmap
+job) runs at night like every other since the pr group became one happy
+path per language (Glenn, 2026-11-25).
 
 A check no row runs yet has a line with row `-`, and the test is red on it
 by name until a row runs it; nothing excuses it. The old ci-fast.yml's own
@@ -945,8 +1147,8 @@ What does not match yet, and why:
 
   The jobs that ran no check of their own: plan (it chose the legs),
   stage-compiler (it built the compiler the cpp legs read) and
-  go-fixed-corpus (now the `fixed-corpus` job). The kept jobs are
-  `schema-test`, the `schema-test-pr-N` shard jobs, `produce` and `verdict`.
+  go-fixed-corpus (the pr job reads no fixed corpus). The kept jobs are
+  `schema-test`, `schema-test-pr` and `verdict`.
 - schema-test-nightly.yml ran one check, `schema-test run --group nightly`;
   schema-nightly.yml runs the same group through `go run ./tools/fullrun`,
   so it has no retired line: the check moved, whole, to the workflow that

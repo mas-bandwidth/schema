@@ -331,6 +331,15 @@ func TestSecondsAreReadFromARunsLog(t *testing.T) {
 			t.Errorf("%s: %v, want %q", log, err, says)
 		}
 	}
+	// a pass printed as (0.00s), under 5 ms, is the least weight, never refused
+	// as no time
+	fast := write("fast.log", "PASS go.functional.roundtrip.fam.one (0.00s)\n")
+	if err := runErr(t.Context(), []string{"seconds", "--registry", reg, fast}, &out, nil); err != nil {
+		t.Fatalf("a pass printed as 0.00 s: %v", err)
+	}
+	if after, err = os.ReadFile(reg); err != nil || !strings.Contains(string(after), `,"seconds":0.01}`) {
+		t.Fatalf("the registry after a 0.00 s pass (%v):\n%s", err, after)
+	}
 }
 
 // TestGoTestRunsToTheDriversDeadline: go test's -timeout is what is left of

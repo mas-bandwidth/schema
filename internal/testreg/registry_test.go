@@ -124,7 +124,7 @@ func TestWriteSecondsKeepsEveryOtherByte(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, s := range []float64{3.001, 0.5} {
-		if n, err := WriteSeconds(path, map[string]float64{"roundtrip.fam.two": s}); err != nil || n != 1 {
+		if n, err := WriteSeconds(path, map[string]float64{"roundtrip.fam.two": s}, nil); err != nil || n != 1 {
 			t.Fatalf("WriteSeconds: %d %v", n, err)
 		}
 	}
@@ -140,7 +140,7 @@ func TestWriteSecondsKeepsEveryOtherByte(t *testing.T) {
 	if tt, _ := reg.Test("roundtrip.fam.two"); tt.Seconds != 0.5 {
 		t.Fatalf("seconds read back as %v", tt.Seconds)
 	}
-	if _, err := WriteSeconds(path, map[string]float64{"roundtrip.fam.nine": 1}); err == nil || !strings.Contains(err.Error(), "no test line for roundtrip.fam.nine") {
+	if _, err := WriteSeconds(path, map[string]float64{"roundtrip.fam.nine": 1}, nil); err == nil || !strings.Contains(err.Error(), "no test line for roundtrip.fam.nine") {
 		t.Fatalf("a key with no line: %v", err)
 	}
 }
@@ -157,7 +157,7 @@ func TestWriteSecondsTouchesOnlyTheLastField(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, s := range []float64{2, 3} {
-		if n, err := WriteSeconds(path, map[string]float64{"tooling.a.b": s}); err != nil || n != 1 {
+		if n, err := WriteSeconds(path, map[string]float64{"tooling.a.b": s}, nil); err != nil || n != 1 {
 			t.Fatalf("WriteSeconds: %d %v", n, err)
 		}
 	}

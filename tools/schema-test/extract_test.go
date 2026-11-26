@@ -278,3 +278,91 @@ func TestMoveCarriesTheTierAndDropsItsLine(t *testing.T) {
 		t.Fatalf("a tier line beside its test's row passed (err %v):\n%s", err, out.String())
 	}
 }
+
+// TestALanguagePackagesBenchmarksWaitForTheBenchAdapter: the Go tests of a
+// language package wait for that language (L5), but when all that is left of
+// it is benchmarks, they wait for the bench adapter (L6) like any other.
+func TestALanguagePackagesBenchmarksWaitForTheBenchAdapter(t *testing.T) {
+	t.Parallel()
+	p := plan(t.TempDir(), &testreg.Registry{Langs: []testreg.Lang{{Name: "lua"}}})
+	bench := extract.Item{Kind: extract.KindGoTest, Dir: "internal/codegen/lua", Name: "BenchmarkLuaBlock"}
+	test := extract.Item{Kind: extract.KindGoTest, Dir: "internal/codegen/lua", Name: "TestLuaBlock"}
+	if layer, reason := p(extract.KindGoTest, bench.Dir, []extract.Item{bench}); layer != "L6" || !strings.Contains(reason, "bench adapter") {
+		t.Errorf("benchmarks only: %s %q, want L6, the bench adapter", layer, reason)
+	}
+	if layer, reason := p(extract.KindGoTest, bench.Dir, []extract.Item{bench, test}); layer != "L5" || !strings.Contains(reason, "per-language (lua)") {
+		t.Errorf("a test and a benchmark: %s %q, want L5 per-language", layer, reason)
+	}
+}
+
+// TestAJobWrittenIntoAGeneratedWorkflowGrowsTheLedger: the jobs of the
+// workflows ci generates, as it generates them from the registry, are no
+// ledger items, so the ledger has no line for them; a job written by hand
+// into ci-fast.yml is one, and --shrinks-from against the ledger before it
+// fails naming the file's new line. The plant is the command passing extract
+// no generated text: the generated jobs count, and the first ledger has a
+// ci-fast.yml line.
+func TestAJobWrittenIntoAGeneratedWorkflowGrowsTheLedger(t *testing.T) {
+	t.Parallel()
+	root := extractRoot(t)
+	regPath := filepath.Join(root, testreg.DefaultPath)
+	regData, err := os.ReadFile(regPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(regPath, append(regData, `{"rec":"group","name":"pr","what":"per pull request","query":{"tiers":["functional"]}}`+"\n"+
+		`{"rec":"tier","name":"nightly","what":"long"}`+"\n"+
+		`{"rec":"type","name":"tooling","what":"the harness"}`+"\n"+
+		`{"rec":"test","key":"tooling.roadmap.check","type":"tooling","family":"roadmap","case":"check","tier":"nightly","scope":"none","adapter":"make","checks":"the roadmap","inputs":{"file":"tools/roadmap/roadmap.mk","target":"roadmap-check"},"expect":"exits 0"}`+"\n"...), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	reg, err := testreg.Load(regPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, err := ciFiles(reg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range generatedWorkflowFiles {
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(root, p)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, p), files[p], 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var out bytes.Buffer
+	if err := extractCmd([]string{"--root", root, "--write-ledger"}, &out); err != nil {
+		t.Fatalf("--write-ledger over the generated workflows: %v\n%s", err, out.String())
+	}
+	ledgerPath := filepath.Join(root, extract.LedgerPath)
+	before, err := os.ReadFile(ledgerPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(before), "workflow-job") {
+		t.Fatalf("the generated workflows' jobs are counted:\n%s", before)
+	}
+	main := filepath.Join(t.TempDir(), "unmoved-main.tsv")
+	if err := os.WriteFile(main, before, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fast := filepath.Join(root, ".github/workflows/ci-fast.yml")
+	hand := strings.Replace(string(files[".github/workflows/ci-fast.yml"]), "\njobs:\n", "\njobs:\n  hand:\n    runs-on: x\n    steps:\n      - run: make b\n", 1)
+	if hand == string(files[".github/workflows/ci-fast.yml"]) {
+		t.Fatal("the generated ci-fast.yml has no jobs: line to write a job under")
+	}
+	if err := os.WriteFile(fast, []byte(hand), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	if err := extractCmd([]string{"--root", root, "--write-ledger"}, &out); err != nil {
+		t.Fatalf("--write-ledger with a job written by hand: %v\n%s", err, out.String())
+	}
+	out.Reset()
+	err = extractCmd([]string{"--root", root, "--shrinks-from", main}, &out)
+	if err == nil || !strings.Contains(out.String(), "workflow-job .github/workflows/ci-fast.yml is a new ledger line") {
+		t.Fatalf("a job written by hand into ci-fast.yml passed --shrinks-from (err %v):\n%s", err, out.String())
+	}
+}

@@ -5,7 +5,9 @@ Part of the specification: every test of tier `nightly`, from the test registry.
 
 **Tier nightly:** heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded.
 
-Nightly tests every language answers: 1100. Language-free tests: 1731.
+Nightly tests every language answers: 1108. Language-free tests: 1732.
+
+Tests some languages run in this tier, their own measured seconds being past one shard's budget, each named by its languages' instances: 11.
 
 Run this tier for a language with `schema-test run --tier nightly --lang L`, one test with `schema-test run <full name>`.
 
@@ -13,9 +15,37 @@ Run this tier for a language with `schema-test run --tier nightly --lang L`, one
 
 Each test's full name for language `L` is `L.nightly.<type>.<family>.<case>`: every language in the registry has this instance, unless the registry declares it unrepresentable there (listed at the end of this page). The language's adapter receives the inputs as written in the registry row and must establish the expected result.
 
+### Type `roundtrip`
+
+read bytes, write them back, same bytes.
+
+#### `roundtrip` family `conformance-strict`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `elixir.nightly.roundtrip.conformance-strict.driver-reads-strict-and-writes-back` | the conformance driver reads a fixed root strictly and writes the wire back | `inputs.tests` (250 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/cstable/conformance_strict_test.go:70` |
+
+#### `roundtrip` family `fixed-proof-values`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `ruby.nightly.roundtrip.fixed-proof-values.fixed-proof-values-types` | the generated code for every fixed value type case passes the language's static type check | `inputs.tests` (233 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/pythontable/fixed_proof_values_test.go:88` |
+
+#### `roundtrip` family `fixedroadmap-t08`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.nightly.roundtrip.fixedroadmap-t08.fixed-roadmap-t08-writes-conformance` | the fixed-form plan and writer conform to the spec rows for argument and metadata lanes, nested union tags and counters | `inputs.tests` (443 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedroadmap_t08_test.go:20` |
+
 ### Type `decode`
 
 bytes read give exactly the expected value.
+
+#### `decode` family `fixed-valid-data`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.nightly.decode.fixed-valid-data.fixed-valid-data-rows` | Every valid-data row of the fixed form is accepted by the reader and reported as passing. | `inputs.tests` (101 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/cstable/fixed_valid_data_test.go:93` |
 
 #### `decode` family `hostile`, 160 tests
 
@@ -300,6 +330,12 @@ bytes read give exactly the expected value.
 ### Type `load-refusal`
 
 hostile bytes are refused in every build, with the named reason.
+
+#### `load-refusal` family `fixedform-under-20-bytes`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `elixir.nightly.load-refusal.fixedform-under-20-bytes.fixed-form-under20-bytes` | a fixed reader refuses a file shorter than the 20-byte fixed-form header: refused, -1 returned, every counter zero and nothing landed (the recommended name is truncated, and the form has no malformed flag) | `inputs.tests` (805 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/gotable/fixedform_under_20_bytes_test.go:17` |
 
 #### `load-refusal` family `hostile`, 262 tests
 
@@ -1150,9 +1186,44 @@ generated source compiles and is clean.
 | `L.nightly.codegen.tables.vold-unknown-census` | tables test/tables/VOLD\_unknown\_census: test/tables/VOLD\_unknown\_census.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VOLD_unknown_census.schema"]`<br>`schema: test/tables/VOLD_unknown_census.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VOLD_unknown_census.schema:1` |
 | `L.nightly.codegen.tables.vold-variant-removed` | tables test/tables/VOLD\_variant\_removed: test/tables/VOLD\_variant\_removed.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VOLD_variant_removed.schema"]`<br>`schema: test/tables/VOLD_variant_removed.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VOLD_variant_removed.schema:1` |
 
+#### `codegen` family `vtfixedclass`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `python.nightly.codegen.vtfixedclass.vt-fixed-class-build-version-imports` | The exported build version of every generated corpus package equals the engine's after the package is imported. | `inputs.tests` (140 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/pythontable/vtfixedclass_test.go:369` |
+
+### Type `evolution`
+
+one schema version reads or writes another's data.
+
+#### `evolution` family `scalar-widen`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `python.nightly.evolution.scalar-widen.scalar-widen-historical` | every historical scalar-width widening pair, in generic and specialised readers, reads the old wire as the widened value | `inputs.tests` (129 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/pythontable/scalar_widen_test.go:75` |
+
 ### Type `fuzz`
 
 seeded mutations.
+
+#### `fuzz` family `messagefuzzarm`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `dart.nightly.fuzz.messagefuzzarm.message-fuzz-arm-honours-load-result` | the message wire-fuzz arm answers the verdict the public load gave, so a mutant that loads without a refusal is reported as loaded | `inputs.tests` (134 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/darttable/messagefuzzarm_test.go:38` |
+
+#### `fuzz` family `nightly-fuzz`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.nightly.fuzz.nightly-fuzz.nightly-fuzz` | a nightly fuzz campaign over the corpus agrees with the reference engine on every mutant | `inputs.tests` (108 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/squirreltable/nightly_fuzz_test.go:85` |
+
+#### `fuzz` family `nightly-fuzz-readers`, 2 tests
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.nightly.fuzz.nightly-fuzz-readers.nightly-fuzz-strict` | a nightly fuzz campaign of the strict readers over every mutant gives the expected verdict on each | `inputs.tests` (113 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/squirreltable/nightly_fuzz_readers_test.go:170` |
+| `L.nightly.fuzz.nightly-fuzz-readers.nightly-fuzz-text-json` | a nightly fuzz campaign of the text and JSON readers over every mutant gives the expected verdict on each | `inputs.tests` (116 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/squirreltable/nightly_fuzz_readers_test.go:202` |
 
 #### `fuzz` family `wire-fuzz`, 3 tests
 
@@ -1162,15 +1233,43 @@ seeded mutations.
 | `L.nightly.fuzz.wire-fuzz.plain` | wire fuzz, plain arm (the plain read and write-back): every corpus root's enumerated mutants and 500000 random ones at the run's seed | `arm: plain`<br>`n: 500000` | no divergence from the oracle, at least one mutant, and no corpus root the leg has no codec for, in every configuration of the leg; the verdict names the seed | `test/conformance/harness/wirefuzz_registry.go` |
 | `L.nightly.fuzz.wire-fuzz.retain` | wire fuzz, retain arm (the retaining read's canonical write-back): every corpus root's enumerated mutants and 500000 random ones at the run's seed | `arm: retain`<br>`n: 500000` | no divergence from the oracle, at least one mutant, and no corpus root the leg has no codec for, in every configuration of the leg; the verdict names the seed | `test/conformance/harness/wirefuzz_registry.go` |
 
+#### `fuzz` family `wirefuzz-verdict`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `goose.nightly.fuzz.wirefuzz-verdict.wire-fuzz-verdict-pipe` | the wire-fuzz verdict pipe agrees with the reference oracle on every mutant with zero divergences | `inputs.tests` (940 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/wirefuzz_verdict_test.go:646` |
+
 ### Type `plant`
 
 a negative control: a named test run against a deliberately broken build must come out red.
+
+#### `plant` family `fixed-valid-data`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.nightly.plant.fixed-valid-data.fixed-valid-data-rows-negative-control` | A faulted expected value in the bool valid-data check makes the valid-data checks go red. | `inputs.tests` (116 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/cstable/fixed_valid_data_test.go:114` |
 
 #### `plant` family `nightly-fuzz`, 1 test
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.nightly.plant.nightly-fuzz.oracle-control` | the language's fuzz oracle fires on a planted bad pattern (a missing bound) | `inputs.make` (125 bytes, held in the registry row's `inputs.make`) | the control's make gate exits 0: the planted bug was found | `docs/TEST-REGISTRY.md: the retired scheduled workflows` |
+
+#### `plant` family `porting-parity`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `luau.nightly.plant.porting-parity.forgery-fuzz-negative-control` | removing the block extent bounds from the reader must make the forgery oracle go red | `inputs.tests` (352 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/lobstertable/forgeryfuzz_test.go:600` |
+
+### Type `bench`
+
+performance or timing.
+
+#### `bench` family `moo-fixed-hotpath-bench`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.nightly.bench.moo-fixed-hotpath-bench.fixed-hot-path-bench` | the fixed hot path against the pre-cut baseline stays within the recorded bar | `tests: {"moo":{"package":"./bench/tables/moo","test":"TestMooFixedHotPathBench"}}` | the moo Go test for the case (inputs.tests) passes | `bench/tables/moo/fixed_hotpath_bench_test.go:170` |
 
 ### Type `lint`
 
@@ -1180,7 +1279,35 @@ generated or runtime code is clean under the language's strict analyser.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.nightly.lint.luau-strict-analyze.at-id-cap` | the generated Luau modules of a unit announcing exactly 4096 vocabulary entries (the most a reader takes) pass luau-analyze --mode=strict; the 4097-entry unit is refused at run time and not analysed | `tests: {"luau":{"package":"./internal/codegen/luautable","test":"TestLuauStrictAnalyzeAtIdCap"}}` | the luau Go test for the case (inputs.tests) passes | `internal/codegen/luautable/announce_cap_test.go:35` |
+| `L.nightly.lint.luau-strict-analyze.at-id-cap` | the generated Luau modules of a unit announcing exactly 4096 vocabulary entries (the most a reader takes) pass luau-analyze --mode=strict; the 4097-entry unit is refused at run time and not analysed | `inputs.tests` (105 bytes, held in the registry row's `inputs.tests`) | the luau Go test for the case (inputs.tests) passes | `internal/codegen/luautable/announce_cap_test.go:35` |
+
+#### `lint` family `reflection-corpus`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `python.nightly.lint.reflection-corpus.reflection-strict-types` | the generated reflection code for every corpus unit passes strict static analysis | `inputs.tests` (130 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/pythontable/reflection_corpus_test.go:361` |
+
+#### `lint` family `ruby-rubytable`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `ruby.nightly.lint.ruby-rubytable.block-manifest-and-real-units-analyze` | the generated block manifest and real units pass the language analyser | `inputs.tests` (131 bytes, held in the registry row's `inputs.tests`) | the ruby Go test for the case (inputs.tests) passes | `internal/codegen/rubytable/rubytable_test.go:568` |
+
+### Type `differential`
+
+two implementations or two versions give the same answer.
+
+#### `differential` family `fixed-proof-shapes`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `ruby.nightly.differential.fixed-proof-shapes.fixed-proof-shapes` | each fixed shape agrees with the reference writer and reader, including independent load values | `inputs.tests` (224 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/pythontable/fixed_proof_shapes_test.go:31` |
+
+#### `differential` family `fixedoneverdict`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.nightly.differential.fixedoneverdict.generated-fixed-one-verdict-every-byte` | substituting every value of every byte past the header of each fixed root's record, the generated fixed read gives the engine's verdict | `inputs.tests` (119 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fuzzunit/fixedoneverdict_test.go:19` |
 
 ## Language-free tests
 
@@ -5776,12 +5903,13 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 |---|---|---|---|---|---|
 | `none.nightly.harness-run.make-elixir-compressed-negzero.test-elixir` | `make` | make test-elixir (make/elixir-compressed-negzero.mk) exits 0 | `file: make/elixir-compressed-negzero.mk`<br>`inputs.reads` (308 bytes, held in the registry row's `inputs.reads`)<br>`target: test-elixir` | the target exits 0 with no skip in its log | `make/elixir-compressed-negzero.mk:23` |
 
-#### `harness-run` family `make-go`, 4 tests
+#### `harness-run` family `make-go`, 5 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.nightly.harness-run.make-go.cards-corpus-check` | `make` | make cards-corpus-check (make/go.mk) exits 0 | `file: make/go.mk`<br>`target: cards-corpus-check` | the target exits 0 with no skip in its log | `make/go.mk:470` |
-| `none.nightly.harness-run.make-go.cards-test` | `make` | make cards-test (make/go.mk) exits 0 | `file: make/go.mk`<br>`target: cards-test` | the target exits 0 with no skip in its log | `make/go.mk:489` |
+| `none.nightly.harness-run.make-go.cards-example` | `make` | make cards-example (make/go.mk) exits 0: a separate customer module imports only the generated cards package and the standard library, and its Go test reports a pass | `file: make/go.mk`<br>`go_tests: ["./tables/cards/example TestCardsCustomerExample"]`<br>`target: cards-example` | the target exits 0 with no skip in its log | `make/go.mk:454` |
+| `none.nightly.harness-run.make-go.cards-test` | `make` | make cards-test (make/go.mk) exits 0, and each of the cards module Go tests it names reports a pass, run beside the generated Go cards module | `file: make/go.mk`<br>`go_import: {"./tables/cards":"cards"}`<br>`inputs.go_tests` (1660 bytes, held in the registry row's `inputs.go_tests`)<br>`target: cards-test` | the target exits 0 with no skip in its log | `make/go.mk:489` |
 | `none.nightly.harness-run.make-go.tables-go-fixed-form` | `make` | make tables-go-fixed-form (make/go.mk) exits 0 | `file: make/go.mk`<br>`target: tables-go-fixed-form` | the target exits 0 with no skip in its log | `make/go.mk:1298` |
 | `none.nightly.harness-run.make-go.test-go-packet` | `make` | make test-go-packet (make/go.mk) exits 0 | `file: make/go.mk`<br>`target: test-go-packet` | the target exits 0 with no skip in its log | `make/go.mk:1010` |
 
@@ -6238,4 +6366,6 @@ Each test's subject exists in one language only (that language's own generated s
 
 | test | language | reason |
 |---|---|---|
+| `bench.moo-fixed-hotpath-bench.fixed-hot-path-bench` | `moo` | performance measurement of this language's own interpreter runtime |
 | `lint.luau-strict-analyze.at-id-cap` | `luau` | luau-analyze strict type checking of a generated 4096-entry Luau module; only Luau has this analyser |
+| `lint.ruby-rubytable.block-manifest-and-real-units-analyze` | `ruby` | Ruby static analyser over generated block units |

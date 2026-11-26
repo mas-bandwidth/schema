@@ -88,6 +88,12 @@ type Test struct {
 	// weighs it by, so each part of a stored query fits its job. A test with
 	// none weighs DefaultSeconds.
 	Seconds float64 `json:"seconds,omitempty"`
+	// LangSeconds, on a per-language row that is not a union row, is each
+	// language's own measured run time, which its instance weighs by in
+	// place of Seconds (Weight): one number for the row would weigh every
+	// language by the slowest. A union row keeps its languages' seconds in
+	// inputs.tests.<lang>.seconds.
+	LangSeconds map[string]float64 `json:"lang_seconds,omitempty"`
 	// Intrinsic, on a per-language row, says its subject exists in one
 	// language only (that language's own generated source or runtime): the
 	// row has that language's instance and no other, and every other
@@ -391,6 +397,26 @@ func Parse(name string, r io.Reader) (*Registry, error) {
 		case !t.PerLang():
 			fail(t.Line, "test %s names per-language Go tests but is scoped %q", t.Key, t.Scope)
 			continue
+		case t.Seconds != 0:
+			// each language's test takes its own time: one number for the
+			// row would weigh every language by the slowest
+			fail(t.Line, "test %s is a union row with seconds %v: a union row's seconds are each language's, in inputs.tests.<lang>.seconds", t.Key, t.Seconds)
+		}
+		// a language's own tier moves one test that measured past a shard's
+		// budget on its own to the night, with the seconds that put it
+		// there; it is never a way for a test that fits to leave the pull
+		// request, nor for a shard of several to get under the budget
+		for _, lang := range slices.Sorted(maps.Keys(tests)) {
+			g := tests[lang]
+			switch {
+			case g.Tier == "":
+			case g.Tier != NightlyTier || t.Tier == NightlyTier:
+				fail(t.Line, "test %s gives %s the tier %q: a language's own tier is %s, for a row of a per-PR tier", t.Key, lang, g.Tier, NightlyTier)
+			case tiers[NightlyTier] == 0:
+				fail(t.Line, "test %s gives %s the tier %q, which the registry does not declare", t.Key, lang, g.Tier)
+			case g.Seconds <= ShardBudget:
+				fail(t.Line, "test %s moves %s to %s at %v s measured: only a test past one shard's %.0f s budget on its own goes to the night; one that fits stays per pull request", t.Key, lang, NightlyTier, g.Seconds, ShardBudget)
+			}
 		}
 		for _, lang := range slices.Sorted(maps.Keys(tests)) {
 			g := tests[lang]
@@ -404,6 +430,30 @@ func Parse(name string, r io.Reader) (*Registry, error) {
 				continue
 			}
 			unionTest[id] = t.Key
+		}
+	}
+	// a row's own per-language seconds: a per-language row that is not a
+	// union row, for languages of the registry, each a positive time
+	for _, t := range reg.Tests {
+		if t.LangSeconds == nil {
+			continue
+		}
+		_, union, _ := GoTestsOf(t)
+		switch {
+		case !t.PerLang():
+			fail(t.Line, "test %s gives lang_seconds but is scoped %q: only a per-language row has a language's seconds", t.Key, t.Scope)
+			continue
+		case union:
+			fail(t.Line, "test %s is a union row with lang_seconds: a union row's seconds are each language's, in inputs.tests.<lang>.seconds", t.Key)
+			continue
+		}
+		for _, lang := range slices.Sorted(maps.Keys(t.LangSeconds)) {
+			switch s := t.LangSeconds[lang]; {
+			case reg.lang[lang] == 0 || lang == LangFree:
+				fail(t.Line, "test %s gives lang_seconds for %q, which is not a language of the registry", t.Key, lang)
+			case !(s > 0):
+				fail(t.Line, "test %s gives %s lang_seconds %v: a measured run time is a positive number of seconds", t.Key, lang, s)
+			}
 		}
 	}
 	intrinsicCase := map[string]Test{}
@@ -654,11 +704,21 @@ func (r *Registry) HasType(name string) bool {
 // never taken for it.
 var secondsField = regexp.MustCompile(`,"seconds":[0-9.e+-]+\}$`)
 
+// langSecondsField is a test line's per-language seconds, as WriteSeconds
+// writes them: the last field, or the one before "seconds".
+var langSecondsField = regexp.MustCompile(`,"lang_seconds":\{[^{}]*\}\}$`)
+
 // WriteSeconds records measured run times in the registry file at path: for
 // each test key in seconds, its line's "seconds" is set to the value,
-// rounded up to the hundredth. Every other byte of the file is kept. A key
-// that is no test line of the file is an error, and nothing is written.
-func WriteSeconds(path string, seconds map[string]float64) (int, error) {
+// rounded up to the hundredth; for each per-language row's key in
+// langSeconds, each named language's seconds are set the same way: a union
+// row's in its Go test's "seconds" in inputs.tests, any other row's in its
+// "lang_seconds" (languages not named keep theirs). Every other byte of the
+// file is kept. A key that is no test line of the file, a union row in
+// seconds, a language-free row in langSeconds, or a language langSeconds
+// gives that its union row names no Go test for is an error, and nothing is
+// written.
+func WriteSeconds(path string, seconds map[string]float64, langSeconds map[string]map[string]float64) (int, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return 0, err
@@ -666,25 +726,96 @@ func WriteSeconds(path string, seconds map[string]float64) (int, error) {
 	lines := strings.SplitAfter(string(data), "\n")
 	done := map[string]bool{}
 	for i, line := range lines {
-		var head struct{ Rec, Key string }
+		var head struct {
+			Rec, Key    string
+			Scope       string
+			Inputs      json.RawMessage
+			LangSeconds map[string]float64 `json:"lang_seconds"`
+		}
 		if json.Unmarshal([]byte(line), &head) != nil || head.Rec != "test" {
 			continue
 		}
-		s, ok := seconds[head.Key]
-		if !ok {
+		tests, union, _ := GoTestsOf(Test{Key: head.Key, Inputs: head.Inputs})
+		ls, perLang := langSeconds[head.Key]
+		if perLang && union {
+			if tests == nil {
+				return 0, fmt.Errorf("%s:%d: %s names no Go tests, so it has no language's seconds", path, i+1, head.Key)
+			}
+			for _, lang := range slices.Sorted(maps.Keys(ls)) {
+				g, named := tests[lang]
+				if !named {
+					return 0, fmt.Errorf("%s:%d: %s names no Go test for %s, so %s has no seconds of it", path, i+1, head.Key, lang, lang)
+				}
+				g.Seconds = roundSeconds(ls[lang])
+				tests[lang] = g
+			}
+			in, err := json.Marshal(struct {
+				Tests map[string]GoTest `json:"tests"`
+			}{tests})
+			if err != nil {
+				return 0, err
+			}
+			raw := `"inputs":` + string(head.Inputs)
+			if strings.Count(line, raw) != 1 {
+				return 0, fmt.Errorf("%s:%d: %s: the inputs are not written once, compact, as %s", path, i+1, head.Key, raw)
+			}
+			lines[i] = strings.Replace(line, raw, `"inputs":`+string(in), 1)
+			done[head.Key] = true
 			continue
 		}
-		v := fmt.Sprintf(`,"seconds":%s`, strconv.FormatFloat(math.Ceil(max(s, minSeconds)*100)/100, 'f', -1, 64))
+		if perLang && head.Scope != "" {
+			return 0, fmt.Errorf("%s:%d: %s is scoped %q: a language-free row has no language's seconds", path, i+1, head.Key, head.Scope)
+		}
+		s, rowSeconds := seconds[head.Key]
+		if !rowSeconds && !perLang {
+			continue
+		}
+		if rowSeconds && union {
+			return 0, fmt.Errorf("%s:%d: %s is a union row: its seconds are each language's", path, i+1, head.Key)
+		}
 		body, nl := strings.TrimSuffix(line, "\n"), line[len(strings.TrimSuffix(line, "\n")):]
+		old := secondsField.FindString(body)
 		body = secondsField.ReplaceAllString(body, "}")
+		if perLang {
+			body = langSecondsField.ReplaceAllString(body, "}")
+			merged := maps.Clone(head.LangSeconds)
+			if merged == nil {
+				merged = map[string]float64{}
+			}
+			for lang, v := range ls {
+				merged[lang] = roundSeconds(v)
+			}
+			// the row's seconds are its heaviest language's, of every
+			// language it records, not only of the ones this run measured
+			s, rowSeconds = slices.Max(slices.Collect(maps.Values(merged))), true
+			enc, err := json.Marshal(merged) // encoding/json writes map keys sorted
+			if err != nil {
+				return 0, err
+			}
+			if !strings.HasSuffix(body, "}") {
+				return 0, fmt.Errorf("%s:%d: a test line ends in }", path, i+1)
+			}
+			body = body[:len(body)-1] + `,"lang_seconds":` + string(enc) + "}"
+		}
+		switch {
+		case rowSeconds:
+			old = fmt.Sprintf(`,"seconds":%s}`, strconv.FormatFloat(roundSeconds(s), 'f', -1, 64))
+		case old == "":
+			old = "}"
+		}
 		if !strings.HasSuffix(body, "}") {
 			return 0, fmt.Errorf("%s:%d: a test line ends in }", path, i+1)
 		}
-		lines[i] = body[:len(body)-1] + v + "}" + nl
+		lines[i] = body[:len(body)-1] + old + nl
 		done[head.Key] = true
 	}
 	var missing []string
 	for k := range seconds {
+		if !done[k] {
+			missing = append(missing, k)
+		}
+	}
+	for k := range langSeconds {
 		if !done[k] {
 			missing = append(missing, k)
 		}
@@ -694,4 +825,42 @@ func WriteSeconds(path string, seconds map[string]float64) (int, error) {
 		return 0, fmt.Errorf("%s has no test line for %s", path, strings.Join(missing, ", "))
 	}
 	return len(done), os.WriteFile(path, []byte(strings.Join(lines, "")), 0o644)
+}
+
+// roundSeconds is a measured run time as the registry records it: at least
+// minSeconds, rounded up to the hundredth.
+func roundSeconds(s float64) float64 {
+	return math.Ceil(max(s, minSeconds)*100) / 100
+}
+
+// SplitSeconds sorts the measured seconds of passing instances (by full
+// name) into what WriteSeconds takes: a per-language row's by its key and
+// language (a union row's for its Go tests, any other's for its
+// lang_seconds), and a row that is not a union row by its key as well, the
+// longest of its instances. A measured name with no instance, or seconds
+// that are not a positive time, is an error naming it: a measurement is
+// never dropped without a word.
+func SplitSeconds(instances map[string]Instance, measured map[string]float64) (map[string]float64, map[string]map[string]float64, error) {
+	rows, langs := map[string]float64{}, map[string]map[string]float64{}
+	for _, full := range slices.Sorted(maps.Keys(measured)) {
+		s := measured[full]
+		inst, ok := instances[full]
+		switch {
+		case !ok:
+			return nil, nil, fmt.Errorf("%s was measured, and is no instance of the run: its seconds belong to no row", full)
+		case !(s > 0):
+			return nil, nil, fmt.Errorf("%s was measured at %v s: a run time is a positive number of seconds", full, s)
+		}
+		_, union, _ := GoTestsOf(inst.Test)
+		if inst.Test.PerLang() {
+			if langs[inst.Test.Key] == nil {
+				langs[inst.Test.Key] = map[string]float64{}
+			}
+			langs[inst.Test.Key][inst.Lang] = max(langs[inst.Test.Key][inst.Lang], s)
+		}
+		if !union {
+			rows[inst.Test.Key] = max(rows[inst.Test.Key], s)
+		}
+	}
+	return rows, langs, nil
 }

@@ -10,7 +10,7 @@ step of theirs that runs one calls only `schema-test`:
 
 | workflow | when | what it runs |
 |---|---|---|
-| `ci-fast.yml` | every pull request, every push to main, dispatch | `schema-test run --group pr --lang L --shard i/N`, one job per row below; `schema-test extract` against main's ledger; `schema-test ci --check`; the `verdict` job |
+| `ci-fast.yml` | every pull request, every push to main, dispatch | `schema-test run --group pr`, one job: the rows below; `schema-test extract` against main's ledger; `schema-test ci --check`; the `verdict` job |
 | `schema-nightly.yml` | nightly, dispatch | `schema-test run --group nightly`: every tier, every language, through `go run ./tools/fullrun`; a language that does not answer a row is red by name |
 | `roadmap.yml` | pull requests touching the roadmap, pushes to main | `schema-test run none.nightly.tooling.roadmap.check`, the row that reads the commit range, with full history |
 
@@ -23,513 +23,52 @@ and their data, and the workflows that run none:
 - `release.yml`: the release: tags and builds a release on a green CI fast run at the commit (the fast lane), never a test of its own.
 
 Nothing selects by path or branch: every pull request runs the whole `pr`
-group, every ready test of tiers unit and functional, and a push to main runs
-the same.
+group, and a push to main runs the same. Every other row runs in the nightly
+workflows, by its tier.
 
 ## The tiers
 
 | tier | tests | what it is |
 |---|---|---|
-| `unit` | 3212 | no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory |
-| `functional` | 4990 | uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it |
-| `nightly` | 2831 | heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded |
+| `unit` | 3815 | no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory |
+| `functional` | 7404 | uses a real thing: a compiler or VM, a toolchain, generated code built and run; runs nightly, and per pull request only as the pr group names it (one happy-path row per language, make happy-<lang>) |
+| `nightly` | 2840 | heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded |
 
-## The per-PR matrix
+## The per-PR job
 
-The `pr` group is cut per language into the fewest shards whose every part
-carries at most 50 s of measured test time, planned under the 60 s limit
-as headroom for a cold runner; a part of one test may carry up to the limit
-(each test's `seconds` in the
-registry; a test with none weighs 1 s until a run measures it, so a shard of
-unmeasured tests is held to the budget only once they are measured). Each row is
-one job, in jobs of at most `256` rows (GitHub's limit on one matrix),
-`schema-test run --group pr --lang L --shard i/N`.
+One job, `schema-test-pr`, runs `go run ./tools/schema-test run --group pr --jobs 4`: for every language, one row,
+`make happy-<lang>` (`make/happy-path.mk`), which generates one small schema,
+compiles it with that language's program and does one round trip: the
+language's compile and its happy path, and nothing else. The languages run
+side by side, 4 at once. The whole job, its setup (47.3 s, measured) and the
+run's critical path (the longer of the path the rows' seconds give and the
+run's measured 31.0 s), is at most 120 s, the job's two minutes; a language
+past its 6.7 s serial share gets faster, and no row moves out to fit.
 
-| language | shard | tests | measured seconds |
-|---|---|---|---|
-| `c` | 1/20 | 40 | 45.8 |
-| `c` | 2/20 | 177 | 46.3 |
-| `c` | 3/20 | 382 | 48.4 |
-| `c` | 4/20 | 263 | 46.7 |
-| `c` | 5/20 | 632 | 48.4 |
-| `c` | 6/20 | 684 | 48.4 |
-| `c` | 7/20 | 96 | 48.3 |
-| `c` | 8/20 | 48 | 48.0 |
-| `c` | 9/20 | 48 | 48.0 |
-| `c` | 10/20 | 48 | 48.0 |
-| `c` | 11/20 | 35 | 48.3 |
-| `c` | 12/20 | 4 | 40.1 |
-| `c` | 13/20 | 2 | 47.5 |
-| `c` | 14/20 | 3 | 40.2 |
-| `c` | 15/20 | 2 | 40.4 |
-| `c` | 16/20 | 2 | 46.2 |
-| `c` | 17/20 | 2 | 35.2 |
-| `c` | 18/20 | 2 | 48.4 |
-| `c` | 19/20 | 46 | 46.0 |
-| `c` | 20/20 | 46 | 46.0 |
-| `cpp` | 1/20 | 40 | 45.8 |
-| `cpp` | 2/20 | 177 | 46.3 |
-| `cpp` | 3/20 | 382 | 48.4 |
-| `cpp` | 4/20 | 263 | 46.7 |
-| `cpp` | 5/20 | 632 | 48.4 |
-| `cpp` | 6/20 | 684 | 48.4 |
-| `cpp` | 7/20 | 96 | 48.3 |
-| `cpp` | 8/20 | 48 | 48.0 |
-| `cpp` | 9/20 | 48 | 48.0 |
-| `cpp` | 10/20 | 48 | 48.0 |
-| `cpp` | 11/20 | 35 | 48.3 |
-| `cpp` | 12/20 | 4 | 40.1 |
-| `cpp` | 13/20 | 2 | 47.5 |
-| `cpp` | 14/20 | 3 | 40.2 |
-| `cpp` | 15/20 | 2 | 40.4 |
-| `cpp` | 16/20 | 2 | 46.2 |
-| `cpp` | 17/20 | 2 | 35.2 |
-| `cpp` | 18/20 | 2 | 48.4 |
-| `cpp` | 19/20 | 46 | 46.0 |
-| `cpp` | 20/20 | 46 | 46.0 |
-| `cs` | 1/20 | 40 | 45.8 |
-| `cs` | 2/20 | 177 | 46.3 |
-| `cs` | 3/20 | 382 | 48.4 |
-| `cs` | 4/20 | 263 | 46.7 |
-| `cs` | 5/20 | 632 | 48.4 |
-| `cs` | 6/20 | 684 | 48.4 |
-| `cs` | 7/20 | 96 | 48.3 |
-| `cs` | 8/20 | 48 | 48.0 |
-| `cs` | 9/20 | 48 | 48.0 |
-| `cs` | 10/20 | 48 | 48.0 |
-| `cs` | 11/20 | 35 | 48.3 |
-| `cs` | 12/20 | 4 | 40.1 |
-| `cs` | 13/20 | 2 | 47.5 |
-| `cs` | 14/20 | 3 | 40.2 |
-| `cs` | 15/20 | 2 | 40.4 |
-| `cs` | 16/20 | 2 | 46.2 |
-| `cs` | 17/20 | 2 | 35.2 |
-| `cs` | 18/20 | 2 | 48.4 |
-| `cs` | 19/20 | 46 | 46.0 |
-| `cs` | 20/20 | 46 | 46.0 |
-| `unity` | 1/20 | 40 | 45.8 |
-| `unity` | 2/20 | 177 | 46.3 |
-| `unity` | 3/20 | 382 | 48.4 |
-| `unity` | 4/20 | 263 | 46.7 |
-| `unity` | 5/20 | 632 | 48.4 |
-| `unity` | 6/20 | 684 | 48.4 |
-| `unity` | 7/20 | 96 | 48.3 |
-| `unity` | 8/20 | 48 | 48.0 |
-| `unity` | 9/20 | 48 | 48.0 |
-| `unity` | 10/20 | 48 | 48.0 |
-| `unity` | 11/20 | 35 | 48.3 |
-| `unity` | 12/20 | 4 | 40.1 |
-| `unity` | 13/20 | 2 | 47.5 |
-| `unity` | 14/20 | 3 | 40.2 |
-| `unity` | 15/20 | 2 | 40.4 |
-| `unity` | 16/20 | 2 | 46.2 |
-| `unity` | 17/20 | 2 | 35.2 |
-| `unity` | 18/20 | 2 | 48.4 |
-| `unity` | 19/20 | 46 | 46.0 |
-| `unity` | 20/20 | 46 | 46.0 |
-| `go` | 1/20 | 40 | 45.8 |
-| `go` | 2/20 | 177 | 46.3 |
-| `go` | 3/20 | 382 | 48.4 |
-| `go` | 4/20 | 263 | 46.7 |
-| `go` | 5/20 | 632 | 48.4 |
-| `go` | 6/20 | 684 | 48.4 |
-| `go` | 7/20 | 96 | 48.3 |
-| `go` | 8/20 | 48 | 48.0 |
-| `go` | 9/20 | 48 | 48.0 |
-| `go` | 10/20 | 48 | 48.0 |
-| `go` | 11/20 | 35 | 48.3 |
-| `go` | 12/20 | 4 | 40.1 |
-| `go` | 13/20 | 2 | 47.5 |
-| `go` | 14/20 | 3 | 40.2 |
-| `go` | 15/20 | 2 | 40.4 |
-| `go` | 16/20 | 2 | 46.2 |
-| `go` | 17/20 | 2 | 35.2 |
-| `go` | 18/20 | 2 | 48.4 |
-| `go` | 19/20 | 46 | 46.0 |
-| `go` | 20/20 | 46 | 46.0 |
-| `rust` | 1/20 | 40 | 45.8 |
-| `rust` | 2/20 | 177 | 46.3 |
-| `rust` | 3/20 | 382 | 48.4 |
-| `rust` | 4/20 | 263 | 46.7 |
-| `rust` | 5/20 | 632 | 48.4 |
-| `rust` | 6/20 | 684 | 48.4 |
-| `rust` | 7/20 | 96 | 48.3 |
-| `rust` | 8/20 | 48 | 48.0 |
-| `rust` | 9/20 | 48 | 48.0 |
-| `rust` | 10/20 | 48 | 48.0 |
-| `rust` | 11/20 | 35 | 48.3 |
-| `rust` | 12/20 | 4 | 40.1 |
-| `rust` | 13/20 | 2 | 47.5 |
-| `rust` | 14/20 | 3 | 40.2 |
-| `rust` | 15/20 | 2 | 40.4 |
-| `rust` | 16/20 | 2 | 46.2 |
-| `rust` | 17/20 | 2 | 35.2 |
-| `rust` | 18/20 | 2 | 48.4 |
-| `rust` | 19/20 | 46 | 46.0 |
-| `rust` | 20/20 | 46 | 46.0 |
-| `java` | 1/20 | 40 | 45.8 |
-| `java` | 2/20 | 177 | 46.3 |
-| `java` | 3/20 | 382 | 48.4 |
-| `java` | 4/20 | 263 | 46.7 |
-| `java` | 5/20 | 632 | 48.4 |
-| `java` | 6/20 | 684 | 48.4 |
-| `java` | 7/20 | 96 | 48.3 |
-| `java` | 8/20 | 48 | 48.0 |
-| `java` | 9/20 | 48 | 48.0 |
-| `java` | 10/20 | 48 | 48.0 |
-| `java` | 11/20 | 35 | 48.3 |
-| `java` | 12/20 | 4 | 40.1 |
-| `java` | 13/20 | 2 | 47.5 |
-| `java` | 14/20 | 3 | 40.2 |
-| `java` | 15/20 | 2 | 40.4 |
-| `java` | 16/20 | 2 | 46.2 |
-| `java` | 17/20 | 2 | 35.2 |
-| `java` | 18/20 | 2 | 48.4 |
-| `java` | 19/20 | 46 | 46.0 |
-| `java` | 20/20 | 46 | 46.0 |
-| `dart` | 1/20 | 40 | 45.8 |
-| `dart` | 2/20 | 177 | 46.3 |
-| `dart` | 3/20 | 382 | 48.4 |
-| `dart` | 4/20 | 263 | 46.7 |
-| `dart` | 5/20 | 632 | 48.4 |
-| `dart` | 6/20 | 684 | 48.4 |
-| `dart` | 7/20 | 96 | 48.3 |
-| `dart` | 8/20 | 48 | 48.0 |
-| `dart` | 9/20 | 48 | 48.0 |
-| `dart` | 10/20 | 48 | 48.0 |
-| `dart` | 11/20 | 35 | 48.3 |
-| `dart` | 12/20 | 4 | 40.1 |
-| `dart` | 13/20 | 2 | 47.5 |
-| `dart` | 14/20 | 3 | 40.2 |
-| `dart` | 15/20 | 2 | 40.4 |
-| `dart` | 16/20 | 2 | 46.2 |
-| `dart` | 17/20 | 2 | 35.2 |
-| `dart` | 18/20 | 2 | 48.4 |
-| `dart` | 19/20 | 46 | 46.0 |
-| `dart` | 20/20 | 46 | 46.0 |
-| `elixir` | 1/20 | 40 | 45.8 |
-| `elixir` | 2/20 | 177 | 46.3 |
-| `elixir` | 3/20 | 382 | 48.4 |
-| `elixir` | 4/20 | 263 | 46.7 |
-| `elixir` | 5/20 | 632 | 48.4 |
-| `elixir` | 6/20 | 684 | 48.4 |
-| `elixir` | 7/20 | 96 | 48.3 |
-| `elixir` | 8/20 | 48 | 48.0 |
-| `elixir` | 9/20 | 48 | 48.0 |
-| `elixir` | 10/20 | 48 | 48.0 |
-| `elixir` | 11/20 | 35 | 48.3 |
-| `elixir` | 12/20 | 4 | 40.1 |
-| `elixir` | 13/20 | 2 | 47.5 |
-| `elixir` | 14/20 | 3 | 40.2 |
-| `elixir` | 15/20 | 2 | 40.4 |
-| `elixir` | 16/20 | 2 | 46.2 |
-| `elixir` | 17/20 | 2 | 35.2 |
-| `elixir` | 18/20 | 2 | 48.4 |
-| `elixir` | 19/20 | 46 | 46.0 |
-| `elixir` | 20/20 | 46 | 46.0 |
-| `js` | 1/20 | 40 | 45.8 |
-| `js` | 2/20 | 177 | 46.3 |
-| `js` | 3/20 | 382 | 48.4 |
-| `js` | 4/20 | 263 | 46.7 |
-| `js` | 5/20 | 632 | 48.4 |
-| `js` | 6/20 | 684 | 48.4 |
-| `js` | 7/20 | 96 | 48.3 |
-| `js` | 8/20 | 48 | 48.0 |
-| `js` | 9/20 | 48 | 48.0 |
-| `js` | 10/20 | 48 | 48.0 |
-| `js` | 11/20 | 35 | 48.3 |
-| `js` | 12/20 | 4 | 40.1 |
-| `js` | 13/20 | 2 | 47.5 |
-| `js` | 14/20 | 3 | 40.2 |
-| `js` | 15/20 | 2 | 40.4 |
-| `js` | 16/20 | 2 | 46.2 |
-| `js` | 17/20 | 2 | 35.2 |
-| `js` | 18/20 | 2 | 48.4 |
-| `js` | 19/20 | 46 | 46.0 |
-| `js` | 20/20 | 46 | 46.0 |
-| `python` | 1/20 | 40 | 45.8 |
-| `python` | 2/20 | 177 | 46.3 |
-| `python` | 3/20 | 382 | 48.4 |
-| `python` | 4/20 | 263 | 46.7 |
-| `python` | 5/20 | 632 | 48.4 |
-| `python` | 6/20 | 684 | 48.4 |
-| `python` | 7/20 | 96 | 48.3 |
-| `python` | 8/20 | 48 | 48.0 |
-| `python` | 9/20 | 48 | 48.0 |
-| `python` | 10/20 | 48 | 48.0 |
-| `python` | 11/20 | 35 | 48.3 |
-| `python` | 12/20 | 4 | 40.1 |
-| `python` | 13/20 | 2 | 47.5 |
-| `python` | 14/20 | 3 | 40.2 |
-| `python` | 15/20 | 2 | 40.4 |
-| `python` | 16/20 | 2 | 46.2 |
-| `python` | 17/20 | 2 | 35.2 |
-| `python` | 18/20 | 2 | 48.4 |
-| `python` | 19/20 | 46 | 46.0 |
-| `python` | 20/20 | 46 | 46.0 |
-| `ruby` | 1/20 | 40 | 45.8 |
-| `ruby` | 2/20 | 177 | 46.3 |
-| `ruby` | 3/20 | 382 | 48.4 |
-| `ruby` | 4/20 | 263 | 46.7 |
-| `ruby` | 5/20 | 632 | 48.4 |
-| `ruby` | 6/20 | 684 | 48.4 |
-| `ruby` | 7/20 | 96 | 48.3 |
-| `ruby` | 8/20 | 48 | 48.0 |
-| `ruby` | 9/20 | 48 | 48.0 |
-| `ruby` | 10/20 | 48 | 48.0 |
-| `ruby` | 11/20 | 35 | 48.3 |
-| `ruby` | 12/20 | 4 | 40.1 |
-| `ruby` | 13/20 | 2 | 47.5 |
-| `ruby` | 14/20 | 3 | 40.2 |
-| `ruby` | 15/20 | 2 | 40.4 |
-| `ruby` | 16/20 | 2 | 46.2 |
-| `ruby` | 17/20 | 2 | 35.2 |
-| `ruby` | 18/20 | 2 | 48.4 |
-| `ruby` | 19/20 | 46 | 46.0 |
-| `ruby` | 20/20 | 46 | 46.0 |
-| `lua` | 1/20 | 40 | 45.8 |
-| `lua` | 2/20 | 177 | 46.3 |
-| `lua` | 3/20 | 382 | 48.4 |
-| `lua` | 4/20 | 263 | 46.7 |
-| `lua` | 5/20 | 632 | 48.4 |
-| `lua` | 6/20 | 684 | 48.4 |
-| `lua` | 7/20 | 96 | 48.3 |
-| `lua` | 8/20 | 48 | 48.0 |
-| `lua` | 9/20 | 48 | 48.0 |
-| `lua` | 10/20 | 48 | 48.0 |
-| `lua` | 11/20 | 35 | 48.3 |
-| `lua` | 12/20 | 4 | 40.1 |
-| `lua` | 13/20 | 2 | 47.5 |
-| `lua` | 14/20 | 3 | 40.2 |
-| `lua` | 15/20 | 2 | 40.4 |
-| `lua` | 16/20 | 2 | 46.2 |
-| `lua` | 17/20 | 2 | 35.2 |
-| `lua` | 18/20 | 2 | 48.4 |
-| `lua` | 19/20 | 46 | 46.0 |
-| `lua` | 20/20 | 46 | 46.0 |
-| `luau` | 1/20 | 40 | 45.8 |
-| `luau` | 2/20 | 177 | 46.3 |
-| `luau` | 3/20 | 382 | 48.4 |
-| `luau` | 4/20 | 263 | 46.7 |
-| `luau` | 5/20 | 632 | 48.4 |
-| `luau` | 6/20 | 684 | 48.4 |
-| `luau` | 7/20 | 96 | 48.3 |
-| `luau` | 8/20 | 48 | 48.0 |
-| `luau` | 9/20 | 48 | 48.0 |
-| `luau` | 10/20 | 48 | 48.0 |
-| `luau` | 11/20 | 35 | 48.3 |
-| `luau` | 12/20 | 4 | 40.1 |
-| `luau` | 13/20 | 2 | 47.5 |
-| `luau` | 14/20 | 3 | 40.2 |
-| `luau` | 15/20 | 2 | 40.4 |
-| `luau` | 16/20 | 2 | 46.2 |
-| `luau` | 17/20 | 2 | 35.2 |
-| `luau` | 18/20 | 2 | 48.4 |
-| `luau` | 19/20 | 46 | 46.0 |
-| `luau` | 20/20 | 46 | 46.0 |
-| `squirrel` | 1/20 | 40 | 45.8 |
-| `squirrel` | 2/20 | 177 | 46.3 |
-| `squirrel` | 3/20 | 382 | 48.4 |
-| `squirrel` | 4/20 | 263 | 46.7 |
-| `squirrel` | 5/20 | 632 | 48.4 |
-| `squirrel` | 6/20 | 684 | 48.4 |
-| `squirrel` | 7/20 | 96 | 48.3 |
-| `squirrel` | 8/20 | 48 | 48.0 |
-| `squirrel` | 9/20 | 48 | 48.0 |
-| `squirrel` | 10/20 | 48 | 48.0 |
-| `squirrel` | 11/20 | 35 | 48.3 |
-| `squirrel` | 12/20 | 4 | 40.1 |
-| `squirrel` | 13/20 | 2 | 47.5 |
-| `squirrel` | 14/20 | 3 | 40.2 |
-| `squirrel` | 15/20 | 2 | 40.4 |
-| `squirrel` | 16/20 | 2 | 46.2 |
-| `squirrel` | 17/20 | 2 | 35.2 |
-| `squirrel` | 18/20 | 2 | 48.4 |
-| `squirrel` | 19/20 | 46 | 46.0 |
-| `squirrel` | 20/20 | 46 | 46.0 |
-| `moo` | 1/20 | 40 | 45.8 |
-| `moo` | 2/20 | 177 | 46.3 |
-| `moo` | 3/20 | 382 | 48.4 |
-| `moo` | 4/20 | 263 | 46.7 |
-| `moo` | 5/20 | 632 | 48.4 |
-| `moo` | 6/20 | 684 | 48.4 |
-| `moo` | 7/20 | 96 | 48.3 |
-| `moo` | 8/20 | 48 | 48.0 |
-| `moo` | 9/20 | 48 | 48.0 |
-| `moo` | 10/20 | 48 | 48.0 |
-| `moo` | 11/20 | 35 | 48.3 |
-| `moo` | 12/20 | 4 | 40.1 |
-| `moo` | 13/20 | 2 | 47.5 |
-| `moo` | 14/20 | 3 | 40.2 |
-| `moo` | 15/20 | 2 | 40.4 |
-| `moo` | 16/20 | 2 | 46.2 |
-| `moo` | 17/20 | 2 | 35.2 |
-| `moo` | 18/20 | 2 | 48.4 |
-| `moo` | 19/20 | 46 | 46.0 |
-| `moo` | 20/20 | 46 | 46.0 |
-| `goose` | 1/20 | 40 | 45.8 |
-| `goose` | 2/20 | 177 | 46.3 |
-| `goose` | 3/20 | 382 | 48.4 |
-| `goose` | 4/20 | 263 | 46.7 |
-| `goose` | 5/20 | 632 | 48.4 |
-| `goose` | 6/20 | 684 | 48.4 |
-| `goose` | 7/20 | 96 | 48.3 |
-| `goose` | 8/20 | 48 | 48.0 |
-| `goose` | 9/20 | 48 | 48.0 |
-| `goose` | 10/20 | 48 | 48.0 |
-| `goose` | 11/20 | 35 | 48.3 |
-| `goose` | 12/20 | 4 | 40.1 |
-| `goose` | 13/20 | 2 | 47.5 |
-| `goose` | 14/20 | 3 | 40.2 |
-| `goose` | 15/20 | 2 | 40.4 |
-| `goose` | 16/20 | 2 | 46.2 |
-| `goose` | 17/20 | 2 | 35.2 |
-| `goose` | 18/20 | 2 | 48.4 |
-| `goose` | 19/20 | 46 | 46.0 |
-| `goose` | 20/20 | 46 | 46.0 |
-| `lobster` | 1/20 | 40 | 45.8 |
-| `lobster` | 2/20 | 177 | 46.3 |
-| `lobster` | 3/20 | 382 | 48.4 |
-| `lobster` | 4/20 | 263 | 46.7 |
-| `lobster` | 5/20 | 632 | 48.4 |
-| `lobster` | 6/20 | 684 | 48.4 |
-| `lobster` | 7/20 | 96 | 48.3 |
-| `lobster` | 8/20 | 48 | 48.0 |
-| `lobster` | 9/20 | 48 | 48.0 |
-| `lobster` | 10/20 | 48 | 48.0 |
-| `lobster` | 11/20 | 35 | 48.3 |
-| `lobster` | 12/20 | 4 | 40.1 |
-| `lobster` | 13/20 | 2 | 47.5 |
-| `lobster` | 14/20 | 3 | 40.2 |
-| `lobster` | 15/20 | 2 | 40.4 |
-| `lobster` | 16/20 | 2 | 46.2 |
-| `lobster` | 17/20 | 2 | 35.2 |
-| `lobster` | 18/20 | 2 | 48.4 |
-| `lobster` | 19/20 | 46 | 46.0 |
-| `lobster` | 20/20 | 46 | 46.0 |
-| `none` | 1/120 | 78 | 36.3 |
-| `none` | 2/120 | 143 | 39.3 |
-| `none` | 3/120 | 5 | 32.1 |
-| `none` | 4/120 | 17 | 39.1 |
-| `none` | 5/120 | 4 | 23.4 |
-| `none` | 6/120 | 4 | 38.9 |
-| `none` | 7/120 | 110 | 45.9 |
-| `none` | 8/120 | 55 | 37.2 |
-| `none` | 9/120 | 394 | 31.5 |
-| `none` | 10/120 | 66 | 16.5 |
-| `none` | 11/120 | 151 | 37.8 |
-| `none` | 12/120 | 966 | 29.0 |
-| `none` | 13/120 | 3 | 42.8 |
-| `none` | 14/120 | 35 | 30.8 |
-| `none` | 15/120 | 1 | 51.6 |
-| `none` | 16/120 | 6 | 32.2 |
-| `none` | 17/120 | 13 | 25.7 |
-| `none` | 18/120 | 1 | 35.8 |
-| `none` | 19/120 | 4 | 41.2 |
-| `none` | 20/120 | 16 | 32.1 |
-| `none` | 21/120 | 23 | 32.3 |
-| `none` | 22/120 | 13 | 34.6 |
-| `none` | 23/120 | 80 | 29.5 |
-| `none` | 24/120 | 3 | 30.2 |
-| `none` | 25/120 | 107 | 32.8 |
-| `none` | 26/120 | 55 | 32.3 |
-| `none` | 27/120 | 22 | 33.7 |
-| `none` | 28/120 | 58 | 32.7 |
-| `none` | 29/120 | 11 | 33.4 |
-| `none` | 30/120 | 5 | 32.4 |
-| `none` | 31/120 | 3 | 16.0 |
-| `none` | 32/120 | 1 | 50.7 |
-| `none` | 33/120 | 6 | 14.7 |
-| `none` | 34/120 | 1 | 36.8 |
-| `none` | 35/120 | 7 | 32.7 |
-| `none` | 36/120 | 14 | 31.8 |
-| `none` | 37/120 | 3 | 17.8 |
-| `none` | 38/120 | 1 | 41.3 |
-| `none` | 39/120 | 8 | 35.1 |
-| `none` | 40/120 | 9 | 41.2 |
-| `none` | 41/120 | 18 | 34.0 |
-| `none` | 42/120 | 6 | 35.7 |
-| `none` | 43/120 | 1 | 38.4 |
-| `none` | 44/120 | 2 | 28.1 |
-| `none` | 45/120 | 1 | 53.7 |
-| `none` | 46/120 | 5 | 9.4 |
-| `none` | 47/120 | 1 | 52.7 |
-| `none` | 48/120 | 5 | 45.0 |
-| `none` | 49/120 | 2 | 39.8 |
-| `none` | 50/120 | 4 | 37.7 |
-| `none` | 51/120 | 5 | 34.8 |
-| `none` | 52/120 | 1 | 44.7 |
-| `none` | 53/120 | 97 | 30.9 |
-| `none` | 54/120 | 16 | 39.7 |
-| `none` | 55/120 | 35 | 32.0 |
-| `none` | 56/120 | 31 | 31.4 |
-| `none` | 57/120 | 77 | 31.4 |
-| `none` | 58/120 | 11 | 31.6 |
-| `none` | 59/120 | 21 | 30.8 |
-| `none` | 60/120 | 1 | 34.0 |
-| `none` | 61/120 | 18 | 31.3 |
-| `none` | 62/120 | 9 | 35.8 |
-| `none` | 63/120 | 105 | 36.8 |
-| `none` | 64/120 | 87 | 31.8 |
-| `none` | 65/120 | 211 | 31.8 |
-| `none` | 66/120 | 78 | 31.7 |
-| `none` | 67/120 | 71 | 25.1 |
-| `none` | 68/120 | 27 | 31.8 |
-| `none` | 69/120 | 75 | 32.1 |
-| `none` | 70/120 | 44 | 34.0 |
-| `none` | 71/120 | 83 | 31.5 |
-| `none` | 72/120 | 81 | 29.7 |
-| `none` | 73/120 | 2 | 43.1 |
-| `none` | 74/120 | 47 | 31.4 |
-| `none` | 75/120 | 113 | 32.1 |
-| `none` | 76/120 | 180 | 31.9 |
-| `none` | 77/120 | 82 | 31.6 |
-| `none` | 78/120 | 38 | 22.0 |
-| `none` | 79/120 | 68 | 31.9 |
-| `none` | 80/120 | 301 | 32.0 |
-| `none` | 81/120 | 94 | 31.2 |
-| `none` | 82/120 | 89 | 34.6 |
-| `none` | 83/120 | 69 | 31.9 |
-| `none` | 84/120 | 82 | 32.0 |
-| `none` | 85/120 | 233 | 31.2 |
-| `none` | 86/120 | 91 | 31.4 |
-| `none` | 87/120 | 7 | 29.2 |
-| `none` | 88/120 | 3 | 36.3 |
-| `none` | 89/120 | 4 | 25.3 |
-| `none` | 90/120 | 1 | 37.1 |
-| `none` | 91/120 | 8 | 33.9 |
-| `none` | 92/120 | 2 | 33.8 |
-| `none` | 93/120 | 2 | 34.3 |
-| `none` | 94/120 | 2 | 34.1 |
-| `none` | 95/120 | 2 | 34.0 |
-| `none` | 96/120 | 27 | 30.9 |
-| `none` | 97/120 | 38 | 27.4 |
-| `none` | 98/120 | 2 | 28.4 |
-| `none` | 99/120 | 3 | 43.0 |
-| `none` | 100/120 | 2 | 26.0 |
-| `none` | 101/120 | 2 | 37.3 |
-| `none` | 102/120 | 2 | 39.6 |
-| `none` | 103/120 | 2 | 37.4 |
-| `none` | 104/120 | 3 | 24.1 |
-| `none` | 105/120 | 2 | 37.5 |
-| `none` | 106/120 | 1 | 42.7 |
-| `none` | 107/120 | 4 | 30.2 |
-| `none` | 108/120 | 19 | 19.6 |
-| `none` | 109/120 | 84 | 28.1 |
-| `none` | 110/120 | 21 | 30.4 |
-| `none` | 111/120 | 28 | 18.7 |
-| `none` | 112/120 | 5 | 38.3 |
-| `none` | 113/120 | 45 | 30.8 |
-| `none` | 114/120 | 27 | 34.0 |
-| `none` | 115/120 | 5 | 28.7 |
-| `none` | 116/120 | 10 | 30.3 |
-| `none` | 117/120 | 26 | 32.1 |
-| `none` | 118/120 | 24 | 29.4 |
-| `none` | 119/120 | 1 | 15.8 |
-| `none` | 120/120 | 6 | 45.8 |
-| **every row** | **480 jobs** | **51756** | **20435.4** |
+| language | happy-path row | measured seconds |
+|---|---|---|
+| `c` | `c.functional.roundtrip.happy-path.ship-create` | 7.8 |
+| `cpp` | `cpp.functional.roundtrip.happy-path.ship-create` | 6.0 |
+| `cs` | `cs.functional.roundtrip.happy-path.ship-create` | 8.8 |
+| `unity` | `unity.functional.roundtrip.happy-path.ship-create` | 10.1 |
+| `go` | `go.functional.roundtrip.happy-path.ship-create` | 6.9 |
+| `rust` | `rust.functional.roundtrip.happy-path.ship-create` | 6.3 |
+| `java` | `java.functional.roundtrip.happy-path.ship-create` | 7.3 |
+| `dart` | `dart.functional.roundtrip.happy-path.ship-create` | 6.2 |
+| `elixir` | `elixir.functional.roundtrip.happy-path.ship-create` | 11.3 |
+| `js` | `js.functional.roundtrip.happy-path.ship-create` | 5.7 |
+| `python` | `python.functional.roundtrip.happy-path.ship-create` | 4.6 |
+| `ruby` | `ruby.functional.roundtrip.happy-path.ship-create` | 4.3 |
+| `lua` | `lua.functional.roundtrip.happy-path.ship-create` | 4.0 |
+| `luau` | `luau.functional.roundtrip.happy-path.ship-create` | 4.6 |
+| `squirrel` | `squirrel.functional.roundtrip.happy-path.ship-create` | 4.5 |
+| `moo` | `moo.functional.roundtrip.happy-path.ship-create` | 5.5 |
+| `goose` | `goose.functional.roundtrip.happy-path.ship-create` | 4.2 |
+| `lobster` | `lobster.functional.roundtrip.happy-path.ship-create` | 2.9 |
+| **every language, one after another** | | **110.8** |
+| **the run's critical path, 4 at once** | | **29.2** |
 
-To change the matrix, change the registry (a row, or its measured
-`seconds`: `schema-test run ... --write-seconds` on a fleet runner, or
-`schema-test seconds LOG...` from a run's log), then run
+To change the job, change the registry's `pr` group (its query names
+the rows) or a row's measured `lang_seconds` (`schema-test run ... --write-seconds`
+on a fleet runner, or `schema-test seconds LOG...` from a run's log), then run
 `go run ./tools/schema-test ci`.

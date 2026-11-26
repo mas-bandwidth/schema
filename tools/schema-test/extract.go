@@ -53,7 +53,11 @@ func extractCmd(args []string, stdout io.Writer) error {
 	if (*since == "") != (*pinsBase == "") {
 		return usageError{"--since and --pins-base go together: --pins-base names the tree this change merges into, which the not-yet-generated list is held to"}
 	}
-	res, err := extract.Extract(*root)
+	generated, err := generatedTexts(filepath.Join(*root, *path))
+	if err != nil {
+		return err
+	}
+	res, err := extract.ExtractGenerated(*root, generated)
 	if err != nil {
 		return err
 	}
@@ -237,7 +241,7 @@ func plan(root string, reg *testreg.Registry) func(kind, dir string, items []ext
 	return func(kind, dir string, items []extract.Item) (string, string) {
 		switch kind {
 		case extract.KindGoTest:
-			if l := extract.LangOf(dir, langs); l != "" {
+			if l := extract.LangOf(dir, langs); l != "" && !allBenchmarks(items) {
 				return "L5", "per-language (" + l + ") Go tests: " + l + "'s adapter runs them when their families move in"
 			}
 			layer, reason := "", ""
@@ -301,6 +305,12 @@ func nestedModule(root, dir string) bool {
 		}
 	}
 	return false
+}
+
+// allBenchmarks: every item is a Go benchmark, which the bench adapter (L6)
+// runs wherever its package is, a language package included.
+func allBenchmarks(items []extract.Item) bool {
+	return !slices.ContainsFunc(items, func(it extract.Item) bool { return !strings.HasPrefix(it.Name, "Benchmark") })
 }
 
 // pinsShrinkFrom holds root's not-yet-generated workflows to base's, the
@@ -375,6 +385,36 @@ func baseWorkflows(base string) ([]ciPin, error) {
 			continue
 		}
 		out = append(out, ciPin{Path: p, State: pinNotYetGenerated})
+	}
+	return out, nil
+}
+
+// generatedTexts is each workflow ci writes, as it writes it from the
+// registry at path, by repository path: the extract counts none of their
+// jobs as written (extract.ExtractGenerated), since each is the registry
+// rebuilt and ci --check holds it byte for byte. A registry the workflows
+// cannot be generated from is an error, never an extract that counts them.
+func generatedTexts(path string) (map[string][]byte, error) {
+	reg, err := testreg.Load(path)
+	if err != nil {
+		return nil, err
+	}
+	if _, ok := reg.Group("pr"); !ok {
+		// a registry with no pr group generates no workflow (ci refuses
+		// it by name): nothing is left out, and every job counts
+		return nil, nil
+	}
+	files, err := ciFiles(reg)
+	if err != nil {
+		return nil, fmt.Errorf("the generated workflows, which the extract leaves out, do not build from %s: %w", path, err)
+	}
+	out := map[string][]byte{}
+	for _, p := range generatedWorkflowFiles {
+		data, ok := files[p]
+		if !ok {
+			return nil, fmt.Errorf("ci writes no %s, which it is to generate", p)
+		}
+		out[p] = data
 	}
 	return out, nil
 }

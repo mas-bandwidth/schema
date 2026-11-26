@@ -10,12 +10,29 @@ import (
 )
 
 // GoTest names one language's Go test for a per-language row: the package
-// it is in (./ relative to the repository root), its top-level name, and the
-// build tags it needs (a leg's schema_leg_<leg>), if any.
+// it is in (./ relative to the repository root), its top-level name, the
+// build tags it needs (a leg's schema_leg_<leg>), if any, and the seconds it
+// measured, if it was measured: a union row's languages answer with their
+// own tests, which take their own time, so a union row's seconds are each
+// language's, never the row's (Weight). Tier, when set, is the tier of this
+// language's instance in place of the row's: a test that measured past one
+// shard's budget on its own runs nightly, while the languages whose tests
+// fit stay per pull request (Test.TierIn).
 type GoTest struct {
-	Package string `json:"package"`
-	Test    string `json:"test"`
-	Tags    string `json:"tags,omitempty"`
+	Package string  `json:"package"`
+	Test    string  `json:"test"`
+	Tags    string  `json:"tags,omitempty"`
+	Seconds float64 `json:"seconds,omitempty"`
+	Tier    string  `json:"tier,omitempty"`
+}
+
+// TierIn is the tier of t's instance in lang: the row's, or, for a union
+// row whose Go test for lang names a tier of its own, that one.
+func (t Test) TierIn(lang string) string {
+	if tier := unionTier(t, lang); tier != "" {
+		return tier
+	}
+	return t.Tier
 }
 
 var goTestFuncName = regexp.MustCompile(`^(Test|Fuzz)[A-Za-z0-9_]*$`)
@@ -53,6 +70,9 @@ func GoTestsOf(t Test) (tests map[string]GoTest, ok bool, err error) {
 		return nil, true, fmt.Errorf("%s: union inputs name no language's Go test", t.Key)
 	}
 	for lang, g := range in.Tests {
+		if g.Seconds < 0 {
+			return nil, true, fmt.Errorf("%s: union inputs for %s give seconds %v: a measured run time is not negative", t.Key, lang, g.Seconds)
+		}
 		if !strings.HasPrefix(g.Package, "./") || !goTestFuncName.MatchString(g.Test) {
 			return nil, true, fmt.Errorf("%s: union inputs for %s want a ./package and a Go test name, got %q %q", t.Key, lang, g.Package, g.Test)
 		}

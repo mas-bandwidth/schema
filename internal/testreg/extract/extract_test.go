@@ -1037,7 +1037,18 @@ func TestLedgerCountsWhatIsUnmoved(t *testing.T) {
 func TestEveryTestIsARowOrInTheLedger(t *testing.T) {
 	t.Parallel()
 	root := "../../.."
-	res, err := Extract(root)
+	// the generated workflows as committed: ci --check (and
+	// TestTheCIFilesAreCurrent) holds them to what the registry generates,
+	// and schema-test extract passes what it generates
+	generated := map[string][]byte{}
+	for _, p := range GeneratedWorkflows {
+		data, err := os.ReadFile(filepath.Join(root, p))
+		if err != nil {
+			t.Fatal(err)
+		}
+		generated[p] = data
+	}
+	res, err := ExtractGenerated(root, generated)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1193,6 +1204,38 @@ func TestADriverOnlyJobIsNotATest(t *testing.T) {
 	sort.Strings(got)
 	if want := []string{"action", "alias", "bare", "chained", "continued", "empty", "flow", "mixed", "setchain", "shell", "spaced"}; !slices.Equal(got, want) {
 		t.Errorf("jobs counted as tests: %v, want %v", got, want)
+	}
+}
+
+// TestAMakeRowCoversTheGoTestsItNames: a make row that names the Go tests
+// of a module of its own (tables/cards) covers them, so they leave the
+// ledger; a test the repository does not hold, and one another row already
+// covers, are each named.
+func TestAMakeRowCoversTheGoTestsItNames(t *testing.T) {
+	t.Parallel()
+	res := &Result{Items: []Item{
+		{Kind: KindMakeTarget, Dir: "make/go.mk", Name: "cards-test", Source: "make/go.mk:1"},
+		{Kind: KindGoTest, Dir: "tables/cards", Name: "TestA", Source: "tables/cards/a_test.go:1"},
+		{Kind: KindGoTest, Dir: "tables/cards", Name: "TestB", Source: "tables/cards/a_test.go:9"},
+	}}
+	row := func(key, inputs string) testreg.Test {
+		return testreg.Test{Key: key, Adapter: "make", Inputs: []byte(inputs)}
+	}
+	good := row("harness-run.make-go.cards-test", `{"file":"make/go.mk","target":"cards-test","go_tests":["./tables/cards TestA","./tables/cards TestB"]}`)
+	if p := Check(res, &testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{good}}, nil); len(p) != 0 {
+		t.Fatalf("the exact account: %v", p)
+	}
+	short := row("harness-run.make-go.cards-test", `{"file":"make/go.mk","target":"cards-test","go_tests":["./tables/cards TestA"]}`)
+	if p := strings.Join(Check(res, &testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{short}}, nil), "\n"); !strings.Contains(p, "TestB") {
+		t.Errorf("a test the row leaves out is not named:\n%s", p)
+	}
+	gone := row("harness-run.make-go.cards-test", `{"file":"make/go.mk","target":"cards-test","go_tests":["./tables/cards TestA","./tables/cards TestB","./tables/cards TestGone"]}`)
+	if p := strings.Join(Check(res, &testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{gone}}, nil), "\n"); !strings.Contains(p, "TestGone, which the repository does not hold") {
+		t.Errorf("a test the repository does not hold is not named:\n%s", p)
+	}
+	twice := testreg.Test{Key: "tooling.cards.a", Adapter: "gotest", Inputs: []byte(`{"package":"./tables/cards","test":"TestA"}`)}
+	if p := strings.Join(Check(res, &testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{good, twice}}, nil), "\n"); !strings.Contains(p, "already") {
+		t.Errorf("a test two rows cover is not named:\n%s", p)
 	}
 }
 
@@ -1352,5 +1395,52 @@ func TestAMakeRowsSourceIsHeldToItsRulesLine(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("Check does not name a make row whose source line is stale")
+	}
+}
+
+// TestAGeneratedJobIsTheRegistry: a workflow job exactly as schema-test ci
+// generates it (key and every line) is the registry rebuilt and no item; a
+// job written by hand in the same file is one, and so is a generated job
+// edited by hand, so a job added by hand grows the file's ledger line and
+// fails --shrinks-from. Without the generated text every job counts. The
+// plant is the generated job counted: the file's line is 2 jobs, not 1.
+func TestAGeneratedJobIsTheRegistry(t *testing.T) {
+	t.Parallel()
+	const path = ".github/workflows/ci-fast.yml"
+	gen := "  gen:\n    runs-on: x\n    steps:\n      - run: make a\n"
+	generated := map[string][]byte{path: []byte("on: [pull_request]\njobs:\n" + gen)}
+	jobs := func(wf string, generated map[string][]byte) ([]string, *Result) {
+		t.Helper()
+		res, err := ExtractGenerated(writeFixture(t, map[string]string{"go.mod": "module example.com/fx\n", path: wf}), generated)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var names []string
+		for _, it := range res.Items {
+			if it.Kind == KindWorkflowJob {
+				names = append(names, it.Name)
+			}
+		}
+		sort.Strings(names)
+		return names, res
+	}
+	if got, _ := jobs("on: [pull_request]\njobs:\n"+gen, generated); len(got) != 0 {
+		t.Errorf("the generated file's jobs counted: %v", got)
+	}
+	hand := "  hand:\n    runs-on: x\n    steps:\n      - run: make b\n"
+	got, res := jobs("on: [pull_request]\njobs:\n"+hand+gen, generated)
+	if !slices.Equal(got, []string{"hand"}) {
+		t.Errorf("with a job written by hand: %v, want [hand]", got)
+	}
+	plan := func(string, string, []Item) (string, string) { return "L7", "workflow jobs" }
+	now := Ledger(res, &testreg.Registry{Path: "r.jsonl"}, plan)
+	if p := strings.Join(Shrinks(nil, now), "\n"); !strings.Contains(p, "workflow-job "+path+" is a new ledger line") {
+		t.Errorf("a job written by hand into the generated file passes --shrinks-from: %q", p)
+	}
+	if got, _ := jobs("on: [pull_request]\njobs:\n"+strings.Replace(gen, "make a", "make a && make b", 1), generated); !slices.Equal(got, []string{"gen"}) {
+		t.Errorf("a generated job edited by hand: %v, want [gen]", got)
+	}
+	if got, _ := jobs("on: [pull_request]\njobs:\n"+hand+gen, nil); !slices.Equal(got, []string{"gen", "hand"}) {
+		t.Errorf("with no generated text: %v, want [gen hand]", got)
 	}
 }

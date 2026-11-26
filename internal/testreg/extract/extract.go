@@ -112,6 +112,9 @@ type scan struct {
 	root    string
 	res     *Result
 	ignored map[string]bool
+	// generated is each generated workflow's text as schema-test ci
+	// writes it, by repository path (ExtractGenerated)
+	generated map[string][]byte
 	// imports is the import paths of each test package's _test.go files,
 	// by its directory (goSourceStrings)
 	imports map[string]map[string]bool
@@ -205,8 +208,20 @@ func (s *scan) walk(fn func(rel string, d fs.DirEntry)) {
 	}
 }
 
+// GeneratedWorkflows are the workflows schema-test ci writes from the
+// registry, by repository path: the extract counts none of their jobs as
+// generated (ExtractGenerated), and ci --check holds each byte for byte.
+var GeneratedWorkflows = []string{".github/workflows/ci-fast.yml", ".github/workflows/roadmap.yml", ".github/workflows/schema-nightly.yml"}
+
 // Extract reads the repository at root.
-func Extract(root string) (*Result, error) {
+func Extract(root string) (*Result, error) { return ExtractGenerated(root, nil) }
+
+// ExtractGenerated reads the repository at root, where generated holds
+// each workflow schema-test ci writes from the registry, by repository path,
+// as it writes it: a job of that file exactly as generated (its key and
+// every line under it) is the registry rebuilt, never an item. A job the
+// generator does not write, or writes otherwise, is one.
+func ExtractGenerated(root string, generated map[string][]byte) (*Result, error) {
 	if _, err := os.Stat(filepath.Join(root, "go.mod")); err != nil {
 		return nil, fmt.Errorf("%s is not the repository root: %w", root, err)
 	}
@@ -214,7 +229,7 @@ func Extract(root string) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	s := &scan{root: root, res: &Result{}, ignored: ign}
+	s := &scan{root: root, res: &Result{}, ignored: ign, generated: generated}
 	var goFiles, makeFiles, workflows, dataFiles, models []string
 	drivers := map[string]string{}
 	driverFiles := map[string][]string{}

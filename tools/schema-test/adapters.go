@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -128,6 +129,8 @@ func harnessFor(t testreg.Test) (harness, bool) {
 		return featureWitness, true
 	case family == nameBuild.Name:
 		return nameBuild, true
+	case family == happyFamily:
+		return happyPath, true
 	case wireFuzzFamilies[family]:
 		return wireFuzzHarness, true
 	case family == tablesHarness.Name:
@@ -256,6 +259,16 @@ func newHarnessAdapter(b *builder, log io.Writer) *harnessAdapter {
 // inside its own deadline (testreg.Serial).
 func (a *harnessAdapter) Serial() bool { return true }
 
+// SharesCheckout: a group of happy paths only reads the checkout once
+// Prepare built bin/schema (runHappyWith holds it shared, and make
+// happy-<lang> writes only build/happy/<lang>), so those calls run side by
+// side, up to the run's --jobs (testreg.SharedCheckout). Every other
+// harness family may make in the checkout (a gated row's make, name
+// buildability, the hostile targets), so its group stays Serial.
+func (a *harnessAdapter) SharesCheckout(instances []testreg.Instance) bool {
+	return len(instances) > 0 && !slices.ContainsFunc(instances, func(i testreg.Instance) bool { return i.Test.Family != happyFamily })
+}
+
 func (a *harnessAdapter) Answers(t testreg.Test) bool {
 	if _, has, err := langMakeGates(t); has {
 		return err == nil
@@ -365,8 +378,9 @@ func (a *harnessAdapter) Run(ctx context.Context, lang string, instances []testr
 // results it did write.
 func runHarness(ctx context.Context, argv []string, instances []testreg.Instance, log io.Writer) ([]testreg.Result, error) {
 	// the harness runs bin/schema and what the build steps made: no make
-	// in the checkout relinks them under it
-	release, err := holdCheckout(ctx)
+	// in the checkout relinks them under it (its group is Serial, so no
+	// other call runs beside it: SharesCheckout)
+	release, err := holdCheckoutShared(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("%q: %w", strings.Join(argv, " "), err)
 	}

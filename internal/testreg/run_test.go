@@ -2,8 +2,11 @@ package testreg
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"runtime"
 	"slices"
 	"strings"
@@ -498,6 +501,165 @@ func TestAHeavyTestLeavesNoPartEmpty(t *testing.T) {
 	}
 }
 
+// TestAnUnansweredUnionInstanceWeighsItsLine: a union row's instance in a
+// language the row names no Go test for runs nothing, so it weighs
+// minSeconds whether the row is measured or not; the answering language's
+// instance weighs the row's seconds (DefaultSeconds when unmeasured).
+func TestAnUnansweredUnionInstanceWeighsItsLine(t *testing.T) {
+	t.Parallel()
+	union := Test{Key: "f.c", Inputs: json.RawMessage(`{"tests":{"go":{"package":"./p","test":"TestX"}}}`)}
+	measured := Test{Key: "f.m", Inputs: json.RawMessage(`{"tests":{"go":{"package":"./p","test":"TestX","seconds":30},"lua":{"package":"./r","test":"TestY","seconds":2}}}`)}
+	for _, c := range []struct {
+		lang string
+		test Test
+		want float64
+	}{
+		{"go", measured, 30},
+		{"lua", measured, 2},
+		{"c", measured, minSeconds},
+		{"go", union, DefaultSeconds},
+		{"c", union, minSeconds},
+	} {
+		if w := Weight(Instance{Full: c.lang + ".unit." + c.test.Key, Lang: c.lang, Test: c.test}); w != c.want {
+			t.Errorf("%s instance of %s weighs %v, want %v", c.lang, c.test.Inputs, w, c.want)
+		}
+	}
+}
+
+// TestAUnionRowsSecondsAreEachLanguages: each language's Go test carries its
+// own measured seconds (WriteSeconds puts them there, SplitSeconds sorts a
+// run's by row and language), and a union row with seconds of its own, or a
+// language's negative seconds, does not load: one number for the row would
+// weigh every language by the slowest.
+func TestAUnionRowsSecondsAreEachLanguages(t *testing.T) {
+	t.Parallel()
+	row := `{"rec":"test","key":"roundtrip.u.one","type":"roundtrip","family":"u","case":"one","tier":"unit","checks":"x","inputs":{"tests":{"go":{"package":"./p","test":"TestA"},"lua":{"package":"./r","test":"TestB"}}},"expect":"x"}` + "\n"
+	path := filepath.Join(t.TempDir(), "r.jsonl")
+	if err := os.WriteFile(path, []byte(fixture+row), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	reg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byName := map[string]Instance{}
+	for _, inst := range reg.Instances() {
+		byName[inst.Full] = inst
+	}
+	// a measurement of a name the run has no instance of, or of no positive
+	// time, is refused by name, never dropped
+	for name, s := range map[string]float64{"go.unit.roundtrip.u.none": 2, "lua.unit.roundtrip.u.one": 0} {
+		if _, _, err := SplitSeconds(byName, map[string]float64{name: s}); err == nil || !strings.Contains(err.Error(), name) {
+			t.Errorf("SplitSeconds took %s at %v s: %v", name, s, err)
+		}
+	}
+	rows, langs, err := SplitSeconds(byName, map[string]float64{"go.unit.roundtrip.u.one": 41.001, "lua.unit.roundtrip.u.one": 3})
+	if err != nil || len(rows) != 0 || langs["roundtrip.u.one"]["go"] != 41.001 || langs["roundtrip.u.one"]["lua"] != 3 {
+		t.Fatalf("split %v %v %v, want the union row's by language", rows, langs, err)
+	}
+	if n, err := WriteSeconds(path, rows, langs); err != nil || n != 1 {
+		t.Fatalf("WriteSeconds: %d %v", n, err)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := strings.Replace(fixture+row, `"inputs":{"tests":{"go":{"package":"./p","test":"TestA"},"lua":{"package":"./r","test":"TestB"}}}`, `"inputs":{"tests":{"go":{"package":"./p","test":"TestA","seconds":41.01},"lua":{"package":"./r","test":"TestB","seconds":3}}}`, 1)
+	if string(got) != want {
+		t.Fatalf("file:\n%s\nwant:\n%s", got, want)
+	}
+	reg, err = Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, inst := range reg.Instances() {
+		if inst.Test.Key != "roundtrip.u.one" {
+			continue
+		}
+		want := map[string]float64{"go": 41.01, "lua": 3}[inst.Lang]
+		if want == 0 {
+			want = minSeconds
+		}
+		if w := Weight(inst); w != want {
+			t.Errorf("%s weighs %v, want %v", inst.Full, w, want)
+		}
+	}
+	// a union row in the row-level map, or a language it names no test for
+	if _, err := WriteSeconds(path, map[string]float64{"roundtrip.u.one": 1}, nil); err == nil || !strings.Contains(err.Error(), "is a union row: its seconds are each language's") {
+		t.Errorf("a union row's row-level seconds were written: %v", err)
+	}
+	if _, err := WriteSeconds(path, nil, map[string]map[string]float64{"roundtrip.u.one": {"c": 1}}); err == nil || !strings.Contains(err.Error(), "names no Go test for c") {
+		t.Errorf("seconds for a language the row names no test for were written: %v", err)
+	}
+	refused(t, fixture+strings.Replace(row, `"expect":"x"}`, `"expect":"x","seconds":5}`, 1), "fixture.jsonl:", "is a union row with seconds 5")
+	refused(t, fixture+strings.Replace(row, `"test":"TestB"}`, `"test":"TestB","seconds":-1}`, 1), "fixture.jsonl:", "give seconds -1")
+}
+
+// TestAPerLanguageRowsSecondsAreEachLanguages: a per-language row that is
+// not a union row records each language's own measured seconds in its
+// lang_seconds, beside the row's longest, and each instance weighs by its
+// own language's; a language-free row has no language's seconds, and
+// lang_seconds on a union row, on a language-free row, for a language the
+// registry does not list, or of no positive time, does not load.
+func TestAPerLanguageRowsSecondsAreEachLanguages(t *testing.T) {
+	t.Parallel()
+	row := `{"rec":"test","key":"roundtrip.p.one","type":"roundtrip","family":"p","case":"one","tier":"unit","checks":"x","inputs":{"n":1},"expect":"x"}` + "\n"
+	path := filepath.Join(t.TempDir(), "r.jsonl")
+	if err := os.WriteFile(path, []byte(fixture+row), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	reg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byName := map[string]Instance{}
+	for _, inst := range reg.Instances() {
+		byName[inst.Full] = inst
+	}
+	rows, langs, err := SplitSeconds(byName, map[string]float64{"go.unit.roundtrip.p.one": 2.001, "lua.unit.roundtrip.p.one": 7})
+	if err != nil || rows["roundtrip.p.one"] != 7 || langs["roundtrip.p.one"]["go"] != 2.001 || langs["roundtrip.p.one"]["lua"] != 7 {
+		t.Fatalf("split %v %v %v, want the row's longest and each language's", rows, langs, err)
+	}
+	if n, err := WriteSeconds(path, rows, langs); err != nil || n != 1 {
+		t.Fatalf("WriteSeconds: %d %v", n, err)
+	}
+	// a later measure of one language replaces its seconds and keeps the
+	// other's, and the row's seconds stay its heaviest language's, though
+	// this run's longest (what SplitSeconds gives) is the lighter one
+	if n, err := WriteSeconds(path, map[string]float64{"roundtrip.p.one": 1.5}, map[string]map[string]float64{"roundtrip.p.one": {"go": 1.5}}); err != nil || n != 1 {
+		t.Fatalf("WriteSeconds: %d %v", n, err)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := fixture + strings.Replace(row, `"expect":"x"}`, `"expect":"x","lang_seconds":{"go":1.5,"lua":7},"seconds":7}`, 1)
+	if string(got) != want {
+		t.Fatalf("file:\n%s\nwant:\n%s", got, want)
+	}
+	reg, err = Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, inst := range reg.Instances() {
+		if inst.Test.Key != "roundtrip.p.one" {
+			continue
+		}
+		want := map[string]float64{"go": 1.5, "lua": 7, "c": 7}[inst.Lang]
+		if w := Weight(inst); w != want {
+			t.Errorf("%s weighs %v, want %v", inst.Full, w, want)
+		}
+	}
+	if _, err := WriteSeconds(path, nil, map[string]map[string]float64{"tooling.self.check": {"go": 1}}); err == nil || !strings.Contains(err.Error(), "a language-free row has no language's seconds") {
+		t.Errorf("a language-free row's language seconds were written: %v", err)
+	}
+	union := `{"rec":"test","key":"roundtrip.u.one","type":"roundtrip","family":"u","case":"one","tier":"unit","checks":"x","inputs":{"tests":{"go":{"package":"./p","test":"TestA"}}},"expect":"x","lang_seconds":{"go":1}}` + "\n"
+	refused(t, fixture+union, "fixture.jsonl:", "is a union row with lang_seconds")
+	refused(t, strings.Replace(fixture, `"scope":"none","adapter":"fake"}`, `"scope":"none","adapter":"fake","lang_seconds":{"go":1}}`, 1), "fixture.jsonl:", `gives lang_seconds but is scoped "none"`)
+	refused(t, fixture+strings.Replace(row, `"expect":"x"}`, `"expect":"x","lang_seconds":{"cobol":1}}`, 1), "fixture.jsonl:", `lang_seconds for "cobol", which is not a language of the registry`)
+	refused(t, fixture+strings.Replace(row, `"expect":"x"}`, `"expect":"x","lang_seconds":{"go":0}}`, 1), "fixture.jsonl:", "go lang_seconds 0: a measured run time is a positive number")
+}
+
 // TestAGoldenWritersRowsShareOneShard: a golden writer runs once for all the
 // rows a shard holds of it, so its rows are one block no cut splits, placed
 // where its first row is, even when another row sits between them; rows of
@@ -622,6 +784,116 @@ func stagedRunner(t *testing.T, log *eventLog, deadline func(parent context.Cont
 		log.add("deadline " + group)
 		return deadline(parent)
 	}}
+}
+
+// sharing is a staged adapter whose calls only read the checkout
+// (SharedCheckout) when every instance of the group is of family reads; a
+// group of any other family it is not sure of, and that runs Serial.
+type sharing struct{ staged }
+
+func (sharing) SharesCheckout(instances []Instance) bool {
+	return !slices.ContainsFunc(instances, func(i Instance) bool { return i.Test.Family != "reads" })
+}
+
+// readInstance is a language-free instance of adapter, of family reads.
+func readInstance(adapter string) Instance {
+	inst := freeInstance(adapter)
+	inst.Test.Family = "reads"
+	return inst
+}
+
+// overlap counts the shared calls in flight. Each call waits, by yielding and
+// never by the clock, for a second call to be in flight beside it, so a
+// runner that ran the shared calls one at a time leaves met open and the
+// test red by name, not hung.
+type overlap struct {
+	mu      sync.Mutex
+	in, top int
+	met     chan struct{}
+}
+
+func (o *overlap) during() {
+	o.mu.Lock()
+	o.in++
+	o.top = max(o.top, o.in)
+	if o.in == 2 {
+		select {
+		case <-o.met:
+		default:
+			close(o.met)
+		}
+	}
+	o.mu.Unlock()
+	for range 1_000_000 {
+		select {
+		case <-o.met:
+		default:
+			runtime.Gosched()
+			continue
+		}
+		break
+	}
+	o.mu.Lock()
+	o.in--
+	o.mu.Unlock()
+}
+
+// TestSharedCheckoutCallsRunSideBySideAfterTheWriters: the calls that only
+// read the checkout run side by side, up to Jobs at once (the machine's
+// cores; at least one) and never more, after every Serial call that writes
+// it, and every one of them runs; one at a time they start in the plan's
+// order, which the pr job's critical path assumes. A group its adapter does
+// not say only reads runs Serial, before them. The plants: one lane
+// whatever Jobs says, the calls run one after another, and every group of
+// the adapter shared.
+func TestSharedCheckoutCallsRunSideBySideAfterTheWriters(t *testing.T) {
+	t.Parallel()
+	for jobs, want := range map[int]int{0: 1, 1: 1, 2: 2, 16: 16} {
+		if got := (&Runner{Jobs: jobs}).lanes(); got != want {
+			t.Errorf("Jobs %d runs %d shared calls at once, want %d", jobs, got, want)
+		}
+	}
+	log := &eventLog{}
+	o := &overlap{met: make(chan struct{})}
+	m := map[string]Adapter{"w": staged{name: "w", serial: true, log: log}}
+	var instances []Instance
+	for _, name := range []string{"r1", "r2", "r3"} {
+		m[name] = sharing{staged{name: name, serial: true, log: log, during: o.during}}
+		instances = append(instances, readInstance(name))
+	}
+	m["x"] = sharing{staged{name: "x", serial: true, log: log}}
+	instances = append(instances, freeInstance("x"), freeInstance("w"))
+	rn := &Runner{Reg: load(t, fixture), Adapters: m, Context: WithTimeout(0), Jobs: 2}
+	rep := rn.Run(context.Background(), instances)
+	if !rep.OK() || rep.Passed != len(instances) {
+		t.Fatalf("%s, want every call to pass", rep.Summary())
+	}
+	for _, name := range []string{"r1", "r2", "r3"} {
+		if !log.has("end "+name) || log.at("start "+name) < log.at("end w") || log.at("start "+name) < log.at("end x") {
+			t.Errorf("shared call %s ran beside, or before, a writer, or not at all: %q", name, log.ev)
+		}
+	}
+	switch {
+	case o.top < 2:
+		t.Errorf("the shared calls ran one at a time on 2 lanes: %q", log.ev)
+	case o.top > 2:
+		t.Errorf("%d shared calls ran at once on 2 lanes", o.top)
+	}
+	// one lane: the shared calls start in the plan's order
+	log = &eventLog{}
+	m = map[string]Adapter{}
+	instances = nil
+	for _, name := range []string{"r1", "r2", "r3"} {
+		m[name] = sharing{staged{name: name, serial: true, log: log}}
+		instances = append(instances, readInstance(name))
+	}
+	rn = &Runner{Reg: load(t, fixture), Adapters: m, Context: WithTimeout(0), Jobs: 1}
+	if rep := rn.Run(context.Background(), instances); !rep.OK() {
+		t.Fatalf("%s, want every call to pass", rep.Summary())
+	}
+	if want := []string{"start r1", "end r1", "start r2", "end r2", "start r3", "end r3"}; !slices.Equal(log.ev[len(log.ev)-6:], want) {
+		t.Errorf("one lane ran %q, want the plan's order %q", log.ev, want)
+	}
 }
 
 // TestPrepareRunsBeforeAnyCallOutsideItsDeadline: a cold build happens

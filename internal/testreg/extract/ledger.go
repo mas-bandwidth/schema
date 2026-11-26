@@ -310,6 +310,7 @@ func covered(reg *testreg.Registry) (map[string]string, readCredit, []string) {
 			var in struct {
 				File, Target string
 				Reads        []string
+				GoTests      []string `json:"go_tests"`
 				Vars         map[string]string
 			}
 			if err := json.Unmarshal(t.Inputs, &in); err != nil || in.File == "" || in.Target == "" {
@@ -334,6 +335,15 @@ func covered(reg *testreg.Registry) (map[string]string, readCredit, []string) {
 				problems = append(problems, fmt.Sprintf("%s:%d: %s runs shard %d/%d of make %s, which %s already runs", reg.Path, t.Line, t.Key, k, n, in.Target, prev))
 			} else {
 				sh.by[k] = t.Key
+			}
+			for _, g := range in.GoTests {
+				// the Go tests the target runs, "<package> <Test>" (tables/cards)
+				pkg, name, ok := strings.Cut(g, " ")
+				if !ok {
+					problems = append(problems, fmt.Sprintf("%s:%d: %s: go_tests entry %q is not \"<package> <Test>\"", reg.Path, t.Line, t.Key, g))
+					continue
+				}
+				claim(t, Item{Kind: KindGoTest, Dir: strings.TrimPrefix(pkg, "./"), Name: name}, "make "+in.Target+" "+g)
 			}
 			if t.Type == "plant" && len(in.Reads) > 0 {
 				// a negative control is red by design: a broken input

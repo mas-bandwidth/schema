@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -272,9 +273,34 @@ func TestEveryCorpusFamilyHasItsHarness(t *testing.T) {
 	if a.Answers(testreg.Test{Family: "conformance-wire", Scope: testreg.LangFree}) {
 		t.Error("the corpus adapter answers a language-free test")
 	}
-	// the toolchains install once per process, before any language runs
-	if got := nameBuild.Build("lua"); len(got) != 1 || strings.Join(got[0], " ") != "make name-buildability-deps" {
-		t.Errorf("name-buildability build for lua: %q", got)
+	// a language's own toolchain installs once per process, before the
+	// language runs, and only when it is not in place; a language with no
+	// pinned toolchain installs nothing; and the compiler the run links is
+	// built before any call, so calls side by side never build it at once
+	for _, l := range []string{"lua", "c"} {
+		if got := nameBuild.Build(l); len(got) != 2 || strings.Join(got[0], " ") != "make name-buildability-deps-"+l || strings.Join(got[1], " ") != "make build/schema-moo" {
+			t.Errorf("name-buildability build for %s: %q", l, got)
+		}
+	}
+	nb, err := os.ReadFile("../../make/name-buildability.mk")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"name-buildability-deps-lua:\n\t@[ -x \"$(LUA)\" ] || $(MAKE) --no-print-directory dist-lua\n",
+		"name-buildability-deps-luau:\n\t@{ [ -x \"$(LUAU)\" ] && [ -x \"$(LUAU_ANALYZE)\" ]; } || $(MAKE) --no-print-directory dist-luau\n",
+		"name-buildability-deps-moo: $(MOO_DIST)/PIN\n",
+		"name-buildability-deps-squirrel:\n\t@[ -x \"$(SQ)\" ] || $(MAKE) --no-print-directory dist-squirrel\n",
+		"name-buildability-deps-goose:\n\t@[ -x \"$(GOOSE)\" ] || $(MAKE) --no-print-directory dist-goose\n",
+		"name-buildability-deps-lobster:\n\t@[ -x \"$(LOBSTER)\" ] || $(MAKE) --no-print-directory dist-lobster\n",
+		"name-buildability-deps-%:\n\t@:\n",
+		// the compiler make keeps current, built once, never linked per call
+		"name-buildability-run: build/schema-moo\n",
+		"NAMEBUILD_SCHEMA=\"$(abspath build/schema-moo)\"",
+	} {
+		if !strings.Contains(string(nb), want) {
+			t.Errorf("make/name-buildability.mk does not carry %q", want)
+		}
 	}
 	if got := conformance.Build("lua"); len(got) != 1 || strings.Join(got[0], " ") != "make conformance-leg-lua" {
 		t.Errorf("conformance build for lua: %q", got)
@@ -417,5 +443,33 @@ func TestARunWritesItsReportWhenAsked(t *testing.T) {
 	}
 	if code, out := cli(t, envFake{}, "list", "*", "--report", path); code != 2 || !strings.Contains(out, "--report writes a run's report") {
 		t.Fatalf("list --report: exit %d:\n%s", code, out)
+	}
+}
+
+// TestRunJobsReachesTheRunner: run --jobs N is how many harness calls the
+// run's runner takes at once once their builds are done; left out, it is
+// the machine's cores. The plant drops the flag on the way to the runner.
+func TestRunJobsReachesTheRunner(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		args []string
+		want int
+	}{
+		{[]string{"run", "go.functional.roundtrip.fam.one", "--jobs", "3"}, 3},
+		{[]string{"run", "--jobs", "1", "go.functional.roundtrip.fam.one"}, 1},
+		{[]string{"run", "go.functional.roundtrip.fam.one"}, runtime.NumCPU()},
+	} {
+		ads := map[string]testreg.Adapter{"fake": envFake{}}
+		var out bytes.Buffer
+		if code := run(context.Background(), append(c.args, "--registry", cliRegistry), &out, &out, ads); code != 0 {
+			t.Fatalf("%v: exit %d, want 0:\n%s", c.args, code, out.String())
+		}
+		p, ok := ads["plant"].(plantAdapter)
+		if !ok || p.rn == nil {
+			t.Fatalf("%v: the run handed no runner to the plant adapter", c.args)
+		}
+		if p.rn.Jobs != c.want {
+			t.Errorf("%v: the runner takes %d calls at once, want %d", c.args, p.rn.Jobs, c.want)
+		}
 	}
 }

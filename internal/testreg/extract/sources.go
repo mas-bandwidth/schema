@@ -251,7 +251,9 @@ func (s *scan) makeTargets(files []string, nc, ci map[string]bool) {
 // under the top-level jobs: key. A job that only calls the driver (every
 // step checks out, moves artifacts, or runs go run ./tools/fullrun or
 // ./tools/schema-test) runs no test of its own: every test it runs is a
-// registry row or an unmoved test the driver runs, so it is not one.
+// registry row or an unmoved test the driver runs, so it is not one. Nor
+// is a job exactly as schema-test ci generates it (Generated): it is the
+// registry, rebuilt from it.
 func (s *scan) workflowJobs(files []string) {
 	for _, rel := range files {
 		data, err := os.ReadFile(filepath.Join(s.root, rel))
@@ -259,32 +261,11 @@ func (s *scan) workflowJobs(files []string) {
 			s.fail(rel, "read: %v", err)
 			continue
 		}
-		type job struct {
-			name  string
-			line  int
-			lines []string
-		}
-		var jobs []job
-		in := false
-		for i, line := range strings.Split(string(data), "\n") {
-			switch {
-			case line == "jobs:":
-				in = true
-				continue
-			case in && line != "" && !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "#"):
-				in = false
-			}
-			if !in {
-				continue
-			}
-			if len(line) >= 3 && line[:2] == "  " && line[2] != ' ' && line[2] != '#' {
-				if name, _, ok := strings.Cut(strings.TrimSpace(line), ":"); ok {
-					jobs = append(jobs, job{name: name, line: i + 1})
-					continue
-				}
-			}
-			if len(jobs) > 0 {
-				jobs[len(jobs)-1].lines = append(jobs[len(jobs)-1].lines, line)
+		jobs := workflowJobList(data)
+		generated := map[string]string{}
+		if text, ok := s.generated[rel]; ok {
+			for _, j := range workflowJobList(text) {
+				generated[j.name] = j.text()
 			}
 		}
 		if len(jobs) == 0 {
@@ -296,6 +277,13 @@ func (s *scan) workflowJobs(files []string) {
 		}
 		for _, j := range jobs {
 			if DriverOnly(j.lines) {
+				continue
+			}
+			if g, ok := generated[j.name]; ok && g == j.text() {
+				// the job, name and every line, is the one schema-test ci
+				// writes from the registry (and ci --check holds byte for
+				// byte): it is the registry, not unmoved work. A job the
+				// generator does not write, or one edited by hand, counts.
 				continue
 			}
 			s.add(Item{Kind: KindWorkflowJob, Dir: rel, Name: j.name, Source: rel + ":" + strconv.Itoa(j.line), Tier: tier})
@@ -481,4 +469,43 @@ func DataStem(name string) string {
 		return name[:i+1]
 	}
 	return name
+}
+
+// workflowJob is one job of a workflow: its key, the line of the key, and
+// the lines under it.
+type workflowJob struct {
+	name  string
+	line  int
+	lines []string
+}
+
+func (j workflowJob) text() string { return j.name + "\n" + strings.Join(j.lines, "\n") }
+
+// workflowJobList splits a workflow's text into its jobs: the keys two
+// spaces in under the top-level jobs: key, each with the lines below it.
+func workflowJobList(data []byte) []workflowJob {
+	var jobs []workflowJob
+	in := false
+	for i, line := range strings.Split(string(data), "\n") {
+		switch {
+		case line == "jobs:":
+			in = true
+			continue
+		case in && line != "" && !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "#"):
+			in = false
+		}
+		if !in {
+			continue
+		}
+		if len(line) >= 3 && line[:2] == "  " && line[2] != ' ' && line[2] != '#' {
+			if name, _, ok := strings.Cut(strings.TrimSpace(line), ":"); ok {
+				jobs = append(jobs, workflowJob{name: name, line: i + 1})
+				continue
+			}
+		}
+		if len(jobs) > 0 {
+			jobs[len(jobs)-1].lines = append(jobs[len(jobs)-1].lines, line)
+		}
+	}
+	return jobs
 }
