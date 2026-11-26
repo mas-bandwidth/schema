@@ -31,6 +31,12 @@ needs ./internal/codegen/unitytable .* tables-fixedform-corpus
 needs ./internal/fixedproof .* tables-fixedform-corpus
 needs ./internal/fixedvector .* tables-fixedform-corpus
 
+# the Java conformance driver and the harness that runs it, which the javatable
+# tests that run the driver make for themselves first (javaConformanceBuild):
+# built before their call, so the call is the tests' time
+needs ./internal/codegen/javatable TestJavaDriver(SurfacesStrict|SurfacesStrictNegativeControl|AnswersBothOptInLegs|ChecksEveryIntegerAssignment)|TestJavaWireFuzzVerdictPipe(NegativeControl)? build/conformance-harness
+needs ./internal/codegen/javatable TestJavaDriver(SurfacesStrict|SurfacesStrictNegativeControl|AnswersBothOptInLegs|ChecksEveryIntegerAssignment)|TestJavaWireFuzzVerdictPipe(NegativeControl)? build-conformance-java
+
 
 # the generated Go tables tree the JSON walk reads, in build order
 needs ./internal/codegen/gotable TestJsonWalkGeneratedGoTables bin/schema

@@ -204,6 +204,12 @@ func ciMatrix(reg *testreg.Registry, budget shardBudgets) ([]ciRow, []string) {
 // --shard i/N) and holds it to the pr group: every name in exactly one job,
 // none left out, no shard past budget. Each break is named.
 func matrixAccount(reg *testreg.Registry, rows []ciRow, budget shardBudgets) []string {
+	return matrixAccountCutting(reg, rows, budget, testreg.Parts)
+}
+
+// matrixAccountCutting is matrixAccount with the cut it reads the jobs'
+// parts from (testreg.Parts; a test counts the cuts through it).
+func matrixAccountCutting(reg *testreg.Registry, rows []ciRow, budget shardBudgets, cutParts func([]testreg.Instance, int) [][]testreg.Instance) []string {
 	g, ok := reg.Group("pr")
 	if !ok {
 		return []string{"the registry has no group pr"}
@@ -218,6 +224,19 @@ func matrixAccount(reg *testreg.Registry, rows []ciRow, budget shardBudgets) []s
 	// one selection per language: every row of a language selects the same
 	// list
 	sels := map[string]testreg.Selection{}
+	// one cut per language and count: --shard i/N is the i-th part of the
+	// N-way cut (testreg.Shard), so every row of a language and count reads
+	// the same cut, made once here rather than once per row
+	cuts := map[string][][]testreg.Instance{}
+	cut := func(lang string, insts []testreg.Instance, n int) [][]testreg.Instance {
+		k := fmt.Sprintf("%s %d", lang, n)
+		if p, ok := cuts[k]; ok {
+			return p
+		}
+		p := cutParts(insts, n)
+		cuts[k] = p
+		return p
+	}
 	for _, r := range rows {
 		sel, ok := sels[r.Lang]
 		if !ok {
@@ -241,7 +260,7 @@ func matrixAccount(reg *testreg.Registry, rows []ciRow, budget shardBudgets) []s
 		if c, ok := count[r.Lang]; !ok {
 			count[r.Lang] = n
 			for m := leastShards(sel.Instances, budget); m < n; m++ {
-				if fits(testreg.Parts(sel.Instances, m), budget) {
+				if fits(cut(r.Lang, sel.Instances, m), budget) {
 					bad = append(bad, fmt.Sprintf("%s is cut into %d shards, and %d fit: the matrix is the fewest shards that fit", r.Lang, n, m))
 					break
 				}
@@ -249,7 +268,8 @@ func matrixAccount(reg *testreg.Registry, rows []ciRow, budget shardBudgets) []s
 		} else if c != n {
 			bad = append(bad, fmt.Sprintf("%s %s: the language's shards are cut %d ways and %d ways: one count per language", r.Lang, r.Shard, c, n))
 		}
-		part, err := testreg.Shard(sel.Instances, i, n)
+		// the part the job runs, read from the cut as testreg.Shard reads it
+		part, err := testreg.ShardOf(cut(r.Lang, sel.Instances, n), i, n, len(sel.Instances))
 		if err != nil {
 			bad = append(bad, fmt.Sprintf("%s %s: %v", r.Lang, r.Shard, err))
 			continue
