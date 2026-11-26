@@ -7,6 +7,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/provesran"
 )
 
 // The C leg's units are listed once, in test/conformance/c/driver.h's
@@ -75,9 +77,9 @@ func readCUnitSources(t *testing.T, root string) map[string]string {
 	t.Helper()
 	files := map[string]string{}
 	for _, glob := range []string{"test/conformance/c/*.c", "test/conformance/c/*.h", "test/conformance/c/rows/*.c", "test/c-tables/*.c", "test/c-tables/*.cpp"} {
-		paths, err := filepath.Glob(filepath.Join(root, glob))
-		if err != nil || len(paths) == 0 {
-			t.Fatalf("%s: no files (%v)", glob, err)
+		paths, err := provesran.Glob(filepath.Join(root, glob))
+		if err != nil {
+			t.Fatal(err)
 		}
 		for _, p := range paths {
 			b, err := os.ReadFile(p)
