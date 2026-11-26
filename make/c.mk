@@ -1632,10 +1632,12 @@ tables-c-fixedform: build/retiredskips build/schema_test_c_fixedform build/schem
 # runs in ci-full.yml's three unit-codegen ctable steps (^TestC, ^TestFixe and
 # the rest), which build the corpus first.
 #
-# The -run pattern is written out, not built from a make variable:
+# THE -run PATTERN IS WRITTEN OUT, never built from a make variable:
 # internal/ci's TestEveryRunPatternMatchesATest reads each recipe's literal
 # -run text and lists it against the package's tests, and a pattern that
-# exists only after make expands it matches nothing there.
+# exists only after make expands it matches nothing there. The seventeen
+# names are the make-gotest rows of this target, so a name added here and
+# not there, or there and not here, fails by name when the target runs.
 .PHONY: tables-c-versioning
 tables-c-versioning: tables-fixedform-corpus
 	$(GO_TEST) ./internal/codegen/ctable/ -count=1 -run '^TestFixedVersioning(CfloatRangeWiden|CfloatResRefine|CountClampEnds|Floor|ForgedOrdinalBothPlans|Hash|LineageMerge|NewReadsOld|OldRefusesNew|RangeWidenHostile|RefuseWritesNothing|UnionTagBothPlans|UnionUnselectedArm|UnknownCensus|UnknownCensusManyRecords|WriterBoundCount|WriterBoundCountTwoRemotes)$$'
