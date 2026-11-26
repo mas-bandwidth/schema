@@ -192,87 +192,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include: [{"lang":"goose","shard":"1/16"},{"lang":"goose","shard":"2/16"},{"lang":"goose","shard":"3/16"},{"lang":"goose","shard":"4/16"},{"lang":"goose","shard":"5/16"},{"lang":"goose","shard":"6/16"},{"lang":"goose","shard":"7/16"},{"lang":"goose","shard":"8/16"},{"lang":"goose","shard":"9/16"},{"lang":"goose","shard":"10/16"},{"lang":"goose","shard":"11/16"},{"lang":"goose","shard":"12/16"},{"lang":"goose","shard":"13/16"},{"lang":"goose","shard":"14/16"},{"lang":"goose","shard":"15/16"},{"lang":"goose","shard":"16/16"},{"lang":"lobster","shard":"1/16"},{"lang":"lobster","shard":"2/16"},{"lang":"lobster","shard":"3/16"},{"lang":"lobster","shard":"4/16"},{"lang":"lobster","shard":"5/16"},{"lang":"lobster","shard":"6/16"},{"lang":"lobster","shard":"7/16"},{"lang":"lobster","shard":"8/16"},{"lang":"lobster","shard":"9/16"},{"lang":"lobster","shard":"10/16"},{"lang":"lobster","shard":"11/16"},{"lang":"lobster","shard":"12/16"},{"lang":"lobster","shard":"13/16"},{"lang":"lobster","shard":"14/16"},{"lang":"lobster","shard":"15/16"},{"lang":"lobster","shard":"16/16"}]
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/merge-main
-      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
-        if: runner.environment == 'github-hosted'
-        with:
-          go-version: '1.26'
-          cache: false
-      - uses: ./.github/actions/schema-test-setup
-        with:
-          lang: ${{ matrix.lang }}
-      - uses: ./.github/actions/fixed-corpus
-        if: matrix.lang == 'none'
-        with:
-          mode: fetch
-      - uses: ./.github/actions/produce
-        if: matrix.lang == 'none'
-        with:
-          mode: fetch
-      - name: schema-test run --group pr --lang ${{ matrix.lang }} --shard ${{ matrix.shard }}
-        env:
-          # tooling.caa.self-test reads main's tip from GitHub, as caa-self-test.yml did
-          GITHUB_TOKEN: ${{ github.token }}
-        run: go run ./tools/schema-test run --group pr --lang "${{ matrix.lang }}" --shard "${{ matrix.shard }}"
-
-  # THE REGISTRY'S PR GROUP, one job per row of docs/CI-TIERS.md's matrix,
-  # cut into jobs of at most 256 rows (GitHub's limit on one matrix)
-  schema-test-pr-3:
-    needs: [fixed-corpus, produce]
-    if: (always() && !cancelled() && needs.fixed-corpus.result == 'success' && needs.produce.result == 'success' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
-    name: schema-test-pr (${{ matrix.lang }} ${{ matrix.shard }})
-    runs-on: [self-hosted, Linux, X64, fleet, schema]
-    timeout-minutes: 2
-    defaults:
-      run:
-        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
-    strategy:
-      fail-fast: false
-      matrix:
-        include: [{"lang":"none","shard":"1/264"},{"lang":"none","shard":"2/264"},{"lang":"none","shard":"3/264"},{"lang":"none","shard":"4/264"},{"lang":"none","shard":"5/264"},{"lang":"none","shard":"6/264"},{"lang":"none","shard":"7/264"},{"lang":"none","shard":"8/264"},{"lang":"none","shard":"9/264"},{"lang":"none","shard":"10/264"},{"lang":"none","shard":"11/264"},{"lang":"none","shard":"12/264"},{"lang":"none","shard":"13/264"},{"lang":"none","shard":"14/264"},{"lang":"none","shard":"15/264"},{"lang":"none","shard":"16/264"},{"lang":"none","shard":"17/264"},{"lang":"none","shard":"18/264"},{"lang":"none","shard":"19/264"},{"lang":"none","shard":"20/264"},{"lang":"none","shard":"21/264"},{"lang":"none","shard":"22/264"},{"lang":"none","shard":"23/264"},{"lang":"none","shard":"24/264"},{"lang":"none","shard":"25/264"},{"lang":"none","shard":"26/264"},{"lang":"none","shard":"27/264"},{"lang":"none","shard":"28/264"},{"lang":"none","shard":"29/264"},{"lang":"none","shard":"30/264"},{"lang":"none","shard":"31/264"},{"lang":"none","shard":"32/264"},{"lang":"none","shard":"33/264"},{"lang":"none","shard":"34/264"},{"lang":"none","shard":"35/264"},{"lang":"none","shard":"36/264"},{"lang":"none","shard":"37/264"},{"lang":"none","shard":"38/264"},{"lang":"none","shard":"39/264"},{"lang":"none","shard":"40/264"},{"lang":"none","shard":"41/264"},{"lang":"none","shard":"42/264"},{"lang":"none","shard":"43/264"},{"lang":"none","shard":"44/264"},{"lang":"none","shard":"45/264"},{"lang":"none","shard":"46/264"},{"lang":"none","shard":"47/264"},{"lang":"none","shard":"48/264"},{"lang":"none","shard":"49/264"},{"lang":"none","shard":"50/264"},{"lang":"none","shard":"51/264"},{"lang":"none","shard":"52/264"},{"lang":"none","shard":"53/264"},{"lang":"none","shard":"54/264"},{"lang":"none","shard":"55/264"},{"lang":"none","shard":"56/264"},{"lang":"none","shard":"57/264"},{"lang":"none","shard":"58/264"},{"lang":"none","shard":"59/264"},{"lang":"none","shard":"60/264"},{"lang":"none","shard":"61/264"},{"lang":"none","shard":"62/264"},{"lang":"none","shard":"63/264"},{"lang":"none","shard":"64/264"},{"lang":"none","shard":"65/264"},{"lang":"none","shard":"66/264"},{"lang":"none","shard":"67/264"},{"lang":"none","shard":"68/264"},{"lang":"none","shard":"69/264"},{"lang":"none","shard":"70/264"},{"lang":"none","shard":"71/264"},{"lang":"none","shard":"72/264"},{"lang":"none","shard":"73/264"},{"lang":"none","shard":"74/264"},{"lang":"none","shard":"75/264"},{"lang":"none","shard":"76/264"},{"lang":"none","shard":"77/264"},{"lang":"none","shard":"78/264"},{"lang":"none","shard":"79/264"},{"lang":"none","shard":"80/264"},{"lang":"none","shard":"81/264"},{"lang":"none","shard":"82/264"},{"lang":"none","shard":"83/264"},{"lang":"none","shard":"84/264"},{"lang":"none","shard":"85/264"},{"lang":"none","shard":"86/264"},{"lang":"none","shard":"87/264"},{"lang":"none","shard":"88/264"},{"lang":"none","shard":"89/264"},{"lang":"none","shard":"90/264"},{"lang":"none","shard":"91/264"},{"lang":"none","shard":"92/264"},{"lang":"none","shard":"93/264"},{"lang":"none","shard":"94/264"},{"lang":"none","shard":"95/264"},{"lang":"none","shard":"96/264"},{"lang":"none","shard":"97/264"},{"lang":"none","shard":"98/264"},{"lang":"none","shard":"99/264"},{"lang":"none","shard":"100/264"},{"lang":"none","shard":"101/264"},{"lang":"none","shard":"102/264"},{"lang":"none","shard":"103/264"},{"lang":"none","shard":"104/264"},{"lang":"none","shard":"105/264"},{"lang":"none","shard":"106/264"},{"lang":"none","shard":"107/264"},{"lang":"none","shard":"108/264"},{"lang":"none","shard":"109/264"},{"lang":"none","shard":"110/264"},{"lang":"none","shard":"111/264"},{"lang":"none","shard":"112/264"},{"lang":"none","shard":"113/264"},{"lang":"none","shard":"114/264"},{"lang":"none","shard":"115/264"},{"lang":"none","shard":"116/264"},{"lang":"none","shard":"117/264"},{"lang":"none","shard":"118/264"},{"lang":"none","shard":"119/264"},{"lang":"none","shard":"120/264"},{"lang":"none","shard":"121/264"},{"lang":"none","shard":"122/264"},{"lang":"none","shard":"123/264"},{"lang":"none","shard":"124/264"},{"lang":"none","shard":"125/264"},{"lang":"none","shard":"126/264"},{"lang":"none","shard":"127/264"},{"lang":"none","shard":"128/264"},{"lang":"none","shard":"129/264"},{"lang":"none","shard":"130/264"},{"lang":"none","shard":"131/264"},{"lang":"none","shard":"132/264"},{"lang":"none","shard":"133/264"},{"lang":"none","shard":"134/264"},{"lang":"none","shard":"135/264"},{"lang":"none","shard":"136/264"},{"lang":"none","shard":"137/264"},{"lang":"none","shard":"138/264"},{"lang":"none","shard":"139/264"},{"lang":"none","shard":"140/264"},{"lang":"none","shard":"141/264"},{"lang":"none","shard":"142/264"},{"lang":"none","shard":"143/264"},{"lang":"none","shard":"144/264"},{"lang":"none","shard":"145/264"},{"lang":"none","shard":"146/264"},{"lang":"none","shard":"147/264"},{"lang":"none","shard":"148/264"},{"lang":"none","shard":"149/264"},{"lang":"none","shard":"150/264"},{"lang":"none","shard":"151/264"},{"lang":"none","shard":"152/264"},{"lang":"none","shard":"153/264"},{"lang":"none","shard":"154/264"},{"lang":"none","shard":"155/264"},{"lang":"none","shard":"156/264"},{"lang":"none","shard":"157/264"},{"lang":"none","shard":"158/264"},{"lang":"none","shard":"159/264"},{"lang":"none","shard":"160/264"},{"lang":"none","shard":"161/264"},{"lang":"none","shard":"162/264"},{"lang":"none","shard":"163/264"},{"lang":"none","shard":"164/264"},{"lang":"none","shard":"165/264"},{"lang":"none","shard":"166/264"},{"lang":"none","shard":"167/264"},{"lang":"none","shard":"168/264"},{"lang":"none","shard":"169/264"},{"lang":"none","shard":"170/264"},{"lang":"none","shard":"171/264"},{"lang":"none","shard":"172/264"},{"lang":"none","shard":"173/264"},{"lang":"none","shard":"174/264"},{"lang":"none","shard":"175/264"},{"lang":"none","shard":"176/264"},{"lang":"none","shard":"177/264"},{"lang":"none","shard":"178/264"},{"lang":"none","shard":"179/264"},{"lang":"none","shard":"180/264"},{"lang":"none","shard":"181/264"},{"lang":"none","shard":"182/264"},{"lang":"none","shard":"183/264"},{"lang":"none","shard":"184/264"},{"lang":"none","shard":"185/264"},{"lang":"none","shard":"186/264"},{"lang":"none","shard":"187/264"},{"lang":"none","shard":"188/264"},{"lang":"none","shard":"189/264"},{"lang":"none","shard":"190/264"},{"lang":"none","shard":"191/264"},{"lang":"none","shard":"192/264"},{"lang":"none","shard":"193/264"},{"lang":"none","shard":"194/264"},{"lang":"none","shard":"195/264"},{"lang":"none","shard":"196/264"},{"lang":"none","shard":"197/264"},{"lang":"none","shard":"198/264"},{"lang":"none","shard":"199/264"},{"lang":"none","shard":"200/264"},{"lang":"none","shard":"201/264"},{"lang":"none","shard":"202/264"},{"lang":"none","shard":"203/264"},{"lang":"none","shard":"204/264"},{"lang":"none","shard":"205/264"},{"lang":"none","shard":"206/264"},{"lang":"none","shard":"207/264"},{"lang":"none","shard":"208/264"},{"lang":"none","shard":"209/264"},{"lang":"none","shard":"210/264"},{"lang":"none","shard":"211/264"},{"lang":"none","shard":"212/264"},{"lang":"none","shard":"213/264"},{"lang":"none","shard":"214/264"},{"lang":"none","shard":"215/264"},{"lang":"none","shard":"216/264"},{"lang":"none","shard":"217/264"},{"lang":"none","shard":"218/264"},{"lang":"none","shard":"219/264"},{"lang":"none","shard":"220/264"},{"lang":"none","shard":"221/264"},{"lang":"none","shard":"222/264"},{"lang":"none","shard":"223/264"},{"lang":"none","shard":"224/264"},{"lang":"none","shard":"225/264"},{"lang":"none","shard":"226/264"},{"lang":"none","shard":"227/264"},{"lang":"none","shard":"228/264"},{"lang":"none","shard":"229/264"},{"lang":"none","shard":"230/264"},{"lang":"none","shard":"231/264"},{"lang":"none","shard":"232/264"},{"lang":"none","shard":"233/264"},{"lang":"none","shard":"234/264"},{"lang":"none","shard":"235/264"},{"lang":"none","shard":"236/264"},{"lang":"none","shard":"237/264"},{"lang":"none","shard":"238/264"},{"lang":"none","shard":"239/264"},{"lang":"none","shard":"240/264"},{"lang":"none","shard":"241/264"},{"lang":"none","shard":"242/264"},{"lang":"none","shard":"243/264"},{"lang":"none","shard":"244/264"},{"lang":"none","shard":"245/264"},{"lang":"none","shard":"246/264"},{"lang":"none","shard":"247/264"},{"lang":"none","shard":"248/264"},{"lang":"none","shard":"249/264"},{"lang":"none","shard":"250/264"},{"lang":"none","shard":"251/264"},{"lang":"none","shard":"252/264"},{"lang":"none","shard":"253/264"},{"lang":"none","shard":"254/264"},{"lang":"none","shard":"255/264"},{"lang":"none","shard":"256/264"}]
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/merge-main
-      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
-        if: runner.environment == 'github-hosted'
-        with:
-          go-version: '1.26'
-          cache: false
-      - uses: ./.github/actions/schema-test-setup
-        with:
-          lang: ${{ matrix.lang }}
-      - uses: ./.github/actions/fixed-corpus
-        if: matrix.lang == 'none'
-        with:
-          mode: fetch
-      - uses: ./.github/actions/produce
-        if: matrix.lang == 'none'
-        with:
-          mode: fetch
-      - name: schema-test run --group pr --lang ${{ matrix.lang }} --shard ${{ matrix.shard }}
-        env:
-          # tooling.caa.self-test reads main's tip from GitHub, as caa-self-test.yml did
-          GITHUB_TOKEN: ${{ github.token }}
-        run: go run ./tools/schema-test run --group pr --lang "${{ matrix.lang }}" --shard "${{ matrix.shard }}"
-
-  # THE REGISTRY'S PR GROUP, one job per row of docs/CI-TIERS.md's matrix,
-  # cut into jobs of at most 256 rows (GitHub's limit on one matrix)
-  schema-test-pr-4:
-    needs: [fixed-corpus, produce]
-    if: (always() && !cancelled() && needs.fixed-corpus.result == 'success' && needs.produce.result == 'success' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
-    name: schema-test-pr (${{ matrix.lang }} ${{ matrix.shard }})
-    runs-on: [self-hosted, Linux, X64, fleet, schema]
-    timeout-minutes: 2
-    defaults:
-      run:
-        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
-    strategy:
-      fail-fast: false
-      matrix:
-        include: [{"lang":"none","shard":"257/264"},{"lang":"none","shard":"258/264"},{"lang":"none","shard":"259/264"},{"lang":"none","shard":"260/264"},{"lang":"none","shard":"261/264"},{"lang":"none","shard":"262/264"},{"lang":"none","shard":"263/264"},{"lang":"none","shard":"264/264"}]
+        include: [{"lang":"goose","shard":"1/16"},{"lang":"goose","shard":"2/16"},{"lang":"goose","shard":"3/16"},{"lang":"goose","shard":"4/16"},{"lang":"goose","shard":"5/16"},{"lang":"goose","shard":"6/16"},{"lang":"goose","shard":"7/16"},{"lang":"goose","shard":"8/16"},{"lang":"goose","shard":"9/16"},{"lang":"goose","shard":"10/16"},{"lang":"goose","shard":"11/16"},{"lang":"goose","shard":"12/16"},{"lang":"goose","shard":"13/16"},{"lang":"goose","shard":"14/16"},{"lang":"goose","shard":"15/16"},{"lang":"goose","shard":"16/16"},{"lang":"lobster","shard":"1/16"},{"lang":"lobster","shard":"2/16"},{"lang":"lobster","shard":"3/16"},{"lang":"lobster","shard":"4/16"},{"lang":"lobster","shard":"5/16"},{"lang":"lobster","shard":"6/16"},{"lang":"lobster","shard":"7/16"},{"lang":"lobster","shard":"8/16"},{"lang":"lobster","shard":"9/16"},{"lang":"lobster","shard":"10/16"},{"lang":"lobster","shard":"11/16"},{"lang":"lobster","shard":"12/16"},{"lang":"lobster","shard":"13/16"},{"lang":"lobster","shard":"14/16"},{"lang":"lobster","shard":"15/16"},{"lang":"lobster","shard":"16/16"},{"lang":"none","shard":"1/84"},{"lang":"none","shard":"2/84"},{"lang":"none","shard":"3/84"},{"lang":"none","shard":"4/84"},{"lang":"none","shard":"5/84"},{"lang":"none","shard":"6/84"},{"lang":"none","shard":"7/84"},{"lang":"none","shard":"8/84"},{"lang":"none","shard":"9/84"},{"lang":"none","shard":"10/84"},{"lang":"none","shard":"11/84"},{"lang":"none","shard":"12/84"},{"lang":"none","shard":"13/84"},{"lang":"none","shard":"14/84"},{"lang":"none","shard":"15/84"},{"lang":"none","shard":"16/84"},{"lang":"none","shard":"17/84"},{"lang":"none","shard":"18/84"},{"lang":"none","shard":"19/84"},{"lang":"none","shard":"20/84"},{"lang":"none","shard":"21/84"},{"lang":"none","shard":"22/84"},{"lang":"none","shard":"23/84"},{"lang":"none","shard":"24/84"},{"lang":"none","shard":"25/84"},{"lang":"none","shard":"26/84"},{"lang":"none","shard":"27/84"},{"lang":"none","shard":"28/84"},{"lang":"none","shard":"29/84"},{"lang":"none","shard":"30/84"},{"lang":"none","shard":"31/84"},{"lang":"none","shard":"32/84"},{"lang":"none","shard":"33/84"},{"lang":"none","shard":"34/84"},{"lang":"none","shard":"35/84"},{"lang":"none","shard":"36/84"},{"lang":"none","shard":"37/84"},{"lang":"none","shard":"38/84"},{"lang":"none","shard":"39/84"},{"lang":"none","shard":"40/84"},{"lang":"none","shard":"41/84"},{"lang":"none","shard":"42/84"},{"lang":"none","shard":"43/84"},{"lang":"none","shard":"44/84"},{"lang":"none","shard":"45/84"},{"lang":"none","shard":"46/84"},{"lang":"none","shard":"47/84"},{"lang":"none","shard":"48/84"},{"lang":"none","shard":"49/84"},{"lang":"none","shard":"50/84"},{"lang":"none","shard":"51/84"},{"lang":"none","shard":"52/84"},{"lang":"none","shard":"53/84"},{"lang":"none","shard":"54/84"},{"lang":"none","shard":"55/84"},{"lang":"none","shard":"56/84"},{"lang":"none","shard":"57/84"},{"lang":"none","shard":"58/84"},{"lang":"none","shard":"59/84"},{"lang":"none","shard":"60/84"},{"lang":"none","shard":"61/84"},{"lang":"none","shard":"62/84"},{"lang":"none","shard":"63/84"},{"lang":"none","shard":"64/84"},{"lang":"none","shard":"65/84"},{"lang":"none","shard":"66/84"},{"lang":"none","shard":"67/84"},{"lang":"none","shard":"68/84"},{"lang":"none","shard":"69/84"},{"lang":"none","shard":"70/84"},{"lang":"none","shard":"71/84"},{"lang":"none","shard":"72/84"},{"lang":"none","shard":"73/84"},{"lang":"none","shard":"74/84"},{"lang":"none","shard":"75/84"},{"lang":"none","shard":"76/84"},{"lang":"none","shard":"77/84"},{"lang":"none","shard":"78/84"},{"lang":"none","shard":"79/84"},{"lang":"none","shard":"80/84"},{"lang":"none","shard":"81/84"},{"lang":"none","shard":"82/84"},{"lang":"none","shard":"83/84"},{"lang":"none","shard":"84/84"}]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/merge-main
@@ -301,7 +221,7 @@ jobs:
   # green only when every job above ran and passed: each shard's run fails on
   # expected != ran, and ci --check holds the matrix to the whole pr group
   verdict:
-    needs: [fork-pull-request, schema-test, fixed-corpus, produce, schema-test-pr-1, schema-test-pr-2, schema-test-pr-3, schema-test-pr-4]
+    needs: [fork-pull-request, schema-test, fixed-corpus, produce, schema-test-pr-1, schema-test-pr-2]
     if: (always() && !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 2
