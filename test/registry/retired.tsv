@@ -424,53 +424,13 @@ ci-fast.yml	go-test-touched	gotest	go test ./internal/codegen/moo/moorun (1 Go t
 ci-fast.yml	go-test-touched	gotest	go test ./internal/codegen/mootable (239 Go tests the unmoved ledger holds, L5)	-	none
 ci-fast.yml	go-test-touched	gotest	go test ./internal/codegen/python (37 Go tests the unmoved ledger holds, L5)	-	none
 ci-fast.yml	go-test-touched	gotest	go test ./internal/codegen/pythontable (519 Go tests the unmoved ledger holds, L5)	-	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/ruby TestRubyIdentifierCorpus	compiler.codegen-ruby.ruby-identifier-corpus	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/ruby TestRubyPacketClose	compiler.codegen-ruby.ruby-packet-close	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/ruby TestRubyPacketCloseAnalyzer	compiler.codegen-ruby.ruby-packet-close-analyzer	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/ruby TestRubyPacketCloseAnalyzerNegativeControl	compiler.codegen-ruby.ruby-packet-close-analyzer-negative-control	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/ruby TestRubyPacketCloseNegativeControl	compiler.codegen-ruby.ruby-packet-close-negative-control	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/ruby TestRubyPacketDefaults	compiler.codegen-ruby.ruby-packet-defaults	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/ruby TestRubyPacketDefaultsNegativeControl	compiler.codegen-ruby.ruby-packet-defaults-negative-control	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/ruby TestRubyPacketFinite	compiler.codegen-ruby.ruby-packet-finite	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/ruby TestRubyPacketFiniteNegativeControl	compiler.codegen-ruby.ruby-packet-finite-negative-control	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/ruby TestRubyPacketReadBitsAndOwnership	compiler.codegen-ruby.ruby-packet-read-bits-and-ownership	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/ruby TestRubyPacketReadEnforcesSerializeEnd	compiler.codegen-ruby.ruby-packet-read-enforces-serialize-end	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/ruby TestRubyPacketShapeBench	compiler.codegen-ruby.ruby-packet-shape-bench	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/ruby TestRubyPacketVoid	compiler.codegen-ruby.ruby-packet-void	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/ruby TestRubyPacketVoidNegativeControl	compiler.codegen-ruby.ruby-packet-void-negative-control	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/ruby TestRubySkeleton	compiler.codegen-ruby.ruby-skeleton	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/ruby TestVendoredRubySerializeIsThePin	compiler.codegen-ruby.vendored-ruby-serialize-is-the-pin	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/ruby TestVendoredRubySerializePinGoesRed	compiler.codegen-ruby.vendored-ruby-serialize-pin-goes-red	none
+ci-fast.yml	go-test-touched	gotest	go test ./internal/codegen/ruby (17 Go tests the unmoved ledger holds, L5)	-	none
 ci-fast.yml	go-test-touched	gotest	go test ./internal/codegen/rubytable (62 Go tests the unmoved ledger holds, L5)	-	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/rust TestAssembleLibExportsUnionModule	compiler.codegen-rust.assemble-lib-exports-union-module	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/rust TestDoubledMinusAtExtremeFolds	compiler.codegen-rust.doubled-minus-at-extreme-folds	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/rust TestPacketFiniteRust	compiler.codegen-rust.packet-finite-rust	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/rust TestRenderArgOverflowGate	compiler.codegen-rust.render-arg-overflow-gate	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/rust TestUnionReadUsesDeclaredInitialValues	compiler.codegen-rust.union-read-uses-declared-initial-values	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/rust TestUnionThenFixedByteArrayWire	compiler.codegen-rust.union-then-fixed-byte-array-wire	none
+ci-fast.yml	go-test-touched	gotest	go test ./internal/codegen/rust (6 Go tests the unmoved ledger holds, L5)	-	none
 ci-fast.yml	go-test-touched	gotest	go test ./internal/codegen/rusttable (227 Go tests the unmoved ledger holds, L5)	-	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/squirrel TestSkeletonFixture	compiler.codegen-squirrel.skeleton-fixture	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/squirrel TestSqrunFailsAScriptThatThrows	compiler.codegen-squirrel.sqrun-fails-a-script-that-throws	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/squirrel TestSqrunRoundTripsInputs	compiler.codegen-squirrel.sqrun-round-trips-inputs	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/squirrel TestSquirrelDegenerate128FixedReadsBackAsPair	compiler.codegen-squirrel.squirrel-degenerate128-fixed-reads-back-as-pair	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/squirrel TestSquirrelFileNamesNeverShadowModuleLocals	compiler.codegen-squirrel.squirrel-file-names-never-shadow-module-locals	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/squirrel TestSquirrelLoaderForgetsFailedModule	compiler.codegen-squirrel.squirrel-loader-forgets-failed-module	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/squirrel TestSquirrelLoaderResolvesOnlyItsDirectory	compiler.codegen-squirrel.squirrel-loader-resolves-only-its-directory	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/squirrel TestSquirrelPacketFiniteNegativeControl	compiler.codegen-squirrel.squirrel-packet-finite-negative-control	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/squirrel TestSquirrelPacketFloatsAreFinite	compiler.codegen-squirrel.squirrel-packet-floats-are-finite	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/squirrel TestSquirrelTypeWireReadNegativeControl	compiler.codegen-squirrel.squirrel-type-wire-read-negative-control	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/squirrel TestSquirrelTypeWireReadsTheGoldens	compiler.codegen-squirrel.squirrel-type-wire-reads-the-goldens	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/squirrel TestSquirrelTypeWireWriteNegativeControl	compiler.codegen-squirrel.squirrel-type-wire-write-negative-control	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/squirrel TestSquirrelTypeWireWritesTheGoldens	compiler.codegen-squirrel.squirrel-type-wire-writes-the-goldens	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/squirrel TestSquirrelTypesConstructAtTheirDefaults	compiler.codegen-squirrel.squirrel-types-construct-at-their-defaults	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/squirrel TestVendoredSquirrelSerializeIsThePin	compiler.codegen-squirrel.vendored-squirrel-serialize-is-the-pin	none
+ci-fast.yml	go-test-touched	gotest	go test ./internal/codegen/squirrel (15 Go tests the unmoved ledger holds, L5)	-	none
 ci-fast.yml	go-test-touched	gotest	go test ./internal/codegen/squirreltable (207 Go tests the unmoved ledger holds, L5)	-	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/unity TestConstructionFormIsNewAndInit	compiler.codegen-unity.construction-form-is-new-and-init	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/unity TestDenseBodiesBatchAndFold	compiler.codegen-unity.dense-bodies-batch-and-fold	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/unity TestDeterministic	compiler.codegen-unity.deterministic	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/unity TestEveryDeclarationIsAnUnmanagedStruct	compiler.codegen-unity.every-declaration-is-an-unmanaged-struct	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/unity TestRefusesAGeneratedNameCollision	compiler.codegen-unity.refuses-a-generated-name-collision	none
-ci-fast.yml	go-test-touched	gotest	internal/codegen/unity TestUnityPacketWriteAssertsRows8And10	compiler.codegen-unity.unity-packet-write-asserts-rows8-and10	none
+ci-fast.yml	go-test-touched	gotest	go test ./internal/codegen/unity (6 Go tests the unmoved ledger holds, L5)	-	none
 ci-fast.yml	go-test-touched	gotest	go test ./internal/codegen/unitytable (31 Go tests the unmoved ledger holds, L5)	-	none
 ci-fast.yml	go-test-touched	gotest	internal/tablewire TestAPointerResolvesOnlyToItsDeclaredTarget	compiler.tablewire.a-pointer-resolves-only-to-its-declared-target	none
 ci-fast.yml	go-test-touched	gotest	internal/tablewire TestARequiredPointerToAnUndeclaredTableReadsNullAndCountsUnknown	compiler.tablewire.a-required-pointer-to-an-undeclared-table-reads-null-and-counts-unknown	none
@@ -705,74 +665,19 @@ ci-fast.yml	go-test-touched	gotest	internal/tablewire TestWritersRefuseValuesNeg
 ci-fast.yml	go-test-touched	gotest	internal/tablewire TestWritersRefuseValuesOutsideTheirDeclaration	compiler.tablewire.writers-refuse-values-outside-their-declaration	none
 ci-fast.yml	go-test-touched	gotest	go test ./tables/cards (36 Go tests the unmoved ledger holds, L5)	-	none
 ci-fast.yml	go-test-touched	gotest	go test ./tables/cards/example (1 Go tests the unmoved ledger holds, L5)	-	none
-ci-fast.yml	go-test-touched	gotest	tables/goruntime TestGeneratedMessageSeenFirstIsLinear	compiler.tables-goruntime.generated-message-seen-first-is-linear	none
-ci-fast.yml	go-test-touched	gotest	tables/goruntime TestGeneratedMessageSetDuplicateIsLinear	compiler.tables-goruntime.generated-message-set-duplicate-is-linear	none
-ci-fast.yml	go-test-touched	gotest	tables/goruntime TestGeneratedMessageSetsKeepOuterMarks	compiler.tables-goruntime.generated-message-sets-keep-outer-marks	none
+ci-fast.yml	go-test-touched	gotest	go test ./tables/goruntime (3 Go tests the unmoved ledger holds, L5)	-	none
 ci-fast.yml	go-test-touched	gotest	test/conformance/elixir TestWriteRefusalPacketElixir	write-refusal.write-refusal-packet.elixir	none
 ci-fast.yml	go-test-touched	gotest	test/conformance/elixir TestWriteRefusalPacketElixirSurface	write-refusal.write-refusal-packet.elixir-surface	none
-ci-fast.yml	go-test-touched	gotest	test/conformance/go TestWireRefusalIsAnAnswerNeverAnAbort	tooling.go.wire-refusal-is-an-answer-never-an-abort	none
-ci-fast.yml	go-test-touched	gotest	test/conformance/go TestWriteRefusalCountLengthAndRealAreChecked	tooling.go.write-refusal-count-length-and-real-are-checked	none
-ci-fast.yml	go-test-touched	gotest	test/conformance/go TestWriteRefusalNeverNarrowsAnOrdinalOrATag	tooling.go.write-refusal-never-narrows-an-ordinal-or-a-tag	none
-ci-fast.yml	go-test-touched	gotest	test/conformance/go TestWriteRefusalStoreHoldsEveryKindToItsRange	tooling.go.write-refusal-store-holds-every-kind-to-its-range	none
-ci-fast.yml	go-test-touched	gotest	test/conformance/go/rows TestRowC12	tooling.go-rows.row-c12	none
-ci-fast.yml	go-test-touched	gotest	test/conformance/go/rows TestRowC13	tooling.go-rows.row-c13	none
-ci-fast.yml	go-test-touched	gotest	test/conformance/go/rows TestRowC14	tooling.go-rows.row-c14	none
-ci-fast.yml	go-test-touched	gotest	test/conformance/go/rows TestRowC14WriterRefusesOutOfRange	tooling.go-rows.row-c14-writer-refuses-out-of-range	none
-ci-fast.yml	go-test-touched	gotest	test/conformance/go/rows TestRowC7	tooling.go-rows.row-c7	none
-ci-fast.yml	go-test-touched	gotest	test/conformance/go/rows TestRowC8	tooling.go-rows.row-c8	none
-ci-fast.yml	go-test-touched	gotest	test/conformance/go/rows TestRowC8WriterRefusesOutOfRange	tooling.go-rows.row-c8-writer-refuses-out-of-range	none
-ci-fast.yml	go-test-touched	gotest	test/conformance/go/rows TestRowCountedArraysValidData	tooling.go-rows.row-counted-arrays-valid-data	none
-ci-fast.yml	go-test-touched	gotest	test/conformance/go/rows TestRowE5	tooling.go-rows.row-e5	none
-ci-fast.yml	go-test-touched	gotest	test/conformance/go/rows TestRowF12	tooling.go-rows.row-f12	none
-ci-fast.yml	go-test-touched	gotest	test/conformance/go/rows TestRowF8	tooling.go-rows.row-f8	none
-ci-fast.yml	go-test-touched	gotest	test/conformance/go/rows TestRowF8NegativeControl	tooling.go-rows.row-f8-negative-control	none
-ci-fast.yml	go-test-touched	gotest	test/conformance/go/rows TestRowF8RaggedTailByName	tooling.go-rows.row-f8-ragged-tail-by-name	none
-ci-fast.yml	go-test-touched	gotest	test/conformance/go/rows TestRowFloat32ValuesNonFiniteRefused	tooling.go-rows.row-float32-values-non-finite-refused	none
-ci-fast.yml	go-test-touched	gotest	test/conformance/go/rows TestRowFloat32ValuesValidData	tooling.go-rows.row-float32-values-valid-data	none
-ci-fast.yml	go-test-touched	gotest	test/conformance/go/rows TestRowP2	tooling.go-rows.row-p2	none
-ci-fast.yml	go-test-touched	gotest	test/conformance/go/rows TestRowP3	tooling.go-rows.row-p3	none
-ci-fast.yml	go-test-touched	gotest	test/conformance/go/rows TestRowR10	tooling.go-rows.row-r10	none
-ci-fast.yml	go-test-touched	gotest	test/conformance/go/rows TestRowR14	tooling.go-rows.row-r14	none
-ci-fast.yml	go-test-touched	gotest	test/conformance/go/rows TestRowR14LayoutRecordTooLargeByName	tooling.go-rows.row-r14-layout-record-too-large-by-name	none
-ci-fast.yml	go-test-touched	gotest	test/conformance/go/rows TestRowR15	tooling.go-rows.row-r15	none
-ci-fast.yml	go-test-touched	gotest	test/conformance/go/rows TestRowR17	tooling.go-rows.row-r17	none
-ci-fast.yml	go-test-touched	gotest	test/conformance/go/rows TestRowR19	tooling.go-rows.row-r19	none
-ci-fast.yml	go-test-touched	gotest	test/conformance/go/rows TestRowR19NegativeControl	tooling.go-rows.row-r19-negative-control	none
-ci-fast.yml	go-test-touched	gotest	test/conformance/go/rows TestRowR20	tooling.go-rows.row-r20	none
-ci-fast.yml	go-test-touched	gotest	test/conformance/go/rows TestRowR20AddedFieldDefault	tooling.go-rows.row-r20-added-field-default	none
-ci-fast.yml	go-test-touched	gotest	test/conformance/go/rows TestRowR20DroppedFieldUnknown	tooling.go-rows.row-r20-dropped-field-unknown	none
-ci-fast.yml	go-test-touched	gotest	test/conformance/go/rows TestRowR20FloatWidensExactly	tooling.go-rows.row-r20-float-widens-exactly	none
-ci-fast.yml	go-test-touched	gotest	test/conformance/go/rows TestRowR20NarrowIntWidensExactly	tooling.go-rows.row-r20-narrow-int-widens-exactly	none
-ci-fast.yml	go-test-touched	gotest	test/conformance/go/rows TestRowR20SameWidthBaseline	tooling.go-rows.row-r20-same-width-baseline	none
-ci-fast.yml	go-test-touched	gotest	test/conformance/go/rows TestRowR20ShortStringSlackZeros	tooling.go-rows.row-r20-short-string-slack-zeros	none
-ci-fast.yml	go-test-touched	gotest	test/conformance/go/rows TestRowR20VocabularyIdentity	tooling.go-rows.row-r20-vocabulary-identity	none
-ci-fast.yml	go-test-touched	gotest	test/conformance/go/rows TestRowR22	tooling.go-rows.row-r22	none
-ci-fast.yml	go-test-touched	gotest	test/conformance/go/rows TestRowR26	tooling.go-rows.row-r26	none
-ci-fast.yml	go-test-touched	gotest	test/conformance/go/rows TestRowR26NegativeControl	tooling.go-rows.row-r26-negative-control	none
-ci-fast.yml	go-test-touched	gotest	test/conformance/go/rows TestRowR27	tooling.go-rows.row-r27	none
-ci-fast.yml	go-test-touched	gotest	test/conformance/go/rows TestRowR31	tooling.go-rows.row-r31	none
-ci-fast.yml	go-test-touched	gotest	test/conformance/go/rows TestRowR6	tooling.go-rows.row-r6	none
-ci-fast.yml	go-test-touched	gotest	test/conformance/go/rows TestRowR7	tooling.go-rows.row-r7	none
-ci-fast.yml	go-test-touched	gotest	test/conformance/go/rows TestRowW12	tooling.go-rows.row-w12	none
-ci-fast.yml	go-test-touched	gotest	test/conformance/go/rows TestRowW12NegativeControl	tooling.go-rows.row-w12-negative-control	none
-ci-fast.yml	go-test-touched	gotest	test/conformance/go/rows TestRowW13	tooling.go-rows.row-w13	none
-ci-fast.yml	go-test-touched	gotest	test/conformance/go/rows TestRowW2	tooling.go-rows.row-w2	none
-ci-fast.yml	go-test-touched	gotest	test/conformance/go/rows TestRowW2WriterRefusesTheOldPayload	tooling.go-rows.row-w2-writer-refuses-the-old-payload	none
-ci-fast.yml	go-test-touched	gotest	test/conformance/go/rows TestRowW3	tooling.go-rows.row-w3	none
-ci-fast.yml	go-test-touched	gotest	test/conformance/go/rows TestRowW4	tooling.go-rows.row-w4	none
-ci-fast.yml	go-test-touched	gotest	test/conformance/go/rows TestRowW7	tooling.go-rows.row-w7	none
-ci-fast.yml	go-test-touched	gotest	test/conformance/goose/wirefuzzdispatch TestDispatchDeliversEveryReplyBeforeAStall	tooling.goose-wirefuzzdispatch.dispatch-delivers-every-reply-before-a-stall	none
-ci-fast.yml	go-test-touched	gotest	test/conformance/goose/wirefuzzdispatch TestDispatchRefusesAMutantForAnAbsentEntry	tooling.goose-wirefuzzdispatch.dispatch-refuses-a-mutant-for-an-absent-entry	none
-ci-fast.yml	go-test-touched	gotest	test/conformance/goose/wirefuzzdispatch TestDispatchRefusesATruncatedRoster	tooling.goose-wirefuzzdispatch.dispatch-refuses-a-truncated-roster	none
-ci-fast.yml	go-test-touched	gotest	test/conformance/goose/wirefuzzdispatch TestDispatchRefusesAnEntryTwoChildrenClaim	tooling.goose-wirefuzzdispatch.dispatch-refuses-an-entry-two-children-claim	none
-ci-fast.yml	go-test-touched	gotest	test/conformance/goose/wirefuzzdispatch TestDispatchRoutesEveryEntryToItsUnitAndArmInOrder	tooling.goose-wirefuzzdispatch.dispatch-routes-every-entry-to-its-unit-and-arm-in-order	none
+ci-fast.yml	go-test-touched	gotest	go test ./test/conformance/go (4 Go tests the unmoved ledger holds, L5)	-	none
+ci-fast.yml	go-test-touched	gotest	go test ./test/conformance/go/rows (47 Go tests the unmoved ledger holds, L5)	-	none
+ci-fast.yml	go-test-touched	gotest	go test ./test/conformance/goose/wirefuzzdispatch (5 Go tests the unmoved ledger holds, L5)	-	none
 ci-fast.yml	go-test-touched	gotest	test/conformance/goose/writerefusalpacket TestWriteRefusalPacketGoose	write-refusal.write-refusal-packet.goose	none
 ci-fast.yml	go-test-touched	gotest	test/conformance/goose/writerefusalpacket TestWriteRefusalPacketGooseSurface	write-refusal.write-refusal-packet.goose-surface	none
 ci-fast.yml	go-test-touched	gotest	test/conformance/js TestWriteRefusalPacketJS	write-refusal.write-refusal-packet.js	none
 ci-fast.yml	go-test-touched	gotest	test/conformance/js TestWriteRefusalPacketJSSurface	write-refusal.write-refusal-packet.js-surface	none
 ci-fast.yml	go-test-touched	gotest	test/conformance/lobster TestWriteRefusalPacketLobster	write-refusal.write-refusal-packet.lobster	none
 ci-fast.yml	go-test-touched	gotest	test/conformance/lobster TestWriteRefusalPacketLobsterSurface	write-refusal.write-refusal-packet.lobster-surface	none
-ci-fast.yml	go-test-touched	gotest	test/conformance/lobster/hostile TestScorerOutcomes	tooling.lobster-hostile.scorer-outcomes	none
+ci-fast.yml	go-test-touched	gotest	go test ./test/conformance/lobster/hostile (2 Go tests the unmoved ledger holds, L5)	-	none
 ci-fast.yml	go-test-touched	gotest	test/conformance/lua TestWriteRefusalPacketLua	write-refusal.write-refusal-packet.lua	none
 ci-fast.yml	go-test-touched	gotest	test/conformance/lua TestWriteRefusalPacketLuaSurface	write-refusal.write-refusal-packet.lua-surface	none
 ci-fast.yml	go-test-touched	gotest	test/conformance/luau TestWriteRefusalPacketLuau	write-refusal.write-refusal-packet.luau	none
@@ -785,25 +690,8 @@ ci-fast.yml	go-test-touched	gotest	test/conformance/ruby TestWriteRefusalPacketR
 ci-fast.yml	go-test-touched	gotest	test/conformance/ruby TestWriteRefusalPacketRubySurface	write-refusal.write-refusal-packet.ruby-surface	none
 ci-fast.yml	go-test-touched	gotest	test/conformance/squirrel TestWriteRefusalPacketSquirrel	write-refusal.write-refusal-packet.squirrel	none
 ci-fast.yml	go-test-touched	gotest	test/conformance/squirrel TestWriteRefusalPacketSquirrelSurface	write-refusal.write-refusal-packet.squirrel-surface	none
-ci-fast.yml	go-test-touched	gotest	test/go-tables TestAllocationGateCanGoRed	tooling.go-tables.allocation-gate-can-go-red	none
-ci-fast.yml	go-test-touched	gotest	test/go-tables TestBlockForgeryFuzz	tooling.go-tables.block-forgery-fuzz	none
-ci-fast.yml	go-test-touched	gotest	test/go-tables TestCookForgeryFuzz	tooling.go-tables.cook-forgery-fuzz	none
-ci-fast.yml	go-test-touched	gotest	test/go-tables TestDamagedRepeatedUnionRefuses	tooling.go-tables.damaged-repeated-union-refuses	none
-ci-fast.yml	go-test-touched	gotest	test/go-tables TestFromJSONAllocatesNothing	tooling.go-tables.from-json-allocates-nothing	none
-ci-fast.yml	go-test-touched	gotest	test/go-tables TestKeyedPlacesByKey	tooling.go-tables.keyed-places-by-key	none
-ci-fast.yml	go-test-touched	gotest	test/go-tables TestKeyedRefusesNone	tooling.go-tables.keyed-refuses-none	none
-ci-fast.yml	go-test-touched	gotest	test/go-tables TestKeyedRefusesPastMax	tooling.go-tables.keyed-refuses-past-max	none
-ci-fast.yml	go-test-touched	gotest	test/go-tables TestLoadAllocatesNothing	tooling.go-tables.load-allocates-nothing	none
-ci-fast.yml	go-test-touched	gotest	test/go-tables TestMeasureAllocatesNothing	tooling.go-tables.measure-allocates-nothing	none
-ci-fast.yml	go-test-touched	gotest	test/go-tables TestNoCodecWorkProfilerClean	tooling.go-tables.no-codec-work-profiler-clean	none
-ci-fast.yml	go-test-touched	gotest	test/go-tables TestReviewerRealSoakClosureAttribution	tooling.go-tables.reviewer-real-soak-closure-attribution	none
-ci-fast.yml	go-test-touched	gotest	test/go-tables TestRoundTripAllocatesNothing	tooling.go-tables.round-trip-allocates-nothing	none
-ci-fast.yml	go-test-touched	gotest	test/go-tables TestSaveAllocatesNothing	tooling.go-tables.save-allocates-nothing	none
-ci-fast.yml	go-test-touched	gotest	test/go-tables TestSoak	tooling.go-tables.soak	none
-ci-fast.yml	go-test-touched	gotest	test/go-tables TestSoakIdentifierCanGoRed	tooling.go-tables.soak-identifier-can-go-red	none
-ci-fast.yml	go-test-touched	gotest	test/go-tables TestToJSONAllocatesNothing	tooling.go-tables.to-json-allocates-nothing	none
-ci-fast.yml	go-test-touched	gotest	test/go-tables TestUsage	tooling.go-tables.usage	none
-ci-fast.yml	go-test-touched	gotest	test/packet-write-bareint/lobster TestLobsterPacketWriteBareInt	tooling.packet-write-bareint-lobster.lobster-packet-write-bare-int	none
+ci-fast.yml	go-test-touched	gotest	go test ./test/go-tables (18 Go tests the unmoved ledger holds, L5)	-	none
+ci-fast.yml	go-test-touched	gotest	go test ./test/packet-write-bareint/lobster (1 Go tests the unmoved ledger holds, L5)	-	none
 ci-fast.yml	go-test-touched	gotest	tools/treelock TestChildExitStatusAndLockRelease	tooling.treelock.child-exit-status-and-lock-release	none
 ci-fast.yml	go-test-touched	gotest	tools/treelock TestFifoEarlyChildExitIsBounded	tooling.treelock.fifo-early-child-exit-is-bounded	none
 ci-fast.yml	go-test-touched	gotest	tools/treelock TestReviewerFifoWithoutReaderIsBounded	tooling.treelock.reviewer-fifo-without-reader-is-bounded	none
