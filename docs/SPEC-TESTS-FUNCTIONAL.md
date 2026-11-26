@@ -4279,7 +4279,7 @@ bytes read give exactly the expected value.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.decode.map-value-shape.map-value-shape-native` | a map of optional values reads only null as absent and every other JSON shape as a present value | `inputs.tests` (103 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/rusttable/map_value_shape_rust_test.go:17` |
+| `L.functional.decode.map-value-shape.map-value-shape-native` | a map of optional values reads only null as absent and every other JSON shape as a present value | `inputs.tests` (190 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/rusttable/map_value_shape_rust_test.go:17` |
 
 #### `decode` family `mapkeyscan`, 3 tests
 
