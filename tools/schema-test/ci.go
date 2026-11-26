@@ -21,6 +21,7 @@ import (
 	"text/template"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testreg"
+	"github.com/mas-bandwidth/schema/v2/internal/testreg/extract"
 )
 
 // CI is generated from the registry (docs/TEST-REGISTRY.md, "CI"). Three
@@ -382,8 +383,8 @@ func fits(parts [][]testreg.Instance, budget shardBudgets) bool {
 
 // generatedWorkflowFiles are the workflows ciFiles writes, by repository
 // path (TestTheBaseLeavesOutExactlyTheGeneratedWorkflows holds the two to
-// each other).
-var generatedWorkflowFiles = []string{fastWorkflow, roadmapFile, nightlyWorkflow}
+// each other): the extract's list, whose jobs as generated are no items.
+var generatedWorkflowFiles = extract.GeneratedWorkflows
 
 // pinsBaseRef is the commit a change merges into, which `extract
 // --pins-base` holds the not-yet-generated list to, from the GitHub event

@@ -5,9 +5,9 @@ Part of the specification: every test of tier `nightly`, from the test registry.
 
 **Tier nightly:** heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded.
 
-Nightly tests every language answers: 1092. Language-free tests: 1439.
+Nightly tests every language answers: 1108. Language-free tests: 1494.
 
-Tests some languages run in this tier, their own measured seconds being past one shard's budget, each named by its languages' instances: 12.
+Tests some languages run in this tier, their own measured seconds being past one shard's budget, each named by its languages' instances: 11.
 
 Run this tier for a language with `schema-test run --tier nightly --lang L`, one test with `schema-test run <full name>`.
 
@@ -1025,7 +1025,7 @@ generated source compiles and is clean.
 | `L.nightly.codegen.name-buildability.tb-max-items` | name-buildability tb\_max\_items: the checker accepts its names, and the language generates it and builds and loads the output with its own toolchain (SPEC §4.6) | `package: ./tools/namebuild`<br>`subtest: tb_max_items`<br>`test: TestNameBuildability_{lang}` | the Go test TestNameBuildability\_&lt;lang&gt;/tb\_max\_items passes: generate, build and load all succeed | `testdata/name-buildability/cases.tsv:318` |
 | `L.nightly.codegen.name-buildability.u-pick` | name-buildability u\_pick: the checker accepts its names, and the language generates it and builds and loads the output with its own toolchain (SPEC §4.6) | `package: ./tools/namebuild`<br>`subtest: u_pick`<br>`test: TestNameBuildability_{lang}` | the Go test TestNameBuildability\_&lt;lang&gt;/u\_pick passes: generate, build and load all succeed | `testdata/name-buildability/cases.tsv:316` |
 
-#### `codegen` family `tables`, 140 tests
+#### `codegen` family `tables`, 156 tests
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
@@ -1107,14 +1107,18 @@ generated source compiles and is clean.
 | `L.nightly.codegen.tables.view-moo` | tables test/tables/view\_moo: the case's file is present as the language's own test reads it | `driver: test/tables/main.cpp`<br>`files: ["test/tables/view_moo.mootext"]`<br>`verdict: present` | the file the inputs name exists and is not empty | `test/tables/view_moo.mootext:1` |
 | `L.nightly.codegen.tables.vmid-array-bounded-grow` | tables test/tables/VMID\_array\_bounded\_grow: test/tables/VMID\_array\_bounded\_grow.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VMID_array_bounded_grow.schema"]`<br>`schema: test/tables/VMID_array_bounded_grow.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VMID_array_bounded_grow.schema:1` |
 | `L.nightly.codegen.tables.vmid-floor` | tables test/tables/VMID\_floor: test/tables/VMID\_floor.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VMID_floor.schema"]`<br>`schema: test/tables/VMID_floor.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VMID_floor.schema:1` |
+| `L.nightly.codegen.tables.vnew-arm-removed` | tables test/tables/VNEW\_arm\_removed: test/tables/VNEW\_arm\_removed.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VNEW_arm_removed.schema"]`<br>`schema: test/tables/VNEW_arm_removed.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VNEW_arm_removed.schema:1` |
 | `L.nightly.codegen.tables.vnew-array-bounded-grow` | tables test/tables/VNEW\_array\_bounded\_grow: test/tables/VNEW\_array\_bounded\_grow.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VNEW_array_bounded_grow.schema"]`<br>`schema: test/tables/VNEW_array_bounded_grow.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VNEW_array_bounded_grow.schema:1` |
 | `L.nightly.codegen.tables.vnew-array-elem-widen` | tables test/tables/VNEW\_array\_elem\_widen: test/tables/VNEW\_array\_elem\_widen.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VNEW_array_elem_widen.schema"]`<br>`schema: test/tables/VNEW_array_elem_widen.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VNEW_array_elem_widen.schema:1` |
 | `L.nightly.codegen.tables.vnew-array-fixed-grow` | tables test/tables/VNEW\_array\_fixed\_grow: test/tables/VNEW\_array\_fixed\_grow.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VNEW_array_fixed_grow.schema"]`<br>`schema: test/tables/VNEW_array_fixed_grow.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VNEW_array_fixed_grow.schema:1` |
+| `L.nightly.codegen.tables.vnew-array-shrunk` | tables test/tables/VNEW\_array\_shrunk: test/tables/VNEW\_array\_shrunk.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VNEW_array_shrunk.schema"]`<br>`schema: test/tables/VNEW_array_shrunk.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VNEW_array_shrunk.schema:1` |
 | `L.nightly.codegen.tables.vnew-bits-grow` | tables test/tables/VNEW\_bits\_grow: test/tables/VNEW\_bits\_grow.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VNEW_bits_grow.schema"]`<br>`schema: test/tables/VNEW_bits_grow.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VNEW_bits_grow.schema:1` |
 | `L.nightly.codegen.tables.vnew-bytes-grow` | tables test/tables/VNEW\_bytes\_grow: test/tables/VNEW\_bytes\_grow.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VNEW_bytes_grow.schema"]`<br>`schema: test/tables/VNEW_bytes_grow.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VNEW_bytes_grow.schema:1` |
+| `L.nightly.codegen.tables.vnew-bytes-narrowed` | tables test/tables/VNEW\_bytes\_narrowed: test/tables/VNEW\_bytes\_narrowed.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VNEW_bytes_narrowed.schema"]`<br>`schema: test/tables/VNEW_bytes_narrowed.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VNEW_bytes_narrowed.schema:1` |
 | `L.nightly.codegen.tables.vnew-cfloat-range-widen` | tables test/tables/VNEW\_cfloat\_range\_widen: test/tables/VNEW\_cfloat\_range\_widen.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VNEW_cfloat_range_widen.schema"]`<br>`schema: test/tables/VNEW_cfloat_range_widen.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VNEW_cfloat_range_widen.schema:1` |
 | `L.nightly.codegen.tables.vnew-cfloat-res-refine` | tables test/tables/VNEW\_cfloat\_res\_refine: test/tables/VNEW\_cfloat\_res\_refine.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VNEW_cfloat_res_refine.schema"]`<br>`schema: test/tables/VNEW_cfloat_res_refine.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VNEW_cfloat_res_refine.schema:1` |
 | `L.nightly.codegen.tables.vnew-constant-grow` | tables test/tables/VNEW\_constant\_grow: test/tables/VNEW\_constant\_grow.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VNEW_constant_grow.schema"]`<br>`schema: test/tables/VNEW_constant_grow.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VNEW_constant_grow.schema:1` |
+| `L.nightly.codegen.tables.vnew-counted-shrunk` | tables test/tables/VNEW\_counted\_shrunk: test/tables/VNEW\_counted\_shrunk.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VNEW_counted_shrunk.schema"]`<br>`schema: test/tables/VNEW_counted_shrunk.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VNEW_counted_shrunk.schema:1` |
 | `L.nightly.codegen.tables.vnew-enum-append` | tables test/tables/VNEW\_enum\_append: test/tables/VNEW\_enum\_append.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VNEW_enum_append.schema"]`<br>`schema: test/tables/VNEW_enum_append.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VNEW_enum_append.schema:1` |
 | `L.nightly.codegen.tables.vnew-enum-width` | tables test/tables/VNEW\_enum\_width: test/tables/VNEW\_enum\_width.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VNEW_enum_width.schema"]`<br>`schema: test/tables/VNEW_enum_width.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VNEW_enum_width.schema:1` |
 | `L.nightly.codegen.tables.vnew-field-append` | tables test/tables/VNEW\_field\_append: test/tables/VNEW\_field\_append.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VNEW_field_append.schema"]`<br>`schema: test/tables/VNEW_field_append.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VNEW_field_append.schema:1` |
@@ -1127,25 +1131,33 @@ generated source compiles and is clean.
 | `L.nightly.codegen.tables.vnew-floor` | tables test/tables/VNEW\_floor: test/tables/VNEW\_floor.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VNEW_floor.schema"]`<br>`schema: test/tables/VNEW_floor.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VNEW_floor.schema:1` |
 | `L.nightly.codegen.tables.vnew-hostile-bool` | tables test/tables/VNEW\_hostile\_bool: test/tables/VNEW\_hostile\_bool.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VNEW_hostile_bool.schema"]`<br>`schema: test/tables/VNEW_hostile_bool.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VNEW_hostile_bool.schema:1` |
 | `L.nightly.codegen.tables.vnew-int-widen` | tables test/tables/VNEW\_int\_widen: test/tables/VNEW\_int\_widen.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VNEW_int_widen.schema"]`<br>`schema: test/tables/VNEW_int_widen.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VNEW_int_widen.schema:1` |
+| `L.nightly.codegen.tables.vnew-key-removed` | tables test/tables/VNEW\_key\_removed: test/tables/VNEW\_key\_removed.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VNEW_key_removed.schema"]`<br>`schema: test/tables/VNEW_key_removed.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VNEW_key_removed.schema:1` |
 | `L.nightly.codegen.tables.vnew-keyed-array-enum-append` | tables test/tables/VNEW\_keyed\_array\_enum\_append: test/tables/VNEW\_keyed\_array\_enum\_append.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VNEW_keyed_array_enum_append.schema"]`<br>`schema: test/tables/VNEW_keyed_array_enum_append.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VNEW_keyed_array_enum_append.schema:1` |
+| `L.nightly.codegen.tables.vnew-kind-moved` | tables test/tables/VNEW\_kind\_moved: test/tables/VNEW\_kind\_moved.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VNEW_kind_moved.schema"]`<br>`schema: test/tables/VNEW_kind_moved.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VNEW_kind_moved.schema:1` |
 | `L.nightly.codegen.tables.vnew-lineage-merge` | tables test/tables/VNEW\_lineage\_merge: test/tables/VNEW\_lineage\_merge.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VNEW_lineage_merge.schema"]`<br>`schema: test/tables/VNEW_lineage_merge.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VNEW_lineage_merge.schema:1` |
 | `L.nightly.codegen.tables.vnew-nested-append` | tables test/tables/VNEW\_nested\_append: test/tables/VNEW\_nested\_append.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VNEW_nested_append.schema"]`<br>`schema: test/tables/VNEW_nested_append.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VNEW_nested_append.schema:1` |
 | `L.nightly.codegen.tables.vnew-optional-add` | tables test/tables/VNEW\_optional\_add: test/tables/VNEW\_optional\_add.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VNEW_optional_add.schema"]`<br>`schema: test/tables/VNEW_optional_add.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VNEW_optional_add.schema:1` |
 | `L.nightly.codegen.tables.vnew-range-widen` | tables test/tables/VNEW\_range\_widen: test/tables/VNEW\_range\_widen.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VNEW_range_widen.schema"]`<br>`schema: test/tables/VNEW_range_widen.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VNEW_range_widen.schema:1` |
 | `L.nightly.codegen.tables.vnew-rename-without-was` | tables test/tables/VNEW\_rename\_without\_was: test/tables/VNEW\_rename\_without\_was.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VNEW_rename_without_was.schema"]`<br>`schema: test/tables/VNEW_rename_without_was.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VNEW_rename_without_was.schema:1` |
 | `L.nightly.codegen.tables.vnew-string-grow` | tables test/tables/VNEW\_string\_grow: test/tables/VNEW\_string\_grow.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VNEW_string_grow.schema"]`<br>`schema: test/tables/VNEW_string_grow.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VNEW_string_grow.schema:1` |
+| `L.nightly.codegen.tables.vnew-text-narrowed` | tables test/tables/VNEW\_text\_narrowed: test/tables/VNEW\_text\_narrowed.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VNEW_text_narrowed.schema"]`<br>`schema: test/tables/VNEW_text_narrowed.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VNEW_text_narrowed.schema:1` |
 | `L.nightly.codegen.tables.vnew-uint-widen` | tables test/tables/VNEW\_uint\_widen: test/tables/VNEW\_uint\_widen.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VNEW_uint_widen.schema"]`<br>`schema: test/tables/VNEW_uint_widen.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VNEW_uint_widen.schema:1` |
 | `L.nightly.codegen.tables.vnew-union-append` | tables test/tables/VNEW\_union\_append: test/tables/VNEW\_union\_append.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VNEW_union_append.schema"]`<br>`schema: test/tables/VNEW_union_append.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VNEW_union_append.schema:1` |
 | `L.nightly.codegen.tables.vnew-union-arm-payload-widen` | tables test/tables/VNEW\_union\_arm\_payload\_widen: test/tables/VNEW\_union\_arm\_payload\_widen.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VNEW_union_arm_payload_widen.schema"]`<br>`schema: test/tables/VNEW_union_arm_payload_widen.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VNEW_union_arm_payload_widen.schema:1` |
 | `L.nightly.codegen.tables.vnew-unknown-census` | tables test/tables/VNEW\_unknown\_census: test/tables/VNEW\_unknown\_census.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VNEW_unknown_census.schema"]`<br>`schema: test/tables/VNEW_unknown_census.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VNEW_unknown_census.schema:1` |
+| `L.nightly.codegen.tables.vnew-variant-removed` | tables test/tables/VNEW\_variant\_removed: test/tables/VNEW\_variant\_removed.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VNEW_variant_removed.schema"]`<br>`schema: test/tables/VNEW_variant_removed.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VNEW_variant_removed.schema:1` |
+| `L.nightly.codegen.tables.vold-arm-removed` | tables test/tables/VOLD\_arm\_removed: test/tables/VOLD\_arm\_removed.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VOLD_arm_removed.schema"]`<br>`schema: test/tables/VOLD_arm_removed.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VOLD_arm_removed.schema:1` |
 | `L.nightly.codegen.tables.vold-array-bounded-grow` | tables test/tables/VOLD\_array\_bounded\_grow: test/tables/VOLD\_array\_bounded\_grow.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VOLD_array_bounded_grow.schema"]`<br>`schema: test/tables/VOLD_array_bounded_grow.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VOLD_array_bounded_grow.schema:1` |
 | `L.nightly.codegen.tables.vold-array-elem-widen` | tables test/tables/VOLD\_array\_elem\_widen: test/tables/VOLD\_array\_elem\_widen.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VOLD_array_elem_widen.schema"]`<br>`schema: test/tables/VOLD_array_elem_widen.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VOLD_array_elem_widen.schema:1` |
 | `L.nightly.codegen.tables.vold-array-fixed-grow` | tables test/tables/VOLD\_array\_fixed\_grow: test/tables/VOLD\_array\_fixed\_grow.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VOLD_array_fixed_grow.schema"]`<br>`schema: test/tables/VOLD_array_fixed_grow.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VOLD_array_fixed_grow.schema:1` |
+| `L.nightly.codegen.tables.vold-array-shrunk` | tables test/tables/VOLD\_array\_shrunk: test/tables/VOLD\_array\_shrunk.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VOLD_array_shrunk.schema"]`<br>`schema: test/tables/VOLD_array_shrunk.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VOLD_array_shrunk.schema:1` |
 | `L.nightly.codegen.tables.vold-bits-grow` | tables test/tables/VOLD\_bits\_grow: test/tables/VOLD\_bits\_grow.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VOLD_bits_grow.schema"]`<br>`schema: test/tables/VOLD_bits_grow.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VOLD_bits_grow.schema:1` |
 | `L.nightly.codegen.tables.vold-bytes-grow` | tables test/tables/VOLD\_bytes\_grow: test/tables/VOLD\_bytes\_grow.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VOLD_bytes_grow.schema"]`<br>`schema: test/tables/VOLD_bytes_grow.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VOLD_bytes_grow.schema:1` |
+| `L.nightly.codegen.tables.vold-bytes-narrowed` | tables test/tables/VOLD\_bytes\_narrowed: test/tables/VOLD\_bytes\_narrowed.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VOLD_bytes_narrowed.schema"]`<br>`schema: test/tables/VOLD_bytes_narrowed.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VOLD_bytes_narrowed.schema:1` |
 | `L.nightly.codegen.tables.vold-cfloat-range-widen` | tables test/tables/VOLD\_cfloat\_range\_widen: test/tables/VOLD\_cfloat\_range\_widen.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VOLD_cfloat_range_widen.schema"]`<br>`schema: test/tables/VOLD_cfloat_range_widen.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VOLD_cfloat_range_widen.schema:1` |
 | `L.nightly.codegen.tables.vold-cfloat-res-refine` | tables test/tables/VOLD\_cfloat\_res\_refine: test/tables/VOLD\_cfloat\_res\_refine.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VOLD_cfloat_res_refine.schema"]`<br>`schema: test/tables/VOLD_cfloat_res_refine.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VOLD_cfloat_res_refine.schema:1` |
 | `L.nightly.codegen.tables.vold-constant-grow` | tables test/tables/VOLD\_constant\_grow: test/tables/VOLD\_constant\_grow.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VOLD_constant_grow.schema"]`<br>`schema: test/tables/VOLD_constant_grow.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VOLD_constant_grow.schema:1` |
+| `L.nightly.codegen.tables.vold-counted-shrunk` | tables test/tables/VOLD\_counted\_shrunk: test/tables/VOLD\_counted\_shrunk.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VOLD_counted_shrunk.schema"]`<br>`schema: test/tables/VOLD_counted_shrunk.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VOLD_counted_shrunk.schema:1` |
 | `L.nightly.codegen.tables.vold-enum-append` | tables test/tables/VOLD\_enum\_append: test/tables/VOLD\_enum\_append.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VOLD_enum_append.schema"]`<br>`schema: test/tables/VOLD_enum_append.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VOLD_enum_append.schema:1` |
 | `L.nightly.codegen.tables.vold-enum-width` | tables test/tables/VOLD\_enum\_width: test/tables/VOLD\_enum\_width.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VOLD_enum_width.schema"]`<br>`schema: test/tables/VOLD_enum_width.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VOLD_enum_width.schema:1` |
 | `L.nightly.codegen.tables.vold-field-append` | tables test/tables/VOLD\_field\_append: test/tables/VOLD\_field\_append.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VOLD_field_append.schema"]`<br>`schema: test/tables/VOLD_field_append.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VOLD_field_append.schema:1` |
@@ -1158,17 +1170,21 @@ generated source compiles and is clean.
 | `L.nightly.codegen.tables.vold-floor` | tables test/tables/VOLD\_floor: test/tables/VOLD\_floor.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VOLD_floor.schema"]`<br>`schema: test/tables/VOLD_floor.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VOLD_floor.schema:1` |
 | `L.nightly.codegen.tables.vold-hostile-bool` | tables test/tables/VOLD\_hostile\_bool: test/tables/VOLD\_hostile\_bool.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VOLD_hostile_bool.schema"]`<br>`schema: test/tables/VOLD_hostile_bool.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VOLD_hostile_bool.schema:1` |
 | `L.nightly.codegen.tables.vold-int-widen` | tables test/tables/VOLD\_int\_widen: test/tables/VOLD\_int\_widen.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VOLD_int_widen.schema"]`<br>`schema: test/tables/VOLD_int_widen.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VOLD_int_widen.schema:1` |
+| `L.nightly.codegen.tables.vold-key-removed` | tables test/tables/VOLD\_key\_removed: test/tables/VOLD\_key\_removed.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VOLD_key_removed.schema"]`<br>`schema: test/tables/VOLD_key_removed.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VOLD_key_removed.schema:1` |
 | `L.nightly.codegen.tables.vold-keyed-array-enum-append` | tables test/tables/VOLD\_keyed\_array\_enum\_append: test/tables/VOLD\_keyed\_array\_enum\_append.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VOLD_keyed_array_enum_append.schema"]`<br>`schema: test/tables/VOLD_keyed_array_enum_append.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VOLD_keyed_array_enum_append.schema:1` |
+| `L.nightly.codegen.tables.vold-kind-moved` | tables test/tables/VOLD\_kind\_moved: test/tables/VOLD\_kind\_moved.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VOLD_kind_moved.schema"]`<br>`schema: test/tables/VOLD_kind_moved.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VOLD_kind_moved.schema:1` |
 | `L.nightly.codegen.tables.vold-lineage-merge` | tables test/tables/VOLD\_lineage\_merge: test/tables/VOLD\_lineage\_merge.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VOLD_lineage_merge.schema"]`<br>`schema: test/tables/VOLD_lineage_merge.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VOLD_lineage_merge.schema:1` |
 | `L.nightly.codegen.tables.vold-nested-append` | tables test/tables/VOLD\_nested\_append: test/tables/VOLD\_nested\_append.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VOLD_nested_append.schema"]`<br>`schema: test/tables/VOLD_nested_append.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VOLD_nested_append.schema:1` |
 | `L.nightly.codegen.tables.vold-optional-add` | tables test/tables/VOLD\_optional\_add: test/tables/VOLD\_optional\_add.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VOLD_optional_add.schema"]`<br>`schema: test/tables/VOLD_optional_add.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VOLD_optional_add.schema:1` |
 | `L.nightly.codegen.tables.vold-range-widen` | tables test/tables/VOLD\_range\_widen: test/tables/VOLD\_range\_widen.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VOLD_range_widen.schema"]`<br>`schema: test/tables/VOLD_range_widen.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VOLD_range_widen.schema:1` |
 | `L.nightly.codegen.tables.vold-rename-without-was` | tables test/tables/VOLD\_rename\_without\_was: test/tables/VOLD\_rename\_without\_was.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VOLD_rename_without_was.schema"]`<br>`schema: test/tables/VOLD_rename_without_was.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VOLD_rename_without_was.schema:1` |
 | `L.nightly.codegen.tables.vold-string-grow` | tables test/tables/VOLD\_string\_grow: test/tables/VOLD\_string\_grow.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VOLD_string_grow.schema"]`<br>`schema: test/tables/VOLD_string_grow.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VOLD_string_grow.schema:1` |
+| `L.nightly.codegen.tables.vold-text-narrowed` | tables test/tables/VOLD\_text\_narrowed: test/tables/VOLD\_text\_narrowed.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VOLD_text_narrowed.schema"]`<br>`schema: test/tables/VOLD_text_narrowed.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VOLD_text_narrowed.schema:1` |
 | `L.nightly.codegen.tables.vold-uint-widen` | tables test/tables/VOLD\_uint\_widen: test/tables/VOLD\_uint\_widen.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VOLD_uint_widen.schema"]`<br>`schema: test/tables/VOLD_uint_widen.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VOLD_uint_widen.schema:1` |
 | `L.nightly.codegen.tables.vold-union-append` | tables test/tables/VOLD\_union\_append: test/tables/VOLD\_union\_append.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VOLD_union_append.schema"]`<br>`schema: test/tables/VOLD_union_append.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VOLD_union_append.schema:1` |
 | `L.nightly.codegen.tables.vold-union-arm-payload-widen` | tables test/tables/VOLD\_union\_arm\_payload\_widen: test/tables/VOLD\_union\_arm\_payload\_widen.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VOLD_union_arm_payload_widen.schema"]`<br>`schema: test/tables/VOLD_union_arm_payload_widen.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VOLD_union_arm_payload_widen.schema:1` |
 | `L.nightly.codegen.tables.vold-unknown-census` | tables test/tables/VOLD\_unknown\_census: test/tables/VOLD\_unknown\_census.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VOLD_unknown_census.schema"]`<br>`schema: test/tables/VOLD_unknown_census.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VOLD_unknown_census.schema:1` |
+| `L.nightly.codegen.tables.vold-variant-removed` | tables test/tables/VOLD\_variant\_removed: test/tables/VOLD\_variant\_removed.schema generates for the language | `driver: test/tables/main.cpp`<br>`files: ["test/tables/VOLD_variant_removed.schema"]`<br>`schema: test/tables/VOLD_variant_removed.schema`<br>`verdict: accept` | bin/schema generate --lang for the language exits 0 and writes the generated sources | `test/tables/VOLD_variant_removed.schema:1` |
 
 #### `codegen` family `vtfixedclass`, 1 test
 
@@ -1179,12 +1195,6 @@ generated source compiles and is clean.
 ### Type `evolution`
 
 one schema version reads or writes another's data.
-
-#### `evolution` family `r20`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `go.nightly.evolution.r20.row-r20-short-string-slack-zeros` | a string grown by a newer schema reads from an older file with its slack bytes zero. | `inputs.tests` (121 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `test/conformance/go/rows/R20_test.go:351` |
 
 #### `evolution` family `scalar-widen`, 1 test
 
@@ -1317,12 +1327,6 @@ a schema's names are accepted or refused by the name checker.
 
 one schema version reads or writes another's data.
 
-#### `evolution` family `make-c`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.evolution.make-c.tables-c-versioning` | `make` | make tables-c-versioning (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: tables-c-versioning` | the target exits 0 with no skip in its log | `make/c.mk:1624` |
-
 #### `evolution` family `make-cs`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
@@ -1339,13 +1343,13 @@ one schema version reads or writes another's data.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.evolution.make-elixir.tables-elixir-versioning` | `make` | make tables-elixir-versioning (make/elixir.mk) exits 0 | `file: make/elixir.mk`<br>`target: tables-elixir-versioning` | the target exits 0 with no skip in its log | `make/elixir.mk:1576` |
+| `none.nightly.evolution.make-elixir.tables-elixir-versioning` | `make` | make tables-elixir-versioning (make/elixir.mk) exits 0 | `file: make/elixir.mk`<br>`target: tables-elixir-versioning` | the target exits 0 with no skip in its log | `make/elixir.mk:1597` |
 
 #### `evolution` family `make-go`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.evolution.make-go.tables-go-versioning` | `make` | make tables-go-versioning (make/go.mk) exits 0 | `file: make/go.mk`<br>`target: tables-go-versioning` | the target exits 0 with no skip in its log | `make/go.mk:1322` |
+| `none.nightly.evolution.make-go.tables-go-versioning` | `make` | make tables-go-versioning (make/go.mk) exits 0 | `file: make/go.mk`<br>`target: tables-go-versioning` | the target exits 0 with no skip in its log | `make/go.mk:1321` |
 
 #### `evolution` family `make-java`, 1 test
 
@@ -1409,9 +1413,9 @@ seeded mutations.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.fuzz.make-go.fuzz-tables-diff` | `make` | make fuzz-tables-diff (make/go.mk) exits 0 | `file: make/go.mk`<br>`target: fuzz-tables-diff` | the target exits 0 with no skip in its log | `make/go.mk:1485` |
-| `none.nightly.fuzz.make-go.fuzz-tables-go` | `make` | make fuzz-tables-go (make/go.mk) exits 0 | `file: make/go.mk`<br>`target: fuzz-tables-go` | the target exits 0 with no skip in its log | `make/go.mk:710` |
-| `none.nightly.fuzz.make-go.fuzz-tables-props` | `make` | make fuzz-tables-props (make/go.mk) exits 0 | `file: make/go.mk`<br>`target: fuzz-tables-props` | the target exits 0 with no skip in its log | `make/go.mk:1496` |
+| `none.nightly.fuzz.make-go.fuzz-tables-diff` | `make` | make fuzz-tables-diff (make/go.mk) exits 0 | `file: make/go.mk`<br>`target: fuzz-tables-diff` | the target exits 0 with no skip in its log | `make/go.mk:1484` |
+| `none.nightly.fuzz.make-go.fuzz-tables-go` | `make` | make fuzz-tables-go (make/go.mk) exits 0 | `file: make/go.mk`<br>`target: fuzz-tables-go` | the target exits 0 with no skip in its log | `make/go.mk:709` |
+| `none.nightly.fuzz.make-go.fuzz-tables-props` | `make` | make fuzz-tables-props (make/go.mk) exits 0 | `file: make/go.mk`<br>`target: fuzz-tables-props` | the target exits 0 with no skip in its log | `make/go.mk:1495` |
 
 #### `fuzz` family `make-python-wirefuzz`, 1 test
 
@@ -1442,7 +1446,7 @@ seeded mutations.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.fuzz.make-schema-luau-nightly-fuzz.luau-nightly-fuzz` | `make` | make luau-nightly-fuzz (make/schema-luau-nightly-fuzz.mk) exits 0 | `file: make/schema-luau-nightly-fuzz.mk`<br>`seed: LUAU_FUZZ_SEED`<br>`target: luau-nightly-fuzz`<br>`vars: {"LUAU_FUZZ_TIME":"600"}` | the target exits 0 with no skip in its log | `make/schema-luau-nightly-fuzz.mk:689` |
+| `none.nightly.fuzz.make-schema-luau-nightly-fuzz.luau-nightly-fuzz` | `make` | make luau-nightly-fuzz (make/schema-luau-nightly-fuzz.mk) exits 0 | `file: make/schema-luau-nightly-fuzz.mk`<br>`read_plant: plant.read-credits.fuzz-make-schema-luau-nightly-fuzz-luau-nightly-fuzz`<br>`inputs.reads` (2455 bytes, held in the registry row's `inputs.reads`)<br>`seed: LUAU_FUZZ_SEED`<br>`target: luau-nightly-fuzz`<br>`vars: {"LUAU_FUZZ_TIME":"600"}` | the target exits 0 with no skip in its log | `make/schema-luau-nightly-fuzz.mk:689` |
 
 #### `fuzz` family `make-schema-moo-nightly-fuzz`, 1 test
 
@@ -2540,6 +2544,12 @@ a negative control: a named test run against a deliberately broken build must co
 |---|---|---|---|---|---|
 | `none.nightly.plant.dart-tables-2-d.tables-dart-discard-negative-control` | `plant` | negative control tables-dart-discard-negative-control (group dart-tables-2-d of make/negative-controls.json): its sabotage turns the gate it controls red | `file: make/dart.mk`<br>`group: dart-tables-2-d`<br>`make: tables-dart-discard-negative-control` | the control exits 0: the gate it controls went red on its planted sabotage | `make/negative-controls.json:2072` |
 
+#### `plant` family `elixir-alloc-refusal`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.elixir-alloc-refusal.tables-elixir-alloc-refusal-negative-control` | `plant` | negative control tables-elixir-alloc-refusal-negative-control (group elixir-alloc-refusal of make/negative-controls.json): its sabotage turns the gate it controls red | `file: make/elixir.mk`<br>`group: elixir-alloc-refusal`<br>`make: tables-elixir-alloc-refusal-negative-control` | the control exits 0: the gate it controls went red on its planted sabotage | `make/negative-controls.json:2415` |
+
 #### `plant` family `elixir-cards`, 3 tests
 
 | full name | adapter | checks | inputs | expected result | source |
@@ -3434,7 +3444,7 @@ a negative control: a named test run against a deliberately broken build must co
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.plant.make-c.packet-write-refusal-c-negative-control` | `make` | make packet-write-refusal-c-negative-control (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: packet-write-refusal-c-negative-control` | the target exits 0 with no skip in its log | `make/c.mk:2540` |
+| `none.nightly.plant.make-c.packet-write-refusal-c-negative-control` | `make` | make packet-write-refusal-c-negative-control (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: packet-write-refusal-c-negative-control` | the target exits 0 with no skip in its log | `make/c.mk:2558` |
 
 #### `plant` family `make-checks-schema-shared-hostile-corpus`, 1 test
 
@@ -3488,7 +3498,7 @@ a negative control: a named test run against a deliberately broken build must co
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.plant.make-dart.packet-write-refusal-dart-negative-control` | `make` | make packet-write-refusal-dart-negative-control (make/dart.mk) exits 0 | `file: make/dart.mk`<br>`target: packet-write-refusal-dart-negative-control` | the target exits 0 with no skip in its log | `make/dart.mk:2146` |
+| `none.nightly.plant.make-dart.packet-write-refusal-dart-negative-control` | `make` | make packet-write-refusal-dart-negative-control (make/dart.mk) exits 0 | `file: make/dart.mk`<br>`target: packet-write-refusal-dart-negative-control` | the target exits 0 with no skip in its log | `make/dart.mk:2147` |
 
 #### `plant` family `make-dart-cook-write`, 1 test
 
@@ -3512,7 +3522,7 @@ a negative control: a named test run against a deliberately broken build must co
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.plant.make-elixir.tables-elixir-warning-control` | `make` | make tables-elixir-warning-control (make/elixir.mk) exits 0 | `file: make/elixir.mk`<br>`target: tables-elixir-warning-control` | the target exits 0 with no skip in its log | `make/elixir.mk:2158` |
+| `none.nightly.plant.make-elixir.tables-elixir-warning-control` | `make` | make tables-elixir-warning-control (make/elixir.mk) exits 0 | `file: make/elixir.mk`<br>`target: tables-elixir-warning-control` | the target exits 0 with no skip in its log | `make/elixir.mk:2179` |
 
 #### `plant` family `make-elixir-cook-write`, 2 tests
 
@@ -3915,7 +3925,7 @@ a negative control: a named test run against a deliberately broken build must co
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.plant.make-verify-reuse.verify-reuse-negative-control` | `make` | make verify-reuse-negative-control (make/verify-reuse.mk) exits 0 | `file: make/verify-reuse.mk`<br>`target: verify-reuse-negative-control` | the target exits 0 with no skip in its log | `make/verify-reuse.mk:85` |
+| `none.nightly.plant.make-verify-reuse.verify-reuse-negative-control` | `make` | make verify-reuse-negative-control (make/verify-reuse.mk) exits 0 | `file: make/verify-reuse.mk`<br>`target: verify-reuse-negative-control` | the target exits 0 with no skip in its log | `make/verify-reuse.mk:83` |
 
 #### `plant` family `make-verify-vm`, 5 tests
 
@@ -3941,7 +3951,7 @@ a negative control: a named test run against a deliberately broken build must co
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.plant.makefile.wire-fuzz-roster-negative-control` | `make` | make wire-fuzz-roster-negative-control (Makefile) exits 0 | `file: Makefile`<br>`target: wire-fuzz-roster-negative-control` | the target exits 0 with no skip in its log | `Makefile:8728` |
+| `none.nightly.plant.makefile.wire-fuzz-roster-negative-control` | `make` | make wire-fuzz-roster-negative-control (Makefile) exits 0 | `file: Makefile`<br>`target: wire-fuzz-roster-negative-control` | the target exits 0 with no skip in its log | `Makefile:8772` |
 
 #### `plant` family `message-form-count`, 1 test
 
@@ -4603,6 +4613,65 @@ a negative control: a named test run against a deliberately broken build must co
 | `none.nightly.plant.python-write-refusal.conformance-negative-control-python-write-refusal-fixed` | `plant` | negative control conformance-negative-control-python-write-refusal-fixed (group python-write-refusal of make/negative-controls.json): its sabotage turns the gate it controls red | `file: make/python-conformance.mk`<br>`group: python-write-refusal`<br>`make: conformance-negative-control-python-write-refusal-fixed` | the control exits 0: the gate it controls went red on its planted sabotage | `make/negative-controls.json:3377` |
 | `none.nightly.plant.python-write-refusal.conformance-negative-control-python-write-refusal-message` | `plant` | negative control conformance-negative-control-python-write-refusal-message (group python-write-refusal of make/negative-controls.json): its sabotage turns the gate it controls red | `file: make/python-conformance.mk`<br>`group: python-write-refusal`<br>`make: conformance-negative-control-python-write-refusal-message` | the control exits 0: the gate it controls went red on its planted sabotage | `make/negative-controls.json:3378` |
 
+#### `plant` family `read-credits`, 54 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.read-credits.ci-plumbing-make-c-build-packet-end-c-test` | `plant` | deleting the files of each of the 1 items the reads of ci-plumbing.make-c.build-packet-end-c-test credit turns it red, by name | `credits: ci-plumbing.make-c.build-packet-end-c-test`<br>`delete: [["test/packet-end/PacketEnd.schema"]]` | every deletion turns the row red | `make/c.mk:2415` |
+| `none.nightly.plant.read-credits.ci-plumbing-make-c-build-packet-write-cfloat-c-test` | `plant` | deleting the files of each of the 1 items the reads of ci-plumbing.make-c.build-packet-write-cfloat-c-test credit turns it red, by name | `credits: ci-plumbing.make-c.build-packet-write-cfloat-c-test`<br>`delete: [["test/packet-write-cfloat/PacketCFloat.schema"]]` | every deletion turns the row red | `make/c.mk:2374` |
+| `none.nightly.plant.read-credits.ci-plumbing-make-checks-packet-defaults-build-packet-defaults-c-test` | `plant` | deleting the files of each of the 2 items the reads of ci-plumbing.make-checks-packet-defaults.build-packet-defaults-c-test credit turns it red, by name | `credits: ci-plumbing.make-checks-packet-defaults.build-packet-defaults-c-test`<br>`delete: [["test/packet-defaults/Defaults.schema"],["test/packet-defaults/Plain.schema"]]` | every deletion turns the row red | `make/checks/packet-defaults.mk:95` |
+| `none.nightly.plant.read-credits.ci-plumbing-make-checks-packet-void-build-packet-void-cpp-test` | `plant` | deleting the files of each of the 1 items the reads of ci-plumbing.make-checks-packet-void.build-packet-void-cpp-test credit turns it red, by name | `credits: ci-plumbing.make-checks-packet-void.build-packet-void-cpp-test`<br>`delete: [["test/packet-void/Void.schema"]]` | every deletion turns the row red | `make/checks/packet-void.mk:13` |
+| `none.nightly.plant.read-credits.ci-plumbing-make-cs-build-tables-generated-cs-stamp` | `plant` | deleting the files of each of the 8 items the reads of ci-plumbing.make-cs.build-tables-generated-cs-stamp credit turns it red, by name | `credits: ci-plumbing.make-cs.build-tables-generated-cs-stamp`<br>`inputs.delete` (260 bytes, held in the registry row's `inputs.delete`) | every deletion turns the row red | `make/cs.mk:187` |
+| `none.nightly.plant.read-credits.ci-plumbing-makefile-build-fixedform-corpus-stamp` | `plant` | deleting the files of each of the 2 items the reads of ci-plumbing.makefile.build-fixedform-corpus-stamp credit turns it red, by name | `credits: ci-plumbing.makefile.build-fixedform-corpus-stamp`<br>`delete: [["test/tables/fnz/negative_zero.bin"],["test/tables/fnz/negative_zero_control.bin"]]` | every deletion turns the row red | `Makefile:7193` |
+| `none.nightly.plant.read-credits.ci-plumbing-makefile-build-schema-test-guard` | `plant` | deleting the files of each of the 2 items the reads of ci-plumbing.makefile.build-schema-test-guard credit turns it red, by name | `credits: ci-plumbing.makefile.build-schema-test-guard`<br>`delete: [["test/guard/Alpha.schema"],["test/guard/Beta.schema"]]` | every deletion turns the row red | `Makefile:243` |
+| `none.nightly.plant.read-credits.ci-plumbing-makefile-build-tables-generated-stamp` | `plant` | deleting the files of each of the 77 items the reads of ci-plumbing.makefile.build-tables-generated-stamp credit turns it red, by name | `credits: ci-plumbing.makefile.build-tables-generated-stamp`<br>`inputs.delete` (3094 bytes, held in the registry row's `inputs.delete`) | every deletion turns the row red | `Makefile:436` |
+| `none.nightly.plant.read-credits.codegen-cpptable-every-generated-table-header-compiles-standalone` | `plant` | deleting the files of each of the 4 items the reads of codegen.cpptable.every-generated-table-header-compiles-standalone credit turns it red, by name | `credits: codegen.cpptable.every-generated-table-header-compiles-standalone`<br>`inputs.delete` (235 bytes, held in the registry row's `inputs.delete`) | every deletion turns the row red | `internal/codegen/cpptable/standalone_headers_test.go:31` |
+| `none.nightly.plant.read-credits.compiler-check-name-buildability-corpus` | `plant` | deleting the files of each of the 879 items the reads of compiler.check.name-buildability-corpus credit turns it red, by name | `credits: compiler.check.name-buildability-corpus`<br>`inputs.delete` (23303 bytes, held in the registry row's `inputs.delete`) | every deletion turns the row red | `internal/check/namebuildability_test.go:88` |
+| `none.nightly.plant.read-credits.compiler-compiler-corpus-non-canonical-spellings` | `plant` | deleting the files of each of the 16 items the reads of compiler.compiler.corpus-non-canonical-spellings credit turns it red, by name | `credits: compiler.compiler.corpus-non-canonical-spellings`<br>`inputs.delete` (979 bytes, held in the registry row's `inputs.delete`) | every deletion turns the row red | `compiler/corpus_non_canonical_test.go:30` |
+| `none.nightly.plant.read-credits.compiler-compiler-fixed-definitions-digest-vector` | `plant` | deleting the files of each of the 2 items the reads of compiler.compiler.fixed-definitions-digest-vector credit turns it red, by name | `credits: compiler.compiler.fixed-definitions-digest-vector`<br>`inputs.delete` (102 bytes, held in the registry row's `inputs.delete`) | every deletion turns the row red | `compiler/fixed_digest_vector_test.go:21` |
+| `none.nightly.plant.read-credits.compiler-compiler-front-end-vector` | `plant` | deleting the files of each of the 2 items the reads of compiler.compiler.front-end-vector credit turns it red, by name | `credits: compiler.compiler.front-end-vector`<br>`delete: [["testdata/conformance/frontend/Literals.schema"],["testdata/conformance/frontend/vector.txt"]]` | every deletion turns the row red | `compiler/frontend_vector_test.go:29` |
+| `none.nightly.plant.read-credits.compiler-compiler-json-fixtures-hold-no-bare-wide-integer` | `plant` | deleting the files of each of the 49 items the reads of compiler.compiler.json-fixtures-hold-no-bare-wide-integer credit turns it red, by name | `credits: compiler.compiler.json-fixtures-hold-no-bare-wide-integer`<br>`inputs.delete` (2523 bytes, held in the registry row's `inputs.delete`) | every deletion turns the row red | `compiler/spec_json_wide_fixtures_strings_test.go:34` |
+| `none.nightly.plant.read-credits.compiler-compiler-spec-blob-target-outside-closure-refused` | `plant` | deleting the files of each of the 6 items the reads of compiler.compiler.spec-blob-target-outside-closure-refused credit turns it red, by name | `credits: compiler.compiler.spec-blob-target-outside-closure-refused`<br>`delete: [["test/pointer-target-type/blobkind/reader/Reader.schema"]]` | every deletion turns the row red | `compiler/spec_pointer_target_type_test.go:208` |
+| `none.nightly.plant.read-credits.compiler-compiler-spec-fixed-form-edges` | `plant` | deleting the files of each of the 4 items the reads of compiler.compiler.spec-fixed-form-edges credit turns it red, by name | `credits: compiler.compiler.spec-fixed-form-edges`<br>`inputs.delete` (191 bytes, held in the registry row's `inputs.delete`) | every deletion turns the row red | `compiler/spec_fixed_form_edges_test.go:33` |
+| `none.nightly.plant.read-credits.compiler-compiler-spec-json-bytes-are-canonical-base64` | `plant` | deleting the files of each of the 5 items the reads of compiler.compiler.spec-json-bytes-are-canonical-base64 credit turns it red, by name | `credits: compiler.compiler.spec-json-bytes-are-canonical-base64`<br>`inputs.delete` (319 bytes, held in the registry row's `inputs.delete`) | every deletion turns the row red | `compiler/spec_json_base64_canonical_test.go:22` |
+| `none.nightly.plant.read-credits.compiler-compiler-spec-json-flags-name-once` | `plant` | deleting the files of each of the 7 items the reads of compiler.compiler.spec-json-flags-name-once credit turns it red, by name | `credits: compiler.compiler.spec-json-flags-name-once`<br>`inputs.delete` (441 bytes, held in the registry row's `inputs.delete`) | every deletion turns the row red | `compiler/spec_json_flags_name_once_test.go:21` |
+| `none.nightly.plant.read-credits.compiler-compiler-spec-json-read-is-closed` | `plant` | deleting the files of each of the 21 items the reads of compiler.compiler.spec-json-read-is-closed credit turns it red, by name | `credits: compiler.compiler.spec-json-read-is-closed`<br>`inputs.delete` (1290 bytes, held in the registry row's `inputs.delete`) | every deletion turns the row red | `compiler/spec_json_read_closed_test.go:17` |
+| `none.nightly.plant.read-credits.compiler-compiler-spec-message-form-has-one-encoding` | `plant` | deleting the files of each of the 6 items the reads of compiler.compiler.spec-message-form-has-one-encoding credit turns it red, by name | `credits: compiler.compiler.spec-message-form-has-one-encoding`<br>`inputs.delete` (325 bytes, held in the registry row's `inputs.delete`) | every deletion turns the row red | `compiler/spec_message_one_encoding_test.go:17` |
+| `none.nightly.plant.read-credits.compiler-compiler-spec-pointer-target-type-checked` | `plant` | deleting the files of each of the 1 items the reads of compiler.compiler.spec-pointer-target-type-checked credit turns it red, by name | `credits: compiler.compiler.spec-pointer-target-type-checked`<br>`delete: [["test/pointer-target-type/reader/Reader.schema"]]` | every deletion turns the row red | `compiler/spec_pointer_target_type_test.go:27` |
+| `none.nightly.plant.read-credits.compiler-compiler-spec-skipped-value-is-validated` | `plant` | deleting the files of each of the 15 items the reads of compiler.compiler.spec-skipped-value-is-validated credit turns it red, by name | `credits: compiler.compiler.spec-skipped-value-is-validated`<br>`inputs.delete` (793 bytes, held in the registry row's `inputs.delete`) | every deletion turns the row red | `compiler/spec_skipped_value_test.go:19` |
+| `none.nightly.plant.read-credits.compiler-compiler-unity-packet-wire-goldens` | `plant` | deleting the files of each of the 3 items the reads of compiler.compiler.unity-packet-wire-goldens credit turns it red, by name | `credits: compiler.compiler.unity-packet-wire-goldens`<br>`inputs.delete` (194 bytes, held in the registry row's `inputs.delete`) | every deletion turns the row red | `compiler/unitypacket_test.go:16` |
+| `none.nightly.plant.read-credits.compiler-tabletext-json-test-suite-engine` | `plant` | deleting the files of each of the 2 items the reads of compiler.tabletext.json-test-suite-engine credit turns it red, by name | `credits: compiler.tabletext.json-test-suite-engine`<br>`delete: [["testdata/jsontestsuite/PENDING.tsv"],["testdata/jsontestsuite/SHA256SUMS"]]` | every deletion turns the row red | `internal/tabletext/jsontestsuite_test.go:48` |
+| `none.nightly.plant.read-credits.compiler-tabletext-text-skipped-string-refuses-zero` | `plant` | deleting the files of each of the 1 items the reads of compiler.tabletext.text-skipped-string-refuses-zero credit turns it red, by name | `credits: compiler.tabletext.text-skipped-string-refuses-zero`<br>`delete: [["test/skipped-value/reader/Reader.schema"]]` | every deletion turns the row red | `internal/tabletext/skippedstringzero_test.go:19` |
+| `none.nightly.plant.read-credits.compiler-tablewire-announce-golden-at-the-bound` | `plant` | deleting the files of each of the 1 items the reads of compiler.tablewire.announce-golden-at-the-bound credit turns it red, by name | `credits: compiler.tablewire.announce-golden-at-the-bound`<br>`delete: [["testdata/conformance/announce-cap/announce-4096.txt"]]` | every deletion turns the row red | `internal/tablewire/idcap_announce_test.go:35` |
+| `none.nightly.plant.read-credits.corpus-files-block-dump` | `plant` | a corpus row's files are a credit: one pinned value of block\_padded.dump changed turns the Go leg of its block-dump row red | `inputs.edits` (140 bytes, held in the registry row's `inputs.edits`)<br>`reason: block_padded: first difference at byte`<br>`red: ["go.functional.decode.conformance-block-dump.block-padded"]` | the named row runs red, for the stated reason: the credit holds because a red in the data it reads is its red | `testdata/conformance/tables/block/block_padded.dump:3` |
+| `none.nightly.plant.read-credits.fuzz-make-schema-lua-nightly-fuzz-schema-lua-fuzz-replay` | `plant` | deleting the files of each of the 1 items the reads of fuzz.make-schema-lua-nightly-fuzz.schema-lua-fuzz-replay credit turns it red, by name | `credits: fuzz.make-schema-lua-nightly-fuzz.schema-lua-fuzz-replay`<br>`delete: [["testdata/lua-nightly-fuzz/partial-find.sh"]]` | every deletion turns the row red | `make/schema-lua-nightly-fuzz.mk:164` |
+| `none.nightly.plant.read-credits.fuzz-make-schema-luau-nightly-fuzz-luau-nightly-fuzz` | `plant` | deleting the files of each of the 45 items the reads of fuzz.make-schema-luau-nightly-fuzz.luau-nightly-fuzz credit turns it red, by name | `credits: fuzz.make-schema-luau-nightly-fuzz.luau-nightly-fuzz`<br>`inputs.delete` (2545 bytes, held in the registry row's `inputs.delete`) | every deletion turns the row red | `make/schema-luau-nightly-fuzz.mk:689` |
+| `none.nightly.plant.read-credits.fuzz-make-schema-luau-nightly-fuzz-luau-nightly-fuzz-replay` | `plant` | deleting the files of each of the 5 items the reads of fuzz.make-schema-luau-nightly-fuzz.luau-nightly-fuzz-replay credit turns it red, by name | `credits: fuzz.make-schema-luau-nightly-fuzz.luau-nightly-fuzz-replay`<br>`inputs.delete` (137 bytes, held in the registry row's `inputs.delete`) | every deletion turns the row red | `make/schema-luau-nightly-fuzz.mk:712` |
+| `none.nightly.plant.read-credits.golden-carry-table-cpp` | `plant` | a golden row's file is a credit: one line of the CarryTable.cpp golden changed turns its golden row red | `inputs.edits` (139 bytes, held in the registry row's `inputs.edits`)<br>`reason: testdata/golden/tables/arms/CarryTable.cpp`<br>`red: ["none.functional.golden.source-cpp.golden-tables-arms-carrytable-cpp"]` | the named row runs red, for the stated reason: the credit holds because a red in the data it reads is its red | `testdata/golden/tables/arms/CarryTable.cpp:1` |
+| `none.nightly.plant.read-credits.gotest-file-reads-json-test-suite-sums` | `plant` | a gotest row's file read is a credit: one sha256 of testdata/jsontestsuite/SHA256SUMS changed turns compiler.tabletext.json-test-suite-engine red, naming the file it no longer matches | `inputs.edits` (266 bytes, held in the registry row's `inputs.edits`)<br>`reason: i_number_double_huge_neg_exp.json: sha256 does not match SHA256SUMS`<br>`red: ["none.unit.compiler.tabletext.json-test-suite-engine"]` | the named row runs red, for the stated reason: the credit holds because a red in the data it reads is its red | `testdata/jsontestsuite/SHA256SUMS:1` |
+| `none.nightly.plant.read-credits.gotest-reads-name-buildability-case` | `plant` | a gotest row's directory read is a credit: one case of testdata/name-buildability broken turns compiler.check.name-buildability-corpus red, naming that case | `inputs.edits` (134 bytes, held in the registry row's `inputs.edits`)<br>`inputs.reason` (117 bytes, held in the registry row's `inputs.reason`)<br>`red: ["none.unit.compiler.check.name-buildability-corpus"]` | the named row runs red, for the stated reason: the credit holds because a red in the data it reads is its red | `testdata/name-buildability/ctl/Probe.schema:3` |
+| `none.nightly.plant.read-credits.harness-run-make-conformance-continues-test-squirrel` | `plant` | deleting the files of each of the 6 items the reads of harness-run.make-conformance-continues.test-squirrel credit turns it red, by name | `credits: harness-run.make-conformance-continues.test-squirrel`<br>`inputs.delete` (285 bytes, held in the registry row's `inputs.delete`) | every deletion turns the row red | `make/conformance-continues.mk:42` |
+| `none.nightly.plant.read-credits.harness-run-make-dart-dart-chunk-queue-test` | `plant` | deleting the files of each of the 1 items the reads of harness-run.make-dart.dart-chunk-queue-test credit turns it red, by name | `credits: harness-run.make-dart.dart-chunk-queue-test`<br>`delete: [["test/conformance/dart/chunk-queue-check"]]` | every deletion turns the row red | `make/dart.mk:1872` |
+| `none.nightly.plant.read-credits.harness-run-make-moo-fuzz-tables-moo-wire-fuzz` | `plant` | deleting the files of each of the 1 items the reads of harness-run.make-moo-fuzz.tables-moo-wire-fuzz credit turns it red, by name | `credits: harness-run.make-moo-fuzz.tables-moo-wire-fuzz`<br>`delete: [["test/conformance/moo/wirefuzz-driver"]]` | every deletion turns the row red | `make/moo-fuzz.mk:98` |
+| `none.nightly.plant.read-credits.harness-run-make-python-python-ci-compiler` | `plant` | deleting the files of each of the 1 items the reads of harness-run.make-python.python-ci-compiler credit turns it red, by name | `credits: harness-run.make-python.python-ci-compiler`<br>`delete: [["test/slowgate/proof"]]` | every deletion turns the row red | `make/python.mk:32` |
+| `none.nightly.plant.read-credits.harness-run-make-unity-consumers-conformance-unity` | `plant` | deleting the files of each of the 1 items the reads of harness-run.make-unity-consumers.conformance-unity credit turns it red, by name | `credits: harness-run.make-unity-consumers.conformance-unity`<br>`delete: [["test/conformance/unity/driver"]]` | every deletion turns the row red | `make/unity-consumers.mk:98` |
+| `none.nightly.plant.read-credits.harness-run-make-verify-compiled-verify-rust-fuzz-wire` | `plant` | deleting the files of each of the 1 items the reads of harness-run.make-verify-compiled.verify-rust-fuzz-wire credit turns it red, by name | `credits: harness-run.make-verify-compiled.verify-rust-fuzz-wire`<br>`delete: [["test/conformance/rust/wire-fuzz-all-build"]]` | every deletion turns the row red | `make/verify-compiled.mk:248` |
+| `none.nightly.plant.read-credits.harness-run-make-verify-vm-verify-deep-js` | `plant` | deleting the files of each of the 1 items the reads of harness-run.make-verify-vm.verify-deep-js credit turns it red, by name | `credits: harness-run.make-verify-vm.verify-deep-js`<br>`delete: [["test/verify-vm/VerifyHostile.schema"]]` | every deletion turns the row red | `make/verify-vm.mk:183` |
+| `none.nightly.plant.read-credits.harness-run-make-verify-widen-18-verify-canonical-cases` | `plant` | deleting the files of each of the 1 items the reads of harness-run.make-verify-widen-18.verify-canonical-cases credit turns it red, by name | `credits: harness-run.make-verify-widen-18.verify-canonical-cases`<br>`delete: [["test/verify-canonical/Canonical.schema"]]` | every deletion turns the row red | `make/verify-widen-18.mk:108` |
+| `none.nightly.plant.read-credits.harness-run-makefile-check` | `plant` | deleting the files of each of the 3 items the reads of harness-run.makefile.check credit turns it red, by name | `credits: harness-run.makefile.check`<br>`delete: [["test/tables/F1.schema"],["test/tables/F2.schema"],["test/tables/L1.schema"]]` | every deletion turns the row red | `Makefile:5258` |
+| `none.nightly.plant.read-credits.harness-run-makefile-tables-fixedform-plain` | `plant` | deleting the files of each of the 18 items the reads of harness-run.makefile.tables-fixedform-plain credit turns it red, by name | `credits: harness-run.makefile.tables-fixedform-plain`<br>`inputs.delete` (743 bytes, held in the registry row's `inputs.delete`) | every deletion turns the row red | `Makefile:7088` |
+| `none.nightly.plant.read-credits.lint-make-rust-tables-rust-clippy` | `plant` | deleting the files of each of the 2 items the reads of lint.make-rust.tables-rust-clippy credit turns it red, by name | `credits: lint.make-rust.tables-rust-clippy`<br>`delete: [["test/tables/FE1.schema"],["test/tables/FE2.schema"]]` | every deletion turns the row red | `make/rust.mk:136` |
+| `none.nightly.plant.read-credits.lint-make-schema-go-generated-golangci-lint-gate-schema-go-generated-golangci-lint-gate` | `plant` | deleting the files of each of the 2 items the reads of lint.make-schema-go-generated-golangci-lint-gate.schema-go-generated-golangci-lint-gate credit turns it red, by name | `credits: lint.make-schema-go-generated-golangci-lint-gate.schema-go-generated-golangci-lint-gate`<br>`inputs.delete` (110 bytes, held in the registry row's `inputs.delete`) | every deletion turns the row red | `make/schema-go-generated-golangci-lint-gate.mk:133` |
+| `none.nightly.plant.read-credits.make-file-reads-fixedform-plain` | `plant` | a make row's file read is a credit: VNEW\_arm\_removed.schema given a type no schema declares turns make tables-fixedform-plain red, the compiler naming the planted type | `inputs.edits` (166 bytes, held in the registry row's `inputs.edits`)<br>`reason: PlantMarkerFixedFormFileRead`<br>`red: ["none.nightly.harness-run.makefile.tables-fixedform-plain"]` | the named row runs red, for the stated reason: the credit holds because a red in the data it reads is its red | `test/tables/VNEW_arm_removed.schema:14` |
+| `none.nightly.plant.read-credits.tooling-ci-ruby-gems-lock-is-read-whole` | `plant` | deleting the files of each of the 4 items the reads of tooling.ci.ruby-gems-lock-is-read-whole credit turns it red, by name | `credits: tooling.ci.ruby-gems-lock-is-read-whole`<br>`inputs.delete` (220 bytes, held in the registry row's `inputs.delete`) | every deletion turns the row red | `internal/ci/ruby_gems_lock_test.go:51` |
+| `none.nightly.plant.read-credits.tooling-editors-vscode-editor-context-fixtures` | `plant` | deleting the files of each of the 3 items the reads of tooling.editors-vscode.editor-context-fixtures credit turns it red, by name | `credits: tooling.editors-vscode.editor-context-fixtures`<br>`inputs.delete` (127 bytes, held in the registry row's `inputs.delete`) | every deletion turns the row red | `editors/vscode/editor_fixtures_test.go:13` |
+| `none.nightly.plant.read-credits.tooling-goldens-golangci-lint-classes-shapes` | `plant` | deleting the files of each of the 2 items the reads of tooling.goldens.golangci-lint-classes-shapes credit turns it red, by name | `credits: tooling.goldens.golangci-lint-classes-shapes`<br>`delete: [["testdata/golangci-lint-classes/shapes.tsv"]]` | every deletion turns the row red | `internal/goldens/golangci_lint_classes_test.go:25` |
+| `none.nightly.plant.read-credits.tooling-harness-opt-in-corpus-omitting-leg-is-handed-no-row-of-the-unit` | `plant` | deleting the files of each of the 3 items the reads of tooling.harness.opt-in-corpus-omitting-leg-is-handed-no-row-of-the-unit credit turns it red, by name | `credits: tooling.harness.opt-in-corpus-omitting-leg-is-handed-no-row-of-the-unit`<br>`delete: [["testdata/conformance/optin/MANIFEST.txt"],["testdata/conformance/optin/leg-omits.txt"]]` | every deletion turns the row red | `test/conformance/harness/optin_corpus_test.go:81` |
+| `none.nightly.plant.read-credits.tooling-harness-write-refusal-engine-holds-the-int-corpus` | `plant` | deleting the files of each of the 2 items the reads of tooling.harness.write-refusal-engine-holds-the-int-corpus credit turns it red, by name | `credits: tooling.harness.write-refusal-engine-holds-the-int-corpus`<br>`inputs.delete` (112 bytes, held in the registry row's `inputs.delete`) | every deletion turns the row red | `test/conformance/harness/writerefusal_test.go:161` |
+| `none.nightly.plant.read-credits.tooling-matrix-load-ports-refuses-a-bad-declaration` | `plant` | deleting the files of each of the 1 items the reads of tooling.matrix.load-ports-refuses-a-bad-declaration credit turns it red, by name | `credits: tooling.matrix.load-ports-refuses-a-bad-declaration`<br>`delete: [["test/proof/in-progress.json"]]` | every deletion turns the row red | `tools/matrix/proof_test.go:379` |
+| `none.nightly.plant.read-credits.tooling-matrix-the-committed-proof-is-well-formed` | `plant` | deleting the files of each of the 1 items the reads of tooling.matrix.the-committed-proof-is-well-formed credit turns it red, by name | `credits: tooling.matrix.the-committed-proof-is-well-formed`<br>`delete: [["test/proof/proof.json"]]` | every deletion turns the row red | `tools/matrix/proof_test.go:428` |
+| `none.nightly.plant.read-credits.union-reads-blob-kind-manifest` | `plant` | a union row's directory read is a credit: a vector of testdata/wire/pointer-target-type/blobkind turned from refused to read turns the Go leg of the blob-kind union row red | `inputs.edits` (151 bytes, held in the registry row's `inputs.edits`)<br>`reason: text-names-bytes: the engine answers`<br>`red: ["go.functional.load-refusal.wire-pointer-target-type.blob-kind-refused"]` | the named row runs red, for the stated reason: the credit holds because a red in the data it reads is its red | `testdata/wire/pointer-target-type/blobkind/MANIFEST.tsv:12` |
+
 #### `plant` family `release-differential`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
@@ -5154,17 +5223,17 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.tooling.ci.ruby-generated-strict-gate` | `gotest` | Go test TestRubyGeneratedStrictGate in ./internal/ci | `package: ./internal/ci`<br>`test: TestRubyGeneratedStrictGate` | the Go test passes | `internal/ci/ruby_generated_strict_gate_test.go:120` |
-| `none.nightly.tooling.ci.schema-squirrel-all-port-differential` | `gotest` | Go test TestSchemaSquirrelAllPortDifferential in ./internal/ci | `package: ./internal/ci`<br>`test: TestSchemaSquirrelAllPortDifferential` | the Go test passes | `internal/ci/schema_squirrel_all_port_differential_test.go:548` |
+| `none.nightly.tooling.ci.ruby-generated-strict-gate` | `gotest` | Go test TestRubyGeneratedStrictGate in ./internal/ci/rubystrict | `package: ./internal/ci/rubystrict`<br>`test: TestRubyGeneratedStrictGate` | the Go test passes | `internal/ci/rubystrict/ruby_generated_strict_gate_test.go:120` |
+| `none.nightly.tooling.ci.schema-squirrel-all-port-differential` | `gotest` | Go test TestSchemaSquirrelAllPortDifferential in ./internal/ci/squirreldiff | `package: ./internal/ci/squirreldiff`<br>`test: TestSchemaSquirrelAllPortDifferential` | the Go test passes | `internal/ci/squirreldiff/schema_squirrel_all_port_differential_test.go:511` |
 
 #### `tooling` family `makefile`, 4 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.tooling.makefile.docs-check` | `make` | make docs-check (Makefile) exits 0 | `file: Makefile`<br>`target: docs-check` | the target exits 0 with no skip in its log | `Makefile:5282` |
-| `none.nightly.tooling.makefile.shape-gate` | `make` | make shape-gate (Makefile) exits 0 | `file: Makefile`<br>`target: shape-gate` | the target exits 0 with no skip in its log | `Makefile:5348` |
-| `none.nightly.tooling.makefile.vuln` | `make` | make vuln (Makefile) exits 0 | `file: Makefile`<br>`target: vuln` | the target exits 0 with no skip in its log | `Makefile:8080` |
-| `none.nightly.tooling.makefile.vuln-strict` | `make` | make vuln-strict (Makefile) exits 0 | `file: Makefile`<br>`target: vuln-strict` | the target exits 0 with no skip in its log | `Makefile:8084` |
+| `none.nightly.tooling.makefile.docs-check` | `make` | make docs-check (Makefile) exits 0 | `file: Makefile`<br>`target: docs-check` | the target exits 0 with no skip in its log | `Makefile:5291` |
+| `none.nightly.tooling.makefile.shape-gate` | `make` | make shape-gate (Makefile) exits 0 | `file: Makefile`<br>`target: shape-gate` | the target exits 0 with no skip in its log | `Makefile:5357` |
+| `none.nightly.tooling.makefile.vuln` | `make` | make vuln (Makefile) exits 0 | `file: Makefile`<br>`target: vuln` | the target exits 0 with no skip in its log | `Makefile:8124` |
+| `none.nightly.tooling.makefile.vuln-strict` | `make` | make vuln-strict (Makefile) exits 0 | `file: Makefile`<br>`target: vuln-strict` | the target exits 0 with no skip in its log | `Makefile:8128` |
 
 #### `tooling` family `roadmap`, 3 tests
 
@@ -5212,13 +5281,13 @@ performance or timing.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.bench.make-elixir.tables-elixir-bench-gate` | `make` | make tables-elixir-bench-gate (make/elixir.mk) exits 0 | `file: make/elixir.mk`<br>`target: tables-elixir-bench-gate` | the target exits 0 with no skip in its log | `make/elixir.mk:1495` |
+| `none.nightly.bench.make-elixir.tables-elixir-bench-gate` | `make` | make tables-elixir-bench-gate (make/elixir.mk) exits 0 | `file: make/elixir.mk`<br>`target: tables-elixir-bench-gate` | the target exits 0 with no skip in its log | `make/elixir.mk:1516` |
 
 #### `bench` family `make-go`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.bench.make-go.tables-go-bench-gate` | `make` | make tables-go-bench-gate (make/go.mk) exits 0 | `file: make/go.mk`<br>`target: tables-go-bench-gate` | the target exits 0 with no skip in its log | `make/go.mk:1229` |
+| `none.nightly.bench.make-go.tables-go-bench-gate` | `make` | make tables-go-bench-gate (make/go.mk) exits 0 | `file: make/go.mk`<br>`target: tables-go-bench-gate` | the target exits 0 with no skip in its log | `make/go.mk:1228` |
 
 #### `bench` family `make-lobster-bench`, 1 test
 
@@ -5288,10 +5357,10 @@ performance or timing.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.bench.makefile.bench-paired-check` | `make` | make bench-paired-check (Makefile) exits 0 | `file: Makefile`<br>`target: bench-paired-check` | the target exits 0 with no skip in its log | `Makefile:5154` |
-| `none.nightly.bench.makefile.bench-paired-gate` | `make` | make bench-paired-gate (Makefile) exits 0 | `file: Makefile`<br>`target: bench-paired-gate` | the target exits 0 with no skip in its log | `Makefile:5159` |
-| `none.nightly.bench.makefile.bench-table-check` | `make` | make bench-table-check (Makefile) exits 0 | `file: Makefile`<br>`target: bench-table-check` | the target exits 0 with no skip in its log | `Makefile:5137` |
-| `none.nightly.bench.makefile.tables-fixedform-bench-corpus` | `make` | make tables-fixedform-bench-corpus (Makefile) exits 0 | `file: Makefile`<br>`target: tables-fixedform-bench-corpus` | the target exits 0 with no skip in its log | `Makefile:7592` |
+| `none.nightly.bench.makefile.bench-paired-check` | `make` | make bench-paired-check (Makefile) exits 0 | `file: Makefile`<br>`target: bench-paired-check` | the target exits 0 with no skip in its log | `Makefile:5163` |
+| `none.nightly.bench.makefile.bench-paired-gate` | `make` | make bench-paired-gate (Makefile) exits 0 | `file: Makefile`<br>`target: bench-paired-gate` | the target exits 0 with no skip in its log | `Makefile:5168` |
+| `none.nightly.bench.makefile.bench-table-check` | `make` | make bench-table-check (Makefile) exits 0 | `file: Makefile`<br>`target: bench-table-check` | the target exits 0 with no skip in its log | `Makefile:5146` |
+| `none.nightly.bench.makefile.tables-fixedform-bench-corpus` | `make` | make tables-fixedform-bench-corpus (Makefile) exits 0 | `file: Makefile`<br>`target: tables-fixedform-bench-corpus` | the target exits 0 with no skip in its log | `Makefile:7636` |
 
 ### Type `lint`
 
@@ -5307,7 +5376,7 @@ generated or runtime code is clean under the language's strict analyser.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.lint.make-schema-go-generated-golangci-lint-gate.schema-go-generated-golangci-lint-gate-nightly` | `make` | make schema-go-generated-golangci-lint-gate-nightly (make/schema-go-generated-golangci-lint-gate.mk) exits 0 | `file: make/schema-go-generated-golangci-lint-gate.mk`<br>`target: schema-go-generated-golangci-lint-gate-nightly` | the target exits 0 with no skip in its log | `make/schema-go-generated-golangci-lint-gate.mk:276` |
+| `none.nightly.lint.make-schema-go-generated-golangci-lint-gate.schema-go-generated-golangci-lint-gate-nightly` | `make` | make schema-go-generated-golangci-lint-gate-nightly (make/schema-go-generated-golangci-lint-gate.mk) exits 0 | `file: make/schema-go-generated-golangci-lint-gate.mk`<br>`inputs.reads` (194 bytes, held in the registry row's `inputs.reads`)<br>`target: schema-go-generated-golangci-lint-gate-nightly` | the target exits 0 with no skip in its log | `make/schema-go-generated-golangci-lint-gate.mk:276` |
 | `none.nightly.lint.make-schema-go-generated-golangci-lint-gate.schema-go-generated-golangci-lint-gate-probe` | `make` | make schema-go-generated-golangci-lint-gate-probe (make/schema-go-generated-golangci-lint-gate.mk) exits 0 | `file: make/schema-go-generated-golangci-lint-gate.mk`<br>`target: schema-go-generated-golangci-lint-gate-probe` | the target exits 0 with no skip in its log | `make/schema-go-generated-golangci-lint-gate.mk:76` |
 
 #### `lint` family `make-schema-lobster-generated-strict-gate`, 1 test
@@ -5354,7 +5423,7 @@ two implementations or two versions give the same answer.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.differential.makefile.release-differential` | `make` | make release-differential (Makefile) exits 0 | `file: Makefile`<br>`target: release-differential` | the target exits 0 with no skip in its log | `Makefile:7800` |
+| `none.nightly.differential.makefile.release-differential` | `make` | make release-differential (Makefile) exits 0 | `file: Makefile`<br>`target: release-differential` | the target exits 0 with no skip in its log | `Makefile:7844` |
 
 ### Type `resource-bounds`
 
@@ -5495,27 +5564,27 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.harness-run.make-c.cards-c-test` | `make` | make cards-c-test (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: cards-c-test` | the target exits 0 with no skip in its log | `make/c.mk:2126` |
-| `none.nightly.harness-run.make-c.tables-c-fixedform` | `make` | make tables-c-fixedform (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: tables-c-fixedform` | the target exits 0 with no skip in its log | `make/c.mk:1599` |
-| `none.nightly.harness-run.make-c.tables-single-pass-equivalence` | `make` | make tables-single-pass-equivalence (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: tables-single-pass-equivalence` | the target exits 0 with no skip in its log | `make/c.mk:2596` |
-| `none.nightly.harness-run.make-c.test-c-recipe` | `make` | make test-c-recipe (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: test-c-recipe` | the target exits 0 with no skip in its log | `make/c.mk:1632` |
+| `none.nightly.harness-run.make-c.cards-c-test` | `make` | make cards-c-test (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: cards-c-test` | the target exits 0 with no skip in its log | `make/c.mk:2144` |
+| `none.nightly.harness-run.make-c.tables-c-fixedform` | `make` | make tables-c-fixedform (make/c.mk) exits 0 | `file: make/c.mk`<br>`inputs.reads` (151 bytes, held in the registry row's `inputs.reads`)<br>`target: tables-c-fixedform` | the target exits 0 with no skip in its log | `make/c.mk:1599` |
+| `none.nightly.harness-run.make-c.tables-single-pass-equivalence` | `make` | make tables-single-pass-equivalence (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: tables-single-pass-equivalence` | the target exits 0 with no skip in its log | `make/c.mk:2614` |
+| `none.nightly.harness-run.make-c.test-c-recipe` | `make` | make test-c-recipe (make/c.mk) exits 0 | `file: make/c.mk`<br>`reads: ["test/conformance/c/drivers-asan.txt"]`<br>`target: test-c-recipe` | the target exits 0 with no skip in its log | `make/c.mk:1650` |
 
 #### `harness-run` family `make-c-fixed-default-copy`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.harness-run.make-c-fixed-default-copy.test-c` | `make` | make test-c (make/c-fixed-default-copy.mk) exits 0 | `file: make/c-fixed-default-copy.mk`<br>`target: test-c` | the target exits 0 with no skip in its log | `make/c-fixed-default-copy.mk:5` |
+| `none.nightly.harness-run.make-c-fixed-default-copy.test-c` | `make` | make test-c (make/c-fixed-default-copy.mk) exits 0 | `file: make/c-fixed-default-copy.mk`<br>`inputs.reads` (192 bytes, held in the registry row's `inputs.reads`)<br>`target: test-c` | the target exits 0 with no skip in its log | `make/c-fixed-default-copy.mk:5` |
 
 #### `harness-run` family `make-checks-packet-arm-defaults`, 6 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.harness-run.make-checks-packet-arm-defaults.test-cs` | `make` | make test-cs (make/checks/packet-arm-defaults.mk) exits 0 | `file: make/checks/packet-arm-defaults.mk`<br>`target: test-cs` | the target exits 0 with no skip in its log | `make/checks/packet-arm-defaults.mk:160` |
-| `none.nightly.harness-run.make-checks-packet-arm-defaults.test-dart` | `make` | make test-dart (make/checks/packet-arm-defaults.mk) exits 0 | `file: make/checks/packet-arm-defaults.mk`<br>`target: test-dart` | the target exits 0 with no skip in its log | `make/checks/packet-arm-defaults.mk:162` |
-| `none.nightly.harness-run.make-checks-packet-arm-defaults.test-go` | `make` | make test-go (make/checks/packet-arm-defaults.mk) exits 0 | `file: make/checks/packet-arm-defaults.mk`<br>`target: test-go` | the target exits 0 with no skip in its log | `make/checks/packet-arm-defaults.mk:158` |
-| `none.nightly.harness-run.make-checks-packet-arm-defaults.test-java` | `make` | make test-java (make/checks/packet-arm-defaults.mk) exits 0 | `file: make/checks/packet-arm-defaults.mk`<br>`target: test-java` | the target exits 0 with no skip in its log | `make/checks/packet-arm-defaults.mk:161` |
-| `none.nightly.harness-run.make-checks-packet-arm-defaults.test-js` | `make` | make test-js (make/checks/packet-arm-defaults.mk) exits 0 | `file: make/checks/packet-arm-defaults.mk`<br>`target: test-js` | the target exits 0 with no skip in its log | `make/checks/packet-arm-defaults.mk:163` |
-| `none.nightly.harness-run.make-checks-packet-arm-defaults.test-rust` | `make` | make test-rust (make/checks/packet-arm-defaults.mk) exits 0 | `file: make/checks/packet-arm-defaults.mk`<br>`target: test-rust` | the target exits 0 with no skip in its log | `make/checks/packet-arm-defaults.mk:159` |
+| `none.nightly.harness-run.make-checks-packet-arm-defaults.test-cs` | `make` | make test-cs (make/checks/packet-arm-defaults.mk) exits 0 | `file: make/checks/packet-arm-defaults.mk`<br>`inputs.reads` (321 bytes, held in the registry row's `inputs.reads`)<br>`target: test-cs` | the target exits 0 with no skip in its log | `make/checks/packet-arm-defaults.mk:160` |
+| `none.nightly.harness-run.make-checks-packet-arm-defaults.test-dart` | `make` | make test-dart (make/checks/packet-arm-defaults.mk) exits 0 | `file: make/checks/packet-arm-defaults.mk`<br>`inputs.reads` (243 bytes, held in the registry row's `inputs.reads`)<br>`target: test-dart` | the target exits 0 with no skip in its log | `make/checks/packet-arm-defaults.mk:162` |
+| `none.nightly.harness-run.make-checks-packet-arm-defaults.test-go` | `make` | make test-go (make/checks/packet-arm-defaults.mk) exits 0 | `file: make/checks/packet-arm-defaults.mk`<br>`inputs.reads` (686 bytes, held in the registry row's `inputs.reads`)<br>`target: test-go` | the target exits 0 with no skip in its log | `make/checks/packet-arm-defaults.mk:158` |
+| `none.nightly.harness-run.make-checks-packet-arm-defaults.test-java` | `make` | make test-java (make/checks/packet-arm-defaults.mk) exits 0 | `file: make/checks/packet-arm-defaults.mk`<br>`inputs.reads` (232 bytes, held in the registry row's `inputs.reads`)<br>`target: test-java` | the target exits 0 with no skip in its log | `make/checks/packet-arm-defaults.mk:161` |
+| `none.nightly.harness-run.make-checks-packet-arm-defaults.test-js` | `make` | make test-js (make/checks/packet-arm-defaults.mk) exits 0 | `file: make/checks/packet-arm-defaults.mk`<br>`inputs.reads` (304 bytes, held in the registry row's `inputs.reads`)<br>`target: test-js` | the target exits 0 with no skip in its log | `make/checks/packet-arm-defaults.mk:163` |
+| `none.nightly.harness-run.make-checks-packet-arm-defaults.test-rust` | `make` | make test-rust (make/checks/packet-arm-defaults.mk) exits 0 | `file: make/checks/packet-arm-defaults.mk`<br>`inputs.reads` (394 bytes, held in the registry row's `inputs.reads`)<br>`target: test-rust` | the target exits 0 with no skip in its log | `make/checks/packet-arm-defaults.mk:159` |
 
 #### `harness-run` family `make-checks-schema-shared-hostile-corpus`, 1 test
 
@@ -5527,15 +5596,15 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.harness-run.make-conformance-continues.test-lobster` | `make` | make test-lobster (make/conformance-continues.mk) exits 0 | `file: make/conformance-continues.mk`<br>`target: test-lobster` | the target exits 0 with no skip in its log | `make/conformance-continues.mk:30` |
-| `none.nightly.harness-run.make-conformance-continues.test-moo` | `make` | make test-moo (make/conformance-continues.mk) exits 0 | `file: make/conformance-continues.mk`<br>`target: test-moo` | the target exits 0 with no skip in its log | `make/conformance-continues.mk:37` |
-| `none.nightly.harness-run.make-conformance-continues.test-squirrel` | `make` | make test-squirrel (make/conformance-continues.mk) exits 0 | `file: make/conformance-continues.mk`<br>`target: test-squirrel` | the target exits 0 with no skip in its log | `make/conformance-continues.mk:42` |
+| `none.nightly.harness-run.make-conformance-continues.test-lobster` | `make` | make test-lobster (make/conformance-continues.mk) exits 0 | `file: make/conformance-continues.mk`<br>`inputs.reads` (263 bytes, held in the registry row's `inputs.reads`)<br>`target: test-lobster` | the target exits 0 with no skip in its log | `make/conformance-continues.mk:30` |
+| `none.nightly.harness-run.make-conformance-continues.test-moo` | `make` | make test-moo (make/conformance-continues.mk) exits 0 | `file: make/conformance-continues.mk`<br>`inputs.reads` (390 bytes, held in the registry row's `inputs.reads`)<br>`target: test-moo` | the target exits 0 with no skip in its log | `make/conformance-continues.mk:37` |
+| `none.nightly.harness-run.make-conformance-continues.test-squirrel` | `make` | make test-squirrel (make/conformance-continues.mk) exits 0 | `file: make/conformance-continues.mk`<br>`read_plant: plant.read-credits.harness-run-make-conformance-continues-test-squirrel`<br>`inputs.reads` (273 bytes, held in the registry row's `inputs.reads`)<br>`target: test-squirrel` | the target exits 0 with no skip in its log | `make/conformance-continues.mk:42` |
 
 #### `harness-run` family `make-conformance-rows`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.harness-run.make-conformance-rows.conformance-rows-elixir-ebin-from-shards` | `make` | make conformance-rows-elixir-ebin-from-shards (make/conformance-rows.mk) exits 0 | `file: make/conformance-rows.mk`<br>`target: conformance-rows-elixir-ebin-from-shards` | the target exits 0 with no skip in its log | `make/conformance-rows.mk:72` |
+| `none.nightly.harness-run.make-conformance-rows.conformance-rows-elixir-ebin-from-shards` | `make` | make conformance-rows-elixir-ebin-from-shards (make/conformance-rows.mk) exits 0 | `file: make/conformance-rows.mk`<br>`inputs.reads` (105 bytes, held in the registry row's `inputs.reads`)<br>`target: conformance-rows-elixir-ebin-from-shards` | the target exits 0 with no skip in its log | `make/conformance-rows.mk:72` |
 
 #### `harness-run` family `make-cpp`, 1 test
 
@@ -5561,26 +5630,26 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.harness-run.make-dart.cards-dart-test` | `make` | make cards-dart-test (make/dart.mk) exits 0 | `file: make/dart.mk`<br>`target: cards-dart-test` | the target exits 0 with no skip in its log | `make/dart.mk:1639` |
-| `none.nightly.harness-run.make-dart.dart-chunk-queue-test` | `make` | make dart-chunk-queue-test (make/dart.mk) exits 0 | `file: make/dart.mk`<br>`target: dart-chunk-queue-test` | the target exits 0 with no skip in its log | `make/dart.mk:1881` |
+| `none.nightly.harness-run.make-dart.cards-dart-test` | `make` | make cards-dart-test (make/dart.mk) exits 0 | `file: make/dart.mk`<br>`target: cards-dart-test` | the target exits 0 with no skip in its log | `make/dart.mk:1640` |
+| `none.nightly.harness-run.make-dart.dart-chunk-queue-test` | `make` | make dart-chunk-queue-test (make/dart.mk) exits 0 | `file: make/dart.mk`<br>`read_plant: plant.read-credits.harness-run-make-dart-dart-chunk-queue-test`<br>`reads: ["test/conformance/dart/chunk-queue-check"]`<br>`target: dart-chunk-queue-test` | the target exits 0 with no skip in its log | `make/dart.mk:1882` |
 | `none.nightly.harness-run.make-dart.tables-dart-fixed-form` | `make` | make tables-dart-fixed-form (make/dart.mk) exits 0 | `file: make/dart.mk`<br>`target: tables-dart-fixed-form` | the target exits 0 with no skip in its log | `make/dart.mk:885` |
-| `none.nightly.harness-run.make-dart.test-dart-packet` | `make` | make test-dart-packet (make/dart.mk) exits 0 | `file: make/dart.mk`<br>`target: test-dart-packet` | the target exits 0 with no skip in its log | `make/dart.mk:1476` |
+| `none.nightly.harness-run.make-dart.test-dart-packet` | `make` | make test-dart-packet (make/dart.mk) exits 0 | `file: make/dart.mk`<br>`target: test-dart-packet` | the target exits 0 with no skip in its log | `make/dart.mk:1477` |
 
 #### `harness-run` family `make-elixir`, 5 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.harness-run.make-elixir.cards-elixir-test` | `make` | make cards-elixir-test (make/elixir.mk) exits 0 | `file: make/elixir.mk`<br>`target: cards-elixir-test` | the target exits 0 with no skip in its log | `make/elixir.mk:2068` |
-| `none.nightly.harness-run.make-elixir.tables-elixir-fixed-form` | `make` | make tables-elixir-fixed-form (make/elixir.mk) exits 0 | `file: make/elixir.mk`<br>`target: tables-elixir-fixed-form` | the target exits 0 with no skip in its log | `make/elixir.mk:1422` |
-| `none.nightly.harness-run.make-elixir.tables-elixir-paired-gate` | `make` | make tables-elixir-paired-gate (make/elixir.mk) exits 0 | `file: make/elixir.mk`<br>`target: tables-elixir-paired-gate` | the target exits 0 with no skip in its log | `make/elixir.mk:1508` |
-| `none.nightly.harness-run.make-elixir.test-elixir-packet` | `make` | make test-elixir-packet (make/elixir.mk) exits 0 | `file: make/elixir.mk`<br>`target: test-elixir-packet` | the target exits 0 with no skip in its log | `make/elixir.mk:1130` |
-| `none.nightly.harness-run.make-elixir.test-elixir-recipe` | `make` | make test-elixir-recipe (make/elixir.mk) exits 0 | `file: make/elixir.mk`<br>`target: test-elixir-recipe` | the target exits 0 with no skip in its log | `make/elixir.mk:1121` |
+| `none.nightly.harness-run.make-elixir.cards-elixir-test` | `make` | make cards-elixir-test (make/elixir.mk) exits 0 | `file: make/elixir.mk`<br>`target: cards-elixir-test` | the target exits 0 with no skip in its log | `make/elixir.mk:2089` |
+| `none.nightly.harness-run.make-elixir.tables-elixir-fixed-form` | `make` | make tables-elixir-fixed-form (make/elixir.mk) exits 0 | `file: make/elixir.mk`<br>`target: tables-elixir-fixed-form` | the target exits 0 with no skip in its log | `make/elixir.mk:1443` |
+| `none.nightly.harness-run.make-elixir.tables-elixir-paired-gate` | `make` | make tables-elixir-paired-gate (make/elixir.mk) exits 0 | `file: make/elixir.mk`<br>`target: tables-elixir-paired-gate` | the target exits 0 with no skip in its log | `make/elixir.mk:1529` |
+| `none.nightly.harness-run.make-elixir.test-elixir-packet` | `make` | make test-elixir-packet (make/elixir.mk) exits 0 | `file: make/elixir.mk`<br>`target: test-elixir-packet` | the target exits 0 with no skip in its log | `make/elixir.mk:1151` |
+| `none.nightly.harness-run.make-elixir.test-elixir-recipe` | `make` | make test-elixir-recipe (make/elixir.mk) exits 0 | `file: make/elixir.mk`<br>`reads: ["test/conformance/elixir/driver"]`<br>`target: test-elixir-recipe` | the target exits 0 with no skip in its log | `make/elixir.mk:1142` |
 
 #### `harness-run` family `make-elixir-compressed-negzero`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.harness-run.make-elixir-compressed-negzero.test-elixir` | `make` | make test-elixir (make/elixir-compressed-negzero.mk) exits 0 | `file: make/elixir-compressed-negzero.mk`<br>`target: test-elixir` | the target exits 0 with no skip in its log | `make/elixir-compressed-negzero.mk:23` |
+| `none.nightly.harness-run.make-elixir-compressed-negzero.test-elixir` | `make` | make test-elixir (make/elixir-compressed-negzero.mk) exits 0 | `file: make/elixir-compressed-negzero.mk`<br>`inputs.reads` (308 bytes, held in the registry row's `inputs.reads`)<br>`target: test-elixir` | the target exits 0 with no skip in its log | `make/elixir-compressed-negzero.mk:23` |
 
 #### `harness-run` family `make-go`, 5 tests
 
@@ -5589,8 +5658,8 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 | `none.nightly.harness-run.make-go.cards-corpus-check` | `make` | make cards-corpus-check (make/go.mk) exits 0 | `file: make/go.mk`<br>`target: cards-corpus-check` | the target exits 0 with no skip in its log | `make/go.mk:470` |
 | `none.nightly.harness-run.make-go.cards-example` | `make` | make cards-example (make/go.mk) exits 0: a separate customer module imports only the generated cards package and the standard library, and its Go test reports a pass | `file: make/go.mk`<br>`go_tests: ["./tables/cards/example TestCardsCustomerExample"]`<br>`target: cards-example` | the target exits 0 with no skip in its log | `make/go.mk:454` |
 | `none.nightly.harness-run.make-go.cards-test` | `make` | make cards-test (make/go.mk) exits 0, and each of the cards module Go tests it names reports a pass, run beside the generated Go cards module | `file: make/go.mk`<br>`go_import: {"./tables/cards":"cards"}`<br>`inputs.go_tests` (1660 bytes, held in the registry row's `inputs.go_tests`)<br>`target: cards-test` | the target exits 0 with no skip in its log | `make/go.mk:489` |
-| `none.nightly.harness-run.make-go.tables-go-fixed-form` | `make` | make tables-go-fixed-form (make/go.mk) exits 0 | `file: make/go.mk`<br>`target: tables-go-fixed-form` | the target exits 0 with no skip in its log | `make/go.mk:1299` |
-| `none.nightly.harness-run.make-go.test-go-packet` | `make` | make test-go-packet (make/go.mk) exits 0 | `file: make/go.mk`<br>`target: test-go-packet` | the target exits 0 with no skip in its log | `make/go.mk:1011` |
+| `none.nightly.harness-run.make-go.tables-go-fixed-form` | `make` | make tables-go-fixed-form (make/go.mk) exits 0 | `file: make/go.mk`<br>`target: tables-go-fixed-form` | the target exits 0 with no skip in its log | `make/go.mk:1298` |
+| `none.nightly.harness-run.make-go.test-go-packet` | `make` | make test-go-packet (make/go.mk) exits 0 | `file: make/go.mk`<br>`target: test-go-packet` | the target exits 0 with no skip in its log | `make/go.mk:1010` |
 
 #### `harness-run` family `make-goose`, 1 test
 
@@ -5602,7 +5671,7 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.harness-run.make-goose-blockcook.test-goose` | `make` | make test-goose (make/goose-blockcook.mk) exits 0 | `file: make/goose-blockcook.mk`<br>`target: test-goose` | the target exits 0 with no skip in its log | `make/goose-blockcook.mk:84` |
+| `none.nightly.harness-run.make-goose-blockcook.test-goose` | `make` | make test-goose (make/goose-blockcook.mk) exits 0 | `file: make/goose-blockcook.mk`<br>`inputs.reads` (371 bytes, held in the registry row's `inputs.reads`)<br>`target: test-goose` | the target exits 0 with no skip in its log | `make/goose-blockcook.mk:84` |
 
 #### `harness-run` family `make-goose-tagged`, 1 test
 
@@ -5643,7 +5712,7 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.harness-run.make-lua-compressed-negzero.test-lua` | `make` | make test-lua (make/lua-compressed-negzero.mk) exits 0 | `file: make/lua-compressed-negzero.mk`<br>`target: test-lua` | the target exits 0 with no skip in its log | `make/lua-compressed-negzero.mk:24` |
+| `none.nightly.harness-run.make-lua-compressed-negzero.test-lua` | `make` | make test-lua (make/lua-compressed-negzero.mk) exits 0 | `file: make/lua-compressed-negzero.mk`<br>`inputs.reads` (178 bytes, held in the registry row's `inputs.reads`)<br>`target: test-lua` | the target exits 0 with no skip in its log | `make/lua-compressed-negzero.mk:24` |
 
 #### `harness-run` family `make-luau`, 1 test
 
@@ -5655,13 +5724,19 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.harness-run.make-luau-compressed-negzero.test-luau` | `make` | make test-luau (make/luau-compressed-negzero.mk) exits 0 | `file: make/luau-compressed-negzero.mk`<br>`target: test-luau` | the target exits 0 with no skip in its log | `make/luau-compressed-negzero.mk:21` |
+| `none.nightly.harness-run.make-luau-compressed-negzero.test-luau` | `make` | make test-luau (make/luau-compressed-negzero.mk) exits 0 | `file: make/luau-compressed-negzero.mk`<br>`inputs.reads` (664 bytes, held in the registry row's `inputs.reads`)<br>`target: test-luau` | the target exits 0 with no skip in its log | `make/luau-compressed-negzero.mk:21` |
 
 #### `harness-run` family `make-moo`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.nightly.harness-run.make-moo.cards-moo-test` | `make` | make cards-moo-test (make/moo.mk) exits 0 | `file: make/moo.mk`<br>`target: cards-moo-test` | the target exits 0 with no skip in its log | `make/moo.mk:105` |
+
+#### `harness-run` family `make-moo-fuzz`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.harness-run.make-moo-fuzz.tables-moo-wire-fuzz` | `make` | make tables-moo-wire-fuzz (make/moo-fuzz.mk) exits 0: the moo leg wire fuzz through test/conformance/moo/wirefuzz-driver: the plain and retention arms over every root of the roster with 0 divergences, and every pinned mutant replayed alone | `file: make/moo-fuzz.mk`<br>`read_plant: plant.read-credits.harness-run-make-moo-fuzz-tables-moo-wire-fuzz`<br>`reads: ["test/conformance/moo/wirefuzz-driver"]`<br>`target: tables-moo-wire-fuzz` | the target exits 0 with no skip in its log | `make/moo-fuzz.mk:98` |
 
 #### `harness-run` family `make-moo-tables`, 1 test
 
@@ -5685,14 +5760,14 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.harness-run.make-python.python-ci-compiler` | `make` | make python-ci-compiler (make/python.mk) exits 0 | `file: make/python.mk`<br>`target: python-ci-compiler` | the target exits 0 with no skip in its log | `make/python.mk:32` |
+| `none.nightly.harness-run.make-python.python-ci-compiler` | `make` | make python-ci-compiler (make/python.mk) exits 0 | `file: make/python.mk`<br>`read_plant: plant.read-credits.harness-run-make-python-python-ci-compiler`<br>`reads: ["test/slowgate/proof"]`<br>`target: python-ci-compiler` | the target exits 0 with no skip in its log | `make/python.mk:32` |
 | `none.nightly.harness-run.make-python.python-ci-packages` | `make` | make python-ci-packages (make/python.mk) exits 0 | `file: make/python.mk`<br>`target: python-ci-packages` | the target exits 0 with no skip in its log | `make/python.mk:30` |
 
 #### `harness-run` family `make-python-array-growth`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.harness-run.make-python-array-growth.test-python` | `make` | make test-python (make/python-array-growth.mk) exits 0 | `file: make/python-array-growth.mk`<br>`target: test-python` | the target exits 0 with no skip in its log | `make/python-array-growth.mk:5` |
+| `none.nightly.harness-run.make-python-array-growth.test-python` | `make` | make test-python (make/python-array-growth.mk) exits 0 | `file: make/python-array-growth.mk`<br>`inputs.reads` (272 bytes, held in the registry row's `inputs.reads`)<br>`target: test-python` | the target exits 0 with no skip in its log | `make/python-array-growth.mk:5` |
 
 #### `harness-run` family `make-python-cards`, 1 test
 
@@ -5728,7 +5803,7 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.harness-run.make-ruby-cards.test-ruby` | `make` | make test-ruby (make/ruby-cards.mk) exits 0 | `file: make/ruby-cards.mk`<br>`target: test-ruby` | the target exits 0 with no skip in its log | `make/ruby-cards.mk:48` |
+| `none.nightly.harness-run.make-ruby-cards.test-ruby` | `make` | make test-ruby (make/ruby-cards.mk) exits 0 | `file: make/ruby-cards.mk`<br>`inputs.reads` (231 bytes, held in the registry row's `inputs.reads`)<br>`target: test-ruby` | the target exits 0 with no skip in its log | `make/ruby-cards.mk:48` |
 
 #### `harness-run` family `make-ruby-serialize`, 1 test
 
@@ -5747,13 +5822,13 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.nightly.harness-run.make-rust.cards-rust-test` | `make` | make cards-rust-test (make/rust.mk) exits 0 | `file: make/rust.mk`<br>`target: cards-rust-test` | the target exits 0 with no skip in its log | `make/rust.mk:1649` |
-| `none.nightly.harness-run.make-rust.tables-rust-fixedform` | `make` | make tables-rust-fixedform (make/rust.mk) exits 0 | `file: make/rust.mk`<br>`target: tables-rust-fixedform` | the target exits 0 with no skip in its log | `make/rust.mk:426` |
+| `none.nightly.harness-run.make-rust.tables-rust-fixedform` | `make` | make tables-rust-fixedform (make/rust.mk) exits 0 | `file: make/rust.mk`<br>`reads: ["test/rust-fixedform/Cargo.toml"]`<br>`target: tables-rust-fixedform` | the target exits 0 with no skip in its log | `make/rust.mk:426` |
 
 #### `harness-run` family `make-schema-unity-runs-hostile-corpus`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.harness-run.make-schema-unity-runs-hostile-corpus.test-unity` | `make` | make test-unity (make/schema-unity-runs-hostile-corpus.mk) exits 0 | `file: make/schema-unity-runs-hostile-corpus.mk`<br>`target: test-unity` | the target exits 0 with no skip in its log | `make/schema-unity-runs-hostile-corpus.mk:60` |
+| `none.nightly.harness-run.make-schema-unity-runs-hostile-corpus.test-unity` | `make` | make test-unity (make/schema-unity-runs-hostile-corpus.mk) exits 0 | `file: make/schema-unity-runs-hostile-corpus.mk`<br>`inputs.reads` (135 bytes, held in the registry row's `inputs.reads`)<br>`target: test-unity` | the target exits 0 with no skip in its log | `make/schema-unity-runs-hostile-corpus.mk:60` |
 
 #### `harness-run` family `make-squirrel-cards`, 2 tests
 
@@ -5778,9 +5853,9 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.harness-run.make-verify-compiled.verify-rust-conformance-and-driver-fuzz` | `make` | make verify-rust-conformance-and-driver-fuzz (make/verify-compiled.mk) exits 0 | `file: make/verify-compiled.mk`<br>`target: verify-rust-conformance-and-driver-fuzz` | the target exits 0 with no skip in its log | `make/verify-compiled.mk:246` |
-| `none.nightly.harness-run.make-verify-compiled.verify-rust-fuzz-driver` | `make` | make verify-rust-fuzz-driver (make/verify-compiled.mk) exits 0 | `file: make/verify-compiled.mk`<br>`target: verify-rust-fuzz-driver` | the target exits 0 with no skip in its log | `make/verify-compiled.mk:239` |
-| `none.nightly.harness-run.make-verify-compiled.verify-rust-fuzz-wire` | `make` | make verify-rust-fuzz-wire (make/verify-compiled.mk) exits 0 | `file: make/verify-compiled.mk`<br>`target: verify-rust-fuzz-wire` | the target exits 0 with no skip in its log | `make/verify-compiled.mk:236` |
+| `none.nightly.harness-run.make-verify-compiled.verify-rust-conformance-and-driver-fuzz` | `make` | make verify-rust-conformance-and-driver-fuzz (make/verify-compiled.mk) exits 0 | `file: make/verify-compiled.mk`<br>`reads: ["test/packet-text/Text.schema"]`<br>`target: verify-rust-conformance-and-driver-fuzz` | the target exits 0 with no skip in its log | `make/verify-compiled.mk:246` |
+| `none.nightly.harness-run.make-verify-compiled.verify-rust-fuzz-driver` | `make` | make verify-rust-fuzz-driver (make/verify-compiled.mk) exits 0 | `file: make/verify-compiled.mk`<br>`reads: ["test/conformance/rust/Cargo.toml"]`<br>`target: verify-rust-fuzz-driver` | the target exits 0 with no skip in its log | `make/verify-compiled.mk:239` |
+| `none.nightly.harness-run.make-verify-compiled.verify-rust-fuzz-wire` | `make` | make verify-rust-fuzz-wire (make/verify-compiled.mk) exits 0 | `file: make/verify-compiled.mk`<br>`read_plant: plant.read-credits.harness-run-make-verify-compiled-verify-rust-fuzz-wire`<br>`reads: ["test/conformance/rust/wire-fuzz-all-build"]`<br>`target: verify-rust-fuzz-wire` | the target exits 0 with no skip in its log | `make/verify-compiled.mk:236` |
 
 #### `harness-run` family `make-verify-vm`, 27 tests
 
@@ -5796,7 +5871,7 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 | `none.nightly.harness-run.make-verify-vm.verify-cards-ruby` | `make` | make verify-cards-ruby (make/verify-vm.mk) exits 0 | `file: make/verify-vm.mk`<br>`target: verify-cards-ruby` | the target exits 0 with no skip in its log | `make/verify-vm.mk:202` |
 | `none.nightly.harness-run.make-verify-vm.verify-cards-squirrel` | `make` | make verify-cards-squirrel (make/verify-vm.mk) exits 0 | `file: make/verify-vm.mk`<br>`target: verify-cards-squirrel` | the target exits 0 with no skip in its log | `make/verify-vm.mk:226` |
 | `none.nightly.harness-run.make-verify-vm.verify-deep-goose` | `make` | make verify-deep-goose (make/verify-vm.mk) exits 0 | `file: make/verify-vm.mk`<br>`target: verify-deep-goose` | the target exits 0 with no skip in its log | `make/verify-vm.mk:238` |
-| `none.nightly.harness-run.make-verify-vm.verify-deep-js` | `make` | make verify-deep-js (make/verify-vm.mk) exits 0 | `file: make/verify-vm.mk`<br>`target: verify-deep-js` | the target exits 0 with no skip in its log | `make/verify-vm.mk:183` |
+| `none.nightly.harness-run.make-verify-vm.verify-deep-js` | `make` | make verify-deep-js (make/verify-vm.mk) exits 0 | `file: make/verify-vm.mk`<br>`read_plant: plant.read-credits.harness-run-make-verify-vm-verify-deep-js`<br>`reads: ["test/verify-vm/VerifyHostile.schema"]`<br>`target: verify-deep-js` | the target exits 0 with no skip in its log | `make/verify-vm.mk:183` |
 | `none.nightly.harness-run.make-verify-vm.verify-deep-lobster` | `make` | make verify-deep-lobster (make/verify-vm.mk) exits 0 | `file: make/verify-vm.mk`<br>`target: verify-deep-lobster` | the target exits 0 with no skip in its log | `make/verify-vm.mk:245` |
 | `none.nightly.harness-run.make-verify-vm.verify-deep-lua` | `make` | make verify-deep-lua (make/verify-vm.mk) exits 0 | `file: make/verify-vm.mk`<br>`target: verify-deep-lua` | the target exits 0 with no skip in its log | `make/verify-vm.mk:208` |
 | `none.nightly.harness-run.make-verify-vm.verify-deep-luau` | `make` | make verify-deep-luau (make/verify-vm.mk) exits 0 | `file: make/verify-vm.mk`<br>`target: verify-deep-luau` | the target exits 0 with no skip in its log | `make/verify-vm.mk:215` |
@@ -5819,35 +5894,35 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.nightly.harness-run.make-verify-widen-18.verify-bitphase-cases` | `make` | make verify-bitphase-cases (make/verify-widen-18.mk) exits 0 | `file: make/verify-widen-18.mk`<br>`target: verify-bitphase-cases` | the target exits 0 with no skip in its log | `make/verify-widen-18.mk:106` |
-| `none.nightly.harness-run.make-verify-widen-18.verify-canonical-cases` | `make` | make verify-canonical-cases (make/verify-widen-18.mk) exits 0 | `file: make/verify-widen-18.mk`<br>`target: verify-canonical-cases` | the target exits 0 with no skip in its log | `make/verify-widen-18.mk:108` |
+| `none.nightly.harness-run.make-verify-widen-18.verify-canonical-cases` | `make` | make verify-canonical-cases (make/verify-widen-18.mk) exits 0 | `file: make/verify-widen-18.mk`<br>`read_plant: plant.read-credits.harness-run-make-verify-widen-18-verify-canonical-cases`<br>`reads: ["test/verify-canonical/Canonical.schema"]`<br>`target: verify-canonical-cases` | the target exits 0 with no skip in its log | `make/verify-widen-18.mk:108` |
 | `none.nightly.harness-run.make-verify-widen-18.verify-tablegen-cases` | `make` | make verify-tablegen-cases (make/verify-widen-18.mk) exits 0 | `file: make/verify-widen-18.mk`<br>`target: verify-tablegen-cases` | the target exits 0 with no skip in its log | `make/verify-widen-18.mk:110` |
 
 #### `harness-run` family `makefile`, 22 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.harness-run.makefile.check` | `make` | make check (Makefile) exits 0 | `file: Makefile`<br>`target: check` | the target exits 0 with no skip in its log | `Makefile:5287` |
-| `none.nightly.harness-run.makefile.conformance` | `make` | make conformance (Makefile) exits 0 | `file: Makefile`<br>`target: conformance` | the target exits 0 with no skip in its log | `Makefile:6888` |
-| `none.nightly.harness-run.makefile.conformance-bom-entry` | `make` | make conformance-bom-entry (Makefile) exits 0 | `file: Makefile`<br>`target: conformance-bom-entry` | the target exits 0 with no skip in its log | `Makefile:6874` |
-| `none.nightly.harness-run.makefile.conformance-shared` | `make` | make conformance-shared (Makefile) exits 0 | `file: Makefile`<br>`target: conformance-shared` | the target exits 0 with no skip in its log | `Makefile:6885` |
-| `none.nightly.harness-run.makefile.tables-block-gate2-smoke` | `make` | make tables-block-gate2-smoke (Makefile) exits 0 | `file: Makefile`<br>`target: tables-block-gate2-smoke` | the target exits 0 with no skip in its log | `Makefile:2307` |
-| `none.nightly.harness-run.makefile.tables-fixedform-asan` | `make` | make tables-fixedform-asan (Makefile) exits 0 | `file: Makefile`<br>`target: tables-fixedform-asan` | the target exits 0 with no skip in its log | `Makefile:7185` |
-| `none.nightly.harness-run.makefile.tables-fixedform-corpus-check` | `make` | make tables-fixedform-corpus-check (Makefile) exits 0 | `file: Makefile`<br>`target: tables-fixedform-corpus-check` | the target exits 0 with no skip in its log | `Makefile:7571` |
-| `none.nightly.harness-run.makefile.tables-fixedform-plain` | `make` | make tables-fixedform-plain (Makefile) exits 0 | `file: Makefile`<br>`inputs.reads` (707 bytes, held in the registry row's `inputs.reads`)<br>`target: tables-fixedform-plain` | the target exits 0 with no skip in its log | `Makefile:7179` |
-| `none.nightly.harness-run.makefile.test` | `make` | make test (Makefile) exits 0 | `file: Makefile`<br>`target: test` | the target exits 0 with no skip in its log | `Makefile:203` |
-| `none.nightly.harness-run.makefile.test-core-tables-1` | `make` | make test-core-tables-1 (Makefile) exits 0 | `file: Makefile`<br>`target: test-core-tables-1` | the target exits 0 with no skip in its log | `Makefile:3640` |
-| `none.nightly.harness-run.makefile.test-core-tables-1a` | `make` | make test-core-tables-1a (Makefile) exits 0 | `file: Makefile`<br>`target: test-core-tables-1a` | the target exits 0 with no skip in its log | `Makefile:3646` |
-| `none.nightly.harness-run.makefile.test-core-tables-1b` | `make` | make test-core-tables-1b (Makefile) exits 0 | `file: Makefile`<br>`target: test-core-tables-1b` | the target exits 0 with no skip in its log | `Makefile:3668` |
-| `none.nightly.harness-run.makefile.test-core-tables-1c` | `make` | make test-core-tables-1c (Makefile) exits 0 | `file: Makefile`<br>`target: test-core-tables-1c` | the target exits 0 with no skip in its log | `Makefile:3677` |
-| `none.nightly.harness-run.makefile.test-core-tables-1d` | `make` | make test-core-tables-1d (Makefile) exits 0 | `file: Makefile`<br>`target: test-core-tables-1d` | the target exits 0 with no skip in its log | `Makefile:3692` |
-| `none.nightly.harness-run.makefile.test-core-tables-2` | `make` | make test-core-tables-2 (Makefile) exits 0 | `file: Makefile`<br>`target: test-core-tables-2` | the target exits 0 with no skip in its log | `Makefile:3713` |
-| `none.nightly.harness-run.makefile.test-core-tables-3` | `make` | make test-core-tables-3 (Makefile) exits 0 | `file: Makefile`<br>`target: test-core-tables-3` | the target exits 0 with no skip in its log | `Makefile:3776` |
-| `none.nightly.harness-run.makefile.test-goose-tagged-harness-smoke` | `make` | make test-goose-tagged-harness-smoke (Makefile) exits 0 | `file: Makefile`<br>`target: test-goose-tagged-harness-smoke` | the target exits 0 with no skip in its log | `Makefile:6821` |
-| `none.nightly.harness-run.makefile.test-moo-tagged-compiler` | `make` | make test-moo-tagged-compiler (Makefile) exits 0 | `file: Makefile`<br>`target: test-moo-tagged-compiler` | the target exits 0 with no skip in its log | `Makefile:6800` |
-| `none.nightly.harness-run.makefile.test-moo-tagged-compiler-smoke` | `make` | make test-moo-tagged-compiler-smoke (Makefile) exits 0 | `file: Makefile`<br>`target: test-moo-tagged-compiler-smoke` | the target exits 0 with no skip in its log | `Makefile:6815` |
-| `none.nightly.harness-run.makefile.test-moo-tagged-table` | `make` | make test-moo-tagged-table (Makefile) exits 0 | `file: Makefile`<br>`target: test-moo-tagged-table` | the target exits 0 with no skip in its log | `Makefile:6802` |
-| `none.nightly.harness-run.makefile.test-moo-tagged-table-smoke` | `make` | make test-moo-tagged-table-smoke (Makefile) exits 0 | `file: Makefile`<br>`target: test-moo-tagged-table-smoke` | the target exits 0 with no skip in its log | `Makefile:6818` |
-| `none.nightly.harness-run.makefile.test-run` | `make` | make test-run (Makefile) exits 0 | `file: Makefile`<br>`target: test-run` | the target exits 0 with no skip in its log | `Makefile:185` |
+| `none.nightly.harness-run.makefile.check` | `make` | make check (Makefile) exits 0 | `file: Makefile`<br>`read_plant: plant.read-credits.harness-run-makefile-check`<br>`reads: ["test/tables/F1.schema","test/tables/F2.schema","test/tables/L1.schema"]`<br>`target: check` | the target exits 0 with no skip in its log | `Makefile:5296` |
+| `none.nightly.harness-run.makefile.conformance` | `make` | make conformance (Makefile) exits 0 | `file: Makefile`<br>`target: conformance` | the target exits 0 with no skip in its log | `Makefile:6897` |
+| `none.nightly.harness-run.makefile.conformance-bom-entry` | `make` | make conformance-bom-entry (Makefile) exits 0 | `file: Makefile`<br>`reads: ["test/conformance/bom-entry"]`<br>`target: conformance-bom-entry` | the target exits 0 with no skip in its log | `Makefile:6883` |
+| `none.nightly.harness-run.makefile.conformance-shared` | `make` | make conformance-shared (Makefile) exits 0 | `file: Makefile`<br>`target: conformance-shared` | the target exits 0 with no skip in its log | `Makefile:6894` |
+| `none.nightly.harness-run.makefile.tables-block-gate2-smoke` | `make` | make tables-block-gate2-smoke (Makefile) exits 0 | `file: Makefile`<br>`target: tables-block-gate2-smoke` | the target exits 0 with no skip in its log | `Makefile:2316` |
+| `none.nightly.harness-run.makefile.tables-fixedform-asan` | `make` | make tables-fixedform-asan (Makefile) exits 0 | `file: Makefile`<br>`target: tables-fixedform-asan` | the target exits 0 with no skip in its log | `Makefile:7194` |
+| `none.nightly.harness-run.makefile.tables-fixedform-corpus-check` | `make` | make tables-fixedform-corpus-check (Makefile) exits 0 | `file: Makefile`<br>`target: tables-fixedform-corpus-check` | the target exits 0 with no skip in its log | `Makefile:7615` |
+| `none.nightly.harness-run.makefile.tables-fixedform-plain` | `make` | make tables-fixedform-plain (Makefile) exits 0 | `file: Makefile`<br>`read_plant: plant.read-credits.harness-run-makefile-tables-fixedform-plain`<br>`inputs.reads` (707 bytes, held in the registry row's `inputs.reads`)<br>`target: tables-fixedform-plain` | the target exits 0 with no skip in its log | `Makefile:7188` |
+| `none.nightly.harness-run.makefile.test` | `make` | make test (Makefile) exits 0 | `file: Makefile`<br>`inputs.reads` (212 bytes, held in the registry row's `inputs.reads`)<br>`target: test` | the target exits 0 with no skip in its log | `Makefile:212` |
+| `none.nightly.harness-run.makefile.test-core-tables-1` | `make` | make test-core-tables-1 (Makefile) exits 0 | `file: Makefile`<br>`target: test-core-tables-1` | the target exits 0 with no skip in its log | `Makefile:3649` |
+| `none.nightly.harness-run.makefile.test-core-tables-1a` | `make` | make test-core-tables-1a (Makefile) exits 0 | `file: Makefile`<br>`target: test-core-tables-1a` | the target exits 0 with no skip in its log | `Makefile:3655` |
+| `none.nightly.harness-run.makefile.test-core-tables-1b` | `make` | make test-core-tables-1b (Makefile) exits 0 | `file: Makefile`<br>`target: test-core-tables-1b` | the target exits 0 with no skip in its log | `Makefile:3677` |
+| `none.nightly.harness-run.makefile.test-core-tables-1c` | `make` | make test-core-tables-1c (Makefile) exits 0 | `file: Makefile`<br>`reads: ["test/conformance/wire-fuzz-complete"]`<br>`target: test-core-tables-1c` | the target exits 0 with no skip in its log | `Makefile:3686` |
+| `none.nightly.harness-run.makefile.test-core-tables-1d` | `make` | make test-core-tables-1d (Makefile) exits 0 | `file: Makefile`<br>`target: test-core-tables-1d` | the target exits 0 with no skip in its log | `Makefile:3701` |
+| `none.nightly.harness-run.makefile.test-core-tables-2` | `make` | make test-core-tables-2 (Makefile) exits 0 | `file: Makefile`<br>`reads: ["test/conformance/cpp/driver"]`<br>`target: test-core-tables-2` | the target exits 0 with no skip in its log | `Makefile:3722` |
+| `none.nightly.harness-run.makefile.test-core-tables-3` | `make` | make test-core-tables-3 (Makefile) exits 0 | `file: Makefile`<br>`target: test-core-tables-3` | the target exits 0 with no skip in its log | `Makefile:3785` |
+| `none.nightly.harness-run.makefile.test-goose-tagged-harness-smoke` | `make` | make test-goose-tagged-harness-smoke (Makefile) exits 0 | `file: Makefile`<br>`target: test-goose-tagged-harness-smoke` | the target exits 0 with no skip in its log | `Makefile:6830` |
+| `none.nightly.harness-run.makefile.test-moo-tagged-compiler` | `make` | make test-moo-tagged-compiler (Makefile) exits 0 | `file: Makefile`<br>`target: test-moo-tagged-compiler` | the target exits 0 with no skip in its log | `Makefile:6809` |
+| `none.nightly.harness-run.makefile.test-moo-tagged-compiler-smoke` | `make` | make test-moo-tagged-compiler-smoke (Makefile) exits 0 | `file: Makefile`<br>`target: test-moo-tagged-compiler-smoke` | the target exits 0 with no skip in its log | `Makefile:6824` |
+| `none.nightly.harness-run.makefile.test-moo-tagged-table` | `make` | make test-moo-tagged-table (Makefile) exits 0 | `file: Makefile`<br>`target: test-moo-tagged-table` | the target exits 0 with no skip in its log | `Makefile:6811` |
+| `none.nightly.harness-run.makefile.test-moo-tagged-table-smoke` | `make` | make test-moo-tagged-table-smoke (Makefile) exits 0 | `file: Makefile`<br>`target: test-moo-tagged-table-smoke` | the target exits 0 with no skip in its log | `Makefile:6827` |
+| `none.nightly.harness-run.makefile.test-run` | `make` | make test-run (Makefile) exits 0 | `file: Makefile`<br>`target: test-run` | the target exits 0 with no skip in its log | `Makefile:194` |
 
 #### `harness-run` family `tables-goose-message-form`, 13 tests
 
@@ -5907,21 +5982,21 @@ a step that provisions or builds what other tests run on (a pinned toolchain, a 
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.ci-plumbing.make-c.build-packet-end-c-test` | `make` | make build/packet-end-c-test (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: build/packet-end-c-test` | the target exits 0 with no skip in its log | `make/c.mk:2458` |
-| `none.nightly.ci-plumbing.make-c.build-packet-write-cfloat-c-test` | `make` | make build/packet-write-cfloat/c-test (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: build/packet-write-cfloat/c-test` | the target exits 0 with no skip in its log | `make/c.mk:2417` |
+| `none.nightly.ci-plumbing.make-c.build-packet-end-c-test` | `make` | make build/packet-end-c-test (make/c.mk) exits 0 | `file: make/c.mk`<br>`read_plant: plant.read-credits.ci-plumbing-make-c-build-packet-end-c-test`<br>`reads: ["test/packet-end/PacketEnd.schema"]`<br>`target: build/packet-end-c-test` | the target exits 0 with no skip in its log | `make/c.mk:2476` |
+| `none.nightly.ci-plumbing.make-c.build-packet-write-cfloat-c-test` | `make` | make build/packet-write-cfloat/c-test (make/c.mk) exits 0 | `file: make/c.mk`<br>`read_plant: plant.read-credits.ci-plumbing-make-c-build-packet-write-cfloat-c-test`<br>`reads: ["test/packet-write-cfloat/PacketCFloat.schema"]`<br>`target: build/packet-write-cfloat/c-test` | the target exits 0 with no skip in its log | `make/c.mk:2435` |
 
 #### `ci-plumbing` family `make-checks-packet-defaults`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.ci-plumbing.make-checks-packet-defaults.build-packet-defaults-c-test` | `make` | make build/packet-defaults/c-test (make/checks/packet-defaults.mk) exits 0 | `file: make/checks/packet-defaults.mk`<br>`target: build/packet-defaults/c-test` | the target exits 0 with no skip in its log | `make/checks/packet-defaults.mk:95` |
+| `none.nightly.ci-plumbing.make-checks-packet-defaults.build-packet-defaults-c-test` | `make` | make build/packet-defaults/c-test (make/checks/packet-defaults.mk) exits 0 | `file: make/checks/packet-defaults.mk`<br>`read_plant: plant.read-credits.ci-plumbing-make-checks-packet-defaults-build-packet-defaults-c-test`<br>`reads: ["test/packet-defaults/Defaults.schema","test/packet-defaults/Plain.schema"]`<br>`target: build/packet-defaults/c-test` | the target exits 0 with no skip in its log | `make/checks/packet-defaults.mk:95` |
 
 #### `ci-plumbing` family `make-checks-packet-void`, 2 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.nightly.ci-plumbing.make-checks-packet-void.build-packet-void-c-test` | `make` | make build/packet-void/c-test (make/checks/packet-void.mk) exits 0 | `file: make/checks/packet-void.mk`<br>`target: build/packet-void/c-test` | the target exits 0 with no skip in its log | `make/checks/packet-void.mk:16` |
-| `none.nightly.ci-plumbing.make-checks-packet-void.build-packet-void-cpp-test` | `make` | make build/packet-void/cpp-test (make/checks/packet-void.mk) exits 0 | `file: make/checks/packet-void.mk`<br>`target: build/packet-void/cpp-test` | the target exits 0 with no skip in its log | `make/checks/packet-void.mk:13` |
+| `none.nightly.ci-plumbing.make-checks-packet-void.build-packet-void-cpp-test` | `make` | make build/packet-void/cpp-test (make/checks/packet-void.mk) exits 0 | `file: make/checks/packet-void.mk`<br>`read_plant: plant.read-credits.ci-plumbing-make-checks-packet-void-build-packet-void-cpp-test`<br>`reads: ["test/packet-void/Void.schema"]`<br>`target: build/packet-void/cpp-test` | the target exits 0 with no skip in its log | `make/checks/packet-void.mk:13` |
 
 #### `ci-plumbing` family `make-cpp`, 1 test
 
@@ -5934,7 +6009,7 @@ a step that provisions or builds what other tests run on (a pinned toolchain, a 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.nightly.ci-plumbing.make-cs.build-conformance-cs` | `make` | make build-conformance-cs (make/cs.mk) exits 0 | `file: make/cs.mk`<br>`target: build-conformance-cs` | the target exits 0 with no skip in its log | `make/cs.mk:570` |
-| `none.nightly.ci-plumbing.make-cs.build-tables-generated-cs-stamp` | `make` | make build/tables-generated-cs/.stamp (make/cs.mk) exits 0 | `file: make/cs.mk`<br>`target: build/tables-generated-cs/.stamp` | the target exits 0 with no skip in its log | `make/cs.mk:188` |
+| `none.nightly.ci-plumbing.make-cs.build-tables-generated-cs-stamp` | `make` | make build/tables-generated-cs/.stamp (make/cs.mk) exits 0 | `file: make/cs.mk`<br>`read_plant: plant.read-credits.ci-plumbing-make-cs-build-tables-generated-cs-stamp`<br>`inputs.reads` (244 bytes, held in the registry row's `inputs.reads`)<br>`target: build/tables-generated-cs/.stamp` | the target exits 0 with no skip in its log | `make/cs.mk:188` |
 
 #### `ci-plumbing` family `make-dart`, 1 test
 
@@ -5996,38 +6071,38 @@ a step that provisions or builds what other tests run on (a pinned toolchain, a 
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.ci-plumbing.makefile.bin-schema` | `make` | make bin/schema (Makefile) exits 0 | `file: Makefile`<br>`target: bin/schema` | the target exits 0 with no skip in its log | `Makefile:146` |
-| `none.nightly.ci-plumbing.makefile.build-conformance-cpp` | `make` | make build/conformance-cpp (Makefile) exits 0 | `file: Makefile`<br>`target: build/conformance-cpp` | the target exits 0 with no skip in its log | `Makefile:5516` |
-| `none.nightly.ci-plumbing.makefile.build-conformance-harness` | `make` | make build/conformance-harness (Makefile) exits 0 | `file: Makefile`<br>`target: build/conformance-harness` | the target exits 0 with no skip in its log | `Makefile:5420` |
-| `none.nightly.ci-plumbing.makefile.build-fixedform-corpus-stamp` | `make` | make build/fixedform-corpus/.stamp (Makefile) exits 0 | `file: Makefile`<br>`target: build/fixedform-corpus/.stamp` | the target exits 0 with no skip in its log | `Makefile:7284` |
-| `none.nightly.ci-plumbing.makefile.build-hostile-values-stamp` | `make` | make build/hostile-values/.stamp (Makefile) exits 0 | `file: Makefile`<br>`target: build/hostile-values/.stamp` | the target exits 0 with no skip in its log | `Makefile:3408` |
-| `none.nightly.ci-plumbing.makefile.build-pack-text-stamp` | `make` | make build/pack-text/.stamp (Makefile) exits 0 | `file: Makefile`<br>`target: build/pack-text/.stamp` | the target exits 0 with no skip in its log | `Makefile:3375` |
-| `none.nightly.ci-plumbing.makefile.build-schema-test` | `make` | make build/schema\_test (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test` | the target exits 0 with no skip in its log | `Makefile:229` |
-| `none.nightly.ci-plumbing.makefile.build-schema-test-bench` | `make` | make build/schema\_test\_bench (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_bench` | the target exits 0 with no skip in its log | `Makefile:3626` |
-| `none.nightly.ci-plumbing.makefile.build-schema-test-bench-table` | `make` | make build/schema\_test\_bench\_table (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_bench_table` | the target exits 0 with no skip in its log | `Makefile:3632` |
-| `none.nightly.ci-plumbing.makefile.build-schema-test-block` | `make` | make build/schema\_test\_block (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_block` | the target exits 0 with no skip in its log | `Makefile:1015` |
-| `none.nightly.ci-plumbing.makefile.build-schema-test-block-asan` | `make` | make build/schema\_test\_block\_asan (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_block_asan` | the target exits 0 with no skip in its log | `Makefile:1023` |
-| `none.nightly.ci-plumbing.makefile.build-schema-test-block-fuzz` | `make` | make build/schema\_test\_block\_fuzz (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_block_fuzz` | the target exits 0 with no skip in its log | `Makefile:1156` |
-| `none.nightly.ci-plumbing.makefile.build-schema-test-block-fuzz-asan` | `make` | make build/schema\_test\_block\_fuzz\_asan (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_block_fuzz_asan` | the target exits 0 with no skip in its log | `Makefile:1165` |
-| `none.nightly.ci-plumbing.makefile.build-schema-test-cook` | `make` | make build/schema\_test\_cook (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_cook` | the target exits 0 with no skip in its log | `Makefile:1407` |
-| `none.nightly.ci-plumbing.makefile.build-schema-test-guard` | `make` | make build/schema\_test\_guard (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_guard` | the target exits 0 with no skip in its log | `Makefile:243` |
-| `none.nightly.ci-plumbing.makefile.build-schema-test-hostile` | `make` | make build/schema\_test\_hostile (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_hostile` | the target exits 0 with no skip in its log | `Makefile:3419` |
-| `none.nightly.ci-plumbing.makefile.build-schema-test-hostile-asan` | `make` | make build/schema\_test\_hostile\_asan (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_hostile_asan` | the target exits 0 with no skip in its log | `Makefile:3423` |
-| `none.nightly.ci-plumbing.makefile.build-schema-test-ludicrous` | `make` | make build/schema\_test\_ludicrous (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_ludicrous` | the target exits 0 with no skip in its log | `Makefile:3581` |
-| `none.nightly.ci-plumbing.makefile.build-schema-test-pack` | `make` | make build/schema\_test\_pack (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_pack` | the target exits 0 with no skip in its log | `Makefile:3360` |
-| `none.nightly.ci-plumbing.makefile.build-schema-test-pack-asan` | `make` | make build/schema\_test\_pack\_asan (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_pack_asan` | the target exits 0 with no skip in its log | `Makefile:3369` |
-| `none.nightly.ci-plumbing.makefile.build-schema-test-random` | `make` | make build/schema\_test\_random (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_random` | the target exits 0 with no skip in its log | `Makefile:3577` |
-| `none.nightly.ci-plumbing.makefile.build-schema-test-tables` | `make` | make build/schema\_test\_tables (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_tables` | the target exits 0 with no skip in its log | `Makefile:3072` |
-| `none.nightly.ci-plumbing.makefile.build-schema-test-tables-asan` | `make` | make build/schema\_test\_tables\_asan (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_tables_asan` | the target exits 0 with no skip in its log | `Makefile:3105` |
-| `none.nightly.ci-plumbing.makefile.build-tables-generated-stamp` | `make` | make build/tables-generated/.stamp (Makefile) exits 0 | `file: Makefile`<br>`target: build/tables-generated/.stamp` | the target exits 0 with no skip in its log | `Makefile:477` |
-| `none.nightly.ci-plumbing.makefile.build-tables-pack-bin` | `make` | make build/tables-pack.bin (Makefile) exits 0 | `file: Makefile`<br>`target: build/tables-pack.bin` | the target exits 0 with no skip in its log | `Makefile:3343` |
-| `none.nightly.ci-plumbing.makefile.build-tables-pack-root-bin` | `make` | make build/tables-pack-root.bin (Makefile) exits 0 | `file: Makefile`<br>`target: build/tables-pack-root.bin` | the target exits 0 with no skip in its log | `Makefile:3347` |
-| `none.nightly.ci-plumbing.makefile.build-wire-fuzz-cpp` | `make` | make build/wire-fuzz-cpp (Makefile) exits 0 | `file: Makefile`<br>`target: build/wire-fuzz-cpp` | the target exits 0 with no skip in its log | `Makefile:5554` |
-| `none.nightly.ci-plumbing.makefile.build-wire-fuzz-cpp-asan` | `make` | make build/wire-fuzz-cpp-asan (Makefile) exits 0 | `file: Makefile`<br>`target: build/wire-fuzz-cpp-asan` | the target exits 0 with no skip in its log | `Makefile:5560` |
-| `none.nightly.ci-plumbing.makefile.deps` | `make` | make deps (Makefile) exits 0 | `file: Makefile`<br>`target: deps` | the target exits 0 with no skip in its log | `Makefile:7506` |
-| `none.nightly.ci-plumbing.makefile.registry` | `make` | make registry (Makefile) exits 0 | `file: Makefile`<br>`target: registry` | the target exits 0 with no skip in its log | `Makefile:6928` |
-| `none.nightly.ci-plumbing.makefile.serialize-siblings` | `make` | make serialize-siblings (Makefile) exits 0 | `file: Makefile`<br>`target: serialize-siblings` | the target exits 0 with no skip in its log | `Makefile:7492` |
-| `none.nightly.ci-plumbing.makefile.toolchain` | `make` | make toolchain (Makefile) exits 0 | `file: Makefile`<br>`target: toolchain` | the target exits 0 with no skip in its log | `Makefile:6985` |
+| `none.nightly.ci-plumbing.makefile.bin-schema` | `make` | make bin/schema (Makefile) exits 0 | `file: Makefile`<br>`target: bin/schema` | the target exits 0 with no skip in its log | `Makefile:155` |
+| `none.nightly.ci-plumbing.makefile.build-conformance-cpp` | `make` | make build/conformance-cpp (Makefile) exits 0 | `file: Makefile`<br>`target: build/conformance-cpp` | the target exits 0 with no skip in its log | `Makefile:5525` |
+| `none.nightly.ci-plumbing.makefile.build-conformance-harness` | `make` | make build/conformance-harness (Makefile) exits 0 | `file: Makefile`<br>`target: build/conformance-harness` | the target exits 0 with no skip in its log | `Makefile:5429` |
+| `none.nightly.ci-plumbing.makefile.build-fixedform-corpus-stamp` | `make` | make build/fixedform-corpus/.stamp (Makefile) exits 0 | `file: Makefile`<br>`read_plant: plant.read-credits.ci-plumbing-makefile-build-fixedform-corpus-stamp`<br>`reads: ["test/tables/fnz/negative_zero.bin","test/tables/fnz/negative_zero_control.bin"]`<br>`target: build/fixedform-corpus/.stamp` | the target exits 0 with no skip in its log | `Makefile:7318` |
+| `none.nightly.ci-plumbing.makefile.build-hostile-values-stamp` | `make` | make build/hostile-values/.stamp (Makefile) exits 0 | `file: Makefile`<br>`target: build/hostile-values/.stamp` | the target exits 0 with no skip in its log | `Makefile:3417` |
+| `none.nightly.ci-plumbing.makefile.build-pack-text-stamp` | `make` | make build/pack-text/.stamp (Makefile) exits 0 | `file: Makefile`<br>`target: build/pack-text/.stamp` | the target exits 0 with no skip in its log | `Makefile:3384` |
+| `none.nightly.ci-plumbing.makefile.build-schema-test` | `make` | make build/schema\_test (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test` | the target exits 0 with no skip in its log | `Makefile:238` |
+| `none.nightly.ci-plumbing.makefile.build-schema-test-bench` | `make` | make build/schema\_test\_bench (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_bench` | the target exits 0 with no skip in its log | `Makefile:3635` |
+| `none.nightly.ci-plumbing.makefile.build-schema-test-bench-table` | `make` | make build/schema\_test\_bench\_table (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_bench_table` | the target exits 0 with no skip in its log | `Makefile:3641` |
+| `none.nightly.ci-plumbing.makefile.build-schema-test-block` | `make` | make build/schema\_test\_block (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_block` | the target exits 0 with no skip in its log | `Makefile:1024` |
+| `none.nightly.ci-plumbing.makefile.build-schema-test-block-asan` | `make` | make build/schema\_test\_block\_asan (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_block_asan` | the target exits 0 with no skip in its log | `Makefile:1032` |
+| `none.nightly.ci-plumbing.makefile.build-schema-test-block-fuzz` | `make` | make build/schema\_test\_block\_fuzz (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_block_fuzz` | the target exits 0 with no skip in its log | `Makefile:1165` |
+| `none.nightly.ci-plumbing.makefile.build-schema-test-block-fuzz-asan` | `make` | make build/schema\_test\_block\_fuzz\_asan (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_block_fuzz_asan` | the target exits 0 with no skip in its log | `Makefile:1174` |
+| `none.nightly.ci-plumbing.makefile.build-schema-test-cook` | `make` | make build/schema\_test\_cook (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_cook` | the target exits 0 with no skip in its log | `Makefile:1416` |
+| `none.nightly.ci-plumbing.makefile.build-schema-test-guard` | `make` | make build/schema\_test\_guard (Makefile) exits 0 | `file: Makefile`<br>`read_plant: plant.read-credits.ci-plumbing-makefile-build-schema-test-guard`<br>`reads: ["test/guard/Alpha.schema","test/guard/Beta.schema"]`<br>`target: build/schema_test_guard` | the target exits 0 with no skip in its log | `Makefile:252` |
+| `none.nightly.ci-plumbing.makefile.build-schema-test-hostile` | `make` | make build/schema\_test\_hostile (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_hostile` | the target exits 0 with no skip in its log | `Makefile:3428` |
+| `none.nightly.ci-plumbing.makefile.build-schema-test-hostile-asan` | `make` | make build/schema\_test\_hostile\_asan (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_hostile_asan` | the target exits 0 with no skip in its log | `Makefile:3432` |
+| `none.nightly.ci-plumbing.makefile.build-schema-test-ludicrous` | `make` | make build/schema\_test\_ludicrous (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_ludicrous` | the target exits 0 with no skip in its log | `Makefile:3590` |
+| `none.nightly.ci-plumbing.makefile.build-schema-test-pack` | `make` | make build/schema\_test\_pack (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_pack` | the target exits 0 with no skip in its log | `Makefile:3369` |
+| `none.nightly.ci-plumbing.makefile.build-schema-test-pack-asan` | `make` | make build/schema\_test\_pack\_asan (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_pack_asan` | the target exits 0 with no skip in its log | `Makefile:3378` |
+| `none.nightly.ci-plumbing.makefile.build-schema-test-random` | `make` | make build/schema\_test\_random (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_random` | the target exits 0 with no skip in its log | `Makefile:3586` |
+| `none.nightly.ci-plumbing.makefile.build-schema-test-tables` | `make` | make build/schema\_test\_tables (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_tables` | the target exits 0 with no skip in its log | `Makefile:3081` |
+| `none.nightly.ci-plumbing.makefile.build-schema-test-tables-asan` | `make` | make build/schema\_test\_tables\_asan (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_tables_asan` | the target exits 0 with no skip in its log | `Makefile:3114` |
+| `none.nightly.ci-plumbing.makefile.build-tables-generated-stamp` | `make` | make build/tables-generated/.stamp (Makefile) exits 0 | `file: Makefile`<br>`read_plant: plant.read-credits.ci-plumbing-makefile-build-tables-generated-stamp`<br>`inputs.reads` (2940 bytes, held in the registry row's `inputs.reads`)<br>`target: build/tables-generated/.stamp` | the target exits 0 with no skip in its log | `Makefile:486` |
+| `none.nightly.ci-plumbing.makefile.build-tables-pack-bin` | `make` | make build/tables-pack.bin (Makefile) exits 0 | `file: Makefile`<br>`target: build/tables-pack.bin` | the target exits 0 with no skip in its log | `Makefile:3352` |
+| `none.nightly.ci-plumbing.makefile.build-tables-pack-root-bin` | `make` | make build/tables-pack-root.bin (Makefile) exits 0 | `file: Makefile`<br>`target: build/tables-pack-root.bin` | the target exits 0 with no skip in its log | `Makefile:3356` |
+| `none.nightly.ci-plumbing.makefile.build-wire-fuzz-cpp` | `make` | make build/wire-fuzz-cpp (Makefile) exits 0 | `file: Makefile`<br>`target: build/wire-fuzz-cpp` | the target exits 0 with no skip in its log | `Makefile:5563` |
+| `none.nightly.ci-plumbing.makefile.build-wire-fuzz-cpp-asan` | `make` | make build/wire-fuzz-cpp-asan (Makefile) exits 0 | `file: Makefile`<br>`target: build/wire-fuzz-cpp-asan` | the target exits 0 with no skip in its log | `Makefile:5569` |
+| `none.nightly.ci-plumbing.makefile.deps` | `make` | make deps (Makefile) exits 0 | `file: Makefile`<br>`target: deps` | the target exits 0 with no skip in its log | `Makefile:7550` |
+| `none.nightly.ci-plumbing.makefile.registry` | `make` | make registry (Makefile) exits 0 | `file: Makefile`<br>`target: registry` | the target exits 0 with no skip in its log | `Makefile:6937` |
+| `none.nightly.ci-plumbing.makefile.serialize-siblings` | `make` | make serialize-siblings (Makefile) exits 0 | `file: Makefile`<br>`target: serialize-siblings` | the target exits 0 with no skip in its log | `Makefile:7536` |
+| `none.nightly.ci-plumbing.makefile.toolchain` | `make` | make toolchain (Makefile) exits 0 | `file: Makefile`<br>`target: toolchain` | the target exits 0 with no skip in its log | `Makefile:6994` |
 
 ## Declared unrepresentable
 

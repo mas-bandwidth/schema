@@ -21,6 +21,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/provesran"
 )
 
 type refuseReason struct {
@@ -63,7 +65,7 @@ func TestCPPDriverReasonSwitchesNameEveryRefusal(t *testing.T) {
 	// any of them is checked, and the driver as a whole must have one
 	var units []string
 	for _, glob := range []string{"*.cpp", "*.h"} {
-		m, err := filepath.Glob(filepath.Join(root, "test", "conformance", "cpp", glob))
+		m, err := provesran.Glob(filepath.Join(root, "test", "conformance", "cpp", glob))
 		if err != nil {
 			t.Fatal(err)
 		}

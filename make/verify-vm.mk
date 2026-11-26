@@ -501,7 +501,7 @@ _verify-goose-packet-ludicrous: verify-toolchain-goose build/goose-packet/.stamp
 	cd build/goose-packet/ludicrous && "$(GOOSE)" run -O0 main.goose
 
 _verify-goose-conformance: verify-toolchain-goose build/conformance-harness-vm build/conformance-goose _verify-goose-packet-normal _verify-goose-packet-ludicrous
-
+verify-goose-conformance: # the entry the foreach above writes, named so the registry runs it by name
 _verify-goose-bench: verify-toolchain-goose bench-goose-gate tables-goose-bench-gate verify-deep-goose verify-cards-goose
 
 # The legs are built for one GOOSE_FUZZ_SLICE; a different slice is a
@@ -514,7 +514,7 @@ $(GOOSE_FUZZ_SLICE_SIG):
 
 build/goose-wirefuzz-legs/.verify-stamp: $(GO_SOURCES) $(CONFORMANCE_UNIT_SCHEMAS) \
 	$(filter internal/codegen/goose/% internal/codegen/goosetable/%,$(EMBED_SOURCES)) \
-	test/conformance/goose/wirefuzz.goose test/conformance/goose/wirefuzz_io.c test/conformance/goose/wirefuzzdispatch/main.go make/goose-wirefuzz-build.sh \
+	test/conformance/goose/wirefuzz.goose test/conformance/goose/wirefuzz_io.c test/conformance/goose/wirefuzzdispatch/main.go make/goose-wirefuzz-build.sh make/goose-cc-lto.sh \
 	$(GOOSE_FUZZ_SLICE_SIG)
 	@GOOSE_FUZZ_JOBS=$(VERIFY_JOBS) $(MAKE) --no-print-directory build/conformance-goose-wirefuzz
 	@touch $@

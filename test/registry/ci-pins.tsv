@@ -31,7 +31,7 @@
 .github/nightly-gates.txt	885aec063dc293278ff35209a2c1b93d276a9a58ea4099966d56007673868a34	pinned
 .github/unwired-targets.txt	dea44cef90b26d3ba357dec9589e095e27c501bfb7420e0cbc91012f3bc8bd01	pinned
 .github/workflows/certify.yml	d25282577b67aad1bc4627156125729299c0bb3fbfa9666d4838d72bd89c6d2b	not-yet-generated
-.github/workflows/ci-full.yml	9dedcc7859b409c5af89e4ae17e665cedd89959a45d4fa4ac05bf1bcf8207f75	not-yet-generated
+.github/workflows/ci-full.yml	59e4cbaa7b2341c384806843f285ffed1135587764ae7884df2a76792f8ae693	not-yet-generated
 .github/workflows/cla.yml	09c1e21ea5492363a130250d94a20f907100a6ae1cd8c433ed33c5e822f2e781	pinned
 .github/workflows/leg-gates-nightly.yml	fbedcbcadeebad021e721d76a86ab58994771920832d85df0a8991bdd6970e02	not-yet-generated
 .github/workflows/leg.yml	50a923f39e4e3989b3ec9737ff4054216d07ba4f968ef3bec709be96df50f33c	not-yet-generated

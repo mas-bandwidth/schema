@@ -431,6 +431,70 @@ func TestAMakeRowReadsOnlyWhatItsTargetDependsOn(t *testing.T) {
 	}
 }
 
+// TestAMakeRowReadsWhatAFunctionWithAHyphenatedNameNames: a recipe that
+// calls a define whose name holds a - (moo-wire-fuzz-run) reaches what the
+// define names, so a row reading the driver it runs passes the vet.
+func TestAMakeRowReadsWhatAFunctionWithAHyphenatedNameNames(t *testing.T) {
+	t.Parallel()
+	db := fakeDatabase("define wire-fuzz-run\n\t./build/harness wire-fuzz --driver test/conformance/x/wirefuzz-driver $(1)\nendef\n", "",
+		"gate-check: gate-plain\n\ngate-plain:\n\t$(call wire-fuzz-run,--seed 1)\n")
+	r, ran := vetRun(t, makeInputs{File: "make/x.mk", Target: "gate-check", Reads: []string{"test/conformance/x/wirefuzz-driver"}}, db, "")
+	if r.Verdict != testreg.Pass || !ran {
+		t.Errorf("%+v, ran %v: the define the recipe calls names the driver", r, ran)
+	}
+}
+
+// TestAMakeRowsDirectoryReadIsADirectoryItsRecipesWorkOnBare: a directory
+// read holds only where a recipe the target runs works on the directory
+// itself (a cd into it, a glob in it); a directory its target reaches only
+// through files in it, or names only in a comment, fails the row before the
+// target runs. A tree read is no make row's: its inputs do not decode.
+func TestAMakeRowsDirectoryReadIsADirectoryItsRecipesWorkOnBare(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		recipe string
+		says   string
+	}{
+		{"\tcd test/tables && ./build/bin", ""},
+		{"\t./build/bin test/tables/*.schema", ""},
+		{"\t./build/bin", "reads test/tables/, and no recipe make gate-check runs works on that directory itself"},
+		{"\t./build/bin test/tables/$(F).schema", "reads test/tables/, and no recipe make gate-check runs works on that directory itself"},
+		{"\t./build/bin # cd test/tables", "reads test/tables/, and no recipe make gate-check runs works on that directory itself"},
+	} {
+		r, ran := vetRun(t, makeInputs{File: "make/x.mk", Target: "gate-check", Reads: []string{"test/tables/"}}, gateDatabase(c.recipe), "")
+		if c.says == "" {
+			if r.Verdict != testreg.Pass || !ran {
+				t.Errorf("%q: %+v, ran %v", c.recipe, r, ran)
+			}
+			continue
+		}
+		if r.Verdict != testreg.Fail || ran || !strings.Contains(r.Reason, c.says) {
+			t.Errorf("%q: %+v, ran %v, want a fail saying %q before the target runs", c.recipe, r, ran, c.says)
+		}
+	}
+	// a directory a variable holds is worked on bare only where the
+	// recipe uses the variable bare, never by the variable's value alone
+	for _, c := range []struct {
+		recipe string
+		pass   bool
+	}{
+		{"\tcd $(FIXTURE) && ./build/bin", true},
+		{"\t./build/bin $(FIXTURE)/a.schema", false},
+	} {
+		db := fakeDatabase("GO_TEST_JSON = go test -json\nFIXTURE := test/tables\n",
+			"build/objs/%.o: test/tables/%.cpp build/gen/.stamp\n\t$(CXX) -c $< -o $@\n",
+			"gate-check: build/bin\n"+c.recipe+"\n\nbuild/bin: build/objs/main.o\n\nbuild/gen/.stamp: bin/schema test/tables/VNEW_a.schema\n\t./bin/schema generate $^\n\nbuild/objs/main.o:\n#  Implicit rule search has not been done.\n")
+		r, ran := vetRun(t, makeInputs{File: "make/x.mk", Target: "gate-check", Reads: []string{"test/tables/"}}, db, "")
+		if c.pass != (r.Verdict == testreg.Pass && ran) {
+			t.Errorf("%q with FIXTURE := test/tables: %+v, ran %v, want pass %v", c.recipe, r, ran, c.pass)
+		}
+	}
+	_, err := decodeMakeInputs(json.RawMessage(`{"file":"make/x.mk","target":"a","reads":["test/tables/..."]}`))
+	if err == nil || !strings.Contains(err.Error(), "a make row reads one directory, written with one trailing /, never a tree") {
+		t.Errorf("a make row's tree read: %v, want it refused", err)
+	}
+}
+
 // TestARecipeThatRunsGoTestOutsideTheWrapperFails: only $(GO_TEST)
 // (tools/gotestrun) reads every go test event back, so a target whose
 // recipes (its own, its prerequisites', a variable they expand, a target

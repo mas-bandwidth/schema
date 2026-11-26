@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/provesran"
 )
 
 // lintProducer is one lint gate's tree as ci-fast.yml's produce job builds
@@ -255,7 +257,7 @@ func TestEveryLintGateReadsAProducedTree(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	files, err := filepath.Glob(filepath.Join(root, "make", "*.mk"))
+	files, err := provesran.Glob(filepath.Join(root, "make", "*.mk"))
 	if err != nil {
 		t.Fatal(err)
 	}

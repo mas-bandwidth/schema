@@ -53,7 +53,11 @@ func extractCmd(args []string, stdout io.Writer) error {
 	if (*since == "") != (*pinsBase == "") {
 		return usageError{"--since and --pins-base go together: --pins-base names the tree this change merges into, which the not-yet-generated list is held to"}
 	}
-	res, err := extract.Extract(*root)
+	generated, err := generatedTexts(filepath.Join(*root, *path))
+	if err != nil {
+		return err
+	}
+	res, err := extract.ExtractGenerated(*root, generated)
 	if err != nil {
 		return err
 	}
@@ -381,6 +385,36 @@ func baseWorkflows(base string) ([]ciPin, error) {
 			continue
 		}
 		out = append(out, ciPin{Path: p, State: pinNotYetGenerated})
+	}
+	return out, nil
+}
+
+// generatedTexts is each workflow ci writes, as it writes it from the
+// registry at path, by repository path: the extract counts none of their
+// jobs as written (extract.ExtractGenerated), since each is the registry
+// rebuilt and ci --check holds it byte for byte. A registry the workflows
+// cannot be generated from is an error, never an extract that counts them.
+func generatedTexts(path string) (map[string][]byte, error) {
+	reg, err := testreg.Load(path)
+	if err != nil {
+		return nil, err
+	}
+	if _, ok := reg.Group("pr"); !ok {
+		// a registry with no pr group generates no workflow (ci refuses
+		// it by name): nothing is left out, and every job counts
+		return nil, nil
+	}
+	files, err := ciFiles(reg)
+	if err != nil {
+		return nil, fmt.Errorf("the generated workflows, which the extract leaves out, do not build from %s: %w", path, err)
+	}
+	out := map[string][]byte{}
+	for _, p := range generatedWorkflowFiles {
+		data, ok := files[p]
+		if !ok {
+			return nil, fmt.Errorf("ci writes no %s, which it is to generate", p)
+		}
+		out[p] = data
 	}
 	return out, nil
 }

@@ -35,6 +35,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -92,6 +93,16 @@ type Result struct {
 	// none), by its ID: a golden row covers a case only when it pins them
 	// all (CoveredIn).
 	CaseFiles map[string][]string `json:"-"`
+	// DriverFiles is each driver's source files, by its ID: what a read
+	// credit's plant deletes to show its row reads the driver (ItemFiles).
+	DriverFiles map[string][]string `json:"-"`
+	// GoStrings is every string literal of each package's _test.go files,
+	// by the package's directory: a gotest row's read must be one its
+	// test source names (readCredits).
+	GoStrings map[string]map[string]bool `json:"-"`
+	// MakeText is the text of every make file: a make row's directory read
+	// must be one a make file names (readCredits).
+	MakeText string `json:"-"`
 }
 
 // RuleID is a make rule's key in Result.Rules.
@@ -101,6 +112,12 @@ type scan struct {
 	root    string
 	res     *Result
 	ignored map[string]bool
+	// generated is each generated workflow's text as schema-test ci
+	// writes it, by repository path (ExtractGenerated)
+	generated map[string][]byte
+	// imports is the import paths of each test package's _test.go files,
+	// by its directory (goSourceStrings)
+	imports map[string]map[string]bool
 }
 
 func (s *scan) add(it Item) {
@@ -191,8 +208,20 @@ func (s *scan) walk(fn func(rel string, d fs.DirEntry)) {
 	}
 }
 
+// GeneratedWorkflows are the workflows schema-test ci writes from the
+// registry, by repository path: the extract counts none of their jobs as
+// generated (ExtractGenerated), and ci --check holds each byte for byte.
+var GeneratedWorkflows = []string{".github/workflows/ci-fast.yml", ".github/workflows/roadmap.yml", ".github/workflows/schema-nightly.yml"}
+
 // Extract reads the repository at root.
-func Extract(root string) (*Result, error) {
+func Extract(root string) (*Result, error) { return ExtractGenerated(root, nil) }
+
+// ExtractGenerated reads the repository at root, where generated holds
+// each workflow schema-test ci writes from the registry, by repository path,
+// as it writes it: a job of that file exactly as generated (its key and
+// every line under it) is the registry rebuilt, never an item. A job the
+// generator does not write, or writes otherwise, is one.
+func ExtractGenerated(root string, generated map[string][]byte) (*Result, error) {
 	if _, err := os.Stat(filepath.Join(root, "go.mod")); err != nil {
 		return nil, fmt.Errorf("%s is not the repository root: %w", root, err)
 	}
@@ -200,9 +229,10 @@ func Extract(root string) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	s := &scan{root: root, res: &Result{}, ignored: ign}
+	s := &scan{root: root, res: &Result{}, ignored: ign, generated: generated}
 	var goFiles, makeFiles, workflows, dataFiles, models []string
 	drivers := map[string]string{}
+	driverFiles := map[string][]string{}
 	s.walk(func(rel string, d fs.DirEntry) {
 		name := d.Name()
 		ext := strings.ToLower(filepath.Ext(name))
@@ -228,6 +258,7 @@ func Extract(root string) (*Result, error) {
 					if _, ok := drivers[dir]; !ok {
 						drivers[dir] = rel
 					}
+					driverFiles[dir] = append(driverFiles[dir], rel)
 				}
 				return
 			}
@@ -244,8 +275,11 @@ func Extract(root string) (*Result, error) {
 		dirs = append(dirs, dir)
 	}
 	sort.Strings(dirs)
+	s.res.DriverFiles = map[string][]string{}
 	for _, dir := range dirs {
-		s.add(Item{Kind: KindDriver, Dir: dir, Name: filepath.Base(dir), Source: drivers[dir] + ":1", Tier: "functional"})
+		it := Item{Kind: KindDriver, Dir: dir, Name: filepath.Base(dir), Source: drivers[dir] + ":1", Tier: "functional"}
+		s.add(it)
+		s.res.DriverFiles[it.ID()] = slices.Sorted(slices.Values(driverFiles[dir]))
 	}
 	for _, m := range models {
 		s.add(Item{Kind: KindModel, Dir: filepath.ToSlash(filepath.Dir(m)), Name: filepath.Base(m), Source: m + ":1", Tier: "nightly"})

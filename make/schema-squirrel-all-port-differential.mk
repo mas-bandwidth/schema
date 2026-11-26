@@ -12,8 +12,8 @@
 # The pure-Go controls below are the fast half and run on every push.
 
 SQUIRREL_DIFFERENTIAL_WORK ?= build/conformance-differential
-SQUIRREL_DIFFERENTIAL_TEST  = ./internal/ci -run '^TestSchemaSquirrelAllPortDifferential$$'
-SQUIRREL_DIFFERENTIAL_FAST  = ./internal/ci -run '^TestSquirrelAllPortDifferential'
+SQUIRREL_DIFFERENTIAL_TEST  = ./internal/ci/squirreldiff -run '^TestSchemaSquirrelAllPortDifferential$$'
+SQUIRREL_DIFFERENTIAL_FAST  = ./internal/ci/squirreldiff -run '^TestSquirrelAllPortDifferential'
 
 # The whole lens. `toolchain` refuses by name when a port's pin is missing;
 # `$(CONFORMANCE_LEGS)` is every leg's generated conformance tree; the harness
@@ -23,7 +23,7 @@ SQUIRREL_DIFFERENTIAL_FAST  = ./internal/ci -run '^TestSquirrelAllPortDifferenti
 # the wildcard include reads this file before make/squirrel.mk, so the list does
 # not yet carry the leg this whole lens is a lens on — without it the driver
 # answers every case `.absent` and the comparison has nothing to compare.
-# internal/ci/schema_squirrel_all_port_differential_test.go refuses that empty
+# internal/ci/squirreldiff/schema_squirrel_all_port_differential_test.go refuses that empty
 # lens rather than passing it.
 #
 # THE SAME ORDER CUT EVERY LEG INCLUDED AFTER THIS FILE. make/unity.mk also
@@ -71,6 +71,6 @@ schema-squirrel-all-port-differential-fast:
 # Registered in make/negative-controls.json (group squirrel).
 .PHONY: schema-squirrel-all-port-differential-negative-control
 schema-squirrel-all-port-differential-negative-control:
-	@nice -n 19 $(GO_TEST) -count=1 -timeout 600s ./internal/ci \
+	@nice -n 19 $(GO_TEST) -count=1 -timeout 600s ./internal/ci/squirreldiff \
 		-run '^TestSquirrelAllPortDifferentialDetectsADivergence$$'
 	@echo 'squirrel all-port differential negative control: the planted wire byte is caught and named'

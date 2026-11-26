@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 679. Language-free tests: 3145.
+Unit tests every language answers: 643. Language-free tests: 3182.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -16,12 +16,6 @@ Each test's full name for language `L` is `L.unit.<type>.<family>.<case>`: every
 ### Type `roundtrip`
 
 read bytes, write them back, same bytes.
-
-#### `roundtrip` family `countedarraysvaliddata`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.unit.roundtrip.countedarraysvaliddata.row-counted-arrays-valid-data` | counted arrays of scalars and enums write and read back with their live count preserved. | `inputs.tests` (101 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `test/conformance/go/rows/CountedArraysValidData_test.go:9` |
 
 #### `roundtrip` family `cpp-hostile-corpus-rules`, 1 test
 
@@ -41,23 +35,11 @@ read bytes, write them back, same bytes.
 |---|---|---|---|---|
 | `L.unit.roundtrip.fixedrootplainsave.fixed-root-plain-save-round-trips` | a fixed root saved by the plain save reads back to the same value | `inputs.tests` (106 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedrootplainsave_test.go:20` |
 
-#### `roundtrip` family `float32valuesvaliddata`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.unit.roundtrip.float32valuesvaliddata.row-float32-values-valid-data` | finite float32 values, including negative zero and subnormals, round-trip bit-exact through the fixed form. | `inputs.tests` (101 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `test/conformance/go/rows/Float32ValuesValidData_test.go:32` |
-
 #### `roundtrip` family `go-unreferencedhelpers`, 1 test
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.unit.roundtrip.go-unreferencedhelpers.preserves-schema-rooted-api-with-private-spellings` | pruning preserves the schema-rooted API even when its spellings are private | `inputs.tests` (122 bytes, held in the registry row's `inputs.tests`) | the go Go test for the case (inputs.tests) passes | `internal/codegen/gotable/unreferencedhelpers_test.go:344` |
-
-#### `roundtrip` family `p2`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.unit.roundtrip.p2.row-p2` | an absent optional record's payload is zeroed on write and the round trip over poisoned and reused storage is byte-identical. | `tests: {"go":{"package":"./test/conformance/go/rows","seconds":0.47,"test":"TestRowP2"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `test/conformance/go/rows/P2_test.go:42` |
 
 #### `roundtrip` family `python-porting-parity`, 1 test
 
@@ -65,23 +47,11 @@ read bytes, write them back, same bytes.
 |---|---|---|---|---|
 | `L.unit.roundtrip.python-porting-parity.runtime-home` | the runtime module lives where the generated package imports it from | `inputs.tests` (101 bytes, held in the registry row's `inputs.tests`) | the python Go test for the case (inputs.tests) passes | `internal/codegen/pythontable/porting_parity_test.go:654` |
 
-#### `roundtrip` family `r27`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.unit.roundtrip.r27.row-r27` | the fixed read of the manifest's p3 row lands the values the manifest states. | `tests: {"go":{"package":"./test/conformance/go/rows","seconds":0.47,"test":"TestRowR27"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `test/conformance/go/rows/R27_test.go:214` |
-
 #### `roundtrip` family `saveload-engine`, 1 test
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.unit.roundtrip.saveload-engine.save-load-agree-with-the-engine` | saving every generated sample of every root and reading the engine's bytes back through load, strict read and text load answers what the reference engine answers, and the plain save of a fixed root writes the fixed form | `inputs.tests` (113 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fuzzunit/saveload_engine_test.go:40` |
-
-#### `roundtrip` family `w2`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.unit.roundtrip.w2.row-w2` | an absent optional's payload never reaches the wire even when the stored payload is stained, while the same payload when present does. | `tests: {"go":{"package":"./test/conformance/go/rows","seconds":0.47,"test":"TestRowW2"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `test/conformance/go/rows/W2_test.go:45` |
 
 ### Type `encode`
 
@@ -110,12 +80,6 @@ a value written from scratch gives exactly the expected bytes.
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.unit.encode.vtfixedclasselide.vt-fixed-class-elision-engine` | The reference engine elides all-default nested tables and writes tables that differ from default, for each elision case. | `inputs.tests` (115 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/pythontable/vtfixedclasselide_test.go:197` |
-
-#### `encode` family `w3`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.unit.encode.w3.row-w3` | a union value saves with its sequence, tag and payload at the expected bytes and zeros behind a narrower arm. | `tests: {"go":{"package":"./test/conformance/go/rows","seconds":0.47,"test":"TestRowW3"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `test/conformance/go/rows/W3_test.go:8` |
 
 ### Type `decode`
 
@@ -155,18 +119,6 @@ writing a bad value is refused (debug assert in the assert legs; every build in 
 |---|---|---|---|---|
 | `L.unit.write-refusal.bulk-bytes-short-storage.bulk-byte-array-write-refuses-short-storage` | a bulk byte-array write refuses storage shorter than the array it writes. | `inputs.tests` (108 bytes, held in the registry row's `inputs.tests`) | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `internal/codegen/js/bulk_bytes_short_storage_test.go:27` |
 
-#### `write-refusal` family `c14`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.unit.write-refusal.c14.row-c14-writer-refuses-out-of-range` | the fixed writer refuses an enum or ranged value out of range, in live elements and in slack. | `inputs.tests` (105 bytes, held in the registry row's `inputs.tests`) | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `test/conformance/go/rows/C14_test.go:92` |
-
-#### `write-refusal` family `c8`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.unit.write-refusal.c8.row-c8-writer-refuses-out-of-range` | the fixed writer's measure refuses a bits(N) or ranged value past its bound. | `inputs.tests` (104 bytes, held in the registry row's `inputs.tests`) | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `test/conformance/go/rows/C8_test.go:198` |
-
 #### `write-refusal` family `enumlistwrite`, 1 test
 
 | full name | checks | inputs | expected result | source |
@@ -199,12 +151,6 @@ writing a bad value is refused (debug assert in the assert legs; every build in 
 |---|---|---|---|---|
 | `L.unit.write-refusal.testgen.testgen-refuses-what-it-cannot-spell` | testgen refuses by name a table that does not carry the JSON form, as it has no sample spelling | `inputs.tests` (109 bytes, held in the registry row's `inputs.tests`) | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `internal/codegen/gotable/testgen_test.go:115` |
 
-#### `write-refusal` family `w2`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.unit.write-refusal.w2.row-w2-writer-refuses-the-old-payload` | the writer refuses a present record whose stained payload is past its field's bound. | `inputs.tests` (107 bytes, held in the registry row's `inputs.tests`) | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `test/conformance/go/rows/W2_test.go:111` |
-
 #### `write-refusal` family `writerefusal`, 1 test
 
 | full name | checks | inputs | expected result | source |
@@ -215,53 +161,11 @@ writing a bad value is refused (debug assert in the assert legs; every build in 
 
 hostile bytes are refused in every build, with the named reason.
 
-#### `load-refusal` family `c12`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.unit.load-refusal.c12.row-c12` | a bool byte other than 0 or 1 refuses the fixed read. | `tests: {"go":{"package":"./test/conformance/go/rows","seconds":0.47,"test":"TestRowC12"}}` | refused on load, in every build (verdict only) | `test/conformance/go/rows/C12_test.go:14` |
-
-#### `load-refusal` family `c13`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.unit.load-refusal.c13.row-c13` | a present flag byte other than 0 or 1 refuses the fixed read. | `tests: {"go":{"package":"./test/conformance/go/rows","seconds":0.47,"test":"TestRowC13"}}` | refused on load, in every build (verdict only) | `test/conformance/go/rows/C13_test.go:15` |
-
-#### `load-refusal` family `c14`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.unit.load-refusal.c14.row-c14` | the fixed read's bounds pass walks only live elements, so a forged out-of-range value in a counted array's dead slack refuses by its non-zero byte while the clean file reads. | `tests: {"go":{"package":"./test/conformance/go/rows","seconds":0.47,"test":"TestRowC14"}}` | refused on load, in every build (verdict only) | `test/conformance/go/rows/C14_test.go:12` |
-
-#### `load-refusal` family `c7`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.unit.load-refusal.c7.row-c7` | a ranged scalar past its declared minimum or maximum refuses the fixed read while the clean file reads. | `tests: {"go":{"package":"./test/conformance/go/rows","seconds":0.47,"test":"TestRowC7"}}` | refused on load, in every build (verdict only) | `test/conformance/go/rows/C7_test.go:9` |
-
-#### `load-refusal` family `c8`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.unit.load-refusal.c8.row-c8` | a bits(N) value past 2^N - 1 and other forged ranged widths refuse the fixed read. | `tests: {"go":{"package":"./test/conformance/go/rows","seconds":0.47,"test":"TestRowC8"}}` | refused on load, in every build (verdict only) | `test/conformance/go/rows/C8_test.go:16` |
-
-#### `load-refusal` family `e5`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.unit.load-refusal.e5.row-e5` | historical form-1 files of fixed-class roots refuse as previous\_form while the form-3 fixtures read and write back byte-identically, and an optional costs exactly one present byte over a plain nesting. | `tests: {"go":{"package":"./test/conformance/go/rows","seconds":0.47,"test":"TestRowE5"}}` | refused on load, in every build (verdict only) | `test/conformance/go/rows/E5_test.go:76` |
-
 #### `load-refusal` family `err-names-repeated`, 1 test
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.unit.load-refusal.err-names-repeated.err-names-a-repeated-key` | a text read refused on a repeated key alone reports wire damaged rather than null | `inputs.tests` (106 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/jstable/err_names_repeated_test.go:16` |
-
-#### `load-refusal` family `f12`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.unit.load-refusal.f12.row-f12` | a first announcement is accepted and a second announcement for a held hash is refused as second\_announcement with all counters zero. | `tests: {"go":{"package":"./test/conformance/go/rows","seconds":0.47,"test":"TestRowF12"}}` | refused on load, in every build (verdict only) | `test/conformance/go/rows/F12_test.go:22` |
 
 #### `load-refusal` family `fixed-r29-strict`, 1 test
 
@@ -310,12 +214,6 @@ hostile bytes are refused in every build, with the named reason.
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.unit.load-refusal.flagsrepeat.generated-json-flags-repeated-name-refused` | a text reader refuses a flags array that names the same flag twice and accepts two different names | `inputs.tests` (122 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/gotable/fuzzunit/flagsrepeat_test.go:14` |
-
-#### `load-refusal` family `float32valuesvaliddata`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.unit.load-refusal.float32valuesvaliddata.row-float32-values-non-finite-refused` | a NaN or infinity is refused by the fixed writer and by the load as non\_finite\_float, naming the field and landing nothing. | `inputs.tests` (108 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `test/conformance/go/rows/Float32ValuesValidData_test.go:114` |
 
 #### `load-refusal` family `goose-registry`, 1 test
 
@@ -374,41 +272,11 @@ hostile bytes are refused in every build, with the named reason.
 | `L.unit.load-refusal.messagesets.generated-message-skip-union-field-none` | an unknown union field written with arm reference zero is refused on the skip path, while a none element of a skipped union array stays lawful | `inputs.tests` (119 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/gotable/fuzzunit/messagesets_test.go:166` |
 | `L.unit.load-refusal.messagesets.generated-message-string-held-to-announced-max` | a message read refuses a string length above the sender's announced maximum on both the named and skip paths and accepts one at the maximum | `inputs.tests` (125 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/gotable/fuzzunit/messagesets_test.go:316` |
 
-#### `load-refusal` family `r10`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.unit.load-refusal.r10.row-r10` | the fixed reader compares the header's own hash against the compiled constants and refuses an unknown layout as layout\_unknown without recomputing a hash from the layout bytes. | `tests: {"go":{"package":"./test/conformance/go/rows","seconds":0.47,"test":"TestRowR10"}}` | refused on load, in every build (verdict only) | `test/conformance/go/rows/R10_test.go:20` |
-
-#### `load-refusal` family `r15`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.unit.load-refusal.r15.row-r15` | a file whose hash is in no lineage entry refuses as layout\_unknown reporting the file's hash, with no forward-read clamp or count moved. | `tests: {"go":{"package":"./test/conformance/go/rows","seconds":0.47,"test":"TestRowR15"}}` | refused on load, in every build (verdict only) | `test/conformance/go/rows/R15_test.go:96` |
-
-#### `load-refusal` family `r17`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.unit.load-refusal.r17.row-r17` | a bool byte or a presence byte other than 0 or 1 refuses the fixed read. | `tests: {"go":{"package":"./test/conformance/go/rows","seconds":0.47,"test":"TestRowR17"}}` | refused on load, in every build (verdict only) | `test/conformance/go/rows/R17_test.go:15` |
-
-#### `load-refusal` family `r26`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.unit.load-refusal.r26.row-r26` | a file matching a known lineage entry whose plan could not be built refuses by that entry's name, moves no counters and leaves values at defaults. | `tests: {"go":{"package":"./test/conformance/go/rows","seconds":0.47,"test":"TestRowR26"}}` | refused on load, in every build (verdict only) | `test/conformance/go/rows/R26_test.go:40` |
-
 #### `load-refusal` family `scalar-range-refusal`, 1 test
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.unit.load-refusal.scalar-range-refusal.message-ranged-scalar-read-refuses` | the message read of a ranged integer refuses a value outside the declared range as out\_of\_range and neither clamps nor counts | `inputs.tests` (108 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/jstable/scalar_range_refusal_test.go:40` |
-
-#### `load-refusal` family `w4`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.unit.load-refusal.w4.row-w4` | a counted array's slack is zeroed on write, and a reader refuses stained dead slots, leaving the destination at its defaults. | `tests: {"go":{"package":"./test/conformance/go/rows","seconds":0.47,"test":"TestRowW4"}}` | refused on load, in every build (verdict only) | `test/conformance/go/rows/W4_test.go:15` |
 
 #### `load-refusal` family `wire`, 1 test
 
@@ -1761,31 +1629,6 @@ generated source compiles and is clean.
 | `L.unit.codegen.pythontable-driver-unions.vt-unions-still-refuses-blob-lists` | an array of byte buffers is still refused at generation as an uncarried shape | `inputs.tests` (119 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/pythontable/pythontable_driver_unions_test.go:108` |
 | `L.unit.codegen.pythontable-driver-unions.vt-unions-through-the-driver` | a table closure with a union of table arms and an array of unions generates through the table frame instead of the shared table-arm refusal | `inputs.tests` (114 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/pythontable/pythontable_driver_unions_test.go:15` |
 
-#### `codegen` family `r14`, 2 tests
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.unit.codegen.r14.row-r14` | the generated runtime carries the layout\_record\_too\_large check, measured against the writer's declared root size rather than the ceiling. | `tests: {"go":{"package":"./test/conformance/go/rows","seconds":0.47,"test":"TestRowR14"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `test/conformance/go/rows/R14_test.go:76` |
-| `L.unit.codegen.r14.row-r14-layout-record-too-large-by-name` | the generated runtime emits the layout\_record\_too\_large refusal in its current spelling. | `inputs.tests` (108 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `test/conformance/go/rows/R14_test.go:166` |
-
-#### `codegen` family `r22`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.unit.codegen.r22.row-r22` | a fixed table's closure holds only by-value fixed tables and types, a pointer in the closure is a compile refusal, and no table is in its own closure. | `tests: {"go":{"package":"./test/conformance/go/rows","seconds":0.47,"test":"TestRowR22"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `test/conformance/go/rows/R22_test.go:43` |
-
-#### `codegen` family `r31`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.unit.codegen.r31.row-r31` | the generated fixed plan loads and compares union tag guards at the tag's own full width with 64-bit ordinals. | `tests: {"go":{"package":"./test/conformance/go/rows","seconds":0.01,"test":"TestRowR31"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `test/conformance/go/rows/R31_test.go:25` |
-
-#### `codegen` family `r7`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.unit.codegen.r7.row-r7` | the identity lane compares the reader's own hash by index and never recomputes it, so the build's own file reads, and a header hash in no lineage entry is layout\_unknown carrying the file's hash. | `tests: {"go":{"package":"./test/conformance/go/rows","seconds":0.47,"test":"TestRowR7"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `test/conformance/go/rows/R7_test.go:49` |
-
 #### `codegen` family `read-bounds`, 1 test
 
 | full name | checks | inputs | expected result | source |
@@ -2102,12 +1945,6 @@ generated source compiles and is clean.
 |---|---|---|---|---|
 | `L.unit.codegen.vtkeyed-enum.vt-keyed-enum-descriptor` | An enum-valued keyed field is generated with the keyed codec over an enum element codec. | `inputs.tests` (111 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/pythontable/vtkeyed_enum_test.go:32` |
 
-#### `codegen` family `w7`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.unit.codegen.w7.row-w7` | the fixed plan carries each text op's flavour and each guarded entry's arm ordinal in separate lanes, with the guard at the tag's own width. | `tests: {"go":{"package":"./test/conformance/go/rows","seconds":0.47,"test":"TestRowW7"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `test/conformance/go/rows/W7_test.go:60` |
-
 #### `codegen` family `widenbound-optional-slot`, 1 test
 
 | full name | checks | inputs | expected result | source |
@@ -2197,12 +2034,6 @@ the generated source or output for a schema and language equals its pinned file.
 |---|---|---|---|---|
 | `L.unit.golden.messageform-goldens-form.graph-announcement-keeps-its-historical-epoch` | the original announcement fixture keeps its historical build word and a new build gets a separately named announcement | `inputs.tests` (116 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/messageform_goldens_form_test.go:101` |
 | `L.unit.golden.messageform-goldens-form.message-form-goldens-carry-the-build-version-form` | the announcement goldens carry the current build version form, so a form change cannot leave them stale | `inputs.tests` (118 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/messageform_goldens_form_test.go:23` |
-
-#### `golden` family `w12`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.unit.golden.w12.row-w12` | each layout's frozen legacy hash and its current FNV-1a hash over the count and definitions match the pinned values. | `tests: {"go":{"package":"./test/conformance/go/rows","seconds":0.1,"test":"TestRowW12"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `test/conformance/go/rows/W12_test.go:48` |
 
 ### Type `name-check`
 
@@ -2359,19 +2190,6 @@ one schema version reads or writes another's data.
 |---|---|---|---|---|
 | `L.unit.evolution.lineage-per-call.lineage-belongs-to-its-call` | a lineage handed to a generate call belongs to that call alone, so overlapping calls emit what each emits alone and a plain generate afterwards is unchanged | `inputs.tests` (234 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/squirreltable/lineage_per_call_test.go:16` |
 
-#### `evolution` family `r19`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.unit.evolution.r19.row-r19` | a file written under the old layout reads under the new layout across the lineage, landing the old values and defaulting the appended field. | `tests: {"go":{"package":"./test/conformance/go/rows","seconds":0.47,"test":"TestRowR19"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `test/conformance/go/rows/R19_test.go:105` |
-
-#### `evolution` family `r20`, 2 tests
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.unit.evolution.r20.row-r20-narrow-int-widens-exactly` | a wire holding a narrower integer in a list or map key reads at the wider width, or refuses when the frame holds trailing payload bytes. | `inputs.tests` (104 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `test/conformance/go/rows/R20_test.go:257` |
-| `L.unit.evolution.r20.row-r20-same-width-baseline` | the same-width pristine file reads silently with its full values, so the widening assertions cannot pass on a reader that counts nothing. | `inputs.tests` (99 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `test/conformance/go/rows/R20_test.go:323` |
-
 #### `evolution` family `widen-bound-message`, 1 test
 
 | full name | checks | inputs | expected result | source |
@@ -2420,12 +2238,6 @@ seeded mutations.
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.unit.fuzz.js-messageverdict-wiring.wire-fuzz-message-adapters-answer-the-public-verdict` | the JavaScript conformance driver's message wire-fuzz adapters answer the verdict the public load gave | `inputs.tests` (121 bytes, held in the registry row's `inputs.tests`) | the js Go test for the case (inputs.tests) passes | `internal/codegen/jstable/messageverdict_wiring_test.go:19` |
-
-#### `fuzz` family `p3`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.unit.fuzz.p3.row-p3` | flipping every bit of a valid fixed file yields a named refusal, a malformed read or a read that lands values, and never a panic. | `tests: {"go":{"package":"./test/conformance/go/rows","seconds":0.47,"test":"TestRowP3"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `test/conformance/go/rows/P3_test.go:9` |
 
 #### `fuzz` family `wirefuzzall`, 1 test
 
@@ -2583,18 +2395,6 @@ a negative control: a named test run against a deliberately broken build must co
 |---|---|---|---|---|
 | `L.unit.plant.python-porting-parity.runtime-home-negative-control` | moving or dropping the runtime module turns the runtime location check red | `inputs.tests` (116 bytes, held in the registry row's `inputs.tests`) | the python Go test for the case (inputs.tests) passes | `internal/codegen/pythontable/porting_parity_test.go:676` |
 
-#### `plant` family `r19`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.unit.plant.r19.row-r19-negative-control` | the lineage law goes red on outcomes that break each clause, and the new reader refuses the old file once it is damaged. | `inputs.tests` (97 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `test/conformance/go/rows/R19_test.go:133` |
-
-#### `plant` family `r26`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.unit.plant.r26.row-r26-negative-control` | bypassing the unbuildable-plan check lets the load proceed and turns the probe red. | `inputs.tests` (97 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `test/conformance/go/rows/R26_test.go:146` |
-
 #### `plant` family `reflection-corpus`, 1 test
 
 | full name | checks | inputs | expected result | source |
@@ -2654,12 +2454,6 @@ a negative control: a named test run against a deliberately broken build must co
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.unit.plant.vtcells-strict.variable-conformance-cells-strict-negative-control` | Each strict-read regression replanted into the generated source, including an arm reader ignoring trailing bytes, is reported by the checker. | `inputs.tests` (123 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/jstable/vtcells_strict_test.go:169` |
-
-#### `plant` family `w12`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.unit.plant.w12.row-w12-negative-control` | a perturbed layout or hash input fails the layout hash check. | `inputs.tests` (97 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `test/conformance/go/rows/W12_test.go:82` |
 
 #### `plant` family `wirefuzz-repeated-id`, 1 test
 
@@ -3024,6 +2818,16 @@ memory, allocation and depth limits are held.
 
 Each runs once, as `none.unit.<type>.<family>.<case>`, through the adapter its row names. A new language implements none of these; they hold the compiler, the corpora and the harness itself.
 
+### Type `write-refusal`
+
+writing a bad value is refused (debug assert in the assert legs; every build in the refuse legs).
+
+#### `write-refusal` family `ctable`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.unit.write-refusal.ctable.c-cook-enum-arm-assert-hook-refuses-no-headers` | `gotest` | Go test TestCCookEnumArmAssertHookRefusesNoHeaders in ./internal/codegen/ctable | `package: ./internal/codegen/ctable`<br>`test: TestCCookEnumArmAssertHookRefusesNoHeaders` | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `internal/codegen/ctable/cook_enum_assert_hook_test.go:88` |
+
 ### Type `codegen`
 
 generated source compiles and is clean.
@@ -3170,7 +2974,7 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 | `none.unit.compiler.check.lock-closure-variable-kind-refuses` | `gotest` | Go test TestLockClosureVariableKindRefuses in ./internal/check | `package: ./internal/check`<br>`test: TestLockClosureVariableKindRefuses` | the Go test passes | `internal/check/fixedclosurerows_test.go:56` |
 | `none.unit.compiler.check.map-as-union-arm-is-refused-by-name` | `gotest` | Go test TestMapAsUnionArmIsRefusedByName in ./internal/check | `package: ./internal/check`<br>`test: TestMapAsUnionArmIsRefusedByName` | the Go test passes | `internal/check/maparm_test.go:12` |
 | `none.unit.compiler.check.map-entry-size-diagnostic-carries-table-position` | `gotest` | Go test TestMapEntrySizeDiagnosticCarriesTablePosition in ./internal/check | `package: ./internal/check`<br>`test: TestMapEntrySizeDiagnosticCarriesTablePosition` | the Go test passes | `internal/check/diagnostics_test.go:1160` |
-| `none.unit.compiler.check.name-buildability-corpus` | `gotest` | Go test TestNameBuildabilityCorpus in ./internal/check | `package: ./internal/check`<br>`test: TestNameBuildabilityCorpus` | the Go test passes | `internal/check/namebuildability_test.go:88` |
+| `none.unit.compiler.check.name-buildability-corpus` | `gotest` | Go test TestNameBuildabilityCorpus in ./internal/check | `package: ./internal/check`<br>`read_plant: plant.read-credits.compiler-check-name-buildability-corpus`<br>`reads: ["testdata/name-buildability/..."]`<br>`test: TestNameBuildabilityCorpus` | the Go test passes | `internal/check/namebuildability_test.go:88` |
 | `none.unit.compiler.check.non-finite-triple-na-n` | `gotest` | Go test TestNonFiniteTripleNaN in ./internal/check | `package: ./internal/check`<br>`test: TestNonFiniteTripleNaN` | the Go test passes | `internal/check/diagnostics_test.go:862` |
 | `none.unit.compiler.check.one-sided-integer-range` | `gotest` | Go test TestOneSidedIntegerRange in ./internal/check | `package: ./internal/check`<br>`test: TestOneSidedIntegerRange` | the Go test passes | `internal/check/onesided_test.go:52` |
 | `none.unit.compiler.check.optional-union-draws-one-diagnostic` | `gotest` | Go test TestOptionalUnionDrawsOneDiagnostic in ./internal/check | `package: ./internal/check`<br>`test: TestOptionalUnionDrawsOneDiagnostic` | the Go test passes | `internal/check/diagnostics_test.go:996` |
@@ -3301,7 +3105,7 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 | `none.unit.compiler.codegen-ccommon.single-pass-conditionals` | `gotest` | Go test TestSinglePassConditionals in ./internal/codegen/ccommon | `package: ./internal/codegen/ccommon`<br>`test: TestSinglePassConditionals` | the Go test passes | `internal/codegen/ccommon/singlepass_test.go:12` |
 | `none.unit.compiler.codegen-ccommon.single-pass-conditionals-refuses` | `gotest` | Go test TestSinglePassConditionalsRefuses in ./internal/codegen/ccommon | `package: ./internal/codegen/ccommon`<br>`test: TestSinglePassConditionalsRefuses` | the Go test passes | `internal/codegen/ccommon/singlepass_test.go:77` |
 
-#### `compiler` family `compiler`, 521 tests
+#### `compiler` family `compiler`, 522 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -3391,7 +3195,7 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 | `none.unit.compiler.compiler.external-generator-without-declaration-is-refused` | `gotest` | Go test TestExternalGeneratorWithoutDeclarationIsRefused in ./compiler | `package: ./compiler`<br>`test: TestExternalGeneratorWithoutDeclarationIsRefused` | the Go test passes | `compiler/generatorcarries_test.go:76` |
 | `none.unit.compiler.compiler.fields-named-like-generator-locals-generate-every-target` | `gotest` | Go test TestFieldsNamedLikeGeneratorLocalsGenerateEveryTarget in ./compiler | `package: ./compiler`<br>`test: TestFieldsNamedLikeGeneratorLocalsGenerateEveryTarget` | the Go test passes | `compiler/localnames_test.go:115` |
 | `none.unit.compiler.compiler.fixed-algorithm-current` | `gotest` | Go test TestFixedAlgorithmCurrent in ./compiler | `package: ./compiler`<br>`test: TestFixedAlgorithmCurrent` | the Go test passes | `compiler/fixed_algorithm_current_test.go:13` |
-| `none.unit.compiler.compiler.fixed-definitions-digest-vector` | `gotest` | Go test TestFixedDefinitionsDigestVector in ./compiler | `package: ./compiler`<br>`test: TestFixedDefinitionsDigestVector` | the Go test passes | `compiler/fixed_digest_vector_test.go:21` |
+| `none.unit.compiler.compiler.fixed-definitions-digest-vector` | `gotest` | Go test TestFixedDefinitionsDigestVector in ./compiler | `package: ./compiler`<br>`read_plant: plant.read-credits.compiler-compiler-fixed-definitions-digest-vector`<br>`reads: ["testdata/conformance/fixed-digest/"]`<br>`test: TestFixedDefinitionsDigestVector` | the Go test passes | `compiler/fixed_digest_vector_test.go:21` |
 | `none.unit.compiler.compiler.fixed-depth-bound-is-the-layouts-sixty-four` | `gotest` | Go test TestFixedDepthBoundIsTheLayoutsSixtyFour in ./compiler | `package: ./compiler`<br>`test: TestFixedDepthBoundIsTheLayoutsSixtyFour` | the Go test passes | `compiler/fixeddepth_test.go:65` |
 | `none.unit.compiler.compiler.fixed-depth-far-past-the-bound-is-still-named` | `gotest` | Go test TestFixedDepthFarPastTheBoundIsStillNamed in ./compiler | `package: ./compiler`<br>`test: TestFixedDepthFarPastTheBoundIsStillNamed` | the Go test passes | `compiler/fixeddepth_test.go:135` |
 | `none.unit.compiler.compiler.fixed-depth-inside-the-bound-emits-on-all-nine-legs` | `gotest` | Go test TestFixedDepthInsideTheBoundEmitsOnAllNineLegs in ./compiler | `package: ./compiler`<br>`test: TestFixedDepthInsideTheBoundEmitsOnAllNineLegs` | the Go test passes | `compiler/fixeddepth_test.go:232` |
@@ -3424,7 +3228,7 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 | `none.unit.compiler.compiler.flat-element-array-costs-one-leaf` | `gotest` | Go test TestFlatElementArrayCostsOneLeaf in ./compiler | `package: ./compiler`<br>`test: TestFlatElementArrayCostsOneLeaf` | the Go test passes | `compiler/fixedleafcap_test.go:46` |
 | `none.unit.compiler.compiler.format-file-keeps-mode-and-leaves-no-temporary` | `gotest` | Go test TestFormatFileKeepsModeAndLeavesNoTemporary in ./compiler | `package: ./compiler`<br>`test: TestFormatFileKeepsModeAndLeavesNoTemporary` | the Go test passes | `compiler/formatatomic_test.go:41` |
 | `none.unit.compiler.compiler.format-file-writes-through-a-temporary` | `gotest` | Go test TestFormatFileWritesThroughATemporary in ./compiler | `package: ./compiler`<br>`test: TestFormatFileWritesThroughATemporary` | the Go test passes | `compiler/formatatomic_test.go:17` |
-| `none.unit.compiler.compiler.front-end-vector` | `gotest` | Go test TestFrontEndVector in ./compiler | `package: ./compiler`<br>`test: TestFrontEndVector` | the Go test passes | `compiler/frontend_vector_test.go:29` |
+| `none.unit.compiler.compiler.front-end-vector` | `gotest` | Go test TestFrontEndVector in ./compiler | `package: ./compiler`<br>`read_plant: plant.read-credits.compiler-compiler-front-end-vector`<br>`reads: ["testdata/conformance/frontend/"]`<br>`test: TestFrontEndVector` | the Go test passes | `compiler/frontend_vector_test.go:29` |
 | `none.unit.compiler.compiler.fx1-generates-on-every-leg` | `gotest` | Go test TestFX1GeneratesOnEveryLeg in ./compiler | `package: ./compiler`<br>`test: TestFX1GeneratesOnEveryLeg` | the Go test passes | `compiler/valuedefaults_test.go:401` |
 | `none.unit.compiler.compiler.gather-paths-refuses-a-misplaced-flag-by-name` | `gotest` | Go test TestGatherPathsRefusesAMisplacedFlagByName in ./compiler | `package: ./compiler`<br>`test: TestGatherPathsRefusesAMisplacedFlagByName` | the Go test passes | `compiler/porting_test.go:656` |
 | `none.unit.compiler.compiler.generated-constants-agree-with-checker-c` | `gotest` | Go test TestGeneratedConstantsAgreeWithCheckerC in ./compiler | `package: ./compiler`<br>`test: TestGeneratedConstantsAgreeWithCheckerC` | the Go test passes | `compiler/constagree_test.go:325` |
@@ -3458,7 +3262,7 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 | `none.unit.compiler.compiler.go-table-keyed-shifts-and-refuses-both-ends` | `gotest` | Go test TestGoTableKeyedShiftsAndRefusesBothEnds in ./compiler | `package: ./compiler`<br>`test: TestGoTableKeyedShiftsAndRefusesBothEnds` | the Go test passes | `compiler/schema_spec_pin_s0_test.go:33` |
 | `none.unit.compiler.compiler.goose-reads-the-locked-older-layout` | `gotest` | Go test TestGooseReadsTheLockedOlderLayout in ./compiler | `package: ./compiler`<br>`test: TestGooseReadsTheLockedOlderLayout` | the Go test passes | `compiler/target_goose_ships_lineage_test.go:149` |
 | `none.unit.compiler.compiler.goose-ships-the-lock-lineage` | `gotest` | Go test TestGooseShipsTheLockLineage in ./compiler | `package: ./compiler`<br>`test: TestGooseShipsTheLockLineage` | the Go test passes | `compiler/target_goose_ships_lineage_test.go:36` |
-| `none.unit.compiler.compiler.grammar-corpus` | `gotest` | Go test TestGrammarCorpus in ./compiler | `package: ./compiler`<br>`test: TestGrammarCorpus` | the Go test passes | `compiler/grammar_corpus_test.go:16` |
+| `none.unit.compiler.compiler.grammar-corpus` | `gotest` | Go test TestGrammarCorpus in ./compiler | `package: ./compiler`<br>`reads: ["testdata/conformance/grammar/..."]`<br>`test: TestGrammarCorpus` | the Go test passes | `compiler/grammar_corpus_test.go:16` |
 | `none.unit.compiler.compiler.guard-comments-spell-the-condition-the-way-descriptors-do` | `gotest` | Go test TestGuardCommentsSpellTheConditionTheWayDescriptorsDo in ./compiler | `package: ./compiler`<br>`test: TestGuardCommentsSpellTheConditionTheWayDescriptorsDo` | the Go test passes | `compiler/guardspelling_test.go:70` |
 | `none.unit.compiler.compiler.integrity-refused-off-go` | `gotest` | Go test TestIntegrityRefusedOffGo in ./compiler | `package: ./compiler`<br>`test: TestIntegrityRefusedOffGo` | the Go test passes | `compiler/integrity_refusal_test.go:11` |
 | `none.unit.compiler.compiler.issue474-contributing-describes-caa` | `gotest` | Go test TestIssue474ContributingDescribesCAA in ./compiler | `package: ./compiler`<br>`test: TestIssue474ContributingDescribesCAA` | the Go test passes | `compiler/issue474_test.go:15` |
@@ -3569,7 +3373,7 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 | `none.unit.compiler.compiler.js-refuses-pointered-tables` | `gotest` | Go test TestJsRefusesPointeredTables in ./compiler | `package: ./compiler`<br>`test: TestJsRefusesPointeredTables` | the Go test passes | `compiler/tablesjs_test.go:141` |
 | `none.unit.compiler.compiler.js-table-module-scope-names-are-claimed` | `gotest` | Go test TestJsTableModuleScopeNamesAreClaimed in ./compiler | `package: ./compiler`<br>`test: TestJsTableModuleScopeNamesAreClaimed` | the Go test passes | `compiler/tablesjs_test.go:248` |
 | `none.unit.compiler.compiler.js-variable-registry-name-remains-free-without-tables` | `gotest` | Go test TestJsVariableRegistryNameRemainsFreeWithoutTables in ./compiler | `package: ./compiler`<br>`test: TestJsVariableRegistryNameRemainsFreeWithoutTables` | the Go test passes | `compiler/tablesjs_test.go:312` |
-| `none.unit.compiler.compiler.json-fixtures-hold-no-bare-wide-integer` | `gotest` | Go test TestJsonFixturesHoldNoBareWideInteger in ./compiler | `package: ./compiler`<br>`test: TestJsonFixturesHoldNoBareWideInteger` | the Go test passes | `compiler/spec_json_wide_fixtures_strings_test.go:34` |
+| `none.unit.compiler.compiler.json-fixtures-hold-no-bare-wide-integer` | `gotest` | Go test TestJsonFixturesHoldNoBareWideInteger in ./compiler | `package: ./compiler`<br>`read_plant: plant.read-credits.compiler-compiler-json-fixtures-hold-no-bare-wide-integer`<br>`reads: ["testdata/wire/json-comment-text-rules/","testdata/wire/json-integers/"]`<br>`test: TestJsonFixturesHoldNoBareWideInteger` | the Go test passes | `compiler/spec_json_wide_fixtures_strings_test.go:34` |
 | `none.unit.compiler.compiler.list-carriers` | `gotest` | Go test TestListCarriers in ./compiler | `package: ./compiler`<br>`test: TestListCarriers` | the Go test passes | `compiler/tableslists_test.go:66` |
 | `none.unit.compiler.compiler.list-fields-names-what-an-author-wrote` | `gotest` | Go test TestListFieldsNamesWhatAnAuthorWrote in ./compiler | `package: ./compiler`<br>`test: TestListFieldsNamesWhatAnAuthorWrote` | the Go test passes | `compiler/tableslists_test.go:100` |
 | `none.unit.compiler.compiler.list-refusal-names-the-carrier` | `gotest` | Go test TestListRefusalNamesTheCarrier in ./compiler | `package: ./compiler`<br>`test: TestListRefusalNamesTheCarrier` | the Go test passes | `compiler/tableslists_test.go:117` |
@@ -3683,6 +3487,7 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 | `none.unit.compiler.compiler.registered-names-are-asked-once` | `gotest` | Go test TestRegisteredNamesAreAskedOnce in ./compiler | `package: ./compiler`<br>`test: TestRegisteredNamesAreAskedOnce` | the Go test passes | `compiler/generatorsnapshot_test.go:133` |
 | `none.unit.compiler.compiler.registered-names-are-the-names-that-were-checked` | `gotest` | Go test TestRegisteredNamesAreTheNamesThatWereChecked in ./compiler | `package: ./compiler`<br>`test: TestRegisteredNamesAreTheNamesThatWereChecked` | the Go test passes | `compiler/generatorsnapshot_test.go:201` |
 | `none.unit.compiler.compiler.registered-names-do-not-follow-the-callers-slice` | `gotest` | Go test TestRegisteredNamesDoNotFollowTheCallersSlice in ./compiler | `package: ./compiler`<br>`test: TestRegisteredNamesDoNotFollowTheCallersSlice` | the Go test passes | `compiler/generatorsnapshot_test.go:116` |
+| `none.unit.compiler.compiler.registry-rows-are-reach-roots` | `gotest` | Go test TestRegistryRowsAreReachRoots in ./compiler | `package: ./compiler`<br>`test: TestRegistryRowsAreReachRoots` | the Go test passes | `compiler/porting_test.go:705` |
 | `none.unit.compiler.compiler.required-refused-for-every-target-but-go` | `gotest` | Go test TestRequiredRefusedForEveryTargetButGo in ./compiler | `package: ./compiler`<br>`test: TestRequiredRefusedForEveryTargetButGo` | the Go test passes | `compiler/required_test.go:11` |
 | `none.unit.compiler.compiler.retire-loaded-layout-corpus` | `gotest` | Go test TestRetireLoadedLayoutCorpus in ./compiler | `package: ./compiler`<br>`test: TestRetireLoadedLayoutCorpus` | the Go test passes | `compiler/lock_retirement_corpus_test.go:16` |
 | `none.unit.compiler.compiler.retire-takes-effect-for-the-loaded-unit` | `gotest` | Go test TestRetireTakesEffectForTheLoadedUnit in ./compiler | `package: ./compiler`<br>`test: TestRetireTakesEffectForTheLoadedUnit` | the Go test passes | `compiler/lock_retire_read_test.go:17` |
@@ -3731,15 +3536,15 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 | `none.unit.compiler.compiler.spec-go-s8-s9-view` | `gotest` | Go test TestSpecGoS8S9View in ./compiler | `package: ./compiler`<br>`test: TestSpecGoS8S9View` | the Go test passes | `compiler/specgo_s8_s9_view_test.go:13` |
 | `none.unit.compiler.compiler.spec-go-usage-first-half-stale-status` | `gotest` | Go test TestSpecGoUsageFirstHalfStaleStatus in ./compiler | `package: ./compiler`<br>`test: TestSpecGoUsageFirstHalfStaleStatus` | the Go test passes | `compiler/specgo_usage_first_half_stale_status_test.go:13` |
 | `none.unit.compiler.compiler.spec-go-usage-second-half-stale-status` | `gotest` | Go test TestSpecGoUsageSecondHalfStaleStatus in ./compiler | `package: ./compiler`<br>`test: TestSpecGoUsageSecondHalfStaleStatus` | the Go test passes | `compiler/specgo_usage_second_half_stale_status_test.go:140` |
-| `none.unit.compiler.compiler.spec-json-bytes-are-canonical-base64` | `gotest` | Go test TestSpecJsonBytesAreCanonicalBase64 in ./compiler | `package: ./compiler`<br>`test: TestSpecJsonBytesAreCanonicalBase64` | the Go test passes | `compiler/spec_json_base64_canonical_test.go:22` |
+| `none.unit.compiler.compiler.spec-json-bytes-are-canonical-base64` | `gotest` | Go test TestSpecJsonBytesAreCanonicalBase64 in ./compiler | `package: ./compiler`<br>`read_plant: plant.read-credits.compiler-compiler-spec-json-bytes-are-canonical-base64`<br>`reads: ["testdata/wire/json-base64-canonical/"]`<br>`test: TestSpecJsonBytesAreCanonicalBase64` | the Go test passes | `compiler/spec_json_base64_canonical_test.go:22` |
 | `none.unit.compiler.compiler.spec-json-comment-text-rules` | `gotest` | Go test TestSpecJsonCommentTextRules in ./compiler | `package: ./compiler`<br>`test: TestSpecJsonCommentTextRules` | the Go test passes | `compiler/spec_json_comment_text_rules_test.go:15` |
-| `none.unit.compiler.compiler.spec-json-flags-name-once` | `gotest` | Go test TestSpecJsonFlagsNameOnce in ./compiler | `package: ./compiler`<br>`test: TestSpecJsonFlagsNameOnce` | the Go test passes | `compiler/spec_json_flags_name_once_test.go:21` |
+| `none.unit.compiler.compiler.spec-json-flags-name-once` | `gotest` | Go test TestSpecJsonFlagsNameOnce in ./compiler | `package: ./compiler`<br>`read_plant: plant.read-credits.compiler-compiler-spec-json-flags-name-once`<br>`reads: ["testdata/wire/json-flags-name-once/"]`<br>`test: TestSpecJsonFlagsNameOnce` | the Go test passes | `compiler/spec_json_flags_name_once_test.go:21` |
 | `none.unit.compiler.compiler.spec-json-integers` | `gotest` | Go test TestSpecJsonIntegers in ./compiler | `package: ./compiler`<br>`test: TestSpecJsonIntegers` | the Go test passes | `compiler/spec_json_integers_test.go:17` |
-| `none.unit.compiler.compiler.spec-json-read-is-closed` | `gotest` | Go test TestSpecJsonReadIsClosed in ./compiler | `package: ./compiler`<br>`test: TestSpecJsonReadIsClosed` | the Go test passes | `compiler/spec_json_read_closed_test.go:17` |
+| `none.unit.compiler.compiler.spec-json-read-is-closed` | `gotest` | Go test TestSpecJsonReadIsClosed in ./compiler | `package: ./compiler`<br>`read_plant: plant.read-credits.compiler-compiler-spec-json-read-is-closed`<br>`reads: ["testdata/wire/json-read-closed/"]`<br>`test: TestSpecJsonReadIsClosed` | the Go test passes | `compiler/spec_json_read_closed_test.go:17` |
 | `none.unit.compiler.compiler.spec-json-wide-integer-refuses-number-token` | `gotest` | Go test TestSpecJsonWideIntegerRefusesNumberToken in ./compiler | `package: ./compiler`<br>`test: TestSpecJsonWideIntegerRefusesNumberToken` | the Go test passes | `compiler/spec_json_wide_number_token_test.go:66` |
 | `none.unit.compiler.compiler.spec-message-announcement-is-closed` | `gotest` | Go test TestSpecMessageAnnouncementIsClosed in ./compiler | `package: ./compiler`<br>`test: TestSpecMessageAnnouncementIsClosed` | the Go test passes | `compiler/spec_message_announcement_closed_test.go:14` |
 | `none.unit.compiler.compiler.spec-message-form-has-kind36-row` | `gotest` | Go test TestSpecMessageFormHasKind36Row in ./compiler | `package: ./compiler`<br>`test: TestSpecMessageFormHasKind36Row` | the Go test passes | `compiler/spec_message_kind36_test.go:17` |
-| `none.unit.compiler.compiler.spec-message-form-has-one-encoding` | `gotest` | Go test TestSpecMessageFormHasOneEncoding in ./compiler | `package: ./compiler`<br>`test: TestSpecMessageFormHasOneEncoding` | the Go test passes | `compiler/spec_message_one_encoding_test.go:17` |
+| `none.unit.compiler.compiler.spec-message-form-has-one-encoding` | `gotest` | Go test TestSpecMessageFormHasOneEncoding in ./compiler | `package: ./compiler`<br>`read_plant: plant.read-credits.compiler-compiler-spec-message-form-has-one-encoding`<br>`reads: ["test/message-one-encoding/One.schema","testdata/wire/message-one-encoding/"]`<br>`test: TestSpecMessageFormHasOneEncoding` | the Go test passes | `compiler/spec_message_one_encoding_test.go:17` |
 | `none.unit.compiler.compiler.spec-packet-end-is-checked` | `gotest` | Go test TestSpecPacketEndIsChecked in ./compiler | `package: ./compiler`<br>`test: TestSpecPacketEndIsChecked` | the Go test passes | `compiler/spec_packet_end_test.go:66` |
 | `none.unit.compiler.compiler.spec-packet-guarantees-name-every-target` | `gotest` | Go test TestSpecPacketGuaranteesNameEveryTarget in ./compiler | `package: ./compiler`<br>`test: TestSpecPacketGuaranteesNameEveryTarget` | the Go test passes | `compiler/spec_packet_every_target_test.go:10` |
 | `none.unit.compiler.compiler.spec-packet-read-refuses-non-finite-float` | `gotest` | Go test TestSpecPacketReadRefusesNonFiniteFloat in ./compiler | `package: ./compiler`<br>`test: TestSpecPacketReadRefusesNonFiniteFloat` | the Go test passes | `compiler/spec_packet_floats_finite_test.go:14` |
@@ -3749,7 +3554,7 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 | `none.unit.compiler.compiler.spec-page-current` | `gotest` | Go test TestSpecPageCurrent in ./compiler | `package: ./compiler`<br>`test: TestSpecPageCurrent` | the Go test passes | `compiler/spec_page_current_test.go:13` |
 | `none.unit.compiler.compiler.spec-porting-read-verdict-every-build` | `gotest` | Go test TestSpecPortingReadVerdictEveryBuild in ./compiler | `package: ./compiler`<br>`test: TestSpecPortingReadVerdictEveryBuild` | the Go test passes | `compiler/spec_porting_build_modes_test.go:14` |
 | `none.unit.compiler.compiler.spec-reads-refuse-non-canonical` | `gotest` | Go test TestSpecReadsRefuseNonCanonical in ./compiler | `package: ./compiler`<br>`test: TestSpecReadsRefuseNonCanonical` | the Go test passes | `compiler/spec_reads_refuse_non_canonical_test.go:17` |
-| `none.unit.compiler.compiler.spec-skipped-value-is-validated` | `gotest` | Go test TestSpecSkippedValueIsValidated in ./compiler | `package: ./compiler`<br>`test: TestSpecSkippedValueIsValidated` | the Go test passes | `compiler/spec_skipped_value_test.go:19` |
+| `none.unit.compiler.compiler.spec-skipped-value-is-validated` | `gotest` | Go test TestSpecSkippedValueIsValidated in ./compiler | `package: ./compiler`<br>`read_plant: plant.read-credits.compiler-compiler-spec-skipped-value-is-validated`<br>`reads: ["testdata/wire/skipped-value/"]`<br>`test: TestSpecSkippedValueIsValidated` | the Go test passes | `compiler/spec_skipped_value_test.go:19` |
 | `none.unit.compiler.compiler.spec-tables-current` | `gotest` | Go test TestSpecTablesCurrent in ./compiler | `package: ./compiler`<br>`test: TestSpecTablesCurrent` | the Go test passes | `compiler/spec_tables_current_test.go:18` |
 | `none.unit.compiler.compiler.spec-text-writer-refuses-ill-formed-text` | `gotest` | Go test TestSpecTextWriterRefusesIllFormedText in ./compiler | `package: ./compiler`<br>`test: TestSpecTextWriterRefusesIllFormedText` | the Go test passes | `compiler/spec_writer_refuses_illformed_test.go:13` |
 | `none.unit.compiler.compiler.spec-text-writer-refuses-what-is-not-text` | `gotest` | Go test TestSpecTextWriterRefusesWhatIsNotText in ./compiler | `package: ./compiler`<br>`test: TestSpecTextWriterRefusesWhatIsNotText` | the Go test passes | `compiler/spec_writer_refuses_not_text_test.go:13` |
@@ -4370,7 +4175,7 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 | `none.unit.compiler.tabletext.json-flags-repeated-name-negative-control` | `gotest` | Go test TestJSONFlagsRepeatedNameNegativeControl in ./internal/tabletext | `package: ./internal/tabletext`<br>`test: TestJSONFlagsRepeatedNameNegativeControl` | the Go test passes | `internal/tabletext/flagsrepeat_test.go:71` |
 | `none.unit.compiler.tabletext.json-flags-repeated-name-refused` | `gotest` | Go test TestJSONFlagsRepeatedNameRefused in ./internal/tabletext | `package: ./internal/tabletext`<br>`test: TestJSONFlagsRepeatedNameRefused` | the Go test passes | `internal/tabletext/flagsrepeat_test.go:44` |
 | `none.unit.compiler.tabletext.json-key-is-honoured` | `gotest` | Go test TestJsonKeyIsHonoured in ./internal/tabletext | `package: ./internal/tabletext`<br>`test: TestJsonKeyIsHonoured` | the Go test passes | `internal/tabletext/text_test.go:223` |
-| `none.unit.compiler.tabletext.json-test-suite-engine` | `gotest` | Go test TestJSONTestSuiteEngine in ./internal/tabletext | `package: ./internal/tabletext`<br>`test: TestJSONTestSuiteEngine` | the Go test passes | `internal/tabletext/jsontestsuite_test.go:48` |
+| `none.unit.compiler.tabletext.json-test-suite-engine` | `gotest` | Go test TestJSONTestSuiteEngine in ./internal/tabletext | `package: ./internal/tabletext`<br>`read_plant: plant.read-credits.compiler-tabletext-json-test-suite-engine`<br>`reads: ["testdata/jsontestsuite/SHA256SUMS","testdata/jsontestsuite/PENDING.tsv"]`<br>`test: TestJSONTestSuiteEngine` | the Go test passes | `internal/tabletext/jsontestsuite_test.go:48` |
 | `none.unit.compiler.tabletext.json-test-suite-policy-witness` | `gotest` | Go test TestJSONTestSuitePolicyWitness in ./internal/tabletext | `package: ./internal/tabletext`<br>`test: TestJSONTestSuitePolicyWitness` | the Go test passes | `internal/tabletext/jsontestsuite_test.go:66` |
 | `none.unit.compiler.tabletext.jsonref-depth-counts-map-and-union-objects` | `gotest` | Go test TestJsonrefDepthCountsMapAndUnionObjects in ./internal/tabletext | `package: ./internal/tabletext`<br>`test: TestJsonrefDepthCountsMapAndUnionObjects` | the Go test passes | `internal/tabletext/jsonref_test.go:81` |
 | `none.unit.compiler.tabletext.jsonref-label-rules` | `gotest` | Go test TestJsonrefLabelRules in ./internal/tabletext | `package: ./internal/tabletext`<br>`test: TestJsonrefLabelRules` | the Go test passes | `internal/tabletext/jsonref_test.go:171` |
@@ -4416,7 +4221,7 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 | `none.unit.compiler.tabletext.text-long-number-token-lands` | `gotest` | Go test TestTextLongNumberTokenLands in ./internal/tabletext | `package: ./internal/tabletext`<br>`test: TestTextLongNumberTokenLands` | the Go test passes | `internal/tabletext/longnumber_test.go:36` |
 | `none.unit.compiler.tabletext.text-map-key-above-name-cap-reads-under-its-own-bound` | `gotest` | Go test TestTextMapKeyAboveNameCapReadsUnderItsOwnBound in ./internal/tabletext | `package: ./internal/tabletext`<br>`test: TestTextMapKeyAboveNameCapReadsUnderItsOwnBound` | the Go test passes | `internal/tabletext/mapkeywide_test.go:14` |
 | `none.unit.compiler.tabletext.text-read-closed-rows` | `gotest` | Go test TestTextReadClosedRows in ./internal/tabletext | `package: ./internal/tabletext`<br>`test: TestTextReadClosedRows` | the Go test passes | `internal/tabletext/readclosed_test.go:72` |
-| `none.unit.compiler.tabletext.text-skipped-string-refuses-zero` | `gotest` | Go test TestTextSkippedStringRefusesZero in ./internal/tabletext | `package: ./internal/tabletext`<br>`test: TestTextSkippedStringRefusesZero` | the Go test passes | `internal/tabletext/skippedstringzero_test.go:19` |
+| `none.unit.compiler.tabletext.text-skipped-string-refuses-zero` | `gotest` | Go test TestTextSkippedStringRefusesZero in ./internal/tabletext | `package: ./internal/tabletext`<br>`read_plant: plant.read-credits.compiler-tabletext-text-skipped-string-refuses-zero`<br>`reads: ["test/skipped-value/reader/"]`<br>`test: TestTextSkippedStringRefusesZero` | the Go test passes | `internal/tabletext/skippedstringzero_test.go:19` |
 | `none.unit.compiler.tabletext.text-wide-integer-refuses-number-token` | `gotest` | Go test TestTextWideIntegerRefusesNumberToken in ./internal/tabletext | `package: ./internal/tabletext`<br>`test: TestTextWideIntegerRefusesNumberToken` | the Go test passes | `internal/tabletext/widenumbertoken_test.go:71` |
 | `none.unit.compiler.tabletext.text-writer-refuses-zero-byte` | `gotest` | Go test TestTextWriterRefusesZeroByte in ./internal/tabletext | `package: ./internal/tabletext`<br>`test: TestTextWriterRefusesZeroByte` | the Go test passes | `internal/tabletext/textwriterzero_test.go:47` |
 | `none.unit.compiler.tabletext.trailing-commas-and-comments` | `gotest` | Go test TestTrailingCommasAndComments in ./internal/tabletext | `package: ./internal/tabletext`<br>`test: TestTrailingCommasAndComments` | the Go test passes | `internal/tabletext/text_test.go:248` |
@@ -4439,7 +4244,7 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 | `none.unit.compiler.tablewire.a-required-pointer-to-an-undeclared-table-reads-null-and-counts-unknown` | `gotest` | Go test TestARequiredPointerToAnUndeclaredTableReadsNullAndCountsUnknown in ./internal/tablewire | `package: ./internal/tablewire`<br>`test: TestARequiredPointerToAnUndeclaredTableReadsNullAndCountsUnknown` | the Go test passes | `internal/tablewire/pointer_rename_attack_test.go:101` |
 | `none.unit.compiler.tablewire.a-was-renamed-arm-announces-the-old-names-hash` | `gotest` | Go test TestAWasRenamedArmAnnouncesTheOldNamesHash in ./internal/tablewire | `package: ./internal/tablewire`<br>`test: TestAWasRenamedArmAnnouncesTheOldNamesHash` | the Go test passes | `internal/tablewire/wasarmmessage_test.go:61` |
 | `none.unit.compiler.tablewire.a-was-renamed-arm-survives-the-message-form` | `gotest` | Go test TestAWasRenamedArmSurvivesTheMessageForm in ./internal/tablewire | `package: ./internal/tablewire`<br>`test: TestAWasRenamedArmSurvivesTheMessageForm` | the Go test passes | `internal/tablewire/wasarmmessage_test.go:86` |
-| `none.unit.compiler.tablewire.announce-golden-at-the-bound` | `gotest` | Go test TestAnnounceGoldenAtTheBound in ./internal/tablewire | `package: ./internal/tablewire`<br>`test: TestAnnounceGoldenAtTheBound` | the Go test passes | `internal/tablewire/idcap_announce_test.go:35` |
+| `none.unit.compiler.tablewire.announce-golden-at-the-bound` | `gotest` | Go test TestAnnounceGoldenAtTheBound in ./internal/tablewire | `package: ./internal/tablewire`<br>`read_plant: plant.read-credits.compiler-tablewire-announce-golden-at-the-bound`<br>`reads: ["testdata/conformance/announce-cap/announce-4096.txt"]`<br>`test: TestAnnounceGoldenAtTheBound` | the Go test passes | `internal/tablewire/idcap_announce_test.go:35` |
 | `none.unit.compiler.tablewire.announce-schema-vocabulary-count` | `gotest` | Go test TestAnnounceSchemaVocabularyCount in ./internal/tablewire | `package: ./internal/tablewire`<br>`test: TestAnnounceSchemaVocabularyCount` | the Go test passes | `internal/tablewire/idcap_announce_test.go:18` |
 | `none.unit.compiler.tablewire.announcement-refusals` | `gotest` | Go test TestAnnouncementRefusals in ./internal/tablewire | `package: ./internal/tablewire`<br>`test: TestAnnouncementRefusals` | the Go test passes | `internal/tablewire/coverage_test.go:657` |
 | `none.unit.compiler.tablewire.announcement-requires-canonical-id-table` | `gotest` | Go test TestAnnouncementRequiresCanonicalIdTable in ./internal/tablewire | `package: ./internal/tablewire`<br>`test: TestAnnouncementRequiresCanonicalIdTable` | the Go test passes | `internal/tablewire/announcementcanonical_test.go:14` |
@@ -4869,7 +4674,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.cellmerge.resolve-leaves-a-hunk-it-cannot-merge-exactly` | `gotest` | Go test TestResolveLeavesAHunkItCannotMergeExactly in ./tools/cellmerge | `package: ./tools/cellmerge`<br>`test: TestResolveLeavesAHunkItCannotMergeExactly` | the Go test passes | `tools/cellmerge/main_test.go:68` |
 | `none.unit.tooling.cellmerge.resolve-merges-a-two-sided-row-cell-by-column` | `gotest` | Go test TestResolveMergesATwoSidedRowCellByColumn in ./tools/cellmerge | `package: ./tools/cellmerge`<br>`test: TestResolveMergesATwoSidedRowCellByColumn` | the Go test passes | `tools/cellmerge/main_test.go:54` |
 
-#### `tooling` family `ci`, 262 tests
+#### `tooling` family `ci`, 271 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -4884,11 +4689,15 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.ci.caa-job-starts-only-when-a-step-would-run` | `gotest` | Go test TestCAAJobStartsOnlyWhenAStepWouldRun in ./internal/ci | `package: ./internal/ci`<br>`test: TestCAAJobStartsOnlyWhenAStepWouldRun` | the Go test passes | `internal/ci/cla_job_test.go:60` |
 | `none.unit.tooling.ci.caa-pull-request-target-always-starts-the-required-check` | `gotest` | Go test TestCAAPullRequestTargetAlwaysStartsTheRequiredCheck in ./internal/ci | `package: ./internal/ci`<br>`test: TestCAAPullRequestTargetAlwaysStartsTheRequiredCheck` | the Go test passes | `internal/ci/cla_job_test.go:103` |
 | `none.unit.tooling.ci.caa-self-test-fails-naming-the-missing-token` | `gotest` | Go test TestCAASelfTestFailsNamingTheMissingToken in ./internal/ci | `package: ./internal/ci`<br>`test: TestCAASelfTestFailsNamingTheMissingToken` | the Go test passes | `internal/ci/caa_self_test_token_test.go:1` |
+| `none.unit.tooling.ci.cards-test-runs-no-whole-repo-package` | `gotest` | Go test TestCardsTestRunsNoWholeRepoPackage in ./internal/ci | `package: ./internal/ci`<br>`test: TestCardsTestRunsNoWholeRepoPackage` | the Go test passes | `internal/ci/cards_test_recipe_test.go:18` |
+| `none.unit.tooling.ci.cards-test-whole-repo-package-judge-catches-the-plant` | `gotest` | Go test TestCardsTestWholeRepoPackageJudgeCatchesThePlant in ./internal/ci | `package: ./internal/ci`<br>`test: TestCardsTestWholeRepoPackageJudgeCatchesThePlant` | the Go test passes | `internal/ci/cards_test_recipe_test.go:37` |
 | `none.unit.tooling.ci.case-insensitive-test-collisions` | `gotest` | Go test TestCaseInsensitiveTestCollisions in ./internal/ci | `package: ./internal/ci`<br>`test: TestCaseInsensitiveTestCollisions` | the Go test passes | `internal/ci/caseinsensitive_fs_test.go:302` |
 | `none.unit.tooling.ci.case-insensitive-test-collisions-negative-controls` | `gotest` | Go test TestCaseInsensitiveTestCollisionsNegativeControls in ./internal/ci | `package: ./internal/ci`<br>`test: TestCaseInsensitiveTestCollisionsNegativeControls` | the Go test passes | `internal/ci/caseinsensitive_fs_test.go:342` |
 | `none.unit.tooling.ci.certify-release-plan-reads-makes-database` | `gotest` | Go test TestCertifyReleasePlanReadsMakesDatabase in ./internal/ci | `package: ./internal/ci`<br>`test: TestCertifyReleasePlanReadsMakesDatabase` | the Go test passes | `internal/ci/certify_release_plan_test.go:51` |
 | `none.unit.tooling.ci.ci-fast-and-ci-full-run-on-pull-request-whatever-its-base` | `gotest` | Go test TestCIFastAndCIFullRunOnPullRequestWhateverItsBase in ./internal/ci | `package: ./internal/ci`<br>`test: TestCIFastAndCIFullRunOnPullRequestWhateverItsBase` | the Go test passes | `internal/ci/fast_go_test.go:111` |
 | `none.unit.tooling.ci.ci-full-pr-select` | `gotest` | Go test TestCIFullPRSelect in ./internal/ci | `package: ./internal/ci`<br>`test: TestCIFullPRSelect` | the Go test passes | `internal/ci/ci_full_pr_select_test.go:45` |
+| `none.unit.tooling.ci.ci-package-holds-no-nightly-row` | `gotest` | Go test TestCIPackageHoldsNoNightlyRow in ./internal/ci | `package: ./internal/ci`<br>`test: TestCIPackageHoldsNoNightlyRow` | the Go test passes | `internal/ci/package_holds_no_nightly_row_test.go:19` |
+| `none.unit.tooling.ci.ci-package-nightly-judge-catches-the-plant` | `gotest` | Go test TestCIPackageNightlyJudgeCatchesThePlant in ./internal/ci | `package: ./internal/ci`<br>`test: TestCIPackageNightlyJudgeCatchesThePlant` | the Go test passes | `internal/ci/package_holds_no_nightly_row_test.go:45` |
 | `none.unit.tooling.ci.cli-publisher-gate-negative-control` | `gotest` | Go test TestCLIPublisherGateNegativeControl in ./internal/ci | `package: ./internal/ci`<br>`test: TestCLIPublisherGateNegativeControl` | the Go test passes | `internal/ci/cli_publisher_test.go:240` |
 | `none.unit.tooling.ci.cli-writes-go-through-the-publisher` | `gotest` | Go test TestCLIWritesGoThroughThePublisher in ./internal/ci | `package: ./internal/ci`<br>`test: TestCLIWritesGoThroughThePublisher` | the Go test passes | `internal/ci/cli_publisher_test.go:184` |
 | `none.unit.tooling.ci.conformance-compilers-rebuild-on-their-runtime` | `gotest` | Go test TestConformanceCompilersRebuildOnTheirRuntime in ./internal/ci | `package: ./internal/ci`<br>`test: TestConformanceCompilersRebuildOnTheirRuntime` | the Go test passes | `internal/ci/serialize_pin_input_test.go:62` |
@@ -4896,7 +4705,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.ci.conformance-shared-inputs-negative-controls` | `gotest` | Go test TestConformanceSharedInputsNegativeControls in ./internal/ci | `package: ./internal/ci`<br>`test: TestConformanceSharedInputsNegativeControls` | the Go test passes | `internal/ci/conformanceshared_test.go:114` |
 | `none.unit.tooling.ci.constrained-test-gate-corpus` | `gotest` | Go test TestConstrainedTestGateCorpus in ./internal/ci | `package: ./internal/ci`<br>`test: TestConstrainedTestGateCorpus` | the Go test passes | `internal/ci/silent_skips_test.go:333` |
 | `none.unit.tooling.ci.context7-scans-only-the-main-docs` | `gotest` | Go test TestContext7ScansOnlyTheMainDocs in ./internal/ci | `package: ./internal/ci`<br>`test: TestContext7ScansOnlyTheMainDocs` | the Go test passes | `internal/ci/context7_test.go:23` |
-| `none.unit.tooling.ci.cpp-driver-reason-switches-name-every-refusal` | `gotest` | Go test TestCPPDriverReasonSwitchesNameEveryRefusal in ./internal/ci | `package: ./internal/ci`<br>`test: TestCPPDriverReasonSwitchesNameEveryRefusal` | the Go test passes | `internal/ci/cpp_driver_reason_switches_test.go:46` |
+| `none.unit.tooling.ci.cpp-driver-reason-switches-name-every-refusal` | `gotest` | Go test TestCPPDriverReasonSwitchesNameEveryRefusal in ./internal/ci | `package: ./internal/ci`<br>`test: TestCPPDriverReasonSwitchesNameEveryRefusal` | the Go test passes | `internal/ci/cpp_driver_reason_switches_test.go:48` |
 | `none.unit.tooling.ci.cpp-positive-feature-corpus-pack` | `gotest` | Go test TestCppPositiveFeatureCorpusPack in ./internal/ci | `package: ./internal/ci`<br>`test: TestCppPositiveFeatureCorpusPack` | the Go test passes | `internal/ci/cpp_positive_features_pack_test.go:19` |
 | `none.unit.tooling.ci.cpp-positive-feature-corpus-wiring` | `gotest` | Go test TestCppPositiveFeatureCorpusWiring in ./internal/ci | `package: ./internal/ci`<br>`test: TestCppPositiveFeatureCorpusWiring` | the Go test passes | `internal/ci/cpp_positive_features_test.go:12` |
 | `none.unit.tooling.ci.dart-conformance-handoff-includes-generated-imports` | `gotest` | Go test TestDartConformanceHandoffIncludesGeneratedImports in ./internal/ci | `package: ./internal/ci`<br>`test: TestDartConformanceHandoffIncludesGeneratedImports` | the Go test passes | `internal/ci/inputaccount_workflow_test.go:11` |
@@ -4915,7 +4724,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.ci.every-fast-checkout-merges-main` | `gotest` | Go test TestEveryFastCheckoutMergesMain in ./internal/ci | `package: ./internal/ci`<br>`test: TestEveryFastCheckoutMergesMain` | the Go test passes | `internal/ci/merge_main_test.go:106` |
 | `none.unit.tooling.ci.every-go-test-can-fail` | `gotest` | Go test TestEveryGoTestCanFail in ./internal/ci | `package: ./internal/ci`<br>`test: TestEveryGoTestCanFail` | the Go test passes | `internal/ci/vacuoustests_gate_test.go:25` |
 | `none.unit.tooling.ci.every-interpreter-child-registers-its-inputs` | `gotest` | Go test TestEveryInterpreterChildRegistersItsInputs in ./internal/ci | `package: ./internal/ci`<br>`test: TestEveryInterpreterChildRegistersItsInputs` | the Go test passes | `internal/ci/interpreter_children_register_inputs_test.go:24` |
-| `none.unit.tooling.ci.every-lint-gate-reads-a-produced-tree` | `gotest` | Go test TestEveryLintGateReadsAProducedTree in ./internal/ci | `package: ./internal/ci`<br>`test: TestEveryLintGateReadsAProducedTree` | the Go test passes | `internal/ci/lint_producers_test.go:251` |
+| `none.unit.tooling.ci.every-lint-gate-reads-a-produced-tree` | `gotest` | Go test TestEveryLintGateReadsAProducedTree in ./internal/ci | `package: ./internal/ci`<br>`test: TestEveryLintGateReadsAProducedTree` | the Go test passes | `internal/ci/lint_producers_test.go:253` |
 | `none.unit.tooling.ci.every-named-table-leg-runs-on-its-pull-requests` | `gotest` | Go test TestEveryNamedTableLegRunsOnItsPullRequests in ./internal/ci | `package: ./internal/ci`<br>`test: TestEveryNamedTableLegRunsOnItsPullRequests` | the Go test passes | `internal/ci/tableslegs_test.go:100` |
 | `none.unit.tooling.ci.every-package-the-build-runs-is-committed` | `gotest` | Go test TestEveryPackageTheBuildRunsIsCommitted in ./internal/ci | `package: ./internal/ci`<br>`test: TestEveryPackageTheBuildRunsIsCommitted` | the Go test passes | `internal/ci/ci_test.go:292` |
 | `none.unit.tooling.ci.every-port-names-its-conformance-leg-build` | `gotest` | Go test TestEveryPortNamesItsConformanceLegBuild in ./internal/ci | `package: ./internal/ci`<br>`test: TestEveryPortNamesItsConformanceLegBuild` | the Go test passes | `internal/ci/conformance_leg_build_test.go:59` |
@@ -4948,7 +4757,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.ci.go-release-soak-fits-its-budget` | `gotest` | Go test TestGoReleaseSoakFitsItsBudget in ./internal/ci | `package: ./internal/ci`<br>`test: TestGoReleaseSoakFitsItsBudget` | the Go test passes | `internal/ci/gosoak_test.go:75` |
 | `none.unit.tooling.ci.golangci-lint-cache-isolated-per-workspace` | `gotest` | Go test TestGolangciLintCacheIsolatedPerWorkspace in ./internal/ci | `package: ./internal/ci`<br>`test: TestGolangciLintCacheIsolatedPerWorkspace` | the Go test passes | `internal/ci/setup_rust_hosted_only_test.go:329` |
 | `none.unit.tooling.ci.golden-rewrites-go-through-rewriting` | `gotest` | Go test TestGoldenRewritesGoThroughRewriting in ./internal/ci | `package: ./internal/ci`<br>`test: TestGoldenRewritesGoThroughRewriting` | the Go test passes | `internal/ci/golden_rewrites_test.go:70` |
-| `none.unit.tooling.ci.goose-driver-warms-only-the-units-it-answers` | `gotest` | Go test TestGooseDriverWarmsOnlyTheUnitsItAnswers in ./internal/ci | `package: ./internal/ci`<br>`test: TestGooseDriverWarmsOnlyTheUnitsItAnswers` | the Go test passes | `internal/ci/goose_batch_warm_test.go:24` |
+| `none.unit.tooling.ci.goose-driver-warms-only-the-units-it-answers` | `gotest` | Go test TestGooseDriverWarmsOnlyTheUnitsItAnswers in ./internal/ci | `package: ./internal/ci`<br>`test: TestGooseDriverWarmsOnlyTheUnitsItAnswers` | the Go test passes | `internal/ci/goose_batch_warm_test.go:31` |
 | `none.unit.tooling.ci.goose-fuzz-parts-are-the-whole-gate` | `gotest` | Go test TestGooseFuzzPartsAreTheWholeGate in ./internal/ci | `package: ./internal/ci`<br>`test: TestGooseFuzzPartsAreTheWholeGate` | the Go test passes | `internal/ci/fuzz_halves_test.go:153` |
 | `none.unit.tooling.ci.goose-wire-fuzz-arms-come-from-the-corpus` | `gotest` | Go test TestGooseWireFuzzArmsComeFromTheCorpus in ./internal/ci | `package: ./internal/ci`<br>`test: TestGooseWireFuzzArmsComeFromTheCorpus` | the Go test passes | `internal/ci/goose_wirefuzz_arms_test.go:23` |
 | `none.unit.tooling.ci.harness-lane-is-the-make-it-runs` | `gotest` | Go test TestHarnessLaneIsTheMakeItRuns in ./internal/ci | `package: ./internal/ci`<br>`test: TestHarnessLaneIsTheMakeItRuns` | the Go test passes | `internal/ci/silent_skips_test.go:376` |
@@ -4976,7 +4785,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.ci.luau-replay-corpus-is-registered` | `gotest` | Go test TestLuauReplayCorpusIsRegistered in ./internal/ci | `package: ./internal/ci`<br>`test: TestLuauReplayCorpusIsRegistered` | the Go test passes | `internal/ci/schema_luau_replay_registry_test.go:69` |
 | `none.unit.tooling.ci.main-nightlies-gate-inputs-agree` | `gotest` | Go test TestMainNightliesGateInputsAgree in ./internal/ci | `package: ./internal/ci`<br>`test: TestMainNightliesGateInputsAgree` | the Go test passes | `internal/ci/main_nightlies_green_test.go:22` |
 | `none.unit.tooling.ci.main-reds-pins-match-ci-full` | `gotest` | Go test TestMainRedsPinsMatchCIFull in ./internal/ci | `package: ./internal/ci`<br>`test: TestMainRedsPinsMatchCIFull` | the Go test passes | `internal/ci/mainreds_pins_test.go:39` |
-| `none.unit.tooling.ci.make-job-counts-honour-cpu-affinity` | `gotest` | Go test TestMakeJobCountsHonourCPUAffinity in ./internal/ci | `package: ./internal/ci`<br>`test: TestMakeJobCountsHonourCPUAffinity` | the Go test passes | `internal/ci/cpu_count_affinity_test.go:35` |
+| `none.unit.tooling.ci.make-job-counts-honour-cpu-affinity` | `gotest` | Go test TestMakeJobCountsHonourCPUAffinity in ./internal/ci | `package: ./internal/ci`<br>`test: TestMakeJobCountsHonourCPUAffinity` | the Go test passes | `internal/ci/cpu_count_affinity_test.go:37` |
 | `none.unit.tooling.ci.make-variable-checker-catches-a-planted-redefinition` | `gotest` | Go test TestMakeVariableCheckerCatchesAPlantedRedefinition in ./internal/ci | `package: ./internal/ci`<br>`test: TestMakeVariableCheckerCatchesAPlantedRedefinition` | the Go test passes | `internal/ci/makevars_test.go:171` |
 | `none.unit.tooling.ci.makefile-portability` | `gotest` | Go test TestMakefilePortability in ./internal/ci | `package: ./internal/ci`<br>`test: TestMakefilePortability` | the Go test passes | `internal/ci/makefile_portability_test.go:777` |
 | `none.unit.tooling.ci.makefile-portability-negative-controls` | `gotest` | Go test TestMakefilePortabilityNegativeControls in ./internal/ci | `package: ./internal/ci`<br>`test: TestMakefilePortabilityNegativeControls` | the Go test passes | `internal/ci/makefile_portability_test.go:800` |
@@ -5036,21 +4845,21 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.ci.release-refuses-on-differential-reaches-differential` | `gotest` | Go test TestReleaseRefusesOnDifferentialReachesDifferential in ./internal/ci | `package: ./internal/ci`<br>`test: TestReleaseRefusesOnDifferentialReachesDifferential` | the Go test passes | `internal/ci/release_refuses_on_differential_test.go:14` |
 | `none.unit.tooling.ci.release-soak-parallel-sharding-preserves-full-counts` | `gotest` | Go test TestReleaseSoakParallelShardingPreservesFullCounts in ./internal/ci | `package: ./internal/ci`<br>`test: TestReleaseSoakParallelShardingPreservesFullCounts` | the Go test passes | `internal/ci/certify_parallel_test.go:396` |
 | `none.unit.tooling.ci.release-workflow-publishes-the-git-hub-release` | `gotest` | Go test TestReleaseWorkflowPublishesTheGitHubRelease in ./internal/ci | `package: ./internal/ci`<br>`test: TestReleaseWorkflowPublishesTheGitHubRelease` | the Go test passes | `internal/ci/release_publishes_test.go:99` |
-| `none.unit.tooling.ci.retired-workflow-problems-are-seen` | `gotest` | Go test TestRetiredWorkflowProblemsAreSeen in ./internal/ci | `package: ./internal/ci`<br>`test: TestRetiredWorkflowProblemsAreSeen` | the Go test passes | `internal/ci/retired_workflows_test.go:190` |
-| `none.unit.tooling.ci.retired-workflows-are-registry-rows` | `gotest` | Go test TestRetiredWorkflowsAreRegistryRows in ./internal/ci | `package: ./internal/ci`<br>`test: TestRetiredWorkflowsAreRegistryRows` | the Go test passes | `internal/ci/retired_workflows_test.go:174` |
+| `none.unit.tooling.ci.retired-workflow-problems-are-seen` | `gotest` | Go test TestRetiredWorkflowProblemsAreSeen in ./internal/ci | `package: ./internal/ci`<br>`test: TestRetiredWorkflowProblemsAreSeen` | the Go test passes | `internal/ci/retired_workflows_test.go:199` |
+| `none.unit.tooling.ci.retired-workflows-are-registry-rows` | `gotest` | Go test TestRetiredWorkflowsAreRegistryRows in ./internal/ci | `package: ./internal/ci`<br>`test: TestRetiredWorkflowsAreRegistryRows` | the Go test passes | `internal/ci/retired_workflows_test.go:183` |
 | `none.unit.tooling.ci.root-scaffolding-files-stay-absent` | `gotest` | Go test TestRootScaffoldingFilesStayAbsent in ./internal/ci | `package: ./internal/ci`<br>`test: TestRootScaffoldingFilesStayAbsent` | the Go test passes | `internal/ci/rootscaffolding_test.go:22` |
 | `none.unit.tooling.ci.ruby-analyzers-beside-ruby` | `gotest` | Go test TestRubyAnalyzersBesideRuby in ./internal/ci | `package: ./internal/ci`<br>`test: TestRubyAnalyzersBesideRuby` | the Go test passes | `internal/ci/rubypins_test.go:303` |
 | `none.unit.tooling.ci.ruby-design-page` | `gotest` | Go test TestRubyDesignPage in ./internal/ci | `package: ./internal/ci`<br>`test: TestRubyDesignPage` | the Go test passes | `internal/ci/rubydesign_test.go:16` |
-| `none.unit.tooling.ci.ruby-gems-lock-is-read-whole` | `gotest` | Go test TestRubyGemsLockIsReadWhole in ./internal/ci | `package: ./internal/ci`<br>`test: TestRubyGemsLockIsReadWhole` | the Go test passes | `internal/ci/ruby_gems_lock_test.go:51` |
+| `none.unit.tooling.ci.ruby-gems-lock-is-read-whole` | `gotest` | Go test TestRubyGemsLockIsReadWhole in ./internal/ci | `package: ./internal/ci`<br>`read_plant: plant.read-credits.tooling-ci-ruby-gems-lock-is-read-whole`<br>`reads: ["testdata/ruby-gems-lock-controls/"]`<br>`test: TestRubyGemsLockIsReadWhole` | the Go test passes | `internal/ci/ruby_gems_lock_test.go:51` |
 | `none.unit.tooling.ci.ruby-hostile-compare-proves-it-ran` | `gotest` | Go test TestRubyHostileCompareProvesItRan in ./internal/ci | `package: ./internal/ci`<br>`test: TestRubyHostileCompareProvesItRan` | the Go test passes | `internal/ci/schema_ruby_runs_hostile_corpus_test.go:472` |
-| `none.unit.tooling.ci.ruby-lint-copy` | `gotest` | Go test TestRubyLintCopy in ./internal/ci | `package: ./internal/ci`<br>`test: TestRubyLintCopy` | the Go test passes | `internal/ci/ruby_strict_fast_lint_test.go:146` |
+| `none.unit.tooling.ci.ruby-lint-copy` | `gotest` | Go test TestRubyLintCopy in ./internal/ci/rubystrict | `package: ./internal/ci/rubystrict`<br>`test: TestRubyLintCopy` | the Go test passes | `internal/ci/rubystrict/ruby_strict_fast_lint_test.go:146` |
 | `none.unit.tooling.ci.ruby-pins` | `gotest` | Go test TestRubyPins in ./internal/ci | `package: ./internal/ci`<br>`test: TestRubyPins` | the Go test passes | `internal/ci/rubypins_test.go:20` |
-| `none.unit.tooling.ci.ruby-strict-fast-guard` | `gotest` | Go test TestRubyStrictFastGuard in ./internal/ci | `package: ./internal/ci`<br>`test: TestRubyStrictFastGuard` | the Go test passes | `internal/ci/ruby_strict_fast_guard_test.go:189` |
-| `none.unit.tooling.ci.ruby-strict-fast-guard-witness` | `gotest` | Go test TestRubyStrictFastGuardWitness in ./internal/ci | `package: ./internal/ci`<br>`test: TestRubyStrictFastGuardWitness` | the Go test passes | `internal/ci/ruby_strict_fast_guard_test.go:209` |
-| `none.unit.tooling.ci.ruby-strict-fast-lint-tree-is-named-by-its-bytes` | `gotest` | Go test TestRubyStrictFastLintTreeIsNamedByItsBytes in ./internal/ci | `package: ./internal/ci`<br>`test: TestRubyStrictFastLintTreeIsNamedByItsBytes` | the Go test passes | `internal/ci/ruby_strict_fast_lint_test.go:172` |
-| `none.unit.tooling.ci.ruby-strict-shard-not-empty` | `gotest` | Go test TestRubyStrictShardNotEmpty in ./internal/ci | `package: ./internal/ci`<br>`test: TestRubyStrictShardNotEmpty` | the Go test passes | `internal/ci/ruby_strict_fast_shard_test.go:235` |
-| `none.unit.tooling.ci.ruby-strict-shard-rows` | `gotest` | Go test TestRubyStrictShardRows in ./internal/ci | `package: ./internal/ci`<br>`test: TestRubyStrictShardRows` | the Go test passes | `internal/ci/ruby_strict_fast_shard_test.go:149` |
-| `none.unit.tooling.ci.ruby-strict-shard-split` | `gotest` | Go test TestRubyStrictShardSplit in ./internal/ci | `package: ./internal/ci`<br>`test: TestRubyStrictShardSplit` | the Go test passes | `internal/ci/ruby_strict_fast_shard_test.go:177` |
+| `none.unit.tooling.ci.ruby-strict-fast-guard` | `gotest` | Go test TestRubyStrictFastGuard in ./internal/ci/rubystrict | `package: ./internal/ci/rubystrict`<br>`test: TestRubyStrictFastGuard` | the Go test passes | `internal/ci/rubystrict/ruby_strict_fast_guard_test.go:226` |
+| `none.unit.tooling.ci.ruby-strict-fast-guard-witness` | `gotest` | Go test TestRubyStrictFastGuardWitness in ./internal/ci/rubystrict | `package: ./internal/ci/rubystrict`<br>`test: TestRubyStrictFastGuardWitness` | the Go test passes | `internal/ci/rubystrict/ruby_strict_fast_guard_test.go:247` |
+| `none.unit.tooling.ci.ruby-strict-fast-lint-tree-is-named-by-its-bytes` | `gotest` | Go test TestRubyStrictFastLintTreeIsNamedByItsBytes in ./internal/ci/rubystrict | `package: ./internal/ci/rubystrict`<br>`test: TestRubyStrictFastLintTreeIsNamedByItsBytes` | the Go test passes | `internal/ci/rubystrict/ruby_strict_fast_lint_test.go:172` |
+| `none.unit.tooling.ci.ruby-strict-shard-not-empty` | `gotest` | Go test TestRubyStrictShardNotEmpty in ./internal/ci/rubystrict | `package: ./internal/ci/rubystrict`<br>`test: TestRubyStrictShardNotEmpty` | the Go test passes | `internal/ci/rubystrict/ruby_strict_fast_shard_test.go:235` |
+| `none.unit.tooling.ci.ruby-strict-shard-rows` | `gotest` | Go test TestRubyStrictShardRows in ./internal/ci/rubystrict | `package: ./internal/ci/rubystrict`<br>`test: TestRubyStrictShardRows` | the Go test passes | `internal/ci/rubystrict/ruby_strict_fast_shard_test.go:149` |
+| `none.unit.tooling.ci.ruby-strict-shard-split` | `gotest` | Go test TestRubyStrictShardSplit in ./internal/ci/rubystrict | `package: ./internal/ci/rubystrict`<br>`test: TestRubyStrictShardSplit` | the Go test passes | `internal/ci/rubystrict/ruby_strict_fast_shard_test.go:177` |
 | `none.unit.tooling.ci.rulings-r2-r5-r9-port-rows` | `gotest` | Go test TestRulingsR2R5R9PortRows in ./internal/ci | `package: ./internal/ci`<br>`test: TestRulingsR2R5R9PortRows` | the Go test passes | `internal/ci/rulings_r2_r5_r9_ports_test.go:87` |
 | `none.unit.tooling.ci.run-exceptions-name-existing-tests` | `gotest` | Go test TestRunExceptionsNameExistingTests in ./internal/ci | `package: ./internal/ci`<br>`test: TestRunExceptionsNameExistingTests` | the Go test passes | `internal/ci/runexception_test.go:19` |
 | `none.unit.tooling.ci.run-pattern-exceptions-survive-an-inserted-rule` | `gotest` | Go test TestRunPatternExceptionsSurviveAnInsertedRule in ./internal/ci | `package: ./internal/ci`<br>`test: TestRunPatternExceptionsSurviveAnInsertedRule` | the Go test passes | `internal/ci/runpattern_target_test.go:9` |
@@ -5078,7 +4887,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.ci.schema-lua-hostile-corpus-lane` | `gotest` | Go test TestSchemaLuaHostileCorpusLane in ./internal/ci | `package: ./internal/ci`<br>`test: TestSchemaLuaHostileCorpusLane` | the Go test passes | `internal/ci/schema_lua_runs_hostile_corpus_test.go:596` |
 | `none.unit.tooling.ci.schema-lua-hostile-scorer-outcomes` | `gotest` | Go test TestSchemaLuaHostileScorerOutcomes in ./internal/ci | `package: ./internal/ci`<br>`test: TestSchemaLuaHostileScorerOutcomes` | the Go test passes | `internal/ci/schema_lua_runs_hostile_corpus_test.go:519` |
 | `none.unit.tooling.ci.schema-luau-hostile-corpus-and-wire-fuzz-wiring` | `gotest` | Go test TestSchemaLuauHostileCorpusAndWireFuzzWiring in ./internal/ci | `package: ./internal/ci`<br>`test: TestSchemaLuauHostileCorpusAndWireFuzzWiring` | the Go test passes | `internal/ci/schema_luau_fuzz_wiring_test.go:18` |
-| `none.unit.tooling.ci.schema-moo-generated-analyze-strict-gate-wiring` | `gotest` | Go test TestSchemaMooGeneratedAnalyzeStrictGateWiring in ./internal/ci | `package: ./internal/ci`<br>`test: TestSchemaMooGeneratedAnalyzeStrictGateWiring` | the Go test passes | `internal/ci/schema_moo_generated_analyze_strict_gate_test.go:32` |
+| `none.unit.tooling.ci.schema-moo-generated-analyze-strict-gate-wiring` | `gotest` | Go test TestSchemaMooGeneratedAnalyzeStrictGateWiring in ./internal/ci | `package: ./internal/ci`<br>`test: TestSchemaMooGeneratedAnalyzeStrictGateWiring` | the Go test passes | `internal/ci/schema_moo_generated_analyze_strict_gate_test.go:46` |
 | `none.unit.tooling.ci.schema-moo-hostile-corpus-lane` | `gotest` | Go test TestSchemaMooHostileCorpusLane in ./internal/ci | `package: ./internal/ci`<br>`test: TestSchemaMooHostileCorpusLane` | the Go test passes | `internal/ci/schema_moo_runs_hostile_corpus_test.go:610` |
 | `none.unit.tooling.ci.schema-moo-hostile-scorer-outcomes` | `gotest` | Go test TestSchemaMooHostileScorerOutcomes in ./internal/ci | `package: ./internal/ci`<br>`test: TestSchemaMooHostileScorerOutcomes` | the Go test passes | `internal/ci/schema_moo_runs_hostile_corpus_test.go:524` |
 | `none.unit.tooling.ci.schema-moo-nightly-fuzz-wiring` | `gotest` | Go test TestSchemaMooNightlyFuzzWiring in ./internal/ci | `package: ./internal/ci`<br>`test: TestSchemaMooNightlyFuzzWiring` | the Go test passes | `internal/ci/schema_moo_nightly_fuzz_test.go:107` |
@@ -5099,6 +4908,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.ci.setup-beam-exemption-is-step-scoped` | `gotest` | Go test TestSetupBeamExemptionIsStepScoped in ./internal/ci | `package: ./internal/ci`<br>`test: TestSetupBeamExemptionIsStepScoped` | the Go test passes | `internal/ci/setup_beam_hosted_only_test.go:168` |
 | `none.unit.tooling.ci.setup-beam-hosted-gate-negative-controls` | `gotest` | Go test TestSetupBeamHostedGateNegativeControls in ./internal/ci | `package: ./internal/ci`<br>`test: TestSetupBeamHostedGateNegativeControls` | the Go test passes | `internal/ci/setup_beam_hosted_only_test.go:185` |
 | `none.unit.tooling.ci.setup-java-is-pinned-to-v630` | `gotest` | Go test TestSetupJavaIsPinnedToV630 in ./internal/ci | `package: ./internal/ci`<br>`test: TestSetupJavaIsPinnedToV630` | the Go test passes | `internal/ci/setup_java_test.go:18` |
+| `none.unit.tooling.ci.shared-build-products-are-written-atomically` | `gotest` | Go test TestSharedBuildProductsAreWrittenAtomically in ./internal/ci | `package: ./internal/ci`<br>`test: TestSharedBuildProductsAreWrittenAtomically` | the Go test passes | `internal/ci/atomic_build_products_test.go:108` |
 | `none.unit.tooling.ci.sibling-gate-unselected-leg-needs-no-sibling` | `gotest` | Go test TestSiblingGateUnselectedLegNeedsNoSibling in ./internal/ci | `package: ./internal/ci`<br>`test: TestSiblingGateUnselectedLegNeedsNoSibling` | the Go test passes | `internal/ci/siblinggate_test.go:59` |
 | `none.unit.tooling.ci.siblings-file-matches-make-pins` | `gotest` | Go test TestSiblingsFileMatchesMakePins in ./internal/ci | `package: ./internal/ci`<br>`test: TestSiblingsFileMatchesMakePins` | the Go test passes | `internal/ci/siblings_test.go:54` |
 | `none.unit.tooling.ci.skip-gate-negative-control` | `gotest` | Go test TestSkipGateNegativeControl in ./internal/ci | `package: ./internal/ci`<br>`test: TestSkipGateNegativeControl` | the Go test passes | `internal/ci/silent_skips_test.go:89` |
@@ -5106,9 +4916,9 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.ci.spec-targets-guard-fires-on-empty` | `gotest` | Go test TestSpecTargetsGuardFiresOnEmpty in ./internal/ci | `package: ./internal/ci`<br>`test: TestSpecTargetsGuardFiresOnEmpty` | the Go test passes | `internal/ci/spectargets_test.go:377` |
 | `none.unit.tooling.ci.spec-targets-invoked-decision` | `gotest` | Go test TestSpecTargetsInvokedDecision in ./internal/ci | `package: ./internal/ci`<br>`test: TestSpecTargetsInvokedDecision` | the Go test passes | `internal/ci/spectargets_test.go:342` |
 | `none.unit.tooling.ci.spec-targets-registry-invocation` | `gotest` | Go test TestSpecTargetsRegistryInvocation in ./internal/ci | `package: ./internal/ci`<br>`test: TestSpecTargetsRegistryInvocation` | the Go test passes | `internal/ci/spectargets_test.go:359` |
-| `none.unit.tooling.ci.squirrel-all-port-differential-detects-a-divergence` | `gotest` | Go test TestSquirrelAllPortDifferentialDetectsADivergence in ./internal/ci | `package: ./internal/ci`<br>`test: TestSquirrelAllPortDifferentialDetectsADivergence` | the Go test passes | `internal/ci/schema_squirrel_all_port_differential_test.go:343` |
-| `none.unit.tooling.ci.squirrel-all-port-differential-normalizes-only-the-harness-equivalences` | `gotest` | Go test TestSquirrelAllPortDifferentialNormalizesOnlyTheHarnessEquivalences in ./internal/ci | `package: ./internal/ci`<br>`test: TestSquirrelAllPortDifferentialNormalizesOnlyTheHarnessEquivalences` | the Go test passes | `internal/ci/schema_squirrel_all_port_differential_test.go:426` |
-| `none.unit.tooling.ci.squirrel-all-port-differential-requires-comparisons` | `gotest` | Go test TestSquirrelAllPortDifferentialRequiresComparisons in ./internal/ci | `package: ./internal/ci`<br>`test: TestSquirrelAllPortDifferentialRequiresComparisons` | the Go test passes | `internal/ci/schema_squirrel_all_port_differential_test.go:521` |
+| `none.unit.tooling.ci.squirrel-all-port-differential-detects-a-divergence` | `gotest` | Go test TestSquirrelAllPortDifferentialDetectsADivergence in ./internal/ci/squirreldiff | `package: ./internal/ci/squirreldiff`<br>`test: TestSquirrelAllPortDifferentialDetectsADivergence` | the Go test passes | `internal/ci/squirreldiff/schema_squirrel_all_port_differential_test.go:309` |
+| `none.unit.tooling.ci.squirrel-all-port-differential-normalizes-only-the-harness-equivalences` | `gotest` | Go test TestSquirrelAllPortDifferentialNormalizesOnlyTheHarnessEquivalences in ./internal/ci/squirreldiff | `package: ./internal/ci/squirreldiff`<br>`test: TestSquirrelAllPortDifferentialNormalizesOnlyTheHarnessEquivalences` | the Go test passes | `internal/ci/squirreldiff/schema_squirrel_all_port_differential_test.go:392` |
+| `none.unit.tooling.ci.squirrel-all-port-differential-requires-comparisons` | `gotest` | Go test TestSquirrelAllPortDifferentialRequiresComparisons in ./internal/ci/squirreldiff | `package: ./internal/ci/squirreldiff`<br>`test: TestSquirrelAllPortDifferentialRequiresComparisons` | the Go test passes | `internal/ci/squirreldiff/schema_squirrel_all_port_differential_test.go:484` |
 | `none.unit.tooling.ci.squirrel-card-rows-fit-the-cap` | `gotest` | Go test TestSquirrelCardRowsFitTheCap in ./internal/ci | `package: ./internal/ci`<br>`test: TestSquirrelCardRowsFitTheCap` | the Go test passes | `internal/ci/squirrel_rowcap_test.go:32` |
 | `none.unit.tooling.ci.squirrel-evidence-fixed-rows` | `gotest` | Go test TestSquirrelEvidenceFixedRows in ./internal/ci | `package: ./internal/ci`<br>`test: TestSquirrelEvidenceFixedRows` | the Go test passes | `internal/ci/squirrel_evidence_fixed_test.go:67` |
 | `none.unit.tooling.ci.squirrel-evidence-packet-and-doc-tags-rows` | `gotest` | Go test TestSquirrelEvidencePacketAndDocTagsRows in ./internal/ci | `package: ./internal/ci`<br>`test: TestSquirrelEvidencePacketAndDocTagsRows` | the Go test passes | `internal/ci/squirrel_evidence_packet_test.go:27` |
@@ -5131,6 +4941,10 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.ci.the-parity-table-is-covered` | `gotest` | Go test TestTheParityTableIsCovered in ./internal/ci | `package: ./internal/ci`<br>`test: TestTheParityTableIsCovered` | the Go test passes | `internal/ci/parity_table_test.go:18` |
 | `none.unit.tooling.ci.the-pr-shards-run-on-the-produced-legs` | `gotest` | Go test TestThePRShardsRunOnTheProducedLegs in ./internal/ci | `package: ./internal/ci`<br>`test: TestThePRShardsRunOnTheProducedLegs` | the Go test passes | `internal/ci/go_fixed_corpus_pipeline_test.go:88` |
 | `none.unit.tooling.ci.tla-runs-hash-every-model-and-config` | `gotest` | Go test TestTLARunsHashEveryModelAndConfig in ./internal/ci | `package: ./internal/ci`<br>`test: TestTLARunsHashEveryModelAndConfig` | the Go test passes | `internal/ci/strictonly_tla_test.go:107` |
+| `none.unit.tooling.ci.unit-rest-complement-judge-catches-the-plant` | `gotest` | Go test TestUnitRestComplementJudgeCatchesThePlant in ./internal/ci | `package: ./internal/ci`<br>`test: TestUnitRestComplementJudgeCatchesThePlant` | the Go test passes | `internal/ci/unit_rest_complement_test.go:46` |
+| `none.unit.tooling.ci.unit-rest-complement-runs-no-nightly-test` | `gotest` | Go test TestUnitRestComplementRunsNoNightlyTest in ./internal/ci | `package: ./internal/ci`<br>`test: TestUnitRestComplementRunsNoNightlyTest` | the Go test passes | `internal/ci/unit_rest_complement_test.go:25` |
+| `none.unit.tooling.ci.unit-rest-left-out-judge-catches-the-plant` | `gotest` | Go test TestUnitRestLeftOutJudgeCatchesThePlant in ./internal/ci | `package: ./internal/ci`<br>`test: TestUnitRestLeftOutJudgeCatchesThePlant` | the Go test passes | `internal/ci/unit_rest_complement_test.go:160` |
+| `none.unit.tooling.ci.unit-rest-left-out-packages-run-their-other-tests` | `gotest` | Go test TestUnitRestLeftOutPackagesRunTheirOtherTests in ./internal/ci | `package: ./internal/ci`<br>`test: TestUnitRestLeftOutPackagesRunTheirOtherTests` | the Go test passes | `internal/ci/unit_rest_complement_test.go:121` |
 | `none.unit.tooling.ci.unrun-python-test-witness` | `gotest` | Go test TestUnrunPythonTestWitness in ./internal/ci | `package: ./internal/ci`<br>`test: TestUnrunPythonTestWitness` | the Go test passes | `internal/ci/python_tests_run_test.go:181` |
 | `none.unit.tooling.ci.warm-steps-fail-when-go-list-fails` | `gotest` | Go test TestWarmStepsFailWhenGoListFails in ./internal/ci | `package: ./internal/ci`<br>`test: TestWarmStepsFailWhenGoListFails` | the Go test passes | `internal/ci/go_warm_steps_test.go:45` |
 | `none.unit.tooling.ci.workflow-and-job-env-name-only-allowed-contexts` | `gotest` | Go test TestWorkflowAndJobEnvNameOnlyAllowedContexts in ./internal/ci | `package: ./internal/ci`<br>`test: TestWorkflowAndJobEnvNameOnlyAllowedContexts` | the Go test passes | `internal/ci/env_contexts_test.go:82` |
@@ -5221,13 +5035,13 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.unit.tooling.editors-vscode.editor-context-fixtures` | `gotest` | Go test TestEditorContextFixtures in ./editors/vscode | `package: ./editors/vscode`<br>`test: TestEditorContextFixtures` | the Go test passes | `editors/vscode/editor_fixtures_test.go:13` |
+| `none.unit.tooling.editors-vscode.editor-context-fixtures` | `gotest` | Go test TestEditorContextFixtures in ./editors/vscode | `package: ./editors/vscode`<br>`read_plant: plant.read-credits.tooling-editors-vscode-editor-context-fixtures`<br>`reads: ["editors/testdata/grammar/"]`<br>`test: TestEditorContextFixtures` | the Go test passes | `editors/vscode/editor_fixtures_test.go:13` |
 | `none.unit.tooling.editors-vscode.grammar-colours-corpus` | `gotest` | Go test TestGrammarColoursCorpus in ./editors/vscode | `package: ./editors/vscode`<br>`test: TestGrammarColoursCorpus` | the Go test passes | `editors/vscode/grammar_test.go:525` |
 | `none.unit.tooling.editors-vscode.grammar-compiles` | `gotest` | Go test TestGrammarCompiles in ./editors/vscode | `package: ./editors/vscode`<br>`test: TestGrammarCompiles` | the Go test passes | `editors/vscode/grammar_test.go:511` |
 | `none.unit.tooling.editors-vscode.grammar-samples` | `gotest` | Go test TestGrammarSamples in ./editors/vscode | `package: ./editors/vscode`<br>`test: TestGrammarSamples` | the Go test passes | `editors/vscode/grammar_test.go:596` |
 | `none.unit.tooling.editors-vscode.grammar-timestamp-type-versus-name` | `gotest` | Go test TestGrammarTimestampTypeVersusName in ./editors/vscode | `package: ./editors/vscode`<br>`test: TestGrammarTimestampTypeVersusName` | the Go test passes | `editors/vscode/grammar_test.go:653` |
 
-#### `tooling` family `fixedtwin`, 19 tests
+#### `tooling` family `fixedtwin`, 20 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -5250,6 +5064,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.fixedtwin.planted-divergence-reds` | `gotest` | Go test TestPlantedDivergenceReds in ./tools/fixedtwin | `package: ./tools/fixedtwin`<br>`test: TestPlantedDivergenceReds` | the Go test passes | `tools/fixedtwin/twin_test.go:158` |
 | `none.unit.tooling.fixedtwin.read-header-splices-the-data-header` | `gotest` | Go test TestReadHeaderSplicesTheDataHeader in ./tools/fixedtwin | `package: ./tools/fixedtwin`<br>`test: TestReadHeaderSplicesTheDataHeader` | the Go test passes | `tools/fixedtwin/splice_test.go:14` |
 | `none.unit.tooling.fixedtwin.runtime-extraction-ends-before-separate-integrity` | `gotest` | Go test TestRuntimeExtractionEndsBeforeSeparateIntegrity in ./tools/fixedtwin | `package: ./tools/fixedtwin`<br>`test: TestRuntimeExtractionEndsBeforeSeparateIntegrity` | the Go test passes | `tools/fixedtwin/twin_test.go:205` |
+| `none.unit.tooling.fixedtwin.the-c-reason-restatement-is-dropped-with-layout-unknown` | `gotest` | Go test TestTheCReasonRestatementIsDroppedWithLayoutUnknown in ./tools/fixedtwin | `package: ./tools/fixedtwin`<br>`test: TestTheCReasonRestatementIsDroppedWithLayoutUnknown` | the Go test passes | `tools/fixedtwin/reasons_test.go:14` |
 
 #### `tooling` family `fixedunlawful`, 4 tests
 
@@ -5260,13 +5075,14 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.fixedunlawful.judge-refuses-a-hollow-driver` | `gotest` | Go test TestJudgeRefusesAHollowDriver in ./internal/fixedunlawful | `package: ./internal/fixedunlawful`<br>`test: TestJudgeRefusesAHollowDriver` | the Go test passes | `internal/fixedunlawful/fixedunlawful_test.go:110` |
 | `none.unit.tooling.fixedunlawful.unanswered-refuses` | `gotest` | Go test TestUnansweredRefuses in ./internal/fixedunlawful | `package: ./internal/fixedunlawful`<br>`test: TestUnansweredRefuses` | the Go test passes | `internal/fixedunlawful/fixedunlawful_test.go:78` |
 
-#### `tooling` family `fullrun`, 48 tests
+#### `tooling` family `fullrun`, 49 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.unit.tooling.fullrun.a-bench-declares-its-properties-and-the-probe-holds-them` | `gotest` | Go test TestABenchDeclaresItsPropertiesAndTheProbeHoldsThem in ./tools/fullrun | `package: ./tools/fullrun`<br>`test: TestABenchDeclaresItsPropertiesAndTheProbeHoldsThem` | the Go test passes | `tools/fullrun/needs_bench_test.go:151` |
 | `none.unit.tooling.fullrun.a-bench-left-out-says-why` | `gotest` | Go test TestABenchLeftOutSaysWhy in ./tools/fullrun | `package: ./tools/fullrun`<br>`test: TestABenchLeftOutSaysWhy` | the Go test passes | `tools/fullrun/fullrun_test.go:780` |
 | `none.unit.tooling.fullrun.a-bench-that-stops-answering-is-a-dead-shard` | `gotest` | Go test TestABenchThatStopsAnsweringIsADeadShard in ./tools/fullrun | `package: ./tools/fullrun`<br>`test: TestABenchThatStopsAnsweringIsADeadShard` | the Go test passes | `tools/fullrun/fullrun_test.go:847` |
+| `none.unit.tooling.fullrun.a-case-a-corpus-row-reads-is-not-unrunnable` | `gotest` | Go test TestACaseACorpusRowReadsIsNotUnrunnable in ./tools/fullrun | `package: ./tools/fullrun`<br>`test: TestACaseACorpusRowReadsIsNotUnrunnable` | the Go test passes | `tools/fullrun/fullrun_test.go:983` |
 | `none.unit.tooling.fullrun.a-dead-shard-is-a-red-and-runs-again` | `gotest` | Go test TestADeadShardIsARedAndRunsAgain in ./tools/fullrun | `package: ./tools/fullrun`<br>`test: TestADeadShardIsARedAndRunsAgain` | the Go test passes | `tools/fullrun/fullrun_test.go:417` |
 | `none.unit.tooling.fullrun.a-go-test-unit-takes-the-builds-its-tests-read` | `gotest` | Go test TestAGoTestUnitTakesTheBuildsItsTestsRead in ./tools/fullrun | `package: ./tools/fullrun`<br>`test: TestAGoTestUnitTakesTheBuildsItsTestsRead` | the Go test passes | `tools/fullrun/needs_test.go:20` |
 | `none.unit.tooling.fullrun.a-lock-let-go-is-free-while-a-fork-holds-its-descriptor` | `gotest` | Go test TestALockLetGoIsFreeWhileAForkHoldsItsDescriptor in ./tools/fullrun | `package: ./tools/fullrun`<br>`test: TestALockLetGoIsFreeWhileAForkHoldsItsDescriptor` | the Go test passes | `tools/fullrun/fullrun_unix_test.go:182` |
@@ -5338,7 +5154,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.goldens.corpus-regression-pins-present` | `gotest` | Go test TestCorpusRegressionPinsPresent in ./internal/goldens | `package: ./internal/goldens`<br>`test: TestCorpusRegressionPinsPresent` | the Go test passes | `internal/goldens/regressions_test.go:155` |
 | `none.unit.tooling.goldens.cpp-type-escape-is-faithful` | `gotest` | Go test TestCppTypeEscapeIsFaithful in ./internal/goldens | `package: ./internal/goldens`<br>`test: TestCppTypeEscapeIsFaithful` | the Go test passes | `internal/goldens/cpp_escape_test.go:45` |
 | `none.unit.tooling.goldens.exported-surface-moves-neither-wire` | `gotest` | Go test TestExportedSurfaceMovesNeitherWire in ./internal/goldens | `package: ./internal/goldens`<br>`test: TestExportedSurfaceMovesNeitherWire` | the Go test passes | `internal/goldens/goldens_test.go:231` |
-| `none.unit.tooling.goldens.golangci-lint-classes-shapes` | `gotest` | Go test TestGolangciLintClassesShapes in ./internal/goldens | `package: ./internal/goldens`<br>`test: TestGolangciLintClassesShapes` | the Go test passes | `internal/goldens/golangci_lint_classes_test.go:25` |
+| `none.unit.tooling.goldens.golangci-lint-classes-shapes` | `gotest` | Go test TestGolangciLintClassesShapes in ./internal/goldens | `package: ./internal/goldens`<br>`read_plant: plant.read-credits.tooling-goldens-golangci-lint-classes-shapes`<br>`reads: ["testdata/golangci-lint-classes/"]`<br>`test: TestGolangciLintClassesShapes` | the Go test passes | `internal/goldens/golangci_lint_classes_test.go:25` |
 | `none.unit.tooling.goldens.golden-build-version` | `gotest` | Go test TestGoldenBuildVersion in ./internal/goldens | `package: ./internal/goldens`<br>`test: TestGoldenBuildVersion` | the Go test passes | `internal/goldens/goldens_test.go:974` |
 | `none.unit.tooling.goldens.golden-build-version-files-belong-to-units` | `gotest` | Go test TestGoldenBuildVersionFilesBelongToUnits in ./internal/goldens | `package: ./internal/goldens`<br>`test: TestGoldenBuildVersionFilesBelongToUnits` | the Go test passes | `internal/goldens/twoway_test.go:137` |
 | `none.unit.tooling.goldens.golden-directories-belong-to-targets` | `gotest` | Go test TestGoldenDirectoriesBelongToTargets in ./internal/goldens | `package: ./internal/goldens`<br>`test: TestGoldenDirectoriesBelongToTargets` | the Go test passes | `internal/goldens/twoway_test.go:105` |
@@ -5611,7 +5427,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.harness.noncanonical-graph-purposes-are-isolated` | `gotest` | Go test TestNoncanonicalGraphPurposesAreIsolated in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestNoncanonicalGraphPurposesAreIsolated` | the Go test passes | `test/conformance/harness/framing_purpose_spelling_test.go:110` |
 | `none.unit.tooling.harness.noncanonical-variable-purpose-shapes` | `gotest` | Go test TestNoncanonicalVariablePurposeShapes in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestNoncanonicalVariablePurposeShapes` | the Go test passes | `test/conformance/harness/framing_purpose_spelling_test.go:263` |
 | `none.unit.tooling.harness.opt-in-case-is-keyed-by-unit-surface-and-name` | `gotest` | Go test TestOptInCaseIsKeyedByUnitSurfaceAndName in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestOptInCaseIsKeyedByUnitSurfaceAndName` | the Go test passes | `test/conformance/harness/optin_jsonwrite_test.go:80` |
-| `none.unit.tooling.harness.opt-in-corpus-omitting-leg-is-handed-no-row-of-the-unit` | `gotest` | Go test TestOptInCorpusOmittingLegIsHandedNoRowOfTheUnit in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestOptInCorpusOmittingLegIsHandedNoRowOfTheUnit` | the Go test passes | `test/conformance/harness/optin_corpus_test.go:81` |
+| `none.unit.tooling.harness.opt-in-corpus-omitting-leg-is-handed-no-row-of-the-unit` | `gotest` | Go test TestOptInCorpusOmittingLegIsHandedNoRowOfTheUnit in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`read_plant: plant.read-credits.tooling-harness-opt-in-corpus-omitting-leg-is-handed-no-row-of-the-unit`<br>`reads: ["testdata/conformance/optin/"]`<br>`test: TestOptInCorpusOmittingLegIsHandedNoRowOfTheUnit` | the Go test passes | `test/conformance/harness/optin_corpus_test.go:81` |
 | `none.unit.tooling.harness.opt-in-corpus-opted-in-leg-is-handed-every-row` | `gotest` | Go test TestOptInCorpusOptedInLegIsHandedEveryRow in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestOptInCorpusOptedInLegIsHandedEveryRow` | the Go test passes | `test/conformance/harness/optin_corpus_test.go:134` |
 | `none.unit.tooling.harness.opt-in-corpus-scores-every-omitted-case-absent` | `gotest` | Go test TestOptInCorpusScoresEveryOmittedCaseAbsent in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestOptInCorpusScoresEveryOmittedCaseAbsent` | the Go test passes | `test/conformance/harness/optin_scoring_test.go:18` |
 | `none.unit.tooling.harness.opt-in-filter-carries-prior-writer-rows` | `gotest` | Go test TestOptInFilterCarriesPriorWriterRows in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestOptInFilterCarriesPriorWriterRows` | the Go test passes | `test/conformance/harness/optin_prior_test.go:13` |
@@ -5778,7 +5594,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.harness.wire-verdict-compares-only-acceptance-and-accepted-values` | `gotest` | Go test TestWireVerdictComparesOnlyAcceptanceAndAcceptedValues in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestWireVerdictComparesOnlyAcceptanceAndAcceptedValues` | the Go test passes | `test/conformance/harness/wirefuzz_discard_test.go:22` |
 | `none.unit.tooling.harness.wire-verdict-non-finite-is-a-refusal` | `gotest` | Go test TestWireVerdictNonFiniteIsARefusal in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestWireVerdictNonFiniteIsARefusal` | the Go test passes | `test/conformance/harness/wirefuzz_test.go:239` |
 | `none.unit.tooling.harness.wire-verdict-refusal-diagnostics-do-not-matter` | `gotest` | Go test TestWireVerdictRefusalDiagnosticsDoNotMatter in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestWireVerdictRefusalDiagnosticsDoNotMatter` | the Go test passes | `test/conformance/harness/wirefuzz_test.go:251` |
-| `none.unit.tooling.harness.write-refusal-engine-holds-the-int-corpus` | `gotest` | Go test TestWriteRefusalEngineHoldsTheIntCorpus in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestWriteRefusalEngineHoldsTheIntCorpus` | the Go test passes | `test/conformance/harness/writerefusal_test.go:161` |
+| `none.unit.tooling.harness.write-refusal-engine-holds-the-int-corpus` | `gotest` | Go test TestWriteRefusalEngineHoldsTheIntCorpus in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`read_plant: plant.read-credits.tooling-harness-write-refusal-engine-holds-the-int-corpus`<br>`reads: ["testdata/conformance/write-refusal-int/"]`<br>`test: TestWriteRefusalEngineHoldsTheIntCorpus` | the Go test passes | `test/conformance/harness/writerefusal_test.go:161` |
 | `none.unit.tooling.harness.write-refusal-rows-load-a-current-form-instance` | `gotest` | Go test TestWriteRefusalRowsLoadACurrentFormInstance in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestWriteRefusalRowsLoadACurrentFormInstance` | the Go test passes | `test/conformance/harness/writerefusal_test.go:89` |
 | `none.unit.tooling.harness.write-refusal-surface-holds-the-go-engine` | `gotest` | Go test TestWriteRefusalSurfaceHoldsTheGoEngine in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestWriteRefusalSurfaceHoldsTheGoEngine` | the Go test passes | `test/conformance/harness/writerefusal_test.go:28` |
 | `none.unit.tooling.harness.write-shape-rows-are-held-to-their-rules` | `gotest` | Go test TestWriteShapeRowsAreHeldToTheirRules in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestWriteShapeRowsAreHeldToTheirRules` | the Go test passes | `test/conformance/harness/writeshape_test.go:15` |
@@ -5834,7 +5650,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.unit.tooling.matrix.load-ports-refuses-a-bad-declaration` | `gotest` | Go test TestLoadPortsRefusesABadDeclaration in ./tools/matrix | `package: ./tools/matrix`<br>`test: TestLoadPortsRefusesABadDeclaration` | the Go test passes | `tools/matrix/proof_test.go:379` |
+| `none.unit.tooling.matrix.load-ports-refuses-a-bad-declaration` | `gotest` | Go test TestLoadPortsRefusesABadDeclaration in ./tools/matrix | `package: ./tools/matrix`<br>`read_plant: plant.read-credits.tooling-matrix-load-ports-refuses-a-bad-declaration`<br>`reads: ["test/proof/in-progress.json"]`<br>`test: TestLoadPortsRefusesABadDeclaration` | the Go test passes | `tools/matrix/proof_test.go:379` |
 | `none.unit.tooling.matrix.load-results-orders-like-the-registry` | `gotest` | Go test TestLoadResultsOrdersLikeTheRegistry in ./tools/matrix | `package: ./tools/matrix`<br>`test: TestLoadResultsOrdersLikeTheRegistry` | the Go test passes | `tools/matrix/proof_test.go:405` |
 | `none.unit.tooling.matrix.load-rulings-refuses-a-pattern-match-cannot-read` | `gotest` | Go test TestLoadRulingsRefusesAPatternMatchCannotRead in ./tools/matrix | `package: ./tools/matrix`<br>`test: TestLoadRulingsRefusesAPatternMatchCannotRead` | the Go test passes | `tools/matrix/rulings_pattern_test.go:12` |
 | `none.unit.tooling.matrix.proof-absent-is-red-unless-ruled` | `gotest` | Go test TestProofAbsentIsRedUnlessRuled in ./tools/matrix | `package: ./tools/matrix`<br>`test: TestProofAbsentIsRedUnlessRuled` | the Go test passes | `tools/matrix/proof_test.go:95` |
@@ -5849,7 +5665,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.matrix.proof-whole-surface-absent-and-ruled-is-not-applicable` | `gotest` | Go test TestProofWholeSurfaceAbsentAndRuledIsNotApplicable in ./tools/matrix | `package: ./tools/matrix`<br>`test: TestProofWholeSurfaceAbsentAndRuledIsNotApplicable` | the Go test passes | `tools/matrix/proof_test.go:118` |
 | `none.unit.tooling.matrix.release-refuses-unless-the-proof-is-green-at-that-commit` | `gotest` | Go test TestReleaseRefusesUnlessTheProofIsGreenAtThatCommit in ./tools/matrix | `package: ./tools/matrix`<br>`test: TestReleaseRefusesUnlessTheProofIsGreenAtThatCommit` | the Go test passes | `tools/matrix/proof_test.go:234` |
 | `none.unit.tooling.matrix.surfaces-are-the-harness-surfaces` | `gotest` | Go test TestSurfacesAreTheHarnessSurfaces in ./tools/matrix | `package: ./tools/matrix`<br>`test: TestSurfacesAreTheHarnessSurfaces` | the Go test passes | `tools/matrix/proof_test.go:544` |
-| `none.unit.tooling.matrix.the-committed-proof-is-well-formed` | `gotest` | Go test TestTheCommittedProofIsWellFormed in ./tools/matrix | `package: ./tools/matrix`<br>`test: TestTheCommittedProofIsWellFormed` | the Go test passes | `tools/matrix/proof_test.go:428` |
+| `none.unit.tooling.matrix.the-committed-proof-is-well-formed` | `gotest` | Go test TestTheCommittedProofIsWellFormed in ./tools/matrix | `package: ./tools/matrix`<br>`read_plant: plant.read-credits.tooling-matrix-the-committed-proof-is-well-formed`<br>`reads: ["test/proof/proof.json"]`<br>`test: TestTheCommittedProofIsWellFormed` | the Go test passes | `tools/matrix/proof_test.go:428` |
 | `none.unit.tooling.matrix.the-tree-inputs-load` | `gotest` | Go test TestTheTreeInputsLoad in ./tools/matrix | `package: ./tools/matrix`<br>`test: TestTheTreeInputsLoad` | the Go test passes | `tools/matrix/proof_test.go:262` |
 
 #### `tooling` family `modulemove`, 9 tests
@@ -6088,14 +5904,14 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.runmatch.skips-follows-go` | `gotest` | Go test TestSkipsFollowsGo in ./internal/runmatch | `package: ./internal/runmatch`<br>`test: TestSkipsFollowsGo` | the Go test passes | `internal/runmatch/runmatch_test.go:107` |
 | `none.unit.tooling.runmatch.top-level-is-gos-split` | `gotest` | Go test TestTopLevelIsGosSplit in ./internal/runmatch | `package: ./internal/runmatch`<br>`test: TestTopLevelIsGosSplit` | the Go test passes | `internal/runmatch/runmatch_test.go:9` |
 
-#### `tooling` family `schema-test`, 155 tests
+#### `tooling` family `schema-test`, 174 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.unit.tooling.schema-test.a-build-its-deadline-cut-short-is-run-again` | `gotest` | Go test TestABuildItsDeadlineCutShortIsRunAgain in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestABuildItsDeadlineCutShortIsRunAgain` | the Go test passes | `tools/schema-test/goneeds_test.go:206` |
 | `none.unit.tooling.schema-test.a-build-step-already-run-never-waits-for-the-checkout` | `gotest` | Go test TestABuildStepAlreadyRunNeverWaitsForTheCheckout in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestABuildStepAlreadyRunNeverWaitsForTheCheckout` | the Go test passes | `tools/schema-test/make_test.go:556` |
 | `none.unit.tooling.schema-test.a-build-step-runs-in-prepare` | `gotest` | Go test TestABuildStepRunsInPrepare in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestABuildStepRunsInPrepare` | the Go test passes | `tools/schema-test/make_test.go:574` |
-| `none.unit.tooling.schema-test.a-copy-a-killed-run-left-is-swept` | `gotest` | Go test TestACopyAKilledRunLeftIsSwept in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestACopyAKilledRunLeftIsSwept` | the Go test passes | `tools/schema-test/plant_test.go:342` |
+| `none.unit.tooling.schema-test.a-copy-a-killed-run-left-is-swept` | `gotest` | Go test TestACopyAKilledRunLeftIsSwept in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestACopyAKilledRunLeftIsSwept` | the Go test passes | `tools/schema-test/plant_test.go:391` |
 | `none.unit.tooling.schema-test.a-database-read-in-part-fails-the-row` | `gotest` | Go test TestADatabaseReadInPartFailsTheRow in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestADatabaseReadInPartFailsTheRow` | the Go test passes | `tools/schema-test/make_test.go:499` |
 | `none.unit.tooling.schema-test.a-deleted-golden-is-missing` | `gotest` | Go test TestADeletedGoldenIsMissing in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestADeletedGoldenIsMissing` | the Go test passes | `tools/schema-test/golden_test.go:125` |
 | `none.unit.tooling.schema-test.a-failed-build-blocks-the-builds-declared-after-it` | `gotest` | Go test TestAFailedBuildBlocksTheBuildsDeclaredAfterIt in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAFailedBuildBlocksTheBuildsDeclaredAfterIt` | the Go test passes | `tools/schema-test/goneeds_test.go:325` |
@@ -6103,8 +5919,8 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.schema-test.a-fuzz-row-takes-its-runs-seed` | `gotest` | Go test TestAFuzzRowTakesItsRunsSeed in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAFuzzRowTakesItsRunsSeed` | the Go test passes | `tools/schema-test/make_seed_test.go:19` |
 | `none.unit.tooling.schema-test.a-go-test-family-never-takes-the-corpus-prefix` | `gotest` | Go test TestAGoTestFamilyNeverTakesTheCorpusPrefix in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAGoTestFamilyNeverTakesTheCorpusPrefix` | the Go test passes | `tools/schema-test/gotest_test.go:196` |
 | `none.unit.tooling.schema-test.a-go-test-row-whose-data-is-gone-fails` | `gotest` | Go test TestAGoTestRowWhoseDataIsGoneFails in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAGoTestRowWhoseDataIsGoneFails` | the Go test passes | `tools/schema-test/gotest_test.go:387` |
-| `none.unit.tooling.schema-test.a-go-test-rows-make-target-is-built-first` | `gotest` | a gotest row naming a make target in its inputs has it made once in Prepare before any call; a target that does not make fails naming the row; a make input that is not one target is refused (Go test TestAGoTestRowsMakeTargetIsBuiltFirst in ./tools/schema-test) | `package: ./tools/schema-test`<br>`test: TestAGoTestRowsMakeTargetIsBuiltFirst` | the Go test passes | `tools/schema-test/gotest_test.go:419` |
-| `none.unit.tooling.schema-test.a-go-test-that-exits-non-zero-fails-its-rows` | `gotest` | Go test TestAGoTestThatExitsNonZeroFailsItsRows in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAGoTestThatExitsNonZeroFailsItsRows` | the Go test passes | `tools/schema-test/gotest_test.go:314` |
+| `none.unit.tooling.schema-test.a-go-test-rows-make-target-is-built-first` | `gotest` | a gotest row naming a make target in its inputs has it made once in Prepare before any call; a target that does not make fails naming the row; a make input that is not one target is refused (Go test TestAGoTestRowsMakeTargetIsBuiltFirst in ./tools/schema-test) | `package: ./tools/schema-test`<br>`test: TestAGoTestRowsMakeTargetIsBuiltFirst` | the Go test passes | `tools/schema-test/gotest_test.go:466` |
+| `none.unit.tooling.schema-test.a-go-test-that-exits-non-zero-fails-its-rows` | `gotest` | Go test TestAGoTestThatExitsNonZeroFailsItsRows in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAGoTestThatExitsNonZeroFailsItsRows` | the Go test passes | `tools/schema-test/gotest_test.go:361` |
 | `none.unit.tooling.schema-test.a-go-test-timeout-is-named-not-a-crash` | `gotest` | Go test TestAGoTestTimeoutIsNamedNotACrash in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAGoTestTimeoutIsNamedNotACrash` | the Go test passes | `tools/schema-test/gotest_test.go:477` |
 | `none.unit.tooling.schema-test.a-go-tests-declared-build-fails-only-the-rows-that-read-it` | `gotest` | Go test TestAGoTestsDeclaredBuildFailsOnlyTheRowsThatReadIt in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAGoTestsDeclaredBuildFailsOnlyTheRowsThatReadIt` | the Go test passes | `tools/schema-test/goneeds_test.go:83` |
 | `none.unit.tooling.schema-test.a-go-tests-package-is-named-by-its-module` | `gotest` | Go test TestAGoTestsPackageIsNamedByItsModule in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAGoTestsPackageIsNamedByItsModule` | the Go test passes | `tools/schema-test/make_test.go:628` |
@@ -6112,10 +5928,12 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.schema-test.a-golden-edited-by-hand-fails` | `gotest` | Go test TestAGoldenEditedByHandFails in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAGoldenEditedByHandFails` | the Go test passes | `tools/schema-test/golden_test.go:81` |
 | `none.unit.tooling.schema-test.a-golden-nothing-writes-fails` | `gotest` | Go test TestAGoldenNothingWritesFails in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAGoldenNothingWritesFails` | the Go test passes | `tools/schema-test/golden_test.go:105` |
 | `none.unit.tooling.schema-test.a-golden-the-writer-left-untouched-was-not-written` | `gotest` | Go test TestAGoldenTheWriterLeftUntouchedWasNotWritten in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAGoldenTheWriterLeftUntouchedWasNotWritten` | the Go test passes | `tools/schema-test/golden_test.go:228` |
+| `none.unit.tooling.schema-test.a-job-written-into-a-generated-workflow-grows-the-ledger` | `gotest` | Go test TestAJobWrittenIntoAGeneratedWorkflowGrowsTheLedger in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAJobWrittenIntoAGeneratedWorkflowGrowsTheLedger` | the Go test passes | `tools/schema-test/extract_test.go:305` |
 | `none.unit.tooling.schema-test.a-killed-make-go-test-names-the-tests-running` | `gotest` | Go test TestAKilledMakeGoTestNamesTheTestsRunning in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAKilledMakeGoTestNamesTheTestsRunning` | the Go test passes | `tools/schema-test/make_gotest_test.go:305` |
 | `none.unit.tooling.schema-test.a-language-packages-benchmarks-wait-for-the-bench-adapter` | `gotest` | Go test TestALanguagePackagesBenchmarksWaitForTheBenchAdapter in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestALanguagePackagesBenchmarksWaitForTheBenchAdapter` | the Go test passes | `tools/schema-test/extract_test.go:285` |
 | `none.unit.tooling.schema-test.a-make-control-carries-its-needs` | `gotest` | Go test TestAMakeControlCarriesItsNeeds in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAMakeControlCarriesItsNeeds` | the Go test passes | `tools/schema-test/plant_make_test.go:19` |
 | `none.unit.tooling.schema-test.a-make-go-test-reads-what-the-events-say-not-the-log-alone` | `gotest` | Go test TestAMakeGoTestReadsWhatTheEventsSayNotTheLogAlone in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAMakeGoTestReadsWhatTheEventsSayNotTheLogAlone` | the Go test passes | `tools/schema-test/make_gotest_test.go:239` |
+| `none.unit.tooling.schema-test.a-make-go-test-row-builds-what-its-test-reads-in-prepare` | `gotest` | Go test TestAMakeGoTestRowBuildsWhatItsTestReadsInPrepare in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAMakeGoTestRowBuildsWhatItsTestReadsInPrepare` | the Go test passes | `tools/schema-test/make_gotest_needs_test.go:20` |
 | `none.unit.tooling.schema-test.a-make-go-test-row-is-read-by-its-exact-name` | `gotest` | Go test TestAMakeGoTestRowIsReadByItsExactName in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAMakeGoTestRowIsReadByItsExactName` | the Go test passes | `tools/schema-test/make_gotest_test.go:139` |
 | `none.unit.tooling.schema-test.a-make-go-test-target-running-go-test-another-way-is-refused` | `gotest` | Go test TestAMakeGoTestTargetRunningGoTestAnotherWayIsRefused in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAMakeGoTestTargetRunningGoTestAnotherWayIsRefused` | the Go test passes | `tools/schema-test/make_gotest_test.go:283` |
 | `none.unit.tooling.schema-test.a-make-go-test-target-without-go-test-is-refused` | `gotest` | Go test TestAMakeGoTestTargetWithoutGoTestIsRefused in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAMakeGoTestTargetWithoutGoTestIsRefused` | the Go test passes | `tools/schema-test/make_gotest_test.go:216` |
@@ -6124,28 +5942,38 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.schema-test.a-make-row-names-its-go-tests-with-their-package` | `gotest` | Go test TestAMakeRowNamesItsGoTestsWithTheirPackage in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAMakeRowNamesItsGoTestsWithTheirPackage` | the Go test passes | `tools/schema-test/make_test.go:614` |
 | `none.unit.tooling.schema-test.a-make-row-naming-its-go-tests-passes-only-when-each-reports-a-pass` | `gotest` | Go test TestAMakeRowNamingItsGoTestsPassesOnlyWhenEachReportsAPass in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAMakeRowNamingItsGoTestsPassesOnlyWhenEachReportsAPass` | the Go test passes | `tools/schema-test/make_test.go:589` |
 | `none.unit.tooling.schema-test.a-make-row-reads-only-what-its-target-depends-on` | `gotest` | Go test TestAMakeRowReadsOnlyWhatItsTargetDependsOn in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAMakeRowReadsOnlyWhatItsTargetDependsOn` | the Go test passes | `tools/schema-test/make_test.go:393` |
+| `none.unit.tooling.schema-test.a-make-row-reads-what-a-function-with-a-hyphenated-name-names` | `gotest` | Go test TestAMakeRowReadsWhatAFunctionWithAHyphenatedNameNames in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAMakeRowReadsWhatAFunctionWithAHyphenatedNameNames` | the Go test passes | `tools/schema-test/make_test.go:431` |
+| `none.unit.tooling.schema-test.a-make-row-red-is-judged-by-the-line-holding-the-marker` | `gotest` | Go test TestAMakeRowRedIsJudgedByTheLineHoldingTheMarker in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAMakeRowRedIsJudgedByTheLineHoldingTheMarker` | the Go test passes | `tools/schema-test/plant_test.go:348` |
 | `none.unit.tooling.schema-test.a-make-row-runs-with-the-cores-and-a-control-without` | `gotest` | Go test TestAMakeRowRunsWithTheCoresAndAControlWithout in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAMakeRowRunsWithTheCoresAndAControlWithout` | the Go test passes | `tools/schema-test/make_test.go:143` |
 | `none.unit.tooling.schema-test.a-make-row-sets-its-variables-on-the-command-line` | `gotest` | Go test TestAMakeRowSetsItsVariablesOnTheCommandLine in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAMakeRowSetsItsVariablesOnTheCommandLine` | the Go test passes | `tools/schema-test/make_test.go:165` |
 | `none.unit.tooling.schema-test.a-make-row-whose-target-is-gone-fails` | `gotest` | Go test TestAMakeRowWhoseTargetIsGoneFails in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAMakeRowWhoseTargetIsGoneFails` | the Go test passes | `tools/schema-test/make_test.go:60` |
+| `none.unit.tooling.schema-test.a-make-rows-directory-read-is-a-directory-its-recipes-work-on-bare` | `gotest` | Go test TestAMakeRowsDirectoryReadIsADirectoryItsRecipesWorkOnBare in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAMakeRowsDirectoryReadIsADirectoryItsRecipesWorkOnBare` | the Go test passes | `tools/schema-test/make_test.go:433` |
 | `none.unit.tooling.schema-test.a-make-target-passes-only-on-exit-zero-with-no-skip` | `gotest` | Go test TestAMakeTargetPassesOnlyOnExitZeroWithNoSkip in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAMakeTargetPassesOnlyOnExitZeroWithNoSkip` | the Go test passes | `tools/schema-test/make_test.go:80` |
 | `none.unit.tooling.schema-test.a-make-variable-cannot-turn-the-gate-off` | `gotest` | Go test TestAMakeVariableCannotTurnTheGateOff in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAMakeVariableCannotTurnTheGateOff` | the Go test passes | `tools/schema-test/make_test.go:327` |
+| `none.unit.tooling.schema-test.a-marker-the-tree-holds-is-named` | `gotest` | Go test TestAMarkerTheTreeHoldsIsNamed in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAMarkerTheTreeHoldsIsNamed` | the Go test passes | `tools/schema-test/plant_test.go:376` |
+| `none.unit.tooling.schema-test.a-marker-the-tree-holds-refuses-the-plant-before-it-runs` | `gotest` | Go test TestAMarkerTheTreeHoldsRefusesThePlantBeforeItRuns in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAMarkerTheTreeHoldsRefusesThePlantBeforeItRuns` | the Go test passes | `tools/schema-test/plant_test.go:350` |
 | `none.unit.tooling.schema-test.a-non-zero-exit-with-every-asked-subtest-passing-fails-those-rows` | `gotest` | Go test TestANonZeroExitWithEveryAskedSubtestPassingFailsThoseRows in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestANonZeroExitWithEveryAskedSubtestPassingFailsThoseRows` | the Go test passes | `tools/schema-test/gotest_case_test.go:194` |
-| `none.unit.tooling.schema-test.a-package-in-a-module-of-its-own-runs-from-that-module` | `gotest` | Go test TestAPackageInAModuleOfItsOwnRunsFromThatModule in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAPackageInAModuleOfItsOwnRunsFromThatModule` | the Go test passes | `tools/schema-test/gotest_test.go:164` |
-| `none.unit.tooling.schema-test.a-packages-rows-are-cut-into-calls-by-weight` | `gotest` | Go test TestAPackagesRowsAreCutIntoCallsByWeight in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAPackagesRowsAreCutIntoCallsByWeight` | the Go test passes | `tools/schema-test/gotest_test.go:345` |
+| `none.unit.tooling.schema-test.a-package-in-a-module-of-its-own-runs-from-that-module` | `gotest` | Go test TestAPackageInAModuleOfItsOwnRunsFromThatModule in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAPackageInAModuleOfItsOwnRunsFromThatModule` | the Go test passes | `tools/schema-test/gotest_test.go:211` |
+| `none.unit.tooling.schema-test.a-packages-rows-are-cut-into-calls-by-weight` | `gotest` | Go test TestAPackagesRowsAreCutIntoCallsByWeight in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAPackagesRowsAreCutIntoCallsByWeight` | the Go test passes | `tools/schema-test/gotest_test.go:392` |
+| `none.unit.tooling.schema-test.a-parent-red-through-a-subtest-names-it-first` | `gotest` | Go test TestAParentRedThroughASubtestNamesItFirst in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAParentRedThroughASubtestNamesItFirst` | the Go test passes | `tools/schema-test/gotest_test.go:57` |
 | `none.unit.tooling.schema-test.a-per-language-row-runs-its-languages-make-gates` | `gotest` | Go test TestAPerLanguageRowRunsItsLanguagesMakeGates in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAPerLanguageRowRunsItsLanguagesMakeGates` | the Go test passes | `tools/schema-test/langmake_test.go:1` |
 | `none.unit.tooling.schema-test.a-plant-of-a-row-already-red-fails` | `gotest` | Go test TestAPlantOfARowAlreadyRedFails in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAPlantOfARowAlreadyRedFails` | the Go test passes | `tools/schema-test/main_test.go:275` |
 | `none.unit.tooling.schema-test.a-plant-passes-only-when-its-target-goes-red` | `gotest` | Go test TestAPlantPassesOnlyWhenItsTargetGoesRed in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAPlantPassesOnlyWhenItsTargetGoesRed` | the Go test passes | `tools/schema-test/main_test.go:86` |
-| `none.unit.tooling.schema-test.a-plant-prepares-the-rows-it-runs-in-the-checkout` | `gotest` | Go test TestAPlantPreparesTheRowsItRunsInTheCheckout in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAPlantPreparesTheRowsItRunsInTheCheckout` | the Go test passes | `tools/schema-test/plant_test.go:452` |
-| `none.unit.tooling.schema-test.a-plant-reaches-a-copy-in-a-header` | `gotest` | Go test TestAPlantReachesACopyInAHeader in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAPlantReachesACopyInAHeader` | the Go test passes | `tools/schema-test/plant_test.go:325` |
+| `none.unit.tooling.schema-test.a-plant-prepares-the-rows-it-runs-in-the-checkout` | `gotest` | Go test TestAPlantPreparesTheRowsItRunsInTheCheckout in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAPlantPreparesTheRowsItRunsInTheCheckout` | the Go test passes | `tools/schema-test/plant_test.go:501` |
+| `none.unit.tooling.schema-test.a-plant-reaches-a-copy-in-a-header` | `gotest` | Go test TestAPlantReachesACopyInAHeader in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAPlantReachesACopyInAHeader` | the Go test passes | `tools/schema-test/plant_test.go:374` |
 | `none.unit.tooling.schema-test.a-plant-reaches-a-copy-in-another-edited-file` | `gotest` | Go test TestAPlantReachesACopyInAnotherEditedFile in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAPlantReachesACopyInAnotherEditedFile` | the Go test passes | `tools/schema-test/plant_test.go:233` |
 | `none.unit.tooling.schema-test.a-plant-reaches-every-copy` | `gotest` | Go test TestAPlantReachesEveryCopy in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAPlantReachesEveryCopy` | the Go test passes | `tools/schema-test/plant_test.go:71` |
 | `none.unit.tooling.schema-test.a-plant-red-for-another-reason-fails` | `gotest` | Go test TestAPlantRedForAnotherReasonFails in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAPlantRedForAnotherReasonFails` | the Go test passes | `tools/schema-test/main_test.go:95` |
-| `none.unit.tooling.schema-test.a-plant-result-carries-its-measured-seconds` | `gotest` | Go test TestAPlantResultCarriesItsMeasuredSeconds in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAPlantResultCarriesItsMeasuredSeconds` | the Go test passes | `tools/schema-test/plant_test.go:483` |
+| `none.unit.tooling.schema-test.a-plant-result-carries-its-measured-seconds` | `gotest` | Go test TestAPlantResultCarriesItsMeasuredSeconds in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAPlantResultCarriesItsMeasuredSeconds` | the Go test passes | `tools/schema-test/plant_test.go:532` |
 | `none.unit.tooling.schema-test.a-plant-whose-planted-run-had-problems-fails` | `gotest` | Go test TestAPlantWhosePlantedRunHadProblemsFails in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAPlantWhosePlantedRunHadProblemsFails` | the Go test passes | `tools/schema-test/main_test.go:292` |
 | `none.unit.tooling.schema-test.a-prepare-cut-short-by-its-deadline-says-so` | `gotest` | Go test TestAPrepareCutShortByItsDeadlineSaysSo in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAPrepareCutShortByItsDeadlineSaysSo` | the Go test passes | `tools/schema-test/goneeds_test.go:181` |
+| `none.unit.tooling.schema-test.a-read-plant-is-one-whole-form` | `gotest` | Go test TestAReadPlantIsOneWholeForm in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAReadPlantIsOneWholeForm` | the Go test passes | `tools/schema-test/plant_test.go:772` |
+| `none.unit.tooling.schema-test.a-read-plant-is-the-row-red-for-each-deletion` | `gotest` | Go test TestAReadPlantIsTheRowRedForEachDeletion in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAReadPlantIsTheRowRedForEachDeletion` | the Go test passes | `tools/schema-test/plant_test.go:711` |
+| `none.unit.tooling.schema-test.a-read-the-regeneration-does-not-give-is-stale` | `gotest` | Go test TestAReadTheRegenerationDoesNotGiveIsStale in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAReadTheRegenerationDoesNotGiveIsStale` | the Go test passes | `tools/schema-test/reads_test.go:184` |
 | `none.unit.tooling.schema-test.a-reason-echoed-by-a-broken-build-is-not-the-plants` | `gotest` | Go test TestAReasonEchoedByABrokenBuildIsNotThePlants in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAReasonEchoedByABrokenBuildIsNotThePlants` | the Go test passes | `tools/schema-test/plant_test.go:217` |
 | `none.unit.tooling.schema-test.a-recipe-that-runs-go-test-outside-the-wrapper-fails` | `gotest` | a make row whose recipes run go test any way but through $(GO\_TEST) fails before it runs, naming the command (Go test TestARecipeThatRunsGoTestOutsideTheWrapperFails in ./tools/schema-test) | `package: ./tools/schema-test`<br>`test: TestARecipeThatRunsGoTestOutsideTheWrapperFails` | the Go test passes | `tools/schema-test/make_test.go:436` |
-| `none.unit.tooling.schema-test.a-row-whose-go-test-is-gone-is-missing` | `gotest` | Go test TestARowWhoseGoTestIsGoneIsMissing in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestARowWhoseGoTestIsGoneIsMissing` | the Go test passes | `tools/schema-test/gotest_test.go:135` |
+| `none.unit.tooling.schema-test.a-regeneration-keeps-a-read-its-row-still-reaches` | `gotest` | Go test TestARegenerationKeepsAReadItsRowStillReaches in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestARegenerationKeepsAReadItsRowStillReaches` | the Go test passes | `tools/schema-test/reads_test.go:75` |
+| `none.unit.tooling.schema-test.a-row-whose-go-test-is-gone-is-missing` | `gotest` | Go test TestARowWhoseGoTestIsGoneIsMissing in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestARowWhoseGoTestIsGoneIsMissing` | the Go test passes | `tools/schema-test/gotest_test.go:182` |
 | `none.unit.tooling.schema-test.a-run-that-selects-nothing-still-prints-its-counts` | `gotest` | Go test TestARunThatSelectsNothingStillPrintsItsCounts in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestARunThatSelectsNothingStillPrintsItsCounts` | the Go test passes | `tools/schema-test/main_test.go:188` |
 | `none.unit.tooling.schema-test.a-run-writes-its-report-when-asked` | `gotest` | Go test TestARunWritesItsReportWhenAsked in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestARunWritesItsReportWhenAsked` | the Go test passes | `tools/schema-test/main_test.go:286` |
 | `none.unit.tooling.schema-test.a-sabotage-that-reddens-an-unnamed-row-fails` | `gotest` | Go test TestASabotageThatReddensAnUnnamedRowFails in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestASabotageThatReddensAnUnnamedRowFails` | the Go test passes | `tools/schema-test/plant_test.go:96` |
@@ -6156,6 +5984,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.schema-test.a-subtest-row-keeps-its-own-verdict` | `gotest` | Go test TestASubtestRowKeepsItsOwnVerdict in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestASubtestRowKeepsItsOwnVerdict` | the Go test passes | `tools/schema-test/gotest_case_test.go:15` |
 | `none.unit.tooling.schema-test.a-subtest-row-takes-that-subtests-verdict` | `gotest` | Go test TestASubtestRowTakesThatSubtestsVerdict in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestASubtestRowTakesThatSubtestsVerdict` | the Go test passes | `tools/schema-test/gotest_test.go:399` |
 | `none.unit.tooling.schema-test.a-subtest-that-skips-fails-its-parent` | `gotest` | Go test TestASubtestThatSkipsFailsItsParent in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestASubtestThatSkipsFailsItsParent` | the Go test passes | `tools/schema-test/gotest_test.go:20` |
+| `none.unit.tooling.schema-test.a-tables-compiler-that-did-not-run-fails-either-verdict` | `gotest` | Go test TestATablesCompilerThatDidNotRunFailsEitherVerdict in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestATablesCompilerThatDidNotRunFailsEitherVerdict` | the Go test passes | `tools/schema-test/tables_test.go:176` |
 | `none.unit.tooling.schema-test.a-target-specific-variable-is-not-a-rule` | `gotest` | Go test TestATargetSpecificVariableIsNotARule in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestATargetSpecificVariableIsNotARule` | the Go test passes | `tools/schema-test/make_test.go:265` |
 | `none.unit.tooling.schema-test.a-test-past-a-shard-says-where-its-tier-goes` | `gotest` | Go test TestATestPastAShardSaysWhereItsTierGoes in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestATestPastAShardSaysWhereItsTierGoes` | the Go test passes | `tools/schema-test/ci_test.go:445` |
 | `none.unit.tooling.schema-test.a-union-call-carries-its-build-tags` | `gotest` | Go test TestAUnionCallCarriesItsBuildTags in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAUnionCallCarriesItsBuildTags` | the Go test passes | `tools/schema-test/gounion_test.go:63` |
@@ -6169,6 +5998,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.schema-test.an-anchor-written-twice-fails` | `gotest` | Go test TestAnAnchorWrittenTwiceFails in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAnAnchorWrittenTwiceFails` | the Go test passes | `tools/schema-test/plant_test.go:52` |
 | `none.unit.tooling.schema-test.an-edit-plant-cannot-name-a-make-row-red` | `gotest` | Go test TestAnEditPlantCannotNameAMakeRowRed in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAnEditPlantCannotNameAMakeRowRed` | the Go test passes | `tools/schema-test/plant_test.go:293` |
 | `none.unit.tooling.schema-test.an-edit-plant-is-judged-on-its-trees-run` | `gotest` | Go test TestAnEditPlantIsJudgedOnItsTreesRun in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAnEditPlantIsJudgedOnItsTreesRun` | the Go test passes | `tools/schema-test/plant_test.go:120` |
+| `none.unit.tooling.schema-test.an-edit-plant-puts-the-marker-line-first-before-it-judges` | `gotest` | Go test TestAnEditPlantPutsTheMarkerLineFirstBeforeItJudges in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAnEditPlantPutsTheMarkerLineFirstBeforeItJudges` | the Go test passes | `tools/schema-test/plant_test.go:649` |
 | `none.unit.tooling.schema-test.an-uncommitted-golden-is-missing` | `gotest` | Go test TestAnUncommittedGoldenIsMissing in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAnUncommittedGoldenIsMissing` | the Go test passes | `tools/schema-test/golden_test.go:231` |
 | `none.unit.tooling.schema-test.an-unreadable-index-is-named` | `gotest` | Go test TestAnUnreadableIndexIsNamed in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAnUnreadableIndexIsNamed` | the Go test passes | `tools/schema-test/golden_test.go:353` |
 | `none.unit.tooling.schema-test.ci-check-and-extract-hold-the-pins` | `gotest` | Go test TestCICheckAndExtractHoldThePins in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestCICheckAndExtractHoldThePins` | the Go test passes | `tools/schema-test/cipins_test.go:1` |
@@ -6176,7 +6006,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.schema-test.cs-rows-verdicts-read-per-row` | `gotest` | Go test TestCsRowsVerdictsReadPerRow in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestCsRowsVerdictsReadPerRow` | the Go test passes | `tools/schema-test/a4_test.go:111` |
 | `none.unit.tooling.schema-test.every-corpus-family-has-its-harness` | `gotest` | Go test TestEveryCorpusFamilyHasItsHarness in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestEveryCorpusFamilyHasItsHarness` | the Go test passes | `tools/schema-test/main_test.go:227` |
 | `none.unit.tooling.schema-test.every-github-file-is-generated-or-pinned` | `gotest` | Go test TestEveryGitHubFileIsGeneratedOrPinned in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestEveryGitHubFileIsGeneratedOrPinned` | the Go test passes | `tools/schema-test/cipins_test.go:1` |
-| `none.unit.tooling.schema-test.every-hostile-target-declares-its-build` | `gotest` | Go test TestEveryHostileTargetDeclaresItsBuild in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestEveryHostileTargetDeclaresItsBuild` | the Go test passes | `tools/schema-test/hostile_test.go:359` |
+| `none.unit.tooling.schema-test.every-hostile-target-declares-its-build` | `gotest` | Go test TestEveryHostileTargetDeclaresItsBuild in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestEveryHostileTargetDeclaresItsBuild` | the Go test passes | `tools/schema-test/hostile_test.go:362` |
 | `none.unit.tooling.schema-test.every-make-in-the-checkout-holds-it` | `gotest` | Go test TestEveryMakeInTheCheckoutHoldsIt in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestEveryMakeInTheCheckoutHoldsIt` | the Go test passes | `tools/schema-test/make_test.go:280` |
 | `none.unit.tooling.schema-test.every-retired-check-is-still-run` | `gotest` | Go test TestEveryRetiredCheckIsStillRun in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestEveryRetiredCheckIsStillRun` | the Go test passes | `tools/schema-test/retired_test.go:1` |
 | `none.unit.tooling.schema-test.every-workflow-step-calls-only-schema-test` | `gotest` | Go test TestEveryWorkflowStepCallsOnlySchemaTest in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestEveryWorkflowStepCallsOnlySchemaTest` | the Go test passes | `tools/schema-test/ci_test.go:1` |
@@ -6188,11 +6018,12 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.schema-test.feature-witness-plan` | `gotest` | Go test TestFeatureWitnessPlan in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestFeatureWitnessPlan` | the Go test passes | `tools/schema-test/featurewitness_test.go:173` |
 | `none.unit.tooling.schema-test.feature-witness-rows-cover-the-corpus` | `gotest` | Go test TestFeatureWitnessRowsCoverTheCorpus in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestFeatureWitnessRowsCoverTheCorpus` | the Go test passes | `tools/schema-test/featurewitness_test.go:132` |
 | `none.unit.tooling.schema-test.go-answered-none-wraps-the-run-error` | `gotest` | Go test TestGoAnsweredNoneWrapsTheRunError in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestGoAnsweredNoneWrapsTheRunError` | the Go test passes | `tools/schema-test/a4_test.go:153` |
+| `none.unit.tooling.schema-test.go-suggestions-come-from-the-rows-own-test-function` | `gotest` | Go test TestGoSuggestionsComeFromTheRowsOwnTestFunction in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestGoSuggestionsComeFromTheRowsOwnTestFunction` | the Go test passes | `tools/schema-test/reads_test.go:214` |
 | `none.unit.tooling.schema-test.go-test-events-give-one-verdict-each` | `gotest` | Go test TestGoTestEventsGiveOneVerdictEach in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestGoTestEventsGiveOneVerdictEach` | the Go test passes | `tools/schema-test/main_test.go:105` |
 | `none.unit.tooling.schema-test.go-test-plain-output-in-the-log-fails` | `gotest` | Go test TestGoTestPlainOutputInTheLogFails in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestGoTestPlainOutputInTheLogFails` | the Go test passes | `tools/schema-test/make_test.go:475` |
-| `none.unit.tooling.schema-test.go-test-runs-to-the-drivers-deadline` | `gotest` | Go test TestGoTestRunsToTheDriversDeadline in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestGoTestRunsToTheDriversDeadline` | the Go test passes | `tools/schema-test/gotest_test.go:293` |
-| `none.unit.tooling.schema-test.hostile-case-keys-are-distinct` | `gotest` | Go test TestHostileCaseKeysAreDistinct in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestHostileCaseKeysAreDistinct` | the Go test passes | `tools/schema-test/hostile_test.go:126` |
-| `none.unit.tooling.schema-test.hostile-plan-refuses-what-is-no-case` | `gotest` | Go test TestHostilePlanRefusesWhatIsNoCase in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestHostilePlanRefusesWhatIsNoCase` | the Go test passes | `tools/schema-test/hostile_test.go:275` |
+| `none.unit.tooling.schema-test.go-test-runs-to-the-drivers-deadline` | `gotest` | Go test TestGoTestRunsToTheDriversDeadline in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestGoTestRunsToTheDriversDeadline` | the Go test passes | `tools/schema-test/gotest_test.go:340` |
+| `none.unit.tooling.schema-test.hostile-case-keys-are-distinct` | `gotest` | Go test TestHostileCaseKeysAreDistinct in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestHostileCaseKeysAreDistinct` | the Go test passes | `tools/schema-test/hostile_test.go:130` |
+| `none.unit.tooling.schema-test.hostile-plan-refuses-what-is-no-case` | `gotest` | Go test TestHostilePlanRefusesWhatIsNoCase in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestHostilePlanRefusesWhatIsNoCase` | the Go test passes | `tools/schema-test/hostile_test.go:279` |
 | `none.unit.tooling.schema-test.json-test-case-keys-are-distinct` | `gotest` | Go test TestJSONTestCaseKeysAreDistinct in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestJSONTestCaseKeysAreDistinct` | the Go test passes | `tools/schema-test/jsontest_test.go:114` |
 | `none.unit.tooling.schema-test.json-test-harness-fails-every-case-when-its-runner-gives-no-verdict` | `gotest` | Go test TestJSONTestHarnessFailsEveryCaseWhenItsRunnerGivesNoVerdict in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestJSONTestHarnessFailsEveryCaseWhenItsRunnerGivesNoVerdict` | the Go test passes | `tools/schema-test/jsontest_test.go:167` |
 | `none.unit.tooling.schema-test.json-test-harness-gives-each-case-its-verdict` | `gotest` | Go test TestJSONTestHarnessGivesEachCaseItsVerdict in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestJSONTestHarnessGivesEachCaseItsVerdict` | the Go test passes | `tools/schema-test/jsontest_test.go:146` |
@@ -6200,18 +6031,20 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.schema-test.json-test-plants-turn-exactly-one-case-red` | `gotest` | Go test TestJSONTestPlantsTurnExactlyOneCaseRed in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestJSONTestPlantsTurnExactlyOneCaseRed` | the Go test passes | `tools/schema-test/jsontest_test.go:186` |
 | `none.unit.tooling.schema-test.langs-is-the-registrys-list` | `gotest` | Go test TestLangsIsTheRegistrysList in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestLangsIsTheRegistrysList` | the Go test passes | `tools/schema-test/main_test.go:207` |
 | `none.unit.tooling.schema-test.make-inputs-name-one-target-of-a-make-file` | `gotest` | Go test TestMakeInputsNameOneTargetOfAMakeFile in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestMakeInputsNameOneTargetOfAMakeFile` | the Go test passes | `tools/schema-test/make_test.go:120` |
+| `none.unit.tooling.schema-test.make-reads-credit-what-the-reach-names` | `gotest` | Go test TestMakeReadsCreditWhatTheReachNames in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestMakeReadsCreditWhatTheReachNames` | the Go test passes | `tools/schema-test/reads_test.go:25` |
 | `none.unit.tooling.schema-test.move-carries-the-tier-and-drops-its-line` | `gotest` | Go test TestMoveCarriesTheTierAndDropsItsLine in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestMoveCarriesTheTierAndDropsItsLine` | the Go test passes | `tools/schema-test/extract_test.go:216` |
 | `none.unit.tooling.schema-test.name-build-plan-selects-exactly-the-asked` | `gotest` | Go test TestNameBuildPlanSelectsExactlyTheAsked in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestNameBuildPlanSelectsExactlyTheAsked` | the Go test passes | `tools/schema-test/namebuild_test.go:38` |
 | `none.unit.tooling.schema-test.name-build-results-reads-the-events` | `gotest` | Go test TestNameBuildResultsReadsTheEvents in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestNameBuildResultsReadsTheEvents` | the Go test passes | `tools/schema-test/namebuild_test.go:82` |
 | `none.unit.tooling.schema-test.name-buildability-is-l4s` | `gotest` | Go test TestNameBuildabilityIsL4s in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestNameBuildabilityIsL4s` | the Go test passes | `tools/schema-test/extract_test.go:178` |
-| `none.unit.tooling.schema-test.number-token-cases-are-rows-that-read-their-trees` | `gotest` | Go test TestNumberTokenCasesAreRowsThatReadTheirTrees in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestNumberTokenCasesAreRowsThatReadTheirTrees` | the Go test passes | `tools/schema-test/hostile_test.go:304` |
+| `none.unit.tooling.schema-test.number-token-cases-are-rows-that-read-their-trees` | `gotest` | Go test TestNumberTokenCasesAreRowsThatReadTheirTrees in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestNumberTokenCasesAreRowsThatReadTheirTrees` | the Go test passes | `tools/schema-test/hostile_test.go:309` |
 | `none.unit.tooling.schema-test.pins-base-ref-is-the-commit-the-change-merges-into` | `gotest` | Go test TestPinsBaseRefIsTheCommitTheChangeMergesInto in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestPinsBaseRefIsTheCommitTheChangeMergesInto` | the Go test passes | `tools/schema-test/pinsbase_test.go:18` |
 | `none.unit.tooling.schema-test.plant-inputs-are-one-form` | `gotest` | Go test TestPlantInputsAreOneForm in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestPlantInputsAreOneForm` | the Go test passes | `tools/schema-test/plant_test.go:163` |
-| `none.unit.tooling.schema-test.rows-are-named-from-their-go-tests` | `gotest` | Go test TestRowsAreNamedFromTheirGoTests in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestRowsAreNamedFromTheirGoTests` | the Go test passes | `tools/schema-test/gotest_test.go:216` |
-| `none.unit.tooling.schema-test.run-hostile-reads-each-case-from-its-run` | `gotest` | Go test TestRunHostileReadsEachCaseFromItsRun in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestRunHostileReadsEachCaseFromItsRun` | the Go test passes | `tools/schema-test/hostile_test.go:170` |
-| `none.unit.tooling.schema-test.seconds-are-read-from-a-runs-log` | `gotest` | Go test TestSecondsAreReadFromARunsLog in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestSecondsAreReadFromARunsLog` | the Go test passes | `tools/schema-test/gotest_test.go:249` |
+| `none.unit.tooling.schema-test.planted-marker-is-text-the-edits-write-and-no-anchor-holds` | `gotest` | Go test TestPlantedMarkerIsTextTheEditsWriteAndNoAnchorHolds in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestPlantedMarkerIsTextTheEditsWriteAndNoAnchorHolds` | the Go test passes | `tools/schema-test/plant_test.go:328` |
+| `none.unit.tooling.schema-test.rows-are-named-from-their-go-tests` | `gotest` | Go test TestRowsAreNamedFromTheirGoTests in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestRowsAreNamedFromTheirGoTests` | the Go test passes | `tools/schema-test/gotest_test.go:263` |
+| `none.unit.tooling.schema-test.run-hostile-reads-each-case-from-its-run` | `gotest` | Go test TestRunHostileReadsEachCaseFromItsRun in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestRunHostileReadsEachCaseFromItsRun` | the Go test passes | `tools/schema-test/hostile_test.go:174` |
+| `none.unit.tooling.schema-test.seconds-are-read-from-a-runs-log` | `gotest` | Go test TestSecondsAreReadFromARunsLog in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestSecondsAreReadFromARunsLog` | the Go test passes | `tools/schema-test/gotest_test.go:296` |
 | `none.unit.tooling.schema-test.seeding-ages-the-committed-goldens` | `gotest` | Go test TestSeedingAgesTheCommittedGoldens in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestSeedingAgesTheCommittedGoldens` | the Go test passes | `tools/schema-test/golden_test.go:312` |
-| `none.unit.tooling.schema-test.state-diff-names-every-write` | `gotest` | Go test TestStateDiffNamesEveryWrite in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestStateDiffNamesEveryWrite` | the Go test passes | `tools/schema-test/hostile_test.go:605` |
+| `none.unit.tooling.schema-test.state-diff-names-every-write` | `gotest` | Go test TestStateDiffNamesEveryWrite in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestStateDiffNamesEveryWrite` | the Go test passes | `tools/schema-test/hostile_test.go:608` |
 | `none.unit.tooling.schema-test.subtest-calls-split-on-the-shard-budget` | `gotest` | Go test TestSubtestCallsSplitOnTheShardBudget in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestSubtestCallsSplitOnTheShardBudget` | the Go test passes | `tools/schema-test/gotest_case_test.go:153` |
 | `none.unit.tooling.schema-test.tables-generation-is-judged-by-the-corpus-verdict` | `gotest` | Go test TestTablesGenerationIsJudgedByTheCorpusVerdict in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTablesGenerationIsJudgedByTheCorpusVerdict` | the Go test passes | `tools/schema-test/tables_test.go:148` |
 | `none.unit.tooling.schema-test.tables-verdicts-follow-the-corpus` | `gotest` | Go test TestTablesVerdictsFollowTheCorpus in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTablesVerdictsFollowTheCorpus` | the Go test passes | `tools/schema-test/tables_test.go:112` |
@@ -6223,18 +6056,18 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.schema-test.the-ci-files-are-current` | `gotest` | Go test TestTheCIFilesAreCurrent in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheCIFilesAreCurrent` | the Go test passes | `tools/schema-test/ci_test.go:1` |
 | `none.unit.tooling.schema-test.the-command-exits-non-zero-on-every-adapter-fault` | `gotest` | Go test TestTheCommandExitsNonZeroOnEveryAdapterFault in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheCommandExitsNonZeroOnEveryAdapterFault` | the Go test passes | `tools/schema-test/main_test.go:164` |
 | `none.unit.tooling.schema-test.the-command-exits-non-zero-on-every-fail-rule` | `gotest` | Go test TestTheCommandExitsNonZeroOnEveryFailRule in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheCommandExitsNonZeroOnEveryFailRule` | the Go test passes | `tools/schema-test/main_test.go:51` |
-| `none.unit.tooling.schema-test.the-copy-is-the-checkout-as-it-stands` | `gotest` | Go test TestTheCopyIsTheCheckoutAsItStands in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheCopyIsTheCheckoutAsItStands` | the Go test passes | `tools/schema-test/plant_test.go:398` |
+| `none.unit.tooling.schema-test.the-copy-is-the-checkout-as-it-stands` | `gotest` | Go test TestTheCopyIsTheCheckoutAsItStands in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheCopyIsTheCheckoutAsItStands` | the Go test passes | `tools/schema-test/plant_test.go:447` |
 | `none.unit.tooling.schema-test.the-database-is-read-once-per-run` | `gotest` | Go test TestTheDatabaseIsReadOncePerRun in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheDatabaseIsReadOncePerRun` | the Go test passes | `tools/schema-test/make_test.go:520` |
 | `none.unit.tooling.schema-test.the-main-tree-action-exports-the-base-the-event-names` | `gotest` | Go test TestTheMainTreeActionExportsTheBaseTheEventNames in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheMainTreeActionExportsTheBaseTheEventNames` | the Go test passes | `tools/schema-test/pinsbase_test.go:103` |
 | `none.unit.tooling.schema-test.the-matrix-is-the-pr-group` | `gotest` | Go test TestTheMatrixIsThePRGroup in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheMatrixIsThePRGroup` | the Go test passes | `tools/schema-test/ci_test.go:1` |
 | `none.unit.tooling.schema-test.the-matrix-plans-headroom-under-the-limit` | `gotest` | Go test TestTheMatrixPlansHeadroomUnderTheLimit in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheMatrixPlansHeadroomUnderTheLimit` | the Go test passes | `tools/schema-test/ci_test.go:155` |
 | `none.unit.tooling.schema-test.the-not-yet-generated-list-only-shrinks` | `gotest` | Go test TestTheNotYetGeneratedListOnlyShrinks in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheNotYetGeneratedListOnlyShrinks` | the Go test passes | `tools/schema-test/cipins_test.go:1` |
 | `none.unit.tooling.schema-test.the-planted-copy-finds-its-siblings` | `gotest` | Go test TestThePlantedCopyFindsItsSiblings in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestThePlantedCopyFindsItsSiblings` | the Go test passes | `tools/schema-test/plant_test.go:258` |
-| `none.unit.tooling.schema-test.the-planted-runs-report-is-its-verdict` | `gotest` | Go test TestThePlantedRunsReportIsItsVerdict in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestThePlantedRunsReportIsItsVerdict` | the Go test passes | `tools/schema-test/plant_test.go:368` |
+| `none.unit.tooling.schema-test.the-planted-runs-report-is-its-verdict` | `gotest` | Go test TestThePlantedRunsReportIsItsVerdict in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestThePlantedRunsReportIsItsVerdict` | the Go test passes | `tools/schema-test/plant_test.go:417` |
 | `none.unit.tooling.schema-test.the-prepare-steps-are-the-targets-in-the-order-they-are-declared` | `gotest` | Go test TestThePrepareStepsAreTheTargetsInTheOrderTheyAreDeclared in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestThePrepareStepsAreTheTargetsInTheOrderTheyAreDeclared` | the Go test passes | `tools/schema-test/goneeds_test.go:293` |
 | `none.unit.tooling.schema-test.the-registry-holds-every-a4-case` | `gotest` | Go test TestTheRegistryHoldsEveryA4Case in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheRegistryHoldsEveryA4Case` | the Go test passes | `tools/schema-test/a4_test.go:59` |
 | `none.unit.tooling.schema-test.the-registry-holds-every-feature-witness-case` | `gotest` | Go test TestTheRegistryHoldsEveryFeatureWitnessCase in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheRegistryHoldsEveryFeatureWitnessCase` | the Go test passes | `tools/schema-test/featurewitness_test.go:24` |
-| `none.unit.tooling.schema-test.the-registry-holds-every-hostile-case` | `gotest` | Go test TestTheRegistryHoldsEveryHostileCase in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheRegistryHoldsEveryHostileCase` | the Go test passes | `tools/schema-test/hostile_test.go:45` |
+| `none.unit.tooling.schema-test.the-registry-holds-every-hostile-case` | `gotest` | Go test TestTheRegistryHoldsEveryHostileCase in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheRegistryHoldsEveryHostileCase` | the Go test passes | `tools/schema-test/hostile_test.go:49` |
 | `none.unit.tooling.schema-test.the-registry-holds-every-json-test-suite-case` | `gotest` | Go test TestTheRegistryHoldsEveryJSONTestSuiteCase in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheRegistryHoldsEveryJSONTestSuiteCase` | the Go test passes | `tools/schema-test/jsontest_test.go:33` |
 | `none.unit.tooling.schema-test.the-registry-holds-every-tables-case` | `gotest` | Go test TestTheRegistryHoldsEveryTablesCase in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheRegistryHoldsEveryTablesCase` | the Go test passes | `tools/schema-test/tables_test.go:31` |
 | `none.unit.tooling.schema-test.the-runs-seed-is-printed-and-handed-to-every-adapter` | `gotest` | Go test TestTheRunsSeedIsPrintedAndHandedToEveryAdapter in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheRunsSeedIsPrintedAndHandedToEveryAdapter` | the Go test passes | `tools/schema-test/seed_cli_test.go:32` |
@@ -6245,6 +6078,8 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.schema-test.two-rows-cannot-name-one-subtest` | `gotest` | Go test TestTwoRowsCannotNameOneSubtest in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTwoRowsCannotNameOneSubtest` | the Go test passes | `tools/schema-test/gotest_case_test.go:134` |
 | `none.unit.tooling.schema-test.update-repins-only-the-named-goldens` | `gotest` | Go test TestUpdateRepinsOnlyTheNamedGoldens in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestUpdateRepinsOnlyTheNamedGoldens` | the Go test passes | `tools/schema-test/golden_test.go:150` |
 | `none.unit.tooling.schema-test.update-with-a-stray-pin-repins-nothing` | `gotest` | Go test TestUpdateWithAStrayPinRepinsNothing in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestUpdateWithAStrayPinRepinsNothing` | the Go test passes | `tools/schema-test/golden_test.go:241` |
+| `none.unit.tooling.schema-test.with-read-plant-writes-the-plant-and-names-it` | `gotest` | Go test TestWithReadPlantWritesThePlantAndNamesIt in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestWithReadPlantWritesThePlantAndNamesIt` | the Go test passes | `tools/schema-test/reads_test.go:257` |
+| `none.unit.tooling.schema-test.with-reads-replaces-a-make-rows-reads` | `gotest` | Go test TestWithReadsReplacesAMakeRowsReads in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestWithReadsReplacesAMakeRowsReads` | the Go test passes | `tools/schema-test/reads_test.go:113` |
 | `none.unit.tooling.schema-test.write-ledger-keeps-the-tier-lines` | `gotest` | Go test TestWriteLedgerKeepsTheTierLines in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestWriteLedgerKeepsTheTierLines` | the Go test passes | `tools/schema-test/extract_test.go:44` |
 | `none.unit.tooling.schema-test.write-ledger-refuses-an-unreadable-tree` | `gotest` | Go test TestWriteLedgerRefusesAnUnreadableTree in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestWriteLedgerRefusesAnUnreadableTree` | the Go test passes | `tools/schema-test/extract_test.go:149` |
 
@@ -6414,44 +6249,49 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.testreg.write-seconds-keeps-every-other-byte` | `gotest` | Go test TestWriteSecondsKeepsEveryOtherByte in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestWriteSecondsKeepsEveryOtherByte` | the Go test passes | `internal/testreg/registry_test.go:120` |
 | `none.unit.tooling.testreg.write-seconds-touches-only-the-last-field` | `gotest` | Go test TestWriteSecondsTouchesOnlyTheLastField in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestWriteSecondsTouchesOnlyTheLastField` | the Go test passes | `internal/testreg/registry_test.go:152` |
 
-#### `tooling` family `testreg-extract`, 34 tests
+#### `tooling` family `testreg-extract`, 39 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.unit.tooling.testreg-extract.a-driver-only-job-is-not-a-test` | `gotest` | Go test TestADriverOnlyJobIsNotATest in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestADriverOnlyJobIsNotATest` | the Go test passes | `internal/testreg/extract/extract_test.go:505` |
 | `none.unit.tooling.testreg-extract.a-file-that-does-not-parse-is-named` | `gotest` | Go test TestAFileThatDoesNotParseIsNamed in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestAFileThatDoesNotParseIsNamed` | the Go test passes | `internal/testreg/extract/extract_test.go:131` |
+| `none.unit.tooling.testreg-extract.a-generated-job-is-the-registry` | `gotest` | Go test TestAGeneratedJobIsTheRegistry in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestAGeneratedJobIsTheRegistry` | the Go test passes | `internal/testreg/extract/extract_test.go:1407` |
 | `none.unit.tooling.testreg-extract.a-go-test-subtest-row-claims-the-subtest` | `gotest` | Go test TestAGoTestSubtestRowClaimsTheSubtest in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestAGoTestSubtestRowClaimsTheSubtest` | the Go test passes | `internal/testreg/extract/extract_test.go:788` |
 | `none.unit.tooling.testreg-extract.a-golden-covers-a-case-only-when-it-pins-every-file` | `gotest` | Go test TestAGoldenCoversACaseOnlyWhenItPinsEveryFile in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestAGoldenCoversACaseOnlyWhenItPinsEveryFile` | the Go test passes | `internal/testreg/extract/extract_test.go:250` |
+| `none.unit.tooling.testreg-extract.a-literal-join-is-one-literal` | `gotest` | Go test TestALiteralJoinIsOneLiteral in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestALiteralJoinIsOneLiteral` | the Go test passes | `internal/testreg/extract/extract_test.go:554` |
 | `none.unit.tooling.testreg-extract.a-make-go-test-row-credits-only-the-test-it-names` | `gotest` | Go test TestAMakeGoTestRowCreditsOnlyTheTestItNames in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestAMakeGoTestRowCreditsOnlyTheTestItNames` | the Go test passes | `internal/testreg/extract/makegotest_test.go:19` |
 | `none.unit.tooling.testreg-extract.a-make-row-covers-the-go-tests-it-names` | `gotest` | Go test TestAMakeRowCoversTheGoTestsItNames in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestAMakeRowCoversTheGoTestsItNames` | the Go test passes | `internal/testreg/extract/extract_test.go:740` |
 | `none.unit.tooling.testreg-extract.a-make-rows-reads-cover-the-cases-it-runs` | `gotest` | Go test TestAMakeRowsReadsCoverTheCasesItRuns in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestAMakeRowsReadsCoverTheCasesItRuns` | the Go test passes | `internal/testreg/extract/extract_test.go:332` |
 | `none.unit.tooling.testreg-extract.a-make-rows-source-is-held-to-its-rules-line` | `gotest` | Go test TestAMakeRowsSourceIsHeldToItsRulesLine in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestAMakeRowsSourceIsHeldToItsRulesLine` | the Go test passes | `internal/testreg/extract/extract_test.go:987` |
-| `none.unit.tooling.testreg-extract.a-make-target-that-stops-being-a-test-is-named` | `gotest` | Go test TestAMakeTargetThatStopsBeingATestIsNamed in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestAMakeTargetThatStopsBeingATestIsNamed` | the Go test passes | `internal/testreg/extract/extract_test.go:433` |
-| `none.unit.tooling.testreg-extract.a-malformed-make-row-is-named` | `gotest` | Go test TestAMalformedMakeRowIsNamed in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestAMalformedMakeRowIsNamed` | the Go test passes | `internal/testreg/extract/extract_test.go:432` |
+| `none.unit.tooling.testreg-extract.a-make-target-that-stops-being-a-test-is-named` | `gotest` | Go test TestAMakeTargetThatStopsBeingATestIsNamed in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestAMakeTargetThatStopsBeingATestIsNamed` | the Go test passes | `internal/testreg/extract/extract_test.go:517` |
+| `none.unit.tooling.testreg-extract.a-malformed-make-row-is-named` | `gotest` | Go test TestAMalformedMakeRowIsNamed in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestAMalformedMakeRowIsNamed` | the Go test passes | `internal/testreg/extract/extract_test.go:516` |
 | `none.unit.tooling.testreg-extract.a-model-check-row-covers-its-config` | `gotest` | Go test TestAModelCheckRowCoversItsConfig in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestAModelCheckRowCoversItsConfig` | the Go test passes | `internal/testreg/extract/extract_test.go:267` |
-| `none.unit.tooling.testreg-extract.a-new-test-without-a-row-is-named` | `gotest` | Go test TestANewTestWithoutARowIsNamed in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestANewTestWithoutARowIsNamed` | the Go test passes | `internal/testreg/extract/extract_test.go:312` |
+| `none.unit.tooling.testreg-extract.a-new-test-without-a-row-is-named` | `gotest` | Go test TestANewTestWithoutARowIsNamed in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestANewTestWithoutARowIsNamed` | the Go test passes | `internal/testreg/extract/extract_test.go:396` |
 | `none.unit.tooling.testreg-extract.a-per-language-row-covers-each-languages-gates` | `gotest` | Go test TestAPerLanguageRowCoversEachLanguagesGates in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestAPerLanguageRowCoversEachLanguagesGates` | the Go test passes | `internal/testreg/extract/langmake_test.go:1` |
 | `none.unit.tooling.testreg-extract.a-per-language-row-covers-its-test-for-every-language` | `gotest` | Go test TestAPerLanguageRowCoversItsTestForEveryLanguage in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestAPerLanguageRowCoversItsTestForEveryLanguage` | the Go test passes | `internal/testreg/extract/langtest_test.go:15` |
 | `none.unit.tooling.testreg-extract.a-per-language-row-covers-no-test-of-a-language-it-dropped` | `gotest` | Go test TestAPerLanguageRowCoversNoTestOfALanguageItDropped in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestAPerLanguageRowCoversNoTestOfALanguageItDropped` | the Go test passes | `internal/testreg/extract/langtest_test.go:91` |
-| `none.unit.tooling.testreg-extract.a-per-language-row-runs-each-languages-target` | `gotest` | Go test TestAPerLanguageRowRunsEachLanguagesTarget in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestAPerLanguageRowRunsEachLanguagesTarget` | the Go test passes | `internal/testreg/extract/extract_test.go:496` |
+| `none.unit.tooling.testreg-extract.a-per-language-row-runs-each-languages-target` | `gotest` | Go test TestAPerLanguageRowRunsEachLanguagesTarget in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestAPerLanguageRowRunsEachLanguagesTarget` | the Go test passes | `internal/testreg/extract/extract_test.go:580` |
 | `none.unit.tooling.testreg-extract.a-per-language-rows-target-no-make-file-defines-is-named` | `gotest` | Go test TestAPerLanguageRowsTargetNoMakeFileDefinesIsNamed in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestAPerLanguageRowsTargetNoMakeFileDefinesIsNamed` | the Go test passes | `internal/testreg/extract/extract_test.go:779` |
-| `none.unit.tooling.testreg-extract.a-row-indexes-the-corpus-it-reads` | `gotest` | Go test TestARowIndexesTheCorpusItReads in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestARowIndexesTheCorpusItReads` | the Go test passes | `internal/testreg/extract/extract_test.go:411` |
+| `none.unit.tooling.testreg-extract.a-read-credit-counts-only-with-its-plant` | `gotest` | Go test TestAReadCreditCountsOnlyWithItsPlant in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestAReadCreditCountsOnlyWithItsPlant` | the Go test passes | `internal/testreg/extract/extract_test.go:532` |
+| `none.unit.tooling.testreg-extract.a-row-indexes-the-corpus-it-reads` | `gotest` | Go test TestARowIndexesTheCorpusItReads in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestARowIndexesTheCorpusItReads` | the Go test passes | `internal/testreg/extract/extract_test.go:495` |
 | `none.unit.tooling.testreg-extract.a-row-naming-a-jsonl-file-reads-every-line` | `gotest` | Go test TestARowNamingAJsonlFileReadsEveryLine in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestARowNamingAJsonlFileReadsEveryLine` | the Go test passes | `internal/testreg/extract/extract_test.go:787` |
 | `none.unit.tooling.testreg-extract.a-subtest-row-claims-its-subtest` | `gotest` | Go test TestASubtestRowClaimsItsSubtest in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestASubtestRowClaimsItsSubtest` | the Go test passes | `internal/testreg/extract/extract_test.go:219` |
-| `none.unit.tooling.testreg-extract.a-test-that-skips-is-refused` | `gotest` | Go test TestATestThatSkipsIsRefused in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestATestThatSkipsIsRefused` | the Go test passes | `internal/testreg/extract/extract_test.go:298` |
+| `none.unit.tooling.testreg-extract.a-test-that-skips-is-refused` | `gotest` | Go test TestATestThatSkipsIsRefused in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestATestThatSkipsIsRefused` | the Go test passes | `internal/testreg/extract/extract_test.go:382` |
 | `none.unit.tooling.testreg-extract.a-union-row-covers-each-languages-go-test` | `gotest` | Go test TestAUnionRowCoversEachLanguagesGoTest in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestAUnionRowCoversEachLanguagesGoTest` | the Go test passes | `internal/testreg/extract/langtest_test.go:54` |
-| `none.unit.tooling.testreg-extract.an-unreadable-registry-is-named` | `gotest` | Go test TestAnUnreadableRegistryIsNamed in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestAnUnreadableRegistryIsNamed` | the Go test passes | `internal/testreg/extract/extract_test.go:410` |
+| `none.unit.tooling.testreg-extract.an-unreadable-registry-is-named` | `gotest` | Go test TestAnUnreadableRegistryIsNamed in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestAnUnreadableRegistryIsNamed` | the Go test passes | `internal/testreg/extract/extract_test.go:494` |
 | `none.unit.tooling.testreg-extract.check-holds-the-repository-the-registry-and-the-ledger-exactly` | `gotest` | Go test TestCheckHoldsTheRepositoryTheRegistryAndTheLedgerExactly in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestCheckHoldsTheRepositoryTheRegistryAndTheLedgerExactly` | the Go test passes | `internal/testreg/extract/extract_test.go:167` |
-| `none.unit.tooling.testreg-extract.every-test-is-a-row-or-in-the-ledger` | `gotest` | Go test TestEveryTestIsARowOrInTheLedger in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestEveryTestIsARowOrInTheLedger` | the Go test passes | `internal/testreg/extract/extract_test.go:382` |
+| `none.unit.tooling.testreg-extract.directory-and-go-test-reads-credit-what-they-hold` | `gotest` | Go test TestDirectoryAndGoTestReadsCreditWhatTheyHold in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestDirectoryAndGoTestReadsCreditWhatTheyHold` | the Go test passes | `internal/testreg/extract/extract_test.go:393` |
+| `none.unit.tooling.testreg-extract.every-test-is-a-row-or-in-the-ledger` | `gotest` | Go test TestEveryTestIsARowOrInTheLedger in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestEveryTestIsARowOrInTheLedger` | the Go test passes | `internal/testreg/extract/extract_test.go:466` |
 | `none.unit.tooling.testreg-extract.extract-finds-every-kind` | `gotest` | Go test TestExtractFindsEveryKind in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestExtractFindsEveryKind` | the Go test passes | `internal/testreg/extract/extract_test.go:87` |
 | `none.unit.tooling.testreg-extract.extract-refuses-a-non-root` | `gotest` | Go test TestExtractRefusesANonRoot in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestExtractRefusesANonRoot` | the Go test passes | `internal/testreg/extract/extract_test.go:154` |
-| `none.unit.tooling.testreg-extract.ledger-counts-what-is-unmoved` | `gotest` | Go test TestLedgerCountsWhatIsUnmoved in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestLedgerCountsWhatIsUnmoved` | the Go test passes | `internal/testreg/extract/extract_test.go:353` |
+| `none.unit.tooling.testreg-extract.ledger-counts-what-is-unmoved` | `gotest` | Go test TestLedgerCountsWhatIsUnmoved in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestLedgerCountsWhatIsUnmoved` | the Go test passes | `internal/testreg/extract/extract_test.go:437` |
 | `none.unit.tooling.testreg-extract.make-plant-and-golden-rows-cover-their-tests` | `gotest` | Go test TestMakePlantAndGoldenRowsCoverTheirTests in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestMakePlantAndGoldenRowsCoverTheirTests` | the Go test passes | `internal/testreg/extract/extract_test.go:200` |
-| `none.unit.tooling.testreg-extract.read-ledger-refuses-a-bad-line` | `gotest` | Go test TestReadLedgerRefusesABadLine in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestReadLedgerRefusesABadLine` | the Go test passes | `internal/testreg/extract/extract_test.go:328` |
-| `none.unit.tooling.testreg-extract.the-ledger-only-shrinks` | `gotest` | Go test TestTheLedgerOnlyShrinks in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestTheLedgerOnlyShrinks` | the Go test passes | `internal/testreg/extract/extract_test.go:242` |
+| `none.unit.tooling.testreg-extract.names-path-and-names-bare-dir` | `gotest` | Go test TestNamesPathAndNamesBareDir in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestNamesPathAndNamesBareDir` | the Go test passes | `internal/testreg/extract/extract_test.go:499` |
+| `none.unit.tooling.testreg-extract.read-ledger-refuses-a-bad-line` | `gotest` | Go test TestReadLedgerRefusesABadLine in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestReadLedgerRefusesABadLine` | the Go test passes | `internal/testreg/extract/extract_test.go:412` |
+| `none.unit.tooling.testreg-extract.the-ledger-only-shrinks` | `gotest` | Go test TestTheLedgerOnlyShrinks in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestTheLedgerOnlyShrinks` | the Go test passes | `internal/testreg/extract/extract_test.go:326` |
 | `none.unit.tooling.testreg-extract.the-shard-rows-of-a-gate-share-its-target` | `gotest` | Go test TestTheShardRowsOfAGateShareItsTarget in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestTheShardRowsOfAGateShareItsTarget` | the Go test passes | `internal/testreg/extract/extract_test.go:309` |
-| `none.unit.tooling.testreg-extract.tier-lines-are-held-to-their-tests` | `gotest` | Go test TestTierLinesAreHeldToTheirTests in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestTierLinesAreHeldToTheirTests` | the Go test passes | `internal/testreg/extract/extract_test.go:267` |
-| `none.unit.tooling.testreg-extract.what-git-ignores-is-not-a-test` | `gotest` | Go test TestWhatGitIgnoresIsNotATest in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestWhatGitIgnoresIsNotATest` | the Go test passes | `internal/testreg/extract/extract_test.go:451` |
+| `none.unit.tooling.testreg-extract.tier-lines-are-held-to-their-tests` | `gotest` | Go test TestTierLinesAreHeldToTheirTests in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestTierLinesAreHeldToTheirTests` | the Go test passes | `internal/testreg/extract/extract_test.go:351` |
+| `none.unit.tooling.testreg-extract.what-git-ignores-is-not-a-test` | `gotest` | Go test TestWhatGitIgnoresIsNotATest in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestWhatGitIgnoresIsNotATest` | the Go test passes | `internal/testreg/extract/extract_test.go:535` |
 
 #### `tooling` family `testselect`, 1 test
 

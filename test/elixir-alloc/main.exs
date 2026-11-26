@@ -67,7 +67,13 @@ defmodule AllocAudit do
     ebin = System.get_env("ELIXIR_TABLES_EBIN") || "build/elixir-tables-ebin"
     Code.prepend_path(ebin)
 
-    {cases, unmeasurable} = cases(parse(File.read!(manifest)))
+    {cases, unmeasurable, refused} = cases(parse(File.read!(manifest)))
+
+    # a `wire-refused` instance has no value to measure: its codec was held to
+    # refusing it (cases/1), and it is named here
+    Enum.each(refused, fn {name, why} ->
+      IO.puts("  #{String.pad_trailing(name, 24)} refused, as the corpus says: #{why}")
+    end)
 
     # an instance the leg cannot measure is a failure, named, never passed over
     Enum.each(unmeasurable, fn {name, why} ->
@@ -128,7 +134,9 @@ defmodule AllocAudit do
 
   # every `instance` whose unit has a <Unit>.Table module at the moment this
   # runs, and whose root that codec loads and saves back (a blob two slots name
-  # refuses the save, docs/SPEC-TABLES.md §2.5); a root it cannot carry FAILS, named
+  # refuses the save, docs/SPEC-TABLES.md §2.5); a root it cannot carry FAILS,
+  # named. A `wire-refused` instance is held to its refusal instead: refused, it
+  # is named and not measured; carried, it FAILS, named
   @unit_packages %{
     "scalars" => "scalardemo",
     "tblscalars2" => "scalardemo2",
@@ -143,42 +151,74 @@ defmodule AllocAudit do
   end
 
   defp cases(rows) do
-    Enum.reduce(rows, {[], []}, fn [name, unit, root, wire | flags], {cs, sk} ->
+    Enum.reduce(rows, {[], [], []}, fn [name, unit, root, wire | flags], {cs, sk, rf} ->
       mod = table_module(unit)
 
-      if Code.ensure_loaded?(mod) and function_exported?(mod, :load, 2) and
-           function_exported?(mod, :save, 2) do
-        bytes = File.read!(wire)
-        json = Path.join("testdata/conformance/tables/json", name <> ".json")
+      cond do
+        not (Code.ensure_loaded?(mod) and function_exported?(mod, :load, 2) and
+                 function_exported?(mod, :save, 2)) ->
+          {cs, sk, rf}
 
-        with {:ok, value, _report} <- mod.load(root, bytes),
-             {:ok, _saved} <- mod.save(root, value) do
-          text =
-            with true <- flags == [] and File.exists?(json),
-                 raw <- File.read!(json),
-                 {:ok, from_text, _} <- mod.from_json(root, raw),
-                 {:ok, _} <- mod.save(root, from_text),
-                 {:ok, _} <- mod.to_json(root, value) do
-              raw
-            else
-              _ -> nil
-            end
+        "wire-refused" in flags ->
+          # the corpus says the codec refuses these bytes, so there is no value
+          # to measure: a codec that refuses is named, one that loads and saves
+          # them FAILS, named
+          case refusal(mod, root, File.read!(wire)) do
+            {:refused, why} ->
+              {cs, sk, rf ++ [{name, why}]}
 
-          c = %{name: name, mod: mod, root: root, wire: bytes, text: text}
-          {cs ++ [c], sk}
-        else
-          other ->
-            {cs,
-             sk ++
-               [
-                 {name,
-                  "#{inspect(mod)} does not carry #{root} (load or save answers #{inspect(elem(other, 1))})"}
-               ]}
-        end
-      else
-        {cs, sk}
+            :carried ->
+              {cs,
+               sk ++
+                 [
+                   {name,
+                    "the corpus marks it wire-refused, and #{inspect(mod)} loads and saves #{root} from it"}
+                 ], rf}
+          end
+
+        true ->
+          {c2, s2} = measurable(mod, name, root, File.read!(wire), flags, {cs, sk})
+          {c2, s2, rf}
       end
     end)
+  end
+
+  defp refusal(mod, root, bytes) do
+    with {:ok, value, _report} <- mod.load(root, bytes),
+         {:ok, _saved} <- mod.save(root, value) do
+      :carried
+    else
+      other -> {:refused, "load or save answers #{inspect(elem(other, 1))}"}
+    end
+  end
+
+  defp measurable(mod, name, root, bytes, flags, {cs, sk}) do
+    json = Path.join("testdata/conformance/tables/json", name <> ".json")
+
+    with {:ok, value, _report} <- mod.load(root, bytes),
+         {:ok, _saved} <- mod.save(root, value) do
+      text =
+        with true <- flags == [] and File.exists?(json),
+             raw <- File.read!(json),
+             {:ok, from_text, _} <- mod.from_json(root, raw),
+             {:ok, _} <- mod.save(root, from_text),
+             {:ok, _} <- mod.to_json(root, value) do
+          raw
+        else
+          _ -> nil
+        end
+
+      c = %{name: name, mod: mod, root: root, wire: bytes, text: text}
+      {cs ++ [c], sk}
+    else
+      other ->
+        {cs,
+         sk ++
+           [
+             {name,
+              "#{inspect(mod)} does not carry #{root} (load or save answers #{inspect(elem(other, 1))})"}
+           ]}
+    end
   end
 
   # ---- one iteration, and the reference it is held to ----

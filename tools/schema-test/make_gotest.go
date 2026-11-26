@@ -72,6 +72,64 @@ type makeGoTestAdapter struct {
 	// only some of the target's rows were asked for. Nil counts the asked
 	// rows alone.
 	reg *testreg.Registry
+	// build runs one prepare step (the run's builder): each build the rows'
+	// Go tests read, as test/registry/go-needs.txt declares them
+	build func(context.Context, []string) error
+}
+
+// The runner prepares a make-gotest group in steps before its call.
+var _ testreg.StepPreparer = makeGoTestAdapter{}
+var _ testreg.Preparer = makeGoTestAdapter{}
+
+// PrepareSteps is a step for each build the rows' Go tests read
+// (test/registry/go-needs.txt, testreg.GoNeedsOf), each target once and in
+// the order the table declares them: the build a target's recipe would
+// otherwise make inside its call (the fixed-form corpus, say) is made before
+// it, under a call limit of its own named by its target, so the call's time
+// is the tests'. A build that fails stops the group's preparation and fails
+// every row of it, naming the target and the row that read it: the target
+// would only have made it again and failed.
+func (a makeGoTestAdapter) PrepareSteps(_ string, instances []testreg.Instance) []testreg.PrepareStep {
+	needs, err := testreg.LoadGoNeeds(filepath.Join(a.root, testreg.GoNeedsPath))
+	if err != nil {
+		return []testreg.PrepareStep{{Name: testreg.GoNeedsPath, Run: func(context.Context) error { return err }}}
+	}
+	var steps []testreg.PrepareStep
+	seen := map[string]bool{}
+	for _, inst := range instances {
+		in, err := decodeMakeGoTestInputs(inst.Test.Inputs)
+		if err != nil {
+			continue // Run fails the row, naming its inputs
+		}
+		for _, target := range testreg.GoNeedsOf(needs, in.Package, in.Test) {
+			if seen[target] {
+				continue
+			}
+			seen[target] = true
+			full := inst.Full
+			steps = append(steps, testreg.PrepareStep{Name: target, Run: func(ctx context.Context) error {
+				if a.build == nil {
+					return fmt.Errorf("%s reads make %s, and the make-gotest adapter has no builder", full, target)
+				}
+				if err := a.build(ctx, needsStep(target)); err != nil {
+					return fmt.Errorf("%s reads make %s: %w", full, target, err)
+				}
+				return nil
+			}})
+		}
+	}
+	return steps
+}
+
+// Prepare runs every step under the one ctx it is given (the runner gives
+// each step its own limit; a direct caller holds them to one).
+func (a makeGoTestAdapter) Prepare(ctx context.Context, lang string, instances []testreg.Instance) error {
+	for _, step := range a.PrepareSteps(lang, instances) {
+		if err := step.Run(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // GoTestJSONEnv names the file $(GO_TEST) appends its go test -json events
@@ -87,6 +145,14 @@ type makeGoTestInputs struct {
 
 func newMakeGoTestAdapter(root string) makeGoTestAdapter {
 	return makeGoTestAdapter{mk: newMakeAdapter(), root: root}
+}
+
+// newMakeGoTestAdapterBuilding is the adapter with the run's builder for its
+// prepare steps.
+func newMakeGoTestAdapterBuilding(root string, build func(context.Context, []string) error) makeGoTestAdapter {
+	a := newMakeGoTestAdapter(root)
+	a.build = build
+	return a
 }
 
 func decodeMakeGoTestInputs(raw json.RawMessage) (makeGoTestInputs, error) {
@@ -218,7 +284,7 @@ func (a makeGoTestAdapter) runTarget(ctx context.Context, file, name string, row
 	// test the target runs writes its events (a negative control's
 	// $(GO_TEST_RED) writes none: its red is the control's, which make's
 	// exit carries)
-	if _, text := db.reach(name); !goTestWriter.MatchString(strings.Join(text, "\n")) {
+	if _, text, _ := db.reach(name); !goTestWriter.MatchString(strings.Join(text, "\n")) {
 		return failAll(rows, fmt.Sprintf("make %s runs no go test through $(GO_TEST), so it writes no go test -json events for these rows: a make-gotest row's target runs its Go tests through $(GO_TEST)", name)), nil
 	}
 
