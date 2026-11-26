@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/ccommon"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -105,10 +106,9 @@ static const bool kTableAnnounceTooLarge = %[4]t;
 // there is only one header that writes it.
 inline const uint8_t kTableAnnounce[kTableAnnounceBytes] = {
 `, len(entries), len(announcement), len(announcement), len(tablewire.MessageVocabulary(u)) > ir.TableVocabularyMaxEntries)
-	for _, by := range announcement {
-		fmt.Fprintf(&b, "    0x%02x,\n", by)
-	}
-	b.WriteString("};\n\n")
+	// packed, 16 to a line with no comma after the last (ccommon.PackedInitializer)
+	b.WriteString(ccommon.PackedBytes(announcement))
+	b.WriteString("\n")
 	b.WriteString(strings.ReplaceAll(cppMessageAnnounce, "@BUILD_VERSION@", fmt.Sprintf("0x%016xull", ir.BuildVersion(u))))
 	return b.String()
 }

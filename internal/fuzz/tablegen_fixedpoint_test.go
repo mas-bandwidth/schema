@@ -1,9 +1,13 @@
 package fuzz_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"math/rand"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -17,6 +21,115 @@ type fixedPointProbe struct {
 	src  string
 	unit *ir.Unit
 	test string
+}
+
+// runFixedPointProbes writes each probe as package s<seed> of one module and
+// runs them in one go test, failing each probe that fails by its seed.
+func runFixedPointProbes(t *testing.T, probes []fixedPointProbe) {
+	t.Helper()
+	dir := t.TempDir()
+	if err := writeGeneratedTableModule(dir); err != nil {
+		t.Fatal(err)
+	}
+	var pkgs []string
+	for _, p := range probes {
+		pkg := fmt.Sprintf("s%d", p.seed)
+		if err := os.Mkdir(filepath.Join(dir, pkg), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := writeGeneratedTableProbe(filepath.Join(dir, pkg), p.unit, p.test); err != nil {
+			t.Fatalf("seed %d: %v", p.seed, err)
+		}
+		pkgs = append(pkgs, "./"+pkg)
+	}
+	cmd := exec.Command("go", append([]string{"test", "-count=1", "-json", "-timeout=600s"}, pkgs...)...)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "NOVA_TEST_NO_HOST=1")
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, runErr := cmd.Output()
+	verdicts := fixedPointVerdicts(out)
+	for _, p := range probes {
+		v := verdicts["probe/"+fmt.Sprintf("s%d", p.seed)]
+		if v.action != "pass" {
+			t.Errorf("seed %d: generated Go reader failed (go test: %q)\n%s\n%s", p.seed, v.action, p.src, v.output)
+		}
+	}
+	if runErr != nil && !t.Failed() {
+		t.Fatalf("go test of the probes failed outside every probe: %v\n%s", runErr, stderr.String())
+	}
+}
+
+// fixedPointVerdict is one probe package's end, as go test -json reports
+// it: its final action ("pass", "fail", "skip"; "" when it never ended) and
+// its output.
+type fixedPointVerdict struct {
+	action string
+	output string
+}
+
+// fixedPointVerdicts reads go test -json's events into each package's
+// verdict. A package-level event (no Test) that passes or fails is the
+// package's end; a line that is not an event is kept as the output of the
+// package "" so it is not lost.
+func fixedPointVerdicts(stream []byte) map[string]fixedPointVerdict {
+	out := map[string]fixedPointVerdict{}
+	for line := range strings.SplitSeq(string(stream), "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		var ev struct {
+			Action, Package, Test, Output string
+		}
+		if err := json.Unmarshal([]byte(line), &ev); err != nil {
+			v := out[""]
+			v.output += line + "\n"
+			out[""] = v
+			continue
+		}
+		v := out[ev.Package]
+		switch {
+		case ev.Action == "output":
+			v.output += ev.Output
+		case ev.Test == "" && (ev.Action == "pass" || ev.Action == "fail" || ev.Action == "skip"):
+			v.action = ev.Action
+		}
+		out[ev.Package] = v
+	}
+	return out
+}
+
+// TestFixedPointVerdictsReadEachPackage holds fixedPointVerdicts to go test
+// -json: a package passes only on its own pass event, a test's pass inside a
+// failing package does not pass it, a skipped package (no test files) is not
+// a pass, and a package that never ended has no verdict. The verdict is what
+// runFixedPointProbes fails a seed by. Planted: reading any pass event,
+// a test's too, as the package's turns the failing package green (red).
+func TestFixedPointVerdictsReadEachPackage(t *testing.T) {
+	t.Parallel()
+	stream := strings.Join([]string{
+		`{"Action":"run","Package":"probe/s1","Test":"TestGeneratedTableJSON"}`,
+		`{"Action":"pass","Package":"probe/s1","Test":"TestGeneratedTableJSON"}`,
+		`{"Action":"pass","Package":"probe/s1"}`,
+		`{"Action":"pass","Package":"probe/s2","Test":"TestGeneratedTableJSON"}`,
+		`{"Action":"output","Package":"probe/s2","Output":"seed 2 instance 1: refused\n"}`,
+		`{"Action":"fail","Package":"probe/s2"}`,
+		`{"Action":"skip","Package":"probe/s3"}`,
+		`{"Action":"run","Package":"probe/s4","Test":"TestGeneratedTableJSON"}`,
+		"# probe/s5 [build failed]",
+	}, "\n")
+	v := fixedPointVerdicts([]byte(stream))
+	for pkg, want := range map[string]string{"probe/s1": "pass", "probe/s2": "fail", "probe/s3": "skip", "probe/s4": "", "probe/s9": ""} {
+		if got := v[pkg].action; got != want {
+			t.Errorf("%s: verdict %q, want %q", pkg, got, want)
+		}
+	}
+	if !strings.Contains(v["probe/s2"].output, "refused") {
+		t.Errorf("probe/s2's output was lost: %q", v["probe/s2"].output)
+	}
+	if !strings.Contains(v[""].output, "build failed") {
+		t.Errorf("a line that is not an event was lost: %q", v[""].output)
+	}
 }
 
 // TestRandomTableGenFixedPoint pins the generator to valid schemas and values
@@ -81,19 +194,12 @@ func TestRandomTableGenFixedPoint(t *testing.T) {
 		generatedTest.WriteString("}\n")
 		probes = append(probes, fixedPointProbe{seed: seed, src: src, unit: unit, test: generatedTest.String()})
 	}
-	// Drawing is serial (one generator per seed, in order); the probes share
-	// nothing, so they compile and run side by side.
-	t.Run("probes", func(t *testing.T) {
-		for _, p := range probes {
-			t.Run(fmt.Sprintf("seed%d", p.seed), func(t *testing.T) {
-				t.Parallel()
-				output, err := runGeneratedTableUnit(t, p.unit, p.test, map[string]string{"NOVA_TEST_NO_HOST": "1"}, "-timeout=600s")
-				if err != nil {
-					t.Fatalf("seed %d: generated Go reader failed\n%s\n%s", p.seed, p.src, output)
-				}
-			})
-		}
-	})
+	// Drawing is serial (one generator per seed, in order). The probes are
+	// one module, a package each, run by one go test: one module load and one
+	// build of the schema packages for all of them, where a go test per probe
+	// paid both a hundred times (62 s alone on amd-2, 2026-11-25). Every
+	// probe's package is run and answers by name (fixedPointVerdicts).
+	runFixedPointProbes(t, probes)
 
 	for _, pair := range fixedPairs {
 		if !fixedSeen[pair] {

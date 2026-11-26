@@ -144,7 +144,8 @@ static SCHEMA_UNUSED benchtable_table_block_allocator_t benchtable_table_block_d
    improvises row by row. */
 #if defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
 static SCHEMA_UNUSED const uint64_t benchtable_table_block_byte_order = 2; /* big */
-#else
+#endif
+#if !( defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__ )
 static SCHEMA_UNUSED const uint64_t benchtable_table_block_byte_order = 1; /* little */
 #endif
 

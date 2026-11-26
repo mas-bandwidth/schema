@@ -53,9 +53,11 @@ extern "C" {
 #ifndef SCHEMA_GRAPHDEMO_TABLE_INLINE
 #if defined( _MSC_VER )
 #define SCHEMA_GRAPHDEMO_TABLE_INLINE __forceinline
-#elif defined( __GNUC__ ) || defined( __clang__ )
+#endif
+#if !( defined( _MSC_VER ) ) && ( defined( __GNUC__ ) || defined( __clang__ ) )
 #define SCHEMA_GRAPHDEMO_TABLE_INLINE inline __attribute__( ( always_inline ) )
-#else
+#endif
+#if !( defined( _MSC_VER ) ) && !( defined( __GNUC__ ) || defined( __clang__ ) )
 #define SCHEMA_GRAPHDEMO_TABLE_INLINE inline
 #endif
 #endif
@@ -518,7 +520,8 @@ static SCHEMA_UNUSED void graphdemo_table_writer_finish( graphdemo_table_writer_
         const uint64_t n = (uint64_t) count;
         if ( count > 0 ) { memcpy( dst, w->vocabulary->ids, (size_t) ( count * 8 ) ); }
         memcpy( dst + count * 8, &n, 8 );
-#else
+#endif
+#if !( defined( __BYTE_ORDER__ ) && defined( __ORDER_LITTLE_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__ )
         /* Explicit little-endian stores also cover compilers that do not expose
            byte-order macros. Native copies require positive little-endian proof. */
         int64_t i;
@@ -1582,9 +1585,11 @@ static SCHEMA_UNUSED uint64_t graphdemo_table_fixed_get_le( const uint8_t * b, u
    the big-endian copy path so a test can hold its byte image. */
 #if defined( SCHEMA_GRAPHDEMO_TABLE_FIXED_FORCE_BIG_ENDIAN )
 static SCHEMA_UNUSED const int graphdemo_table_fixed_big_endian_host = 1;
-#elif defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+#endif
+#if !( defined( SCHEMA_GRAPHDEMO_TABLE_FIXED_FORCE_BIG_ENDIAN ) ) && ( defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__ )
 static SCHEMA_UNUSED const int graphdemo_table_fixed_big_endian_host = 1;
-#else
+#endif
+#if !( defined( SCHEMA_GRAPHDEMO_TABLE_FIXED_FORCE_BIG_ENDIAN ) ) && !( defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__ )
 static SCHEMA_UNUSED const int graphdemo_table_fixed_big_endian_host = 0;
 #endif
 
@@ -3853,7 +3858,8 @@ static SCHEMA_UNUSED int graphdemo_table_arena_cas_ptr( graphdemo_table_atomic_p
 {
     return atomic_compare_exchange_strong_explicit( slot, expected, desired, memory_order_acq_rel, memory_order_acquire );
 }
-#elif defined( __GNUC__ ) || defined( __clang__ )
+#endif
+#if !( defined( __STDC_VERSION__ ) && __STDC_VERSION__ >= 201112L && !defined( __STDC_NO_ATOMICS__ ) ) && ( defined( __GNUC__ ) || defined( __clang__ ) )
 #define SCHEMA_GRAPHDEMO_TABLE_ATOMIC 1
 typedef uint32_t graphdemo_table_atomic_u32_t;
 typedef uint8_t * graphdemo_table_atomic_ptr_t;
@@ -3869,7 +3875,8 @@ static SCHEMA_UNUSED int graphdemo_table_arena_cas_ptr( graphdemo_table_atomic_p
 {
     return __atomic_compare_exchange_n( slot, expected, desired, 0, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE );
 }
-#elif defined( _MSC_VER )
+#endif
+#if !( defined( __STDC_VERSION__ ) && __STDC_VERSION__ >= 201112L && !defined( __STDC_NO_ATOMICS__ ) ) && !( defined( __GNUC__ ) || defined( __clang__ ) ) && ( defined( _MSC_VER ) )
 #define SCHEMA_GRAPHDEMO_TABLE_ATOMIC 1
 #include <intrin.h>
 typedef volatile uint32_t graphdemo_table_atomic_u32_t;
@@ -3892,7 +3899,8 @@ static int graphdemo_table_arena_cas_ptr( graphdemo_table_atomic_ptr_t * slot, u
     *expected = (uint8_t *) was;
     return 0;
 }
-#else
+#endif
+#if !( defined( __STDC_VERSION__ ) && __STDC_VERSION__ >= 201112L && !defined( __STDC_NO_ATOMICS__ ) ) && !( defined( __GNUC__ ) || defined( __clang__ ) ) && !( defined( _MSC_VER ) )
 /* NO ATOMIC SPELLING THIS COMPILER OFFERS. The builder is then
    SINGLE-THREADED: allocate from one worker, on one thread. Everything else —
    the wire, the region, the cook, the block — is unaffected, because none of
@@ -5332,7 +5340,8 @@ static SCHEMA_UNUSED const uint64_t graphdemo_table_cook_magic = 0x4b4f4f434d484
    two builds of one schema for two orders emit the same id. */
 #if defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
 static SCHEMA_UNUSED const uint64_t graphdemo_table_cook_byte_order = 2; /* big */
-#else
+#endif
+#if !( defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__ )
 static SCHEMA_UNUSED const uint64_t graphdemo_table_cook_byte_order = 1; /* little */
 #endif
 
@@ -5482,195 +5491,21 @@ enum
     GRAPHDEMO_K_TABLE_MESSAGE_SEEN_REFS = 8192
 };
 static const uint8_t GRAPHDEMO_K_TABLE_ANNOUNCE[GRAPHDEMO_K_TABLE_ANNOUNCE_BYTES] = {
-    0x01,
-    0x01,
-    0x09,
-    0xae,
-    0xf1,
-    0xbf,
-    0xc2,
-    0xd1,
-    0xc8,
-    0x0d,
-    0x2e,
-    0x02,
-    0x0e,
-    0x46,
-    0x06,
-    0x44,
-    0x03,
-    0x0b,
-    0xc7,
-    0x98,
-    0xe2,
-    0x17,
-    0x25,
-    0x80,
-    0x04,
-    0x01,
-    0x0a,
-    0x00,
-    0xf3,
-    0xa4,
-    0x48,
-    0x44,
-    0x19,
-    0xab,
-    0xd7,
-    0x56,
-    0x0c,
-    0x08,
-    0x66,
-    0xfe,
-    0x00,
-    0x64,
-    0x91,
-    0x60,
-    0x80,
-    0x7a,
-    0x04,
-    0x01,
-    0x03,
-    0x00,
-    0x3d,
-    0x62,
-    0xcb,
-    0x8f,
-    0xec,
-    0xfc,
-    0xf7,
-    0x39,
-    0x0c,
-    0x10,
-    0x3c,
-    0x13,
-    0xe2,
-    0x5c,
-    0x19,
-    0x8a,
-    0x3b,
-    0x82,
-    0x04,
-    0x01,
-    0x0a,
-    0x00,
-    0xbb,
-    0xf0,
-    0x0c,
-    0x9b,
-    0xcc,
-    0xfb,
-    0x2d,
-    0x73,
-    0x04,
-    0x01,
-    0x0e,
-    0x00,
-    0x00,
-    0xfe,
-    0xff,
-    0xff,
-    0xff,
-    0xff,
-    0xff,
-    0xff,
-    0xff,
-    0xfd,
-    0xff,
-    0xff,
-    0xff,
-    0xff,
-    0xff,
-    0xff,
-    0xff,
-    0x02,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-};
+    0x01, 0x01, 0x09, 0xae, 0xf1, 0xbf, 0xc2, 0xd1, 0xc8, 0x0d, 0x2e, 0x02, 0x0e, 0x46, 0x06, 0x44,
+    0x03, 0x0b, 0xc7, 0x98, 0xe2, 0x17, 0x25, 0x80, 0x04, 0x01, 0x0a, 0x00, 0xf3, 0xa4, 0x48, 0x44,
+    0x19, 0xab, 0xd7, 0x56, 0x0c, 0x08, 0x66, 0xfe, 0x00, 0x64, 0x91, 0x60, 0x80, 0x7a, 0x04, 0x01,
+    0x03, 0x00, 0x3d, 0x62, 0xcb, 0x8f, 0xec, 0xfc, 0xf7, 0x39, 0x0c, 0x10, 0x3c, 0x13, 0xe2, 0x5c,
+    0x19, 0x8a, 0x3b, 0x82, 0x04, 0x01, 0x0a, 0x00, 0xbb, 0xf0, 0x0c, 0x9b, 0xcc, 0xfb, 0x2d, 0x73,
+    0x04, 0x01, 0x0e, 0x00, 0x00, 0xfe, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfd, 0xff, 0xff,
+    0xff, 0xff, 0xff, 0xff, 0xff, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 static const uint8_t GRAPHDEMO_K_TABLE_MESSAGE_ENTRY_KEY_BYTES[] = {
-    0x03,
-    0x0b,
-    0xc7,
-    0x98,
-    0xe2,
-    0x17,
-    0x25,
-    0x80,
-    0x04,
-    0x01,
-    0x0a,
-    0x00,
-    0xf3,
-    0xa4,
-    0x48,
-    0x44,
-    0x19,
-    0xab,
-    0xd7,
-    0x56,
-    0x0c,
-    0x08,
-    0x66,
-    0xfe,
-    0x00,
-    0x64,
-    0x91,
-    0x60,
-    0x80,
-    0x7a,
-    0x04,
-    0x01,
-    0x03,
-    0x00,
-    0x3d,
-    0x62,
-    0xcb,
-    0x8f,
-    0xec,
-    0xfc,
-    0xf7,
-    0x39,
-    0x0c,
-    0x10,
-    0x3c,
-    0x13,
-    0xe2,
-    0x5c,
-    0x19,
-    0x8a,
-    0x3b,
-    0x82,
-    0x04,
-    0x01,
-    0x0a,
-    0x00,
-    0xbb,
-    0xf0,
-    0x0c,
-    0x9b,
-    0xcc,
-    0xfb,
-    0x2d,
-    0x73,
-    0x04,
-    0x01,
-    0x0e,
-    0x00,
-};
+    0x03, 0x0b, 0xc7, 0x98, 0xe2, 0x17, 0x25, 0x80, 0x04, 0x01, 0x0a, 0x00, 0xf3, 0xa4, 0x48, 0x44,
+    0x19, 0xab, 0xd7, 0x56, 0x0c, 0x08, 0x66, 0xfe, 0x00, 0x64, 0x91, 0x60, 0x80, 0x7a, 0x04, 0x01,
+    0x03, 0x00, 0x3d, 0x62, 0xcb, 0x8f, 0xec, 0xfc, 0xf7, 0x39, 0x0c, 0x10, 0x3c, 0x13, 0xe2, 0x5c,
+    0x19, 0x8a, 0x3b, 0x82, 0x04, 0x01, 0x0a, 0x00, 0xbb, 0xf0, 0x0c, 0x9b, 0xcc, 0xfb, 0x2d, 0x73,
+    0x04, 0x01, 0x0e, 0x00 };
 static const int32_t GRAPHDEMO_K_TABLE_MESSAGE_ENTRY_KEY_OFFSETS[] = {
-    0,
-    12,
-    22,
-    34,
-    44,
-    56,
-    68,
-};
+    0, 12, 22, 34, 44, 56, 68 };
 static SCHEMA_UNUSED uint16_t graphdemo_table_message_own_slot( const uint8_t * raw, int64_t length )
 {
     int32_t i;
@@ -5890,9 +5725,11 @@ static SCHEMA_UNUSED int graphdemo_table_message_quantization( float qmin, float
 // would otherwise fuse into one rounding and move the wire.
 #if ( defined( __GNUC__ ) || defined( __clang__ ) ) && ( defined( __aarch64__ ) || defined( _M_ARM64 ) )
 #define SCHEMA_GRAPHDEMO_TABLE_FLOAT_FORCE_ROUND( x ) __asm__( "" : "+w"( x ) )
-#elif ( defined( __GNUC__ ) || defined( __clang__ ) ) && ( defined( __x86_64__ ) || defined( __i386__ ) )
+#endif
+#if !( ( defined( __GNUC__ ) || defined( __clang__ ) ) && ( defined( __aarch64__ ) || defined( _M_ARM64 ) ) ) && ( ( defined( __GNUC__ ) || defined( __clang__ ) ) && ( defined( __x86_64__ ) || defined( __i386__ ) ) )
 #define SCHEMA_GRAPHDEMO_TABLE_FLOAT_FORCE_ROUND( x ) __asm__( "" : "+x"( x ) )
-#else
+#endif
+#if !( ( defined( __GNUC__ ) || defined( __clang__ ) ) && ( defined( __aarch64__ ) || defined( _M_ARM64 ) ) ) && !( ( defined( __GNUC__ ) || defined( __clang__ ) ) && ( defined( __x86_64__ ) || defined( __i386__ ) ) )
 #define SCHEMA_GRAPHDEMO_TABLE_FLOAT_FORCE_ROUND( x ) \
     do \
     { \
@@ -7715,6 +7552,8 @@ done:
 
 #endif
 
+#include "MarksTableData.h" /* the fixed form's layout bytes, rows and plans */
+
 /* table Tally — TABLE-wire storage: relocatable, bounded. C has no member
    initializers, so the declared defaults live in tally_reset and nowhere
    else — one definition of what a default is (docs/SPEC-TABLES.md) */
@@ -8571,75 +8410,8 @@ static SCHEMA_UNUSED const int64_t graphdemo_tally_fixed_body_bytes = 4;
 static SCHEMA_UNUSED const int64_t graphdemo_tally_fixed_record_bytes = 8 + 4; /* the hash and the body */
 static SCHEMA_UNUSED const uint64_t graphdemo_tally_fixed_hash = 0x2f1aee497da7bbbcull; /* fnv1a64 over the layout and the definitions digest (bill §13) */
 
-/* THE LAYOUT (form 1 calls this the vocabulary block): 2 entries, a
-   PRE-ORDER walk of the closure in the writer's declared order.
-   Every byte is settled by the schema compiler. */
-static SCHEMA_UNUSED const uint8_t graphdemo_tally_fixed_layout[] = {
-    0x02,
-    0x00,
-    0x00,
-    0x00,
-    0x3d,
-    0xa7,
-    0x42,
-    0x42,
-    0x90,
-    0x34,
-    0xff,
-    0x69,
-    0x0d,
-    0x04,
-    0x00,
-    0x00,
-    0x00,
-    0x01,
-    0x00,
-    0x00,
-    0x00,
-    0xbb,
-    0xf0,
-    0x0c,
-    0x9b,
-    0xcc,
-    0xfb,
-    0x2d,
-    0x73,
-    0x04,
-    0x04,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-};
 static SCHEMA_UNUSED const int64_t graphdemo_tally_fixed_layout_bytes = (int64_t) sizeof( graphdemo_tally_fixed_layout );
 
-/* MY SIDE of the layout, one row per entry: the storage facts a layout
-   entry cannot carry, which is what a plan compiled from another writer's
-   layout lands values through. */
-static SCHEMA_UNUSED const graphdemo_table_fixed_dst_t graphdemo_tally_fixed_dst[] = {
-    { 0, 0, 0, 0, 0 }, /* Tally */
-    { 0, 0, 0, 0, 0 }, /* hits */
-};
-
-/* THE IDENTITY PLAN, coalesced out of 1 leaves by the schema compiler —
-   the one walk every backend lays down (ir/fixedform.go), so no two ports
-   can disagree about what the coalescer did; the asserts above tie every
-   destination in it to this compiler's own ABI. A bool field and a present
-   flag land through kTableFixedBool: a byte of 0 or 1 lands as itself and
-   any other byte refuses wire_damaged, never a bool holding 2 (fix 2).
-   An optional's present flag lands through kTableFixedPresentDefaults,
-   after its payload: the same byte rule, and when the flag is 0 the
-   payload takes its declared defaults (docs/SPEC-TABLES.md §3.4).
-   UNGUARDED ENTRIES
-   FIRST, then the arms, then any guardless present-defaults entry that must
-   run after the guarded payload it replaces: the entries that are nearly
-   all of a plan never test a guard at all. */
-static SCHEMA_UNUSED const graphdemo_table_fixed_entry_t graphdemo_tally_fixed_plan[] = {
-    { 0u, 0u, 4u, 0u, SCHEMA_GRAPHDEMO_TABLE_FIXED_NO_GUARD, GRAPHDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_GRAPHDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* hits */
-};
 static SCHEMA_UNUSED const int32_t graphdemo_tally_fixed_plan_count = 1;
 static SCHEMA_UNUSED const int32_t graphdemo_tally_fixed_plan_guarded = 1;
 static SCHEMA_UNUSED const graphdemo_table_fixed_guard_link_t graphdemo_tally_fixed_guards[] = {
@@ -8660,47 +8432,6 @@ static SCHEMA_UNUSED const graphdemo_table_fixed_fill_t graphdemo_tally_fixed_co
 };
 static SCHEMA_UNUSED const int32_t graphdemo_tally_fixed_cover_count = 1;
 
-/* lineage entry 0: the layout bytes THE LOCK recorded, verbatim */
-static SCHEMA_UNUSED const uint8_t graphdemo_tally_fixed_known_0[] = {
-    0x02,
-    0x00,
-    0x00,
-    0x00,
-    0x3d,
-    0xa7,
-    0x42,
-    0x42,
-    0x90,
-    0x34,
-    0xff,
-    0x69,
-    0x0d,
-    0x04,
-    0x00,
-    0x00,
-    0x00,
-    0x01,
-    0x00,
-    0x00,
-    0x00,
-    0xbb,
-    0xf0,
-    0x0c,
-    0x9b,
-    0xcc,
-    0xfb,
-    0x2d,
-    0x73,
-    0x04,
-    0x04,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-};
 /* THE LINEAGE, OLDEST FIRST, THE CURRENT LAYOUT LAST (§5.2). THE ONLY FACT
    A FILE IS MATCHED ON IS THE HASH; the layout bytes are what a known hash
    is held to by memcmp, and the record size is taken from here and NEVER
@@ -8759,7 +8490,8 @@ static SCHEMA_UNUSED void graphdemo_table_fixed_once_wait( graphdemo_table_fixed
         /* nothing: the load is the whole body, and it is an acquire */
     }
 }
-#elif defined( _MSC_VER )
+#endif
+#if !( defined( __GNUC__ ) || defined( __clang__ ) ) && ( defined( _MSC_VER ) )
 typedef long graphdemo_table_fixed_once_t;
 #define graphdemo_table_fixed_once_ready( f ) ( _InterlockedCompareExchange( ( f ), SCHEMA_GRAPHDEMO_TABLE_FIXED_ONCE_READY, SCHEMA_GRAPHDEMO_TABLE_FIXED_ONCE_READY ) == SCHEMA_GRAPHDEMO_TABLE_FIXED_ONCE_READY )
 #define graphdemo_table_fixed_once_publish( f ) ( (void) _InterlockedExchange( ( f ), SCHEMA_GRAPHDEMO_TABLE_FIXED_ONCE_READY ) )
@@ -8769,7 +8501,8 @@ typedef long graphdemo_table_fixed_once_t;
     { \
         while ( !graphdemo_table_fixed_once_ready( f ) ) {} \
     } while ( 0 )
-#else
+#endif
+#if !( defined( __GNUC__ ) || defined( __clang__ ) ) && !( defined( _MSC_VER ) )
 /* NO ATOMIC ON THIS COMPILER, AND THE WINDOW IS NAMED. The publish is a plain
    store AFTER the loop, so no thread can read a zeroed plan: a thread reaches
    the plans only after its own build wrote them. What is left is that two

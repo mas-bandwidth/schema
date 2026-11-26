@@ -954,14 +954,15 @@ tables-dart-fixed-form-negative-control: bin/schema build/fixedform-corpus/.stam
 
 # ITS NEGATIVE CONTROL (§5.9 #11: a gate nobody has watched fail may be
 # comparing a file with itself). The sabotage replaces the ONE name that carries
-# §5's whole direction — a hash no lineage entry holds is `layout_newer`, ship
-# the reader — with `layout_damaged`, and the OLD-REFUSES-NEW column must go
-# red naming it. `go test -overlay` is the same trick the other controls use on
-# `go build`: the emitter is replaced for one run and the tree is never touched.
+# §5.3 step 5 — a hash no lineage entry holds is `layout_unknown`
+# (`layout_newer` is retired, SPEC-TABLES §21.3) — with `layout_damaged`, and
+# the OLD-REFUSES-NEW column must go red naming it. `go test -overlay` is the
+# same trick the other controls use on `go build`: the emitter is replaced for
+# one run and the tree is never touched.
 .PHONY: tables-dart-versioning-negative-control
 tables-dart-versioning-negative-control: tables-fixedform-corpus
 	@rm -rf build/dart-versioning-nc && mkdir -p build/dart-versioning-nc
-	@sed 's|report.refused = TableFixedRefusal.layoutNewer;|report.refused = TableFixedRefusal.layoutDamaged; // SABOTAGED|' \
+	@sed 's|report.refused = TableFixedRefusal.layoutUnknown;|report.refused = TableFixedRefusal.layoutDamaged; // SABOTAGED|' \
 		internal/codegen/darttable/fixedmodule.go > build/dart-versioning-nc/fixedmodule.go.txt
 	@grep -q SABOTAGED build/dart-versioning-nc/fixedmodule.go.txt || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the emitter moved"; exit 1; }
@@ -973,7 +974,7 @@ tables-dart-versioning-negative-control: tables-fixedform-corpus
 		echo "NEGATIVE CONTROL FAILED: the wrong refusal name left the versioning gate green"; \
 		cat build/dart-versioning-nc/log; exit 1; \
 	fi
-	@grep -q 'owes layout_newer' build/dart-versioning-nc/log || \
+	@grep -q 'owes layout_unknown, not layout_damaged' build/dart-versioning-nc/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the versioning gate went red for another reason"; \
 		  cat build/dart-versioning-nc/log; exit 1; }
 	@echo 'negative control: the wrong name for a hash outside the lineage reds the Dart versioning gate'
@@ -1232,7 +1233,7 @@ test-dart: tables-dart-text-differential tables-dart-text-differential-negative-
 # so the corpus is built first; a missing SDK or corpus is a failure that names
 # it, never a skip (docs/rulings.json no-skips).
 .PHONY: tables-dart-block-build
-tables-dart-block-build: build/tables-generated-dart/.stamp cards-dart-generate
+tables-dart-block-build: build/tables-generated-dart/.stamp cards-dart-generate build/tables-generated-dart-framing/countedmin/.stamp
 	DART=$(DART) $(GO_TEST) ./internal/codegen/darttable/ -count=1 -timeout=0 -run '^(TestBlockBuildAndCookWriteDart|TestCookWriteFixedDart|TestCookWriteGuardedAndTextArrayRootsDart|TestCookWriteAnswersEveryCookWriteRowDart)$$'
 	@echo 'tables Dart block build and cook write: begin, the fixed root, the guarded and text-array roots and every cook-write row'
 

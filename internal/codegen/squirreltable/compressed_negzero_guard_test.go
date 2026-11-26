@@ -65,8 +65,15 @@ func TestSquirrelCompressedFloatStoresAreGuarded(t *testing.T) {
 	if fn := body("save.nut", save, "local floatIsDefault = function("); !strings.Contains(fn, "((a & 0x7fffffff) == 0 && (b & 0x7fffffff) == 0)") {
 		t.Errorf("save.nut floatIsDefault elides a compressed float by the -0 bits:\n%s", fn)
 	}
-	before("save.nut", "fixedWriteElement (the fixed form a fixed table's Save writes)", body("save.nut", save, "fixedWriteElement = function("),
-		"e.fmin != null && (bits & (e.f32 ? 0x7fffffff : 0x7fffffffffffffff)) == 0) bits = 0;", "putFixedU(out, off, e.f32 ? 4 : 8, bits)")
+	// a fixed table's Save is the generated <Root>FixedSave over a batch of
+	// one (save.nut saveFixed), whose cells are held below; a hand-walked
+	// fixed writer in save.nut would be a second writer the guard misses
+	if fn := body("save.nut", save, "local saveFixed = function("); !strings.Contains(fn, "local n = T[c.name + \"FixedSave\"](out, [value]);") {
+		t.Errorf("save.nut saveFixed does not write through the generated <Root>FixedSave:\n%s", fn)
+	}
+	if strings.Contains(save, "putFixedU") {
+		t.Errorf("save.nut holds a hand-walked fixed writer (putFixedU) beside the generated <Root>FixedSave")
+	}
 
 	cook := src("cookwrite.nut")
 	if fn := body("cookwrite.nut", cook, "local joinField = function("); !strings.Contains(fn, `fmin = ("fmin" in fd) ? fd.fmin : null`) {

@@ -284,3 +284,75 @@ func TestTheUnionHarnessPrepareBuildsWhatItsRowsRead(t *testing.T) {
 		t.Fatalf("a union Prepare its deadline cut short: %v, want the context's error", err)
 	}
 }
+
+// TestThePrepareStepsAreTheTargetsInTheOrderTheyAreDeclared: the gotest
+// adapter's prepare steps are each build its rows name or their Go tests
+// read, once each, in the order the needs table declares them, each named by
+// its target, so the runner gives each its own limit. Planted: sorted, the
+// step that builds the others (b-all) would come first.
+func TestThePrepareStepsAreTheTargetsInTheOrderTheyAreDeclared(t *testing.T) {
+	t.Parallel()
+	root := needsRoot(t)
+	if err := os.WriteFile(filepath.Join(root, testreg.GoNeedsPath), []byte("needs ./g TestReads z-first\nneeds ./g TestReads m-second\nneeds ./g .* z-first\nneeds ./g TestReads b-all\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var ran []string
+	a := newGoTestAdapterBuilding(io.Discard, root, 1, func(_ context.Context, argv []string) error {
+		ran = append(ran, argv[len(argv)-1])
+		return nil
+	})
+	row := func(test string) testreg.Instance {
+		return testreg.Instance{Full: "none.unit.g." + test, Test: testreg.Test{Seconds: 10, Inputs: []byte(`{"package":"./g","test":"` + test + `","make":"made-by-the-row"}`)}}
+	}
+	var names []string
+	for _, s := range a.PrepareSteps("", []testreg.Instance{row("TestReads"), row("TestFree")}) {
+		names = append(names, s.Name)
+		if err := s.Run(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	want := "made-by-the-row,z-first,m-second,b-all"
+	if strings.Join(names, ",") != want || strings.Join(ran, ",") != want {
+		t.Fatalf("steps %v, built %v; want %s", names, ran, want)
+	}
+}
+
+// TestAFailedBuildBlocksTheBuildsDeclaredAfterIt: the targets of a test are in
+// build order, so one built on a failed one is not run: it would only make the
+// failed one again, once per step, each under its own limit. The step that
+// failed is the one the rows are named for. Planted: without the blocking,
+// "second" and "third" run after "first" failed.
+func TestAFailedBuildBlocksTheBuildsDeclaredAfterIt(t *testing.T) {
+	t.Parallel()
+	root := needsRoot(t)
+	if err := os.WriteFile(filepath.Join(root, testreg.GoNeedsPath), []byte("needs ./g TestReads first\nneeds ./g TestReads second\nneeds ./g TestReads third\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var ran []string
+	b := &builder{log: io.Discard, done: map[string]error{}, step: func(_ context.Context, argv []string) ([]byte, error) {
+		ran = append(ran, argv[len(argv)-1])
+		if argv[len(argv)-1] == "first" {
+			return []byte("make: *** no rule"), errors.New("exit status 2")
+		}
+		return nil, nil
+	}}
+	a := newGoTestAdapterBuilding(io.Discard, root, 1, b.run)
+	stubGoTest(a)
+	row := testreg.Instance{Full: "none.unit.g.TestReads", Test: testreg.Test{Seconds: 10, Inputs: []byte(`{"package":"./g","test":"TestReads"}`)}}
+	if err := a.Prepare(context.Background(), "", []testreg.Instance{row}); err != nil {
+		t.Fatalf("Prepare failed the group for one row's build: %v", err)
+	}
+	if got := strings.Join(ran, ","); got != "first" {
+		t.Fatalf("builds run after the first failed: %q, want only first", got)
+	}
+	res, err := a.Run(context.Background(), "", []testreg.Instance{row})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r := verdicts(res)[row.Full]; r.Verdict != testreg.Fail || !strings.Contains(r.Reason, "(first) failed") {
+		t.Fatalf("the row: %+v, want a fail naming the first build", r)
+	}
+	if got := strings.Join(ran, ","); got != "first" {
+		t.Fatalf("Run built after the first failed: %q, want only first", got)
+	}
+}

@@ -105,7 +105,7 @@ func TestAllocAuditBudgetFileIsWellFormed(t *testing.T) {
 	if !strings.Contains(rc, "test/elixir-alloc/main.exs") || !strings.Contains(rc, "0.0.0") {
 		t.Errorf("tables-elixir-alloc-runtime-negative-control does not run the audit on a pin nothing is running:\n%s", rc)
 	}
-	for _, target := range []string{"tables-elixir-alloc-audit", "tables-elixir-alloc-negative-control", "tables-elixir-alloc-runtime-negative-control"} {
+	for _, target := range []string{"tables-elixir-alloc-audit", "tables-elixir-alloc-negative-control", "tables-elixir-alloc-runtime-negative-control", "tables-elixir-alloc-refusal-negative-control"} {
 		if !testElixirNames(t, mk, target) {
 			t.Errorf("no `test-elixir:` line names %s", target)
 		}

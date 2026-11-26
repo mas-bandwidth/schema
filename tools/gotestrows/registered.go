@@ -13,15 +13,15 @@ import (
 
 // THE REGISTRY'S GO TESTS RUN THROUGH THE DRIVER, NOT HERE
 // (docs/TEST-REGISTRY.md). A language-free Go test with a gotest row in the
-// test registry runs in ci-fast's schema-test-pr shards (`schema-test run
-// --group pr`), so go-test-touched does not run it a second time: a package
+// test registry runs through the driver, in the nightly group (`schema-test run
+// --group nightly`), so go-test-touched does not run it a second time: a package
 // whose every test is a registry row (of any tier: a nightly row runs in the
 // nightly lane) leaves the selection, and a package with tests the registry
 // does not run yet gets one row that runs only those.
 
 // registered is the registry's gotest rows, of every tier: for each
-// ./package, the top-level tests the driver runs. A unit or functional row
-// runs in the schema-test-pr shards and a nightly row in the nightly lane, so
+// ./package, the top-level tests the driver runs. Every row runs in the
+// nightly group (the pr job runs only compile and happy-path rows), so
 // go-test-touched runs neither: a per-change row never runs a nightly test.
 func registered(path string) (map[string]map[string]bool, error) {
 	reg, err := testreg.Load(path)

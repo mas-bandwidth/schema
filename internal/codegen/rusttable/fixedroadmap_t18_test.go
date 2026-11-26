@@ -151,7 +151,7 @@ fn save_and_load(v: LineageRow) -> (Vec<u8>, LineageRow, TableFixedReport) {
 }
 
 fn clean(r: &TableFixedReport) -> bool {
-    !r.refused && !r.damaged && r.unknown == 0
+    !r.refused && r.unknown == 0
 }
 
 fn main() {
@@ -345,7 +345,7 @@ fn say(id: &str, ok: bool, why: &str) {
 }
 
 fn clean(r: &TableFixedReport) -> bool {
-    !r.refused && !r.damaged && r.unknown == 0
+    !r.refused && r.unknown == 0
 }
 
 fn arm_bytes_of_row(p: &PickRow) -> [u8; 4] {
@@ -445,7 +445,6 @@ fn main() {
     let clamp_ok = fn_read.is_none()
         && freport.refused
         && freport.reason == TableFixedReason::OutOfRange
-        && !freport.damaged
         && fout[0].pick.tag() == 0
         && fout[0].pick.alpha().is_none()
         && !fout[0].pick.is_quiet()

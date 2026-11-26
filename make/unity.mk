@@ -203,9 +203,22 @@ test-unity: unity-tables
 # hostile-input row compiled in the Unity dialect (C# 9 over netstandard2.1,
 # warnings as errors, unsafe disallowed) and proved against the live C++
 # reference and build/fixedform-corpus, each with its planted negative control.
+# Run as '^TestUnityFixed' over both packages it ran past go test's default 600 s
+# limit on a bench (the limit is never raised). The tests are now run by name:
+# each below is a registry row of its own (make-gotest, read by name from this
+# run's go test -json events), of the nightly tier, where this target runs
+# (.github/nightly-gates.txt, fixedform-unity), and the adapter builds the
+# corpus first as a prepare step (test/registry/go-needs.txt), so this call is
+# the tests alone. The compiler's TestUnityFixedForm* tests and the unitytable
+# tests that have gotest rows of their own run there, not here twice.
+UNITY_FIXED_TESTS := TestUnityFixedDialectMSBuild TestUnityFixedFormGrownBound TestUnityFixedProofEvolution \
+	TestUnityFixedProofSuiteNegativeControl TestUnityFixedProofSuiteValues \
+	TestUnityFixedRefusalResetsEveryRow TestUnityFixedRowArrayBounds TestUnityFixedRowHostileInput \
+	TestUnityFixedRowNormalization TestUnityFixedRowNumericEvolution TestUnityFixedRowOrdinals \
+	TestUnityFixedRowReports TestUnityFixedRowScalarBounds TestUnityFixedRowText
 .PHONY: unity-fixed
 unity-fixed: toolchain-unity build/fixedform-corpus/.stamp
-	$(GO_TEST) -count=1 -run '^TestUnityFixed' ./compiler/ ./internal/codegen/unitytable/
+	$(GO_TEST) -count=1 -run '^($(subst $(eval) ,|,$(strip $(UNITY_FIXED_TESTS))))$$' ./internal/codegen/unitytable/
 
 test-unity: unity-fixed
 

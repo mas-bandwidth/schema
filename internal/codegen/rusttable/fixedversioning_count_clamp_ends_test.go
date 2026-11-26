@@ -54,7 +54,6 @@ fn v_count_clamp_negative() {
         report.refused && report.reason == TableFixedReason::OutOfRange,
         "a forged count is an out_of_range refusal: {:?}", report
     );
-    assert!(!report.damaged, "a forged count is not damage: {:?}", report);
     assert!(
         values[0].lead != 0xAAAA_AAAA && values[0].trail != 0xBBBB_BBBB,
         "a refused batch landed the record: lead={:#x} trail={:#x}", values[0].lead, values[0].trail
@@ -91,7 +90,6 @@ fn v_count_clamp_past_bound() {
         report.refused && report.reason == TableFixedReason::OutOfRange,
         "a forged count is an out_of_range refusal: {:?}", report
     );
-    assert!(!report.damaged, "a forged count is not damage: {:?}", report);
     assert!(
         values[0].lead != 0xAAAA_AAAA && values[0].trail != 0xBBBB_BBBB,
         "a refused batch landed the record: lead={:#x} trail={:#x}", values[0].lead, values[0].trail

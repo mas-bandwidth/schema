@@ -10,6 +10,13 @@
 //	schema-test langs [--ready]
 //	schema-test addenda [--check] [--root DIR]
 //	schema-test seconds [--registry PATH] LOG...
+//	schema-test reads [--write] [--plant ROW]... [--registry PATH]
+//
+// reads proposes read credits (reads.go): it works out the make rows' file
+// reads from make's database and fails when the registry's are not those,
+// --write writes them, --plant ROW writes the read plant that proves ROW's
+// credits; it prints Go reads to consider and credits with no plant.
+//
 //	schema-test ci [--check] [--verdict] [--root DIR]
 //
 // ci writes .github/workflows/ci-fast.yml and docs/CI-TIERS.md from the
@@ -44,6 +51,7 @@ import (
 	"io"
 	"os"
 	"regexp"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -72,6 +80,7 @@ const usage = `usage:
   schema-test langs [--ready]   the registry's languages as a JSON list (a CI matrix)
   schema-test addenda [--check] [--root DIR]
   schema-test seconds [--registry PATH] LOG...
+  schema-test reads [--write] [--plant ROW]... [--registry PATH]   propose read credits; --plant writes a row's read plant
   schema-test ci [--check] [--verdict]   write (or --check) ci-fast.yml and docs/CI-TIERS.md from the registry
   NAME is <lang>.<tier>.<type>.<family>.<case>; a PATTERN has "*" in it
   --group G         a stored query of the registry (rec "group"); --lang narrows it
@@ -80,6 +89,8 @@ const usage = `usage:
   --report FILE     run: also write the run's report (every outcome and run-level problem) to FILE as JSON
   --registry PATH   the registry (default ` + testreg.DefaultPath + `)
   --timeout D       one adapter call's limit, 0 for none (default 90s)
+  --jobs N          run: how many harness calls run at once once their builds
+                    are done (default: the machine's cores)
   --seed N          the run's seed, handed to every adapter as SCHEMA_TEST_SEED
                     (default: the UTC date as YYYYMMDD, printed before the run);
                     a red fuzz row re-runs by name with the seed its run printed
@@ -114,19 +125,24 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, ads map[s
 }
 
 // recordSeconds writes the seconds each passing instance took into its
-// test's registry line; a test with several instances keeps the longest.
+// test's registry line (a union row's, into its language's Go test); a test
+// with several instances keeps the longest.
 func recordSeconds(stdout io.Writer, path string, instances []testreg.Instance, rep *testreg.Report) error {
-	key := map[string]string{}
+	byName := map[string]testreg.Instance{}
 	for _, inst := range instances {
-		key[inst.Full] = inst.Test.Key
+		byName[inst.Full] = inst
 	}
-	seconds := map[string]float64{}
+	measured := map[string]float64{}
 	for _, o := range rep.Outcomes {
 		if o.Status == testreg.StatusPass && o.Seconds > 0 {
-			seconds[key[o.Full]] = max(seconds[key[o.Full]], o.Seconds)
+			measured[o.Full] = max(measured[o.Full], o.Seconds)
 		}
 	}
-	n, err := testreg.WriteSeconds(path, seconds)
+	seconds, langSeconds, err := testreg.SplitSeconds(byName, measured)
+	if err != nil {
+		return err
+	}
+	n, err := testreg.WriteSeconds(path, seconds, langSeconds)
 	if err != nil {
 		return err
 	}
@@ -161,6 +177,9 @@ func runErr(ctx context.Context, args []string, stdout io.Writer, ads map[string
 	if sub == "seconds" {
 		return secondsCmd(args[1:], stdout)
 	}
+	if sub == "reads" {
+		return readsCmd(ctx, args[1:], stdout)
+	}
 	if sub == "ci" {
 		return ciCmd(args[1:], stdout)
 	}
@@ -179,6 +198,7 @@ func runErr(ctx context.Context, args []string, stdout io.Writer, ads map[string
 	shard := fs.String("shard", "", "")
 	path := fs.String("registry", testreg.DefaultPath, "")
 	timeout := fs.Duration("timeout", 90*time.Second, "")
+	jobs := fs.Int("jobs", runtime.NumCPU(), "")
 	update := fs.Bool("update", false, "")
 	report := fs.String("report", "", "")
 	writeSeconds := fs.Bool("write-seconds", false, "")
@@ -205,7 +225,7 @@ func runErr(ctx context.Context, args []string, stdout io.Writer, ads map[string
 	if err != nil {
 		return err
 	}
-	rn := &testreg.Runner{Reg: reg, Adapters: ads, Context: testreg.WithTimeout(*timeout), Now: time.Now}
+	rn := &testreg.Runner{Reg: reg, Adapters: ads, Context: testreg.WithTimeout(*timeout), Now: time.Now, Jobs: *jobs}
 	withRunner(ads, rn)
 	if sub == "coverage" {
 		if !q.Empty() || *group != "" || *shard != "" {
@@ -347,7 +367,8 @@ func secondsCmd(args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	seconds := map[string]float64{}
+	byName := map[string]testreg.Instance{}
+	measured := map[string]float64{}
 	for _, log := range fs.Args() {
 		data, err := os.ReadFile(log)
 		if err != nil {
@@ -367,14 +388,24 @@ func secondsCmd(args []string, stdout io.Writer) error {
 			if err != nil {
 				return fmt.Errorf("%s: %w", log, err)
 			}
-			seconds[inst.Test.Key] = max(seconds[inst.Test.Key], s)
+			// a run prints a pass under 5 ms as (0.00s): it took under the
+			// print's half step, and WriteSeconds records the least weight
+			if s == 0 {
+				s = 0.005
+			}
+			byName[inst.Full] = inst
+			measured[inst.Full] = max(measured[inst.Full], s)
 			n++
 		}
 		if n == 0 {
 			return fmt.Errorf("%s shows no passing test with its seconds", log)
 		}
 	}
-	n, err := testreg.WriteSeconds(*path, seconds)
+	seconds, langSeconds, err := testreg.SplitSeconds(byName, measured)
+	if err != nil {
+		return err
+	}
+	n, err := testreg.WriteSeconds(*path, seconds, langSeconds)
 	if err != nil {
 		return err
 	}

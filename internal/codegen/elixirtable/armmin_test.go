@@ -163,7 +163,11 @@ IO.puts("ok")
 	if err != nil {
 		t.Fatalf("probe failed: %v\n%s", err, out)
 	}
-	elixirPatch(t, files, "if n < Map.get(f, :min_count, 0), do: throw(:wire_damaged)", "_ = n")
+	// the variable wire judges a count below Min in clamp_count, before any
+	// element is read; the plant lets the short count through
+	elixirPatch(t, files,
+		"defp clamp_count(n, %{min_count: min}, _report) when n < min,\n    do: {n, throw(:wire_damaged)}",
+		"defp clamp_count(n, %{min_count: min}, report) when n < min,\n    do: {n, report}")
 	out, err = runArmProbe(t, elixirBinary(t), files, probe)
 	if err == nil {
 		t.Fatalf("REVERSED WITNESS FAILED: no variable-wire minimum left the probe green\n%s", out)
@@ -339,17 +343,26 @@ end
 	}
 	// the reversed witnesses: the old judgements planted back, each in its own
 	// copy of the generated files
-	plant := func(old, repl string, ids ...string) {
+	plant := func(patches [][2]string, ids ...string) {
 		t.Helper()
 		files = generateElixir(t, u)
-		elixirPatch(t, files, old, repl)
+		for _, p := range patches {
+			elixirPatch(t, files, p[0], p[1])
+		}
 		after := run()
 		for _, id := range ids {
 			if after[id] == want[id] {
-				t.Errorf("REVERSED WITNESS FAILED: %s still matches the engine with %q planted back", id, old)
+				t.Errorf("REVERSED WITNESS FAILED: %s still matches the engine with %q planted back", id, patches)
 			}
 		}
 	}
-	plant("list_born?(f, elements, idx_map, ids, order) or", "false or", "table_born", "union_born")
-	plant("default: [0, 0]", "default: []", "arm_selected")
+	// the born state elides on two judgements: list_born? (every element
+	// writes nothing) and list_elides? (count at Min, every element at its
+	// default); either alone elides these cases, so the old judgement (a born
+	// array always rides) is planted back in both
+	plant([][2]string{
+		{"list_born?(f, elements, idx_map, ids, order) or", "false or"},
+		{"length(elements) == f.min_count and Enum.all?(elements, &born_default?(f, &1))", "false"},
+	}, "table_born", "union_born")
+	plant([][2]string{{"default: [0, 0]", "default: []"}}, "arm_selected")
 }

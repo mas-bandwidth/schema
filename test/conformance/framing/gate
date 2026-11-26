@@ -9,8 +9,11 @@
 #        gate <lang> <driver command> <work dir> <case>...      a negative control: the
 #             harness must go RED on the framing surface, naming every <case>
 #
-# The run is the harness's own (`run --drivers`), over a wrapper that lists
-# `framing` alone, so the gate costs one runtime start and nothing else.
+# The run is the harness's own (`run --surfaces framing --drivers`), over a
+# wrapper that lists `framing` alone, so the gate costs one runtime start and
+# nothing else. --surfaces tells the harness the run asks for framing alone:
+# without it the harness scores every surface the wrapper leaves out as owed
+# and absent (ticked.go), and the gate goes red on a leg that passes framing.
 set -e
 lang=$1 driver=$2 work=$3
 [ -n "$lang" ] && [ -n "$driver" ] && [ -n "$work" ] || { echo "usage: gate <lang> <driver> <work> [case...]"; exit 2; }
@@ -26,7 +29,7 @@ chmod +x "$work/driver"
 printf '%s %s/driver\n' "$lang" "$(cd "$work" && pwd)" > "$work/drivers.txt"
 rows=$(grep -c '^framing ' testdata/conformance/tables/MANIFEST.txt)
 rc=0
-./build/conformance-harness run --drivers "$work/drivers.txt" --work "$work/run" > "$work/log" 2>&1 || rc=$?
+./build/conformance-harness run --surfaces framing --drivers "$work/drivers.txt" --work "$work/run" > "$work/log" 2>&1 || rc=$?
 line=$(grep -E '^framing ' "$work/log") || [ $? -eq 1 ]
 if [ -z "$want_red" ]; then
 	if [ $rc -ne 0 ] || ! echo "$line" | grep -Eq "^framing +pass $rows/$rows *\$"; then

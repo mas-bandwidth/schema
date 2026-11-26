@@ -1379,6 +1379,7 @@ func (e *msgEmit) emitRoot(st *ir.Struct) {
 	e.g.Declare(n + "MeasureMessages")
 	e.g.Declare(n + "SaveMessages")
 	e.g.Declare(n + "LoadMessages")
+	e.g.Declare("_" + n + "LoadMessagesWalk")
 	e.p(0, "// ---- %s, the message form, form byte 2 (docs/SPEC-TABLES.md §3.3) ----", n)
 	e.p(0, "// %sAnnounce is the unit's announcement (MessageAnnouncement, the message form's package module).", n)
 	// R8 follow-up: the announcement WRITER refuses a vocabulary past the

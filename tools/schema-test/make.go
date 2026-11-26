@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"maps"
 	"os"
 	"os/exec"
@@ -20,6 +21,7 @@ import (
 	"sync/atomic"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testreg"
+	"github.com/mas-bandwidth/schema/v2/internal/testreg/extract"
 )
 
 // makeAdapter runs make gates: a test whose inputs are {"file": "make/c.mk",
@@ -46,9 +48,9 @@ import (
 // names the data cases the target runs (test/tables/VNEW_x.schema): each
 // must be among what the target depends on, or the row FAILS, since a row
 // cannot claim a case its target does not touch. A recipe that runs go
-// test without -json FAILS the row: go test's plain output prints nothing for a skipped test,
-// so a skip there would read as a pass, where with -json each skip is an
-// event in the log, which a skip in the log fails. A plain go test summary
+// test outside $(GO_TEST) FAILS the row (goTestOutsideTheWrapper): only
+// through tools/gotestrun is every skip, test not run and run of 0 tests
+// read back and failed. A plain go test summary
 // line in the log (from a script the database cannot see into) fails it
 // the same way.
 //
@@ -86,11 +88,27 @@ type makeInputs struct {
 	Tools    []string          `json:"tools,omitempty"`
 	Siblings []string          `json:"siblings,omitempty"`
 	Reads    []string          `json:"reads,omitempty"`
+	// ReadPlant is the key of the read plant that proves what Reads
+	// credits (extract.CreditPlant): a read with no plant credits nothing.
+	ReadPlant string `json:"read_plant,omitempty"`
 	// Seed names the make variable a fuzz row's random pass takes its seed
 	// in (LUA_FUZZ_SEED). The seed is the run's, read from SeedEnv in the
 	// context's environment, set on make's command line and named in the
 	// row's verdict, so a red re-runs by name with --seed and that number.
 	Seed string `json:"seed,omitempty"`
+	// GoTests names the Go tests the target runs, each "<package> <Test>"
+	// (the hostile rows' spelling), such as the tests of a module of its
+	// own run beside the generated Go they test (tables/cards). Each must
+	// report --- PASS in the target's log (gotestrun writes what go test -v
+	// would), or the row fails naming it, and the ledger counts them as
+	// this row's.
+	GoTests []string `json:"go_tests,omitempty"`
+	// GoImport names, for a go_tests package the target tests under another
+	// module, the import path its result line prints: tables/cards is copied
+	// into the generated module "cards" and tested there, so
+	// {"./tables/cards": "cards"}. A package it does not name is named by the
+	// nearest go.mod's module and its directory below it.
+	GoImport map[string]string `json:"go_import,omitempty"`
 }
 
 func newMakeAdapter() makeAdapter {
@@ -128,6 +146,74 @@ func holdCheckout(ctx context.Context) (func(), error) {
 		return func() { <-checkoutMake }, nil
 	case <-ctx.Done():
 		return nil, fmt.Errorf("waiting for the checkout, which another make of this run holds: %w", ctx.Err())
+	}
+}
+
+// sharedCheckout counts the calls that hold the checkout to read it
+// (holdCheckoutShared): the first takes checkoutMake for all of them and the
+// last gives it back, so they run side by side and never beside a make.
+// taking is open while one reader waits for checkoutMake on behalf of all:
+// the others wait on it, each under its own context, never on the mutex.
+var sharedCheckout struct {
+	sync.Mutex
+	n      int
+	taking chan struct{}
+}
+
+// holdCheckoutShared takes the checkout to read it (a harness running what
+// the build steps made) and returns its release: any number of readers hold
+// it at once, and no make runs while one does. Every reader's wait ends
+// with its own ctx, as holdCheckout's does: one reader waits for the
+// checkout, and the rest wait for it to have it, or to give up, and then
+// look again.
+func holdCheckoutShared(ctx context.Context) (func(), error) {
+	for {
+		sharedCheckout.Lock()
+		if sharedCheckout.n > 0 {
+			sharedCheckout.n++
+			sharedCheckout.Unlock()
+			return releaseCheckoutShared, nil
+		}
+		if wait := sharedCheckout.taking; wait != nil {
+			sharedCheckout.Unlock()
+			select {
+			case <-wait:
+				continue
+			case <-ctx.Done():
+				return nil, fmt.Errorf("waiting for the checkout, which another make of this run holds: %w", ctx.Err())
+			}
+		}
+		taking := make(chan struct{})
+		sharedCheckout.taking = taking
+		sharedCheckout.Unlock()
+		var err error
+		select {
+		case checkoutMake <- struct{}{}:
+			checkoutHolds.Add(1)
+		case <-ctx.Done():
+			err = fmt.Errorf("waiting for the checkout, which another make of this run holds: %w", ctx.Err())
+		}
+		sharedCheckout.Lock()
+		sharedCheckout.taking = nil
+		if err == nil {
+			sharedCheckout.n++
+		}
+		close(taking)
+		sharedCheckout.Unlock()
+		if err != nil {
+			return nil, err
+		}
+		return releaseCheckoutShared, nil
+	}
+}
+
+// releaseCheckoutShared lets one reader go; the last gives the checkout back.
+func releaseCheckoutShared() {
+	sharedCheckout.Lock()
+	defer sharedCheckout.Unlock()
+	sharedCheckout.n--
+	if sharedCheckout.n == 0 {
+		<-checkoutMake
 	}
 }
 
@@ -201,8 +287,32 @@ func decodeMakeInputs(raw json.RawMessage) (makeInputs, error) {
 		}
 	}
 	for _, r := range in.Reads {
-		if r == "" || r != path.Clean(r) || path.IsAbs(r) || strings.HasPrefix(r, "../") || strings.ContainsAny(r, " \t\n\\") {
-			return in, fmt.Errorf("reads %q: want a file of the repository by its path", r)
+		if extract.IsTreeRead(r) {
+			return in, fmt.Errorf("reads %q: a make row reads one directory, written with one trailing /, never a tree", r)
+		}
+		p := strings.TrimSuffix(r, "/")
+		if p == "" || p != path.Clean(p) || path.IsAbs(p) || p == ".." || strings.HasPrefix(p, "../") || strings.ContainsAny(p, " \t\n\\") {
+			return in, fmt.Errorf("reads %q: want a file of the repository by its path, or a directory written with one trailing /", r)
+		}
+	}
+	seen := map[string]bool{}
+	for _, g := range in.GoTests {
+		pkg, name, ok := strings.Cut(g, " ")
+		dir, dotted := strings.CutPrefix(pkg, "./")
+		if !ok || !dotted || dir == "" || dir == ".." || path.Clean(dir) != dir || strings.HasPrefix(dir, "../") || !goTestName.MatchString(name) || seen[dir+" "+name] {
+			return in, fmt.Errorf("go_tests entry %q: want \"./<package> <Test>\", each test named once", g)
+		}
+		seen[dir+" "+name] = true // a test is its package and its name
+	}
+	for pkg, imp := range in.GoImport {
+		named := false
+		for _, g := range in.GoTests {
+			if p, _, _ := strings.Cut(g, " "); p == pkg {
+				named = true
+			}
+		}
+		if !named || imp == "" || strings.ContainsAny(imp, " \t\n") {
+			return in, fmt.Errorf("go_import %q: %q: want a package go_tests names, and the import path its result line prints", pkg, imp)
 		}
 	}
 	return in, nil
@@ -290,6 +400,9 @@ func (a makeAdapter) Run(ctx context.Context, _ string, instances []testreg.Inst
 		case plain != "":
 			out = append(out, testreg.Result{Instance: inst.Full, Verdict: testreg.Fail,
 				Reason: fmt.Sprintf("make %s exited 0, and its log holds go test's plain output, which prints nothing for a skipped test, so a skip would read as a pass: %q", in.Target, plain)})
+		case len(unreported(a.read, lines, in.GoTests, in.GoImport)) > 0:
+			out = append(out, testreg.Result{Instance: inst.Full, Verdict: testreg.Fail,
+				Reason: fmt.Sprintf("make %s exited 0, and these of its Go tests did not report --- PASS: %s", in.Target, strings.Join(unreported(a.read, lines, in.GoTests, in.GoImport), ", "))})
 		default:
 			out = append(out, testreg.Result{Instance: inst.Full, Verdict: testreg.Pass})
 		}
@@ -366,9 +479,9 @@ func makeRules(data []byte) (map[string]bool, error) {
 }
 
 // vet reads a row's target in make's database before it runs: it must
-// depend on every file the row says it reads, and run no go test without
-// -json. It returns
-// why the row fails, or "", and an error only when the context ended.
+// depend on every file the row says it reads, and run go test only through
+// $(GO_TEST). It returns why the row fails, or "", and an error only when
+// the context ended.
 func (a makeAdapter) vet(ctx context.Context, in makeInputs) (string, error) {
 	if a.plan == nil {
 		return "", errors.New("the make adapter has no way to read make's database")
@@ -380,15 +493,24 @@ func (a makeAdapter) vet(ctx context.Context, in makeInputs) (string, error) {
 	if err != nil {
 		return fmt.Sprintf("make %s cannot be read before it runs: %v", in.Target, err), nil
 	}
-	files, text := db.reach(in.Target)
+	files, text, named := db.reach(in.Target)
+	reach := newMakeReach(files, named)
 	var why []string
 	for _, r := range in.Reads {
-		if !files[r] {
-			why = append(why, fmt.Sprintf("the row says make %s reads %s, and nothing make %s makes depends on it", in.Target, r, in.Target))
+		if extract.IsDirRead(r) {
+			// a directory the recipes work on bare: cd into it, a glob
+			// in it, the directory as an argument
+			if !extract.NamesBareDir(reach.text, strings.TrimSuffix(r, "/")) {
+				why = append(why, fmt.Sprintf("the row says make %s reads %s, and no recipe make %s runs works on that directory itself", in.Target, r, in.Target))
+			}
+			continue
+		}
+		if !reach.names(r) {
+			why = append(why, fmt.Sprintf("the row says make %s reads %s, and nothing make %s makes depends on it or names it", in.Target, r, in.Target))
 		}
 	}
-	if line := goTestWithoutJSON(strings.Join(text, "\n")); line != "" {
-		why = append(why, fmt.Sprintf("make %s runs go test without -json, whose plain output prints nothing for a skipped test, so a skip would read as a pass: %q", in.Target, line))
+	if line := goTestOutsideTheWrapper(strings.Join(text, "\n")); line != "" {
+		why = append(why, fmt.Sprintf("make %s runs go test outside $(GO_TEST), where a skip, a test that did not run or a run of 0 tests can read as a pass: %q", in.Target, line))
 	}
 	return strings.Join(why, "; "), nil
 }
@@ -426,21 +548,22 @@ func (a makeAdapter) database(ctx context.Context) (*makeDB, error) {
 	return db, err
 }
 
-// goTestCommand is go test run as a command: after the start of a line, a
-// space or an operator, and followed by a space or the end (not "go
-// test/conformance", a path).
-var goTestCommand = regexp.MustCompile(`(^|[\s;&|(@])go\s+test(\s|$)`)
+// goTestCommand is go test run as a command, by go, $(GO) or ${GO}: after
+// the start of a line, a space or an operator, and followed by a space or
+// the end (not "go test/conformance", a path).
+var goTestCommand = regexp.MustCompile(`(^|[\s;&|(@])(go|\$\(GO\)|\$\{GO\})\s+test(\s|$)`)
 
-// goTestJSONFlag is -json as a flag of its own, not "-json" inside a path
-// (build/c-json-label-nc/overlay.json) or a file name (x-json.log).
-var goTestJSONFlag = regexp.MustCompile(`(^|\s)--?json(=true)?(\s|$)`)
-
-// goTestWithoutJSON is the first command of recipe text that runs go test
-// without -json, its continuation lines joined, or "".
-func goTestWithoutJSON(recipes string) string {
+// goTestOutsideTheWrapper is the first command of recipe text that runs go
+// test itself, its continuation lines joined, or "". A recipe runs go test
+// through $(GO_TEST) (tools/gotestrun), which runs it as go test -json and
+// reads every event back: a skip, a test that did not run and a run of 0
+// tests fail there. go test run any other way can pass having skipped: its
+// plain output prints nothing for a skipped test, a -json run sent to a
+// file never reaches the log, and nothing counts what ran.
+func goTestOutsideTheWrapper(recipes string) string {
 	joined := strings.ReplaceAll(recipes, "\\\n", " ")
 	for line := range strings.SplitSeq(joined, "\n") {
-		if goTestCommand.MatchString(line) && !goTestJSONFlag.MatchString(line) {
+		if goTestCommand.MatchString(line) {
 			return strings.TrimSpace(line)
 		}
 	}
@@ -464,3 +587,84 @@ func plainGoTest(lines []string) string {
 
 // Serial: a make target takes the checkout (testreg.Serial).
 func (makeAdapter) Serial() bool { return true }
+
+// unreported is the go_tests entries ("./<dir> <Test>") whose test does not
+// report "--- PASS: <name> (" at the top level (a subtest line is indented)
+// of its own package's output in the target's log. gotestrun (every recipe's
+// go test; plain go test output is refused before this) writes each
+// package's output whole, ending in its result line ("ok  \t<import path>"
+// or "FAIL\t<import path>"), so a pass belongs to the package whose result
+// line follows it, and a test of the same name in another package the target
+// runs does not answer for it. A package's import path is the one goImport
+// names for it, or else its module's path (the nearest go.mod, read by
+// read) and its directory below the module.
+func unreported(read func(string) ([]byte, error), lines, entries []string, goImport map[string]string) []string {
+	passed := map[string]bool{}
+	var pending []string
+	for _, l := range lines {
+		if rest, ok := strings.CutPrefix(l, "--- PASS: "); ok {
+			if name, _, ok := strings.Cut(rest, " ("); ok {
+				pending = append(pending, name)
+			}
+			continue
+		}
+		if m := goTestResultLine.FindStringSubmatch(l); m != nil {
+			for _, name := range pending {
+				passed[m[1]+" "+name] = true
+			}
+			pending = nil
+		}
+	}
+	var missing []string
+	for _, g := range entries {
+		dir, name, _ := strings.Cut(g, " ")
+		pkg, err := goImport[dir], error(nil)
+		if pkg == "" {
+			pkg, err = importPath(read, strings.TrimPrefix(dir, "./"))
+		}
+		if err != nil || !passed[pkg+" "+name] {
+			missing = append(missing, g)
+		}
+	}
+	return missing
+}
+
+// goTestResultLine is go test's result line for a package, its import path
+// captured: "ok  \t<path>\t0.1s", "FAIL\t<path>\t0.1s" or "FAIL\t<path>
+// [build failed]". A bare "FAIL" and a test's "--- FAIL:" are not one.
+var goTestResultLine = regexp.MustCompile(`^(?:ok|FAIL)\s+(\S+)`)
+
+// importPath is the import path of the package in dir (a repository path):
+// the module path of the nearest go.mod at or above dir, joined with dir's
+// path below that module.
+func importPath(read func(string) ([]byte, error), dir string) (string, error) {
+	for d := dir; ; d = path.Dir(d) {
+		data, err := read(path.Join(d, "go.mod"))
+		if err == nil {
+			mod := modulePath(data)
+			if mod == "" {
+				return "", fmt.Errorf("%s names no module", path.Join(d, "go.mod"))
+			}
+			if d == dir {
+				return mod, nil
+			}
+			return mod + "/" + strings.TrimPrefix(dir, d+"/"), nil
+		}
+		if !errors.Is(err, fs.ErrNotExist) {
+			return "", err
+		}
+		if d == "." {
+			return "", fmt.Errorf("no go.mod at or above %s", dir)
+		}
+	}
+}
+
+// modulePath is the path of a go.mod's module directive, or "".
+func modulePath(gomod []byte) string {
+	for l := range strings.Lines(string(gomod)) {
+		if rest, ok := strings.CutPrefix(strings.TrimSpace(l), "module"); ok && rest != "" && (rest[0] == ' ' || rest[0] == '\t') {
+			return strings.Trim(strings.TrimSpace(rest), `"`)
+		}
+	}
+	return ""
+}

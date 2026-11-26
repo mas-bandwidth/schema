@@ -127,10 +127,10 @@ fn other_required_widen_ladder_cases() {
     };
     let mut image = [0u8; 4];
     let mut report = TableFixedReport::default();
-    table_fixed_run(&[entry], &[], &[], &[0xFF], &mut image, &mut report);
+    let ran = table_fixed_run(&[entry], &[], &[], &[0xFF], &mut image, &mut report);
     check(
-        report.widened == 1 && !report.damaged && !report.refused,
-        "a single widen op moves widened == 1 and no flag",
+        ran && report.widened == 1 && !report.refused,
+        "a single widen op runs whole and moves widened == 1",
     );
 
     let failures = FAILURES.load(Ordering::Relaxed);

@@ -85,7 +85,8 @@ static SCHEMA_UNUSED int bench_table_json_format_g( char * text, size_t size, in
 {
     return _snprintf_l( text, size, "%.*g", bench_table_json_c_locale(), digits, value );
 }
-#else
+#endif
+#if !( defined( _WIN32 ) )
 static SCHEMA_UNUSED locale_t bench_table_json_c_locale( void )
 {
     static locale_t c = (locale_t) 0;
@@ -1217,7 +1218,8 @@ static SCHEMA_UNUSED int bench_table_json_write_map( bench_table_json_out_t * ou
 #endif
 #ifdef SCHEMA_BENCH_TABLE_GRAPH_RUNTIME
 static SCHEMA_UNUSED int bench_table_json_write_pointer( bench_table_json_out_t * out, const void * slot, const bench_table_field_info_t * f, int32_t depth );
-#else
+#endif
+#if !( defined( SCHEMA_BENCH_TABLE_GRAPH_RUNTIME ) )
 static SCHEMA_UNUSED int bench_table_json_write_pointer( bench_table_json_out_t * out, const void * slot, const bench_table_field_info_t * f, int32_t depth )
 {
     (void) out;
@@ -2362,7 +2364,8 @@ static SCHEMA_UNUSED int64_t bench_table_json_token_integer( const char * token,
 static SCHEMA_UNUSED int bench_table_json_read_pointer( bench_table_json_in_t * in, void * slot, const bench_table_field_info_t * f, int32_t depth );
 static SCHEMA_UNUSED int bench_table_json_skipped_ampersand( bench_table_json_in_t * in, const char * key, char close, uint64_t * opened );
 static SCHEMA_UNUSED void bench_table_json_skipped_close( bench_table_json_in_t * in, uint64_t label );
-#else
+#endif
+#if !( defined( SCHEMA_BENCH_TABLE_GRAPH_RUNTIME ) )
 static SCHEMA_UNUSED int bench_table_json_read_pointer( bench_table_json_in_t * in, void * slot, const bench_table_field_info_t * f, int32_t depth )
 {
     (void) slot;
@@ -3324,9 +3327,11 @@ static SCHEMA_UNUSED int schema_bench_table_json_text_total_keep_( bench_table_j
 #ifndef SCHEMA_BENCH_JSON_NOINLINE
 #if defined( __GNUC__ ) || defined( __clang__ )
 #define SCHEMA_BENCH_JSON_NOINLINE __attribute__( ( noinline ) )
-#elif defined( _MSC_VER )
+#endif
+#if !( defined( __GNUC__ ) || defined( __clang__ ) ) && ( defined( _MSC_VER ) )
 #define SCHEMA_BENCH_JSON_NOINLINE __declspec( noinline )
-#else
+#endif
+#if !( defined( __GNUC__ ) || defined( __clang__ ) ) && !( defined( _MSC_VER ) )
 #define SCHEMA_BENCH_JSON_NOINLINE
 #endif
 #endif

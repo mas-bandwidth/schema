@@ -8,6 +8,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/irtest"
@@ -266,80 +267,82 @@ func generateJavaUnit(paths []string) (*ir.Unit, map[string][]byte, error) {
 // and so does one that names a new platform type until the corpus carries it.
 func TestJavaNamesNoPlatformTypeUnqualified(t *testing.T) {
 	t.Parallel()
-	lang := javaLangTypes(t)
-	use := &javaPlatformUse{qualified: map[string]bool{}}
-	units := javaPlatformUnits(t)
-	labels := slices.Sorted(func(yield func(string) bool) {
-		for k := range units {
-			if !yield(k) {
-				return
+	t.Run("java-lang.txt", func(t *testing.T) {
+		lang := javaLangTypes(t)
+		use := &javaPlatformUse{qualified: map[string]bool{}}
+		units := javaPlatformUnits(t)
+		labels := slices.Sorted(func(yield func(string) bool) {
+			for k := range units {
+				if !yield(k) {
+					return
+				}
 			}
-		}
-	})
-	scanned := 0
-	for _, label := range labels {
-		u, files, err := generateJavaUnit(units[label])
-		if err != nil {
-			if label == "nested" || label == "siblings" || label == "bench" || label == "examples" {
-				t.Errorf("%s: %v", label, err)
+		})
+		scanned := 0
+		for _, label := range labels {
+			u, files, err := generateJavaUnit(units[label])
+			if err != nil {
+				if label == "nested" || label == "siblings" || label == "bench" || label == "examples" {
+					t.Errorf("%s: %v", label, err)
+					continue
+				}
+				t.Logf("%s: java does not generate the unit (%v); not scanned", label, err)
 				continue
 			}
-			t.Logf("%s: java does not generate the unit (%v); not scanned", label, err)
-			continue
+			scanned++
+			own := javaOwnNames(u)
+			for _, name := range slices.Sorted(func(yield func(string) bool) {
+				for k := range files {
+					if !yield(k) {
+						return
+					}
+				}
+			}) {
+				if strings.HasSuffix(name, ".java") {
+					scanJavaPlatform(label+"/"+name, string(files[name]), lang, own, use)
+				}
+			}
 		}
-		scanned++
-		own := javaOwnNames(u)
+		if scanned < 10 {
+			t.Fatalf("the scan read %d units; the corpora are not where the test looks", scanned)
+		}
+		for _, b := range use.bare {
+			t.Errorf("%s — generated Java names a platform type by its simple name or an import; spell it from the package root (java.lang.X)", b)
+		}
+		siblings := map[string]bool{}
+		for _, p := range javaSiblingPaths(t) {
+			siblings[strings.TrimSuffix(filepath.Base(p), ".schema")] = true
+		}
+		nestedPaths, err := GatherPaths([]string{filepath.Join(javaPlatformDir, "nested")})
+		if err != nil {
+			t.Fatal(err)
+		}
+		nestedU, err := New().Load(nestedPaths)
+		if err != nil {
+			t.Fatal(err)
+		}
+		nested := javaOwnNames(nestedU)
 		for _, name := range slices.Sorted(func(yield func(string) bool) {
-			for k := range files {
+			for k := range use.qualified {
 				if !yield(k) {
 					return
 				}
 			}
 		}) {
-			if strings.HasSuffix(name, ".java") {
-				scanJavaPlatform(label+"/"+name, string(files[name]), lang, own, use)
+			// a name the checker refuses (a C header basename, a Dart reserved
+			// word) is no legal schema name, so no fixture can carry it: the
+			// probe proves the refusal, and a fixture is owed for every other
+			if !siblings[name] && javaProbeLoads(t, name+".schema", "type ProbeEntry { v uint8 }\n") {
+				t.Errorf("generated Java names the platform type %s, a legal schema basename, and %s/siblings has no %s.schema to shadow it", name, javaPlatformDir, name)
+			}
+			if !nested[name] && javaProbeLoads(t, "Probe.schema", "type "+name+" { v uint8 }\n") {
+				t.Errorf("generated Java names the platform type %s, a legal schema type name, and %s/nested declares no type %s to shadow it", name, javaPlatformDir, name)
 			}
 		}
-	}
-	if scanned < 10 {
-		t.Fatalf("the scan read %d units; the corpora are not where the test looks", scanned)
-	}
-	for _, b := range use.bare {
-		t.Errorf("%s — generated Java names a platform type by its simple name or an import; spell it from the package root (java.lang.X)", b)
-	}
-	siblings := map[string]bool{}
-	for _, p := range javaSiblingPaths(t) {
-		siblings[strings.TrimSuffix(filepath.Base(p), ".schema")] = true
-	}
-	nestedPaths, err := GatherPaths([]string{filepath.Join(javaPlatformDir, "nested")})
-	if err != nil {
-		t.Fatal(err)
-	}
-	nestedU, err := New().Load(nestedPaths)
-	if err != nil {
-		t.Fatal(err)
-	}
-	nested := javaOwnNames(nestedU)
-	for _, name := range slices.Sorted(func(yield func(string) bool) {
-		for k := range use.qualified {
-			if !yield(k) {
-				return
-			}
+		if len(use.qualified) < 20 {
+			t.Errorf("the scan met %d platform types spelled in full; the emitters name more than that", len(use.qualified))
 		}
-	}) {
-		// a name the checker refuses (a C header basename, a Dart reserved
-		// word) is no legal schema name, so no fixture can carry it: the
-		// probe proves the refusal, and a fixture is owed for every other
-		if !siblings[name] && javaProbeLoads(t, name+".schema", "type ProbeEntry { v uint8 }\n") {
-			t.Errorf("generated Java names the platform type %s, a legal schema basename, and %s/siblings has no %s.schema to shadow it", name, javaPlatformDir, name)
-		}
-		if !nested[name] && javaProbeLoads(t, "Probe.schema", "type "+name+" { v uint8 }\n") {
-			t.Errorf("generated Java names the platform type %s, a legal schema type name, and %s/nested declares no type %s to shadow it", name, javaPlatformDir, name)
-		}
-	}
-	if len(use.qualified) < 20 {
-		t.Errorf("the scan met %d platform types spelled in full; the emitters name more than that", len(use.qualified))
-	}
+	})
 }
 
 // The scan is not vacuous: a bare platform name, an import, and a qualified
@@ -418,19 +421,23 @@ func TestJavaRefusesAClassNameJavacCannotTake(t *testing.T) {
 		t.Errorf("%s/refused holds %d files, the table names %d", javaPlatformDir, len(paths), len(javaClassNamesRefused))
 	}
 	for _, p := range paths {
-		want, ok := javaClassNamesRefused[filepath.Base(p)]
-		if !ok {
-			t.Errorf("%s: no expected refusal in javaClassNamesRefused", p)
-			continue
-		}
-		_, _, err := generateJavaUnit([]string{p})
-		if err == nil || !strings.Contains(err.Error(), want) {
-			t.Errorf("%s: want the refusal %q, got %v", p, want, err)
-		}
+		t.Run(filepath.Base(p), func(t *testing.T) {
+			want, ok := javaClassNamesRefused[filepath.Base(p)]
+			if !ok {
+				t.Errorf("%s: no expected refusal in javaClassNamesRefused", p)
+				return
+			}
+			_, _, err := generateJavaUnit([]string{p})
+			if err == nil || !strings.Contains(err.Error(), want) {
+				t.Errorf("%s: want the refusal %q, got %v", p, want, err)
+			}
+		})
 	}
-	if _, _, err := generateJavaUnit([]string{filepath.Join(javaPlatformDir, "accepted")}); err != nil {
-		t.Errorf("accepted/ (the control): %v", err)
-	}
+	t.Run("Game.schema", func(t *testing.T) {
+		if _, _, err := generateJavaUnit([]string{filepath.Join(javaPlatformDir, "accepted")}); err != nil {
+			t.Errorf("accepted/ (the control): %v", err)
+		}
+	})
 }
 
 // The Java emitter's own guard for a type named java or permits holds behind
@@ -464,8 +471,33 @@ func TestJavaRefusesATypeNameBehindTheChecker(t *testing.T) {
 // those names (package javaplatform); and the ordinary control of refused/
 // (accepted/, package demo). Each unit carries the 128-bit helpers, floats,
 // bytes, flags and tables, so every emitted support file and table runtime is
-// compiled with the shadowing classes in its package.
+// compiled with the shadowing classes in its package. One process compiles
+// once. Each file's subtest reports that result, so the row fails by its name.
 func TestJavaUnitsNamedLikePlatformTypesCompile(t *testing.T) {
+	t.Parallel()
+	var once sync.Once
+	var failed bool
+	run := func(t *testing.T) {
+		t.Helper()
+		once.Do(func() {
+			defer func() {
+				if t.Failed() {
+					failed = true
+				}
+			}()
+			compileJavaUnitsNamedLikePlatformTypes(t)
+		})
+		if failed && !t.Failed() {
+			t.Error("the platform-types compile failed")
+		}
+	}
+	t.Run("Wire.schema", func(t *testing.T) { run(t) })
+	for _, p := range javaSiblingPaths(t) {
+		t.Run(filepath.Base(p), func(t *testing.T) { run(t) })
+	}
+}
+
+func compileJavaUnitsNamedLikePlatformTypes(t *testing.T) {
 	javac := os.Getenv("JAVAC")
 	if javac == "" {
 		p, err := exec.LookPath("javac")
@@ -474,7 +506,6 @@ func TestJavaUnitsNamedLikePlatformTypesCompile(t *testing.T) {
 		}
 		javac = p
 	}
-	t.Parallel()
 	dir := t.TempDir()
 	var sources []string
 	for _, unit := range []struct {

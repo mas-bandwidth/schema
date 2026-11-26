@@ -20,34 +20,35 @@ import (
 const retiredPath = "test/registry/retired.tsv"
 
 // perPRWorkflows ran their checks on every pull request, by workflow, or by
-// workflow:job where only that job did (roadmap.yml's page job ran nightly). A check one of
-// them ran is still run per PR only by a row of the pr group, or by a row a
-// kept per-PR workflow runs by name (roadmap.yml's commit-range row): a row
-// of tier nightly alone moved the check to the night, which is a coverage
-// drop like any other.
+// workflow:job where only that job did (roadmap.yml's page job ran nightly).
+// Since Glenn's ruling of 2026-11-25 (the pr group is one compile row and one
+// happy-path row per language; everything else runs nightly), a check one of
+// them ran is run by the nightly group like every other, or by a row a kept
+// per-PR workflow runs by name (roadmap.yml's commit-range row).
 var perPRWorkflows = map[string]bool{"ci-fast.yml": true, "caa-self-test.yml": true, "roadmap.yml:roadmap": true}
 
 // checkRetired names every retired check the registry does not run: a row
 // removed, a language's gate dropped from a per-language row, a target
-// renamed, a Go test's row gone, a per-PR check whose row runs only at night,
-// or no row yet. That is a coverage drop, red by the line of retired.tsv that
-// names it. namedPerPR is the instances a kept per-PR workflow runs by name.
+// renamed, a Go test's row gone, a check whose row no workflow runs (outside
+// the nightly group, and run by name by no per-PR workflow), or no row yet.
+// That is a coverage drop, red by the line of retired.tsv that names it.
+// namedPerPR is the instances a kept per-PR workflow runs by name.
 func checkRetired(reg *testreg.Registry, data []byte, namedPerPR map[string]bool) []string {
-	// inPR: the pr group runs row t in lang: its instance is one the
-	// group's own query selects, the list ci-fast.yml's shards run
-	prRuns := map[string]bool{}
+	// inNight: the nightly group runs row t in lang: its instance is one the
+	// group's own query selects, the list schema-nightly.yml runs
+	nightRuns := map[string]bool{}
 	var problems []string
-	if g, ok := reg.Group("pr"); !ok {
-		problems = append(problems, "the registry has no group pr: no retired per-PR check can be run per PR")
+	if g, ok := reg.Group("nightly"); !ok {
+		problems = append(problems, "the registry has no group nightly: no retired check is run")
 	} else if sel, err := reg.Select(g.Query()); err != nil {
-		problems = append(problems, fmt.Sprintf("group pr: %v", err))
+		problems = append(problems, fmt.Sprintf("group nightly: %v", err))
 	} else {
 		for _, inst := range sel.Instances {
-			prRuns[inst.Full] = true
+			nightRuns[inst.Full] = true
 		}
 	}
-	inPR := func(t testreg.Test, lang string) bool {
-		return prRuns[lang+"."+t.Tier+"."+t.Key]
+	inNight := func(t testreg.Test, lang string) bool {
+		return nightRuns[lang+"."+t.TierIn(lang)+"."+t.Key]
 	}
 	byKey := map[string]testreg.Test{}
 	for _, t := range reg.Tests {
@@ -86,8 +87,8 @@ func checkRetired(reg *testreg.Registry, data []byte, namedPerPR map[string]bool
 		} else {
 			why = runsTarget(t, lang, check)
 		}
-		if why == "" && (perPRWorkflows[wf] || perPRWorkflows[wf+":"+job]) && !inPR(t, rowLang(t, lang)) && !namedPerPR[rowLang(t, lang)+"."+t.Tier+"."+key] {
-			why = fmt.Sprintf("is tier %s in %s, outside the pr group, and no per-PR workflow runs it by name: a per-PR check moved to the night", t.Tier, rowLang(t, lang))
+		if why == "" && !inNight(t, rowLang(t, lang)) && !namedPerPR[rowLang(t, lang)+"."+t.TierIn(rowLang(t, lang))+"."+key] {
+			why = fmt.Sprintf("is tier %s in %s, outside the nightly group, and no per-PR workflow runs it by name: a check no workflow runs", t.TierIn(rowLang(t, lang)), rowLang(t, lang))
 		}
 		if why != "" {
 			problems = append(problems, fmt.Sprintf("%s: %s %s ran %s, and row %s %s: a retired check the registry does not run", at, wf, job, check, key, why))

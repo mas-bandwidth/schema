@@ -52,6 +52,22 @@ func TestFixedLoadCapacities(t *testing.T) {
             var observed string
             switch row[1] {
             case "load":
+                // THE CAPACITY OMITTED is Go's one-record verb, BatchLoad: the
+                // read hands the fixed reader room for exactly one record, the
+                // default every leg's omitted-capacity load takes.
+                if row[2] == "omitted" {
+                    var one Batch
+                    var report TableReport
+                    if !BatchLoad(&one, wire, &report) {
+                        observed = report.Reason
+                        break
+                    }
+                    observed = "read:1"
+                    if one.A != 7 || string(one.Name[:one.NameLength]) != "hello" || report.Err() != nil {
+                        t.Fatalf("decoded one record, report %%+v, value %%+v", report, one)
+                    }
+                    break
+                }
                 capacity, err := strconv.Atoi(row[2])
                 if err != nil { t.Fatal(err) }
                 values := make([]Batch, capacity)

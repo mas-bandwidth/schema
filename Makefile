@@ -143,8 +143,17 @@ all: bin/schema
 VERSION ?= $(shell git describe --tags --match 'v[0-9]*' --dirty 2>/dev/null)
 LDFLAGS := $(if $(VERSION),-X github.com/mas-bandwidth/schema/v2/internal/version.version=$(VERSION),)
 
+# SHARED BUILD PRODUCTS ARE WRITTEN ATOMICALLY: bin/schema,
+# build/schema_test_fixedform_dump, build/fixedform-corpus and
+# build/conformance-c are built under a name of the build's own (the shell's
+# pid) and renamed into place. Two runs in one checkout that both make one
+# (schema-test runs side by side, say) then never write a binary another is
+# executing ("Text file busy") and never hand a reader a half-written file:
+# rename replaces the name whole, and a process already running the old
+# binary keeps its inode. TestSharedBuildProductsAreWrittenAtomically
+# (internal/ci) holds these recipes to it.
 bin/schema: $(GO_SOURCES) $(EMBED_SOURCES)
-	go build -ldflags "$(LDFLAGS)" -o $@ ./cmd/schema
+	go build -ldflags "$(LDFLAGS)" -o $@.tmp.$$$$ ./cmd/schema && mv -f $@.tmp.$$$$ $@ || { rm -f $@.tmp.$$$$; exit 1; }
 
 # tools/mustrun is the wrapper a language harness runs under: it fails on a
 # non-zero exit, on a harness that printed no "ran N, failed M" line, on zero
@@ -162,7 +171,10 @@ build/mustrun: $(wildcard tools/mustrun/*.go)
 # wants red, is $(GO_TEST_RED): red only when a test FAILED and none skipped,
 # so a skip or a build that broke is no red the control can take for its
 # sabotage caught. tools/schema-test's make adapter refuses a recipe that runs
-# go test without -json.
+# go test without -json. With SCHEMA_GOTEST_JSON set (tools/schema-test's
+# make-gotest adapter sets it), $(GO_TEST) also appends its go test -json
+# events to that file, so each Go test the target runs is a registry row
+# with its own verdict, read by name; $(GO_TEST_RED) writes none.
 GO_TEST = $(CURDIR)/tools/gotestrun/gotest
 GO_TEST_RED = $(CURDIR)/tools/gotestrun/gotest -red
 
@@ -559,6 +571,16 @@ tables_zero_cost_scan = for u in $(TABLES_ZERO_COST_UNITS); do \
 		for f in $(1)/$$u/*Table.h; do \
 			if ! test -f "$$f" || ! test -r "$$f"; then \
 				echo "ZERO-COST GATE FAILED: registered unit $$u has no readable header: $$f"; exit 1; \
+			fi; \
+			if $(call tables_zero_cost_leaks,$$f); then \
+				grep -nE "$(TABLES_ZERO_COST_SYMBOLS)" $$f | grep -vE "$(TABLES_ZERO_COST_ALLOWED)"; \
+				echo "ZERO-COST GATE FAILED: pointer, map or list machinery leaked into $$f"; exit 1; \
+			fi; \
+		done; \
+		for f in $(1)/$$u/*TableData.h; do \
+			test -e "$$f" || continue; \
+			if ! test -r "$$f"; then \
+				echo "ZERO-COST GATE FAILED: unit $$u has an unreadable data header: $$f"; exit 1; \
 			fi; \
 			if $(call tables_zero_cost_leaks,$$f); then \
 				grep -nE "$(TABLES_ZERO_COST_SYMBOLS)" $$f | grep -vE "$(TABLES_ZERO_COST_ALLOWED)"; \
@@ -1909,7 +1931,7 @@ tables-block-zero-cost-negative-control: build/tables-generated/.stamp
 		>> build/zero-cost-leak/pointers/GraphTable.h
 	@grep -q "PLANTED: a block spelling" build/zero-cost-leak/pointers/GraphTable.h || \
 		{ echo "NEGATIVE CONTROL FAILED: the plant did not apply"; exit 1; }
-	@if $(call tables_byte_identical,cpp,build/tables-generated,build/zero-cost-leak,-name '*Table.h' -o -name '*Table.cpp',100); then \
+	@if $(call tables_byte_identical,cpp,build/tables-generated,build/zero-cost-leak,-name '*Table.h' -o -name '*TableData.h' -o -name '*Table.cpp',100); then \
 		echo "NEGATIVE CONTROL FAILED: a planted block symbol left the byte comparison green"; exit 1; \
 	fi
 	@echo "negative control: a moved Table source turns the block-less comparison RED"
@@ -5039,7 +5061,7 @@ update-goldens-steps: packet-defaults-goldens conformance-pin
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_retain
 	@for d in examples pointers block blockhome messages stream blobs scalars maps lists arms; do \
 		mkdir -p testdata/golden/tables/$$d; \
-		for f in build/tables-generated/$$d/*Table.h build/tables-generated/$$d/*Table.cpp; do [ ! -e "$$f" ] || cp "$$f" testdata/golden/tables/$$d/ || exit 1; done; \
+		for f in build/tables-generated/$$d/*Table.h build/tables-generated/$$d/*TableData.h build/tables-generated/$$d/*Table.cpp; do [ ! -e "$$f" ] || cp "$$f" testdata/golden/tables/$$d/ || exit 1; done; \
 	done
 	# every leg's committed table goldens (make/<lang>.mk, GOLDENS_LEGS)
 	@set -e; for leg in $(GOLDENS_LEGS); do $(MAKE) $$leg; done
@@ -5769,7 +5791,7 @@ tables-cpp-names-negative-control:
 # A 2 GiB input and a ~2.8 GiB output under Clang UBSan cost about twenty
 # seconds and do not fit the owner's two-minute per-commit rule, which is why
 # the test gates itself on SCHEMA_CERTIFY_INT32_MAX and this target sets it.
-CPP_RELEASE_JOBS ?= $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
+CPP_RELEASE_JOBS ?= $(shell nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 .PHONY: tables-cpp-release
 tables-cpp-release:
 	$(MAKE) -j$(CPP_RELEASE_JOBS) $(CPP_RELEASE_DIR)/tables $(CPP_RELEASE_DIR)/maps $(CPP_RELEASE_DIR)/lists \
@@ -7264,26 +7286,61 @@ build/schema_test_fixedform_dump: build/tables-generated/.stamp test/tables/fixe
 	    -Ibuild/tables-generated/examples \
 	    -Ibuild/tables-generated/vnum \
 	    $(VLISTS_INCLUDES) \
-	    -I$(SERIALIZE_RUNTIME) test/tables/fixedform_dump.cpp -o $@
+	    -I$(SERIALIZE_RUNTIME) test/tables/fixedform_dump.cpp -o $@.tmp.$$$$ && mv -f $@.tmp.$$$$ $@ || { rm -f $@.tmp.$$$$; exit 1; }
 
-# The corpus is written beside the live one and swapped in whole, so a reader
-# never sees a directory that is half written.
-build/fixedform-corpus/.stamp: build/schema_test_fixedform_dump test/tables/fnz/negative_zero.bin test/tables/fnz/negative_zero_control.bin
-	@rm -rf build/fixedform-corpus.next
-	@mkdir -p build/fixedform-corpus.next
-	./build/schema_test_fixedform_dump build/fixedform-corpus.next
+# The corpus is written beside the live one, under a name of this build's own
+# (the shell's pid: two builds side by side never write into one directory),
+# and swapped in whole, so a reader never sees a directory that is half
+# written. A directory cannot be renamed over a full one, so the swap is two
+# renames (the live one aside, the new one in) with nothing written between;
+# the old one is removed after. A reader that looks in that moment finds no
+# corpus and fails by name, never a half-written one; a run builds the
+# corpus once before its rows (a prepare step), so its rows do not rebuild
+# it. Every rename is rename(2) itself (CORPUS_RENAME), never mv: the live
+# corpus another build already moved aside is no error (ENOENT), and when
+# another build put its corpus in first, mv would move this one INSIDE it,
+# where rename refuses. .stamp holds the cksum of the dump and its inputs,
+# taken before the dump ran: this build keeps another's corpus only when
+# that record is its own, and otherwise sets it aside and tries once more.
+# A failure puts the live corpus back (by rename, never into another's).
+# What a killed build left beside the corpus (over an hour old) is removed.
 # ---- rowan/corpus-manifest ----
 # THE MANIFEST IS PART OF THIS TARGET'S OUTPUT (docs/FIXED-FORM-ALGORITHM.md
 # §5.7 step 1, ruling #32): the dump writes it from the same values it writes
 # into the bytes, and a corpus without it is a corpus a port has to read the
-# emitter to use. Nothing under build/ is committed; the line below only refuses
-# to call the corpus finished when the manifest did not arrive.
-	@test -s build/fixedform-corpus.next/manifest.txt || { echo "corpus: manifest.txt missing" >&2; exit 1; }
-	@touch build/fixedform-corpus.next/.stamp
-	@rm -rf build/fixedform-corpus.prev
-	@if test -d build/fixedform-corpus; then mv build/fixedform-corpus build/fixedform-corpus.prev; fi
-	@mv build/fixedform-corpus.next build/fixedform-corpus
-	@rm -rf build/fixedform-corpus.prev
+# emitter to use. Nothing under build/ is committed; the test -s below only
+# refuses to call the corpus finished when the manifest did not arrive.
+#
+# CORPUS_RENAME FROM TO CODE ERRNO...: rename(2) FROM onto TO; a failure
+# with one of the ERRNO names exits CODE (0: no error), any other dies
+# naming both paths and the error.
+CORPUS_RENAME = perl -e 'my ($$f, $$t, $$code, @ok) = @ARGV; exit 0 if rename($$f, $$t); for my $$e (@ok) { exit $$code if $$!{$$e} } die "rename $$f -> $$t: $$!\n"'
+build/fixedform-corpus/.stamp: build/schema_test_fixedform_dump test/tables/fnz/negative_zero.bin test/tables/fnz/negative_zero_control.bin
+	@next=build/fixedform-corpus.next.$$$$; prev=build/fixedform-corpus.prev.$$$$; live=build/fixedform-corpus; \
+	fail() { rm -rf $$next; lost=; \
+	  for p in $$prev.2 $$prev.1; do \
+	    if test -d $$p; then \
+	      if test ! -e $$live; then $(CORPUS_RENAME) $$p $$live 0 ENOTEMPTY EEXIST || { lost="$$lost (and $$p could not be put back as $$live: it is left where it is)"; continue; }; fi; \
+	      rm -rf $$p; \
+	    fi; \
+	  done; \
+	  echo "corpus: $$1$$lost" >&2; exit 1; }; \
+	find build -mindepth 1 -maxdepth 1 -name 'fixedform-corpus.*.*' -mmin +60 -exec rm -rf {} + || fail "cannot sweep what killed builds left"; \
+	sum=$$(cksum build/schema_test_fixedform_dump test/tables/fnz/negative_zero.bin test/tables/fnz/negative_zero_control.bin) || fail "cannot read the dump's inputs"; \
+	{ rm -rf $$next && mkdir -p $$next; } || fail "cannot make $$next"; \
+	echo "./build/schema_test_fixedform_dump $$next"; \
+	./build/schema_test_fixedform_dump $$next || fail "the dump failed"; \
+	test -s $$next/manifest.txt || fail "manifest.txt missing"; \
+	printf '%s\n' "$$sum" > $$next/.stamp || fail "cannot write $$next/.stamp"; \
+	for try in 1 2; do \
+	  $(CORPUS_RENAME) $$live $$prev.$$try 0 ENOENT || fail "cannot set $$live aside"; \
+	  $(CORPUS_RENAME) $$next $$live 3 ENOTEMPTY EEXIST; rc=$$?; \
+	  if test $$rc = 0; then break; fi; \
+	  test $$rc = 3 || fail "cannot put $$next in as $$live"; \
+	  if test -f $$live/.stamp && test "$$(cat $$live/.stamp)" = "$$sum"; then rm -rf $$next; break; fi; \
+	  test $$try = 1 || fail "another build twice put in a corpus of other inputs"; \
+	done; \
+	rm -rf $$prev.1 $$prev.2
 
 tables-fixedform-corpus: build/fixedform-corpus/.stamp
 	@echo "fixed form: the C++ reference's byte oracle is in build/fixedform-corpus"
@@ -7763,7 +7820,7 @@ release-binaries:
 # runtime, the sibling $(SERIALIZE) or else the pinned one fetched into build/.
 RELEASE_DIFFERENTIAL_PREV ?=
 RELEASE_DIFFERENTIAL_FLAGS ?=
-RELEASE_DIFFERENTIAL_JOBS ?= $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)
+RELEASE_DIFFERENTIAL_JOBS ?= $(shell nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 # THE JUDGE CORPUS (tools/releasediff/testdata/judge-corpus): committed cases,
 # each two listings of what the packet drivers wrote and the verdict the
 # release owes on them, replayed through the differential's own Judge. The
@@ -8191,7 +8248,7 @@ pins-source-cpp: bin/schema
 	$(call pins_generate_dirs,PINS_CPP_GENERATE,$(PINS_SOURCE_CPP_DIRS),cpp-source)
 	@for d in $(PINS_SOURCE_CPP_DIRS); do \
 		mkdir -p testdata/golden/tables/$$d; \
-		for f in build/tables-generated/$$d/*Table.h build/tables-generated/$$d/*Table.cpp; do [ ! -e "$$f" ] || cp "$$f" testdata/golden/tables/$$d/ || exit 1; done; \
+		for f in build/tables-generated/$$d/*Table.h build/tables-generated/$$d/*TableData.h build/tables-generated/$$d/*Table.cpp; do [ ! -e "$$f" ] || cp "$$f" testdata/golden/tables/$$d/ || exit 1; done; \
 	done
 
 .PHONY: pins-source-c
@@ -8201,7 +8258,7 @@ pins-source-c: bin/schema
 	$(call pins_generate_dirs,PINS_C_GENERATE,$(PINS_SOURCE_C_DIRS),c-source)
 	@for d in $(PINS_SOURCE_C_DIRS); do \
 		mkdir -p testdata/golden/tables/$$d-c; \
-		cp build/tables-generated-c/$$d/*Table.h build/tables-generated-c/$$d/*Table.c build/tables-generated-c/$$d/*View.h build/tables-generated-c/$$d/*View.c testdata/golden/tables/$$d-c/; \
+		cp build/tables-generated-c/$$d/*Table.h $$(find build/tables-generated-c/$$d -maxdepth 1 -name '*TableData.h') build/tables-generated-c/$$d/*Table.c build/tables-generated-c/$$d/*View.h build/tables-generated-c/$$d/*View.c testdata/golden/tables/$$d-c/; \
 	done
 
 .PHONY: pins-source-cs
@@ -8477,6 +8534,7 @@ endef
 
 define tables_zero_cost_symbol_grep
 	@for f in $(1); do \
+		if ! test -r "$$f"; then echo "BLOCK ZERO-COST GATE FAILED: no readable file $$f"; exit 1; fi; \
 		if sed -E 's://.*$$::' $$f | grep -nE "TableBlock|[A-Za-z0-9_]Block"; then \
 			echo "BLOCK ZERO-COST GATE FAILED: the block form leaked into $$f"; exit 1; \
 		fi; \
@@ -8514,9 +8572,9 @@ tables-block-zero-cost-cpp: bin/schema $(BLOCKLESS_SCHEMA)
 	@mkdir -p $(BLOCKFUL_ROOT)/cpp $(BLOCKLESS_ROOT)/cpp
 	@$(call tables_run_arm,ZERO_COST_CPP_BLOCKFUL,cpp blockful)
 	@$(call tables_run_arm,ZERO_COST_CPP_BLOCKLESS,cpp blockless)
-	@$(call tables_zero_cost_symbol_grep,$(BLOCKFUL_ROOT)/cpp/*/*Table.h $(BLOCKFUL_ROOT)/cpp/*/*Table.cpp)
+	@$(call tables_zero_cost_symbol_grep,$(BLOCKFUL_ROOT)/cpp/*/*Table.h $(BLOCKFUL_ROOT)/cpp/*/*TableData.h $(BLOCKFUL_ROOT)/cpp/*/*Table.cpp)
 	@$(call tables_zero_cost_no_block_files,$(BLOCKLESS_ROOT)/cpp)
-	@$(call tables_byte_identical,cpp,$(BLOCKFUL_ROOT)/cpp,$(BLOCKLESS_ROOT)/cpp,-name '*Table.h' -o -name '*Table.cpp',100)
+	@$(call tables_byte_identical,cpp,$(BLOCKFUL_ROOT)/cpp,$(BLOCKLESS_ROOT)/cpp,-name '*Table.h' -o -name '*TableData.h' -o -name '*Table.cpp',100)
 
 tables-block-zero-cost-cs: export ZERO_COST_CS_BLOCKFUL = $(call tables_generate_cs,./bin/schema,$(BLOCKFUL_ROOT)/cs)
 tables-block-zero-cost-cs: export ZERO_COST_CS_BLOCKLESS = $(call tables_generate_cs,$(BLOCKLESS_SCHEMA),$(BLOCKLESS_ROOT)/cs)
@@ -8549,14 +8607,14 @@ tables-block-zero-cost-c-heavy: bin/schema $(BLOCKLESS_SCHEMA)
 	@mkdir -p $(BLOCKLESS_ROOT)/c/block $(BLOCKLESS_ROOT)/c/blockhome $(BLOCKLESS_ROOT)/c/messages $(BLOCKLESS_ROOT)/c/examples
 	@$(call tables_run_both_arms,ZERO_COST_C_BLOCKFUL,c,ZERO_COST_C_BLOCKLESS,heavy)
 	@$(call tables_zero_cost_no_block_files,$(BLOCKLESS_ROOT)/c)
-	@$(call tables_byte_identical,c,$(BLOCKFUL_ROOT)/c,$(BLOCKLESS_ROOT)/c,-name '*Table.h' -o -name '*Table.c',2)
+	@$(call tables_byte_identical,c,$(BLOCKFUL_ROOT)/c,$(BLOCKLESS_ROOT)/c,-name '*Table.h' -o -name '*TableData.h' -o -name '*Table.c',2)
 
 tables-block-zero-cost-c-rest: bin/schema $(BLOCKLESS_SCHEMA)
 	@rm -rf $(BLOCKFUL_ROOT)/c $(BLOCKLESS_ROOT)/c
 	@mkdir -p $(BLOCKFUL_ROOT)/c $(BLOCKLESS_ROOT)/c
 	@$(call tables_run_both_arms,ZERO_COST_C_BLOCKFUL,c,ZERO_COST_C_BLOCKLESS,rest)
 	@$(call tables_zero_cost_no_block_files,$(BLOCKLESS_ROOT)/c)
-	@$(call tables_byte_identical,c,$(BLOCKFUL_ROOT)/c,$(BLOCKLESS_ROOT)/c,-name '*Table.h' -o -name '*Table.c',60)
+	@$(call tables_byte_identical,c,$(BLOCKFUL_ROOT)/c,$(BLOCKLESS_ROOT)/c,-name '*Table.h' -o -name '*TableData.h' -o -name '*Table.c',60)
 
 # Serial on purpose: each row deletes the whole C tree, so neither may
 # overlap the other in one workspace, and neither judges what the other left

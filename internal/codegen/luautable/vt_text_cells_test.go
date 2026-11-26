@@ -440,7 +440,8 @@ func TestLuauVtTextCells(t *testing.T) {
 // TestLuauVtTextCellsNegativeControl plants three faults in the real emitted
 // runtime artifacts (schema_json.luau and schema_load.luau) and verifies each
 // turns TestLuauVtTextCells red:
-//  1. disabling the strict refusal loop in J.FromJson lets hostile inputs pass;
+//  1. disabling the strict refusal loop in J.fromJsonWalk, which J.FromJson
+//     reads through, lets hostile inputs pass;
 //  2. capping float32 formatting in J.ToJson at six significant digits breaks
 //     json-write byte equality against the Go engine;
 //  3. dropping duplicate from schema_load.luau's REFUSING set lets a forged

@@ -8,6 +8,7 @@
 package compiler
 
 import (
+	"encoding/json"
 	"fmt"
 	"maps"
 	"os"
@@ -275,6 +276,54 @@ func workflowMakeTargets(workflows []string) []string {
 	return roots
 }
 
+// registryMakeTargets reads every make target a row of the test registry
+// (test/registry/registry.jsonl) runs by name: a make row's inputs.target
+// and a negative control's inputs.make. The registry's one driver
+// (go run ./tools/schema-test) is how CI runs make gates now, by row, so a
+// target a row runs is reached as surely as one a workflow types.
+func registryMakeTargets(text string) ([]string, error) {
+	var roots []string
+	for i, line := range strings.Split(text, "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		var row struct {
+			Rec    string         `json:"rec"`
+			Inputs map[string]any `json:"inputs"`
+		}
+		if err := json.Unmarshal([]byte(line), &row); err != nil {
+			return nil, fmt.Errorf("registry line %d: %w", i+1, err)
+		}
+		if row.Rec != "test" {
+			continue
+		}
+		roots = append(roots, inputTargets(row.Inputs)...)
+	}
+	return roots, nil
+}
+
+// inputTargets is every make target a row's inputs name: the string value
+// of a "target" key, or of a "make" key, at any depth (a control's
+// per-language gates are {"make":{"moo":[{"target":...}]}}).
+func inputTargets(v any) []string {
+	var out []string
+	switch v := v.(type) {
+	case map[string]any:
+		for _, k := range slices.Sorted(maps.Keys(v)) {
+			if s, ok := v[k].(string); ok && (k == "target" || k == "make") {
+				out = append(out, s)
+				continue
+			}
+			out = append(out, inputTargets(v[k])...)
+		}
+	case []any:
+		for _, e := range v {
+			out = append(out, inputTargets(e)...)
+		}
+	}
+	return out
+}
+
 // matrixTarget reads a literal matrix `target:` value: a make target name and
 // nothing else. An expression (`${{ ... }}`) names no target this reader can
 // resolve and is skipped, as is the `pull_request_target:` event key, which
@@ -499,7 +548,11 @@ func readPortingInputs(t *testing.T) (register string, tree portingTree) {
 		}
 		makefiles = append(makefiles, string(b))
 	}
-	tree.exists, tree.reached = makefileReach(makefiles, workflowMakeTargets(workflows))
+	registryRoots, err := registryMakeTargets(read("test/registry/registry.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tree.exists, tree.reached = makefileReach(makefiles, append(workflowMakeTargets(workflows), registryRoots...))
 	if !tree.exists["test"] {
 		t.Fatal("the Makefile parse found no `test` rule")
 	}
@@ -644,6 +697,34 @@ func TestPortingRegisterGateGoesRed(t *testing.T) {
 	}
 	if !exists["tables-zz-orphan"] || reached["tables-zz-orphan"] {
 		t.Error("a target no leg runs counted as reached")
+	}
+}
+
+// TestRegistryRowsAreReachRoots: a registry row runs its make target by name,
+// as a workflow line does, so the porting register counts it reached.
+func TestRegistryRowsAreReachRoots(t *testing.T) {
+	// a registry row runs its target by name, as a workflow line does: a make
+	// row's target and a negative control's make are roots; a lang record, a
+	// Go row and a plant with no make name none
+	roots, err := registryMakeTargets(`{"rec":"lang","name":"go","adapter":"make"}
+{"rec":"test","key":"a","adapter":"make","inputs":{"file":"make/x.mk","target":"tables-zz-orphan"}}
+{"rec":"test","key":"b","adapter":"plant","inputs":{"make":"tables-zz-orphan-negative-control"}}
+{"rec":"test","key":"c","adapter":"gotest","inputs":{"package":"./x","test":"TestX"}}
+{"rec":"test","key":"d","adapter":"plant","inputs":{"credits":"a","delete":["x"]}}
+{"rec":"test","key":"e","inputs":{"make":{"moo":[{"file":"make/m.mk","group":"(excluded)","target":"tables-zz-moo-control"}]}}}
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(roots, []string{"tables-zz-orphan", "tables-zz-orphan-negative-control", "tables-zz-moo-control"}) {
+		t.Errorf("registry roots %q, want a make row's target, a control's make and a language gate's target", roots)
+	}
+	_, reached := makefileReach([]string{"tables-zz-orphan:\n\techo\n"}, roots)
+	if !reached["tables-zz-orphan"] {
+		t.Error("a target a registry row runs counted as unreached")
+	}
+	if _, err := registryMakeTargets("{not json\n"); err == nil {
+		t.Error("a registry line that does not read was skipped")
 	}
 }
 

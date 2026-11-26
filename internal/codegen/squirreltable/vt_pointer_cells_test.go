@@ -584,7 +584,10 @@ func TestSquirrelVtPointerCellsNegativeControl(t *testing.T) {
 
 	t.Run("sabotage-save", func(t *testing.T) {
 		const varAnchor = "  wfixed(w, ids.list.len(), 8);\n"
-		const fixAnchor = "  putFixedU(out, rec, 8, c.lhash);\n"
+		// the save of a fixed root is the generated <Root>FixedSave over a
+		// batch of one (runtime/save.nut, saveFixed); the plant flips a byte of
+		// the layout hash it wrote, so every fixed cell's saved bytes differ
+		const fixAnchor = "  local n = T[c.name + \"FixedSave\"](out, [value]);\n"
 		res := runVtPointerCellsSuite(t, map[string]func(string) string{
 			"schema_table_save.nut": func(src string) string {
 				if strings.Count(src, varAnchor) != 1 {
@@ -594,7 +597,7 @@ func TestSquirrelVtPointerCellsNegativeControl(t *testing.T) {
 					t.Fatalf("save fixAnchor count = %d, want 1", strings.Count(src, fixAnchor))
 				}
 				s := strings.Replace(src, varAnchor, "  wfixed(w, ids.list.len() + 1, 8);\n", 1)
-				return strings.Replace(s, fixAnchor, "  putFixedU(out, rec, 8, c.lhash ^ 1);\n", 1)
+				return strings.Replace(s, fixAnchor, fixAnchor+"  if (n == size) out[8] = out[8] ^ 1;\n", 1)
 			},
 		})
 		for _, cell := range vtPointerCellTable {

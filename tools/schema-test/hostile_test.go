@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/ci/hostilecorpus"
+	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 	"github.com/mas-bandwidth/schema/v2/internal/testreg"
 )
 
@@ -433,6 +434,8 @@ func TestEveryHostileTargetDryRunsWithoutWriting(t *testing.T) {
 		t.Fatal("the registry names no language")
 	}
 	watched, tree := dryRunCopy(t)
+	// make -n reads the copy's make files, which are the checkout's
+	testinputs.Make(t)
 	// the dry run is make's own, not a parent make's jobserver or flags
 	var env []string
 	for _, kv := range os.Environ() {

@@ -6,6 +6,7 @@ import (
 	"go/parser"
 	"go/token"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -53,6 +54,7 @@ func (s *scan) goTests(files []string) {
 			}
 			p.files[f] = rel
 			p.src[rel] = src
+			s.goStrings(d, f)
 			p.build[f] = buildLine(src)
 			for _, decl := range f.Decls {
 				if fn, ok := decl.(*ast.FuncDecl); ok && fn.Recv == nil && fn.Body != nil {
@@ -66,6 +68,7 @@ func (s *scan) goTests(files []string) {
 		}
 		s.goPkgTests(p)
 	}
+	s.goSourceStrings()
 }
 
 func (s *scan) goPkgTests(p *goPkg) {
@@ -205,6 +208,170 @@ func buildLine(src []byte) string {
 		}
 		if c, ok := strings.CutPrefix(t, "//go:build "); ok {
 			return strings.TrimSpace(c)
+		}
+	}
+	return ""
+}
+
+// goStrings records every string literal of a parsed _test.go file under its
+// package's directory, and the packages of this module the file imports.
+func (s *scan) goStrings(dir string, f *ast.File) {
+	if s.res.GoStrings == nil {
+		s.res.GoStrings = map[string]map[string]bool{}
+	}
+	set := s.res.GoStrings[dir]
+	if set == nil {
+		set = map[string]bool{}
+		s.res.GoStrings[dir] = set
+	}
+	addLiterals(set, f)
+	if s.imports == nil {
+		s.imports = map[string]map[string]bool{}
+	}
+	if s.imports[dir] == nil {
+		s.imports[dir] = map[string]bool{}
+	}
+	for _, im := range f.Imports {
+		if v, err := strconv.Unquote(im.Path.Value); err == nil {
+			s.imports[dir][v] = true
+		}
+	}
+}
+
+// addLiterals records f's string literals, and the path each run of
+// string literals side by side in a filepath.Join or path.Join call makes,
+// as one literal: filepath.Join("..", "testdata", "x") names ../testdata/x,
+// and filepath.Join(root, "testdata", "x", name) names testdata/x. The words
+// of such a run are not recorded alone: "testdata" there names no path.
+func addLiterals(set map[string]bool, f *ast.File) {
+	inRun := map[*ast.BasicLit]bool{}
+	ast.Inspect(f, func(n ast.Node) bool {
+		switch n := n.(type) {
+		case *ast.BasicLit:
+			// a literal in a run of a Join is a word of the path the
+			// run makes, not a path of its own
+			if v, ok := stringLit(n); ok && !inRun[n] {
+				set[v] = true
+			}
+		case *ast.CallExpr:
+			paths, lits := literalJoins(n)
+			for _, v := range paths {
+				set[v] = true
+			}
+			for _, l := range lits {
+				inRun[l] = true
+			}
+		}
+		return true
+	})
+}
+
+// stringLit is a string literal's value.
+func stringLit(e ast.Expr) (string, bool) {
+	bl, ok := e.(*ast.BasicLit)
+	if !ok || bl.Kind != token.STRING {
+		return "", false
+	}
+	v, err := strconv.Unquote(bl.Value)
+	return v, err == nil
+}
+
+// literalJoins is the path each run of two or more string literals side
+// by side makes in a filepath.Join or path.Join call, and the literals of
+// those runs.
+func literalJoins(c *ast.CallExpr) ([]string, []*ast.BasicLit) {
+	sel, ok := c.Fun.(*ast.SelectorExpr)
+	if !ok || sel.Sel.Name != "Join" {
+		return nil, nil
+	}
+	if x, ok := sel.X.(*ast.Ident); !ok || x.Name != "filepath" && x.Name != "path" {
+		return nil, nil
+	}
+	var out []string
+	var lits []*ast.BasicLit
+	var run []string
+	var runLits []*ast.BasicLit
+	flush := func() {
+		if len(run) > 1 {
+			out = append(out, path.Join(run...))
+			lits = append(lits, runLits...)
+		}
+		run, runLits = nil, nil
+	}
+	for _, a := range c.Args {
+		if v, ok := stringLit(a); ok {
+			run = append(run, v)
+			runLits = append(runLits, a.(*ast.BasicLit))
+			continue
+		}
+		flush()
+	}
+	flush()
+	return out, lits
+}
+
+// goSourceStrings adds to each test package's strings those of its own
+// non-test files and of the non-test files of every package of this module
+// its tests import: a test that reads its corpus through a helper package
+// (internal/nameemit's corpus directory) names it there.
+func (s *scan) goSourceStrings() {
+	mod := s.modulePath()
+	cache := map[string]map[string]bool{}
+	of := func(dir string) map[string]bool {
+		if got, ok := cache[dir]; ok {
+			return got
+		}
+		set := map[string]bool{}
+		cache[dir] = set
+		ents, err := os.ReadDir(filepath.Join(s.root, filepath.FromSlash(dir)))
+		if err != nil {
+			return set // an import outside this tree (a module of its own) names nothing here
+		}
+		fset := token.NewFileSet()
+		for _, e := range ents {
+			n := e.Name()
+			if e.IsDir() || !strings.HasSuffix(n, ".go") || strings.HasSuffix(n, "_test.go") {
+				continue
+			}
+			rel := path.Join(dir, n)
+			src, err := os.ReadFile(filepath.Join(s.root, filepath.FromSlash(rel)))
+			if err != nil {
+				s.fail(rel, "read: %v", err)
+				continue
+			}
+			f, err := parser.ParseFile(fset, rel, src, parser.SkipObjectResolution)
+			if err != nil {
+				s.fail(rel, "parse: %v", err)
+				continue
+			}
+			addLiterals(set, f)
+		}
+		return set
+	}
+	for dir, set := range s.res.GoStrings {
+		dirs := []string{dir}
+		for im := range s.imports[dir] {
+			if rest, ok := strings.CutPrefix(im, mod+"/"); ok && mod != "" {
+				dirs = append(dirs, rest)
+			}
+		}
+		for _, d := range dirs {
+			for l := range of(d) {
+				set[l] = true
+			}
+		}
+	}
+}
+
+// modulePath is go.mod's module path ("" when it names none).
+func (s *scan) modulePath() string {
+	data, err := os.ReadFile(filepath.Join(s.root, "go.mod"))
+	if err != nil {
+		return ""
+	}
+	for line := range strings.Lines(string(data)) {
+		if m, ok := strings.CutPrefix(strings.TrimSpace(line), "module "); ok {
+			return strings.Trim(strings.TrimSpace(m), `"`)
 		}
 	}
 	return ""

@@ -25,6 +25,7 @@ var identMap = []token{
 	{"SCHEMA_TABLE_LAYOUT_MALFORMED", "layout_malformed"},
 	{"SCHEMA_TABLE_LAYOUT_UNSUPPORTED", "layout_unsupported"},
 	{"SCHEMA_TABLE_LAYOUT_NEWER", "layout_newer"},
+	{"SCHEMA_TABLE_LAYOUT_UNKNOWN", "layout_unknown"},
 	{"SCHEMA_TABLE_VOCABULARY_TOO_LARGE", "vocabulary_too_large"},
 	{"SCHEMA_TABLE_SECOND_ANNOUNCEMENT", "second_announcement"},
 	{"SCHEMA_TABLE_MESSAGE_FORM_AS_FILE", "message_form_as_file"},
@@ -102,7 +103,7 @@ var (
 	reZeroCallLayout  = regexp.MustCompile(`TableFixedLayoutEntry\s+\w+\s*=\s*TableFixedLayoutEntryZero\s*\(\s*\)\s*;`)
 	reZeroCallView    = regexp.MustCompile(`TableFixedLayoutView\s+\w+\s*=\s*TableFixedLayoutViewZero\s*\(\s*\)\s*;`)
 	reInitCall        = regexp.MustCompile(`TableFixedCompilerInit\s*\(\s*&c\s*\)\s*;`)
-	reCReasons        = regexp.MustCompile(`(?s)enum\s*\{\s*no_layout\s*=\s*7,.*?(?:text_ill_formed\s*=\s*20|length_over_bound\s*=\s*22)\s*\}\s*;`)
+	reCReasons        = regexp.MustCompile(`enum\s*\{\s*no_layout\s*=\s*7,[^{}]*?(?:text_ill_formed\s*=\s*20|length_over_bound\s*=\s*22|layout_unknown\s*=\s*22)\s*\}\s*;`)
 	reCMessageGuard   = regexp.MustCompile(`(?s)#ifndef MESSAGE_REASONS.*?\#endif`)
 	// AHEAD OF THE REFERENCE, and the mirror of the owed list: §5.2 lays every
 	// older plan down off the load path, and the reference still compiles one at
@@ -366,7 +367,15 @@ var rePlanPrevious = regexp.MustCompile(`plan\[out\s*-\s*1\]`)
 var reGuardLinkAddress = regexp.MustCompile(`(const TableFixedGuardLink REF l = )\*?\s*\(\s*const TableFixedGuardLink\s*\*\s*\)\s*\(\s*const void\s*\*\s*\)\s*\(\s*\(\s*const uint8_t\s*\*\s*\)`)
 var reInlineLocal = regexp.MustCompile(`([{};])\s*(?:const\s+)?(?:u?int(?:8|16|32|64)_t|bool|int)\s+\w+\s*;`)
 
+// A plan row's guard-chain byte offset is `N * static_cast<int>( sizeof(
+// TableFixedGuardLink ) )` in C++ (C-style casts draw -Wold-style-cast, make/
+// cpp.mk tables-cpp-warnings) and `N * (int) sizeof( TableFixedGuardLink )`
+// in C. The cast type and the sizeof operand are carried over, so a different
+// type or a different operand is still a leftover line.
+var reStaticCastSizeof = regexp.MustCompile(`static_cast<(\w+)>\(\s*(sizeof\(\s*\w+\s*\))\s*\)`)
+
 func normalizeSyntax(s string) string {
+	s = reStaticCastSizeof.ReplaceAllString(s, "($1) $2")
 	s = reCastThenParen.ReplaceAllString(s, "($1) (")
 	s = rePlanPrevious.ReplaceAllString(s, "plan[out - 1]")
 	s = strings.ReplaceAll(s, "->", ".")

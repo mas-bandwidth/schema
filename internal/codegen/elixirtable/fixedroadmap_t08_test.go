@@ -274,7 +274,14 @@ func t08P3(t *testing.T) {
 	t08Has(t, fixedRuntimeBody, "def parse_layout(bytes) when is_binary(bytes) do", "P3 a layout is parsed whole")
 	t08Has(t, fixedRuntimeBody, "defp layout_closes(_, _), do: {:error, :layout_tree_unclosed}", "P3 an unclosed layout is refused whole")
 	t08Has(t, fixedRuntimeBody, "rescue\n    _ -> {:error, :layout_malformed}", "P3 a hostile entry answers by name, never a throw")
-	t08Has(t, text, "{:error, :malformed, report}", "P3 a short file is malformed, not a throw")
+	// A short file is `truncated` BY NAME (docs/FIXED-FORM-ALGORITHM.md §5.3
+	// refusal table: "shorter than 20 bytes ... | truncated"; this form has no
+	// malformed flag), returned through the load's one header-refusal clause.
+	t08Has(t, fixedRuntimeBody, "byte_size(data) < @file_header_bytes + 4,\n    do: {:error, :truncated}", "P3 a short file is refused truncated, not a throw")
+	t08Has(t, text, "{:error, why} ->\n        {:error, why, report}", "P3 the load returns the header's refusal by name")
+	if strings.Contains(text, ":malformed") {
+		t.Error("P3: the fixed-form load answers :malformed, a name this form does not have")
+	}
 	t08Has(t, text, "def t_fixed_load(data, opts \\\\ []) when is_binary(data) do", "P3 the family read verdict is a tuple")
 }
 

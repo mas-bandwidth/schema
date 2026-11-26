@@ -137,7 +137,12 @@ VERIFY_WIDEN_ENV = \
 	LUAU="$(LUAU)" SQ="$(SQ)" MOO="$(MOO)" GOOSE="$(GOOSE)" LOBSTER="$(LOBSTER)"
 
 define verify_widen_18_rules
-.PHONY: verify-bitphase-$(1) verify-canonical-$(1) verify-tablegen-$(1)
+.PHONY: verify-bitphase-$(1) verify-canonical-$(1) verify-tablegen-$(1) verify-align-arrays-deps-$(1)
+
+# what `schema-test run` builds before the align-arrays adapter runs this leg
+# (tools/schema-test/adapters.go): the driver, bin/schema and the leg's own
+# deps (build/schema-moo for moo)
+verify-align-arrays-deps-$(1): bin/schema build/verify-bitphase-bin $$(VERIFY_WIDEN_DEPS_$(1))
 
 verify-bitphase-$(1): build/verify-bitphase-bin verify-bitphase-cases build/verify-bitphase/corpus/.stamp $$(VERIFY_WIDEN_DEPS_$(1))
 	$$(VERIFY_WIDEN_ENV) CARGO_TARGET_DIR="$$(CURDIR)/build/verify-bitphase/cargo-$(1)" \

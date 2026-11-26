@@ -17,10 +17,13 @@ import (
 // TestLuauJsonElemReadsAreNotNil pins the three JSON reads that the old
 // `elem and false or nil` idiom always made nil (docs/SPEC-TABLES.md §16.2,
 // the enum and map rows): an enum "None", an unknown enum name (counted
-// unknown), and a `*bytes` body that is not base64 (counted kind_mismatch).
-// In an element slot each must stay present as the zero element — false for
-// the enum and the null reference — so a list keeps its length and an element
-// position, and a map keeps its entry and key. The expected bytes and counts
+// unknown). In an element slot each must stay present as the zero element
+// (false for the enum), so a list keeps its length and an element position,
+// and a map keeps its entry and key. A `*bytes` body that is not base64 is
+// refused, strict only (docs/rulings.json strict-only-read): the Go reference
+// FromJson refuses it as base64 damage, and every Luau text read (FromJson,
+// fromJsonWalk, FromJsonInto) owes the refusal, compared by verdict alone
+// (refusal-verdict-only). The expected bytes and counts
 // come from schema-go's own engine (internal/tabletext and internal/tablewire)
 // over the same unit, never typed by hand: json-read compares the Luau FromJson
 // then Save wire with the Go FromJson then Encode wire, and json-write compares
@@ -60,19 +63,32 @@ table Box
 		t.Fatal("the Go reference unit has no Box table")
 	}
 
-	for _, tc := range []struct{ name, text string }{
+	for _, tc := range []struct {
+		name, text string
+		refused    bool // the verdict owed, held against the reference's
+	}{
 		// "None" in the middle of the enum list and as a map value.
-		{"enum-none-element", `{"l":["A","None","B"],"m":{"mid":"None","tail":"B"},"mb":{"ok":"AQI="}}`},
+		{"enum-none-element", `{"l":["A","None","B"],"m":{"mid":"None","tail":"B"},"mb":{"ok":"AQI="}}`, false},
 		// An unknown enum name in the same two places; the reference counts it.
-		{"enum-unknown-element", `{"l":["A","NOPE","B"],"m":{"mid":"NOPE","tail":"B"},"mb":{"ok":"AQI="}}`},
-		// A non-base64 body as a `*bytes` map value; the enum list stays clean.
-		{"bytes-not-base64-element", `{"l":["A","B"],"m":{"mid":"B"},"mb":{"bad":"!!","ok":"AQI="}}`},
+		{"enum-unknown-element", `{"l":["A","NOPE","B"],"m":{"mid":"NOPE","tail":"B"},"mb":{"ok":"AQI="}}`, false},
+		// A non-base64 body as a `*bytes` map value: base64 damage, refused.
+		{"bytes-not-base64-element", `{"l":["A","B"],"m":{"mid":"B"},"mb":{"bad":"!!","ok":"AQI="}}`, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			inst := model.New(st)
 			var report tabletext.Report
-			if !model.Read(inst, []byte(tc.text), &report) {
-				t.Fatalf("the Go reference FromJson refused %s: %+v", tc.text, report)
+			if ok := model.Read(inst, []byte(tc.text), &report); ok == tc.refused {
+				t.Fatalf("the Go reference FromJson answered ok=%v on %s, the case owes refused=%v: %+v", ok, tc.text, tc.refused, report)
+			}
+			if tc.refused {
+				if err := os.WriteFile(filepath.Join(g.dir, "reads.luau"), []byte(jsonModules(g)+jsonFlags(g)+jsonElemRefusedProbe), 0o644); err != nil {
+					t.Fatal(err)
+				}
+				out := strings.TrimSpace(string(luaurun.Run(t, g.dir, "reads.luau", map[string][]byte{"text": []byte(tc.text)})))
+				if out != "false false false" {
+					t.Errorf("%s: the Go reference refuses the text, and the Luau reads (FromJson, fromJsonWalk, FromJsonInto) answer %q; every read owes the refusal", tc.name, out)
+				}
+				return
 			}
 			wantText, err := model.Write(inst)
 			if err != nil {
@@ -128,6 +144,20 @@ func joinMapKeys(f *tabletext.Field) string {
 	sort.Strings(keys)
 	return strings.Join(keys, ",")
 }
+
+// jsonElemRefusedProbe prints every Luau text read's verdict on one text:
+// FromJson, the walk it is built on, and FromJsonInto.
+const jsonElemRefusedProbe = `local json = require("./schema_json")
+json.SetFlags(SCHEMA_JSON_FLAGS)
+local St = require("./schema_tables")
+local inputs = require("./inputs")
+local function report()
+	return { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
+end
+print(tostring(json.FromJson("Box", inputs.text, report()) ~= nil) .. " " ..
+	tostring(json.fromJsonWalk("Box", inputs.text, report()) ~= nil) .. " " ..
+	tostring(json.FromJsonInto("Box", inputs.text, report(), St.lookup("Box").new()) ~= nil))
+`
 
 // jsonElemReadsProbe reads one text, prints the read's kind_mismatch and
 // unknown counts, the kept list lengths and map keys, then the wire Save writes

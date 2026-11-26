@@ -301,14 +301,13 @@ pub(crate) fn load(ctx: &mut Ctx, fixed: &FixedCorpus) -> Option<LineageCorpus> 
     let clean = read == Some(NUM_VARIANTS)
         && orep.widened == 0
         && orep.unknown == 0
-        && !orep.damaged
         && !orep.refused;
     if !clean || old::fixed_table_fixed_save(&olds, &mut twin) != Some(file.len()) || twin != file {
         ctx.fail(
             NAME,
             &format!(
-                "the VOLD codec does not read its own file back clean (read {read:?}, widened={}, unknown={}, damaged={}, refused={}; a refusal here is a value the OLD generation cannot hold)",
-                orep.widened, orep.unknown, orep.damaged, orep.refused
+                "the VOLD codec does not read its own file back clean (read {read:?}, widened={}, unknown={}, refused={}; a refusal here is a value the OLD generation cannot hold)",
+                orep.widened, orep.unknown, orep.refused
             ),
         );
         return None;
@@ -342,7 +341,6 @@ pub(crate) fn load(ctx: &mut Ctx, fixed: &FixedCorpus) -> Option<LineageCorpus> 
     );
     if report.widened != widened
         || report.unknown != 0
-        || report.damaged
         || report.refused
     {
         ctx.fail(

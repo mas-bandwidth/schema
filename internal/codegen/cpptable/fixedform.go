@@ -26,6 +26,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/ccommon"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -658,21 +659,24 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("constexpr int64_t %sFixedRecordBytes = 8 + %sFixedBodyBytes; // the hash and the body\n", st.Name, st.Name)
 	g.pf("constexpr uint64_t %sFixedHash = 0x%016xull; // fnv1a64 over the layout and the definitions digest (bill §13)\n\n", st.Name, hash)
 
-	g.pf("// THE LAYOUT (form 1 calls this the vocabulary block): %d entries, a\n", len(entries))
-	g.pf("// PRE-ORDER walk of the closure in the writer's declared order.\n")
-	g.pf("// Every byte is settled by the compiler.\n")
-	g.pf("constexpr uint8_t %sFixedLayout[] = {\n", st.Name)
+	g.df("// THE LAYOUT (form 1 calls this the vocabulary block): %d entries, a\n", len(entries))
+	g.df("// PRE-ORDER walk of the closure in the writer's declared order.\n")
+	g.df("// Every byte is settled by the compiler.\n")
+	g.df("constexpr uint8_t %sFixedLayout[] = {\n", st.Name)
 	g.emitByteArray(layout)
 	g.pf("constexpr int64_t %sFixedLayoutBytes = (int64_t) sizeof( %sFixedLayout );\n\n", st.Name, st.Name)
 
-	g.pf("// MY SIDE of the layout, one row per entry: the storage facts a layout\n")
-	g.pf("// entry cannot carry, which is what a plan compiled from another writer's\n")
-	g.pf("// layout lands values through.\n")
-	g.pf("constexpr TableFixedDst %sFixedDst[] = {\n", st.Name)
+	g.df("// MY SIDE of the layout, one row per entry: the storage facts a layout\n")
+	g.df("// entry cannot carry, which is what a plan compiled from another writer's\n")
+	g.df("// layout lands values through.\n")
+	g.df("constexpr TableFixedDst %sFixedDst[] = {\n", st.Name)
+	// NO NAME ON A ROW: a trailing comment on each of thousands of rows is
+	// what made clang-format take 32 s on one header (tables-cpp-format); the
+	// runtime reads no name here, and the layout walk names every entry.
 	for _, e := range entries {
-		g.pf("    %s, // %s\n", g.dstRow(e), e.Note)
+		g.df("    %s,\n", g.dstRow(e))
 	}
-	g.pf("};\n\n")
+	g.df("};\n\n")
 
 	plan, guarded, pool := ir.TableFixedBuildPlanPresentDefaultsWithPool(g.unit, st)
 	presentDefaults := false
@@ -682,21 +686,21 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 			break
 		}
 	}
-	g.pf("// THE IDENTITY PLAN, coalesced out of %d leaves by the schema compiler —\n", ir.TableFixedLeafCount(g.unit, st))
-	g.pf("// the one walk every backend lays down (ir/fixedform.go), so no two ports\n")
-	g.pf("// can disagree about what the coalescer did; the asserts above tie every\n")
-	g.pf("// destination in it to this compiler's own ABI. A bool field and a present\n")
-	g.pf("// flag land through kTableFixedBool (byte != 0), so a forged 0x02 is the\n")
-	g.pf("// language's own true and not a bool holding 2 (fix 2). UNGUARDED ENTRIES\n")
-	g.pf("// FIRST, then the arms, then any guardless present-defaults entry that must\n")
-	g.pf("// run after the guarded payload it replaces: the entries that are nearly\n")
-	g.pf("// all of a plan never test a guard at all.\n")
+	g.df("// THE IDENTITY PLAN, coalesced out of %d leaves by the schema compiler —\n", ir.TableFixedLeafCount(g.unit, st))
+	g.df("// the one walk every backend lays down (ir/fixedform.go), so no two ports\n")
+	g.df("// can disagree about what the coalescer did; the header's asserts tie every\n")
+	g.df("// destination in it to this compiler's own ABI. A bool field and a present\n")
+	g.df("// flag land through kTableFixedBool (byte != 0), so a forged 0x02 is the\n")
+	g.df("// language's own true and not a bool holding 2 (fix 2). UNGUARDED ENTRIES\n")
+	g.df("// FIRST, then the arms, then any guardless present-defaults entry that must\n")
+	g.df("// run after the guarded payload it replaces: the entries that are nearly\n")
+	g.df("// all of a plan never test a guard at all.\n")
 	// THE EMITTED PLAN IS THE COALESCED PLAN, SPLIT ONLY WHERE A COPY ENTRY
 	// SPANS LEAVES OF DIFFERENT WIDTHS, so a big-endian copy knows its element
 	// width (ir.TableFixedSplitByWidth, the same split the C leg lays down).
 	split := ir.TableFixedSplitByWidth(entries, plan, guarded)
 	elemBytes, optionalPayload, unionArms := fixedPlanWireSpans(entries)
-	g.pf("constexpr TableFixedEntry %sFixedPlan[] = {\n", st.Name)
+	g.df("constexpr TableFixedEntry %sFixedPlan[] = {\n", st.Name)
 	for i, e := range split.Plan {
 		guard := "kTableFixedNoGuard"
 		if e.Guard != ir.TableFixedNoGuard {
@@ -721,7 +725,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		// a BYTE OFFSET from the pool's base (the identity pool is this static array).
 		guardIndex := "0"
 		if e.GuardCount > 0 {
-			guardIndex = fmt.Sprintf("%d * (int) sizeof( TableFixedGuardLink )", e.GuardIndex)
+			guardIndex = fmt.Sprintf("%d * static_cast<int>( sizeof( TableFixedGuardLink ) )", e.GuardIndex)
 		}
 		// A COUNT'S AUX IS ITS ELEMENT WIDTH IN BYTES: its Size is the bound in
 		// ELEMENTS, and the dead-byte scan needs the byte span of one slot. A
@@ -753,11 +757,12 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 			meta = int(wire & 0xff)
 			dstsize = int((wire >> 8) & 0xff)
 		}
-		g.pf("    { %du, %du, %du, %du, %s, %s, %d, %d, %d, 0, %d, %s, %d, %d, %d, %s, %d }, // %s\n",
+		// no name on a plan row either, for the reason given at the dst rows
+		g.df("    { %du, %du, %du, %du, %s, %s, %d, %d, %d, 0, %d, %s, %d, %d, %d, %s, %d },\n",
 			e.Src, e.Dst, e.Size, aux, guard, fixedOpName(e.Op), e.Arg, meta, dstsize, argw, guard2, e.Arg2, argw2,
-			e.GuardCount, guardIndex, split.Elems[i], e.Note)
+			e.GuardCount, guardIndex, split.Elems[i])
 	}
-	g.pf("};\n")
+	g.df("};\n")
 	g.pf("constexpr int32_t %sFixedPlanCount = %d;\n", st.Name, len(split.Plan))
 	g.pf("constexpr int32_t %sFixedPlanGuarded = %d;\n", st.Name, split.Guarded)
 	g.pf("// THE GUARD POOL: the (guard, arg, argw) links every chain above points\n")
@@ -1122,7 +1127,7 @@ func (g *tableGen) emitFixedLineage(st *ir.Struct, known []fixedKnown, floor int
 	g.pf("inline void %sFixedSetFloorForTest( int32_t index ) { %sFixedFloorLive = index; }\n", st.Name, st.Name)
 	g.pf("#endif\n\n")
 	for i, k := range known {
-		g.pf("constexpr uint8_t %sFixedKnown%dLayout[] = {\n", st.Name, i)
+		g.df("constexpr uint8_t %sFixedKnown%dLayout[] = {\n", st.Name, i)
 		g.emitByteArray(k.layout)
 	}
 	g.pf("constexpr TableFixedKnownLayout %sFixedKnown[] = {\n", st.Name)
@@ -1166,27 +1171,12 @@ func (g *tableGen) emitFixedLineage(st *ir.Struct, known []fixedKnown, floor int
 	g.pf(" };\n\n")
 }
 
-// It closes the initializer itself: the last byte carries no trailing comma
+// emitByteArray writes a byte array's items into the data header (df). It
+// closes the initializer itself: the last byte carries no trailing comma
 // and the brace follows it on the same line, the one spelling of a long byte
 // list that clang-format (the house .clang-format) leaves sixteen to a row.
 func (g *tableGen) emitByteArray(b []byte) {
-	if len(b) == 0 {
-		g.pf("};\n")
-		return
-	}
-	for i := 0; i < len(b); i += 16 {
-		end := min(i+16, len(b))
-		var sb strings.Builder
-		sb.WriteString("   ")
-		for j, v := range b[i:end] {
-			if i+j == len(b)-1 {
-				fmt.Fprintf(&sb, " 0x%02x };", v)
-			} else {
-				fmt.Fprintf(&sb, " 0x%02x,", v)
-			}
-		}
-		g.pf("%s\n", sb.String())
-	}
+	g.df("%s", ccommon.PackedBytes(b))
 }
 
 // emitFixedLayoutAsserts is what makes a generator-computed offset safe: every
