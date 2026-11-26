@@ -132,3 +132,7 @@ needs ./internal/codegen/luautable TestLuauWireFuzzVerdictPipe(NegativeControl)?
 # the conformance harness the C# strict driver tests run the leg under, which
 # they make for themselves too (csConformanceBuild): built before their call
 needs ./internal/codegen/cstable TestCSharpDriverReadsStrictAndWritesBack(NegativeControl)? build/conformance-harness
+
+# the conformance harness the Elixir strict driver tests run the leg under, which
+# they make for themselves too (elixirConformanceBuild): built before their call
+needs ./internal/codegen/elixirtable TestElixirDriverReadsStrictAndWritesBack(NegativeControl)? build/conformance-harness
