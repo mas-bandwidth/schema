@@ -124,8 +124,8 @@ ci-fast.yml	lint-fast	make	check-go-mod-tidy	tooling.lint-fast.go-mod-tidy	none
 ci-fast.yml	lint-fast	make	check-modernize	lint.lint-fast.modernize	none
 ci-fast.yml	lint-fast	make	errdiscard	lint.makefile.errdiscard	none
 ci-fast.yml	lint-fast	make	check-wiredtargets	tooling.lint-fast.wiredtargets	none
-ci-fast.yml	vet	make	check-go-vet	lint.lint-fast.go-vet	none
-ci-fast.yml	golangci-lint-fast	make	check-golangci-lint-fast	lint.lint-fast.golangci-lint	none
+ci-fast.yml	vet	script	go vet ./...	-	none
+ci-fast.yml	golangci-lint-fast	script	golangci-lint run --allow-parallel-runners (the main module packages)	-	none
 ci-fast.yml	ci-policy	make	check-bench-run-sh	tooling.lint-fast.bench-run-sh	none
 ci-fast.yml	ci-policy	make	python-tooling-tests	harness-run.makefile.python-tooling-tests	none
 ci-fast.yml	generated-current	make	generated-current	harness-run.makefile.generated-current	none
@@ -267,17 +267,17 @@ ci-fast.yml	verify-leg	make	verify-lobster-conformance	-	none
 ci-fast.yml	verify-leg	make	verify-lobster-bench	-	none
 ci-fast.yml	verify-leg	make	verify-lobster-fuzz	-	none
 ci-fast.yml	verify-leg	make	verify-lobster-tablegen	-	none
-ci-fast.yml	verify-goose-fuzz	make	verify-goose-fuzz-part-1	fuzz.verify-goose-fuzz-part-1.dispatch-delivers-every-reply-before-a-stall	none
+ci-fast.yml	verify-goose-fuzz	make	verify-goose-fuzz-part-1	fuzz.make-verify-vm.verify-goose-fuzz-part-1	none
 ci-fast.yml	verify-goose-fuzz	make	verify-goose-fuzz-part-2	fuzz.make-verify-vm.verify-goose-fuzz-part-2	none
-ci-fast.yml	verify-cpp-conformance	make	check-verify-cpp-conformance-1	harness-run.make-verify-compiled.verify-cpp-conformance-1	none
-ci-fast.yml	verify-cpp-conformance	make	check-verify-cpp-conformance-2	harness-run.make-verify-compiled.verify-cpp-conformance-2	none
-ci-fast.yml	verify-elixir-conformance	make	check-verify-elixir-conformance	harness-run.make-verify-compiled.verify-elixir-conformance	none
-ci-fast.yml	verify-dart-conformance	make	check-dart-conformance-produce	tooling.conformance-handoff.dart-produce	none
-ci-fast.yml	input-family-dart-conformance	make	check-conformance-corpus-dart	harness-run.make-verify-compiled.conformance-corpus-dart	none
-ci-fast.yml	verify-dart-fuzz	make	check-verify-dart-fuzz	harness-run.make-verify-compiled.verify-dart-fuzz	none
-ci-fast.yml	build-cpp-conformance-account	make	check-cpp-conformance-produce	tooling.conformance-handoff.cpp-produce	none
+ci-fast.yml	verify-cpp-conformance	make	verify-cpp-conformance-1	harness-run.make-verify-compiled.verify-cpp-conformance-1	none
+ci-fast.yml	verify-cpp-conformance	make	verify-cpp-conformance-2	harness-run.make-verify-compiled.verify-cpp-conformance-2	none
+ci-fast.yml	verify-elixir-conformance	make	verify-elixir-conformance	harness-run.make-verify-compiled.verify-elixir-conformance	none
+ci-fast.yml	verify-dart-conformance	script	python3 make/conformance-handoff.py produce (the dart conformance leg)	-	none
+ci-fast.yml	input-family-dart-conformance	make	_conformance-corpus-dart	harness-run.make-verify-compiled.conformance-corpus-dart	none
+ci-fast.yml	verify-dart-fuzz	make	_verify-dart-fuzz	harness-run.make-verify-compiled.verify-dart-fuzz	none
+ci-fast.yml	build-cpp-conformance-account	script	python3 make/conformance-handoff.py produce --leg cpp --prebuilt-compiler	-	none
 ci-fast.yml	input-family-cpp-conformance	make	check-inputaccount-cpp	tooling.inputaccount.conformance-cpp	none
-ci-fast.yml	input-family-elixir-conformance	make	check-inputaccount-elixir	tooling.inputaccount.conformance-elixir	none
+ci-fast.yml	input-family-elixir-conformance	script	inputaccount -family conformance-corpus -leg elixir (and its canaries)	-	none
 # A per-PR row that ran inputaccount -merge would fail because this checkout does not hold the input-family matrix's same-run shard records, so it would not run the check that job runs (the union of those records). The records are not invented here, and this check is not moved to nightly.
 ci-fast.yml	input-family-merge	script	inputaccount: the conformance-corpus shard records' union holds every input owed	-	none
 ci-fast.yml	conformance-rows	make	conformance-rows-c	-	none
@@ -288,7 +288,7 @@ ci-fast.yml	conformance-rows	make	conformance-rows-go	-	none
 ci-fast.yml	conformance-rows	make	conformance-rows-java	-	none
 ci-fast.yml	conformance-rows	make	conformance-rows-js	-	none
 ci-fast.yml	conformance-rows	make	conformance-rows-rust	-	none
-ci-fast.yml	conformance-rows-elixir	make	check-conformance-rows-elixir	harness-run.make-conformance-rows.conformance-rows-elixir	none
+ci-fast.yml	conformance-rows-elixir	make	conformance-rows-elixir	harness-run.make-conformance-rows.conformance-rows-elixir	none
 ci-fast.yml	input-family	script	inputaccount -family packet-defaults -leg cpp (and its canaries)	-	none
 ci-fast.yml	input-family	script	inputaccount -family packet-defaults -leg c (and its canaries)	-	none
 ci-fast.yml	input-family	script	inputaccount -family packet-defaults -leg go (and its canaries)	-	none

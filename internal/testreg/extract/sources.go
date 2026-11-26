@@ -81,7 +81,9 @@ func lineOf(data []byte, needle string) int {
 var checkTarget = regexp.MustCompile(`^(test|check|verify)(-|$)|-(check|test|tests|gate|probe|negative-control|control)$`)
 
 // makeRule is "name:" at the start of a line, not a variable assignment.
-var makeRule = regexp.MustCompile(`^([A-Za-z0-9][A-Za-z0-9_./%-]*)\s*:([^=]|$)`)
+// A name may start with '_' so a rule such as _conformance-corpus-dart is
+// recorded. Two names before the colon still do not match.
+var makeRule = regexp.MustCompile(`^([A-Za-z0-9_][A-Za-z0-9_./%-]*)\s*:([^=]|$)`)
 
 // makeCall is a make invocation in a workflow's run text: the words after
 // "make" and its flags, up to a shell operator. A flag may carry its value
