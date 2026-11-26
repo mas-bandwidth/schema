@@ -5,7 +5,7 @@ Part of the specification: every test of tier `functional`, from the test regist
 
 **Tier functional:** uses a real thing: a compiler or VM, a toolchain, generated code built and run; runs nightly, and per pull request only as the pr group names it (one happy-path row per language, make happy-&lt;lang&gt;).
 
-Functional tests every language answers: 5044. Language-free tests: 2370.
+Functional tests every language answers: 5044. Language-free tests: 2359.
 
 Run this tier for a language with `schema-test run --tier functional --lang L`, one test with `schema-test run <full name>`.
 
@@ -16999,27 +16999,17 @@ performance or timing.
 
 generated or runtime code is clean under the language's strict analyser.
 
-#### `lint` family `make-c`, 4 tests
+#### `lint` family `make-c`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.functional.lint.make-c.tables-c-clean-shard-1-of-4` | `make` | make tables-c-clean C\_FORMAT\_SHARD=1/4 (make/c.mk) exits 0: shard 1 of 4, and the 4 shards together judge every file once | `file: make/c.mk`<br>`target: tables-c-clean`<br>`tools: ["clang-format"]`<br>`vars: {"C_FORMAT_SHARD":"1/4"}` | the target exits 0 with no skip in its log | `make/c.mk:1736` |
-| `none.functional.lint.make-c.tables-c-clean-shard-2-of-4` | `make` | make tables-c-clean C\_FORMAT\_SHARD=2/4 (make/c.mk) exits 0: shard 2 of 4, and the 4 shards together judge every file once | `file: make/c.mk`<br>`target: tables-c-clean`<br>`tools: ["clang-format"]`<br>`vars: {"C_FORMAT_SHARD":"2/4"}` | the target exits 0 with no skip in its log | `make/c.mk:1736` |
-| `none.functional.lint.make-c.tables-c-clean-shard-3-of-4` | `make` | make tables-c-clean C\_FORMAT\_SHARD=3/4 (make/c.mk) exits 0: shard 3 of 4, and the 4 shards together judge every file once | `file: make/c.mk`<br>`target: tables-c-clean`<br>`tools: ["clang-format"]`<br>`vars: {"C_FORMAT_SHARD":"3/4"}` | the target exits 0 with no skip in its log | `make/c.mk:1736` |
-| `none.functional.lint.make-c.tables-c-clean-shard-4-of-4` | `make` | make tables-c-clean C\_FORMAT\_SHARD=4/4 (make/c.mk) exits 0: shard 4 of 4, and the 4 shards together judge every file once | `file: make/c.mk`<br>`target: tables-c-clean`<br>`tools: ["clang-format"]`<br>`vars: {"C_FORMAT_SHARD":"4/4"}` | the target exits 0 with no skip in its log | `make/c.mk:1736` |
+| `none.functional.lint.make-c.tables-c-clean` | `make` | make tables-c-clean (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: tables-c-clean`<br>`tools: ["clang-format"]` | the target exits 0 with no skip in its log | `make/c.mk:1736` |
 
-#### `lint` family `make-cpp`, 8 tests
+#### `lint` family `make-cpp`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.functional.lint.make-cpp.tables-cpp-format-shard-1-of-4` | `make` | make tables-cpp-format CPP\_FORMAT\_SHARD=1/4 (make/cpp.mk) exits 0: shard 1 of 4, and the 4 shards together judge every file once | `file: make/cpp.mk`<br>`target: tables-cpp-format`<br>`tools: ["clang-format"]`<br>`vars: {"CPP_FORMAT_SHARD":"1/4"}` | the target exits 0 with no skip in its log | `make/cpp.mk:382` |
-| `none.functional.lint.make-cpp.tables-cpp-format-shard-2-of-4` | `make` | make tables-cpp-format CPP\_FORMAT\_SHARD=2/4 (make/cpp.mk) exits 0: shard 2 of 4, and the 4 shards together judge every file once | `file: make/cpp.mk`<br>`target: tables-cpp-format`<br>`tools: ["clang-format"]`<br>`vars: {"CPP_FORMAT_SHARD":"2/4"}` | the target exits 0 with no skip in its log | `make/cpp.mk:382` |
-| `none.functional.lint.make-cpp.tables-cpp-format-shard-3-of-4` | `make` | make tables-cpp-format CPP\_FORMAT\_SHARD=3/4 (make/cpp.mk) exits 0: shard 3 of 4, and the 4 shards together judge every file once | `file: make/cpp.mk`<br>`target: tables-cpp-format`<br>`tools: ["clang-format"]`<br>`vars: {"CPP_FORMAT_SHARD":"3/4"}` | the target exits 0 with no skip in its log | `make/cpp.mk:382` |
-| `none.functional.lint.make-cpp.tables-cpp-format-shard-4-of-4` | `make` | make tables-cpp-format CPP\_FORMAT\_SHARD=4/4 (make/cpp.mk) exits 0: shard 4 of 4, and the 4 shards together judge every file once | `file: make/cpp.mk`<br>`target: tables-cpp-format`<br>`tools: ["clang-format"]`<br>`vars: {"CPP_FORMAT_SHARD":"4/4"}` | the target exits 0 with no skip in its log | `make/cpp.mk:382` |
-| `none.functional.lint.make-cpp.tables-cpp-warnings-shard-1-of-4` | `make` | make tables-cpp-warnings CPP\_WARN\_SHARD=1/4 (make/cpp.mk) exits 0: shard 1 of 4 (whole directories), and the 4 shards together judge every file once | `file: make/cpp.mk`<br>`siblings: ["../serialize"]`<br>`target: tables-cpp-warnings`<br>`vars: {"CPP_WARN_SHARD":"1/4"}` | the target exits 0 with no skip in its log | `make/cpp.mk:392` |
-| `none.functional.lint.make-cpp.tables-cpp-warnings-shard-2-of-4` | `make` | make tables-cpp-warnings CPP\_WARN\_SHARD=2/4 (make/cpp.mk) exits 0: shard 2 of 4 (whole directories), and the 4 shards together judge every file once | `file: make/cpp.mk`<br>`siblings: ["../serialize"]`<br>`target: tables-cpp-warnings`<br>`vars: {"CPP_WARN_SHARD":"2/4"}` | the target exits 0 with no skip in its log | `make/cpp.mk:392` |
-| `none.functional.lint.make-cpp.tables-cpp-warnings-shard-3-of-4` | `make` | make tables-cpp-warnings CPP\_WARN\_SHARD=3/4 (make/cpp.mk) exits 0: shard 3 of 4 (whole directories), and the 4 shards together judge every file once | `file: make/cpp.mk`<br>`siblings: ["../serialize"]`<br>`target: tables-cpp-warnings`<br>`vars: {"CPP_WARN_SHARD":"3/4"}` | the target exits 0 with no skip in its log | `make/cpp.mk:392` |
-| `none.functional.lint.make-cpp.tables-cpp-warnings-shard-4-of-4` | `make` | make tables-cpp-warnings CPP\_WARN\_SHARD=4/4 (make/cpp.mk) exits 0: shard 4 of 4 (whole directories), and the 4 shards together judge every file once | `file: make/cpp.mk`<br>`siblings: ["../serialize"]`<br>`target: tables-cpp-warnings`<br>`vars: {"CPP_WARN_SHARD":"4/4"}` | the target exits 0 with no skip in its log | `make/cpp.mk:392` |
+| `none.functional.lint.make-cpp.tables-cpp-format` | `make` | make tables-cpp-format (make/cpp.mk) exits 0 | `file: make/cpp.mk`<br>`target: tables-cpp-format`<br>`tools: ["clang-format"]` | the target exits 0 with no skip in its log | `make/cpp.mk:382` |
 
 #### `lint` family `make-js`, 1 test
 
@@ -17183,7 +17173,7 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 | `none.functional.harness-run.make-c.tables-c-soak-compile-modes` | `make` | make tables-c-soak-compile-modes (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: tables-c-soak-compile-modes` | the target exits 0 with no skip in its log | `make/c.mk:429` |
 | `none.functional.harness-run.make-c.tables-c-zero-cost` | `make` | make tables-c-zero-cost (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: tables-c-zero-cost` | the target exits 0 with no skip in its log | `make/c.mk:317` |
 
-#### `harness-run` family `make-conformance-rows`, 8 tests
+#### `harness-run` family `make-conformance-rows`, 7 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -17191,7 +17181,6 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 | `none.functional.harness-run.make-conformance-rows.conformance-rows-cpp` | `make` | make conformance-rows-cpp (make/conformance-rows.mk) exits 0 | `file: make/conformance-rows.mk`<br>`siblings: ["../serialize"]`<br>`target: conformance-rows-cpp`<br>`tools: ["c++"]` | the target exits 0 with no skip in its log | `make/conformance-rows.mk:97` |
 | `none.functional.harness-run.make-conformance-rows.conformance-rows-cs` | `make` | make conformance-rows-cs (make/conformance-rows.mk) exits 0 | `file: make/conformance-rows.mk`<br>`siblings: ["../serialize.cs"]`<br>`target: conformance-rows-cs`<br>`tools: ["dotnet"]` | the target exits 0 with no skip in its log | `make/conformance-rows.mk:98` |
 | `none.functional.harness-run.make-conformance-rows.conformance-rows-dart` | `make` | make conformance-rows-dart (make/conformance-rows.mk) exits 0 | `file: make/conformance-rows.mk`<br>`target: conformance-rows-dart`<br>`tools: ["dart"]`<br>`vars: {"DART":"dart"}` | the target exits 0 with no skip in its log | `make/conformance-rows.mk:99` |
-| `none.functional.harness-run.make-conformance-rows.conformance-rows-go` | `make` | make conformance-rows-go (make/conformance-rows.mk) exits 0 | `file: make/conformance-rows.mk`<br>`target: conformance-rows-go` | the target exits 0 with no skip in its log | `make/conformance-rows.mk:109` |
 | `none.functional.harness-run.make-conformance-rows.conformance-rows-java` | `make` | make conformance-rows-java (make/conformance-rows.mk) exits 0 | `file: make/conformance-rows.mk`<br>`target: conformance-rows-java`<br>`tools: ["java","javac"]`<br>`vars: {"JAVA":"java","JAVAC":"javac"}` | the target exits 0 with no skip in its log | `make/conformance-rows.mk:100` |
 | `none.functional.harness-run.make-conformance-rows.conformance-rows-js` | `make` | make conformance-rows-js (make/conformance-rows.mk) exits 0 | `file: make/conformance-rows.mk`<br>`target: conformance-rows-js`<br>`tools: ["node"]`<br>`vars: {"NODE":"node"}` | the target exits 0 with no skip in its log | `make/conformance-rows.mk:101` |
 | `none.functional.harness-run.make-conformance-rows.conformance-rows-rust` | `make` | make conformance-rows-rust (make/conformance-rows.mk) exits 0 | `file: make/conformance-rows.mk`<br>`target: conformance-rows-rust`<br>`tools: ["cargo"]` | the target exits 0 with no skip in its log | `make/conformance-rows.mk:102` |

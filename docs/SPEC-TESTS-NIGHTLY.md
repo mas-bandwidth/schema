@@ -5,7 +5,7 @@ Part of the specification: every test of tier `nightly`, from the test registry.
 
 **Tier nightly:** heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded.
 
-Nightly tests every language answers: 1109. Language-free tests: 1745.
+Nightly tests every language answers: 1109. Language-free tests: 1746.
 
 Tests some languages run in this tier, their own measured seconds being past one shard's budget, each named by its languages' instances: 11.
 
@@ -5639,11 +5639,12 @@ performance or timing.
 
 generated or runtime code is clean under the language's strict analyser.
 
-#### `lint` family `make-cpp`, 1 test
+#### `lint` family `make-cpp`, 2 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.nightly.lint.make-cpp.tables-cpp-clean` | `make` | make tables-cpp-clean (make/cpp.mk) exits 0 | `file: make/cpp.mk`<br>`target: tables-cpp-clean` | the target exits 0 with no skip in its log | `make/cpp.mk:372` |
+| `none.nightly.lint.make-cpp.tables-cpp-warnings` | `make` | make tables-cpp-warnings (make/cpp.mk) exits 0 | `file: make/cpp.mk`<br>`siblings: ["../serialize"]`<br>`target: tables-cpp-warnings` | the target exits 0 with no skip in its log | `make/cpp.mk:392` |
 
 #### `lint` family `make-schema-go-generated-golangci-lint-gate`, 2 tests
 

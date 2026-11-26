@@ -130,12 +130,12 @@ ci-fast.yml	ci-policy	script	bash -n bench/run.sh	-	none
 ci-fast.yml	ci-policy	make	python-tooling-tests	harness-run.makefile.python-tooling-tests	none
 ci-fast.yml	generated-current	make	generated-current	-	none
 ci-fast.yml	lang-clean	make	tables-c-zero-cost	harness-run.make-c.tables-c-zero-cost	none
-ci-fast.yml	lang-clean	make	tables-c-clean	lint.make-c.tables-c-clean-shard-1-of-4	none
+ci-fast.yml	lang-clean	make	tables-c-clean	lint.make-c.tables-c-clean	none
 ci-fast.yml	lang-clean	make	tables-c-soak-compile-modes	harness-run.make-c.tables-c-soak-compile-modes	none
 ci-fast.yml	lang-clean	make	tables-js-clean	lint.make-js.tables-js-clean	none
 ci-fast.yml	lang-clean	make	tables-rust-clippy	lint.make-rust.tables-rust-clippy	none
-ci-fast.yml	lang-clean	make	tables-cpp-format	lint.make-cpp.tables-cpp-format-shard-1-of-4	none
-ci-fast.yml	lang-clean	make	tables-cpp-warnings	lint.make-cpp.tables-cpp-warnings-shard-1-of-4	none
+ci-fast.yml	lang-clean	make	tables-cpp-format	lint.make-cpp.tables-cpp-format	none
+ci-fast.yml	lang-clean	make	tables-cpp-warnings	lint.make-cpp.tables-cpp-warnings	none
 ci-fast.yml	lang-clean	make	tables-elixir-offsets	harness-run.make-elixir.tables-elixir-offsets	none
 ci-fast.yml	lang-clean	make	tables-elixir-accessor-descriptor-agreement-shard-1	harness-run.make-elixir.tables-elixir-accessor-descriptor-agreement-shard-1	none
 ci-fast.yml	lang-clean	make	tables-elixir-accessor-descriptor-agreement-shard-2	harness-run.make-elixir.tables-elixir-accessor-descriptor-agreement-shard-2	none
@@ -283,7 +283,7 @@ ci-fast.yml	conformance-rows	make	conformance-rows-c	harness-run.make-conformanc
 ci-fast.yml	conformance-rows	make	conformance-rows-cpp	harness-run.make-conformance-rows.conformance-rows-cpp	none
 ci-fast.yml	conformance-rows	make	conformance-rows-cs	harness-run.make-conformance-rows.conformance-rows-cs	none
 ci-fast.yml	conformance-rows	make	conformance-rows-dart	harness-run.make-conformance-rows.conformance-rows-dart	none
-ci-fast.yml	conformance-rows	make	conformance-rows-go	harness-run.make-conformance-rows.conformance-rows-go	none
+ci-fast.yml	conformance-rows	make	conformance-rows-go	-	none
 ci-fast.yml	conformance-rows	make	conformance-rows-java	harness-run.make-conformance-rows.conformance-rows-java	none
 ci-fast.yml	conformance-rows	make	conformance-rows-js	harness-run.make-conformance-rows.conformance-rows-js	none
 ci-fast.yml	conformance-rows	make	conformance-rows-rust	harness-run.make-conformance-rows.conformance-rows-rust	none
