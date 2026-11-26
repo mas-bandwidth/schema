@@ -5,7 +5,7 @@ Part of the specification: every test of tier `nightly`, from the test registry.
 
 **Tier nightly:** heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded.
 
-Nightly tests every language answers: 1108. Language-free tests: 1742.
+Nightly tests every language answers: 1109. Language-free tests: 1742.
 
 Tests some languages run in this tier, their own measured seconds being past one shard's budget, each named by its languages' instances: 11.
 
@@ -36,6 +36,12 @@ read bytes, write them back, same bytes.
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.nightly.roundtrip.fixedroadmap-t08.fixed-roadmap-t08-writes-conformance` | the fixed-form plan and writer conform to the spec rows for argument and metadata lanes, nested union tags and counters | `inputs.tests` (443 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedroadmap_t08_test.go:20` |
+
+#### `roundtrip` family `lua-save-none`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.nightly.roundtrip.lua-save-none.none-map-value-rides-as-variant-zero` | a Lua map value at None, held as false, that rides (its default not elided) is written as variant reference 0, never refused, and reads back as None | `tests: {"lua":{"package":"./internal/codegen/luatable","test":"TestLuaSaveRidesANoneMapValue"}}` | the lua Go test for the case (inputs.tests) passes | `internal/codegen/luatable/save_test.go:340` |
 
 ### Type `decode`
 
@@ -3457,7 +3463,7 @@ a negative control: a named test run against a deliberately broken build must co
 | `none.nightly.plant.l5-fixes.go-needs-dart-cook-write-corpus` | `plant` | the dart cook-write row test reads the generated Dart corpus: its go-needs line taken out turns the built-read guard red, naming the line | `inputs.edits` (174 bytes, held in the registry row's `inputs.edits`)<br>`reason: needs ./internal/codegen/darttable <its tests> build/tables-generated-dart/.stamp`<br>`red: ["none.unit.tooling.testreg.every-built-read-is-declared"]` | the named row runs red, for the stated reason: the fix it guards is what holds it green | `test/registry/go-needs.txt:117` |
 | `none.nightly.plant.l5-fixes.go-needs-elixir-message-conformance-ebin` | `plant` | the elixir message-form test reads the compiled Elixir leg: its go-needs line taken out turns the built-read guard red, naming the line | `inputs.edits` (157 bytes, held in the registry row's `inputs.edits`)<br>`reason: needs ./internal/codegen/elixirtable <its tests> build-conformance-elixir`<br>`red: ["none.unit.tooling.testreg.every-built-read-is-declared"]` | the named row runs red, for the stated reason: the fix it guards is what holds it green | `test/registry/go-needs.txt:126` |
 | `none.nightly.plant.l5-fixes.go-needs-luau-fuzz-host` | `plant` | the luau wire-fuzz verdict pipe runs under the native Luau fuzz host: its go-needs line taken out turns the built-read guard red, naming the line | `inputs.edits` (175 bytes, held in the registry row's `inputs.edits`)<br>`reason: needs ./internal/codegen/luautable <its tests> build/luaufuzzhost/luaufuzzhost`<br>`red: ["none.unit.tooling.testreg.every-built-read-is-declared"]` | the named row runs red, for the stated reason: the fix it guards is what holds it green | `test/registry/go-needs.txt:131` |
-| `none.nightly.plant.l5-fixes.lua-save-none-enum-rides` | `plant` | the Lua save writes a None enum that rides as variant 0: refusing a false enum again turns the table-save negative control red on sp\_enum\_mood\_map | `inputs.edits` (149 bytes, held in the registry row's `inputs.edits`)<br>`reason: the sabotaged save refused`<br>`red: ["lua.functional.plant.save.table-save-negative-control"]` | the named row runs red, for the stated reason: the fix it guards is what holds it green | `internal/codegen/luatable/runtime/save.lua:390` |
+| `none.nightly.plant.l5-fixes.lua-save-none-enum-rides` | `plant` | the Lua save writes a None enum that rides as variant 0: refusing a false enum again turns the none-rides save red on sp\_enum\_mood\_map | `inputs.edits` (149 bytes, held in the registry row's `inputs.edits`)<br>`reason: sp_enum_mood_map: the probe answered`<br>`red: ["lua.nightly.roundtrip.lua-save-none.none-map-value-rides-as-variant-zero"]` | the named row runs red, for the stated reason: the fix it guards is what holds it green | `internal/codegen/luatable/runtime/save.lua:390` |
 | `none.nightly.plant.l5-fixes.luau-json-optional-map-value-null` | `plant` | the Luau JSON walk reads a null map\[K\]?T value as absent: refusing it again turns the map value shape row red on optional-null | `inputs.edits` (179 bytes, held in the registry row's `inputs.edits`)<br>`reason: optional-null: the Luau walk and save answer`<br>`red: ["luau.functional.decode.map-value-shape.map-value-shape-native"]` | the named row runs red, for the stated reason: the fix it guards is what holds it green | `internal/codegen/luautable/runtime/schema_json.luau:1409` |
 | `none.nightly.plant.l5-fixes.luau-load-map-value-presence` | `plant` | the Luau wire load marks a map\[K\]?T value that rode present: without the mark the map value shape row goes red on the reload | `inputs.edits` (177 bytes, held in the registry row's `inputs.edits`)<br>`reason: ToJson, then Save, Load and ToJson, wrote`<br>`red: ["luau.functional.decode.map-value-shape.map-value-shape-native"]` | the named row runs red, for the stated reason: the fix it guards is what holds it green | `internal/codegen/luautable/runtime/schema_load.luau:896` |
 | `none.nightly.plant.l5-fixes.luau-textform-wide-integers-are-strings` | `plant` | the Luau text form hands the JSON walk a wide integer as a string: a bare number again turns the text form agreement red on vector-kinds | `inputs.edits` (134 bytes, held in the registry row's `inputs.edits`)<br>`reason: vector-kinds: verdict ERR, want OK`<br>`red: ["luau.functional.codegen.textform-read.load-text-form-agrees-with-go"]` | the named row runs red, for the stated reason: the fix it guards is what holds it green | `internal/codegen/luautable/runtime/schema_textform.luau:701` |
@@ -6384,3 +6390,4 @@ Each test's subject exists in one language only (that language's own generated s
 | `bench.moo-fixed-hotpath-bench.fixed-hot-path-bench` | `moo` | performance measurement of this language's own interpreter runtime |
 | `lint.luau-strict-analyze.at-id-cap` | `luau` | luau-analyze strict type checking of a generated 4096-entry Luau module; only Luau has this analyser |
 | `lint.ruby-rubytable.block-manifest-and-real-units-analyze` | `ruby` | Ruby static analyser over generated block units |
+| `roundtrip.lua-save-none.none-map-value-rides-as-variant-zero` | `lua` | Lua holds a map value at None as false, since a Lua table key cannot hold nil |

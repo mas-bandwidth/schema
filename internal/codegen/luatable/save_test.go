@@ -303,6 +303,112 @@ func TestLuaTableSaveNegativeControl(t *testing.T) {
 	t.Logf("%d of %d instances diverge with the default elision removed", diverged, diverged+compared)
 }
 
+// noneRidesProbe loads the instance, saves it with the runtime whose default
+// elision is removed (so the map value at None rides), reloads the saved
+// bytes, and prints each map entry as key=before/after, then whether the
+// bytes are the wire's.
+const noneRidesProbe = `local T = require(%q)
+local load = require("load")
+local save = require("save")
+local inputs = require("inputs")
+local function report()
+  return { damaged = false, refused = 0, unknown = 0, kindChanged = 0, outOfRange = 0, widened = 0, repeatedKey = 0 }
+end
+local v = load.Load(T, %q, inputs.wire, report())
+if v == nil then print("load refused") return end
+local b, why = save.Save(T, %q, v)
+if b == nil then print("refused:" .. tostring(why)) return end
+local r2 = report()
+local v2 = load.Load(T, %q, b, r2)
+if v2 == nil or r2.refused ~= 0 or r2.damaged then print("reload refused") return end
+local keys = {}
+for k in pairs(v.%s) do keys[#keys + 1] = k end
+table.sort(keys)
+for _, k in ipairs(keys) do print(k .. "=" .. tostring(v.%s[k]) .. "/" .. tostring(v2.%s[k])) end
+print(b == inputs.wire and "same" or "diff")
+`
+
+// TestLuaSaveRidesANoneMapValue holds the Lua save's None enum where it
+// rides (docs/SPEC-TABLES.md §3, §2.15): a Lua map holds a value at None as
+// false (a table key cannot hold nil), and a None that is written, not
+// elided, is variant reference 0, which reads back as None. With the default
+// elision removed, sp_enum_mood_map's value at None (an older writer's
+// deprecated variant) saves, the bytes differ from the wire only by the
+// value that now rides, and the reload holds every entry as it was. Before
+// the fix write_field matched false against no variant and refused the save
+// with no reason.
+func TestLuaSaveRidesANoneMapValue(t *testing.T) {
+	t.Parallel()
+	repo := filepath.Join("..", "..", "..")
+	manifestPath := filepath.Join(repo, "testdata", "conformance", "tables", "MANIFEST.txt")
+	var row manifestRow
+	for _, r := range manifestRows(t, manifestPath, "instance") {
+		if r.caseName == "sp_enum_mood_map" {
+			row = r
+		}
+	}
+	if row.caseName == "" {
+		t.Fatal("the manifest has no instance row sp_enum_mood_map")
+	}
+	var paths []string
+	for _, p := range manifestUnits(t, manifestPath)[row.unit] {
+		paths = append(paths, filepath.Join(repo, p))
+	}
+	if len(paths) == 0 {
+		t.Fatalf("the manifest has no unit %s", row.unit)
+	}
+	u := luarun.LoadUnit(t, paths...)
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatalf("unit %s: %v", row.unit, err)
+	}
+	const anchor = "  return x == fd.default\n"
+	src := string(files["save.lua"])
+	if n := strings.Count(src, anchor); n != 1 {
+		t.Fatalf("the elision anchor is matched %d times in save.lua, want exactly once", n)
+	}
+	files["save.lua"] = []byte(strings.Replace(src, anchor, "  return false\n", 1))
+	st := u.Tables[row.root]
+	if st == nil || len(st.Fields) != 1 || st.Fields[0].MapEntry == nil {
+		t.Fatalf("%s: the root %s is not one map field", row.caseName, row.root)
+	}
+	field := st.Fields[0].Name
+	dir := t.TempDir()
+	luarun.WriteFiles(t, dir, files)
+	probe := fmt.Sprintf(noneRidesProbe, ModuleName(u), row.root, row.root, row.root, field, field, field)
+	if err := os.WriteFile(filepath.Join(dir, "main.lua"), []byte(probe), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	wire, err := os.ReadFile(filepath.Join(repo, row.wire))
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := strings.Split(strings.TrimRight(string(luarun.Run(t, dir, "main.lua", map[string][]byte{"wire": wire})), "\n"), "\n")
+	if len(out) < 2 {
+		t.Fatalf("%s: the probe answered %q", row.caseName, out)
+	}
+	none := 0
+	for _, line := range out[:len(out)-1] {
+		k, vals, ok := strings.Cut(line, "=")
+		before, after, ok2 := strings.Cut(vals, "/")
+		if !ok || !ok2 {
+			t.Fatalf("%s: the save did not hold the map: %q", row.caseName, strings.Join(out, "\n"))
+		}
+		if before != after {
+			t.Errorf("%s: entry %s was %s and reads back %s", row.caseName, k, before, after)
+		}
+		if before == "false" {
+			none++
+		}
+	}
+	if none == 0 {
+		t.Fatalf("%s: no entry holds None, so no None rode: %q", row.caseName, out)
+	}
+	if out[len(out)-1] != "diff" {
+		t.Errorf("%s: the bytes are the wire's, so the None did not ride", row.caseName)
+	}
+}
+
 // blobSaveUnit holds the blob shapes no conformance instance row reaches: a
 // union whose live arm is a string blob, beside blob fields that may be null
 // (docs/SPEC-TABLES.md §2.6, §3.1).

@@ -126,6 +126,9 @@ needs ./internal/codegen/elixirtable TestMessageFormConformanceElixir build/tabl
 needs ./internal/codegen/elixirtable TestMessageFormConformanceElixir build-conformance-elixir
 
 # the native Luau fuzz host the verdict pipe and its control run the driver
-# under: the pinned Luau source, then the host linked against it
-needs ./internal/codegen/luautable TestLuauWireFuzzVerdictPipe(NegativeControl)? build/luau-src-0.741/.stamp
+# under (its rule fetches and checks the pinned Luau source first)
 needs ./internal/codegen/luautable TestLuauWireFuzzVerdictPipe(NegativeControl)? build/luaufuzzhost/luaufuzzhost
+
+# the conformance harness the C# strict driver tests run the leg under, which
+# they make for themselves too (csConformanceBuild): built before their call
+needs ./internal/codegen/cstable TestCSharpDriverReadsStrictAndWritesBack(NegativeControl)? build/conformance-harness

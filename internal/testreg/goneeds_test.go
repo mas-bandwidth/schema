@@ -25,10 +25,14 @@ var builtReads = map[string]string{
 // argument it builds itself, and how the harness hands a driver a path at run
 // time. Undeclared, each red its test the first time it ran alone (the dart
 // cook-write rows, the elixir message conformance, the luau wire-fuzz pipe).
+// A test that also makes the output itself (csConformanceBuild) is held too:
+// the declared build runs before its call, so the call is the test's time.
 var builtJoinReads = map[string]string{
-	"tables-generated-dart": "build/tables-generated-dart/.stamp",
-	"elixir-tables-ebin":    "build-conformance-elixir",
-	"luaufuzzhost":          "build/luaufuzzhost/luaufuzzhost",
+	"tables-generated-dart":         "build/tables-generated-dart/.stamp",
+	"tables-generated-dart-framing": "build/tables-generated-dart-framing/countedmin/.stamp",
+	"elixir-tables-ebin":            "build-conformance-elixir",
+	"luaufuzzhost":                  "build/luaufuzzhost/luaufuzzhost",
+	"conformance-harness":           "build/conformance-harness",
 }
 
 // TestEveryBuiltReadIsDeclared: a package whose Go tests open a build output
