@@ -109,9 +109,10 @@ defmodule Benchtable.FixedRuntime do
   §5.3 STEP 10: `n := rest / record_bytes`, and `n > capacity` is
   `:batch_too_large`.
 
-  A RAGGED TAIL IS NOT THIS STEP'S TO NAME: step 9 runs first and answers
-  `malformed`, so a `rest` that is not a whole number of records passes
-  through here untouched and the split reports it.
+  A RAGGED TAIL IS `:truncated` (docs/FIXED-FORM-ALGORITHM.md §5.3 step 6 and
+  its refusal table: "a ragged tail: rest mod record_bytes != 0 | truncated"),
+  answered here before the count, because bytes left over mean the two ends of
+  the file have met. This form's report has no malformed flag.
 
   A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (step 9): a header and a layout
   followed by no record is `:truncated`, because a batch of none holds no
@@ -121,7 +122,7 @@ defmodule Benchtable.FixedRuntime do
     cond do
       rest == 0 -> {:error, :truncated}
       record_bytes <= 0 -> :ok
-      rem(rest, record_bytes) != 0 -> :ok
+      rem(rest, record_bytes) != 0 -> {:error, :truncated}
       div(rest, record_bytes) > capacity -> {:error, :batch_too_large}
       true -> :ok
     end
@@ -172,26 +173,26 @@ defmodule Benchtable.FixedRuntime do
   end
 
   # THE FORM BYTE IS READ BEFORE THE FILE'S LENGTH (§5.3, step 1). A file with
-  # NO FIRST BYTE is the RESIDUE — malformed, with no name — but a file that HAS
-  # one has its byte earn its name whatever the file's length: a committed form-1
-  # file is TEN bytes and a form-2 batch THREE, so measuring first would answer
-  # malformed for every real file of the two forms this reader names.
-  def read_file_header(<<>>), do: {:error, :malformed}
+  # NO FIRST BYTE is :truncated (docs/FIXED-FORM-ALGORITHM.md refusal table: "no
+  # bytes at all | truncated"; this form has no malformed flag), but a file that
+  # HAS one has its byte earn its name whatever the file's length: a committed
+  # form-1 file is TEN bytes and a form-2 batch THREE, so measuring first would
+  # answer truncated for every real file of the two forms this reader names.
+  def read_file_header(<<>>), do: {:error, :truncated}
   def read_file_header(<<1, _::binary>>), do: {:error, :previous_form}
   def read_file_header(<<2, _::binary>>), do: {:error, :message_form_as_file}
   def read_file_header(<<form, _::binary>>) when form != @form, do: {:error, :newer_form}
 
-  # STEP 2: THE SEVEN RESERVED BYTES, which are REFUSED and not ignored so they
-  # stay spendable later (§3.4, §5.3), and then the twenty-byte minimum. The
-  # reserved clause stands BEFORE the length clause: both answer the same name,
-  # but a clause that can only be reached past the length check is a clause that
-  # never reads a header it was written to refuse.
+  # STEP 2, IN THE SPEC'S ORDER (docs/FIXED-FORM-ALGORITHM.md §5.3 step 2):
+  # "if len(file) < 20: REFUSE truncated", then "if any of file[1..7] != 0:
+  # REFUSE reserved_not_zero". The seven reserved bytes are REFUSED and not
+  # ignored, so they stay spendable later (§3.4).
+  def read_file_header(data) when is_binary(data) and byte_size(data) < @file_header_bytes + 4,
+    do: {:error, :truncated}
+
   def read_file_header(<<@form, reserved::binary-size(@file_hash_at - 1), _::binary>>)
       when reserved != <<0::size((@file_hash_at - 1) * 8)>>,
-      do: {:error, :malformed}
-
-  def read_file_header(data) when is_binary(data) and byte_size(data) < @file_header_bytes + 4,
-    do: {:error, :malformed}
+      do: {:error, :reserved_not_zero}
 
   def read_file_header(<<@form, _::binary>>), do: {:error, :layout_malformed}
   def read_file_header(_), do: {:error, :layout_malformed}
@@ -297,6 +298,26 @@ defmodule Benchtable.FixedRuntime do
   """
   def held_min(_acc, v, min) when v < min, do: throw({:refuse, :count_over_bound})
   def held_min(acc, _v, _min), do: acc
+
+  @doc """
+  A COUNTED [A..B]'s COUNT OUTSIDE [A, B] REFUSES BY NAME, count_over_bound,
+  and lands nothing (docs/FIXED-FORM-ALGORITHM.md §4.5 count op: "if v < 0 or
+  v > size then REFUSE count_over_bound"; §5.3 refusal table: "a count past
+  the plan's bound (§4.5) | count_over_bound").
+  """
+  def held_count(_acc, v, min, max) when v < min or v > max,
+    do: throw({:refuse, :count_over_bound})
+
+  def held_count(acc, _v, _min, _max), do: acc
+
+  @doc """
+  A string(N)'s OR bytes(N)'s LENGTH PAST ITS CAP, or below zero, REFUSES BY
+  NAME, length_over_bound, and lands nothing; nothing is held to the cap
+  (docs/FIXED-FORM-ALGORITHM.md §5.3 refusal table: "a length past the plan's
+  cap (§4.5) | length_over_bound").
+  """
+  def held_len(_acc, v, cap) when v < 0 or v > cap, do: throw({:refuse, :length_over_bound})
+  def held_len(acc, _v, _cap), do: acc
 
   @doc """
   A COMPILED LANE'S IMAGE HELD TO ITS WRITER'S OWN RANGES, before the projection
@@ -2036,7 +2057,10 @@ defmodule Benchtable.FixedRuntime do
 
     case body do
       <<_::binary-size(^src), raw::little-signed-32, take::binary-size(^size), _::binary>> ->
-        {v, report} = clamp_count(raw, 0, cap, report)
+        # A LENGTH PAST THE CAP REFUSES BY NAME (§5.3 refusal table:
+        # length_over_bound); the length is never held to the cap.
+        _ = held_len(0, raw, cap)
+        v = raw
 
         # THE ONE CONTENT RULE THE WIRE HAS (§3, §4), over the USED UNITS and
         # over nothing else: the slack carries no meaning, and reading a whole
@@ -2354,7 +2378,8 @@ defmodule Benchtable.FixedRuntime do
   # eight bytes of its header's hash against a lineage THE BUILD laid down —
   # the lock's entries, OLDEST FIRST, the current layout last — and NOTHING
   # PARSES A STRANGER'S LAYOUT, ON ANY PATH. A hash the lineage does not hold is
-  # :layout_newer (ship the reader); a hash below the FLOOR is
+  # :layout_unknown (docs/FIXED-FORM-ALGORITHM.md §5.3 step 5: nothing in the
+  # lineage proves it newer, and layout_newer is retired); a hash below the FLOOR is
   # :layout_unsupported (upgrade the client); a hash the lineage holds whose
   # layout BYTES differ from the ones the lock recorded is ONE name,
   # :layout_malformed — a lie about a known version, which is where §1.1's seven
@@ -2371,7 +2396,7 @@ defmodule Benchtable.FixedRuntime do
   def select(known, floor, hash, layout) do
     case index_of(known, hash, 0) do
       nil ->
-        {:error, :layout_newer, hash}
+        {:error, :layout_unknown, hash}
 
       i when i < floor ->
         {:error, :layout_unsupported, hash}

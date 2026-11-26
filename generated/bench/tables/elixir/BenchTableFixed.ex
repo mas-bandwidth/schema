@@ -1012,17 +1012,14 @@ defmodule Benchtable.BenchTableFixed do
     c = R.clamps(c, f_frame_tick, 0, 281_474_976_710_655)
     c = R.fclamps(c, R.f32_value(f_server_time), 0.0, 65535.0)
     c = R.held_min(c, n_entities, 1)
-    c = R.clamps(c, n_entities, 1, 8)
-    {l_entities, c, m} = table_entity_fixed_list(b_entities, min(max(n_entities, 0), 8), c, m)
-    c = R.clamps(c, n_stats, 0, 80)
-    {l_stats, c, m} = table_stat_fixed_list(b_stats, min(max(n_stats, 0), 80), c, m)
+    c = R.held_count(c, n_entities, 1, 8)
+    {l_entities, c, m} = table_entity_fixed_list(b_entities, n_entities, c, m)
+    c = R.held_count(c, n_stats, 0, 80)
+    {l_stats, c, m} = table_stat_fixed_list(b_stats, n_stats, c, m)
     {f_game_event, c, m} = table_event_fixed_decode(b_game_event, c, m)
-    c = R.clamps(c, n_player_name, 0, 15)
-
-    {t_player_name, m} =
-      R.text(binary_part(b_player_name, 0, min(max(n_player_name, 0), 15)), <<>>, m, true)
-
-    c = R.clamps(c, n_payload, 0, 16)
+    c = R.held_len(c, n_player_name, 15)
+    {t_player_name, m} = R.text(binary_part(b_player_name, 0, n_player_name), <<>>, m, true)
+    c = R.held_len(c, n_payload, 16)
     c = R.fclamps(c, R.f32_value(f_aim_x), -1.0, 1.0)
     c = R.fclamps(c, R.f32_value(f_aim_y), -1.0, 1.0)
     c = R.fclamps(c, R.f32_value(f_aim_z), -1.0, 1.0)
@@ -1048,7 +1045,7 @@ defmodule Benchtable.BenchTableFixed do
        game_event: f_game_event,
        loadout: [f_loadout_0, f_loadout_1, f_loadout_2, f_loadout_3],
        player_name: t_player_name,
-       payload: binary_part(b_payload, 0, min(max(n_payload, 0), 16)),
+       payload: binary_part(b_payload, 0, n_payload),
        aim_x: R.fclamp(R.f32_value(f_aim_x), -1.0, 1.0),
        aim_y: R.fclamp(R.f32_value(f_aim_y), -1.0, 1.0),
        aim_z: R.fclamp(R.f32_value(f_aim_z), -1.0, 1.0),
@@ -1147,7 +1144,7 @@ defmodule Benchtable.BenchTableFixed do
   # THE CURRENT ONE LAST (§5.2). A file is matched on its header's hash
   # against these and on NOTHING ELSE; the layout it carries is COMPARED with
   # the bytes the lock recorded and never parsed. A hash no entry holds is
-  # `:layout_newer` — ship the reader. The four members are §5.9 #19's, in
+  # `:layout_unknown` (§5.3 step 5; `layout_newer` is retired). The four members are §5.9 #19's, in
   # its order, with the byte length riding BESIDE the bytes.
   @table_entity_known {
     %{
@@ -1161,7 +1158,7 @@ defmodule Benchtable.BenchTableFixed do
 
   # THE FLOOR: 1 + the highest RETIRED index, 0 when none is (§5.2). Below it
   # a layout this build once served is retired and the answer is
-  # `:layout_unsupported` — upgrade the client — rather than `:layout_newer`.
+  # `:layout_unsupported` — upgrade the client — rather than `:layout_unknown`.
   @table_entity_floor 0
 
   # THE RETIRED HASHES and the operator's own sentence for each, which is what
@@ -1230,11 +1227,8 @@ defmodule Benchtable.BenchTableFixed do
       {:ok, stated, layout, records} ->
         table_entity_fixed_records(stated, layout, records, report, opts)
 
-      {:error, :malformed} ->
-        # STEP 1: a file shorter than a header is the RESIDUE and not a bucket
-        # a named rule falls into — `malformed`, and no reason (§5.3).
-        {:error, :malformed, report}
-
+      # STEPS 1 AND 2: an empty or short file is `truncated`, a reserved byte
+      # `reserved_not_zero` (§5.3); this form's report has no malformed flag.
       {:error, why} ->
         {:error, why, report}
     end
@@ -1310,9 +1304,8 @@ defmodule Benchtable.BenchTableFixed do
     {census_u, census_k} = census
 
     # §5.3 STEP 10, BEFORE A RECORD IS SPLIT OFF: `n := rest / record_bytes`,
-    # and a batch past the caller's room is a REFUSAL BY NAME. Step 9 runs
-    # first and owns the ragged tail, so a `rest` that is not a whole number
-    # of records passes this and the split reports `malformed`.
+    # and a batch past the caller's room is a REFUSAL BY NAME; a `rest` that is
+    # not a whole number of records is a ragged tail, `truncated` (§5.3 step 6).
     # A CONTENT VIOLATION IN THE USED UNITS REFUSES THE WHOLE READ BY NAME
     # (§4.5 fix 11): `R.text` and the compiled plan's text op both
     # THROW `{:refuse, :text_ill_formed}`, and this is where the uniform
@@ -1340,7 +1333,6 @@ defmodule Benchtable.BenchTableFixed do
         # refusal that came after would have moved a counter.
         {:ok, values, R.census(report, census_u, census_k)}
       else
-        {:error, :malformed} -> {:error, :malformed, report}
         {:error, why} -> {:error, why, report}
       end
     catch
@@ -1350,7 +1342,7 @@ defmodule Benchtable.BenchTableFixed do
 
   # THE RECORDS FILL THE REST OF THE FILE and there is no count: a reader knows
   # the record size from the layout, so the count is arithmetic. BYTES LEFT
-  # OVER ARE `malformed`, which is §3's rule for the same reason.
+  # OVER ARE `truncated` (§5.3 step 6): the two ends of the file have met.
   defp table_entity_fixed_split(<<>>, _hash, _size, acc), do: {:ok, :lists.reverse(acc)}
 
   defp table_entity_fixed_split(records, hash, size, acc) do
@@ -1364,7 +1356,7 @@ defmodule Benchtable.BenchTableFixed do
         {:error, :no_layout}
 
       _ ->
-        {:error, :malformed}
+        {:error, :truncated}
     end
   end
 
@@ -1411,7 +1403,7 @@ defmodule Benchtable.BenchTableFixed do
   # THE CURRENT ONE LAST (§5.2). A file is matched on its header's hash
   # against these and on NOTHING ELSE; the layout it carries is COMPARED with
   # the bytes the lock recorded and never parsed. A hash no entry holds is
-  # `:layout_newer` — ship the reader. The four members are §5.9 #19's, in
+  # `:layout_unknown` (§5.3 step 5; `layout_newer` is retired). The four members are §5.9 #19's, in
   # its order, with the byte length riding BESIDE the bytes.
   @table_stat_known {
     %{
@@ -1425,7 +1417,7 @@ defmodule Benchtable.BenchTableFixed do
 
   # THE FLOOR: 1 + the highest RETIRED index, 0 when none is (§5.2). Below it
   # a layout this build once served is retired and the answer is
-  # `:layout_unsupported` — upgrade the client — rather than `:layout_newer`.
+  # `:layout_unsupported` — upgrade the client — rather than `:layout_unknown`.
   @table_stat_floor 0
 
   # THE RETIRED HASHES and the operator's own sentence for each, which is what
@@ -1491,11 +1483,8 @@ defmodule Benchtable.BenchTableFixed do
       {:ok, stated, layout, records} ->
         table_stat_fixed_records(stated, layout, records, report, opts)
 
-      {:error, :malformed} ->
-        # STEP 1: a file shorter than a header is the RESIDUE and not a bucket
-        # a named rule falls into — `malformed`, and no reason (§5.3).
-        {:error, :malformed, report}
-
+      # STEPS 1 AND 2: an empty or short file is `truncated`, a reserved byte
+      # `reserved_not_zero` (§5.3); this form's report has no malformed flag.
       {:error, why} ->
         {:error, why, report}
     end
@@ -1571,9 +1560,8 @@ defmodule Benchtable.BenchTableFixed do
     {census_u, census_k} = census
 
     # §5.3 STEP 10, BEFORE A RECORD IS SPLIT OFF: `n := rest / record_bytes`,
-    # and a batch past the caller's room is a REFUSAL BY NAME. Step 9 runs
-    # first and owns the ragged tail, so a `rest` that is not a whole number
-    # of records passes this and the split reports `malformed`.
+    # and a batch past the caller's room is a REFUSAL BY NAME; a `rest` that is
+    # not a whole number of records is a ragged tail, `truncated` (§5.3 step 6).
     # A CONTENT VIOLATION IN THE USED UNITS REFUSES THE WHOLE READ BY NAME
     # (§4.5 fix 11): `R.text` and the compiled plan's text op both
     # THROW `{:refuse, :text_ill_formed}`, and this is where the uniform
@@ -1601,7 +1589,6 @@ defmodule Benchtable.BenchTableFixed do
         # refusal that came after would have moved a counter.
         {:ok, values, R.census(report, census_u, census_k)}
       else
-        {:error, :malformed} -> {:error, :malformed, report}
         {:error, why} -> {:error, why, report}
       end
     catch
@@ -1611,7 +1598,7 @@ defmodule Benchtable.BenchTableFixed do
 
   # THE RECORDS FILL THE REST OF THE FILE and there is no count: a reader knows
   # the record size from the layout, so the count is arithmetic. BYTES LEFT
-  # OVER ARE `malformed`, which is §3's rule for the same reason.
+  # OVER ARE `truncated` (§5.3 step 6): the two ends of the file have met.
   defp table_stat_fixed_split(<<>>, _hash, _size, acc), do: {:ok, :lists.reverse(acc)}
 
   defp table_stat_fixed_split(records, hash, size, acc) do
@@ -1625,7 +1612,7 @@ defmodule Benchtable.BenchTableFixed do
         {:error, :no_layout}
 
       _ ->
-        {:error, :malformed}
+        {:error, :truncated}
     end
   end
 
@@ -1744,7 +1731,7 @@ defmodule Benchtable.BenchTableFixed do
   # THE CURRENT ONE LAST (§5.2). A file is matched on its header's hash
   # against these and on NOTHING ELSE; the layout it carries is COMPARED with
   # the bytes the lock recorded and never parsed. A hash no entry holds is
-  # `:layout_newer` — ship the reader. The four members are §5.9 #19's, in
+  # `:layout_unknown` (§5.3 step 5; `layout_newer` is retired). The four members are §5.9 #19's, in
   # its order, with the byte length riding BESIDE the bytes.
   @table_mixed_known {
     %{
@@ -1758,7 +1745,7 @@ defmodule Benchtable.BenchTableFixed do
 
   # THE FLOOR: 1 + the highest RETIRED index, 0 when none is (§5.2). Below it
   # a layout this build once served is retired and the answer is
-  # `:layout_unsupported` — upgrade the client — rather than `:layout_newer`.
+  # `:layout_unsupported` — upgrade the client — rather than `:layout_unknown`.
   @table_mixed_floor 0
 
   # THE RETIRED HASHES and the operator's own sentence for each, which is what
@@ -1824,11 +1811,8 @@ defmodule Benchtable.BenchTableFixed do
       {:ok, stated, layout, records} ->
         table_mixed_fixed_records(stated, layout, records, report, opts)
 
-      {:error, :malformed} ->
-        # STEP 1: a file shorter than a header is the RESIDUE and not a bucket
-        # a named rule falls into — `malformed`, and no reason (§5.3).
-        {:error, :malformed, report}
-
+      # STEPS 1 AND 2: an empty or short file is `truncated`, a reserved byte
+      # `reserved_not_zero` (§5.3); this form's report has no malformed flag.
       {:error, why} ->
         {:error, why, report}
     end
@@ -1904,9 +1888,8 @@ defmodule Benchtable.BenchTableFixed do
     {census_u, census_k} = census
 
     # §5.3 STEP 10, BEFORE A RECORD IS SPLIT OFF: `n := rest / record_bytes`,
-    # and a batch past the caller's room is a REFUSAL BY NAME. Step 9 runs
-    # first and owns the ragged tail, so a `rest` that is not a whole number
-    # of records passes this and the split reports `malformed`.
+    # and a batch past the caller's room is a REFUSAL BY NAME; a `rest` that is
+    # not a whole number of records is a ragged tail, `truncated` (§5.3 step 6).
     # A CONTENT VIOLATION IN THE USED UNITS REFUSES THE WHOLE READ BY NAME
     # (§4.5 fix 11): `R.text` and the compiled plan's text op both
     # THROW `{:refuse, :text_ill_formed}`, and this is where the uniform
@@ -1934,7 +1917,6 @@ defmodule Benchtable.BenchTableFixed do
         # refusal that came after would have moved a counter.
         {:ok, values, R.census(report, census_u, census_k)}
       else
-        {:error, :malformed} -> {:error, :malformed, report}
         {:error, why} -> {:error, why, report}
       end
     catch
@@ -1944,7 +1926,7 @@ defmodule Benchtable.BenchTableFixed do
 
   # THE RECORDS FILL THE REST OF THE FILE and there is no count: a reader knows
   # the record size from the layout, so the count is arithmetic. BYTES LEFT
-  # OVER ARE `malformed`, which is §3's rule for the same reason.
+  # OVER ARE `truncated` (§5.3 step 6): the two ends of the file have met.
   defp table_mixed_fixed_split(<<>>, _hash, _size, acc), do: {:ok, :lists.reverse(acc)}
 
   defp table_mixed_fixed_split(records, hash, size, acc) do
@@ -1958,7 +1940,7 @@ defmodule Benchtable.BenchTableFixed do
         {:error, :no_layout}
 
       _ ->
-        {:error, :malformed}
+        {:error, :truncated}
     end
   end
 
