@@ -384,7 +384,11 @@ write_field = function(T, ids, nodes, fd, v, w)
     if (fd.optional or fd.required) or not at_default(fd, v) then
       local ref = id_ref(ids, fd.id)
       local vref = 0
-      if x ~= nil then
+      -- None is nil, and false in a map entry's value (a key cannot hold
+      -- nil), as at_default and write_element read it: a None that rides
+      -- writes the zero variant reference, never a refusal (§3)
+      local none = x == nil or x == false
+      if not none then
         for _, var in ipairs(fd.variants) do
           if var[1] == x then
             vref = id_ref(ids, var[2])
@@ -392,7 +396,7 @@ write_field = function(T, ids, nodes, fd, v, w)
           end
         end
       end
-      if vref == 0 and x ~= nil then return false end
+      if vref == 0 and not none then return false end
       w_leb(w, ref)
       w_u8(w, 30)
       w_leb(w, vref)

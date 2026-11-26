@@ -15,7 +15,8 @@ import (
 
 // saveProbe is the Lua main for one instance row: it requires the table module
 // and the save runtime, loads the wire with the load runtime, saves it back,
-// and prints the saved bytes and the measure.
+// and prints the saved bytes and the measure. A save that refuses prints
+// "refused:<reason>:" instead, so the caller names the row and the reason.
 func saveProbe(module, root string) string {
 	return `local T = require("` + module + `")
 local load = require("load")
@@ -24,7 +25,11 @@ local inputs = require("inputs")
 local wire = inputs.wire
 local report = { damaged = false, refused = 0, unknown = 0, kindChanged = 0, outOfRange = 0, widened = 0, repeatedKey = 0 }
 local v = load.Load(T, "` + root + `", wire, report)
-local saved = save.Save(T, "` + root + `", v)
+local saved, why = save.Save(T, "` + root + `", v)
+if saved == nil then
+  print("refused:" .. tostring(why) .. ":")
+  return
+end
 local measure = save.Measure(T, "` + root + `", v)
 print(#saved .. ":" .. (saved == wire and "same" or "diff") .. ":" .. measure)
 `
@@ -276,9 +281,16 @@ func TestLuaTableSaveNegativeControl(t *testing.T) {
 		}
 		out := saveInstance(t, repo, paths, row, patch)
 		part := strings.SplitN(out, ":", 3)
-		if len(part) == 3 && part[1] == "same" {
+		switch {
+		case len(part) == 3 && part[0] == "refused":
+			// a field that rides at its default is still a lawful value: the
+			// save writes it, and only the bytes may differ. A refusal here
+			// is the save failing a value it must write (sp_enum_mood_map: a
+			// map value at None, held as false, written as variant 0)
+			t.Errorf("instance %s (unit %s): the sabotaged save refused (%s); a default that rides must still be written", row.caseName, row.unit, part[1])
+		case len(part) == 3 && part[1] == "same":
 			compared++
-		} else {
+		default:
 			diverged++
 		}
 	}
