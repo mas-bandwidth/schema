@@ -354,6 +354,9 @@ static int refuse_write_case(const char *name, const char *type)
 int main(int argc, char **argv)
 {
     char path[512], line[512];
+    static char text[1 << 16];
+    size_t size;
+    const char *at, *end;
     FILE *cases;
     if (argc == 3 && strcmp(argv[2], "read") == 0) g_write = 0;
     else if (argc == 3 && strcmp(argv[2], "write") == 0) g_read = 0;
@@ -375,14 +378,34 @@ int main(int argc, char **argv)
         return 1;
     }
     snprintf(path, sizeof(path), "%.400s/cases.txt", argv[1]);
+    /* THE CASES ARE READ WHOLE BEFORE ANY CHILD IS FORKED. A refuse-write
+       case forks, and the child's debug assert aborts; on macOS abort()
+       flushes every open stdio stream, and flushing the inherited read
+       stream seeks the file offset the parent shares, so the parent read the
+       list again from the middle, forever. */
     cases = fopen(path, "r");
     if (!cases)
     {
         fprintf(stderr, "cannot open %s\n", path);
         return 2;
     }
-    while (fgets(line, sizeof(line), cases))
+    size = fread(text, 1, sizeof(text) - 1, cases);
+    if (ferror(cases) || !feof(cases))
     {
+        fprintf(stderr, "cannot read %s whole\n", path);
+        fclose(cases);
+        return 2;
+    }
+    fclose(cases);
+    text[size] = 0;
+    for (at = text, end = text + size; at < end;)
+    {
+        const char *nl = memchr(at, '\n', (size_t) (end - at));
+        size_t len = (size_t) ((nl ? nl : end) - at);
+        if (len >= sizeof(line)) len = sizeof(line) - 1;
+        memcpy(line, at, len);
+        line[len] = 0;
+        at = nl ? nl + 1 : end;
         char name[128], type[64], verdict[64], bits[64];
         int fields = sscanf(line, " %127s %63s %63s %63s", name, type, verdict, bits);
         int ok;
@@ -397,6 +420,5 @@ int main(int argc, char **argv)
         if (ok) printf("case %s ok\n", name);
         else printf("case %s FAILED: %s\n", name, g_why);
     }
-    fclose(cases);
     return 0;
 }
