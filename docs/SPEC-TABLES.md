@@ -543,8 +543,9 @@ lives.** C++ and Go read and write a table field of a schema `type`, `enum` or
 storage spells `string(N)` as `[u8; N]` with a used length, where the variable
 form holds a `String`, a `Vec` or an `Option<Rc<..>>`, so the table layer
 declares its own type under the same schema name. Two rules keep every name
-reachable. A TABLE ENUM, with its `<name>_json_name` and
-`<name>_from_json_name`, is emitted ONCE per crate, in `table_enums.rs`, and
+reachable. A TABLE ENUM, with its associated `<Name>::json_name` and
+`<Name>::from_json_name` (never free functions spelled from its name, which two
+enum names could share), is emitted ONCE per crate, in `table_enums.rs`, and
 every table module that names it imports it; there is never one copy per file.
 And where a packet type and a table type share a schema name, THE PACKET TYPE
 KEEPS THE CRATE-ROOT NAME and the table type lives at
@@ -6869,7 +6870,11 @@ well as about work, and this is where that memory lives.
   after it. A resolved vocabulary declared inside a read
   call would be a table rebuilt per batch, which is the property's opposite.
 - **THE ENTRY BOUND IS THAT CAPACITY, and an announcement above it is refused
-  by name as `vocabulary_too_large` before an entry is touched.** The bound is
+  by name as `vocabulary_too_large` before an entry is touched.** The bound
+  is applied as the entries are read: once the bound's count of entries is
+  placed, ANOTHER ENTRY STARTING is `vocabulary_too_large`, and that entry and
+  every byte after it is neither decoded nor compared, so damage past the
+  bound never turns the verdict into a malformed announcement. The bound is
   a number the CALLER states rather than a number the wire could name: sizing
   for the largest vocabulary the wire can spell would be sizing for a peer
   that does not exist. **A GENERATED CONSTANT GIVES THE UNIT'S OWN ENTRY
@@ -10054,7 +10059,10 @@ that answers the stream `test/conformance/README.md` states, forty lines of
 `Load`, `Save` and a report copied out — because the mutators, the oracle and
 the comparison live in the harness once, for every language. A port with no
 variable class answers the roster with a `0` for every variable root and is
-fuzzed over the fixed ones, and the line says how many seeds were absent.
+fuzzed over the fixed ones, and the line says how many seeds were absent and
+names the roots they belong to, each with its count: `N seeds absent (roots
+the leg has no codec for: unit.Root (n seeds), ...)`. A count alone sends
+whoever reads a red to rebuild the harness to learn its cause.
 
 **There is no `wire-forgery` surface, and the reason is the same one the
 block and cook fuzzers gave.** A fuzzer is a search, not a case, and a find it
@@ -11154,6 +11162,16 @@ and it is the same buffer across all three by construction.
   stores. The id list is the retained ids' own storage (THE RETAINED IDS,
   below), and it rides inside `TableRetain` and claims no name of its own
   (§11).
+- **A REFUSED LOADRETAIN LEAVES THE STORE EMPTY.** A load the read refuses,
+  at the form byte, the framing, or damage met mid-body after records were
+  already captured, keeps no retained record: the store holds nothing from
+  the refused read and nothing from any earlier load into it. A later
+  `SaveRetain` of a root an earlier load answered, through that store, writes
+  that root's known fields and no retained record, exactly the plain `Save`'s
+  bytes, or refuses by name where a port binds the store to the root it
+  loaded. A port whose records carry their own retained fields drops them
+  from the save by this rule, not by emptying the records. The
+  `retain-refusal` rows hold it on every leg (SPEC-CONFORMANCE.md §7).
 - **The three names are ADDITIVE.** `Load`, `Measure` and `Save` are unchanged
   and retain nothing, so every existing caller, every conformance leg and every
   generated golden stands byte for byte. Retention is a thing a caller asks
@@ -14765,7 +14783,7 @@ in build version (§20.5).
   FixedResetImage  FixedHoles  FixedLineageHoles  FixedPlanMax  FixedReadPlan  FixedLoadWalk  GenPastBound
   FixedDecode  FixedPrefill  FixedIdentity  FixedNewPlan  FixedHashLo  FixedHashHi
   FixedDstCopy  FixedIdentityCopy  FixedLayoutCopy  FixedPrefillCopy
-  FixedKnown  FixedFloor  FixedLineagePlans  FixedBoundsKnown
+  FixedKnown  FixedFloor  FixedLineagePlans  FixedBoundsKnown  FixedKnownViews
   ```
 
   The Go templates also use Add, Erase, Each, Insert, Find,
@@ -14805,7 +14823,9 @@ in build version (§20.5).
   `FixedFloor`, and one plan per entry laid down at build, `FixedLineagePlans`.
   They are per-declaration for the same reason the identity plan is: a lineage
   belongs to ONE table and a unit can declare several, so a name that is free
-  today must not become a collision the day a second root is added.
+  today must not become a collision the day a second root is added. The JavaScript leg reads each known layout's lock bytes through a
+  `DataView`, and those views ride beside the lineage in `FixedKnownViews`, one
+  module-scope binding per declaration, claimed on the same rule.
 
   The `Fixed` rows are §3.4's, and they are claimed on this list's own rule:
   nothing declares the fixed form, every table whose closure §3.4 lays out
@@ -15800,7 +15820,7 @@ it does rather than a list of its own:
 
   | hook | where it fires | default | NDEBUG |
   |---|---|---|---|
-  | `schema_assert( condition )` | the keyed accessor's refusal (§2.4), with its message; the fixed form's measure count and write-side bounds (§3.4), whenever the unit has a fixed form | `assert`, from `<assert.h>` | removed, as `assert` is |
+  | `schema_assert( condition )` | the keyed accessor's refusal (§2.4), with its message; the fixed form's measure count and write-side bounds (§3.4), whenever the unit has a fixed form; and every other call the generated header makes (the SPEC.md §5.1 write contract: a range, a `bits(N)` width, a ranged float, a storage bound). A header carries this hook whenever it contains one such call, whatever unit shape emitted it, so every generated header compiles as the first and only include of a translation unit | `assert`, from `<assert.h>` | removed, as `assert` is |
   | `schema_fatal()` | after the assert, on the path that cannot continue | `abort`, from `<stdlib.h>` | kept |
   | `schema_allocate( bytes )` | the default allocator pair: ZEROED bytes, NULL on failure | `calloc`, from `<stdlib.h>` | — |
   | `schema_release( pointer )` | the default allocator pair | `free` | — |

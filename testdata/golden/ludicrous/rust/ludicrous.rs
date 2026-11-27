@@ -20,8 +20,8 @@ pub enum Error {
 }
 
 impl From<serialize::Error> for Error {
-    fn from(e: serialize::Error) -> Error {
-        Error::Stream(e)
+    fn from(schema_e: serialize::Error) -> Error {
+        Error::Stream(schema_e)
     }
 }
 
@@ -49,14 +49,14 @@ impl DriveMode {
 }
 
 impl core::fmt::Display for DriveMode {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.write_str(self.as_str())
+    fn fmt(&self, schema_f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        schema_f.write_str(self.as_str())
     }
 }
 
 /// Debug/log name for any `DriveMode` value, out-of-set included.
-pub fn enum_name_drive_mode(value: DriveMode) -> &'static str {
-    match value.0 {
+pub fn enum_name_drive_mode(schema_value: DriveMode) -> &'static str {
+    match schema_value.0 {
         0 => "None",
         1 => "Cruise",
         2 => "Warp",
@@ -84,53 +84,53 @@ pub const FIXED_PROBE_MAX_BYTES: usize = 24;
 
 #[allow(clippy::needless_range_loop)]
 #[inline(always)]
-pub fn write_fixed_probe(stream: &mut WriteStream<'_>, value: &FixedProbe) -> Result {
-    debug_assert!(value.angle >= -11796480 && value.angle <= 11796480, "angle raw value out of range [-11796480, 11796480]");
+pub fn write_fixed_probe(schema_stream: &mut WriteStream<'_>, schema_value: &FixedProbe) -> Result {
+    debug_assert!(schema_value.angle >= -11796480 && schema_value.angle <= 11796480, "angle raw value out of range [-11796480, 11796480]");
     {
-        let mut fixed_value = value.angle;
-        stream.serialize_fixed(&mut fixed_value, 16, 16, -180, 180)?;
+        let mut schema_fixed_value = schema_value.angle;
+        schema_stream.serialize_fixed(&mut schema_fixed_value, 16, 16, -180, 180)?;
     }
-    debug_assert!(value.position >= -1966080000 && value.position <= 1966080000, "position raw value out of range [-1966080000, 1966080000]");
+    debug_assert!(schema_value.position >= -1966080000 && schema_value.position <= 1966080000, "position raw value out of range [-1966080000, 1966080000]");
     {
-        let mut fixed_value = value.position;
-        stream.serialize_fixed(&mut fixed_value, 48, 16, -MAX_WORLD_UNITS, MAX_WORLD_UNITS)?;
+        let mut schema_fixed_value = schema_value.position;
+        schema_stream.serialize_fixed(&mut schema_fixed_value, 48, 16, -MAX_WORLD_UNITS, MAX_WORLD_UNITS)?;
     }
-    debug_assert!(value.reach >= -65536000000 && value.reach <= 65536000000, "reach raw value out of range [-65536000000, 65536000000]");
+    debug_assert!(schema_value.reach >= -65536000000 && schema_value.reach <= 65536000000, "reach raw value out of range [-65536000000, 65536000000]");
     {
-        let mut fixed_value = value.reach;
-        stream.serialize_fixed(&mut fixed_value, 112, 16, -1000000, 1000000)?;
+        let mut schema_fixed_value = schema_value.reach;
+        schema_stream.serialize_fixed(&mut schema_fixed_value, 112, 16, -1000000, 1000000)?;
     }
-    debug_assert!(value.ticks >= 0 && value.ticks <= 1000000, "ticks raw value out of range [0, 1000000]");
+    debug_assert!(schema_value.ticks >= 0 && schema_value.ticks <= 1000000, "ticks raw value out of range [0, 1000000]");
     {
-        let mut fixed_value = value.ticks;
-        stream.serialize_fixed(&mut fixed_value, 32, 0, 0, 1000000)?;
+        let mut schema_fixed_value = schema_value.ticks;
+        schema_stream.serialize_fixed(&mut schema_fixed_value, 32, 0, 0, 1000000)?;
     }
-    for i in 0..2 {
-        debug_assert!(value.samples[i] >= -524288 && value.samples[i] <= 524288, "samples[i] raw value out of range [-524288, 524288]");
+    for schema_i in 0..2 {
+        debug_assert!(schema_value.samples[schema_i] >= -524288 && schema_value.samples[schema_i] <= 524288, "samples[schema_i] raw value out of range [-524288, 524288]");
         {
-            let mut fixed_value = value.samples[i];
-            stream.serialize_fixed(&mut fixed_value, 16, 16, -8, 8)?;
+            let mut schema_fixed_value = schema_value.samples[schema_i];
+            schema_stream.serialize_fixed(&mut schema_fixed_value, 16, 16, -8, 8)?;
         }
     }
     Ok(())
 }
 
 #[inline]
-pub fn read_fixed_probe(stream: &mut ReadStream<'_>, value: &mut FixedProbe) -> Result {
-    read_fixed_probe_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_fixed_probe(schema_stream: &mut ReadStream<'_>, schema_value: &mut FixedProbe) -> Result {
+    read_fixed_probe_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[allow(clippy::needless_range_loop)]
 #[inline]
-pub(crate) fn read_fixed_probe_body(stream: &mut ReadStream<'_>, value: &mut FixedProbe) -> Result {
-    stream.serialize_fixed(&mut value.angle, 16, 16, -180, 180)?;
-    stream.serialize_fixed(&mut value.position, 48, 16, -MAX_WORLD_UNITS, MAX_WORLD_UNITS)?;
-    stream.serialize_fixed(&mut value.reach, 112, 16, -1000000, 1000000)?;
-    stream.serialize_fixed(&mut value.ticks, 32, 0, 0, 1000000)?;
-    for i in 0..2 {
-        stream.serialize_fixed(&mut value.samples[i], 16, 16, -8, 8)?;
+pub(crate) fn read_fixed_probe_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut FixedProbe) -> Result {
+    schema_stream.serialize_fixed(&mut schema_value.angle, 16, 16, -180, 180)?;
+    schema_stream.serialize_fixed(&mut schema_value.position, 48, 16, -MAX_WORLD_UNITS, MAX_WORLD_UNITS)?;
+    schema_stream.serialize_fixed(&mut schema_value.reach, 112, 16, -1000000, 1000000)?;
+    schema_stream.serialize_fixed(&mut schema_value.ticks, 32, 0, 0, 1000000)?;
+    for schema_i in 0..2 {
+        schema_stream.serialize_fixed(&mut schema_value.samples[schema_i], 16, 16, -8, 8)?;
     }
     Ok(())
 }
@@ -168,64 +168,64 @@ pub const UNSIGNED_PROBE_MAX_BYTES: usize = 32;
 
 #[allow(clippy::needless_range_loop)]
 #[inline(always)]
-pub fn write_unsigned_probe(stream: &mut WriteStream<'_>, value: &UnsignedProbe) -> Result {
-    debug_assert!(value.angle <= 23592960, "angle raw value out of range [0, 23592960]");
+pub fn write_unsigned_probe(schema_stream: &mut WriteStream<'_>, schema_value: &UnsignedProbe) -> Result {
+    debug_assert!(schema_value.angle <= 23592960, "angle raw value out of range [0, 23592960]");
     {
-        let mut fixed_value = value.angle;
-        stream.serialize_fixed(&mut fixed_value, 16, 16, 0, 360)?;
+        let mut schema_fixed_value = schema_value.angle;
+        schema_stream.serialize_fixed(&mut schema_fixed_value, 16, 16, 0, 360)?;
     }
-    debug_assert!(value.span <= 18446744073709486080, "span raw value out of range [0, 18446744073709486080]");
+    debug_assert!(schema_value.span <= 18446744073709486080, "span raw value out of range [0, 18446744073709486080]");
     {
-        let mut fixed_value = value.span;
-        stream.serialize_fixed(&mut fixed_value, 48, 16, 0, 281474976710655)?;
+        let mut schema_fixed_value = schema_value.span;
+        schema_stream.serialize_fixed(&mut schema_fixed_value, 48, 16, 0, 281474976710655)?;
     }
-    debug_assert!(value.reach <= 131072000000, "reach raw value out of range [0, 131072000000]");
+    debug_assert!(schema_value.reach <= 131072000000, "reach raw value out of range [0, 131072000000]");
     {
-        let mut fixed_value = value.reach;
-        stream.serialize_fixed(&mut fixed_value, 112, 16, 0, 2000000)?;
+        let mut schema_fixed_value = schema_value.reach;
+        schema_stream.serialize_fixed(&mut schema_fixed_value, 112, 16, 0, 2000000)?;
     }
-    debug_assert!(value.ticks <= 1000000, "ticks raw value out of range [0, 1000000]");
+    debug_assert!(schema_value.ticks <= 1000000, "ticks raw value out of range [0, 1000000]");
     {
-        let mut fixed_value = value.ticks;
-        stream.serialize_fixed(&mut fixed_value, 32, 0, 0, 1000000)?;
+        let mut schema_fixed_value = schema_value.ticks;
+        schema_stream.serialize_fixed(&mut schema_fixed_value, 32, 0, 0, 1000000)?;
     }
-    for i in 0..2 {
-        debug_assert!(value.samples[i] <= 1048576, "samples[i] raw value out of range [0, 1048576]");
+    for schema_i in 0..2 {
+        debug_assert!(schema_value.samples[schema_i] <= 1048576, "samples[schema_i] raw value out of range [0, 1048576]");
         {
-            let mut fixed_value = value.samples[i];
-            stream.serialize_fixed(&mut fixed_value, 16, 16, 0, 16)?;
+            let mut schema_fixed_value = schema_value.samples[schema_i];
+            schema_stream.serialize_fixed(&mut schema_fixed_value, 16, 16, 0, 16)?;
         }
     }
-    debug_assert!(value.locked == 196608, "locked raw value out of range [196608, 196608]");
+    debug_assert!(schema_value.locked == 196608, "locked raw value out of range [196608, 196608]");
     {
-        let mut raw_value = value.tail as u32;
-        stream.serialize_bits(&mut raw_value, 8)?;
+        let mut schema_raw_value = schema_value.tail as u32;
+        schema_stream.serialize_bits(&mut schema_raw_value, 8)?;
     }
     Ok(())
 }
 
 #[inline]
-pub fn read_unsigned_probe(stream: &mut ReadStream<'_>, value: &mut UnsignedProbe) -> Result {
-    read_unsigned_probe_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_unsigned_probe(schema_stream: &mut ReadStream<'_>, schema_value: &mut UnsignedProbe) -> Result {
+    read_unsigned_probe_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[allow(clippy::needless_range_loop)]
 #[inline]
-pub(crate) fn read_unsigned_probe_body(stream: &mut ReadStream<'_>, value: &mut UnsignedProbe) -> Result {
-    stream.serialize_fixed(&mut value.angle, 16, 16, 0, 360)?;
-    stream.serialize_fixed(&mut value.span, 48, 16, 0, 281474976710655)?;
-    stream.serialize_fixed(&mut value.reach, 112, 16, 0, 2000000)?;
-    stream.serialize_fixed(&mut value.ticks, 32, 0, 0, 1000000)?;
-    for i in 0..2 {
-        stream.serialize_fixed(&mut value.samples[i], 16, 16, 0, 16)?;
+pub(crate) fn read_unsigned_probe_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut UnsignedProbe) -> Result {
+    schema_stream.serialize_fixed(&mut schema_value.angle, 16, 16, 0, 360)?;
+    schema_stream.serialize_fixed(&mut schema_value.span, 48, 16, 0, 281474976710655)?;
+    schema_stream.serialize_fixed(&mut schema_value.reach, 112, 16, 0, 2000000)?;
+    schema_stream.serialize_fixed(&mut schema_value.ticks, 32, 0, 0, 1000000)?;
+    for schema_i in 0..2 {
+        schema_stream.serialize_fixed(&mut schema_value.samples[schema_i], 16, 16, 0, 16)?;
     }
-    value.locked = 196608_u32;
+    schema_value.locked = 196608_u32;
     {
-        let mut raw_value: u32 = 0;
-        stream.serialize_bits(&mut raw_value, 8)?;
-        value.tail = raw_value as u8;
+        let mut schema_raw_value: u32 = 0;
+        schema_stream.serialize_bits(&mut schema_raw_value, 8)?;
+        schema_value.tail = schema_raw_value as u8;
     }
     Ok(())
 }
@@ -261,47 +261,47 @@ pub const WIDE_PROBE_MAX_BITS: u64 = 403;
 pub const WIDE_PROBE_MAX_BYTES: usize = 56;
 
 #[inline(always)]
-pub fn write_wide_probe(stream: &mut WriteStream<'_>, value: &WideProbe) -> Result {
+pub fn write_wide_probe(schema_stream: &mut WriteStream<'_>, schema_value: &WideProbe) -> Result {
     {
-        let mut raw_value = value.entity_id;
-        stream.serialize_u128(&mut raw_value)?;
+        let mut schema_raw_value = schema_value.entity_id;
+        schema_stream.serialize_u128(&mut schema_raw_value)?;
     }
-    debug_assert!(value.energy >= -5000000000 && value.energy <= 5000000000, "energy out of range [-5000000000, 5000000000]");
+    debug_assert!(schema_value.energy >= -5000000000 && schema_value.energy <= 5000000000, "energy out of range [-5000000000, 5000000000]");
     {
-        let mut range_value = value.energy;
-        stream.serialize_int128(&mut range_value, -5000000000, 5000000000)?;
+        let mut schema_range_value = schema_value.energy;
+        schema_stream.serialize_int128(&mut schema_range_value, -5000000000, 5000000000)?;
     }
-    debug_assert!(value.flux >= -1267650600228229401496703205376 && value.flux <= 1267650600228229401496703205376, "flux out of range [-1267650600228229401496703205376, 1267650600228229401496703205376]");
+    debug_assert!(schema_value.flux >= -1267650600228229401496703205376 && schema_value.flux <= 1267650600228229401496703205376, "flux out of range [-1267650600228229401496703205376, 1267650600228229401496703205376]");
     {
-        let mut range_value = value.flux;
-        stream.serialize_int128(&mut range_value, -1267650600228229401496703205376, 1267650600228229401496703205376)?;
+        let mut schema_range_value = schema_value.flux;
+        schema_stream.serialize_int128(&mut schema_range_value, -1267650600228229401496703205376, 1267650600228229401496703205376)?;
     }
-    debug_assert!(value.bias >= -1000 && value.bias <= 1000, "bias out of range [-1000, 1000]");
+    debug_assert!(schema_value.bias >= -1000 && schema_value.bias <= 1000, "bias out of range [-1000, 1000]");
     {
-        let mut range_value = value.bias;
-        stream.serialize_int128(&mut range_value, -1000, 1000)?;
+        let mut schema_range_value = schema_value.bias;
+        schema_stream.serialize_int128(&mut schema_range_value, -1000, 1000)?;
     }
     {
-        let mut raw_value = value.seed;
-        stream.serialize_u128(&mut raw_value)?;
+        let mut schema_raw_value = schema_value.seed;
+        schema_stream.serialize_u128(&mut schema_raw_value)?;
     }
     Ok(())
 }
 
 #[inline]
-pub fn read_wide_probe(stream: &mut ReadStream<'_>, value: &mut WideProbe) -> Result {
-    read_wide_probe_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_wide_probe(schema_stream: &mut ReadStream<'_>, schema_value: &mut WideProbe) -> Result {
+    read_wide_probe_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[inline]
-pub(crate) fn read_wide_probe_body(stream: &mut ReadStream<'_>, value: &mut WideProbe) -> Result {
-    stream.serialize_u128(&mut value.entity_id)?;
-    stream.serialize_int128(&mut value.energy, -5000000000, 5000000000)?;
-    stream.serialize_int128(&mut value.flux, -1267650600228229401496703205376, 1267650600228229401496703205376)?;
-    stream.serialize_int128(&mut value.bias, -1000, 1000)?;
-    stream.serialize_u128(&mut value.seed)?;
+pub(crate) fn read_wide_probe_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut WideProbe) -> Result {
+    schema_stream.serialize_u128(&mut schema_value.entity_id)?;
+    schema_stream.serialize_int128(&mut schema_value.energy, -5000000000, 5000000000)?;
+    schema_stream.serialize_int128(&mut schema_value.flux, -1267650600228229401496703205376, 1267650600228229401496703205376)?;
+    schema_stream.serialize_int128(&mut schema_value.bias, -1000, 1000)?;
+    schema_stream.serialize_u128(&mut schema_value.seed)?;
     Ok(())
 }
 
@@ -341,64 +341,64 @@ pub const LUDICROUS_STATE_MAX_BYTES: usize = 152;
 
 #[allow(clippy::needless_range_loop)]
 #[inline(always)]
-pub fn write_ludicrous_state(stream: &mut WriteStream<'_>, value: &LudicrousState) -> Result {
-    debug_assert!(value.mode.0 <= 3, "mode above the DriveMode wire range [0, 3]");
+pub fn write_ludicrous_state(schema_stream: &mut WriteStream<'_>, schema_value: &LudicrousState) -> Result {
+    debug_assert!(schema_value.mode.0 <= 3, "mode above the DriveMode wire range [0, 3]");
     {
-        let mut offset_value = value.mode.0 as u32;
-        stream.serialize_bits(&mut offset_value, 2)?;
+        let mut schema_offset_value = schema_value.mode.0 as u32;
+        schema_stream.serialize_bits(&mut schema_offset_value, 2)?;
     }
-    write_fixed_probe(stream, &value.probe)?;
-    write_wide_probe(stream, &value.wide)?;
-    debug_assert!(value.keys_count >= 0 && value.keys_count <= 4, "keys_count out of range [0, 4]");
+    write_fixed_probe(schema_stream, &schema_value.probe)?;
+    write_wide_probe(schema_stream, &schema_value.wide)?;
+    debug_assert!(schema_value.keys_count >= 0 && schema_value.keys_count <= 4, "keys_count out of range [0, 4]");
     {
-        let mut offset_value = value.keys_count as u32;
-        stream.serialize_bits(&mut offset_value, 3)?; // the count guards the loop (§6.3)
+        let mut schema_offset_value = schema_value.keys_count as u32;
+        schema_stream.serialize_bits(&mut schema_offset_value, 3)?; // the count guards the loop (§6.3)
     }
-    for i in 0..value.keys_count as usize {
+    for schema_i in 0..schema_value.keys_count as usize {
         {
-            let mut raw_value = value.keys[i];
-            stream.serialize_u128(&mut raw_value)?;
+            let mut schema_raw_value = schema_value.keys[schema_i];
+            schema_stream.serialize_u128(&mut schema_raw_value)?;
         }
     }
     {
-        let mut bool_value = value.has_target;
-        stream.serialize_bool(&mut bool_value)?;
+        let mut schema_bool_value = schema_value.has_target;
+        schema_stream.serialize_bool(&mut schema_bool_value)?;
     }
-    if value.has_target {
+    if schema_value.has_target {
         {
-            let mut raw_value = value.target_id;
-            stream.serialize_u128(&mut raw_value)?;
+            let mut schema_raw_value = schema_value.target_id;
+            schema_stream.serialize_u128(&mut schema_raw_value)?;
         }
     }
     Ok(())
 }
 
 #[inline]
-pub fn read_ludicrous_state(stream: &mut ReadStream<'_>, value: &mut LudicrousState) -> Result {
-    read_ludicrous_state_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_ludicrous_state(schema_stream: &mut ReadStream<'_>, schema_value: &mut LudicrousState) -> Result {
+    read_ludicrous_state_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[allow(clippy::needless_range_loop)]
 #[inline]
-pub(crate) fn read_ludicrous_state_body(stream: &mut ReadStream<'_>, value: &mut LudicrousState) -> Result {
+pub(crate) fn read_ludicrous_state_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut LudicrousState) -> Result {
     {
-        let mut enum_value: i32 = 0;
-        stream.serialize_int(&mut enum_value, 0, 3)?;
-        value.mode = DriveMode(enum_value as u8);
+        let mut schema_enum_value: i32 = 0;
+        schema_stream.serialize_int(&mut schema_enum_value, 0, 3)?;
+        schema_value.mode = DriveMode(schema_enum_value as u8);
     }
-    read_fixed_probe_body(stream, &mut value.probe)?;
-    read_wide_probe_body(stream, &mut value.wide)?;
-    stream.serialize_int(&mut value.keys_count, 0, 4)?; // the count guards the loop (§6.3)
-    for i in 0..value.keys_count as usize {
-        stream.serialize_u128(&mut value.keys[i])?;
+    read_fixed_probe_body(schema_stream, &mut schema_value.probe)?;
+    read_wide_probe_body(schema_stream, &mut schema_value.wide)?;
+    schema_stream.serialize_int(&mut schema_value.keys_count, 0, 4)?; // the count guards the loop (§6.3)
+    for schema_i in 0..schema_value.keys_count as usize {
+        schema_stream.serialize_u128(&mut schema_value.keys[schema_i])?;
     }
-    stream.serialize_bool(&mut value.has_target)?;
-    if value.has_target {
-        stream.serialize_u128(&mut value.target_id)?;
+    schema_stream.serialize_bool(&mut schema_value.has_target)?;
+    if schema_value.has_target {
+        schema_stream.serialize_u128(&mut schema_value.target_id)?;
     } else {
-        value.target_id = 0;
+        schema_value.target_id = 0;
     }
     Ok(())
 }
@@ -434,33 +434,33 @@ pub const DEGENERATE_PROBE_MAX_BITS: u64 = 8;
 pub const DEGENERATE_PROBE_MAX_BYTES: usize = 8;
 
 #[inline(always)]
-pub fn write_degenerate_probe(stream: &mut WriteStream<'_>, value: &DegenerateProbe) -> Result {
-    debug_assert!(value.locked_fixed == -196608, "locked_fixed raw value out of range [-196608, -196608]");
-    debug_assert!(value.locked_int == 7, "locked_int out of range [7, 7]");
-    debug_assert!(value.locked_wide == -12345678901234, "locked_wide out of range [-12345678901234, -12345678901234]");
+pub fn write_degenerate_probe(schema_stream: &mut WriteStream<'_>, schema_value: &DegenerateProbe) -> Result {
+    debug_assert!(schema_value.locked_fixed == -196608, "locked_fixed raw value out of range [-196608, -196608]");
+    debug_assert!(schema_value.locked_int == 7, "locked_int out of range [7, 7]");
+    debug_assert!(schema_value.locked_wide == -12345678901234, "locked_wide out of range [-12345678901234, -12345678901234]");
     {
-        let mut raw_value = value.tail as u32;
-        stream.serialize_bits(&mut raw_value, 8)?;
+        let mut schema_raw_value = schema_value.tail as u32;
+        schema_stream.serialize_bits(&mut schema_raw_value, 8)?;
     }
     Ok(())
 }
 
 #[inline]
-pub fn read_degenerate_probe(stream: &mut ReadStream<'_>, value: &mut DegenerateProbe) -> Result {
-    read_degenerate_probe_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_degenerate_probe(schema_stream: &mut ReadStream<'_>, schema_value: &mut DegenerateProbe) -> Result {
+    read_degenerate_probe_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[inline]
-pub(crate) fn read_degenerate_probe_body(stream: &mut ReadStream<'_>, value: &mut DegenerateProbe) -> Result {
-    value.locked_fixed = -196608_i32;
-    value.locked_int = 7_i32;
-    value.locked_wide = -12345678901234_i128;
+pub(crate) fn read_degenerate_probe_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut DegenerateProbe) -> Result {
+    schema_value.locked_fixed = -196608_i32;
+    schema_value.locked_int = 7_i32;
+    schema_value.locked_wide = -12345678901234_i128;
     {
-        let mut raw_value: u32 = 0;
-        stream.serialize_bits(&mut raw_value, 8)?;
-        value.tail = raw_value as u8;
+        let mut schema_raw_value: u32 = 0;
+        schema_stream.serialize_bits(&mut schema_raw_value, 8)?;
+        schema_value.tail = schema_raw_value as u8;
     }
     Ok(())
 }
@@ -481,37 +481,37 @@ pub const FIXED_VEC_MAX_BITS: u64 = 102;
 pub const FIXED_VEC_MAX_BYTES: usize = 16;
 
 #[inline(always)]
-pub fn write_fixed_vec(stream: &mut WriteStream<'_>, value: &FixedVec) -> Result {
-    debug_assert!(value.x >= -6553600000 && value.x <= 6553600000, "x raw value out of range [-6553600000, 6553600000]");
+pub fn write_fixed_vec(schema_stream: &mut WriteStream<'_>, schema_value: &FixedVec) -> Result {
+    debug_assert!(schema_value.x >= -6553600000 && schema_value.x <= 6553600000, "x raw value out of range [-6553600000, 6553600000]");
     {
-        let mut fixed_value = value.x;
-        stream.serialize_fixed(&mut fixed_value, 48, 16, -100000, 100000)?;
+        let mut schema_fixed_value = schema_value.x;
+        schema_stream.serialize_fixed(&mut schema_fixed_value, 48, 16, -100000, 100000)?;
     }
-    debug_assert!(value.y >= -6553600000 && value.y <= 6553600000, "y raw value out of range [-6553600000, 6553600000]");
+    debug_assert!(schema_value.y >= -6553600000 && schema_value.y <= 6553600000, "y raw value out of range [-6553600000, 6553600000]");
     {
-        let mut fixed_value = value.y;
-        stream.serialize_fixed(&mut fixed_value, 48, 16, -100000, 100000)?;
+        let mut schema_fixed_value = schema_value.y;
+        schema_stream.serialize_fixed(&mut schema_fixed_value, 48, 16, -100000, 100000)?;
     }
-    debug_assert!(value.z >= -6553600000 && value.z <= 6553600000, "z raw value out of range [-6553600000, 6553600000]");
+    debug_assert!(schema_value.z >= -6553600000 && schema_value.z <= 6553600000, "z raw value out of range [-6553600000, 6553600000]");
     {
-        let mut fixed_value = value.z;
-        stream.serialize_fixed(&mut fixed_value, 48, 16, -100000, 100000)?;
+        let mut schema_fixed_value = schema_value.z;
+        schema_stream.serialize_fixed(&mut schema_fixed_value, 48, 16, -100000, 100000)?;
     }
     Ok(())
 }
 
 #[inline]
-pub fn read_fixed_vec(stream: &mut ReadStream<'_>, value: &mut FixedVec) -> Result {
-    read_fixed_vec_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_fixed_vec(schema_stream: &mut ReadStream<'_>, schema_value: &mut FixedVec) -> Result {
+    read_fixed_vec_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[inline]
-pub(crate) fn read_fixed_vec_body(stream: &mut ReadStream<'_>, value: &mut FixedVec) -> Result {
-    stream.serialize_fixed(&mut value.x, 48, 16, -100000, 100000)?;
-    stream.serialize_fixed(&mut value.y, 48, 16, -100000, 100000)?;
-    stream.serialize_fixed(&mut value.z, 48, 16, -100000, 100000)?;
+pub(crate) fn read_fixed_vec_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut FixedVec) -> Result {
+    schema_stream.serialize_fixed(&mut schema_value.x, 48, 16, -100000, 100000)?;
+    schema_stream.serialize_fixed(&mut schema_value.y, 48, 16, -100000, 100000)?;
+    schema_stream.serialize_fixed(&mut schema_value.z, 48, 16, -100000, 100000)?;
     Ok(())
 }
 
@@ -544,43 +544,43 @@ pub const FIXED_QUAT_MAX_BITS: u64 = 128;
 pub const FIXED_QUAT_MAX_BYTES: usize = 16;
 
 #[inline(always)]
-pub fn write_fixed_quat(stream: &mut WriteStream<'_>, value: &FixedQuat) -> Result {
-    debug_assert!(value.x >= -1073741824 && value.x <= 1073741824, "x raw value out of range [-1073741824, 1073741824]");
+pub fn write_fixed_quat(schema_stream: &mut WriteStream<'_>, schema_value: &FixedQuat) -> Result {
+    debug_assert!(schema_value.x >= -1073741824 && schema_value.x <= 1073741824, "x raw value out of range [-1073741824, 1073741824]");
     {
-        let mut fixed_value = value.x;
-        stream.serialize_fixed(&mut fixed_value, 2, 30, -1, 1)?;
+        let mut schema_fixed_value = schema_value.x;
+        schema_stream.serialize_fixed(&mut schema_fixed_value, 2, 30, -1, 1)?;
     }
-    debug_assert!(value.y >= -1073741824 && value.y <= 1073741824, "y raw value out of range [-1073741824, 1073741824]");
+    debug_assert!(schema_value.y >= -1073741824 && schema_value.y <= 1073741824, "y raw value out of range [-1073741824, 1073741824]");
     {
-        let mut fixed_value = value.y;
-        stream.serialize_fixed(&mut fixed_value, 2, 30, -1, 1)?;
+        let mut schema_fixed_value = schema_value.y;
+        schema_stream.serialize_fixed(&mut schema_fixed_value, 2, 30, -1, 1)?;
     }
-    debug_assert!(value.z >= -1073741824 && value.z <= 1073741824, "z raw value out of range [-1073741824, 1073741824]");
+    debug_assert!(schema_value.z >= -1073741824 && schema_value.z <= 1073741824, "z raw value out of range [-1073741824, 1073741824]");
     {
-        let mut fixed_value = value.z;
-        stream.serialize_fixed(&mut fixed_value, 2, 30, -1, 1)?;
+        let mut schema_fixed_value = schema_value.z;
+        schema_stream.serialize_fixed(&mut schema_fixed_value, 2, 30, -1, 1)?;
     }
-    debug_assert!(value.w >= -1073741824 && value.w <= 1073741824, "w raw value out of range [-1073741824, 1073741824]");
+    debug_assert!(schema_value.w >= -1073741824 && schema_value.w <= 1073741824, "w raw value out of range [-1073741824, 1073741824]");
     {
-        let mut fixed_value = value.w;
-        stream.serialize_fixed(&mut fixed_value, 2, 30, -1, 1)?;
+        let mut schema_fixed_value = schema_value.w;
+        schema_stream.serialize_fixed(&mut schema_fixed_value, 2, 30, -1, 1)?;
     }
     Ok(())
 }
 
 #[inline]
-pub fn read_fixed_quat(stream: &mut ReadStream<'_>, value: &mut FixedQuat) -> Result {
-    read_fixed_quat_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_fixed_quat(schema_stream: &mut ReadStream<'_>, schema_value: &mut FixedQuat) -> Result {
+    read_fixed_quat_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[inline]
-pub(crate) fn read_fixed_quat_body(stream: &mut ReadStream<'_>, value: &mut FixedQuat) -> Result {
-    stream.serialize_fixed(&mut value.x, 2, 30, -1, 1)?;
-    stream.serialize_fixed(&mut value.y, 2, 30, -1, 1)?;
-    stream.serialize_fixed(&mut value.z, 2, 30, -1, 1)?;
-    stream.serialize_fixed(&mut value.w, 2, 30, -1, 1)?;
+pub(crate) fn read_fixed_quat_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut FixedQuat) -> Result {
+    schema_stream.serialize_fixed(&mut schema_value.x, 2, 30, -1, 1)?;
+    schema_stream.serialize_fixed(&mut schema_value.y, 2, 30, -1, 1)?;
+    schema_stream.serialize_fixed(&mut schema_value.z, 2, 30, -1, 1)?;
+    schema_stream.serialize_fixed(&mut schema_value.w, 2, 30, -1, 1)?;
     Ok(())
 }
 

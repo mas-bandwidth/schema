@@ -35,11 +35,11 @@ union Choice {
 		t.Fatal("generated read_choice is unterminated")
 	}
 	for _, want := range []string{
-		"1 => {\n            let mut arm = Explicit::new();\n            read_explicit_body(stream, &mut arm)?;",
-		"2 => {\n            let mut arm = Nested::new();\n            read_nested_body(stream, &mut arm)?;",
-		"3 => {\n            let mut arm = Counted::new();\n            read_counted_body(stream, &mut arm)?;",
-		"4 => {\n            let mut arm = Plain::default();\n            read_plain_body(stream, &mut arm)?;",
-		"5 => {\n            let mut arm = ExplicitZero::new();\n            read_explicit_zero_body(stream, &mut arm)?;",
+		"1 => {\n            let mut schema_arm = Explicit::new();\n            read_explicit_body(schema_stream, &mut schema_arm)?;",
+		"2 => {\n            let mut schema_arm = Nested::new();\n            read_nested_body(schema_stream, &mut schema_arm)?;",
+		"3 => {\n            let mut schema_arm = Counted::new();\n            read_counted_body(schema_stream, &mut schema_arm)?;",
+		"4 => {\n            let mut schema_arm = Plain::default();\n            read_plain_body(schema_stream, &mut schema_arm)?;",
+		"5 => {\n            let mut schema_arm = ExplicitZero::new();\n            read_explicit_zero_body(schema_stream, &mut schema_arm)?;",
 	} {
 		if !strings.Contains(read, want) {
 			t.Errorf("each tag must reconstruct its payload before reading, without a same-tag exception: want %q in:\n%s", want, read)

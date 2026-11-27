@@ -922,15 +922,8 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 		})
 		defer timer.Stop()
 	}
-	absent := 0
-	var live []*wireSeed
-	for _, s := range seeds {
-		if leg.known[seedRoot[s]] {
-			live = append(live, s)
-		} else {
-			absent++
-		}
-	}
+	// the absent roots are named, never only counted (wirefuzz_absentnames.go)
+	live, absent, absentNames := splitLiveSeeds(seeds, seedRoot, roots, leg.known)
 	if len(live) == 0 {
 		leg.kill()
 		return fmt.Errorf("the leg has a codec for none of the %d roots the corpus names", len(roots))
@@ -1059,7 +1052,7 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 		absence = fmt.Sprintf(", shard %d/%d", opts.shard, opts.shards)
 	}
 	if absent > 0 {
-		absence += fmt.Sprintf(", %d seeds absent (roots the leg has no codec for)", absent)
+		absence += absentClause(absent, absentNames)
 	}
 	if skipped > 0 {
 		// the seeds this ARM has nothing to say about: a fixed-class root gets

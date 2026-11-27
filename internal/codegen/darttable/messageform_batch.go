@@ -31,10 +31,8 @@ import (
 // messageSlot answers the 1-based vocabulary slot an entry rides under, the
 // writer's half of the reference a body spends on a field (§3.3).
 func (g *fixedModule) messageSlot(e ir.TableVocabularyEntry) int {
-	for i, v := range tablewire.MessageVocabulary(g.unit) {
-		if e.Key() == v.Key() {
-			return i + 1
-		}
+	if slot, ok := g.messageSlots().byKey[e.Key()]; ok {
+		return slot
 	}
 	panic("message entry outside vocabulary")
 }
@@ -42,12 +40,34 @@ func (g *fixedModule) messageSlot(e ir.TableVocabularyEntry) int {
 // messageNameSlot answers the slot of a NAME entry — a kind-0 entry under an
 // enum variant's or a reserved id's wire name (§3.3: a variant rides by NAME).
 func (g *fixedModule) messageNameSlot(id uint64) int {
+	return g.messageSlots().byName[id]
+}
+
+// messageSlotIndex is the unit's message vocabulary indexed once per module:
+// the first slot of each entry key, and the first slot of each kind-0 NAME
+// entry by wire id. [tablewire.MessageVocabulary] walks the whole unit, so a
+// lookup that rebuilt it per field or per enum variant was quadratic in the
+// vocabulary (tblann4096: ~4 s of the Dart generation, all of it here).
+type messageSlotIndex struct {
+	byKey  map[string]int
+	byName map[uint64]int
+}
+
+func (g *fixedModule) messageSlots() *messageSlotIndex {
+	if g.msgSlots != nil {
+		return g.msgSlots
+	}
+	idx := &messageSlotIndex{byKey: map[string]int{}, byName: map[uint64]int{}}
 	for i, v := range tablewire.MessageVocabulary(g.unit) {
-		if v.Id == id && v.Kind == 0 {
-			return i + 1
+		if _, seen := idx.byKey[v.Key()]; !seen {
+			idx.byKey[v.Key()] = i + 1
+		}
+		if _, seen := idx.byName[v.Id]; v.Kind == 0 && !seen {
+			idx.byName[v.Id] = i + 1
 		}
 	}
-	return 0
+	g.msgSlots = idx
+	return idx
 }
 
 // emitMessageBatchRuntime writes the shared bit codec and the batch's framing,

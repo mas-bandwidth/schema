@@ -2216,7 +2216,7 @@ tables-elixir-view: bin/schema test/elixir-view/view_main.exs
 		esac; \
 		$(ELIXIR) -r $$gen/UnitView.ex test/elixir-view/view_main.exs $$pkg > build/elixir-view/$$pkg.listing; \
 		if [ "$$pkg" = tabledemo ]; then $(ELIXIR) -r $$gen/UnitView.ex test/elixir-view/view_main.exs $$pkg --unflattened > build/elixir-view/unflattened.listing; fi \
-	) & pids="$$pids $$!"; done; for pid in $$pids; do wait $$pid; done
+	) & pids="$$pids $$!"; done; rc=0; for pid in $$pids; do wait $$pid || rc=1; done; exit $$rc
 	SCHEMA_VIEW_LISTING_DIR=$(CURDIR)/build/elixir-view go test ./internal/viewlisting -count=1 -timeout 600s -run TestUnitViewListingMatchesTheIR
 	@mkdir -p build/elixir-view/negative
 	@cp build/elixir-view/unflattened.listing build/elixir-view/negative/tabledemo.listing
