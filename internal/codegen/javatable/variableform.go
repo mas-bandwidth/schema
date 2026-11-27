@@ -4426,20 +4426,6 @@ func variableBornCounted(f *ir.Field) bool {
 		!f.IsMap() && !f.Type.Pointer && !ir.TextListPlain(f)
 }
 
-// variableBorn is a field's initializer: a counted [A..B] array is born
-// holding A default elements, every other field at variableDefault.
-func variableBorn(f *ir.Field) string {
-	if !variableBornCounted(f) {
-		return variableDefault(f)
-	}
-	one := variableDefault(variableElement(f))
-	elems := make([]string, f.BornCount())
-	for i := range elems {
-		elems[i] = one
-	}
-	return "new java.util.ArrayList<>(java.util.Arrays.asList(" + strings.Join(elems, ", ") + "))"
-}
-
 func variableDefault(f *ir.Field) string {
 	if f.Array != ir.ArrayNone {
 		return "new java.util.ArrayList<>()"
