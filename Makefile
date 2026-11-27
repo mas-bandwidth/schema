@@ -301,7 +301,9 @@ SCHEMAS_VERSIONING := test/tables/VOLD_array_bounded_grow.schema \
 	test/tables/VBRB_lineage_merge.schema \
 	test/tables/VNEW_lineage_merge.schema \
 	test/tables/VOLD_unknown_census.schema \
-	test/tables/VNEW_unknown_census.schema
+	test/tables/VNEW_unknown_census.schema \
+	test/tables/VOLD_kind_moved.schema \
+	test/tables/VNEW_kind_moved.schema
 # ---- rowan/cpp-versioning-numbers: END ----------------------------------
 
 define tables_generate
@@ -6999,6 +7001,7 @@ FIXEDFORM_INCLUDES = -Ibuild/tables-generated/fx1 -Ibuild/tables-generated/fx2 \
 	    -Ibuild/tables-generated/fg1 \
 	    -Ibuild/tables-generated/fe1 -Ibuild/tables-generated/fe2 \
 	    -Ibuild/tables-generated/vnum \
+	    -Ibuild/tables-generated-lawful/fx1l -Ibuild/tables-generated-lawful/v1l \
 	    $(VLISTS_INCLUDES) $(FIXEDFORM_TEST_HOOKS) -I$(SERIALIZE)
 FIXEDFORM_ASAN_FLAGS = -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -g
 
@@ -7018,11 +7021,23 @@ FIXEDFORM_RELEASE_WRITE := '-Dschema_assert(x)=((void)0)'
 # are the ones the single command gave every unit.
 FIXEDFORM_UNITS := fixedform_main versioning_lists versioning_numbers
 
-build/fixedform-objs/%.o: test/tables/%.cpp build/tables-generated/.stamp
+# THE LAWFUL OLDER WRITERS (docs/FIXED-FORM-ALGORITHM.md §5.2 MATCH, §5.4 row 1,
+# §5.9 #30). FX1 and V1 are UNLAWFUL lineage entries for FX2 and V2 (a field the
+# newer side names nowhere, a kind off every ladder), so their reads are
+# refused layout_malformed; FX1L and V1L are the same writers with only the
+# unlawful edits taken back, and they carry the compiled-plan checks the lawful
+# edits still owe. Each is its own unit in its own directory, in no lineage.
+build/tables-generated-lawful/.stamp: bin/schema test/tables/lawful/fx1l/FX1L.schema test/tables/lawful/v1l/V1L.schema
+	@mkdir -p build/tables-generated-lawful
+	./bin/schema generate --lang cpp --out build/tables-generated-lawful/fx1l test/tables/lawful/fx1l/FX1L.schema
+	./bin/schema generate --lang cpp --out build/tables-generated-lawful/v1l test/tables/lawful/v1l/V1L.schema
+	@touch $@
+
+build/fixedform-objs/%.o: test/tables/%.cpp build/tables-generated/.stamp build/tables-generated-lawful/.stamp
 	@mkdir -p $(@D)
 	$(CXX) $(TABLES_CXXFLAGS) $(FIXEDFORM_RELEASE_WRITE) $(FIXEDFORM_INCLUDES) -c $< -o $@
 
-build/fixedform-objs-asan/%.o: test/tables/%.cpp build/tables-generated/.stamp
+build/fixedform-objs-asan/%.o: test/tables/%.cpp build/tables-generated/.stamp build/tables-generated-lawful/.stamp
 	@mkdir -p $(@D)
 	$(CXX) $(TABLES_CXXFLAGS) $(FIXEDFORM_ASAN_FLAGS) $(FIXEDFORM_RELEASE_WRITE) $(FIXEDFORM_INCLUDES) -c $< -o $@
 

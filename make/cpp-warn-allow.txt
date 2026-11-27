@@ -572,6 +572,10 @@ build/tables-generated/vnum/VNEW_int_widenBlock.cpp old-style-cast
 build/tables-generated/vnum/VNEW_int_widenBlock.h cast-align,old-style-cast,padded
 build/tables-generated/vnum/VNEW_int_widenTable.cpp float-equal,nrvo,old-style-cast,padded,sign-conversion,switch-default,unused-macros
 build/tables-generated/vnum/VNEW_int_widenTable.h cast-align,comma,implicit-int-conversion,implicit-int-float-conversion,old-style-cast,padded,switch-default
+build/tables-generated/vnum/VNEW_kind_movedBlock.cpp old-style-cast
+build/tables-generated/vnum/VNEW_kind_movedBlock.h cast-align,old-style-cast,padded
+build/tables-generated/vnum/VNEW_kind_movedTable.cpp float-equal,nrvo,old-style-cast,padded,sign-conversion,switch-default,unused-macros
+build/tables-generated/vnum/VNEW_kind_movedTable.h cast-align,comma,implicit-int-conversion,implicit-int-float-conversion,old-style-cast,padded,switch-default
 build/tables-generated/vnum/VNEW_lineage_mergeBlock.cpp old-style-cast
 build/tables-generated/vnum/VNEW_lineage_mergeBlock.h cast-align,old-style-cast,padded
 build/tables-generated/vnum/VNEW_lineage_mergeTable.cpp float-equal,nrvo,old-style-cast,padded,sign-conversion,switch-default,unused-macros
@@ -652,6 +656,10 @@ build/tables-generated/vnum/VOLD_int_widenBlock.cpp old-style-cast
 build/tables-generated/vnum/VOLD_int_widenBlock.h cast-align,old-style-cast,padded
 build/tables-generated/vnum/VOLD_int_widenTable.cpp float-equal,nrvo,old-style-cast,padded,sign-conversion,switch-default,unused-macros
 build/tables-generated/vnum/VOLD_int_widenTable.h cast-align,comma,implicit-int-conversion,implicit-int-float-conversion,old-style-cast,padded,switch-default
+build/tables-generated/vnum/VOLD_kind_movedBlock.cpp old-style-cast
+build/tables-generated/vnum/VOLD_kind_movedBlock.h cast-align,old-style-cast,padded
+build/tables-generated/vnum/VOLD_kind_movedTable.cpp float-equal,nrvo,old-style-cast,padded,sign-conversion,switch-default,unused-macros
+build/tables-generated/vnum/VOLD_kind_movedTable.h cast-align,comma,implicit-int-conversion,implicit-int-float-conversion,old-style-cast,padded,switch-default
 build/tables-generated/vnum/VOLD_lineage_mergeBlock.cpp old-style-cast
 build/tables-generated/vnum/VOLD_lineage_mergeBlock.h cast-align,old-style-cast,padded
 build/tables-generated/vnum/VOLD_lineage_mergeTable.cpp float-equal,nrvo,old-style-cast,padded,sign-conversion,switch-default,unused-macros
@@ -693,6 +701,7 @@ build/tables-generated/vnum/Vnew_float_widenView.h padded
 build/tables-generated/vnum/Vnew_floorView.h padded
 build/tables-generated/vnum/Vnew_hostile_boolView.h padded
 build/tables-generated/vnum/Vnew_int_widenView.h padded
+build/tables-generated/vnum/Vnew_kind_movedView.h padded
 build/tables-generated/vnum/Vnew_lineage_mergeView.h padded
 build/tables-generated/vnum/Vnew_optional_addView.h padded
 build/tables-generated/vnum/Vnew_range_widenView.h padded
@@ -713,6 +722,7 @@ build/tables-generated/vnum/Vold_float_widenView.h padded
 build/tables-generated/vnum/Vold_floorView.h padded
 build/tables-generated/vnum/Vold_hostile_boolView.h padded
 build/tables-generated/vnum/Vold_int_widenView.h padded
+build/tables-generated/vnum/Vold_kind_movedView.h padded
 build/tables-generated/vnum/Vold_lineage_mergeView.h padded
 build/tables-generated/vnum/Vold_optional_addView.h padded
 build/tables-generated/vnum/Vold_range_widenView.h padded

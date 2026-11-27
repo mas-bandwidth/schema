@@ -225,7 +225,7 @@ fixed table T
 	t03Has(t, hdr, "if ( root.size == 0u || root.size > kTableFixedRecordMaxBytes )\n    {\n        why = layout_record_too_large;\n        return false;\n    }", "R14 the zero root and the 65536 bound")
 	t03Has(t, hdr, "c.record = TableFixedEntryAt( theirs, 0 ).size;", "R14 the writer's own declared record is the compiler's bound")
 	t03Has(t, hdr, "if ( c.hostile && report != NULL ) { report->reason = layout_record_too_large; }", "R14 an entry reaching past the writer's record is named layout_record_too_large")
-	t03Has(t, hdr, "report->reason = ( made == -2 ) ? TableMessageReason::layout_record_too_large : TableMessageReason::plan_too_large;", "R14 the plan is refused WHOLE")
+	t03Has(t, hdr, "report->reason = ( made == -2 ) ? TableMessageReason::layout_record_too_large : ( made == -3 ) ? TableMessageReason::layout_malformed : ( made == -4 ) ? TableMessageReason::kind_mismatch : TableMessageReason::plan_too_large;", "R14 the plan is refused WHOLE")
 }
 
 // ---- cpp/R22 ---------------------------------------------------------------
@@ -594,13 +594,18 @@ fixed table T
 	t03Has(t, hdr, "memset( (void *) &defaults, 0, sizeof( defaults ) );", "R20 an added field's holes are prefilled")
 	t03Has(t, hdr, "Reset( defaults );", "R20 the prefill source is the reader's declared defaults")
 	t03Has(t, hdr, "TableFixedFillRun( fill, fill_count,", "R20 the prefill lands the declared defaults under the plan")
-	// A DEPRECATED FIELD IS DROPPED AND COUNTED ONCE UNDER UNKNOWN PER PLAN:
-	// each writer's field the reader cannot name adds one unknown, and only the
-	// FIRST time it is seen (the census flag is false for later elements).
-	t03Has(t, runtime, "if ( !named && census && c.report != NULL ) { c.report->unknown++; }", "R20 a field the reader cannot name is counted once")
-	t03Has(t, runtime, "// ONCE PER FIELD PER ENDPOINT (ALG 5.4), so only element 0 censuses.", "R20 the census is once per field per plan")
-	t03Has(t, runtime, "census && i == 0", "R20 only an array's element 0 censuses")
-	t03Has(t, runtime, "census && k == 0", "R20 only a keyed array's element 0 censuses")
+	// A WRITER FIELD THE READER CANNOT NAME IS NEVER COUNTED: it makes the
+	// lineage entry UNLAWFUL before any entry is laid, and the load refuses
+	// layout_malformed (FIXED-FORM-ALGORITHM §5.2 MATCH, §5.4, §5.9 #30). A
+	// deprecated field keeps its place and its name, so it is matched, not this.
+	t03Has(t, runtime, "        if ( !named )\n        {\n            c.unlawful = 1;\n            return;\n        }", "R20 a field the reader cannot name makes the entry unlawful")
+	t03Has(t, runtime, "c.unlawful = ( te.kind == 35 ) ? 3u : 1u;", "R20 a kind off every ladder makes the entry unlawful")
+	t03Has(t, runtime, "return ( c.unlawful == 3 ) ? -4 : -3;", "R20 an unlawful entry lays no plan")
+	for _, gone := range []string{"c.report->unknown++", "census && i == 0", "census && k == 0", "int census"} {
+		if strings.Contains(runtime, gone) {
+			t.Errorf("R20 there is no compile census: the emitted source still carries %q", gone)
+		}
+	}
 	// A NARROWER INTEGER OR FLOAT IS WIDENED EXACTLY and widened counts: the
 	// signed rung extends by the sign bit, the float rung widens f32 into f64,
 	// and the batch adds the per-entry tally to the report.
