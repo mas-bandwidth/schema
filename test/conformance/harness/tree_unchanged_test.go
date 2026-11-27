@@ -29,6 +29,12 @@ func TestMain(m *testing.M) {
 	if os.Getenv("SCHEMA_HARNESS_FAKE_WIRE_LEG") != "" {
 		os.Exit(fakeWireLeg(os.Args[1:]))
 	}
+	// THE TEST BINARY AS THE SYNTHETIC JSON-FUZZ LEG (jsonfuzz_test.go):
+	// `<exe> <manifest> <surface> <outdir>`; it exits on its own.
+	if os.Getenv("SCHEMA_JSONFUZZ_TEST_DRIVER") == "1" {
+		jsonFuzzSyntheticDriver(os.Args[1:])
+		os.Exit(0)
+	}
 	// THE TEST BINARY AS A REFUSING WIRE-FUZZ LEG
 	// (wirefuzz_verdict_loop_test.go): it answers on its pipes and exits.
 	if os.Getenv(refusingLegEnv) != "" {

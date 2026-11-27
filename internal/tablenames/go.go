@@ -361,6 +361,7 @@ func init() {
 		Name{Name: "tableCookNativeOrder", What: "this machine's byte order, read once at package initialisation"},
 		Name{Name: "tableCookOpenRegion", What: "every cook Open's shared header match"},
 		Name{Name: "tableCookRecords", What: "the unit's whole cooked-record descriptor graph, one slice"},
+		Name{Name: "tableEnumPast", What: "the cook writer refusal of an enum ordinal past the declared set"},
 		Name{Name: "tableJSONBase64Alphabet", What: "the base64 alphabet a `bytes` field rides under"},
 		Name{Name: "tableJSONBase64Decode", What: "the base64 decode lookup for a `bytes` field"},
 		Name{Name: "TableJSONOptions", What: "the text form's three options for a text another library wrote (docs/SPEC-TABLES.md §16.2)"},

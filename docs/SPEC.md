@@ -1917,6 +1917,20 @@ All compile errors with positions:
   with any int member (`sign`, `floor`, `isNaN`). A name a target reserves
   outright is refused at check for every target, naming it: a declaration
   spelled `main` in Dart, which reserves `main` for the entry point.
+  The Rust packet layer spells an enum as a tuple struct, which no let,
+  parameter, loop or match binding may shadow, so every binding the Rust
+  packet emitter declares, every binding of the table files that glob-import
+  the crate (the fixed, message, block and cook modules and the message and
+  cook runtimes), and the cooked union setter's parameter, carries the
+  `schema_` prefix no declaration may take (`schema_value`,
+  `schema_stream`, `schema_c0`, ...). A helper derived from two names is
+  injective: a Rust table enum's JSON names are its associated
+  `json_name` and `from_json_name`, never free functions spelled from its
+  name, which `days` and `daysFrom` would share. What a target cannot
+  rename is refused at check for every target: Rust's 2024 keyword `gen`,
+  and the modules the generated crate's lib.rs declares (each file's
+  lowercased basename always; with tables, `tables`, the table runtimes
+  and each file's `_table`, `_cook`, `_records` and other table modules).
   The proof is the corpus rows `n_internal_*` of
   testdata/name-buildability: every such name the table emitters of all 18
   targets declare, each used as an enum, a table field and a union arm, and

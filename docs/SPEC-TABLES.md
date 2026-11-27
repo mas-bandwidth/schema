@@ -543,8 +543,9 @@ lives.** C++ and Go read and write a table field of a schema `type`, `enum` or
 storage spells `string(N)` as `[u8; N]` with a used length, where the variable
 form holds a `String`, a `Vec` or an `Option<Rc<..>>`, so the table layer
 declares its own type under the same schema name. Two rules keep every name
-reachable. A TABLE ENUM, with its `<name>_json_name` and
-`<name>_from_json_name`, is emitted ONCE per crate, in `table_enums.rs`, and
+reachable. A TABLE ENUM, with its associated `<Name>::json_name` and
+`<Name>::from_json_name` (never free functions spelled from its name, which two
+enum names could share), is emitted ONCE per crate, in `table_enums.rs`, and
 every table module that names it imports it; there is never one copy per file.
 And where a packet type and a table type share a schema name, THE PACKET TYPE
 KEEPS THE CRATE-ROOT NAME and the table type lives at
@@ -6869,7 +6870,11 @@ well as about work, and this is where that memory lives.
   after it. A resolved vocabulary declared inside a read
   call would be a table rebuilt per batch, which is the property's opposite.
 - **THE ENTRY BOUND IS THAT CAPACITY, and an announcement above it is refused
-  by name as `vocabulary_too_large` before an entry is touched.** The bound is
+  by name as `vocabulary_too_large` before an entry is touched.** The bound
+  is applied as the entries are read: once the bound's count of entries is
+  placed, ANOTHER ENTRY STARTING is `vocabulary_too_large`, and that entry and
+  every byte after it is neither decoded nor compared, so damage past the
+  bound never turns the verdict into a malformed announcement. The bound is
   a number the CALLER states rather than a number the wire could name: sizing
   for the largest vocabulary the wire can spell would be sizing for a peer
   that does not exist. **A GENERATED CONSTANT GIVES THE UNIT'S OWN ENTRY
@@ -11181,6 +11186,16 @@ and it is the same buffer across all three by construction.
   stores. The id list is the retained ids' own storage (THE RETAINED IDS,
   below), and it rides inside `TableRetain` and claims no name of its own
   (§11).
+- **A REFUSED LOADRETAIN LEAVES THE STORE EMPTY.** A load the read refuses,
+  at the form byte, the framing, or damage met mid-body after records were
+  already captured, keeps no retained record: the store holds nothing from
+  the refused read and nothing from any earlier load into it. A later
+  `SaveRetain` of a root an earlier load answered, through that store, writes
+  that root's known fields and no retained record, exactly the plain `Save`'s
+  bytes, or refuses by name where a port binds the store to the root it
+  loaded. A port whose records carry their own retained fields drops them
+  from the save by this rule, not by emptying the records. The
+  `retain-refusal` rows hold it on every leg (SPEC-CONFORMANCE.md §7).
 - **The three names are ADDITIVE.** `Load`, `Measure` and `Save` are unchanged
   and retain nothing, so every existing caller, every conformance leg and every
   generated golden stands byte for byte. Retention is a thing a caller asks
@@ -12941,11 +12956,22 @@ contract (SPEC §5.1) runs before a byte is placed. A loaded value whose live
 count lies below its array's `Min` or above its bound, or whose length is
 negative, is REFUSED (`Cook` writes nothing, `CookMeasure` answers `-1`); it is
 never clamped to the bound and written. A NaN or an infinity in a plain float
-is refused (row 7), as the save refuses it. A leg whose measure and write
-share one body refuses in both. **These `CookMeasure` refusal answers are for a
-pointered root, whose reached graph determines its size. A fixed root is the
-exception stated below: its `CookMeasure` is the layout constant even for an
-invalid value, and its `Cook` alone runs the value checks before writing.**
+is refused (row 7), as the save refuses it. An enum slot holding an ordinal
+past its variant set (row 5) or a deprecated variant (§2.15) is refused
+(`cref_enum_*`, `cref_var_enum_*`) by the write rule of SPEC §5.1. A leg that
+refuses in every build (Go, JavaScript, Elixir, Lua, Luau, Squirrel, MOO,
+Goose) refuses it in every build. An assert leg
+refuses it by its debug assert only, and its release build carries no
+write-side check: C and C++ by `schema_assert`, Rust by `debug_assert!` (a
+native Rust enum cannot hold an ordinal past its set at all), Java by `assert`
+under `-ea`, C# and Unity by `Debug.Assert`, and Dart by `assert` under
+`--enable-asserts`. An assert leg's refusal is not promised before the first
+byte: the C and C++ fixed cooks clear the output before the slot's assert can
+fire. A leg whose measure and write share one body refuses in both. **These
+`CookMeasure` refusal answers are for a pointered root, whose reached graph
+determines its size. A fixed root is the exception stated below: its
+`CookMeasure` is the layout constant even for an invalid value, and its `Cook`
+alone runs the value checks before writing.**
 
 **A BUILD CAN WRITE A COOK, AND THE BYTES ARE THE TOOL'S.** `schema cook` is
 the reference and stays it: a generated writer is held to the tool's output
@@ -14781,7 +14807,7 @@ in build version (§20.5).
   FixedResetImage  FixedHoles  FixedLineageHoles  FixedPlanMax  FixedReadPlan  FixedLoadWalk  GenPastBound
   FixedDecode  FixedPrefill  FixedIdentity  FixedNewPlan  FixedHashLo  FixedHashHi
   FixedDstCopy  FixedIdentityCopy  FixedLayoutCopy  FixedPrefillCopy
-  FixedKnown  FixedFloor  FixedLineagePlans  FixedBoundsKnown
+  FixedKnown  FixedFloor  FixedLineagePlans  FixedBoundsKnown  FixedKnownViews
   ```
 
   The Go templates also use Add, Erase, Each, Insert, Find,
@@ -14821,7 +14847,9 @@ in build version (§20.5).
   `FixedFloor`, and one plan per entry laid down at build, `FixedLineagePlans`.
   They are per-declaration for the same reason the identity plan is: a lineage
   belongs to ONE table and a unit can declare several, so a name that is free
-  today must not become a collision the day a second root is added.
+  today must not become a collision the day a second root is added. The JavaScript leg reads each known layout's lock bytes through a
+  `DataView`, and those views ride beside the lineage in `FixedKnownViews`, one
+  module-scope binding per declaration, claimed on the same rule.
 
   The `Fixed` rows are §3.4's, and they are claimed on this list's own rule:
   nothing declares the fixed form, every table whose closure §3.4 lays out
@@ -15816,7 +15844,7 @@ it does rather than a list of its own:
 
   | hook | where it fires | default | NDEBUG |
   |---|---|---|---|
-  | `schema_assert( condition )` | the keyed accessor's refusal (§2.4), with its message; the fixed form's measure count and write-side bounds (§3.4), whenever the unit has a fixed form | `assert`, from `<assert.h>` | removed, as `assert` is |
+  | `schema_assert( condition )` | the keyed accessor's refusal (§2.4), with its message; the fixed form's measure count and write-side bounds (§3.4), whenever the unit has a fixed form; and every other call the generated header makes (the SPEC.md §5.1 write contract: a range, a `bits(N)` width, a ranged float, a storage bound). A header carries this hook whenever it contains one such call, whatever unit shape emitted it, so every generated header compiles as the first and only include of a translation unit | `assert`, from `<assert.h>` | removed, as `assert` is |
   | `schema_fatal()` | after the assert, on the path that cannot continue | `abort`, from `<stdlib.h>` | kept |
   | `schema_allocate( bytes )` | the default allocator pair: ZEROED bytes, NULL on failure | `calloc`, from `<stdlib.h>` | — |
   | `schema_release( pointer )` | the default allocator pair | `free` | — |

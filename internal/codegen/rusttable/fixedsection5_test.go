@@ -100,18 +100,18 @@ func TestFixedIdentityReadForcesNoPlanCompile(t *testing.T) {
 	}
 	for name, data := range tables {
 		text := string(data)
-		at := strings.Index(text, "let identity = found ==")
+		at := strings.Index(text, "let schema_identity = schema_found ==")
 		if at < 0 {
 			continue
 		}
-		deref := strings.Index(text, "let plans = &*")
+		deref := strings.Index(text, "let schema_plans = &*")
 		if deref < 0 {
 			t.Fatalf("%s: no plan lazy at all", name)
 		}
 		if deref < at {
 			t.Errorf("%s: the plan compiler is forced BEFORE identity is consulted (§5.9 #20)", name)
 		}
-		if !strings.Contains(text[at:deref], "if identity {") {
+		if !strings.Contains(text[at:deref], "if schema_identity {") {
 			t.Errorf("%s: the lazy is not forced inside the non-identity branch (§5.9 #20)", name)
 		}
 		return

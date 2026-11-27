@@ -1,18 +1,21 @@
 // test/conformance/dart/rows/P3.dart — row dart/P3, "hostile bytes, sweep +
 // sanitizer" (docs/roadmap.sexp:3956; audit schema#898, matrix schema#876).
 //
-// THE LAW. docs/FIXED-FORM-ALGORITHM.md:1686, the fixed form's proof table
-// (§7 proof 5), and its ruling in docs/SPEC-TABLES.md §3.4
-// (docs/SPEC-TABLES.md:7138):
+// THE LAW. docs/FIXED-FORM-ALGORITHM.md §7 proof 5 (the fixed form's proof
+// table), today's text:
 //
 //   "a byte-flip fuzz over the whole file, under a sanitizer, and it is not
 //    optional — every offset is arithmetic over sizes a stranger wrote down,
-//    so every byte, one bit at a time, is answered one of three ways and never
-//    a fourth: a refusal by name, a `malformed` read, or a read that lands
-//    values."
+//    so every byte, one bit at a time, is answered one of two ways and never
+//    a third: a refusal by one name, or a read that lands values."
 //
-// and docs/SPEC-TABLES.md §3.4's first sentence
-// (docs/SPEC-TABLES.md:7135):
+// There is no `malformed` read on this form: every framing and layout damage
+// is a refusal by name (§5.3's refusal table). AND REFUSE IS TOTAL: a refusal
+// answers -1, moves no counter and leaves every row handed in at its declared
+// defaults (§5.3, SPEC-TABLES §6.5), so a refusal that returns a count or
+// leaves a partly landed row is the third answer too.
+//
+// and docs/SPEC-TABLES.md §3.4's first sentence:
 //
 //   "Buffers are caller-owned Uint8Lists and nothing throws."
 //
@@ -21,7 +24,7 @@
 // makes is through a ByteData / Uint8List, and a read past the caller's buffer
 // THROWS. "No exception escaped the reader" therefore IS "no read left the
 // buffer" — a reader that lets one out has stopped refusing and has not landed
-// values, and that escaping exception is the fourth answer this row says never
+// values, and that escaping exception is the third answer this row says never
 // happens. It is the same substitution the JS row records (its DataView throws)
 // and the Elixir row records (its escaping exception class is the oracle).
 //
@@ -29,32 +32,42 @@
 // string(16) name and ?Link { int32 value | min = 0, max = 1000; string(8)
 // tag } — is written through the production chainFixedSave, then EVERY byte is
 // flipped one bit at a time. Each mutant is read through the production
-// chainFixedLoad (a fresh plan and report per mutant) and must answer exactly
-// one of the three ways, never a fourth:
+// chainFixedLoad (a fresh plan and report per mutant, and a row handed in
+// holding NON-default values) and must answer exactly one of the two ways,
+// never a third:
 //
-//   * report.refused != none  — a refusal BY NAME, or
-//   * report.malformed        — a malformed read, or
-//   * loaded == 1             — a read that LANDS VALUES.
+//   * report.refused != none, loaded == -1, no counter moved, and the row
+//     handed in reset to its declared defaults — a refusal BY NAME, or
+//   * report.refused == none and loaded == 1 — a read that LANDS VALUES.
 //
-// Any thrown exception, and any answer outside those three, is the fourth
-// answer and a failure. The sweep counts its three answers and asserts each
-// occurred, so a datapath that quietly stopped reaching the reader cannot pass.
+// Any thrown exception, and any answer outside those two, is the third answer
+// and a failure. The sweep counts its answers and asserts each occurred, so a
+// datapath that quietly stopped reaching the reader cannot pass; and it pins
+// the NAME per region of the header: every flip of a reserved byte refuses as
+// framing damage (the Dart leg's wire_damaged, the spec's reserved_not_zero),
+// every flip of the header hash refuses layout_newer (the spec's
+// layout_unknown: a hash no lineage entry holds), and every flip of the layout
+// length or a layout byte refuses layout_damaged (the spec's
+// layout_malformed).
 //
 // THE PRODUCTION PATH. build/tables-generated-dart/p3/, laid down by
 // `make build/conformance-dart`: P3Fixed.dart's chainFixedMeasure,
 // chainFixedSave, chainFixedLoad and chainFixedNewPlan, over Tblp3Fixed.dart's
 // Chain/Link value classes, the known-layout table and the one read loop. The
-// same emitter output the conformance driver reaches the generated tables
-// through. The vector here is CONSTRUCTED from the law (the tree carries no
-// fixed-form P3 bytes under testdata/conformance/tables), and the file is the
-// whole file the law says to sweep: the form byte, the reserved bytes, the
-// header hash, the layout length and layout bytes, and the record.
+// vector here is CONSTRUCTED from the law (the tree carries no fixed-form P3
+// bytes under testdata/conformance/tables), and the file is the whole file the
+// law says to sweep: the form byte, the reserved bytes, the header hash, the
+// layout length and layout bytes, and the record.
 //
-// THE CONTROL (recorded in RESULT.md). Breaking one constant of this law in
-// the generated code — the layoutBytes bound that keeps a hostile layout
-// length from walking the layout compare past the buffer — lets a mutant's
-// read leave the buffer and throw, and the `escaped == 0` assertion goes RED.
-// Restored, the row is GREEN again.
+// THE CONTROLS. (1) Breaking BOTH layout-length bounds in the generated
+// chainFixedLoad — the `20 + L > bytes` refusal and the `L !=
+// known.layoutBytes` refusal — lets a hostile layout length walk the layout
+// compare past the arrays: mutants throw RangeError, and the `escaped == 0`
+// assertion goes RED (either bound alone still holds the sweep: the other
+// catches every single-bit length flip). (2) Dropping the refusal's reset of
+// the rows handed in (`initChain(values[j])` in refuse()) turns every
+// refusal into a third answer, and the totality assertions go RED. Restored,
+// the row is GREEN again.
 //
 // Run from the repository root:  dart run test/conformance/dart/rows/P3.dart
 // Exit 0 = green, exit 1 = red. One printed line per assertion.
@@ -105,10 +118,17 @@ Uint8List lawfulFile() {
 }
 
 /// ONE MUTANT, ONE ANSWER. Reads the mutant through the production entrypoint
-/// and returns one word for which of the three answers it got, or a fourth
-/// description so a failure can name it.
+/// and returns one word for which of the two answers it got, or a third
+/// description so a failure can name it. The row handed in holds NON-default
+/// values, so a refusal that does not reset it to its declared defaults is
+/// caught.
 String answer(Uint8List mutant) {
-  final values = <fixed.Chain>[fixed.Chain()];
+  final held = fixed.Chain();
+  putText(held.name, 'held');
+  held.nameLength = 4;
+  held.linkPresent = true;
+  held.link.value = 7;
+  final values = <fixed.Chain>[held];
   final report = fixed.TableFixedReport();
   final plan = p3.chainFixedNewPlan();
   final loaded = p3.chainFixedLoad(
@@ -120,16 +140,30 @@ String answer(Uint8List mutant) {
     report,
   );
   if (report.refused != fixed.TableFixedRefusal.none) {
-    return 'refusal:${fixed.TableFixedRefusal.name(report.refused)}';
-  }
-  if (report.malformed) {
-    return 'malformed';
+    final v = values[0];
+    var nameZero = true;
+    for (final b in v.name) {
+      nameZero = nameZero && b == 0;
+    }
+    final total = loaded == -1 &&
+        report.unknown == 0 &&
+        report.widened == 0 &&
+        v.nameLength == 0 &&
+        nameZero &&
+        !v.linkPresent &&
+        v.link.value == fixed.Link().value;
+    if (total) {
+      return 'refusal:${fixed.TableFixedRefusal.name(report.refused)}';
+    }
+    return 'third(refused=${fixed.TableFixedRefusal.name(report.refused)} '
+        'loaded=$loaded unknown=${report.unknown} widened=${report.widened} '
+        'nameLength=${v.nameLength} linkPresent=${v.linkPresent} '
+        'link.value=${v.link.value}: refusal not total)';
   }
   if (loaded == 1) {
     return 'landed';
   }
-  return 'fourth(loaded=$loaded malformed=${report.malformed} '
-      'refused=${report.refused})';
+  return 'third(loaded=$loaded refused=none)';
 }
 
 void main() {
@@ -149,8 +183,10 @@ void main() {
     );
     check(loaded == 1, 'lawful file: chainFixedLoad answers 1 record ($loaded)');
     check(
-      !report.malformed && report.refused == fixed.TableFixedRefusal.none,
-      'lawful file: a clean read moves no refusal and is not malformed',
+      report.refused == fixed.TableFixedRefusal.none &&
+          report.unknown == 0 &&
+          report.widened == 0,
+      'lawful file: a clean read moves no refusal and no counter',
     );
     check(back[0].linkPresent, 'lawful file: the optional Link is present');
     check(back[0].link.value == 42, 'lawful file: link.value lands 42');
@@ -158,32 +194,65 @@ void main() {
     check(source[0] == fixed.tableFixedForm, 'lawful file: form byte 3');
   }
 
+  // THE HEADER'S REGIONS, from the file's own layout length.
+  final layoutAt = fixed.TableFixedLimits.layoutAt;
+  final hashAt = fixed.TableFixedLimits.hashAt;
+  final layoutLen = ByteData.sublistView(source)
+      .getUint32(fixed.TableFixedLimits.headerBytes, Endian.little);
+  final layoutEnd = layoutAt + layoutLen;
+
   // ---- THE SWEEP: every byte, one bit at a time, over the whole file
   var refusals = 0;
-  var malformed = 0;
   var landed = 0;
   var escaped = 0;
-  var fourth = 0;
+  var third = 0;
   var firstEscape = '';
-  var firstFourth = '';
+  var firstThird = '';
+  // per region: mutants, and mutants refused by the region's own name
+  var reservedN = 0, reservedNamed = 0;
+  var hashN = 0, hashNamed = 0;
+  var layoutN = 0, layoutNamed = 0;
+  var firstMisnamed = '';
   final total = source.length * 8;
 
   for (var i = 0; i < source.length; i++) {
     for (var b = 0; b < 8; b++) {
       final mutant = Uint8List.fromList(source);
       mutant[i] ^= 1 << b;
+      String? want;
+      if (i >= 1 && i < hashAt) {
+        want = 'refusal:wire_damaged';
+        reservedN++;
+      } else if (i >= hashAt && i < fixed.TableFixedLimits.headerBytes) {
+        want = 'refusal:layout_newer';
+        hashN++;
+      } else if (i >= fixed.TableFixedLimits.headerBytes && i < layoutEnd) {
+        want = 'refusal:layout_damaged';
+        layoutN++;
+      }
       try {
         final a = answer(mutant);
-        if (a == 'malformed') {
-          malformed++;
-        } else if (a == 'landed') {
+        if (want != null) {
+          if (a == want) {
+            if (i < hashAt) {
+              reservedNamed++;
+            } else if (i < fixed.TableFixedLimits.headerBytes) {
+              hashNamed++;
+            } else {
+              layoutNamed++;
+            }
+          } else if (firstMisnamed.isEmpty) {
+            firstMisnamed = 'byte $i bit $b: $a, want $want';
+          }
+        }
+        if (a == 'landed') {
           landed++;
         } else if (a.startsWith('refusal:')) {
           refusals++;
         } else {
-          fourth++;
-          if (firstFourth.isEmpty) {
-            firstFourth = 'byte $i bit $b: $a';
+          third++;
+          if (firstThird.isEmpty) {
+            firstThird = 'byte $i bit $b: $a';
           }
         }
       } catch (e) {
@@ -202,25 +271,35 @@ void main() {
     '${firstEscape.isEmpty ? '' : ' (first: $firstEscape)'}',
   );
   check(
-    fourth == 0,
-    'never a fourth answer: every mutant was a refusal, malformed, or a read '
-    'that lands values — $fourth otherwise'
-    '${firstFourth.isEmpty ? '' : ' (first: $firstFourth)'}',
+    third == 0,
+    'never a third answer: every mutant was a total refusal by name or a '
+    'read that lands values — $third otherwise'
+    '${firstThird.isEmpty ? '' : ' (first: $firstThird)'}',
   );
   check(
-    refusals + malformed + landed + escaped + fourth == total,
+    refusals + landed + escaped + third == total,
     'the sweep answers every mutant exactly once: '
-    '${refusals + malformed + landed + escaped + fourth} of $total',
+    '${refusals + landed + escaped + third} of $total',
+  );
+  check(
+    reservedN == 56 && reservedNamed == reservedN,
+    'every reserved-byte flip refuses wire_damaged (the spec\'s '
+    'reserved_not_zero): $reservedNamed of $reservedN'
+    '${firstMisnamed.isEmpty ? '' : ' (first misnamed: $firstMisnamed)'}',
+  );
+  check(
+    hashN == 64 && hashNamed == hashN,
+    'every header-hash flip refuses layout_newer (the spec\'s '
+    'layout_unknown): $hashNamed of $hashN',
+  );
+  check(
+    layoutN == (4 + layoutLen) * 8 && layoutNamed == layoutN,
+    'every layout-length or layout-byte flip refuses layout_damaged (the '
+    'spec\'s layout_malformed): $layoutNamed of $layoutN',
   );
   check(
     refusals > 0,
-    'a refusal by name occurs under the sweep: $refusals mutants '
-    '(the form byte, the header hash and the record hash)',
-  );
-  check(
-    malformed > 0,
-    'a malformed read occurs under the sweep: $malformed mutants '
-    '(the reserved bytes and the layout)',
+    'a refusal by name occurs under the sweep: $refusals mutants',
   );
   check(
     landed > 0,
@@ -230,8 +309,7 @@ void main() {
 
   stdout.writeln(
     'P3: ${source.length} bytes, $total single-bit mutants — '
-    '$refusals refused, $malformed malformed, $landed landed, '
-    '$escaped escaped — '
+    '$refusals refused, $landed landed, $escaped escaped, $third third — '
     '${red == 0 ? 'GREEN' : 'RED'}',
   );
   exit(red == 0 ? 0 : 1);

@@ -531,13 +531,13 @@ impl MixedEntityCook {
     /// bound. The region must stay put and must not be written for as long as
     /// this handle or anything borrowed from it lives; a bool byte that is not
     /// 0 or 1 is undefined behaviour the moment a row reference is formed.
-    pub unsafe fn open(bytes: *const u8, length: u64) -> Option<MixedEntityCook> {
+    pub unsafe fn open(bytes: *const u8, schema_length: u64) -> Option<MixedEntityCook> {
         unsafe {
-            let (region, region_length) =
-                table_cook_open(bytes, length, Self::ROOT_SIZE, Self::ROOT_ALIGN)?;
+            let (schema_region, schema_region_length) =
+                table_cook_open(bytes, schema_length, Self::ROOT_SIZE, Self::ROOT_ALIGN)?;
             Some(MixedEntityCook {
-                region,
-                region_length,
+                region: schema_region,
+                region_length: schema_region_length,
             })
         }
     }
@@ -562,13 +562,13 @@ impl MixedEntityCook {
 /// `slot` must point at a reference slot inside a genuine cook of this build,
 /// and a non-zero delta must name a row the region holds. The region must not
 /// be written while the returned pointer or anything read through it lives.
-pub unsafe fn mixed_entity_at(slot: *const i64) -> *const MixedEntityRow {
+pub unsafe fn mixed_entity_at(schema_slot: *const i64) -> *const MixedEntityRow {
     unsafe {
-        let delta = core::ptr::read_unaligned(slot);
-        if delta == 0 {
+        let schema_delta = core::ptr::read_unaligned(schema_slot);
+        if schema_delta == 0 {
             return core::ptr::null();
         }
-        (slot as *const u8).offset(delta as isize) as *const MixedEntityRow
+        (schema_slot as *const u8).offset(schema_delta as isize) as *const MixedEntityRow
     }
 }
 
@@ -601,13 +601,13 @@ impl MixedStatCook {
     /// bound. The region must stay put and must not be written for as long as
     /// this handle or anything borrowed from it lives; a bool byte that is not
     /// 0 or 1 is undefined behaviour the moment a row reference is formed.
-    pub unsafe fn open(bytes: *const u8, length: u64) -> Option<MixedStatCook> {
+    pub unsafe fn open(bytes: *const u8, schema_length: u64) -> Option<MixedStatCook> {
         unsafe {
-            let (region, region_length) =
-                table_cook_open(bytes, length, Self::ROOT_SIZE, Self::ROOT_ALIGN)?;
+            let (schema_region, schema_region_length) =
+                table_cook_open(bytes, schema_length, Self::ROOT_SIZE, Self::ROOT_ALIGN)?;
             Some(MixedStatCook {
-                region,
-                region_length,
+                region: schema_region,
+                region_length: schema_region_length,
             })
         }
     }
@@ -632,13 +632,13 @@ impl MixedStatCook {
 /// `slot` must point at a reference slot inside a genuine cook of this build,
 /// and a non-zero delta must name a row the region holds. The region must not
 /// be written while the returned pointer or anything read through it lives.
-pub unsafe fn mixed_stat_at(slot: *const i64) -> *const MixedStatRow {
+pub unsafe fn mixed_stat_at(schema_slot: *const i64) -> *const MixedStatRow {
     unsafe {
-        let delta = core::ptr::read_unaligned(slot);
-        if delta == 0 {
+        let schema_delta = core::ptr::read_unaligned(schema_slot);
+        if schema_delta == 0 {
             return core::ptr::null();
         }
-        (slot as *const u8).offset(delta as isize) as *const MixedStatRow
+        (schema_slot as *const u8).offset(schema_delta as isize) as *const MixedStatRow
     }
 }
 
@@ -671,13 +671,13 @@ impl MixedHitEventCook {
     /// bound. The region must stay put and must not be written for as long as
     /// this handle or anything borrowed from it lives; a bool byte that is not
     /// 0 or 1 is undefined behaviour the moment a row reference is formed.
-    pub unsafe fn open(bytes: *const u8, length: u64) -> Option<MixedHitEventCook> {
+    pub unsafe fn open(bytes: *const u8, schema_length: u64) -> Option<MixedHitEventCook> {
         unsafe {
-            let (region, region_length) =
-                table_cook_open(bytes, length, Self::ROOT_SIZE, Self::ROOT_ALIGN)?;
+            let (schema_region, schema_region_length) =
+                table_cook_open(bytes, schema_length, Self::ROOT_SIZE, Self::ROOT_ALIGN)?;
             Some(MixedHitEventCook {
-                region,
-                region_length,
+                region: schema_region,
+                region_length: schema_region_length,
             })
         }
     }
@@ -702,13 +702,13 @@ impl MixedHitEventCook {
 /// `slot` must point at a reference slot inside a genuine cook of this build,
 /// and a non-zero delta must name a row the region holds. The region must not
 /// be written while the returned pointer or anything read through it lives.
-pub unsafe fn mixed_hit_event_at(slot: *const i64) -> *const MixedHitEventRow {
+pub unsafe fn mixed_hit_event_at(schema_slot: *const i64) -> *const MixedHitEventRow {
     unsafe {
-        let delta = core::ptr::read_unaligned(slot);
-        if delta == 0 {
+        let schema_delta = core::ptr::read_unaligned(schema_slot);
+        if schema_delta == 0 {
             return core::ptr::null();
         }
-        (slot as *const u8).offset(delta as isize) as *const MixedHitEventRow
+        (schema_slot as *const u8).offset(schema_delta as isize) as *const MixedHitEventRow
     }
 }
 
@@ -741,13 +741,13 @@ impl MixedChatEventCook {
     /// bound. The region must stay put and must not be written for as long as
     /// this handle or anything borrowed from it lives; a bool byte that is not
     /// 0 or 1 is undefined behaviour the moment a row reference is formed.
-    pub unsafe fn open(bytes: *const u8, length: u64) -> Option<MixedChatEventCook> {
+    pub unsafe fn open(bytes: *const u8, schema_length: u64) -> Option<MixedChatEventCook> {
         unsafe {
-            let (region, region_length) =
-                table_cook_open(bytes, length, Self::ROOT_SIZE, Self::ROOT_ALIGN)?;
+            let (schema_region, schema_region_length) =
+                table_cook_open(bytes, schema_length, Self::ROOT_SIZE, Self::ROOT_ALIGN)?;
             Some(MixedChatEventCook {
-                region,
-                region_length,
+                region: schema_region,
+                region_length: schema_region_length,
             })
         }
     }
@@ -772,13 +772,13 @@ impl MixedChatEventCook {
 /// `slot` must point at a reference slot inside a genuine cook of this build,
 /// and a non-zero delta must name a row the region holds. The region must not
 /// be written while the returned pointer or anything read through it lives.
-pub unsafe fn mixed_chat_event_at(slot: *const i64) -> *const MixedChatEventRow {
+pub unsafe fn mixed_chat_event_at(schema_slot: *const i64) -> *const MixedChatEventRow {
     unsafe {
-        let delta = core::ptr::read_unaligned(slot);
-        if delta == 0 {
+        let schema_delta = core::ptr::read_unaligned(schema_slot);
+        if schema_delta == 0 {
             return core::ptr::null();
         }
-        (slot as *const u8).offset(delta as isize) as *const MixedChatEventRow
+        (schema_slot as *const u8).offset(schema_delta as isize) as *const MixedChatEventRow
     }
 }
 
@@ -811,13 +811,13 @@ impl MixedPickupEventCook {
     /// bound. The region must stay put and must not be written for as long as
     /// this handle or anything borrowed from it lives; a bool byte that is not
     /// 0 or 1 is undefined behaviour the moment a row reference is formed.
-    pub unsafe fn open(bytes: *const u8, length: u64) -> Option<MixedPickupEventCook> {
+    pub unsafe fn open(bytes: *const u8, schema_length: u64) -> Option<MixedPickupEventCook> {
         unsafe {
-            let (region, region_length) =
-                table_cook_open(bytes, length, Self::ROOT_SIZE, Self::ROOT_ALIGN)?;
+            let (schema_region, schema_region_length) =
+                table_cook_open(bytes, schema_length, Self::ROOT_SIZE, Self::ROOT_ALIGN)?;
             Some(MixedPickupEventCook {
-                region,
-                region_length,
+                region: schema_region,
+                region_length: schema_region_length,
             })
         }
     }
@@ -842,13 +842,13 @@ impl MixedPickupEventCook {
 /// `slot` must point at a reference slot inside a genuine cook of this build,
 /// and a non-zero delta must name a row the region holds. The region must not
 /// be written while the returned pointer or anything read through it lives.
-pub unsafe fn mixed_pickup_event_at(slot: *const i64) -> *const MixedPickupEventRow {
+pub unsafe fn mixed_pickup_event_at(schema_slot: *const i64) -> *const MixedPickupEventRow {
     unsafe {
-        let delta = core::ptr::read_unaligned(slot);
-        if delta == 0 {
+        let schema_delta = core::ptr::read_unaligned(schema_slot);
+        if schema_delta == 0 {
             return core::ptr::null();
         }
-        (slot as *const u8).offset(delta as isize) as *const MixedPickupEventRow
+        (schema_slot as *const u8).offset(schema_delta as isize) as *const MixedPickupEventRow
     }
 }
 

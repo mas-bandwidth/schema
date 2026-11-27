@@ -163,9 +163,6 @@ enum orphans
 enum os
 { Zfirst, Zsecond, Zthird }
 
-enum other
-{ Zfirst, Zsecond, Zthird }
-
 enum other_end
 { Zfirst, Zsecond, Zthird }
 
@@ -483,7 +480,6 @@ union NameArms4
     originalJson Inner
     orphans Inner
     os Inner
-    other Inner
 }
 
 table NameTypes4
@@ -506,8 +502,6 @@ table NameTypes4
     many7 [..4]orphans
     one8  os
     many8 [..4]os
-    one9  other
-    many9 [..4]other
 }
 
 table NameFields4
@@ -521,7 +515,6 @@ table NameFields4
     originalJson uint32
     orphans uint32
     os uint32
-    other uint32
     armsOfNames  NameArms4
     typesOfNames NameTypes4
 }
