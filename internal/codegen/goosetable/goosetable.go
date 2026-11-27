@@ -243,14 +243,14 @@ func Refuse(u *ir.Unit) error {
 		for _, f := range u.Files {
 			for _, own := range []string{"", "Table", "Block", "Cook"} {
 				if strings.EqualFold(f.Base+own, m) {
-					return fmt.Errorf("schema file %s collides with the package module %s.goose, which the Goose table surface writes for package %s; rename the file", f.Base, m, u.Package)
+					return goose.NameErr(fmt.Errorf("schema file %s collides with the package module %s.goose, which the Goose table surface writes for package %s; rename the file", f.Base, m, u.Package))
 				}
 			}
 		}
 	}
 	for _, f := range u.Files {
 		if bases[strings.ToLower(f.Base+"Table")] {
-			return fmt.Errorf("schema files %s and %sTable collide — the Goose table surface writes %sTable.goose as %s's table module; rename one file", f.Base, f.Base, f.Base, f.Base)
+			return goose.NameErr(fmt.Errorf("schema files %s and %sTable collide — the Goose table surface writes %sTable.goose as %s's table module; rename one file", f.Base, f.Base, f.Base, f.Base))
 		}
 	}
 	return nil
