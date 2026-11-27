@@ -2465,7 +2465,7 @@ tables-java-view: bin/schema test/java-view/View.java
 		mkdir -p build/java-view/src-$$pkg; \
 		{ echo "package view_$$pkg;"; sed "s/^import tabledemo\.\*; \/\/ UNIT$$/import $$pkg.*; \/\/ UNIT/" test/java-view/View.java; } > build/java-view/src-$$pkg/View.java; \
 		grep -q "^import $$pkg\.\*; // UNIT$$" build/java-view/src-$$pkg/View.java || { echo "tables-java-view: the unit import was not rewritten for $$pkg"; exit 1; } \
-	) & pids="$$pids $$!"; done; for pid in $$pids; do wait $$pid; done
+	) & pids="$$pids $$!"; done; rc=0; for pid in $$pids; do wait $$pid || rc=1; done; exit $$rc
 	@# ONE javac for every unit (each unit's package is its own, and each View
 	@# copy sits in a package of its own, view_<unit>): fourteen JVMs compiling
 	@# side by side were most of this gate's time on a four-core slot.
@@ -2476,7 +2476,7 @@ tables-java-view: bin/schema test/java-view/View.java
 	@# perf-data files for the listing JVMs to keep stdout byte-exact.
 	@set -e; pids=""; for entry in $(VIEW_CORPUS); do pkg=$${entry##*:}; \
 		$(JAVA) -XX:-UsePerfData -cp build/java-view/classes view_$$pkg.View > build/java-view/$$pkg.listing & pids="$$pids $$!"; \
-	done; for pid in $$pids; do wait $$pid; done
+	done; rc=0; for pid in $$pids; do wait $$pid || rc=1; done; exit $$rc
 	SCHEMA_VIEW_LISTING_DIR="$(CURDIR)/build/java-view" go test -count=1 -timeout 600s ./internal/viewlisting -run TestUnitViewListingMatchesTheIR
 	@mkdir -p build/java-view/negative
 	@awk '!done && / doc=[^ ]/ { sub(/ doc=/, " doc=X"); done = 1 } { print }' build/java-view/tabledemo.listing > build/java-view/negative/tabledemo.listing

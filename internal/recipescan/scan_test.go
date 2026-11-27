@@ -302,3 +302,45 @@ func TestTreeLosingPipefailIsRed(t *testing.T) {
 		})
 	}
 }
+
+// #4956: a "for p in $pids; do wait $p; done" loop that only -e reads exits at
+// the first failed job and leaves the rest running. The committed fixture is
+// red on that loop alone (line 7) and green on the loop that reads each status.
+func TestWaitLoopFirstFailureIsRed(t *testing.T) {
+	fs, _ := fragment(t, "background-wait-loop-first-failure.mk")
+	got := withRule(fs, RuleBackground)
+	if len(got) != 1 {
+		t.Fatalf("want 1 background finding, got %d: %v", len(got), fs)
+	}
+	if got[0].Line != 7 || !strings.Contains(got[0].Text, "stops at the first failed job") {
+		t.Errorf("want the first-failure wait loop on line 7, got %v", got[0])
+	}
+}
+
+// The same loop planted into a real make/ fragment and into the root Makefile
+// goes red on the tree.
+func TestTreeWaitLoopFirstFailureIsRed(t *testing.T) {
+	root, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const plant = "\nplanted-wait-loop:\n\t@set -e; pids=; true & pids=\"$$pids $$!\"; for pid in $$pids; do wait $$pid; done\n"
+	for _, rel := range []string{"make/go.mk", "Makefile"} {
+		t.Run(rel, func(t *testing.T) {
+			t.Parallel()
+			b, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var hit []Finding
+			for _, f := range treeFindings(t, map[string]string{rel: string(b) + plant}) {
+				if f.File == rel && strings.Contains(f.Text, "stops at the first failed job") {
+					hit = append(hit, f)
+				}
+			}
+			if len(hit) != 1 {
+				t.Errorf("%s: want 1 first-failure wait-loop finding on the plant, got %v", rel, hit)
+			}
+		})
+	}
+}

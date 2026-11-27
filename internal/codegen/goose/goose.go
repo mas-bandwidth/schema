@@ -98,8 +98,17 @@ func Register(name string, fn Part) {
 // unit, plus the runtime modules. Declarations emit in ir.EmissionOrder per
 // file.
 func Generate(u *ir.Unit) (map[string][]byte, error) {
+	out, _, err := GenerateClaimed(u)
+	return out, err
+}
+
+// GenerateClaimed is Generate, and also the names it claimed: every name the
+// type surface's modules declared into the unit's namespace, valued by the
+// declaring module. A name in it is one a second declaration refuses (Declare),
+// so a test can hold the emitted text to the claim from one generation.
+func GenerateClaimed(u *ir.Unit) (map[string][]byte, map[string]string, error) {
 	if err := CheckUnit(u, Runtime()); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	names := map[string]string{}
 	out := map[string][]byte{}
@@ -109,16 +118,16 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		g.emitFile(f.Base == home)
 		for _, p := range parts {
 			if err := p.fn(g); err != nil {
-				return nil, fmt.Errorf("goose %s: %s: %w", p.name, f.Base, err)
+				return nil, nil, fmt.Errorf("goose %s: %s: %w", p.name, f.Base, err)
 			}
 		}
 		if g.err != nil {
-			return nil, g.err
+			return nil, nil, g.err
 		}
 		out[f.Base+"."+ext] = g.Assemble()
 	}
 	maps.Copy(out, Runtime())
-	return out, nil
+	return out, names, nil
 }
 
 // DeclaredNames is every top-level name the type surface declares into the
