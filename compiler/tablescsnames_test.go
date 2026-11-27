@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/tablenames"
+	"github.com/mas-bandwidth/schema/v3/internal/tablenames"
 )
 
 // TestCsRuntimeNameScanGoesRed is the C# runtime-name scan's own NEGATIVE

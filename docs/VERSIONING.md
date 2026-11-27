@@ -952,8 +952,8 @@ id and the build version instead, which are the things that govern
 compatibility.
 
 **The Go API under `compiler/` and `ir/` is covered; `internal/` is not.**
-`github.com/mas-bandwidth/schema/v2/compiler` loads and checks units and
-generates through registered generators; `github.com/mas-bandwidth/schema/v2/ir`
+`github.com/mas-bandwidth/schema/v3/compiler` loads and checks units and
+generates through registered generators; `github.com/mas-bandwidth/schema/v3/ir`
 is the checked unit those generators read. Breaking their exported surface is
 a major, adding to it is a minor. Everything under `internal/`, the scanner,
 parser, checker and the per-language emitters, carries no promise and may
@@ -1041,6 +1041,13 @@ number. Between releases an adopter pins a promotion tag
 ([USAGE.md](USAGE.md#embedding-the-compiler)); a Go module pin on
 `main-<shorthash>` resolves to that commit's pseudo-version, which is the same
 commit the tag names.
+
+The Go module path carries the major version, as Go requires for v2 and on:
+it moved from `github.com/mas-bandwidth/schema/v2` to
+`github.com/mas-bandwidth/schema/v3` at v3.0.15, the first v3 tag Go can
+resolve. Tags v3.0.0 to v3.0.14 were cut while go.mod still named `/v2`, so
+Go resolves none of them, and `schema pin` refuses them by name
+(`internal/modulemove.FirstV3ModuleTag`).
 
 The build stamps `git describe --tags --match 'v[0-9]*'` into the binary, so
 `schema version` on a release build reports the exact release tag and on any

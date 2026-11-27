@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
+	"github.com/mas-bandwidth/schema/v3/internal/testinputs"
 )
 
 // TestMissingSiblingStopsMakeWithOneLine holds the sibling gate (the Makefile's

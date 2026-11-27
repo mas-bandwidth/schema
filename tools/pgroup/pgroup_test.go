@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 )
 
 // These are FUNCTIONAL tests: they start real processes and wait on real

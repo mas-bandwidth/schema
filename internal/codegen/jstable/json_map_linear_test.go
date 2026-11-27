@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 )
 
 const jsJSONMapLinearSchema = "package probe\ntable Root\n{\n    names map[string(16)]int32\n    ids map[uint32]int32\n}\n"

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 )
 
 // EVERY GENERATE-TIME NAME REFUSAL IS A CHECK REFUSAL (SPEC §4.6, Emitter name

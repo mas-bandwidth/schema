@@ -2,7 +2,7 @@ package darttable
 
 import (
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // rideOpen opens the block that writes a field when it rides. A required

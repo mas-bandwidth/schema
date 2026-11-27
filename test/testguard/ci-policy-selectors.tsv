@@ -2,5 +2,5 @@
 # Every package the row's go test runs is a suite; every test that runs has
 # an empty file under the baseline directory; skips are ledgered here by test.
 # go run ./tools/testguard help check
-suite	github.com/mas-bandwidth/schema/v2/internal/ci
+suite	github.com/mas-bandwidth/schema/v3/internal/ci
 baseline	test/testguard/ci-policy-selectors

@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/vacuous"
+	"github.com/mas-bandwidth/schema/v3/internal/vacuous"
 )
 
 // TestEveryGoTestCanFail is the vacuous-test gate (2026-11-21): a test that

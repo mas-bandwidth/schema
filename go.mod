@@ -1,4 +1,4 @@
-module github.com/mas-bandwidth/schema/v2
+module github.com/mas-bandwidth/schema/v3
 
 go 1.26
 

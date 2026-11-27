@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testreg"
+	"github.com/mas-bandwidth/schema/v3/internal/testreg"
 )
 
 // addendaCmd writes the spec addenda from the registry (internal/testreg,

@@ -88,7 +88,7 @@ With a Go toolchain (1.26 or later), one command installs the compiler as
 `schema` in `$(go env GOPATH)/bin`:
 
 ```
-go install github.com/mas-bandwidth/schema/v2/cmd/schema@main
+go install github.com/mas-bandwidth/schema/v3/cmd/schema@main
 schema version
 ```
 

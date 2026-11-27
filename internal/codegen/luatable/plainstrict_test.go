@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/lua/luarun"
 )
 
 // rowWant is what a manifest row holds the read to: a report row is held only

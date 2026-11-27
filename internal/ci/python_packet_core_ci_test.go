@@ -23,7 +23,7 @@ func TestPythonPacketCoreCIPlan(t *testing.T) {
 	names := []string{"TestPythonPacketCore", "TestPythonPacketCoreShardPlan", "TestPythonPacketLayoutNegativeControl", "TestPythonNameListsAreThePins"}
 	for _, row := range rows {
 		targets[row.Target]++
-		if row.Package != "github.com/mas-bandwidth/schema/v2/internal/codegen/python" || row.Target != "" {
+		if row.Package != "github.com/mas-bandwidth/schema/v3/internal/codegen/python" || row.Target != "" {
 			continue
 		}
 		re, err := regexp.Compile("^" + row.Test + "$")

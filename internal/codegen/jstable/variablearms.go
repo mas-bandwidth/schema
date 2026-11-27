@@ -27,7 +27,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // keyedSlots renders an enum-keyed array's slots as [variant name, wire id]

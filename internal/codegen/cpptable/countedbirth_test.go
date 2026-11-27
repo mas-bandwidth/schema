@@ -12,7 +12,7 @@ package cpptable
 
 import (
 	"errors"
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 	"maps"
 	"os"
 	"os/exec"
@@ -20,8 +20,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/cpp"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 )
 
 const cppCountedBirthSchema = `package probe
