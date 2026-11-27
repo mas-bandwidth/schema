@@ -59,6 +59,9 @@ func writeRef(m *Module, name string) string { return m.ref(name, "Write"+name) 
 func emitWriteStruct(m *Module, st *ir.Struct) {
 	m.Printf("// Write%s writes value in declared order; false on a refused value.\n", st.Name)
 	m.Printf("_M.Write%s <- function(stream, value) {\n", st.Name)
+	// a value that is not this record is refused, never indexed into a throw
+	// (SPEC §5.1: the writer refuses, in every build)
+	m.Printf("  if (!(value instanceof _M.%s)) return false;\n", st.Name)
 	emitWriteItems(m, st.Items, "  ")
 	m.Printf("  return true;\n};\n\n")
 }
@@ -103,6 +106,9 @@ func emitWriteField(m *Module, val string, f *ir.Field, indent string) {
 		min := f.ArrayMin
 		m.Printf("%sif (typeof %s != \"integer\" || %s < %d || %s > %d) return false;\n",
 			indent, count, count, min, count, bound)
+		// the elements are an array holding every counted element, or the
+		// loop below would index a throw
+		m.Printf("%sif (typeof %s != \"%s\" || %s.len() < %s) return false;\n", indent, val, arrayKind(f.Type), val, count)
 		countExpr := count
 		if min != 0 {
 			countExpr = fmt.Sprintf("%s - %d", count, min)
@@ -143,6 +149,9 @@ func emitWriteScalar(m *Module, val string, f *ir.Field, indent string) {
 	t := f.Type
 	switch t.Kind {
 	case ir.TBool:
+		// the runtime writes any truthy term as 1: a value that is not a
+		// bool is refused instead
+		m.Printf("%sif (typeof %s != \"bool\") return false;\n", indent, val)
 		emitCall(m, indent, val, "serializeBool")
 	case ir.TInt:
 		switch {
@@ -150,6 +159,7 @@ func emitWriteScalar(m *Module, val string, f *ir.Field, indent string) {
 			emitWithin128(m, val, f.IntMin, f.IntMax, indent)
 			emitCall(m, indent, val, "serializeInt128", Int128Lit(f.IntMin), Int128Lit(f.IntMax))
 		case t.Width == 128:
+			m.Printf("%sif (!%s(%s)) return false;\n", indent, m.Helper(isWide), val)
 			emitCall(m, indent, val, "serializeUint128")
 		case f.HasIntRange:
 			emitWriteRangedInt(m, val, f, indent)
@@ -190,13 +200,16 @@ func emitWriteScalar(m *Module, val string, f *ir.Field, indent string) {
 			// A Squirrel float is not bounded by float32. Refuse before the
 			// runtime call so NaN cannot reach its raising path and an
 			// out-of-range finite value cannot be clamped into the declaration.
+			emitNumberGuard(m, val, indent)
 			m.Printf("%sif (%s != %s || %s < %s || %s > %s) return false; // SPEC §5.1 row 10\n",
 				indent, val, val, val, Float32Lit(f.FMin), val, Float32Lit(f.FMax))
 			emitCall(m, indent, val, "serializeCompressedFloat", Float32Lit(f.FMin), Float32Lit(f.FMax), Float32Lit(f.Resolution))
 		} else {
+			emitNumberGuard(m, val, indent)
 			emitCall(m, indent, val, "serializeFloat")
 		}
 	case ir.TFloat64:
+		emitNumberGuard(m, val, indent)
 		emitCall(m, indent, val, "serializeDouble")
 	case ir.TString, ir.TBytes:
 		// the used bytes ride whole: the buffer itself when the value fills
@@ -253,6 +266,12 @@ func emitWriteRangedInt(m *Module, val string, f *ir.Field, indent string) {
 	// write-misuse trap) for an int32 or int64 field only; every other kind
 	// that takes the same runtime call refuses with false first
 	raises := f.Type.Signed && (f.Type.Width == 32 || f.Type.Width == 64)
+	switch intRangePath(f.IntMin, f.IntMax) {
+	case "int32", "int64":
+		// the runtime compares and masks the value: a term that is not an
+		// integer would throw there, so it is refused first
+		m.Printf("%sif (typeof %s != \"integer\") return false;\n", indent, val)
+	}
 	switch intRangePath(f.IntMin, f.IntMax) {
 	case "int32":
 		if !raises {
@@ -360,6 +379,7 @@ func emitBits(m *Module, indent, expr string, bits int64, what string) {
 func emitWriteUnion(m *Module, un *ir.Union) {
 	m.Printf("// Write%s writes the tag, then the selected arm; false on a refused value.\n", un.Name)
 	m.Printf("_M.Write%s <- function(stream, value) {\n", un.Name)
+	m.Printf("  if (!(value instanceof _M.%s)) return false;\n", un.Name)
 	m.Printf("  if (typeof value.Type != \"integer\" || value.Type < 0 || value.Type > %d) return false;\n", un.Max)
 	if un.Max > 0 {
 		emitBits(m, "  ", "value.Type", ir.BitsRequired(big.NewInt(0), big.NewInt(un.Max)), "")
@@ -381,4 +401,19 @@ func emitWriteUnion(m *Module, un *ir.Union) {
 		m.Printf("  }\n")
 	}
 	m.Printf("  return true;\n};\n\n")
+}
+
+// emitNumberGuard refuses a float field's value that is not a number: the
+// runtime reads it as a float and throws on anything else (SPEC §5.1).
+func emitNumberGuard(m *Module, val, indent string) {
+	m.Printf("%sif (typeof %s != \"float\" && typeof %s != \"integer\") return false;\n", indent, val, val)
+}
+
+// arrayKind is the Squirrel type an array field's elements live in: a blob
+// for [N]uint8 (docs/PORT-SQUIRREL.md, BYTE BUFFERS), an array otherwise.
+func arrayKind(t ir.FieldType) string {
+	if isByteElem(t) {
+		return "blob"
+	}
+	return "array"
 }
