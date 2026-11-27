@@ -16,7 +16,12 @@
 #           the single-read corpus migration (harness/migrate_fixed.go) no
 #           `report` row reaches the variable walk's unknown-field skip
 #           (measured: under this sabotage `report` stays 127/127), so
-#           `report` is not on this control's list.
+#           `report` is not on this control's list. `read-into` turns red
+#           too: its ri_retain row's lawful read is RT2's wire through the
+#           RT1 root (testdata/wire/tables/retain_rt2.bin), whose fields RT1
+#           does not declare, so the sabotaged load refuses the lawful read
+#           (measured on e83c60259f: the tblrt1 read-into unit stops on its
+#           fresh-read assertion and the surface's driver exits 1).
 #   walk    json.lobster's field-key match never matches the first declared
 #           field: json-read, json-hostile and cook-write (whose input recipes
 #           use JSON) turn red. Json-write and wire stay green, locating the
@@ -136,7 +141,7 @@ if build/conformance-harness run --drivers "$out/drivers.txt" --work "$out/work"
 fi
 red=$(grep -oE '^ *lobster / [a-z-]+' "$out/log" | sed 's/^ *lobster \/ //' | sort -u | tr '\n' ' ')
 case "$mode" in
-report) want="framing report retain retain-save " ; green="wire json-read cook-write" ;;
+report) want="framing read-into report retain retain-save " ; green="wire json-read cook-write" ;;
 framing) want="framing " ; green="wire report retain" ;;
 cycle)  want="framing " ; green="wire report retain" ;;
 walk)   want="cook-write json-hostile json-read " ; green="wire json-write" ;;

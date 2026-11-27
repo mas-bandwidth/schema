@@ -23,6 +23,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 )
 
 // the warning of the footgun, as lobster prints it.
@@ -102,6 +104,7 @@ func answerLines(t *testing.T, text string, args ...string) (dir, stderr string,
 		t.Fatal(err)
 	}
 	argv := append([]string{script}, args...)
+	testinputs.Files(t, script)
 	cmd := exec.Command("perl", append(argv, dir)...)
 	cmd.Stdin = strings.NewReader(text)
 	var errOut bytes.Buffer

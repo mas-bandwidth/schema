@@ -616,6 +616,20 @@ defmodule Benchtable.FixedRuntime do
   end
 
   @doc """
+  `ordinal`, or ArgumentError when it names a deprecated variant.
+
+  A DEPRECATED VARIANT IS NEVER WRITTEN (docs/SPEC-TABLES.md §2.15 WRITE): a
+  reader lands it as a default, so a writer that wrote it would hand the
+  endpoint a different value with no refusal to say so. Every build refuses.
+  """
+  def live_variant(ordinal, retired) do
+    if ordinal in retired,
+      do: raise(ArgumentError, "#{ordinal} is a deprecated variant and is never written")
+
+    ordinal
+  end
+
+  @doc """
   The length of `list`, or ArgumentError when it is outside `min..max`.
 
   A `[Min..Max]T` COUNT IS THE ONE NUMBER A COUNTED ARRAY PUTS ON THE WIRE,
