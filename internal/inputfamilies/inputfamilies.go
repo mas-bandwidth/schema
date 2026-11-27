@@ -14,7 +14,11 @@
 // The Go packages that read a changed input are derived the same way: every
 // main-module .go file that names the input's directory or file selects its
 // package (GoReaders). A root testdata/ directory is invisible to the go
-// tool, so before this nothing selected those packages either.
+// tool, so before this nothing selected those packages either. The same
+// holds for the generated/ tree and the bench/corpus units the generator is
+// run over (generatedInputs): a test that reads a generated file by path is
+// neither an importer nor an embedder of it, so the import-graph expansion
+// (tools/gotestrows -dependents-of) cannot find it.
 package inputfamilies
 
 import (
@@ -24,9 +28,11 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"slices"
 	"sort"
 	"strings"
+	"sync"
 )
 
 // Legs is every leg: 18 targets in 17 languages.
@@ -52,6 +58,21 @@ type Family struct {
 	// Named is a reader whose run has another name than Target (leg ->
 	// target). Check refuses an entry whose target is not defined.
 	Named map[string]string
+	// Owed is a shared-corpus family's owed ledger (tools/casegate and
+	// internal/casegate.ReadOwed read the same format). One line per owed
+	// case, `<leg> <case> owed: <cause>`, or `<leg> all owed: <cause>` for a
+	// leg with no driver; # comments and blank lines aside, every line has
+	// that form and a cause. It is an exact set on every line: a line whose
+	// leg is not one of Legs, a per-case line whose case Cases does not name,
+	// and a line there twice are refused; every leg must define Target or
+	// have an `all owed` line, and a leg with both is refused. (Whether a
+	// per-case line's leg still fails that case is the leg's run's check:
+	// casegate refuses an owed line for a case the leg answers ok.)
+	Owed string
+	// Cases is the shared-corpus family's case file (the first field of
+	// every line that is not blank and not a # comment is a case name); with
+	// Owed, a per-case ledger line must name one of its cases.
+	Cases string
 	// PR: the rows run in the pull-request tier. A family whose per-leg run
 	// is a heavy workflow the owner moved off pull requests (2026-11-15) is
 	// selected on a push to main and nightly only, and says so.
@@ -76,9 +97,11 @@ var Families = []Family{
 		Named:   map[string]string{"squirrel": "packet-finite-squirrel-negative-control"},
 		Drivers: `^test/packet-finite/([a-z]+)/`},
 	{Name: "packet-void", PR: true,
-		Inputs:  []string{"test/packet-void/*"},
+		Inputs:  []string{"testdata/wire/packet-void/", "test/packet-void/*", "make/checks/packet-void.mk"},
 		Target:  "packet-void-{leg}",
-		Drivers: `^test/packet-void/(?:([a-z]+)/|(c|cpp)_main\.c(?:pp)?$)`},
+		Drivers: `^test/packet-void/([a-z]+)/`,
+		Owed:    "testdata/wire/packet-void/owed.txt",
+		Cases:   "testdata/wire/packet-void/cases.txt"},
 	{Name: "packet-write-bareint", PR: true,
 		Inputs:  []string{"test/packet-write-bareint/*"},
 		Target:  "packet-write-bareint-{leg}",
@@ -88,11 +111,11 @@ var Families = []Family{
 		Target:  "packet-write-cfloat-{leg}",
 		Drivers: `^test/packet-write-cfloat/([a-z]+)/`},
 	{Name: "packet-cfloat-endpoints", PR: true,
-		Inputs:  []string{"test/packet-cfloat-endpoints/", "make/go-packet-cfloat-endpoints.mk"},
+		Inputs:  []string{"test/packet-cfloat-endpoints/", "make/go-packet-cfloat-endpoints.mk", "make/js-packet-cfloat-endpoints.mk"},
 		Target:  "packet-cfloat-endpoints-{leg}",
 		Drivers: `^test/packet-cfloat-endpoints/([a-z]+)/`},
 	{Name: "table-write-bounds", PR: true,
-		Inputs: []string{"testdata/conformance/table-write-bounds/", "make/go-table-write-bounds.mk"},
+		Inputs: []string{"testdata/conformance/table-write-bounds/", "make/go-table-write-bounds.mk", "make/native-table-write-bounds.mk"},
 		Target: "table-write-bounds-{leg}"},
 	{Name: "packet-write-text", PR: true,
 		Inputs:  []string{"test/packet-write-text/*"},
@@ -121,6 +144,8 @@ type Tree struct {
 	Targets map[string]bool
 	// GoFiles maps each main-module .go file to its contents.
 	GoFiles map[string]string
+	// Ledgers maps each family's Owed and Cases paths to their contents.
+	Ledgers map[string]string
 }
 
 // Matches reports whether path p is one of the family's inputs.
@@ -205,15 +230,27 @@ var genericDirs = map[string]bool{"testdata": true, "wire": true, "tables": true
 
 // mentions is what a Go reader of path p would spell: the directory path,
 // the directory's own quoted name (filepath.Join("testdata", "wire", "x")),
-// and the file's name.
+// its last two directory names as filepath.Join arguments
+// (filepath.Join("..", "..", "generated", "bench", "paired", "c", "X.h")
+// spells `"paired", "c"`), and the file's name.
+//
+// A GENERATED PATH (isGenerated) drops the bare quoted directory name: the
+// generated tree is cut by language, so its last directory is "c", "cpp",
+// "go" or another language name, and every package that names the
+// language (54 name "c") would be selected for a change none of them
+// reads. The directory path, the two-name Join spelling and the file's
+// name still find its readers.
 func mentions(p string) []string {
 	dir, base := path.Split(p)
 	dir = strings.TrimSuffix(dir, "/")
 	var out []string
 	if dir != "" {
 		out = append(out, dir)
-		if last := path.Base(dir); !genericDirs[last] {
+		if last := path.Base(dir); !genericDirs[last] && !isGenerated(p) {
 			out = append(out, `"`+last+`"`)
+		}
+		if parent := path.Dir(dir); parent != "." {
+			out = append(out, `"`+path.Base(parent)+`", "`+path.Base(dir)+`"`)
 		}
 	}
 	if len(base) >= 5 {
@@ -224,12 +261,43 @@ func mentions(p string) []string {
 
 // isInput reports whether a changed path is a test input whose Go readers
 // the plan must find: a non-Go file under a root testdata/ or test/
-// directory, or under the shared hostile corpus.
+// directory, or under the shared hostile corpus, or any file of the
+// generator's tracked output and the units it is run over (isGenerated).
 func isInput(p string) bool {
+	return isGenerated(p) || isTestInput(p)
+}
+
+// isTestInput is the rule before generatedInputs: a non-Go file under a root
+// testdata/ or test/ directory, or under the shared hostile corpus. The
+// reversed witness (TestTheTwinHeadersSelectFixedtwin) selects with it alone
+// to show the twin headers' reader was missed.
+func isTestInput(p string) bool {
 	if strings.HasSuffix(p, ".go") {
 		return false
 	}
 	return strings.HasPrefix(p, "testdata/") || strings.HasPrefix(p, "test/") || strings.HasPrefix(p, "internal/ci/hostilecorpus/")
+}
+
+// generatedInputs are the trees of the generator's tracked output and of
+// the schema units it is run over: Go tests read them by path.
+//
+// WHY (2026-11-24). tools/fixedtwin holds the C and C++ fixed runtimes to
+// each other by reading generated/bench/paired/{c,cpp}/FixedTableTable.h
+// with os.ReadFile, and loads the paired unit from bench/corpus. The go test
+// selection follows the Go import graph (gotestrows -dependents-of)
+// and go:embed, and neither sees a file read by path, so a diff that only
+// regenerated the twin headers selected no package that reads them. A .go
+// file under generated/ is outside the main module, so it is an input here
+// too: the plan's .go rule never names it.
+var generatedInputs = []string{"generated/", "bench/corpus/"}
+
+func isGenerated(p string) bool {
+	for _, g := range generatedInputs {
+		if strings.HasPrefix(p, g) {
+			return true
+		}
+	}
+	return false
 }
 
 // GoReaders is every main-module package (./dir) with a .go file naming one
@@ -262,14 +330,64 @@ func goReaders(t Tree, p string, readersByMention map[string][]string) []string 
 	return out
 }
 
+// scanMentions maps each distinct mention to the packages (./dir, one per Go
+// file that names it) whose Go source names it, the mentions shared out
+// over GOMAXPROCS workers. Each worker writes only its own result slots.
+func scanMentions(t Tree, mentions []string) map[string][]string {
+	slices.Sort(mentions)
+	mentions = slices.Compact(mentions)
+	readers := make([][]string, len(mentions))
+	next := make(chan int)
+	var wg sync.WaitGroup
+	for range min(runtime.GOMAXPROCS(0), len(mentions)) {
+		wg.Go(func() {
+			for i := range next {
+				for f, body := range t.GoFiles {
+					if strings.Contains(body, mentions[i]) {
+						readers[i] = append(readers[i], "./"+path.Dir(f))
+					}
+				}
+			}
+		})
+	}
+	for i := range mentions {
+		next <- i
+	}
+	close(next)
+	wg.Wait()
+	out := make(map[string][]string, len(mentions))
+	for i, m := range mentions {
+		out[m] = readers[i]
+	}
+	return out
+}
+
 // Select is what the changed files select. all (a push to main) selects
 // every family's every reader; pr keeps only the families that run in the
 // pull-request tier.
 func Select(t Tree, changed []string, all, pr bool) Selection {
+	return selectCore(Families, t, changed, all, pr, isInput)
+}
+
+// selectWith is Select with the rule that says which changed paths have Go
+// readers to find.
+func selectWith(t Tree, changed []string, all, pr bool, input func(string) bool) Selection {
+	return selectCore(Families, t, changed, all, pr, input)
+}
+
+// selectFrom is Select over the given families, so a test can judge a
+// hand-built set without touching the package-level Families.
+func selectFrom(families []Family, t Tree, changed []string, all, pr bool) Selection {
+	return selectCore(families, t, changed, all, pr, isInput)
+}
+
+// selectCore is Select over the given families, with the rule that says which
+// changed paths have Go readers to find.
+func selectCore(families []Family, t Tree, changed []string, all, pr bool, input func(string) bool) Selection {
 	var s Selection
 	fams := map[string]bool{}
 	pkgs := map[string]bool{}
-	for _, f := range Families {
+	for _, f := range families {
 		hit := all || slices.ContainsFunc(changed, f.Matches)
 		if !hit {
 			continue
@@ -288,17 +406,25 @@ func Select(t Tree, changed []string, all, pr bool) Selection {
 		}
 	}
 	// Changed files often share a directory mention. Scan the Go tree
-	// once per literal, including literals with no readers.
-	readersByMention := map[string][]string{}
+	// once per literal, including literals with no readers, the literals
+	// side by side: a diff that regenerates the whole generated/ tree names
+	// about 1,300 of them, 14 s one after another over the 54 MB of Go source.
+	var named []string
 	for _, p := range changed {
-		if !isInput(p) {
+		if input(p) {
+			named = append(named, mentions(p)...)
+		}
+	}
+	readersByMention := scanMentions(t, named)
+	for _, p := range changed {
+		if !input(p) {
 			continue
 		}
 		rs := goReaders(t, p, readersByMention)
 		for _, r := range rs {
 			pkgs[r] = true
 		}
-		if len(rs) == 0 && strings.HasPrefix(p, "testdata/") && !inFamily(p) {
+		if len(rs) == 0 && strings.HasPrefix(p, "testdata/") && !inFamily(families, p) {
 			s.Unread = append(s.Unread, p)
 		}
 	}
@@ -309,8 +435,8 @@ func Select(t Tree, changed []string, all, pr bool) Selection {
 	return s
 }
 
-func inFamily(p string) bool {
-	for _, f := range Families {
+func inFamily(families []Family, p string) bool {
+	for _, f := range families {
 		if f.Matches(p) {
 			return true
 		}
@@ -321,8 +447,13 @@ func inFamily(p string) bool {
 // Check refuses a family whose inputs match no file, which no leg reads, or
 // with a driver whose leg has no target (a reader that never runs).
 func Check(t Tree) []string {
+	return checkFamilies(Families, t)
+}
+
+// checkFamilies is Check over the given families (see selectFrom).
+func checkFamilies(families []Family, t Tree) []string {
 	var bad []string
-	for _, f := range Families {
+	for _, f := range families {
 		for _, in := range f.Inputs {
 			n := 0
 			for _, p := range t.Files {
@@ -352,7 +483,69 @@ func Check(t Tree) []string {
 				bad = append(bad, fmt.Sprintf("%s: leg %s has a driver but no %s target: a reader that never runs", f.Name, l, sub(f.Target, l)))
 			}
 		}
+		if f.Owed != "" {
+			bad = append(bad, checkOwed(f, t, has)...)
+		}
 	}
+	return bad
+}
+
+var owedLine = regexp.MustCompile(`^(\S+) (\S+) owed: (\S.*)$`)
+
+// checkOwed holds the family's owed ledger to an exact set on every line
+// (Family.Owed): a malformed line, a leg that is not a leg, a per-case line
+// naming a case the case file lacks, a line there twice, a leg with no
+// target and no whole-leg line, and a whole-leg line for a leg with a target.
+func checkOwed(f Family, t Tree, has map[string]bool) []string {
+	text, ok := t.Ledgers[f.Owed]
+	if !ok {
+		return []string{fmt.Sprintf("%s: owed ledger %s is missing", f.Name, f.Owed)}
+	}
+	var bad []string
+	cases := map[string]bool{}
+	if f.Cases != "" {
+		caseText, ok := t.Ledgers[f.Cases]
+		if !ok {
+			return []string{fmt.Sprintf("%s: case file %s is missing", f.Name, f.Cases)}
+		}
+		for line := range strings.SplitSeq(caseText, "\n") {
+			if fields := strings.Fields(line); len(fields) > 0 && !strings.HasPrefix(fields[0], "#") {
+				cases[fields[0]] = true
+			}
+		}
+	}
+	owed := map[string]bool{}
+	seen := map[string]bool{}
+	for line := range strings.SplitSeq(text, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		m := owedLine.FindStringSubmatch(line)
+		switch {
+		case m == nil:
+			bad = append(bad, fmt.Sprintf("%s: %s line %q is not `<leg> <case> owed: <cause>`", f.Name, f.Owed, line))
+			continue
+		case !isLeg(m[1]):
+			bad = append(bad, fmt.Sprintf("%s: %s line %q: %s is not a leg", f.Name, f.Owed, line, m[1]))
+		case seen[m[1]+" "+m[2]]:
+			bad = append(bad, fmt.Sprintf("%s: %s names %s %s twice", f.Name, f.Owed, m[1], m[2]))
+		case m[2] == "all":
+			owed[m[1]] = true
+		case f.Cases != "" && !cases[m[2]]:
+			bad = append(bad, fmt.Sprintf("%s: %s line %q: %s names no such case", f.Name, f.Owed, line, f.Cases))
+		}
+		seen[m[1]+" "+m[2]] = true
+	}
+	for _, l := range Legs {
+		switch {
+		case !has[l] && !owed[l]:
+			bad = append(bad, fmt.Sprintf("%s: leg %s has no %s target and no `%s all owed: <cause>` line in %s: a leg that answers no case", f.Name, l, sub(f.Target, l), l, f.Owed))
+		case has[l] && owed[l]:
+			bad = append(bad, fmt.Sprintf("%s: leg %s defines %s and %s still says `%s all owed`: remove the line", f.Name, l, f.target(l), f.Owed, l))
+		}
+	}
+	sort.Strings(bad)
 	return bad
 }
 
@@ -364,7 +557,7 @@ var skipDir = map[string]bool{".git": true, "build": true, "node_modules": true,
 
 // Load reads the tree rooted at root.
 func Load(root string) (Tree, error) {
-	t := Tree{Targets: map[string]bool{}, GoFiles: map[string]string{}}
+	t := Tree{Targets: map[string]bool{}, GoFiles: map[string]string{}, Ledgers: map[string]string{}}
 	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -398,7 +591,26 @@ func Load(root string) (Tree, error) {
 		return nil
 	})
 	sort.Strings(t.Files)
-	return t, err
+	if err != nil {
+		return t, err
+	}
+	for _, f := range Families {
+		if f.Owed == "" {
+			continue
+		}
+		for _, p := range []string{f.Owed, f.Cases} {
+			if p == "" {
+				continue
+			}
+			b, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(p)))
+			if err == nil {
+				t.Ledgers[p] = string(b)
+			} else if !os.IsNotExist(err) {
+				return t, err
+			}
+		}
+	}
+	return t, nil
 }
 
 // mainModule reports whether a .go file belongs to the root module: not

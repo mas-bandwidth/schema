@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // TestVariableClassBeyondCardConstructsElixir pins docs/SPEC-TABLES.md §2.1,

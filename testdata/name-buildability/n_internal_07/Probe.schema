@@ -1,0 +1,45 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum baseRaw
+{ Zfirst, Zsecond, Zthird }
+
+enum baseWords
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    baseRaw Inner
+    baseWords Inner
+}
+
+table NameTypes0
+{
+    one0  baseRaw
+    many0 [..4]baseRaw
+    one1  baseWords
+    many1 [..4]baseWords
+}
+
+table NameFields0
+{
+    baseRaw uint32
+    baseWords uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}

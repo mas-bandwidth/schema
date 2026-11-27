@@ -8,9 +8,10 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testinputs"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 // THE DART MESSAGE FUZZ ARM HONOURS WHAT THE LOAD RETURNS (docs/SPEC-TABLES.md
@@ -50,6 +51,7 @@ func TestMessageFuzzArmHonoursLoadResultDart(t *testing.T) {
 		t.Helper()
 		dartMakeMu.Lock()
 		defer dartMakeMu.Unlock()
+		testinputs.Build(t, "test/conformance/dart")
 		cmd := testproc.Command(t, "make", append(append([]string{"-C", root}, vars...), target)...)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("make %s: %v\n%s", target, err, out)

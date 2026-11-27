@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	tabledemo "github.com/mas-bandwidth/schema/v2/internal/codegen/gotable/fuzzunit"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	tabledemo "github.com/mas-bandwidth/schema/v3/internal/codegen/gotable/fuzzunit"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 )
 
 // TestGeneratedJSONFlagsRepeatedNameRefused holds docs/SPEC-TABLES.md §16.2 for

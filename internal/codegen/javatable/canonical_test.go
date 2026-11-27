@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	javapkt "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
+	javapkt "github.com/mas-bandwidth/schema/v3/internal/codegen/java"
 )
 
 // THE CANONICAL PASS MOVES LAYOUT AND NEVER A TOKEN (issue #547,

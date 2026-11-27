@@ -1,8 +1,12 @@
 package rusttable
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 // TestRustWriteRefusalEmitted pins the write contract's refusals in the
@@ -100,5 +104,68 @@ fixed table Config
 		if !strings.Contains(message, want) {
 			t.Errorf("the message-form save does not emit %q", want)
 		}
+	}
+}
+
+const fixedDeprecatedEnumSchema = `package probe
+
+enum Phase
+{
+    Live
+    Old | deprecated
+    Next
+}
+
+fixed table Config
+{
+    few   [2..4]int32
+    phase Phase
+}
+`
+
+// TestRustFixedDeprecatedEnumWriteRefused pins the §2.15 debug assertion on
+// a fixed Row's deprecated enum ordinal.
+func TestRustFixedDeprecatedEnumWriteRefused(t *testing.T) {
+	t.Parallel()
+	fixed := string(generate(t, fixedDeprecatedEnumSchema)["probe_fixed.rs"])
+	want := `debug_assert!(value.phase != 2, "invalid_value: phase holds a deprecated variant");`
+	if !strings.Contains(fixed, want) {
+		t.Errorf("the fixed-form save does not emit %q", want)
+	}
+}
+
+func TestRustFixedDeprecatedEnumWriteRefusedNative(t *testing.T) {
+	keyedRequireRustc(t)
+	dir := t.TempDir()
+	layoutRustUnit(t, dir, "probe", generate(t, fixedDeprecatedEnumSchema))
+	const main = `
+#![allow(dead_code, unused_imports)]
+mod probe;
+use probe::*;
+
+fn main() {
+    let measured = config_fixed_measure(1);
+    for phase in [1, 3] {
+        let row = ConfigRow { phase, ..ConfigRow::default() };
+        let mut buffer = vec![0; measured];
+        assert_eq!(config_fixed_save(&[row], &mut buffer), Some(measured));
+    }
+    let row = ConfigRow { phase: 2, ..ConfigRow::default() };
+    let mut buffer = vec![0; measured];
+    let _ = config_fixed_save(&[row], &mut buffer);
+}
+`
+	if err := os.WriteFile(filepath.Join(dir, "main.rs"), []byte(main), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	compile := testproc.Command(t, "rustc", "--edition", "2024", "-A", "warnings", "-o", "run", "main.rs")
+	compile.Dir = dir
+	if out, err := compile.CombinedOutput(); err != nil {
+		t.Fatalf("native Rust compile: %v\n%s", err, out)
+	}
+	run := testproc.Command(t, filepath.Join(dir, "run"))
+	run.Dir = dir
+	if out, err := run.CombinedOutput(); err == nil || !strings.Contains(string(out), "invalid_value: phase holds a deprecated variant") {
+		t.Fatalf("native debug save did not assert on the deprecated variant: %v\n%s", err, out)
 	}
 }

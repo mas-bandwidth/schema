@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../../unity/UnityDialect.props" />
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../../../build/packet-write-cfloat/unity/*.cs" />
+  </ItemGroup>
+</Project>

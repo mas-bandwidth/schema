@@ -36,13 +36,13 @@ func TestGoRuntimeOption(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if bytes.Contains(alone["ProbeTable.go"], []byte("schema/v2/tables/goruntime")) {
+	if bytes.Contains(alone["ProbeTable.go"], []byte("schema/v3/tables/goruntime")) {
 		t.Fatalf("runtime=standalone imports the shared runtime")
 	}
 	if !bytes.Contains(alone["ProbeTable.go"], []byte("type TableReport struct")) {
 		t.Fatalf("runtime=standalone does not carry the runtime in the unit")
 	}
-	if !bytes.Contains(base["ProbeTable.go"], []byte("schema/v2/tables/goruntime")) {
+	if !bytes.Contains(base["ProbeTable.go"], []byte("schema/v3/tables/goruntime")) {
 		t.Fatalf("the default does not import the shared runtime")
 	}
 	if _, err := c.Generate(u, "go", Options{"runtime": "bogus"}); err == nil || !strings.Contains(err.Error(), `"bogus"`) {

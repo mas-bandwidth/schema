@@ -1,0 +1,684 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum unkSlotBefore
+{ Zfirst, Zsecond, Zthird }
+
+enum unknownBefore
+{ Zfirst, Zsecond, Zthird }
+
+enum unknownKey
+{ Zfirst, Zsecond, Zthird }
+
+enum unknownMark
+{ Zfirst, Zsecond, Zthird }
+
+enum unknownSeen
+{ Zfirst, Zsecond, Zthird }
+
+enum unknown_fields
+{ Zfirst, Zsecond, Zthird }
+
+enum unknown_records
+{ Zfirst, Zsecond, Zthird }
+
+enum unknown_was_damaged
+{ Zfirst, Zsecond, Zthird }
+
+enum unlawful
+{ Zfirst, Zsecond, Zthird }
+
+enum unnamed
+{ Zfirst, Zsecond, Zthird }
+
+enum unpack
+{ Zfirst, Zsecond, Zthird }
+
+enum unpack_float
+{ Zfirst, Zsecond, Zthird }
+
+enum unpack_int
+{ Zfirst, Zsecond, Zthird }
+
+enum unpack_int_le
+{ Zfirst, Zsecond, Zthird }
+
+enum unpack_wide
+{ Zfirst, Zsecond, Zthird }
+
+enum unplaced
+{ Zfirst, Zsecond, Zthird }
+
+enum unplaced_count
+{ Zfirst, Zsecond, Zthird }
+
+enum unread
+{ Zfirst, Zsecond, Zthird }
+
+enum unreadable
+{ Zfirst, Zsecond, Zthird }
+
+enum unsignedMax
+{ Zfirst, Zsecond, Zthird }
+
+enum untyped
+{ Zfirst, Zsecond, Zthird }
+
+enum unused
+{ Zfirst, Zsecond, Zthird }
+
+enum unused_assignments
+{ Zfirst, Zsecond, Zthird }
+
+enum unused_mut
+{ Zfirst, Zsecond, Zthird }
+
+enum unused_variables
+{ Zfirst, Zsecond, Zthird }
+
+enum unvisited
+{ Zfirst, Zsecond, Zthird }
+
+enum uo
+{ Zfirst, Zsecond, Zthird }
+
+enum uok
+{ Zfirst, Zsecond, Zthird }
+
+enum up
+{ Zfirst, Zsecond, Zthird }
+
+enum upper
+{ Zfirst, Zsecond, Zthird }
+
+enum upto
+{ Zfirst, Zsecond, Zthird }
+
+enum uraw
+{ Zfirst, Zsecond, Zthird }
+
+enum uref
+{ Zfirst, Zsecond, Zthird }
+
+enum useV
+{ Zfirst, Zsecond, Zthird }
+
+enum used
+{ Zfirst, Zsecond, Zthird }
+
+enum usedLength
+{ Zfirst, Zsecond, Zthird }
+
+enum used_at
+{ Zfirst, Zsecond, Zthird }
+
+enum used_bytes
+{ Zfirst, Zsecond, Zthird }
+
+enum used_out
+{ Zfirst, Zsecond, Zthird }
+
+enum userObj
+{ Zfirst, Zsecond, Zthird }
+
+enum uses
+{ Zfirst, Zsecond, Zthird }
+
+enum ushr64
+{ Zfirst, Zsecond, Zthird }
+
+enum utf8Decode
+{ Zfirst, Zsecond, Zthird }
+
+enum utf8Encode
+{ Zfirst, Zsecond, Zthird }
+
+enum utf8IllFormed
+{ Zfirst, Zsecond, Zthird }
+
+enum utf8Len
+{ Zfirst, Zsecond, Zthird }
+
+enum utf8Of
+{ Zfirst, Zsecond, Zthird }
+
+enum utf8Ok
+{ Zfirst, Zsecond, Zthird }
+
+enum utf8Sequence
+{ Zfirst, Zsecond, Zthird }
+
+enum utf8Valid
+{ Zfirst, Zsecond, Zthird }
+
+enum utf8_char
+{ Zfirst, Zsecond, Zthird }
+
+enum utf8_clamp
+{ Zfirst, Zsecond, Zthird }
+
+enum utf8_seq
+{ Zfirst, Zsecond, Zthird }
+
+enum utoa
+{ Zfirst, Zsecond, Zthird }
+
+enum utof
+{ Zfirst, Zsecond, Zthird }
+
+enum uv
+{ Zfirst, Zsecond, Zthird }
+
+enum uv0
+{ Zfirst, Zsecond, Zthird }
+
+enum uv0_1
+{ Zfirst, Zsecond, Zthird }
+
+enum uv0_2
+{ Zfirst, Zsecond, Zthird }
+
+enum uv0_3
+{ Zfirst, Zsecond, Zthird }
+
+enum uvalue
+{ Zfirst, Zsecond, Zthird }
+
+enum v
+{ Zfirst, Zsecond, Zthird }
+
+enum v0
+{ Zfirst, Zsecond, Zthird }
+
+enum v1
+{ Zfirst, Zsecond, Zthird }
+
+enum v12
+{ Zfirst, Zsecond, Zthird }
+
+enum v13
+{ Zfirst, Zsecond, Zthird }
+
+enum v16
+{ Zfirst, Zsecond, Zthird }
+
+enum v2
+{ Zfirst, Zsecond, Zthird }
+
+enum v3
+{ Zfirst, Zsecond, Zthird }
+
+enum v32
+{ Zfirst, Zsecond, Zthird }
+
+enum v4
+{ Zfirst, Zsecond, Zthird }
+
+enum v5
+{ Zfirst, Zsecond, Zthird }
+
+enum v6
+{ Zfirst, Zsecond, Zthird }
+
+enum v7
+{ Zfirst, Zsecond, Zthird }
+
+enum v8
+{ Zfirst, Zsecond, Zthird }
+
+enum vAt
+{ Zfirst, Zsecond, Zthird }
+
+enum vEnd
+{ Zfirst, Zsecond, Zthird }
+
+enum vHi
+{ Zfirst, Zsecond, Zthird }
+
+enum vIdx
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    unkSlotBefore Inner
+    unknownBefore Inner
+    unknownKey Inner
+    unknownMark Inner
+    unknownSeen Inner
+    unknown_fields Inner
+    unknown_records Inner
+    unknown_was_damaged Inner
+    unlawful Inner
+    unmanaged Inner
+}
+
+table NameTypes0
+{
+    one0  unkSlotBefore
+    many0 [..4]unkSlotBefore
+    one1  unknownBefore
+    many1 [..4]unknownBefore
+    one2  unknownKey
+    many2 [..4]unknownKey
+    one3  unknownMark
+    many3 [..4]unknownMark
+    one4  unknownSeen
+    many4 [..4]unknownSeen
+    one5  unknown_fields
+    many5 [..4]unknown_fields
+    one6  unknown_records
+    many6 [..4]unknown_records
+    one7  unknown_was_damaged
+    many7 [..4]unknown_was_damaged
+    one8  unlawful
+    many8 [..4]unlawful
+}
+
+table NameFields0
+{
+    unkSlotBefore uint32
+    unknownBefore uint32
+    unknownKey uint32
+    unknownMark uint32
+    unknownSeen uint32
+    unknown_fields uint32
+    unknown_records uint32
+    unknown_was_damaged uint32
+    unlawful uint32
+    unmanaged uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    unnamed Inner
+    unpack Inner
+    unpack_float Inner
+    unpack_int Inner
+    unpack_int_le Inner
+    unpack_wide Inner
+    unplaced Inner
+    unplaced_count Inner
+    unread Inner
+    unreadable Inner
+}
+
+table NameTypes1
+{
+    one0  unnamed
+    many0 [..4]unnamed
+    one1  unpack
+    many1 [..4]unpack
+    one2  unpack_float
+    many2 [..4]unpack_float
+    one3  unpack_int
+    many3 [..4]unpack_int
+    one4  unpack_int_le
+    many4 [..4]unpack_int_le
+    one5  unpack_wide
+    many5 [..4]unpack_wide
+    one6  unplaced
+    many6 [..4]unplaced
+    one7  unplaced_count
+    many7 [..4]unplaced_count
+    one8  unread
+    many8 [..4]unread
+    one9  unreadable
+    many9 [..4]unreadable
+}
+
+table NameFields1
+{
+    unnamed uint32
+    unpack uint32
+    unpack_float uint32
+    unpack_int uint32
+    unpack_int_le uint32
+    unpack_wide uint32
+    unplaced uint32
+    unplaced_count uint32
+    unread uint32
+    unreadable uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    unsignedMax Inner
+    untyped Inner
+    unused Inner
+    unused_assignments Inner
+    unused_mut Inner
+    unused_variables Inner
+    unvisited Inner
+    uo Inner
+    uok Inner
+    up Inner
+}
+
+table NameTypes2
+{
+    one0  unsignedMax
+    many0 [..4]unsignedMax
+    one1  untyped
+    many1 [..4]untyped
+    one2  unused
+    many2 [..4]unused
+    one3  unused_assignments
+    many3 [..4]unused_assignments
+    one4  unused_mut
+    many4 [..4]unused_mut
+    one5  unused_variables
+    many5 [..4]unused_variables
+    one6  unvisited
+    many6 [..4]unvisited
+    one7  uo
+    many7 [..4]uo
+    one8  uok
+    many8 [..4]uok
+    one9  up
+    many9 [..4]up
+}
+
+table NameFields2
+{
+    unsignedMax uint32
+    untyped uint32
+    unused uint32
+    unused_assignments uint32
+    unused_mut uint32
+    unused_variables uint32
+    unvisited uint32
+    uo uint32
+    uok uint32
+    up uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    upper Inner
+    upto Inner
+    uraw Inner
+    uref Inner
+    useV Inner
+    used Inner
+    usedLength Inner
+    used_at Inner
+    used_bytes Inner
+    used_out Inner
+}
+
+table NameTypes3
+{
+    one0  upper
+    many0 [..4]upper
+    one1  upto
+    many1 [..4]upto
+    one2  uraw
+    many2 [..4]uraw
+    one3  uref
+    many3 [..4]uref
+    one4  useV
+    many4 [..4]useV
+    one5  used
+    many5 [..4]used
+    one6  usedLength
+    many6 [..4]usedLength
+    one7  used_at
+    many7 [..4]used_at
+    one8  used_bytes
+    many8 [..4]used_bytes
+    one9  used_out
+    many9 [..4]used_out
+}
+
+table NameFields3
+{
+    upper uint32
+    upto uint32
+    uraw uint32
+    uref uint32
+    useV uint32
+    used uint32
+    usedLength uint32
+    used_at uint32
+    used_bytes uint32
+    used_out uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    userObj Inner
+    uses Inner
+    ushr64 Inner
+    utf8Decode Inner
+    utf8Encode Inner
+    utf8IllFormed Inner
+    utf8Len Inner
+    utf8Of Inner
+    utf8Ok Inner
+    utf8Sequence Inner
+}
+
+table NameTypes4
+{
+    one0  userObj
+    many0 [..4]userObj
+    one1  uses
+    many1 [..4]uses
+    one2  ushr64
+    many2 [..4]ushr64
+    one3  utf8Decode
+    many3 [..4]utf8Decode
+    one4  utf8Encode
+    many4 [..4]utf8Encode
+    one5  utf8IllFormed
+    many5 [..4]utf8IllFormed
+    one6  utf8Len
+    many6 [..4]utf8Len
+    one7  utf8Of
+    many7 [..4]utf8Of
+    one8  utf8Ok
+    many8 [..4]utf8Ok
+    one9  utf8Sequence
+    many9 [..4]utf8Sequence
+}
+
+table NameFields4
+{
+    userObj uint32
+    uses uint32
+    ushr64 uint32
+    utf8Decode uint32
+    utf8Encode uint32
+    utf8IllFormed uint32
+    utf8Len uint32
+    utf8Of uint32
+    utf8Ok uint32
+    utf8Sequence uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    utf8Valid Inner
+    utf8_char Inner
+    utf8_clamp Inner
+    utf8_seq Inner
+    utoa Inner
+    utof Inner
+    uv Inner
+    uv0 Inner
+    uv0_1 Inner
+    uv0_2 Inner
+}
+
+table NameTypes5
+{
+    one0  utf8Valid
+    many0 [..4]utf8Valid
+    one1  utf8_char
+    many1 [..4]utf8_char
+    one2  utf8_clamp
+    many2 [..4]utf8_clamp
+    one3  utf8_seq
+    many3 [..4]utf8_seq
+    one4  utoa
+    many4 [..4]utoa
+    one5  utof
+    many5 [..4]utof
+    one6  uv
+    many6 [..4]uv
+    one7  uv0
+    many7 [..4]uv0
+    one8  uv0_1
+    many8 [..4]uv0_1
+    one9  uv0_2
+    many9 [..4]uv0_2
+}
+
+table NameFields5
+{
+    utf8Valid uint32
+    utf8_char uint32
+    utf8_clamp uint32
+    utf8_seq uint32
+    utoa uint32
+    utof uint32
+    uv uint32
+    uv0 uint32
+    uv0_1 uint32
+    uv0_2 uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    uv0_3 Inner
+    uvalue Inner
+    v Inner
+    v0 Inner
+    v1 Inner
+    v12 Inner
+    v13 Inner
+    v16 Inner
+    v2 Inner
+    v3 Inner
+}
+
+table NameTypes6
+{
+    one0  uv0_3
+    many0 [..4]uv0_3
+    one1  uvalue
+    many1 [..4]uvalue
+    one2  v
+    many2 [..4]v
+    one3  v0
+    many3 [..4]v0
+    one4  v1
+    many4 [..4]v1
+    one5  v12
+    many5 [..4]v12
+    one6  v13
+    many6 [..4]v13
+    one7  v16
+    many7 [..4]v16
+    one8  v2
+    many8 [..4]v2
+    one9  v3
+    many9 [..4]v3
+}
+
+table NameFields6
+{
+    uv0_3 uint32
+    uvalue uint32
+    v uint32
+    v0 uint32
+    v1 uint32
+    v12 uint32
+    v13 uint32
+    v16 uint32
+    v2 uint32
+    v3 uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    v32 Inner
+    v4 Inner
+    v5 Inner
+    v6 Inner
+    v7 Inner
+    v8 Inner
+    vAt Inner
+    vEnd Inner
+    vHi Inner
+    vIdx Inner
+}
+
+table NameTypes7
+{
+    one0  v32
+    many0 [..4]v32
+    one1  v4
+    many1 [..4]v4
+    one2  v5
+    many2 [..4]v5
+    one3  v6
+    many3 [..4]v6
+    one4  v7
+    many4 [..4]v7
+    one5  v8
+    many5 [..4]v8
+    one6  vAt
+    many6 [..4]vAt
+    one7  vEnd
+    many7 [..4]vEnd
+    one8  vHi
+    many8 [..4]vHi
+    one9  vIdx
+    many9 [..4]vIdx
+}
+
+table NameFields7
+{
+    v32 uint32
+    v4 uint32
+    v5 uint32
+    v6 uint32
+    v7 uint32
+    v8 uint32
+    vAt uint32
+    vEnd uint32
+    vHi uint32
+    vIdx uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

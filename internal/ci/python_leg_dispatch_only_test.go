@@ -21,7 +21,7 @@ func pythonLegDispatchOnlyErrors(content string) []string {
 	var errs []string
 	for _, ev := range names {
 		if ev != "workflow_dispatch" {
-			errs = append(errs, fmt.Sprintf("python-leg.yml triggers on %s; ci-fast.yml covers per-PR/push fast gates and certify.yml/ci-full.yml/python-leg-nightly.yml cover full Python certification, so python-leg.yml must be workflow_dispatch only", ev))
+			errs = append(errs, fmt.Sprintf("python-leg.yml triggers on %s; ci-fast-nightly.yml covers per-PR/push fast gates and certify.yml/ci-full.yml/python-leg-nightly.yml cover full Python certification, so python-leg.yml must be workflow_dispatch only", ev))
 		}
 	}
 	if _, ok := triggers["workflow_dispatch"]; !ok {

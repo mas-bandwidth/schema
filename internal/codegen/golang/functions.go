@@ -11,8 +11,8 @@ import (
 	"math/big"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/internal/goname"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/goname"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // emitUnionFunctions emits the union's bounds and wire pair (SPEC §4.8): the
@@ -577,6 +577,67 @@ func rangeFillsBits(diff *big.Int, bits int64) bool {
 	return diff.Cmp(span) == 0
 }
 
+// emitWriteFixedGuard refuses a fixed/ufixed raw value off its declared
+// range before the runtime call (SPEC §5.1 row 1). serialize.go's
+// SerializeFixed64/SerializeFixed128 panic on such a value, and Go is a
+// refuse-in-every-build leg: the packet Write returns
+// serialize.ErrValueOutOfRange instead. The raw bounds are the whole-unit
+// bounds shifted left by the fraction bits — exactly the runtime's raw range —
+// compared in the storage's own signedness; they fit the storage by
+// construction, and a half at the storage's own extreme is elided.
+func (g *gen) emitWriteFixedGuard(f *ir.Field, name, ind string) {
+	rawMin := new(big.Int).Lsh(f.IntMin, uint(f.Type.FracBits))
+	rawMax := new(big.Int).Lsh(f.IntMax, uint(f.Type.FracBits))
+	if f.Type.Width == 128 {
+		if f.Type.Signed {
+			g.emitWrite128Guard(name, rawMin, rawMax, g.render128(nil, rawMin), g.render128(nil, rawMax), true, ind)
+		} else {
+			g.emitWrite128Guard(name, rawMin, rawMax, g.renderU128(nil, rawMin), g.renderU128(nil, rawMax), false, ind)
+		}
+		return
+	}
+	min, max := storageExtremes(f.Type.Signed, uint(f.Type.Width))
+	var parts []string
+	if rawMin.Cmp(min) != 0 {
+		parts = append(parts, name+" < "+rawMin.String())
+	}
+	if rawMax.Cmp(max) != 0 {
+		parts = append(parts, name+" > "+rawMax.String())
+	}
+	if len(parts) == 0 {
+		return
+	}
+	g.pf("%sif %s {\n%s\treturn serialize.ErrValueOutOfRange\n%s}\n", ind, strings.Join(parts, " || "), ind, ind)
+}
+
+// emitWrite128Guard refuses a 128-bit value (a ranged int128, or a wide
+// fixed/ufixed raw value) outside [min, max] before the runtime call, which
+// would panic on it (SPEC §5.1 row 1). lo and hi are the bounds rendered in
+// the storage's own pair type; a half at the storage's own extreme is elided.
+func (g *gen) emitWrite128Guard(name string, min, max *big.Int, lo, hi string, signed bool, ind string) {
+	smin, smax := storageExtremes(signed, 128)
+	var parts []string
+	if min.Cmp(smin) != 0 {
+		parts = append(parts, name+".Cmp("+lo+") < 0")
+	}
+	if max.Cmp(smax) != 0 {
+		parts = append(parts, name+".Cmp("+hi+") > 0")
+	}
+	if len(parts) == 0 {
+		return
+	}
+	g.pf("%sif %s {\n%s\treturn serialize.ErrValueOutOfRange\n%s}\n", ind, strings.Join(parts, " || "), ind, ind)
+}
+
+// storageExtremes is the value range of a w-bit integer storage.
+func storageExtremes(signed bool, w uint) (*big.Int, *big.Int) {
+	if signed {
+		return new(big.Int).Neg(new(big.Int).Lsh(big.NewInt(1), w-1)),
+			new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), w-1), big.NewInt(1))
+	}
+	return big.NewInt(0), new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), w), big.NewInt(1))
+}
+
 // emitWriteCompressedRangeGuard refuses a compressed float the declaration does
 // not admit before it is quantized (SPEC §5.1 row 10, PACKET-WIRE-ALGORITHM
 // §2.5): a NaN or an infinity, tested on the raw bits as the plain float guard
@@ -791,10 +852,12 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		}
 		// the Q format and the whole-unit bounds are compile-time constants of
 		// the call site — part of the wire format, exactly like a ranged
-		// integer's bounds (STANDARD.md, fixed). The runtime carries the
-		// write-side range refusal natively (ErrValueOutOfRange, sticky) and
-		// derives the unit capacity from min < 0, so unsigned storage rides
-		// the same int64/Int128-shaped calls through bit-exact casts.
+		// integer's bounds (STANDARD.md, fixed). The runtime panics on a raw
+		// value off the range, so the refusal is generated first (SPEC §5.1
+		// row 1: ErrValueOutOfRange in every build). The runtime derives the
+		// unit capacity from min < 0, so unsigned storage rides the same
+		// int64/Int128-shaped calls through bit-exact casts.
+		g.emitWriteFixedGuard(f, name, ind)
 		lo, hi := g.rangeArgs(f)
 		switch {
 		case f.Type.Width == 128 && f.Type.Signed:
@@ -822,9 +885,14 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 					return
 				}
 				// int128 is ALWAYS ranged (SPEC §4.3): offset from min —
-				// identical bytes to SerializeInt64 wherever the range fits
-				g.pf("%sstream.SerializeInt128(&%s, %s, %s)\n", ind, name,
-					g.render128(f.IntMinExpr, f.IntMin), g.render128(f.IntMaxExpr, f.IntMax))
+				// identical bytes to SerializeInt64 wherever the range fits.
+				// The runtime panics on a value off the range, so the
+				// refusal is generated first (SPEC §5.1 row 1: Go refuses
+				// in every build with ErrValueOutOfRange, never a panic).
+				lo128 := g.render128(f.IntMinExpr, f.IntMin)
+				hi128 := g.render128(f.IntMaxExpr, f.IntMax)
+				g.emitWrite128Guard(name, f.IntMin, f.IntMax, lo128, hi128, true, ind)
+				g.pf("%sstream.SerializeInt128(&%s, %s, %s)\n", ind, name, lo128, hi128)
 			} else {
 				// uint128 is the raw field: 128 bits, low 64-bit half first
 				g.pf("%sstream.SerializeUint128(&%s)\n", ind, name)

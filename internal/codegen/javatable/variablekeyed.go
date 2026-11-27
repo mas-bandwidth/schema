@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 func variableElement(f *ir.Field) *ir.Field {
@@ -312,6 +312,7 @@ func writeKeyedFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 
 func writeJsonKeyedValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) {
 	m := varMember(f)
+	writeJsonContainerCap(b) // the enum-keyed array's object (§16.14 W2)
 	fmt.Fprintf(b, "        if (v.%s.size() != %d) { throw new TableJson.Refused(\"count_over_bound\"); }\n", m, len(f.KeyEnumRef.Variants))
 	b.WriteString("        b.append('{');\n")
 	if len(f.KeyEnumRef.Variants) > 64 {

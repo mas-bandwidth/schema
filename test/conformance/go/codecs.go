@@ -1,3 +1,5 @@
+//go:build !writebounds_only
+
 // THE CODEC TABLE: one row per (unit, root) the corpus names.
 //
 // Nothing here is an expectation — the rows only say which generated functions
@@ -22,14 +24,15 @@ import (
 	"shapes"
 	"streamdemo"
 	"tblfixedevo"
+	"tblpacketunions"
 	tblscalars2 "tblscalars2"
+	"tblvaluedefaults"
 	"tblvarevo1"
 	"tblvarevo2"
 	"tblvarevo3"
 	"vocab9demo"
 	"vocabdemo"
 	"widelistdemo"
-	"writebounds"
 
 	"featurewitnesses"
 
@@ -832,20 +835,6 @@ var codecTable = []codec{
 	}, cooktorture.TortureCookToJSONMeasure, cooktorture.TortureCookToJSON, cooktorture.TortureCookCookMeasure, cooktorture.TortureCookCookFrom, func(r *cooktorture.TableReport) report {
 		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
 	}),
-	regionRow("writebounds", "TortureVarWref", writebounds.TortureVarWrefLoadMeasure, writebounds.TortureVarWrefLoad, writebounds.TortureVarWrefMeasure, writebounds.TortureVarWrefSave, func(text []byte, r *writebounds.TableReport) (*writebounds.TortureVarWref, []byte, bool) {
-		var b writebounds.TortureVarWrefBuilder
-		if !b.Init() {
-			return nil, nil, false
-		}
-		defer b.Shutdown()
-		ok := writebounds.TortureVarWrefFromJSON(&b, text, r)
-		if !b.Lock() {
-			return nil, nil, false
-		}
-		return b.AsConst(), b.Region(), ok
-	}, writebounds.TortureVarWrefToJSONMeasure, writebounds.TortureVarWrefToJSON, writebounds.TortureVarWrefCookMeasure, writebounds.TortureVarWrefCookFrom, func(r *writebounds.TableReport) report {
-		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
-	}),
 	row("cooktorture", "TortureFixedWref", cooktorture.TortureFixedWrefReset, cooktorture.TortureFixedWrefLoad, cooktorture.TortureFixedWrefMeasure, cooktorture.TortureFixedWrefSave, cooktorture.TortureFixedWrefFromJSON, cooktorture.TortureFixedWrefToJSONMeasure, cooktorture.TortureFixedWrefToJSON, cooktorture.TortureFixedWrefCookMeasure, cooktorture.TortureFixedWrefCookFrom, func(r *cooktorture.TableReport) report {
 		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
 	}),
@@ -861,6 +850,44 @@ var codecTable = []codec{
 		}
 		return b.AsConst(), b.Region(), ok
 	}, cooktorturewide.TortureWideCookToJSONMeasure, cooktorturewide.TortureWideCookToJSON, cooktorturewide.TortureWideCookCookMeasure, cooktorturewide.TortureWideCookCookFrom, func(r *cooktorturewide.TableReport) report {
+		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
+	}),
+	// the VALUE-DEFAULTS unit (docs/SPEC.md §4.2): string, bytes and flags
+	// defaults in every carried field shape, a variable root and a fixed root
+	regionRow("tblvaluedefaults", "VarDefaults", tblvaluedefaults.VarDefaultsLoadMeasure, tblvaluedefaults.VarDefaultsLoad, tblvaluedefaults.VarDefaultsMeasure, tblvaluedefaults.VarDefaultsSave, func(text []byte, r *tblvaluedefaults.TableReport) (*tblvaluedefaults.VarDefaults, []byte, bool) {
+		var b tblvaluedefaults.VarDefaultsBuilder
+		if !b.Init() {
+			return nil, nil, false
+		}
+		defer b.Shutdown()
+		ok := tblvaluedefaults.VarDefaultsFromJSON(&b, text, r)
+		if !b.Lock() {
+			return nil, nil, false
+		}
+		return b.AsConst(), b.Region(), ok
+	}, tblvaluedefaults.VarDefaultsToJSONMeasure, tblvaluedefaults.VarDefaultsToJSON, tblvaluedefaults.VarDefaultsCookMeasure, tblvaluedefaults.VarDefaultsCookFrom, func(r *tblvaluedefaults.TableReport) report {
+		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
+	}),
+	row("tblvaluedefaults", "FixedDefaults", tblvaluedefaults.FixedDefaultsReset, tblvaluedefaults.FixedDefaultsLoad, tblvaluedefaults.FixedDefaultsMeasure, tblvaluedefaults.FixedDefaultsSave, tblvaluedefaults.FixedDefaultsFromJSON, tblvaluedefaults.FixedDefaultsToJSONMeasure, tblvaluedefaults.FixedDefaultsToJSON, tblvaluedefaults.FixedDefaultsCookMeasure, tblvaluedefaults.FixedDefaultsCookFrom, func(r *tblvaluedefaults.TableReport) report {
+		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
+	}),
+	// an ARRAY OF PACKET UNIONS (docs/SPEC-TABLES.md §2.6): the variable
+	// class and the fixed class
+	regionRow("packetunions", "ShapeDoc", tblpacketunions.ShapeDocLoadMeasure, tblpacketunions.ShapeDocLoad, tblpacketunions.ShapeDocMeasure, tblpacketunions.ShapeDocSave, func(text []byte, r *tblpacketunions.TableReport) (*tblpacketunions.ShapeDoc, []byte, bool) {
+		var b tblpacketunions.ShapeDocBuilder
+		if !b.Init() {
+			return nil, nil, false
+		}
+		defer b.Shutdown()
+		ok := tblpacketunions.ShapeDocFromJSON(&b, text, r)
+		if !b.Lock() {
+			return nil, nil, false
+		}
+		return b.AsConst(), b.Region(), ok
+	}, tblpacketunions.ShapeDocToJSONMeasure, tblpacketunions.ShapeDocToJSON, tblpacketunions.ShapeDocCookMeasure, tblpacketunions.ShapeDocCookFrom, func(r *tblpacketunions.TableReport) report {
+		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
+	}),
+	row("packetunions", "ShapeMsg", tblpacketunions.ShapeMsgReset, tblpacketunions.ShapeMsgLoad, tblpacketunions.ShapeMsgMeasure, tblpacketunions.ShapeMsgSave, tblpacketunions.ShapeMsgFromJSON, tblpacketunions.ShapeMsgToJSONMeasure, tblpacketunions.ShapeMsgToJSON, tblpacketunions.ShapeMsgCookMeasure, tblpacketunions.ShapeMsgCookFrom, func(r *tblpacketunions.TableReport) report {
 		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
 	}),
 	// the SHAPES unit (test/tables/shapes), opted in by `list` (main.go)
@@ -1032,5 +1059,5 @@ var codecTable = []codec{
 // surfaces is what this backend implements. A surface not listed prints as
 // ABSENT in the matrix, which is a missing FEATURE and not a failing test.
 func surfaces() []string {
-	return []string{"wire", "message", "message-prior", "report", "framing", "json-read", "json-write", "json-hostile", "cook-write", "retain", "retain-save", "cook", "cook-foreign", "block", "block-foreign", "block-dump", "forgery", "cook-forgery", "write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json", "write-refusal-cook", "write-refusal-block", "announce", "read-into", "json-write-into"}
+	return []string{"wire", "message", "message-prior", "report", "framing", "json-read", "json-write", "json-hostile", "cook-write", "retain", "retain-save", "retain-refusal", "cook", "cook-foreign", "block", "block-foreign", "block-dump", "forgery", "cook-forgery", "write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json", "write-refusal-cook", "write-refusal-block", "write-refusal-shape", "announce", "read-into", "json-write-into"}
 }

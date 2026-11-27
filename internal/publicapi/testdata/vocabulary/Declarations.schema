@@ -1,4 +1,4 @@
-package vocabulary
+package vocabcorpus
 
 table Pong | forms = "wire,json"
 {

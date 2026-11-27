@@ -17,10 +17,10 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
+	"github.com/mas-bandwidth/schema/v3/compiler"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/luau"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/luau/luaurun"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/luautable"
 )
 
 type messageConnRow struct {
@@ -190,8 +190,9 @@ func TestLuauMessageFormMatchesTheGoldens(t *testing.T) {
 			fixed++
 		}
 	}
-	if fixed != 15 {
-		t.Fatalf("the manifest names %d message rows over a fixed root, want the 15 this card pins", fixed)
+	// The fixed-root corpus includes both packet-union array message batches.
+	if fixed != 17 {
+		t.Fatalf("the manifest names %d message rows over a fixed root, want 17", fixed)
 	}
 	// the parallel row subtests run inside one group, so the count below is
 	// read after every one of them has finished (and counted atomically)

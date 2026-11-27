@@ -27,8 +27,8 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/baseline"
-	"github.com/mas-bandwidth/schema/v2/internal/lockfile"
+	"github.com/mas-bandwidth/schema/v3/internal/baseline"
+	"github.com/mas-bandwidth/schema/v3/internal/lockfile"
 )
 
 // sizeLimitEnv, set in the environment of this test binary, makes it lower

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // TestCardVariableModulesEmitTheForm1Framing pins docs/SPEC-TABLES.md §3, §3.1,

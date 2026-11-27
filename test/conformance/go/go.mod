@@ -5,7 +5,7 @@ go 1.26
 require (
 	blockdemo v0.0.0
 	// the shared Go runtime is the default (docs/SPEC-TABLES.md §8.4)
-	github.com/mas-bandwidth/schema/v2 v2.0.0
+	github.com/mas-bandwidth/schema/v3 v3.0.0
 	graphdemo v0.0.0
 	mapdemo v0.0.0
 	tabledemo v0.0.0
@@ -34,7 +34,7 @@ replace graphdemo => ../../../build/tables-generated-go/pointers
 replace github.com/mas-bandwidth/serialize.go/v2 => ../../../../serialize.go
 
 // the shared Go runtime is the default (docs/SPEC-TABLES.md §8.4)
-replace github.com/mas-bandwidth/schema/v2 => ../../..
+replace github.com/mas-bandwidth/schema/v3 => ../../..
 
 require tblm1 v0.0.0
 
@@ -211,3 +211,11 @@ replace announce4096 => ../../../build/tables-generated-go-announce/4096
 require announce4097 v0.0.0
 
 replace announce4097 => ../../../build/tables-generated-go-announce/4097
+
+require tblvaluedefaults v0.0.0
+
+replace tblvaluedefaults => ../../../build/tables-generated-go/valuedefaults
+
+require tblpacketunions v0.0.0
+
+replace tblpacketunions => ../../../build/tables-generated-go/packetunions

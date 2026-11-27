@@ -26,7 +26,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // The kind numbers of §3's closed set the card's constructs spend, named here
@@ -328,7 +328,7 @@ type wireGen struct {
 // extension type over int, which this library imports.
 func (g *wireGen) enumType(e *ir.Enum) string {
 	g.enums[e.Name] = true
-	return e.Name
+	return dartEnumRef(e.Name)
 }
 
 // enumConst is an enum's named constant for ordinal i — None at 0, the
@@ -344,7 +344,7 @@ func (g *wireGen) enumConst(e *ir.Enum, i int) string {
 // listElemType is dartListElemType, recording an enum element's import.
 func (g *wireGen) listElemType(f *ir.Field) string {
 	if e, ok := f.Type.Ref.(*ir.Enum); ok && f.Type.Kind == ir.TNamed {
-		g.enumType(e)
+		return g.enumType(e)
 	}
 	return dartListElemType(f)
 }
@@ -367,7 +367,13 @@ func (g *wireGen) insertEnumImports() {
 	sort.Strings(files)
 	var imports strings.Builder
 	for _, f := range files {
-		names := byFile[f]
+		names, prefixed := splitEnumShows(g.unit, byFile[f])
+		if prefixed {
+			imports.WriteString(enumPrefixImport(f + ".dart"))
+		}
+		if len(names) == 0 {
+			continue
+		}
 		sort.Strings(names)
 		one := fmt.Sprintf("import '%s.dart' show %s;\n", f, strings.Join(names, ", "))
 		if len(one) <= 81 {
@@ -417,6 +423,22 @@ func enumRef(f *ir.Field) *ir.Enum {
 	return e
 }
 
+// enumNotDeprecated is the write-side condition that the ordinal in expr names
+// no deprecated variant (docs/SPEC-TABLES.md §2.15 WRITE: a strict write
+// refuses a value holding one), joined with && for each deprecated variant,
+// or "" when e has none. Variant i is ordinal i+1; 0 is None. Dart holds it
+// as a DEBUG assert (docs/SPEC.md §5.1), the same check on the variable save,
+// the fixed save and the JSON text (textform.go).
+func enumNotDeprecated(e *ir.Enum, expr string) string {
+	var conds []string
+	for i := range e.Variants {
+		if i < len(e.VariantDeprecated) && e.VariantDeprecated[i] {
+			conds = append(conds, fmt.Sprintf("%s != %d", expr, i+1))
+		}
+	}
+	return strings.Join(conds, " && ")
+}
+
 // listElementKind is the element kind an unbounded array's body opens with
 // (docs/SPEC-TABLES.md §2.9, §3): 13 for `[]T` of tables, 12 for `[]string`,
 // 30 for `[]E` of enums, and the scalar kind otherwise.
@@ -440,7 +462,7 @@ func dartListElemType(f *ir.Field) string {
 		return "String"
 	case f.Type.Kind == ir.TNamed:
 		if e, isEnum := f.Type.Ref.(*ir.Enum); isEnum {
-			return e.Name // the packet extension type, imported by the wire library
+			return dartEnumRef(e.Name) // the packet extension type, imported by the wire library
 		}
 		if f.Type.Pointer && tableRef(f) != nil {
 			return f.Type.Name + "?"
@@ -4286,6 +4308,10 @@ func (g *wireGen) emitWireWriteAssert(f *ir.Field, expr, ind string) {
 	}
 	if e := enumRef(f); e != nil {
 		g.pf("%sassert(%s >= 0 && %s <= %d);\n", ind, expr, expr, len(e.Variants))
+		// §2.15 WRITE: a deprecated variant is never written
+		if cond := enumNotDeprecated(e, expr); cond != "" {
+			g.pf("%sassert(%s, 'deprecated variant is never written (SPEC-TABLES 2.15)');\n", ind, cond)
+		}
 		return
 	}
 	if fl := flagsRef(f); fl != nil {
@@ -4347,5 +4373,14 @@ func (g *wireGen) emitWireWriteAssert(f *ir.Field, expr, ind string) {
 		if _, _, ok := fixedFloatClampEnds(f); ok {
 			g.pf("%sassert(!%s.isFinite || (%s));\n", ind, expr, floatRangeCond(f, expr, "_rangeF32"))
 		}
+	}
+}
+
+// emitDeprecatedVariantAssert is the cook writers' debug check for a
+// deprecated variant (SPEC-TABLES §2.15), in the one spelling the variable
+// and fixed writers use, so every Dart writer refuses with the same message.
+func emitDeprecatedVariantAssert(pf func(string, ...any), e *ir.Enum, expr, ind string) {
+	if cond := enumNotDeprecated(e, expr); cond != "" {
+		pf("%sassert(%s, 'deprecated variant is never written (SPEC-TABLES 2.15)');\n", ind, cond)
 	}
 }

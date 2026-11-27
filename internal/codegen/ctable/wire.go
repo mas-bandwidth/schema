@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 func (g *tableGen) fileWire() bool { return true }
@@ -696,6 +696,14 @@ func (g *tableGen) wireEnumWrite(e *ir.Enum, expr, ind string) {
 	g.pf("%sswitch ( %s )\n%s{\n", ind, expr, ind)
 	g.pf("%s    case %s: table_writer_leb( w, 0 ); break;\n", ind, enumNoneConst(e.Name))
 	for i, v := range e.Variants {
+		if enumVariantDeprecated(e, i) {
+			// A DEPRECATED VARIANT IS NEVER WRITTEN (docs/SPEC-TABLES.md
+			// §2.15 WRITE): a write-side check, so a debug assert in this
+			// language (docs/SPEC.md §5.1), as the JSON writer holds it
+			g.pf("%s    case %s: schema_assert( %s != %s ); /* a deprecated variant is never written (SPEC-TABLES §2.15) */ table_writer_id( w, 0x%016xull ); break;\n",
+				ind, enumConst(e.Name, v), expr, enumConst(e.Name, v), ir.TableWireId(e.VariantWireName(i)))
+			continue
+		}
 		g.pf("%s    case %s: table_writer_id( w, 0x%016xull ); break;\n", ind, enumConst(e.Name, v), ir.TableWireId(e.VariantWireName(i)))
 	}
 	g.pf("%s    default: return 0; /* no declared identity */\n%s}\n", ind, ind)

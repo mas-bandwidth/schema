@@ -3,7 +3,7 @@ package check
 import (
 	"sync"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // An emitter name rule is a name rule a target's emitter holds itself, run

@@ -2,17 +2,17 @@ package lobstertable_test
 
 import (
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 	"maps"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster/lobsterrun"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobstertable"
+	"github.com/mas-bandwidth/schema/v3/compiler"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/lobster"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/lobster/lobsterrun"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/lobstertable"
 )
 
 // fixedCorpus is the reference dump's nine form-3 files and the schema/root

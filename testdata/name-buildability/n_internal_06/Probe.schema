@@ -1,0 +1,66 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum baseMax
+{ Zfirst, Zsecond, Zthird }
+
+enum baseMin
+{ Zfirst, Zsecond, Zthird }
+
+enum baseNegative
+{ Zfirst, Zsecond, Zthird }
+
+enum baseOffset
+{ Zfirst, Zsecond, Zthird }
+
+enum basePointer
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    baseMax Inner
+    baseMin Inner
+    baseNegative Inner
+    baseOffset Inner
+    basePointer Inner
+}
+
+table NameTypes0
+{
+    one0  baseMax
+    many0 [..4]baseMax
+    one1  baseMin
+    many1 [..4]baseMin
+    one2  baseNegative
+    many2 [..4]baseNegative
+    one3  baseOffset
+    many3 [..4]baseOffset
+    one4  basePointer
+    many4 [..4]basePointer
+}
+
+table NameFields0
+{
+    baseMax uint32
+    baseMin uint32
+    baseNegative uint32
+    baseOffset uint32
+    basePointer uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}

@@ -14,7 +14,7 @@ import (
 	"math/big"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 //go:embed runtime/*.lua
@@ -53,7 +53,10 @@ func writeFn(m *Module, name string) string {
 // (ir.Struct.Items; SPEC §4.3, §4.5).
 func emitWriteStruct(m *Module, b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "-- type %s (SPEC §6.1: the wire order is the declared order)\n", st.Name)
-	fmt.Fprintf(b, "function _M.Write%s(%s, %s)\n", st.Name, unusedIf(len(st.Items) == 0, "stream"), unusedIf(!itemsTouchValue(st.Items), "v"))
+	fmt.Fprintf(b, "function _M.Write%s(%s, v)\n", st.Name, unusedIf(len(st.Items) == 0, "stream"))
+	// a value that is not a table is refused, never indexed into a raise
+	// (SPEC §5.1: the writer refuses, in every build)
+	b.WriteString(shapeGuard("v", "table", "  "))
 	emitWriteItems(m, b, st.Items, "  ")
 	b.WriteString("  return true\nend\n\n")
 }
@@ -95,6 +98,8 @@ func emitWriteField(m *Module, b *strings.Builder, val string, f *ir.Field, inde
 		return
 	}
 	bound := IntLiteral(big.NewInt(f.ArrayBound))
+	// the elements are a table, or the loop below would index a raise
+	b.WriteString(shapeGuard(val, "table", indent))
 	if f.Array == ir.ArrayCounted {
 		count := val + "Count"
 		min := IntLiteral(big.NewInt(f.ArrayMin))
@@ -114,6 +119,10 @@ func emitWriteField(m *Module, b *strings.Builder, val string, f *ir.Field, inde
 		fmt.Fprintf(b, "%send\n", indent)
 		return
 	}
+	// a [N]T holds exactly N values: any other count is refused, never cut
+	// or padded to N (SPEC §5.1, SF-20)
+	fmt.Fprintf(b, "%sif type(%s) ~= \"table\" or #%s ~= %s then return false end -- a [N]T holds exactly N values (SPEC §5.1)\n",
+		indent, val, val, bound)
 	fmt.Fprintf(b, "%sfor _i = 1, %s do\n", indent, bound)
 	elem := *f
 	elem.Array = ir.ArrayNone
@@ -129,6 +138,8 @@ func emitWriteScalar(m *Module, b *strings.Builder, val string, f *ir.Field, ind
 	}
 	switch t.Kind {
 	case ir.TBool:
+		// the runtime raises on a value that is not a boolean: refuse it first
+		b.WriteString(shapeGuard(val, "boolean", indent))
 		call(fmt.Sprintf("stream:serializeBool({ value = %s })", val), " -- SPEC §4.3")
 	case ir.TInt:
 		switch {
@@ -211,14 +222,21 @@ func emitWriteScalar(m *Module, b *strings.Builder, val string, f *ir.Field, ind
 			t.IntBits, t.FracBits, IntLiteral(f.IntMin), IntLiteral(f.IntMax)), " -- the Q format's raw offset (SPEC §4.3)")
 	case ir.TFloat32:
 		if f.HasFloatRange {
+			// the range is held at the float32 ends, spelled as their float64
+			// values: Lua reads the decimal 0.3 as the double 0.3, below
+			// float32(0.3), and refused the declared max itself (SPEC §4.3,
+			// "A FLOAT LITERAL IS A float64 FIRST"; test/verify-bitphase f32lit.go)
 			fmt.Fprintf(b, "%sif type(%s) ~= \"number\" or %s ~= %s or %s < %s or %s > %s then return false end -- compressed-float range (SPEC §5.1 row 10)\n",
-				indent, val, val, val, val, FloatLiteral(f.FMin), val, FloatLiteral(f.FMax))
+				indent, val, val, val, val, FloatLiteral(float64(float32(f.FMin))), val, FloatLiteral(float64(float32(f.FMax))))
 			call(fmt.Sprintf("stream:serializeCompressedFloat({ value = %s }, %s, %s, %s)", val,
 				FloatLiteral(f.FMin), FloatLiteral(f.FMax), FloatLiteral(f.Resolution)), " -- the step index (SPEC §4.3)")
 		} else {
+			// the runtime raises on a value that is not a Lua float
+			fmt.Fprintf(b, "%sif math.type(%s) ~= \"float\" then return false end\n", indent, val)
 			call(fmt.Sprintf("stream:serializeFloat({ value = %s })", val), "")
 		}
 	case ir.TFloat64:
+		fmt.Fprintf(b, "%sif math.type(%s) ~= \"float\" then return false end\n", indent, val)
 		call(fmt.Sprintf("stream:serializeDouble({ value = %s })", val), "")
 	case ir.TString, ir.TBytes:
 		size := t.Size
@@ -320,6 +338,7 @@ func callBits(v *big.Int, bits int64) string {
 func emitWriteUnion(m *Module, b *strings.Builder, un *ir.Union) {
 	fmt.Fprintf(b, "-- union %s (SPEC §4.8: None = 0, then each declared arm)\n", un.Name)
 	fmt.Fprintf(b, "function _M.Write%s(%s, v)\n", un.Name, unusedIf(un.Max == 0, "stream"))
+	b.WriteString(shapeGuard("v", "table", "  "))
 	fmt.Fprintf(b, "  if math.type(v.Type) ~= \"integer\" or v.Type < 0 or v.Type > %d then return false end\n", un.Max)
 	if un.Max > 0 {
 		bits := ir.BitsRequired(big.NewInt(0), big.NewInt(un.Max))
@@ -348,4 +367,11 @@ func subtrahend(x string) string {
 		}
 	}
 	return x
+}
+
+// shapeGuard refuses a value whose Lua type is not want: the writer's own
+// false, never a raise from indexing or from the runtime (SPEC §5.1; the
+// dynamic legs refuse a bad value in every build).
+func shapeGuard(val, want, indent string) string {
+	return fmt.Sprintf("%sif type(%s) ~= %q then return false end\n", indent, val, want)
 }

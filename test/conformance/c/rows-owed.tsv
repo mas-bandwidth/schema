@@ -1,0 +1,23 @@
+# Conformance rows the c leg owes: every row file under test/conformance/c/rows/ runs
+# (tools/conformancerows), and these still fail. Exact set: a failing row not named
+# here is red, and a row named here that passes is red until its line goes.
+# Each line is <row> TAB owed: <cause> [TAB <note>]: the cause is exactly what the run
+# prints for the row (a mismatch is red), and the note is a person's, never compared.
+# Measured at this PR's head (5c89252 and the round-2 fixes) on vision, 2026-11-24, with CONFORMANCE_ROWS_MEASURED.
+C10	owed: does not build: test/conformance/c/rows/C10.c:76:5: error: unknown type name 'Root'
+C2	owed: does not build: test/conformance/c/rows/C2.c:52:11: error: unknown type name 'TableFixedEntry'
+C9	owed: does not build: test/conformance/c/rows/C9.c:18:20: error: implicit declaration of function 'cfg_fixed_measure'; did you mean 'tblv1_cfg_fixed_measure'? [-Wimplicit-function-declaration]
+E5	owed: does not build: test/conformance/c/rows/E5.c:79:32: error: 'ConformanceReport' has no member named 'kind_mismatch'	the row is out of date, not the leg: docs/SPEC-TABLES.md (THE READ REPORT) retired this counter, so the row owes the fix
+F9	owed: does not build: test/conformance/c/rows/F9.c:12:5: error: unknown type name 'TableReport'
+P2	owed: does not build: test/conformance/c/rows/P2.c:124:23: error: unknown type name 'LoginRequest'
+R22	owed: does not build: test/conformance/c/rows/R22.c:69:48: error: 'Cfg' undeclared here (not in a function)
+R23	owed: does not build: test/conformance/c/rows/R23.c:27:15: error: unknown type name 'TableFixedKnownLayout'
+R32	owed: does not build: test/conformance/c/rows/R32.c:161:22: error: 'WIRE_BLOB' defined but not used [-Werror=unused-const-variable=]
+R5	owed: does not build: test/conformance/c/rows/R5.c:124:34: error: 'vessel_fixed_layout' undeclared (first use in this function); did you mean 'tblw1_vessel_fixed_layout'?
+R9	owed: does not build: test/conformance/c/rows/R9.c:24:5: error: implicit declaration of function 'table_fixed_put64'; did you mean 'tblv1_table_fixed_put64'? [-Wimplicit-function-declaration]
+SignedFixedPointValidData	owed: does not build: test/conformance/c/rows/SignedFixedPointValidData.c:47:5: error: unknown type name 'SimState'
+SignedIntegersValidData	owed: does not build: test/conformance/c/rows/SignedIntegersValidData.c:117:43: error: unknown type name 'RangedSigned'
+W1	owed: does not build: test/conformance/c/rows/W1.c:27:5: error: unknown type name 'Fleet'
+W12	owed: does not build: test/conformance/c/rows/W12.c:100:35: error: 'vessel_fixed_layout' undeclared (first use in this function); did you mean 'tblw1_vessel_fixed_layout'?
+W13	owed: does not build: test/conformance/c/rows/W13.c:63:12: error: 'fx_root_fixed_hash' undeclared (first use in this function); did you mean 'tblfx1_fx_root_fixed_hash'?
+W8	owed: does not build: test/conformance/c/rows/W8.c:83:12: error: unknown type name 'TableFixedEntry'

@@ -25,8 +25,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/internal/tablewire"
 )
 
 const reviewReaderSrc = `package review
@@ -133,7 +133,7 @@ func reviewArmZero(data []byte, arm, next, end tablewire.BitSpot) []byte {
 	)
 }
 
-const reviewQuantizedSrc = `package quantized
+const reviewQuantizedSrc = `package quantizedreview
 
 fixed table Inner
 {

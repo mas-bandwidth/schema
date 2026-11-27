@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/lua/luarun"
 )
 
 // TestLuaJSONKeyLiteralsLoad pins the Lua rendering of JSON keys that Go's %q

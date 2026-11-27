@@ -7,6 +7,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v3/internal/testinputs"
 )
 
 // TestPrePushHookSkipsCommitsAlreadyOnMain drives .githooks/pre-push over a
@@ -72,6 +74,7 @@ func TestPrePushHookSkipsCommitsAlreadyOnMain(t *testing.T) {
 
 	push := func(lsha, rsha string) (string, error) {
 		t.Helper()
+		testinputs.Files(t, hook)
 		cmd := exec.Command("bash", hook, "origin", "unused")
 		cmd.Dir = dir
 		cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1")

@@ -8,15 +8,15 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpptable"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/jsontestsuite"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/cpp"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/cpptable"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/python/pyrun"
+	"github.com/mas-bandwidth/schema/v3/internal/jsontestsuite"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/internal/tablewire"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 // TestPythonJsonScan holds the text scanner to the engine's JSON dialect.
@@ -1126,7 +1126,7 @@ func TestPythonJsonConformanceDriver(t *testing.T) {
 	}
 	dir := t.TempDir()
 	writeTree(t, filepath.Join(dir, "unit"), files)
-	for _, name := range []string{"_common.py", "_json_common.py", "json-read.py", "json-write.py", "json-hostile.py", "report.py", "write-refusal.py", "write-refusal-json.py"} {
+	for _, name := range []string{"_common.py", "_json_common.py", "_mutate.py", "json-read.py", "json-write.py", "json-hostile.py", "report.py", "write-refusal.py", "write-refusal-json.py"} {
 		data, err := os.ReadFile(filepath.Join("..", "..", "..", "test", "conformance", "python", "surfaces", name))
 		if err != nil {
 			t.Fatal(err)
@@ -1179,12 +1179,10 @@ assert _json_common.write_wire(LargeFixed, LargeFixed()) == wire
 cls = _common.root_class('unit', 'Root')
 field = next(field for field in cls.descriptor.fields if field.name == 'live')
 field.codec = 'unsupported'
-try:
-    importlib.import_module('json-hostile').run('manifest', 'out')
-except ValueError as error:
-    assert error.reason == 'unsupported'
-else:
-    raise AssertionError('unsupported runtime was counted as a refusal')
+# a codec the runtime cannot answer is a DRIVER ERROR: the case is named and no
+# answer is written, never a refusal (_common.answering)
+importlib.import_module('json-hostile').run('manifest', 'out')
+assert _common.DRIVER_ERRORS == ['hostilecase'], 'unsupported runtime was counted as a refusal'
 print('ok')
 `
 	inputs := map[string][]byte{"main.py": []byte(probe)}

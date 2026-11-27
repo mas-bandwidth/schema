@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v3/internal/testinputs"
 )
 
 // TestRustDriverAnswersWriteRefusal runs the Rust conformance driver over the
@@ -29,6 +31,7 @@ func TestRustDriverAnswersWriteRefusal(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(serializeRS, "Cargo.toml")); err != nil {
 		t.Fatalf("the serialize.rs sibling checkout is absent at %s: run `make deps`, which clones the serialize siblings beside the repository (%v)", serializeRS, err)
 	}
+	testinputs.Build(t, "test/conformance/rust", "test/conformance/harness")
 	build := exec.Command("make", "build/conformance-rust")
 	build.Dir = root
 	// This gate checks the debug writer's refusal, so optimization and debug

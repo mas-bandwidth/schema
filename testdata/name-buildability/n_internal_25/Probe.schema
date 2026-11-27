@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum enums
+{ Zfirst, Zsecond, Zthird }
+
+enum eok
+{ Zfirst, Zsecond, Zthird }
+
+enum ep
+{ Zfirst, Zsecond, Zthird }
+
+enum epos
+{ Zfirst, Zsecond, Zthird }
+
+enum eprec
+{ Zfirst, Zsecond, Zthird }
+
+enum eq
+{ Zfirst, Zsecond, Zthird }
+
+enum eq16
+{ Zfirst, Zsecond, Zthird }
+
+enum eqB
+{ Zfirst, Zsecond, Zthird }
+
+enum equal
+{ Zfirst, Zsecond, Zthird }
+
+enum equalBytes
+{ Zfirst, Zsecond, Zthird }
+
+enum equals_def
+{ Zfirst, Zsecond, Zthird }
+
+enum equals_string
+{ Zfirst, Zsecond, Zthird }
+
+enum er
+{ Zfirst, Zsecond, Zthird }
+
+enum era
+{ Zfirst, Zsecond, Zthird }
+
+enum erank
+{ Zfirst, Zsecond, Zthird }
+
+enum err
+{ Zfirst, Zsecond, Zthird }
+
+enum es
+{ Zfirst, Zsecond, Zthird }
+
+enum esc
+{ Zfirst, Zsecond, Zthird }
+
+enum escape
+{ Zfirst, Zsecond, Zthird }
+
+enum escaped
+{ Zfirst, Zsecond, Zthird }
+
+enum escapes
+{ Zfirst, Zsecond, Zthird }
+
+enum eshape
+{ Zfirst, Zsecond, Zthird }
+
+enum esign
+{ Zfirst, Zsecond, Zthird }
+
+enum esize
+{ Zfirst, Zsecond, Zthird }
+
+enum establishes
+{ Zfirst, Zsecond, Zthird }
+
+enum estart
+{ Zfirst, Zsecond, Zthird }
+
+enum estr
+{ Zfirst, Zsecond, Zthird }
+
+enum esub
+{ Zfirst, Zsecond, Zthird }
+
+enum esz
+{ Zfirst, Zsecond, Zthird }
+
+enum et
+{ Zfirst, Zsecond, Zthird }
+
+enum ev
+{ Zfirst, Zsecond, Zthird }
+
+enum ev0
+{ Zfirst, Zsecond, Zthird }
+
+enum every
+{ Zfirst, Zsecond, Zthird }
+
+enum everyGuard
+{ Zfirst, Zsecond, Zthird }
+
+enum everything
+{ Zfirst, Zsecond, Zthird }
+
+enum ew
+{ Zfirst, Zsecond, Zthird }
+
+enum ewidened
+{ Zfirst, Zsecond, Zthird }
+
+enum ex
+{ Zfirst, Zsecond, Zthird }
+
+enum exact
+{ Zfirst, Zsecond, Zthird }
+
+enum exactDecimal
+{ Zfirst, Zsecond, Zthird }
+
+enum exactField
+{ Zfirst, Zsecond, Zthird }
+
+enum exactKeyed
+{ Zfirst, Zsecond, Zthird }
+
+enum exactShape
+{ Zfirst, Zsecond, Zthird }
+
+enum exactly
+{ Zfirst, Zsecond, Zthird }
+
+enum exc
+{ Zfirst, Zsecond, Zthird }
+
+enum excluded
+{ Zfirst, Zsecond, Zthird }
+
+enum existing
+{ Zfirst, Zsecond, Zthird }
+
+enum exists
+{ Zfirst, Zsecond, Zthird }
+
+enum exp
+{ Zfirst, Zsecond, Zthird }
+
+enum exp10
+{ Zfirst, Zsecond, Zthird }
+
+enum exp2
+{ Zfirst, Zsecond, Zthird }
+
+enum expNeg
+{ Zfirst, Zsecond, Zthird }
+
+enum expNegative
+{ Zfirst, Zsecond, Zthird }
+
+enum exp_digits
+{ Zfirst, Zsecond, Zthird }
+
+enum exp_str
+{ Zfirst, Zsecond, Zthird }
+
+enum expansion
+{ Zfirst, Zsecond, Zthird }
+
+enum expbits
+{ Zfirst, Zsecond, Zthird }
+
+enum expect_shape
+{ Zfirst, Zsecond, Zthird }
+
+enum expected
+{ Zfirst, Zsecond, Zthird }
+
+enum expectedTypeId
+{ Zfirst, Zsecond, Zthird }
+
+enum expmask
+{ Zfirst, Zsecond, Zthird }
+
+enum expmax
+{ Zfirst, Zsecond, Zthird }
+
+enum exponent
+{ Zfirst, Zsecond, Zthird }
+
+enum exponent2
+{ Zfirst, Zsecond, Zthird }
+
+enum exponent64
+{ Zfirst, Zsecond, Zthird }
+
+enum ext
+{ Zfirst, Zsecond, Zthird }
+
+enum extend
+{ Zfirst, Zsecond, Zthird }
+
+enum extent
+{ Zfirst, Zsecond, Zthird }
+
+enum extent1
+{ Zfirst, Zsecond, Zthird }
+
+enum extent1_array
+{ Zfirst, Zsecond, Zthird }
+
+enum extent1_i
+{ Zfirst, Zsecond, Zthird }
+
+enum extent1_in
+{ Zfirst, Zsecond, Zthird }
+
+enum extent1_out
+{ Zfirst, Zsecond, Zthird }
+
+enum extent2
+{ Zfirst, Zsecond, Zthird }
+
+enum extent2_array
+{ Zfirst, Zsecond, Zthird }
+
+enum extent2_i
+{ Zfirst, Zsecond, Zthird }
+
+enum extent2_in
+{ Zfirst, Zsecond, Zthird }
+
+enum extent2_out
+{ Zfirst, Zsecond, Zthird }
+
+enum extent3
+{ Zfirst, Zsecond, Zthird }
+
+enum extent3_array
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    enums Inner
+    eok Inner
+    ep Inner
+    epos Inner
+    eprec Inner
+    eq Inner
+    eq16 Inner
+    eqB Inner
+    equal Inner
+    equalBytes Inner
+}
+
+table NameTypes0
+{
+    one0  enums
+    many0 [..4]enums
+    one1  eok
+    many1 [..4]eok
+    one2  ep
+    many2 [..4]ep
+    one3  epos
+    many3 [..4]epos
+    one4  eprec
+    many4 [..4]eprec
+    one5  eq
+    many5 [..4]eq
+    one6  eq16
+    many6 [..4]eq16
+    one7  eqB
+    many7 [..4]eqB
+    one8  equal
+    many8 [..4]equal
+    one9  equalBytes
+    many9 [..4]equalBytes
+}
+
+table NameFields0
+{
+    enums uint32
+    eok uint32
+    ep uint32
+    epos uint32
+    eprec uint32
+    eq uint32
+    eq16 uint32
+    eqB uint32
+    equal uint32
+    equalBytes uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    equals_def Inner
+    equals_string Inner
+    er Inner
+    era Inner
+    erank Inner
+    err Inner
+    es Inner
+    esc Inner
+    escape Inner
+    escaped Inner
+}
+
+table NameTypes1
+{
+    one0  equals_def
+    many0 [..4]equals_def
+    one1  equals_string
+    many1 [..4]equals_string
+    one2  er
+    many2 [..4]er
+    one3  era
+    many3 [..4]era
+    one4  erank
+    many4 [..4]erank
+    one5  err
+    many5 [..4]err
+    one6  es
+    many6 [..4]es
+    one7  esc
+    many7 [..4]esc
+    one8  escape
+    many8 [..4]escape
+    one9  escaped
+    many9 [..4]escaped
+}
+
+table NameFields1
+{
+    equals_def uint32
+    equals_string uint32
+    er uint32
+    era uint32
+    erank uint32
+    err uint32
+    es uint32
+    esc uint32
+    escape uint32
+    escaped uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    escapes Inner
+    eshape Inner
+    esign Inner
+    esize Inner
+    establishes Inner
+    estart Inner
+    estr Inner
+    esub Inner
+    esz Inner
+    et Inner
+}
+
+table NameTypes2
+{
+    one0  escapes
+    many0 [..4]escapes
+    one1  eshape
+    many1 [..4]eshape
+    one2  esign
+    many2 [..4]esign
+    one3  esize
+    many3 [..4]esize
+    one4  establishes
+    many4 [..4]establishes
+    one5  estart
+    many5 [..4]estart
+    one6  estr
+    many6 [..4]estr
+    one7  esub
+    many7 [..4]esub
+    one8  esz
+    many8 [..4]esz
+    one9  et
+    many9 [..4]et
+}
+
+table NameFields2
+{
+    escapes uint32
+    eshape uint32
+    esign uint32
+    esize uint32
+    establishes uint32
+    estart uint32
+    estr uint32
+    esub uint32
+    esz uint32
+    et uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    ev Inner
+    ev0 Inner
+    every Inner
+    everyGuard Inner
+    everything Inner
+    ew Inner
+    ewidened Inner
+    ex Inner
+    exact Inner
+    exactDecimal Inner
+}
+
+table NameTypes3
+{
+    one0  ev
+    many0 [..4]ev
+    one1  ev0
+    many1 [..4]ev0
+    one2  every
+    many2 [..4]every
+    one3  everyGuard
+    many3 [..4]everyGuard
+    one4  everything
+    many4 [..4]everything
+    one5  ew
+    many5 [..4]ew
+    one6  ewidened
+    many6 [..4]ewidened
+    one7  ex
+    many7 [..4]ex
+    one8  exact
+    many8 [..4]exact
+    one9  exactDecimal
+    many9 [..4]exactDecimal
+}
+
+table NameFields3
+{
+    ev uint32
+    ev0 uint32
+    every uint32
+    everyGuard uint32
+    everything uint32
+    ew uint32
+    ewidened uint32
+    ex uint32
+    exact uint32
+    exactDecimal uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    exactField Inner
+    exactKeyed Inner
+    exactShape Inner
+    exactly Inner
+    exc Inner
+    excluded Inner
+    existing Inner
+    exists Inner
+    exp Inner
+    exp10 Inner
+}
+
+table NameTypes4
+{
+    one0  exactField
+    many0 [..4]exactField
+    one1  exactKeyed
+    many1 [..4]exactKeyed
+    one2  exactShape
+    many2 [..4]exactShape
+    one3  exactly
+    many3 [..4]exactly
+    one4  exc
+    many4 [..4]exc
+    one5  excluded
+    many5 [..4]excluded
+    one6  existing
+    many6 [..4]existing
+    one7  exists
+    many7 [..4]exists
+    one8  exp
+    many8 [..4]exp
+    one9  exp10
+    many9 [..4]exp10
+}
+
+table NameFields4
+{
+    exactField uint32
+    exactKeyed uint32
+    exactShape uint32
+    exactly uint32
+    exc uint32
+    excluded uint32
+    existing uint32
+    exists uint32
+    exp uint32
+    exp10 uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    exp2 Inner
+    expNeg Inner
+    expNegative Inner
+    exp_digits Inner
+    exp_str Inner
+    expansion Inner
+    expbits Inner
+    expect_shape Inner
+    expected Inner
+    expectedTypeId Inner
+}
+
+table NameTypes5
+{
+    one0  exp2
+    many0 [..4]exp2
+    one1  expNeg
+    many1 [..4]expNeg
+    one2  expNegative
+    many2 [..4]expNegative
+    one3  exp_digits
+    many3 [..4]exp_digits
+    one4  exp_str
+    many4 [..4]exp_str
+    one5  expansion
+    many5 [..4]expansion
+    one6  expbits
+    many6 [..4]expbits
+    one7  expect_shape
+    many7 [..4]expect_shape
+    one8  expected
+    many8 [..4]expected
+    one9  expectedTypeId
+    many9 [..4]expectedTypeId
+}
+
+table NameFields5
+{
+    exp2 uint32
+    expNeg uint32
+    expNegative uint32
+    exp_digits uint32
+    exp_str uint32
+    expansion uint32
+    expbits uint32
+    expect_shape uint32
+    expected uint32
+    expectedTypeId uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    expmask Inner
+    expmax Inner
+    exponent Inner
+    exponent2 Inner
+    exponent64 Inner
+    ext Inner
+    extend Inner
+    extent Inner
+    extent1 Inner
+    extent1_array Inner
+}
+
+table NameTypes6
+{
+    one0  expmask
+    many0 [..4]expmask
+    one1  expmax
+    many1 [..4]expmax
+    one2  exponent
+    many2 [..4]exponent
+    one3  exponent2
+    many3 [..4]exponent2
+    one4  exponent64
+    many4 [..4]exponent64
+    one5  ext
+    many5 [..4]ext
+    one6  extend
+    many6 [..4]extend
+    one7  extent
+    many7 [..4]extent
+    one8  extent1
+    many8 [..4]extent1
+    one9  extent1_array
+    many9 [..4]extent1_array
+}
+
+table NameFields6
+{
+    expmask uint32
+    expmax uint32
+    exponent uint32
+    exponent2 uint32
+    exponent64 uint32
+    ext uint32
+    extend uint32
+    extent uint32
+    extent1 uint32
+    extent1_array uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    extent1_i Inner
+    extent1_in Inner
+    extent1_out Inner
+    extent2 Inner
+    extent2_array Inner
+    extent2_i Inner
+    extent2_in Inner
+    extent2_out Inner
+    extent3 Inner
+    extent3_array Inner
+}
+
+table NameTypes7
+{
+    one0  extent1_i
+    many0 [..4]extent1_i
+    one1  extent1_in
+    many1 [..4]extent1_in
+    one2  extent1_out
+    many2 [..4]extent1_out
+    one3  extent2
+    many3 [..4]extent2
+    one4  extent2_array
+    many4 [..4]extent2_array
+    one5  extent2_i
+    many5 [..4]extent2_i
+    one6  extent2_in
+    many6 [..4]extent2_in
+    one7  extent2_out
+    many7 [..4]extent2_out
+    one8  extent3
+    many8 [..4]extent3
+    one9  extent3_array
+    many9 [..4]extent3_array
+}
+
+table NameFields7
+{
+    extent1_i uint32
+    extent1_in uint32
+    extent1_out uint32
+    extent2 uint32
+    extent2_array uint32
+    extent2_i uint32
+    extent2_in uint32
+    extent2_out uint32
+    extent3 uint32
+    extent3_array uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

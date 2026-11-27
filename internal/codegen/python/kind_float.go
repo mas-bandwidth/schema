@@ -3,7 +3,7 @@ package python
 import (
 	"math"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // The float kinds: float32 and float64 ride as their IEEE-754 bit patterns,

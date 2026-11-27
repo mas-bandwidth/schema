@@ -9,11 +9,17 @@ out=build/js-text-boundary/$mode
 source=test/conformance/js/main.mjs
 rm -rf "$out"
 mkdir -p "$out"
-# a driver copy imports the fixed-root bridge, the write-refusal surfaces and
-# the message-load verdict (messageverdict.mjs) from beside it
-cp test/conformance/js/fixed.mjs "$out/fixed.mjs"
-cp test/conformance/js/writerefusal.mjs "$out/writerefusal.mjs"
-cp test/conformance/js/messageverdict.mjs "$out/messageverdict.mjs"
+# a driver copy imports its sibling modules (the fixed-root bridge, the
+# write-refusal surfaces, the message-load verdict, the 2026-11-22 surfaces)
+# from beside it: copy every one, so a module main.mjs gains is never missing
+# from the copy (surfaces1122.mjs was, from f259a7aa3a)
+copy_siblings() {
+    for m in test/conformance/js/*.mjs; do
+        case "$m" in */main.mjs|*.test.mjs) continue ;; esac
+        cp "$m" "$1/"
+    done
+}
+copy_siblings "$out"
 main="$root/$source"
 if [ "$mode" = replacement ]; then
     anchor='const jsonUTF8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });'
@@ -23,9 +29,18 @@ if [ "$mode" = replacement ]; then
     if cmp -s "$source" "$out/main.mjs"; then echo 'negative control changed nothing' >&2; exit 1; fi
     main="$root/$out/main.mjs"
 fi
+# the wrapper narrows the surfaces to the three text ones and keeps every
+# `unit <key>` line the real driver's list names: an opt-in unit (MANIFEST.txt
+# `opt-in`, test/conformance/harness/optin.go) left out of the list is handed
+# to no leg and scored ABSENT, which a ticked leg fails (the shapes rows did).
+# A list with no unit line fails the wrapper's list, so the harness says so.
 cat > "$out/driver" <<WRAP
 #!/bin/sh
-if [ "\$2" = list ]; then printf '%s\n' json-read json-write json-hostile; exit 0; fi
+if [ "\$2" = list ]; then
+    printf '%s\n' json-read json-write json-hostile
+    "\${NODE:-node}" "$main" "\$1" list | grep '^unit '
+    exit
+fi
 exec "\${NODE:-node}" "$main" "\$@"
 WRAP
 chmod +x "$out/driver"
@@ -41,9 +56,7 @@ if [ "$mode" = positive ]; then
     # The reader accepts exactly one leading BOM. Preserve the byte boundary:
     # stripping one here would let the reader incorrectly accept a double BOM.
     mkdir -p "$out/bom/single" "$out/bom/double" "$out/bom/strict" "$out/bom/buffer" "$out/bom/stripped"
-    cp test/conformance/js/fixed.mjs "$out/bom/fixed.mjs"
-    cp test/conformance/js/writerefusal.mjs "$out/bom/writerefusal.mjs"
-    cp test/conformance/js/messageverdict.mjs "$out/bom/messageverdict.mjs"
+    copy_siblings "$out/bom"
     printf '\357\273\277{}\n' > "$out/bom/single/RootConfig.json"
     printf '\357\273\277\357\273\277{}\n' > "$out/bom/double/RootConfig.json"
     printf 'json-hostile bom-single tabledemo RootConfig %s/bom/single 0,0,0,0,0,false,read\njson-hostile bom-double tabledemo RootConfig %s/bom/double refused\n' "$out" "$out" > "$out/bom/manifest"
@@ -73,7 +86,11 @@ printf 'json-hostile illformed-in-bound tabledemo RootConfig %s/inbound/text ref
 "${NODE:-node}" "$main" "$out/inbound/manifest" json-hostile "$out/inbound/replaced"
 [ "$(head -n 1 "$out/inbound/strict/illformed-in-bound")" = refused ] || { echo 'the strict boundary read an ill-formed byte' >&2; exit 1; }
 [ "$(head -n 1 "$out/inbound/replaced/illformed-in-bound")" = read ] || { echo 'negative control left replacement decoding refusing the in-bound row' >&2; exit 1; }
-if grep '^  js / ' "$out/log" | grep -v 'js / json-hostile: str-illformed-at-bound:'; then
+# The rows a replacing decoder may read are the ones whose input holds an
+# ill-formed UTF-8 byte sequence: str-illformed-at-bound, and the two 2026-11-22
+# regression rows (380afe3aa7) that put one inside a comment (0xFF, and the
+# encoded lone surrogate ED A0 80). Any other row it changes is a failure.
+if grep '^  js / ' "$out/log" | grep -vE 'js / json-hostile: (str-illformed-at-bound|rr-comment-illformed-utf8|rr-comment-lone-surrogate):'; then
     cat "$out/log"; echo 'replacement decoding changed an unrelated row' >&2; exit 1
 fi
 grep -Eq '^json-read +pass ' "$out/log"

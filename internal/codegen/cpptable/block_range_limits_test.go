@@ -49,3 +49,41 @@ func TestCPPBlockRangeChecksElideStorageLimits(t *testing.T) {
 		}
 	}
 }
+
+const cppBlockFloatEndsSchema = `package probe
+fixed table Floats {
+ level float32 = 0.0 | min = 0.0, max = 0.1, resolution = 0.01
+}
+`
+
+// TestCPPBlockFloatRangeEndsAreHeldAtTheFieldWidth: BlockBytes holds a float32
+// field against float32 ends (max = 0.1 admits the float32 0.1, as Go, Rust and
+// C# do and as tables/examples/Tables.schema FloatBound states; a compressed
+// float is float32 by SPEC §4.3, so every ranged float is one).
+// A double literal against a float32 field promotes
+// it, refuses the float32 0.1 and draws -Wdouble-promotion (#424).
+func TestCPPBlockFloatRangeEndsAreHeldAtTheFieldWidth(t *testing.T) {
+	files, err := Generate(loadUnitFromSource(t, cppBlockFloatEndsSchema))
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	var src string
+	for name, data := range files {
+		if strings.HasSuffix(name, "Block.h") {
+			src += string(data)
+		}
+	}
+	if src == "" {
+		t.Fatal("no block header generated")
+	}
+	for _, want := range []string{
+		"block.projection->level >= 0.0f && block.projection->level <= 0.1f",
+	} {
+		if !strings.Contains(src, want) {
+			t.Errorf("BlockBytes range check is missing %q", want)
+		}
+	}
+	if strings.Contains(src, "block.projection->level <= 0.1 )") {
+		t.Error("BlockBytes holds the float32 field against a double end")
+	}
+}
