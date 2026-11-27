@@ -3,7 +3,7 @@ package cpptable
 import (
 	"fmt"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // AN ARM IS A FIELD LINE (docs/SPEC-TABLES.md §2.6), so this file is the

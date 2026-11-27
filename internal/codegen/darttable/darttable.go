@@ -27,8 +27,8 @@ import (
 	"sort"
 	"strings"
 
-	schemacheck "github.com/mas-bandwidth/schema/v2/internal/check"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	schemacheck "github.com/mas-bandwidth/schema/v3/internal/check"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // tkU8 is the table-wire kind of a uint8 (docs/SPEC-TABLES.md §3), the one

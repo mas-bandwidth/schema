@@ -3,7 +3,7 @@ package elixirtable
 import (
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // cardUnit builds a one-table unit with the given fields, so a test can ask

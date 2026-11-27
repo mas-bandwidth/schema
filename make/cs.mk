@@ -1651,6 +1651,27 @@ packet-end-cs-negative-control: build/packet-end/cs/.stamp
 
 test-cs: packet-end-cs packet-end-cs-negative-control
 
+# THE PACKET-VOID CORPUS, C# (SPEC §4.8; make/checks/packet-void.mk): the
+# driver answers every case of testdata/wire/packet-void/cases.txt through the
+# generated public write and one-packet read, in a Debug build (the writer's
+# Debug.Assert contracts live) and a Release build; tools/casegate refuses a
+# case with no answer.
+.PHONY: packet-void-cs
+PACKET_VOID_CS := build/packet-void/cs
+
+$(PACKET_VOID_CS)/.stamp: bin/schema test/packet-void/Void.schema make/cs.mk
+	@rm -rf $(PACKET_VOID_CS)/generated
+	./bin/schema generate --lang cs --out $(PACKET_VOID_CS)/generated $(PACKET_VOID_SCHEMA)
+	@touch $@
+
+packet-void-cs: $(PACKET_VOID_CS)/.stamp build/casegate
+	$(DOTNET) build test/packet-void/cs/packet-void.csproj -c Debug -o $(PACKET_VOID_CS)/debug \
+		-p:ArtifactsPath="$(CURDIR)/$(PACKET_VOID_CS)/artifacts" --nologo -v quiet
+	$(call packet_void_gate,cs) $(DOTNET) $(PACKET_VOID_CS)/debug/packet-void.dll $(PACKET_VOID_PINS)
+	$(DOTNET) build test/packet-void/cs/packet-void.csproj -c Release -o $(PACKET_VOID_CS)/release \
+		-p:ArtifactsPath="$(CURDIR)/$(PACKET_VOID_CS)/artifacts" --nologo -v quiet
+	$(call packet_void_gate,cs) $(DOTNET) $(PACKET_VOID_CS)/release/packet-void.dll $(PACKET_VOID_PINS)
+
 # THE PACKET-WRITE COMPRESSED-FLOAT RANGE GATE (docs/SPEC.md §5.1 row 10,
 # docs/PACKET-WIRE-ALGORITHM.md §2.5): the generated packet writer holds a
 # compressed float to finite and inside [min, max] before quantizing, with a

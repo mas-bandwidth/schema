@@ -18,9 +18,9 @@ package compiler
 import (
 	"fmt"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/luatable"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/lua"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/luatable"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 type luaTarget struct{}

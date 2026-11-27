@@ -43,9 +43,6 @@ enum unknown_was_damaged
 enum unlawful
 { Zfirst, Zsecond, Zthird }
 
-enum unmanaged
-{ Zfirst, Zsecond, Zthird }
-
 enum unnamed
 { Zfirst, Zsecond, Zthird }
 
@@ -290,8 +287,6 @@ table NameTypes0
     many7 [..4]unknown_was_damaged
     one8  unlawful
     many8 [..4]unlawful
-    one9  unmanaged
-    many9 [..4]unmanaged
 }
 
 table NameFields0

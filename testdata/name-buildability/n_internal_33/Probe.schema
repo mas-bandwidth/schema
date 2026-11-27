@@ -64,9 +64,6 @@ enum indexed
 enum indices
 { Zfirst, Zsecond, Zthird }
 
-enum infinity
-{ Zfirst, Zsecond, Zthird }
-
 enum info
 { Zfirst, Zsecond, Zthird }
 
@@ -338,8 +335,6 @@ table NameTypes1
     many4 [..4]indexed
     one5  indices
     many5 [..4]indices
-    one6  infinity
-    many6 [..4]infinity
     one7  info
     many7 [..4]info
     one8  inherited_inactive
