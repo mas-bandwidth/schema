@@ -33,6 +33,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 
+	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -172,6 +173,7 @@ func luauFuzzHost(t *testing.T) string {
 		rel := filepath.Join("build", "luaufuzzhost", "luaufuzzhost")
 		full := filepath.Join(root, rel)
 		if _, err := os.Stat(full); err != nil {
+			testinputs.Build(t)
 			cmd := testproc.Command(t, "make", rel)
 			cmd.Dir = root
 			if out, merr := cmd.CombinedOutput(); merr != nil {

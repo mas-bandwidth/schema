@@ -1,0 +1,220 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum aend
+{ Zfirst, Zsecond, Zthird }
+
+enum arm_id
+{ Zfirst, Zsecond, Zthird }
+
+enum armkind
+{ Zfirst, Zsecond, Zthird }
+
+enum armref
+{ Zfirst, Zsecond, Zthird }
+
+enum byid
+{ Zfirst, Zsecond, Zthird }
+
+enum dstsize
+{ Zfirst, Zsecond, Zthird }
+
+enum f32bits
+{ Zfirst, Zsecond, Zthird }
+
+enum fracpart
+{ Zfirst, Zsecond, Zthird }
+
+enum intpart
+{ Zfirst, Zsecond, Zthird }
+
+enum isblob
+{ Zfirst, Zsecond, Zthird }
+
+enum key_id
+{ Zfirst, Zsecond, Zthird }
+
+enum keyok
+{ Zfirst, Zsecond, Zthird }
+
+enum keyref
+{ Zfirst, Zsecond, Zthird }
+
+enum keytext
+{ Zfirst, Zsecond, Zthird }
+
+enum kindbad
+{ Zfirst, Zsecond, Zthird }
+
+enum mapkey
+{ Zfirst, Zsecond, Zthird }
+
+enum monthdays
+{ Zfirst, Zsecond, Zthird }
+
+enum nonfinite
+{ Zfirst, Zsecond, Zthird }
+
+enum req_seen_0
+{ Zfirst, Zsecond, Zthird }
+
+enum req_seen_1
+{ Zfirst, Zsecond, Zthird }
+
+enum rootval
+{ Zfirst, Zsecond, Zthird }
+
+enum tagw
+{ Zfirst, Zsecond, Zthird }
+
+enum uat
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    aend Inner
+    arm_id Inner
+    armkind Inner
+    armref Inner
+    byid Inner
+    dstsize Inner
+    f32bits Inner
+    fracpart Inner
+    intpart Inner
+    isblob Inner
+}
+
+table NameTypes0
+{
+    one0  aend
+    many0 [..4]aend
+    one1  arm_id
+    many1 [..4]arm_id
+    one2  armkind
+    many2 [..4]armkind
+    one3  armref
+    many3 [..4]armref
+    one4  byid
+    many4 [..4]byid
+    one5  dstsize
+    many5 [..4]dstsize
+    one6  f32bits
+    many6 [..4]f32bits
+    one7  fracpart
+    many7 [..4]fracpart
+    one8  intpart
+    many8 [..4]intpart
+    one9  isblob
+    many9 [..4]isblob
+}
+
+table NameFields0
+{
+    aend uint32
+    arm_id uint32
+    armkind uint32
+    armref uint32
+    byid uint32
+    dstsize uint32
+    f32bits uint32
+    fracpart uint32
+    intpart uint32
+    isblob uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    key_id Inner
+    keyok Inner
+    keyref Inner
+    keytext Inner
+    kindbad Inner
+    mapkey Inner
+    monthdays Inner
+    nonfinite Inner
+    req_seen_0 Inner
+    req_seen_1 Inner
+}
+
+table NameTypes1
+{
+    one0  key_id
+    many0 [..4]key_id
+    one1  keyok
+    many1 [..4]keyok
+    one2  keyref
+    many2 [..4]keyref
+    one3  keytext
+    many3 [..4]keytext
+    one4  kindbad
+    many4 [..4]kindbad
+    one5  mapkey
+    many5 [..4]mapkey
+    one6  monthdays
+    many6 [..4]monthdays
+    one7  nonfinite
+    many7 [..4]nonfinite
+    one8  req_seen_0
+    many8 [..4]req_seen_0
+    one9  req_seen_1
+    many9 [..4]req_seen_1
+}
+
+table NameFields1
+{
+    key_id uint32
+    keyok uint32
+    keyref uint32
+    keytext uint32
+    kindbad uint32
+    mapkey uint32
+    monthdays uint32
+    nonfinite uint32
+    req_seen_0 uint32
+    req_seen_1 uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    rootval Inner
+    tagw Inner
+    uat Inner
+}
+
+table NameTypes2
+{
+    one0  rootval
+    many0 [..4]rootval
+    one1  tagw
+    many1 [..4]tagw
+    one2  uat
+    many2 [..4]uat
+}
+
+table NameFields2
+{
+    rootval uint32
+    tagw uint32
+    uat uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}

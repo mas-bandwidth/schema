@@ -439,7 +439,131 @@ return function(ctx: any): { [string]: Surface }
 		end
 	end
 
+	-- THE SHAPE ROWS (`write-refusal-shape`; docs/SPEC-CONFORMANCE.md
+	-- DW-TABLE-SHAPE): the row's token is a value of the WRONG KIND, put where
+	-- the path names, and the root's own writer must refuse it by its answer
+	-- (nil), never by raising. moo spells `int` 1, `float` 1.5, `numtext`
+	-- "1.5", `text` "x", `bool` true, `map` {} and `seq` { 1 }. Three have no
+	-- wrong-kind spelling here and answer `unrepresentable`: `null` in a field
+	-- or an element is nil, which IS the field at its default (a table holds no
+	-- nil); `improper` names no moo value; and `map` or `seq` where a record, a
+	-- union, an array or a map belongs is a moo table, that value's own
+	-- spelling. `null` as the whole value is nil handed to the writer.
+	local SHAPE_TABLE_SHAPES = { tab = true, union = true, arr = true, map = true, ptr = true }
+
+	local function shapeToken(token: string): any
+		if token == "int" then return 1 end
+		if token == "float" then return 1.5 end
+		if token == "numtext" then return "1.5" end
+		if token == "text" then return "x" end
+		if token == "bool" then return true end
+		if token == "map" then return {} end
+		if token == "seq" then return { 1 } end
+		return nil
+	end
+
+	-- shapeSet puts the token's value at `path` in `v` and answers true when
+	-- the token has no wrong-kind spelling there (nothing is set). A path
+	-- ending `f[i]` makes the array f its first i elements as loaded, then the
+	-- value; a path ending in an arm's name selects that arm (its tag, 1-based
+	-- in declaration order) and makes the value its payload.
+	local function shapeSet(St: any, root: string, v: any, path: string, token: string): boolean
+		if token == "null" or token == "improper" then return true end
+		local value = shapeToken(token)
+		local prefix, last = string.match(path, "^(.*)%.([^.]+)$")
+		if prefix ~= nil and string.find(last :: string, "%[") == nil then
+			local _, pfd, pidx = wrefWalk(St, root, v, prefix :: string)
+			local ut: string? = nil
+			if pfd.s == "union" and pidx == nil then ut = pfd.t end
+			if pfd.s == "arr" and pidx ~= nil and pfd.e ~= nil and pfd.e.s == "union" then ut = pfd.e.t end
+			if ut ~= nil then
+				local union, arm = wrefWalk(St, root, v, path)
+				local tag = nil
+				for i, a in St.lookup(ut).arms do
+					if a.name == last then tag = i end
+				end
+				if tag == nil then error("driver: " .. path .. ": no arm " .. tostring(last), 0) end
+				local ad: any = arm.f or arm
+				if type(value) == "table" and SHAPE_TABLE_SHAPES[ad.s] then return true end
+				union.Type = tag
+				union[arm.slot] = value
+				return false
+			end
+		end
+		local owner, fd, idx = wrefWalk(St, root, v, path)
+		local d: any = if idx ~= nil and fd.s == "arr" then fd.e else fd
+		if type(value) == "table" and SHAPE_TABLE_SHAPES[d.s] then return true end
+		if idx == nil then
+			owner[fd.slot] = value
+			return false
+		end
+		local old = owner[fd.slot]
+		local arr = {}
+		for i = 1, idx - 1 do
+			if type(old) ~= "table" or old[i] == nil then error("driver: " .. path .. ": element " .. (i - 1) .. " is not loaded", 0) end
+			arr[i] = old[i]
+		end
+		arr[idx] = value
+		owner[fd.slot] = arr
+		if owner[fd.slot .. "Count"] ~= nil then owner[fd.slot .. "Count"] = idx end
+		return false
+	end
+
+	local function runShape()
+		for _, f in ctx.kind("write-refusal-shape") do
+			local name, key, root, wire, path, what, text = f[2], f[3], f[4], f[5], f[6], f[7], f[8]
+			if not carried(nil, key) then
+				ctx.say(name, nil)
+				continue
+			end
+			ctx.tables(key)
+			local St: any = ctx.module(key, "schema_tables")
+			local d: any = St.lookup(root)
+			if d == nil then
+				ctx.say(name, nil)
+				continue
+			end
+			local v: any = ctx.read(key, root, ctx.inputs(wire))
+			if v == nil then
+				error("driver: " .. name .. ": load refused " .. wire, 0)
+			end
+			local unrep = false
+			if what ~= "shape" then
+				unrep = wrefSet(key, St, root, v, path, what, text) == true
+			elseif path == "." then
+				if text == "improper" then
+					unrep = true
+				elseif text == "null" then
+					v = nil
+				else
+					v = shapeToken(text)
+					-- a moo table IS a record: the whole value as one is the
+					-- root's own spelling
+					if type(v) == "table" then unrep = true end
+				end
+			else
+				unrep = shapeSet(St, root, v, path, text)
+			end
+			if unrep then
+				ctx.say(name, "unrepresentable\n")
+				continue
+			end
+			-- a RAISED error is not a refusal: it is answered as what it is
+			-- (in the answer itself, since stdout is this leg's answer
+			-- channel), so the row goes red
+			local ok, out = pcall(ctx.write, key, root, v)
+			if not ok then
+				ctx.say(name, "raised: " .. (string.gsub(tostring(out), "\n", " ")) .. "\n")
+			elseif out == nil then
+				ctx.say(name, "refused\n")
+			else
+				ctx.say(name, "wrote\n")
+			end
+		end
+	end
+
 	local surfaces: { [string]: Surface } = {}
+	surfaces["write-refusal-shape"] = { carried = carried, run = runShape }
 	for _, s in { "write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json", "write-refusal-cook", "write-refusal-block" } do
 		surfaces[s] = {
 			carried = carried,

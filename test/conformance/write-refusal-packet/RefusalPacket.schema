@@ -1,0 +1,59 @@
+package packetrefusal
+
+enum Grade
+{
+    Bronze
+    Silver
+    Gold
+}
+
+type Laser
+{
+    power uint32
+}
+
+type Missile
+{
+    fuel uint32
+}
+
+union Shot
+{
+    laser Laser
+    missile Missile
+}
+
+// a ranged int16 that rides only as a union arm's payload (SPEC.md §5.1 row 1)
+type Small
+{
+    v int16 | min = -5, max = 5
+}
+
+union Pick
+{
+    small Small
+}
+
+type PacketWriteRefusal
+{
+    scalar         int32   | min = 0, max = 10
+    narrow         bits(7)
+    grade          Grade
+    window         [2..8]uint32
+    text           string(8)
+    shot           Shot
+    fixed_constant int32 = 5 | min = 5, max = 5
+    reserved_zero  int32 = 0 | min = 0, max = 0
+    trio           [3]int16 | min = -5, max = 5
+    // a [N]uint8 a leg may hold in its own byte container (Squirrel's blob):
+    // every "wrote" row writes its fresh value, so a length check that names
+    // the wrong container refuses the whole lawful half (SPEC.md §5.1, SF-20)
+    octets         [4]uint8
+    ints           [..3]int16 | min = -5, max = 5
+    pick           Pick
+    huge           int128 | min = -10, max = 100000000000000000000
+    fx             fixed(16, 16) | min = -10, max = 10
+    ufx            ufixed(32, 32) = 1 | min = 1, max = 4000000000
+    const(0xAB, 8)
+    reserved(5)
+}

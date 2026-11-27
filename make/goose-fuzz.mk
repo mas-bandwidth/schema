@@ -130,10 +130,12 @@ tables-goose-wire-fuzz-leb-negative-control tables-goose-wire-fuzz-utf8-negative
 # every verdict and reason to the engine's; an accept's value is held by its
 # re-saved wire, which must be the input byte for byte where the input is the
 # engine's own encode, and otherwise by its canonical text's digest and the
-# engine's encode of that text (make/goose-hostile.sh). The port reads the `wire` and `packet` carriers
-# today; the text, message and announcement carriers are absences held by name
-# in test/goose-hostile/absent-carriers.tsv until the goose text and message
-# forms land, a wire or packet case the port cannot read is held by name in
+# engine's encode of that text (make/goose-hostile.sh). The runner reads the
+# `wire`, `message` and `packet` carriers today; the text, announcement and
+# message_novocab carriers are absences held by name in
+# test/goose-hostile/absent-carriers.tsv until the runner dispatches them (the
+# port has their readers; docs/roadmap.sexp goose/hostile-runner-carriers), a
+# wire or packet case the port cannot read is held by name in
 # test/goose-hostile/absent-cases.tsv, and tools/hostileledger holds the run to
 # the corpus folder: every other registered case ran, or the gate is red.
 # test/goose-hostile/known-findings.tsv carries each disagreement by name with
@@ -172,12 +174,16 @@ schema-goose-runs-hostile-corpus-negative-control: $(GOOSE_FUZZ_SCHEMA)
 # the two wire rows past a total, wire-text-total-past and
 # wire-text-total-and-count, and on nothing else. Both are taken out because
 # wire-text-total-and-count is past its [..4] bound as well as its total, and
-# under strict-only (docs/plans/strict-only.md) either refuses it.
+# under strict-only (docs/plans/strict-only.md) either refuses it. The bound
+# is taken out ONLY for a field that carries a total: the count bound is one
+# check for every bounded field, and taking it out everywhere also reds the
+# inner-bound rows (inner-variable-loose/tight-bytes-past-capacity), which
+# this control does not own.
 .PHONY: schema-goose-runs-hostile-corpus-total-negative-control
 schema-goose-runs-hostile-corpus-total-negative-control: $(GOOSE_FUZZ_SCHEMA)
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
 	@mkdir -p $(GOOSE_FUZZ_DIR)
-	@if SCHEMA_GOOSE_HOSTILE_SABOTAGE='s|if d.text_total > 0 {|if d.text_total < 0 { // SABOTAGED: the total keeps nothing out|;s|} else if count > d.bound as! u64 {|} else if count > d.bound as! u64 \&\& false { // SABOTAGED: the bound keeps nothing out|' \
+	@if SCHEMA_GOOSE_HOSTILE_SABOTAGE='s|if d.text_total > 0 {|if d.text_total < 0 { // SABOTAGED: the total keeps nothing out|;s|} else if count > d.bound as! u64 {|} else if count > d.bound as! u64 \&\& d.text_total <= 0 { // SABOTAGED: a list under a total has no bound|' \
 		sh make/goose-hostile.sh "$(GOOSE)" ./$(GOOSE_FUZZ_SCHEMA) $(GOOSE_HOSTILE_CORPUS) $(GOOSE_FUZZ_DIR)/hostile-total-plant \
 		>$(GOOSE_FUZZ_DIR)/hostile-total-plant.log 2>&1; then \
 		cat $(GOOSE_FUZZ_DIR)/hostile-total-plant.log; \

@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 )
 
 func TestLuaLintDedupePreservesFirstNamesAndExactBytes(t *testing.T) {
@@ -32,6 +34,7 @@ func TestLuaLintDedupePreservesFirstNamesAndExactBytes(t *testing.T) {
 		paths = append(paths, path)
 	}
 	output := filepath.Join(dir, "unique")
+	testinputs.Files(t, "tools/lua-luacheck-dedupe.py")
 	command := exec.Command("python3", "../../tools/lua-luacheck-dedupe.py", output)
 	command.Stdin = strings.NewReader(strings.Join(paths, "\x00") + "\x00")
 	if log, err := command.CombinedOutput(); err != nil {
@@ -69,6 +72,7 @@ func TestLuaLintDedupeRefusesUnreadableInput(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	missing := filepath.Join(dir, "missing.lua")
+	testinputs.Files(t, "tools/lua-luacheck-dedupe.py")
 	command := exec.Command("python3", "../../tools/lua-luacheck-dedupe.py", filepath.Join(dir, "unique"))
 	command.Stdin = strings.NewReader(missing + "\x00")
 	log, err := command.CombinedOutput()
