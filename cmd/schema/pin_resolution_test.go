@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mas-bandwidth/schema/v2/internal/modulemove/pincorpus"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/modulemove/pincorpus"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 // TestPinDocSeparatesOfflineChecksFromGoResolution is F-183's fast half: the

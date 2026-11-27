@@ -23,7 +23,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testreg"
+	"github.com/mas-bandwidth/schema/v3/internal/testreg"
 )
 
 // alignInputs is a registry test's inputs for the align-arrays family.

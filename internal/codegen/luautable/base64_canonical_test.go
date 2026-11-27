@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/luau/luaurun"
 )
 
 // goBase64Verdict is schema-go's own base64 verdict, the step generated

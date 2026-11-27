@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/irtest"
+	"github.com/mas-bandwidth/schema/v3/internal/irtest"
 )
 
 func TestPythonCookBlobRefName(t *testing.T) {

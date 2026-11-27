@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
+	"github.com/mas-bandwidth/schema/v3/internal/fixedproof"
 )
 
 // EVERY C# (unity) STORE OF A COMPRESSED FLOAT GOES THROUGH THE -0 → +0

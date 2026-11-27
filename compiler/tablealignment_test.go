@@ -2,18 +2,18 @@ package compiler
 
 import (
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v3/ir"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 // A variable wide root used to fail C++'s Alloc<T> assertion (16 <= 8).

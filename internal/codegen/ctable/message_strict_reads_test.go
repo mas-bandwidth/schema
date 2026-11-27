@@ -9,10 +9,10 @@ import (
 	"strings"
 	"testing"
 
-	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	cgen "github.com/mas-bandwidth/schema/v3/internal/codegen/c"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // The message-form read rules of the 2026-11-21 review (c.md C-1, C-2, C-3;

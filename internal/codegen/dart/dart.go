@@ -48,10 +48,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/internal/ast"
-	schemacheck "github.com/mas-bandwidth/schema/v2/internal/check"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/genheader"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/ast"
+	schemacheck "github.com/mas-bandwidth/schema/v3/internal/check"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/genheader"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // Generate returns basename.dart -> file contents for every file of the

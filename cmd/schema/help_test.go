@@ -11,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/languages"
+	"github.com/mas-bandwidth/schema/v3/compiler"
+	"github.com/mas-bandwidth/schema/v3/internal/languages"
 )
 
 const aiGuideURL = "https://github.com/mas-bandwidth/schema/blob/main/docs/AI.md"

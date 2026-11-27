@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
+	"github.com/mas-bandwidth/schema/v3/internal/testinputs"
 )
 
 // A conformance driver is compiled from sources the build tool does not own

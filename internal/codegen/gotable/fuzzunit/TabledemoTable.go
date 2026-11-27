@@ -17,7 +17,7 @@ package tabledemo
 
 import (
 	"encoding/binary"
-	"github.com/mas-bandwidth/schema/v2/tables/goruntime"
+	"github.com/mas-bandwidth/schema/v3/tables/goruntime"
 	"math"
 	"slices"
 	"sync"

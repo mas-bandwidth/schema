@@ -27,7 +27,7 @@ func receiptTree(t *testing.T) (root string, recipes []recipe, stream []string) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	const pkg = `"Package":"github.com/mas-bandwidth/schema/v2/pkg"`
+	const pkg = `"Package":"github.com/mas-bandwidth/schema/v3/pkg"`
 	stream = []string{
 		`{"Action":"start",` + pkg + `}`,
 		`{"Action":"output",` + pkg + `,"Test":"TestFirst","Output":"` + gateSkipMarker + `\n"}`,

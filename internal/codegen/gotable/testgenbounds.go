@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // The bound probes of docs/SPEC-TABLES.md §16.11 ("The bound probes"): for

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 )
 
 // TestFixedBitsPastWidthRefuses pins docs/FIXED-FORM-ALGORITHM.md §4.5 on the

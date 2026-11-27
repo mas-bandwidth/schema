@@ -3,21 +3,33 @@ package squirreltable_test
 import (
 	"encoding/binary"
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirreltable"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/compiler"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/squirrel"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/squirrel/sqrun"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/squirreltable"
+	"github.com/mas-bandwidth/schema/v3/internal/testinputs"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
+
+// fixedCorpusBuild runs the corpus's own make target once per test binary, so
+// no test here depends on an earlier manual make; the parallel tests that ask
+// for the corpus share the one run and its answer.
+var fixedCorpusBuild struct {
+	once sync.Once
+	out  []byte
+	err  error
+}
 
 func fixedCorpus(t *testing.T) string {
 	t.Helper()
@@ -26,11 +38,27 @@ func fixedCorpus(t *testing.T) string {
 		t.Fatal(err)
 	}
 	corpus := filepath.Join(root, "build", "fixedform-corpus")
-	if _, err := os.Stat(filepath.Join(corpus, "manifest.txt")); err != nil {
-		if slowtest.CorpusRequired() {
-			t.Fatalf("the fixed-form corpus is the byte oracle and it is absent: %v (run make tables-fixedform-corpus)", err)
+	manifest := filepath.Join(corpus, "manifest.txt")
+	// A default `go test` runs no make: it reads a corpus already built, and
+	// the gate skips it by name when there is none. The slow tier builds it
+	// (make is incremental, so a stale corpus is refreshed, never trusted).
+	if !slowtest.Enabled() {
+		if _, err := os.Stat(manifest); err == nil {
+			return corpus
 		}
-		t.Skipf("the fixed-form corpus is not built (make tables-fixedform-corpus): %v", err)
+	}
+	slowtest.Gate(t, "make tables-fixedform-corpus (the C++ reference's fixed-form byte oracle)")
+	testinputs.Build(t, "test/tables", "tables")
+	fixedCorpusBuild.once.Do(func() {
+		cmd := testproc.Command(t, "make", "--no-print-directory", "tables-fixedform-corpus")
+		cmd.Dir = root
+		fixedCorpusBuild.out, fixedCorpusBuild.err = cmd.CombinedOutput()
+	})
+	if fixedCorpusBuild.err != nil {
+		t.Fatalf("the fixed-form corpus is the byte oracle and `make tables-fixedform-corpus` could not build it: %v\n%s", fixedCorpusBuild.err, fixedCorpusBuild.out)
+	}
+	if _, err := os.Stat(manifest); err != nil {
+		t.Fatalf("`make tables-fixedform-corpus` succeeded and wrote no manifest: %v", err)
 	}
 	return corpus
 }

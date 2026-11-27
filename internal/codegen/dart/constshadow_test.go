@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/dart"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/dart"
 )
 
 // TestFieldDefaultNamingShadowedConstant pins SPEC §4.2 (a field never shadows

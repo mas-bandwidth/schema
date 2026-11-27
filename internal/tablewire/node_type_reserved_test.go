@@ -4,8 +4,8 @@ import (
 	"encoding/binary"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // A node record's TYPE reference resolves to an id (docs/SPEC-TABLES.md §3.1).

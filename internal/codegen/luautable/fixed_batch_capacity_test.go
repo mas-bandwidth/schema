@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/luau/luaurun"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 )
 
 // fixedBatchCapacitySchema is one fixed table so a file of five records is

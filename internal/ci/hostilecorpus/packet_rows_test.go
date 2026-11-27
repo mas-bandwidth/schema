@@ -7,7 +7,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
+	"github.com/mas-bandwidth/schema/v3/internal/testinputs"
 )
 
 // TestPacketRowsAndEmptyGuard requires the corpus to carry a packet row for

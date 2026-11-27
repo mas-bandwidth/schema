@@ -2,8 +2,8 @@ package gotable
 
 import (
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/goname"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/goname"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // Table-only unions share the packet emitter's tag-plus-arms storage. Field

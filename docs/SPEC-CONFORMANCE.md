@@ -15,7 +15,7 @@ conformance:
   (`MANIFEST.txt` is the manifest, `FORMAT.md` states every file shape; the
   wires, JSON texts, goldens, framing vectors, cook inputs and outputs, block
   images, hostile JSON and report expectations live in the directories
-  beside it). The [accepted variable-table write bounds](#accepted-variable-table-write-bounds)
+  beside it). The [variable-table write bounds](#variable-table-write-bounds)
   run through the same harness with a focused manifest. The wider fixtures it names are under `testdata/conformance/`
   (`feature-witnesses`, `text`, `write-refusal-int`, `r19`,
   `cook-authored-optional-map`) and `testdata/golden`, `testdata/wire` and
@@ -41,8 +41,9 @@ conformance:
   ([FIXED-FORM-ALGORITHM §4.1](FIXED-FORM-ALGORITHM.md#41-the-plan)).
   Run on a target with `make verify-tablegen-<lang>`. To select this pair
   alone, pass `--only pin:bytes_lineage:` to `build/verify-tablegen-bin`.
-- **The compressed-float endpoint pins**: [`ratio-endpoints.txt`](../test/packet-cfloat-endpoints/ratio-endpoints.txt)
-  gives the packet bytes for both [accepted endpoints](#compressed-float-packet-endpoints).
+- **The compressed-float packet writer cases**: the [shared caller cases](../test/packet-write-cfloat/cases.txt)
+  and the Go and JavaScript [endpoint pins](../test/packet-cfloat-endpoints/ratio-endpoints.txt)
+  are listed under [compressed float packet writes](#compressed-float-packet-writes).
 - **The packet end pins**: [packet-end](../testdata/wire/packet-end/README.md)
   includes the [logical bit count case](#packet-end-and-the-logical-bit-count).
 - **Variable-form optional evolution** ([SPEC-TABLES §2.3](SPEC-TABLES.md)):
@@ -146,6 +147,42 @@ OWES) and is repeated here as the rule for the suite:
   `harness wire-fuzz` refuses the run, naming the file, when a vector is on disk
   and not in the index or in the index and not on disk (SPEC-TABLES.md §4.2).
   A new vector is added to the index in the commit that adds the file.
+- **MF-ROSTER: every message-fuzz root is answered or ledgered.** A root of
+  the message-fuzz roster that a leg answers with nothing (no known message
+  in any case) is dead, and `harness message-fuzz` is red on a dead root the
+  leg's `test/conformance/message-absent/<leg>.tsv` does not name, and on a
+  line there naming a root the leg now answers. Lines are `<unit>.<Root>`, a
+  tab, and the reason; the set is exact.
+- **Every conformance row file runs.** A leg's row list is its directory
+  `test/conformance/<leg>/rows/`, never a list copied by hand: `make
+  conformance-rows-<leg>` (tools/conformancerows) builds and runs every row
+  file, and Go's rows are named off the `TestRow*` functions of its rows
+  directory. A row the leg cannot answer yet is named, with its cause, in
+  `test/conformance/<leg>/rows-owed.tsv`; an owed row still runs, a failing
+  row the ledger does not name is red, and a ledgered row that passes is red
+  until its line is removed. A ledger line's cause is the failure itself,
+  read off the row's log (the compiler's error, the exception and its
+  message, the failed check): a banner around it ("error: compilation
+  failed", "Unhandled exception:", "N passed, M failed") or a line of the
+  row's own source is refused, and the line must state exactly the cause
+  the run prints for the row, so an owed row whose failure changed is red,
+  naming both causes (a person's note rides in an optional third column,
+  never compared). A row on any leg but Rust with no way to fail (no
+  non-zero exit or return from main, throw, raise or assert) checked
+  nothing and is red when it exits 0, the twin of a Rust row whose test
+  binary ran no test. The rows run nightly (ci-full.yml `conformance-rows`,
+  every leg; per pull request CI is the happy path only, #5052). Ten rows
+  also run in the legs' verify targets, the ones those targets ran by hand list before (c F4 F10 F12, cpp R15, dart E8 R8 R13,
+  java F10 R8, rust F8): `make conformance-rows-pr-<leg>` runs them through the
+  same runner, ledger and cause match (`-rows`), each against only the units
+  it reads, as a prerequisite of the leg's verify target, and
+  internal/ci/conformance_rows_pr_test.go fails when a verify target or a
+  list drops one.
+- **Every §5.6 fixed-form retirement is ledgered.** The fixed-form gates of the
+  native legs print a `SKIP`/`RETIRED` line for each test retired by
+  FIXED-FORM-ALGORITHM.md §5.6; `tools/retiredskips` holds the printed set to
+  the leg's lines of `test/conformance/fixed-retired.json` exactly, so a new
+  unledgered skip, or a ledgered retirement that no longer prints, is red.
 
 **The rules the 2026-11-22 surfaces carry**, each with its lawful twin beside
 the refusal (`MANIFEST.txt`, "THE 2026-11-22 SURFACES"):
@@ -166,7 +203,7 @@ the refusal (`MANIFEST.txt`, "THE 2026-11-22 SURFACES"):
 | SPEC-TABLES §6.5: the retaining load zeroes a PRE-FILLED report in full, every counter and the refusal ([below](#retaining-loads-zero-a-reused-report)) | `read-into` (`retain`) | `ri_retain` |
 | SPEC-TABLES §6.5, §6.6: the plain region `Load` and a fixed-root `LoadRetain` zero a PRE-FILLED report ([below](#the-plain-region-load-and-a-fixed-root-retaining-load-zero-the-report-too)) | `read-into` (`region`, `retain-fixed`) | `ri_region`, `ri_retain_fixed` |
 | FL-14, FL-15: float text ignores the process locale; a caller-buffer writer writes nothing past its text | `json-write-into` | `jwi_*` |
-| FL-11: the text depth cap (read counts every container; write counts table/type values) | `wire`, `json-read`, `json-write` | `surf_chain127_vals` (`wire`/`json-read`/`json-write`), `surf_chain128_vals` (`wire`, `no-text`); refusal `graph_chain_past_cap` |
+| FL-11: the text depth cap (read and write count every container, an empty leaf array included) | `wire`, `json-read`, `json-write` | `surf_chain127_vals` (`wire`/`json-read`/`json-write`), `surf_chain128_vals` (`wire`, `no-text`); refusals `graph_chain_past_cap`, `surf_chain128_vals_write` (row `json-depth-writers-count`) |
 | FL-16: a null `*T \| required` is written as index 0 and reads back null | `wire`, `json-read`, `json-write` | `surf_holder_null_required`, `surf_holder_present` |
 
 ## 3. The driver protocol
@@ -225,7 +262,20 @@ where the README says so.
   passes when the port refuses and fails when it accepts. The reason name,
   the detection order, counters and diagnostic text are NOT compared; a port
   should still use the specification's reason names, because they are how a
-  user finds the rule, but the suite does not enforce them.
+  user finds the rule, but the suite does not enforce them. The same holds
+  between ports: a cross-port differential (the Squirrel all-port
+  differential, `make schema-squirrel-all-port-differential`) compares two
+  refusals as the one verdict, never the bytes of either diagnostic. A
+  `message-prior` `<case>.refused` from one port equals any other port's
+  `<case>.refused`, whatever reason name, report or word each one holds; a
+  re-saved batch in `<case>` is still compared byte for byte
+  (`TestSquirrelAllPortDifferentialNormalizesOnlyTheHarnessEquivalences`).
+  It holds two ports equal wherever the harness credits both against the one
+  golden: a `retain-refusal` `save-refused` (python, ruby) equals `saved`; a
+  `read-into` `unrepresentable` (a fixed load that always takes a capacity)
+  and a `retain-refusal` answer its leg owes in `retain-refusal-owed.txt`
+  are not compared at all
+  (`TestSquirrelAllPortDifferentialLeavesUncomparableAnswersOut`).
 - **Writes are judged by bytes, exactly.** A case that requires a write
   passes only when the bytes the port produces equal the committed golden,
   byte for byte: canonical order, padding, zeros in dead bytes, every
@@ -266,16 +316,13 @@ make conformance-port DRIVER=<path-to-driver> NAME=<name>
 make conformance-port DRIVER=<path-to-driver> NAME=<name> CARDS_DRIVER='<cards driver command>'
 ```
 
-The target builds only the harness (it needs a Go toolchain and nothing else
-of any other language), writes a one-line registry naming the port, runs every
-surface the driver lists, prints the matrix and exits nonzero on any failure
-**and on any absence**: the target runs the harness with `--complete`, under
-which an absent case or surface is counted, the line `tables conformance: NOT
-CONFORMING: <n> case(s) answered absent` replaces the success footer, and the
-run fails. A run without `--complete` (the harness's own `run`) still prints
-absences as work left; `make conformance-port` is the claim that a port
-conforms, and a stub that answers nothing can never make it (its test is
-owed: `GAP-9` in §7).
+The target builds the Go harness and writes a registry containing the supplied
+driver. It checks the main tables manifest, then runs the
+[variable-table writer and readback cases](#variable-table-write-bounds) through
+the same driver. Each run uses its own output directory and passes `--complete`.
+An unlisted surface with expected cases, a surface answered absent, or an
+individual case answered absent fails the run. The executable examples are
+in [TestCompleteRunRefusesEveryAbsence](../test/conformance/harness/absence_test.go).
 The second form also runs the cards corpus. `NAME` must not be `cpp`, which is
 the name of the repository's reference leg.
 
@@ -352,6 +399,7 @@ per-port check where no shared case exercises it.
 | message-batch-refusal-resets-every-handed | a message batch read resets EVERY value it was handed, whatever the reason and wherever the refusal fell, a refusal before any body (`newer_form`, `no_vocabulary`, `batch_too_large`) included, and answers a count of `0` (SPEC-TABLES §6.5, THE CALLER'S VALUES AFTER A REFUSAL; R4). Java's `loadMessages` left the handed values as the caller held them on the capacity refusal | Java `TestMessageFormBatchJava/refusals_and_damage` (`batch_too_large_read`) |
 | fixed-lineage-refusal-resets-every-handed | a fixed batch read refused through a LINEAGE plan's check pass (an older writer's record) resets EVERY row it was handed, not only the first, the one a read filled, or those the wire reached (SPEC-TABLES §6.5, THE CALLER'S VALUES AFTER A REFUSAL; R4; census G14). Go's load already did; Go's `TestFixedVersioningRangeWidenHostile` owed defaults in row 0 only and zero in the other seven, so it went red on the conforming reset | the `read-into` row `ri_fixed_lineage_refused` (every leg); Go `TestFixedVersioningRangeWidenHostile/{range_widen,range_widen_u64,range_widen_array}` (8 rows handed) |
 | armmin-arm-born-and-text-assert | a union arm `[A..B]T` is established at count `A` (SPEC §4.2, §4.6), so the C++ union reset states the arm's birth count after the resets of the arms that share its storage; and a write of an arm below `A` is a debug assert in every C++ writer, the text writer included (SPEC §5.1, row 3; R10). Both had been dropped from the C++ generator when Wave 2 landed (#4843) | C++ `TestCppArmMinHolds` (`arm-select`, `json`) and `TestCppArmMinHoldsNegativeControl`, whose plants each fail by name when they patch nothing |
+| json-depth-writers-count | the text writer judges the depth cap of 128 at every container it writes, an empty `[]` or `{}` included, in the read's own unit (SPEC-TABLES §16.2, §16.14 W2), so a writer never emits a text its own reader refuses. Every writer had judged table and type values only, so a chain whose last node held an empty array at depth 129 was written and then refused by every reader, the Go oracle included. The refusal is the writer's -1 (§16.3) in every build, as the table-depth refusal already was | `json-write-refusal surf_chain128_vals_write` (every leg); `surf_chain127_vals` reads and writes back; Go `internal/tabletext` and Java `TestJavaTextReadDepthCap` (127 nodes write and read, 128 do neither) |
 | java-arm-born-once | selecting a counted union arm `[A..B]T` sets it at its minimum count `A` (SPEC §4.2, §4.6), so a fresh Java variable-form union value holds `A` default elements in the arm, once: the field initializer seeded `A` and the constructor added `A` more, and a `[2..4]` arm selected on a fresh value was written at count 4 where the engine writes 2. The initializer is now the empty list and the constructor alone states the birth count. The fault is in a value built by host code, which no corpus surface compares byte for byte, so the per-language engine comparison is the check | Java `TestJavaCountedMinElementsElideAtBornState` (`wire arm_selected`, `wire arm_one_set`) |
 | GAP-23 | Compressed-float range ends compare at the field's width (SPEC-TABLES §3.3); gaps Li6 | `feature-witnesses/compressed-f32-ends` |
 | GAP-24 | A float32 field is written as a float32 (SPEC-TABLES §16.2); gaps Sw11 | the `text_float*` rows |
@@ -369,7 +417,7 @@ per-port check where no shared case exercises it.
 | FL-13 | the sign of zero survives a long token (SPEC-TABLES §16.2) | `rr-num-negative-zero-long-token` (#4706) |
 | FL-20 | labels are exact 64-bit values (SPEC-TABLES §16.7) | `rr-label-past-2-53-distinct`, `rr-label-past-2-53-undefined`, `label-overflow` (#4706) |
 | FL-23 | float32 past range is refused by every writer (SPEC-TABLES §16.3) | `rr_wref_f32_past_range`, `rr_wref_f32_max`, `rr_fref_f32_past_range`, `rr_fref_f32_max`, `rr_jref_f32_past_range`, `rr_jref_f32_max` (#4706) |
-| FL-24 | text form refuses an ill-formed comment (SPEC-TABLES §16.9.1, §16.9.4) | `test/conformance/textform/refusals/comment-illformed` (#4706) |
+| FL-24 | The text form checks comment encoding, atom gaps, and document limits (SPEC-TABLES §16.9.1, §16.9.4) | Shared `test/conformance/textform/refusals/comment-illformed` and C++ `TestCPPTextFormDocumentVectors` cover document refusals. Lobster `TestLobsterTextFormLimitsAndGaps` separately checks its depth, token and byte bounds and a missing atom gap. |
 | FL-26 | a repeated binary map key is damage (SPEC-TABLES §3 (a map's entries ascend with no key twice), §2.8) | `rr_map_key_repeated`, `map_descending` (#4706) |
 | FL-39 | a fixed-form file holds at least one record (SPEC-TABLES §3.4 (load step 9)) | `rr_fixed_zero_records` (#4706) |
 | GAP-1 | A port reads `.schema` text; the grammar is complete and normative, the IR is no interchange (SPEC.md §4.2); gaps Sw1, OC1, ObjC1, Zig1, Hs1, Li2 | `testdata/conformance/grammar` (`compiler/grammar_corpus_test.go`) (#4706) |
@@ -389,13 +437,14 @@ per-port check where no shared case exercises it.
 | FL-37 | R7 labels in a skipped value (SPEC-TABLES §16.7) | `skipped-label-undefined-pointer-free` (#4757) |
 | GAP-18 | Every key in a skipped value is capped at 255 bytes (SPEC-TABLES §16.2); gaps ObjC4, Zig9, Hs9, Li8 | `skipped-key-255-bytes`, `skipped-key-256-bytes` (#4706) |
 | GAP-20 | A union and its structural payload are two levels (SPEC-TABLES §4); gaps Zig5, Hs8, Li4 | `rr-depth-placed-union-map-128`, `-129` (#4706) |
-| SF-03, SF-04 | the variable `Save` and `Measure` check rows 1–2 on every field, not only on `\| required` fields (SPEC.md §5.1 rows 1–2) | `write-refusal` (`wref_range_*`, `wref_bits_wide*` on a fixed root); `sfv_bits_wide` / `sfv_bits_ok` on the variable root `TortureCook` (a plain non-required `bits(13)`, 8192 refused and 8191 written); a ranged non-required `int` on a variable root is owed: no corpus unit with a `min` / `max` on a variable root has a write-refusal path in the hand-coded legs (#4740) |
-| SF-05, SF-06 | C and C++ debug builds assert the message save and measure write contract even when the fixed table exceeds the fixed-file record ceiling (SPEC.md §5.1 rows 1, 2, 10 and SPEC-TABLES §3.4) | `TestCMessageCeilingWriteAssert`, `TestCppMessageCeilingWriteAssert` and their `Compiled` twins. The compiled checks save and measure the same table with lawful values. A shared `write-refusal-message` case is owed until the harness has an initialized-value seed mode. The current surface seeds each value by loading a file, and this table has no file form (#4744). |
-| SF-07, SF-08 | the packet `Write` checks row 8 (text) and row 10 (compressed float) in every C# target, unity included (SPEC.md §5.1 rows 8, 10) | `write-refusal-packet` (`text_illformed`, `text_zero`, `text_long`); a compressed-float row (SF-08) is owed: `PacketWriteRefusal` declares no compressed float, and no C# leg runs this surface yet (#4740); Go runs the [accepted compressed-float endpoints](#compressed-float-packet-endpoints) |
-| SF-27 | the text read maps a deprecated enum variant to the field default (an element: None) (SPEC-TABLES §2.15 READ) | owed: the text-form corpus (`testdata/conformance/text`) carries strings only, so an enum text case needs the text surface extended (#4740) |
+| SF-03, SF-04 | the variable `Save` and `Measure` check rows 1–2 on every field, not only on `\| required` fields (SPEC.md §5.1 rows 1–2) | `write-refusal` (`wref_range_*`, `wref_bits_wide*` on a fixed root); `sfv_bits_wide` / `sfv_bits_ok` on the variable root `TortureCook` (a plain non-required `bits(13)`, 8192 refused and 8191 written); `TestGoTableWritersRefuseWhatTheirReadersRefuse/variable` generates a variable root with a plain non-required `int32 \| min = 0, max = 1000` and calls its public Go `RecMeasure` and `RecSave`: both endpoints write, while -1 and 1001 refuse (#4740) |
+| SF-05, SF-06 | C and C++ debug builds assert the message save and measure write contract even when the fixed table exceeds the fixed-file record ceiling (SPEC.md §5.1 rows 1, 2, 10 and SPEC-TABLES §3.4) | `TestCMessageCeilingWriteAssert`, `TestCppMessageCeilingWriteAssert` and their `Compiled` twins. The [message ceiling cases](#message-writes-above-the-fixed-file-ceiling) exercise both operations. A shared `write-refusal-message` case is owed until the harness has an initialized-value seed mode. The current surface seeds each value by loading a file, and this table has no file form (#4744). |
+| SF-07, SF-08 | the packet `Write` checks row 8 (text) and row 10 (compressed float) in every C# target, unity included (SPEC.md §5.1 rows 8, 10) | `write-refusal-packet` (`text_illformed`, `text_zero`, `text_long`); SF-08 runs the [shared compressed-float caller cases](#compressed-float-packet-writes) in both C# dialects; Go runs the [exact endpoint pins](#compressed-float-packet-endpoints) |
+| SF-27 | the text read maps a deprecated enum variant to the field default (an element: None) (SPEC-TABLES §2.15 READ) | Lobster `TestLobsterTextReadHoldsDeprecatedVariants`: the portable inline `Probe` fixture declares `g Grade = Gold` and `gs [..2]Grade`; `Silver \| deprecated` reads as `Gold` in `g` and `None` in `gs[0]`, while the live `Bronze` twins read as `Bronze` in both positions (#4740) |
 | SF-32, SF-33 | tooling (moo-analyze run with no output, Luau bitpacker probe) (none: not a wire rule) | none (#4740) |
 | SF-09 to SF-15 | a write check reaches every carrier: a plain field, an optional, an array element, a union arm, a keyed slot (SPEC.md §5.1 rows 1–4, 8) | `write-refusal` (`wref_*`, `wref_var_*`, `wref_shapes_*`); on `TortureCook`, `sfv_opt_bits_wide` / `sfv_opt_bits_ok`, `sfv_elem_bits_wide` / `sfv_elem_bits_ok`, and `TestRustWriteRefusalReachesEveryCarrier` (#4501, #4740) |
-| SF-13–SF-15 accepted bounds | Variable table writers accept each carrier at its declared boundary (SPEC.md §5.1 rows 1–4 and 8) | [Accepted variable-table write bounds](#accepted-variable-table-write-bounds) |
+| SF-11 (rejected finding) | Direct bounded optional string and byte-buffer fields are reserved follow-ons (SPEC-TABLES §15). | `internal/check` `TestTableRefusals` rejects direct fields `?string(8)` and `?bytes(8)`. There is no writer case for these declarations. |
+| SF-13–SF-15 write bounds | Variable table writers accept each registered carrier at its declared boundary and refuse the paired off-bound caller value using the target’s §5.1 mechanism | [Variable-table write bounds](#variable-table-write-bounds) |
 | R14 | R14: a field whose type changed refuses the WHOLE load `kind_mismatch`; only a widening reads (SPEC-TABLES.md opening, §2.3, §2.11, kind `36`, §4 THE ONE WIDENING RULE and its edits table) | refuses `message-prior prior_restring_kind` (int64 read as string), twin `message-prior prior_kept64_inside` (int64 read as int64); refuses `message-prior prior_stamp_kind` (int64 read as timestamp), twin `message-prior prior_stamped_inside`; refuses `report r14_at_int64_as_timestamp` (int64 read as timestamp, file form), twin `report r14_features_twin`; refuses `report r14_optional_pointer_as_optional` (from `*T`), twin `report r16_optional_plain_as_optional`; refuses `report r14_child_value_as_pointer` (to `*T`), twin `report r14_features_twin` (#4764) |
 | R15 | R15: a ranged announcement is checked per value: the base at the announcement, each value on the body (SPEC-TABLES.md §3.3, A RANGED ANNOUNCEMENT IS CHECKED PER VALUE) | refuses `message-prior prior_band_past` (245 against the reader's 200..240), twin `message-prior prior_band_inside` (the writer announces `uint8 \| min = 200, max = 250`, and 230 reads) (#4764) |
 | R16 | R16: optional is a widening and runs one way: `T` to `?T` passes, `?T` to `T` is refused by the baseline naming the field (SPEC-TABLES.md §2.3, §4, §18.2, §21.1; VERSIONING.md) | refuses `internal/baseline` `TestBaselineOptionalIsOneWay`, `TestRefusals/an_optional_field_made_plain`, `TestEvolutionTableFrames`; the lock, `TestLockOptionalAddRefuses`, twin `report r16_optional_plain_as_optional` (`Part` read as `?Part`, present) (#4764) |
@@ -403,19 +452,31 @@ per-port check where no shared case exercises it.
 | R17 (kind 31) | R17: the newer reader reads old data, never the other way, so kind `31` (the escape) is HELD BY NAME AND NEVER WRITTEN, and a reader that meets it ANYWHERE (a field it cannot name, one it names, an arm, an element kind, a message announcement or body, under retain-unknown) refuses the WHOLE load, as for `33` and `34` (SPEC-TABLES.md §3 kind table, `31` IS HELD BY NAME, WHERE THE READER MEETS KIND `32`, §3.3 entry shapes; VERSIONING.md promise 6) | refuses `framing varevo_kind31_escape` (unnamed field, `refused`); `report escape_unnamed_field`, `escape_named_field`, `escape_arm`, `escape_element`, `varevo_kind31_report`, twin `framing fixed_array_rides_absent` (same unit and root, reads); refuses `retain varevo_kind31_retain`, `retain varevo_2hop_step1_v1`, `retain varevo_2hop_step2_v2` (owe `refused`), twin `retain varevo_retain_v3_via_v1`; refuses an announcement entry under kind `31`: `test/conformance/harness` `TestTheRetiredAndReservedKindsRefuseTheAnnouncement`; the engine, `internal/tablewire` `TestKindHeldEscapeRefuses`, twin `report varevo_v3_compat_as_v1`; Java `TestJavaMessageKnownKindReserves31` executes the generated closed-kind predicate with lawful controls 0 (variant name), 30 (enum) and 32 (void), and its ordinary enum-bearing announcement gate preserves kind 0; `instance message_open` (`messagedemo ToolMessage`, the escape rows' unit, reads) (#4773) |
 | R17 (flags) | R17: a mask bit at or above the reader's W refuses the load, file and message (SPEC-TABLES.md §4, §3.3; SPEC.md §4.2) | refuses `report r17_flags_past_width` (VarEvo2's Read and Exec read by tblvarevo1, variable form), twin `report r17_flags_inside_width` (Read and Write from the same writer); refuses `report r17_fixed_flags_past_width` (bit 17 of a 17-variant mask, fixed form), twin `report r17_fixed_flags_inside_width` (the unforged file); refuses `message-prior prior_flags_past` (the writer's Exec, message form), twin `message-prior prior_flags_inside` (#4773) |
 | FL-38 | R8 id cap (SPEC-TABLES §3 (the id table); §3.3 (the sender)) | `frame_entries_4096`, `frame_entries_4097`; `tablewire.IdCapSchema`, `tablewire.AnnounceSchema`, `TestGoAnnouncementRefusesMoreThan4096Entries`, `TestCppAnnouncementRefusesMoreThan4096Entries` (#4685). Shared announcement rows `ann_4096_write` (writes) and `ann_4097_write` (sender refuses). Luau runs both boundaries and strictly typechecks each generated unit with `SCHEMA_SLOW=1 go test -count=1 -v ./internal/codegen/luautable -run '^TestLuauAnnouncementRefusesMoreThan4096Entries$'` |
-| FL-19 | deprecated enum element on the fixed form and compiled plan (SPEC-TABLES §2.15) | `sp-enum-elem-deprecated-array` (#4753) |
-| FL-25 | counted arrays born at their minimum (SPEC-TABLES §22.2, §2.13) | `sp-count-min-at`, `sp-count-min-below`, `sp-count-min-empty`, `sp-count-min-max`, `sp-count-min-over` (#4753) |
+| FL-14 | Float text conversions are independent of the caller’s locale (SPEC-TABLES §16.1) | `TestCJsonFloatTextIsLocaleIndependent` and `TestCPPJsonFloatTextIsLocaleIndependent` compile and run generated code under a Pashto locale with a multibyte decimal separator. They check matching C-locale output, dot-decimal input, and locale preservation. `TestLuaJsonFloatTextIgnoresLocale` executes the generated Lua reader and writer under a comma-decimal locale and checks output bytes and readback. The shared `jwi_*` rows check output buffers without changing the locale. |
+| FL-19 | A deprecated enum element reads as its default in text, fixed form, and through the compiled fixed plan (SPEC-TABLES §2.15) | `sp-enum-elem-deprecated-array` reads the text input. `report sp_enum_fixed_deprecated` and `report sp_enum_evolved_deprecated` check accepted reads. `rewrite sp_enum_evolved_deprecated` checks the value written back after the compiled read. |
+| FL-25 | A counted array is born at its minimum and its birth value elides (SPEC-TABLES §22.2, §2.13) | The `counted-born-elides` row above indexes `pin:c<elem>:fresh:*` and `pin:c<elem>:min_default:*`, which check bytes. The text cases `sp-count-min-at`, `sp-count-min-below`, `sp-count-min-empty`, `sp-count-min-max`, and `sp-count-min-over` check read boundaries. |
 | GAP-19 | A deprecated variant where no default is declared reads `None`, in every form (SPEC-TABLES §16.2; FIXED-FORM-ALGORITHM §4); gaps OC13, ObjC7, Li11 | `sp-enum-elem-deprecated-array`, `sp_enum_fixed_deprecated`, `sp_enum_evolved_deprecated` (#4689) |
 | GAP-22 | A JSON array under its counted minimum refuses (SPEC-TABLES §16.2, R10); gaps Hs11 | `sp-count-min-at`, `sp-count-min-below`, `sp-count-min-empty`, `sp-count-min-max`, `sp-count-min-over` (#4689, #4753) |
 | SF-21 | a writer refuses a counted array below its `Min` (SPEC.md §5.1 row 3) | `write-refusal-fixed` (`fref_count_min`, `fref_count_min_ok`) (#4753) |
+| SF-01, SF-02 | A counted field below its declared minimum refuses by count in variable, fixed, evolved fixed, and text reads (SPEC §5.1, SPEC-TABLES §22.2) | `sp_count_min_at` and `sp_count_min_evolved_at` are accepted read and rewrite cases. `sp_count_min_below_form1`, `sp_count_min_zero_form1`, `sp_count_min_below`, `sp_count_min_zero`, `sp_count_min_evolved_below`, and `sp-count-min-empty` exercise the existing refusal cases for those forms. |
+| SF-24 | A JavaScript packet bulk `[N]uint8` write refuses caller storage shorter than N before writing the field, and accepts storage of exactly N bytes (SPEC.md §5.1) | `internal/codegen/js` `TestBulkByteArrayWriteRefusesShortStorage/caller-storage`: `sf24_short` refuses and leaves the stream buffer untouched; `sf24_exact` accepts and writes all four caller bytes. |
+| SF-38 | An invalid array-like value supplied through JavaScript fixed text placement reaches the write check unchanged (SPEC §5.1) | `internal/codegen/jstable` `TestJsWritersRefuseSilentDrops` uses `FixedFromText` and `FixedCheckBody` to refuse a number, a keyed object without length, and a string in array fields. The matching array values pass. This is a target API test. |
+| SF-16 | A Dart whole-wire read that refuses without a report throws a `FormatException` whose message matches the reason from the same read with a report (SPEC-TABLES §6.5) | `internal/codegen/darttable` `TestWireLoadWithNoReportThrowsOnRefusal`; the same generated reader accepts a normal saved `Scene` without a report. The SDK execution requires `SCHEMA_SLOW=1`. The shared read-into surface supplies a report, so it does not exercise this API branch. |
+| SF-30 | A JSON read into a locked Go builder refuses and replaces any stale report (SPEC-TABLES §6.5, §16.2) | `internal/codegen/gotable` `TestBuilderFromJSONLockedRefusesIntoTheReport`: read `{"next":5}`, lock the builder, seed the reused report's unknown count, then read `{"next":6}`. The call returns false, clears the count, and records a reason. Calling without a report also returns false. The shared read-into surface does not lock its destination. |
+| R10 (counted union arms) | The minimum of a selected counted arm applies to that payload, as on an ordinary array field (SPEC-TABLES §2.6, §22.2) | `arm-min-fix-at` and `arm-min-fix-max` accept. The existing `arm-min-fix-below` / `arm-min-fix-empty` text cases and `armmin_fix_count_0` / `armmin_fix_count_1` fixed cases refuse. `twin_armmin_fix_at` reads and rewrites. The native `TestPythonUnionArmCountedMinimumWrite` holds the write side. |
+| Fixed-record API ceiling | A declared fixed table emits the Form 3 API through a record size of 65,536 bytes (SPEC-TABLES §3.4) | `compiler` `TestFixedRecordBoundAtTheCeilingEmitsOnAllNineLegs`: vary the declared byte capacity so the fixed record is 65,535, 65,536, then 65,537 bytes. The first two declarations emit Form 3. The third declaration omits Form 3 APIs, while still declaring a table. |
+| Lobster unit view basename | Filename collision checks fold case and apply with or without tables (SPEC §4.6, file-name safety) | `compiler` `TestLobsterUnitViewFileNameIsClaimed`: `probeView.schema`, `PROBEVIEW.schema`, and `Probeview.schema` collide in package `probe` for a type or a table. The common checker and Lobster target each refuse the collision. |
+| Fixed digest bits path | The `bits(N)` path's kind follows the declared width independently of the size occupied by the field (SPEC-TABLES §3.4, FIXED-FORM-ALGORITHM §5.2) | `compiler` `TestFixedDefinitionsDigestVector`: `packed bits(5)` uses kind 6 and occupies four bytes in the pinned layout. The definitions digest pins the corresponding kind-6 path. The vector does not exercise every width boundary. |
 | GAP-26 | A float literal is a float64 first, then the field's width (SPEC.md §4.2); gaps Hs4 | `testdata/conformance/frontend/vector.txt` (`TestFrontEndVector`) (#4757) |
 | GAP-27 | Names are ASCII; a `was` alias hashes its UTF-8 bytes (SPEC.md §4.2); gaps Li1 | `testdata/conformance/frontend/vector.txt` (#4757) |
 | FL-05 | enum `null` and `"None"` are one value (SPEC-TABLES §16.2 (enum row)) | `sp-enum-none-name` (#4688) |
 | FL-09 | map key length uses its own `string(N)` bound, not `kTableJsonMaxKey` (SPEC-TABLES §16.2) | `TestTextMapKeyAboveNameCapReadsUnderItsOwnBound`, `sp-map-key-256-wide`, `sp-map-key-300-wide`, `sp-map-key-301-wide` (#4688) |
 | FL-27 | non-canonical base64 refuses (SPEC-TABLES §16.8, §16.2) | `base64-padding-*`, `base64-unpadded`, `sp-b64-escaped-noncanonical` (#4688) |
-| FL-12 | the read depth cap counts every container (SPEC-TABLES §16.2) | `rr-depth-*`, `sp-skip-depth-129`, `sp-skip-depth-130` (#4706, #4688); a flags array or text list nested at the depth limit still needs a shared row |
-| FL-31 | names some target cannot build are refused at check (SPEC.md §4.6) | `internal/check/buildable_names_test.go` (#4691), [JavaScript read-into names](#javascript-read-into-names) |
-| FL-31 (generator names) | a name a generator declares as a local, parameter or loop variable builds as an enum, a table field and a union arm in every target (SPEC.md §4.6, Generator-name safety) | `testdata/name-buildability` rows `n_internal_01` to `n_internal_91`, built by the name-buildability nightly (`tools/namebuild`), the pairs not yet built owed in `testdata/name-buildability/owed.txt` (an exact set, `TestJudgeHoldsTheLedgerExact`) (#4947) |
+| FL-12 | the read depth cap counts every container (SPEC-TABLES §16.2) | `rr-depth-*`, `sp-skip-depth-129`, `sp-skip-depth-130` (#4706, #4688); the portable flags-array and text-list boundary recipes in §16.2 are exercised by `TestJsonrefDepthCountsFlagsArrayAndTextList` |
+| FL-31 | names some target cannot build are refused at check (SPEC.md §4.6) | `internal/check/buildable_names_test.go` (#4691; the serialize.h macros, `TestSerializeMacrosAreRefusedAsDeclarations`), [JavaScript read-into names](#javascript-read-into-names) |
+| FL-31 (generator names) | a name a generator declares as a local, parameter or loop variable builds as an enum, a table field and a union arm in every target (SPEC.md §4.6, Generator-name safety) | `testdata/name-buildability` rows `n_internal_01` to `n_internal_91`, built by the name-buildability nightly (`tools/namebuild`), the pairs not yet built owed in `testdata/name-buildability/owed.txt` (an exact set, `TestJudgeHoldsTheLedgerExact`) (#4947); the C++ table header's global-root spelling of a lowercase declared name and the C++ pass's member rule, `TestQualifyCppKeepsUserAndPlatformApart` |
+| FL-31 (emitter name rules) | every refusal by name a target makes at generate is a refusal of `schema check`, for every target, naming it; an emitter that can keep two generated names apart does (SPEC.md §4.6, Emitter name rules) | `compiler` `TestEmitterNameRulesAreTheOnlyGuard` (fast lane: every emitter-rule row of testdata/name-buildability, `e_unmanaged`, `e_infinity` and `tb_goose_declare` among them, is refused at generate once the rules are taken away) and `TestEveryAcceptedCorpusRowGeneratesEverywhere` (the name-buildability nightly); `internal/codegen/cqualify` `TestQualifyTypeSuffixIsInjective` |
+| FL-32 | Native readers can attach a recommended reason or code to a refusal (SPEC-TABLES §3.2, §6.5). This suite judges the verdict under [§4](#4-how-answers-are-judged). | Unity `TestUnityMessageRefusalCodes` checks `second_announcement` and `no_vocabulary` with normal announcement and batch bytes. Java `TestJavaReportResetDamageReasonAndCookCycle` checks `wire_damaged`; C++ `TestFixedRoadmapCppT03PlansVersions` case `cpp/R15` checks `layout_unknown`. These are port-specific diagnostic checks. |
 | FL-33, FL-34, FL-35 | R2, R5, R9 (SPEC-TABLES §3.4 (the presence entry)) | `internal/ci` `TestRulingsR2R5R9PortRows`, `TestFixedLineageOptionalIntoBareRefusesKindMismatch` (#4680) |
 | SF-17 | `SaveMessages` checks row 10 and never moves an off-range float onto an endpoint (SPEC.md §5.1 row 10) | `smref_big_ratio_high`, `smref_big_ratio_max` (#4808 source registrations) |
 | SF-18, SF-19 | the message form refuses a flags value above its declared width and never masks it (SPEC.md §5.1 row 9; SPEC-TABLES §3.3) | `smref_big_mask_max`, `smref_big_mask_wide`, `smref_mask_named`, `smref_mask_unnamed` (#4808 source registrations) |
@@ -423,10 +484,12 @@ per-port check where no shared case exercises it.
 | SF-20 (packet) | the packet `Write` refuses a `[N]T` handed more or fewer than N values and never writes the first N of a longer one (SPEC.md §5.1); every every-build leg and Lobster's debug build refuse it by the leg's own mechanism, and a leg whose `[N]T` storage is a native `T[N]` (Goose) names the two count rows unrepresentable. A new port's packet writer checks the length before its element loop | `write-refusal-packet`: `fixed_long`, `fixed_short`, `fixed_exact` |
 | SF-20 (packet, byte container) | the `[N]T` length check accepts the container the leg's own constructor makes for a lawful `[N]T`: a leg that holds `[N]uint8` in a byte buffer (Squirrel's `blob`) checks that buffer's length, and a fresh `[N]uint8` writes (SPEC.md §5.1). Squirrel's check named only `array` and refused every lawful `[N]uint8`, which broke the `bench_mixed` round trip (`loadout [4]uint8`) | `write-refusal-packet`: the schema's `octets [4]uint8` field rides every `wrote` row on every leg; `bench-squirrel-gate` (`bench_mixed` variant round trip) |
 | Squirrel packet row 1 | the Squirrel packet `Write` refuses a value off its range with `false` on every kind but an `int32` or `int64` field, whose runtime trap is the refusal: an `int16` fixed-array element, counted-array element or arm payload, an `int128` and a `fixed(16, 16)` raw value (SPEC.md §5.1, the Squirrel line) | `write-refusal-packet`: `fixed_elem_high`, `list_elem_low`, `arm_payload_high`, `int128_high`, `int128_low`, `fixed_raw_high`, `fixed_raw_low`, each with its `_at_` twin |
-| SF-25, SF-26 | `Cook` and `CookMeasure` hold the write contract that `Save` holds; a deprecated enum variant is refused on write (SPEC-TABLES §7.6, §2.15) | `cref_count_at_max`, `cref_count_at_min`, `cref_count_below_min`, `cref_count_over`, `cref_cycle`, `cref_shared_ok`, `cref_finite_ok`, `cref_infinite`, `cref_non_finite` (#4808 source registrations) |
+| SF-25 | A pointered-root `Cook` and `CookMeasure` hold the write contract that `Save` holds; a fixed-root measure remains the layout constant and its `Cook` checks the value (SPEC-TABLES §7.6) | `cref_count_at_max`, `cref_count_at_min`, `cref_count_below_min`, `cref_count_over`, `cref_cycle`, `cref_shared_ok`, `cref_finite_ok`, `cref_infinite`, `cref_non_finite`; Dart `TestDartFiniteFloatsEveryForm` pins the fixed-root split (#4808 source registrations) |
+| SF-26 | A writer refuses a declared deprecated enum variant (SPEC-TABLES §2.15) | [Declared deprecated enum writers](#declared-deprecated-enum-writers) covers Form 1 and Form 3 in Rust and Dart; Cook pins live output and checks deprecated-variant refusal in both byte orders. |
 | SF-22, SF-28 | a variable save and a text (JSON) writer refuse a counted array below its `Min`, and a list field holding a non-list (SPEC.md §5.1 row 3 and "A writer refuses in EVERY form") | `sref_count_at_min`, `sref_count_below_min`, `sref_count_not_list`, `sjref_count_at_min`, `sjref_count_below_min`, `sjref_count_not_list` (#4808 source registrations) |
 | SF-23 | `SaveMessages` holds a value to the rule of the declaration it is written under, not to the looser rule of a same-named field elsewhere (SPEC-TABLES §3.3) | `smref_narrow_hp_5`, `smref_narrow_hp_6`, `smref_wide_hp_10`, `smref_wide_hp_11` (#4808 source registrations) |
-| SF-29, SF-37 | a cook refuses a loaded count outside `[Min, bound]` and a NaN or an infinity in a plain float (SPEC-TABLES §7.6; SPEC.md §5.1 row 7) | `cref_count_at_min`, `cref_count_below_min`, `cref_count_over`, `cref_finite_ok`, `cref_infinite`, `cref_non_finite` (#4808 source registrations) |
+| SF-36 | C and C++ variable writers enforce a `required` integer bound in every build and assert the same bound on a plain field in debug builds (SPEC §5.1). A `float64` range is refused by the schema checker (SPEC §4.3). | `TestCVariableWriteRangeAssertCompiled` and `TestCppVariableWriteRangeAssertCompiled` use two `int32` fields bounded to 0–10, one required and one plain. Both set to 10 measure and save in both builds. A required value of 11 refuses in Measure and Save in both builds. A plain value of 11 stops at the debug assertion; with `NDEBUG` the control measures only. C++ covers plain value and builder/region APIs and builds the release header with its own assertion hook. |
+| SF-29, SF-37 | a cook refuses a loaded count outside `[Min, bound]` and a NaN or an infinity in a plain float; a fixed-root measure remains structural while its writer refuses (SPEC-TABLES §7.6; SPEC.md §5.1 row 7) | `cref_count_at_min`, `cref_count_below_min`, `cref_count_over`, `cref_finite_ok`, `cref_infinite`, `cref_non_finite`; Dart `TestDartFiniteFloatsEveryForm` pins lawful write, constant fixed measure, refusal and untouched output (#4808 source registrations) |
 | SF-31 | the block builder refuses a count or a used length past its maximum by name in every build (SPEC-TABLES §19.1) | `bref_elems_long`, `bref_elems_ok`, `bref_length`, `bref_length_ok`, `bref_range`, `bref_range_ok` (#4808 source registrations) |
 | deprecated-variant-every-writer | the table save, the fixed save and the message save refuse a deprecated enum variant, element and scalar, an assert leg in its debug build; the lawful variant writes (SPEC-TABLES §2.15 WRITE). Found 2026-11-24: Java's three binary writers wrote `Old`, seen only by `TestKeyedFormWireCodeMatchesUnkeyedInTree`'s Go oracle. Drafted as shared rows the same day, they also redded the C, C++, C#, Dart, Elixir, Goose, JS and Rust legs (a writer, a driver, or both) and landed with those fixes. Release builds of the assert legs (C, C++, C#, Rust, Java, Dart) write it, as SPEC.md §5.1 says; every other leg refuses in every build | shared rows `wref_enum_deprecated`, `wref_enum_deprecated_ok`, `wref_enum_scalar_deprecated`, `wref_enum_scalar_deprecated_ok` (`write-refusal`), `fref_enum_deprecated`, `fref_enum_deprecated_ok`, `fref_enum_scalar_deprecated`, `fref_enum_scalar_deprecated_ok` (`write-refusal-fixed`), every leg; `TestJavaDeprecatedVariantNeverWritten` and its negative control (`make tables-java-deprecated-write`); `TestJsDeprecatedVariantNeverWritten` (JS variable save, `make tables-js-deprecated-write`); `TestDartBlockBuildRefusesDeprecatedVariant` (Dart block builder, `make tables-dart-deprecated-block-write`); `TestRustDeprecatedVariantMessageNeverWritten` and its negative control (Rust message writer, `make tables-rust-deprecated-message-write`); `make tables-java-keyed`. No shared row reaches the message or block writer yet: no connection unit carries a deprecated enum, and each leg's block driver dispatches its roots by hand |
 | non-finite-before-range | where a leg's writer has its own `non_finite_float` refusal, its debug range check on a compressed or ranged float holds a finite value only and never masks that refusal, on the message writer as on the fixed one; nothing is required of an assert leg's release build (SPEC-TABLES §3.3, "A DEBUG RANGE CHECK DOES NOT MASK THE NON-FINITE REFUSAL"; SPEC.md §5.1) | `TestJavaFiniteFloats` `form-write-ranged:*` and its negative control `ranged write guard` (`make tables-java-finite-float`, `make tables-java-finite-float-negative-control`) |
@@ -472,24 +535,34 @@ width; COMPETITION.md's never-clobber line. Each now promises a newer reader
 on older data and no more: an older reader given newer data may refuse it by
 name, lawfully.
 
-### Announcement vocabulary with a zero-byte budget
+### Message writes above the fixed-file ceiling
 
-R9 in [SPEC-TABLES §3.3](SPEC-TABLES.md#33-the-message-form-a-batch-of-bitpacked-bodies-under-one-announced-vocabulary)
-limits the vocabulary entries' bytes. Use a fresh connection for each
-case. Read the ordinary nonempty announcement produced by `tables/backend`
-and the empty vocabulary produced by the variable-only `tables/blobs` unit.
+For SF-05 and SF-06, use a fixed table with a 70,000-element `uint8`
+array. Its record exceeds the 65,536-byte fixed-file ceiling. Construct one
+value directly and run both message operations, `SaveMessages` and
+`MeasureMessages`, with debug write checks enabled. The C and C++ probes
+use a zero-filled array, `hp = 10` in `[0, 10]`, `mask = 63` in
+`bits(6)`, `ratio = 1.0` in `[0.0, 1.0]` at resolution 0.01,
+`ids = [0, 0, 5]` with element range `[0, 5]`, and signed 128-bit
+`reach = 5` in `[-5, 5]`. Each row starts from that value.
 
-| Reader configuration | Empty vocabulary | Nonempty vocabulary |
+| Case | Single edit | Expected result from each operation |
 |---|---|---|
-| Default byte limit | Accept, count 0 | Accept, count greater than 0 |
-| Explicit byte limit sufficient for the announcement | Accept, count 0 | Accept, count greater than 0 |
-| Explicit byte limit 0 | Accept, count 0 | Refuse with `vocabulary_too_large` and leave `announced` false |
+| `ok` | Leave the value as constructed | Return a positive byte count |
+| `hp_below` | Set `hp = -1` | Trigger the debug write assertion |
+| `hp_above` | Set `hp = 11` | Trigger the debug write assertion |
+| `mask_wide` | Set `mask = 64` | Trigger the debug write assertion |
+| `ratio_above` | Set `ratio = 1.5` | Trigger the debug write assertion |
+| `element_above` | Set `ids[1] = 6` (zero-based) | Trigger the debug write assertion |
+| `reach_below` | Set `reach = -6` | Trigger the debug write assertion |
+| `reach_above` | Set `reach = 6` | Trigger the debug write assertion |
 
-The empty announcement still carries its framing bytes. The zero limit
-applies to the vocabulary payload. Run the generated Java example with
+With C and C++ compilers on the path, run both probes from the repository root:
 
 ```sh
-SCHEMA_SLOW=1 go test -count=1 -v ./internal/codegen/javatable -run '^TestMessageFormAnnounceJavaR9MaxBytes$'
+SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -v \
+  ./internal/codegen/ctable ./internal/codegen/cpptable \
+  -run '^Test(C|Cpp)MessageCeilingWriteAssertCompiled$'
 ```
 
 ### Ordinary message-driver round trips
@@ -522,116 +595,6 @@ build:
 ./build/conformance-harness run --only rust --surfaces message
 ./build/conformance-harness run --only lua --surfaces message
 ```
-
-### JavaScript read-into names
-
-The shape checker refuses `ConfigLoadInto` because the JavaScript table
-emitter binds that name for `Config` ([SPEC §4.6](SPEC.md#46-shape-checks),
-[SPEC-TABLES §11](SPEC-TABLES.md#11-refused-by-name)).
-
-```schema
-package probe
-table Config { count int32 }
-type ConfigLoadInto { count int32 }
-```
-
-Replace the final line with `type ConfigApplicationState { count int32 }`
-for an accepted schema. `TestJSReadIntoDeclarationNames` checks both outcomes.
-`TestJsTableModuleScopeNamesAreClaimed` and
-`TestJavaScriptVariableRuntimeNamesAreClaimed` inventory the emitted bindings.
-The Python, Lua, Luau, Squirrel, and Lobster runtime-name tests inventory
-their module or namespace entries separately from the schema-level claims.
-
-### Compressed float packet endpoints
-
-[`RatioEndpoint`](../test/packet-cfloat-endpoints/PacketRatio.schema) declares a closed
-`[0, 1]` range at resolution `0.01` ([packet wire §2.5](PACKET-WIRE-ALGORITHM.md#25-compressed-float-write)).
-The [endpoint cases](../test/packet-cfloat-endpoints/ratio-endpoints.txt) pin the seven-bit
-step indices 0 and 100 and their zero-padded packet bytes `00` and `64`.
-`make packet-cfloat-endpoints-go` writes each endpoint through the generated Go
-packet writer, checks the exact byte, and reads back the original value.
-
-
-### Accepted variable-table write bounds
-
-[The focused manifest](../testdata/conformance/table-write-bounds/ACCEPTED-WRITE-BOUNDS.txt)
-loads the lawful `TortureVarWref` seed, changes one field or arm per case, and
-requires its variable-form measure and save to complete.
-
-| Carrier | Accepted cases |
-|---|---|
-| Present optional counted array of maximum length 3 | `sfw_opt_arr_ok` |
-| Direct `bits(13)` union arm at 8191 | `sfw_arm_bits_ok` |
-| Direct ranged integer union arm at 0 and 10 | `sfw_arm_range_min`, `sfw_arm_range_max` |
-| Direct string union arm of maximum length 8 | `sfw_arm_str_ok` |
-| Enum-keyed `Beta` slot at 0 and 50 | `sfw_slot_min`, `sfw_slot_max` |
-
-Run these cases with `make table-write-bounds-go`.
-
-
-### Packet union arrays in table closures
-
-[The packet union fixture](../test/tables/packetunions/PacketUnions.schema) covers
-arrays of a union whose arms are packet types ([SPEC §4.8](SPEC.md) and
-[SPEC-TABLES §§2.6, 3, 3.3, 3.4 and 16](SPEC-TABLES.md)). The shared manifest
-registers these canonical cases across the variable, fixed, message and text forms.
-
-| Cases | Form and values |
-|---|---|
-| `packetunions_doc_full`, `packetunions_doc_empty` | Form 1 document with a full or empty counted array, together with a fixed array. |
-| `packetunions_msg_full`, `packetunions_msg_one` | Form 3 records with full or single-element counted arrays. Each also has a form 2 pin over `packetunions_conn`. |
-
-The full cases carry a live `None` between selected packet arms. The counted
-array's length includes that element.
-
-### Declared deprecated enum writers
-
-Compile the [SF-26 schema](../testdata/conformance/feature-witnesses/declared-deprecated-enum/Probe.schema).
-Its `Phase` enum keeps the deprecated variant `Old` at ordinal 2 and the
-live variant `Next` at ordinal 3. Assign each variant directly to the
-root's `phase` field through the caller API. A reader may map a deprecated
-variant to its default, so constructing the caller value directly is part
-of this test. Run with write assertions enabled on targets that use them.
-
-| Operation | `Phase.Next` | `Phase.Old` |
-|---|---|---|
-| Save one `VarRoot` in Form 1 | `sf26_form1_next` emits the pinned 29 bytes | `sf26_form1_old` refuses |
-| Save one `FixedRoot` in Form 3 | `sf26_form3_next` emits the pinned 118 bytes, with ordinal 3 in its enum slot | `sf26_form3_old` refuses |
-| Call fixed-root `CookMeasure` | `sf26_cook_measure_next` returns 88 bytes | `sf26_cook_measure_old` also returns 88 bytes |
-| Cook one `FixedRoot` in little-endian order | `sf26_cook_next_le` emits the pinned 88 bytes | `sf26_cook_old_le` refuses before writing |
-| Cook one `FixedRoot` in big-endian order | `sf26_cook_next_be` emits the pinned 88 bytes | `sf26_cook_old_be` refuses before writing |
-
-[The shared expected answers](../testdata/conformance/feature-witnesses/declared-deprecated-enum/cases.txt)
-give each case ID and its complete wire bytes in hex, size in decimal bytes,
-or refusal verdict. Compare every output byte for `Next`. For a caller-buffer
-Cook API, fill an 88-byte destination with `0x5a` before each `Old` call
-and check that every byte retains that value after refusal. A reasoned
-fixed-root measure reports success with size 88 for either variant. The
-fixed layout determines the size. The writer checks whether the supplied
-value may be emitted. These are the enum and fixed Cook rules in
-[SPEC-TABLES §2.15](SPEC-TABLES.md#215-enum-variants--deprecated-in-place)
-and [§7.6](SPEC-TABLES.md#76-the-write-side-cook-and-cookmeasure).
-
-Run the six fixed-root Cook and CookMeasure cases against generated Go with
-
-```sh
-SCHEMA_SLOW=1 go test -count=1 -v ./internal/codegen/gotable -run '^TestDeclaredDeprecatedEnumCook$'
-```
-
-### Present optional array grown from two elements to three
-
-Load the [variable-form seed](../testdata/conformance/table-write-bounds/torture_var_wref.bin)
-as `TortureVarWref` using the [declaration](../testdata/conformance/table-write-bounds/TableWriteBounds.schema).
-The optional `opt_arr` is present and holds `[1, 2]`. For the conformance
-driver's `count` edit, grow it to its declared maximum of three elements.
-Preserve the prefix and copy element zero into the new slot. Save the root.
-The output must match the complete [252-byte expected file](../testdata/conformance/table-write-bounds/expected/torture_var_wref_resized.bin).
-Loading it must return a present `[1, 2, 1]`, with every other field unchanged.
-A successful save of `[1, 2, 0]` fails this test. The fill rule defines the
-test driver's edit. A port may use any caller API that constructs that value.
-
-Run `make table-optional-array-resize-go` to exercise the generated Go writer
-and reader. The expected file is also the comparison input for a new port.
 
 ### Explicit zero and omitted limits
 
@@ -698,6 +661,221 @@ SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -v \
   ./internal/codegen/gotable ./internal/codegen/pythontable \
   -run 'Test(Go|Python)FixedLoadCapacityWitness'
 ```
+
+### Announcement vocabulary entry budget
+
+Use a fresh receiver for each row. Compile the variable-only `tables/blobs`
+unit to produce an empty vocabulary and the following declaration to produce
+a one-entry vocabulary.
+
+```schema
+package entrybudget
+
+fixed table Probe { x int32 }
+```
+
+| Receiver setting | Empty vocabulary | One-entry vocabulary |
+|---|---|---|
+| Default entry and byte budgets | Accept, count 0 | Accept, count 1 |
+| Explicit entry budget 0 | Accept, count 0 | Refuse with `vocabulary_too_large` and leave `announced` false |
+| Explicit entry budget 1 | Accept, count 0 | Accept, count 1 |
+| Default entry budget and explicit byte budget 0 | Accept, count 0 | Refuse with `vocabulary_too_large` and leave `announced` false |
+
+The reference engine exercises the same limits in `TestAnnouncementEntryBudget`
+under `internal/tablewire`.
+
+Run the native C#, Unity, Java, Lua, Luau, MOO and Squirrel probes with
+
+```sh
+SCHEMA_SLOW=1 go test -count=1 -v ./internal/codegen/{cstable,unitytable,javatable,luatable,luautable,mootable,squirreltable} -run '^TestAnnouncementEntryBudget(CSharp|Unity|Java)?$'
+```
+
+### Goose fixed-root messages
+
+The manifest's `login_full` message row uses the `LoginRequest` fixed root in
+`tables/backend`. The generated `LoginRequestAnnounce` bytes match
+`testdata/wire/tables/backend_conn.bin`. The reader accepts that announcement
+with the default budgets. `LoginRequestMeasureMessages` returns the size of
+the pinned batch, `LoginRequestSaveMessages` writes the pinned bytes, and
+`LoginRequestLoadMessages` restores the bodies so saving them again gives the
+same bytes.
+
+```sh
+SCHEMA_SLOW=1 go test -count=1 -v ./internal/codegen/goosetable -run '^TestGooseMessageFormMatchesTheGoldens$/^login_full$'
+```
+
+### JavaScript read-into names
+
+The shape checker refuses `ConfigLoadInto` because the JavaScript table
+emitter binds that name for `Config` ([SPEC §4.6](SPEC.md#46-shape-checks),
+[SPEC-TABLES §11](SPEC-TABLES.md#11-refused-by-name)).
+
+```schema
+package probe
+table Config { count int32 }
+type ConfigLoadInto { count int32 }
+```
+
+Replace the final line with `type ConfigApplicationState { count int32 }`
+for an accepted schema. `TestJSReadIntoDeclarationNames` checks both outcomes.
+`TestJsTableModuleScopeNamesAreClaimed` and
+`TestJavaScriptVariableRuntimeNamesAreClaimed` inventory the emitted bindings.
+The Python, Lua, Luau, Squirrel, and Lobster runtime-name tests inventory
+their module or namespace entries separately from the schema-level claims.
+
+### Compressed float packet writes
+
+[SPEC §5.1 row 10](SPEC.md#51-the-write-contract) and the [packet algorithm §2.5](PACKET-WIRE-ALGORITHM.md#25-compressed-float-write)
+require the public writer to check a compressed float before quantizing. The
+[shared caller cases](../test/packet-write-cfloat/cases.txt) use `[0, 10]` at
+resolution `0.01`. They require refusal for a finite value above or below the
+range, the largest finite float32, NaN and both infinities. Both range ends and
+the midpoint write and read back. Negative zero writes and reads back as
+positive zero.
+
+| Port | Executable coverage |
+|---|---|
+| C, C++, C# (modern and Unity), Rust, Java, Dart, Lobster | `make packet-write-cfloat-<leg>` runs the shared cases with packet write assertions enabled. Unity builds the generated library in its Unity dialect and checks the Debug assertion. |
+| JavaScript, Elixir, Lua, Luau, Squirrel, MOO, Goose, Ruby | `make packet-write-cfloat-<leg>` runs the shared cases using the public writer's refusal. Elixir cannot hold non-finite BEAM floats, so its driver passes the ordinary invalid-value surrogates named by the cases. Ruby runs both pinned interpreters and checks the field on `InvalidValue`. |
+| Go | `go test ./internal/codegen/golang -run '^TestGoPacketWriteRefusesOffRangeCompressedFloat$'` runs the shared cases through the generated writer. |
+| Python | `TestPythonPacketFloats` runs named compressed-field caller cases, including NaN, positive infinity and both finite out-of-range directions, and checks the field on `InvalidValue`. It uses its own `[-5, 5]` declaration. |
+
+#### Compressed float packet endpoints
+
+[`RatioEndpoint`](../test/packet-cfloat-endpoints/PacketRatio.schema) declares a closed
+`[0, 1]` range at resolution `0.01` ([packet wire §2.5](PACKET-WIRE-ALGORITHM.md#25-compressed-float-write)).
+The [endpoint cases](../test/packet-cfloat-endpoints/ratio-endpoints.txt) pin the seven-bit
+step indices 0 and 100 and their zero-padded packet bytes `00` and `64`.
+`make packet-cfloat-endpoints-go` writes each endpoint through the generated Go
+packet writer. `make packet-cfloat-endpoints-js` does the same independently
+through the generated JavaScript runtime and flat writers and readers. Both
+gates check seven logical bits, the exact padded byte, and the original readback.
+
+
+### Variable-table write bounds
+
+[The focused manifest](../testdata/conformance/table-write-bounds/WRITE-BOUNDS.txt)
+loads the same lawful `TortureVarWref` seed for all fourteen writer-argument cases. Each case
+changes one caller field or arm, then calls the variable-form writer. The
+accepted cases require the public save to complete. Drivers that invoke an
+independent measure require it to complete too. The paired caller
+values outside the declared bound require the target’s write refusal
+([SPEC §5.1](SPEC.md#51-the-write-contract)).
+
+| Carrier | Accepted cases | Refused cases |
+|---|---|---|
+| Present optional counted array, maximum 3 | `sfw_opt_arr_ok` | `sfw_opt_arr_long` |
+| Direct `bits(13)` union arm, maximum 8191 | `sfw_arm_bits_ok` | `sfw_arm_bits_wide` |
+| Direct ranged integer union arm, 0 through 10 | `sfw_arm_range_min`, `sfw_arm_range_max` | `sfw_arm_range_low`, `sfw_arm_range_high` |
+| Direct string union arm, maximum length 8 | `sfw_arm_str_ok` | `sfw_arm_str_long` |
+| Enum-keyed `Beta` slot, 0 through 50 | `sfw_slot_min`, `sfw_slot_max` | `sfw_slot_low`, `sfw_slot_high` |
+
+Run the fourteen shared cases with `make table-write-bounds-<leg>` for
+`c`, `cpp`, `cs`, `unity`, `go`, `rust`, `js`, or `dart`. The harness
+checks the outcome of the generated public writer. In targets with debug
+assertions, run the caller probes with assertions enabled. Rust’s
+`TestRustWriteRefusalReachesEveryCarrier` and its `Native` twin check the
+emitted assertions and exercise these carrier shapes through the generated
+variable save in a debug build. The Rust tests also check the plain byte
+buffer, an array count in an arm, a byte-buffer length in an arm, and a zero
+byte in a string arm. Targets beyond the eight registered drivers still owe shared execution.
+
+Existing fixed writer cases `fref_count_min` and `fref_count_min_ok` cover
+SF-21 below and at the minimum.
+
+#### Present optional array grown from two elements to three
+
+Load the [seed](../testdata/conformance/table-write-bounds/torture_var_wref.bin)
+as `TortureVarWref`. The `sfw_opt_arr_ok` edit grows the present array from `[1, 2]` to
+`[1, 2, 1]`. The driver preserves the existing elements and copies element
+zero into the new slot. Its save must match the
+[252-byte canonical resized file](../testdata/conformance/table-write-bounds/expected/torture_var_wref_resized.bin),
+which decodes to that array with the other fields unchanged. Run `make table-optional-array-resize-go` for the
+standalone generated Go test. An observed `[1, 2, 0]` fails even when the save succeeds.
+
+#### Maximum Form 1 payloads
+
+The same manifest pins the accepted maxima for a plain buffer and two
+selected union arms ([SPEC-TABLES §3](SPEC-TABLES.md#3-the-wire)). All eight
+registered writers run the wire and JSON surfaces. The harness compares the
+full Form 1 files written from the JSON inputs, the complete JSON written
+from the pinned files, and the wire bytes after load and save.
+
+| Case | Payload at its declared maximum |
+|---|---|
+| `sfw_raw_payload` | Plain `raw bytes(4)`, bytes `00 7f 80 ff` |
+| `sfw_arm_raw_payload` | Selected `arm_raw.a_raw bytes(4)`, bytes `01 fe 00 55` |
+| `sfw_arm_arr_payload` | Selected `arm_arr.a_arr [..3]int32`, elements `-7, 0, 2147483647` |
+
+Each `make table-write-bounds-<leg>` gate checks 26 outcomes: the fourteen
+writer arguments above and the four instances on each of the three readback
+surfaces. The fourth instance is the original seed.
+
+### Declared deprecated enum writers
+
+Compile the [SF-26 schema](../testdata/conformance/feature-witnesses/declared-deprecated-enum/Probe.schema).
+Its `Phase` enum keeps the deprecated variant `Old` at ordinal 2 and the
+live variant `Next` at ordinal 3. Assign each variant directly to the
+root's `phase` field through the caller API. A reader may map a deprecated
+variant to its default, so constructing the caller value directly is part
+of this test. Run with write assertions enabled on targets that use them.
+
+| Operation | `Phase.Next` | `Phase.Old` |
+|---|---|---|
+| Save one `VarRoot` in Form 1 | `sf26_form1_next` emits the pinned 29 bytes | `sf26_form1_old` refuses |
+| Save one `FixedRoot` in Form 3 | `sf26_form3_next` emits the pinned 118 bytes, with ordinal 3 in its enum slot | `sf26_form3_old` refuses |
+| Call fixed-root `CookMeasure` | `sf26_cook_measure_next` returns 88 bytes | `sf26_cook_measure_old` also returns 88 bytes |
+| Cook one `FixedRoot` in little-endian order | `sf26_cook_next_le` emits the pinned 88 bytes | `sf26_cook_old_le` refuses before writing |
+| Cook one `FixedRoot` in big-endian order | `sf26_cook_next_be` emits the pinned 88 bytes | `sf26_cook_old_be` refuses before writing |
+
+[The shared expected answers](../testdata/conformance/feature-witnesses/declared-deprecated-enum/cases.txt)
+give each case ID and its complete wire bytes in hex, size in decimal bytes,
+or refusal verdict. Compare every output byte for `Next`. For a caller-buffer
+Cook API, fill an 88-byte destination with `0x5a` before each `Old` call
+and check that every byte retains that value after refusal. A reasoned
+fixed-root measure reports success with size 88 for either variant. The
+fixed layout determines the size. The writer checks whether the supplied
+value may be emitted. These are the enum and fixed Cook rules in
+[SPEC-TABLES §2.15](SPEC-TABLES.md#215-enum-variants--deprecated-in-place)
+and [§7.6](SPEC-TABLES.md#76-the-write-side-cook-and-cookmeasure).
+
+Run the six fixed-root Cook and CookMeasure cases against generated Go with
+
+```sh
+SCHEMA_SLOW=1 go test -count=1 -v ./internal/codegen/gotable -run '^TestDeclaredDeprecatedEnumCook$'
+```
+
+The Rust and Dart generator tests run these shared cases with assertions enabled.
+Fixed-root `CookMeasure` reports the layout size for either value.
+Rust's `CookMeasureReason` reports the same size with an OK reason.
+`Cook` validates the value before writing and leaves the caller buffer unchanged
+when it refuses. Rust checks both its typed writer and its fixed-row
+caller-buffer API.
+
+```sh
+SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 \
+  ./internal/codegen/rusttable ./internal/codegen/darttable \
+  -run 'TestRustDeclaredEnumWriteWitness|TestDartWriteAssertsDeprecatedEnumVariant'
+```
+
+The central table manifest's JSON writer cases `jref_enum_deprecated` and
+`jref_enum_scalar_deprecated` and their accepted twins cover the same rule
+on the text writer.
+
+### Packet union arrays in table closures
+
+[The packet union fixture](../test/tables/packetunions/PacketUnions.schema) covers
+arrays of a union whose arms are packet types ([SPEC §4.8](SPEC.md) and
+[SPEC-TABLES §§2.6, 3, 3.3, 3.4 and 16](SPEC-TABLES.md)). The shared manifest
+registers these canonical cases across the variable, fixed, message and text forms.
+
+| Cases | Form and values |
+|---|---|
+| `packetunions_doc_full`, `packetunions_doc_empty` | Form 1 document with a full or empty counted array, together with a fixed array. |
+| `packetunions_msg_full`, `packetunions_msg_one` | Form 3 records with full or single-element counted arrays. Each also has a form 2 pin over `packetunions_conn`. |
+
+The full cases carry a live `None` between selected packet arms. The counted
+array's length includes that element.
 
 
 ### Block forgery fuzzer seed projections
@@ -937,6 +1115,21 @@ with the flat tier's writes and the decode case green.
 | SPEC §4.3, §5: a `float32` field's default is the float32 of its declaration | `F32Lit` `default-d`, `default-e`, `verify-bitphase-<lang>` | red before its fix on JavaScript (both tiers construct through the module), Dart and Elixir. Green with no fix: C (the decimal assigned to a `float` rounds there), C++, C# (modern and unity), Go, Rust, Java, Python, Ruby, Lua, Luau, Squirrel, moo, Goose, Lobster |
 | SPEC §4.3, §5.1 row 10: a compressed float's write takes both float32 ends | `F32Lit` `write-min`, `write-max`, `verify-bitphase-<lang>` | red before its fix on the JavaScript stream tier, Lua and Luau, whose write guards compared against the decimals and refused both ends. Green with no fix: the JavaScript flat tier, Dart and Elixir (their guards were spelled as float32 by #4991), C, C++, C# (modern and unity), Go, Rust, Java, Python, Ruby, Squirrel, moo, Goose, Lobster |
 | SPEC §4.3: a table field's `float32` default is the float32 of its declaration | Go unit test `TestJsTableFloat32DefaultIsItsFloat32` (`internal/codegen/jstable`; no shared case: every table surface, the text form included, rounds a value through float32 before it spells or stores it, so the double default differs only in memory) | red before its fix on JavaScript tables (the constructor and the descriptor's `def`, which an absent field reads back, held the double `0.7`). The other table generators spell a float32 default as its float32 already |
+
+### The C text read makes no allocator call
+
+[SPEC-TABLES §16.1](SPEC-TABLES.md#161-the-surface) says `FromJson` allocates
+nothing beyond the caller's instance, and in C that covers the repeated-key
+set §16.2 keeps for every object. `make tables-c-soak` reads, writes and
+re-reads as text every case of the soak corpus
+([`soak_main.c`](../test/c-tables/soak_main.c)) with `malloc`, `calloc`,
+`realloc` and `free` interposed, and owes `0 allocator calls` over the
+measured loop. No shared case: the rule is an allocation count, which only a
+leg's own allocator can see, and the answers every driver gives are unchanged.
+
+| rule | case | the leg it was red on before its fix |
+|---|---|---|
+| SPEC-TABLES §16.1: the C text read allocates nothing beyond the instance | `make tables-c-soak` (`schema_test_c_soak`, any count of two or more) | red before its fix on C: every JSON object heap-allocated its repeated-key set, 502 allocator calls a pass over the corpus (257,024 over 512) |
 
 ### A block build writes an absent optional's held value
 

@@ -7128,6 +7128,7 @@ TableWeapon schema_textFromName_TableWeapon(dynamic val, TableTextReport r, [Tab
 }
 
 void _tableDamageToJson(_JOut out, int bits, int depth) {
+  _jsonDepth(depth);
   if (bits == 0) { out.raw('[]'); return; }
   out.raw('[');
   var first = true;
@@ -7165,6 +7166,7 @@ int _tableDamageFromJson(dynamic val, TableTextReport r, [int def = 0]) {
 }
 
 void _tableEventToJson(_JOut out, TableEvent v, int depth, _Share sh) {
+  _jsonDepth(depth);
   switch (v.armTag) {
     case 0:
       out.raw('{}');
@@ -7871,6 +7873,7 @@ void tableMixedToJsonBody(_JOut out, TableMixed v, int depth, _Share sh, [int? l
   out.line(depth + 1);
   out.raw(_jsonString("entities"));
   out.raw(': ');
+  _jsonDepth(depth + 1);
   if (v.entities.isEmpty) {
     out.raw('[]');
   } else {
@@ -7891,6 +7894,7 @@ void tableMixedToJsonBody(_JOut out, TableMixed v, int depth, _Share sh, [int? l
   out.line(depth + 1);
   out.raw(_jsonString("stats"));
   out.raw(': ');
+  _jsonDepth(depth + 1);
   if (v.stats.isEmpty) {
     out.raw('[]');
   } else {
@@ -7917,6 +7921,7 @@ void tableMixedToJsonBody(_JOut out, TableMixed v, int depth, _Share sh, [int? l
   out.raw(_jsonString("loadout"));
   out.raw(': ');
   if (v.loadout.length != 4) throw StateError('count_over_bound: TableMixed.loadout');
+  _jsonDepth(depth + 1);
   if (v.loadout.isEmpty) {
     out.raw('[]');
   } else {

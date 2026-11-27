@@ -561,12 +561,10 @@ function M.announceRead(v: any, data: buffer, report: any): boolean
 	end
 	-- the entry bound is the receiver's second declared bound (§3.3): an
 	-- announcement past it is refused by name before the vocabulary is set,
-	-- exactly as the byte bound above is. Zero (or no field) is the
-	-- conforming default, 4096 entries, as the engine reads it
-	-- (internal/tablewire/message.go: ir.TableVocabularyMaxEntries); zero
-	-- never means unbounded.
-	local maxEntries = v.maxEntries or 0
-	if maxEntries <= 0 then maxEntries = DEFAULT_MAX_ENTRIES end
+	-- exactly as the byte bound above is. An absent field uses the default;
+	-- an explicit 0 allows only an empty vocabulary.
+	local maxEntries = v.maxEntries
+	if maxEntries == nil or maxEntries < 0 then maxEntries = DEFAULT_MAX_ENTRIES end
 	if n > maxEntries then
 		return refuse(report, "vocabulary_too_large")
 	end

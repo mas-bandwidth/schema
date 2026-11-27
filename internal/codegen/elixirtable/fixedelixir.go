@@ -37,8 +37,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/elixir"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/elixir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // formatWidth is `mix format`'s default line length, which the generated
