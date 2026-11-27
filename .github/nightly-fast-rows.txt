@@ -3,7 +3,7 @@
 # A gate whose only workflow runs on a schedule or on dispatch checks nothing a
 # pull request changes until the night after it lands: the strict Ruby gate
 # ran only nightly, and a RuboCop offense reached main (2026-11-22). Each row
-# here is the fast form of one such gate. ci-fast.yml runs it, as a row of its
+# here is the fast form of one such gate. ci-fast-nightly.yml runs it (nightly since 2026-11-25), as a row of its
 # nightly-fast job, on any push or pull request that touches the row leg, or a
 # path its paths pattern matches, or the broad rule; a diff to this file runs
 # every row. Each row fits the two-minute job cap: its nightly job time on the
@@ -72,3 +72,8 @@ lobster-fixed-proof | lobster | (^|/)lobster[-_]fixed[-_]proof | make -j4 lobste
 appendix-java-announcement-budgets | java | ^docs/SPEC-CONFORMANCE\.md$|^tables/(backend|blobs)/ | make appendix-java-announcement-budgets
 appendix-go-fixed | go | ^docs/SPEC-CONFORMANCE\.md$|^test/(fixed-empty-batch/|go-tables/optional_array_resize_test\.gotext$)|^testdata/(wire/fixed-empty-batch/|conformance/(feature-witnesses/(fixed-load-capacity|declared-deprecated-enum)/|table-write-bounds/)) | make -j4 appendix-go-fixed table-optional-array-resize-go
 appendix-python-fixed | python | ^docs/SPEC-CONFORMANCE\.md$|^test/fixed-empty-batch/|^testdata/(wire/fixed-empty-batch/|conformance/feature-witnesses/fixed-load-capacity/) | make appendix-python-fixed
+
+# the C# block and cook pair compiles with no table source (make/cs-block-compile.mk):
+# its full form is tables-block-fuzz's C# half, nightly in ci-full.yml
+cs-block-compile | cs | ^test/cs-block/|^make/cs-block-compile\.mk$ | make tables-cs-block-compile
+cs-block-compile-negative-control | cs | ^test/cs-block/|^make/cs-block-compile\.mk$ | make tables-cs-block-compile-negative-control
