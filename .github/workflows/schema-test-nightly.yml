@@ -1,0 +1,55 @@
+name: schema test nightly
+
+# THE ONE TEST DRIVER, EVERY LANGUAGE (docs/TEST-REGISTRY.md). The registry's
+# stored query `nightly` (test/registry/registry.jsonl, rec group) is every
+# test of every tier in every language the registry lists. A language whose
+# adapter has not landed has every one of its instances MISSING, and each is
+# named red here: a new language starts fully red, and its red count is its
+# remaining work. THIS RUN IS RED BY INTENT until every language has an
+# adapter: its MISSING list is the per-language work list that the roadmap's
+# test-registry/ci-through-driver, test-registry/union and
+# test-registry/fix-missing tasks close (docs/roadmap.sexp). A red night here
+# is that list, not a regression; a new red name outside it is. The
+# pull-request form is ci-fast.yml's `schema-test` job,
+# which runs the languages whose adapter has landed (docs/CI-TIERS.md).
+#
+# NIGHTLY RUNS HAVE NO TIMEOUT (the owner, 2026-11-16). No job or step here
+# carries timeout-minutes, schema-test runs with --timeout 0, and
+# PGROUP_GO_TEST_TIMEOUT '0' has tools/pgroup lift every go test -timeout.
+# internal/ci/nightly_test.go holds the rule.
+
+on:
+  schedule:
+    - cron: '41 2 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || format('{0}-{1}', github.event_name, github.ref) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  PGROUP_GO_TEST_TIMEOUT: '0'
+  SERIALIZE_GO_TAG: v2.1.1
+
+jobs:
+  nightly:
+    runs-on: [self-hosted, linux, x64, fleet]
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
+    if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: the pinned Go runtime the go adapter builds against
+        run: |
+          set -euo pipefail
+          (cd .. && rm -rf serialize.go && git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go)
+      - name: the coverage matrix, every test times every language
+        run: go run ./tools/schema-test coverage
+      - name: schema-test run --group nightly
+        run: |
+          set -euo pipefail
+          if [ -f /opt/nova/sdk/env.sh ]; then
+            . /opt/nova/sdk/env.sh
+          fi
+          go run ./tools/schema-test run --group nightly --timeout 0
