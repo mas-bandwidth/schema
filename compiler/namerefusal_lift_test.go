@@ -66,7 +66,7 @@ func nameCorpusPaths(t *testing.T, row string) []string {
 // nameRuleLangs maps the target a check diagnostic names to the --lang
 // spellings that generate it.
 var nameRuleLangs = map[string][]string{
-	"C": {"c"}, "C#": {"cs", "unity"}, "Goose": {"goose"}, "Java": {"java"},
+	"C": {"c"}, "C++": {"cpp"}, "C#": {"cs", "unity"}, "Dart": {"dart"}, "Goose": {"goose"}, "Java": {"java"},
 	"Lobster": {"lobster"}, "Lua": {"lua"}, "MOO": {"moo"}, "Python": {"python"}, "Ruby": {"ruby"},
 }
 

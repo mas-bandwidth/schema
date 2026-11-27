@@ -50,7 +50,7 @@ func luaVTFramingPins(t *testing.T, rows []luaFramingRow) map[string]bool {
 			}
 		}
 	}
-	want := slices.Clone(luaWireCheckOnly)
+	want := luaWireCheckOnly(t)
 	sort.Strings(want)
 	got := make([]string, 0, len(claimed))
 	for v := range claimed {

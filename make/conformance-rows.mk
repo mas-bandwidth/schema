@@ -50,7 +50,7 @@ CONFORMANCE_ROWS_DEPS_cpp    := build/tables-generated/.stamp
 CONFORMANCE_ROWS_ENV_cpp      = CXX="$(CXX)" SERIALIZE="$(SERIALIZE)"
 CONFORMANCE_ROWS_DEPS_cs     := toolchain-cs sibling-cs build/tables-generated-cs/.stamp
 CONFORMANCE_ROWS_ENV_cs       = DOTNET="$(DOTNET)" SERIALIZE_CS="$(abspath $(SERIALIZE_CS))"
-CONFORMANCE_ROWS_DEPS_dart   := toolchain-dart build/tables-generated-dart/.stamp build/dart-fixed/.stamp build/hb-dart/.stamp build/fixedform-corpus/.stamp
+CONFORMANCE_ROWS_DEPS_dart   := toolchain-dart build/tables-generated-dart/.stamp build/dart-fixed/.stamp build/hb-dart/.stamp build/fixedform-corpus/.stamp build/tables-generated/.stamp
 CONFORMANCE_ROWS_ENV_dart     = DART="$(DART)"
 CONFORMANCE_ROWS_DEPS_elixir := toolchain-elixir build/elixir-tables-ebin/.stamp build/elixir-fixedform/.stamp
 CONFORMANCE_ROWS_ENV_elixir   = ELIXIR='$(ELIXIR)'

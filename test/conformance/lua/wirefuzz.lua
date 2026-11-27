@@ -205,12 +205,30 @@ local function answer(entry, wire)
   return loaded, report, measure, saved
 end
 
+-- THE STREAM ENDS ONLY BETWEEN FRAMES (test/conformance/harness/wireeof.go):
+-- no index byte at EOF is the clean close; one to three are a truncated frame,
+-- and so is a length or a body the stream cuts short, which never reaches the
+-- codec as if it were whole.
+local function truncated(where, got, want)
+  stdout:flush()
+  io.stderr:write(string.format("wirefuzz.lua: the stream ended inside %s (%d of %d bytes)\n", where, got, want))
+  os.exit(1)
+end
+
+local function frame_part(n, where)
+  if n == 0 then return "" end
+  local s = stdin:read(n)
+  if s == nil or #s ~= n then truncated(where, s and #s or 0, n) end
+  return s
+end
+
 while true do
-  local head = read_exact(8)
-  if head == nil then break end
-  local index, size = string.unpack("<I4I4", head)
-  local wire = read_exact(size)
-  if wire == nil then break end
+  local first = stdin:read(4)
+  if first == nil then break end -- the harness closed the stream between frames
+  if #first ~= 4 then truncated("a mutant index", #first, 4) end
+  local index = string.unpack("<I4", first)
+  local size = string.unpack("<I4", frame_part(4, "a mutant length"))
+  local wire = frame_part(size, "a mutant")
   local entry = roster[index + 1]
   local loaded, report, measure, saved = false, nil, -1, nil
   if entry ~= nil then
