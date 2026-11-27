@@ -1,0 +1,62 @@
+# packet-void (SPEC §4.8): payload-free union arms cost exactly their tag
+# bits. Every leg's driver (test/packet-void/<leg>/) reads this file and
+# answers every case on a line of its own, "case <name> ok" or
+# "case <name> FAILED: <why>"; tools/casegate refuses a case with no answer.
+# The schema is test/packet-void/Void.schema; each case's wire is <name>.bin
+# beside this file. README.md says where each pin comes from.
+#
+#   <name> <type> <verdict> <bits> <value>
+#
+# accept: the leg writes <value> to exactly the pin's bytes (and <bits>, where
+#   the leg's writer reports a bit count), its public one-packet read accepts
+#   the pin, and the value it reads writes the pin's bytes again.
+# refuse: the leg's public one-packet read refuses the pin. <bits> is "-".
+# select: the leg reads the pin of the case <value> names (from=<case>) with
+#   its public one-packet read, then selects the arm <value> names on the
+#   value it read, the leg's own way of selecting an arm, and writes it: the
+#   bytes are exactly this case's pin (and <bits>). The arm carries its
+#   declared defaults, never what reading the void arm left behind.
+# refuse-write: the leg builds the type's default value with the one change
+#   <value> names, and its writer refuses it: an error or an exception, or in
+#   an assert leg (C, C++, C#, Unity, Rust, Java, Dart) the debug assert.
+#   <bits> is "-" and the case has no pin. An assert leg's release build has
+#   no write check by design (debug asserts only) and answers a refuse-write
+#   case ok without writing it. A change the leg's types cannot hold at all (a
+#   text tag where the tag is a typed integer or enum) is refused by its
+#   compiler: the driver names the case in its list of cases it cannot
+#   represent and answers it ok, and FAILED when that case's verdict is not
+#   refuse-write.
+batch-count-3   Batch  refuse -  count 3 > [..2]
+batch-empty     Batch  accept 2  values=[]
+batch-ping      Batch  accept 4  values=[ping]
+batch-ping-payload Batch accept 11 values=[ping,payload]
+empty-none      Empty  accept 0  None
+empty-trailing  Empty  refuse -  a whole byte after no bits
+empty-write-tag-1 Empty refuse-write - tag 1 > EmptyTypeMax 0
+frame-missing   Frame  refuse -  no bytes
+frame-ping      Frame  accept 8  lead=5,choice=ping,tail=6
+late-payload    Late   accept 7  payload (entries=[], marker=5: its defaults)
+late-pong       Late   accept 2  pong: a void arm after a payload arm
+mixed-count-3   Mixed  refuse -  payload, entries count 3 > [..2]
+mixed-missing   Mixed  refuse -  no tag
+mixed-none      Mixed  accept 2  None
+mixed-padding   Mixed  refuse -  ping, then a set bit in the final byte's padding
+mixed-payload   Mixed  accept 7  payload (entries=[], marker=5: its defaults)
+mixed-ping      Mixed  accept 2  ping
+mixed-ping-select-payload Mixed select 7 from=mixed-ping, then payload: entries=[], marker=5
+mixed-short     Mixed  refuse -  payload, entries count 2, and the entries cut off
+mixed-tag-3     Mixed  refuse -  tag 3 > MixedTypeMax 2
+mixed-trailing  Mixed  refuse -  ping, then a whole zero byte
+mixed-write-marker-8 Mixed refuse-write - tag payload, and the payload's marker 8 > bits(3)
+mixed-write-payload-type Mixed refuse-write - tag payload, and the payload is the integer 1, not a DefaultArm
+mixed-write-tag-3 Mixed refuse-write - tag 3 > MixedTypeMax 2
+mixed-write-tag-negative Mixed refuse-write - tag -1
+mixed-write-tag-text Mixed refuse-write - tag the text "ping", not an integer
+single-ack      Single accept 1  ack
+single-missing  Single refuse -  no tag
+single-none     Single accept 1  None
+tags-none       Tags   accept 2  None
+tags-ping       Tags   accept 2  ping
+tags-pong       Tags   accept 2  pong
+tags-tag-3      Tags   refuse -  tag 3 > TagsTypeMax 2
+tags-write-tag-3 Tags  refuse-write - tag 3 > TagsTypeMax 2

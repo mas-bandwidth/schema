@@ -1103,7 +1103,7 @@ int readProbeSlabBits(
 }
 
 // ProbeShapeType: union ProbeShape's tag — None = 0, then each variant in declared order (SPEC §4.8)
-extension type const ProbeShapeType(int _value) implements int {
+extension type const ProbeShapeType(int _value) {
   static const ProbeShapeType none = ProbeShapeType(0);
   static const ProbeShapeType ring = ProbeShapeType(1);
   static const ProbeShapeType slab = ProbeShapeType(2);
@@ -1113,7 +1113,7 @@ extension type const ProbeShapeType(int _value) implements int {
 // enumNameProbeShapeType: debug/log/tooling name for any ProbeShapeType wire value —
 // out-of-set values (wire-legal up to the declared max) name as '???'
 String enumNameProbeShapeType(int value) {
-  switch (value) {
+  switch (ProbeShapeType(value)) {
     case ProbeShapeType.none:
       return 'None';
     case ProbeShapeType.ring:
@@ -1157,9 +1157,9 @@ int writeProbeShape(ProbeShape value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
-  assert(value.type >= 0);
-  assert(value.type <= 2);
-  v = value.type & 0x3;
+  assert((value.type as int) >= 0);
+  assert((value.type as int) <= 2);
+  v = (value.type as int) & 0x3;
   scratch |= v << scratchBits;
   scratchBits += 2;
   switch (value.type) {
@@ -1337,9 +1337,9 @@ int writeProbeCollider(ProbeCollider value, ByteData view) {
   var v = 0;
   assert(value.armor >= 0);
   assert(value.armor <= 255);
-  assert(value.shape.type >= 0);
-  assert(value.shape.type <= 2);
-  v = (value.armor & 0xff) | ((value.shape.type & 0x3) << 8);
+  assert((value.shape.type as int) >= 0);
+  assert((value.shape.type as int) <= 2);
+  v = (value.armor & 0xff) | (((value.shape.type as int) & 0x3) << 8);
   scratch |= v << scratchBits;
   scratchBits += 10;
   switch (value.shape.type) {
@@ -1360,9 +1360,9 @@ int writeProbeCollider(ProbeCollider value, ByteData view) {
       scratch |= v << scratchBits;
       scratchBits += 15;
   }
-  assert(value.backup.type >= 0);
-  assert(value.backup.type <= 2);
-  v = value.backup.type & 0x3;
+  assert((value.backup.type as int) >= 0);
+  assert((value.backup.type as int) <= 2);
+  v = (value.backup.type as int) & 0x3;
   scratch |= v << scratchBits;
   scratchBits += 2;
   switch (value.backup.type) {
@@ -1390,9 +1390,9 @@ int writeProbeCollider(ProbeCollider value, ByteData view) {
   scratchBits += 2;
   for (var i0 = 0; i0 < value.extrasCount; i0++) {
     final e0 = value.extras[i0];
-    assert(e0.type >= 0);
-    assert(e0.type <= 2);
-    v = e0.type & 0x3;
+    assert((e0.type as int) >= 0);
+    assert((e0.type as int) <= 2);
+    v = (e0.type as int) & 0x3;
     scratch |= v << scratchBits;
     scratchBits += 2;
     if (scratchBits >= 64) {

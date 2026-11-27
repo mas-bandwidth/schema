@@ -1,6 +1,6 @@
 package tablewire
 
-import "github.com/mas-bandwidth/schema/v2/ir"
+import "github.com/mas-bandwidth/schema/v3/ir"
 
 // THE ELEMENT KINDS ARE CLOSED (docs/SPEC-TABLES.md §3): an array body (kind
 // 14) opens with one of 1–13 (bool; i8, i16, i32, i64; u8, u16, u32, u64;

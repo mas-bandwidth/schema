@@ -167,12 +167,27 @@ Nightly times are the newest completed scheduled run of each workflow on the fle
 | `schema-test-nightly.yml` | covered | `schema-test` | the one test driver (docs/TEST-REGISTRY.md). The `schema-test` job runs the registry's `pr` group (unit and functional, every language whose adapter has landed, every language-free test) on every pull request and prints the coverage matrix. Only the night runs the `nightly` group: every tier in every language, where each instance of a language with no adapter is MISSING and red by design, the work list |
 | `tla-nightly.yml` | covered | `ci-policy` | TestTLARunsHashEveryModelAndConfig: a model, config or EXTENDed module that changes without its TLC run recorded again is red on the pull request; TLC itself (148 s) runs nightly |
 | `nightly-conformance.yml` | covered | `verify-leg` | verify-leg runs each touched leg's conformance with --claims. Only the night sees a diff that touches more than four legs or the shared roots (verify-leg then selects no rows), and the cpp-writes job (1333 s) |
-| `ci-full.yml` | covered | `go-test-touched`, `verify-leg`, `lang-clean`, `lang-lint`, `generated-current`, `block-gate`, `vet`, `golangci-lint-fast`, `lint-fast`, `nightly-fast`, `appendix-java-announcement-budgets`, `appendix-go-fixed`, `appendix-python-fixed` | ci-fast is ci-full selected by path. Only the night sees windows, msvc, big-endian, the negative-controls matrix, pins and vuln: none has a two-minute form |
+| `ci-full.yml` | covered | `go-test-touched`, `verify-leg`, `lang-clean`, `lang-lint`, `generated-current`, `block-gate`, `vet`, `golangci-lint-fast`, `lint-fast`, `nightly-fast`, `appendix-java-announcement-budgets`, `appendix-go-fixed`, `appendix-python-fixed`, `cs-block-compile`, `cs-block-compile-negative-control` | ci-fast is ci-full selected by path. Only the night sees windows, msvc, big-endian, the negative-controls matrix, pins and vuln: none has a two-minute form |
 | `python-leg-nightly.yml` | covered | `verify-leg`, `hostile-python`, `bounds-python` | test-python on macOS (2041 s) is nightly; the Linux rows run per Python diff |
 | `python-leg.yml` | covered | `verify-leg`, `hostile-python`, `bounds-python` | the dispatch form of the above |
 | `ci-fast-nightly.yml` | happy-path | `happy-path` | every job of the old per-PR lane, unchanged in what it checks; on the schedule the plan selects every package and every leg (the leg gates too), with no timeout (the nightly rule) |
 | `leg.yml` | not-a-gate | | reusable (workflow_call); certify.yml calls it |
 | `release.yml` | not-a-gate | | cuts a release |
+
+## Negative controls: which tier runs each
+
+A negative control's tier is its group's `when` in
+[`make/negative-controls.json`](../make/negative-controls.json) (entries in
+`make/negative-controls.d`); `tools/negativecontrols`
+(`TestEveryDefinedControlIsInThePlan`) fails for a control the makefiles define
+and no group carries. Per pull request CI is the happy path only (#5052), so every group runs nightly in `ci-fast-nightly.yml`. The packet-void controls (`test/packet-void`):
+
+| Control | Group | Tier | Why |
+|---|---|---|---|
+| `packet-void-c-read-negative-control`, `packet-void-c-write-negative-control`, `packet-void-cpp-read-negative-control`, `packet-void-cpp-write-negative-control` | `base-packet-3` | nightly | host C and C++ compilers only |
+| `packet-void-python-negative-control` | `python-packet-core` | nightly | one SCHEMA_SLOW go test under the pinned interpreters |
+| `packet-void-lobster-negative-control` | `lobster-cards` | nightly | one go test over the pinned Lobster toolchain, beside `packet-end-lobster-negative-control`; 4 s with its positive run on mini-m5 (2026-11-24) |
+| `packet-void-ruby-negative-control` | `ruby-packet` | nightly | a cache miss builds both CRubies from source |
 
 ## The strict Ruby gate's fast form
 

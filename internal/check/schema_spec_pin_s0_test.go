@@ -8,7 +8,7 @@ package check
 import (
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // TestVariableTableCarriesWhatTheOtherTwoRefuse declares in one variable table

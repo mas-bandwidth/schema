@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testreg"
+	"github.com/mas-bandwidth/schema/v3/internal/testreg"
 )
 
 // cliRegistry is the CLI tests' registry, committed and only read: the tests

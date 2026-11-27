@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The generated units this driver reads, in the Unity dialect
+       (test/unity/UnityDialect.props). -->
+  <Import Project="../../../unity/UnityDialect.props" />
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <AssemblyName>packetvoidunity</AssemblyName>
+    <GeneratedDir Condition="'$(GeneratedDir)' == ''">$(MSBuildThisFileDirectory)../../../../build/packet-void/unity/generated</GeneratedDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="$(GeneratedDir)/*.cs" />
+  </ItemGroup>
+
+</Project>

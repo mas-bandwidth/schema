@@ -8,7 +8,7 @@ import (
 	"math/big"
 	"sort"
 
-	"github.com/mas-bandwidth/schema/v2/internal/ast"
+	"github.com/mas-bandwidth/schema/v3/internal/ast"
 )
 
 // Expr is a schema expression the checker resolved but kept, so a backend can

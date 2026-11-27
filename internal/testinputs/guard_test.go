@@ -7,7 +7,7 @@ import "testing"
 // on every one.
 func TestEveryInterpreterChildRegistersItsInputsPlants(t *testing.T) {
 	t.Parallel()
-	const head = "package p\nimport (\n\"context\"\n\"os/exec\"\n\"testing\"\n\"github.com/mas-bandwidth/schema/v2/internal/testproc\"\n\"github.com/mas-bandwidth/schema/v2/internal/testinputs\"\n)\nvar _ = context.Background\nvar _ = testinputs.Files\nvar _ = testproc.Command\n"
+	const head = "package p\nimport (\n\"context\"\n\"os/exec\"\n\"testing\"\n\"github.com/mas-bandwidth/schema/v3/internal/testproc\"\n\"github.com/mas-bandwidth/schema/v3/internal/testinputs\"\n)\nvar _ = context.Background\nvar _ = testinputs.Files\nvar _ = testproc.Command\n"
 	cases := []struct {
 		name, body string
 		want       int

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/ccommon"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/ccommon"
 )
 
 // unit is a hand-written stand-in for an emitter's output: one of every
@@ -119,7 +119,7 @@ func TestQualifyIsOneMapAcrossFiles(t *testing.T) {
 // after qualification are refused by name, never emitted twice.
 func TestQualifyRefusesACollision(t *testing.T) {
 	_, err := Qualify(map[string][]byte{
-		"Types.h": []byte("typedef struct MaxHp { int x; } MaxHp;\ntypedef struct max_hp_t { int y; } max_hp_t;\n"),
+		"Types.h": []byte("typedef struct MaxHp { int x; } MaxHp;\ntypedef struct max_hp { int y; } max_hp;\n"),
 	}, "example")
 	if err == nil || !strings.Contains(err.Error(), "example_max_hp_t") {
 		t.Fatalf("a collision after qualification must be refused by name, got %v", err)
@@ -201,5 +201,25 @@ func TestQualifyQualifiesAFeatureMacroAHeaderDeclares(t *testing.T) {
 	}
 	if got := string(out["View.c"]); strings.Contains(got, " _POSIX_C_SOURCE;") {
 		t.Errorf("a header-declared _POSIX_C_SOURCE must be qualified:\n%s", got)
+	}
+}
+
+// TestQualifyTypeSuffixIsInjective: every type takes _t, even one already
+// ending in _t, so placed and placed_t qualify to two names, not one
+// (SPEC §4.6; the name-buildability row n_internal_52). Reversed, with the
+// suffix skipped for a name already ending in _t, both are
+// example_placed_t and the unit is refused.
+func TestQualifyTypeSuffixIsInjective(t *testing.T) {
+	out, err := Qualify(map[string][]byte{
+		"Types.h": []byte("typedef enum placed { A } placed;\ntypedef enum placed_t { B } placed_t;\n"),
+	}, "example")
+	if err != nil {
+		t.Fatalf("placed beside placed_t must qualify to two names: %v", err)
+	}
+	got := string(out["Types.h"])
+	for _, want := range []string{"example_placed_t", "example_placed_t_t"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("want %s in:\n%s", want, got)
+		}
 	}
 }

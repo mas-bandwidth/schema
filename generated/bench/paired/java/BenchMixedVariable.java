@@ -2290,6 +2290,10 @@ public final class BenchMixedVariable {
 
     static void jsonFields(
             java.lang.StringBuilder b, TableVariable.NodeGraph graph, Value v, int depth) {
+        if (depth > TableJson.In.MAX_JSON_DEPTH) {
+            throw new TableJson.Refused(
+                    "a container past the cap: the write counts every container the read does");
+        }
         b.append('{');
         boolean empty = jsonFieldsBody(b, graph, v, depth + 1, true);
         if (!empty) TableJson.indent(b, depth);
@@ -2414,6 +2418,10 @@ public final class BenchMixedVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "entities");
         b.append(": ");
+        if (depth > TableJson.In.MAX_JSON_DEPTH) {
+            throw new TableJson.Refused(
+                    "a container past the cap: the write counts every container the read does");
+        }
         if (v.entities.size() < 1 || v.entities.size() > 8) {
             throw new TableJson.Refused("count_over_bound");
         }
@@ -2438,6 +2446,10 @@ public final class BenchMixedVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "stats");
         b.append(": ");
+        if (depth > TableJson.In.MAX_JSON_DEPTH) {
+            throw new TableJson.Refused(
+                    "a container past the cap: the write counts every container the read does");
+        }
         if (v.stats.size() < 0 || v.stats.size() > 80) {
             throw new TableJson.Refused("count_over_bound");
         }
@@ -2476,6 +2488,10 @@ public final class BenchMixedVariable {
         {
             java.util.List<java.lang.Integer> padded = new java.util.ArrayList<>();
             for (int j = 0; j < 4; j++) padded.add(j < v.loadout.size() ? v.loadout.get(j) : 0);
+            if (depth > TableJson.In.MAX_JSON_DEPTH) {
+                throw new TableJson.Refused(
+                        "a container past the cap: the write counts every container the read does");
+            }
             if (padded.size() > 4) {
                 throw new TableJson.Refused("count_over_bound");
             }

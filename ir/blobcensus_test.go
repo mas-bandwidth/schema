@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // every shape that DECLARES a byte buffer pointer: a pointee's field, a union

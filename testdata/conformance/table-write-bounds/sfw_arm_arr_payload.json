@@ -1,0 +1,20 @@
+{
+  "raw": "",
+  "arm_bits": {},
+  "arm_range": {},
+  "arm_str": {},
+  "arm_arr": {
+    "a_arr": [
+      -7,
+      0,
+      2147483647
+    ]
+  },
+  "arm_raw": {},
+  "chan_lim": {
+    "Alpha": 0,
+    "Beta": 0,
+    "Gamma": 0
+  },
+  "phase": "None"
+}
