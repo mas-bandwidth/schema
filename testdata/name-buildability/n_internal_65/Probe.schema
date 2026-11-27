@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum save_res_payload
+{ Zfirst, Zsecond, Zthird }
+
+enum save_res_union
+{ Zfirst, Zsecond, Zthird }
+
+enum save_skip
+{ Zfirst, Zsecond, Zthird }
+
+enum save_take
+{ Zfirst, Zsecond, Zthird }
+
+enum save_u32_bytes
+{ Zfirst, Zsecond, Zthird }
+
+enum save_u64_bytes
+{ Zfirst, Zsecond, Zthird }
+
+enum save_u8
+{ Zfirst, Zsecond, Zthird }
+
+enum save_with
+{ Zfirst, Zsecond, Zthird }
+
+enum saved
+{ Zfirst, Zsecond, Zthird }
+
+enum savedArgw
+{ Zfirst, Zsecond, Zthird }
+
+enum savedAt
+{ Zfirst, Zsecond, Zthird }
+
+enum savedLaid
+{ Zfirst, Zsecond, Zthird }
+
+enum savedNode
+{ Zfirst, Zsecond, Zthird }
+
+enum savedW
+{ Zfirst, Zsecond, Zthird }
+
+enum saved_at0
+{ Zfirst, Zsecond, Zthird }
+
+enum saved_depth
+{ Zfirst, Zsecond, Zthird }
+
+enum saved_laid0
+{ Zfirst, Zsecond, Zthird }
+
+enum saver
+{ Zfirst, Zsecond, Zthird }
+
+enum saving
+{ Zfirst, Zsecond, Zthird }
+
+enum sawNode
+{ Zfirst, Zsecond, Zthird }
+
+enum sawdot
+{ Zfirst, Zsecond, Zthird }
+
+enum sb
+{ Zfirst, Zsecond, Zthird }
+
+enum sbase
+{ Zfirst, Zsecond, Zthird }
+
+enum sbit
+{ Zfirst, Zsecond, Zthird }
+
+enum sblo
+{ Zfirst, Zsecond, Zthird }
+
+enum sc
+{ Zfirst, Zsecond, Zthird }
+
+enum scalar
+{ Zfirst, Zsecond, Zthird }
+
+enum scalarAt
+{ Zfirst, Zsecond, Zthird }
+
+enum scalarDefault
+{ Zfirst, Zsecond, Zthird }
+
+enum scalarEqual
+{ Zfirst, Zsecond, Zthird }
+
+enum scalar_read_128
+{ Zfirst, Zsecond, Zthird }
+
+enum scalar_shape
+{ Zfirst, Zsecond, Zthird }
+
+enum scalars
+{ Zfirst, Zsecond, Zthird }
+
+enum scale
+{ Zfirst, Zsecond, Zthird }
+
+enum scaled
+{ Zfirst, Zsecond, Zthird }
+
+enum scan
+{ Zfirst, Zsecond, Zthird }
+
+enum scanArrayBody
+{ Zfirst, Zsecond, Zthird }
+
+enum scanBytes
+{ Zfirst, Zsecond, Zthird }
+
+enum scanContent
+{ Zfirst, Zsecond, Zthird }
+
+enum scanHeldKey
+{ Zfirst, Zsecond, Zthird }
+
+enum scanKey
+{ Zfirst, Zsecond, Zthird }
+
+enum scanKeyedBody
+{ Zfirst, Zsecond, Zthird }
+
+enum scanLabel
+{ Zfirst, Zsecond, Zthird }
+
+enum scanName
+{ Zfirst, Zsecond, Zthird }
+
+enum scanNumber
+{ Zfirst, Zsecond, Zthird }
+
+enum scanPayload
+{ Zfirst, Zsecond, Zthird }
+
+enum scanScalar
+{ Zfirst, Zsecond, Zthird }
+
+enum scanStored
+{ Zfirst, Zsecond, Zthird }
+
+enum scanString
+{ Zfirst, Zsecond, Zthird }
+
+enum scanText
+{ Zfirst, Zsecond, Zthird }
+
+enum scanTypes
+{ Zfirst, Zsecond, Zthird }
+
+enum scanUnit
+{ Zfirst, Zsecond, Zthird }
+
+enum scanValue
+{ Zfirst, Zsecond, Zthird }
+
+enum scanVariantName
+{ Zfirst, Zsecond, Zthird }
+
+enum scan_atom
+{ Zfirst, Zsecond, Zthird }
+
+enum scan_list
+{ Zfirst, Zsecond, Zthird }
+
+enum scan_nodes
+{ Zfirst, Zsecond, Zthird }
+
+enum scan_object
+{ Zfirst, Zsecond, Zthird }
+
+enum scan_off
+{ Zfirst, Zsecond, Zthird }
+
+enum scan_ok
+{ Zfirst, Zsecond, Zthird }
+
+enum scanned
+{ Zfirst, Zsecond, Zthird }
+
+enum scanner
+{ Zfirst, Zsecond, Zthird }
+
+enum scarry
+{ Zfirst, Zsecond, Zthird }
+
+enum schema
+{ Zfirst, Zsecond, Zthird }
+
+enum sci
+{ Zfirst, Zsecond, Zthird }
+
+enum sciLength
+{ Zfirst, Zsecond, Zthird }
+
+enum scope
+{ Zfirst, Zsecond, Zthird }
+
+enum scratch
+{ Zfirst, Zsecond, Zthird }
+
+enum scratch4
+{ Zfirst, Zsecond, Zthird }
+
+enum seal_tree
+{ Zfirst, Zsecond, Zthird }
+
+enum search
+{ Zfirst, Zsecond, Zthird }
+
+enum seat
+{ Zfirst, Zsecond, Zthird }
+
+enum sec
+{ Zfirst, Zsecond, Zthird }
+
+enum second
+{ Zfirst, Zsecond, Zthird }
+
+enum secondSize
+{ Zfirst, Zsecond, Zthird }
+
+enum second_half
+{ Zfirst, Zsecond, Zthird }
+
+enum second_of_day
+{ Zfirst, Zsecond, Zthird }
+
+enum seconds
+{ Zfirst, Zsecond, Zthird }
+
+enum secs
+{ Zfirst, Zsecond, Zthird }
+
+enum see
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    save_res_payload Inner
+    save_res_union Inner
+    save_skip Inner
+    save_take Inner
+    save_u32_bytes Inner
+    save_u64_bytes Inner
+    save_u8 Inner
+    save_with Inner
+    saved Inner
+    savedArgw Inner
+}
+
+table NameTypes0
+{
+    one0  save_res_payload
+    many0 [..4]save_res_payload
+    one1  save_res_union
+    many1 [..4]save_res_union
+    one2  save_skip
+    many2 [..4]save_skip
+    one3  save_take
+    many3 [..4]save_take
+    one4  save_u32_bytes
+    many4 [..4]save_u32_bytes
+    one5  save_u64_bytes
+    many5 [..4]save_u64_bytes
+    one6  save_u8
+    many6 [..4]save_u8
+    one7  save_with
+    many7 [..4]save_with
+    one8  saved
+    many8 [..4]saved
+    one9  savedArgw
+    many9 [..4]savedArgw
+}
+
+table NameFields0
+{
+    save_res_payload uint32
+    save_res_union uint32
+    save_skip uint32
+    save_take uint32
+    save_u32_bytes uint32
+    save_u64_bytes uint32
+    save_u8 uint32
+    save_with uint32
+    saved uint32
+    savedArgw uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    savedAt Inner
+    savedLaid Inner
+    savedNode Inner
+    savedW Inner
+    saved_at0 Inner
+    saved_depth Inner
+    saved_laid0 Inner
+    saver Inner
+    saving Inner
+    sawNode Inner
+}
+
+table NameTypes1
+{
+    one0  savedAt
+    many0 [..4]savedAt
+    one1  savedLaid
+    many1 [..4]savedLaid
+    one2  savedNode
+    many2 [..4]savedNode
+    one3  savedW
+    many3 [..4]savedW
+    one4  saved_at0
+    many4 [..4]saved_at0
+    one5  saved_depth
+    many5 [..4]saved_depth
+    one6  saved_laid0
+    many6 [..4]saved_laid0
+    one7  saver
+    many7 [..4]saver
+    one8  saving
+    many8 [..4]saving
+    one9  sawNode
+    many9 [..4]sawNode
+}
+
+table NameFields1
+{
+    savedAt uint32
+    savedLaid uint32
+    savedNode uint32
+    savedW uint32
+    saved_at0 uint32
+    saved_depth uint32
+    saved_laid0 uint32
+    saver uint32
+    saving uint32
+    sawNode uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    sawdot Inner
+    sb Inner
+    sbase Inner
+    sbit Inner
+    sblo Inner
+    sc Inner
+    scalar Inner
+    scalarAt Inner
+    scalarDefault Inner
+    scalarEqual Inner
+}
+
+table NameTypes2
+{
+    one0  sawdot
+    many0 [..4]sawdot
+    one1  sb
+    many1 [..4]sb
+    one2  sbase
+    many2 [..4]sbase
+    one3  sbit
+    many3 [..4]sbit
+    one4  sblo
+    many4 [..4]sblo
+    one5  sc
+    many5 [..4]sc
+    one6  scalar
+    many6 [..4]scalar
+    one7  scalarAt
+    many7 [..4]scalarAt
+    one8  scalarDefault
+    many8 [..4]scalarDefault
+    one9  scalarEqual
+    many9 [..4]scalarEqual
+}
+
+table NameFields2
+{
+    sawdot uint32
+    sb uint32
+    sbase uint32
+    sbit uint32
+    sblo uint32
+    sc uint32
+    scalar uint32
+    scalarAt uint32
+    scalarDefault uint32
+    scalarEqual uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    scalar_read_128 Inner
+    scalar_shape Inner
+    scalars Inner
+    scale Inner
+    scaled Inner
+    scan Inner
+    scanArrayBody Inner
+    scanBytes Inner
+    scanContent Inner
+    scanHeldKey Inner
+}
+
+table NameTypes3
+{
+    one0  scalar_read_128
+    many0 [..4]scalar_read_128
+    one1  scalar_shape
+    many1 [..4]scalar_shape
+    one2  scalars
+    many2 [..4]scalars
+    one3  scale
+    many3 [..4]scale
+    one4  scaled
+    many4 [..4]scaled
+    one5  scan
+    many5 [..4]scan
+    one6  scanArrayBody
+    many6 [..4]scanArrayBody
+    one7  scanBytes
+    many7 [..4]scanBytes
+    one8  scanContent
+    many8 [..4]scanContent
+    one9  scanHeldKey
+    many9 [..4]scanHeldKey
+}
+
+table NameFields3
+{
+    scalar_read_128 uint32
+    scalar_shape uint32
+    scalars uint32
+    scale uint32
+    scaled uint32
+    scan uint32
+    scanArrayBody uint32
+    scanBytes uint32
+    scanContent uint32
+    scanHeldKey uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    scanKey Inner
+    scanKeyedBody Inner
+    scanLabel Inner
+    scanName Inner
+    scanNumber Inner
+    scanPayload Inner
+    scanScalar Inner
+    scanStored Inner
+    scanString Inner
+    scanText Inner
+}
+
+table NameTypes4
+{
+    one0  scanKey
+    many0 [..4]scanKey
+    one1  scanKeyedBody
+    many1 [..4]scanKeyedBody
+    one2  scanLabel
+    many2 [..4]scanLabel
+    one3  scanName
+    many3 [..4]scanName
+    one4  scanNumber
+    many4 [..4]scanNumber
+    one5  scanPayload
+    many5 [..4]scanPayload
+    one6  scanScalar
+    many6 [..4]scanScalar
+    one7  scanStored
+    many7 [..4]scanStored
+    one8  scanString
+    many8 [..4]scanString
+    one9  scanText
+    many9 [..4]scanText
+}
+
+table NameFields4
+{
+    scanKey uint32
+    scanKeyedBody uint32
+    scanLabel uint32
+    scanName uint32
+    scanNumber uint32
+    scanPayload uint32
+    scanScalar uint32
+    scanStored uint32
+    scanString uint32
+    scanText uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    scanTypes Inner
+    scanUnit Inner
+    scanValue Inner
+    scanVariantName Inner
+    scan_atom Inner
+    scan_list Inner
+    scan_nodes Inner
+    scan_object Inner
+    scan_off Inner
+    scan_ok Inner
+}
+
+table NameTypes5
+{
+    one0  scanTypes
+    many0 [..4]scanTypes
+    one1  scanUnit
+    many1 [..4]scanUnit
+    one2  scanValue
+    many2 [..4]scanValue
+    one3  scanVariantName
+    many3 [..4]scanVariantName
+    one4  scan_atom
+    many4 [..4]scan_atom
+    one5  scan_list
+    many5 [..4]scan_list
+    one6  scan_nodes
+    many6 [..4]scan_nodes
+    one7  scan_object
+    many7 [..4]scan_object
+    one8  scan_off
+    many8 [..4]scan_off
+    one9  scan_ok
+    many9 [..4]scan_ok
+}
+
+table NameFields5
+{
+    scanTypes uint32
+    scanUnit uint32
+    scanValue uint32
+    scanVariantName uint32
+    scan_atom uint32
+    scan_list uint32
+    scan_nodes uint32
+    scan_object uint32
+    scan_off uint32
+    scan_ok uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    scanned Inner
+    scanner Inner
+    scarry Inner
+    schema Inner
+    sci Inner
+    sciLength Inner
+    scope Inner
+    scratch Inner
+    scratch4 Inner
+    seal_tree Inner
+}
+
+table NameTypes6
+{
+    one0  scanned
+    many0 [..4]scanned
+    one1  scanner
+    many1 [..4]scanner
+    one2  scarry
+    many2 [..4]scarry
+    one3  schema
+    many3 [..4]schema
+    one4  sci
+    many4 [..4]sci
+    one5  sciLength
+    many5 [..4]sciLength
+    one6  scope
+    many6 [..4]scope
+    one7  scratch
+    many7 [..4]scratch
+    one8  scratch4
+    many8 [..4]scratch4
+    one9  seal_tree
+    many9 [..4]seal_tree
+}
+
+table NameFields6
+{
+    scanned uint32
+    scanner uint32
+    scarry uint32
+    schema uint32
+    sci uint32
+    sciLength uint32
+    scope uint32
+    scratch uint32
+    scratch4 uint32
+    seal_tree uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    search Inner
+    seat Inner
+    sec Inner
+    second Inner
+    secondSize Inner
+    second_half Inner
+    second_of_day Inner
+    seconds Inner
+    secs Inner
+    see Inner
+}
+
+table NameTypes7
+{
+    one0  search
+    many0 [..4]search
+    one1  seat
+    many1 [..4]seat
+    one2  sec
+    many2 [..4]sec
+    one3  second
+    many3 [..4]second
+    one4  secondSize
+    many4 [..4]secondSize
+    one5  second_half
+    many5 [..4]second_half
+    one6  second_of_day
+    many6 [..4]second_of_day
+    one7  seconds
+    many7 [..4]seconds
+    one8  secs
+    many8 [..4]secs
+    one9  see
+    many9 [..4]see
+}
+
+table NameFields7
+{
+    search uint32
+    seat uint32
+    sec uint32
+    second uint32
+    secondSize uint32
+    second_half uint32
+    second_of_day uint32
+    seconds uint32
+    secs uint32
+    see uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

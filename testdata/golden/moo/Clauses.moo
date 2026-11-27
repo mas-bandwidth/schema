@@ -688,6 +688,9 @@ function M.WriteF13(stream: any, value: F13): boolean
 	if type(value.Items) ~= "table" then -- the array's table storage
 		return false
 	end
+	if #value.Items ~= 7 then -- a [N]T holds exactly N values (SPEC §5.1)
+		return false
+	end
 	for i = 1, 7 do
 		if not isInt(value.Items[i], 0, 8191) then
 			return false
@@ -1034,6 +1037,9 @@ end
 -- WriteArrEleven writes the type wire (SPEC §4.3, §6.1: the declared order).
 function M.WriteArrEleven(stream: any, value: ArrEleven): boolean
 	if type(value.Items) ~= "table" then -- the array's table storage
+		return false
+	end
+	if #value.Items ~= 9 then -- a [N]T holds exactly N values (SPEC §5.1)
 		return false
 	end
 	for i = 1, 9 do

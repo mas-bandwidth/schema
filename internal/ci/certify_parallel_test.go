@@ -8,6 +8,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 )
 
 var certifyCoreShards = []string{
@@ -43,6 +45,7 @@ var certifyInlineRowRe = regexp.MustCompile(`(?m)^\s*-\s*\{\s*os:\s*([a-z-]+),\s
 
 func registeredTestLegs(t *testing.T, root string) []string {
 	t.Helper()
+	testinputs.Make(t)
 	cmd := exec.Command("make", "-s", "registry")
 	cmd.Dir = root
 	out, err := cmd.Output()
@@ -88,6 +91,7 @@ func makeQueryOutput(t *testing.T, cmd *exec.Cmd) []byte {
 
 func makeTestDatabasePrereqs(t *testing.T, root string) []string {
 	t.Helper()
+	testinputs.Make(t)
 	cmd := exec.Command("make", "-qp")
 	cmd.Dir = root
 	out := makeQueryOutput(t, cmd)
