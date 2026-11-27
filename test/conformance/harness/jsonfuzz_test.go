@@ -97,8 +97,13 @@ func TestJSONFuzzPlantedNegativeControls(t *testing.T) {
 	makeDriverScript := func(t *testing.T, sabotage string) string {
 		t.Helper()
 		script := filepath.Join(t.TempDir(), "synthetic-driver.sh")
+		// the variable TestMain enters the synthetic leg on, spelled NAME=value
+		// on its own: that is how the TestMain gate (internal/ci
+		// TestNoTestMainLeavesBeforeItRunsTheTests) knows the early exit
+		// there is this helper process's
+		driverEnv := "SCHEMA_JSONFUZZ_TEST_DRIVER=1"
 		body := "#!/bin/sh\n" +
-			"export SCHEMA_JSONFUZZ_TEST_DRIVER=1\n" +
+			"export " + driverEnv + "\n" +
 			"export SCHEMA_JSONFUZZ_SABOTAGE=" + sabotage + "\n" +
 			"exec \"" + exe + "\" \"$@\"\n"
 		if err := os.WriteFile(script, []byte(body), 0o755); err != nil {
