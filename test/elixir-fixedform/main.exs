@@ -127,7 +127,7 @@ Leg.start()
 # (test/js-tables/fixedform.mjs:850-858, docs/FIXED-FORM-ALGORITHM.md:1082).
 #
 # IT SITS FIRST, BESIDE THE WRITE'S OWN BYTE-FOR-BYTE CASE BELOW, because a
-# broken constant sends a self-written file `layout_newer` and takes the later
+# broken constant sends a self-written file `layout_unknown` and takes the later
 # sections down with it: the property has to be read off the FILE'S OWN HEADER,
 # which is answered before any lineage.
 #
@@ -224,7 +224,7 @@ roundtrip = fn name, load, save ->
     {:ok, values, report} ->
       # `layout_hash` IS ZERO ON A READ THAT LANDS VALUES (§5.9 #15): it is the
       # last member of the report and it carries a number on exactly two paths,
-      # `layout_newer` and `layout_unsupported`. Asserting it here is what keeps
+      # `layout_unknown` and `layout_unsupported`. Asserting it here is what keeps
       # it from riding on every clean read.
       Leg.eq("#{name}: a clean read moves no counter", report, %{
         unknown: 0,
@@ -388,7 +388,7 @@ Leg.eq("pack[1].settings.difficulty = Easy", p1v.settings.difficulty, :easy)
 #
 # FX2 over an FX1 file, FX1 over an FX2 file, P1 over P3's and P3 over P1's —
 # four files whose header hash is in no lineage this build laid down, which §5.3
-# answers at step 5, `layout_newer`, BEFORE a record and before any walk. The
+# answers at step 5, `layout_unknown`, BEFORE a record and before any walk. The
 # cached plan and the `:persistent_term` plan key go with them: a plan is the
 # BUILD'S now, one per lineage entry at module load, and nothing on a load path
 # compiles one (§5.9 #3).
@@ -483,7 +483,7 @@ _ = plan_path
 # used to be compiled on the load path. §5 removes the lever instead of bounding
 # it: a plan is built ONCE PER LINEAGE ENTRY at module load from the LOCK's own
 # bytes (§5.9 #3), a layout a file carries is never parsed, and a hash the
-# lineage does not hold is `layout_newer` before any work at all. `forget/1` and
+# lineage does not hold is `layout_unknown` before any work at all. `forget/1` and
 # `plan_cache_max/0` remain the runtime's API — §5.6 retires MECHANISMS and not
 # API (§5.9 #16) — and the capacity refusal they guarded is owed where a
 # COMPILED lane still exists: the lineage harness, as `plan_too_large` over an
@@ -845,14 +845,14 @@ Leg.eq(
 #
 # FE2 over FE1's record is a BACKWARD read §5 keeps — but only where the LOCK
 # handed FE1's entry to FE2, and these two units are generated apart with no
-# lock, so FE1's hash is in no lineage of FE2's and the file is `layout_newer`.
+# lock, so FE1's hash is in no lineage of FE2's and the file is `layout_unknown`.
 # FE1 over FE2's record is a FORWARD read, which §5.6 retires outright: "the
 # remap of an unknown variant to None" is named there by name.
 #
 # WHERE THE COVERAGE IS OWED: the lineage harness's `enum_append`,
 # `union_append` and `keyed_array_enum_append` rows, which are the same edit with
 # the lock played — the ordinal slide read through an entry the build was handed,
-# and the forward direction refused `layout_newer` by name (§5.7's two columns).
+# and the forward direction refused `layout_unknown` by name (§5.7's two columns).
 ordinal_slide = fn ->
   Leg.section("the ordinal slide: an enum and a union that both gained a variant in the middle")
 
@@ -993,7 +993,7 @@ Leg.eq("the identity read widens nothing", fu_ident.widened, 0)
 # RETIRED BY §5.6: THE COMPILED HALF READS FU1's FILE UNDER FU2 WITH NO LINEAGE.
 #
 # FU2 inserts an arm in the middle, so FU1's hash is in no lineage FU2's build
-# laid down and the file comes back `layout_newer` — the forward/strange-layout
+# laid down and the file comes back `layout_unknown` — the forward/strange-layout
 # read §5.3 answers at step 5. The coverage is HELD, not dropped: the lineage
 # harness's TestFixedVersioningUnionArmText reads UT1's file under UT2 with UT1's
 # entry HANDED IN as the lock, which is the same two facts under one plan entry —
@@ -1084,7 +1084,7 @@ Leg.eq(
 )
 
 # RETIRED BY §5.6: the COMPILED half of this pair reads FE1's file under FE2,
-# whose lineage does not hold FE1's hash, so the file is `layout_newer` before a
+# whose lineage does not hold FE1's hash, so the file is `layout_unknown` before a
 # record. The identity half above is FE1 over FE1's own hash and RUNS. What a
 # tag matching no arm OF THE WRITER'S lands is owed on the lineage harness's
 # `union_append` row, where the lock hands the older entry in.
@@ -1547,7 +1547,7 @@ Leg.eq(
 #   UNDER A KNOWN HASH — this reader's own, with the layout bytes bent — the byte
 #   comparison fails and the answer is ONE NAME, `layout_malformed`: "a lie about
 #   a known version" (§5.3's table, bill §12.4).
-#   UNDER AN UNKNOWN HASH — the bent bytes' own — the answer is `layout_newer`,
+#   UNDER AN UNKNOWN HASH — the bent bytes' own — the answer is `layout_unknown`,
 #   reported at step 5 BEFORE ANY WALK, carrying the file's hash and nothing
 #   else, whatever the bytes behind it say.
 #
@@ -1571,8 +1571,8 @@ refuse = fn name, bad ->
 
   bad_hash = Tblfx1.FixedRuntime.hash(bad)
   {:error, why, report} = Tblfx1.FX1Fixed.fx_root_fixed_load(file.(bad_hash))
-  Leg.eq("#{name}, under an UNKNOWN hash: `layout_newer`", why, :layout_newer)
-  Leg.eq("#{name}: and `layout_newer` reports THE FILE's hash", report.layout_hash, bad_hash)
+  Leg.eq("#{name}, under an UNKNOWN hash: `layout_unknown`", why, :layout_unknown)
+  Leg.eq("#{name}: and `layout_unknown` reports THE FILE's hash", report.layout_hash, bad_hash)
   Leg.eq("#{name}: a refusal by name moves no counter", report.unknown, 0)
 end
 
@@ -1618,7 +1618,7 @@ refuse.("a child count that does not close", bad_tree)
 # THE SEVEN §1.1 RULES, EACH BY ITS OWN NAME, AS THE LOCK'S VALIDATION (§5.6).
 # §5.6 retired the run-time walk of a stranger's layout — on the wire a hostile
 # layout is COMPARED, never parsed, so the read answers one name
-# (`layout_malformed` / `layout_newer`), asserted above. What §5.6 kept is the
+# (`layout_malformed` / `layout_unknown`), asserted above. What §5.6 kept is the
 # seven checks AS THE LOCK'S VALIDATION OF WHAT IT RECORDS, and on this leg that
 # is `parse_layout/1`: the same seven refusals, each under its own name, and the
 # ORDER load-bearing — keep the FIRST reason and stop.
@@ -1690,11 +1690,11 @@ Leg.eq(
 
 # A HEADER WHOSE HASH NAMES A LAYOUT THIS BUILD DOES NOT HOLD is answered at
 # §5.3 step 5 and the bytes behind it are never looked at — these ARE this
-# reader's own, valid layout bytes, and the answer is still `layout_newer`. The
+# reader's own, valid layout bytes, and the answer is still `layout_unknown`. The
 # hash is the version, and nothing is recomputed from the wire: §2's step 5 goes
 # with the walk (§5.6).
 Leg.eq(
-  "a header that names another layout is `layout_newer`",
+  "a header that names another layout is `layout_unknown`",
   Tblfx1.FX1Fixed.fx_root_fixed_load(
     IO.iodata_to_binary([
       Tblfx1.FixedRuntime.file_header(stated + 1, byte_size(layout)),
@@ -1703,7 +1703,7 @@ Leg.eq(
     ])
   )
   |> elem(1),
-  :layout_newer
+  :layout_unknown
 )
 
 # AND AN UNKNOWN HASH IS ANSWERED BEFORE ANY WALK, so bending the layout too
@@ -1721,7 +1721,7 @@ Leg.eq(
     ])
   )
   |> elem(1),
-  :layout_newer
+  :layout_unknown
 )
 
 # A PLAN THAT DOES NOT FIT THE CALLER'S STORAGE: THE CONTROL MOVED WITH THE CASE
@@ -2118,7 +2118,7 @@ IO.puts(
 #
 # THE LAYOUT HERE IS INTERNALLY VALID, hand-built out of this build's own field
 # ids and passing all seven rules. After COMPILE-from-lock (§5.3), LOAD never
-# parses a stranger — an unknown hash is `layout_newer` — so the bound is
+# parses a stranger — an unknown hash is `layout_unknown` — so the bound is
 # asserted on `FixedRuntime.compile/5` directly, which is the path a known older
 # writer still takes through the lineage harness. THE FINDING IS THAT THIS LEG
 # CARRIES NO SUCH BOUND: the `layout_record_too_large` refusals in

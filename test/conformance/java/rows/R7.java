@@ -6,12 +6,12 @@
 // from layout bytes it holds, not for the IDENTITY LANE (step 8, where the
 // selected entry being the reader's own is an INDEX COMPARISON and never a
 // recomputation)". The refusal table (:884) pins the answer's shape: a hash in
-// no lineage entry is `layout_newer` carrying THE FILE'S HASH, and nothing
+// no lineage entry is `layout_unknown` carrying THE FILE'S HASH, and nothing
 // else.
 //
 // The hurt the law exists for is the Elixir leg (#928): it hashed its own
 // layout bytes to find itself in the lineage, matched NOTHING, and took a
-// compiled plan on every read of its own files — layout_newer for its own
+// compiled plan on every read of its own files — layout_unknown for its own
 // files, and a compiled lane where the identity lane was owed. Both faces are
 // asserted below, on the production read path.
 //
@@ -142,7 +142,7 @@ final class TestRowR7 {
         // THE R7 BITE, first face: the build's own file READS, on the identity
         // lane. A runtime that derived its own hash from the layout bytes it
         // holds would fold in no digest, match NOTHING in the lineage, and
-        // answer layout_newer for its own files — the Elixir hurt (#928). The
+        // answer layout_unknown for its own files — the Elixir hurt (#928). The
         // census lands zero because the identity plan is the law's own shape,
         // not a compiled one (§5.9 #30).
         final CfgFixed.Value[] out = { new CfgFixed.Value() };
@@ -170,7 +170,7 @@ final class TestRowR7 {
                         + "hash takes is the identity lane and never a compiled one");
 
         // THE HASH WAS TAKEN AS GIVEN, NEVER RECOMPUTED. A header hash no
-        // lineage entry holds is layout_newer, and the report carries THE
+        // lineage entry holds is layout_unknown, and the report carries THE
         // FILE'S HASH — the value the header held, not this build's constant
         // and not a hash of the layout bytes behind it, which no runtime
         // computes.
@@ -180,10 +180,10 @@ final class TestRowR7 {
         final tblv1.TableFixed.Report lr = report(out, lying, 1024);
         check(TableFixed.get64(f, TableFixed.hashAt) == CfgFixed.hash
                 && given == (CfgFixed.hash ^ 0xFFFFFFFFFFFFFFFFL) && lr.refused
-                && lr.reason == TableFixed.Reason.layoutNewer && lr.layoutHash == given
+                && lr.reason == TableFixed.Reason.layoutUnknown && lr.layoutHash == given
                 && !lr.damaged && lr.unknown == 0
                 && lr.widened == 0,
-                "a header hash no lineage entry holds is layout_newer carrying THE FILE'S HASH and "
+                "a header hash no lineage entry holds is layout_unknown carrying THE FILE'S HASH and "
                         + "nothing else (0x" + Long.toHexString(given)
                         + "L, as given): no counter moves, nothing decodes");
 
