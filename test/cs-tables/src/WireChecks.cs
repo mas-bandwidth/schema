@@ -72,6 +72,9 @@ static partial class Program
             "the held kind 31 under a zero identity refuses the whole load");
         // an enum reference past the id table is damage even in a field this
         // reader does not declare (docs/SPEC-TABLES.md §6.5)
+        // the id table these fixtures name, in first-use order with every entry
+        // used (docs/SPEC-TABLES.md §3)
+        string[] future = { "zero", "future-void", "future-enum", "future-variant", "a" };
         byte[] enumPast = Fixture(new byte[] { 1,32,0,2,32,0,3,30,127,5,4,42,0,0,0,0 }, future);
         report = new V1.TableReport();
         Check(!V1.Schema.CfgLoad(cfg, enumPast, report) && report.Damaged && cfg.A != 42,
