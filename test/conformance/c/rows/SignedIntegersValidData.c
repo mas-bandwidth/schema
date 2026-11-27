@@ -114,7 +114,7 @@ static void pack64( uint8_t * b, int64_t v )
 /* The 72-byte record body the law derives from the record above, built from
  * the SAME values the save was handed, so the memcmp pins every byte: each
  * width at its declared size, little-endian, and the bounds nowhere. */
-static void pack_body( uint8_t * b, const RangedSigned * v )
+static void pack_body( uint8_t * b, const tabledemo_ranged_signed_t * v )
 {
     pack8( b + 0, v->i8_span );
     pack8( b + 1, v->i8_low );
@@ -139,7 +139,7 @@ static void pack_body( uint8_t * b, const RangedSigned * v )
     pack16( b + 70, v->edges[3] );
 }
 
-static int same_record( const RangedSigned * a, const RangedSigned * b )
+static int same_record( const tabledemo_ranged_signed_t * a, const tabledemo_ranged_signed_t * b )
 {
     return a->i8_span == b->i8_span && a->i8_low == b->i8_low
         && a->i8_high == b->i8_high && a->i8_inside == b->i8_inside
@@ -154,10 +154,19 @@ static int same_record( const RangedSigned * a, const RangedSigned * b )
         && a->edges[3] == b->edges[3];
 }
 
-static int silent( const TableReport * r )
+/* SILENT under the strict read (docs/rulings.json strict-only-read and
+   refusal-verdict-only; docs/plans/strict-only.md): kind_mismatch, clamped,
+   duplicate and malformed are retired counters — each is a refusal of the
+   whole load now, clamped as the out_of_range refusal and malformed as the
+   damage reason — so their four "== 0" become refused == 0 with refuse_reason
+   and damage_reason both OK. The live counters stay 0 as before. */
+static int silent( const tabledemo_table_report_t * r )
 {
-    return r->unknown == 0 && r->kind_mismatch == 0 && r->widened == 0
-        && r->clamped == 0 && r->duplicate == 0 && !r->malformed && !r->refused;
+    return r->unknown == 0 && r->widened == 0 && r->missing_required == 0
+        && r->blob_shared == 0 && r->retained == 0 && r->retain_lost == 0
+        && r->non_finite_floats == 0
+        && !r->refused && r->refuse_reason == SCHEMA_TABLEDEMO_TABLE_REFUSE_OK
+        && r->damage_reason == SCHEMA_TABLEDEMO_TABLE_REFUSE_OK;
 }
 
 int main( void )
@@ -165,19 +174,19 @@ int main( void )
     /* MIN: the signedness edge the sign bit alone makes, at every width.
      * The low/high/inside fields sit one inside a storage limit, so their
      * declared minimum is the value they carry — valid data, never a clamp. */
-    RangedSigned mins;
+    tabledemo_ranged_signed_t mins;
     /* MAX: the other edge of the same storage types. */
-    RangedSigned maxs;
+    tabledemo_ranged_signed_t maxs;
     /* CROSS: -1, 0, 1 across the sign boundary at every width, and the
      * int16 ELEMENT lane carrying both storage edges and the boundary. */
-    RangedSigned cross;
-    RangedSigned back[3];
-    TableReport report;
+    tabledemo_ranged_signed_t cross;
+    tabledemo_ranged_signed_t back[3];
+    tabledemo_table_report_t report;
     static uint8_t file[8192];
     static uint8_t body[72];
-    const int64_t layout_bytes = (int64_t) sizeof( ranged_signed_fixed_layout );
-    const int64_t records_at = kTableFixedHeaderBytes + 4 + layout_bytes;
-    const int64_t one = ranged_signed_fixed_measure( 1 );
+    const int64_t layout_bytes = (int64_t) sizeof( tabledemo_ranged_signed_fixed_layout );
+    const int64_t records_at = TABLEDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 + layout_bytes;
+    const int64_t one = tabledemo_ranged_signed_fixed_measure( 1 );
     int64_t n;
 
     memset( &mins, 0, sizeof( mins ) );
@@ -206,20 +215,20 @@ int main( void )
 
     /* ---- the framing §3.4 states, and the record the law derives ------- */
 
-    check( one - ( kTableFixedHeaderBytes + 4 + layout_bytes ) == 8 + 72,
+    check( one - ( TABLEDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 + layout_bytes ) == 8 + 72,
            "signed-integers/c/valid-data: a record is the hash plus a 72-byte body — 4*1 + 4*2 + 4*4 + 4*8 + 4 + 4*2, and the bounds do not ride" );
-    check( ranged_signed_fixed_known[0].record_bytes == 8 + 72,
+    check( tabledemo_ranged_signed_fixed_known[0].record_bytes == 8 + 72,
            "signed-integers/c/valid-data: the lock's record_bytes is the same 80, never a width-a-past bound" );
 
     /* ---- WRITE: three valid records, the whole edge range -------------- */
 
     {
-        RangedSigned all[3];
+        tabledemo_ranged_signed_t all[3];
         all[0] = mins; all[1] = maxs; all[2] = cross;
-        n = ranged_signed_fixed_save( all, 3, file, (int64_t) sizeof( file ) );
+        n = tabledemo_ranged_signed_fixed_save( all, 3, file, (int64_t) sizeof( file ) );
     }
-    check( n == ranged_signed_fixed_measure( 3 ), "signed-integers/c/valid-data: the edge records save, whole" );
-    check( file[0] == kTableFixedForm && table_fixed_get64( file + kTableFixedHashAt ) == ranged_signed_fixed_hash,
+    check( n == tabledemo_ranged_signed_fixed_measure( 3 ), "signed-integers/c/valid-data: the edge records save, whole" );
+    check( file[0] == TABLEDEMO_K_TABLE_FIXED_FORM && tabledemo_table_fixed_get64( file + TABLEDEMO_K_TABLE_FIXED_HASH_AT ) == tabledemo_ranged_signed_fixed_hash,
            "signed-integers/c/valid-data: form byte 3 and the layout's own hash head the file" );
 
     /* ---- the vector byte for byte, every width at its declared size ----- */
@@ -241,7 +250,7 @@ int main( void )
 
     memset( back, 0x5A, sizeof( back ) ); /* nothing may survive the read but a landed value */
     memset( &report, 0, sizeof( report ) );
-    check( ranged_signed_fixed_load( back, 3, file, n, NULL, 0, NULL, &report ) == 3,
+    check( tabledemo_ranged_signed_fixed_load( back, 3, file, n, NULL, 0, NULL, &report ) == 3,
            "signed-integers/c/valid-data: all three records read" );
     check( silent( &report ),
            "signed-integers/c/valid-data: valid edges clamp NOTHING and refuse NOTHING — no counter moves" );
@@ -274,11 +283,11 @@ int main( void )
 
     {
         static uint8_t reread[8192];
-        int64_t m = ranged_signed_fixed_measure( 3 );
-        int64_t short_capacity = ranged_signed_fixed_save( back, 3, reread, m - 1 );
+        int64_t m = tabledemo_ranged_signed_fixed_measure( 3 );
+        int64_t short_capacity = tabledemo_ranged_signed_fixed_save( back, 3, reread, m - 1 );
         int64_t w;
         check( short_capacity == -1, "signed-integers/c/valid-data: a capacity one short of the measure refuses rather than truncating" );
-        w = ranged_signed_fixed_save( back, 3, reread, (int64_t) sizeof( reread ) );
+        w = tabledemo_ranged_signed_fixed_save( back, 3, reread, (int64_t) sizeof( reread ) );
         check( w == m && memcmp( reread, file, (size_t) m ) == 0,
                "signed-integers/c/valid-data: read then write is byte-identical — the values never moved" );
     }

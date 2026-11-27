@@ -493,7 +493,7 @@ reference still owes the rest (§5.8 row 4).
   (fixes 5, 9 and 14, as ruled 2026-11-03). This pass is the ONLY place a tag or an ordinal is checked, and it
   refuses on either plan. There is no `| max = K` headroom on
   this wire: a variant is identified by the hash of its name, so a value with no name has no meaning here, and the
-  compiler refuses a headroom enum the moment a table reaches it (Glenn, 2026-09-10: dead text, not a rule).
+  compiler refuses a headroom enum the moment a table reaches it (Glenn, 2026-09-10: dead text, not a rule). **A leg that holds a tag in the run instead (the JavaScript `const` op's None entry) holds it the same way: the check comes first and the None lands only after it passes.** JavaScript, 2026-11-24: the `const` op stored its None before testing the writer's tag and refused after, so a refused run had written one destination byte; it now tests first (held by `test/conformance/js/rows/R16.mjs`; SPEC-CONFORMANCE.md §7).
 
 ## 5. Evolution: the fixed table reads backward, never forward
 
@@ -1340,7 +1340,7 @@ lineage is oldest first with the reader's own layout LAST and `schema check` hol
 declaration, so every entry a build holds is the reader's own or older (a `retired` mark is older too, and is
 `layout_unsupported`); a hash outside it has no position in it; and the wire carries a hash and no ordinal. So
 every step-5 miss is `layout_unknown`, in every leg, with no variation (decided 2026-11-03); `layout_newer`
-keeps its ordinal and no read answers it.
+keeps its ordinal and no read answers it. **JavaScript, 2026-11-24:** the generated load answered `TableFixedRefusal.LayoutNewer` at step 5 until this date; it now answers `TableFixedRefusal.LayoutUnknown` (`"layout_unknown"`) with `layoutHash` the file's hash and nothing else, `LayoutUnknown` appended so no ordinal moves and `LayoutNewer` kept and never emitted (held by `test/conformance/js/rows/R15.mjs`; SPEC-CONFORMANCE.md §7).
 
 **`layout_unsupported` fills `layout_hash` too** — both live layout refusals report the file's hash, and what
 belongs to `layout_unknown` alone is "and nothing else" (§5.9 #7). **The field is called `layout_hash`** and it is the
@@ -1928,7 +1928,7 @@ the language's byte array carries its own length, `layout_bytes` is a second spe
 leg drops it, keeping the same ORDER (the C# leg, `fixedruntime.go:141`); Java, JavaScript and Dart kept the
 member explicit and are equally conforming. **What no leg may move is the hash's place or the record size's
 source** — the record size is the LOCK's, never the file's (§5.3 step 8) — and a leg whose language has no
-sixty-four-bit integer carries the hash as two lanes there and says which form the report uses (§5.9 #15).
+sixty-four-bit integer carries the hash as two lanes there and says which form the report uses (§5.9 #15). **A cache is not a member**: whatever a leg derives from an entry for speed (a byte view over `layout`, say) rides beside the table, never on the struct. **JavaScript, 2026-11-24:** `TableFixedKnownLayout` carried a fifth own member, `layoutView`, until this date; the view now lives in each module's `<Name>FixedKnownViews`, indexed by the same pick (held by `test/conformance/js/rows/R23.mjs`; SPEC-CONFORMANCE.md §7).
 
 **35. THE `0x5A` POISON ON A DESTINATION WITH NO BYTE VIEW.** §5.7 poisons "the destination through a byte
 pointer" and #17 rules on the COMPARISON in a language with no byte view. The POISON has the same three

@@ -9,27 +9,27 @@
 
 int main(void)
 {
-    TableReport report;
-    Cfg values[2];
+    tblv1_table_report_t report;
+    tblv1_cfg_t values[2];
     uint8_t *buffer;
     int64_t need, loaded;
     int fail = 0;
 
-    cfg_reset(&values[0]);
-    cfg_reset(&values[1]);
+    tblv1_cfg_reset(&values[0]);
+    tblv1_cfg_reset(&values[1]);
 
-    need = cfg_fixed_measure(2);
+    need = tblv1_cfg_fixed_measure(2);
     buffer = (uint8_t *)malloc((size_t)need);
     if (!buffer) { printf("FAIL: allocation\n"); return 1; }
-    if (cfg_fixed_save(values, 2, buffer, need) != need)
+    if (tblv1_cfg_fixed_save(values, 2, buffer, need) != need)
     {
         printf("FAIL: save\n"); free(buffer); return 1;
     }
 
     /* capacity=1, wire has 2 records => batch_too_large */
     memset(&report, 0, sizeof(report));
-    cfg_reset(&values[0]);
-    loaded = cfg_fixed_load(values, 1, buffer, need, NULL, 0, NULL, &report);
+    tblv1_cfg_reset(&values[0]);
+    loaded = tblv1_cfg_fixed_load(values, 1, buffer, need, NULL, 0, NULL, &report);
     free(buffer);
 
     if (loaded != -1 || report.refused != 1)
@@ -43,11 +43,11 @@ int main(void)
     /* control: same wire, capacity=2 => must load 2 records */
     buffer = (uint8_t *)malloc((size_t)need);
     if (!buffer) { printf("FAIL: allocation\n"); return 1; }
-    if (cfg_fixed_save(values, 2, buffer, need) != need)
+    if (tblv1_cfg_fixed_save(values, 2, buffer, need) != need)
     { printf("FAIL: save\n"); free(buffer); return 1; }
     memset(&report, 0, sizeof(report));
-    cfg_reset(&values[0]); cfg_reset(&values[1]);
-    loaded = cfg_fixed_load(values, 2, buffer, need, NULL, 0, NULL, &report);
+    tblv1_cfg_reset(&values[0]); tblv1_cfg_reset(&values[1]);
+    loaded = tblv1_cfg_fixed_load(values, 2, buffer, need, NULL, 0, NULL, &report);
     free(buffer);
     if (loaded != 2 || report.refused != 0)
     {

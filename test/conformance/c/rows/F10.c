@@ -7,7 +7,7 @@
    refuses under the NAME `no_layout`, before one destination byte is written.
    The header hash is untouched, so the file still selects this build's own
    known layout — only the record's hash is forged, which is the no_layout
-   law and not layout_newer (hash outside the lineage) or layout_malformed
+   law and not layout_unknown (hash outside the lineage) or layout_malformed
    (a known hash over different layout bytes).
 
    VECTOR DERIVATION. A clean one-record V1 `tblv1_cell_t` file is what the generated
