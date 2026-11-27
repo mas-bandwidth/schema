@@ -5,302 +5,141 @@
      "if i < R.floor: RETIRED. The hash stays KNOWN, so a file carrying it is
       named layout_unsupported and never layout_newer; its PLAN IS NEVER BUILT"
 
-   R32 tests this path in isolation: given a wire blob whose header hash
-   matches a KNOWN lineage entry, but the entry sits BELOW the floor (is
-   marked RETIRED), the reader must return `layout_unsupported`, not decode
-   any record.  A second identical read returns the same refusal — the
-   retirement of one hash changes nothing on another read of the same hash
-   (§5.7 "idempotent").
+   R32 tests this path: given a file whose header hash matches a KNOWN lineage
+   entry that sits BELOW the floor (is RETIRED), the reader must return
+   `layout_unsupported`, report the file's hash, and decode no record. A second
+   identical read returns the same refusal — the retirement of one hash changes
+   nothing on another read of the same hash (§5.7 "idempotent").
 
-   STRUCTURE — a minimal fixed-form reader follows the EXACT steps the
-   production load takes, minus the generic-table machinery R32 does not
-   need.  Steps relevant to this card are numbered; irrelevant ones are
-   elided because R32 already owns the file under test. */
+   THE PRODUCTION READER, NOT A MODEL OF IT. This row first carried its own
+   copy of the two-line decision (select by hash, compare with the floor) over
+   a hand-written lineage, and a WIRE_BLOB it never read: it checked the copy,
+   not the C leg. It now reads a real file through the generated C reader of a
+   real lineage with a retired entry: the FixedEvo unit's EvoRoot
+   (build/tables-generated-c/fixedevo, test/tables FixedEvo), whose lineage
+   holds four layouts and whose floor is 1, so entry 0 is retired. The file is
+   built from the lineage's own bytes (entry 0's hash, layout and record size),
+   never hand-pinned. Each old assertion maps to the same check on the
+   production read:
+     - test 1: -1, refused, reason layout_unsupported, layout_hash = the
+       file's hash, no counter moved — and nothing decoded (the destination
+       comes back at its reset image).
+     - test 2: two reads of the same retired file give the same refusal.
+     - test 3, the contrast: a hash in no lineage entry. The row expected
+       `layout_newer`; §5.3 step 5 now answers `layout_unknown` in every leg
+       and `layout_newer` is RETIRED (docs/FIXED-FORM-ALGORITHM.md "STEP 5's
+       ANSWER IS layout_unknown, IN EVERY LEG", decided 2026-11-03; SPEC-TABLES
+       §21.3). The row holds the reader to it by name: refused, reason
+       SCHEMA_TABLE_LAYOUT_UNKNOWN, layout_hash = the file's hash, landing
+       nothing — and so NEITHER the retired layout_newer NOR
+       layout_unsupported (the two operator answers stay distinct). */
 
 #include <stdint.h>
-#include <stdlib.h>
-#include <string.h>
 #include <stdio.h>
+#include <string.h>
 
-#define OK   0
-#define FAIL 1
+#include "FixedEvoTable.h"
 
-/* ---------------------------------------------------------------------------
-   constants — what §5.2 calls the lock's static data for ONE table
-   --------------------------------------------------------------------------- */
+static int failed;
 
-static const uint64_t KNOWN_HASH = 0xae5b4369ca2d95d8ull;   /* VOLD_floor */
-static const uint64_t NOT_IN_LINEAGE = 0xdeadbeefcafebabeull;
-
-/* layout bytes — sizeof(floored_fixed_layout) as emitted from VOLD_floorTable.h */
-static const uint8_t KNOWN_LAYOUT[] = {
-    0x02,0x00,0x00,0x00,0xe4,0x81,0x79,0x2d,0x59,0x5f,0x52,0x07,0x0d,0x04,0x00,0x00,
-    0x00,0x01,0x00,0x00,0x00,0x8c,0xec,0x01,0x86,0x4c,0xdc,0x63,0xaf,0x04,0x04,0x00,
-    0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
-};
-static const int64_t KNOWN_LAYOUT_BYTES = sizeof( KNOWN_LAYOUT );
-static const int64_t RECORD_TOTAL_BYTES = 12; /* 8 (hash) + 4 (body) */
-
-/* ---------------------------------------------------------------------------
-   TableReport — mirrors the production shape (spec §4)
-   --------------------------------------------------------------------------- */
-
-typedef struct {
-    int unknown;
-    int kind_mismatch;
-    int clamped;
-    int duplicate;
-    int malformed;
-    int widened;
-    int refused;
-    int reason;
-    uint64_t layout_hash;
-} TableReport;
-
-/* refusal reasons (SPEC-TABLES.md §3.4 / §5.3 condition table) */
-enum {
-    SCHEMA_TABLE_LAYOUT_NEWER         = 2,
-    SCHEMA_TABLE_LAYOUT_MALFORMED     = 3,
-    SCHEMA_TABLE_NO_LAYOUT            = 12,
-    SCHEMA_TABLE_LAYOUT_UNSUPPORTED   = 19,
-};
-
-/* ---------------------------------------------------------------------------
-   Minimal lineage entries — exactly what COMPILE(lock,T) emits (§5.2).
-   One entry: the retired layout (index 0).  Any hash absent from this
-   single-entry lineage returns -1 from select_by_hash immediately.
-   --------------------------------------------------------------------------- */
-
-typedef struct {
-    uint64_t          hash;
-    const uint8_t    *layout;
-    int64_t            layout_bytes;
-    int64_t            record_bytes;       /* 8 + body, whole record */
-} KnownEntry;
-
-static const KnownEntry LINEAGE[] = {
-    { KNOWN_HASH,   KNOWN_LAYOUT, KNOWN_LAYOUT_BYTES, RECORD_TOTAL_BYTES },
-};
-static const int LINEAGE_COUNT = 1;
-
-/*
-   THE FLOOR:  §5.2 says `R.floor := 1 + highest RETIRED index`.
-   Entry 0 is retired → floor = 1.  Any pick below 1 is unsupported.
-*/
-static const int32_t FLOOR = 1;
-
-/* ---------------------------------------------------------------------------
-   Step 4 — hash selection (O(n) scan over lineage). Returns -1 when the
-   hash is absent. This is §5.3 step 5 first arm: "SELECT BY HASH".
-   --------------------------------------------------------------------------- */
-
-static int select_by_hash( const KnownEntry * entries, int count, uint64_t hash )
+static void check( int ok, const char * what )
 {
-    int i;
-    for ( i = 0; i < count; ++i ) {
-        if ( entries[i].hash == hash ) {
-            return i;
-        }
-    }
-    return -1;
+    printf( "%s: %s\n", ok ? "PASS" : "FAIL", what );
+    if ( !ok ) { failed = 1; }
 }
 
-/* ---------------------------------------------------------------------------
-   Stub: table_fixed_refuse_hash — copies the production call site exactly.
-   It sets report->reason, report->refused, report->malformed = 0,
-   and report->layout_hash = hash (§5.3 bill §12.4).
-   --------------------------------------------------------------------------- */
+/* THE FILE: form byte, seven reserved zeros, the hash, the layout behind its
+   u32 length, then ONE record (its hash, a zero body) of the entry's size. */
+static uint8_t wire_blob[4096];
 
-static void refuse_hash( TableReport * r, int reason_code, uint64_t file_hash )
+static int64_t make_file( int32_t entry, uint64_t hash )
 {
-    r->refused      = 1;
-    r->reason       = reason_code;
-    r->malformed    = 0;
-    r->layout_hash  = file_hash;
+    const tblfixedevo_table_fixed_known_layout_t * k = &tblfixedevo_evo_root_fixed_known[entry];
+    const int64_t at = TBLFIXEDEVO_K_TABLE_FIXED_HEADER_BYTES + 4 + k->layout_bytes;
+    if ( at + k->record_bytes > (int64_t) sizeof( wire_blob ) ) { return 0; }
+    memset( wire_blob, 0, sizeof( wire_blob ) );
+    wire_blob[0] = TBLFIXEDEVO_K_TABLE_FIXED_FORM;
+    tblfixedevo_table_fixed_put64( wire_blob + TBLFIXEDEVO_K_TABLE_FIXED_HASH_AT, hash );
+    tblfixedevo_table_fixed_put32( wire_blob + TBLFIXEDEVO_K_TABLE_FIXED_HEADER_BYTES, (uint32_t) k->layout_bytes );
+    memcpy( wire_blob + TBLFIXEDEVO_K_TABLE_FIXED_HEADER_BYTES + 4, k->layout, (size_t) k->layout_bytes );
+    tblfixedevo_table_fixed_put64( wire_blob + at, hash );
+    return at + k->record_bytes;
 }
 
-/* ---------------------------------------------------------------------------
-   THE LOAD FUNCTION — §5.3's eleven steps, but only those relevant to R32.
+static tblfixedevo_table_fixed_entry_t plan[4096];
 
-   PRODUCTION CALL SITE (generated C, e.g. build/tables-generated-c/v1/V1Table.c):
-
-     pick = table_fixed_select( v1_fixed_known, v1_fixed_known_count, hash );
-     if ( pick < 0 ) { return table_fixed_refuse_hash( report, SCHEMA_TABLE_LAYOUT_NEWER, hash ); }
-     if ( pick < v1_fixed_floor ) { return table_fixed_refuse_hash( report, SCHEMA_TABLE_LAYOUT_UNSUPPORTED, hash ); }
-
-   R32 verifies THIS exact two-line decision tree: SELECT then COMPARE WITH FLOOR.
-   --------------------------------------------------------------------------- */
-
-static int64_t load_retired_check( uint64_t file_hash, TableReport * report )
+static int64_t read_file( int64_t bytes, tblfixedevo_evo_root_t * value, tblfixedevo_table_report_t * report )
 {
-    int32_t pick;
-
-    /* steps 5+6 — SELECT BY HASH, THEN THE FLOOR. Both report THE FILE'S hash. */
-    pick = select_by_hash( LINEAGE, LINEAGE_COUNT, file_hash );
-    if ( pick < 0 ) {
-        refuse_hash( report, SCHEMA_TABLE_LAYOUT_NEWER, file_hash );
-        return -1;
-    }
-    /* --- THE RETIREMENT GATE (R32's focus) ---
-       §5.2: "if i < R.floor: RETIRED. The hash stays KNOWN, so a file
-       carrying it is named layout_unsupported and never layout_newer."
-
-       This is the exact comparison the generated code emits verbatim.
-       If this line were missing, a retired hash would fall through to
-       record decoding instead of being refused at the layout level. */
-    if ( pick < FLOOR ) {
-        refuse_hash( report, SCHEMA_TABLE_LAYOUT_UNSUPPORTED, file_hash );
-        return -1;
-    }
-    return 0;                         /* above floor — normal decode path */
+    memset( value, 0xA5, sizeof( *value ) ); /* poison: a refusal must land nothing */
+    memset( report, 0, sizeof( *report ) );
+    return tblfixedevo_evo_root_fixed_load( value, 1, wire_blob, bytes, plan,
+                                            (int32_t) ( sizeof( plan ) / sizeof( plan[0] ) ), NULL, report );
 }
 
-/* Fixture data — a valid fixed-form file header for a ONE-record blob
-   matching KNOWN_HASH.  This blob is illustrative; the test exercises
-   load_retired_check directly without reading wire data. */
-static const uint8_t WIRE_BLOB[] = {
-    /* [0] form byte = 1 */
-    0x01,
-    /* [1..7] reserved zeros */
-    0x00,0x00,0x00,0x00,0x00,0x00,0x00,
-    /* [8..15] header hash = KNOWN_HASH (little-endian) */
-    0xd8,0x95,0xd9,0xca,0x69,0x43,0x05,0xae,
-    /* [16..19] layout length = sizeof(KNOWN_LAYOUT) (little-endian u32) */
-    0x2a,0x00,0x00,0x00,
-    /* [20..] layout bytes — matches KNOWN_LAYOUT verbatim */
-    0x02,0x00,0x00,0x00,0xe4,0x81,0x79,0x2d,0x59,0x5f,0x52,0x07,0x0d,0x04,0x00,0x00,
-    0x00,0x01,0x00,0x00,0x00,0x8c,0xec,0x01,0x86,0x4c,0xdc,0x63,0xaf,0x04,0x04,0x00,
-    0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
-};
-
-/* ===========================================================================
-   TEST 1 — RED path: KNOWN_HASH below the floor → layout_unsupported
-   =========================================================================== */
-
-static int test_1_refuses_below_floor( void )
+static int at_reset( const tblfixedevo_evo_root_t * value )
 {
-    TableReport report;
-    int64_t n;
-
-    memset( &report, 0, sizeof( report ) );
-    n = load_retired_check( KNOWN_HASH, &report );
-
-    if ( n != -1 ) {
-        fprintf( stderr, "test1: expected refusal (n=-1), got n=%lld\n", (long long) n );
-        return FAIL;
-    }
-    if ( !report.refused ) {
-        fprintf( stderr, "test1: report->refused not set\n" );
-        return FAIL;
-    }
-    if ( report.reason != SCHEMA_TABLE_LAYOUT_UNSUPPORTED ) {
-        fprintf( stderr, "test1: reason=%d, expected %d (layout_unsupported)\n",
-                 report.reason, SCHEMA_TABLE_LAYOUT_UNSUPPORTED );
-        return FAIL;
-    }
-    if ( report.layout_hash != KNOWN_HASH ) {
-        fprintf( stderr, "test1: layout_hash mismatch\n" );
-        return FAIL;
-    }
-    if ( report.unknown || report.widened ) {
-        fprintf( stderr, "test1: counters moved on a refusal\n" );
-        return FAIL;
-    }
-    return OK;
+    /* the reset image over the same poison, so padding bytes compare equal
+       and only a field the read wrote (or failed to reset) differs */
+    static tblfixedevo_evo_root_t reset;
+    memset( &reset, 0xA5, sizeof( reset ) );
+    tblfixedevo_evo_root_reset( &reset );
+    return memcmp( value, &reset, sizeof( reset ) ) == 0;
 }
-
-/* ===========================================================================
-   TEST 2 — IDEMPOTENT: same retired hash read twice → same refusal
-   =========================================================================== */
-
-static int test_2_idempotent( void )
-{
-    TableReport r1, r2;
-    int64_t n1, n2;
-
-    memset( &r1, 0, sizeof( r1 ) );
-    n1 = load_retired_check( KNOWN_HASH, &r1 );
-
-    memset( &r2, 0, sizeof( r2 ) );
-    n2 = load_retired_check( KNOWN_HASH, &r2 );
-
-    if ( n1 != -1 || n2 != -1 ) {
-        fprintf( stderr, "test2: expected both to refuse\n" );
-        return FAIL;
-    }
-    if ( r1.reason != SCHEMA_TABLE_LAYOUT_UNSUPPORTED
-      || r2.reason != SCHEMA_TABLE_LAYOUT_UNSUPPORTED ) {
-        fprintf( stderr, "test2: reasons differ or wrong (%d/%d)\n",
-                 r1.reason, r2.reason );
-        return FAIL;
-    }
-    if ( r1.layout_hash != r2.layout_hash
-      || r1.layout_hash != KNOWN_HASH ) {
-        fprintf( stderr, "test2: layout_hash differs between reads\n" );
-        return FAIL;
-    }
-    if ( r1.refused != r2.refused ) {
-        fprintf( stderr, "test2: malformed changed on second read\n" );
-        return FAIL;
-    }
-    return OK;
-}
-
-/* ===========================================================================
-   TEST 3 — NEGATIVE CONTROL: hash NOT in lineage → layout_newer
-   =========================================================================== */
-
-static int test_3_not_in_lineage( void )
-{
-    TableReport report;
-    int64_t n;
-
-    memset( &report, 0, sizeof( report ) );
-    n = load_retired_check( NOT_IN_LINEAGE, &report );
-
-    if ( n != -1 ) {
-        fprintf( stderr, "test3: expected refusal for unknown hash\n" );
-        return FAIL;
-    }
-    if ( report.reason != SCHEMA_TABLE_LAYOUT_NEWER ) {
-        fprintf( stderr, "test3: reason=%d, expected %d (layout_newer)\n",
-                 report.reason, SCHEMA_TABLE_LAYOUT_NEWER );
-        return FAIL;
-    }
-    return OK;
-}
-
-/* ===========================================================================
-   MAIN
-   =========================================================================== */
 
 int main( void )
 {
-    int failed = 0;
+    static tblfixedevo_evo_root_t value;
+    tblfixedevo_table_report_t r1, r2;
+    const uint64_t retired = tblfixedevo_evo_root_fixed_known[0].hash;
+    int64_t bytes, n1, n2;
+    int32_t i;
+    uint64_t stranger;
+    int held;
 
-    if ( test_1_refuses_below_floor() != OK ) {
-        printf( "FAIL: retired hash below floor was not refused layout_unsupported\n" );
-        failed++;
-    } else {
-        printf( "PASS: retired hash below floor refused layout_unsupported\n" );
-    }
+    check( tblfixedevo_evo_root_fixed_floor == 1 && tblfixedevo_evo_root_fixed_known_count > 1,
+           "R32: the EvoRoot lineage holds a retired entry (floor 1: entry 0 is below it)" );
+    check( retired != tblfixedevo_evo_root_fixed_hash,
+           "R32: the retired entry is not this build's own layout" );
 
-    if ( test_2_idempotent() != OK ) {
-        printf( "FAIL: second read of retired hash did not produce same refusal\n" );
-        failed++;
-    } else {
-        printf( "PASS: second read produced same refusal (idempotent)\n" );
-    }
+    /* TEST 1 — the retired hash below the floor → layout_unsupported */
+    bytes = make_file( 0, retired );
+    check( bytes > 0, "R32: the retired entry's file is built from the lineage's own bytes" );
+    n1 = read_file( bytes, &value, &r1 );
+    check( n1 == -1 && r1.refused && r1.reason == SCHEMA_TBLFIXEDEVO_TABLE_LAYOUT_UNSUPPORTED,
+           "R32: a retired hash below the floor is refused layout_unsupported" );
+    check( r1.layout_hash == retired,
+           "R32: the refusal reports THE FILE'S hash" );
+    check( r1.unknown == 0 && r1.widened == 0,
+           "R32: no counter moved on the refusal" );
+    check( at_reset( &value ),
+           "R32: nothing decoded — the destination is at its reset image" );
 
-    if ( test_3_not_in_lineage() != OK ) {
-        printf( "FAIL: hash not in lineage did not get layout_newer\n" );
-        failed++;
-    } else {
-        printf( "PASS: hash not in lineage refused layout_newer\n" );
-    }
+    /* TEST 2 — IDEMPOTENT: the same retired file read again → the same refusal */
+    n2 = read_file( bytes, &value, &r2 );
+    check( n2 == n1 && r2.refused == r1.refused && r2.reason == r1.reason &&
+           r2.refuse_reason == r1.refuse_reason && r2.layout_hash == r1.layout_hash,
+           "R32: a second read of the retired hash gives the same refusal (idempotent)" );
 
-    if ( failed == 0 ) {
-        printf( "ALL PASS\n" );
+    /* TEST 3 — THE CONTRAST: a hash no lineage entry holds, over the current
+       layout's bytes, is layout_unknown (§5.3 step 5), never the retired
+       layout_newer and never layout_unsupported. */
+    stranger = 0xdeadbeefcafebabeull;
+    held = 0;
+    for ( i = 0; i < tblfixedevo_evo_root_fixed_known_count; ++i )
+    {
+        if ( tblfixedevo_evo_root_fixed_known[i].hash == stranger ) { held = 1; }
     }
+    check( !held, "R32: the stranger hash is in no lineage entry" );
+    bytes = make_file( tblfixedevo_evo_root_fixed_known_count - 1, stranger );
+    n1 = read_file( bytes, &value, &r1 );
+    check( n1 == -1 && r1.refused && r1.layout_hash == stranger && at_reset( &value ),
+           "R32 CONTRAST: a hash outside the lineage is refused, reporting the file's hash, landing nothing" );
+    printf( "  stranger hash: reason %d (layout_unknown %d, layout_newer %d, layout_unsupported %d)\n", r1.reason,
+            (int) SCHEMA_TBLFIXEDEVO_TABLE_LAYOUT_UNKNOWN, (int) SCHEMA_TBLFIXEDEVO_TABLE_LAYOUT_NEWER,
+            (int) SCHEMA_TBLFIXEDEVO_TABLE_LAYOUT_UNSUPPORTED );
+    check( r1.reason == SCHEMA_TBLFIXEDEVO_TABLE_LAYOUT_UNKNOWN,
+           "R32 CONTRAST: the refusal is layout_unknown (§5.3 step 5), never the retired layout_newer" );
+
+    printf( "%s\n", failed ? "R32: RED" : "R32: GREEN" );
     return failed;
 }

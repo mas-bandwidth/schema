@@ -301,7 +301,7 @@ pub const FIXED_TABLE_FIXED_LINEAGE: [TableFixedKnown; 1] = [
 
 /// THE FLOOR: 1 + the highest RETIRED index, 0 when none is (§5.2). Below it
 /// a file is `layout_unsupported` — upgrade the client; outside the lineage
-/// altogether it is `layout_newer` — ship the reader. A retired entry stays
+/// altogether it is `layout_unknown` (§5.3 step 5). A retired entry stays
 /// in the lineage forever, which is what keeps the two answers distinct.
 pub const FIXED_TABLE_FIXED_FLOOR: usize = 0;
 /// THE INDEX OF THIS BUILD'S OWN LAYOUT, which takes the IDENTITY plan.
@@ -444,11 +444,11 @@ fn fixed_table_fixed_load_records(
     // fixed table reads BACKWARD and never forward: the hash the header
     // carries is TAKEN AS GIVEN — the definitions digest is not on the wire,
     // so the number cannot be re-derived from a file — and it is looked up in
-    // the lineage the BUILD laid down. A hash no entry holds is a writer ahead
-    // of this reader, and there is nothing to try.
+    // the lineage the BUILD laid down. A hash no entry holds is layout_unknown
+    // (§5.3 step 5, SPEC-TABLES §21.3): nothing proves it newer, nothing to try.
     let Some(found) = FIXED_TABLE_FIXED_LINEAGE.iter().position(|k| k.hash == hash) else {
         // THE FILE'S HASH, AND NOTHING ELSE (bill §12.4).
-        return report.refuse_layout(TableFixedReason::LayoutNewer, hash);
+        return report.refuse_layout(TableFixedReason::LayoutUnknown, hash);
     };
     // NOTHING IS RETIRED, so the floor is 0 and the check below it cannot
     // fire: a comparison no value satisfies is not emitted, for the same

@@ -21,15 +21,18 @@ const depthBoundarySchema = `package depthprobe
 
 fixed table Root {
 	a int32
-	b int32
-	c int32
-	d int32
+	b Leaf
+	c Pick
+	d [1]Leaf
 }
 
-fixed table ZExtra {
+fixed table Leaf {
 	e int32
-	f int32
-	g int32
+}
+
+union Pick
+{
+	Leaf
 }
 `
 
@@ -147,6 +150,13 @@ func depthBoundaryFixtures(t *testing.T) (*ir.Unit, []byte, []depthBoundaryCase)
 	// The synthetic nested table, union and array ride the ids of the root's
 	// own fields, so under another build version the walk keeps them rather
 	// than stepping over them; only their announced shapes are the peer's.
+	// Each root field declares the kind its entry announces (b a table, c a
+	// union, d an array of tables): a peer entry whose kind differs from the
+	// reader's declaration is a KIND MISMATCH, which refuses the batch
+	// (docs/SPEC-TABLES.md §3.3, §4; tablewire's messagedecode.go), so a
+	// fixture that rode a table on an int32 field would test that refusal
+	// instead of the depth bound. Below the root, the nested bodies' ids are
+	// not declared by Leaf or Pick, so the walk steps over them by shape.
 	entries := []ir.TableVocabularyEntry{
 		ir.TableFieldEntry(st.Fields[0]),
 		{Id: ir.TableFieldEntry(st.Fields[1]).Id, Kind: ir.TableKindTable},
@@ -233,10 +243,15 @@ func runElixirDepthBoundaryProbe(t *testing.T, u *ir.Unit, ann []byte, cases []d
 		t.Fatal(err)
 	}
 	var body strings.Builder
-	fmt.Fprintf(&body, "defmodule DepthProbe do\n  alias Depthprobe.TableMessage, as: M\n\n  def check_case(name, vocab, wire, true) do\n")
+	// A body or an array family's first body delivers its nested field and
+	// a = 42. The union family's outer arm is c's own id, which names no arm
+	// of Pick: an UNKNOWN ARM, stepped over by its announced shape (the walk
+	// still descends every level, so the depth bound holds) and not
+	// delivered, as the engine leaves the union at no arm; only a = 42 lands.
+	fmt.Fprintf(&body, "defmodule DepthProbe do\n  alias Depthprobe.TableMessage, as: M\n\n  def first_ok?(\"union\", b0), do: b0 == [{1, 42}]\n  def first_ok?(_family, b0), do: length(b0) == 2 and Enum.at(b0, 1) == {1, 42}\n\n  def check_case(name, family, vocab, wire, true) do\n")
 	fmt.Fprintf(&body, "    case M.load_messages(vocab, wire, 2) do\n")
 	fmt.Fprintf(&body, "      {:ok, [b0, b1]} ->\n")
-	fmt.Fprintf(&body, "        if length(b0) == 2 and Enum.at(b0, 1) == {1, 42} and b1 == [{1, 99}] do\n")
+	fmt.Fprintf(&body, "        if first_ok?(family, b0) and b1 == [{1, 99}] do\n")
 	fmt.Fprintf(&body, "          IO.puts(\"PASS \" <> name)\n")
 	fmt.Fprintf(&body, "        else\n")
 	fmt.Fprintf(&body, "          IO.puts(\"FAIL \" <> name <> \": unexpected bodies \" <> inspect({b0, b1}))\n")
@@ -246,7 +261,7 @@ func runElixirDepthBoundaryProbe(t *testing.T, u *ir.Unit, ann []byte, cases []d
 	fmt.Fprintf(&body, "        IO.puts(\"FAIL \" <> name <> \": expected {:ok, _}, got \" <> inspect(other))\n")
 	fmt.Fprintf(&body, "        Process.put(:failed, true)\n")
 	fmt.Fprintf(&body, "    end\n  end\n\n")
-	fmt.Fprintf(&body, "  def check_case(name, vocab, wire, false) do\n")
+	fmt.Fprintf(&body, "  def check_case(name, _family, vocab, wire, false) do\n")
 	fmt.Fprintf(&body, "    case M.load_messages(vocab, wire, 2) do\n")
 	fmt.Fprintf(&body, "      {:malformed, 0, []} ->\n")
 	fmt.Fprintf(&body, "        IO.puts(\"PASS \" <> name)\n")
@@ -257,7 +272,7 @@ func runElixirDepthBoundaryProbe(t *testing.T, u *ir.Unit, ann []byte, cases []d
 	fmt.Fprintf(&body, "  def run do\n")
 	fmt.Fprintf(&body, "    {:ok, announced} = M.announce_read(%s)\n    {:ok, vocab} = M.for_root(announced, \"Root\")\n", depthBoundaryElixirBinaryLiteral(ann))
 	for _, tc := range cases {
-		fmt.Fprintf(&body, "    check_case(%q, vocab, %s, %v)\n", tc.name, depthBoundaryElixirBinaryLiteral(tc.wire), tc.expectOK)
+		fmt.Fprintf(&body, "    check_case(%q, %q, vocab, %s, %v)\n", tc.name, tc.family, depthBoundaryElixirBinaryLiteral(tc.wire), tc.expectOK)
 	}
 	fmt.Fprintf(&body, "    if Process.get(:failed), do: System.halt(1)\n  end\nend\n\nDepthProbe.run()\n")
 	if err := os.WriteFile(filepath.Join(dir, "probe.exs"), []byte(body.String()), 0o600); err != nil {

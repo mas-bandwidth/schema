@@ -24,22 +24,22 @@
 
 /* hash is at offset 0 */
 static_assert(
-    offsetof( TableFixedKnownLayout, hash ) == 0,
+    offsetof( tblw1_table_fixed_known_layout_t, hash ) == 0,
     "TableFixedKnownLayout: hash must be the first member" );
 
 /* layout is at offset 8 (immediately after the 8-byte hash) */
 static_assert(
-    offsetof( TableFixedKnownLayout, layout ) == 8,
+    offsetof( tblw1_table_fixed_known_layout_t, layout ) == 8,
     "TableFixedKnownLayout: layout must follow hash at offset 8" );
 
 /* layout_bytes is at offset 16 (immediately after the pointer layout) */
 static_assert(
-    offsetof( TableFixedKnownLayout, layout_bytes ) == 16,
+    offsetof( tblw1_table_fixed_known_layout_t, layout_bytes ) == 16,
     "TableFixedKnownLayout: layout_bytes must follow layout at offset 16" );
 
 /* record_bytes is at offset 24 (immediately after layout_bytes) */
 static_assert(
-    offsetof( TableFixedKnownLayout, record_bytes ) == 24,
+    offsetof( tblw1_table_fixed_known_layout_t, record_bytes ) == 24,
     "TableFixedKnownLayout: record_bytes must follow layout_bytes at offset 24" );
 
 /* ---------- §5.9 #15: layout_hash LAST on the report -------------------- */
@@ -48,8 +48,8 @@ static_assert(
  * the expected offset: it must match the struct's own layout_hash offset,
  * proving layout_hash is last. */
 static_assert(
-    offsetof( TableReport, layout_hash ) ==
-        sizeof( TableReport ) - sizeof( ((TableReport *)0)->layout_hash ),
+    offsetof( tblw1_table_report_t, layout_hash ) ==
+        sizeof( tblw1_table_report_t ) - sizeof( ((tblw1_table_report_t *)0)->layout_hash ),
     "TableReport: layout_hash must be the last member of the struct" );
 
 /* ---------- §5.9 #15: layout_hash zero on every other path -------------- */
@@ -62,10 +62,10 @@ static_assert(
  * the layout we checked. */
 static int verify_table_fixed_select( void )
 {
-    const TableFixedKnownLayout known[] = {
+    const tblw1_table_fixed_known_layout_t known[] = {
         { 0xDEADBEEF, NULL, 0, 0 }
     };
-    int32_t idx = table_fixed_select( known, 1, 0xDEADBEEF );
+    int32_t idx = tblw1_table_fixed_select( known, 1, 0xDEADBEEF );
     return idx == 0 ? 0 : 1;
 }
 
@@ -75,16 +75,16 @@ int main( void )
 
     /* Print the struct layout for human inspection */
     printf( "TableFixedKnownLayout size=%zu layout=%zu\n",
-            sizeof( TableFixedKnownLayout ),
-            offsetof( TableFixedKnownLayout, layout ) );
-    printf( "  hash       @ %zu\n", offsetof( TableFixedKnownLayout, hash ) );
-    printf( "  layout     @ %zu\n", offsetof( TableFixedKnownLayout, layout ) );
-    printf( "  layout_bytes @ %zu\n", offsetof( TableFixedKnownLayout, layout_bytes ) );
-    printf( "  record_bytes @ %zu\n", offsetof( TableFixedKnownLayout, record_bytes ) );
+            sizeof( tblw1_table_fixed_known_layout_t ),
+            offsetof( tblw1_table_fixed_known_layout_t, layout ) );
+    printf( "  hash       @ %zu\n", offsetof( tblw1_table_fixed_known_layout_t, hash ) );
+    printf( "  layout     @ %zu\n", offsetof( tblw1_table_fixed_known_layout_t, layout ) );
+    printf( "  layout_bytes @ %zu\n", offsetof( tblw1_table_fixed_known_layout_t, layout_bytes ) );
+    printf( "  record_bytes @ %zu\n", offsetof( tblw1_table_fixed_known_layout_t, record_bytes ) );
     printf( "TableReport size=%zu layout_hash @ %zu (last=%zu)\n",
-            sizeof( TableReport ),
-            offsetof( TableReport, layout_hash ),
-            sizeof( TableReport ) - sizeof( uint64_t ) );
+            sizeof( tblw1_table_report_t ),
+            offsetof( tblw1_table_report_t, layout_hash ),
+            sizeof( tblw1_table_report_t ) - sizeof( uint64_t ) );
 
     /* runtime check: table_fixed_select compiles and links */
     fail |= verify_table_fixed_select();
