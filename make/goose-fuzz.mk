@@ -114,7 +114,7 @@ tables-goose-wire-fuzz-leb-negative-control tables-goose-wire-fuzz-utf8-negative
 		echo "NEGATIVE CONTROL FAILED: the $* sabotage patched nothing"; exit 1; }
 	@mv $(GOOSE_FUZZ_DIR)/control-$*/wire_load.goose $(GOOSE_FUZZ_DIR)/control-$*/unit/wire_load.goose
 	@sh make/goose-wirefuzz-build.sh "$(GOOSE)" $(GOOSE_FUZZ_DIR)/control-$*/unit $(GOOSE_FUZZ_DIR)/control-$*/leg
-	@if ./build/conformance-harness wire-fuzz --builder --driver "$(GOOSE_FUZZ_DIR)/control-$*/leg/wirefuzz tblw1 builder" \
+	@if ./build/conformance-harness wire-fuzz --leg goose-unit --unit tblw1 --builder --driver "$(GOOSE_FUZZ_DIR)/control-$*/leg/wirefuzz tblw1 builder" \
 		--seed $(GOOSE_FUZZ_SEED) --n $(GOOSE_FUZZ_N) --failed $(GOOSE_FUZZ_DIR)/control-$*/failed.bin \
 		>$(GOOSE_FUZZ_DIR)/control-$*/log 2>&1; then \
 		cat $(GOOSE_FUZZ_DIR)/control-$*/log; \
@@ -122,7 +122,7 @@ tables-goose-wire-fuzz-leb-negative-control tables-goose-wire-fuzz-utf8-negative
 	@grep -Eq 'harness: FAILED after .*: read acceptance differs: the leg says true, the oracle says false' $(GOOSE_FUZZ_DIR)/control-$*/log || { \
 		cat $(GOOSE_FUZZ_DIR)/control-$*/log; \
 		echo "NEGATIVE CONTROL FAILED: the differential went red, but not on acceptance"; exit 1; }
-	@echo "goose wire-fuzz $* negative control: $$(grep -m1 'harness: FAILED' $(GOOSE_FUZZ_DIR)/control-$*/log)"
+	@echo "goose wire-fuzz negative control ($*): $$(grep -m1 'harness: FAILED' $(GOOSE_FUZZ_DIR)/control-$*/log)"
 
 # THE SHARED HOSTILE-INPUT CORPUS (docs/HOSTILE-CORPUS.md). make/goose-hostile.sh
 # generates every schema the manifest names for goose, runs

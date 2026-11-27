@@ -42,7 +42,7 @@ func TestWireFuzzLoopIsRedOnADivergingLeg(t *testing.T) {
 			t.Fatal(err)
 		}
 		failed := filepath.Join(dir, name+"-failed.bin")
-		return failed, wireFuzz(m, wireFuzzOptions{driver: driver, maxMutants: 1, failed: failed})
+		return failed, wireFuzz(m, wireFuzzOptions{driver: driver, maxMutants: 1, failed: failed, leg: "refusing", ledgerDir: dir}) // a named leg with no ledger (W-ROSTER)
 	}
 
 	// the control: a seed the oracle refuses as well, so the leg's refusal

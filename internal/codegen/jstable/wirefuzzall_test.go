@@ -57,7 +57,7 @@ func TestWireFuzzAllTargetJavaScript(t *testing.T) {
 	if !strings.Contains(s, "TABLES_JS_WIRE_FUZZ_ABSENT := 0\n") {
 		t.Error("make/js.mk does not pin the absent set at 0 seeds")
 	}
-	if !strings.Contains(target, "! grep -qE '[0-9]+ seeds absent '") {
+	if !strings.Contains(target, "! grep -qE 'seeds absent'") {
 		t.Errorf("tables-js-wire-fuzz-all does not check the pinned absent count:\n%s", target)
 	}
 	// The four form-1 roster roots no other unit carries are generated for

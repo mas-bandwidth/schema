@@ -932,7 +932,7 @@ def run_fuzz(runner, lang):
     for arm in ("plain", "retain"):
         for seed in SEEDS:
             name = "wire-" + arm + "-" + str(seed)
-            args = ["./build/conformance-harness", "wire-fuzz",
+            args = ["./build/conformance-harness", "wire-fuzz", "--leg", lang,
                     "--driver", driver_command(runner.root, lang),
                     "--seed", str(seed), "--n", str(RANDOM_MUTANTS),
                     "--failed", str(runner.out / (name + ".bin"))]
@@ -957,7 +957,7 @@ def run_fuzz(runner, lang):
         # count-cap contract; retention above uses the actual region API.
         for seed in SEEDS:
             name = "wire-builder-" + str(seed)
-            args = ["./build/conformance-harness", "wire-fuzz", "--builder",
+            args = ["./build/conformance-harness", "wire-fuzz", "--leg", lang, "--builder",
                     "--driver", driver_command(runner.root, lang, builder=True),
                     "--seed", str(seed), "--n", str(RANDOM_MUTANTS),
                     "--failed", str(runner.out / (name + ".bin"))]

@@ -147,6 +147,24 @@ OWES) and is repeated here as the rule for the suite:
   `harness wire-fuzz` refuses the run, naming the file, when a vector is on disk
   and not in the index or in the index and not on disk (SPEC-TABLES.md §4.2).
   A new vector is added to the index in the commit that adds the file.
+- **W-ROSTER: every wire-fuzz seed is asked.** A seed whose root the leg
+  answers `0` for is absent, and `harness wire-fuzz` exits nonzero naming each
+  absent root and its seed count, in the nightly `verify-<leg>-fuzz` gate
+  and wherever else it runs. The only exception is an exact-set entry in
+  `test/conformance/wire-absent/<leg>-<arm>.tsv` (`<unit>.<Root>[@message]<TAB><why>`),
+  found by the harness itself from the run's `--leg` and its profile
+  (`plain`, `builder` or `retain`); a whole-roster run with no `--leg` is
+  refused, `--unit` on a whole-roster run is refused unless the leg is a
+  one-unit leg (`goose-unit`) whose driver is the Goose unit leg over the same
+  unit. The refusal is the guard: a caller without `--leg`, in any
+  tier, is red at its first run, loud and by name. The
+  release gate reads the summary's `N ledgered seeds absent (<ledger>)` clause
+  (one spelling, `internal/wireabsent`, that the harness prints and the gate
+  reads), is red unless `<ledger>` is the row's own `<leg>-<arm>.tsv`, and is
+  red on an absence or a ledger named in any other words. A new absent root and
+  a stale line are both red, and a `split:` line of a plain ledger is red
+  unless the same leg's builder arm answers its root (SPEC-TABLES.md §4.2). A
+  new port answers every root the manifest names.
 - **MF-ROSTER: every message-fuzz root is answered or ledgered.** A root of
   the message-fuzz roster that a leg answers with nothing (no known message
   in any case) is dead, and `harness message-fuzz` is red on a dead root the
@@ -381,6 +399,8 @@ per-port check where no shared case exercises it.
 | entry | rule (spec) | held by |
 |---|---|---|
 | INDEX | every pinned wire-fuzz vector is run: `harness wire-fuzz` refuses a vector on disk and not in the index, or in the index and not on disk, naming the file (§2; SPEC-TABLES.md §4.2) | `TestWireVectorIndexAndDirectoryAgree` (#4765, merged) |
+| W-ROSTER | every wire-fuzz seed is asked: a root the leg answers `0` for fails the run by name in every tier that runs it, unless the exact set of absent roots is held in `test/conformance/wire-absent/<leg>-<arm>.tsv` with a reason per root; a new absent root and a stale line are both red (§2; SPEC-TABLES.md §4.2) | `TestWireFuzzAbsentRoots*` (test/conformance/harness/wirefuzz_absent_test.go), `TestWireFuzzAbsentRootEndToEnd`, `TestWireFuzzSplitRootAnsweredByBuilderArm`, `TestWireFuzzUnitOnlyOnOneUnitLegs` (the refusal of a whole-roster run with no `--leg` is in `TestWireFuzzAbsentRootEndToEnd`), `TestTheAbsenceClauseIsReadOrRed` and the `go-ledgered-absent`, `go-ledger-other-arm` and `go-ledgered-missing` gate cases (tools/wirefuzzrelease), `TestTheClauseReadsBack` (internal/wireabsent); every `verify-<leg>-fuzz` row; C and Java answer every root with no ledger (`_verify-c-fuzz-plain`, `-retain`, `_verify-java-fuzz-plain`, `-retain`; the C drivers share `SCHEMA_CONFORMANCE_CODEC_UNITS`, the Java drivers `Driver.variableUnitPackage`) |
+| retain-id-bound-is-the-wires | a retaining save numbers the generated table's ids and the retained ids into one trailer bounded by `id_table_max` = 4096, never by the generated table's own capacity; a file of 4096 retained ids saves back byte for byte (SPEC-TABLES.md §6.6, THE MERGED TRAILER IS BOUNDED BY THE WIRE) | the wire-fuzz `--retain` arm on the pinned seed `id_table_4096` (graphdemo.Scene); C++ `TestCppRetainIdTableBoundIsTheWires` (#4767, merged) |
 | wire-eof | a wire-fuzz leg's stream ends only between frames: EOF before an index's first byte is a clean close (exit 0, no reply); 1 to 3 index bytes, a cut length or a cut body at EOF refuses with a non-zero exit, the cut named on stderr and no reply (SPEC-TABLES.md §4.2; test/conformance/README.md, the stream) | `harness wire-eof`, one case table (`wireeof.go`), run on every leg by `make tables-wire-eof` (`tables-wire-eof-<leg>` for the 18 legs, `tables-wire-eof-rust-card`, `tables-wire-eof-java-card`); `TestWireEOFSoundDriverPassesEveryCase`, `TestWireEOFPlantedBugsGoRed`, `TestWireEOFNoKnownRootIsAnError`, `TestWireEOFNamesTheFirstKnownEntry` (#4969) |
 | retain-id-bound-is-the-wires | a retaining save numbers the generated table's ids and the retained ids into one trailer bounded by `id_table_max` = 4096, never by the generated table's own capacity; a file of 4096 retained ids saves back byte for byte (SPEC-TABLES.md §6.6, THE MERGED TRAILER IS BOUNDED BY THE WIRE) | `wire-fuzz --retain` on the pinned seed `id_table_4096` (graphdemo.Scene); C++ `TestCppRetainIdTableBoundIsTheWires` (#4767, merged) |
 | counted-born-elides | a plain counted `[Min..N]T` is born with `Min` elements each at its default, and a save of that born state elides the field, whether the value was born fresh or read back from text or wire at it; the shared rows of FL-25 add the refusals below `Min` (SPEC-TABLES §2.3, §22.2) | the verify-tablegen pinned matrix (`test/verify-tablegen/pinned.go`): `pin:c<elem>:fresh:*` and `pin:c<elem>:min_default:*` on every leg; Elixir also `TestCountedBornStateElides` |

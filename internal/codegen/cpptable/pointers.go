@@ -2124,6 +2124,10 @@ func (g *tableGen) emitVariableLoad(st *ir.Struct) {
 	// holds no root and the retention store holds nothing.
 	if g.retain {
 		g.pf("    if ( out->damaged )\n    {\n        memset( region, 0, (size_t) region_bytes );\n        TableRetainReset( retain, nodes, region );\n        return NULL;\n    } // damage discards the whole load (§4)\n")
+		// A NULL `| required` POINTER REFUSES THE RETAINING LOAD as it refuses
+		// the strict Load (docs/SPEC-TABLES.md §2.3, §6.5, §6.6): the retain
+		// family is the strict read plus retention, never a laxer one.
+		g.pf("    if ( out->missing_required )\n    {\n        memset( region, 0, (size_t) region_bytes );\n        TableRetainReset( retain, nodes, region );\n        out->refuse_reason = missing_required;\n        return NULL;\n    } // a missing required field refuses (§6.5)\n")
 	} else {
 		g.pf("    if ( out->damaged )\n    {\n        memset( region, 0, (size_t) region_bytes );\n        return NULL;\n    } // damage discards the whole load (§4)\n")
 	}

@@ -427,6 +427,7 @@ func runPythonWireFuzzVerdictArm(t *testing.T, root, dir string, script []byte, 
 				failed := filepath.Join(dir, fmt.Sprintf("failed-%d-%s-%d.bin", pi, arm, shard))
 				args := []string{
 					"wire-fuzz",
+					"--leg", "python",
 					"--driver", fmt.Sprintf("%s -W error -I %s %s", python, driverScript, generated),
 					"--seed", "1", "--n", "200",
 					"--shard", strconv.Itoa(shard), "--shards", strconv.Itoa(wireFuzzCIShards),
