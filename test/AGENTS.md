@@ -65,7 +65,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `message-one-encoding/` | message form one-encoding fixture | `make test-go` | `go test -run TestSpecMessageFormHasOneEncoding ./compiler/` |
 | `moo-runtime-home/` | moo runtime-home check | `make tables-moo-runtime-home` | `make tables-moo-runtime-home` |
 | `non-canonical/` | non-canonical spelling wire vectors | `go test -run TestCorpusNonCanonicalSpellings ./compiler/` | `go test -run TestCorpusNonCanonicalSpellings ./compiler/` |
-| `packet-cfloat-endpoints/` | accepted compressed-float packet endpoints | `make packet-cfloat-endpoints-go` | `make packet-cfloat-endpoints-go` |
+| `packet-cfloat-endpoints/` | accepted compressed-float packet endpoints | `make packet-cfloat-endpoints-go, make packet-cfloat-endpoints-js` | `make packet-cfloat-endpoints-go packet-cfloat-endpoints-js` |
 | `packet-defaults/` | packet default-value gates | `make test` | `make test` |
 | `packet-end/` | packet end-check fixture | `make test-go` | `go test -run TestSpecPacketEndIsChecked ./compiler/` |
 | `packet-finite/` | packet finite-float gates | `make test-go, make test-dart, make test-elixir, make test-lua, make test-luau` | `make packet-finite-go packet-finite-dart packet-finite-elixir packet-finite-lua packet-finite-luau` |

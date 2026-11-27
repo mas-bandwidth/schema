@@ -196,9 +196,6 @@ enum write_arm_header
 enum write_field_value
 { Zfirst, Zsecond, Zthird }
 
-enum write_float
-{ Zfirst, Zsecond, Zthird }
-
 enum write_json_scalar
 { Zfirst, Zsecond, Zthird }
 
@@ -596,8 +593,6 @@ union NameArms6
 
 table NameTypes6
 {
-    one0  write_float
-    many0 [..4]write_float
     one1  write_json_scalar
     many1 [..4]write_json_scalar
     one2  write_json_table

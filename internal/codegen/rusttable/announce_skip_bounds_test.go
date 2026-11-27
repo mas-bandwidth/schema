@@ -10,7 +10,8 @@ package rusttable
 // overflow-checks on, because the defect the rule removes is a sum that wraps
 // only when overflow checks are off. A hostile framed length near 2^64 and the
 // same length inside a union are each refused in both profiles; a well-formed
-// announcement carrying one unknown field of each framed kind is read. The
+// announcement carrying one unknown field of each framed kind is read, and one
+// carrying the held kind 31 is refused as damage (R17). The
 // clauses assert the VERDICT alone (docs/rulings.json refusal-verdict-only).
 //
 // A FUNCTIONAL TEST: it compiles and runs Rust with rustc. It skips by name
@@ -75,11 +76,11 @@ fn reads_unknown(data: &[u8]) -> bool {
 fn main() {
     say("hostile_framed_refuses", refuses(&HOSTILE_FRAMED));
     say("hostile_union_refuses", refuses(&HOSTILE_UNION));
+    say("held_kind_31_refuses", refuses(&HELD_KIND_31));
     say("wellformed_framed_12", reads_unknown(&WELLFORMED_FRAMED_12));
     say("wellformed_framed_13", reads_unknown(&WELLFORMED_FRAMED_13));
     say("wellformed_framed_14", reads_unknown(&WELLFORMED_FRAMED_14));
     say("wellformed_framed_16", reads_unknown(&WELLFORMED_FRAMED_16));
-    say("wellformed_framed_31", reads_unknown(&WELLFORMED_FRAMED_31));
     say("wellformed_framed_32", reads_unknown(&WELLFORMED_FRAMED_32));
     say("wellformed_union_15", reads_unknown(&WELLFORMED_UNION_15));
 }
@@ -110,7 +111,7 @@ func TestRustAnnouncementSkipFieldIsBounded(t *testing.T) {
 		id   string
 		kind byte
 	}
-	for _, kind := range []byte{12, 13, 14, 16, 31, 32} {
+	for _, kind := range []byte{12, 13, 14, 16, 32} {
 		framedCases = append(framedCases, struct {
 			id   string
 			kind byte
@@ -128,18 +129,22 @@ func TestRustAnnouncementSkipFieldIsBounded(t *testing.T) {
 			payload = append(leb128(3), 6, 1, 0xaa)
 		case 16:
 			payload = append(leb128(5), 6, 1, 1, 1, 0xaa)
-		case 31:
-			payload = append(leb128(3), 0xaa, 0xbb, 0xcc)
 		case 32:
 			payload = leb128(0)
 		}
 		wellformed[c.id] = announcementWithUnknown(c.kind, payload, 0x3000000000000000+uint64(i))
 	}
 	wellformed["wellformed_union_15"] = announcementWithUnknown(15, append(append(leb128(1), 6), append(leb128(1), 0xaa)...), 0x4444444444444444)
+	// Kind 31 is held by name and never written (R17, SPEC-TABLES "31 IS HELD
+	// BY NAME"): met anywhere, an unknown announcement field included, it is
+	// damage and the whole read refuses. The payload is a framed length and
+	// valid UTF-8, so a reader that steps over 31 by its L would read it.
+	heldKind31 := announcementWithUnknown(31, append(leb128(3), 0x61, 0x62, 0x63), 0x5555555555555555)
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "const HOSTILE_FRAMED: [u8; %d] = [%s];\n", len(hostileFramed), rustBytes(hostileFramed))
 	fmt.Fprintf(&b, "const HOSTILE_UNION: [u8; %d] = [%s];\n", len(hostileUnion), rustBytes(hostileUnion))
+	fmt.Fprintf(&b, "const HELD_KIND_31: [u8; %d] = [%s];\n", len(heldKind31), rustBytes(heldKind31))
 	wellformedIDs := make([]string, 0, len(wellformed))
 	for id := range wellformed {
 		wellformedIDs = append(wellformedIDs, id)
@@ -163,7 +168,7 @@ func TestRustAnnouncementSkipFieldIsBounded(t *testing.T) {
 		if err != nil {
 			t.Fatalf("profile %s: the probe did not finish: %v\n%s", profile.name, err, out)
 		}
-		for _, id := range []string{"hostile_framed_refuses", "hostile_union_refuses"} {
+		for _, id := range []string{"hostile_framed_refuses", "hostile_union_refuses", "held_kind_31_refuses"} {
 			if line := skipBoundsLine(out, id); line != "SKIP "+id+" ok" {
 				t.Errorf("profile %s: a hostile announcement was not refused: %s", profile.name, line)
 			}

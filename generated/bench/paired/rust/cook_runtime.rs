@@ -212,6 +212,10 @@ pub struct TableCookFieldInfo {
     pub count_offset: i32,   // the count companion's offset, or -1
     pub present_offset: i32, // an optional's presence bool, or -1
     pub storage: TableCookStorage,
+    #[cfg(debug_assertions)]
+    pub deprecated_variants: &'static [(u64, &'static str)],
+    #[cfg(debug_assertions)]
+    pub deprecated_field: bool,
     // the record this field NAMES, behind a function so the table stays
     // constructible in any order. None when the field is a scalar. Following it
     // is how a walker DESCENDS — a pointer's target, a by-value nesting and an
@@ -271,6 +275,40 @@ unsafe fn table_cook_raw(p: *const u8, at: i64, width: u32) -> u64 {
         }
     }
     v
+}
+
+// Check only live enum slots of the caller's fixed row (§2.15).
+#[cfg(debug_assertions)]
+#[doc(hidden)]
+pub unsafe fn table_cook_check_enum_variants(p: *const u8, t: &TableCookInfo) {
+    for f in &t.fields[..t.num_fields as usize] {
+        if f.is_pointer || f.deprecated_field || (f.deprecated_variants.is_empty() && f.record.is_none()) {
+            continue;
+        }
+        if f.present_offset >= 0 && unsafe { table_cook_raw(p, f.present_offset as i64, 1) } == 0 {
+            continue;
+        }
+        let count = if f.count_offset >= 0 {
+            let used = unsafe { table_cook_raw(p, f.count_offset as i64, 4) } as i32;
+            used.clamp(0, f.array_bound)
+        } else if f.is_array {
+            f.array_bound
+        } else {
+            1
+        };
+        for k in 0..count as i64 {
+            let at = f.offset as i64 + k * f.elem_size as i64;
+            if let Some(record) = f.record {
+                unsafe { table_cook_check_enum_variants(p.add(at as usize), record()); }
+            } else {
+                let value = unsafe { table_cook_raw(p, at, f.elem_size as u32) };
+                for &(ordinal, name) in f.deprecated_variants {
+                    debug_assert!(value != ordinal,
+                        "invalid_value: {}.{} holds deprecated variant {}", t.name, f.name, name);
+                }
+            }
+        }
+    }
 }
 
 // table_cook_write_record is Go's record/field/value walk over these
