@@ -290,7 +290,7 @@ struct Erase
 // read of that form (-1 refuses the whole load), and FixedSave the writer whose
 // bytes the wire goldens hold. The plan storage is the caller's (§3.4), roomy
 // enough for any writer's layout the corpus carries; no cache is shared.
-static const int32_t kFixedPlanCapacity = 4096;
+[[maybe_unused]] static const int32_t kFixedPlanCapacity = 4096; // unused by the writebounds-only driver
 
 #define CODEC( unit_key, ns, type )                                                            \
     {                                                                                          \

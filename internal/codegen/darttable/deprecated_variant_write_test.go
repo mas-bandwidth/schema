@@ -26,7 +26,7 @@ func TestDartWriteAssertsDeprecatedEnumVariant(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, name := range []string{"DeprWire.dart", "DeprFixed.dart"} {
-		if !strings.Contains(string(files[name]), "!= 2, 'deprecated enum variant Phase.Old'") {
+		if !strings.Contains(string(files[name]), "!= 2, 'deprecated variant is never written (SPEC-TABLES 2.15)'") {
 			t.Errorf("%s did not emit the deprecated variant assertion", name)
 		}
 	}
@@ -68,7 +68,7 @@ void refuse(String id, void Function() write) {
   try {
     write();
   } on AssertionError catch (error) {
-    if (error.message != 'deprecated enum variant Phase.Old') {
+    if (error.message != 'deprecated variant is never written (SPEC-TABLES 2.15)') {
       rethrow;
     }
     print('$id refused');

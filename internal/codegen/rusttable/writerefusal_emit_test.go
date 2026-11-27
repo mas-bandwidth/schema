@@ -128,7 +128,7 @@ fixed table Config
 func TestRustFixedDeprecatedEnumWriteRefused(t *testing.T) {
 	t.Parallel()
 	fixed := string(generate(t, fixedDeprecatedEnumSchema)["probe_fixed.rs"])
-	want := `debug_assert!(!matches!(value.phase, 2), "invalid_value: phase holds a deprecated variant");`
+	want := `debug_assert!(value.phase != 2, "invalid_value: phase holds a deprecated variant");`
 	if !strings.Contains(fixed, want) {
 		t.Errorf("the fixed-form save does not emit %q", want)
 	}

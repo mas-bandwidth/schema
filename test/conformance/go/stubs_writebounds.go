@@ -67,3 +67,6 @@ func surfaceReadInto([]line, string) error {
 func surfaceJSONWriteInto([]line, string) error {
 	return fmt.Errorf("json-write-into absent in writebounds_only build")
 }
+func surfaceRetainRefusal([]line, string) error {
+	return fmt.Errorf("retain-refusal absent in writebounds_only build")
+}

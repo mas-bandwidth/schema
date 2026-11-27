@@ -826,8 +826,12 @@ static int surface_retain_refusal(const char * out)
   if(!(!strcmp(f->field[2],"tblrt1")&&!strcmp(f->field[3],"Node"))&&!(!strcmp(f->field[2],"tblvarevo1")&&!strcmp(f->field[3],"EvoDoc"))){if(!spill_absent(out,f->field[1]))return 1;continue;}
   first=slurp(f->field[4],&fn);if(!first)return 1;
   second=slurp(f->field[5],&sn);if(!second){free(first);return 1;}
+#ifndef CONFORMANCE_WRITEBOUNDS_ONLY
   if(!strcmp(f->field[2],"tblrt1"))rc=conformance_retain_refusal_rt1(first,(int64_t)fn,second,(int64_t)sn,&before,&before_bytes,&second_refused,&after,&after_bytes);
   else rc=conformance_retain_refusal_varevo1(first,(int64_t)fn,second,(int64_t)sn,&before,&before_bytes,&second_refused,&after,&after_bytes);
+#else
+  rc=-1;(void)before_bytes;(void)second_refused;
+#endif
   free(first);free(second);
   if(rc<0){fprintf(stderr,"retain-refusal %s failed\n",f->field[1]);return 1;}
   if(rc==0)ok=spill(out,f->field[1],"refused\n",8);
@@ -1110,9 +1114,13 @@ static int surface_read_into( const char * out )
         if ( end == NULL || *end != 0 || count < 1 ) { fprintf( stderr, "driver: read-into %s: %s is no count\n", f->field[1], f->field[7] ); return 1; }
         if ( retaining )
         {
+#ifndef CONFORMANCE_WRITEBOUNDS_ONLY
             ran = strcmp( f->field[3], "Node" ) == 0 && strcmp( f->field[4], "retain" ) == 0 && count == 1
                       ? conformance_read_into_retain( lawful, (int64_t) lawful_bytes, damaged, (int64_t) damaged_bytes, &answer )
                       : 1;
+#else
+            ran = 1;
+#endif
         }
         else
         {

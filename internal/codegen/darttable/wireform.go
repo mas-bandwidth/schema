@@ -4376,12 +4376,11 @@ func (g *wireGen) emitWireWriteAssert(f *ir.Field, expr, ind string) {
 	}
 }
 
-// emitDeprecatedVariantAssert keeps the binary writers' debug check in step
-// with the enum declaration (SPEC-TABLES §2.15).
+// emitDeprecatedVariantAssert is the cook writers' debug check for a
+// deprecated variant (SPEC-TABLES §2.15), in the one spelling the variable
+// and fixed writers use, so every Dart writer refuses with the same message.
 func emitDeprecatedVariantAssert(pf func(string, ...any), e *ir.Enum, expr, ind string) {
-	for i, variant := range e.Variants {
-		if i < len(e.VariantDeprecated) && e.VariantDeprecated[i] {
-			pf("%sassert(%s != %d, 'deprecated enum variant %s.%s');\n", ind, expr, i+1, e.Name, variant)
-		}
+	if cond := enumNotDeprecated(e, expr); cond != "" {
+		pf("%sassert(%s, 'deprecated variant is never written (SPEC-TABLES 2.15)');\n", ind, cond)
 	}
 }
