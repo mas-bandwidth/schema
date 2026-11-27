@@ -348,6 +348,8 @@ pkg_next	refuse-at-check	Lobster	package is a runtime binding of the Lobster run
 pkg_read	refuse-at-check	Lobster	package is a runtime binding of the Lobster runtime
 pkg_view	refuse-at-check	Lobster	package is a runtime binding of the Lobster runtime
 pkg_descriptor	refuse-at-check	Lobster	package is a runtime binding of the Lobster runtime
+pkg_p	refuse-at-check	Lobster	package is a runtime binding of the Lobster runtime (a cook.lobster local)
+pkg_depth	refuse-at-check	Lobster	package is a runtime binding of the Lobster runtime (a cook.lobster parameter)
 v_None_	refuse-at-check	Lobster	variant None_: the generated KindNone collides with Kind.None
 j_type_outer_class	refuse-at-check	Java	a type named like its file outer class
 j_field_Boolean	refuse-at-check	Java	field Boolean maps to a reserved Java word
