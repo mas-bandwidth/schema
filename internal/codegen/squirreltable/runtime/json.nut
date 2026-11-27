@@ -1073,6 +1073,9 @@ writePointer = function(T, c, node, depth, g, out) {
 // integer key as its decimal spelling. An ABSENT `map[K]?T` VALUE is `null`,
 // the one spelling of an absent value, never its defaults (§2.3, §2.8).
 writeMap = function(T, d, val, depth, g, out) {
+  // the write counts every container the read does, an empty one included
+  // (docs/SPEC-TABLES.md §16.14 W2): a container past the cap is refused
+  if (depth > MAX_DEPTH) return false;
   local kd = d.mapkey, vd = d.mapvalue;
   local n = val == null ? 0 : val.len();
   if (n == 0) { out.append("{}"); return true; }
@@ -1115,6 +1118,9 @@ writeMap = function(T, d, val, depth, g, out) {
 // `?string` elements as null. The storage is the generated element record;
 // textlist 1 is the plain spelling and 2 the optional one.
 local writeTextArray = function(T, d, val, depth, out) {
+  // the write counts every container the read does, an empty one included
+  // (docs/SPEC-TABLES.md §16.14 W2): a container past the cap is refused
+  if (depth > MAX_DEPTH) return false;
   // Counted arrays hold their declared minimum through maximum; a fixed
   // bound applies to the other bounded arrays (docs/SPEC.md §5.1 row 3).
   // Text-list elements also refuse a text past their string(N) (row 4).
@@ -1176,6 +1182,9 @@ writeField = function(T, d, val, depth, g, out) {
       return true;
     case "map": return writeMap(T, d, val, depth, g, out);
     case "arr": {
+      // the write counts every container the read does, an empty one included
+      // (docs/SPEC-TABLES.md §16.14 W2): a container past the cap is refused
+      if (depth > MAX_DEPTH) return false;
       if (d.textlist != 0) return writeTextArray(T, d, val, depth, out);
       local e = d.elem;
       if (isKeyed(d)) {
@@ -1228,6 +1237,9 @@ writeField = function(T, d, val, depth, g, out) {
 writeScalar = function(T, d, val, depth, g, out) {
   switch (d.shape) {
     case "union": {
+      // the write counts every container the read does, an empty one included
+      // (docs/SPEC-TABLES.md §16.14 W2): a container past the cap is refused
+      if (depth > MAX_DEPTH) return false;
       // a union is an object with ONE key, the arm's name; None is {}
       if (val == null || val.Type == null || val.Type == 0) { out.append("{}"); return true; }
       local arm = armOf(unionDesc(T, d.table), val.Type);
@@ -1267,6 +1279,8 @@ writeScalar = function(T, d, val, depth, g, out) {
       return true;
     }
     case "flags": {
+      // a flags value's array is a container too (docs/SPEC-TABLES.md §16.14 W2)
+      if (depth > MAX_DEPTH) return false;
       local bits = val;
       if (bits == 0) { out.append("[]"); return true; }
       local names = has(d, "flagNames") ? d.flagNames : [];

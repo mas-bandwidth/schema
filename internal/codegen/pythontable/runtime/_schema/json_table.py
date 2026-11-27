@@ -736,10 +736,13 @@ def _write_table(value: Any, depth: int, counts: dict[int, int], labels: dict[in
 
 
 def _render(field: FieldDesc, item: Any, depth: int, counts: dict[int, int], labels: dict[int, int]) -> str:
-    # the write cap counts table values only (SPEC-TABLES W2): an empty array, map,
-    # union or flags value nests nothing and is written at any depth
+    # the write cap counts every container the read does (SPEC-TABLES §16.14 W2):
+    # a table value, and an array or text list, a map, an enum-keyed array's
+    # object and a union's object, an empty [] or {} included
     if depth > 128 and field.codec in ("pointer", "table") and not (field.codec == "pointer" and item is None):
         raise InvalidValue(field.name, "nested past the depth cap")
+    if depth > 128 and field.codec in ("array", "pointer_array", "union_array", "map", "keyed", "union"):
+        raise InvalidValue(field.name, "a container nested past the depth cap")
     if field.codec == "optional":
         return "null" if item is None else _render(_inner(field), item, depth, counts, labels)
     if field.codec in ("pointer", "table"):
@@ -795,6 +798,10 @@ def _render(field: FieldDesc, item: Any, depth: int, counts: dict[int, int], lab
         part = "null" if arm.field is None else _render(arm.field, getattr(item, arm.name), depth + 1, counts, labels)
         return "{\n" + "  " * (depth + 1) + _quote(arm.name) + ": " + part + "\n" + "  " * depth + "}"
     if field.json_flags:
+        # a flags value is an array of names, a container the read counts, an
+        # empty [] included (SPEC-TABLES §16.14 W2)
+        if depth > 128:
+            raise InvalidValue(field.name, "a container nested past the depth cap")
         if type(item) is not int or item < 0 or item >> len(field.json_variants):
             raise InvalidValue(field.name, "flags name no variant")
         parts = ["  " * (depth + 1) + _quote(name) for index, name in enumerate(field.json_variants) if item & (1 << index)]

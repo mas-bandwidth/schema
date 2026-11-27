@@ -867,6 +867,10 @@ public final class MixedPickupEventVariable {
 
     static void jsonFields(
             java.lang.StringBuilder b, TableVariable.NodeGraph graph, Value v, int depth) {
+        if (depth > TableJson.In.MAX_JSON_DEPTH) {
+            throw new TableJson.Refused(
+                    "a container past the cap: the write counts every container the read does");
+        }
         b.append('{');
         boolean empty = jsonFieldsBody(b, graph, v, depth + 1, true);
         if (!empty) TableJson.indent(b, depth);
