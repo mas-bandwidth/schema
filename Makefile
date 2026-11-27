@@ -5424,10 +5424,21 @@ build/conformance-cpp-objs/%.o: build/tables-generated/%.cpp build/tables-genera
 conformance-cpp-objects: build/tables-generated/.stamp
 	@$(MAKE) --no-print-directory $(CONFORMANCE_OBJECTS)
 
-build/conformance-cpp: build/tables-generated/.stamp test/conformance/cpp/main.cpp
+# THE DRIVER'S OWN TU COMPILES IN THE SAME PARALLEL PASS. main.cpp is the
+# largest translation unit here (it includes every generated header); compiled
+# after the object pass it ran alone on one core, so the nightly paid its whole
+# compile on top of the objects'. It is now one more object of the pass and
+# only the link is left after it. The object is named apart from
+# conformance_main.o (make/verify-compiled.mk), which _verify-cpp-fuzz-bins
+# builds in its own sub-make, so the two never write one file at once.
+build/conformance-cpp-objs/_main/conformance_driver.o: test/conformance/cpp/main.cpp build/tables-generated/.stamp $(wildcard $(SERIALIZE)/*.h)
+	@mkdir -p $(@D)
+	$(CXX) $(TABLES_CXXFLAGS) $(CONFORMANCE_INCLUDES) -c $< -o $@
+
+build/conformance-cpp: build/tables-generated/.stamp test/conformance/cpp/main.cpp $(wildcard $(SERIALIZE)/*.h)
 	@mkdir -p build
-	@$(MAKE) --no-print-directory $(CONFORMANCE_OBJECTS)
-	$(CXX) $(TABLES_CXXFLAGS) $(CONFORMANCE_INCLUDES) test/conformance/cpp/main.cpp \
+	@$(MAKE) --no-print-directory build/conformance-cpp-objs/_main/conformance_driver.o $(CONFORMANCE_OBJECTS)
+	$(CXX) $(TABLES_CXXFLAGS) build/conformance-cpp-objs/_main/conformance_driver.o \
 		$(CONFORMANCE_OBJECTS) -o $@
 
 # ---- THE WIRE FUZZER (docs/SPEC-TABLES.md §4.2; docs/SECURITY.md) -------------
