@@ -564,6 +564,10 @@ defmodule Example.Wire do
   """
   @spec write_probe_header!(Example.ProbeHeader.t()) :: binary()
   def write_probe_header!(value) do
+    if not is_struct(value, Example.ProbeHeader) do
+      raise ArgumentError, "value is not a ProbeHeader"
+    end
+
     %{version: value_version, probe_id: value_probe_id} = value
     # const(0xAB, 8) rides the wire (SPEC §4.3)
     v = 171
@@ -710,6 +714,10 @@ defmodule Example.Wire do
   """
   @spec write_probe_bits!(Example.ProbeBits.t()) :: binary()
   def write_probe_bits!(value) do
+    if not is_struct(value, Example.ProbeBits) do
+      raise ArgumentError, "value is not a ProbeBits"
+    end
+
     %{
       small: value_small,
       boundary: value_boundary,
@@ -947,6 +955,10 @@ defmodule Example.Wire do
   """
   @spec write_probe_sample!(Example.ProbeSample.t()) :: binary()
   def write_probe_sample!(value) do
+    if not is_struct(value, Example.ProbeSample) do
+      raise ArgumentError, "value is not a ProbeSample"
+    end
+
     %{
       active: value_active,
       orientation: value_orientation,
@@ -954,6 +966,10 @@ defmodule Example.Wire do
       big_delta: value_big_delta,
       samples: value_samples
     } = value
+
+    if not is_boolean(value_active) do
+      raise ArgumentError, "value.active is not a boolean"
+    end
 
     v = if value_active, do: 1, else: 0
     scratch = v
@@ -1016,6 +1032,11 @@ defmodule Example.Wire do
         %{weapon: value_weapon, has_target: value_has_target} = value
         v = Example.Weapon.to_int(value_weapon)
         scratch = scratch ||| v <<< 1
+
+        if not is_boolean(value_has_target) do
+          raise ArgumentError, "value.has_target is not a boolean"
+        end
+
         v = if value_has_target, do: 1, else: 0
         scratch = scratch ||| v <<< 5
 
@@ -1064,6 +1085,10 @@ defmodule Example.Wire do
         scratch_bits = 1
         {data, scratch, scratch_bits}
       end
+
+    if not is_list(value_samples) do
+      raise ArgumentError, "value.samples is not a list"
+    end
 
     n = length(value_samples)
 
@@ -1244,6 +1269,10 @@ defmodule Example.Wire do
   """
   @spec write_probe_ring!(Example.ProbeRing.t()) :: binary()
   def write_probe_ring!(value) do
+    if not is_struct(value, Example.ProbeRing) do
+      raise ArgumentError, "value is not a ProbeRing"
+    end
+
     if not is_integer(value.radius) do
       raise ArgumentError, "value.radius is not an integer"
     end
@@ -1347,6 +1376,10 @@ defmodule Example.Wire do
   """
   @spec write_probe_slab!(Example.ProbeSlab.t()) :: binary()
   def write_probe_slab!(value) do
+    if not is_struct(value, Example.ProbeSlab) do
+      raise ArgumentError, "value is not a ProbeSlab"
+    end
+
     %{width: value_width, height: value_height} = value
 
     if not is_integer(value_width) do
@@ -1491,10 +1524,10 @@ defmodule Example.Wire do
         nil ->
           0
 
-        {:ring, _} ->
+        {:ring, %Example.ProbeRing{}} ->
           1
 
-        {:slab, _} ->
+        {:slab, %Example.ProbeSlab{}} ->
           2
 
         value_other ->
@@ -1691,6 +1724,10 @@ defmodule Example.Wire do
   """
   @spec write_probe_collider!(Example.ProbeCollider.t()) :: binary()
   def write_probe_collider!(value) do
+    if not is_struct(value, Example.ProbeCollider) do
+      raise ArgumentError, "value is not a ProbeCollider"
+    end
+
     %{armor: value_armor, shape: value_shape, backup: value_backup, extras: value_extras} = value
 
     if not is_integer(value_armor) do
@@ -1713,10 +1750,10 @@ defmodule Example.Wire do
         nil ->
           0
 
-        {:ring, _} ->
+        {:ring, %Example.ProbeRing{}} ->
           1
 
-        {:slab, _} ->
+        {:slab, %Example.ProbeSlab{}} ->
           2
 
         value_shape_other ->
@@ -1798,10 +1835,10 @@ defmodule Example.Wire do
         nil ->
           0
 
-        {:ring, _} ->
+        {:ring, %Example.ProbeRing{}} ->
           1
 
-        {:slab, _} ->
+        {:slab, %Example.ProbeSlab{}} ->
           2
 
         value_backup_other ->
@@ -1884,6 +1921,10 @@ defmodule Example.Wire do
           # None, or an arm whose tag is its whole wire (SPEC §4.8)
           {data, scratch, scratch_bits}
       end
+
+    if not is_list(value_extras) do
+      raise ArgumentError, "value.extras is not a list"
+    end
 
     n = length(value_extras)
 
@@ -2088,6 +2129,10 @@ defmodule Example.Wire do
   """
   @spec write_probe_config!(Example.ProbeConfig.t()) :: binary()
   def write_probe_config!(value) do
+    if not is_struct(value, Example.ProbeConfig) do
+      raise ArgumentError, "value is not a ProbeConfig"
+    end
+
     %{retries: value_retries, preferred: value_preferred} = value
 
     if not is_integer(value_retries) do
@@ -2205,7 +2250,15 @@ defmodule Example.Wire do
   """
   @spec write_probe_array!(Example.ProbeArray.t()) :: binary()
   def write_probe_array!(value) do
+    if not is_struct(value, Example.ProbeArray) do
+      raise ArgumentError, "value is not a ProbeArray"
+    end
+
     %{samples: value_samples, config: value_config} = value
+
+    if not is_list(value_samples) do
+      raise ArgumentError, "value.samples is not a list"
+    end
 
     if length(value_samples) != 2 do
       raise ArgumentError, "value.samples must hold exactly 2 elements"
@@ -2216,6 +2269,10 @@ defmodule Example.Wire do
 
     {data, scratch, scratch_bits} =
       wZprobe_arrayZsamples(value_samples, <<>>, scratch, scratch_bits)
+
+    if not is_struct(value_config, Example.ProbeConfig) do
+      raise ArgumentError, "value.config is not a ProbeConfig"
+    end
 
     %{retries: value_config_retries, preferred: value_config_preferred} = value_config
 
@@ -2333,8 +2390,11 @@ defmodule Example.Wire do
   ArgumentError — always on, since the BEAM has no compile-out assert.
   """
   @spec write_heartbeat!(Example.Heartbeat.t()) :: binary()
-  def write_heartbeat!(_value) do
-    # empty body — presence is the payload (SPEC §4.6)
+  def write_heartbeat!(value) do
+    if not is_struct(value, Example.Heartbeat) do
+      raise ArgumentError, "value is not a Heartbeat"
+    end
+
     <<>>
   end
 
@@ -2419,6 +2479,10 @@ defmodule Example.Wire do
   """
   @spec write_test!(Example.Test.t()) :: binary()
   def write_test!(value) do
+    if not is_struct(value, Example.Test) do
+      raise ArgumentError, "value is not a Test"
+    end
+
     %{
       test_a: value_test_a,
       test_b: value_test_b,
@@ -2596,6 +2660,14 @@ defmodule Example.Wire do
   """
   @spec write_block!(Example.Block.t()) :: binary()
   def write_block!(value) do
+    if not is_struct(value, Example.Block) do
+      raise ArgumentError, "value is not a Block"
+    end
+
+    if not is_binary(value.data) do
+      raise ArgumentError, "value.data is not a binary"
+    end
+
     if byte_size(value.data) > 2000 do
       raise ArgumentError, "value.data longer than the declared 2000-byte bound"
     end
@@ -2705,6 +2777,14 @@ defmodule Example.Wire do
   """
   @spec write_chat!(Example.Chat.t()) :: binary()
   def write_chat!(value) do
+    if not is_struct(value, Example.Chat) do
+      raise ArgumentError, "value is not a Chat"
+    end
+
+    if not is_binary(value.text) do
+      raise ArgumentError, "value.text is not a binary"
+    end
+
     if byte_size(value.text) > 256 do
       raise ArgumentError, "value.text longer than the declared 256-byte bound"
     end
@@ -2828,7 +2908,16 @@ defmodule Example.Wire do
   """
   @spec write_probe_report!(Example.ProbeReport.t()) :: binary()
   def write_probe_report!(value) do
+    if not is_struct(value, Example.ProbeReport) do
+      raise ArgumentError, "value is not a ProbeReport"
+    end
+
     %{header: value_header, flags: value_flags, echo: value_echo} = value
+
+    if not is_struct(value_header, Example.ProbeHeader) do
+      raise ArgumentError, "value.header is not a ProbeHeader"
+    end
+
     %{version: value_header_version, probe_id: value_header_probe_id} = value_header
     # const(0xAB, 8) rides the wire (SPEC §4.3)
     v = 171
@@ -2873,12 +2962,20 @@ defmodule Example.Wire do
     sc0 = scratch
     scratch = v
 
+    if not is_integer(value_flags) do
+      raise ArgumentError, "value.flags is not an integer"
+    end
+
     if value_flags >>> 8 != 0 do
       raise ArgumentError, "value.flags holds a mask bit above the 8-bit wire"
     end
 
     v = value_flags
     scratch = scratch ||| v <<< 32
+
+    if not is_struct(value_echo, Example.Test) do
+      raise ArgumentError, "value.echo is not a Test"
+    end
 
     %{
       test_a: value_echo_test_a,
@@ -3109,6 +3206,10 @@ defmodule Example.Wire do
   """
   @spec write_test_data!(Example.TestData.t()) :: binary()
   def write_test_data!(value) do
+    if not is_struct(value, Example.TestData) do
+      raise ArgumentError, "value is not a TestData"
+    end
+
     %{
       a: value_a,
       b: value_b,
@@ -3222,8 +3323,18 @@ defmodule Example.Wire do
 
     v = value_f &&& 0xFF
     scratch = scratch ||| v <<< 40
+
+    if not is_boolean(value_g) do
+      raise ArgumentError, "value.g is not a boolean"
+    end
+
     v = if value_g, do: 1, else: 0
     scratch = scratch ||| v <<< 48
+
+    if not is_list(value_items) do
+      raise ArgumentError, "value.items is not a list"
+    end
+
     n = length(value_items)
 
     if n > 16 do
@@ -3447,6 +3558,10 @@ defmodule Example.Wire do
     # align: zero-pad to the byte boundary (SPEC §4.3)
     data = if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
 
+    if not is_list(value_fixed_bytes) do
+      raise ArgumentError, "value.fixed_bytes is not a list"
+    end
+
     if length(value_fixed_bytes) != 17 do
       raise ArgumentError, "value.fixed_bytes must hold exactly 17 elements"
     end
@@ -3456,6 +3571,10 @@ defmodule Example.Wire do
 
     {data, scratch, scratch_bits} =
       wZtest_dataZfixed_bytes(value_fixed_bytes, data, scratch, scratch_bits)
+
+    if not is_binary(value_text) do
+      raise ArgumentError, "value.text is not a binary"
+    end
 
     if byte_size(value_text) > 255 do
       raise ArgumentError, "value.text longer than the declared 255-byte bound"
@@ -3721,6 +3840,10 @@ defmodule Example.Wire do
   """
   @spec write_compressed_probe!(Example.CompressedProbe.t()) :: binary()
   def write_compressed_probe!(value) do
+    if not is_struct(value, Example.CompressedProbe) do
+      raise ArgumentError, "value is not a CompressedProbe"
+    end
+
     %{boundary: value_boundary, offset: value_offset} = value
 
     if is_number(value_boundary) and value_boundary < 0.0 do
@@ -4020,10 +4143,10 @@ defmodule Example.Wire do
         nil ->
           0
 
-        {:ring, _} ->
+        {:ring, %Example.ProbeRing{}} ->
           1
 
-        {:slab, _} ->
+        {:slab, %Example.ProbeSlab{}} ->
           2
 
         e_other ->
@@ -4155,6 +4278,10 @@ defmodule Example.Wire do
   defp wZprobe_arrayZsamples([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
   defp wZprobe_arrayZsamples([e | rest], data, scratch, scratch_bits) do
+    if not is_struct(e, Example.ProbeSample) do
+      raise ArgumentError, "e is not a ProbeSample"
+    end
+
     %{
       active: e_active,
       orientation: e_orientation,
@@ -4162,6 +4289,10 @@ defmodule Example.Wire do
       big_delta: e_big_delta,
       samples: e_samples
     } = e
+
+    if not is_boolean(e_active) do
+      raise ArgumentError, "e.active is not a boolean"
+    end
 
     v = if e_active, do: 1, else: 0
     scratch = scratch ||| v <<< scratch_bits
@@ -4236,6 +4367,11 @@ defmodule Example.Wire do
         v = Example.Weapon.to_int(e_weapon)
         scratch = scratch ||| v <<< scratch_bits
         scratch_bits = scratch_bits + 4
+
+        if not is_boolean(e_has_target) do
+          raise ArgumentError, "e.has_target is not a boolean"
+        end
+
         v = if e_has_target, do: 1, else: 0
         scratch = scratch ||| v <<< scratch_bits
         scratch_bits = scratch_bits + 1
@@ -4293,6 +4429,10 @@ defmodule Example.Wire do
         scratch_bits = scratch_bits &&& 7
         {data, scratch, scratch_bits}
       end
+
+    if not is_list(e_samples) do
+      raise ArgumentError, "e.samples is not a list"
+    end
 
     n = length(e_samples)
 

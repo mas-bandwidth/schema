@@ -50,7 +50,7 @@
 package csharp
 
 import (
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // batchWorthwhile is the density threshold — see the package comment above.

@@ -246,10 +246,13 @@ func TestCppCompressedFloatStoresAreGuarded(t *testing.T) {
 	var all strings.Builder
 	for name, data := range files {
 		all.Write(data)
-		for i, line := range strings.Split(string(data), "\n") {
+		lines := strings.Split(string(data), "\n")
+		for i, line := range lines {
 			for writer, spelling := range raw {
 				isGuarded := strings.Contains(line, guarded[writer]) && strings.Contains(line, "TableStoredFloatBits(")
-				isRaw := strings.Contains(line, spelling) && (writer != "cook" || strings.Contains(line, "table_cook_put("))
+				// the cook's held store copies the bits on one line and puts
+				// them on the next, one statement a line (#424)
+				isRaw := strings.Contains(line, spelling) && (writer != "cook" || (i+1 < len(lines) && strings.Contains(lines[i+1], "table_cook_put(") && strings.Contains(lines[i+1], "bits")))
 				if !isGuarded && !isRaw {
 					continue
 				}

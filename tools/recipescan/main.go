@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/mas-bandwidth/schema/v2/internal/recipescan"
+	"github.com/mas-bandwidth/schema/v3/internal/recipescan"
 )
 
 func main() {

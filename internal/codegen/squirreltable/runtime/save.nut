@@ -1005,146 +1005,24 @@ writeValue = function(T, d, val, w, ids, at, root, framed, holder = null, key = 
   return writePrim(w, d, val, ids);
 };
 
-local putFixedU = function(b, off, w, v) {
-  for (local i = 0; i < w; i++) {
-    b[off + i] = v & 0xff;
-    v = v >>> 8;
-  }
-};
-
-local fixedWriteBody, fixedWriteField, fixedWritePayload, fixedWriteElement;
-
-fixedWriteBody = function(T, c, v, out, off) {
-  foreach (fd in c.fields) {
-    if (!fixedWriteField(T, c.name, fd, v, out, off)) return false;
-    off += fd.fb;
-  }
-  return true;
-};
-
-fixedWriteField = function(T, owner, fd, v, out, off) {
-  if (fd.optional) {
-    if (!v[fd.member + "Present"]) return true;
-    out[off] = 1;
-    return fixedWritePayload(T, owner, fd.name, fd, v[fd.member], out, off + 1);
-  }
-  return fixedWritePayload(T, owner, fd.name, fd, v[fd.member], out, off);
-};
-
-fixedWritePayload = function(T, owner, fname, fd, val, out, off) {
-  if (fd.shape == "arr") {
-    if (fd.counted) {
-      local n = val.len();
-      if (n < 0 || n > fd.bound) return false;
-      putFixedU(out, off, 4, n);
-      for (local i = 0; i < n; i++) {
-        if (!fixedWriteElement(T, owner, fname, fd.elem, val[i], out, off + 4 + i * fd.eb)) return false;
-      }
-      return true;
-    }
-    for (local i = 0; i < fd.fcount; i++) {
-      if (!fixedWriteElement(T, owner, fname, fd.elem, val[i], out, off + i * fd.eb)) return false;
-    }
-    return true;
-  }
-  if (fd.shape == "str" || fd.shape == "bytes") {
-    if (val.len() > fd.bound) return false;
-    putFixedU(out, off, 4, val.len());
-    for (local i = 0; i < val.len(); i++) out[off + 4 + i] = val[i] & 0xff;
-    return true;
-  }
-  return fixedWriteElement(T, owner, fname, fd, val, out, off);
-};
-
-fixedWriteElement = function(T, owner, fname, e, val, out, off) {
-  if (e.shape == "tab") {
-    return fixedWriteBody(T, tableDesc(T, e.table), val, out, off);
-  }
-  if (e.shape == "union") {
-    local ud = unionDesc(T, e.table);
-    local t = (val == null || val.Type == null) ? 0 : val.Type;
-    if (t < 0 || t > ud.arms.len()) return false;
-    putFixedU(out, off, ud.tagw, t);
-    if (t == 0) return true;
-    local arm = ud.arms[t - 1];
-    if (arm.payload == null) return true;
-    return fixedWritePayload(T, ud.name, arm.name, arm.payload, val[arm.payload.member], out, off + ud.tagw);
-  }
-  if (e.shape == "enum") {
-    if (val == null) {
-      putFixedU(out, off, e.sw, 0);
-      return true;
-    }
-    for (local i = 0; i < e.variants.len(); i++) {
-      local pair = e.variants[i];
-      if (pair[0] == val) {
-        if (pair.len() > 2 && pair[2]) {
-          _M.SaveReason <- "invalid_value: " + owner + "." + fname + " names the deprecated variant " + val;
-          return false;
-        }
-        putFixedU(out, off, e.sw, i + 1);
-        return true;
-      }
-    }
-    return false;
-  }
-  if (e.shape == "bool") {
-    if (val) out[off] = 1;
-    return true;
-  }
-  if (e.shape == "float") {
-    if (!floatFinite(e, val)) return refuseNonFinite(e);
-    local bits = e.f32 ? narrowF32(val.tofloat()) : castf2i(val.tofloat());
-    // A COMPRESSED FLOAT'S -0 IS STORED AS +0 (docs/SPEC-TABLES.md §3.3,
-    // ruling fixed-compressed-negzero), judged after the value is narrowed,
-    // so a tiny negative that rounds to -0 stores +0; a plain float's -0
-    // rides bit-exact
-    if (("fmin" in e) && e.fmin != null && (bits & (e.f32 ? 0x7fffffff : 0x7fffffffffffffff)) == 0) bits = 0;
-    putFixedU(out, off, e.f32 ? 4 : 8, bits);
-    return true;
-  }
-  if (e.shape == "flags" && (typeof val != "integer" || (e.flagbits != null && e.flagbits < 64 && (val >>> e.flagbits) != 0))) {
-    // a mask is held to W (docs/SPEC-TABLES.md §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH)
-    _M.SaveReason <- "invalid_value: " + owner + "." + fname;
-    return false;
-  }
-  if (e.shape == "int" || e.shape == "flags") {
-    if (e.sw == 16) {
-      putFixedU(out, off, 8, val[0]);
-      putFixedU(out, off + 8, 8, val[1]);
-    } else {
-      putFixedU(out, off, e.sw, val);
-    }
-    return true;
-  }
-  return false;
-};
-
+// THE SAVE OF A FIXED ROOT (docs/SPEC-TABLES.md §3.4; docs/SPEC.md §5.1) is
+// the generated <Root>FixedSave over a batch of one, so a value that writer
+// refuses (a ranged integer, a bits(N), a count past its bound or under its
+// Min, a string, an enum, a union, a non-finite or ranged float, a value of
+// the wrong type) is refused here too, in every build, with nothing raised.
+// One writer: a second hand-walked body here held none of those checks and
+// wrote what <Root>FixedSave refuses.
 local saveFixed = function(T, c, value) {
-  if (!c.femit) {
+  if (!c.femit || !((c.name + "FixedSave") in T) || !((c.name + "FixedMeasure") in T)) {
     _M.SaveReason <- "layout_unsupported";
     return null;
   }
-  local L = c.layout.len();
-  local total = 20 + L + 8 + c.fsize;
-  local out = blob(total);
-  out[0] = 3;
-  putFixedU(out, 8, 8, c.lhash);
-  putFixedU(out, 16, 4, L);
-  for (local i = 0; i < L; i++) out[20 + i] = c.layout[i] & 0xff;
-  local rec = 20 + L;
-  putFixedU(out, rec, 8, c.lhash);
-  if (!fixedWriteBody(T, c, value, out, rec + 8)) return null;
-  if (("integrity" in c) && c.integrity != null && c.integrity != "") {
-    local n = out.len();
-    local ext = blob(n + 4);
-    for (local i = 0; i < n; i++) ext[i] = out[i];
-    local chk = crc32c(out, n);
-    ext[n] = chk & 0xff;
-    ext[n + 1] = (chk >>> 8) & 0xff;
-    ext[n + 2] = (chk >>> 16) & 0xff;
-    ext[n + 3] = (chk >>> 24) & 0xff;
-    out = ext;
+  local size = T[c.name + "FixedMeasure"](1);
+  local out = blob(size);
+  local n = T[c.name + "FixedSave"](out, [value]);
+  if (n != size) {
+    _M.SaveReason <- ("FixedReason" in T && T.FixedReason != null) ? T.FixedReason : "invalid_value";
+    return null;
   }
   return out;
 };

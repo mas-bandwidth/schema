@@ -147,6 +147,7 @@ import '../../../build/tables-generated-dart-scalars/varevo3/Tblvarevo3Fixed.dar
 import '../../../build/tables-generated-dart-scalars/varevo3/VarEvo3Fixed.dart' as varevo3_fixed;
 import '../../../build/tables-generated-dart-scalars/varevo3/VarEvo3Cook.dart' as varevo3cook;
 import '../../../build/tables-generated-dart/cooktorture/CookTortureWire.dart' as cooktorture;
+import '../../../build/tables-generated-dart/writebounds/WriteboundsWire.dart' as writebounds;
 import '../../../build/tables-generated-dart/cooktorture/CookTortureFixed.dart' as cooktorture_fixed;
 import '../../../build/tables-generated-dart/cooktorture/CookTortureCook.dart' as cooktorturecook;
 import '../../../build/tables-generated-dart-scalars/cooktorturewide/CookTortureWideWire.dart' as cooktorturewide;
@@ -1010,7 +1011,7 @@ void _f2w_shapes_FixedBounds(shapes_fixed.FixedBounds f, shapes.FixedBounds w) {
     r.b = f.recs[i].b;
     return r;
   });
-  w.pick.armTag = f.pick.type;
+  w.pick.armTag = f.pick.type as int;
   w.pick.small = f.pick.small;
   w.pick.ratio = f.pick.ratio;
   w.pick.on = f.pick.on;
@@ -1082,9 +1083,9 @@ void _f2w_fixedevo_EvoRoot(tblfixedevo_fixed.EvoRoot f, tblfixedevo.EvoRoot w) {
   w.boundedArr = List<int>.generate(f.boundedArrCount, (i) => f.boundedArr[i]);
   w.obsoleteMode = f.obsoleteMode;
   w.v1Marker = f.v1Marker;
-  w.nestedChain.armTag = f.nestedChain.type;
+  w.nestedChain.armTag = f.nestedChain.type as int;
   if (f.nestedChain.type == 1) {
-    w.nestedChain.wrap.inner.armTag = f.nestedChain.wrap.inner.type;
+    w.nestedChain.wrap.inner.armTag = f.nestedChain.wrap.inner.type as int;
     if (f.nestedChain.wrap.inner.type == 1) {
       w.nestedChain.wrap.inner.leaf.code = f.nestedChain.wrap.inner.leaf.code;
       w.nestedChain.wrap.inner.leaf.bonus = f.nestedChain.wrap.inner.leaf.bonus;
@@ -1164,7 +1165,7 @@ void _f2w_valuedefaults_FixedDefaults(tblvaluedefaults_fixed.FixedDefaults f, tb
   for (var i = 0; i < 3; i++) {
     _f2w_valuedefaults_Item(f.keyed[i], w.keyed[i]);
   }
-  w.pick.armTag = f.pick.type;
+  w.pick.armTag = f.pick.type as int;
   if (f.pick.type == 1) {
     _f2w_valuedefaults_Item(f.pick.item, w.pick.item);
   } else if (f.pick.type == 2) {
@@ -1220,7 +1221,7 @@ void _f2w_cooktorture_TortureFixedWref(cooktorture_fixed.TortureFixedWref f, coo
   w.rawBytes = latin1.decode(f.rawBytes.sublist(0, f.rawBytesLength));
   w.chanEnum = (f.chanEnum as dynamic);
   w.bitsVal = f.bitsVal;
-  w.uVal.armTag = f.uVal.type;
+  w.uVal.armTag = f.uVal.type as int;
   w.uVal.uI8 = f.uVal.uI8;
   w.uVal.uU8 = f.uVal.uU8;
   w.uVal.uI16 = f.uVal.uI16;
@@ -1259,7 +1260,7 @@ void _f2w_varevo1_EvoMsg(tblvarevo1_fixed.EvoMsg f, tblvarevo1.EvoMsg w) {
   w.seq = f.seq;
   w.tier = f.tier;
   w.label = _f2wUtf8(f.label, f.labelLength);
-  w.payload.armTag = f.payload.type;
+  w.payload.armTag = f.payload.type as int;
   if (f.payload.type == 2) {
     w.payload.status.count = f.payload.status.count;
   }
@@ -1288,7 +1289,7 @@ void _w2f_varevo3_EvoMsg(tblvarevo3.EvoMsg w, tblvarevo3_fixed.EvoMsg f) {
 void _f2w_varevo3_EvoMsg(tblvarevo3_fixed.EvoMsg f, tblvarevo3.EvoMsg w) {
   w.caption = _f2wUtf8(f.caption, f.captionLength);
   w.midFlag = f.midFlag;
-  w.payload.armTag = f.payload.type;
+  w.payload.armTag = f.payload.type as int;
   if (f.payload.type == 2) {
     w.payload.telemetry.count = f.payload.telemetry.count;
     w.payload.telemetry.subTag = _f2wUtf8(f.payload.telemetry.subTag, f.payload.telemetry.subTagLength);
@@ -1315,7 +1316,7 @@ void _w2f_packetunions_Shape(tblpacketunions.Shape w, packetunions_packet.Shape 
 }
 
 void _f2w_packetunions_Shape(packetunions_packet.Shape f, tblpacketunions.Shape w) {
-  w.armTag = f.type;
+  w.armTag = f.type as int;
   if (f.type == 1) {
     w.ring.radius = f.ring.radius;
   } else if (f.type == 2) {
@@ -1805,7 +1806,7 @@ void _w2f_examples_MinArmFix(tabledemo.MinArmFix w, tabledemo_fixed.MinArmFix f)
   }
 }
 void _f2w_examples_MinArmFix(tabledemo_fixed.MinArmFix f, tabledemo.MinArmFix w) {
-  w.pick.armTag = f.pick.type;
+  w.pick.armTag = f.pick.type as int;
   if (f.pick.type == 1) {
     w.pick.few = List<int>.generate(f.pick.fewCount, (i) => f.pick.few[i]);
   } else if (f.pick.type == 2) {
@@ -2569,6 +2570,8 @@ void _f2w_vocab9_Wide19(vocab9demo_fixed.Wide19 f, vocab9demo.Wide19 w) {
 
 Uint8List? wireResave(String unit, String root, Uint8List wire) {
   switch ('$unit $root') {
+    case 'writebounds TortureVarWref':
+      return _wireResaveOne(wire, writebounds.TableWireReport.new, (rep) => (rep.refused, rep.refusal), writebounds.tortureVarWrefWireLoad, writebounds.tortureVarWrefWireSave);
     case 'featurewitnesses Root':
       return _wireResaveOne(wire, feature.TableWireReport.new, (rep) => (rep.refused, rep.refusal), feature.rootWireLoad, feature.rootWireSave);
     case 'featurewitnesses ArrayRoot':
@@ -3048,6 +3051,11 @@ Uint8List? wireResave(String unit, String root, Uint8List wire) {
 
 Uint8List? jsonReadSave(String unit, String root, String text) {
   switch ('$unit $root') {
+    case 'writebounds TortureVarWref':
+      final rep = writebounds.TableTextReport();
+      final v = writebounds.tortureVarWrefFromJson(text, rep);
+      if (rep.refused) return null;
+      return writebounds.tortureVarWrefWireSave(v);
     case 'featurewitnesses Root':
       final rep = feature.TableTextReport();
       final v = feature.rootFromJson(text, rep);
@@ -3557,6 +3565,11 @@ Uint8List? jsonReadSave(String unit, String root, String text) {
 
 String? jsonWriteText(String unit, String root, Uint8List wire) {
   switch ('$unit $root') {
+    case 'writebounds TortureVarWref':
+      final rep = writebounds.TableWireReport();
+      final v = writebounds.tortureVarWrefWireLoad(wire, rep);
+      if (rep.refused) return null;
+      return writebounds.tortureVarWrefToJson(v);
     case 'featurewitnesses Root':
       final rep = feature.TableWireReport();
       final v = feature.rootWireLoad(wire, rep);
@@ -5147,9 +5160,11 @@ int surfaceWire(String outDir) {
 }
 
 int surfaceJsonRead(String outDir) {
+  final suppliedDir = Platform.environment['SCHEMA_CONFORMANCE_JSON_INPUT_DIR'];
+  final jsonDir = suppliedDir == null || suppliedDir.isEmpty ? 'testdata/conformance/tables/json' : suppliedDir;
   for (final f in kind('instance')) {
     if (noTextRow(f)) continue;
-    final textPath = 'testdata/conformance/tables/json/${f[1]}.json';
+    final textPath = '$jsonDir/${f[1]}.json';
     if (!File(textPath).existsSync()) {
       spillAbsent(outDir, f[1]);
       continue;
@@ -5188,6 +5203,17 @@ int surfaceJsonWrite(String outDir) {
             outText = 'refused\n';
           } else {
             outText = graphdemo.sceneToJson(v);
+          }
+          break;
+        case 'tblsurf Chain':
+          // a lawful wire whose text puts an empty `[]` past the depth cap:
+          // the write refuses it (docs/SPEC-TABLES.md §16.14 W2)
+          final r = surfw.TableWireReport();
+          final v = surfw.chainWireLoad(wire, r);
+          if (r.refused) {
+            outText = 'refused\n';
+          } else {
+            outText = surfw.chainToJson(v);
           }
           break;
         case 'tabledemo ProfileConfig':
@@ -7588,6 +7614,32 @@ void _mutateSimStateWire(scalardemo.SimState w, String path, String vkind, Strin
   }
 }
 
+void _mutateWriteBounds(writebounds.TortureVarWref value, String path, String kind, String text) {
+  final n = int.parse(text);
+  switch ('$path $kind') {
+    case 'opt_arr count':
+      final original = value.optArr;
+      final fill = original.isEmpty ? 0 : original.first;
+      value.hasOptArr = true;
+      value.optArr = List<int>.generate(n, (i) => i < original.length ? original[i] : fill);
+      break;
+    case 'arm_bits.a_bits int':
+      value.armBits.aBits = n;
+      break;
+    case 'arm_range.a_range int':
+      value.armRange.aRange = n;
+      break;
+    case 'arm_str.a_str length':
+      value.armStr.aStr = 'a' * n;
+      break;
+    case 'chan_lim[1] int':
+      value.chanLim[1] = n;
+      break;
+    default:
+      throw StateError('unsupported writebounds edit: $path $kind');
+  }
+}
+
 // `rows` is the surface whose rows are answered: write-refusal-shape's lawful
 // twins are written as write-refusal writes them.
 int surfaceWriteRefusal(String outDir, String rows) {
@@ -7731,6 +7783,18 @@ int surfaceWriteRefusal(String outDir, String rows) {
           stderr.writeln('$surface $name: unsupported $unit.$root');
           return 1;
       }
+    } else if (surface == 'write-refusal' && '$unit $root' == 'writebounds TortureVarWref') {
+      final rep = writebounds.TableWireReport();
+      final value = writebounds.tortureVarWrefWireLoad(wire, rep);
+      if (rep.refused) return 1;
+      _mutateWriteBounds(value, path, vkind, text);
+      answer = _catchWrite(() {
+        final saved = writebounds.tortureVarWrefWireSave(value);
+        if (f.length > 8 && f[8] == 'save-wire') {
+          File('$outDir/$name.wire').writeAsBytesSync(saved);
+        }
+        return 0;
+      });
     } else if ('$unit $root' == 'tabledemo RootConfig') {
       final fx = _fixedLoadOne(wire, tabledemo_fixed.RootConfig.new, tables_fixed.rootConfigFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, tables_fixed.rootConfigFixedLoad);
       if (fx == null) return 1;

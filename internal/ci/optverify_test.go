@@ -11,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/provesran"
-	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
+	"github.com/mas-bandwidth/schema/v3/internal/provesran"
+	"github.com/mas-bandwidth/schema/v3/internal/testinputs"
 )
 
 var allOptVerifyLangs = []string{
@@ -165,23 +165,23 @@ func TestOptVerifyCoversEveryPort(t *testing.T) {
 	}
 }
 
-// TestOptVerifyFastWorkflowSelector checks that .github/workflows/ci-fast.yml
+// TestOptVerifyFastWorkflowSelector checks that .github/workflows/ci-fast-nightly.yml
 // maps every language in its `add_leg <lang>` path selector and executes the
 // bounded verify-leg matrix across all 18 ports.
 func TestOptVerifyFastWorkflowSelector(t *testing.T) {
 	t.Parallel()
 
 	root := repoRoot(t)
-	wfBytes, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "ci-fast.yml"))
+	wfBytes, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "ci-fast-nightly.yml"))
 	if err != nil {
-		t.Fatalf("read ci-fast.yml: %v", err)
+		t.Fatalf("read ci-fast-nightly.yml: %v", err)
 	}
 	wf := string(wfBytes)
 	if !strings.Contains(wf, "  verify-leg:\n") {
-		t.Fatal("ci-fast.yml missing verify-leg job")
+		t.Fatal("ci-fast-nightly.yml missing verify-leg job")
 	}
 	if !strings.Contains(wf, "gate: [conformance, bench, fuzz, tablegen]") {
-		t.Fatal("ci-fast.yml verify-leg missing gate: [conformance, bench, fuzz, tablegen] matrix")
+		t.Fatal("ci-fast-nightly.yml verify-leg missing gate: [conformance, bench, fuzz, tablegen] matrix")
 	}
 
 	addLegRe := regexp.MustCompile(`\badd_leg\s+([a-z0-9]+)\b`)
@@ -191,7 +191,7 @@ func TestOptVerifyFastWorkflowSelector(t *testing.T) {
 	}
 	for _, lang := range allOptVerifyLangs {
 		if !seen[lang] {
-			t.Errorf(".github/workflows/ci-fast.yml has no `add_leg %s` selector rule", lang)
+			t.Errorf(".github/workflows/ci-fast-nightly.yml has no `add_leg %s` selector rule", lang)
 		}
 	}
 
@@ -246,7 +246,7 @@ func TestOptVerifyFastWorkflowSelector(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel() // each case is its own bash over a read-only script
-			testinputs.Files(t, ".github/workflows/ci-fast.yml")
+			testinputs.Files(t, ".github/workflows/ci-fast-nightly.yml")
 			cmd := exec.Command("bash", "-euo", "pipefail", "-c", script.String())
 			cmd.Env = append(scriptEnv(os.Environ()), "files="+tc.files)
 			cmd.Dir = root

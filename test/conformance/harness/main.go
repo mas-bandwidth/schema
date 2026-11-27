@@ -168,6 +168,7 @@ func main() {
 	builder := fs.Bool("builder", false, "compare mutable builder completion, reports and successful saved values (wire-fuzz only)")
 	mixedBuilder := fs.Bool("mixed-builder", false, "full roster: mutable oracle for variable file roots, existing fixed/message oracles (wire-fuzz only)")
 	retain := fs.Bool("retain", false, "run the RETENTION ARM: both engines' retaining paths over the variable-class file roots (docs/SPEC-TABLES.md §6.6; wire-fuzz only)")
+	deadLedger := fs.String("dead-root-ledger", "", "the leg's ledger of message-fuzz roster roots it answers 0 for, matched as an exact set; a dead root it does not name fails the run (message-fuzz only)")
 	failed := fs.String("failed", "build/wire-fuzz/failed.bin", "where a failing mutant is written (wire-fuzz only)")
 	finiteOwed := fs.String("finite-owed", "", "the docs/roadmap.sexp card that owes this leg the finite float rule (docs/SPEC-TABLES.md §3.3): a mutant the oracle refuses as non_finite_float is counted and not compared (wire-fuzz only)")
 	vectors := fs.String("vectors", defaultVectors, "the pinned-vector index (wire-fuzz only)")
@@ -282,7 +283,7 @@ func main() {
 			fatalf("%v", err)
 		}
 	case "message-fuzz":
-		if err := messageFuzz(os.Stdout, m, messageFuzzOptions{driver: *driver, only: *only, work: *work, failed: *failed, replay: *replay, unit: *unit, root: *root, jsonDir: *jsonDir, seed: *seed, n: *n, maxMutants: *maxMutants}); err != nil {
+		if err := messageFuzz(os.Stdout, m, messageFuzzOptions{driver: *driver, only: *only, work: *work, failed: *failed, replay: *replay, unit: *unit, root: *root, jsonDir: *jsonDir, seed: *seed, n: *n, maxMutants: *maxMutants, deadLedger: *deadLedger}); err != nil {
 			fatalf("%v", err)
 		}
 	case "wire-fuzz":

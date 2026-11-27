@@ -1425,6 +1425,8 @@ namespace SchemaUnityConformance
         private static int SurfaceJsonRead(string outDir)
         {
             Directory.CreateDirectory(outDir);
+            string jsonDir = Environment.GetEnvironmentVariable("SCHEMA_CONFORMANCE_JSON_INPUT_DIR");
+            if (string.IsNullOrEmpty(jsonDir)) { jsonDir = Path.Combine("testdata", "conformance", "tables", "json"); }
             foreach (string[] f in Kind("instance"))
             {
                 if (NoText(f)) { continue; }
@@ -1434,7 +1436,7 @@ namespace SchemaUnityConformance
                     SpillAbsent(outDir, f[1]);
                     continue;
                 }
-                string path = Path.Combine("testdata", "conformance", "tables", "json", f[1] + ".json");
+                string path = Path.Combine(jsonDir, f[1] + ".json");
                 var rep = new DriverReport();
                 object value = codec.FromJson(File.ReadAllBytes(path), rep);
                 if (StrictRefused(value, rep))
