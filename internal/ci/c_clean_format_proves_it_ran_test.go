@@ -71,6 +71,8 @@ func TestCFormatGateProvesItRan(t *testing.T) {
 			tree{"gen/a.h": "int a;\n", "gen/sub/b.c": "int b;\n"}, "cat", "", []string{"gen"}, ""},
 		{"a drifting file on the ratchet is green",
 			tree{"gen/a.h": "int a;\n"}, "tr a-z A-Z", "# the ratchet\ngen/a.h\n", []string{"gen"}, ""},
+		{"a formatter crash is red even on the ratchet",
+			tree{"gen/a.h": "int a;\n"}, "exit 44", "gen/a.h\n", []string{"gen"}, "clang-format failed on gen/a.h"},
 		{"a drifting file off the ratchet is red",
 			tree{"gen/a.h": "int a;\n"}, "tr a-z A-Z", "", []string{"gen"}, "clang-format drift in gen/a.h"},
 		{"a tree that does not exist is red",
