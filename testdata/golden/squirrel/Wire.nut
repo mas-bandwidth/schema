@@ -146,6 +146,7 @@ _M.ReadProbeHeader <- function(stream, value) {
 
 // WriteProbeHeader writes value in declared order; false on a refused value.
 _M.WriteProbeHeader <- function(stream, value) {
+  if (!(value instanceof _M.ProbeHeader)) return false;
   _h.value = 171;
   if (!stream.serializeBits(_h, 8)) return false; // const(171, 8)
   if (typeof value.Version != "integer" || (value.Version >>> 3) != 0) return false;
@@ -204,6 +205,7 @@ _M.ReadProbeBits <- function(stream, value) {
 
 // WriteProbeBits writes value in declared order; false on a refused value.
 _M.WriteProbeBits <- function(stream, value) {
+  if (!(value instanceof _M.ProbeBits)) return false;
   if (typeof value.Small != "integer" || (value.Small >>> 9) != 0) return false;
   _h.value = value.Small;
   if (!stream.serializeBits(_h, 9)) return false;
@@ -213,6 +215,7 @@ _M.WriteProbeBits <- function(stream, value) {
   if (typeof value.Wide != "integer") return false;
   _h.value = value.Wide;
   if (!stream.serializeBits64(_h, 64)) return false;
+  if (typeof value.Sensor != "integer") return false;
   if (typeof value.Sensor != "integer" || value.Sensor < 0 || value.Sensor > 4294967295) return false; // SPEC §5.1 row 1
   _h.value = value.Sensor;
   if (!stream.serializeInt64(_h, 0, 4294967295)) return false;
@@ -305,8 +308,11 @@ _M.ReadProbeSample <- function(stream, value) {
 
 // WriteProbeSample writes value in declared order; false on a refused value.
 _M.WriteProbeSample <- function(stream, value) {
+  if (!(value instanceof _M.ProbeSample)) return false;
+  if (typeof value.Active != "bool") return false;
   _h.value = value.Active;
   if (!stream.serializeBool(_h)) return false;
+  if (typeof value.Orientation != "float" && typeof value.Orientation != "integer") return false;
   if (value.Orientation != value.Orientation || value.Orientation < -180.0 || value.Orientation > 180.0) return false; // SPEC §5.1 row 10
   _h.value = value.Orientation;
   if (!stream.serializeCompressedFloat(_h, -180.0, 180.0, 0.009999999776482582)) return false;
@@ -320,6 +326,7 @@ _M.WriteProbeSample <- function(stream, value) {
     if (typeof value.Weapon != "integer" || value.Weapon < 0 || value.Weapon > 15) return false;
     _h.value = value.Weapon;
     if (!stream.serializeBits(_h, 4)) return false;
+    if (typeof value.HasTarget != "bool") return false;
     _h.value = value.HasTarget;
     if (!stream.serializeBool(_h)) return false;
     if (value.HasTarget) {
@@ -333,6 +340,7 @@ _M.WriteProbeSample <- function(stream, value) {
     if (!stream.serializeBits(_h, 32)) return false;
   }
   if (typeof value.SamplesCount != "integer" || value.SamplesCount < 1 || value.SamplesCount > 8) return false;
+  if (typeof value.Samples != "array" || value.Samples.len() < value.SamplesCount) return false;
   _h.value = value.SamplesCount - 1;
   if (!stream.serializeBits(_h, 3)) return false;
   for (local _i = 0; _i < value.SamplesCount; _i++) {
@@ -371,6 +379,7 @@ _M.ReadProbeRing <- function(stream, value) {
 
 // WriteProbeRing writes value in declared order; false on a refused value.
 _M.WriteProbeRing <- function(stream, value) {
+  if (!(value instanceof _M.ProbeRing)) return false;
   if (typeof value.Radius != "integer" || value.Radius < 0 || value.Radius > 65535) return false;
   _h.value = value.Radius;
   if (!stream.serializeBits(_h, 16)) return false;
@@ -409,6 +418,8 @@ _M.ReadProbeSlab <- function(stream, value) {
 
 // WriteProbeSlab writes value in declared order; false on a refused value.
 _M.WriteProbeSlab <- function(stream, value) {
+  if (!(value instanceof _M.ProbeSlab)) return false;
+  if (typeof value.Width != "integer") return false;
   if (typeof value.Width != "integer" || value.Width < 0 || value.Width > 100) return false; // SPEC §5.1 row 1
   _h.value = value.Width;
   if (!stream.serializeInt(_h, 0, 100)) return false;
@@ -479,6 +490,7 @@ _M.ReadProbeShape <- function(stream, value) {
 
 // WriteProbeShape writes the tag, then the selected arm; false on a refused value.
 _M.WriteProbeShape <- function(stream, value) {
+  if (!(value instanceof _M.ProbeShape)) return false;
   if (typeof value.Type != "integer" || value.Type < 0 || value.Type > 2) return false;
   _h.value = value.Type;
   if (!stream.serializeBits(_h, 2)) return false;
@@ -537,12 +549,14 @@ _M.ReadProbeCollider <- function(stream, value) {
 
 // WriteProbeCollider writes value in declared order; false on a refused value.
 _M.WriteProbeCollider <- function(stream, value) {
+  if (!(value instanceof _M.ProbeCollider)) return false;
   if (typeof value.Armor != "integer" || value.Armor < 0 || value.Armor > 255) return false;
   _h.value = value.Armor;
   if (!stream.serializeBits(_h, 8)) return false;
   if (!_M.WriteProbeShape(stream, value.Shape)) return false;
   if (!_M.WriteProbeShape(stream, value.Backup)) return false;
   if (typeof value.ExtrasCount != "integer" || value.ExtrasCount < 0 || value.ExtrasCount > 2) return false;
+  if (typeof value.Extras != "array" || value.Extras.len() < value.ExtrasCount) return false;
   _h.value = value.ExtrasCount;
   if (!stream.serializeBits(_h, 2)) return false;
   for (local _i = 0; _i < value.ExtrasCount; _i++) {
@@ -583,6 +597,7 @@ _M.ReadProbeConfig <- function(stream, value) {
 
 // WriteProbeConfig writes value in declared order; false on a refused value.
 _M.WriteProbeConfig <- function(stream, value) {
+  if (!(value instanceof _M.ProbeConfig)) return false;
   if (typeof value.Retries != "integer" || value.Retries < -2147483648 || value.Retries > 2147483647) return false;
   _h.value = value.Retries & 0xffffffff;
   if (!stream.serializeBits(_h, 32)) return false;
@@ -625,6 +640,7 @@ _M.ReadProbeArray <- function(stream, value) {
 
 // WriteProbeArray writes value in declared order; false on a refused value.
 _M.WriteProbeArray <- function(stream, value) {
+  if (!(value instanceof _M.ProbeArray)) return false;
   if (typeof value.Samples != "array" || value.Samples.len() != 2) return false; // a [N]T holds exactly N values (SPEC §5.1)
   for (local _i = 0; _i < 2; _i++) {
     if (!_M.WriteProbeSample(stream, value.Samples[_i])) return false;
@@ -658,6 +674,7 @@ _M.ReadHeartbeat <- function(stream, value) {
 
 // WriteHeartbeat writes value in declared order; false on a refused value.
 _M.WriteHeartbeat <- function(stream, value) {
+  if (!(value instanceof _M.Heartbeat)) return false;
   return true;
 };
 
@@ -701,15 +718,19 @@ _M.ReadTest <- function(stream, value) {
 
 // WriteTest writes value in declared order; false on a refused value.
 _M.WriteTest <- function(stream, value) {
+  if (!(value instanceof _M.Test)) return false;
   if (typeof value.TestA != "integer" || value.TestA < 0 || value.TestA > 65535) return false;
   _h.value = value.TestA;
   if (!stream.serializeBits(_h, 16)) return false;
+  if (typeof value.TestB != "integer") return false;
   if (typeof value.TestB != "integer" || value.TestB < 0 || value.TestB > 1000) return false; // SPEC §5.1 row 1
   _h.value = value.TestB;
   if (!stream.serializeInt(_h, 0, 1000)) return false;
+  if (typeof value.TestC != "integer") return false;
   if (typeof value.TestC != "integer" || value.TestC < 0 || value.TestC > 1000) return false; // SPEC §5.1 row 1
   _h.value = value.TestC;
   if (!stream.serializeInt(_h, 0, 1000)) return false;
+  if (typeof value.TestD != "integer") return false;
   if (typeof value.TestD != "integer" || value.TestD < 0 || value.TestD > 1000) return false; // SPEC §5.1 row 1
   _h.value = value.TestD;
   if (!stream.serializeInt(_h, 0, 1000)) return false;
@@ -752,6 +773,7 @@ _M.ReadBlock <- function(stream, value) {
 
 // WriteBlock writes value in declared order; false on a refused value.
 _M.WriteBlock <- function(stream, value) {
+  if (!(value instanceof _M.Block)) return false;
   if (typeof value.Data != "blob" || typeof value.DataLength != "integer" || value.DataLength < 0 || value.DataLength > 2000 || value.DataLength > value.Data.len()) return false;
   _h.value = value.DataLength;
   if (!stream.serializeBits(_h, 11)) return false;
@@ -796,6 +818,7 @@ _M.ReadChat <- function(stream, value) {
 
 // WriteChat writes value in declared order; false on a refused value.
 _M.WriteChat <- function(stream, value) {
+  if (!(value instanceof _M.Chat)) return false;
   if (typeof value.Text != "blob" || typeof value.TextLength != "integer" || value.TextLength < 0 || value.TextLength > 256 || value.TextLength > value.Text.len()) return false;
   if (!_validText(value.Text, value.TextLength)) return false;
   _h.value = value.TextLength;
@@ -838,6 +861,7 @@ _M.ReadProbeReport <- function(stream, value) {
 
 // WriteProbeReport writes value in declared order; false on a refused value.
 _M.WriteProbeReport <- function(stream, value) {
+  if (!(value instanceof _M.ProbeReport)) return false;
   if (!_M.WriteProbeHeader(stream, value.Header)) return false;
   if (typeof value.Flags != "integer" || value.Flags < 0 || value.Flags >= 256) return false;
   _h.value = value.Flags;
@@ -972,10 +996,14 @@ _M.ReadTestData <- function(stream, value) {
 
 // WriteTestData writes value in declared order; false on a refused value.
 _M.WriteTestData <- function(stream, value) {
+  if (!(value instanceof _M.TestData)) return false;
+  if (typeof value.A != "integer") return false;
   _h.value = value.A;
   if (!stream.serializeInt(_h, -100, 100)) return false;
+  if (typeof value.B != "integer") return false;
   _h.value = value.B;
   if (!stream.serializeInt(_h, -100, 100)) return false;
+  if (typeof value.C != "integer") return false;
   _h.value = value.C;
   if (!stream.serializeInt(_h, -100, 150)) return false;
   if (typeof value.D != "integer" || (value.D >>> 8) != 0) return false;
@@ -987,20 +1015,26 @@ _M.WriteTestData <- function(stream, value) {
   if (typeof value.F != "integer" || (value.F >>> 8) != 0) return false;
   _h.value = value.F;
   if (!stream.serializeBits(_h, 8)) return false;
+  if (typeof value.G != "bool") return false;
   _h.value = value.G;
   if (!stream.serializeBool(_h)) return false;
   if (typeof value.ItemsCount != "integer" || value.ItemsCount < 0 || value.ItemsCount > 16) return false;
+  if (typeof value.Items != "array" || value.Items.len() < value.ItemsCount) return false;
   _h.value = value.ItemsCount;
   if (!stream.serializeBits(_h, 5)) return false;
   for (local _i = 0; _i < value.ItemsCount; _i++) {
+    if (typeof value.Items[_i] != "integer") return false;
     _h.value = value.Items[_i];
     if (!stream.serializeInt(_h, 0, 255)) return false;
   }
+  if (typeof value.FloatValue != "float" && typeof value.FloatValue != "integer") return false;
   _h.value = value.FloatValue;
   if (!stream.serializeFloat(_h)) return false;
+  if (typeof value.CompressedFloatValue != "float" && typeof value.CompressedFloatValue != "integer") return false;
   if (value.CompressedFloatValue != value.CompressedFloatValue || value.CompressedFloatValue < 0.0 || value.CompressedFloatValue > 10.0) return false; // SPEC §5.1 row 10
   _h.value = value.CompressedFloatValue;
   if (!stream.serializeCompressedFloat(_h, 0.0, 10.0, 0.009999999776482582)) return false;
+  if (typeof value.DoubleValue != "float" && typeof value.DoubleValue != "integer") return false;
   _h.value = value.DoubleValue;
   if (!stream.serializeDouble(_h)) return false;
   if (typeof value.Int8Value != "integer" || value.Int8Value < -128 || value.Int8Value > 127) return false;
@@ -1024,10 +1058,11 @@ _M.WriteTestData <- function(stream, value) {
   if (typeof value.Int64Full != "integer") return false;
   _h.value = value.Int64Full;
   if (!stream.serializeBits64(_h, 64)) return false;
+  if (typeof value.Int64Range != "integer") return false;
   _h.value = value.Int64Range;
   if (!stream.serializeInt64(_h, -1000000000000, 1000000000000)) return false;
   if (!stream.serializeAlign()) return false;
-  if (typeof value.FixedBytes != "array" || value.FixedBytes.len() != 17) return false; // a [N]T holds exactly N values (SPEC §5.1)
+  if (typeof value.FixedBytes != "blob" || value.FixedBytes.len() != 17) return false; // a [N]T holds exactly N values (SPEC §5.1)
   for (local _i = 0; _i < 17; _i++) {
     if (typeof value.FixedBytes[_i] != "integer" || value.FixedBytes[_i] < 0 || value.FixedBytes[_i] > 255) return false;
     _h.value = value.FixedBytes[_i];
@@ -1073,9 +1108,12 @@ _M.ReadCompressedProbe <- function(stream, value) {
 
 // WriteCompressedProbe writes value in declared order; false on a refused value.
 _M.WriteCompressedProbe <- function(stream, value) {
+  if (!(value instanceof _M.CompressedProbe)) return false;
+  if (typeof value.Boundary != "float" && typeof value.Boundary != "integer") return false;
   if (value.Boundary != value.Boundary || value.Boundary < 0.0 || value.Boundary > 10.0) return false; // SPEC §5.1 row 10
   _h.value = value.Boundary;
   if (!stream.serializeCompressedFloat(_h, 0.0, 10.0, 0.009999999776482582)) return false;
+  if (typeof value.Offset != "float" && typeof value.Offset != "integer") return false;
   if (value.Offset != value.Offset || value.Offset < -5.0 || value.Offset > 5.0) return false; // SPEC §5.1 row 10
   _h.value = value.Offset;
   if (!stream.serializeCompressedFloat(_h, -5.0, 5.0, 0.0010000000474974513)) return false;

@@ -2028,7 +2028,9 @@ never in the packet header, and in JavaScript in `<Base>.js` importing each
 `table` arm class its constructor instantiates (`new <Arm>()`) from the unit
 home that defines it (`./<Home>Table.js` when the union is in the unit's
 fixed-form closure, `./<Home>Variable.js` otherwise, and nothing it does not
-construct); a `type`
+construct), and in Dart by the table emitters themselves (the fixed form's
+`<Base>Fixed.dart` declares its storage class with a plain-int tag, since the
+packet emitter declares no class for it); a `type`
 body that holds one is refused by name, as is such a union that no table
 reaches (§11). A table holding one has no BLOCK form, by §19's standing rule
 for every union in a block closure. The packet wire's encoding of a general
@@ -4978,6 +4980,15 @@ one document rather than two.
   | `32` no payload | `L`, then `L` bytes, and this form writes `L = 0` |
   | `36` timestamp | 8 bytes, two's complement, little-endian: NANOSECONDS SINCE THE UNIX EPOCH, `0` being the zero time `1970-01-01T00:00:00Z` (SPEC.md §4.13). The payload is the `i64`'s and the KIND is not `5`: a field respelled between `int64` and `timestamp` is a kind mismatch that refuses the WHOLE load `kind_mismatch`, never reinterpreted, defaulted or counted, and NEITHER SPELLING WIDENS INTO THE OTHER (R14; §4, THE ONE WIDENING RULE). Every count is a legal value — the wire has no range to check — and what a target refuses is a time its own time type holds and no count names, at the point a time enters the field, by name (SPEC.md §4.13). **`35` IS NOT THIS KIND'S NUMBER:** `35` is the fixed layout's optional wrapper (§3.4), a LAYOUT kind that never rides a record, and the next number the wire has free is `36` |
 
+  **Variable-length text and bytes carry their used extent.** For a
+  `string(N)` field or selected arm, `L` gives the number of used UTF-8
+  bytes in the payload. The declaration bounds this byte length by `N`.
+  For a `bytes(N)` field or selected arm, the kind `14` array count is
+  the number of used bytes and is at most `N`. Each kind `6` element
+  contributes one byte. The outer `L` covers the array body, including the
+  element kind and count. The writer emits exactly the used bytes of each
+  value, with no terminator or spare capacity.
+
   **A `1` BOOL'S PAYLOAD IS ONE BYTE, AND `0` AND `1` ARE THE ONLY LEGAL VALUES.**
   A writer writes only `0` or `1`. On the VARIABLE wire any OTHER byte is
   damage: the whole load refuses `wire_damaged` (§4, §6.5). The FIXED form
@@ -5142,7 +5153,7 @@ one document rather than two.
   | an `enum` | `30` | the reference's own length | the variant id reference |
   | a `flags` mask | `9` | `8` | the u64 mask |
   | a `string(N)` | `12` | the length | the bytes, no terminator, a kind `12` payload without its own `L`. Ill-formed UTF-8 and a zero byte are damage, the whole load discarded (§4) |
-  | a `bytes(N)` | `14` | the array body's length | the array body: element kind `6`, `N`, then the bytes |
+  | a `bytes(N)` | `14` | the array body's length | element kind `6`, the used byte count, then exactly that many bytes |
   | an array `[N]T` / `[..N]T` | `14` | the array body's length | the array body: element kind, `N`, then the elements, a kind `14` payload without its own `L`, its header read inside the ARM's `L` (above) |
   | a pointer `*T` | `17` | the index's own length | the node index, null as `0` (§3.1) |
   | a union | `15` | the inner arm id's length, or that plus the inner kind byte, its `L` and its payload | the union payload in its place: the inner arm id reference, then its kind, its own `L` and its payload when the id is not `0` |
@@ -7404,7 +7415,15 @@ is the checkout's emitters, not a claim that a release tag already said so.
   register the fixed tables of the unit, and what they reach, as the message
   roots and slots, and a variable table registers none, so the batch verbs
   answer for fixed roots only.
-- **Goose** emits no message form.
+- **Goose** (`internal/codegen/goosetable/messageform.go`) emits the unit's
+  announcement as `MessageAnnouncement` when the unit declares a fixed root.
+  Each declared fixed root exposes `<Root>Announce`, `<Root>AnnounceRefused`,
+  `<Root>MeasureMessages`, `<Root>SaveMessages`, and `<Root>LoadMessages`.
+  The announcement is a byte slice. Its root-level refusal flag is true and
+  the slice is empty when the vocabulary exceeds 4096 entries. The generated
+  runtime's `schema_rt::announce_read` resolves a peer announcement into a
+  `MsgVocabulary` for the batch reader. Variable roots expose no batch verbs.
+  See the [Goose fixed-root message example](SPEC-CONFORMANCE.md#goose-fixed-root-messages).
 - **Elixir** (`internal/codegen/elixirtable/elixirtable.go`, `messageform.go`)
   emits `<Package>.TableMessage` when the unit has a fixed root and does not
   emit it otherwise. The module carries the announcement (`announce`,
@@ -9818,6 +9837,19 @@ runs, and an index line whose file is missing is a vector that cannot run. The
 wire fuzzer reads both and refuses the whole run, naming each file, when they
 disagree (`checkWireVectorIndex`); neither is a warning, and neither is skipped.
 
+**The leg's stream ends only between frames.** The fuzzer drives each leg
+over a pipe (`test/conformance/README.md`, "The wire-fuzz driver"): the
+roster once, then one FRAME per mutant, a `u32` roster index, a `u32` length
+and that many bytes. The harness closes the pipe only after a whole frame.
+EOF before an index's first byte is the end of the stream, and the leg exits
+0. EOF INSIDE a frame REFUSES: one to three index bytes, a length cut short,
+or fewer body bytes than the length names is a truncated frame, never a
+short one. The leg names the cut on stderr, exits non-zero and writes no
+reply, and the cut bytes never reach a reader as if they were the whole
+wire. A leg that took a cut frame for a close or a whole mutant would turn
+a truncated run green. `harness wire-eof` holds every leg's driver to this
+rule, one case table for all of them (`make tables-wire-eof`).
+
 **The gate is `harness wire-fuzz`**, one command over one corpus for every
 language. Every pinned wire in the conformance manifest — every `instance` and
 every `report` line — is a SEED, framed once so that a mutation can aim at a
@@ -10980,7 +11012,10 @@ the class. A Go fixed refusal is a typed
   wire's count of them, and answers a count of `0`; a fixed batch read resets
   EVERY row it was handed, and the same holds for a refusal of the bounds
   pass after the records landed. No partial value survives a refusal, and no
-  value keeps what the caller held before the call. A language whose read
+  value keeps what the caller held before the call: a reset row holds EVERY
+  field a fresh value holds, a counted array's element slots past its count
+  included, so a language whose element slots are objects resets each slot in
+  place and does not stop at the count. A language whose read
   hands back a fresh collection rather than filling the caller's answers a
   refusal with one shape for every reason (a framing refusal and a body
   refusal look alike to the caller), and a read that fills a caller's list
@@ -11443,6 +11478,15 @@ Two consequences follow, and each is a rule:
   its defaults writes nothing (§3). One whose body holds a retained field
   writes its body, that field and its terminator. Elision is about what a body
   CONTAINS, and a retained field is content.
+- **A RETAINING SAVE ELIDES WHAT THE PLAIN SAVE ELIDES, AND NOTHING ELSE.**
+  Retention adds content; it never changes the test for a field with none.
+  A FIXED ARRAY OF UNIONS whose every element is None is left out, as §3
+  leaves out any fixed array at its defaults: a None element has no arm, so
+  no body under it can carry a retained record, and there is nothing for the
+  field to carry. A retaining save that tested the list for emptiness wrote
+  the field as its bound of Nones, because a fixed array is always its bound
+  long (Java, found by the full nightly 45130315968 on
+  `messagedemo.ToolEnvelope`; SPEC-CONFORMANCE.md §7).
 - **A retained id enters the file's ID TABLE in first-use order** (§3), at the
   point the walk reaches it, which is after its body's own fields. An id
   already in the table takes that entry and is never appended twice, exactly as
@@ -12881,7 +12925,11 @@ native Rust enum cannot hold an ordinal past its set at all), Java by `assert`
 under `-ea`, C# and Unity by `Debug.Assert`, and Dart by `assert` under
 `--enable-asserts`. An assert leg's refusal is not promised before the first
 byte: the C and C++ fixed cooks clear the output before the slot's assert can
-fire. A leg whose measure and write share one body refuses in both.
+fire. A leg whose measure and write share one body refuses in both. **These
+`CookMeasure` refusal answers are for a pointered root, whose reached graph
+determines its size. A fixed root is the exception stated below: its
+`CookMeasure` is the layout constant even for an invalid value, and its `Cook`
+alone runs the value checks before writing.**
 
 **A BUILD CAN WRITE A COOK, AND THE BYTES ARE THE TOOL'S.** `schema cook` is
 the reference and stays it: a generated writer is held to the tool's output
@@ -13883,7 +13931,7 @@ here?" — §2.2's own distinction between machinery and columns.
 
 **Shared is the default; standalone is the named option.** The Go target's
 home file imports `tables/goruntime` in this module
-(`github.com/mas-bandwidth/schema/v2/tables/goruntime`) and aliases the
+(`github.com/mas-bandwidth/schema/v3/tables/goruntime`) and aliases the
 shared declarations in (`runtime` unset, empty or `shared`). With the
 generator option `runtime: standalone` the unit instead carries the
 table-independent runtime in its home file, and that output is byte-identical
@@ -13914,7 +13962,7 @@ compile error naming `goruntime.Version`, never a run-time surprise.
 Mixing is not a supported state and nothing is negotiated.
 
 **What compiles a shared unit.** A module that compiles a default-generated
-unit requires `github.com/mas-bandwidth/schema/v2` and resolves it to the
+unit requires `github.com/mas-bandwidth/schema/v3` and resolves it to the
 schema checkout (a `replace` to it, or the released module), beside
 `serialize.go`: the generated code imports `tables/goruntime` and nothing else
 of schema's. Every module this repository writes or commits around generated
@@ -16791,6 +16839,13 @@ carries three accessors where C++ carries a tag offset and an arm offset.
   caller's; the read path allocates nothing beyond it. Fields the text does
   not mention keep their storage defaults (SPEC §4.2: zero, or the
   specified default), exactly as an absent field on the wire does (§4).
+  **In C that holds for the repeated-key check too** (§16.2): every open
+  object's key set is carved from ONE pool of 512 slots on the read's entry
+  frame, never from the walk's own frames and never from the heap, so a
+  text whose open objects' sets fit the pool (an object of up to 127 keys
+  at the top) reads with no allocator call. A set that outgrows the pool
+  moves to the heap, so no object is ever too wide to check. `make
+  tables-c-soak` counts the allocator calls over the corpus and owes zero.
 - **`ToJson` writes ONE instance as ONE text**, every field, in declaration
   order, defaults included — a text is for people and tools, and a text
   that elides is a text a reader has to know the schema to complete.
@@ -16903,8 +16958,20 @@ nests as deep as it is long. **The cap is 128**: a read that nests deeper is <!-
 **The read's cap counts every object and array the reader walks, placed or skipped**,
 the value under an unknown key included, the root at depth 0: a container at
 depth 128 is the deepest read, so 129 nested containers (the root and 128
-inside it) are read and the 130th nested container refuses `malformed`. The write's cap at the same number counts
-table and type values only (W2), so the two caps share a number and not a unit.
+inside it) are read and the 130th nested container refuses `malformed`. **The write's cap counts
+the same containers in the same unit** (W2): every object and array it writes,
+an empty `[]` or `{}` included, so a writer never emits a text its own reader
+refuses.
+
+**LEAF-CONTAINER BOUNDARY VECTORS.** Let `Node` be a variable table with
+`next *Node`, `marks Mark` for a one-variant `flags Mark`, and
+`words [..1]string(2)`. Nest a terminal `{"marks":["Hot"]}` or
+`{"words":["x"]}` under 127 `{"next":` objects and their closing braces.
+The terminal flags array or text list is at depth 128 and READS. Nest it under
+128 such objects and that leaf container is at depth 129 and REFUSES. These
+are portable construction recipes: they require no implementation-specific
+root or generated identifier, and the declared `json_max_depth` below remains
+the number both verdicts straddle.
 
 **A SCHEMA-NAME STRING IS CAPPED AT 255 BYTES, wherever the read meets one** —
 an object key that names a field, an enum variant name, a flags element, a
@@ -17124,8 +17191,9 @@ written as something else.
 - **A compressed or ranged float off its range** — refused per leg as
   docs/SPEC.md §5.1 row 10 and docs/rulings.json `write-refusal` list: the
   verdict is the contract, the reason name per language.
-- **A graph nested past 128** (§16.2): the writer carries the reader's depth
-  cap, so it never produces a text its own reader would refuse.
+- **A container nested past 128** (§16.2, §16.14 W2): the writer judges the
+  reader's depth cap at every object and array it writes, an empty `[]` or `{}`
+  included, so it never produces a text its own reader would refuse.
 - **A blob named from two slots** — `blob_shared` (§2.5): a blob is owned by
   one slot, and there is no spelling that writes it once for two owners.
 - **Storage that is not text** — `invalid_value`: a string holding
@@ -18329,7 +18397,7 @@ length past `N`, an enum ordinal outside its variant set, a union tag outside
 its arm set, a NaN or an infinity, ill-formed text, a flags bit no variant
 names, and a compressed or ranged float off its range — and, beside those rows,
 a deprecated enum variant (§2.15), a `required` value outside its declared range
-(§2.3), a text list past its declared total (§2.13), a table value past the
+(§2.3), a text list past its declared total (§2.13), a container past the
 depth cap (W2), a blob named from two slots (`blob_shared`, §2.5), a `&node`
 definition that would hold no field (§16.3), and STORAGE THAT IS NOT TEXT,
 `invalid_value`: a string holding ill-formed UTF-8 (W8). Each is refused and
@@ -18357,13 +18425,20 @@ spaces (`0x20`); `NL(d)` is a line feed followed by `INDENT(d)`.
 THE DEPTH CAP IS 128, AND READ AND WRITE MEASURE IT IN ONE UNIT: this `d`,
 which every enclosing object and array raises by one (a table's object, an
 array, a map's object and a union's object alike), the root at 0. The write
-judges it at each table or type value (W3): one at `d` past 128 refuses the
-write. The read judges the same `d` at each table value it places and at
-each container it skips (§16.2), so a document this writer emits never
-meets the read's cap, and a pointer chain of
-128 nodes under the root writes and reads and one of 129 does neither. A
-scalar, a string or a `null` written at depth 129 nests nothing and is
-written: the last node's null `next` does not count. No other whitespace is
+judges it at EVERY CONTAINER IT WRITES, exactly as the read judges it at every
+container it walks (§16.2): a table or type value (W3), an array, a text
+list, a flags value's array of names, a map's object, an enum-keyed array's
+object and a union's object, the empty `[]` and `{}` included. A container at `d` past 128 refuses the write,
+so a document this writer emits never meets the read's cap. A value is
+writable only when its deepest container, an empty leaf array included, sits
+at `d` 128 or less: a pointer chain of 128 nodes under the root whose nodes
+hold no container writes and reads, and one of 129 does neither; a chain whose
+nodes each hold an array writes and reads at 127 nodes, and at 128 the last
+node's array sits at 129 and the write refuses. A scalar, a string or a
+`null` written at depth 129 nests nothing and is written: the last node's null
+`next` does not count. The refusal is the text writer's own, the -1 of §16.3
+in every build and every leg, the one a table value past the cap already
+takes: one cap, one check, whatever the container. No other whitespace is
 ever written outside a string: no tab, no carriage return, no space before a
 `,` or a `:`, no space after a `,`.
 

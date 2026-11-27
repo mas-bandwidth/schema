@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // cppBlobThunks is what the numbering stores for a BYTE BUFFER record
@@ -1521,11 +1521,30 @@ inline int32_t TableGraphWidth( uint8_t kind )
 {
     switch ( kind )
     {
-        case 1: case 2: case 6: case 20: case 25: return 1;
-        case 3: case 7: case 21: case 26: return 2;
-        case 4: case 8: case 10: case 22: case 27: return 4;
-        case 5: case 9: case 11: case 23: case 28: case 36: return 8;
-        case 18: case 19: case 24: case 29: return 16;
+        case 1:
+        case 2:
+        case 6:
+        case 20:
+        case 25: return 1;
+        case 3:
+        case 7:
+        case 21:
+        case 26: return 2;
+        case 4:
+        case 8:
+        case 10:
+        case 22:
+        case 27: return 4;
+        case 5:
+        case 9:
+        case 11:
+        case 23:
+        case 28:
+        case 36: return 8;
+        case 18:
+        case 19:
+        case 24:
+        case 29: return 16;
     }
     return 0;
 }
@@ -1538,7 +1557,11 @@ inline bool TableGraphPayload( TableGraphCollect & c, TableReader & r, uint8_t k
     const int32_t width = TableGraphWidth( kind );
     if ( width > 0 )
     {
-        if ( !r.has( width ) ) { c.damaged = true; return false; }
+        if ( !r.has( width ) )
+        {
+            c.damaged = true;
+            return false;
+        }
         r.offset += width;
         return true;
     }
@@ -1547,22 +1570,42 @@ inline bool TableGraphPayload( TableGraphCollect & c, TableReader & r, uint8_t k
         case 17:
         {
             uint64_t index = 0;
-            if ( !r.getleb( index ) ) { c.damaged = true; return false; }
-            if ( !c.edge( c.ctx, index ) ) { c.damaged = true; return false; }
+            if ( !r.getleb( index ) )
+            {
+                c.damaged = true;
+                return false;
+            }
+            if ( !c.edge( c.ctx, index ) )
+            {
+                c.damaged = true;
+                return false;
+            }
             return true;
         }
         case 30:
         {
             uint64_t ref = 0;
-            if ( !r.getleb( ref ) || c.ids == NULL || ref > (uint64_t) c.ids->count ) { c.damaged = true; return false; }
+            if ( !r.getleb( ref ) || c.ids == NULL || ref > (uint64_t) c.ids->count )
+            {
+                c.damaged = true;
+                return false;
+            }
             return true;
         }
         case 15:
             return TableGraphUnion( c, r, depth );
-        case 12: case 32: case 13: case 14: case 16:
+        case 12:
+        case 32:
+        case 13:
+        case 14:
+        case 16:
         {
             uint64_t n = 0;
-            if ( !r.getleb( n ) || !r.room( n ) ) { c.damaged = true; return false; }
+            if ( !r.getleb( n ) || !r.room( n ) )
+            {
+                c.damaged = true;
+                return false;
+            }
             const uint8_t * b = r.buffer + r.offset;
             r.offset += (int64_t) n;
             return TableGraphContent( c, b, (int64_t) n, kind, depth );
@@ -1574,22 +1617,50 @@ inline bool TableGraphPayload( TableGraphCollect & c, TableReader & r, uint8_t k
 
 inline bool TableGraphBody( TableGraphCollect & c, const uint8_t * b, int64_t n, bool root, bool exact, int depth )
 {
-    if ( depth > kTableGraphMaxDepth ) { c.damaged = true; return false; }
+    if ( depth > kTableGraphMaxDepth )
+    {
+        c.damaged = true;
+        return false;
+    }
     TableReport ignored;
     TableReader r( b, n, &ignored, c.ids );
     for ( ;; )
     {
         uint64_t ref = 0;
-        if ( !r.getleb( ref ) ) { c.damaged = true; return false; }
-        if ( ref == 0 ) { if ( exact && r.offset != n ) { c.damaged = true; return false; } return true; }
-        if ( c.ids == NULL || ref > (uint64_t) c.ids->count || !r.has( 1 ) ) { c.damaged = true; return false; }
+        if ( !r.getleb( ref ) )
+        {
+            c.damaged = true;
+            return false;
+        }
+        if ( ref == 0 )
+        {
+            if ( exact && r.offset != n )
+            {
+                c.damaged = true;
+                return false;
+            }
+            return true;
+        }
+        if ( c.ids == NULL || ref > (uint64_t) c.ids->count || !r.has( 1 ) )
+        {
+            c.damaged = true;
+            return false;
+        }
         const uint64_t id = c.ids->at( ref );
         const uint8_t kind = r.get8();
         if ( id == kTableNodeTableFieldId )
         {
-            if ( !root || kind != 12 ) { c.damaged = true; return false; }
+            if ( !root || kind != 12 )
+            {
+                c.damaged = true;
+                return false;
+            }
             uint64_t len = 0;
-            if ( !r.getleb( len ) || !r.room( len ) ) { c.damaged = true; return false; }
+            if ( !r.getleb( len ) || !r.room( len ) )
+            {
+                c.damaged = true;
+                return false;
+            }
             r.offset += (int64_t) len;
             continue;
         }
@@ -1602,57 +1673,126 @@ inline bool TableGraphContent( TableGraphCollect & c, const uint8_t * b, int64_t
     const int32_t width = TableGraphWidth( kind );
     if ( width > 0 )
     {
-        if ( n != width ) { c.damaged = true; return false; }
+        if ( n != width )
+        {
+            c.damaged = true;
+            return false;
+        }
         return true;
     }
     switch ( kind )
     {
         case 12:
-            if ( !TableUtf8Valid( b, (uint64_t) n ) ) { c.damaged = true; return false; }
+            if ( !TableUtf8Valid( b, (uint64_t) n ) )
+            {
+                c.damaged = true;
+                return false;
+            }
             return true;
         case 31: // KIND 31 IS HELD BY NAME AND NEVER WRITTEN (R17): damage, as 33 and 34
             c.damaged = true;
             return false;
         case 32:
-            if ( n != 0 ) { c.damaged = true; return false; }
+            if ( n != 0 )
+            {
+                c.damaged = true;
+                return false;
+            }
             return true;
         case 13:
-            if ( depth >= kTableGraphMaxDepth ) { c.damaged = true; return false; }
+            if ( depth >= kTableGraphMaxDepth )
+            {
+                c.damaged = true;
+                return false;
+            }
             return TableGraphBody( c, b, n, false, true, depth + 1 );
         case 14:
         {
-            if ( depth >= kTableGraphMaxDepth ) { c.damaged = true; return false; }
-            if ( n < 2 ) { c.damaged = true; return false; }
+            if ( depth >= kTableGraphMaxDepth )
+            {
+                c.damaged = true;
+                return false;
+            }
+            if ( n < 2 )
+            {
+                c.damaged = true;
+                return false;
+            }
             TableReport ignored;
             TableReader r( b + 1, n - 1, &ignored, c.ids );
             const uint8_t elem = b[0];
             // THE ELEMENT KIND IS CLOSED, judged before any element and under
             // a count of 0 (docs/SPEC-TABLES.md §3, §4).
-            if ( !TableArrayElementKind( elem ) ) { c.damaged = true; c.closed_kind = true; return false; }
+            if ( !TableArrayElementKind( elem ) )
+            {
+                c.damaged = true;
+                c.closed_kind = true;
+                return false;
+            }
             uint64_t count = 0;
-            if ( !r.getleb( count ) ) { c.damaged = true; return false; }
-            if ( count > (uint64_t) ( r.size - r.offset ) ) { c.damaged = true; return false; }
-            for ( uint64_t i = 0; i < count; i++ ) { if ( !TableGraphPayload( c, r, elem, depth + 1 ) ) { return false; } }
+            if ( !r.getleb( count ) )
+            {
+                c.damaged = true;
+                return false;
+            }
+            if ( count > (uint64_t) ( r.size - r.offset ) )
+            {
+                c.damaged = true;
+                return false;
+            }
+            for ( uint64_t i = 0; i < count; i++ )
+            {
+                if ( !TableGraphPayload( c, r, elem, depth + 1 ) ) { return false; }
+            }
             return true;
         }
         case 16:
         {
-            if ( depth >= kTableGraphMaxDepth ) { c.damaged = true; return false; }
-            if ( n < 2 ) { c.damaged = true; return false; }
+            if ( depth >= kTableGraphMaxDepth )
+            {
+                c.damaged = true;
+                return false;
+            }
+            if ( n < 2 )
+            {
+                c.damaged = true;
+                return false;
+            }
             TableReport ignored;
             TableReader r( b + 1, n - 1, &ignored, c.ids );
             const uint8_t elem = b[0];
             // THE KEYED BODY'S ELEMENT KIND IS ITS OWN CLOSED LIST (§3, §4).
-            if ( !TableKeyedElementKind( elem ) ) { c.damaged = true; c.closed_kind = true; return false; }
+            if ( !TableKeyedElementKind( elem ) )
+            {
+                c.damaged = true;
+                c.closed_kind = true;
+                return false;
+            }
             uint64_t count = 0;
-            if ( !r.getleb( count ) ) { c.damaged = true; return false; }
-            if ( count > (uint64_t) ( r.size - r.offset ) ) { c.damaged = true; return false; }
+            if ( !r.getleb( count ) )
+            {
+                c.damaged = true;
+                return false;
+            }
+            if ( count > (uint64_t) ( r.size - r.offset ) )
+            {
+                c.damaged = true;
+                return false;
+            }
             for ( uint64_t i = 0; i < count; i++ )
             {
                 uint64_t key = 0;
-                if ( !r.getleb( key ) || key == 0 || c.ids == NULL || key > (uint64_t) c.ids->count ) { c.damaged = true; return false; }
+                if ( !r.getleb( key ) || key == 0 || c.ids == NULL || key > (uint64_t) c.ids->count )
+                {
+                    c.damaged = true;
+                    return false;
+                }
                 uint64_t len = 0;
-                if ( !r.getleb( len ) || !r.room( len ) ) { c.damaged = true; return false; }
+                if ( !r.getleb( len ) || !r.room( len ) )
+                {
+                    c.damaged = true;
+                    return false;
+                }
                 const uint8_t * eb = r.buffer + r.offset;
                 r.offset += (int64_t) len;
                 if ( !TableGraphContent( c, eb, (int64_t) len, elem, depth + 1 ) ) { return false; }
@@ -1665,12 +1805,17 @@ inline bool TableGraphContent( TableGraphCollect & c, const uint8_t * b, int64_t
             TableReader r( b, n, &ignored, c.ids );
             return TableGraphUnion( c, r, depth );
         }
-        case 17: case 30:
+        case 17:
+        case 30:
         {
             TableReport ignored;
             TableReader r( b, n, &ignored, c.ids );
             if ( !TableGraphPayload( c, r, kind, depth ) ) { return false; }
-            if ( r.offset != n ) { c.damaged = true; return false; }
+            if ( r.offset != n )
+            {
+                c.damaged = true;
+                return false;
+            }
             return true;
         }
     }
@@ -1681,18 +1826,34 @@ inline bool TableGraphContent( TableGraphCollect & c, const uint8_t * b, int64_t
 inline bool TableGraphUnion( TableGraphCollect & c, TableReader & r, int depth )
 {
     uint64_t ref = 0;
-    if ( !r.getleb( ref ) ) { c.damaged = true; return false; }
+    if ( !r.getleb( ref ) )
+    {
+        c.damaged = true;
+        return false;
+    }
     if ( ref == 0 ) { return true; }
-    if ( c.ids == NULL || ref > (uint64_t) c.ids->count || !r.has( 1 ) ) { c.damaged = true; return false; }
+    if ( c.ids == NULL || ref > (uint64_t) c.ids->count || !r.has( 1 ) )
+    {
+        c.damaged = true;
+        return false;
+    }
     const uint8_t kind = r.get8();
     uint64_t len = 0;
-    if ( !r.getleb( len ) || !r.room( len ) ) { c.damaged = true; return false; }
+    if ( !r.getleb( len ) || !r.room( len ) )
+    {
+        c.damaged = true;
+        return false;
+    }
     const uint8_t * b = r.buffer + r.offset;
     r.offset += (int64_t) len;
     const bool structural = kind == 13 || kind == 14 || kind == 15 || kind == 16;
     if ( structural )
     {
-        if ( depth >= kTableGraphMaxDepth ) { c.damaged = true; return false; }
+        if ( depth >= kTableGraphMaxDepth )
+        {
+            c.damaged = true;
+            return false;
+        }
         if ( !TableGraphContent( c, b, (int64_t) len, kind, depth + 1 ) ) { return false; }
     }
     else if ( !TableGraphContent( c, b, (int64_t) len, kind, depth ) ) { return false; }
@@ -1710,7 +1871,11 @@ inline bool TableGraphCountEdge( void * ctx, uint64_t index )
 {
     TableGraphCount * c = (TableGraphCount *) ctx;
     if ( index == 0 ) { return true; }
-    if ( index - 1 >= (uint64_t) c->count ) { c->bad = true; return false; }
+    if ( index - 1 >= (uint64_t) c->count )
+    {
+        c->bad = true;
+        return false;
+    }
     c->nodes[index - 1].type_id += 1;
     return true;
 }
@@ -1734,9 +1899,17 @@ inline bool TableGraphKahnEdge( void * ctx, uint64_t index )
 {
     TableGraphKahn * k = (TableGraphKahn *) ctx;
     if ( index == 0 ) { return true; }
-    if ( index - 1 >= (uint64_t) k->count ) { k->bad = true; return false; }
+    if ( index - 1 >= (uint64_t) k->count )
+    {
+        k->bad = true;
+        return false;
+    }
     TableNodeDirEntry & e = k->nodes[index - 1];
-    if ( ( e.type_id & kTableGraphQueued ) != 0 || e.type_id == 0 ) { k->bad = true; return false; }
+    if ( ( e.type_id & kTableGraphQueued ) != 0 || e.type_id == 0 )
+    {
+        k->bad = true;
+        return false;
+    }
     e.type_id -= 1;
     if ( e.type_id == 0 ) { TableGraphKahnPush( *k, (int64_t) index - 1 ); }
     return true;
@@ -1755,19 +1928,30 @@ inline bool TableGraphReachEdge( void * ctx, uint64_t index )
 {
     TableGraphReach * r = (TableGraphReach *) ctx;
     if ( index == 0 ) { return true; }
-    if ( index - 1 >= (uint64_t) r->count ) { r->bad = true; return false; }
+    if ( index - 1 >= (uint64_t) r->count )
+    {
+        r->bad = true;
+        return false;
+    }
     const int64_t t = (int64_t) index - 1;
     if ( ( r->nodes[t].type_id & kTableGraphVisited ) != 0 ) { return true; }
     r->nodes[t].type_id = kTableGraphVisited;
     if ( r->tail < 0 ) { r->head = t; }
-    else { r->nodes[r->tail].type_id = kTableGraphVisited | (uint64_t) ( t + 1 ); }
+    else
+    {
+        r->nodes[r->tail].type_id = kTableGraphVisited | (uint64_t) ( t + 1 );
+    }
     r->tail = t;
     return true;
 }
 
 inline bool TableGraphParseNode( TableGraphCollect & c, const uint8_t * wire, int64_t wire_bytes, uint64_t start, bool root )
 {
-    if ( start > (uint64_t) wire_bytes ) { c.damaged = true; return false; }
+    if ( start > (uint64_t) wire_bytes )
+    {
+        c.damaged = true;
+        return false;
+    }
     return TableGraphBody( c, wire + start, wire_bytes - (int64_t) start, root, root, 0 );
 }
 
@@ -1828,7 +2012,10 @@ inline bool TableGraphCheck( const uint8_t * wire, int64_t wire_bytes, const Tab
     }
 
     TableGraphKahn kahn = { scratch, n, -1, 0, false };
-    for ( int64_t i = 0; i < n; i++ ) { if ( scratch[i].type_id == 0 ) { TableGraphKahnPush( kahn, i ); } }
+    for ( int64_t i = 0; i < n; i++ )
+    {
+        if ( scratch[i].type_id == 0 ) { TableGraphKahnPush( kahn, i ); }
+    }
     while ( kahn.head >= 0 )
     {
         const int64_t p = kahn.head;

@@ -52,7 +52,7 @@ var tagAssertsInDebug = map[string][]string{
 	"c":    {"serialize_assert( value->type <= TAGUNIT_SHOT_TYPE_MAX );"},
 	"cpp":  {"serialize_assert( value.type <= ShotType::Max );"},
 	"cs":   {`Debug.Assert(tagValue <= 2, "the union tag is outside the variant set [0, 2]");`},
-	"dart": {"assert(value.type >= 0);", "assert(value.type <= 2);"},
+	"dart": {"assert((value.type as int) >= 0);", "assert((value.type as int) <= 2);"},
 	"java": {"assert (value.type & 0xffL) >= 0;", "assert (value.type & 0xffL) <= 2;"},
 	// --runtime-no-asserts removes a Lobster assert from the build
 	"lobster": {"assert v·.Type >= 0 and v·.Type <= 2"},

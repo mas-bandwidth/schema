@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"github.com/mas-bandwidth/schema/v3/internal/testreg"
 )
 
 var allLangs = []string{
@@ -87,6 +89,12 @@ func requireToken(out string, err error, lang string) error {
 	}
 	if strings.Contains(out, "FAILED:") || !strings.Contains(out, want) {
 		return fmt.Errorf("%s did not print %q:\n%s", lang, want, stripCfDecode(out))
+	}
+	if adapterMode {
+		// a test-registry run has no skipped verdict (adapter.go)
+		if err := testreg.RefuseSkips(strings.Split(out, "\n")); err != nil {
+			return fmt.Errorf("%s: %w", lang, err)
+		}
 	}
 	if familyRun {
 		return checkNoMainOnlyOutput(lang, out)
@@ -291,6 +299,7 @@ func main() {
 	rosterCasesFlag := flag.String("roster-cases", "", "replay this committed folder of manifest cases and exit (testdata/roster-cases)")
 	genOnlyFlag := flag.Bool("generate-only", false, "only build oracle and generate corpus")
 	familyFlag := flag.String("family", "", "run a case family instead of the main corpus: "+AlignArraysFamily+" (alignarrays.go)")
+	adapterFlag := flag.Bool("adapter", false, "run the "+AlignArraysFamily+" instances tools/schema-test hands in on stdin for --lang, one result line each on stdout (adapter.go)")
 	flag.Parse()
 	if *rosterCasesFlag != "" {
 		scratch, err := os.MkdirTemp("", "bitphase-roster-cases-")
@@ -329,6 +338,10 @@ func main() {
 		corpusDir = filepath.Join(repoRoot, corpusDir)
 	}
 	oracleBin := filepath.Join(workRoot, "oracle")
+	if *adapterFlag {
+		adapterMain(repoRoot, schemaBin, schemaMooBin, workRoot, *langFlag)
+		return
+	}
 	if *familyFlag != "" {
 		if err := runFamily(repoRoot, schemaBin, schemaMooBin, workRoot, *familyFlag, *langFlag); err != nil {
 			fmt.Fprintln(os.Stderr, err)

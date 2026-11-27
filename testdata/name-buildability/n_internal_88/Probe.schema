@@ -40,9 +40,6 @@ enum write_field
 enum write_fields
 { Zfirst, Zsecond, Zthird }
 
-enum write_int
-{ Zfirst, Zsecond, Zthird }
-
 enum write_keyed
 { Zfirst, Zsecond, Zthird }
 
@@ -59,9 +56,6 @@ enum write_ref
 { Zfirst, Zsecond, Zthird }
 
 enum write_scalar
-{ Zfirst, Zsecond, Zthird }
-
-enum write_string
 { Zfirst, Zsecond, Zthird }
 
 enum write_union
@@ -114,8 +108,6 @@ table NameTypes0
     many6 [..4]write_field
     one7  write_fields
     many7 [..4]write_fields
-    one8  write_int
-    many8 [..4]write_int
     one9  write_keyed
     many9 [..4]write_keyed
 }
@@ -162,8 +154,6 @@ table NameTypes1
     many3 [..4]write_ref
     one4  write_scalar
     many4 [..4]write_scalar
-    one5  write_string
-    many5 [..4]write_string
     one6  write_union
     many6 [..4]write_union
     one7  write_value

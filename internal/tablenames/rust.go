@@ -28,6 +28,7 @@ func init() {
 		Name{Name: "TableCookOpenReason", What: "the first failed cook-open clause by the Go reference's refusal names (§7)"},
 		Name{Name: "TableCookPut", What: "the cook write's one unaligned scalar put, in the chosen byte order (§7.6)", Scoped: true},
 		Name{Name: "TableCookWriteRecord", What: "the cook write's record walk over the cook descriptors; a null buffer measures and validates only, so a refusal changes no byte (§7.6)", Scoped: true},
+		Name{Name: "TableCookCheckEnumVariants", What: "the fixed-row cook write preflight for live deprecated enum variants (§2.15, §7.6)"},
 		Name{Name: "TableCookRaw", What: "the cook write's raw slot read at the descriptor's width (§7.6)", Scoped: true},
 		Name{Name: "TableRegionWriter", What: "the cook write's region writer over the storage value: the data part, the byte order and each node's region offset (§6.3, §7.6)"},
 		Name{Name: "TableCarve", What: "the cook write's pre-order node-extent bump cursor over a holder's maps and lists (§2.8, §2.9, §7.6)"},

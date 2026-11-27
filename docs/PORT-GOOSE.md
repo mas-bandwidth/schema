@@ -532,9 +532,10 @@ The `goose` column of docs/PORTING.md is filled, every cell with its reason:
   nothing allocates), M10 (Goose has no allocator to hook: data stacks and
   scope exit).
 - **❌ not yet:** every other technique, each naming the card of THE CARD
-  MAP that carries it, or saying it is not yet carded. Each cites #2236,
-  the Goose port's carry-across issue, which lists what parity with the nine
-  main ports still needs, bottom layer first.
+  MAP that carries it, or saying it is not yet carded. Each cites the
+  roadmap entry `port/goose` (docs/roadmap.sexp; it carries what was #2236),
+  which lists what parity with the nine main ports still needs, bottom layer
+  first.
 
 ## THE CARD MAP
 

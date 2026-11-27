@@ -1,4 +1,6 @@
-// Unit test for ChunkQueue (test/conformance/dart/chunk_queue.dart): no clock,
+// Unit test for ChunkQueue (the block between the BEGIN/END ChunkQueue markers in
+// test/conformance/dart/main.dart, which chunk-queue-check slices into a
+// chunk_queue.dart of its own beside this file in a scratch directory): no clock,
 // no sockets, no stdin. It feeds many large frames through the queue in odd
 // chunk sizes, checks every byte comes back in order, and holds the bytes the
 // queue copied to a small multiple of the bytes read. The old reader (one

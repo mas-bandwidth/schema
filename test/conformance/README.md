@@ -290,7 +290,7 @@ One process per surface, so a runtime starts once rather than once per case.
 | `block-dump` | `block` | Open the image, the canonical ROW dump | `block/<name>.dump` |
 | `forgery` | `forgery` (`block`) | Open the forged file at the claimed extent, `open\n` or `refuse\n` | the verdict in the manifest |
 | `cook-forgery` | `forgery` (`cook`) | the same, over the cook battery's 111 | the verdict in the manifest |
-| `write-refusal` | `write-refusal` | load the row's wire, set its one field to the row's value, `Measure` then variable-form `Save`; `wrote\n` or `refused\n` | the verdict in the manifest, with a lawful twin at the same boundary |
+| `write-refusal` | `write-refusal` | load the row's wire, set its one field to the row's value, variable-form `Save`, using `Measure` where the driver calls it separately; `wrote\n` or `refused\n` | the verdict in the manifest, with a lawful twin at the same boundary |
 | `write-refusal-fixed` | `write-refusal-fixed` | the same through the fixed form's `FixedSave` | the verdict in the manifest |
 | `write-refusal-message` | `write-refusal-message` | the same through `SaveMessages` against the connection's vocabulary | the verdict in the manifest |
 | `write-refusal-json` | `write-refusal-json` | the same through the text writer | the verdict in the manifest |
@@ -344,7 +344,9 @@ leg answers from its DEBUG build, where the check is active — C and C++ fork
 one child per case and read an abort as the refusal, C# installs a throwing
 `TraceListener`, Rust catches the panic, the Java driver runs those surfaces
 under `-ea` and the Dart leg builds a second binary with `--enable-asserts` —
-and every other leg answers from its ordinary build. Each leg carries `conformance-negative-control-<lang>-write-refusal`,
+and every other leg answers from its ordinary build. A derived `save-wire`
+flag also asks for the actual saved bytes in `<case>.wire`. The harness holds
+the expected file for the byte comparison. Each leg carries `conformance-negative-control-<lang>-write-refusal`,
 `-write-refusal-fixed` and `-write-refusal-message`, which remove one check from
 a copy of the generated code and require that surface to go red while `wire`
 (or `message`) stays green.
@@ -885,6 +887,8 @@ make tables-wire-fuzz-retain               the same mutants through the RETAININ
 make tables-wire-fuzz-retain-negative-control   its own pair, one control per engine
 ./build/conformance-harness wire-fuzz --driver <cmd> [--seed S] [--n N]
 ./build/conformance-harness wire-fuzz --driver <cmd> --replay <file> --unit <key> --root <table>
+./build/conformance-harness wire-eof --driver <cmd>   the stream cut at EOF: every truncation refuses
+make tables-wire-eof                       wire-eof over every leg's driver (tables-wire-eof-<leg>)
 ```
 
 **The stream, little-endian throughout.** The working directory is the
@@ -895,7 +899,7 @@ driver is.
 |---|---|---|
 | in | `u32` roster count, then per root: `u16 n`, the unit key, `u16 n`, the root table's name, `u8` the FORM, `u8` RETAIN | once, first |
 | out | one byte per roster entry: `1` when this leg has a codec for it, else `0` | once, in reply |
-| in | per mutant: `u32` roster index, `u32` length, the bytes | until EOF |
+| in | per mutant: `u32` roster index, `u32` length, the bytes | until the harness closes the stream, which it does only between frames: EOF before an index's first byte ends the run (exit 0); EOF inside a frame (1 to 3 index bytes, a cut length, a cut body) refuses, with a non-zero exit, the cut named on stderr and no reply (docs/SPEC-TABLES.md §4.2) |
 | out | per mutant: `u8 loaded`; `i32 unknown, kind_mismatch, widened, clamped, duplicate`; `u8 malformed`; `u8 refused`; `i64 measure`; `i32 retained, retain_lost`; `i64 saved`, then that many bytes | one reply per mutant, flushed before the next is read |
 
 The reply header remains 47 bytes for transport compatibility. Its semantic

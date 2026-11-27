@@ -1,7 +1,7 @@
 package ruby
 
 import (
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // Host renders one schema file's packet-side declarations for the table

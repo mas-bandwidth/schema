@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/provesran"
+	"github.com/mas-bandwidth/schema/v3/internal/provesran"
 )
 
 // checkEverySetupRustIsHostedOnly requires every dtolnay/rust-toolchain step in
@@ -362,18 +362,18 @@ func TestGolangciLintCacheIsolatedPerWorkspace(t *testing.T) {
 	}
 
 	mutWF := maps.Clone(wfs)
-	mutWF["ci-fast.yml"] = strings.Replace(mutWF["ci-fast.yml"], "golangci-lint run --allow-parallel-runners $PACKAGES", "golangci-lint run $PACKAGES", 1)
-	if mutWF["ci-fast.yml"] == wfs["ci-fast.yml"] {
-		t.Fatal("negative control did not mutate ci-fast.yml")
+	mutWF["ci-fast-nightly.yml"] = strings.Replace(mutWF["ci-fast-nightly.yml"], "golangci-lint run --allow-parallel-runners $PACKAGES", "golangci-lint run $PACKAGES", 1)
+	if mutWF["ci-fast-nightly.yml"] == wfs["ci-fast-nightly.yml"] {
+		t.Fatal("negative control did not mutate ci-fast-nightly.yml")
 	}
 	if errs := checkGolangciLintParallelIsolation(makeFiles, mutWF); len(errs) == 0 {
-		t.Error("NEGATIVE CONTROL FAILED: dropping --allow-parallel-runners from ci-fast.yml stayed green")
+		t.Error("NEGATIVE CONTROL FAILED: dropping --allow-parallel-runners from ci-fast-nightly.yml stayed green")
 	}
 
-	// Also verify ci-fast.yml lang-clean (c) runs tables-c-soak-compile-modes so
+	// Also verify ci-fast-nightly.yml lang-clean (c) runs tables-c-soak-compile-modes so
 	// non-interposed / big-endian C soak #ifdef combinations are compile-checked in <2m CI.
-	if !strings.Contains(wfs["ci-fast.yml"], "tables-c-soak-compile-modes") {
-		t.Error("ci-fast.yml lang-clean (c) does not run tables-c-soak-compile-modes")
+	if !strings.Contains(wfs["ci-fast-nightly.yml"], "tables-c-soak-compile-modes") {
+		t.Error("ci-fast-nightly.yml lang-clean (c) does not run tables-c-soak-compile-modes")
 	}
 }
 

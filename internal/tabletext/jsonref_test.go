@@ -4,10 +4,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/check"
-	tabledemo "github.com/mas-bandwidth/schema/v2/internal/codegen/gotable/fuzzunit"
-	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/internal/check"
+	tabledemo "github.com/mas-bandwidth/schema/v3/internal/codegen/gotable/fuzzunit"
+	"github.com/mas-bandwidth/schema/v3/internal/parser"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
 )
 
 // jsonrefModel compiles one small unit for the reference JSON read's own
@@ -93,6 +93,42 @@ func TestJsonrefDepthCountsMapAndUnionObjects(t *testing.T) {
 		ok, r := jsonrefRead(t, m, c.root, c.text)
 		if ok != c.accept {
 			t.Errorf("%s: read=%v (%+v), want %v", c.name, ok, r, c.accept)
+		}
+	}
+}
+
+// The two leaf-container vectors in SPEC-TABLES §16.2 use a recursive
+// pointer only to place an otherwise ordinary flags array or text list at the
+// boundary. With 127 pointer objects below the root, the leaf is at depth 128
+// and reads; one more pointer puts it at depth 129 and refuses.
+const jsonrefLeafDepthSchema = `package probe
+flags Mark { Hot }
+table Node
+{
+    next  *Node
+    marks Mark
+    words [..1]string(2)
+}
+`
+
+func pointerLeafText(n int, leaf string) string {
+	return strings.Repeat(`{"next":`, n) + leaf + strings.Repeat(`}`, n)
+}
+
+func TestJsonrefDepthCountsFlagsArrayAndTextList(t *testing.T) {
+	t.Parallel()
+	m := jsonrefModel(t, jsonrefLeafDepthSchema)
+	for _, c := range []struct {
+		name, leaf string
+	}{
+		{"flags array", `{"marks":["Hot"]}`},
+		{"text list", `{"words":["x"]}`},
+	} {
+		if ok, r := jsonrefRead(t, m, "Node", pointerLeafText(127, c.leaf)); !ok {
+			t.Errorf("%s at declared depth limit 128: refused %+v, want read", c.name, r)
+		}
+		if ok, r := jsonrefRead(t, m, "Node", pointerLeafText(128, c.leaf)); ok {
+			t.Errorf("%s at depth 129: read %+v, want refused", c.name, r)
 		}
 	}
 }

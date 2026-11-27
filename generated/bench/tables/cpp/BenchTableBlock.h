@@ -94,8 +94,16 @@ struct TableBlockAllocator
 // Nothing in the generated surface reaches for it: a caller names it. It calls
 // schema_allocate / schema_release, the same hook pair the variable class
 // defaults to, so one definition moves every default in the program.
-inline void * table_block_default_alloc( void * context, int64_t bytes ) { (void) context; return schema_allocate( bytes ); }
-inline void table_block_default_free( void * context, void * pointer ) { (void) context; schema_release( pointer ); }
+inline void * table_block_default_alloc( void * context, int64_t bytes )
+{
+    (void) context;
+    return schema_allocate( bytes );
+}
+inline void table_block_default_free( void * context, void * pointer )
+{
+    (void) context;
+    schema_release( pointer );
+}
 
 inline TableBlockAllocator TableBlockDefaultAllocator()
 {
@@ -144,7 +152,11 @@ struct TableBlockRows
         uint8_t * p;
         int32_t stride;
         T & operator*() const { return *(T *) p; }
-        iterator & operator++() { p += stride; return *this; }
+        iterator & operator++()
+        {
+            p += stride;
+            return *this;
+        }
         bool operator!=( const iterator & other ) const { return p != other.p; }
     };
 
@@ -190,7 +202,11 @@ struct TableBlockConstRows
         const uint8_t * p;
         int32_t stride;
         const T & operator*() const { return *(const T *) p; }
-        iterator & operator++() { p += stride; return *this; }
+        iterator & operator++()
+        {
+            p += stride;
+            return *this;
+        }
         bool operator!=( const iterator & other ) const { return p != other.p; }
     };
 
@@ -250,7 +266,7 @@ struct TableBlockFieldInfo
     // whole table stays constant-initialised. NULL when the field is a scalar.
     // Following it is how a walker DESCENDS: an out-of-line array's rows, and a
     // nested record's fields, are both reached through this one column.
-    const TableBlockInfo * (*element)();
+    const TableBlockInfo * ( *element )();
 };
 
 // One record's layout as DATA — the whole mechanism behind the block form's
@@ -277,9 +293,7 @@ static const uint64_t TableBlockMagic = 0x4b4c42414d484353ull;
 
 inline uint64_t table_block_byteswap64( uint64_t v )
 {
-    return ( v >> 56 ) | ( ( v >> 40 ) & 0xff00ull ) | ( ( v >> 24 ) & 0xff0000ull ) | ( ( v >> 8 ) & 0xff000000ull )
-         | ( ( v << 8 ) & 0xff00000000ull ) | ( ( v << 24 ) & 0xff0000000000ull ) | ( ( v << 40 ) & 0xff000000000000ull )
-         | ( v << 56 );
+    return ( v >> 56 ) | ( ( v >> 40 ) & 0xff00ull ) | ( ( v >> 24 ) & 0xff0000ull ) | ( ( v >> 8 ) & 0xff000000ull ) | ( ( v << 8 ) & 0xff00000000ull ) | ( ( v << 24 ) & 0xff0000000000ull ) | ( ( v << 40 ) & 0xff000000000000ull ) | ( v << 56 );
 }
 
 // the prologue read BYTEWISE: the magic is the one field read without assuming

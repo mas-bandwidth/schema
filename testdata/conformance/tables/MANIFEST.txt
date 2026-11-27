@@ -806,6 +806,85 @@ json-hostile str-zero-escape-map-key       mapdemo    Text        testdata/confo
 # refuses the read `malformed`, the object rule (§16.2) applied inside the map."
 json-hostile list-map-dup-key              listdemo   Army        testdata/conformance/tables/json-hostile/list-map-dup-key   refused
 json-hostile str-zero-escape-unknown-key   tabledemo  RootConfig  testdata/conformance/tables/json-hostile/str-zero-escape-unknown-key refused
+# THE TEXT-ZERO MATRIX (§16.3, docs/rulings.json skipped-value-is-validated):
+# the zero rule in EVERY form text storage takes, at the front, the middle and
+# the end of the string, `str-zero-<form>-<front|middle|end>`, so every port
+# answers the whole matrix through this harness and no leg keeps a partial copy.
+# The forms, each on a unit every driver already reads: s a *string
+# (blobdemo Catalog.note), t a string(N) (RootConfig.version_note), l an element
+# of []string (featurewitnesses Root.words), o an element of []?string(N)
+# (Root.optional_labels), m a map[string(N)] key (Root.tags), i a
+# nested table's string(N) (PackConfig.settings.build_note), at a timestamp,
+# which is not text storage and refuses by its own name timestamp_not_rfc3339,
+# k a map[int32] key (mapdemo Text.blobs), one malformed and never also a kind
+# mismatch, and u an unbounded map[string] key (Root.by_name). Every one
+# refuses for every port. `str-zero-ctl-*` puts \u0001 in the same place and
+# reads clean, so a zero row cannot pass by refusing for another reason; at and
+# k have no control, since \u0001 is no instant and no integer. The Go oracle
+# for the same matrix is internal/codegen/gotable/textzero_test.go.
+json-hostile str-zero-s-front         blobdemo         Catalog    testdata/conformance/tables/json-hostile/str-zero-s-front refused
+json-hostile str-zero-s-middle        blobdemo         Catalog    testdata/conformance/tables/json-hostile/str-zero-s-middle refused
+json-hostile str-zero-s-end           blobdemo         Catalog    testdata/conformance/tables/json-hostile/str-zero-s-end refused
+json-hostile str-zero-t-front         tabledemo        RootConfig testdata/conformance/tables/json-hostile/str-zero-t-front refused
+json-hostile str-zero-t-middle        tabledemo        RootConfig testdata/conformance/tables/json-hostile/str-zero-t-middle refused
+json-hostile str-zero-t-end           tabledemo        RootConfig testdata/conformance/tables/json-hostile/str-zero-t-end refused
+json-hostile str-zero-l-front         featurewitnesses Root       testdata/conformance/tables/json-hostile/str-zero-l-front refused
+json-hostile str-zero-l-middle        featurewitnesses Root       testdata/conformance/tables/json-hostile/str-zero-l-middle refused
+json-hostile str-zero-l-end           featurewitnesses Root       testdata/conformance/tables/json-hostile/str-zero-l-end refused
+json-hostile str-zero-o-front         featurewitnesses Root       testdata/conformance/tables/json-hostile/str-zero-o-front refused
+json-hostile str-zero-o-middle        featurewitnesses Root       testdata/conformance/tables/json-hostile/str-zero-o-middle refused
+json-hostile str-zero-o-end           featurewitnesses Root       testdata/conformance/tables/json-hostile/str-zero-o-end refused
+json-hostile str-zero-m-front         featurewitnesses Root       testdata/conformance/tables/json-hostile/str-zero-m-front refused
+json-hostile str-zero-m-middle        featurewitnesses Root       testdata/conformance/tables/json-hostile/str-zero-m-middle refused
+json-hostile str-zero-m-end           featurewitnesses Root       testdata/conformance/tables/json-hostile/str-zero-m-end refused
+json-hostile str-zero-i-front         tabledemo        PackConfig testdata/conformance/tables/json-hostile/str-zero-i-front refused
+json-hostile str-zero-i-middle        tabledemo        PackConfig testdata/conformance/tables/json-hostile/str-zero-i-middle refused
+json-hostile str-zero-i-end           tabledemo        PackConfig testdata/conformance/tables/json-hostile/str-zero-i-end refused
+json-hostile str-zero-at-front        featurewitnesses Root       testdata/conformance/tables/json-hostile/str-zero-at-front refused
+json-hostile str-zero-at-middle       featurewitnesses Root       testdata/conformance/tables/json-hostile/str-zero-at-middle refused
+json-hostile str-zero-at-end          featurewitnesses Root       testdata/conformance/tables/json-hostile/str-zero-at-end refused
+json-hostile str-zero-k-front         mapdemo          Text       testdata/conformance/tables/json-hostile/str-zero-k-front refused
+json-hostile str-zero-k-middle        mapdemo          Text       testdata/conformance/tables/json-hostile/str-zero-k-middle refused
+json-hostile str-zero-k-end           mapdemo          Text       testdata/conformance/tables/json-hostile/str-zero-k-end refused
+json-hostile str-zero-u-front         featurewitnesses Root       testdata/conformance/tables/json-hostile/str-zero-u-front refused
+json-hostile str-zero-u-middle        featurewitnesses Root       testdata/conformance/tables/json-hostile/str-zero-u-middle refused
+json-hostile str-zero-u-end           featurewitnesses Root       testdata/conformance/tables/json-hostile/str-zero-u-end refused
+json-hostile str-zero-ctl-s-front     blobdemo         Catalog    testdata/conformance/tables/json-hostile/str-zero-ctl-s-front read
+json-hostile str-zero-ctl-s-middle    blobdemo         Catalog    testdata/conformance/tables/json-hostile/str-zero-ctl-s-middle read
+json-hostile str-zero-ctl-s-end       blobdemo         Catalog    testdata/conformance/tables/json-hostile/str-zero-ctl-s-end read
+json-hostile str-zero-ctl-t-front     tabledemo        RootConfig testdata/conformance/tables/json-hostile/str-zero-ctl-t-front read
+json-hostile str-zero-ctl-t-middle    tabledemo        RootConfig testdata/conformance/tables/json-hostile/str-zero-ctl-t-middle read
+json-hostile str-zero-ctl-t-end       tabledemo        RootConfig testdata/conformance/tables/json-hostile/str-zero-ctl-t-end read
+json-hostile str-zero-ctl-l-front     featurewitnesses Root       testdata/conformance/tables/json-hostile/str-zero-ctl-l-front read
+json-hostile str-zero-ctl-l-middle    featurewitnesses Root       testdata/conformance/tables/json-hostile/str-zero-ctl-l-middle read
+json-hostile str-zero-ctl-l-end       featurewitnesses Root       testdata/conformance/tables/json-hostile/str-zero-ctl-l-end read
+json-hostile str-zero-ctl-o-front     featurewitnesses Root       testdata/conformance/tables/json-hostile/str-zero-ctl-o-front read
+json-hostile str-zero-ctl-o-middle    featurewitnesses Root       testdata/conformance/tables/json-hostile/str-zero-ctl-o-middle read
+json-hostile str-zero-ctl-o-end       featurewitnesses Root       testdata/conformance/tables/json-hostile/str-zero-ctl-o-end read
+json-hostile str-zero-ctl-m-front     featurewitnesses Root       testdata/conformance/tables/json-hostile/str-zero-ctl-m-front read
+json-hostile str-zero-ctl-m-middle    featurewitnesses Root       testdata/conformance/tables/json-hostile/str-zero-ctl-m-middle read
+json-hostile str-zero-ctl-m-end       featurewitnesses Root       testdata/conformance/tables/json-hostile/str-zero-ctl-m-end read
+json-hostile str-zero-ctl-i-front     tabledemo        PackConfig testdata/conformance/tables/json-hostile/str-zero-ctl-i-front read
+json-hostile str-zero-ctl-i-middle    tabledemo        PackConfig testdata/conformance/tables/json-hostile/str-zero-ctl-i-middle read
+json-hostile str-zero-ctl-i-end       tabledemo        PackConfig testdata/conformance/tables/json-hostile/str-zero-ctl-i-end read
+json-hostile str-zero-ctl-u-front     featurewitnesses Root       testdata/conformance/tables/json-hostile/str-zero-ctl-u-front read
+json-hostile str-zero-ctl-u-middle    featurewitnesses Root       testdata/conformance/tables/json-hostile/str-zero-ctl-u-middle read
+json-hostile str-zero-ctl-u-end       featurewitnesses Root       testdata/conformance/tables/json-hostile/str-zero-ctl-u-end read
+# THE ZERO THE READ ONLY SKIPS, beyond a value (§16.3: "A string the read only
+# SKIPS — the value of an unknown key, an object key, whether it names a field
+# or none — ... that decodes to U+0000 refuses the read"; docs/rulings.json
+# skipped-value-is-validated). str-zero-escape-unknown-key holds the zero in an
+# unknown key's string value; these hold it in the unknown key's own NAME, in
+# a string inside an unknown key's array, and in an object key nested inside an
+# unknown key's object. Every one refuses for every port, and each has its
+# \u0001 control, which reads clean (the unknown key is skipped, the value is
+# RootConfig's defaults).
+json-hostile str-zero-skip-key-name         tabledemo  RootConfig  testdata/conformance/tables/json-hostile/str-zero-skip-key-name refused
+json-hostile str-zero-skip-list             tabledemo  RootConfig  testdata/conformance/tables/json-hostile/str-zero-skip-list refused
+json-hostile str-zero-skip-object-key       tabledemo  RootConfig  testdata/conformance/tables/json-hostile/str-zero-skip-object-key refused
+json-hostile str-zero-ctl-skip-key-name     tabledemo  RootConfig  testdata/conformance/tables/json-hostile/str-zero-ctl-skip-key-name read
+json-hostile str-zero-ctl-skip-list         tabledemo  RootConfig  testdata/conformance/tables/json-hostile/str-zero-ctl-skip-list read
+json-hostile str-zero-ctl-skip-object-key   tabledemo  RootConfig  testdata/conformance/tables/json-hostile/str-zero-ctl-skip-object-key read
 json-hostile union-table-arm-unknown       messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-table-arm-unknown read
 json-hostile union-table-arm-two-keys      messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-table-arm-two-keys refused
 json-hostile union-table-arm-wrong-shape   messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-table-arm-wrong-shape refused
@@ -2573,16 +2652,17 @@ unit tblann4096 test/tables/announce4096/Announce.schema
 unit tblann4097 test/tables/announce4097/Announce.schema
 connection surfaces_conn tblsurf 0xd4e8971dbc849333 testdata/conformance/tables/wire/surfaces_conn.bin
 
-# FL-11 (SPEC-TABLES §16.2, §16.14 W2): the JSON read cap counts every
-# container (root=0, depth 128 = 129 nested containers max; 130th refuses
-# malformed), while the write cap counts table/type values only. 128 Links put
-# `vals` at container depth 129 (130th container), so `surf_chain128_vals` is
-# `no-text` on the positive round-trip corpus and `surf_chain127_vals` (depth
-# 128 = 129 containers) is the positive round-trip witness; one Link past the
-# write cap is refused (`graph_chain_past_cap`, above). FL-16 (§2.3): a null
+# FL-11 (SPEC-TABLES §16.2, §16.14 W2): the JSON read cap and the write cap
+# count the same containers (root=0, depth 128 = 129 nested containers max;
+# the 130th refuses), an empty leaf array included. 127 Links put the last
+# Link's `vals` at depth 128, so `surf_chain127_vals` writes and reads back,
+# the lawful side of the boundary; 128 Links put `vals` at depth 129, so
+# `surf_chain128_vals` is `no-text` and every leg's text writer refuses it
+# (`surf_chain128_vals_write`). FL-16 (§2.3): a null
 # `*T | required` is written as index 0 and reads back null; its twin points at a node.
 instance surf_chain128_vals        tblsurf Chain   testdata/conformance/tables/wire/surf_chain128_vals.bin no-text
 instance surf_chain127_vals        tblsurf Chain   testdata/conformance/tables/wire/surf_chain127_vals.bin
+json-write-refusal surf_chain128_vals_write tblsurf Chain testdata/conformance/tables/wire/surf_chain128_vals.bin none
 instance surf_holder_null_required tblsurf Holder  testdata/conformance/tables/wire/surf_holder_null_required.bin
 instance surf_holder_present       tblsurf Holder  testdata/conformance/tables/wire/surf_holder_present.bin
 instance surf_counted_full         tblsurf Counted testdata/conformance/tables/wire/surf_counted_full.bin
@@ -2837,6 +2917,15 @@ read-into ri_fixed_5000 tblsurf      Narrow        fixed-nocap testdata/conforma
 # the second file is lawful; generate fails if the engine refuses it, and an
 # unmarked fixed row fails if the engine reads its damaged file.
 read-into ri_fixed_lineage tblfixedevo EvoRoot   fixed       testdata/conformance/tables/wire/fixedevo_v3_full.bin       testdata/conformance/tables/wire/fixedevo_v1.bin                 1 lawful-second
+# A REFUSAL THROUGH A LINEAGE PLAN RESETS EVERY ROW IT WAS HANDED (SPEC-TABLES
+# §6.5, THE CALLER'S VALUES AFTER A REFUSAL; R4; census G14). The first read
+# lands v3's full record, every field off its default. The second is an OLDER
+# writer's (v1) file the lineage plan selects and the CHECK pass refuses (a
+# corrupt deprecated slot): the row then holds its declared defaults, never
+# the first read's values. ri_fixed holds the same rule for a three-row batch
+# under a damage refusal; a driver resets its rows before the first read, so
+# rows no wire reached are held by each leg's own test, not by this row.
+read-into ri_fixed_lineage_refused tblfixedevo EvoRoot fixed testdata/conformance/tables/wire/fixedevo_v3_full.bin testdata/conformance/tables/wire/fixedevo_v1_dep_corrupt.bin 1
 
 # THE RETAIN FAMILY ZEROES ITS REPORT TOO (SPEC-TABLES §6.5, §6.6): the
 # retaining load is handed a report the driver PRE-FILLED (every counter

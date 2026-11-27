@@ -12,7 +12,7 @@
 // ProbeId beside ProbeID) is refused rather than emitted.
 package goname
 
-import "github.com/mas-bandwidth/schema/v2/ir"
+import "github.com/mas-bandwidth/schema/v3/ir"
 
 // initialisms is the standard Go initialism list (the one golint and
 // staticcheck's ST1003 use). A word of a member name whose upper-case form is

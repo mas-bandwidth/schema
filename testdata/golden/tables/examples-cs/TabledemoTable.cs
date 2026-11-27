@@ -1491,7 +1491,9 @@ namespace Tabledemo
                 if (f.Kind == 17) { return WritePointer(ref o, owner, f, index, depth); }
                 if (f.Arms != null)
                 {
-                    // a union is an object with ONE key, the arm's name; None is {}
+                    // a union is an object with ONE key, the arm's name; None is {}, and
+                    // either is a container the depth cap counts (docs/SPEC-TABLES.md 16.14 W2)
+                    if (depth > MaxDepth) { return false; }
                     object union = f.GetChild(owner, index);
                     ulong tag = f.Arms.GetTag(union);
                     if (tag == 0)
@@ -1545,6 +1547,9 @@ namespace Tabledemo
                 }
                 if (IsFlags(f))
                 {
+                    // a flags value is an array of names, a container the read counts,
+                    // an empty [] included (docs/SPEC-TABLES.md 16.14 W2)
+                    if (depth > MaxDepth) { return false; }
                     ulong bits = f.GetRaw(owner, index);
                     if (bits == 0)
                     {
@@ -1633,7 +1638,9 @@ namespace Tabledemo
                     // one entry per SLOT, keyed by the variant that owns it, so
                     // inserting a variant next season moves nothing in the text either.
                     // Slot i holds the key i + 1: nothing is stored for None, so
-                    // nothing is written for it.
+                    // nothing is written for it. The object, an empty {} included, is
+                    // a container the depth cap counts (docs/SPEC-TABLES.md 16.14 W2).
+                    if (depth > MaxDepth) { return false; }
                     o.Put((byte)'{');
                     bool first = true;
                     for (int slot = 0; slot < f.ArrayBound; slot++)
@@ -1656,6 +1663,9 @@ namespace Tabledemo
                 }
                 if (f.IsArray)
                 {
+                    // an array or a text list, an empty [] included, is a container
+                    // the depth cap counts, as the read counts it (docs/SPEC-TABLES.md 16.14 W2)
+                    if (depth > MaxDepth) { return false; }
                     int count = Count(value, f);
                     if (count == 0)
                     {
@@ -1894,6 +1904,9 @@ namespace Tabledemo
 
             static bool WriteMap(ref Out o, object owner, TableFieldInfo f, int depth)
             {
+                // a map's object, an empty {} included, is a container the depth cap
+                // counts (docs/SPEC-TABLES.md 16.14 W2)
+                if (depth > MaxDepth) { return false; }
                 int count = f.GetCount(owner);
                 if (count == 0) { o.Text("{}"); return true; }
                 if (!TableWire.MapOrdered(owner, f)) { return false; }
@@ -4890,7 +4903,7 @@ namespace Tabledemo
                     if (id == ulong.MaxValue) { node = true; }
                     if (!keys.Add(Convert.ToHexString(payload.Buffer.Slice(start, payload.Offset - start)))) { Damage(report); return Finish(report, Verdict.Damaged); }
                     entries.Add(new TableMessageEntry { Id = id, Kind = kind, Shape = shape });
-                    if (entries.Count > (v.MaxEntries > 0 ? v.MaxEntries : 4096)) { return Refuse(report, "vocabulary_too_large"); }
+                    if (entries.Count > (v.MaxEntries >= 0 ? v.MaxEntries : 4096)) { return Refuse(report, "vocabulary_too_large"); }
                 }
                 v.Entries = entries.ToArray(); v.Announced = true; return Finish(report, Verdict.Ok);
             }

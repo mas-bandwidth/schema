@@ -19,6 +19,9 @@ export const FlatReadSlack = 8;
 // writer contract, in every build (SPEC §5.1). The buffer behind view
 // must hold Vec2MaxBytes.
 export function WriteVec2Flat(view, value) {
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isFinite(value.x)) { // a bare float must be finite
     return -1;
   }
@@ -76,7 +79,10 @@ export function ReadVec2FlatBits(view, numBits, value) {
 // must hold SpanF64MaxBytes.
 export function WriteSpanF64Flat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
-  if (value.values == null || value.values.length !== 2) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
+  if (value.values === null || typeof value.values !== "object" || value.values.length !== 2) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
     return -1;
   }
   for (let i0 = 0; i0 < 2; i0++) {
@@ -189,7 +195,10 @@ export function ReadSpanF64FlatBits(view, numBits, value) {
 // must hold SpanU64MaxBytes.
 export function WriteSpanU64Flat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
-  if (value.values == null || value.values.length !== 2) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
+  if (value.values === null || typeof value.values !== "object" || value.values.length !== 2) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
     return -1;
   }
   for (let i0 = 0; i0 < 2; i0++) {
@@ -300,7 +309,10 @@ export function ReadSpanU64FlatBits(view, numBits, value) {
 // must hold SpanI64MaxBytes.
 export function WriteSpanI64Flat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
-  if (value.values == null || value.values.length !== 2) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
+  if (value.values === null || typeof value.values !== "object" || value.values.length !== 2) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
     return -1;
   }
   for (let i0 = 0; i0 < 2; i0++) {
@@ -411,7 +423,10 @@ export function ReadSpanI64FlatBits(view, numBits, value) {
 // must hold SpanOneMaxBytes.
 export function WriteSpanOneFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
-  if (value.values == null || value.values.length !== 1) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
+  if (value.values === null || typeof value.values !== "object" || value.values.length !== 1) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
     return -1;
   }
   for (let i0 = 0; i0 < 1; i0++) {
@@ -522,7 +537,10 @@ export function ReadSpanOneFlatBits(view, numBits, value) {
 // must hold SpanChunkMaxBytes.
 export function WriteSpanChunkFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
-  if (value.values == null || value.values.length !== 4) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
+  if (value.values === null || typeof value.values !== "object" || value.values.length !== 4) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
     return -1;
   }
   for (let i0 = 0; i0 < 4; i0++) {
@@ -601,7 +619,10 @@ export function ReadSpanChunkFlatBits(view, numBits, value) {
 // must hold SpanTailMaxBytes.
 export function WriteSpanTailFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
-  if (value.values == null || value.values.length !== 2) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
+  if (value.values === null || typeof value.values !== "object" || value.values.length !== 2) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
     return -1;
   }
   for (let i0 = 0; i0 < 2; i0++) {
@@ -742,7 +763,10 @@ export function ReadSpanTailFlatBits(view, numBits, value) {
 // must hold SpanTwiceMaxBytes.
 export function WriteSpanTwiceFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
-  if (value.a == null || value.a.length !== 2) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
+  if (value.a === null || typeof value.a !== "object" || value.a.length !== 2) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
     return -1;
   }
   for (let i0 = 0; i0 < 2; i0++) {
@@ -769,7 +793,7 @@ export function WriteSpanTwiceFlat(view, value) {
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
   }
-  if (value.b == null || value.b.length !== 2) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
+  if (value.b === null || typeof value.b !== "object" || value.b.length !== 2) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
     return -1;
   }
   for (let i0 = 0; i0 < 2; i0++) {
@@ -926,6 +950,9 @@ export function ReadSpanTwiceFlatBits(view, numBits, value) {
 // must hold TrioMaxBytes.
 export function WriteTrioFlat(view, value) {
   let v = 0, lo = 0;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isInteger(value.a) || value.a < 0 || value.a > 1048575) {
     return -1;
   }
@@ -994,6 +1021,12 @@ export function ReadTrioFlatBits(view, numBits, value) {
 // must hold TrioSoleMaxBytes.
 export function WriteTrioSoleFlat(view, value) {
   let v = 0, lo = 0;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
+  if (value.inner === null || typeof value.inner !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isInteger(value.inner.a) || value.inner.a < 0 || value.inner.a > 1048575) {
     return -1;
   }
@@ -1061,6 +1094,12 @@ export function ReadTrioSoleFlatBits(view, numBits, value) {
 // writer contract, in every build (SPEC §5.1). The buffer behind view
 // must hold Vec3SoleMaxBytes.
 export function WriteVec3SoleFlat(view, value) {
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
+  if (value.v === null || typeof value.v !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isFinite(value.v.x)) { // a bare float must be finite
     return -1;
   }
@@ -1130,6 +1169,12 @@ export function ReadVec3SoleFlatBits(view, numBits, value) {
 // must hold TrioFirstMaxBytes.
 export function WriteTrioFirstFlat(view, value) {
   let v = 0, lo = 0;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
+  if (value.inner === null || typeof value.inner !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isInteger(value.inner.a) || value.inner.a < 0 || value.inner.a > 1048575) {
     return -1;
   }
@@ -1209,6 +1254,9 @@ export function ReadTrioFirstFlatBits(view, numBits, value) {
 // must hold TrioStraddleMaxBytes.
 export function WriteTrioStraddleFlat(view, value) {
   let v = 0, lo = 0;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (typeof value.pad0 !== "bigint" || value.pad0 < 0n || value.pad0 > 18446744073709551615n) {
     return -1;
   }
@@ -1250,6 +1298,9 @@ export function WriteTrioStraddleFlat(view, value) {
   v = SC.getUint32(4, true);
   view.setUint32(36, v, true);
   if (!globalThis.Number.isInteger(value.pad5) || value.pad5 < 0 || value.pad5 > 16777215) {
+    return -1;
+  }
+  if (value.inner === null || typeof value.inner !== "object") { // a record or union value is an object (SPEC §5.1)
     return -1;
   }
   if (!globalThis.Number.isInteger(value.inner.a) || value.inner.a < 0 || value.inner.a > 1048575) {

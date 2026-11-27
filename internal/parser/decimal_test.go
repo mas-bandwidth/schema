@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/ast"
+	"github.com/mas-bandwidth/schema/v3/internal/ast"
 )
 
 // TestLeadingZeroIntegersAreRefused: issue #710 stopped `08` failing as a

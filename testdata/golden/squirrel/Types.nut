@@ -49,10 +49,14 @@ _M.ReadVec3 <- function(stream, value) {
 
 // WriteVec3 writes value in declared order; false on a refused value.
 _M.WriteVec3 <- function(stream, value) {
+  if (!(value instanceof _M.Vec3)) return false;
+  if (typeof value.X != "float" && typeof value.X != "integer") return false;
   _h.value = value.X;
   if (!stream.serializeDouble(_h)) return false;
+  if (typeof value.Y != "float" && typeof value.Y != "integer") return false;
   _h.value = value.Y;
   if (!stream.serializeDouble(_h)) return false;
+  if (typeof value.Z != "float" && typeof value.Z != "integer") return false;
   _h.value = value.Z;
   if (!stream.serializeDouble(_h)) return false;
   return true;
@@ -98,12 +102,17 @@ _M.ReadQuat <- function(stream, value) {
 
 // WriteQuat writes value in declared order; false on a refused value.
 _M.WriteQuat <- function(stream, value) {
+  if (!(value instanceof _M.Quat)) return false;
+  if (typeof value.X != "float" && typeof value.X != "integer") return false;
   _h.value = value.X;
   if (!stream.serializeDouble(_h)) return false;
+  if (typeof value.Y != "float" && typeof value.Y != "integer") return false;
   _h.value = value.Y;
   if (!stream.serializeDouble(_h)) return false;
+  if (typeof value.Z != "float" && typeof value.Z != "integer") return false;
   _h.value = value.Z;
   if (!stream.serializeDouble(_h)) return false;
+  if (typeof value.W != "float" && typeof value.W != "integer") return false;
   _h.value = value.W;
   if (!stream.serializeDouble(_h)) return false;
   return true;
@@ -141,6 +150,8 @@ _M.ReadHandle <- function(stream, value) {
 
 // WriteHandle writes value in declared order; false on a refused value.
 _M.WriteHandle <- function(stream, value) {
+  if (!(value instanceof _M.Handle)) return false;
+  if (typeof value.ObjectId != "integer") return false;
   _h.value = value.ObjectId;
   if (!stream.serializeInt(_h, 0, 9999)) return false;
   if (typeof value.ObjectSequence != "integer" || value.ObjectSequence < 0 || value.ObjectSequence > 255) return false;
@@ -185,10 +196,14 @@ _M.ReadQuantizedPosition <- function(stream, value) {
 
 // WriteQuantizedPosition writes value in declared order; false on a refused value.
 _M.WriteQuantizedPosition <- function(stream, value) {
+  if (!(value instanceof _M.QuantizedPosition)) return false;
+  if (typeof value.X != "integer") return false;
   _h.value = value.X;
   if (!stream.serializeInt(_h, -8388608, 8388608)) return false;
+  if (typeof value.Y != "integer") return false;
   _h.value = value.Y;
   if (!stream.serializeInt(_h, -8388608, 8388608)) return false;
+  if (typeof value.Z != "integer") return false;
   _h.value = value.Z;
   if (!stream.serializeInt(_h, -8388608, 8388608)) return false;
   return true;
@@ -230,10 +245,14 @@ _M.ReadQuantizedVelocity <- function(stream, value) {
 
 // WriteQuantizedVelocity writes value in declared order; false on a refused value.
 _M.WriteQuantizedVelocity <- function(stream, value) {
+  if (!(value instanceof _M.QuantizedVelocity)) return false;
+  if (typeof value.X != "integer") return false;
   _h.value = value.X;
   if (!stream.serializeInt(_h, -2097152, 2097152)) return false;
+  if (typeof value.Y != "integer") return false;
   _h.value = value.Y;
   if (!stream.serializeInt(_h, -2097152, 2097152)) return false;
+  if (typeof value.Z != "integer") return false;
   _h.value = value.Z;
   if (!stream.serializeInt(_h, -2097152, 2097152)) return false;
   return true;
@@ -279,15 +298,20 @@ _M.ReadQuantizedRotation <- function(stream, value) {
 
 // WriteQuantizedRotation writes value in declared order; false on a refused value.
 _M.WriteQuantizedRotation <- function(stream, value) {
+  if (!(value instanceof _M.QuantizedRotation)) return false;
+  if (typeof value.X != "integer") return false;
   if (typeof value.X != "integer" || value.X < -1024 || value.X > 1024) return false; // SPEC §5.1 row 1
   _h.value = value.X;
   if (!stream.serializeInt(_h, -1024, 1024)) return false;
+  if (typeof value.Y != "integer") return false;
   if (typeof value.Y != "integer" || value.Y < -1024 || value.Y > 1024) return false; // SPEC §5.1 row 1
   _h.value = value.Y;
   if (!stream.serializeInt(_h, -1024, 1024)) return false;
+  if (typeof value.Z != "integer") return false;
   if (typeof value.Z != "integer" || value.Z < -1024 || value.Z > 1024) return false; // SPEC §5.1 row 1
   _h.value = value.Z;
   if (!stream.serializeInt(_h, -1024, 1024)) return false;
+  if (typeof value.W != "integer") return false;
   if (typeof value.W != "integer" || value.W < -1024 || value.W > 1024) return false; // SPEC §5.1 row 1
   _h.value = value.W;
   if (!stream.serializeInt(_h, -1024, 1024)) return false;
@@ -345,8 +369,10 @@ _M.ReadRigidBody <- function(stream, value) {
 
 // WriteRigidBody writes value in declared order; false on a refused value.
 _M.WriteRigidBody <- function(stream, value) {
+  if (!(value instanceof _M.RigidBody)) return false;
   if (!_M.WriteVec3(stream, value.Position)) return false;
   if (!_M.WriteQuat(stream, value.Orientation)) return false;
+  if (typeof value.AtRest != "bool") return false;
   _h.value = value.AtRest;
   if (!stream.serializeBool(_h)) return false;
   if (!value.AtRest) {
@@ -432,30 +458,44 @@ _M.ReadInput <- function(stream, value) {
 
 // WriteInput writes value in declared order; false on a refused value.
 _M.WriteInput <- function(stream, value) {
+  if (!(value instanceof _M.Input)) return false;
+  if (typeof value.StickX != "float" && typeof value.StickX != "integer") return false;
   _h.value = value.StickX;
   if (!stream.serializeFloat(_h)) return false;
+  if (typeof value.StickY != "float" && typeof value.StickY != "integer") return false;
   _h.value = value.StickY;
   if (!stream.serializeFloat(_h)) return false;
+  if (typeof value.Throttle != "float" && typeof value.Throttle != "integer") return false;
   _h.value = value.Throttle;
   if (!stream.serializeFloat(_h)) return false;
+  if (typeof value.Yaw != "float" && typeof value.Yaw != "integer") return false;
   _h.value = value.Yaw;
   if (!stream.serializeFloat(_h)) return false;
+  if (typeof value.Pitch != "float" && typeof value.Pitch != "integer") return false;
   _h.value = value.Pitch;
   if (!stream.serializeFloat(_h)) return false;
+  if (typeof value.Fire != "bool") return false;
   _h.value = value.Fire;
   if (!stream.serializeBool(_h)) return false;
+  if (typeof value.AltFire != "bool") return false;
   _h.value = value.AltFire;
   if (!stream.serializeBool(_h)) return false;
+  if (typeof value.Boost != "bool") return false;
   _h.value = value.Boost;
   if (!stream.serializeBool(_h)) return false;
+  if (typeof value.Brake != "bool") return false;
   _h.value = value.Brake;
   if (!stream.serializeBool(_h)) return false;
+  if (typeof value.Aim != "bool") return false;
   _h.value = value.Aim;
   if (!stream.serializeBool(_h)) return false;
+  if (typeof value.LockOn != "bool") return false;
   _h.value = value.LockOn;
   if (!stream.serializeBool(_h)) return false;
+  if (typeof value.Zoom != "bool") return false;
   _h.value = value.Zoom;
   if (!stream.serializeBool(_h)) return false;
+  if (typeof value.Ping != "bool") return false;
   _h.value = value.Ping;
   if (!stream.serializeBool(_h)) return false;
   return true;
@@ -507,6 +547,7 @@ _M.ReadInputPacket <- function(stream, value) {
 
 // WriteInputPacket writes value in declared order; false on a refused value.
 _M.WriteInputPacket <- function(stream, value) {
+  if (!(value instanceof _M.InputPacket)) return false;
   if (typeof value.SynchronizeSequence != "integer" || value.SynchronizeSequence < 0 || value.SynchronizeSequence > 65535) return false;
   _h.value = value.SynchronizeSequence;
   if (!stream.serializeBits(_h, 16)) return false;
@@ -517,6 +558,7 @@ _M.WriteInputPacket <- function(stream, value) {
   _h.value = value.StartFrame;
   if (!stream.serializeBits64(_h, 64)) return false;
   if (typeof value.InputsCount != "integer" || value.InputsCount < 0 || value.InputsCount > 16) return false;
+  if (typeof value.Inputs != "array" || value.Inputs.len() < value.InputsCount) return false;
   _h.value = value.InputsCount;
   if (!stream.serializeBits(_h, 5)) return false;
   for (local _i = 0; _i < value.InputsCount; _i++) {
@@ -592,12 +634,14 @@ _M.ReadShipCreate <- function(stream, value) {
 
 // WriteShipCreate writes value in declared order; false on a refused value.
 _M.WriteShipCreate <- function(stream, value) {
+  if (!(value instanceof _M.ShipCreate)) return false;
   if (typeof value.ShipType != "integer" || value.ShipType < 0 || value.ShipType > 5) return false;
   _h.value = value.ShipType;
   if (!stream.serializeBits(_h, 3)) return false;
   if (!_M.WriteQuantizedPosition(stream, value.Position)) return false;
   if (!_M.WriteQuantizedRotation(stream, value.Rotation)) return false;
   if (!_M.WriteQuantizedVelocity(stream, value.LinearVelocity)) return false;
+  if (typeof value.HasFlags != "bool") return false;
   _h.value = value.HasFlags;
   if (!stream.serializeBool(_h)) return false;
   if (value.HasFlags) {
@@ -608,9 +652,11 @@ _M.WriteShipCreate <- function(stream, value) {
   if (typeof value.Team != "integer" || value.Team < 0 || value.Team > 2) return false;
   _h.value = value.Team;
   if (!stream.serializeBits(_h, 2)) return false;
+  if (typeof value.Health != "integer") return false;
   if (typeof value.Health != "integer" || value.Health < 0 || value.Health > 1000) return false; // SPEC §5.1 row 1
   _h.value = value.Health;
   if (!stream.serializeInt(_h, 0, 1000)) return false;
+  if (typeof value.Thrust != "integer") return false;
   if (typeof value.Thrust != "integer" || value.Thrust < 0 || value.Thrust > 100) return false; // SPEC §5.1 row 1
   _h.value = value.Thrust;
   if (!stream.serializeInt(_h, 0, 100)) return false;
@@ -650,8 +696,11 @@ _M.ReadExpressionProbe <- function(stream, value) {
 
 // WriteExpressionProbe writes value in declared order; false on a refused value.
 _M.WriteExpressionProbe <- function(stream, value) {
+  if (!(value instanceof _M.ExpressionProbe)) return false;
+  if (typeof value.HardpointIndex != "integer") return false;
   _h.value = value.HardpointIndex;
   if (!stream.serializeInt(_h, 0, 31)) return false;
+  if (typeof value.SpinRate != "integer") return false;
   _h.value = value.SpinRate;
   if (!stream.serializeInt(_h, 1024, 2048)) return false;
   return true;
@@ -706,8 +755,11 @@ _M.ReadExtremeProbe <- function(stream, value) {
 
 // WriteExtremeProbe writes value in declared order; false on a refused value.
 _M.WriteExtremeProbe <- function(stream, value) {
+  if (!(value instanceof _M.ExtremeProbe)) return false;
+  if (typeof value.FloorBound != "integer") return false;
   _h.value = value.FloorBound;
   if (!stream.serializeInt64(_h, 0x8000000000000000, 100)) return false;
+  if (typeof value.DoubledFloor != "integer") return false;
   _h.value = value.DoubledFloor;
   if (!stream.serializeInt64(_h, 0x8000000000000000, 100)) return false;
   if (typeof value.CeilingRange != "integer" || (value.CeilingRange ^ 0x8000000000000000) < -9223372036854775807) return false;
@@ -763,6 +815,8 @@ _M.ReadExtremeRow <- function(stream, value) {
 
 // WriteExtremeRow writes value in declared order; false on a refused value.
 _M.WriteExtremeRow <- function(stream, value) {
+  if (!(value instanceof _M.ExtremeRow)) return false;
+  if (typeof value.ClampedFloor != "integer") return false;
   _h.value = value.ClampedFloor;
   if (!stream.serializeInt64(_h, 0x8000000000000000, 100)) return false;
   if (typeof value.ClampedCeiling != "integer" || (value.ClampedCeiling ^ 0x8000000000000000) < -9223372036854775807 || (value.ClampedCeiling ^ 0x8000000000000000) > 9223372036854775806) return false;

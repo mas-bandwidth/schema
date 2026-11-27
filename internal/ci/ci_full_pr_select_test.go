@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
+	"github.com/mas-bandwidth/schema/v3/internal/testinputs"
 )
 
 // prSelectScript returns ci-full.yml pr-select's selector, from its
@@ -80,7 +80,7 @@ func TestCIFullPRSelect(t *testing.T) {
 }
 
 // TestCIFullPRSelectMatchesTheFastPlan holds pr-select's shared roots and C#
-// paths to ci-fast.yml plan's, so the C# tables leg is selected on exactly
+// paths to ci-fast-nightly.yml plan's, so the C# tables leg is selected on exactly
 // the diffs that select the C# leg there.
 func TestCIFullPRSelectMatchesTheFastPlan(t *testing.T) {
 	t.Parallel()
@@ -91,18 +91,18 @@ func TestCIFullPRSelectMatchesTheFastPlan(t *testing.T) {
 		}
 		return string(data)
 	}
-	fast, full := read("ci-fast.yml"), read("ci-full.yml")
+	fast, full := read("ci-fast-nightly.yml"), read("ci-full.yml")
 	broadRE := regexp.MustCompile(`grep -q?E '\^\((ir/\|compiler/[^']*)\)'`)
 	fb, ub := broadRE.FindStringSubmatch(fast), broadRE.FindStringSubmatch(full)
 	if fb == nil || ub == nil {
-		t.Fatal("the broad rule was not found in ci-fast.yml plan or ci-full.yml pr-select")
+		t.Fatal("the broad rule was not found in ci-fast-nightly.yml plan or ci-full.yml pr-select")
 	}
-	if want := strings.Replace(fb[1], `ci-fast\.yml`, `ci-full\.yml`, 1); ub[1] != want {
-		t.Errorf("ci-full.yml pr-select's shared roots\n  %s\ndiffer from ci-fast.yml plan's (this file in place of that one)\n  %s", ub[1], want)
+	if want := strings.Replace(fb[1], `ci-fast-nightly\.yml`, `ci-full\.yml`, 1); ub[1] != want {
+		t.Errorf("ci-full.yml pr-select's shared roots\n  %s\ndiffer from ci-fast-nightly.yml plan's (this file in place of that one)\n  %s", ub[1], want)
 	}
 	csCase := regexp.MustCompile(`(?m)^\s+(internal/codegen/cstable/[^)]*)\) add_leg cs ;;`).FindStringSubmatch(fast)
 	if csCase == nil {
-		t.Fatal("ci-fast.yml plan's cs row was not found")
+		t.Fatal("ci-fast-nightly.yml plan's cs row was not found")
 	}
 	var want []string
 	for p := range strings.SplitSeq(csCase[1], "|") {
@@ -115,6 +115,6 @@ func TestCIFullPRSelectMatchesTheFastPlan(t *testing.T) {
 		want = append(want, p)
 	}
 	if !strings.Contains(full, "'^("+strings.Join(want, "|")+")'") {
-		t.Errorf("ci-full.yml pr-select's C# paths are not ci-fast.yml plan's cs row %q (want the alternation %q)", csCase[1], strings.Join(want, "|"))
+		t.Errorf("ci-full.yml pr-select's C# paths are not ci-fast-nightly.yml plan's cs row %q (want the alternation %q)", csCase[1], strings.Join(want, "|"))
 	}
 }

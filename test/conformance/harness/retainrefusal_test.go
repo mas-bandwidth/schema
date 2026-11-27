@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/inputfamilies"
+	"github.com/mas-bandwidth/schema/v3/internal/inputfamilies"
 )
 
 // The retain-refusal ledger is an EXACT SET (retainrefusal.go): a failing

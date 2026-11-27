@@ -148,6 +148,7 @@ BENCH_TABLES_LEGS += generated/bench/tables/dart/.stamp
 define tables_generate_dart
 	$(1) generate --lang dart --out $(2)/tables-generated-dart/features testdata/conformance/feature-witnesses/full/Features.schema
 	$(1) generate --lang dart --out $(2)/tables-generated-dart/examples tables/examples
+	$(1) generate --lang dart --out $(2)/tables-generated-dart/writebounds testdata/conformance/table-write-bounds/TableWriteBounds.schema
 	$(1) generate --lang dart --out $(2)/tables-generated-dart/pointers tables/pointers
 	$(1) generate --lang dart --out $(2)/tables-generated-dart/blobs tables/blobs
 	$(1) generate --lang dart --out $(2)/tables-generated-dart/lists tables/lists
@@ -746,7 +747,8 @@ define dart-cookwrite-nc-leg
 	@sed -e "s|../../../build/$(4)/|$(CURDIR)/$(DART_COOKWRITE_NC)/$(1)/generated/|g" \
 	     -e "s|../../../build/|$(CURDIR)/build/|g" \
 		test/conformance/dart/main.dart > $(DART_COOKWRITE_NC)/$(1)/main.dart
-	$(DART) compile exe -o $(DART_COOKWRITE_NC)/$(1)/driver-bin $(DART_COOKWRITE_NC)/$(1)/main.dart >/dev/null
+	@# built as build/conformance-dart is, asserts on: Dart answers the write-refusal rows by debug assert, and a copy without them turns every refusal row red, not only this plant's cook-write rows
+	$(DART) compile exe --enable-asserts -o $(DART_COOKWRITE_NC)/$(1)/driver-bin $(DART_COOKWRITE_NC)/$(1)/main.dart >/dev/null
 	@printf 'dart %s/build/conformance-dart\n' "$(CURDIR)" > $(DART_COOKWRITE_NC)/$(1)/clean-drivers.txt
 	@# loud-ok: the harness's status covers every surface of the leg; this target's verdict is the named row read from the log below, and a missing row is red
 	@./build/conformance-harness run --drivers $(DART_COOKWRITE_NC)/$(1)/clean-drivers.txt \
@@ -766,9 +768,9 @@ define dart-cookwrite-nc-leg
 	@grep -q "dart / cook-write: $(6)" $(DART_COOKWRITE_NC)/$(1)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on a $(6) cook-write row"; \
 		  tail -30 $(DART_COOKWRITE_NC)/$(1)/log; exit 1; }
-	@awk '/^FAILURES$$/ { f = 1; next } f && /^  dart \/ / { sub(/^  /, ""); print }' \
-		$(DART_COOKWRITE_NC)/$(1)/log | grep -v "dart / cook-write: $(6)" \
-		| LC_ALL=C sort > $(DART_COOKWRITE_NC)/$(1)/other-failures.txt
+	@# the own rows are dropped inside awk, not by grep -v: under pipefail a grep -v left with no line exits 1, and the clean outcome (no other row red) failed the target with no message
+	@awk '/^FAILURES$$/ { f = 1; next } f && /^  dart \/ / && index($$0, "dart / cook-write: $(6)") == 0 { sub(/^  /, ""); print }' \
+		$(DART_COOKWRITE_NC)/$(1)/log | LC_ALL=C sort > $(DART_COOKWRITE_NC)/$(1)/other-failures.txt
 	@if grep -v -F -x -f $(DART_COOKWRITE_NC)/$(1)/clean-failures.txt \
 			$(DART_COOKWRITE_NC)/$(1)/other-failures.txt | grep . >/dev/null; then \
 		echo "NEGATIVE CONTROL FAILED: the $(1) sabotage turned another row red too"; \
@@ -872,8 +874,16 @@ build/dart-fixed/.stamp: bin/schema bench/corpus/Bench.schema bench/corpus/Fixed
 	@$(DART) format build/dart-fixed >/dev/null
 	@touch $@
 
+# HB, the unit test/conformance/dart/rows/C12.dart imports
+# (build/hb-dart/HBFixed.dart): make/conformance-rows.mk builds it for the
+# Dart rows.
+build/hb-dart/.stamp: bin/schema test/tables/HB.schema make/dart.mk
+	@rm -rf build/hb-dart
+	./bin/schema generate --lang dart --out build/hb-dart test/tables/HB.schema
+	@touch $@
+
 .PHONY: tables-dart-fixed-form
-tables-dart-fixed-form: build/dart-fixed/.stamp build/fixedform-corpus/.stamp build/fixedform-bench-corpus/.stamp
+tables-dart-fixed-form: build/retiredskips build/dart-fixed/.stamp build/fixedform-corpus/.stamp build/fixedform-bench-corpus/.stamp
 	$(DART) analyze --no-fatal-warnings build/dart-fixed test/dart-tables/fixedform.dart
 	$(DART) format --set-exit-if-changed --output=none test/dart-tables/fixedform.dart
 	@for f in build/dart-fixed/*/*Fixed.dart; do \
@@ -881,10 +891,10 @@ tables-dart-fixed-form: build/dart-fixed/.stamp build/fixedform-corpus/.stamp bu
 			{ echo "dart format drift in $$f"; exit 1; }; \
 	done
 	@echo "tables Dart fixed form: every generated library is format-canonical"
-	$(DART) --enable-asserts test/dart-tables/fixedform.dart build/fixedform-corpus build/fixedform-bench-corpus
+	./build/retiredskips -leg dart -- $(DART) --enable-asserts test/dart-tables/fixedform.dart build/fixedform-corpus build/fixedform-bench-corpus
 	@mkdir -p build
 	$(DART) compile exe -o build/dart_fixedform test/dart-tables/fixedform.dart >/dev/null
-	./build/dart_fixedform build/fixedform-corpus build/fixedform-bench-corpus
+	./build/retiredskips -leg dart -- ./build/dart_fixedform build/fixedform-corpus build/fixedform-bench-corpus
 
 # ITS NEGATIVE CONTROL: move ONE byte of the write template and the leg must go
 # red against the reference's corpus. Without this the byte comparison could be
@@ -1777,22 +1787,22 @@ include make/schema-dart-generated-strict-analyze-gate.mk
 # removes the text_holds_zero refusal (docs/SPEC-TABLES.md §16.3) and turns
 # exactly the two carried json-hostile zero rows red. Nothing tracked is written.
 .PHONY: conformance-negative-control-dart-walk conformance-negative-control-dart-zero
-conformance-negative-control-dart-walk: build/conformance-harness
+conformance-negative-control-dart-walk: build/conformance-harness build/conformance-dart
 	sh test/conformance/dart/negative-control walk "$(DART)"
 
-conformance-negative-control-dart-zero: build/conformance-harness
+conformance-negative-control-dart-zero: build/conformance-harness build/conformance-dart
 	sh test/conformance/dart/negative-control zero "$(DART)"
 
 # THE FRAMING SURFACE'S (docs/LAYERS/1-framing.md F6): the 4096-entry id-table
 # maximum out of the reader, and `framing` goes red on frame_entries_4097 alone.
 .PHONY: conformance-negative-control-dart-framing
-conformance-negative-control-dart-framing: build/conformance-harness
+conformance-negative-control-dart-framing: build/conformance-harness build/conformance-dart
 	sh test/conformance/dart/negative-control framing "$(DART)"
 
 # THE SHARED-NODE LABEL'S (M14): _writePtr writes every node in place, so the
 # &node label is gone and `json-write` goes red on graph_shared alone.
 .PHONY: conformance-negative-control-dart-share
-conformance-negative-control-dart-share: build/conformance-harness
+conformance-negative-control-dart-share: build/conformance-harness build/conformance-dart
 	sh test/conformance/dart/negative-control share "$(DART)"
 
 # PER-CASE ABSENT (I4): the driver's `<case>.absent` writes renamed away, so
@@ -1804,7 +1814,7 @@ conformance-negative-control-dart-absent: build/conformance-harness build/confor
 # THE BLOCK FORM'S OWN (I11): the pitch check out of the block Open, the forged
 # image block_pitch open, `forgery` red on that row alone.
 .PHONY: conformance-negative-control-dart-block
-conformance-negative-control-dart-block: build/conformance-harness
+conformance-negative-control-dart-block: build/conformance-harness build/conformance-dart
 	sh test/conformance/dart/negative-control block "$(DART)"
 
 test-dart: conformance-negative-control-dart-block
@@ -1858,16 +1868,18 @@ tables-dart-wire-fuzz: build/conformance-harness build/conformance-dart
 # (tools/sabotage table-dart-wire-widen), every unit the driver reads is
 # regenerated from that compiler and the driver rebuilt on the copy, and the
 # fuzzer must go red on the report comparison, at seed 1 with no random pass.
-tables-dart-wire-fuzz-negative-control: build/conformance-harness
+tables-dart-wire-fuzz-negative-control: build/conformance-harness build/conformance-dart
 	sh test/conformance/dart/negative-control wire "$(DART)"
 
 test-dart: tables-dart-wire-fuzz tables-dart-wire-fuzz-negative-control
 
-# THE DRIVER'S STDIN QUEUE is linear: test/conformance/dart/chunk_queue.dart
-# keeps chunks and a read offset instead of removing each frame from the front
-# of one growing list (quadratic with 256 large mutants queued, against the
-# harness's 30 s per-mutant limit). The unit test counts bytes copied, with no
-# clock, and its control runs the same test against the old reader.
+# THE DRIVER'S STDIN QUEUE is linear: ChunkQueue in test/conformance/dart/
+# main.dart (the block between its BEGIN/END ChunkQueue markers, which
+# chunk-queue-check slices out) keeps chunks and a read offset instead of
+# removing each frame from the front of one growing list (quadratic with 256
+# large mutants queued, against the harness's 30 s per-mutant limit). The unit
+# test counts bytes copied, with no clock, and its control runs the same test
+# against the old reader.
 .PHONY: dart-chunk-queue-test dart-chunk-queue-negative-control
 dart-chunk-queue-test:
 	sh test/conformance/dart/chunk-queue-check test "$(DART)"
@@ -1927,7 +1939,23 @@ test-dart: conformance-dart-text-boundary
 
 # the leg's generated units move with every unit schema the conformance
 # manifest names, not only with the ones listed above
-build/tables-generated-dart/.stamp: $(CONFORMANCE_UNIT_SCHEMAS)
+build/tables-generated-dart/.stamp: $(CONFORMANCE_UNIT_SCHEMAS) testdata/conformance/table-write-bounds/TableWriteBounds.schema
+
+build/conformance-write-bounds-dart.dill: build/tables-generated-dart/.stamp $(CARDS_DART_STAMP) build/tables-generated-dart-framing/countedmin/.stamp test/conformance/dart/main.dart
+	@mkdir -p build
+	$(DART) --enable-asserts --snapshot-kind=kernel --snapshot=$@ test/conformance/dart/main.dart >/dev/null
+
+.PHONY: table-write-bounds-dart
+table-write-bounds-dart: build/conformance-harness build/conformance-write-bounds-dart.dill
+	@printf 'dart %s --enable-asserts %s/build/conformance-write-bounds-dart.dill\n' "$(DART)" "$(CURDIR)" > build/conformance-write-bounds-dart.drivers
+	./build/conformance-harness run --drivers build/conformance-write-bounds-dart.drivers \
+		--only dart --surfaces write-refusal,wire,json-read,json-write --complete \
+		--manifest testdata/conformance/table-write-bounds/WRITE-BOUNDS.txt \
+		--json testdata/conformance/table-write-bounds \
+		--work build/conformance-write-bounds-dart
+
+test-dart: table-write-bounds-dart
+
 
 # A FORGED ORDINAL REFUSES (STRICT 100; docs/SPEC-TABLES.md §4,
 # docs/plans/strict-only.md). TestFixedVersioningForgedOrdinalBothPlans reads an
@@ -2039,6 +2067,25 @@ packet-end-dart-negative-control: packet-end-dart
 	@echo 'negative control: with no end check, the trailing byte and the set final-byte bits are accepted'
 
 test-dart: packet-end-dart packet-end-dart-negative-control
+
+# THE PACKET-VOID LEG (SPEC §4.8; make/checks/packet-void.mk): payload-free
+# union arms cost exactly their tag bits. The driver answers every case of
+# testdata/wire/packet-void/cases.txt through tools/casegate, on the JIT with
+# --enable-asserts (the writer's contract asserts live) and as a compiled exe.
+build/packet-void/dart/.stamp: bin/schema test/packet-void/Void.schema
+	@rm -rf build/packet-void/dart && mkdir -p build/packet-void/dart
+	./bin/schema generate --lang dart --out build/packet-void/dart $(PACKET_VOID_SCHEMA)
+	@touch $@
+
+.PHONY: packet-void-dart
+packet-void-dart: build/casegate build/packet-void/dart/.stamp
+	$(DART) analyze build/packet-void/dart test/packet-void/dart
+	$(DART) format --set-exit-if-changed --output=none build/packet-void/dart test/packet-void/dart
+	$(call packet_void_gate,dart) $(DART) --enable-asserts test/packet-void/dart/main.dart $(PACKET_VOID_PINS)
+	$(DART) compile exe -o build/packet-void/dart/checker test/packet-void/dart/main.dart >/dev/null
+	$(call packet_void_gate,dart) ./build/packet-void/dart/checker $(PACKET_VOID_PINS)
+
+test-dart: packet-void-dart
 
 # PACKET COMPRESSED FLOATS HOLD THEIR RANGE (docs/SPEC.md §5.1 row 10,
 # docs/PACKET-WIRE-ALGORITHM.md §2.5): the writer checks the value finite and

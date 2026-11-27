@@ -611,23 +611,33 @@ end
 
 -- type Vec3 (SPEC §6.1: the wire order is the declared order)
 function _M.WriteVec3(stream, v)
+  if type(v) ~= "table" then return false end
+  if math.type(v.X) ~= "float" then return false end
   if not stream:serializeDouble({ value = v.X }) then return false end
+  if math.type(v.Y) ~= "float" then return false end
   if not stream:serializeDouble({ value = v.Y }) then return false end
+  if math.type(v.Z) ~= "float" then return false end
   if not stream:serializeDouble({ value = v.Z }) then return false end
   return true
 end
 
 -- type Quat (SPEC §6.1: the wire order is the declared order)
 function _M.WriteQuat(stream, v)
+  if type(v) ~= "table" then return false end
+  if math.type(v.X) ~= "float" then return false end
   if not stream:serializeDouble({ value = v.X }) then return false end
+  if math.type(v.Y) ~= "float" then return false end
   if not stream:serializeDouble({ value = v.Y }) then return false end
+  if math.type(v.Z) ~= "float" then return false end
   if not stream:serializeDouble({ value = v.Z }) then return false end
+  if math.type(v.W) ~= "float" then return false end
   if not stream:serializeDouble({ value = v.W }) then return false end
   return true
 end
 
 -- type Handle (SPEC §6.1: the wire order is the declared order)
 function _M.WriteHandle(stream, v)
+  if type(v) ~= "table" then return false end
   if math.type(v.ObjectId) ~= "integer" or v.ObjectId < 0 or v.ObjectId > 9999 then return false end
   if not stream:serializeBits({ value = v.ObjectId - 0 }, 14) then return false end -- the offset from min
   -- the declared width (SPEC §5.1 row 11)
@@ -638,6 +648,7 @@ end
 
 -- type QuantizedPosition (SPEC §6.1: the wire order is the declared order)
 function _M.WriteQuantizedPosition(stream, v)
+  if type(v) ~= "table" then return false end
   if math.type(v.X) ~= "integer" or v.X < -8388608 or v.X > 8388608 then return false end
   if not stream:serializeBits({ value = v.X - -8388608 }, 25) then return false end -- the offset from min
   if math.type(v.Y) ~= "integer" or v.Y < -8388608 or v.Y > 8388608 then return false end
@@ -649,6 +660,7 @@ end
 
 -- type QuantizedVelocity (SPEC §6.1: the wire order is the declared order)
 function _M.WriteQuantizedVelocity(stream, v)
+  if type(v) ~= "table" then return false end
   if math.type(v.X) ~= "integer" or v.X < -2097152 or v.X > 2097152 then return false end
   if not stream:serializeBits({ value = v.X - -2097152 }, 23) then return false end -- the offset from min
   if math.type(v.Y) ~= "integer" or v.Y < -2097152 or v.Y > 2097152 then return false end
@@ -660,6 +672,7 @@ end
 
 -- type QuantizedRotation (SPEC §6.1: the wire order is the declared order)
 function _M.WriteQuantizedRotation(stream, v)
+  if type(v) ~= "table" then return false end
   if math.type(v.X) ~= "integer" or v.X < -1024 or v.X > 1024 then return false end
   if not stream:serializeBits({ value = v.X - -1024 }, 12) then return false end -- the offset from min
   if math.type(v.Y) ~= "integer" or v.Y < -1024 or v.Y > 1024 then return false end
@@ -673,8 +686,10 @@ end
 
 -- type RigidBody (SPEC §6.1: the wire order is the declared order)
 function _M.WriteRigidBody(stream, v)
+  if type(v) ~= "table" then return false end
   if not _M.WriteVec3(stream, v.Position) then return false end
   if not _M.WriteQuat(stream, v.Orientation) then return false end
+  if type(v.AtRest) ~= "boolean" then return false end
   if not stream:serializeBool({ value = v.AtRest }) then return false end -- SPEC §4.3
   if not v.AtRest then
     if not _M.WriteVec3(stream, v.LinearVelocity) then return false end
@@ -685,24 +700,39 @@ end
 
 -- type Input (SPEC §6.1: the wire order is the declared order)
 function _M.WriteInput(stream, v)
+  if type(v) ~= "table" then return false end
+  if math.type(v.StickX) ~= "float" then return false end
   if not stream:serializeFloat({ value = v.StickX }) then return false end
+  if math.type(v.StickY) ~= "float" then return false end
   if not stream:serializeFloat({ value = v.StickY }) then return false end
+  if math.type(v.Throttle) ~= "float" then return false end
   if not stream:serializeFloat({ value = v.Throttle }) then return false end
+  if math.type(v.Yaw) ~= "float" then return false end
   if not stream:serializeFloat({ value = v.Yaw }) then return false end
+  if math.type(v.Pitch) ~= "float" then return false end
   if not stream:serializeFloat({ value = v.Pitch }) then return false end
+  if type(v.Fire) ~= "boolean" then return false end
   if not stream:serializeBool({ value = v.Fire }) then return false end -- SPEC §4.3
+  if type(v.AltFire) ~= "boolean" then return false end
   if not stream:serializeBool({ value = v.AltFire }) then return false end -- SPEC §4.3
+  if type(v.Boost) ~= "boolean" then return false end
   if not stream:serializeBool({ value = v.Boost }) then return false end -- SPEC §4.3
+  if type(v.Brake) ~= "boolean" then return false end
   if not stream:serializeBool({ value = v.Brake }) then return false end -- SPEC §4.3
+  if type(v.Aim) ~= "boolean" then return false end
   if not stream:serializeBool({ value = v.Aim }) then return false end -- SPEC §4.3
+  if type(v.LockOn) ~= "boolean" then return false end
   if not stream:serializeBool({ value = v.LockOn }) then return false end -- SPEC §4.3
+  if type(v.Zoom) ~= "boolean" then return false end
   if not stream:serializeBool({ value = v.Zoom }) then return false end -- SPEC §4.3
+  if type(v.Ping) ~= "boolean" then return false end
   if not stream:serializeBool({ value = v.Ping }) then return false end -- SPEC §4.3
   return true
 end
 
 -- type InputPacket (SPEC §6.1: the wire order is the declared order)
 function _M.WriteInputPacket(stream, v)
+  if type(v) ~= "table" then return false end
   -- the declared width (SPEC §5.1 row 11)
   if math.type(v.SynchronizeSequence) ~= "integer" or v.SynchronizeSequence < 0 or v.SynchronizeSequence > 65535 then
     return false
@@ -712,6 +742,7 @@ function _M.WriteInputPacket(stream, v)
   if not stream:serializeBits64({ value = v.CurrentFrame }, 64) then return false end -- the storage width
   if math.type(v.StartFrame) ~= "integer" then return false end
   if not stream:serializeBits64({ value = v.StartFrame }, 64) then return false end -- the storage width
+  if type(v.Inputs) ~= "table" then return false end
   -- the count guards the loop (SPEC §6.3)
   if math.type(v.InputsCount) ~= "integer" or v.InputsCount < 0 or v.InputsCount > 16 then return false end
   if not stream:serializeBits({ value = v.InputsCount }, 5) then return false end -- the count
@@ -723,11 +754,13 @@ end
 
 -- type ShipCreate (SPEC §6.1: the wire order is the declared order)
 function _M.WriteShipCreate(stream, v)
+  if type(v) ~= "table" then return false end
   if math.type(v.ShipType) ~= "integer" or v.ShipType < 0 or v.ShipType > 5 then return false end
   if not stream:serializeBits({ value = v.ShipType }, 3) then return false end -- the enum value
   if not _M.WriteQuantizedPosition(stream, v.Position) then return false end
   if not _M.WriteQuantizedRotation(stream, v.Rotation) then return false end
   if not _M.WriteQuantizedVelocity(stream, v.LinearVelocity) then return false end
+  if type(v.HasFlags) ~= "boolean" then return false end
   if not stream:serializeBool({ value = v.HasFlags }) then return false end -- SPEC §4.3
   if v.HasFlags then
     if math.type(v.Flags) ~= "integer" or v.Flags < 0 or v.Flags >= 16 then return false end
@@ -745,6 +778,7 @@ end
 
 -- type ExpressionProbe (SPEC §6.1: the wire order is the declared order)
 function _M.WriteExpressionProbe(stream, v)
+  if type(v) ~= "table" then return false end
   if math.type(v.HardpointIndex) ~= "integer" or v.HardpointIndex < 0 or v.HardpointIndex > 31 then return false end
   if not stream:serializeBits({ value = v.HardpointIndex - 0 }, 5) then return false end -- the offset from min
   if math.type(v.SpinRate) ~= "integer" or v.SpinRate < 1024 or v.SpinRate > 2048 then return false end
@@ -754,6 +788,7 @@ end
 
 -- type ExtremeProbe (SPEC §6.1: the wire order is the declared order)
 function _M.WriteExtremeProbe(stream, v)
+  if type(v) ~= "table" then return false end
   if math.type(v.FloorBound) ~= "integer" or v.FloorBound < math.mininteger or v.FloorBound > 100 then return false end
   -- the offset from min
   if not stream:serializeBits64({ value = v.FloorBound - math.mininteger }, 64) then return false end
@@ -779,6 +814,7 @@ end
 
 -- type ExtremeRow (SPEC §6.1: the wire order is the declared order)
 function _M.WriteExtremeRow(stream, v)
+  if type(v) ~= "table" then return false end
   if math.type(v.ClampedFloor) ~= "integer" or v.ClampedFloor < math.mininteger or v.ClampedFloor > 100 then
     return false
   end

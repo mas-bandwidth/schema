@@ -35,7 +35,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // cookWriteSet is the unit's records this writer carries: every emitted body
@@ -488,14 +488,12 @@ func (g *gen) emitCookElement(b *strings.Builder, f *ir.Field, x, at, ind string
 	case ir.TNamed:
 		switch ref := t.Ref.(type) {
 		case *ir.Enum:
-			// the slot stores the ORDINAL, not the wire's name hash (§7.2).
-			// A deprecated variant is refused (docs/SPEC-TABLES.md §2.15,
-			// §7.6); an ordinal past the set cannot be built (native enum).
-			// Rust write checks are debug asserts (the ruling `write-refusal`;
-			// variablecodec.go's enumRef): a release build carries none
-			if pat := deprecatedPattern(ref); pat != "" {
-				fmt.Fprintf(b, "%sdebug_assert!(!matches!(%s, %s), %q);\n", ind, cookVal(x), pat, "invalid_value: "+ref.Name+" holds a deprecated variant")
+			for i, variant := range ref.Variants {
+				if !f.Deprecated && variantDeprecated(ref, i) {
+					fmt.Fprintf(b, "%sdebug_assert!(%s != %s::%s, %q);\n", ind, cookVal(x), ref.Name, rustVariant(variant), "invalid_value: "+ref.Name+"."+variant+" is deprecated")
+				}
 			}
+			// the slot stores the ORDINAL, not the wire's name hash (§7.2)
 			fmt.Fprintf(b, "%sw.put(%s, %s, %d);\n", ind, at, cookCast(x, ref.Name, "u64"), ir.StorageBitsFor(ref.Max)/8)
 		case *ir.Flags:
 			fmt.Fprintf(b, "%sw.put(%s, %s, 8);\n", ind, at, cookVal(x))

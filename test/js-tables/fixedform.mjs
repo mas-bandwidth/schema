@@ -70,7 +70,7 @@ const LAYOUT_AT = 20;
 // that layout being in the reader's lineage, and asserts the RUN-TIME WALK of a
 // stranger's layout — the seven §1.1 names fired at read time, a plan compiled
 // from a file's bytes, a cache keyed by hash, a forward read. §5.6 retires
-// exactly that: under §5 every one of those files comes back layout_newer, which
+// exactly that: under §5 every one of those files comes back layout_unknown, which
 // is the new law and not a regression. The coverage is owed on the lineage
 // harness, internal/codegen/jstable/fixedversioning_test.go, where the peer's
 // entry is handed to the reader as its lock — and §1.1's seven rules are owed as
@@ -1823,7 +1823,7 @@ function referenceOracleIdentity(check, fx1, fx1home, oracleDir) {
 
 // RETIRED BY §5.6 (called by name at the call site, kept compiling, §5.9 #23):
 // fx2.bin is ANOTHER WRITER'S LAYOUT and FX1 has no lineage entry for its hash,
-// so under §5 this file comes back layout_newer. The coverage is owed on the
+// so under §5 this file comes back layout_unknown. The coverage is owed on the
 // lineage harness, where FX2's entry is HANDED to the reader as its lock.
 function referenceOracleCompiled(check, fx1, fx1home, oracleDir) {
   const read = (name) => {
