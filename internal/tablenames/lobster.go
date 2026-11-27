@@ -191,7 +191,8 @@ var lobsterRuntimeNames = map[string][]string{
 		"cur_u8", "em_body", "em_content", "em_framed", "em_framed_in", "em_known", "em_payload", "em_record",
 		"em_ref", "em_resolved", "known_ids", "load_retain", "map_value_id", "note_known", "res_body",
 		"res_content", "res_framed", "res_id", "res_keyed_slot", "res_mark", "res_patch", "res_payload", "res_raw",
-		"res_skip_payload", "res_u64", "res_u8", "retain_depth_cap", "retained_no_id", "save_retain",
+		"res_skip_payload", "res_u64", "res_u8", "retain_depth_cap", "retain_empty", "retain_loads", "retained_no_id",
+		"save_retain",
 	},
 	"schema_save.lobster": {
 		"save_at_birth",
