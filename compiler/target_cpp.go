@@ -30,6 +30,9 @@ func (t cppTarget) Generate(u *ir.Unit, opts Options) (map[string][]byte, error)
 // interim. So the OPEN is shared here and the interpretation is not, yet — the
 // entries of §5.9 #1 are what it will take the day the convention goes away.
 func (cppTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage) (map[string][]byte, error) {
+	if err := cppMemberNames(u); err != nil {
+		return nil, err
+	}
 	// a declared type spelled like a libc name or a platform macro is handed to
 	// the emitters under the type escape, and the pass after them keeps the
 	// user's type and the platform's name apart (cqualify/cpp.go); a unit

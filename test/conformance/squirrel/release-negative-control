@@ -36,7 +36,7 @@ grep '^unit ' testdata/conformance/tables/MANIFEST.txt | while read -r _ key pat
 	rm -f "$out/$key.log"
 done
 if SCHEMA_SQUIRREL_CONFORMANCE="$root/$out/conformance-squirrel" ./build/conformance-harness wire-fuzz \
-	--driver "$SQ test/conformance/squirrel/wirefuzz.nut builder" --builder "$@" --failed "$out/failed.bin" > "$out/log" 2>&1; then
+	--driver "test/conformance/squirrel/wirefuzz-driver builder" --builder "$@" --failed "$out/failed.bin" > "$out/log" 2>&1; then
 	echo "NEGATIVE CONTROL FAILED (release): the sabotage left the builder arm green" >&2
 	cat "$out/log" >&2
 	exit 1

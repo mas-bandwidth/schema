@@ -622,6 +622,39 @@ fn read_u32() -> io::Result<u32> {
     Ok(u32::from_le_bytes(b))
 }
 
+// THE STREAM ENDS ONLY BETWEEN FRAMES (test/conformance/harness/wireeof.go):
+// Ok(None) is EOF before the index's first byte, the clean close. EOF after it
+// (1 to 3 index bytes), or inside the length or the body, is a truncated frame:
+// the leg names it on stderr and exits 1, and the cut bytes never reach a codec.
+fn truncated(what: &str) -> ! {
+    eprintln!("wire-fuzz: the stream ended inside {what}");
+    std::process::exit(1);
+}
+
+fn read_index() -> Option<u32> {
+    let mut b = [0u8; 4];
+    let mut got = 0;
+    while got < 4 {
+        match io::stdin().read(&mut b[got..]) {
+            Ok(0) if got == 0 => return None,
+            Ok(0) => truncated("a mutant index"),
+            Ok(n) => got += n,
+            Err(e) if e.kind() == io::ErrorKind::Interrupted => {}
+            Err(e) => {
+                eprintln!("wire-fuzz: reading a mutant index: {e}");
+                std::process::exit(1);
+            }
+        }
+    }
+    Some(u32::from_le_bytes(b))
+}
+
+fn read_frame_part(buf: &mut [u8], what: &str) {
+    if io::stdin().read_exact(buf).is_err() {
+        truncated(what);
+    }
+}
+
 fn read_name() -> io::Result<String> {
     let mut n = [0u8; 2];
     io::stdin().read_exact(&mut n)?;
@@ -664,21 +697,19 @@ fn main() {
     }
     let _ = out.flush();
     loop {
-        let index = match read_u32() {
-            Ok(i) => i as usize,
-            Err(_) => return, // EOF ends the stream
+        let index = match read_index() {
+            Some(i) => i as usize,
+            None => return, // the harness closed the stream between frames
         };
-        let size = match read_u32() {
-            Ok(s) => s as usize,
-            Err(_) => return,
-        };
+        let mut size = [0u8; 4];
+        read_frame_part(&mut size, "a mutant length");
+        let size = u32::from_le_bytes(size) as usize;
         if index >= roster.len() || !roster[index].2 {
-            return;
+            eprintln!("wire-fuzz: a mutant for roster entry {index}, which this leg answered 0");
+            std::process::exit(1);
         }
         let mut wire = vec![0u8; size];
-        if io::stdin().read_exact(&mut wire).is_err() {
-            return;
-        }
+        read_frame_part(&mut wire, "a mutant");
         let (unit, root, _, retain, fixed, form) = &roster[index];
         let Some(mut reply) = (match *form {
             2 => drive_message(unit, root, &wire),
