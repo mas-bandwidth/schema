@@ -27,8 +27,8 @@ import (
 	"sort"
 	"strings"
 
-	schemacheck "github.com/mas-bandwidth/schema/v2/internal/check"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	schemacheck "github.com/mas-bandwidth/schema/v3/internal/check"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // tkU8 is the table-wire kind of a uint8 (docs/SPEC-TABLES.md §3), the one
@@ -308,4 +308,69 @@ func checkUnsupportedConstructs(u *ir.Unit) error {
 		}
 	}
 	return nil
+}
+
+// ---- generator-name safety (SPEC §4.6) ----
+//
+// The table libraries declare their own locals, parameters and members, all
+// lowerCamelCase or _private (v, r, w, at, view, kind, len, vid, ...), and a
+// schema enum may be named like any of them: `enum at` is a name the checker
+// accepts, and the generated code must build. A lowercase enum is therefore
+// never spelled bare inside a table library, where one of those names could
+// hide it: the library imports the enum's declaring file under the prefix
+// enumPrefix and spells the enum through it. "$" is in no schema identifier
+// (SPEC §4.1) and in no name this emitter declares, so nothing can hide the
+// prefix. An enum named with a capital is spelled bare, as before: no name
+// the emitter declares starts with one, and its output stays as it was.
+
+// enumPrefix is the library prefix every table library imports its
+// lowercase enums under; a library may import several files under it.
+const enumPrefix = "$enums"
+
+// prefixedEnum reports whether the enum named name is spelled through
+// enumPrefix: every enum whose name does not start with a capital.
+func prefixedEnum(name string) bool {
+	return name != "" && (name[0] < 'A' || name[0] > 'Z')
+}
+
+// dartEnumRef is how a table library spells the enum named name, in a type
+// position or before a static member: through enumPrefix when prefixedEnum.
+func dartEnumRef(name string) string {
+	if prefixedEnum(name) {
+		return enumPrefix + "." + name
+	}
+	return name
+}
+
+// isUnitEnum reports whether name is an enum the unit declares.
+func isUnitEnum(u *ir.Unit, name string) bool {
+	for _, f := range u.Files {
+		for _, d := range f.Decls {
+			if e, ok := d.(*ir.Enum); ok && e.Name == name {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// splitEnumShows takes the names a library imports from one file with
+// `show` and moves the prefixed enums out: it answers the names left to
+// show and whether the file must also be imported under enumPrefix.
+func splitEnumShows(u *ir.Unit, names []string) ([]string, bool) {
+	var keep []string
+	prefixed := false
+	for _, n := range names {
+		if prefixedEnum(n) && isUnitEnum(u, n) {
+			prefixed = true
+			continue
+		}
+		keep = append(keep, n)
+	}
+	return keep, prefixed
+}
+
+// enumPrefixImport is the import line that brings a file's prefixed enums in.
+func enumPrefixImport(uri string) string {
+	return fmt.Sprintf("import '%s' as %s;\n", uri, enumPrefix)
 }

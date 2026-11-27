@@ -334,7 +334,7 @@ defmodule Driver do
   # the accelerators' surfaces beside the variable form's: wire, json-read,
   # json-write, json-hostile and report ride the <Unit>.Table codec, the rest
   # the block and cook readers
-  @surfaces ~w(wire message message-prior retain retain-save json-read json-write json-hostile report framing cook cook-write cook-foreign block block-foreign block-dump forgery cook-forgery cook-reason block-reason write-refusal write-refusal-fixed write-refusal-message write-refusal-json write-refusal-cook write-refusal-block announce read-into json-write-into)
+  @surfaces ~w(wire message message-prior retain retain-save retain-refusal json-read json-write json-hostile report framing cook cook-write cook-foreign block block-foreign block-dump forgery cook-forgery cook-reason block-reason write-refusal write-refusal-fixed write-refusal-message write-refusal-json write-refusal-cook write-refusal-block write-refusal-shape announce read-into json-write-into)
 
   def main([manifest, "list"]) do
     _ = manifest
@@ -583,6 +583,10 @@ defmodule Driver do
 
     cases = Enum.reject(rows(rows, "retain"), fn row -> saves and List.last(row) == "-" end)
     each_case(surface, cases, fn row -> retain_row(row, saves, outdir) end)
+  end
+
+  defp run("retain-refusal", rows, outdir) do
+    each_case("retain-refusal", rows(rows, "retain-refusal"), fn row -> retain_refusal_row(row, outdir) end)
   end
 
   # A text surface skips a `no-text` instance (FORMAT.md), so it reads only
@@ -909,6 +913,57 @@ defmodule Driver do
     end)
   end
 
+  # THE SHAPE ROWS (`write-refusal-shape`; docs/SPEC-CONFORMANCE.md
+  # DW-TABLE-SHAPE): a value of the WRONG KIND where the path names, written by
+  # the root's own writer, which must refuse it by its answer. A lawful twin
+  # (any other kind) is set as `write-refusal` sets it. Here an exception is
+  # answered `raised` (red against either verdict) and named on stderr, rather
+  # than ending the case in a driver error: a writer that crashes on a value of
+  # the wrong kind is the failure these rows exist to find. The refusal the
+  # codec's contract spells (codec_refusal?/2) is still `refused`.
+  defp run("write-refusal-shape", rows, outdir) do
+    each_case("write-refusal-shape", rows(rows, "write-refusal-shape"), fn
+      [name, unit, root, wire, path, kind, text | _] ->
+        mod = codec(unit, root)
+
+        if mod == nil do
+          write_absent(outdir, name)
+        else
+          ns = namespace(unit_package(unit))
+
+          value =
+            case mod.load(root, File.read!(wire)) do
+              {:ok, value, _report} -> value
+              other -> raise "the codec did not load the row's instance: #{inspect(other)}"
+            end
+
+          set =
+            if kind == "shape" do
+              WriteRefusal.shape(value, path, text)
+            else
+              WriteRefusal.set(%{mod: mod, ns: ns, descs: mod.descriptors()}, root, value, path, kind, text)
+            end
+
+          answer =
+            case set do
+              :unrepresentable ->
+                "unrepresentable"
+
+              {:ok, changed} ->
+                try do
+                  write_refusal_answer("write-refusal", mod, ns, root, changed, false)
+                rescue
+                  e ->
+                    IO.puts(:stderr, "#{name}: the writer raised: #{Exception.format(:error, e, __STACKTRACE__)}")
+                    "raised"
+                end
+            end
+
+          write(outdir, name, answer <> "\n")
+        end
+    end)
+  end
+
   # THE MESSAGE FORM's writer: the row's <unit> is a connection whose announced
   # vocabulary the batch of one is written against. The body is the instance's
   # own message (its `message` row's batch), read through that vocabulary, and
@@ -1212,6 +1267,138 @@ defmodule Driver do
     e -> "threw " <> inspect(e.__struct__) <> "\n"
   end
 
+  # THE RETAIN FORM (test/conformance/README.md; SPEC-TABLES §6.5, §6.6): the
+  # retaining load of a variable root into ONE report the driver pre-fills,
+  # then the damaged load and the lawful load again into that same report.
+  # Elixir reports are maps the caller may build freely, so every field is set
+  # directly (every counter nonzero, the reason and the missing_required flag
+  # set, and a stray blob_shared); no refused read is needed to fill it. The
+  # returned report is threaded from one step to the next, and after each
+  # lawful load it must equal, field by field, the report the same load
+  # leaves in a FRESH report.
+  defp read_into(unit, root, "retain", lawful, damaged, _count, _announcement) do
+    mod = table_module(unit) || raise "read-into: unit #{unit} has no Table module"
+    zero = %{unknown: 0, widened: 0, retained: 0, retain_lost: 0, reason: "", missing_required: 0}
+
+    load = fn path, report ->
+      # a roomy retention buffer, a fresh one for every load
+      retain = %{records: [], used: 0, cap: 1_048_576, ids: [], id_cap: 131_072}
+
+      try do
+        case mod.load_retain(root, File.read!(path), retain, report) do
+          {:ok, _value, report, _retain} -> {"read\n", report}
+          {:error, _reason, report, _retain} -> {"refused\n", report}
+        end
+      rescue
+        _ -> {"threw\n", report}
+      end
+    end
+
+    {fresh_line, fresh} = load.(lawful, zero)
+
+    if fresh_line != "read\n" do
+      raise "ri_retain: the lawful retaining load did not read into a fresh report (#{fresh_line})"
+    end
+
+    compare = fn report ->
+      if report == fresh,
+        do: "zeroed\n",
+        else: "kept #{inspect(report)} want #{inspect(fresh)}\n"
+    end
+
+    stale = %{
+      unknown: 7,
+      widened: 7,
+      retained: 7,
+      retain_lost: 7,
+      reason: "stale",
+      missing_required: 7,
+      blob_shared: 7
+    }
+
+    {first, report} = load.(lawful, stale)
+    first_compare = compare.(report)
+    {second, report} = load.(damaged, report)
+    {third, report} = load.(lawful, report)
+    first <> first_compare <> second <> third <> compare.(report)
+  end
+
+  # THE REGION FORM (test/conformance/README.md; SPEC-TABLES §6.5): the retain
+  # protocol through the PLAIN load. The Elixir plain load has no region read
+  # and takes no report: it builds its own report and returns it, so there is
+  # nothing to pre-fill and the returned report is a fresh one by construction.
+  # The row still compares each lawful load's returned report with the first
+  # fresh one, and threads the damaged load between them.
+  defp read_into(unit, root, "region", lawful, damaged, _count, _announcement) do
+    mod = table_module(unit) || raise "read-into: unit #{unit} has no Table module"
+
+    load = fn path ->
+      try do
+        case mod.load(root, File.read!(path)) do
+          {:ok, _value, report} -> {"read\n", report}
+          {:error, _reason, report} -> {"refused\n", report}
+        end
+      rescue
+        _ -> {"threw\n", nil}
+      end
+    end
+
+    {fresh_line, fresh} = load.(lawful)
+
+    if fresh_line != "read\n" do
+      raise "ri_region: the lawful load did not read (#{fresh_line})"
+    end
+
+    compare = fn report ->
+      if report == fresh,
+        do: "zeroed\n",
+        else: "kept #{inspect(report)} want #{inspect(fresh)}\n"
+    end
+
+    {first, report} = load.(lawful)
+    first_compare = compare.(report)
+    {second, _} = load.(damaged)
+    {third, report} = load.(lawful)
+    first <> first_compare <> second <> third <> compare.(report)
+  end
+
+  # THE RETAIN-FIXED FORM (SPEC-TABLES §6.6 refuses a retaining load of a
+  # fixed-class root by name). load_retain on a fixed root is a runtime clause
+  # that takes the report and refuses through it (retainroots.go), so the row
+  # is answered, not `unrepresentable`: the refusal line, then whether the
+  # returned report equals the one the same call returns into a fresh report.
+  defp read_into(unit, root, "retain-fixed", lawful, _damaged, _count, _announcement) do
+    mod = table_module(unit) || raise "read-into: unit #{unit} has no Table module"
+    data = File.read!(lawful)
+    retain = %{records: [], used: 0, cap: 1_048_576, ids: [], id_cap: 131_072}
+    zero = %{unknown: 0, widened: 0, retained: 0, retain_lost: 0, reason: "", missing_required: 0}
+
+    stale = %{
+      unknown: 7,
+      widened: 7,
+      retained: 7,
+      retain_lost: 7,
+      reason: "stale",
+      missing_required: 7,
+      blob_shared: 7
+    }
+
+    line = fn
+      {:ok, _, _, _} -> "read\n"
+      {:error, _, _, _} -> "refused\n"
+    end
+
+    {:error, _, fresh, _} = mod.load_retain(root, data, retain, zero)
+    result = mod.load_retain(root, data, retain, stale)
+    {:error, _, report, _} = result
+
+    line.(result) <>
+      if(report == fresh,
+        do: "zeroed\n",
+        else: "kept #{inspect(report)} want #{inspect(fresh)}\n"
+      )
+  end
+
   defp read_into(unit, root, form, lawful, damaged, count, announcement) do
     n = String.to_integer(count)
     table = table_module(unit) || raise "read-into: unit #{unit} has no Table module"
@@ -1354,6 +1541,7 @@ defmodule Driver do
   @unit_packages %{
     "scalars" => "scalardemo",
     "tblscalars2" => "scalardemo2",
+    "packetunions" => "tblpacketunions",
     "widelist" => "widelistdemo",
     "tblsurf" => "surfaces",
     "tblann4096" => "announce4096",
@@ -1470,6 +1658,54 @@ defmodule Driver do
     end
   end
 
+
+  # ---- retain-refusal (test/conformance/README.md): ONE retention store through
+  # the retaining read of the first wire, the retaining save, the retaining read
+  # of the refused wire into the store those returned, and the retaining save of
+  # the first value through the store the refused read handed back. The
+  # verdicts and what the second save did go in <case>, the first save in
+  # <case>.before, the second in <case>.wire.
+  defp retain_refusal_row([name, unit, root, first, second | _], outdir) do
+    mod = table_module(unit)
+    roomy = 1_048_576
+    store = %{records: [], used: 0, cap: roomy, ids: [], id_cap: div(roomy, 8)}
+
+    empty = %{
+      unknown: 0,
+      widened: 0,
+      retained: 0,
+      retain_lost: 0,
+      reason: "",
+      missing_required: 0
+    }
+
+    case mod.load_retain(root, File.read!(first), store, empty) do
+      {:error, _reason, _report, _retain} ->
+        write(outdir, name, "refused\n")
+
+      {:ok, value, _report, retain} ->
+        {:ok, before, _save, retain} = mod.save_retain(root, value, retain, empty)
+        write(outdir, name <> ".before", before)
+
+        {verdict, retain} =
+          case mod.load_retain(root, File.read!(second), retain, empty) do
+            {:error, _reason, _report, after_refusal} -> {"refused\n", after_refusal}
+            {:ok, _other, _report, after_read} -> {"read\n", after_read}
+          end
+
+        saved =
+          case mod.save_retain(root, value, retain, empty) do
+            {:ok, out, _save, _retain} ->
+              write(outdir, name <> ".wire", out)
+              "saved\n"
+
+            _ ->
+              "save-refused\n"
+          end
+
+        write(outdir, name, "read\n" <> verdict <> saved)
+    end
+  end
   # cook-write (docs/SPEC-TABLES.md §7.6): load the instance, measure, refuse a
   # short buffer, then write both byte orders. A unit with no cook writer
   # writes <case>.absent rather than a wrong byte.
@@ -1881,6 +2117,92 @@ defmodule WriteRefusal do
   def set(ctx, root, value, path, kind, text) do
     set_in(ctx, Map.fetch!(ctx.descs, root), value, String.split(path, "."), kind, text)
   end
+
+  # ---- the shape rows (write-refusal-shape) ----
+  #
+  # shape/3 puts the token's value of the wrong kind where the path names:
+  # `int` 1, `float` 1.5, `numtext` "1.5", `text` "x", `bool` true, `null` nil,
+  # `map` %{}, `seq` [1] and `improper` the improper list [1 | 2]. `.` is the
+  # whole value. A path ending `f[i]` makes the list f its first i elements as
+  # loaded, then the value; one ending in an arm's name, under a union's
+  # {arm, payload}, selects that arm with the value as its payload. A map in a
+  # record's place, or a list in a list's, is a value of the right kind here
+  # (an Elixir record is a map, an array a list) and is `unrepresentable`; so
+  # is nil in a record field's or a record arm's place, which the writers read
+  # as the record at its defaults (a list element has no such spelling).
+  def shape({root_map, nodes}, path, token) when is_map(root_map) and path != "." do
+    case shape(root_map, path, token) do
+      {:ok, changed} -> {:ok, {changed, nodes}}
+      other -> other
+    end
+  end
+
+  def shape(_value, ".", token), do: {:ok, shape_token(token)}
+
+  def shape(value, path, token) do
+    x = shape_token(token)
+
+    try do
+      {:ok, shape_in(value, String.split(path, "."), x)}
+    catch
+      :unrepresentable -> :unrepresentable
+    end
+  end
+
+  defp shape_token("int"), do: 1
+  defp shape_token("float"), do: 1.5
+  defp shape_token("numtext"), do: "1.5"
+  defp shape_token("text"), do: "x"
+  defp shape_token("bool"), do: true
+  defp shape_token("null"), do: nil
+  defp shape_token("map"), do: %{}
+  defp shape_token("seq"), do: [1]
+  defp shape_token("improper"), do: [1 | 2]
+
+  defp shape_in(owner, [seg | rest], x) when is_map(owner) do
+    {name, index} = segment(seg)
+
+    unless Map.has_key?(owner, name),
+      do: raise("write-refusal-shape: #{inspect(seg)} names no field of the value")
+
+    current = Map.fetch!(owner, name)
+
+    new =
+      cond do
+        index != nil and rest == [] ->
+          shape_fits!(Enum.at(current, index), x)
+          Enum.take(current, index) ++ [x]
+
+        index != nil ->
+          List.replace_at(current, index, shape_in(Enum.at(current, index), rest, x))
+
+        rest == [] ->
+          shape_fits!(current, x)
+          # nil in a record's place is that record at its defaults, the Elixir
+          # writers' own spelling of it
+          if is_map(current) and x == nil, do: throw(:unrepresentable)
+          x
+
+        true ->
+          shape_in(current, rest, x)
+      end
+
+    Map.put(owner, name, new)
+  end
+
+  # an arm under a union: {arm, payload} with the arm selected
+  defp shape_in({arm, payload}, [arm_name], x) when is_binary(arm) do
+    if arm == arm_name, do: shape_fits!(payload, x)
+    if arm == arm_name and is_map(payload) and x == nil, do: throw(:unrepresentable)
+    {arm_name, x}
+  end
+
+  defp shape_in(owner, segs, _x),
+    do: raise("write-refusal-shape: #{Enum.join(segs, ".")} names no value under #{inspect(owner)}")
+
+  defp shape_fits!(current, x) when is_map(current) and is_map(x), do: throw(:unrepresentable)
+  defp shape_fits!(current, x) when is_list(current) and is_list(x) and x == [1], do: throw(:unrepresentable)
+  defp shape_fits!(_current, _x), do: :ok
 
   def set_message(ctx, root, body, path, kind, text) do
     set_body(ctx, Map.fetch!(ctx.descs, root), body, String.split(path, "."), kind, text)

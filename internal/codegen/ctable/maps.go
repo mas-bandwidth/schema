@@ -3,7 +3,7 @@ package ctable
 import (
 	"fmt"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 func (g *tableGen) sequenceCursor(f *ir.Field, n, value string) string {

@@ -12,10 +12,14 @@ package squirreltable_test
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/squirrel/sqrun"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/testinputs"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 // nightlyFuzzCorpus checks the file make writes, so a corpus that silently
@@ -61,6 +65,27 @@ func nightlyCampaign(t *testing.T) string {
 	return corpus
 }
 
+// nightlyCorpusFromMake writes the corpus file the nightly target reads, with
+// the target's own rule (make/schema-squirrel-nightly-fuzz.mk), for a run that
+// requires the corpus (SCHEMA_REQUIRE_CORPUS) and was not handed one by
+// SCHEMA_SQUIRREL_FUZZ_CORPUS: the schema set stays the Makefile's, and a rule
+// that cannot write it is a red naming make's own words.
+func nightlyCorpusFromMake(t *testing.T) string {
+	t.Helper()
+	root, err := sqrun.RepoRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	const file = "build/squirrel-nightly-fuzz/corpus.txt"
+	testinputs.Make(t, "tables")
+	cmd := testproc.Command(t, "make", "--no-print-directory", file)
+	cmd.Dir = root
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("SCHEMA_SQUIRREL_FUZZ_CORPUS is unset and `make %s` could not write the corpus: %v\n%s", file, err, out)
+	}
+	return filepath.Join(root, file)
+}
+
 // TestSquirrelNightlyFuzz is the target's test: the corpus the Makefile
 // selected, then the differential over every seed's full mutant count. A
 // campaign that cannot finish in the budget is killed by go test's -timeout,
@@ -70,6 +95,9 @@ func TestSquirrelNightlyFuzz(t *testing.T) {
 	slowtest.Gate(t, "the Squirrel interpreter and the tables conformance corpus")
 
 	corpus := nightlyCampaign(t)
+	if corpus == "" {
+		corpus = nightlyCorpusFromMake(t)
+	}
 	paths := nightlyFuzzCorpus(t, corpus)
 
 	n, err := runWireFuzzDifferential(t, nil)

@@ -11,7 +11,7 @@ import (
 // The policy checks must run with the same admission as the fast lint job,
 // and remain in a separate bounded job so all checks can finish.
 func TestCIFastPolicyJobCoverage(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join(repoRoot(t), ".github", "workflows", "ci-fast.yml"))
+	data, err := os.ReadFile(filepath.Join(repoRoot(t), ".github", "workflows", "ci-fast-nightly.yml"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,9 +41,12 @@ func fastPolicyErrors(wf string) []string {
 	jobs := yamlJobs(wf)
 	lint, policy := jobs["lint-fast"], jobs["ci-policy"]
 	var errs []string
-	admissionPrefix, admissionRest, ok := strings.Cut(jobIfCondition(wf, "ci-policy"), " && ")
-	wantLint := admissionPrefix + " && (always() && !cancelled() && " + admissionRest + ")"
-	if lint == "" || policy == "" || !ok || jobIfCondition(wf, "lint-fast") != wantLint {
+	// lint-fast is admitted exactly as ci-policy is, and status-aware so it
+	// reports when ci-policy fails. No branch-name prefix on either
+	// (TestNoJobRunsOnABranchName).
+	policyCond := jobIfCondition(wf, "ci-policy")
+	wantLint := "(always() && !cancelled() && " + policyCond + ")"
+	if lint == "" || policy == "" || policyCond == "" || jobIfCondition(wf, "lint-fast") != wantLint {
 		errs = append(errs, "policy and lint jobs must have the same admission, with status-aware lint")
 	}
 	const gate = `      - name: require CI policy success
@@ -79,6 +82,7 @@ func TestCIFastPolicyResultGate(t *testing.T) {
   exit 1
 fi`
 	for _, result := range []string{"success", "failure", "skipped", "cancelled", ""} {
+		// testinputs:none — runs the script constant above; reads no file
 		cmd := exec.Command("bash", "-e", "-c", script)
 		cmd.Env = append(os.Environ(), "POLICY_RESULT="+result)
 		err := cmd.Run()

@@ -19,7 +19,7 @@ import (
 	"math"
 	"math/big"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // readBodyRef is the expression that names the per-type body read of

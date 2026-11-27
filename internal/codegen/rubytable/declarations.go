@@ -4,7 +4,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // valueDecls returns a file's constants, enums and flags sets in emission order.

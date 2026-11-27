@@ -1,5 +1,7 @@
 #!/bin/sh
 # A CI artifact may replace the producer only for the exact checked-out source.
+# Jobs merge the same source independently, so the resulting tree identifies
+# source while each merge commit can have its own timestamp.
 # The ordinary local make target still produces and tests its corpus together.
 set -eu -o pipefail
 command=${1:-}
@@ -17,7 +19,7 @@ case "$command" in
     git diff --quiet HEAD -- || { echo 'fixed corpus producer requires clean tracked source' >&2; exit 1; }
     [ "$(git -C ../serialize rev-parse HEAD)" = "$runtime_pin" ] && [ -z "$(git -C ../serialize status --porcelain)" ] || { echo 'C++ reference runtime differs from its pin' >&2; exit 1; }
     make -j2 -B tables-fixedform-corpus
-    git rev-parse HEAD > "$revision"
+    git rev-parse 'HEAD^{tree}' > "$revision"
     printf '%s\n' "$runtime_pin" > "$runtime_record"
     ;;
   verify) ;;
@@ -25,11 +27,11 @@ case "$command" in
 esac
 [ -s "$corpus/manifest.txt" ] || { echo 'fixed corpus manifest is missing' >&2; exit 1; }
 [ -n "$(find "$corpus" -maxdepth 1 -name '*.bin' -type f)" ] || { echo 'fixed corpus has no wire files' >&2; exit 1; }
-[ -f "$revision" ] && [ "$(cat "$revision")" = "$(git rev-parse HEAD)" ] || { echo 'fixed corpus revision does not match this checkout' >&2; exit 1; }
+[ -f "$revision" ] && [ "$(cat "$revision")" = "$(git rev-parse 'HEAD^{tree}')" ] || { echo 'fixed corpus source tree does not match this checkout' >&2; exit 1; }
 [ -f "$runtime_record" ] && [ "$(cat "$runtime_record")" = "$runtime_pin" ] || { echo "fixed corpus runtime pin mismatch" >&2; exit 1; }
 snapshot=$(mktemp)
 trap 'rm -f "$snapshot"' EXIT HUP INT TERM
 (cd "$corpus" && find . -type f ! -name .stamp -print0 | LC_ALL=C sort -z | xargs -0 sha256sum) > "$snapshot"
 if [ "$command" = produce ]; then cp "$snapshot" "$inventory"; fi
 [ -f "$inventory" ] && cmp -s "$snapshot" "$inventory" || { echo 'fixed corpus inventory or bytes differ from its producer' >&2; exit 1; }
-printf 'fixed corpus verified for %s: %s files\n' "$(cat "$revision")" "$(wc -l < "$snapshot" | tr -d ' ')"
+printf 'fixed corpus verified for source tree %s: %s files\n' "$(cat "$revision")" "$(wc -l < "$snapshot" | tr -d ' ')"

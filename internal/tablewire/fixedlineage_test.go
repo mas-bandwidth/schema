@@ -8,11 +8,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/lockfile"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/compiler"
+	"github.com/mas-bandwidth/schema/v3/internal/lockfile"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // AN OLDER WRITER IS READ THROUGH THE LOCK, STRICTLY (docs/SPEC-TABLES.md §3.4,
@@ -115,6 +115,43 @@ func TestFixedLineageReadsAnOlderWriterStrictly(t *testing.T) {
 	}
 	if report.Widened != 1 {
 		t.Errorf("speed widened once: %+v", report)
+	}
+}
+
+// A FIELD THE OLDER WRITER DID NOT CARRY HOLDS ITS DECLARED DEFAULT EVEN IN A
+// REUSED INSTANCE (docs/SPEC-TABLES.md §3.4, THE PREFILL IS WHAT ANSWERS
+// "ABSENT FIELD"): this build's own record lands extra = 77, and the older
+// writer's record read into the SAME instance leaves extra at its declared 5,
+// exactly as a fresh instance read from that record holds it. The shared
+// corpus row ri_fixed_lineage holds the generated legs to the same rule; the
+// engine writes that row's answer into a fresh value, so the engine's own
+// reuse is held here.
+func TestFixedLineageReusedInstanceHoldsDefaults(t *testing.T) {
+	t.Parallel()
+	old, now := lockedPair(t)
+	mine, err := tablewire.Encode(now, place(t, now, "Cfg", `{"speed": 1, "name": "cd", "mode": "Fly", "gone": 2, "extra": 77}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	older := lineageWrite(t, old, `{"speed": -300, "name": "ab", "mode": "Run", "gone": 9}`)
+	read := func(inst *tabletext.Instance, wire []byte) string {
+		t.Helper()
+		var report tabletext.Report
+		if ok, err := tablewire.Decode(now, inst, wire, &report); !ok || err != nil {
+			t.Fatalf("read: ok=%v err=%v", ok, err)
+		}
+		text, err := now.Write(inst)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return strings.Join(strings.Fields(string(text)), " ")
+	}
+	reused := now.New(now.Lookup("Cfg"))
+	read(reused, mine)
+	got := read(reused, older)
+	want := read(now.New(now.Lookup("Cfg")), older)
+	if got != want {
+		t.Errorf("the older record read into a reused instance:\n%s\nwant what a fresh instance reads\n%s", got, want)
 	}
 }
 

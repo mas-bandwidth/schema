@@ -48,10 +48,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/internal/ast"
-	schemacheck "github.com/mas-bandwidth/schema/v2/internal/check"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/genheader"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/ast"
+	schemacheck "github.com/mas-bandwidth/schema/v3/internal/check"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/genheader"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // Generate returns basename.dart -> file contents for every file of the
@@ -472,7 +472,7 @@ func (g *gen) foldComment(e ast.Expr) string {
 // of its own.
 func (g *gen) emitTagEnum(name string, members, docs []string, max int64, comment string) {
 	g.bpf("// %s: %s\n", name, comment)
-	g.emitEnumType(name)
+	g.emitTagType(name)
 	g.bpf("  static const %s none = %s(0);\n", name, name)
 	for i, m := range members {
 		g.bpf("%s", ir.DocComment(docs[i], "  ", "///"))
@@ -486,13 +486,26 @@ func (g *gen) emitTagEnum(name string, members, docs []string, max int64, commen
 	// whichever enum it is. Nothing on the read or write path calls it.
 	g.bpf("// enumName%s: debug/log/tooling name for any %s wire value —\n", name, name)
 	g.bpf("// out-of-set values (wire-legal up to the declared max) name as '???'\n")
-	g.bpf("String enumName%s(int value) {\n", name)
-	g.bpf("  switch (value) {\n")
+	param := enumNameParam(name)
+	g.bpf("String enumName%s(int %s) {\n", name, param)
+	// the switch reads the int as the tag type: the tag is no int (emitTagType)
+	g.bpf("  switch (%s(%s)) {\n", name, param)
 	g.bpf("    case %s.none:\n      return 'None';\n", name)
 	for _, m := range members {
 		g.bpf("    case %s.%s:\n      return '%s';\n", name, dartName(m), m)
 	}
 	g.bpf("    default:\n      return '???';\n  }\n}\n\n")
+}
+
+// enumNameParam is the parameter enumName<E> takes: value, unless the enum
+// itself is named value, when the parameter would hide the type its switch
+// cases spell (SPEC §4.6, Generator-name safety); then $value, which no
+// schema identifier can spell (SPEC §4.1).
+func enumNameParam(enum string) string {
+	if enum == "value" {
+		return "$value"
+	}
+	return "value"
 }
 
 // emitEnumType opens an enum's (or a union tag's) extension type. It is
@@ -502,6 +515,19 @@ func (g *gen) emitTagEnum(name string, members, docs []string, max int64, commen
 // (a member, not a library-scope name), so no variant can collide with it.
 func (g *gen) emitEnumType(name string) {
 	g.bpf("extension type const %s(int _value) implements int {\n", name)
+}
+
+// emitTagType opens a union tag's extension type. Unlike an enum's it does
+// NOT implement int: the tag's statics are the union's arms, and a static may
+// not share a name with a member the type inherits, so a tag implementing int
+// could not carry an arm named bitLength, clamp, floor, isNaN, sign, truncate
+// or any other int or num member (SPEC §4.6, Generator-name safety). It
+// implements nothing, so the only inherited members are Object's, which the
+// checker already refuses for Dart (hashCode, runtimeType, toString,
+// noSuchMethod). It is still erased at compile time, a value IS its int; the
+// generated code reads the int as `tag as int` and builds a tag as Tag(n).
+func (g *gen) emitTagType(name string) {
+	g.bpf("extension type const %s(int _value) {\n", name)
 }
 
 func (g *gen) emitEnum(d *ir.Enum) {
@@ -521,8 +547,9 @@ func (g *gen) emitEnum(d *ir.Enum) {
 
 	g.bpf("// enumName%s: debug/log/tooling name for any %s wire value —\n", d.Name, d.Name)
 	g.bpf("// out-of-set values (wire-legal up to the declared max) name as '???'\n")
-	g.bpf("String enumName%s(int value) {\n", d.Name)
-	g.bpf("  switch (value) {\n")
+	param := enumNameParam(d.Name)
+	g.bpf("String enumName%s(int %s) {\n", d.Name, param)
+	g.bpf("  switch (%s) {\n", param)
 	g.bpf("    case %s.none:\n      return 'None';\n", d.Name)
 	for _, v := range d.Variants {
 		g.bpf("    case %s.%s:\n      return '%s';\n", d.Name, dartName(v), v)
@@ -1075,14 +1102,13 @@ func formatFloat(v float64) string {
 	return s
 }
 
-// formatFloat32 renders a float32-precision literal: the shortest form that
-// parses to exactly float32(v) — as a Dart double it holds that float32
-// value exactly (f32 ⊂ f64), so the wire widths agree with
-// ir.CompressedFloatBits in every target.
+// formatFloat32 renders float32(v) as a Dart double literal: functions.go's
+// f32lit, the shortest decimal of the float64 value, which Dart reads as
+// exactly that float32. The float32's own shortest decimal ("0.1") names
+// float32(0.1) only to a float32 parser; Dart reads it as the double 0.1, so
+// a float32 constant and a float32 default held a value the declaration does
+// not name (SPEC §4.3, "A FLOAT LITERAL IS A float64 FIRST";
+// test/verify-bitphase f32lit.go).
 func formatFloat32(v float64) string {
-	s := strconv.FormatFloat(v, 'g', -1, 32)
-	if !strings.ContainsAny(s, ".eE") {
-		s += ".0"
-	}
-	return s
+	return f32lit(v)
 }

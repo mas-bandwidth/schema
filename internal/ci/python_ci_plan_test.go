@@ -5,6 +5,8 @@ import (
 	"os/exec"
 	"sync"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v3/internal/testinputs"
 )
 
 // The Python CI planner lists the tests of four packages, which compiles their
@@ -22,6 +24,7 @@ var pythonCIPlanRun struct {
 func pythonCIPlan(t *testing.T) []byte {
 	t.Helper()
 	pythonCIPlanRun.once.Do(func() {
+		testinputs.Make(t, "compiler", "internal/codegen/python", "internal/codegen/pythontable")
 		cmd := exec.Command("sh", "tools/python-ci-rows.sh")
 		cmd.Dir = "../.."
 		pythonCIPlanRun.out, pythonCIPlanRun.err = cmd.CombinedOutput()

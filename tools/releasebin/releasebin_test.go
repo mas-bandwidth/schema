@@ -89,7 +89,7 @@ func TestParseTargets(t *testing.T) {
 func TestBuildArgsAndEnv(t *testing.T) {
 	t.Parallel()
 	args := strings.Join(BuildArgs("v3.1.0", "out/schema"), " ")
-	want := "build -trimpath -ldflags -X github.com/mas-bandwidth/schema/v2/internal/version.version=v3.1.0 -o out/schema ./cmd/schema"
+	want := "build -trimpath -ldflags -X github.com/mas-bandwidth/schema/v3/internal/version.version=v3.1.0 -o out/schema ./cmd/schema"
 	if args != want {
 		t.Errorf("BuildArgs = %q, want %q", args, want)
 	}

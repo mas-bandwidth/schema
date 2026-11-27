@@ -591,7 +591,11 @@ write_value = function(c: any, e: any, w: any, val: any, len: number?, named: an
 		w_leb(w, b.n)
 		w_sub(w, b)
 	elseif s == "union" then
-		if type(val) ~= "table" or val.Type == 0 then
+		-- a union is a table or nil (None): anything else is refused (DW-TABLE-SHAPE)
+		if val ~= nil and type(val) ~= "table" then
+			return refuse(c, "invalid_value", nil)
+		end
+		if val == nil or val.Type == 0 then
 			w_leb(w, 0) -- a None element is the single zero byte
 			return true
 		end
@@ -672,7 +676,7 @@ local function elem_is_default(e: any, val: any, len: number?): boolean
 		return not val
 	end
 	if s == "union" then
-		return type(val) ~= "table" or val.Type == 0
+		return val == nil or (type(val) == "table" and val.Type == 0)
 	end
 	if s == "str" or s == "text" then
 		return val == nil or val == ""
@@ -828,7 +832,11 @@ local function arm_payload(c: any, arm: any, w: any, u: any): boolean
 			end
 		end
 	elseif s == "union" then
-		if type(val) ~= "table" or val.Type == 0 then
+		-- a union is a table or nil (None): anything else is refused (DW-TABLE-SHAPE)
+		if val ~= nil and type(val) ~= "table" then
+			return refuse(c, "invalid_value", nil)
+		end
+		if val == nil or val.Type == 0 then
 			w_leb(w, 0)
 		else
 			return write_arm_header(c, St.lookup(arm.t), w, val)
@@ -936,6 +944,15 @@ local function write_field(c: any, fd: any, w: any, v: any): boolean
 	end
 	local s = fd.s
 	local val = v[fd.slot]
+	-- A VALUE OF THE WRONG KIND (docs/SPEC-CONFORMANCE.md DW-TABLE-SHAPE) is
+	-- refused, never elided as a default or read as its truthiness: a bool is a
+	-- boolean, an array a table or a buffer, a union a table (nil, each its
+	-- default)
+	if fd.present == nil or v[fd.present] then
+		if val ~= nil and ((s == "bool" and type(val) ~= "boolean") or (s == "arr" and type(val) ~= "table" and type(val) ~= "buffer") or (s == "union" and type(val) ~= "table")) then
+			return refuse(c, "invalid_value", fd)
+		end
+	end
 	if s == "arr" and fd.array == "counted" and (fd.present == nil or v[fd.present]) then
 		local n = v[fd.slot .. "Count"]
 		-- a [Min..Max] count below its Min is refused, as one past its Max
@@ -1024,7 +1041,11 @@ local function write_field(c: any, fd: any, w: any, v: any): boolean
 		end
 		header(c, w, fd.id, fd.k)
 		if s == "union" then
-			if type(val) ~= "table" or val.Type == 0 then
+			-- a union is a table or nil (None): anything else is refused (DW-TABLE-SHAPE)
+			if val ~= nil and type(val) ~= "table" then
+				return refuse(c, "invalid_value", nil)
+			end
+			if val == nil or val.Type == 0 then
 				w_leb(w, 0)
 				return true
 			end
@@ -1102,7 +1123,11 @@ local function write_field(c: any, fd: any, w: any, v: any): boolean
 		return write_array(c, fd, w, v, val, fd.bound)
 	end
 	if s == "union" then
-		if type(val) ~= "table" or val.Type == 0 then
+		-- a union is a table or nil (None): anything else is refused (DW-TABLE-SHAPE)
+		if val ~= nil and type(val) ~= "table" then
+			return refuse(c, "invalid_value", nil)
+		end
+		if val == nil or val.Type == 0 then
 			if not required then
 				return true -- None elides
 			end

@@ -129,7 +129,7 @@ generated/java-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 # the committed generated/ tree. The full unit is generated (packet .java +
 # <Table>Block.java + <Table>Cook.java + the Row accessors and the runtime
 # types), because a record's descriptors name the packet emitter's own enums.
-build/tables-generated-java/.stamp: bin/schema make/java.mk $(wildcard testdata/conformance/feature-witnesses/full/Features.schema) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_WIDELIST) $(SCHEMAS_WIDE) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/UT.schema test/tables/FU1.schema test/tables/FU2.schema $(SCHEMAS_TABLES_SCALARS) test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema test/tables/RT1.schema $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) test/tables/surfaces/Surfaces.schema
+build/tables-generated-java/.stamp: bin/schema make/java.mk $(wildcard testdata/conformance/feature-witnesses/full/Features.schema) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_WIDELIST) $(SCHEMAS_WIDE) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/UT.schema test/tables/FU1.schema test/tables/FU2.schema $(SCHEMAS_TABLES_SCALARS) test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema test/tables/RT1.schema $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) test/tables/surfaces/Surfaces.schema test/tables/ValueDefaults.schema test/tables/packetunions/PacketUnions.schema
 	@mkdir -p build/tables-generated-java
 	$(if $(wildcard testdata/conformance/feature-witnesses/full/Features.schema),rm -rf build/tables-generated-java/featurewitnesses && ./bin/schema generate --lang java --out build/tables-generated-java/featurewitnesses testdata/conformance/feature-witnesses/full/Features.schema)
 	rm -rf build/tables-generated-java/examples && ./bin/schema generate --lang java --out build/tables-generated-java/examples tables/examples
@@ -209,6 +209,8 @@ build/tables-generated-java/.stamp: bin/schema make/java.mk $(wildcard testdata/
 	rm -rf build/tables-generated-java/tblvarevo3 && ./bin/schema generate --lang java --out build/tables-generated-java/tblvarevo3 test/tables/varevo/VarEvo3.schema
 	rm -rf build/tables-generated-java/cooktorture && ./bin/schema generate --lang java --out build/tables-generated-java/cooktorture test/tables/cooktorture/CookTorture.schema
 	rm -rf build/tables-generated-java/cooktorturewide && ./bin/schema generate --lang java --out build/tables-generated-java/cooktorturewide test/tables/cooktorturewide/CookTortureWide.schema
+	rm -rf build/tables-generated-java/valuedefaults && ./bin/schema generate --lang java --out build/tables-generated-java/valuedefaults test/tables/ValueDefaults.schema
+	rm -rf build/tables-generated-java/packetunions && ./bin/schema generate --lang java --out build/tables-generated-java/packetunions test/tables/packetunions/PacketUnions.schema
 	rm -rf build/tables-generated-java/backend && ./bin/schema generate --lang java --out build/tables-generated-java/backend tables/backend
 	rm -rf build/tables-generated-java/vocab && ./bin/schema generate --lang java --out build/tables-generated-java/vocab tables/vocab
 	rm -rf build/tables-generated-java/vocab9 && ./bin/schema generate --lang java --out build/tables-generated-java/vocab9 tables/vocab9
@@ -831,9 +833,9 @@ build/java-fixedform/.stamp: build/tables-generated-java/.stamp test/java-fixedf
 # writer's caller contracts are DEBUG ONLY, so -ea proves they fire and the
 # default proves they are gone and the bytes are still the reference's.
 .PHONY: tables-java-fixedform
-tables-java-fixedform: build/java-fixedform/.stamp build/fixedform-corpus/.stamp
-	$(JAVA) -ea -cp build/java-fixedform Main build/fixedform-corpus
-	$(JAVA)     -cp build/java-fixedform Main build/fixedform-corpus
+tables-java-fixedform: build/retiredskips build/java-fixedform/.stamp build/fixedform-corpus/.stamp
+	./build/retiredskips -leg java -- $(JAVA) -ea -cp build/java-fixedform Main build/fixedform-corpus
+	./build/retiredskips -leg java -- $(JAVA)     -cp build/java-fixedform Main build/fixedform-corpus
 
 # THE VERSIONING HALF OF THE FIXED FORM ON THE JAVA LEG (§5 of
 # docs/FIXED-FORM-ALGORITHM.md, the rows of docs/FIXED-FORM-VERSIONING-TESTS.md).
@@ -959,8 +961,17 @@ test-java: tables-java-json-differential
 # little-endian and big-endian cooked images byte-for-byte.
 .PHONY: tables-java-block-build
 tables-java-block-build:
-	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
-		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run '^TestBlockBuildAndCookWriteJava$$'
+	@mkdir -p build/java-block-build
+	@SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run '^TestBlockBuildAndCookWriteJava$$' \
+		> build/java-block-build/log 2>&1 || { grep -E -- '--- FAIL|_test.go:' build/java-block-build/log | head -40; tail -20 build/java-block-build/log; exit 1; }
+	@if grep -q -- '--- SKIP' build/java-block-build/log; then \
+		echo "tables-java-block-build: a test SKIPPED under SCHEMA_REQUIRE_CORPUS=1"; grep -- '--- SKIP' build/java-block-build/log; exit 1; \
+	fi
+	@grep -q -- '--- PASS: TestBlockBuildAndCookWriteJava ' build/java-block-build/log || \
+		{ echo "tables-java-block-build: TestBlockBuildAndCookWriteJava did not run to a PASS"; tail -20 build/java-block-build/log; exit 1; }
+	@grep -q -- '--- PASS: TestBlockBuildAndCookWriteJava/cook_refusal_debug_negative_control ' build/java-block-build/log || \
+		{ echo "tables-java-block-build: the cook count negative control did not run to a PASS"; tail -20 build/java-block-build/log; exit 1; }
 	@echo 'tables Java block builder and cook writer: block_render, block_padded and cook-write match the committed reference bytes'
 
 test-java: tables-java-block-build
@@ -1056,7 +1067,7 @@ test-java: tables-java-keyed
 # must red TestKeyedArrayIndexingJava ON ITS OWN END AND ONLY THERE: a control
 # that reds both ends at once could not tell a symmetric guard from a broken one.
 JAVA_KEYED_SABOTAGE := build/java-keyed-sabotage
-JAVA_KEYED_COMPARE := "Integer.compareUnsigned(%s - 1, %d) >= 0", key, max)
+JAVA_KEYED_COMPARE := "java.lang.Integer.compareUnsigned(%s - 1, %d) >= 0", key, max)
 tables-java-keyed-negative-control:
 	@rm -rf $(JAVA_KEYED_SABOTAGE) && mkdir -p $(JAVA_KEYED_SABOTAGE)
 	@set -e; for end in upper lower; do \
@@ -1080,6 +1091,28 @@ tables-java-keyed-negative-control:
 		grep -m1 -- "$$red" $$d/log; \
 		echo "negative control: dropping the $$end bound reds the keyed accessor on that end only"; \
 	done
+
+# A DEPRECATED VARIANT IS NEVER WRITTEN, Java side (docs/SPEC-TABLES.md §2.15
+# WRITE): under -ea the variable, fixed and message saves throw on `Old` and
+# write `Fierce`, scalar and element (tables/examples MoodField, Moods). The
+# negative control drops each writer's assert in turn and wants exactly that
+# writer's refusal lines red. EACH test must run to its own PASS.
+.PHONY: tables-java-deprecated-write
+tables-java-deprecated-write:
+	@mkdir -p build/java-deprecated
+	@SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run '^TestJavaDeprecatedVariant(NeverWritten|NegativeControl)$$' \
+		> build/java-deprecated/log 2>&1 || { grep -E -- '--- FAIL|_test.go:' build/java-deprecated/log | head -40; exit 1; }
+	@if grep -q -- '--- SKIP' build/java-deprecated/log; then \
+		echo "tables-java-deprecated-write: a test SKIPPED under SCHEMA_REQUIRE_CORPUS=1"; grep -- '--- SKIP' build/java-deprecated/log; exit 1; \
+	fi
+	@grep -q -- '--- PASS: TestJavaDeprecatedVariantNeverWritten ' build/java-deprecated/log || \
+		{ echo "tables-java-deprecated-write: TestJavaDeprecatedVariantNeverWritten did not run to a PASS"; tail -20 build/java-deprecated/log; exit 1; }
+	@grep -q -- '--- PASS: TestJavaDeprecatedVariantNegativeControl ' build/java-deprecated/log || \
+		{ echo "tables-java-deprecated-write: TestJavaDeprecatedVariantNegativeControl did not run to a PASS"; tail -20 build/java-deprecated/log; exit 1; }
+	@grep 'negative control: with the' build/java-deprecated/log
+	@echo 'tables Java: every binary writer refuses a deprecated variant and writes the live one (§2.15)'
+test-java: tables-java-deprecated-write
 
 # FINITE TABLE FLOATS, Java side (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27:
 # "Tables go finite-only too, same rule as packets"): every read refuses a NaN
@@ -1716,7 +1749,7 @@ build/conformance-java/.stamp: build/tables-generated-java/.stamp test/conforman
 		build/tables-generated-java/examples/*.java build/tables-generated-java/pointers/*.java \
 		build/tables-generated-java/blobs/*.java \
 		build/tables-generated-java/maps/*.java build/tables-generated-java/arms/*.java \
-		build/tables-generated-java/scalars/*.java build/tables-generated-java/scalars2/*.java build/tables-generated-java/tblfixedevo/*.java build/tables-generated-java/tblvarevo1/*.java build/tables-generated-java/tblvarevo2/*.java build/tables-generated-java/tblvarevo3/*.java build/tables-generated-java/cooktorture/*.java build/tables-generated-java/cooktorturewide/*.java \
+		build/tables-generated-java/scalars/*.java build/tables-generated-java/scalars2/*.java build/tables-generated-java/tblfixedevo/*.java build/tables-generated-java/tblvarevo1/*.java build/tables-generated-java/tblvarevo2/*.java build/tables-generated-java/tblvarevo3/*.java build/tables-generated-java/cooktorture/*.java build/tables-generated-java/cooktorturewide/*.java build/tables-generated-java/valuedefaults/*.java build/tables-generated-java/packetunions/*.java \
 		build/tables-generated-java/messages/*.java \
 		build/tables-generated-java/stream/*.java build/tables-generated-java/lists/*.java build/tables-generated-java/widelist/*.java \
 		build/tables-generated-java/rt1/*.java \
@@ -1803,7 +1836,7 @@ conformance-java-absent-negative-control: build/conformance-harness build-confor
 # replays.
 JAVA_WIRE_FUZZ_N ?= $(N)
 JAVA_WIRE_FUZZ_DRIVER = $(JAVA) -cp $(CURDIR)/build/conformance-java TablesWireFuzz
-JAVA_RETAIN_VECTORS := retain_declared_default:graphdemo:Scene retain_node_record_unknown:graphdemo:Scene retain_node_flags:tblw1:Fleet retain_count_over_length_refused:listdemo:Mixed retain_scalar_array_default:mapdemo:Cells retain_map_emptied_unplaced:listdemo:Army pointer_index_past_numbering:streamdemo:Feed pointer_tail_unreadable_clean:streamdemo:Feed node_reference_kind_judged_as_read:blobdemo:Catalog node_reference_above_int64:graphdemo:Scene map_key_past_entry_body:mapdemo:Cells map_key_ill_formed_text:mapdemo:Cells ../widelist_wide:widelist:Wide
+JAVA_RETAIN_VECTORS := retain_declared_default:graphdemo:Scene retain_node_record_unknown:graphdemo:Scene retain_node_flags:tblw1:Fleet retain_count_over_length_refused:listdemo:Mixed retain_scalar_array_default:mapdemo:Cells retain_map_emptied_unplaced:listdemo:Army pointer_index_past_numbering:streamdemo:Feed pointer_tail_unreadable_clean:streamdemo:Feed node_reference_kind_judged_as_read:blobdemo:Catalog node_reference_above_int64:graphdemo:Scene map_key_past_entry_body:mapdemo:Cells map_key_ill_formed_text:mapdemo:Cells ../widelist_wide:widelist:Wide ../retain_fixed_union_array_none:messagedemo:ToolEnvelope
 # THE PLAIN ARM'S JAVA-ONLY VECTORS: a keyed header and a map header whose foreign
 # element kind carries a count spelled past the field's L (docs/SPEC-TABLES.md §2.9, §3.2):
 # the oracle reads the count against the parent and counts one kind_mismatch,
@@ -2124,6 +2157,8 @@ conformance-negative-control-java-walk: build/conformance-harness
 	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/tblvarevo3 test/tables/varevo/VarEvo3.schema
 	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/cooktorture test/tables/cooktorture/CookTorture.schema
 	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/cooktorturewide test/tables/cooktorturewide/CookTortureWide.schema
+	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/valuedefaults test/tables/ValueDefaults.schema
+	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/packetunions test/tables/packetunions/PacketUnions.schema
 	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/block tables/block
 	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/v1 test/tables/V1.schema
 	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/v2 test/tables/V2.schema
@@ -2609,7 +2644,7 @@ JAVA_WRITE_REFUSAL_MESSAGE_CONTROL := build/conformance-java-write-refusal-messa
 conformance-negative-control-java-write-refusal-message: build/conformance-harness build-conformance-java
 	@rm -rf $(JAVA_WRITE_REFUSAL_MESSAGE_CONTROL) && mkdir -p $(JAVA_WRITE_REFUSAL_MESSAGE_CONTROL)/generated $(JAVA_WRITE_REFUSAL_MESSAGE_CONTROL)/classes
 	@cp build/tables-generated-java/backend/*.java $(JAVA_WRITE_REFUSAL_MESSAGE_CONTROL)/generated/
-	@sed -i.orig 's/assert Long\.compareUnsigned((v\.quantity) & 0xffL, 0x63L) <= 0;/assert true; \/\/ SABOTAGED: quantity upper bound removed/' \
+	@sed -i.orig 's/assert java\.lang\.Long\.compareUnsigned((v\.quantity) & 0xffL, 0x63L) <= 0;/assert true; \/\/ SABOTAGED: quantity upper bound removed/' \
 		$(JAVA_WRITE_REFUSAL_MESSAGE_CONTROL)/generated/StorePurchaseMessage.java
 	@! cmp -s $(JAVA_WRITE_REFUSAL_MESSAGE_CONTROL)/generated/StorePurchaseMessage.java \
 		$(JAVA_WRITE_REFUSAL_MESSAGE_CONTROL)/generated/StorePurchaseMessage.java.orig || \
@@ -2667,6 +2702,24 @@ packet-end-java-negative-control: packet-end-java
 	@echo 'packet end Java negative control: a removed end check accepts a trailing byte'
 
 test-java: packet-end-java packet-end-java-negative-control
+
+# THE PACKET-VOID LEG (SPEC §4.8; make/checks/packet-void.mk): payload-free
+# union arms cost exactly their tag bits. The driver answers every case of
+# testdata/wire/packet-void/cases.txt through tools/casegate, with -ea (the
+# writer's contract asserts live) and without.
+build/packet-void/java/.stamp: bin/schema test/packet-void/Void.schema make/java.mk
+	@rm -rf build/packet-void/java/gen build/packet-void/java/classes
+	./bin/schema generate --lang java --out build/packet-void/java/gen $(PACKET_VOID_SCHEMA)
+	@touch $@
+
+.PHONY: packet-void-java
+packet-void-java: build/casegate build/packet-void/java/.stamp
+	@mkdir -p build/packet-void/java/classes
+	$(JAVAC) --release 17 -Xlint:all -Werror -d build/packet-void/java/classes build/packet-void/java/gen/*.java test/packet-void/java/Main.java
+	$(call packet_void_gate,java) $(JAVA) -ea -cp build/packet-void/java/classes Main $(PACKET_VOID_PINS)
+	$(call packet_void_gate,java) $(JAVA) -cp build/packet-void/java/classes Main $(PACKET_VOID_PINS)
+
+test-java: packet-void-java
 
 # Declaration-free transport IDs: run the legal and noncanonical vectors
 # through both public load paths, then plant a bypass of the order check.

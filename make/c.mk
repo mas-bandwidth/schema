@@ -157,6 +157,8 @@ define tables_generate_c
 	$(1) generate --lang c --out $(2)/varevo3 test/tables/varevo/VarEvo3.schema
 	$(1) generate --lang c --out $(2)/cooktorture test/tables/cooktorture/CookTorture.schema
 	$(1) generate --lang c --out $(2)/cooktorturewide test/tables/cooktorturewide/CookTortureWide.schema
+	$(1) generate --lang c --out $(2)/packetunions test/tables/packetunions/PacketUnions.schema
+	$(1) generate --lang c --out $(2)/writebounds testdata/conformance/table-write-bounds/TableWriteBounds.schema
 	$(1) generate --lang c --out $(2)/widelist tables/widelist
 	$(1) generate --lang c --out $(2)/jsonkeys test/tables/JsonKeys.schema
 	$(1) generate --lang c --out $(2)/featurewitnesses testdata/conformance/feature-witnesses/full/Features.schema
@@ -165,6 +167,7 @@ define tables_generate_c
 	$(1) generate --lang c --out $(2)/surfaces test/tables/surfaces
 	$(1) generate --lang c --out $(2)/ann/announce4096 test/tables/announce4096
 	$(1) generate --lang c --out $(2)/ann/announce4097 test/tables/announce4097
+	$(1) generate --lang c --out $(2)/valuedefaults test/tables/ValueDefaults.schema
 endef
 
 # $(call tables_generate_side_by_side,<VAR>) runs each line of the exported
@@ -187,7 +190,7 @@ define tables_generate_side_by_side
 endef
 
 build/tables-generated-c/.stamp: export TABLES_C_GENERATE = $(call tables_generate_c,./bin/schema,build/tables-generated-c)
-build/tables-generated-c/.stamp: bin/schema build/tables-generated-c/collections.stamp make/c.mk test/tables/W1.schema test/tables/W2.schema test/tables/G1.schema $(wildcard tables/stream/*.schema) $(wildcard tables/blobs/*.schema) $(wildcard tables/vocab9/*.schema) $(wildcard tables/vocab/*.schema) $(wildcard tables/backend/*.schema) test/tables/R2.schema test/tables/R1.schema test/tables/K2.schema test/tables/K1.schema test/tables/A2.schema test/tables/A1.schema test/tables/M2.schema test/tables/M1.schema $(wildcard tables/messages/*.schema) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema tables/scalars/Scalars.schema test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema $(SCHEMAS_TABLES_WIDELIST) testdata/conformance/feature-witnesses/full/Features.schema test/tables/shapes/Shapes.schema test/tables/prior/PriorNarrow.schema test/tables/surfaces/Surfaces.schema test/tables/announce4096/Announce.schema test/tables/announce4097/Announce.schema
+build/tables-generated-c/.stamp: bin/schema build/tables-generated-c/collections.stamp make/c.mk test/tables/W1.schema test/tables/W2.schema test/tables/G1.schema $(wildcard tables/stream/*.schema) $(wildcard tables/blobs/*.schema) $(wildcard tables/vocab9/*.schema) $(wildcard tables/vocab/*.schema) $(wildcard tables/backend/*.schema) test/tables/R2.schema test/tables/R1.schema test/tables/K2.schema test/tables/K1.schema test/tables/A2.schema test/tables/A1.schema test/tables/M2.schema test/tables/M1.schema $(wildcard tables/messages/*.schema) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema tables/scalars/Scalars.schema test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema $(SCHEMAS_TABLES_WIDELIST) testdata/conformance/feature-witnesses/full/Features.schema test/tables/shapes/Shapes.schema test/tables/prior/PriorNarrow.schema test/tables/surfaces/Surfaces.schema test/tables/announce4096/Announce.schema test/tables/announce4097/Announce.schema test/tables/ValueDefaults.schema test/tables/packetunions/PacketUnions.schema testdata/conformance/table-write-bounds/TableWriteBounds.schema
 	@mkdir -p build/tables-generated-c
 	$(call tables_generate_side_by_side,TABLES_C_GENERATE)
 	@touch $@
@@ -252,7 +255,10 @@ C_CONFORMANCE_SOURCES = test/c-tables/collections_fuzz_maps.c test/c-tables/coll
 	test/conformance/c/unit_tblprior.c build/tables-generated-c/prior/PriorNarrowTable.c \
 	test/conformance/c/unit_tblsurf.c build/tables-generated-c/surfaces/SurfacesTable.c \
 	test/conformance/c/unit_tblann4096.c build/tables-generated-c/ann/announce4096/AnnounceTable.c \
-	test/conformance/c/unit_tblann4097.c build/tables-generated-c/ann/announce4097/AnnounceTable.c
+	test/conformance/c/unit_tblann4097.c build/tables-generated-c/ann/announce4097/AnnounceTable.c \
+	test/conformance/c/unit_tblvaluedefaults.c build/tables-generated-c/valuedefaults/ValueDefaultsTable.c \
+	test/conformance/c/unit_packetunions.c build/tables-generated-c/packetunions/PacketUnionsTable.c \
+	test/conformance/c/unit_writebounds.c build/tables-generated-c/writebounds/TableWriteBoundsTable.c
 
 # Each unit's translation unit gets ONLY its own unit on the include path, which
 # is what keeps two units' identically-named headers from meeting. The driver's
@@ -260,7 +266,7 @@ C_CONFORMANCE_SOURCES = test/c-tables/collections_fuzz_maps.c test/c-tables/coll
 C_CONFORMANCE_INCLUDES := -Ibuild/tables-generated-c -Ibuild/tables-generated-c/surfaces -Ibuild/tables-generated-c/ann -Ibuild/tables-generated-c/w1 -Ibuild/tables-generated-c/w2 -Ibuild/tables-generated-c/rt1 -Ibuild/tables-generated-c/g1 -Ibuild/tables-generated-c/p2 -Ibuild/tables-generated-c/stream -Ibuild/tables-generated-c/blobs -Ibuild/tables-generated-c/vocab9 -Ibuild/tables-generated-c/vocab -Ibuild/tables-generated-c/backend -Ibuild/tables-generated-c/r2 -Ibuild/tables-generated-c/r1 -Ibuild/tables-generated-c/k2 -Ibuild/tables-generated-c/k1 -Ibuild/tables-generated-c/a2 -Ibuild/tables-generated-c/a1 -Ibuild/tables-generated-c/m2 -Ibuild/tables-generated-c/m1 -Ibuild/tables-generated-c/messages -I$(SERIALIZE_C) -Ibuild/tables-generated-c/scalars -Ibuild/tables-generated-c/scalars2 -Ibuild/tables-generated-c/fixedevo -Ibuild/tables-generated-c/widelist -Itest/conformance/c -Ibuild/tables-generated-c/examples \
 	-Ibuild/tables-generated-c/v1 -Ibuild/tables-generated-c/v2 \
 	-Ibuild/tables-generated-c/p1 -Ibuild/tables-generated-c/p3 \
-	-Ibuild/tables-generated-c/block -Ibuild/tables-generated-c/pointers -Ibuild/tables-generated-c/featurewitnesses -Ibuild/tables-generated-c/varevo1 -Ibuild/tables-generated-c/varevo2 -Ibuild/tables-generated-c/varevo3 -Ibuild/tables-generated-c/cooktorture -Ibuild/tables-generated-c/cooktorturewide -Ibuild/tables-generated-c/shapes -Ibuild/tables-generated-c/prior
+	-Ibuild/tables-generated-c/block -Ibuild/tables-generated-c/pointers -Ibuild/tables-generated-c/featurewitnesses -Ibuild/tables-generated-c/varevo1 -Ibuild/tables-generated-c/varevo2 -Ibuild/tables-generated-c/varevo3 -Ibuild/tables-generated-c/cooktorture -Ibuild/tables-generated-c/cooktorturewide -Ibuild/tables-generated-c/shapes -Ibuild/tables-generated-c/prior -Ibuild/tables-generated-c/valuedefaults -Ibuild/tables-generated-c/packetunions -Ibuild/tables-generated-c/writebounds
 
 # THE DRIVER'S TRANSLATION UNITS COMPILE SIDE BY SIDE. One `$(CC) ... sources
 # -o driver` compiled every unit one after another; at -O2 that was 206 s on
@@ -286,6 +292,17 @@ build/conformance-c: $(C_CONFORMANCE_OBJECTS) build/tables-generated-c/.stamp $(
 	test/c-tables/collections_fuzz_maps.c test/c-tables/collections_fuzz_lists.c test/c-tables/collections_fuzz_arms.c
 	@mkdir -p build
 	$(CC) $(TABLES_CFLAGS) $(C_CONFORMANCE_OBJECTS) -o $@ -lm
+
+build/tables-generated-c/writebounds/.stamp: bin/schema testdata/conformance/table-write-bounds/TableWriteBounds.schema
+	@mkdir -p build/tables-generated-c/writebounds
+	./bin/schema generate --lang c --out build/tables-generated-c/writebounds testdata/conformance/table-write-bounds/TableWriteBounds.schema
+	@touch $@
+
+build/conformance-c-writebounds: build/tables-generated-c/writebounds/.stamp test/conformance/c/main.c test/conformance/c/wref.c test/conformance/c/unit_writebounds.c $(wildcard test/conformance/c/*.h) $(wildcard $(SERIALIZE_C)/*.h)
+	@mkdir -p build
+	$(CC) $(TABLES_CFLAGS) -DCONFORMANCE_WRITEBOUNDS_ONLY -Itest/conformance/c -Ibuild/tables-generated-c/writebounds -I$(SERIALIZE_C) \
+		test/conformance/c/main.c test/conformance/c/wref.c test/conformance/c/unit_writebounds.c \
+		build/tables-generated-c/writebounds/TableWriteBoundsTable.c -o $@ -lm
 
 
 # THE ZERO-COST GATE, C side (docs/SPEC-TABLES.md §2.2). A table with no pointer
@@ -526,6 +543,9 @@ conformance-negative-control-c: build/conformance-harness
 	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/varevo3 test/tables/varevo/VarEvo3.schema
 	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/cooktorture test/tables/cooktorture/CookTorture.schema
 	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/cooktorturewide test/tables/cooktorturewide/CookTortureWide.schema
+	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/valuedefaults test/tables/ValueDefaults.schema
+	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/packetunions test/tables/packetunions/PacketUnions.schema
+	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/writebounds testdata/conformance/table-write-bounds/TableWriteBounds.schema
 	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/widelist tables/widelist
 	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/jsonkeys test/tables/JsonKeys.schema
 	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/featurewitnesses testdata/conformance/feature-witnesses/full/Features.schema
@@ -1112,14 +1132,17 @@ tables-c-json-label-negative-control:
 # M19, the C map's sorted entry array: the save's ascending order (the heap sort
 # of table_sequence_order) is removed, so entries ride in insertion order.
 # TestCTableWireMaps inserts its keys out of order and must save the engine's
-# bytes.
-C_MAP_SORT_SED := s|    for(i=(int64_t)value->count/2;i>0;i--) {|    for(i=0;i>0;i--) { /* SABOTAGED: insertion order */|;s|    for(i=(int64_t)value->count-1;i>0;i--) {|    for(i=0;i>0;i--) { /* SABOTAGED: insertion order */|
+# bytes. The order's own ascending self-check is disarmed with the sort: left
+# armed, it refuses the unsorted order and the save fails on its length, red on
+# the wrong CHECK, before the bytes are ever compared.
+C_MAP_SORT_SED := s|    for(i=(int64_t)value->count/2;i>0;i--) {|    for(i=0;i>0;i--) { /* SABOTAGED: insertion order */|;s|    for(i=(int64_t)value->count-1;i>0;i--) {|    for(i=0;i>0;i--) { /* SABOTAGED: insertion order */|;s|if(compare(order->entries\[i-1\],order->entries\[i\])>=0)|if(0) /* SABOTAGED: self-check disarmed */|
 C_MAP_SORT_RED := !memcmp(wire,expected,sizeof(expected))
 .PHONY: tables-c-map-sort-negative-control
 tables-c-map-sort-negative-control:
 	@rm -rf build/c-map-sort-nc && mkdir -p build/c-map-sort-nc
 	@sed -e '$(C_MAP_SORT_SED)' internal/codegen/ctable/sequence.go > build/c-map-sort-nc/emitter.go.txt
-	@grep -q 'SABOTAGED: insertion order' build/c-map-sort-nc/emitter.go.txt || \
+	@test "$$(grep -c 'SABOTAGED: insertion order' build/c-map-sort-nc/emitter.go.txt)" = 2 && \
+		grep -q 'SABOTAGED: self-check disarmed' build/c-map-sort-nc/emitter.go.txt || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/ctable/sequence.go":"%s/build/c-map-sort-nc/emitter.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/c-map-sort-nc/overlay.json
@@ -1572,9 +1595,9 @@ build/schema_test_c_fixedform_asan: build/tables-generated-c-fixed/.stamp $(C_FI
 	$(CC) $(TABLES_CFLAGS_CONTROL) $(C_SANITIZE) $(C_FIXEDFORM_INCLUDES) $(C_FIXEDFORM_SOURCES) -o $@ -lm
 
 .PHONY: tables-c-fixedform
-tables-c-fixedform: build/schema_test_c_fixedform build/schema_test_c_fixedform_asan
-	./build/schema_test_c_fixedform
-	./build/schema_test_c_fixedform_asan
+tables-c-fixedform: build/retiredskips build/schema_test_c_fixedform build/schema_test_c_fixedform_asan
+	./build/retiredskips -leg c -- ./build/schema_test_c_fixedform
+	./build/retiredskips -leg c -- ./build/schema_test_c_fixedform_asan
 
 # THE VERSIONING HALF OF THE FIXED FORM ON THE C LEG (§5 of
 # docs/FIXED-FORM-ALGORITHM.md, the rows of docs/FIXED-FORM-VERSIONING-TESTS.md).

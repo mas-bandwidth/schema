@@ -184,7 +184,7 @@ function armOf(ctx, cur, n) {
 // setVariable sets the one field a row names in the variable value, where the
 // text writer reads it: a text is a string, so `bytes` must be UTF-8 this leg's
 // string can hold, and bytes it cannot are `unrepresentable`.
-function decodeVariableLeaf(cur, kind, text, ctx) {
+function decodeVariableLeaf(cur, kind, text, ctx, copyFirst = false) {
   switch (kind) {
     case "bytes": {
       const raw = hexBytes(text);
@@ -221,7 +221,9 @@ function decodeVariableLeaf(cur, kind, text, ctx) {
       while (arr.length < n) {
         if (ctx === null) { throw new Error("count " + n + ": no View to make a new element from"); }
         const vocab = ctx.field.vocabulary;
-        arr.push(vocab !== null && vocab.kind !== "flags" ? null : defaultOfType(ctx.field.typeName, ctx.field.table, ctx.m));
+        arr.push(copyFirst && cur?.length > 0
+          ? structuredClone(cur[0])
+          : vocab !== null && vocab.kind !== "flags" ? null : defaultOfType(ctx.field.typeName, ctx.field.table, ctx.m));
       }
       return { ok: true, v: arr };
     }
@@ -339,7 +341,7 @@ export function setVariable(value, path, kind, text, unit = null, root = "") {
   const p = own(cur, last.name, path);
   const slot = last.index < 0 ? cur[p] : cur[p][last.index];
   const isTextListBox = last.index >= 0 && slot !== null && typeof slot === "object" && !(slot instanceof Uint8Array) && "value" in slot && Object.keys(slot).length === 1;
-  const leaf = decodeVariableLeaf(isTextListBox ? slot.value : slot, kind, text, ctx);
+  const leaf = decodeVariableLeaf(isTextListBox ? slot.value : slot, kind, text, ctx, root === "TortureVarWref");
   if (!leaf.ok) { return false; }
   if (isTextListBox) {
     slot.value = leaf.v;
@@ -349,6 +351,63 @@ export function setVariable(value, path, kind, text, unit = null, root = "") {
     cur[p][last.index] = leaf.v;
   }
   return true;
+}
+
+// THE SHAPE ROWS (`write-refusal-shape`; docs/SPEC-CONFORMANCE.md
+// DW-TABLE-SHAPE): the token is a value of the WRONG KIND, put where the path
+// names, and the root's own writer must refuse it by its answer, never by
+// throwing. JavaScript spells `int` 1, `float` 1.5, `numtext` "1.5", `text`
+// "x", `bool` true, `null` null, `map` a bare object {}, and `seq` the array
+// [1]; `improper` names no JavaScript value (`unrepresentable`). A path ending
+// `f[i]` makes the array f its first i elements as loaded, then the value (a
+// fixed class's counted array keeps its storage and its count becomes i + 1);
+// one ending in an arm's name selects that arm and makes the value its
+// payload. `key` maps a declared name to the property the value holds it
+// under. setShape answers the root to write, or null where the token is
+// unrepresentable.
+const shapeTokens = { int: () => 1, float: () => 1.5, numtext: () => "1.5", text: () => "x", bool: () => true, null: () => null, map: () => ({}), seq: () => [1] };
+
+function setShape(root, path, token, key) {
+  if (!(token in shapeTokens)) { return null; }
+  const x = shapeTokens[token]();
+  if (path === ".") { return { root: x }; }
+  const segments = path.split(".");
+  let cur = root;
+  for (let i = 0; i < segments.length; i++) {
+    const { name, index } = segmentOf(segments[i]);
+    const p = key(name);
+    if (cur === null || typeof cur !== "object" || !(p in cur)) { throw new Error(path + ": no field " + name); }
+    if (i === segments.length - 1) {
+      if (index < 0) {
+        cur[p] = x;
+      } else if ((p + "Count") in cur) {
+        const arr = Array.from(cur[p]);
+        arr[index] = x;
+        cur[p] = arr;
+        cur[p + "Count"] = index + 1;
+      } else {
+        const arr = Array.from(cur[p]).slice(0, index);
+        arr.push(x);
+        cur[p] = arr;
+      }
+      return { root };
+    }
+    const next = index < 0 ? cur[p] : cur[p][index];
+    if (i === segments.length - 2 && next !== null && typeof next === "object") {
+      const arm = segments[i + 1];
+      // the variable value's union is { arm, value }
+      if ("arm" in next && "value" in next) { next.arm = arm; next.value = x; return { root }; }
+      // the fixed class's union is { type, <arm>... }: its arms follow the
+      // tag in declaration order, as its constructor assigns them
+      if ("type" in next && key(arm) in next) {
+        next.type = Object.keys(next).indexOf(key(arm));
+        next[key(arm)] = x;
+        return { root };
+      }
+    }
+    cur = next;
+  }
+  throw new Error(path + ": names no value");
 }
 
 function connectionUnit(lines, connection) {
@@ -416,9 +475,28 @@ export async function surfaceWriteRefusal(surface, lines, outDir, codecFor, mess
     }
     const codec = await codecFor(unit, root);
     if (codec === null) { absent(outDir, name, "no generated unit carries " + unit + "." + root + ": docs/SPEC-TABLES.md §11"); continue; }
+    if (surface === "write-refusal-shape" && kind === "shape") {
+      // the root's own writer: a fixed root's fixed class, a variable root's
+      // variable value
+      const wire = new Uint8Array(readFileSync(wirePath));
+      if (codec.fixedValue !== undefined) {
+        const x = codec.fixedValue.load(wire);
+        if (x === null) { throw new Error(name + ": load refused " + wirePath); }
+        const set = setShape(x, path, text, camel);
+        answer = set === null ? "unrepresentable" : writes(name, () => codec.fixedValue.save(set.root) >= 0);
+      } else {
+        const v = codec.load(wire, codec.report());
+        if (v === null || v === undefined) { throw new Error(name + ": load refused " + wirePath); }
+        const set = setShape(v, path, text, (n) => n);
+        answer = set === null ? "unrepresentable" : writes(name, () => codec.save(set.root) !== null);
+      }
+      writeFileSync(join(outDir, name), answer + "\n");
+      continue;
+    }
     if (wirePath === "-") { throw new Error(name + ": a fresh-value row (wire -) on " + surface + ": this leg starts only the message writer from the fresh value"); }
     const wire = new Uint8Array(readFileSync(wirePath));
-    const variable = surface === "write-refusal-json" || surface === "write-refusal-cook" || (surface === "write-refusal" && codec.fixedValue === undefined);
+    const own = surface === "write-refusal" || surface === "write-refusal-shape";
+    const variable = surface === "write-refusal-json" || surface === "write-refusal-cook" || (own && codec.fixedValue === undefined);
     if (variable) {
       // the variable value: the text writer's and the cook writer's input, and
       // a variable root's own save. A fixed root's read here is its fixed load,
@@ -437,7 +515,13 @@ export async function surfaceWriteRefusal(surface, lines, outDir, codecFor, mess
           return typeof size === "number" && size >= 1 && codec.cook.from(v, new Uint8Array(size), 1) === true;
         });
       } else {
-        answer = writes(name, () => codec.save(v) !== null);
+        answer = writes(name, () => {
+          const saved = codec.save(v);
+          if (saved !== null && f[8] === "save-wire") {
+            writeFileSync(join(outDir, name + ".wire"), saved);
+          }
+          return saved !== null;
+        });
       }
     } else {
       if (codec.fixedValue === undefined) { absent(outDir, name, unit + "." + root + " is not a fixed root"); continue; }

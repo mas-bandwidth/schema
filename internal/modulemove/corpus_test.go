@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/modulemove/pincorpus"
+	"github.com/mas-bandwidth/schema/v3/internal/modulemove/pincorpus"
 )
 
 // goModSuffix is a go.mod declaring this module under a corpus suffix: "/vN",

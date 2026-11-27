@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum floatText
+{ Zfirst, Zsecond, Zthird }
+
+enum floatValue
+{ Zfirst, Zsecond, Zthird }
+
+enum float_default_bits
+{ Zfirst, Zsecond, Zthird }
+
+enum float_nan
+{ Zfirst, Zsecond, Zthird }
+
+enum float_ok
+{ Zfirst, Zsecond, Zthird }
+
+enum float_range
+{ Zfirst, Zsecond, Zthird }
+
+enum float_special
+{ Zfirst, Zsecond, Zthird }
+
+enum floats
+{ Zfirst, Zsecond, Zthird }
+
+enum floor
+{ Zfirst, Zsecond, Zthird }
+
+enum floorToInt
+{ Zfirst, Zsecond, Zthird }
+
+enum floor_at
+{ Zfirst, Zsecond, Zthird }
+
+enum fm
+{ Zfirst, Zsecond, Zthird }
+
+enum fmap
+{ Zfirst, Zsecond, Zthird }
+
+enum fmax
+{ Zfirst, Zsecond, Zthird }
+
+enum fmin
+{ Zfirst, Zsecond, Zthird }
+
+enum fmul
+{ Zfirst, Zsecond, Zthird }
+
+enum fname
+{ Zfirst, Zsecond, Zthird }
+
+enum foll
+{ Zfirst, Zsecond, Zthird }
+
+enum forced
+{ Zfirst, Zsecond, Zthird }
+
+enum forged
+{ Zfirst, Zsecond, Zthird }
+
+enum forgedOrdinal
+{ Zfirst, Zsecond, Zthird }
+
+enum forget_arms
+{ Zfirst, Zsecond, Zthird }
+
+enum forget_body
+{ Zfirst, Zsecond, Zthird }
+
+enum forget_map
+{ Zfirst, Zsecond, Zthird }
+
+enum forget_rec
+{ Zfirst, Zsecond, Zthird }
+
+enum forget_value
+{ Zfirst, Zsecond, Zthird }
+
+enum form
+{ Zfirst, Zsecond, Zthird }
+
+enum formByte
+{ Zfirst, Zsecond, Zthird }
+
+enum formOf
+{ Zfirst, Zsecond, Zthird }
+
+enum formatG
+{ Zfirst, Zsecond, Zthird }
+
+enum formatTimestamp
+{ Zfirst, Zsecond, Zthird }
+
+enum formatWide
+{ Zfirst, Zsecond, Zthird }
+
+enum forms
+{ Zfirst, Zsecond, Zthird }
+
+enum found
+{ Zfirst, Zsecond, Zthird }
+
+enum four
+{ Zfirst, Zsecond, Zthird }
+
+enum fourth
+{ Zfirst, Zsecond, Zthird }
+
+enum fp
+{ Zfirst, Zsecond, Zthird }
+
+enum fr
+{ Zfirst, Zsecond, Zthird }
+
+enum frac
+{ Zfirst, Zsecond, Zthird }
+
+enum fracAt
+{ Zfirst, Zsecond, Zthird }
+
+enum fracDigits
+{ Zfirst, Zsecond, Zthird }
+
+enum fracLen
+{ Zfirst, Zsecond, Zthird }
+
+enum fracLength
+{ Zfirst, Zsecond, Zthird }
+
+enum fracMatch
+{ Zfirst, Zsecond, Zthird }
+
+enum fracPart
+{ Zfirst, Zsecond, Zthird }
+
+enum fracStart
+{ Zfirst, Zsecond, Zthird }
+
+enum frac_bits
+{ Zfirst, Zsecond, Zthird }
+
+enum fraction
+{ Zfirst, Zsecond, Zthird }
+
+enum fractionBits
+{ Zfirst, Zsecond, Zthird }
+
+enum fractionDigits
+{ Zfirst, Zsecond, Zthird }
+
+enum fractional
+{ Zfirst, Zsecond, Zthird }
+
+enum frame
+{ Zfirst, Zsecond, Zthird }
+
+enum frame_begin
+{ Zfirst, Zsecond, Zthird }
+
+enum framed
+{ Zfirst, Zsecond, Zthird }
+
+enum framedLevel
+{ Zfirst, Zsecond, Zthird }
+
+enum framed_fn
+{ Zfirst, Zsecond, Zthird }
+
+enum frames
+{ Zfirst, Zsecond, Zthird }
+
+enum framing
+{ Zfirst, Zsecond, Zthird }
+
+enum frange_holds
+{ Zfirst, Zsecond, Zthird }
+
+enum free
+{ Zfirst, Zsecond, Zthird }
+
+enum freezeField
+{ Zfirst, Zsecond, Zthird }
+
+enum freezeFields
+{ Zfirst, Zsecond, Zthird }
+
+enum freezeInfo
+{ Zfirst, Zsecond, Zthird }
+
+enum freezeList
+{ Zfirst, Zsecond, Zthird }
+
+enum fref
+{ Zfirst, Zsecond, Zthird }
+
+enum fres
+{ Zfirst, Zsecond, Zthird }
+
+enum fresh
+{ Zfirst, Zsecond, Zthird }
+
+enum freshElement
+{ Zfirst, Zsecond, Zthird }
+
+enum fresh_record
+{ Zfirst, Zsecond, Zthird }
+
+enum from64
+{ Zfirst, Zsecond, Zthird }
+
+enum fromDoubleBits
+{ Zfirst, Zsecond, Zthird }
+
+enum fromFloatBits
+{ Zfirst, Zsecond, Zthird }
+
+enum fromNumber
+{ Zfirst, Zsecond, Zthird }
+
+enum fromUint
+{ Zfirst, Zsecond, Zthird }
+
+enum from_k
+{ Zfirst, Zsecond, Zthird }
+
+enum from_lua
+{ Zfirst, Zsecond, Zthird }
+
+enum from_string
+{ Zfirst, Zsecond, Zthird }
+
+enum from_vocab
+{ Zfirst, Zsecond, Zthird }
+
+enum fround
+{ Zfirst, Zsecond, Zthird }
+
+enum fs
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    floatText Inner
+    floatValue Inner
+    float_default_bits Inner
+    float_nan Inner
+    float_ok Inner
+    float_range Inner
+    float_special Inner
+    floats Inner
+    floor Inner
+    floorToInt Inner
+}
+
+table NameTypes0
+{
+    one0  floatText
+    many0 [..4]floatText
+    one1  floatValue
+    many1 [..4]floatValue
+    one2  float_default_bits
+    many2 [..4]float_default_bits
+    one3  float_nan
+    many3 [..4]float_nan
+    one4  float_ok
+    many4 [..4]float_ok
+    one5  float_range
+    many5 [..4]float_range
+    one6  float_special
+    many6 [..4]float_special
+    one7  floats
+    many7 [..4]floats
+    one8  floor
+    many8 [..4]floor
+    one9  floorToInt
+    many9 [..4]floorToInt
+}
+
+table NameFields0
+{
+    floatText uint32
+    floatValue uint32
+    float_default_bits uint32
+    float_nan uint32
+    float_ok uint32
+    float_range uint32
+    float_special uint32
+    floats uint32
+    floor uint32
+    floorToInt uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    floor_at Inner
+    fm Inner
+    fmap Inner
+    fmax Inner
+    fmin Inner
+    fmul Inner
+    fname Inner
+    foll Inner
+    forced Inner
+    forged Inner
+}
+
+table NameTypes1
+{
+    one0  floor_at
+    many0 [..4]floor_at
+    one1  fm
+    many1 [..4]fm
+    one2  fmap
+    many2 [..4]fmap
+    one3  fmax
+    many3 [..4]fmax
+    one4  fmin
+    many4 [..4]fmin
+    one5  fmul
+    many5 [..4]fmul
+    one6  fname
+    many6 [..4]fname
+    one7  foll
+    many7 [..4]foll
+    one8  forced
+    many8 [..4]forced
+    one9  forged
+    many9 [..4]forged
+}
+
+table NameFields1
+{
+    floor_at uint32
+    fm uint32
+    fmap uint32
+    fmax uint32
+    fmin uint32
+    fmul uint32
+    fname uint32
+    foll uint32
+    forced uint32
+    forged uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    forgedOrdinal Inner
+    forget_arms Inner
+    forget_body Inner
+    forget_map Inner
+    forget_rec Inner
+    forget_value Inner
+    form Inner
+    formByte Inner
+    formOf Inner
+    formatG Inner
+}
+
+table NameTypes2
+{
+    one0  forgedOrdinal
+    many0 [..4]forgedOrdinal
+    one1  forget_arms
+    many1 [..4]forget_arms
+    one2  forget_body
+    many2 [..4]forget_body
+    one3  forget_map
+    many3 [..4]forget_map
+    one4  forget_rec
+    many4 [..4]forget_rec
+    one5  forget_value
+    many5 [..4]forget_value
+    one6  form
+    many6 [..4]form
+    one7  formByte
+    many7 [..4]formByte
+    one8  formOf
+    many8 [..4]formOf
+    one9  formatG
+    many9 [..4]formatG
+}
+
+table NameFields2
+{
+    forgedOrdinal uint32
+    forget_arms uint32
+    forget_body uint32
+    forget_map uint32
+    forget_rec uint32
+    forget_value uint32
+    form uint32
+    formByte uint32
+    formOf uint32
+    formatG uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    formatTimestamp Inner
+    formatWide Inner
+    forms Inner
+    found Inner
+    four Inner
+    fourth Inner
+    fp Inner
+    fr Inner
+    frac Inner
+    fracAt Inner
+}
+
+table NameTypes3
+{
+    one0  formatTimestamp
+    many0 [..4]formatTimestamp
+    one1  formatWide
+    many1 [..4]formatWide
+    one2  forms
+    many2 [..4]forms
+    one3  found
+    many3 [..4]found
+    one4  four
+    many4 [..4]four
+    one5  fourth
+    many5 [..4]fourth
+    one6  fp
+    many6 [..4]fp
+    one7  fr
+    many7 [..4]fr
+    one8  frac
+    many8 [..4]frac
+    one9  fracAt
+    many9 [..4]fracAt
+}
+
+table NameFields3
+{
+    formatTimestamp uint32
+    formatWide uint32
+    forms uint32
+    found uint32
+    four uint32
+    fourth uint32
+    fp uint32
+    fr uint32
+    frac uint32
+    fracAt uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    fracDigits Inner
+    fracLen Inner
+    fracLength Inner
+    fracMatch Inner
+    fracPart Inner
+    fracStart Inner
+    frac_bits Inner
+    fraction Inner
+    fractionBits Inner
+    fractionDigits Inner
+}
+
+table NameTypes4
+{
+    one0  fracDigits
+    many0 [..4]fracDigits
+    one1  fracLen
+    many1 [..4]fracLen
+    one2  fracLength
+    many2 [..4]fracLength
+    one3  fracMatch
+    many3 [..4]fracMatch
+    one4  fracPart
+    many4 [..4]fracPart
+    one5  fracStart
+    many5 [..4]fracStart
+    one6  frac_bits
+    many6 [..4]frac_bits
+    one7  fraction
+    many7 [..4]fraction
+    one8  fractionBits
+    many8 [..4]fractionBits
+    one9  fractionDigits
+    many9 [..4]fractionDigits
+}
+
+table NameFields4
+{
+    fracDigits uint32
+    fracLen uint32
+    fracLength uint32
+    fracMatch uint32
+    fracPart uint32
+    fracStart uint32
+    frac_bits uint32
+    fraction uint32
+    fractionBits uint32
+    fractionDigits uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    fractional Inner
+    frame Inner
+    frame_begin Inner
+    framed Inner
+    framedLevel Inner
+    framed_fn Inner
+    frames Inner
+    framing Inner
+    frange_holds Inner
+    free Inner
+}
+
+table NameTypes5
+{
+    one0  fractional
+    many0 [..4]fractional
+    one1  frame
+    many1 [..4]frame
+    one2  frame_begin
+    many2 [..4]frame_begin
+    one3  framed
+    many3 [..4]framed
+    one4  framedLevel
+    many4 [..4]framedLevel
+    one5  framed_fn
+    many5 [..4]framed_fn
+    one6  frames
+    many6 [..4]frames
+    one7  framing
+    many7 [..4]framing
+    one8  frange_holds
+    many8 [..4]frange_holds
+    one9  free
+    many9 [..4]free
+}
+
+table NameFields5
+{
+    fractional uint32
+    frame uint32
+    frame_begin uint32
+    framed uint32
+    framedLevel uint32
+    framed_fn uint32
+    frames uint32
+    framing uint32
+    frange_holds uint32
+    free uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    freezeField Inner
+    freezeFields Inner
+    freezeInfo Inner
+    freezeList Inner
+    fref Inner
+    fres Inner
+    fresh Inner
+    freshElement Inner
+    fresh_record Inner
+    from64 Inner
+}
+
+table NameTypes6
+{
+    one0  freezeField
+    many0 [..4]freezeField
+    one1  freezeFields
+    many1 [..4]freezeFields
+    one2  freezeInfo
+    many2 [..4]freezeInfo
+    one3  freezeList
+    many3 [..4]freezeList
+    one4  fref
+    many4 [..4]fref
+    one5  fres
+    many5 [..4]fres
+    one6  fresh
+    many6 [..4]fresh
+    one7  freshElement
+    many7 [..4]freshElement
+    one8  fresh_record
+    many8 [..4]fresh_record
+    one9  from64
+    many9 [..4]from64
+}
+
+table NameFields6
+{
+    freezeField uint32
+    freezeFields uint32
+    freezeInfo uint32
+    freezeList uint32
+    fref uint32
+    fres uint32
+    fresh uint32
+    freshElement uint32
+    fresh_record uint32
+    from64 uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    fromDoubleBits Inner
+    fromFloatBits Inner
+    fromNumber Inner
+    fromUint Inner
+    from_k Inner
+    from_lua Inner
+    from_string Inner
+    from_vocab Inner
+    fround Inner
+    fs Inner
+}
+
+table NameTypes7
+{
+    one0  fromDoubleBits
+    many0 [..4]fromDoubleBits
+    one1  fromFloatBits
+    many1 [..4]fromFloatBits
+    one2  fromNumber
+    many2 [..4]fromNumber
+    one3  fromUint
+    many3 [..4]fromUint
+    one4  from_k
+    many4 [..4]from_k
+    one5  from_lua
+    many5 [..4]from_lua
+    one6  from_string
+    many6 [..4]from_string
+    one7  from_vocab
+    many7 [..4]from_vocab
+    one8  fround
+    many8 [..4]fround
+    one9  fs
+    many9 [..4]fs
+}
+
+table NameFields7
+{
+    fromDoubleBits uint32
+    fromFloatBits uint32
+    fromNumber uint32
+    fromUint uint32
+    from_k uint32
+    from_lua uint32
+    from_string uint32
+    from_vocab uint32
+    fround uint32
+    fs uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

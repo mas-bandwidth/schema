@@ -1,18 +1,42 @@
 package darttable
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/internal/tablewire"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
+
+// dupKeyMapWire is the wire of Root{entries: {7: 100, 7: 200}}. The Go encoder
+// refuses a map that repeats a key, so the lawful keys 7 and 8 are encoded and
+// the second key's four bytes are rewritten to 7 by hand: a hostile input.
+func dupKeyMapWire(t *testing.T, m *tabletext.Model) []byte {
+	t.Helper()
+	var rep tabletext.Report
+	root := m.New(m.Lookup("Root"))
+	if !m.Read(root, []byte(`{"entries":{"7":100,"8":200}}`), &rep) {
+		t.Fatal("the Go leg read the two lawful entries")
+	}
+	wire, err := tablewire.Encode(m, root)
+	if err != nil {
+		t.Fatalf("the Go leg encodes the two lawful keys: %v", err)
+	}
+	// The second key is the int32 cell kind 3 holding 8 (little-endian), after
+	// the element's kind 4 and length. Count it inside the map payload only.
+	second := []byte{0x08, 0x00, 0x00, 0x00}
+	if n := bytes.Count(wire, second); n != 1 {
+		t.Fatalf("the second key %x appears %d times in the wire %x, want once", second, n, wire)
+	}
+	return bytes.Replace(wire, second, []byte{0x07, 0x00, 0x00, 0x00}, 1)
+}
 
 // TestWireReportCountsDuplicateKeysDart pins docs/SPEC-TABLES.md §2.8 (EQUAL)
 // and §4's `duplicate` counter on the variable-class Dart wire reader: a map
@@ -34,27 +58,10 @@ table Root {
 `
 	u := buildUnit(t, src)
 
-	// Build the duplicate-key wire with the GO leg: a tabletext instance whose
-	// map field holds two entries sharing one key, encoded by tablewire.Encode.
-	// The entries are built through the text reader (which initialises them the
-	// way the encoder expects) and then joined, so the wire carries the key
-	// twice.
+	// Build the duplicate-key wire by hand: the Go encoder refuses a map that
+	// repeats a key, so the hostile wire is made from a lawful one.
 	m := tabletext.NewModel(u)
-	var rep tabletext.Report
-	rootA := m.New(m.Lookup("Root"))
-	if !m.Read(rootA, []byte(`{"entries":{"7":100}}`), &rep) {
-		t.Fatal("the Go leg read the first entry")
-	}
-	rootB := m.New(m.Lookup("Root"))
-	if !m.Read(rootB, []byte(`{"entries":{"7":200}}`), &rep) {
-		t.Fatal("the Go leg read the second entry")
-	}
-	rootA.Fields[0].Entries = append(rootA.Fields[0].Entries, rootB.Fields[0].Entries[0])
-
-	wire, err := tablewire.Encode(m, rootA)
-	if err != nil {
-		t.Fatalf("the Go leg encodes the duplicate-key map: %v", err)
-	}
+	wire := dupKeyMapWire(t, m)
 
 	// The Go oracle: STRICT VERDICT — a repeated map key is damage and
 	// refuses the whole load; no entry lands.
@@ -135,19 +142,11 @@ table Root {
 `
 	u := buildUnit(t, src)
 	m := tabletext.NewModel(u)
-	var rep tabletext.Report
-	rootA := m.New(m.Lookup("Root"))
-	if !m.Read(rootA, []byte(`{"entries":{"7":100}}`), &rep) {
-		t.Fatal("the Go leg read the first entry")
-	}
-	rootB := m.New(m.Lookup("Root"))
-	if !m.Read(rootB, []byte(`{"entries":{"7":200}}`), &rep) {
-		t.Fatal("the Go leg read the second entry")
-	}
-	rootA.Fields[0].Entries = append(rootA.Fields[0].Entries, rootB.Fields[0].Entries[0])
-	wire, err := tablewire.Encode(m, rootA)
-	if err != nil {
-		t.Fatalf("the Go leg encodes the duplicate-key map: %v", err)
+	wire := dupKeyMapWire(t, m)
+	// The base wire must really repeat a key: Go refuses it whole.
+	var base tabletext.Report
+	if ok, derr := tablewire.Decode(m, m.New(m.Lookup("Root")), wire, &base); ok || derr == nil || !base.Refused {
+		t.Fatalf("the base wire does not repeat a key: ok=%v err=%v report=%+v", ok, derr, base)
 	}
 
 	files, err := Generate(u)

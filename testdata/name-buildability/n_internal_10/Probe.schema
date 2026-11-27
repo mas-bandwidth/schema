@@ -1,0 +1,101 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum batchTooLarge
+{ Zfirst, Zsecond, Zthird }
+
+enum batch_widened
+{ Zfirst, Zsecond, Zthird }
+
+enum bb
+{ Zfirst, Zsecond, Zthird }
+
+enum bbad
+{ Zfirst, Zsecond, Zthird }
+
+enum bcap
+{ Zfirst, Zsecond, Zthird }
+
+enum bd
+{ Zfirst, Zsecond, Zthird }
+
+enum be
+{ Zfirst, Zsecond, Zthird }
+
+enum before
+{ Zfirst, Zsecond, Zthird }
+
+enum beforeWidened
+{ Zfirst, Zsecond, Zthird }
+
+enum before_text_clamp
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    batchTooLarge Inner
+    batch_widened Inner
+    bb Inner
+    bbad Inner
+    bcap Inner
+    bd Inner
+    be Inner
+    before Inner
+    beforeWidened Inner
+    before_text_clamp Inner
+}
+
+table NameTypes0
+{
+    one0  batchTooLarge
+    many0 [..4]batchTooLarge
+    one1  batch_widened
+    many1 [..4]batch_widened
+    one2  bb
+    many2 [..4]bb
+    one3  bbad
+    many3 [..4]bbad
+    one4  bcap
+    many4 [..4]bcap
+    one5  bd
+    many5 [..4]bd
+    one6  be
+    many6 [..4]be
+    one7  before
+    many7 [..4]before
+    one8  beforeWidened
+    many8 [..4]beforeWidened
+    one9  before_text_clamp
+    many9 [..4]before_text_clamp
+}
+
+table NameFields0
+{
+    batchTooLarge uint32
+    batch_widened uint32
+    bb uint32
+    bbad uint32
+    bcap uint32
+    bd uint32
+    be uint32
+    before uint32
+    beforeWidened uint32
+    before_text_clamp uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}

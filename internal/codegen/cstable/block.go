@@ -30,7 +30,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // generateBlockFiles emits <Base>Block.cs for every file of a unit that
@@ -551,7 +551,7 @@ func (g *blockGen) emitBlockHandle(bl *ir.BlockLayout) {
 	g.hf("//\n")
 	g.hf("// The bytes belong to the CONSUMER — a managed array it pinned, a NativeArray,\n")
 	g.hf("// or memory the producer handed across. Nothing here allocates.\n")
-	g.hf("public unsafe readonly struct %sBlock\n{\n", name)
+	g.hf("public unsafe readonly partial struct %sBlock\n{\n", name)
 	g.emitBlockBuild(bl)
 	g.hf("    private readonly byte* basePointer;\n")
 	g.hf("    private readonly long bytes;\n\n")

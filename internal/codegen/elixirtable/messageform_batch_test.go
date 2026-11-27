@@ -30,11 +30,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v3/ir"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 // messageBatchRow is one `message` manifest line: the file-form wire and the
@@ -274,7 +274,8 @@ func roundTripBody(row messageBatchRow, expected string) string {
     # form-1 instance's pinned text holds.
     batch = File.read!(batch_file())
     {:ok, values} = M.load_messages(vocab, batch)
-    check(values == ` + expected + `, "LoadMessages did not give the values the form-1 instance decodes to")
+    expected = ` + expected + `
+    check(values == expected, "LoadMessages did not give the values the form-1 instance decodes to: got #{inspect(values)}, want #{inspect(expected)}")
     {:ok, again} = M.save_messages(vocab, values)
     check(again == batch, "SaveMessages did not reproduce the batch bytes exactly")
     {:ok, measure} = M.measure_messages(vocab, values)
@@ -347,6 +348,21 @@ func expectedFieldValue(t *testing.T, u *ir.Unit, slots map[string]uint64, f *ir
 		if !ok {
 			t.Fatalf("field %s holds %T, want an array", f.Name, raw)
 		}
+		if f.Array == ir.ArrayFixed {
+			if _, union := f.Type.Ref.(*ir.Union); union {
+				allNone := true
+				for _, elem := range arr {
+					obj, ok := elem.(map[string]any)
+					if !ok || len(obj) != 0 {
+						allNone = false
+						break
+					}
+				}
+				if allNone {
+					return "", false
+				}
+			}
+		}
 		return expectedArrayValue(t, u, slots, f, arr), true
 	case f.Type.Kind == ir.TNamed:
 		if e, ok := f.Type.Ref.(*ir.Enum); ok {
@@ -367,43 +383,7 @@ func expectedFieldValue(t *testing.T, u *ir.Unit, slots map[string]uint64, f *ir
 			return expectedStructBody(t, u, slots, st, obj), true
 		}
 		if un, ok := f.Type.Ref.(*ir.Union); ok {
-			if raw == nil {
-				return "", false
-			}
-			obj, ok := raw.(map[string]any)
-			if !ok || len(obj) != 1 {
-				t.Fatalf("union field %s holds %T, want a 1-key arm object", f.Name, raw)
-			}
-			for armName, armRaw := range obj {
-				for _, v := range un.Variants {
-					if v.Name == armName {
-						slot, ok := slots[ir.TableArmEntry(v).Key()]
-						if !ok {
-							t.Fatalf("union %s arm %s has no announced slot", un.Name, armName)
-						}
-						if v.Void() {
-							return fmt.Sprintf("{%d, :none}", slot), true
-						}
-						lit, present := expectedFieldValue(t, u, slots, v.F, armRaw)
-						if !present {
-							switch v.F.Type.Kind {
-							case ir.TBool:
-								lit = "0"
-							case ir.TInt:
-								lit = "0"
-							case ir.TString:
-								lit = `""`
-							case ir.TNamed:
-								if _, isEnum := v.F.Type.Ref.(*ir.Enum); isEnum {
-									lit = "0"
-								}
-							}
-						}
-						return fmt.Sprintf("{%d, %s}", slot, lit), true
-					}
-				}
-			}
-			t.Fatalf("union field %s arm not found in %s", f.Name, un.Name)
+			return expectedUnionValue(t, u, slots, f.Name, un, raw)
 		}
 		t.Fatalf("named field %s refers to %T, which this card's fixed roots do not carry", f.Name, f.Type.Ref)
 	case f.Type.Kind == ir.TBytes:
@@ -524,19 +504,74 @@ func expectedKeyedElement(t *testing.T, u *ir.Unit, slots map[string]uint64, f *
 // array this card's roots carry.
 func expectedArrayValue(t *testing.T, u *ir.Unit, slots map[string]uint64, f *ir.Field, arr []any) string {
 	t.Helper()
-	st, ok := f.Type.Ref.(*ir.Struct)
-	if !ok {
-		t.Fatalf("array field %s holds element type %T, which this card's fixed roots do not carry", f.Name, f.Type.Ref)
-	}
 	var elems []string
 	for _, e := range arr {
-		obj, ok := e.(map[string]any)
-		if !ok {
-			t.Fatalf("array field %s holds element %T, want an object", f.Name, e)
+		switch ref := f.Type.Ref.(type) {
+		case *ir.Struct:
+			obj, ok := e.(map[string]any)
+			if !ok {
+				t.Fatalf("array field %s holds element %T, want an object", f.Name, e)
+			}
+			elems = append(elems, expectedStructBody(t, u, slots, ref, obj))
+		case *ir.Union:
+			lit, present := expectedUnionValue(t, u, slots, f.Name, ref, e)
+			if !present {
+				lit = ":none"
+			}
+			elems = append(elems, lit)
+		default:
+			t.Fatalf("array field %s holds element type %T, which this card's fixed roots do not carry", f.Name, f.Type.Ref)
 		}
-		elems = append(elems, expectedStructBody(t, u, slots, st, obj))
 	}
 	return "[" + strings.Join(elems, ", ") + "]"
+}
+
+// expectedUnionValue renders one union value in the same {arm_slot, payload}
+// shape for a scalar field and for an array element. Keeping one path matters:
+// a retained union array must compare every selected arm and payload, not only
+// prove that the outer array survived the message read.
+func expectedUnionValue(t *testing.T, u *ir.Unit, slots map[string]uint64, field string, un *ir.Union, raw any) (string, bool) {
+	t.Helper()
+	if raw == nil {
+		return "", false
+	}
+	obj, ok := raw.(map[string]any)
+	if ok && len(obj) == 0 {
+		return "", false
+	}
+	if !ok || len(obj) != 1 {
+		t.Fatalf("union field %s holds %T, want a 1-key arm object", field, raw)
+	}
+	for armName, armRaw := range obj {
+		for _, v := range un.Variants {
+			if v.Name != armName {
+				continue
+			}
+			slot, ok := slots[ir.TableArmEntry(v).Key()]
+			if !ok {
+				t.Fatalf("union %s arm %s has no announced slot", un.Name, armName)
+			}
+			if v.Void() {
+				return fmt.Sprintf("{%d, :none}", slot), true
+			}
+			lit, present := expectedFieldValue(t, u, slots, v.F, armRaw)
+			if !present {
+				switch v.F.Type.Kind {
+				case ir.TBool, ir.TInt:
+					lit = "0"
+				case ir.TString:
+					lit = `""`
+				case ir.TNamed:
+					if _, isEnum := v.F.Type.Ref.(*ir.Enum); isEnum {
+						lit = "0"
+					}
+				}
+			}
+			return fmt.Sprintf("{%d, %s}", slot, lit), true
+		}
+	}
+	t.Fatalf("union field %s arm not found in %s", field, un.Name)
+	return "", false
 }
 
 // expectedEnumSlot renders a selected enum variant as the reference LoadMessages
