@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/lua/luarun"
 )
 
 // writeRefusesSchema declares one field per SPEC.md §5.1 row 1 to 6 kind the
@@ -46,6 +46,11 @@ type Row
     es   [..2]Team
     us   [..2]Pick
     fs   [2]fixed(8, 8) | min = -10, max = 10
+    a    Arm
+    ok   bool
+    fl   float32
+    db   float64
+    arms [..2]Arm
 }
 `
 
@@ -102,11 +107,32 @@ row("row1_arm_elem", function(v) v.UsCount = 1; v.Us[1].Type = 1; v.Us[1].Arm.N 
 row("row1_ranged_float", function(v) v.R = 1.5 end)
 row("row5_enum_neg", function(v) v.E = -1 end)
 row("row6_union_neg", function(v) v.U.Type = -1 end)
+-- the value shapes: a term that is not what the field holds is the writer's
+-- false, never an index raise or a runtime raise
+row("shape_union_value", function(v) v.U = 1 end)
+row("shape_arm_payload", function(v) v.U.Type = 1; v.U.Arm = 1 end)
+row("shape_arm_payload_text", function(v) v.U.Type = 1; v.U.Arm = "arm" end)
+row("shape_struct_field", function(v) v.A = 1 end)
+row("shape_array", function(v) v.Xs = 1 end)
+row("shape_array_union_elem", function(v) v.UsCount = 1; v.Us[1] = 5 end)
+row("shape_array_struct_elem", function(v) v.ArmsCount = 1; v.Arms[1] = true end)
+row("shape_array_struct_short", function(v) v.ArmsCount = 1; v.Arms = {} end)
+row("shape_bool", function(v) v.Ok = 1 end)
+row("shape_float_integer", function(v) v.Fl = 1 end)
+row("shape_float_text", function(v) v.Fl = "1.5" end)
+row("shape_double_integer", function(v) v.Db = 1 end)
+do
+  local ok, result = pcall(M.WriteRow, serialize.WriteStream.new(4096), 7)
+  print("shape_value=" .. (not ok and "raised" or result == false and "refused" or "accepted"))
+end
 `
 
 // TestLuaPacketWriteRefusesRowsOneToSix pins SPEC.md §5.1 rows 1 to 6 for the
 // Lua packet Write: every value off its declaration is REFUSED (Write answers
-// false) in every build, never raised, and a valid value is accepted.
+// false) in every build, never raised, and a valid value is accepted. The
+// shape_* rows hold the same for a value of the wrong Lua type: a record,
+// union or arm payload that is not a table, array storage that is not one, a
+// bool that is not a boolean, a float that is not a Lua float.
 func TestLuaPacketWriteRefusesRowsOneToSix(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "WriteRefuses.schema")
@@ -142,7 +168,7 @@ func TestLuaPacketWriteRefusesRowsOneToSix(t *testing.T) {
 			t.Errorf("%s: %q, want refused", k, got[k])
 		}
 	}
-	if len(order) != 31 {
-		t.Fatalf("probe printed %d rows, want 31:\n%s", len(order), out)
+	if len(order) != 44 {
+		t.Fatalf("probe printed %d rows, want 44:\n%s", len(order), out)
 	}
 }

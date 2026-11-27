@@ -83,9 +83,11 @@ int main()
     std::vector<scalardemo::TableFixedEntry> plan( 1024 );
     const int64_t n = scalardemo::SimStateFixedLoad( &dst, 1, wire.data(), (int64_t) wire.size(),
                                                       plan.data(), 1024, NULL, &report );
-    check( n == 1 && !report.refused && !report.malformed,
+    check( n == 1 && !report.refused && !report.damaged,
            "SimStateFixedLoad reads one record without refusal" );
-    check( report.clamped == 0 && report.widened == 0 && report.unknown == 0,
+    // strict-only-read: a kind mismatch, an out-of-range value and a repeat now refuse the
+    // whole load (no counter), so the retired zero counts read as not refused, not damaged.
+    check( !report.refused && !report.damaged && report.widened == 0 && report.unknown == 0,
            "no counter moves on a clean default round trip" );
 
     // ---- verify the defaults survived ----

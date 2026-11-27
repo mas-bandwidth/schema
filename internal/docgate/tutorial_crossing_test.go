@@ -8,7 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/testinputs"
 )
 
 // The tutorial's Go crossing (Parts 12 and 13) is the one place a reader
@@ -117,6 +118,7 @@ func TestTutorialGoCrossing(t *testing.T) {
 		"PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"GOFLAGS=-mod=mod", "GOPROXY=off", "GOWORK=off", "GOTOOLCHAIN=local")
 	run := func(command string) (string, error) {
+		testinputs.Files(t, testinputs.Compiler...)
 		cmd := exec.Command("sh", "-c", command)
 		cmd.Dir = work
 		cmd.Env = env
@@ -219,7 +221,7 @@ func consoleSteps(fence int, body []string) []crossingStep {
 func offlineReplaces(gomod, root, serializeGo string) string {
 	var b strings.Builder
 	for _, r := range [][2]string{
-		{"github.com/mas-bandwidth/schema/v2", root},
+		{"github.com/mas-bandwidth/schema/v3", root},
 		{"github.com/mas-bandwidth/serialize.go/v2", serializeGo},
 	} {
 		if !strings.Contains(gomod, "replace "+r[0]+" ") {

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // cppLibc stands in for check.LibcIdentifier: the names this test declares.
@@ -23,7 +23,9 @@ func cppLibc(n string) bool {
 // platform uses are qualified where they name the global — a type always, a
 // function at a call, inside a #define's body too — and an emitter local named
 // like a libc function (`int64_t exp`) is left alone, as are literals,
-// comments, the macro NULL and every name the unit does not declare.
+// comments, the macro NULL and every name the unit does not declare. A field
+// or arm named like the libc type (`Holder uint8_t;`, `return uint8_t;`, `offsetof( Fields, uint8_t )`) is a
+// member, and stays bare (n_internal_33).
 func TestQualifyCppKeepsUserAndPlatformApart(t *testing.T) {
 	u := &ir.Unit{Package: "probe", Structs: map[string]*ir.Struct{}}
 	for _, n := range []string{"uint8_t", "memcpy", "NULL", "exp", "Holder"} {
@@ -47,6 +49,9 @@ struct {M} { std::uint8_t n; };
 struct {N} { int x; };
 struct {E} { int y; };
 struct Holder { {U} first; {N} none; };
+struct Arms { Holder uint8_t; Holder & Pick() { ::new ( static_cast<void *>( &uint8_t ) ) Holder{}; return uint8_t; } };
+struct Fields { uint32_t uint8_t = 0; uint8_t * p = nullptr; std::vector<uint8_t> v; };
+static_assert( offsetof( Fields, uint8_t ) == 0, "" );
 inline void copy({U} * d, const {U} * s, size_t n)
 {
     memcpy(d, s, n);
@@ -68,6 +73,9 @@ struct memcpy { std::uint8_t n; };
 struct NULL_ { int x; };
 struct exp { int y; };
 struct Holder { uint8_t first; NULL_ none; };
+struct Arms { Holder uint8_t; Holder & Pick() { ::new ( static_cast<void *>( &uint8_t ) ) Holder{}; return uint8_t; } };
+struct Fields { uint32_t uint8_t = 0; ::uint8_t * p = nullptr; std::vector<::uint8_t> v; };
+static_assert( offsetof( Fields, uint8_t ) == 0, "" );
 inline void copy(uint8_t * d, const uint8_t * s, size_t n)
 {
     ::memcpy(d, s, n);

@@ -75,4 +75,4 @@ wire form.
 
     make dist-lobster
     SCHEMA_SLOW=1 go test -count=1 -timeout 600s ./internal/codegen/lobstertable/
-    ok  	github.com/mas-bandwidth/schema/v2/internal/codegen/lobstertable	74.724s
+    ok  	github.com/mas-bandwidth/schema/v3/internal/codegen/lobstertable	74.724s

@@ -28,10 +28,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 )
 
 type textStrictCell struct {
@@ -49,7 +48,7 @@ func (c textStrictCell) carries(unit string) bool { return c.units == nil || c.u
 // textStrictCellFailures runs one row over the golden and hostile corpora
 // and answers what differs, and how many cases it held. runtime, when set,
 // overrides runtime modules in every generated unit.
-func textStrictCellFailures(t *testing.T, c textStrictCell, runtime map[string][]byte) (fails []string, held int) {
+func textStrictCellFailures(t *testing.T, c textStrictCell, runtime map[string][]byte, first bool) (fails []string, held int) {
 	t.Helper()
 	m := readTextManifest(t)
 	byUnit := map[string][]textInstance{}
@@ -59,6 +58,9 @@ func textStrictCellFailures(t *testing.T, c textStrictCell, runtime map[string][
 		}
 	}
 	for _, key := range sortedKeys(byUnit) {
+		if first && len(fails) > 0 {
+			break
+		}
 		u := loadUnit(t, m.units[key])
 		if !unitCarriesJson(u) {
 			continue
@@ -91,6 +93,9 @@ func textStrictCellFailures(t *testing.T, c textStrictCell, runtime map[string][
 		}
 	}
 	for _, key := range sortedKeys(hostileByUnit) {
+		if first && len(fails) > 0 {
+			break
+		}
 		u := loadUnit(t, m.units[key])
 		if !unitCarriesJson(u) {
 			continue
@@ -126,7 +131,7 @@ func TestMooTextFormStrictCells(t *testing.T) {
 	for _, c := range textStrictCells {
 		t.Run(c.row, func(t *testing.T) {
 			t.Parallel()
-			fails, held := textStrictCellFailures(t, c, nil)
+			fails, held := textStrictCellFailures(t, c, nil, false)
 			for _, f := range fails {
 				t.Error(f)
 			}
@@ -167,32 +172,19 @@ func TestMooTextFormStrictCellsNegativeControl(t *testing.T) {
 		plant("read-key-lookup", "\t\t\tk[fd.json] = i\n", "\t\t\tk[fd.json] = if i < #d.fields then i + 1 else i\n"),
 		plant("write-indent", `s = "\n" .. string.rep("  ", depth)`, `s = "\n" .. string.rep(" ", depth)`),
 	}
-	var mu sync.Mutex
-	reddened := map[string]int{}
-	t.Run("rows", func(t *testing.T) {
-		for _, c := range textStrictCells {
-			t.Run(c.row, func(t *testing.T) {
-				t.Parallel()
-				red := 0
-				for _, p := range plants {
-					fails, _ := textStrictCellFailures(t, c, p.runtime)
-					if len(fails) > 0 {
-						red++
-						mu.Lock()
-						reddened[p.name]++
-						mu.Unlock()
-						t.Logf("%s: %d findings, first %s", p.name, len(fails), fails[0])
-					}
-				}
-				if red == 0 {
-					t.Fatalf("the %s row stayed green under every plant", c.row)
-				}
-			})
-		}
-	})
-	for _, p := range plants {
-		if reddened[p.name] == 0 {
-			t.Errorf("the %s plant turned no row red", p.name)
-		}
+	rows := make([]string, len(textStrictCells))
+	for i, c := range textStrictCells {
+		rows[i] = c.row
 	}
+	names := make([]string, len(plants))
+	for i, p := range plants {
+		names[i] = p.name
+	}
+	SweepControl(t, rows, names, func(t *testing.T, r, p int) (bool, string) {
+		fails, _ := textStrictCellFailures(t, textStrictCells[r], plants[p].runtime, true)
+		if len(fails) == 0 {
+			return false, ""
+		}
+		return true, fails[0]
+	})
 }

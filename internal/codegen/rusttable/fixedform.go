@@ -57,7 +57,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // FixedRuntimeModule is the fixed form's shared runtime, emitted once per unit
@@ -583,6 +583,13 @@ func (g *gen) fixedScalarWriteCheck(f *ir.Field, expr string, width int64, ind s
 	if f.Type.Kind == ir.TNamed {
 		if extent, ranged := fixedEnumExtent(f, width); ranged {
 			g.pf("%sdebug_assert!(%s <= %d, \"%s ordinal exceeds the enum's extent\");\n", ind, expr, extent, f.Name)
+		}
+		if dep := fixedEnumNotDeprecated(f, expr); dep != "" {
+			// A DEPRECATED VARIANT IS NEVER WRITTEN (docs/SPEC-TABLES.md §2.15
+			// WRITE): the Row holds the ordinal as plain storage, so the fixed
+			// writer refuses it here; Rust write checks are debug asserts
+			// (docs/SPEC.md §5.1), as the variable writer's enumRef is.
+			g.pf("%sdebug_assert!(%s, \"invalid_value: %s holds a deprecated variant\");\n", ind, dep, f.Name)
 		}
 		if w, held := fixedFlagsWidth(f); held {
 			// A FLAGS MASK IS HELD TO W (docs/SPEC-TABLES.md §4, A TABLE LOAD
@@ -1137,6 +1144,23 @@ func fixedEnumExtent(f *ir.Field, width int64) (int64, bool) {
 	return en.Max, true
 }
 
+// fixedEnumNotDeprecated is the condition a fixed-form ENUM leaf's ordinal
+// holds when it names no deprecated variant (variant i is ordinal i+1), or ""
+// when the field is no enum or its enum declares none.
+func fixedEnumNotDeprecated(f *ir.Field, expr string) string {
+	en, ok := f.Type.Ref.(*ir.Enum)
+	if !ok {
+		return ""
+	}
+	var conds []string
+	for i := range en.Variants {
+		if variantDeprecated(en, i) {
+			conds = append(conds, fmt.Sprintf("%s != %d", expr, i+1))
+		}
+	}
+	return strings.Join(conds, " && ")
+}
+
 // fixedSlotType is ONE slot's Rust type in the Row — the cooked spelling,
 // because the Row IS the cooked record (docs/SPEC-TABLES.md §7.2).
 func (g *gen) fixedSlotType(f *ir.Field) string { return cookElemType(f) }
@@ -1508,7 +1532,7 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("];\n\n")
 	g.pf("/// THE FLOOR: 1 + the highest RETIRED index, 0 when none is (§5.2). Below it\n")
 	g.pf("/// a file is `layout_unsupported` — upgrade the client; outside the lineage\n")
-	g.pf("/// altogether it is `layout_newer` — ship the reader. A retired entry stays\n")
+	g.pf("/// altogether it is `layout_unknown` (§5.3 step 5). A retired entry stays\n")
 	g.pf("/// in the lineage forever, which is what keeps the two answers distinct.\n")
 	g.pf("pub const %s_FIXED_FLOOR: usize = %d;\n", up, floor)
 	g.pf("/// THE INDEX OF THIS BUILD'S OWN LAYOUT, which takes the IDENTITY plan.\n")
@@ -1758,15 +1782,15 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    // fixed table reads BACKWARD and never forward: the hash the header\n")
 	g.pf("    // carries is TAKEN AS GIVEN — the definitions digest is not on the wire,\n")
 	g.pf("    // so the number cannot be re-derived from a file — and it is looked up in\n")
-	g.pf("    // the lineage the BUILD laid down. A hash no entry holds is a writer ahead\n")
-	g.pf("    // of this reader, and there is nothing to try.\n")
+	g.pf("    // the lineage the BUILD laid down. A hash no entry holds is layout_unknown\n")
+	g.pf("    // (§5.3 step 5, SPEC-TABLES §21.3): nothing proves it newer, nothing to try.\n")
 	g.pf("    let Some(found) = %s_FIXED_LINEAGE.iter().position(|k| k.hash == hash) else {\n", up)
 	g.pf("        // THE FILE'S HASH, AND NOTHING ELSE (bill §12.4).\n")
-	g.pf("        return report.refuse_layout(TableFixedReason::LayoutNewer, hash);\n    };\n")
+	g.pf("        return report.refuse_layout(TableFixedReason::LayoutUnknown, hash);\n    };\n")
 	if floor > 0 {
 		g.pf("    if found < %s_FIXED_FLOOR {\n", up)
 		g.pf("        // RETIRED: the entry stays in the lineage forever, so this answer stays\n")
-		g.pf("        // distinct from `layout_newer`, and it reports the hash too (§5.9 #7).\n")
+		g.pf("        // distinct from `layout_unknown`, and it reports the hash too (§5.9 #7).\n")
 		g.pf("        return report.refuse_layout(TableFixedReason::LayoutUnsupported, hash);\n    }\n")
 	} else {
 		g.pf("    // NOTHING IS RETIRED, so the floor is 0 and the check below it cannot\n")

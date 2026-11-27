@@ -6,7 +6,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // The optional view file is a leaf: nothing in the table codecs refers to it.
@@ -142,7 +142,7 @@ func generateViewFile(u *ir.Unit, closure map[string]bool, arms map[string]int) 
 				for _, arm := range un.Variants {
 					if !arm.Void() {
 						g.needsUnsafe()
-						extra = fmt.Sprintf("PayloadOffset:uint32(unsafe.Offsetof(%sRow{}.Payload)),", n)
+						extra = fmt.Sprintf("PayloadOffset:uint32(unsafe.Offsetof(%sRow{}.schema_payload)),", n)
 						break
 					}
 				}

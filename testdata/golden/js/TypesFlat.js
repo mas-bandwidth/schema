@@ -19,6 +19,9 @@ export const FlatReadSlack = 8;
 // writer contract, in every build (SPEC §5.1). The buffer behind view
 // must hold Vec3MaxBytes.
 export function WriteVec3Flat(view, value) {
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isFinite(value.x)) { // a bare float must be finite
     return -1;
   }
@@ -87,6 +90,9 @@ export function ReadVec3FlatBits(view, numBits, value) {
 // writer contract, in every build (SPEC §5.1). The buffer behind view
 // must hold QuatMaxBytes.
 export function WriteQuatFlat(view, value) {
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isFinite(value.x)) { // a bare float must be finite
     return -1;
   }
@@ -168,6 +174,9 @@ export function ReadQuatFlatBits(view, numBits, value) {
 // must hold HandleMaxBytes.
 export function WriteHandleFlat(view, value) {
   let lo = 0;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isInteger(value.objectId) || value.objectId < 0 || value.objectId > 9999) {
     return -1;
   }
@@ -230,6 +239,9 @@ export function ReadHandleFlatBits(view, numBits, value) {
 // must hold QuantizedPositionMaxBytes.
 export function WriteQuantizedPositionFlat(view, value) {
   let v = 0, lo = 0;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isInteger(value.x) || value.x < -8388608 || value.x > 8388608) {
     return -1;
   }
@@ -321,6 +333,9 @@ export function ReadQuantizedPositionFlatBits(view, numBits, value) {
 // must hold QuantizedVelocityMaxBytes.
 export function WriteQuantizedVelocityFlat(view, value) {
   let v = 0, lo = 0;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isInteger(value.x) || value.x < -2097152 || value.x > 2097152) {
     return -1;
   }
@@ -412,6 +427,9 @@ export function ReadQuantizedVelocityFlatBits(view, numBits, value) {
 // must hold QuantizedRotationMaxBytes.
 export function WriteQuantizedRotationFlat(view, value) {
   let v = 0, lo = 0;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isInteger(value.x) || value.x < -1024 || value.x > 1024) {
     return -1;
   }
@@ -508,6 +526,12 @@ export function ReadQuantizedRotationFlatBits(view, numBits, value) {
 // must hold RigidBodyMaxBytes.
 export function WriteRigidBodyFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
+  if (value.position === null || typeof value.position !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isFinite(value.position.x)) { // a bare float must be finite
     return -1;
   }
@@ -520,6 +544,9 @@ export function WriteRigidBodyFlat(view, value) {
     return -1;
   }
   view.setFloat64(16, value.position.z, true);
+  if (value.orientation === null || typeof value.orientation !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isFinite(value.orientation.x)) { // a bare float must be finite
     return -1;
   }
@@ -536,10 +563,16 @@ export function WriteRigidBodyFlat(view, value) {
     return -1;
   }
   view.setFloat64(48, value.orientation.w, true);
+  if (typeof value.atRest !== "boolean") { // a bool is a boolean (SPEC §5.1)
+    return -1;
+  }
   lo = ((value.atRest ? 1 : 0));
   wi = 56;
   sb = 1;
   if (!value.atRest) {
+    if (value.linearVelocity === null || typeof value.linearVelocity !== "object") { // a record or union value is an object (SPEC §5.1)
+      return -1;
+    }
     if (!globalThis.Number.isFinite(value.linearVelocity.x)) { // a bare float must be finite
       return -1;
     }
@@ -605,6 +638,9 @@ export function WriteRigidBodyFlat(view, value) {
       wi += 4;
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
+    }
+    if (value.angularVelocity === null || typeof value.angularVelocity !== "object") { // a record or union value is an object (SPEC §5.1)
+      return -1;
     }
     if (!globalThis.Number.isFinite(value.angularVelocity.x)) { // a bare float must be finite
       return -1;
@@ -1043,41 +1079,68 @@ export function ReadRigidBodyFlatBits(view, numBits, value) {
 // must hold InputMaxBytes.
 export function WriteInputFlat(view, value) {
   let v = 0, x = 0, lo = 0;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   x = value.stickX;
-  if (!globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float must be finite
+  if (typeof x !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float is a finite Number
     return -1;
   }
   SC.setFloat32(0, x, true);
   v = SC.getUint32(0, true);
   view.setUint32(0, v, true);
   x = value.stickY;
-  if (!globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float must be finite
+  if (typeof x !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float is a finite Number
     return -1;
   }
   SC.setFloat32(0, x, true);
   v = SC.getUint32(0, true);
   view.setUint32(4, v, true);
   x = value.throttle;
-  if (!globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float must be finite
+  if (typeof x !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float is a finite Number
     return -1;
   }
   SC.setFloat32(0, x, true);
   v = SC.getUint32(0, true);
   view.setUint32(8, v, true);
   x = value.yaw;
-  if (!globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float must be finite
+  if (typeof x !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float is a finite Number
     return -1;
   }
   SC.setFloat32(0, x, true);
   v = SC.getUint32(0, true);
   view.setUint32(12, v, true);
   x = value.pitch;
-  if (!globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float must be finite
+  if (typeof x !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float is a finite Number
     return -1;
   }
   SC.setFloat32(0, x, true);
   v = SC.getUint32(0, true);
   view.setUint32(16, v, true);
+  if (typeof value.fire !== "boolean") { // a bool is a boolean (SPEC §5.1)
+    return -1;
+  }
+  if (typeof value.altFire !== "boolean") { // a bool is a boolean (SPEC §5.1)
+    return -1;
+  }
+  if (typeof value.boost !== "boolean") { // a bool is a boolean (SPEC §5.1)
+    return -1;
+  }
+  if (typeof value.brake !== "boolean") { // a bool is a boolean (SPEC §5.1)
+    return -1;
+  }
+  if (typeof value.aim !== "boolean") { // a bool is a boolean (SPEC §5.1)
+    return -1;
+  }
+  if (typeof value.lockOn !== "boolean") { // a bool is a boolean (SPEC §5.1)
+    return -1;
+  }
+  if (typeof value.zoom !== "boolean") { // a bool is a boolean (SPEC §5.1)
+    return -1;
+  }
+  if (typeof value.ping !== "boolean") { // a bool is a boolean (SPEC §5.1)
+    return -1;
+  }
   lo = ((value.fire ? 1 : 0) | ((value.altFire ? 1 : 0) << 1) | ((value.boost ? 1 : 0) << 2) | ((value.brake ? 1 : 0) << 3) | ((value.aim ? 1 : 0) << 4) | ((value.lockOn ? 1 : 0) << 5) | ((value.zoom ? 1 : 0) << 6) | ((value.ping ? 1 : 0) << 7));
   view.setUint32(20, lo, true);
   return 21;
@@ -1269,6 +1332,9 @@ export function ReadInputFlatBits(view, numBits, value) {
 // must hold InputPacketMaxBytes.
 export function WriteInputPacketFlat(view, value) {
   let v = 0, x = 0, lo = 0, sb = 0, wi = 0;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isInteger(value.synchronizeSequence) || value.synchronizeSequence < 0 || value.synchronizeSequence > 65535) { // a bare integer must fit its width
     return -1;
   }
@@ -1296,89 +1362,126 @@ export function WriteInputPacketFlat(view, value) {
   if (!globalThis.Number.isInteger(value.inputsCount) || value.inputsCount < 0 || value.inputsCount > 16) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
     return -1;
   }
+  if (value.inputs === null || typeof value.inputs !== "object" || !(value.inputs.length >= value.inputsCount)) { // the storage holds every element the loop reads (SPEC §5.1)
+    return -1;
+  }
   lo = (lo | ((((value.inputsCount) & 0x1f)) << 16)) >>> 0;
   wi = 16;
   sb = 21;
   for (let i0 = 0; i0 < value.inputsCount; i0++) {
     const e0 = value.inputs[i0];
-    x = e0.stickX;
-    if (!globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float must be finite
+    if (typeof e0 === "function") { // a record or union value is an object, never a function (SPEC §5.1)
       return -1;
     }
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-    x = e0.stickY;
-    if (!globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float must be finite
-      return -1;
-    }
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-    x = e0.throttle;
-    if (!globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float must be finite
-      return -1;
-    }
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-    x = e0.yaw;
-    if (!globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float must be finite
-      return -1;
-    }
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-    x = e0.pitch;
-    if (!globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float must be finite
-      return -1;
-    }
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-    v = ((e0.fire ? 1 : 0) | ((e0.altFire ? 1 : 0) << 1) | ((e0.boost ? 1 : 0) << 2) | ((e0.brake ? 1 : 0) << 3) | ((e0.aim ? 1 : 0) << 4) | ((e0.lockOn ? 1 : 0) << 5) | ((e0.zoom ? 1 : 0) << 6) | ((e0.ping ? 1 : 0) << 7)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 8;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (8 - sb);
+    try {
+      x = e0.stickX;
+      if (typeof x !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float is a finite Number
+        return -1;
+      }
+      SC.setFloat32(0, x, true);
+      v = SC.getUint32(0, true);
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 32;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (32 - sb);
+      }
+      x = e0.stickY;
+      if (typeof x !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float is a finite Number
+        return -1;
+      }
+      SC.setFloat32(0, x, true);
+      v = SC.getUint32(0, true);
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 32;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (32 - sb);
+      }
+      x = e0.throttle;
+      if (typeof x !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float is a finite Number
+        return -1;
+      }
+      SC.setFloat32(0, x, true);
+      v = SC.getUint32(0, true);
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 32;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (32 - sb);
+      }
+      x = e0.yaw;
+      if (typeof x !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float is a finite Number
+        return -1;
+      }
+      SC.setFloat32(0, x, true);
+      v = SC.getUint32(0, true);
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 32;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (32 - sb);
+      }
+      x = e0.pitch;
+      if (typeof x !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float is a finite Number
+        return -1;
+      }
+      SC.setFloat32(0, x, true);
+      v = SC.getUint32(0, true);
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 32;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (32 - sb);
+      }
+      if (typeof e0.fire !== "boolean") { // a bool is a boolean (SPEC §5.1)
+        return -1;
+      }
+      if (typeof e0.altFire !== "boolean") { // a bool is a boolean (SPEC §5.1)
+        return -1;
+      }
+      if (typeof e0.boost !== "boolean") { // a bool is a boolean (SPEC §5.1)
+        return -1;
+      }
+      if (typeof e0.brake !== "boolean") { // a bool is a boolean (SPEC §5.1)
+        return -1;
+      }
+      if (typeof e0.aim !== "boolean") { // a bool is a boolean (SPEC §5.1)
+        return -1;
+      }
+      if (typeof e0.lockOn !== "boolean") { // a bool is a boolean (SPEC §5.1)
+        return -1;
+      }
+      if (typeof e0.zoom !== "boolean") { // a bool is a boolean (SPEC §5.1)
+        return -1;
+      }
+      if (typeof e0.ping !== "boolean") { // a bool is a boolean (SPEC §5.1)
+        return -1;
+      }
+      v = ((e0.fire ? 1 : 0) | ((e0.altFire ? 1 : 0) << 1) | ((e0.boost ? 1 : 0) << 2) | ((e0.brake ? 1 : 0) << 3) | ((e0.aim ? 1 : 0) << 4) | ((e0.lockOn ? 1 : 0) << 5) | ((e0.zoom ? 1 : 0) << 6) | ((e0.ping ? 1 : 0) << 7)) >>> 0;
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 8;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (8 - sb);
+      }
+    } catch (thrown) {
+      if (e0 === null || typeof e0 !== "object") { // a record or union value is an object (SPEC §5.1)
+        return -1;
+      }
+      throw thrown;
     }
   }
   if (sb !== 0) {
@@ -1709,7 +1812,13 @@ export function ReadInputPacketFlatBits(view, numBits, value) {
 // must hold ShipCreateMaxBytes.
 export function WriteShipCreateFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isInteger(value.shipType) || value.shipType < 0 || value.shipType > 5) { // headroom above the wire range cannot ride
+    return -1;
+  }
+  if (value.position === null || typeof value.position !== "object") { // a record or union value is an object (SPEC §5.1)
     return -1;
   }
   if (!globalThis.Number.isInteger(value.position.x) || value.position.x < -8388608 || value.position.x > 8388608) {
@@ -1725,6 +1834,9 @@ export function WriteShipCreateFlat(view, value) {
   v = (((((value.position.y >>> 0) - 4286578688) >>> 0) & 0x1ffffff)) >>> 0;
   view.setUint32(0, (lo | (v << 28)) >>> 0, true);
   lo = v >>> 4;
+  if (value.rotation === null || typeof value.rotation !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isInteger(value.rotation.x) || value.rotation.x < -1024 || value.rotation.x > 1024) {
     return -1;
   }
@@ -1743,6 +1855,9 @@ export function WriteShipCreateFlat(view, value) {
   if (!globalThis.Number.isInteger(value.rotation.w) || value.rotation.w < -1024 || value.rotation.w > 1024) {
     return -1;
   }
+  if (value.linearVelocity === null || typeof value.linearVelocity !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isInteger(value.linearVelocity.x) || value.linearVelocity.x < -2097152 || value.linearVelocity.x > 2097152) {
     return -1;
   }
@@ -1759,12 +1874,18 @@ export function WriteShipCreateFlat(view, value) {
   v = (((((value.linearVelocity.y >>> 0) - 4292870144) >>> 0) & 0x7fffff)) >>> 0;
   view.setUint32(16, (lo | (v << 21)) >>> 0, true);
   lo = v >>> 11;
+  if (typeof value.hasFlags !== "boolean") { // a bool is a boolean (SPEC §5.1)
+    return -1;
+  }
   v = (((((value.linearVelocity.z >>> 0) - 4292870144) >>> 0) & 0x7fffff) | ((value.hasFlags ? 1 : 0) << 23)) >>> 0;
   view.setUint32(20, (lo | (v << 12)) >>> 0, true);
   lo = v >>> 20;
   wi = 24;
   sb = 4;
   if (value.hasFlags) {
+    if (typeof value.flags !== "bigint") { // a flags value is a BigInt
+      return -1;
+    }
     if (globalThis.BigInt.asUintN(64, value.flags) >= 16n) { // a mask bit above the wire width cannot ride
       return -1;
     }
@@ -2054,6 +2175,9 @@ export function ReadShipCreateFlatBits(view, numBits, value) {
 // must hold ExpressionProbeMaxBytes.
 export function WriteExpressionProbeFlat(view, value) {
   let lo = 0;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isInteger(value.hardpointIndex) || value.hardpointIndex < 0 || value.hardpointIndex > 31) {
     return -1;
   }
@@ -2113,6 +2237,9 @@ export function ReadExpressionProbeFlatBits(view, numBits, value) {
 // must hold ExtremeProbeMaxBytes.
 export function WriteExtremeProbeFlat(view, value) {
   let v = 0;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (typeof value.floorBound !== "bigint" || value.floorBound < -9223372036854775808n || value.floorBound > 100n) {
     return -1;
   }
@@ -2288,6 +2415,9 @@ export function ReadExtremeProbeFlatBits(view, numBits, value) {
 // must hold ExtremeRowMaxBytes.
 export function WriteExtremeRowFlat(view, value) {
   let v = 0;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (typeof value.clampedFloor !== "bigint" || value.clampedFloor < -9223372036854775808n || value.clampedFloor > 100n) {
     return -1;
   }

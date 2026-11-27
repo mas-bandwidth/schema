@@ -1,6 +1,6 @@
 package compiler
 
-import "github.com/mas-bandwidth/schema/v2/ir"
+import "github.com/mas-bandwidth/schema/v3/ir"
 
 // generateCUnqualified is the C emitters' output in the schema's own
 // spellings, before internal/codegen/cqualify gives every name its package.

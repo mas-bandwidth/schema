@@ -14,8 +14,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/genheader"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/genheader"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // generateFixedFiles emits the fixed form for every unit file that declares a
@@ -242,6 +242,15 @@ func fixedDeclaringFile(u *ir.Unit, name string) string {
 // class keeps its tag in a plain int. Every other union is the packet
 // emitter's class, whose tag is the <Union>Type extension type.
 func unionStorageIsLocal(un *ir.Union) bool {
+	// A TABLE-CLOSURE UNION (ir.Union.TableClosureOnly: an arm that is an
+	// enum, a flags mask, a pointer, an array, a scalar, a union or a table)
+	// assembles beside the decl stream, so internal/codegen/dart never meets
+	// it and declares no class for it: its storage is this emitter's. An enum
+	// arm (`union U { mode kind }` reached from a table) once fell through to
+	// the packet class and left U, zeroU and UType undefined in <Base>Fixed.dart.
+	if un.TableClosureOnly() {
+		return true
+	}
 	for _, v := range un.Variants {
 		if v.F == nil {
 			return true // §2.6: fixed storage owns the tag-only arm, with no member.
@@ -946,6 +955,11 @@ func (g *fixedModule) emitBlockValidateElem(f *ir.Field, expr, ind string, depth
 			g.emitBlockValidateStruct(r, expr, ind, depth+1)
 		case *ir.Enum:
 			g.pf("%sif (%s < 0 || %s > %d) return -1;\n", ind, expr, expr, len(r.Variants))
+			// §2.15 WRITE: a deprecated variant is never written, held as a
+			// DEBUG assert (SPEC.md §5.1) as the variable and fixed saves hold it
+			if cond := enumNotDeprecated(r, expr); cond != "" {
+				g.pf("%sassert(%s, 'deprecated variant is never written (SPEC-TABLES 2.15)');\n", ind, cond)
+			}
 		case *ir.Flags:
 			if len(r.Variants) < 64 {
 				mask := (uint64(1) << uint(len(r.Variants))) - 1
@@ -1067,11 +1081,18 @@ func (g *fixedModule) assemble() []byte {
 	}
 	sort.Strings(bases)
 	for _, b := range bases {
-		names := make([]string, 0, len(g.imports[b]))
+		all := make([]string, 0, len(g.imports[b]))
 		for s := range g.imports[b] {
-			names = append(names, s)
+			all = append(all, s)
 		}
-		sort.Strings(names)
+		sort.Strings(all)
+		names, prefixed := splitEnumShows(g.unit, all)
+		if prefixed {
+			h.WriteString(enumPrefixImport(b + ".dart"))
+		}
+		if len(names) == 0 {
+			continue
+		}
 		list := strings.Join(names, ", ")
 		one := fmt.Sprintf("import '%s.dart' show %s;", b, list)
 		if len(one) <= 80 {

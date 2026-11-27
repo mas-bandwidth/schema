@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	wrpacket "github.com/mas-bandwidth/schema/v2/test/conformance/write-refusal-packet"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/goose/gooserun"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	wrpacket "github.com/mas-bandwidth/schema/v3/test/conformance/write-refusal-packet"
 )
 
 // probe is the Goose side: it reads rows.txt, applies each row's op to a fresh
@@ -54,12 +54,14 @@ func TestWriteRefusalPacketGooseSurface(t *testing.T) {
 	runWriteRefusalPacketGoose(t)
 }
 
-// runWriteRefusalPacketGoose generates PacketWriteRefusal.schema for Goose,
+// runWriteRefusalPacketGoose generates RefusalPacket.schema for Goose,
 // runs the probe beside the generated files with the pinned compiler, and
 // holds its verdicts against rows.txt. Behind slowtest.Gate (gooserun.Command
-// gates too): it compiles and runs Goose. No row is exempt: every value the
-// rows name is representable in the Goose struct (an enum and a union tag are
-// u8, bits(7) is u32, counts and lengths are i32).
+// gates too): it compiles and runs Goose. Every value the rows name is
+// representable in the Goose struct (an enum and a union tag are u8, bits(7)
+// is u32, counts and lengths are i32) except a [3]int16 holding another count
+// than 3: its storage is an i16[3], so the probe names those rows
+// unrepresentable and they are exempt.
 func runWriteRefusalPacketGoose(t *testing.T) {
 	t.Helper()
 	slowtest.Gate(t, "the Goose toolchain (it compiles and runs the generated packet writer)")
@@ -71,5 +73,8 @@ func runWriteRefusalPacketGoose(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := gooserun.RunArgs(t, dir, "main.goose", nil, wrpacket.RowsPath(root))
-	wrpacket.Check(t, string(out), wrpacket.Rows(t, root), nil)
+	wrpacket.Check(t, string(out), wrpacket.Rows(t, root), map[string]string{
+		"fixed_long":  "the [3]int16 storage is an i16[3]",
+		"fixed_short": "the [3]int16 storage is an i16[3]",
+	})
 }

@@ -28,9 +28,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/ccommon"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/genheader"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/ccommon"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/genheader"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // blockRuntime is the shared block runtime: emitted into every <Base>Block.h
@@ -624,7 +624,12 @@ func (g *tableGen) emitBlockFillPath(bl *ir.BlockLayout) {
 				g.pf("    %sif ( (uint64_t) %s > %sull ) { return -1; }%s\n", guard, m, f.IntMax.String(), closeGuard)
 			}
 		case f.Array == ir.ArrayNone && f.HasFloatRange:
-			g.pf("    %sif ( !( %s >= %g && %s <= %g ) ) { return -1; }%s\n", guard, m, f.FMin, m, f.FMax, closeGuard)
+			// a float32 field is held against ends held at float32 (formatFloat),
+			// as the Go, Rust and C# BlockBytes hold it: max = 0.1 admits the
+			// float32 0.1 (tables/examples/Tables.schema, FloatBound). A double
+			// literal promoted the field to double and refused that value.
+			isF32 := f.Type.Kind == ir.TFloat32
+			g.pf("    %sif ( !( %s >= %s && %s <= %s ) ) { return -1; }%s\n", guard, m, formatFloat(f.FMin, isF32), m, formatFloat(f.FMax, isF32), closeGuard)
 		}
 	}
 	for _, a := range bl.Arrays {

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 )
 
 const jsJSONWideFractionSchema = "package probe\ntable Root\n{\n    q fixed(48, 16) | min = -10, max = 10\n    n uint128\n}\n"

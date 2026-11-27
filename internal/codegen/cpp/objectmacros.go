@@ -1,6 +1,6 @@
 package cpp
 
-import "github.com/mas-bandwidth/schema/v2/ir"
+import "github.com/mas-bandwidth/schema/v3/ir"
 
 // fileNestsTypes reports whether any struct in this file carries a field of
 // a struct or union type — the fields whose wire is a call to another

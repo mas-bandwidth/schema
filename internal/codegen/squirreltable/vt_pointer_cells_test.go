@@ -26,13 +26,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirreltable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/squirrel"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/squirrel/sqrun"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/squirreltable"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 type vtPointerCellRow struct {
@@ -341,6 +341,11 @@ func runVtPointerCellsSuite(t *testing.T, patch map[string]func(string) string) 
 			if fn, ok := patch[name]; ok {
 				s = fn(s)
 			}
+			// "*" patches every emitted table file: the generated module carries
+			// the fixed writer (<Root>FixedSave), whose file name follows the unit
+			if fn, ok := patch["*"]; ok {
+				s = fn(s)
+			}
 			writeFile(t, filepath.Join(out, name), []byte(s))
 		}
 		mods[key] = squirreltable.ModuleName(u)
@@ -588,22 +593,29 @@ func TestSquirrelVtPointerCellsNegativeControl(t *testing.T) {
 
 	t.Run("sabotage-save", func(t *testing.T) {
 		const varAnchor = "  wfixed(w, ids.list.len(), 8);\n"
-		const fixAnchor = "  putFixedU(out, rec, 8, c.lhash);\n"
+		// A fixed root's Save is the generated <Root>FixedSave (runtime saveFixed
+		// delegates to it), so the fixed half flips each record's hash there.
+		const fixAnchor = "\n    b.writen(h & 0xFFFFFFFF, 'i'); b.writen((h >> 32) & 0xFFFFFFFF, 'i');\n"
+		const fixSabotage = "\n    b.writen((h ^ 1) & 0xFFFFFFFF, 'i'); b.writen((h >> 32) & 0xFFFFFFFF, 'i');\n"
+		fixPatched := 0
 		res := runVtPointerCellsSuite(t, map[string]func(string) string{
 			"schema_table_save.nut": func(src string) string {
 				if strings.Count(src, varAnchor) != 1 {
 					t.Fatalf("save varAnchor count = %d, want 1", strings.Count(src, varAnchor))
 				}
-				if strings.Count(src, fixAnchor) != 1 {
-					t.Fatalf("save fixAnchor count = %d, want 1", strings.Count(src, fixAnchor))
-				}
-				s := strings.Replace(src, varAnchor, "  wfixed(w, ids.list.len() + 1, 8);\n", 1)
-				return strings.Replace(s, fixAnchor, "  putFixedU(out, rec, 8, c.lhash ^ 1);\n", 1)
+				return strings.Replace(src, varAnchor, "  wfixed(w, ids.list.len() + 1, 8);\n", 1)
+			},
+			"*": func(src string) string {
+				fixPatched += strings.Count(src, fixAnchor)
+				return strings.ReplaceAll(src, fixAnchor, fixSabotage)
 			},
 		})
+		if fixPatched == 0 {
+			t.Fatalf("save fixAnchor matched no generated <Root>FixedSave record hash")
+		}
 		for _, cell := range vtPointerCellTable {
 			if len(res.cellFailures[cell.name]) == 0 {
-				t.Errorf("NEGATIVE CONTROL FAILED: cell %s stayed green when schema_table_save.nut was sabotaged", cell.name)
+				t.Errorf("NEGATIVE CONTROL FAILED: cell %s stayed green when the save (runtime and generated FixedSave) was sabotaged", cell.name)
 			}
 		}
 	})

@@ -18,9 +18,9 @@ import (
 	"strings"
 	"testing"
 
-	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	cgen "github.com/mas-bandwidth/schema/v3/internal/codegen/c"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 const cVariableWriteRangeSchema = `package probe
@@ -29,13 +29,16 @@ table VarRoot
 {
     p int32 = 1 | min = 0, max = 10
     b bits(6)
+    r int32 | min = 0, max = 10, required
 }
 `
 
 const cVariableWriteRangeProbe = `#include <stdio.h>
 #include <stdlib.h>
 /* a failed write check exits 3, so the test can tell it from a crash */
+#ifndef NDEBUG
 #define schema_assert( x ) do { if ( !( x ) ) { fprintf( stderr, "write check: %s\n", #x ); exit( 3 ); } } while ( 0 )
+#endif
 #include "ProbeTable.h"
 #include <string.h>
 
@@ -49,11 +52,17 @@ int main( int argc, char ** argv )
     var_root_reset( &v );
     v.p = 10;
     v.b = 63;
+    v.r = 10;
     if ( strcmp( argv[1], "above" ) == 0 ) { v.p = 11; }
     else if ( strcmp( argv[1], "below" ) == 0 ) { v.p = -1; }
     else if ( strcmp( argv[1], "wide" ) == 0 ) { v.b = 0x40; }
+    else if ( strcmp( argv[1], "required" ) == 0 ) { v.r = 11; }
     else if ( strcmp( argv[1], "ok" ) != 0 ) { return 2; }
     n = var_root_measure( NULL, &v );
+    if ( strcmp( argv[1], "required" ) == 0 ) { return n <= 0 && var_root_save( NULL, &v, out, sizeof( out ) ) <= 0 ? 0 : 1; }
+#ifdef NDEBUG
+    if ( strcmp( argv[1], "above" ) == 0 ) { return n > 0 ? 0 : 1; }
+#endif
     if ( n <= 0 || n > (int64_t) sizeof( out ) ) { fprintf( stderr, "measure %lld\n", (long long) n ); return 1; }
     if ( var_root_save( NULL, &v, out, n ) != n ) { fprintf( stderr, "save failed\n" ); return 1; }
     return 0;
@@ -140,6 +149,17 @@ func TestCVariableWriteRangeAssertCompiled(t *testing.T) {
 		var exit *exec.ExitError
 		if !errors.As(err, &exit) || exit.ExitCode() != 3 {
 			t.Errorf("%s: the debug build wrote a value the reader refuses: err=%v\n%s", mode, err, out)
+		}
+	}
+	if out, err := testproc.Command(t, bin, "required").CombinedOutput(); err != nil {
+		t.Fatalf("debug required refusal: %v\n%s", err, out)
+	}
+	if out, err := testproc.Command(t, cc, append(args, "-DNDEBUG")...).CombinedOutput(); err != nil {
+		t.Fatalf("compile with assertions disabled: %v\n%s", err, out)
+	}
+	for _, mode := range []string{"ok", "required", "above"} {
+		if out, err := testproc.Command(t, bin, mode).CombinedOutput(); err != nil {
+			t.Errorf("release %s: %v\n%s", mode, err, out)
 		}
 	}
 }

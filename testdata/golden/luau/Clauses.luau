@@ -1113,7 +1113,7 @@ _M.F13MaxBytes = 16
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteF13(stream: any, v: any): boolean
   if type(v) ~= "table" then return false end
-  if type(v.Items) ~= "table" then return false end
+  if type(v.Items) ~= "table" or #v.Items ~= 7 then return false end -- a [N]T holds exactly N values (SPEC §5.1)
   for _i = 1, 7 do
     if type(v.Items[_i]) ~= "number" or v.Items[_i] % 1 ~= 0 or v.Items[_i] < 0 or v.Items[_i] > 8191 then return false end
     BITS.value = v.Items[_i]
@@ -1187,7 +1187,7 @@ _M.ArrElevenMaxBytes = 16
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteArrEleven(stream: any, v: any): boolean
   if type(v) ~= "table" then return false end
-  if type(v.Items) ~= "table" then return false end
+  if type(v.Items) ~= "table" or #v.Items ~= 9 then return false end -- a [N]T holds exactly N values (SPEC §5.1)
   for _i = 1, 9 do
     if type(v.Items[_i]) ~= "table" then return false end
     if not _M.WriteEleven(stream, v.Items[_i]) then return false end

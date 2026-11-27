@@ -9,8 +9,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 const root = "../.."
@@ -47,12 +47,61 @@ func TestPlanCoversTheCorpus(t *testing.T) {
 	}
 }
 
+// TestOwedLedgerIsWellFormed is the ledger's fast half: owed.txt parses, and
+// every line names a target and a builds row (ReadOwed).
+func TestOwedLedgerIsWellFormed(t *testing.T) {
+	t.Parallel()
+	rows, err := ReadRows(corpus)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ReadOwed(corpus, rows); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestJudgeHoldsTheLedgerExact plants each way a ledger can lie: a stale
+// line (the job passes) and a failure on a job the ledger does not name both
+// fail the run; only a ledgered failure is owed.
+func TestJudgeHoldsTheLedgerExact(t *testing.T) {
+	t.Parallel()
+	owedJob := Job{Case: "n_x", Target: "dart"}
+	owed := map[Job]Owed{owedJob: {Job: owedJob, Cause: "a planted cause", Line: 3}}
+	broke := fmt.Errorf("error: planted")
+	for _, c := range []struct {
+		name string
+		j    Job
+		err  error
+		want string
+	}{
+		{"pass", Job{Case: "n_x", Target: "cpp"}, nil, Pass},
+		{"ledgered failure is owed", owedJob, broke, OwedRun},
+		{"stale ledger line fails", owedJob, nil, Fail},
+		{"unledgered failure fails", Job{Case: "n_x", Target: "rust"}, broke, Fail},
+	} {
+		got, err := Judge(c.j, c.err, owed)
+		if got != c.want {
+			t.Errorf("%s: verdict %s, want %s", c.name, got, c.want)
+		}
+		if (got == Fail) != (err != nil) {
+			t.Errorf("%s: verdict %s with error %v", c.name, got, err)
+		}
+		if c.name == "stale ledger line fails" && (err == nil || !strings.Contains(err.Error(), "STALE OWED")) {
+			t.Errorf("stale line: %v, want a STALE OWED error naming the line", err)
+		}
+	}
+}
+
 // TestNameBuildability is the nightly: every builds row generates and builds
 // and loads in all 18 targets. Its last log line is
 // the per-target summary.
 func TestNameBuildability(t *testing.T) {
 	slowtest.Gate(t, "every target's toolchain (the name-buildability nightly)")
 	rows, err := ReadRows(corpus)
+	if err != nil {
+		t.Fatal(err)
+	}
+	owed, err := ReadOwed(corpus, rows)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,22 +157,30 @@ func TestNameBuildability(t *testing.T) {
 		}
 	}
 
-	type result struct{ pass, fail int }
+	type result struct{ pass, fail, owed int }
 	var mu sync.Mutex
 	summary := map[string]*result{}
 	for _, tg := range Targets {
 		summary[tg] = &result{}
 	}
-	var failures []string
-	record := func(j Job, err error) {
+	var failures, owedRuns []string
+	// record judges a job against the owed ledger and answers the error the
+	// job's subtest fails on: nil for a pass and for an owed failure
+	record := func(j Job, err error) error {
 		mu.Lock()
 		defer mu.Unlock()
-		if err == nil {
+		verdict, ferr := Judge(j, err, owed)
+		switch verdict {
+		case Pass:
 			summary[j.Target].pass++
-			return
+		case OwedRun:
+			summary[j.Target].owed++
+			owedRuns = append(owedRuns, fmt.Sprintf("%-28s %-9s %s", j.Case, j.Target, FirstError(err)))
+		default:
+			summary[j.Target].fail++
+			failures = append(failures, fmt.Sprintf("%-28s %-9s %s", j.Case, j.Target, FirstError(ferr)))
 		}
-		summary[j.Target].fail++
-		failures = append(failures, fmt.Sprintf("%-28s %-9s %s", j.Case, j.Target, FirstError(err)))
+		return ferr
 	}
 	// Unity builds share the dialect's serialize project under test/unity,
 	// so they take turns; every other build owns its directory.
@@ -133,9 +190,7 @@ func TestNameBuildability(t *testing.T) {
 		for _, j := range Plan(rows) {
 			t.Run(j.Case+"/"+j.Target, func(t *testing.T) {
 				t.Parallel()
-				err := runJob(t, run(t), env, schema, work, j, &unity)
-				record(j, err)
-				if err != nil {
+				if err := record(j, runJob(t, run(t), env, schema, work, j, &unity)); err != nil {
 					t.Error(err)
 				}
 			})
@@ -143,18 +198,23 @@ func TestNameBuildability(t *testing.T) {
 	})
 
 	var sb strings.Builder
-	sb.WriteString("name-buildability per-target summary (jobs passed / failed):\n")
+	sb.WriteString("name-buildability per-target summary (jobs passed / failed / owed in " + OwedFile + "):\n")
 	total := result{}
 	for _, tg := range Targets {
 		r := summary[tg]
 		total.pass += r.pass
 		total.fail += r.fail
-		fmt.Fprintf(&sb, "  %-9s %4d pass %4d fail\n", tg, r.pass, r.fail)
+		total.owed += r.owed
+		fmt.Fprintf(&sb, "  %-9s %4d pass %4d fail %4d owed\n", tg, r.pass, r.fail, r.owed)
 	}
-	fmt.Fprintf(&sb, "  %-9s %4d pass %4d fail\n", "all", total.pass, total.fail)
+	fmt.Fprintf(&sb, "  %-9s %4d pass %4d fail %4d owed\n", "all", total.pass, total.fail, total.owed)
 	slices.Sort(failures)
 	for _, f := range failures {
 		sb.WriteString("  FAIL " + f + "\n")
+	}
+	slices.Sort(owedRuns)
+	for _, f := range owedRuns {
+		sb.WriteString("  OWED " + f + "\n")
 	}
 	t.Log(sb.String())
 	// NAMEBUILD_SUMMARY names a file the summary is written to as well, so

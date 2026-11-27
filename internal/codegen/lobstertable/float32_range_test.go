@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 )
 
 // A COMPRESSED FLOAT'S RANGE IS HELD AT FLOAT32 (docs/SPEC.md §4.6;

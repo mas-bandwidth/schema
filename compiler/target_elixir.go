@@ -5,9 +5,9 @@ package compiler
 import (
 	"fmt"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/elixir"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/elixirtable"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/elixir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/elixirtable"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // elixirTarget emits Elixir 1.20.

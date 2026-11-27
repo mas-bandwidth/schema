@@ -55,6 +55,8 @@
    SELF-CONTAINED: the unit's implementation rides in this translation unit
    (`#include "W1Table.c"`) because the run line names this file alone and at
    -O0 the header's unused statics would otherwise drag the unit's externs.
+   It is the FIRST include: W1Table.c defines _POSIX_C_SOURCE 200809L for
+   its locale_t, and that only takes before the first system header.
    No other rows/ file, no shared fixture, no file outside this one edited.
 
    Run (flags per make/c.mk's build/conformance-c, C_CONFORMANCE_INCLUDES):
@@ -62,12 +64,12 @@
         -o build/rows-c-W8 && ./build/rows-c-W8
    Exit 0 green, 1 red; one printed line per assertion. */
 
+#include "W1Table.c"
+#include "W1Table.h"
+
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
-
-#include "W1Table.h"
-#include "W1Table.c"
 
 static int failures;
 
@@ -80,31 +82,31 @@ static void check( int ok, const char * what )
 int main( void )
 {
     static uint8_t file[1024];
-    static TableFixedEntry plan[512];
+    static tblw1_table_fixed_entry_t plan[512];
     size_t rows, i, found;
     int64_t measure, saved, body;
-    Vessel v, back;
-    TableReport r;
+    tblw1_vessel_t v, back;
+    tblw1_table_report_t r;
 
     /* ---- THE WRITE: one record whose `tag` carries TWO live bytes --------
        The writer writes the length word at body+36, the two live bytes at
        body+40..42, and the two bytes past them (body+42..44) stay the
        template's zeros — `length` units, never all Max. The storage past the
        live extent is 0xBE 0xEF on purpose: the value nobody wrote. */
-    vessel_reset( &v );
+    tblw1_vessel_reset( &v );
     v.tag[0] = 0xDE; v.tag[1] = 0xAD; v.tag[2] = 0xBE; v.tag[3] = 0xEF;
     v.tag_length = 2;
 
     memset( file, 0xAB, sizeof( file ) );
-    measure = vessel_fixed_measure( 1 );
-    saved = vessel_fixed_save( &v, 1, file, (int64_t) sizeof( file ) );
+    measure = tblw1_vessel_fixed_measure( 1 );
+    saved = tblw1_vessel_fixed_save( &v, 1, file, (int64_t) sizeof( file ) );
     check( saved == measure && saved > 0,
            "W8: the production writer saves the record (returns measure bytes)" );
 
     /* body: header 16, layout length 4, the layout, the record's hash 8. */
-    body = kTableFixedHeaderBytes + 4 + vessel_fixed_layout_bytes + 8;
+    body = TBLW1_K_TABLE_FIXED_HEADER_BYTES + 4 + tblw1_vessel_fixed_layout_bytes + 8;
 
-    check( table_fixed_get32( file + body + 36 ) == 2,
+    check( tblw1_table_fixed_get32( file + body + 36 ) == 2,
            "W8: the length word at body+36 is 2 (the live extent, not Max)" );
     check( file[body + 40] == 0xDE && file[body + 41] == 0xAD,
            "W8: the two live bytes ride at body+40..42" );
@@ -116,21 +118,21 @@ int main( void )
     /* ---- THE ROW: bytes(N) takes the ARRAY's row --------------------------
        The destination row the plan compiler reads for `tag`: the count to
        `aux`, the elements to `dst` — the array's row, not a text field's. */
-    rows = sizeof( vessel_fixed_dst ) / sizeof( vessel_fixed_dst[0] );
+    rows = sizeof( tblw1_vessel_fixed_dst ) / sizeof( tblw1_vessel_fixed_dst[0] );
     found = rows;
     for ( i = 0; i < rows; ++i )
     {
-        if ( vessel_fixed_dst[i].stride == 1u && vessel_fixed_dst[i].counted != 0u ) { found = i; break; }
+        if ( tblw1_vessel_fixed_dst[i].stride == 1u && tblw1_vessel_fixed_dst[i].counted != 0u ) { found = i; break; }
     }
     check( found != rows,
            "W8: the bytes(N) row is the one with stride one and a live count" );
     if ( found != rows )
     {
-        check( vessel_fixed_dst[found].dst == (uint32_t) offsetof( Vessel, tag ),
+        check( tblw1_vessel_fixed_dst[found].dst == (uint32_t) offsetof( tblw1_vessel_t, tag ),
                "W8: the elements go to the row's dst (the buffer's storage)" );
-        check( vessel_fixed_dst[found].aux == (uint32_t) offsetof( Vessel, tag_length ),
+        check( tblw1_vessel_fixed_dst[found].aux == (uint32_t) offsetof( tblw1_vessel_t, tag_length ),
                "W8: the count goes to the row's aux (the length's storage)" );
-        check( vessel_fixed_dst[found].meta == kTableFixedTextBytes,
+        check( tblw1_vessel_fixed_dst[found].meta == TBLW1_K_TABLE_FIXED_TEXT_BYTES,
                "W8: the row's flavour is bytes (meta 3)" );
     }
 
@@ -143,18 +145,19 @@ int main( void )
        storage — the control gives it room to be wrong, and what reports the
        bug is the value that comes back rather than the sanitizer. */
     {
-        TableFixedLayoutView theirs;
-        static TableFixedDst swapped[sizeof( vessel_fixed_dst ) / sizeof( vessel_fixed_dst[0] )];
-        static uint64_t storage[sizeof( Vessel ) / 8 + 16];
+        tblw1_table_fixed_layout_view_t theirs;
+        static tblw1_table_fixed_dst_t swapped[sizeof( tblw1_vessel_fixed_dst ) / sizeof( tblw1_vessel_fixed_dst[0] )];
+        static uint64_t storage[sizeof( tblw1_vessel_t ) / 8 + 16];
         const uint8_t * rec = file + body;
+        static tblw1_vessel_t defaults;
         int why = 0;
         int pass;
 
-        check( table_fixed_parse_layout( file + kTableFixedHeaderBytes + 4,
-                                         (int64_t) table_fixed_get32( file + kTableFixedHeaderBytes ),
+        check( tblw1_table_fixed_parse_layout( file + TBLW1_K_TABLE_FIXED_HEADER_BYTES + 4,
+                                         (int64_t) tblw1_table_fixed_get32( file + TBLW1_K_TABLE_FIXED_HEADER_BYTES ),
                                          &theirs, &why ),
                "W8: the writer's layout parses" );
-        for ( i = 0; i < rows; ++i ) { swapped[i] = vessel_fixed_dst[i]; }
+        for ( i = 0; i < rows; ++i ) { swapped[i] = tblw1_vessel_fixed_dst[i]; }
         if ( found != rows )
         {
             uint32_t d = swapped[found].dst;
@@ -164,23 +167,29 @@ int main( void )
 
         for ( pass = 0; pass < 2; ++pass )
         {
-            const TableFixedDst * rowset = pass == 0 ? vessel_fixed_dst : swapped;
-            Vessel * out = (Vessel *) (void *) storage;
+            const tblw1_table_fixed_dst_t * rowset = pass == 0 ? tblw1_vessel_fixed_dst : swapped;
+            tblw1_vessel_t * out = (tblw1_vessel_t *) (void *) storage;
             int32_t guarded = 0, made;
             uint32_t fill_at = 0;
             int32_t fill_count = 0;
             int right;
 
-            made = table_fixed_compile( &theirs, vessel_fixed_layout, (int32_t) vessel_fixed_layout_bytes,
-                                        rowset, vessel_fixed_cover, vessel_fixed_cover_count,
+            made = tblw1_table_fixed_compile( &theirs, tblw1_vessel_fixed_layout, (int32_t) tblw1_vessel_fixed_layout_bytes,
+                                        rowset, tblw1_vessel_fixed_cover, tblw1_vessel_fixed_cover_count,
                                         plan, (int32_t) ( sizeof( plan ) / sizeof( plan[0] ) ),
                                         &guarded, &fill_at, &fill_count, NULL );
             check( made > 0,
                    "W8: the plan compiles either way — the rows are not what refuses" );
             memset( storage, 0, sizeof( storage ) );
-            vessel_reset( out );
+            tblw1_vessel_reset( out );
             memset( &r, 0, sizeof( r ) );
-            table_fixed_run( plan, made, guarded, rec, (uint8_t *) out, &r );
+            /* today's run takes the guard pool (a compiled plan's pool is laid in the
+               plan's own storage, W1Table.h guard_index) and the Reset image
+               the reader uses for an absent payload, as the load does. */
+            tblw1_vessel_reset( &defaults );
+            tblw1_table_fixed_run( plan, made, guarded, rec, (uint8_t *) out, &r,
+                                   (const tblw1_table_fixed_guard_link_t *) (const void *) plan,
+                                   (const uint8_t *) &defaults );
             right = out->tag_length == 2 && out->tag[0] == 0xDE && out->tag[1] == 0xAD;
             if ( pass == 0 )
             {
@@ -197,7 +206,7 @@ int main( void )
 
     /* ---- THE READ: the identity plan (this build's own hash) reads it back */
     memset( &r, 0, sizeof( r ) );
-    check( vessel_fixed_load( &back, 1, file, saved, plan,
+    check( tblw1_vessel_fixed_load( &back, 1, file, saved, plan,
                               (int32_t) ( sizeof( plan ) / sizeof( plan[0] ) ), NULL, &r ) == 1,
            "W8: the reader reads one record" );
     check( back.tag_length == 2, "W8: the reader reads the length word as 2" );

@@ -28,7 +28,7 @@ packet-write-refusal-java-negative-control: packet-write-refusal-java
 	@if $(JAVA) -ea -cp build/packet-write-refusal/java-negative/classes Main test/packet-write-refusal/cases.txt > build/packet-write-refusal/java-negative/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: the upper-bound comparison moved and the Java packet surface stayed green'; exit 1; fi
 	@sed -n 's/^FAILED: write-refusal-packet \([a-z_]*\): .*/\1/p' build/packet-write-refusal/java-negative/log | LC_ALL=C sort > build/packet-write-refusal/java-negative/failed
-	@printf '%s\n' bits_at_max enum_at_max scalar_at_max text_at_max union_tag_at_max > build/packet-write-refusal/java-negative/expected
+	@printf '%s\n' bits_at_max enum_at_max fixed_at_max scalar_at_max text_at_max union_tag_at_max > build/packet-write-refusal/java-negative/expected
 	@diff -u build/packet-write-refusal/java-negative/expected build/packet-write-refusal/java-negative/failed || \
 		{ echo 'NEGATIVE CONTROL FAILED: the moved upper bound did not red exactly the at-maximum twins'; cat build/packet-write-refusal/java-negative/log; exit 1; }
 	@grep -m1 '^FAILED: write-refusal-packet scalar_at_max' build/packet-write-refusal/java-negative/log
