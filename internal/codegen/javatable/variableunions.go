@@ -86,8 +86,11 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union, fixed fixedClosure) string 
 	b.WriteString("    public static final class Value {public int tag;\n")
 	for _, f := range st.Fields {
 		// a counted [A..B] arm is born at A default elements, so selecting
-		// the arm holds A (docs/SPEC.md §4.2, R10)
-		fmt.Fprintf(&b, "        public %s %s=%s;\n", variableValueType(f), varMember(f), variableBorn(f))
+		// the arm holds A (docs/SPEC.md §4.2, §4.6, R10). The constructor
+		// below adds the A elements, so the initializer is the empty list,
+		// as a table's is: seeding A here as well bore the arm at 2A
+		// (SPEC-CONFORMANCE.md java-arm-born-once).
+		fmt.Fprintf(&b, "        public %s %s=%s;\n", variableValueType(f), varMember(f), variableDefault(f))
 		if f.Type.Pointer {
 			if f.Array != ir.ArrayNone {
 				fmt.Fprintf(&b, "        public java.util.List<java.lang.Long> %sIdx=new java.util.ArrayList<>();\n", varMember(f))

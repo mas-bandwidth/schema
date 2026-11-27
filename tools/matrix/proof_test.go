@@ -90,6 +90,75 @@ func TestProofNegativeControlDeletedAnswer(t *testing.T) {
 	}
 }
 
+// TestProofMissingLegIsARedColumn: a leg docs/PORTING.md carries whose results
+// never arrived (its conformance job failed before the harness ran) is a
+// column of red cells naming it, never a narrower table; the legs that did
+// answer stay proven. A declared port still being built gets no column.
+func TestProofMissingLegIsARedColumn(t *testing.T) {
+	in := fixture()
+	in.Porting = map[string]map[string]string{"M5": {"aa": "✅", "bb": "✅", "cc": "✅", "@reference": "aa"}}
+	p := Compute(in)
+	if !slices.Equal(p.Langs, []string{"aa", "bb", "cc"}) {
+		t.Fatalf("langs = %v, want aa bb cc: the missing leg has no column", p.Langs)
+	}
+	for _, row := range p.Rows {
+		c := mustCell(t, p, row, "cc")
+		if c.Status != StatusRed || !strings.Contains(c.Why, "the cc leg has no results at all") {
+			t.Errorf("%s / cc = %+v, want red naming the missing leg", row, c)
+		}
+	}
+	if c := mustCell(t, p, "surface wire", "aa"); c.Status != StatusProven {
+		t.Errorf("surface wire / aa = %+v: a missing neighbour moved a leg that answered", c)
+	}
+	if !strings.Contains(RedList(p), "surface wire / cc") {
+		t.Errorf("the red list does not name the missing leg:\n%s", RedList(p))
+	}
+	// the negative control: with no register column owing cc, the table is
+	// the narrower one this check exists to refuse
+	in.Porting = map[string]map[string]string{}
+	if _, ok := Compute(in).Cell("surface wire", "cc"); ok {
+		t.Error("with no PORTING column for cc, a cc column appeared anyway")
+	}
+	// a declared port still being built may have no column yet
+	in.Porting = map[string]map[string]string{"M5": {"aa": "✅", "bb": "✅", "cc": "✅"}}
+	in.InProgress = map[string]Port{"cc": {Lang: "cc", Issue: "#9", Plan: "docs/PORT-CC.md"}}
+	if _, ok := Compute(in).Cell("surface wire", "cc"); ok {
+		t.Error("a declared port with no results was given a red column")
+	}
+}
+
+// TestTheCommittedProofCarriesEveryPortingColumn: test/proof/proof.json has a
+// column for every language docs/PORTING.md carries (a declared port in
+// progress excepted), so a snapshot written from a run that lost a leg cannot
+// be committed. Per PR, with no results needed.
+func TestTheCommittedProofCarriesEveryPortingColumn(t *testing.T) {
+	root := testRoot(t)
+	p, err := LoadProof(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	porting, err := PortingCells(root, PortingRows)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ports, err := LoadPorts(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	owed := PortingLangs(porting)
+	if len(owed) == 0 {
+		t.Fatalf("%s carries no language column: this check would hold nothing", portingPath)
+	}
+	for _, lang := range owed {
+		if _, ok := ports[lang]; ok {
+			continue
+		}
+		if !slices.Contains(p.Langs, lang) {
+			t.Errorf("%s has no %s column, which %s carries: was it written from a run that lost the %s leg?", proofPath, lang, portingPath, lang)
+		}
+	}
+}
+
 // TestProofAbsentIsRedUnlessRuled: an absent case is red with no ruling, and
 // not applicable under one; a ruling never turns a FAILING answer green.
 func TestProofAbsentIsRedUnlessRuled(t *testing.T) {
