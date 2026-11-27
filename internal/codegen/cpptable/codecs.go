@@ -1223,13 +1223,16 @@ func (g *tableGen) emitWriteContractAssert(f *ir.Field, expr, ind string) {
 	if rlo, rhi, ok := ir.TableRawRange(f); ok {
 		low, high := tableClampEnds(f, width)
 		if low {
+			g.storageAsserts = true
 			g.pf("%sschema_assert( %s >= %s ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)\n", ind, expr, tableIntLit(rlo, signed, width))
 		}
 		if high {
+			g.storageAsserts = true
 			g.pf("%sschema_assert( %s <= %s ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)\n", ind, expr, tableIntLit(rhi, signed, width))
 		}
 	}
 	if f.Type.Kind == ir.TBits && f.Type.Width < width*8 {
+		g.storageAsserts = true
 		g.pf("%sschema_assert( %s <= %dull ); // the write contract, debug only (docs/SPEC.md §5.1 row 2, bits(%d))\n", ind, expr, (uint64(1)<<f.Type.Width)-1, f.Type.Width)
 	}
 }
@@ -1237,6 +1240,7 @@ func (g *tableGen) emitWriteContractAssert(f *ir.Field, expr, ind string) {
 // emitFloatRangeAssert is row 10 of the write contract (docs/SPEC.md §5.1) on
 // one ranged float: a debug-only schema_assert, C++ being an assert leg.
 func (g *tableGen) emitFloatRangeAssert(f *ir.Field, expr, ind string) {
+	g.storageAsserts = true
 	isF32 := f.Type.Kind == ir.TFloat32
 	g.pf("%sschema_assert( !( %s < %s ) && !( %s > %s ) ); // the write contract, debug only (docs/SPEC.md §5.1 row 10)\n",
 		ind, expr, formatFloat(f.FMin, isF32), expr, formatFloat(f.FMax, isF32))
