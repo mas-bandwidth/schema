@@ -32,7 +32,7 @@
 // - refusal 25 is `layout_unknown`: the integers are each leg's own, taken in
 //   the order §5.3 names the refusals, and this leg's 25 agrees with the JS
 //   leg's TableFixedRefusal.LayoutUnknown = 25 (appended; 15 is the retired
-//   layout_unknown, which no read answers) (internal/codegen/jstable/
+//   layout_newer, which no read answers) (internal/codegen/jstable/
 //   fixedruntime.go:135); the NAME is the contract.
 // - 0x0EADBEEFCAFEF00D is a forged header hash no lineage entry holds, the
 //   versioning gate's hash_unknown case.
