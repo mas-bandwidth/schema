@@ -3,7 +3,7 @@ package pythontable
 import (
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/python/pyrun"
 )
 
 // A map key's length is bounded by the map's own string(N) and by nothing

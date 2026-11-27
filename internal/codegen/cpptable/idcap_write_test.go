@@ -3,7 +3,7 @@ package cpptable
 import (
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v3/internal/tablewire"
 )
 
 // THE C++ WRITER REFUSES AN ID TABLE ITS READERS REFUSE (docs/SPEC-TABLES.md

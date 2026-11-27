@@ -5,9 +5,9 @@
 package compiler
 
 import (
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/ruby"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/rubytable"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/ruby"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/rubytable"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 type rubyTarget struct{}

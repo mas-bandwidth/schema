@@ -3,10 +3,10 @@
 package compiler
 
 import (
-	"github.com/mas-bandwidth/schema/v2/internal/check"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/moo"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/mootable"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/check"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/moo"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/mootable"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // The moo leg's module-name rules run at check (SPEC §4.6) in a build that

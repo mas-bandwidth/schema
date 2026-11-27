@@ -53,7 +53,7 @@ command installs it as `schema` in `$(go env GOPATH)/bin`, which should be on
 your path, because every command on this page is spelled `schema`:
 
 ```
-$ go install github.com/mas-bandwidth/schema/v2/cmd/schema@main
+$ go install github.com/mas-bandwidth/schema/v3/cmd/schema@main
 $ schema version
 schema v2.5.1-0.20261121091243-8c356aa9b51e (go1.26.10)
 ```
@@ -72,10 +72,10 @@ Or clone the repository and build, for a binary stamped with `git describe`:
 $ git clone https://github.com/mas-bandwidth/schema.git
 $ cd schema
 $ make
-go build -ldflags "-X github.com/mas-bandwidth/schema/v2/internal/version.version=v2.4.0-148-gbafdb69" -o bin/schema ./cmd/schema
+go build -ldflags "-X github.com/mas-bandwidth/schema/v3/internal/version.version=v3.0.14-148-gbafdb69" -o bin/schema ./cmd/schema
 $ export PATH="$PWD/bin:$PATH"
 $ schema version
-schema v2.4.0-148-gbafdb69 (go1.27.0)
+schema v3.0.14-148-gbafdb69 (go1.27.0)
 ```
 
 Write that number down. The language moves, and a diagnostic that cites a
@@ -4569,20 +4569,20 @@ module starlightconsume
 go 1.26
 
 require (
-	github.com/mas-bandwidth/schema/v2 v2.5.1-0.20261121091243-8c356aa9b51e
+	github.com/mas-bandwidth/schema/v3 v3.0.15
 	github.com/mas-bandwidth/serialize.go/v2 v2.1.1
 )
 ```
 
 ```
 $ go mod tidy
-go: downloading github.com/mas-bandwidth/schema/v2 v2.5.1-0.20261121091243-8c356aa9b51e
+go: downloading github.com/mas-bandwidth/schema/v3 v3.0.15
 go: downloading github.com/mas-bandwidth/serialize.go/v2 v2.1.1
 ```
 
-If you built `schema` from a clone in Part 1, its version (`v2.4.0-148-gbafdb69`)
+If you built `schema` from a clone in Part 1, its version (`v3.0.14-148-gbafdb69`)
 is not a Go module version. Keep the `require` line as it is and point it at
-the clone with one more line, `replace github.com/mas-bandwidth/schema/v2 =>
+the clone with one more line, `replace github.com/mas-bandwidth/schema/v3 =>
 ../schema`.
 
 `consume.go`, entire:
@@ -4980,9 +4980,9 @@ module docsgen
 
 go 1.26
 
-require github.com/mas-bandwidth/schema/v2 v2.4.0
+require github.com/mas-bandwidth/schema/v3 v3.0.15
 
-replace github.com/mas-bandwidth/schema/v2 => ../schema
+replace github.com/mas-bandwidth/schema/v3 => ../schema
 ```
 
 `main.go`, entire:
@@ -4995,8 +4995,8 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/compiler"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // docs is a generator of our own, selected by --lang docs.
