@@ -1,14 +1,20 @@
-// R9 — a known hash with a different layout length or bytes → layout_malformed.
+// R9 — a known hash with a different layout length or bytes → layout_damaged.
 //
-// The law (docs/FIXED-FORM-ALGORITHM.md:864): "The seven §1.1 malformations
-// under a KNOWN hash all come back as one name, layout_malformed."
+// The law (docs/FIXED-FORM-ALGORITHM.md §5.3, the table "a known hash,
+// different layout length or bytes"): the seven §1.1 malformations under a
+// KNOWN hash all come back as ONE name, the spec's layout_malformed, which the
+// Dart runtime spells TableFixedRefusal.layoutDamaged ('layout_damaged').
+// A refusal lands nothing: every row the caller handed in comes back at its
+// declared defaults (docs/SPEC-TABLES.md §6.5), so each refused case hands in
+// a row with Meta.build moved off its declared default (1) and checks it is
+// back at 1.
 //
 // This test constructs two minimal form-3 files against the Meta table from
 // the graphdemo unit:
 //   1. A file whose header hash is metaFixedHash (known) but whose layout
-//      BYTES differ — the reader MUST refuse layout_malformed.
+//      BYTES differ — the reader MUST refuse layout_damaged.
 //   2. A file whose header hash is metaFixedHash (known) but whose layout
-//      LENGTH differs — the reader MUST refuse layout_malformed.
+//      LENGTH differs — the reader MUST refuse layout_damaged.
 //
 // Exit 0 green / exit 1 red, one printed line per assertion.
 // Run as: dart run test/conformance/dart/rows/R9.dart
@@ -88,6 +94,7 @@ void main() {
   final report1 = TableFixedReport();
   final plan1 = TableFixedPlan(4096, 16, 4096);
   final values1 = List<Meta>.filled(1, Meta());
+  values1[0].build = 99; // off the declared default 1: a refusal must reset it
   final result1 = metaFixedLoad(
     values1,
     1,
@@ -97,10 +104,12 @@ void main() {
     report1,
   );
   expect(
-    'known hash, different layout bytes → layout_malformed',
+    'known hash, different layout bytes → layout_damaged, row at defaults',
     result1 == -1 &&
-        report1.refused == TableFixedRefusal.layoutMalformed,
-    'result=$result1 refused=${TableFixedRefusal.name(report1.refused)}',
+        report1.refused == TableFixedRefusal.layoutDamaged &&
+        values1[0].build == 1,
+    'result=$result1 refused=${TableFixedRefusal.name(report1.refused)} '
+        'build=${values1[0].build} (want 1, the declared default)',
   );
 
   // ---- case 2: known hash, DIFFERENT layout LENGTH (one byte shorter) ----
@@ -114,6 +123,7 @@ void main() {
   final report2 = TableFixedReport();
   final plan2 = TableFixedPlan(4096, 16, 4096);
   final values2 = List<Meta>.filled(1, Meta());
+  values2[0].build = 99; // off the declared default 1: a refusal must reset it
   final result2 = metaFixedLoad(
     values2,
     1,
@@ -123,10 +133,12 @@ void main() {
     report2,
   );
   expect(
-    'known hash, different layout length → layout_malformed',
+    'known hash, different layout length → layout_damaged, row at defaults',
     result2 == -1 &&
-        report2.refused == TableFixedRefusal.layoutMalformed,
-    'result=$result2 refused=${TableFixedRefusal.name(report2.refused)}',
+        report2.refused == TableFixedRefusal.layoutDamaged &&
+        values2[0].build == 1,
+    'result=$result2 refused=${TableFixedRefusal.name(report2.refused)} '
+        'build=${values2[0].build} (want 1, the declared default)',
   );
 
   // ---- sanity: known hash, CORRECT layout bytes → opens ----
