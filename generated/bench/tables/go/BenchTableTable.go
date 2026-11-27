@@ -117,10 +117,10 @@ type TableStatRow struct {
 	Delta  int32
 }
 type TableEventRow struct {
-	_       [0]uint32
-	Type    uint8
-	_       [3]byte
-	Payload [16]byte
+	_              [0]uint32
+	Type           uint8
+	_              [3]byte
+	schema_payload [16]byte
 }
 
 // TableEntity — TABLE-wire storage: exported fields, every buffer inside the value,
@@ -9905,8 +9905,8 @@ var TableEntityTableFields = []TableFieldInfo{
 		CookOffset: 40, CookElemSize: 1, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: 15,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
-		EnumName:    func(v uint64) string { return EnumNameTableWeapon(TableWeapon(v)) },
-		VariantID:   func(v uint64) uint64 { id, _ := TableWeapon(v).TableEnumID(); return id },
+		EnumName:    func(schema_v uint64) string { return EnumNameTableWeapon(TableWeapon(schema_v)) },
+		VariantID:   func(schema_v uint64) uint64 { id, _ := TableWeapon(schema_v).TableEnumID(); return id },
 		EnumDefault: 0, EnumDeprecated: nil,
 		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
@@ -9917,7 +9917,7 @@ var TableEntityTableFields = []TableFieldInfo{
 		CookOffset: 48, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: 7,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
-		EnumName:    func(v uint64) string { return FlagNameTableDamage(int(v)) },
+		EnumName:    func(schema_v uint64) string { return FlagNameTableDamage(int(schema_v)) },
 		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
 		KeyTypeName: "", KeyName: nil, KeyID: nil,

@@ -1,0 +1,5 @@
+1..1
+# Subtest: a
+	ok 1 - i # SKIP no gpu
+	1..1
+ok 1 - a

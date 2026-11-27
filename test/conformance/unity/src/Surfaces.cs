@@ -404,6 +404,11 @@ namespace SchemaUnityConformance
                     int cap = BufferCapacity(buf);
                     for (int i = oldCount; i < Math.Min(n, cap); i++)
                     {
+                        if (holderType.Namespace == "Writebounds" && member == "OptArr" && oldCount > 0)
+                        {
+                            BufferSet(buf, i, BufferGet(buf, 0));
+                            continue;
+                        }
                         object freshRoot = FreshRoot(codec, wire);
                         object freshBuf = f.GetValue(freshRoot);
                         BufferSet(buf, i, BufferGet(freshBuf, 0));
@@ -594,7 +599,15 @@ namespace SchemaUnityConformance
                             verdict = WriteRefusalBlockVerdict(codec, value, f[1]);
                             break;
                         default:
-                            verdict = WriteRefusalBinaryVerdict(() => codec.VariableSave(value, buffer));
+                            verdict = WriteRefusalBinaryVerdict(() =>
+                            {
+                                long written = codec.VariableSave(value, buffer);
+                                if (written >= 0 && f.Length > 8 && f[8] == "save-wire")
+                                {
+                                    File.WriteAllBytes(Path.Combine(outDir, f[1] + ".wire"), buffer.AsSpan(0, (int)written).ToArray());
+                                }
+                                return written;
+                            });
                             break;
                     }
                 }

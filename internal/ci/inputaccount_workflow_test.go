@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
+	"github.com/mas-bandwidth/schema/v3/internal/testinputs"
 )
 
 // The accounting consumer also runs Dart in JIT mode and needs the generated
@@ -44,7 +44,7 @@ func TestDartConformanceHandoffIncludesGeneratedImports(t *testing.T) {
 
 func TestCppConformanceProducerReusesTheVerifiedBlockCompiler(t *testing.T) {
 	t.Parallel()
-	wf := readCI(t, repoRoot(t), ".github/workflows/ci-fast.yml")
+	wf := readCI(t, repoRoot(t), ".github/workflows/ci-fast-nightly.yml")
 	jobs := yamlJobs(wf)
 	block, producer := jobs["block-gate"], jobs["build-cpp-conformance-account"]
 	for _, want := range []string{"tables-block-zero-cost", "needs.plan.outputs.cpp_corpus_account", "git rev-parse HEAD^{tree}", "sha256sum bin/schema", "name: schema-compiler-${{ github.run_id }}"} {
@@ -64,7 +64,7 @@ func TestFastInputAccountingKeepsBothCanaries(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("the Linux input accounting lane runs its recipe in a POSIX host's Bash")
 	}
-	data, err := os.ReadFile(filepath.Join(repoRoot(t), ".github/workflows/ci-fast.yml"))
+	data, err := os.ReadFile(filepath.Join(repoRoot(t), ".github/workflows/ci-fast-nightly.yml"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,6 +88,8 @@ func TestFastInputAccountingKeepsBothCanaries(t *testing.T) {
 			"-family conformance-corpus -leg lobster -canary wrong VERIFY_JOBS=4\n"},
 		{"conformance-corpus", "squirrel", "", "-family conformance-corpus -leg squirrel -check-extra VERIFY_JOBS=4\n"},
 		{"conformance-corpus", "squirrel", "wrong", "-family conformance-corpus -leg squirrel -canary wrong VERIFY_JOBS=4\n"},
+		{"table-write-bounds", "go", "", "-j 4 -family table-write-bounds -leg go -check-extra\n" +
+			"-j 4 -family table-write-bounds -leg go -canary wrong\n"},
 		{"packet-defaults", "lobster", "", "-family packet-defaults -leg lobster\n" +
 			"-family packet-defaults -leg lobster -canary extra\n" +
 			"-family packet-defaults -leg lobster -canary wrong\n"},
@@ -102,7 +104,7 @@ func TestFastInputAccountingKeepsBothCanaries(t *testing.T) {
 			if err := os.WriteFile(bin, []byte(stub), 0o755); err != nil {
 				t.Fatal(err)
 			}
-			testinputs.Files(t, ".github/workflows/ci-fast.yml")
+			testinputs.Files(t, ".github/workflows/ci-fast-nightly.yml")
 			cmd := exec.Command("bash", "-eo", "pipefail", "-c", "vars=()\n"+script)
 			cmd.Dir = dir
 			cmd.Env = append(os.Environ(), "RUNNER_TEMP="+dir, "FAMILY="+tc.family, "LEG="+tc.leg, "ACCOUNT_CONTROL="+tc.control)
@@ -119,7 +121,7 @@ func TestFastPlanSplitsSquirrelCorpusAccountingRows(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("the Linux input accounting lane runs its recipe in a POSIX host's Bash")
 	}
-	data := readCI(t, repoRoot(t), ".github/workflows/ci-fast.yml")
+	data := readCI(t, repoRoot(t), ".github/workflows/ci-fast-nightly.yml")
 	_, plan, ok := strings.Cut(data, "# Keep Squirrel's independent wrong-input control within its own job budget.\n")
 	line, _, found := strings.Cut(plan, "\n")
 	if !ok || !found {
@@ -134,7 +136,7 @@ func TestFastPlanSplitsSquirrelCorpusAccountingRows(t *testing.T) {
 			"[" + corpusRow + "," + otherRows + `,{"family":"conformance-corpus","leg":"squirrel","account_control":"wrong"}]`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			testinputs.Files(t, ".github/workflows/ci-fast.yml")
+			testinputs.Files(t, ".github/workflows/ci-fast-nightly.yml")
 			cmd := exec.Command("bash", "-euo", "pipefail", "-c", line+"\nprintf '%s\\n' \"$input_rows\"")
 			cmd.Env = append(os.Environ(), "input_rows="+tc.rows)
 			out, err := cmd.CombinedOutput()
@@ -148,7 +150,7 @@ func TestFastPlanSplitsSquirrelCorpusAccountingRows(t *testing.T) {
 // Both jobs run for Dart verification or corpus accounting.
 func TestDartConformanceHandoffSelection(t *testing.T) {
 	t.Parallel()
-	wf := workflows(t, repoRoot(t))["ci-fast.yml"]
+	wf := workflows(t, repoRoot(t))["ci-fast-nightly.yml"]
 	for _, tc := range []struct {
 		name, legs, account, headRepo string
 		produce, consume              bool
@@ -157,11 +159,11 @@ func TestDartConformanceHandoffSelection(t *testing.T) {
 		{"verify only", `["dart"]`, "false", "mas-bandwidth/schema", true, true},
 		{"corpus only", `[]`, "true", "mas-bandwidth/schema", true, true},
 		{"verify and account", `["dart"]`, "true", "mas-bandwidth/schema", true, true},
-		{"fork", `["dart"]`, "true", "fork/schema", false, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			event := ciEvent{
-				Name: "pull_request", Branch: "main", HeadRef: "topic",
+				// the nightly lane's schedule (these jobs run nightly since 2026-11-25)
+				Name: "schedule", Branch: "main",
 				Repo: "mas-bandwidth/schema", HeadRepo: tc.headRepo,
 				PlanVerifyLegs: tc.legs, PlanDartCorpus: tc.account,
 			}
@@ -182,7 +184,7 @@ func TestFastPlanSelectsConformanceHandoffChanges(t *testing.T) {
 		t.Skip("the Linux input accounting lane runs its recipe in a POSIX host's Bash")
 	}
 	root := repoRoot(t)
-	data, err := os.ReadFile(filepath.Join(root, ".github/workflows/ci-fast.yml"))
+	data, err := os.ReadFile(filepath.Join(root, ".github/workflows/ci-fast-nightly.yml"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,7 +204,7 @@ func TestFastPlanSelectsConformanceHandoffChanges(t *testing.T) {
 	for _, tc := range []struct {
 		name, files, dart, cpp, wantPackage string
 	}{
-		{"handoff helper", "make/conformance-handoff.py\n.github/workflows/ci-fast.yml\n", "true", "true", ""},
+		{"handoff helper", "make/conformance-handoff.py\n.github/workflows/ci-fast-nightly.yml\n", "true", "true", ""},
 		{"C++ driver", "test/conformance/cpp/main.cpp\n", "false", "true", "./test/conformance/harness"},
 		{"Dart driver build", "make/dart.mk\n", "true", "false", ""},
 		{"Dart driver imports", "test/conformance/dart/main.dart\n", "true", "false", "./test/conformance/harness"},
@@ -215,7 +217,7 @@ func TestFastPlanSelectsConformanceHandoffChanges(t *testing.T) {
 				t.Fatal(err)
 			}
 			output := filepath.Join(dir, "outputs")
-			testinputs.Files(t, ".github/workflows/ci-fast.yml", "make/conformance-handoff.py")
+			testinputs.Files(t, ".github/workflows/ci-fast-nightly.yml", "make/conformance-handoff.py")
 			cmd := exec.Command("bash", "-euo", "pipefail", "-c", start+script)
 			cmd.Dir = root
 			cmd.Env = append(scriptEnv(os.Environ()), "RUNNER_TEMP="+dir, "GITHUB_OUTPUT="+output, "all=no", "packages=")

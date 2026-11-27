@@ -4635,10 +4635,10 @@ bool tableMixedSaveMessageBody(TableBitWriter w, TableMixed value) {
     }
   }
   {
-    if (value.gameEvent.type != 0) {
+    if ((value.gameEvent.type as int) != 0) {
       w.put(33, tableMessageRefBits);
-      assert(value.gameEvent.type >= 0 && value.gameEvent.type <= 3);
-      switch (value.gameEvent.type) {
+      assert((value.gameEvent.type as int) >= 0 && (value.gameEvent.type as int) <= 3);
+      switch ((value.gameEvent.type as int)) {
         case 0: w.put(0, tableMessageRefBits); break;
         case 1:
           w.put(68, tableMessageRefBits);
@@ -5268,7 +5268,7 @@ bool tableMixedLoadMessageBody(TableMessageReader r, TableMixed value) {
             }
           }
         }
-        if (r.report.unknown + r.substituted == subAt && !(value.gameEvent.type != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
+        if (r.report.unknown + r.substituted == subAt && !((value.gameEvent.type as int) != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case 6294288958393922979: {
@@ -6263,9 +6263,9 @@ void tableMixedFixedWriteBody(
   for (var i = 0; i < value.statsCount; i++) {
     tableStatFixedWriteBody(bytes, view, at + 470 + i * 8, value.stats[i]);
   }
-  assert(value.gameEvent.type >= 0 && value.gameEvent.type <= 3);
-  view.setUint8(at + 1110, value.gameEvent.type);
-  switch (value.gameEvent.type) {
+  assert((value.gameEvent.type as int) >= 0 && (value.gameEvent.type as int) <= 3);
+  view.setUint8(at + 1110, (value.gameEvent.type as int));
+  switch ((value.gameEvent.type as int)) {
     case 1:
       tableHitEventFixedWriteBody(bytes, view, at + 1111, value.gameEvent.hit);
       break;
@@ -6439,7 +6439,7 @@ void tableMixedFixedDecode(
     tableStatFixedDecode(value.stats[i], image, view, at + 470 + i * 8, report);
   }
   value.gameEvent.type = TableEventType(view.getUint8(at + 1110));
-  switch (value.gameEvent.type) {
+  switch ((value.gameEvent.type as int)) {
     case 0:
       break; // None, which is a tag this reader holds
     case 1:

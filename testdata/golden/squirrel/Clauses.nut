@@ -80,10 +80,13 @@ _M.ReadW13 <- function(stream, value) {
 
 // WriteW13 writes value in declared order; false on a refused value.
 _M.WriteW13 <- function(stream, value) {
+  if (!(value instanceof _M.W13)) return false;
   if (typeof value.ItemsCount != "integer" || value.ItemsCount < 0 || value.ItemsCount > 12) return false;
+  if (typeof value.Items != "array" || value.Items.len() < value.ItemsCount) return false;
   _h.value = value.ItemsCount;
   if (!stream.serializeBits(_h, 4)) return false;
   for (local _i = 0; _i < value.ItemsCount; _i++) {
+    if (typeof value.Items[_i] != "integer") return false;
     if (typeof value.Items[_i] != "integer" || value.Items[_i] < 0 || value.Items[_i] > 8191) return false; // SPEC §5.1 row 1
     _h.value = value.Items[_i];
     if (!stream.serializeInt(_h, 0, 8191)) return false;
@@ -125,10 +128,13 @@ _M.ReadW17 <- function(stream, value) {
 
 // WriteW17 writes value in declared order; false on a refused value.
 _M.WriteW17 <- function(stream, value) {
+  if (!(value instanceof _M.W17)) return false;
   if (typeof value.ItemsCount != "integer" || value.ItemsCount < 0 || value.ItemsCount > 9) return false;
+  if (typeof value.Items != "array" || value.Items.len() < value.ItemsCount) return false;
   _h.value = value.ItemsCount;
   if (!stream.serializeBits(_h, 4)) return false;
   for (local _i = 0; _i < value.ItemsCount; _i++) {
+    if (typeof value.Items[_i] != "integer") return false;
     if (typeof value.Items[_i] != "integer" || value.Items[_i] < 0 || value.Items[_i] > 131071) return false; // SPEC §5.1 row 1
     _h.value = value.Items[_i];
     if (!stream.serializeInt(_h, 0, 131071)) return false;
@@ -170,10 +176,13 @@ _M.ReadW26 <- function(stream, value) {
 
 // WriteW26 writes value in declared order; false on a refused value.
 _M.WriteW26 <- function(stream, value) {
+  if (!(value instanceof _M.W26)) return false;
   if (typeof value.ItemsCount != "integer" || value.ItemsCount < 0 || value.ItemsCount > 6) return false;
+  if (typeof value.Items != "array" || value.Items.len() < value.ItemsCount) return false;
   _h.value = value.ItemsCount;
   if (!stream.serializeBits(_h, 3)) return false;
   for (local _i = 0; _i < value.ItemsCount; _i++) {
+    if (typeof value.Items[_i] != "integer") return false;
     if (typeof value.Items[_i] != "integer" || value.Items[_i] < 0 || value.Items[_i] > 67108863) return false; // SPEC §5.1 row 1
     _h.value = value.Items[_i];
     if (!stream.serializeInt(_h, 0, 67108863)) return false;
@@ -215,10 +224,13 @@ _M.ReadW1 <- function(stream, value) {
 
 // WriteW1 writes value in declared order; false on a refused value.
 _M.WriteW1 <- function(stream, value) {
+  if (!(value instanceof _M.W1)) return false;
   if (typeof value.ItemsCount != "integer" || value.ItemsCount < 0 || value.ItemsCount > 20) return false;
+  if (typeof value.Items != "blob" || value.Items.len() < value.ItemsCount) return false;
   _h.value = value.ItemsCount;
   if (!stream.serializeBits(_h, 5)) return false;
   for (local _i = 0; _i < value.ItemsCount; _i++) {
+    if (typeof value.Items[_i] != "integer") return false;
     if (typeof value.Items[_i] != "integer" || value.Items[_i] < 0 || value.Items[_i] > 1) return false; // SPEC §5.1 row 1
     _h.value = value.Items[_i];
     if (!stream.serializeInt(_h, 0, 1)) return false;
@@ -260,10 +272,13 @@ _M.ReadW52 <- function(stream, value) {
 
 // WriteW52 writes value in declared order; false on a refused value.
 _M.WriteW52 <- function(stream, value) {
+  if (!(value instanceof _M.W52)) return false;
   if (typeof value.ItemsCount != "integer" || value.ItemsCount < 0 || value.ItemsCount > 3) return false;
+  if (typeof value.Items != "array" || value.Items.len() < value.ItemsCount) return false;
   _h.value = value.ItemsCount;
   if (!stream.serializeBits(_h, 2)) return false;
   for (local _i = 0; _i < value.ItemsCount; _i++) {
+    if (typeof value.Items[_i] != "integer") return false;
     if (typeof value.Items[_i] != "integer" || value.Items[_i] < 0 || value.Items[_i] > 4503599627370495) return false; // SPEC §5.1 row 1
     _h.value = value.Items[_i];
     if (!stream.serializeInt64(_h, 0, 4503599627370495)) return false;
@@ -305,10 +320,13 @@ _M.ReadW50 <- function(stream, value) {
 
 // WriteW50 writes value in declared order; false on a refused value.
 _M.WriteW50 <- function(stream, value) {
+  if (!(value instanceof _M.W50)) return false;
   if (typeof value.ItemsCount != "integer" || value.ItemsCount < 0 || value.ItemsCount > 3) return false;
+  if (typeof value.Items != "array" || value.Items.len() < value.ItemsCount) return false;
   _h.value = value.ItemsCount;
   if (!stream.serializeBits(_h, 2)) return false;
   for (local _i = 0; _i < value.ItemsCount; _i++) {
+    if (typeof value.Items[_i] != "integer") return false;
     if (typeof value.Items[_i] != "integer" || value.Items[_i] < 0 || value.Items[_i] > 1125899906842623) return false; // SPEC §5.1 row 1
     _h.value = value.Items[_i];
     if (!stream.serializeInt64(_h, 0, 1125899906842623)) return false;
@@ -346,8 +364,10 @@ _M.ReadF13 <- function(stream, value) {
 
 // WriteF13 writes value in declared order; false on a refused value.
 _M.WriteF13 <- function(stream, value) {
+  if (!(value instanceof _M.F13)) return false;
   if (typeof value.Items != "array" || value.Items.len() != 7) return false; // a [N]T holds exactly N values (SPEC §5.1)
   for (local _i = 0; _i < 7; _i++) {
+    if (typeof value.Items[_i] != "integer") return false;
     if (typeof value.Items[_i] != "integer" || value.Items[_i] < 0 || value.Items[_i] > 8191) return false; // SPEC §5.1 row 1
     _h.value = value.Items[_i];
     if (!stream.serializeInt(_h, 0, 8191)) return false;
@@ -387,6 +407,7 @@ _M.ReadTri3 <- function(stream, value) {
 
 // WriteTri3 writes value in declared order; false on a refused value.
 _M.WriteTri3 <- function(stream, value) {
+  if (!(value instanceof _M.Tri3)) return false;
   if (typeof value.A != "integer" || (value.A >>> 1) != 0) return false;
   _h.value = value.A;
   if (!stream.serializeBits(_h, 1)) return false;
@@ -430,7 +451,9 @@ _M.ReadArrTri3 <- function(stream, value) {
 
 // WriteArrTri3 writes value in declared order; false on a refused value.
 _M.WriteArrTri3 <- function(stream, value) {
+  if (!(value instanceof _M.ArrTri3)) return false;
   if (typeof value.ItemsCount != "integer" || value.ItemsCount < 0 || value.ItemsCount > 10) return false;
+  if (typeof value.Items != "array" || value.Items.len() < value.ItemsCount) return false;
   _h.value = value.ItemsCount;
   if (!stream.serializeBits(_h, 4)) return false;
   for (local _i = 0; _i < value.ItemsCount; _i++) {
@@ -471,6 +494,7 @@ _M.ReadEleven <- function(stream, value) {
 
 // WriteEleven writes value in declared order; false on a refused value.
 _M.WriteEleven <- function(stream, value) {
+  if (!(value instanceof _M.Eleven)) return false;
   if (typeof value.A != "integer" || (value.A >>> 3) != 0) return false;
   _h.value = value.A;
   if (!stream.serializeBits(_h, 3)) return false;
@@ -510,6 +534,7 @@ _M.ReadArrEleven <- function(stream, value) {
 
 // WriteArrEleven writes value in declared order; false on a refused value.
 _M.WriteArrEleven <- function(stream, value) {
+  if (!(value instanceof _M.ArrEleven)) return false;
   if (typeof value.Items != "array" || value.Items.len() != 9) return false; // a [N]T holds exactly N values (SPEC §5.1)
   for (local _i = 0; _i < 9; _i++) {
     if (!_M.WriteEleven(stream, value.Items[_i])) return false;
@@ -542,6 +567,7 @@ _M.ReadEmptyA <- function(stream, value) {
 
 // WriteEmptyA writes value in declared order; false on a refused value.
 _M.WriteEmptyA <- function(stream, value) {
+  if (!(value instanceof _M.EmptyA)) return false;
   return true;
 };
 
@@ -570,6 +596,7 @@ _M.ReadEmptyB <- function(stream, value) {
 
 // WriteEmptyB writes value in declared order; false on a refused value.
 _M.WriteEmptyB <- function(stream, value) {
+  if (!(value instanceof _M.EmptyB)) return false;
   return true;
 };
 
@@ -634,6 +661,7 @@ _M.ReadEmptyUnion <- function(stream, value) {
 
 // WriteEmptyUnion writes the tag, then the selected arm; false on a refused value.
 _M.WriteEmptyUnion <- function(stream, value) {
+  if (!(value instanceof _M.EmptyUnion)) return false;
   if (typeof value.Type != "integer" || value.Type < 0 || value.Type > 2) return false;
   _h.value = value.Type;
   if (!stream.serializeBits(_h, 2)) return false;
@@ -683,6 +711,7 @@ _M.ReadHoldsEmptyUnion <- function(stream, value) {
 
 // WriteHoldsEmptyUnion writes value in declared order; false on a refused value.
 _M.WriteHoldsEmptyUnion <- function(stream, value) {
+  if (!(value instanceof _M.HoldsEmptyUnion)) return false;
   if (typeof value.Lead != "integer" || (value.Lead >>> 5) != 0) return false;
   _h.value = value.Lead;
   if (!stream.serializeBits(_h, 5)) return false;
@@ -750,6 +779,7 @@ _M.ReadStrs <- function(stream, value) {
 
 // WriteStrs writes value in declared order; false on a refused value.
 _M.WriteStrs <- function(stream, value) {
+  if (!(value instanceof _M.Strs)) return false;
   if (typeof value.Lead != "integer" || (value.Lead >>> 5) != 0) return false;
   _h.value = value.Lead;
   if (!stream.serializeBits(_h, 5)) return false;
@@ -810,10 +840,12 @@ _M.ReadArrNested <- function(stream, value) {
 
 // WriteArrNested writes value in declared order; false on a refused value.
 _M.WriteArrNested <- function(stream, value) {
+  if (!(value instanceof _M.ArrNested)) return false;
   if (typeof value.Lead != "integer" || (value.Lead >>> 5) != 0) return false;
   _h.value = value.Lead;
   if (!stream.serializeBits(_h, 5)) return false;
   if (typeof value.ItemsCount != "integer" || value.ItemsCount < 0 || value.ItemsCount > 4) return false;
+  if (typeof value.Items != "array" || value.Items.len() < value.ItemsCount) return false;
   _h.value = value.ItemsCount;
   if (!stream.serializeBits(_h, 3)) return false;
   for (local _i = 0; _i < value.ItemsCount; _i++) {
@@ -853,6 +885,7 @@ _M.ReadSole <- function(stream, value) {
 
 // WriteSole writes value in declared order; false on a refused value.
 _M.WriteSole <- function(stream, value) {
+  if (!(value instanceof _M.Sole)) return false;
   if (typeof value.Only != "integer" || (value.Only >>> 13) != 0) return false;
   _h.value = value.Only;
   if (!stream.serializeBits(_h, 13)) return false;

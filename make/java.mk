@@ -833,9 +833,9 @@ build/java-fixedform/.stamp: build/tables-generated-java/.stamp test/java-fixedf
 # writer's caller contracts are DEBUG ONLY, so -ea proves they fire and the
 # default proves they are gone and the bytes are still the reference's.
 .PHONY: tables-java-fixedform
-tables-java-fixedform: build/java-fixedform/.stamp build/fixedform-corpus/.stamp
-	$(JAVA) -ea -cp build/java-fixedform Main build/fixedform-corpus
-	$(JAVA)     -cp build/java-fixedform Main build/fixedform-corpus
+tables-java-fixedform: build/retiredskips build/java-fixedform/.stamp build/fixedform-corpus/.stamp
+	./build/retiredskips -leg java -- $(JAVA) -ea -cp build/java-fixedform Main build/fixedform-corpus
+	./build/retiredskips -leg java -- $(JAVA)     -cp build/java-fixedform Main build/fixedform-corpus
 
 # THE VERSIONING HALF OF THE FIXED FORM ON THE JAVA LEG (§5 of
 # docs/FIXED-FORM-ALGORITHM.md, the rows of docs/FIXED-FORM-VERSIONING-TESTS.md).
@@ -1836,7 +1836,7 @@ conformance-java-absent-negative-control: build/conformance-harness build-confor
 # replays.
 JAVA_WIRE_FUZZ_N ?= $(N)
 JAVA_WIRE_FUZZ_DRIVER = $(JAVA) -cp $(CURDIR)/build/conformance-java TablesWireFuzz
-JAVA_RETAIN_VECTORS := retain_declared_default:graphdemo:Scene retain_node_record_unknown:graphdemo:Scene retain_node_flags:tblw1:Fleet retain_count_over_length_refused:listdemo:Mixed retain_scalar_array_default:mapdemo:Cells retain_map_emptied_unplaced:listdemo:Army pointer_index_past_numbering:streamdemo:Feed pointer_tail_unreadable_clean:streamdemo:Feed node_reference_kind_judged_as_read:blobdemo:Catalog node_reference_above_int64:graphdemo:Scene map_key_past_entry_body:mapdemo:Cells map_key_ill_formed_text:mapdemo:Cells ../widelist_wide:widelist:Wide
+JAVA_RETAIN_VECTORS := retain_declared_default:graphdemo:Scene retain_node_record_unknown:graphdemo:Scene retain_node_flags:tblw1:Fleet retain_count_over_length_refused:listdemo:Mixed retain_scalar_array_default:mapdemo:Cells retain_map_emptied_unplaced:listdemo:Army pointer_index_past_numbering:streamdemo:Feed pointer_tail_unreadable_clean:streamdemo:Feed node_reference_kind_judged_as_read:blobdemo:Catalog node_reference_above_int64:graphdemo:Scene map_key_past_entry_body:mapdemo:Cells map_key_ill_formed_text:mapdemo:Cells ../widelist_wide:widelist:Wide ../retain_fixed_union_array_none:messagedemo:ToolEnvelope
 # THE PLAIN ARM'S JAVA-ONLY VECTORS: a keyed header and a map header whose foreign
 # element kind carries a count spelled past the field's L (docs/SPEC-TABLES.md §2.9, §3.2):
 # the oracle reads the count against the parent and counts one kind_mismatch,
@@ -2702,6 +2702,24 @@ packet-end-java-negative-control: packet-end-java
 	@echo 'packet end Java negative control: a removed end check accepts a trailing byte'
 
 test-java: packet-end-java packet-end-java-negative-control
+
+# THE PACKET-VOID LEG (SPEC §4.8; make/checks/packet-void.mk): payload-free
+# union arms cost exactly their tag bits. The driver answers every case of
+# testdata/wire/packet-void/cases.txt through tools/casegate, with -ea (the
+# writer's contract asserts live) and without.
+build/packet-void/java/.stamp: bin/schema test/packet-void/Void.schema make/java.mk
+	@rm -rf build/packet-void/java/gen build/packet-void/java/classes
+	./bin/schema generate --lang java --out build/packet-void/java/gen $(PACKET_VOID_SCHEMA)
+	@touch $@
+
+.PHONY: packet-void-java
+packet-void-java: build/casegate build/packet-void/java/.stamp
+	@mkdir -p build/packet-void/java/classes
+	$(JAVAC) --release 17 -Xlint:all -Werror -d build/packet-void/java/classes build/packet-void/java/gen/*.java test/packet-void/java/Main.java
+	$(call packet_void_gate,java) $(JAVA) -ea -cp build/packet-void/java/classes Main $(PACKET_VOID_PINS)
+	$(call packet_void_gate,java) $(JAVA) -cp build/packet-void/java/classes Main $(PACKET_VOID_PINS)
+
+test-java: packet-void-java
 
 # Declaration-free transport IDs: run the legal and noncanonical vectors
 # through both public load paths, then plant a bypass of the order check.

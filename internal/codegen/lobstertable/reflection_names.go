@@ -5,8 +5,8 @@ import (
 	"maps"
 	"sort"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/lobster"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // Reflection shares the schema's namespace. Claim synthesized symbols before

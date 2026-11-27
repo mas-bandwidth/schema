@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // THE ID TABLE'S MAXIMUM, ON THE WRITE SIDE (docs/SPEC-TABLES.md §3, ruling

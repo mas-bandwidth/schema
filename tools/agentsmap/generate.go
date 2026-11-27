@@ -9,7 +9,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/internal/languages"
+	"github.com/mas-bandwidth/schema/v3/internal/languages"
 )
 
 // maxRootBytes is the ceiling on the root AGENTS.md. A harness reads that

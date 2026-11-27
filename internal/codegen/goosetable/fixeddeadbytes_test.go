@@ -9,10 +9,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose"
-	"github.com/mas-bandwidth/schema/v2/internal/fixedvector"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/goose"
+	"github.com/mas-bandwidth/schema/v3/internal/fixedvector"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // EVERY DEAD BYTE IN A FIXED RECORD IS ZERO (docs/FIXED-FORM-ALGORITHM.md
@@ -39,8 +39,13 @@ func TestFixedDeadBytesAreZero(t *testing.T) {
 				if got.n != -1 {
 					t.Fatalf("%s: the generated load answered n=%d; a dead byte that is not zero refuses the whole load", vec.File, got.n)
 				}
-				if got.after != got.before {
-					t.Fatalf("%s: a refusal wrote the caller's destination\n was %s\n now %s", vec.File, got.before, got.after)
+				// the caller's values are gone: every row handed in holds its
+				// declared defaults after a refusal (SPEC-TABLES §6.5, R4)
+				if got.before == got.fresh {
+					t.Fatalf("%s: the probe's destination starts at its defaults, so the reset is not seen", vec.File)
+				}
+				if got.after != got.fresh {
+					t.Fatalf("%s: a refusal left the caller's destination off its declared defaults\n was  %s\n now  %s\n want %s", vec.File, got.before, got.after, got.fresh)
 				}
 				return
 			}
@@ -61,6 +66,7 @@ type deadBytesProbeResult struct {
 	reason  string
 	before  string
 	after   string
+	fresh   string
 	written int
 	saved   string
 }
@@ -86,6 +92,9 @@ fn main() {
     values[0].Text[0] = 65;
     values[0].Pick.Type = 1;
     values[0].Pick.Narrow = 7;
+    let fresh = %[1]s::DeadRoot { .. };
+    print("fresh");
+    image(fresh);
     print("before");
     image(values[0]);
     var rep = schema_rt::FixedReport { .. };
@@ -127,6 +136,9 @@ func deadBytesParse(t *testing.T, out string) deadBytesProbeResult {
 			r.n, _ = strconv.Atoi(f[1])
 			r.reason = f[2]
 			sawReport = true
+		case l == "fresh":
+			r.fresh = next(i)
+			i++
 		case l == "before":
 			r.before = next(i)
 			i++

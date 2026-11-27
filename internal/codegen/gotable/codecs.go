@@ -12,8 +12,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/internal/goname"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/goname"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // goFieldType maps a field type to its Go storage spelling, mirroring the
@@ -509,7 +509,7 @@ func (g *tableGen) emitUnionValueReset(expr string, un *ir.Union) {
 	if g.regional && g.viewPacket == nil {
 		size, _, _, offset := ir.UnionLayout(g.unit, un)
 		if size > offset {
-			g.pf("\tclear((%s).Payload[:])\n", expr)
+			g.pf("\tclear((%s).schema_payload[:])\n", expr)
 		}
 		for _, v := range un.Variants {
 			if v.Void() {
@@ -798,17 +798,20 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 	enumDefault := "0"
 	enumDeprecated := "nil"
 	arms := "nil"
+	// the closures name their parameter schema_v: a plain v would hide an enum
+	// named v, which the closure converts to (SPEC §4.6, Generator-name
+	// safety), and schema check refuses the schema_ prefix on every declaration
 	switch ref := f.Type.Ref.(type) {
 	case *ir.Enum:
 		if f.Type.Kind == ir.TNamed {
 			enumMax = fmt.Sprintf("%d", ref.Max)
-			enumName = fmt.Sprintf("func(v uint64) string { return EnumName%s(%s(v)) }", f.Type.Name, f.Type.Name)
-			variantId = fmt.Sprintf("func(v uint64) uint64 { id, _ := %s(v).TableEnumID(); return id }", f.Type.Name)
+			enumName = fmt.Sprintf("func(schema_v uint64) string { return EnumName%s(%s(schema_v)) }", f.Type.Name, f.Type.Name)
+			variantId = fmt.Sprintf("func(schema_v uint64) uint64 { id, _ := %s(schema_v).TableEnumID(); return id }", f.Type.Name)
 			if enumHasDeprecated(ref) {
 				// docs/SPEC-TABLES.md §2.15: a deprecated variant reads as the
 				// field's default (the element default for an element).
 				enumDefault = fmt.Sprintf("%d", enumDefaultOrdinal(f, ref))
-				enumDeprecated = fmt.Sprintf("func(v uint64) bool { return %s(v).TableEnumDeprecated() }", f.Type.Name)
+				enumDeprecated = fmt.Sprintf("func(schema_v uint64) bool { return %s(schema_v).TableEnumDeprecated() }", f.Type.Name)
 			}
 		}
 	case *ir.Flags:
@@ -817,7 +820,7 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 			// (docs/SPEC-TABLES.md §4): its variants are BIT POSITIONS, so the
 			// descriptor names bits, and there is no variant id.
 			enumMax = fmt.Sprintf("%d", len(ref.Variants)-1)
-			enumName = fmt.Sprintf("func(v uint64) string { return FlagName%s(int(v)) }", f.Type.Name)
+			enumName = fmt.Sprintf("func(schema_v uint64) string { return FlagName%s(int(schema_v)) }", f.Type.Name)
 		}
 	case *ir.Union:
 		if f.Type.Kind == ir.TNamed {
@@ -835,8 +838,8 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 	keyTypeName, keyName, keyId := `""`, "nil", "nil"
 	if f.KeyEnum != "" {
 		keyTypeName = fmt.Sprintf("%q", f.KeyEnum)
-		keyName = fmt.Sprintf("func(v uint64) string { return EnumName%s(%s(v)) }", f.KeyEnum, f.KeyEnum)
-		keyId = fmt.Sprintf("func(v uint64) uint64 { id, _ := %s(v).TableEnumID(); return id }", f.KeyEnum)
+		keyName = fmt.Sprintf("func(schema_v uint64) string { return EnumName%s(%s(schema_v)) }", f.KeyEnum, f.KeyEnum)
+		keyId = fmt.Sprintf("func(schema_v uint64) uint64 { id, _ := %s(schema_v).TableEnumID(); return id }", f.KeyEnum)
 	}
 
 	json := ir.TableFieldJsonKey(f)

@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/unitytable"
-	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/unitytable"
+	"github.com/mas-bandwidth/schema/v3/internal/fixedproof"
 )
 
 // TestUnityCompressedF32RangeHeldAtFloat32Source pins THE RANGE IS HELD AT

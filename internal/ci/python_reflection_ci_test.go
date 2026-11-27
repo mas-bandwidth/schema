@@ -13,7 +13,7 @@ type pythonPlanRow struct {
 	Test    string `json:"test"`
 }
 
-const pythonTablePackage = "github.com/mas-bandwidth/schema/v2/internal/codegen/pythontable"
+const pythonTablePackage = "github.com/mas-bandwidth/schema/v3/internal/codegen/pythontable"
 
 // Strict mypy over the reflection units must run once per shard in its own
 // support rows, while the other reflection tests stay in the automatically

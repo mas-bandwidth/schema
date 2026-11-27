@@ -1,3 +1,5 @@
+//go:build !writebounds_only
+
 // THE BLOCK SURFACE's half of the driver (docs/SPEC-TABLES.md §19).
 //
 // A block's base is 64-byte aligned by construction (§19.1), so the bytes are

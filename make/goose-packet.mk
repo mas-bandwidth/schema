@@ -159,6 +159,18 @@ packet-end-goose-negative-control: packet-end-goose
 
 test-goose: packet-end-goose packet-end-goose-negative-control
 
+# ---- packet void: SPEC §4.8's payload-free union arms ----
+#
+# The leg's half of test/packet-void: the driver answers every case of
+# testdata/wire/packet-void/cases.txt against the Go oracle's pins, and
+# tools/casegate judges its answers (make/checks/packet-void.mk).
+.PHONY: packet-void-goose
+packet-void-goose: goose-packet-ready build/casegate
+	@rm -rf build/packet-void/goose && mkdir -p build/packet-void/goose
+	./build/schema-goose-packet generate --lang goose --out build/packet-void/goose $(PACKET_VOID_SCHEMA)
+	cp test/goose/driverlib.goose test/packet-void/goose/main.goose build/packet-void/goose/
+	$(call packet_void_gate,goose) $(GOOSE) run build/packet-void/goose/main.goose -- $(PACKET_VOID_PINS)
+
 # ---- packet compressed float write range ----
 .PHONY: packet-write-cfloat-goose packet-write-cfloat-goose-negative-control
 packet-write-cfloat-goose: goose-packet-ready build/mustrun

@@ -17,7 +17,7 @@ import (
 	"slices"
 	"sort"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // Report is the read report every read shares (docs/SPEC-TABLES.md §4, §6.5).

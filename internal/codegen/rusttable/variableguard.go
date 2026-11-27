@@ -3,7 +3,7 @@ package rusttable
 import (
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // A FIELD THE WRITER DOES NOT WRITE IS NOT AN EDGE (docs/SPEC-TABLES.md §3.1,

@@ -1,3 +1,5 @@
+//go:build !writebounds_only
+
 // THE FIXED ROOTS (docs/SPEC-TABLES.md §3.4, §6.5).
 //
 // A root declared `fixed table` is a form 3 file: the one read of it is the

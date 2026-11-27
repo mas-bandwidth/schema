@@ -55,3 +55,34 @@ func TestInlineBufferNames(t *testing.T) {
 		}
 	}
 }
+
+// TestSerializeMacrosAreRefusedAsDeclarations: every macro serialize.h defines
+// is refused as a declaration name for every target, naming C++ and the header
+// (SPEC §4.6, Platform-name safety; n_internal_66, 80 and 88 found
+// serialize_fixed, write_float, write_int and write_string), and the same name
+// as a table field or a union arm is a member, which no macro reaches, so it
+// takes no such refusal.
+func TestSerializeMacrosAreRefusedAsDeclarations(t *testing.T) {
+	t.Parallel()
+	if len(serializeMacros) != 94 {
+		t.Fatalf("%d serialize.h macros, want the 94 serialize v2.1.6 defines", len(serializeMacros))
+	}
+	for _, name := range serializeMacros {
+		decl := checkerErrors(t, "package probe\n\nenum "+name+"\n{ A, B }\n\ntable T\n{\n    k "+name+"\n}\n")
+		found := false
+		for _, e := range decl {
+			if strings.Contains(e, "serialize.h") && strings.Contains(e, "(C++)") && strings.Contains(e, `"`+name+`"`) {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("enum %s: %q, want the serialize.h refusal naming C++", name, decl)
+		}
+		member := checkerErrors(t, "package probe\n\ntable A\n{\n    x uint8\n}\n\nunion U\n{\n    "+name+" A\n}\n\ntable T\n{\n    "+name+" uint8\n    u U\n}\n")
+		for _, e := range member {
+			if strings.Contains(e, "serialize.h") {
+				t.Errorf("field and arm %s: refused as a macro (%s), want accepted: a member is no declaration", name, e)
+			}
+		}
+	}
+}

@@ -17,9 +17,6 @@
 package main
 
 import (
-	"graphdemo"
-	tblsurf "surfaces"
-
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -100,8 +97,18 @@ func surfaceWriteRefusal(surface string, lines []line, out string) error {
 			// fixed root is written by the fixed form (c.measure/c.save), as
 			// the reference leg writes it. variableMeasure/variableSave are
 			// the form-1 twins the framing surface keeps to itself (fixed.go).
-			if n := c.measure(value); n < 0 || c.save(value, make([]byte, n)) != n {
+			n := c.measure(value)
+			if n < 0 {
 				answer = "refused"
+				break
+			}
+			buffer := make([]byte, n)
+			if c.save(value, buffer) != n {
+				answer = "refused"
+			} else if len(f) > 8 && f[8] == "save-wire" {
+				if err := spill(out, name+".wire", buffer); err != nil {
+					return err
+				}
 			}
 		case "write-refusal-fixed", "write-refusal-shape":
 			// the shape rows' lawful twins: the root's own form's writer, as
@@ -238,7 +245,17 @@ func writeRefusalGoSet(owner, fv reflect.Value, name, kind, text string) error {
 		if !ok {
 			return fmt.Errorf("%s: no count beside %s", name, owner.Type())
 		}
-		return writeRefusalGoStore(companion, n)
+		if owner.Type().PkgPath() != "writebounds" || name != "opt_arr" {
+			return writeRefusalGoStore(companion, n)
+		}
+		oldCount := companion.Int()
+		if err := writeRefusalGoStore(companion, n); err != nil {
+			return err
+		}
+		for i := oldCount; i < companion.Int() && i < int64(fv.Len()); i++ {
+			fv.Index(int(i)).Set(fv.Index(0))
+		}
+		return nil
 	case "length":
 		n, err := writeRefusalGoToken(name, text)
 		if err != nil {
@@ -554,18 +571,6 @@ func writeRefusalGoDupKey(fv reflect.Value, name string) error {
 	ref.SetInt(int64(uintptr(unsafe.Pointer(&to[0])) - uintptr(head)))
 	count.SetInt(n + 1)
 	return nil
-}
-
-// writeRefusalGoPointees names the record type a region pointer slot points
-// at: reflection sees the slot as an int64 (a signed self-relative delta,
-// §6.3), and the generated comment that names its type is not reflected. A
-// `point` row walking through a slot this table does not name fails loudly.
-var writeRefusalGoPointees = map[reflect.Type]map[string]reflect.Type{
-	reflect.TypeFor[graphdemo.SceneRow]():    {"Head": reflect.TypeFor[graphdemo.ListNodeRow](), "Alias": reflect.TypeFor[graphdemo.ListNodeRow]()},
-	reflect.TypeFor[graphdemo.ListNodeRow](): {"Next": reflect.TypeFor[graphdemo.ListNodeRow]()},
-	reflect.TypeFor[tblsurf.ChainRow]():      {"Head": reflect.TypeFor[tblsurf.LinkRow]()},
-	reflect.TypeFor[tblsurf.LinkRow]():       {"Next": reflect.TypeFor[tblsurf.LinkRow]()},
-	reflect.TypeFor[tblsurf.HolderRow]():     {"Must": reflect.TypeFor[tblsurf.LeafRow]()},
 }
 
 // writeRefusalGoSlot walks a dotted path through a region value to the int64
