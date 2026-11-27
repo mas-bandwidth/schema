@@ -26,6 +26,26 @@ class Retain:
     // index (Go's store.records keys): a save counts the ones it never
     // reached
     holders:[Record] = []
+    // load is the number of the retaining load this store holds, 0 for none.
+    // The retained fields ride in the records the load built (rec.retained),
+    // so emptying the store cannot reach them: each field carries the number
+    // of the load that kept it, and a save writes only the fields whose number
+    // is the store's. Every load_retain takes a fresh number and a refused one
+    // takes another, so a store a refusal emptied writes nothing it held
+    // before (§6.6, A REFUSED LOADRETAIN)
+    load:int = 0
+
+// retain_loads numbers the retaining loads, across every store, so no two
+// loads share a number.
+var retain_loads = 0
+
+// retain_empty empties the store and gives it a load number no field carries.
+def retain_empty(retain:Retain):
+    retain_loads++
+    retain.load = retain_loads
+    retain.used = 0
+    retain.ids = []
+    retain.holders = []
 
 // The resolving walk shares the binary structured-payload bound (§4, §6.6).
 // Pointer payloads are excluded; they do not add nesting here.
@@ -298,7 +318,7 @@ class RetainCaptureImpl : RetainCapture
         retain.used += cost
         if length(rec.retained) == 0:
             push(retain.holders, rec)
-        push(rec.retained, RetainedField { id: id, kind: kind, payload: so_take(rs.out), cost: cost, placed: false })
+        push(rec.retained, RetainedField { id: id, kind: kind, payload: so_take(rs.out), cost: cost, placed: false, load: retain.load })
         report.retained++
     def lost() -> void:
         report.retain_lost++
@@ -321,12 +341,12 @@ class RetainCaptureImpl : RetainCapture
 
 // load_retain is load with retention on (docs/SPEC-TABLES.md §6.6): it reads
 // exactly what load reads and reports exactly what load reports, and beside
-// that keeps the fields this build cannot name in the caller's Retain.
+// that keeps the fields this build cannot name in the caller's Retain. A
+// REFUSED LOAD LEAVES THE STORE EMPTY (§6.6, A REFUSED LOADRETAIN): it takes a
+// fresh load number, so no later save writes a field an earlier load kept.
 def load_retain(root:string, data:string, retain:Retain, report:LoadReport) -> Record?:
     read_reset(report)
-    retain.used = 0
-    retain.ids = []
-    retain.holders = []
+    retain_empty(retain)
     retain.known = []
     if table_of(root).fixed:
         read_refuse(report, "fixed_class_no_retention")
@@ -337,9 +357,7 @@ def load_retain(root:string, data:string, retain:Retain, report:LoadReport) -> R
     let rec = load(root, data, report)
     truncate(retain_captures, mark)
     if not rec:
-        retain.used = 0
-        retain.ids = []
-        retain.holders = []
+        retain_empty(retain)
     return rec
 
 // An Emitter writes one retained field back onto the wire: every resolved id
@@ -505,6 +523,11 @@ class RetainTailImpl : RetainTail
     report:LoadReport
     def tail(e:SaveEncoder, w:SaveOut, rec:Record) -> void:
         for(rec.retained) rf:
+            // a field another load kept is not in this store: a refused or a
+            // later load emptied it, and the save writes only what the store
+            // holds (§6.6, A REFUSED LOADRETAIN)
+            if rf.load != retain.load:
+                continue
             let mark = sid_mark(e.ids)
             let id_mark = length(retain.ids)
             let sub_out = SaveOut {}

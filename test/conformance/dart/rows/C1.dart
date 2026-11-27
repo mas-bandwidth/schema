@@ -1,11 +1,15 @@
-// C1 — count clamp v<0 (docs/FIXED-FORM-ALGORITHM.md §4, line 332):
+// C1 — a NEGATIVE COUNT REFUSES (docs/FIXED-FORM-ALGORITHM.md §4.5, the
+// `count` row):
 //
-//   `v := SLE(4, record+src)`; if `v < 0` then `v := 0, COUNT clamped`,
-//   else if `v > size` then `v := size, COUNT clamped`.
+//   `v := SLE(4, record+src)`; if `v < 0` or `v > size` then
+//   `REFUSE count_over_bound` — before any destination byte is written.
 //
-// A negative count read from the wire is clamped to ZERO and the `clamped`
-// counter increments by ONE. The spec paragraph at line 784 names the law:
-// "a value forged past what the WRITER could have written clamps and counts."
+// A negative count read from the wire is a value no writer could have
+// written. Today's law is STRICT (§4.5: "Nothing is clamped"; the retired
+// clamp-and-count answer is in the retired-behaviour table): the run answers
+// count_over_bound by name and writes NO destination byte, so the image's
+// count slot still holds what was there before the run. A legal count lands
+// whole and refuses nothing.
 //
 // This test reaches the COMPILED PLAN `count` op through tableFixedRun,
 // which is the path the spec describes. It uses the ShipEntry identity plan
@@ -19,7 +23,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import '../../../../build/dart-fixed/examples/TabledemoFixed.dart'
-    show TableFixedReport, tableFixedRun;
+    show TableFixedRefusal, TableFixedReport, tableFixedRun;
 import '../../../../build/dart-fixed/examples/PackFixed.dart'
     show
         shipEntryFixedBodyBytes,
@@ -78,73 +82,75 @@ void main() {
     );
   }
 
-  final source = Uint8List(shipEntryFixedBodyBytes);
-  final sourceView = ByteData.sublistView(source);
-  sourceView.setInt32(countOffset, -1, Endian.little);
-
-  final image = Uint8List(shipEntryFixedBodyBytes);
-  image.setRange(0, shipEntryFixedBodyBytes, shipEntryFixedPrefill);
-  final imageView = ByteData.sublistView(image);
-
-  final plan = shipEntryFixedNewPlan();
-  plan.entries.setRange(
-    0,
-    shipEntryFixedIdentity.length,
-    shipEntryFixedIdentity,
-  );
-  plan.count = shipEntryFixedIdentityCount;
-
-  final report = TableFixedReport();
   final remap = Int32List(0);
   final conv = ByteData(0);
+  const sentinel = 0x5A5A5A5A;
 
-  tableFixedRun(
-    plan.entries,
-    plan.count,
-    source,
-    sourceView,
-    0,
-    image,
-    imageView,
-    remap,
-    conv,
-    report,
-  );
+  // Runs the identity plan over a record whose count slot holds [forged] and
+  // whose every other byte is zero; answers the refusal, the image and report.
+  (int, ByteData, TableFixedReport) runWith(int forged) {
+    final source = Uint8List(shipEntryFixedBodyBytes);
+    final sourceView = ByteData.sublistView(source);
+    sourceView.setInt32(countOffset, forged, Endian.little);
 
-  final landedCount = imageView.getInt32(countOffset, Endian.little);
-  _assert(
-    landedCount == 0,
-    'C1: a forged count of -1 (0xFFFFFFFF) clamps to ZERO in the image, got $landedCount',
-  );
-  _assert(
-    report.clamped == 1,
-    'C1: the clamp is counted exactly once, got ${report.clamped}',
-  );
+    final image = Uint8List(shipEntryFixedBodyBytes);
+    image.setRange(0, shipEntryFixedBodyBytes, shipEntryFixedPrefill);
+    final imageView = ByteData.sublistView(image);
+    // A SENTINEL in the destination count slot, so "no destination byte is
+    // written" is measured, not assumed from a zero prefill.
+    imageView.setInt32(countOffset, sentinel, Endian.little);
 
-  for (final legit in <int>[0, 3]) {
-    final s = Uint8List(shipEntryFixedBodyBytes);
-    final sv = ByteData.sublistView(s);
-    sv.setInt32(countOffset, legit, Endian.little);
-
-    final img = Uint8List(shipEntryFixedBodyBytes);
-    img.setRange(0, shipEntryFixedBodyBytes, shipEntryFixedPrefill);
-    final iv = ByteData.sublistView(img);
-
-    final p = shipEntryFixedNewPlan();
-    p.entries.setRange(
+    final plan = shipEntryFixedNewPlan();
+    plan.entries.setRange(
       0,
       shipEntryFixedIdentity.length,
       shipEntryFixedIdentity,
     );
-    p.count = shipEntryFixedIdentityCount;
+    plan.count = shipEntryFixedIdentityCount;
 
-    final r = TableFixedReport();
-    tableFixedRun(p.entries, p.count, s, sv, 0, img, iv, remap, conv, r);
+    final report = TableFixedReport();
+    final refused = tableFixedRun(
+      plan.entries,
+      plan.count,
+      source,
+      sourceView,
+      0,
+      image,
+      imageView,
+      remap,
+      conv,
+      report,
+    );
+    return (refused, imageView, report);
+  }
 
+  for (final forged in <int>[-1, -2147483648]) {
+    final (refused, imageView, report) = runWith(forged);
+    final name = TableFixedRefusal.name(refused);
+    _assert(
+      refused == TableFixedRefusal.countOverBound,
+      'C1: a forged count of $forged REFUSES count_over_bound by name, got $name',
+    );
+    final landedCount = imageView.getInt32(countOffset, Endian.little);
+    _assert(
+      landedCount == sentinel,
+      'C1: the refused count writes no destination byte: the slot holds its '
+      'sentinel $sentinel, got $landedCount',
+    );
+    _assert(
+      report.unknown == 0 && report.widened == 0,
+      'C1: a refusal moves no counter (unknown=${report.unknown}, '
+      'widened=${report.widened})',
+    );
+  }
+
+  for (final legit in <int>[0, 3]) {
+    final (refused, iv, _) = runWith(legit);
     final l = iv.getInt32(countOffset, Endian.little);
     _assert(
-      l == legit && r.clamped == 0,
-      'CONTROL: a count of $legit reads whole and counts nothing (landed=$l, clamped=${r.clamped})',
+      refused == TableFixedRefusal.none && l == legit,
+      'CONTROL: a count of $legit reads whole and refuses nothing '
+      '(landed=$l, refused=${TableFixedRefusal.name(refused)})',
     );
   }
 

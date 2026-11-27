@@ -4,9 +4,9 @@ import (
 	"strings"
 	"testing"
 
-	_ "github.com/mas-bandwidth/schema/v2/compiler" // registers the emitters name rules
-	"github.com/mas-bandwidth/schema/v2/internal/check"
-	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	_ "github.com/mas-bandwidth/schema/v3/compiler" // registers the emitters name rules
+	"github.com/mas-bandwidth/schema/v3/internal/check"
+	"github.com/mas-bandwidth/schema/v3/internal/parser"
 )
 
 // TestMemberNamedLikeAType holds the rule behind the name-buildability rows

@@ -348,6 +348,8 @@ pkg_next	refuse-at-check	Lobster	package is a runtime binding of the Lobster run
 pkg_read	refuse-at-check	Lobster	package is a runtime binding of the Lobster runtime
 pkg_view	refuse-at-check	Lobster	package is a runtime binding of the Lobster runtime
 pkg_descriptor	refuse-at-check	Lobster	package is a runtime binding of the Lobster runtime
+pkg_p	refuse-at-check	Lobster	package is a runtime binding of the Lobster runtime (a cook.lobster local)
+pkg_depth	refuse-at-check	Lobster	package is a runtime binding of the Lobster runtime (a cook.lobster parameter)
 v_None_	refuse-at-check	Lobster	variant None_: the generated KindNone collides with Kind.None
 j_type_outer_class	refuse-at-check	Java	a type named like its file outer class
 j_field_Boolean	refuse-at-check	Java	field Boolean maps to a reserved Java word
@@ -385,7 +387,7 @@ n_internal_26	builds	-	generator-internal names extent3_i..f_e_4 (80), each an e
 n_internal_27	builds	-	generator-internal names f_e_5..finish_varint (80), each an enum, a table field and a union arm
 n_internal_28	builds	-	generator-internal names finished..floatStep (80), each an enum, a table field and a union arm
 n_internal_29	builds	-	generator-internal names floatText..fs (80), each an enum, a table field and a union arm
-n_internal_30	builds	-	generator-internal names fshift..hasZero (80), each an enum, a table field and a union arm
+n_internal_30	builds	-	generator-internal names fshift..hasZero (79), each an enum, a table field and a union arm
 n_internal_31	builds	-	generator-internal names has_child..huge (80), each an enum, a table field and a union arm
 n_internal_32	builds	-	generator-internal names i..ind (80), each an enum, a table field and a union arm
 n_internal_33	builds	-	generator-internal names indegree..into (80), each an enum, a table field and a union arm; the enum infinity is row e_infinity
@@ -404,11 +406,11 @@ n_internal_45	builds	-	generator-internal names nRec..next_edge (80), each an en
 n_internal_46	builds	-	generator-internal names next_idx..node_load_into (80), each an enum, a table field and a union arm
 n_internal_47	builds	-	generator-internal names node_load_measure_parts..nxt (80), each an enum, a table field and a union arm
 n_internal_48	builds	-	generator-internal names o..oor (80), each an enum, a table field and a union arm
-n_internal_49	builds	-	generator-internal names oor_count..outer (80), each an enum, a table field and a union arm
+n_internal_49	builds	-	generator-internal names oor_count..outer (79), each an enum, a table field and a union arm
 n_internal_50	builds	-	generator-internal names outer_holds..parent (80), each an enum, a table field and a union arm
 n_internal_51	builds	-	generator-internal names parent_keep..payload50 (80), each an enum, a table field and a union arm
 n_internal_52	builds	-	generator-internal names payload51..plen (80), each an enum, a table field and a union arm
-n_internal_53	builds	-	generator-internal names plim..protocolId (80), each an enum, a table field and a union arm
+n_internal_53	builds	-	generator-internal names plim..protocolId (79), each an enum, a table field and a union arm
 n_internal_54	builds	-	generator-internal names proxied..r_rhs (80), each an enum, a table field and a union arm
 n_internal_55	builds	-	generator-internal names r_u16..rather (20), each an enum, a table field and a union arm
 n_internal_56	builds	-	generator-internal names ratio..rawBytes (10), each an enum, a table field and a union arm
@@ -426,7 +428,7 @@ n_internal_67	builds	-	generator-internal names settleWrite..sl5 (80), each an e
 n_internal_68	builds	-	generator-internal names sl7..stamp (80), each an enum, a table field and a union arm
 n_internal_69	builds	-	generator-internal names stamped..stubs (80), each an enum, a table field and a union arm
 n_internal_70	builds	-	generator-internal names sub..table_fixed_in_dead (80), each an enum, a table field and a union arm
-n_internal_71	builds	-	generator-internal names table_fixed_outers_hold..textTotalKeeps (80), each an enum, a table field and a union arm
+n_internal_71	builds	-	generator-internal names table_fixed_outers_hold..textTotalKeeps (79), each an enum, a table field and a union arm
 n_internal_72	builds	-	generator-internal names textTotalPast..to (80), each an enum, a table field and a union arm
 n_internal_73	builds	-	generator-internal names toDecimal..twoAt (80), each an enum, a table field and a union arm
 n_internal_74	builds	-	generator-internal names txt..unkSlot (80), each an enum, a table field and a union arm
@@ -447,4 +449,20 @@ n_internal_88	builds	-	generator-internal names words_at..zero_range (22), each 
 n_internal_89	builds	-	generator-internal names aend..uat (23), each an enum, a table field and a union arm
 n_internal_90	builds	-	generator-internal names armid..keyid (2), each an enum, a table field and a union arm
 n_internal_91	builds	-	generator-internal names arm, inner, kind, types (4), each an enum, a table field and a union arm; the probe types are Part and Mode, so none shadows them
+n_rust_gen	refuse-at-check	Rust	gen is a reserved word in Rust 2024 (moved out of n_internal_30)
+n_rust_module_other	refuse-at-check	Rust	enum other is the Rust crate's module for Other.schema (moved out of n_internal_49)
+n_rust_module_probe	refuse-at-check	Rust	enum probe is the Rust crate's module for Probe.schema (moved out of n_internal_53)
+n_rust_module_tables	refuse-at-check	Rust	enum tables is the Rust crate's public tables module (moved out of n_internal_71)
+n_rust_glob_01	builds	-	bindings of the Rust table files that glob-import the crate (fixed, message, block, cook, records and their runtimes), names ak..arm134 (40), each a lowercase enum beside the message corpus unit
+n_rust_glob_02	builds	-	bindings of the Rust table files that glob-import the crate (fixed, message, block, cook, records and their runtimes), names arm135..arm44 (40), each a lowercase enum beside the message corpus unit
+n_rust_glob_03	builds	-	bindings of the Rust table files that glob-import the crate (fixed, message, block, cook, records and their runtimes), names arm45..arm_entry153 (40), each a lowercase enum beside the message corpus unit
+n_rust_glob_04	builds	-	bindings of the Rust table files that glob-import the crate (fixed, message, block, cook, records and their runtimes), names arm_entry169..dom (40), each a lowercase enum beside the message corpus unit
+n_rust_glob_05	builds	-	bindings of the Rust table files that glob-import the crate (fixed, message, block, cook, records and their runtimes), names done..element4 (40), each a lowercase enum beside the message corpus unit
+n_rust_glob_06	builds	-	bindings of the Rust table files that glob-import the crate (fixed, message, block, cook, records and their runtimes), names element41..h (40), each a lowercase enum beside the message corpus unit
+n_rust_glob_07	builds	-	bindings of the Rust table files that glob-import the crate (fixed, message, block, cook, records and their runtimes), names held..oor (40), each a lowercase enum beside the message corpus unit
+n_rust_glob_08	builds	-	bindings of the Rust table files that glob-import the crate (fixed, message, block, cook, records and their runtimes), names order..pos (40), each a lowercase enum beside the message corpus unit
+n_rust_glob_09	builds	-	bindings of the Rust table files that glob-import the crate (fixed, message, block, cook, records and their runtimes), names present..probe9 (40), each a lowercase enum beside the message corpus unit
+n_rust_glob_10	builds	-	bindings of the Rust table files that glob-import the crate (fixed, message, block, cook, records and their runtimes), names probe_slots..src (40), each a lowercase enum beside the message corpus unit
+n_rust_glob_11	builds	-	bindings of the Rust table files that glob-import the crate (fixed, message, block, cook, records and their runtimes), names start..z (36), each a lowercase enum beside the message corpus unit
+n_rust_glob_12	builds	-	the three bindings of the Rust table files that rows 01-11 cannot name, because their unit refuses them for its own reasons (enum Kind, files Probe and Other): kind, other and probe as lowercase enums beside the message corpus unit with Kind renamed and the files renamed
 n_dart_main	refuse-at-check	Dart	an enum named main: Dart reserves a library's main for the entry point, a function, and an enum's type is its schema name (SPEC §4.6)

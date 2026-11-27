@@ -8,7 +8,9 @@ package goosetable_test
 //     such a file but as damage;
 //   - a REFUSED LOAD restores the caller's stores, the way <T>ToLoaded does
 //     (value_bridge.go): the wire load and the text load leave the value and
-//     node tables the length they had.
+//     node tables the length they had, and the wire load leaves every entry
+//     the caller placed in either table as it was (PORT-GOOSE.md, JSON and
+//     wire conversion).
 
 import (
 	"os"
@@ -54,11 +56,16 @@ fn main() {
     var n2: schema_rt::LoadNode[>..] = [];
     v2.push(schema_rt::LoadVal { .. });
     v2.push(schema_rt::LoadVal { .. });
-    n2.push(schema_rt::LoadNode { tab: -1, blob: 0, off: 0, len: 0, val: -1, named: false });
+    v2[0].first = 99;
+    v2[1].count = 3;
+    n2.push(schema_rt::LoadNode { tab: 5, blob: 2, off: 4, len: 13, val: 77, named: true });
     var r2 = schema_rt::LoadReport { .. };
     print("wire-at ", schema_rt::load_table(probe::TableUnit, "Root", bad, v2, n2, r2));
     print("wire-vals ", v2.len);
     print("wire-nodes ", n2.len);
+    // and every entry it held, not only the lengths
+    print("wire-val0 ", v2[0].first, " ", v2[1].count);
+    print("wire-node0 ", n2[0].tab, " ", n2[0].blob, " ", n2[0].off, " ", n2[0].len, " ", n2[0].val, " ", n2[0].named);
 
     // and so does a refused text load
     var d3: u8[>..] = [];
@@ -107,6 +114,7 @@ func TestGooseRefusedStoresAndDuplicateSave(t *testing.T) {
 		"save-clean": "0",
 		"save-dup":   "8", // SaveRefuseInvalidValue
 		"wire-at":    "-1", "wire-vals": "2", "wire-nodes": "1",
+		"wire-val0": "99 3", "wire-node0": "5 2 4 13 77 true",
 		"json-at": "-1", "json-vals": "2", "json-nodes": "1",
 	}
 	for k, v := range want {
