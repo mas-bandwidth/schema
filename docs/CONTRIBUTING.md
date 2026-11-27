@@ -116,13 +116,14 @@ row in [docs/PORTING.md](PORTING.md), check the file out with
 `git checkout --conflict=diff3 docs/PORTING.md` and run
 `go run ./tools/cellmerge docs/PORTING.md`. It merges each conflicted row cell
 by cell by column name, three-way, and leaves any hunk it cannot merge exactly
-for a person. Pull requests into `main`,
-`dev`, or `fixed-table-form` automatically run `ci-fast.yml` (planning by diff
-against the target branch so only touched packages and legs are selected) and
-the `generated` and `cs-tables` gates in `ci-full.yml`, plus `pins` when the
-pull request is from this repository. The rest of `ci-full.yml` runs on a push
-to those three branches, nightly, on `workflow_dispatch`, and on a pull
-request into those branches that carries the `full-ci` label. A self-hosted
+for a person. Every pull request, whatever its base, and every push to `main`
+runs `ci-fast.yml`: one job, `happy-path`, that compiles and runs one round
+trip per language (make/happy-path.mk), in two minutes or less (the owner,
+2026-11-25: per pull request, ONLY compile + one simple happy path per
+language; everything else is nightly). Everything else runs nightly and on
+`workflow_dispatch`: `ci-fast-nightly.yml` (the old per-PR lane, planning by
+diff, with every leg on its schedule), `ci-full.yml`, `certify.yml` and the
+per-language nightly workflows. A self-hosted
 fleet job on a pull request also requires
 `github.event.pull_request.head.repo.full_name == github.repository`, so fork
 code never executes on fleet runners.
@@ -342,12 +343,15 @@ selects nothing is red".
 Per-push evidence is Linux. A green pull request is not a macOS certificate.
 The same split is in [SECURITY.md](SECURITY.md).
 
-- [`.github/workflows/ci-fast.yml`](../.github/workflows/ci-fast.yml) runs on a
-  pull request into `main`, `dev`, or `fixed-table-form`, and on `workflow_dispatch`.
-  It is a path-selected Linux lane. It is not the full `make test` chain, and
-  it does not run on macOS. Its merge gate (`plan`, `lint-fast`, `block-gate`
-  and `go-test-touched`) runs on GitHub's hosted `ubuntu-latest`, so a merge
-  never waits on the fleet; the per-leg `leg-gate` matrix runs on the fleet.
+- [`.github/workflows/ci-fast.yml`](../.github/workflows/ci-fast.yml) runs on
+  every pull request, a push to `main` and `workflow_dispatch`: the happy path
+  only, one fleet job that builds `bin/schema` and runs `make happy-<lang>` for
+  every language, each timed. A green pull request has compiled and round
+  tripped every language, and nothing more.
+- [`.github/workflows/ci-fast-nightly.yml`](../.github/workflows/ci-fast-nightly.yml)
+  is the path-selected Linux lane that was per-PR until 2026-11-25. It runs on
+  its schedule (every package and leg) and on `workflow_dispatch` (by path).
+  It is not the full `make test` chain, and it does not run on macOS.
 - Every self-hosted job runs its steps through
   [`tools/pgroup`](../tools/pgroup/main.go), which kills each step's whole process
   group when the step ends, so a child a test left running cannot hold a

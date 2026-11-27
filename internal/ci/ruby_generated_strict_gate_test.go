@@ -249,7 +249,7 @@ func TestRubyGeneratedStrictGatePlantedPattern(t *testing.T) {
 }
 
 // TestRubyGeneratedStrictGateFast is the strict gate's PULL-REQUEST FORM
-// (docs/CI-TIERS.md, ci-fast.yml nightly-fast row ruby-strict). The whole gate
+// (docs/CI-TIERS.md, ci-fast-nightly.yml nightly-fast row ruby-strict). The whole gate
 // above runs both interpreters, RuboCop, RBS and Steep once per unit, about
 // five minutes on four cores, so it stayed nightly, and a RuboCop offense in
 // the generated Ruby reached main (2026-11-22). This form keeps the two
