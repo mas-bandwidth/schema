@@ -83,6 +83,9 @@ const tableMapWireSource = `
 const tableMapJsonSource = `
     static bool WriteMap(ref Out o, object owner, TableFieldInfo f, int depth)
     {
+        // a map's object, an empty {} included, is a container the depth cap
+        // counts (docs/SPEC-TABLES.md 16.14 W2)
+        if (depth > MaxDepth) { return false; }
         int count = f.GetCount(owner);
         if (count == 0) { o.Text("{}"); return true; }
         if (!TableWire.MapOrdered(owner, f)) { return false; }

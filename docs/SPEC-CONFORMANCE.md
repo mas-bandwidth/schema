@@ -166,7 +166,7 @@ the refusal (`MANIFEST.txt`, "THE 2026-11-22 SURFACES"):
 | SPEC-TABLES §6.5: the retaining load zeroes a PRE-FILLED report in full, every counter and the refusal ([below](#retaining-loads-zero-a-reused-report)) | `read-into` (`retain`) | `ri_retain` |
 | SPEC-TABLES §6.5, §6.6: the plain region `Load` and a fixed-root `LoadRetain` zero a PRE-FILLED report ([below](#the-plain-region-load-and-a-fixed-root-retaining-load-zero-the-report-too)) | `read-into` (`region`, `retain-fixed`) | `ri_region`, `ri_retain_fixed` |
 | FL-14, FL-15: float text ignores the process locale; a caller-buffer writer writes nothing past its text | `json-write-into` | `jwi_*` |
-| FL-11: the text depth cap (read counts every container; write counts table/type values) | `wire`, `json-read`, `json-write` | `surf_chain127_vals` (`wire`/`json-read`/`json-write`), `surf_chain128_vals` (`wire`, `no-text`); refusal `graph_chain_past_cap` |
+| FL-11: the text depth cap (read and write count every container, an empty leaf array included) | `wire`, `json-read`, `json-write` | `surf_chain127_vals` (`wire`/`json-read`/`json-write`), `surf_chain128_vals` (`wire`, `no-text`); refusals `graph_chain_past_cap`, `surf_chain128_vals_write` (row `json-depth-writers-count`) |
 | FL-16: a null `*T \| required` is written as index 0 and reads back null | `wire`, `json-read`, `json-write` | `surf_holder_null_required`, `surf_holder_present` |
 
 ## 3. The driver protocol
@@ -225,7 +225,20 @@ where the README says so.
   passes when the port refuses and fails when it accepts. The reason name,
   the detection order, counters and diagnostic text are NOT compared; a port
   should still use the specification's reason names, because they are how a
-  user finds the rule, but the suite does not enforce them.
+  user finds the rule, but the suite does not enforce them. The same holds
+  between ports: a cross-port differential (the Squirrel all-port
+  differential, `make schema-squirrel-all-port-differential`) compares two
+  refusals as the one verdict, never the bytes of either diagnostic. A
+  `message-prior` `<case>.refused` from one port equals any other port's
+  `<case>.refused`, whatever reason name, report or word each one holds; a
+  re-saved batch in `<case>` is still compared byte for byte
+  (`TestSquirrelAllPortDifferentialNormalizesOnlyTheHarnessEquivalences`).
+  It holds two ports equal wherever the harness credits both against the one
+  golden: a `retain-refusal` `save-refused` (python, ruby) equals `saved`; a
+  `read-into` `unrepresentable` (a fixed load that always takes a capacity)
+  and a `retain-refusal` answer its leg owes in `retain-refusal-owed.txt`
+  are not compared at all
+  (`TestSquirrelAllPortDifferentialLeavesUncomparableAnswersOut`).
 - **Writes are judged by bytes, exactly.** A case that requires a write
   passes only when the bytes the port produces equal the committed golden,
   byte for byte: canonical order, padding, zeros in dead bytes, every
@@ -350,7 +363,10 @@ per-port check where no shared case exercises it.
 | GAP-16 | A fixed root's binary read has batch capacity one; older layouts come from the unit's `schema.lock` (README); gaps OC11, ObjC6, Zig16 | `report fixedevo_v3_batch2`; `fixedevo_v1_as_v3`, `fixedevo_v2_as_v3` |
 | GAP-21 | A refused read returns no value when it was handed none, and resets every instance it was handed (SPEC-TABLES §6.5, R4); gaps Sw R4 | FL-03's per-leg rows (docs/fix-ledger-1122.md) |
 | message-batch-refusal-resets-every-handed | a message batch read resets EVERY value it was handed, whatever the reason and wherever the refusal fell, a refusal before any body (`newer_form`, `no_vocabulary`, `batch_too_large`) included, and answers a count of `0` (SPEC-TABLES §6.5, THE CALLER'S VALUES AFTER A REFUSAL; R4). Java's `loadMessages` left the handed values as the caller held them on the capacity refusal | Java `TestMessageFormBatchJava/refusals_and_damage` (`batch_too_large_read`) |
+| fixed-lineage-refusal-resets-every-handed | a fixed batch read refused through a LINEAGE plan's check pass (an older writer's record) resets EVERY row it was handed, not only the first, the one a read filled, or those the wire reached (SPEC-TABLES §6.5, THE CALLER'S VALUES AFTER A REFUSAL; R4; census G14). Go's load already did; Go's `TestFixedVersioningRangeWidenHostile` owed defaults in row 0 only and zero in the other seven, so it went red on the conforming reset | the `read-into` row `ri_fixed_lineage_refused` (every leg); Go `TestFixedVersioningRangeWidenHostile/{range_widen,range_widen_u64,range_widen_array}` (8 rows handed) |
 | armmin-arm-born-and-text-assert | a union arm `[A..B]T` is established at count `A` (SPEC §4.2, §4.6), so the C++ union reset states the arm's birth count after the resets of the arms that share its storage; and a write of an arm below `A` is a debug assert in every C++ writer, the text writer included (SPEC §5.1, row 3; R10). Both had been dropped from the C++ generator when Wave 2 landed (#4843) | C++ `TestCppArmMinHolds` (`arm-select`, `json`) and `TestCppArmMinHoldsNegativeControl`, whose plants each fail by name when they patch nothing |
+| json-depth-writers-count | the text writer judges the depth cap of 128 at every container it writes, an empty `[]` or `{}` included, in the read's own unit (SPEC-TABLES §16.2, §16.14 W2), so a writer never emits a text its own reader refuses. Every writer had judged table and type values only, so a chain whose last node held an empty array at depth 129 was written and then refused by every reader, the Go oracle included. The refusal is the writer's -1 (§16.3) in every build, as the table-depth refusal already was | `json-write-refusal surf_chain128_vals_write` (every leg); `surf_chain127_vals` reads and writes back; Go `internal/tabletext` and Java `TestJavaTextReadDepthCap` (127 nodes write and read, 128 do neither) |
+| java-arm-born-once | selecting a counted union arm `[A..B]T` sets it at its minimum count `A` (SPEC §4.2, §4.6), so a fresh Java variable-form union value holds `A` default elements in the arm, once: the field initializer seeded `A` and the constructor added `A` more, and a `[2..4]` arm selected on a fresh value was written at count 4 where the engine writes 2. The initializer is now the empty list and the constructor alone states the birth count. The fault is in a value built by host code, which no corpus surface compares byte for byte, so the per-language engine comparison is the check | Java `TestJavaCountedMinElementsElideAtBornState` (`wire arm_selected`, `wire arm_one_set`) |
 | GAP-23 | Compressed-float range ends compare at the field's width (SPEC-TABLES §3.3); gaps Li6 | `feature-witnesses/compressed-f32-ends` |
 | GAP-24 | A float32 field is written as a float32 (SPEC-TABLES §16.2); gaps Sw11 | the `text_float*` rows |
 | GAP-25 | A node is reached along every kind-17 edge from the root (SPEC-TABLES §4); gaps Hs7 | `framing varevo_cycle_*` |
@@ -434,6 +450,7 @@ per-port check where no shared case exercises it.
 | Elixir fixed enum-keyed writes | For slots `HTTPReady = 7` and `Fallback = 9`, the declared string names and their snake-case atom keys must produce identical bytes. If both spellings occur for one slot, its string key supplies the value. Omitting a slot must refuse the write. | `internal/codegen/elixirtable` `TestElixirFixedKeyedSaveKeyForms` checks each spelling, conflicting spellings, a missing slot, and canonical readback. |
 | Elixir retained writes | With an empty retention store, a `Card` whose string `id` is `"a"` must save, and its measure must equal the byte length. Set only `id` to a list. The retained measure returns `-1`; the retained save returns `{:error, :invalid_value, report, retain}` with the supplied report and store. | `internal/codegen/elixirtable` `TestRetainSaveRefusesInvalidValues` exercises both public methods. |
 | Elixir retained fixed-array arm evolution | When an older union arm carries a fixed array shorter than the current declaration, the retaining read supplies the current element default for every appended slot, exactly as the plain read does (SPEC-TABLES.md §3 fixed arrays; §4 append-only evolution). The resulting public values are equal, their plain and retaining saves are equal, and the retaining measure equals its save length. | `messagedemo.ToolEnvelope.body.spans`: `test/tables/widenbound/WidenBoundPeer.schema` declares `[1]int32`, while `tables/messages/Messages.schema` declares `[2]int32`; `internal/codegen/elixirtable` `TestRetainReadPadsEvolvedFixedArrayArm` writes the ordinary older value `{spans, [5]}` and reads `[5, 0]`. |
+| Java retained fixed array of unions elides at all None | A retaining save writes a fixed array of unions exactly when the plain save does: when at least one element holds an arm. A field whose every element is None is left out, because a None element has no arm and so no body that could carry a retained record (SPEC-TABLES.md §3, a fixed array elides at its defaults; §6.6, A RETAINING SAVE ELIDES WHAT THE PLAIN SAVE ELIDES). Testing the list for emptiness is the fault: a fixed array is always its bound long, so the field rode as its bound of Nones. | `internal/codegen/javatable` `TestRetainFixedUnionArrayNoneElides` loads and saves `testdata/wire/tables/retain_fixed_union_array_none.bin` (`messagedemo.ToolEnvelope`, whose Transaction has no `pending` and one retained unknown field; found by the full nightly 45130315968 at seed 24845619678) retaining in Java and in the engine, requires the same 191 bytes, and plants the old guard to go red at 206; `make tables-java-wire-fuzz` replays the same wire in the `--retain` arm. |
 | Elixir variable enum-keyed text completion and typed write extent | A text `[E]T` value may omit a named slot and the reader completes it with that slot's element default (SPEC-TABLES.md §16.2, §16.9.4). The resulting full typed value saves. A directly supplied typed keyed map must already contain exactly one value per variant; a short value refuses under SF-20 rather than being silently padded. | `internal/codegen/elixirtable` `TestElixirFiniteFloat` reads `{"keyed":{"A":5.25}}` for `Key { A, B }`, observes `B = 0.0`, and saves the completed value; the paired direct `%{"A" => 5.25}` save refuses. Shared `sref_keyed_short` independently requires the same typed-writer refusal. |
 | C and C++ block integer bounds | The generated block API must build for full-range signed and unsigned 64-bit fields and for fields that narrow either end by one. Values at each declared endpoint are legal. A narrower upper or lower bound still applies. | `internal/codegen/ctable` `TestCBlockRangeChecksElideStorageLimits` and `internal/codegen/cpptable` `TestCPPBlockRangeChecksElideStorageLimits` check the generated bound expressions for the six declarations. Run `make tables-clamp-limits` for the native limit checks. |
 | Go packet Write: an off-range int128, fixed or ufixed refuses, never panics | Row 1 covers a ranged `int128` and a `fixed`/`ufixed` raw value off its raw range (`min << F` to `max << F`); a refuse-every-build leg refuses it in every build, and Go returns `serialize.ErrValueOutOfRange` from the packet `Write`, never the runtime's panic (SPEC.md §5.1 row 1 and the Go packet `Write` line). Both shared `PacketWriteRefusal` schemas declare an `int128 \| min = -10, max = 100000000000000000000`, a `fixed(16, 16) \| min = -10, max = 10` and a `ufixed(32, 32) = 1 \| min = 1, max = 4000000000`, whose top raw bound lies past int64: one raw step past each bound is refused and each bound is written | `write-refusal-packet`: in [`test/packet-write-refusal/cases.txt`](../test/packet-write-refusal/cases.txt) (the assert legs and Go) `int128_*`, `fixed_*` and `ufixed_*`; in [`rows.txt`](../test/conformance/write-refusal-packet/rows.txt) (the every-build legs) `int128_*`, `fixed_raw_*` and `ufixed_*`; `TestWriteRefusalPacket` (`test/conformance/harness`), whose second negative control drops the generated 128-bit and fixed-point refusals and requires `int128_high`, `fixed_high` and `ufixed_high` red |
@@ -949,3 +966,45 @@ the `shapes` instance rows `shapes_fixed_tenth_past_max`,
 | rule | case | the leg it was red on before its fix |
 |---|---|---|
 | SPEC-TABLES §3.4, §4: a fixed read refuses a value past its range and a count below Min, never clamps | `shapes_fixed_tenth_past_max`, `shapes_fixed_seventh_below_min`, `shapes_fixed_octets_below_min`; `TestSquirrelTableSaveRoundTripsEveryInstance` (`internal/codegen/squirreltable`, slow tier) | red before its fix on Squirrel: the walk load's fixed path clamped the floats to their ends (counting `oor`) and took a count of 1 under `[2..8]`, so the value reached the save, which wrote 655 bytes |
+
+### The C text read makes no allocator call
+
+[SPEC-TABLES §16.1](SPEC-TABLES.md#161-the-surface) says `FromJson` allocates
+nothing beyond the caller's instance, and in C that covers the repeated-key
+set §16.2 keeps for every object. `make tables-c-soak` reads, writes and
+re-reads as text every case of the soak corpus
+([`soak_main.c`](../test/c-tables/soak_main.c)) with `malloc`, `calloc`,
+`realloc` and `free` interposed, and owes `0 allocator calls` over the
+measured loop. No shared case: the rule is an allocation count, which only a
+leg's own allocator can see, and the answers every driver gives are unchanged.
+
+| rule | case | the leg it was red on before its fix |
+|---|---|---|
+| SPEC-TABLES §16.1: the C text read allocates nothing beyond the instance | `make tables-c-soak` (`schema_test_c_soak`, any count of two or more) | red before its fix on C: every JSON object heap-allocated its repeated-key set, 502 allocator calls a pass over the corpus (257,024 over 512) |
+
+### A block build writes an absent optional's held value
+
+The block form leaves inline storage where it is (SPEC-TABLES §19.3): an
+optional's value slot rides beside its presence companion, and a block read
+keeps whatever value an absent slot holds. A builder handed that record gives
+back the bytes it read. The shared case is the `block block_padded` row of the
+tables manifest: `testdata/wire/tables/block_padded.bin`, whose row 2 holds
+`counter = 18` with `counter#present = false` (bytes `12 00 00 00` at offset
+312, presence `00` at 316), pinned in `block/block_padded.dump`. A leg that
+rebuilds the block compares its build to the image byte for byte.
+
+| rule | case | the leg it was red on before its fix |
+|---|---|---|
+| SPEC-TABLES §19.3: an absent optional's value slot is written as held, so a block rebuilt from its own read equals the image | `block_padded` (row 2 `counter`), `TestLobsterBlockForm` (`internal/codegen/lobstertable`, slow tier) | red before its fix on Lobster: `block_write_field` returned early for an absent optional, writing the presence byte and leaving the value zero, so the rebuild differed at byte 312 |
+
+### A block build names the non-finite float it refuses
+
+A block float is finite (SPEC-TABLES §3.3): the read refuses a NaN or an
+infinity on its raw bits and the builder refuses one in the value, and both
+name the field, `<Owner>.<field>`. The verdict is shared and already held by
+every leg; the name is a leg's own report (docs/rulings.json
+refusal-verdict-only), so the case is the leg's unit test.
+
+| rule | case | the leg it was red on before its fix |
+|---|---|---|
+| SPEC-TABLES §3.3: the block builder refuses a NaN or an infinity and names the field, as the block read does | Go unit test `TestLobsterTablesAreFiniteOnly` (`internal/codegen/lobstertable`, slow tier; no shared case: the verdict was already `refused`, and the corpus judges the verdict alone) | red before its fix on Lobster: the range check in `block_write_field` ran first and answered `invalid_value` for a NaN, so the build named no field while the read named `PaddedRow.value` |

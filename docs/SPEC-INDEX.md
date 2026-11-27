@@ -4,6 +4,16 @@ See the [2026-11-23 coverage supplement](#2026-11-23-coverage-supplement) for
 the release and integration snapshots. The original index below records its
 2026-11-22 snapshot.
 
+**The test addenda.** Every test the repository runs is part of the
+specification as a spec addendum, one page per tier, generated from the test
+registry (`test/registry/registry.jsonl`) by `schema-test addenda` and held to
+it in CI: [SPEC-TESTS.md](SPEC-TESTS.md) (the adapter contract, the languages
+and the types, with links to each tier's page),
+[SPEC-TESTS-UNIT.md](SPEC-TESTS-UNIT.md),
+[SPEC-TESTS-FUNCTIONAL.md](SPEC-TESTS-FUNCTIONAL.md) and
+[SPEC-TESTS-NIGHTLY.md](SPEC-TESTS-NIGHTLY.md). A shared test case this index
+names is a row there once its family has moved into the registry.
+
 Glenn, 2026-11-22: "the next step I would like to see is you getting the spec
 finalized with everything we have fixed, and the test cases in it."
 
@@ -96,7 +106,7 @@ R7 and R8 above.
 | FL-08 | an announcement over capacity refuses before any entry is written | SPEC-TABLES §3.3, the announcement (main) | hostile corpus `announce-entries-too-large` (main) | **main** |
 | FL-09 | a string map key is bounded by its own `string(N)`, never by the 255-byte name cap | SPEC-TABLES §16.2 (main) | `sp-map-key-256-wide`, `-300-wide`, `-301-wide` (#4688) | **PR** |
 | FL-10 | the JSON read takes bytes and validates UTF-8; a surrogate is ill-formed (#4602) | SPEC-TABLES §16.2 (main) | `str-illformed-at-bound`, `str-raw-non-ascii`, `str-lone-lead-surrogate` (main) | **main** |
-| FL-11 | the text writer depth cap counts table and type values only (W2) | SPEC-TABLES §16.2 (main) | *none*: no registered root writes 129 deep | **no row** |
+| FL-11 | the text writer depth cap counts every container, as the read's does (W2) | SPEC-TABLES §16.2 (main) | `json-write-refusal surf_chain128_vals_write`, `surf_chain127_vals` (#5041) | **PR** |
 | FL-12 | the text read depth cap counts every container, placed or skipped | SPEC-TABLES §16.2 (main) | `rr-depth-placed-union-map-128`/`-129`, `rr-depth-placed-keyed-map-128`/`-129` (#4737); `sp-skip-depth-129`/`-130` (#4688); the other container kinds (#4735) | **PR** |
 | FL-13 | the sign of zero survives a number token of any length | SPEC-TABLES §16.2 (#4737) | `rr-num-negative-zero-long-token` (#4737) | **PR** |
 | FL-14 | float text never reads the process locale | SPEC-TABLES §16.1 (#4737) | *none*: the locale is not a harness input | **no row** |
