@@ -115,6 +115,7 @@ end
 
 -- type RenderSprite (SPEC §6.1: the wire order is the declared order)
 function _M.WriteRenderSprite(stream, v)
+  if type(v) ~= "table" then return false end
   if math.type(v.SortKey) ~= "integer" then return false end
   if not stream:serializeBits64({ value = v.SortKey }, 64) then return false end -- the storage width
   -- the declared width (SPEC §5.1 row 11)
@@ -133,6 +134,7 @@ end
 
 -- type RenderBlock (SPEC §6.1: the wire order is the declared order)
 function _M.WriteRenderBlock(stream, v)
+  if type(v) ~= "table" then return false end
   -- the declared width (SPEC §5.1 row 11)
   if math.type(v.WorkerIndex) ~= "integer" or v.WorkerIndex < 0 or v.WorkerIndex > 4294967295 then return false end
   if not stream:serializeBits({ value = v.WorkerIndex }, 32) then return false end -- the storage width
@@ -141,6 +143,7 @@ function _M.WriteRenderBlock(stream, v)
     return false
   end
   if not stream:serializeBits({ value = v.SpriteCountHint }, 32) then return false end -- the storage width
+  if type(v.Sprites) ~= "table" then return false end
   -- the count guards the loop (SPEC §6.3)
   if math.type(v.SpritesCount) ~= "integer" or v.SpritesCount < 0 or v.SpritesCount > 64 then return false end
   if not stream:serializeBits({ value = v.SpritesCount }, 7) then return false end -- the count

@@ -30,7 +30,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // cookHasExtent reports a record with any list or map reachable BY VALUE: the
@@ -111,13 +111,13 @@ func (g *gen) emitCookCarver(b *strings.Builder, st *ir.Struct) {
 	b.WriteString("/// it lays every array and points every slot at its array. `at` is the record's\n")
 	b.WriteString("/// own region offset, which a measure does not read.\n")
 	b.WriteString("#[cfg(feature = \"cook\")]\n#[allow(unused_variables, unused_mut, clippy::identity_op, clippy::needless_option_as_deref, clippy::single_match)]\n")
-	fmt.Fprintf(b, "pub fn %s(v: &%s, c: &mut TableCarve, mut w: Option<&mut TableRegionWriter>, at: i64) {\n", fn(st.Name, "cook_carve"), st.Name)
+	fmt.Fprintf(b, "pub fn %s(schema_v: &%s, c: &mut TableCarve, mut w: Option<&mut TableRegionWriter>, schema_at: i64) {\n", fn(st.Name, "cook_carve"), st.Name)
 	for i := range ml.Fields {
 		fl := &ml.Fields[i]
 		if !cookFieldExtent(fl.Field) {
 			continue
 		}
-		g.emitCarveField(b, fl.Field, "v."+ir.RustSnake(fl.Field.Name), "at", fl.Offset, "    ")
+		g.emitCarveField(b, fl.Field, "schema_v."+ir.RustSnake(fl.Field.Name), "schema_at", fl.Offset, "    ")
 	}
 	b.WriteString("}\n\n")
 }
@@ -172,8 +172,8 @@ func (g *gen) emitCarveField(b *strings.Builder, f *ir.Field, x, base string, of
 		// does not hold is the element's default, which carries no container
 		step := cookElementBytes(g.unit, f)
 		elem := scalarOnly(f)
-		fmt.Fprintf(b, "%sfor (i, e) in %s.iter().enumerate().take(%d) {\n", ind, x, f.ArrayBound)
-		g.emitCarveValue(b, elem, "(*e)", fmt.Sprintf("%s + i as i64 * %d", slot, step), ind+"    ")
+		fmt.Fprintf(b, "%sfor (schema_i, e) in %s.iter().enumerate().take(%d) {\n", ind, x, f.ArrayBound)
+		g.emitCarveValue(b, elem, "(*e)", fmt.Sprintf("%s + schema_i as i64 * %d", slot, step), ind+"    ")
 		fmt.Fprintf(b, "%s}\n", ind)
 		return
 	}
@@ -231,14 +231,14 @@ func (g *gen) emitCarveList(b *strings.Builder, f *ir.Field, x, slot, ind string
 	fmt.Fprintf(b, "%sif let Some(w) = w.as_deref_mut() {\n", in)
 	fmt.Fprintf(b, "%s    let array = c.extent_at + start;\n", in)
 	fmt.Fprintf(b, "%s    w.put_slot(%s, array, xs.len());\n", in, slot)
-	fmt.Fprintf(b, "%s    for (i, e) in xs.iter().enumerate() {\n", in)
-	fmt.Fprintf(b, "%s        let ea = array + i as i64 * %d;\n", in, size)
+	fmt.Fprintf(b, "%s    for (schema_i, e) in xs.iter().enumerate() {\n", in)
+	fmt.Fprintf(b, "%s        let ea = array + schema_i as i64 * %d;\n", in, size)
 	g.emitCookElement(b, elem, "(*e)", "ea", in+"        ")
 	fmt.Fprintf(b, "%s    }\n", in)
 	fmt.Fprintf(b, "%s}\n", in)
 	if cookFieldExtent(elem) {
-		fmt.Fprintf(b, "%sfor (i, e) in xs.iter().enumerate() {\n", in)
-		g.emitCarveValue(b, elem, "(*e)", fmt.Sprintf("c.extent_at + start + i as i64 * %d", size), in+"    ")
+		fmt.Fprintf(b, "%sfor (schema_i, e) in xs.iter().enumerate() {\n", in)
+		g.emitCarveValue(b, elem, "(*e)", fmt.Sprintf("c.extent_at + start + schema_i as i64 * %d", size), in+"    ")
 		fmt.Fprintf(b, "%s}\n", in)
 	}
 	fmt.Fprintf(b, "%s}\n", ind)
@@ -254,19 +254,19 @@ func (g *gen) emitCarveMap(b *strings.Builder, f *ir.Field, x, slot, ind string)
 	fmt.Fprintf(b, "%s{\n", ind)
 	in := ind + "    "
 	fmt.Fprintf(b, "%slet xs = %s;\n", in, cookRef(x))
-	fmt.Fprintf(b, "%slet mut order: Vec<usize> = (0..xs.len()).collect();\n", in)
-	fmt.Fprintf(b, "%sorder.sort_by(|&a, &b| %s);\n", in, mapKeyOrd(f, "xs[a]."+key, "xs[b]."+key))
+	fmt.Fprintf(b, "%slet mut schema_order: Vec<usize> = (0..xs.len()).collect();\n", in)
+	fmt.Fprintf(b, "%sschema_order.sort_by(|&a, &b| %s);\n", in, mapKeyOrd(f, "xs[a]."+key, "xs[b]."+key))
 	fmt.Fprintf(b, "%slet start = c.place(xs.len(), %d, %d);\n", in, ml.Size, max(ml.Align, 1))
 	fmt.Fprintf(b, "%sif let Some(w) = w.as_deref_mut() {\n", in)
 	fmt.Fprintf(b, "%s    let array = c.extent_at + start;\n", in)
 	fmt.Fprintf(b, "%s    w.put_slot(%s, array, xs.len());\n", in, slot)
-	fmt.Fprintf(b, "%s    for (i, &k) in order.iter().enumerate() {\n", in)
-	fmt.Fprintf(b, "%s        %s(&xs[k], w, array + i as i64 * %d);\n", in, fn(entry.Name, "cook_body"), ml.Size)
+	fmt.Fprintf(b, "%s    for (schema_i, &schema_k) in schema_order.iter().enumerate() {\n", in)
+	fmt.Fprintf(b, "%s        %s(&xs[schema_k], w, array + schema_i as i64 * %d);\n", in, fn(entry.Name, "cook_body"), ml.Size)
 	fmt.Fprintf(b, "%s    }\n", in)
 	fmt.Fprintf(b, "%s}\n", in)
 	if cookHasExtent(entry) {
-		fmt.Fprintf(b, "%sfor (i, &k) in order.iter().enumerate() {\n", in)
-		fmt.Fprintf(b, "%s    %s(&xs[k], c, w.as_deref_mut(), c.extent_at + start + i as i64 * %d);\n", in, fn(entry.Name, "cook_carve"), ml.Size)
+		fmt.Fprintf(b, "%sfor (schema_i, &schema_k) in schema_order.iter().enumerate() {\n", in)
+		fmt.Fprintf(b, "%s    %s(&xs[schema_k], c, w.as_deref_mut(), c.extent_at + start + schema_i as i64 * %d);\n", in, fn(entry.Name, "cook_carve"), ml.Size)
 		fmt.Fprintf(b, "%s}\n", in)
 	}
 	fmt.Fprintf(b, "%s}\n", ind)
@@ -287,10 +287,10 @@ pub struct TableCarve {
 impl TableCarve {
     /// Reserve one container's whole array, count x size at align, and answer
     /// where it starts inside the extent.
-    pub fn place(&mut self, count: usize, size: i64, align: i64) -> i64 {
+    pub fn place(&mut self, schema_count: usize, size: i64, align: i64) -> i64 {
         self.at = (self.at + align - 1) / align * align;
         let start = self.at;
-        self.at += count as i64 * size;
+        self.at += schema_count as i64 * size;
         start
     }
 }
@@ -300,18 +300,18 @@ impl TableRegionWriter<'_> {
     /// A container's sixteen-byte slot: the SELF-RELATIVE delta from the slot
     /// to its array and the int32 count, or the null reference and zero for
     /// an empty one (§2.8, §2.9).
-    pub fn put_slot(&mut self, at: i64, array: i64, count: usize) {
-        if count == 0 {
-            self.put(at, 0, 8);
-            self.put(at + 8, 0, 4);
+    pub fn put_slot(&mut self, schema_at: i64, array: i64, schema_count: usize) {
+        if schema_count == 0 {
+            self.put(schema_at, 0, 8);
+            self.put(schema_at + 8, 0, 4);
             return;
         }
-        if count > i32::MAX as usize {
+        if schema_count > i32::MAX as usize {
             self.ok = false;
             return;
         }
-        self.put(at, (array - at) as u64, 8);
-        self.put(at + 8, count as u64, 4);
+        self.put(schema_at, (array - schema_at) as u64, 8);
+        self.put(schema_at + 8, schema_count as u64, 4);
     }
 }
 `

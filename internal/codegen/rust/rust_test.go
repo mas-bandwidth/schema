@@ -16,12 +16,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/check"
-	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/check"
+	"github.com/mas-bandwidth/schema/v3/internal/parser"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/ir"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 func unitFromSource(t *testing.T, name, src string) *ir.Unit {
@@ -83,12 +83,12 @@ func TestDoubledMinusAtExtremeFolds(t *testing.T) {
 	rs := generateExtremesCorpus(t)
 	for _, want := range []string{
 		// the write-side fold offset: same spelling as the plain floor_bound
-		"(value.doubled_floor as u64).wrapping_sub((-9223372036854775808_i64) as u64);",
+		"(schema_value.doubled_floor as u64).wrapping_sub((-9223372036854775808_i64) as u64);",
 		// the read-side decode: same spelling as the plain floor_bound
-		"value.doubled_floor = v1.wrapping_add((-9223372036854775808_i64) as u64) as i64;",
+		"schema_value.doubled_floor = schema_v1.wrapping_add((-9223372036854775808_i64) as u64) as i64;",
 		// the in-range doubled minus stays symbolic and parenthesized, both sides
-		"u64::from((value.spin_rate as u32).wrapping_sub(((-(-ROTATION_UNITS)) as i32) as u32));",
-		"value.spin_rate = (v2 as u32).wrapping_add(((-(-ROTATION_UNITS)) as i32) as u32) as i32;",
+		"u64::from((schema_value.spin_rate as u32).wrapping_sub(((-(-ROTATION_UNITS)) as i32) as u32));",
+		"schema_value.spin_rate = (schema_v2 as u32).wrapping_add(((-(-ROTATION_UNITS)) as i32) as u32) as i32;",
 	} {
 		if !strings.Contains(rs, want) {
 			t.Errorf("generated Rust must contain %q:\n%s", want, rs)

@@ -7,8 +7,8 @@
 package tablewire
 
 import (
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // decodeState is the save's numbering, resident: the node every index names.

@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 func (g *tableGen) fileWire() bool { return true }
@@ -696,6 +696,14 @@ func (g *tableGen) wireEnumWrite(e *ir.Enum, expr, ind string) {
 	g.pf("%sswitch ( %s )\n%s{\n", ind, expr, ind)
 	g.pf("%s    case %s: table_writer_leb( w, 0 ); break;\n", ind, enumNoneConst(e.Name))
 	for i, v := range e.Variants {
+		if enumVariantDeprecated(e, i) {
+			// A DEPRECATED VARIANT IS NEVER WRITTEN (docs/SPEC-TABLES.md
+			// §2.15 WRITE): a write-side check, so a debug assert in this
+			// language (docs/SPEC.md §5.1), as the JSON writer holds it
+			g.pf("%s    case %s: schema_assert( %s != %s ); /* a deprecated variant is never written (SPEC-TABLES §2.15) */ table_writer_id( w, 0x%016xull ); break;\n",
+				ind, enumConst(e.Name, v), expr, enumConst(e.Name, v), ir.TableWireId(e.VariantWireName(i)))
+			continue
+		}
 		g.pf("%s    case %s: table_writer_id( w, 0x%016xull ); break;\n", ind, enumConst(e.Name, v), ir.TableWireId(e.VariantWireName(i)))
 	}
 	g.pf("%s    default: return 0; /* no declared identity */\n%s}\n", ind, ind)
@@ -850,9 +858,12 @@ func unitHasWriteBound(u *ir.Unit) bool {
 		return true
 	}
 	// ROWS 1, 2 AND 10 (docs/SPEC.md §5.1): a range, a bits width or a
-	// compressed float is a variable Save's debug assert too
+	// compressed float is a variable Save's debug assert too. ROW 5 (docs/SPEC.md
+	// §5.1; SPEC-TABLES §2.15, §7.6): the cook writer refuses an enum ordinal
+	// past its variant set, or a deprecated one, with schema_assert
+	// (cookEnumRefused), so an enum field or union arm takes the hook as well
 	bounded := func(f *ir.Field) bool {
-		return f.Array == ir.ArrayCounted || f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.IsTextList() ||
+		return enumRef(f) != nil || f.Array == ir.ArrayCounted || f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.IsTextList() ||
 			f.HasFloatRange || f.Type.Kind == ir.TBits || tableHasRawRange(f)
 	}
 	names := ir.TableClosure(u)

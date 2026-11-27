@@ -10,11 +10,11 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
-	tabledemo "github.com/mas-bandwidth/schema/v2/internal/codegen/gotable/fuzzunit"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v3/compiler"
+	tabledemo "github.com/mas-bandwidth/schema/v3/internal/codegen/gotable/fuzzunit"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/internal/tablewire"
 )
 
 // TestGeneratedFixedAgreesWithEngine is the generated fixed read held to the
@@ -51,7 +51,9 @@ func TestGeneratedFixedAgreesWithEngine(t *testing.T) {
 	for ti, target := range fixedTargets {
 		root := m.Lookup(target.name)
 		if root == nil || !tablewire.FixedRoot(m, root) {
-			t.Logf("%s: not an engine fixed root", target.name)
+			// every target has a generated FixedLoad, so the engine saying it is
+			// no fixed root is the generator and the engine disagreeing
+			t.Errorf("%s: the generator emits a fixed read for it and the engine says it is not a fixed root", target.name)
 			continue
 		}
 		for _, v := range []any{target.zero(), target.away()} {

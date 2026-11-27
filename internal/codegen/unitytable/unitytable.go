@@ -6,9 +6,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/genheader"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/genheader"
+	"github.com/mas-bandwidth/schema/v3/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 const RuntimeFile = "Tables.Runtime.cs"
@@ -478,7 +478,7 @@ public struct TableReport
     public string ReasonText;
     public string NonFiniteField;
     // THE STRICT ANNOUNCEMENT'S TWO BUILD VERSIONS (docs/SPEC-TABLES.md §3.3):
-    // on Reason BuildVersionMismatch, the peer's announced build version and
+    // on Reason BuildVersionMismatch, the writer's announced build version and
     // this unit's own. Zero on every other path.
     public ulong BuildVersionRemote;
     public ulong BuildVersionOwn;

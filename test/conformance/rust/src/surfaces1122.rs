@@ -252,6 +252,51 @@ pub(crate) fn write_refusal(manifest: &Manifest, form: &str, f: &[String]) -> Op
             };
             answer(wref_root_config(&mut v, path, kind, value), || wref_save(|| tabledemo::root_config_cook_write(&v, 1)))
         }
+        // AN ENUM SLOT (SPEC §5.1 row 5; SPEC-TABLES §2.15, §7.6): the table
+        // enums are native Rust enums (the crate root's Mood and Grade name the
+        // packet types), so an ordinal reaches the value through the fixed row's
+        // u8, and one past the set cannot be built (`unrepresentable`); the
+        // deprecated Old is the cook's to refuse
+        ("cook", "tabledemo", "MoodField") => {
+            use tabledemo::{MoodField, MoodFieldRow, mood_field_fixed_load};
+            if (path, kind) != ("mood", "ordinal") {
+                fail(&format!("write-refusal-cook: MoodField names no {kind} path {path}"));
+            }
+            let data = slurp(wire);
+            let Some(v) = fixed_storage_value!(tabledemo, MoodFieldRow, MoodField, mood_field_fixed_load, &data) else {
+                fail(&format!("{case}: fixed load refused {wire}"));
+            };
+            let mut row = MoodFieldRow::from(&v);
+            let built = value.parse::<u8>().ok().and_then(|n| {
+                row.mood = n;
+                MoodField::try_from(&row).ok()
+            });
+            match built {
+                Some(v) => answer(Mutation::Done, || wref_save(|| tabledemo::mood_field_cook_write(&v, 1))),
+                None => answer(Mutation::Unrepresentable, || "unrepresentable\n"),
+            }
+        }
+        ("cook", "listdemo", "Mixed") => {
+            if (path, kind) != ("grades[0]", "ordinal") {
+                fail(&format!("write-refusal-cook: Mixed names no {kind} path {path}"));
+            }
+            let mut report = listdemo::TableReport::default();
+            let mut v = listdemo::mixed_load(&slurp(wire), &mut report).unwrap_or_else(|| fail(&format!("{case}: load refused {wire}")));
+            if v.grades.is_empty() {
+                fail(&format!("{case}: Mixed.grades is empty"));
+            }
+            // the variant with that ordinal, taken from an element that holds it
+            let want: u64 = value.parse().unwrap_or(u64::MAX);
+            let grade = v.grades.iter().copied().find(|g| *g as u64 == want);
+            match grade {
+                Some(g) => {
+                    v.grades[0] = g;
+                    answer(Mutation::Done, || wref_save(|| listdemo::mixed_cook_write(&v, 1)))
+                }
+                None if want > 3 => answer(Mutation::Unrepresentable, || "unrepresentable\n"),
+                None => fail(&format!("{case}: no element of Mixed.grades holds ordinal {want}")),
+            }
+        }
         // THE BLOCK BUILDER (SPEC-TABLES §19.1): <root>_block_begin is handed
         // the storage and the root's counts (these roots declare none) and
         // writes the prologue; the projection's fields are the value's, filled
@@ -584,6 +629,16 @@ macro_rules! read_into_message {
     }};
 }
 
+// every field of the report set to a value no read leaves
+fn stale_surf_report() -> tblsurf::TableReport {
+    tblsurf::TableReport {
+        unknown: 7, widened: 7, oor_field: "stale", damaged: true, refused: true, cycle_on_save: true,
+        retained: 7, retain_lost: 7, reason: tblsurf::TableReason::NewerForm,
+        build_version_remote: 7, build_version_own: 7, non_finite_float: "stale", non_finite_float_id: Some(7),
+        text_error: "stale", missing_required: 7, missing_required_fields: "stale".to_string(),
+    }
+}
+
 pub(crate) fn surface_read_into(manifest: &Manifest, out: &str) {
     for f in manifest.of_kind("read-into") {
         if f.len() != 9 {
@@ -596,8 +651,87 @@ pub(crate) fn surface_read_into(manifest: &Manifest, out: &str) {
                 let text = read_into_fixed!(tblsurf, NarrowRow, Narrow, narrow_fixed_load, narrow_to_json_checked, case, lawful, damaged, count());
                 spill(out, case, text.as_bytes());
             }
+            // a lawful v1 record read through the lineage into the values the v3
+            // record filled (docs/SPEC-TABLES.md §3.4)
+            ("fixed", "tblfixedevo", "EvoRoot") => {
+                let text = read_into_fixed!(tblfixedevo, EvoRootRow, EvoRoot, evo_root_fixed_load, evo_root_to_json_checked, case, lawful, damaged, count());
+                spill(out, case, text.as_bytes());
+            }
             ("message", "backenddemo", "StorePurchase") => {
                 let text = read_into_message!(backenddemo, StorePurchaseRow, StorePurchase, store_purchase_load_messages, store_purchase_to_json_checked, case, lawful, damaged, count(), ann);
+                spill(out, case, text.as_bytes());
+            }
+            // REGION (README, "The `region` form"): the same protocol through the
+            // PLAIN counted_load, the leg's only read of a variable root (no
+            // region read here).
+            ("region", "tblsurf", "Counted") => {
+                let lawful = slurp(lawful);
+                let damaged = slurp(damaged);
+                let load = |wire: &[u8], report: &mut tblsurf::TableReport| -> Result<bool, String> {
+                    catch(|| tblsurf::counted_load(wire, report).is_some())
+                };
+                let mut fresh = tblsurf::TableReport::default();
+                if load(&lawful, &mut fresh) != Ok(true) || fresh.refused || fresh.damaged {
+                    fail(&format!("{case}: the lawful load refused into a fresh report"));
+                }
+                let zeroed = |r: &tblsurf::TableReport| -> String {
+                    if *r == fresh { "zeroed\n".to_string() } else { format!("kept {r:?} want {fresh:?}\n") }
+                };
+                let mut report = stale_surf_report();
+                let mut text = String::new();
+                text.push_str(read_line(load(&lawful, &mut report), report.refused || report.damaged));
+                text.push_str(&zeroed(&report));
+                text.push_str(read_line(load(&damaged, &mut report), report.refused || report.damaged));
+                text.push_str(read_line(load(&lawful, &mut report), report.refused || report.damaged));
+                text.push_str(&zeroed(&report));
+                spill(out, case, text.as_bytes());
+            }
+            // RETAIN-FIXED: narrow_load_retain takes the report, so SPEC-TABLES
+            // 6.6's refusal arrives through it; the call into a pre-filled report
+            // must leave what the same call leaves in a fresh one.
+            ("retain-fixed", "tblsurf", "Narrow") => {
+                let lawful = slurp(lawful);
+                let call = |report: &mut tblsurf::TableReport| -> Result<bool, String> {
+                    let mut store = tblsurf::TableRetain { bytes: Vec::with_capacity(1 << 20), ids: Vec::with_capacity(1 << 17), nodes: Default::default() };
+                    catch(|| tblsurf::narrow_load_retain(&lawful, &mut store, report).is_some())
+                };
+                let mut fresh = tblsurf::TableReport::default();
+                let _ = call(&mut fresh);
+                let mut report = stale_surf_report();
+                let line = read_line(call(&mut report), report.refused || report.damaged);
+                let zeroed = if report == fresh { "zeroed\n".to_string() } else { format!("kept {report:?} want {fresh:?}\n") };
+                spill(out, case, format!("{line}{zeroed}").as_bytes());
+            }
+            // RETAIN (README, "The `retain` form"): the retaining load into ONE
+            // PRE-FILLED report must leave exactly what the same load leaves in a
+            // FRESH report (SPEC-TABLES 6.5: every read zeroes a supplied report,
+            // the retain family included).
+            ("retain", "tblrt1", "Node") => {
+                let lawful = slurp(lawful);
+                let damaged = slurp(damaged);
+                let load = |wire: &[u8], report: &mut tblrt1::TableReport| -> Result<bool, String> {
+                    let mut store = tblrt1::TableRetain { bytes: Vec::with_capacity(1 << 20), ids: Vec::with_capacity(1 << 17), nodes: Default::default() };
+                    catch(|| tblrt1::node_load_retain(wire, &mut store, report).is_some())
+                };
+                let mut fresh = tblrt1::TableReport::default();
+                if load(&lawful, &mut fresh) != Ok(true) || fresh.refused || fresh.damaged {
+                    fail(&format!("{case}: the lawful retaining load refused into a fresh report"));
+                }
+                let zeroed = |r: &tblrt1::TableReport| -> String {
+                    if *r == fresh { "zeroed\n".to_string() } else { format!("kept {r:?} want {fresh:?}\n") }
+                };
+                let mut report = tblrt1::TableReport {
+                    unknown: 7, widened: 7, oor_field: "stale", damaged: true, refused: true, cycle_on_save: true,
+                    retained: 7, retain_lost: 7, reason: tblrt1::TableReason::NewerForm,
+                    build_version_remote: 7, build_version_own: 7, non_finite_float: "stale", non_finite_float_id: Some(7),
+                    text_error: "stale", missing_required: 7, missing_required_fields: "stale".to_string(),
+                };
+                let mut text = String::new();
+                text.push_str(read_line(load(&lawful, &mut report), report.refused || report.damaged));
+                text.push_str(&zeroed(&report));
+                text.push_str(read_line(load(&damaged, &mut report), report.refused || report.damaged));
+                text.push_str(read_line(load(&lawful, &mut report), report.refused || report.damaged));
+                text.push_str(&zeroed(&report));
                 spill(out, case, text.as_bytes());
             }
             // FL-17: this leg's fixed load takes the caller's slice of records,

@@ -6,7 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/wirealone"
 )
 
 // framingVerdicts reads every `framing` row of the conformance manifest
@@ -93,7 +94,16 @@ func TestMooReadStrictWireCheckNegativeControl(t *testing.T) {
 	got, want := framingVerdicts(t, func(t *testing.T, g *generatedUnit) {
 		removeMooDiscard(t, g, "table_load.moo", wirePhaseOne, wirePhaseOneOff)
 	})
-	walkOnly := []string{"frame_unknown_id_length", "frame_unknown_id_reference", "frame_unreferenced_entry", "node_record_bytes_after_terminator", "node_unknown_to_fixed_reader", "varevo_cycle_unknown_self", "varevo_cycle_two_unknowns", "varevo_cycle_root_via_unknown", "varevo_cycle_known_via_unknown", "union_chain_unknown_past_bound", "union_chain_unknown_deep"}
+	// The rows the walk alone refuses are WIRE-ALONE.txt's
+	// (testdata/conformance/tables, internal/wirealone): each breaks a
+	// condition docs/SPEC-TABLES.md §6.5 lists as DECIDABLE FROM THE WIRE
+	// ALONE, which the walk holds before the typed read decodes a byte, so the
+	// typed read need not hold it again (§6.5, DETECTION ORDER IS FREE). moo
+	// states only its exceptions, the rows its typed read refuses as well.
+	walkOnly, err := wirealone.Owned(root, mooWireCheckExceptions)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, name := range walkOnly {
 		if want[name] != "refused" || got[name] != "read" {
 			t.Errorf("%s: without the walk moo answers %q (the row pins %q); the control wants it read", name, got[name], want[name])
@@ -102,9 +112,25 @@ func TestMooReadStrictWireCheckNegativeControl(t *testing.T) {
 	if len(want) == 0 {
 		t.Fatal("want is empty: the loop below would check nothing")
 	}
+	owned := map[string]bool{}
+	for _, name := range walkOnly {
+		owned[name] = true
+	}
 	for name, w := range want {
-		if !strings.Contains(strings.Join(walkOnly, " "), name) && got[name] != w {
+		if !owned[name] && got[name] != w {
 			t.Errorf("%s: removing the walk moved a row it does not own: %q, the row pins %q", name, got[name], w)
 		}
 	}
+}
+
+// mooWireCheckExceptions are the rows of WIRE-ALONE.txt that moo's typed read
+// refuses as well as its wire-alone walk, so they stay refused with the walk
+// removed. Each carries the reason.
+var mooWireCheckExceptions = map[string]string{
+	"frame_repeat_last_wins": "the typed read refuses a field id twice in one body as it reads the body (table_load.moo, A FIELD ID TWICE IN ONE BODY IS DAMAGE)",
+	"array_L0_inert":         "the typed read refuses bytes left inside an array's L after its elements (table_load.moo, BYTES LEFT INSIDE AN ARRAY'S L AFTER ITS ELEMENTS ARE DAMAGE)",
+	"array_L1_inert":         "the typed read refuses bytes left inside an array's L after its elements (table_load.moo, BYTES LEFT INSIDE AN ARRAY'S L AFTER ITS ELEMENTS ARE DAMAGE)",
+	"keyed_L1_inert":         "the typed read refuses bytes left inside a keyed array's L after its slots (table_load.moo, BYTES LEFT INSIDE A KEYED ARRAY'S L AFTER ITS SLOTS ARE DAMAGE)",
+	"map_L1_inert":           "the typed read refuses bytes left inside a map's L after its entries (table_load.moo, BYTES LEFT INSIDE A MAP'S L AFTER ITS ENTRIES ARE DAMAGE)",
+	"node_table_twice":       "the typed read refuses the node table's id twice in the root body (table_load.moo, A FIELD ID TWICE IN ONE BODY IS DAMAGE)",
 }

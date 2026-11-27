@@ -1,0 +1,101 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum rawFlavour
+{ Zfirst, Zsecond, Zthird }
+
+enum rawHi
+{ Zfirst, Zsecond, Zthird }
+
+enum rawKey
+{ Zfirst, Zsecond, Zthird }
+
+enum rawKind
+{ Zfirst, Zsecond, Zthird }
+
+enum rawLength
+{ Zfirst, Zsecond, Zthird }
+
+enum rawLo
+{ Zfirst, Zsecond, Zthird }
+
+enum rawMax
+{ Zfirst, Zsecond, Zthird }
+
+enum rawMin
+{ Zfirst, Zsecond, Zthird }
+
+enum rawMinOrNil
+{ Zfirst, Zsecond, Zthird }
+
+enum rawRange
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    rawFlavour Inner
+    rawHi Inner
+    rawKey Inner
+    rawKind Inner
+    rawLength Inner
+    rawLo Inner
+    rawMax Inner
+    rawMin Inner
+    rawMinOrNil Inner
+    rawRange Inner
+}
+
+table NameTypes0
+{
+    one0  rawFlavour
+    many0 [..4]rawFlavour
+    one1  rawHi
+    many1 [..4]rawHi
+    one2  rawKey
+    many2 [..4]rawKey
+    one3  rawKind
+    many3 [..4]rawKind
+    one4  rawLength
+    many4 [..4]rawLength
+    one5  rawLo
+    many5 [..4]rawLo
+    one6  rawMax
+    many6 [..4]rawMax
+    one7  rawMin
+    many7 [..4]rawMin
+    one8  rawMinOrNil
+    many8 [..4]rawMinOrNil
+    one9  rawRange
+    many9 [..4]rawRange
+}
+
+table NameFields0
+{
+    rawFlavour uint32
+    rawHi uint32
+    rawKey uint32
+    rawKind uint32
+    rawLength uint32
+    rawLo uint32
+    rawMax uint32
+    rawMin uint32
+    rawMinOrNil uint32
+    rawRange uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}

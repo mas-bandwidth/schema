@@ -7,12 +7,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/check"
-	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/check"
+	"github.com/mas-bandwidth/schema/v3/internal/parser"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/ir"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 // A `bytes(N)` DESTINATION ROW IS AN ARRAY'S: dest the buffer, aux the live
@@ -366,6 +366,48 @@ fixed table LiveRoot
 	}
 }
 
+// A COUNTED ARRAY'S OBJECT SLOTS PAST THE COUNT ARE RESET, not left holding
+// what the caller's value held. The refusal reset of load lands the defaults
+// image through scatter, so a struct slot the scatter skipped kept the
+// caller's data after a refusal (docs/SPEC-TABLES.md §6.5, THE CALLER'S VALUES
+// AFTER A REFUSAL: "no value keeps what the caller held before the call"),
+// and a reused value kept a prior record's slots after a lawful read. Java's
+// W4 row holds the generated code to it end to end; this pins the emitter.
+func TestScatterCountedArrayResetsObjectSlack(t *testing.T) {
+	files := generate(t, `package probe
+
+fixed table Cell
+{
+    id int32 = 7
+}
+
+fixed table SlackRoot
+{
+    cells [..4]Cell
+    wide  [..2]uint128
+}
+`)
+	src := string(files["SlackRootFixed.java"])
+	if src == "" {
+		t.Fatal("no SlackRootFixed.java in the generated unit")
+	}
+	scatter := methodBody(src, "boolean live, boolean checkDead)")
+	if scatter == "" {
+		t.Fatal("no scatter in SlackRootFixed.java")
+	}
+	if !strings.Contains(scatter, "= v.cellsCount; slackI") || !strings.Contains(scatter, "< v.cells.length; slackI") ||
+		!strings.Contains(scatter, "v.cells[slackI") || !strings.Contains(scatter, "].reset();") {
+		t.Fatalf("a struct slot past the count must be reset in place:\n%s", scatter)
+	}
+	// the generated source is formatted, so the call is matched with its
+	// whitespace folded
+	flat := strings.Join(strings.Fields(scatter), " ")
+	if !strings.Contains(flat, "java.util.Arrays.fill( v.wide, v.wideCount, v.wide.length, SlackRootFixed.Value.__default_wide)") &&
+		!strings.Contains(flat, "java.util.Arrays.fill(v.wide, v.wideCount, v.wide.length, SlackRootFixed.Value.__default_wide)") {
+		t.Fatalf("a 128-bit slot past the count must take the field's default:\n%s", scatter)
+	}
+}
+
 // TestFixedFormFU1FU2 is the TEXT-UNDER-AN-ARM pin (docs/SPEC-TABLES.md §3.4,
 // §15; docs/FIXED-FORM-ALGORITHM.md §4.1 fix 12). FU1 writes a string(8) in
 // the union's SECOND arm; FU2 appends `extra` so a read of those bytes is a
@@ -375,7 +417,7 @@ fixed table LiveRoot
 // is the Java leg's twin of the pilot's TestFixedFormArgLaneTextUnderSecondArm —
 // it asserts that a DIFFERENT hash compiles a plan from the stranger's layout
 // and reads it, which is the forward read "the fixed table reads backward, never
-// forward" removed. Under §5.3 the FU1 file comes back `layout_newer` on an FU2
+// forward" removed. Under §5.3 the FU1 file comes back `layout_unknown` on an FU2
 // build that never locked it. THE COVERAGE IS OWED as a LINEAGE PAIR (FU1/FU2,
 // one of §5.7's seven pairs) in internal/codegen/javatable/fixedversioning_test.go,
 // where the newer build is given the older layout in its lineage; the arm's
@@ -556,6 +598,15 @@ func javaTools(t *testing.T) (javac, javaBin string) {
 		if try(jc, j) {
 			return jc, j
 		}
+	}
+	// UNDER SCHEMA_REQUIRE_CORPUS (every make tables-java-* gate) OR THE CI
+	// SLOW HALF (ci-full.yml's unit-codegen-java rows), A MISSING JDK IS A
+	// FAILURE, never a skip: a skipped test exits 0, so the gate would read
+	// green having compiled nothing (slowtest.CorpusRequired). Found
+	// 2026-11-24 when three Java gates went red on main: the make targets'
+	// comments promised this and javaTools skipped anyway.
+	if slowtest.CorpusRequired() {
+		t.Fatalf("no working javac, and SCHEMA_REQUIRE_CORPUS (or CI with SCHEMA_SLOW=1) makes that a failure: set JAVAC/JAVA or install a JDK")
 	}
 	t.Skip("no working javac (set JAVAC/JAVA or install a JDK)")
 	return "", ""

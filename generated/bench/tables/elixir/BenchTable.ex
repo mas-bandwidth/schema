@@ -355,6 +355,10 @@ defmodule Benchtable.BenchTable do
   """
   @spec write_table_hit_event!(Benchtable.TableHitEvent.t()) :: binary()
   def write_table_hit_event!(value) do
+    if not is_struct(value, Benchtable.TableHitEvent) do
+      raise ArgumentError, "value is not a TableHitEvent"
+    end
+
     %{
       target_id: value_target_id,
       damage: value_damage,
@@ -406,6 +410,11 @@ defmodule Benchtable.BenchTable do
 
     v = value_hit_kind
     scratch = scratch ||| v <<< 24
+
+    if not is_boolean(value_crit) do
+      raise ArgumentError, "value.crit is not a boolean"
+    end
+
     v = if value_crit, do: 1, else: 0
     scratch = scratch ||| v <<< 27
     data = <<scratch::little-size(3)-unit(8)>>
@@ -515,6 +524,10 @@ defmodule Benchtable.BenchTable do
   """
   @spec write_table_chat_event!(Benchtable.TableChatEvent.t()) :: binary()
   def write_table_chat_event!(value) do
+    if not is_struct(value, Benchtable.TableChatEvent) do
+      raise ArgumentError, "value is not a TableChatEvent"
+    end
+
     %{channel: value_channel, speaker: value_speaker} = value
 
     if not is_integer(value_channel) do
@@ -642,6 +655,10 @@ defmodule Benchtable.BenchTable do
   """
   @spec write_table_pickup_event!(Benchtable.TablePickupEvent.t()) :: binary()
   def write_table_pickup_event!(value) do
+    if not is_struct(value, Benchtable.TablePickupEvent) do
+      raise ArgumentError, "value is not a TablePickupEvent"
+    end
+
     %{item_id: value_item_id, amount: value_amount} = value
 
     if not is_integer(value_item_id) do
@@ -789,13 +806,13 @@ defmodule Benchtable.BenchTable do
         nil ->
           0
 
-        {:hit, _} ->
+        {:hit, %Benchtable.TableHitEvent{}} ->
           1
 
-        {:chat, _} ->
+        {:chat, %Benchtable.TableChatEvent{}} ->
           2
 
-        {:pickup, _} ->
+        {:pickup, %Benchtable.TablePickupEvent{}} ->
           3
 
         value_other ->
@@ -859,6 +876,11 @@ defmodule Benchtable.BenchTable do
 
           v = value_hit_hit_kind
           scratch = scratch ||| v <<< 26
+
+          if not is_boolean(value_hit_crit) do
+            raise ArgumentError, "value.hit.crit is not a boolean"
+          end
+
           v = if value_hit_crit, do: 1, else: 0
           scratch = scratch ||| v <<< 29
           data = <<data::binary, scratch::little-size(3)-unit(8)>>

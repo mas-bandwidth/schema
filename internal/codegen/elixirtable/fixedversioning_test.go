@@ -10,7 +10,7 @@ package elixirtable
 //	                 of them zero, because an append the reader knows is not an
 //	                 event.
 //	OLD-REFUSES-NEW  the older reader given the widened writer's file refuses
-//	                 `layout_newer` BEFORE any record, reporting THE FILE'S
+//	                 `layout_unknown` BEFORE any record, reporting THE FILE'S
 //	                 HASH and nothing else, with no counter moved and
 //	                 `malformed` false (§5.3's joint answer).
 //
@@ -51,13 +51,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/check"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/elixir"
-	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/check"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/elixir"
+	"github.com/mas-bandwidth/schema/v3/internal/parser"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/ir"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 // ---- the rows ---------------------------------------------------------------
@@ -324,16 +324,16 @@ func TestFixedVersioningOldRefusesNew(t *testing.T) {
 				// the file this reader was compiled for — puts a NONEMPTY LIST
 				// of built values in exactly that slot. Neither half alone says
 				// anything: `is_atom(why)` on its own is implied by the
-				// `why == :layout_newer` check above, and the control on its own
+				// `why == :layout_unknown` check above, and the control on its own
 				// is just a backward read. The PAIR is "REFUSE built nothing".
 				body = fmt.Sprintf(`  data = File.read!(file())
   <<_::binary-size(8), want::little-unsigned-64, _::binary>> = data
   {tag, why, report} = load(data)
   check(tag == :error, "the older reader did not refuse the newer writer file: #{inspect(tag)}")
-  check(why == :layout_newer, "a hash in no lineage entry owes layout_newer, not #{inspect(why)}")
+  check(why == :layout_unknown, "a hash in no lineage entry owes layout_unknown, not #{inspect(why)}")
   check(
     report.layout_hash == want,
-    "layout_newer reports THE FILE hash: got #{inspect(report.layout_hash)}, want #{want}"
+    "layout_unknown reports THE FILE hash: got #{inspect(report.layout_hash)}, want #{want}"
   )
   check(true, "a refusal by name never sets malformed too (the joint answer)")
   check(
@@ -379,7 +379,7 @@ func TestFixedVersioningOldRefusesNew(t *testing.T) {
 // The floor is ONE NUMBER and the lineage is ONE ARRAY, so "retired" is an
 // index cut and the operator's two answers stay distinct: below the floor is
 // `layout_unsupported` (upgrade the client), outside the lineage is
-// `layout_newer` (ship the reader). §5.2, §5.7's three floor rows.
+// `layout_unknown` (ship the reader). §5.2, §5.7's three floor rows.
 
 func TestFixedVersioningFloor(t *testing.T) {
 	t.Parallel()
@@ -449,7 +449,7 @@ func TestFixedVersioningHash(t *testing.T) {
 		}
 	}
 
-	// hash_unknown: a hash in no lineage refuses layout_newer, reporting the
+	// hash_unknown: a hash in no lineage refuses layout_unknown, reporting the
 	// FILE'S hash and nothing else.
 	t.Run("hash_unknown", func(t *testing.T) {
 		t.Parallel()
@@ -457,7 +457,7 @@ func TestFixedVersioningHash(t *testing.T) {
   <<head::binary-size(8), _::binary-size(8), rest::binary>> = data
   forged = <<head::binary, 0x0EADBEEFCAFEF00D::little-unsigned-64, rest::binary>>
   {tag, why, report} = load(forged)
-  check(tag == :error and why == :layout_newer, "hash_unknown: #{inspect({tag, why})}")
+  check(tag == :error and why == :layout_unknown, "hash_unknown: #{inspect({tag, why})}")
   check(report.layout_hash == 0x0EADBEEFCAFEF00D, "hash_unknown reports the file hash")
   check(true, "hash_unknown is a refusal by name, not malformed")`)
 	})

@@ -3,7 +3,7 @@ package python
 import (
 	"math/big"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // The bits(N) kind: a raw N-bit window, 1 to 64 bits, an int in [0, 2^N)

@@ -15,23 +15,23 @@ int main(void)
 {
     int failures = 0;
 
-    int64_t need = cfg_fixed_measure(1);
+    int64_t need = tblv1_cfg_fixed_measure(1);
 
     uint8_t * buf = (uint8_t *) malloc((size_t) need);
     if (!buf) { fprintf(stderr, "FAIL: malloc\n"); return 1; }
 
-    Cfg value;
+    tblv1_cfg_t value;
     memset(&value, 0, sizeof(value));
-    cfg_reset(&value);
-    value.effect.type = EFFECT_TYPE_WARD;
+    tblv1_cfg_reset(&value);
+    value.effect.type = TBLV1_EFFECT_TYPE_WARD;
     value.effect.as.ward.charge = 3.14f;
 
-    int64_t written = cfg_fixed_save(&value, 1, buf, need);
+    int64_t written = tblv1_cfg_fixed_save(&value, 1, buf, need);
     if (written < 0) { fprintf(stderr, "FAIL: cfg_fixed_save\n"); free(buf); return 1; }
 
     /* The record body starts at body_offset + 8 (after the per-record hash).
        Effect.type is at body byte 137 (V1Table.h:6763). */
-    int64_t body_offset = kTableFixedHeaderBytes + 4 + (int64_t) sizeof(cfg_fixed_layout);
+    int64_t body_offset = TBLV1_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof(tblv1_cfg_fixed_layout);
     int64_t record_start = body_offset; /* start of this record (includes hash) */
     int64_t tag_offset = record_start + 8 + 137; /* skip hash, then body[137] = Effect.type */
 
@@ -42,25 +42,25 @@ int main(void)
     buf[tag_offset] = 3;
 
     /* Load it back */
-    Cfg loaded;
+    tblv1_cfg_t loaded;
     memset(&loaded, 0, sizeof(loaded));
-    TableReport report;
+    tblv1_table_report_t report;
     memset(&report, 0, sizeof(report));
 
-    int64_t n = cfg_fixed_load(&loaded, 1, buf, written, NULL, 0, NULL, &report);
+    int64_t n = tblv1_cfg_fixed_load(&loaded, 1, buf, written, NULL, 0, NULL, &report);
     if (n != -1) { fprintf(stderr, "FAIL: cfg_fixed_load returned %ld, want a refusal\n", (long)n); free(buf); return 1; }
 
     /* Assert: tag past max -> None */
-    if (loaded.effect.type != EFFECT_TYPE_NONE) {
+    if (loaded.effect.type != TBLV1_EFFECT_TYPE_NONE) {
         fprintf(stderr, "FAIL: union tag past arms -> None: expected type=%d, got %d\n",
-                EFFECT_TYPE_NONE, loaded.effect.type);
+                TBLV1_EFFECT_TYPE_NONE, loaded.effect.type);
         failures++;
     } else {
         printf("PASS: union tag past arms -> None (tag 3 -> EFFECT_TYPE_NONE)\n");
     }
 
     /* Assert: the refusal is out_of_range */
-    if (!report.refused || report.refuse_reason != SCHEMA_TABLE_REFUSE_OUT_OF_RANGE) {
+    if (!report.refused || report.refuse_reason != SCHEMA_TBLV1_TABLE_REFUSE_OUT_OF_RANGE) {
         fprintf(stderr, "FAIL: expected an out_of_range refusal, got refused=%d reason=%d\n", report.refused, report.refuse_reason);
         failures++;
     } else {

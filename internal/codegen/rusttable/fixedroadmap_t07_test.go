@@ -141,9 +141,9 @@ fixed table Lineage
 	if clamp == "" {
 		t.Fatal("C14: lineage_fixed_clamp_body is not emitted")
 	}
-	t07Has(t, clamp, "for i in 0..value.a_count.clamp(0, 4) as usize {", "C14 a counted array walks its LIVE elements")
-	t07Has(t, clamp, "if value.f_present {", "C14 an optional's payload is walked only when present")
-	t07Has(t, clamp, "pick_fixed_clamp_body(&mut value.g, oor, damaged);", "C14 the union's own pass is called")
+	t07Has(t, clamp, "for schema_i in 0..schema_value.a_count.clamp(0, 4) as usize {", "C14 a counted array walks its LIVE elements")
+	t07Has(t, clamp, "if schema_value.f_present {", "C14 an optional's payload is walked only when present")
+	t07Has(t, clamp, "pick_fixed_clamp_body(&mut schema_value.g, schema_oor, schema_damaged);", "C14 the union's own pass is called")
 	if strings.Contains(clamp, "for i in 0..4 {") {
 		t.Error("C14: the counted array's clamp loop walks the declared bound and not the live count")
 	}
@@ -151,7 +151,7 @@ fixed table Lineage
 	if union == "" {
 		t.Fatal("C14: pick_fixed_clamp_body is not emitted")
 	}
-	t07Has(t, union, "if value.tag == 1 {", "C14 a union's bound is held over the arm the tag names")
+	t07Has(t, union, "if schema_value.tag == 1 {", "C14 a union's bound is held over the arm the tag names")
 }
 
 // ---- rust/W4 -----------------------------------------------------------------
@@ -176,8 +176,8 @@ fixed table Lineage
 	if clamp == "" {
 		t.Fatal("W4: lineage_fixed_clamp_body is not emitted")
 	}
-	t07Has(t, clamp, "table_utf8_valid(&value.c[..value.c_length.clamp(0, 8) as usize])", "W4 text is validated over the USED units")
-	t07Has(t, clamp, "for i in 0..value.a_count.clamp(0, 4) as usize {", "W4 a counted array's bounds cover its LIVE elements")
+	t07Has(t, clamp, "table_utf8_valid(&schema_value.c[..schema_value.c_length.clamp(0, 8) as usize])", "W4 text is validated over the USED units")
+	t07Has(t, clamp, "for schema_i in 0..schema_value.a_count.clamp(0, 4) as usize {", "W4 a counted array's bounds cover its LIVE elements")
 	if strings.Contains(clamp, "value.c[..8]") {
 		t.Error("W4: the content rule is applied over the declared span, so dead bytes are being read as content")
 	}
@@ -213,8 +213,8 @@ fixed table Lineage
 	if load == "" {
 		t.Fatal("W9: lineage_fixed_load is not emitted")
 	}
-	t07Has(t, load, "let hole_n = table_fixed_holes(entries, &mut cover, &mut hole_buf);", "W9 the load computes the plan's unwritten ranges")
-	t07Has(t, load, "image[o..o + z].copy_from_slice(&LINEAGE_FIXED_DEFAULTS[o..o + z]);", "W9 the declared defaults land in the holes")
+	t07Has(t, load, "let schema_hole_n = table_fixed_holes(schema_entries, &mut schema_cover, &mut schema_hole_buf);", "W9 the load computes the plan's unwritten ranges")
+	t07Has(t, load, "schema_image[schema_o..schema_o + schema_z].copy_from_slice(&LINEAGE_FIXED_DEFAULTS[schema_o..schema_o + schema_z]);", "W9 the declared defaults land in the holes")
 	runtime := string(fixedRuntimeBody)
 	t07Has(t, runtime, "if p.guard_count != 0 {", "W9 a guarded entry is not a write, so it stays a hole")
 	// THE IDENTITY PLAN IS ONE COPY OF THE WHOLE BODY, so its hole list is
@@ -223,7 +223,7 @@ fixed table Lineage
 	plan := t02Const(text, "LINEAGE_FIXED_PLAN")
 	t07Has(t, plan, "LINEAGE_FIXED_PLAN: [TableFixedEntry; 1]", "W9 the identity plan is one entry")
 	t07Has(t, plan, "size: LINEAGE_FIXED_BODY_BYTES as u32,", "W9 the one entry covers the whole body, so no hole")
-	if i := strings.Index(load, "for k in 0..n"); i < 0 || strings.Contains(load[i:], "identity") {
+	if i := strings.Index(load, "for schema_k in 0..schema_n"); i < 0 || strings.Contains(load[i:], "identity") {
 		t.Error("W9: the record loop still branches on identity; an empty hole list is what skips the work")
 	}
 }
@@ -245,8 +245,8 @@ func t07W1(t *testing.T) {
 	}
 	t07Has(t, save, "body.fill(0); // the template's zeros, and every byte of declared slack with them", "W1 the body is the zeroed template")
 	t07Has(t, text, "declared slack without this function touching it", "W1 the writer touches no slack")
-	t07Has(t, write, "for i in 0..value.marks_count.clamp(0, 4) as usize {", "W1 a counted array writes the live count")
-	t07Has(t, write, "let n = value.label_length.clamp(0, 8) as usize;", "W1 text writes the used length")
+	t07Has(t, write, "for schema_i in 0..schema_value.marks_count.clamp(0, 4) as usize {", "W1 a counted array writes the live count")
+	t07Has(t, write, "let schema_n = schema_value.label_length.clamp(0, 8) as usize;", "W1 text writes the used length")
 	if strings.Contains(write, "value.label[..8]") {
 		t.Error("W1: the writer dumps the declared span, so the caller's slack reaches the wire")
 	}
@@ -277,9 +277,9 @@ fixed table Lineage
 	if write == "" {
 		t.Fatal("W3: pick_fixed_write_body is not emitted")
 	}
-	t07Has(t, write, "b[0] = value.tag;", "W3 the tag is written first")
-	t07Has(t, write, "match value.tag {", "W3 only the taken arm is written")
-	t07Has(t, write, "b[at..at + 4].copy_from_slice(&(arm as u32).to_le_bytes());", "W3 the narrower arm writes four bytes")
+	t07Has(t, write, "schema_b[0] = schema_value.tag;", "W3 the tag is written first")
+	t07Has(t, write, "match schema_value.tag {", "W3 only the taken arm is written")
+	t07Has(t, write, "schema_b[schema_at..schema_at + 4].copy_from_slice(&(schema_arm as u32).to_le_bytes());", "W3 the narrower arm writes four bytes")
 	t07Has(t, text, "they stay the template's zeros", "W3 the bytes behind a narrower arm are the template's zeros")
 	if strings.Contains(write, ".fill(") {
 		t.Error("W3: the union writer clears bytes itself instead of leaving them to the template")

@@ -68,14 +68,21 @@ fn test_row_w2() {
         "absent optional: the payload tag_length reads as the wire's zeros"
     );
     assert!(
-        report.oor == 0 && !report.damaged && !report.refused,
-        "absent optional: a clean read moves no counter"
+        // strict-only-read (docs/rulings.json): the retired clamp count `oor == 0` is now
+        // "no out_of_range refusal": a value past its bound refuses the whole load.
+        report.reason.name() == "none" && !report.damaged && !report.refused,
+        "absent optional: a clean read — no out_of_range refusal, no damage"
     );
 
     // --- NEGATIVE CONTROL: the SAME payload PRESENT ---
     let mut present = v;
     present.link_present = true;
     present.link.tag_length = 4;
+    // a PRESENT payload is held to its declared range by the writer's debug
+    // asserts (Link.value | min = 0, max = 1000; this leg's write checks are
+    // debug asserts), so the present twin carries the stain byte in range:
+    // 0x5A = 90. The tag bytes keep the 0x5A stain either way.
+    present.link.value = 0x5A;
     let mut pw = vec![0u8; need];
     chain_fixed_save(&[present], &mut pw).expect("present twin saves");
     let pbody = &pw[body_at..body_at + CHAIN_FIXED_BODY_BYTES];

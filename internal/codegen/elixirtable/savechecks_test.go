@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 )
 
 // TestElixirSaveChecksEveryField pins docs/SPEC.md §5.1 rows 1-5 and 11 and
@@ -16,8 +16,9 @@ import (
 //     string(N) or bytes(N) past N, each on a plain field;
 //  2. an enum name that is no variant, and a deprecated variant, refused
 //     rather than raised as a KeyError or written unchanged;
-//  3. a [N]T list longer than N, refused rather than cut at N, while a shorter
-//     one still pads with the element default;
+//  3. a [N]T list longer or shorter than N, refused rather than cut at N or
+//     padded with the element default (docs/SPEC.md §5.1, SF-34: a [N]T
+//     holds exactly N values in every writer);
 //  4. a map key of the wrong type: a key an integer-keyed map cannot read as
 //     one canonical integer, or two spellings of one integer, refused rather
 //     than raised or written twice.
@@ -47,34 +48,42 @@ func TestElixirSaveChecksNegativeControls(t *testing.T) {
 		alsoOld, alsoNew   string
 	}{
 		{
+			// validate_record holds every field it writes to its declaration
 			"every field is checked",
-			"do: check_field(f, Map.fetch!(value, f.name))",
-			"do: nil",
+			"        if Map.get(f, :text_list, false), do: validate_text_list(f, v)\n        write_value(f, v)\n",
+			"        if Map.get(f, :text_list, false), do: validate_text_list(f, v)\n",
 			"FAIL: plain int past its max refuses",
 			"", "",
 		},
 		{
 			"enum name refused, not raised",
-			"if not Map.has_key?(f.by_name, name) or name in Map.get(f, :retired, []),",
-			"if false,",
+			"(not Map.has_key?(f.by_name, name) or name in Map.get(f, :retired, [])),",
+			"false,",
 			"FAIL: enum that is no variant refuses",
 			"", "",
 		},
 		{
 			"deprecated variant refused",
-			"if not Map.has_key?(f.by_name, name) or name in Map.get(f, :retired, []),",
-			"if not Map.has_key?(f.by_name, name),",
+			"(not Map.has_key?(f.by_name, name) or name in Map.get(f, :retired, [])),",
+			"not Map.has_key?(f.by_name, name),",
 			"FAIL: deprecated variant refuses",
 			"", "",
 		},
 		{
+			// the old writer cut a long [N]T at N
 			"long fixed array refused, not cut",
-			"if length(elements) > n, do: throw(:invalid_value)\n    elements ++ List.duplicate(f.elem_default, n - length(elements))",
-			"kept = Enum.take(elements, n)\n    kept ++ List.duplicate(f.elem_default, n - length(kept))",
+			"if Map.has_key?(f, :fixed_array) and n != f.fixed_array, do: throw(:invalid_value)",
+			"if Map.has_key?(f, :fixed_array) and n < f.fixed_array, do: throw(:invalid_value)",
 			"FAIL: fixed array of four refuses",
-			// the bound check on the list field is the other half of the fix
-			"and n > f.array_bound,\n      do: throw(:invalid_value)",
-			"and n > f.array_bound + 1_000_000,\n      do: throw(:invalid_value)",
+			"", "",
+		},
+		{
+			// the old writer padded a short [N]T with the element default
+			"short fixed array refused, not padded",
+			"if Map.has_key?(f, :fixed_array) and n != f.fixed_array, do: throw(:invalid_value)",
+			"if Map.has_key?(f, :fixed_array) and n > f.fixed_array, do: throw(:invalid_value)",
+			"FAIL: fixed array of one refuses",
+			"", "",
 		},
 		{
 			"map keys of the wrong type refused",
@@ -169,14 +178,12 @@ SCProbe.writes(%{"e" => "None"}, "the enum None")
 SCProbe.refuses_both(%{"e" => "Nope"}, "enum that is no variant")
 SCProbe.refuses_both(%{"e" => "Bomber"}, "deprecated variant")
 
-# 3. a fixed [N]T: short pads, long refuses
+# 3. a fixed [N]T holds exactly N values: short and long both refuse, never
+#    padded or cut (docs/SPEC.md §5.1, SF-34)
 SCProbe.writes(%{"f" => [1, 2, 3]}, "fixed array of three")
-SCProbe.writes(%{"f" => [1]}, "fixed array of one pads")
+SCProbe.writes(%{"f" => [1, 0, 0]}, "fixed array of three with defaults")
+SCProbe.refuses_both(%{"f" => [1]}, "fixed array of one")
 SCProbe.refuses_both(%{"f" => [1, 2, 3, 4]}, "fixed array of four")
-
-short = SCProbe.save(%{"f" => [1]})
-full = SCProbe.save(%{"f" => [1, 0, 0]})
-SCProbe.check(short == full, "a short fixed array writes as its default-padded twin")
 
 # 4. map keys
 SCProbe.writes(%{"m" => %{7 => 1, 8 => 2}}, "integer map with integer keys")

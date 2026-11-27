@@ -222,6 +222,28 @@ public final class FixedTableMessage {
         } else {
             report.zero();
         }
+        int read = loadMessagesRead(values, capacity, vocab, data, report);
+        if (report.refused || report.damaged) {
+            int handed =
+                    values == null
+                            ? 0
+                            : java.lang.Math.min(java.lang.Math.max(capacity, 0), values.length);
+            for (int j = 0; j < handed; j++) {
+                if (values[j] != null) {
+                    reset(values[j]);
+                }
+            }
+            return 0;
+        }
+        return read;
+    }
+
+    private static int loadMessagesRead(
+            FixedTableFixed.Value[] values,
+            int capacity,
+            TableVocabulary vocab,
+            byte[] data,
+            TableVocabulary.Report report) {
         if (data == null || data.length == 0) {
             report.damaged = true;
             return 0;

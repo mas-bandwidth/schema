@@ -17,10 +17,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/csharp"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/csharp"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 func TestFixedRoadmapCSharpT12PlansVersions(t *testing.T) {
@@ -189,7 +189,7 @@ func t12R14(t *testing.T) {
 }
 
 // t12R15 holds cs/R15 to §5.6's retirement list and §5.3 step 5: the four
-// forward-read clamps are retired, each layout_newer now. A hash the lineage
+// forward-read clamps are retired, each layout_unknown now. A hash the lineage
 // does not hold is refused BEFORE any record and before any plan selection, on
 // the file's hash; the count and text clamps that REMAIN are the writer's
 // bounds carried by the plan (a backward read over a locked entry), and the
@@ -198,7 +198,7 @@ func t12R14(t *testing.T) {
 func t12R15(t *testing.T) {
 	text := t12Retire(t, 0)
 	load := t12Load(t, text, "Lineage")
-	miss := strings.Index(load, `Reason = "layout_newer"`)
+	miss := strings.Index(load, `Reason = "layout_unknown"`)
 	records := strings.Index(load, "for (int k = 0; k < n; ++k)")
 	if miss < 0 || records < 0 {
 		t.Fatalf("R15: the load's refusals moved (%d, %d)", miss, records)
@@ -213,7 +213,7 @@ func t12R15(t *testing.T) {
 	// The §4.6 bounds pass (emitFixedClamp) is not a forward-read clamp and stays;
 	// the clamps that REMAIN in the read are the writer's bounds above, never the
 	// reader's own. The behavioural half — each of the four retired forward-read
-	// clamps comes back layout_newer with the destination at its declared default (R4) — runs through
+	// clamps comes back layout_unknown with the destination at its declared default (R4) — runs through
 	// one dotnet build and run, under the make target that sets SCHEMA_REQUIRE_CORPUS.
 	t.Run("forward-reads", func(t *testing.T) {
 		if os.Getenv("SCHEMA_REQUIRE_CORPUS") == "" {
@@ -227,7 +227,7 @@ func t12R15(t *testing.T) {
 // clamp across bounds, a range clamp across versions, a remap of an unknown
 // variant to None, and a drop-and-count of an unknown field. Each is a NEWER
 // writer whose hash is in no lineage entry of the reader, so each is refused
-// layout_newer before any record — the same name the versioning harness's
+// layout_unknown before any record — the same name the versioning harness's
 // old_refuses_new column asserts, named here per clamp on this leg.
 type t12ForwardClamp struct {
 	id     string
@@ -251,7 +251,7 @@ var t12ForwardClamps = []t12ForwardClamp{
 }
 
 // t12R15ForwardBody writes the newer writer's own record, then reads it with the
-// older reader: layout_newer, the file's hash on the report, nothing marked
+// older reader: layout_unknown, the file's hash on the report, nothing marked
 // malformed, no counter moved, and the destination reset to its declared
 // default (R4).
 const t12R15ForwardBody = `
@@ -265,9 +265,9 @@ const t12R15ForwardBody = `
             TableFixedEntry[] plan = new TableFixedEntry[8192];
             long n = Schema.TFixedLoad(back, buf, plan, r);
             if (n != -1) { bad += ProbeLog.Fail(@NAME@, "the forward read was not refused: n=" + n); }
-            if (r.Reason != "layout_newer") { bad += ProbeLog.Fail(@NAME@, "a hash in no lineage entry owes layout_newer, not " + r.Reason); }
+            if (r.Reason != "layout_unknown") { bad += ProbeLog.Fail(@NAME@, "a hash in no lineage entry owes layout_unknown, not " + r.Reason); }
             ulong want = BinaryPrimitives.ReadUInt64LittleEndian(buf.AsSpan(8));
-            if (r.LayoutHash != want) { bad += ProbeLog.Fail(@NAME@, "layout_newer reports the file's hash and nothing else"); }
+            if (r.LayoutHash != want) { bad += ProbeLog.Fail(@NAME@, "layout_unknown reports the file's hash and nothing else"); }
             if (r.Damaged) { bad += ProbeLog.Fail(@NAME@, "a refusal by name never sets malformed too"); }
             if (r.Widened != 0 || r.Unknown != 0) { bad += ProbeLog.Fail(@NAME@, "REFUSE is total: no counter moves"); }
             if (back.Tail != 7) { bad += ProbeLog.Fail(@NAME@, "R4: a refusal resets the destination to its declared default 7: tail=" + back.Tail); }

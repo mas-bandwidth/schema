@@ -21,8 +21,9 @@
 //   2. THE RUN-TIME WALK OF A STRANGER'S LAYOUT — the layout bytes are a
 //      compile-time constant, identical to the known list's, and the load
 //      path does a byte comparison against them, not a walk. A file whose
-//      hash is unknown is refused layout_newer; one whose hash is known but
-//      whose layout bytes differ is refused layout_malformed.
+//      hash is unknown is refused layout_unknown; one whose hash is known but
+//      whose layout bytes differ is refused layout_malformed (the Dart leg
+//      names it TableFixedRefusal.layoutDamaged, §5.3 refusal table).
 //
 // The control: break one byte of the generated metaFixedLayout or metaFixedHash
 // constant, and this test goes red — the static-data identity check or the
@@ -72,9 +73,16 @@ void check(bool ok, String what) {
 // time constants, not computed at run time from a file's bytes.
 
 void main() {
-  // The Meta table's known list has one entry (no lock), so its layout
-  // and hash must match the table's own constants.
-  final TableFixedKnownLayout known = metaFixedKnown[0];
+  // §5.2: the known list is THE LINEAGE, oldest first, THE CURRENT LAYOUT
+  // LAST. Meta's lock holds an older entry under the pre-v2 definitions
+  // digest (the same layout bytes under a different hash), so the current
+  // entry is the LAST one, and the table's own hash names exactly one entry.
+  final TableFixedKnownLayout known = metaFixedKnown.last;
+  check(
+    metaFixedKnown.where((k) => k.hash == metaFixedHash).length == 1,
+    'the header\'s hash names exactly one lineage entry '
+    '(${metaFixedKnown.length} entries)',
+  );
 
   // THE HASH IS A CONSTANT: identical to the known list's.
   check(
@@ -167,7 +175,8 @@ void main() {
     );
   }
 
-  // ASSERTION: correct hash, DIFFERENT layout bytes → layout_malformed.
+  // ASSERTION: correct hash, DIFFERENT layout bytes → layout_malformed
+  // (Dart: layoutDamaged).
   // This proves the load path does a BYTE COMPARISON, not a walk.
   // A walk would try to parse the bytes; a comparison just says "these
   // bytes differ from what the lock recorded."
@@ -193,14 +202,14 @@ void main() {
     );
     check(
       result == -1 &&
-          report.refused == TableFixedRefusal.layoutMalformed,
+          report.refused == TableFixedRefusal.layoutDamaged,
       'correct hash, different layout bytes → layout_malformed '
       '(result=$result, refused=${TableFixedRefusal.name(report.refused)}) — '
       'byte comparison, not a walk',
     );
   }
 
-  // ASSERTION: UNKNOWN hash → layout_newer.
+  // ASSERTION: UNKNOWN hash → layout_unknown.
   // This proves there is no run-time walk of a stranger's layout: the
   // hash is looked up in the known list, and an unknown hash is refused
   // by name without parsing the layout bytes.
@@ -223,8 +232,8 @@ void main() {
     );
     check(
       result == -1 &&
-          report.refused == TableFixedRefusal.layoutNewer,
-      'unknown hash → layout_newer (result=$result, '
+          report.refused == TableFixedRefusal.layoutUnknown,
+      'unknown hash → layout_unknown (result=$result, '
       'refused=${TableFixedRefusal.name(report.refused)}) — '
       'no run-time walk of a stranger\'s layout',
     );

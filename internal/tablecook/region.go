@@ -17,9 +17,9 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // RefBytes is a `*T` reference slot's width in a record: EIGHT bytes, at eight
@@ -420,7 +420,16 @@ func (w *regionWriter) element(at int64, f *ir.Field, cell *tabletext.Cell) erro
 		switch ref := t.Ref.(type) {
 		case *ir.Enum:
 			// the slot stores the ORDINAL, not the wire's name hash: what group
-			// 3 of the build version captures is what a slot HOLDS (§20.2)
+			// 3 of the build version captures is what a slot HOLDS (§20.2).
+			// AN ENUM SLOT HOLDS NONE OR A LIVE VARIANT (docs/SPEC.md §5.1
+			// row 5; SPEC-TABLES §2.15, §7.6): an ordinal past the variant
+			// set or a deprecated variant is refused, never cooked
+			if cell.U > uint64(len(ref.Variants)) {
+				return fmt.Errorf("field %s: enum %s ordinal %d is past its variant set", f.Name, ref.Name, cell.U)
+			}
+			if i := int(cell.U) - 1; i >= 0 && i < len(ref.VariantDeprecated) && ref.VariantDeprecated[i] {
+				return fmt.Errorf("field %s: enum %s variant %s is deprecated", f.Name, ref.Name, ref.Variants[i])
+			}
 			w.putWidth(at, int64(ir.StorageBitsFor(ref.Max))/8, cell.U)
 			return nil
 		case *ir.Flags:

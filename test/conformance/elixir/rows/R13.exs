@@ -180,7 +180,7 @@ named_refusal.(
   0
 )
 
-# a hash no lineage entry holds — layout_newer reports THE FILE'S HASH and
+# a hash no lineage entry holds — layout_unknown reports THE FILE'S HASH and
 # nothing else (§5.9 #7)
 stranger = Bitwise.bxor(hash, 0xDEADBEEF)
 
@@ -190,9 +190,9 @@ check.(
 )
 
 named_refusal.(
-  "a hash outside the lineage refuses layout_newer, layout_hash the file's hash, no counter",
+  "a hash outside the lineage refuses layout_unknown, layout_hash the file's hash, no counter",
   header.(stranger, layout) <> layout <> record.(stranger),
-  :layout_newer,
+  :layout_unknown,
   stranger
 )
 

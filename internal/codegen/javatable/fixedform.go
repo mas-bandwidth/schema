@@ -50,7 +50,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // fixedKindOptional is the ONE kind §3.4's layout adds to §3's closed set: the
@@ -1036,6 +1036,7 @@ func (g *fixedGen) emitWriteBody(st *ir.Struct) {
 	g.pf("     *  this is a straight line of byte-width stores at constant offsets and\n")
 	g.pf("     *  nothing else. */\n")
 	g.pf("    public static void writeBody(byte[] b, int at, Value v) {\n")
+	g.pf("        assert v != null : \"a null record is written\";\n")
 	g.pf("        assert checkWrite(v);\n")
 	off := int64(0)
 	for _, f := range st.Fields {
@@ -1200,6 +1201,10 @@ func fixedCheck128(f *ir.Field, e, typ, ind string) []string {
 func fixedCheckElement(f *ir.Field, e string) string {
 	if f.Type.Kind == ir.TNamed {
 		if r, ok := f.Type.Ref.(*ir.Enum); ok {
+			// §2.15 WRITE: a deprecated variant is never written either
+			if dep := enumNotDeprecated(r, e); dep != "" {
+				return fmt.Sprintf("%s >= 0 && %s <= %d && %s", e, e, len(r.Variants), dep)
+			}
 			return fmt.Sprintf("%s >= 0 && %s <= %d", e, e, len(r.Variants))
 		}
 		// A FLAGS MASK HOLDS TO ITS WIDTH W (docs/SPEC-TABLES.md §4): a save never
@@ -1707,15 +1712,35 @@ func (g *fixedGen) emitScatterLoop(f *ir.Field, base int64, count, buf, at, expr
 	g.pf("%s}\n", ind)
 }
 
-// emitScatterSlack zeros the unused slots of a counted array. Scatter walks
+// emitScatterSlack resets the unused slots of a counted array. Scatter walks
 // Count, never the bound; a reused value's slack would otherwise keep what
-// it held. Primitive arrays fill; object slots keep their constructor instances.
+// it held. Primitive arrays fill with zero; a struct or union slot is reset to
+// its declared defaults in place, and a 128-bit slot takes the field's default.
+// The refusal reset of load lands the defaults image through this scatter, so
+// this is also what makes EVERY slot of a refused-into value hold its declared
+// default (docs/SPEC-TABLES.md §6.5, THE CALLER'S VALUES AFTER A REFUSAL: "no
+// value keeps what the caller held before the call"; docs/FIXED-FORM-ALGORITHM.md
+// §5.3, "REFUSE is total"). Kept object instances are reset, never replaced,
+// so a caller holding a slot's instance sees the same object.
 func (g *fixedGen) emitScatterSlack(f *ir.Field, expr, live string, indent int) {
-	zero := slackZero(fixedScalarType(f.Type))
+	ind := strings.Repeat(" ", indent)
+	typ := fixedScalarType(f.Type)
+	if typ == "Int128" || typ == "UInt128" {
+		g.pf("%sif (%s < %s.length) { java.util.Arrays.fill(%s, %s, %s.length, %s.Value.%s); }\n",
+			ind, live, expr, expr, live, expr, fixedClass(g.owner), fixedWideDefaultName(f))
+		return
+	}
+	if fixedIsObject(f.Type) {
+		slackI := fmt.Sprintf("slackI%d", g.resetSerial)
+		g.resetSerial++
+		g.pf("%sfor (int %s = %s; %s < %s.length; %s++) { %s[%s].reset(); }\n",
+			ind, slackI, live, slackI, expr, slackI, expr, slackI)
+		return
+	}
+	zero := slackZero(typ)
 	if zero == "" {
 		return
 	}
-	ind := strings.Repeat(" ", indent)
 	g.pf("%sif (%s < %s.length) { java.util.Arrays.fill(%s, %s, %s.length, %s); }\n",
 		ind, live, expr, expr, live, expr, zero)
 }
@@ -2049,6 +2074,7 @@ func (g *fixedGen) emitUnion(un *ir.Union) {
 	g.pf("     *  writer lays no template down, so every byte an arm does not store is\n")
 	g.pf("     *  one this store zeroes, and None zeroes the whole of it. */\n")
 	g.pf("    public static void writeBody(byte[] b, int at, Value v) {\n")
+	g.pf("        assert v != null : \"a null record is written\";\n")
 	g.pf("        assert checkWrite(v);\n")
 	g.pf("        %s;\n", fixedStore("b", "at", 0, tag, "v.type", "int"))
 	g.pf("        switch (v.type) {\n")
@@ -2379,6 +2405,9 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("        // A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (§22.6): the write\n")
 	g.pf("        // contract refuses an empty batch in a debug build.\n")
 	g.pf("        assert count > 0;\n")
+	// A NULL RECORD IN THE BATCH IS A VALUE OF THE WRONG KIND
+	// (DW-TABLE-SHAPE): refused in a debug build before any is read.
+	g.pf("        for (int k = 0; k < count; k++) { assert values[k] != null : \"a null record is written\"; }\n")
 	g.pf("        final int need = measure(count);\n")
 	g.pf("        if (need < 0 || buffer.length < need) { return -1; }\n")
 	if fixedCarriesFloat(st.Fields, map[string]bool{}) {
@@ -2440,7 +2469,7 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("     *  parses a layout, and it cannot fail for want of a plan (§5.9 #3).\n")
 	g.pf("     *\n")
 	g.pf("     *  THE FIXED TABLE READS BACKWARD AND NEVER FORWARD. A hash in no lineage\n")
-	g.pf("     *  entry is `layoutNewer` — ship the reader — carrying THE FILE'S HASH and\n")
+	g.pf("     *  entry is `layoutUnknown` (§5.3 step 5), carrying THE FILE'S HASH and\n")
 	g.pf("     *  nothing else; a hash below the floor is `layoutUnsupported` — upgrade the\n")
 	g.pf("     *  client — carrying it too. Neither decodes a byte and neither moves a\n")
 	g.pf("     *  counter: REFUSE IS TOTAL, the prefill included.\n")
@@ -2494,7 +2523,7 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("        // STEPS 5 AND 6: SELECT BY HASH, then the floor. Two answers that point\n")
 	g.pf("        // an operator in opposite directions, and both report the file's hash.\n")
 	g.pf("        final int pick = TableFixed.select(known, fileHash);\n")
-	g.pf("        if (pick < 0) { report.refuseHash(TableFixed.Reason.layoutNewer, fileHash); return -1; }\n")
+	g.pf("        if (pick < 0) { report.refuseHash(TableFixed.Reason.layoutUnknown, fileHash); return -1; }\n")
 	g.pf("        if (pick < floor) { report.refuseHash(TableFixed.Reason.layoutUnsupported, fileHash); return -1; }\n")
 	g.pf("\n")
 	g.pf("        // STEP 7: a known hash is read under THE LOCK'S layout bytes, held to a\n")
@@ -2641,7 +2670,7 @@ func (g *fixedGen) emitLineage(st *ir.Struct, hash uint64, layout []byte, entrie
 	g.pf("    };\n\n")
 	g.pf("    /** THE FLOOR: 1 + the highest RETIRED index, or 0 when none is. Below it a\n")
 	g.pf("     *  layout this build once served is retired, and the answer is\n")
-	g.pf("     *  `layoutUnsupported` rather than `layoutNewer` (§5.2). A retired entry\n")
+	g.pf("     *  `layoutUnsupported` rather than `layoutUnknown` (§5.2). A retired entry\n")
 	g.pf("     *  stays in the lineage forever: the floor is an index cut. */\n")
 	g.pf("    public static final int floor = %d;\n\n", floor)
 	// THE WRITER'S OWN BOUNDED LEAVES, per entry (ALGORITHM §4.6, bill §12.5):

@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/luau/luaurun"
 )
 
 // saveProbe is the Luau main for one instance: it loads every table module
@@ -139,6 +139,10 @@ func TestLuauTableSaveRoundTripsEveryInstance(t *testing.T) {
 			}
 			refusedRows += len(rows[key])
 			t.Logf("refused unit: %s (%d instances): %v", key, len(rows[key]), g.err)
+			nInst, refusal := len(rows[key]), g.err
+			t.Run(key, func(t *testing.T) {
+				t.Error(fmt.Sprintf("a row that did not run: the Luau backend refuses unit %s, so its %d instance rows are not run: %v", key, nInst, refusal))
+			})
 			continue
 		}
 		for _, row := range rows[key] {

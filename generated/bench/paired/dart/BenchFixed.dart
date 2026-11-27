@@ -180,8 +180,8 @@ abstract final class TableFixedRefusal {
   static const int batchTooLarge = 14;
 
   /// THE TWO LAYOUT REFUSALS OF §5, and the operator's two distinct answers:
-  /// a hash NO lineage entry of this build holds is 'layout_newer' — ship the
-  /// reader — and a hash the lineage holds BELOW THE FLOOR is
+  /// a hash NO lineage entry of this build holds is 'layout_unknown'
+  /// (layoutUnknown below; 'layout_newer' is retired, never emitted) — and a hash the lineage holds BELOW THE FLOOR is
   /// 'layout_unsupported' — upgrade the client. Both report the FILE'S hash.
   /// The NAMES are the contract and the integers are this leg's own, taken in
   /// the order §5.3 names them (§5.9 #14).
@@ -208,6 +208,12 @@ abstract final class TableFixedRefusal {
   /// A WRITER'S OPTIONAL READ INTO A READER'S BARE FIELD refuses by name: the
   /// reader cannot hold an absent value (rulings 2026-11-22, R2).
   static const int wrongKind = 24;
+
+  /// §5.3 STEP 5'S ANSWER, IN EVERY LEG: a header hash in no lineage entry
+  /// (decided 2026-11-03). Nothing in the lineage proves a hash newer, so no
+  /// read answers layoutNewer; it keeps its integer so no other one moves,
+  /// and this one is appended. It reports the FILE'S hash and nothing else.
+  static const int layoutUnknown = 25;
 
   /// The refusal's own name, for a report a person reads.
   static String name(int refusal) {
@@ -262,6 +268,8 @@ abstract final class TableFixedRefusal {
         return 'length_over_bound';
       case wrongKind:
         return 'kind_mismatch';
+      case layoutUnknown:
+        return 'layout_unknown';
       default:
         return '???';
     }
@@ -285,7 +293,7 @@ final class TableFixedReport {
   String nonFiniteFloat = '';
 
   /// THE FILE'S HASH, and the LAST member of the report: it is set by the two
-  /// LAYOUT refusals — 'layout_newer' and 'layout_unsupported' — and is zero on
+  /// LAYOUT refusals — 'layout_unknown' and 'layout_unsupported' — and is zero on
   /// every other path (§5.9 #15). An operator deciding between "ship the
   /// reader" and "upgrade the client" needs the number in both answers.
   int layoutHash = 0;
@@ -4613,10 +4621,10 @@ bool benchMixedSaveMessageBody(TableBitWriter w, BenchMixed value) {
     }
   }
   {
-    if (value.gameEvent.type != 0) {
+    if ((value.gameEvent.type as int) != 0) {
       w.put(12, tableMessageRefBits);
-      assert(value.gameEvent.type >= 0 && value.gameEvent.type <= 3);
-      switch (value.gameEvent.type) {
+      assert((value.gameEvent.type as int) >= 0 && (value.gameEvent.type as int) <= 3);
+      switch ((value.gameEvent.type as int)) {
         case 0: w.put(0, tableMessageRefBits); break;
         case 1:
           w.put(68, tableMessageRefBits);
@@ -5203,7 +5211,7 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
             }
           }
         }
-        if (r.report.unknown + r.substituted == subAt && !(value.gameEvent.type != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
+        if (r.report.unknown + r.substituted == subAt && !((value.gameEvent.type as int) != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case 6294288958393922979: {
@@ -6136,9 +6144,9 @@ void benchMixedFixedWriteBody(
   for (var i = 0; i < value.statsCount; i++) {
     mixedStatFixedWriteBody(bytes, view, at + 468 + i * 8, value.stats[i]);
   }
-  assert(value.gameEvent.type >= 0 && value.gameEvent.type <= 3);
-  view.setUint8(at + 1108, value.gameEvent.type);
-  switch (value.gameEvent.type) {
+  assert((value.gameEvent.type as int) >= 0 && (value.gameEvent.type as int) <= 3);
+  view.setUint8(at + 1108, (value.gameEvent.type as int));
+  switch ((value.gameEvent.type as int)) {
     case 1:
       mixedHitEventFixedWriteBody(bytes, view, at + 1109, value.gameEvent.hit);
       break;
@@ -6294,7 +6302,7 @@ void benchMixedFixedDecode(
     mixedStatFixedDecode(value.stats[i], image, view, at + 468 + i * 8, report);
   }
   value.gameEvent.type = MixedEventType(view.getUint8(at + 1108));
-  switch (value.gameEvent.type) {
+  switch ((value.gameEvent.type as int)) {
     case 0:
       break; // None, which is a tag this reader holds
     case 1:

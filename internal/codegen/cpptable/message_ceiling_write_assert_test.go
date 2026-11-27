@@ -19,10 +19,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/cpp"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 const cppMessageCeilingSchema = `package probe
@@ -38,8 +38,11 @@ fixed table Big
 }
 `
 
-// Every generated translation unit includes the shim. A failed write check
-// exits 3 so the test can distinguish it from a crash.
+// The includer's schema_assert handler (docs/USAGE.md, "the C++ table
+// runtime's hooks"): the header carries `#ifndef schema_assert`, so the handler
+// is defined BEFORE the header, and every translation unit takes it by
+// -include. A failed write check exits 3 so the test can distinguish it from a
+// crash.
 const cppMessageCeilingAssert = `
 #include <cstdio>
 #include <cstdlib>
@@ -177,7 +180,11 @@ func TestCppMessageCeilingWriteAssertCompiled(t *testing.T) {
 	// serialize.h is a sibling checkout the wall does not stage: the probe
 	// carries the shim of the 128-bit storage type
 	shim := t.TempDir()
-	if err := os.WriteFile(filepath.Join(shim, "serialize.h"), []byte(cppJsonIntegersSerialize+cppMessageCeilingAssert), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(shim, "serialize.h"), []byte(cppJsonIntegersSerialize), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	hook := filepath.Join(shim, "assert_hook.h")
+	if err := os.WriteFile(hook, []byte(cppMessageCeilingAssert), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	mainPath := filepath.Join(dir, "main.cpp")
@@ -185,7 +192,7 @@ func TestCppMessageCeilingWriteAssertCompiled(t *testing.T) {
 		t.Fatal(err)
 	}
 	exe := filepath.Join(dir, "probe")
-	args := append([]string{"-std=c++17", "-Wall", "-Wextra", "-Werror", "-O1", "-I", dir, "-I", shim, mainPath}, sources...)
+	args := append([]string{"-std=c++17", "-Wall", "-Wextra", "-Werror", "-O1", "-UNDEBUG", "-include", hook, "-I", dir, "-I", shim, mainPath}, sources...)
 	if out, err := testproc.Command(t, cxx, append(args, "-o", exe)...).CombinedOutput(); err != nil {
 		t.Fatalf("compile: %v\n%s", err, out)
 	}

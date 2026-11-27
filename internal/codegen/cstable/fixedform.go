@@ -6,7 +6,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 const (
@@ -436,9 +436,19 @@ func (b *fixedRootBuild) scalarOp(f *ir.Field) byte {
 
 func (b *fixedRootBuild) flatSpanSetter(fieldExpr, elemType string, elemBytes int64) string {
 	if elemType == "byte" {
-		return fmt.Sprintf("(t, b, l) => { if (%s != null) b.Slice(0, global::System.Math.Min(b.Length, %s.Length)).CopyTo(%s); }", fieldExpr, fieldExpr, fieldExpr)
+		return byteSlotSetter(fieldExpr)
 	}
 	return fmt.Sprintf("(t, b, l) => { if (%s != null) TableFixedWire.ReadLittle<%s>(b.Slice(0, global::System.Math.Min(b.Length, %s.Length * %d)), %s); }", fieldExpr, elemType, fieldExpr, elemBytes, fieldExpr)
+}
+
+// byteSlotSetter lands a byte span slot WHOLE (docs/SPEC-TABLES.md §3.4, THE
+// PREFILL IS WHAT ANSWERS "ABSENT FIELD"; §6.5): the writer's bytes, then
+// zero past them. An older writer's shorter span marks the slot landed, so
+// the hole list never resets it. Without the clear, the reader's bytes past
+// the writer's length would keep the caller's old value. TableFixedWire.ReadLittle
+// holds the same rule for wider elements.
+func byteSlotSetter(fieldExpr string) string {
+	return fmt.Sprintf("(t, b, l) => { if (%s != null) { int c = global::System.Math.Min(b.Length, %s.Length); b.Slice(0, c).CopyTo(%s); %s.AsSpan(c).Clear(); } }", fieldExpr, fieldExpr, fieldExpr, fieldExpr)
 }
 
 func (b *fixedRootBuild) countElementSlots(f *ir.Field) int {
@@ -968,7 +978,7 @@ func (b *fixedRootBuild) buildPayload(owner *ir.Struct, f *ir.Field, expr string
 		})
 		bufSlot := len(b.slots)
 		b.slots = append(b.slots, fixedSlot{
-			setBytes: fmt.Sprintf("(t, b, l) => { if (%s != null) b.Slice(0, global::System.Math.Min(b.Length, %s.Length)).CopyTo(%s); }", fieldExpr, fieldExpr, fieldExpr),
+			setBytes: byteSlotSetter(fieldExpr),
 			reset:    bufferReset(f, fieldExpr),
 		})
 		b.entries = append(b.entries, fixedBlockEntry{
@@ -1001,7 +1011,7 @@ func (b *fixedRootBuild) buildPayload(owner *ir.Struct, f *ir.Field, expr string
 		})
 		bufSlot := len(b.slots)
 		b.slots = append(b.slots, fixedSlot{
-			setBytes: fmt.Sprintf("(t, b, l) => { if (%s != null) b.Slice(0, global::System.Math.Min(b.Length, %s.Length)).CopyTo(%s); }", fieldExpr, fieldExpr, fieldExpr),
+			setBytes: byteSlotSetter(fieldExpr),
 			reset:    bufferReset(f, fieldExpr),
 		})
 		b.entries = append(b.entries, fixedBlockEntry{
@@ -1445,7 +1455,7 @@ func (b *fixedRootBuild) buildPayloadSlotsAndPlan(owner *ir.Struct, f *ir.Field,
 		})
 		bufSlot := len(b.slots)
 		b.slots = append(b.slots, fixedSlot{
-			setBytes: fmt.Sprintf("(t, b, l) => { if (%s != null) b.Slice(0, global::System.Math.Min(b.Length, %s.Length)).CopyTo(%s); }", fieldExpr, fieldExpr, fieldExpr),
+			setBytes: byteSlotSetter(fieldExpr),
 			reset:    bufferReset(f, fieldExpr),
 		})
 		b.addPlan(fixedPlanEntry{
@@ -1468,7 +1478,7 @@ func (b *fixedRootBuild) buildPayloadSlotsAndPlan(owner *ir.Struct, f *ir.Field,
 		})
 		bufSlot := len(b.slots)
 		b.slots = append(b.slots, fixedSlot{
-			setBytes: fmt.Sprintf("(t, b, l) => { if (%s != null) b.Slice(0, global::System.Math.Min(b.Length, %s.Length)).CopyTo(%s); }", fieldExpr, fieldExpr, fieldExpr),
+			setBytes: byteSlotSetter(fieldExpr),
 			reset:    bufferReset(f, fieldExpr),
 		})
 		b.addPlan(fixedPlanEntry{
@@ -1532,6 +1542,10 @@ func (g *tableGen) emitFixedWriteBody(st *ir.Struct) {
 	g.pf("// %s's stores. The template — the hash, then zeros — is memcpy'd first,\n", name)
 	g.pf("// which is also what zero-fills every byte of declared slack.\n")
 	g.pf("public static void %sFixedWriteBody(Span<byte> b, %s value)\n{\n", name, name)
+	// A null record handed to the writer is a value of the wrong kind
+	// (DW-TABLE-SHAPE): a debug assert, as every write contract on this leg
+	// is (docs/SPEC.md §5.1). A release build writes the record's zeros.
+	g.pf("    System.Diagnostics.Debug.Assert(value != null, \"a null %s is written\");\n", name)
 	g.pf("    if (value == null) return;\n")
 	off := int64(0)
 	for _, f := range st.Fields {
@@ -1992,7 +2006,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("};\n\n")
 	g.pf("// THE FLOOR: below it a layout this build once served is RETIRED, and the\n")
 	g.pf("// answer is layout_unsupported — upgrade the client — rather than\n")
-	g.pf("// layout_newer, which is ship the reader (§5.2).\n")
+	g.pf("// layout_unknown, a hash outside the lineage (§5.2, §5.3 step 5).\n")
 	g.pf("public const int %sFixedFloor = %d;\n\n", name, floor)
 	g.pf("// ONE PLAN PER LINEAGE ENTRY, laid down from THE LOCK'S bytes in this\n")
 	g.pf("// type's static initializer: nothing compiles on the load path, and there\n")
@@ -2140,12 +2154,12 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	// re-derived from a file at all (§5.3).
 	g.pf("    ulong hash = BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt));\n")
 	// STEP 5 and STEP 6: SELECT BY HASH, then the floor. Outside the lineage is
-	// layout_newer — ship the reader; below the floor is layout_unsupported —
+	// layout_unknown (§5.3 step 5); below the floor is layout_unsupported —
 	// upgrade the client. BOTH report THE FILE'S hash (§5.9 #7), and what
-	// belongs to layout_newer alone is "and nothing else".
+	// belongs to layout_unknown alone is "and nothing else".
 	g.pf("    int pick = TableFixedWire.Select(%sFixedKnown, hash);\n", name)
 	g.pf("    if (pick < 0)\n    {\n")
-	g.pf("        if (report != null) { report.Refused = true; report.Reason = \"layout_newer\"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }\n")
+	g.pf("        if (report != null) { report.Refused = true; report.Reason = \"layout_unknown\"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }\n")
 	g.pf("        return -1;\n    }\n")
 	g.pf("    if (pick < %sFixedFloor)\n    {\n", name)
 	g.pf("        if (report != null) { report.Refused = true; report.Reason = \"layout_unsupported\"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }\n")

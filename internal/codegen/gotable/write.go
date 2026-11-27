@@ -3,7 +3,7 @@ package gotable
 import (
 	"fmt"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 func (g *tableGen) emitPutLeb(ind, writer, value string) {
@@ -52,7 +52,7 @@ func (g *tableGen) emitTableMeasure(st *ir.Struct) {
 	if g.arithMeasureEligible(st) {
 		g.emitArithMeasureBody(st)
 	} else {
-		g.pf("func %sMeasureBody(value *%s, ids *TableIds) int64 {\n w := TableWriter{Measuring:true, Ids:ids}\n if !%sSaveBody(&w,value) { return -1 }; return w.Offset\n}\n\n", n, g.storageName(n), n)
+		g.pf("func %sMeasureBody"+g.rt()+"(value *%s, ids *Table"+g.rt()+"Ids) int64 {\n w := Table"+g.rt()+"Writer{Measuring:true, Ids:ids}\n if !%sSaveBody"+g.rt()+"(&w,value) { return -1 }; return w.Offset\n}\n\n", n, g.storageName(n), n)
 	}
 	if g.retain || st.IsMapEntry() || g.regional && ir.VariableTables(g.unit)[st.Name] {
 		return
@@ -86,13 +86,13 @@ func (g *tableGen) emitTableMeasure(st *ir.Struct) {
 		trailer = 4
 	}
 	if g.arithMeasureEligible(st) {
-		g.pf("func %sMeasure(value *%s) int64 {\n var ids TableIds\n body := %sMeasureBody(value, &ids)\n if body < 0 || ids.Overflow { return -1 }\n return 1 + body + int64(ids.Count)*8 + %d\n}\n\n", n, g.storageName(n), n, 8+trailer)
+		g.pf("func %sMeasure(value *%s) int64 {\n var ids Table"+g.rt()+"Ids\n body := %sMeasureBody"+g.rt()+"(value, &ids)\n if body < 0 || ids.Overflow { return -1 }\n return 1 + body + int64(ids.Count)*8 + %d\n}\n\n", n, g.storageName(n), n, 8+trailer)
 	} else {
 		tail := "w.Offset"
 		if trailer > 0 {
 			tail = "w.Offset + 4"
 		}
-		g.pf("func %sMeasure(value *%s) int64 {\n var ids TableIds\n w := TableWriter{Measuring:true, Ids:&ids}\n w.Put8(1)\n if !%sSaveBody(&w,value) { return -1 }; w.Trailer()\n if w.Overflow || ids.Overflow { return -1 }; return %s\n}\n\n", n, g.storageName(n), n, tail)
+		g.pf("func %sMeasure(value *%s) int64 {\n var ids Table"+g.rt()+"Ids\n w := Table"+g.rt()+"Writer{Measuring:true, Ids:&ids}\n w.Put8(1)\n if !%sSaveBody"+g.rt()+"(&w,value) { return -1 }; w.Trailer()\n if w.Overflow || ids.Overflow { return -1 }; return %s\n}\n\n", n, g.storageName(n), n, tail)
 	}
 	g.pf("func %sMeasureReason(value *%s)(int64,error){size:=%sMeasure(value);if size<0{return size,TableRefuseInvalidValue};return size,nil}\n", n, g.storageName(n), n)
 }
@@ -102,7 +102,7 @@ func (g *tableGen) emitTableMeasure(st *ir.Struct) {
 // field then the variant and add leb(variant) instead of a fixed width.
 func (g *tableGen) emitArithMeasureBody(st *ir.Struct) {
 	n := st.Name
-	g.pf("func %sMeasureBody(value *%s, ids *TableIds) int64 {\n", n, g.storageName(n))
+	g.pf("func %sMeasureBody"+g.rt()+"(value *%s, ids *Table"+g.rt()+"Ids) int64 {\n", n, g.storageName(n))
 	if len(st.Fields) == 0 {
 		g.pf("\t_ = value\n\tif ids.Overflow { return -1 }\n\treturn 1\n}\n\n")
 		return
@@ -195,10 +195,10 @@ func (g *tableGen) emitTableSave(st *ir.Struct) {
 		return
 	}
 	if st.Integrity != "" {
-		g.pf("func %sSave(value *%s, buffer []byte) int64 {\n if len(buffer) < 4 { return -1 }\n var ids TableIds\n w := TableWriter{Buffer:buffer[:len(buffer)-4], Ids:&ids}\n w.Put8(1)\n if !%sSaveBody(&w,value) { return -1 }; w.Trailer()\n if w.Overflow || ids.Overflow { return -1 }; return tableIntegritySeal(buffer, w.Offset)\n}\n\n", st.Name, g.storageName(st.Name), st.Name)
+		g.pf("func %sSave(value *%s, buffer []byte) int64 {\n if len(buffer) < 4 { return -1 }\n var ids Table"+g.rt()+"Ids\n w := Table"+g.rt()+"Writer{Buffer:buffer[:len(buffer)-4], Ids:&ids}\n w.Put8(1)\n if !%sSaveBody"+g.rt()+"(&w,value) { return -1 }; w.Trailer()\n if w.Overflow || ids.Overflow { return -1 }; return tableIntegritySeal(buffer, w.Offset)\n}\n\n", st.Name, g.storageName(st.Name), st.Name)
 		return
 	}
-	g.pf("func %sSave(value *%s, buffer []byte) int64 {\n var ids TableIds\n w := TableWriter{Buffer:buffer, Ids:&ids}\n w.Put8(1)\n if !%sSaveBody(&w,value) { return -1 }; w.Trailer()\n if w.Overflow || ids.Overflow { return -1 }; return w.Offset\n}\n\n", st.Name, g.storageName(st.Name), st.Name)
+	g.pf("func %sSave(value *%s, buffer []byte) int64 {\n var ids Table"+g.rt()+"Ids\n w := Table"+g.rt()+"Writer{Buffer:buffer, Ids:&ids}\n w.Put8(1)\n if !%sSaveBody"+g.rt()+"(&w,value) { return -1 }; w.Trailer()\n if w.Overflow || ids.Overflow { return -1 }; return w.Offset\n}\n\n", st.Name, g.storageName(st.Name), st.Name)
 }
 
 // arrayLoopRange is what follows `for i := range` in the loops that index the
@@ -214,7 +214,7 @@ func (g *tableGen) arrayLoopRange(cacheLengths bool, count string) string {
 }
 
 func (g *tableGen) emitTableWrite(st *ir.Struct) {
-	g.pf("func %sSaveBody(w *TableWriter, value *%s) bool {\n", st.Name, g.storageName(st.Name))
+	g.pf("func %sSaveBody"+g.rt()+"(w *Table"+g.rt()+"Writer, value *%s) bool {\n", st.Name, g.storageName(st.Name))
 	var scratchSlots int64
 	for _, f := range st.Fields {
 		scratchSlots = max(scratchSlots, g.arrayLengthScratchSlots(f))
@@ -223,7 +223,7 @@ func (g *tableGen) emitTableWrite(st *ir.Struct) {
 		g.pf("var arrayLengths [%d]int64\n", scratchSlots)
 	}
 	if g.regional {
-		g.pf("if !%sSaveBodyFields(w,value) { return false }; w.Put8(0); return !w.Overflow && !w.Ids.Overflow\n}\nfunc %sSaveBodyFields(w *TableWriter,value *%s) bool {\n", st.Name, st.Name, g.storageName(st.Name))
+		g.pf("if !%sSaveBodyFields"+g.rt()+"(w,value) { return false }; w.Put8(0); return !w.Overflow && !w.Ids.Overflow\n}\nfunc %sSaveBodyFields"+g.rt()+"(w *Table"+g.rt()+"Writer,value *%s) bool {\n", st.Name, st.Name, g.storageName(st.Name))
 	}
 	guards := tableGuardExprs(st)
 	for ordinal, f := range st.Fields {
@@ -277,7 +277,7 @@ func (g *tableGen) emitWireField(f *ir.Field, expr, ind string) {
 		g.pf("%s{\n", ind)
 		i := ind + "\t"
 		g.pf("%smark := w.Ids.Count; ref := w.Ids.refAtHit(%d, 0x%016x); start := w.Ids.Count\n", i, g.knownOrdinal(ir.TableFieldWireId(f)), ir.TableFieldWireId(f))
-		g.pf("%sn := %sMeasureBody(&%s, w.Ids)\n", i, f.Type.Name, expr)
+		g.pf("%sn := %sMeasureBody"+g.rt()+"(&%s, w.Ids)\n", i, f.Type.Name, expr)
 		g.pf("%sif n < 0 || w.Ids.Overflow { return false }\n", i)
 		cond := "n > 1"
 		if f.Type.Optional || f.Required {
@@ -286,13 +286,13 @@ func (g *tableGen) emitWireField(f *ir.Field, expr, ind string) {
 		g.pf("%sif %s {\n%s if w.Measuring { w.Advance(tableLebBytes(ref)+1+tableLebBytes(uint64(n))+n) } else {\n%s  w.Ids.Truncate(start)\n", i, cond, i, i)
 		g.emitHeader(i+"  ", "w", "ref", fmt.Sprintf("%d", kind))
 		g.emitPutLeb(i+"  ", "w", "uint64(n)")
-		g.pf("%s  if !%sSaveBody(w, &%s) { return false }\n%s }\n%s} else { w.Ids.Truncate(mark) }\n%s}\n", i, f.Type.Name, expr, i, i, ind)
+		g.pf("%s  if !%sSaveBody"+g.rt()+"(w, &%s) { return false }\n%s }\n%s} else { w.Ids.Truncate(mark) }\n%s}\n", i, f.Type.Name, expr, i, i, ind)
 		return
 	}
 	g.pf("%s{\n", ind)
 	i := ind + "\t"
 	g.pf("%smark := w.Ids.Count; ref := w.Ids.refAtHit(%d, 0x%016x); start := w.Ids.Count\n", i, g.knownOrdinal(ir.TableFieldWireId(f)), ir.TableFieldWireId(f))
-	g.pf("%spayload := TableWriter{Measuring:true, Ids:w.Ids}\n", i)
+	g.pf("%spayload := Table"+g.rt()+"Writer{Measuring:true, Ids:w.Ids}\n", i)
 	g.emitWireValue(f, expr, "payload", i, true)
 	g.pf("%sif payload.Overflow || w.Ids.Overflow { return false }\n", i)
 	empty := 2
@@ -378,7 +378,7 @@ func (g *tableGen) emitCountedBirthRides(f *ir.Field, expr, ind string, message 
 			if g.retain {
 				path = g.retainWritePush("w", "i")
 			}
-			g.pf("n := %sMeasureBody(&%s[i],w.Ids)\n", f.Type.Name, expr)
+			g.pf("n := %sMeasureBody"+g.rt()+"(&%s[i],w.Ids)\n", f.Type.Name, expr)
 			// Keep the result outside the retained-path block.
 			if g.retain {
 				g.pf("if n < 0 {return false};allBirth=n<=1\n")
@@ -465,15 +465,15 @@ func (g *tableGen) emitWireValue(f *ir.Field, expr, writer, ind string, framed b
 			restore = g.retainWritePush(writer, g.retainIndex)
 		}
 		if !framed {
-			g.pf("%sif !%sSaveBody(%s,&%s) { return false }\n", ind, f.Type.Name, writerPointer(writer), expr)
+			g.pf("%sif !%sSaveBody"+g.rt()+"(%s,&%s) { return false }\n", ind, f.Type.Name, writerPointer(writer), expr)
 			if restore != "" {
 				g.retainWritePop(writer, restore)
 			}
 			return
 		}
-		g.pf("%s{\n%s mark := %s.Ids.Count\n%s n := %sMeasureBody(&%s,%s.Ids); if n < 0 { return false }\n", ind, ind, writer, ind, f.Type.Name, expr, writer)
+		g.pf("%s{\n%s mark := %s.Ids.Count\n%s n := %sMeasureBody"+g.rt()+"(&%s,%s.Ids); if n < 0 { return false }\n", ind, ind, writer, ind, f.Type.Name, expr, writer)
 		g.emitPutLeb(ind+" ", writer, "uint64(n)")
-		g.pf("%s if %s.Measuring { %s.Advance(n) } else {\n%s  %s.Ids.Truncate(mark)\n%s  if !%sSaveBody(%s,&%s) { return false }\n%s }\n%s}\n", ind, writer, writer, ind, writer, ind, f.Type.Name, writerPointer(writer), expr, ind, ind)
+		g.pf("%s if %s.Measuring { %s.Advance(n) } else {\n%s  %s.Ids.Truncate(mark)\n%s  if !%sSaveBody"+g.rt()+"(%s,&%s) { return false }\n%s }\n%s}\n", ind, writer, writer, ind, writer, ind, f.Type.Name, writerPointer(writer), expr, ind, ind)
 		if restore != "" {
 			g.retainWritePop(writer, restore)
 		}
@@ -537,11 +537,11 @@ func (g *tableGen) emitWireArray(f *ir.Field, expr, writer, ind string, framed b
 	}
 	g.pf("%s{\n", ind)
 	i := ind + "\t"
-	g.pf("%smark := %s.Ids.Count\n%s%s := TableWriter{Measuring:true, Ids:%s.Ids}; pairs := uint64(0)\n", i, writer, i, body, writer)
+	g.pf("%smark := %s.Ids.Count\n%s%s := Table"+g.rt()+"Writer{Measuring:true, Ids:%s.Ids}; pairs := uint64(0)\n", i, writer, i, body, writer)
 	g.pf("%sfor i := range %s {\n", i, g.arrayLoopRange(cacheLengths, count))
 	if cacheLengths {
 		g.wireSerial++ // Preserve the skipped element emitter's temporary-name slot.
-		g.pf("%s n := %sMeasureBody(&%s[i],%s.Ids); if n < 0 { return false }; arrayLengths[i] = n\n", i, f.Type.Name, expr, body)
+		g.pf("%s n := %sMeasureBody"+g.rt()+"(&%s[i],%s.Ids); if n < 0 { return false }; arrayLengths[i] = n\n", i, f.Type.Name, expr, body)
 		g.emitPutLeb(i+" ", body, "uint64(n)")
 		g.pf("%s %s.Advance(n)\n", i, body)
 	} else {
@@ -561,7 +561,7 @@ func (g *tableGen) emitWireArray(f *ir.Field, expr, writer, ind string, framed b
 		// the same element order. Its saved lengths therefore include the same
 		// reference widths, without another MeasureBody before each SaveBody.
 		g.emitPutLeb(i+"  ", writer, "uint64(arrayLengths[i])")
-		g.pf("%s  if !%sSaveBody(%s,&%s[i]) { return false }\n", i, f.Type.Name, writerPointer(writer), expr)
+		g.pf("%s  if !%sSaveBody"+g.rt()+"(%s,&%s[i]) { return false }\n", i, f.Type.Name, writerPointer(writer), expr)
 	} else {
 		g.emitWireArrayElement(f, expr+"[i]", writer, i+"\t\t")
 	}
@@ -600,7 +600,7 @@ func (g *tableGen) emitWireArrayElement(f *ir.Field, expr, writer, ind string) {
 	i := ind + "\t"
 	// Keyed entries each have their own L around the bare value.
 	g.pf("%smark := %s.Ids.Count\n%sid, named := %s(i+1).TableEnumID(); if !named { return false }; ref := %s.Ids.Ref(id); start := %s.Ids.Count\n", i, writer, i, f.KeyEnum, writer, writer)
-	g.pf("%s%s := TableWriter{Measuring:true, Ids:%s.Ids}\n", i, element, writer)
+	g.pf("%s%s := Table"+g.rt()+"Writer{Measuring:true, Ids:%s.Ids}\n", i, element, writer)
 	g.emitWireValue(&elem, expr, element, i, false)
 	cond := g.elideDiffers(&elem, expr, fieldDefaultExpr(&elem))
 	if isStructRef(elem.Type) {
@@ -650,13 +650,13 @@ func (g *tableGen) emitWireUnion(un *ir.Union, expr, writer, ind string) {
 		// A table-body arm is the framed nested-struct case. Retain keeps the
 		// nested measuring writer: its Path push sits on that writer.
 		if !g.retain && v.Body() {
-			g.pf("%s{\n%s mark := %s.Ids.Count\n%s n := %sMeasureBody(&%s,%s.Ids); if n < 0 { return false }\n", i, i, writer, i, v.F.Type.Name, arm, writer)
+			g.pf("%s{\n%s mark := %s.Ids.Count\n%s n := %sMeasureBody"+g.rt()+"(&%s,%s.Ids); if n < 0 { return false }\n", i, i, writer, i, v.F.Type.Name, arm, writer)
 			g.emitHeader(i+" ", writer, "ref", fmt.Sprintf("%d", kind))
 			g.emitPutLeb(i+" ", writer, "uint64(n)")
-			g.pf("%s if %s.Measuring { %s.Advance(n) } else {\n%s  %s.Ids.Truncate(mark)\n%s  if !%sSaveBody(%s,&%s) { return false }\n%s }\n%s}\n", i, writer, writer, i, writer, i, v.F.Type.Name, writerPointer(writer), arm, i, i)
+			g.pf("%s if %s.Measuring { %s.Advance(n) } else {\n%s  %s.Ids.Truncate(mark)\n%s  if !%sSaveBody"+g.rt()+"(%s,&%s) { return false }\n%s }\n%s}\n", i, writer, writer, i, writer, i, v.F.Type.Name, writerPointer(writer), arm, i, i)
 		} else {
 			payload := g.nextWireWriter()
-			g.pf("%sstart := %s.Ids.Count; %s := TableWriter{Measuring:true, Ids:%s.Ids}\n", i, writer, payload, writer)
+			g.pf("%sstart := %s.Ids.Count; %s := Table"+g.rt()+"Writer{Measuring:true, Ids:%s.Ids}\n", i, writer, payload, writer)
 			g.emitWireValue(v.F, arm, payload, i, false)
 			g.pf("%sif %s.Overflow || %s.Offset < 0 { return false }\n", i, payload, payload)
 			g.emitHeader(i, writer, "ref", fmt.Sprintf("%d", kind))

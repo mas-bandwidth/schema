@@ -32,9 +32,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/cpp"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 const cppArmMinSchema = `package armmin
@@ -232,6 +232,45 @@ var cppArmMinWriteModes = []string{"wire", "message", "fixed", "cook", "json", "
 // the modes that must pass (exit 0) on the fixed code and go red when planted.
 var cppArmMinGreenModes = []string{"read", "arm-select", "plain-read", "plain-born", "plain-message-guard"}
 
+// cppArmMinAssertNamed reports whether a write mode's exit-3 output names a
+// minimum's debug assert (docs/SPEC.md §5.1 row 3): a field or arm assert
+// spelling `>= 2`, the fixed form's write-contract predicate
+// (<T>FixedWriteAdmits, whose body holds the minimum), or the text writer's
+// arm assert (TableJsonCountInContract). The negative control plants each of
+// these out and requires the write to complete, so the name is the minimum's.
+func cppArmMinAssertNamed(out string) bool {
+	for _, name := range []string{">= 2", "FixedWriteAdmits(", "TableJsonCountInContract("} {
+		if strings.Contains(out, name) {
+			return true
+		}
+	}
+	return false
+}
+
+// cppArmMinPlants put the old behaviour back in the generated unit, each as
+// the generator spells it; the control fails on any plant that patches
+// nothing.
+var cppArmMinPlants = []struct{ what, old, planted string }{
+	// the reads: the minimum checks become checks nothing meets, arm and
+	// plain field alike, on the exact and the widening branch
+	{"the arm read's minimum", "_count < 2 )\n", "_count < 0 )\n"},
+	{"the plain read's count check", "counted_ok && count < 2 )", "counted_ok && count < 0 )"},
+	{"the plain read's minimum", "if ( count < 2 ) //", "if ( count < 0 ) //"},
+	// the writers: every assert back to the storage invariant
+	{"the arm writers' asserts", "_count >= 2 &&", "_count >= 0 &&"},
+	{"the plain writers' asserts", "_count >= 2 );", "_count >= 0 );"},
+	{"the fixed write contract and in-range minimum", "_count < 2 ); // a count below the declared Min", "_count < 0 ); // a count below the declared Min"},
+	// the birth: back to count zero, and the zero-count elision
+	{"the plain field's birth", "few_count = 2;", "few_count = 0;"},
+	// the arm's selection and reset: back to count zero
+	{"the arm's selection", "few.value_count = 2;", "few.value_count = 0;"},
+	// the message guard: the old unguarded subtraction
+	{"the message measure guard", ") < 2 ) { return -1; }", ") < 0 ) { return -1; }"},
+	{"the message save guard", ") < 2 ) { return false; }", ") < 0 ) { return false; }"},
+	// the text writer's arm assert
+	{"the text writer's arm assert", "schema_assert( TableJsonCountInContract( storage, arms->arms[tag].field ) );", ""},
+}
+
 // cppArmMinBuild generates the unit, lets undermine plant a fault in the real
 // artifact, and builds the probe; it returns the probe's path.
 func cppArmMinBuild(t *testing.T, undermine func(map[string][]byte)) string {
@@ -336,7 +375,7 @@ func TestCppArmMinHolds(t *testing.T) {
 	}
 	for _, mode := range cppArmMinWriteModes {
 		code, out := cppArmMinExit(t, probe, mode)
-		if code != 3 || !strings.Contains(out, ">= 2") && !strings.Contains(out, "TableJsonCountMeetsMin") {
+		if code != 3 || !cppArmMinAssertNamed(out) {
 			t.Errorf("%s: a count-1 arm under [2..4] was not stopped by the minimum's debug assert: exit %d\n%s", mode, code, out)
 		}
 	}
@@ -346,31 +385,28 @@ func TestCppArmMinHoldsNegativeControl(t *testing.T) {
 	slowtest.Gate(t, "the C++ compiler (the leg's own toolchain)")
 	t.Parallel()
 	undermine := func(files map[string][]byte) {
-		planted := 0
+		// Every plant must patch something: a spelling the generator no
+		// longer emits fails the control by name, so a stale plant can never
+		// leave the old behaviour un-planted and the control dead.
+		hits := make([]int, len(cppArmMinPlants))
 		for name, data := range files {
 			text := string(data)
 			old := text
-			// the reads: the minimum checks become checks nothing meets, arm
-			// and plain field alike
-			text = strings.ReplaceAll(text, "_count < 2 )\n", "_count < 0 )\n")
-			text = strings.ReplaceAll(text, "if ( count < 2 )\n", "if ( count < 0 )\n")
-			// the writers: every assert back to the storage invariant
-			text = strings.ReplaceAll(text, "_count >= 2 &&", "_count >= 0 &&")
-			// the birth: back to count zero, and the zero-count elision
-			text = strings.ReplaceAll(text, "few_count = 2;", "few_count = 0;")
-			// the arm's selection: back to count zero
-			text = strings.ReplaceAll(text, "few.value_count = 2;", "few.value_count = 0;")
-			// the message guard: the old unguarded subtraction
-			text = strings.ReplaceAll(text, ") < 2 ) { return -1; }", ") < 0 ) { return -1; }")
-			text = strings.ReplaceAll(text, ") < 2 ) { return false; }", ") < 0 ) { return false; }")
-			text = strings.ReplaceAll(text, "schema_assert( TableJsonCountMeetsMin( storage, arms->arms[tag].field ) );", "")
+			for i, p := range cppArmMinPlants {
+				hits[i] += strings.Count(text, p.old)
+				text = strings.ReplaceAll(text, p.old, p.planted)
+			}
 			if text != old {
 				files[name] = []byte(text)
-				planted++
 			}
 		}
-		if planted == 0 {
-			t.Fatal("no generated file carried the arm minimum to plant out")
+		for i, p := range cppArmMinPlants {
+			if hits[i] == 0 {
+				t.Errorf("plant %q (%s) patched nothing in the generated unit", p.old, p.what)
+			}
+		}
+		if t.Failed() {
+			t.FailNow()
 		}
 	}
 	probe := cppArmMinBuild(t, undermine)

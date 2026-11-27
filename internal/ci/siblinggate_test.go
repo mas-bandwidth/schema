@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v3/internal/testinputs"
 )
 
 // TestMissingSiblingStopsMakeWithOneLine holds the sibling gate (the Makefile's
@@ -33,6 +35,7 @@ func TestMissingSiblingStopsMakeWithOneLine(t *testing.T) {
 			t.Parallel()
 			// GNU Make adds directory banners when the Go test is run from
 			// a Make recipe. Check the diagnostic independently of that logging.
+			testinputs.Make(t)
 			cmd := exec.Command("make", "--no-print-directory", "-n", c.goal, c.variable+"="+absent)
 			cmd.Dir = root
 			out, err := cmd.CombinedOutput()
@@ -58,6 +61,7 @@ func TestSiblingGateSkippedLegNeedsNoSibling(t *testing.T) {
 	root := repoRoot(t)
 	absent := filepath.Join(t.TempDir(), "absent")
 	oracle := filepath.Join(t.TempDir(), "serialize")
+	testinputs.Make(t)
 	cmd := exec.Command("make", "-n", "conformance", "SERIALIZE="+oracle,
 		"SERIALIZE_C="+absent, "SCHEMA_SKIP_LEGS=c,cs,unity,go,rust,js")
 	cmd.Dir = root

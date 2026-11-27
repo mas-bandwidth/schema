@@ -12,9 +12,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/tablepack"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/compiler"
+	"github.com/mas-bandwidth/schema/v3/internal/tablepack"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
 )
 
 var updateDocClaims = flag.Bool("update-docclaims", false, "rewrite each doc-claim case's save.bin and read.json from the engine")

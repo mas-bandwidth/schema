@@ -37,8 +37,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/elixir"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/elixir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // formatWidth is `mix format`'s default line length, which the generated
@@ -484,7 +484,14 @@ func (g *fixedGen) leafSegment(f *ir.Field, name string) string {
 		switch r := f.Type.Ref.(type) {
 		case *ir.Enum:
 			// THE ORDINAL IS THE VARIANT'S POSITION, from 1, and 0 is None.
-			return fmt.Sprintf("%s.%s.to_int(%s)::little-unsigned-%d", g.ns, elixir.ModuleName(r.Name), name, r.StorageBits)
+			ord := fmt.Sprintf("%s.%s.to_int(%s)", g.ns, elixir.ModuleName(r.Name), name)
+			// A DEPRECATED VARIANT IS NEVER WRITTEN (docs/SPEC-TABLES.md §2.15
+			// WRITE): the save refuses it in every build, the ArgumentError
+			// every other fixed write check raises (docs/SPEC.md §5.1).
+			if retired := deprecatedOrdinals(r); retired != "" {
+				ord = fmt.Sprintf("R.live_variant(%s, [%s])", ord, retired)
+			}
+			return fmt.Sprintf("%s::little-unsigned-%d", ord, r.StorageBits)
 		case *ir.Flags:
 			if r.WireBits < 64 {
 				// THE MASK HOLDS TO W on the way out (docs/SPEC-TABLES.md §4), so a
@@ -541,6 +548,18 @@ func (g *fixedGen) leafSegment(f *ir.Field, name string) string {
 		domain = int64(f.Type.Width)
 	}
 	return fmt.Sprintf("R.fits(%s, %d, %t)::little-%s-%d", name, domain, f.Type.Signed, sign, width)
+}
+
+// deprecatedOrdinals is the ordinals of e's deprecated variants, comma
+// separated (variant i is ordinal i+1; 0 is None), or "" when e has none.
+func deprecatedOrdinals(e *ir.Enum) string {
+	var ords []string
+	for i := range e.Variants {
+		if i < len(e.VariantDeprecated) && e.VariantDeprecated[i] {
+			ords = append(ords, fmt.Sprint(i+1))
+		}
+	}
+	return strings.Join(ords, ", ")
 }
 
 // textSlack is the call that sizes a text or bytes leaf's zero slack, and
@@ -1761,7 +1780,7 @@ func (g *fixedGen) rootSurface(st *ir.Struct) {
 	g.pf("  # THE CURRENT ONE LAST (§5.2). A file is matched on its header's hash\n")
 	g.pf("  # against these and on NOTHING ELSE; the layout it carries is COMPARED with\n")
 	g.pf("  # the bytes the lock recorded and never parsed. A hash no entry holds is\n")
-	g.pf("  # `:layout_newer` — ship the reader. The four members are §5.9 #19's, in\n")
+	g.pf("  # `:layout_unknown` (§5.3 step 5). The four members are §5.9 #19's, in\n")
 	g.pf("  # its order, with the byte length riding BESIDE the bytes.\n")
 	g.pf("  @%s_known {\n", snake)
 	for i, e := range lineage {
@@ -1790,7 +1809,7 @@ func (g *fixedGen) rootSurface(st *ir.Struct) {
 	g.pf("  }\n\n")
 	g.pf("  # THE FLOOR: 1 + the highest RETIRED index, 0 when none is (§5.2). Below it\n")
 	g.pf("  # a layout this build once served is retired and the answer is\n")
-	g.pf("  # `:layout_unsupported` — upgrade the client — rather than `:layout_newer`.\n")
+	g.pf("  # `:layout_unsupported` — upgrade the client — rather than `:layout_unknown`.\n")
 	g.pf("  @%s_floor %d\n\n", snake, floor)
 	retired := []string{}
 	for _, e := range lineage {

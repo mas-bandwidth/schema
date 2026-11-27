@@ -42,6 +42,7 @@ public final class FixedTableFixed {
      * byte-width stores at constant offsets and nothing else.
      */
     public static void writeBody(byte[] b, int at, Value v) {
+        assert v != null : "a null record is written";
         assert checkWrite(v);
         BenchMixedFixed.writeBody(b, at + 0, v.value);
     }
@@ -200,7 +201,7 @@ public final class FixedTableFixed {
 
     /**
      * THE FLOOR: 1 + the highest RETIRED index, or 0 when none is. Below it a layout this build
-     * once served is retired, and the answer is `layoutUnsupported` rather than `layoutNewer`
+     * once served is retired, and the answer is `layoutUnsupported` rather than `layoutUnknown`
      * (§5.2). A retired entry stays in the lineage forever: the floor is an index cut.
      */
     public static final int floor = 0;
@@ -261,6 +262,9 @@ public final class FixedTableFixed {
         // A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (§22.6): the write
         // contract refuses an empty batch in a debug build.
         assert count > 0;
+        for (int k = 0; k < count; k++) {
+            assert values[k] != null : "a null record is written";
+        }
         final int need = measure(count);
         if (need < 0 || buffer.length < need) {
             return -1;
@@ -324,7 +328,7 @@ public final class FixedTableFixed {
      * fail for want of a plan (§5.9 #3).
      *
      * <p>THE FIXED TABLE READS BACKWARD AND NEVER FORWARD. A hash in no lineage entry is
-     * `layoutNewer` — ship the reader — carrying THE FILE'S HASH and nothing else; a hash below the
+     * `layoutUnknown` (§5.3 step 5), carrying THE FILE'S HASH and nothing else; a hash below the
      * floor is `layoutUnsupported` — upgrade the client — carrying it too. Neither decodes a byte
      * and neither moves a counter: REFUSE IS TOTAL, the prefill included.
      *
@@ -383,7 +387,7 @@ public final class FixedTableFixed {
         // an operator in opposite directions, and both report the file's hash.
         final int pick = TableFixed.select(known, fileHash);
         if (pick < 0) {
-            report.refuseHash(TableFixed.Reason.layoutNewer, fileHash);
+            report.refuseHash(TableFixed.Reason.layoutUnknown, fileHash);
             return -1;
         }
         if (pick < floor) {

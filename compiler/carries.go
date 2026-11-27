@@ -1,6 +1,6 @@
 package compiler
 
-import "github.com/mas-bandwidth/schema/v2/ir"
+import "github.com/mas-bandwidth/schema/v3/ir"
 
 // These keys name the construct rules in docs/SPEC-TABLES.md. This card moves
 // the carrier decision to one registration per target; the standard is unchanged.

@@ -941,26 +941,36 @@ struct TableReader
             case 2:
             case 6:
             case 20:
-            case 25: if ( r.has( 1 ) ) { r.offset += 1; } return false;
+            case 25:
+                if ( r.has( 1 ) ) { r.offset += 1; }
+                return false;
             case 3:
             case 7:
             case 21:
-            case 26: if ( r.has( 2 ) ) { r.offset += 2; } return false;
+            case 26:
+                if ( r.has( 2 ) ) { r.offset += 2; }
+                return false;
             case 4:
             case 8:
             case 10:
             case 22:
-            case 27: if ( r.has( 4 ) ) { r.offset += 4; } return false;
+            case 27:
+                if ( r.has( 4 ) ) { r.offset += 4; }
+                return false;
             case 5:
             case 9:
             case 11:
             case 23:
             case 28:
-            case 36: if ( r.has( 8 ) ) { r.offset += 8; } return false;
+            case 36:
+                if ( r.has( 8 ) ) { r.offset += 8; }
+                return false;
             case 18:
             case 19:
             case 24:
-            case 29: if ( r.has( 16 ) ) { r.offset += 16; } return false;
+            case 29:
+                if ( r.has( 16 ) ) { r.offset += 16; }
+                return false;
             case 17:
             case 30:
             {
@@ -1517,11 +1527,30 @@ inline int32_t TableStrictWidth( uint8_t kind )
 {
     switch ( kind )
     {
-        case 1: case 2: case 6: case 20: case 25: return 1;
-        case 3: case 7: case 21: case 26: return 2;
-        case 4: case 8: case 10: case 22: case 27: return 4;
-        case 5: case 9: case 11: case 23: case 28: case 36: return 8;
-        case 18: case 19: case 24: case 29: return 16;
+        case 1:
+        case 2:
+        case 6:
+        case 20:
+        case 25: return 1;
+        case 3:
+        case 7:
+        case 21:
+        case 26: return 2;
+        case 4:
+        case 8:
+        case 10:
+        case 22:
+        case 27: return 4;
+        case 5:
+        case 9:
+        case 11:
+        case 23:
+        case 28:
+        case 36: return 8;
+        case 18:
+        case 19:
+        case 24:
+        case 29: return 16;
     }
     return 0;
 }
@@ -1545,7 +1574,11 @@ inline bool TableStrictScalar( TableStrict & s, const uint8_t * b, uint8_t kind 
     // visible in the raw little-endian wire bytes, including skipped fields.
     const bool non_finite32 = kind == 10 && ( b[3] & 0x7f ) == 0x7f && ( b[2] & 0x80 ) != 0;
     const bool non_finite64 = kind == 11 && ( b[7] & 0x7f ) == 0x7f && ( b[6] & 0xf0 ) == 0xf0;
-    if ( non_finite32 || non_finite64 ) { s.refusal = non_finite_float; return false; }
+    if ( non_finite32 || non_finite64 )
+    {
+        s.refusal = non_finite_float;
+        return false;
+    }
     return true;
 }
 
@@ -1558,7 +1591,11 @@ inline bool TableStrictFailed( const TableStrict & s, TableReport * report )
         report->reason = count_over_extent_cap;
         report->refuse_reason = count_over_extent_cap;
     }
-    else { report->damaged = true; report->refuse_reason = wire_damaged; }
+    else
+    {
+        report->damaged = true;
+        report->refuse_reason = wire_damaged;
+    }
     return false;
 }
 
@@ -1649,7 +1686,9 @@ inline bool TableStrictContent( TableStrict & s, const uint8_t * b, int64_t n, u
             if ( depth >= kTableStrictMaxDepth ) { return false; }
             return TableStrictKeyed( s, b, n, depth + 1 );
         }
-        case 15: case 17: case 30:
+        case 15:
+        case 17:
+        case 30:
         {
             TableReport ignored;
             TableReader r( b, n, &ignored, s.ids );
@@ -1695,7 +1734,11 @@ inline bool TableStrictPayload( TableStrict & s, TableReader & r, uint8_t kind, 
         }
         case 15:
             return TableStrictUnion( s, r, depth );
-        case 12: case 32: case 13: case 14: case 16:
+        case 12:
+        case 32:
+        case 13:
+        case 14:
+        case 16:
         {
             uint64_t n = 0;
             if ( !r.getleb( n ) || !r.room( n ) ) { return false; } // L4
@@ -1744,7 +1787,11 @@ inline bool TableStrictArray( TableStrict & s, const uint8_t * b, int64_t n, int
     uint64_t count = 0;
     if ( !r.getleb( count ) ) { return false; }
     // the cap applies even when this array belongs to an unknown field
-    if ( count > 0x7FFFFFFFull ) { s.refusal = count_over_extent_cap; return false; }
+    if ( count > 0x7FFFFFFFull )
+    {
+        s.refusal = count_over_extent_cap;
+        return false;
+    }
     for ( uint64_t i = 0; i < count; i++ )
     {
         if ( !TableStrictPayload( s, r, elem, depth ) ) { return false; }
@@ -1762,7 +1809,11 @@ inline bool TableStrictKeyed( TableStrict & s, const uint8_t * b, int64_t n, int
     uint64_t count = 0;
     if ( !r.getleb( count ) ) { return false; }
     // the cap applies even when this keyed array belongs to an unknown field
-    if ( count > 0x7FFFFFFFull ) { s.refusal = count_over_extent_cap; return false; }
+    if ( count > 0x7FFFFFFFull )
+    {
+        s.refusal = count_over_extent_cap;
+        return false;
+    }
     uint64_t seen[kTableStrictSeenWords];
     for ( int32_t w = 0; w < kTableStrictSeenWords; w++ ) { seen[w] = 0; }
     for ( uint64_t i = 0; i < count; i++ )
@@ -3741,7 +3792,10 @@ inline bool TableMessageSeenOnce( const TableMessageSeenBody & body, uint64_t re
         {
             const int32_t mid = ( kept + high ) / 2;
             if ( vocabulary.seen_starts[mid] <= at ) { kept = mid + 1; }
-            else { high = mid; }
+            else
+            {
+                high = mid;
+            }
         }
         if ( last < kept ) { entry->seen_below[last >> 6] |= uint64_t( 1 ) << ( last & 63 ); }
         TableMessageSeenKeepBelow( *entry, kept );
@@ -4100,12 +4154,12 @@ struct TableKeyed
     T & operator[]( E key )
     {
         RefuseKey( key );
-        return slots[ (int32_t) key - 1 ];
+        return slots[(int32_t) key - 1];
     }
     const T & operator[]( E key ) const
     {
         RefuseKey( key );
-        return slots[ (int32_t) key - 1 ];
+        return slots[(int32_t) key - 1];
     }
 
     // THE REFUSAL, and it stands in EVERY BUILD, AT BOTH ENDS. The storage
@@ -4146,15 +4200,27 @@ struct TableKeyed
     // generated corpus had: 536 headers and 986 KB, in a header whose whole
     // remaining set is 123. begin(), end() and size() need none of it.
 
-    struct Entry { E key; T & element; };
-    struct ConstEntry { E key; const T & element; };
+    struct Entry
+    {
+        E key;
+        T & element;
+    };
+    struct ConstEntry
+    {
+        E key;
+        const T & element;
+    };
 
     struct Iterator
     {
         T * slots;
         int32_t index; // the STORAGE index; the key it holds is index + 1
         Entry operator*() const { return Entry{ (E) ( index + 1 ), slots[index] }; }
-        Iterator & operator++() { index++; return *this; }
+        Iterator & operator++()
+        {
+            index++;
+            return *this;
+        }
         bool operator==( const Iterator & other ) const { return index == other.index; }
         bool operator!=( const Iterator & other ) const { return index != other.index; }
     };
@@ -4164,7 +4230,11 @@ struct TableKeyed
         const T * slots;
         int32_t index; // the STORAGE index; the key it holds is index + 1
         ConstEntry operator*() const { return ConstEntry{ (E) ( index + 1 ), slots[index] }; }
-        ConstIterator & operator++() { index++; return *this; }
+        ConstIterator & operator++()
+        {
+            index++;
+            return *this;
+        }
         bool operator==( const ConstIterator & other ) const { return index == other.index; }
         bool operator!=( const ConstIterator & other ) const { return index != other.index; }
     };
@@ -4208,8 +4278,16 @@ inline bool TableFloatFinite( double d ) { return TableBitsFinite64( table_doubl
 // float, the +0 bits for its -0 and the bits as held for any other value. A
 // plain float never comes here: its -0 is a value and rides bit-exact. The Go
 // oracle is internal/tabletext's StoredFloat.
-inline uint32_t TableStoredFloatBits( float f ) { const uint32_t b = table_float_to_bits( f ); return b == 0x80000000u ? 0u : b; }
-inline uint64_t TableStoredFloatBits( double d ) { const uint64_t b = table_double_to_bits( d ); return b == 0x8000000000000000ull ? 0u : b; }
+inline uint32_t TableStoredFloatBits( float f )
+{
+    const uint32_t b = table_float_to_bits( f );
+    return b == 0x80000000u ? 0u : b;
+}
+inline uint64_t TableStoredFloatBits( double d )
+{
+    const uint64_t b = table_double_to_bits( d );
+    return b == 0x8000000000000000ull ? 0u : b;
+}
 
 // THE FIXED FORM'S THREE REASON NAMES THE COOKED FORM ALSO SPELLS
 // (docs/FIXED-FORM-ALGORITHM.md §5.3, docs/SPEC-TABLES.md §3.4, §11): every
@@ -4660,10 +4738,32 @@ inline uint64_t TableFixedLoadNative( const uint8_t * src, uint32_t size )
     }
     switch ( size )
     {
-        case 1: { uint8_t t = 0; memcpy( &t, src, 1 ); v = t; break; }
-        case 2: { uint16_t t = 0; memcpy( &t, src, 2 ); v = t; break; }
-        case 4: { uint32_t t = 0; memcpy( &t, src, 4 ); v = t; break; }
-        case 8: { memcpy( &v, src, 8 ); break; }
+        case 1:
+        {
+            uint8_t t = 0;
+            memcpy( &t, src, 1 );
+            v = t;
+            break;
+        }
+        case 2:
+        {
+            uint16_t t = 0;
+            memcpy( &t, src, 2 );
+            v = t;
+            break;
+        }
+        case 4:
+        {
+            uint32_t t = 0;
+            memcpy( &t, src, 4 );
+            v = t;
+            break;
+        }
+        case 8:
+        {
+            memcpy( &v, src, 8 );
+            break;
+        }
         default: break;
     }
     return v;
@@ -4983,12 +5083,24 @@ inline bool TableFixedEntryTagArg( const TableFixedEntry & e, uint32_t tag,
         for ( int32_t j = 0; j < (int32_t) e.guard_count; ++j )
         {
             const TableFixedGuardLink & l = *(const TableFixedGuardLink *) (const void *) ( (const uint8_t *) guard_pool + e.guard_index + j * (int32_t) sizeof( TableFixedGuardLink ) );
-            if ( l.guard == tag ) { arg = (int64_t) l.arg; return true; }
+            if ( l.guard == tag )
+            {
+                arg = (int64_t) l.arg;
+                return true;
+            }
         }
         return false;
     }
-    if ( e.guard == tag ) { arg = (int64_t) e.arg; return true; }
-    if ( e.guard2 == tag ) { arg = (int64_t) e.arg2; return true; }
+    if ( e.guard == tag )
+    {
+        arg = (int64_t) e.arg;
+        return true;
+    }
+    if ( e.guard2 == tag )
+    {
+        arg = (int64_t) e.arg2;
+        return true;
+    }
     return false;
 }
 
@@ -5023,14 +5135,14 @@ inline bool TableFixedDeadSpan( const TableFixedEntry * plan, int32_t count, con
     {
         const TableFixedEntry & e = plan[i];
         if ( e.op == kTableFixedConst && e.src == tag_at && e.aux == 0 &&
-             TableFixedGuardHolds( e, src, guard_pool ) )
+            TableFixedGuardHolds( e, src, guard_pool ) )
         {
             lineage_union = true;
             if ( e.dstsize != 0 ) { arm_count = e.dstsize; }
         }
         else if ( e.op == kTableFixedCopy && e.aux != 0 &&
-                  e.src <= tag_at && (int64_t) e.src + (int64_t) e.size == arm &&
-                  TableFixedGuardHolds( e, src, guard_pool ) )
+            e.src <= tag_at && (int64_t) e.src + (int64_t) e.size == arm &&
+            TableFixedGuardHolds( e, src, guard_pool ) )
         {
             arm_count = e.aux;
         }
@@ -5043,12 +5155,16 @@ inline bool TableFixedDeadSpan( const TableFixedEntry * plan, int32_t count, con
             {
                 const TableFixedGuardLink & l = *(const TableFixedGuardLink *) (const void *) ( (const uint8_t *) guard_pool + e.guard_index + j * (int32_t) sizeof( TableFixedGuardLink ) );
                 if ( l.guard == tag_at ) { break; }
-                if ( TableFixedTagAt( src, l.guard, l.argw ) != l.arg ) { outer_ok = false; break; }
+                if ( TableFixedTagAt( src, l.guard, l.argw ) != l.arg )
+                {
+                    outer_ok = false;
+                    break;
+                }
             }
             if ( !outer_ok ) { continue; }
         }
         else if ( e.guard == tag_at && e.guard2 != kTableFixedNoGuard &&
-                  TableFixedTagAt( src, e.guard2, e.argw2 ) != e.arg2 )
+            TableFixedTagAt( src, e.guard2, e.argw2 ) != e.arg2 )
         {
             continue;
         }
@@ -5160,17 +5276,17 @@ inline bool TableFixedRefuseScan( const TableFixedEntry * plan, int32_t count, i
         {
             // guard2 is the OUTER tag of a two-lane entry, guard the inner one.
             const bool outer_holds = e.guard2 == kTableFixedNoGuard ||
-                                     TableFixedTagAt( src, e.guard2, e.argw2 ) == e.arg2;
+                TableFixedTagAt( src, e.guard2, e.argw2 ) == e.arg2;
             if ( outer_holds && e.guard != kTableFixedNoGuard && !TableFixedTagSeen( plan, i, e.guard, guard_pool ) &&
-                 !TableFixedInAbsentPayload( plan, count, src, (int64_t) e.guard ) &&
-                 !TableFixedDeadSpan( plan, count, src, e.guard, e.argw, guard_pool ) )
+                !TableFixedInAbsentPayload( plan, count, src, (int64_t) e.guard ) &&
+                !TableFixedDeadSpan( plan, count, src, e.guard, e.argw, guard_pool ) )
             {
                 why = wire_damaged;
                 return true;
             }
             if ( e.guard2 != kTableFixedNoGuard && !TableFixedTagSeen( plan, i, e.guard2, guard_pool ) &&
-                 !TableFixedInAbsentPayload( plan, count, src, (int64_t) e.guard2 ) &&
-                 !TableFixedDeadSpan( plan, count, src, e.guard2, e.argw2, guard_pool ) )
+                !TableFixedInAbsentPayload( plan, count, src, (int64_t) e.guard2 ) &&
+                !TableFixedDeadSpan( plan, count, src, e.guard2, e.argw2, guard_pool ) )
             {
                 why = wire_damaged;
                 return true;
@@ -7095,7 +7211,14 @@ inline int64_t SimStateMeasureBody( TableIds & ids, const SimState & value )
     if ( value.scale != 65536 ) { bytes += TableLebBytes( ids.ref_at( 11, 0x6aacb9fbb71a1d91ull ) ) + 1 + 4; } // scale
     {
         bool all_default_samples = true;
-        for ( int32_t i = 0; i < 3; i++ ) { if ( value.samples[i] != 0 ) { all_default_samples = false; break; } }
+        for ( int32_t i = 0; i < 3; i++ )
+        {
+            if ( value.samples[i] != 0 )
+            {
+                all_default_samples = false;
+                break;
+            }
+        }
         if ( !all_default_samples )
         {
             const uint64_t ref_samples = ids.ref_at( 27, 0xe3b1ca6a3b48dddcull );
@@ -7131,7 +7254,10 @@ inline int64_t SimStateMeasureBody( TableIds & ids, const SimState & value )
             const int64_t whole_axes = 1 + TableLebBytes( (uint64_t) pairs_axes ) + body_axes;
             bytes += TableLebBytes( ref_axes ) + 1 + TableLebBytes( (uint64_t) ( whole_axes ) ) + ( whole_axes ); // axes
         }
-        else { ids.truncate( mark_axes ); } // an ELIDED field costs nothing in the id table either
+        else
+        {
+            ids.truncate( mark_axes );
+        } // an ELIDED field costs nothing in the id table either
     }
     schema_assert( value.seeds_count >= 0 && value.seeds_count <= 2 ); // storage invariant, debug only (§5.1)
     if ( value.seeds_count > 0 )
@@ -7148,7 +7274,10 @@ inline int64_t SimStateMeasureBody( TableIds & ids, const SimState & value )
         const int64_t body_pose = PoseMeasureBody( ids, value.pose );
         if ( body_pose < 0 ) { return -1; }
         if ( body_pose > 1 ) { bytes += TableLebBytes( ref_pose ) + 1 + TableLebBytes( (uint64_t) ( body_pose ) ) + ( body_pose ); } // pose
-        else { ids.truncate( mark_pose ); } // an all-default nested table elides, and costs no entry
+        else
+        {
+            ids.truncate( mark_pose );
+        } // an all-default nested table elides, and costs no entry
     }
     if ( value.spawn_present ) // ?Pose: presence decides, not content
     {
@@ -7278,7 +7407,14 @@ SCALARDEMO_TABLE_INLINE bool SimStateSaveBody( TableWriter & w, TableIds & ids, 
     }
     {
         bool all_default_samples = true;
-        for ( int32_t i = 0; i < 3; i++ ) { if ( value.samples[i] != 0 ) { all_default_samples = false; break; } }
+        for ( int32_t i = 0; i < 3; i++ )
+        {
+            if ( value.samples[i] != 0 )
+            {
+                all_default_samples = false;
+                break;
+            }
+        }
         if ( !all_default_samples )
         {
             const uint64_t ref_samples = ids.ref_at( 27, 0xe3b1ca6a3b48dddcull );
@@ -7351,7 +7487,10 @@ SCALARDEMO_TABLE_INLINE bool SimStateSaveBody( TableWriter & w, TableIds & ids, 
                 w.put64( uint64_t( value.axes.slots[i] ) );
             }
         }
-        else { ids.truncate( mark_axes ); } // an ELIDED field costs nothing in the id table either
+        else
+        {
+            ids.truncate( mark_axes );
+        } // an ELIDED field costs nothing in the id table either
     }
     schema_assert( value.seeds_count >= 0 && value.seeds_count <= 2 ); // storage invariant, debug only (§5.1)
     if ( value.seeds_count > 0 )
@@ -7383,7 +7522,10 @@ SCALARDEMO_TABLE_INLINE bool SimStateSaveBody( TableWriter & w, TableIds & ids, 
             w.putleb( (uint64_t) body_pose ); // pose
             if ( !PoseSaveBody( w, ids, value.pose ) ) return false;
         }
-        else { ids.truncate( mark_pose ); }
+        else
+        {
+            ids.truncate( mark_pose );
+        }
     }
     if ( value.spawn_present ) // ?Pose
     {
@@ -8240,7 +8382,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                         if ( !TableEnumValue( r.ids->at( key_ref ), slot ) )
                         {
                             r.report->unknown++;
-                             // a slot this reader cannot name
+                            // a slot this reader cannot name
                             sub.offset += (int64_t) elem_len;
                             continue;
                         }
@@ -8659,7 +8801,14 @@ inline int64_t SimStateMeasureMessageBody( int64_t at, const SimState & value )
     }
     {
         bool rides_samples = false;
-        for ( int32_t i = 0; i < 3; i++ ) { if ( value.samples[i] != 0 ) { rides_samples = true; break; } }
+        for ( int32_t i = 0; i < 3; i++ )
+        {
+            if ( value.samples[i] != 0 )
+            {
+                rides_samples = true;
+                break;
+            }
+        }
         if ( rides_samples )
         {
             bits += kTableMessageRefBitsHere;
@@ -8750,7 +8899,10 @@ inline bool SimStateSaveMessageBody( TableBitWriter & w, const SimState & value 
     if ( value.reach != 0 )
     {
         w.put( 7, kTableMessageRefBitsHere );
-        { serialize::uint128_t raw_v = serialize::uint128_t( value.reach ) - ( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744008173551616ull ) ); w.put( uint64_t( raw_v ), 37 ); }
+        {
+            serialize::uint128_t raw_v = serialize::uint128_t( value.reach ) - ( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744008173551616ull ) );
+            w.put( uint64_t( raw_v ), 37 );
+        }
     }
     if ( value.ticks != 0 )
     {
@@ -8775,7 +8927,10 @@ inline bool SimStateSaveMessageBody( TableBitWriter & w, const SimState & value 
     if ( value.mass != 0 )
     {
         w.put( 12, kTableMessageRefBitsHere );
-        { serialize::uint128_t raw_v = serialize::uint128_t( value.mass ) - serialize::uint128_t( 0 ); w.put( uint64_t( raw_v ), 37 ); }
+        {
+            serialize::uint128_t raw_v = serialize::uint128_t( value.mass ) - serialize::uint128_t( 0 );
+            w.put( uint64_t( raw_v ), 37 );
+        }
     }
     if ( value.frames != 0 )
     {
@@ -8785,17 +8940,28 @@ inline bool SimStateSaveMessageBody( TableBitWriter & w, const SimState & value 
     if ( value.flux != 0 )
     {
         w.put( 14, kTableMessageRefBitsHere );
-        { serialize::uint128_t raw_v = serialize::uint128_t( value.flux ) - ( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ); w.put( uint64_t( raw_v ), 64 ); w.put( uint64_t( raw_v >> 64 ), 38 ); }
+        {
+            serialize::uint128_t raw_v = serialize::uint128_t( value.flux ) - ( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) );
+            w.put( uint64_t( raw_v ), 64 );
+            w.put( uint64_t( raw_v >> 64 ), 38 );
+        }
     }
     if ( value.energy != serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744073709551366ull ) ) )
     {
         w.put( 15, kTableMessageRefBitsHere );
-        { serialize::uint128_t raw_v = serialize::uint128_t( value.energy ) - ( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744068709551616ull ) ); w.put( uint64_t( raw_v ), 34 ); }
+        {
+            serialize::uint128_t raw_v = serialize::uint128_t( value.energy ) - ( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744068709551616ull ) );
+            w.put( uint64_t( raw_v ), 34 );
+        }
     }
     if ( value.entity_id != 0 )
     {
         w.put( 16, kTableMessageRefBitsHere );
-        { serialize::uint128_t raw_v = serialize::uint128_t( value.entity_id ) - serialize::uint128_t( 0 ); w.put( uint64_t( raw_v ), 64 ); w.put( uint64_t( raw_v >> 64 ), 64 ); }
+        {
+            serialize::uint128_t raw_v = serialize::uint128_t( value.entity_id ) - serialize::uint128_t( 0 );
+            w.put( uint64_t( raw_v ), 64 );
+            w.put( uint64_t( raw_v >> 64 ), 64 );
+        }
     }
     if ( value.scale != 65536 )
     {
@@ -8804,7 +8970,14 @@ inline bool SimStateSaveMessageBody( TableBitWriter & w, const SimState & value 
     }
     {
         bool rides_samples = false;
-        for ( int32_t i = 0; i < 3; i++ ) { if ( value.samples[i] != 0 ) { rides_samples = true; break; } }
+        for ( int32_t i = 0; i < 3; i++ )
+        {
+            if ( value.samples[i] != 0 )
+            {
+                rides_samples = true;
+                break;
+            }
+        }
         if ( rides_samples )
         {
             w.put( 18, kTableMessageRefBitsHere );
@@ -8857,7 +9030,11 @@ inline bool SimStateSaveMessageBody( TableBitWriter & w, const SimState & value 
         w.put( (uint64_t) ( value.seeds_count ) - 0, 2 );
         for ( int32_t i = 0; i < value.seeds_count; i++ )
         {
-            { serialize::uint128_t raw_v_2 = serialize::uint128_t( value.seeds[i] ) - serialize::uint128_t( 0 ); w.put( uint64_t( raw_v_2 ), 64 ); w.put( uint64_t( raw_v_2 >> 64 ), 64 ); }
+            {
+                serialize::uint128_t raw_v_2 = serialize::uint128_t( value.seeds[i] ) - serialize::uint128_t( 0 );
+                w.put( uint64_t( raw_v_2 ), 64 );
+                w.put( uint64_t( raw_v_2 >> 64 ), 64 );
+            }
         }
     }
     {
@@ -8964,8 +9141,8 @@ inline bool SimStateLoadMessageBody( TableBitReader & r, const TableVocabulary &
                     if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
-                        const uint64_t sign = uint64_t(1) << ( width - 1 );
-                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                        const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
+                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     const int64_t pre_clamp = decoded_wide;
                     if ( decoded_wide < -128ll )
@@ -9031,8 +9208,8 @@ inline bool SimStateLoadMessageBody( TableBitReader & r, const TableVocabulary &
                     if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
-                        const uint64_t sign = uint64_t(1) << ( width - 1 );
-                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                        const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
+                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     const int64_t pre_clamp = decoded_wide;
                     if ( decoded_wide < -11796480ll )
@@ -9098,8 +9275,8 @@ inline bool SimStateLoadMessageBody( TableBitReader & r, const TableVocabulary &
                     if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
-                        const uint64_t sign = uint64_t(1) << ( width - 1 );
-                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                        const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
+                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     const int64_t pre_clamp = decoded_wide;
                     if ( decoded_wide < -1966080000ll )
@@ -9226,8 +9403,8 @@ inline bool SimStateLoadMessageBody( TableBitReader & r, const TableVocabulary &
                     if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
-                        const uint64_t sign = uint64_t(1) << ( width - 1 );
-                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                        const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
+                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     const int64_t pre_clamp = decoded_wide;
                     if ( decoded_wide < 0ll )
@@ -9563,10 +9740,10 @@ inline bool SimStateLoadMessageBody( TableBitReader & r, const TableVocabulary &
                             }
                             if ( entry.packing != 1 && width > 0 && width < 64 )
                             {
-                                const uint64_t sign = uint64_t(1) << ( width - 1 );
-                                if ( ( raw & sign ) != 0 ) { raw = raw | ~( ( uint64_t(1) << width ) - 1 ); }
+                                const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
+                                if ( ( raw & sign ) != 0 ) { raw = raw | ~( ( uint64_t( 1 ) << width ) - 1 ); }
                             }
-                            serialize::uint128_t raw_v = ( serialize::uint128_t( (int64_t) raw < 0 ? ~uint64_t(0) : uint64_t(0) ) << 64 ) | serialize::uint128_t( raw );
+                            serialize::uint128_t raw_v = ( serialize::uint128_t( (int64_t) raw < 0 ? ~uint64_t( 0 ) : uint64_t( 0 ) ) << 64 ) | serialize::uint128_t( raw );
                             if ( entry.packing == 1 && !past ) { raw_v = raw_v + ( ( serialize::uint128_t( (uint64_t) entry.base_hi ) << 64 ) | serialize::uint128_t( (uint64_t) entry.base_lo ) ); }
                             serialize::int128_t decoded_v = serialize::int128_t( raw_v );
                             if ( decoded_v < serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ) )
@@ -9665,10 +9842,10 @@ inline bool SimStateLoadMessageBody( TableBitReader & r, const TableVocabulary &
                             }
                             if ( entry.packing != 1 && width > 0 && width < 64 )
                             {
-                                const uint64_t sign = uint64_t(1) << ( width - 1 );
-                                if ( ( raw & sign ) != 0 ) { raw = raw | ~( ( uint64_t(1) << width ) - 1 ); }
+                                const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
+                                if ( ( raw & sign ) != 0 ) { raw = raw | ~( ( uint64_t( 1 ) << width ) - 1 ); }
                             }
-                            serialize::uint128_t raw_v = ( serialize::uint128_t( (int64_t) raw < 0 ? ~uint64_t(0) : uint64_t(0) ) << 64 ) | serialize::uint128_t( raw );
+                            serialize::uint128_t raw_v = ( serialize::uint128_t( (int64_t) raw < 0 ? ~uint64_t( 0 ) : uint64_t( 0 ) ) << 64 ) | serialize::uint128_t( raw );
                             if ( entry.packing == 1 && !past ) { raw_v = raw_v + ( ( serialize::uint128_t( (uint64_t) entry.base_hi ) << 64 ) | serialize::uint128_t( (uint64_t) entry.base_lo ) ); }
                             serialize::int128_t decoded_v = serialize::int128_t( raw_v );
                             if ( decoded_v < serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744068709551616ull ) ) )
@@ -9849,8 +10026,8 @@ inline bool SimStateLoadMessageBody( TableBitReader & r, const TableVocabulary &
                     if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
-                        const uint64_t sign = uint64_t(1) << ( width - 1 );
-                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                        const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
+                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     const int64_t pre_clamp = decoded_wide;
                     if ( decoded_wide < -524288ll )
@@ -9904,7 +10081,11 @@ inline bool SimStateLoadMessageBody( TableBitReader & r, const TableVocabulary &
                     if ( count_bits > 0 )
                     {
                         uint64_t raw = 0;
-                        if ( !r.get( raw, count_bits ) ) { report->damaged = true; return false; }
+                        if ( !r.get( raw, count_bits ) )
+                        {
+                            report->damaged = true;
+                            return false;
+                        }
                         n = raw + (uint64_t) entry.min;
                     }
                     if ( entry.elem_kind == 6 && !r.align() )
@@ -9918,7 +10099,10 @@ inline bool SimStateLoadMessageBody( TableBitReader & r, const TableVocabulary &
                         kept = 3;
                         report->refused = true;
                         report->refuse_reason = out_of_range;
-                        } else { kept = (int32_t) n;
+                    }
+                    else
+                    {
+                        kept = (int32_t) n;
                     }
                     const int64_t surplus_bits = entry.elem_value_bits;
                     uint64_t walk = n;
@@ -9946,8 +10130,8 @@ inline bool SimStateLoadMessageBody( TableBitReader & r, const TableVocabulary &
                             if ( entry.elem_packing == 1 && !past_2 ) { decoded_wide_2 = (int64_t) ( raw_2 + (uint64_t) entry.elem_base_lo ); }
                             else if ( width_2 > 0 && width_2 < 64 )
                             {
-                                const uint64_t sign_2 = uint64_t(1) << ( width_2 - 1 );
-                                if ( ( raw_2 & sign_2 ) != 0 ) { decoded_wide_2 = (int64_t) ( raw_2 | ~( ( uint64_t(1) << width_2 ) - 1 ) ); }
+                                const uint64_t sign_2 = uint64_t( 1 ) << ( width_2 - 1 );
+                                if ( ( raw_2 & sign_2 ) != 0 ) { decoded_wide_2 = (int64_t) ( raw_2 | ~( ( uint64_t( 1 ) << width_2 ) - 1 ) ); }
                             }
                             if ( decoded_wide_2 < -524288ll )
                             {
@@ -10009,7 +10193,11 @@ inline bool SimStateLoadMessageBody( TableBitReader & r, const TableVocabulary &
                     if ( count_bits > 0 )
                     {
                         uint64_t raw = 0;
-                        if ( !r.get( raw, count_bits ) ) { report->damaged = true; return false; }
+                        if ( !r.get( raw, count_bits ) )
+                        {
+                            report->damaged = true;
+                            return false;
+                        }
                         n = raw + (uint64_t) entry.min;
                     }
                     if ( same_shape && n == 0 )
@@ -10028,7 +10216,10 @@ inline bool SimStateLoadMessageBody( TableBitReader & r, const TableVocabulary &
                         kept = 4;
                         report->refused = true;
                         report->refuse_reason = out_of_range;
-                        } else { kept = (int32_t) n;
+                    }
+                    else
+                    {
+                        kept = (int32_t) n;
                     }
                     const int64_t surplus_bits = entry.elem_value_bits;
                     uint64_t walk = n;
@@ -10162,8 +10353,8 @@ inline bool SimStateLoadMessageBody( TableBitReader & r, const TableVocabulary &
                             if ( entry.elem_packing == 1 && !past_2 ) { decoded_wide_2 = (int64_t) ( raw_2 + (uint64_t) entry.elem_base_lo ); }
                             else if ( width_2 > 0 && width_2 < 64 )
                             {
-                                const uint64_t sign_2 = uint64_t(1) << ( width_2 - 1 );
-                                if ( ( raw_2 & sign_2 ) != 0 ) { decoded_wide_2 = (int64_t) ( raw_2 | ~( ( uint64_t(1) << width_2 ) - 1 ) ); }
+                                const uint64_t sign_2 = uint64_t( 1 ) << ( width_2 - 1 );
+                                if ( ( raw_2 & sign_2 ) != 0 ) { decoded_wide_2 = (int64_t) ( raw_2 | ~( ( uint64_t( 1 ) << width_2 ) - 1 ) ); }
                             }
                             const int64_t pre_clamp_2 = decoded_wide_2;
                             if ( decoded_wide_2 < -429496729600ll )
@@ -10213,7 +10404,11 @@ inline bool SimStateLoadMessageBody( TableBitReader & r, const TableVocabulary &
                             if ( count_bits > 0 )
                             {
                                 uint64_t raw = 0;
-                                if ( !r.get( raw, count_bits ) ) { report->damaged = true; return false; }
+                                if ( !r.get( raw, count_bits ) )
+                                {
+                                    report->damaged = true;
+                                    return false;
+                                }
                                 n = raw + (uint64_t) entry.min;
                             }
                             if ( entry.elem_kind == 6 && !r.align() )
@@ -10227,7 +10422,10 @@ inline bool SimStateLoadMessageBody( TableBitReader & r, const TableVocabulary &
                                 kept = 2;
                                 report->refused = true;
                                 report->refuse_reason = out_of_range;
-                                } else { kept = (int32_t) n;
+                            }
+                            else
+                            {
+                                kept = (int32_t) n;
                             }
                             const int64_t surplus_bits = entry.elem_value_bits;
                             uint64_t walk = n;
@@ -10282,7 +10480,11 @@ inline bool SimStateLoadMessageBody( TableBitReader & r, const TableVocabulary &
                     if ( count_bits > 0 )
                     {
                         uint64_t raw = 0;
-                        if ( !r.get( raw, count_bits ) ) { report->damaged = true; return false; }
+                        if ( !r.get( raw, count_bits ) )
+                        {
+                            report->damaged = true;
+                            return false;
+                        }
                         n = raw + (uint64_t) entry.min;
                     }
                     if ( same_shape && n == 0 )
@@ -10301,7 +10503,10 @@ inline bool SimStateLoadMessageBody( TableBitReader & r, const TableVocabulary &
                         kept = 2;
                         report->refused = true;
                         report->refuse_reason = out_of_range;
-                        } else { kept = (int32_t) n;
+                    }
+                    else
+                    {
+                        kept = (int32_t) n;
                     }
                     const int64_t surplus_bits = entry.elem_value_bits;
                     uint64_t walk = n;
@@ -10404,7 +10609,11 @@ inline bool SimStateLoadMessageBody( TableBitReader & r, const TableVocabulary &
                 break;
             }
             default:
-                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
+                if ( vocabulary.build_version == BuildVersion )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 report->unknown++;
                 if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
@@ -10973,8 +11182,8 @@ inline bool PoseLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                     if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
-                        const uint64_t sign = uint64_t(1) << ( width - 1 );
-                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                        const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
+                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     const int64_t pre_clamp = decoded_wide;
                     if ( decoded_wide < -1966080000ll )
@@ -11040,8 +11249,8 @@ inline bool PoseLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                     if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
-                        const uint64_t sign = uint64_t(1) << ( width - 1 );
-                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                        const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
+                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     const int64_t pre_clamp = decoded_wide;
                     if ( decoded_wide < -1966080000ll )
@@ -11123,7 +11332,11 @@ inline bool PoseLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                 break;
             }
             default:
-                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
+                if ( vocabulary.build_version == BuildVersion )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 report->unknown++;
                 if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
@@ -11574,122 +11787,49 @@ constexpr uint8_t SimStateFixedLayout[] = {
     0x00, 0x03, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5, 0x63, 0xaf, 0x17, 0x08, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x15, 0x02, 0x86, 0x4c, 0xf4, 0x63, 0xaf, 0x17, 0x08,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x75, 0x0f, 0xca, 0x90, 0x91, 0x82, 0x28, 0xb1, 0x1b,
-    0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-};
+    0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 constexpr int64_t SimStateFixedLayoutBytes = (int64_t) sizeof( SimStateFixedLayout );
 
 // MY SIDE of the layout, one row per entry: the storage facts a layout
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst SimStateFixedDst[] = {
-    {
-        0, 0, 0, 0, 0
-    }, // SimState
-    {
-        0, 0, 0, 0, 0
-    }, // tilt
-    {
-        4, 0, 0, 0, 0
-    }, // angle
-    {
-        8, 0, 0, 0, 0
-    }, // position
-    {
-        16, 0, 0, 0, 0
-    }, // reach
-    {
-        32, 0, 0, 0, 0
-    }, // ticks
-    {
-        36, 0, 0, 0, 0
-    }, // ratio
-    {
-        40, 0, 0, 0, 0
-    }, // speed
-    {
-        48, 0, 0, 0, 0
-    }, // span
-    {
-        64, 0, 0, 0, 0
-    }, // mass
-    {
-        80, 0, 0, 0, 0
-    }, // frames
-    {
-        96, 0, 0, 0, 0
-    }, // flux
-    {
-        112, 0, 0, 0, 0
-    }, // energy
-    {
-        128, 0, 0, 0, 0
-    }, // entity_id
-    {
-        144, 0, 0, 0, 0
-    }, // scale
-    {
-        148, 4, 0, 0, 0
-    }, // samples
-    {
-        0, 0, 0, 0, 0
-    }, // element
-    {
-        160, 2, 168, 1, 0
-    }, // weights
-    {
-        0, 0, 0, 0, 0
-    }, // element
-    {
-        176, 8, 0, 0, 0
-    }, // axes
-    {
-        0, 0, 0, 0, 0
-    }, // Axis
-    {
-        0, 0, 0, 0, 0
-    }, // X
-    {
-        0, 0, 0, 0, 0
-    }, // Y
-    {
-        0, 0, 0, 0, 0
-    }, // Z
-    {
-        0, 0, 0, 0, 0
-    }, // element
-    {
-        208, 16, 240, 1, 0
-    }, // seeds
-    {
-        0, 0, 0, 0, 0
-    }, // element
-    {
-        248, 0, 0, 0, 0
-    }, // pose
-    {
-        0, 0, 0, 0, 0
-    }, // x
-    {
-        8, 0, 0, 0, 0
-    }, // y
-    {
-        16, 0, 0, 0, 0
-    }, // heading
-    {
-        0, 0, 296, 0, 0
-    }, // spawn ?
-    {
-        272, 0, 0, 0, 0
-    }, // spawn
-    {
-        0, 0, 0, 0, 0
-    }, // x
-    {
-        8, 0, 0, 0, 0
-    }, // y
-    {
-        16, 0, 0, 0, 0
-    }, // heading
+    { 0, 0, 0, 0, 0 }, // SimState
+    { 0, 0, 0, 0, 0 }, // tilt
+    { 4, 0, 0, 0, 0 }, // angle
+    { 8, 0, 0, 0, 0 }, // position
+    { 16, 0, 0, 0, 0 }, // reach
+    { 32, 0, 0, 0, 0 }, // ticks
+    { 36, 0, 0, 0, 0 }, // ratio
+    { 40, 0, 0, 0, 0 }, // speed
+    { 48, 0, 0, 0, 0 }, // span
+    { 64, 0, 0, 0, 0 }, // mass
+    { 80, 0, 0, 0, 0 }, // frames
+    { 96, 0, 0, 0, 0 }, // flux
+    { 112, 0, 0, 0, 0 }, // energy
+    { 128, 0, 0, 0, 0 }, // entity_id
+    { 144, 0, 0, 0, 0 }, // scale
+    { 148, 4, 0, 0, 0 }, // samples
+    { 0, 0, 0, 0, 0 }, // element
+    { 160, 2, 168, 1, 0 }, // weights
+    { 0, 0, 0, 0, 0 }, // element
+    { 176, 8, 0, 0, 0 }, // axes
+    { 0, 0, 0, 0, 0 }, // Axis
+    { 0, 0, 0, 0, 0 }, // X
+    { 0, 0, 0, 0, 0 }, // Y
+    { 0, 0, 0, 0, 0 }, // Z
+    { 0, 0, 0, 0, 0 }, // element
+    { 208, 16, 240, 1, 0 }, // seeds
+    { 0, 0, 0, 0, 0 }, // element
+    { 248, 0, 0, 0, 0 }, // pose
+    { 0, 0, 0, 0, 0 }, // x
+    { 8, 0, 0, 0, 0 }, // y
+    { 16, 0, 0, 0, 0 }, // heading
+    { 0, 0, 296, 0, 0 }, // spawn ?
+    { 272, 0, 0, 0, 0 }, // spawn
+    { 0, 0, 0, 0, 0 }, // x
+    { 8, 0, 0, 0, 0 }, // y
+    { 16, 0, 0, 0, 0 }, // heading
 };
 
 // THE IDENTITY PLAN, coalesced out of 27 leaves by the schema compiler —
@@ -11822,8 +11962,7 @@ constexpr uint8_t SimStateFixedKnown0Layout[] = {
     0x00, 0x03, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5, 0x63, 0xaf, 0x17, 0x08, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x15, 0x02, 0x86, 0x4c, 0xf4, 0x63, 0xaf, 0x17, 0x08,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x75, 0x0f, 0xca, 0x90, 0x91, 0x82, 0x28, 0xb1, 0x1b,
-    0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-};
+    0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 constexpr uint8_t SimStateFixedKnown1Layout[] = {
     0x24, 0x00, 0x00, 0x00, 0xc9, 0xf0, 0xa4, 0x99, 0x2d, 0x6b, 0x52, 0xde, 0x0d, 0xf3, 0x00, 0x00,
     0x00, 0x14, 0x00, 0x00, 0x00, 0xc6, 0xaf, 0x9b, 0x2e, 0xef, 0x88, 0x50, 0x1e, 0x14, 0x01, 0x00,
@@ -11863,8 +12002,7 @@ constexpr uint8_t SimStateFixedKnown1Layout[] = {
     0x00, 0x03, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5, 0x63, 0xaf, 0x17, 0x08, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x15, 0x02, 0x86, 0x4c, 0xf4, 0x63, 0xaf, 0x17, 0x08,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x75, 0x0f, 0xca, 0x90, 0x91, 0x82, 0x28, 0xb1, 0x1b,
-    0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-};
+    0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 constexpr TableFixedKnownLayout SimStateFixedKnown[] = {
     { 0xe3e0242d97626d75ull, SimStateFixedKnown0Layout, 616, 251 }, // lock
     { 0xea29e39895d60099ull, SimStateFixedKnown1Layout, 616, 251 }, // identity
@@ -11939,15 +12077,32 @@ inline int64_t SimStateFixedSave( const SimState * values, int64_t count, uint8_
 // different bytes is TableMessageReason::layout_malformed, a hash below the floor is
 // TableMessageReason::layout_unsupported. Identity is a PLAN walked by the same loop.
 // R4: every refusal leaves ALL `capacity` rows at their declared defaults, so a direct call
-// holds the same rule as FixedLoad. The walk is a lambda INSIDE this function, not a
-// function of its own: there is no second, unreset entry point a caller could reach.
+// holds the same rule as FixedLoad. The body below is the walk itself.
+inline int64_t SimStateFixedLoadWalkBody( SimState * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
 inline int64_t SimStateFixedLoadWalk( SimState * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
     const int64_t walked = [&]() -> int64_t
     {
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { SimStateReset( values[k] ); }
+        }
+        return -1;
+    }
+    return n;
+}
+
+// SimStateFixedLoadWalkBody is the STRICT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps
+// every recovered record, with the counters counted onto the report passed.
+inline int64_t SimStateFixedLoadWalkBody( SimState * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+{
+    TableReport local;
+    if ( report == NULL ) { report = &local; }
     // EVERY REFUSAL OF THE FIXED LOAD HAS A NAME, THE FRAMING-DAMAGE RETURNS
     // INCLUDED (docs/FIXED-FORM-ALGORITHM.md §5.3): a damage return keeps
     // malformed set BESIDE the name, so a caller switching on reason sees it.
@@ -11961,8 +12116,8 @@ inline int64_t SimStateFixedLoadWalk( SimState * values, int64_t capacity, const
     {
         report->refused = true;
         report->reason = data[0] == kTableWireForm ? TableMessageReason::previous_form
-                       : data[0] == kTableWireMessageForm ? TableMessageReason::message_form_as_file
-                       : TableMessageReason::newer_form;
+            : data[0] == kTableWireMessageForm     ? TableMessageReason::message_form_as_file
+                                                   : TableMessageReason::newer_form;
         return -1;
     }
     if ( bytes < kTableFixedHeaderBytes + 4 )
@@ -11976,7 +12131,12 @@ inline int64_t SimStateFixedLoadWalk( SimState * values, int64_t capacity, const
     // spendable later.
     for ( int32_t i = 1; i < kTableFixedHashAt; ++i )
     {
-        if ( data[i] != 0 ) { report->damaged = true; report->reason = TableFixedReason::reserved_not_zero; return -1; }
+        if ( data[i] != 0 )
+        {
+            report->damaged = true;
+            report->reason = TableFixedReason::reserved_not_zero;
+            return -1;
+        }
     }
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
     if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes )
@@ -11992,7 +12152,11 @@ inline int64_t SimStateFixedLoadWalk( SimState * values, int64_t capacity, const
     int32_t lineage_at = -1;
     for ( int32_t i = 0; i < SimStateFixedLineageCount; ++i )
     {
-        if ( SimStateFixedLineage[i] == hash ) { lineage_at = i; break; }
+        if ( SimStateFixedLineage[i] == hash )
+        {
+            lineage_at = i;
+            break;
+        }
     }
     if ( lineage_at < 0 )
     {
@@ -12015,7 +12179,9 @@ inline int64_t SimStateFixedLoadWalk( SimState * values, int64_t capacity, const
     const TableFixedKnownLayout & known = SimStateFixedKnown[lineage_at];
     if ( (int64_t) layout_bytes != known.layout_bytes || memcmp( layout, known.layout, (size_t) layout_bytes ) != 0 )
     {
-        report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1;
+        report->refused = true;
+        report->reason = TableMessageReason::layout_malformed;
+        return -1;
     }
     const TableFixedEntry * entries = SimStateFixedPlan;
     int32_t entry_count = SimStateFixedPlanCount;
@@ -12070,8 +12236,8 @@ inline int64_t SimStateFixedLoadWalk( SimState * values, int64_t capacity, const
             int32_t compiled_guarded = 0;
             uint32_t fill_at = 0;
             const int32_t made = TableFixedCompile( parsed, SimStateFixedLayout, (int32_t) SimStateFixedLayoutBytes, SimStateFixedDst,
-                                                   SimStateFixedCover, SimStateFixedCoverCount,
-                                                   dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
+                SimStateFixedCover, SimStateFixedCoverCount,
+                dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
             if ( made < 0 )
             {
                 report->refused = true;
@@ -12153,7 +12319,9 @@ inline int64_t SimStateFixedLoadWalk( SimState * values, int64_t capacity, const
         {
             for ( int64_t j = 0; j < k; ++j ) { SimStateReset( values[j] ); }
             report->widened = batch_widened;
-            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+            report->refused = true;
+            report->reason = TableMessageReason::no_layout;
+            return -1;
         }
         for ( int32_t i = 0; i < entry_count; ++i )
         {
@@ -12201,7 +12369,7 @@ inline int64_t SimStateFixedLoadWalk( SimState * values, int64_t capacity, const
         // the counters back to what they were before the batch.
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, SimStateFixedGuards, (const uint8_t *) &defaults );
         TableFixedClampKnownRanges( SimStateFixedKnownRanges[lineage_at], SimStateFixedKnownRangeCounts[lineage_at],
-                                    (uint8_t *) &values[k], report );
+            (uint8_t *) &values[k], report );
         if ( !SimStateFixedClamp( values[k], report ) )
         {
             for ( int64_t j = 0; j <= k; ++j ) { SimStateReset( values[j] ); }
@@ -12227,7 +12395,7 @@ inline int64_t SimStateFixedLoadWalk( SimState * values, int64_t capacity, const
 // them, on EVERY refusal (R4), so no partial value survives. A supplied report receives THIS
 // read's report. unknown and widened alone never refuse.
 inline int64_t SimStateFixedLoad( SimState * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     TableReport * out = report != NULL ? report : &local;
@@ -12235,7 +12403,10 @@ inline int64_t SimStateFixedLoad( SimState * values, int64_t capacity, const uin
     const int64_t n = SimStateFixedLoadWalk( values, capacity, data, bytes, plan, plan_capacity, cache, out );
     if ( n < 0 || out->damaged || out->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { SimStateReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { SimStateReset( values[k] ); }
+        }
         return -1;
     }
     return n;

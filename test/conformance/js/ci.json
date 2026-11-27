@@ -1,2 +1,3 @@
 {"targets": "build/conformance-harness build/tables-generated-js/.stamp",
+ "runtime": "serialize.js", "runtime_tag": "SERIALIZE_JS_TAG",
  "node": "26", "env": "NODE=node"}

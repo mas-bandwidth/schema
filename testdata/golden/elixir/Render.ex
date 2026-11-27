@@ -84,6 +84,10 @@ defmodule Example.Render do
   """
   @spec write_render_sprite!(Example.RenderSprite.t()) :: binary()
   def write_render_sprite!(value) do
+    if not is_struct(value, Example.RenderSprite) do
+      raise ArgumentError, "value is not a RenderSprite"
+    end
+
     %{
       sort_key: value_sort_key,
       mesh_id: value_mesh_id,
@@ -281,6 +285,10 @@ defmodule Example.Render do
   """
   @spec write_render_block!(Example.RenderBlock.t()) :: binary()
   def write_render_block!(value) do
+    if not is_struct(value, Example.RenderBlock) do
+      raise ArgumentError, "value is not a RenderBlock"
+    end
+
     %{
       worker_index: value_worker_index,
       sprite_count_hint: value_sprite_count_hint,
@@ -317,6 +325,11 @@ defmodule Example.Render do
     v = value_sprite_count_hint &&& 0xFFFFFFFF
     sc0 = scratch
     scratch = v
+
+    if not is_list(value_sprites) do
+      raise ArgumentError, "value.sprites is not a list"
+    end
+
     n = length(value_sprites)
 
     if n > 64 do
@@ -414,6 +427,10 @@ defmodule Example.Render do
   defp wZrender_blockZsprites([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
   defp wZrender_blockZsprites([e | rest], data, scratch, scratch_bits) do
+    if not is_struct(e, Example.RenderSprite) do
+      raise ArgumentError, "e is not a RenderSprite"
+    end
+
     %{
       sort_key: e_sort_key,
       mesh_id: e_mesh_id,

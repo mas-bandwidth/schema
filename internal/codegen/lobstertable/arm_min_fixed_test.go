@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 )
 
 // A COUNTED [A..B] HOLDS A INSIDE A UNION ARM (ruling R10): the fixed form's
@@ -24,7 +24,7 @@ func TestLobsterUnionArmCountedMinimum(t *testing.T) {
 	g := finiteGenerate(t, string(schema))
 	inputs := map[string][]byte{}
 	for _, n := range []string{"armmin_fix_count_0", "armmin_fix_count_1"} {
-		b, err := os.ReadFile("../../../testdata/wire/tables/framing/" + n + ".bin")
+		b, err := os.ReadFile("../../../testdata/conformance/tables/wire/" + n + ".bin")
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -18,7 +18,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // t04Has is a required substring of a source, named by rule.
@@ -26,6 +26,14 @@ func t04Has(t *testing.T, src, want, what string) {
 	t.Helper()
 	if !strings.Contains(src, want) {
 		t.Errorf("%s: the source does not carry %q", what, want)
+	}
+}
+
+// t04Lacks is a forbidden substring of a source, named by rule.
+func t04Lacks(t *testing.T, src, unwanted, what string) {
+	t.Helper()
+	if strings.Contains(src, unwanted) {
+		t.Errorf("%s: the source still carries %q", what, unwanted)
 	}
 }
 
@@ -183,17 +191,17 @@ func t04R10(t *testing.T) {
 // tests, retired by name": the four forward-read clamps (count across bounds,
 // range across versions, remap of an unknown variant to None, drop-and-count of
 // an unknown field) are retired — the cross-version half is now a refusal by
-// the lineage, `layout_newer`, before any record is decoded.
+// the lineage, `layout_unknown`, before any record is decoded.
 func t04R15(t *testing.T) {
 	t04Has(t, fixedRuntimeBody, "def select(known, floor, hash, layout) do", "R15 the reader matches the file's hash against the lineage")
-	t04Has(t, fixedRuntimeBody, "{:error, :layout_newer, hash}", "R15 a hash in no lineage entry is layout_newer")
-	t04Has(t, fixedRuntimeBody, "nil ->\n        {:error, :layout_newer, hash}", "R15 the refusal precedes any walk")
+	t04Has(t, fixedRuntimeBody, "{:error, :layout_unknown, hash}", "R15 a hash in no lineage entry is layout_unknown")
+	t04Has(t, fixedRuntimeBody, "nil ->\n        {:error, :layout_unknown, hash}", "R15 the refusal precedes any walk")
 	// THE FOUR FORWARD-READ CLAMPS ARE RETIRED: the cross-version half is the
 	// refusal above, so no plan entry clamps a count across a version, remaps an
 	// unknown variant to None, or drops-and-counts an unknown field FORWARD. The
 	// runtime's one count clamp is the reader's own bound within a version, and
 	// the one unknown census is the backward drop the landing rules count.
-	if strings.Contains(fixedRuntimeBody, "defp forward") || strings.Contains(fixedRuntimeBody, "layout_newer, report") {
+	if strings.Contains(fixedRuntimeBody, "defp forward") || strings.Contains(fixedRuntimeBody, "layout_unknown, report") {
 		t.Error("R15: a forward-read clamp survives the retired-runtime row")
 	}
 }
@@ -284,8 +292,8 @@ fixed table T
 // ---- elixir/R20 -------------------------------------------------------------
 
 // t04R20 holds elixir/R20 to the landing rules: an added field lands its
-// declared default (the prefill image the plan does not write), a deprecated
-// field is dropped and counted once under `unknown` per plan, a narrower
+// declared default (the prefill image the plan does not write), a removed
+// writer field makes the entry unlawful and refused layout_malformed, a narrower
 // integer or float is widened exactly and counted, a shorter array or string
 // lands with the reader's slack as template zeros, and an older enum's
 // ordinals are the reader's.
@@ -309,11 +317,14 @@ fixed table T
 	text := t04Emitted(t, u)
 	t04Has(t, text, "@t_prefill", "R20 the declared defaults ride the emitted prefill")
 
-	// A DEPRECATED FIELD IS DROPPED AND COUNTED ONCE UNDER `unknown` PER PLAN:
-	// the census flag counts a writer's field once PER FIELD PER ENDPOINT, so only the
-	// first slot of an array element censuses.
-	t04Has(t, fixedRuntimeBody, "nil -> if census, do: bump(report, :unknown), else: report", "R20 a dropped field counts once per field per endpoint")
-	t04Has(t, fixedRuntimeBody, "def census(report, unknown, _mismatch)", "R20 the unknown census is per plan")
+	// A WRITER FIELD NO READER FIELD NAMES IS UNLAWFUL, REFUSED AND NEVER
+	// COUNTED (docs/FIXED-FORM-ALGORITHM.md §5.4, §5.9 #30; the Go reference's
+	// tableFixedChildrenNamed): the compile marks the entry unlawful in EVERY
+	// slot, and the lane refuses layout_malformed. (A deprecated field keeps its
+	// slot and its name, so it is named and never reaches this branch.)
+	t04Has(t, fixedRuntimeBody, "nil -> Map.update(report, :unlawful, 1, &(&1 + 1))", "R20 an unnamed writer field marks the entry unlawful")
+	t04Has(t, fixedRuntimeBody, "{:ok, _plan, _made, %{unlawful: n}} when n > 0 ->\n            # AN UNLAWFUL ENTRY IS REFUSED, NEVER COUNTED (§5.4): no plan is laid\n            # for it, and a file under its hash refuses layout_malformed.\n            {:error, :layout_malformed}", "R20 an unlawful entry's lane refuses layout_malformed")
+	t04Lacks(t, fixedRuntimeBody, "bump(report, :unknown)", "R20 no writer field is censused under unknown")
 
 	// A NARROWER INTEGER OR FLOAT IS WIDENED EXACTLY AND WIDENED COUNTS: the
 	// widen step sign-extends at the reader's width and bumps the counter; the

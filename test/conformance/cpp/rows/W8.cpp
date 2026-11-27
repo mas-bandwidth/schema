@@ -84,7 +84,7 @@ void bytes_n_takes_array_row()
     const int64_t loaded = tblw1::VesselFixedLoad( &back, 1, out.data(), (int64_t) out.size(),
                                                    plan.data(), 256, NULL, &r );
     
-    check( loaded == 1 && !r.refused && !r.malformed,
+    check( loaded == 1 && !r.refused && !r.damaged,
            "Record loads successfully" );
     check( back.tag_length == 2,
            "Loaded tag_length is 2" );

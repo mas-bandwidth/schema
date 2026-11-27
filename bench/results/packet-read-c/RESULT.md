@@ -117,8 +117,8 @@ outside the window, with the build edited in `tmp/` only and nothing committed.
 The gate is `go test -count=1 -timeout 600s ./bench/paired/ ./internal/ci/`, run on amd-2 at
 b339d6545:
 
-- `ok  github.com/mas-bandwidth/schema/v2/bench/paired 2.213s`
-- `ok  github.com/mas-bandwidth/schema/v2/internal/ci 0.923s`
+- `ok  github.com/mas-bandwidth/schema/v3/bench/paired 2.213s`
+- `ok  github.com/mas-bandwidth/schema/v3/internal/ci 0.923s`
 
 `go run ./bench/tools/shapegate` is clean: 46 files carry shape knowledge and every one is on the
 ledger.

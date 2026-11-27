@@ -14,8 +14,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/genheader"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/genheader"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // generateFixedFiles emits the fixed form for every unit file that declares a
@@ -111,6 +111,7 @@ type fixedModule struct {
 	gen      fixedGen
 	loopSeq  int
 	body     strings.Builder
+	msgSlots *messageSlotIndex // built on first use: messageSlots
 }
 
 func newFixedModule(u *ir.Unit, f *ir.File, base string, home bool, homeBase string,
@@ -242,6 +243,15 @@ func fixedDeclaringFile(u *ir.Unit, name string) string {
 // class keeps its tag in a plain int. Every other union is the packet
 // emitter's class, whose tag is the <Union>Type extension type.
 func unionStorageIsLocal(un *ir.Union) bool {
+	// A TABLE-CLOSURE UNION (ir.Union.TableClosureOnly: an arm that is an
+	// enum, a flags mask, a pointer, an array, a scalar, a union or a table)
+	// assembles beside the decl stream, so internal/codegen/dart never meets
+	// it and declares no class for it: its storage is this emitter's. An enum
+	// arm (`union U { mode kind }` reached from a table) once fell through to
+	// the packet class and left U, zeroU and UType undefined in <Base>Fixed.dart.
+	if un.TableClosureOnly() {
+		return true
+	}
 	for _, v := range un.Variants {
 		if v.F == nil {
 			return true // §2.6: fixed storage owns the tag-only arm, with no member.
@@ -512,7 +522,7 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("/// THE CURRENT ONE LAST (§5.2). A file is matched on its header's hash\n")
 	g.pf("/// against these and on nothing else; the layout it carries is COMPARED\n")
 	g.pf("/// with the bytes the lock recorded and never parsed. A hash no entry holds\n")
-	g.pf("/// is `layout_newer` — ship the reader.\n")
+	g.pf("/// is `layout_unknown` (§5.3 step 5).\n")
 	g.pf("%s", fixedFormatOff)
 	g.pf("final List<TableFixedKnownLayout> %sFixedKnown = <TableFixedKnownLayout>[\n", lower)
 	for _, e := range entries {
@@ -527,7 +537,7 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("%s\n", fixedFormatOn)
 	g.pf("/// THE FLOOR: 1 + the highest RETIRED index, 0 when none is (§5.2). Below\n")
 	g.pf("/// it a layout this build once served is retired and the answer is\n")
-	g.pf("/// `layout_unsupported` — upgrade the client — rather than `layout_newer`.\n")
+	g.pf("/// `layout_unsupported` — upgrade the client — rather than `layout_unknown`.\n")
 	g.pf("const int %sFixedFloor = %d;\n\n", lower, floor)
 	g.pf("/// ONE PLAN PER LINEAGE ENTRY, built from THE LOCK'S bytes the first time\n")
 	g.pf("/// this list is read and never again (§5.9 #3): nothing on the load path\n")
@@ -702,9 +712,9 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.call("  ", "final hash = ", "view.getUint64",
 		[]string{"TableFixedLimits.hashAt", "Endian.little"}, ";")
 	// STEP 5 and STEP 6: SELECT BY HASH, then the floor. Outside the lineage is
-	// layout_newer — ship the reader; below the floor is layout_unsupported —
+	// layout_unknown (§5.3 step 5); below the floor is layout_unsupported —
 	// upgrade the client. BOTH report the FILE'S hash (§5.9 #7), and
-	// layout_newer reports it AND NOTHING ELSE.
+	// layout_unknown reports it AND NOTHING ELSE.
 	g.pf("  // THE LINEAGE SELECT (§5.3 steps 5 and 6): the header's hash is taken as\n")
 	g.pf("  // GIVEN — the digest is not on the wire, so it cannot be re-derived from a\n")
 	g.pf("  // file — and it is matched against the layouts THE LOCK recorded. Nothing\n")
@@ -712,7 +722,7 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("  final pick = tableFixedSelect(%sFixedKnown, hash);\n", lower)
 	g.pf("  if (pick < 0) {\n")
 	g.pf("    report.layoutHash = hash;\n")
-	g.pf("    report.refused = TableFixedRefusal.layoutNewer;\n    return refuse();\n  }\n")
+	g.pf("    report.refused = TableFixedRefusal.layoutUnknown;\n    return refuse();\n  }\n")
 	g.pf("  if (pick < %sFixedFloor) {\n", lower)
 	g.pf("    report.layoutHash = hash;\n")
 	g.pf("    report.refused = TableFixedRefusal.layoutUnsupported;\n    return refuse();\n  }\n")
@@ -946,6 +956,11 @@ func (g *fixedModule) emitBlockValidateElem(f *ir.Field, expr, ind string, depth
 			g.emitBlockValidateStruct(r, expr, ind, depth+1)
 		case *ir.Enum:
 			g.pf("%sif (%s < 0 || %s > %d) return -1;\n", ind, expr, expr, len(r.Variants))
+			// §2.15 WRITE: a deprecated variant is never written, held as a
+			// DEBUG assert (SPEC.md §5.1) as the variable and fixed saves hold it
+			if cond := enumNotDeprecated(r, expr); cond != "" {
+				g.pf("%sassert(%s, 'deprecated variant is never written (SPEC-TABLES 2.15)');\n", ind, cond)
+			}
 		case *ir.Flags:
 			if len(r.Variants) < 64 {
 				mask := (uint64(1) << uint(len(r.Variants))) - 1
@@ -1067,11 +1082,18 @@ func (g *fixedModule) assemble() []byte {
 	}
 	sort.Strings(bases)
 	for _, b := range bases {
-		names := make([]string, 0, len(g.imports[b]))
+		all := make([]string, 0, len(g.imports[b]))
 		for s := range g.imports[b] {
-			names = append(names, s)
+			all = append(all, s)
 		}
-		sort.Strings(names)
+		sort.Strings(all)
+		names, prefixed := splitEnumShows(g.unit, all)
+		if prefixed {
+			h.WriteString(enumPrefixImport(b + ".dart"))
+		}
+		if len(names) == 0 {
+			continue
+		}
 		list := strings.Join(names, ", ")
 		one := fmt.Sprintf("import '%s.dart' show %s;", b, list)
 		if len(one) <= 80 {

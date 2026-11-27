@@ -79,7 +79,7 @@ static uint8_t * slurp( const char * path, size_t * out )
         uint8_t * message = NULL; size_t message_bytes = 0; \
         uint8_t * announce = NULL; size_t announce_bytes = 0; \
         TYPE value; \
-        TableReport report; \
+        backenddemo_table_report_t report; \
         int64_t need, written; \
         uint8_t saved[2048]; \
         \
@@ -99,11 +99,11 @@ static uint8_t * slurp( const char * path, size_t * out )
         \
         /* reverse: message form -> variable form */ \
         { \
-            TableMessageEntry entries[kTableMessageEntriesHere]; \
-            TableVocabulary vocabulary = table_vocabulary( entries, kTableMessageEntriesHere ); \
+            backenddemo_table_message_entry_t entries[BACKENDDEMO_K_TABLE_MESSAGE_ENTRIES_HERE]; \
+            backenddemo_table_vocabulary_t vocabulary = backenddemo_table_vocabulary( entries, BACKENDDEMO_K_TABLE_MESSAGE_ENTRIES_HERE ); \
             int64_t count = 1; \
             memset( &report, 0, sizeof( report ) ); \
-            check( announce_read( &vocabulary, announce, (int64_t) announce_bytes, &report ), label ": read announcement" ); \
+            check( backenddemo_announce_read( &vocabulary, announce, (int64_t) announce_bytes, &report ), label ": read announcement" ); \
             memset( &value, 0, sizeof( value ) ); \
             FN##_reset( &value ); \
             check( FN##_load_messages( &value, &count, &vocabulary, message, (int64_t) message_bytes, &report ), label ": load message form" ); \
@@ -121,37 +121,37 @@ static uint8_t * slurp( const char * path, size_t * out )
 
 int main( void )
 {
-    P2_ONE_DIRECTION( LoginRequest, login_request,
+    P2_ONE_DIRECTION( backenddemo_login_request_t, backenddemo_login_request,
                       "testdata/wire/tables/login_full.bin",
                       "testdata/wire/tables/login_full_message.bin",
                       "testdata/wire/tables/backend_conn.bin",
                       "P2 login_full" );
 
-    P2_ONE_DIRECTION( LoginRequest, login_request,
+    P2_ONE_DIRECTION( backenddemo_login_request_t, backenddemo_login_request,
                       "testdata/wire/tables/login_default.bin",
                       "testdata/wire/tables/login_default_message.bin",
                       "testdata/wire/tables/backend_conn.bin",
                       "P2 login_default" );
 
-    P2_ONE_DIRECTION( MatchResult, match_result,
+    P2_ONE_DIRECTION( backenddemo_match_result_t, backenddemo_match_result,
                       "testdata/wire/tables/match_full.bin",
                       "testdata/wire/tables/match_full_message.bin",
                       "testdata/wire/tables/backend_conn.bin",
                       "P2 match_full" );
 
-    P2_ONE_DIRECTION( MatchResult, match_result,
+    P2_ONE_DIRECTION( backenddemo_match_result_t, backenddemo_match_result,
                       "testdata/wire/tables/match_default.bin",
                       "testdata/wire/tables/match_default_message.bin",
                       "testdata/wire/tables/backend_conn.bin",
                       "P2 match_default" );
 
-    P2_ONE_DIRECTION( StorePurchase, store_purchase,
+    P2_ONE_DIRECTION( backenddemo_store_purchase_t, backenddemo_store_purchase,
                       "testdata/wire/tables/store_full.bin",
                       "testdata/wire/tables/store_full_message.bin",
                       "testdata/wire/tables/backend_conn.bin",
                       "P2 store_full" );
 
-    P2_ONE_DIRECTION( StorePurchase, store_purchase,
+    P2_ONE_DIRECTION( backenddemo_store_purchase_t, backenddemo_store_purchase,
                       "testdata/wire/tables/store_default.bin",
                       "testdata/wire/tables/store_default_message.bin",
                       "testdata/wire/tables/backend_conn.bin",

@@ -56,12 +56,6 @@ walk_block = fn mod, info_fun, block ->
   BlockDump.dump(block.base, info)
 end
 
-# ---- build the open/walk pairs ----
-mods =
-  for {_name, mod, _root, _path} <- fixtures do
-    mod
-  end
-
 # ---- the three mutation shapes (§7 item 5) ----
 mutate_flip = fn bytes ->
   size = byte_size(bytes)
@@ -95,26 +89,41 @@ iterations = String.to_integer(System.get_env("P3_ITERATIONS", "5000"))
 # 3. RuntimeError — deliberate refusal with a sentence (the walk's own refusal)
 # ANY OTHER EXCEPTION IS THE FAILURE.
 
+# The reasons Open may name (internal/codegen/gotable/refusal.go, the
+# generated block_open_reason_<root>/2): a refusal names exactly one.
+reasons = [:unaligned_base, :truncated, :foreign_order, :not_a_cook, :wrong_build_version, :bad_layout]
+
 results =
-  Enum.reduce(Enum.zip(images, mods), {0, 0, []}, fn {bytes, mod}, {opened_acc, refused_acc, errors_acc} ->
-    # Find the open and info functions for this module
-    funcs = mod.__info__(:functions)
+  Enum.reduce(Enum.zip(fixtures, images), {0, 0, []}, fn {{name, mod, root, _path}, bytes}, {opened_acc, refused_acc, errors_acc} ->
+    # The fixture NAMES its root: open, reason and info are that root's own
+    # functions, never whichever block_open_* a module happens to list last
+    # (the reason function shares the prefix and answers :ok or an atom).
+    open_fun = :"block_open_#{root}"
+    reason_fun = :"block_open_reason_#{root}"
+    info_fun = :"block_info_#{root}"
 
-    {open_fun, info_fun} =
-      Enum.reduce(funcs, {nil, nil}, fn {f, arity}, {of, inf} ->
-        name = Atom.to_string(f)
-        cond do
-          String.starts_with?(name, "block_open_") and arity == 2 ->
-            {f, inf}
-          String.starts_with?(name, "block_info_") and arity == 0 ->
-            {of, f}
-          true ->
-            {of, inf}
+    missing =
+      for {f, a} <- [{open_fun, 2}, {reason_fun, 2}, {info_fun, 0}], not function_exported?(mod, f, a),
+          do: "#{f}/#{a}"
+
+    # POSITIVE CONTROL: the unmutated image opens at lead 0 and walks, so
+    # a sweep that refuses everything is not mistaken for a sweep that held.
+    control =
+      if missing == [] do
+        case open_block.(mod, open_fun, bytes, 0) do
+          {:ok, block} ->
+            walk_block.(mod, info_fun, block)
+            if apply(mod, reason_fun, [bytes, 0]) == :ok, do: [], else: ["#{name}: the unmutated image opens but its reason is not :ok"]
+
+          other ->
+            ["#{name}: the unmutated image does not open at lead 0: #{inspect(other)}"]
         end
-      end)
+      else
+        []
+      end
 
-    if open_fun == nil or info_fun == nil do
-      {opened_acc, refused_acc, ["#{mod}: no block_open_/2 or block_info_/0 found" | errors_acc]}
+    if missing != [] do
+      {opened_acc, refused_acc, ["#{mod}: no #{Enum.join(missing, ", ")} for root #{root}" | errors_acc]}
     else
       {o, r, e} =
         Enum.reduce(1..iterations, {0, 0, []}, fn i, {o, r, e} ->
@@ -123,14 +132,22 @@ results =
           lead = :rand.uniform(65) - 1
 
           try do
+            reason = apply(mod, reason_fun, [mutant, lead])
+
             case open_block.(mod, open_fun, mutant, lead) do
               :error ->
-                {o, r + 1, e}
+                # a refusal names its reason, one of the closed set
+                if reason in reasons,
+                  do: {o, r + 1, e},
+                  else: {o, r, ["mutant #{i} lead #{lead}: open refused, reason #{inspect(reason)} is not a named refusal" | e]}
 
               {:ok, block} ->
                 # OPENED: every accessor must stay inside the buffer
                 walk_block.(mod, info_fun, block)
-                {o + 1, r, e}
+
+                if reason == :ok,
+                  do: {o + 1, r, e},
+                  else: {o, r, ["mutant #{i} lead #{lead}: open opened, reason says #{inspect(reason)}" | e]}
             end
           rescue
             _ in RuntimeError ->
@@ -147,7 +164,7 @@ results =
           end
         end)
 
-      {opened_acc + o, refused_acc + r, e ++ errors_acc}
+      {opened_acc + o, refused_acc + r, e ++ control ++ errors_acc}
     end
   end)
 

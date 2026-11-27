@@ -9,8 +9,9 @@ package ctable
 //     partly filled;
 //   - each read zeroes the caller's report first, so refused, refuse_reason and
 //     unknown never carry over from an earlier read;
-//   - a fixed-form batch checks every record's hash before landing any, so a
-//     mismatch at record k leaves values[0..k-1] untouched.
+//   - a fixed-form batch checks every record's hash before landing any, and
+//     a mismatch at record k refuses the whole load with EVERY row handed in
+//     back at its declared defaults (SPEC-TABLES §6.5), never left as it was.
 
 import "testing"
 
@@ -91,7 +92,9 @@ int main( void )
     memset( &r, 0, sizeof( r ) );
     n = rec_fixed_load( out, 3, file, bytes, plan, 4096, NULL, &r );
     EXPECT( n == -1 && r.refused, "hash mismatch refuses" );
-    EXPECT( out[0].a == 99 && out[1].a == 99 && out[2].a == 99, "a hash mismatch at record 2 landed no record" );
+    EXPECT( r.unknown == 0 && r.widened == 0, "a hash mismatch moved no counter" );
+    EXPECT( out[0].a == 0 && out[1].a == 0 && out[2].a == 0 && out[0].big == 0 && out[2].small == 0,
+            "a hash mismatch at record 2 left every row at its declared defaults, not the caller's 99" );
 
     return failed;
 }

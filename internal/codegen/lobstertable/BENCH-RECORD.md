@@ -25,4 +25,4 @@ All five fleet hosts (amd-1, amd-2, amd-3, hetzner1, hetzner2) answered SSH
 from the studio on 2026-11-07; the earlier publickey-refusal note no longer
 holds. DONE-WHEN at head: `make dist-lobster`, then
 `SCHEMA_SLOW=1 go test -count=1 -timeout 600s ./internal/codegen/lobstertable/`
--> `ok github.com/mas-bandwidth/schema/v2/internal/codegen/lobstertable 74.724s`.
+-> `ok github.com/mas-bandwidth/schema/v3/internal/codegen/lobstertable 74.724s`.

@@ -4,10 +4,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/tablecook"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/internal/tablewire"
 	"os"
 	"strconv"
 	"strings"
@@ -144,7 +144,7 @@ func TestTimestampClosureElixir(t *testing.T) {
  enum Key { A, B }
  union When { value Clock }
  table Clock { at timestamp }
- table Integer { at int64 }
+ table Ticks { at int64 }
  table Empty { other int32 }
  table Root {
   points []Clock
@@ -217,7 +217,7 @@ func TestTimestampClosureElixir(t *testing.T) {
    other -> Probe.check(false,"integer cannot widen into timestamp "<>inspect(other))
   end
  end
- case T.load("Integer",clock) do
+ case T.load("Ticks",clock) do
   {:error,_,r} -> Probe.check(r.reason != "" and r.widened==0,"timestamp cannot widen into integer "<>inspect(r))
   other -> Probe.check(false,"timestamp cannot widen into integer "<>inspect(other))
  end

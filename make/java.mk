@@ -833,9 +833,9 @@ build/java-fixedform/.stamp: build/tables-generated-java/.stamp test/java-fixedf
 # writer's caller contracts are DEBUG ONLY, so -ea proves they fire and the
 # default proves they are gone and the bytes are still the reference's.
 .PHONY: tables-java-fixedform
-tables-java-fixedform: build/java-fixedform/.stamp build/fixedform-corpus/.stamp
-	$(JAVA) -ea -cp build/java-fixedform Main build/fixedform-corpus
-	$(JAVA)     -cp build/java-fixedform Main build/fixedform-corpus
+tables-java-fixedform: build/retiredskips build/java-fixedform/.stamp build/fixedform-corpus/.stamp
+	./build/retiredskips -leg java -- $(JAVA) -ea -cp build/java-fixedform Main build/fixedform-corpus
+	./build/retiredskips -leg java -- $(JAVA)     -cp build/java-fixedform Main build/fixedform-corpus
 
 # THE VERSIONING HALF OF THE FIXED FORM ON THE JAVA LEG (§5 of
 # docs/FIXED-FORM-ALGORITHM.md, the rows of docs/FIXED-FORM-VERSIONING-TESTS.md).
@@ -844,7 +844,7 @@ tables-java-fixedform: build/java-fixedform/.stamp build/fixedform-corpus/.stamp
 # and the floor, hash and lineage-merge files — generates ONE JAVA PROBE PER ROW
 # PER COLUMN (§5.9 #18) beside this leg's own generator, compiles it with this
 # leg's `javac` and runs it: NEW-READS-OLD lands every old value with §5.4's
-# counters, and OLD-REFUSES-NEW answers `layout_newer` before any record, on the
+# counters, and OLD-REFUSES-NEW answers `layout_unknown` before any record, on the
 # file's hash alone (§5.3).
 #
 # THIS TARGET EXISTS BECAUSE `go test ./...` ASSERTS NOTHING HERE. The harness
@@ -961,8 +961,17 @@ test-java: tables-java-json-differential
 # little-endian and big-endian cooked images byte-for-byte.
 .PHONY: tables-java-block-build
 tables-java-block-build:
-	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
-		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run '^TestBlockBuildAndCookWriteJava$$'
+	@mkdir -p build/java-block-build
+	@SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run '^TestBlockBuildAndCookWriteJava$$' \
+		> build/java-block-build/log 2>&1 || { grep -E -- '--- FAIL|_test.go:' build/java-block-build/log | head -40; tail -20 build/java-block-build/log; exit 1; }
+	@if grep -q -- '--- SKIP' build/java-block-build/log; then \
+		echo "tables-java-block-build: a test SKIPPED under SCHEMA_REQUIRE_CORPUS=1"; grep -- '--- SKIP' build/java-block-build/log; exit 1; \
+	fi
+	@grep -q -- '--- PASS: TestBlockBuildAndCookWriteJava ' build/java-block-build/log || \
+		{ echo "tables-java-block-build: TestBlockBuildAndCookWriteJava did not run to a PASS"; tail -20 build/java-block-build/log; exit 1; }
+	@grep -q -- '--- PASS: TestBlockBuildAndCookWriteJava/cook_refusal_debug_negative_control ' build/java-block-build/log || \
+		{ echo "tables-java-block-build: the cook count negative control did not run to a PASS"; tail -20 build/java-block-build/log; exit 1; }
 	@echo 'tables Java block builder and cook writer: block_render, block_padded and cook-write match the committed reference bytes'
 
 test-java: tables-java-block-build
@@ -987,9 +996,9 @@ tables-java-variable-class:
 # green, which is the failure the Go and Rust legs' own controls are for.
 #
 # WHAT IT SABOTAGES is §5.3's one verdict: a file whose hash matches no entry of
-# the lock's lineage is refused BY THE NAME `layoutNewer`, carrying the hash, and
-# that name is the entire answer — it is what tells an operator to ship a newer
-# reader instead of suspecting the bytes. The overlay puts `noLayout` there, the
+# the lock's lineage is refused BY THE NAME `layoutUnknown`, carrying the hash, and
+# that name is the entire answer: a hash this build's lineage does not hold
+# (§5.3 step 5), not a damaged file. The overlay puts `noLayout` there, the
 # name for a file with no layout at all. Every counter still reads refused, so
 # only a suite that checks the NAME can see it, and this control requires the
 # suite to go red and to say which name it wanted.
@@ -1015,10 +1024,10 @@ tables-java-versioning-negative-control: tables-fixedform-corpus
 		echo "NEGATIVE CONTROL FAILED: the wrong name for a file outside the lineage left §5 green"; \
 		tail -20 $(JAVA_VERSIONING_SABOTAGE)/log; exit 1; \
 	fi
-	@grep -q "want a refusal named layoutNewer" $(JAVA_VERSIONING_SABOTAGE)/log || \
+	@grep -q "want a refusal named layoutUnknown" $(JAVA_VERSIONING_SABOTAGE)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: §5 went red, but not on the refusal name this control is for"; \
 		  tail -20 $(JAVA_VERSIONING_SABOTAGE)/log; exit 1; }
-	@grep -m1 "want a refusal named layoutNewer" $(JAVA_VERSIONING_SABOTAGE)/log
+	@grep -m1 "want a refusal named layoutUnknown" $(JAVA_VERSIONING_SABOTAGE)/log
 	@echo 'negative control: the wrong refusal name for a file outside the lineage reds the Java versioning gate'
 
 # THE KEYED ACCESSOR, Java side (docs/SPEC-TABLES.md §2.4, docs/PORTING.md M5).
@@ -1082,6 +1091,28 @@ tables-java-keyed-negative-control:
 		grep -m1 -- "$$red" $$d/log; \
 		echo "negative control: dropping the $$end bound reds the keyed accessor on that end only"; \
 	done
+
+# A DEPRECATED VARIANT IS NEVER WRITTEN, Java side (docs/SPEC-TABLES.md §2.15
+# WRITE): under -ea the variable, fixed and message saves throw on `Old` and
+# write `Fierce`, scalar and element (tables/examples MoodField, Moods). The
+# negative control drops each writer's assert in turn and wants exactly that
+# writer's refusal lines red. EACH test must run to its own PASS.
+.PHONY: tables-java-deprecated-write
+tables-java-deprecated-write:
+	@mkdir -p build/java-deprecated
+	@SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run '^TestJavaDeprecatedVariant(NeverWritten|NegativeControl)$$' \
+		> build/java-deprecated/log 2>&1 || { grep -E -- '--- FAIL|_test.go:' build/java-deprecated/log | head -40; exit 1; }
+	@if grep -q -- '--- SKIP' build/java-deprecated/log; then \
+		echo "tables-java-deprecated-write: a test SKIPPED under SCHEMA_REQUIRE_CORPUS=1"; grep -- '--- SKIP' build/java-deprecated/log; exit 1; \
+	fi
+	@grep -q -- '--- PASS: TestJavaDeprecatedVariantNeverWritten ' build/java-deprecated/log || \
+		{ echo "tables-java-deprecated-write: TestJavaDeprecatedVariantNeverWritten did not run to a PASS"; tail -20 build/java-deprecated/log; exit 1; }
+	@grep -q -- '--- PASS: TestJavaDeprecatedVariantNegativeControl ' build/java-deprecated/log || \
+		{ echo "tables-java-deprecated-write: TestJavaDeprecatedVariantNegativeControl did not run to a PASS"; tail -20 build/java-deprecated/log; exit 1; }
+	@grep 'negative control: with the' build/java-deprecated/log
+	@echo 'tables Java: every binary writer refuses a deprecated variant and writes the live one (§2.15)'
+test-java: tables-java-deprecated-write
 
 # FINITE TABLE FLOATS, Java side (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27:
 # "Tables go finite-only too, same rule as packets"): every read refuses a NaN
@@ -1730,6 +1761,7 @@ build/conformance-java/.stamp: build/tables-generated-java/.stamp test/conforman
 		build/tables-generated-java/m1/*.java build/tables-generated-java/m2/*.java \
 		build/tables-generated-java/a1/*.java build/tables-generated-java/a2/*.java \
 		build/tables-generated-java/g1/*.java \
+		build/tables-generated-java/fx1/*.java build/tables-generated-java/fx2/*.java build/tables-generated-java/ut/*.java \
 		build/tables-generated-java/k1/*.java build/tables-generated-java/k2/*.java \
 		build/tables-generated-java/backend/*.java build/tables-generated-java/vocab/*.java \
 		build/tables-generated-java/vocab9/*.java \
@@ -1805,7 +1837,7 @@ conformance-java-absent-negative-control: build/conformance-harness build-confor
 # replays.
 JAVA_WIRE_FUZZ_N ?= $(N)
 JAVA_WIRE_FUZZ_DRIVER = $(JAVA) -cp $(CURDIR)/build/conformance-java TablesWireFuzz
-JAVA_RETAIN_VECTORS := retain_declared_default:graphdemo:Scene retain_node_record_unknown:graphdemo:Scene retain_node_flags:tblw1:Fleet retain_count_over_length_refused:listdemo:Mixed retain_scalar_array_default:mapdemo:Cells retain_map_emptied_unplaced:listdemo:Army pointer_index_past_numbering:streamdemo:Feed pointer_tail_unreadable_clean:streamdemo:Feed node_reference_kind_judged_as_read:blobdemo:Catalog node_reference_above_int64:graphdemo:Scene map_key_past_entry_body:mapdemo:Cells map_key_ill_formed_text:mapdemo:Cells ../widelist_wide:widelist:Wide
+JAVA_RETAIN_VECTORS := retain_declared_default:graphdemo:Scene retain_node_record_unknown:graphdemo:Scene retain_node_flags:tblw1:Fleet retain_count_over_length_refused:listdemo:Mixed retain_scalar_array_default:mapdemo:Cells retain_map_emptied_unplaced:listdemo:Army pointer_index_past_numbering:streamdemo:Feed pointer_tail_unreadable_clean:streamdemo:Feed node_reference_kind_judged_as_read:blobdemo:Catalog node_reference_above_int64:graphdemo:Scene map_key_past_entry_body:mapdemo:Cells map_key_ill_formed_text:mapdemo:Cells ../widelist_wide:widelist:Wide ../retain_fixed_union_array_none:messagedemo:ToolEnvelope
 # THE PLAIN ARM'S JAVA-ONLY VECTORS: a keyed header and a map header whose foreign
 # element kind carries a count spelled past the field's L (docs/SPEC-TABLES.md §2.9, §3.2):
 # the oracle reads the count against the parent and counts one kind_mismatch,
@@ -2433,7 +2465,7 @@ tables-java-view: bin/schema test/java-view/View.java
 		mkdir -p build/java-view/src-$$pkg; \
 		{ echo "package view_$$pkg;"; sed "s/^import tabledemo\.\*; \/\/ UNIT$$/import $$pkg.*; \/\/ UNIT/" test/java-view/View.java; } > build/java-view/src-$$pkg/View.java; \
 		grep -q "^import $$pkg\.\*; // UNIT$$" build/java-view/src-$$pkg/View.java || { echo "tables-java-view: the unit import was not rewritten for $$pkg"; exit 1; } \
-	) & pids="$$pids $$!"; done; for pid in $$pids; do wait $$pid; done
+	) & pids="$$pids $$!"; done; rc=0; for pid in $$pids; do wait $$pid || rc=1; done; exit $$rc
 	@# ONE javac for every unit (each unit's package is its own, and each View
 	@# copy sits in a package of its own, view_<unit>): fourteen JVMs compiling
 	@# side by side were most of this gate's time on a four-core slot.
@@ -2444,7 +2476,7 @@ tables-java-view: bin/schema test/java-view/View.java
 	@# perf-data files for the listing JVMs to keep stdout byte-exact.
 	@set -e; pids=""; for entry in $(VIEW_CORPUS); do pkg=$${entry##*:}; \
 		$(JAVA) -XX:-UsePerfData -cp build/java-view/classes view_$$pkg.View > build/java-view/$$pkg.listing & pids="$$pids $$!"; \
-	done; for pid in $$pids; do wait $$pid; done
+	done; rc=0; for pid in $$pids; do wait $$pid || rc=1; done; exit $$rc
 	SCHEMA_VIEW_LISTING_DIR="$(CURDIR)/build/java-view" go test -count=1 -timeout 600s ./internal/viewlisting -run TestUnitViewListingMatchesTheIR
 	@mkdir -p build/java-view/negative
 	@awk '!done && / doc=[^ ]/ { sub(/ doc=/, " doc=X"); done = 1 } { print }' build/java-view/tabledemo.listing > build/java-view/negative/tabledemo.listing
@@ -2671,6 +2703,24 @@ packet-end-java-negative-control: packet-end-java
 	@echo 'packet end Java negative control: a removed end check accepts a trailing byte'
 
 test-java: packet-end-java packet-end-java-negative-control
+
+# THE PACKET-VOID LEG (SPEC §4.8; make/checks/packet-void.mk): payload-free
+# union arms cost exactly their tag bits. The driver answers every case of
+# testdata/wire/packet-void/cases.txt through tools/casegate, with -ea (the
+# writer's contract asserts live) and without.
+build/packet-void/java/.stamp: bin/schema test/packet-void/Void.schema make/java.mk
+	@rm -rf build/packet-void/java/gen build/packet-void/java/classes
+	./bin/schema generate --lang java --out build/packet-void/java/gen $(PACKET_VOID_SCHEMA)
+	@touch $@
+
+.PHONY: packet-void-java
+packet-void-java: build/casegate build/packet-void/java/.stamp
+	@mkdir -p build/packet-void/java/classes
+	$(JAVAC) --release 17 -Xlint:all -Werror -d build/packet-void/java/classes build/packet-void/java/gen/*.java test/packet-void/java/Main.java
+	$(call packet_void_gate,java) $(JAVA) -ea -cp build/packet-void/java/classes Main $(PACKET_VOID_PINS)
+	$(call packet_void_gate,java) $(JAVA) -cp build/packet-void/java/classes Main $(PACKET_VOID_PINS)
+
+test-java: packet-void-java
 
 # Declaration-free transport IDs: run the legal and noncanonical vectors
 # through both public load paths, then plant a bypass of the order check.

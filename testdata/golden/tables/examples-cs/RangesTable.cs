@@ -105,6 +105,7 @@ namespace Tabledemo
 
         public static bool RangedSignedCollectTyped(RangedSigned v, ref TableWire.Ids ids)
         {
+            System.Diagnostics.Debug.Assert((object)v != null, "a null RangedSigned is written");
             TableFieldInfo[] fields = RangedSignedTableType().Fields;
             if (v.I8Span != 0 && !ids.Add(0x48121511bf702eb5ul)) return false;
             if (v.I8Low != 0 && !ids.Add(0x942bfe3168090f7dul)) return false;
@@ -325,6 +326,7 @@ namespace Tabledemo
 
         public static bool RangedUnsignedCollectTyped(RangedUnsigned v, ref TableWire.Ids ids)
         {
+            System.Diagnostics.Debug.Assert((object)v != null, "a null RangedUnsigned is written");
             TableFieldInfo[] fields = RangedUnsignedTableType().Fields;
             if (v.U8Span != 0 && !ids.Add(0x0f8897557f37c021ul)) return false;
             if (v.U8Low != 0 && !ids.Add(0x2e17553f8200a2a1ul)) return false;
@@ -533,6 +535,7 @@ namespace Tabledemo
 
         public static bool RangedWidthsCollectTyped(RangedWidths v, ref TableWire.Ids ids)
         {
+            System.Diagnostics.Debug.Assert((object)v != null, "a null RangedWidths is written");
             if (v.B8 != 0 && !ids.Add(0x08a60c07b54d8dc7ul)) return false;
             if (v.B16 != 0 && !ids.Add(0xff95701912ad97beul)) return false;
             if (v.B32 != 0 && !ids.Add(0xff9c5c1912b39470ul)) return false;
@@ -864,6 +867,7 @@ namespace Tabledemo
         // which is also what zero-fills every byte of declared slack.
         public static void RangedSignedFixedWriteBody(Span<byte> b, RangedSigned value)
         {
+            System.Diagnostics.Debug.Assert(value != null, "a null RangedSigned is written");
             if (value == null) return;
             b[0] = unchecked((byte)value.I8Span);
             b.Slice(1)[0] = unchecked((byte)value.I8Low);
@@ -891,6 +895,7 @@ namespace Tabledemo
         // which is also what zero-fills every byte of declared slack.
         public static void RangedUnsignedFixedWriteBody(Span<byte> b, RangedUnsigned value)
         {
+            System.Diagnostics.Debug.Assert(value != null, "a null RangedUnsigned is written");
             if (value == null) return;
             b[0] = unchecked((byte)value.U8Span);
             b.Slice(1)[0] = unchecked((byte)value.U8Low);
@@ -918,6 +923,7 @@ namespace Tabledemo
         // which is also what zero-fills every byte of declared slack.
         public static void RangedWidthsFixedWriteBody(Span<byte> b, RangedWidths value)
         {
+            System.Diagnostics.Debug.Assert(value != null, "a null RangedWidths is written");
             if (value == null) return;
             BinaryPrimitives.WriteUInt32LittleEndian(b, (uint)value.B8);
             BinaryPrimitives.WriteUInt32LittleEndian(b.Slice(4), (uint)value.B16);
@@ -1526,7 +1532,7 @@ namespace Tabledemo
 
         // THE FLOOR: below it a layout this build once served is RETIRED, and the
         // answer is layout_unsupported — upgrade the client — rather than
-        // layout_newer, which is ship the reader (§5.2).
+        // layout_unknown, a hash outside the lineage (§5.2, §5.3 step 5).
         public const int RangedSignedFixedFloor = 0;
 
         // ONE PLAN PER LINEAGE ENTRY, laid down from THE LOCK'S bytes in this
@@ -1679,7 +1685,7 @@ namespace Tabledemo
             int pick = TableFixedWire.Select(RangedSignedFixedKnown, hash);
             if (pick < 0)
             {
-                if (report != null) { report.Refused = true; report.Reason = "layout_newer"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }
+                if (report != null) { report.Refused = true; report.Reason = "layout_unknown"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
             if (pick < RangedSignedFixedFloor)
@@ -2309,7 +2315,7 @@ namespace Tabledemo
 
         // THE FLOOR: below it a layout this build once served is RETIRED, and the
         // answer is layout_unsupported — upgrade the client — rather than
-        // layout_newer, which is ship the reader (§5.2).
+        // layout_unknown, a hash outside the lineage (§5.2, §5.3 step 5).
         public const int RangedUnsignedFixedFloor = 0;
 
         // ONE PLAN PER LINEAGE ENTRY, laid down from THE LOCK'S bytes in this
@@ -2459,7 +2465,7 @@ namespace Tabledemo
             int pick = TableFixedWire.Select(RangedUnsignedFixedKnown, hash);
             if (pick < 0)
             {
-                if (report != null) { report.Refused = true; report.Reason = "layout_newer"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }
+                if (report != null) { report.Refused = true; report.Reason = "layout_unknown"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
             if (pick < RangedUnsignedFixedFloor)
@@ -2990,7 +2996,7 @@ namespace Tabledemo
 
         // THE FLOOR: below it a layout this build once served is RETIRED, and the
         // answer is layout_unsupported — upgrade the client — rather than
-        // layout_newer, which is ship the reader (§5.2).
+        // layout_unknown, a hash outside the lineage (§5.2, §5.3 step 5).
         public const int RangedWidthsFixedFloor = 0;
 
         // ONE PLAN PER LINEAGE ENTRY, laid down from THE LOCK'S bytes in this
@@ -3135,7 +3141,7 @@ namespace Tabledemo
             int pick = TableFixedWire.Select(RangedWidthsFixedKnown, hash);
             if (pick < 0)
             {
-                if (report != null) { report.Refused = true; report.Reason = "layout_newer"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }
+                if (report != null) { report.Refused = true; report.Reason = "layout_unknown"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
             if (pick < RangedWidthsFixedFloor)

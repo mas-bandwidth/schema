@@ -31,10 +31,10 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/csharp"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/csharp"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 const (
@@ -216,7 +216,7 @@ func t10BuildAndRun(t *testing.T) ([]byte, error) {
 	dir := t.TempDir()
 	var calls []string
 	for i, p := range t10Probes() {
-		u := unitFrom(t, csVersionSuffix(p.src, fmt.Sprintf("t10_%d", i)))
+		u := unitFrom(t, csVersionSuffix(p.src, fmt.Sprintf("t10n%d", i)))
 		pk, err := csharp.Generate(u)
 		if err != nil {
 			t.Fatal(err)

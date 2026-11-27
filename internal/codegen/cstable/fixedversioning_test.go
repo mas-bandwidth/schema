@@ -10,7 +10,7 @@ package cstable
 //	                 them zero, because an append the reader knows is not an
 //	                 event.
 //	OLD-REFUSES-NEW  the older reader given the widened writer's file refuses
-//	                 `layout_newer` BEFORE any record, reporting THE FILE'S HASH
+//	                 `layout_unknown` BEFORE any record, reporting THE FILE'S HASH
 //	                 and nothing else, with no counter moved and the refused
 //	                 verdict (§5.3's joint answer), and the destination still every
 //	                 field of a fresh value.
@@ -55,13 +55,13 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/check"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/csharp"
-	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/check"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/csharp"
+	"github.com/mas-bandwidth/schema/v3/internal/parser"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/ir"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 // ---- the rows ---------------------------------------------------------------
@@ -579,13 +579,13 @@ func csVersionOldRefusesNew(r csVersionRow) string {
             {
                 bad += ProbeLog.Fail(@NAME@, "the older reader did not refuse the newer writer's file: n=" + n);
             }
-            if (r.Reason != "layout_newer")
+            if (r.Reason != "layout_unknown")
             {
-                bad += ProbeLog.Fail(@NAME@, "a hash in no lineage entry owes layout_newer, not " + r.Reason);
+                bad += ProbeLog.Fail(@NAME@, "a hash in no lineage entry owes layout_unknown, not " + r.Reason);
             }
             if (r.LayoutHash != want)
             {
-                bad += ProbeLog.Fail(@NAME@, "layout_newer reports THE FILE'S hash: 0x" + want.ToString("x16") + ", not 0x" + r.LayoutHash.ToString("x16"));
+                bad += ProbeLog.Fail(@NAME@, "layout_unknown reports THE FILE'S hash: 0x" + want.ToString("x16") + ", not 0x" + r.LayoutHash.ToString("x16"));
             }
             if (r.Verdict != Schema.TableWire.Verdict.Refused)
             {
@@ -638,13 +638,13 @@ func csVersionHashUnknown() string {
             TableReport r = new TableReport();
             TableFixedEntry[] plan = new TableFixedEntry[8192];
             long n = Schema.@TABLE@FixedLoad(back, data, plan, r);
-            if (n != -1 || r.Reason != "layout_newer")
+            if (n != -1 || r.Reason != "layout_unknown")
             {
-                bad += ProbeLog.Fail(@NAME@, "a hash in no lineage entry owes layout_newer: n=" + n + " reason=" + r.Reason);
+                bad += ProbeLog.Fail(@NAME@, "a hash in no lineage entry owes layout_unknown: n=" + n + " reason=" + r.Reason);
             }
             if (r.LayoutHash != want)
             {
-                bad += ProbeLog.Fail(@NAME@, "layout_newer reports THE FILE'S hash and nothing else");
+                bad += ProbeLog.Fail(@NAME@, "layout_unknown reports THE FILE'S hash and nothing else");
             }
             if (r.Verdict != Schema.TableWire.Verdict.Refused)
             {

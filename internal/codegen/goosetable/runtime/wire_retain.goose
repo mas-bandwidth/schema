@@ -464,16 +464,28 @@ fn retain_tail(c: SaveCtx&, rec: i64) {
 
 // ---- the three verbs (§6.6) ----
 
-// load_table_retain is load_table with retention on: it resets the caller's
-// stores and keeps what this build cannot name. A fixed-class root carries no
-// retention (§6.6): it is refused (-1, report.refused). At a declared fixed
-// table past the record ceiling, which has no file form (§1, §3.4), a form-1
-// file is refused by name, previous_form, as load_table refuses it.
-fn load_table_retain(unit: LoadUnit, root: const u8[:], data: const u8[:], vals: LoadVal[>..]&, nodes: LoadNode[>..]&, report: LoadReport&, store: RetainStore&) -> i64 {
+// retain_reset empties the caller's stores: what the records hold, the
+// directory and the retained ids' list.
+fn retain_reset(store: RetainStore&) {
     store.used = 0;
     store.bytes.clear();
     store.recs.clear();
     store.ids.clear();
+}
+
+// load_table_retain is load_table with retention on: it resets the caller's
+// stores and keeps what this build cannot name. A REFUSED LOAD LEAVES THE
+// STORES EMPTY (§6.6, A REFUSED LOADRETAIN): a body refused mid-read has
+// already captured the records before the damage, and they are cleared with
+// the refusal, so no later save writes them. A fixed-class root carries no
+// retention (§6.6): it is refused (-1, report.refused). At a declared fixed
+// table past the record ceiling, which has no file form (§1, §3.4), a form-1
+// file is refused by name, previous_form, as load_table refuses it. Its
+// first act zeroes the caller's report in full, as load_with does, so the
+// fixed-class refusal leaves nothing a previous read put there (§6.5).
+fn load_table_retain(unit: LoadUnit, root: const u8[:], data: const u8[:], vals: LoadVal[>..]&, nodes: LoadNode[>..]&, report: LoadReport&, store: RetainStore&) -> i64 {
+    report = LoadReport { .. };
+    retain_reset(store);
     for t in unit.tables {
         if t.name == root && !t.variable {
             report.refused = true;
@@ -481,7 +493,9 @@ fn load_table_retain(unit: LoadUnit, root: const u8[:], data: const u8[:], vals:
             return -1;
         }
     }
-    return load_with(unit, root, data, vals, nodes, report, store, true);
+    let rec = load_with(unit, root, data, vals, nodes, report, store, true);
+    if rec < 0 { retain_reset(store); }
+    return rec;
 }
 
 // retain_last_short is the byte capacity ONE BYTE SHORT OF THE LAST RECORD a

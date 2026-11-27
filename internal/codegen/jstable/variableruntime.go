@@ -79,6 +79,7 @@ function TableVariableRefuseNonFinite() {
 // a float's payload at its kind's width; false (refused) for a non-finite one
 // or one outside the range its declaration admits (§5.1 row 10)
 function TableVariableWriteFloat(w, d, v) {
+  if (typeof v !== "number") { return false; }
   if (!TableVariableFiniteFloat(d.f32, v)) { return TableVariableRefuseNonFinite(); }
   if (!TableVariableFloatValid(d, v)) { return false; }
   v = TableVariableStoredFloat(d, v);
@@ -248,8 +249,13 @@ function TableVariableRetainNodePath(v) {
 
 // the pointer and blob edges of one node's by-value closure, in the walk's
 // order: fields in declaration order, array elements in index order, a nested
-// table or a table element descended in place
+// table or a table element descended in place. A record is an object:
+// anything else in a record's place (null where no optional admits it, a
+// number, a string) is the invalid edge the numbering refuses as
+// invalid_value, never a property read off a value that has none
+// (docs/SPEC-CONFORMANCE.md DW-TABLE-SHAPE).
 function TableVariableEdges(c, v, out, everyGuard) {
+  if (v === null || typeof v !== "object") { out.push({ invalid: true }); return out; }
   for (const fd of c.fields) { TableVariableFieldEdges(fd, v, out, everyGuard); }
   return out;
 }
@@ -365,10 +371,17 @@ function TableVariableWriteInt(w, width, v) {
 }
 
 // an enum value's reference: the variant name's id, 0 for None, and -1 for a
-// value no variant names, which the save refuses (§5)
+// value no variant names, which the save refuses (§5). A DEPRECATED variant is
+// never written (§2.15 WRITE): it answers -1 as well, so the variable save
+// refuses it in every build, as the text writer does (TableVariableJsonScalar)
 function TableVariableEnumRef(e, ids, val) {
   if (val === null || val === "None") { return 0; }
-  for (const [name, id] of e.vs) { if (name === val) { return ids.ref(id); } }
+  for (const [name, id] of e.vs) {
+    if (name === val) {
+      if (e.dp !== undefined && e.dp.includes(name)) { return -1; }
+      return ids.ref(id);
+    }
+  }
   return -1;
 }
 
@@ -419,6 +432,7 @@ function TableVariableWriteField(fd, w, ids, nodes, v, retain, path) {
       if (val !== fd.def) { TableVariableHeader(w, ids, fd, fd.k); TableVariableWriteInt(w, fd.kw, val); }
       return true;
     case "float":
+      if (typeof val !== "number") { return false; }
       if (!TableVariableFiniteFloat(fd.f32, val)) { return TableVariableRefuseNonFinite(); }
       if (!TableVariableSameFloat(fd.f32, TableVariableStoredFloat(fd, val), fd.def)) {
         TableVariableHeader(w, ids, fd, fd.k);
@@ -968,13 +982,13 @@ function TableVariableResolve(st, report) {
     }
     const from = st.graphFrom.slice(), to = st.graphTo.slice();
     for (const e of TableVariableEdges(st.rootCodec, st.root, [], true)) {
-      if (!e.blob) { from.push(0); to.push(nodeAt.get(e.val)); }
+      if (!e.blob && !e.invalid) { from.push(0); to.push(nodeAt.get(e.val)); }
     }
     for (let i = 0; i < st.nodes.length; i++) {
       const n = st.nodes[i];
       if (n !== null && n.kind === "t") {
         for (const e of TableVariableEdges(n.codec, n.v, [], true)) {
-          if (!e.blob) { from.push(i + 1); to.push(nodeAt.get(e.val)); }
+          if (!e.blob && !e.invalid) { from.push(i + 1); to.push(nodeAt.get(e.val)); }
         }
       }
     }
@@ -2247,6 +2261,9 @@ function TableVariableJsonField(fd, val, depth, g, out) {
     case "map": return TableVariableJsonMap(fd, val, depth, g, out);
     case "keyed": return TableVariableJsonKeyed(fd, val, depth, g, out);
     case "arr": {
+      // an array or a text list, an empty [] included, is a container the
+      // depth cap counts, as the read counts it (SPEC-TABLES §16.14 W2)
+      if (depth > 128) { return false; }
       if (!TableVariableArrayValid(fd, val)) { return false; }
       if (fd.tl && !TableVariableTextListValid(fd, val)) { return false; }
       const n = TableVariableCount(fd, val);
@@ -2294,6 +2311,9 @@ function TableVariableJsonScalar(d, val, depth, g, out) {
       for (const [name] of d.vs) { if (name === val) { if (d.dp !== undefined && d.dp.includes(name)) { return false; } out.push(TableVariableJsonString(name)); return true; } }
       return false;
     case "flags": {
+      // a flags value is an array of names, a container the read counts, an
+      // empty [] included (SPEC-TABLES §16.14 W2)
+      if (depth > 128) { return false; }
       // the save's own test: a BigInt mask inside the unsigned width, never a Number
       if (!TableVariableIntegerValid(d, val)) { return false; }
       const bits = globalThis.BigInt(val);
@@ -2315,7 +2335,7 @@ function TableVariableJsonScalar(d, val, depth, g, out) {
     case "float": {
       // a float32 field holds its value at float32: a double past the float32
       // range is refused, never written as a float64 token (SPEC-TABLES §16.3)
-      if (!TableVariableFiniteFloat(d.f32, val)) { return false; }
+      if (typeof val !== "number" || !TableVariableFiniteFloat(d.f32, val)) { return false; }
       if (!TableVariableFloatValid(d, val)) { return false; }
       const t = TableVariableFloatText(TableVariableStoredFloat(d, val), d.f32);
       if (t === null) { return false; }

@@ -16,6 +16,7 @@
 #            instance both ways.
 #
 #   retain   <case> <unit> <root> <wire> <capacity> <ids> <counters> <save lost> <save>
+#   retain-refusal <case> <unit> <root> <first wire> <refused wire>
 #            one RETAIN-UNKNOWN round trip (§6.6): the wire, the two capacities
 #            the caller declares, the counters the LOAD owes and the one the
 #            SAVE adds, and the file the pair writes back. The byte capacity is
@@ -805,6 +806,85 @@ json-hostile str-zero-escape-map-key       mapdemo    Text        testdata/confo
 # refuses the read `malformed`, the object rule (§16.2) applied inside the map."
 json-hostile list-map-dup-key              listdemo   Army        testdata/conformance/tables/json-hostile/list-map-dup-key   refused
 json-hostile str-zero-escape-unknown-key   tabledemo  RootConfig  testdata/conformance/tables/json-hostile/str-zero-escape-unknown-key refused
+# THE TEXT-ZERO MATRIX (§16.3, docs/rulings.json skipped-value-is-validated):
+# the zero rule in EVERY form text storage takes, at the front, the middle and
+# the end of the string, `str-zero-<form>-<front|middle|end>`, so every port
+# answers the whole matrix through this harness and no leg keeps a partial copy.
+# The forms, each on a unit every driver already reads: s a *string
+# (blobdemo Catalog.note), t a string(N) (RootConfig.version_note), l an element
+# of []string (featurewitnesses Root.words), o an element of []?string(N)
+# (Root.optional_labels), m a map[string(N)] key (Root.tags), i a
+# nested table's string(N) (PackConfig.settings.build_note), at a timestamp,
+# which is not text storage and refuses by its own name timestamp_not_rfc3339,
+# k a map[int32] key (mapdemo Text.blobs), one malformed and never also a kind
+# mismatch, and u an unbounded map[string] key (Root.by_name). Every one
+# refuses for every port. `str-zero-ctl-*` puts \u0001 in the same place and
+# reads clean, so a zero row cannot pass by refusing for another reason; at and
+# k have no control, since \u0001 is no instant and no integer. The Go oracle
+# for the same matrix is internal/codegen/gotable/textzero_test.go.
+json-hostile str-zero-s-front         blobdemo         Catalog    testdata/conformance/tables/json-hostile/str-zero-s-front refused
+json-hostile str-zero-s-middle        blobdemo         Catalog    testdata/conformance/tables/json-hostile/str-zero-s-middle refused
+json-hostile str-zero-s-end           blobdemo         Catalog    testdata/conformance/tables/json-hostile/str-zero-s-end refused
+json-hostile str-zero-t-front         tabledemo        RootConfig testdata/conformance/tables/json-hostile/str-zero-t-front refused
+json-hostile str-zero-t-middle        tabledemo        RootConfig testdata/conformance/tables/json-hostile/str-zero-t-middle refused
+json-hostile str-zero-t-end           tabledemo        RootConfig testdata/conformance/tables/json-hostile/str-zero-t-end refused
+json-hostile str-zero-l-front         featurewitnesses Root       testdata/conformance/tables/json-hostile/str-zero-l-front refused
+json-hostile str-zero-l-middle        featurewitnesses Root       testdata/conformance/tables/json-hostile/str-zero-l-middle refused
+json-hostile str-zero-l-end           featurewitnesses Root       testdata/conformance/tables/json-hostile/str-zero-l-end refused
+json-hostile str-zero-o-front         featurewitnesses Root       testdata/conformance/tables/json-hostile/str-zero-o-front refused
+json-hostile str-zero-o-middle        featurewitnesses Root       testdata/conformance/tables/json-hostile/str-zero-o-middle refused
+json-hostile str-zero-o-end           featurewitnesses Root       testdata/conformance/tables/json-hostile/str-zero-o-end refused
+json-hostile str-zero-m-front         featurewitnesses Root       testdata/conformance/tables/json-hostile/str-zero-m-front refused
+json-hostile str-zero-m-middle        featurewitnesses Root       testdata/conformance/tables/json-hostile/str-zero-m-middle refused
+json-hostile str-zero-m-end           featurewitnesses Root       testdata/conformance/tables/json-hostile/str-zero-m-end refused
+json-hostile str-zero-i-front         tabledemo        PackConfig testdata/conformance/tables/json-hostile/str-zero-i-front refused
+json-hostile str-zero-i-middle        tabledemo        PackConfig testdata/conformance/tables/json-hostile/str-zero-i-middle refused
+json-hostile str-zero-i-end           tabledemo        PackConfig testdata/conformance/tables/json-hostile/str-zero-i-end refused
+json-hostile str-zero-at-front        featurewitnesses Root       testdata/conformance/tables/json-hostile/str-zero-at-front refused
+json-hostile str-zero-at-middle       featurewitnesses Root       testdata/conformance/tables/json-hostile/str-zero-at-middle refused
+json-hostile str-zero-at-end          featurewitnesses Root       testdata/conformance/tables/json-hostile/str-zero-at-end refused
+json-hostile str-zero-k-front         mapdemo          Text       testdata/conformance/tables/json-hostile/str-zero-k-front refused
+json-hostile str-zero-k-middle        mapdemo          Text       testdata/conformance/tables/json-hostile/str-zero-k-middle refused
+json-hostile str-zero-k-end           mapdemo          Text       testdata/conformance/tables/json-hostile/str-zero-k-end refused
+json-hostile str-zero-u-front         featurewitnesses Root       testdata/conformance/tables/json-hostile/str-zero-u-front refused
+json-hostile str-zero-u-middle        featurewitnesses Root       testdata/conformance/tables/json-hostile/str-zero-u-middle refused
+json-hostile str-zero-u-end           featurewitnesses Root       testdata/conformance/tables/json-hostile/str-zero-u-end refused
+json-hostile str-zero-ctl-s-front     blobdemo         Catalog    testdata/conformance/tables/json-hostile/str-zero-ctl-s-front read
+json-hostile str-zero-ctl-s-middle    blobdemo         Catalog    testdata/conformance/tables/json-hostile/str-zero-ctl-s-middle read
+json-hostile str-zero-ctl-s-end       blobdemo         Catalog    testdata/conformance/tables/json-hostile/str-zero-ctl-s-end read
+json-hostile str-zero-ctl-t-front     tabledemo        RootConfig testdata/conformance/tables/json-hostile/str-zero-ctl-t-front read
+json-hostile str-zero-ctl-t-middle    tabledemo        RootConfig testdata/conformance/tables/json-hostile/str-zero-ctl-t-middle read
+json-hostile str-zero-ctl-t-end       tabledemo        RootConfig testdata/conformance/tables/json-hostile/str-zero-ctl-t-end read
+json-hostile str-zero-ctl-l-front     featurewitnesses Root       testdata/conformance/tables/json-hostile/str-zero-ctl-l-front read
+json-hostile str-zero-ctl-l-middle    featurewitnesses Root       testdata/conformance/tables/json-hostile/str-zero-ctl-l-middle read
+json-hostile str-zero-ctl-l-end       featurewitnesses Root       testdata/conformance/tables/json-hostile/str-zero-ctl-l-end read
+json-hostile str-zero-ctl-o-front     featurewitnesses Root       testdata/conformance/tables/json-hostile/str-zero-ctl-o-front read
+json-hostile str-zero-ctl-o-middle    featurewitnesses Root       testdata/conformance/tables/json-hostile/str-zero-ctl-o-middle read
+json-hostile str-zero-ctl-o-end       featurewitnesses Root       testdata/conformance/tables/json-hostile/str-zero-ctl-o-end read
+json-hostile str-zero-ctl-m-front     featurewitnesses Root       testdata/conformance/tables/json-hostile/str-zero-ctl-m-front read
+json-hostile str-zero-ctl-m-middle    featurewitnesses Root       testdata/conformance/tables/json-hostile/str-zero-ctl-m-middle read
+json-hostile str-zero-ctl-m-end       featurewitnesses Root       testdata/conformance/tables/json-hostile/str-zero-ctl-m-end read
+json-hostile str-zero-ctl-i-front     tabledemo        PackConfig testdata/conformance/tables/json-hostile/str-zero-ctl-i-front read
+json-hostile str-zero-ctl-i-middle    tabledemo        PackConfig testdata/conformance/tables/json-hostile/str-zero-ctl-i-middle read
+json-hostile str-zero-ctl-i-end       tabledemo        PackConfig testdata/conformance/tables/json-hostile/str-zero-ctl-i-end read
+json-hostile str-zero-ctl-u-front     featurewitnesses Root       testdata/conformance/tables/json-hostile/str-zero-ctl-u-front read
+json-hostile str-zero-ctl-u-middle    featurewitnesses Root       testdata/conformance/tables/json-hostile/str-zero-ctl-u-middle read
+json-hostile str-zero-ctl-u-end       featurewitnesses Root       testdata/conformance/tables/json-hostile/str-zero-ctl-u-end read
+# THE ZERO THE READ ONLY SKIPS, beyond a value (§16.3: "A string the read only
+# SKIPS — the value of an unknown key, an object key, whether it names a field
+# or none — ... that decodes to U+0000 refuses the read"; docs/rulings.json
+# skipped-value-is-validated). str-zero-escape-unknown-key holds the zero in an
+# unknown key's string value; these hold it in the unknown key's own NAME, in
+# a string inside an unknown key's array, and in an object key nested inside an
+# unknown key's object. Every one refuses for every port, and each has its
+# \u0001 control, which reads clean (the unknown key is skipped, the value is
+# RootConfig's defaults).
+json-hostile str-zero-skip-key-name         tabledemo  RootConfig  testdata/conformance/tables/json-hostile/str-zero-skip-key-name refused
+json-hostile str-zero-skip-list             tabledemo  RootConfig  testdata/conformance/tables/json-hostile/str-zero-skip-list refused
+json-hostile str-zero-skip-object-key       tabledemo  RootConfig  testdata/conformance/tables/json-hostile/str-zero-skip-object-key refused
+json-hostile str-zero-ctl-skip-key-name     tabledemo  RootConfig  testdata/conformance/tables/json-hostile/str-zero-ctl-skip-key-name read
+json-hostile str-zero-ctl-skip-list         tabledemo  RootConfig  testdata/conformance/tables/json-hostile/str-zero-ctl-skip-list read
+json-hostile str-zero-ctl-skip-object-key   tabledemo  RootConfig  testdata/conformance/tables/json-hostile/str-zero-ctl-skip-object-key read
 json-hostile union-table-arm-unknown       messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-table-arm-unknown read
 json-hostile union-table-arm-two-keys      messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-table-arm-two-keys refused
 json-hostile union-table-arm-wrong-shape   messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-table-arm-wrong-shape refused
@@ -1117,6 +1197,22 @@ retain retain_enum_variant tblrt1 Node testdata/wire/tables/retain_excluded_3.bi
 retain retain_union_arm    tblrt1 Node testdata/wire/tables/retain_excluded_4.bin full  full testdata/wire/tables/retain_excluded_4_save.bin
 retain retain_keyed_slot   tblrt1 Node testdata/wire/tables/retain_excluded_5.bin full  full testdata/wire/tables/retain_excluded_5_save.bin
 retain retain_node_record  tblrt1 Node testdata/wire/tables/retain_rt3.bin        full  full testdata/wire/tables/retain_rt3_save.bin
+
+# RETAINED STATE AFTER A REFUSAL (docs/SPEC-TABLES.md §6.6: "the next
+# LoadRetain into it resets both stores"). One store through a sequence: the
+# first wire reads and retains, the second is refused, and a save of the first
+# value through the same store then writes its known fields alone. The frame
+# row is refused before any body is walked (form byte 3 at a variable root);
+# the body row is refused at items[1].hits = 101 (max 100), after items[0]
+# carried an unknown the walk may already have captured. The short, empty and
+# form-two rows are refused at the frame too: two bytes with no id table, no
+# form byte at all, and the message form where a file is read.
+#   retain-refusal <case> <unit> <root> <first wire> <refused wire>
+retain-refusal retain_refusal_frame tblrt1 Node testdata/wire/tables/retain_rt2.bin testdata/conformance/tables/wire/retain_refusal_frame.bin
+retain-refusal retain_refusal_body  tblrt1 Node testdata/wire/tables/retain_rt2.bin testdata/conformance/tables/wire/retain_refusal_body.bin
+retain-refusal retain_refusal_short tblrt1 Node testdata/wire/tables/retain_rt2.bin testdata/conformance/tables/wire/retain_refusal_short.bin
+retain-refusal retain_refusal_empty tblrt1 Node testdata/wire/tables/retain_rt2.bin testdata/conformance/tables/wire/retain_refusal_empty.bin
+retain-refusal retain_refusal_form_two tblrt1 Node testdata/wire/tables/retain_rt2.bin testdata/conformance/tables/wire/retain_refusal_form_two.bin
 
 
 # Unbounded arrays: existing C++ wire pins now shared by every port.
@@ -1744,6 +1840,9 @@ framing varevo_kind31_escape    tblvarevo1 EvoDoc testdata/wire/tables/framing/v
 framing varevo_kind31_truncated tblvarevo1 EvoDoc testdata/wire/tables/framing/varevo_kind31_truncated.bin refused -
 report  varevo_kind31_report    tblvarevo1 EvoDoc testdata/wire/tables/framing/varevo_kind31_escape.bin
 retain  varevo_kind31_retain    tblvarevo1 EvoDoc testdata/wire/tables/framing/varevo_kind31_escape.bin    full full refused
+# the same sequence at the evolution set: v1 retains the fields v3 adds, then a v3 wire
+# whose kind 31 rides at the root is refused into the same store
+retain-refusal retain_refusal_kind31 tblvarevo1 EvoDoc testdata/conformance/tables/wire/varevo_v3_rollback.bin testdata/wire/tables/varevo_2hop_v3_kind31.bin
 
 # Form-2 Message Connection Vocabulary Drift (v1 -> v3 and v3 -> v1 multi-message batch skipping unknown alert mid-batch):
 connection varevo1_conn tblvarevo1 0x2a3013e4855f8026 testdata/wire/tables/varevo1_conn.bin
@@ -1766,79 +1865,93 @@ message-drift varevo_msg_v3_to_v1_batch tblvarevo1 varevo3_conn EvoMsg testdata/
 # (docs/rulings.json `refusal-verdict-only`).
 unit tblprior test/tables/prior/PriorNarrow.schema
 # a ranged int32
-message-prior prior_scalar_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"scalar":40} read
-message-prior prior_scalar_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"scalar":75} refused
+message-prior prior_scalar_inside tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"scalar":40} read
+message-prior prior_scalar_past   tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"scalar":75} refused
 # a ranged uint8
-message-prior prior_small_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"small":40} read
-message-prior prior_small_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"small":75} refused
+message-prior prior_small_inside tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"small":40} read
+message-prior prior_small_past   tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"small":75} refused
 # a ranged int64
-message-prior prior_wide_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"wide":"40"} read
-message-prior prior_wide_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"wide":"75"} refused
+message-prior prior_wide_inside tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"wide":"40"} read
+message-prior prior_wide_past   tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"wide":"75"} refused
 # bits(7) read as bits(5)
-message-prior prior_mask_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"mask":25} read
-message-prior prior_mask_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"mask":75} refused
+message-prior prior_mask_inside tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"mask":25} read
+message-prior prior_mask_past   tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"mask":75} refused
 # a fixed array element
-message-prior prior_pair_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"pair":[40,10]} read
-message-prior prior_pair_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"pair":[75,10]} refused
+message-prior prior_pair_inside tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"pair":[40,10]} read
+message-prior prior_pair_past   tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"pair":[75,10]} refused
 # a counted array element
-message-prior prior_list_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"list":[40,10]} read
-message-prior prior_list_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"list":[10,75]} refused
+message-prior prior_list_inside tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"list":[40,10]} read
+message-prior prior_list_past   tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"list":[10,75]} refused
 # an enum-keyed array element
-message-prior prior_keyed_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"keyed":{"X":40,"Y":10}} read
-message-prior prior_keyed_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"keyed":{"X":10,"Y":75}} refused
+message-prior prior_keyed_inside tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"keyed":{"X":40,"Y":10}} read
+message-prior prior_keyed_past   tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"keyed":{"X":10,"Y":75}} refused
 # a union arm scalar payload
-message-prior prior_arm_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"arm":{"amount":40}} read
-message-prior prior_arm_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"arm":{"amount":75}} refused
+message-prior prior_arm_inside tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"arm":{"amount":40}} read
+message-prior prior_arm_past   tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"arm":{"amount":75}} refused
 # a union arm record payload
-message-prior prior_arm_record_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"arm":{"inner":{"level":40}}} read
-message-prior prior_arm_record_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"arm":{"inner":{"level":75}}} refused
+message-prior prior_arm_record_inside tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"arm":{"inner":{"level":40}}} read
+message-prior prior_arm_record_past   tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"arm":{"inner":{"level":75}}} refused
 # a nested record field
-message-prior prior_nested_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"nested":{"level":40}} read
-message-prior prior_nested_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"nested":{"level":75}} refused
+message-prior prior_nested_inside tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"nested":{"level":40}} read
+message-prior prior_nested_past   tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"nested":{"level":75}} refused
 # a field of a nested table in an array
-message-prior prior_cells_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"cells":[{"depth":40},{"depth":10}]} read
-message-prior prior_cells_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"cells":[{"depth":10},{"depth":75}]} refused
+message-prior prior_cells_inside tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"cells":[{"depth":40},{"depth":10}]} read
+message-prior prior_cells_past   tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"cells":[{"depth":10},{"depth":75}]} refused
 # a quantized float
-message-prior prior_quant_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"quant":40.5} read
-message-prior prior_quant_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"quant":75.5} refused
+message-prior prior_quant_inside tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"quant":40.5} read
+message-prior prior_quant_past   tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"quant":75.5} refused
 # a ranged fixed-point value
-message-prior prior_fx_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"fx":40.5} read
-message-prior prior_fx_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"fx":75.5} refused
+message-prior prior_fx_inside tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"fx":40.5} read
+message-prior prior_fx_past   tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"fx":75.5} refused
 # a batch of two bodies (the writer value is a JSON array of them): when the
 # second carries a value past the reader's range the WHOLE batch refuses, the
 # lawful first body included, and no body is delivered
-message-prior prior_batch_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c [{"mask":25},{"mask":30}] read
-message-prior prior_batch_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c [{"mask":25},{"mask":75}] refused
+message-prior prior_batch_inside tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad [{"mask":25},{"mask":30}] read
+message-prior prior_batch_past   tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad [{"mask":25},{"mask":75}] refused
 # A KIND THAT MOVED (§3.3, §4): the writer's int32 is the reader's int16 and
 # string(16), which the announcement shows and every reader refuses, never
 # defaulting the field and counting it; and the reader's
 # int64, the lawful widening, which every reader reads.
-message-prior prior_narrowed_kind   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"narrowed":40} refused
-message-prior prior_retyped_kind    tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"retyped":40} refused
-message-prior prior_widened_inside  tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"widened":40} read
+message-prior prior_narrowed_kind   tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"narrowed":40} refused
+message-prior prior_retyped_kind    tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"retyped":40} refused
+message-prior prior_widened_inside  tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"widened":40} read
 # R14 (2026-11-22): A FIELD WHOSE TYPE CHANGED REFUSES THE WHOLE LOAD
 # kind_mismatch, because it is not a widening (docs/SPEC-TABLES.md §4, THE ONE
 # WIDENING RULE). Each refusal has its lawful twin beside it: the writer's
 # int64 read as the reader's string(16) refuses, and an int64 read as int64
 # reads; the writer's int64 read as the reader's timestamp refuses, and a
 # timestamp read as a timestamp reads.
-message-prior prior_restring_kind      tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"restring":"40"} refused
-message-prior prior_kept64_inside      tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"kept64":"40"} read
-message-prior prior_stamp_kind         tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"stamp":"1762086896123456789"} refused
-message-prior prior_stamped_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"stamped":"2025-11-02T12:34:56.123456789Z"} read
+message-prior prior_restring_kind      tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"restring":"40"} refused
+message-prior prior_kept64_inside      tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"kept64":"40"} read
+message-prior prior_stamp_kind         tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"stamp":"1762086896123456789"} refused
+message-prior prior_stamped_inside tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"stamped":"2025-11-02T12:34:56.123456789Z"} read
 # R15 (2026-11-22): A RANGED ANNOUNCEMENT IS HELD PER VALUE (§3.3). The writer
 # announces uint8 | min = 200, max = 250: base 200 in six bits, whose top
 # offsets pass 255, and that announcement is lawful. The base is held at the
 # announcement and each value on the body: 230 lies inside the reader's
 # min = 200, max = 240 and reads; 245 lies outside it and refuses.
-message-prior prior_band_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"band":230} read
-message-prior prior_band_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"band":245} refused
+message-prior prior_band_inside tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"band":230} read
+message-prior prior_band_past   tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"band":245} refused
 # R17 (2026-11-22): a flags mask with a bit at or above the reader's W refuses the
 # WHOLE batch out_of_range (docs/SPEC-TABLES.md §4, A TABLE LOAD HOLDS A MASK TO
 # ITS WIDTH). The writer's Perms is { Read, Write, Exec } and the reader's is
 # { Read, Write }: Read and Write reads, Read and Exec refuses.
-message-prior prior_flags_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"perms":["Read","Write"]} read
-message-prior prior_flags_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"perms":["Read","Exec"]} refused
+message-prior prior_flags_inside tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"perms":["Read","Write"]} read
+message-prior prior_flags_past   tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"perms":["Read","Exec"]} refused
+# AN ARRAY ELEMENT KIND THAT MOVED (docs/SPEC-TABLES.md §3.3, §4: "An array's
+# ELEMENT KIND is part of its identity"): the announced kind agrees (14 or 16)
+# and the ELEMENT kind does not, which refuses the WHOLE batch kind_mismatch
+# exactly as a moved field kind does. The writer's int32 elements against the
+# reader's uint8 in a counted array, a fixed array and an enum-keyed array;
+# its Cell records (element kind 13) against the reader's uint8; and a union
+# arm's int32 elements against the reader's uint8. The lawful twin is the
+# element widening, the writer's uint8 elements read as the reader's uint16.
+message-prior prior_elems_kind       tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"elems":[1,2]} refused
+message-prior prior_elempair_kind    tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"elempair":[1,2]} refused
+message-prior prior_elemkeyed_kind   tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"elemkeyed":{"X":1,"Y":2}} refused
+message-prior prior_elemcells_kind   tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"elemcells":[{"depth":1}]} refused
+message-prior prior_armelems_kind    tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"arm":{"vals":[1,2]}} refused
+message-prior prior_elemgrown_inside tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"elemgrown":[1,2]} read
 
 # R14 (2026-11-22) ON THE FILE FORM: a field whose TYPE changed refuses the
 # WHOLE load kind_mismatch, never defaulted and counted (docs/SPEC-TABLES.md
@@ -2484,6 +2597,13 @@ rewrite twin_count_min_at_form1                 tabledemo CountedMin testdata/wi
 instance sp_enum_moods                          tabledemo Moods     testdata/conformance/tables/save-wire/sp-enum-elem-deprecated-array.bin
 write-refusal-json jref_enum_deprecated         tabledemo Moods testdata/conformance/tables/save-wire/sp-enum-elem-deprecated-array.bin row[0] ordinal 2 refused
 write-refusal-json jref_enum_deprecated_ok      tabledemo Moods testdata/conformance/tables/save-wire/sp-enum-elem-deprecated-array.bin row[0] ordinal 3 wrote
+# EVERY WRITER, not the text alone (§2.15 WRITE; the Java variable, fixed and message writers wrote Old
+# until 2026-11-24, which only the keyed in-tree gate's Go oracle saw): the table save and the fixed save
+# refuse the deprecated element, an assert leg from its debug build, and write the lawful twin.
+write-refusal wref_enum_deprecated              tabledemo Moods testdata/conformance/tables/save-wire/sp-enum-elem-deprecated-array.bin row[0] ordinal 2 refused
+write-refusal wref_enum_deprecated_ok           tabledemo Moods testdata/conformance/tables/save-wire/sp-enum-elem-deprecated-array.bin row[0] ordinal 3 wrote
+write-refusal-fixed fref_enum_deprecated        tabledemo Moods testdata/conformance/tables/save-wire/sp-enum-elem-deprecated-array.bin row[0] ordinal 2 refused
+write-refusal-fixed fref_enum_deprecated_ok     tabledemo Moods testdata/conformance/tables/save-wire/sp-enum-elem-deprecated-array.bin row[0] ordinal 3 wrote
 
 # THE SCALAR HALF of the deprecated-variant rule (docs/SPEC-TABLES.md §2.15): on a scalar enum field a
 # deprecated variant reads as the field's DECLARED default (MoodField.mood = Fierce), where in an array
@@ -2498,6 +2618,10 @@ rewrite sp_enum_scalar_evolved_deprecated tabledemo MoodField  testdata/conforma
 instance sp_enum_moodfield                      tabledemo MoodField testdata/conformance/tables/save-wire/sp-enum-scalar-deprecated.bin
 write-refusal-json jref_enum_scalar_deprecated    tabledemo MoodField testdata/conformance/tables/save-wire/sp-enum-scalar-deprecated.bin mood ordinal 2 refused
 write-refusal-json jref_enum_scalar_deprecated_ok tabledemo MoodField testdata/conformance/tables/save-wire/sp-enum-scalar-deprecated.bin mood ordinal 3 wrote
+write-refusal wref_enum_scalar_deprecated         tabledemo MoodField testdata/conformance/tables/save-wire/sp-enum-scalar-deprecated.bin mood ordinal 2 refused
+write-refusal wref_enum_scalar_deprecated_ok      tabledemo MoodField testdata/conformance/tables/save-wire/sp-enum-scalar-deprecated.bin mood ordinal 3 wrote
+write-refusal-fixed fref_enum_scalar_deprecated    tabledemo MoodField testdata/conformance/tables/save-wire/sp-enum-scalar-deprecated.bin mood ordinal 2 refused
+write-refusal-fixed fref_enum_scalar_deprecated_ok tabledemo MoodField testdata/conformance/tables/save-wire/sp-enum-scalar-deprecated.bin mood ordinal 3 wrote
 # ARM MIN (R10, 1122): a counted [A..B] inside a union arm holds A wherever the field sits: count below A refuses on read in every form (tables/examples/ArmMin.schema); A through B reads.
 json-hostile arm-min-fix-below   tabledemo MinArmFix testdata/conformance/tables/json-hostile/arm-min-fix-below   refused
 json-hostile arm-min-fix-empty   tabledemo MinArmFix testdata/conformance/tables/json-hostile/arm-min-fix-empty   refused
@@ -2528,16 +2652,17 @@ unit tblann4096 test/tables/announce4096/Announce.schema
 unit tblann4097 test/tables/announce4097/Announce.schema
 connection surfaces_conn tblsurf 0xd4e8971dbc849333 testdata/conformance/tables/wire/surfaces_conn.bin
 
-# FL-11 (SPEC-TABLES §16.2, §16.14 W2): the JSON read cap counts every
-# container (root=0, depth 128 = 129 nested containers max; 130th refuses
-# malformed), while the write cap counts table/type values only. 128 Links put
-# `vals` at container depth 129 (130th container), so `surf_chain128_vals` is
-# `no-text` on the positive round-trip corpus and `surf_chain127_vals` (depth
-# 128 = 129 containers) is the positive round-trip witness; one Link past the
-# write cap is refused (`graph_chain_past_cap`, above). FL-16 (§2.3): a null
+# FL-11 (SPEC-TABLES §16.2, §16.14 W2): the JSON read cap and the write cap
+# count the same containers (root=0, depth 128 = 129 nested containers max;
+# the 130th refuses), an empty leaf array included. 127 Links put the last
+# Link's `vals` at depth 128, so `surf_chain127_vals` writes and reads back,
+# the lawful side of the boundary; 128 Links put `vals` at depth 129, so
+# `surf_chain128_vals` is `no-text` and every leg's text writer refuses it
+# (`surf_chain128_vals_write`). FL-16 (§2.3): a null
 # `*T | required` is written as index 0 and reads back null; its twin points at a node.
 instance surf_chain128_vals        tblsurf Chain   testdata/conformance/tables/wire/surf_chain128_vals.bin no-text
 instance surf_chain127_vals        tblsurf Chain   testdata/conformance/tables/wire/surf_chain127_vals.bin
+json-write-refusal surf_chain128_vals_write tblsurf Chain testdata/conformance/tables/wire/surf_chain128_vals.bin none
 instance surf_holder_null_required tblsurf Holder  testdata/conformance/tables/wire/surf_holder_null_required.bin
 instance surf_holder_present       tblsurf Holder  testdata/conformance/tables/wire/surf_holder_present.bin
 instance surf_counted_full         tblsurf Counted testdata/conformance/tables/wire/surf_counted_full.bin
@@ -2648,6 +2773,16 @@ write-refusal-cook cref_infinite         tabledemo RootConfig testdata/conforman
 write-refusal-cook cref_finite_ok        tabledemo RootConfig testdata/conformance/tables/wire/root_full.bin           weapons[0].damage  float 1.5   wrote
 write-refusal-cook cref_fixed_long       tblsurf   Arrays     testdata/conformance/tables/wire/surf_arrays_full.bin    trio               elems 4     refused
 write-refusal-cook cref_fixed_ok         tblsurf   Arrays     testdata/conformance/tables/wire/surf_arrays_full.bin    trio               elems 3     wrote
+# SF-25, SF-26 (docs/SPEC.md §5.1 row 5; SPEC-TABLES §2.15): an enum slot holds
+# None or a live variant. Mood is Calm 1, Old 2 (deprecated), Fierce 3: the
+# deprecated Old and the ordinal 9 past the set are refused, Fierce is written.
+write-refusal-cook cref_enum_deprecated  tabledemo MoodField  testdata/conformance/tables/save-wire/sp-enum-scalar-deprecated.bin mood ordinal 2 refused
+write-refusal-cook cref_enum_range       tabledemo MoodField  testdata/conformance/tables/save-wire/sp-enum-scalar-deprecated.bin mood ordinal 9 refused
+write-refusal-cook cref_enum_ok          tabledemo MoodField  testdata/conformance/tables/save-wire/sp-enum-scalar-deprecated.bin mood ordinal 3 wrote
+# The same rule on a list element of a pointered root (Mixed.grades holds
+# Grade, three variants), which some legs cook through a second writer.
+write-refusal-cook cref_var_enum_range   listdemo  Mixed      testdata/wire/tables/list_mixed.bin grades[0] ordinal 4 refused
+write-refusal-cook cref_var_enum_ok      listdemo  Mixed      testdata/wire/tables/list_mixed.bin grades[0] ordinal 3 wrote
 
 # THE BLOCK BUILDER holds the write contract too (SPEC-TABLES §19.1). SF-31: a
 # used length or a count past its maximum is refused by name in every build.
@@ -2657,6 +2792,92 @@ write-refusal-block bref_range       backenddemo StorePurchase testdata/conforma
 write-refusal-block bref_range_ok    backenddemo StorePurchase testdata/conformance/tables/wire/store_full.bin quantity          int    99  wrote
 write-refusal-block bref_elems_long  backenddemo MatchResult   testdata/conformance/tables/wire/match_full.bin players           elems  11  refused
 write-refusal-block bref_elems_ok    backenddemo MatchResult   testdata/conformance/tables/wire/match_full.bin players           elems  10  wrote
+
+# DW-TABLE-SHAPE (docs/SPEC.md §5.1; docs/SPEC-CONFORMANCE.md): a value of the
+# WRONG KIND, put where a field, an array element, an arm payload or the whole
+# value belongs, is refused by the root's own writer with its own refusal, in
+# every build: never a raised error, and never a coercion that writes it. The
+# shape tokens are FORMAT.md's (`write-refusal-shape`). A leg whose types
+# cannot hold the value, or in which the value is the field's own lawful
+# spelling (a Lua table is a record), answers `unrepresentable`. The legs that
+# refuse in every build owe every row (run.go shapeLegs); the assert legs answer
+# from their debug build: `unrepresentable` where their types cannot hold the
+# value, their own refusal where they can (a null in a class place). TortureCook
+# is a variable root, written by Save; RootConfig a fixed one, written by its
+# fixed form. The lawful twins write the same roots through the same writers.
+write-refusal-shape shref_v_ok_int          cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin b_i32                    int   7    wrote
+write-refusal-shape shref_v_ok_float        cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_extremes.bin slice_f32[0] float 1.5 wrote
+write-refusal-shape shref_v_bool_int        cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin lead_bool                shape int      refused
+write-refusal-shape shref_v_bool_null       cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin lead_bool                shape null     refused
+write-refusal-shape shref_v_bool_text       cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin lead_bool                shape text     refused
+write-refusal-shape shref_v_int_text        cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin b_i32                    shape text     refused
+write-refusal-shape shref_v_int_float       cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin b_i32                    shape float    refused
+write-refusal-shape shref_v_int_bool        cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin b_i32                    shape bool     refused
+write-refusal-shape shref_v_int_null        cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin b_i32                    shape null     refused
+write-refusal-shape shref_v_int_map         cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin b_i32                    shape map      refused
+write-refusal-shape shref_v_float_numtext   cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin align_f64                shape numtext  refused
+write-refusal-shape shref_v_float_bool      cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin align_f64                shape bool     refused
+write-refusal-shape shref_v_float_null      cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin align_f64                shape null     refused
+write-refusal-shape shref_v_f32elem_numtext cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin slice_f32[0]             shape numtext  refused
+write-refusal-shape shref_v_union_int       cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin bounded_steps[1]         shape int      refused
+write-refusal-shape shref_v_union_text      cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin bounded_steps[1]         shape text     refused
+write-refusal-shape shref_v_union_map       cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin bounded_steps[1]         shape map      refused
+write-refusal-shape shref_v_arm_int         cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin bounded_steps[1].shift   shape int      refused
+write-refusal-shape shref_v_arm_text        cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin bounded_steps[1].shift   shape text     refused
+write-refusal-shape shref_v_arm_null        cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin bounded_steps[1].shift   shape null     refused
+write-refusal-shape shref_v_array_int       cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin arr_i32                  shape int      refused
+write-refusal-shape shref_v_array_text      cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin arr_i32                  shape text     refused
+write-refusal-shape shref_v_array_map       cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin arr_i32                  shape map      refused
+write-refusal-shape shref_v_array_improper  cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin arr_i32                  shape improper refused
+write-refusal-shape shref_v_elem_text       cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin arr_i32[0]               shape text     refused
+write-refusal-shape shref_v_elem_float      cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin arr_i32[0]               shape float    refused
+write-refusal-shape shref_v_elem_bool       cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin arr_i32[0]               shape bool     refused
+write-refusal-shape shref_v_elem_null       cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin arr_i32[0]               shape null     refused
+write-refusal-shape shref_v_list_int        cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin entries_list             shape int      refused
+write-refusal-shape shref_v_list_text       cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin entries_list             shape text     refused
+write-refusal-shape shref_v_list_improper   cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin entries_list             shape improper refused
+write-refusal-shape shref_v_record_elem_int  cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin entries_list[0]         shape int      refused
+write-refusal-shape shref_v_record_elem_text cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin entries_list[0]         shape text     refused
+write-refusal-shape shref_v_record_elem_null cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin entries_list[0]         shape null     refused
+write-refusal-shape shref_v_string_elem_int cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin str_arr[0]               shape int      refused
+write-refusal-shape shref_v_whole_int       cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin .                        shape int      refused
+write-refusal-shape shref_v_whole_text      cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin .                        shape text     refused
+write-refusal-shape shref_v_whole_null      cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin .                        shape null     refused
+write-refusal-shape shref_v_whole_bool      cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin .                        shape bool     refused
+write-refusal-shape shref_f_ok_int          tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         weapons[0].penetration   int   3    wrote
+write-refusal-shape shref_f_ok_length       tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         version_note             length 4   wrote
+write-refusal-shape shref_f_ok_tag          tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         weapons[0].effect        tag   2    wrote
+write-refusal-shape shref_f_enum_text       tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         profiles[0].loadout.grade   shape text  refused
+write-refusal-shape shref_f_enum_bool       tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         profiles[0].loadout.grade   shape bool  refused
+write-refusal-shape shref_f_enum_map        tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         profiles[0].loadout.grade   shape map   refused
+write-refusal-shape shref_f_flags_text      tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         profiles[0].loadout.perks   shape text  refused
+write-refusal-shape shref_f_flags_float     tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         profiles[0].loadout.perks   shape float refused
+write-refusal-shape shref_f_flags_bool      tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         profiles[0].loadout.perks   shape bool  refused
+write-refusal-shape shref_f_string_int      tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         version_note                shape int   refused
+write-refusal-shape shref_f_string_bool     tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         version_note                shape bool  refused
+write-refusal-shape shref_f_string_map      tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         version_note                shape map   refused
+write-refusal-shape shref_f_bytes_int       tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         profiles[0].icon            shape int   refused
+write-refusal-shape shref_f_bytes_bool      tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         profiles[0].icon            shape bool  refused
+write-refusal-shape shref_f_record_int      tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         profiles[0].loadout.primary shape int   refused
+write-refusal-shape shref_f_record_text     tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         profiles[0].loadout.primary shape text  refused
+write-refusal-shape shref_f_record_null     tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         profiles[0].loadout.primary shape null  refused
+write-refusal-shape shref_f_record_map      tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         profiles[0].loadout.primary shape map   refused
+write-refusal-shape shref_f_union_int       tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         weapons[0].effect           shape int   refused
+write-refusal-shape shref_f_union_text      tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         weapons[0].effect           shape text  refused
+write-refusal-shape shref_f_union_map       tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         weapons[0].effect           shape map   refused
+write-refusal-shape shref_f_arm_int         tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         weapons[0].effect.debuff    shape int   refused
+write-refusal-shape shref_f_arm_text        tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         weapons[0].effect.debuff    shape text  refused
+write-refusal-shape shref_f_bool_int        tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         weapons[0].homing           shape int   refused
+write-refusal-shape shref_f_bool_null       tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         weapons[0].homing           shape null  refused
+write-refusal-shape shref_f_float_numtext   tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         weapons[0].damage           shape numtext refused
+write-refusal-shape shref_f_float_bool      tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         weapons[0].damage           shape bool  refused
+write-refusal-shape shref_f_array_int       tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         weapons                     shape int   refused
+write-refusal-shape shref_f_array_text      tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         weapons                     shape text  refused
+write-refusal-shape shref_f_array_improper  tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         weapons                     shape improper refused
+write-refusal-shape shref_f_elem_int        tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         weapons[0]                  shape int   refused
+write-refusal-shape shref_f_elem_text       tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         weapons[0]                  shape text  refused
+write-refusal-shape shref_f_whole_int       tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         .                           shape int   refused
+write-refusal-shape shref_f_whole_null      tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         .                           shape null  refused
 
 # THE ANNOUNCEMENT (SPEC-TABLES §3.3). FL-38: no writer announces more than
 # 4096 entries; 4096 is served. FL-36: strict mode refuses a peer whose build
@@ -2683,6 +2904,44 @@ read-into ri_json       tblsurf      Counted       json        testdata/conforma
 read-into ri_fixed      tblsurf      Narrow        fixed       testdata/conformance/tables/read-into/narrow_3.fixed        testdata/conformance/tables/read-into/narrow_3_damaged.fixed     3
 read-into ri_message    backend_conn StorePurchase message     testdata/conformance/tables/message-batch/batch_delivered.bin testdata/conformance/tables/message-batch/batch_range_in_second.bin 2
 read-into ri_fixed_5000 tblsurf      Narrow        fixed-nocap testdata/conformance/tables/read-into/narrow_5000.fixed     -                                                                5000
+# A FIELD THE WRITER DID NOT SUPPLY HOLDS ITS DECLARED DEFAULT AFTER A LOAD,
+# never what the caller's value held before (SPEC-TABLES §3.4, THE PREFILL IS
+# WHAT ANSWERS "ABSENT FIELD"; §6.5). The first read lands v3's full record,
+# every nested element off its default (nested_chain's leaf bonus 17 and tag
+# "🚀ok", sub_opt's note "present", extra_opt present). The second read is a
+# LAWFUL v1 record, read through the lineage, whose layout carries none of
+# those fields, into the SAME value: every one of them holds its declared
+# default (bonus 9, tag "leaf", note "sub", extra_opt absent), exactly as a
+# fresh value read from v1 holds them. The engine writes the answer from its
+# own read of v1 into a fresh value. The trailing lawful-second states that
+# the second file is lawful; generate fails if the engine refuses it, and an
+# unmarked fixed row fails if the engine reads its damaged file.
+read-into ri_fixed_lineage tblfixedevo EvoRoot   fixed       testdata/conformance/tables/wire/fixedevo_v3_full.bin       testdata/conformance/tables/wire/fixedevo_v1.bin                 1 lawful-second
+# A REFUSAL THROUGH A LINEAGE PLAN RESETS EVERY ROW IT WAS HANDED (SPEC-TABLES
+# §6.5, THE CALLER'S VALUES AFTER A REFUSAL; R4; census G14). The first read
+# lands v3's full record, every field off its default. The second is an OLDER
+# writer's (v1) file the lineage plan selects and the CHECK pass refuses (a
+# corrupt deprecated slot): the row then holds its declared defaults, never
+# the first read's values. ri_fixed holds the same rule for a three-row batch
+# under a damage refusal; a driver resets its rows before the first read, so
+# rows no wire reached are held by each leg's own test, not by this row.
+read-into ri_fixed_lineage_refused tblfixedevo EvoRoot fixed testdata/conformance/tables/wire/fixedevo_v3_full.bin testdata/conformance/tables/wire/fixedevo_v1_dep_corrupt.bin 1
+
+# THE RETAIN FAMILY ZEROES ITS REPORT TOO (SPEC-TABLES §6.5, §6.6): the
+# retaining load is handed a report the driver PRE-FILLED (every counter
+# nonzero, the refusal set), reads lawfully, and must leave the report equal,
+# field by field, to the one the same read leaves in a fresh report; then a
+# damaged retaining load refuses into it and the lawful one zeroes it again.
+read-into ri_retain     tblrt1       Node          retain      testdata/wire/tables/retain_rt2.bin                           testdata/conformance/tables/read-into/retain_rt2_cut.bin         1
+
+# THE PLAIN LOAD ZEROES A PRE-FILLED REPORT TOO (SPEC-TABLES §6.5): the same
+# protocol through the plain <Root>Load of a variable root, the REGION read
+# where the leg has one. And LoadRetain on a FIXED-class root is refused by
+# name (§6.6): a runtime refusal refuses through a report it zeroed first, so
+# the report equals a fresh one's; a compile-time refusal answers
+# unrepresentable.
+read-into ri_region       tblsurf    Counted       region       testdata/conformance/tables/wire/surf_counted_full.bin      testdata/conformance/tables/read-into/counted_cut.bin            1
+read-into ri_retain_fixed tblsurf    Narrow        retain-fixed testdata/conformance/tables/wire/surf_narrow_full.bin       -                                                                1
 
 # FL-14, FL-15 (SPEC-TABLES §16.1): the text writer in a comma-decimal process
 # locale, into a caller buffer longer than the text, writes the instance's

@@ -3,7 +3,7 @@ package gotable
 import (
 	"fmt"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // Source offsets describe Go storage. Cook offsets come from the shared ABI
@@ -126,9 +126,11 @@ func(w *tableCookWriter) value(p unsafe.Pointer,f *TableFieldInfo,at int64,reach
  if f.Table!=nil{return w.record(p,f.Table(),at,reached)}
  width:=f.CookElemSize
  if width==16 {lo:=*(*uint64)(p);hi:=*(*uint64)(unsafe.Add(p,8));if w.order==TableByteOrderBig {lo,hi=hi,lo};w.put(at,lo,8);w.put(at+8,hi,8);return true}
+ // An enum slot holds None or a live variant (docs/SPEC.md §5.1 row 5; SPEC-TABLES §2.15): an ordinal past EnumMax or a deprecated variant refuses.
  // A cooked float is finite (docs/SPEC-TABLES.md §3.3): NaN and infinity refuse, and a compressed float's -0 is written as +0.
- value:=tableJSONGetRaw(p,f.ElemSize);if f.EnumDeprecated!=nil&&f.EnumDeprecated(value){return false};if f.Kind==1||f.HasRange&&(f.Kind==10&&value==0x80000000||f.Kind==11&&value==0x8000000000000000) {value=0;if f.Kind==1&&*(*bool)(p){value=1}};if f.Kind==10&&value&0x7f800000==0x7f800000||f.Kind==11&&value&0x7ff0000000000000==0x7ff0000000000000 {return false};w.put(at,value,width);return true
+ value:=tableJSONGetRaw(p,f.ElemSize);if f.VariantID!=nil&&tableEnumPast(value,f)||f.EnumDeprecated!=nil&&f.EnumDeprecated(value){return false};if f.Kind==1||f.HasRange&&(f.Kind==10&&value==0x80000000||f.Kind==11&&value==0x8000000000000000) {value=0;if f.Kind==1&&*(*bool)(p){value=1}};if f.Kind==10&&value&0x7f800000==0x7f800000||f.Kind==11&&value&0x7ff0000000000000==0x7ff0000000000000 {return false};w.put(at,value,width);return true
 }
+func tableEnumPast(value uint64,f *TableFieldInfo)bool {return f.EnumMax>=0&&value>uint64(f.EnumMax) /* #nosec G115 -- EnumMax is checked non-negative on the left of the and */}
 func tableCookFixed(p unsafe.Pointer,t *TableTypeInfo,buffer []byte,order TableByteOrder)bool {
  if p==nil||order!=TableByteOrderLittle&&order!=TableByteOrderBig{return false};align:=max(int64(8),int64(t.CookAlign));data:=(int64(t.CookSize)+align-1)& -align;total:=64+data+16;if int64(len(buffer))<total{return false}
  w:=tableCookWriter{order:order};if !w.record(p,t,64,true){return false};clear(buffer[:total]);w.buffer=buffer;w.header(data,1,align);if !w.record(p,t,64,true){return false};w.put(64+data,0,8);w.put(64+data+8,t.ID,8);return true

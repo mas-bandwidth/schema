@@ -3,18 +3,18 @@ package luatable
 import (
 	"bytes"
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 	"maps"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/golang"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/gotable"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/lua/luarun"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 // TestLuaWideKindsFixedAndMessageForms pins the two constant-size forms'
@@ -95,7 +95,7 @@ hexline(saved)
 		t.Fatalf("generate the Go table surface: %v", err)
 	}
 	maps.Copy(goFiles, tables)
-	goFiles["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/schema/v2 v2.0.0\n\nreplace github.com/mas-bandwidth/schema/v2 => %q\n", mustAbs(t, repo)) + "\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => ./serialize\n")
+	goFiles["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/schema/v3 v3.0.0\n\nreplace github.com/mas-bandwidth/schema/v3 => %q\n", mustAbs(t, repo)) + "\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => ./serialize\n")
 	goFiles["serialize/go.mod"] = []byte("module github.com/mas-bandwidth/serialize.go/v2\n\ngo 1.26\n")
 	goFiles["serialize/serialize.go"] = []byte(serializeStub)
 	goFiles["wide_test.go"] = []byte(wideFormsGoProbe)
@@ -172,6 +172,12 @@ func mustAbs(t *testing.T, path string) string {
 }
 
 const serializeStub = `package serialize
+
+import "errors"
+
+// ErrValueOutOfRange is the write-side refusal the generated Go returns for a
+// value its wire cannot carry (serialize.go names it the same way).
+var ErrValueOutOfRange = errors.New("serialize: value out of range")
 
 type Int128 struct{ Lo, Hi uint64 }
 type Uint128 struct{ Lo, Hi uint64 }

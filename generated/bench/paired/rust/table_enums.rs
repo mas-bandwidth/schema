@@ -93,48 +93,50 @@ impl MixedWeapon {
 
 // ---- the JSON text form's names (docs/SPEC-TABLES.md §16.2) ----
 
-#[allow(dead_code)]
-pub fn mixed_weapon_json_name(v: MixedWeapon) -> &'static str {
-    match v {
-        MixedWeapon::None => "None",
-        MixedWeapon::Fists => "Fists",
-        MixedWeapon::Pistol => "Pistol",
-        MixedWeapon::Shotgun => "Shotgun",
-        MixedWeapon::Rifle => "Rifle",
-        MixedWeapon::Sniper => "Sniper",
-        MixedWeapon::Smg => "Smg",
-        MixedWeapon::Rocket => "Rocket",
-        MixedWeapon::Grenade => "Grenade",
-        MixedWeapon::Plasma => "Plasma",
-        MixedWeapon::Railgun => "Railgun",
-        MixedWeapon::Flamer => "Flamer",
-        MixedWeapon::Mine => "Mine",
-        MixedWeapon::Turret => "Turret",
-        MixedWeapon::Drone => "Drone",
-        MixedWeapon::Repair => "Repair",
+impl MixedWeapon {
+    #[allow(dead_code)]
+    pub fn json_name(self) -> &'static str {
+        match self {
+            MixedWeapon::None => "None",
+            MixedWeapon::Fists => "Fists",
+            MixedWeapon::Pistol => "Pistol",
+            MixedWeapon::Shotgun => "Shotgun",
+            MixedWeapon::Rifle => "Rifle",
+            MixedWeapon::Sniper => "Sniper",
+            MixedWeapon::Smg => "Smg",
+            MixedWeapon::Rocket => "Rocket",
+            MixedWeapon::Grenade => "Grenade",
+            MixedWeapon::Plasma => "Plasma",
+            MixedWeapon::Railgun => "Railgun",
+            MixedWeapon::Flamer => "Flamer",
+            MixedWeapon::Mine => "Mine",
+            MixedWeapon::Turret => "Turret",
+            MixedWeapon::Drone => "Drone",
+            MixedWeapon::Repair => "Repair",
+        }
     }
-}
 
-#[allow(dead_code)]
-pub fn mixed_weapon_from_json_name(s: &str) -> Option<MixedWeapon> {
-    match s {
-        "None" => Some(MixedWeapon::None),
-        "Fists" => Some(MixedWeapon::Fists),
-        "Pistol" => Some(MixedWeapon::Pistol),
-        "Shotgun" => Some(MixedWeapon::Shotgun),
-        "Rifle" => Some(MixedWeapon::Rifle),
-        "Sniper" => Some(MixedWeapon::Sniper),
-        "Smg" => Some(MixedWeapon::Smg),
-        "Rocket" => Some(MixedWeapon::Rocket),
-        "Grenade" => Some(MixedWeapon::Grenade),
-        "Plasma" => Some(MixedWeapon::Plasma),
-        "Railgun" => Some(MixedWeapon::Railgun),
-        "Flamer" => Some(MixedWeapon::Flamer),
-        "Mine" => Some(MixedWeapon::Mine),
-        "Turret" => Some(MixedWeapon::Turret),
-        "Drone" => Some(MixedWeapon::Drone),
-        "Repair" => Some(MixedWeapon::Repair),
-        _ => None,
+    #[allow(dead_code)]
+    pub fn from_json_name(s: &str) -> Option<Self> {
+        match s {
+            "None" => Some(MixedWeapon::None),
+            "Fists" => Some(MixedWeapon::Fists),
+            "Pistol" => Some(MixedWeapon::Pistol),
+            "Shotgun" => Some(MixedWeapon::Shotgun),
+            "Rifle" => Some(MixedWeapon::Rifle),
+            "Sniper" => Some(MixedWeapon::Sniper),
+            "Smg" => Some(MixedWeapon::Smg),
+            "Rocket" => Some(MixedWeapon::Rocket),
+            "Grenade" => Some(MixedWeapon::Grenade),
+            "Plasma" => Some(MixedWeapon::Plasma),
+            "Railgun" => Some(MixedWeapon::Railgun),
+            "Flamer" => Some(MixedWeapon::Flamer),
+            "Mine" => Some(MixedWeapon::Mine),
+            "Turret" => Some(MixedWeapon::Turret),
+            "Drone" => Some(MixedWeapon::Drone),
+            "Repair" => Some(MixedWeapon::Repair),
+            _ => None,
+        }
     }
 }
 

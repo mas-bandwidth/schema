@@ -10,16 +10,16 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirreltable"
-	"github.com/mas-bandwidth/schema/v2/internal/goname"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/golang"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/gotable"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/squirrel"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/squirrel/sqrun"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/squirreltable"
+	"github.com/mas-bandwidth/schema/v3/internal/goname"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/ir"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 // viewPrelude prints the Squirrel view in one canonical, line-oriented text:
@@ -178,6 +178,9 @@ func TestSquirrelViewMatchesTheGoView(t *testing.T) {
 		tables, err := squirreltable.Generate(u)
 		if err != nil {
 			t.Logf("refused %s: %v", mu.key, err)
+			t.Run(mu.key, func(t *testing.T) {
+				t.Error("a row that did not run: the Squirrel table surface refuses this manifest unit, so its view is not compared with the Go view: " + err.Error())
+			})
 			continue
 		}
 		add(mu.key, u, files, tables)

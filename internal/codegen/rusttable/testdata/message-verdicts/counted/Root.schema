@@ -1,4 +1,4 @@
-package counted
+package verdictcounted
 
 type Inner
 {

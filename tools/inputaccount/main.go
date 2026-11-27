@@ -42,7 +42,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/internal/inputfamilies"
+	"github.com/mas-bandwidth/schema/v3/internal/inputfamilies"
 )
 
 func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }
@@ -54,6 +54,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	leg := fs.String("leg", "", "the reader leg")
 	canary := fs.String("canary", "", "plant a canary: extra or wrong")
 	checkExtra := fs.Bool("check-extra", false, "check the genuine inventory and the extra-file canary in one run")
+	jobs := fs.Int("j", 0, "parallel make jobs (-jN)")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -107,14 +108,26 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	makeArgs := []string{}
+	if *jobs > 0 {
+		makeArgs = append(makeArgs, fmt.Sprintf("-j%d", *jobs))
+	}
 	for _, o := range f.OtherTargets(t, *leg) {
 		makeArgs = append(makeArgs, "-o", o)
 	}
 	// Force make to treat tracked .schema inputs as newly modified so a warm
-	// build/ tree never skips ./bin/schema generate and misses IN_OPEN.
-	for _, p := range want {
-		if strings.HasSuffix(p, ".schema") && (mode != "extra" || p != planted) {
-			makeArgs = append(makeArgs, "-W", p)
+	// build/ tree never skips ./bin/schema generate and misses IN_OPEN. On the
+	// wrong-input canary, only force the mutated file itself when it is a
+	// .schema: flipping a .bin/.json/.txt must fail the leg against the
+	// already-built driver without forcing a redundant rebuild.
+	if *canary == "wrong" {
+		if strings.HasSuffix(planted, ".schema") {
+			makeArgs = append(makeArgs, "-W", planted)
+		}
+	} else {
+		for _, p := range want {
+			if strings.HasSuffix(p, ".schema") && (mode != "extra" || p != planted) {
+				makeArgs = append(makeArgs, "-W", p)
+			}
 		}
 	}
 	target := f.RunTarget(*leg)
@@ -161,6 +174,14 @@ func run(args []string, stdout, stderr io.Writer) int {
 		}
 		say("%s %s: every one of %d inputs opened, and the leg passed", *family, *leg, len(want))
 		return 0
+	}
+	if *canary == "wrong" {
+		if runErr != nil {
+			say("canary %s %s %s: planted %s and the run went red, as it must", *canary, *family, *leg, planted)
+			return 0
+		}
+		say("CANARY FAILED %s %s %s: planted %s and the run stayed green", *canary, *family, *leg, planted)
+		return 1
 	}
 	if red {
 		say("canary %s %s %s: planted %s and the run went red, as it must", *canary, *family, *leg, planted)

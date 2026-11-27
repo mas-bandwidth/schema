@@ -7,10 +7,15 @@
 //   bits(N): N in 1..8 -> kind 6 (u8), N in 9..16 -> kind 7 (u16),
 //            N in 17..32 -> kind 8 (u32), N in 33..64 -> kind 9 (u64);
 //            the declared STORAGE WIDTH is 4 for N<=32 and 8 for N>=33;
-//            the read DECLARES a WIDTH CLAMP of 2^N - 1, which the storage
-//            type holds exactly when N IS the storage width, so the clamp
-//            is ELIDED for N=32 (storage u32 is also 2^32 - 1) and N=64
-//            (storage u64 is also 2^64 - 1).
+//            the read holds a WIDTH BOUND of 2^N - 1, and a raw value past
+//            it REFUSES THE WHOLE LOAD out_of_range (docs/FIXED-FORM-
+//            ALGORITHM.md §4.6: "a `bits(N)` past `2^N - 1` refuses by the
+//            same name"; the pass REFUSES, it never clamps). The storage type
+//            holds the bound exactly when N IS the storage width, so the
+//            check is ELIDED for N=32 (storage u32 is also 2^32 - 1) and
+//            N=64 (storage u64 is also 2^64 - 1). A refusal lands nothing
+//            and leaves every row handed in at its declared defaults
+//            (docs/SPEC-TABLES.md §6.5).
 //
 //   fixed(I,F) F-shift: a fixed-point value rides raw at its storage width
 //            on this form: the storage is the scaled integer and NOTHING
@@ -21,7 +26,7 @@
 //
 // PRODUCTION PATH this test drives (every stage generated):
 //   rangedWidthsFixedSave       the write (internal/codegen/darttable/fixeddart.go, rangedWidthsFixedWriteBody)
-//   rangedWidthsFixedDecode     the read every share, including the WIDTH CLAMP for bits(N) (TabledemoFixed.dart, rangedWidthsFixedDecode)
+//   rangedWidthsFixedDecode     the read every share, including the WIDTH BOUND for bits(N) (TabledemoFixed.dart, rangedWidthsFixedDecode)
 //   rangedWidthsFixedLoad       the load, identity plan
 //   TableFixedLayout.{kind,size} the parser used here to verify the layout's own (kind, size) for each bits(N) entry
 //
@@ -37,10 +42,11 @@
 // THE VECTOR is a single in-range record written by this build's own
 // rangedWidthsFixedSave at the field's exact bound ($maskedAt), read back
 // through the identity plan: any bits(N) value ridden at the declared
-// storage width round-trips byte-identical. The control is one byte past
-// the WIDTH CLAMP — a u32 pattern wider than 2^N-1 lands the clamp at the
-// law-named value with exactly ONE clamp counter and no other counter
-// touched.
+// storage width round-trips byte-identical and refuses nothing. The forged
+// side patches the writer's own bytes one past the WIDTH BOUND (2^N), and to
+// the storage's own top: each REFUSES out_of_range by name, the load answers
+// -1, and the row handed in is back at its declared defaults with no counter
+// moved.
 //
 // Run from the repo root: dart run test/conformance/dart/rows/C8.dart
 // Exit 0 green / exit 1 red, one line per assertion.
@@ -83,7 +89,7 @@ int fnv1a64(String name) {
 // THE EXPECTED (kind, size, maxValue at 2^N-1) for each bits(N) field
 // RangedWidths carries. The kind is the unsigned integer kind the bit
 // count picks; size is the declared storage width (4 for N<=32, 8 for
-// N>=33); maxValue is the law's clamp target.
+// N>=33); maxValue is the law's bound, 2^N - 1.
 class BitsCase {
   final int kind;
   final int size;
@@ -142,7 +148,7 @@ void assertLayout(TableFixedLayout layout) {
 }
 
 // A CLEAN READ through the identity plan: each bit field set to its u64
-// IMAGE of the in-range mask, no clamp, round trip preserves the value.
+// IMAGE of the in-range mask, nothing refused, round trip preserves the value.
 (RangedWidths, TableFixedReport) readClean(
   int b8,
   int b12,
@@ -177,8 +183,8 @@ void assertLayout(TableFixedLayout layout) {
   return (out, report);
 }
 
-// Round-trip EACH bits(N) AT its in-range bound; clamped == 0, value reads
-// back identically.
+// Round-trip EACH bits(N) AT its in-range bound; nothing refused, the value
+// reads back identically.
 void assertRoundTrip() {
   final cases = <(String, int)>[
     ('b8',  _expectations['b8']!.maxValue),
@@ -204,8 +210,8 @@ void assertRoundTrip() {
     final (back, report) = readClean(b8, b12, b16, b32, b64, b48);
     check(
       'C8 round trip: ${c.$1} at mask=0x${c.$2.toRadixString(16)}: '
-      'clamped == 0 (got ${report.clamped})',
-      report.clamped == 0,
+      'refuses nothing (got ${TableFixedRefusal.name(report.refused)})',
+      report.refused == TableFixedRefusal.none,
     );
     final got = switch (c.$1) {
       'b8'  => back.b8,
@@ -226,66 +232,103 @@ void assertRoundTrip() {
   }
 }
 
-// FORGED READ: one bit field set one PAST the declared bound. The WIDTH
-// CLAMP lands at 2^N - 1 exactly, with exactly ONE clamp and nothing
-// else moved. A wrong mask (e.g., 2^N instead of 2^N - 1) turns this
-// test RED on the offending field; a wrong storage width (a layout
-// admitting size 1 for kind 6 instead of size 4) fails at LAYOUT-LEVEL
+// The body offset of each field, in declared order (b8, b16, b32, b64, b12,
+// b48) at its storage width (4, 4, 4, 8, 4, 8), from the record body.
+const Map<String, (int, int)> _bodyAt = {
+  'b8': (0, 4),
+  'b16': (4, 4),
+  'b32': (8, 4),
+  'b64': (12, 8),
+  'b12': (20, 4),
+  'b48': (24, 8),
+};
+
+// FORGED READ: the WRITER's own record, every field in range, then ONE bit
+// field's storage patched PAST the declared bound. The read REFUSES the
+// whole load out_of_range (§4.6): -1, the refusal named, the row handed in
+// (dirtied first) back at its declared defaults, and no counter moved. A
+// wrong bound (2^N instead of 2^N - 1) turns the one-past case GREEN-to-RED
+// on the offending field; a wrong storage width fails at the LAYOUT-LEVEL
 // ASSERTION above.
-void assertClamp() {
-  void one(String field, int rawValue, int clampedAt) {
-    final b8  = field == 'b8'  ? rawValue : _expectations['b8']!.maxValue;
-    final b12 = field == 'b12' ? rawValue : _expectations['b12']!.maxValue;
-    final b16 = field == 'b16' ? rawValue : _expectations['b16']!.maxValue;
-    final b32 = field == 'b32' ? rawValue : _expectations['b32']!.maxValue;
-    final b64 = field == 'b64' ? rawValue : _expectations['b64']!.maxValue & 0x7FFFFFFFFFFFFFFF;
-    final b48 = field == 'b48' ? rawValue : _expectations['b48']!.maxValue;
-    final (back, report) = readClean(b8, b12, b16, b32, b64, b48);
-    check(
-      'C8 clamp $field raw=0x${rawValue.toRadixString(16)}: '
-      'clamped == 1 (got ${report.clamped})',
-      report.clamped == 1,
+void assertRefuse() {
+  void one(String field, int rawValue) {
+    final value = RangedWidths()
+      ..b8 = _expectations['b8']!.maxValue
+      ..b12 = _expectations['b12']!.maxValue
+      ..b16 = _expectations['b16']!.maxValue
+      ..b32 = _expectations['b32']!.maxValue
+      ..b64 = _expectations['b64']!.maxValue & 0x7FFFFFFFFFFFFFFF
+      ..b48 = _expectations['b48']!.maxValue;
+    final bytes = Uint8List(rangedWidthsFixedMeasure(1));
+    final saved = rangedWidthsFixedSave([value], 1, bytes);
+    check('C8 refuse $field: the in-range record saves (got $saved)',
+        saved == bytes.length);
+    final (off, width) = _bodyAt[field]!;
+    final at = rangedWidthsFixedMeasure(0) + 8 + off;
+    final view = ByteData.sublistView(bytes);
+    if (width == 4) {
+      view.setUint32(at, rawValue, Endian.little);
+    } else {
+      view.setUint64(at, rawValue, Endian.little);
+    }
+
+    final out = RangedWidths()
+      ..b8 = 1
+      ..b12 = 2
+      ..b16 = 3
+      ..b32 = 4
+      ..b64 = 5
+      ..b48 = 6;
+    final report = TableFixedReport();
+    final n = rangedWidthsFixedLoad(
+      [out],
+      1,
+      bytes,
+      bytes.length,
+      rangedWidthsFixedNewPlan(),
+      report,
     );
-    final got = switch (field) {
-      'b8'  => back.b8,
-      'b12' => back.b12,
-      'b16' => back.b16,
-      'b32' => back.b32,
-      'b48' => back.b48,
-      'b64' => back.b64,
-      _ => 0,
-    };
+    final raw = '0x${BigInt.from(rawValue).toUnsigned(64).toRadixString(16)}';
+    check('C8 refuse $field raw=$raw: the load refuses (got $n)', n == -1);
     check(
-      'C8 clamp $field raw=0x${rawValue.toRadixString(16)}: '
-      'lands at 0x${clampedAt.toRadixString(16)} (got 0x${got.toRadixString(16)})',
-      got == clampedAt,
+      'C8 refuse $field raw=$raw: out_of_range by name '
+      '(got ${TableFixedRefusal.name(report.refused)})',
+      report.refused == TableFixedRefusal.outOfRange,
     );
-    final otherMoved = report.unknown != 0 ||
-        report.kindMismatch != 0 ||
-        report.widened != 0 ||
-        report.malformed ||
-        report.refused != TableFixedRefusal.none;
+    final fresh = RangedWidths();
     check(
-      'C8 clamp $field raw=0x${rawValue.toRadixString(16)}: '
-      'no other counter moved '
-      '(unknown=${report.unknown} kindMismatch=${report.kindMismatch} '
-      'widened=${report.widened} malformed=${report.malformed} '
-      'refused=${report.refused})',
-      !otherMoved,
+      'C8 refuse $field raw=$raw: lands nothing, the row is at its declared '
+      'defaults (b8=${out.b8} b12=${out.b12} b16=${out.b16} b32=${out.b32} '
+      'b48=${out.b48} b64=${out.b64})',
+      out.b8 == fresh.b8 &&
+          out.b12 == fresh.b12 &&
+          out.b16 == fresh.b16 &&
+          out.b32 == fresh.b32 &&
+          out.b48 == fresh.b48 &&
+          out.b64 == fresh.b64,
+    );
+    check(
+      'C8 refuse $field raw=$raw: no counter moved '
+      '(unknown=${report.unknown} widened=${report.widened})',
+      report.unknown == 0 && report.widened == 0,
     );
   }
 
-  // The b32 and b64 cases cannot be FORGED PAST THE WIDTH CLAMP through
-  // their declared storage (storage IS the clamp), so they are covered
-  // by the round-trip case above — those two are ELIDED clamps.
-  one('b8',  0x100,             _expectations['b8']!.maxValue);
-  one('b12', 0x1000,            _expectations['b12']!.maxValue);
-  one('b16', 0x10000,           _expectations['b16']!.maxValue);
-  one('b48', 0x0001000000000000, _expectations['b48']!.maxValue);
+  // The b32 and b64 cases cannot be FORGED PAST THE WIDTH BOUND through
+  // their declared storage (storage IS the bound), so they are covered by
+  // the round-trip case above — those two are ELIDED checks.
+  one('b8', 0x100);
+  one('b8', 0xFFFFFFFF);
+  one('b12', 0x1000);
+  one('b12', 0xFFFFFFFF);
+  one('b16', 0x10000);
+  one('b16', 0xFFFFFFFF);
+  one('b48', 0x0001000000000000);
+  one('b48', -1); // the u64 storage's top, 2^64 - 1
 }
 
 void main() {
-  print('C8: bits(N) storage width and width clamp');
+  print('C8: bits(N) storage width and width bound');
   final layout = TableFixedLayout()
     ..at = 0
     ..view = ByteData.sublistView(rangedWidthsFixedLayout);
@@ -301,11 +344,11 @@ void main() {
   }
   assertLayout(layout);
   assertRoundTrip();
-  assertClamp();
+  assertRefuse();
   if (failures != 0) {
     print('C8 FAILED ($failures assertions)');
     exitCode = 1;
     return;
   }
-  print('C8 green: bits(N) law asserted (kind, size, width clamp)');
+  print('C8 green: bits(N) law asserted (kind, size, width bound refuses)');
 }

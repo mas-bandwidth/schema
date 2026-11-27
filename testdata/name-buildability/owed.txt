@@ -1,0 +1,6 @@
+# THE OWED LEDGER of the name-buildability nightly (tools/namebuild/owed.go).
+# One line per (leg, row) that does not build yet, with its true cause:
+#   <leg> <row> owed: <cause>
+# An exact set: a failure not listed here fails the nightly, and a listed job
+# that builds fails it too (stale), so each line goes when its fix lands.
+# Found by the generator-internal-name sweep (#4947).
