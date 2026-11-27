@@ -13,7 +13,7 @@
   <ItemGroup>
     <Compile Include="../../tables/cs/src/Program.cs" />
     <Compile Include="../../../generated/bench/paired/cs/*.cs"
-             Exclude="../../../generated/bench/paired/cs/*Block.cs;../../../generated/bench/paired/cs/*Cook.cs" />
+             Exclude="../../../generated/bench/paired/cs/*Block.cs;../../../generated/bench/paired/cs/*Cook.cs;../../../generated/bench/paired/cs/*BlockFill.cs" />
     <Compile Include="$(SerializeCsRoot)/src/Serialize.cs" />
     <Compile Include="$(SerializeCsRoot)/src/Int128Pair.cs" />
   </ItemGroup>
