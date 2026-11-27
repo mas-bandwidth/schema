@@ -14778,7 +14778,7 @@ in build version (§20.5).
   FixedMeasure  FixedSave  FixedSaveReason  FixedLoad  FixedWriteBody  FixedLeaves  FixedDefaultBody
   FixedBodyBytes  FixedRecordBytes  FixedHash  FixedLayout  FixedLayoutBytes
   FixedDst  FixedPlan  FixedPlanCount  FixedPlanGuarded  FixedCover
-  FixedBounds  FixedBoundsBody  FixedCheckBody  FixedCheckBodyExact  FixedCheckDead  FixedCheckRead  FixedFiniteBody  FixedRefuseBatch  FixedFromText
+  FixedBounds  FixedBoundsBody  FixedCheckBody  FixedCheckBodyExact  FixedCheckDead  FixedCheckRead  FixedFiniteBody  FixedSlackBody  FixedRefuseBatch  FixedFromText
   FixedResetImage  FixedHoles  FixedLineageHoles  FixedPlanMax  FixedReadPlan  FixedLoadWalk  GenPastBound
   FixedDecode  FixedPrefill  FixedIdentity  FixedNewPlan  FixedHashLo  FixedHashHi
   FixedDstCopy  FixedIdentityCopy  FixedLayoutCopy  FixedPrefillCopy
@@ -14841,7 +14841,11 @@ in build version (§20.5).
   ordinary edit, and the name has to already be taken when it does.
   `FixedFiniteBody` is the read's FINITE PASS (§3.3), which refuses a NaN or an
   infinity before the bounds pass runs; it is claimed on the same rule, because
-  a type gains a float as an ordinary edit. `FixedRefuseBatch` is the batch
+  a type gains a float as an ordinary edit. `FixedSlackBody` is the Go leg's SLACK
+  PASS (§3.4, THE SLOTS PAST A COUNT AFTER ANY LOAD), which resets every slot
+  past a counted array's count to its declared default; it is claimed on the
+  same rule, because a type gains such an array as an ordinary edit.
+  `FixedRefuseBatch` is the batch
   save's refusal path, which the JavaScript leg emits at module scope for every
   fixed table; it is claimed on the same rule, and so is `FixedCheckDead`,
   the read's dead-byte check, which the JavaScript leg emits there too.
