@@ -25201,8 +25201,7 @@ inline int64_t RenderCameraFixedLoadWalk( RenderCamera * values, int64_t capacit
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    const int64_t n = RenderCameraFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
-    if ( n < 0 || report->damaged || report->refused )
+    const int64_t walked = [&]() -> int64_t
     {
         if ( values != NULL )
         {
@@ -25497,6 +25496,13 @@ inline int64_t RenderCameraFixedLoadWalkBody( RenderCamera * values, int64_t cap
         at += record_bytes;
     }
     return n;
+    }();
+    if ( walked < 0 || report->damaged || report->refused )
+    {
+        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { RenderCameraReset( values[k] ); } }
+        return -1;
+    }
+    return walked;
 }
 
 // The PLAIN RenderCameraFixedLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
@@ -25806,8 +25812,7 @@ inline int64_t RenderShipFixedLoadWalk( RenderShip * values, int64_t capacity, c
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    const int64_t n = RenderShipFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
-    if ( n < 0 || report->damaged || report->refused )
+    const int64_t walked = [&]() -> int64_t
     {
         if ( values != NULL )
         {
@@ -26111,6 +26116,13 @@ inline int64_t RenderShipFixedLoadWalkBody( RenderShip * values, int64_t capacit
         at += record_bytes;
     }
     return n;
+    }();
+    if ( walked < 0 || report->damaged || report->refused )
+    {
+        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { RenderShipReset( values[k] ); } }
+        return -1;
+    }
+    return walked;
 }
 
 // The PLAIN RenderShipFixedLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
@@ -26385,8 +26397,7 @@ inline int64_t RenderTurretFixedLoadWalk( RenderTurret * values, int64_t capacit
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    const int64_t n = RenderTurretFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
-    if ( n < 0 || report->damaged || report->refused )
+    const int64_t walked = [&]() -> int64_t
     {
         if ( values != NULL )
         {
@@ -26690,6 +26701,13 @@ inline int64_t RenderTurretFixedLoadWalkBody( RenderTurret * values, int64_t cap
         at += record_bytes;
     }
     return n;
+    }();
+    if ( walked < 0 || report->damaged || report->refused )
+    {
+        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { RenderTurretReset( values[k] ); } }
+        return -1;
+    }
+    return walked;
 }
 
 // The PLAIN RenderTurretFixedLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
@@ -26976,8 +26994,7 @@ inline int64_t RenderMissileFixedLoadWalk( RenderMissile * values, int64_t capac
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    const int64_t n = RenderMissileFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
-    if ( n < 0 || report->damaged || report->refused )
+    const int64_t walked = [&]() -> int64_t
     {
         if ( values != NULL )
         {
@@ -27281,6 +27298,13 @@ inline int64_t RenderMissileFixedLoadWalkBody( RenderMissile * values, int64_t c
         at += record_bytes;
     }
     return n;
+    }();
+    if ( walked < 0 || report->damaged || report->refused )
+    {
+        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { RenderMissileReset( values[k] ); } }
+        return -1;
+    }
+    return walked;
 }
 
 // The PLAIN RenderMissileFixedLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
@@ -27571,8 +27595,7 @@ inline int64_t RenderDynamicPropFixedLoadWalk( RenderDynamicProp * values, int64
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    const int64_t n = RenderDynamicPropFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
-    if ( n < 0 || report->damaged || report->refused )
+    const int64_t walked = [&]() -> int64_t
     {
         if ( values != NULL )
         {
@@ -27876,6 +27899,13 @@ inline int64_t RenderDynamicPropFixedLoadWalkBody( RenderDynamicProp * values, i
         at += record_bytes;
     }
     return n;
+    }();
+    if ( walked < 0 || report->damaged || report->refused )
+    {
+        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { RenderDynamicPropReset( values[k] ); } }
+        return -1;
+    }
+    return walked;
 }
 
 // The PLAIN RenderDynamicPropFixedLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
@@ -28166,8 +28196,7 @@ inline int64_t RenderStaticPropFixedLoadWalk( RenderStaticProp * values, int64_t
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    const int64_t n = RenderStaticPropFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
-    if ( n < 0 || report->damaged || report->refused )
+    const int64_t walked = [&]() -> int64_t
     {
         if ( values != NULL )
         {
@@ -28471,6 +28500,13 @@ inline int64_t RenderStaticPropFixedLoadWalkBody( RenderStaticProp * values, int
         at += record_bytes;
     }
     return n;
+    }();
+    if ( walked < 0 || report->damaged || report->refused )
+    {
+        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { RenderStaticPropReset( values[k] ); } }
+        return -1;
+    }
+    return walked;
 }
 
 // The PLAIN RenderStaticPropFixedLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
@@ -28766,8 +28802,7 @@ inline int64_t RenderCosmeticPropFixedLoadWalk( RenderCosmeticProp * values, int
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    const int64_t n = RenderCosmeticPropFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
-    if ( n < 0 || report->damaged || report->refused )
+    const int64_t walked = [&]() -> int64_t
     {
         if ( values != NULL )
         {
@@ -29071,6 +29106,13 @@ inline int64_t RenderCosmeticPropFixedLoadWalkBody( RenderCosmeticProp * values,
         at += record_bytes;
     }
     return n;
+    }();
+    if ( walked < 0 || report->damaged || report->refused )
+    {
+        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { RenderCosmeticPropReset( values[k] ); } }
+        return -1;
+    }
+    return walked;
 }
 
 // The PLAIN RenderCosmeticPropFixedLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
@@ -29347,8 +29389,7 @@ inline int64_t RenderLaserFixedLoadWalk( RenderLaser * values, int64_t capacity,
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    const int64_t n = RenderLaserFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
-    if ( n < 0 || report->damaged || report->refused )
+    const int64_t walked = [&]() -> int64_t
     {
         if ( values != NULL )
         {
@@ -29652,6 +29693,13 @@ inline int64_t RenderLaserFixedLoadWalkBody( RenderLaser * values, int64_t capac
         at += record_bytes;
     }
     return n;
+    }();
+    if ( walked < 0 || report->damaged || report->refused )
+    {
+        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { RenderLaserReset( values[k] ); } }
+        return -1;
+    }
+    return walked;
 }
 
 // The PLAIN RenderLaserFixedLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
@@ -29938,8 +29986,7 @@ inline int64_t RenderExplosionFixedLoadWalk( RenderExplosion * values, int64_t c
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    const int64_t n = RenderExplosionFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
-    if ( n < 0 || report->damaged || report->refused )
+    const int64_t walked = [&]() -> int64_t
     {
         if ( values != NULL )
         {
@@ -30243,6 +30290,13 @@ inline int64_t RenderExplosionFixedLoadWalkBody( RenderExplosion * values, int64
         at += record_bytes;
     }
     return n;
+    }();
+    if ( walked < 0 || report->damaged || report->refused )
+    {
+        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { RenderExplosionReset( values[k] ); } }
+        return -1;
+    }
+    return walked;
 }
 
 // The PLAIN RenderExplosionFixedLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for

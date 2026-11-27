@@ -19497,8 +19497,7 @@ inline int64_t TableEntityFixedLoadWalk( TableEntity * values, int64_t capacity,
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    const int64_t n = TableEntityFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
-    if ( n < 0 || report->damaged || report->refused )
+    const int64_t walked = [&]() -> int64_t
     {
         if ( values != NULL )
         {
@@ -19795,6 +19794,13 @@ inline int64_t TableEntityFixedLoadWalkBody( TableEntity * values, int64_t capac
         at += record_bytes;
     }
     return n;
+    }();
+    if ( walked < 0 || report->damaged || report->refused )
+    {
+        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { TableEntityReset( values[k] ); } }
+        return -1;
+    }
+    return walked;
 }
 
 // The PLAIN TableEntityFixedLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
@@ -19988,8 +19994,7 @@ inline int64_t TableStatFixedLoadWalk( TableStat * values, int64_t capacity, con
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    const int64_t n = TableStatFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
-    if ( n < 0 || report->damaged || report->refused )
+    const int64_t walked = [&]() -> int64_t
     {
         if ( values != NULL )
         {
@@ -20286,6 +20291,13 @@ inline int64_t TableStatFixedLoadWalkBody( TableStat * values, int64_t capacity,
         at += record_bytes;
     }
     return n;
+    }();
+    if ( walked < 0 || report->damaged || report->refused )
+    {
+        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { TableStatReset( values[k] ); } }
+        return -1;
+    }
+    return walked;
 }
 
 // The PLAIN TableStatFixedLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
@@ -21039,8 +21051,7 @@ inline int64_t TableMixedFixedLoadWalk( TableMixed * values, int64_t capacity, c
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    const int64_t n = TableMixedFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
-    if ( n < 0 || report->damaged || report->refused )
+    const int64_t walked = [&]() -> int64_t
     {
         if ( values != NULL )
         {
@@ -21344,6 +21355,13 @@ inline int64_t TableMixedFixedLoadWalkBody( TableMixed * values, int64_t capacit
         at += record_bytes;
     }
     return n;
+    }();
+    if ( walked < 0 || report->damaged || report->refused )
+    {
+        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { TableMixedReset( values[k] ); } }
+        return -1;
+    }
+    return walked;
 }
 
 // The PLAIN TableMixedFixedLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for

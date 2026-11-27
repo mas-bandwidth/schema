@@ -15900,8 +15900,7 @@ inline int64_t PlacementFixedLoadWalk( Placement * values, int64_t capacity, con
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    const int64_t n = PlacementFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
-    if ( n < 0 || report->damaged || report->refused )
+    const int64_t walked = [&]() -> int64_t
     {
         if ( values != NULL )
         {
@@ -16196,6 +16195,13 @@ inline int64_t PlacementFixedLoadWalkBody( Placement * values, int64_t capacity,
         at += record_bytes;
     }
     return n;
+    }();
+    if ( walked < 0 || report->damaged || report->refused )
+    {
+        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { PlacementReset( values[k] ); } }
+        return -1;
+    }
+    return walked;
 }
 
 // The PLAIN PlacementFixedLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
@@ -16356,8 +16362,7 @@ inline int64_t LogEntryFixedLoadWalk( LogEntry * values, int64_t capacity, const
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    const int64_t n = LogEntryFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
-    if ( n < 0 || report->damaged || report->refused )
+    const int64_t walked = [&]() -> int64_t
     {
         if ( values != NULL )
         {
@@ -16645,6 +16650,13 @@ inline int64_t LogEntryFixedLoadWalkBody( LogEntry * values, int64_t capacity, c
         at += record_bytes;
     }
     return n;
+    }();
+    if ( walked < 0 || report->damaged || report->refused )
+    {
+        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { LogEntryReset( values[k] ); } }
+        return -1;
+    }
+    return walked;
 }
 
 // The PLAIN LogEntryFixedLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
@@ -16810,8 +16822,7 @@ inline int64_t PointFixedLoadWalk( Point * values, int64_t capacity, const uint8
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    const int64_t n = PointFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
-    if ( n < 0 || report->damaged || report->refused )
+    const int64_t walked = [&]() -> int64_t
     {
         if ( values != NULL )
         {
@@ -17099,6 +17110,13 @@ inline int64_t PointFixedLoadWalkBody( Point * values, int64_t capacity, const u
         at += record_bytes;
     }
     return n;
+    }();
+    if ( walked < 0 || report->damaged || report->refused )
+    {
+        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { PointReset( values[k] ); } }
+        return -1;
+    }
+    return walked;
 }
 
 // The PLAIN PointFixedLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for

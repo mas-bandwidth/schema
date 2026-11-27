@@ -14371,8 +14371,7 @@ inline int64_t MetaFixedLoadWalk( Meta * values, int64_t capacity, const uint8_t
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    const int64_t n = MetaFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
-    if ( n < 0 || report->damaged || report->refused )
+    const int64_t walked = [&]() -> int64_t
     {
         if ( values != NULL )
         {
@@ -14669,6 +14668,13 @@ inline int64_t MetaFixedLoadWalkBody( Meta * values, int64_t capacity, const uin
         at += record_bytes;
     }
     return n;
+    }();
+    if ( walked < 0 || report->damaged || report->refused )
+    {
+        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { MetaReset( values[k] ); } }
+        return -1;
+    }
+    return walked;
 }
 
 // The PLAIN MetaFixedLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
@@ -14873,8 +14879,7 @@ inline int64_t SettingsFixedLoadWalk( Settings * values, int64_t capacity, const
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    const int64_t n = SettingsFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
-    if ( n < 0 || report->damaged || report->refused )
+    const int64_t walked = [&]() -> int64_t
     {
         if ( values != NULL )
         {
@@ -15171,6 +15176,13 @@ inline int64_t SettingsFixedLoadWalkBody( Settings * values, int64_t capacity, c
         at += record_bytes;
     }
     return n;
+    }();
+    if ( walked < 0 || report->damaged || report->refused )
+    {
+        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { SettingsReset( values[k] ); } }
+        return -1;
+    }
+    return walked;
 }
 
 // The PLAIN SettingsFixedLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for

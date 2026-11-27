@@ -17261,8 +17261,7 @@ inline int64_t TeamConfigFixedLoadWalk( TeamConfig * values, int64_t capacity, c
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    const int64_t n = TeamConfigFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
-    if ( n < 0 || report->damaged || report->refused )
+    const int64_t walked = [&]() -> int64_t
     {
         if ( values != NULL )
         {
@@ -17559,6 +17558,13 @@ inline int64_t TeamConfigFixedLoadWalkBody( TeamConfig * values, int64_t capacit
         at += record_bytes;
     }
     return n;
+    }();
+    if ( walked < 0 || report->damaged || report->refused )
+    {
+        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { TeamConfigReset( values[k] ); } }
+        return -1;
+    }
+    return walked;
 }
 
 // The PLAIN TeamConfigFixedLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
@@ -17728,8 +17734,7 @@ inline int64_t GunnerConfigFixedLoadWalk( GunnerConfig * values, int64_t capacit
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    const int64_t n = GunnerConfigFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
-    if ( n < 0 || report->damaged || report->refused )
+    const int64_t walked = [&]() -> int64_t
     {
         if ( values != NULL )
         {
@@ -18024,6 +18029,13 @@ inline int64_t GunnerConfigFixedLoadWalkBody( GunnerConfig * values, int64_t cap
         at += record_bytes;
     }
     return n;
+    }();
+    if ( walked < 0 || report->damaged || report->refused )
+    {
+        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { GunnerConfigReset( values[k] ); } }
+        return -1;
+    }
+    return walked;
 }
 
 // The PLAIN GunnerConfigFixedLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
@@ -18213,8 +18225,7 @@ inline int64_t TurretConfigFixedLoadWalk( TurretConfig * values, int64_t capacit
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    const int64_t n = TurretConfigFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
-    if ( n < 0 || report->damaged || report->refused )
+    const int64_t walked = [&]() -> int64_t
     {
         if ( values != NULL )
         {
@@ -18506,6 +18517,13 @@ inline int64_t TurretConfigFixedLoadWalkBody( TurretConfig * values, int64_t cap
         at += record_bytes;
     }
     return n;
+    }();
+    if ( walked < 0 || report->damaged || report->refused )
+    {
+        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { TurretConfigReset( values[k] ); } }
+        return -1;
+    }
+    return walked;
 }
 
 // The PLAIN TurretConfigFixedLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
@@ -18746,8 +18764,7 @@ inline int64_t HullConfigFixedLoadWalk( HullConfig * values, int64_t capacity, c
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    const int64_t n = HullConfigFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
-    if ( n < 0 || report->damaged || report->refused )
+    const int64_t walked = [&]() -> int64_t
     {
         if ( values != NULL )
         {
@@ -19039,6 +19056,13 @@ inline int64_t HullConfigFixedLoadWalkBody( HullConfig * values, int64_t capacit
         at += record_bytes;
     }
     return n;
+    }();
+    if ( walked < 0 || report->damaged || report->refused )
+    {
+        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { HullConfigReset( values[k] ); } }
+        return -1;
+    }
+    return walked;
 }
 
 // The PLAIN HullConfigFixedLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
@@ -19457,8 +19481,7 @@ inline int64_t KeyedConfigFixedLoadWalk( KeyedConfig * values, int64_t capacity,
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    const int64_t n = KeyedConfigFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
-    if ( n < 0 || report->damaged || report->refused )
+    const int64_t walked = [&]() -> int64_t
     {
         if ( values != NULL )
         {
@@ -19759,6 +19782,13 @@ inline int64_t KeyedConfigFixedLoadWalkBody( KeyedConfig * values, int64_t capac
         at += record_bytes;
     }
     return n;
+    }();
+    if ( walked < 0 || report->damaged || report->refused )
+    {
+        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { KeyedConfigReset( values[k] ); } }
+        return -1;
+    }
+    return walked;
 }
 
 // The PLAIN KeyedConfigFixedLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for

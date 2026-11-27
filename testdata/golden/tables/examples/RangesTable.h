@@ -19799,8 +19799,7 @@ inline int64_t RangedSignedFixedLoadWalk( RangedSigned * values, int64_t capacit
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    const int64_t n = RangedSignedFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
-    if ( n < 0 || report->damaged || report->refused )
+    const int64_t walked = [&]() -> int64_t
     {
         if ( values != NULL )
         {
@@ -20097,6 +20096,13 @@ inline int64_t RangedSignedFixedLoadWalkBody( RangedSigned * values, int64_t cap
         at += record_bytes;
     }
     return n;
+    }();
+    if ( walked < 0 || report->damaged || report->refused )
+    {
+        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { RangedSignedReset( values[k] ); } }
+        return -1;
+    }
+    return walked;
 }
 
 // The PLAIN RangedSignedFixedLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
@@ -20403,8 +20409,7 @@ inline int64_t RangedUnsignedFixedLoadWalk( RangedUnsigned * values, int64_t cap
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    const int64_t n = RangedUnsignedFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
-    if ( n < 0 || report->damaged || report->refused )
+    const int64_t walked = [&]() -> int64_t
     {
         if ( values != NULL )
         {
@@ -20701,6 +20706,13 @@ inline int64_t RangedUnsignedFixedLoadWalkBody( RangedUnsigned * values, int64_t
         at += record_bytes;
     }
     return n;
+    }();
+    if ( walked < 0 || report->damaged || report->refused )
+    {
+        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { RangedUnsignedReset( values[k] ); } }
+        return -1;
+    }
+    return walked;
 }
 
 // The PLAIN RangedUnsignedFixedLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
@@ -20932,8 +20944,7 @@ inline int64_t RangedWidthsFixedLoadWalk( RangedWidths * values, int64_t capacit
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    const int64_t n = RangedWidthsFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
-    if ( n < 0 || report->damaged || report->refused )
+    const int64_t walked = [&]() -> int64_t
     {
         if ( values != NULL )
         {
@@ -21230,6 +21241,13 @@ inline int64_t RangedWidthsFixedLoadWalkBody( RangedWidths * values, int64_t cap
         at += record_bytes;
     }
     return n;
+    }();
+    if ( walked < 0 || report->damaged || report->refused )
+    {
+        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { RangedWidthsReset( values[k] ); } }
+        return -1;
+    }
+    return walked;
 }
 
 // The PLAIN RangedWidthsFixedLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for

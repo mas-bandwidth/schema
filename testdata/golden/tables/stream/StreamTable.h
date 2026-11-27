@@ -11716,8 +11716,7 @@ inline int64_t HeaderFixedLoadWalk( Header * values, int64_t capacity, const uin
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    const int64_t n = HeaderFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
-    if ( n < 0 || report->damaged || report->refused )
+    const int64_t walked = [&]() -> int64_t
     {
         if ( values != NULL )
         {
@@ -12014,6 +12013,13 @@ inline int64_t HeaderFixedLoadWalkBody( Header * values, int64_t capacity, const
         at += record_bytes;
     }
     return n;
+    }();
+    if ( walked < 0 || report->damaged || report->refused )
+    {
+        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { HeaderReset( values[k] ); } }
+        return -1;
+    }
+    return walked;
 }
 
 // The PLAIN HeaderFixedLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for

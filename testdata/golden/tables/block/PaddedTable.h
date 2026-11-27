@@ -10534,8 +10534,7 @@ inline int64_t PaddedRowFixedLoadWalk( PaddedRow * values, int64_t capacity, con
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    const int64_t n = PaddedRowFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
-    if ( n < 0 || report->damaged || report->refused )
+    const int64_t walked = [&]() -> int64_t
     {
         if ( values != NULL )
         {
@@ -10836,6 +10835,13 @@ inline int64_t PaddedRowFixedLoadWalkBody( PaddedRow * values, int64_t capacity,
         at += record_bytes;
     }
     return n;
+    }();
+    if ( walked < 0 || report->damaged || report->refused )
+    {
+        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { PaddedRowReset( values[k] ); } }
+        return -1;
+    }
+    return walked;
 }
 
 // The PLAIN PaddedRowFixedLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
@@ -12275,8 +12281,7 @@ inline int64_t PaddedFrameFixedLoadWalk( PaddedFrame * values, int64_t capacity,
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    const int64_t n = PaddedFrameFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
-    if ( n < 0 || report->damaged || report->refused )
+    const int64_t walked = [&]() -> int64_t
     {
         if ( values != NULL )
         {
@@ -12577,6 +12582,13 @@ inline int64_t PaddedFrameFixedLoadWalkBody( PaddedFrame * values, int64_t capac
         at += record_bytes;
     }
     return n;
+    }();
+    if ( walked < 0 || report->damaged || report->refused )
+    {
+        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { PaddedFrameReset( values[k] ); } }
+        return -1;
+    }
+    return walked;
 }
 
 // The PLAIN PaddedFrameFixedLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for

@@ -29233,8 +29233,7 @@ inline int64_t UserFixedLoadWalk( User * values, int64_t capacity, const uint8_t
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    const int64_t n = UserFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
-    if ( n < 0 || report->damaged || report->refused )
+    const int64_t walked = [&]() -> int64_t
     {
         if ( values != NULL )
         {
@@ -29531,6 +29530,13 @@ inline int64_t UserFixedLoadWalkBody( User * values, int64_t capacity, const uin
         at += record_bytes;
     }
     return n;
+    }();
+    if ( walked < 0 || report->damaged || report->refused )
+    {
+        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { UserReset( values[k] ); } }
+        return -1;
+    }
+    return walked;
 }
 
 // The PLAIN UserFixedLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
@@ -29729,8 +29735,7 @@ inline int64_t ScriptFixedLoadWalk( Script * values, int64_t capacity, const uin
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    const int64_t n = ScriptFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
-    if ( n < 0 || report->damaged || report->refused )
+    const int64_t walked = [&]() -> int64_t
     {
         if ( values != NULL )
         {
@@ -30027,6 +30032,13 @@ inline int64_t ScriptFixedLoadWalkBody( Script * values, int64_t capacity, const
         at += record_bytes;
     }
     return n;
+    }();
+    if ( walked < 0 || report->damaged || report->refused )
+    {
+        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { ScriptReset( values[k] ); } }
+        return -1;
+    }
+    return walked;
 }
 
 // The PLAIN ScriptFixedLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
@@ -30210,8 +30222,7 @@ inline int64_t SelectionFixedLoadWalk( Selection * values, int64_t capacity, con
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    const int64_t n = SelectionFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
-    if ( n < 0 || report->damaged || report->refused )
+    const int64_t walked = [&]() -> int64_t
     {
         if ( values != NULL )
         {
@@ -30499,6 +30510,13 @@ inline int64_t SelectionFixedLoadWalkBody( Selection * values, int64_t capacity,
         at += record_bytes;
     }
     return n;
+    }();
+    if ( walked < 0 || report->damaged || report->refused )
+    {
+        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { SelectionReset( values[k] ); } }
+        return -1;
+    }
+    return walked;
 }
 
 // The PLAIN SelectionFixedLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
@@ -30838,8 +30856,7 @@ inline int64_t InsertTextFixedLoadWalk( InsertText * values, int64_t capacity, c
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    const int64_t n = InsertTextFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
-    if ( n < 0 || report->damaged || report->refused )
+    const int64_t walked = [&]() -> int64_t
     {
         if ( values != NULL )
         {
@@ -31133,6 +31150,13 @@ inline int64_t InsertTextFixedLoadWalkBody( InsertText * values, int64_t capacit
         at += record_bytes;
     }
     return n;
+    }();
+    if ( walked < 0 || report->damaged || report->refused )
+    {
+        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { InsertTextReset( values[k] ); } }
+        return -1;
+    }
+    return walked;
 }
 
 // The PLAIN InsertTextFixedLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
@@ -31320,8 +31344,7 @@ inline int64_t RemoveTextFixedLoadWalk( RemoveText * values, int64_t capacity, c
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    const int64_t n = RemoveTextFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
-    if ( n < 0 || report->damaged || report->refused )
+    const int64_t walked = [&]() -> int64_t
     {
         if ( values != NULL )
         {
@@ -31609,6 +31632,13 @@ inline int64_t RemoveTextFixedLoadWalkBody( RemoveText * values, int64_t capacit
         at += record_bytes;
     }
     return n;
+    }();
+    if ( walked < 0 || report->damaged || report->refused )
+    {
+        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { RemoveTextReset( values[k] ); } }
+        return -1;
+    }
+    return walked;
 }
 
 // The PLAIN RemoveTextFixedLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
@@ -32056,8 +32086,7 @@ inline int64_t EditFixedLoadWalk( Edit * values, int64_t capacity, const uint8_t
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    const int64_t n = EditFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
-    if ( n < 0 || report->damaged || report->refused )
+    const int64_t walked = [&]() -> int64_t
     {
         if ( values != NULL )
         {
@@ -32351,6 +32380,13 @@ inline int64_t EditFixedLoadWalkBody( Edit * values, int64_t capacity, const uin
         at += record_bytes;
     }
     return n;
+    }();
+    if ( walked < 0 || report->damaged || report->refused )
+    {
+        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { EditReset( values[k] ); } }
+        return -1;
+    }
+    return walked;
 }
 
 // The PLAIN EditFixedLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
@@ -32572,8 +32608,7 @@ inline int64_t OpenDocumentFixedLoadWalk( OpenDocument * values, int64_t capacit
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    const int64_t n = OpenDocumentFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
-    if ( n < 0 || report->damaged || report->refused )
+    const int64_t walked = [&]() -> int64_t
     {
         if ( values != NULL )
         {
@@ -32870,6 +32905,13 @@ inline int64_t OpenDocumentFixedLoadWalkBody( OpenDocument * values, int64_t cap
         at += record_bytes;
     }
     return n;
+    }();
+    if ( walked < 0 || report->damaged || report->refused )
+    {
+        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { OpenDocumentReset( values[k] ); } }
+        return -1;
+    }
+    return walked;
 }
 
 // The PLAIN OpenDocumentFixedLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
@@ -33068,8 +33110,7 @@ inline int64_t SaveDocumentFixedLoadWalk( SaveDocument * values, int64_t capacit
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    const int64_t n = SaveDocumentFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
-    if ( n < 0 || report->damaged || report->refused )
+    const int64_t walked = [&]() -> int64_t
     {
         if ( values != NULL )
         {
@@ -33366,6 +33407,13 @@ inline int64_t SaveDocumentFixedLoadWalkBody( SaveDocument * values, int64_t cap
         at += record_bytes;
     }
     return n;
+    }();
+    if ( walked < 0 || report->damaged || report->refused )
+    {
+        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { SaveDocumentReset( values[k] ); } }
+        return -1;
+    }
+    return walked;
 }
 
 // The PLAIN SaveDocumentFixedLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
@@ -34369,8 +34417,7 @@ inline int64_t TransactionFixedLoadWalk( Transaction * values, int64_t capacity,
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    const int64_t n = TransactionFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
-    if ( n < 0 || report->damaged || report->refused )
+    const int64_t walked = [&]() -> int64_t
     {
         if ( values != NULL )
         {
@@ -34664,6 +34711,13 @@ inline int64_t TransactionFixedLoadWalkBody( Transaction * values, int64_t capac
         at += record_bytes;
     }
     return n;
+    }();
+    if ( walked < 0 || report->damaged || report->refused )
+    {
+        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { TransactionReset( values[k] ); } }
+        return -1;
+    }
+    return walked;
 }
 
 // The PLAIN TransactionFixedLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
@@ -37510,8 +37564,7 @@ inline int64_t ToolMessageFixedLoadWalk( ToolMessage * values, int64_t capacity,
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    const int64_t n = ToolMessageFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
-    if ( n < 0 || report->damaged || report->refused )
+    const int64_t walked = [&]() -> int64_t
     {
         if ( values != NULL )
         {
@@ -37805,6 +37858,13 @@ inline int64_t ToolMessageFixedLoadWalkBody( ToolMessage * values, int64_t capac
         at += record_bytes;
     }
     return n;
+    }();
+    if ( walked < 0 || report->damaged || report->refused )
+    {
+        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { ToolMessageReset( values[k] ); } }
+        return -1;
+    }
+    return walked;
 }
 
 // The PLAIN ToolMessageFixedLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
