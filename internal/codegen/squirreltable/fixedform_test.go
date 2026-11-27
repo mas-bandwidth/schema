@@ -322,7 +322,7 @@ func decodeHex(s string) ([]byte, error) {
 func TestSquirrelFixedFormNegativeControl(t *testing.T) {
 	t.Parallel()
 	fixedCorpus(t)
-	u := fixedSynthetic(t, "package neg\nfixed table NR { a int32 = 5\n b int32 = 9 }\n")
+	u := fixedSynthetic(t, "package negctl\nfixed table NR { a int32 = 5\n b int32 = 9 }\n")
 	files, err := squirrel.Generate(u)
 	if err != nil {
 		t.Fatal(err)
@@ -357,8 +357,8 @@ func TestSquirrelFixedFormNegativeControl(t *testing.T) {
 	if matched != 1 {
 		t.Fatalf("the negative-control anchor matched %d times, want exactly 1", matched)
 	}
-	main := `local P = dofile("plain/schema_module.nut", true).require("NegTables");
-local Q = dofile("patched/schema_module.nut", true).require("NegTables");
+	main := `local P = dofile("plain/schema_module.nut", true).require("NegctlTables");
+local Q = dofile("patched/schema_module.nut", true).require("NegctlTables");
 local r = P.NR(); r.A = 42; r.B = 7; local a = blob(128); local n = P.NRFixedSave(a, [r]);
 local q = Q.NR(); q.A = 42; q.B = 7; local b = blob(128); local m = Q.NRFixedSave(b, [q]);
 local same = n == m; for (local i = 0; i < n && same; i++) if (a[i] != b[i]) same = false;
