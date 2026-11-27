@@ -1624,6 +1624,7 @@ public final class BenchMixedVariable {
     // without -ea the writer trusts its caller. It reaches every table the
     // value points to, each once, so a cycle ends it.
     static boolean checkWrite(Value v) {
+        assert v != null : "BenchMixed: a null value is written";
         TableVariable.WriteCheck walk = new TableVariable.WriteCheck();
         walk.point(v);
         for (java.lang.Object o = walk.next(); o != null; o = walk.next()) {
@@ -1682,15 +1683,27 @@ public final class BenchMixedVariable {
                 : "BenchMixed.server_time";
         assert v.entities.size() >= 1 && v.entities.size() <= 8 : "BenchMixed.entities";
         for (int i = 0, n = v.entities.size(); i < n; i++) {
+            assert v.entities.get(i) != null : "BenchMixed.entities";
+        }
+        for (int i = 0, n = v.entities.size(); i < n; i++) {
             MixedEntityVariable.Value e = v.entities.get(i);
+            assert e != null : "BenchMixed.entities";
             assert MixedEntityVariable.checkWrite(e, walk);
         }
         assert v.stats.size() <= 80 : "BenchMixed.stats";
         for (int i = 0, n = v.stats.size(); i < n; i++) {
+            assert v.stats.get(i) != null : "BenchMixed.stats";
+        }
+        for (int i = 0, n = v.stats.size(); i < n; i++) {
             MixedStatVariable.Value e = v.stats.get(i);
+            assert e != null : "BenchMixed.stats";
             assert MixedStatVariable.checkWrite(e, walk);
         }
+        assert v.gameEvent != null : "BenchMixed.game_event";
         assert MixedEventVariable.checkWrite(v.gameEvent, walk);
+        for (int i = 0, n = java.lang.Math.min(v.loadout.size(), 4); i < n; i++) {
+            assert v.loadout.get(i) != null : "BenchMixed.loadout";
+        }
         for (int i = 0, n = java.lang.Math.min(v.loadout.size(), 4); i < n; i++) {
             int e = v.loadout.get(i);
             assert (e & 0xffffffffL) <= 0xffL : "BenchMixed.loadout";

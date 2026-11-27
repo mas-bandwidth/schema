@@ -173,6 +173,7 @@ namespace Tabledemo
 
         public static bool TeamConfigCollectTyped(TeamConfig v, ref TableWire.Ids ids)
         {
+            System.Diagnostics.Debug.Assert((object)v != null, "a null TeamConfig is written");
             TableFieldInfo[] fields = TeamConfigTableType().Fields;
             if (v.SpawnCount != 4 && !ids.Add(0xceec99e2d65db674ul)) return false;
             if (!TableWire.CollectField(v, fields[1], ref ids)) return false;
@@ -272,6 +273,7 @@ namespace Tabledemo
 
         public static bool GunnerConfigCollectTyped(GunnerConfig v, ref TableWire.Ids ids)
         {
+            System.Diagnostics.Debug.Assert((object)v != null, "a null GunnerConfig is written");
             System.Diagnostics.Debug.Assert(float.IsFinite(v.Reaction));
             if (BitConverter.SingleToUInt32Bits(v.Reaction) != 0x3e4ccccdu && !ids.Add(0xb75aa3662201646aul)) return false;
             if (v.Tracking != false && !ids.Add(0xa6bf719a4602b0bcul)) return false;
@@ -373,6 +375,7 @@ namespace Tabledemo
 
         public static bool TurretConfigCollectTyped(TurretConfig v, ref TableWire.Ids ids)
         {
+            System.Diagnostics.Debug.Assert((object)v != null, "a null TurretConfig is written");
             TableFieldInfo[] fields = TurretConfigTableType().Fields;
             System.Diagnostics.Debug.Assert(float.IsFinite(v.Damage));
             if (BitConverter.SingleToUInt32Bits(v.Damage) != 0x41200000u && !ids.Add(0x7f6308be8ab37fc0ul)) return false;
@@ -485,6 +488,7 @@ namespace Tabledemo
 
         public static bool HullConfigCollectTyped(HullConfig v, ref TableWire.Ids ids)
         {
+            System.Diagnostics.Debug.Assert((object)v != null, "a null HullConfig is written");
             TableFieldInfo[] fields = HullConfigTableType().Fields;
             System.Diagnostics.Debug.Assert(float.IsFinite(v.Health));
             if (BitConverter.SingleToUInt32Bits(v.Health) != 0x42c80000u && !ids.Add(0x7f69d4b5288ba9cful)) return false;
@@ -600,6 +604,7 @@ namespace Tabledemo
 
         public static bool KeyedConfigCollectTyped(KeyedConfig v, ref TableWire.Ids ids)
         {
+            System.Diagnostics.Debug.Assert((object)v != null, "a null KeyedConfig is written");
             TableFieldInfo[] fields = KeyedConfigTableType().Fields;
             if (!TableWire.CollectField(v, fields[0], ref ids)) return false;
             if (!TableWire.CollectField(v, fields[1], ref ids)) return false;
@@ -701,6 +706,7 @@ namespace Tabledemo
 
         public static bool ScoreBoardCollectTyped(ScoreBoard v, ref TableWire.Ids ids)
         {
+            System.Diagnostics.Debug.Assert((object)v != null, "a null ScoreBoard is written");
             TableFieldInfo[] fields = ScoreBoardTableType().Fields;
             if (!TableWire.CollectField(v, fields[0], ref ids)) return false;
             return true;
@@ -1131,6 +1137,7 @@ namespace Tabledemo
         // which is also what zero-fills every byte of declared slack.
         public static void TeamConfigFixedWriteBody(Span<byte> b, TeamConfig value)
         {
+            System.Diagnostics.Debug.Assert(value != null, "a null TeamConfig is written");
             if (value == null) return;
             BinaryPrimitives.WriteInt32LittleEndian(b, (int)value.SpawnCount);
             int len_banner = value.Banner != null ? value.BannerLength : 0;
@@ -1143,6 +1150,7 @@ namespace Tabledemo
         // which is also what zero-fills every byte of declared slack.
         public static void GunnerConfigFixedWriteBody(Span<byte> b, GunnerConfig value)
         {
+            System.Diagnostics.Debug.Assert(value != null, "a null GunnerConfig is written");
             if (value == null) return;
             BinaryPrimitives.WriteSingleLittleEndian(b, value.Reaction);
             b.Slice(4)[0] = (byte)(value.Tracking ? 1 : 0);
@@ -1152,6 +1160,7 @@ namespace Tabledemo
         // which is also what zero-fills every byte of declared slack.
         public static void TurretConfigFixedWriteBody(Span<byte> b, TurretConfig value)
         {
+            System.Diagnostics.Debug.Assert(value != null, "a null TurretConfig is written");
             if (value == null) return;
             BinaryPrimitives.WriteSingleLittleEndian(b, value.Damage);
             BinaryPrimitives.WriteSingleLittleEndian(b.Slice(4), value.Cooldown);
@@ -1166,6 +1175,7 @@ namespace Tabledemo
         // which is also what zero-fills every byte of declared slack.
         public static void HullConfigFixedWriteBody(Span<byte> b, HullConfig value)
         {
+            System.Diagnostics.Debug.Assert(value != null, "a null HullConfig is written");
             if (value == null) return;
             BinaryPrimitives.WriteSingleLittleEndian(b, value.Health);
             BinaryPrimitives.WriteSingleLittleEndian(b.Slice(4), value.Mass);
@@ -1182,6 +1192,7 @@ namespace Tabledemo
         // which is also what zero-fills every byte of declared slack.
         public static void ScoreBoardFixedWriteBody(Span<byte> b, ScoreBoard value)
         {
+            System.Diagnostics.Debug.Assert(value != null, "a null ScoreBoard is written");
             if (value == null) return;
             if (value.PerTeam != null) { TableFixedWire.WriteLittle<int>(value.PerTeam.AsSpan(0, global::System.Math.Min(value.PerTeam.Length, 3)), b); }
         }
@@ -1190,6 +1201,7 @@ namespace Tabledemo
         // which is also what zero-fills every byte of declared slack.
         public static void KeyedConfigFixedWriteBody(Span<byte> b, KeyedConfig value)
         {
+            System.Diagnostics.Debug.Assert(value != null, "a null KeyedConfig is written");
             if (value == null) return;
             if (value.Teams.Slots != null)
             {
@@ -1386,7 +1398,7 @@ namespace Tabledemo
         public static readonly TableFixedSlot<TeamConfig>[] TeamConfigFixedSlots = new TableFixedSlot<TeamConfig>[] {
             new TableFixedSlot<TeamConfig>(setRaw: (t, v) => t.SpawnCount = unchecked((int)v), reset: (t) => { t.SpawnCount = 4; }),
             new TableFixedSlot<TeamConfig>(setRaw: (t, v) => t.BannerLength = (int)v, reset: (t) => { t.BannerLength = 0; }),
-            new TableFixedSlot<TeamConfig>(setBytes: (t, b, l) => { if (t.Banner != null) b.Slice(0, global::System.Math.Min(b.Length, t.Banner.Length)).CopyTo(t.Banner); }, reset: (t) => { if (t.Banner != null) { Array.Clear(t.Banner, 0, t.Banner.Length); } }),
+            new TableFixedSlot<TeamConfig>(setBytes: (t, b, l) => { if (t.Banner != null) { int c = global::System.Math.Min(b.Length, t.Banner.Length); b.Slice(0, c).CopyTo(t.Banner); t.Banner.AsSpan(c).Clear(); } }, reset: (t) => { if (t.Banner != null) { Array.Clear(t.Banner, 0, t.Banner.Length); } }),
         };
 
         private static void TeamConfigFixedSetRaw(TeamConfig t, uint slot, ulong v, TableReport rep)
@@ -1419,7 +1431,7 @@ namespace Tabledemo
         {
             switch (slot)
             {
-                case 2: { if (t.Banner != null) b.Slice(0, global::System.Math.Min(b.Length, t.Banner.Length)).CopyTo(t.Banner); } break;
+                case 2: { if (t.Banner != null) { int c = global::System.Math.Min(b.Length, t.Banner.Length); b.Slice(0, c).CopyTo(t.Banner); t.Banner.AsSpan(c).Clear(); } } break;
                 default: break;
             }
         }
@@ -4031,13 +4043,13 @@ namespace Tabledemo
         public static readonly TableFixedSlot<KeyedConfig>[] KeyedConfigFixedSlots = new TableFixedSlot<KeyedConfig>[] {
             new TableFixedSlot<KeyedConfig>(setRaw: (t, v) => t.Teams.Slots[0].SpawnCount = unchecked((int)v), reset: (t) => { t.Teams.Slots[0].SpawnCount = 4; }),
             new TableFixedSlot<KeyedConfig>(setRaw: (t, v) => t.Teams.Slots[0].BannerLength = (int)v, reset: (t) => { t.Teams.Slots[0].BannerLength = 0; }),
-            new TableFixedSlot<KeyedConfig>(setBytes: (t, b, l) => { if (t.Teams.Slots[0].Banner != null) b.Slice(0, global::System.Math.Min(b.Length, t.Teams.Slots[0].Banner.Length)).CopyTo(t.Teams.Slots[0].Banner); }, reset: (t) => { if (t.Teams.Slots[0].Banner != null) { Array.Clear(t.Teams.Slots[0].Banner, 0, t.Teams.Slots[0].Banner.Length); } }),
+            new TableFixedSlot<KeyedConfig>(setBytes: (t, b, l) => { if (t.Teams.Slots[0].Banner != null) { int c = global::System.Math.Min(b.Length, t.Teams.Slots[0].Banner.Length); b.Slice(0, c).CopyTo(t.Teams.Slots[0].Banner); t.Teams.Slots[0].Banner.AsSpan(c).Clear(); } }, reset: (t) => { if (t.Teams.Slots[0].Banner != null) { Array.Clear(t.Teams.Slots[0].Banner, 0, t.Teams.Slots[0].Banner.Length); } }),
             new TableFixedSlot<KeyedConfig>(setRaw: (t, v) => t.Teams.Slots[1].SpawnCount = unchecked((int)v), reset: (t) => { t.Teams.Slots[1].SpawnCount = 4; }),
             new TableFixedSlot<KeyedConfig>(setRaw: (t, v) => t.Teams.Slots[1].BannerLength = (int)v, reset: (t) => { t.Teams.Slots[1].BannerLength = 0; }),
-            new TableFixedSlot<KeyedConfig>(setBytes: (t, b, l) => { if (t.Teams.Slots[1].Banner != null) b.Slice(0, global::System.Math.Min(b.Length, t.Teams.Slots[1].Banner.Length)).CopyTo(t.Teams.Slots[1].Banner); }, reset: (t) => { if (t.Teams.Slots[1].Banner != null) { Array.Clear(t.Teams.Slots[1].Banner, 0, t.Teams.Slots[1].Banner.Length); } }),
+            new TableFixedSlot<KeyedConfig>(setBytes: (t, b, l) => { if (t.Teams.Slots[1].Banner != null) { int c = global::System.Math.Min(b.Length, t.Teams.Slots[1].Banner.Length); b.Slice(0, c).CopyTo(t.Teams.Slots[1].Banner); t.Teams.Slots[1].Banner.AsSpan(c).Clear(); } }, reset: (t) => { if (t.Teams.Slots[1].Banner != null) { Array.Clear(t.Teams.Slots[1].Banner, 0, t.Teams.Slots[1].Banner.Length); } }),
             new TableFixedSlot<KeyedConfig>(setRaw: (t, v) => t.Teams.Slots[2].SpawnCount = unchecked((int)v), reset: (t) => { t.Teams.Slots[2].SpawnCount = 4; }),
             new TableFixedSlot<KeyedConfig>(setRaw: (t, v) => t.Teams.Slots[2].BannerLength = (int)v, reset: (t) => { t.Teams.Slots[2].BannerLength = 0; }),
-            new TableFixedSlot<KeyedConfig>(setBytes: (t, b, l) => { if (t.Teams.Slots[2].Banner != null) b.Slice(0, global::System.Math.Min(b.Length, t.Teams.Slots[2].Banner.Length)).CopyTo(t.Teams.Slots[2].Banner); }, reset: (t) => { if (t.Teams.Slots[2].Banner != null) { Array.Clear(t.Teams.Slots[2].Banner, 0, t.Teams.Slots[2].Banner.Length); } }),
+            new TableFixedSlot<KeyedConfig>(setBytes: (t, b, l) => { if (t.Teams.Slots[2].Banner != null) { int c = global::System.Math.Min(b.Length, t.Teams.Slots[2].Banner.Length); b.Slice(0, c).CopyTo(t.Teams.Slots[2].Banner); t.Teams.Slots[2].Banner.AsSpan(c).Clear(); } }, reset: (t) => { if (t.Teams.Slots[2].Banner != null) { Array.Clear(t.Teams.Slots[2].Banner, 0, t.Teams.Slots[2].Banner.Length); } }),
             new TableFixedSlot<KeyedConfig>(setRaw: (t, v) => t.Hulls.Slots[0].Health = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Hulls.Slots[0].Health = (float)d, reset: (t) => { t.Hulls.Slots[0].Health = 100.0f; }),
             new TableFixedSlot<KeyedConfig>(setRaw: (t, v) => t.Hulls.Slots[0].Mass = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Hulls.Slots[0].Mass = (float)d, reset: (t) => { t.Hulls.Slots[0].Mass = 1.0f; }),
             new TableFixedSlot<KeyedConfig>(setRaw: (t, v) => t.Hulls.Slots[0].Turrets.Slots[0].Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Hulls.Slots[0].Turrets.Slots[0].Damage = (float)d, reset: (t) => { t.Hulls.Slots[0].Turrets.Slots[0].Damage = 10.0f; }),
@@ -4215,9 +4227,9 @@ namespace Tabledemo
         {
             switch (slot)
             {
-                case 2: { if (t.Teams.Slots[0].Banner != null) b.Slice(0, global::System.Math.Min(b.Length, t.Teams.Slots[0].Banner.Length)).CopyTo(t.Teams.Slots[0].Banner); } break;
-                case 5: { if (t.Teams.Slots[1].Banner != null) b.Slice(0, global::System.Math.Min(b.Length, t.Teams.Slots[1].Banner.Length)).CopyTo(t.Teams.Slots[1].Banner); } break;
-                case 8: { if (t.Teams.Slots[2].Banner != null) b.Slice(0, global::System.Math.Min(b.Length, t.Teams.Slots[2].Banner.Length)).CopyTo(t.Teams.Slots[2].Banner); } break;
+                case 2: { if (t.Teams.Slots[0].Banner != null) { int c = global::System.Math.Min(b.Length, t.Teams.Slots[0].Banner.Length); b.Slice(0, c).CopyTo(t.Teams.Slots[0].Banner); t.Teams.Slots[0].Banner.AsSpan(c).Clear(); } } break;
+                case 5: { if (t.Teams.Slots[1].Banner != null) { int c = global::System.Math.Min(b.Length, t.Teams.Slots[1].Banner.Length); b.Slice(0, c).CopyTo(t.Teams.Slots[1].Banner); t.Teams.Slots[1].Banner.AsSpan(c).Clear(); } } break;
+                case 8: { if (t.Teams.Slots[2].Banner != null) { int c = global::System.Math.Min(b.Length, t.Teams.Slots[2].Banner.Length); b.Slice(0, c).CopyTo(t.Teams.Slots[2].Banner); t.Teams.Slots[2].Banner.AsSpan(c).Clear(); } } break;
                 default: break;
             }
         }

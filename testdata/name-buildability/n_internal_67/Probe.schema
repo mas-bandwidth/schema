@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum settleWrite
+{ Zfirst, Zsecond, Zthird }
+
+enum seventeen
+{ Zfirst, Zsecond, Zthird }
+
+enum sgn
+{ Zfirst, Zsecond, Zthird }
+
+enum sh
+{ Zfirst, Zsecond, Zthird }
+
+enum shape
+{ Zfirst, Zsecond, Zthird }
+
+enum shapeEdges
+{ Zfirst, Zsecond, Zthird }
+
+enum shapeMatches
+{ Zfirst, Zsecond, Zthird }
+
+enum shapeOf
+{ Zfirst, Zsecond, Zthird }
+
+enum shapeRead
+{ Zfirst, Zsecond, Zthird }
+
+enum shape_ok
+{ Zfirst, Zsecond, Zthird }
+
+enum shape_registry
+{ Zfirst, Zsecond, Zthird }
+
+enum shapes
+{ Zfirst, Zsecond, Zthird }
+
+enum share
+{ Zfirst, Zsecond, Zthird }
+
+enum shareBlobs
+{ Zfirst, Zsecond, Zthird }
+
+enum shared
+{ Zfirst, Zsecond, Zthird }
+
+enum shared_blob
+{ Zfirst, Zsecond, Zthird }
+
+enum shift
+{ Zfirst, Zsecond, Zthird }
+
+enum shiftCount
+{ Zfirst, Zsecond, Zthird }
+
+enum shifted
+{ Zfirst, Zsecond, Zthird }
+
+enum shipped
+{ Zfirst, Zsecond, Zthird }
+
+enum shl
+{ Zfirst, Zsecond, Zthird }
+
+enum shl128
+{ Zfirst, Zsecond, Zthird }
+
+enum shl16
+{ Zfirst, Zsecond, Zthird }
+
+enum shortest
+{ Zfirst, Zsecond, Zthird }
+
+enum shr
+{ Zfirst, Zsecond, Zthird }
+
+enum si
+{ Zfirst, Zsecond, Zthird }
+
+enum side
+{ Zfirst, Zsecond, Zthird }
+
+enum sides
+{ Zfirst, Zsecond, Zthird }
+
+enum sig
+{ Zfirst, Zsecond, Zthird }
+
+enum sign
+{ Zfirst, Zsecond, Zthird }
+
+enum signBit
+{ Zfirst, Zsecond, Zthird }
+
+enum signBits
+{ Zfirst, Zsecond, Zthird }
+
+enum signExtend
+{ Zfirst, Zsecond, Zthird }
+
+enum signature
+{ Zfirst, Zsecond, Zthird }
+
+enum signedMax
+{ Zfirst, Zsecond, Zthird }
+
+enum signedMin
+{ Zfirst, Zsecond, Zthird }
+
+enum signedOf
+{ Zfirst, Zsecond, Zthird }
+
+enum signed_kind
+{ Zfirst, Zsecond, Zthird }
+
+enum signedness
+{ Zfirst, Zsecond, Zthird }
+
+enum significant
+{ Zfirst, Zsecond, Zthird }
+
+enum single
+{ Zfirst, Zsecond, Zthird }
+
+enum sink
+{ Zfirst, Zsecond, Zthird }
+
+enum site
+{ Zfirst, Zsecond, Zthird }
+
+enum size
+{ Zfirst, Zsecond, Zthird }
+
+enum size_of
+{ Zfirst, Zsecond, Zthird }
+
+enum sized
+{ Zfirst, Zsecond, Zthird }
+
+enum sizes
+{ Zfirst, Zsecond, Zthird }
+
+enum sj
+{ Zfirst, Zsecond, Zthird }
+
+enum skip
+{ Zfirst, Zsecond, Zthird }
+
+enum skipBits
+{ Zfirst, Zsecond, Zthird }
+
+enum skipBody
+{ Zfirst, Zsecond, Zthird }
+
+enum skipContainer
+{ Zfirst, Zsecond, Zthird }
+
+enum skipEntry
+{ Zfirst, Zsecond, Zthird }
+
+enum skipField
+{ Zfirst, Zsecond, Zthird }
+
+enum skipFileKind
+{ Zfirst, Zsecond, Zthird }
+
+enum skipPayload
+{ Zfirst, Zsecond, Zthird }
+
+enum skipRemoteBody
+{ Zfirst, Zsecond, Zthird }
+
+enum skipRemoteEntry
+{ Zfirst, Zsecond, Zthird }
+
+enum skipRun
+{ Zfirst, Zsecond, Zthird }
+
+enum skipShape
+{ Zfirst, Zsecond, Zthird }
+
+enum skipStep
+{ Zfirst, Zsecond, Zthird }
+
+enum skipValue
+{ Zfirst, Zsecond, Zthird }
+
+enum skip_ann_field
+{ Zfirst, Zsecond, Zthird }
+
+enum skip_content
+{ Zfirst, Zsecond, Zthird }
+
+enum skip_depth
+{ Zfirst, Zsecond, Zthird }
+
+enum skip_gap
+{ Zfirst, Zsecond, Zthird }
+
+enum skip_keyed
+{ Zfirst, Zsecond, Zthird }
+
+enum skip_union
+{ Zfirst, Zsecond, Zthird }
+
+enum skip_validation
+{ Zfirst, Zsecond, Zthird }
+
+enum skippable
+{ Zfirst, Zsecond, Zthird }
+
+enum skipped
+{ Zfirst, Zsecond, Zthird }
+
+enum skips
+{ Zfirst, Zsecond, Zthird }
+
+enum sl
+{ Zfirst, Zsecond, Zthird }
+
+enum sl1
+{ Zfirst, Zsecond, Zthird }
+
+enum sl13
+{ Zfirst, Zsecond, Zthird }
+
+enum sl17
+{ Zfirst, Zsecond, Zthird }
+
+enum sl2
+{ Zfirst, Zsecond, Zthird }
+
+enum sl28
+{ Zfirst, Zsecond, Zthird }
+
+enum sl3
+{ Zfirst, Zsecond, Zthird }
+
+enum sl5
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    settleWrite Inner
+    seventeen Inner
+    sgn Inner
+    sh Inner
+    shape Inner
+    shapeEdges Inner
+    shapeMatches Inner
+    shapeOf Inner
+    shapeRead Inner
+    shape_ok Inner
+}
+
+table NameTypes0
+{
+    one0  settleWrite
+    many0 [..4]settleWrite
+    one1  seventeen
+    many1 [..4]seventeen
+    one2  sgn
+    many2 [..4]sgn
+    one3  sh
+    many3 [..4]sh
+    one4  shape
+    many4 [..4]shape
+    one5  shapeEdges
+    many5 [..4]shapeEdges
+    one6  shapeMatches
+    many6 [..4]shapeMatches
+    one7  shapeOf
+    many7 [..4]shapeOf
+    one8  shapeRead
+    many8 [..4]shapeRead
+    one9  shape_ok
+    many9 [..4]shape_ok
+}
+
+table NameFields0
+{
+    settleWrite uint32
+    seventeen uint32
+    sgn uint32
+    sh uint32
+    shape uint32
+    shapeEdges uint32
+    shapeMatches uint32
+    shapeOf uint32
+    shapeRead uint32
+    shape_ok uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    shape_registry Inner
+    shapes Inner
+    share Inner
+    shareBlobs Inner
+    shared Inner
+    shared_blob Inner
+    shift Inner
+    shiftCount Inner
+    shifted Inner
+    shipped Inner
+}
+
+table NameTypes1
+{
+    one0  shape_registry
+    many0 [..4]shape_registry
+    one1  shapes
+    many1 [..4]shapes
+    one2  share
+    many2 [..4]share
+    one3  shareBlobs
+    many3 [..4]shareBlobs
+    one4  shared
+    many4 [..4]shared
+    one5  shared_blob
+    many5 [..4]shared_blob
+    one6  shift
+    many6 [..4]shift
+    one7  shiftCount
+    many7 [..4]shiftCount
+    one8  shifted
+    many8 [..4]shifted
+    one9  shipped
+    many9 [..4]shipped
+}
+
+table NameFields1
+{
+    shape_registry uint32
+    shapes uint32
+    share uint32
+    shareBlobs uint32
+    shared uint32
+    shared_blob uint32
+    shift uint32
+    shiftCount uint32
+    shifted uint32
+    shipped uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    shl Inner
+    shl128 Inner
+    shl16 Inner
+    shortest Inner
+    shr Inner
+    si Inner
+    side Inner
+    sides Inner
+    sig Inner
+    sign Inner
+}
+
+table NameTypes2
+{
+    one0  shl
+    many0 [..4]shl
+    one1  shl128
+    many1 [..4]shl128
+    one2  shl16
+    many2 [..4]shl16
+    one3  shortest
+    many3 [..4]shortest
+    one4  shr
+    many4 [..4]shr
+    one5  si
+    many5 [..4]si
+    one6  side
+    many6 [..4]side
+    one7  sides
+    many7 [..4]sides
+    one8  sig
+    many8 [..4]sig
+    one9  sign
+    many9 [..4]sign
+}
+
+table NameFields2
+{
+    shl uint32
+    shl128 uint32
+    shl16 uint32
+    shortest uint32
+    shr uint32
+    si uint32
+    side uint32
+    sides uint32
+    sig uint32
+    sign uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    signBit Inner
+    signBits Inner
+    signExtend Inner
+    signature Inner
+    signedMax Inner
+    signedMin Inner
+    signedOf Inner
+    signed_kind Inner
+    signedness Inner
+    significant Inner
+}
+
+table NameTypes3
+{
+    one0  signBit
+    many0 [..4]signBit
+    one1  signBits
+    many1 [..4]signBits
+    one2  signExtend
+    many2 [..4]signExtend
+    one3  signature
+    many3 [..4]signature
+    one4  signedMax
+    many4 [..4]signedMax
+    one5  signedMin
+    many5 [..4]signedMin
+    one6  signedOf
+    many6 [..4]signedOf
+    one7  signed_kind
+    many7 [..4]signed_kind
+    one8  signedness
+    many8 [..4]signedness
+    one9  significant
+    many9 [..4]significant
+}
+
+table NameFields3
+{
+    signBit uint32
+    signBits uint32
+    signExtend uint32
+    signature uint32
+    signedMax uint32
+    signedMin uint32
+    signedOf uint32
+    signed_kind uint32
+    signedness uint32
+    significant uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    single Inner
+    sink Inner
+    site Inner
+    size Inner
+    size_of Inner
+    sized Inner
+    sizes Inner
+    sj Inner
+    skip Inner
+    skipBits Inner
+}
+
+table NameTypes4
+{
+    one0  single
+    many0 [..4]single
+    one1  sink
+    many1 [..4]sink
+    one2  site
+    many2 [..4]site
+    one3  size
+    many3 [..4]size
+    one4  size_of
+    many4 [..4]size_of
+    one5  sized
+    many5 [..4]sized
+    one6  sizes
+    many6 [..4]sizes
+    one7  sj
+    many7 [..4]sj
+    one8  skip
+    many8 [..4]skip
+    one9  skipBits
+    many9 [..4]skipBits
+}
+
+table NameFields4
+{
+    single uint32
+    sink uint32
+    site uint32
+    size uint32
+    size_of uint32
+    sized uint32
+    sizes uint32
+    sj uint32
+    skip uint32
+    skipBits uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    skipBody Inner
+    skipContainer Inner
+    skipEntry Inner
+    skipField Inner
+    skipFileKind Inner
+    skipPayload Inner
+    skipRemoteBody Inner
+    skipRemoteEntry Inner
+    skipRun Inner
+    skipShape Inner
+}
+
+table NameTypes5
+{
+    one0  skipBody
+    many0 [..4]skipBody
+    one1  skipContainer
+    many1 [..4]skipContainer
+    one2  skipEntry
+    many2 [..4]skipEntry
+    one3  skipField
+    many3 [..4]skipField
+    one4  skipFileKind
+    many4 [..4]skipFileKind
+    one5  skipPayload
+    many5 [..4]skipPayload
+    one6  skipRemoteBody
+    many6 [..4]skipRemoteBody
+    one7  skipRemoteEntry
+    many7 [..4]skipRemoteEntry
+    one8  skipRun
+    many8 [..4]skipRun
+    one9  skipShape
+    many9 [..4]skipShape
+}
+
+table NameFields5
+{
+    skipBody uint32
+    skipContainer uint32
+    skipEntry uint32
+    skipField uint32
+    skipFileKind uint32
+    skipPayload uint32
+    skipRemoteBody uint32
+    skipRemoteEntry uint32
+    skipRun uint32
+    skipShape uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    skipStep Inner
+    skipValue Inner
+    skip_ann_field Inner
+    skip_content Inner
+    skip_depth Inner
+    skip_gap Inner
+    skip_keyed Inner
+    skip_union Inner
+    skip_validation Inner
+    skippable Inner
+}
+
+table NameTypes6
+{
+    one0  skipStep
+    many0 [..4]skipStep
+    one1  skipValue
+    many1 [..4]skipValue
+    one2  skip_ann_field
+    many2 [..4]skip_ann_field
+    one3  skip_content
+    many3 [..4]skip_content
+    one4  skip_depth
+    many4 [..4]skip_depth
+    one5  skip_gap
+    many5 [..4]skip_gap
+    one6  skip_keyed
+    many6 [..4]skip_keyed
+    one7  skip_union
+    many7 [..4]skip_union
+    one8  skip_validation
+    many8 [..4]skip_validation
+    one9  skippable
+    many9 [..4]skippable
+}
+
+table NameFields6
+{
+    skipStep uint32
+    skipValue uint32
+    skip_ann_field uint32
+    skip_content uint32
+    skip_depth uint32
+    skip_gap uint32
+    skip_keyed uint32
+    skip_union uint32
+    skip_validation uint32
+    skippable uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    skipped Inner
+    skips Inner
+    sl Inner
+    sl1 Inner
+    sl13 Inner
+    sl17 Inner
+    sl2 Inner
+    sl28 Inner
+    sl3 Inner
+    sl5 Inner
+}
+
+table NameTypes7
+{
+    one0  skipped
+    many0 [..4]skipped
+    one1  skips
+    many1 [..4]skips
+    one2  sl
+    many2 [..4]sl
+    one3  sl1
+    many3 [..4]sl1
+    one4  sl13
+    many4 [..4]sl13
+    one5  sl17
+    many5 [..4]sl17
+    one6  sl2
+    many6 [..4]sl2
+    one7  sl28
+    many7 [..4]sl28
+    one8  sl3
+    many8 [..4]sl3
+    one9  sl5
+    many9 [..4]sl5
+}
+
+table NameFields7
+{
+    skipped uint32
+    skips uint32
+    sl uint32
+    sl1 uint32
+    sl13 uint32
+    sl17 uint32
+    sl2 uint32
+    sl28 uint32
+    sl3 uint32
+    sl5 uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

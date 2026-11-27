@@ -67,11 +67,16 @@ func cMessageFlagsDomainRun(t *testing.T, plant bool) (string, error) {
 	}
 	maps.Copy(files, tables)
 	if plant {
-		gate := regexp.MustCompile(`schema_assert\(\(\(uint64_t\)\([^\n]*?\) >> [0-9]+\) == 0\);`)
+		// every flags-domain assert, matched by its C tokens under any
+		// whitespace because cfmt lays the emitted C out
+		gate := regexp.MustCompile(`schema_assert\s*\(\s*\(\s*\(\s*uint64_t\s*\)\s*\([^\n]*?\)\s*>>\s*[0-9]+\s*\)\s*==\s*0\s*\)\s*;`)
 		hits := 0
 		for name, data := range files {
 			hits += len(gate.FindAll(data, -1))
 			files[name] = gate.ReplaceAll(data, []byte("/* SABOTAGED flags domain assertion */"))
+		}
+		if hits == 0 {
+			t.Fatal("flags assertion omission matched no schema_assert: the control would plant nothing")
 		}
 		// THE FIXED WRITE CHECK holds the same W (docs/SPEC-TABLES.md §4), and
 		// SaveMessages asserts it too, so the omission takes it as well
