@@ -26,7 +26,8 @@ func TestUnknownCensus(t *testing.T) {
 	}
 	back := make([]%[2]s, 8)
  for i := range back { %[2]sReset(&back[i]); back[i].Lead=99; back[i].Trail=88 }
- before := append([]%[2]s(nil), back...)
+ want := make([]%[2]s, len(back))
+ for i := range want { %[2]sReset(&want[i]) }
  plan := make([]TableFixedEntry, 4096)
  for attempt := range 2 {
   var r TableReport
@@ -34,7 +35,9 @@ func TestUnknownCensus(t *testing.T) {
   if n >= 0 || r.Err() == nil || r.Unknown != 0 || r.Widened != 0 || r.Retained != 0 || r.RetainLost != 0 {
    t.Fatalf("unlawful lineage attempt %%d: n=%%d report=%%+v", attempt,n,r)
   }
-  if !reflect.DeepEqual(back, before) { t.Fatal("unlawful lineage wrote destination") }
+  // SPEC-TABLES §6.5: after ANY refusal every row handed in holds its
+  // declared defaults, never the poisoned values it was handed.
+  if !reflect.DeepEqual(back, want) { t.Fatalf("unlawful lineage attempt %%d: rows not reset to declared defaults: %%+v", attempt, back[0]) }
  }
 
 }

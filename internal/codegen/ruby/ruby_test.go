@@ -12,12 +12,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/check"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/ruby/rubyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/check"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/ruby/rubyrun"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/ir"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testinputs"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 func emptyUnit(pkg string, bases ...string) *ir.Unit {
@@ -163,6 +164,7 @@ func driverSurfaceContract(t *testing.T, driver, surfacesDir, dir string) error 
 	if err := os.WriteFile(manifest, []byte("# empty manifest\n"), 0o644); err != nil {
 		return err
 	}
+	testinputs.Files(t, driver, surfacesDir)
 	list := testproc.Command(t, "sh", driver, manifest, "list")
 	list.Dir = dir
 	list.Env = append(os.Environ(), "RUBY="+rubyBin)

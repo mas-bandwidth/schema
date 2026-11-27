@@ -1,0 +1,6 @@
+TAP version 14
+# Subtest: a
+    ok 1 - inner # SKIP no gpu
+    1..1
+ok 1 - a
+1..1

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // THE TEXT FORM (docs/SPEC-TABLES.md §16; docs/PORT-MOO.md, THE LAYERS, layer

@@ -8,12 +8,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/check"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/moo"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/moo/moorun"
-	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	wrpacket "github.com/mas-bandwidth/schema/v2/test/conformance/write-refusal-packet"
+	"github.com/mas-bandwidth/schema/v3/internal/check"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/moo"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/moo/moorun"
+	"github.com/mas-bandwidth/schema/v3/internal/parser"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	wrpacket "github.com/mas-bandwidth/schema/v3/test/conformance/write-refusal-packet"
 )
 
 // root is the repository root relative to this package.
@@ -57,7 +57,7 @@ func TestWriteRefusalPacketMooSurface(t *testing.T) {
 func runWriteRefusalPacketMoo(t *testing.T) {
 	t.Helper()
 	slowtest.Gate(t, "the pinned moo interpreter (it runs the generated packet writer)")
-	path := filepath.Join(root, wrpacket.Dir, "PacketWriteRefusal.schema")
+	path := filepath.Join(root, wrpacket.Dir, "RefusalPacket.schema")
 	src, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)

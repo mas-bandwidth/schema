@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v3/internal/testinputs"
 )
 
 // TestGooseWireFuzzHoldsNoRootArmsByName is CI-TOOLS-7: make/goose-wirefuzz.sh
@@ -55,6 +57,7 @@ echo "wire-fuzz: seed 1, 3 seeds over 3 roots, 0 divergences"
 		dir := t.TempDir()
 		fake := write(filepath.Join(dir, "fake-noroots"), noroots, 0o644)
 		list := write(filepath.Join(dir, "noroots.tsv"), "# unit\tarm\twhy\n"+carried, 0o644)
+		testinputs.Files(t, "make/goose-wirefuzz.sh", "make/goose-wirefuzz-build.sh")
 		cmd := exec.Command("sh", "make/goose-wirefuzz.sh", goose, harness, units, filepath.Join(dir, "work"), "1", "10", "plain")
 		cmd.Dir = root
 		cmd.Env = append(os.Environ(), "FAKE_NOROOTS="+fake, "SCHEMA_GOOSE_WIREFUZZ_KNOWN="+known, "SCHEMA_GOOSE_WIREFUZZ_NOROOTS="+list, "GOOSE_FUZZ_JOBS=1")

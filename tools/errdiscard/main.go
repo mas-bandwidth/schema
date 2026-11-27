@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/mas-bandwidth/schema/v2/internal/errdiscard"
+	"github.com/mas-bandwidth/schema/v3/internal/errdiscard"
 )
 
 func main() {

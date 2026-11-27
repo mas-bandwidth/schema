@@ -1,0 +1,11 @@
+[package]
+name = "conformance-rust-writebounds"
+version = "0.0.0"
+edition = "2024"
+
+[dependencies]
+writebounds = { path = "../../../../build/tables-generated-rust/writebounds" }
+
+[profile.dev]
+opt-level = 0
+debug = false

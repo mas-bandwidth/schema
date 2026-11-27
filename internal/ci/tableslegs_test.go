@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/provesran"
+	"github.com/mas-bandwidth/schema/v3/internal/provesran"
 )
 
 // tableLeg names a make leg whose evidence is load-bearing for a port, and the
@@ -90,9 +90,14 @@ func makeInvokes(text, target string) bool {
 // fine, like a hierarchical merge): the C# leg's job, ci-full.yml cs-tables,
 // runs on a pull request whose diff touches the C# leg's paths or a shared
 // root, which ci-full.yml pr-select decides (TestCIFullPRSelect holds its
-// selection, TestCIFullPRSelectMatchesTheFastPlan holds it to ci-fast.yml's
+// selection, TestCIFullPRSelectMatchesTheFastPlan holds it to ci-fast-nightly.yml's
 // plan), and on every merge, nightly and dispatch. A fourth clause holds the
 // job to that selection.
+//
+// SINCE 2026-11-25 (the owner: per pull request ONLY compile + one simple
+// happy path per language; everything else is nightly) a leg's gate runs on
+// the schedule: "pull-request-triggered" below reads "pull-request- or
+// schedule-triggered", so a leg that runs neither per PR nor nightly is red.
 //
 // "Pull-request-triggered" means an `on:` block with a line whose text is
 // exactly `pull_request:`. `pull_request_target:` is deliberately NOT a code
@@ -105,7 +110,7 @@ func TestEveryNamedTableLegRunsOnItsPullRequests(t *testing.T) {
 	for name, data := range wfs {
 		triggered := false
 		for _, l := range lines(name, data) {
-			if l.text == "pull_request:" {
+			if l.text == "pull_request:" || l.text == "schedule:" {
 				triggered = true
 				break
 			}
@@ -145,7 +150,7 @@ func TestEveryNamedTableLegRunsOnItsPullRequests(t *testing.T) {
 			}
 		}
 		if !covered {
-			t.Errorf("%s: no pull-request-triggered workflow names %q — a workflow line whose code (not prose) contains it is required, or a pull request runs nothing that holds this leg's evidence", leg.leg, leg.leg)
+			t.Errorf("%s: no pull-request- or schedule-triggered workflow names %q — a workflow line whose code (not prose) contains it is required, or a pull request runs nothing that holds this leg's evidence", leg.leg, leg.leg)
 		}
 
 		// Clause 2 — HONESTY. The leg and every shard the row declares must be

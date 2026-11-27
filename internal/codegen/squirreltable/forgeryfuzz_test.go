@@ -10,15 +10,15 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/check"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirreltable"
-	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/check"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/squirrel"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/squirrel/sqrun"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/squirreltable"
+	"github.com/mas-bandwidth/schema/v3/internal/parser"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/tablecook"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 func sqForgeryUnit(t *testing.T, paths ...string) *ir.Unit {
@@ -108,7 +108,7 @@ func TestSquirrelForgeryFuzz(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tmpSchema := filepath.Join(t.TempDir(), "Cook.schema")
+	tmpSchema := filepath.Join(t.TempDir(), "Chain.schema")
 	if err := os.WriteFile(tmpSchema, []byte("package sqcook\ntable Node { x int32\n next *Node }\ntable Root { head *Node\n label string(16) }\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}

@@ -4,22 +4,26 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
-	"github.com/mas-bandwidth/schema/v2/internal/lockfile"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/lua/luarun"
+	"github.com/mas-bandwidth/schema/v3/internal/lockfile"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // manifestRow is one report or instance row of MANIFEST.txt: the case, the
-// unit, the root and the wire file.
+// unit, the root and the wire file, and whether an instance row carries the
+// `wire-refused` marker (testdata/conformance/tables/FORMAT.md): every port
+// REFUSES that wire, so it is never a value to read back.
 type manifestRow struct {
-	caseName string
-	unit     string
-	root     string
-	wire     string
+	caseName    string
+	unit        string
+	root        string
+	wire        string
+	wireRefused bool
 }
 
 // manifestRows reads one row kind (report, instance) of the tables manifest.
@@ -36,7 +40,8 @@ func manifestRows(t *testing.T, path, kind string) []manifestRow {
 			continue
 		}
 		if f[0] == kind && len(f) >= 5 {
-			rows = append(rows, manifestRow{caseName: f[1], unit: f[2], root: f[3], wire: f[4]})
+			rows = append(rows, manifestRow{caseName: f[1], unit: f[2], root: f[3], wire: f[4],
+				wireRefused: kind == "instance" && slices.Contains(f[5:], "wire-refused")})
 		}
 	}
 	return rows

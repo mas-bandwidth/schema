@@ -8,7 +8,7 @@ import (
 	"math"
 	"math/big"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // These private DTOs are a versioned format, not JSON of the evolving IR.

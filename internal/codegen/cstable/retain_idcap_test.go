@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/idcapwire"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v3/internal/idcapwire"
+	"github.com/mas-bandwidth/schema/v3/internal/tablewire"
 )
 
 // THE RETAINING WRITER KEEPS THE 4096-ID BUDGET (docs/SPEC-TABLES.md §3 and

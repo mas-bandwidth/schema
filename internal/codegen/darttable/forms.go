@@ -1,6 +1,6 @@
 package darttable
 
-import "github.com/mas-bandwidth/schema/v2/ir"
+import "github.com/mas-bandwidth/schema/v3/ir"
 
 // declaredBlocks selects public roots without removing storage needed by an
 // allowed root's nested records. Layouts still come from the shared IR model.

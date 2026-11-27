@@ -24,8 +24,8 @@ import (
 	"math/big"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // messageSlot answers the 1-based vocabulary slot an entry rides under, the
@@ -498,7 +498,7 @@ func (g *fixedModule) messageRides(f *ir.Field, expr, ind string) string {
 			g.pf("%sif (!%sSaveMessageBody(%s, %s)) return false;\n", ind, lowerFirst(r.Name), probe, expr)
 			return probe + ".bits > tableMessageRefBits"
 		case *ir.Union:
-			return expr + ".type != 0"
+			return unionTagInt(r, expr+".type") + " != 0"
 		}
 	}
 	if f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64 {
@@ -772,8 +772,9 @@ func (g *fixedModule) emitMessageWriteEnum(e *ir.Enum, expr, ind string) {
 }
 
 func (g *fixedModule) emitMessageWriteUnion(un *ir.Union, expr, ind string) {
-	g.pf("%sassert(%s.type >= 0 && %s.type <= %d);\n", ind, expr, expr, len(un.Variants))
-	g.pf("%sswitch (%s.type) {\n", ind, expr)
+	tagInt := unionTagInt(un, expr+".type")
+	g.pf("%sassert(%s >= 0 && %s <= %d);\n", ind, tagInt, tagInt, len(un.Variants))
+	g.pf("%sswitch (%s) {\n", ind, tagInt)
 	g.pf("%s  case 0: w.put(0, tableMessageRefBits); break;\n", ind)
 	for i, v := range un.Variants {
 		slot := g.messageSlot(ir.TableArmEntry(v))
@@ -1205,7 +1206,7 @@ func (g *fixedModule) emitMessageReadEnum(f *ir.Field, e *ir.Enum, expr, ind str
 	g.pf("%s  if (r.bits.failed) { r.report.Damage(); return false; }\n", ind)
 	g.gen.need(e.Name)
 	depDef := g.gen.fixedZeroFor(f)
-	g.pf("%s  if (ref == 0) { %s = %s.none; } else {\n", ind, expr, e.Name)
+	g.pf("%s  if (ref == 0) { %s = %s.none; } else {\n", ind, expr, dartEnumRef(e.Name))
 	g.pf("%s    if (ref > r.vocabulary.count) { r.report.Damage(); return false; }\n", ind)
 	g.pf("%s    final named = r.vocabulary.entries[ref - 1];\n", ind)
 	g.pf("%s    if (tableMessageReservedId(named.id) || named.kind != 0) { r.report.Damage(); return false; }\n", ind)
@@ -1216,9 +1217,9 @@ func (g *fixedModule) emitMessageReadEnum(f *ir.Field, e *ir.Enum, expr, ind str
 			g.pf("%s      case %s: %s = %s; r.substituted++; break;\n", ind, dartU64Literal(id), expr, depDef)
 			continue
 		}
-		g.pf("%s      case %s: %s = %s.%s; break;\n", ind, dartU64Literal(id), expr, e.Name, dartName(v))
+		g.pf("%s      case %s: %s = %s.%s; break;\n", ind, dartU64Literal(id), expr, dartEnumRef(e.Name), dartName(v))
 	}
-	g.pf("%s      default: %s = %s.none; r.report.unknown++; break;\n", ind, expr, e.Name)
+	g.pf("%s      default: %s = %s.none; r.report.unknown++; break;\n", ind, expr, dartEnumRef(e.Name))
 	g.pf("%s    }\n%s  }\n%s}\n", ind, ind, ind)
 }
 

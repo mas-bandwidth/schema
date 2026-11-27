@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/cstable"
+	"github.com/mas-bandwidth/schema/v3/compiler"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/cstable"
 )
 
 // TestStrictOnlyCsNoTolerantEntry is the cs leg's strict-only grep gate

@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mas-bandwidth/schema/v2/internal/rfc3339"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/internal/rfc3339"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
 )
 
 // strictTimestampSchema is the unit whose text form this test drives: one

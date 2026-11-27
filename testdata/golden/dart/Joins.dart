@@ -1532,7 +1532,7 @@ int readWideBits(Wide value, ByteData view, int numBits, int bitOffset) {
 }
 
 // UnevenType: union Uneven's tag — None = 0, then each variant in declared order (SPEC §4.8)
-extension type const UnevenType(int _value) implements int {
+extension type const UnevenType(int _value) {
   static const UnevenType none = UnevenType(0);
   static const UnevenType narrow = UnevenType(1);
   static const UnevenType wide = UnevenType(2);
@@ -1542,7 +1542,7 @@ extension type const UnevenType(int _value) implements int {
 // enumNameUnevenType: debug/log/tooling name for any UnevenType wire value —
 // out-of-set values (wire-legal up to the declared max) name as '???'
 String enumNameUnevenType(int value) {
-  switch (value) {
+  switch (UnevenType(value)) {
     case UnevenType.none:
       return 'None';
     case UnevenType.narrow:
@@ -1586,9 +1586,9 @@ int writeUneven(Uneven value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
-  assert(value.type >= 0);
-  assert(value.type <= 2);
-  v = value.type & 0x3;
+  assert((value.type as int) >= 0);
+  assert((value.type as int) <= 2);
+  v = (value.type as int) & 0x3;
   scratch |= v << scratchBits;
   scratchBits += 2;
   switch (value.type) {
@@ -1744,9 +1744,9 @@ int writeHoldsUneven(HoldsUneven value, ByteData view) {
   var v = 0;
   assert(value.lead >= 0);
   assert(value.lead <= 31);
-  assert(value.u.type >= 0);
-  assert(value.u.type <= 2);
-  v = (value.lead & 0x1f) | ((value.u.type & 0x3) << 5);
+  assert((value.u.type as int) >= 0);
+  assert((value.u.type as int) <= 2);
+  v = (value.lead & 0x1f) | (((value.u.type as int) & 0x3) << 5);
   scratch |= v << scratchBits;
   scratchBits += 7;
   switch (value.u.type) {
@@ -1943,9 +1943,9 @@ int writeArrUneven(ArrUneven value, ByteData view) {
   scratchBits += 7;
   for (var i0 = 0; i0 < value.itemsCount; i0++) {
     final e0 = value.items[i0];
-    assert(e0.type >= 0);
-    assert(e0.type <= 2);
-    v = e0.type & 0x3;
+    assert((e0.type as int) >= 0);
+    assert((e0.type as int) <= 2);
+    v = (e0.type as int) & 0x3;
     scratch |= v << scratchBits;
     scratchBits += 2;
     if (scratchBits >= 64) {

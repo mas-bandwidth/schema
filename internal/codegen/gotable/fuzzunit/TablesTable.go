@@ -1065,7 +1065,7 @@ func WeaponConfigReset(value *WeaponConfig) {
 	value.Penetration = 1
 	value.Channel = 0
 	value.Homing = false
-	clear((value.Effect).Payload[:])
+	clear((value.Effect).schema_payload[:])
 	{
 		value := (value.Effect).Buff()
 		BuffReset(&value.Value)
@@ -6722,7 +6722,7 @@ func MoodFieldLoadBodyRetain(r *TableRetainReader, value *MoodField) bool {
 // MinArmFixReset restores MinArmFix's declared defaults in place, reusing the storage
 // the value already holds. The reader calls it before overlaying.
 func MinArmFixReset(value *MinArmFix) {
-	clear((value.Pick).Payload[:])
+	clear((value.Pick).schema_payload[:])
 	{
 		value := (value.Pick).Few()
 		clear(value.Value[:])
@@ -13600,8 +13600,8 @@ var LoadoutConfigTableFields = []TableFieldInfo{
 		CookOffset: 0, CookElemSize: 1, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: 3,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
-		EnumName:    func(v uint64) string { return EnumNameGrade(Grade(v)) },
-		VariantID:   func(v uint64) uint64 { id, _ := Grade(v).TableEnumID(); return id },
+		EnumName:    func(schema_v uint64) string { return EnumNameGrade(Grade(schema_v)) },
+		VariantID:   func(schema_v uint64) uint64 { id, _ := Grade(schema_v).TableEnumID(); return id },
 		EnumDefault: 0, EnumDeprecated: nil,
 		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
@@ -13612,8 +13612,8 @@ var LoadoutConfigTableFields = []TableFieldInfo{
 		CookOffset: 1, CookElemSize: 1, CookCountOffset: 8, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: 3,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
-		EnumName:    func(v uint64) string { return EnumNameGrade(Grade(v)) },
-		VariantID:   func(v uint64) uint64 { id, _ := Grade(v).TableEnumID(); return id },
+		EnumName:    func(schema_v uint64) string { return EnumNameGrade(Grade(schema_v)) },
+		VariantID:   func(schema_v uint64) uint64 { id, _ := Grade(schema_v).TableEnumID(); return id },
 		EnumDefault: 0, EnumDeprecated: nil,
 		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
@@ -13624,8 +13624,8 @@ var LoadoutConfigTableFields = []TableFieldInfo{
 		CookOffset: 12, CookElemSize: 1, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: 3,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
-		EnumName:    func(v uint64) string { return EnumNameGrade(Grade(v)) },
-		VariantID:   func(v uint64) uint64 { id, _ := Grade(v).TableEnumID(); return id },
+		EnumName:    func(schema_v uint64) string { return EnumNameGrade(Grade(schema_v)) },
+		VariantID:   func(schema_v uint64) uint64 { id, _ := Grade(schema_v).TableEnumID(); return id },
 		EnumDefault: 0, EnumDeprecated: nil,
 		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
@@ -13636,7 +13636,7 @@ var LoadoutConfigTableFields = []TableFieldInfo{
 		CookOffset: 16, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: 2,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
-		EnumName:    func(v uint64) string { return FlagNamePerks(int(v)) },
+		EnumName:    func(schema_v uint64) string { return FlagNamePerks(int(schema_v)) },
 		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
 		KeyTypeName: "", KeyName: nil, KeyID: nil,
@@ -13936,9 +13936,9 @@ var MoodsTableFields = []TableFieldInfo{
 		CookOffset: 0, CookElemSize: 1, CookCountOffset: 4, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: 3,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
-		EnumName:    func(v uint64) string { return EnumNameMood(Mood(v)) },
-		VariantID:   func(v uint64) uint64 { id, _ := Mood(v).TableEnumID(); return id },
-		EnumDefault: 0, EnumDeprecated: func(v uint64) bool { return Mood(v).TableEnumDeprecated() },
+		EnumName:    func(schema_v uint64) string { return EnumNameMood(Mood(schema_v)) },
+		VariantID:   func(schema_v uint64) uint64 { id, _ := Mood(schema_v).TableEnumID(); return id },
+		EnumDefault: 0, EnumDeprecated: func(schema_v uint64) bool { return Mood(schema_v).TableEnumDeprecated() },
 		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
@@ -13962,9 +13962,9 @@ var MoodFieldTableFields = []TableFieldInfo{
 		CookOffset: 0, CookElemSize: 1, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: 3,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
-		EnumName:    func(v uint64) string { return EnumNameMood(Mood(v)) },
-		VariantID:   func(v uint64) uint64 { id, _ := Mood(v).TableEnumID(); return id },
-		EnumDefault: 3, EnumDeprecated: func(v uint64) bool { return Mood(v).TableEnumDeprecated() },
+		EnumName:    func(schema_v uint64) string { return EnumNameMood(Mood(schema_v)) },
+		VariantID:   func(schema_v uint64) uint64 { id, _ := Mood(schema_v).TableEnumID(); return id },
+		EnumDefault: 3, EnumDeprecated: func(schema_v uint64) bool { return Mood(schema_v).TableEnumDeprecated() },
 		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,

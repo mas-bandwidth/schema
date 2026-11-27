@@ -10,7 +10,7 @@ package tabletext
 import (
 	"bytes"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // MapKey is one entry's key, in the two shapes a key has: the bytes of a

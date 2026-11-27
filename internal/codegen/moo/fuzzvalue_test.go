@@ -19,7 +19,7 @@ import (
 	"math/rand/v2"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // instance is one drawn value: the moo statements that build it from

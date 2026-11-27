@@ -1,3 +1,5 @@
+//go:build !writebounds_only
+
 // THE CODEC TABLE: one row per (unit, root) the corpus names.
 //
 // Nothing here is an expectation — the rows only say which generated functions
@@ -31,7 +33,6 @@ import (
 	"vocab9demo"
 	"vocabdemo"
 	"widelistdemo"
-	"writebounds"
 
 	"featurewitnesses"
 
@@ -834,20 +835,6 @@ var codecTable = []codec{
 	}, cooktorture.TortureCookToJSONMeasure, cooktorture.TortureCookToJSON, cooktorture.TortureCookCookMeasure, cooktorture.TortureCookCookFrom, func(r *cooktorture.TableReport) report {
 		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
 	}),
-	regionRow("writebounds", "TortureVarWref", writebounds.TortureVarWrefLoadMeasure, writebounds.TortureVarWrefLoad, writebounds.TortureVarWrefMeasure, writebounds.TortureVarWrefSave, func(text []byte, r *writebounds.TableReport) (*writebounds.TortureVarWref, []byte, bool) {
-		var b writebounds.TortureVarWrefBuilder
-		if !b.Init() {
-			return nil, nil, false
-		}
-		defer b.Shutdown()
-		ok := writebounds.TortureVarWrefFromJSON(&b, text, r)
-		if !b.Lock() {
-			return nil, nil, false
-		}
-		return b.AsConst(), b.Region(), ok
-	}, writebounds.TortureVarWrefToJSONMeasure, writebounds.TortureVarWrefToJSON, writebounds.TortureVarWrefCookMeasure, writebounds.TortureVarWrefCookFrom, func(r *writebounds.TableReport) report {
-		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
-	}),
 	row("cooktorture", "TortureFixedWref", cooktorture.TortureFixedWrefReset, cooktorture.TortureFixedWrefLoad, cooktorture.TortureFixedWrefMeasure, cooktorture.TortureFixedWrefSave, cooktorture.TortureFixedWrefFromJSON, cooktorture.TortureFixedWrefToJSONMeasure, cooktorture.TortureFixedWrefToJSON, cooktorture.TortureFixedWrefCookMeasure, cooktorture.TortureFixedWrefCookFrom, func(r *cooktorture.TableReport) report {
 		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
 	}),
@@ -1072,5 +1059,5 @@ var codecTable = []codec{
 // surfaces is what this backend implements. A surface not listed prints as
 // ABSENT in the matrix, which is a missing FEATURE and not a failing test.
 func surfaces() []string {
-	return []string{"wire", "message", "message-prior", "report", "framing", "json-read", "json-write", "json-hostile", "cook-write", "retain", "retain-save", "cook", "cook-foreign", "block", "block-foreign", "block-dump", "forgery", "cook-forgery", "write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json", "write-refusal-cook", "write-refusal-block", "announce", "read-into", "json-write-into"}
+	return []string{"wire", "message", "message-prior", "report", "framing", "json-read", "json-write", "json-hostile", "cook-write", "retain", "retain-save", "retain-refusal", "cook", "cook-foreign", "block", "block-foreign", "block-dump", "forgery", "cook-forgery", "write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json", "write-refusal-cook", "write-refusal-block", "write-refusal-shape", "announce", "read-into", "json-write-into"}
 }

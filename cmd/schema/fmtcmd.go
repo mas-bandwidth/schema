@@ -3,8 +3,8 @@ package main
 import (
 	"os"
 
-	"github.com/mas-bandwidth/schema/v2/internal/atomicfile"
-	"github.com/mas-bandwidth/schema/v2/internal/format"
+	"github.com/mas-bandwidth/schema/v3/internal/atomicfile"
+	"github.com/mas-bandwidth/schema/v3/internal/format"
 )
 
 // formatSources is `schema fmt` (or `fmt --migrate`) over every path as ONE

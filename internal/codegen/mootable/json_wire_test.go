@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/moo/moorun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/moo/moorun"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 )
 
 // THE CONFORMANCE SURFACES, OVER THE MOO TABLE WIRE (test/conformance/README.md):

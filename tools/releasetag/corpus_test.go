@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/modulemove"
-	"github.com/mas-bandwidth/schema/v2/internal/modulemove/pincorpus"
+	"github.com/mas-bandwidth/schema/v3/internal/modulemove"
+	"github.com/mas-bandwidth/schema/v3/internal/modulemove/pincorpus"
 )
 
 // TestPinCorpusReleaseTagger drives the release-history cases of the

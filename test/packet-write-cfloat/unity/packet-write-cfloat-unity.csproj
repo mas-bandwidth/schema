@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../unity/HostDialect.props" />
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>annotations</Nullable>
+    <DefineConstants>$(DefineConstants);UNITY_WRITER_ASSERT</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../cs/Program.cs" />
+    <ProjectReference Include="lib/cfloatunity.csproj" />
+  </ItemGroup>
+</Project>

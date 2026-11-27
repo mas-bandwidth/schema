@@ -10,8 +10,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/genheader"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/genheader"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // table-wire kinds (docs/SPEC-TABLES.md §3) — the numbers are the wire's, not a
@@ -178,6 +178,9 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	out, err := generateBlockFiles(u, blocks)
 	if err != nil {
 		return nil, err
+	}
+	if name, src := generateBlockFill(u, blocks); src != nil {
+		out[name] = src
 	}
 	cooks, err := generateCookFiles(u, blocks)
 	if err != nil {
@@ -719,7 +722,7 @@ public sealed class TableReport
     {
         Unknown = 0; Widened = 0; Retained = 0; RetainLost = 0; Refused = false; Reason = null;
         NonFiniteFloat = null; NonFiniteReason = null; Verdict = default; Damaged = false;
-        KindChanged = 0; LayoutHash = 0;
+        KindChanged = 0; BuildVersionRemote = 0; BuildVersionOwn = 0; LayoutHash = 0;
     }
 }
 

@@ -12,9 +12,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	tabledemo "github.com/mas-bandwidth/schema/v2/internal/codegen/gotable/fuzzunit"
-	"github.com/mas-bandwidth/schema/v2/internal/tablepack"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	tabledemo "github.com/mas-bandwidth/schema/v3/internal/codegen/gotable/fuzzunit"
+	"github.com/mas-bandwidth/schema/v3/internal/tablepack"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
 )
 
 func TestGoFixedRootPlainSaveRoundTrips(t *testing.T) {

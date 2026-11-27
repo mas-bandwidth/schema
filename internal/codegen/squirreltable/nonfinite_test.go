@@ -36,16 +36,16 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirreltable"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/compiler"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/squirrel"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/squirrel/sqrun"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/squirreltable"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
-const nfSchema = `package fs
+const nfSchema = `package nonfinite
 
 type Inner
 {
@@ -65,7 +65,7 @@ table Root
 
 // nfSchemaNext is the same table one field later: its z is an entry the
 // nfSchema reader cannot name, which LoadRetain retains.
-const nfSchemaNext = `package fs
+const nfSchemaNext = `package nonfinite
 
 type Inner
 {
@@ -85,7 +85,7 @@ table Root
 `
 
 const nfProbe = `local inputs = dofile("inputs.nut", true);
-local schema = dofile("fs/schema_module.nut", true);
+local schema = dofile("nonfinite/schema_module.nut", true);
 local T = schema.require("__MOD__");
 local L = schema.require("schema_table_load");
 local S = schema.require("schema_table_save");
@@ -301,7 +301,7 @@ func nfRun(t *testing.T, u *ir.Unit, loads, retains []string, saveRows [][3]stri
 	if patch != nil {
 		patch(tables)
 	}
-	out := filepath.Join(dir, "fs")
+	out := filepath.Join(dir, "nonfinite")
 	if err := os.MkdirAll(out, 0o755); err != nil {
 		t.Fatal(err)
 	}
