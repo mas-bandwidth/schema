@@ -38,12 +38,12 @@ import (
 func goWireFuzzVerdictMakefileCheck(mk string) error {
 	for _, want := range []string{
 		"tables-go-wire-fuzz: build/conformance-harness build/conformance-go",
-		"./build/conformance-harness wire-fuzz --driver 'build/conformance-go wire-fuzz' --seed $(SEED) --n $(N)",
+		"./build/conformance-harness wire-fuzz --leg go --driver 'build/conformance-go wire-fuzz' --seed $(SEED) --n $(N)",
 		"tables-go-wire-fuzz-negative-control: build/conformance-harness build/conformance-go",
 		"test-go: tables-go-wire-fuzz tables-go-wire-fuzz-negative-control",
 		"tables-go-retain-wire-fuzz: build/conformance-harness build/conformance-go",
-		"./build/conformance-harness wire-fuzz --retain --driver 'build/conformance-go wire-fuzz' --seed $(SEED) --n $(N)",
-		"./build/conformance-harness wire-fuzz --builder --driver 'build/conformance-go wire-fuzz-builder' --seed $(SEED) --n $(N)",
+		"./build/conformance-harness wire-fuzz --leg go --retain --driver 'build/conformance-go wire-fuzz' --seed $(SEED) --n $(N)",
+		"./build/conformance-harness wire-fuzz --leg go --builder --driver 'build/conformance-go wire-fuzz-builder' --seed $(SEED) --n $(N)",
 	} {
 		if !strings.Contains(mk, want) {
 			return fmt.Errorf("make/go.mk is missing %q", want)
@@ -621,12 +621,12 @@ func writeGoWireFuzzManifest(t *testing.T, units map[string]bool, instances map[
 func runGoWireFuzzVerdictPipe(t *testing.T, root, harnessBin, driverBin, manifest string, retain, builder bool, n int) (string, error) {
 	t.Helper()
 	failed := filepath.Join(t.TempDir(), "failed.bin")
-	subcmd := "wire-fuzz"
+	driver := driverBin + " wire-fuzz"
 	var args []string
-	args = append(args, "wire-fuzz")
+	args = append(args, "wire-fuzz", "--leg", "go-fixture")
 	if builder {
 		args = append(args, "--builder")
-		subcmd = "wire-fuzz-builder"
+		driver = driverBin + " wire-fuzz-builder"
 	}
 	if retain {
 		args = append(args, "--retain")
@@ -634,7 +634,7 @@ func runGoWireFuzzVerdictPipe(t *testing.T, root, harnessBin, driverBin, manifes
 	args = append(args,
 		"--manifest", manifest,
 		"--vectors", "",
-		"--driver", fmt.Sprintf("%s %s", driverBin, subcmd),
+		"--driver", driver,
 		"--seed", "1",
 		"--n", fmt.Sprintf("%d", n),
 		"--failed", failed,

@@ -1,49 +1,54 @@
-# testguard config for the ci-policy (rest) row of .github/workflows/ci-fast.yml.
+# testguard config for the ci-policy (rest) row of .github/workflows/ci-fast-nightly.yml.
 # Every package the row's go test runs is a suite; every test that runs has
 # an empty file under the baseline directory; skips are ledgered here by test.
 # go run ./tools/testguard help check
+# The record lines run the row's go test as ci-fast-nightly.yml's ci-policy step does
+# (keep them the same); `go run ./tools/testguard baseline --config THIS` runs
+# them and writes the entries for the tests that ran and are not listed.
+record	go test -json ./internal/slowtest/... > "$TESTGUARD_RECORD/slowtest.jsonl"
+record	go test -json -skip '^(TestFastPlan|TestOptVerify|TestPython|TestConformance|TestCertify|TestNo)' ./internal/ci/ > "$TESTGUARD_RECORD/ci.jsonl"
 suite	github.com/mas-bandwidth/schema/v3/internal/ci
 suite	github.com/mas-bandwidth/schema/v3/internal/slowtest
-skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestDistPythonStagesTheFleetSDK	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestEveryRunPatternMatchesATest	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestLuaAllocationCounterCounts	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestLuaResourceBoundsHostileShapes	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestLuaResourceBoundsPlantedPattern	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestLuauAllocationCounterCounts	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestLuauGeneratedAnalyzeStrictGate	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestLuauGeneratedAnalyzeStrictGatePlantedPattern	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestLuauResourceBoundsHostileShapes	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestLuauResourceBoundsPlantedPattern	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestLuauRunsHostileCorpus	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestLuauRunsHostileCorpusPlantedPattern	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestLuauVocabularyDefaultEntryBound	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestRubyGeneratedStrictGate	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestRubyGeneratedStrictGateFast	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestRubyGeneratedStrictGatePlantedPattern	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestRubyUsageFragmentsRun/examples-current	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestRubyUsageFragmentsRun/examples-floor	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestRubyUsageFragmentsRun/pointers-current	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestRubyUsageFragmentsRun/pointers-floor	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestRubyUsageFragmentsRunNegativeControl/packet-write-renamed	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestRubyUsageFragmentsRunNegativeControl/runtime-refused-renamed	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestRubyUsageFragmentsRunNegativeControl/table-load-renamed	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestRubyUsageFragmentsRunNegativeControl/table-save-renamed	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestSchemaLuaHostileCorpusPlantedReader	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestSchemaLuaRunsHostileCorpus	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestSchemaMooRunsHostileCorpus	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestSchemaMooRunsHostileCorpusPlantedReader	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestSchemaRubyHostileCorpusPlantedReader	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestSchemaRubyResourceBoundsHostileShapes	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestSchemaRubyResourceBoundsPlantedPattern	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestSchemaRubyRunsHostileCorpus	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestSchemaSquirrelAllPortDifferential	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestSerializeFetchTriesTheMirrorFirst	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestSerializeGoRuntimeWhenTheSiblingArrivesMidRun	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestSiblingsPresentMakeDepsFetchesNothing	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestSquirrelRunsHostileCorpus	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestSquirrelRunsHostileCorpusPlant	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestWideScalarProbeModuleBoundary	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v3/internal/slowtest	TestJavaScriptBOMProbeHonorsSlowGate	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestDistPythonStagesTheFleetSDK	skips under internal/slowtest's SCHEMA_SLOW gate, which this row does not set; ci-full.yml and the make leg gates run it with SCHEMA_SLOW=1
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestEveryRunPatternMatchesATest	skips under internal/slowtest's SCHEMA_SLOW gate, which this row does not set; ci-full.yml and the make leg gates run it with SCHEMA_SLOW=1
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestLuaAllocationCounterCounts	skips under internal/slowtest's SCHEMA_SLOW gate, which this row does not set; ci-full.yml and the make leg gates run it with SCHEMA_SLOW=1
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestLuaResourceBoundsHostileShapes	skips under internal/slowtest's SCHEMA_SLOW gate, which this row does not set; ci-full.yml and the make leg gates run it with SCHEMA_SLOW=1
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestLuaResourceBoundsPlantedPattern	skips under internal/slowtest's SCHEMA_SLOW gate, which this row does not set; ci-full.yml and the make leg gates run it with SCHEMA_SLOW=1
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestLuauAllocationCounterCounts	skips under internal/slowtest's SCHEMA_SLOW gate, which this row does not set; ci-full.yml and the make leg gates run it with SCHEMA_SLOW=1
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestLuauGeneratedAnalyzeStrictGate	skips under internal/slowtest's SCHEMA_SLOW gate, which this row does not set; ci-full.yml and the make leg gates run it with SCHEMA_SLOW=1
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestLuauGeneratedAnalyzeStrictGatePlantedPattern	skips under internal/slowtest's SCHEMA_SLOW gate, which this row does not set; ci-full.yml and the make leg gates run it with SCHEMA_SLOW=1
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestLuauResourceBoundsHostileShapes	skips under internal/slowtest's SCHEMA_SLOW gate, which this row does not set; ci-full.yml and the make leg gates run it with SCHEMA_SLOW=1
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestLuauResourceBoundsPlantedPattern	skips under internal/slowtest's SCHEMA_SLOW gate, which this row does not set; ci-full.yml and the make leg gates run it with SCHEMA_SLOW=1
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestLuauRunsHostileCorpus	skips under internal/slowtest's SCHEMA_SLOW gate, which this row does not set; ci-full.yml and the make leg gates run it with SCHEMA_SLOW=1
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestLuauRunsHostileCorpusPlantedPattern	skips under internal/slowtest's SCHEMA_SLOW gate, which this row does not set; ci-full.yml and the make leg gates run it with SCHEMA_SLOW=1
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestLuauVocabularyDefaultEntryBound	skips under internal/slowtest's SCHEMA_SLOW gate, which this row does not set; ci-full.yml and the make leg gates run it with SCHEMA_SLOW=1
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestRubyGeneratedStrictGate	skips under internal/slowtest's SCHEMA_SLOW gate, which this row does not set; ci-full.yml and the make leg gates run it with SCHEMA_SLOW=1
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestRubyGeneratedStrictGateFast	skips under internal/slowtest's SCHEMA_SLOW gate, which this row does not set; ci-full.yml and the make leg gates run it with SCHEMA_SLOW=1
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestRubyGeneratedStrictGatePlantedPattern	skips under internal/slowtest's SCHEMA_SLOW gate, which this row does not set; ci-full.yml and the make leg gates run it with SCHEMA_SLOW=1
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestRubyUsageFragmentsRun/examples-current	skips under internal/slowtest's SCHEMA_SLOW gate, which this row does not set; ci-full.yml and the make leg gates run it with SCHEMA_SLOW=1
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestRubyUsageFragmentsRun/examples-floor	skips under internal/slowtest's SCHEMA_SLOW gate, which this row does not set; ci-full.yml and the make leg gates run it with SCHEMA_SLOW=1
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestRubyUsageFragmentsRun/pointers-current	skips under internal/slowtest's SCHEMA_SLOW gate, which this row does not set; ci-full.yml and the make leg gates run it with SCHEMA_SLOW=1
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestRubyUsageFragmentsRun/pointers-floor	skips under internal/slowtest's SCHEMA_SLOW gate, which this row does not set; ci-full.yml and the make leg gates run it with SCHEMA_SLOW=1
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestRubyUsageFragmentsRunNegativeControl/packet-write-renamed	skips under internal/slowtest's SCHEMA_SLOW gate, which this row does not set; ci-full.yml and the make leg gates run it with SCHEMA_SLOW=1
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestRubyUsageFragmentsRunNegativeControl/runtime-refused-renamed	skips under internal/slowtest's SCHEMA_SLOW gate, which this row does not set; ci-full.yml and the make leg gates run it with SCHEMA_SLOW=1
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestRubyUsageFragmentsRunNegativeControl/table-load-renamed	skips under internal/slowtest's SCHEMA_SLOW gate, which this row does not set; ci-full.yml and the make leg gates run it with SCHEMA_SLOW=1
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestRubyUsageFragmentsRunNegativeControl/table-save-renamed	skips under internal/slowtest's SCHEMA_SLOW gate, which this row does not set; ci-full.yml and the make leg gates run it with SCHEMA_SLOW=1
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestSchemaLuaHostileCorpusPlantedReader	skips under internal/slowtest's SCHEMA_SLOW gate, which this row does not set; ci-full.yml and the make leg gates run it with SCHEMA_SLOW=1
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestSchemaLuaRunsHostileCorpus	skips under internal/slowtest's SCHEMA_SLOW gate, which this row does not set; ci-full.yml and the make leg gates run it with SCHEMA_SLOW=1
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestSchemaMooRunsHostileCorpus	skips under internal/slowtest's SCHEMA_SLOW gate, which this row does not set; ci-full.yml and the make leg gates run it with SCHEMA_SLOW=1
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestSchemaMooRunsHostileCorpusPlantedReader	skips under internal/slowtest's SCHEMA_SLOW gate, which this row does not set; ci-full.yml and the make leg gates run it with SCHEMA_SLOW=1
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestSchemaRubyHostileCorpusPlantedReader	skips under internal/slowtest's SCHEMA_SLOW gate, which this row does not set; ci-full.yml and the make leg gates run it with SCHEMA_SLOW=1
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestSchemaRubyResourceBoundsHostileShapes	skips under internal/slowtest's SCHEMA_SLOW gate, which this row does not set; ci-full.yml and the make leg gates run it with SCHEMA_SLOW=1
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestSchemaRubyResourceBoundsPlantedPattern	skips under internal/slowtest's SCHEMA_SLOW gate, which this row does not set; ci-full.yml and the make leg gates run it with SCHEMA_SLOW=1
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestSchemaRubyRunsHostileCorpus	skips under internal/slowtest's SCHEMA_SLOW gate, which this row does not set; ci-full.yml and the make leg gates run it with SCHEMA_SLOW=1
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestSchemaSquirrelAllPortDifferential	skips under internal/slowtest's SCHEMA_SLOW gate, which this row does not set; ci-full.yml and the make leg gates run it with SCHEMA_SLOW=1
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestSerializeFetchTriesTheMirrorFirst	skips under internal/slowtest's SCHEMA_SLOW gate, which this row does not set; ci-full.yml and the make leg gates run it with SCHEMA_SLOW=1
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestSerializeGoRuntimeWhenTheSiblingArrivesMidRun	skips under internal/slowtest's SCHEMA_SLOW gate, which this row does not set; ci-full.yml and the make leg gates run it with SCHEMA_SLOW=1
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestSiblingsPresentMakeDepsFetchesNothing	skips under internal/slowtest's SCHEMA_SLOW gate, which this row does not set; ci-full.yml and the make leg gates run it with SCHEMA_SLOW=1
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestSquirrelRunsHostileCorpus	skips under internal/slowtest's SCHEMA_SLOW gate, which this row does not set; ci-full.yml and the make leg gates run it with SCHEMA_SLOW=1
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestSquirrelRunsHostileCorpusPlant	skips under internal/slowtest's SCHEMA_SLOW gate, which this row does not set; ci-full.yml and the make leg gates run it with SCHEMA_SLOW=1
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestWideScalarProbeModuleBoundary	skips under internal/slowtest's SCHEMA_SLOW gate, which this row does not set; ci-full.yml and the make leg gates run it with SCHEMA_SLOW=1
+skip	github.com/mas-bandwidth/schema/v3/internal/slowtest	TestJavaScriptBOMProbeHonorsSlowGate	skips under internal/slowtest's SCHEMA_SLOW gate, which this row does not set; ci-full.yml and the make leg gates run it with SCHEMA_SLOW=1
 cover	parity	rows	run	sh test/testguard/parity.sh rows
 cover	parity	columns	run	sh test/testguard/parity.sh columns
 cover	parity	pairs	run	sh test/testguard/parity.sh pairs

@@ -15,22 +15,35 @@
 # target generates is in exactly one of the two.
 
 #
-# THE SPLIT IS REGISTERED. Of the corpus's 364 seeds the plain arm answers
-# 199 and leaves 185 absent; the builder arm answers the other 165 and counts
-# 219 outside it (measured on the committed corpus; the counts do not depend
-# on --n). A root that drops out of the leg, or out of both arms, moves one of
-# these counts and the recipe goes red instead of fuzzing less.
-SQUIRREL_WIRE_FUZZ_ABSENT_SEEDS  := 185
-SQUIRREL_WIRE_FUZZ_OUTSIDE_SEEDS := 219
+# THE SPLIT IS REGISTERED. The roots the plain arm leaves absent are the exact
+# set in test/conformance/wire-absent/squirrel-plain.tsv (test/conformance/harness/wirefuzz_absent.go,
+# W-ROSTER), each with its reason: the variable roots the builder arm fuzzes,
+# and the roots owed. The builder arm counts the seeds outside it. A root that
+# drops out of the leg, or out of both arms, goes red instead of fuzzing less.
+# The registered absent count this replaced (185) was stale: the plain arm
+# left 227 absent on the corpus of 2026-11-24.
+#
+# THE OUTSIDE COUNT IS AN EXACT PIN (the grep below matches `, N seeds outside
+# the arm,`): the corpus seeds of the roots the builder arm does not read, the
+# fixed-class and message roots. It depends on the corpus alone, never on the
+# driver. It was 219 at 1146f49490 (2026-11-21). It is 321 at main e5ef2e0604,
+# measured on hetzner1 with this target. The 102 more are corpus seeds added
+# since then to such roots, by root: tabledemo.ProfileConfig 33,
+# shapes.FixedBounds 18, tblfixedevo.EvoRoot 15, tabledemo.CountedMin 6,
+# tabledemo.MinArmFix, MinPlainFix, MoodField and Moods 3 each, tblsurf.Arrays,
+# Narrow and Wide 1 each, backenddemo.LoginRequest@message 2,
+# packetunions.ShapeMsg and ShapeMsg@message 2 each,
+# tblvaluedefaults.FixedDefaults 2, and 1 each to backenddemo.StorePurchase,
+# tabledemo.ArchiveConfig, tabledemo.KeyedConfig, tbla2.Root, tblk1.Root,
+# tblk2.Root and tblscalars2.SimState.
+SQUIRREL_WIRE_FUZZ_OUTSIDE_SEEDS := 321
 
 .PHONY: tables-squirrel-wire-fuzz
 tables-squirrel-wire-fuzz: build/conformance-harness build/conformance-squirrel toolchain-squirrel
 	@mkdir -p build/wire-fuzz
-	./build/conformance-harness wire-fuzz --driver "test/conformance/squirrel/wirefuzz-driver" --seed 1 --n 2000 --failed build/wire-fuzz/failed-squirrel.bin > build/wire-fuzz/squirrel-plain.log 2>&1; \
+	./build/conformance-harness wire-fuzz --leg squirrel --driver "test/conformance/squirrel/wirefuzz-driver" --seed 1 --n 2000 --failed build/wire-fuzz/failed-squirrel.bin > build/wire-fuzz/squirrel-plain.log 2>&1; \
 		status=$$?; cat build/wire-fuzz/squirrel-plain.log; test $$status -eq 0
-	@grep -qE ', $(SQUIRREL_WIRE_FUZZ_ABSENT_SEEDS) seeds absent \(' build/wire-fuzz/squirrel-plain.log || { \
-		echo "tables-squirrel-wire-fuzz: the plain arm's absent seed count is not the $(SQUIRREL_WIRE_FUZZ_ABSENT_SEEDS) registered: $$(grep -oE '[0-9]+ seeds absent' build/wire-fuzz/squirrel-plain.log || echo none absent)"; exit 1; }
-	./build/conformance-harness wire-fuzz --driver "test/conformance/squirrel/wirefuzz-driver builder" --builder --seed 1 --n 2000 --failed build/wire-fuzz/failed-squirrel-builder.bin > build/wire-fuzz/squirrel-builder.log 2>&1; \
+	./build/conformance-harness wire-fuzz --leg squirrel --driver "test/conformance/squirrel/wirefuzz-driver builder" --builder --seed 1 --n 2000 --failed build/wire-fuzz/failed-squirrel-builder.bin > build/wire-fuzz/squirrel-builder.log 2>&1; \
 		status=$$?; cat build/wire-fuzz/squirrel-builder.log; test $$status -eq 0
 	@grep -qE ', $(SQUIRREL_WIRE_FUZZ_OUTSIDE_SEEDS) seeds outside the arm,' build/wire-fuzz/squirrel-builder.log || { \
 		echo "tables-squirrel-wire-fuzz: the builder arm's outside seed count is not the $(SQUIRREL_WIRE_FUZZ_OUTSIDE_SEEDS) registered: $$(grep -oE '[0-9]+ seeds outside the arm' build/wire-fuzz/squirrel-builder.log || echo none outside)"; exit 1; }

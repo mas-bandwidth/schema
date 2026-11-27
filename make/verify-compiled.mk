@@ -37,12 +37,12 @@ cards-go-conformance: cards-conformance-go
 # after the object pass finished. Compiling both main TUs first alongside one
 # shared $(CONFORMANCE_OBJECTS) pass eliminates the duplicate work and file race
 # and overlaps the main TUs with the generated objects.
-build/conformance-cpp-objs/_main/conformance_main.o: test/conformance/cpp/main.cpp build/tables-generated/.stamp $(wildcard $(SERIALIZE)/*.h)
+build/conformance-cpp-objs/_main/conformance_main.o: test/conformance/cpp/main.cpp test/conformance/cpp/codecs.h build/tables-generated/.stamp $(wildcard $(SERIALIZE)/*.h)
 	@mkdir -p $(@D)
 	$(CXX) $(TABLES_CXXFLAGS) $(CONFORMANCE_INCLUDES) -c $< -o $@
 
 .PHONY: _verify-cpp-fuzz-bins
-_verify-cpp-fuzz-bins: build/tables-generated/.stamp test/conformance/cpp/main.cpp test/tables/wire_fuzz_main.cpp
+_verify-cpp-fuzz-bins: build/tables-generated/.stamp test/conformance/cpp/main.cpp test/conformance/cpp/codecs.h test/tables/wire_fuzz_main.cpp
 	@mkdir -p build
 	@$(MAKE) --no-print-directory \
 		build/conformance-cpp-objs/_main/conformance_main.o \
@@ -74,14 +74,14 @@ _verify-$(1)-fuzz-extra: build/conformance-harness $$(VERIFY_FUZZ_DEPS_$(1))
 
 _verify-$(1)-fuzz-plain: build/conformance-harness $$(VERIFY_FUZZ_DEPS_$(1))
 	@mkdir -p build/verify
-	$$(WFR_ENV_$(1)) ./build/conformance-harness wire-fuzz \
+	$$(WFR_ENV_$(1)) ./build/conformance-harness wire-fuzz --leg $(1) \
 		--driver "$$(WFR_DRIVER_$(1))" $$(WFR_FLAGS_$(1)) \
 		--seed $$(VERIFY_FUZZ_SEED) --n $$(VERIFY_FUZZ_RANDOM_N) --max-mutants $$(VERIFY_FUZZ_MAX) \
 		--failed build/verify/fuzz-$(1)-plain.bin
 
 _verify-$(1)-fuzz-retain: build/conformance-harness $$(VERIFY_FUZZ_DEPS_$(1))
 	@mkdir -p build/verify
-	$$(WFR_ENV_$(1)) ./build/conformance-harness wire-fuzz --retain \
+	$$(WFR_ENV_$(1)) ./build/conformance-harness wire-fuzz --leg $(1) --retain \
 		--driver "$$(WFR_DRIVER_$(1))" $$(WFR_FLAGS_$(1)) \
 		--seed $$(VERIFY_FUZZ_SEED) --n $$(VERIFY_FUZZ_RANDOM_N) --max-mutants $$(VERIFY_FUZZ_MAX) \
 		--failed build/verify/fuzz-$(1)-retain.bin

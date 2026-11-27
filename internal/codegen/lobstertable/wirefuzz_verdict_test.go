@@ -20,6 +20,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -133,6 +134,48 @@ func lobsterWireFuzzBins(t *testing.T, root string) (harness, host string) {
 	return lobsterWireFuzzHarness, lobsterWireFuzzHost
 }
 
+// lobsterFixtureManifest writes the conformance manifest's unit, instance and
+// report lines for the units generated under units (one directory each) to a
+// file of its own, and returns its path.
+func lobsterFixtureManifest(t *testing.T, root, units string) string {
+	t.Helper()
+	entries, err := os.ReadDir(units)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keep := map[string]bool{}
+	for _, e := range entries {
+		if e.IsDir() {
+			keep[e.Name()] = true
+		}
+	}
+	b, err := os.ReadFile(filepath.Join(root, "testdata", "conformance", "tables", "MANIFEST.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out strings.Builder
+	held := map[string]bool{}
+	for line := range strings.SplitSeq(string(b), "\n") {
+		f := strings.Fields(line)
+		switch {
+		case len(f) >= 3 && f[0] == "unit" && keep[f[1]]:
+			held[f[1]] = true
+		case len(f) >= 5 && (f[0] == "instance" || f[0] == "report") && keep[f[2]]:
+		default:
+			continue
+		}
+		out.WriteString(line + "\n")
+	}
+	if len(held) != len(keep) {
+		t.Fatalf("the manifest holds units %v of the generated %v", held, keep)
+	}
+	p := filepath.Join(t.TempDir(), "MANIFEST.txt")
+	if err := os.WriteFile(p, []byte(out.String()), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
 func lobsterManifestUnits(t *testing.T, root string) map[string][]string {
 	t.Helper()
 	b, err := os.ReadFile(filepath.Join(root, "testdata", "conformance", "tables", "MANIFEST.txt"))
@@ -223,10 +266,21 @@ func plantGenerated(t *testing.T, path, anchor, repl string) {
 // that directory, and LOBSTER is how the host finds the interpreter.
 // The retain arm must not pass --builder to the host. The host's builder arm
 // carries only form 1, retain 0, variable roots.
+//
+// A whole-roster run (no --replay in extra) is over the units generated under
+// units and no other: its roster is a fixture manifest of those units' lines
+// (lobsterFixtureManifest), and it names its leg, lobster-fixture, which
+// holds no absent-root ledger, so a root of those units the host does not
+// answer is red by name (docs/SPEC-CONFORMANCE.md W-ROSTER). The pinned
+// vectors are off: they name units the fixture does not hold.
 func runLobsterWireFuzz(t *testing.T, root, harness, host, units, mode string, extra []string) (string, error) {
 	t.Helper()
 	leaks := filepath.Join(root, "test", "conformance", "lobster", "wirefuzz-known-leaks.txt")
-	args := []string{"wire-fuzz"}
+	// the leg is named on every run; a replay reads no ledger
+	args := []string{"wire-fuzz", "--leg", "lobster-fixture"}
+	if !slices.Contains(extra, "--replay") {
+		args = append(args, "--manifest", lobsterFixtureManifest(t, root, units), "--vectors", "")
+	}
 	var driver string
 	switch mode {
 	case "builder":

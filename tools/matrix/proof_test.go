@@ -129,8 +129,12 @@ func TestProofMissingLegIsARedColumn(t *testing.T) {
 
 // TestTheCommittedProofCarriesEveryPortingColumn: test/proof/proof.json has a
 // column for every language docs/PORTING.md carries (a declared port in
-// progress excepted), so a snapshot written from a run that lost a leg cannot
-// be committed. Per PR, with no results needed.
+// progress excepted). Per PR, with no results needed, it refuses a snapshot
+// with a column missing: one written by a tool that drops a leg, or edited
+// by hand, or a register that gained a language the snapshot never saw. It
+// does NOT refuse a snapshot from a run that lost a leg: since Compute, that
+// leg is a column of red cells, which this test passes and which ci-full's
+// proof job refuses as red.
 func TestTheCommittedProofCarriesEveryPortingColumn(t *testing.T) {
 	root := testRoot(t)
 	p, err := LoadProof(root)

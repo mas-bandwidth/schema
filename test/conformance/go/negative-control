@@ -147,7 +147,7 @@ if [ "$mode" = leb-driver ]; then
     echo "Go table negative control: $mode built $out/driver-bin"
     exit 0
 elif [ "$mode" = leb ]; then
-    if build/conformance-harness wire-fuzz --driver "$out/driver-bin wire-fuzz" --n 0 --failed "$out/failed.bin" > "$out/log" 2>&1; then
+    if build/conformance-harness wire-fuzz --leg go --driver "$out/driver-bin wire-fuzz" --n 0 --failed "$out/failed.bin" > "$out/log" 2>&1; then
         echo 'negative control failed: noncanonical integers were accepted unnoticed' >&2
         exit 1
     fi

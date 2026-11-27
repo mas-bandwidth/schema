@@ -15,7 +15,7 @@
 #
 # The working directory is the repository root.
 #
-# usage: ./build/conformance-harness wire-fuzz --driver test/conformance/moo/wirefuzz-driver [--seed S] [--n N]
+# usage: ./build/conformance-harness wire-fuzz --leg moo --driver test/conformance/moo/wirefuzz-driver [--seed S] [--n N]
 host=${MOOFUZZHOST:-build/moofuzzhost/moofuzzhost}
 generated=${SCHEMA_MOO_GENERATED:-build/conformance-moo}
 stage=${MOOFUZZ_STAGE:-build/moo-wire-fuzz/stage-$$}

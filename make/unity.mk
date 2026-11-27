@@ -248,7 +248,7 @@ unity-vt: toolchain-unity
 
 test-unity: unity-vt
 
-# ---- tables conformance & release wire-fuzz ----
+# ---- tables conformance & the release wire-fuzz gate ----
 
 # Every MANIFEST.txt unit plus tables/cards compiled in the Unity dialect
 # (test/conformance/unity/unit/schemaunit.csproj: C# 9, netstandard2.1,

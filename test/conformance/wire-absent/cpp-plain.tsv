@@ -1,0 +1,11 @@
+# cpp-plain: the roots the cpp-plain wire-fuzz driver answers absent, matched as an exact
+# set (test/conformance/harness/wirefuzz_absent.go, docs/SPEC-CONFORMANCE.md W-ROSTER). Measured at main e5ef2e0604:
+# 58 seeds over 18 roots. Delete a line in the change that
+# adds its root to the driver, and the file with its last line.
+packetunions.ShapeDoc	owed: wire-seed-roots-cpp (2 seeds)
+packetunions.ShapeMsg	owed: wire-seed-roots-cpp (2 seeds)
+packetunions.ShapeMsg@message	owed: wire-seed-roots-cpp (2 seeds)
+tblvaluedefaults.FixedDefaults	owed: wire-seed-roots-cpp (2 seeds)
+tblvaluedefaults.VarDefaults	owed: wire-seed-roots-cpp (2 seeds)
+tabledemo.Moods	owed: the C and C++ fixed read on the known-layout path lands a deprecated variant element as itself, not the element default (SPEC-TABLES §2.15), and the save then asserts; mutant of sp-enum-elem-deprecated-array with element 2 = Old
+tabledemo.MoodField	owed: the same known-layout deprecated-variant read as tabledemo.Moods, scalar half

@@ -1,0 +1,5 @@
+# rust-plain: the roots the rust-plain wire-fuzz driver answers absent, matched as an exact
+# set (test/conformance/harness/wirefuzz_absent.go, docs/SPEC-CONFORMANCE.md W-ROSTER). Measured at main e5ef2e0604:
+# 36 seeds over 16 roots. Delete a line in the change that
+# adds its root to the driver, and the file with its last line.
+packetunions.ShapeMsg@message	owed: wire-seed-roots-rust (2 seeds)

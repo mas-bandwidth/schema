@@ -9842,6 +9842,30 @@ runs, and an index line whose file is missing is a vector that cannot run. The
 wire fuzzer reads both and refuses the whole run, naming each file, when they
 disagree (`checkWireVectorIndex`); neither is a warning, and neither is skipped.
 
+**Every seed is asked, or the run refuses.** A leg answers the roster root by
+root, and a root it answers `0` for leaves its seeds ABSENT: nothing about
+them was compared, so an absent seed is a failure and never a pass. The wire
+fuzzer exits nonzero and names every absent root with its seed count
+(`checkAbsentRoots`), in every tier that runs it. The one exception is a root the leg names in the checked-in ledger
+`test/conformance/wire-absent/<leg>-<arm>.tsv`, one line per root,
+`<unit>.<Root>[@message]<TAB><why>`, and the ledger is matched as an exact
+set: a root absent and not listed is red even when another listed root comes
+off in the same change, and a listed root the leg now answers is red until its
+line is removed. The harness finds the ledger, never the caller: a whole-roster
+run names its leg (`--leg`), the arm is the run's own profile (`plain`, `builder`
+or `retain`), and a run with no leg is refused. A one-unit leg (`goose-unit`, the Goose leg built per unit, whose driver the
+harness requires to be that leg over the same unit)
+names its unit (`--unit` without `--replay`) and is asked about that unit's
+roots alone; no other leg takes `--unit`, so no whole-roster run leaves part of
+the roster unasked, and a unit a one-unit sweep drops (one that fails to
+generate) is still asked by the leg's whole-roster run, where its roots are
+absent and red. The summary line holds an absence as `, N ledgered seeds
+absent (<ledger>)`; a gate that reads the summary (the release gate,
+tools/wirefuzzrelease) reads that clause or is red, and never reads an absence
+in other words as none. A plain-arm line whose reason begins `split:` holds a root the
+leg's builder arm fuzzes instead, and the builder arm's run refuses a split
+root it does not answer, so no root is split to no arm. A port adds a new root
+to its wire-fuzz driver in the change that adds the root to the corpus.
 **The leg's stream ends only between frames.** The fuzzer drives each leg
 over a pipe (`test/conformance/README.md`, "The wire-fuzz driver"): the
 roster once, then one FRAME per mutant, a `u32` roster index, a `u32` length

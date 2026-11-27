@@ -18,7 +18,7 @@ python-wirefuzz-$(1)-$(2)-$(3): build/conformance-harness build/conformance-pyth
 	@set -eu; \
 	if find build/conformance-python -name '*.refused' -print | grep .; then echo 'wire-fuzz: a corpus unit was refused'; exit 1; fi; \
 	mkdir -p $(PYTHON_WIRE_FUZZ_DIR); log=$(PYTHON_WIRE_FUZZ_DIR)/$(1)-$(2)-$(3).log; \
-	sh test/conformance/wire-fuzz-complete "$$$$log" ./build/conformance-harness wire-fuzz $(if $(filter mixed,$(3)),--mixed-builder,$(if $(filter retain,$(3)),--retain,)) \
+	sh test/conformance/wire-fuzz-complete "$$$$log" ./build/conformance-harness wire-fuzz --leg python $(if $(filter mixed,$(3)),--mixed-builder,$(if $(filter retain,$(3)),--retain,)) \
 	  --driver '$(if $(filter current,$(1)),$(PYTHON),$(PYTHON_FLOOR)) $(if $(filter dev,$(2)),-X dev,) -W error -I -B test/conformance/python/wirefuzz.py build/conformance-python' \
 	  --seed $(SEED) --n $(N) --failed $(PYTHON_WIRE_FUZZ_DIR)/$(1)-$(2)-$(3).bin
 endef
@@ -33,7 +33,7 @@ python-wirefuzz-$(1)-$(2)-$(3)-shard-$(4): build/conformance-harness build/confo
 	@set -eu; \
 	if find build/conformance-python -name '*.refused' -print | grep .; then echo 'wire-fuzz: a corpus unit was refused'; exit 1; fi; \
 	mkdir -p $(PYTHON_WIRE_FUZZ_DIR); log=$(PYTHON_WIRE_FUZZ_DIR)/$(1)-$(2)-$(3)-shard-$(4).log; \
-	sh test/conformance/wire-fuzz-complete "$$$$log" ./build/conformance-harness wire-fuzz $(if $(filter mixed,$(3)),--mixed-builder,$(if $(filter retain,$(3)),--retain,)) \
+	sh test/conformance/wire-fuzz-complete "$$$$log" ./build/conformance-harness wire-fuzz --leg python $(if $(filter mixed,$(3)),--mixed-builder,$(if $(filter retain,$(3)),--retain,)) \
 	  --driver '$(if $(filter current,$(1)),$(PYTHON),$(PYTHON_FLOOR)) $(if $(filter dev,$(2)),-X dev,) -W error -I -B test/conformance/python/wirefuzz.py build/conformance-python' \
 	  --seed $(SEED) --n $(N) --shard $(4) --shards $(words $(PYTHON_WIRE_FUZZ_CI_SHARDS)) --failed $(PYTHON_WIRE_FUZZ_DIR)/$(1)-$(2)-$(3)-shard-$(4).bin; \
 	grep -q ', shard $(4)/$(words $(PYTHON_WIRE_FUZZ_CI_SHARDS))' "$$$$log" || { echo 'wire-fuzz: wrong or missing shard identity'; exit 1; }

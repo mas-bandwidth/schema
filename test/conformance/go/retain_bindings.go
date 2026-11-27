@@ -11,7 +11,9 @@ import (
 	"listdemo"
 	"mapdemo"
 	"messagedemo"
+	"shapes"
 	"streamdemo"
+	tblsurf "surfaces"
 	"tblg1"
 	"tblp2"
 	"tblvaluedefaults"
@@ -269,4 +271,24 @@ var retentionCodecs = []retentionCodec{
 	}, graphdemo.MarkerLoadMeasure, graphdemo.MarkerLoadRetain, graphdemo.MarkerMeasureRetain, graphdemo.MarkerSaveRetain, func(r *graphdemo.TableReport) report {
 		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
 	}, func(r *graphdemo.TableReport) (int32, int32) { return r.Retained, r.RetainLost }),
+	retainRow("shapes", "Bounds", func() *shapes.TableRetain {
+		return &shapes.TableRetain{Bytes: make([]byte, 1<<20), Ids: make([]shapes.TableRetainID, (1<<20)/8)}
+	}, shapes.BoundsLoadMeasure, shapes.BoundsLoadRetain, shapes.BoundsMeasureRetain, shapes.BoundsSaveRetain, func(r *shapes.TableReport) report {
+		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
+	}, func(r *shapes.TableReport) (int32, int32) { return r.Retained, r.RetainLost }),
+	retainRow("tblsurf", "Chain", func() *tblsurf.TableRetain {
+		return &tblsurf.TableRetain{Bytes: make([]byte, 1<<20), Ids: make([]tblsurf.TableRetainID, (1<<20)/8)}
+	}, tblsurf.ChainLoadMeasure, tblsurf.ChainLoadRetain, tblsurf.ChainMeasureRetain, tblsurf.ChainSaveRetain, func(r *tblsurf.TableReport) report {
+		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
+	}, func(r *tblsurf.TableReport) (int32, int32) { return r.Retained, r.RetainLost }),
+	retainRow("tblsurf", "Counted", func() *tblsurf.TableRetain {
+		return &tblsurf.TableRetain{Bytes: make([]byte, 1<<20), Ids: make([]tblsurf.TableRetainID, (1<<20)/8)}
+	}, tblsurf.CountedLoadMeasure, tblsurf.CountedLoadRetain, tblsurf.CountedMeasureRetain, tblsurf.CountedSaveRetain, func(r *tblsurf.TableReport) report {
+		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
+	}, func(r *tblsurf.TableReport) (int32, int32) { return r.Retained, r.RetainLost }),
+	retainRow("tblsurf", "Holder", func() *tblsurf.TableRetain {
+		return &tblsurf.TableRetain{Bytes: make([]byte, 1<<20), Ids: make([]tblsurf.TableRetainID, (1<<20)/8)}
+	}, tblsurf.HolderLoadMeasure, tblsurf.HolderLoadRetain, tblsurf.HolderMeasureRetain, tblsurf.HolderSaveRetain, func(r *tblsurf.TableReport) report {
+		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
+	}, func(r *tblsurf.TableReport) (int32, int32) { return r.Retained, r.RetainLost }),
 }

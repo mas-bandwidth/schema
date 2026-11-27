@@ -134,6 +134,7 @@ var catalog = []Entry{
 	e("internal/vacuous", "Go tests that pass checking nothing", "go test ./internal/vacuous", "go test ./internal/ci -run TestEveryGoTestCanFail"),
 	e("internal/version", "binary version stamp", "go test ./internal/version", "go test ./internal/version"),
 	e("internal/viewlisting", "view listing vs IR", "go test ./internal/viewlisting", "go test ./internal/viewlisting"),
+	e("internal/wireabsent", "wire-fuzz absence clause and ledger path", "go test ./internal/wireabsent", "go test ./internal/wireabsent"),
 	e("internal/wirealone", "the framing rows decidable from the wire alone, read for each port's wire-walk control", "go test ./internal/wirealone", "go test ./internal/wirealone"),
 
 	// internal/codegen/
@@ -200,6 +201,7 @@ var catalog = []Entry{
 
 	// testdata/
 	e("testdata/conformance", "table conformance dumps", "make conformance", "make conformance"),
+	e("testdata/cpp-standalone", "one-check C++ units each header must compile alone", "go test ./internal/codegen/cpptable", "SCHEMA_SLOW=1 go test ./internal/codegen/cpptable -run TestEveryGeneratedTableHeaderCompilesStandalone"),
 	e("testdata/golden", "generated-source goldens", "go test ./internal/goldens", "make update-goldens"),
 	e("testdata/golangci-lint-classes", "generated Go lint regression fixtures", "go test ./internal/goldens -run TestGolangciLintClassesShapes", "make schema-go-generated-golangci-lint-gate-classes-negative-control"),
 	e("testdata/jsontestsuite", "vendored JSONTestSuite (MIT)", "go test ./internal/tabletext", "go test ./internal/tabletext -run JSONTestSuite"),

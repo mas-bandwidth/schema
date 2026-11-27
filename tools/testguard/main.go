@@ -3,8 +3,9 @@
 // repository's ledger does not hold, a suite that is missing or ran nothing, a
 // pair of a required coverage table that no test covers, or a test that ran
 // and that the baseline does not list, or the reverse. It reads result files
-// and a config file, runs only the commands the config names for coverage
-// tables, and writes nothing unless asked to add tests to the baseline.
+// and a config file, runs only the commands the config names (coverage
+// tables, and record lines for the baseline verb), and writes nothing unless
+// asked to add tests to the baseline.
 // `testguard help` is the manual.
 package main
 
@@ -15,6 +16,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
@@ -72,14 +74,92 @@ func run(dir string, args []string, stdout, stderr io.Writer, sh shellFunc) int 
 		case len(args) == 2 && args[1] == "check":
 			say(stdout, "%s", checkHelp)
 			return exitOK
+		case len(args) == 2 && args[1] == "baseline":
+			say(stdout, "%s", baselineHelp)
+			return exitOK
 		}
-		say(stderr, "testguard: help takes no flags and one topic, check; got %q; run: go run ./tools/testguard help\n", strings.Join(args[1:], " "))
+		say(stderr, "testguard: help takes no flags and one topic, check or baseline; got %q; run: go run ./tools/testguard help\n", strings.Join(args[1:], " "))
 		return exitRefused
 	case "check":
 		return check(dir, args[1:], stdout, stderr, sh)
+	case "baseline":
+		return baseline(dir, args[1:], stdout, stderr, sh)
 	}
-	say(stderr, "testguard: %q is no verb; the verbs are check and help; run: go run ./tools/testguard help\n", args[0])
+	say(stderr, "testguard: %q is no verb; the verbs are check, baseline and help; run: go run ./tools/testguard help\n", args[0])
 	return exitRefused
+}
+
+const baselineUsage = "go run ./tools/testguard baseline -h"
+
+// baseline runs the config's record lines into a fresh directory and checks
+// what they wrote with --write-baseline: the one command that adds the tests a
+// change brought. It always exits 1 or 2; a write is never a pass.
+func baseline(dir string, args []string, stdout, stderr io.Writer, sh shellFunc) int {
+	fset := flag.NewFlagSet("baseline", flag.ContinueOnError)
+	fset.SetOutput(io.Discard)
+	config := fset.String("config", "", "")
+	if err := fset.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			say(stdout, "%s", baselineHelp)
+			return exitOK
+		}
+		say(stderr, "testguard baseline: %s; run: %s\n", flagError(err), baselineUsage)
+		return exitRefused
+	}
+	if *config == "" || fset.NArg() > 0 {
+		say(stderr, "testguard baseline: wants --config and nothing else; run: %s\n", baselineUsage)
+		return exitRefused
+	}
+	files, cleanup, err := record(dir, *config, sh)
+	if cleanup != nil {
+		defer cleanup()
+	}
+	if err != nil {
+		var r *refusal
+		if !errors.As(err, &r) {
+			r = &refusal{err.Error(), baselineUsage}
+		}
+		say(stderr, "testguard baseline: %s; run: %s\n", r.what, r.remedy)
+		return exitRefused
+	}
+	return check(dir, append([]string{"--config", *config, "--write-baseline"}, files...), stdout, stderr, sh)
+}
+
+// record runs each record line with TESTGUARD_RECORD naming a new directory,
+// and returns the result files they wrote there.
+func record(dir, configPath string, sh shellFunc) ([]string, func(), error) {
+	c, err := readConfig(dir, configPath)
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(c.records) == 0 {
+		return nil, nil, refuse("go run ./tools/testguard help check", "%s has no record line, so there is no way to make the row's results; add the row's go test as one", configPath)
+	}
+	tmp, err := os.MkdirTemp("", "testguard-record-")
+	if err != nil {
+		return nil, nil, refuse("ls -ld "+os.TempDir(), "making a directory for the results: %v", err)
+	}
+	cleanup := func() {
+		_ = os.RemoveAll(tmp) // errdiscard: a temporary directory left behind harms nothing, and the verdict is already printed
+	}
+	quoted := "'" + strings.ReplaceAll(tmp, "'", `'\''`) + "'"
+	for _, command := range c.records {
+		if _, err := sh(dir, "export TESTGUARD_RECORD="+quoted+"\n"+command); err != nil {
+			return nil, cleanup, refuse("grep -n '^record' "+configPath, "the record line %q failed (%v); nothing written: the row's tests must pass before their entries are added", command, err)
+		}
+	}
+	entries, err := os.ReadDir(tmp)
+	if err != nil {
+		return nil, cleanup, refuse("ls -ld "+tmp, "reading the results: %v", err)
+	}
+	var files []string
+	for _, e := range entries {
+		files = append(files, filepath.Join(tmp, e.Name()))
+	}
+	if len(files) == 0 {
+		return nil, cleanup, refuse("grep -n '^record' "+configPath, "the record lines in %s wrote nothing under $TESTGUARD_RECORD; each must write a result file there", configPath)
+	}
+	return files, cleanup, nil
 }
 
 func check(dir string, args []string, stdout, stderr io.Writer, sh shellFunc) int {
@@ -178,7 +258,8 @@ no baseline, and a run of 0 tests are refused.
 
 usage:
   testguard check --config FILE [--write-baseline] RESULT...
-  testguard help [check]
+  testguard baseline --config FILE
+  testguard help [check|baseline]
 
 exit codes: 0 every test that should run ran and passed; 1 findings (one line each, then a
 summary); 2 refused (bad invocation, a config, result file or baseline that cannot be read, a
@@ -209,6 +290,11 @@ usage:
                                            - and inner dots stay; any other byte is percent-escaped; a long
                                            name is cut and ends in ~ and a hash); a count suite's
                                            DIR/SUITE/#count holds the fewest tests it may run
+  record    COMMAND                        how the row makes its results, for testguard baseline:
+                                           run under bash -e -o pipefail -c in the working
+                                           directory, it writes result files into the directory
+                                           $TESTGUARD_RECORD names. With record lines, an
+                                           unlisted finding names the baseline command as its fix
 --write-baseline  add the entries the run lacks (unlisted tests, count floors), when those are
                   its only findings; with any other finding it writes nothing. It never removes
                   an entry, makes DIR if it is missing, and always exits 1: a write is never a
@@ -234,3 +320,19 @@ example:
 func say(w io.Writer, format string, args ...any) {
 	_, _ = fmt.Fprintf(w, format, args...) // errdiscard: a report that cannot be written has no one to tell; the exit code still says it
 }
+
+const baselineHelp = `testguard baseline: adds the tests a change brought to the baseline
+
+usage:
+  testguard baseline --config FILE
+
+It runs the config's record lines, each with TESTGUARD_RECORD naming a new directory, then
+checks the result files they wrote there as check --write-baseline does: when the only
+findings are unlisted tests or count floors it writes their entries, and otherwise it writes
+nothing and prints the findings. It always exits 1 (a write is never a pass) or 2 (refused:
+the config has no record line, a record line failed, as go test does when a test fails, or
+they wrote no result file). Commit what it wrote, then check again.
+
+example:
+  go run ./tools/testguard baseline --config test/testguard/ci-policy-rest.tsv
+`

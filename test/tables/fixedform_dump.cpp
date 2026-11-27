@@ -142,12 +142,14 @@ struct ManifestRow
     std::vector<std::string> values;
     std::string forged; // the forged=<path>@<byte>=<value> field, empty when none
     std::string expect; // the expect=<path>=<value>,...,clamped=<n> field, empty when none
+    std::string refuse; // the refuse=<reason> field: the reference's own reader refused the file whole
 };
 
 static std::vector<ManifestRow> g_manifest;     // the rows, in the order written
 static std::vector<std::string> g_values;       // the row being written
 static std::string g_forged;                    // the pending row's forged= field, if any
 static std::string g_expect;                    // the pending row's expect= field, if any
+static std::string g_refuse;                    // the pending row's refuse= field, if any
 static std::string g_row;                       // the pending row's row=, when the file name says more than the row
 
 // `v[0].nested.a` -> `r0.nested.a`, and a subscript that is a LOOP VARIABLE or
@@ -394,6 +396,8 @@ static void man_finish( const char * file, const char * root, long long records 
     g_forged.clear();
     r.expect = g_expect;
     g_expect.clear();
+    r.refuse = g_refuse;
+    g_refuse.clear();
     r.values.swap( g_values );
     g_manifest.push_back( r );
 }
@@ -424,6 +428,15 @@ static bool man_write( const char * dir )
         {
             text.insert( text.size() - std::strlen( "values=" ), "expect=" + r.expect + " " );
         }
+        // `refuse=` is THE REFERENCE'S OWN VERDICT on a file its reader refuses
+        // whole: the reason its report named, in the one vocabulary
+        // (TableRefuseReason). A leg asserts it by name; a line without it is
+        // a file the reference reads (EVERY TEST IS A SHARED CORPUS,
+        // internal/fixedvector.EveryRoot).
+        if ( !r.refuse.empty() )
+        {
+            text.insert( text.size() - std::strlen( "values=" ), "refuse=" + r.refuse + " " );
+        }
         for ( size_t k = 0; k < r.values.size(); ++k )
         {
             if ( k != 0 ) { text += ","; }
@@ -436,8 +449,96 @@ static bool man_write( const char * dir )
 }
 // ---- rowan/corpus-manifest: END -------------------------------------------
 
-template <typename T, typename Measure, typename Save>
-static bool emit( const char * dir, const char * name, const std::vector<T> & values, Measure measure, Save save )
+// THE REFUSAL'S NAME, in the one vocabulary every target shares
+// (TableRefuseReason). Each generated namespace declares the same enum, so this
+// is a template over it; a reason this list does not name is NULL, and the
+// caller refuses to write a row it cannot state.
+template <typename R>
+static const char * man_reason( R why )
+{
+    switch ( why )
+    {
+    case R::ok: return NULL; // n == -1 with no reason is not a refusal the manifest can state
+    case R::not_a_cook: return "not_a_cook";
+    case R::foreign_order: return "foreign_order";
+    case R::wrong_build_version: return "wrong_build_version";
+    case R::reserved_not_zero: return "reserved_not_zero";
+    case R::bad_alignment: return "bad_alignment";
+    case R::truncated: return "truncated";
+    case R::unaligned_base: return "unaligned_base";
+    case R::bad_layout: return "bad_layout";
+    case R::unknown_form: return "unknown_form";
+    case R::count_over_length: return "count_over_length";
+    case R::count_over_extent_cap: return "count_over_extent_cap";
+    case R::blob_over_size_cap: return "blob_over_size_cap";
+    case R::data_cycle: return "data_cycle";
+    case R::invalid_value: return "invalid_value";
+    case R::allocation_failed: return "allocation_failed";
+    case R::wire_damaged: return "wire_damaged";
+    case R::malformed: return "malformed";
+    case R::out_of_range: return "out_of_range";
+    case R::kind_mismatch: return "kind_mismatch";
+    case R::base64_damaged: return "base64_damaged";
+    case R::base64_not_canonical: return "base64_not_canonical";
+    case R::integrity_mismatch: return "integrity_mismatch";
+    case R::non_finite_float: return "non_finite_float";
+    case R::blob_shared: return "blob_shared";
+    case R::previous_form: return "previous_form";
+    case R::newer_form: return "newer_form";
+    case R::message_form_as_file: return "message_form_as_file";
+    case R::layout_unknown: return "layout_unknown";
+    case R::layout_unsupported: return "layout_unsupported";
+    case R::layout_newer: return "layout_newer";
+    case R::layout_malformed: return "layout_malformed";
+    case R::layout_count_mismatch: return "layout_count_mismatch";
+    case R::layout_kind_unknown: return "layout_kind_unknown";
+    case R::layout_kind_invalid: return "layout_kind_invalid";
+    case R::layout_size_mismatch: return "layout_size_mismatch";
+    case R::layout_tree_unclosed: return "layout_tree_unclosed";
+    case R::layout_too_deep: return "layout_too_deep";
+    case R::layout_record_too_large: return "layout_record_too_large";
+    case R::plan_too_large: return "plan_too_large";
+    case R::no_layout: return "no_layout";
+    case R::batch_too_large: return "batch_too_large";
+    case R::text_ill_formed: return "text_ill_formed";
+    case R::count_over_bound: return "count_over_bound";
+    case R::length_over_bound: return "length_over_bound";
+    case R::missing_required: return "missing_required";
+    }
+    return NULL;
+}
+
+// THE READER'S VERDICT ON THE BYTES JUST WRITTEN: the file is read back
+// through `load` (the reference's strict read, into `records` fresh values)
+// and a whole-load refusal sets the pending row's `refuse=` to the reason the
+// report named. A read that lands sets nothing. A refusal with no nameable
+// reason is false, and the dump writes no row it cannot state.
+template <typename T, typename E, typename C, typename R>
+static bool man_verdict( const char * name, int64_t records, const std::vector<uint8_t> & bytes,
+                         int64_t ( *load )( T *, int64_t, const uint8_t *, int64_t, E *, int32_t, C *, R * ) )
+{
+    std::vector<T> back( (size_t) ( records > 0 ? records : 1 ) );
+    std::vector<E> plan( 4096 );
+    R r;
+    const int64_t n = load( back.data(), (int64_t) back.size(), bytes.data(), (int64_t) bytes.size(),
+                            plan.data(), (int32_t) plan.size(), NULL, &r );
+    if ( n >= 0 )
+    {
+        return true;
+    }
+    const char * why = man_reason( r.refuse_reason );
+    if ( why == NULL )
+    {
+        std::fprintf( stderr, "%s: the reference refused the read back with reason %d, which the manifest cannot name\n",
+                      name, (int) r.refuse_reason );
+        return false;
+    }
+    g_refuse = why;
+    return true;
+}
+
+template <typename T, typename Measure, typename Save, typename Load>
+static bool emit( const char * dir, const char * name, const std::vector<T> & values, Measure measure, Save save, Load load )
 {
     std::vector<uint8_t> out( (size_t) measure( (int64_t) values.size() ) );
     if ( save( values.data(), (int64_t) values.size(), out.data(), (int64_t) out.size() ) != (int64_t) out.size() )
@@ -447,6 +548,12 @@ static bool emit( const char * dir, const char * name, const std::vector<T> & va
         // a return that leaves them attached spills them onto the NEXT file's
         // line — a manifest that says a value the next file's bytes never had.
         g_values.clear();
+        return false;
+    }
+    if ( !man_verdict( name, (int64_t) values.size(), out, load ) )
+    {
+        g_values.clear();
+        g_refuse.clear();
         return false;
     }
     // ---- rowan/corpus-manifest ----
@@ -501,7 +608,7 @@ static bool fx1_file( const char * dir )
     MS( v[1].label_length, 0 ); // nothing used at all: the WHOLE span is slack
     MS( v[1].marks_count, 0 );
     MS( v[1].blob_length, 0 );
-    return emit( dir, "fx1.bin", v, tblfx1::FxRootFixedMeasure, tblfx1::FxRootFixedSave );
+    return emit( dir, "fx1.bin", v, tblfx1::FxRootFixedMeasure, tblfx1::FxRootFixedSave, tblfx1::FxRootFixedLoad );
 }
 
 static bool fx2_file( const char * dir )
@@ -522,7 +629,7 @@ static bool fx2_file( const char * dir )
     MS( v[0].marks_count, 1 );
     MS( v[0].blob[0], 0x01 ); MS( v[0].blob[1], 0x02 ); MS( v[0].blob[2], 0x03 );
     MS( v[0].blob_length, 3 );
-    return emit( dir, "fx2.bin", v, tblfx2::FxRootFixedMeasure, tblfx2::FxRootFixedSave );
+    return emit( dir, "fx2.bin", v, tblfx2::FxRootFixedMeasure, tblfx2::FxRootFixedSave, tblfx2::FxRootFixedLoad );
 }
 
 // ---- P1 / P3: a value against an optional ----------------------------------
@@ -536,7 +643,7 @@ static bool p1_file( const char * dir )
     MS( v[0].link.value, 77 );
     MSTR( v[0].link.tag, "tagged" );
     MS( v[0].link.tag_length, 6 );
-    return emit( dir, "p1.bin", v, tblp1::ChainFixedMeasure, tblp1::ChainFixedSave );
+    return emit( dir, "p1.bin", v, tblp1::ChainFixedMeasure, tblp1::ChainFixedSave, tblp1::ChainFixedLoad );
 }
 
 static bool p3_file( const char * dir )
@@ -565,7 +672,7 @@ static bool p3_file( const char * dir )
     MS( v[1].link.value, 99 );
     MSTR( v[1].link.tag, "still" );
     MS( v[1].link.tag_length, 5 );
-    return emit( dir, "p3.bin", v, tblp3::ChainFixedMeasure, tblp3::ChainFixedSave );
+    return emit( dir, "p3.bin", v, tblp3::ChainFixedMeasure, tblp3::ChainFixedSave, tblp3::ChainFixedLoad );
 }
 
 // ---- the rich shape: keyed arrays nesting keyed arrays, and an optional ----
@@ -598,7 +705,7 @@ static bool keyed_file( const char * dir )
             }
         }
     }
-    return emit( dir, "keyed.bin", v, tabledemo::KeyedConfigFixedMeasure, tabledemo::KeyedConfigFixedSave );
+    return emit( dir, "keyed.bin", v, tabledemo::KeyedConfigFixedMeasure, tabledemo::KeyedConfigFixedSave, tabledemo::KeyedConfigFixedLoad );
 }
 
 // ---- the packed corpus's root: counted arrays, an enum with a declared
@@ -647,7 +754,7 @@ static bool pack_file( const char * dir )
             MSI( v[k].reserves[r].gunner_present, false, (long long) ( k ), (long long) ( r ) );
         }
     }
-    return emit( dir, "pack.bin", v, tabledemo::PackConfigFixedMeasure, tabledemo::PackConfigFixedSave );
+    return emit( dir, "pack.bin", v, tabledemo::PackConfigFixedMeasure, tabledemo::PackConfigFixedSave, tabledemo::PackConfigFixedLoad );
 }
 
 // ---- FU1 / FU2: TEXT UNDER A UNION ARM, AND THE TWO WIDENING RUNGS ---------
@@ -721,7 +828,7 @@ static bool fu1_file( const char * dir )
     MS( v[2].mark, 32767 );                                // INT16_MAX: positive, nothing to extend
     MS( v[2].heat, 1.5f );                                 // an ordinary float beside them
 
-    return emit( dir, "fu1.bin", v, tblfu1::FuRootFixedMeasure, tblfu1::FuRootFixedSave );
+    return emit( dir, "fu1.bin", v, tblfu1::FuRootFixedMeasure, tblfu1::FuRootFixedSave, tblfu1::FuRootFixedLoad );
 }
 
 // FU2's own bytes, for the OTHER direction: identity under FU2, and
@@ -757,7 +864,7 @@ static bool fu2_file( const char * dir )
     MS( v[1].heat, -2.25 );
     MS( v[1].extra, -11 );
 
-    return emit( dir, "fu2.bin", v, tblfu2::FuRootFixedMeasure, tblfu2::FuRootFixedSave );
+    return emit( dir, "fu2.bin", v, tblfu2::FuRootFixedMeasure, tblfu2::FuRootFixedSave, tblfu2::FuRootFixedLoad );
 }
 
 // THE COMPRESSED FLOAT'S NEGATIVE ZERO (docs/SPEC-TABLES.md §3.3). The record
@@ -1010,6 +1117,20 @@ static bool dead_write( const char * dir, const char * name, const std::vector<u
             g_values.clear();
             return false;
         }
+        if ( !want_read )
+        {
+            // the line names the reason the reference's report gave, so a leg
+            // holds its refusal to that name and not to "some refusal"
+            const char * why = man_reason( r.refuse_reason );
+            if ( why == NULL )
+            {
+                std::fprintf( stderr, "%s: the reference refused with reason %d, which the manifest cannot name\n",
+                              name, (int) r.refuse_reason );
+                g_values.clear();
+                return false;
+            }
+            g_refuse = why;
+        }
     }
     man_finish( name, "DeadRoot", 1 );
     return spill( dir, name, out );
@@ -1226,7 +1347,7 @@ static bool dead_bytes_files( const char * dir )
         std::vector<NS::TBL> v( 1 );                                                          \
         NS::TBL##Reset( v[0] );                                                               \
         __VA_ARGS__                                                                           \
-        if ( !emit( dir, NAME, v, NS::TBL##FixedMeasure, NS::TBL##FixedSave ) ) { return false; } \
+        if ( !emit( dir, NAME, v, NS::TBL##FixedMeasure, NS::TBL##FixedSave, NS::TBL##FixedLoad ) ) { return false; } \
     } while ( 0 )
 
 static bool versioning_numbers_files( const char * dir )
@@ -1290,7 +1411,7 @@ static bool versioning_numbers_files( const char * dir )
             MSI( v[(size_t) k].trail, 0xBBBBBBBBu, (long long) ( (size_t) k ) );
         }
         if ( !emit( dir, "old_int_widen.bin", v, vold_int_widen::IntWidenFixedMeasure,
-                    vold_int_widen::IntWidenFixedSave ) ) { return false; }
+                    vold_int_widen::IntWidenFixedSave, vold_int_widen::IntWidenFixedLoad ) ) { return false; }
     }
     VROW( vnew_int_widen, IntWiden, "new_int_widen.bin",
           MS( v[0].lead, 0xAAAAAAAAu ); MS( v[0].v, 100000 ); MS( v[0].trail, 0xBBBBBBBBu ); );
@@ -1366,6 +1487,7 @@ static bool versioning_numbers_files( const char * dir )
         char forge[96];
         std::snprintf( forge, sizeof( forge ), "r0.v@%lld=%s", (long long) v_at, man_text( forged ).c_str() );
         g_forged = forge;
+        g_refuse = man_reason( r.refuse_reason ); // out_of_range, checked above
         man_finish( "hostile_range_widen.bin", "RangeWiden", 1 );
         if ( !spill( dir, "hostile_range_widen.bin", out ) ) { return false; }
     }
@@ -1422,6 +1544,7 @@ static bool versioning_numbers_files( const char * dir )
         std::snprintf( forge, sizeof( forge ), "r0.vals[2]@%lld=%s", (long long) vals2_at, man_text( forged ).c_str() );
         g_forged = forge;
         g_row = "range_widen";
+        g_refuse = man_reason( r.refuse_reason ); // out_of_range, checked above
         man_finish( "hostile_range_widen_array.bin", "RangeWiden", 1 );
         if ( !spill( dir, "hostile_range_widen_array.bin", out ) ) { return false; }
     }
@@ -1474,6 +1597,7 @@ static bool versioning_numbers_files( const char * dir )
         std::snprintf( forge, sizeof( forge ), "r0.u@%lld=%s", (long long) u_at, man_text( (unsigned long long) forged ).c_str() );
         g_forged = forge;
         g_row = "range_widen";
+        g_refuse = man_reason( r.refuse_reason ); // out_of_range, checked above
         man_finish( "hostile_range_widen_u64.bin", "RangeWiden", 1 );
         if ( !spill( dir, "hostile_range_widen_u64.bin", out ) ) { return false; }
     }
@@ -1528,6 +1652,13 @@ static bool versioning_numbers_files( const char * dir )
         char forge[96];
         std::snprintf( forge, sizeof( forge ), "r0.aim@%lld=%s", (long long) aim_at, man_text( forged ).c_str() );
         g_forged = forge;
+        // the NEW reader's own verdict on the forged bytes names the line
+        if ( !man_verdict( "hostile_cfloat_range_widen.bin", 1, out, vnew_cfloat_range_widen::CfloatRangeWidenFixedLoad ) )
+        {
+            g_values.clear();
+            g_forged.clear();
+            return false;
+        }
         man_finish( "hostile_cfloat_range_widen.bin", "CfloatRangeWiden", 1 );
         if ( !spill( dir, "hostile_cfloat_range_widen.bin", out ) ) { return false; }
     }
@@ -1555,6 +1686,13 @@ static bool versioning_numbers_files( const char * dir )
         char forge[96];
         std::snprintf( forge, sizeof( forge ), "r0.aim@%lld=%s", (long long) aim_at, man_text( forged ).c_str() );
         g_forged = forge;
+        // the NEW reader's own verdict on the forged bytes names the line
+        if ( !man_verdict( "past_cfloat_range_widen.bin", 1, out, vnew_cfloat_range_widen::CfloatRangeWidenFixedLoad ) )
+        {
+            g_values.clear();
+            g_forged.clear();
+            return false;
+        }
         man_finish( "past_cfloat_range_widen.bin", "CfloatRangeWiden", 1 );
         if ( !spill( dir, "past_cfloat_range_widen.bin", out ) ) { return false; }
     }
@@ -1641,7 +1779,7 @@ static bool versioning_numbers_files( const char * dir )
         for ( int i = 0; i < 4; ++i ) { MSI( m[2].items[i].a, 30 + i, (long long) ( i ) ); MSI( m[2].items[i].drop, 920 + i, (long long) ( i ) ); }
         MS( m[2].trail, 2 );
         if ( !emit( dir, "many_unknown_census.bin", m, vold_unknown_census::CensusFixedMeasure,
-                    vold_unknown_census::CensusFixedSave ) ) { return false; }
+                    vold_unknown_census::CensusFixedSave, vold_unknown_census::CensusFixedLoad ) ) { return false; }
     }
     return true;
 }
@@ -1664,13 +1802,13 @@ static bool vlists_files( const char * dir )
         vold_field_append::LineageReset( o[0] );
         MS( o[0].x, 11 ); MS( o[0].y, 22 ); MS( o[0].z, 33 );
         if ( !emit( dir, "old_field_append.bin", o, vold_field_append::LineageFixedMeasure,
-                    vold_field_append::LineageFixedSave ) ) { return false; }
+                    vold_field_append::LineageFixedSave, vold_field_append::LineageFixedLoad ) ) { return false; }
 
         std::vector<vnew_field_append::Lineage> n( 1 );
         vnew_field_append::LineageReset( n[0] );
         MS( n[0].x, 44 ); MS( n[0].y, 55 ); MS( n[0].z, 66 ); MS( n[0].w, 777 );
         if ( !emit( dir, "new_field_append.bin", n, vnew_field_append::LineageFixedMeasure,
-                    vnew_field_append::LineageFixedSave ) ) { return false; }
+                    vnew_field_append::LineageFixedSave, vnew_field_append::LineageFixedLoad ) ) { return false; }
     }
 
     // ---- field_deprecate: {a,b,c} -> {a, b deprecated, c} ------------------
@@ -1679,13 +1817,13 @@ static bool vlists_files( const char * dir )
         vold_field_deprecate::LineageReset( o[0] );
         MS( o[0].a, 1 ); MS( o[0].b, 2 ); MS( o[0].c, 3 );
         if ( !emit( dir, "old_field_deprecate.bin", o, vold_field_deprecate::LineageFixedMeasure,
-                    vold_field_deprecate::LineageFixedSave ) ) { return false; }
+                    vold_field_deprecate::LineageFixedSave, vold_field_deprecate::LineageFixedLoad ) ) { return false; }
 
         std::vector<vnew_field_deprecate::Lineage> n( 1 );
         vnew_field_deprecate::LineageReset( n[0] );
         MS( n[0].a, 4 ); MS( n[0].b, 5 ); MS( n[0].c, 6 );
         if ( !emit( dir, "new_field_deprecate.bin", n, vnew_field_deprecate::LineageFixedMeasure,
-                    vnew_field_deprecate::LineageFixedSave ) ) { return false; }
+                    vnew_field_deprecate::LineageFixedSave, vnew_field_deprecate::LineageFixedLoad ) ) { return false; }
     }
 
     // ---- field_undeprecate: {a, b deprecated, c} -> {a,b,c} ----------------
@@ -1694,13 +1832,13 @@ static bool vlists_files( const char * dir )
         vold_field_undeprecate::LineageReset( o[0] );
         MS( o[0].a, 1 ); MS( o[0].b, 2 ); MS( o[0].c, 3 );
         if ( !emit( dir, "old_field_undeprecate.bin", o, vold_field_undeprecate::LineageFixedMeasure,
-                    vold_field_undeprecate::LineageFixedSave ) ) { return false; }
+                    vold_field_undeprecate::LineageFixedSave, vold_field_undeprecate::LineageFixedLoad ) ) { return false; }
 
         std::vector<vnew_field_undeprecate::Lineage> n( 1 );
         vnew_field_undeprecate::LineageReset( n[0] );
         MS( n[0].a, 4 ); MS( n[0].b, 5 ); MS( n[0].c, 6 );
         if ( !emit( dir, "new_field_undeprecate.bin", n, vnew_field_undeprecate::LineageFixedMeasure,
-                    vnew_field_undeprecate::LineageFixedSave ) ) { return false; }
+                    vnew_field_undeprecate::LineageFixedSave, vnew_field_undeprecate::LineageFixedLoad ) ) { return false; }
     }
 
     // ---- enum_append: Tier {Bronze,Silver,Gold} -> + Platinum --------------
@@ -1714,7 +1852,7 @@ static bool vlists_files( const char * dir )
         vold_enum_append::LineageReset( o[0] );
         MSE( o[0].tier, vold_enum_append::Tier::Gold ); MS( o[0].seq, 9 );
         if ( !emit( dir, "old_enum_append.bin", o, vold_enum_append::LineageFixedMeasure,
-                    vold_enum_append::LineageFixedSave ) ) { return false; }
+                    vold_enum_append::LineageFixedSave, vold_enum_append::LineageFixedLoad ) ) { return false; }
 
         std::vector<vnew_enum_append::Lineage> n( 2 );
         vnew_enum_append::LineageReset( n[0] );
@@ -1722,7 +1860,7 @@ static bool vlists_files( const char * dir )
         vnew_enum_append::LineageReset( n[1] );
         MSE( n[1].tier, vnew_enum_append::Tier::Platinum ); MS( n[1].seq, 11 );
         if ( !emit( dir, "new_enum_append.bin", n, vnew_enum_append::LineageFixedMeasure,
-                    vnew_enum_append::LineageFixedSave ) ) { return false; }
+                    vnew_enum_append::LineageFixedSave, vnew_enum_append::LineageFixedLoad ) ) { return false; }
     }
 
     // ---- enum_width: 255 variants -> 256, the ordinal 1 byte -> 2 ----------
@@ -1731,7 +1869,7 @@ static bool vlists_files( const char * dir )
         vold_enum_width::LineageReset( o[0] );
         MSE( o[0].tier, vold_enum_width::Wide::V200 ); MS( o[0].seq, 12 );
         if ( !emit( dir, "old_enum_width.bin", o, vold_enum_width::LineageFixedMeasure,
-                    vold_enum_width::LineageFixedSave ) ) { return false; }
+                    vold_enum_width::LineageFixedSave, vold_enum_width::LineageFixedLoad ) ) { return false; }
 
         std::vector<vnew_enum_width::Lineage> n( 2 );
         vnew_enum_width::LineageReset( n[0] );
@@ -1740,7 +1878,7 @@ static bool vlists_files( const char * dir )
         // the 256th variant: the ordinal the OLD side's byte cannot hold
         MSE( n[1].tier, vnew_enum_width::Wide::V256 ); MS( n[1].seq, 14 );
         if ( !emit( dir, "new_enum_width.bin", n, vnew_enum_width::LineageFixedMeasure,
-                    vnew_enum_width::LineageFixedSave ) ) { return false; }
+                    vnew_enum_width::LineageFixedSave, vnew_enum_width::LineageFixedLoad ) ) { return false; }
     }
 
     // ---- union_append: Pick {alpha,beta} -> + gamma ------------------------
@@ -1751,7 +1889,7 @@ static bool vlists_files( const char * dir )
         MS( o[0].pick.alpha.m, 7 );
         MS( o[0].seq, 15 );
         if ( !emit( dir, "old_union_append.bin", o, vold_union_append::LineageFixedMeasure,
-                    vold_union_append::LineageFixedSave ) ) { return false; }
+                    vold_union_append::LineageFixedSave, vold_union_append::LineageFixedLoad ) ) { return false; }
 
         std::vector<vnew_union_append::Lineage> n( 2 );
         vnew_union_append::LineageReset( n[0] );
@@ -1763,7 +1901,7 @@ static bool vlists_files( const char * dir )
         MS( n[1].pick.gamma.p, 9 );
         MS( n[1].seq, 17 );
         if ( !emit( dir, "new_union_append.bin", n, vnew_union_append::LineageFixedMeasure,
-                    vnew_union_append::LineageFixedSave ) ) { return false; }
+                    vnew_union_append::LineageFixedSave, vnew_union_append::LineageFixedLoad ) ) { return false; }
     }
 
     // ---- union_arm_payload_widen: arm alpha {x} -> {x,y} -------------------
@@ -1774,7 +1912,7 @@ static bool vlists_files( const char * dir )
         MS( o[0].pick.alpha.x, 21 );
         MS( o[0].seq, 18 );
         if ( !emit( dir, "old_union_arm_payload_widen.bin", o, vold_union_arm_payload_widen::LineageFixedMeasure,
-                    vold_union_arm_payload_widen::LineageFixedSave ) ) { return false; }
+                    vold_union_arm_payload_widen::LineageFixedSave, vold_union_arm_payload_widen::LineageFixedLoad ) ) { return false; }
 
         std::vector<vnew_union_arm_payload_widen::Lineage> n( 1 );
         vnew_union_arm_payload_widen::LineageReset( n[0] );
@@ -1783,7 +1921,7 @@ static bool vlists_files( const char * dir )
         MS( n[0].pick.alpha.y, 23 );
         MS( n[0].seq, 19 );
         if ( !emit( dir, "new_union_arm_payload_widen.bin", n, vnew_union_arm_payload_widen::LineageFixedMeasure,
-                    vnew_union_arm_payload_widen::LineageFixedSave ) ) { return false; }
+                    vnew_union_arm_payload_widen::LineageFixedSave, vnew_union_arm_payload_widen::LineageFixedLoad ) ) { return false; }
     }
 
     // ---- flags_append: Caps {Jump,Crouch} -> + Fly -------------------------
@@ -1793,14 +1931,14 @@ static bool vlists_files( const char * dir )
         MS( o[0].caps, vold_flags_append::Caps_Jump | vold_flags_append::Caps_Crouch );
         MS( o[0].seq, 20 );
         if ( !emit( dir, "old_flags_append.bin", o, vold_flags_append::LineageFixedMeasure,
-                    vold_flags_append::LineageFixedSave ) ) { return false; }
+                    vold_flags_append::LineageFixedSave, vold_flags_append::LineageFixedLoad ) ) { return false; }
 
         std::vector<vnew_flags_append::Lineage> n( 1 );
         vnew_flags_append::LineageReset( n[0] );
         MS( n[0].caps, vnew_flags_append::Caps_Jump | vnew_flags_append::Caps_Fly );
         MS( n[0].seq, 21 );
         if ( !emit( dir, "new_flags_append.bin", n, vnew_flags_append::LineageFixedMeasure,
-                    vnew_flags_append::LineageFixedSave ) ) { return false; }
+                    vnew_flags_append::LineageFixedSave, vnew_flags_append::LineageFixedLoad ) ) { return false; }
     }
 
     // ---- keyed_array_enum_append: [Tier]int32, Tier gains Platinum --------
@@ -1812,7 +1950,7 @@ static bool vlists_files( const char * dir )
         MSI( o[0].slots[vold_keyed_array_enum_append::Tier::Gold].n, 103, KSLOT( vold_keyed_array_enum_append::Tier::Gold ) );
         MS( o[0].seq, 22 );
         if ( !emit( dir, "old_keyed_array_enum_append.bin", o, vold_keyed_array_enum_append::LineageFixedMeasure,
-                    vold_keyed_array_enum_append::LineageFixedSave ) ) { return false; }
+                    vold_keyed_array_enum_append::LineageFixedSave, vold_keyed_array_enum_append::LineageFixedLoad ) ) { return false; }
 
         std::vector<vnew_keyed_array_enum_append::Lineage> n( 1 );
         vnew_keyed_array_enum_append::LineageReset( n[0] );
@@ -1822,7 +1960,7 @@ static bool vlists_files( const char * dir )
         MSI( n[0].slots[vnew_keyed_array_enum_append::Tier::Platinum].n, 204, KSLOT( vnew_keyed_array_enum_append::Tier::Platinum ) );
         MS( n[0].seq, 23 );
         if ( !emit( dir, "new_keyed_array_enum_append.bin", n, vnew_keyed_array_enum_append::LineageFixedMeasure,
-                    vnew_keyed_array_enum_append::LineageFixedSave ) ) { return false; }
+                    vnew_keyed_array_enum_append::LineageFixedSave, vnew_keyed_array_enum_append::LineageFixedLoad ) ) { return false; }
     }
 
     // ---- nested_append: Vec {x,y,z} -> {x,y,z,w}, inside Lineage -----------
@@ -1831,13 +1969,13 @@ static bool vlists_files( const char * dir )
         vold_nested_append::LineageReset( o[0] );
         MS( o[0].v.x, 1 ); MS( o[0].v.y, 2 ); MS( o[0].v.z, 3 ); MS( o[0].seq, 24 );
         if ( !emit( dir, "old_nested_append.bin", o, vold_nested_append::LineageFixedMeasure,
-                    vold_nested_append::LineageFixedSave ) ) { return false; }
+                    vold_nested_append::LineageFixedSave, vold_nested_append::LineageFixedLoad ) ) { return false; }
 
         std::vector<vnew_nested_append::Lineage> n( 1 );
         vnew_nested_append::LineageReset( n[0] );
         MS( n[0].v.x, 4 ); MS( n[0].v.y, 5 ); MS( n[0].v.z, 6 ); MS( n[0].v.w, 7 ); MS( n[0].seq, 25 );
         if ( !emit( dir, "new_nested_append.bin", n, vnew_nested_append::LineageFixedMeasure,
-                    vnew_nested_append::LineageFixedSave ) ) { return false; }
+                    vnew_nested_append::LineageFixedSave, vnew_nested_append::LineageFixedLoad ) ) { return false; }
     }
 
     // ---- rename_without_was: `a` -> `b was = "a"` -------------------------
@@ -1846,13 +1984,13 @@ static bool vlists_files( const char * dir )
         vold_rename_without_was::LineageReset( o[0] );
         MS( o[0].a, 31 ); MS( o[0].seq, 26 );
         if ( !emit( dir, "old_rename_without_was.bin", o, vold_rename_without_was::LineageFixedMeasure,
-                    vold_rename_without_was::LineageFixedSave ) ) { return false; }
+                    vold_rename_without_was::LineageFixedSave, vold_rename_without_was::LineageFixedLoad ) ) { return false; }
 
         std::vector<vnew_rename_without_was::Lineage> n( 1 );
         vnew_rename_without_was::LineageReset( n[0] );
         MS( n[0].b, 32 ); MS( n[0].seq, 27 );
         if ( !emit( dir, "new_rename_without_was.bin", n, vnew_rename_without_was::LineageFixedMeasure,
-                    vnew_rename_without_was::LineageFixedSave ) ) { return false; }
+                    vnew_rename_without_was::LineageFixedSave, vnew_rename_without_was::LineageFixedLoad ) ) { return false; }
     }
 
     return true;
