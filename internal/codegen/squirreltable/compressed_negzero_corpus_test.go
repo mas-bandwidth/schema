@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
+	"github.com/mas-bandwidth/schema/v3/compiler"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/squirrel/sqrun"
 )
 
 // THE COMPRESSED -0 WRITER CORPUS ON THE SQUIRREL LEG (docs/SPEC-TABLES.md

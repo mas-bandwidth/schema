@@ -10,8 +10,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/genheader"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/genheader"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // table-wire kinds (docs/SPEC-TABLES.md §3) — the numbers are the wire's, not a

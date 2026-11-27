@@ -3,7 +3,7 @@ package ctable
 import (
 	"fmt"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // Blobs are graph nodes. Their wire body is the used bytes; their storage has

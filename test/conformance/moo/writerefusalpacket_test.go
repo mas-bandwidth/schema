@@ -8,12 +8,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/check"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/moo"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/moo/moorun"
-	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	wrpacket "github.com/mas-bandwidth/schema/v2/test/conformance/write-refusal-packet"
+	"github.com/mas-bandwidth/schema/v3/internal/check"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/moo"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/moo/moorun"
+	"github.com/mas-bandwidth/schema/v3/internal/parser"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	wrpacket "github.com/mas-bandwidth/schema/v3/test/conformance/write-refusal-packet"
 )
 
 // root is the repository root relative to this package.

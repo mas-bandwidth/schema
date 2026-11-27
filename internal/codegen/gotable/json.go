@@ -20,9 +20,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/genheader"
-	"github.com/mas-bandwidth/schema/v2/internal/rfc3339"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/genheader"
+	"github.com/mas-bandwidth/schema/v3/internal/rfc3339"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // generateJsonFiles emits the unit's text form: the generic walk once, and

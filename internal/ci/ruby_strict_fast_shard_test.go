@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/nightlyrows"
+	"github.com/mas-bandwidth/schema/v3/internal/nightlyrows"
 )
 
 // THE STRICT-RUBY FAST FORM RUNS IN SHARDS. All of the generated Ruby is some

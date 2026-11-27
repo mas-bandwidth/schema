@@ -58,10 +58,10 @@ function makeTurret(damage, cooldown, gunnerPresent, reaction, tracking) {
   InitTurretConfig(t);
   t.damage = damage;
   t.cooldown = cooldown;
-  t.gunnerPresent = gunnerPresent ? 1 : 0;
+  t.gunnerPresent = gunnerPresent;
   if (gunnerPresent) {
     t.gunner.reaction = reaction;
-    t.gunner.tracking = tracking ? 1 : 0;
+    t.gunner.tracking = tracking;
   }
   return t;
 }

@@ -26,11 +26,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/atomicfile"
-	"github.com/mas-bandwidth/schema/v2/internal/baseline"
-	"github.com/mas-bandwidth/schema/v2/internal/lockfile"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/compiler"
+	"github.com/mas-bandwidth/schema/v3/internal/atomicfile"
+	"github.com/mas-bandwidth/schema/v3/internal/baseline"
+	"github.com/mas-bandwidth/schema/v3/internal/lockfile"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // atomicOld is the time every fixture entry was last written, long before any

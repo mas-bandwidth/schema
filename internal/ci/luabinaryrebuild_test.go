@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
+	"github.com/mas-bandwidth/schema/v3/internal/testinputs"
 )
 
 // rebuildEpoch is the fixed test clock: 1000.0 seconds, never the wall clock.

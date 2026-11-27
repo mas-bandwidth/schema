@@ -22,7 +22,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 )
 
 const elixirF32EndsCorpusDir = "../../../testdata/conformance/feature-witnesses/compressed-f32-ends"

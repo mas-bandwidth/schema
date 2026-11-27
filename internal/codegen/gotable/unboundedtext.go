@@ -12,7 +12,7 @@
 package gotable
 
 import (
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // unboundedHolder names the text list or map (`Table.field`) an unbounded

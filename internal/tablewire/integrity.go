@@ -2,7 +2,7 @@ package tablewire
 
 import (
 	"encoding/binary"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 	"hash/crc32"
 )
 

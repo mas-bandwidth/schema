@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/languages"
+	"github.com/mas-bandwidth/schema/v3/internal/languages"
 )
 
 // fixture is a small registry: three languages (one with no adapter), two

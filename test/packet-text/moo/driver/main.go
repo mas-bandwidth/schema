@@ -23,10 +23,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/internal/check"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/moo"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/moo/moorun"
-	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v3/internal/check"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/moo"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/moo/moorun"
+	"github.com/mas-bandwidth/schema/v3/internal/parser"
 )
 
 type list []string

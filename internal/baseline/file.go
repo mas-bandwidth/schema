@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mas-bandwidth/schema/v2/internal/atomicfile"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/atomicfile"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // Locate finds the unit's baseline file from the unit's source paths. A unit

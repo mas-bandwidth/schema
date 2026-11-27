@@ -1,7 +1,7 @@
 package check
 
 import (
-	"github.com/mas-bandwidth/schema/v2/internal/goname"
+	"github.com/mas-bandwidth/schema/v3/internal/goname"
 	"go/ast"
 	"go/parser"
 	"go/token"
