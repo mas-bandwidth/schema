@@ -3389,18 +3389,58 @@ build/hostile-values/.stamp: bin/schema $(HOSTILE_MANIFEST) $(HOSTILE_TREES)
 	done
 	@touch $@
 
-build/schema_test_hostile: build/tables-generated/.stamp test/tables/hostile_main.cpp
+# THE ROOTS ARE THE CONFORMANCE DRIVER's ROSTER (test/conformance/cpp/codecs.h),
+# so the gate links the same objects that driver links: every unit the roster
+# names, plain and sanitized, compiled once and shared with build/conformance-cpp
+# and build/wire-fuzz-cpp-asan. It kept a hand-copied root list and a
+# hand-copied source list until 2026-11-24, and 40 of 316 json-hostile rows on
+# roots outside them went red here alone. The objects are named only inside the
+# recipes, to a sub-make, for the reason build/conformance-cpp gives.
+#
+# The sanitized gate's own translation unit is compiled at -O0, as it always
+# was (PACK_SANITIZE names no level): the roster instantiates every root's
+# generated text, wire and cook code in that one unit, and under ASan and UBSan
+# -O1 took 20 minutes and 5.8 GB on hetzner1 against 6 at -O0. The objects it
+# links stay at the -O1 the wire fuzzer's sanitized build compiles them at.
+build/schema_test_hostile: build/tables-generated/.stamp test/tables/hostile_main.cpp test/conformance/cpp/codecs.h
 	@mkdir -p build
-	$(CXX) $(PACK_CXXFLAGS) $(PACK_INCLUDES) -Ibuild/tables-generated/maps -Ibuild/tables-generated/lists -Ibuild/tables-generated/features test/tables/hostile_main.cpp $(PACK_JSON_SOURCES) build/tables-generated/maps/TextTable.cpp build/tables-generated/maps/DepthTable.cpp build/tables-generated/maps/RowsTable.cpp build/tables-generated/maps/FleetTable.cpp $(LISTS_SOURCES) build/tables-generated/features/FeaturesTable.cpp -o $@
+	@$(MAKE) --no-print-directory $(CONFORMANCE_OBJECTS)
+	$(CXX) $(TABLES_CXXFLAGS) $(CONFORMANCE_INCLUDES) test/tables/hostile_main.cpp $(CONFORMANCE_OBJECTS) -o $@
 
-build/schema_test_hostile_asan: build/tables-generated/.stamp test/tables/hostile_main.cpp
+build/schema_test_hostile_asan: build/tables-generated/.stamp test/tables/hostile_main.cpp test/conformance/cpp/codecs.h
 	@mkdir -p build
-	$(CXX) $(PACK_CXXFLAGS) $(PACK_SANITIZE) $(PACK_INCLUDES) -Ibuild/tables-generated/maps -Ibuild/tables-generated/lists -Ibuild/tables-generated/features test/tables/hostile_main.cpp $(PACK_JSON_SOURCES) build/tables-generated/maps/TextTable.cpp build/tables-generated/maps/DepthTable.cpp build/tables-generated/maps/RowsTable.cpp build/tables-generated/maps/FleetTable.cpp $(LISTS_SOURCES) build/tables-generated/features/FeaturesTable.cpp -o $@
+	@$(MAKE) --no-print-directory $(CONFORMANCE_ASAN_OBJECTS)
+	$(CXX) $(TABLES_CXXFLAGS) -O0 -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -g \
+		$(CONFORMANCE_INCLUDES) test/tables/hostile_main.cpp $(CONFORMANCE_ASAN_OBJECTS) -o $@
 
 .PHONY: tables-hostile-values
 tables-hostile-values: build/schema_test_hostile build/schema_test_hostile_asan build/hostile-values/.stamp
 	./build/schema_test_hostile $(HOSTILE_GATE_MANIFEST) build/hostile-values
 	./build/schema_test_hostile_asan $(HOSTILE_GATE_MANIFEST) build/hostile-values
+
+# Its ROSTER CONTROL: a json-hostile row on a root the roster does not carry is
+# planted into a COPY of the gate's manifest, and the gate must go red on that
+# row, by name, and on no other. A gate that answered only the roots it already
+# knew is the defect this control watches for (40 rows, 2026-11-24).
+HOSTILE_ROSTER_NC := build/hostile-roster-negative
+.PHONY: tables-hostile-roster-negative-control
+tables-hostile-roster-negative-control: build/schema_test_hostile build/hostile-values/.stamp
+	@rm -rf $(HOSTILE_ROSTER_NC) && mkdir -p $(HOSTILE_ROSTER_NC)
+	@cp $(HOSTILE_GATE_MANIFEST) $(HOSTILE_ROSTER_NC)/MANIFEST.txt
+	@grep -m1 '^json-hostile ' $(HOSTILE_GATE_MANIFEST) | \
+		awk '{ $$2 = "planted-unrostered-root"; $$4 = "PlantedNoSuchRoot"; print }' >> $(HOSTILE_ROSTER_NC)/MANIFEST.txt
+	@grep -q '^json-hostile planted-unrostered-root [^ ]* PlantedNoSuchRoot ' $(HOSTILE_ROSTER_NC)/MANIFEST.txt || \
+		{ echo "NEGATIVE CONTROL FAILED: the plant wrote no row"; exit 1; }
+	@if ./build/schema_test_hostile $(HOSTILE_ROSTER_NC)/MANIFEST.txt build/hostile-values > $(HOSTILE_ROSTER_NC)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a json-hostile row on a root the roster does not carry left the gate green"; \
+		cat $(HOSTILE_ROSTER_NC)/log; exit 1; \
+	fi
+	@grep -q '^FAIL planted-unrostered-root: the manifest names [^ ]*\.PlantedNoSuchRoot, which the C++ codec roster' $(HOSTILE_ROSTER_NC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the planted row by name"; cat $(HOSTILE_ROSTER_NC)/log; exit 1; }
+	@test "$$(grep -c '^FAIL' $(HOSTILE_ROSTER_NC)/log)" = 1 || \
+		{ echo "NEGATIVE CONTROL FAILED: the plant turned rows other than its own red"; grep '^FAIL' $(HOSTILE_ROSTER_NC)/log; exit 1; }
+	@grep -m1 '^FAIL planted-unrostered-root' $(HOSTILE_ROSTER_NC)/log
+	@echo "pack hostile-value roster negative control: a json-hostile row on an unrostered root turns the gate red, by name"
 
 # Its NEGATIVE CONTROL: relax ONE rule of the number grammar — accept a leading
 # `+`, which RFC 8259 does not — and the gate must go red, because a tree the
@@ -3794,6 +3834,7 @@ test-core-tables-3: build/mustrun build/schema_test_block build/schema_test_bloc
 	$(MAKE) tables-json-differential-negative-control
 	$(MAKE) tables-hostile-values
 	$(MAKE) tables-hostile-negative-control
+	$(MAKE) tables-hostile-roster-negative-control
 	$(MUSTRUN) -name schema_test_random -count 40001 -- ./build/schema_test_random
 	$(MUSTRUN) -name schema_test_ludicrous -count 61 -- ./build/schema_test_ludicrous
 	$(MUSTRUN) -name schema_test_bench -count 37 -- ./build/schema_test_bench
@@ -5355,7 +5396,7 @@ CONFORMANCE_INCLUDES := -Ibuild/tables-generated/maps -Ibuild/tables-generated/l
 	-Ibuild/tables-generated/v2 -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
 	-Ibuild/tables-generated/block -Ibuild/tables-generated/pointers \
 	-Ibuild/tables-generated/p2 -Ibuild/tables-generated/messages -Ibuild/tables-generated/stream \
-	-Ibuild/tables-generated/m1 -Ibuild/tables-generated/m2 -Ibuild/tables-generated/a1 -Ibuild/tables-generated/a2 -Ibuild/tables-generated/g1 -Ibuild/tables-generated/k1 -Ibuild/tables-generated/k2 -Ibuild/tables-generated/w1 -Ibuild/tables-generated/w2 -Ibuild/tables-generated/r1 -Ibuild/tables-generated/r2 -Ibuild/tables-generated/blobs -Itest/tables -Ibuild/tables-generated/scalars -Ibuild/tables-generated/scalars2 -Ibuild/tables-generated/fixedevo -Ibuild/tables-generated/varevo1 -Ibuild/tables-generated/varevo2 -Ibuild/tables-generated/varevo3 -Ibuild/tables-generated/prior -Ibuild/tables-generated/cooktorture -Ibuild/tables-generated/cooktorturewide -Ibuild/tables-generated/shapes -Ibuild/tables-generated/backend -Ibuild/tables-generated/vocab -Ibuild/tables-generated/vocab9 -Ibuild/tables-generated/arms -Ibuild/tables-generated/rt1 -Ibuild/tables-generated/features -Ibuild/tables-generated/surfaces -Ibuild/tables-generated/ann -Ibuild/tables-generated/valuedefaults -Ibuild/tables-generated/packetunions -Ibuild/tables-generated/writebounds -I$(SERIALIZE)
+	-Ibuild/tables-generated/m1 -Ibuild/tables-generated/m2 -Ibuild/tables-generated/a1 -Ibuild/tables-generated/a2 -Ibuild/tables-generated/g1 -Ibuild/tables-generated/k1 -Ibuild/tables-generated/k2 -Ibuild/tables-generated/w1 -Ibuild/tables-generated/w2 -Ibuild/tables-generated/r1 -Ibuild/tables-generated/r2 -Ibuild/tables-generated/blobs -Itest/tables -Ibuild/tables-generated/scalars -Ibuild/tables-generated/scalars2 -Ibuild/tables-generated/fixedevo -Ibuild/tables-generated/varevo1 -Ibuild/tables-generated/varevo2 -Ibuild/tables-generated/varevo3 -Ibuild/tables-generated/prior -Ibuild/tables-generated/cooktorture -Ibuild/tables-generated/cooktorturewide -Ibuild/tables-generated/shapes -Ibuild/tables-generated/backend -Ibuild/tables-generated/vocab -Ibuild/tables-generated/vocab9 -Ibuild/tables-generated/arms -Ibuild/tables-generated/rt1 -Ibuild/tables-generated/features -Ibuild/tables-generated/surfaces -Ibuild/tables-generated/ann -Ibuild/tables-generated/valuedefaults -Ibuild/tables-generated/packetunions -Ibuild/tables-generated/writebounds -I$(SERIALIZE) -Itest/conformance/cpp
 # The collection tables are named from the SCHEMAS that generate them
 # (tables/<dir>/<Name>.schema -> build/tables-generated/<dir>/<Name>Table.cpp),
 # never by globbing the generated directories. A glob of generated files is
@@ -5432,11 +5473,11 @@ conformance-cpp-objects: build/tables-generated/.stamp
 # only the link is left after it. The object is named apart from
 # conformance_main.o (make/verify-compiled.mk), which _verify-cpp-fuzz-bins
 # builds in its own sub-make, so the two never write one file at once.
-build/conformance-cpp-objs/_main/conformance_driver.o: test/conformance/cpp/main.cpp build/tables-generated/.stamp $(wildcard $(SERIALIZE)/*.h)
+build/conformance-cpp-objs/_main/conformance_driver.o: test/conformance/cpp/main.cpp test/conformance/cpp/codecs.h build/tables-generated/.stamp $(wildcard $(SERIALIZE)/*.h)
 	@mkdir -p $(@D)
 	$(CXX) $(TABLES_CXXFLAGS) $(CONFORMANCE_INCLUDES) -c $< -o $@
 
-build/conformance-cpp: build/tables-generated/.stamp test/conformance/cpp/main.cpp $(wildcard $(SERIALIZE)/*.h)
+build/conformance-cpp: build/tables-generated/.stamp test/conformance/cpp/main.cpp test/conformance/cpp/codecs.h $(wildcard $(SERIALIZE)/*.h)
 	@mkdir -p build
 	@$(MAKE) --no-print-directory build/conformance-cpp-objs/_main/conformance_driver.o $(CONFORMANCE_OBJECTS)
 	$(CXX) $(TABLES_CXXFLAGS) build/conformance-cpp-objs/_main/conformance_driver.o \
