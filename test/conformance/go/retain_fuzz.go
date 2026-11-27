@@ -1,3 +1,5 @@
+//go:build !writebounds_only
+
 package main
 
 import "unsafe"

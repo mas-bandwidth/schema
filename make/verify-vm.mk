@@ -356,7 +356,7 @@ _verify-ruby-fuzz: verify-toolchain-ruby build/conformance-harness-vm build/conf
 # ---- 4. lua ----
 
 .PHONY: _verify-lua-conformance _verify-lua-bench _verify-lua-fuzz
-_verify-lua-conformance: verify-toolchain-lua build/conformance-harness-vm build/conformance-lua packet-defaults-lua packet-end-lua packet-finite-lua
+_verify-lua-conformance: announcement-entry-budget-lua verify-toolchain-lua build/conformance-harness-vm build/conformance-lua packet-defaults-lua packet-end-lua packet-finite-lua
 	@rm -rf build/verify/conformance-lua && mkdir -p build/verify/conformance-lua $(VERIFY_RESULTS_DIR)
 	LUA="$(LUA)" ./build/conformance-harness-vm run --only lua --claims --work build/verify/conformance-lua --results $(VERIFY_RESULTS_DIR)/lua.json
 
@@ -382,7 +382,7 @@ _verify-lua-fuzz: verify-toolchain-lua build/conformance-harness-vm build/confor
 # ---- 5. luau ----
 
 .PHONY: _verify-luau-conformance _verify-luau-bench _verify-luau-fuzz
-_verify-luau-conformance: verify-toolchain-luau build/conformance-harness-vm build/conformance-luau packet-defaults-luau packet-end-luau packet-write-text-luau
+_verify-luau-conformance: announcement-entry-budget-luau verify-toolchain-luau build/conformance-harness-vm build/conformance-luau packet-defaults-luau packet-end-luau packet-write-text-luau
 	@rm -rf build/verify/conformance-luau && mkdir -p build/verify/conformance-luau $(VERIFY_RESULTS_DIR)
 	LUAU="$(LUAU)" ./build/conformance-harness-vm run --only luau --claims --work build/verify/conformance-luau --results $(VERIFY_RESULTS_DIR)/luau.json
 
@@ -408,7 +408,7 @@ _verify-luau-fuzz: verify-toolchain-luau build/conformance-harness-vm build/conf
 # ---- 6. squirrel ----
 
 .PHONY: _verify-squirrel-conformance _verify-squirrel-bench _verify-squirrel-fuzz
-_verify-squirrel-conformance: verify-toolchain-squirrel build/conformance-harness-vm build/conformance-squirrel packet-end-squirrel packet-write-bareint-squirrel packet-write-cfloat-squirrel packet-write-text-squirrel
+_verify-squirrel-conformance: announcement-entry-budget-squirrel verify-toolchain-squirrel build/conformance-harness-vm build/conformance-squirrel packet-end-squirrel packet-write-bareint-squirrel packet-write-cfloat-squirrel packet-write-text-squirrel
 	@rm -rf build/verify/conformance-squirrel && mkdir -p build/verify/conformance-squirrel $(VERIFY_RESULTS_DIR)
 	SQ="$(SQ)" ./build/conformance-harness-vm run --only squirrel --claims --work build/verify/conformance-squirrel --results $(VERIFY_RESULTS_DIR)/squirrel.json
 
@@ -439,7 +439,7 @@ _verify-squirrel-fuzz: verify-toolchain-squirrel build/conformance-harness-vm bu
 # ---- 7. moo ----
 
 .PHONY: _verify-moo-conformance _verify-moo-bench _verify-moo-fuzz
-_verify-moo-conformance: verify-toolchain-moo build/conformance-harness-vm build/conformance-moo packet-end-moo packet-finite-moo packet-write-bareint-moo
+_verify-moo-conformance: announcement-entry-budget-moo verify-toolchain-moo build/conformance-harness-vm build/conformance-moo packet-end-moo packet-finite-moo packet-write-bareint-moo
 	@rm -rf build/verify/conformance-moo && mkdir -p build/verify/conformance-moo $(VERIFY_RESULTS_DIR)
 	MOO="$(MOO)" MOO_ANALYZE="$(MOO_ANALYZE)" ./build/conformance-harness-vm run --only moo --claims --work build/verify/conformance-moo --results $(VERIFY_RESULTS_DIR)/moo.json
 
