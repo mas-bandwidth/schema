@@ -104,7 +104,7 @@ func TestSchemaNativeRunsHostileCorpusWiring(t *testing.T) {
 		}
 		// NIGHTLY AND DISPATCH ONLY (the owner, 2026-11-15: "I want everything that
 		// is not light moved to nightly test now." "no exceptions."): no push and
-		// no pull request starts this workflow; those run only ci-fast.yml.
+		// no pull request starts this workflow; those run only ci-fast-nightly.yml.
 		for _, p := range nightlyOnlyTriggerProblems(text) {
 			t.Errorf("%s.yml: %s", target, p)
 		}

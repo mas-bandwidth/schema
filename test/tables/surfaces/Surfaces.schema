@@ -3,10 +3,10 @@ package surfaces
 // THE UNIT OF THE 2026-11-22 SURFACES (docs/SPEC-CONFORMANCE.md §2): roots
 // that no other registered unit declares, each the shape one rule needs.
 
-// FL-11 (SPEC-TABLES §16.14 W2): the text writer judges its depth cap at each
-// table or type value only. A chain of 128 Links puts the last Link at depth
-// 128 and its `vals` array at depth 129: the array is written, and one Link
-// more is refused.
+// FL-11 (SPEC-TABLES §16.14 W2): the text writer judges its depth cap at every
+// container it writes, as the reader does. A chain of 127 Links puts the last
+// Link's `vals` array at depth 128 and writes; at 128 Links the array sits at
+// depth 129, an empty one included, and the write is refused.
 table Link
 {
     value int32

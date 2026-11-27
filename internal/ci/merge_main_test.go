@@ -193,13 +193,13 @@ func TestMergeMainFailsALaneThatConflictsWithMain(t *testing.T) {
 	}
 }
 
-// TestEveryFastCheckoutMergesMain holds every job of ci-fast.yml to the lane
+// TestEveryFastCheckoutMergesMain holds every job of ci-fast-nightly.yml to the lane
 // merge: the step right after each actions/checkout is merge-main, and the
 // plan diffs a pull request against main. A new job that forgets it is red
 // here by line number.
 func TestEveryFastCheckoutMergesMain(t *testing.T) {
 	t.Parallel()
-	data, err := os.ReadFile(filepath.Join(repoRoot(t), ".github", "workflows", "ci-fast.yml"))
+	data, err := os.ReadFile(filepath.Join(repoRoot(t), ".github", "workflows", "ci-fast-nightly.yml"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -220,14 +220,14 @@ func TestEveryFastCheckoutMergesMain(t *testing.T) {
 			}
 		}
 		if strings.TrimRight(next, " ") != merge {
-			t.Errorf("ci-fast.yml:%d: the step after actions/checkout is %q, want %q: a lane pull request would be checked without current main", i+1, strings.TrimSpace(next), strings.TrimSpace(merge))
+			t.Errorf("ci-fast-nightly.yml:%d: the step after actions/checkout is %q, want %q: a lane pull request would be checked without current main", i+1, strings.TrimSpace(next), strings.TrimSpace(merge))
 		}
 	}
 	if checkouts == 0 {
-		t.Fatal("ci-fast.yml has no actions/checkout step: the scan matched nothing")
+		t.Fatal("ci-fast-nightly.yml has no actions/checkout step: the scan matched nothing")
 	}
 	const base = "BASE: ${{ github.event_name == 'pull_request' && 'main' || 'dev' }}"
 	if !strings.Contains(string(data), base) {
-		t.Errorf("ci-fast.yml's plan does not diff a pull request against main (%q)", base)
+		t.Errorf("ci-fast-nightly.yml's plan does not diff a pull request against main (%q)", base)
 	}
 }
