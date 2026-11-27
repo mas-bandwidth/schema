@@ -47,7 +47,7 @@ func TestCppFixedLoadWalkHasNoUnresetEntryPoint(t *testing.T) {
 		t.Fatalf("FoxFixedLoadWalk returns before the walk, past the reset:\n%s", fn[:open])
 	}
 	want := "}();\n    if ( walked < 0 || report->damaged || report->refused )\n    {\n" +
-		"        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { FoxReset( values[k] ); } }\n" +
+		"        if ( values != NULL )\n        {\n            for ( int64_t k = 0; k < capacity; ++k ) { FoxReset( values[k] ); }\n        }\n" +
 		"        return -1;\n    }\n    return walked;\n}\n"
 	if fn[closeAt:] != want {
 		t.Fatalf("after the walk FoxFixedLoadWalk must reset every row on any refusal; got:\n%s", fn[closeAt:])

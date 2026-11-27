@@ -327,8 +327,12 @@ fixed table T
 	// IDEMPOTENT: the guarded body is a PURE named refusal — it reads
 	// `lineage_at` and `hash` and returns, mutating no counter and writing no
 	// destination, so a second load of the same file answers the same name.
+	// The guarded block ends at the first close brace at the `if` line's own
+	// indentation (the walk sits inside a lambda, one level in).
+	lineStart := strings.LastIndex(load[:at], "\n") + 1
+	indent := load[lineStart : lineStart+len(load[lineStart:])-len(strings.TrimLeft(load[lineStart:], " "))]
 	body := load[at:]
-	if end := strings.Index(body, "\n    }"); end >= 0 {
+	if end := strings.Index(body, "\n"+indent+"}"); end >= 0 {
 		body = body[:end]
 	}
 	for _, touched := range []string{"values[", "defaults", "report->unknown", "report->widened", "memcpy", "at +="} {

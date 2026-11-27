@@ -851,17 +851,18 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("// layout is never parsed: unknown hash is TableFixedReason::layout_unknown, known hash with\n")
 	g.pf("// different bytes is TableMessageReason::layout_malformed, a hash below the floor is\n")
 	g.pf("// TableMessageReason::layout_unsupported. Identity is a PLAN walked by the same loop.\n")
-	g.pf("// R4: every refusal leaves ALL `capacity` rows at their declared defaults, so a direct call\n// holds the same rule as FixedLoad. The body below is the walk itself.\n")
-	g.pf("inline int64_t %sFixedLoadWalkBody( %s * values, int64_t capacity, const uint8_t * data, int64_t bytes,\n    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );\n", st.Name, st.Name)
+	g.pf("// R4: every refusal leaves ALL `capacity` rows at their declared defaults, so a direct call\n// holds the same rule as FixedLoad. The walk is a lambda INSIDE this function, not a\n// function of its own: there is no second, unreset entry point a caller could reach.\n")
+	// THE WALK HAS NO NAME OF ITS OWN. It used to be a public inline
+	// <T>FixedLoadWalkBody that this function wrapped; called directly, it
+	// returned -1 and left the caller's rows as the refusal found them,
+	// breaking R4, and its name was in no reserved list. Every `return -1`
+	// of the walk now lands in the reset below. The walk is emitted one level
+	// in (g.indent), where clang-format puts a lambda's body.
 	g.pf("inline int64_t %sFixedLoadWalk( %s * values, int64_t capacity, const uint8_t * data, int64_t bytes,\n    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )\n{\n", st.Name, st.Name)
 	g.pf("    TableReport local;\n    if ( report == NULL ) { report = &local; }\n")
-	g.pf("    const int64_t n = %sFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );\n", st.Name)
-	g.pf("    if ( n < 0 || report->damaged || report->refused )\n    {\n        if ( values != NULL )\n        {\n            for ( int64_t k = 0; k < capacity; ++k ) { %sReset( values[k] ); }\n        }\n        return -1;\n    }\n    return n;\n}\n\n", st.Name)
-	g.pf("// %sFixedLoadWalkBody is the STRICT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps\n", st.Name)
-	g.pf("// every recovered record, with the counters counted onto the report passed.\n")
-	g.pf("inline int64_t %sFixedLoadWalkBody( %s * values, int64_t capacity, const uint8_t * data, int64_t bytes,\n", st.Name, st.Name)
-	g.pf("    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )\n{\n")
-	g.pf("    TableReport local;\n    if ( report == NULL ) { report = &local; }\n")
+	g.pf("    const int64_t walked = [&]() -> int64_t {\n")
+	walkIndent := g.indent
+	g.indent = walkIndent + "    "
 	// STEP 1 AND STEP 2 (§5.3): THE FORM BYTE IS READ BEFORE THE FILE'S LENGTH.
 	// A committed form-1 file is TEN bytes and a form-2 batch THREE, so a reader
 	// that measured first would answer `malformed` for every real file of the two
@@ -1071,8 +1072,10 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		g.pf("        {\n            for ( int64_t j = 0; j <= k; ++j ) { %sReset( values[j] ); }\n", st.Name)
 		g.pf("            report->widened = batch_widened;\n            return -1;\n        }\n")
 	}
-	g.pf("        at += record_bytes;\n    }\n    return n;\n    }();\n")
-	g.pf("    if ( walked < 0 || report->damaged || report->refused )\n    {\n        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { %sReset( values[k] ); } }\n        return -1;\n    }\n    return walked;\n}\n\n", st.Name)
+	g.pf("        at += record_bytes;\n    }\n    return n;\n")
+	g.indent = walkIndent
+	g.pf("    }();\n")
+	g.pf("    if ( walked < 0 || report->damaged || report->refused )\n    {\n        if ( values != NULL )\n        {\n            for ( int64_t k = 0; k < capacity; ++k ) { %sReset( values[k] ); }\n        }\n        return -1;\n    }\n    return walked;\n}\n\n", st.Name)
 	g.emitFixedLoadStrict(st)
 }
 
