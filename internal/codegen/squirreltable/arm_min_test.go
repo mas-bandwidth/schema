@@ -24,7 +24,7 @@ func TestSquirrelUnionArmCountedMinimum(t *testing.T) {
 	u := fixedSynthetic(t, string(src))
 	g := sqEvoGenerate(t, u, nil)
 	for _, n := range []string{"armmin_fix_count_0", "armmin_fix_count_1"} {
-		bin, err := os.ReadFile("../../../testdata/wire/tables/framing/" + n + ".bin")
+		bin, err := os.ReadFile("../../../testdata/conformance/tables/wire/" + n + ".bin")
 		if err != nil {
 			t.Fatal(err)
 		}

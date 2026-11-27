@@ -193,10 +193,10 @@ func namesGlobal(toks []token, i int) bool {
 			}
 		}
 	}
-	if cppTypeNames[t.text] || strings.HasSuffix(t.text, "_t") {
-		return true
-	}
 	n := nextAny(toks, i)
+	if cppTypeNames[t.text] || strings.HasSuffix(t.text, "_t") {
+		return !namesMember(toks, p, n)
+	}
 	if n < 0 || toks[n].text != "(" {
 		return false
 	}
@@ -216,6 +216,67 @@ func namesGlobal(toks []token, i int) bool {
 			return false
 		}
 		return true
+	}
+	return false
+}
+
+// typeIntroducers are the keywords a type name may follow directly: a libc
+// type after one of them is the platform's type, never a member's declarator.
+var typeIntroducers = map[string]bool{
+	"const": true, "volatile": true, "unsigned": true, "signed": true, "typename": true,
+	"struct": true, "class": true, "enum": true, "union": true, "static": true, "inline": true,
+	"constexpr": true, "extern": true, "mutable": true, "register": true, "thread_local": true,
+	"using": true, "typedef": true, "friend": true, "virtual": true, "explicit": true, "new": true,
+	"operator": true, "sizeof": true, "alignof": true, "decltype": true, "case": true, "throw": true,
+	"else": true, "do": true, "noexcept": true, "co_yield": true,
+}
+
+// namesMember reports whether a libc type name, between the tokens at p and
+// n (prevAny and nextAny of it), is a MEMBER the unit names like the type: a
+// field or a union arm (`Inner int32_t;`, `uint32_t int32_t = 0;`), read in a
+// member function (`return int32_t;`, `&int32_t )`). A type name is never
+// followed by `;`, `=`, `[` or `{` after a declared type, nor by `;` after
+// return, nor by `)` after an address-of, so these positions are the
+// member's, and the pass leaves the token bare: the declared type of that
+// name is the marked spelling, so `::` there would name the platform's type
+// where C++ wants a member.
+func namesMember(toks []token, p, n int) bool {
+	if p < 0 || n < 0 {
+		return false
+	}
+	next := toks[n].text
+	switch toks[p].kind {
+	case tIdent:
+		prev := toks[p].text
+		if prev == "return" || prev == "co_return" {
+			return next == ";"
+		}
+		if typeIntroducers[prev] {
+			return false
+		}
+		return next == ";" || next == "=" || next == "[" || next == "{"
+	case tPunct:
+		switch toks[p].text {
+		case ">", "*":
+			return next == ";" || next == "=" || next == "[" || next == "{"
+		case "&":
+			return next == ";" || next == "=" || next == "[" || next == "{" || next == ")"
+		case ",":
+			// offsetof( Owner, member ): the second argument is a member
+			if next != ")" {
+				return false
+			}
+			o := prevAny(toks, p)
+			if o < 0 || toks[o].kind != tIdent {
+				return false
+			}
+			open := prevAny(toks, o)
+			if open < 0 || toks[open].text != "(" {
+				return false
+			}
+			name := prevAny(toks, open)
+			return name >= 0 && toks[name].text == "offsetof"
+		}
 	}
 	return false
 }

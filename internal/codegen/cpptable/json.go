@@ -337,10 +337,22 @@ inline int TableJsonMapKeyOrder( const void * ea, const void * eb, const TableFi
         int64_t a = 0, b = 0;
         switch ( key->kind )
         {
-            case 2: a = *(const int8_t *) sa; b = *(const int8_t *) sb; break;
-            case 3: a = *(const int16_t *) sa; b = *(const int16_t *) sb; break;
-            case 4: a = *(const int32_t *) sa; b = *(const int32_t *) sb; break;
-            case 5: a = *(const int64_t *) sa; b = *(const int64_t *) sb; break;
+            case 2:
+                a = *(const int8_t *) sa;
+                b = *(const int8_t *) sb;
+                break;
+            case 3:
+                a = *(const int16_t *) sa;
+                b = *(const int16_t *) sb;
+                break;
+            case 4:
+                a = *(const int32_t *) sa;
+                b = *(const int32_t *) sb;
+                break;
+            case 5:
+                a = *(const int64_t *) sa;
+                b = *(const int64_t *) sb;
+                break;
             default: break;
         }
         return a < b ? -1 : ( a > b ? 1 : 0 );
@@ -348,10 +360,22 @@ inline int TableJsonMapKeyOrder( const void * ea, const void * eb, const TableFi
     uint64_t a = 0, b = 0;
     switch ( key->kind )
     {
-        case 6: a = *(const uint8_t *) sa; b = *(const uint8_t *) sb; break;
-        case 7: a = *(const uint16_t *) sa; b = *(const uint16_t *) sb; break;
-        case 8: a = *(const uint32_t *) sa; b = *(const uint32_t *) sb; break;
-        case 9: a = *(const uint64_t *) sa; b = *(const uint64_t *) sb; break;
+        case 6:
+            a = *(const uint8_t *) sa;
+            b = *(const uint8_t *) sb;
+            break;
+        case 7:
+            a = *(const uint16_t *) sa;
+            b = *(const uint16_t *) sb;
+            break;
+        case 8:
+            a = *(const uint32_t *) sa;
+            b = *(const uint32_t *) sb;
+            break;
+        case 9:
+            a = *(const uint64_t *) sa;
+            b = *(const uint64_t *) sb;
+            break;
         default: break;
     }
     return a < b ? -1 : ( a > b ? 1 : 0 );
@@ -362,7 +386,11 @@ inline bool TableJsonWriteMap( TableJsonOut & out, const void * slot, const Tabl
     // the map's object, {} included, is a container the read counts (§16.14 W2)
     if ( depth > kTableJsonMaxDepth ) { return false; }
     const int32_t count = TableJsonExtentCount( slot );
-    if ( count < 0 ) { out.invalid = true; return false; }
+    if ( count < 0 )
+    {
+        out.invalid = true;
+        return false;
+    }
     if ( count == 0 )
     {
         out.raw( "{}", 2 );
@@ -371,7 +399,11 @@ inline bool TableJsonWriteMap( TableJsonOut & out, const void * slot, const Tabl
     const TableFieldInfo * key = TableJsonMapKeyField( f );
     const TableFieldInfo * value = TableJsonMapValueField( f );
     const uint8_t * entries = TableJsonExtentElements( slot );
-    if ( entries == NULL ) { out.invalid = true; return false; }
+    if ( entries == NULL )
+    {
+        out.invalid = true;
+        return false;
+    }
     out.put( '{' );
     const void * prev = NULL;
     for ( int32_t i = 0; i < count; i++ )
@@ -379,7 +411,11 @@ inline bool TableJsonWriteMap( TableJsonOut & out, const void * slot, const Tabl
         if ( i > 0 ) { out.put( ',' ); }
         out.line( depth + 1 );
         const void * entry = (const void *) ( entries + (int64_t) i * f->elem_size );
-        if ( i > 0 && TableJsonMapKeyOrder( prev, entry, key ) >= 0 ) { out.invalid = true; return false; }
+        if ( i > 0 && TableJsonMapKeyOrder( prev, entry, key ) >= 0 )
+        {
+            out.invalid = true;
+            return false;
+        }
         prev = entry;
         TableJsonWriteMapKey( out, entry, key );
         out.raw( ": ", 2 );
@@ -1140,7 +1176,7 @@ static const int32_t kTableJsonMaxNumber = 1024;
 // switched to the "C" locale for the call and restored after it, so a number
 // reads and writes the same under any locale the program set, and another
 // thread's locale (or the global one) is never touched.
-#if defined(_WIN32)
+#if defined( _WIN32 )
 inline _locale_t TableJsonCLocale()
 {
     static _locale_t c = _create_locale( LC_ALL, "C" );
@@ -1171,7 +1207,10 @@ struct TableJsonCNumbers
             swapped = previous != locale_t();
         }
     }
-    ~TableJsonCNumbers() { if ( swapped ) { uselocale( previous ); } }
+    ~TableJsonCNumbers()
+    {
+        if ( swapped ) { uselocale( previous ); }
+    }
     TableJsonCNumbers( const TableJsonCNumbers & ) = delete;
     TableJsonCNumbers & operator=( const TableJsonCNumbers & ) = delete;
 };
@@ -2940,7 +2979,11 @@ inline bool TableJsonKeyTrack( TableJsonIn & in, const char * key, int32_t lengt
     }
     const int64_t count = in.key_count + 1;
     const int64_t bytes = in.key_bytes_used + (int64_t) length;
-    if ( !TableJsonKeysGrow( in, count, bytes ) ) { in.bad = true; return false; }
+    if ( !TableJsonKeysGrow( in, count, bytes ) )
+    {
+        in.bad = true;
+        return false;
+    }
     if ( length != 0 ) { memcpy( in.key_bytes + in.key_bytes_used, key, (size_t) length ); }
     in.key_offset[in.key_count] = in.key_bytes_used;
     in.key_length[in.key_count] = length;
@@ -3563,7 +3606,11 @@ inline bool TableJsonIntegerTokenOnly( const char * token, int32_t length )
     if ( length <= 0 ) { return false; }
     int32_t i = 0;
     bool negative = false;
-    if ( token[0] == '-' ) { negative = true; i = 1; }
+    if ( token[0] == '-' )
+    {
+        negative = true;
+        i = 1;
+    }
     if ( i >= length ) { return false; }
     if ( token[i] == '0' )
     {
@@ -3602,7 +3649,11 @@ inline double TableJsonTokenDouble( const char * token, int32_t length, bool sin
         int32_t kept_len = 0;
         int32_t i = 0;
         bool negative = false;
-        if ( i < length && token[i] == '-' ) { negative = true; i++; }
+        if ( i < length && token[i] == '-' )
+        {
+            negative = true;
+            i++;
+        }
         int32_t fraction = 0;
         bool after_point = false;
         int32_t digits = 0;
@@ -3611,7 +3662,11 @@ inline double TableJsonTokenDouble( const char * token, int32_t length, bool sin
         for ( ; i < length; i++ )
         {
             char c = token[i];
-            if ( c == '.' ) { after_point = true; continue; }
+            if ( c == '.' )
+            {
+                after_point = true;
+                continue;
+            }
             if ( c == 'e' || c == 'E' ) { break; }
             if ( after_point ) { fraction++; }
             if ( !nonzero )
@@ -3621,7 +3676,10 @@ inline double TableJsonTokenDouble( const char * token, int32_t length, bool sin
             }
             digits++;
             if ( c == '0' ) { trailing++; }
-            else { trailing = 0; }
+            else
+            {
+                trailing = 0;
+            }
             if ( kept_len < limit ) { kept[kept_len++] = c; }
         }
         int64_t exponent = 0;
@@ -3666,7 +3724,11 @@ inline double TableJsonTokenDouble( const char * token, int32_t length, bool sin
                 scale--;
             }
             work[n++] = 'e';
-            if ( scale < 0 ) { work[n++] = '-'; scale = -scale; }
+            if ( scale < 0 )
+            {
+                work[n++] = '-';
+                scale = -scale;
+            }
             char reversed[24];
             int32_t rn = 0;
             if ( scale == 0 ) { reversed[rn++] = '0'; }
@@ -4790,10 +4852,11 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
     if ( TableJsonKindWideText( f ) && !TableJsonKindInteger( f->kind ) )
     {
         TableJsonIn number = {};
-        number.text = token; number.size = length;
+        number.text = token;
+        number.size = length;
         bool whole = false;
         if ( length == 0 || token[0] == ' ' || token[0] == '\t' || token[0] == '\n' || token[0] == '\r' ||
-             !TableJsonWalkNumber( number, &whole ) || number.pos != length )
+            !TableJsonWalkNumber( number, &whole ) || number.pos != length )
         {
             in.report->refused = true;
             in.report->refuse_reason = kind_mismatch;
@@ -5250,7 +5313,11 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
     {
         // the array is a container one level below the table holding it, counted toward
         // the cap whether or not it holds an element (FL-12)
-        if ( depth + 1 > kTableJsonMaxDepth ) { in.bad = true; return false; }
+        if ( depth + 1 > kTableJsonMaxDepth )
+        {
+            in.bad = true;
+            return false;
+        }
         if ( TableJsonPeek( in ) != '[' )
         {
             in.bad = true;

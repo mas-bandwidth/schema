@@ -248,8 +248,16 @@ void main() {
     final back = <m.F>[m.F()];
     final n = m.fFixedLoad(back, 1, minus, minus.length, m.fFixedNewPlan(), m.TableFixedReport());
     vec('fixed-minus-zero', n == 1 && back[0].x == 0.0 && back[0].x.isNegative, 'a -0 was not carried whole');
-    vec('cook-write-fixed', c.FCook.cookMeasure(m.F()) > 0 && c.FCook.cookMeasure(m.F()..x = double.nan) == -1 &&
-        !c.FCook.cook(m.F()..zs[1] = double.infinity, Uint8List(4096), Endian.little), 'the fixed cook carried a NaN or an infinity');
+    final lawful = m.F()..x = 1.5..y = 2.5;
+    final size = c.FCook.cookMeasure(lawful);
+    final badCook = m.F()..zs[1] = double.infinity;
+    final badSize = c.FCook.cookMeasure(badCook);
+    final untouched = Uint8List(size)..fillRange(0, size, 0x5a);
+    vec('cook-write-fixed', size > 0 && badSize == size &&
+        c.FCook.cook(lawful, Uint8List(size), Endian.little) &&
+        !c.FCook.cook(badCook, untouched, Endian.little) &&
+        untouched.every((b) => b == 0x5a),
+        'fixed measure changed with the value or the fixed cook carried a non-finite float');
   }
 
   // ---- the block/cook accessors (ruling 2) ----

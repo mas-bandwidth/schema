@@ -1872,8 +1872,14 @@ All compile errors with positions:
   class or extension type (`abstract`, `as`, `covariant`, `deferred`,
   `dynamic`, `export`, `extension`, `external`, `factory`, `Function`, `get`,
   `implements`, `import`, `interface`, `late`, `library`, `mixin`,
-  `operator`, `part`, `required`, `set`, `static`, `typedef`), and Elixir's
-  support module `PacketRuntime`. A
+  `operator`, `part`, `required`, `set`, `static`, `typedef`), Elixir's
+  support module `PacketRuntime`, and every macro the serialize runtime
+  header `serialize.h` defines, which the generated C++ includes (C++: a
+  function-like macro such as `write_int` or `serialize_fixed` expands at
+  the `(` of a value-initialised `E()` or a conversion `E( v )`, an
+  object-like one such as `SERIALIZE_DEBUG` everywhere; the 94 of serialize
+  v2.1.6). A field or a union arm may take such a name: a member is spelled
+  only after `.` or as a declarator, where no function-like macro reaches. A
   reserved word or a claimed name above takes its own diagnostic instead.
 - **Generator-name safety:** the names generated code declares for itself
   inside its functions (locals, parameters, loop variables: `v`, `r`, `w`,
@@ -1883,7 +1889,19 @@ All compile errors with positions:
   its own can reach it (the Dart table libraries spell an enum whose name
   starts lowercase through the import prefix `$enums`, which no schema
   identifier can spell) or names its locals so none can equal one (the Dart
-  `enumName<E>` parameter is `$value` for an enum named `value`).
+  `enumName<E>` parameter is `$value` for an enum named `value`; the C++
+  table header spells a declared name that starts lowercase from the
+  global root, `::<package>::name`, wherever a parameter, a local, a loop
+  variable or a lambda's parameter of the same name may be in scope: the
+  reset `value.many[tail] = ::probe::count();`, the descriptors'
+  conversions `::probe::v( v )` and the enum codecs' parameter types,
+  `TableEnumRef( TableIds & ids, ::probe::ids value, ... )`; a name that
+  starts with a capital is spelled bare, as before, since no generated
+  local does). A field or an arm named like a libc type the unit also
+  declares (`int32_t`) stays a member in C++: the pass that writes the
+  emitter's own uses of the platform's type as `::int32_t` leaves a
+  member's declarator (`Inner int32_t;`), its reads in a member function
+  (`return int32_t;`, `&int32_t`) and `offsetof( T, int32_t )` bare.
   The proof is the corpus rows `n_internal_*` of
   testdata/name-buildability: every such name the table emitters of all 18
   targets declare, each used as an enum, a table field and a union arm, and
