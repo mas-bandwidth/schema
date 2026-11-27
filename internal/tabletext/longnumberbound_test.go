@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	tabledemo "github.com/mas-bandwidth/schema/v2/internal/codegen/gotable/fuzzunit"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	tabledemo "github.com/mas-bandwidth/schema/v3/internal/codegen/gotable/fuzzunit"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
 )
 
 // docs/SPEC-TABLES.md §16.2 Numbers: the engine's token fold and the generated

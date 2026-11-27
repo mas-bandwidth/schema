@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // jsonUnsigned is the fifth argument of _jsonIntField (§16.2, §4): an unsigned

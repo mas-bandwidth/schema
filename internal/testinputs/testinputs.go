@@ -35,7 +35,7 @@ import (
 )
 
 // modulePath is the module whose root relative paths are resolved against.
-const modulePath = "github.com/mas-bandwidth/schema/v2"
+const modulePath = "github.com/mas-bandwidth/schema/v3"
 
 var rootOnce struct {
 	sync.Once

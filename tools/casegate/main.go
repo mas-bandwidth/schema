@@ -57,7 +57,7 @@ import (
 	"os/exec"
 	"syscall"
 
-	"github.com/mas-bandwidth/schema/v2/internal/casegate"
+	"github.com/mas-bandwidth/schema/v3/internal/casegate"
 )
 
 func main() {

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // THE RETAIN-UNKNOWN SURFACE (docs/SPEC-TABLES.md §6.6), the card's slice. A

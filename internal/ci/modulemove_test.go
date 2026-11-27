@@ -5,14 +5,14 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/modulemove"
+	"github.com/mas-bandwidth/schema/v3/internal/modulemove"
 )
 
 // TestGoModMatchesPinBoundary holds go.mod's module path and `schema pin`'s
 // boundary (internal/modulemove.FirstV3ModuleTag) in step on every pull
-// request: ci-policy runs this package whatever the diff touches. Today go.mod
-// names /v2 and the boundary is unset, so pin refuses every v3 tag; #4445 moves
-// go.mod to /v3 and must set the boundary in the same commit, or this fails.
+// request: ci-policy runs this package whatever the diff touches. go.mod names
+// /v3 and the boundary is the first tag cut with it; a change to either one
+// without the other fails here.
 // tools/releasetag holds the tag being cut to the same rule at release time.
 func TestGoModMatchesPinBoundary(t *testing.T) {
 	t.Parallel()
