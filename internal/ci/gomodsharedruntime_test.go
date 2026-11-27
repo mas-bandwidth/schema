@@ -12,7 +12,7 @@ import (
 // resolve tables/goruntime from this checkout. The Go target's home file
 // imports `github.com/mas-bandwidth/schema/v3/tables/goruntime` because shared
 // is the default (docs/SPEC-TABLES.md §8.4); a module that compiles such a unit
-// must therefore require schema/v2 and replace it with the repository root.
+// must therefore require schema/v3 and replace it with the repository root.
 // Text only: no go command, no build, no network.
 func TestGoModulesResolveTheSharedRuntime(t *testing.T) {
 	t.Parallel()
