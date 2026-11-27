@@ -1,0 +1,9 @@
+// A ranged compressed float (SPEC.md section 5.1 row 10), the only
+// write-contract check.
+package rangedfloat
+
+table Root
+{
+    ratio float32 | min = 0, max = 1, resolution = 0.01
+    n     int64
+}
