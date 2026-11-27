@@ -30,11 +30,10 @@
 // - kind 1 is a bool (the frozen §3 kind vocabulary, docs/SPEC-TABLES.md §3);
 //   a bool's slot is one byte.
 // - refusal 25 is `layout_unknown`: the integers are each leg's own, taken in
-//   the order §5.3 names the refusals, and this leg's 25 is its own spelling
-//   of the name. The JS leg spells the same refusal today as
-//   TableFixedRefusal.LayoutNewer = 15 (internal/codegen/jstable/
-//   fixedruntime.go) and moves to LayoutUnknown = 25 when #4920 lands; the
-//   NAME is the contract, not the integer.
+//   the order §5.3 names the refusals, and this leg's 25 agrees with the JS
+//   leg's TableFixedRefusal.LayoutUnknown = 25 (appended; 15 is the retired
+//   layout_newer, which no read answers) (internal/codegen/jstable/
+//   fixedruntime.go:135); the NAME is the contract.
 // - 0x0EADBEEFCAFEF00D is a forged header hash no lineage entry holds, the
 //   versioning gate's hash_unknown case.
 // - the 0x5A POISON is §5.7/§5.9 #17's discipline: a refusal that ran a decode
@@ -132,7 +131,7 @@ void main() {
 
   // REFUSED BY NAME, before any record: `layout_unknown`, the older build's
   // answer to a newer file. The integer 25 is this leg's own spelling of the
-  // §5.3 name; the name is the contract.
+  // §5.3 name (the JS leg agrees); the name is the contract.
   check(n == -1, 'E8: the older reader refuses the newer file (n=$n)');
   check(r.refused == 25, 'E8: the refusal is 25, the legs\' shared spelling '
       'of layout_unknown (got ${r.refused})');

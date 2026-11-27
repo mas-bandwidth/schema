@@ -1583,15 +1583,6 @@ tables-elixir-versioning: tables-fixedform-corpus
 # §5's whole direction — a hash no lineage entry holds is `layout_unknown` (§5.3
 # step 5) — with `layout_malformed`, on a file OUTSIDE the lineage, and the
 # OLD-REFUSES-NEW column must go red naming it.
-#
-# TWO ROWS, NOT EVERY ROW. The sabotaged line is one line of the shared
-# runtime, so every non-same-hash row goes red on it, and each row is its own
-# `elixir` process that compiles the whole runtime (about 5-9 s of a loaded
-# bench each; the 22 reds took 167 s there against the 2-minute per-job bar).
-# The control only has to watch the gate go red NAMING the refusal, so it runs
-# one scalar row (field_append) and one union row (union_append): two shapes
-# of generated reader. Every row still runs, unsabotaged, in
-# tables-elixir-versioning.
 .PHONY: tables-elixir-versioning-negative-control
 tables-elixir-versioning-negative-control: tables-fixedform-corpus
 	@rm -rf build/elixir-versioning-nc && mkdir -p build/elixir-versioning-nc
@@ -1603,7 +1594,7 @@ tables-elixir-versioning-negative-control: tables-fixedform-corpus
 		"$(CURDIR)" "$(CURDIR)" > build/elixir-versioning-nc/overlay.json
 	@if SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
 			go test -overlay build/elixir-versioning-nc/overlay.json \
-			./internal/codegen/elixirtable/ -count=1 -timeout 600s -run 'TestFixedVersioningOldRefusesNew/^(field_append|union_append)$$' \
+			./internal/codegen/elixirtable/ -count=1 -timeout 600s -run 'TestFixedVersioningOldRefusesNew' \
 			> build/elixir-versioning-nc/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the wrong refusal name left the versioning gate green"; \
 		cat build/elixir-versioning-nc/log; exit 1; \
