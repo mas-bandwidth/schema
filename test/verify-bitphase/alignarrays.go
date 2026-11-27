@@ -268,6 +268,12 @@ func alignArraysRoster() []manifestCase {
 
 // writeAlignArraysCorpus writes the family's manifest and files into dir.
 func writeAlignArraysCorpus(dir string) error {
+	return writeAlignRows(dir, alignArraysRows())
+}
+
+// writeAlignRows writes a manifest and files of the rows given into dir: the
+// whole family, or the rows a registry run asked for (adapter.go).
+func writeAlignRows(dir string, rows []alignRow) error {
 	if err := os.RemoveAll(dir); err != nil {
 		return err
 	}
@@ -275,7 +281,7 @@ func writeAlignArraysCorpus(dir string) error {
 		return err
 	}
 	var m strings.Builder
-	for _, r := range alignArraysRows() {
+	for _, r := range rows {
 		fmt.Fprintf(&m, "%s\t%s\t%s\n", r.Kind, r.Type, r.File)
 		if err := os.WriteFile(filepath.Join(dir, r.File), r.data, 0o644); err != nil {
 			return err

@@ -505,7 +505,7 @@ func TestFastGoTestLanesReadTheSkipLedger(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
 	l := readSkipLedger(t, root)
-	lanes := ledgerLanes(workflows(t, root)["ci-fast.yml"])
+	lanes := ledgerLanes(workflows(t, root)["ci-fast-nightly.yml"])
 	read := map[string]bool{}
 	for _, lane := range lanes {
 		if lane.reads {
@@ -516,11 +516,11 @@ func TestFastGoTestLanesReadTheSkipLedger(t *testing.T) {
 	// that finds none of them is reading the wrong text
 	for _, job := range []string{"ci-policy", "go-test-touched", "verify-leg", "verify-elixir-conformance"} {
 		if !read[job] {
-			t.Errorf("ci-fast.yml's %s job does not read the skip ledger over its go test record", job)
+			t.Errorf("ci-fast-nightly.yml's %s job does not read the skip ledger over its go test record", job)
 		}
 	}
 	for _, fault := range ledgerLaneFaults(lanes, l) {
-		t.Error("ci-fast.yml: " + fault)
+		t.Error("ci-fast-nightly.yml: " + fault)
 	}
 }
 
