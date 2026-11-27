@@ -3,8 +3,10 @@
 // THE LAW (docs/SPEC-TABLES.md §3.4, docs/FIXED-FORM-ALGORITHM.md:173): a
 // `bits(N)` field rides at its DECLARED STORAGE WIDTH — 4 bytes for N <= 32
 // and 8 bytes for N > 32 — and its implied range is [0, 2^N - 1]. A value
-// past the top clamps and counts; a value at the cap is valid and moves
-// nothing.
+// past the top refuses the whole load `out_of_range` (docs/rulings.json
+// strict-only-read; plans/strict-only.md decision 1: no read clamps, and
+// `clamped` became the out_of_range refusal); a value at the cap is valid and
+// moves nothing.
 //
 // WHAT THIS TEST DOES: builds one RangedWidths record (form 3, the fixed
 // wire) with every bits(N) field set to its CAP (2^N - 1), writes it through
@@ -15,9 +17,9 @@
 //
 // THE NEGATIVE CONTROL (`-DBITS_CONTROL`): flips ONE byte of the b12 field
 // on the wire after the write, which lifts the decoded value past the cap
-// (4095). The reader's bounds pass must clamp it back, so `clamped == 1` and
-// `b12 == 4095`. A reader that ignores the implied range would pass the
-// corrupted value through and go RED here.
+// (4095). The reader must refuse the whole load out_of_range and land
+// nothing. A reader that ignores the implied range would pass the corrupted
+// value through and go RED here.
 //
 // BUILD/RUN (from ./repo):
 //   c++ -std=c++17 -Wall <conformance -I flags> build/tables-generated/examples/RangesTable.cpp
@@ -65,13 +67,18 @@ int main()
         tabledemo::RangedWidths back;
         std::memset( (void *) &back, 0xAB, sizeof( back ) );
         tabledemo::TableReport r;
+        // the plan storage the load checks on every lane, identity included
+        // (docs/FIXED-FORM-ALGORITHM.md:777: a plan of 0 entries refuses plan_too_large)
+        std::vector<tabledemo::TableFixedEntry> plan( 4096 );
         const int64_t n = tabledemo::RangedWidthsFixedLoad(
             &back, 1, wire.data(), (int64_t) wire.size(),
-            NULL, 0, NULL, &r );
+            plan.data(), (int32_t) plan.size(), NULL, &r );
 
-        check( n == 1 && !r.refused && !r.malformed,
+        check( n == 1 && !r.refused && !r.damaged,
                "BitsValuesValidData cap: the record reads" );
-        check( r.clamped == 0 && r.unknown == 0 && r.widened == 0,
+        // strict-only-read: a kind mismatch, an out-of-range value and a repeat now refuse the
+        // whole load (no counter), so the retired zero counts read as not refused, not damaged.
+        check( !r.refused && !r.damaged && r.unknown == 0 && r.widened == 0,
                "BitsValuesValidData cap: at the cap moves no counter" );
 
         check( back.b8  == 0xFFu,              "BitsValuesValidData cap: b8  round-trips" );
@@ -102,13 +109,18 @@ int main()
         tabledemo::RangedWidths back;
         std::memset( (void *) &back, 0xAB, sizeof( back ) );
         tabledemo::TableReport r;
+        // the plan storage the load checks on every lane, identity included
+        // (docs/FIXED-FORM-ALGORITHM.md:777: a plan of 0 entries refuses plan_too_large)
+        std::vector<tabledemo::TableFixedEntry> plan( 4096 );
         const int64_t n = tabledemo::RangedWidthsFixedLoad(
             &back, 1, wire.data(), (int64_t) wire.size(),
-            NULL, 0, NULL, &r );
+            plan.data(), (int32_t) plan.size(), NULL, &r );
 
-        check( n == 1 && !r.refused && !r.malformed,
+        check( n == 1 && !r.refused && !r.damaged,
                "BitsValuesValidData mid: the record reads" );
-        check( r.clamped == 0 && r.unknown == 0,
+        // strict-only-read: a kind mismatch, an out-of-range value and a repeat now refuse the
+        // whole load (no counter), so the retired zero counts read as not refused, not damaged.
+        check( !r.refused && !r.damaged && r.unknown == 0,
                "BitsValuesValidData mid: mid-range moves no counter" );
 
         check( back.b8  == 0xAAu,              "BitsValuesValidData mid: b8  round-trips" );
@@ -156,20 +168,23 @@ int main()
         tabledemo::RangedWidths back;
         std::memset( (void *) &back, 0xAB, sizeof( back ) );
         tabledemo::TableReport r;
+        // the plan storage the load checks on every lane, identity included
+        // (docs/FIXED-FORM-ALGORITHM.md:777: a plan of 0 entries refuses plan_too_large)
+        std::vector<tabledemo::TableFixedEntry> plan( 4096 );
         const int64_t n = tabledemo::RangedWidthsFixedLoad(
             &back, 1, wire.data(), (int64_t) wire.size(),
-            NULL, 0, NULL, &r );
+            plan.data(), (int32_t) plan.size(), NULL, &r );
 
-        check( n == 1 && !r.refused && !r.malformed,
-               "BitsValuesValidData forged: the record reads (forged value is not a refusal)" );
-        check( r.clamped == 1,
-               "BitsValuesValidData forged: the b12 field clamps once" );
-        check( back.b12 == 0xFFFu,
-               "BitsValuesValidData forged: b12 clamps to 4095 (2^12 - 1)" );
-
-        // neighbours stand
-        check( back.b8 == 0x42u && back.b16 == 0x4242u && back.b32 == 0x42424242u,
-               "BitsValuesValidData forged: the neighbour fields stand" );
+        // strict-only-read: was "the record reads, clamped == 1, b12 == 4095, the
+        // neighbours stand"; an out-of-range value now refuses the whole load.
+        check( n < 0 && r.refused && !r.damaged,
+               "BitsValuesValidData forged: a b12 past its cap refuses the whole load" );
+        check( r.refuse_reason == tabledemo::out_of_range,
+               "BitsValuesValidData forged: the refusal is out_of_range (the retired clamped)" );
+        tabledemo::RangedWidths fresh;
+        tabledemo::RangedWidthsReset( fresh );
+        check( back.b12 == fresh.b12 && back.b8 == fresh.b8 && back.b48 == fresh.b48,
+               "BitsValuesValidData forged: a refused load lands nothing (the declared defaults, R4)" );
     }
 
     return failures == 0 ? 0 : 1;

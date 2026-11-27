@@ -1,113 +1,122 @@
-// test/conformance/js/rows/W5.mjs — js/W5 "write checks DEBUG only"
+// test/conformance/js/rows/W5.mjs — js/W5 "the write-side bound check, per leg"
 //
-// THE LAW (docs/FIXED-FORM-ALGORITHM.md:208-210): "**Write-side bound checks
-// are DEBUG ONLY, by rule.** `count <= Max` and `length <= N` are a caller
-// contract; a release build removes them exactly as it removes `assert`,
-// pays nothing, and **clamps nothing**. The READ side keeps the wire safe: it
-// checks the same number in every build and counts the clamp."
+// THE LAW AS IT STANDS (docs/FIXED-FORM-ALGORITHM.md, line ~249, and SPEC.md
+// §5.1's per-leg table; docs/rulings.json `write-refusal`): "Write-side bound
+// checks use each language's own idiom, and that decides the build: a
+// debug-only assert in C, C++, C#, Rust, Java and Dart, and a REFUSAL IN EVERY
+// BUILD in Go, JavaScript, Elixir, Lua, Luau, Squirrel, MOO and Goose." The
+// check is over the LIVE extent and runs over the whole batch before the first
+// byte is stored, so a refused batch leaves the buffer untouched; it clamps
+// nothing. The READ side checks the same number in every build: a length past
+// its bound refuses `length_over_bound` (§4.5).
 //
-// THE JS FACT: this backend emits ONE artifact, the release one — there is
-// no debug build to carry the checks — so the law's demand on the emitted
-// writer is exactly its release clause: NO check (the write refuses nothing
-// and throws nothing on a contract-violating length) and NO clamp (the
-// caller's length lands on the wire exactly as given, not the declared
-// bound). The contrast that makes the rule visible is the read side, which
-// checks the same number in every build: it clamps the length back to the
-// declared bound and counts the clamp.
+// This row was written when the law said write checks were DEBUG ONLY in every
+// leg, and asserted that the JS writer (one release artifact) stored a
+// contract-violating length as given and that the reader clamped it. Both
+// halves are retired; the row keeps its vector and asserts the law as it
+// stands for this leg: the writer REFUSES, and the reader REFUSES.
 //
-// DERIVATION OF THE WIRE LAYOUT (fixed form 3, little-endian; the generated
-// PaddedRowFixedDst rows state the same numbers). PaddedRow body = 50 bytes:
-//     0 tag uint8, 1 value float64, 9 flag bool, 10 id uint32,
-//    14 label length int32 — string(15), so N = 15 —,
-//    18 label buffer (15 bytes, 18..33), 33 slots [4]uint16 (33..41),
-//    41 teams [Team]uint8 (41..45), 45 counter present flag, 46 counter
-//    int32 (46..50).
-// The vector is written by the generated Save itself: one PaddedRow whose
-// LabelLength is 20 — five past the string(15) bound — with the fifteen
-// storage bytes the bound names filled with distinct values. A DEBUG build
-// would refuse or clamp that; the release artifact must do neither.
+// THE VECTOR (fixed form 3, little-endian; PaddedRowFixedDst states the same
+// numbers). PaddedRow body = 50 bytes: 0 tag uint8, 1 value float64, 9 flag
+// bool, 10 id uint32, 14 label length int32 — string(15), so N = 15 —,
+// 18 label buffer (15 bytes), 33 slots [4]uint16, 41 teams [Team]uint8,
+// 45 counter present flag, 46 counter int32.
 //
 // Run from the repository root:  node test/conformance/js/rows/W5.mjs
-// Green prints one line per assertion and exits 0; any red prints FAIL and
-// exits 1.
 
 import { pathToFileURL } from "node:url";
 import { resolve } from "node:path";
 
-// The generated tree is a PATH, not a static import, exactly as the driver
-// resolves it (test/conformance/js/main.mjs), so the harness's negative
-// controls can aim this test at a sabotaged copy too.
 const generated = process.env.SCHEMA_JS_GENERATED ?? "build/tables-generated-js";
 const load = (path) => import(pathToFileURL(resolve(generated, path)).href);
 
 const runtime = await load("block/BlockdemoTable.js");
 const tables = await load("block/PaddedTable.js");
 
-const { PaddedRow, TableFixedReport, TableFixedResetReport, TableFixedHeaderBytes,
-  TableFixedLayoutHeaderBytes } = runtime;
+const { PaddedRow, InitPaddedRow, TableFixedReport, TableFixedHeaderBytes,
+  TableFixedLayoutHeaderBytes, TableFixedRefusal, TableFixedRefusalName } = runtime;
 const { PaddedRowFixedSave, PaddedRowFixedMeasure, PaddedRowFixedLoad,
   PaddedRowFixedNewPlan, PaddedRowFixedLayoutBytes } = tables;
 
 let failures = 0;
 function assert(condition, msg) {
-  if (!condition) {
-    console.log(`FAIL: ${msg}`);
-    failures++;
-  } else {
-    console.log(`PASS: ${msg}`);
-  }
+  if (!condition) { console.log(`FAIL: ${msg}`); failures++; }
+  else { console.log(`PASS: ${msg}`); }
 }
 
-// ---- the value: a caller contract violation, five units past N = 15
-const v = new PaddedRow();
-v.tag = 0x33;
-v.value = 4.5;
-v.flag = true;
-v.id = 0xCAFEBABE;
-for (let i = 0; i < 15; i++) { v.label[i] = 0x41 + i; } // "ABCDEFGHIJKLMNO"
-v.labelLength = 20; // past the string(15) bound: the caller's contract, not the writer's
-v.slots = [1, 2, 3, 4];
-v.teams.set([9, 8, 7, 6], 0);
-v.counterPresent = true;
-v.counter = -12345;
+function row(labelLength) {
+  const v = new PaddedRow();
+  v.tag = 0x33;
+  v.value = 4.5;
+  v.flag = true;
+  v.id = 0xCAFEBABE;
+  for (let i = 0; i < 15; i++) { v.label[i] = 0x41 + i; } // "ABCDEFGHIJKLMNO"
+  v.labelLength = labelLength;
+  v.slots = [1, 2, 3, 4];
+  v.teams.set([1, 2, 3, 0], 0);
+  v.counterPresent = true;
+  v.counter = -12345;
+  return v;
+}
 
-const file = new Uint8Array(PaddedRowFixedMeasure(1));
+const POISON = 0x5a;
+const body = TableFixedHeaderBytes + TableFixedLayoutHeaderBytes + PaddedRowFixedLayoutBytes + 8;
 
-// ---- THE LAW, write side: DEBUG-only checks are absent from the release
-// artifact — the writer refuses nothing and clamps nothing.
-assert(PaddedRowFixedSave([v], 1, file) === file.length,
-  "no write-side check: the writer answers its measure on a contract-violating length, refusing nothing and throwing nothing");
+// ---- THE WRITE SIDE: JavaScript refuses in every build ----
+for (const bad of [16, 20, -1]) {
+  const file = new Uint8Array(PaddedRowFixedMeasure(1)).fill(POISON);
+  let got, threw = null;
+  try { got = PaddedRowFixedSave([row(bad)], 1, file); } catch (e) { threw = e; }
+  assert(threw === null && got === -1,
+    `the writer REFUSES a label length of ${bad} against string(15) in every build: -1, never a throw (got ${threw === null ? got : threw})`);
+  assert(file.every((b) => b === POISON),
+    `a refused write (length ${bad}) leaves the buffer untouched — the check runs before the first byte is stored`);
+}
 
-const dv = new DataView(file.buffer, file.byteOffset, file.length);
-const recordAt = TableFixedHeaderBytes + TableFixedLayoutHeaderBytes + PaddedRowFixedLayoutBytes;
-const body = recordAt + 8; // past the record's 8-byte hash
+{
+  // A REFUSED BATCH IS REFUSED WHOLE: a lawful record ahead of the bad one is
+  // not stored either.
+  const file = new Uint8Array(PaddedRowFixedMeasure(2)).fill(POISON);
+  const got = PaddedRowFixedSave([row(5), row(20)], 2, file);
+  assert(got === -1 && file.every((b) => b === POISON),
+    "the check covers the whole batch before the first store: a lawful record ahead of the bad one is not written");
+}
 
-assert(dv.getInt32(body + 14, true) === 20,
-  "no write-side clamp: the caller's length 20 lands on the wire exactly as given, not the declared bound 15");
+// ---- THE BOUND ITSELF IS LAWFUL: 15 saves, lands as given, and reads ----
+const lawful = new Uint8Array(PaddedRowFixedMeasure(1));
+assert(PaddedRowFixedSave([row(15)], 1, lawful) === lawful.length,
+  "a label length AT the bound 15 saves whole");
+const dv = new DataView(lawful.buffer, lawful.byteOffset, lawful.length);
+assert(dv.getInt32(body + 14, true) === 15, "the length 15 lands on the wire as given — the writer clamps nothing");
+{
+  const back = [new PaddedRow()];
+  const report = new TableFixedReport();
+  const n = PaddedRowFixedLoad(back, 1, lawful, lawful.length, PaddedRowFixedNewPlan(), report);
+  let live = true;
+  for (let i = 0; i < 15; i++) { if (back[0].label[i] !== 0x41 + i) { live = false; } }
+  assert(n === 1 && report.refused === 0 && !report.damaged && back[0].labelLength === 15 && live && back[0].slots[3] === 4,
+    `the lawful record reads back whole (n=${n}, length ${back[0].labelLength})`);
+}
 
-let landed = true;
-for (let i = 0; i < 15; i++) { if (file[body + 18 + i] !== 0x41 + i) { landed = false; } }
-assert(landed,
-  "the live units the length names landed, and the write kept going past the bound (no check aborted anything)");
-assert(dv.getUint16(body + 33, true) === 1 && dv.getUint16(body + 35, true) === 2 &&
-  dv.getUint16(body + 37, true) === 3 && dv.getUint16(body + 39, true) === 4,
-  "the fields after the violating length landed too — the release write is a straight line of stores, not a gated one");
-
-// ---- THE LAW, read side: the same number, checked in every build, clamped
-// and counted — the wire stays safe where the writer paid nothing.
-const plan = PaddedRowFixedNewPlan(64, 64);
-const back = [new PaddedRow()];
-const report = new TableFixedReport();
-TableFixedResetReport(report);
-const n = PaddedRowFixedLoad(back, 1, file, file.length, plan, report);
-assert(n === 1 && !report.damaged && report.refused === 0,
-  "the record still reads: a caller contract violation is not a refusal");
-assert(back[0].labelLength === 15 && report.oor === 1,
-  "the read side checks the same number in every build: it clamps 20 to the declared bound 15 and counts exactly one clamp");
-let live = true;
-for (let i = 0; i < 15; i++) { if (back[0].label[i] !== 0x41 + i) { live = false; } }
-assert(live,
-  "the clamped read keeps the live units the wire carries");
+// ---- THE READ SIDE: the same number, checked in every build, REFUSED ----
+// The forged length cannot come from this writer any more, so it is planted
+// into the lawful record the writer produced.
+{
+  const forged = new Uint8Array(lawful);
+  new DataView(forged.buffer).setInt32(body + 14, 20, true);
+  const back = [new PaddedRow()];
+  back[0].labelLength = 7; back[0].id = 1; back[0].label.fill(POISON);
+  const report = new TableFixedReport();
+  const n = PaddedRowFixedLoad(back, 1, forged, forged.length, PaddedRowFixedNewPlan(), report);
+  assert(n === -1 && report.refused === TableFixedRefusal.LengthOverBound && !report.damaged,
+    `the read side refuses a wire length of 20 against string(15) length_over_bound, never a clamp (n=${n}, refused=${TableFixedRefusalName(report.refused)})`);
+  assert(report.oor === 0 && report.widened === 0, "the read-side refusal counts nothing");
+  const fresh = new PaddedRow();
+  InitPaddedRow(fresh);
+  assert(back[0].labelLength === fresh.labelLength && back[0].id === fresh.id &&
+    back[0].label.every((b, i) => b === fresh.label[i]),
+    "the refused read hands the row back at its declared defaults (ruling R4)");
+}
 
 console.log(failures === 0 ? "GREEN" : "RED");
 process.exit(failures > 0 ? 1 : 0);

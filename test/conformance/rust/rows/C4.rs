@@ -114,9 +114,12 @@ fn c4_lawful_text_reads_clean() {
         "lawful text: no refusal, no damage: {report:?}"
     );
     checkf!(
-        report.oor == 0
+        // strict-only-read (docs/rulings.json): `oor` and `mismatch` are retired
+        // counters; the out-of-range mark the load refuses on is `held`, and a
+        // kind mismatch would refuse KindMismatch, never count
+        report.held == 0
             && report.unknown == 0
-            && report.mismatch == 0
+            && report.reason != TableFixedReason::KindMismatch
             && report.widened == 0,
         "lawful text: no counter moved: {report:?}"
     );
@@ -161,9 +164,12 @@ fn c4_ill_formed_used_bytes_refuse_by_name() {
         "ill-formed used bytes: a refusal is not `malformed`, the flag stays down: {report:?}"
     );
     checkf!(
-        report.oor == 0
+        // strict-only-read (docs/rulings.json): `oor` and `mismatch` are retired
+        // counters; the out-of-range mark the load refuses on is `held`, and a
+        // kind mismatch would refuse KindMismatch, never count
+        report.held == 0
             && report.unknown == 0
-            && report.mismatch == 0
+            && report.reason != TableFixedReason::KindMismatch
             && report.widened == 0,
         "ill-formed used bytes: no counter moves on a refusal: {report:?}"
     );
@@ -191,7 +197,7 @@ fn c4_zero_byte_in_used_bytes_refuses_under_the_same_name() {
         report.reason.name()
     );
     checkf!(
-        n.is_none() && !report.damaged && report.oor == 0,
+        n.is_none() && !report.damaged && report.held == 0,
         "zero among used bytes: nothing decoded, no flag, no counter: {report:?}"
     );
     let failures = FAILURES.load(Ordering::Relaxed);
@@ -201,25 +207,45 @@ fn c4_zero_byte_in_used_bytes_refuses_under_the_same_name() {
 // THE FLIP SIDE, THE SAME ROW'S OWN WORDS: the content rules apply to the
 // USED units and NOTHING ELSE — UTF-8 validity over `v` bytes, never over
 // `N`. Ill-formed bytes in the SLACK (past the used length, inside the
-// declared bound) are not judged, do not refuse and move no counter.
+// declared bound) are not judged AS CONTENT: no text_ill_formed refusal.
+// THE LAW MOVED for the rest (docs/rulings.json fixed-dead-bytes-are-zero,
+// 2026-11-10; docs/FIXED-FORM-ALGORITHM.md §4.5 `text` row): those bytes are
+// DEAD, and a non-zero dead byte refuses the whole load as wire damage in the
+// CHECK pass. The old "reads on, no refusal, no damage, text lands" is now
+// "returns None, damaged, NOT text_ill_formed, nothing lands"; the control
+// below keeps the old positive half on a zero slack.
 #[test]
-fn c4_ill_formed_slack_is_not_judged() {
+fn c4_ill_formed_slack_is_not_judged_as_content() {
     FAILURES.store(0, Ordering::Relaxed);
-    println!("C4: ill-formed bytes in the slack are not judged");
+    println!("C4: ill-formed bytes in the slack are dead bytes, not content");
     let mut file = record_with_label(b"ab");
     for k in 2..8 {
         file[label_byte_at(k)] = 0xFF; // garbage in the slack, used length stays 2
     }
     let (n, values, report) = load(&file);
-    checkf!(n == Some(1), "slack garbage: the record reads on: {report:?}");
+    checkf!(n.is_none(), "slack garbage: the load refuses as dead-byte damage: {report:?}");
     checkf!(
-        !report.refused && !report.damaged,
-        "slack garbage: no refusal, no damage: {report:?}"
+        report.damaged && report.reason != TableFixedReason::TextIllFormed,
+        "slack garbage: wire damage, and NOT a content (text_ill_formed) refusal: {report:?}"
     );
     checkf!(
-        report.oor == 0
+        values[0].label_length == FxRootRow::default().label_length,
+        "slack garbage: nothing lands"
+    );
+    // the control: the same text with zero slack reads, the used text as written
+    let (n, values, report) = load(&record_with_label(b"ab"));
+    checkf!(n == Some(1), "zero slack: the record reads on: {report:?}");
+    checkf!(
+        !report.refused && !report.damaged,
+        "zero slack: no refusal, no damage: {report:?}"
+    );
+    checkf!(
+        // strict-only-read (docs/rulings.json): `oor` and `mismatch` are retired
+        // counters; the out-of-range mark the load refuses on is `held`, and a
+        // kind mismatch would refuse KindMismatch, never count
+        report.held == 0
             && report.unknown == 0
-            && report.mismatch == 0
+            && report.reason != TableFixedReason::KindMismatch
             && report.widened == 0,
         "slack garbage: no counter moved: {report:?}"
     );

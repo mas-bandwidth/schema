@@ -39,6 +39,14 @@
 // non-zero, every other fact lawful. The reference answered that compile
 // `layout_malformed`; the law answers `layout_record_too_large`.
 //
+// THE VECTOR MOVED (measured 2026-11-24): the union's None const now reaches
+// the WRITER's tag width, as the Go reference measures it (`Size: theirTag`),
+// so the tag-grown pair above compiles and is kept as a lawful control
+// (r14_a_grown_tag_reads_the_writers_tag_and_compiles). The cell's refusal
+// now runs on the Go reference's own hostile vector (TestFixedFormRecordBound,
+// W10): a zero-size bare array in a 4-byte writer record, read by a reader
+// whose array is COUNTED, so its count word and elements reach past the record.
+//
 // RUN (from ./repo):
 //   rustc --edition 2021 --test test/conformance/rust/rows/R14.rs \
 //     -o build/rows-rust-R14 && ./build/rows-rust-R14
@@ -117,13 +125,54 @@ fn compile(
     theirs: &TableFixedBlock,
     mine: &TableFixedBlock,
 ) -> (Option<usize>, TableFixedReport) {
+    compile_counted(theirs, mine, &[])
+}
+
+/// The same compile with the reader's per-entry COUNTED flags (the generated
+/// `*_FIXED_COUNTED` lane: one byte per layout entry of MINE, 1 where the
+/// reader's array carries a live count word).
+fn compile_counted(
+    theirs: &TableFixedBlock,
+    mine: &TableFixedBlock,
+    counted: &[u8],
+) -> (Option<usize>, TableFixedReport) {
     let mut plan = [TableFixedEntry::default(); 512];
     let mut guards = [TableFixedGuard::default(); 512];
     let mut remap = [0u16; 512];
     let mut report = TableFixedReport::default();
-    let out = table_fixed_compile(theirs, mine, &[], &mut plan, &mut guards, &mut remap, &mut report);
+    let out = table_fixed_compile(theirs, mine, counted, &mut plan, &mut guards, &mut remap, &mut report);
     (out, report)
 }
+
+// THE HOSTILE VECTOR the Go reference uses for this law
+// (internal/codegen/gotable/fixedform_test.go TestFixedFormRecordBound, W10,
+// the twin of the C++ reference's record_bound_case()): the WRITER's record is
+// FOUR bytes — a u32 `keep` filling it, then an ARRAY of size ZERO at offset 4.
+// A size of zero is a valid bare array of no elements, so every §1.1 rule
+// passes; but the READER's array is COUNTED (bytes(6): a count word plus six
+// u8), and the compiler takes the head from the reader's own row, so the
+// count word and the elements land past a record that ends at four.
+fn hostile_writer() -> Vec<u8> {
+    block(&[
+        entry(1, 13, 4, 2)[..].to_owned(),
+        entry(2, 8, 4, 0)[..].to_owned(),
+        entry(3, 14, 0, 1)[..].to_owned(),
+        entry(0, 6, 1, 0)[..].to_owned(),
+    ]
+    .concat())
+}
+
+// THE READER: keep u32, then a COUNTED bytes(6) — 4 + 6 = 10 bytes.
+fn counted_reader() -> Vec<u8> {
+    block(&[
+        entry(1, 13, 14, 2)[..].to_owned(),
+        entry(2, 8, 4, 0)[..].to_owned(),
+        entry(3, 14, 10, 1)[..].to_owned(),
+        entry(0, 6, 1, 0)[..].to_owned(),
+    ]
+    .concat())
+}
+const COUNTED_READER_FLAGS: [u8; 4] = [0, 0, 1, 0];
 
 // THE POSITIVE CONTROL, IN THE SAME BINARY: the writer's layout against
 // itself compiles — two entries, no counters moved — so the cell below is the
@@ -143,7 +192,11 @@ fn r14_positive_control_same_layout_compiles() {
     assert_eq!(report.reason, TableFixedReason::None, "no refusal: {report:?}");
     assert!(!report.refused, "nothing refused: {report:?}");
     assert_eq!(report.unknown, 0, "unknown stays zero: {report:?}");
-    assert_eq!(report.mismatch, 0, "kind_mismatch stays zero: {report:?}");
+    // strict-only-read (docs/rulings.json): was `mismatch == 0`. kind_mismatch
+    // is retired as a count — a kind mismatch refuses KindMismatch — so a
+    // compile that returns un-refused is the statement that none fired.
+    assert_ne!(report.reason, TableFixedReason::KindMismatch, "no kind mismatch: {report:?}");
+    assert_eq!(report.widened, 0, "widened stays zero: {report:?}");
 }
 
 // THE BOUNDARY: an entry reaching EXACTLY to the writer's record still
@@ -166,21 +219,46 @@ fn r14_reaching_exactly_the_record_still_compiles() {
     assert!(!report.refused, "nothing refused: {report:?}");
 }
 
+// THE OLD CELL'S VECTOR, NOW LAWFUL. This row was cut when the union's None
+// const was reached at the READER's tag width, so a tag grown 1 -> 8 reached
+// 0 + 8 past a writer record of 5. The None const READS THE WRITER'S RAW TAG
+// (docs/FIXED-FORM-ALGORITHM.md §4.6; the Go reference pushes it with
+// `Size: theirTag`, internal/codegen/gotable/fixedruntime.go's compile, and
+// measures its reach as `Src + Size`, tableFixedSrcEnd), so its reach is the
+// writer's 1-byte tag — inside the record — and the tag grown to 8 is the
+// lawful §5.2 evolution it always was. The refusal half of the law moved to a
+// vector that really reaches past the writer's record, below.
+#[test]
+fn r14_a_grown_tag_reads_the_writers_tag_and_compiles() {
+    println!("R14: a tag grown to 8 reads the writer's 1-byte tag: inside the record of 5");
+    let t = theirs();
+    let m = mine(8);
+    let theirs = parse_ok(&t, "the writer's layout");
+    let mine = parse_ok(&m, "the reader's layout (tag 8)");
+    let (out, report) = compile(&theirs, &mine);
+    assert_eq!(out, Some(3), "the grown tag compiles whole: {report:?}");
+    assert!(!report.refused, "nothing refused: {report:?}");
+}
+
 // THE CELL: one entry whose reach passes the writer's declared record refuses
 // the plan WHOLE, by the law's name — never `layout_malformed` (§5.8 row 13),
 // never a partly compiled plan, and never a clamp or a count instead.
 #[test]
 fn r14_entry_past_the_writer_record_refuses_by_name() {
-    println!("R14: the None const reaches 0 + 8 against a declared record of 5");
-    let t = theirs();
-    let m = mine(8);
-    let theirs = parse_ok(&t, "the writer's layout");
-    let mine = parse_ok(&m, "the reader's layout (tag 8)");
+    println!("R14: a counted reader array lands past a writer record of 4");
+    let t = hostile_writer();
+    let m = counted_reader();
+    let theirs = parse_ok(&t, "the writer's layout (a zero-size bare array)");
+    let mine = parse_ok(&m, "the reader's layout (a counted bytes(6))");
     assert_eq!(
-        theirs.entry(0).size, 5,
-        "the writer's declared record: 5 bytes, no 65536 bound, no zero root"
+        theirs.entry(0).size, 4,
+        "the writer's declared record: 4 bytes, no 65536 bound, no zero root"
     );
-    let (out, report) = compile(&theirs, &mine);
+    // THE CONTROL: the same reader with its array NOT counted compiles — so
+    // the refusal below is the counted head's reach and not the shapes
+    let (out, report) = compile_counted(&theirs, &mine, &[0, 0, 0, 0]);
+    assert!(out.is_some() && !report.refused, "the uncounted twin compiles: {report:?}");
+    let (out, report) = compile_counted(&theirs, &mine, &COUNTED_READER_FLAGS);
     assert_eq!(out, None, "the plan is refused whole: {report:?}");
     assert!(report.refused, "a refusal, not a decode: {report:?}");
     assert_eq!(
@@ -199,9 +277,13 @@ fn r14_entry_past_the_writer_record_refuses_by_name() {
         "§5.8 row 13: the compile's failure path is NOT layout_malformed"
     );
     assert!(!report.damaged, "a refusal by name is not damage: {report:?}");
-    assert_eq!(report.oor, 0, "nothing clamped: {report:?}");
+    // strict-only-read (docs/rulings.json): was `oor == 0` and `mismatch == 0`.
+    // Both counters are retired; "nothing clamped" is "not refused
+    // out_of_range", and "refuse is total" is every counter left at zero.
+    assert_ne!(report.reason, TableFixedReason::OutOfRange, "nothing out of range: {report:?}");
     assert_eq!(report.unknown, 0, "refuse is total: {report:?}");
-    assert_eq!(report.mismatch, 0, "refuse is total: {report:?}");
+    assert_ne!(report.reason, TableFixedReason::KindMismatch, "refuse is total, no kind mismatch: {report:?}");
+    assert_eq!(report.widened, 0, "refuse is total: {report:?}");
     assert_eq!(report.layout_hash, 0, "the name carries no hash: {report:?}");
 }
 

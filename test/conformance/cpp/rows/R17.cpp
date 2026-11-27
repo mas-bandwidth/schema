@@ -1,14 +1,12 @@
 // ROW cpp/R17 — the conformance leg's guard for the roadmap cell of that id
 // (docs/roadmap.sexp, the row group "normalization: Bool and present-byte
-// normalization"; audit schema#898 item R17), the law at
-// docs/FIXED-FORM-ALGORITHM.md:949:
-//
-//     A `bool` or a present byte that is not `0` or `1` is normalised to the
-//     language's own true and **counts nothing** (bill §12.12).
-//
-// with the op that keeps it at docs/FIXED-FORM-ALGORITHM.md:337 — a bool or a
-// PRESENT FLAG "lands as `byte != 0`, normalised to the language's own true.
-// `0x02` is not a bool a reader stores verbatim (fix 2)". The cpp port's own
+// normalization"; audit schema#898 item R17). THE LAW MOVED (2026-11-03,
+// docs/FIXED-FORM-ALGORITHM.md:453 and §4.5 fix 2; docs/rulings.json
+// strict-only-read): a `bool` or a present byte of 0 or 1 lands as false or
+// true, and any other byte refuses the whole load `wire_damaged`, checked over
+// every record before any lands. The row once asserted normalisation to true
+// with no counter; it now asserts the refusal, as test/conformance/go/rows/
+// R17_test.go does. The cpp port's own
 // witness for the same law on a COMPILED plan and on a bool run is
 // test/tables/fixedform_hostile_bytes.cpp (run by `make tables-fixedform`);
 // the conformance leg's corpus carries no form-3 file at all, so this file is
@@ -17,13 +15,10 @@
 // CONFORMANCE_INCLUDES path, the root the driver's codec table itself names
 // (test/conformance/cpp/main.cpp, CODEC( "tabledemo", tabledemo, PackConfig )).
 //
-// THE PRODUCTION PATH, whole: tabledemo::PackConfigFixedLoad (the generated
-// fixed-form reader) -> TableFixedRun (the one read loop every plan walks)
-// -> TableFixedApply, case kTableFixedBool, `d[i] = (uint8_t)( s[i] != 0 )` —
-// which lands 1 and moves no counter — -> PackConfigFixedClamp (the bounds
-// pass; nothing here is out of range, so it moves nothing either). A port
-// that landed the byte verbatim, or that counted the normalise as a clamp,
-// fails this file by name.
+// THE PRODUCTION PATH: tabledemo::PackConfigFixedLoad (the generated
+// fixed-form reader), whose check pass refuses a bool or present byte that is
+// not 0 or 1 before any record lands. A port that landed the byte verbatim or
+// normalised it fails this file by name.
 //
 // THE VECTOR. No corpus data exists for this cell, so the vector is one
 // lawful PackConfig record saved through the generated writer itself, then
@@ -252,85 +247,89 @@ bool neighbours_land( const tabledemo::PackConfig & back )
     return near;
 }
 
-// the five counters of the §4 report: a normalised byte moves none of them
+// the clean read's report: no refusal, no damage, and the live §4 counters at 0.
+// strict-only-read: the retired kind_mismatch/clamped/duplicate counters are
+// gone because each now refuses the whole load, so "not refused, not damaged"
+// is their zero.
 bool counts_nothing( const tabledemo::TableReport & r )
 {
-    return r.unknown == 0 && r.kind_mismatch == 0 && r.widened == 0
-        && r.clamped == 0 && r.duplicate == 0;
+    return !r.refused && !r.damaged && r.unknown == 0 && r.widened == 0;
 }
 
-// ---- the three cases --------------------------------------------------------
+// a refused load lands nothing: the generated FixedLoad leaves every row at its
+// declared defaults (R4), so neither the wire's values nor the poison stand in
+// the header's scalars, the thresholds and the reserves around the forged byte
+bool nothing_lands( const tabledemo::PackConfig & back )
+{
+    tabledemo::PackConfig fresh;
+    tabledemo::PackConfigReset( fresh );
+    return back.version == fresh.version && back.settings.tick_rate == fresh.settings.tick_rate
+        && back.thresholds.slots[0] == fresh.thresholds.slots[0]
+        && back.thresholds.slots[2] == fresh.thresholds.slots[2]
+        && back.reserves_count == fresh.reserves_count
+        && back.ships.slots[1].gunner.reaction == fresh.ships.slots[1].gunner.reaction;
+}
 
-void bool_byte_case( uint8_t forged, const char * case_name )
+// ---- the cases --------------------------------------------------------------
+
+// THE CONTROL: the lawful bytes (1) read clean, every field lands from the wire
+void lawful_case()
+{
+    int64_t body = 0;
+    std::vector<uint8_t> file = one_lawful_pack( body, "lawful" );
+    check( file[(size_t) ship1_tracking_at( body )] == 1 && file[(size_t) ship1_present_at( body )] == 1,
+           "lawful: the bytes at the derived offsets hold the writer's own 1" );
+
+    tabledemo::PackConfig back;
+    tabledemo::TableReport r;
+    const int64_t n = load_pack( file, back, r );
+
+    check( n == 1 && counts_nothing( r ), "lawful: the record reads clean and counts nothing" );
+    check( byte_of( &back.ships.slots[1].gunner.tracking ) == 1
+               && byte_of( &back.ships.slots[1].gunner_present ) == 1,
+           "lawful: the bool and the present byte of 1 land as true (1)" );
+    check( neighbours_land( back ), "lawful: every field lands from the wire" );
+}
+
+// strict-only-read: was "the record still reads, the byte lands as 1, the
+// neighbours land, and nothing counts"; a bool or present byte other than 0 or
+// 1 now refuses the whole load wire_damaged (docs/FIXED-FORM-ALGORITHM.md:453).
+void refused_case( int64_t at, uint8_t forged, const char * case_name )
 {
     int64_t body = 0;
     std::vector<uint8_t> file = one_lawful_pack( body, case_name );
-    char what[160];
+    char what[200];
 
     std::snprintf( what, sizeof( what ),
                    "%s: the byte at the derived offset held the writer's own 1 before the forge", case_name );
-    check( file[(size_t) ship1_tracking_at( body )] == 1, what );
-    file[(size_t) ship1_tracking_at( body )] = forged;
+    check( file[(size_t) ( body + at )] == 1, what );
+    file[(size_t) ( body + at )] = forged;
 
     tabledemo::PackConfig back;
     tabledemo::TableReport r;
     const int64_t n = load_pack( file, back, r );
 
     std::snprintf( what, sizeof( what ),
-                   "%s: a bool byte of 0x%02x is a content fact, so the record still reads", case_name, (unsigned) forged );
-    check( n == 1 && !r.refused && !r.malformed, what );
+                   "%s: a byte of 0x%02x refuses the whole load wire_damaged (ALG §4.5:453)", case_name, (unsigned) forged );
+    check( n < 0 && ( r.refused || r.damaged ) && r.refuse_reason == tabledemo::wire_damaged, what );
 
-    std::snprintf( what, sizeof( what ),
-                   "%s: a bool byte of 0x%02x lands as the language's own true (1), never verbatim (ALG §4.5:949)",
-                   case_name, (unsigned) forged );
-    check( byte_of( &back.ships.slots[1].gunner.tracking ) == 1, what );
-
-    std::snprintf( what, sizeof( what ),
-                   "%s: every field beside the normalised byte lands from the wire, untouched", case_name );
-    check( neighbours_land( back ), what );
-
-    std::snprintf( what, sizeof( what ),
-                   "%s: unknown/kind_mismatch/widened/clamped/duplicate stay exactly 0 — the byte counts nothing",
-                   case_name );
-    check( counts_nothing( r ), what );
-}
-
-void present_byte_case()
-{
-    const char * case_name = "present";
-    int64_t body = 0;
-    std::vector<uint8_t> file = one_lawful_pack( body, case_name );
-
-    check( file[(size_t) ship1_present_at( body )] == 1,
-           "present: the byte at the derived offset held the writer's own 1 before the forge" );
-    file[(size_t) ship1_present_at( body )] = 0x02;
-
-    tabledemo::PackConfig back;
-    tabledemo::TableReport r;
-    const int64_t n = load_pack( file, back, r );
-
-    check( n == 1 && !r.refused && !r.malformed,
-           "present: a present byte of 0x02 is a content fact, so the record still reads" );
-    check( byte_of( &back.ships.slots[1].gunner_present ) == 1,
-           "present: an optional's present byte of 0x02 lands as the language's own true (1), never verbatim (ALG §4.5:949)" );
-    check( neighbours_land( back ),
-           "present: every field beside the normalised byte lands from the wire, untouched — payload included" );
-    check( counts_nothing( r ),
-           "present: unknown/kind_mismatch/widened/clamped/duplicate stay exactly 0 — the byte counts nothing" );
+    std::snprintf( what, sizeof( what ), "%s: a refused load lands nothing", case_name );
+    check( nothing_lands( back ), what );
 }
 
 } // namespace
 
 int main()
 {
-    bool_byte_case( 0x02, "bool-02" );
-    bool_byte_case( 0xff, "bool-ff" );
-    present_byte_case();
+    lawful_case();
+    refused_case( ship1_tracking_at( 0 ), 0x02, "bool-02" );
+    refused_case( ship1_tracking_at( 0 ), 0xff, "bool-ff" );
+    refused_case( ship1_present_at( 0 ), 0x02, "present" );
     if ( failures > 0 )
     {
-        std::printf( "cpp/R17: %d FAILED — a bool or present byte not 0/1 must normalise and count nothing\n", failures );
+        std::printf( "cpp/R17: %d FAILED — a bool or present byte not 0/1 must refuse the whole load\n", failures );
         return 1;
     }
-    std::printf( "cpp/R17: the bool and the present byte normalised to the language's own true and counted nothing\n" );
+    std::printf( "cpp/R17: a bool or present byte not 0/1 refused wire_damaged; 0 and 1 land\n" );
     return 0;
 }
