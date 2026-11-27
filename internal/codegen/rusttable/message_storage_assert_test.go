@@ -22,10 +22,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/ir"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 const messageStorageAssertSchema = `package storagerelease
@@ -130,6 +130,14 @@ func storageAssertLine(out, id string) string {
 // probe.
 func runMessageStorageAssertProbe(t *testing.T, u *ir.Unit, body string, flags []string) (string, error) {
 	t.Helper()
+	return runMessageProbeEdited(t, u, body, flags, nil)
+}
+
+// runMessageProbeEdited is runMessageStorageAssertProbe with an edit applied
+// to each generated module before it is written (nil: none), which is how a
+// negative control removes one generated check from the crate.
+func runMessageProbeEdited(t *testing.T, u *ir.Unit, body string, flags []string, edit func(name string, data []byte) []byte) (string, error) {
+	t.Helper()
 	files, err := Generate(u)
 	if err != nil {
 		t.Fatalf("generate: %v", err)
@@ -143,6 +151,9 @@ func runMessageStorageAssertProbe(t *testing.T, u *ir.Unit, body string, flags [
 			strings.HasSuffix(name, "_table.rs") || strings.HasSuffix(name, "_variable.rs")
 		if !keep {
 			continue
+		}
+		if edit != nil {
+			data = edit(name, data)
 		}
 		if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
 			t.Fatal(err)

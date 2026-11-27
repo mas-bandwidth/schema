@@ -903,6 +903,7 @@ end
 
 -- type ProbeHeader (SPEC §6.1: the wire order is the declared order)
 function _M.WriteProbeHeader(stream, v)
+  if type(v) ~= "table" then return false end
   if not stream:serializeBits({ value = 171 }, 8) then return false end -- const(171, 8) — SPEC §4.3
   if math.type(v.Version) ~= "integer" or v.Version < 0 or v.Version > 7 then return false end
   if not stream:serializeBits({ value = v.Version }, 3) then return false end -- the declared bit width
@@ -915,6 +916,7 @@ end
 
 -- type ProbeBits (SPEC §6.1: the wire order is the declared order)
 function _M.WriteProbeBits(stream, v)
+  if type(v) ~= "table" then return false end
   if math.type(v.Small) ~= "integer" or v.Small < 0 or v.Small > 511 then return false end
   if not stream:serializeBits({ value = v.Small }, 9) then return false end -- the declared bit width
   if math.type(v.Boundary) ~= "integer" or v.Boundary < 0 or v.Boundary > 8589934591 then return false end
@@ -932,6 +934,8 @@ end
 
 -- type ProbeSample (SPEC §6.1: the wire order is the declared order)
 function _M.WriteProbeSample(stream, v)
+  if type(v) ~= "table" then return false end
+  if type(v.Active) ~= "boolean" then return false end
   if not stream:serializeBool({ value = v.Active }) then return false end -- SPEC §4.3
   -- compressed-float range (SPEC §5.1 row 10)
   if
@@ -952,6 +956,7 @@ function _M.WriteProbeSample(stream, v)
   if v.Active then
     if math.type(v.Weapon) ~= "integer" or v.Weapon < 0 or v.Weapon > 15 then return false end
     if not stream:serializeBits({ value = v.Weapon }, 4) then return false end -- the enum value
+    if type(v.HasTarget) ~= "boolean" then return false end
     if not stream:serializeBool({ value = v.HasTarget }) then return false end -- SPEC §4.3
     if v.HasTarget then
       -- the declared width (SPEC §5.1 row 11)
@@ -963,6 +968,7 @@ function _M.WriteProbeSample(stream, v)
     if math.type(v.IdleTicks) ~= "integer" or v.IdleTicks < 0 or v.IdleTicks > 4294967295 then return false end
     if not stream:serializeBits({ value = v.IdleTicks }, 32) then return false end -- the storage width
   end
+  if type(v.Samples) ~= "table" then return false end
   -- the count guards the loop (SPEC §6.3)
   if math.type(v.SamplesCount) ~= "integer" or v.SamplesCount < 1 or v.SamplesCount > 8 then return false end
   if not stream:serializeBits({ value = v.SamplesCount - 1 }, 3) then return false end -- the count
@@ -976,6 +982,7 @@ end
 
 -- type ProbeRing (SPEC §6.1: the wire order is the declared order)
 function _M.WriteProbeRing(stream, v)
+  if type(v) ~= "table" then return false end
   -- the declared width (SPEC §5.1 row 11)
   if math.type(v.Radius) ~= "integer" or v.Radius < 0 or v.Radius > 65535 then return false end
   if not stream:serializeBits({ value = v.Radius }, 16) then return false end -- the storage width
@@ -984,6 +991,7 @@ end
 
 -- type ProbeSlab (SPEC §6.1: the wire order is the declared order)
 function _M.WriteProbeSlab(stream, v)
+  if type(v) ~= "table" then return false end
   if math.type(v.Width) ~= "integer" or v.Width < 0 or v.Width > 100 then return false end
   if not stream:serializeBits({ value = v.Width - 0 }, 7) then return false end -- the offset from min
   -- the declared width (SPEC §5.1 row 11)
@@ -994,6 +1002,7 @@ end
 
 -- union ProbeShape (SPEC §4.8: None = 0, then each declared arm)
 function _M.WriteProbeShape(stream, v)
+  if type(v) ~= "table" then return false end
   if math.type(v.Type) ~= "integer" or v.Type < 0 or v.Type > 2 then return false end
   if not stream:serializeBits({ value = v.Type }, 2) then return false end -- the union tag
   if v.Type == 1 then
@@ -1007,11 +1016,13 @@ end
 
 -- type ProbeCollider (SPEC §6.1: the wire order is the declared order)
 function _M.WriteProbeCollider(stream, v)
+  if type(v) ~= "table" then return false end
   -- the declared width (SPEC §5.1 row 11)
   if math.type(v.Armor) ~= "integer" or v.Armor < 0 or v.Armor > 255 then return false end
   if not stream:serializeBits({ value = v.Armor }, 8) then return false end -- the storage width
   if not _M.WriteProbeShape(stream, v.Shape) then return false end
   if not _M.WriteProbeShape(stream, v.Backup) then return false end
+  if type(v.Extras) ~= "table" then return false end
   -- the count guards the loop (SPEC §6.3)
   if math.type(v.ExtrasCount) ~= "integer" or v.ExtrasCount < 0 or v.ExtrasCount > 2 then return false end
   if not stream:serializeBits({ value = v.ExtrasCount }, 2) then return false end -- the count
@@ -1023,6 +1034,7 @@ end
 
 -- type ProbeConfig (SPEC §6.1: the wire order is the declared order)
 function _M.WriteProbeConfig(stream, v)
+  if type(v) ~= "table" then return false end
   -- the declared width (SPEC §5.1 row 11)
   if math.type(v.Retries) ~= "integer" or v.Retries < -2147483648 or v.Retries > 2147483647 then return false end
   if not stream:serializeBits({ value = v.Retries & 0xffffffff }, 32) then return false end -- the storage width
@@ -1033,6 +1045,9 @@ end
 
 -- type ProbeArray (SPEC §6.1: the wire order is the declared order)
 function _M.WriteProbeArray(stream, v)
+  if type(v) ~= "table" then return false end
+  if type(v.Samples) ~= "table" then return false end
+  if type(v.Samples) ~= "table" or #v.Samples ~= 2 then return false end -- a [N]T holds exactly N values (SPEC §5.1)
   for _i = 1, 2 do
     if not _M.WriteProbeSample(stream, v.Samples[_i]) then return false end
   end
@@ -1041,12 +1056,14 @@ function _M.WriteProbeArray(stream, v)
 end
 
 -- type Heartbeat (SPEC §6.1: the wire order is the declared order)
-function _M.WriteHeartbeat(_stream, _v)
+function _M.WriteHeartbeat(_stream, v)
+  if type(v) ~= "table" then return false end
   return true
 end
 
 -- type Test (SPEC §6.1: the wire order is the declared order)
 function _M.WriteTest(stream, v)
+  if type(v) ~= "table" then return false end
   -- the declared width (SPEC §5.1 row 11)
   if math.type(v.TestA) ~= "integer" or v.TestA < 0 or v.TestA > 65535 then return false end
   if not stream:serializeBits({ value = v.TestA }, 16) then return false end -- the storage width
@@ -1061,6 +1078,7 @@ end
 
 -- type Block (SPEC §6.1: the wire order is the declared order)
 function _M.WriteBlock(stream, v)
+  if type(v) ~= "table" then return false end
   if type(v.Data) ~= "string" or #v.Data > 2000 then return false end
   if not stream:serializeBits({ value = #v.Data }, 11) then return false end -- the length
   -- align, then the used bytes (SPEC §4.7)
@@ -1070,6 +1088,7 @@ end
 
 -- type Chat (SPEC §6.1: the wire order is the declared order)
 function _M.WriteChat(stream, v)
+  if type(v) ~= "table" then return false end
   if type(v.Text) ~= "string" or #v.Text > 256 then return false end
   if not utf8valid(v.Text) then return false end -- malformed UTF-8 (SPEC §5.1 row 8)
   if string.find(v.Text, "\0", 1, true) then return false end -- interior null (SPEC §5.1 row 8)
@@ -1081,6 +1100,7 @@ end
 
 -- type ProbeReport (SPEC §6.1: the wire order is the declared order)
 function _M.WriteProbeReport(stream, v)
+  if type(v) ~= "table" then return false end
   if not _M.WriteProbeHeader(stream, v.Header) then return false end
   if math.type(v.Flags) ~= "integer" or v.Flags < 0 or v.Flags >= 256 then return false end
   if not stream:serializeBits({ value = v.Flags }, 8) then return false end -- the flags wire width
@@ -1090,6 +1110,7 @@ end
 
 -- type TestData (SPEC §6.1: the wire order is the declared order)
 function _M.WriteTestData(stream, v)
+  if type(v) ~= "table" then return false end
   if math.type(v.A) ~= "integer" or v.A < -100 or v.A > 100 then return false end
   if not stream:serializeBits({ value = v.A - -100 }, 8) then return false end -- the offset from min
   if math.type(v.B) ~= "integer" or v.B < -100 or v.B > 100 then return false end
@@ -1102,7 +1123,9 @@ function _M.WriteTestData(stream, v)
   if not stream:serializeBits({ value = v.E }, 8) then return false end -- the declared bit width
   if math.type(v.F) ~= "integer" or v.F < 0 or v.F > 255 then return false end
   if not stream:serializeBits({ value = v.F }, 8) then return false end -- the declared bit width
+  if type(v.G) ~= "boolean" then return false end
   if not stream:serializeBool({ value = v.G }) then return false end -- SPEC §4.3
+  if type(v.Items) ~= "table" then return false end
   -- the count guards the loop (SPEC §6.3)
   if math.type(v.ItemsCount) ~= "integer" or v.ItemsCount < 0 or v.ItemsCount > 16 then return false end
   if not stream:serializeBits({ value = v.ItemsCount }, 5) then return false end -- the count
@@ -1110,6 +1133,7 @@ function _M.WriteTestData(stream, v)
     if math.type(v.Items[_i]) ~= "integer" or v.Items[_i] < 0 or v.Items[_i] > 255 then return false end
     if not stream:serializeBits({ value = v.Items[_i] - 0 }, 8) then return false end -- the offset from min
   end
+  if math.type(v.FloatValue) ~= "float" then return false end
   if not stream:serializeFloat({ value = v.FloatValue }) then return false end
   -- compressed-float range (SPEC §5.1 row 10)
   if
@@ -1122,6 +1146,7 @@ function _M.WriteTestData(stream, v)
   end
   -- the step index (SPEC §4.3)
   if not stream:serializeCompressedFloat({ value = v.CompressedFloatValue }, 0.0, 10.0, 0.01) then return false end
+  if math.type(v.DoubleValue) ~= "float" then return false end
   if not stream:serializeDouble({ value = v.DoubleValue }) then return false end
   -- the declared width (SPEC §5.1 row 11)
   if math.type(v.Int8Value) ~= "integer" or v.Int8Value < -128 or v.Int8Value > 127 then return false end
@@ -1148,6 +1173,9 @@ function _M.WriteTestData(stream, v)
   -- the offset from min
   if not stream:serializeBits64({ value = v.Int64Range - -1000000000000 }, 41) then return false end
   if not stream:serializeAlign() then return false end -- SPEC §4.3
+  if type(v.FixedBytes) ~= "table" then return false end
+  -- a [N]T holds exactly N values (SPEC §5.1)
+  if type(v.FixedBytes) ~= "table" or #v.FixedBytes ~= 17 then return false end
   for _i = 1, 17 do
     -- the declared width (SPEC §5.1 row 11)
     if math.type(v.FixedBytes[_i]) ~= "integer" or v.FixedBytes[_i] < 0 or v.FixedBytes[_i] > 255 then return false end
@@ -1164,6 +1192,7 @@ end
 
 -- type CompressedProbe (SPEC §6.1: the wire order is the declared order)
 function _M.WriteCompressedProbe(stream, v)
+  if type(v) ~= "table" then return false end
   -- compressed-float range (SPEC §5.1 row 10)
   if type(v.Boundary) ~= "number" or v.Boundary ~= v.Boundary or v.Boundary < 0.0 or v.Boundary > 10.0 then
     return false

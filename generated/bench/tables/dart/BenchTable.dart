@@ -547,7 +547,7 @@ int readTablePickupEventBits(
 }
 
 // TableEventType: union TableEvent's tag — None = 0, then each variant in declared order (SPEC §4.8)
-extension type const TableEventType(int _value) implements int {
+extension type const TableEventType(int _value) {
   static const TableEventType none = TableEventType(0);
   static const TableEventType hit = TableEventType(1);
   static const TableEventType chat = TableEventType(2);
@@ -558,7 +558,7 @@ extension type const TableEventType(int _value) implements int {
 // enumNameTableEventType: debug/log/tooling name for any TableEventType wire value —
 // out-of-set values (wire-legal up to the declared max) name as '???'
 String enumNameTableEventType(int value) {
-  switch (value) {
+  switch (TableEventType(value)) {
     case TableEventType.none:
       return 'None';
     case TableEventType.hit:
@@ -605,9 +605,9 @@ int writeTableEvent(TableEvent value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
-  assert(value.type >= 0);
-  assert(value.type <= 3);
-  v = value.type & 0x3;
+  assert((value.type as int) >= 0);
+  assert((value.type as int) <= 3);
+  v = (value.type as int) & 0x3;
   scratch |= v << scratchBits;
   scratchBits += 2;
   switch (value.type) {

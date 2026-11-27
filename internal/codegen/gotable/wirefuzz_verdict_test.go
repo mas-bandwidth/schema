@@ -28,11 +28,11 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
-	"github.com/mas-bandwidth/schema/v2/internal/goname"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/golang"
+	"github.com/mas-bandwidth/schema/v3/internal/goname"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 func goWireFuzzVerdictMakefileCheck(mk string) error {
@@ -494,7 +494,7 @@ func goWireFuzzEnsureEnv(t *testing.T, root string) {
 				return
 			}
 			gomod := fmt.Sprintf(
-				"module %s\n\ngo 1.26\n\nrequire (\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n\tgithub.com/mas-bandwidth/serialize.go/v2 v2.0.0\n)\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => %q\nreplace github.com/mas-bandwidth/schema/v2 => %q\n",
+				"module %s\n\ngo 1.26\n\nrequire (\n\tgithub.com/mas-bandwidth/schema/v3 v3.0.0\n\tgithub.com/mas-bandwidth/serialize.go/v2 v2.0.0\n)\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => %q\nreplace github.com/mas-bandwidth/schema/v3 => %q\n",
 				spec.module, serialize, root,
 			)
 			if err := os.WriteFile(filepath.Join(unitDir, "go.mod"), []byte(gomod), 0o600); err != nil {
@@ -520,7 +520,7 @@ func goWireFuzzEnsureEnv(t *testing.T, root string) {
 			return
 		}
 		var mod strings.Builder
-		mod.WriteString("module wirefuzzdriver\n\ngo 1.26\n\nrequire (\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n\tgithub.com/mas-bandwidth/serialize.go/v2 v2.0.0\n")
+		mod.WriteString("module wirefuzzdriver\n\ngo 1.26\n\nrequire (\n\tgithub.com/mas-bandwidth/schema/v3 v3.0.0\n\tgithub.com/mas-bandwidth/serialize.go/v2 v2.0.0\n")
 		for _, spec := range goWireFuzzUnits {
 			fmt.Fprintf(&mod, "\t%s v0.0.0\n", spec.module)
 		}
@@ -529,7 +529,7 @@ func goWireFuzzEnsureEnv(t *testing.T, root string) {
 			fmt.Fprintf(&mod, "replace %s => %q\n", spec.module, filepath.Join(goWireFuzzTempDir, "units", spec.dir))
 		}
 		fmt.Fprintf(&mod, "replace github.com/mas-bandwidth/serialize.go/v2 => %q\n", serialize)
-		fmt.Fprintf(&mod, "replace github.com/mas-bandwidth/schema/v2 => %q\n", root)
+		fmt.Fprintf(&mod, "replace github.com/mas-bandwidth/schema/v3 => %q\n", root)
 		if err := os.WriteFile(filepath.Join(goWireFuzzDriverDir, "go.mod"), []byte(mod.String()), 0o600); err != nil {
 			goWireFuzzSetupErr = err
 			return
@@ -731,14 +731,22 @@ func TestGoWireFuzzVerdictPipeNegativeControl(t *testing.T) {
 	// Plant 2: in the generated examples/TablesTable.go artifact, drop the
 	// empty single-record fixed-load truncation refusals so LoadoutConfigFixedLoad
 	// accepts a 0-record truncated file that the strict oracle refuses.
+	//
+	// The anchor runs on to the batch check and LoadoutConfigFixedResetImage,
+	// so it names LoadoutConfigFixedLoad alone and the plant is exactly one
+	// site. The refusal block is shared text in every fixed load the examples
+	// unit generates; anchoring on it alone tied the count to how many fixed
+	// tables tables/examples declares, and Wave 2 (#4843) took that from 4 to
+	// 10 and turned this control red on a count, not on its rule.
 	t.Run("fixed-truncated-zero-records", func(t *testing.T) {
 		t.Parallel()
+		const batchAndReset = "\n\tif n > int64(len(values)) {\n\t\treturn tableFixedRefuse(report, TableRefuseBatchTooLarge.Error())\n\t}\n\tdefBytes := LoadoutConfigFixedResetImage"
 		bin := goBuildWireFuzzPlantedDriver(
 			t,
 			"examples/TablesTable.go",
-			"if recordBytes <= 8 || rest%recordBytes != 0 || (rest == 0 && len(values) == 1) {\n\t\treport.Refuse(TableRefuseWireDamaged, \"\")\n\t\treport.Reason = TableRefuseTruncated.Error()\n\t\treturn -1\n\t}\n\tn := rest / recordBytes\n\tif n == 0 {\n\t\treport.Refuse(TableRefuseWireDamaged, \"\")\n\t\treport.Reason = TableRefuseTruncated.Error()\n\t\treturn -1\n\t}",
-			"if recordBytes <= 8 || rest%recordBytes != 0 {\n\t\treport.Refuse(TableRefuseWireDamaged, \"\")\n\t\treport.Reason = TableRefuseTruncated.Error()\n\t\treturn -1\n\t}\n\tn := rest / recordBytes",
-			4,
+			"if recordBytes <= 8 || rest%recordBytes != 0 || (rest == 0 && len(values) == 1) {\n\t\treport.Refuse(TableRefuseWireDamaged, \"\")\n\t\treport.Reason = TableRefuseTruncated.Error()\n\t\treturn -1\n\t}\n\tn := rest / recordBytes\n\tif n == 0 {\n\t\treport.Refuse(TableRefuseWireDamaged, \"\")\n\t\treport.Reason = TableRefuseTruncated.Error()\n\t\treturn -1\n\t}"+batchAndReset,
+			"if recordBytes <= 8 || rest%recordBytes != 0 {\n\t\treport.Refuse(TableRefuseWireDamaged, \"\")\n\t\treport.Reason = TableRefuseTruncated.Error()\n\t\treturn -1\n\t}\n\tn := rest / recordBytes"+batchAndReset,
+			1,
 		)
 		manifest := writeGoWireFuzzManifest(t, map[string]bool{"tabledemo": true}, map[string]bool{"loadout_full": true})
 		out, err := runGoWireFuzzVerdictPipe(t, root, goWireFuzzHarnessBin, bin, manifest, false, false, 50)

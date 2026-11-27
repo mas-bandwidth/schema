@@ -1,0 +1,203 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum words_at
+{ Zfirst, Zsecond, Zthird }
+
+enum words_count
+{ Zfirst, Zsecond, Zthird }
+
+enum write_array
+{ Zfirst, Zsecond, Zthird }
+
+enum write_base64
+{ Zfirst, Zsecond, Zthird }
+
+enum write_body
+{ Zfirst, Zsecond, Zthird }
+
+enum write_element
+{ Zfirst, Zsecond, Zthird }
+
+enum write_field
+{ Zfirst, Zsecond, Zthird }
+
+enum write_fields
+{ Zfirst, Zsecond, Zthird }
+
+enum write_keyed
+{ Zfirst, Zsecond, Zthird }
+
+enum write_map
+{ Zfirst, Zsecond, Zthird }
+
+enum write_pointer
+{ Zfirst, Zsecond, Zthird }
+
+enum write_record
+{ Zfirst, Zsecond, Zthird }
+
+enum write_ref
+{ Zfirst, Zsecond, Zthird }
+
+enum write_scalar
+{ Zfirst, Zsecond, Zthird }
+
+enum write_union
+{ Zfirst, Zsecond, Zthird }
+
+enum write_value
+{ Zfirst, Zsecond, Zthird }
+
+enum wsigned
+{ Zfirst, Zsecond, Zthird }
+
+enum wu8
+{ Zfirst, Zsecond, Zthird }
+
+enum year_of_era
+{ Zfirst, Zsecond, Zthird }
+
+enum zero_range
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    words_at Inner
+    words_count Inner
+    write_array Inner
+    write_base64 Inner
+    write_body Inner
+    write_element Inner
+    write_field Inner
+    write_fields Inner
+    write_int Inner
+    write_keyed Inner
+}
+
+table NameTypes0
+{
+    one0  words_at
+    many0 [..4]words_at
+    one1  words_count
+    many1 [..4]words_count
+    one2  write_array
+    many2 [..4]write_array
+    one3  write_base64
+    many3 [..4]write_base64
+    one4  write_body
+    many4 [..4]write_body
+    one5  write_element
+    many5 [..4]write_element
+    one6  write_field
+    many6 [..4]write_field
+    one7  write_fields
+    many7 [..4]write_fields
+    one9  write_keyed
+    many9 [..4]write_keyed
+}
+
+table NameFields0
+{
+    words_at uint32
+    words_count uint32
+    write_array uint32
+    write_base64 uint32
+    write_body uint32
+    write_element uint32
+    write_field uint32
+    write_fields uint32
+    write_int uint32
+    write_keyed uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    write_map Inner
+    write_pointer Inner
+    write_record Inner
+    write_ref Inner
+    write_scalar Inner
+    write_string Inner
+    write_union Inner
+    write_value Inner
+    wsigned Inner
+    wu8 Inner
+}
+
+table NameTypes1
+{
+    one0  write_map
+    many0 [..4]write_map
+    one1  write_pointer
+    many1 [..4]write_pointer
+    one2  write_record
+    many2 [..4]write_record
+    one3  write_ref
+    many3 [..4]write_ref
+    one4  write_scalar
+    many4 [..4]write_scalar
+    one6  write_union
+    many6 [..4]write_union
+    one7  write_value
+    many7 [..4]write_value
+    one8  wsigned
+    many8 [..4]wsigned
+    one9  wu8
+    many9 [..4]wu8
+}
+
+table NameFields1
+{
+    write_map uint32
+    write_pointer uint32
+    write_record uint32
+    write_ref uint32
+    write_scalar uint32
+    write_string uint32
+    write_union uint32
+    write_value uint32
+    wsigned uint32
+    wu8 uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    year_of_era Inner
+    zero_range Inner
+}
+
+table NameTypes2
+{
+    one0  year_of_era
+    many0 [..4]year_of_era
+    one1  zero_range
+    many1 [..4]zero_range
+}
+
+table NameFields2
+{
+    year_of_era uint32
+    zero_range uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}

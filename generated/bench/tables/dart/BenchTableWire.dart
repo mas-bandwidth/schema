@@ -7080,7 +7080,7 @@ int? _jsonIntKey(String k, TableTextReport r, int? lo, int? hi, bool unsigned) {
   return mag.toInt();
 }
 
-String tableWeaponName(int v) {
+String schema_textName_TableWeapon(int v) {
   switch (v) {
     case 0: return "None";
     case 1: return "Fists";
@@ -7102,7 +7102,7 @@ String tableWeaponName(int v) {
   return '';
 }
 
-TableWeapon tableWeaponFromName(dynamic val, TableTextReport r, [TableWeapon? def]) {
+TableWeapon schema_textFromName_TableWeapon(dynamic val, TableTextReport r, [TableWeapon? def]) {
   if (val is! String) { r.refuse('kind_mismatch'); return def ?? TableWeapon.none; }
   if (!_jsonName(val, r)) return def ?? TableWeapon.none;
   switch (val) {
@@ -7128,6 +7128,7 @@ TableWeapon tableWeaponFromName(dynamic val, TableTextReport r, [TableWeapon? de
 }
 
 void _tableDamageToJson(_JOut out, int bits, int depth) {
+  _jsonDepth(depth);
   if (bits == 0) { out.raw('[]'); return; }
   out.raw('[');
   var first = true;
@@ -7165,6 +7166,7 @@ int _tableDamageFromJson(dynamic val, TableTextReport r, [int def = 0]) {
 }
 
 void _tableEventToJson(_JOut out, TableEvent v, int depth, _Share sh) {
+  _jsonDepth(depth);
   switch (v.armTag) {
     case 0:
       out.raw('{}');
@@ -7401,7 +7403,7 @@ void tableEntityToJsonBody(_JOut out, TableEntity v, int depth, _Share sh, [int?
   out.line(depth + 1);
   out.raw(_jsonString("weapon"));
   out.raw(': ');
-  out.raw(_jsonEnum(v.weapon, tableWeaponName, 'TableEntity.weapon'));
+  out.raw(_jsonEnum(v.weapon, schema_textName_TableWeapon, 'TableEntity.weapon'));
   if (comma) out.raw(',');
   comma = true;
   out.line(depth + 1);
@@ -7480,7 +7482,7 @@ void tableEntityFromJsonFields(TableEntity v, dynamic obj, TableTextReport r, _S
         break;
       case "weapon":
         if (!seen.add(key)) r.refuse('text_damaged');
-        v.weapon = tableWeaponFromName(val, r, v.weapon);
+        v.weapon = schema_textFromName_TableWeapon(val, r, v.weapon);
         break;
       case "damage":
         if (!seen.add(key)) r.refuse('text_damaged');
@@ -7871,6 +7873,7 @@ void tableMixedToJsonBody(_JOut out, TableMixed v, int depth, _Share sh, [int? l
   out.line(depth + 1);
   out.raw(_jsonString("entities"));
   out.raw(': ');
+  _jsonDepth(depth + 1);
   if (v.entities.isEmpty) {
     out.raw('[]');
   } else {
@@ -7891,6 +7894,7 @@ void tableMixedToJsonBody(_JOut out, TableMixed v, int depth, _Share sh, [int? l
   out.line(depth + 1);
   out.raw(_jsonString("stats"));
   out.raw(': ');
+  _jsonDepth(depth + 1);
   if (v.stats.isEmpty) {
     out.raw('[]');
   } else {
@@ -7917,6 +7921,7 @@ void tableMixedToJsonBody(_JOut out, TableMixed v, int depth, _Share sh, [int? l
   out.raw(_jsonString("loadout"));
   out.raw(': ');
   if (v.loadout.length != 4) throw StateError('count_over_bound: TableMixed.loadout');
+  _jsonDepth(depth + 1);
   if (v.loadout.isEmpty) {
     out.raw('[]');
   } else {

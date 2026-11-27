@@ -44,15 +44,15 @@ static void check(int ok, const char *what)
 
 int main(void)
 {
-    SimState original, loaded;
-    TableReport report;
+    scalardemo_sim_state_t original, loaded;
+    scalardemo_table_report_t report;
     uint8_t buffer[4096];
     int64_t n;
 
     /* Build a SimState with VALID (non-default, non-boundary) signed fixed-point
        values. Each value is the raw fixed-point encoding: value * 2^F. */
 
-    sim_state_reset(&original);
+    scalardemo_sim_state_reset(&original);
 
     /* tilt: fixed(4,4), Q4.4. Raw value 3.5 = 3.5 * 16 = 56.
        Within range [-128, 112] (i.e. -8.0 to 7.0). */
@@ -91,20 +91,22 @@ int main(void)
     original.pose.y = 6569984;   /* 100.25 in Q48.16 */
 
     /* ---- SAVE ---- */
-    n = sim_state_measure(&original);
+    n = scalardemo_sim_state_measure(&original);
     check(n > 0, "c/SignedFixedPointValidData: measure returns positive size");
     if (n <= 0 || n > (int64_t)sizeof(buffer)) { return 1; }
 
-    n = sim_state_save(&original, buffer, n);
+    n = scalardemo_sim_state_save(&original, buffer, n);
     check(n > 0, "c/SignedFixedPointValidData: save succeeds");
     if (n <= 0) { return 1; }
 
     /* ---- LOAD ---- */
     memset(&loaded, 0, sizeof(loaded));
     memset(&report, 0, sizeof(report));
-    check(sim_state_load(&loaded, buffer, n, &report) == 1,
+    check(scalardemo_sim_state_load(&loaded, buffer, n, &report) == 1,
           "c/SignedFixedPointValidData: load succeeds with valid data");
-    check(!report.refused && report.refused == 0,
+    /* "no malformed": malformed is the damage reason under the strict read
+       (strict-only-read), so a clean load is refused == 0 AND refuse_reason OK. */
+    check(!report.refused && report.refuse_reason == SCHEMA_SCALARDEMO_TABLE_REFUSE_OK,
           "c/SignedFixedPointValidData: no malformed or refused on valid data");
 
     /* ---- VERIFY every signed fixed-point field round-trips ---- */

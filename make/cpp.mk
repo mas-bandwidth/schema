@@ -340,16 +340,18 @@ tables-cpp-release-flags-negative-control:
 #       (CLANG_FORMAT_PIN in make/c.mk); a different major fails by name.
 #   (b) WARNINGS: clang++ -Weverything, every generated header compiled as the
 #       one-line translation unit a consumer writes, every .cpp as it is, the
-#       runtime -isystem. The ONE thing dropped is the c++98-compat family
-#       (-Wno-c++98-compat -Wno-c++98-compat-pedantic): the emitted code is
-#       C++17 by design, so "not valid C++98" is not a finding. No pragma and no
-#       other flag is silenced; a warning is fixed at the emitter that wrote it.
+#       runtime -isystem. Dropped by kind, each with its reason in
+#       make/checks/cpp-clean-warnings.sh: the c++98-compat family (the code is
+#       C++17 by design), clang's opt-in unsafe-buffer-usage model, and padded
+#       (a struct's padding is its ABI's layout; explicit pad members would
+#       hard-code one ABI, #424). No pragma and no other flag is silenced; a
+#       warning is fixed at the emitter that wrote it.
 #
 # Both ride a SHRINK-ONLY RATCHET (make/cpp-format-allow.txt, one path a line;
 # make/cpp-warn-allow.txt, one path and its warning kinds a line): the table
 # emitter's output is not clean yet. A new finding not on the list fails; a
 # listed one that no longer occurs fails until its line is deleted. The packet
-# emitter's files carry on the warning list only the three kinds that cannot
+# emitter's files carry on the warning list only the two kinds that cannot
 # be cleared without altering the packet wire (see the list's own header) and
 # are on the format list never. Where the tool is absent the gate SKIPS, except
 # under SCHEMA_REQUIRE_CLANG_FORMAT=1 / SCHEMA_REQUIRE_CLANGXX=1 (CI sets both):

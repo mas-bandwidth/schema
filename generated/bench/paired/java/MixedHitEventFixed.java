@@ -53,6 +53,7 @@ public final class MixedHitEventFixed {
      * byte-width stores at constant offsets and nothing else.
      */
     public static void writeBody(byte[] b, int at, Value v) {
+        assert v != null : "a null record is written";
         assert checkWrite(v);
         TableFixed.put32(b, at + 0, v.targetId);
         TableFixed.put32(b, at + 4, v.damage);

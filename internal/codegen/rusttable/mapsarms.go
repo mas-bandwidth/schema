@@ -11,7 +11,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 func unionOf(f *ir.Field) *ir.Union {
@@ -1218,6 +1218,7 @@ func (g *gen) emitElementReadWithKind(b *strings.Builder, f *ir.Field, field, bo
 // emitKeyedTextWrite writes an enum-keyed array as a JSON object keyed by
 // variant name (docs/SPEC-TABLES.md §2.4, §16.2).
 func (g *gen) emitKeyedTextWrite(b *strings.Builder, f *ir.Field, x, d, ind string) {
+	emitTextContainerCap(b, d, ind)
 	if f.KeyEnumRef == nil || len(f.KeyEnumRef.Variants) == 0 {
 		fmt.Fprintf(b, "%sw.out.push_str(\"{}\");\n", ind)
 		return
@@ -1417,6 +1418,7 @@ func (g *gen) emitUnionText(b *strings.Builder, names []string) {
 func (g *gen) emitMapTextWrite(b *strings.Builder, f *ir.Field, x, d, ind string) {
 	key := ir.RustSnake(ir.MapKeyFieldName)
 	val := ir.MapValueField(f)
+	emitTextContainerCap(b, d, ind)
 	fmt.Fprintf(b, "%sif %s.is_empty() {\n", ind, x)
 	fmt.Fprintf(b, "%s    w.out.push_str(\"{}\");\n", ind)
 	fmt.Fprintf(b, "%s} else {\n", ind)

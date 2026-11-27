@@ -10,9 +10,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/provesran"
+	"github.com/mas-bandwidth/schema/v3/internal/provesran"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/testinputs"
 )
 
 // Run the real probe recipe and compiler in a small isolated repository. A
@@ -192,6 +193,7 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 	if err := os.Chtimes(bin, newer, newer); err != nil {
 		t.Fatal(err)
 	}
+	testinputs.Make(t)
 	cmd := exec.Command("make", "--no-print-directory", "tables-ports-refuse-wide-scalars")
 	cmd.Dir = fixture
 	outBytes, err := cmd.CombinedOutput()

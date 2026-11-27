@@ -68,10 +68,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/ccommon"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/cfmt"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/genheader"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/ccommon"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/cfmt"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/genheader"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // table-wire kinds (docs/SPEC-TABLES.md §3), named locally over the one
@@ -441,7 +441,7 @@ typedef struct TableReport
        path. */
     uint64_t build_version_remote, build_version_own;
     /* THE FILE'S LAYOUT HASH, on the two BACKWARD-READ refusals
-       (docs/FIXED-FORM-ALGORITHM.md §5.3, bill §12.4): layout_newer carries the
+       (docs/FIXED-FORM-ALGORITHM.md §5.3, bill §12.4): layout_unknown carries the
        hash AND NOTHING ELSE, and layout_unsupported carries it too — the
        operator's other answer, a layout this build served and has retired
        (§5.9 #7). Zero on every other path, refusal or read. */

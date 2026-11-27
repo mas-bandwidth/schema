@@ -367,7 +367,7 @@ func TestPinTargetBoundary(t *testing.T) {
 	base := "github.com/mas-bandwidth/schema"
 	v2mod, v3mod := base+"/v"+"2", base+"/v"+"3"
 
-	// No boundary (today: go.mod still names /v2): every v3 tag is refused,
+	// No boundary (as before the move to /v3): every v3 tag is refused,
 	// v3.0.3 and v3.0.4 included, and the refusal says why and where to go.
 	for _, v := range []string{"v3.0.0", "v3.0.2", "v3.0.3", "v3.0.4", "v3.5.0", "v3.1.0-rc.1"} {
 		path, err := pinTarget(v, "", v2mod)
@@ -389,7 +389,7 @@ func TestPinTargetBoundary(t *testing.T) {
 		}
 	}
 
-	// Once #4445 sets the boundary: tags from it on are accepted under /v3,
+	// Once the boundary is set: tags from it on are accepted under /v3,
 	// tags below it are still refused.
 	for v, want := range map[string]string{
 		"v3.1.0": v3mod,
@@ -410,7 +410,7 @@ func TestPinTargetBoundary(t *testing.T) {
 		}
 	}
 
-	// The window after #4445 lands and before the first /v3 tag: /v3
+	// The window after the move lands and before the first /v3 tag: /v3
 	// commits are accepted, boundary set or not, and never count as below it.
 	for _, boundary := range []string{"", "v3.1.0"} {
 		for v, want := range map[string]string{

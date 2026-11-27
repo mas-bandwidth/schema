@@ -8,12 +8,21 @@
 //   | widen, widenf | widened | once per entry per record; a folded element run
 //   |                |         | is ONE and an unfolded one is min(their_n, my_n),
 //   |                |         | and a widened run is never folded (§5.9 #33) |
-//   | count, text | clamped | once per entry per record, when the length or count
-//   |             |         | was out of range |
-//   | the bounds pass | clamped | a FORGED ordinal remapped to None, on the
-//   |                 |         | COMPILED plan exactly as on the identity one |
+//   | count, text | (refusal) | a count or length past the PLAN's bound refuses
+//   |             |           | the whole load count_over_bound / length_over_bound |
+//   | the bounds pass | (refusal) | a FORGED ordinal refuses the whole load
+//   |                 |           | out_of_range, on the COMPILED plan exactly as on
+//   |                 |           | the identity one |
 //   | copy, const, present, ordinal | none | the op lands its value and moves
 //   |                               | nothing; the remap is the BOUNDS PASS's |
+//
+// THE `clamped` ROWS ARE RETIRED (docs/rulings.json strict-only-read;
+// docs/plans/strict-only.md decisions 1-2; docs/FIXED-FORM-ALGORITHM.md :449,
+// :1053, :1215-:1218): no read clamps. The row once asserted "clamped == 2
+// once per entry per record" for a count, "== 1" for a text length and "== 1
+// on both plans" for a forged ordinal; each is now the whole load refused by
+// name, with every value at its declared defaults (R4). A per-record count has
+// no equivalent once one record refuses the batch.
 //
 // THE ROW IS THE ONLY FILE THIS CARD TOUCHES. It is standalone and is not wired
 // into the leg's runner (wiring rows/ into a leg's runner is its own card), so
@@ -130,9 +139,11 @@ static void unknown_census_once_per_peer( void )
     check( n == 3, "unknown_census: the NEW reader returned all three records" );
     check( r.unknown == 1,
            "unknown is once per PEER at COMPILE (== 1, never 3 per record, never 12 per element)" );
-    check( r.kind_mismatch == 0 && r.widened == 0 && r.clamped == 0 && r.duplicate == 0,
+    // strict-only-read: a kind mismatch, an out-of-range value and a repeat now refuse the
+    // whole load (no counter), so the retired zero counts read as not refused, not damaged.
+    check( !r.refused && !r.damaged && r.widened == 0,
            "unknown_census: no other counter moved on the counted peer" );
-    check( !r.refused && !r.malformed, "unknown_census: a counted read is not a refusal" );
+    check( !r.refused && !r.damaged, "unknown_census: a counted read is not a refusal" );
 
     bool landed = true;
     for ( int rec = 0; rec < 3 && landed; ++rec )
@@ -164,7 +175,9 @@ static void widened_scalar_per_record( void )
     check( n == 3, "int_widen: the NEW reader returned all three records" );
     check( r.widened == 3,
            "widened is once per ENTRY per RECORD (== 3 for three widened scalars, not 1)" );
-    check( r.unknown == 0 && r.kind_mismatch == 0 && r.clamped == 0,
+    // strict-only-read: a kind mismatch, an out-of-range value and a repeat now refuse the
+    // whole load (no counter), so the retired zero counts read as not refused, not damaged.
+    check( !r.refused && !r.damaged && r.unknown == 0,
            "int_widen: only widened moved" );
     check( back[0].v == -1 && back[1].v == -32768 && back[2].v == 32767,
            "int_widen: the sign-extended values landed exactly" );
@@ -190,7 +203,9 @@ static void widened_element_run_is_min( void )
     check( n == 1, "array_elem_widen: the NEW reader returned the record" );
     check( r.widened == 4,
            "a widened element run is UNFOLDED: widened == min(their_n, my_n) == 4 (a fold would read 1)" );
-    check( r.unknown == 0 && r.kind_mismatch == 0 && r.clamped == 0,
+    // strict-only-read: a kind mismatch, an out-of-range value and a repeat now refuse the
+    // whole load (no counter), so the retired zero counts read as not refused, not damaged.
+    check( !r.refused && !r.damaged && r.unknown == 0,
            "array_elem_widen: only widened moved" );
     check( back[0].lead == 0xAAAAAAAAu && back[0].trail == 0xBBBBBBBBu && back[0].vals_count == 4,
            "array_elem_widen: the count and the brackets did not move" );
@@ -216,7 +231,9 @@ static void widened_enum_ordinal_width( void )
     check( r.widened == 1, "a grown enum ordinal width counts widened once (== 1)" );
     check( (int) back[0].tier == 255 && back[0].seq == 12,
            "enum_width: the widened ordinal and the scalar behind it landed exactly" );
-    check( r.unknown == 0 && r.kind_mismatch == 0 && r.clamped == 0,
+    // strict-only-read: a kind mismatch, an out-of-range value and a repeat now refuse the
+    // whole load (no counter), so the retired zero counts read as not refused, not damaged.
+    check( !r.refused && !r.damaged && r.unknown == 0,
            "enum_width: only widened moved" );
 }
 
@@ -250,14 +267,18 @@ static void clamped_count_per_record( void )
     static vnew_array_bounded_grow::TableFixedEntry plan[4096];
     int64_t n = vnew_array_bounded_grow::ArrayBoundedGrowFixedLoad( back, 2, buf, len, plan, 4096, NULL, &r );
 
-    check( n == 2, "array_bounded_grow: the NEW reader returned both records" );
-    check( back[0].vals_count == 4 && back[1].vals_count == 4,
-           "array_bounded_grow: the count clamps to the WRITER's 4, never the reader's 8 nor the forged 7" );
-    check( r.clamped == 2, "clamped is once per ENTRY per RECORD (== 2 for two records, not 1)" );
-    check( r.unknown == 0 && r.kind_mismatch == 0 && r.widened == 0,
-           "array_bounded_grow: only clamped moved" );
-    check( back[0].lead == 0xAAAAAAAAu && back[0].trail == 0xBBBBBBBBu,
-           "array_bounded_grow: the brackets did not move" );
+    // strict-only-read: was "n == 2, the count clamps to the WRITER's 4,
+    // clamped == 2, the brackets land"; a count past the PLAN's bound (the
+    // writer's 4 on this compiled plan, never the reader's 8) now refuses the
+    // whole load count_over_bound before any destination byte is written.
+    check( n == -1 && r.refused && !r.damaged && r.reason == vnew_array_bounded_grow::count_over_bound,
+           "array_bounded_grow: a count past the WRITER's 4 (inside the reader's 8) refuses count_over_bound" );
+    vnew_array_bounded_grow::ArrayBoundedGrow fresh;
+    vnew_array_bounded_grow::ArrayBoundedGrowReset( fresh );
+    check( back[0].vals_count == fresh.vals_count && back[1].vals_count == fresh.vals_count
+               && back[0].lead == fresh.lead && back[1].trail == fresh.trail,
+           "array_bounded_grow: the refused load lands nothing — both records at their declared defaults (R4)" );
+    check( r.unknown == 0 && r.widened == 0, "array_bounded_grow: no counter moved" );
 }
 
 static void clamped_text_length( void )
@@ -284,12 +305,16 @@ static void clamped_text_length( void )
     static vnew_string_grow::TableFixedEntry plan[4096];
     int64_t n = vnew_string_grow::StringGrowFixedLoad( back, 1, buf, len, plan, 4096, NULL, &r );
 
-    check( n == 1, "string_grow: the NEW reader returned the record" );
-    check( back[0].text_length == 8 && std::strcmp( back[0].text, "abcdefgh" ) == 0,
-           "string_grow: the text length clamps to the WRITER's 8 and the bytes land" );
-    check( r.clamped == 1, "text clamps once per entry per record (== 1, not >= 1)" );
-    check( r.unknown == 0 && r.kind_mismatch == 0 && r.widened == 0,
-           "string_grow: only clamped moved" );
+    // strict-only-read: was "n == 1, the length clamps to the WRITER's 8 and
+    // the bytes land, clamped == 1"; a length past the PLAN's bound now refuses
+    // the whole load length_over_bound.
+    check( n == -1 && r.refused && !r.damaged && r.reason == vnew_string_grow::length_over_bound,
+           "string_grow: a length past the WRITER's 8 (inside the reader's 16) refuses length_over_bound" );
+    vnew_string_grow::StringGrow fresh;
+    vnew_string_grow::StringGrowReset( fresh );
+    check( back[0].text_length == fresh.text_length && back[0].lead == fresh.lead,
+           "string_grow: the refused load lands nothing (declared defaults, R4)" );
+    check( r.unknown == 0 && r.widened == 0, "string_grow: no counter moved" );
 }
 
 // ---- the forged ordinal: the bounds pass, on BOTH plans ---------------------
@@ -316,13 +341,14 @@ static void forged_ordinal_both_plans( void )
         vnew_enum_append::TableReport r{};
         static vnew_enum_append::TableFixedEntry plan[4096];
         int64_t n = vnew_enum_append::LineageFixedLoad( back, 1, buf, len, plan, 4096, NULL, &r );
-        check( n == 1, "forged ordinal, compiled plan: the record read" );
-        check( back[0].tier == vnew_enum_append::Tier::None,
-               "forged ordinal, compiled plan: one past the WRITER's top lands None" );
-        check( back[0].seq == 9, "forged ordinal, compiled plan: the scalar behind it landed" );
-        check( r.clamped == 1, "forged ordinal, compiled plan: clamped == 1 (the bounds pass, not the op too)" );
-        check( r.unknown == 0 && r.kind_mismatch == 0 && r.widened == 0 && r.duplicate == 0,
-               "forged ordinal, compiled plan: only clamped moved" );
+        // strict-only-read: was "n == 1, tier None, seq landed, clamped == 1"
+        check( n == -1 && r.refused && !r.damaged && r.refuse_reason == vnew_enum_append::out_of_range,
+               "forged ordinal, compiled plan: one past the WRITER's top refuses out_of_range" );
+        vnew_enum_append::Lineage fresh;
+        vnew_enum_append::LineageReset( fresh );
+        check( back[0].tier == fresh.tier && back[0].seq == fresh.seq,
+               "forged ordinal, compiled plan: the refused load lands nothing (declared defaults)" );
+        check( r.unknown == 0 && r.widened == 0, "forged ordinal, compiled plan: no counter moved" );
     }
 
     // THE IDENTITY PLAN: the OLD build reads its own forged file on its own
@@ -332,13 +358,14 @@ static void forged_ordinal_both_plans( void )
         vold_enum_append::TableReport r{};
         static vold_enum_append::TableFixedEntry plan[4096];
         int64_t n = vold_enum_append::LineageFixedLoad( back, 1, buf, len, plan, 4096, NULL, &r );
-        check( n == 1, "forged ordinal, identity plan: the record read" );
-        check( back[0].tier == vold_enum_append::Tier::None,
-               "forged ordinal, identity plan: one past the WRITER's top lands None" );
-        check( back[0].seq == 9, "forged ordinal, identity plan: the scalar behind it landed" );
-        check( r.clamped == 1, "forged ordinal, identity plan: clamped == 1 on the SAME forged bytes" );
-        check( r.unknown == 0 && r.kind_mismatch == 0 && r.widened == 0 && r.duplicate == 0,
-               "forged ordinal, identity plan: only clamped moved" );
+        // strict-only-read: was "n == 1, tier None, seq landed, clamped == 1"
+        check( n == -1 && r.refused && !r.damaged && r.refuse_reason == vold_enum_append::out_of_range,
+               "forged ordinal, identity plan: the SAME forged bytes refuse out_of_range" );
+        vold_enum_append::Lineage fresh;
+        vold_enum_append::LineageReset( fresh );
+        check( back[0].tier == fresh.tier && back[0].seq == fresh.seq,
+               "forged ordinal, identity plan: the refused load lands nothing (declared defaults)" );
+        check( r.unknown == 0 && r.widened == 0, "forged ordinal, identity plan: no counter moved" );
     }
 }
 
@@ -359,7 +386,9 @@ static void clean_append_moves_nothing( void )
         int64_t n = vnew_field_append::LineageFixedLoad( back, 1, buf, len, plan, 4096, NULL, &r );
         check( n == 1 && back[0].x == 11 && back[0].y == 22 && back[0].z == 33,
                "field_append: an appended field is not an event — the old values landed" );
-        check( r.unknown == 0 && r.kind_mismatch == 0 && r.widened == 0 && r.clamped == 0 && r.duplicate == 0,
+        // strict-only-read: a kind mismatch, an out-of-range value and a repeat now refuse the
+        // whole load (no counter), so the retired zero counts read as not refused, not damaged.
+        check( !r.refused && !r.damaged && r.unknown == 0 && r.widened == 0,
                "field_append: the COPY op moved every counter not at all" );
     }
 
@@ -375,7 +404,9 @@ static void clean_append_moves_nothing( void )
         int64_t n = vnew_enum_append::LineageFixedLoad( back, 1, buf, len, plan, 4096, NULL, &r );
         check( n == 1 && back[0].tier == vnew_enum_append::Tier::Gold && back[0].seq == 9,
                "enum_append clean: the appended variant is not an event — Gold landed" );
-        check( r.unknown == 0 && r.kind_mismatch == 0 && r.widened == 0 && r.clamped == 0 && r.duplicate == 0,
+        // strict-only-read: a kind mismatch, an out-of-range value and a repeat now refuse the
+        // whole load (no counter), so the retired zero counts read as not refused, not damaged.
+        check( !r.refused && !r.damaged && r.unknown == 0 && r.widened == 0,
                "enum_append clean: the ORDINAL op moved every counter not at all" );
     }
 
@@ -395,7 +426,9 @@ static void clean_append_moves_nothing( void )
         check( n == 1 && back[0].pick.type == vnew_union_append::PickType::Alpha &&
                back[0].pick.alpha.m == 7 && back[0].seq == 5,
                "union_append: an appended arm is not an event — the tag and payload landed" );
-        check( r.unknown == 0 && r.kind_mismatch == 0 && r.widened == 0 && r.clamped == 0 && r.duplicate == 0,
+        // strict-only-read: a kind mismatch, an out-of-range value and a repeat now refuse the
+        // whole load (no counter), so the retired zero counts read as not refused, not damaged.
+        check( !r.refused && !r.damaged && r.unknown == 0 && r.widened == 0,
                "union_append: the CONST op moved every counter not at all" );
     }
 
@@ -411,7 +444,9 @@ static void clean_append_moves_nothing( void )
         int64_t n = vnew_optional_add::OptionalAddFixedLoad( back, 1, buf, len, plan, 4096, NULL, &r );
         check( n == 1 && back[0].link_present && back[0].link.value == 42,
                "optional_add: T into ?T lands present, and the value with it" );
-        check( r.unknown == 0 && r.kind_mismatch == 0 && r.widened == 0 && r.clamped == 0 && r.duplicate == 0,
+        // strict-only-read: a kind mismatch, an out-of-range value and a repeat now refuse the
+        // whole load (no counter), so the retired zero counts read as not refused, not damaged.
+        check( !r.refused && !r.damaged && r.unknown == 0 && r.widened == 0,
                "optional_add: the PRESENT op moved every counter not at all" );
     }
 
@@ -426,7 +461,9 @@ static void clean_append_moves_nothing( void )
         static vnew_flags_append::TableFixedEntry plan[4096];
         int64_t n = vnew_flags_append::LineageFixedLoad( back, 1, buf, len, plan, 4096, NULL, &r );
         check( n == 1, "flags_append: the appended flag is not an event — the record read" );
-        check( r.unknown == 0 && r.kind_mismatch == 0 && r.widened == 0 && r.clamped == 0 && r.duplicate == 0,
+        // strict-only-read: a kind mismatch, an out-of-range value and a repeat now refuse the
+        // whole load (no counter), so the retired zero counts read as not refused, not damaged.
+        check( !r.refused && !r.damaged && r.unknown == 0 && r.widened == 0,
                "flags_append: every counter stayed at zero" );
     }
 }

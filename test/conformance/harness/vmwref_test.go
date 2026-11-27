@@ -7,7 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/testinputs"
 )
 
 // vmWrefRows are the write-refusal rows a VM driver's own setter used to get
@@ -45,6 +46,7 @@ func TestVMDriversSetWriteRefusalValuesExactly(t *testing.T) {
 	}
 	for _, leg := range []string{"lua", "luau", "moo"} {
 		t.Run(leg, func(t *testing.T) {
+			testinputs.Build(t, "test/conformance/"+leg)
 			build := exec.Command("make", "build/conformance-"+leg)
 			build.Dir = root
 			if out, err := build.CombinedOutput(); err != nil {

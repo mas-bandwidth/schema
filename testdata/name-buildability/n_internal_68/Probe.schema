@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum sl7
+{ Zfirst, Zsecond, Zthird }
+
+enum sl9
+{ Zfirst, Zsecond, Zthird }
+
+enum slot
+{ Zfirst, Zsecond, Zthird }
+
+enum slotAt
+{ Zfirst, Zsecond, Zthird }
+
+enum slotBitStart
+{ Zfirst, Zsecond, Zthird }
+
+enum slotDef
+{ Zfirst, Zsecond, Zthird }
+
+enum slotDefault
+{ Zfirst, Zsecond, Zthird }
+
+enum slotHolders
+{ Zfirst, Zsecond, Zthird }
+
+enum slotIdx
+{ Zfirst, Zsecond, Zthird }
+
+enum slotMark
+{ Zfirst, Zsecond, Zthird }
+
+enum slotN
+{ Zfirst, Zsecond, Zthird }
+
+enum slotName
+{ Zfirst, Zsecond, Zthird }
+
+enum slotOf
+{ Zfirst, Zsecond, Zthird }
+
+enum slotOff
+{ Zfirst, Zsecond, Zthird }
+
+enum slotParts
+{ Zfirst, Zsecond, Zthird }
+
+enum slotRank
+{ Zfirst, Zsecond, Zthird }
+
+enum slotSub
+{ Zfirst, Zsecond, Zthird }
+
+enum slotSubst
+{ Zfirst, Zsecond, Zthird }
+
+enum slot_arm
+{ Zfirst, Zsecond, Zthird }
+
+enum slot_bytes
+{ Zfirst, Zsecond, Zthird }
+
+enum slot_capacity
+{ Zfirst, Zsecond, Zthird }
+
+enum slot_field
+{ Zfirst, Zsecond, Zthird }
+
+enum slot_val
+{ Zfirst, Zsecond, Zthird }
+
+enum slots
+{ Zfirst, Zsecond, Zthird }
+
+enum sm
+{ Zfirst, Zsecond, Zthird }
+
+enum small
+{ Zfirst, Zsecond, Zthird }
+
+enum smallRange
+{ Zfirst, Zsecond, Zthird }
+
+enum sn
+{ Zfirst, Zsecond, Zthird }
+
+enum snake
+{ Zfirst, Zsecond, Zthird }
+
+enum snp
+{ Zfirst, Zsecond, Zthird }
+
+enum so
+{ Zfirst, Zsecond, Zthird }
+
+enum sod
+{ Zfirst, Zsecond, Zthird }
+
+enum sole
+{ Zfirst, Zsecond, Zthird }
+
+enum sortedIds
+{ Zfirst, Zsecond, Zthird }
+
+enum source
+{ Zfirst, Zsecond, Zthird }
+
+enum sourceKind
+{ Zfirst, Zsecond, Zthird }
+
+enum sourceName
+{ Zfirst, Zsecond, Zthird }
+
+enum sourceView
+{ Zfirst, Zsecond, Zthird }
+
+enum sp
+{ Zfirst, Zsecond, Zthird }
+
+enum sp0
+{ Zfirst, Zsecond, Zthird }
+
+enum space
+{ Zfirst, Zsecond, Zthird }
+
+enum spacing
+{ Zfirst, Zsecond, Zthird }
+
+enum span
+{ Zfirst, Zsecond, Zthird }
+
+enum spanned
+{ Zfirst, Zsecond, Zthird }
+
+enum spans
+{ Zfirst, Zsecond, Zthird }
+
+enum spec
+{ Zfirst, Zsecond, Zthird }
+
+enum specLength
+{ Zfirst, Zsecond, Zthird }
+
+enum spell
+{ Zfirst, Zsecond, Zthird }
+
+enum spellG
+{ Zfirst, Zsecond, Zthird }
+
+enum spelled
+{ Zfirst, Zsecond, Zthird }
+
+enum spelling
+{ Zfirst, Zsecond, Zthird }
+
+enum spellingBuf
+{ Zfirst, Zsecond, Zthird }
+
+enum spellings
+{ Zfirst, Zsecond, Zthird }
+
+enum spent
+{ Zfirst, Zsecond, Zthird }
+
+enum spill
+{ Zfirst, Zsecond, Zthird }
+
+enum splice
+{ Zfirst, Zsecond, Zthird }
+
+enum splices
+{ Zfirst, Zsecond, Zthird }
+
+enum split
+{ Zfirst, Zsecond, Zthird }
+
+enum splitOut
+{ Zfirst, Zsecond, Zthird }
+
+enum splitPath
+{ Zfirst, Zsecond, Zthird }
+
+enum split_idx
+{ Zfirst, Zsecond, Zthird }
+
+enum sr
+{ Zfirst, Zsecond, Zthird }
+
+enum src
+{ Zfirst, Zsecond, Zthird }
+
+enum srcAt
+{ Zfirst, Zsecond, Zthird }
+
+enum srcLength
+{ Zfirst, Zsecond, Zthird }
+
+enum srcOff
+{ Zfirst, Zsecond, Zthird }
+
+enum srcView
+{ Zfirst, Zsecond, Zthird }
+
+enum src_base
+{ Zfirst, Zsecond, Zthird }
+
+enum src_ref
+{ Zfirst, Zsecond, Zthird }
+
+enum src_vref
+{ Zfirst, Zsecond, Zthird }
+
+enum ss
+{ Zfirst, Zsecond, Zthird }
+
+enum st
+{ Zfirst, Zsecond, Zthird }
+
+enum stack
+{ Zfirst, Zsecond, Zthird }
+
+enum stackGrown
+{ Zfirst, Zsecond, Zthird }
+
+enum stackNext
+{ Zfirst, Zsecond, Zthird }
+
+enum stackNode
+{ Zfirst, Zsecond, Zthird }
+
+enum stackWire
+{ Zfirst, Zsecond, Zthird }
+
+enum stage
+{ Zfirst, Zsecond, Zthird }
+
+enum stale
+{ Zfirst, Zsecond, Zthird }
+
+enum stamp
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    sl7 Inner
+    sl9 Inner
+    slot Inner
+    slotAt Inner
+    slotBitStart Inner
+    slotDef Inner
+    slotDefault Inner
+    slotHolders Inner
+    slotIdx Inner
+    slotMark Inner
+}
+
+table NameTypes0
+{
+    one0  sl7
+    many0 [..4]sl7
+    one1  sl9
+    many1 [..4]sl9
+    one2  slot
+    many2 [..4]slot
+    one3  slotAt
+    many3 [..4]slotAt
+    one4  slotBitStart
+    many4 [..4]slotBitStart
+    one5  slotDef
+    many5 [..4]slotDef
+    one6  slotDefault
+    many6 [..4]slotDefault
+    one7  slotHolders
+    many7 [..4]slotHolders
+    one8  slotIdx
+    many8 [..4]slotIdx
+    one9  slotMark
+    many9 [..4]slotMark
+}
+
+table NameFields0
+{
+    sl7 uint32
+    sl9 uint32
+    slot uint32
+    slotAt uint32
+    slotBitStart uint32
+    slotDef uint32
+    slotDefault uint32
+    slotHolders uint32
+    slotIdx uint32
+    slotMark uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    slotN Inner
+    slotName Inner
+    slotOf Inner
+    slotOff Inner
+    slotParts Inner
+    slotRank Inner
+    slotSub Inner
+    slotSubst Inner
+    slot_arm Inner
+    slot_bytes Inner
+}
+
+table NameTypes1
+{
+    one0  slotN
+    many0 [..4]slotN
+    one1  slotName
+    many1 [..4]slotName
+    one2  slotOf
+    many2 [..4]slotOf
+    one3  slotOff
+    many3 [..4]slotOff
+    one4  slotParts
+    many4 [..4]slotParts
+    one5  slotRank
+    many5 [..4]slotRank
+    one6  slotSub
+    many6 [..4]slotSub
+    one7  slotSubst
+    many7 [..4]slotSubst
+    one8  slot_arm
+    many8 [..4]slot_arm
+    one9  slot_bytes
+    many9 [..4]slot_bytes
+}
+
+table NameFields1
+{
+    slotN uint32
+    slotName uint32
+    slotOf uint32
+    slotOff uint32
+    slotParts uint32
+    slotRank uint32
+    slotSub uint32
+    slotSubst uint32
+    slot_arm uint32
+    slot_bytes uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    slot_capacity Inner
+    slot_field Inner
+    slot_val Inner
+    slots Inner
+    sm Inner
+    small Inner
+    smallRange Inner
+    sn Inner
+    snake Inner
+    snp Inner
+}
+
+table NameTypes2
+{
+    one0  slot_capacity
+    many0 [..4]slot_capacity
+    one1  slot_field
+    many1 [..4]slot_field
+    one2  slot_val
+    many2 [..4]slot_val
+    one3  slots
+    many3 [..4]slots
+    one4  sm
+    many4 [..4]sm
+    one5  small
+    many5 [..4]small
+    one6  smallRange
+    many6 [..4]smallRange
+    one7  sn
+    many7 [..4]sn
+    one8  snake
+    many8 [..4]snake
+    one9  snp
+    many9 [..4]snp
+}
+
+table NameFields2
+{
+    slot_capacity uint32
+    slot_field uint32
+    slot_val uint32
+    slots uint32
+    sm uint32
+    small uint32
+    smallRange uint32
+    sn uint32
+    snake uint32
+    snp uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    so Inner
+    sod Inner
+    sole Inner
+    sortedIds Inner
+    source Inner
+    sourceKind Inner
+    sourceName Inner
+    sourceView Inner
+    sp Inner
+    sp0 Inner
+}
+
+table NameTypes3
+{
+    one0  so
+    many0 [..4]so
+    one1  sod
+    many1 [..4]sod
+    one2  sole
+    many2 [..4]sole
+    one3  sortedIds
+    many3 [..4]sortedIds
+    one4  source
+    many4 [..4]source
+    one5  sourceKind
+    many5 [..4]sourceKind
+    one6  sourceName
+    many6 [..4]sourceName
+    one7  sourceView
+    many7 [..4]sourceView
+    one8  sp
+    many8 [..4]sp
+    one9  sp0
+    many9 [..4]sp0
+}
+
+table NameFields3
+{
+    so uint32
+    sod uint32
+    sole uint32
+    sortedIds uint32
+    source uint32
+    sourceKind uint32
+    sourceName uint32
+    sourceView uint32
+    sp uint32
+    sp0 uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    space Inner
+    spacing Inner
+    span Inner
+    spanned Inner
+    spans Inner
+    spec Inner
+    specLength Inner
+    spell Inner
+    spellG Inner
+    spelled Inner
+}
+
+table NameTypes4
+{
+    one0  space
+    many0 [..4]space
+    one1  spacing
+    many1 [..4]spacing
+    one2  span
+    many2 [..4]span
+    one3  spanned
+    many3 [..4]spanned
+    one4  spans
+    many4 [..4]spans
+    one5  spec
+    many5 [..4]spec
+    one6  specLength
+    many6 [..4]specLength
+    one7  spell
+    many7 [..4]spell
+    one8  spellG
+    many8 [..4]spellG
+    one9  spelled
+    many9 [..4]spelled
+}
+
+table NameFields4
+{
+    space uint32
+    spacing uint32
+    span uint32
+    spanned uint32
+    spans uint32
+    spec uint32
+    specLength uint32
+    spell uint32
+    spellG uint32
+    spelled uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    spelling Inner
+    spellingBuf Inner
+    spellings Inner
+    spent Inner
+    spill Inner
+    splice Inner
+    splices Inner
+    split Inner
+    splitOut Inner
+    splitPath Inner
+}
+
+table NameTypes5
+{
+    one0  spelling
+    many0 [..4]spelling
+    one1  spellingBuf
+    many1 [..4]spellingBuf
+    one2  spellings
+    many2 [..4]spellings
+    one3  spent
+    many3 [..4]spent
+    one4  spill
+    many4 [..4]spill
+    one5  splice
+    many5 [..4]splice
+    one6  splices
+    many6 [..4]splices
+    one7  split
+    many7 [..4]split
+    one8  splitOut
+    many8 [..4]splitOut
+    one9  splitPath
+    many9 [..4]splitPath
+}
+
+table NameFields5
+{
+    spelling uint32
+    spellingBuf uint32
+    spellings uint32
+    spent uint32
+    spill uint32
+    splice uint32
+    splices uint32
+    split uint32
+    splitOut uint32
+    splitPath uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    split_idx Inner
+    sr Inner
+    src Inner
+    srcAt Inner
+    srcLength Inner
+    srcOff Inner
+    srcView Inner
+    src_base Inner
+    src_ref Inner
+    src_vref Inner
+}
+
+table NameTypes6
+{
+    one0  split_idx
+    many0 [..4]split_idx
+    one1  sr
+    many1 [..4]sr
+    one2  src
+    many2 [..4]src
+    one3  srcAt
+    many3 [..4]srcAt
+    one4  srcLength
+    many4 [..4]srcLength
+    one5  srcOff
+    many5 [..4]srcOff
+    one6  srcView
+    many6 [..4]srcView
+    one7  src_base
+    many7 [..4]src_base
+    one8  src_ref
+    many8 [..4]src_ref
+    one9  src_vref
+    many9 [..4]src_vref
+}
+
+table NameFields6
+{
+    split_idx uint32
+    sr uint32
+    src uint32
+    srcAt uint32
+    srcLength uint32
+    srcOff uint32
+    srcView uint32
+    src_base uint32
+    src_ref uint32
+    src_vref uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    ss Inner
+    st Inner
+    stack Inner
+    stackGrown Inner
+    stackNext Inner
+    stackNode Inner
+    stackWire Inner
+    stage Inner
+    stale Inner
+    stamp Inner
+}
+
+table NameTypes7
+{
+    one0  ss
+    many0 [..4]ss
+    one1  st
+    many1 [..4]st
+    one2  stack
+    many2 [..4]stack
+    one3  stackGrown
+    many3 [..4]stackGrown
+    one4  stackNext
+    many4 [..4]stackNext
+    one5  stackNode
+    many5 [..4]stackNode
+    one6  stackWire
+    many6 [..4]stackWire
+    one7  stage
+    many7 [..4]stage
+    one8  stale
+    many8 [..4]stale
+    one9  stamp
+    many9 [..4]stamp
+}
+
+table NameFields7
+{
+    ss uint32
+    st uint32
+    stack uint32
+    stackGrown uint32
+    stackNext uint32
+    stackNode uint32
+    stackWire uint32
+    stage uint32
+    stale uint32
+    stamp uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

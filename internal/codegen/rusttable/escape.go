@@ -3,7 +3,7 @@ package rusttable
 import (
 	"maps"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // rustEscapeTables is the Rust escape (SPEC.md §4.6, the Go escape's twin): a
