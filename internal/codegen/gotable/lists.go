@@ -64,7 +64,7 @@ func (g *tableGen) emitListRead(f *ir.Field, ind string) {
 	case tkTable:
 		g.pf("%selem,ok:=sub.Body();if !ok {%s};\n", j, stop)
 		g.retainReadPath("elem", "r", "i")
-		g.pf("if !%sLoadBody(&elem,p) {return false};\n", f.Type.Name)
+		g.pf("if !%sLoadBody"+g.rt()+"(&elem,p) {return false};\n", f.Type.Name)
 		g.emitCarveReturn("sub", "elem", j)
 		g.pf("%sif elem.Offset!=int64(len(elem.Buffer)) {%s}\n", j, stop)
 	case tkUnion:
@@ -83,7 +83,7 @@ func (g *tableGen) emitListWrite(f *ir.Field, expr, writer, ind string, framed b
 	body := g.nextWireWriter()
 	typ := containerElementType(g.unit, f)
 	kind := ir.TableWireElemKind(f)
-	g.pf("%s{\n%s mark:=%s.Ids.Count;%s:=TableWriter{Measuring:true,Ids:%s.Ids}\n", ind, ind, writer, body, writer)
+	g.pf("%s{\n%s mark:=%s.Ids.Count;%s:=Table"+g.rt()+"Writer{Measuring:true,Ids:%s.Ids}\n", ind, ind, writer, body, writer)
 	for pass := range 2 {
 		w := body
 		if pass == 1 {

@@ -382,6 +382,18 @@ func (g *fixedGen) loadTag(ind, lhs, at string, width int64, wrap string) {
 	g.pf("%s);\n", ind)
 }
 
+// unionTagInt reads a union's tag member as an int. A packet union's tag is
+// its <Union>Type extension type, which does not implement int (an arm's
+// static may not share a name with an int member, SPEC.md §4.6), so it is
+// read through `as int`, which the erased type makes free; a tag the fixed
+// form stores itself (unionStorageIsLocal) is an int already.
+func unionTagInt(un *ir.Union, tag string) string {
+	if unionStorageIsLocal(un) {
+		return tag
+	}
+	return "(" + tag + " as int)"
+}
+
 // unionTagType is the type a union's tag member holds, and its None: the
 // packet class's <Union>Type extension type, or a plain int for a union whose
 // storage the fixed form declares itself (unionStorageIsLocal).
@@ -813,10 +825,11 @@ func (g *fixedGen) emitWriteElement(f *ir.Field, base string, at int64, expr, in
 				[]string{"bytes", "view", fixedOff(base, at), expr}, ";")
 			return
 		case *ir.Union:
-			g.pf("%sassert(%s.type >= 0 && %s.type <= %d);\n", ind, expr, expr, len(r.Variants))
+			tagInt := unionTagInt(r, expr+".type")
+			g.pf("%sassert(%s >= 0 && %s <= %d);\n", ind, tagInt, tagInt, len(r.Variants))
 			tag := fixedUnionTagBytes(r)
-			g.storeTag(ind, fixedOff(base, at), tag, expr+".type")
-			g.pf("%sswitch (%s.type) {\n", ind, expr)
+			g.storeTag(ind, fixedOff(base, at), tag, tagInt)
+			g.pf("%sswitch (%s) {\n", ind, tagInt)
 			for i, v := range r.Variants {
 				g.pf("%s  case %d:\n", ind, i+1)
 				if v.F != nil { // §3.4: a payload-free arm writes only its tag.
@@ -1036,7 +1049,7 @@ func (g *fixedGen) emitDecodeElement(f *ir.Field, base string, at int64, expr, i
 			tag := fixedUnionTagBytes(r)
 			tagType, tagNone := g.unionTagType(r)
 			g.loadTag(ind, expr+".type", fixedOff(base, at), tag, tagType)
-			g.pf("%sswitch (%s.type) {\n", ind, expr)
+			g.pf("%sswitch (%s) {\n", ind, unionTagInt(r, expr+".type"))
 			g.pf("%s  case 0:\n%s    break; // None, which is a tag this reader holds\n", ind, ind)
 			for i, v := range r.Variants {
 				g.pf("%s  case %d:\n", ind, i+1)
@@ -1498,7 +1511,7 @@ func (g *fixedGen) emitFiniteElement(f, named *ir.Field, expr, ind string) {
 			g.pf("%s}\n", ind)
 		}
 	case *ir.Union:
-		g.pf("%sswitch (%s.type) {\n", ind, expr)
+		g.pf("%sswitch (%s) {\n", ind, unionTagInt(r, expr+".type"))
 		for i, v := range r.Variants {
 			if v.F == nil || !fixedFieldHoldsFloat(v.F, map[string]bool{}) {
 				continue

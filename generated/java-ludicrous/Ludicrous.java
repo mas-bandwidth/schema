@@ -118,17 +118,17 @@ public final class Ludicrous {
 
     // enumNameDriveMode: debug/log/tooling name for any DriveMode storage value —
     // out-of-set values (wire-legal up to the declared max) name as "???"
-    public static java.lang.String enumNameDriveMode(long value) {
-        if (value == DriveMode.NONE) {
+    public static java.lang.String enumNameDriveMode(long schema_value) {
+        if (schema_value == DriveMode.NONE) {
             return "None";
         }
-        if (value == DriveMode.CRUISE) {
+        if (schema_value == DriveMode.CRUISE) {
             return "Cruise";
         }
-        if (value == DriveMode.WARP) {
+        if (schema_value == DriveMode.WARP) {
             return "Warp";
         }
-        if (value == DriveMode.LUDICROUS) {
+        if (schema_value == DriveMode.LUDICROUS) {
             return "Ludicrous";
         }
         return "???";

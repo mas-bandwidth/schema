@@ -4302,6 +4302,7 @@ func (c *checker) checkClaimedNames() {
 	// registry so initChat and init_chat both meet Chat's initChat helper.
 	addDart := func(name, what string, pos ast.Pos, siblings ...string) {
 		mapped := ir.DartMemberName(name)
+		refuseDartMain(c, mapped, what, pos)
 		if !slices.Contains(siblings, mapped) {
 			add(mapped, what, pos)
 		}
@@ -4316,6 +4317,7 @@ func (c *checker) checkClaimedNames() {
 		// object) cannot take a TypeScript predefined type's name. A const is
 		// a value, and flags emit only their masks, count and name functions,
 		// so neither binds the name as a type and both keep it.
+		refuseDartMain(c, name, fmt.Sprintf("declaration %s", name), d.DeclPos())
 		if jsDeclBindsAType(d) && slices.Contains(TypeScriptPredefinedTypeNames(), name) {
 			c.errf(d.DeclPos(), "declaration %s becomes a class or type in the generated JavaScript and its TypeScript declarations, and TypeScript refuses a class or type named after its predefined type %s; rename at the source (SPEC §4.6)", name, name)
 		}
@@ -5107,6 +5109,20 @@ func (c *checker) cReservedMacros() map[string]bool {
 		}
 	}
 	return out
+}
+
+// refuseDartMain refuses a declaration whose top-level Dart spelling is
+// main (SPEC §4.6): Dart reserves main to the entry point, and a library that
+// declares main as anything but a function does not compile. Dart spells a
+// type, table, enum or union verbatim and a const or flags mask through the
+// member mapping (ir.DartMemberName), so both are tested. No emitter rename
+// can carry the name: an enum's type IS its schema name, so it is refused at
+// check for every target, naming Dart.
+func refuseDartMain(c *checker, spelled, what string, pos ast.Pos) {
+	if spelled != "main" {
+		return
+	}
+	c.errf(pos, "%s is spelled main in the generated Dart, and Dart reserves a library's main for the entry point, a function; rename at the source (SPEC §4.6)", what)
 }
 
 // reserveCPrefix refuses one generated C spelling that the generator already
