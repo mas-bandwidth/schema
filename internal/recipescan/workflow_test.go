@@ -171,19 +171,19 @@ func TestCIAreaPlantedSilenceIsRed(t *testing.T) {
 		}
 		return string(b)
 	}
-	fast := read(".github/workflows/ci-fast.yml")
+	fast := read(".github/workflows/ci-fast-nightly.yml")
 	const strict = "\n        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}\n"
 	if !strings.Contains(fast, strict) {
-		t.Fatalf("ci-fast.yml must run its steps under %q", strict)
+		t.Fatalf("ci-fast-nightly.yml must run its steps under %q", strict)
 	}
 	gomk := read("make/go.mk")
 	for name, c := range map[string]struct {
 		edits map[string]string
 		rule  string
 	}{
-		"workflow shell loses pipefail":   {map[string]string{".github/workflows/ci-fast.yml": strings.Replace(fast, strict, "\n        shell: go run ./tools/pgroup -- bash -e {0}\n", 1)}, RuleNoStrictShell},
-		"workflow step swallows a test":   {map[string]string{".github/workflows/ci-fast.yml": strings.Replace(fast, "          modernize ./...\n", "          modernize ./... || true\n", 1)}, RuleSwallow},
-		"workflow step continue-on-error": {map[string]string{".github/workflows/ci-fast.yml": strings.Replace(fast, "      - name: modernize\n", "      - name: modernize\n        continue-on-error: true\n", 1)}, RuleContinueOnError},
+		"workflow shell loses pipefail":   {map[string]string{".github/workflows/ci-fast-nightly.yml": strings.Replace(fast, strict, "\n        shell: go run ./tools/pgroup -- bash -e {0}\n", 1)}, RuleNoStrictShell},
+		"workflow step swallows a test":   {map[string]string{".github/workflows/ci-fast-nightly.yml": strings.Replace(fast, "          modernize ./...\n", "          modernize ./... || true\n", 1)}, RuleSwallow},
+		"workflow step continue-on-error": {map[string]string{".github/workflows/ci-fast-nightly.yml": strings.Replace(fast, "      - name: modernize\n", "      - name: modernize\n        continue-on-error: true\n", 1)}, RuleContinueOnError},
 		"recipe swallows a test":          {map[string]string{"make/go.mk": strings.Replace(gomk, "go test -run Fuzz -count 1 .\n", "go test -run Fuzz -count 1 . || true\n", 1)}, RuleSwallow},
 		"recipe skips a missing tool":     {map[string]string{"make/go.mk": gomk + "\nlint-planted:\n\tif command -v golangci-lint >/dev/null; then golangci-lint run; fi\n"}, RuleToolSkip},
 		"recipe ignore prefix":            {map[string]string{"make/go.mk": gomk + "\ntest-planted:\n\t-go test ./...\n"}, RuleIgnorePrefix},
