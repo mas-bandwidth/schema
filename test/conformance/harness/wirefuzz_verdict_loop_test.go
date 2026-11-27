@@ -21,13 +21,13 @@ import (
 // the first mutant and name the difference. The control is the same leg
 // answering a seed the oracle refuses too, which must pass.
 //
-// The leg is this test binary, re-run as TestWireFuzzRefusingLegHelper: a
-// child process on pipes, no socket and no clock (the run's own --timeout is
+// The leg is this test binary, re-run with refusingLegEnv set and entered
+// from TestMain (refusingWireLeg): a child process on pipes, no socket and no clock (the run's own --timeout is
 // 0, and the reply deadline never fires on a leg that answers at once).
 func TestWireFuzzLoopIsRedOnADivergingLeg(t *testing.T) {
 	_, _, _ = corpus(t) // the repository root, where the manifest's paths resolve
 	t.Setenv(refusingLegEnv, "1")
-	driver := os.Args[0] + " -test.run=^TestWireFuzzRefusingLegHelper$"
+	driver := os.Args[0]
 
 	dir := t.TempDir()
 	run := func(name, wire string) (string, error) {
@@ -68,16 +68,14 @@ func TestWireFuzzLoopIsRedOnADivergingLeg(t *testing.T) {
 }
 
 // refusingLegEnv turns this test binary into the wire-fuzz leg the test above
-// drives (TestWireFuzzRefusingLegHelper).
+// drives: TestMain hands the process to refusingWireLeg before any test runs.
 const refusingLegEnv = "SCHEMA_HARNESS_REFUSING_WIRE_LEG"
 
-// TestWireFuzzRefusingLegHelper is the leg: it names every root in the
-// roster as known and answers every mutant with a malformed refusal and no
-// write-back, until its input closes.
-func TestWireFuzzRefusingLegHelper(t *testing.T) {
-	if os.Getenv(refusingLegEnv) == "" {
-		t.Skip("helper for TestWireFuzzLoopIsRedOnADivergingLeg")
-	}
+// refusingWireLeg is the leg: it names every root in the roster as known and
+// answers every mutant with a malformed refusal and no write-back, until its
+// input closes. It is entered from TestMain, not written as a Test, so no
+// ordinary run carries a helper's skip, and it exits the process itself.
+func refusingWireLeg() {
 	in := bufio.NewReader(os.Stdin)
 	out := bufio.NewWriter(os.Stdout)
 	var n uint32
