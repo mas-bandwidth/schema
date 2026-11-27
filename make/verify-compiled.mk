@@ -125,14 +125,38 @@ $(foreach leg,$(VERIFY_COMPILED_LEGS),$(eval $(call verify_compiled_fuzz_rules,$
 
 # ---- cpp ----
 
-.PHONY: _verify-cpp-conformance _verify-cpp-bench
-_verify-cpp-conformance: build/conformance-harness build/conformance-cpp build/schema_test_cook build/schema_test build/schema_test_ludicrous packet-defaults-cpp packet-void-cpp table-base64-cpp build/packet-text/cpp/driver build/packet-text/harness conformance-rows-pr-cpp build/schema_test_tables
+# THE C++ CONFORMANCE GATE IS TWO PARTS (2026-11-24). As one ci-fast.yml row
+# it ran 108-131 s on fleet runners, unloaded ones too, and it is build-bound:
+# run 45428504681 spent 16 s generating, 73 s on the single g++ call that
+# builds build/schema_test_tables (main.cpp and every pinned table's .cpp in
+# one command), and the conformance driver's 60-object pass and link beside
+# it; the checks themselves took 8 s. Each part builds only what its own
+# checks run, so the two halves of the build run on two runners:
+#
+#   part 1: the standalone C++ test binaries (schema_test, schema_test_tables,
+#           schema_test_ludicrous, packet text, and the packet-defaults,
+#           packet-void and R15 row checks their targets run);
+#   part 2: the harness's --claims run and what test/conformance/cpp/ci.json
+#           says it needs (the driver, schema_test_cook, table-base64-cpp).
+#
+# Nothing is dropped: _verify-cpp-conformance is both parts, and the split is
+# by target, so it is the same every run. ci-fast.yml's verify-cpp-conformance
+# job runs one part per row (internal/ci TestCppConformancePartsCoverTheGate).
+.PHONY: _verify-cpp-conformance _verify-cpp-conformance-1 _verify-cpp-conformance-2 verify-cpp-conformance-1 verify-cpp-conformance-2 _verify-cpp-bench
+_verify-cpp-conformance: _verify-cpp-conformance-1 _verify-cpp-conformance-2
+
+_verify-cpp-conformance-1: build/schema_test build/schema_test_ludicrous packet-defaults-cpp packet-void-cpp build/packet-text/cpp/driver build/packet-text/harness conformance-rows-pr-cpp build/schema_test_tables
 	./build/schema_test
 	./build/schema_test_tables
 	./build/schema_test_ludicrous
 	./build/packet-text/harness ./build/packet-text/cpp/driver
+
+_verify-cpp-conformance-2: build/conformance-harness build/conformance-cpp build/schema_test_cook table-base64-cpp
 	@rm -rf build/verify/conformance-cpp && mkdir -p build/verify/conformance-cpp $(VERIFY_RESULTS_DIR)
 	./build/conformance-harness run --only cpp --claims --work build/verify/conformance-cpp --results $(VERIFY_RESULTS_DIR)/cpp.json
+
+verify-cpp-conformance-1 verify-cpp-conformance-2: verify-cpp-conformance-%:
+	@$(MAKE) $(VERIFY_JFLAG) --no-print-directory _verify-cpp-conformance-$*
 
 _verify-cpp-bench: bin/schema generated/bench/cpp/.stamp generated/bench/tables/cpp/.stamp tables-cpp-bench-gate cards-cpp-conformance tables-view packet-end-cpp packet-write-cfloat-cpp packet-write-text-cpp
 	@mkdir -p build/verify build/bench && rm -f build/verify/bench-cpp.csv
