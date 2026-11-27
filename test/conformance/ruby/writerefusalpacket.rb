@@ -22,11 +22,20 @@ def apply(value, op, arg)
   when "text_fill" then value.text = "a" * Integer(arg)
   when "fixed_constant" then value.fixed_constant = Integer(arg)
   when "reserved_zero" then value.reserved_zero = Integer(arg)
+  when "trio_len" then value.trio = ::Array.new(Integer(arg), 0)
+  when "trio_elem" then value.trio[0] = Integer(arg)
+  when "ints_elem" then value.ints = [Integer(arg)]
+  when "pick_small"
+    value.pick.type = 1 # the arm `small`
+    value.pick.small.v = Integer(arg)
+  when "huge" then value.huge = Integer(arg)
+  when "fx" then value.fx = Integer(arg) # fixed(16, 16) storage is the raw scaled integer
+  when "ufx" then value.ufx = Integer(arg) # ufixed(32, 32) storage is the raw scaled integer
   else raise ArgumentError, "unknown op #{op}"
   end
 end
 
-File.readlines(ARGV.fetch(0), chomp: true).each do |line|
+File.readlines(ARGV.fetch(0), chomp: true, encoding: "UTF-8").each do |line|
   line = line.strip
   next if line.empty? || line.start_with?("#")
 

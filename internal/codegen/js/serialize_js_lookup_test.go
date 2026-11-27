@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 )
 
 // THE SERIALIZE.JS RUNTIME IS PART OF THE NODE PROMISE. The node halves of
@@ -15,6 +15,13 @@ import (
 // runtime, so a missing runtime there fails and names itself; elsewhere it
 // skips with the reason. Every lookup of the runtime goes through
 // serializeJSDir.
+//
+// SCHEMA_SLOW=1 IS THE SAME PROMISE. It asks for the node half of this
+// package, and the node half cannot run without the runtime, so there a
+// missing runtime fails by name too, as slowtest.SerializeGo does for the Go
+// runtime. Before this, `SCHEMA_SLOW=1 go test ./internal/codegen/js` on a
+// bench with no sibling answered ok with every node test skipped
+// (TestJsWriteRefusesEveryValueShape among them, #4936).
 
 // serializeJSDir finds the serialize.js runtime checkout: $SERIALIZE_JS
 // first, then the sibling checkout beside the repository.
@@ -46,7 +53,12 @@ func serializeJSDirIn(t testing.TB, env string, siblings []string) string {
 			return dir
 		}
 	}
-	slowtest.Require(t, "SCHEMA_REQUIRE_NODE", "no serialize.js runtime: set SERIALIZE_JS or stage the sibling checkout")
+	const reason = "no serialize.js runtime: set SERIALIZE_JS or stage the sibling checkout"
+	if os.Getenv("SCHEMA_SLOW") == "1" {
+		t.Fatalf("SCHEMA_SLOW=1 runs the node half, and its runtime is missing: %s (make serialize-siblings stages it)", reason)
+		return ""
+	}
+	slowtest.Require(t, "SCHEMA_REQUIRE_NODE", reason)
 	return ""
 }
 
@@ -66,9 +78,10 @@ func (r *lookupVerdictTB) Skip(args ...any) {
 	r.verdict, r.text = "skip", fmt.Sprint(args...)
 }
 
-// TestSerializeJSLookupHoldsTheLanePromise: a lane that declares node and has
-// no runtime fails naming the runtime; a lane that does not declare it skips;
-// a staged runtime is found from $SERIALIZE_JS or a sibling.
+// TestSerializeJSLookupHoldsTheLanePromise: a lane that declares node, or
+// runs the slow half, and has no runtime fails naming the runtime; a lane
+// that does neither skips; a staged runtime is found from $SERIALIZE_JS or a
+// sibling.
 func TestSerializeJSLookupHoldsTheLanePromise(t *testing.T) {
 	empty := t.TempDir()
 	staged := t.TempDir()
@@ -88,6 +101,9 @@ func TestSerializeJSLookupHoldsTheLanePromise(t *testing.T) {
 			"SCHEMA_REQUIRE_NODE=1 says this lane provides what the test needs, and it is missing: " + reason},
 		{"corpus lane, no runtime", "SCHEMA_REQUIRE_CORPUS", "", []string{empty}, "fail",
 			"SCHEMA_REQUIRE_CORPUS is set, so this lane is meant to have what the test needs, and it is missing: " + reason},
+		{"slow half, no runtime", "SCHEMA_SLOW", "", []string{empty}, "fail",
+			"SCHEMA_SLOW=1 runs the node half, and its runtime is missing: " + reason + " (make serialize-siblings stages it)"},
+		{"slow half, runtime as a sibling", "SCHEMA_SLOW", "", []string{empty, staged}, "run", staged},
 		{"tsc lane, no runtime", "SCHEMA_REQUIRE_TSC", "", []string{empty}, "skip", reason},
 		{"no lane, no runtime", "", "", []string{empty}, "skip", reason},
 		{"node lane, runtime from SERIALIZE_JS", "SCHEMA_REQUIRE_NODE", staged, []string{empty}, "run", staged},
@@ -95,7 +111,7 @@ func TestSerializeJSLookupHoldsTheLanePromise(t *testing.T) {
 		{"node lane, stale SERIALIZE_JS, sibling staged", "SCHEMA_REQUIRE_NODE", empty, []string{staged}, "run", staged},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			for _, k := range []string{"SCHEMA_REQUIRE_NODE", "SCHEMA_REQUIRE_TSC", "SCHEMA_REQUIRE_CORPUS"} {
+			for _, k := range []string{"SCHEMA_SLOW", "SCHEMA_REQUIRE_NODE", "SCHEMA_REQUIRE_TSC", "SCHEMA_REQUIRE_CORPUS"} {
 				t.Setenv(k, "")
 			}
 			if c.lane != "" {

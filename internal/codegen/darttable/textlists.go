@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 func textBound(f *ir.Field) int64 {
@@ -53,6 +53,7 @@ func (g *wireGen) emitSavePlainTextList(f *ir.Field, expr, ind string, id uint64
 
 func (g *wireGen) emitJsonTextList(f *ir.Field, expr string, d int, ind, where string) {
 	g.pf("%s", textListTotalCheck(f, expr, ind, "assert(false, 'invalid_value: text list total');"))
+	g.pf("%s_jsonDepth(%s);\n", ind, depthExpr(d))
 	g.pf("%sif (%s.isEmpty) {out.raw('[]');} else {\n", ind, expr)
 	g.pf("%s  out.raw('[');var first%d=true;\n", ind, d)
 	g.pf("%s  for(final e%d in %s){if(!first%d)out.raw(',');first%d=false;out.line(%s);\n", ind, d, expr, d, d, depthExpr(d+1))

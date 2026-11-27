@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster/lobsterrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/lobster/lobsterrun"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 )
 
 // A FLOAT32 IS SPELLED FROM ITS FLOAT32 VALUE (docs/SPEC-TABLES.md §16.2; Go's

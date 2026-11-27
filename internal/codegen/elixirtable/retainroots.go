@@ -3,7 +3,7 @@ package elixirtable
 import (
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // Retention belongs to variable roots (§6.6). Fixed bodies still participate
@@ -25,8 +25,8 @@ func restrictRetainRoots(u *ir.Unit, names []string, runtime string) (string, st
 		return "", runtime
 	}
 	for _, change := range []struct{ entry, refusal string }{
-		{"  def load_retain(table, data, retain, report)", `  def load_retain(table, _data, retain, report) when table in @retain_fixed_roots,
-    do: {:error, :fixed_root, report, retain}
+		{"  def load_retain(table, data, retain, _report)", `  def load_retain(table, _data, retain, _report) when table in @retain_fixed_roots,
+    do: {:error, :fixed_root, empty_report(), retain}
 
 `},
 		{"  def measure_retain(table, value, retain)", `  def measure_retain(table, _value, _retain) when table in @retain_fixed_roots,
@@ -48,8 +48,10 @@ func restrictRetainRoots(u *ir.Unit, names []string, runtime string) (string, st
 
 const fixedRetainRefusals = `
   # Retention requires a variable root (docs/SPEC-TABLES.md §6.6).
-  # Refuse before inspecting input or changing the caller's report and stores.
-  def load_retain(_table, _data, retain, report), do: {:error, :fixed_root, report, retain}
+  # Refuse before inspecting input, into a zeroed report (§6.5: the supplied
+  # report is never read) and with the stores unchanged.
+  def load_retain(_table, _data, retain, _report),
+    do: {:error, :fixed_root, empty_report(), retain}
 
   def measure_retain(_table, _value, _retain), do: {:error, :fixed_root}
 

@@ -28,7 +28,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // tableCookWriteRuntime is the write half of the cooked form's shared runtime,
@@ -440,14 +440,14 @@ func (g *tableGen) emitCookWriteElement(f *ir.Field, at, value, indent, sfx stri
 			g.pf("%stable_cook_put( %s, (uint64_t) TableStoredFloatBits( %s ), 4, order );\n", indent, at, value)
 			return
 		}
-		g.pf("%s{ uint32_t bits = 0; memcpy( &bits, &%s, 4 ); table_cook_put( %s, (uint64_t) bits, 4, order ); }\n", indent, value, at)
+		g.pf("%[1]s{\n%[1]s    uint32_t bits = 0;\n%[1]s    memcpy( &bits, &%[2]s, 4 );\n%[1]s    table_cook_put( %[3]s, (uint64_t) bits, 4, order );\n%[1]s}\n", indent, value, at)
 	case ir.TFloat64:
 		g.pf("%sif ( !TableFloatFinite( %s ) ) { return false; } // a NaN or an infinity is refused (§3.3)\n", indent, value)
 		if f.HasFloatRange {
 			g.pf("%stable_cook_put( %s, TableStoredFloatBits( %s ), 8, order );\n", indent, at, value)
 			return
 		}
-		g.pf("%s{ uint64_t bits = 0; memcpy( &bits, &%s, 8 ); table_cook_put( %s, bits, 8, order ); }\n", indent, value, at)
+		g.pf("%[1]s{\n%[1]s    uint64_t bits = 0;\n%[1]s    memcpy( &bits, &%[2]s, 8 );\n%[1]s    table_cook_put( %[3]s, bits, 8, order );\n%[1]s}\n", indent, value, at)
 	case ir.TInt, ir.TFixed:
 		// a fixed field's slot holds its RAW scaled integer, the same bytes
 		// the storage holds; the 128-bit widths go as two lanes
@@ -497,14 +497,14 @@ func (g *tableGen) cookBodyCall(ref *ir.Struct, at, value string) string {
 func (g *tableGen) emitCookWriteUnion(un *ir.Union, at, value, indent, sfx string) {
 	_, _, tag, armOffset := ir.UnionLayout(g.unit, un)
 	g.pf("%s{\n", indent)
-	g.pf("%s    table_cook_put( %s, (uint64_t) %s.type, %d, order ); // the tag; None is the tag alone\n", indent, at, value, tag)
+	g.emitStatements(indent+"    ", fmt.Sprintf("table_cook_put( %s, (uint64_t) %s.type, %d, order ); // the tag; None is the tag alone", at, value, tag))
 	g.pf("%s    switch ( %s.type )\n%s    {\n", indent, value, indent)
 	for _, v := range un.Variants {
 		switch {
 		case v.Void():
 			// a payload-free arm writes the tag and nothing else (§2.6)
 		case v.Body():
-			g.pf("%s        case %sType::%s: %s break;\n", indent, un.Name, ir.GoExportName(v.Name),
+			g.pf("%[1]s        case %[2]sType::%[3]s:\n%[1]s            %[4]s\n%[1]s            break;\n", indent, un.Name, ir.GoExportName(v.Name),
 				g.cookBodyCall(v.Ref, fmt.Sprintf("%s + %d", at, armOffset), fmt.Sprintf("%s.%s", value, v.Name)))
 		case v.F != nil:
 			// AN ARM IS A FIELD LINE (§2.6): its pieces sit at the arms'

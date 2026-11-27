@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // A null report is DISCARDED, not constructed: the C# read path owns no

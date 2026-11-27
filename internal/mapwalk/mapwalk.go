@@ -26,7 +26,7 @@ package mapwalk
 import (
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // Bearing names the maps in a unit's table closure, as `Table.field`, sorted.

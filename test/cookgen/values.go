@@ -19,7 +19,7 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // filler writes one record's leaves.

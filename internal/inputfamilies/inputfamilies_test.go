@@ -112,19 +112,19 @@ func TestPushToMainSelectsEveryFamily(t *testing.T) {
 // Go file naming the input directory selects its package.
 func TestDerivationOnAHandTree(t *testing.T) {
 	t.Parallel()
-	saved := Families
-	t.Cleanup(func() { Families = saved })
-	Families = []Family{{Name: "pins", PR: true, Inputs: []string{"testdata/pins/"}, Target: "pins-{leg}", Drivers: `^test/pins/([a-z]+)/`}}
+	// The families are passed in, never swapped into the package global, so
+	// this test stays parallel and races with no other test.
+	families := []Family{{Name: "pins", PR: true, Inputs: []string{"testdata/pins/"}, Target: "pins-{leg}", Drivers: `^test/pins/([a-z]+)/`}}
 	tr := Tree{
 		Files:   []string{"testdata/pins/a.bin", "test/pins/lua/main.lua", "test/pins/moo/main.moo"},
 		Targets: map[string]bool{"pins-lua": true},
 		GoFiles: map[string]string{"internal/x/x_test.go": `const dir = "testdata/pins"`, "internal/y/y.go": "package y"},
 	}
-	bad := strings.Join(Check(tr), "\n")
+	bad := strings.Join(checkFamilies(families, tr), "\n")
 	if !strings.Contains(bad, "leg moo has a driver but no pins-moo target") {
 		t.Errorf("Check did not refuse the moo driver with no target:\n%s", bad)
 	}
-	s := Select(tr, []string{"testdata/pins/b.bin", "testdata/orphan/z.bin"}, false, true)
+	s := selectFrom(families, tr, []string{"testdata/pins/b.bin", "testdata/orphan/z.bin"}, false, true)
 	if len(s.Rows) != 1 || s.Rows[0] != (Row{Leg: "lua", Family: "pins", Target: "pins-lua"}) {
 		t.Errorf("rows = %+v", s.Rows)
 	}
@@ -133,6 +133,90 @@ func TestDerivationOnAHandTree(t *testing.T) {
 	}
 	if !slices.Equal(s.Unread, []string{"testdata/orphan/z.bin"}) {
 		t.Errorf("unread = %v", s.Unread)
+	}
+}
+
+// A shared-corpus family refuses a leg with no target and no whole-leg owed
+// line, a whole-leg owed line for a leg that has a target, and a missing
+// ledger.
+func TestSharedCorpusRefusesALegWithNoTargetAndNoLedgerLine(t *testing.T) {
+	t.Parallel()
+	f := Family{Name: "pins", Target: "pins-{leg}", Owed: "testdata/pins/owed.txt"}
+	has := map[string]bool{}
+	for _, l := range Legs {
+		has[l] = l != "moo" && l != "lobster"
+	}
+	tr := Tree{Ledgers: map[string]string{"testdata/pins/owed.txt": "# head\nlobster all owed: no union API\nlua all owed: stale\nlua x owed: one case\n"}}
+	bad := strings.Join(checkOwed(f, tr, has), "\n")
+	for _, want := range []string{
+		"leg moo has no pins-moo target and no `moo all owed: <cause>` line",
+		"leg lua defines pins-lua and testdata/pins/owed.txt still says `lua all owed`",
+	} {
+		if !strings.Contains(bad, want) {
+			t.Errorf("checkOwed did not say %q:\n%s", want, bad)
+		}
+	}
+	if strings.Contains(bad, "lobster") {
+		t.Errorf("checkOwed refused lobster, which its ledger line owes:\n%s", bad)
+	}
+	if bad := checkOwed(f, Tree{}, has); len(bad) != 1 || !strings.Contains(bad[0], "is missing") {
+		t.Errorf("a missing ledger: %v", bad)
+	}
+}
+
+// The ledger is an exact set on every line, not only on whole-leg lines: a
+// per-case line under a leg that is not a leg (a typo, a removed leg) would
+// otherwise owe a case for nobody and never go red. Each plant is one line
+// added to a green ledger, and each must be refused by name.
+func TestSharedCorpusLedgerIsAnExactSetOnEveryLine(t *testing.T) {
+	t.Parallel()
+	f := Family{Name: "pins", Target: "pins-{leg}", Owed: "testdata/pins/owed.txt", Cases: "testdata/pins/cases.txt"}
+	has := map[string]bool{}
+	for _, l := range Legs {
+		has[l] = true
+	}
+	const green = "# head\nlua mixed-ping owed: the port\n"
+	ledgers := func(owed string) Tree {
+		return Tree{Ledgers: map[string]string{
+			"testdata/pins/owed.txt":  owed,
+			"testdata/pins/cases.txt": "# head\nmixed-ping Mixed accept 2 ping\nmixed-none Mixed accept 2 None\n",
+		}}
+	}
+	if bad := checkOwed(f, ledgers(green), has); len(bad) != 0 {
+		t.Fatalf("the green ledger was refused: %v", bad)
+	}
+	for _, c := range []struct{ plant, want string }{
+		{"golang mixed-ping owed: plant", "golang is not a leg"},
+		{"lua no-such-case owed: plant", "testdata/pins/cases.txt names no such case"},
+		{"lua mixed-ping owed: again", "names lua mixed-ping twice"},
+		{"lua mixed-none owed:", "is not `<leg> <case> owed: <cause>`"},
+		{"lua mixed-none", "is not `<leg> <case> owed: <cause>`"},
+	} {
+		bad := strings.Join(checkOwed(f, ledgers(green+c.plant+"\n"), has), "\n")
+		if !strings.Contains(bad, c.want) {
+			t.Errorf("planting %q: refusals %q, want one saying %q", c.plant, bad, c.want)
+		}
+	}
+	if bad := checkOwed(f, Tree{Ledgers: map[string]string{"testdata/pins/owed.txt": green}}, has); len(bad) != 1 || !strings.Contains(bad[0], "case file testdata/pins/cases.txt is missing") {
+		t.Errorf("a missing case file: %v", bad)
+	}
+}
+
+// The reversed witness on the real tree: the repository's packet-void ledger
+// is green, and the one-line plant a cold reader made (a per-case line under
+// the misspelt leg golang) turns Check red.
+func TestPacketVoidLedgerPlantedUnknownLegIsRed(t *testing.T) {
+	t.Parallel()
+	tr := repoTree(t)
+	const owed = "testdata/wire/packet-void/owed.txt"
+	for _, b := range Check(tr) {
+		if strings.Contains(b, owed) {
+			t.Fatalf("the packet-void ledger is red as checked in: %s", b)
+		}
+	}
+	tr.Ledgers[owed] += "golang mixed-ping owed: plant\n"
+	if bad := strings.Join(Check(tr), "\n"); !strings.Contains(bad, `packet-void: testdata/wire/packet-void/owed.txt line "golang mixed-ping owed: plant": golang is not a leg`) {
+		t.Fatalf("the planted golang line was not refused:\n%s", bad)
 	}
 }
 
@@ -162,8 +246,8 @@ func TestAccountFilesForLegResolvesPerLegSchemasAndExclusions(t *testing.T) {
 		{"packet-finite", "dart", "test/packet-finite/dart/Finite.schema"},
 		{"packet-finite", "squirrel", "test/packet-finite/squirrel/Finite.schema"},
 		{"packet-void", "cpp", "test/packet-void/Void.schema"},
-		{"packet-void", "python", "test/packet-void/python/Python.schema"},
-		{"packet-void", "ruby", "test/packet-void/ruby/Ruby.schema"},
+		{"packet-void", "python", "test/packet-void/Void.schema"},
+		{"packet-void", "ruby", "test/packet-void/Void.schema"},
 		{"packet-write-text", "rust", "test/packet-write-text/Text.schema"},
 		{"packet-write-text", "cpp", "test/packet-write-text/cpp/TextPacketCases.schema"},
 		{"packet-write-text", "c", "test/packet-write-text/c/Text.schema"},
@@ -194,38 +278,54 @@ func TestAccountFilesForLegResolvesPerLegSchemasAndExclusions(t *testing.T) {
 	}
 }
 
-func TestAcceptedBoundsSelectOnlyTheirGoReaders(t *testing.T) {
+func TestWriterBoundsSelectTheirRegisteredReaders(t *testing.T) {
 	t.Parallel()
 	tree := repoTree(t)
 	for _, tc := range []struct {
 		family   string
 		neighbor string
+		legs     []string
 		inputs   []string
+		watched  []string
 	}{
 		{
 			family:   "packet-cfloat-endpoints",
 			neighbor: "packet-write-cfloat",
+			legs:     []string{"go", "js"},
 			inputs: []string{
 				"test/packet-cfloat-endpoints/PacketRatio.schema",
 				"test/packet-cfloat-endpoints/ratio-endpoints.txt",
 			},
+			watched: []string{"make/js-packet-cfloat-endpoints.mk"},
 		},
 		{
 			family:   "table-write-bounds",
 			neighbor: "conformance-corpus",
+			legs:     []string{"cpp", "c", "go", "rust", "js", "cs", "unity", "dart"},
 			inputs: []string{
-				"testdata/conformance/table-write-bounds/ACCEPTED-WRITE-BOUNDS.txt",
 				"testdata/conformance/table-write-bounds/TableWriteBounds.schema",
+				"testdata/conformance/table-write-bounds/WRITE-BOUNDS.txt",
 				"testdata/conformance/table-write-bounds/torture_var_wref.bin",
+				"testdata/conformance/table-write-bounds/wire/sfw_arm_arr_payload.bin",
+				"testdata/conformance/table-write-bounds/wire/sfw_arm_raw_payload.bin",
+				"testdata/conformance/table-write-bounds/wire/sfw_raw_payload.bin",
+				"testdata/conformance/table-write-bounds/sfw_arm_arr_payload.json",
+				"testdata/conformance/table-write-bounds/sfw_arm_raw_payload.json",
+				"testdata/conformance/table-write-bounds/sfw_raw_payload.json",
+				"testdata/conformance/table-write-bounds/torture_var_wref.json",
 			},
 		},
 	} {
 		t.Run(tc.family, func(t *testing.T) {
-			if got := AccountFilesForLeg(tree, tc.family, "go"); !slices.Equal(got, tc.inputs) {
-				t.Errorf("accounted files = %v, want %v", got, tc.inputs)
+			var want []Row
+			slices.Sort(tc.inputs)
+			for _, leg := range tc.legs {
+				if got := AccountFilesForLeg(tree, tc.family, leg); !slices.Equal(got, tc.inputs) {
+					t.Errorf("%s accounted files = %v, want %v", leg, got, tc.inputs)
+				}
+				want = append(want, Row{Leg: leg, Family: tc.family, Target: tc.family + "-" + leg})
 			}
-			for _, input := range tc.inputs {
-				want := []Row{{Leg: "go", Family: tc.family, Target: tc.family + "-go"}}
+			for _, input := range slices.Concat(tc.inputs, tc.watched) {
 				if got := Select(tree, []string{input}, false, true).Rows; !slices.Equal(got, want) {
 					t.Errorf("%s selected %v, want %v", input, got, want)
 				}

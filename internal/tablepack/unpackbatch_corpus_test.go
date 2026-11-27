@@ -8,7 +8,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
+	"github.com/mas-bandwidth/schema/v3/compiler"
 )
 
 // THE UNPACK-BATCH CORPUS (F-012, F-013): committed destination layouts for

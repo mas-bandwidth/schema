@@ -11,11 +11,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/tablecook"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // These defaults are pinned directly from the specified payload/framing rules,
@@ -227,7 +227,8 @@ end
 {:error,:missing_required,prefix}=T.from_json("Nest","{\"noise\":1,\"items\":[{},{}]}")
 Probe.check(prefix.unknown==1 and prefix.missing_required==1,"JSON refusal prefix")
 {:ok,_,reuse,_}=T.load_retain("All",wire,store,Map.put(zero,:missing_required,3))
-Probe.check(reuse.missing_required==3,"reused clean report")
+# a read clears the report it is handed (SPEC-TABLES §6.5, §6.6): the caller's 3 is gone
+Probe.check(Enum.all?(reuse,fn {k,v}->v==(if k==:reason,do: "",else: 0) end),"reused clean report: "<>inspect(reuse))
 {:error,:malformed,reused,_}=T.load_retain("All",bad,store,zero |> Map.put(:missing_required,3) |> Map.put(:reason,"old refusal"))
 Probe.check(reused.reason=="wire_damaged","reused failing report")
 IO.puts("REQUIRED_OK")

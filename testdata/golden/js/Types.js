@@ -43,6 +43,9 @@ export function ZeroVec3(value) {
 }
 
 export function WriteVec3(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (typeof value.x !== "number" || !globalThis.Number.isFinite(value.x)) {
     return false; // a bare float must be finite (SPEC §4.3, §5.1)
   }
@@ -115,6 +118,9 @@ export function ZeroQuat(value) {
 }
 
 export function WriteQuat(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (typeof value.x !== "number" || !globalThis.Number.isFinite(value.x)) {
     return false; // a bare float must be finite (SPEC §4.3, §5.1)
   }
@@ -192,6 +198,9 @@ export function ZeroHandle(value) {
 }
 
 export function WriteHandle(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!globalThis.Number.isInteger(value.objectId) || value.objectId < 0 || value.objectId > MaxObjects - 1) {
     return false;
   }
@@ -250,6 +259,9 @@ export function ZeroQuantizedPosition(value) {
 }
 
 export function WriteQuantizedPosition(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!globalThis.Number.isInteger(value.x) || value.x < -MaxPositionUnits || value.x > MaxPositionUnits) {
     return false;
   }
@@ -319,6 +331,9 @@ export function ZeroQuantizedVelocity(value) {
 }
 
 export function WriteQuantizedVelocity(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!globalThis.Number.isInteger(value.x) || value.x < -MaxVelocityUnits || value.x > MaxVelocityUnits) {
     return false;
   }
@@ -391,6 +406,9 @@ export function ZeroQuantizedRotation(value) {
 }
 
 export function WriteQuantizedRotation(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!globalThis.Number.isInteger(value.x) || value.x < -RotationUnits || value.x > RotationUnits) {
     return false;
   }
@@ -480,11 +498,17 @@ export function ZeroRigidBody(value) {
 }
 
 export function WriteRigidBody(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!WriteVec3(stream, value.position)) {
     return false;
   }
   if (!WriteQuat(stream, value.orientation)) {
     return false;
+  }
+  if (typeof value.atRest !== "boolean") {
+    return false; // a bool is a boolean (SPEC §5.1)
   }
   BOOL_SCRATCH.value = value.atRest;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
@@ -585,6 +609,9 @@ export function ZeroInput(value) {
 }
 
 export function WriteInput(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (typeof value.stickX !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(value.stickX))) {
     return false; // a bare float must be finite (SPEC §4.3, §5.1)
   }
@@ -620,33 +647,57 @@ export function WriteInput(stream, value) {
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
     return false;
   }
+  if (typeof value.fire !== "boolean") {
+    return false; // a bool is a boolean (SPEC §5.1)
+  }
   BOOL_SCRATCH.value = value.fire;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
+  }
+  if (typeof value.altFire !== "boolean") {
+    return false; // a bool is a boolean (SPEC §5.1)
   }
   BOOL_SCRATCH.value = value.altFire;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
+  if (typeof value.boost !== "boolean") {
+    return false; // a bool is a boolean (SPEC §5.1)
+  }
   BOOL_SCRATCH.value = value.boost;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
+  }
+  if (typeof value.brake !== "boolean") {
+    return false; // a bool is a boolean (SPEC §5.1)
   }
   BOOL_SCRATCH.value = value.brake;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
+  if (typeof value.aim !== "boolean") {
+    return false; // a bool is a boolean (SPEC §5.1)
+  }
   BOOL_SCRATCH.value = value.aim;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
+  }
+  if (typeof value.lockOn !== "boolean") {
+    return false; // a bool is a boolean (SPEC §5.1)
   }
   BOOL_SCRATCH.value = value.lockOn;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
+  if (typeof value.zoom !== "boolean") {
+    return false; // a bool is a boolean (SPEC §5.1)
+  }
   BOOL_SCRATCH.value = value.zoom;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
+  }
+  if (typeof value.ping !== "boolean") {
+    return false; // a bool is a boolean (SPEC §5.1)
   }
   BOOL_SCRATCH.value = value.ping;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
@@ -751,6 +802,9 @@ export function ZeroInputPacket(value) {
 }
 
 export function WriteInputPacket(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!globalThis.Number.isInteger(value.synchronizeSequence) || value.synchronizeSequence < 0 || value.synchronizeSequence > 65535) { // a bare integer must fit its width
     return false;
   }
@@ -778,6 +832,9 @@ export function WriteInputPacket(stream, value) {
   NUMBER_SCRATCH.value = value.inputsCount;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
+  }
+  if (value.inputs === null || typeof value.inputs !== "object" || !(value.inputs.length >= value.inputsCount)) {
+    return false; // the storage holds every element the loop reads (SPEC §5.1)
   }
   for (let i = 0; i < value.inputsCount; i++) {
     if (!WriteInput(stream, value.inputs[i])) {
@@ -866,6 +923,9 @@ export function ZeroShipCreate(value) {
 }
 
 export function WriteShipCreate(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!globalThis.Number.isInteger(value.shipType) || value.shipType < 0 || value.shipType > 5) { // headroom above the wire range cannot ride
     return false;
   }
@@ -882,11 +942,17 @@ export function WriteShipCreate(stream, value) {
   if (!WriteQuantizedVelocity(stream, value.linearVelocity)) {
     return false;
   }
+  if (typeof value.hasFlags !== "boolean") {
+    return false; // a bool is a boolean (SPEC §5.1)
+  }
   BOOL_SCRATCH.value = value.hasFlags;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
   if (value.hasFlags) {
+    if (typeof value.flags !== "bigint") {
+      return false; // a flags value is a BigInt (SPEC §5.1)
+    }
     {
       const flagsValue = globalThis.BigInt.asUintN(64, value.flags);
       if (flagsValue >= 1n << 4n) { // a mask bit above the wire width cannot ride
@@ -996,6 +1062,9 @@ export function ZeroExpressionProbe(value) {
 }
 
 export function WriteExpressionProbe(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!globalThis.Number.isInteger(value.hardpointIndex) || value.hardpointIndex < 0 || value.hardpointIndex > (ShipMaxLasers + ShipMaxMissiles) - 1) {
     return false;
   }
@@ -1064,6 +1133,9 @@ export function ZeroExtremeProbe(value) {
 }
 
 export function WriteExtremeProbe(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (typeof value.floorBound !== "bigint" || value.floorBound < -9223372036854775808n || value.floorBound > 100n) {
     return false;
   }
@@ -1161,6 +1233,9 @@ export function ZeroExtremeRow(value) {
 }
 
 export function WriteExtremeRow(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (typeof value.clampedFloor !== "bigint" || value.clampedFloor < -9223372036854775808n || value.clampedFloor > 100n) {
     return false;
   }

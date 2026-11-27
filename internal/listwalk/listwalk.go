@@ -27,7 +27,7 @@ package listwalk
 import (
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // Bearing names the unbounded arrays in a unit's table closure, as

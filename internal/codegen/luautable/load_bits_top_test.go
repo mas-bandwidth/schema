@@ -11,15 +11,15 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/compiler"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/golang"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/gotable"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/luau"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/luau/luaurun"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/luautable"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 // bitsTopSchema declares bits(N) at each width whose top the double cannot

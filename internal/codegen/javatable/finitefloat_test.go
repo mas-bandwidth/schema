@@ -34,11 +34,11 @@ import (
 	"strings"
 	"testing"
 
-	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	javacodegen "github.com/mas-bandwidth/schema/v3/internal/codegen/java"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/tablewire"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 const finiteSchema = `package probe
@@ -394,7 +394,14 @@ public final class Driver {
         // THE MESSAGE AND FIXED WRITERS REFUSE ONE, the quantized float too
         check("form-write:f32", () -> refusesWrite((v, b) -> v.f = Float.NaN, 0));
         check("form-write:f64", () -> refusesWrite((v, b) -> v.d = Double.POSITIVE_INFINITY, 0));
-        check("form-write:compressed", () -> refusesWrite((v, b) -> v.c = Float.NEGATIVE_INFINITY, 0));
+        // A COMPRESSED (RANGED) FLOAT: a NaN or an infinity fails the range
+        // compare too, so the writers' debug range asserts must step aside for
+        // the non_finite_float refusal (row 7, every build) or an -ea build
+        // throws where a release build answers -1. Its own group, so the
+        // negative control below can drop that guard and red exactly these.
+        check("form-write-ranged:compressed", () -> refusesWrite((v, b) -> v.c = Float.NEGATIVE_INFINITY, 0));
+        check("form-write-ranged:compressed-nan", () -> refusesWrite((v, b) -> v.c = Float.NaN, 0));
+        check("form-write-ranged:compressed-plus-inf", () -> refusesWrite((v, b) -> v.c = Float.POSITIVE_INFINITY, 0));
         check("form-write:array-element", () -> refusesWrite((v, b) -> v.arr[0] = Float.NaN, 0));
         check("form-write:nested-type", () -> refusesWrite((v, b) -> v.inner.g = Float.NaN, 0));
         check("form-write:union-arm", () -> refusesWrite((v, b) -> { v.pick.type = PickFixed.a; v.pick.a = Float.NaN; }, 0));
@@ -409,11 +416,15 @@ public final class Driver {
             return Float.floatToRawIntBits(AccRow.f(b, 0)) == 0x80000000 ? "" : "the -0 did not come back";
         });
 
-        // THE COOK'S WRITER refuses one, and its measure reason names it
+        // THE COOK'S WRITER refuses one, and its measure reason names it.
+        // Acc.arr is a FIXED [2]float32: a fresh value already holds its two
+        // elements (docs/SPEC-TABLES.md §16 table, "[N]T fixed array ... more
+        // refuse count_over_bound"; §22.2 "all N elements"), so the probe sets
+        // the slot and never appends a third, which the cook's debug count
+        // assert rightly refuses as a value no reader would take.
         check("cook-write:refused", () -> {
             AccVariable.Value v = new AccVariable.Value();
-            v.arr.add(0.0f);
-            v.arr.add(Float.NaN);
+            v.arr.set(1, Float.NaN);
             byte[] buf = new byte[4096];
             AccCook.MeasureReason why = AccCook.cookMeasureReason(v);
             return AccCook.cookMeasure(v) == -1 && !AccCook.cookFrom(v, buf, TableCookWrite.LITTLE) && why.bytes() == -1 && why.reason().equals("non_finite_float") ? "" : "reason=" + why.reason();
@@ -421,8 +432,7 @@ public final class Driver {
         check("cook-write:minus-zero", () -> {
             AccVariable.Value v = new AccVariable.Value();
             v.d = -0.0;
-            v.arr.add(0.0f);
-            v.arr.add(0.0f);
+            if (v.arr.size() != 2) { return "a fresh fixed [2] array holds " + v.arr.size() + " elements"; }
             long size = AccCook.cookMeasure(v);
             byte[] buf = new byte[(int) Math.max(size, 1)];
             if (size < 0 || !AccCook.cookFrom(v, buf, TableCookWrite.LITTLE)) { return "the finite cook refused"; }
@@ -450,7 +460,8 @@ var finiteLabels = []string{
 	"message-read:union-arm", "message-exact:minus-zero",
 	"fixed-read:f32", "fixed-read:f64", "fixed-read:compressed", "fixed-read:array-element", "fixed-read:nested-type",
 	"fixed-read:union-arm", "fixed-exact:minus-zero",
-	"form-write:f32", "form-write:f64", "form-write:compressed", "form-write:array-element", "form-write:nested-type",
+	"form-write:f32", "form-write:f64", "form-write:array-element", "form-write:nested-type",
+	"form-write-ranged:compressed", "form-write-ranged:compressed-nan", "form-write-ranged:compressed-plus-inf",
 	"form-write:union-arm",
 	"accessor:row-f32", "accessor:row-f64", "accessor:row-element", "accessor:block-projection", "accessor-exact:minus-zero",
 	"cook-write:refused", "cook-write:minus-zero",
@@ -494,6 +505,12 @@ var finiteSabotages = []finiteSabotage{
 	{"accessor", []string{"TableBytes.java"}, [][2]string{
 		{"throw new NonFiniteFloat(field);", "field = null; // SABOTAGED"},
 	}, "accessor"},
+	// the message writer's range assert lets a non-finite value through to
+	// the non_finite_float refusal: drop that guard and the -ea probe throws
+	// on every ranged write (the regression f259a7aa3a shipped)
+	{"ranged write guard", []string{"Message.java"}, [][2]string{
+		{"assert !java.lang.Float.isFinite(v.c)", "assert false /* SABOTAGED */"},
+	}, "form-write-ranged"},
 }
 
 // runFiniteProbe generates the unit, applies the sabotage (none for the gate),

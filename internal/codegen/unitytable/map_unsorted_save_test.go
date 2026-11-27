@@ -3,8 +3,8 @@ package unitytable_test
 import (
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/fixedproof"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 )
 
 func TestUnityVTUnsortedMapEntriesSortCanonicallyAndRefuseDuplicates(t *testing.T) {

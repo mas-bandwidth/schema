@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster/lobsterrun"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/lobster/lobsterrun"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // THE WRITE CONTRACT ON THE MESSAGE FORM (docs/SPEC.md §5.1): Lobster's table

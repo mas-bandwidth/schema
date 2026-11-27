@@ -245,6 +245,8 @@ end
 
 -- type DefaultArm (SPEC §6.1: the wire order is the declared order)
 function _M.WriteDefaultArm(stream, v)
+  if type(v) ~= "table" then return false end
+  if type(v.Entries) ~= "table" then return false end
   -- the count guards the loop (SPEC §6.3)
   if math.type(v.EntriesCount) ~= "integer" or v.EntriesCount < 0 or v.EntriesCount > 2 then return false end
   if not stream:serializeBits({ value = v.EntriesCount }, 2) then return false end -- the count
@@ -258,6 +260,7 @@ end
 
 -- union DefaultChoice (SPEC §4.8: None = 0, then each declared arm)
 function _M.WriteDefaultChoice(stream, v)
+  if type(v) ~= "table" then return false end
   if math.type(v.Type) ~= "integer" or v.Type < 0 or v.Type > 2 then return false end
   if not stream:serializeBits({ value = v.Type }, 2) then return false end -- the union tag
   if v.Type == 1 then
@@ -271,12 +274,14 @@ end
 
 -- type DefaultChoicePacket (SPEC §6.1: the wire order is the declared order)
 function _M.WriteDefaultChoicePacket(stream, v)
+  if type(v) ~= "table" then return false end
   if not _M.WriteDefaultChoice(stream, v.Choice) then return false end
   return true
 end
 
 -- type DefaultBulkArm (SPEC §6.1: the wire order is the declared order)
 function _M.WriteDefaultBulkArm(stream, v)
+  if type(v) ~= "table" then return false end
   if not _M.WriteDefaultArm(stream, v.Payload) then return false end
   if type(v.Data) ~= "string" or #v.Data > 2 then return false end
   if not stream:serializeBits({ value = #v.Data }, 2) then return false end -- the length
@@ -287,6 +292,7 @@ end
 
 -- union DefaultBulkChoice (SPEC §4.8: None = 0, then each declared arm)
 function _M.WriteDefaultBulkChoice(stream, v)
+  if type(v) ~= "table" then return false end
   if math.type(v.Type) ~= "integer" or v.Type < 0 or v.Type > 2 then return false end
   if not stream:serializeBits({ value = v.Type }, 2) then return false end -- the union tag
   if v.Type == 1 then

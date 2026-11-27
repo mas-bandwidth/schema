@@ -9,7 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/testinputs"
 )
 
 // TestSerializeFetchTriesTheMirrorFirst holds the fetch's SOURCE ORDER: since
@@ -327,6 +328,7 @@ func runMakeFetch(t *testing.T, root string, vars []string, target string) (stri
 	t.Helper()
 	args := append([]string{"--no-print-directory"}, vars...)
 	args = append(args, target)
+	testinputs.Make(t)
 	cmd := exec.Command("make", args...)
 	cmd.Dir = root
 	cmd.Env = append(stripEnv(os.Environ(),

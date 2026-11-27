@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/tablenames"
+	"github.com/mas-bandwidth/schema/v3/internal/tablenames"
 )
 
 // TestCTableRuntimeNamesAreClaimed is the C leg's half of the §11 promise, and

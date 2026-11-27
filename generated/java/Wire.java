@@ -135,53 +135,53 @@ public final class Wire {
 
     // enumNameWeapon: debug/log/tooling name for any Weapon storage value —
     // out-of-set values (wire-legal up to the declared max) name as "???"
-    public static java.lang.String enumNameWeapon(long value) {
-        if (value == Weapon.NONE) {
+    public static java.lang.String enumNameWeapon(long schema_value) {
+        if (schema_value == Weapon.NONE) {
             return "None";
         }
-        if (value == Weapon.LASER) {
+        if (schema_value == Weapon.LASER) {
             return "Laser";
         }
-        if (value == Weapon.MISSILE) {
+        if (schema_value == Weapon.MISSILE) {
             return "Missile";
         }
-        if (value == Weapon.RAILGUN) {
+        if (schema_value == Weapon.RAILGUN) {
             return "Railgun";
         }
-        if (value == Weapon.FLAK) {
+        if (schema_value == Weapon.FLAK) {
             return "Flak";
         }
-        if (value == Weapon.BEAM) {
+        if (schema_value == Weapon.BEAM) {
             return "Beam";
         }
-        if (value == Weapon.PLASMA) {
+        if (schema_value == Weapon.PLASMA) {
             return "Plasma";
         }
-        if (value == Weapon.TORPEDO) {
+        if (schema_value == Weapon.TORPEDO) {
             return "Torpedo";
         }
-        if (value == Weapon.MINE) {
+        if (schema_value == Weapon.MINE) {
             return "Mine";
         }
-        if (value == Weapon.DRONE) {
+        if (schema_value == Weapon.DRONE) {
             return "Drone";
         }
-        if (value == Weapon.SWARM) {
+        if (schema_value == Weapon.SWARM) {
             return "Swarm";
         }
-        if (value == Weapon.PULSE) {
+        if (schema_value == Weapon.PULSE) {
             return "Pulse";
         }
-        if (value == Weapon.LANCE) {
+        if (schema_value == Weapon.LANCE) {
             return "Lance";
         }
-        if (value == Weapon.COMET) {
+        if (schema_value == Weapon.COMET) {
             return "Comet";
         }
-        if (value == Weapon.QUAKE) {
+        if (schema_value == Weapon.QUAKE) {
             return "Quake";
         }
-        if (value == Weapon.ARC) {
+        if (schema_value == Weapon.ARC) {
             return "Arc";
         }
         return "???";
@@ -1025,14 +1025,14 @@ public final class Wire {
 
     // enumNameProbeShapeType: debug/log/tooling name for any ProbeShapeType storage value —
     // out-of-set values (wire-legal up to the declared max) name as "???"
-    public static java.lang.String enumNameProbeShapeType(long value) {
-        if (value == ProbeShapeType.NONE) {
+    public static java.lang.String enumNameProbeShapeType(long schema_value) {
+        if (schema_value == ProbeShapeType.NONE) {
             return "None";
         }
-        if (value == ProbeShapeType.RING) {
+        if (schema_value == ProbeShapeType.RING) {
             return "Ring";
         }
-        if (value == ProbeShapeType.SLAB) {
+        if (schema_value == ProbeShapeType.SLAB) {
             return "Slab";
         }
         return "???";

@@ -20,7 +20,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 	"math"
 	"os"
 	"path/filepath"
@@ -28,7 +28,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 // t03Flat is the smallest declared fixed table with a lineage: two adjacent

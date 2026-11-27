@@ -193,7 +193,7 @@ namespace Blockdemo
         {
             Unknown = 0; Widened = 0; Retained = 0; RetainLost = 0; Refused = false; Reason = null;
             NonFiniteFloat = null; NonFiniteReason = null; Verdict = default; Damaged = false;
-            KindChanged = 0; LayoutHash = 0;
+            KindChanged = 0; BuildVersionRemote = 0; BuildVersionOwn = 0; LayoutHash = 0;
         }
     }
 
@@ -1491,7 +1491,9 @@ namespace Blockdemo
                 if (f.Kind == 17) { return WritePointer(ref o, owner, f, index, depth); }
                 if (f.Arms != null)
                 {
-                    // a union is an object with ONE key, the arm's name; None is {}
+                    // a union is an object with ONE key, the arm's name; None is {}, and
+                    // either is a container the depth cap counts (docs/SPEC-TABLES.md 16.14 W2)
+                    if (depth > MaxDepth) { return false; }
                     object union = f.GetChild(owner, index);
                     ulong tag = f.Arms.GetTag(union);
                     if (tag == 0)
@@ -1545,6 +1547,9 @@ namespace Blockdemo
                 }
                 if (IsFlags(f))
                 {
+                    // a flags value is an array of names, a container the read counts,
+                    // an empty [] included (docs/SPEC-TABLES.md 16.14 W2)
+                    if (depth > MaxDepth) { return false; }
                     ulong bits = f.GetRaw(owner, index);
                     if (bits == 0)
                     {
@@ -1633,7 +1638,9 @@ namespace Blockdemo
                     // one entry per SLOT, keyed by the variant that owns it, so
                     // inserting a variant next season moves nothing in the text either.
                     // Slot i holds the key i + 1: nothing is stored for None, so
-                    // nothing is written for it.
+                    // nothing is written for it. The object, an empty {} included, is
+                    // a container the depth cap counts (docs/SPEC-TABLES.md 16.14 W2).
+                    if (depth > MaxDepth) { return false; }
                     o.Put((byte)'{');
                     bool first = true;
                     for (int slot = 0; slot < f.ArrayBound; slot++)
@@ -1656,6 +1663,9 @@ namespace Blockdemo
                 }
                 if (f.IsArray)
                 {
+                    // an array or a text list, an empty [] included, is a container
+                    // the depth cap counts, as the read counts it (docs/SPEC-TABLES.md 16.14 W2)
+                    if (depth > MaxDepth) { return false; }
                     int count = Count(value, f);
                     if (count == 0)
                     {
@@ -1894,6 +1904,9 @@ namespace Blockdemo
 
             static bool WriteMap(ref Out o, object owner, TableFieldInfo f, int depth)
             {
+                // a map's object, an empty {} included, is a container the depth cap
+                // counts (docs/SPEC-TABLES.md 16.14 W2)
+                if (depth > MaxDepth) { return false; }
                 int count = f.GetCount(owner);
                 if (count == 0) { o.Text("{}"); return true; }
                 if (!TableWire.MapOrdered(owner, f)) { return false; }
@@ -4198,6 +4211,9 @@ namespace Blockdemo
                 }
                 public bool Visit(object value, TableTypeInfo type)
                 {
+                    // a null record, list element or arm payload is a value of the
+                    // wrong kind (DW-TABLE-SHAPE): a debug assert (docs/SPEC.md §5.1)
+                    System.Diagnostics.Debug.Assert(value != null, "a null record is written");
                     foreach (TableFieldInfo f in type.Fields)
                     { if (Rides(value, f) && !VisitField(value, f)) { return false; } }
                     return true;
@@ -4213,7 +4229,9 @@ namespace Blockdemo
                         if (f.Kind == 13) { if (!Visit(f.GetChild(value, i), f.Table)) { return false; } }
                         else if (f.Kind == 15)
                         {
-                            object union = f.GetChild(value, i); ulong tag = f.Arms.GetTag(union);
+                            object union = f.GetChild(value, i);
+                            System.Diagnostics.Debug.Assert(union != null, "a null union is written");
+                            ulong tag = f.Arms.GetTag(union);
                             // a tag naming no arm is the programmer's error: a debug assert (docs/SPEC.md §5.1)
                             System.Diagnostics.Debug.Assert(tag <= (ulong)f.EnumMax);
                             if (tag != 0 && !VisitField(union, f.Arms.Arms[(int)tag].Field)) { return false; }
@@ -4885,7 +4903,7 @@ namespace Blockdemo
                     if (id == ulong.MaxValue) { node = true; }
                     if (!keys.Add(Convert.ToHexString(payload.Buffer.Slice(start, payload.Offset - start)))) { Damage(report); return Finish(report, Verdict.Damaged); }
                     entries.Add(new TableMessageEntry { Id = id, Kind = kind, Shape = shape });
-                    if (entries.Count > (v.MaxEntries > 0 ? v.MaxEntries : 4096)) { return Refuse(report, "vocabulary_too_large"); }
+                    if (entries.Count > (v.MaxEntries >= 0 ? v.MaxEntries : 4096)) { return Refuse(report, "vocabulary_too_large"); }
                 }
                 v.Entries = entries.ToArray(); v.Announced = true; return Finish(report, Verdict.Ok);
             }
@@ -5732,6 +5750,9 @@ namespace Blockdemo
             }
             static bool Empty(object value, TableTypeInfo type)
             {
+                // a null record is never "at its default": it is a value of the wrong
+                // kind (DW-TABLE-SHAPE), a debug assert (docs/SPEC.md §5.1)
+                System.Diagnostics.Debug.Assert(value != null, "a null record is written");
                 foreach (TableFieldInfo f in type.Fields) { if (Rides(value, f)) { return false; } }
                 return true;
             }
@@ -5826,6 +5847,9 @@ namespace Blockdemo
             }
             static bool Collect(object value, TableTypeInfo type, ref Ids ids)
             {
+                // a null record, list element or arm payload is a value of the wrong
+                // kind (DW-TABLE-SHAPE): a debug assert (docs/SPEC.md §5.1)
+                System.Diagnostics.Debug.Assert(value != null, "a null record is written");
                 foreach (TableFieldInfo f in type.Fields)
                 {
                     if (f.WireGuard != null && !f.WireGuard(value)) { continue; }
@@ -6089,6 +6113,9 @@ namespace Blockdemo
             }
             public static long Save(object value, TableTypeInfo type, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
             {
+                // a null root is a value of the wrong kind (DW-TABLE-SHAPE): a debug
+                // assert (docs/SPEC.md §5.1)
+                System.Diagnostics.Debug.Assert(value != null, "a null root is written");
                 // Preserve first-use vocabulary order; the index only accelerates
                 // references during the repeated collect, measure and write walks.
                 // Bound extra stack use for large schemas; their existing linear
@@ -6733,6 +6760,12 @@ namespace Blockdemo
                 int n = global::System.Math.Min(src.Length / width, dst.Length);
                 MemoryMarshal.Cast<byte, T>(src.Slice(0, n * width)).CopyTo(dst); /* byte order: swapped below on a big-endian host */
                 if (!BitConverter.IsLittleEndian) { ReverseEach(MemoryMarshal.AsBytes(dst.Slice(0, n)), width); }
+                // THE SLOT LANDS WHOLE (docs/SPEC-TABLES.md §3.4, THE PREFILL IS WHAT
+                // ANSWERS "ABSENT FIELD"; §6.5): an older writer's shorter [N]T marks
+                // the slot landed, so the hole list never resets it. The reader's
+                // elements past the writer's N therefore take their default here, and
+                // never keep the caller's old values.
+                dst.Slice(n).Clear();
             }
             public static void WriteLittle<T>(ReadOnlySpan<T> src, Span<byte> dst) where T : unmanaged
             {

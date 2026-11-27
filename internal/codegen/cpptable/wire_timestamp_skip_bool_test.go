@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // TestWireSkipCarriesTheTimestampKind pins kind 36 in the emitted

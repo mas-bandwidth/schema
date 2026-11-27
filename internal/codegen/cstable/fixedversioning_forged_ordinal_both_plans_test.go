@@ -3,13 +3,13 @@ package cstable
 import (
 	"bytes"
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 // §5.8 row 12 `forged_ordinal_both_plans`: VOLD_/VNEW_enum_append read the SAME

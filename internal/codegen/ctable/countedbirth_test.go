@@ -12,7 +12,7 @@ package ctable
 
 import (
 	"errors"
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 	"maps"
 	"os"
 	"os/exec"
@@ -20,8 +20,8 @@ import (
 	"strings"
 	"testing"
 
-	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	cgen "github.com/mas-bandwidth/schema/v3/internal/codegen/c"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 )
 
 const cCountedBirthSchema = `package probe

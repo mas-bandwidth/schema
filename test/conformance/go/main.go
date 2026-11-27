@@ -16,7 +16,6 @@ package main
 
 import (
 	"bufio"
-	"errors"
 	"fmt"
 	"math/big"
 	"os"
@@ -25,8 +24,6 @@ import (
 	"runtime/debug"
 	"strconv"
 	"strings"
-
-	"blobdemo"
 )
 
 // ---------------------------------------------------------------------------
@@ -227,7 +224,7 @@ func surfaceWire(lines []line, out string) error {
 			// MeasureReason names that refusal; preserve it as this row's answer.
 			if c.measureReason != nil {
 				_, reason := c.measureReason(value)
-				if errors.Is(reason, blobdemo.TableRefuseBlobShared) {
+				if isBlobSharedErr(reason) {
 					if err := spill(out, f[1], []byte("refused\n")); err != nil {
 						return err
 					}
@@ -391,6 +388,10 @@ func surfaceFraming(lines []line, out string) error {
 }
 
 func surfaceJsonRead(lines []line, out string) error {
+	jsonDir := os.Getenv("SCHEMA_CONFORMANCE_JSON_INPUT_DIR")
+	if jsonDir == "" {
+		jsonDir = "testdata/conformance/tables/json"
+	}
 	for _, f := range lines {
 		if f[0] != "instance" || noText(f) {
 			continue
@@ -404,7 +405,7 @@ func surfaceJsonRead(lines []line, out string) error {
 			}
 			continue
 		}
-		text, err := os.ReadFile("testdata/conformance/tables/json/" + f[1] + ".json")
+		text, err := os.ReadFile(filepath.Join(jsonDir, f[1]+".json"))
 		if err != nil {
 			return err
 		}
@@ -716,6 +717,8 @@ func main() {
 		run = surfaceRetain
 	case "retain-save":
 		run = surfaceRetainSave
+	case "retain-refusal":
+		run = surfaceRetainRefusal
 	case "message":
 		run = surfaceMessage
 	case "message-prior":
@@ -748,7 +751,7 @@ func main() {
 		run = func(lines []line, out string) error { return surfaceForgery("block", lines, out) }
 	case "cook-forgery":
 		run = func(lines []line, out string) error { return surfaceForgery("cook", lines, out) }
-	case "write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json", "write-refusal-cook", "write-refusal-block":
+	case "write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json", "write-refusal-cook", "write-refusal-block", "write-refusal-shape":
 		surface := surface
 		run = func(lines []line, out string) error { return surfaceWriteRefusal(surface, lines, out) }
 	case "announce":

@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum lazy
+{ Zfirst, Zsecond, Zthird }
+
+enum lazyClass
+{ Zfirst, Zsecond, Zthird }
+
+enum lb
+{ Zfirst, Zsecond, Zthird }
+
+enum lbl
+{ Zfirst, Zsecond, Zthird }
+
+enum le
+{ Zfirst, Zsecond, Zthird }
+
+enum leU
+{ Zfirst, Zsecond, Zthird }
+
+enum le_at
+{ Zfirst, Zsecond, Zthird }
+
+enum lead
+{ Zfirst, Zsecond, Zthird }
+
+enum leaf
+{ Zfirst, Zsecond, Zthird }
+
+enum leafFixedBodyBytes
+{ Zfirst, Zsecond, Zthird }
+
+enum leafFixedCover
+{ Zfirst, Zsecond, Zthird }
+
+enum leafFixedCoverCount
+{ Zfirst, Zsecond, Zthird }
+
+enum leafFixedDst
+{ Zfirst, Zsecond, Zthird }
+
+enum leafFixedFloor
+{ Zfirst, Zsecond, Zthird }
+
+enum leafFixedHash
+{ Zfirst, Zsecond, Zthird }
+
+enum leafFixedHeaderBytes
+{ Zfirst, Zsecond, Zthird }
+
+enum leafFixedIdentity
+{ Zfirst, Zsecond, Zthird }
+
+enum leafFixedIdentityCount
+{ Zfirst, Zsecond, Zthird }
+
+enum leafFixedIdentityGuards
+{ Zfirst, Zsecond, Zthird }
+
+enum leafFixedIdentitySplit
+{ Zfirst, Zsecond, Zthird }
+
+enum leafFixedKnown
+{ Zfirst, Zsecond, Zthird }
+
+enum leafFixedLayout
+{ Zfirst, Zsecond, Zthird }
+
+enum leafFixedLayoutBytes
+{ Zfirst, Zsecond, Zthird }
+
+enum leafFixedLineagePlans
+{ Zfirst, Zsecond, Zthird }
+
+enum leafFixedLoadView
+{ Zfirst, Zsecond, Zthird }
+
+enum leafFixedPrefill
+{ Zfirst, Zsecond, Zthird }
+
+enum leafFixedRecordBytes
+{ Zfirst, Zsecond, Zthird }
+
+enum leafFixedSaveView
+{ Zfirst, Zsecond, Zthird }
+
+enum leafSize
+{ Zfirst, Zsecond, Zthird }
+
+enum leaf_from_json
+{ Zfirst, Zsecond, Zthird }
+
+enum leaf_from_json_bytes
+{ Zfirst, Zsecond, Zthird }
+
+enum leaf_from_json_into
+{ Zfirst, Zsecond, Zthird }
+
+enum leaf_json_count
+{ Zfirst, Zsecond, Zthird }
+
+enum leaf_json_read
+{ Zfirst, Zsecond, Zthird }
+
+enum leaf_json_write
+{ Zfirst, Zsecond, Zthird }
+
+enum leaf_load_measure
+{ Zfirst, Zsecond, Zthird }
+
+enum leaf_load_walk
+{ Zfirst, Zsecond, Zthird }
+
+enum leaf_to_json
+{ Zfirst, Zsecond, Zthird }
+
+enum leaf_to_json_both
+{ Zfirst, Zsecond, Zthird }
+
+enum leaf_to_json_checked
+{ Zfirst, Zsecond, Zthird }
+
+enum leap
+{ Zfirst, Zsecond, Zthird }
+
+enum least
+{ Zfirst, Zsecond, Zthird }
+
+enum leb
+{ Zfirst, Zsecond, Zthird }
+
+enum leb64
+{ Zfirst, Zsecond, Zthird }
+
+enum lebBits16
+{ Zfirst, Zsecond, Zthird }
+
+enum leb_at
+{ Zfirst, Zsecond, Zthird }
+
+enum leb_len
+{ Zfirst, Zsecond, Zthird }
+
+enum leb_read
+{ Zfirst, Zsecond, Zthird }
+
+enum leb_size
+{ Zfirst, Zsecond, Zthird }
+
+enum leb_write
+{ Zfirst, Zsecond, Zthird }
+
+enum left
+{ Zfirst, Zsecond, Zthird }
+
+enum len64
+{ Zfirst, Zsecond, Zthird }
+
+enum lenAt
+{ Zfirst, Zsecond, Zthird }
+
+enum len_bytes
+{ Zfirst, Zsecond, Zthird }
+
+enum len_key
+{ Zfirst, Zsecond, Zthird }
+
+enum len_value
+{ Zfirst, Zsecond, Zthird }
+
+enum length
+{ Zfirst, Zsecond, Zthird }
+
+enum lengthBits
+{ Zfirst, Zsecond, Zthird }
+
+enum lengthOverBound
+{ Zfirst, Zsecond, Zthird }
+
+enum length_at
+{ Zfirst, Zsecond, Zthird }
+
+enum lengths
+{ Zfirst, Zsecond, Zthird }
+
+enum lens
+{ Zfirst, Zsecond, Zthird }
+
+enum less
+{ Zfirst, Zsecond, Zthird }
+
+enum lessThan
+{ Zfirst, Zsecond, Zthird }
+
+enum lets
+{ Zfirst, Zsecond, Zthird }
+
+enum letter
+{ Zfirst, Zsecond, Zthird }
+
+enum level
+{ Zfirst, Zsecond, Zthird }
+
+enum levels
+{ Zfirst, Zsecond, Zthird }
+
+enum lg
+{ Zfirst, Zsecond, Zthird }
+
+enum lgood
+{ Zfirst, Zsecond, Zthird }
+
+enum lhi
+{ Zfirst, Zsecond, Zthird }
+
+enum lhs
+{ Zfirst, Zsecond, Zthird }
+
+enum li
+{ Zfirst, Zsecond, Zthird }
+
+enum life
+{ Zfirst, Zsecond, Zthird }
+
+enum like
+{ Zfirst, Zsecond, Zthird }
+
+enum lim
+{ Zfirst, Zsecond, Zthird }
+
+enum lim10
+{ Zfirst, Zsecond, Zthird }
+
+enum limHi
+{ Zfirst, Zsecond, Zthird }
+
+enum limLo
+{ Zfirst, Zsecond, Zthird }
+
+enum limb
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    lazy Inner
+    lazyClass Inner
+    lb Inner
+    lbl Inner
+    le Inner
+    leU Inner
+    le_at Inner
+    lead Inner
+    leaf Inner
+    leafFixedBodyBytes Inner
+}
+
+table NameTypes0
+{
+    one0  lazy
+    many0 [..4]lazy
+    one1  lazyClass
+    many1 [..4]lazyClass
+    one2  lb
+    many2 [..4]lb
+    one3  lbl
+    many3 [..4]lbl
+    one4  le
+    many4 [..4]le
+    one5  leU
+    many5 [..4]leU
+    one6  le_at
+    many6 [..4]le_at
+    one7  lead
+    many7 [..4]lead
+    one8  leaf
+    many8 [..4]leaf
+    one9  leafFixedBodyBytes
+    many9 [..4]leafFixedBodyBytes
+}
+
+table NameFields0
+{
+    lazy uint32
+    lazyClass uint32
+    lb uint32
+    lbl uint32
+    le uint32
+    leU uint32
+    le_at uint32
+    lead uint32
+    leaf uint32
+    leafFixedBodyBytes uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    leafFixedCover Inner
+    leafFixedCoverCount Inner
+    leafFixedDst Inner
+    leafFixedFloor Inner
+    leafFixedHash Inner
+    leafFixedHeaderBytes Inner
+    leafFixedIdentity Inner
+    leafFixedIdentityCount Inner
+    leafFixedIdentityGuards Inner
+    leafFixedIdentitySplit Inner
+}
+
+table NameTypes1
+{
+    one0  leafFixedCover
+    many0 [..4]leafFixedCover
+    one1  leafFixedCoverCount
+    many1 [..4]leafFixedCoverCount
+    one2  leafFixedDst
+    many2 [..4]leafFixedDst
+    one3  leafFixedFloor
+    many3 [..4]leafFixedFloor
+    one4  leafFixedHash
+    many4 [..4]leafFixedHash
+    one5  leafFixedHeaderBytes
+    many5 [..4]leafFixedHeaderBytes
+    one6  leafFixedIdentity
+    many6 [..4]leafFixedIdentity
+    one7  leafFixedIdentityCount
+    many7 [..4]leafFixedIdentityCount
+    one8  leafFixedIdentityGuards
+    many8 [..4]leafFixedIdentityGuards
+    one9  leafFixedIdentitySplit
+    many9 [..4]leafFixedIdentitySplit
+}
+
+table NameFields1
+{
+    leafFixedCover uint32
+    leafFixedCoverCount uint32
+    leafFixedDst uint32
+    leafFixedFloor uint32
+    leafFixedHash uint32
+    leafFixedHeaderBytes uint32
+    leafFixedIdentity uint32
+    leafFixedIdentityCount uint32
+    leafFixedIdentityGuards uint32
+    leafFixedIdentitySplit uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    leafFixedKnown Inner
+    leafFixedLayout Inner
+    leafFixedLayoutBytes Inner
+    leafFixedLineagePlans Inner
+    leafFixedLoadView Inner
+    leafFixedPrefill Inner
+    leafFixedRecordBytes Inner
+    leafFixedSaveView Inner
+    leafSize Inner
+    leaf_from_json Inner
+}
+
+table NameTypes2
+{
+    one0  leafFixedKnown
+    many0 [..4]leafFixedKnown
+    one1  leafFixedLayout
+    many1 [..4]leafFixedLayout
+    one2  leafFixedLayoutBytes
+    many2 [..4]leafFixedLayoutBytes
+    one3  leafFixedLineagePlans
+    many3 [..4]leafFixedLineagePlans
+    one4  leafFixedLoadView
+    many4 [..4]leafFixedLoadView
+    one5  leafFixedPrefill
+    many5 [..4]leafFixedPrefill
+    one6  leafFixedRecordBytes
+    many6 [..4]leafFixedRecordBytes
+    one7  leafFixedSaveView
+    many7 [..4]leafFixedSaveView
+    one8  leafSize
+    many8 [..4]leafSize
+    one9  leaf_from_json
+    many9 [..4]leaf_from_json
+}
+
+table NameFields2
+{
+    leafFixedKnown uint32
+    leafFixedLayout uint32
+    leafFixedLayoutBytes uint32
+    leafFixedLineagePlans uint32
+    leafFixedLoadView uint32
+    leafFixedPrefill uint32
+    leafFixedRecordBytes uint32
+    leafFixedSaveView uint32
+    leafSize uint32
+    leaf_from_json uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    leaf_from_json_bytes Inner
+    leaf_from_json_into Inner
+    leaf_json_count Inner
+    leaf_json_read Inner
+    leaf_json_write Inner
+    leaf_load_measure Inner
+    leaf_load_walk Inner
+    leaf_to_json Inner
+    leaf_to_json_both Inner
+    leaf_to_json_checked Inner
+}
+
+table NameTypes3
+{
+    one0  leaf_from_json_bytes
+    many0 [..4]leaf_from_json_bytes
+    one1  leaf_from_json_into
+    many1 [..4]leaf_from_json_into
+    one2  leaf_json_count
+    many2 [..4]leaf_json_count
+    one3  leaf_json_read
+    many3 [..4]leaf_json_read
+    one4  leaf_json_write
+    many4 [..4]leaf_json_write
+    one5  leaf_load_measure
+    many5 [..4]leaf_load_measure
+    one6  leaf_load_walk
+    many6 [..4]leaf_load_walk
+    one7  leaf_to_json
+    many7 [..4]leaf_to_json
+    one8  leaf_to_json_both
+    many8 [..4]leaf_to_json_both
+    one9  leaf_to_json_checked
+    many9 [..4]leaf_to_json_checked
+}
+
+table NameFields3
+{
+    leaf_from_json_bytes uint32
+    leaf_from_json_into uint32
+    leaf_json_count uint32
+    leaf_json_read uint32
+    leaf_json_write uint32
+    leaf_load_measure uint32
+    leaf_load_walk uint32
+    leaf_to_json uint32
+    leaf_to_json_both uint32
+    leaf_to_json_checked uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    leap Inner
+    least Inner
+    leb Inner
+    leb64 Inner
+    lebBits16 Inner
+    leb_at Inner
+    leb_len Inner
+    leb_read Inner
+    leb_size Inner
+    leb_write Inner
+}
+
+table NameTypes4
+{
+    one0  leap
+    many0 [..4]leap
+    one1  least
+    many1 [..4]least
+    one2  leb
+    many2 [..4]leb
+    one3  leb64
+    many3 [..4]leb64
+    one4  lebBits16
+    many4 [..4]lebBits16
+    one5  leb_at
+    many5 [..4]leb_at
+    one6  leb_len
+    many6 [..4]leb_len
+    one7  leb_read
+    many7 [..4]leb_read
+    one8  leb_size
+    many8 [..4]leb_size
+    one9  leb_write
+    many9 [..4]leb_write
+}
+
+table NameFields4
+{
+    leap uint32
+    least uint32
+    leb uint32
+    leb64 uint32
+    lebBits16 uint32
+    leb_at uint32
+    leb_len uint32
+    leb_read uint32
+    leb_size uint32
+    leb_write uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    left Inner
+    len64 Inner
+    lenAt Inner
+    len_bytes Inner
+    len_key Inner
+    len_value Inner
+    length Inner
+    lengthBits Inner
+    lengthOverBound Inner
+    length_at Inner
+}
+
+table NameTypes5
+{
+    one0  left
+    many0 [..4]left
+    one1  len64
+    many1 [..4]len64
+    one2  lenAt
+    many2 [..4]lenAt
+    one3  len_bytes
+    many3 [..4]len_bytes
+    one4  len_key
+    many4 [..4]len_key
+    one5  len_value
+    many5 [..4]len_value
+    one6  length
+    many6 [..4]length
+    one7  lengthBits
+    many7 [..4]lengthBits
+    one8  lengthOverBound
+    many8 [..4]lengthOverBound
+    one9  length_at
+    many9 [..4]length_at
+}
+
+table NameFields5
+{
+    left uint32
+    len64 uint32
+    lenAt uint32
+    len_bytes uint32
+    len_key uint32
+    len_value uint32
+    length uint32
+    lengthBits uint32
+    lengthOverBound uint32
+    length_at uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    lengths Inner
+    lens Inner
+    less Inner
+    lessThan Inner
+    lets Inner
+    letter Inner
+    level Inner
+    levels Inner
+    lg Inner
+    lgood Inner
+}
+
+table NameTypes6
+{
+    one0  lengths
+    many0 [..4]lengths
+    one1  lens
+    many1 [..4]lens
+    one2  less
+    many2 [..4]less
+    one3  lessThan
+    many3 [..4]lessThan
+    one4  lets
+    many4 [..4]lets
+    one5  letter
+    many5 [..4]letter
+    one6  level
+    many6 [..4]level
+    one7  levels
+    many7 [..4]levels
+    one8  lg
+    many8 [..4]lg
+    one9  lgood
+    many9 [..4]lgood
+}
+
+table NameFields6
+{
+    lengths uint32
+    lens uint32
+    less uint32
+    lessThan uint32
+    lets uint32
+    letter uint32
+    level uint32
+    levels uint32
+    lg uint32
+    lgood uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    lhi Inner
+    lhs Inner
+    li Inner
+    life Inner
+    like Inner
+    lim Inner
+    lim10 Inner
+    limHi Inner
+    limLo Inner
+    limb Inner
+}
+
+table NameTypes7
+{
+    one0  lhi
+    many0 [..4]lhi
+    one1  lhs
+    many1 [..4]lhs
+    one2  li
+    many2 [..4]li
+    one3  life
+    many3 [..4]life
+    one4  like
+    many4 [..4]like
+    one5  lim
+    many5 [..4]lim
+    one6  lim10
+    many6 [..4]lim10
+    one7  limHi
+    many7 [..4]limHi
+    one8  limLo
+    many8 [..4]limLo
+    one9  limb
+    many9 [..4]limb
+}
+
+table NameFields7
+{
+    lhi uint32
+    lhs uint32
+    li uint32
+    life uint32
+    like uint32
+    lim uint32
+    lim10 uint32
+    limHi uint32
+    limLo uint32
+    limb uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

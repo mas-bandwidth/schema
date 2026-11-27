@@ -23,7 +23,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/mas-bandwidth/schema/v2/internal/ci/hostilecorpus"
+	"github.com/mas-bandwidth/schema/v3/internal/ci/hostilecorpus"
 )
 
 type row struct {

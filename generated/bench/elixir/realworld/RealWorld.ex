@@ -580,6 +580,10 @@ defmodule Realworld.RealWorld do
   """
   @spec write_real_packet!(Realworld.RealPacket.t()) :: binary()
   def write_real_packet!(value) do
+    if not is_struct(value, Realworld.RealPacket) do
+      raise ArgumentError, "value is not a RealPacket"
+    end
+
     %{
       f001_int: value_f001_int,
       f002f64: value_f002f64,
@@ -801,6 +805,11 @@ defmodule Realworld.RealWorld do
 
     v = value_f011_bits &&& 0x3FF
     scratch = scratch ||| v <<< 32
+
+    if not is_boolean(value_f012_bool) do
+      raise ArgumentError, "value.f012_bool is not a boolean"
+    end
+
     v = if value_f012_bool, do: 1, else: 0
     scratch = scratch ||| v <<< 42
 
@@ -1118,8 +1127,18 @@ defmodule Realworld.RealWorld do
     scratch = scratch ||| v <<< 32
     v = Realworld.PacketMode.to_int(value_f036_enum)
     scratch = scratch ||| v <<< 41
+
+    if not is_boolean(value_f037_bool) do
+      raise ArgumentError, "value.f037_bool is not a boolean"
+    end
+
     v = if value_f037_bool, do: 1, else: 0
     scratch = scratch ||| v <<< 44
+
+    if not is_boolean(value_f038_bool) do
+      raise ArgumentError, "value.f038_bool is not a boolean"
+    end
+
     v = if value_f038_bool, do: 1, else: 0
     scratch = scratch ||| v <<< 45
 
@@ -1185,6 +1204,11 @@ defmodule Realworld.RealWorld do
     v = value_f042_bits &&& 0x3FFFFFFF
     sc18 = scratch
     scratch = v
+
+    if not is_boolean(value_f043_bool) do
+      raise ArgumentError, "value.f043_bool is not a boolean"
+    end
+
     v = if value_f043_bool, do: 1, else: 0
     scratch = scratch ||| v <<< 30
 
@@ -1291,6 +1315,11 @@ defmodule Realworld.RealWorld do
     v = value_f049_ufixed
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 16
+
+    if not is_boolean(value_f050_bool) do
+      raise ArgumentError, "value.f050_bool is not a boolean"
+    end
+
     v = if value_f050_bool, do: 1, else: 0
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
@@ -1307,6 +1336,10 @@ defmodule Realworld.RealWorld do
           f053f32: value_f053f32,
           f054_int: value_f054_int
         } = value
+
+        if not is_boolean(value_f051_bool) do
+          raise ArgumentError, "value.f051_bool is not a boolean"
+        end
 
         v = if value_f051_bool, do: 1, else: 0
         scratch = scratch ||| v <<< scratch_bits
@@ -1354,6 +1387,10 @@ defmodule Realworld.RealWorld do
       else
         {data, scratch, scratch_bits}
       end
+
+    if not is_boolean(value_f055_bool) do
+      raise ArgumentError, "value.f055_bool is not a boolean"
+    end
 
     v = if value_f055_bool, do: 1, else: 0
     scratch = scratch ||| v <<< scratch_bits
@@ -1627,6 +1664,11 @@ defmodule Realworld.RealWorld do
     v = value_f073_int + 4
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 4
+
+    if not is_boolean(value_f074_bool) do
+      raise ArgumentError, "value.f074_bool is not a boolean"
+    end
+
     v = if value_f074_bool, do: 1, else: 0
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
@@ -1753,6 +1795,10 @@ defmodule Realworld.RealWorld do
       else
         {data, scratch, scratch_bits}
       end
+
+    if not is_boolean(value_f080_bool) do
+      raise ArgumentError, "value.f080_bool is not a boolean"
+    end
 
     v = if value_f080_bool, do: 1, else: 0
     scratch = scratch ||| v <<< scratch_bits
@@ -1923,6 +1969,10 @@ defmodule Realworld.RealWorld do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
 
+    if not is_integer(value_f091_flags) do
+      raise ArgumentError, "value.f091_flags is not an integer"
+    end
+
     if value_f091_flags >>> 5 != 0 do
       raise ArgumentError, "value.f091_flags holds a mask bit above the 5-bit wire"
     end
@@ -1930,6 +1980,11 @@ defmodule Realworld.RealWorld do
     v = value_f091_flags
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 5
+
+    if not is_boolean(value_f092_bool) do
+      raise ArgumentError, "value.f092_bool is not a boolean"
+    end
+
     v = if value_f092_bool, do: 1, else: 0
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
@@ -1956,6 +2011,11 @@ defmodule Realworld.RealWorld do
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
+
+    if not is_boolean(value_f094_bool) do
+      raise ArgumentError, "value.f094_bool is not a boolean"
+    end
+
     v = if value_f094_bool, do: 1, else: 0
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
