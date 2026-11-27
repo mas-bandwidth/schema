@@ -5,8 +5,8 @@ import (
 	"testing"
 	"unsafe"
 
-	tabledemo "github.com/mas-bandwidth/schema/v2/internal/codegen/gotable/fuzzunit"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	tabledemo "github.com/mas-bandwidth/schema/v3/internal/codegen/gotable/fuzzunit"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // heldKindWire is one Patrol form-1 file whose body carries one field of the

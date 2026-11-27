@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/luau/luaurun"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // SF-33: serialize_bytes.luau used to probe its bitpacker family with a pcall

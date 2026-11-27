@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	wrpacket "github.com/mas-bandwidth/schema/v2/test/conformance/write-refusal-packet"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/goose/gooserun"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	wrpacket "github.com/mas-bandwidth/schema/v3/test/conformance/write-refusal-packet"
 )
 
 // probe is the Goose side: it reads rows.txt, applies each row's op to a fresh

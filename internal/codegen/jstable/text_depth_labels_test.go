@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
 )
 
 // TestJsTextReadDepthAndLabelsAgreeWithEngine holds the JavaScript text read to

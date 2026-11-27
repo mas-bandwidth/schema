@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/moo/moorun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/moo/moorun"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 )
 
 // A JSON COMMENT IS TEXT (docs/SPEC-TABLES.md §16.2): the bytes inside a line

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 )
 
 // EVERY C# (modern) WRITER STORES +0 FOR A COMPRESSED FLOAT'S -0

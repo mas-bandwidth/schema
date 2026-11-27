@@ -19,7 +19,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 func leafCapUnit(t *testing.T, src string) *ir.Unit {

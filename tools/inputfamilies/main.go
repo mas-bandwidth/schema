@@ -20,7 +20,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/internal/inputfamilies"
+	"github.com/mas-bandwidth/schema/v3/internal/inputfamilies"
 )
 
 func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }

@@ -7,10 +7,10 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/internal/ast"
-	"github.com/mas-bandwidth/schema/v2/internal/baseline"
-	"github.com/mas-bandwidth/schema/v2/internal/lockfile"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/ast"
+	"github.com/mas-bandwidth/schema/v3/internal/baseline"
+	"github.com/mas-bandwidth/schema/v3/internal/lockfile"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 func (c *checker) checkRetiredNames() {

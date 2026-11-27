@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // Reference zero is None/a body terminator; a nonzero reference to hash zero

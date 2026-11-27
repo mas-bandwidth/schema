@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/execref"
+	"github.com/mas-bandwidth/schema/v3/internal/execref"
 )
 
 // boundedChildDirs are the packages whose tests start an interpreter or a
@@ -117,7 +117,7 @@ func TestEveryTestChildIsBoundedNegativeControl(t *testing.T) {
 		{"exec.CommandContext", "package p\nimport (\"context\"; \"os/exec\")\nfunc f() { exec.CommandContext(context.Background(), \"luau\") }\n", 1},
 		{"renamed import", "package p\nimport osexec \"os/exec\"\nfunc f() { osexec.Command(\"luau\") }\n", 1},
 		{"taken as a value", "package p\nimport \"os/exec\"\nvar start = exec.Command\n", 1},
-		{"bounded", "package p\nimport \"github.com/mas-bandwidth/schema/v2/internal/testproc\"\nfunc f(t testing.TB) { testproc.Command(t, \"luau\") }\n", 0},
+		{"bounded", "package p\nimport \"github.com/mas-bandwidth/schema/v3/internal/testproc\"\nfunc f(t testing.TB) { testproc.Command(t, \"luau\") }\n", 0},
 		{"exec for its types only", "package p\nimport \"os/exec\"\nfunc f(c *exec.Cmd) error { var e *exec.ExitError; _ = e; return c.Run() }\n", 0},
 	}
 	planted := 0
