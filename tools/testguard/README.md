@@ -33,7 +33,8 @@ line naming the cause.
 
 Run it from the repository root, as `go run ./tools/testguard`.
 It is one binary with no service or network access. It reads files and runs only
-the coverage commands the config names. `testguard help` prints the manual
+the commands the config names: coverage commands, and for `testguard baseline`
+its record lines. `testguard help` prints the manual
 and changes nothing.
 
 ## Results
@@ -82,6 +83,7 @@ baseline	tests/testguard
 | `cover` | TABLE, `rows`, `columns` or `pairs`, `file` or `run`, PATH or COMMAND | one source of a coverage table; a table names all three |
 | `gap` | TABLE, ROW, COLUMN, REASON | a pair allowed to be uncovered |
 | `baseline` | DIR | the baseline directory; required |
+| `record` | COMMAND | how the row makes its results, for `testguard baseline`; repeatable |
 
 Rows and columns are one name a line; pairs are `ROW<TAB>COLUMN` lines. A `run`
 source runs under `bash -e -o pipefail -c` in the working directory, so a
@@ -115,6 +117,16 @@ with any other finding it writes nothing. It never removes an entry, and it
 always exits 1, so a workflow that passes it can never go green: commit what it
 wrote and check again without it. A `.gitkeep` is never an entry; anything else
 in the directory that is not a registered suite's entry is red (`baseline`).
+
+`testguard baseline --config FILE` is the one command that adds the entries a
+change needs, for a branch whose CI does not check the baseline before it lands.
+It runs the config's `record` lines under `bash -e -o pipefail -c`, each with
+`TESTGUARD_RECORD` naming a new directory to write result files into (keep them
+the same as the workflow's test step), then checks those files as
+`--write-baseline` does. A record line that fails, as `go test` does when a test
+fails, or record lines that write no file, are refused and write nothing; like
+`--write-baseline` it always exits 1. When the config has record lines, every
+`unlisted` finding names this command in its fix.
 
 ## Check
 
@@ -162,3 +174,6 @@ Each refusal is one stderr line ending in a command to run.
 | `testguard check: <config> has no suite line (a config that registers nothing checks nothing) and no baseline line; run: go run ./tools/testguard help check` | 2 |
 | `testguard check: the baseline <dir> cannot be read: ...; run: ls -ld <dir>` | 2 |
 | `testguard check: table <table> <axis>: the command "<command>" failed: ...; run: <command>` | 2 |
+| `testguard baseline: <config> has no record line, so there is no way to make the row's results; add the row's go test as one; run: go run ./tools/testguard help check` | 2 |
+| `testguard baseline: the record line "<command>" failed (...); nothing written: the row's tests must pass before their entries are added; run: grep -n '^record' <config>` | 2 |
+| `testguard baseline: the record lines in <config> wrote nothing under $TESTGUARD_RECORD; each must write a result file there; run: grep -n '^record' <config>` | 2 |

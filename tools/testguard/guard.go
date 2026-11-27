@@ -23,6 +23,7 @@ type config struct {
 	tables   map[string]*table
 	order    []string // table names in the order the config gives them
 	baseline string
+	records  []string // commands that write the row's results under $TESTGUARD_RECORD
 }
 
 // table is one required coverage table: every row x column pair is covered by
@@ -89,8 +90,13 @@ func readConfig(dir, path string) (*config, error) {
 				return nil, bad("DIR, once")
 			}
 			c.baseline = f[1]
+		case "record":
+			if len(f) != 2 {
+				return nil, bad("COMMAND")
+			}
+			c.records = append(c.records, f[1])
 		default:
-			return nil, refuse(at, "%s:%d: %q is no entry; the entries are suite, skip, cover, gap and baseline", path, n+1, f[0])
+			return nil, refuse(at, "%s:%d: %q is no entry; the entries are suite, skip, cover, gap, baseline and record", path, n+1, f[0])
 		}
 	}
 	var missing []string
@@ -497,7 +503,7 @@ func (c *config) checkBaseline(res results, rep *report) ([]addition, error) {
 		case s.countOnly && !hasFloor:
 			p := filepath.Join(c.baseline, escape(name), countEntry)
 			writes = append(writes, addition{p, strconv.Itoa(s.count) + "\n"})
-			rep.add("unlisted", name, fmt.Sprintf("ran %d tests by its count line, and the baseline holds no floor for it", s.count), fmt.Sprintf("write %d into %s in this change", s.count, p))
+			rep.add("unlisted", name, fmt.Sprintf("ran %d tests by its count line, and the baseline holds no floor for it", s.count), fmt.Sprintf("write %d into %s in this change%s", s.count, p, c.writeHint()))
 		case s.countOnly && s.count < floor:
 			rep.add("vanished", name, fmt.Sprintf("ran %d tests by its count line, and its floor is %d", s.count, floor), "make them run, or lower the count in "+filepath.Join(c.baseline, escape(name), countEntry)+" in this change")
 		case !s.countOnly && hasFloor:
@@ -516,7 +522,7 @@ func (c *config) checkBaseline(res results, rep *report) ([]addition, error) {
 			if !listed[name][e] {
 				p := c.entry(name, ran[e])
 				writes = append(writes, addition{p, ""})
-				rep.add("unlisted", id(name, ran[e]), "ran, and the baseline does not list it", "add the empty file "+p+" in this change")
+				rep.add("unlisted", id(name, ran[e]), "ran, and the baseline does not list it", "add the empty file "+p+" in this change"+c.writeHint())
 			}
 		}
 	}
@@ -552,4 +558,13 @@ func sortedPairs(m map[[2]string]bool) [][2]string {
 		return keys[i][1] < keys[j][1]
 	})
 	return keys
+}
+
+// writeHint names the one command that writes the missing entries, when the
+// config's record lines say how to make the row's results.
+func (c *config) writeHint() string {
+	if len(c.records) == 0 {
+		return ""
+	}
+	return ", or run: go run ./tools/testguard baseline --config " + c.path
 }
