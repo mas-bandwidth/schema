@@ -145,7 +145,7 @@ func TestSchemaJavaRunsHostileCorpusWiring(t *testing.T) {
 		}
 	}
 	// No pull request and no push, to main, dev or a card branch, starts this
-	// workflow: a push or pull request runs only the fast lane, ci-fast.yml.
+	// workflow: a push or pull request runs only the fast lane, ci-fast-nightly.yml.
 	for _, ev := range []ciEvent{
 		{Name: "pull_request", Branch: "dev", HeadRef: "sprint/schema-java", Repo: "mas-bandwidth/schema", HeadRepo: "mas-bandwidth/schema"},
 		{Name: "pull_request", Branch: "main", HeadRef: "dev", Repo: "mas-bandwidth/schema", HeadRepo: "mas-bandwidth/schema"},

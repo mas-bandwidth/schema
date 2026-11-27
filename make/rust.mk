@@ -363,13 +363,18 @@ RUST_TABLE_BENCH_SCHEMAS := bench/corpus/Bench.schema bench/corpus/FixedTable.sc
 
 build/tables-generated-rust/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_SCALARS) test/tables/Scalars2.schema $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/FE1.schema test/tables/FE2.schema test/tables/FU1.schema test/tables/FU2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/G1.schema test/tables/shapes/Shapes.schema test/tables/prior/PriorNarrow.schema $(RUST_TABLE_BENCH_SCHEMAS) test/tables/surfaces/Surfaces.schema test/tables/announce4096/Announce.schema test/tables/announce4097/Announce.schema test/tables/packetunions/PacketUnions.schema
 	@mkdir -p build/tables-generated-rust
-	@for unit in $(RUST_TABLE_UNITS); do \
+	@# Each unit is its own crate directory, so the units generate in parallel:
+	@# serial, this loop was ~35 s of the 2-minute input-family
+	@# (conformance-corpus, rust) job (run 45423487593). A failed unit fails
+	@# the stamp: `wait` returns its status under set -e.
+	@set -e; pids=""; for unit in $(RUST_TABLE_UNITS); do \
 		name=$${unit%%:*}; path=$${unit#*:}; \
-		rm -rf build/tables-generated-rust/$$name/src; \
-		./bin/schema generate --lang rust --out build/tables-generated-rust/$$name/src $$path || exit 1; \
+		{ rm -rf build/tables-generated-rust/$$name/src && \
+		./bin/schema generate --lang rust --out build/tables-generated-rust/$$name/src $$path && \
 		printf '[package]\nname = "%s"\nversion = "0.0.0"\nedition = "2024"\n\n[features]\ndefault = ["block", "cook"]\nblock = []\ncook = []\n\n[dependencies]\nserialize = { package = "serialize-official", path = "../../../$(SERIALIZE_RS)" }\n' $$name \
-			> build/tables-generated-rust/$$name/Cargo.toml; \
-	done
+			> build/tables-generated-rust/$$name/Cargo.toml; } & pids="$$pids $$!"; \
+	done; \
+	for pid in $$pids; do wait $$pid; done
 	@rm -rf build/tables-generated-rust/benchfixed/src
 	./bin/schema generate --lang rust --out build/tables-generated-rust/benchfixed/src $(RUST_TABLE_BENCH_SCHEMAS)
 	@printf '[package]\nname = "benchfixed"\nversion = "0.0.0"\nedition = "2024"\n\n[features]\ndefault = ["block", "cook"]\nblock = []\ncook = []\n\n[dependencies]\nserialize = { package = "serialize-official", path = "../../../$(SERIALIZE_RS)" }\n' \

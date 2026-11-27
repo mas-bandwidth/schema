@@ -148,15 +148,15 @@ OWES) and is repeated here as the rule for the suite:
   A new vector is added to the index in the commit that adds the file.
 - **W-ROSTER: every wire-fuzz seed is asked.** A seed whose root the leg
   answers `0` for is absent, and `harness wire-fuzz` exits nonzero naming each
-  absent root and its seed count, in the per-PR `verify-<leg>-fuzz` gate as in
-  the nightly. The only exception is an exact-set entry in
+  absent root and its seed count, in the nightly `verify-<leg>-fuzz` gate
+  and wherever else it runs. The only exception is an exact-set entry in
   `test/conformance/wire-absent/<leg>-<arm>.tsv` (`<unit>.<Root>[@message]<TAB><why>`),
   found by the harness itself from the run's `--leg` and its profile
   (`plain`, `builder` or `retain`); a whole-roster run with no `--leg` is
   refused, `--unit` on a whole-roster run is refused unless the leg is a
   one-unit leg (`goose-unit`) whose driver is the Goose unit leg over the same
-  unit. The refusal is the guard: a caller without `--leg`, per PR or
-  nightly, is red at its first run, loud and by name. The
+  unit. The refusal is the guard: a caller without `--leg`, in any
+  tier, is red at its first run, loud and by name. The
   release gate reads the summary's `N ledgered seeds absent (<ledger>)` clause
   (one spelling, `internal/wireabsent`, that the harness prints and the gate
   reads), is red unless `<ledger>` is the row's own `<leg>-<arm>.tsv`, and is
@@ -352,7 +352,7 @@ per-port check where no shared case exercises it.
 | entry | rule (spec) | held by |
 |---|---|---|
 | INDEX | every pinned wire-fuzz vector is run: `harness wire-fuzz` refuses a vector on disk and not in the index, or in the index and not on disk, naming the file (§2; SPEC-TABLES.md §4.2) | `TestWireVectorIndexAndDirectoryAgree` (#4765, merged) |
-| W-ROSTER | every wire-fuzz seed is asked: a root the leg answers `0` for fails the run by name in every tier, per PR and nightly, unless the exact set of absent roots is held in `test/conformance/wire-absent/<leg>-<arm>.tsv` with a reason per root; a new absent root and a stale line are both red (§2; SPEC-TABLES.md §4.2) | `TestWireFuzzAbsentRoots*` (test/conformance/harness/wirefuzz_absent_test.go), `TestWireFuzzAbsentRootEndToEnd`, `TestWireFuzzSplitRootAnsweredByBuilderArm`, `TestWireFuzzUnitOnlyOnOneUnitLegs` (the refusal of a whole-roster run with no `--leg` is in `TestWireFuzzAbsentRootEndToEnd`), `TestTheAbsenceClauseIsReadOrRed` and the `go-ledgered-absent`, `go-ledger-other-arm` and `go-ledgered-missing` gate cases (tools/wirefuzzrelease), `TestTheClauseReadsBack` (internal/wireabsent); every `verify-<leg>-fuzz` row |
+| W-ROSTER | every wire-fuzz seed is asked: a root the leg answers `0` for fails the run by name in every tier that runs it, unless the exact set of absent roots is held in `test/conformance/wire-absent/<leg>-<arm>.tsv` with a reason per root; a new absent root and a stale line are both red (§2; SPEC-TABLES.md §4.2) | `TestWireFuzzAbsentRoots*` (test/conformance/harness/wirefuzz_absent_test.go), `TestWireFuzzAbsentRootEndToEnd`, `TestWireFuzzSplitRootAnsweredByBuilderArm`, `TestWireFuzzUnitOnlyOnOneUnitLegs` (the refusal of a whole-roster run with no `--leg` is in `TestWireFuzzAbsentRootEndToEnd`), `TestTheAbsenceClauseIsReadOrRed` and the `go-ledgered-absent`, `go-ledger-other-arm` and `go-ledgered-missing` gate cases (tools/wirefuzzrelease), `TestTheClauseReadsBack` (internal/wireabsent); every `verify-<leg>-fuzz` row |
 | retain-id-bound-is-the-wires | a retaining save numbers the generated table's ids and the retained ids into one trailer bounded by `id_table_max` = 4096, never by the generated table's own capacity; a file of 4096 retained ids saves back byte for byte (SPEC-TABLES.md §6.6, THE MERGED TRAILER IS BOUNDED BY THE WIRE) | the wire-fuzz `--retain` arm on the pinned seed `id_table_4096` (graphdemo.Scene); C++ `TestCppRetainIdTableBoundIsTheWires` (#4767, merged) |
 | counted-born-elides | a plain counted `[Min..N]T` is born with `Min` elements each at its default, and a save of that born state elides the field, whether the value was born fresh or read back from text or wire at it; the shared rows of FL-25 add the refusals below `Min` (SPEC-TABLES §2.3, §22.2) | the verify-tablegen pinned matrix (`test/verify-tablegen/pinned.go`): `pin:c<elem>:fresh:*` and `pin:c<elem>:min_default:*` on every leg; Elixir also `TestCountedBornStateElides` |
 | builder-arm-claims-bound-roots | a wire-fuzz arm claims a root only when the leg holds that arm's read for it, and answers any other root absent by name; a truncated `shapes.Bounds` under `--builder` is refused as the engine refuses it, never thrown (SPEC-TABLES.md §4.2, AN ARM CLAIMS A ROOT ONLY WHEN THE LEG HOLDS THAT ARM'S READ FOR IT) | `make tables-cs-builder-fuzz` over the corpus seeds `shapes_bounds_*`, `tblsurf`, `tblvaluedefaults` and `packetunions` roots, red on an absent seed |
@@ -369,6 +369,7 @@ per-port check where no shared case exercises it.
 | GAP-16 | A fixed root's binary read has batch capacity one; older layouts come from the unit's `schema.lock` (README); gaps OC11, ObjC6, Zig16 | `report fixedevo_v3_batch2`; `fixedevo_v1_as_v3`, `fixedevo_v2_as_v3` |
 | GAP-21 | A refused read returns no value when it was handed none, and resets every instance it was handed (SPEC-TABLES §6.5, R4); gaps Sw R4 | FL-03's per-leg rows (docs/fix-ledger-1122.md) |
 | message-batch-refusal-resets-every-handed | a message batch read resets EVERY value it was handed, whatever the reason and wherever the refusal fell, a refusal before any body (`newer_form`, `no_vocabulary`, `batch_too_large`) included, and answers a count of `0` (SPEC-TABLES §6.5, THE CALLER'S VALUES AFTER A REFUSAL; R4). Java's `loadMessages` left the handed values as the caller held them on the capacity refusal | Java `TestMessageFormBatchJava/refusals_and_damage` (`batch_too_large_read`) |
+| fixed-lineage-refusal-resets-every-handed | a fixed batch read refused through a LINEAGE plan's check pass (an older writer's record) resets EVERY row it was handed, not only the first, the one a read filled, or those the wire reached (SPEC-TABLES §6.5, THE CALLER'S VALUES AFTER A REFUSAL; R4; census G14). Go's load already did; Go's `TestFixedVersioningRangeWidenHostile` owed defaults in row 0 only and zero in the other seven, so it went red on the conforming reset | the `read-into` row `ri_fixed_lineage_refused` (every leg); Go `TestFixedVersioningRangeWidenHostile/{range_widen,range_widen_u64,range_widen_array}` (8 rows handed) |
 | armmin-arm-born-and-text-assert | a union arm `[A..B]T` is established at count `A` (SPEC §4.2, §4.6), so the C++ union reset states the arm's birth count after the resets of the arms that share its storage; and a write of an arm below `A` is a debug assert in every C++ writer, the text writer included (SPEC §5.1, row 3; R10). Both had been dropped from the C++ generator when Wave 2 landed (#4843) | C++ `TestCppArmMinHolds` (`arm-select`, `json`) and `TestCppArmMinHoldsNegativeControl`, whose plants each fail by name when they patch nothing |
 | GAP-23 | Compressed-float range ends compare at the field's width (SPEC-TABLES §3.3); gaps Li6 | `feature-witnesses/compressed-f32-ends` |
 | GAP-24 | A float32 field is written as a float32 (SPEC-TABLES §16.2); gaps Sw11 | the `text_float*` rows |

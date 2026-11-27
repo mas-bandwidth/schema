@@ -9822,8 +9822,7 @@ disagree (`checkWireVectorIndex`); neither is a warning, and neither is skipped.
 root, and a root it answers `0` for leaves its seeds ABSENT: nothing about
 them was compared, so an absent seed is a failure and never a pass. The wire
 fuzzer exits nonzero and names every absent root with its seed count
-(`checkAbsentRoots`), in every tier that runs it, per pull request as in the
-nightly. The one exception is a root the leg names in the checked-in ledger
+(`checkAbsentRoots`), in every tier that runs it. The one exception is a root the leg names in the checked-in ledger
 `test/conformance/wire-absent/<leg>-<arm>.tsv`, one line per root,
 `<unit>.<Root>[@message]<TAB><why>`, and the ledger is matched as an exact
 set: a root absent and not listed is red even when another listed root comes
