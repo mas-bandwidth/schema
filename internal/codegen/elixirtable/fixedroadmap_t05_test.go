@@ -48,7 +48,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // t05Fixed is the emitted fixed module of a unit: the one <Base>Fixed.ex the

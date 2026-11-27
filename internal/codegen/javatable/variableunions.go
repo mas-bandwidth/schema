@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 func variableUnion(f *ir.Field) *ir.Union {
@@ -86,8 +86,11 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union, fixed fixedClosure) string 
 	b.WriteString("    public static final class Value {public int tag;\n")
 	for _, f := range st.Fields {
 		// a counted [A..B] arm is born at A default elements, so selecting
-		// the arm holds A (docs/SPEC.md §4.2, R10)
-		fmt.Fprintf(&b, "        public %s %s=%s;\n", variableValueType(f), varMember(f), variableBorn(f))
+		// the arm holds A (docs/SPEC.md §4.2, §4.6, R10). The constructor
+		// below adds the A elements, so the initializer is the empty list,
+		// as a table's is: seeding A here as well bore the arm at 2A
+		// (SPEC-CONFORMANCE.md java-arm-born-once).
+		fmt.Fprintf(&b, "        public %s %s=%s;\n", variableValueType(f), varMember(f), variableDefault(f))
 		if f.Type.Pointer {
 			if f.Array != ir.ArrayNone {
 				fmt.Fprintf(&b, "        public java.util.List<java.lang.Long> %sIdx=new java.util.ArrayList<>();\n", varMember(f))
@@ -264,7 +267,11 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union, fixed fixedClosure) string 
 		b.WriteString("return v;}\n")
 	}
 	if unitCarriesForm(u, "json") {
-		b.WriteString("    static void jsonFields(java.lang.StringBuilder b,TableVariable.NodeGraph graph,Value v,int depth){b.append('{');switch(v.tag){case 0:b.append('}');return;\n")
+		// the union's object, None's {} included, is a container the cap
+		// counts at its own depth (§16.14 W2)
+		b.WriteString("    static void jsonFields(java.lang.StringBuilder b,TableVariable.NodeGraph graph,Value v,int depth){\n")
+		writeJsonContainerCap(&b)
+		b.WriteString("        b.append('{');switch(v.tag){case 0:b.append('}');return;\n")
 		for i, arm := range un.Variants {
 			fmt.Fprintf(&b, "        case %d:{TableJson.indent(b,depth+1);TableJson.esc(b,%q);b.append(\": \");\n", i+1, arm.Name)
 			if arm.Void() {

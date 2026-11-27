@@ -7,11 +7,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/python/pyrun"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/ir"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 // TestPythonRetainRoundTrip uses the shared cross-version C++-pinned files.
@@ -1091,7 +1091,7 @@ def input_file(n):
     field=Root.descriptor.field('child').field_id
     ghost=0x123456789abcdef0
     payload=bytes([91])*n
-    body=bytes([2,31])+leb(n)+payload+bytes([0])
+    body=bytes([2,12])+leb(n)+payload+bytes([0])
     return bytes([1,1,13])+leb(len(body))+body+bytes([0])+field.to_bytes(8,'little')+ghost.to_bytes(8,'little')+(2).to_bytes(8,'little')
 def probe(n):
     wire=input_file(n)

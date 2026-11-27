@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // jsonUnsigned is the fifth argument of _jsonIntField (§16.2, §4): an unsigned
@@ -995,6 +995,8 @@ func (g *wireGen) emitTextToJsonField(st *ir.Struct, f *ir.Field) {
 		ref := tableRef(f)
 		g.pf("\t%sToJsonBody(out, v.%s, depth + 1, sh);\n", dartName(ref.Name), name)
 	case f.CountedOnWire(): // []T and [..N]T (§2.9, §16.2, §16.7)
+		// the array is a container the depth cap counts, `[]` included (§16.14 W2)
+		g.pf("\t_jsonDepth(depth + 1);\n")
 		switch listElementKind(f) {
 		case wireKindTable:
 			g.pf("\tif (v.%s.isEmpty) {\n", name)

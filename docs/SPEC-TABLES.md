@@ -11443,6 +11443,15 @@ Two consequences follow, and each is a rule:
   its defaults writes nothing (§3). One whose body holds a retained field
   writes its body, that field and its terminator. Elision is about what a body
   CONTAINS, and a retained field is content.
+- **A RETAINING SAVE ELIDES WHAT THE PLAIN SAVE ELIDES, AND NOTHING ELSE.**
+  Retention adds content; it never changes the test for a field with none.
+  A FIXED ARRAY OF UNIONS whose every element is None is left out, as §3
+  leaves out any fixed array at its defaults: a None element has no arm, so
+  no body under it can carry a retained record, and there is nothing for the
+  field to carry. A retaining save that tested the list for emptiness wrote
+  the field as its bound of Nones, because a fixed array is always its bound
+  long (Java, found by the full nightly 45130315968 on
+  `messagedemo.ToolEnvelope`; SPEC-CONFORMANCE.md §7).
 - **A retained id enters the file's ID TABLE in first-use order** (§3), at the
   point the walk reaches it, which is after its body's own fields. An id
   already in the table takes that entry and is never appended twice, exactly as
@@ -13873,7 +13882,7 @@ here?" — §2.2's own distinction between machinery and columns.
 
 **Shared is the default; standalone is the named option.** The Go target's
 home file imports `tables/goruntime` in this module
-(`github.com/mas-bandwidth/schema/v2/tables/goruntime`) and aliases the
+(`github.com/mas-bandwidth/schema/v3/tables/goruntime`) and aliases the
 shared declarations in (`runtime` unset, empty or `shared`). With the
 generator option `runtime: standalone` the unit instead carries the
 table-independent runtime in its home file, and that output is byte-identical
@@ -13904,7 +13913,7 @@ compile error naming `goruntime.Version`, never a run-time surprise.
 Mixing is not a supported state and nothing is negotiated.
 
 **What compiles a shared unit.** A module that compiles a default-generated
-unit requires `github.com/mas-bandwidth/schema/v2` and resolves it to the
+unit requires `github.com/mas-bandwidth/schema/v3` and resolves it to the
 schema checkout (a `replace` to it, or the released module), beside
 `serialize.go`: the generated code imports `tables/goruntime` and nothing else
 of schema's. Every module this repository writes or commits around generated
@@ -16781,6 +16790,13 @@ carries three accessors where C++ carries a tag offset and an arm offset.
   caller's; the read path allocates nothing beyond it. Fields the text does
   not mention keep their storage defaults (SPEC §4.2: zero, or the
   specified default), exactly as an absent field on the wire does (§4).
+  **In C that holds for the repeated-key check too** (§16.2): every open
+  object's key set is carved from ONE pool of 512 slots on the read's entry
+  frame, never from the walk's own frames and never from the heap, so a
+  text whose open objects' sets fit the pool (an object of up to 127 keys
+  at the top) reads with no allocator call. A set that outgrows the pool
+  moves to the heap, so no object is ever too wide to check. `make
+  tables-c-soak` counts the allocator calls over the corpus and owes zero.
 - **`ToJson` writes ONE instance as ONE text**, every field, in declaration
   order, defaults included — a text is for people and tools, and a text
   that elides is a text a reader has to know the schema to complete.
@@ -16893,8 +16909,10 @@ nests as deep as it is long. **The cap is 128**: a read that nests deeper is <!-
 **The read's cap counts every object and array the reader walks, placed or skipped**,
 the value under an unknown key included, the root at depth 0: a container at
 depth 128 is the deepest read, so 129 nested containers (the root and 128
-inside it) are read and the 130th nested container refuses `malformed`. The write's cap at the same number counts
-table and type values only (W2), so the two caps share a number and not a unit.
+inside it) are read and the 130th nested container refuses `malformed`. **The write's cap counts
+the same containers in the same unit** (W2): every object and array it writes,
+an empty `[]` or `{}` included, so a writer never emits a text its own reader
+refuses.
 
 **A SCHEMA-NAME STRING IS CAPPED AT 255 BYTES, wherever the read meets one** —
 an object key that names a field, an enum variant name, a flags element, a
@@ -17114,8 +17132,9 @@ written as something else.
 - **A compressed or ranged float off its range** — refused per leg as
   docs/SPEC.md §5.1 row 10 and docs/rulings.json `write-refusal` list: the
   verdict is the contract, the reason name per language.
-- **A graph nested past 128** (§16.2): the writer carries the reader's depth
-  cap, so it never produces a text its own reader would refuse.
+- **A container nested past 128** (§16.2, §16.14 W2): the writer judges the
+  reader's depth cap at every object and array it writes, an empty `[]` or `{}`
+  included, so it never produces a text its own reader would refuse.
 - **A blob named from two slots** — `blob_shared` (§2.5): a blob is owned by
   one slot, and there is no spelling that writes it once for two owners.
 - **Storage that is not text** — `invalid_value`: a string holding
@@ -18319,7 +18338,7 @@ length past `N`, an enum ordinal outside its variant set, a union tag outside
 its arm set, a NaN or an infinity, ill-formed text, a flags bit no variant
 names, and a compressed or ranged float off its range — and, beside those rows,
 a deprecated enum variant (§2.15), a `required` value outside its declared range
-(§2.3), a text list past its declared total (§2.13), a table value past the
+(§2.3), a text list past its declared total (§2.13), a container past the
 depth cap (W2), a blob named from two slots (`blob_shared`, §2.5), a `&node`
 definition that would hold no field (§16.3), and STORAGE THAT IS NOT TEXT,
 `invalid_value`: a string holding ill-formed UTF-8 (W8). Each is refused and
@@ -18347,13 +18366,20 @@ spaces (`0x20`); `NL(d)` is a line feed followed by `INDENT(d)`.
 THE DEPTH CAP IS 128, AND READ AND WRITE MEASURE IT IN ONE UNIT: this `d`,
 which every enclosing object and array raises by one (a table's object, an
 array, a map's object and a union's object alike), the root at 0. The write
-judges it at each table or type value (W3): one at `d` past 128 refuses the
-write. The read judges the same `d` at each table value it places and at
-each container it skips (§16.2), so a document this writer emits never
-meets the read's cap, and a pointer chain of
-128 nodes under the root writes and reads and one of 129 does neither. A
-scalar, a string or a `null` written at depth 129 nests nothing and is
-written: the last node's null `next` does not count. No other whitespace is
+judges it at EVERY CONTAINER IT WRITES, exactly as the read judges it at every
+container it walks (§16.2): a table or type value (W3), an array, a text
+list, a flags value's array of names, a map's object, an enum-keyed array's
+object and a union's object, the empty `[]` and `{}` included. A container at `d` past 128 refuses the write,
+so a document this writer emits never meets the read's cap. A value is
+writable only when its deepest container, an empty leaf array included, sits
+at `d` 128 or less: a pointer chain of 128 nodes under the root whose nodes
+hold no container writes and reads, and one of 129 does neither; a chain whose
+nodes each hold an array writes and reads at 127 nodes, and at 128 the last
+node's array sits at 129 and the write refuses. A scalar, a string or a
+`null` written at depth 129 nests nothing and is written: the last node's null
+`next` does not count. The refusal is the text writer's own, the -1 of §16.3
+in every build and every leg, the one a table value past the cap already
+takes: one cap, one check, whatever the container. No other whitespace is
 ever written outside a string: no tab, no carriage return, no space before a
 `,` or a `:`, no space after a `,`.
 

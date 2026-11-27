@@ -22,7 +22,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // deepSchema is a chain of nested `type`s under one table: `levels` of nesting,

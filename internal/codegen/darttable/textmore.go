@@ -22,7 +22,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // needsGenericText reports whether a field's text goes through the generic
@@ -733,6 +733,9 @@ int? _jsonIntKey(String k, TableTextReport r, int? lo, int? hi, bool unsigned) {
 func (g *wireGen) emitTextMoreDecls() {
 	for _, fl := range g.textFlags() {
 		g.pf("void %s(_JOut out, int bits, int depth) {\n", flagsFn(fl, "ToJson"))
+		// a flags value is an array of names, a container the depth cap counts,
+		// `[]` included (§16.14 W2)
+		g.pf("\t_jsonDepth(depth);\n")
 		g.pf("\tif (bits == 0) { out.raw('[]'); return; }\n")
 		g.pf("\tout.raw('[');\n")
 		g.pf("\tvar first = true;\n")
@@ -765,6 +768,9 @@ func (g *wireGen) emitTextMoreDecls() {
 	}
 	for _, un := range g.closureUnions() {
 		g.pf("void %s(_JOut out, %s v, int depth, _Share sh) {\n", unionFn(un, "ToJson"), un.Name)
+		// a union's object, None's {} included, is a container the depth cap
+		// counts (§16.14 W2)
+		g.pf("\t_jsonDepth(depth);\n")
 		g.pf("\tswitch (v.armTag) {\n")
 		g.pf("\t\tcase 0:\n\t\t\tout.raw('{}');\n\t\t\treturn;\n")
 		for i, arm := range un.Variants {
@@ -868,6 +874,7 @@ func (g *wireGen) emitJsonValue(f *ir.Field, expr string, d int, ind, where stri
 		g.emitJsonValue(nonOptional(f), expr, d, ind, where)
 	case f.IsMap():
 		val := f.MapEntry.Fields[1]
+		g.pf("%s_jsonDepth(%s);\n", ind, depthExpr(d))
 		g.pf("%sif (%s.isEmpty) {\n", ind, expr)
 		g.pf("%s\tout.raw('{}');\n", ind)
 		g.pf("%s} else {\n", ind)
@@ -887,6 +894,7 @@ func (g *wireGen) emitJsonValue(f *ir.Field, expr string, d int, ind, where stri
 	case isKeyed(f):
 		en := f.KeyEnumRef
 		g.pf("%sif (%s.length != %d) throw StateError('count_over_bound: %s');\n", ind, expr, len(en.Variants), where)
+		g.pf("%s_jsonDepth(%s);\n", ind, depthExpr(d))
 		if f.ArrayBound == 0 {
 			g.pf("%sout.raw('{}');\n", ind)
 			return
@@ -907,6 +915,7 @@ func (g *wireGen) emitJsonValue(f *ir.Field, expr string, d int, ind, where stri
 		if f.Array == ir.ArrayFixed {
 			g.pf("%sif (%s.length != %d) throw StateError('count_over_bound: %s');\n", ind, expr, f.ArrayBound, where)
 		}
+		g.pf("%s_jsonDepth(%s);\n", ind, depthExpr(d))
 		g.pf("%sif (%s.isEmpty) {\n", ind, expr)
 		g.pf("%s\tout.raw('[]');\n", ind)
 		g.pf("%s} else {\n", ind)

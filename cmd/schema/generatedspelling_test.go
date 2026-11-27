@@ -19,7 +19,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
+	"github.com/mas-bandwidth/schema/v3/compiler"
 )
 
 // fakeTree is an output directory in memory. With folds set it answers as a

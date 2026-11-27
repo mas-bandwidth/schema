@@ -14,7 +14,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // tableJsonWalk wraps the walker in its package guard. The package name is in
@@ -359,6 +359,8 @@ inline int TableJsonMapKeyOrder( const void * ea, const void * eb, const TableFi
 
 inline bool TableJsonWriteMap( TableJsonOut & out, const void * slot, const TableFieldInfo * f, int32_t depth )
 {
+    // the map's object, {} included, is a container the read counts (§16.14 W2)
+    if ( depth > kTableJsonMaxDepth ) { return false; }
     const int32_t count = TableJsonExtentCount( slot );
     if ( count < 0 ) { out.invalid = true; return false; }
     if ( count == 0 )
@@ -793,6 +795,8 @@ inline bool TableJsonIsList( const TableFieldInfo * f )
 // A region holds the array in place, so this steps it at the descriptor's pitch.
 inline bool TableJsonWriteList( TableJsonOut & out, const void * slot, const TableFieldInfo * f, int32_t depth )
 {
+    // the list, [] included, is a container the read counts (§16.14 W2)
+    if ( depth > kTableJsonMaxDepth ) { return false; }
     const int32_t count = TableJsonExtentCount( slot );
     if ( count == 0 )
     {
@@ -1151,20 +1155,20 @@ inline int TableJsonFormatG( char * text, size_t size, int digits, double value 
 #else
 inline locale_t TableJsonCLocale()
 {
-    static locale_t c = newlocale( LC_ALL_MASK, "C", (locale_t) 0 );
+    static locale_t c = newlocale( LC_ALL_MASK, "C", locale_t() );
     return c;
 }
 struct TableJsonCNumbers
 {
     locale_t previous;
     bool swapped;
-    TableJsonCNumbers() : previous( (locale_t) 0 ), swapped( false )
+    TableJsonCNumbers() : previous( locale_t() ), swapped( false )
     {
         const locale_t c = TableJsonCLocale();
-        if ( c != (locale_t) 0 )
+        if ( c != locale_t() )
         {
             previous = uselocale( c );
-            swapped = previous != (locale_t) 0;
+            swapped = previous != locale_t();
         }
     }
     ~TableJsonCNumbers() { if ( swapped ) { uselocale( previous ); } }
@@ -2341,6 +2345,9 @@ inline bool TableJsonWriteScalar( TableJsonOut & out, const void * storage, cons
         // a union is an object with ONE key, the arm's name; None is {}
         const TableUnionInfo * arms = f->arms();
         uint64_t tag = TableJsonGetRaw( (const uint8_t *) storage + arms->tag_offset, arms->tag_size );
+        // the union's object, None's {} included, is a container the read
+        // counts, so the write refuses it past the cap (§16.14 W2)
+        if ( depth > kTableJsonMaxDepth ) { return false; }
         if ( tag == 0 )
         {
             out.raw( "{}", 2 );
@@ -2413,6 +2420,9 @@ inline bool TableJsonWriteScalar( TableJsonOut & out, const void * storage, cons
     }
     if ( TableJsonIsFlags( f ) )
     {
+        // a flags value is an array of names, a container the read counts,
+        // [] included, so the write refuses it past the cap (§16.14 W2)
+        if ( depth > kTableJsonMaxDepth ) { return false; }
         uint64_t bits = TableJsonGetRaw( storage, f->elem_size );
         if ( bits == 0 )
         {
@@ -2534,6 +2544,8 @@ inline bool TableJsonWriteField( TableJsonOut & out, const void * base, const Ta
     }
     if ( f->text_list != 0 )
     {
+        // the text list, [] included, is a container the read counts (§16.14 W2)
+        if ( depth > kTableJsonMaxDepth ) { return false; }
         const int32_t count = TableJsonCount( base, f );
         if ( count == 0 )
         {
@@ -2558,7 +2570,9 @@ inline bool TableJsonWriteField( TableJsonOut & out, const void * base, const Ta
     if ( f->kind == 17 )
     {
         // an ARRAY OF POINTERS (§2.1): the pointer row per element — the
-        // pointee's object in place, null, or ` + "`&node`" + ` for a shared one (§16.7)
+        // pointee's object in place, null, or ` + "`&node`" + ` for a shared one (§16.7);
+        // the array, [] included, is a container the read counts (§16.14 W2)
+        if ( depth > kTableJsonMaxDepth ) { return false; }
         int32_t count = TableJsonCount( base, f );
         if ( count == 0 )
         {
@@ -2598,6 +2612,8 @@ inline bool TableJsonWriteField( TableJsonOut & out, const void * base, const Ta
         // one entry per SLOT, keyed by the variant that owns it, so inserting
         // a variant next season moves nothing in the text either. Slot i holds
         // the key i + 1: nothing is stored for None, so nothing is written for it.
+        // The keyed object, {} included, is a container the read counts (§16.14 W2).
+        if ( depth > kTableJsonMaxDepth ) { return false; }
         out.put( '{' );
         bool first = true;
         for ( int64_t slot = 0; slot < f->array_bound; slot++ )
@@ -2625,6 +2641,8 @@ inline bool TableJsonWriteField( TableJsonOut & out, const void * base, const Ta
     }
     if ( f->is_array )
     {
+        // the array, [] included, is a container the read counts (§16.14 W2)
+        if ( depth > kTableJsonMaxDepth ) { return false; }
         int32_t count = TableJsonCount( base, f );
         if ( count == 0 )
         {
