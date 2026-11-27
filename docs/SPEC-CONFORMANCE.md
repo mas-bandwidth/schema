@@ -484,6 +484,8 @@ per-port check where no shared case exercises it.
 | SF-17 | `SaveMessages` checks row 10 and never moves an off-range float onto an endpoint (SPEC.md §5.1 row 10) | `smref_big_ratio_high`, `smref_big_ratio_max` (#4808 source registrations) |
 | SF-18, SF-19 | the message form refuses a flags value above its declared width and never masks it (SPEC.md §5.1 row 9; SPEC-TABLES §3.3) | `smref_big_mask_max`, `smref_big_mask_wide`, `smref_mask_named`, `smref_mask_unnamed` (#4808 source registrations) |
 | SF-20 | a writer refuses a `[N]T` or `[E]T` whose length is not N and never cuts or pads it (SPEC.md §5.1) | `sref_fixed_long`, `sref_fixed_ok`, `sref_fixed_short`, `sref_keyed_long`, `sref_keyed_ok`, `sref_keyed_short`, `sfref_fixed_long`, `sfref_fixed_ok`, `sfref_fixed_short`, `sfref_keyed_long`, `sfref_keyed_ok`, `sfref_keyed_short`, `sjref_fixed_long`, `sjref_fixed_ok`, `sjref_fixed_short`, `sjref_keyed_long`, `sjref_keyed_ok`, `sjref_keyed_short`, `smref_fixed_long`, `smref_fixed_ok`, `smref_fixed_short`, `smref_keyed_long`, `smref_keyed_ok`, `smref_keyed_short`, `cref_fixed_long`, `cref_fixed_ok` (#4808 source registrations) |
+| SF-25, SF-26 | `Cook` and `CookMeasure` hold the write contract that `Save` holds; a deprecated enum variant is refused on write (SPEC-TABLES §7.6, §2.15) | `cref_count_at_max`, `cref_count_at_min`, `cref_count_below_min`, `cref_count_over`, `cref_cycle`, `cref_shared_ok`, `cref_finite_ok`, `cref_infinite`, `cref_non_finite` (#4808 source registrations); `cref_enum_deprecated`, `cref_enum_range`, `cref_enum_ok`, `cref_var_enum_range`, `cref_var_enum_ok` (an enum slot: a deprecated variant and an ordinal past the set refused on every leg, SPEC.md §5.1. The assert legs answer from their debug builds, where the refusal is the debug assert and a release build carries no write-side check: C and C++ `schema_assert`, Rust `debug_assert!` (a past-set ordinal cannot be built, so `cref_enum_range` answers `unrepresentable`), Java `assert` under `-ea`, C# and Unity `Debug.Assert`, Dart `assert` under `--enable-asserts`; the C, C++, Rust and Dart drivers refuse to answer a `write-refusal` surface from a build with asserts off. The 0x5a-buffer-untouched witness, with an in-test plant of a late assert, is `TestCSharpDeclaredDeprecatedEnumCookAssertsBeforeAnyByte`, `TestUnityDeclaredDeprecatedEnumCookAssertsBeforeAnyByte` and `TestJavaDeclaredDeprecatedEnumCook`) |
+| SF-25 (C assert hook) | a C unit whose only write check is the cook writer's enum refusal (an enum field, or an enum reached through a union arm of a table) includes `<assert.h>` and defines `schema_assert` before the first call, so the debug-only refusal compiles (SPEC.md §5.1 row 5; SPEC-TABLES §2.15, §7.6; census G18) | `internal/codegen/ctable` `TestCCookEnumArmDefinesAssertHook` |
 | SF-20 (packet) | the packet `Write` refuses a `[N]T` handed more or fewer than N values and never writes the first N of a longer one (SPEC.md §5.1); every every-build leg and Lobster's debug build refuse it by the leg's own mechanism, and a leg whose `[N]T` storage is a native `T[N]` (Goose) names the two count rows unrepresentable. A new port's packet writer checks the length before its element loop | `write-refusal-packet`: `fixed_long`, `fixed_short`, `fixed_exact` |
 | SF-20 (packet, byte container) | the `[N]T` length check accepts the container the leg's own constructor makes for a lawful `[N]T`: a leg that holds `[N]uint8` in a byte buffer (Squirrel's `blob`) checks that buffer's length, and a fresh `[N]uint8` writes (SPEC.md §5.1). Squirrel's check named only `array` and refused every lawful `[N]uint8`, which broke the `bench_mixed` round trip (`loadout [4]uint8`) | `write-refusal-packet`: the schema's `octets [4]uint8` field rides every `wrote` row on every leg; `bench-squirrel-gate` (`bench_mixed` variant round trip) |
 | Squirrel packet row 1 | the Squirrel packet `Write` refuses a value off its range with `false` on every kind but an `int32` or `int64` field, whose runtime trap is the refusal: an `int16` fixed-array element, counted-array element or arm payload, an `int128` and a `fixed(16, 16)` raw value (SPEC.md §5.1, the Squirrel line) | `write-refusal-packet`: `fixed_elem_high`, `list_elem_low`, `arm_payload_high`, `int128_high`, `int128_low`, `fixed_raw_high`, `fixed_raw_low`, each with its `_at_` twin |
@@ -676,6 +678,31 @@ SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -v \
   ./internal/codegen/gotable ./internal/codegen/pythontable \
   -run 'Test(Go|Python)FixedLoadCapacityWitness'
 ```
+
+### Every generated C++ table header compiles standalone
+
+A C++ table header carries the `schema_assert` hook whenever it calls
+`schema_assert` for any reason ([SPEC-TABLES §13.9](SPEC-TABLES.md), the hooks
+table; SPEC.md §5.1): a generated header is the first and only include of a
+translation unit and must compile there. A variable table with a ranged
+`fixed(48, 16)` field and no fixed form, list or storage check once emitted the
+write-contract call without the hook.
+
+```schema
+package rangedfixed
+table Root
+{
+    f fixed(48, 16) | min = -10, max = 10
+    n int64
+}
+```
+
+A new C++ implementation holds the same rule for its own generated table
+headers: every unit the shared corpus names, the manifest `unit` rows and the
+one-check units in `testdata/cpp-standalone`, generates headers that compile
+with `-std=c++17 -fsyntax-only` when included alone.
+`TestEveryGeneratedTableHeaderCompilesStandalone` sweeps that corpus and is red
+on the old generator for all four one-check units (`ranged_fixed`, `ranged_int`, `ranged_bits`, `ranged_float`).
 
 ### Rows held after the 2026-11-24 SCHEMA_SLOW reds
 

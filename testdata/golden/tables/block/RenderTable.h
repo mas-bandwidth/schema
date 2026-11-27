@@ -31059,7 +31059,9 @@ inline bool RenderShipCookBody( uint8_t * at, const RenderShip & value, TableByt
         table_cook_put( at + 72, (uint64_t) bits, 4, order );
     }
     table_cook_put( at + 76, (uint64_t) value.object_sequence, 1, order );
+    schema_assert( !( uint64_t( value.ship_type ) > 3 ) );
     table_cook_put( at + 77, (uint64_t) value.ship_type, 1, order );
+    schema_assert( !( uint64_t( value.team ) > 4 ) );
     table_cook_put( at + 78, (uint64_t) value.team, 1, order );
     table_cook_put( at + 79, (uint64_t) ( value.has_target_lock ? 1 : 0 ), 1, order );
     table_cook_put( at + 80, (uint64_t) ( value.predicted_explode ? 1 : 0 ), 1, order );
@@ -31075,6 +31077,7 @@ inline bool RenderTurretCookBody( uint8_t * at, const RenderTurret & value, Tabl
     table_cook_put( at + 48, (uint64_t) value.turret_index, 4, order );
     table_cook_put( at + 52, (uint64_t) value.target_object_id, 4, order );
     table_cook_put( at + 56, (uint64_t) value.object_sequence, 1, order );
+    schema_assert( !( uint64_t( value.team ) > 4 ) );
     table_cook_put( at + 57, (uint64_t) value.team, 1, order );
     table_cook_put( at + 58, (uint64_t) ( value.has_target_lock ? 1 : 0 ), 1, order );
     return true;
@@ -31087,7 +31090,9 @@ inline bool RenderMissileCookBody( uint8_t * at, const RenderMissile & value, Ta
     table_cook_put( at + 56, (uint64_t) value.flags, 8, order );
     table_cook_put( at + 64, (uint64_t) value.object_id, 4, order );
     table_cook_put( at + 68, (uint64_t) value.object_sequence, 1, order );
+    schema_assert( !( uint64_t( value.missile_type ) > 2 ) );
     table_cook_put( at + 69, (uint64_t) value.missile_type, 1, order );
+    schema_assert( !( uint64_t( value.team ) > 4 ) );
     table_cook_put( at + 70, (uint64_t) value.team, 1, order );
     return true;
 }
@@ -31099,7 +31104,9 @@ inline bool RenderDynamicPropCookBody( uint8_t * at, const RenderDynamicProp & v
     table_cook_put( at + 56, (uint64_t) value.flags, 8, order );
     table_cook_put( at + 64, (uint64_t) value.object_id, 4, order );
     table_cook_put( at + 68, (uint64_t) value.object_sequence, 1, order );
+    schema_assert( !( uint64_t( value.prop_type ) > 3 ) );
     table_cook_put( at + 69, (uint64_t) value.prop_type, 1, order );
+    schema_assert( !( uint64_t( value.team ) > 4 ) );
     table_cook_put( at + 70, (uint64_t) value.team, 1, order );
     return true;
 }
@@ -31116,7 +31123,9 @@ inline bool RenderStaticPropCookBody( uint8_t * at, const RenderStaticProp & val
     }
     table_cook_put( at + 64, (uint64_t) value.flags, 8, order );
     table_cook_put( at + 72, (uint64_t) value.static_prop_id, 4, order );
+    schema_assert( !( uint64_t( value.prop_type ) > 3 ) );
     table_cook_put( at + 76, (uint64_t) value.prop_type, 1, order );
+    schema_assert( !( uint64_t( value.team ) > 4 ) );
     table_cook_put( at + 77, (uint64_t) value.team, 1, order );
     return true;
 }
@@ -31134,7 +31143,9 @@ inline bool RenderCosmeticPropCookBody( uint8_t * at, const RenderCosmeticProp &
     table_cook_put( at + 64, (uint64_t) value.flags, 8, order );
     table_cook_put( at + 72, (uint64_t) value.cosmetic_prop_id, 4, order );
     table_cook_put( at + 76, (uint64_t) value.prop_sequence, 1, order );
+    schema_assert( !( uint64_t( value.prop_type ) > 3 ) );
     table_cook_put( at + 77, (uint64_t) value.prop_type, 1, order );
+    schema_assert( !( uint64_t( value.team ) > 4 ) );
     table_cook_put( at + 78, (uint64_t) value.team, 1, order );
     return true;
 }
@@ -31150,7 +31161,9 @@ inline bool RenderLaserCookBody( uint8_t * at, const RenderLaser & value, TableB
         table_cook_put( at + 48, bits, 8, order );
     }
     table_cook_put( at + 56, (uint64_t) value.laser_id, 4, order );
+    schema_assert( !( uint64_t( value.laser_type ) > 2 ) );
     table_cook_put( at + 60, (uint64_t) value.laser_type, 1, order );
+    schema_assert( !( uint64_t( value.team ) > 4 ) );
     table_cook_put( at + 61, (uint64_t) value.team, 1, order );
     return true;
 }
@@ -31167,7 +31180,9 @@ inline bool RenderExplosionCookBody( uint8_t * at, const RenderExplosion & value
     }
     table_cook_put( at + 64, (uint64_t) value.explosion_id, 4, order );
     table_cook_put( at + 68, (uint64_t) value.parent_object_id, 4, order );
+    schema_assert( !( uint64_t( value.explosion_type ) > 2 ) );
     table_cook_put( at + 72, (uint64_t) value.explosion_type, 1, order );
+    schema_assert( !( uint64_t( value.team ) > 4 ) );
     table_cook_put( at + 73, (uint64_t) value.team, 1, order );
     return true;
 }

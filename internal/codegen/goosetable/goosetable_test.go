@@ -65,6 +65,10 @@ func TestGooseTableDescriptorsLoad(t *testing.T) {
 		if err != nil {
 			gotRefused[key] = err.Error()
 			t.Logf("goose refuses unit %s: %v", key, err)
+			refusal := err.Error()
+			t.Run(key, func(t *testing.T) {
+				t.Error("a row that did not run: the goose backend refuses unit " + key + " (" + refusal + "); its table descriptors are unchecked until the backend generates it")
+			})
 			continue
 		}
 		dir := t.TempDir()

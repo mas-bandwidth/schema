@@ -273,7 +273,9 @@ local function writeScalar(ctx: any, owner: string, fd: any, e: any, at: number,
 		putU64(ctx, at, x[1], x[2])
 		return true
 	elseif s == "enum" then
-		if type(x) ~= "number" or x < 0 or x ~= math.floor(x) then
+		-- an ordinal past the variant set, or a deprecated variant, is refused
+		-- (docs/SPEC.md §5.1 row 5; docs/SPEC-TABLES.md §2.15, §7.6)
+		if type(x) ~= "number" or x < 0 or x ~= math.floor(x) or x > #e.vs or (x > 0 and e.vs[x][3] == true) then
 			return fail(ctx, "invalid_value", owner, fd)
 		end
 		putUN(ctx, at, w, x)
