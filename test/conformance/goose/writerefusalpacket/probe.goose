@@ -10,10 +10,38 @@
 //
 //   main.goose -- <rows.txt path>
 import os;
-import .PacketWriteRefusal;
+import .RefusalPacket;
 import .serialize;
 
 var wbuf: u8[256] = [0; 256];
+
+// set_huge sets the int128 field from a decimal argument: the two's
+// complement halves. acc = acc * 10 + d runs on 32-bit limbs of lo so the
+// carry into hi is exact; false when the argument is not a decimal integer.
+fn set_huge(v: packetrefusal::PacketWriteRefusal&, arg: const u8[:]) -> bool {
+    let neg = arg.len > 0 && arg[0] == '-';
+    let start = if neg { 1 } else { 0 };
+    if start >= arg.len { return false; }
+    var lo: u64 = 0;
+    var hi: u64 = 0;
+    for k in arg.len {
+        if k < start { continue; }
+        let c = arg[k];
+        if c < '0' || c > '9' { return false; }
+        let p0: u64 = (lo & 0xffffffff) * 10 + ((c - '0') as! u64);
+        let p1: u64 = (lo >> 32) * 10 + (p0 >> 32);
+        lo = (p0 & 0xffffffff) | ((p1 & 0xffffffff) << 32);
+        hi = hi * 10 + (p1 >> 32);
+    }
+    if neg {
+        let borrow: u64 = if lo != 0 { 1 } else { 0 };
+        lo = 0 - lo;
+        hi = 0 - hi - borrow;
+    }
+    v.Huge.lo = lo;
+    v.Huge.hi = hi;
+    return true;
+}
 
 // apply sets one op on v; false when the op or its argument is not one the
 // row list defines (the run then fails rather than answer the row).
@@ -27,6 +55,18 @@ fn apply(v: packetrefusal::PacketWriteRefusal&, op: const u8[:], arg: const u8[:
             v.Text[i] = b as! u8;
         }
         v.TextLength = count as! i32;
+        return true;
+    }
+    if op == "huge" {
+        return set_huge(v, arg);
+    }
+    if op == "ufx" {
+        // ufixed(32, 32) storage is the raw value as a u64: parse it as an int128
+        // through set_huge and keep the low lane, leaving Huge as it was
+        let held = v.Huge;
+        if !set_huge(v, arg) || v.Huge.hi != 0 { return false; }
+        v.Ufx = v.Huge.lo;
+        v.Huge = held;
         return true;
     }
     let n, ok = parse_int(arg);
@@ -51,6 +91,20 @@ fn apply(v: packetrefusal::PacketWriteRefusal&, op: const u8[:], arg: const u8[:
         v.FixedConstant = n as! i32;
     } else if op == "reserved_zero" {
         v.ReservedZero = n as! i32;
+    } else if op == "trio_len" {
+        // the storage is i16[3]: only the count 3 is representable, and main
+        // names every other count unrepresentable before it gets here
+        if n != 3 { return false; }
+    } else if op == "trio_elem" {
+        v.Trio[0] = n as! i16;
+    } else if op == "ints_elem" {
+        v.Ints[0] = n as! i16;
+        v.IntsCount = 1;
+    } else if op == "pick_small" {
+        v.Pick.Type = packetrefusal::PickTypeSmall;
+        v.Pick.Small.V = n as! i16;
+    } else if op == "fx" {
+        v.Fx = n as! i32; // fixed(16, 16) storage is the raw scaled integer
     } else {
         return false;
     }
@@ -79,6 +133,12 @@ fn main() {
         if f.len != 4 {
             write_stderr(str("probe: malformed row: ", line, "\n"));
             exit(2);
+        }
+        if f[2] == "trio_len" && f[3] != "3" {
+            // [3]int16 is an i16[3]: no other count can be handed to the writer
+            out.append(f[0]);
+            out.append(" unrepresentable\n");
+            continue;
         }
         var value = packetrefusal::NewPacketWriteRefusal();
         if !apply(value, f[2], f[3]) {

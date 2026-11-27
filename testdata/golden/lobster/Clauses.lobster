@@ -738,6 +738,7 @@ def WriteW50(s·:serialize_write_stream, v·:W50) -> bool:
 // WriteF13 writes v in wire order (SPEC §6.1). Write misuse the runtime
 // sees traps in every run; the schema's own contracts are asserts.
 def WriteF13(s·:serialize_write_stream, v·:F13) -> bool:
+    assert length(v·.Items) == 7 // a [N]T holds exactly N values (SPEC §5.1)
     for(7) _i·:
         assert v·.Items[_i·] >= 0 and v·.Items[_i·] <= 8191 // the value is in [min, max] (SPEC §4.3)
         s·.serialize_bits(v·.Items[_i·], 13) // the offset from min (SPEC §4.3)
@@ -769,6 +770,7 @@ def WriteEleven(s·:serialize_write_stream, v·:Eleven) -> bool:
 // WriteArrEleven writes v in wire order (SPEC §6.1). Write misuse the runtime
 // sees traps in every run; the schema's own contracts are asserts.
 def WriteArrEleven(s·:serialize_write_stream, v·:ArrEleven) -> bool:
+    assert length(v·.Items) == 9 // a [N]T holds exactly N values (SPEC §5.1)
     for(9) _i·:
         WriteEleven(s·, v·.Items[_i·])
     return true

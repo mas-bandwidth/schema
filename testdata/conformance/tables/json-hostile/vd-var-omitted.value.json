@@ -1,0 +1,140 @@
+{
+  "s": "dflt",
+  "b": "YWI=",
+  "f": [
+    "Jump",
+    "Fly"
+  ],
+  "item": {
+    "s": "dflt",
+    "b": "YWI=",
+    "f": [
+      "Jump",
+      "Fly"
+    ],
+    "n": 4
+  },
+  "counted": [
+    {
+      "s": "dflt",
+      "b": "YWI=",
+      "f": [
+        "Jump",
+        "Fly"
+      ],
+      "n": 0
+    },
+    {
+      "s": "dflt",
+      "b": "YWI=",
+      "f": [
+        "Jump",
+        "Fly"
+      ],
+      "n": 3
+    }
+  ],
+  "pair": [
+    {
+      "s": "",
+      "b": "YWI=",
+      "f": [
+        "Jump",
+        "Fly"
+      ],
+      "n": 0
+    },
+    {
+      "s": "dflt",
+      "b": "YWI=",
+      "f": [
+        "Jump",
+        "Fly"
+      ],
+      "n": 0
+    }
+  ],
+  "list": [
+    {
+      "s": "dflt",
+      "b": "",
+      "f": [
+        "Jump",
+        "Fly"
+      ],
+      "n": 0
+    }
+  ],
+  "keyed": {
+    "Alpha": {
+      "s": "dflt",
+      "b": "YWI=",
+      "f": [
+        "Jump",
+        "Fly"
+      ],
+      "n": 0
+    },
+    "Beta": {
+      "s": "dflt",
+      "b": "YWI=",
+      "f": [],
+      "n": 0
+    },
+    "Gamma": {
+      "s": "dflt",
+      "b": "YWI=",
+      "f": [
+        "Jump",
+        "Fly"
+      ],
+      "n": 0
+    }
+  },
+  "by_id": {
+    "7": {
+      "s": "dflt",
+      "b": "YWI=",
+      "f": [
+        "Jump",
+        "Fly"
+      ],
+      "n": 0
+    }
+  },
+  "opt": {
+    "s": "dflt",
+    "b": "YWI=",
+    "f": [
+      "Jump",
+      "Fly"
+    ],
+    "n": 0
+  },
+  "leaf": {
+    "s": "leaf",
+    "b": "bGY=",
+    "f": [
+      "Crouch"
+    ],
+    "next": {
+      "s": "leaf",
+      "b": "bGY=",
+      "f": [
+        "Crouch"
+      ],
+      "next": null
+    }
+  },
+  "pick": {
+    "item": {
+      "s": "dflt",
+      "b": "YWI=",
+      "f": [
+        "Jump",
+        "Fly"
+      ],
+      "n": 0
+    }
+  }
+}

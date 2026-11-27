@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum census_kind
+{ Zfirst, Zsecond, Zthird }
+
+enum census_value
+{ Zfirst, Zsecond, Zthird }
+
+enum cf
+{ Zfirst, Zsecond, Zthird }
+
+enum cf_declaration
+{ Zfirst, Zsecond, Zthird }
+
+enum cf_precomputed
+{ Zfirst, Zsecond, Zthird }
+
+enum ch
+{ Zfirst, Zsecond, Zthird }
+
+enum chain
+{ Zfirst, Zsecond, Zthird }
+
+enum chainArg
+{ Zfirst, Zsecond, Zthird }
+
+enum chainArgw
+{ Zfirst, Zsecond, Zthird }
+
+enum chainAt
+{ Zfirst, Zsecond, Zthird }
+
+enum chainGuard
+{ Zfirst, Zsecond, Zthird }
+
+enum chainLen
+{ Zfirst, Zsecond, Zthird }
+
+enum changed
+{ Zfirst, Zsecond, Zthird }
+
+enum characters
+{ Zfirst, Zsecond, Zthird }
+
+enum chars
+{ Zfirst, Zsecond, Zthird }
+
+enum check
+{ Zfirst, Zsecond, Zthird }
+
+enum checkAndPackInt16ForOwn
+{ Zfirst, Zsecond, Zthird }
+
+enum checkBits
+{ Zfirst, Zsecond, Zthird }
+
+enum checkBufferSize
+{ Zfirst, Zsecond, Zthird }
+
+enum checkBytesCount
+{ Zfirst, Zsecond, Zthird }
+
+enum checkCapacity
+{ Zfirst, Zsecond, Zthird }
+
+enum checkDead
+{ Zfirst, Zsecond, Zthird }
+
+enum checkDomain
+{ Zfirst, Zsecond, Zthird }
+
+enum checkFields
+{ Zfirst, Zsecond, Zthird }
+
+enum checkFile
+{ Zfirst, Zsecond, Zthird }
+
+enum checkFloat
+{ Zfirst, Zsecond, Zthird }
+
+enum checkGuards
+{ Zfirst, Zsecond, Zthird }
+
+enum checkKeyed
+{ Zfirst, Zsecond, Zthird }
+
+enum checkPair
+{ Zfirst, Zsecond, Zthird }
+
+enum checkRequired
+{ Zfirst, Zsecond, Zthird }
+
+enum checkText
+{ Zfirst, Zsecond, Zthird }
+
+enum checkTopDecode
+{ Zfirst, Zsecond, Zthird }
+
+enum checkWriteDeclaration
+{ Zfirst, Zsecond, Zthird }
+
+enum check_bound
+{ Zfirst, Zsecond, Zthird }
+
+enum check_bounds
+{ Zfirst, Zsecond, Zthird }
+
+enum check_cycles
+{ Zfirst, Zsecond, Zthird }
+
+enum check_directory
+{ Zfirst, Zsecond, Zthird }
+
+enum check_entry
+{ Zfirst, Zsecond, Zthird }
+
+enum check_field
+{ Zfirst, Zsecond, Zthird }
+
+enum check_id_order
+{ Zfirst, Zsecond, Zthird }
+
+enum check_node_table_wire
+{ Zfirst, Zsecond, Zthird }
+
+enum check_pointer_graph
+{ Zfirst, Zsecond, Zthird }
+
+enum check_root_instance
+{ Zfirst, Zsecond, Zthird }
+
+enum check_scalar_wire
+{ Zfirst, Zsecond, Zthird }
+
+enum check_utf8
+{ Zfirst, Zsecond, Zthird }
+
+enum check_value
+{ Zfirst, Zsecond, Zthird }
+
+enum checked_
+{ Zfirst, Zsecond, Zthird }
+
+enum checked_width
+{ Zfirst, Zsecond, Zthird }
+
+enum checks
+{ Zfirst, Zsecond, Zthird }
+
+enum child
+{ Zfirst, Zsecond, Zthird }
+
+enum childAt
+{ Zfirst, Zsecond, Zthird }
+
+enum childBody
+{ Zfirst, Zsecond, Zthird }
+
+enum childById
+{ Zfirst, Zsecond, Zthird }
+
+enum childIndexById
+{ Zfirst, Zsecond, Zthird }
+
+enum childSize
+{ Zfirst, Zsecond, Zthird }
+
+enum child_blobs
+{ Zfirst, Zsecond, Zthird }
+
+enum child_desc
+{ Zfirst, Zsecond, Zthird }
+
+enum child_edges
+{ Zfirst, Zsecond, Zthird }
+
+enum child_fd
+{ Zfirst, Zsecond, Zthird }
+
+enum child_kind
+{ Zfirst, Zsecond, Zthird }
+
+enum child_steps
+{ Zfirst, Zsecond, Zthird }
+
+enum child_where
+{ Zfirst, Zsecond, Zthird }
+
+enum children
+{ Zfirst, Zsecond, Zthird }
+
+enum chk
+{ Zfirst, Zsecond, Zthird }
+
+enum choice_json_count
+{ Zfirst, Zsecond, Zthird }
+
+enum choice_json_read
+{ Zfirst, Zsecond, Zthird }
+
+enum choice_json_read_arm
+{ Zfirst, Zsecond, Zthird }
+
+enum choice_json_write
+{ Zfirst, Zsecond, Zthird }
+
+enum chosen
+{ Zfirst, Zsecond, Zthird }
+
+enum chunk
+{ Zfirst, Zsecond, Zthird }
+
+enum chunk_start
+{ Zfirst, Zsecond, Zthird }
+
+enum chunks
+{ Zfirst, Zsecond, Zthird }
+
+enum ciUp
+{ Zfirst, Zsecond, Zthird }
+
+enum cid
+{ Zfirst, Zsecond, Zthird }
+
+enum civilFromDays
+{ Zfirst, Zsecond, Zthird }
+
+enum ck
+{ Zfirst, Zsecond, Zthird }
+
+enum claims
+{ Zfirst, Zsecond, Zthird }
+
+enum clamp
+{ Zfirst, Zsecond, Zthird }
+
+enum clamp_utf8
+{ Zfirst, Zsecond, Zthird }
+
+enum clamp_wide
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    census_kind Inner
+    census_value Inner
+    cf Inner
+    cf_declaration Inner
+    cf_precomputed Inner
+    ch Inner
+    chain Inner
+    chainArg Inner
+    chainArgw Inner
+    chainAt Inner
+}
+
+table NameTypes0
+{
+    one0  census_kind
+    many0 [..4]census_kind
+    one1  census_value
+    many1 [..4]census_value
+    one2  cf
+    many2 [..4]cf
+    one3  cf_declaration
+    many3 [..4]cf_declaration
+    one4  cf_precomputed
+    many4 [..4]cf_precomputed
+    one5  ch
+    many5 [..4]ch
+    one6  chain
+    many6 [..4]chain
+    one7  chainArg
+    many7 [..4]chainArg
+    one8  chainArgw
+    many8 [..4]chainArgw
+    one9  chainAt
+    many9 [..4]chainAt
+}
+
+table NameFields0
+{
+    census_kind uint32
+    census_value uint32
+    cf uint32
+    cf_declaration uint32
+    cf_precomputed uint32
+    ch uint32
+    chain uint32
+    chainArg uint32
+    chainArgw uint32
+    chainAt uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    chainGuard Inner
+    chainLen Inner
+    changed Inner
+    characters Inner
+    chars Inner
+    check Inner
+    checkAndPackInt16ForOwn Inner
+    checkBits Inner
+    checkBufferSize Inner
+    checkBytesCount Inner
+}
+
+table NameTypes1
+{
+    one0  chainGuard
+    many0 [..4]chainGuard
+    one1  chainLen
+    many1 [..4]chainLen
+    one2  changed
+    many2 [..4]changed
+    one3  characters
+    many3 [..4]characters
+    one4  chars
+    many4 [..4]chars
+    one5  check
+    many5 [..4]check
+    one6  checkAndPackInt16ForOwn
+    many6 [..4]checkAndPackInt16ForOwn
+    one7  checkBits
+    many7 [..4]checkBits
+    one8  checkBufferSize
+    many8 [..4]checkBufferSize
+    one9  checkBytesCount
+    many9 [..4]checkBytesCount
+}
+
+table NameFields1
+{
+    chainGuard uint32
+    chainLen uint32
+    changed uint32
+    characters uint32
+    chars uint32
+    check uint32
+    checkAndPackInt16ForOwn uint32
+    checkBits uint32
+    checkBufferSize uint32
+    checkBytesCount uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    checkCapacity Inner
+    checkDead Inner
+    checkDomain Inner
+    checkFields Inner
+    checkFile Inner
+    checkFloat Inner
+    checkGuards Inner
+    checkKeyed Inner
+    checkPair Inner
+    checkRequired Inner
+}
+
+table NameTypes2
+{
+    one0  checkCapacity
+    many0 [..4]checkCapacity
+    one1  checkDead
+    many1 [..4]checkDead
+    one2  checkDomain
+    many2 [..4]checkDomain
+    one3  checkFields
+    many3 [..4]checkFields
+    one4  checkFile
+    many4 [..4]checkFile
+    one5  checkFloat
+    many5 [..4]checkFloat
+    one6  checkGuards
+    many6 [..4]checkGuards
+    one7  checkKeyed
+    many7 [..4]checkKeyed
+    one8  checkPair
+    many8 [..4]checkPair
+    one9  checkRequired
+    many9 [..4]checkRequired
+}
+
+table NameFields2
+{
+    checkCapacity uint32
+    checkDead uint32
+    checkDomain uint32
+    checkFields uint32
+    checkFile uint32
+    checkFloat uint32
+    checkGuards uint32
+    checkKeyed uint32
+    checkPair uint32
+    checkRequired uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    checkText Inner
+    checkTopDecode Inner
+    checkWriteDeclaration Inner
+    check_bound Inner
+    check_bounds Inner
+    check_cycles Inner
+    check_directory Inner
+    check_entry Inner
+    check_field Inner
+    check_id_order Inner
+}
+
+table NameTypes3
+{
+    one0  checkText
+    many0 [..4]checkText
+    one1  checkTopDecode
+    many1 [..4]checkTopDecode
+    one2  checkWriteDeclaration
+    many2 [..4]checkWriteDeclaration
+    one3  check_bound
+    many3 [..4]check_bound
+    one4  check_bounds
+    many4 [..4]check_bounds
+    one5  check_cycles
+    many5 [..4]check_cycles
+    one6  check_directory
+    many6 [..4]check_directory
+    one7  check_entry
+    many7 [..4]check_entry
+    one8  check_field
+    many8 [..4]check_field
+    one9  check_id_order
+    many9 [..4]check_id_order
+}
+
+table NameFields3
+{
+    checkText uint32
+    checkTopDecode uint32
+    checkWriteDeclaration uint32
+    check_bound uint32
+    check_bounds uint32
+    check_cycles uint32
+    check_directory uint32
+    check_entry uint32
+    check_field uint32
+    check_id_order uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    check_node_table_wire Inner
+    check_pointer_graph Inner
+    check_root_instance Inner
+    check_scalar_wire Inner
+    check_utf8 Inner
+    check_value Inner
+    checked_ Inner
+    checked_width Inner
+    checks Inner
+    child Inner
+}
+
+table NameTypes4
+{
+    one0  check_node_table_wire
+    many0 [..4]check_node_table_wire
+    one1  check_pointer_graph
+    many1 [..4]check_pointer_graph
+    one2  check_root_instance
+    many2 [..4]check_root_instance
+    one3  check_scalar_wire
+    many3 [..4]check_scalar_wire
+    one4  check_utf8
+    many4 [..4]check_utf8
+    one5  check_value
+    many5 [..4]check_value
+    one6  checked_
+    many6 [..4]checked_
+    one7  checked_width
+    many7 [..4]checked_width
+    one8  checks
+    many8 [..4]checks
+    one9  child
+    many9 [..4]child
+}
+
+table NameFields4
+{
+    check_node_table_wire uint32
+    check_pointer_graph uint32
+    check_root_instance uint32
+    check_scalar_wire uint32
+    check_utf8 uint32
+    check_value uint32
+    checked_ uint32
+    checked_width uint32
+    checks uint32
+    child uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    childAt Inner
+    childBody Inner
+    childById Inner
+    childIndexById Inner
+    childSize Inner
+    child_blobs Inner
+    child_desc Inner
+    child_edges Inner
+    child_fd Inner
+    child_kind Inner
+}
+
+table NameTypes5
+{
+    one0  childAt
+    many0 [..4]childAt
+    one1  childBody
+    many1 [..4]childBody
+    one2  childById
+    many2 [..4]childById
+    one3  childIndexById
+    many3 [..4]childIndexById
+    one4  childSize
+    many4 [..4]childSize
+    one5  child_blobs
+    many5 [..4]child_blobs
+    one6  child_desc
+    many6 [..4]child_desc
+    one7  child_edges
+    many7 [..4]child_edges
+    one8  child_fd
+    many8 [..4]child_fd
+    one9  child_kind
+    many9 [..4]child_kind
+}
+
+table NameFields5
+{
+    childAt uint32
+    childBody uint32
+    childById uint32
+    childIndexById uint32
+    childSize uint32
+    child_blobs uint32
+    child_desc uint32
+    child_edges uint32
+    child_fd uint32
+    child_kind uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    child_steps Inner
+    child_where Inner
+    children Inner
+    chk Inner
+    choice_json_count Inner
+    choice_json_read Inner
+    choice_json_read_arm Inner
+    choice_json_write Inner
+    chosen Inner
+    chunk Inner
+}
+
+table NameTypes6
+{
+    one0  child_steps
+    many0 [..4]child_steps
+    one1  child_where
+    many1 [..4]child_where
+    one2  children
+    many2 [..4]children
+    one3  chk
+    many3 [..4]chk
+    one4  choice_json_count
+    many4 [..4]choice_json_count
+    one5  choice_json_read
+    many5 [..4]choice_json_read
+    one6  choice_json_read_arm
+    many6 [..4]choice_json_read_arm
+    one7  choice_json_write
+    many7 [..4]choice_json_write
+    one8  chosen
+    many8 [..4]chosen
+    one9  chunk
+    many9 [..4]chunk
+}
+
+table NameFields6
+{
+    child_steps uint32
+    child_where uint32
+    children uint32
+    chk uint32
+    choice_json_count uint32
+    choice_json_read uint32
+    choice_json_read_arm uint32
+    choice_json_write uint32
+    chosen uint32
+    chunk uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    chunk_start Inner
+    chunks Inner
+    ciUp Inner
+    cid Inner
+    civilFromDays Inner
+    ck Inner
+    claims Inner
+    clamp Inner
+    clamp_utf8 Inner
+    clamp_wide Inner
+}
+
+table NameTypes7
+{
+    one0  chunk_start
+    many0 [..4]chunk_start
+    one1  chunks
+    many1 [..4]chunks
+    one2  ciUp
+    many2 [..4]ciUp
+    one3  cid
+    many3 [..4]cid
+    one4  civilFromDays
+    many4 [..4]civilFromDays
+    one5  ck
+    many5 [..4]ck
+    one6  claims
+    many6 [..4]claims
+    one7  clamp
+    many7 [..4]clamp
+    one8  clamp_utf8
+    many8 [..4]clamp_utf8
+    one9  clamp_wide
+    many9 [..4]clamp_wide
+}
+
+table NameFields7
+{
+    chunk_start uint32
+    chunks uint32
+    ciUp uint32
+    cid uint32
+    civilFromDays uint32
+    ck uint32
+    claims uint32
+    clamp uint32
+    clamp_utf8 uint32
+    clamp_wide uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

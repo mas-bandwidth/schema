@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum plim
+{ Zfirst, Zsecond, Zthird }
+
+enum plo
+{ Zfirst, Zsecond, Zthird }
+
+enum pn
+{ Zfirst, Zsecond, Zthird }
+
+enum point
+{ Zfirst, Zsecond, Zthird }
+
+enum pointee
+{ Zfirst, Zsecond, Zthird }
+
+enum pointee_child
+{ Zfirst, Zsecond, Zthird }
+
+enum pointee_peer
+{ Zfirst, Zsecond, Zthird }
+
+enum pointer
+{ Zfirst, Zsecond, Zthird }
+
+enum pointer_shape
+{ Zfirst, Zsecond, Zthird }
+
+enum pointers
+{ Zfirst, Zsecond, Zthird }
+
+enum pok
+{ Zfirst, Zsecond, Zthird }
+
+enum pool
+{ Zfirst, Zsecond, Zthird }
+
+enum poolUsed
+{ Zfirst, Zsecond, Zthird }
+
+enum pop
+{ Zfirst, Zsecond, Zthird }
+
+enum pos
+{ Zfirst, Zsecond, Zthird }
+
+enum position
+{ Zfirst, Zsecond, Zthird }
+
+enum post_order
+{ Zfirst, Zsecond, Zthird }
+
+enum power
+{ Zfirst, Zsecond, Zthird }
+
+enum pp
+{ Zfirst, Zsecond, Zthird }
+
+enum pr
+{ Zfirst, Zsecond, Zthird }
+
+enum pre
+{ Zfirst, Zsecond, Zthird }
+
+enum pre_clamp
+{ Zfirst, Zsecond, Zthird }
+
+enum prec
+{ Zfirst, Zsecond, Zthird }
+
+enum prec0
+{ Zfirst, Zsecond, Zthird }
+
+enum precision
+{ Zfirst, Zsecond, Zthird }
+
+enum precomputed
+{ Zfirst, Zsecond, Zthird }
+
+enum precomputedMisuse
+{ Zfirst, Zsecond, Zthird }
+
+enum precomputedOk
+{ Zfirst, Zsecond, Zthird }
+
+enum pref
+{ Zfirst, Zsecond, Zthird }
+
+enum prefill
+{ Zfirst, Zsecond, Zthird }
+
+enum prefix
+{ Zfirst, Zsecond, Zthird }
+
+enum prepare_save
+{ Zfirst, Zsecond, Zthird }
+
+enum pres
+{ Zfirst, Zsecond, Zthird }
+
+enum present
+{ Zfirst, Zsecond, Zthird }
+
+enum presentCopy
+{ Zfirst, Zsecond, Zthird }
+
+enum presentOffset
+{ Zfirst, Zsecond, Zthird }
+
+enum present_at
+{ Zfirst, Zsecond, Zthird }
+
+enum prev
+{ Zfirst, Zsecond, Zthird }
+
+enum prevOwner
+{ Zfirst, Zsecond, Zthird }
+
+enum prev_end
+{ Zfirst, Zsecond, Zthird }
+
+enum prev_ids
+{ Zfirst, Zsecond, Zthird }
+
+enum prev_k
+{ Zfirst, Zsecond, Zthird }
+
+enum prev_ordinal
+{ Zfirst, Zsecond, Zthird }
+
+enum prev_retained
+{ Zfirst, Zsecond, Zthird }
+
+enum preview
+{ Zfirst, Zsecond, Zthird }
+
+enum previous
+{ Zfirst, Zsecond, Zthird }
+
+enum previousEnd
+{ Zfirst, Zsecond, Zthird }
+
+enum previousForm
+{ Zfirst, Zsecond, Zthird }
+
+enum previous_count
+{ Zfirst, Zsecond, Zthird }
+
+enum previous_ids
+{ Zfirst, Zsecond, Zthird }
+
+enum previous_ordinal
+{ Zfirst, Zsecond, Zthird }
+
+enum previous_retained
+{ Zfirst, Zsecond, Zthird }
+
+enum prior
+{ Zfirst, Zsecond, Zthird }
+
+enum priorCtx
+{ Zfirst, Zsecond, Zthird }
+
+enum priorDeep
+{ Zfirst, Zsecond, Zthird }
+
+enum priorWidened
+{ Zfirst, Zsecond, Zthird }
+
+enum probe
+{ Zfirst, Zsecond, Zthird }
+
+enum probe_distinct_inner
+{ Zfirst, Zsecond, Zthird }
+
+enum probe_distinct_measure
+{ Zfirst, Zsecond, Zthird }
+
+enum probe_entries
+{ Zfirst, Zsecond, Zthird }
+
+enum probe_limits
+{ Zfirst, Zsecond, Zthird }
+
+enum probe_rep
+{ Zfirst, Zsecond, Zthird }
+
+enum probe_slots
+{ Zfirst, Zsecond, Zthird }
+
+enum probe_table_block_info_t
+{ Zfirst, Zsecond, Zthird }
+
+enum probe_table_cook_max_align
+{ Zfirst, Zsecond, Zthird }
+
+enum probe_table_field_info_t
+{ Zfirst, Zsecond, Zthird }
+
+enum probe_table_fixed_big_endian_host
+{ Zfirst, Zsecond, Zthird }
+
+enum probe_table_numbering_t
+{ Zfirst, Zsecond, Zthird }
+
+enum probe_table_type_info_t
+{ Zfirst, Zsecond, Zthird }
+
+enum probe_used
+{ Zfirst, Zsecond, Zthird }
+
+enum probem1
+{ Zfirst, Zsecond, Zthird }
+
+enum processed
+{ Zfirst, Zsecond, Zthird }
+
+enum produces
+{ Zfirst, Zsecond, Zthird }
+
+enum product
+{ Zfirst, Zsecond, Zthird }
+
+enum programmer
+{ Zfirst, Zsecond, Zthird }
+
+enum progress
+{ Zfirst, Zsecond, Zthird }
+
+enum projection
+{ Zfirst, Zsecond, Zthird }
+
+enum projectionOffsets
+{ Zfirst, Zsecond, Zthird }
+
+enum projectionSize
+{ Zfirst, Zsecond, Zthird }
+
+enum protocolId
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    plim Inner
+    plo Inner
+    pn Inner
+    point Inner
+    pointee Inner
+    pointee_child Inner
+    pointee_peer Inner
+    pointer Inner
+    pointer_shape Inner
+    pointers Inner
+}
+
+table NameTypes0
+{
+    one0  plim
+    many0 [..4]plim
+    one1  plo
+    many1 [..4]plo
+    one2  pn
+    many2 [..4]pn
+    one3  point
+    many3 [..4]point
+    one4  pointee
+    many4 [..4]pointee
+    one5  pointee_child
+    many5 [..4]pointee_child
+    one6  pointee_peer
+    many6 [..4]pointee_peer
+    one7  pointer
+    many7 [..4]pointer
+    one8  pointer_shape
+    many8 [..4]pointer_shape
+    one9  pointers
+    many9 [..4]pointers
+}
+
+table NameFields0
+{
+    plim uint32
+    plo uint32
+    pn uint32
+    point uint32
+    pointee uint32
+    pointee_child uint32
+    pointee_peer uint32
+    pointer uint32
+    pointer_shape uint32
+    pointers uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    pok Inner
+    pool Inner
+    poolUsed Inner
+    pop Inner
+    pos Inner
+    position Inner
+    post_order Inner
+    power Inner
+    pp Inner
+    pr Inner
+}
+
+table NameTypes1
+{
+    one0  pok
+    many0 [..4]pok
+    one1  pool
+    many1 [..4]pool
+    one2  poolUsed
+    many2 [..4]poolUsed
+    one3  pop
+    many3 [..4]pop
+    one4  pos
+    many4 [..4]pos
+    one5  position
+    many5 [..4]position
+    one6  post_order
+    many6 [..4]post_order
+    one7  power
+    many7 [..4]power
+    one8  pp
+    many8 [..4]pp
+    one9  pr
+    many9 [..4]pr
+}
+
+table NameFields1
+{
+    pok uint32
+    pool uint32
+    poolUsed uint32
+    pop uint32
+    pos uint32
+    position uint32
+    post_order uint32
+    power uint32
+    pp uint32
+    pr uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    pre Inner
+    pre_clamp Inner
+    prec Inner
+    prec0 Inner
+    precision Inner
+    precomputed Inner
+    precomputedMisuse Inner
+    precomputedOk Inner
+    pref Inner
+    prefill Inner
+}
+
+table NameTypes2
+{
+    one0  pre
+    many0 [..4]pre
+    one1  pre_clamp
+    many1 [..4]pre_clamp
+    one2  prec
+    many2 [..4]prec
+    one3  prec0
+    many3 [..4]prec0
+    one4  precision
+    many4 [..4]precision
+    one5  precomputed
+    many5 [..4]precomputed
+    one6  precomputedMisuse
+    many6 [..4]precomputedMisuse
+    one7  precomputedOk
+    many7 [..4]precomputedOk
+    one8  pref
+    many8 [..4]pref
+    one9  prefill
+    many9 [..4]prefill
+}
+
+table NameFields2
+{
+    pre uint32
+    pre_clamp uint32
+    prec uint32
+    prec0 uint32
+    precision uint32
+    precomputed uint32
+    precomputedMisuse uint32
+    precomputedOk uint32
+    pref uint32
+    prefill uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    prefix Inner
+    prepare_save Inner
+    pres Inner
+    present Inner
+    presentCopy Inner
+    presentOffset Inner
+    present_at Inner
+    prev Inner
+    prevOwner Inner
+    prev_end Inner
+}
+
+table NameTypes3
+{
+    one0  prefix
+    many0 [..4]prefix
+    one1  prepare_save
+    many1 [..4]prepare_save
+    one2  pres
+    many2 [..4]pres
+    one3  present
+    many3 [..4]present
+    one4  presentCopy
+    many4 [..4]presentCopy
+    one5  presentOffset
+    many5 [..4]presentOffset
+    one6  present_at
+    many6 [..4]present_at
+    one7  prev
+    many7 [..4]prev
+    one8  prevOwner
+    many8 [..4]prevOwner
+    one9  prev_end
+    many9 [..4]prev_end
+}
+
+table NameFields3
+{
+    prefix uint32
+    prepare_save uint32
+    pres uint32
+    present uint32
+    presentCopy uint32
+    presentOffset uint32
+    present_at uint32
+    prev uint32
+    prevOwner uint32
+    prev_end uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    prev_ids Inner
+    prev_k Inner
+    prev_ordinal Inner
+    prev_retained Inner
+    preview Inner
+    previous Inner
+    previousEnd Inner
+    previousForm Inner
+    previous_count Inner
+    previous_ids Inner
+}
+
+table NameTypes4
+{
+    one0  prev_ids
+    many0 [..4]prev_ids
+    one1  prev_k
+    many1 [..4]prev_k
+    one2  prev_ordinal
+    many2 [..4]prev_ordinal
+    one3  prev_retained
+    many3 [..4]prev_retained
+    one4  preview
+    many4 [..4]preview
+    one5  previous
+    many5 [..4]previous
+    one6  previousEnd
+    many6 [..4]previousEnd
+    one7  previousForm
+    many7 [..4]previousForm
+    one8  previous_count
+    many8 [..4]previous_count
+    one9  previous_ids
+    many9 [..4]previous_ids
+}
+
+table NameFields4
+{
+    prev_ids uint32
+    prev_k uint32
+    prev_ordinal uint32
+    prev_retained uint32
+    preview uint32
+    previous uint32
+    previousEnd uint32
+    previousForm uint32
+    previous_count uint32
+    previous_ids uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    previous_ordinal Inner
+    previous_retained Inner
+    prior Inner
+    priorCtx Inner
+    priorDeep Inner
+    priorWidened Inner
+    probe Inner
+    probe_distinct_inner Inner
+    probe_distinct_measure Inner
+    probe_entries Inner
+}
+
+table NameTypes5
+{
+    one0  previous_ordinal
+    many0 [..4]previous_ordinal
+    one1  previous_retained
+    many1 [..4]previous_retained
+    one2  prior
+    many2 [..4]prior
+    one3  priorCtx
+    many3 [..4]priorCtx
+    one4  priorDeep
+    many4 [..4]priorDeep
+    one5  priorWidened
+    many5 [..4]priorWidened
+    one6  probe
+    many6 [..4]probe
+    one7  probe_distinct_inner
+    many7 [..4]probe_distinct_inner
+    one8  probe_distinct_measure
+    many8 [..4]probe_distinct_measure
+    one9  probe_entries
+    many9 [..4]probe_entries
+}
+
+table NameFields5
+{
+    previous_ordinal uint32
+    previous_retained uint32
+    prior uint32
+    priorCtx uint32
+    priorDeep uint32
+    priorWidened uint32
+    probe uint32
+    probe_distinct_inner uint32
+    probe_distinct_measure uint32
+    probe_entries uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    probe_limits Inner
+    probe_rep Inner
+    probe_slots Inner
+    probe_table_block_info_t Inner
+    probe_table_cook_max_align Inner
+    probe_table_field_info_t Inner
+    probe_table_fixed_big_endian_host Inner
+    probe_table_numbering_t Inner
+    probe_table_type_info_t Inner
+    probe_used Inner
+}
+
+table NameTypes6
+{
+    one0  probe_limits
+    many0 [..4]probe_limits
+    one1  probe_rep
+    many1 [..4]probe_rep
+    one2  probe_slots
+    many2 [..4]probe_slots
+    one3  probe_table_block_info_t
+    many3 [..4]probe_table_block_info_t
+    one4  probe_table_cook_max_align
+    many4 [..4]probe_table_cook_max_align
+    one5  probe_table_field_info_t
+    many5 [..4]probe_table_field_info_t
+    one6  probe_table_fixed_big_endian_host
+    many6 [..4]probe_table_fixed_big_endian_host
+    one7  probe_table_numbering_t
+    many7 [..4]probe_table_numbering_t
+    one8  probe_table_type_info_t
+    many8 [..4]probe_table_type_info_t
+    one9  probe_used
+    many9 [..4]probe_used
+}
+
+table NameFields6
+{
+    probe_limits uint32
+    probe_rep uint32
+    probe_slots uint32
+    probe_table_block_info_t uint32
+    probe_table_cook_max_align uint32
+    probe_table_field_info_t uint32
+    probe_table_fixed_big_endian_host uint32
+    probe_table_numbering_t uint32
+    probe_table_type_info_t uint32
+    probe_used uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    probem1 Inner
+    processed Inner
+    produces Inner
+    product Inner
+    programmer Inner
+    progress Inner
+    projection Inner
+    projectionOffsets Inner
+    projectionSize Inner
+    protocolId Inner
+}
+
+table NameTypes7
+{
+    one0  probem1
+    many0 [..4]probem1
+    one1  processed
+    many1 [..4]processed
+    one2  produces
+    many2 [..4]produces
+    one3  product
+    many3 [..4]product
+    one4  programmer
+    many4 [..4]programmer
+    one5  progress
+    many5 [..4]progress
+    one6  projection
+    many6 [..4]projection
+    one7  projectionOffsets
+    many7 [..4]projectionOffsets
+    one8  projectionSize
+    many8 [..4]projectionSize
+    one9  protocolId
+    many9 [..4]protocolId
+}
+
+table NameFields7
+{
+    probem1 uint32
+    processed uint32
+    produces uint32
+    product uint32
+    programmer uint32
+    progress uint32
+    projection uint32
+    projectionOffsets uint32
+    projectionSize uint32
+    protocolId uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

@@ -514,8 +514,11 @@ func (g *gen) emitWriteField(f *ir.Field, ind string) {
 				" // the count guards the loop (§6.3)", ind)
 			g.pf("%sfor (let i = 0; i < %s; i++) {\n", ind, count)
 		} else {
-			// the SCHEMA bound, never the storage's length: reassigned-short
-			// storage must fail loudly, not silently write fewer elements
+			// a [N]T holds exactly N values: a storage of any other length
+			// is refused, never cut or padded to N (SPEC 5.1, SF-20), and
+			// the loop runs over the SCHEMA bound
+			g.pf("%sif (%s == null || %s.length !== %s) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)\n%s  return false;\n%s}\n",
+				ind, name, name, bound, ind, ind)
 			g.pf("%sfor (let i = 0; i < %s; i++) {\n", ind, bound)
 		}
 		g.emitWriteScalar(f, name+"[i]", ind+"  ")

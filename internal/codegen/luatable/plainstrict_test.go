@@ -17,13 +17,30 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
 )
 
+// rowWant is what a manifest row holds the read to: a report row is held only
+// to the two names agreeing; an instance row is a value every port reads,
+// unless the manifest marks it `wire-refused`, a wire every port refuses
+// (testdata/conformance/tables/FORMAT.md; the finite-only rule of
+// docs/SPEC-TABLES.md refuses a NaN or infinite float on read).
+type rowWant int
+
+const (
+	wantAgree rowWant = iota
+	wantRead
+	wantRefusal
+)
+
 // plainStrictProbe is the Lua main for one manifest row. It reads the wire
 // through both names and the strict read, and checks that the plain read's
 // answer and reason are the strict read's.
-func plainStrictProbe(module, root string, instance bool) string {
+func plainStrictProbe(module, root string, want rowWant) string {
 	instanceCheck := ""
-	if instance {
+	switch want {
+	case wantRead:
 		instanceCheck = `assert(tolerant ~= nil, "Load answered no root for an instance row")
+`
+	case wantRefusal:
+		instanceCheck = `assert(not pcall(function() return R.ReadStrict(T, "` + root + `", wire) end), "ReadStrict took a wire-refused instance row")
 `
 	}
 	return `local T = require("` + module + `")
@@ -81,10 +98,14 @@ print("plain-strict-ok")
 // form 3 (docs/SPEC-TABLES.md §3.4, §6.5): the plain name is ReadFixed, the
 // tolerant twin is ReadFixed, and ReadStrict must answer as
 // ReadFixed answers, because it routes the form byte to the same reader.
-func plainStrictProbeFixed(module, root string, instance bool) string {
+func plainStrictProbeFixed(module, root string, want rowWant) string {
 	instanceCheck := ""
-	if instance {
-		instanceCheck = `assert(okT, "ReadFixed answered no root for an instance row")
+	switch want {
+	case wantRead:
+		instanceCheck = `assert(okT, "ReadFixed answered no root for an instance row: " .. tostring(tolerant))
+`
+	case wantRefusal:
+		instanceCheck = `assert(not okT, "ReadFixed took a wire-refused instance row")
 `
 	}
 	return `local T = require("` + module + `")
@@ -164,7 +185,13 @@ func TestLuaPlainLoadIsStrict(t *testing.T) {
 			t.Fatalf("the manifest has no %s rows", kind)
 		}
 		for _, row := range rows {
-			instance := kind == "instance"
+			want := wantAgree
+			if kind == "instance" {
+				want = wantRead
+				if row.wireRefused {
+					want = wantRefusal
+				}
+			}
 			g, ok := generate(t, row.unit)
 			if !ok {
 				continue
@@ -175,9 +202,9 @@ func TestLuaPlainLoadIsStrict(t *testing.T) {
 				if err != nil {
 					t.Fatalf("case %s: %v", row.caseName, err)
 				}
-				probe := plainStrictProbe(g.module, row.root, instance)
+				probe := plainStrictProbe(g.module, row.root, want)
 				if g.fixed[row.root] {
-					probe = plainStrictProbeFixed(g.module, row.root, instance)
+					probe = plainStrictProbeFixed(g.module, row.root, want)
 				}
 				if err := os.WriteFile(filepath.Join(g.dir, "main.lua"), []byte(probe), 0o644); err != nil {
 					t.Fatal(err)

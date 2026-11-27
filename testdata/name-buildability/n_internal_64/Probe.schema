@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum rootnode
+{ Zfirst, Zsecond, Zthird }
+
+enum roots
+{ Zfirst, Zsecond, Zthird }
+
+enum roundAt
+{ Zfirst, Zsecond, Zthird }
+
+enum roundBinary
+{ Zfirst, Zsecond, Zthird }
+
+enum roundDivByPow2
+{ Zfirst, Zsecond, Zthird }
+
+enum roundNumber
+{ Zfirst, Zsecond, Zthird }
+
+enum roundPack
+{ Zfirst, Zsecond, Zthird }
+
+enum roundShift
+{ Zfirst, Zsecond, Zthird }
+
+enum roundUp
+{ Zfirst, Zsecond, Zthird }
+
+enum round_region
+{ Zfirst, Zsecond, Zthird }
+
+enum rounded
+{ Zfirst, Zsecond, Zthird }
+
+enum roundings
+{ Zfirst, Zsecond, Zthird }
+
+enum row
+{ Zfirst, Zsecond, Zthird }
+
+enum rowAlign
+{ Zfirst, Zsecond, Zthird }
+
+enum rowSize
+{ Zfirst, Zsecond, Zthird }
+
+enum rowrec
+{ Zfirst, Zsecond, Zthird }
+
+enum rows
+{ Zfirst, Zsecond, Zthird }
+
+enum rows_bytes
+{ Zfirst, Zsecond, Zthird }
+
+enum rr
+{ Zfirst, Zsecond, Zthird }
+
+enum rrecs
+{ Zfirst, Zsecond, Zthird }
+
+enum rs
+{ Zfirst, Zsecond, Zthird }
+
+enum rs_id
+{ Zfirst, Zsecond, Zthird }
+
+enum rsh
+{ Zfirst, Zsecond, Zthird }
+
+enum rshift
+{ Zfirst, Zsecond, Zthird }
+
+enum rt
+{ Zfirst, Zsecond, Zthird }
+
+enum rubbish
+{ Zfirst, Zsecond, Zthird }
+
+enum rule
+{ Zfirst, Zsecond, Zthird }
+
+enum rules
+{ Zfirst, Zsecond, Zthird }
+
+enum run
+{ Zfirst, Zsecond, Zthird }
+
+enum runBits
+{ Zfirst, Zsecond, Zthird }
+
+enum runWhy
+{ Zfirst, Zsecond, Zthird }
+
+enum runs
+{ Zfirst, Zsecond, Zthird }
+
+enum s
+{ Zfirst, Zsecond, Zthird }
+
+enum s0
+{ Zfirst, Zsecond, Zthird }
+
+enum s_d
+{ Zfirst, Zsecond, Zthird }
+
+enum s_ok
+{ Zfirst, Zsecond, Zthird }
+
+enum s_tok
+{ Zfirst, Zsecond, Zthird }
+
+enum s_w
+{ Zfirst, Zsecond, Zthird }
+
+enum sa
+{ Zfirst, Zsecond, Zthird }
+
+enum same
+{ Zfirst, Zsecond, Zthird }
+
+enum sameBuild
+{ Zfirst, Zsecond, Zthird }
+
+enum sameBytes
+{ Zfirst, Zsecond, Zthird }
+
+enum sameFamily
+{ Zfirst, Zsecond, Zthird }
+
+enum same_float
+{ Zfirst, Zsecond, Zthird }
+
+enum same_int
+{ Zfirst, Zsecond, Zthird }
+
+enum same_scalar
+{ Zfirst, Zsecond, Zthird }
+
+enum same_shape
+{ Zfirst, Zsecond, Zthird }
+
+enum same_value
+{ Zfirst, Zsecond, Zthird }
+
+enum sat
+{ Zfirst, Zsecond, Zthird }
+
+enum saturated
+{ Zfirst, Zsecond, Zthird }
+
+enum saveFixed
+{ Zfirst, Zsecond, Zthird }
+
+enum save_concat
+{ Zfirst, Zsecond, Zthird }
+
+enum save_crc32c
+{ Zfirst, Zsecond, Zthird }
+
+enum save_emit_array
+{ Zfirst, Zsecond, Zthird }
+
+enum save_emit_body
+{ Zfirst, Zsecond, Zthird }
+
+enum save_emit_keyed
+{ Zfirst, Zsecond, Zthird }
+
+enum save_emit_payload
+{ Zfirst, Zsecond, Zthird }
+
+enum save_emit_union
+{ Zfirst, Zsecond, Zthird }
+
+enum save_enum_ref
+{ Zfirst, Zsecond, Zthird }
+
+enum save_field_of
+{ Zfirst, Zsecond, Zthird }
+
+enum save_leb
+{ Zfirst, Zsecond, Zthird }
+
+enum save_leb_read
+{ Zfirst, Zsecond, Zthird }
+
+enum save_locate_array
+{ Zfirst, Zsecond, Zthird }
+
+enum save_locate_body
+{ Zfirst, Zsecond, Zthird }
+
+enum save_locate_element
+{ Zfirst, Zsecond, Zthird }
+
+enum save_locate_union
+{ Zfirst, Zsecond, Zthird }
+
+enum save_one
+{ Zfirst, Zsecond, Zthird }
+
+enum save_parse_arm
+{ Zfirst, Zsecond, Zthird }
+
+enum save_parse_array
+{ Zfirst, Zsecond, Zthird }
+
+enum save_parse_body
+{ Zfirst, Zsecond, Zthird }
+
+enum save_parse_keyed
+{ Zfirst, Zsecond, Zthird }
+
+enum save_parse_nodes
+{ Zfirst, Zsecond, Zthird }
+
+enum save_parse_payload
+{ Zfirst, Zsecond, Zthird }
+
+enum save_parse_union
+{ Zfirst, Zsecond, Zthird }
+
+enum save_reader
+{ Zfirst, Zsecond, Zthird }
+
+enum save_ref
+{ Zfirst, Zsecond, Zthird }
+
+enum save_res_arm
+{ Zfirst, Zsecond, Zthird }
+
+enum save_res_array
+{ Zfirst, Zsecond, Zthird }
+
+enum save_res_body
+{ Zfirst, Zsecond, Zthird }
+
+enum save_res_keyed
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    rootnode Inner
+    roots Inner
+    roundAt Inner
+    roundBinary Inner
+    roundDivByPow2 Inner
+    roundNumber Inner
+    roundPack Inner
+    roundShift Inner
+    roundUp Inner
+    round_region Inner
+}
+
+table NameTypes0
+{
+    one0  rootnode
+    many0 [..4]rootnode
+    one1  roots
+    many1 [..4]roots
+    one2  roundAt
+    many2 [..4]roundAt
+    one3  roundBinary
+    many3 [..4]roundBinary
+    one4  roundDivByPow2
+    many4 [..4]roundDivByPow2
+    one5  roundNumber
+    many5 [..4]roundNumber
+    one6  roundPack
+    many6 [..4]roundPack
+    one7  roundShift
+    many7 [..4]roundShift
+    one8  roundUp
+    many8 [..4]roundUp
+    one9  round_region
+    many9 [..4]round_region
+}
+
+table NameFields0
+{
+    rootnode uint32
+    roots uint32
+    roundAt uint32
+    roundBinary uint32
+    roundDivByPow2 uint32
+    roundNumber uint32
+    roundPack uint32
+    roundShift uint32
+    roundUp uint32
+    round_region uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    rounded Inner
+    roundings Inner
+    row Inner
+    rowAlign Inner
+    rowSize Inner
+    rowrec Inner
+    rows Inner
+    rows_bytes Inner
+    rr Inner
+    rrecs Inner
+}
+
+table NameTypes1
+{
+    one0  rounded
+    many0 [..4]rounded
+    one1  roundings
+    many1 [..4]roundings
+    one2  row
+    many2 [..4]row
+    one3  rowAlign
+    many3 [..4]rowAlign
+    one4  rowSize
+    many4 [..4]rowSize
+    one5  rowrec
+    many5 [..4]rowrec
+    one6  rows
+    many6 [..4]rows
+    one7  rows_bytes
+    many7 [..4]rows_bytes
+    one8  rr
+    many8 [..4]rr
+    one9  rrecs
+    many9 [..4]rrecs
+}
+
+table NameFields1
+{
+    rounded uint32
+    roundings uint32
+    row uint32
+    rowAlign uint32
+    rowSize uint32
+    rowrec uint32
+    rows uint32
+    rows_bytes uint32
+    rr uint32
+    rrecs uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    rs Inner
+    rs_id Inner
+    rsh Inner
+    rshift Inner
+    rt Inner
+    rubbish Inner
+    rule Inner
+    rules Inner
+    run Inner
+    runBits Inner
+}
+
+table NameTypes2
+{
+    one0  rs
+    many0 [..4]rs
+    one1  rs_id
+    many1 [..4]rs_id
+    one2  rsh
+    many2 [..4]rsh
+    one3  rshift
+    many3 [..4]rshift
+    one4  rt
+    many4 [..4]rt
+    one5  rubbish
+    many5 [..4]rubbish
+    one6  rule
+    many6 [..4]rule
+    one7  rules
+    many7 [..4]rules
+    one8  run
+    many8 [..4]run
+    one9  runBits
+    many9 [..4]runBits
+}
+
+table NameFields2
+{
+    rs uint32
+    rs_id uint32
+    rsh uint32
+    rshift uint32
+    rt uint32
+    rubbish uint32
+    rule uint32
+    rules uint32
+    run uint32
+    runBits uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    runWhy Inner
+    runs Inner
+    s Inner
+    s0 Inner
+    s_d Inner
+    s_ok Inner
+    s_tok Inner
+    s_w Inner
+    sa Inner
+    same Inner
+}
+
+table NameTypes3
+{
+    one0  runWhy
+    many0 [..4]runWhy
+    one1  runs
+    many1 [..4]runs
+    one2  s
+    many2 [..4]s
+    one3  s0
+    many3 [..4]s0
+    one4  s_d
+    many4 [..4]s_d
+    one5  s_ok
+    many5 [..4]s_ok
+    one6  s_tok
+    many6 [..4]s_tok
+    one7  s_w
+    many7 [..4]s_w
+    one8  sa
+    many8 [..4]sa
+    one9  same
+    many9 [..4]same
+}
+
+table NameFields3
+{
+    runWhy uint32
+    runs uint32
+    s uint32
+    s0 uint32
+    s_d uint32
+    s_ok uint32
+    s_tok uint32
+    s_w uint32
+    sa uint32
+    same uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    sameBuild Inner
+    sameBytes Inner
+    sameFamily Inner
+    same_float Inner
+    same_int Inner
+    same_scalar Inner
+    same_shape Inner
+    same_value Inner
+    sat Inner
+    saturated Inner
+}
+
+table NameTypes4
+{
+    one0  sameBuild
+    many0 [..4]sameBuild
+    one1  sameBytes
+    many1 [..4]sameBytes
+    one2  sameFamily
+    many2 [..4]sameFamily
+    one3  same_float
+    many3 [..4]same_float
+    one4  same_int
+    many4 [..4]same_int
+    one5  same_scalar
+    many5 [..4]same_scalar
+    one6  same_shape
+    many6 [..4]same_shape
+    one7  same_value
+    many7 [..4]same_value
+    one8  sat
+    many8 [..4]sat
+    one9  saturated
+    many9 [..4]saturated
+}
+
+table NameFields4
+{
+    sameBuild uint32
+    sameBytes uint32
+    sameFamily uint32
+    same_float uint32
+    same_int uint32
+    same_scalar uint32
+    same_shape uint32
+    same_value uint32
+    sat uint32
+    saturated uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    saveFixed Inner
+    save_concat Inner
+    save_crc32c Inner
+    save_emit_array Inner
+    save_emit_body Inner
+    save_emit_keyed Inner
+    save_emit_payload Inner
+    save_emit_union Inner
+    save_enum_ref Inner
+    save_field_of Inner
+}
+
+table NameTypes5
+{
+    one0  saveFixed
+    many0 [..4]saveFixed
+    one1  save_concat
+    many1 [..4]save_concat
+    one2  save_crc32c
+    many2 [..4]save_crc32c
+    one3  save_emit_array
+    many3 [..4]save_emit_array
+    one4  save_emit_body
+    many4 [..4]save_emit_body
+    one5  save_emit_keyed
+    many5 [..4]save_emit_keyed
+    one6  save_emit_payload
+    many6 [..4]save_emit_payload
+    one7  save_emit_union
+    many7 [..4]save_emit_union
+    one8  save_enum_ref
+    many8 [..4]save_enum_ref
+    one9  save_field_of
+    many9 [..4]save_field_of
+}
+
+table NameFields5
+{
+    saveFixed uint32
+    save_concat uint32
+    save_crc32c uint32
+    save_emit_array uint32
+    save_emit_body uint32
+    save_emit_keyed uint32
+    save_emit_payload uint32
+    save_emit_union uint32
+    save_enum_ref uint32
+    save_field_of uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    save_leb Inner
+    save_leb_read Inner
+    save_locate_array Inner
+    save_locate_body Inner
+    save_locate_element Inner
+    save_locate_union Inner
+    save_one Inner
+    save_parse_arm Inner
+    save_parse_array Inner
+    save_parse_body Inner
+}
+
+table NameTypes6
+{
+    one0  save_leb
+    many0 [..4]save_leb
+    one1  save_leb_read
+    many1 [..4]save_leb_read
+    one2  save_locate_array
+    many2 [..4]save_locate_array
+    one3  save_locate_body
+    many3 [..4]save_locate_body
+    one4  save_locate_element
+    many4 [..4]save_locate_element
+    one5  save_locate_union
+    many5 [..4]save_locate_union
+    one6  save_one
+    many6 [..4]save_one
+    one7  save_parse_arm
+    many7 [..4]save_parse_arm
+    one8  save_parse_array
+    many8 [..4]save_parse_array
+    one9  save_parse_body
+    many9 [..4]save_parse_body
+}
+
+table NameFields6
+{
+    save_leb uint32
+    save_leb_read uint32
+    save_locate_array uint32
+    save_locate_body uint32
+    save_locate_element uint32
+    save_locate_union uint32
+    save_one uint32
+    save_parse_arm uint32
+    save_parse_array uint32
+    save_parse_body uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    save_parse_keyed Inner
+    save_parse_nodes Inner
+    save_parse_payload Inner
+    save_parse_union Inner
+    save_reader Inner
+    save_ref Inner
+    save_res_arm Inner
+    save_res_array Inner
+    save_res_body Inner
+    save_res_keyed Inner
+}
+
+table NameTypes7
+{
+    one0  save_parse_keyed
+    many0 [..4]save_parse_keyed
+    one1  save_parse_nodes
+    many1 [..4]save_parse_nodes
+    one2  save_parse_payload
+    many2 [..4]save_parse_payload
+    one3  save_parse_union
+    many3 [..4]save_parse_union
+    one4  save_reader
+    many4 [..4]save_reader
+    one5  save_ref
+    many5 [..4]save_ref
+    one6  save_res_arm
+    many6 [..4]save_res_arm
+    one7  save_res_array
+    many7 [..4]save_res_array
+    one8  save_res_body
+    many8 [..4]save_res_body
+    one9  save_res_keyed
+    many9 [..4]save_res_keyed
+}
+
+table NameFields7
+{
+    save_parse_keyed uint32
+    save_parse_nodes uint32
+    save_parse_payload uint32
+    save_parse_union uint32
+    save_reader uint32
+    save_ref uint32
+    save_res_arm uint32
+    save_res_array uint32
+    save_res_body uint32
+    save_res_keyed uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

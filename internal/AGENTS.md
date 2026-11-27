@@ -47,7 +47,9 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `tablepack/` | pack/unpack | `go test ./internal/tablepack` | `go test ./internal/tablepack` |
 | `tabletext/` | table JSON text | `go test ./internal/tabletext` | `go test ./internal/tabletext` |
 | `tablewire/` | table wire codecs | `go test ./internal/tablewire` | `go test ./internal/tablewire` |
+| `testinputs/` | repository files a test's child process reads, recorded for the go test cache | `go test ./internal/testinputs` | `go test ./internal/testinputs` |
 | `testproc/` | bounded child processes for tests | `go test ./internal/testproc` | `go test ./internal/testproc` |
+| `testreg/` | the test registry: load, select, shard, run, cover | `go run ./tools/schema-test run --group pr` | `go run ./tools/schema-test coverage` |
 | `vacuous/` | Go tests that pass checking nothing | `go test ./internal/vacuous` | `go test ./internal/ci -run TestEveryGoTestCanFail` |
 | `version/` | binary version stamp | `go test ./internal/version` | `go test ./internal/version` |
 | `viewlisting/` | view listing vs IR | `go test ./internal/viewlisting` | `go test ./internal/viewlisting` |

@@ -190,8 +190,9 @@ func TestLuauMessageFormMatchesTheGoldens(t *testing.T) {
 			fixed++
 		}
 	}
-	if fixed != 15 {
-		t.Fatalf("the manifest names %d message rows over a fixed root, want the 15 this card pins", fixed)
+	// The fixed-root corpus includes both packet-union array message batches.
+	if fixed != 17 {
+		t.Fatalf("the manifest names %d message rows over a fixed root, want 17", fixed)
 	}
 	// the parallel row subtests run inside one group, so the count below is
 	// read after every one of them has finished (and counted atomically)

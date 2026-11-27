@@ -87,7 +87,7 @@ generated/js-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 # test-only, never part of the committed generated/ tree. The full unit is
 # generated (packet .js + <Base>Table.js + the two accelerators' readers),
 # because a table's closure decodes into the packet emitter's own classes.
-build/tables-generated-js/.stamp: make/js.mk bin/schema testdata/conformance/feature-witnesses/full/Features.schema $(wildcard tables/maps/*.schema) $(SCHEMAS_TABLES_WIDELIST) test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_LISTS) tables/stream tables/scalars test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P3.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/P2.schema test/tables/surfaces/Surfaces.schema test/tables/announce4096/Announce.schema test/tables/announce4097/Announce.schema
+build/tables-generated-js/.stamp: make/js.mk bin/schema testdata/conformance/feature-witnesses/full/Features.schema $(wildcard tables/maps/*.schema) $(SCHEMAS_TABLES_WIDELIST) test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_LISTS) tables/stream tables/scalars test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P3.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/P2.schema test/tables/surfaces/Surfaces.schema test/tables/announce4096/Announce.schema test/tables/announce4097/Announce.schema test/tables/ValueDefaults.schema test/tables/packetunions/PacketUnions.schema
 	@mkdir -p build/tables-generated-js
 	./bin/schema generate --lang js --out build/tables-generated-js/features testdata/conformance/feature-witnesses/full/Features.schema
 	./bin/schema generate --lang js --out build/tables-generated-js/examples tables/examples
@@ -140,6 +140,8 @@ build/tables-generated-js/.stamp: make/js.mk bin/schema testdata/conformance/fea
 	./bin/schema generate --lang js --out build/tables-generated-js/prior test/tables/prior/PriorNarrow.schema
 	./bin/schema generate --lang js --out build/tables-generated-js/cooktorture test/tables/cooktorture/CookTorture.schema
 	./bin/schema generate --lang js --out build/tables-generated-js/cooktorturewide test/tables/cooktorturewide/CookTortureWide.schema
+	./bin/schema generate --lang js --out build/tables-generated-js/valuedefaults test/tables/ValueDefaults.schema
+	./bin/schema generate --lang js --out build/tables-generated-js/packetunions test/tables/packetunions/PacketUnions.schema
 	# THE MESSAGE FORM's WIDE-VOCABULARY units (docs/SPEC-TABLES.md §3.3): the
 	# conformance driver's `message` surface AnnounceReads a connection's
 	# announcement, LoadMessages the form-2 batch against it and SaveMessages
@@ -652,6 +654,27 @@ tables-js-block-build:
 	@echo 'tables JS block build: the built extent is the Go builder own bytes, and this leg reader opens it'
 
 test-js: tables-js-block-build
+
+# A DEPRECATED VARIANT IS NEVER WRITTEN, BY THE VARIABLE SAVE (docs/SPEC-TABLES.md
+# §2.15 WRITE; JavaScript refuses in every build). The shared wref_/fref_enum_*
+# rows reach this leg's fixed save only, since their roots are fixed tables, so
+# TestJsDeprecatedVariantNeverWritten holds the variable save. It takes node
+# through the slow gate, so a bare `go test` skips it: this target requires it
+# to run to its PASS and refuses a SKIP.
+.PHONY: tables-js-deprecated-write
+tables-js-deprecated-write:
+	@mkdir -p build/js-deprecated
+	@SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) \
+		go test ./internal/codegen/jstable/ -count=1 -timeout 600s -v -run '^TestJsDeprecatedVariantNeverWritten$$' \
+		> build/js-deprecated/log 2>&1 || { grep -E -- '--- FAIL|_test.go:' build/js-deprecated/log | head -40; exit 1; }
+	@if grep -q -- '--- SKIP' build/js-deprecated/log; then \
+		echo "tables-js-deprecated-write: a test SKIPPED under SCHEMA_REQUIRE_CORPUS=1"; grep -- '--- SKIP' build/js-deprecated/log; exit 1; \
+	fi
+	@grep -q -- '--- PASS: TestJsDeprecatedVariantNeverWritten ' build/js-deprecated/log || \
+		{ echo "tables-js-deprecated-write: TestJsDeprecatedVariantNeverWritten did not run to a PASS"; tail -20 build/js-deprecated/log; exit 1; }
+	@echo 'tables JS: the variable save refuses a deprecated variant and writes the live one (§2.15)'
+
+test-js: tables-js-deprecated-write
 
 .PHONY: tables-js-cook-write-rows
 tables-js-cook-write-rows:

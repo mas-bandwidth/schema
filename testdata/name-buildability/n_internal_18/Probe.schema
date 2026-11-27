@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum count_nodes
+{ Zfirst, Zsecond, Zthird }
+
+enum count_off
+{ Zfirst, Zsecond, Zthird }
+
+enum count_refused
+{ Zfirst, Zsecond, Zthird }
+
+enum count_rest
+{ Zfirst, Zsecond, Zthird }
+
+enum counted
+{ Zfirst, Zsecond, Zthird }
+
+enum counted_ok
+{ Zfirst, Zsecond, Zthird }
+
+enum counter
+{ Zfirst, Zsecond, Zthird }
+
+enum counters
+{ Zfirst, Zsecond, Zthird }
+
+enum counting
+{ Zfirst, Zsecond, Zthird }
+
+enum counts
+{ Zfirst, Zsecond, Zthird }
+
+enum cover
+{ Zfirst, Zsecond, Zthird }
+
+enum coverCount
+{ Zfirst, Zsecond, Zthird }
+
+enum cp
+{ Zfirst, Zsecond, Zthird }
+
+enum cpos
+{ Zfirst, Zsecond, Zthird }
+
+enum cpptable
+{ Zfirst, Zsecond, Zthird }
+
+enum cr
+{ Zfirst, Zsecond, Zthird }
+
+enum crc
+{ Zfirst, Zsecond, Zthird }
+
+enum crc32c
+{ Zfirst, Zsecond, Zthird }
+
+enum crc_table
+{ Zfirst, Zsecond, Zthird }
+
+enum crossed
+{ Zfirst, Zsecond, Zthird }
+
+enum cs
+{ Zfirst, Zsecond, Zthird }
+
+enum ct
+{ Zfirst, Zsecond, Zthird }
+
+enum ctor
+{ Zfirst, Zsecond, Zthird }
+
+enum ctx
+{ Zfirst, Zsecond, Zthird }
+
+enum cu
+{ Zfirst, Zsecond, Zthird }
+
+enum cu64
+{ Zfirst, Zsecond, Zthird }
+
+enum cu8
+{ Zfirst, Zsecond, Zthird }
+
+enum cur
+{ Zfirst, Zsecond, Zthird }
+
+enum curEdges
+{ Zfirst, Zsecond, Zthird }
+
+enum curEntry
+{ Zfirst, Zsecond, Zthird }
+
+enum curRootAt
+{ Zfirst, Zsecond, Zthird }
+
+enum cur_blob
+{ Zfirst, Zsecond, Zthird }
+
+enum cur_desc
+{ Zfirst, Zsecond, Zthird }
+
+enum cur_path
+{ Zfirst, Zsecond, Zthird }
+
+enum cur_val
+{ Zfirst, Zsecond, Zthird }
+
+enum current
+{ Zfirst, Zsecond, Zthird }
+
+enum cursor
+{ Zfirst, Zsecond, Zthird }
+
+enum cursor_values
+{ Zfirst, Zsecond, Zthird }
+
+enum cut
+{ Zfirst, Zsecond, Zthird }
+
+enum cv
+{ Zfirst, Zsecond, Zthird }
+
+enum cw
+{ Zfirst, Zsecond, Zthird }
+
+enum cw_leb
+{ Zfirst, Zsecond, Zthird }
+
+enum cw_raw
+{ Zfirst, Zsecond, Zthird }
+
+enum cw_raw_bytes
+{ Zfirst, Zsecond, Zthird }
+
+enum cw_u32
+{ Zfirst, Zsecond, Zthird }
+
+enum cw_u64
+{ Zfirst, Zsecond, Zthird }
+
+enum cw_u8
+{ Zfirst, Zsecond, Zthird }
+
+enum cx
+{ Zfirst, Zsecond, Zthird }
+
+enum cyc_all
+{ Zfirst, Zsecond, Zthird }
+
+enum cyc_at
+{ Zfirst, Zsecond, Zthird }
+
+enum cyc_cache
+{ Zfirst, Zsecond, Zthird }
+
+enum cyc_clear
+{ Zfirst, Zsecond, Zthird }
+
+enum cyc_edges
+{ Zfirst, Zsecond, Zthird }
+
+enum cyc_mark
+{ Zfirst, Zsecond, Zthird }
+
+enum cyc_stack
+{ Zfirst, Zsecond, Zthird }
+
+enum cycle
+{ Zfirst, Zsecond, Zthird }
+
+enum cycle1
+{ Zfirst, Zsecond, Zthird }
+
+enum cycle1_i
+{ Zfirst, Zsecond, Zthird }
+
+enum cycle1_value
+{ Zfirst, Zsecond, Zthird }
+
+enum cycle2
+{ Zfirst, Zsecond, Zthird }
+
+enum cycle2_i
+{ Zfirst, Zsecond, Zthird }
+
+enum cycle2_value
+{ Zfirst, Zsecond, Zthird }
+
+enum cycle3
+{ Zfirst, Zsecond, Zthird }
+
+enum cycle3_i
+{ Zfirst, Zsecond, Zthird }
+
+enum cycle3_value
+{ Zfirst, Zsecond, Zthird }
+
+enum cycle4
+{ Zfirst, Zsecond, Zthird }
+
+enum cycle4_i
+{ Zfirst, Zsecond, Zthird }
+
+enum cycle4_value
+{ Zfirst, Zsecond, Zthird }
+
+enum cycle5
+{ Zfirst, Zsecond, Zthird }
+
+enum cycle5_i
+{ Zfirst, Zsecond, Zthird }
+
+enum cycle5_value
+{ Zfirst, Zsecond, Zthird }
+
+enum cycle_before
+{ Zfirst, Zsecond, Zthird }
+
+enum cycle_ctx
+{ Zfirst, Zsecond, Zthird }
+
+enum cycle_i1
+{ Zfirst, Zsecond, Zthird }
+
+enum cycle_i2
+{ Zfirst, Zsecond, Zthird }
+
+enum cycle_i3
+{ Zfirst, Zsecond, Zthird }
+
+enum cycle_i4
+{ Zfirst, Zsecond, Zthird }
+
+enum cycle_indices
+{ Zfirst, Zsecond, Zthird }
+
+enum cyclic
+{ Zfirst, Zsecond, Zthird }
+
+enum d
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    count_nodes Inner
+    count_off Inner
+    count_refused Inner
+    count_rest Inner
+    counted Inner
+    counted_ok Inner
+    counter Inner
+    counters Inner
+    counting Inner
+    counts Inner
+}
+
+table NameTypes0
+{
+    one0  count_nodes
+    many0 [..4]count_nodes
+    one1  count_off
+    many1 [..4]count_off
+    one2  count_refused
+    many2 [..4]count_refused
+    one3  count_rest
+    many3 [..4]count_rest
+    one4  counted
+    many4 [..4]counted
+    one5  counted_ok
+    many5 [..4]counted_ok
+    one6  counter
+    many6 [..4]counter
+    one7  counters
+    many7 [..4]counters
+    one8  counting
+    many8 [..4]counting
+    one9  counts
+    many9 [..4]counts
+}
+
+table NameFields0
+{
+    count_nodes uint32
+    count_off uint32
+    count_refused uint32
+    count_rest uint32
+    counted uint32
+    counted_ok uint32
+    counter uint32
+    counters uint32
+    counting uint32
+    counts uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    cover Inner
+    coverCount Inner
+    cp Inner
+    cpos Inner
+    cpptable Inner
+    cr Inner
+    crc Inner
+    crc32c Inner
+    crc_table Inner
+    crossed Inner
+}
+
+table NameTypes1
+{
+    one0  cover
+    many0 [..4]cover
+    one1  coverCount
+    many1 [..4]coverCount
+    one2  cp
+    many2 [..4]cp
+    one3  cpos
+    many3 [..4]cpos
+    one4  cpptable
+    many4 [..4]cpptable
+    one5  cr
+    many5 [..4]cr
+    one6  crc
+    many6 [..4]crc
+    one7  crc32c
+    many7 [..4]crc32c
+    one8  crc_table
+    many8 [..4]crc_table
+    one9  crossed
+    many9 [..4]crossed
+}
+
+table NameFields1
+{
+    cover uint32
+    coverCount uint32
+    cp uint32
+    cpos uint32
+    cpptable uint32
+    cr uint32
+    crc uint32
+    crc32c uint32
+    crc_table uint32
+    crossed uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    cs Inner
+    ct Inner
+    ctor Inner
+    ctx Inner
+    cu Inner
+    cu64 Inner
+    cu8 Inner
+    cur Inner
+    curEdges Inner
+    curEntry Inner
+}
+
+table NameTypes2
+{
+    one0  cs
+    many0 [..4]cs
+    one1  ct
+    many1 [..4]ct
+    one2  ctor
+    many2 [..4]ctor
+    one3  ctx
+    many3 [..4]ctx
+    one4  cu
+    many4 [..4]cu
+    one5  cu64
+    many5 [..4]cu64
+    one6  cu8
+    many6 [..4]cu8
+    one7  cur
+    many7 [..4]cur
+    one8  curEdges
+    many8 [..4]curEdges
+    one9  curEntry
+    many9 [..4]curEntry
+}
+
+table NameFields2
+{
+    cs uint32
+    ct uint32
+    ctor uint32
+    ctx uint32
+    cu uint32
+    cu64 uint32
+    cu8 uint32
+    cur uint32
+    curEdges uint32
+    curEntry uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    curRootAt Inner
+    cur_blob Inner
+    cur_desc Inner
+    cur_path Inner
+    cur_val Inner
+    current Inner
+    cursor Inner
+    cursor_values Inner
+    cut Inner
+    cv Inner
+}
+
+table NameTypes3
+{
+    one0  curRootAt
+    many0 [..4]curRootAt
+    one1  cur_blob
+    many1 [..4]cur_blob
+    one2  cur_desc
+    many2 [..4]cur_desc
+    one3  cur_path
+    many3 [..4]cur_path
+    one4  cur_val
+    many4 [..4]cur_val
+    one5  current
+    many5 [..4]current
+    one6  cursor
+    many6 [..4]cursor
+    one7  cursor_values
+    many7 [..4]cursor_values
+    one8  cut
+    many8 [..4]cut
+    one9  cv
+    many9 [..4]cv
+}
+
+table NameFields3
+{
+    curRootAt uint32
+    cur_blob uint32
+    cur_desc uint32
+    cur_path uint32
+    cur_val uint32
+    current uint32
+    cursor uint32
+    cursor_values uint32
+    cut uint32
+    cv uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    cw Inner
+    cw_leb Inner
+    cw_raw Inner
+    cw_raw_bytes Inner
+    cw_u32 Inner
+    cw_u64 Inner
+    cw_u8 Inner
+    cx Inner
+    cyc_all Inner
+    cyc_at Inner
+}
+
+table NameTypes4
+{
+    one0  cw
+    many0 [..4]cw
+    one1  cw_leb
+    many1 [..4]cw_leb
+    one2  cw_raw
+    many2 [..4]cw_raw
+    one3  cw_raw_bytes
+    many3 [..4]cw_raw_bytes
+    one4  cw_u32
+    many4 [..4]cw_u32
+    one5  cw_u64
+    many5 [..4]cw_u64
+    one6  cw_u8
+    many6 [..4]cw_u8
+    one7  cx
+    many7 [..4]cx
+    one8  cyc_all
+    many8 [..4]cyc_all
+    one9  cyc_at
+    many9 [..4]cyc_at
+}
+
+table NameFields4
+{
+    cw uint32
+    cw_leb uint32
+    cw_raw uint32
+    cw_raw_bytes uint32
+    cw_u32 uint32
+    cw_u64 uint32
+    cw_u8 uint32
+    cx uint32
+    cyc_all uint32
+    cyc_at uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    cyc_cache Inner
+    cyc_clear Inner
+    cyc_edges Inner
+    cyc_mark Inner
+    cyc_stack Inner
+    cycle Inner
+    cycle1 Inner
+    cycle1_i Inner
+    cycle1_value Inner
+    cycle2 Inner
+}
+
+table NameTypes5
+{
+    one0  cyc_cache
+    many0 [..4]cyc_cache
+    one1  cyc_clear
+    many1 [..4]cyc_clear
+    one2  cyc_edges
+    many2 [..4]cyc_edges
+    one3  cyc_mark
+    many3 [..4]cyc_mark
+    one4  cyc_stack
+    many4 [..4]cyc_stack
+    one5  cycle
+    many5 [..4]cycle
+    one6  cycle1
+    many6 [..4]cycle1
+    one7  cycle1_i
+    many7 [..4]cycle1_i
+    one8  cycle1_value
+    many8 [..4]cycle1_value
+    one9  cycle2
+    many9 [..4]cycle2
+}
+
+table NameFields5
+{
+    cyc_cache uint32
+    cyc_clear uint32
+    cyc_edges uint32
+    cyc_mark uint32
+    cyc_stack uint32
+    cycle uint32
+    cycle1 uint32
+    cycle1_i uint32
+    cycle1_value uint32
+    cycle2 uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    cycle2_i Inner
+    cycle2_value Inner
+    cycle3 Inner
+    cycle3_i Inner
+    cycle3_value Inner
+    cycle4 Inner
+    cycle4_i Inner
+    cycle4_value Inner
+    cycle5 Inner
+    cycle5_i Inner
+}
+
+table NameTypes6
+{
+    one0  cycle2_i
+    many0 [..4]cycle2_i
+    one1  cycle2_value
+    many1 [..4]cycle2_value
+    one2  cycle3
+    many2 [..4]cycle3
+    one3  cycle3_i
+    many3 [..4]cycle3_i
+    one4  cycle3_value
+    many4 [..4]cycle3_value
+    one5  cycle4
+    many5 [..4]cycle4
+    one6  cycle4_i
+    many6 [..4]cycle4_i
+    one7  cycle4_value
+    many7 [..4]cycle4_value
+    one8  cycle5
+    many8 [..4]cycle5
+    one9  cycle5_i
+    many9 [..4]cycle5_i
+}
+
+table NameFields6
+{
+    cycle2_i uint32
+    cycle2_value uint32
+    cycle3 uint32
+    cycle3_i uint32
+    cycle3_value uint32
+    cycle4 uint32
+    cycle4_i uint32
+    cycle4_value uint32
+    cycle5 uint32
+    cycle5_i uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    cycle5_value Inner
+    cycle_before Inner
+    cycle_ctx Inner
+    cycle_i1 Inner
+    cycle_i2 Inner
+    cycle_i3 Inner
+    cycle_i4 Inner
+    cycle_indices Inner
+    cyclic Inner
+    d Inner
+}
+
+table NameTypes7
+{
+    one0  cycle5_value
+    many0 [..4]cycle5_value
+    one1  cycle_before
+    many1 [..4]cycle_before
+    one2  cycle_ctx
+    many2 [..4]cycle_ctx
+    one3  cycle_i1
+    many3 [..4]cycle_i1
+    one4  cycle_i2
+    many4 [..4]cycle_i2
+    one5  cycle_i3
+    many5 [..4]cycle_i3
+    one6  cycle_i4
+    many6 [..4]cycle_i4
+    one7  cycle_indices
+    many7 [..4]cycle_indices
+    one8  cyclic
+    many8 [..4]cyclic
+    one9  d
+    many9 [..4]d
+}
+
+table NameFields7
+{
+    cycle5_value uint32
+    cycle_before uint32
+    cycle_ctx uint32
+    cycle_i1 uint32
+    cycle_i2 uint32
+    cycle_i3 uint32
+    cycle_i4 uint32
+    cycle_indices uint32
+    cyclic uint32
+    d uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

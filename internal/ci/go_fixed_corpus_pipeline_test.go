@@ -9,6 +9,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 )
 
 func TestGoFixedCorpusArtifactRejectsWrongSourceOrBytes(t *testing.T) {
@@ -16,10 +18,6 @@ func TestGoFixedCorpusArtifactRejectsWrongSourceOrBytes(t *testing.T) {
 		t.Skip("Linux CI artifact contract")
 	}
 	root := repoRoot(t)
-	revision, err := exec.Command("git", "-C", root, "rev-parse", "HEAD").Output()
-	if err != nil {
-		t.Fatal(err)
-	}
 	pins, err := os.ReadFile(filepath.Join(root, "SIBLINGS"))
 	if err != nil {
 		t.Fatal(err)
@@ -34,7 +32,29 @@ func TestGoFixedCorpusArtifactRejectsWrongSourceOrBytes(t *testing.T) {
 	if pin == "" {
 		t.Fatal("missing expected runtime pin")
 	}
-	for _, mode := range []string{"valid", "wrong-revision", "wrong-runtime", "changed-wire", "extra-wire", "missing-manifest"} {
+	checkout := t.TempDir()
+	git := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", checkout, "-c", "user.name=Corpus Test", "-c", "user.email=corpus@test.invalid", "-c", "commit.gpgsign=false"}, args...)...)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+		return string(out)
+	}
+	git("init", "--quiet")
+	if err := os.WriteFile(filepath.Join(checkout, "SIBLINGS"), pins, 0600); err != nil {
+		t.Fatal(err)
+	}
+	git("add", "SIBLINGS")
+	git("commit", "--quiet", "-m", "producer merge")
+	producer := git("rev-parse", "HEAD")
+	tree := git("rev-parse", "HEAD^{tree}")
+	git("commit", "--quiet", "--allow-empty", "-m", "distinct consumer merge, identical tree")
+	if git("rev-parse", "HEAD") == producer || git("rev-parse", "HEAD^{tree}") != tree {
+		t.Fatal("fixture must use distinct commits with identical trees")
+	}
+	for _, mode := range []string{"same-tree", "wrong-runtime", "changed-wire", "extra-wire", "missing-manifest", "changed-tree"} {
 		t.Run(mode, func(t *testing.T) {
 			dir := t.TempDir()
 			corpus := filepath.Join(dir, "fixedform-corpus")
@@ -50,12 +70,17 @@ func TestGoFixedCorpusArtifactRejectsWrongSourceOrBytes(t *testing.T) {
 			}
 			write(filepath.Join(corpus, "one.bin"), wire)
 			write(filepath.Join(corpus, "manifest.txt"), manifest)
-			write(filepath.Join(dir, "go-fixed-corpus.revision"), revision)
+			write(filepath.Join(dir, "go-fixed-corpus.revision"), []byte(tree))
 			write(filepath.Join(dir, "go-fixed-corpus.runtime"), []byte(pin+"\n"))
 			write(filepath.Join(dir, "go-fixed-corpus.sha256"), []byte(fmt.Sprintf("%x  ./manifest.txt\n%x  ./one.bin\n", sha256.Sum256(manifest), sha256.Sum256(wire))))
 			switch mode {
-			case "wrong-revision":
-				write(filepath.Join(dir, "go-fixed-corpus.revision"), []byte(strings.Repeat("0", 40)+"\n"))
+			case "changed-tree":
+				write(filepath.Join(checkout, "different-source.txt"), []byte("a different merged tree\n"))
+				git("add", "different-source.txt")
+				git("commit", "--quiet", "-m", "a genuinely different merge")
+				if git("rev-parse", "HEAD^{tree}") == tree {
+					t.Fatal("fixture must change the consumer tree")
+				}
 			case "wrong-runtime":
 				write(filepath.Join(dir, "go-fixed-corpus.runtime"), []byte(strings.Repeat("0", 40)+"\n"))
 			case "changed-wire":
@@ -67,29 +92,40 @@ func TestGoFixedCorpusArtifactRejectsWrongSourceOrBytes(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
+			testinputs.Files(t, "tools/go-ci-corpus.sh")
 			cmd := exec.Command("sh", filepath.Join(root, "tools/go-ci-corpus.sh"), "verify", dir)
-			cmd.Dir = root
+			cmd.Dir = checkout
 			out, err := cmd.CombinedOutput()
-			if (err == nil) != (mode == "valid") {
+			if (err == nil) != (mode == "same-tree") {
 				t.Fatalf("%s: err=%v output=%s", mode, err, out)
+			}
+			want := map[string]string{
+				"wrong-runtime":    "fixed corpus runtime pin mismatch",
+				"changed-wire":     "fixed corpus inventory or bytes differ from its producer",
+				"extra-wire":       "fixed corpus inventory or bytes differ from its producer",
+				"missing-manifest": "fixed corpus manifest is missing",
+				"changed-tree":     "fixed corpus source tree does not match this checkout",
+			}[mode]
+			if !strings.Contains(string(out), want) {
+				t.Fatalf("%s: want %q, got %s", mode, want, out)
 			}
 		})
 	}
 }
 
 func TestGoFixedCorpusPipelineKeepsCompleteTestRecipe(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join(repoRoot(t), ".github/workflows/ci-fast.yml"))
+	data, err := os.ReadFile(filepath.Join(repoRoot(t), ".github/workflows/ci-fast-nightly.yml"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	jobs := yamlJobs(string(data))
 	producer, tests := jobs["go-fixed-corpus"], jobs["go-test-touched"]
-	for _, want := range []string{"tools/go-ci-corpus.sh produce", "actions/upload-artifact@", "go-fixed-corpus-${{ github.run_id }}-${{ github.sha }}", "timeout-minutes: 2"} {
+	for _, want := range []string{"tools/go-ci-corpus.sh produce", "actions/upload-artifact@", "go-fixed-corpus-${{ github.run_id }}-${{ github.sha }}"} {
 		if !strings.Contains(producer, want) {
 			t.Errorf("producer misses %s", want)
 		}
 	}
-	for _, want := range []string{"needs: [plan, go-fixed-corpus]", "needs.go-fixed-corpus.result == 'skipped'", "actions/download-artifact@", "matrix.make == 'tables-go-fixedform'", "tools/go-ci-corpus.sh verify", "make -o tables-fixedform-corpus tables-go-fixedform"} {
+	for _, want := range []string{"needs: [plan, go-fixed-corpus]", "needs.go-fixed-corpus.result == 'skipped'", "actions/download-artifact@", "go-fixed-corpus-${{ github.run_id }}-${{ github.sha }}", "matrix.make == 'tables-go-fixedform'", "tools/go-ci-corpus.sh verify", "make -o tables-fixedform-corpus tables-go-fixedform"} {
 		if !strings.Contains(tests, want) {
 			t.Errorf("test pipeline misses %s", want)
 		}
@@ -103,11 +139,12 @@ func TestGoFixedCorpusPipelineKeepsCompleteTestRecipe(t *testing.T) {
 }
 
 func TestGoFixedCorpusDependencyStates(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join(repoRoot(t), ".github/workflows/ci-fast.yml"))
+	data, err := os.ReadFile(filepath.Join(repoRoot(t), ".github/workflows/ci-fast-nightly.yml"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	event := ciEvent{Name: "pull_request", Branch: "dev", HeadRef: "stella/ci-proof", Repo: "mas-bandwidth/schema", HeadRepo: "mas-bandwidth/schema", PlanPkgs: "./internal/codegen/gotable"}
+	// the nightly lane's schedule (since 2026-11-25 these jobs run nightly)
+	event := ciEvent{Name: "schedule", Branch: "main", Repo: "mas-bandwidth/schema", PlanPkgs: "./internal/codegen/gotable"}
 	for _, state := range []string{"success", "skipped", "failure", "cancelled"} {
 		event.GoCorpusResult = state
 		got, err := jobRunsInWorkflow(string(data), "go-test-touched", event)

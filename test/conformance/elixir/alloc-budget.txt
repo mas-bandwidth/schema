@@ -173,3 +173,11 @@ surf_holder_null_required 1966 3 1268
 surf_holder_present 4007 6 2271
 surf_narrow_full 625 3 521
 surf_wide_full 629 3 524
+vd_var_defaults 39196 201 27708
+vd_var_values 71252 284 41371
+vd_fixed_defaults 19456 131 14779
+vd_fixed_values 19248 139 14985
+packetunions_doc_full 9643 13 5439
+packetunions_doc_empty 2171 3 1664
+packetunions_msg_full 5681 16 4060
+packetunions_msg_one 2656 8 1920

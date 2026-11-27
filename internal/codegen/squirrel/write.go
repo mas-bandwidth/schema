@@ -113,6 +113,16 @@ func emitWriteField(m *Module, val string, f *ir.Field, indent string) {
 		m.Printf("%s}\n", indent)
 		return
 	}
+	// a [N]T holds exactly N values: any other count is refused, never cut or
+	// padded to N (SPEC §5.1, SF-20). The check names the container the
+	// constructor makes (squirrel.go): a [N]uint8 is a blob, every other [N]T
+	// an array. An array-only check refused every lawful [N]uint8.
+	container := "array"
+	if isByteElem(f.Type) {
+		container = "blob"
+	}
+	m.Printf("%sif (typeof %s != \"%s\" || %s.len() != %d) return false; // a [N]T holds exactly N values (SPEC §5.1)\n",
+		indent, val, container, val, bound)
 	m.Printf("%sfor (local _i = 0; _i < %d; _i++) {\n", indent, bound)
 	emitArrayElement(m, val, f, indent+"  ")
 	m.Printf("%s}\n", indent)
@@ -137,6 +147,7 @@ func emitWriteScalar(m *Module, val string, f *ir.Field, indent string) {
 	case ir.TInt:
 		switch {
 		case t.Width == 128 && f.HasIntRange:
+			emitWithin128(m, val, f.IntMin, f.IntMax, indent)
 			emitCall(m, indent, val, "serializeInt128", Int128Lit(f.IntMin), Int128Lit(f.IntMax))
 		case t.Width == 128:
 			emitCall(m, indent, val, "serializeUint128")
@@ -162,9 +173,16 @@ func emitWriteScalar(m *Module, val string, f *ir.Field, indent string) {
 		}
 		emitBits(m, indent, val, int64(t.Width), "")
 	case ir.TFixed:
+		// SPEC §5.1 row 1: a raw value off [min << F, max << F] is refused
+		// with false before the runtime's write-misuse trap would raise
 		fn := "serializeFixed64"
+		rawMin := new(big.Int).Lsh(f.IntMin, uint(t.FracBits))
+		rawMax := new(big.Int).Lsh(f.IntMax, uint(t.FracBits))
 		if t.Width > 64 {
 			fn = "serializeFixed128"
+			emitWithin128(m, val, rawMin, rawMax, indent)
+		} else {
+			emitWithin64(m, val, rawMin, rawMax, indent)
 		}
 		emitCall(m, indent, val, fn, strconv.Itoa(t.IntBits), strconv.Itoa(t.FracBits), IntLit(f.IntMin), IntLit(f.IntMax))
 	case ir.TFloat32:
@@ -231,11 +249,21 @@ func emitBareIntGuard(m *Module, val string, t ir.FieldType, indent string) {
 // vacuous and is not emitted (docs/PORT-SQUIRREL.md, 64-BIT AND 128-BIT
 // INTEGERS).
 func emitWriteRangedInt(m *Module, val string, f *ir.Field, indent string) {
+	// SPEC §5.1's Squirrel packet line: row 1 raises (the runtime's
+	// write-misuse trap) for an int32 or int64 field only; every other kind
+	// that takes the same runtime call refuses with false first
+	raises := f.Type.Signed && (f.Type.Width == 32 || f.Type.Width == 64)
 	switch intRangePath(f.IntMin, f.IntMax) {
 	case "int32":
+		if !raises {
+			emitWithin64(m, val, f.IntMin, f.IntMax, indent)
+		}
 		emitCall(m, indent, val, "serializeInt", IntLit(f.IntMin), IntLit(f.IntMax))
 		return
 	case "int64":
+		if !raises {
+			emitWithin64(m, val, f.IntMin, f.IntMax, indent)
+		}
 		emitCall(m, indent, val, "serializeInt64", IntLit(f.IntMin), IntLit(f.IntMax))
 		return
 	}
@@ -252,6 +280,29 @@ func emitWriteRangedInt(m *Module, val string, f *ir.Field, indent string) {
 		expr = fmt.Sprintf("%s - %s", val, IntLit(f.IntMin))
 	}
 	emitBits(m, indent, expr, ir.BitsRequired(f.IntMin, f.IntMax), "")
+}
+
+// emitWithin64 refuses with false a value that is not an integer or is off
+// [lo, hi] (SPEC §5.1 row 1), before a runtime call whose write-misuse trap
+// would raise on it. Bounds inside int64 compare signed; bounds past
+// 2^63 - 1 (never below zero) compare in the unsigned domain, a ^ MIN64.
+func emitWithin64(m *Module, val string, lo, hi *big.Int, indent string) {
+	if hi.Cmp(maxInt64) <= 0 {
+		m.Printf("%sif (typeof %s != \"integer\" || %s < %s || %s > %s) return false; // SPEC §5.1 row 1\n",
+			indent, val, val, IntLit(lo), val, IntLit(hi))
+		return
+	}
+	m.Printf("%sif (typeof %s != \"integer\" || (%s ^ %s) < %s || (%s ^ %s) > %s) return false; // SPEC §5.1 row 1\n",
+		indent, val, val, min64, IntLit(xorMin64(lo)), val, min64, IntLit(xorMin64(hi)))
+}
+
+// emitWithin128 refuses with false a value that is not a 128-bit pair or is
+// off [lo, hi] (SPEC §5.1 row 1), before a runtime call whose write-misuse
+// trap would raise on it. A range reaching 2^127 or past compares unsigned.
+func emitWithin128(m *Module, val string, lo, hi *big.Int, indent string) {
+	unsigned := lo.Sign() >= 0 && hi.Cmp(new(big.Int).Lsh(big.NewInt(1), 127)) >= 0
+	m.Printf("%sif (!%s(%s, %s, %s, %t)) return false; // SPEC §5.1 row 1\n",
+		indent, m.Helper(within128), val, Int128Lit(lo), Int128Lit(hi), unsigned)
 }
 
 // xorMin64 is bound ^ MIN64 folded at generation time: the bound's 64 bits with

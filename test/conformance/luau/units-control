@@ -4,8 +4,9 @@
 # group). Two sabotages of the GENERATED units, each required to turn exactly
 # its own surfaces red:
 #
-#   1. the LOAD: one report counter is forced to differ from the corpus
-#      expectation, so `report` and `retain` go red and nothing else;
+#   1. the LOAD: every unknown field the load skips marks it malformed, so
+#      `report`, `retain`, `retain-save` and `framing` (on exactly its
+#      unknown-field rows, named) go red and nothing else;
 #   2. the ACCELERATOR READERS: the cook's reserved-words clause and the
 #      block's pitch clause are cut out of Check and BlockOpen, so the two
 #      forgery batteries and the two reason surfaces go red and nothing else.
@@ -46,6 +47,7 @@ for entry in "$root"/build/*; do
 	ln -s "$entry" "$mirror/build/$name"
 done
 cp test/conformance/luau/driver test/conformance/luau/main.luau "$mirror/test/conformance/luau/"
+cp test/conformance/answer-lines.pl "$mirror/test/conformance/"
 cp build/luau-driver/units.luau "$mirror/build/luau-driver/units.luau"
 gen=$mirror/build/conformance-luau
 mkdir -p "$gen"
@@ -84,8 +86,18 @@ if build/conformance-harness run --drivers "$out/drivers.txt" --work "$out/work"
 	exit 1
 fi
 got=$(reds "$out/load.log")
-if [ "$got" != "report retain retain-save " ]; then
-	echo "negative control failed: the luau load sabotage turned [$got] red, want [report retain retain-save ]" >&2
+if [ "$got" != "report framing retain retain-save " ]; then
+	echo "negative control failed: the luau load sabotage turned [$got] red, want [report framing retain retain-save ]" >&2
+	cat "$out/load.log" >&2
+	exit 1
+fi
+# framing goes red only on the rows whose wire carries an unknown field
+# (graph_reach_unknown_*, and node_type_undeclared, whose pointer names an
+# undeclared table, reads null and counts unknown): exactly those, by name
+rows="graph_reach_unknown_field graph_reach_unknown_keyed_slot graph_reach_unknown_nested graph_reach_unknown_union_arm node_type_undeclared"
+got=$(grep -oE "^ *luau / framing: [A-Za-z0-9_]+" "$out/load.log" | sed "s/.*: //" | sort -u | xargs echo)
+if [ "$got" != "$rows" ]; then
+	echo "negative control failed: the luau load sabotage turned framing rows [$got] red, want exactly the unknown-field rows [$rows]" >&2
 	cat "$out/load.log" >&2
 	exit 1
 fi
@@ -115,4 +127,4 @@ if [ "$got" != "forgery cook-forgery " ]; then
 	cat "$out/accel.log" >&2
 	exit 1
 fi
-echo "Luau table negative control: the load sabotage turns exactly framing, retain and retain-save red; the reader sabotage exactly forgery and cook-forgery"
+echo "Luau table negative control: the load sabotage turns exactly report, retain, retain-save and the unknown-field framing rows red; the reader sabotage exactly forgery and cook-forgery"
