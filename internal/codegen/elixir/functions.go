@@ -639,7 +639,7 @@ func (g *gen) emitStructFunctions(st *ir.Struct) {
 	g.emitBounds(st.Name, ir.MaxBitsStruct(st),
 		"the longest wire path, align padding at its worst case (SPEC §6.1)")
 	g.emitZeroFunction(st)
-	g.emitWriteFunction(st.Name, st.Items)
+	g.emitWriteFunction(st.Name, st.Items, st)
 	g.emitReadFunction(st.Name, st, st.Items)
 }
 
@@ -678,7 +678,7 @@ func (g *gen) emitUnionFunctions(d *ir.Union) {
 	g.bpf("  def zero_%s, do: nil\n\n", snake)
 
 	item := unionItem(d)
-	g.emitWriteFunction(d.Name, []ir.Item{item})
+	g.emitWriteFunction(d.Name, []ir.Item{item}, nil)
 	g.emitReadFunction(d.Name, nil, []ir.Item{item})
 }
 
@@ -785,7 +785,7 @@ func (g *gen) valueSpec(name string) string { return g.mod(name) + ".t()" }
 // raising ArgumentError where a write contract is violated, and
 // write_<name>(value) -> {:ok, binary} | {:error, message}, the verdict form
 // beside it — the read side's own {:ok, ...} shape.
-func (g *gen) emitWriteFunction(name string, items []ir.Item) {
+func (g *gen) emitWriteFunction(name string, items []ir.Item, rec *ir.Struct) {
 	g.usesImport = true
 	snake := ir.RustSnake(name)
 	g.fn.Reset()
@@ -799,6 +799,9 @@ func (g *gen) emitWriteFunction(name string, items []ir.Item) {
 	g.bindW, g.bindDisp, g.bindUsed = nil, nil, map[string]bool{}
 	var tail string
 	g.withOwner(name, func() {
+		if rec != nil {
+			g.emitCheckRecord(rec, "value", "    ")
+		}
 		g.emitWriteItems(items, "value", "    ")
 		g.flushW("    ") // the tail is a barrier: the residual is < 8 bits
 		// the return reads what it is about to test or append
@@ -1223,6 +1226,11 @@ func (g *gen) emitWriteField(f *ir.Field, path, ind string) {
 	if f.Name == "" {
 		name = path // the standalone union functions' self item
 	}
+	if f.Array != ir.ArrayNone {
+		// length/1 raises its own ArgumentError on a term that is not a
+		// list: the writer names the field instead
+		g.raiseIf(fmt.Sprintf("not is_list(%s)", name), fmt.Sprintf("%s is not a list", g.dsp(name)), ind)
+	}
 	switch f.Array {
 	case ir.ArrayFixed:
 		g.raiseIf(fmt.Sprintf("length(%s) != %s", name, intLit64(f.ArrayBound)),
@@ -1458,6 +1466,7 @@ func (g *gen) emitWriteElem(f *ir.Field, ev, ind string) {
 	if f.Type.Kind == ir.TNamed {
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Struct:
+			g.emitCheckRecord(ref, ev, ind)
 			g.withOwner(ref.Name, func() { g.emitWriteItems(ref.Items, ev, ind) })
 			return
 		case *ir.Union:
@@ -1566,6 +1575,8 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		g.emitCheckRange(name, g.dsp(name), big.NewInt(0), top, ind)
 		g.emitWriteWideRaw(name, w, ind)
 	case ir.TBool:
+		// any other term is truthy or falsy to the if below: refuse it
+		g.raiseIf(fmt.Sprintf("not is_boolean(%s)", name), fmt.Sprintf("%s is not a boolean", g.dsp(name)), ind)
 		g.pf("%sv = if %s, do: 1, else: 0\n", ind, name)
 		g.mergeW(1, ind)
 	case ir.TFloat32:
@@ -1606,6 +1617,7 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 			g.mergeW(bits, ind)
 		case *ir.Flags:
 			wb := int64(ref.WireBits)
+			g.emitCheckInteger(name, ind)
 			if wb < 64 {
 				// a mask bit above the wire width cannot ride
 				g.raiseIf(fmt.Sprintf("%s >>> %d != 0", name, wb),
@@ -1621,6 +1633,7 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 			}
 			g.emitWriteWide(name, wb, ind)
 		case *ir.Struct:
+			g.emitCheckRecord(ref, name, ind)
 			g.withOwner(ref.Name, func() { g.emitWriteItems(ref.Items, name, ind) })
 		case *ir.Union:
 			g.emitWriteUnion(ref, name, ind)
@@ -1740,6 +1753,7 @@ func (g *gen) emitWriteCompressedFloat(f *ir.Field, name, ind string) {
 // align (zero pad), then the used bytes appended whole — the classic
 // serialize_string framing, byte-identical to every other target's.
 func (g *gen) emitWriteBytesField(f *ir.Field, name, ind string) {
+	g.raiseIf(fmt.Sprintf("not is_binary(%s)", name), fmt.Sprintf("%s is not a binary", g.dsp(name)), ind)
 	g.raiseIf(fmt.Sprintf("byte_size(%s) > %d", name, f.Type.Size),
 		fmt.Sprintf("%s longer than the declared %d-byte bound", g.dsp(name), f.Type.Size), ind)
 	if f.Type.Kind == ir.TString {
@@ -1797,7 +1811,9 @@ func (g *gen) emitWriteUnion(u *ir.Union, expr, ind string) {
 			continue
 		}
 		payload = payload || len(vr.Ref.Items) > 0
-		g.pf("%s    {%s, _} ->\n%s      %d\n\n", ind, enumAtom(vr.Name), ind, i+1)
+		// the payload is the arm's record, or the value is not this union's:
+		// the clause below raises the writer's ArgumentError on it
+		g.pf("%s    {%s, %%%s{}} ->\n%s      %d\n\n", ind, enumAtom(vr.Name), g.mod(vr.Type), ind, i+1)
 	}
 	g.pf("%s    %s ->\n", ind, other)
 	msg := fmt.Sprintf("\"%s is not a %s value: #{inspect(%s)}\"", shown, u.Name, other)
@@ -2819,4 +2835,13 @@ func (g *gen) emitLoopHelpers() {
 	for _, name := range g.helperOrder {
 		g.body.WriteString(g.helpers[name])
 	}
+}
+
+// emitCheckRecord refuses a term that is not the record's struct before any
+// field of it is read: a map pattern or a dotted access on anything else
+// raises MatchError, BadMapError or KeyError, past the write_x/1 verdict
+// form, which answers ArgumentError's refusal only (SPEC §5.1).
+func (g *gen) emitCheckRecord(st *ir.Struct, path, ind string) {
+	g.raiseIf(fmt.Sprintf("not is_struct(%s, %s)", path, g.mod(st.Name)),
+		fmt.Sprintf("%s is not a %s", g.dsp(path), st.Name), ind)
 }

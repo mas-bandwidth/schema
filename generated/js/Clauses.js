@@ -85,12 +85,18 @@ export function ZeroW13(value) {
 }
 
 export function WriteW13(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!globalThis.Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 12) { // the count guards the loop (§6.3)
     return false;
   }
   NUMBER_SCRATCH.value = value.itemsCount;
   if (!stream.serializeBits(NUMBER_SCRATCH, 4)) {
     return false;
+  }
+  if (value.items === null || typeof value.items !== "object" || !(value.items.length >= value.itemsCount)) {
+    return false; // the storage holds every element the loop reads (SPEC §5.1)
   }
   for (let i = 0; i < value.itemsCount; i++) {
     if (!globalThis.Number.isInteger(value.items[i]) || value.items[i] < 0 || value.items[i] > 8191) {
@@ -144,12 +150,18 @@ export function ZeroW17(value) {
 }
 
 export function WriteW17(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!globalThis.Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 9) { // the count guards the loop (§6.3)
     return false;
   }
   NUMBER_SCRATCH.value = value.itemsCount;
   if (!stream.serializeBits(NUMBER_SCRATCH, 4)) {
     return false;
+  }
+  if (value.items === null || typeof value.items !== "object" || !(value.items.length >= value.itemsCount)) {
+    return false; // the storage holds every element the loop reads (SPEC §5.1)
   }
   for (let i = 0; i < value.itemsCount; i++) {
     if (!globalThis.Number.isInteger(value.items[i]) || value.items[i] < 0 || value.items[i] > 131071) {
@@ -203,12 +215,18 @@ export function ZeroW26(value) {
 }
 
 export function WriteW26(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!globalThis.Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 6) { // the count guards the loop (§6.3)
     return false;
   }
   NUMBER_SCRATCH.value = value.itemsCount;
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
     return false;
+  }
+  if (value.items === null || typeof value.items !== "object" || !(value.items.length >= value.itemsCount)) {
+    return false; // the storage holds every element the loop reads (SPEC §5.1)
   }
   for (let i = 0; i < value.itemsCount; i++) {
     if (!globalThis.Number.isInteger(value.items[i]) || value.items[i] < 0 || value.items[i] > 67108863) {
@@ -262,12 +280,18 @@ export function ZeroW1(value) {
 }
 
 export function WriteW1(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!globalThis.Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 20) { // the count guards the loop (§6.3)
     return false;
   }
   NUMBER_SCRATCH.value = value.itemsCount;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
+  }
+  if (value.items === null || typeof value.items !== "object" || !(value.items.length >= value.itemsCount)) {
+    return false; // the storage holds every element the loop reads (SPEC §5.1)
   }
   for (let i = 0; i < value.itemsCount; i++) {
     if (!globalThis.Number.isInteger(value.items[i]) || value.items[i] < 0 || value.items[i] > 1) {
@@ -321,12 +345,18 @@ export function ZeroW52(value) {
 }
 
 export function WriteW52(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!globalThis.Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 3) { // the count guards the loop (§6.3)
     return false;
   }
   NUMBER_SCRATCH.value = value.itemsCount;
   if (!stream.serializeBits(NUMBER_SCRATCH, 2)) {
     return false;
+  }
+  if (value.items === null || typeof value.items !== "object" || !(value.items.length >= value.itemsCount)) {
+    return false; // the storage holds every element the loop reads (SPEC §5.1)
   }
   for (let i = 0; i < value.itemsCount; i++) {
     if (typeof value.items[i] !== "bigint" || value.items[i] < 0n || value.items[i] > 4503599627370495n) {
@@ -380,12 +410,18 @@ export function ZeroW50(value) {
 }
 
 export function WriteW50(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!globalThis.Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 3) { // the count guards the loop (§6.3)
     return false;
   }
   NUMBER_SCRATCH.value = value.itemsCount;
   if (!stream.serializeBits(NUMBER_SCRATCH, 2)) {
     return false;
+  }
+  if (value.items === null || typeof value.items !== "object" || !(value.items.length >= value.itemsCount)) {
+    return false; // the storage holds every element the loop reads (SPEC §5.1)
   }
   for (let i = 0; i < value.itemsCount; i++) {
     if (typeof value.items[i] !== "bigint" || value.items[i] < 0n || value.items[i] > 1125899906842623n) {
@@ -436,7 +472,10 @@ export function ZeroF13(value) {
 }
 
 export function WriteF13(stream, value) {
-  if (value.items == null || value.items.length !== 7) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
+  if (value.items === null || typeof value.items !== "object" || value.items.length !== 7) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
     return false;
   }
   for (let i = 0; i < 7; i++) {
@@ -487,6 +526,9 @@ export function ZeroTri3(value) {
 }
 
 export function WriteTri3(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!globalThis.Number.isInteger(value.a) || value.a < 0 || value.a > 1) { // a bits(N) value must fit its width
     return false;
   }
@@ -547,12 +589,18 @@ export function ZeroArrTri3(value) {
 }
 
 export function WriteArrTri3(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!globalThis.Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 10) { // the count guards the loop (§6.3)
     return false;
   }
   NUMBER_SCRATCH.value = value.itemsCount;
   if (!stream.serializeBits(NUMBER_SCRATCH, 4)) {
     return false;
+  }
+  if (value.items === null || typeof value.items !== "object" || !(value.items.length >= value.itemsCount)) {
+    return false; // the storage holds every element the loop reads (SPEC §5.1)
   }
   for (let i = 0; i < value.itemsCount; i++) {
     if (!WriteTri3(stream, value.items[i])) {
@@ -601,6 +649,9 @@ export function ZeroEleven(value) {
 }
 
 export function WriteEleven(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!globalThis.Number.isInteger(value.a) || value.a < 0 || value.a > 7) { // a bits(N) value must fit its width
     return false;
   }
@@ -658,7 +709,10 @@ export function ZeroArrEleven(value) {
 }
 
 export function WriteArrEleven(stream, value) {
-  if (value.items == null || value.items.length !== 9) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
+  if (value.items === null || typeof value.items !== "object" || value.items.length !== 9) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
     return false;
   }
   for (let i = 0; i < 9; i++) {
@@ -788,6 +842,9 @@ export function ZeroEmptyUnion(value) {
 }
 
 export function WriteEmptyUnion(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!globalThis.Number.isInteger(value.type) || value.type < 0 || value.type > 2) {
     return false; // the tag validates BEFORE it rides (SPEC §4.8)
   }
@@ -855,6 +912,9 @@ export function ZeroHoldsEmptyUnion(value) {
 }
 
 export function WriteHoldsEmptyUnion(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!globalThis.Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) { // a bits(N) value must fit its width
     return false;
   }
@@ -928,6 +988,9 @@ export function ZeroStrs(value) {
 }
 
 export function WriteStrs(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!globalThis.Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) { // a bits(N) value must fit its width
     return false;
   }
@@ -942,6 +1005,9 @@ export function WriteStrs(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 4)) {
     return false;
   }
+  if (!(value.s instanceof globalThis.Uint8Array) || value.s.length < value.sLength) {
+    return false; // the bytes are a Uint8Array holding the length (SPEC §5.1)
+  }
   if (!validText(value.s, value.sLength)) {
     return false;
   }
@@ -954,6 +1020,9 @@ export function WriteStrs(stream, value) {
   NUMBER_SCRATCH.value = value.bLength;
   if (!stream.serializeBits(NUMBER_SCRATCH, 4)) {
     return false;
+  }
+  if (!(value.b instanceof globalThis.Uint8Array) || value.b.length < value.bLength) {
+    return false; // the bytes are a Uint8Array holding the length (SPEC §5.1)
   }
   if (!stream.serializeBytes(value.b.subarray(0, value.bLength))) {
     return false;
@@ -1034,6 +1103,9 @@ export function ZeroArrNested(value) {
 }
 
 export function WriteArrNested(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!globalThis.Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) { // a bits(N) value must fit its width
     return false;
   }
@@ -1047,6 +1119,9 @@ export function WriteArrNested(stream, value) {
   NUMBER_SCRATCH.value = value.itemsCount;
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
     return false;
+  }
+  if (value.items === null || typeof value.items !== "object" || !(value.items.length >= value.itemsCount)) {
+    return false; // the storage holds every element the loop reads (SPEC §5.1)
   }
   for (let i = 0; i < value.itemsCount; i++) {
     if (!WriteEleven(stream, value.items[i])) {
@@ -1107,6 +1182,9 @@ export function ZeroSole(value) {
 }
 
 export function WriteSole(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!globalThis.Number.isInteger(value.only) || value.only < 0 || value.only > 8191) { // a bits(N) value must fit its width
     return false;
   }
