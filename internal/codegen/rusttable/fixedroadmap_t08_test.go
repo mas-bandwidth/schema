@@ -45,14 +45,14 @@ package rusttable
 
 import (
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 // ---- readers of this leg's output ------------------------------------------

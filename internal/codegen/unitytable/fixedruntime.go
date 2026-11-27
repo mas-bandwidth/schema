@@ -1,6 +1,6 @@
 package unitytable
 
-import "github.com/mas-bandwidth/schema/v2/ir"
+import "github.com/mas-bandwidth/schema/v3/ir"
 
 func fixedRuntimeNeeded(u *ir.Unit) bool {
 	for _, st := range u.Tables {

@@ -26,9 +26,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/ci/hostilecorpus"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v3/internal/ci/hostilecorpus"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/tablewire"
 )
 
 func hostileCorpusDir(t *testing.T) string {

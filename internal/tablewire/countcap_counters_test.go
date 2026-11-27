@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/internal/tablewire"
 )
 
 // A count past the int32 storage cap refuses count_over_extent_cap on every

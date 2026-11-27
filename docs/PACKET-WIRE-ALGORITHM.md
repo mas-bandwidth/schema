@@ -302,7 +302,10 @@ PUT_BITS(w, integer, wire_bits)
 [min, max] is a value the declaration does not admit, checked before quantizing by the leg's
 mechanism as `docs/rulings.json` `write-refusal` lists it: a debug assert in C, C++, C#, Rust,
 Java and Dart, and a refusal in every build in Go, JavaScript, Elixir, Lua, Luau, Squirrel, MOO
-and Goose. A conforming writer never relies on clamping the value into [0, 1]: an in-range value
+and Goose. The Unity C# dialect uses the C# debug assertion. Lobster uses its packet assertion
+with assertions enabled. Python and Ruby report `InvalidValue` in every build.
+See the [caller cases](SPEC-CONFORMANCE.md#compressed-float-packet-writes) for the per-port coverage.
+A conforming writer never relies on clamping the value into [0, 1]: an in-range value
 normalizes into [0, 1] by itself. What a build whose check is compiled out writes for an
 off-range value is unspecified (SPEC §5), and the reader on the other end refuses an off-range
 decode (§3.4). A runtime that keeps a [0, 1] clamp in its release build is not required to

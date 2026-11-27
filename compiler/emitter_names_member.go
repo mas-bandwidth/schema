@@ -5,9 +5,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/internal/check"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/dart"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/check"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/dart"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // A member spelled like a named type its own declaration uses cannot be
@@ -27,14 +27,22 @@ import (
 // C++ compares the member name as written, Dart its lowerCamel spelling, so
 // `Kind kind` is refused for Dart and `kind Kind` (two names in both) is not.
 // A unit schema check accepts builds in every target, so the check refuses it
-// for every target, naming the target.
+// for every target, naming the target. The C++ and Dart targets run the same
+// rule at generate (target_cpp.go, target_dart.go), as the C# targets run
+// csNames, so a unit built in memory without the checker is refused too.
 func init() {
-	check.RegisterEmitterNameRule("C++", memberNamedLikeAType(
-		func(name string) string { return name },
-		"the member declaration changes the meaning of the type name (-Wchanges-meaning)"))
-	check.RegisterEmitterNameRule("Dart", memberNamedLikeAType(dart.MemberName,
-		"the member, spelled %q in Dart, hides that type in the class body"))
+	check.RegisterEmitterNameRule("C++", cppMemberNames)
+	check.RegisterEmitterNameRule("Dart", dartMemberNames)
 }
+
+// cppMemberNames and dartMemberNames are the two targets' member rules.
+var (
+	cppMemberNames = memberNamedLikeAType(
+		func(name string) string { return name },
+		"the member declaration changes the meaning of the type name (-Wchanges-meaning)")
+	dartMemberNames = memberNamedLikeAType(dart.MemberName,
+		"the member, spelled %q in Dart, hides that type in the class body")
+)
 
 // memberOwner is one declaration whose members share a class body: a type or
 // table and its fields, or a union and its arms.

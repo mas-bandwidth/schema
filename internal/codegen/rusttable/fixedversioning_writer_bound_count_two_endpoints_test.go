@@ -2,12 +2,12 @@ package rusttable
 
 import (
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 	"os"
 	"path/filepath"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 // §5.8 row 4 (writer_bound_count) with TWO lineage endpoints. The reader is

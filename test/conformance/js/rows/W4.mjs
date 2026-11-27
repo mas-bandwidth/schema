@@ -1,48 +1,28 @@
-// W4 — READ SLACK IS UNSPECIFIED (docs/SPEC-TABLES.md:6750, §3.4's slack rule;
-// the cell's law pointer docs/FIXED-FORM-ALGORITHM.md:346 states the same law
-// at §4.6: the bounds pass "walks only what a read can have written — a
-// counted array's LIVE elements and never its slack").
+// W4 — EVERY DEAD BYTE IS ZERO, AND A NON-ZERO DEAD BYTE REFUSES THE WHOLE
+// LOAD (docs/SPEC-TABLES.md, THE SLACK RULE: "EVERY SLACK BYTE IS DEAD, AND A
+// NON-ZERO DEAD BYTE REFUSES THE WHOLE LOAD"; docs/FIXED-FORM-ALGORITHM.md
+// §4.5, §5.3). The Go row test/conformance/go/rows/W4_test.go holds the same
+// law. This row once held the old slack rule (non-zero slack read, refused
+// nothing and moved no counter); the spec replaced it, and the row with it.
 //
-// THE LAW, quoted: "UNSPECIFIED ON READ, AND NOT A REFUSAL. A reader validates
-// the USED UNITS ONLY and never looks at the slack, so a peer that leaves
-// garbage there is a peer this reader reads correctly. NON-ZERO SLACK IS NOT
-// `malformed`, NOT A REFUSAL, AND MOVES NO COUNTER." And: "THE CONTENT RULES
-// APPLY TO THE USED UNITS AND TO NOTHING ELSE. A `string(N)`'s UTF-8 validity
-// (§3) is checked over its stated length, not over `N`" (docs/SPEC-TABLES.md:
-// 6756). §4.6 adds why no counter may move: "clamping storage nobody wrote
-// would count a clamp on every clean read."
+// THE LAW, clause by clause, as this row checks it:
+//   - ZERO ON WRITE: a writer zero-fills every byte of slack, so the record
+//     this build saves reads clean and saves back byte identically;
+//   - the four kinds of dead byte (a string(N)'s bytes past its used length,
+//     a counted array's slots past its live count, the arm bytes under union
+//     tag 0, and a dead nested record's bytes) each REFUSE `wire_damaged`
+//     when one byte of them is not zero;
+//   - the refusal lands nothing: the destination holds its declared defaults
+//     after it (ruling R4), and no counter moves.
 //
-// WHAT THIS TEST DOES, on the C++ row of the same audit item
-// (test/conformance/cpp/rows/W4.cpp) as its shape: it builds ONE RootConfig
-// record (the examples unit's fixed table, package tabledemo) whose live
-// values are all in bound, reads it through the production identity reader
-// (TablesTable.js's RootConfigFixedLoad), then stains every declared slack
-// range of a copy with garbage a conforming writer never emits and reads THAT.
-// The stain is chosen so each wrong behaviour trips a different assertion:
-// invalid UTF-8 (0xC3 0x28 0xFF) past `version_note`'s used length — a reader
-// validating the full 16-byte bound would flag `malformed`; out-of-range
-// values in the DEAD weapon slots (penetration 999 past max 10, union tag 9
-// past the 2 arms, bool 0x02) — a reader walking past the live count would
-// count clamps; and a forged 999 in a dead profile's name length under a
-// count of zero. The two reads must agree on every used unit, every counter
-// and every verdict, and the reader must not have looked at the slack at all.
-//
-// THE VECTOR. RootConfig's body is 1248 bytes, positional (SPEC §3.4), and
-// the emitted decode walk (TabledemoTable.js's RootConfigFixedDecode) states
-// the offsets: version_note's length word at +0 and its 16-byte buffer at
-// +4..20; the weapons count at +20 and 22-byte WeaponConfigs at +24+i*22;
-// the profiles count at +200. Within a weapon: damage +0 (f32), speed +4
-// (f32), penetration +8 (int32, declared min 0 max 10), channel +12 (bits(6)
-// at uint32 width), homing +16 (bool), the Effect tag +16+1 = +17 (two arms,
-// Buff(1) and Debuff(2)), the arm payload +18 (f32). The file framing is the
-// header (16) + the u32 layout length + the layout + the record's 8-byte
-// hash, then the body.
-//
-// THE NEGATIVE CONTROL is NOT run here: it breaks one constant of this law in
-// the generated tree (build/tables-generated-js/examples/TabledemoTable.js,
-// RootConfigFixedDecode's weapons loop bound `value.WeaponsCount` -> `8`, so
-// the pass walks the slack) and this file goes RED. It is restored after; the
-// red/green pair is recorded in RESULT.md.
+// THE VECTOR. RootConfig (the examples unit, package tabledemo) has a 1248
+// byte body, positional (SPEC §3.4). The emitted dead-byte pass
+// (TabledemoTable.js's RootConfigFixedCheckDead) states the offsets:
+// version_note's length word at +0 and its 16-byte buffer at +4..20; the
+// weapons count at +20 and 22-byte WeaponConfigs at +24+i*22, the Effect tag
+// at +17 of a weapon and its 4-byte arm at +18; the profiles count at +200
+// and 261-byte ProfileConfigs from +204. The file framing is the header, the
+// u32 layout length, the layout and the record's 8-byte hash, then the body.
 //
 // Run from the repository root:  node test/conformance/js/rows/W4.mjs
 
@@ -64,10 +44,32 @@ function check(ok, what) {
   if (!ok) { failures++; }
 }
 
-// ---- build the record: live values in bound, every slack range EMPTY ----
+// The first path at which a and b differ, or null. A union at None (b.type
+// === 0) compares its tag only: Init sets the tag to None and the dormant
+// arms keep their storage, by the generated Init's own rule.
+function deepDiff(a, b, path = "") {
+  if (a !== null && b !== null && typeof a === "object" && typeof b === "object" &&
+      !ArrayBuffer.isView(b) && typeof b.type === "number" && Object.keys(b).length > 1 && b.type === 0) {
+    return a.type === 0 ? null : `${path}.type (${a.type} vs 0)`;
+  }
+  if (typeof a !== typeof b) { return `${path} (${typeof a} vs ${typeof b})`; }
+  if (a === null || typeof a !== "object") { return Object.is(a, b) ? null : `${path} (${a} vs ${b})`; }
+  if (ArrayBuffer.isView(a)) {
+    if (!ArrayBuffer.isView(b) || a.length !== b.length) { return `${path} (length)`; }
+    for (let i = 0; i < a.length; i++) { if (!Object.is(a[i], b[i])) { return `${path}[${i}] (${a[i]} vs ${b[i]})`; } }
+    return null;
+  }
+  for (const k of Object.keys(a)) {
+    const d = deepDiff(a[k], b[k], `${path}.${k}`);
+    if (d !== null) { return d; }
+  }
+  return null;
+}
 
-const HEADERS = home.TableFixedHeaderBytes + home.TableFixedLayoutHeaderBytes; // 20
-const bodyAt = (k) => HEADERS + tables.RootConfigFixedLayoutBytes + 8 + k;     // body offsets
+// ---- the record: live values in bound, every dead byte zero ----
+
+const HEADERS = home.TableFixedHeaderBytes + home.TableFixedLayoutHeaderBytes;
+const bodyAt = (k) => HEADERS + tables.RootConfigFixedLayoutBytes + 8 + k;
 
 const value = new home.RootConfig();
 value.versionNote.set([0x72, 0x65, 0x6c, 0x2d, 0x31], 0); // "rel-1": 5 of 16 used
@@ -77,7 +79,7 @@ w0.damage = 12.5; w0.speed = 250.0; w0.penetration = 5; w0.channel = 3;
 w0.homing = true; w0.effect.type = 1; w0.effect.buff.multiplier = 2.0;
 const w1 = value.weapons[1];
 w1.damage = 7.25; w1.speed = 125.0; w1.penetration = 3; w1.channel = 0;
-w1.homing = false; w1.effect.type = 0;
+w1.homing = false; w1.effect.type = 0; // tag None: its 4 arm bytes are dead
 value.weaponsCount = 2;
 value.profilesCount = 0;
 
@@ -85,73 +87,65 @@ const file = new Uint8Array(tables.RootConfigFixedMeasure(1));
 check(tables.RootConfigFixedSave([value], 1, file) === file.length,
   `positive: the in-bound record saves (${file.length} bytes, body at +${bodyAt(0)})`);
 
-// ---- read 1: the conforming peer (the writer's template zeros its slack) ----
-
-function readRecord(bytes) {
-  const back = [new home.RootConfig()];
+function readRecord(bytes, back) {
   const report = new home.TableFixedReport();
   const n = tables.RootConfigFixedLoad(back, 1, bytes, bytes.length,
     tables.RootConfigFixedNewPlan(), report);
-  return { n, v: back[0], r: report };
+  return { n, r: report };
 }
 
-const clean = readRecord(file);
-const countersOf = (r) => [r.oor, r.unknown, r.widened, r.repeated, r.mismatch];
-check(clean.n === 1 && !clean.r.damaged && clean.r.refused === 0 &&
-  JSON.stringify(countersOf(clean.r)) === JSON.stringify([0, 0, 0, 0, 0]),
-  `baseline: the zeroed-slack record reads clean (n=${clean.n}, clamped=${clean.r.oor})`);
+// ---- zero on write: every dead byte this build writes is zero ----
 
-// ---- read 2: the same record with every slack range STAINED ----
-// 0xC3 0x28 0xFF is not valid UTF-8: a content rule run over the full
-// 16-byte bound, not the used 5, would answer malformed. 999 is past
-// penetration's declared max 10; tag 9 is past the Effect union's 2 arms;
-// 0x02 is not a normalised bool; all of it sits behind a count of 2 (dead
-// slots 2..7) and behind a count of 0 (a dead profile's name length 999).
+let deadNonZero = 0;
+for (let k = 5; k < 16; k++) { if (file[bodyAt(4 + k)] !== 0) { deadNonZero++; } }
+for (let k = 2 * 22; k < 8 * 22; k++) { if (file[bodyAt(24 + k)] !== 0) { deadNonZero++; } }
+for (let k = 0; k < 4; k++) { if (file[bodyAt(24 + 22 + 18 + k)] !== 0) { deadNonZero++; } }
+for (let k = 0; k < 4 * 261; k++) { if (file[bodyAt(204 + k)] !== 0) { deadNonZero++; } }
+check(deadNonZero === 0, `zero on write: every dead byte the writer emits is zero (${deadNonZero} non-zero)`);
 
-const stained = new Uint8Array(file);
-// eleven bytes: the buffer span body+9 .. body+20, three invalid sequences and a
-// truncated lead byte, ending exactly at the buffer's last byte.
-const utf8Garbage = [0xc3, 0x28, 0xff, 0xc3, 0x28, 0xff, 0xc3, 0x28, 0xff, 0xc3, 0x28];
-for (let k = 0; k < utf8Garbage.length; k++) { stained[bodyAt(9) + k] = utf8Garbage[k]; }
-for (let i = 2; i < 8; i++) {
-  const at = bodyAt(24 + i * 22);
-  const view = new DataView(stained.buffer, at, 22);
-  view.setInt32(8, 999, true); // penetration, past max 10
-  stained[at + 16] = 0x02;     // a bool not normalised to the language's own true
-  stained[at + 17] = 9;        // an Effect tag past the 2 arms
+const cleanBack = [new home.RootConfig()];
+const clean = readRecord(file, cleanBack);
+check(clean.n === 1 && !clean.r.damaged && clean.r.refused === 0 && clean.r.oor === 0,
+  `baseline: the zero-slack record reads clean (n=${clean.n}, refused=${clean.r.refused})`);
+check(cleanBack[0].versionNoteLength === 5 && cleanBack[0].weaponsCount === 2 &&
+  cleanBack[0].weapons[0].penetration === 5 && cleanBack[0].weapons[0].effect.type === 1 &&
+  cleanBack[0].weapons[1].effect.type === 0 && cleanBack[0].profilesCount === 0,
+  "baseline: every live value lands");
+const again = new Uint8Array(file.length);
+check(tables.RootConfigFixedSave(cleanBack, 1, again) === again.length &&
+  again.every((b, i) => b === file[i]), "baseline: the read record saves back byte identically");
+
+// ---- each kind of dead byte, stained alone, refuses the whole load ----
+
+const defaults = new home.RootConfig();
+home.InitRootConfig(defaults);
+
+const stains = [
+  ["a string(16)'s byte past its used length 5", bodyAt(4 + 5)],
+  ["the last byte of the string's buffer", bodyAt(4 + 15)],
+  ["a counted array's slot past its live count 2 (weapon 2's penetration)", bodyAt(24 + 2 * 22 + 8)],
+  ["the array's last dead byte (weapon 7's arm)", bodyAt(24 + 7 * 22 + 21)],
+  ["an arm byte under union tag 0 (weapon 1's Effect)", bodyAt(24 + 22 + 18)],
+  ["a dead nested record under a count of 0 (profile 0's name length)", bodyAt(204)],
+];
+for (const [what, at] of stains) {
+  const stained = new Uint8Array(file);
+  stained[at] = 0x01;
+  const back = [new home.RootConfig()];
+  // a stale destination, so a refusal that lands anything is visible
+  back[0].versionNoteLength = 3; back[0].versionNote[0] = 0x7a;
+  back[0].weaponsCount = 1; back[0].weapons[0].penetration = 9;
+  const { n, r } = readRecord(stained, back);
+  check(n === -1 && r.refused === home.TableFixedRefusal.WireDamaged,
+    `${what}: a non-zero dead byte refuses wire_damaged (n=${n}, refused=${home.TableFixedRefusalName(r.refused)})`);
+  const diff = deepDiff(back[0], defaults);
+  check(diff === null, `${what}: the refusal leaves the destination at its declared defaults (R4)${diff === null ? "" : `: ${diff}`}`);
+  check(r.oor === 0 && r.widened === 0 && r.unknown === 0 && r.repeated === 0 && r.mismatch === 0,
+    `${what}: a refused load moves no counter`);
 }
-new DataView(stained.buffer, bodyAt(204), 4).setInt32(0, 999, true); // a dead profile's name length
-
-const dirty = readRecord(stained);
-
-// THE LAW, clause by clause.
-check(dirty.n === 1,
-  `reads correctly: a peer that leaves garbage in the slack still loads (n=${dirty.n}, never a refusal)`);
-check(!dirty.r.damaged && dirty.r.refused === 0,
-  `not a refusal: non-zero slack is not malformed and refuses nothing (malformed=${dirty.r.damaged}, refused=${dirty.r.refused})`);
-check(dirty.r.oor === 0,
-  `moves no counter: clamped stays 0, not one per dead slot past the live count (got ${dirty.r.oor})`);
-check(JSON.stringify(countersOf(dirty.r)) === JSON.stringify(countersOf(clean.r)),
-  `moves no counter: every counter of the stained read equals the clean read (${JSON.stringify(countersOf(dirty.r))})`);
-
-const v = dirty.v;
-check(v.versionNoteLength === 5 && clean.v.versionNoteLength === 5 &&
-  v.versionNote.subarray(0, 5).join() === "114,101,108,45,49",
-  `used units only: the string keeps its length 5 and "rel-1" behind invalid UTF-8 (len=${v.versionNoteLength})`);
-check(v.weaponsCount === 2 && v.weapons[0].damage === 12.5 && v.weapons[0].penetration === 5 &&
-  v.weapons[0].homing === true && v.weapons[0].effect.type === 1 &&
-  v.weapons[0].effect.buff.multiplier === 2.0 && v.weapons[1].penetration === 3 &&
-  v.weapons[1].effect.type === 0 && v.profilesCount === 0,
-  "used units only: every live value lands exactly as the zeroed-slack read gave it");
-check(JSON.stringify([v.versionNoteLength, v.weaponsCount, v.weapons[0].penetration, v.weapons[1].penetration]) ===
-  JSON.stringify([clean.v.versionNoteLength, clean.v.weaponsCount, clean.v.weapons[0].penetration, clean.v.weapons[1].penetration]),
-  "the two peers agree: zeroed slack and stained slack decode the same used extent");
-check(v.weapons[2].penetration === 1 && v.weapons[2].damage === 21 && v.weapons[3].effect.type === 0 &&
-  v.profiles[0].nameLength === 0,
-  "never looks at the slack: dead slots keep the caller's own storage, not the wire's garbage");
 
 if (failures > 0) {
   console.log(`FAILED: ${failures} red assertion(s)`);
   process.exit(1);
 }
-console.log("W4: non-zero slack is not malformed, not a refusal, and moves no counter");
+console.log("W4: every dead byte is zero, and a non-zero one refuses the whole load");

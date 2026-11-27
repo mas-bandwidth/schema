@@ -17,7 +17,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 var limitMarkerRe = regexp.MustCompile(`<!--\s*limit\s+name=([a-z0-9_]+)\s+value=([^\s>]+)\s*-->`)

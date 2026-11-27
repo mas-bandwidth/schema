@@ -32,8 +32,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/lockfile"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/lockfile"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // t02CppFlat is the smallest declared fixed table: two adjacent int32 scalars,
@@ -142,9 +142,12 @@ func t02CppHas(t *testing.T, got, want, what string) {
 }
 
 // t02CppLayoutBytes parses the emitted `constexpr uint8_t TFixedLayout[] = { … }`.
+// The brace closes on the last byte's own line (`0x00 };`, the spelling the
+// house clang-format keeps), and no byte carries a brace, so the first `};`
+// after the opening is the close.
 func t02CppLayoutBytes(t *testing.T, src string) []byte {
 	t.Helper()
-	block := t02CppBlock(t, src, "constexpr uint8_t TFixedLayout[] = {", "\n};")
+	block := t02CppBlock(t, src, "constexpr uint8_t TFixedLayout[] = {", "};")
 	var out []byte
 	for tok := range strings.SplitSeq(block, ",") {
 		tok = strings.TrimSpace(tok)

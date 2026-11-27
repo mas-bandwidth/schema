@@ -199,6 +199,9 @@ export function ZeroProbeHeader(value) {
 }
 
 export function WriteProbeHeader(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   NUMBER_SCRATCH.value = 171;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) { // const(171, 8) — SPEC §4.3
     return false;
@@ -289,6 +292,9 @@ export function ZeroProbeBits(value) {
 }
 
 export function WriteProbeBits(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!globalThis.Number.isInteger(value.small) || value.small < 0 || value.small > 511) { // a bits(N) value must fit its width
     return false;
   }
@@ -411,11 +417,20 @@ export function ZeroProbeSample(value) {
 }
 
 export function WriteProbeSample(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
+  if (typeof value.active !== "boolean") {
+    return false; // a bool is a boolean (SPEC §5.1)
+  }
   BOOL_SCRATCH.value = value.active;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
   {
+    if (typeof value.orientation !== "number") {
+      return false; // a float is a Number (SPEC §5.1)
+    }
     const x = globalThis.Math.fround(value.orientation);
     if (!globalThis.Number.isFinite(x) || x < -180.0 || x > 180.0) {
       return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
@@ -447,6 +462,9 @@ export function WriteProbeSample(stream, value) {
     if (!stream.serializeBits(NUMBER_SCRATCH, 4)) {
       return false;
     }
+    if (typeof value.hasTarget !== "boolean") {
+      return false; // a bool is a boolean (SPEC §5.1)
+    }
     BOOL_SCRATCH.value = value.hasTarget;
     if (!stream.serializeBool(BOOL_SCRATCH)) {
       return false;
@@ -475,6 +493,9 @@ export function WriteProbeSample(stream, value) {
   NUMBER_SCRATCH.value = ((value.samplesCount >>> 0) - (1 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
     return false;
+  }
+  if (value.samples === null || typeof value.samples !== "object" || !(value.samples.length >= value.samplesCount)) {
+    return false; // the storage holds every element the loop reads (SPEC §5.1)
   }
   for (let i = 0; i < value.samplesCount; i++) {
     if (!globalThis.Number.isInteger(value.samples[i]) || value.samples[i] < 0 || value.samples[i] > 65535) { // a bare integer must fit its width
@@ -568,6 +589,9 @@ export function ZeroProbeRing(value) {
 }
 
 export function WriteProbeRing(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!globalThis.Number.isInteger(value.radius) || value.radius < 0 || value.radius > 65535) { // a bare integer must fit its width
     return false;
   }
@@ -612,6 +636,9 @@ export function ZeroProbeSlab(value) {
 }
 
 export function WriteProbeSlab(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!globalThis.Number.isInteger(value.width) || value.width < 0 || value.width > 100) {
     return false;
   }
@@ -689,6 +716,9 @@ export function ZeroProbeShape(value) {
 }
 
 export function WriteProbeShape(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!globalThis.Number.isInteger(value.type) || value.type < 0 || value.type > 2) {
     return false; // the tag validates BEFORE it rides (SPEC §4.8)
   }
@@ -767,6 +797,9 @@ export function ZeroProbeCollider(value) {
 }
 
 export function WriteProbeCollider(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!globalThis.Number.isInteger(value.armor) || value.armor < 0 || value.armor > 255) { // a bare integer must fit its width
     return false;
   }
@@ -786,6 +819,9 @@ export function WriteProbeCollider(stream, value) {
   NUMBER_SCRATCH.value = value.extrasCount;
   if (!stream.serializeBits(NUMBER_SCRATCH, 2)) {
     return false;
+  }
+  if (value.extras === null || typeof value.extras !== "object" || !(value.extras.length >= value.extrasCount)) {
+    return false; // the storage holds every element the loop reads (SPEC §5.1)
   }
   for (let i = 0; i < value.extrasCount; i++) {
     if (!WriteProbeShape(stream, value.extras[i])) {
@@ -844,6 +880,9 @@ export function ZeroProbeConfig(value) {
 }
 
 export function WriteProbeConfig(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!globalThis.Number.isInteger(value.retries) || value.retries < -2147483648 || value.retries > 2147483647) { // a bare integer must fit its width
     return false;
   }
@@ -904,7 +943,10 @@ export function ZeroProbeArray(value) {
 }
 
 export function WriteProbeArray(stream, value) {
-  if (value.samples == null || value.samples.length !== 2) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
+  if (value.samples === null || typeof value.samples !== "object" || value.samples.length !== 2) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
     return false;
   }
   for (let i = 0; i < 2; i++) {
@@ -993,6 +1035,9 @@ export function ZeroTest(value) {
 }
 
 export function WriteTest(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!globalThis.Number.isInteger(value.testA) || value.testA < 0 || value.testA > 65535) { // a bare integer must fit its width
     return false;
   }
@@ -1070,12 +1115,18 @@ export function ZeroBlock(value) {
 }
 
 export function WriteBlock(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!globalThis.Number.isInteger(value.dataLength) || value.dataLength < 0 || value.dataLength > MaxBlockSize) { // the length guards the slice (§6.3); out-of-contract writes are refused
     return false;
   }
   NUMBER_SCRATCH.value = value.dataLength;
   if (!stream.serializeBits(NUMBER_SCRATCH, 11)) {
     return false;
+  }
+  if (!(value.data instanceof globalThis.Uint8Array) || value.data.length < value.dataLength) {
+    return false; // the bytes are a Uint8Array holding the length (SPEC §5.1)
   }
   if (!stream.serializeBytes(value.data.subarray(0, value.dataLength))) {
     return false;
@@ -1120,12 +1171,18 @@ export function ZeroChat(value) {
 }
 
 export function WriteChat(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!globalThis.Number.isInteger(value.textLength) || value.textLength < 0 || value.textLength > MaxChatLength) { // the length guards the slice (§6.3); out-of-contract writes are refused
     return false;
   }
   NUMBER_SCRATCH.value = value.textLength;
   if (!stream.serializeBits(NUMBER_SCRATCH, 9)) {
     return false;
+  }
+  if (!(value.text instanceof globalThis.Uint8Array) || value.text.length < value.textLength) {
+    return false; // the bytes are a Uint8Array holding the length (SPEC §5.1)
   }
   if (!validText(value.text, value.textLength)) {
     return false;
@@ -1179,8 +1236,14 @@ export function ZeroProbeReport(value) {
 }
 
 export function WriteProbeReport(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!WriteProbeHeader(stream, value.header)) {
     return false;
+  }
+  if (typeof value.flags !== "bigint") {
+    return false; // a flags value is a BigInt (SPEC §5.1)
   }
   {
     const flagsValue = globalThis.BigInt.asUintN(64, value.flags);
@@ -1301,6 +1364,9 @@ export function ZeroTestData(value) {
 }
 
 export function WriteTestData(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!globalThis.Number.isInteger(value.a) || value.a < -100 || value.a > 100) {
     return false;
   }
@@ -1343,6 +1409,9 @@ export function WriteTestData(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
+  if (typeof value.g !== "boolean") {
+    return false; // a bool is a boolean (SPEC §5.1)
+  }
   BOOL_SCRATCH.value = value.g;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
@@ -1353,6 +1422,9 @@ export function WriteTestData(stream, value) {
   NUMBER_SCRATCH.value = value.itemsCount;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
+  }
+  if (value.items === null || typeof value.items !== "object" || !(value.items.length >= value.itemsCount)) {
+    return false; // the storage holds every element the loop reads (SPEC §5.1)
   }
   for (let i = 0; i < value.itemsCount; i++) {
     if (!globalThis.Number.isInteger(value.items[i]) || value.items[i] < 0 || value.items[i] > 255) {
@@ -1371,6 +1443,9 @@ export function WriteTestData(stream, value) {
     return false;
   }
   {
+    if (typeof value.compressedFloatValue !== "number") {
+      return false; // a float is a Number (SPEC §5.1)
+    }
     const x = globalThis.Math.fround(value.compressedFloatValue);
     if (!globalThis.Number.isFinite(x) || x < 0.0 || x > 10.0) {
       return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
@@ -1458,6 +1533,9 @@ export function WriteTestData(stream, value) {
   NUMBER_SCRATCH.value = value.textLength;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
+  }
+  if (!(value.text instanceof globalThis.Uint8Array) || value.text.length < value.textLength) {
+    return false; // the bytes are a Uint8Array holding the length (SPEC §5.1)
   }
   if (!validText(value.text, value.textLength)) {
     return false;
@@ -1596,7 +1674,13 @@ export function ZeroCompressedProbe(value) {
 }
 
 export function WriteCompressedProbe(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   {
+    if (typeof value.boundary !== "number") {
+      return false; // a float is a Number (SPEC §5.1)
+    }
     const x = globalThis.Math.fround(value.boundary);
     if (!globalThis.Number.isFinite(x) || x < 0.0 || x > 10.0) {
       return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
@@ -1607,6 +1691,9 @@ export function WriteCompressedProbe(stream, value) {
     return false;
   }
   {
+    if (typeof value.offset !== "number") {
+      return false; // a float is a Number (SPEC §5.1)
+    }
     const x = globalThis.Math.fround(value.offset);
     if (!globalThis.Number.isFinite(x) || x < -5.0 || x > 5.0) {
       return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)

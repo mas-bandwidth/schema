@@ -106,16 +106,16 @@ func TestElixirGCTraceMetersFlushTraceDelivered(t *testing.T) {
 
 func TestCIFastLangCleanElixirRunsOffsetsGate(t *testing.T) {
 	root := repoRoot(t)
-	raw, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "ci-fast.yml"))
+	raw, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "ci-fast-nightly.yml"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	wf := string(raw)
 	if !strings.Contains(wf, "elixir-offsets) target=tables-elixir-offsets ;;") {
-		t.Fatal("ci-fast.yml lang-clean must run tables-elixir-offsets on its elixir-offsets row")
+		t.Fatal("ci-fast-nightly.yml lang-clean must run tables-elixir-offsets on its elixir-offsets row")
 	}
 	if !strings.Contains(wf, `target="tables-elixir-accessor-descriptor-agreement-shard-${LANG_ROW#elixir-agreement-}"`) {
-		t.Fatal("ci-fast.yml lang-clean must run tables-elixir-accessor-descriptor-agreement-shard-K on its elixir-agreement-K rows")
+		t.Fatal("ci-fast-nightly.yml lang-clean must run tables-elixir-accessor-descriptor-agreement-shard-K on its elixir-agreement-K rows")
 	}
 }
 
@@ -136,7 +136,7 @@ func TestCIFastLangCleanElixirAgreementRowsMatchShards(t *testing.T) {
 	if err != nil || n < 1 {
 		t.Fatalf("ELIXIR_AGREEMENT_SHARDS %q is not a positive count", m[1])
 	}
-	raw, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "ci-fast.yml"))
+	raw, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "ci-fast-nightly.yml"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,6 +146,6 @@ func TestCIFastLangCleanElixirAgreementRowsMatchShards(t *testing.T) {
 	}
 	line := `clean_legs="$clean_legs` + want.String() + `"`
 	if !strings.Contains(string(raw), line) {
-		t.Fatalf("ci-fast.yml plan must add the elixir rows as %s (ELIXIR_AGREEMENT_SHARDS=%d)", line, n)
+		t.Fatalf("ci-fast-nightly.yml plan must add the elixir rows as %s (ELIXIR_AGREEMENT_SHARDS=%d)", line, n)
 	}
 }

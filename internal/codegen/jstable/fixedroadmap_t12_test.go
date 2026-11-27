@@ -24,7 +24,7 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // t12Probe is one capability probe, the t09 shape: generate the fixture's

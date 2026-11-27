@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 )
 
 // fixedByteArraysSchema carries a uint8 array of each shape the fixed form

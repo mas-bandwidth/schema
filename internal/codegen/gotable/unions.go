@@ -2,8 +2,8 @@ package gotable
 
 import (
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/goname"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/goname"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // Table-only unions share the packet emitter's tag-plus-arms storage. Field
@@ -54,8 +54,12 @@ func (g *tableGen) emitUnionRow(un *ir.Union) {
 	if offset > tag {
 		g.tf("_ [%d]byte;", offset-tag)
 	}
+	// the payload extent is schema_payload, unexported and with the prefix
+	// schema check refuses on every declaration: each arm is an exported
+	// method of this record, so an arm named payload would clash with a field
+	// Payload (SPEC §4.6, Generator-name safety)
 	if size > offset {
-		g.tf("Payload [%d]byte", size-offset)
+		g.tf("schema_payload [%d]byte", size-offset)
 	}
 	g.tf("}\n")
 	g.pf("func init(){ if unsafe.Sizeof(%sRow{})!=%d || unsafe.Offsetof(%sRow{}.Type)!=0 { panic(\"schema union row layout\") } }\n", un.Name, size, un.Name)

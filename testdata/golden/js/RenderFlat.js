@@ -20,6 +20,9 @@ export const FlatReadSlack = 8;
 // must hold RenderSpriteMaxBytes.
 export function WriteRenderSpriteFlat(view, value) {
   let v = 0, lo = 0;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (typeof value.sortKey !== "bigint" || value.sortKey < 0n || value.sortKey > 18446744073709551615n) { // a bare integer must fit its width
     return -1;
   }
@@ -128,6 +131,9 @@ export function ReadRenderSpriteFlatBits(view, numBits, value) {
 // must hold RenderBlockMaxBytes.
 export function WriteRenderBlockFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isInteger(value.workerIndex) || value.workerIndex < 0 || value.workerIndex > 4294967295) { // a bare integer must fit its width
     return -1;
   }
@@ -138,72 +144,85 @@ export function WriteRenderBlockFlat(view, value) {
   if (!globalThis.Number.isInteger(value.spritesCount) || value.spritesCount < 0 || value.spritesCount > 64) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
     return -1;
   }
+  if (value.sprites === null || typeof value.sprites !== "object" || !(value.sprites.length >= value.spritesCount)) { // the storage holds every element the loop reads (SPEC §5.1)
+    return -1;
+  }
   view.setUint32(4, (((value.spriteCountHint) >>> 0)), true);
   lo = (((value.spritesCount) & 0x7f));
   wi = 8;
   sb = 7;
   for (let i0 = 0; i0 < value.spritesCount; i0++) {
     const e0 = value.sprites[i0];
-    if (typeof e0.sortKey !== "bigint" || e0.sortKey < 0n || e0.sortKey > 18446744073709551615n) { // a bare integer must fit its width
+    if (typeof e0 === "function") { // a record or union value is an object, never a function (SPEC §5.1)
       return -1;
     }
-    SC.setBigUint64(0, e0.sortKey, true);
-    v = SC.getUint32(0, true);
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-    v = SC.getUint32(4, true);
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-    if (!globalThis.Number.isInteger(e0.meshId) || e0.meshId < 0 || e0.meshId > 4294967295) { // a bare integer must fit its width
-      return -1;
-    }
-    if (!globalThis.Number.isInteger(e0.materialId) || e0.materialId < 0 || e0.materialId > 4294967295) { // a bare integer must fit its width
-      return -1;
-    }
-    v = (((e0.meshId) >>> 0)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-    if (!globalThis.Number.isInteger(e0.layer) || e0.layer < 0 || e0.layer > 255) { // a bare integer must fit its width
-      return -1;
-    }
-    v = (((e0.materialId) >>> 0)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-    if (!globalThis.Number.isInteger(e0.team) || e0.team < 0 || e0.team > 2) { // headroom above the wire range cannot ride
-      return -1;
-    }
-    v = (((e0.layer) & 0xff) | ((e0.team & 0x3) << 8)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 10;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (10 - sb);
+    try {
+      if (typeof e0.sortKey !== "bigint" || e0.sortKey < 0n || e0.sortKey > 18446744073709551615n) { // a bare integer must fit its width
+        return -1;
+      }
+      SC.setBigUint64(0, e0.sortKey, true);
+      v = SC.getUint32(0, true);
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 32;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (32 - sb);
+      }
+      v = SC.getUint32(4, true);
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 32;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (32 - sb);
+      }
+      if (!globalThis.Number.isInteger(e0.meshId) || e0.meshId < 0 || e0.meshId > 4294967295) { // a bare integer must fit its width
+        return -1;
+      }
+      if (!globalThis.Number.isInteger(e0.materialId) || e0.materialId < 0 || e0.materialId > 4294967295) { // a bare integer must fit its width
+        return -1;
+      }
+      v = (((e0.meshId) >>> 0)) >>> 0;
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 32;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (32 - sb);
+      }
+      if (!globalThis.Number.isInteger(e0.layer) || e0.layer < 0 || e0.layer > 255) { // a bare integer must fit its width
+        return -1;
+      }
+      v = (((e0.materialId) >>> 0)) >>> 0;
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 32;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (32 - sb);
+      }
+      if (!globalThis.Number.isInteger(e0.team) || e0.team < 0 || e0.team > 2) { // headroom above the wire range cannot ride
+        return -1;
+      }
+      v = (((e0.layer) & 0xff) | ((e0.team & 0x3) << 8)) >>> 0;
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 10;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (10 - sb);
+      }
+    } catch (thrown) {
+      if (e0 === null || typeof e0 !== "object") { // a record or union value is an object (SPEC §5.1)
+        return -1;
+      }
+      throw thrown;
     }
   }
   if (sb !== 0) {

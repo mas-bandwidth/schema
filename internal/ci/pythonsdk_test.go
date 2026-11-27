@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/testinputs"
 )
 
 // TestDistPythonStagesTheFleetSDK holds make/python-toolchain.mk's SDK branch:

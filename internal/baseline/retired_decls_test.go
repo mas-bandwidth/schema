@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/baseline"
+	"github.com/mas-bandwidth/schema/v3/internal/baseline"
 )
 
 // THE RETIRED-DECLARATION CORPUS (issue #441, docs/SPEC-TABLES.md §18.4).

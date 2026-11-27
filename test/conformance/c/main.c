@@ -157,6 +157,7 @@ static int spill( const char * dir, const char * name, const void * data, size_t
 typedef const ConformanceCodec * ( *UnitFn )( int * count );
 
 static const UnitFn units[] = {
+#ifndef CONFORMANCE_WRITEBOUNDS_ONLY
     conformance_codecs_mapdemo,
     conformance_codecs_listdemo,
     conformance_codecs_armdemo,
@@ -182,7 +183,9 @@ static const UnitFn units[] = {
     conformance_codecs_scalars,
     conformance_codecs_graphdemo, conformance_codecs_blobdemo, conformance_codecs_tblg1, conformance_codecs_tblp2, conformance_codecs_streamdemo, conformance_codecs_tblscalars2, conformance_codecs_tblfixedevo, conformance_codecs_widelist, conformance_codecs_featurewitnesses, conformance_codecs_tblvarevo1, conformance_codecs_tblvarevo2, conformance_codecs_tblvarevo3, conformance_codecs_cooktorture, conformance_codecs_cooktorturewide, conformance_codecs_shapes, conformance_codecs_tblprior,
     conformance_codecs_tblsurf,
-    conformance_codecs_tblvaluedefaults, conformance_codecs_packetunions
+    conformance_codecs_tblvaluedefaults, conformance_codecs_packetunions,
+#endif
+    conformance_codecs_writebounds
 };
 
 static const ConformanceCodec * find_codec( const char * unit, const char * root )
@@ -378,7 +381,9 @@ static int surface_framing( const char * out )
 
 static int surface_json_read( const char * out )
 {
+    const char * json_dir = getenv( "SCHEMA_CONFORMANCE_JSON_INPUT_DIR" );
     int i;
+    if ( json_dir == NULL || json_dir[0] == '\0' ) { json_dir = "testdata/conformance/tables/json"; }
     for ( i = 0; i < num_lines; i++ )
     {
         const Line * f = &lines[i];
@@ -392,7 +397,7 @@ static int surface_json_read( const char * out )
         codec = find_codec( f->field[2], f->field[3] );
         /* the C port carries no text form for a pointered unit (16.7), and says so per case */
         if ( codec == NULL || codec->from_json == NULL ) { if ( !spill_absent( out, f->field[1] ) ) { return 1; } continue; }
-        snprintf( path, sizeof( path ), "testdata/conformance/tables/json/%s.json", f->field[1] );
+        snprintf( path, sizeof( path ), "%s/%s.json", json_dir, f->field[1] );
         text = slurp( path, &bytes );
         if ( text == NULL ) { fprintf( stderr, "driver: cannot read %s\n", path ); return 1; }
         value = codec->storage();
@@ -528,6 +533,7 @@ static int surface_json_hostile( const char * out )
     return 0;
 }
 
+#ifndef CONFORMANCE_WRITEBOUNDS_ONLY
 static int surface_block( const char * out )
 {
     int i;
@@ -752,6 +758,7 @@ static int surface_reason(const char * out,const char * kind)
     }
     return 0;
 }
+#endif
 
 static int surface_message(const char * out, int prior)
 {
@@ -819,8 +826,12 @@ static int surface_retain_refusal(const char * out)
   if(!(!strcmp(f->field[2],"tblrt1")&&!strcmp(f->field[3],"Node"))&&!(!strcmp(f->field[2],"tblvarevo1")&&!strcmp(f->field[3],"EvoDoc"))){if(!spill_absent(out,f->field[1]))return 1;continue;}
   first=slurp(f->field[4],&fn);if(!first)return 1;
   second=slurp(f->field[5],&sn);if(!second){free(first);return 1;}
+#ifndef CONFORMANCE_WRITEBOUNDS_ONLY
   if(!strcmp(f->field[2],"tblrt1"))rc=conformance_retain_refusal_rt1(first,(int64_t)fn,second,(int64_t)sn,&before,&before_bytes,&second_refused,&after,&after_bytes);
   else rc=conformance_retain_refusal_varevo1(first,(int64_t)fn,second,(int64_t)sn,&before,&before_bytes,&second_refused,&after,&after_bytes);
+#else
+  rc=-1;(void)before_bytes;(void)second_refused;
+#endif
   free(first);free(second);
   if(rc<0){fprintf(stderr,"retain-refusal %s failed\n",f->field[1]);return 1;}
   if(rc==0)ok=spill(out,f->field[1],"refused\n",8);
@@ -842,10 +853,14 @@ static int surface_retain(const char * out,int saved)
   if(strcmp(f->field[0],"retain"))continue;
   if(saved&&!strcmp(f->field[f->count-1],"-"))continue;
   wire=slurp(f->field[4],&n);if(!wire)return 1;ids=!strcmp(f->field[6],"full")?-1:strtoll(f->field[6],NULL,10);
+#ifndef CONFORMANCE_WRITEBOUNDS_ONLY
   if(!strcmp(f->field[2],"tblrt1")&&!strcmp(f->field[3],"Node"))ok=conformance_retain(wire,(int64_t)n,!strcmp(f->field[5],"short"),ids,counters,&answer,&size,&text,&text_size);
   else if(!strcmp(f->field[2],"tblvarevo1")&&!strcmp(f->field[3],"EvoDoc"))ok=conformance_retain_varevo1(wire,(int64_t)n,!strcmp(f->field[5],"short"),ids,counters,&answer,&size,&text,&text_size);
   else if(!strcmp(f->field[2],"tblvarevo2")&&!strcmp(f->field[3],"EvoDoc"))ok=conformance_retain_varevo2(wire,(int64_t)n,!strcmp(f->field[5],"short"),ids,counters,&answer,&size,&text,&text_size);
   else{free(wire);return 1;}
+#else
+  (void)ids; (void)counters; free(wire); return 1;
+#endif
   /* retain-save answers the write-back bytes; retain answers the read: `read`
      and the §16 text of the known value (the counters are local diagnostics) */
   if(ok){if(saved)ok=spill(out,f->field[1],answer,(size_t)size);else{char * read=(char *)malloc((size_t)text_size+5);ok=read!=NULL;if(ok){memcpy(read,"read\n",5);memcpy(read+5,text,(size_t)text_size);ok=spill(out,f->field[1],read,(size_t)text_size+5);free(read);}}}
@@ -905,8 +920,16 @@ static int surface_write_refusal( const char * out, const char * surface, int wr
            ceiling has no file form to load (FORMAT.md) */
         wire = strcmp( f->field[4], "-" ) == 0 ? NULL : slurp( f->field[4], &bytes );
         if ( wire == NULL && strcmp( f->field[4], "-" ) != 0 ) { fprintf( stderr, "driver: cannot read %s\n", f->field[4] ); free( announcement ); return 1; }
+        char output_path[4096];
+        const char * save_wire = NULL;
+        if ( f->count > 8 && strcmp( f->field[8], "save-wire" ) == 0 )
+        {
+            const int n = snprintf( output_path, sizeof( output_path ), "%s/%s.wire", out, f->field[1] );
+            if ( n < 0 || (size_t) n >= sizeof( output_path ) ) { free( wire ); free( announcement ); return 1; }
+            save_wire = output_path;
+        }
         verdict = conformance_write_refusal_case( writer, codec, unit, wire, (int64_t) bytes, announcement, (int64_t) announcement_bytes,
-                                                  f->field[3], f->field[5], f->field[6], f->field[7] );
+                                                  f->field[3], f->field[5], f->field[6], f->field[7], save_wire );
         free( wire );
         free( announcement );
         if ( verdict == CONFORMANCE_NO_SETTER )
@@ -945,6 +968,10 @@ static int surface_write_refusal( const char * out, const char * surface, int wr
 
 static const ConformanceUnit1122 * find_unit1122( const char * unit )
 {
+#ifdef CONFORMANCE_WRITEBOUNDS_ONLY
+    (void) unit;
+    return NULL;
+#else
     static const ConformanceUnit1122 * ( * const getters[] )( void ) = {
         conformance_unit1122_tblsurf, conformance_unit1122_tblann4096, conformance_unit1122_tblann4097,
         conformance_unit1122_messagedemo, conformance_unit1122_backenddemo, conformance_unit1122_tblfixedevo,
@@ -956,6 +983,7 @@ static const ConformanceUnit1122 * find_unit1122( const char * unit )
         if ( strcmp( u->unit, unit ) == 0 ) { return u; }
     }
     return NULL;
+#endif
 }
 
 /* announce <case> <unit> <root> <mode> <input>: the unit's announcement
@@ -1086,9 +1114,13 @@ static int surface_read_into( const char * out )
         if ( end == NULL || *end != 0 || count < 1 ) { fprintf( stderr, "driver: read-into %s: %s is no count\n", f->field[1], f->field[7] ); return 1; }
         if ( retaining )
         {
+#ifndef CONFORMANCE_WRITEBOUNDS_ONLY
             ran = strcmp( f->field[3], "Node" ) == 0 && strcmp( f->field[4], "retain" ) == 0 && count == 1
                       ? conformance_read_into_retain( lawful, (int64_t) lawful_bytes, damaged, (int64_t) damaged_bytes, &answer )
                       : 1;
+#else
+            ran = 1;
+#endif
         }
         else
         {
@@ -1177,7 +1209,11 @@ int main( int argc, char ** argv )
     surface = argv[2];
     if ( strcmp( surface, "list" ) == 0 )
     {
+#ifdef CONFORMANCE_WRITEBOUNDS_ONLY
+        printf( "wire\njson-read\njson-write\nwrite-refusal\n" );
+#else
         printf( "wire\nmessage\nmessage-prior\nretain\nretain-save\nretain-refusal\nreport\nframing\njson-read\njson-write\njson-hostile\ncook\ncook-write\ncook-reason\nblock-reason\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\nwrite-refusal-cook\nwrite-refusal-block\nwrite-refusal-shape\nannounce\nread-into\njson-write-into\nunit shapes\n" );
+#endif
         return 0;
     }
     if ( argc < 4 )
@@ -1197,6 +1233,7 @@ int main( int argc, char ** argv )
     if ( strcmp( surface, "json-read" ) == 0 ) { return surface_json_read( out ); }
     if ( strcmp( surface, "json-write" ) == 0 ) { return surface_json_write( out ); }
     if ( strcmp( surface, "json-hostile" ) == 0 ) { return surface_json_hostile( out ); }
+#ifndef CONFORMANCE_WRITEBOUNDS_ONLY
     if ( strcmp( surface, "cook-reason" ) == 0 ) { return surface_reason(out,"cook"); }
     if ( strcmp( surface, "block-reason" ) == 0 ) { return surface_reason(out,"block"); }
     if ( strcmp( surface, "cook-write" ) == 0 ) { return surface_cook_write(out); }
@@ -1207,6 +1244,7 @@ int main( int argc, char ** argv )
     if ( strcmp( surface, "block-dump" ) == 0 ) { return surface_block_dump( out ); }
     if ( strcmp( surface, "forgery" ) == 0 ) { return surface_forgery( out, "block" ); }
     if ( strcmp( surface, "cook-forgery" ) == 0 ) { return surface_forgery( out, "cook" ); }
+#endif
     if ( strcmp( surface, "write-refusal" ) == 0 ) { return surface_write_refusal( out, surface, CONFORMANCE_WRITE_VARIABLE ); }
     if ( strcmp( surface, "write-refusal-fixed" ) == 0 ) { return surface_write_refusal( out, surface, CONFORMANCE_WRITE_FIXED ); }
     if ( strcmp( surface, "write-refusal-message" ) == 0 ) { return surface_write_refusal( out, surface, CONFORMANCE_WRITE_MESSAGE ); }

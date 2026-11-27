@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/provesran"
+	"github.com/mas-bandwidth/schema/v3/internal/provesran"
 )
 
 // Nightly must qualify the same runtime releases as the merge and release gates.
@@ -27,7 +27,7 @@ func TestNightlyRuntimePinsMatchMergeAndRelease(t *testing.T) {
 		return pins
 	}
 	want := read("ci-full.yml")
-	for _, name := range []string{"ci-fast.yml", "certify.yml", "leg.yml", "nightly-conformance.yml"} {
+	for _, name := range []string{"ci-fast-nightly.yml", "certify.yml", "leg.yml", "nightly-conformance.yml"} {
 		got := read(name)
 		if len(want) == 0 {
 			t.Fatal("want is empty: the loop below would check nothing")

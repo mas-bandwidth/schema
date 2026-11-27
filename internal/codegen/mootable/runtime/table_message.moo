@@ -568,7 +568,7 @@ end
 
 -- MS.NewVocabulary is one direction's vocabulary, unannounced.
 function MS.NewVocabulary(): any
-	return { entries = {}, count = 0, refBits = 1, buildVersion = nil, announced = false, refused = false, maxBytes = DEFAULT_MAX_BYTES, maxEntries = 0, strict = false }
+	return { entries = {}, count = 0, refBits = 1, buildVersion = nil, announced = false, refused = false, maxBytes = DEFAULT_MAX_BYTES, maxEntries = DEFAULT_MAX_ENTRIES, strict = false }
 end
 
 local function resetReport(report: any)
@@ -788,7 +788,7 @@ local function announceRead(v: any, data: buffer, report: any): boolean
 		entries[#entries + 1] = { id = id, kind = kind, shape = shape, key = key }
 		p = next
 	end
-	local maxEntries = if v.maxEntries ~= nil and v.maxEntries > 0 then v.maxEntries else DEFAULT_MAX_ENTRIES
+	local maxEntries = if v.maxEntries ~= nil and v.maxEntries >= 0 then v.maxEntries else DEFAULT_MAX_ENTRIES
 	if #entries > maxEntries then
 		return refuse(report, "vocabulary_too_large")
 	end

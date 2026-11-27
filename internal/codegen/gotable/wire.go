@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"math/bits"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // The write vocabulary is bounded by the schema, while a reader's vocabulary
