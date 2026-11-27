@@ -314,6 +314,7 @@ static SCHEMA_UNUSED int table_json_write_list(TableJsonOut * out,const void * s
 {
     const TableSequence * list=(const TableSequence *)storage;
     TableSequenceCursor cursor=table_sequence_cursor(NULL,list,f->elem_size); int32_t i;
+    if(depth>kTableJsonMaxDepth) { return 0; } /* the list, [] included, is a container the read counts (§16.14 W2) */
     if(!cursor.ok) { return 0; }
     if(f->text_total>0 && list->count>0 && schema_table_json_text_bytes_(cursor.array,list->count,f)>f->text_total) { return 0; }
     table_json_put(out,'[');
@@ -453,6 +454,7 @@ static SCHEMA_UNUSED int table_json_write_map(TableJsonOut * out,const void * st
     TableSequenceCursor cursor=table_sequence_cursor(NULL,map,f->elem_size); int32_t i;
     const uint8_t * prev=NULL;
     const TableFieldInfo * key=&f->table->fields[0]; const TableFieldInfo * value=&f->table->fields[1];
+    if(depth>kTableJsonMaxDepth) { return 0; } /* the map's object, {} included, is a container the read counts (§16.14 W2) */
     if(!cursor.ok) { return 0; } table_json_put(out,'{');
     for(i=0;i<map->count;i++) {
         const uint8_t * entry=(const uint8_t *)table_sequence_next(&cursor); if(entry==NULL) { return 0; }

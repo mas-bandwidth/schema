@@ -505,7 +505,11 @@ def block_write_field(bl:BlockLayout, bf:BlockField, sl:Slot, data:string, at:in
     elif s == "bool":
         data = write_int8_le(data, base, if sl.cell.b: 1 else: 0)
     elif s == "float":
-        if not scalar_admitted(f, f.k, sl.cell):
+        // a NaN or an infinity is refused by block_float_put, which names its
+        // field <Owner>.<field> as the read does (docs/SPEC-TABLES.md §3.3);
+        // only a finite value outside its declared range is invalid_value
+        let finite = if bf.elem_size == 4: finite_f32(sl.cell.f) else: finite_f64(sl.cell.f)
+        if finite and not scalar_admitted(f, f.k, sl.cell):
             block_non_finite = "invalid_value"
             return data
         data = block_float_put(f, data, base, bf.elem_size, sl.cell.f)
