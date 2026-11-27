@@ -28,12 +28,12 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/casegate"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/casegate"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/golang"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/python/pyrun"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 // loadPacketVoidPython returns the Python leg of test/packet-void: the

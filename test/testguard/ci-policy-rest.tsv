@@ -2,48 +2,48 @@
 # Every package the row's go test runs is a suite; every test that runs has
 # an empty file under the baseline directory; skips are ledgered here by test.
 # go run ./tools/testguard help check
-suite	github.com/mas-bandwidth/schema/v2/internal/ci
-suite	github.com/mas-bandwidth/schema/v2/internal/slowtest
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestDistPythonStagesTheFleetSDK	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestEveryRunPatternMatchesATest	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestLuaAllocationCounterCounts	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestLuaResourceBoundsHostileShapes	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestLuaResourceBoundsPlantedPattern	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestLuauAllocationCounterCounts	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestLuauGeneratedAnalyzeStrictGate	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestLuauGeneratedAnalyzeStrictGatePlantedPattern	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestLuauResourceBoundsHostileShapes	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestLuauResourceBoundsPlantedPattern	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestLuauRunsHostileCorpus	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestLuauRunsHostileCorpusPlantedPattern	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestLuauVocabularyDefaultEntryBound	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestRubyGeneratedStrictGate	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestRubyGeneratedStrictGateFast	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestRubyGeneratedStrictGatePlantedPattern	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestRubyUsageFragmentsRun/examples-current	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestRubyUsageFragmentsRun/examples-floor	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestRubyUsageFragmentsRun/pointers-current	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestRubyUsageFragmentsRun/pointers-floor	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestRubyUsageFragmentsRunNegativeControl/packet-write-renamed	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestRubyUsageFragmentsRunNegativeControl/runtime-refused-renamed	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestRubyUsageFragmentsRunNegativeControl/table-load-renamed	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestRubyUsageFragmentsRunNegativeControl/table-save-renamed	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestSchemaLuaHostileCorpusPlantedReader	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestSchemaLuaRunsHostileCorpus	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestSchemaMooRunsHostileCorpus	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestSchemaMooRunsHostileCorpusPlantedReader	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestSchemaRubyHostileCorpusPlantedReader	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestSchemaRubyResourceBoundsHostileShapes	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestSchemaRubyResourceBoundsPlantedPattern	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestSchemaRubyRunsHostileCorpus	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestSchemaSquirrelAllPortDifferential	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestSerializeFetchTriesTheMirrorFirst	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestSerializeGoRuntimeWhenTheSiblingArrivesMidRun	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestSiblingsPresentMakeDepsFetchesNothing	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestSquirrelRunsHostileCorpus	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestSquirrelRunsHostileCorpusPlant	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestWideScalarProbeModuleBoundary	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/slowtest	TestJavaScriptBOMProbeHonorsSlowGate	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
+suite	github.com/mas-bandwidth/schema/v3/internal/ci
+suite	github.com/mas-bandwidth/schema/v3/internal/slowtest
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestDistPythonStagesTheFleetSDK	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestEveryRunPatternMatchesATest	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestLuaAllocationCounterCounts	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestLuaResourceBoundsHostileShapes	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestLuaResourceBoundsPlantedPattern	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestLuauAllocationCounterCounts	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestLuauGeneratedAnalyzeStrictGate	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestLuauGeneratedAnalyzeStrictGatePlantedPattern	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestLuauResourceBoundsHostileShapes	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestLuauResourceBoundsPlantedPattern	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestLuauRunsHostileCorpus	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestLuauRunsHostileCorpusPlantedPattern	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestLuauVocabularyDefaultEntryBound	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestRubyGeneratedStrictGate	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestRubyGeneratedStrictGateFast	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestRubyGeneratedStrictGatePlantedPattern	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestRubyUsageFragmentsRun/examples-current	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestRubyUsageFragmentsRun/examples-floor	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestRubyUsageFragmentsRun/pointers-current	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestRubyUsageFragmentsRun/pointers-floor	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestRubyUsageFragmentsRunNegativeControl/packet-write-renamed	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestRubyUsageFragmentsRunNegativeControl/runtime-refused-renamed	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestRubyUsageFragmentsRunNegativeControl/table-load-renamed	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestRubyUsageFragmentsRunNegativeControl/table-save-renamed	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestSchemaLuaHostileCorpusPlantedReader	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestSchemaLuaRunsHostileCorpus	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestSchemaMooRunsHostileCorpus	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestSchemaMooRunsHostileCorpusPlantedReader	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestSchemaRubyHostileCorpusPlantedReader	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestSchemaRubyResourceBoundsHostileShapes	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestSchemaRubyResourceBoundsPlantedPattern	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestSchemaRubyRunsHostileCorpus	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestSchemaSquirrelAllPortDifferential	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestSerializeFetchTriesTheMirrorFirst	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestSerializeGoRuntimeWhenTheSiblingArrivesMidRun	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestSiblingsPresentMakeDepsFetchesNothing	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestSquirrelRunsHostileCorpus	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestSquirrelRunsHostileCorpusPlant	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
+skip	github.com/mas-bandwidth/schema/v3/internal/ci	TestWideScalarProbeModuleBoundary	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
+skip	github.com/mas-bandwidth/schema/v3/internal/slowtest	TestJavaScriptBOMProbeHonorsSlowGate	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
 cover	parity	rows	run	sh test/testguard/parity.sh rows
 cover	parity	columns	run	sh test/testguard/parity.sh columns
 cover	parity	pairs	run	sh test/testguard/parity.sh pairs

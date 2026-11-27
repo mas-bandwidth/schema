@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/jsontestsuite"
+	"github.com/mas-bandwidth/schema/v3/internal/jsontestsuite"
 )
 
 // jsonTestSuiteProbe is the file runGeneratedEdited adds to the generated

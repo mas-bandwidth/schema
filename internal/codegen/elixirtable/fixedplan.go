@@ -4,7 +4,7 @@ import (
 	"math/big"
 	"strconv"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // THE IDENTITY PLAN, built here and coalesced here (docs/SPEC-TABLES.md §3.4).

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/lua/luarun"
 )
 
 // TestLuaJsonArrayRoot holds docs/SPEC-TABLES.md §16.10 (the array root) in

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/lua/luarun"
 )
 
 // writeRefusesSchema declares one field per SPEC.md §5.1 row 1 to 6 kind the

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // TestBlockBuildAndCookWriteElixir pins docs/SPEC-TABLES.md §19.1 and §7.6:

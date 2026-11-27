@@ -27,8 +27,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/casegate"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster/lobsterrun"
+	"github.com/mas-bandwidth/schema/v3/internal/casegate"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/lobster/lobsterrun"
 )
 
 // runPacketVoid generates Void.schema, lets patch alter the generated files,

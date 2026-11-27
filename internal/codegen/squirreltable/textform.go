@@ -1,8 +1,8 @@
 package squirreltable
 
 import (
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/squirrel"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // THE HAND-EDITABLE TEXT FORM (docs/SPEC-TABLES.md §16.9): a table with its

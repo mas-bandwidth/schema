@@ -17,7 +17,7 @@ package ctable
 import (
 	"fmt"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // ---- mode helpers: what a call site must pass ----

@@ -12,7 +12,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/internal/inputfamilies"
+	"github.com/mas-bandwidth/schema/v3/internal/inputfamilies"
 )
 
 // ReadCases is the case names of a case file: the first field of every line
