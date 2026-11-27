@@ -193,9 +193,6 @@ enum mag_sat
 enum magnitude
 { Zfirst, Zsecond, Zthird }
 
-enum main
-{ Zfirst, Zsecond, Zthird }
-
 enum makeClass
 { Zfirst, Zsecond, Zthird }
 
@@ -560,8 +557,6 @@ table NameTypes5
     many7 [..4]mag_sat
     one8  magnitude
     many8 [..4]magnitude
-    one9  main
-    many9 [..4]main
 }
 
 table NameFields5

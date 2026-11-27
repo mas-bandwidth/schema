@@ -1119,6 +1119,18 @@ with the flat tier's writes and the decode case green.
 | SPEC §4.3, §5.1 row 10: a compressed float's write takes both float32 ends | `F32Lit` `write-min`, `write-max`, `verify-bitphase-<lang>` | red before its fix on the JavaScript stream tier, Lua and Luau, whose write guards compared against the decimals and refused both ends. Green with no fix: the JavaScript flat tier, Dart and Elixir (their guards were spelled as float32 by #4991), C, C++, C# (modern and unity), Go, Rust, Java, Python, Ruby, Squirrel, moo, Goose, Lobster |
 | SPEC §4.3: a table field's `float32` default is the float32 of its declaration | Go unit test `TestJsTableFloat32DefaultIsItsFloat32` (`internal/codegen/jstable`; no shared case: every table surface, the text form included, rounds a value through float32 before it spells or stores it, so the double default differs only in memory) | red before its fix on JavaScript tables (the constructor and the descriptor's `def`, which an absent field reads back, held the double `0.7`). The other table generators spell a float32 default as its float32 already |
 
+### Every save of a fixed root holds the write contract
+
+A fixed root is written by two public calls in some legs: the batch writer
+`<Root>FixedSave` and the whole-file `<Root>Save`. SPEC.md §5.1's refusals
+bind both, in every build for a refuse-every-build leg. The shared
+`write-refusal-fixed` rows reach the batch writer, so the whole-file save is
+held to the same rows by the leg's own test.
+
+| rule | case | the leg it was red on before its fix |
+|---|---|---|
+| SPEC.md §5.1 rows 1 to 8 and 10: the whole-file save of a fixed root refuses what the fixed writer refuses | Go unit test `TestSquirrelFixedRootSaveRefusesOffContract` (`internal/codegen/squirreltable`, slow tier): every row of `TestSquirrelFixedSaveRefusesOffContract` through `RecSave`; no shared case, because the conformance driver writes a fixed root through `<Root>FixedSave` | red before its fix on Squirrel: `saveFixed` in runtime/save.nut walked the body itself with no range, count-minimum, width, text or type check, so `RecSave` wrote 18 off-contract rows and raised on 7 wrong-typed ones; it now delegates to `<Root>FixedSave` |
+
 ### No fixed read clamps, the tolerant walk included
 
 The fixed form has no tolerant read (SPEC-TABLES §3.4, §4: "no read

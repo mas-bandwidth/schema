@@ -472,7 +472,7 @@ func (g *gen) foldComment(e ast.Expr) string {
 // of its own.
 func (g *gen) emitTagEnum(name string, members, docs []string, max int64, comment string) {
 	g.bpf("// %s: %s\n", name, comment)
-	g.emitEnumType(name)
+	g.emitTagType(name)
 	g.bpf("  static const %s none = %s(0);\n", name, name)
 	for i, m := range members {
 		g.bpf("%s", ir.DocComment(docs[i], "  ", "///"))
@@ -488,7 +488,8 @@ func (g *gen) emitTagEnum(name string, members, docs []string, max int64, commen
 	g.bpf("// out-of-set values (wire-legal up to the declared max) name as '???'\n")
 	param := enumNameParam(name)
 	g.bpf("String enumName%s(int %s) {\n", name, param)
-	g.bpf("  switch (%s) {\n", param)
+	// the switch reads the int as the tag type: the tag is no int (emitTagType)
+	g.bpf("  switch (%s(%s)) {\n", name, param)
 	g.bpf("    case %s.none:\n      return 'None';\n", name)
 	for _, m := range members {
 		g.bpf("    case %s.%s:\n      return '%s';\n", name, dartName(m), m)
@@ -514,6 +515,19 @@ func enumNameParam(enum string) string {
 // (a member, not a library-scope name), so no variant can collide with it.
 func (g *gen) emitEnumType(name string) {
 	g.bpf("extension type const %s(int _value) implements int {\n", name)
+}
+
+// emitTagType opens a union tag's extension type. Unlike an enum's it does
+// NOT implement int: the tag's statics are the union's arms, and a static may
+// not share a name with a member the type inherits, so a tag implementing int
+// could not carry an arm named bitLength, clamp, floor, isNaN, sign, truncate
+// or any other int or num member (SPEC §4.6, Generator-name safety). It
+// implements nothing, so the only inherited members are Object's, which the
+// checker already refuses for Dart (hashCode, runtimeType, toString,
+// noSuchMethod). It is still erased at compile time, a value IS its int; the
+// generated code reads the int as `tag as int` and builds a tag as Tag(n).
+func (g *gen) emitTagType(name string) {
+	g.bpf("extension type const %s(int _value) {\n", name)
 }
 
 func (g *gen) emitEnum(d *ir.Enum) {

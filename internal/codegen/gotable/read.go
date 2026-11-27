@@ -22,7 +22,7 @@ func refuse(reason, field, stop string) string {
 
 func (g *tableGen) emitTableRead(st *ir.Struct) {
 	n := st.Name
-	g.pf("func %sLoadBody(r *TableReader, value *%s) bool {\n", n, g.storageName(n))
+	g.pf("func %sLoadBody"+g.rt()+"(r *Table"+g.rt()+"Reader, value *%s) bool {\n", n, g.storageName(n))
 	g.pf("\t%sReset(value)\n", n)
 	g.pf("\tvar seen [64]byte\n\tvar seenHigh map[uint64]struct{}\n")
 	if g.retain {
@@ -189,7 +189,7 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 		g.pf("\tvar ok bool\n\tif data, ok = tableIntegrityOpen(data, read); !ok { %sReset(value); return false }\n", n)
 	}
 	g.pf("\tr, verdict := tableOpenChecked(data, read)\n\ttableFirstUseCount(read, 2)\n")
-	g.pf("\tif verdict != TableOpenOk || !%sLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || !tableFirstUseWhole(read, uint64(len(r.Ids)/8)) || read.Refused() {\n", n)
+	g.pf("\tif verdict != TableOpenOk || !%sLoadBody"+g.rt()+"(&r, value) || r.Offset != int64(len(r.Buffer)) || !tableFirstUseWhole(read, uint64(len(r.Ids)/8)) || read.Refused() {\n", n)
 	g.pf("\t\tif verdict == TableOpenOk { read.Verdict = TableOpenDamaged }\n\t\ttableRefused(read)\n\t\t%sReset(value)\n\t\treturn false\n\t}\n\treturn true\n}\n\n", n)
 	g.pf("// %sReadStrict is %sLoad under a second spelling (docs/SPEC-TABLES.md §6.5): the value, or the typed reason.\n", n, n)
 	g.pf("func %sReadStrict(wire []byte)(*%s,error){value:=&%s{};var report TableReport;if !%sLoad(value,wire,&report){return nil,report.Err()};return value,nil}\n\n", n, g.storageName(n), g.storageName(n), n)
@@ -246,7 +246,7 @@ func (g *tableGen) emitReadField(f *ir.Field, ind string) {
 func (g *tableGen) emitReadNested(typ, expr, rdr, ind string) {
 	g.retainReadPath(rdr, "r", "0")
 	g.emitReadDepth(rdr, 1, ind)
-	g.pf("%sif !%sLoadBody(&%s, &%s) { return false }\n", ind, typ, rdr, expr)
+	g.pf("%sif !%sLoadBody"+g.rt()+"(&%s, &%s) { return false }\n", ind, typ, rdr, expr)
 	g.emitCarveReturn("r", rdr, ind)
 	g.pf("%sif %s.Offset != int64(len(%s.Buffer)) { %s; return false }\n", ind, rdr, rdr, damaged)
 }
@@ -306,7 +306,7 @@ func (g *tableGen) emitReadArray(f *ir.Field, ind string, keyed bool) {
 		switch kind {
 		case tkTable:
 			g.emitReadDepth("elem", 1, j)
-			g.pf("%sif !%sLoadBody(&elem, &%s[int(slot)-1]) { return false }\n", j, f.Type.Name, expr)
+			g.pf("%sif !%sLoadBody"+g.rt()+"(&elem, &%s[int(slot)-1]) { return false }\n", j, f.Type.Name, expr)
 			g.emitCarveReturn("sub", "elem", j)
 		case tkUnion:
 			g.emitReadUnion(f.Type.Ref.(*ir.Union), expr+"[int(slot)-1]", "elem", j)
@@ -335,7 +335,7 @@ func (g *tableGen) emitReadArray(f *ir.Field, ind string, keyed bool) {
 			g.pf("%selem, ok := sub.Body(); if !ok { %s }\n", j, stop)
 			g.retainReadPath("elem", "r", "i")
 			g.emitReadDepth("elem", 1, j)
-			g.pf("%sif !%sLoadBody(&elem, &%s[i]) { return false }\n", j, f.Type.Name, expr)
+			g.pf("%sif !%sLoadBody"+g.rt()+"(&elem, &%s[i]) { return false }\n", j, f.Type.Name, expr)
 			g.emitCarveReturn("sub", "elem", j)
 			g.pf("%sif elem.Offset != int64(len(elem.Buffer)) { %s }\n", j, stop)
 		case tkUnion:
@@ -425,7 +425,7 @@ func (g *tableGen) emitReadArm(v ir.UnionVariant, expr, rdr, kind, ind string) {
 	}
 	f := v.F
 	if v.Body() && !v.F.Type.Pointer {
-		g.pf("%sif !%sLoadBody(&%s,&%s) { return false }\n", ind, v.Type, rdr, expr)
+		g.pf("%sif !%sLoadBody"+g.rt()+"(&%s,&%s) { return false }\n", ind, v.Type, rdr, expr)
 		g.emitCarveReturn("r", rdr, ind)
 		g.pf("%sif %s.Offset != int64(len(%s.Buffer)) { %s }\n", ind, rdr, rdr, bad)
 		return
@@ -501,7 +501,7 @@ func (g *tableGen) emitReadArmArray(f *ir.Field, expr, rdr, ind string) {
 		g.pf("%s%s,ok:=%s.Body();if !ok {%s}\n", j, elem, rdr, bad)
 		g.retainReadPath(elem, rdr, "i")
 		g.emitReadDepth(elem, 1, j)
-		g.pf("%sif !%sLoadBody(&%s,&%s[i]) { return false }\n", j, f.Type.Name, elem, expr)
+		g.pf("%sif !%sLoadBody"+g.rt()+"(&%s,&%s[i]) { return false }\n", j, f.Type.Name, elem, expr)
 		g.emitCarveReturn(rdr, elem, j)
 		g.pf("%sif %s.Offset != int64(len(%s.Buffer)) { %s }\n", j, elem, elem, bad)
 	case isUnionRef(f.Type) && !f.Type.Pointer:

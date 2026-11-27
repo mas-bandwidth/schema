@@ -142,7 +142,7 @@ func generateViewFile(u *ir.Unit, closure map[string]bool, arms map[string]int) 
 				for _, arm := range un.Variants {
 					if !arm.Void() {
 						g.needsUnsafe()
-						extra = fmt.Sprintf("PayloadOffset:uint32(unsafe.Offsetof(%sRow{}.Payload)),", n)
+						extra = fmt.Sprintf("PayloadOffset:uint32(unsafe.Offsetof(%sRow{}.schema_payload)),", n)
 						break
 					}
 				}

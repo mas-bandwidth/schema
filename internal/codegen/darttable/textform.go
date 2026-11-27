@@ -884,8 +884,7 @@ String _jsonPrepare(String text, TableTextReport r) {
 // value 1..N to its declared name, and a scanned name back to its value (an
 // unknown name reads as None and counts unknown, §16.3).
 func (g *wireGen) emitTextEnum(e *ir.Enum) {
-	dn := dartName(e.Name)
-	g.pf("String %sName(int v) {\n", dn)
+	g.pf("String %s(int v) {\n", textEnumNameFn(e.Name))
 	g.pf("\tswitch (v) {\n")
 	g.pf("\t\tcase 0: return \"None\";\n")
 	for i, name := range e.Variants {
@@ -901,7 +900,7 @@ func (g *wireGen) emitTextEnum(e *ir.Enum) {
 	}
 	g.pf("\t}\n\treturn '';\n}\n\n")
 	none := g.enumConst(e, 0)
-	g.pf("%s %sFromName(dynamic val, TableTextReport r, [%s? def]) {\n", g.enumType(e), dn, g.enumType(e))
+	g.pf("%s %s(dynamic val, TableTextReport r, [%s? def]) {\n", g.enumType(e), textEnumFromNameFn(e.Name), g.enumType(e))
 	g.pf("\tif (val is! String) { r.refuse('kind_mismatch'); return def ?? %s; }\n", none)
 	g.pf("\tif (!_jsonName(val, r)) return def ?? %s;\n", none)
 	g.pf("\tswitch (val) {\n")
@@ -1051,7 +1050,7 @@ func (g *wireGen) emitTextToJsonField(st *ir.Struct, f *ir.Field) {
 			case wireKindString:
 				g.pf("\t\t\tout.raw(_jsonString(e));\n")
 			case wireKindEnum:
-				g.pf("\t\t\tout.raw(_jsonEnum(e, %sName, '%s.%s'));\n", dartName(enumRef(f).Name), st.Name, f.Name)
+				g.pf("\t\t\tout.raw(_jsonEnum(e, %s, '%s.%s'));\n", textEnumNameFn(enumRef(f).Name), st.Name, f.Name)
 			default:
 				elem := singleOf(f)
 				switch {
@@ -1091,7 +1090,7 @@ func (g *wireGen) emitTextToJsonField(st *ir.Struct, f *ir.Field) {
 		}
 		g.pf("\tout.raw(_jsonFloat(%s, %s));\n", dartStoredFloat(f, "v."+name), single)
 	case enumRef(f) != nil:
-		g.pf("\tout.raw(_jsonEnum(v.%s, %sName, '%s.%s'));\n", name, dartName(enumRef(f).Name), st.Name, f.Name)
+		g.pf("\tout.raw(_jsonEnum(v.%s, %s, '%s.%s'));\n", name, textEnumNameFn(enumRef(f).Name), st.Name, f.Name)
 	default:
 		// No other construct reaches this emitter: checkUnsupportedConstructs
 		// refuses maps, *bytes, pointers and the wide kinds by name (§11).
@@ -1201,7 +1200,7 @@ func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 			case wireKindF32, wireKindF64:
 				g.pf("\t\t\t\t\tv.%s.add(%s);\n", name, jsonRangedFloat(f, fmt.Sprintf("_jsonFloatField(item, r, %t)", listElementKind(f) == wireKindF32)))
 			case wireKindEnum:
-				g.pf("\t\t\t\t\tv.%s.add(%sFromName(item, r));\n", name, dartName(enumRef(f).Name))
+				g.pf("\t\t\t\t\tv.%s.add(%s(item, r));\n", name, textEnumFromNameFn(enumRef(f).Name))
 			case wireKindString:
 				g.pf("\t\t\t\t\tif (item is String) { v.%s.add(_jsonText(item)); } else { r.refuse('kind_mismatch'); }\n", name)
 			default:
@@ -1255,7 +1254,7 @@ func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 		g.pf("\t\t\t\tv.%s = %s;\n", name, jsonRangedFloat(f, fmt.Sprintf("_jsonFloatField(val, r, %t, v.%s)", f.Type.Kind == ir.TFloat32, name)))
 		g.pf("\t\t\t\tbreak;\n")
 	case enumRef(f) != nil:
-		g.pf("\t\t\t\tv.%s = %sFromName(val, r, v.%s);\n", name, dartName(enumRef(f).Name), name)
+		g.pf("\t\t\t\tv.%s = %s(val, r, v.%s);\n", name, textEnumFromNameFn(enumRef(f).Name), name)
 		g.pf("\t\t\t\tbreak;\n")
 	default:
 		g.pf("\t\t\t\tr.refuse('kind_mismatch');\n")
