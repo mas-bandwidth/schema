@@ -194,6 +194,7 @@ func cause(root, src, log string) string {
 	}
 	// a run's own numbers (a Rust thread id) are not part of the cause
 	pick = threadIDRe.ReplaceAllString(pick, "thread '$1' panicked")
+	pick = plainQuotes(pick)
 	pick = strings.Join(strings.Fields(pick), " ")
 	// long enough for a message that follows a command line (elixir R16);
 	// cut on a character boundary, never inside one
@@ -206,6 +207,15 @@ func cause(root, src, log string) string {
 	}
 	return kind + ": " + pick
 }
+
+// plainQuotes folds the typographic quotes a compiler prints in a UTF-8
+// locale to the ASCII ones it prints in any other (gcc's ‘x’ is 'x' under
+// LANG=C), so a cause is the same whatever locale the run had.
+func plainQuotes(s string) string {
+	return quoteFold.Replace(s)
+}
+
+var quoteFold = strings.NewReplacer("\u2018", "'", "\u2019", "'", "\u201c", `"`, "\u201d", `"`)
 
 // checkCause refuses a ledger line whose cause says nothing about what
 // failed: a banner, or a line of the row's own source.

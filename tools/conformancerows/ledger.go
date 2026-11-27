@@ -57,7 +57,7 @@ func parseLedger(r io.Reader, path string) (causes, notes map[string]string, err
 		if _, dup := causes[row]; dup {
 			return nil, nil, fmt.Errorf("%s:%d: %s is listed twice", path, line, row)
 		}
-		causes[row] = why
+		causes[row] = plainQuotes(why)
 		if note != "" {
 			notes[row] = note
 		}

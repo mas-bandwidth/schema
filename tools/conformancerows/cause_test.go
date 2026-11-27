@@ -247,3 +247,27 @@ func TestCauseIsCutOnACharacterBoundary(t *testing.T) {
 		t.Fatalf("the cause was not cut at %d bytes: %d bytes", maxCause, len(got))
 	}
 }
+
+// gcc quotes a name with ‘x’ in a UTF-8 locale and with 'x' in any other,
+// so the same failure printed two causes and an owed row went red on a
+// runner whose locale differed from the one its ledger line was read under.
+// The cause and the ledger line are both read with ASCII quotes.
+func TestCauseIsTheSameInEveryLocale(t *testing.T) {
+	const root = "/r"
+	utf8Log := "/r/test/conformance/c/rows/W1.c:27:5: error: unknown type name ‘Fleet’\n"
+	cLog := "/r/test/conformance/c/rows/W1.c:27:5: error: unknown type name 'Fleet'\n"
+	want := "does not build: test/conformance/c/rows/W1.c:27:5: error: unknown type name 'Fleet'"
+	for _, log := range []string{utf8Log, cLog} {
+		if got := cause(root, "", log); got != want {
+			t.Errorf("cause(%q) = %q, want %q", log, got, want)
+		}
+	}
+	line := "W1\towed: does not build: test/conformance/c/rows/W1.c:27:5: error: unknown type name \u2018Fleet\u2019\n"
+	causes, _, err := parseLedger(strings.NewReader(line), "rows-owed.tsv")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := causes["W1"]; got != "owed: "+want {
+		t.Errorf("a ledger line in typographic quotes reads %q, want %q", got, "owed: "+want)
+	}
+}
