@@ -1,0 +1,2 @@
+suite	packet write bare-int Squirrel count
+baseline	bl

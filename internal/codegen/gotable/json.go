@@ -988,7 +988,11 @@ func tableJSONWriteScalar(out *tableJSONOut, storage unsafe.Pointer, f *TableFie
  if f.Kind>=18 && f.Kind<=29 {if !tableJSONWideInContract(storage,f){return false};if tableJSONWideIntegerKind(f.Kind){out.put('"')};tableJSONWriteWide(out,storage,f);if tableJSONWideIntegerKind(f.Kind){out.put('"')};return true}
  if f.Kind==36 {return tableJSONWriteTimestamp(out,storage)}
 	if f.Arms != nil {
-		// a union is an object with ONE key, the arm's name; None is {}
+		// a union is an object with ONE key, the arm's name; None is {}, and
+		// either is a container the depth cap counts (docs/SPEC-TABLES.md §16.14 W2)
+		if depth > tableJSONMaxDepth {
+			return false
+		}
 		arms := f.Arms()
 		tag := tableJSONGetRaw(unsafe.Add(storage, uintptr(arms.TagOffset)), arms.TagSize)
 		if tag == 0 {
@@ -1042,6 +1046,11 @@ func tableJSONWriteScalar(out *tableJSONOut, storage unsafe.Pointer, f *TableFie
 		return true
 	}
 	if tableJSONIsFlags(f) {
+		// a flags value is an array of names, a container the read counts, so
+		// the cap counts it too, an empty [] included (docs/SPEC-TABLES.md §16.14 W2)
+		if depth > tableJSONMaxDepth {
+			return false
+		}
 		bits := tableJSONGetRaw(storage, f.ElemSize)
 		if bits == 0 {
 			out.text("[]")
@@ -1124,6 +1133,13 @@ func tableJSONWriteField(out *tableJSONOut, base unsafe.Pointer, f *TableFieldIn
 	if tableJSONIsBytes(f) {
 		tableJSONWriteBase64(out, tableJSONBytes(storage, tableJSONCount(base, f)))
 		return true
+	}
+	// THE WRITE COUNTS EVERY CONTAINER THE READ DOES (docs/SPEC-TABLES.md
+	// §16.14 W2): an enum-keyed array's object and an array, an empty {} or
+	// [] included, at a depth past the cap is refused, or the writer emits
+	// a text its own reader refuses.
+	if (f.IsArray || tableJSONIsKeyed(f)) && depth > tableJSONMaxDepth {
+		return false
 	}
 	if tableJSONIsKeyed(f) {
 		// one entry per SLOT, keyed by the variant that owns it, so inserting a

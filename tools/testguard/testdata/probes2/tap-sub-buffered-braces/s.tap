@@ -1,0 +1,6 @@
+TAP version 14
+1..1
+ok 1 - a {
+    ok 1 - i # SKIP no gpu
+    1..1
+}

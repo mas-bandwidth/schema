@@ -67,7 +67,7 @@ func TestSchemaDartNightlyFuzzWiring(t *testing.T) {
 	}
 	// NIGHTLY AND DISPATCH ONLY (the owner, 2026-11-15: "I want everything that
 	// is not light moved to nightly test now." "no exceptions."): no push and
-	// no pull request starts this workflow; the PR gate is ci-fast.yml.
+	// no pull request starts this workflow; the PR gate is ci-fast-nightly.yml.
 	for _, p := range nightlyOnlyTriggerProblems(wf) {
 		t.Errorf("schema-dart-nightly-fuzz.yml: %s", p)
 	}
