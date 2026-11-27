@@ -7,7 +7,7 @@
 #   - PYTHON, PYTHON_FLOOR, MYPY, RUBY, RUBY_FLOOR and NOVA_SDK are exported, and each answers its pinned version
 #     (pins read from make/python-toolchain.mk and make/ruby-toolchain.mk);
 #   - rubocop, steep and rbs beside RUBY and RUBY_FLOOR answer the pinned analyzer versions;
-#   - on Linux, the linters the lint lanes of ci-fast.yml run from the SDK: modernize, golangci-lint, luacheck,
+#   - on Linux, the linters the lint lanes of ci-fast-nightly.yml run from the SDK: modernize, golangci-lint, luacheck,
 #     eslint, clang-format (a Mac runs no Linux lane and is not asked for them).
 # Exit 0 and one BENCH-CHECK OK line, or exit 1 with a BENCH-CHECK MISSING line per gap.
 set -eu -o pipefail
@@ -21,10 +21,10 @@ miss() { echo "BENCH-CHECK MISSING $1: $2"; fail=1; }
 pin() { sed -n "s/^$1 *[:?]\{0,1\}= *//p" "$root/make/$2" | sed -n 1p; }
 
 # the lint pins, read from where the gates read them (no second copy here): golangci-lint and luacheck from their gates' make
-# fragments, eslint from ci-fast.yml's install line, modernize from ci-full.yml's modernize@vX.Y.Z (ci-fast.yml holds it to that)
+# fragments, eslint from ci-fast-nightly.yml's install line, modernize from ci-full.yml's modernize@vX.Y.Z (ci-fast-nightly.yml holds it to that)
 golangci_pin=$(pin GOLANGCI_LINT_VERSION schema-go-generated-golangci-lint-gate.mk)
 luacheck_pin=$(pin LUACHECK_VERSION schema-lua-generated-luacheck-gate.mk)
-eslint_pin=$(sed -n 's/.*"eslint@\([0-9][0-9.]*\)".*/\1/p' "$root/.github/workflows/ci-fast.yml" | sed -n 1p)
+eslint_pin=$(sed -n 's/.*"eslint@\([0-9][0-9.]*\)".*/\1/p' "$root/.github/workflows/ci-fast-nightly.yml" | sed -n 1p)
 modernize_pin=$(sed -n 's/.*modernize@v\([0-9][0-9.]*\).*/\1/p' "$root/.github/workflows/ci-full.yml" | sed -n 1p)
 for p in golangci_pin:golangci-lint luacheck_pin:luacheck eslint_pin:eslint modernize_pin:modernize; do
 	eval "v=\$${p%%:*}"
