@@ -281,6 +281,8 @@ func (w *cookWriter) value(f *ir.Field, src, dst, at string, s string, ind int) 
 		case *ir.Enum:
 			typ := w.g.TypeRef(r.Name, false)
 			width := int64(ir.StorageBitsFor(r.Max)) / 8
+			// an ordinal past the variant set is refused (docs/SPEC.md §5.1 row 5)
+			w.pl(ind, "if %s > %d { return false; } // past %s's variant set (§5.1 row 5)", src, len(r.Variants), r.Name)
 			for i := range r.Variants {
 				if i < len(r.VariantTags) && hasTag(r.VariantTags[i], "deprecated") {
 					w.pl(ind, "if %s == %d { return false; } // %s is deprecated (§2.15)", src, i+1, r.Variants[i])

@@ -1352,6 +1352,8 @@ across legs; the verdict is. The C and C++ pair keeps **`18`** for the retired `
 **`19` `layout_unsupported`** — **the ORDER is the contract**, so a second leg
 pair numbering its own set keeps the retired member's ordinal and numbers its live refusals in the same order.
 
+**C, C#, Dart, Elixir, Java and Rust, 2026-11-24:** each generated load answered `layout_newer` at step 5 until this date; each now answers `layout_unknown` with the file's hash and nothing else. A new member is APPENDED where a leg numbers its set — C `SCHEMA_TABLE_LAYOUT_UNKNOWN = 23` (past every value a C report's reason holds), Dart `layoutUnknown = 25`, Java and Rust a last enum member `layoutUnknown` / `LayoutUnknown` — so no other integer moves, and the retired `layout_newer` keeps its place and is never emitted; C# and Elixir name their refusals by string and atom and changed the name alone. Held by each leg's own versioning and roadmap tests (SPEC-CONFORMANCE.md §7).
+
 **STEP 9 IS ABOUT A FILE, NEVER ABOUT THE LOCK.** A record size of `8` or less comes off the FILE's arithmetic
 — `record_bytes` is the BUILD's, the lock's body with the eight hash bytes already added (§5.2), but `rest`,
 the tail behind the layout, is the file's. **A LINEAGE ENTRY whose

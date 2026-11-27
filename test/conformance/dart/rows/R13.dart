@@ -86,7 +86,7 @@ void main() {
   final buf = Uint8List(metaFixedMeasure(1));
   metaFixedSave(<Meta>[v], 1, buf);
 
-  // ---- CASE A: layout_newer (the lineage refuses a hash it doesn't hold) ----
+  // ---- CASE A: layout_unknown (the lineage refuses a hash it doesn't hold) ----
   // The header is mutated to a hash no entry holds; the layout bytes
   // behind it would still match the build (the law says the byte compare
   // would in principle catch it, but step 5 fires first).
@@ -106,9 +106,9 @@ void main() {
       r,
     );
     expect(
-      'case A: layout_newer — joint outcome on a refused-by-name read',
+      'case A: layout_unknown — joint outcome on a refused-by-name read',
       jointOk(n, r, dest) &&
-          r.refused == TableFixedRefusal.layoutNewer &&
+          r.refused == TableFixedRefusal.layoutUnknown &&
           r.layoutHash == 0xF1F2F3F4F5F6F7F8,
       'n=$n refused=${TableFixedRefusal.name(r.refused)} '
           'damaged=${r.refused == TableFixedRefusal.damaged} '
@@ -274,7 +274,7 @@ void main() {
   // a refused read proves the plan path is also REFUSE-clean.
   {
     final file = Uint8List.fromList(buf);
-    // Plant a fabricated wire hash; the lineage refuses layout_newer.
+    // Plant a fabricated wire hash; the lineage refuses layout_unknown.
     ByteData.sublistView(file).setUint64(8, 0xA1A2A3A4A5A6A7A8, Endian.little);
     final dest = Meta()
       ..build = 0x5A5A5A5A
@@ -289,7 +289,7 @@ void main() {
     expect(
       'plan.image stays 0x5A after a refused read — REFUSE is total, the '
           'prefill included (line 899)',
-      n == -1 && r.refused == TableFixedRefusal.layoutNewer,
+      n == -1 && r.refused == TableFixedRefusal.layoutUnknown,
       'n=$n refused=${TableFixedRefusal.name(r.refused)}',
     );
     var dirtyPlanBytes = 0;

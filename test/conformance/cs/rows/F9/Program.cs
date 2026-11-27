@@ -13,7 +13,7 @@ using Tblk1;
 // "batch_too_large" and return -1 without decoding any record.
 //
 // The negative control mutates the header hash so the layout is unknown,
-// producing "layout_newer" instead — proving the capacity check bites and
+// producing "layout_unknown" instead — proving the capacity check bites and
 // the refusal name is specific.
 
 unsafe class Program
@@ -28,7 +28,7 @@ unsafe class Program
         // GREEN: 2 records into a 2-slot array → loads fine
         ok &= CheckBatchFits();
 
-        // NEGATIVE CONTROL: corrupt the hash → layout_newer, not batch_too_large
+        // NEGATIVE CONTROL: corrupt the hash → layout_unknown, not batch_too_large
         ok &= CheckNegativeControl();
 
         if (!ok)
@@ -135,7 +135,7 @@ unsafe class Program
         return true;
     }
 
-    // 3. Negative control: corrupt the header hash → layout_newer
+    // 3. Negative control: corrupt the header hash → layout_unknown
     static bool CheckNegativeControl()
     {
         byte[] data = BuildBatch(2);

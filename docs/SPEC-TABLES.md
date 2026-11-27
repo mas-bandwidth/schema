@@ -12932,11 +12932,22 @@ contract (SPEC §5.1) runs before a byte is placed. A loaded value whose live
 count lies below its array's `Min` or above its bound, or whose length is
 negative, is REFUSED (`Cook` writes nothing, `CookMeasure` answers `-1`); it is
 never clamped to the bound and written. A NaN or an infinity in a plain float
-is refused (row 7), as the save refuses it. A leg whose measure and write
-share one body refuses in both. **These `CookMeasure` refusal answers are for a
-pointered root, whose reached graph determines its size. A fixed root is the
-exception stated below: its `CookMeasure` is the layout constant even for an
-invalid value, and its `Cook` alone runs the value checks before writing.**
+is refused (row 7), as the save refuses it. An enum slot holding an ordinal
+past its variant set (row 5) or a deprecated variant (§2.15) is refused
+(`cref_enum_*`, `cref_var_enum_*`) by the write rule of SPEC §5.1. A leg that
+refuses in every build (Go, JavaScript, Elixir, Lua, Luau, Squirrel, MOO,
+Goose) refuses it in every build. An assert leg
+refuses it by its debug assert only, and its release build carries no
+write-side check: C and C++ by `schema_assert`, Rust by `debug_assert!` (a
+native Rust enum cannot hold an ordinal past its set at all), Java by `assert`
+under `-ea`, C# and Unity by `Debug.Assert`, and Dart by `assert` under
+`--enable-asserts`. An assert leg's refusal is not promised before the first
+byte: the C and C++ fixed cooks clear the output before the slot's assert can
+fire. A leg whose measure and write share one body refuses in both. **These
+`CookMeasure` refusal answers are for a pointered root, whose reached graph
+determines its size. A fixed root is the exception stated below: its
+`CookMeasure` is the layout constant even for an invalid value, and its `Cook`
+alone runs the value checks before writing.**
 
 **A BUILD CAN WRITE A COOK, AND THE BYTES ARE THE TOOL'S.** `schema cook` is
 the reference and stays it: a generated writer is held to the tool's output
@@ -14772,7 +14783,7 @@ in build version (§20.5).
   FixedResetImage  FixedHoles  FixedLineageHoles  FixedPlanMax  FixedReadPlan  FixedLoadWalk  GenPastBound
   FixedDecode  FixedPrefill  FixedIdentity  FixedNewPlan  FixedHashLo  FixedHashHi
   FixedDstCopy  FixedIdentityCopy  FixedLayoutCopy  FixedPrefillCopy
-  FixedKnown  FixedFloor  FixedLineagePlans  FixedBoundsKnown
+  FixedKnown  FixedFloor  FixedLineagePlans  FixedBoundsKnown  FixedKnownViews
   ```
 
   The Go templates also use Add, Erase, Each, Insert, Find,
@@ -14812,7 +14823,9 @@ in build version (§20.5).
   `FixedFloor`, and one plan per entry laid down at build, `FixedLineagePlans`.
   They are per-declaration for the same reason the identity plan is: a lineage
   belongs to ONE table and a unit can declare several, so a name that is free
-  today must not become a collision the day a second root is added.
+  today must not become a collision the day a second root is added. The JavaScript leg reads each known layout's lock bytes through a
+  `DataView`, and those views ride beside the lineage in `FixedKnownViews`, one
+  module-scope binding per declaration, claimed on the same rule.
 
   The `Fixed` rows are §3.4's, and they are claimed on this list's own rule:
   nothing declares the fixed form, every table whose closure §3.4 lays out
@@ -15807,7 +15820,7 @@ it does rather than a list of its own:
 
   | hook | where it fires | default | NDEBUG |
   |---|---|---|---|
-  | `schema_assert( condition )` | the keyed accessor's refusal (§2.4), with its message; the fixed form's measure count and write-side bounds (§3.4), whenever the unit has a fixed form | `assert`, from `<assert.h>` | removed, as `assert` is |
+  | `schema_assert( condition )` | the keyed accessor's refusal (§2.4), with its message; the fixed form's measure count and write-side bounds (§3.4), whenever the unit has a fixed form; and every other call the generated header makes (the SPEC.md §5.1 write contract: a range, a `bits(N)` width, a ranged float, a storage bound). A header carries this hook whenever it contains one such call, whatever unit shape emitted it, so every generated header compiles as the first and only include of a translation unit | `assert`, from `<assert.h>` | removed, as `assert` is |
   | `schema_fatal()` | after the assert, on the path that cannot continue | `abort`, from `<stdlib.h>` | kept |
   | `schema_allocate( bytes )` | the default allocator pair: ZEROED bytes, NULL on failure | `calloc`, from `<stdlib.h>` | — |
   | `schema_release( pointer )` | the default allocator pair | `free` | — |

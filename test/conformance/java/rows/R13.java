@@ -9,7 +9,7 @@
 // |---|---|---|---|---|---|
 // | a REFUSAL BY NAME — every row above that HAS a name | `true` | that name | **`false`** | `-1` | all zero, and not one destination byte written |
 //
-// This test asserts that when a read is refused by name (e.g. layout_newer
+// This test asserts that when a read is refused by name (e.g. layout_unknown
 // or layout_unsupported), the report satisfies:
 //   - refused == true
 //   - reason == the refusal name (not empty)
@@ -22,7 +22,7 @@ public final class R13 {
         // Simulate the report structure from docs/FIXED-FORM-ALGORITHM.md
         // When refused by name: refused=true, reason=name, malformed=false, counters=0
         int refused = 1;           // true
-        String reason = "layout_newer";
+        String reason = "layout_unknown";
         int malformed = 0;         // false
         int[] counters = new int[6]; // u,k,w,c,d,m - all zero
         

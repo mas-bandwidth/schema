@@ -34,9 +34,9 @@
 //      carries `metaFixedHash`, the load opens cleanly with no refusal,
 //      proving the build's identity path is reached (line 328 of
 //      GraphFixed.dart).
-//   3. A WIRE HASH NO ENTRY HOLDS → layout_newer: even when the wire hash
+//   3. A WIRE HASH NO ENTRY HOLDS → layout_unknown: even when the wire hash
 //      IS the fnv1a64 digest of the file's layout, the runtime refuses
-//      with `layout_newer` (file header's hash not in lineage). This is
+//      with `layout_unknown` (file header's hash not in lineage). This is
 //      the proof the runtime NEVER RE-DERIVES the hash from layout bytes:
 //      it reads the eight bytes at offset 8 and compares them to
 //      `metaFixedHash` directly.
@@ -183,7 +183,7 @@ void main() {
   //
   // Plant a wire hash the lineage does NOT hold, even though the bytes
   // behind the layout WOULD fnv1a64 to it. The load refuses with
-  // `layout_newer`. A runtime that RE-DERIVED from the layout bytes on
+  // `layout_unknown`. A runtime that RE-DERIVED from the layout bytes on
   // this file would land on `metaFixedHash` and silently take the
   // identity path. The refusal below is therefore the proof the runtime
   // never recomputes.
@@ -203,9 +203,9 @@ void main() {
   );
   expect(
     'identity lane does NOT index from a recomputed hash: a wire hash no '
-        'lineage entry holds lands layout_newer, not the identity path',
+        'lineage entry holds lands layout_unknown, not the identity path',
     n2 == -1 &&
-        report2.refused == TableFixedRefusal.layoutNewer &&
+        report2.refused == TableFixedRefusal.layoutUnknown &&
         report2.layoutHash == fabricatedWireHash &&
         report2.hash == 0 &&
         back2[0].build == 1,

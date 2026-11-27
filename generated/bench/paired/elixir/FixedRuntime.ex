@@ -2292,7 +2292,7 @@ defmodule Bench.FixedRuntime do
   # eight bytes of its header's hash against a lineage THE BUILD laid down —
   # the lock's entries, OLDEST FIRST, the current layout last — and NOTHING
   # PARSES A STRANGER'S LAYOUT, ON ANY PATH. A hash the lineage does not hold is
-  # :layout_newer (ship the reader); a hash below the FLOOR is
+  # :layout_unknown (§5.3 step 5); a hash below the FLOOR is
   # :layout_unsupported (upgrade the client); a hash the lineage holds whose
   # layout BYTES differ from the ones the lock recorded is ONE name,
   # :layout_malformed — a lie about a known version, which is where §1.1's seven
@@ -2309,7 +2309,7 @@ defmodule Bench.FixedRuntime do
   def select(known, floor, hash, layout) do
     case index_of(known, hash, 0) do
       nil ->
-        {:error, :layout_newer, hash}
+        {:error, :layout_unknown, hash}
 
       i when i < floor ->
         {:error, :layout_unsupported, hash}

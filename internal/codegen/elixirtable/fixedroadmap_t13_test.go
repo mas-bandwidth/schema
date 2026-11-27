@@ -5,7 +5,7 @@ package elixirtable
 // hash is TAKEN AS GIVEN (step 4: the definitions digest is not on the wire),
 // so a file whose header hash is one the lineage holds but whose layout bytes
 // differ from the bytes the lock recorded is ONE name — a lie about a known
-// version — refused before a record byte is touched, and never `layout_newer`.
+// version — refused before a record byte is touched, and never `layout_unknown`.
 //
 // The vectors are cT01SecondLayout's (internal/codegen/ctable/
 // fixedroadmap_t01_test.go:166-233), driven through this leg's own probe helper
@@ -15,7 +15,7 @@ package elixirtable
 // this build's layout under the older entry's hash. Each is refused
 // `:layout_malformed`, decodes nothing (the third slot is the reason ATOM, not
 // a list of built values) and moves no report counter. The contrast is a hash
-// held by no entry, which is `:layout_newer` and reports the file's hash.
+// held by no entry, which is `:layout_unknown` and reports the file's hash.
 //
 // The vectors are built from the build's OWN lineage — T.lineage_fixed_known/0,
 // the handed constants of §5.3 step 8 — and not from the C++ reference corpus,
@@ -71,11 +71,11 @@ func TestFixedRoadmapElixirT13SecondLayoutUnderAHeldHash(t *testing.T) {
 
   stranger = 0x0EADBEEFCAFEF00D
   {stag, sreason, sreport} = load(join.(%{own | hash: stranger}, own.layout))
-  check(stag == :error and sreason == :layout_newer,
-    "a hash held by no entry is layout_newer, not #{inspect({stag, sreason})}")
+  check(stag == :error and sreason == :layout_unknown,
+    "a hash held by no entry is layout_unknown, not #{inspect({stag, sreason})}")
   check(sreport.layout_hash == stranger,
-    "layout_newer reports the file's hash: #{inspect(sreport.layout_hash)}")
+    "layout_unknown reports the file's hash: #{inspect(sreport.layout_hash)}")
   check(sreport == %{fresh | layout_hash: stranger},
-    "layout_newer moves nothing but the file hash: #{why(sreport)}")`
+    "layout_unknown moves nothing but the file hash: #{why(sreport)}")`
 	t01Probe(t, "VNEW_field_append", []string{"VOLD_field_append"}, 0, "", body)
 }
