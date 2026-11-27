@@ -3,7 +3,7 @@ package gotable
 import (
 	"fmt"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // The read emitters' canonical-spelling checks (docs/SPEC-TABLES.md §3, §3.1,

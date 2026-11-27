@@ -15,9 +15,11 @@
 
 static bool reports_eq( const tblp1::TableReport & a, const tblp1::TableReport & b )
 {
-    return a.unknown == b.unknown && a.kind_mismatch == b.kind_mismatch &&
-           a.widened == b.widened && a.clamped == b.clamped &&
-           a.malformed == b.malformed && a.refused == b.refused;
+    // strict-only-read: kind_mismatch and clamped are retired (each now refuses the
+    // whole load), so the plans agree on them through refused and refuse_reason.
+    return a.unknown == b.unknown && a.refuse_reason == b.refuse_reason &&
+           a.widened == b.widened &&
+           a.damaged == b.damaged && a.refused == b.refused;
 }
 
 static bool chains_eq( const tblp1::Chain & a, const tblp1::Chain & b )

@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // listTargets is the canonical name of every built-in target whose table

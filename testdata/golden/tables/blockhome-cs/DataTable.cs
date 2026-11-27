@@ -30,6 +30,7 @@ namespace Blockhome
 
         public static bool ArmorPlateCollectTyped(ArmorPlate v, ref TableWire.Ids ids)
         {
+            System.Diagnostics.Debug.Assert((object)v != null, "a null ArmorPlate is written");
             System.Diagnostics.Debug.Assert(double.IsFinite(v.Thickness));
             if (BitConverter.DoubleToUInt64Bits(v.Thickness) != 0x0000000000000000ul && !ids.Add(0xdbae65ca25b4f315ul)) return false;
             if (v.Material != 0 && !ids.Add(0x026f7568983161e0ul)) return false;
@@ -138,6 +139,7 @@ namespace Blockhome
 
         public static bool ArmorConfigCollectTyped(ArmorConfig v, ref TableWire.Ids ids)
         {
+            System.Diagnostics.Debug.Assert((object)v != null, "a null ArmorConfig is written");
             TableFieldInfo[] fields = ArmorConfigTableType().Fields;
             if (!TableWire.CollectField(v, fields[0], ref ids)) return false;
             if (!TableWire.CollectField(v, fields[1], ref ids)) return false;
@@ -250,6 +252,7 @@ namespace Blockhome
 
         public static bool FiringGroupCollectTyped(FiringGroup v, ref TableWire.Ids ids)
         {
+            System.Diagnostics.Debug.Assert((object)v != null, "a null FiringGroup is written");
             if (v.Barrel != 0 && !ids.Add(0x8ece059ad360b651ul)) return false;
             System.Diagnostics.Debug.Assert(float.IsFinite(v.Cooldown));
             if (BitConverter.SingleToUInt32Bits(v.Cooldown) != 0x00000000u && !ids.Add(0xdc2cbe6953343d48ul)) return false;
@@ -359,6 +362,7 @@ namespace Blockhome
 
         public static bool GunnerSettingsCollectTyped(GunnerSettings v, ref TableWire.Ids ids)
         {
+            System.Diagnostics.Debug.Assert((object)v != null, "a null GunnerSettings is written");
             int count_0 = v.FiringGroupsCount;
             System.Diagnostics.Debug.Assert(count_0 >= 0 && count_0 <= 32);
             if (count_0 > 0)
@@ -817,6 +821,7 @@ namespace Blockhome
         // which is also what zero-fills every byte of declared slack.
         public static void ArmorPlateFixedWriteBody(Span<byte> b, ArmorPlate value)
         {
+            System.Diagnostics.Debug.Assert(value != null, "a null ArmorPlate is written");
             if (value == null) return;
             BinaryPrimitives.WriteDoubleLittleEndian(b, value.Thickness);
             BinaryPrimitives.WriteInt32LittleEndian(b.Slice(8), unchecked((int)value.Material));
@@ -827,6 +832,7 @@ namespace Blockhome
         // which is also what zero-fills every byte of declared slack.
         public static void ArmorConfigFixedWriteBody(Span<byte> b, ArmorConfig value)
         {
+            System.Diagnostics.Debug.Assert(value != null, "a null ArmorConfig is written");
             if (value == null) return;
             ArmorPlateFixedWriteBody(b, value.Front);
             ArmorPlateFixedWriteBody(b.Slice(13), value.Rear);
@@ -838,6 +844,7 @@ namespace Blockhome
         // which is also what zero-fills every byte of declared slack.
         public static void FiringGroupFixedWriteBody(Span<byte> b, FiringGroup value)
         {
+            System.Diagnostics.Debug.Assert(value != null, "a null FiringGroup is written");
             if (value == null) return;
             BinaryPrimitives.WriteInt32LittleEndian(b, unchecked((int)value.Barrel));
             BinaryPrimitives.WriteSingleLittleEndian(b.Slice(4), value.Cooldown);
@@ -847,6 +854,7 @@ namespace Blockhome
         // which is also what zero-fills every byte of declared slack.
         public static void GunnerSettingsFixedWriteBody(Span<byte> b, GunnerSettings value)
         {
+            System.Diagnostics.Debug.Assert(value != null, "a null GunnerSettings is written");
             if (value == null) return;
             int count_firing_groups = value.FiringGroupsCount;
             System.Diagnostics.Debug.Assert(count_firing_groups >= 0 && count_firing_groups <= 32); // the declared count is the bound (§3.4)

@@ -1,9 +1,10 @@
 // CELL cpp/BoolValuesValidData — "Boolean values: valid-data write/read acceptance"
 // (docs/roadmap.sexp task bool-values/cpp/valid-data).
 //
-// THE LAW (docs/FIXED-FORM-ALGORITHM.md): a `bool` or a present flag lands
-// as `byte != 0`, normalised to the language's own true.  0x02 is not a bool
-// a reader stores verbatim (fix 2).
+// THE LAW (docs/FIXED-FORM-ALGORITHM.md:453, §4.5 fix 2, 2026-11-03): a `bool`
+// or a present flag byte of 0 or 1 lands as false or true; any other byte
+// refuses the whole load `wire_damaged` (docs/rulings.json strict-only-read;
+// the row once asserted normalisation to true, which that law retired).
 // docs/FIXED-FORM-ALGORITHM.md:168 — `bool` is `0` or `1` on write.
 // docs/FIXED-FORM-ALGORITHM.md:939 — a bool counts nothing (bill §12.12).
 //
@@ -11,8 +12,7 @@
 // reads it back through WeaponConfigFixedLoad, and asserts the bool
 // round-trips.  Writes `homing = false` and asserts it round-trips too.
 // Then forges the bool byte on the wire to 0x02 (not 0 or 1), reads it
-// back, and asserts the reader normalises it to true — not a bool holding 2,
-// and the normalised read moves no counter.
+// back, and asserts the whole load refuses wire_damaged and lands nothing.
 //
 // PRODUCTION PATH: WeaponConfigFixedSave (§3.4 positional write) /
 // WeaponConfigFixedLoad (§5.3 LOAD then plan run) in
@@ -21,11 +21,8 @@
 // at TablesTable.h:12445, which runs WeaponConfigFixedPlan —
 // PlanEntries[kTableFixedBool] at TablesTable.h:12354.
 //
-// THE NEGATIVE CONTROL: the plan entry for homing (TablesTable.h:12354)
-// is `{ 16u, 16u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, … }`.
-//  Change kTableFixedBool to kTableFixedCopy (a one-constant break) and
-//  the reader copies 0x02 verbatim — `homing` holds 2, not true,
-//  and the normalisation assertion goes RED.  Restore and it is GREEN.
+// THE NEGATIVE CONTROL: make the forged byte 0x01 and the refusal
+// assertions go RED (a lawful true reads).
 
 #include <cstdint>
 #include <cstdio>
@@ -64,7 +61,7 @@ int main()
         int64_t n = tabledemo::WeaponConfigFixedLoad( &r, 1, wire.data(),
             (int64_t) wire.size(), plan.data(), (int32_t) plan.size(), NULL, &report );
         check( n == 1, "BoolValuesValidData: load homing=true" );
-        check( !report.refused && !report.malformed, "BoolValuesValidData: true is not a refusal" );
+        check( !report.refused && !report.damaged, "BoolValuesValidData: true is not a refusal" );
         check( r.homing == true, "BoolValuesValidData: homing=true round-trips" );
     }
 
@@ -88,11 +85,11 @@ int main()
         int64_t n = tabledemo::WeaponConfigFixedLoad( &r, 1, wire.data(),
             (int64_t) wire.size(), plan.data(), (int32_t) plan.size(), NULL, &report );
         check( n == 1, "BoolValuesValidData: load homing=false" );
-        check( !report.refused && !report.malformed, "BoolValuesValidData: false is not a refusal" );
+        check( !report.refused && !report.damaged, "BoolValuesValidData: false is not a refusal" );
         check( r.homing == false, "BoolValuesValidData: homing=false round-trips" );
     }
 
-    // ---- forge 0x02 on the wire — reader must normalise, move no counter --
+    // ---- forge 0x02 on the wire — the whole load refuses, nothing lands ----
     {
         tabledemo::WeaponConfig w;
         tabledemo::WeaponConfigReset( w );
@@ -113,20 +110,20 @@ int main()
 
         tabledemo::WeaponConfig r;
         tabledemo::WeaponConfigReset( r );
+        r.damage = 999.0f;  // poison: a refused load leaves the declared defaults, not this
         tabledemo::TableReport report{};
         std::vector<tabledemo::TableFixedEntry> plan( 4096 );
         int64_t n = tabledemo::WeaponConfigFixedLoad( &r, 1, wire.data(),
             (int64_t) wire.size(), plan.data(), (int32_t) plan.size(), NULL, &report );
-        check( n == 1, "BoolValuesValidData: load forged 0x02" );
-        check( !report.refused && !report.malformed, "BoolValuesValidData: forged 0x02 is not a refusal" );
-        // THE LAW: byte != 0 is the language's own true; 0x02 is not a bool
-        // holding 2 (fix 2).
-        check( r.homing == true,
-               "BoolValuesValidData: 0x02 normalises to true, not a bool holding 2 (fix 2)" );
-        // A bool counts nothing (§5.4, bill §12.12).
-        check( report.clamped == 0 && report.widened == 0 && report.unknown == 0
-               && report.kind_mismatch == 0 && report.duplicate == 0,
-               "BoolValuesValidData: a normalised bool moves no counter" );
+        // strict-only-read: was "n == 1, not a refusal, normalised to true, no
+        // counter"; a bool byte other than 0 or 1 now refuses the whole load.
+        check( n < 0, "BoolValuesValidData: forged 0x02 refuses the load" );
+        check( ( report.refused || report.damaged ) && report.refuse_reason == tabledemo::wire_damaged,
+               "BoolValuesValidData: forged 0x02 refuses wire_damaged (FIXED-FORM-ALGORITHM.md:453)" );
+        tabledemo::WeaponConfig fresh;
+        tabledemo::WeaponConfigReset( fresh );
+        check( r.damage == fresh.damage && r.speed == fresh.speed && r.homing == fresh.homing,
+               "BoolValuesValidData: a refused load lands nothing (the row holds its declared defaults, R4)" );
     }
 
     if ( failures != 0 ) { std::printf( "BoolValuesValidData: %d assertion(s) failed\n", failures ); return 1; }

@@ -10,8 +10,14 @@ package ctable
 //     None); the writer elides it exactly then (docs/SPEC-TABLES.md §2.3,
 //     §4.6), as the Go oracle's emitCountedBirthRides does. One over the
 //     minimum, and one element set, ride.
-//   - Selecting a counted [A..B] union ARM establishes it at count A: a reset
-//     value whose tag is then set to the arm holds A default elements.
+//   - A counted [A..B] union ARM selected with its payload constructed holds
+//     A default elements and writes the engine's bytes. In C the selection is
+//     ordinary construction done by the application (docs/SPEC.md §4.8,
+//     "Selection uses ordinary construction"): the arms share the `as` union,
+//     and assigning the public tag alone does not initialize storage, so the
+//     case constructs the arm (zeroed elements, count born at A, §4.2) and
+//     then sets the tag. The tag alone, at count 0, is a write below A, which
+//     the debug build's assert stops (R10).
 //
 // A FUNCTIONAL TEST: it compiles and runs C. No clock, no socket, no network.
 
@@ -21,10 +27,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 const cCountedMinElemsSchema = `package countedmin
@@ -75,7 +81,7 @@ var cCountedMinCases = []cCountedMinCase{
 	{"union_born", "BornU", `{"us":[{},{}]}`, ``},
 	{"union_three", "BornU", `{"us":[{},{},{}]}`, `v.us_count = 3;`},
 	{"union_one_set", "BornU", `{"us":[{},{"a":7}]}`, `v.us[1].type = PICK_TYPE_A; v.us[1].as.a = 7;`},
-	{"arm_select", "Holder", `{"pick":{"few":[0,0]}}`, `v.pick.type = MIN_PICK_TYPE_FEW;`},
+	{"arm_select", "Holder", `{"pick":{"few":[0,0]}}`, `memset( &v.pick.as.few, 0, sizeof( v.pick.as.few ) ); v.pick.as.few.value_count = 2; v.pick.type = MIN_PICK_TYPE_FEW;`},
 }
 
 func cCountedMinProbe() string {

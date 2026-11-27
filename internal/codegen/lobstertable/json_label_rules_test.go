@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster/lobsterrun"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/lobster/lobsterrun"
 )
 
 // TestLobsterJsonLabelRules holds docs/SPEC-TABLES.md §16.7's label rules in

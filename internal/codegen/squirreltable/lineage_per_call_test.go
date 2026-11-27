@@ -4,7 +4,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirreltable"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/squirreltable"
 )
 
 // The lineage a GenerateLineage call is handed belongs to that call alone.

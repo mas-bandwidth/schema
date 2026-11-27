@@ -10,8 +10,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/internal/atomicfile"
-	"github.com/mas-bandwidth/schema/v2/internal/modulemove"
+	"github.com/mas-bandwidth/schema/v3/internal/atomicfile"
+	"github.com/mas-bandwidth/schema/v3/internal/modulemove"
 )
 
 // The pin directive an adopter writes in each package's generate.go; the Go
@@ -31,9 +31,8 @@ const (
 // pinMainModule is this build's own module path: the path its go.mod names,
 // and so the path main resolves under. The refusal of a tag below the module
 // move points at it (`go install <it>/cmd/schema@main`). It is written whole,
-// unlike the spellings above, so the module-path move program DOES move it:
-// #4445 turns it to /v3 with go.mod.
-const pinMainModule = "github.com/mas-bandwidth/schema/v2"
+// unlike the spellings above, and moved to /v3 with go.mod.
+const pinMainModule = "github.com/mas-bandwidth/schema/v3"
 
 // pinReleases is where the prebuilt binaries of every release are.
 const pinReleases = "https://github.com/mas-bandwidth/schema/releases"

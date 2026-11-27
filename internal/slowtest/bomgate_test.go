@@ -38,7 +38,7 @@ func TestJavaScriptBOMProbeHonorsSlowGate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("disabled BOM probe ran or failed: %v\n%s", err, output)
 	}
-	const pkg = "github.com/mas-bandwidth/schema/v2/internal/codegen/jstable"
+	const pkg = "github.com/mas-bandwidth/schema/v3/internal/codegen/jstable"
 	const name = "TestJavaScriptTextBOMMatchesGo"
 	var skipped int
 	var reason bool

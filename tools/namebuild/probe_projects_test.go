@@ -70,7 +70,7 @@ func TestProbeProjectsBuildTableOutput(t *testing.T) {
 		t.Parallel()
 		dir, _ := buildProbe(t, "go", c)
 		mod := readProbe(t, dir, "go.mod")
-		if !strings.Contains(mod, "github.com/mas-bandwidth/schema/v2 => /repo/root") {
+		if !strings.Contains(mod, "github.com/mas-bandwidth/schema/v3 => /repo/root") {
 			t.Errorf("go.mod does not replace the schema module with the repository, so tables/goruntime is not found:\n%s", mod)
 		}
 		if !strings.Contains(mod, "github.com/mas-bandwidth/serialize.go/v2 => /rt/serialize.go") {

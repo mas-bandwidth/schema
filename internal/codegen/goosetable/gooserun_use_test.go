@@ -19,7 +19,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/execref"
+	"github.com/mas-bandwidth/schema/v3/internal/execref"
 )
 
 // gooserunUseExempt names the calls a bare exec.Command is right for, by the

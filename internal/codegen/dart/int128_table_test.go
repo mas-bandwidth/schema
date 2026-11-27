@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/dart"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/darttable"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/dart"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/darttable"
 )
 
 // TestTableOnlyUnitEmitsInt128Support pins the corpus-completeness fix behind

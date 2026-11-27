@@ -45,6 +45,7 @@ public final class MixedStatFixed {
      * stores at constant offsets and nothing else.
      */
     public static void writeBody(byte[] b, int at, Value v) {
+        assert v != null : "a null record is written";
         assert checkWrite(v);
         TableFixed.put32(b, at + 0, v.statId);
         TableFixed.put32(b, at + 4, v.delta);

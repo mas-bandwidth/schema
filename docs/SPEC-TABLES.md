@@ -4688,7 +4688,22 @@ default and not as zero: `sp-enum-scalar-deprecated` (text),
 `invalid_value`, the Reason naming `<Table>.<field>` and the variant. A
 deprecated field is never refused because its value is the writer's own
 default, while a variant value is the caller's, so the two features differ here
-on purpose.
+on purpose. EVERY writer holds this, not the text writer alone: the table
+save, the fixed save and the message save refuse the deprecated variant as an
+element and as a scalar, an assert leg in its debug build (SPEC.md §5.1). A
+writer that emits one hands every reader a value it reads back as the default,
+so a round trip moves the value silently. `TestJavaDeprecatedVariantNeverWritten`
+holds the Java leg's three binary writers, scalar and element, beside the
+lawful variant. Every leg answers the shared rows `wref_enum_deprecated`,
+`wref_enum_scalar_deprecated`, `fref_enum_deprecated` and
+`fref_enum_scalar_deprecated` (refused) and their `_ok` twins (written) on the
+`write-refusal` and `write-refusal-fixed` surfaces. A leg whose driver saves a
+FIXED root through its fixed form on both surfaces holds its variable save to
+the rule by its own test (`TestJsDeprecatedVariantNeverWritten`), since the
+shared rows reach that writer only through a variable root. The block builder
+holds the rule too (an assert leg in its debug build): Dart's
+(`TestDartBlockBuildRefusesDeprecatedVariant`), as Rust's message writer does
+(`TestRustDeprecatedVariantMessageNeverWritten`).
 
 **COMPILE TIME.** A field default or a `const` that names a deprecated variant
 is refused by name. An enum-keyed array such as `[Enum]int32` whose enum has
@@ -4963,6 +4978,15 @@ one document rather than two.
   | `32` no payload | `L`, then `L` bytes, and this form writes `L = 0` |
   | `36` timestamp | 8 bytes, two's complement, little-endian: NANOSECONDS SINCE THE UNIX EPOCH, `0` being the zero time `1970-01-01T00:00:00Z` (SPEC.md §4.13). The payload is the `i64`'s and the KIND is not `5`: a field respelled between `int64` and `timestamp` is a kind mismatch that refuses the WHOLE load `kind_mismatch`, never reinterpreted, defaulted or counted, and NEITHER SPELLING WIDENS INTO THE OTHER (R14; §4, THE ONE WIDENING RULE). Every count is a legal value — the wire has no range to check — and what a target refuses is a time its own time type holds and no count names, at the point a time enters the field, by name (SPEC.md §4.13). **`35` IS NOT THIS KIND'S NUMBER:** `35` is the fixed layout's optional wrapper (§3.4), a LAYOUT kind that never rides a record, and the next number the wire has free is `36` |
 
+  **Variable-length text and bytes carry their used extent.** For a
+  `string(N)` field or selected arm, `L` gives the number of used UTF-8
+  bytes in the payload. The declaration bounds this byte length by `N`.
+  For a `bytes(N)` field or selected arm, the kind `14` array count is
+  the number of used bytes and is at most `N`. Each kind `6` element
+  contributes one byte. The outer `L` covers the array body, including the
+  element kind and count. The writer emits exactly the used bytes of each
+  value, with no terminator or spare capacity.
+
   **A `1` BOOL'S PAYLOAD IS ONE BYTE, AND `0` AND `1` ARE THE ONLY LEGAL VALUES.**
   A writer writes only `0` or `1`. On the VARIABLE wire any OTHER byte is
   damage: the whole load refuses `wire_damaged` (§4, §6.5). The FIXED form
@@ -5127,7 +5151,7 @@ one document rather than two.
   | an `enum` | `30` | the reference's own length | the variant id reference |
   | a `flags` mask | `9` | `8` | the u64 mask |
   | a `string(N)` | `12` | the length | the bytes, no terminator, a kind `12` payload without its own `L`. Ill-formed UTF-8 and a zero byte are damage, the whole load discarded (§4) |
-  | a `bytes(N)` | `14` | the array body's length | the array body: element kind `6`, `N`, then the bytes |
+  | a `bytes(N)` | `14` | the array body's length | element kind `6`, the used byte count, then exactly that many bytes |
   | an array `[N]T` / `[..N]T` | `14` | the array body's length | the array body: element kind, `N`, then the elements, a kind `14` payload without its own `L`, its header read inside the ARM's `L` (above) |
   | a pointer `*T` | `17` | the index's own length | the node index, null as `0` (§3.1) |
   | a union | `15` | the inner arm id's length, or that plus the inner kind byte, its `L` and its payload | the union payload in its place: the inner arm id reference, then its kind, its own `L` and its payload when the id is not `0` |
@@ -6968,7 +6992,15 @@ a fact of the announcement, not of a body. A widening is not a mismatch (§4). *
 meets such an entry in a batch instead** — the reference's `AnnounceRead` holds no
 root, so it meets the entry at the field or arm that names it — **REFUSES THE
 WHOLE BATCH `kind_mismatch`**: the count is `0` and every body holds its declared
-defaults. It never skips the entry, counts it and delivers the batch. **A field whose
+defaults. It never skips the entry, counts it and delivers the batch. **THE
+ANNOUNCED KIND OF AN ARRAY OR AN ENUM-KEYED ARRAY INCLUDES ITS ELEMENT KIND**
+(§3, "An array's ELEMENT KIND is part of its identity"), at a field and at an
+arm alike: an announced kind that agrees over an element kind that does not is
+the same mismatch and refuses the whole batch `kind_mismatch`, an `int32`
+element read as `uint8`, a record element read as `uint8`, in a counted, a
+fixed and an enum-keyed array. Only a positional array's element kind widens
+(§4, THE ONE WIDENING RULE: `uint8` elements read as `uint16`); an
+enum-keyed array's element kind that moves is a mismatch. **A field whose
 announced kind AGREES and whose announced RANGE differs decodes**, and refuses
 `out_of_range` where the value falls outside this reader's bound, which is §4's
 rule for a range change on the variable form and is why the shapes carry ranges
@@ -7148,6 +7180,18 @@ Where each refusal runs is each form's own:
 | FIXED (§3.4) | the WRITER refuses a NaN or an infinity (`-1`); the READ tests the raw bits for a non-finite value FIRST (`non_finite_float`, refused) and then each end against the WRITER's range the plan carries (`out_of_range`, refused); a `-0` lands as `+0`, uncounted, and the WRITER stores `+0` for it |
 | VARIABLE (§3) | the same: the WRITER refuses, and the READ refuses a non-finite value and then a finite one outside the reader's declared range (§4), `out_of_range` |
 | TEXT / JSON (§16) | JSON has no spelling for a NaN or an infinity, so the WRITER REFUSES each (§16.2: measure and write return `-1`, and the reference's refusal names the value) and nothing lands; a text cannot carry one in. A `-0` is spelled `-0`, and the READ lands it as `+0`, uncounted |
+
+**A DEBUG RANGE CHECK DOES NOT MASK THE NON-FINITE REFUSAL.** A NaN or an
+infinity also fails the range compare. Where a leg's writer has its own
+`non_finite_float` refusal, the leg's debug range check on a compressed or
+ranged float holds a FINITE value only, so a non-finite value passes it and
+reaches that refusal. A debug range check that fires on a NaN or an infinity
+first, masking the leg's own refusal, is a defect, on the message writer as on
+the fixed one (Java's message writer, 2026-11-24, held by
+`TestJavaFiniteFloats` `form-write-ranged`). This asks nothing of a release
+build: an assert leg's release build has no write-side refusal (SPEC.md §5.1),
+and a leg whose non-finite check is itself a debug assert (C#, for one) meets
+this rule as it stands.
 
 The quantizer, read off the Go oracle (`ir.TableMessageQuantize` and
 `TableMessageDequantize`) on two shapes, because a range that starts at `0`
@@ -7369,7 +7413,15 @@ is the checkout's emitters, not a claim that a release tag already said so.
   register the fixed tables of the unit, and what they reach, as the message
   roots and slots, and a variable table registers none, so the batch verbs
   answer for fixed roots only.
-- **Goose** emits no message form.
+- **Goose** (`internal/codegen/goosetable/messageform.go`) emits the unit's
+  announcement as `MessageAnnouncement` when the unit declares a fixed root.
+  Each declared fixed root exposes `<Root>Announce`, `<Root>AnnounceRefused`,
+  `<Root>MeasureMessages`, `<Root>SaveMessages`, and `<Root>LoadMessages`.
+  The announcement is a byte slice. Its root-level refusal flag is true and
+  the slice is empty when the vocabulary exceeds 4096 entries. The generated
+  runtime's `schema_rt::announce_read` resolves a peer announcement into a
+  `MsgVocabulary` for the batch reader. Variable roots expose no batch verbs.
+  See the [Goose fixed-root message example](SPEC-CONFORMANCE.md#goose-fixed-root-messages).
 - **Elixir** (`internal/codegen/elixirtable/elixirtable.go`, `messageform.go`)
   emits `<Package>.TableMessage` when the unit has a fixed root and does not
   emit it otherwise. The module carries the announcement (`announce`,
@@ -8882,7 +8934,16 @@ rather than a preference** (`test/bench/fixedform_measure.cpp`):
 
 **THE PREFILL IS WHAT ANSWERS "ABSENT FIELD".** A field this record does not
 carry has NO PLAN ENTRY at all, so it keeps the default the prefill put there
-and the loop never learns it existed. **THE ABSENCE OF AN ENTRY IS ALSO WHAT
+and the loop never learns it existed. **The prefill is of the destination,
+whatever it held before the call**: a row, element, arm or optional payload
+the caller's value already held is reset like a fresh one, so after a lineage
+load every field the writer did not supply holds its declared default, at
+every depth, and never a value the caller's storage held before the read
+(docs/SPEC-CONFORMANCE.md, [Fields an older fixed writer does not
+supply](SPEC-CONFORMANCE.md#fields-an-older-fixed-writer-does-not-supply)).
+A slot the plan lands only in part, such as a reader `[N]T` an older writer
+sent shorter, lands whole: the writer's elements, then the default past them.
+**THE ABSENCE OF AN ENTRY IS ALSO WHAT
 ANSWERS "UNKNOWN FIELD"**: a field of the writer's this reader cannot name is
 simply never a source, and the bytes it occupies are stepped over because the
 next entry's `src` is past them. **Skipping costs nothing, because skipping is
@@ -9935,6 +9996,15 @@ one-byte over-read into a finding attributed to the mutant that caused it.
 long one, and that target is picked up by the certification workflow the way
 every `tables-<lang>-release` target is.
 
+**AN ARM CLAIMS A ROOT ONLY WHEN THE LEG HOLDS THAT ARM'S READ FOR IT.** A leg
+answers the roster with a `1` for a root only when it can read that root the
+way the arm reads it: under `--builder`, through the generated builder. A root
+the leg holds no builder read for is answered `0`, which the harness counts and
+names as absent, and is never handed to some other read that cannot say whether
+the builder completed: a C# builder arm that did exactly that threw on the
+first mutant of `shapes.Bounds` (a truncation to nothing) where the engine
+refuses the load by name.
+
 **Two negative controls stand behind it**, because a fuzzer that has never gone
 red proves nothing about the reader it points at, and each removes ONE check
 from the EMITTER — through `go build -overlay`, so no tracked file moves —
@@ -10927,7 +10997,10 @@ the class. A Go fixed refusal is a typed
   wire's count of them, and answers a count of `0`; a fixed batch read resets
   EVERY row it was handed, and the same holds for a refusal of the bounds
   pass after the records landed. No partial value survives a refusal, and no
-  value keeps what the caller held before the call. A language whose read
+  value keeps what the caller held before the call: a reset row holds EVERY
+  field a fresh value holds, a counted array's element slots past its count
+  included, so a language whose element slots are objects resets each slot in
+  place and does not stop at the count. A language whose read
   hands back a fresh collection rather than filling the caller's answers a
   refusal with one shape for every reason (a framing refusal and a body
   refusal look alike to the caller), and a read that fills a caller's list
@@ -11390,6 +11463,15 @@ Two consequences follow, and each is a rule:
   its defaults writes nothing (§3). One whose body holds a retained field
   writes its body, that field and its terminator. Elision is about what a body
   CONTAINS, and a retained field is content.
+- **A RETAINING SAVE ELIDES WHAT THE PLAIN SAVE ELIDES, AND NOTHING ELSE.**
+  Retention adds content; it never changes the test for a field with none.
+  A FIXED ARRAY OF UNIONS whose every element is None is left out, as §3
+  leaves out any fixed array at its defaults: a None element has no arm, so
+  no body under it can carry a retained record, and there is nothing for the
+  field to carry. A retaining save that tested the list for emptiness wrote
+  the field as its bound of Nones, because a fixed array is always its bound
+  long (Java, found by the full nightly 45130315968 on
+  `messagedemo.ToolEnvelope`; SPEC-CONFORMANCE.md §7).
 - **A retained id enters the file's ID TABLE in first-use order** (§3), at the
   point the walk reaches it, which is after its body's own fields. An id
   already in the table takes that entry and is never appended twice, exactly as
@@ -12818,7 +12900,10 @@ count lies below its array's `Min` or above its bound, or whose length is
 negative, is REFUSED (`Cook` writes nothing, `CookMeasure` answers `-1`); it is
 never clamped to the bound and written. A NaN or an infinity in a plain float
 is refused (row 7), as the save refuses it. A leg whose measure and write
-share one body refuses in both.
+share one body refuses in both. **These `CookMeasure` refusal answers are for a
+pointered root, whose reached graph determines its size. A fixed root is the
+exception stated below: its `CookMeasure` is the layout constant even for an
+invalid value, and its `Cook` alone runs the value checks before writing.**
 
 **A BUILD CAN WRITE A COOK, AND THE BYTES ARE THE TOOL'S.** `schema cook` is
 the reference and stays it: a generated writer is held to the tool's output
@@ -13820,7 +13905,7 @@ here?" — §2.2's own distinction between machinery and columns.
 
 **Shared is the default; standalone is the named option.** The Go target's
 home file imports `tables/goruntime` in this module
-(`github.com/mas-bandwidth/schema/v2/tables/goruntime`) and aliases the
+(`github.com/mas-bandwidth/schema/v3/tables/goruntime`) and aliases the
 shared declarations in (`runtime` unset, empty or `shared`). With the
 generator option `runtime: standalone` the unit instead carries the
 table-independent runtime in its home file, and that output is byte-identical
@@ -13851,7 +13936,7 @@ compile error naming `goruntime.Version`, never a run-time surprise.
 Mixing is not a supported state and nothing is negotiated.
 
 **What compiles a shared unit.** A module that compiles a default-generated
-unit requires `github.com/mas-bandwidth/schema/v2` and resolves it to the
+unit requires `github.com/mas-bandwidth/schema/v3` and resolves it to the
 schema checkout (a `replace` to it, or the released module), beside
 `serialize.go`: the generated code imports `tables/goruntime` and nothing else
 of schema's. Every module this repository writes or commits around generated
@@ -16728,6 +16813,13 @@ carries three accessors where C++ carries a tag offset and an arm offset.
   caller's; the read path allocates nothing beyond it. Fields the text does
   not mention keep their storage defaults (SPEC §4.2: zero, or the
   specified default), exactly as an absent field on the wire does (§4).
+  **In C that holds for the repeated-key check too** (§16.2): every open
+  object's key set is carved from ONE pool of 512 slots on the read's entry
+  frame, never from the walk's own frames and never from the heap, so a
+  text whose open objects' sets fit the pool (an object of up to 127 keys
+  at the top) reads with no allocator call. A set that outgrows the pool
+  moves to the heap, so no object is ever too wide to check. `make
+  tables-c-soak` counts the allocator calls over the corpus and owes zero.
 - **`ToJson` writes ONE instance as ONE text**, every field, in declaration
   order, defaults included — a text is for people and tools, and a text
   that elides is a text a reader has to know the schema to complete.
@@ -16840,8 +16932,20 @@ nests as deep as it is long. **The cap is 128**: a read that nests deeper is <!-
 **The read's cap counts every object and array the reader walks, placed or skipped**,
 the value under an unknown key included, the root at depth 0: a container at
 depth 128 is the deepest read, so 129 nested containers (the root and 128
-inside it) are read and the 130th nested container refuses `malformed`. The write's cap at the same number counts
-table and type values only (W2), so the two caps share a number and not a unit.
+inside it) are read and the 130th nested container refuses `malformed`. **The write's cap counts
+the same containers in the same unit** (W2): every object and array it writes,
+an empty `[]` or `{}` included, so a writer never emits a text its own reader
+refuses.
+
+**LEAF-CONTAINER BOUNDARY VECTORS.** Let `Node` be a variable table with
+`next *Node`, `marks Mark` for a one-variant `flags Mark`, and
+`words [..1]string(2)`. Nest a terminal `{"marks":["Hot"]}` or
+`{"words":["x"]}` under 127 `{"next":` objects and their closing braces.
+The terminal flags array or text list is at depth 128 and READS. Nest it under
+128 such objects and that leaf container is at depth 129 and REFUSES. These
+are portable construction recipes: they require no implementation-specific
+root or generated identifier, and the declared `json_max_depth` below remains
+the number both verdicts straddle.
 
 **A SCHEMA-NAME STRING IS CAPPED AT 255 BYTES, wherever the read meets one** —
 an object key that names a field, an enum variant name, a flags element, a
@@ -17061,8 +17165,9 @@ written as something else.
 - **A compressed or ranged float off its range** — refused per leg as
   docs/SPEC.md §5.1 row 10 and docs/rulings.json `write-refusal` list: the
   verdict is the contract, the reason name per language.
-- **A graph nested past 128** (§16.2): the writer carries the reader's depth
-  cap, so it never produces a text its own reader would refuse.
+- **A container nested past 128** (§16.2, §16.14 W2): the writer judges the
+  reader's depth cap at every object and array it writes, an empty `[]` or `{}`
+  included, so it never produces a text its own reader would refuse.
 - **A blob named from two slots** — `blob_shared` (§2.5): a blob is owned by
   one slot, and there is no spelling that writes it once for two owners.
 - **Storage that is not text** — `invalid_value`: a string holding
@@ -18266,7 +18371,7 @@ length past `N`, an enum ordinal outside its variant set, a union tag outside
 its arm set, a NaN or an infinity, ill-formed text, a flags bit no variant
 names, and a compressed or ranged float off its range — and, beside those rows,
 a deprecated enum variant (§2.15), a `required` value outside its declared range
-(§2.3), a text list past its declared total (§2.13), a table value past the
+(§2.3), a text list past its declared total (§2.13), a container past the
 depth cap (W2), a blob named from two slots (`blob_shared`, §2.5), a `&node`
 definition that would hold no field (§16.3), and STORAGE THAT IS NOT TEXT,
 `invalid_value`: a string holding ill-formed UTF-8 (W8). Each is refused and
@@ -18294,13 +18399,20 @@ spaces (`0x20`); `NL(d)` is a line feed followed by `INDENT(d)`.
 THE DEPTH CAP IS 128, AND READ AND WRITE MEASURE IT IN ONE UNIT: this `d`,
 which every enclosing object and array raises by one (a table's object, an
 array, a map's object and a union's object alike), the root at 0. The write
-judges it at each table or type value (W3): one at `d` past 128 refuses the
-write. The read judges the same `d` at each table value it places and at
-each container it skips (§16.2), so a document this writer emits never
-meets the read's cap, and a pointer chain of
-128 nodes under the root writes and reads and one of 129 does neither. A
-scalar, a string or a `null` written at depth 129 nests nothing and is
-written: the last node's null `next` does not count. No other whitespace is
+judges it at EVERY CONTAINER IT WRITES, exactly as the read judges it at every
+container it walks (§16.2): a table or type value (W3), an array, a text
+list, a flags value's array of names, a map's object, an enum-keyed array's
+object and a union's object, the empty `[]` and `{}` included. A container at `d` past 128 refuses the write,
+so a document this writer emits never meets the read's cap. A value is
+writable only when its deepest container, an empty leaf array included, sits
+at `d` 128 or less: a pointer chain of 128 nodes under the root whose nodes
+hold no container writes and reads, and one of 129 does neither; a chain whose
+nodes each hold an array writes and reads at 127 nodes, and at 128 the last
+node's array sits at 129 and the write refuses. A scalar, a string or a
+`null` written at depth 129 nests nothing and is written: the last node's null
+`next` does not count. The refusal is the text writer's own, the -1 of §16.3
+in every build and every leg, the one a table value past the cap already
+takes: one cap, one check, whatever the container. No other whitespace is
 ever written outside a string: no tab, no carriage return, no space before a
 `,` or a `:`, no space after a `,`.
 

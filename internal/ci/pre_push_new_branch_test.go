@@ -7,6 +7,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v3/internal/testinputs"
 )
 
 // TestPrePushHookNewBranchChecksOnlyUnpushedCommits drives .githooks/pre-push
@@ -70,6 +72,7 @@ func TestPrePushHookNewBranchChecksOnlyUnpushedCommits(t *testing.T) {
 	const zero = "0000000000000000000000000000000000000000"
 	push := func(lsha string) (string, error) {
 		t.Helper()
+		testinputs.Files(t, hook)
 		cmd := exec.Command("bash", hook, "origin", "unused")
 		cmd.Dir = dir
 		cmd.Env = append(os.Environ(), env...)
