@@ -1914,8 +1914,8 @@ fixedElement = function(T, e, fd, bytes, off, isElement, report, st, set) {
     return null;
   }
   // NO FIXED READ CLAMPS (docs/SPEC-TABLES.md §3.4, §4): a value past its
-  // declared range refuses the load out_of_range, where the variable form's
-  // tolerant walk lands it at the end and counts it
+  // declared range refuses the load out_of_range; it is never landed at the
+  // end and counted, as the variable form's walk does
   local oor = report.oor;
   x = rangeScalar(e, fk, x, report);
   if (report.oor != oor) return "out_of_range";
