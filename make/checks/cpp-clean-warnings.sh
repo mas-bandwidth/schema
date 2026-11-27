@@ -52,7 +52,7 @@ export CLANGXX SERIALIZE_DIR OUT incs
 find "$@" \( -name '*.h' -o -name '*.cpp' \) | sort > "$OUT/files.txt"
 if [ ! -s "$OUT/files.txt" ]; then echo "tables-cpp-clean: no generated C++ under $*"; exit 1; fi
 
-# two families are dropped, each for a stated reason; CPATH is unset so the
+# three families are dropped, each for a stated reason; CPATH is unset so the
 # -isystem order below is what the compiler sees on every host:
 #   c++98-compat      the code is C++17 by design.
 #   unsafe-buffer-usage, unsafe-buffer-usage-in-libc-call
@@ -64,7 +64,17 @@ if [ ! -s "$OUT/files.txt" ]; then echo "tables-cpp-clean: no generated C++ unde
 #                     defect in it. Older clang does not know either kind, so
 #                     leaving them in would make the ratchet depend on the
 #                     version of the host's clang.
-WFLAGS="-std=c++17 -fsyntax-only -fno-caret-diagnostics -Weverything -Wno-c++98-compat -Wno-c++98-compat-pedantic -Wno-unsafe-buffer-usage -Wno-unsafe-buffer-usage-in-libc-call"
+#   padded            -Wpadded reports the padding a struct's layout carries,
+#                     not a defect in it (#424, the coordinator's ruling for
+#                     Glenn). The padding is the ABI's: it differs with the
+#                     target's pointer width and alignment rules, so the only
+#                     ways to silence it are explicit pad members, which would
+#                     hard-code ONE ABI's padding into every build, or field
+#                     reordering, which moves the storage the fixed form and the
+#                     packet wire address by offset. The packet emitter's files
+#                     carried it on the ratchet for that reason; it is one kind,
+#                     dropped here by kind, so no file is listed for it.
+WFLAGS="-std=c++17 -fsyntax-only -fno-caret-diagnostics -Weverything -Wno-c++98-compat -Wno-c++98-compat-pedantic -Wno-unsafe-buffer-usage -Wno-unsafe-buffer-usage-in-libc-call -Wno-padded"
 # a probe, not a verdict: what clang says about the flag decides, never its status
 case $(printf '' | $CLANGXX -std=c++17 -fsyntax-only -Wallocator-wrappers -x c++ - 2>&1) in
 *'unknown warning option'*) ;;
