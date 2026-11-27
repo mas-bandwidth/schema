@@ -99,15 +99,14 @@ permissions:
 
 jobs:
   caa:
-    # Only a SAME-REPOSITORY sprint branch skips (CI-TOOLS-2): a fork controls
-    # its branch name and reaches this job through pull_request_target, so a
-    # fork branch named sprint/... must still be checked.
+    # Every pull request runs it, whatever its branch is named (2026-11-24,
+    # internal/ci TestNoJobRunsOnABranchName).
     # A comment starts this job only when one of the steps below would run: a
     # job that starts and skips every step still holds a scarce self-hosted
     # runner. The comment arms repeat the step conditions below (keep them in
     # step; internal/ci/cla_job_test.go holds both). pull_request_target
     # always starts it: the required caa check must report on every PR.
-    if: (startsWith(github.head_ref, 'sprint/') == false || github.event.pull_request.head.repo.full_name != github.repository) && (github.event_name == 'pull_request_target' || (github.event.issue.pull_request != null && github.event.issue.user.login != 'dependabot[bot]' && (github.event.comment.body == 'I have read the CAA and I hereby sign it, assigning copyright in my contributions to Más Bandwidth LLC.' || github.event.comment.body == 'recheck')) || (github.event_name == 'issue_comment' && github.event.comment.user.type != 'Bot' && github.event.comment.user.login != 'gafferongames' && github.event.comment.user.login != 'rowan-claude' && contains(github.event.comment.body, 'I hereby sign it, assigning copyright') && !(github.event.issue.pull_request != null && github.event.comment.body == 'I have read the CAA and I hereby sign it, assigning copyright in my contributions to Más Bandwidth LLC.')))
+    if: (github.event_name == 'pull_request_target' || (github.event.issue.pull_request != null && github.event.issue.user.login != 'dependabot[bot]' && (github.event.comment.body == 'I have read the CAA and I hereby sign it, assigning copyright in my contributions to Más Bandwidth LLC.' || github.event.comment.body == 'recheck')) || (github.event_name == 'issue_comment' && github.event.comment.user.type != 'Bot' && github.event.comment.user.login != 'gafferongames' && github.event.comment.user.login != 'rowan-claude' && contains(github.event.comment.body, 'I hereby sign it, assigning copyright') && !(github.event.issue.pull_request != null && github.event.comment.body == 'I have read the CAA and I hereby sign it, assigning copyright in my contributions to Más Bandwidth LLC.')))
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 2
     defaults:

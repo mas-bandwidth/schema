@@ -15,10 +15,9 @@ import (
 // §5.1 rows 1 to 6 and 10) on every field, arm payload and element, required
 // or not; the C leg's TestCWriteContractDebug is the pattern. Dart is an
 // assert leg: a row the declaration does not admit throws AssertionError
-// under --enable-asserts; rows the leg refuses in every build (6 and 7, and
-// 1 and 10 on a required field) throw StateError in both runs; and without
-// asserts no AssertionError is ever thrown. Every admitted twin saves in
-// both runs.
+// under --enable-asserts; rows the leg refuses in every build (6 and 7)
+// throw StateError in both runs; and without asserts no AssertionError is
+// ever thrown. Every admitted twin saves in both runs.
 const review1121WriteSchema = `package probe
 
 enum Color { red, green }
@@ -147,17 +146,18 @@ func TestDartWriteContractDebug(t *testing.T) {
 	slowtest.Gate(t, "dart (it runs the generated variable save with and without asserts)")
 	debug := runDartWriteContract(t, true)
 	release := runDartWriteContract(t, false)
-	// Debug: the assert, or the every-build refusal a required field gets first.
+	// Debug: the assert. A required field is an assert leg like any other.
 	wantDebug := map[string]string{
-		"row1_field": "assert", "row1_arm": "assert", "row1_element": "assert", "row1_required": "refused",
+		"row1_field": "assert", "row1_arm": "assert", "row1_element": "assert", "row1_required": "assert",
 		"row2_bits": "assert", "row3_below_min": "assert", "row3_past_max": "assert",
 		"row4_string": "assert", "row4_bytes": "assert", "row5_enum": "assert", "row6_union": "assert",
-		"row10_field": "assert", "row10_arm": "assert", "row10_element": "assert", "row10_required": "refused",
+		"row10_field": "assert", "row10_arm": "assert", "row10_element": "assert", "row10_required": "assert",
 		"row10_past_top_step": "assert",
 	}
-	// Without asserts: no AssertionError; a required field's rows 1 and 10
-	// and row 6 are refused in every build.
-	wantRelease := map[string]string{"row1_required": "refused", "row6_union": "refused", "row10_required": "refused"}
+	// Without asserts: no AssertionError, and a bad write is not refused (Dart
+	// refuses a bad write by debug assert only); row 6, a tag naming no arm,
+	// is refused in every build.
+	wantRelease := map[string]string{"row1_required": "saved", "row6_union": "refused", "row10_required": "saved"}
 	for _, row := range review1121WriteRows {
 		want, ok := wantDebug[row.name]
 		if !ok {
