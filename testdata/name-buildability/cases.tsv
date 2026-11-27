@@ -312,7 +312,13 @@ t_Fmt_case1	builds	-	-
 t_Utf8_case1	builds	-	-
 t_Debugger	builds	-	-
 c_max_items	builds	-	a const named in lowercase: Ruby spells it MAX_ITEMS (SPEC §4.6, Ruby mapping)
-e_kind	builds	-	an enum named in lowercase: Ruby spells it Kind
+e_kind	refuse-at-check	C++	an enum named in lowercase beside a field of its own name: C++ and Dart cannot spell kind kind (SPEC §4.6)
+e_kind_arm	refuse-at-check	C++	a table union arm named like its own enum: C++ and Dart cannot spell the arm kind kind (SPEC §4.6)
+e_kind_case	refuse-at-check	Dart	a field Kind of type kind: Dart spells the field kind and it hides its own type (SPEC §4.6)
+e_kind_sibling	refuse-at-check	C++	a field kind of type Kind2 beside a field of type kind: the member hides a type its class uses in C++ and Dart (SPEC §4.6)
+e_kind_upper	builds	-	a field kind of type Kind: two names in every target (SPEC §4.6)
+e_kind_other_owner	builds	-	a field kind on a type that does not use the enum kind (SPEC §4.6)
+u_enum_arm_table	builds	-	a table-closure union (an enum arm) reached from a table: the Dart fixed form owns its storage class
 e_infinity	refuse-at-check	Lobster	an enum named infinity: the Lobster lexer reads infinity (and nan) as a float literal, never an identifier; split from n_internal_33
 e_unmanaged	refuse-at-check	C#	an enum named unmanaged: the C# constraint where T : unmanaged then names the enum (CS0701); split from n_internal_75
 u_pick	builds	-	a union named in lowercase: Ruby spells it Pick, its tag module PickType

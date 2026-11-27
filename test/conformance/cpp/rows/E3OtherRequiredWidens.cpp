@@ -75,9 +75,11 @@ int main()
         check( back.lead == 0xAAAAAAAAu && back.trail == 0xBBBBBBBBu,
                "uint_widen: the lead and trail bracket fields landed exactly" );
         check( r.widened == 1, "uint_widen: widened == 1 (once per entry per record, unsigned ladder)" );
-        check( r.unknown == 0 && r.kind_mismatch == 0 && r.clamped == 0,
+        // strict-only-read: a kind mismatch, an out-of-range value and a repeat now refuse the
+        // whole load (no counter), so the retired zero counts read as not refused, not damaged.
+        check( !r.refused && !r.damaged && r.unknown == 0,
                "uint_widen: no other counter moved" );
-        check( !r.refused && !r.malformed, "uint_widen: the read is not a refusal" );
+        check( !r.refused && !r.damaged, "uint_widen: the read is not a refusal" );
     }
 
     // ---- 2. uint16 → uint32: 0x8000 (MSB set, NOT a sign bit in unsigned) ----

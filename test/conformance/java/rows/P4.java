@@ -1,10 +1,12 @@
 // P4.java — "wrong plan goes red" (docs/FIXED-FORM-ALGORITHM.md:1685)
 //
 // Test: a wire written under schema K1 (grade=Grade, raw=uint16) read under
-// schema K2 (grade=uint16, raw=Grade) MUST compile to a plan that lands
-// neither moved field (no entry, the field keeps its default); the reverse
-// (K2 written, K1 read) likewise. The kind census that once counted them is
-// the compile's own and no longer a read counter (docs/plans/strict-only.md).
+// schema K2 (grade=uint16, raw=Grade) is an UNLAWFUL pair: a kind that MOVED
+// is refused, never reinterpreted, so COMPILE lays no plan for it and refuses
+// layout_malformed (docs/FIXED-FORM-ALGORITHM.md §5.2 MATCH, "a kind that
+// MOVED is refused"; §5.4; §5.9 #6, "COMPILE lays no plan for it"); the
+// reverse (K2 written, K1 read) likewise. No census counts it: the pair is
+// refused, never counted (docs/plans/strict-only.md).
 //
 // Run from repo root as:
 //   java -cp build/conformance-java test/conformance/java/rows/P4.java
@@ -71,7 +73,8 @@ public final class P4 {
         int nK1asK2 = tblk2.TableFixed.compile(theirsK1, mineK2, tblk2.RootFixed.dest, planK1asK2, remapK1asK2, repK1asK2);
 
         check(repK1asK2.unknown == 0, "K1 read under K2 produces unknown == 0");
-        check(nK1asK2 == 0, "K1 read under K2 produces 0 plan copy entries");
+        check(nK1asK2 == -1 && repK1asK2.refused && repK1asK2.reason == tblk2.TableFixed.Reason.layoutMalformed,
+            "K1 read under K2 lays no plan and refuses layout_malformed (n=" + nK1asK2 + ", reason=" + repK1asK2.reason + ")");
 
         // (b) K2 wire read under K1 reader:
         // Reader is K1; K1 compiles writer K2's layout against K1's own layout.
@@ -87,7 +90,8 @@ public final class P4 {
         int nK2asK1 = tblk1.TableFixed.compile(theirsK2, mineK1, tblk1.RootFixed.dest, planK2asK1, remapK2asK1, repK2asK1);
 
         check(repK2asK1.unknown == 0, "K2 read under K1 produces unknown == 0");
-        check(nK2asK1 == 0, "K2 read under K1 produces 0 plan copy entries");
+        check(nK2asK1 == -1 && repK2asK1.refused && repK2asK1.reason == tblk1.TableFixed.Reason.layoutMalformed,
+            "K2 read under K1 lays no plan and refuses layout_malformed (n=" + nK2asK1 + ", reason=" + repK2asK1.reason + ")");
 
         // (c) Lawful K1 compile: 0 mismatches, plan entries produced
         tblk1.TableFixed.Entry[] planK1asK1 = new tblk1.TableFixed.Entry[64];
@@ -129,15 +133,23 @@ public final class P4 {
         check(k1Decoded.grade == tblk1.K1.Grade.GOLD, "Lawful K1 read lands grade=Gold");
         check(k1Decoded.raw == 500, "Lawful K1 read lands raw=500");
 
-        // Cross-schema read through compiled plan:
-        // Mismatches are caught and skipped, fields safely take defaults
-        byte[] k2Image = new byte[tblk2.RootFixed.bodyBytes];
-        System.arraycopy(tblk2.RootFixed.defaults, 0, k2Image, 0, tblk2.RootFixed.bodyBytes);
-        tblk2.TableFixed.run(planK1asK2, nK1asK2, remapK1asK2, k1WireBody, 0, k1WireBody.length, k2Image, repK1asK2);
-        tblk2.RootFixed.Value k2Decoded = new tblk2.RootFixed.Value();
-        tblk2.RootFixed.scatter(k2Image, 0, k2Decoded, repK1asK2);
-        check(k2Decoded.grade == 0, "Cross-schema read leaves grade at default (0)");
-        check(k2Decoded.raw == tblk2.K2.Grade.NONE, "Cross-schema read leaves raw enum at default (None=0)");
+        // Cross-schema read through the production load: there is no plan to
+        // run, so K2's load of K1's file refuses and lands nothing; the row it
+        // was handed holds its declared defaults (§5.3 "REFUSE is total").
+        byte[] k1File = new byte[tblk1.RootFixed.measure(1)];
+        int k1Saved = tblk1.RootFixed.save(new tblk1.RootFixed.Value[] { k1Src }, 1, k1File);
+        check(k1Saved == k1File.length, "K1 writer wrote its whole file (" + k1Saved + " of " + k1File.length + ")");
+        tblk2.RootFixed.Value[] k2Rows = { new tblk2.RootFixed.Value() };
+        k2Rows[0].grade = (short) 1234;
+        k2Rows[0].raw = tblk2.K2.Grade.GOLD;
+        tblk2.TableFixed.Report k2Load = new tblk2.TableFixed.Report();
+        int k2n = tblk2.RootFixed.load(k2Rows, 1, k1File, tblk2.TableFixed.plan(64), new short[64],
+            tblk2.RootFixed.image(), k2Load);
+        tblk2.RootFixed.Value k2Defaults = new tblk2.RootFixed.Value();
+        check(k2n == -1 && k2Load.refused,
+            "Cross-schema load of K1's file under K2 refuses (n=" + k2n + ", reason=" + k2Load.reason + ")");
+        check(k2Rows[0].grade == k2Defaults.grade && k2Rows[0].raw == k2Defaults.raw,
+            "Cross-schema load leaves the row at its declared defaults (grade=" + k2Rows[0].grade + ", raw=" + k2Rows[0].raw + ")");
 
         // -------------------------------------------------------------------
         // 4. "The wrong plan goes red" (docs/FIXED-FORM-ALGORITHM.md:1685)
@@ -158,12 +170,11 @@ public final class P4 {
         // -------------------------------------------------------------------
         // 5. Negative controls
         // -------------------------------------------------------------------
-        // The kind census is the compile's own and never a read counter (the
-        // retired kindMismatch, docs/plans/strict-only.md): what a moved kind
-        // leaves observable is a plan that lands NOTHING for it, while the
-        // lawful compile of the same layout lands every field.
-        check(nK1asK2 == 0 && nK1asK1 > 0,
-            "Negative control: the moved kinds compile to no entry where the lawful plan has " + nK1asK1);
+        // The kind census is retired (kindMismatch, docs/plans/strict-only.md):
+        // what a moved kind leaves observable is a compile that lays NO plan,
+        // while the lawful compile of the same layout lands every field.
+        check(nK1asK2 == -1 && nK1asK1 > 0,
+            "Negative control: the moved kinds lay no plan where the lawful plan has " + nK1asK1);
 
         if (failed > 0) {
             System.err.println("P4 TEST FAILED (" + failed + " failures)");
