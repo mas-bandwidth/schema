@@ -62,7 +62,9 @@ int main()
         check( !back.link_present, "absent optional: the flag" );
         check( back.link.value == 0 && back.link.tag_length == 0,
                "absent optional: the payload reads as the wire's zeros" );
-        check( r.clamped == 0 && !r.malformed && !r.refused,
+        // strict-only-read: a kind mismatch, an out-of-range value and a repeat now refuse the
+        // whole load (no counter), so the retired zero counts read as not refused, not damaged.
+        check( !r.damaged && !r.refused,
                "absent optional: a clean read moves no counter" );
     }
 
@@ -71,6 +73,12 @@ int main()
         tblp3::Chain present = v;
         present.link_present = true;
         present.link.tag_length = 4;
+        // The stained link.value (0x5A5A5A) is past the field's 0..1000 bound, and
+        // the writer's bound is a debug assert (plans/strict-only.md decision 8:
+        // a writer refuses an out-of-range value), so the twin carries the
+        // accepted maximum there and the 0x5A stain stays in the tag, as
+        // test/conformance/go/rows/W2_test.go does.
+        present.link.value = 1000;
         std::vector<uint8_t> pw( (size_t) tblp3::ChainFixedMeasure( 1 ) );
         check( tblp3::ChainFixedSave( &present, 1, pw.data(), (int64_t) pw.size() ) == (int64_t) pw.size(),
                "absent optional: the present twin saves" );
