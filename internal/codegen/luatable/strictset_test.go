@@ -353,10 +353,9 @@ func TestLuaStrictReadRefusesWhatGoRefuses(t *testing.T) {
 	for _, key := range keys {
 		g := groups[key]
 		if _, err := Generate(g.unit); err != nil {
-			// The Lua table backend does not carry the fixed-point and 128-bit
-			// kinds yet (docs/SPEC-TABLES.md §3, §15); a unit it refuses to emit
-			// has no Lua strict read to pin.
-			t.Logf("unit %s is not carried by the Lua table backend: %v", g.name, err)
+			// the groups are built here, from units the Lua backend carries: a
+			// refusal is a defect, not a row to drop
+			t.Errorf("unit %s: the Lua table backend refuses a unit this test built for it: %v", g.name, err)
 			continue
 		}
 		goAns := strictGoOracle(t, g.unit, g.cases)
