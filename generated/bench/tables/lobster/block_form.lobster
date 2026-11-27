@@ -462,9 +462,11 @@ def block_write_field(bl:BlockLayout, bf:BlockField, sl:Slot, data:string, at:in
     let f = sl.fd
     let base = at + bf.offset
     let s = f.s
-    if bf.optional and not sl.present:
-        data = write_int8_le(data, at + bf.present_offset, 0)
-        return data
+    // An optional's value slot is written whether or not it is present: the
+    // block form leaves inline storage exactly where it is (§19.3), and
+    // block_read keeps the value an absent slot holds, so a build that skipped
+    // it would not give back the bytes it read (block_padded.bin, row 2's
+    // counter). The presence companion is written after the value, below.
     if bf.counted and (s == "str" or s == "text" or s == "bytes"):
         if length(sl.cell.s) > bf.bound or sl.count < 0 or sl.count > bf.bound:
             block_refuse(bf, if length(sl.cell.s) > bf.bound: length(sl.cell.s) else: sl.count)
