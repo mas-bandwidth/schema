@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v3/internal/parser"
 )
 
 // mapExampleFormatted is §2.8's own example in schemafmt-canonical form: the

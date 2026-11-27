@@ -69,9 +69,13 @@ static class Program
     {
         CFloat input = new CFloat { X = value };
         WriteStream stream = new WriteStream(new byte[64]);
+#if UNITY_WRITER_ASSERT
+        return AssertFires(() => { Schema.WriteCFloat(stream, ref input); });
+#else
         bool wrote = false;
         bool asserted = AssertFires(() => { wrote = Schema.WriteCFloat(stream, ref input); });
         return asserted || !wrote;
+#endif
     }
 
     static bool Written(float value, out float readBack)

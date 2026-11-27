@@ -37,7 +37,7 @@ import (
 	"maps"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // blockRuntimeFiles is the shared block runtime, one file per public type.

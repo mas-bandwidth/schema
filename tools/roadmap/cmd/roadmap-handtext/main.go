@@ -17,7 +17,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/tools/roadmap"
+	"github.com/mas-bandwidth/schema/v3/tools/roadmap"
 )
 
 func main() {

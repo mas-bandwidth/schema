@@ -22,8 +22,8 @@ import (
 	"math/big"
 	"slices"
 
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // FormRefusal is the wire a reader will not decode at all: a FORM BYTE it does
