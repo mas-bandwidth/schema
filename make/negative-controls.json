@@ -780,9 +780,10 @@
     {
       "name": "base-hostile",
       "when": "pull-request",
-      "why": "the JSON number grammar's hostile-value control, alone. Its floor is the SANITIZED build of the hostile-value driver, which no other control shares, and the two pack controls in one job were 81 s of control time in a 113 s job on run 34120798793, the tightest job in the leg. Measured 14 s off one warm build.",
+      "why": "the JSON number grammar's hostile-value control, alone. Its floor is the SANITIZED build of the hostile-value driver, which no other control shares, and the two pack controls in one job were 81 s of control time in a 113 s job on run 34120798793, the tightest job in the leg. Measured 14 s off one warm build. With the roster control beside it (2026-11-24): the gate now links every unit of the C++ codec roster (test/conformance/cpp/codecs.h), plain and sanitized, so its floor is those objects plus one roster-wide translation unit per build, a few minutes on a loaded fleet host; the control itself reruns the plain driver over one planted row, under a second. This row runs nightly, where no job carries a time limit.",
       "targets": [
-        "tables-hostile-negative-control"
+        "tables-hostile-negative-control",
+        "tables-hostile-roster-negative-control"
       ]
     },
     {
