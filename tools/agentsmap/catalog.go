@@ -201,6 +201,7 @@ var catalog = []Entry{
 
 	// testdata/
 	e("testdata/conformance", "table conformance dumps", "make conformance", "make conformance"),
+	e("testdata/cpp-standalone", "one-check C++ units each header must compile alone", "go test ./internal/codegen/cpptable", "SCHEMA_SLOW=1 go test ./internal/codegen/cpptable -run TestEveryGeneratedTableHeaderCompilesStandalone"),
 	e("testdata/golden", "generated-source goldens", "go test ./internal/goldens", "make update-goldens"),
 	e("testdata/golangci-lint-classes", "generated Go lint regression fixtures", "go test ./internal/goldens -run TestGolangciLintClassesShapes", "make schema-go-generated-golangci-lint-gate-classes-negative-control"),
 	e("testdata/jsontestsuite", "vendored JSONTestSuite (MIT)", "go test ./internal/tabletext", "go test ./internal/tabletext -run JSONTestSuite"),
