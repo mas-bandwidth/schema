@@ -8,11 +8,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/csharp"
-	"github.com/mas-bandwidth/schema/v2/internal/fixedvector"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/csharp"
+	"github.com/mas-bandwidth/schema/v3/internal/fixedvector"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 // EVERY DEAD BYTE IN A FIXED RECORD IS ZERO, AND A NON-ZERO ONE REFUSES THE

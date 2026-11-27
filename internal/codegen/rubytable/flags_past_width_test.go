@@ -4,11 +4,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/rubytable"
-	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/rubytable"
+	"github.com/mas-bandwidth/schema/v3/internal/fixedproof"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/internal/tablewire"
 )
 
 // TestRubyFlagsPastWidthRefuse holds a flags mask to its reader's width W

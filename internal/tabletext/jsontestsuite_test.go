@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/jsontestsuite"
+	"github.com/mas-bandwidth/schema/v3/internal/jsontestsuite"
 )
 
 // jsonLayerAccepts is the engine's JSON LAYER over one whole text

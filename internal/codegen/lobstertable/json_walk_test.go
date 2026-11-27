@@ -2,7 +2,7 @@ package lobstertable_test
 
 import (
 	"bytes"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobstertable"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/lobstertable"
 	"os"
 	"path/filepath"
 	"testing"

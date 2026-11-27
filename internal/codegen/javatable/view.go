@@ -7,7 +7,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // THE REFLECTION DESCRIPTORS (docs/SPEC-TABLES.md §8), for EVERY declaration

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/baseline"
+	"github.com/mas-bandwidth/schema/v3/internal/baseline"
 )
 
 // TestBaselinePassesEveryWidening holds R17 at the baseline (Glenn,

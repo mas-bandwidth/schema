@@ -273,7 +273,7 @@ def pass_events(text):
         except ValueError:
             continue
         if event.get("Action") == "pass" and event.get("Test"):
-            package = event.get("Package", "").removeprefix("github.com/mas-bandwidth/schema/v2/")
+            package = event.get("Package", "").removeprefix("github.com/mas-bandwidth/schema/v3/")
             passed.add((package, event["Test"]))
     return passed
 
@@ -299,7 +299,7 @@ def native_result(text, listed, package, prior_passes=frozenset()):
     """Require actual terminal events for every discovered test and no live skip."""
     errors, terminal, passes, reasons = [], {}, 0, {}
     package_pass = 0
-    expected_package = "github.com/mas-bandwidth/schema/v2/" + package_path(package)
+    expected_package = "github.com/mas-bandwidth/schema/v3/" + package_path(package)
     passed = set(prior_passes) | pass_events(text)
     native_output = []
     for line in text.splitlines():

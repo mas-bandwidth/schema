@@ -22,7 +22,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // needsGenericText reports whether a field's text goes through the generic

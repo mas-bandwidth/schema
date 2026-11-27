@@ -155,7 +155,7 @@ all: bin/schema
 # tag on a release build and tag-commits-hash elsewhere; outside a git checkout
 # the stamp is left empty and internal/version falls back to the build info.
 VERSION ?= $(shell git describe --tags --match 'v[0-9]*' --dirty 2>/dev/null)
-LDFLAGS := $(if $(VERSION),-X github.com/mas-bandwidth/schema/v2/internal/version.version=$(VERSION),)
+LDFLAGS := $(if $(VERSION),-X github.com/mas-bandwidth/schema/v3/internal/version.version=$(VERSION),)
 
 bin/schema: $(GO_SOURCES) $(EMBED_SOURCES)
 	go build -ldflags "$(LDFLAGS)" -o $@ ./cmd/schema
@@ -7746,8 +7746,8 @@ release-differential: $(SERIALIZE_RUNTIME)/serialize.h release-differential-judg
 # the differential, naming the difference, with no tag decision printed.
 RELEASE_GATE_TEST ?= build/release-gate-test
 # The version is past every tag but keeps the current major: releasetag refuses
-# a tag whose major go.mod cannot carry (internal/modulemove.ReleaseGate), and a
-# v3 tag over the /v2 go.mod is the one exception pin allows until #4445.
+# a tag whose major go.mod cannot carry (internal/modulemove.ReleaseGate), and
+# go.mod names /v3, so a v3 version passes.
 RELEASE_GATE_VERSION ?= v3.99999.0
 # the same Makefile this test was read from, so its control can hand it a copy
 RELEASE_GATE_MAKE = $(MAKE) --no-print-directory -f $(firstword $(MAKEFILE_LIST)) release VERSION=$(RELEASE_GATE_VERSION) RELEASE_COMMIT=HEAD RELEASE_MAIN=HEAD PROOF=$(RELEASE_GATE_TEST)/green.json

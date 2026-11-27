@@ -10,9 +10,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/compiler"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // Production block Open forgery validation, adapted from the Luau gate.

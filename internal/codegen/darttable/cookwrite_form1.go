@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // THE FORM-1 COOK OF A FIXED-CLASS ROOT (docs/SPEC-TABLES.md §7.6): a fixed

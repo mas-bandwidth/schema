@@ -7,17 +7,17 @@ import (
 	"slices"
 	"sync"
 
-	"github.com/mas-bandwidth/schema/v2/internal/check"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/java"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/javatable"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobstertable"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/luatable"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/pythontable"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/rubytable"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/check"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/goose"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/java"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/javatable"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/lobster"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/lobstertable"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/lua"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/luatable"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/pythontable"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/rubytable"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // The emitters' name rules run at check (SPEC §4.6): each target's whole
