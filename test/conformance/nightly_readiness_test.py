@@ -65,7 +65,11 @@ class FakeRunner(m.Runner):
             text += "\n" + native(self.lang).splitlines()[-1]
         elif name.startswith("packet-"):
             text = "OK"
-            if name == "packet-schema_test_random":
+            _, label, index = (name.split("-") + ["", ""])[:3]
+            variable = m.PACKET_COUNTS.get((self.lang, label, int(index) if index.isdigit() else -1))
+            if variable:
+                text = f"ran {m.packet_count(self.root, self.lang, variable)}, failed 0"
+            elif name == "packet-schema_test_random":
                 text = "OK (50000 iterations, seed 42)"
             elif self.lang == "dart" and name.endswith("-1"):
                 text = "Generated: /tmp/mock-packet"
@@ -390,6 +394,32 @@ class Contracts(unittest.TestCase):
         for text in ("", "success", "OK\nOK\n"):
             self.assertTrue(m.packet_result(text))
         self.assertTrue(m.packet_result("OK (0 iterations, seed 2)",random=True))
+
+    def test_counted_packet_primaries(self):
+        # go, elixir, js and dart primaries print "ran N, failed M" (tools/mustrun);
+        # nightly 45119714773 read them for OK and called every one incomplete
+        ok=dict(count=525,variable="GO_MAIN_CHECKS")
+        self.assertEqual(m.packet_result("checking\nran 525, failed 0\n",**ok),[])
+        for text in ("OK\n","ran 525, failed 1\n","ran 524, failed 0\n","ran 0, failed 0\n",
+                     "ran 525, failed 0\nran 525, failed 0\n","","test: ran 525, failed 0\n"):
+            self.assertTrue(m.packet_result(text,**ok),text)
+        self.assertTrue(m.packet_result("ran 525, failed 0\n",count=None,variable="GO_MAIN_CHECKS"))
+        # every mapped variable is registered once, and is the one the make
+        # recipe hands mustrun for the same program
+        recipes={"normal":"test/{0} &&","ludicrous":"test/{0}-ludicrous &&"}
+        for (lang,label,index),variable in m.PACKET_COUNTS.items():
+            self.assertIsNotNone(m.packet_count(ROOT,lang,variable),variable)
+            mk=(ROOT/"make"/(lang+".mk")).read_text()
+            self.assertIn("-count $("+variable+")",mk,variable)
+            self.assertTrue(any(recipes[label].format(lang) in line and "$("+variable+")" in line
+                                for line in mk.splitlines()),variable)
+        for lang in ("go","elixir","js","dart"):
+            self.assertTrue(any(k[0]==lang for k in m.PACKET_COUNTS),lang)
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp)/"make").mkdir()
+            (Path(tmp)/"make"/"go.mk").write_text("GO_MAIN_CHECKS := 5\nGO_MAIN_CHECKS := 6\n")
+            self.assertIsNone(m.packet_count(tmp,"go","GO_MAIN_CHECKS"))
+            self.assertIsNone(m.packet_count(tmp,"go","GO_LUDICROUS_CHECKS"))
 
     def test_every_native_retirement_requires_exact_marker_and_current_replacement(self):
         self.assertEqual(sum(map(len,m.RETIRED_NATIVE.values())),68)

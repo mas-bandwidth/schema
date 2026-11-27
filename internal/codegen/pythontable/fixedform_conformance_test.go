@@ -112,7 +112,7 @@ func TestPythonFixedFormWriteRefusalNegativeControl(t *testing.T) {
 	}
 	generated := ensurePythonConformanceUnits(t, repo)
 	files := map[string][]byte{}
-	for _, name := range []string{"main.py", "surfaces/_common.py", "surfaces/write-refusal-fixed.py"} {
+	for _, name := range []string{"main.py", "surfaces/_common.py", "surfaces/_mutate.py", "surfaces/write-refusal-fixed.py"} {
 		data, err := os.ReadFile(filepath.Join(repo, "test", "conformance", "python", name))
 		if err != nil {
 			t.Fatal(err)
