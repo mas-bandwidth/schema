@@ -103,7 +103,7 @@ var (
 	reZeroCallLayout  = regexp.MustCompile(`TableFixedLayoutEntry\s+\w+\s*=\s*TableFixedLayoutEntryZero\s*\(\s*\)\s*;`)
 	reZeroCallView    = regexp.MustCompile(`TableFixedLayoutView\s+\w+\s*=\s*TableFixedLayoutViewZero\s*\(\s*\)\s*;`)
 	reInitCall        = regexp.MustCompile(`TableFixedCompilerInit\s*\(\s*&c\s*\)\s*;`)
-	reCReasons        = regexp.MustCompile(`(?s)enum\s*\{\s*no_layout\s*=\s*7,.*?(?:text_ill_formed\s*=\s*20|length_over_bound\s*=\s*22)\s*\}\s*;`)
+	reCReasons        = regexp.MustCompile(`(?s)enum\s*\{\s*no_layout\s*=\s*7,.*?(?:text_ill_formed\s*=\s*20|length_over_bound\s*=\s*22|layout_unknown\s*=\s*23)\s*\}\s*;`)
 	reCMessageGuard   = regexp.MustCompile(`(?s)#ifndef MESSAGE_REASONS.*?\#endif`)
 	// AHEAD OF THE REFERENCE, and the mirror of the owed list: §5.2 lays every
 	// older plan down off the load path, and the reference still compiles one at
