@@ -5,13 +5,6 @@
 # that builds fails it too (stale), so each line goes when its fix lands.
 # Found by the generator-internal-name sweep (#4947).
 
-# C: the C backend's own refusal is not lifted to the checker
-c n_internal_52 owed: enum placed beside enum placed_t: the C backend qualifies both to probe_placed_t and refuses at generate; schema check accepts the pair
-
-# C#: a contextual keyword the reserved-word table lacks
-cs n_internal_75 owed: enum unmanaged: the generic constraint `where T : unmanaged` resolves to the enum, CS0701; schema check does not reserve unmanaged for C#
-unity n_internal_75 owed: enum unmanaged: the generic constraint `where T : unmanaged` resolves to the enum, CS0701; schema check does not reserve unmanaged for C#
-
 # Dart packet: a union tag is an extension type over int, and an arm's static const may not share an int/num member's name
 dart n_internal_11 owed: union arm bitLength: the tag type NameArms3Type implements int, and static bitLength clashes with int.bitLength
 dart n_internal_15 owed: union arm clamp: the tag type implements int, and static clamp clashes with num.clamp
@@ -25,28 +18,16 @@ dart n_internal_19 owed: enums days and daysFrom: the text form declares daysFro
 dart n_internal_43 owed: enums mismatch and mismatchFrom: the text form declares mismatchFromName for both (<e>FromName, <e>Name); schema check does not see derived names
 dart n_internal_41 owed: enum main: a Dart library may declare main only as a function, so the entry point's library fails to compile; schema check does not refuse main for Dart
 
-# Elixir: a lowercase declaration's module name is another module's
-elixir n_internal_49 owed: enum other: Elixir names it Probe.Other, the module of Other.schema, so Probe.Other.write_holder!/1 is lost
-
 # Go table
 go n_internal_47 owed: enums node_save_body and node_save_retain: gotable calls value.NodeSaveBodyRetain and NameArms0TypeNodeSaveBodyRetain, which it never declares
 go n_internal_51 owed: union arm and field payload: Go spells it Payload, beside gotable's method Payload on the union row (field and method with the same name)
 go n_internal_71 owed: enums table_ids and table_ids_all_used: gotable calls value.TableRetainIds and value.TableRetainIdsAllUsed, which it never declares
 go n_internal_75 owed: enum v: gotable's local v (uint64) hides it in `v(...)`
 
-# Goose: the view library's private names are not lifted to the checker
-goose n_internal_21 owed: enum dst: ProbeView declares _dstViewVariants, which ProbeTable already declares; goose refuses at generate, schema check accepts
-goose n_internal_32 owed: enum image: ProbeView declares _imageViewVariants, which ProbeTable already declares; goose refuses at generate, schema check accepts
-goose n_internal_44 owed: enum myLayout: ProbeView declares _myLayoutViewVariants, which ProbeTable already declares; goose refuses at generate, schema check accepts
-goose n_internal_68 owed: enum source: ProbeView declares _sourceViewVariants, which ProbeTable already declares; goose refuses at generate, schema check accepts
-
 # Java
 java n_internal_20 owed: union arm depth: the Java JSON writer rewrites depth inside the arm's member expression, v.depth becomes v.nestedDepth, which does not exist
 java n_internal_58 owed: union arm rdepth: the Java JSON writer rewrites depth inside the arm's member expression, v.rdepth becomes v.rnestedDepth, which does not exist
 java n_internal_76 owed: enum value: the packet code's parameter long value hides it in `value == value.NONE`
-
-# Lobster: a builtin the reserved-word table lacks
-lobster n_internal_33 owed: enum infinity: Lobster reads infinity as its float constant, not an identifier; schema check does not reserve it for Lobster
 
 # Rust: an enum is a tuple struct, and no let, parameter, for or match binding may shadow a tuple struct (E0530)
 rust n_internal_14 owed: enums c, c0, c1, c2: generated let bindings of those names cannot shadow the tuple structs

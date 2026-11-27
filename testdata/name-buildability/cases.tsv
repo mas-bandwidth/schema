@@ -313,9 +313,12 @@ t_Utf8_case1	builds	-	-
 t_Debugger	builds	-	-
 c_max_items	builds	-	a const named in lowercase: Ruby spells it MAX_ITEMS (SPEC §4.6, Ruby mapping)
 e_kind	builds	-	an enum named in lowercase: Ruby spells it Kind
+e_infinity	refuse-at-check	Lobster	an enum named infinity: the Lobster lexer reads infinity (and nan) as a float literal, never an identifier; split from n_internal_33
+e_unmanaged	refuse-at-check	C#	an enum named unmanaged: the C# constraint where T : unmanaged then names the enum (CS0701); split from n_internal_75
 u_pick	builds	-	a union named in lowercase: Ruby spells it Pick, its tag module PickType
 tb_fleet	builds	-	a table named in lowercase: Ruby spells it Fleet
 tb_max_items	builds	-	tables named in snake case, one holding the other: Ruby spells them MaxItemsTable and FleetRoot
+tb_goose_declare	refuse-at-check	Goose	a table fleet beside an enum _fleetFields: the Goose table module declares _fleetFields for the table fleet, one name in the namespace; refused at generate and lifted to the checker
 t_a_b_AB	refuse-at-check	Ruby	types a_b and AB: Ruby spells both AB (the Rust and C forms a_b and ab differ)
 t_integer_lowercase	refuse-at-check	Ruby	a type named integer: Ruby spells it Integer, the core constant
 u_beacon_BeaconType	refuse-at-check	Ruby	union beacon beside type BeaconType: the union's Ruby tag module is BeaconType
@@ -379,7 +382,7 @@ n_internal_29	builds	-	generator-internal names floatText..fs (80), each an enum
 n_internal_30	builds	-	generator-internal names fshift..hasZero (80), each an enum, a table field and a union arm
 n_internal_31	builds	-	generator-internal names has_child..huge (80), each an enum, a table field and a union arm
 n_internal_32	builds	-	generator-internal names i..ind (80), each an enum, a table field and a union arm
-n_internal_33	builds	-	generator-internal names indegree..into (80), each an enum, a table field and a union arm
+n_internal_33	builds	-	generator-internal names indegree..into (80), each an enum, a table field and a union arm; the enum infinity is row e_infinity
 n_internal_34	builds	-	generator-internal names ints..items (80), each an enum, a table field and a union arm
 n_internal_35	builds	-	generator-internal names iterator_traits..json_put_g (80), each an enum, a table field and a union arm
 n_internal_36	builds	-	generator-internal names json_put_int..key_bytes_size (80), each an enum, a table field and a union arm
@@ -421,7 +424,7 @@ n_internal_71	builds	-	generator-internal names table_fixed_outers_hold..textTot
 n_internal_72	builds	-	generator-internal names textTotalPast..to (80), each an enum, a table field and a union arm
 n_internal_73	builds	-	generator-internal names toDecimal..twoAt (80), each an enum, a table field and a union arm
 n_internal_74	builds	-	generator-internal names txt..unkSlot (80), each an enum, a table field and a union arm
-n_internal_75	builds	-	generator-internal names unkSlotBefore..vIdx (80), each an enum, a table field and a union arm
+n_internal_75	builds	-	generator-internal names unkSlotBefore..vIdx (80), each an enum, a table field and a union arm; the enum unmanaged is row e_unmanaged
 n_internal_76	builds	-	generator-internal names vLo..vid (80), each an enum, a table field and a union arm
 n_internal_77	builds	-	generator-internal names view..walk_framed (80), each an enum, a table field and a union arm
 n_internal_78	builds	-	generator-internal names walk_id_order..wide_decimal (80), each an enum, a table field and a union arm

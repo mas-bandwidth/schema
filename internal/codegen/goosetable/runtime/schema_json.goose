@@ -1918,6 +1918,8 @@ fn json_write_enum<T>(out: u8[>..]&, v: T, f: const FieldDesc&) -> bool {
 // json_write_flags writes a mask as its names; a set bit no variant names is
 // refused (§16.3).
 fn json_write_flags<T>(out: u8[>..]&, v: T, names: const (const u8[:])[:], depth: i64) -> bool {
+    // a flags value's array is a container too (docs/SPEC-TABLES.md §16.14 W2)
+    if depth > JsonMaxDepth { return false; }
     let bits = v as! u64;
     if bits == 0 {
         out.append("[]");
@@ -1944,6 +1946,9 @@ fn json_write_flags<T>(out: u8[>..]&, v: T, names: const (const u8[:])[:], depth
 // json_write_array writes count elements in index order; F(out, i, depth)
 // writes one.
 fn json_write_array<F>(out: u8[>..]&, count: i64, depth: i64) -> bool {
+    // the write counts every container the read does, an empty one included
+    // (docs/SPEC-TABLES.md §16.14 W2): a container past the cap is refused
+    if depth > JsonMaxDepth { return false; }
     if count == 0 {
         out.append("[]");
         return true;
@@ -1964,6 +1969,9 @@ fn json_write_array<F>(out: u8[>..]&, count: i64, depth: i64) -> bool {
 // json_write_keyed writes an [E]T as an object keyed by variant name, one
 // entry per slot (§16.2).
 fn json_write_keyed<F>(out: u8[>..]&, names: const (const u8[:])[:], depth: i64) -> bool {
+    // the write counts every container the read does, an empty one included
+    // (docs/SPEC-TABLES.md §16.14 W2): a container past the cap is refused
+    if depth > JsonMaxDepth { return false; }
     if names.len == 0 {
         out.append("{}");
         return true;
@@ -1986,6 +1994,9 @@ fn json_write_keyed<F>(out: u8[>..]&, names: const (const u8[:])[:], depth: i64)
 // json_write_union writes a union as an object with ONE key, the arm's name,
 // and `{}` for None; a tag no arm names is refused (§16.2, §16.3).
 fn json_write_union<U, F>(out: u8[>..]&, u: const U&, d: const UnionDesc&, tag: i64, depth: i64) -> bool {
+    // the write counts every container the read does, an empty one included
+    // (docs/SPEC-TABLES.md §16.14 W2): a container past the cap is refused
+    if depth > JsonMaxDepth { return false; }
     if tag == 0 {
         out.append("{}");
         return true;

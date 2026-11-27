@@ -234,6 +234,7 @@ var catalog = []Entry{
 	e("tools/pgroup", "process-group runner for CI steps", "go test ./tools/pgroup", "go run ./tools/pgroup -- make test"),
 	e("tools/recipescan", "CLI for internal/recipescan", "go test ./internal/recipescan", "go run ./tools/recipescan"),
 	e("tools/releasediff", "previous-release differential (#463)", "make release-differential-negative-control", "make release-differential"),
+	e("tools/releasenotes", "GitHub release notes under the body limit", "go test ./tools/releasenotes", "go run ./tools/releasenotes -version vX.Y.Z"),
 	e("tools/releasebin", "release binaries for six platforms", "go test ./tools/releasebin", "make release-binaries"),
 	e("tools/releasetag", "promotion and release tags", "go test ./tools/releasetag", "make release"),
 	e("tools/releasetargets", "certify release-gates planner from make's database", "go test ./tools/releasetargets", "go run ./tools/releasetargets -fixtures tools/releasetargets/testdata/f066"),

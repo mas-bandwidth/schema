@@ -123,7 +123,9 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 
 // keywords is every Lobster keyword (docs/language_reference.html, the pin's
 // lexical definition) and the predeclared type names a declaration could
-// shadow.
+// shadow, and the float literals nan and infinity, which the lexer reads as
+// tokens and never as an identifier (`enum infinity:` is `identifier`
+// expected, found `infinity` on the pin; name-buildability n_internal_33).
 var keywords = map[string]bool{}
 
 func init() {
@@ -131,7 +133,8 @@ func init() {
 		program private resource enum enum_flags typeof var let pakfile switch case default
 		out_of_range namespace not and or attribute if for while super constructor guard
 		abstract union member member_frame static static_frame operator elif else break
-		continue bool true false`) {
+		continue bool true false
+		nan infinity`) {
 		keywords[k] = true
 	}
 }
