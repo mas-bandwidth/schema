@@ -669,6 +669,23 @@ SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -v \
   -run 'Test(Go|Python)FixedLoadCapacityWitness'
 ```
 
+### Rows held after the 2026-11-24 SCHEMA_SLOW reds
+
+Four tests went red on main under `SCHEMA_SLOW=1` because a rule landed
+after them; each row names the rule, and the test now holds it. Run them
+with:
+
+```sh
+SCHEMA_SLOW=1 go test -count=1 ./internal/check ./internal/codegen/goosetable ./internal/codegen/mootable \
+  -run '^(TestNameBuildabilityCorpus|TestGooseFixedHostileInput|TestGooseFixedProofDefinitionHash|TestGooseLoadMessagesRefusalResetsBatch.*|TestMooRetainKeepsAFieldNested128.*|TestMooReadStrictWireCheckNegativeControl)$'
+```
+
+| entry | rule (spec) | held by |
+|---|---|---|
+| pkg-runtime-binding | a unit whose package is a binding of the Lobster table runtime is refused by `schema check` for every target, naming Lobster: `p` (a `cook.lobster` local) and `depth` (a `cook.lobster` parameter), as `id` and `kind` already were (SPEC.md §4.6, Emitter name rules; every target can spell what check accepts, the 2026-11-21 ruling) | testdata/name-buildability rows `pkg_p` and `pkg_depth` (`TestNameBuildabilityCorpus`); the Goose and moo tests that declared `package p` and `package depth` now declare `probe` and `retaindepth` |
+| fixed-last-record-refusal-resets-every-row | a fixed batch read refused at its LAST record (`no_layout`, a bad layout hash) answers `-1` and leaves EVERY row handed in at its declared defaults, record 0 included; the caller's own values survive in none (SPEC-TABLES.md §6.5, THE CALLER'S VALUES AFTER A REFUSAL; R4, GAP-21) | `TestGooseFixedHostileInput/P3`, `last_record_nolayout` |
+| message-batch-reset-after-the-walk | a refused message batch puts every value it was handed back at its declared defaults after the walk has decided the refusal, whatever refused: a non-finite float, an out-of-range value or damaged framing (SPEC-TABLES.md §6.5, "resets it after the refusal is decided"; R4) | `TestGooseLoadMessagesRefusalResetsBatch`; its negative control removes the `LoadMessages` reset and requires all three cases red |
+| wire-alone-rows-are-the-walks | `testdata/conformance/tables/WIRE-ALONE.txt` lists, by class, the framing rows whose condition §6.5 lists as DECIDABLE FROM THE WIRE ALONE. With a port's wire-alone walk removed, every listed row reads except the port's stated exceptions (rows its typed read also refuses, each with a reason), and no other row moves. moo states 6 exceptions (the inert-bytes rows, `frame_repeat_last_wins`, `node_table_twice`); Lua states 6 (the three `node_type_*` rows, the two ill-formed string-blob rows, `node_unknown_to_fixed_reader`). A listed row must be a refused framing row of MANIFEST.txt, and an exception must name a listed row and give a reason (SPEC-TABLES.md §6.5, DETECTION ORDER IS FREE) | `TestMooReadStrictWireCheckNegativeControl`, `TestLuaWireCheckNegativeControl`, `internal/wirealone` |
 ### A member named like a type its declaration uses
 
 The checker refuses, for every target, a member spelled like a named type
