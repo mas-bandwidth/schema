@@ -936,3 +936,18 @@ with the flat tier's writes and the decode case green.
 | SPEC §4.3, §5: a `float32` field's default is the float32 of its declaration | `F32Lit` `default-d`, `default-e`, `verify-bitphase-<lang>` | red before its fix on JavaScript (both tiers construct through the module), Dart and Elixir. Green with no fix: C (the decimal assigned to a `float` rounds there), C++, C# (modern and unity), Go, Rust, Java, Python, Ruby, Lua, Luau, Squirrel, moo, Goose, Lobster |
 | SPEC §4.3, §5.1 row 10: a compressed float's write takes both float32 ends | `F32Lit` `write-min`, `write-max`, `verify-bitphase-<lang>` | red before its fix on the JavaScript stream tier, Lua and Luau, whose write guards compared against the decimals and refused both ends. Green with no fix: the JavaScript flat tier, Dart and Elixir (their guards were spelled as float32 by #4991), C, C++, C# (modern and unity), Go, Rust, Java, Python, Ruby, Squirrel, moo, Goose, Lobster |
 | SPEC §4.3: a table field's `float32` default is the float32 of its declaration | Go unit test `TestJsTableFloat32DefaultIsItsFloat32` (`internal/codegen/jstable`; no shared case: every table surface, the text form included, rounds a value through float32 before it spells or stores it, so the double default differs only in memory) | red before its fix on JavaScript tables (the constructor and the descriptor's `def`, which an absent field reads back, held the double `0.7`). The other table generators spell a float32 default as its float32 already |
+
+### A block build writes an absent optional's held value
+
+The block form leaves inline storage where it is (SPEC-TABLES §19.3): an
+optional's value slot rides beside its presence companion, and a block read
+keeps whatever value an absent slot holds. A builder handed that record gives
+back the bytes it read. The shared case is the `block block_padded` row of the
+tables manifest: `testdata/wire/tables/block_padded.bin`, whose row 2 holds
+`counter = 18` with `counter#present = false` (bytes `12 00 00 00` at offset
+312, presence `00` at 316), pinned in `block/block_padded.dump`. A leg that
+rebuilds the block compares its build to the image byte for byte.
+
+| rule | case | the leg it was red on before its fix |
+|---|---|---|
+| SPEC-TABLES §19.3: an absent optional's value slot is written as held, so a block rebuilt from its own read equals the image | `block_padded` (row 2 `counter`), `TestLobsterBlockForm` (`internal/codegen/lobstertable`, slow tier) | red before its fix on Lobster: `block_write_field` returned early for an absent optional, writing the presence byte and leaving the value zero, so the rebuild differed at byte 312 |
