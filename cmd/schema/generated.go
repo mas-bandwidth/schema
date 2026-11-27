@@ -11,7 +11,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/internal/atomicfile"
+	"github.com/mas-bandwidth/schema/v3/internal/atomicfile"
 )
 
 // GENERATED OUTPUT: AFTER ONE RUN THE DIRECTORY HOLDS THIS RUN'S FILES, ONE

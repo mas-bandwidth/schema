@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/tablenames"
+	"github.com/mas-bandwidth/schema/v3/internal/tablenames"
 )
 
 // goFiles generates the go target's whole output for one source. Standalone is

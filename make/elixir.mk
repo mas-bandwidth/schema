@@ -1417,13 +1417,13 @@ build/elixir-fixedform/.stamp: bin/schema $(ELIXIR_FIXED_SCHEMAS) make/elixir.mk
 	@touch $@
 
 .PHONY: tables-elixir-fixed-form
-tables-elixir-fixed-form: build/elixir-fixedform/.stamp build/fixedform-corpus/.stamp
+tables-elixir-fixed-form: build/retiredskips build/elixir-fixedform/.stamp build/fixedform-corpus/.stamp
 	# The fixed modules and FixedRuntime.ex are the emitters' raw output;
 	# this holds both, and the hand-written driver,
 	# to Elixir 1.20.4.
 	$(MIX) format --check-formatted build/elixir-fixedform/gen/*/*Fixed.ex \
 		build/elixir-fixedform/gen/*/FixedRuntime.ex test/elixir-fixedform/main.exs
-	$(ELIXIR) -pa build/elixir-fixedform/ebin test/elixir-fixedform/main.exs build/fixedform-corpus
+	./build/retiredskips -leg elixir -- sh -c '$(ELIXIR) -pa build/elixir-fixedform/ebin test/elixir-fixedform/main.exs build/fixedform-corpus'
 
 # THE PAIRED CORPUS (docs/SPEC-TABLES.md §3.4): the bench's own sixty-four
 # logical records on the PACKET wire and on this one. The C++ reference writes
@@ -2369,3 +2369,19 @@ packet-end-elixir-negative-control: packet-end-elixir
 	@echo 'packet end Elixir negative control: removing the end check accepts the trailing and padding vectors'
 
 test-elixir: packet-end-elixir packet-end-elixir-negative-control
+
+# Payload-free union arms cost exactly their tag bits (SPEC §4.8): the leg's
+# half of test/packet-void. The driver answers every case of
+# testdata/wire/packet-void/cases.txt against the Go oracle's pins, and
+# tools/casegate judges its answers (make/checks/packet-void.mk).
+build/packet-void/elixir/.stamp: bin/schema $(PACKET_VOID_SCHEMA) make/elixir.mk
+	@rm -rf build/packet-void/elixir && mkdir -p build/packet-void/elixir
+	./bin/schema generate --lang elixir --out build/packet-void/elixir $(PACKET_VOID_SCHEMA)
+	@touch $@
+
+.PHONY: packet-void-elixir
+packet-void-elixir: build/packet-void/elixir/.stamp build/casegate
+	$(MIX) format --check-formatted build/packet-void/elixir/*.ex test/packet-void/elixir/*.exs
+	@rm -rf build/packet-void/elixir-beam && mkdir -p build/packet-void/elixir-beam
+	$(ELIXIRC_STRICT) -o build/packet-void/elixir-beam build/packet-void/elixir/*.ex
+	$(call packet_void_gate,elixir) env PATH="$(BEAM_PATH):$$PATH" $(lastword $(ELIXIR)) test/packet-void/elixir/main.exs $(PACKET_VOID_PINS)

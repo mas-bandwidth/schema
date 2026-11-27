@@ -1578,9 +1578,9 @@ build/schema_test_c_fixedform_asan: build/tables-generated-c-fixed/.stamp $(C_FI
 	$(CC) $(TABLES_CFLAGS_CONTROL) $(C_SANITIZE) $(C_FIXEDFORM_INCLUDES) $(C_FIXEDFORM_SOURCES) -o $@ -lm
 
 .PHONY: tables-c-fixedform
-tables-c-fixedform: build/schema_test_c_fixedform build/schema_test_c_fixedform_asan
-	./build/schema_test_c_fixedform
-	./build/schema_test_c_fixedform_asan
+tables-c-fixedform: build/retiredskips build/schema_test_c_fixedform build/schema_test_c_fixedform_asan
+	./build/retiredskips -leg c -- ./build/schema_test_c_fixedform
+	./build/retiredskips -leg c -- ./build/schema_test_c_fixedform_asan
 
 # THE VERSIONING HALF OF THE FIXED FORM ON THE C LEG (§5 of
 # docs/FIXED-FORM-ALGORITHM.md, the rows of docs/FIXED-FORM-VERSIONING-TESTS.md).

@@ -395,12 +395,12 @@ build/tables-generated-rust/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLE
 # generated writer's caller contracts are debug-only, so debug proves they FIRE
 # and release proves they are GONE and the bytes are still the reference's.
 .PHONY: tables-rust-fixedform
-tables-rust-fixedform: build/tables-generated-rust/.stamp build/fixedform-corpus/.stamp
+tables-rust-fixedform: build/retiredskips build/tables-generated-rust/.stamp build/fixedform-corpus/.stamp
 	@mkdir -p build/rust-fixedform/src
 	@cp test/rust-fixedform/Cargo.toml build/rust-fixedform/Cargo.toml
 	@cp test/rust-fixedform/src/main.rs build/rust-fixedform/src/main.rs
-	cd build/rust-fixedform && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet -- ../../build/fixedform-corpus ../../bench/paired/corpus
-	cd build/rust-fixedform && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet --release -- ../../build/fixedform-corpus ../../bench/paired/corpus
+	cd build/rust-fixedform && PATH="$(RUSTUP_BIN):$$PATH" ../retiredskips -leg rust -ledger ../../test/conformance/fixed-retired.json -- cargo run --quiet -- ../../build/fixedform-corpus ../../bench/paired/corpus
+	cd build/rust-fixedform && PATH="$(RUSTUP_BIN):$$PATH" ../retiredskips -leg rust -ledger ../../test/conformance/fixed-retired.json -- cargo run --quiet --release -- ../../build/fixedform-corpus ../../bench/paired/corpus
 
 # THE VERSIONING HALF OF THE FIXED FORM ON THE RUST LEG (§5 of
 # docs/FIXED-FORM-ALGORITHM.md, the rows of docs/FIXED-FORM-VERSIONING-TESTS.md).
@@ -2035,6 +2035,25 @@ packet-end-rust-negative-control: packet-end-rust
 	@echo 'packet end Rust negative control: removing the end check turns a trailing byte red'
 
 test-rust: packet-end-rust packet-end-rust-negative-control
+
+# THE PACKET-VOID LEG (SPEC §4.8; make/checks/packet-void.mk): payload-free
+# union arms cost exactly their tag bits. The driver answers every case of
+# testdata/wire/packet-void/cases.txt through tools/casegate, in a debug
+# build (the writer's debug_assert! contracts live) and a release build.
+build/packet-void/rust/.stamp: bin/schema test/packet-void/Void.schema make/rust.mk
+	@rm -rf build/packet-void/rust/generated && mkdir -p build/packet-void/rust/generated/src
+	./bin/schema generate --lang rust --out build/packet-void/rust/generated/src $(PACKET_VOID_SCHEMA)
+	@printf '[package]\nname = "packetvoid"\nversion = "0.0.0"\nedition = "2024"\n\n[dependencies]\nserialize = { package = "serialize-official", path = "%s/$(SERIALIZE_RS)" }\n' "$(CURDIR)" > build/packet-void/rust/generated/Cargo.toml
+	@touch $@
+
+.PHONY: packet-void-rust
+packet-void-rust: build/casegate build/packet-void/rust/.stamp
+	cd test/packet-void/rust && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --target-dir ../../../build/packet-void/rust/target
+	cd test/packet-void/rust && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --release --target-dir ../../../build/packet-void/rust/target
+	$(call packet_void_gate,rust) ./build/packet-void/rust/target/debug/packet-void-test $(PACKET_VOID_PINS)
+	$(call packet_void_gate,rust) ./build/packet-void/rust/target/release/packet-void-test $(PACKET_VOID_PINS)
+
+test-rust: packet-void-rust
 
 # Packet Write holds row 8 (SPEC §5.1) in a Rust debug build: the driver
 # writes every shared case and catches the writer's debug_assert! panic as

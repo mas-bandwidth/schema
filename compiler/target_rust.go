@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/internal/check"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/rust"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/rusttable"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/check"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/rust"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/rusttable"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // rustTarget emits Rust.
