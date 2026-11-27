@@ -152,7 +152,10 @@ func t08GoW16(t *testing.T) {
 // drops the Guard2 check or the dead check cannot pass both halves.
 const t08NestedProbe = `package probe
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+)
 
 func TestOuterTagConjunction(t *testing.T) {
 	// (a) BOTH TAGS HOLD: the outer tag says p and the inner tag says x, so the
@@ -197,8 +200,12 @@ func TestOuterTagConjunction(t *testing.T) {
 	if n := TFixedLoad(only, buf, plan, &r); n != -1 || r.Err() == nil {
 		t.Fatalf("load %d report %+v, want a refusal", n, r)
 	}
-	if only[0].Pick.P.X != 0 || only[0].Pick.Q != 0x55 {
-		t.Fatalf("the refusal wrote the destination or landed an inner arm: %+v", only[0].Pick)
+	// the refusal resets the row it was handed to its declared defaults: the
+	// caller's 0x55 is gone and no inner-arm byte landed (SPEC-TABLES §6.5, R4)
+	fresh := T{}
+	TReset(&fresh)
+	if !reflect.DeepEqual(only[0], fresh) {
+		t.Fatalf("the refusal left the row off its declared defaults or landed an inner arm: %+v", only[0].Pick)
 	}
 }
 `
