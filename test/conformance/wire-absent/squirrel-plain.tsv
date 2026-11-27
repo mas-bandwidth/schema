@@ -28,7 +28,6 @@ mapdemo.Text	split: a variable root, fuzzed by the squirrel-builder arm (make/sq
 mapdemo.Trails	split: a variable root, fuzzed by the squirrel-builder arm (make/squirrel-fuzz.mk) (2 seeds)
 messagedemo.ToolEnvelope	split: a variable root, fuzzed by the squirrel-builder arm (make/squirrel-fuzz.mk) (6 seeds)
 packetunions.ShapeDoc	split: a variable root, fuzzed by the squirrel-builder arm (make/squirrel-fuzz.mk) (2 seeds)
-packetunions.ShapeMsg@message	owed: wire-seed-roots-squirrel (2 seeds)
 shapes.Bounds	split: a variable root, fuzzed by the squirrel-builder arm (make/squirrel-fuzz.mk) (4 seeds)
 streamdemo.Feed	split: a variable root, fuzzed by the squirrel-builder arm (make/squirrel-fuzz.mk) (22 seeds)
 tblg1.Guarded	split: a variable root, fuzzed by the squirrel-builder arm (make/squirrel-fuzz.mk) (4 seeds)
