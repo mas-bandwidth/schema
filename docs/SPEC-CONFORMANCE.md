@@ -381,6 +381,7 @@ per-port check where no shared case exercises it.
 | entry | rule (spec) | held by |
 |---|---|---|
 | INDEX | every pinned wire-fuzz vector is run: `harness wire-fuzz` refuses a vector on disk and not in the index, or in the index and not on disk, naming the file (§2; SPEC-TABLES.md §4.2) | `TestWireVectorIndexAndDirectoryAgree` (#4765, merged) |
+| wire-eof | a wire-fuzz leg's stream ends only between frames: EOF before an index's first byte is a clean close (exit 0, no reply); 1 to 3 index bytes, a cut length or a cut body at EOF refuses with a non-zero exit, the cut named on stderr and no reply (SPEC-TABLES.md §4.2; test/conformance/README.md, the stream) | `harness wire-eof`, one case table (`wireeof.go`), run on every leg by `make tables-wire-eof` (`tables-wire-eof-<leg>` for the 18 legs, `tables-wire-eof-rust-card`, `tables-wire-eof-java-card`); `TestWireEOFSoundDriverPassesEveryCase`, `TestWireEOFPlantedBugsGoRed`, `TestWireEOFNoKnownRootIsAnError`, `TestWireEOFNamesTheFirstKnownEntry` (#4969) |
 | retain-id-bound-is-the-wires | a retaining save numbers the generated table's ids and the retained ids into one trailer bounded by `id_table_max` = 4096, never by the generated table's own capacity; a file of 4096 retained ids saves back byte for byte (SPEC-TABLES.md §6.6, THE MERGED TRAILER IS BOUNDED BY THE WIRE) | `wire-fuzz --retain` on the pinned seed `id_table_4096` (graphdemo.Scene); C++ `TestCppRetainIdTableBoundIsTheWires` (#4767, merged) |
 | counted-born-elides | a plain counted `[Min..N]T` is born with `Min` elements each at its default, and a save of that born state elides the field, whether the value was born fresh or read back from text or wire at it; the shared rows of FL-25 add the refusals below `Min` (SPEC-TABLES §2.3, §22.2) | the verify-tablegen pinned matrix (`test/verify-tablegen/pinned.go`): `pin:c<elem>:fresh:*` and `pin:c<elem>:min_default:*` on every leg; Elixir also `TestCountedBornStateElides` |
 | builder-arm-claims-bound-roots | a wire-fuzz arm claims a root only when the leg holds that arm's read for it, and answers any other root absent by name; a truncated `shapes.Bounds` under `--builder` is refused as the engine refuses it, never thrown (SPEC-TABLES.md §4.2, AN ARM CLAIMS A ROOT ONLY WHEN THE LEG HOLDS THAT ARM'S READ FOR IT) | `make tables-cs-builder-fuzz` over the corpus seeds `shapes_bounds_*`, `tblsurf`, `tblvaluedefaults` and `packetunions` roots, red on an absent seed |
@@ -430,6 +431,7 @@ per-port check where no shared case exercises it.
 | GAP-9 | `make conformance-port` fails on any absence (§5); a port declares its gated keys by answering absent (README); gaps Zig3, OC14 | `TestCompleteRunRefusesEveryAbsence` (#4706) |
 | dart-plain-roster-whole | the Dart driver advertises every root the plain wire-fuzz arm names, fixed class and variable alike; a seed the plain arm leaves absent fails the gate rather than standing as a count in its summary line (SPEC-TABLES.md §4.2) | `TestDartPlainRosterAllRoots` in `tables-dart-wire-fuzz` (#4949) |
 | GAP-10 | First use counts every reference, skipped bytes included (SPEC-TABLES §3); gaps Sw5 | `framing skipped_ids_first_use`, `skipped_ids_out_of_order` (#4706) |
+| wire-fuzz-absent-roots-named | a wire-fuzz run that leaves seeds absent names each absent root on its summary line as `unit.Root (n seeds)`, in name order, beside the count; a count alone is not the line (SPEC-TABLES.md §4.2, the sweep's naming) | `TestWireFuzzAbsentRootsAreNamed` |
 | GAP-11 | A `tag` edit: `0` None, `n` the `n`-th arm; path steps through maps, keyed arrays and arms; `count` on an empty array takes the element default; `wide:`/`units` retired (FORMAT.md); gaps Sw6, Sw7, OC10, OC15, Zig10, Zig11, Zig12, Zig17 | `wref_`/`fref_`/`mref_`/`jref_union_tag_none`; the `write-refusal` rows' map, keyed and arm paths (#4706) |
 | GAP-12 | The definitions digest, pinned: leaf kinds (enum `7`), roles, row order, one-sided fill, `was` ids (FIXED-FORM-ALGORITHM §5.2; SPEC-TABLES §21); gaps Sw8, OC4, Zig15 | `testdata/conformance/fixed-digest/vector.txt` (`TestFixedDefinitionsDigestVector`) (#4706) |
 | GAP-13 | Synthetic layout ids; a timestamp lays as kind `5`; the union tag width (FIXED-FORM-ALGORITHM §1); gaps OC3, OC5, ObjC10 | the digest vector's layout; every `schema.lock` `layout=` (#4706) |
@@ -504,6 +506,12 @@ per-port check where no shared case exercises it.
 | Elixir variable enum-keyed text completion and typed write extent | A text `[E]T` value may omit a named slot and the reader completes it with that slot's element default (SPEC-TABLES.md §16.2, §16.9.4). The resulting full typed value saves. A directly supplied typed keyed map must already contain exactly one value per variant; a short value refuses under SF-20 rather than being silently padded. | `internal/codegen/elixirtable` `TestElixirFiniteFloat` reads `{"keyed":{"A":5.25}}` for `Key { A, B }`, observes `B = 0.0`, and saves the completed value; the paired direct `%{"A" => 5.25}` save refuses. Shared `sref_keyed_short` independently requires the same typed-writer refusal. |
 | fixed-step5-layout-unknown | a fixed-form file whose header hash is in no lineage entry refuses `layout_unknown`, `layout_hash` = the file's hash and nothing else; `layout_newer` keeps its ordinal and no read answers it (FIXED-FORM-ALGORITHM.md §5.3, "STEP 5's ANSWER IS `layout_unknown`, IN EVERY LEG, AND `layout_newer` IS RETIRED", and its condition table; SPEC-TABLES.md §21.3; decided 2026-11-03). Fixed in C (`SCHEMA_TABLE_LAYOUT_UNKNOWN`, appended as 23) and Rust (`TableFixedReason::LayoutUnknown`, appended last); already right in Go and C++. Still wrong, step 5 emits `layout_newer`: C#, Dart, Elixir, Java, JavaScript; Squirrel answers `layout_unsupported` when the lineage is empty. No shared-corpus case holds it: `docs/rulings.json` `refusal-verdict-only` makes a reason name per-leg detail the cross-leg harness never compares, so each leg's own tests hold the name | C: `internal/codegen/ctable` `TestFixedRoadmapT01Framing` (`c/R8`, `c/F12`, `c/R13`), `TestFixedRoadmapCT04Versions` (`c/R15`), `TestFixedRoadmapCT08WritesConformance` (`c/P4`), `TestFixedVersioningOldRefusesNew`, `TestFixedVersioningHash`, `TestCFixedFormSourcesStrict`; rows `c/R32`, `c/F12`. Rust: `internal/codegen/rusttable` `TestFixedRoadmapT01Framing` (`rust/R8`, `rust/R13`), `TestFixedRoadmapT04Versions` (`rust/R15`), `TestFixedRoadmapRustT12FramingText`, `TestFixedVersioningOldRefusesNew`, `TestFixedVersioningHash`; `make tables-rust-fixedform` (the header's-hash check); rows `rust/R8` (now on the generated reader), `rust/R3`. Each is red against the old `layout_newer` emission |
 | C and C++ block integer bounds | The generated block API must build for full-range signed and unsigned 64-bit fields and for fields that narrow either end by one. Values at each declared endpoint are legal. A narrower upper or lower bound still applies. | `internal/codegen/ctable` `TestCBlockRangeChecksElideStorageLimits` and `internal/codegen/cpptable` `TestCPPBlockRangeChecksElideStorageLimits` check the generated bound expressions for the six declarations. Run `make tables-clamp-limits` for the native limit checks. |
+| Goose announcement entry bound | The entry bound refuses at the entry that passes it, before that entry is decoded or compared: an announcement with more entries than the reader's bound is `vocabulary_too_large` even when an entry past the bound is damaged (SPEC-TABLES §3.3, THE ENTRY BOUND IS THAT CAPACITY; `internal/tablewire` `decodeVocabulary`) | `internal/codegen/goosetable` `TestGooseMessageFormAnnounceRead` (bound 3 against the Go reference over every cut, flip and form byte of the connection goldens; `backend_conn.bin flip 58` was `malformed` in Goose and `vocabulary_too_large` in the reference before the fix) |
+| Goose refused load keeps the caller's stores | `load_table` and `load_table_retain` append to the caller's value table and write the node table from index 0; a refused load leaves both tables exactly as the caller handed them, every length and every entry, as `ToLoaded` does (FL-03; PORT-GOOSE.md, JSON and wire conversion) | `internal/codegen/goosetable` `TestGooseRefusedStoresAndDuplicateSave` (`wire-vals 2`, `wire-nodes 1`, `wire-val0 99 3` and `wire-node0 5 2 4 13 77 true` after a refused load handed two values and one node) |
+| Moo large vocabularies pass moo-analyze | A generated enum key list (`keyvs`, `vs`) and a unit view's variant list carry their declared type, so a 4095-variant enum (tblann4096, tblann4097) passes moo-analyze in silence; tooling, not a wire rule | `internal/codegen/mootable` `TestMooTableDescriptorsLoad` (every manifest unit, moo-analyze with no output) |
+| Moo retain rows that owe `refused` | A `retain` row whose save column is `refused` owes a refused retaining load in every leg, and the Go engine refuses it too (FORMAT.md; R17 (kind 31) above) | `internal/codegen/mootable` `TestMooRetainAnswersTheManifest` (`varevo_kind31_retain`, `varevo_2hop_step1_v1`, `varevo_2hop_step2_v2`; fails when no refused row is exercised) |
+| Moo writer negative control with the message width guard | The message writer refuses a ranged value whose packed offset is past the field's width (SPEC.md §5.1 row 9; SF-18), a second guard behind the emitted range check, so the control removes the range check, holds range-below refused by the message writer alone, then removes the width guard and requires every writer to accept | `internal/codegen/mootable` `TestMooWritersRefuseOffContractNegativeControl` |
+| Goose driver probes compile against main.goose | A probe that runs `test/conformance/goose/main.goose` supplies every glue function the driver emits, with the driver's signatures (`conformance_wref` with `fresh`, the announcement glue, `conformance_cook_var`, `conformance_ri_verdict`, `conformance_fresh_json`, `conformance_read_into`); tooling, not a wire rule | `internal/codegen/goosetable` `TestGooseDriverFormThreeDispatch`, `TestGooseDriverVerdictAndWriteBack`, `TestGooseTableWireMatchesTheCorpus` and their negative controls, one glue (`probeSurfaceGlue`) for all three |
 | C and C++ block float32 ends | `BlockBytes` holds a ranged float, always float32 (SPEC.md §4.3), against ends held at float32, as the table write check and the Go, Rust and C# blocks hold it: `max = 0.1` admits the float32 0.1 and refuses the float32 one step past it (`tables/examples/Tables.schema` `FloatBound`). A double literal promoted the field to double, refused that 0.1 and drew `-Wdouble-promotion` in the C++ gate (#424). | `internal/codegen/ctable` `TestCBlockFloatRangeEndsAreHeldAtTheFieldWidth` and `internal/codegen/cpptable` `TestCPPBlockFloatRangeEndsAreHeldAtTheFieldWidth` check the generated bound expressions; each goes red with its emitter's double-literal spelling planted back. |
 | Go packet Write: an off-range int128, fixed or ufixed refuses, never panics | Row 1 covers a ranged `int128` and a `fixed`/`ufixed` raw value off its raw range (`min << F` to `max << F`); a refuse-every-build leg refuses it in every build, and Go returns `serialize.ErrValueOutOfRange` from the packet `Write`, never the runtime's panic (SPEC.md §5.1 row 1 and the Go packet `Write` line). Both shared `PacketWriteRefusal` schemas declare an `int128 \| min = -10, max = 100000000000000000000`, a `fixed(16, 16) \| min = -10, max = 10` and a `ufixed(32, 32) = 1 \| min = 1, max = 4000000000`, whose top raw bound lies past int64: one raw step past each bound is refused and each bound is written | `write-refusal-packet`: in [`test/packet-write-refusal/cases.txt`](../test/packet-write-refusal/cases.txt) (the assert legs and Go) `int128_*`, `fixed_*` and `ufixed_*`; in [`rows.txt`](../test/conformance/write-refusal-packet/rows.txt) (the every-build legs) `int128_*`, `fixed_raw_*` and `ufixed_*`; `TestWriteRefusalPacket` (`test/conformance/harness`), whose second negative control drops the generated 128-bit and fixed-point refusals and requires `int128_high`, `fixed_high` and `ufixed_high` red |
 | JavaScript step-5 miss is `layout_unknown` | A fixed-form file whose header hash is in no lineage entry refuses at FIXED-FORM-ALGORITHM §5.3 step 5 as `layout_unknown`, never `layout_newer`: `n = -1`, `layoutHash` is the file's hash and nothing else, every counter is zero, and every value handed in holds its declared default (ruling R4). Fixed 2026-11-24; the JavaScript leg answered `layout_newer` before. | `test/conformance/js/rows/R15.mjs` (the build's own `Cell` file reads as its positive control, then the same file under hash `0xdeadbeefcafe0001`); `internal/codegen/jstable` `TestJSFixedVersioningOldRefusesNew`, `TestJSFixedVersioningHash`, `TestJSFixedVersioningReferenceForwardRefusal`, `TestFixedRoadmapT01Framing` (js/R8, js/R13) and `TestFixedRoadmapJsT03PlansVersions` (js/R15). |
@@ -668,6 +676,90 @@ SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -v \
   -run 'Test(Go|Python)FixedLoadCapacityWitness'
 ```
 
+### Rows held after the 2026-11-24 SCHEMA_SLOW reds
+
+Four tests went red on main under `SCHEMA_SLOW=1` because a rule landed
+after them; each row names the rule, and the test now holds it. Run them
+with:
+
+```sh
+SCHEMA_SLOW=1 go test -count=1 ./internal/check ./internal/codegen/goosetable ./internal/codegen/mootable \
+  -run '^(TestNameBuildabilityCorpus|TestGooseFixedHostileInput|TestGooseFixedProofDefinitionHash|TestGooseLoadMessagesRefusalResetsBatch.*|TestMooRetainKeepsAFieldNested128.*|TestMooReadStrictWireCheckNegativeControl)$'
+```
+
+| entry | rule (spec) | held by |
+|---|---|---|
+| pkg-runtime-binding | a unit whose package is a binding of the Lobster table runtime is refused by `schema check` for every target, naming Lobster: `p` (a `cook.lobster` local) and `depth` (a `cook.lobster` parameter), as `id` and `kind` already were (SPEC.md §4.6, Emitter name rules; every target can spell what check accepts, the 2026-11-21 ruling) | testdata/name-buildability rows `pkg_p` and `pkg_depth` (`TestNameBuildabilityCorpus`); the Goose and moo tests that declared `package p` and `package depth` now declare `probe` and `retaindepth` |
+| fixed-last-record-refusal-resets-every-row | a fixed batch read refused at its LAST record (`no_layout`, a bad layout hash) answers `-1` and leaves EVERY row handed in at its declared defaults, record 0 included; the caller's own values survive in none (SPEC-TABLES.md §6.5, THE CALLER'S VALUES AFTER A REFUSAL; R4, GAP-21) | `TestGooseFixedHostileInput/P3`, `last_record_nolayout` |
+| message-batch-reset-after-the-walk | a refused message batch puts every value it was handed back at its declared defaults after the walk has decided the refusal, whatever refused: a non-finite float, an out-of-range value or damaged framing (SPEC-TABLES.md §6.5, "resets it after the refusal is decided"; R4) | `TestGooseLoadMessagesRefusalResetsBatch`; its negative control removes the `LoadMessages` reset and requires all three cases red |
+| wire-alone-rows-are-the-walks | `testdata/conformance/tables/WIRE-ALONE.txt` lists, by class, the framing rows whose condition §6.5 lists as DECIDABLE FROM THE WIRE ALONE. With a port's wire-alone walk removed, every listed row reads except the port's stated exceptions (rows its typed read also refuses, each with a reason), and no other row moves. moo states 6 exceptions (the inert-bytes rows, `frame_repeat_last_wins`, `node_table_twice`); Lua states 6 (the three `node_type_*` rows, the two ill-formed string-blob rows, `node_unknown_to_fixed_reader`). A listed row must be a refused framing row of MANIFEST.txt, and an exception must name a listed row and give a reason (SPEC-TABLES.md §6.5, DETECTION ORDER IS FREE) | `TestMooReadStrictWireCheckNegativeControl`, `TestLuaWireCheckNegativeControl`, `internal/wirealone` |
+### A member named like a type its declaration uses
+
+The checker refuses, for every target, a member spelled like a named type
+some member of the same declaration is declared with: a field of a `type` or
+a `table`, or a union arm (packet or table-closure), named like its own type
+or a sibling's. C++ declares `kind kind = kind::None;` (or `kind mode;` then
+`Kind2 kind;`) in the struct, which g++ refuses as a declaration that changes
+the meaning of `kind`, and Dart declares `kind kind = kind.none;` in the
+class, where the member hides the type in the whole class body
+([SPEC §4.6](SPEC.md#46-shape-checks), Emitter name rules). C++ compares the
+member as written and Dart its lowerCamel spelling, so a field `Kind kind`
+is refused for Dart alone.
+
+Each of `Inner`, `Cased`, `Pair` and `U` below is refused on its own: `Cased`
+names Dart, the others C++ and Dart.
+
+```schema
+package probe
+enum kind { Alpha, Beta, Gamma }
+enum Kind2 { A, B }
+type Inner { kind kind }
+type Cased { Kind kind }
+type Pair
+{
+    mode kind
+    kind Kind2
+}
+union U { kind kind }
+```
+
+Rename the member (`mode kind`) or the type (`kind Kind`, two names in every
+target) for an accepted schema; a field `kind` on a declaration whose members
+use no type `kind` is accepted too. `TestMemberNamedLikeAType` checks every
+refusal above, a packet union's arm, the targets each refusal names, that the
+diagnostic cites SPEC §4.6 once, and six accepted spellings. The
+name-buildability rows (`testdata/name-buildability`, held by
+`TestNameBuildabilityCorpus` at check and built in all 18 targets by the
+nightly `tools/namebuild`) hold the same cases:
+
+| Row | Verdict | What it holds |
+|---|---|---|
+| `e_kind` | refused, C++ and Dart | a field `kind kind` |
+| `e_kind_arm` | refused, C++ and Dart | a table union arm `kind kind` |
+| `e_kind_case` | refused, Dart | a field `Kind kind` |
+| `e_kind_sibling` | refused, C++ and Dart | `kind Kind2` beside `mode kind` |
+| `e_kind_upper` | builds | a field `kind Kind` |
+| `e_kind_other_owner` | builds | `kind Kind2` on a type that does not use `kind` |
+
+### A table-closure union in the Dart fixed form
+
+A union with an enum or flags arm is a table-closure construct
+([SPEC-TABLES §2.6](SPEC-TABLES.md)), assembled beside the decl stream, so the
+Dart packet emitter never declares its class. A table that holds one gets the
+union's storage class (`U`, `zeroU`, a plain-int tag) from its own
+`<Base>Fixed.dart`, never an import of a packet class that does not exist.
+
+```schema
+package probe
+enum Mode { Alpha, Beta, Gamma }
+union U { mode Mode }
+table Rec { pick U }
+```
+
+`TestFixedFormDeclaresATableClosureUnion` (internal/codegen/darttable) checks
+an enum arm, a flags arm and two enum arms; the name-buildability row
+`u_enum_arm_table` builds the same schema in all 18 targets, Dart's
+`dart analyze` included.
 ### Announcement vocabulary entry budget
 
 Use a fresh receiver for each row. Compile the variable-only `tables/blobs`
@@ -1190,6 +1282,30 @@ refusal-verdict-only), so the case is the leg's unit test.
 | rule | case | the leg it was red on before its fix |
 |---|---|---|
 | SPEC-TABLES §3.3: the block builder refuses a NaN or an infinity and names the field, as the block read does | Go unit test `TestLobsterTablesAreFiniteOnly` (`internal/codegen/lobstertable`, slow tier; no shared case: the verdict was already `refused`, and the corpus judges the verdict alone) | red before its fix on Lobster: the range check in `block_write_field` ran first and answered `invalid_value` for a NaN, so the build named no field while the read named `PaddedRow.value` |
+### Unlawful handed-in lineage entry
+
+Read the reference corpus files `old_unknown_census.bin` (one record) and
+`many_unknown_census.bin` (three records), written by `VOLD_unknown_census`,
+with a `VNEW_unknown_census` build whose lineage is handed the OLD layout as
+an entry. `VNEW` removed `Item.drop`, so the entry is unlawful
+([FIXED-FORM-ALGORITHM §5.4](FIXED-FORM-ALGORITHM.md#54-the-counter-and-the-refusals-per-op-and-per-condition),
+§5.9 #30; FIXED-FORM-VERSIONING-TESTS.md, `unknown_census`). Each load
+refuses `layout_malformed` before any record lands. Every report counter,
+`unknown` included, stays zero. A second load of the same file refuses the
+same way. A load that returns the named fields and counts `unknown` (1 for
+the field, or 4 or 3 when counted per element or per record) fails this
+test: it landed values from a layout the compile should have refused.
+
+Go answers both files with `TestFixedVersioningUnknownCensus` and
+`TestFixedVersioningUnknownCensusManyRecords` in `internal/codegen/gotable`.
+Elixir answers them with the same tests in `internal/codegen/elixirtable`,
+and its conformance row `test/conformance/elixir/rows/R16.exs` checks a
+three-record file the row writes itself. Run, with the corpus built:
+
+```sh
+SCHEMA_SLOW=1 go test -count=1 -v ./internal/codegen/gotable ./internal/codegen/elixirtable \
+  -run "^TestFixedVersioningUnknownCensus"
+```
 
 ### Counted-array slots after a fixed refusal
 

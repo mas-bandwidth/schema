@@ -2028,7 +2028,9 @@ never in the packet header, and in JavaScript in `<Base>.js` importing each
 `table` arm class its constructor instantiates (`new <Arm>()`) from the unit
 home that defines it (`./<Home>Table.js` when the union is in the unit's
 fixed-form closure, `./<Home>Variable.js` otherwise, and nothing it does not
-construct); a `type`
+construct), and in Dart by the table emitters themselves (the fixed form's
+`<Base>Fixed.dart` declares its storage class with a plain-int tag, since the
+packet emitter declares no class for it); a `type`
 body that holds one is refused by name, as is such a union that no table
 reaches (§11). A table holding one has no BLOCK form, by §19's standing rule
 for every union in a block closure. The packet wire's encoding of a general
@@ -6867,7 +6869,11 @@ well as about work, and this is where that memory lives.
   after it. A resolved vocabulary declared inside a read
   call would be a table rebuilt per batch, which is the property's opposite.
 - **THE ENTRY BOUND IS THAT CAPACITY, and an announcement above it is refused
-  by name as `vocabulary_too_large` before an entry is touched.** The bound is
+  by name as `vocabulary_too_large` before an entry is touched.** The bound
+  is applied as the entries are read: once the bound's count of entries is
+  placed, ANOTHER ENTRY STARTING is `vocabulary_too_large`, and that entry and
+  every byte after it is neither decoded nor compared, so damage past the
+  bound never turns the verdict into a malformed announcement. The bound is
   a number the CALLER states rather than a number the wire could name: sizing
   for the largest vocabulary the wire can spell would be sizing for a peer
   that does not exist. **A GENERATED CONSTANT GIVES THE UNIT'S OWN ENTRY
@@ -9835,6 +9841,19 @@ runs, and an index line whose file is missing is a vector that cannot run. The
 wire fuzzer reads both and refuses the whole run, naming each file, when they
 disagree (`checkWireVectorIndex`); neither is a warning, and neither is skipped.
 
+**The leg's stream ends only between frames.** The fuzzer drives each leg
+over a pipe (`test/conformance/README.md`, "The wire-fuzz driver"): the
+roster once, then one FRAME per mutant, a `u32` roster index, a `u32` length
+and that many bytes. The harness closes the pipe only after a whole frame.
+EOF before an index's first byte is the end of the stream, and the leg exits
+0. EOF INSIDE a frame REFUSES: one to three index bytes, a length cut short,
+or fewer body bytes than the length names is a truncated frame, never a
+short one. The leg names the cut on stderr, exits non-zero and writes no
+reply, and the cut bytes never reach a reader as if they were the whole
+wire. A leg that took a cut frame for a close or a whole mutant would turn
+a truncated run green. `harness wire-eof` holds every leg's driver to this
+rule, one case table for all of them (`make tables-wire-eof`).
+
 **The gate is `harness wire-fuzz`**, one command over one corpus for every
 language. Every pinned wire in the conformance manifest — every `instance` and
 every `report` line — is a SEED, framed once so that a mutation can aim at a
@@ -10039,7 +10058,10 @@ that answers the stream `test/conformance/README.md` states, forty lines of
 `Load`, `Save` and a report copied out — because the mutators, the oracle and
 the comparison live in the harness once, for every language. A port with no
 variable class answers the roster with a `0` for every variable root and is
-fuzzed over the fixed ones, and the line says how many seeds were absent.
+fuzzed over the fixed ones, and the line says how many seeds were absent and
+names the roots they belong to, each with its count: `N seeds absent (roots
+the leg has no codec for: unit.Root (n seeds), ...)`. A count alone sends
+whoever reads a red to rebuild the harness to learn its cause.
 
 **There is no `wire-forgery` surface, and the reason is the same one the
 block and cook fuzzers gave.** A fuzzer is a search, not a case, and a find it

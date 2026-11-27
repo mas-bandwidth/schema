@@ -122,7 +122,7 @@ void main() {
     'the correct plan loads one record, no refusal',
   );
   check(
-    !rightReport.malformed && rightReport.clamped == 0,
+    rightReport.unknown == 0 && rightReport.widened == 0,
     'the correct read moves no counter',
   );
   check(right[0].cameraId == 0xC001CAFE, 'the correct read preserves cameraId');

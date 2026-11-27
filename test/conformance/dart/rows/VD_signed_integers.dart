@@ -19,6 +19,16 @@
 // ON their declared bounds or inside them, which land exact and count
 // nothing. The signedness discriminators are -1 at every width (must ride
 // 0xFF* and come back -1, never 255/65535/...) and INT*_MIN.
+// TODAY'S LAW IS STRICT (docs/FIXED-FORM-ALGORITHM.md §4.6 the bounds pass,
+// §5.3 "a ranged scalar ... outside the WRITER's range: out_of_range", §5.4):
+// nothing clamps and nothing counts a clamp. Valid data ON a declared bound
+// reads clean (refused == none); one step PAST it refuses the whole load
+// `out_of_range` and leaves every row handed in at its declared defaults
+// (docs/SPEC-TABLES.md §6.5). The row therefore also forges the clean file one
+// step past two declared bounds — int8 i8_low at 127 (max 126) and int64
+// i64_high at INT64_MIN (min INT64_MIN + 1) — and asserts that refusal, so
+// the bound is held exactly where it is declared, at the narrowest and the
+// widest width.
 
 import 'dart:typed_data';
 import 'dart:io';
@@ -164,10 +174,15 @@ void main() {
   );
   check(read == 1, 'the record reads back (n=$read)');
   check(
-    !r.malformed && r.refused == home.TableFixedRefusal.none,
-    'valid data is no refusal (malformed=${r.malformed} refused=${r.refused})',
+    r.refused == home.TableFixedRefusal.none,
+    'valid data on its declared bounds is no refusal '
+    '(refused=${home.TableFixedRefusal.name(r.refused)})',
   );
-  check(r.clamped == 0, 'valid data moves no clamp (clamped=${r.clamped})');
+  check(
+    r.unknown == 0 && r.hash == rt.rangedSignedFixedHash && r.layoutHash == 0,
+    'the identity read counts nothing and reports its own hash '
+    '(unknown=${r.unknown} hash=0x${r.hash.toRadixString(16)} layoutHash=${r.layoutHash})',
+  );
   check(
     r.widened == 0,
     'same-width data moves no widen (widened=${r.widened})',
@@ -235,6 +250,41 @@ void main() {
     }
   }
   check(same, 'read-and-save-again is byte-identical to the first write');
+
+  // ---- ONE STEP PAST A DECLARED BOUND REFUSES (§4.6, §5.3, §5.4) ----
+  void wantRefused(int at, List<int> forged, String what) {
+    final bad = Uint8List.fromList(file);
+    bad.setRange(body + at, body + at + forged.length, forged);
+    // the row handed in carries the valid values: a refusal must put it
+    // back to its declared defaults (every field 0, the count 0), never
+    // leave it as handed in and never land part of the record.
+    final into = <home.RangedSigned>[back[0]];
+    final rr = home.TableFixedReport();
+    final n = rt.rangedSignedFixedLoad(
+      into, 1, bad, bad.length, rt.rangedSignedFixedNewPlan(), rr,
+    );
+    final d = into[0];
+    final atDefaults = d.i8Span == 0 && d.i8Low == 0 && d.i8High == 0 &&
+        d.i8Inside == 0 && d.i16Span == 0 && d.i16Low == 0 &&
+        d.i16High == 0 && d.i16Inside == 0 && d.i32Span == 0 &&
+        d.i32Low == 0 && d.i32High == 0 && d.i32Inside == 0 &&
+        d.i64Span == 0 && d.i64Low == 0 && d.i64High == 0 &&
+        d.i64Inside == 0 && d.edgesCount == 0;
+    check(
+      n == -1 &&
+          rr.refused == home.TableFixedRefusal.outOfRange &&
+          rr.unknown == 0 &&
+          rr.widened == 0 &&
+          atDefaults,
+      '$what refuses out_of_range, row at declared defaults '
+      '(n=$n refused=${home.TableFixedRefusal.name(rr.refused)} '
+      'atDefaults=$atDefaults i8Low=${d.i8Low} i64High=${d.i64High})',
+    );
+  }
+
+  wantRefused(1, [0x7F], 'int8 i8_low = 127, one past its declared max 126,');
+  wantRefused(44, [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80],
+      'int64 i64_high = INT64_MIN, one below its declared min INT64_MIN + 1,');
 
   if (failed) {
     exit(1);
