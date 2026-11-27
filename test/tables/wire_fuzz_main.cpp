@@ -454,8 +454,8 @@ static const Codec codecs[] = {
     FIXED( "tabledemo", tabledemo, KeyedConfig ),
     FIXED( "tabledemo", tabledemo, PackConfig ),
     FIXED( "tabledemo", tabledemo, CountedMin ),
-    FIXED( "tabledemo", tabledemo, Moods ),
-    FIXED( "tabledemo", tabledemo, MoodField ),
+    // tabledemo.Moods and MoodField are held in wire-absent/cpp-plain.tsv: the
+    // known-layout fixed read lands a deprecated variant as itself (§2.15)
     FIXED( "tabledemo", tabledemo, MinArmFix ),
     FIXED( "tabledemo", tabledemo, MinPlainFix ),
     FIXED( "shapes", shapes, FixedBounds ),

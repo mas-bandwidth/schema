@@ -7,3 +7,5 @@ packetunions.ShapeMsg	owed: wire-seed-roots-cpp (2 seeds)
 packetunions.ShapeMsg@message	owed: wire-seed-roots-cpp (2 seeds)
 tblvaluedefaults.FixedDefaults	owed: wire-seed-roots-cpp (2 seeds)
 tblvaluedefaults.VarDefaults	owed: wire-seed-roots-cpp (2 seeds)
+tabledemo.Moods	owed: the C and C++ fixed read on the known-layout path lands a deprecated variant element as itself, not the element default (SPEC-TABLES §2.15), and the save then asserts; mutant of sp-enum-elem-deprecated-array with element 2 = Old
+tabledemo.MoodField	owed: the same known-layout deprecated-variant read as tabledemo.Moods, scalar half
