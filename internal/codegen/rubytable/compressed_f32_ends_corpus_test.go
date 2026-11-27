@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/ruby"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/ruby"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 )
 
 // f32EndsDir is the cross-port corpus for A COMPRESSED FLOAT'S RANGE IS HELD

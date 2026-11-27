@@ -7,11 +7,11 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/check"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpptable"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/cqualify"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/check"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/cpp"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/cpptable"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/cqualify"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // cppEmit runs both C++ emitters on u, the escape applied to the types want

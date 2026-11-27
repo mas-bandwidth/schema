@@ -643,11 +643,11 @@ tables-cs-leg:
 	$(MAKE) tables-cs-leg-debug
 	$(MAKE) tables-cs-leg-release
 
-tables-cs-leg-debug: build/tables-generated-cs/.stamp
-	cd test/cs-tables && $(DOTNET) run
+tables-cs-leg-debug: build/retiredskips build/tables-generated-cs/.stamp
+	cd test/cs-tables && ../../build/retiredskips -leg cs -ledger ../../test/conformance/fixed-retired.json -- $(DOTNET) run
 
-tables-cs-leg-release: build/tables-generated-cs/.stamp
-	cd test/cs-tables && $(DOTNET) run -c Release
+tables-cs-leg-release: build/retiredskips build/tables-generated-cs/.stamp
+	cd test/cs-tables && ../../build/retiredskips -leg cs -ledger ../../test/conformance/fixed-retired.json -- $(DOTNET) run -c Release
 
 # PER-COMMIT SHARDS of the leg above (card green-fit-cs-tables-leg): the
 # unsplit leg measured 133 s per configuration in CI run 42554833739
@@ -667,16 +667,16 @@ tables-cs-leg-debug-core: build/tables-generated-cs/.stamp
 	cd test/cs-tables && $(DOTNET) run -- core
 tables-cs-leg-debug-evolution: build/tables-generated-cs/.stamp
 	cd test/cs-tables && $(DOTNET) run -- evolution
-tables-cs-leg-debug-fixed: build/tables-generated-cs/.stamp
-	cd test/cs-tables && $(DOTNET) run -- fixed
+tables-cs-leg-debug-fixed: build/retiredskips build/tables-generated-cs/.stamp
+	cd test/cs-tables && ../../build/retiredskips -leg cs -ledger ../../test/conformance/fixed-retired.json -- $(DOTNET) run -- fixed
 tables-cs-leg-release-wire: build/tables-generated-cs/.stamp
 	cd test/cs-tables && $(DOTNET) run -c Release -- wire
 tables-cs-leg-release-core: build/tables-generated-cs/.stamp
 	cd test/cs-tables && $(DOTNET) run -c Release -- core
 tables-cs-leg-release-evolution: build/tables-generated-cs/.stamp
 	cd test/cs-tables && $(DOTNET) run -c Release -- evolution
-tables-cs-leg-release-fixed: build/tables-generated-cs/.stamp
-	cd test/cs-tables && $(DOTNET) run -c Release -- fixed
+tables-cs-leg-release-fixed: build/retiredskips build/tables-generated-cs/.stamp
+	cd test/cs-tables && ../../build/retiredskips -leg cs -ledger ../../test/conformance/fixed-retired.json -- $(DOTNET) run -c Release -- fixed
 
 # THE LEG'S NEGATIVE CONTROLS (docs/PORTING.md M5, M6, M10, M14, M17 and M19,
 # and the native region writer's shared-blob refusal, docs/SPEC-TABLES.md §2.5).
@@ -1650,6 +1650,27 @@ packet-end-cs-negative-control: build/packet-end/cs/.stamp
 	@echo 'packet end C# negative control: removing the end check turns the trailing-byte and padding verdicts red'
 
 test-cs: packet-end-cs packet-end-cs-negative-control
+
+# THE PACKET-VOID CORPUS, C# (SPEC §4.8; make/checks/packet-void.mk): the
+# driver answers every case of testdata/wire/packet-void/cases.txt through the
+# generated public write and one-packet read, in a Debug build (the writer's
+# Debug.Assert contracts live) and a Release build; tools/casegate refuses a
+# case with no answer.
+.PHONY: packet-void-cs
+PACKET_VOID_CS := build/packet-void/cs
+
+$(PACKET_VOID_CS)/.stamp: bin/schema test/packet-void/Void.schema make/cs.mk
+	@rm -rf $(PACKET_VOID_CS)/generated
+	./bin/schema generate --lang cs --out $(PACKET_VOID_CS)/generated $(PACKET_VOID_SCHEMA)
+	@touch $@
+
+packet-void-cs: $(PACKET_VOID_CS)/.stamp build/casegate
+	$(DOTNET) build test/packet-void/cs/packet-void.csproj -c Debug -o $(PACKET_VOID_CS)/debug \
+		-p:ArtifactsPath="$(CURDIR)/$(PACKET_VOID_CS)/artifacts" --nologo -v quiet
+	$(call packet_void_gate,cs) $(DOTNET) $(PACKET_VOID_CS)/debug/packet-void.dll $(PACKET_VOID_PINS)
+	$(DOTNET) build test/packet-void/cs/packet-void.csproj -c Release -o $(PACKET_VOID_CS)/release \
+		-p:ArtifactsPath="$(CURDIR)/$(PACKET_VOID_CS)/artifacts" --nologo -v quiet
+	$(call packet_void_gate,cs) $(DOTNET) $(PACKET_VOID_CS)/release/packet-void.dll $(PACKET_VOID_PINS)
 
 # THE PACKET-WRITE COMPRESSED-FLOAT RANGE GATE (docs/SPEC.md §5.1 row 10,
 # docs/PACKET-WIRE-ALGORITHM.md §2.5): the generated packet writer holds a

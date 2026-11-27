@@ -1,0 +1,12 @@
+# THE PACKET-VOID OWED LEDGER (tools/casegate; the format is
+# internal/inputfamilies.Family.Owed's, the one every shared-corpus family
+# uses). One line per case a leg does not answer yet,
+# `<leg> <case> owed: <cause>`, or `<leg> all owed: <cause>` for a leg with
+# no packet-void driver; every line carries its cause. An exact set on every
+# line: a leg that is not one of the 18 legs, a case cases.txt does not name,
+# a line there twice, and a line for a case the leg answers ok are red until
+# the line is fixed or removed, and a leg or case with no line that does not
+# answer is red.
+lua mixed-write-payload-type owed: the generated Lua writer has no payload shape check; an integer payload raises "attempt to index a number value", not the writer refusal
+squirrel mixed-write-payload-type owed: the generated Squirrel writer has no payload shape check; an integer payload raises "the index EntriesCount does not exist", not the writer refusal
+elixir mixed-write-payload-type owed: the generated Elixir writer has no payload shape check; an integer payload raises MatchError, not the writer refusal

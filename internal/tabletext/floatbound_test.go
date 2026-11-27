@@ -5,9 +5,9 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/check"
-	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/internal/check"
+	"github.com/mas-bandwidth/schema/v3/internal/parser"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
 )
 
 // A FLOAT32 FIELD'S DECLARED RANGE IS HELD AT FLOAT32 ON THE TEXT SIDE TOO

@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/goosetable"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/goose"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/goosetable"
 )
 
 // gooseF32EndsSchema has a compressed float32 leaf and array and a plain

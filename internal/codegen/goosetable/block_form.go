@@ -30,8 +30,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/goose"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 func init() {
