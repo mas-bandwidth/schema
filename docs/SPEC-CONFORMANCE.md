@@ -700,6 +700,38 @@ SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -v \
   -run 'Test(Go|Python)FixedLoadCapacityWitness'
 ```
 
+### Every root of the fixed corpus, every landed value
+
+`make tables-fixedform-corpus` writes the C++ reference's fixed corpus and
+its manifest, `build/fixedform-corpus/manifest.txt`, one line per file
+([FIXED-FORM-ALGORITHM.md §5.9 #32](FIXED-FORM-ALGORITHM.md)). Every leg
+answers every line (docs/rulings.json every-test-is-a-shared-corpus):
+
+| The line says | The leg's read must |
+|---|---|
+| `refuse=<reason>` | refuse the whole load with that reason |
+| no `refuse=` | land `records=` records and every value of `values=`, with `expect=` laid over it (or, on a forged line with no `expect=`, the `forged=` cell over the value it reached), each compared by path |
+
+A float compares by its bits (a float32 widened exactly to float64 is the
+same value), a `fixed(I,F)` by its raw integer, and text by its bytes. A
+value the leg does not land is a failure that names the path. A
+byte-identical rewrite is checked beside the values and never in place of
+them: a read and a write wrong the same way round-trip unchanged.
+
+The harness is `internal/fixedvector.EveryRoot`. A leg's `TestMain` runs
+through `fixedvector.Main`, which fails the run unless the named walk left
+its record (every root answered, the landed values compared) in that run.
+`internal/ci` `TestEveryLegAnswersEveryFixedCorpusRoot` requires that
+wiring of every `internal/codegen/*table` leg not yet in its exact-set
+ledger. The Lua leg answers all 105 roots:
+
+```sh
+make tables-fixedform-corpus
+SCHEMA_SLOW=1 go test -count=1 -v ./internal/codegen/luatable \
+  -run '^TestLuaFixedCorpusEveryRoot$'
+```
+
+
 ### Every generated C++ table header compiles standalone
 
 A C++ table header carries the `schema_assert` hook whenever it calls

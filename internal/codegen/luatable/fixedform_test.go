@@ -21,19 +21,17 @@ import (
 
 // luaFixedCorpus is the C++ reference's byte oracle, build/fixedform-corpus,
 // exactly as the other legs resolve it (jstable's jsFixedCorpus, cpptable's
-// cppFixedCorpus). A bare `go test` on a tree that never built the oracle has
-// nothing to read and SKIPS, saying so; under SCHEMA_REQUIRE_CORPUS (make
-// test-lua builds the corpus first and sets it) a missing file is a FAILURE,
-// because a suite that skips itself there would report green over §5 having
-// never run.
+// cppFixedCorpus). Every test that reads it shells out to the pinned Lua, so
+// it runs behind the slow gate (the ledger's "slow" class); once the gate lets
+// it run, a corpus that is not built is a FAILURE by name, never a skip: a
+// suite that skips itself over a missing oracle reports green over a leg that
+// answered nothing (EVERY TEST IS A SHARED CORPUS).
 func luaFixedCorpus(t *testing.T, repo string) string {
 	t.Helper()
+	slowtest.Gate(t, "lua (it runs the emitted fixed-form runtime over the reference corpus)")
 	dir := filepath.Join(repo, "build", "fixedform-corpus")
-	if _, err := os.Stat(filepath.Join(dir, "old_field_append.bin")); err != nil {
-		if slowtest.CorpusRequired() {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set (or CI runs the slow half) and the reference's byte oracle is not in %s: %v", dir, err)
-		}
-		t.Skip("the reference's byte oracle is not built: make tables-fixedform-corpus")
+	if _, err := os.Stat(filepath.Join(dir, "manifest.txt")); err != nil {
+		t.Fatalf("the reference's fixed corpus is not built: %s/manifest.txt is missing (make tables-fixedform-corpus builds it); the Lua leg answers every root it names and cannot answer none: %v", dir, err)
 	}
 	return dir
 }
