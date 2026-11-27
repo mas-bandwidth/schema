@@ -14772,7 +14772,7 @@ in build version (§20.5).
   FixedResetImage  FixedHoles  FixedLineageHoles  FixedPlanMax  FixedReadPlan  FixedLoadWalk  GenPastBound
   FixedDecode  FixedPrefill  FixedIdentity  FixedNewPlan  FixedHashLo  FixedHashHi
   FixedDstCopy  FixedIdentityCopy  FixedLayoutCopy  FixedPrefillCopy
-  FixedKnown  FixedFloor  FixedLineagePlans  FixedBoundsKnown
+  FixedKnown  FixedFloor  FixedLineagePlans  FixedBoundsKnown  FixedKnownViews
   ```
 
   The Go templates also use Add, Erase, Each, Insert, Find,
@@ -14812,7 +14812,9 @@ in build version (§20.5).
   `FixedFloor`, and one plan per entry laid down at build, `FixedLineagePlans`.
   They are per-declaration for the same reason the identity plan is: a lineage
   belongs to ONE table and a unit can declare several, so a name that is free
-  today must not become a collision the day a second root is added.
+  today must not become a collision the day a second root is added. The JavaScript leg reads each known layout's lock bytes through a
+  `DataView`, and those views ride beside the lineage in `FixedKnownViews`, one
+  module-scope binding per declaration, claimed on the same rule.
 
   The `Fixed` rows are §3.4's, and they are claimed on this list's own rule:
   nothing declares the fixed form, every table whose closure §3.4 lays out
