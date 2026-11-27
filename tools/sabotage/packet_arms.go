@@ -28,8 +28,8 @@ var packetArmSabotages = map[string][]edit{
 		new: `			g.pf("\t\tvalue.%s = %s{} // SABOTAGED: zero instead of construction defaults\n", goname.Member(v.Name), v.Type)`,
 	}},
 	"packet-arm-zero-rust": {{
-		old: `			g.pf("            let mut arm = %s::new();\n", v.Type)`,
-		new: `			g.pf("            let mut arm = %s::default(); // SABOTAGED: zero instead of construction defaults\n", v.Type)`,
+		old: `			g.pf("            let mut schema_arm = %s::new();\n", v.Type)`,
+		new: `			g.pf("            let mut schema_arm = %s::default(); // SABOTAGED: zero instead of construction defaults\n", v.Type)`,
 	}},
 	"packet-arm-zero-cs": {{
 		old: `				g.sf("            %s%s(%svalue.%s); // every selection starts from construction defaults\n", initFor(v.Ref), v.Type, g.byRef(v.Type), ir.GoExportName(v.Name))`,

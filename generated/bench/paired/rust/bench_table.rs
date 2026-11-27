@@ -2445,7 +2445,7 @@ pub fn mixed_entity_json_write(v: &MixedEntity, w: &mut Jw, depth: usize, label:
     json_newline(&mut w.out, depth + 1);
     json_escape("weapon", &mut w.out);
     w.out.push_str(": ");
-    json_escape(mixed_weapon_json_name(v.weapon), &mut w.out);
+    json_escape(MixedWeapon::json_name(v.weapon), &mut w.out);
     if sep { w.out.push(','); }
     sep = true;
     json_newline(&mut w.out, depth + 1);
@@ -3257,7 +3257,7 @@ pub fn mixed_entity_json_fields(jr: &mut Jr, v: &mut MixedEntity, first: Option<
                 seen[10] = true;
                 if jr.peek() == b'"' {
                     if let Some(s) = jr.read_variant_name() {
-                        v.weapon = match mixed_weapon_from_json_name(&s) {
+                        v.weapon = match MixedWeapon::from_json_name(&s) {
                             Some(x) => x,
                             None => { jr.unknown += 1; MixedWeapon::None },
                         };
@@ -3784,56 +3784,56 @@ pub fn mixed_stat_json_ptr(jr: &mut Jr) -> Option<Rc<MixedStat>> {
 /// order, every byte the fields do not cover left zero.
 #[cfg(feature = "cook")]
 #[allow(unused_variables, clippy::identity_op)]
-pub fn bench_mixed_cook_body(v: &BenchMixed, w: &mut TableRegionWriter, at: i64) {
-    w.put(at, v.sequence as u64, 4);
-    w.put(at + 4, v.ack_sequence as u64, 4);
-    w.put(at + 8, v.ack_bits as u64, 4);
-    w.put(at + 16, v.session_id, 8);
-    w.put(at + 24, v.client_id as u64, 4);
-    w.put(at + 32, v.nonce, 8);
-    w.put(at + 40, v.world_time as u64, 8);
-    w.put(at + 48, v.frame_tick, 8);
-    w.put(at + 56, v.server_time as u64, 4);
-    if v.entities.is_empty() || v.entities.len() > 8 { w.fail(); }
-    w.put(at + 576, v.entities.len() as u64, 4);
-    for i in 0..v.entities.len() {
-        let ea = at + 64 + i as i64 * 64;
-        match v.entities.get(i) {
+pub fn bench_mixed_cook_body(schema_v: &BenchMixed, w: &mut TableRegionWriter, schema_at: i64) {
+    w.put(schema_at, schema_v.sequence as u64, 4);
+    w.put(schema_at + 4, schema_v.ack_sequence as u64, 4);
+    w.put(schema_at + 8, schema_v.ack_bits as u64, 4);
+    w.put(schema_at + 16, schema_v.session_id, 8);
+    w.put(schema_at + 24, schema_v.client_id as u64, 4);
+    w.put(schema_at + 32, schema_v.nonce, 8);
+    w.put(schema_at + 40, schema_v.world_time as u64, 8);
+    w.put(schema_at + 48, schema_v.frame_tick, 8);
+    w.put(schema_at + 56, schema_v.server_time as u64, 4);
+    if schema_v.entities.is_empty() || schema_v.entities.len() > 8 { w.fail(); }
+    w.put(schema_at + 576, schema_v.entities.len() as u64, 4);
+    for schema_i in 0..schema_v.entities.len() {
+        let ea = schema_at + 64 + schema_i as i64 * 64;
+        match schema_v.entities.get(schema_i) {
             Some(e) => mixed_entity_cook_body(e, w, ea),
             None => mixed_entity_cook_body(&MixedEntity::default(), w, ea),
         }
     }
-    if v.stats.len() > 80 { w.fail(); }
-    w.put(at + 1220, v.stats.len() as u64, 4);
-    for i in 0..v.stats.len() {
-        let ea = at + 580 + i as i64 * 8;
-        match v.stats.get(i) {
+    if schema_v.stats.len() > 80 { w.fail(); }
+    w.put(schema_at + 1220, schema_v.stats.len() as u64, 4);
+    for schema_i in 0..schema_v.stats.len() {
+        let ea = schema_at + 580 + schema_i as i64 * 8;
+        match schema_v.stats.get(schema_i) {
             Some(e) => mixed_stat_cook_body(e, w, ea),
             None => mixed_stat_cook_body(&MixedStat::default(), w, ea),
         }
     }
-    mixed_event_cook_union(&v.game_event, w, at + 1224);
-    if v.loadout.len() != 4 { w.fail(); }
-    for i in 0..4_usize {
-        let ea = at + 1244 + i as i64 * 1;
-        if let Some(e) = v.loadout.get(i) {
+    mixed_event_cook_union(&schema_v.game_event, w, schema_at + 1224);
+    if schema_v.loadout.len() != 4 { w.fail(); }
+    for schema_i in 0..4_usize {
+        let ea = schema_at + 1244 + schema_i as i64 * 1;
+        if let Some(e) = schema_v.loadout.get(schema_i) {
             w.put(ea, *e as u64, 1);
         }
     }
-    w.put_text(at + 1248, v.player_name.as_bytes(), 15, at + 1264);
-    w.put_text(at + 1268, &v.payload, 16, at + 1284);
-    w.put_f32(at + 1288, if v.aim_x == 0.0 { 0.0 } else { v.aim_x });
-    w.put_f32(at + 1292, if v.aim_y == 0.0 { 0.0 } else { v.aim_y });
-    w.put_f32(at + 1296, if v.aim_z == 0.0 { 0.0 } else { v.aim_z });
-    w.put_f32(at + 1300, v.recoil);
-    w.put_f64(at + 1304, v.drift);
-    w.put_wide(at + 1312, v.wide_key);
-    w.put_wide(at + 1328, v.flux as u128);
-    w.put(at + 1344, v.ping as u64, 2);
-    w.put(at + 1348, v.crc_hint as u64, 4);
-    w.put(at + 1352, if v.has_extra { 1 } else { 0 }, 1);
-    w.put(at + 1356, v.extra as u64, 4);
-    w.put(at + 1360, v.idle_ticks as u64, 4);
+    w.put_text(schema_at + 1248, schema_v.player_name.as_bytes(), 15, schema_at + 1264);
+    w.put_text(schema_at + 1268, &schema_v.payload, 16, schema_at + 1284);
+    w.put_f32(schema_at + 1288, if schema_v.aim_x == 0.0 { 0.0 } else { schema_v.aim_x });
+    w.put_f32(schema_at + 1292, if schema_v.aim_y == 0.0 { 0.0 } else { schema_v.aim_y });
+    w.put_f32(schema_at + 1296, if schema_v.aim_z == 0.0 { 0.0 } else { schema_v.aim_z });
+    w.put_f32(schema_at + 1300, schema_v.recoil);
+    w.put_f64(schema_at + 1304, schema_v.drift);
+    w.put_wide(schema_at + 1312, schema_v.wide_key);
+    w.put_wide(schema_at + 1328, schema_v.flux as u128);
+    w.put(schema_at + 1344, schema_v.ping as u64, 2);
+    w.put(schema_at + 1348, schema_v.crc_hint as u64, 4);
+    w.put(schema_at + 1352, if schema_v.has_extra { 1 } else { 0 }, 1);
+    w.put(schema_at + 1356, schema_v.extra as u64, 4);
+    w.put(schema_at + 1360, schema_v.idle_ticks as u64, 4);
 }
 
 /// mixed_chat_event_cook_body — one MixedChatEvent record (8 bytes, aligned 4) at `at` in the region
@@ -3841,9 +3841,9 @@ pub fn bench_mixed_cook_body(v: &BenchMixed, w: &mut TableRegionWriter, at: i64)
 /// order, every byte the fields do not cover left zero.
 #[cfg(feature = "cook")]
 #[allow(unused_variables, clippy::identity_op)]
-pub fn mixed_chat_event_cook_body(v: &MixedChatEvent, w: &mut TableRegionWriter, at: i64) {
-    w.put(at, v.channel as u64, 4);
-    w.put(at + 4, v.speaker as u64, 4);
+pub fn mixed_chat_event_cook_body(schema_v: &MixedChatEvent, w: &mut TableRegionWriter, schema_at: i64) {
+    w.put(schema_at, schema_v.channel as u64, 4);
+    w.put(schema_at + 4, schema_v.speaker as u64, 4);
 }
 
 /// mixed_entity_cook_body — one MixedEntity record (64 bytes, aligned 8) at `at` in the region
@@ -3851,21 +3851,21 @@ pub fn mixed_chat_event_cook_body(v: &MixedChatEvent, w: &mut TableRegionWriter,
 /// order, every byte the fields do not cover left zero.
 #[cfg(feature = "cook")]
 #[allow(unused_variables, clippy::identity_op)]
-pub fn mixed_entity_cook_body(v: &MixedEntity, w: &mut TableRegionWriter, at: i64) {
-    w.put(at, v.entity_id as u64, 4);
-    w.put(at + 4, v.pos_x as u64, 4);
-    w.put(at + 8, v.pos_y as u64, 4);
-    w.put(at + 12, v.pos_z as u64, 4);
-    w.put(at + 16, v.yaw as u64, 4);
-    w.put(at + 20, v.pitch as u64, 4);
-    w.put(at + 24, v.vel_x as u64, 4);
-    w.put(at + 28, v.vel_y as u64, 4);
-    w.put(at + 32, v.vel_z as u64, 4);
-    w.put(at + 36, v.health as u64, 4);
-    w.put(at + 40, v.weapon as u64, 1);
-    w.put(at + 48, v.damage, 8);
-    w.put(at + 56, if v.moving { 1 } else { 0 }, 1);
-    w.put(at + 57, if v.firing { 1 } else { 0 }, 1);
+pub fn mixed_entity_cook_body(schema_v: &MixedEntity, w: &mut TableRegionWriter, schema_at: i64) {
+    w.put(schema_at, schema_v.entity_id as u64, 4);
+    w.put(schema_at + 4, schema_v.pos_x as u64, 4);
+    w.put(schema_at + 8, schema_v.pos_y as u64, 4);
+    w.put(schema_at + 12, schema_v.pos_z as u64, 4);
+    w.put(schema_at + 16, schema_v.yaw as u64, 4);
+    w.put(schema_at + 20, schema_v.pitch as u64, 4);
+    w.put(schema_at + 24, schema_v.vel_x as u64, 4);
+    w.put(schema_at + 28, schema_v.vel_y as u64, 4);
+    w.put(schema_at + 32, schema_v.vel_z as u64, 4);
+    w.put(schema_at + 36, schema_v.health as u64, 4);
+    w.put(schema_at + 40, schema_v.weapon as u64, 1);
+    w.put(schema_at + 48, schema_v.damage, 8);
+    w.put(schema_at + 56, if schema_v.moving { 1 } else { 0 }, 1);
+    w.put(schema_at + 57, if schema_v.firing { 1 } else { 0 }, 1);
 }
 
 /// mixed_hit_event_cook_body — one MixedHitEvent record (16 bytes, aligned 4) at `at` in the region
@@ -3873,11 +3873,11 @@ pub fn mixed_entity_cook_body(v: &MixedEntity, w: &mut TableRegionWriter, at: i6
 /// order, every byte the fields do not cover left zero.
 #[cfg(feature = "cook")]
 #[allow(unused_variables, clippy::identity_op)]
-pub fn mixed_hit_event_cook_body(v: &MixedHitEvent, w: &mut TableRegionWriter, at: i64) {
-    w.put(at, v.target_id as u64, 4);
-    w.put(at + 4, v.damage as u64, 4);
-    w.put(at + 8, v.hit_kind as u64, 4);
-    w.put(at + 12, if v.crit { 1 } else { 0 }, 1);
+pub fn mixed_hit_event_cook_body(schema_v: &MixedHitEvent, w: &mut TableRegionWriter, schema_at: i64) {
+    w.put(schema_at, schema_v.target_id as u64, 4);
+    w.put(schema_at + 4, schema_v.damage as u64, 4);
+    w.put(schema_at + 8, schema_v.hit_kind as u64, 4);
+    w.put(schema_at + 12, if schema_v.crit { 1 } else { 0 }, 1);
 }
 
 /// mixed_pickup_event_cook_body — one MixedPickupEvent record (8 bytes, aligned 4) at `at` in the region
@@ -3885,9 +3885,9 @@ pub fn mixed_hit_event_cook_body(v: &MixedHitEvent, w: &mut TableRegionWriter, a
 /// order, every byte the fields do not cover left zero.
 #[cfg(feature = "cook")]
 #[allow(unused_variables, clippy::identity_op)]
-pub fn mixed_pickup_event_cook_body(v: &MixedPickupEvent, w: &mut TableRegionWriter, at: i64) {
-    w.put(at, v.item_id as u64, 4);
-    w.put(at + 4, v.amount as u64, 4);
+pub fn mixed_pickup_event_cook_body(schema_v: &MixedPickupEvent, w: &mut TableRegionWriter, schema_at: i64) {
+    w.put(schema_at, schema_v.item_id as u64, 4);
+    w.put(schema_at + 4, schema_v.amount as u64, 4);
 }
 
 /// mixed_stat_cook_body — one MixedStat record (8 bytes, aligned 4) at `at` in the region
@@ -3895,29 +3895,29 @@ pub fn mixed_pickup_event_cook_body(v: &MixedPickupEvent, w: &mut TableRegionWri
 /// order, every byte the fields do not cover left zero.
 #[cfg(feature = "cook")]
 #[allow(unused_variables, clippy::identity_op)]
-pub fn mixed_stat_cook_body(v: &MixedStat, w: &mut TableRegionWriter, at: i64) {
-    w.put(at, v.stat_id as u64, 4);
-    w.put(at + 4, v.delta as u64, 4);
+pub fn mixed_stat_cook_body(schema_v: &MixedStat, w: &mut TableRegionWriter, schema_at: i64) {
+    w.put(schema_at, schema_v.stat_id as u64, 4);
+    w.put(schema_at + 4, schema_v.delta as u64, 4);
 }
 
 /// mixed_event_cook_union — the union's tag at offset 0 and the SET arm at offset 4
 /// (docs/SPEC-TABLES.md §2.6, §7.2); every other byte of its extent stays zero.
 #[cfg(feature = "cook")]
 #[allow(unused_variables, clippy::identity_op)]
-pub fn mixed_event_cook_union(v: &MixedEvent, w: &mut TableRegionWriter, at: i64) {
-    match v {
+pub fn mixed_event_cook_union(schema_v: &MixedEvent, w: &mut TableRegionWriter, schema_at: i64) {
+    match schema_v {
         MixedEvent::None => {}
         MixedEvent::Hit(x) => {
-            w.put(at, 1, 1);
-            mixed_hit_event_cook_body(x, w, at + 4);
+            w.put(schema_at, 1, 1);
+            mixed_hit_event_cook_body(x, w, schema_at + 4);
         }
         MixedEvent::Chat(x) => {
-            w.put(at, 2, 1);
-            mixed_chat_event_cook_body(x, w, at + 4);
+            w.put(schema_at, 2, 1);
+            mixed_chat_event_cook_body(x, w, schema_at + 4);
         }
         MixedEvent::Pickup(x) => {
-            w.put(at, 3, 1);
-            mixed_pickup_event_cook_body(x, w, at + 4);
+            w.put(schema_at, 3, 1);
+            mixed_pickup_event_cook_body(x, w, schema_at + 4);
         }
     }
 }

@@ -53,10 +53,10 @@ pub const TABLE_COOK_MAX_ALIGN: u64 = 64;
 /// The cooked header read BYTEWISE.
 ///
 /// # Safety
-/// `p` must point at eight readable bytes.
+/// `schema_p` must point at eight readable bytes.
 #[inline]
-pub unsafe fn table_cook_read64(p: *const u8) -> u64 {
-    unsafe { core::ptr::read_unaligned(p as *const u64) }
+pub unsafe fn table_cook_read64(schema_p: *const u8) -> u64 {
+    unsafe { core::ptr::read_unaligned(schema_p as *const u64) }
 }
 
 // Open checks the header and POINTS, and this is the WHOLE check (§7): the
@@ -70,19 +70,19 @@ pub unsafe fn table_cook_read64(p: *const u8) -> u64 {
 // UNSIGNED and each term is BOUNDED BEFORE IT IS ADDED.
 ///
 /// # Safety
-/// `bytes` must point at `length` readable bytes, and those bytes must be a
+/// `bytes` must point at `schema_length` readable bytes, and those bytes must be a
 /// genuine cook of this build: every bool byte 0 or 1, every self-relative
 /// offset a slot inside the region, and every count within its declared bound.
 /// The region must stay put and must not be written for as long as the returned
 /// region or anything borrowed from it lives.
 pub unsafe fn table_cook_open(
     bytes: *const u8,
-    length: u64,
-    root_size: u64,
-    root_align: u64,
+    schema_length: u64,
+    schema_root_size: u64,
+    schema_root_align: u64,
 ) -> Option<(*const u8, u64)> {
     unsafe {
-        if bytes.is_null() || length < TABLE_COOK_HEADER_BYTES {
+        if bytes.is_null() || schema_length < TABLE_COOK_HEADER_BYTES {
             return None;
         }
         // the MAGIC, bytewise and first: it is what establishes the byte order
@@ -106,24 +106,24 @@ pub unsafe fn table_cook_open(
         if table_cook_read64(bytes.add(56)) != 0 {
             return None;
         }
-        let data_length = table_cook_read64(bytes.add(24));
-        let attribution_length = table_cook_read64(bytes.add(32));
-        let alignment = table_cook_read64(bytes.add(40));
+        let schema_data_length = table_cook_read64(bytes.add(24));
+        let schema_attribution_length = table_cook_read64(bytes.add(32));
+        let schema_alignment = table_cook_read64(bytes.add(40));
         // THE ALIGNMENT WORD IS DATA, and it is the one header field the rest
         // of the check does arithmetic WITH rather than only compares against.
-        if alignment < 8 || alignment > TABLE_COOK_MAX_ALIGN {
+        if schema_alignment < 8 || schema_alignment > TABLE_COOK_MAX_ALIGN {
             return None;
         }
-        if alignment & (alignment - 1) != 0 {
+        if schema_alignment & (schema_alignment - 1) != 0 {
             return None; // a power of two
         }
-        if !alignment.is_multiple_of(root_align) {
+        if !schema_alignment.is_multiple_of(schema_root_align) {
             return None; // and an alignment THE ROOT CAN SIT AT
         }
         // The DATA part begins at align_up(64, alignment). It is DERIVED and
         // not a header field.
-        let data_offset = (TABLE_COOK_HEADER_BYTES + alignment - 1) & !(alignment - 1);
-        if length < data_offset {
+        let schema_data_offset = (TABLE_COOK_HEADER_BYTES + schema_alignment - 1) & !(schema_alignment - 1);
+        if schema_length < schema_data_offset {
             return None;
         }
         // the two part lengths against the length the caller passed: the whole
@@ -131,22 +131,22 @@ pub unsafe fn table_cook_open(
         // that is not EXACTLY that refuses — truncation and trailing bytes are
         // one refusal, and both terms are subtracted rather than added so no
         // sum can carry.
-        if data_length > length - data_offset {
+        if schema_data_length > schema_length - schema_data_offset {
             return None;
         }
-        if attribution_length != length - data_offset - data_length {
+        if schema_attribution_length != schema_length - schema_data_offset - schema_data_length {
             return None;
         }
         // the ROOT sits at the region's base, so the region has to hold it.
-        if data_length < root_size {
+        if schema_data_length < schema_root_size {
             return None;
         }
-        let base = bytes.add(data_offset as usize);
+        let base = bytes.add(schema_data_offset as usize);
         // the alignment of the BASE.
-        if !(base as usize as u64).is_multiple_of(alignment) {
+        if !(base as usize as u64).is_multiple_of(schema_alignment) {
             return None;
         }
-        Some((base, data_length))
+        Some((base, schema_data_length))
     }
 }
 
@@ -156,25 +156,25 @@ pub unsafe fn table_cook_open(
 /// # Safety
 /// bytes must point at length readable bytes. This may be called on a refused
 /// region: it reads the header only and never forms a reference to a row.
-pub unsafe fn table_cook_open_reason(bytes: *const u8, length: u64, root_size: u64, root_align: u64) -> &'static str {
+pub unsafe fn table_cook_open_reason(bytes: *const u8, schema_length: u64, schema_root_size: u64, schema_root_align: u64) -> &'static str {
     unsafe {
-        if table_cook_open(bytes, length, root_size, root_align).is_some() { return "ok"; }
+        if table_cook_open(bytes, schema_length, schema_root_size, schema_root_align).is_some() { return "ok"; }
         if bytes.is_null() { return "unaligned_base"; }
-        if length < TABLE_COOK_HEADER_BYTES { return "truncated"; }
-        let magic = table_cook_read64(bytes);
-        if magic != TABLE_COOK_MAGIC {
-            return if magic.swap_bytes() == TABLE_COOK_MAGIC { "foreign_order" } else { "not_a_cook" };
+        if schema_length < TABLE_COOK_HEADER_BYTES { return "truncated"; }
+        let schema_magic = table_cook_read64(bytes);
+        if schema_magic != TABLE_COOK_MAGIC {
+            return if schema_magic.swap_bytes() == TABLE_COOK_MAGIC { "foreign_order" } else { "not_a_cook" };
         }
         if table_cook_read64(bytes.add(16)) != TABLE_COOK_BYTE_ORDER { return "not_a_cook"; }
         if table_cook_read64(bytes.add(8)) != BUILD_VERSION { return "wrong_build_version"; }
         if table_cook_read64(bytes.add(48)) != 0 || table_cook_read64(bytes.add(56)) != 0 { return "reserved_not_zero"; }
-        let data_length = table_cook_read64(bytes.add(24));
-        let attribution_length = table_cook_read64(bytes.add(32));
-        let alignment = table_cook_read64(bytes.add(40));
-        if alignment < 8 || alignment > TABLE_COOK_MAX_ALIGN || alignment & (alignment - 1) != 0 || !alignment.is_multiple_of(root_align) { return "bad_alignment"; }
-        let data_offset = (TABLE_COOK_HEADER_BYTES + alignment - 1) & !(alignment - 1);
-        if length < data_offset || data_length > length - data_offset || attribution_length != length - data_offset - data_length || data_length < root_size { return "truncated"; }
-        if !(bytes.add(data_offset as usize) as usize as u64).is_multiple_of(alignment) { return "unaligned_base"; }
+        let schema_data_length = table_cook_read64(bytes.add(24));
+        let schema_attribution_length = table_cook_read64(bytes.add(32));
+        let schema_alignment = table_cook_read64(bytes.add(40));
+        if schema_alignment < 8 || schema_alignment > TABLE_COOK_MAX_ALIGN || schema_alignment & (schema_alignment - 1) != 0 || !schema_alignment.is_multiple_of(schema_root_align) { return "bad_alignment"; }
+        let schema_data_offset = (TABLE_COOK_HEADER_BYTES + schema_alignment - 1) & !(schema_alignment - 1);
+        if schema_length < schema_data_offset || schema_data_length > schema_length - schema_data_offset || schema_attribution_length != schema_length - schema_data_offset - schema_data_length || schema_data_length < schema_root_size { return "truncated"; }
+        if !(bytes.add(schema_data_offset as usize) as usize as u64).is_multiple_of(schema_alignment) { return "unaligned_base"; }
         "truncated"
     }
 }
@@ -251,14 +251,14 @@ pub enum TableCookRefuse {
 /// out is null or points at a writable range of at + width bytes that stays
 /// put and is not written through any other pointer for the duration of the
 /// call; width is at most eight.
-pub unsafe fn table_cook_put(out: *mut u8, at: i64, value: u64, width: u32, order: u64) {
+pub unsafe fn table_cook_put(out: *mut u8, schema_at: i64, schema_value: u64, schema_width: u32, schema_order: u64) {
     if out.is_null() {
         return;
     }
     unsafe {
-        for i in 0..width as usize {
-            let shift = if order == 2 { width as usize - 1 - i } else { i };
-            *out.add(at as usize + i) = (value >> (shift * 8)) as u8;
+        for schema_i in 0..schema_width as usize {
+            let schema_shift = if schema_order == 2 { schema_width as usize - 1 - schema_i } else { schema_i };
+            *out.add(schema_at as usize + schema_i) = (schema_value >> (schema_shift * 8)) as u8;
         }
     }
 }
@@ -267,44 +267,44 @@ pub unsafe fn table_cook_put(out: *mut u8, at: i64, value: u64, width: u32, orde
 //
 // # Safety
 // p must point at a readable range of at + width bytes; width is at most eight.
-unsafe fn table_cook_raw(p: *const u8, at: i64, width: u32) -> u64 {
-    let mut v: u64 = 0;
+unsafe fn table_cook_raw(schema_p: *const u8, schema_at: i64, schema_width: u32) -> u64 {
+    let mut schema_v: u64 = 0;
     unsafe {
-        for i in 0..width as usize {
-            v |= (*p.add(at as usize + i) as u64) << (i * 8);
+        for schema_i in 0..schema_width as usize {
+            schema_v |= (*schema_p.add(schema_at as usize + schema_i) as u64) << (schema_i * 8);
         }
     }
-    v
+    schema_v
 }
 
 // Check only live enum slots of the caller's fixed row (§2.15).
 #[cfg(debug_assertions)]
 #[doc(hidden)]
-pub unsafe fn table_cook_check_enum_variants(p: *const u8, t: &TableCookInfo) {
-    for f in &t.fields[..t.num_fields as usize] {
-        if f.is_pointer || f.deprecated_field || (f.deprecated_variants.is_empty() && f.record.is_none()) {
+pub unsafe fn table_cook_check_enum_variants(schema_p: *const u8, schema_t: &TableCookInfo) {
+    for schema_f in &schema_t.fields[..schema_t.num_fields as usize] {
+        if schema_f.is_pointer || schema_f.deprecated_field || (schema_f.deprecated_variants.is_empty() && schema_f.record.is_none()) {
             continue;
         }
-        if f.present_offset >= 0 && unsafe { table_cook_raw(p, f.present_offset as i64, 1) } == 0 {
+        if schema_f.present_offset >= 0 && unsafe { table_cook_raw(schema_p, schema_f.present_offset as i64, 1) } == 0 {
             continue;
         }
-        let count = if f.count_offset >= 0 {
-            let used = unsafe { table_cook_raw(p, f.count_offset as i64, 4) } as i32;
-            used.clamp(0, f.array_bound)
-        } else if f.is_array {
-            f.array_bound
+        let schema_count = if schema_f.count_offset >= 0 {
+            let schema_used = unsafe { table_cook_raw(schema_p, schema_f.count_offset as i64, 4) } as i32;
+            schema_used.clamp(0, schema_f.array_bound)
+        } else if schema_f.is_array {
+            schema_f.array_bound
         } else {
             1
         };
-        for k in 0..count as i64 {
-            let at = f.offset as i64 + k * f.elem_size as i64;
-            if let Some(record) = f.record {
-                unsafe { table_cook_check_enum_variants(p.add(at as usize), record()); }
+        for schema_k in 0..schema_count as i64 {
+            let schema_at = schema_f.offset as i64 + schema_k * schema_f.elem_size as i64;
+            if let Some(schema_record) = schema_f.record {
+                unsafe { table_cook_check_enum_variants(schema_p.add(schema_at as usize), schema_record()); }
             } else {
-                let value = unsafe { table_cook_raw(p, at, f.elem_size as u32) };
-                for &(ordinal, name) in f.deprecated_variants {
-                    debug_assert!(value != ordinal,
-                        "invalid_value: {}.{} holds deprecated variant {}", t.name, f.name, name);
+                let schema_value = unsafe { table_cook_raw(schema_p, schema_at, schema_f.elem_size as u32) };
+                for &(schema_ordinal, schema_name) in schema_f.deprecated_variants {
+                    debug_assert!(schema_value != schema_ordinal,
+                        "invalid_value: {}.{} holds deprecated variant {}", schema_t.name, schema_f.name, schema_name);
                 }
             }
         }
@@ -320,48 +320,48 @@ pub unsafe fn table_cook_check_enum_variants(p: *const u8, t: &TableCookInfo) {
 /// p must point at a readable record whose fields the descriptor describes;
 /// out is null or points at that record's writable extent. Neither buffer is
 /// written through any other pointer for the duration of the call.
-pub unsafe fn table_cook_write_record(p: *const u8, t: &TableCookInfo, out: *mut u8, at: i64, order: u64) -> bool {
-    for f in &t.fields[..t.num_fields as usize] {
-        let dest = at + f.offset as i64;
-        if f.present_offset >= 0 {
-            let present = unsafe { table_cook_raw(p, f.present_offset as i64, 1) };
-            unsafe { table_cook_put(out, at + f.present_offset as i64, if present != 0 { 1 } else { 0 }, 1, order); }
+pub unsafe fn table_cook_write_record(schema_p: *const u8, schema_t: &TableCookInfo, out: *mut u8, schema_at: i64, schema_order: u64) -> bool {
+    for schema_f in &schema_t.fields[..schema_t.num_fields as usize] {
+        let schema_dest = schema_at + schema_f.offset as i64;
+        if schema_f.present_offset >= 0 {
+            let schema_present = unsafe { table_cook_raw(schema_p, schema_f.present_offset as i64, 1) };
+            unsafe { table_cook_put(out, schema_at + schema_f.present_offset as i64, if schema_present != 0 { 1 } else { 0 }, 1, schema_order); }
         }
-        match f.storage {
+        match schema_f.storage {
             TableCookStorage::String | TableCookStorage::Bytes => {
-                let used = unsafe { table_cook_raw(p, f.count_offset as i64, 4) as i32 };
-                if used < 0 || used > f.array_bound {
+                let schema_used = unsafe { table_cook_raw(schema_p, schema_f.count_offset as i64, 4) as i32 };
+                if schema_used < 0 || schema_used > schema_f.array_bound {
                     return false;
                 }
-                unsafe { table_cook_put(out, at + f.count_offset as i64, used as u64, 4, order); }
-                for k in 0..used as i64 {
-                    let v = unsafe { table_cook_raw(p, f.offset as i64 + k, 1) };
-                    unsafe { table_cook_put(out, dest + k, v, 1, order); }
+                unsafe { table_cook_put(out, schema_at + schema_f.count_offset as i64, schema_used as u64, 4, schema_order); }
+                for schema_k in 0..schema_used as i64 {
+                    let schema_v = unsafe { table_cook_raw(schema_p, schema_f.offset as i64 + schema_k, 1) };
+                    unsafe { table_cook_put(out, schema_dest + schema_k, schema_v, 1, schema_order); }
                 }
             }
             TableCookStorage::Record => {
-                if f.is_pointer {
+                if schema_f.is_pointer {
                     return false; // a pointer edge is the region writer's, not carried yet
                 }
-                let info = match f.record {
-                    Some(r) => r(),
+                let schema_info = match schema_f.record {
+                    Some(schema_r) => schema_r(),
                     None => return false,
                 };
-                let count: i32 = if f.count_offset >= 0 {
-                    let used = unsafe { table_cook_raw(p, f.count_offset as i64, 4) as i32 };
-                    if used < 0 || used > f.array_bound {
+                let schema_count: i32 = if schema_f.count_offset >= 0 {
+                    let schema_used = unsafe { table_cook_raw(schema_p, schema_f.count_offset as i64, 4) as i32 };
+                    if schema_used < 0 || schema_used > schema_f.array_bound {
                         return false;
                     }
-                    unsafe { table_cook_put(out, at + f.count_offset as i64, used as u64, 4, order); }
-                    used
-                } else if f.is_array {
-                    f.array_bound
+                    unsafe { table_cook_put(out, schema_at + schema_f.count_offset as i64, schema_used as u64, 4, schema_order); }
+                    schema_used
+                } else if schema_f.is_array {
+                    schema_f.array_bound
                 } else {
                     1
                 };
-                for k in 0..count as i64 {
-                    let src = unsafe { p.add((f.offset as i64 + k * f.elem_size as i64) as usize) };
-                    if unsafe { !table_cook_write_record(src, info, out, dest + k * f.elem_size as i64, order) } {
+                for schema_k in 0..schema_count as i64 {
+                    let schema_src = unsafe { schema_p.add((schema_f.offset as i64 + schema_k * schema_f.elem_size as i64) as usize) };
+                    if unsafe { !table_cook_write_record(schema_src, schema_info, out, schema_dest + schema_k * schema_f.elem_size as i64, schema_order) } {
                         return false;
                     }
                 }
@@ -370,33 +370,33 @@ pub unsafe fn table_cook_write_record(p: *const u8, t: &TableCookInfo, out: *mut
                 return false; // the variable region's writer, not carried yet
             }
             _ => {
-                let count: i32 = if f.count_offset >= 0 {
-                    let used = unsafe { table_cook_raw(p, f.count_offset as i64, 4) as i32 };
-                    if used < 0 || used > f.array_bound {
+                let schema_count: i32 = if schema_f.count_offset >= 0 {
+                    let schema_used = unsafe { table_cook_raw(schema_p, schema_f.count_offset as i64, 4) as i32 };
+                    if schema_used < 0 || schema_used > schema_f.array_bound {
                         return false;
                     }
-                    unsafe { table_cook_put(out, at + f.count_offset as i64, used as u64, 4, order); }
-                    used
-                } else if f.is_array {
-                    f.array_bound
+                    unsafe { table_cook_put(out, schema_at + schema_f.count_offset as i64, schema_used as u64, 4, schema_order); }
+                    schema_used
+                } else if schema_f.is_array {
+                    schema_f.array_bound
                 } else {
                     1
                 };
-                for k in 0..count as i64 {
-                    let v = unsafe { table_cook_raw(p, f.offset as i64 + k * f.elem_size as i64, f.elem_size as u32) };
+                for schema_k in 0..schema_count as i64 {
+                    let schema_v = unsafe { table_cook_raw(schema_p, schema_f.offset as i64 + schema_k * schema_f.elem_size as i64, schema_f.elem_size as u32) };
                     // A COOKED FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): a NaN or an
                     // infinity refuses on its raw bits, and the measure pass runs
                     // first, so a refusal writes no byte.
-                    if f.storage == TableCookStorage::Float
-                        && ((f.elem_size == 4 && v & 0x7f80_0000 == 0x7f80_0000)
-                            || (f.elem_size == 8 && v & 0x7ff0_0000_0000_0000 == 0x7ff0_0000_0000_0000))
+                    if schema_f.storage == TableCookStorage::Float
+                        && ((schema_f.elem_size == 4 && schema_v & 0x7f80_0000 == 0x7f80_0000)
+                            || (schema_f.elem_size == 8 && schema_v & 0x7ff0_0000_0000_0000 == 0x7ff0_0000_0000_0000))
                     {
                         return false;
                     }
-                    if f.storage == TableCookStorage::Bool {
-                        unsafe { table_cook_put(out, dest + k * f.elem_size as i64, if v != 0 { 1 } else { 0 }, 1, order); }
+                    if schema_f.storage == TableCookStorage::Bool {
+                        unsafe { table_cook_put(out, schema_dest + schema_k * schema_f.elem_size as i64, if schema_v != 0 { 1 } else { 0 }, 1, schema_order); }
                     } else {
-                        unsafe { table_cook_put(out, dest + k * f.elem_size as i64, v, f.elem_size as u32, order); }
+                        unsafe { table_cook_put(out, schema_dest + schema_k * schema_f.elem_size as i64, schema_v, schema_f.elem_size as u32, schema_order); }
                     }
                 }
             }

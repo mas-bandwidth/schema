@@ -111,6 +111,7 @@ type fixedModule struct {
 	gen      fixedGen
 	loopSeq  int
 	body     strings.Builder
+	msgSlots *messageSlotIndex // built on first use: messageSlots
 }
 
 func newFixedModule(u *ir.Unit, f *ir.File, base string, home bool, homeBase string,

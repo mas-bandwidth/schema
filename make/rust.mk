@@ -1169,7 +1169,7 @@ tables-rust-byte-order:
 	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run '^TestBlockBuildAndCookWriteRust$$'
 tables-rust-byte-order-negative-control:
 	PATH="$$PATH:$(RUSTUP_BIN)" sh make/rust-overlay-control.sh rust-byte-order-control internal/codegen/rusttable/cook.go \
-		's|let shift = if order == 2 { width as usize - 1 - i } else { i };|let shift = i; // SABOTAGED: the target order ignored|' \
+		's|let schema_shift = if schema_order == 2 { schema_width as usize - 1 - schema_i } else { schema_i };|let schema_shift = schema_i; // SABOTAGED: the target order ignored|' \
 		'^TestBlockBuildAndCookWriteRust$$' "the big-endian cook's header names byte order"
 
 # I7 (docs/PORTING.md): THE OTHER ORDER'S WORD UNDER AN INTACT MAGIC, the half

@@ -118,8 +118,8 @@ var deprecatedMessageLines = []string{"REFUSE element", "REFUSE scalar", "WRITE 
 
 // the generated asserts the negative control removes, one per refusal line.
 var deprecatedMessageAsserts = map[string]string{
-	"REFUSE element": "debug_assert!(value.row[i] != 2, ",
-	"REFUSE scalar":  "debug_assert!(value.mood != 2, ",
+	"REFUSE element": "debug_assert!(schema_value.row[schema_i] != 2, ",
+	"REFUSE scalar":  "debug_assert!(schema_value.mood != 2, ",
 }
 
 func deprecatedMessageGate(t *testing.T) {

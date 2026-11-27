@@ -26,16 +26,15 @@
 // TWO FEEDING PATHS, ONE COMPARISON (the law's: what the reader lands ==
 // what the manifest declares):
 //
-//   CORPUS PRESENT  build/fixedform-corpus/manifest.txt exists: the full
+//   THE CORPUS      build/fixedform-corpus/manifest.txt, which must exist
+//                   (absent is red: the corpus is a make prerequisite): the full
 //                   law — one line per .bin, the line's shape, a lineage
 //                   pair's shared `root=` and per-file `row=`, the law's own
 //                   int_widen example, and the WIRE: `p1.bin` read by the
 //                   generated reader with every declared value landed off
 //                   the parsed line and every field the line omits at its
 //                   schema default.
-//   CORPUS ABSENT   a bare bench (nothing under build/ is committed, and the
-//                   corpus needs the sibling serialize checkout the bench
-//                   does not carry): the law's PARSE contract pinned on the
+//   ALWAYS, BESIDE  the law's PARSE contract pinned on the
 //                   law's own quoted numbers, and the smallest form-3 vector
 //                   CONSTRUCTED FROM THE LAW — derivation below — read by
 //                   the same generated reader and compared by the same code.
@@ -279,11 +278,20 @@ void wireAssert(Uint8List bytes, OracleLine line, String what) {
     n == int.parse(line.head['records']!),
     "$what: the reader lands records=${line.head['records']} as the line declares (got $n)",
   );
+  // TODAY'S READ IS STRICT (docs/FIXED-FORM-ALGORITHM.md §4.5, §4.6, §5.3,
+  // §5.4): nothing clamps and nothing is counted as clamped or malformed — a
+  // value past its range or bound REFUSES the load by name. So a manifest
+  // file that reads clean is refused == none, counts no unknown and no
+  // widen (it is this build's own layout), and reports its own hash.
   check(
     report.refused == TableFixedRefusal.none &&
-        !report.malformed &&
-        report.clamped == 0,
-    '$what: the read refuses nothing, is not malformed and clamps nothing',
+        report.unknown == 0 &&
+        report.widened == 0 &&
+        report.hash == chainFixedHash &&
+        report.layoutHash == 0,
+    '$what: the read refuses nothing, counts nothing and reports its own hash '
+    '(refused=${TableFixedRefusal.name(report.refused)} unknown=${report.unknown} '
+    'widened=${report.widened} hash=0x${report.hash.toRadixString(16)})',
   );
   final record = values[0];
   for (final field in chainFields) {
@@ -592,18 +600,19 @@ void main() {
   final present =
       Directory(corpus).existsSync() &&
       File('$corpus/manifest.txt').existsSync();
+  // THE CORPUS IS A PREREQUISITE, never optional: make/conformance-rows.mk
+  // builds build/fixedform-corpus/.stamp before the dart rows run, so an
+  // absent corpus is a broken build and RED by name — never a quieter path.
+  // The constructed vector runs as well, as a second witness.
+  check(
+    present,
+    '$corpus/manifest.txt is present (make build/fixedform-corpus/.stamp, a '
+    'prerequisite of conformance-rows-dart, writes it)',
+  );
   if (present) {
     corpusLaw(corpus);
-  } else {
-    constructedLaw();
-    print(
-      'note: build/fixedform-corpus is absent on this bench (it is generated '
-      'by `make tables-fixedform-corpus` from the C++ reference, whose sibling '
-      'serialize checkout the bench does not carry), so the full law ran on '
-      'the vector the law frames; on a bench with the corpus this test runs '
-      'the corpus path instead.',
-    );
   }
+  constructedLaw();
   if (failed != 0) {
     print('FAILED: $failed assertion(s)');
     exit(1);
