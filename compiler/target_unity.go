@@ -28,6 +28,9 @@ func (t unityTarget) Generate(u *ir.Unit, opts Options) (map[string][]byte, erro
 // #1: the driver read the unit's lock once (compiler/lineage.go) and hands the
 // lineage down as DATA, so a build reads every layout the lock records.
 func (unityTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage) (map[string][]byte, error) {
+	if err := csNames(u); err != nil {
+		return nil, err
+	}
 	if err := refuseUnported(u, "unity"); err != nil {
 		return nil, err
 	}

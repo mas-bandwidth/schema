@@ -31,6 +31,9 @@ func (t csTarget) Generate(u *ir.Unit, opts Options) (map[string][]byte, error) 
 // cstable opens no file and a build ships a reader for every layout the lock
 // records.
 func (csTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage) (map[string][]byte, error) {
+	if err := csNames(u); err != nil {
+		return nil, err
+	}
 	// Declared value defaults are carried on both wires.
 	if err := refuseValueDefaults(u, "cs"); err != nil {
 		return nil, err
