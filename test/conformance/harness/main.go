@@ -10,6 +10,7 @@
 //	harness run                   run every registered driver, print the matrix
 //	harness matrix                print the CI matrix the registry implies
 //	harness wire-fuzz             fuzz one language's tolerant wire read against the engine
+//	harness wire-eof              a leg's wire-fuzz driver must fail loudly on a truncated frame
 //	harness cross-read            the C++ reference reads what one leg wrote (the nightly)
 //	harness coverage              the nightly's coverage table, from its rows
 //
@@ -88,6 +89,10 @@ func usage() {
              a LoadMeasure inside the framing's bound, for every mutant
              (docs/SPEC-TABLES.md §4.2). --seed and --n size the random pass;
              the enumerated passes run whatever N is.
+  wire-eof   end one leg's wire-fuzz stream (--driver) cleanly after the roster
+             and then inside a frame (1 to 3 index bytes, a cut length, a cut
+             body), and require a clean exit only for the clean close and a
+             loud failure, with no reply, for every cut (wireeof.go).
   json-fuzz  generate deterministic adversarial and mutated JSON inputs across
              fixed and variable roots, run the compiler engine as oracle, and
              verify FromJson verdict, canonical ToJson, Save wire, and
@@ -287,6 +292,14 @@ func main() {
 		}
 		if err := wireFuzz(m, wireFuzzOptions{shard: *shard, shards: *shards, maxMutants: *maxMutants, timeout: *timeout, driver: *driver, seed: *seed, n: *n, replay: *replay, unit: *unit, root: *root, message: *message, failed: *failed, vectors: *vectors, retain: *retain, builder: *builder, mixedBuilder: *mixedBuilder, finiteOwed: *finiteOwed}); err != nil {
 			fatalf("%v", err)
+		}
+	case "wire-eof":
+		ok, err := wireEOF(os.Stdout, m, wireFuzzOptions{driver: *driver, builder: *builder, mixedBuilder: *mixedBuilder, retain: *retain})
+		if err != nil {
+			fatalf("wire-eof: %v", err)
+		}
+		if !ok {
+			os.Exit(1)
 		}
 	case "cook-differential":
 		ok, err := cookDifferential(os.Stdout, m, *driver, *work)
