@@ -58,6 +58,9 @@ import { pathToFileURL } from "node:url";
 // aim point.
 const generated = process.env.SCHEMA_JS_GENERATED ?? "build/tables-generated-js";
 const root = resolve(generated);
+// THE ENTRY WIDTH IS THE RUNTIME'S OWN: an identity entry grew from nine lanes
+// to TableFixedLanes (the guard chain's count and offset, §4.1).
+const LANES = (await import(pathToFileURL(join(root, "examples", "TabledemoTable.js")).href)).TableFixedLanes;
 
 let failures = 0;
 function check(ok, line) {
@@ -67,25 +70,6 @@ function check(ok, line) {
     console.log("FAIL " + line);
     failures++;
   }
-}
-
-// ---- parsing the module-private plan rows out of the generated artifact ----
-
-function withoutComments(text) {
-  return text.replace(/\/\/[^\n]*/g, "");
-}
-
-// `const <Name>FixedDst = new Int32Array([ ... ]);` — the rows may span any
-// number of lines; every integer in them is a lane.
-function parseInt32ArrayDecl(text, name, suffix) {
-  const at = text.indexOf(`const ${name}${suffix} = new Int32Array([`);
-  if (at < 0) { return null; }
-  const open = text.indexOf("[", at);
-  const close = text.indexOf("]);", open);
-  if (close < 0) { return null; }
-  const body = withoutComments(text.slice(open + 1, close));
-  const lanes = body.match(/-?\d+/g);
-  return lanes === null ? [] : lanes.map(Number);
 }
 
 function loadModule(path) {
@@ -142,7 +126,7 @@ function listGenerated() {
     for (const entry of readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
       const path = join(dir, entry.name);
       if (entry.isDirectory()) { walk(path); }
-      else if (entry.name.endsWith(".js") && readFileSync(path, "utf8").includes("FixedDst = new Int32Array")) {
+      else if (entry.name.endsWith(".js") && readFileSync(path, "utf8").includes("FixedDstCopy()")) {
         out.push(path);
       }
     }
@@ -162,12 +146,18 @@ for (const path of modules) {
     continue;
   }
   const rel = path.slice(root.length + 1);
-  for (const match of text.matchAll(/const (\w+?)FixedDst = new Int32Array\(/g)) {
-    const name = match[1];
-    const dstRows = parseInt32ArrayDecl(text, name, "FixedDst");
-    const identity = parseInt32ArrayDecl(text, name, "FixedIdentity");
+  // THE PLAN ROWS THROUGH EACH MODULE'S EXPORTED COPIES. This row once parsed
+  // them out of the source as `new Int32Array([` (the emitter now writes
+  // `new globalThis.Int32Array([`) and read an exported `<Name>FixedLayout`
+  // the module now keeps behind `<Name>FixedLayoutCopy()`, so it found no
+  // table at all. The copies are what the module itself runs.
+  for (const key of Object.keys(mod).filter((k) => k.endsWith("FixedDstCopy")).sort()) {
+    const name = key.slice(0, -"FixedDstCopy".length);
+    const copy = (suffix) => (typeof mod[name + suffix] === "function" ? Array.from(mod[name + suffix]()) : null);
+    const dstRows = copy("FixedDstCopy");
+    const identity = copy("FixedIdentityCopy");
     const body = mod[`${name}FixedBodyBytes`];
-    const layout = mod[`${name}FixedLayout`];
+    const layout = typeof mod[`${name}FixedLayoutCopy`] === "function" ? mod[`${name}FixedLayoutCopy`]() : undefined;
     if (dstRows === null || identity === null || body === undefined || layout === undefined) {
       check(false, `${rel}/${name}: the plan rows and their exported facts are all present`);
       continue;
@@ -182,7 +172,7 @@ for (const path of modules) {
     check(inside, `dst ${rel}/${name}: every dst/aux offset the rows resolve to lies inside the body (${body})`);
     check(maxEnd === body,
       `tiling ${rel}/${name}: the resolved spans reach the body end exactly (${maxEnd} of ${body})`);
-    check(identity.length === 9 && identity[0] === 0 && identity[1] === 0 && identity[2] === 0 &&
+    check(identity.length === LANES &&identity[0] === 0 && identity[1] === 0 && identity[2] === 0 &&
       identity[3] === body && identity[5] === -1,
       `identity ${rel}/${name}: one whole-body copy of exactly the body (${identity[3]})`);
   }
@@ -200,8 +190,7 @@ for (const path of modules) {
 // numbers a compiled plan lands values through.
 
 const keyed = await loadModule(join(root, "examples", "KeyedTable.js"));
-const keyedText = withoutComments(readFileSync(join(root, "examples", "KeyedTable.js"), "utf8"));
-const teamDst = parseInt32ArrayDecl(keyedText, "TeamConfig", "FixedDst");
+const teamDst = Array.from(keyed.TeamConfigFixedDstCopy());
 check(JSON.stringify(teamDst.slice(0, 5)) === "[0,0,0,0,0]" &&
   JSON.stringify(teamDst.slice(5, 10)) === "[0,0,0,0,0]" &&
   JSON.stringify(teamDst.slice(10, 15)) === "[4,0,8,0,1]" &&

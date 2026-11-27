@@ -40,7 +40,6 @@
 //
 // Run from the repository root:  node test/conformance/js/rows/W9.mjs
 
-import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -64,25 +63,18 @@ function check(ok, what) {
   if (!ok) { failures++; }
 }
 
-// ---- the artifact's own module-private plan constants, as W14 reads them ----
-
-function numericArray(text, name, suffix, ctor) {
-  const at = text.indexOf(`const ${name}${suffix} = new ${ctor}([`);
-  if (at < 0) { return null; }
-  const open = text.indexOf("[", at);
-  const close = text.indexOf("]);", open);
-  if (close < 0) { return null; }
-  const lanes = text.slice(open + 1, close).replace(/\/\/[^\n]*/g, "")
-    .match(/-?(?:0x[0-9a-fA-F]+|\d+)/g);
-  return lanes === null ? [] : lanes.map(Number);
-}
-
-const keyedText = readFileSync(resolve(root, "examples", "KeyedTable.js"), "utf8");
-const identity = numericArray(keyedText, "TeamConfig", "FixedIdentity", "Int32Array");
-const dstRows = numericArray(keyedText, "TeamConfig", "FixedDst", "Int32Array");
-const prefill = numericArray(keyedText, "TeamConfig", "FixedPrefill", "Uint8Array");
+// ---- the artifact's own plan constants, through its exported copies ----
+//
+// This row once parsed them out of the source text as `new Int32Array([`, a
+// spelling the emitter left for `new globalThis.Int32Array([`, and an identity
+// entry of nine lanes, which grew to TableFixedLanes (the guard chain's two
+// lanes, §4.1). The module exports a copy of each, and the copy is what the
+// module itself runs.
+const identity = Array.from(keyed.TeamConfigFixedIdentityCopy());
+const dstRows = Array.from(keyed.TeamConfigFixedDstCopy());
+const prefill = Array.from(keyed.TeamConfigFixedPrefillCopy());
 check(identity !== null && dstRows !== null && prefill !== null &&
-  identity.length === 9 && dstRows.length === 15 && prefill.length === keyed.TeamConfigFixedBodyBytes,
+  identity.length === home.TableFixedLanes && dstRows.length === 15 && prefill.length === keyed.TeamConfigFixedBodyBytes,
   `vector: the artifact's identity plan, dst rows and prefill table are all present (${identity && identity.length}/${dstRows && dstRows.length}/${prefill && prefill.length} lanes)`);
 if (identity === null || dstRows === null || prefill === null) {
   console.log("FAILED: the artifact states none of its plan constants");

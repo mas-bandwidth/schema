@@ -3134,22 +3134,36 @@ defmodule WireFuzz do
     end
   end
 
+  # THE STREAM ENDS ONLY BETWEEN FRAMES (test/conformance/harness/wireeof.go):
+  # no index byte at EOF is the clean close; one to three are a truncated
+  # frame, and so is a length or a body the stream cuts short, which is never
+  # handed to the codec as if it were whole.
   defp loop(roster) do
     case stdin_read(4) do
-      <<index::little-32>> ->
-        case stdin_read(4) do
-          <<size::little-32>> ->
-            wire = read_bytes(size)
-            answer(roster, index, wire)
-            loop(roster)
-
-          _ ->
-            :ok
-        end
-
-      _ ->
+      :eof ->
         :ok
+
+      <<index::little-32>> ->
+        <<size::little-32>> = exact(4, "a mutant length")
+        wire = exact(size, "a mutant")
+        answer(roster, index, wire)
+        loop(roster)
+
+      partial ->
+        truncated("a mutant index (#{byte_size(partial)} of 4 bytes)")
     end
+  end
+
+  defp exact(n, where) do
+    case stdin_read(n) do
+      b when is_binary(b) and byte_size(b) == n -> b
+      _ -> truncated(where)
+    end
+  end
+
+  defp truncated(where) do
+    IO.puts(:stderr, "wire-fuzz: the stream ended inside #{where}")
+    System.halt(1)
   end
 
   defp answer(roster, index, wire) do
