@@ -13,8 +13,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/luau/luaurun"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 )
 
 // THE JSON READ ACCEPTS ONLY CANONICAL BASE64 (docs/SPEC-TABLES.md §16.2 and

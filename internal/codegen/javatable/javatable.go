@@ -56,14 +56,14 @@ package javatable
 
 import (
 	"fmt"
-	javapkt "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
+	javapkt "github.com/mas-bandwidth/schema/v3/internal/codegen/java"
 	"maps"
 	"sort"
 	"strings"
 
-	schemacheck "github.com/mas-bandwidth/schema/v2/internal/check"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/genheader"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	schemacheck "github.com/mas-bandwidth/schema/v3/internal/check"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/genheader"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // table-wire kinds (docs/SPEC-TABLES.md §3), the ones a descriptor row of the

@@ -258,14 +258,14 @@ public final class ArmDefaults {
 
     // enumNameDefaultChoiceType: debug/log/tooling name for any DefaultChoiceType storage value —
     // out-of-set values (wire-legal up to the declared max) name as "???"
-    public static java.lang.String enumNameDefaultChoiceType(long value) {
-        if (value == DefaultChoiceType.NONE) {
+    public static java.lang.String enumNameDefaultChoiceType(long schema_value) {
+        if (schema_value == DefaultChoiceType.NONE) {
             return "None";
         }
-        if (value == DefaultChoiceType.FIRST) {
+        if (schema_value == DefaultChoiceType.FIRST) {
             return "First";
         }
-        if (value == DefaultChoiceType.SECOND) {
+        if (schema_value == DefaultChoiceType.SECOND) {
             return "Second";
         }
         return "???";
@@ -632,14 +632,14 @@ public final class ArmDefaults {
     // enumNameDefaultBulkChoiceType: debug/log/tooling name for any DefaultBulkChoiceType storage
     // value —
     // out-of-set values (wire-legal up to the declared max) name as "???"
-    public static java.lang.String enumNameDefaultBulkChoiceType(long value) {
-        if (value == DefaultBulkChoiceType.NONE) {
+    public static java.lang.String enumNameDefaultBulkChoiceType(long schema_value) {
+        if (schema_value == DefaultBulkChoiceType.NONE) {
             return "None";
         }
-        if (value == DefaultBulkChoiceType.FIRST) {
+        if (schema_value == DefaultBulkChoiceType.FIRST) {
             return "First";
         }
-        if (value == DefaultBulkChoiceType.SECOND) {
+        if (schema_value == DefaultBulkChoiceType.SECOND) {
             return "Second";
         }
         return "???";

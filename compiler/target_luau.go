@@ -8,9 +8,9 @@ package compiler
 import (
 	"maps"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/luau"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/luautable"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 type luauTarget struct{}

@@ -308,11 +308,11 @@ func Build(run Runner, env Env, target string, c Case, dir string) error {
 		return stepEnv(run, dir, []string{"CARGO_TARGET_DIR=" + filepath.Join(dir, "target")}, env.Tool("CARGO", "cargo"), "build", "--quiet", "--offline")
 	case "go":
 		// a unit with tables imports the shared table runtime
-		// (github.com/mas-bandwidth/schema/v2/tables/goruntime), so this
+		// (github.com/mas-bandwidth/schema/v3/tables/goruntime), so this
 		// checkout's module rides beside serialize.go, as the gotable tests'
 		// own probe modules do
-		mod := "module probecase\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\nrequire github.com/mas-bandwidth/schema/v2 v2.0.0\n\n" +
-			"replace github.com/mas-bandwidth/serialize.go/v2 => " + env.SerializeGo + "\nreplace github.com/mas-bandwidth/schema/v2 => " + env.Root + "\n"
+		mod := "module probecase\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\nrequire github.com/mas-bandwidth/schema/v3 v3.0.0\n\n" +
+			"replace github.com/mas-bandwidth/serialize.go/v2 => " + env.SerializeGo + "\nreplace github.com/mas-bandwidth/schema/v3 => " + env.Root + "\n"
 		if err := put(dir, "go.mod", mod); err != nil {
 			return err
 		}
@@ -389,7 +389,19 @@ func Build(run Runner, env Env, target string, c Case, dir string) error {
 			fmt.Fprintf(&sb, "Code.require_file(%q, __DIR__)\n", f)
 		}
 		P := capital(c.Pkg)
-		fmt.Fprintf(&sb, "v = struct(%s.Holder)\nwire = %s.Other.write_holder!(v)\n{:ok, r} = %s.Other.read_holder(wire, bit_size(wire))\n^wire = %s.Other.write_holder!(r)\nIO.puts(\"ok\")\n", P, P, P, P)
+		// Other.schema's file module is <P>.Other, or <P>.OtherFile when a
+		// declaration lowers to <P>.Other (an enum other): the emitter steps
+		// the file module aside (internal/codegen/elixir, fileModuleName),
+		// so the probe calls the module Other.ex defines
+		other, err := os.ReadFile(filepath.Join(dir, "Other.ex"))
+		if err != nil {
+			return err
+		}
+		mod := P + ".Other"
+		if strings.Contains(string(other), "defmodule "+P+".OtherFile do") {
+			mod = P + ".OtherFile"
+		}
+		fmt.Fprintf(&sb, "v = struct(%s.Holder)\nwire = %s.write_holder!(v)\n{:ok, r} = %s.read_holder(wire, bit_size(wire))\n^wire = %s.write_holder!(r)\nIO.puts(\"ok\")\n", P, mod, mod, mod)
 		if err := put(dir, "zz_main.exs", sb.String()); err != nil {
 			return err
 		}

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 // writeRefusalReachSchema puts a value out of the write contract on every
@@ -21,6 +21,7 @@ enum Grade { Bronze, Silver, Gold }
 union Pick
 {
     number int32 | min = 0, max = 10
+    mask   bits(13)
     label  string(8)
     raw    bytes(4)
     list   [..3]int32
@@ -39,7 +40,7 @@ table Config
 `
 
 // TestRustWriteRefusalReachesEveryCarrier pins the variable-form save's write
-// contract (docs/SPEC.md §5.1: Rust variable Save, rows 1–2 and 4 debug) on
+// contract (docs/SPEC.md §5.1: Rust variable Save, rows 1–4 and 8 debug) on
 // every carrier of writeRefusalReachSchema. Each was written with no check
 // before, so an out-of-contract value was cut or written silently
 // (docs/silent-failure-audit-1122.md SF-09, SF-10, SF-12..SF-15; SF-11, an
@@ -76,6 +77,7 @@ func TestRustWriteRefusalReachesEveryCarrier(t *testing.T) {
 		}},
 		{"SF-14", []string{
 			`debug_assert!((*arm) >= 0 && (*arm) <= 10, "number out of range [0, 10]");`,
+			`debug_assert!((*arm) <= 8191, "mask exceeds bits(13) width");`,
 			`debug_assert!(arm.len() <= 8, "label length past 8");`,
 			`debug_assert!(!arm.as_bytes().contains(&0), "label holds a zero byte");`,
 		}},
@@ -115,12 +117,19 @@ func TestRustWriteRefusalReachesEveryCarrierNative(t *testing.T) {
 		{"SF-10-bits", "c.o_chan = Some(64);", "o_chan exceeds bits(6) width"},
 		{"SF-12-fixed", "c.fixed_a = vec![1, 11, 1];", "fixed_a out of range [0, 10]"},
 		{"SF-12-optional", "c.o_list = Some(vec![11]);", "o_list out of range [0, 10]"},
+		{"SF-13-count-max", "c.o_list = Some(vec![1; 4]);", ""},
 		{"SF-13-count", "c.o_list = Some(vec![1; 5]);", "o_list count past 4"},
+		{"SF-13-arm-count-max", "c.pick = Pick::List(vec![1; 3]);", ""},
 		{"SF-13-arm-count", "c.pick = Pick::List(vec![1; 4]);", "list count past 3"},
+		{"SF-13-arm-bytes-max", "c.pick = Pick::Raw(vec![1; 4]);", ""},
 		{"SF-13-arm-bytes", "c.pick = Pick::Raw(vec![1; 5]);", "raw length past 4"},
+		{"SF-14-bits-max", "c.pick = Pick::Mask(8191);", ""},
+		{"SF-14-bits-wide", "c.pick = Pick::Mask(8192);", "mask exceeds bits(13) width"},
+		{"SF-14-range-max", "c.pick = Pick::Number(10);", ""},
 		{"SF-14-range", "c.pick = Pick::Number(11);", "number out of range [0, 10]"},
 		{"SF-14-length", "c.pick = Pick::Label(String::from(\"123456789\"));", "label length past 8"},
 		{"SF-14-zero", "c.pick = Pick::Label(String::from(\"a\\0b\"));", "label holds a zero byte"},
+		{"SF-15-max", "c.scores = vec![1, 10, 1];", ""},
 		{"SF-15", "c.scores = vec![1, 11, 1];", "scores out of range [0, 10]"},
 		{"SF-34-long", "c.fixed_a = vec![1; 4];", "fixed_a length"},
 		{"SF-34-short", "c.fixed_a = vec![1; 2];", "fixed_a length"},

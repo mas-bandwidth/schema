@@ -20,7 +20,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // emitSignature writes a function signature, wrapped in the formatter's
@@ -1267,12 +1267,12 @@ func (g *gen) armTag(u *ir.Union, vr ir.UnionVariant) string {
 // arm's items — the struct-inlining move, per arm.
 func (g *gen) emitWriteUnion(u *ir.Union, expr, ind string) {
 	// the tag validates BEFORE it rides (SPEC §4.8)
-	g.assertRange(expr+".type", big.NewInt(0), big.NewInt(u.Max), true, ind)
+	g.assertRange("("+expr+".type as int)", big.NewInt(0), big.NewInt(u.Max), true, ind)
 	if u.Max == 0 {
 		return // an empty union's degenerate tag range [0, 0] costs zero bits
 	}
 	bits := ir.BitsRequired(big.NewInt(0), big.NewInt(u.Max))
-	g.chunkAdd(maskedPiece(expr+".type", bits), bits, ind)
+	g.chunkAdd(maskedPiece("("+expr+".type as int)", bits), bits, ind)
 	g.chunkFlush(ind) // the arms diverge: the tag merges before the switch
 	// every arm starts at the entry ceiling; the join takes the highest exit
 	// (an unmatched tag writes no arm, so the entry is one of them)

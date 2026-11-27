@@ -45,12 +45,18 @@ export function ZeroDefaultArm(value) {
 }
 
 export function WriteDefaultArm(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!globalThis.Number.isInteger(value.entriesCount) || value.entriesCount < 0 || value.entriesCount > 2) { // the count guards the loop (§6.3)
     return false;
   }
   NUMBER_SCRATCH.value = value.entriesCount;
   if (!stream.serializeBits(NUMBER_SCRATCH, 2)) {
     return false;
+  }
+  if (value.entries === null || typeof value.entries !== "object" || !(value.entries.length >= value.entriesCount)) {
+    return false; // the storage holds every element the loop reads (SPEC §5.1)
   }
   for (let i = 0; i < value.entriesCount; i++) {
     if (!WriteProbeConfig(stream, value.entries[i])) {
@@ -132,6 +138,9 @@ export function ZeroDefaultChoice(value) {
 }
 
 export function WriteDefaultChoice(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!globalThis.Number.isInteger(value.type) || value.type < 0 || value.type > 2) {
     return false; // the tag validates BEFORE it rides (SPEC §4.8)
   }
@@ -193,6 +202,9 @@ export function ZeroDefaultChoicePacket(value) {
 }
 
 export function WriteDefaultChoicePacket(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!WriteDefaultChoice(stream, value.choice)) {
     return false;
   }
@@ -235,6 +247,9 @@ export function ZeroDefaultBulkArm(value) {
 }
 
 export function WriteDefaultBulkArm(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!WriteDefaultArm(stream, value.payload)) {
     return false;
   }
@@ -244,6 +259,9 @@ export function WriteDefaultBulkArm(stream, value) {
   NUMBER_SCRATCH.value = value.dataLength;
   if (!stream.serializeBits(NUMBER_SCRATCH, 2)) {
     return false;
+  }
+  if (!(value.data instanceof globalThis.Uint8Array) || value.data.length < value.dataLength) {
+    return false; // the bytes are a Uint8Array holding the length (SPEC §5.1)
   }
   if (!stream.serializeBytes(value.data.subarray(0, value.dataLength))) {
     return false;
@@ -313,6 +331,9 @@ export function ZeroDefaultBulkChoice(value) {
 }
 
 export function WriteDefaultBulkChoice(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!globalThis.Number.isInteger(value.type) || value.type < 0 || value.type > 2) {
     return false; // the tag validates BEFORE it rides (SPEC §4.8)
   }

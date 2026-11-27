@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/luautable"
 )
 
 // M9, ONE TEXT WALK FOR THE WHOLE UNIT (docs/PORTING.md; docs/SPEC-TABLES.md

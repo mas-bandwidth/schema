@@ -42,6 +42,10 @@ pub fn mixed_entity_cook_info() -> &'static TableCookInfo {
             count_offset: -1,
             present_offset: -1,
             storage: TableCookStorage::Unsigned,
+            #[cfg(debug_assertions)]
+            deprecated_variants: &[],
+            #[cfg(debug_assertions)]
+            deprecated_field: false,
             record: None,
         },
         TableCookFieldInfo {
@@ -55,6 +59,10 @@ pub fn mixed_entity_cook_info() -> &'static TableCookInfo {
             count_offset: -1,
             present_offset: -1,
             storage: TableCookStorage::Signed,
+            #[cfg(debug_assertions)]
+            deprecated_variants: &[],
+            #[cfg(debug_assertions)]
+            deprecated_field: false,
             record: None,
         },
         TableCookFieldInfo {
@@ -68,6 +76,10 @@ pub fn mixed_entity_cook_info() -> &'static TableCookInfo {
             count_offset: -1,
             present_offset: -1,
             storage: TableCookStorage::Signed,
+            #[cfg(debug_assertions)]
+            deprecated_variants: &[],
+            #[cfg(debug_assertions)]
+            deprecated_field: false,
             record: None,
         },
         TableCookFieldInfo {
@@ -81,6 +93,10 @@ pub fn mixed_entity_cook_info() -> &'static TableCookInfo {
             count_offset: -1,
             present_offset: -1,
             storage: TableCookStorage::Signed,
+            #[cfg(debug_assertions)]
+            deprecated_variants: &[],
+            #[cfg(debug_assertions)]
+            deprecated_field: false,
             record: None,
         },
         TableCookFieldInfo {
@@ -94,6 +110,10 @@ pub fn mixed_entity_cook_info() -> &'static TableCookInfo {
             count_offset: -1,
             present_offset: -1,
             storage: TableCookStorage::Unsigned,
+            #[cfg(debug_assertions)]
+            deprecated_variants: &[],
+            #[cfg(debug_assertions)]
+            deprecated_field: false,
             record: None,
         },
         TableCookFieldInfo {
@@ -107,6 +127,10 @@ pub fn mixed_entity_cook_info() -> &'static TableCookInfo {
             count_offset: -1,
             present_offset: -1,
             storage: TableCookStorage::Unsigned,
+            #[cfg(debug_assertions)]
+            deprecated_variants: &[],
+            #[cfg(debug_assertions)]
+            deprecated_field: false,
             record: None,
         },
         TableCookFieldInfo {
@@ -120,6 +144,10 @@ pub fn mixed_entity_cook_info() -> &'static TableCookInfo {
             count_offset: -1,
             present_offset: -1,
             storage: TableCookStorage::Signed,
+            #[cfg(debug_assertions)]
+            deprecated_variants: &[],
+            #[cfg(debug_assertions)]
+            deprecated_field: false,
             record: None,
         },
         TableCookFieldInfo {
@@ -133,6 +161,10 @@ pub fn mixed_entity_cook_info() -> &'static TableCookInfo {
             count_offset: -1,
             present_offset: -1,
             storage: TableCookStorage::Signed,
+            #[cfg(debug_assertions)]
+            deprecated_variants: &[],
+            #[cfg(debug_assertions)]
+            deprecated_field: false,
             record: None,
         },
         TableCookFieldInfo {
@@ -146,6 +178,10 @@ pub fn mixed_entity_cook_info() -> &'static TableCookInfo {
             count_offset: -1,
             present_offset: -1,
             storage: TableCookStorage::Signed,
+            #[cfg(debug_assertions)]
+            deprecated_variants: &[],
+            #[cfg(debug_assertions)]
+            deprecated_field: false,
             record: None,
         },
         TableCookFieldInfo {
@@ -159,6 +195,10 @@ pub fn mixed_entity_cook_info() -> &'static TableCookInfo {
             count_offset: -1,
             present_offset: -1,
             storage: TableCookStorage::Signed,
+            #[cfg(debug_assertions)]
+            deprecated_variants: &[],
+            #[cfg(debug_assertions)]
+            deprecated_field: false,
             record: None,
         },
         TableCookFieldInfo {
@@ -172,6 +212,10 @@ pub fn mixed_entity_cook_info() -> &'static TableCookInfo {
             count_offset: -1,
             present_offset: -1,
             storage: TableCookStorage::Unsigned,
+            #[cfg(debug_assertions)]
+            deprecated_variants: &[],
+            #[cfg(debug_assertions)]
+            deprecated_field: false,
             record: None,
         },
         TableCookFieldInfo {
@@ -185,6 +229,10 @@ pub fn mixed_entity_cook_info() -> &'static TableCookInfo {
             count_offset: -1,
             present_offset: -1,
             storage: TableCookStorage::Unsigned,
+            #[cfg(debug_assertions)]
+            deprecated_variants: &[],
+            #[cfg(debug_assertions)]
+            deprecated_field: false,
             record: None,
         },
         TableCookFieldInfo {
@@ -198,6 +246,10 @@ pub fn mixed_entity_cook_info() -> &'static TableCookInfo {
             count_offset: -1,
             present_offset: -1,
             storage: TableCookStorage::Bool,
+            #[cfg(debug_assertions)]
+            deprecated_variants: &[],
+            #[cfg(debug_assertions)]
+            deprecated_field: false,
             record: None,
         },
         TableCookFieldInfo {
@@ -211,6 +263,10 @@ pub fn mixed_entity_cook_info() -> &'static TableCookInfo {
             count_offset: -1,
             present_offset: -1,
             storage: TableCookStorage::Bool,
+            #[cfg(debug_assertions)]
+            deprecated_variants: &[],
+            #[cfg(debug_assertions)]
+            deprecated_field: false,
             record: None,
         },
     ];
@@ -237,6 +293,10 @@ pub fn mixed_stat_cook_info() -> &'static TableCookInfo {
             count_offset: -1,
             present_offset: -1,
             storage: TableCookStorage::Unsigned,
+            #[cfg(debug_assertions)]
+            deprecated_variants: &[],
+            #[cfg(debug_assertions)]
+            deprecated_field: false,
             record: None,
         },
         TableCookFieldInfo {
@@ -250,6 +310,10 @@ pub fn mixed_stat_cook_info() -> &'static TableCookInfo {
             count_offset: -1,
             present_offset: -1,
             storage: TableCookStorage::Signed,
+            #[cfg(debug_assertions)]
+            deprecated_variants: &[],
+            #[cfg(debug_assertions)]
+            deprecated_field: false,
             record: None,
         },
     ];
@@ -276,6 +340,10 @@ pub fn mixed_hit_event_cook_info() -> &'static TableCookInfo {
             count_offset: -1,
             present_offset: -1,
             storage: TableCookStorage::Unsigned,
+            #[cfg(debug_assertions)]
+            deprecated_variants: &[],
+            #[cfg(debug_assertions)]
+            deprecated_field: false,
             record: None,
         },
         TableCookFieldInfo {
@@ -289,6 +357,10 @@ pub fn mixed_hit_event_cook_info() -> &'static TableCookInfo {
             count_offset: -1,
             present_offset: -1,
             storage: TableCookStorage::Signed,
+            #[cfg(debug_assertions)]
+            deprecated_variants: &[],
+            #[cfg(debug_assertions)]
+            deprecated_field: false,
             record: None,
         },
         TableCookFieldInfo {
@@ -302,6 +374,10 @@ pub fn mixed_hit_event_cook_info() -> &'static TableCookInfo {
             count_offset: -1,
             present_offset: -1,
             storage: TableCookStorage::Signed,
+            #[cfg(debug_assertions)]
+            deprecated_variants: &[],
+            #[cfg(debug_assertions)]
+            deprecated_field: false,
             record: None,
         },
         TableCookFieldInfo {
@@ -315,6 +391,10 @@ pub fn mixed_hit_event_cook_info() -> &'static TableCookInfo {
             count_offset: -1,
             present_offset: -1,
             storage: TableCookStorage::Bool,
+            #[cfg(debug_assertions)]
+            deprecated_variants: &[],
+            #[cfg(debug_assertions)]
+            deprecated_field: false,
             record: None,
         },
     ];
@@ -341,6 +421,10 @@ pub fn mixed_chat_event_cook_info() -> &'static TableCookInfo {
             count_offset: -1,
             present_offset: -1,
             storage: TableCookStorage::Signed,
+            #[cfg(debug_assertions)]
+            deprecated_variants: &[],
+            #[cfg(debug_assertions)]
+            deprecated_field: false,
             record: None,
         },
         TableCookFieldInfo {
@@ -354,6 +438,10 @@ pub fn mixed_chat_event_cook_info() -> &'static TableCookInfo {
             count_offset: -1,
             present_offset: -1,
             storage: TableCookStorage::Unsigned,
+            #[cfg(debug_assertions)]
+            deprecated_variants: &[],
+            #[cfg(debug_assertions)]
+            deprecated_field: false,
             record: None,
         },
     ];
@@ -380,6 +468,10 @@ pub fn mixed_pickup_event_cook_info() -> &'static TableCookInfo {
             count_offset: -1,
             present_offset: -1,
             storage: TableCookStorage::Unsigned,
+            #[cfg(debug_assertions)]
+            deprecated_variants: &[],
+            #[cfg(debug_assertions)]
+            deprecated_field: false,
             record: None,
         },
         TableCookFieldInfo {
@@ -393,6 +485,10 @@ pub fn mixed_pickup_event_cook_info() -> &'static TableCookInfo {
             count_offset: -1,
             present_offset: -1,
             storage: TableCookStorage::Signed,
+            #[cfg(debug_assertions)]
+            deprecated_variants: &[],
+            #[cfg(debug_assertions)]
+            deprecated_field: false,
             record: None,
         },
     ];

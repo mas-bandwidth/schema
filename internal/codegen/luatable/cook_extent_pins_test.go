@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/lua/luarun"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 )
 
 // These existing independent cook pins must remain in the exercised corpus.

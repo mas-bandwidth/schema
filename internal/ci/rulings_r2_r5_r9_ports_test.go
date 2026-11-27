@@ -6,21 +6,21 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/cstable"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/darttable"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/elixirtable"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/goosetable"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/javatable"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/jstable"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobstertable"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/luatable"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/mootable"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/rusttable"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirreltable"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/unitytable"
-	"github.com/mas-bandwidth/schema/v2/internal/lockfile"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/compiler"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/cstable"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/darttable"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/elixirtable"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/goosetable"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/javatable"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/jstable"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/lobstertable"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/luatable"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/mootable"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/rusttable"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/squirreltable"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/unitytable"
+	"github.com/mas-bandwidth/schema/v3/internal/lockfile"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // THE PORTS' ROWS FOR RULINGS R2, R5 AND R9 (2026-11-22). Each row reads what a
@@ -115,7 +115,11 @@ func TestRulingsR2R5R9PortRows(t *testing.T) {
 		{"R9 cs", cstable.Generate, []string{"(ulong)(v.MaxBytes < 0 ? 0 : v.MaxBytes)"}},
 		{"R9 unity", unitytable.Generate, []string{"(ulong)(v.MaxBytes < 0 ? 0 : v.MaxBytes)"}},
 		{"R9 lua", luatable.Generate, []string{"if maxBytes == nil then maxBytes = 64 * 1024 end"}},
-		{"R9 moo", mootable.Generate, []string{"maxBytes = DEFAULT_MAX_BYTES, maxEntries = 0", "if v.maxBytes ~= nil then v.maxBytes else DEFAULT_MAX_BYTES"}},
+		{"R9 moo", mootable.Generate, []string{
+			"maxBytes = DEFAULT_MAX_BYTES, maxEntries = DEFAULT_MAX_ENTRIES",
+			"if v.maxBytes ~= nil then v.maxBytes else DEFAULT_MAX_BYTES",
+			"if v.maxEntries ~= nil and v.maxEntries >= 0 then v.maxEntries else DEFAULT_MAX_ENTRIES",
+		}},
 		{"R9 lobster", lobstertable.Generate, []string{"if n > v.max_bytes:"}},
 		{"R9 squirrel", squirreltable.Generate, []string{"(\"MaxBytes\" in v) ? v.MaxBytes : 65536"}},
 	}

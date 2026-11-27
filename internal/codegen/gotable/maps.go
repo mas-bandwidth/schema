@@ -3,7 +3,7 @@ package gotable
 import (
 	"fmt"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // optionalMapJson is the JSON walk's one change for an OPTIONAL MAP
@@ -114,7 +114,7 @@ func (g *tableGen) emitMapRead(f *ir.Field, ind string) {
 	}
 	g.pf("%sfor i:=uint64(0);i<count;i++ {elem,ok:=sub.Body();if !ok {%s};key,bad,over,wide,whole:=tableMapReadKey(%s,&field.Table().Fields[0]);if !whole {%s};if bad {%s};if over {%s};if wide&&!widened {widened=true;r.Report.Widened++};if prior&&tableMapKeyOrder(last,key,&field.Table().Fields[0])>=0 {%s};p:=(*%s)(tableContainerFillAt(&sub.Nodes.Carve,holder,holder.Count,%d));if p==nil {%s};if sub.Nodes.Carve.Worker==nil {holder.Count++};\n", ind, stop, keyReader, stop, refuse("TableRefuseKindMismatch", owner, "return false"), refuse(over, owner, "return false"), stop, entry, layout.Size, stop)
 	g.retainReadPath("elem", "r", "holder.Count-1")
-	g.pf("if !%sLoadBody(&elem,p) {return false};\n", f.MapEntry.Name)
+	g.pf("if !%sLoadBody"+g.rt()+"(&elem,p) {return false};\n", f.MapEntry.Name)
 	g.emitCarveReturn("sub", "elem", ind)
 	g.pf("%slast=key;prior=true };\n", ind)
 	g.pf("%sif sub.Offset!=int64(len(sub.Buffer)) {%s}\n", ind, stop)

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // The three §5.2 facts a cold read of this leg found wrong in the emitted

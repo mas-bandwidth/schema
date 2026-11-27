@@ -69,6 +69,9 @@ function validText(bytes, length) {
 // must hold ProbeHeaderMaxBytes.
 export function WriteProbeHeaderFlat(view, value) {
   let v = 0, lo = 0;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isInteger(value.version) || value.version < 0 || value.version > 7) {
     return -1;
   }
@@ -165,6 +168,9 @@ export function ReadProbeHeaderFlatBits(view, numBits, value) {
 // must hold ProbeBitsMaxBytes.
 export function WriteProbeBitsFlat(view, value) {
   let v = 0, lo = 0;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isInteger(value.small) || value.small < 0 || value.small > 511) {
     return -1;
   }
@@ -305,7 +311,16 @@ export function ReadProbeBitsFlatBits(view, numBits, value) {
 // must hold ProbeSampleMaxBytes.
 export function WriteProbeSampleFlat(view, value) {
   let v = 0, x = 0, n = 0, lo = 0, sb = 0, wi = 0;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
+  if (typeof value.active !== "boolean") { // a bool is a boolean (SPEC §5.1)
+    return -1;
+  }
   lo = ((value.active ? 1 : 0));
+  if (typeof value.orientation !== "number") { // a float is a Number
+    return -1;
+  }
   x = globalThis.Math.fround(value.orientation);
   if (!globalThis.Number.isFinite(x)) {
     return -1;
@@ -338,6 +353,9 @@ export function WriteProbeSampleFlat(view, value) {
   sb = 17;
   if (value.active) {
     if (!globalThis.Number.isInteger(value.weapon) || value.weapon < 0 || value.weapon > 15) { // headroom above the wire range cannot ride
+      return -1;
+    }
+    if (typeof value.hasTarget !== "boolean") { // a bool is a boolean (SPEC §5.1)
       return -1;
     }
     v = ((value.weapon & 0xf) | ((value.hasTarget ? 1 : 0) << 4)) >>> 0;
@@ -378,6 +396,9 @@ export function WriteProbeSampleFlat(view, value) {
     }
   }
   if (!globalThis.Number.isInteger(value.samplesCount) || value.samplesCount < 1 || value.samplesCount > 8) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
+    return -1;
+  }
+  if (value.samples === null || typeof value.samples !== "object" || !(value.samples.length >= value.samplesCount)) { // the storage holds every element the loop reads (SPEC §5.1)
     return -1;
   }
   v = (((((value.samplesCount >>> 0) - 1) >>> 0) & 0x7)) >>> 0;
@@ -627,6 +648,9 @@ export function ReadProbeSampleFlatBits(view, numBits, value) {
 // must hold ProbeRingMaxBytes.
 export function WriteProbeRingFlat(view, value) {
   let lo = 0;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isInteger(value.radius) || value.radius < 0 || value.radius > 65535) { // a bare integer must fit its width
     return -1;
   }
@@ -673,6 +697,9 @@ export function ReadProbeRingFlatBits(view, numBits, value) {
 // must hold ProbeSlabMaxBytes.
 export function WriteProbeSlabFlat(view, value) {
   let lo = 0;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isInteger(value.width) || value.width < 0 || value.width > 100) {
     return -1;
   }
@@ -735,6 +762,9 @@ export function ReadProbeSlabFlatBits(view, numBits, value) {
 // must hold ProbeShapeMaxBytes.
 export function WriteProbeShapeFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isInteger(value.type) || value.type < 0 || value.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
     return -1;
   }
@@ -742,6 +772,9 @@ export function WriteProbeShapeFlat(view, value) {
   sb = 2;
   switch (value.type) {
     case 1: {
+      if (value.ring === null || typeof value.ring !== "object") { // a record or union value is an object (SPEC §5.1)
+        return -1;
+      }
       if (!globalThis.Number.isInteger(value.ring.radius) || value.ring.radius < 0 || value.ring.radius > 65535) { // a bare integer must fit its width
         return -1;
       }
@@ -757,6 +790,9 @@ export function WriteProbeShapeFlat(view, value) {
       break;
     }
     case 2: {
+      if (value.slab === null || typeof value.slab !== "object") { // a record or union value is an object (SPEC §5.1)
+        return -1;
+      }
       if (!globalThis.Number.isInteger(value.slab.width) || value.slab.width < 0 || value.slab.width > 100) {
         return -1;
       }
@@ -907,7 +943,13 @@ export function ReadProbeShapeFlatBits(view, numBits, value) {
 // must hold ProbeColliderMaxBytes.
 export function WriteProbeColliderFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isInteger(value.armor) || value.armor < 0 || value.armor > 255) { // a bare integer must fit its width
+    return -1;
+  }
+  if (value.shape === null || typeof value.shape !== "object") { // a record or union value is an object (SPEC §5.1)
     return -1;
   }
   if (!globalThis.Number.isInteger(value.shape.type) || value.shape.type < 0 || value.shape.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
@@ -917,6 +959,9 @@ export function WriteProbeColliderFlat(view, value) {
   sb = 10;
   switch (value.shape.type) {
     case 1: {
+      if (value.shape.ring === null || typeof value.shape.ring !== "object") { // a record or union value is an object (SPEC §5.1)
+        return -1;
+      }
       if (!globalThis.Number.isInteger(value.shape.ring.radius) || value.shape.ring.radius < 0 || value.shape.ring.radius > 65535) { // a bare integer must fit its width
         return -1;
       }
@@ -932,6 +977,9 @@ export function WriteProbeColliderFlat(view, value) {
       break;
     }
     case 2: {
+      if (value.shape.slab === null || typeof value.shape.slab !== "object") { // a record or union value is an object (SPEC §5.1)
+        return -1;
+      }
       if (!globalThis.Number.isInteger(value.shape.slab.width) || value.shape.slab.width < 0 || value.shape.slab.width > 100) {
         return -1;
       }
@@ -950,6 +998,9 @@ export function WriteProbeColliderFlat(view, value) {
       break;
     }
   }
+  if (value.backup === null || typeof value.backup !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isInteger(value.backup.type) || value.backup.type < 0 || value.backup.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
     return -1;
   }
@@ -964,6 +1015,9 @@ export function WriteProbeColliderFlat(view, value) {
   }
   switch (value.backup.type) {
     case 1: {
+      if (value.backup.ring === null || typeof value.backup.ring !== "object") { // a record or union value is an object (SPEC §5.1)
+        return -1;
+      }
       if (!globalThis.Number.isInteger(value.backup.ring.radius) || value.backup.ring.radius < 0 || value.backup.ring.radius > 65535) { // a bare integer must fit its width
         return -1;
       }
@@ -979,6 +1033,9 @@ export function WriteProbeColliderFlat(view, value) {
       break;
     }
     case 2: {
+      if (value.backup.slab === null || typeof value.backup.slab !== "object") { // a record or union value is an object (SPEC §5.1)
+        return -1;
+      }
       if (!globalThis.Number.isInteger(value.backup.slab.width) || value.backup.slab.width < 0 || value.backup.slab.width > 100) {
         return -1;
       }
@@ -1000,6 +1057,9 @@ export function WriteProbeColliderFlat(view, value) {
   if (!globalThis.Number.isInteger(value.extrasCount) || value.extrasCount < 0 || value.extrasCount > 2) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
     return -1;
   }
+  if (value.extras === null || typeof value.extras !== "object" || !(value.extras.length >= value.extrasCount)) { // the storage holds every element the loop reads (SPEC §5.1)
+    return -1;
+  }
   v = (((value.extrasCount) & 0x3)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 2;
@@ -1011,52 +1071,68 @@ export function WriteProbeColliderFlat(view, value) {
   }
   for (let i0 = 0; i0 < value.extrasCount; i0++) {
     const e0 = value.extras[i0];
-    if (!globalThis.Number.isInteger(e0.type) || e0.type < 0 || e0.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
+    if (typeof e0 === "function") { // a record or union value is an object, never a function (SPEC §5.1)
       return -1;
     }
-    v = ((e0.type & 0x3)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 2;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (2 - sb);
-    }
-    switch (e0.type) {
-      case 1: {
-        if (!globalThis.Number.isInteger(e0.ring.radius) || e0.ring.radius < 0 || e0.ring.radius > 65535) { // a bare integer must fit its width
-          return -1;
-        }
-        v = (((e0.ring.radius) & 0xffff)) >>> 0;
-        lo = (lo | (v << sb)) >>> 0;
-        sb += 16;
-        if (sb >= 32) {
-          view.setUint32(wi, lo, true);
-          wi += 4;
-          sb -= 32;
-          lo = sb === 0 ? 0 : v >>> (16 - sb);
-        }
-        break;
+    try {
+      if (!globalThis.Number.isInteger(e0.type) || e0.type < 0 || e0.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
+        return -1;
       }
-      case 2: {
-        if (!globalThis.Number.isInteger(e0.slab.width) || e0.slab.width < 0 || e0.slab.width > 100) {
-          return -1;
-        }
-        if (!globalThis.Number.isInteger(e0.slab.height) || e0.slab.height < 0 || e0.slab.height > 255) { // a bare integer must fit its width
-          return -1;
-        }
-        v = (((e0.slab.width) & 0x7f) | (((e0.slab.height) & 0xff) << 7)) >>> 0;
-        lo = (lo | (v << sb)) >>> 0;
-        sb += 15;
-        if (sb >= 32) {
-          view.setUint32(wi, lo, true);
-          wi += 4;
-          sb -= 32;
-          lo = sb === 0 ? 0 : v >>> (15 - sb);
-        }
-        break;
+      v = ((e0.type & 0x3)) >>> 0;
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 2;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (2 - sb);
       }
+      switch (e0.type) {
+        case 1: {
+          if (e0.ring === null || typeof e0.ring !== "object") { // a record or union value is an object (SPEC §5.1)
+            return -1;
+          }
+          if (!globalThis.Number.isInteger(e0.ring.radius) || e0.ring.radius < 0 || e0.ring.radius > 65535) { // a bare integer must fit its width
+            return -1;
+          }
+          v = (((e0.ring.radius) & 0xffff)) >>> 0;
+          lo = (lo | (v << sb)) >>> 0;
+          sb += 16;
+          if (sb >= 32) {
+            view.setUint32(wi, lo, true);
+            wi += 4;
+            sb -= 32;
+            lo = sb === 0 ? 0 : v >>> (16 - sb);
+          }
+          break;
+        }
+        case 2: {
+          if (e0.slab === null || typeof e0.slab !== "object") { // a record or union value is an object (SPEC §5.1)
+            return -1;
+          }
+          if (!globalThis.Number.isInteger(e0.slab.width) || e0.slab.width < 0 || e0.slab.width > 100) {
+            return -1;
+          }
+          if (!globalThis.Number.isInteger(e0.slab.height) || e0.slab.height < 0 || e0.slab.height > 255) { // a bare integer must fit its width
+            return -1;
+          }
+          v = (((e0.slab.width) & 0x7f) | (((e0.slab.height) & 0xff) << 7)) >>> 0;
+          lo = (lo | (v << sb)) >>> 0;
+          sb += 15;
+          if (sb >= 32) {
+            view.setUint32(wi, lo, true);
+            wi += 4;
+            sb -= 32;
+            lo = sb === 0 ? 0 : v >>> (15 - sb);
+          }
+          break;
+        }
+      }
+    } catch (thrown) {
+      if (e0 === null || typeof e0 !== "object") { // a record or union value is an object (SPEC §5.1)
+        return -1;
+      }
+      throw thrown;
     }
   }
   if (sb !== 0) {
@@ -1445,6 +1521,9 @@ export function ReadProbeColliderFlatBits(view, numBits, value) {
 // must hold ProbeConfigMaxBytes.
 export function WriteProbeConfigFlat(view, value) {
   let lo = 0;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isInteger(value.retries) || value.retries < -2147483648 || value.retries > 2147483647) { // a bare integer must fit its width
     return -1;
   }
@@ -1504,91 +1583,150 @@ export function ReadProbeConfigFlatBits(view, numBits, value) {
 // must hold ProbeArrayMaxBytes.
 export function WriteProbeArrayFlat(view, value) {
   let v = 0, x = 0, n = 0, lo = 0, sb = 0, wi = 0;
-  if (value.samples == null || value.samples.length !== 2) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
+  if (value.samples === null || typeof value.samples !== "object" || value.samples.length !== 2) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
     return -1;
   }
   for (let i0 = 0; i0 < 2; i0++) {
     const e0 = value.samples[i0];
-    v = ((e0.active ? 1 : 0)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 1;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (1 - sb);
-    }
-    x = globalThis.Math.fround(e0.orientation);
-    if (!globalThis.Number.isFinite(x)) {
+    if (typeof e0 === "function") { // a record or union value is an object, never a function (SPEC §5.1)
       return -1;
     }
-    if (x < -180.0 || x > 180.0) {
-      return -1;
-    }
-    n = globalThis.Math.fround(globalThis.Math.fround(x - -180.0) / 360.0);
-    if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
-    v = globalThis.Math.floor(globalThis.Math.fround(globalThis.Math.fround(n * 36000.0) + 0.5));
-    if (v > 36000) { v = 36000; }
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 16;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (16 - sb);
-    }
-    if (!globalThis.Number.isInteger(e0.rawDelta) || e0.rawDelta < -2147483648 || e0.rawDelta > 2147483647) { // a bare integer must fit its width
-      return -1;
-    }
-    if (typeof e0.bigDelta !== "bigint" || e0.bigDelta < -9223372036854775808n || e0.bigDelta > 9223372036854775807n) { // a bare integer must fit its width
-      return -1;
-    }
-    v = (((e0.rawDelta >>> 0) >>> 0)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-    SC.setBigUint64(0, e0.bigDelta, true);
-    v = SC.getUint32(0, true);
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-    v = SC.getUint32(4, true);
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-    if (e0.active) {
-      if (!globalThis.Number.isInteger(e0.weapon) || e0.weapon < 0 || e0.weapon > 15) { // headroom above the wire range cannot ride
+    try {
+      if (typeof e0.active !== "boolean") { // a bool is a boolean (SPEC §5.1)
         return -1;
       }
-      v = ((e0.weapon & 0xf) | ((e0.hasTarget ? 1 : 0) << 4)) >>> 0;
+      v = ((e0.active ? 1 : 0)) >>> 0;
       lo = (lo | (v << sb)) >>> 0;
-      sb += 5;
+      sb += 1;
       if (sb >= 32) {
         view.setUint32(wi, lo, true);
         wi += 4;
         sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (5 - sb);
+        lo = sb === 0 ? 0 : v >>> (1 - sb);
       }
-      if (e0.hasTarget) {
-        if (!globalThis.Number.isInteger(e0.targetId) || e0.targetId < 0 || e0.targetId > 65535) { // a bare integer must fit its width
+      if (typeof e0.orientation !== "number") { // a float is a Number
+        return -1;
+      }
+      x = globalThis.Math.fround(e0.orientation);
+      if (!globalThis.Number.isFinite(x)) {
+        return -1;
+      }
+      if (x < -180.0 || x > 180.0) {
+        return -1;
+      }
+      n = globalThis.Math.fround(globalThis.Math.fround(x - -180.0) / 360.0);
+      if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
+      v = globalThis.Math.floor(globalThis.Math.fround(globalThis.Math.fround(n * 36000.0) + 0.5));
+      if (v > 36000) { v = 36000; }
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 16;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (16 - sb);
+      }
+      if (!globalThis.Number.isInteger(e0.rawDelta) || e0.rawDelta < -2147483648 || e0.rawDelta > 2147483647) { // a bare integer must fit its width
+        return -1;
+      }
+      if (typeof e0.bigDelta !== "bigint" || e0.bigDelta < -9223372036854775808n || e0.bigDelta > 9223372036854775807n) { // a bare integer must fit its width
+        return -1;
+      }
+      v = (((e0.rawDelta >>> 0) >>> 0)) >>> 0;
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 32;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (32 - sb);
+      }
+      SC.setBigUint64(0, e0.bigDelta, true);
+      v = SC.getUint32(0, true);
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 32;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (32 - sb);
+      }
+      v = SC.getUint32(4, true);
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 32;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (32 - sb);
+      }
+      if (e0.active) {
+        if (!globalThis.Number.isInteger(e0.weapon) || e0.weapon < 0 || e0.weapon > 15) { // headroom above the wire range cannot ride
           return -1;
         }
-        v = (((e0.targetId) & 0xffff)) >>> 0;
+        if (typeof e0.hasTarget !== "boolean") { // a bool is a boolean (SPEC §5.1)
+          return -1;
+        }
+        v = ((e0.weapon & 0xf) | ((e0.hasTarget ? 1 : 0) << 4)) >>> 0;
+        lo = (lo | (v << sb)) >>> 0;
+        sb += 5;
+        if (sb >= 32) {
+          view.setUint32(wi, lo, true);
+          wi += 4;
+          sb -= 32;
+          lo = sb === 0 ? 0 : v >>> (5 - sb);
+        }
+        if (e0.hasTarget) {
+          if (!globalThis.Number.isInteger(e0.targetId) || e0.targetId < 0 || e0.targetId > 65535) { // a bare integer must fit its width
+            return -1;
+          }
+          v = (((e0.targetId) & 0xffff)) >>> 0;
+          lo = (lo | (v << sb)) >>> 0;
+          sb += 16;
+          if (sb >= 32) {
+            view.setUint32(wi, lo, true);
+            wi += 4;
+            sb -= 32;
+            lo = sb === 0 ? 0 : v >>> (16 - sb);
+          }
+        }
+      } else {
+        if (!globalThis.Number.isInteger(e0.idleTicks) || e0.idleTicks < 0 || e0.idleTicks > 4294967295) { // a bare integer must fit its width
+          return -1;
+        }
+        v = (((e0.idleTicks) >>> 0)) >>> 0;
+        lo = (lo | (v << sb)) >>> 0;
+        sb += 32;
+        if (sb >= 32) {
+          view.setUint32(wi, lo, true);
+          wi += 4;
+          sb -= 32;
+          lo = sb === 0 ? 0 : v >>> (32 - sb);
+        }
+      }
+      if (!globalThis.Number.isInteger(e0.samplesCount) || e0.samplesCount < 1 || e0.samplesCount > 8) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
+        return -1;
+      }
+      if (e0.samples === null || typeof e0.samples !== "object" || !(e0.samples.length >= e0.samplesCount)) { // the storage holds every element the loop reads (SPEC §5.1)
+        return -1;
+      }
+      v = (((((e0.samplesCount >>> 0) - 1) >>> 0) & 0x7)) >>> 0;
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 3;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (3 - sb);
+      }
+      for (let i1 = 0; i1 < e0.samplesCount; i1++) {
+        if (!globalThis.Number.isInteger(e0.samples[i1]) || e0.samples[i1] < 0 || e0.samples[i1] > 65535) { // a bare integer must fit its width
+          return -1;
+        }
+        v = (((e0.samples[i1]) & 0xffff)) >>> 0;
         lo = (lo | (v << sb)) >>> 0;
         sb += 16;
         if (sb >= 32) {
@@ -1598,46 +1736,15 @@ export function WriteProbeArrayFlat(view, value) {
           lo = sb === 0 ? 0 : v >>> (16 - sb);
         }
       }
-    } else {
-      if (!globalThis.Number.isInteger(e0.idleTicks) || e0.idleTicks < 0 || e0.idleTicks > 4294967295) { // a bare integer must fit its width
+    } catch (thrown) {
+      if (e0 === null || typeof e0 !== "object") { // a record or union value is an object (SPEC §5.1)
         return -1;
       }
-      v = (((e0.idleTicks) >>> 0)) >>> 0;
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 32;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (32 - sb);
-      }
+      throw thrown;
     }
-    if (!globalThis.Number.isInteger(e0.samplesCount) || e0.samplesCount < 1 || e0.samplesCount > 8) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
-      return -1;
-    }
-    v = (((((e0.samplesCount >>> 0) - 1) >>> 0) & 0x7)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 3;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (3 - sb);
-    }
-    for (let i1 = 0; i1 < e0.samplesCount; i1++) {
-      if (!globalThis.Number.isInteger(e0.samples[i1]) || e0.samples[i1] < 0 || e0.samples[i1] > 65535) { // a bare integer must fit its width
-        return -1;
-      }
-      v = (((e0.samples[i1]) & 0xffff)) >>> 0;
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 16;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (16 - sb);
-      }
-    }
+  }
+  if (value.config === null || typeof value.config !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
   }
   if (!globalThis.Number.isInteger(value.config.retries) || value.config.retries < -2147483648 || value.config.retries > 2147483647) { // a bare integer must fit its width
     return -1;
@@ -1964,9 +2071,13 @@ export function ReadProbeArrayFlatBits(view, numBits, value) {
 
 // ---- type Heartbeat: the flat codec ----
 
-// WriteHeartbeatFlat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract. The buffer behind view must hold HeartbeatMaxBytes.
-export function WriteHeartbeatFlat() {
+// WriteHeartbeatFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (SPEC §5.1). The buffer behind view
+// must hold HeartbeatMaxBytes.
+export function WriteHeartbeatFlat(view, value) {
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   return 0;
 }
 
@@ -1994,6 +2105,9 @@ export function ReadHeartbeatFlatBits() {
 // must hold TestMaxBytes.
 export function WriteTestFlat(view, value) {
   let v = 0, lo = 0;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isInteger(value.testA) || value.testA < 0 || value.testA > 65535) { // a bare integer must fit its width
     return -1;
   }
@@ -2087,7 +2201,13 @@ export function ReadTestFlatBits(view, numBits, value) {
 // must hold BlockMaxBytes.
 export function WriteBlockFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isInteger(value.dataLength) || value.dataLength < 0 || value.dataLength > 2000) { // the length guards the slice; out-of-contract writes are refused
+    return -1;
+  }
+  if (!(value.data instanceof globalThis.Uint8Array) || value.data.length < value.dataLength) { // the bytes are a Uint8Array holding the length (SPEC §5.1)
     return -1;
   }
   lo = (((value.dataLength) & 0x7ff));
@@ -2217,7 +2337,13 @@ export function ReadBlockFlatBits(view, numBits, value) {
 // must hold ChatMaxBytes.
 export function WriteChatFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isInteger(value.textLength) || value.textLength < 0 || value.textLength > 256) { // the length guards the slice; out-of-contract writes are refused
+    return -1;
+  }
+  if (!(value.text instanceof globalThis.Uint8Array) || value.text.length < value.textLength) { // the bytes are a Uint8Array holding the length (SPEC §5.1)
     return -1;
   }
   if (!validText(value.text, value.textLength)) {
@@ -2356,6 +2482,12 @@ export function ReadChatFlatBits(view, numBits, value) {
 // must hold ProbeReportMaxBytes.
 export function WriteProbeReportFlat(view, value) {
   let v = 0, lo = 0;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
+  if (value.header === null || typeof value.header !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isInteger(value.header.version) || value.header.version < 0 || value.header.version > 7) {
     return -1;
   }
@@ -2370,12 +2502,18 @@ export function WriteProbeReportFlat(view, value) {
   v = SC.getUint32(4, true);
   view.setUint32(4, (lo | (v << 16)) >>> 0, true);
   lo = v >>> 16;
+  if (typeof value.flags !== "bigint") { // a flags value is a BigInt
+    return -1;
+  }
   if (globalThis.BigInt.asUintN(64, value.flags) >= 256n) { // a mask bit above the wire width cannot ride
     return -1;
   }
   SC.setBigUint64(0, value.flags, true);
   v = SC.getUint32(0, true) & 0xff;
   lo = (lo | (v << 16)) >>> 0;
+  if (value.echo === null || typeof value.echo !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isInteger(value.echo.testA) || value.echo.testA < 0 || value.echo.testA > 65535) { // a bare integer must fit its width
     return -1;
   }
@@ -2527,6 +2665,9 @@ export function ReadProbeReportFlatBits(view, numBits, value) {
 // must hold TestDataMaxBytes.
 export function WriteTestDataFlat(view, value) {
   let v = 0, x = 0, n = 0, lo = 0, sb = 0, wi = 0;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isInteger(value.a) || value.a < -100 || value.a > 100) {
     return -1;
   }
@@ -2546,7 +2687,13 @@ export function WriteTestDataFlat(view, value) {
   if (!globalThis.Number.isInteger(value.f) || value.f < 0 || value.f > 255) {
     return -1;
   }
+  if (typeof value.g !== "boolean") { // a bool is a boolean (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 16) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
+    return -1;
+  }
+  if (value.items === null || typeof value.items !== "object" || !(value.items.length >= value.itemsCount)) { // the storage holds every element the loop reads (SPEC §5.1)
     return -1;
   }
   lo = ((value.e & 0xff) | ((value.f & 0xff) << 8) | ((value.g ? 1 : 0) << 16) | (((value.itemsCount) & 0x1f) << 17));
@@ -2567,7 +2714,7 @@ export function WriteTestDataFlat(view, value) {
     }
   }
   x = value.floatValue;
-  if (!globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float must be finite
+  if (typeof x !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float is a finite Number
     return -1;
   }
   SC.setFloat32(0, x, true);
@@ -2579,6 +2726,9 @@ export function WriteTestDataFlat(view, value) {
     wi += 4;
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
+  }
+  if (typeof value.compressedFloatValue !== "number") { // a float is a Number
+    return -1;
   }
   x = globalThis.Math.fround(value.compressedFloatValue);
   if (!globalThis.Number.isFinite(x)) {
@@ -2736,7 +2886,7 @@ export function WriteTestDataFlat(view, value) {
     lo = 0;
     sb = 0;
   }
-  if (value.fixedBytes == null || value.fixedBytes.length !== 17) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
+  if (value.fixedBytes === null || typeof value.fixedBytes !== "object" || value.fixedBytes.length !== 17) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
     return -1;
   }
   for (let i0 = 0; i0 < 17; i0++) {
@@ -2754,6 +2904,9 @@ export function WriteTestDataFlat(view, value) {
     }
   }
   if (!globalThis.Number.isInteger(value.textLength) || value.textLength < 0 || value.textLength > 255) { // the length guards the slice; out-of-contract writes are refused
+    return -1;
+  }
+  if (!(value.text instanceof globalThis.Uint8Array) || value.text.length < value.textLength) { // the bytes are a Uint8Array holding the length (SPEC §5.1)
     return -1;
   }
   if (!validText(value.text, value.textLength)) {
@@ -3322,6 +3475,12 @@ export function ReadTestDataFlatBits(view, numBits, value) {
 // must hold CompressedProbeMaxBytes.
 export function WriteCompressedProbeFlat(view, value) {
   let v = 0, x = 0, n = 0, lo = 0;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
+  if (typeof value.boundary !== "number") { // a float is a Number
+    return -1;
+  }
   x = globalThis.Math.fround(value.boundary);
   if (!globalThis.Number.isFinite(x)) {
     return -1;
@@ -3334,6 +3493,9 @@ export function WriteCompressedProbeFlat(view, value) {
   v = globalThis.Math.floor(globalThis.Math.fround(globalThis.Math.fround(n * 1000.0) + 0.5));
   if (v > 1000) { v = 1000; }
   lo = v;
+  if (typeof value.offset !== "number") { // a float is a Number
+    return -1;
+  }
   x = globalThis.Math.fround(value.offset);
   if (!globalThis.Number.isFinite(x)) {
     return -1;

@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
+	"github.com/mas-bandwidth/schema/v3/internal/testinputs"
 )
 
 // The accounting consumer also runs Dart in JIT mode and needs the generated
@@ -88,6 +88,8 @@ func TestFastInputAccountingKeepsBothCanaries(t *testing.T) {
 			"-family conformance-corpus -leg lobster -canary wrong VERIFY_JOBS=4\n"},
 		{"conformance-corpus", "squirrel", "", "-family conformance-corpus -leg squirrel -check-extra VERIFY_JOBS=4\n"},
 		{"conformance-corpus", "squirrel", "wrong", "-family conformance-corpus -leg squirrel -canary wrong VERIFY_JOBS=4\n"},
+		{"table-write-bounds", "go", "", "-j 4 -family table-write-bounds -leg go -check-extra\n" +
+			"-j 4 -family table-write-bounds -leg go -canary wrong\n"},
 		{"packet-defaults", "lobster", "", "-family packet-defaults -leg lobster\n" +
 			"-family packet-defaults -leg lobster -canary extra\n" +
 			"-family packet-defaults -leg lobster -canary wrong\n"},

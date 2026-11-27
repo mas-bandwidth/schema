@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // The generated Go size budget is measured, not guessed (docs/SPEC-TABLES.md

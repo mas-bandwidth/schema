@@ -5,7 +5,9 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | dir | purpose | guard | command |
 | --- | --- | --- | --- |
 | `agentsmap/` | AGENTS.md generator and drift guard | `go test ./tools/agentsmap` | `make map` |
+| `casegate/` | runs a leg driver and refuses an unanswered shared-corpus case | `go test ./tools/casegate` | `go test ./tools/casegate` |
 | `cellmerge/` | three-way PORTING.md row merge for diff3 hunks | `go test ./tools/cellmerge` | `go run ./tools/cellmerge docs/PORTING.md` |
+| `conformancerows/` | runs every conformance row file of a leg against its rows-owed.tsv ledger | `go test ./tools/conformancerows` | `make conformance-rows-LEG` |
 | `errdiscard/` | refuses an error dropped in cmd/ or tools/ with no reason | `go test ./internal/errdiscard` | `make errdiscard` |
 | `fixedtwin/` | fixed-form twin | `go test ./tools/fixedtwin` | `go test ./tools/fixedtwin` |
 | `gotestreport/` | go test -json row report and skip ledger | `go test ./tools/gotestreport` | `go run ./tools/gotestreport -skips .github/skip-ledger.txt build/go-test-json` |
@@ -27,8 +29,10 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `recipescan/` | CLI for internal/recipescan | `go test ./internal/recipescan` | `go run ./tools/recipescan` |
 | `releasebin/` | release binaries for six platforms | `go test ./tools/releasebin` | `make release-binaries` |
 | `releasediff/` | previous-release differential (#463) | `make release-differential-negative-control` | `make release-differential` |
+| `releasenotes/` | GitHub release notes under the body limit | `go test ./tools/releasenotes` | `go run ./tools/releasenotes -version vX.Y.Z` |
 | `releasetag/` | promotion and release tags | `go test ./tools/releasetag` | `make release` |
 | `releasetargets/` | certify release-gates planner from make's database | `go test ./tools/releasetargets` | `go run ./tools/releasetargets -fixtures tools/releasetargets/testdata/f066` |
+| `retiredskips/` | holds a fixed-form gate's printed §5.6 skips to test/conformance/fixed-retired.json as an exact set | `go test ./tools/retiredskips` | `build/retiredskips -leg LEG -- cmd` |
 | `roadmap/` | ROADMAP.md table honesty | `go test ./tools/roadmap` | `go test ./tools/roadmap` |
 | `sabotage/` | negative-control sabotages | `go test ./tools/negativecontrols` | `go run ./tools/sabotage` |
 | `schema-test/` | the one test driver: run, list, coverage | `go run ./tools/schema-test run --group pr` | `go run ./tools/schema-test run --group nightly` |
