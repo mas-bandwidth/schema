@@ -27,7 +27,7 @@ import (
 // check and the promotion tag, which test nothing. Every one of their jobs is
 // held to two minutes.
 var fastLaneWorkflows = map[string]bool{
-	"ci-fast.yml":       true, // the path-selected fast lane
+	"ci-fast.yml":       true, // the per-PR happy path (TestPerPRIsTheHappyPathOnly)
 	"roadmap.yml":       true, // the roadmap lint, by path
 	"caa-self-test.yml": true, // the agreement check's self-test
 	"cla.yml":           true, // the contributor agreement check
@@ -296,6 +296,8 @@ func TestOnlyTheFastLaneRunsOnPushOrPullRequest(t *testing.T) {
 	}{
 		{"a hostile corpus back on push to main", nightlyOnlyErrors, plant("schema-c-runs-hostile-corpus.yml", "\non:\n", "\non:\n  push:\n    branches: [ main ]\n")},
 		{"ci-full back on pull requests", nightlyOnlyErrors, plant("ci-full.yml", "\non:\n", "\non:\n  pull_request:\n")},
+		{"ci-fast-nightly back on pull requests", nightlyOnlyErrors, plant("ci-fast-nightly.yml", "\non:\n", "\non:\n  pull_request:\n")},
+		{"ci-fast-nightly back on push to main", nightlyOnlyErrors, plant("ci-fast-nightly.yml", "\non:\n", "\non:\n  push:\n    branches: [main]\n")},
 		{"python-leg back on pull requests", nightlyOnlyErrors, plant("python-leg.yml", "\non:\n", "\non:\n  pull_request:\n")},
 		{"python-leg back on push to main", nightlyOnlyErrors, plant("python-leg.yml", "\non:\n", "\non:\n  push:\n    branches: [ main ]\n")},
 		{"a fast-lane job given five minutes", twoMinuteErrors, plant("ci-fast.yml", "    timeout-minutes: 2\n", "    timeout-minutes: 5\n")},

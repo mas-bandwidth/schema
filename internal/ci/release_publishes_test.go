@@ -11,7 +11,7 @@ import (
 // GitHub release. --verify-tag is what keeps the step from ever making a tag:
 // `make release` is the only thing that tags. --draft keeps it private until
 // the assets job has attached and checked every archive (F-171).
-const releasePublishCommand = `gh release create "$VERSION" --verify-tag --title "$VERSION" --generate-notes --draft`
+const releasePublishCommand = `gh release create "$VERSION" --verify-tag --title "$VERSION" --notes-file build/release-notes.md --draft`
 
 // releaseTagCommand is the line that makes and pushes the tag.
 const releaseTagCommand = `make release RELEASE_COMMIT="$GITHUB_SHA" PROOF=build/proof/proof.json PUSH=1`

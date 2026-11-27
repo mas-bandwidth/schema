@@ -6491,6 +6491,21 @@ defmodule Benchtable.Table do
     end
   end
 
+  # THE CAP COUNTS EVERY CONTAINER THE WRITER WRITES (docs/SPEC-TABLES.md
+  # §16.14 W2): an array or text list (an empty [] included), a map's object
+  # and an enum-keyed array's object are judged at their own depth, refused
+  # past 128 as a table value is, because the read counts every container it
+  # walks (§16.2) and the write must never spell a text its reader refuses
+  # (Go's internal/tabletext containerCap). An absent optional writes null,
+  # not a container; a union's object is judged in json_arm.
+  defp json_field(%{t: t} = f, v, depth)
+       when t in [:list, :map, :keyed] and depth > 128 and
+              not (v == nil and is_map_key(f, :optional) and
+                     :erlang.map_get(:optional, f) == true) do
+    Process.put(:elixir_json_refuse, true)
+    "null"
+  end
+
   defp json_field(%{t: :list} = f, elements, depth) when is_list(elements) do
     if Map.get(f, :array) == :counted and
          (length(elements) < Map.get(f, :min_count, 0) or length(elements) > f.array_bound),
@@ -6616,6 +6631,14 @@ defmodule Benchtable.Table do
 
         ["{", Enum.intersperse(rows, ","), "\n", indent(depth), "}"]
     end
+  end
+
+  # a flags value is an array of names, a container the read counts, so the
+  # cap counts it at its own depth, [] included (§16.14 W2), a field's or an
+  # array element's alike
+  defp json_field(%{t: :int, flags: _}, _v, depth) when depth > 128 do
+    Process.put(:elixir_json_refuse, true)
+    "null"
   end
 
   defp json_field(%{t: :int, flags: names}, v, depth) do
@@ -6928,6 +6951,13 @@ defmodule Benchtable.Table do
 
   # a union is an object with ONE key, the arm's name, and None is {}
   # (docs/SPEC-TABLES.md §2.6, §16.2); a payload-free arm's value is null.
+  # Either is a container the cap counts at its own depth (§16.14 W2), a
+  # union field's or a union array element's alike.
+  defp json_arm(_union, _sel, depth) when depth > 128 do
+    Process.put(:elixir_json_refuse, true)
+    "null"
+  end
+
   defp json_arm(_union, nil, _depth), do: "{}"
 
   defp json_arm(union, {arm, payload}, depth) do
