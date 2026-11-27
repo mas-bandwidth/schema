@@ -150,9 +150,9 @@ func TestRustFixedSlackEmitterPin(t *testing.T) {
 	t.Parallel()
 	text := fixedSlackText(t, versionSchema(t, "FixedSlack"))
 	for _, want := range []string{
-		"const FRESH: [u8; 2] = [0x03, 0x00];",
-		"const FRESH: [u8; 12] = [0x07, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x00, 0x03, 0x00];",
-		"let b: &[u8] = &FRESH;",
+		"const SCHEMA_FRESH: [u8; 2] = [0x03, 0x00];",
+		"const SCHEMA_FRESH: [u8; 12] = [0x07, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x00, 0x03, 0x00];",
+		"let schema_b: &[u8] = &SCHEMA_FRESH;",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("the generated FixedSlack scatter lacks %q", want)
@@ -172,7 +172,7 @@ fixed table Root
     nums  [..4]int32
 }
 `)
-	if strings.Contains(zero, "FRESH") {
+	if strings.Contains(zero, "SCHEMA_FRESH") {
 		t.Fatal("a unit whose counted arrays all have all-zero element defaults generated slack code")
 	}
 }

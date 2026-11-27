@@ -1,0 +1,8 @@
+// A bits(N) field (SPEC.md section 5.1 row 2), the only write-contract check.
+package rangedbits
+
+table Root
+{
+    mask bits(5)
+    n    int64
+}

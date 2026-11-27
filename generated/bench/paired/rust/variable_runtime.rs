@@ -203,9 +203,9 @@ impl TableReport {
 
     /// Names a float whose raw bits are a NaN or an infinity (§3.3). The first
     /// name a read records wins.
-    pub fn non_finite(&mut self, field: &'static str) {
+    pub fn non_finite(&mut self, schema_field: &'static str) {
         if self.non_finite_float.is_empty() {
-            self.non_finite_float = field;
+            self.non_finite_float = schema_field;
         }
     }
 
@@ -214,9 +214,9 @@ impl TableReport {
     /// refuses BY NAME as out_of_range. THE FIRST REFUSAL WINS, as in the Go
     /// reference: a range miss after damage this read already met stays
     /// damage, and the first name recorded is the one kept.
-    pub fn out_of_range(&mut self, field: &'static str) {
+    pub fn out_of_range(&mut self, schema_field: &'static str) {
         if self.oor_field.is_empty() && !self.damaged {
-            self.oor_field = field;
+            self.oor_field = schema_field;
         }
         self.damaged = true;
     }
@@ -3165,8 +3165,8 @@ pub struct TableRegionWriter<'a> {
 }
 
 #[cfg(feature = "cook")]
-fn table_region_up(v: i64, a: i64) -> i64 {
-    (v + a - 1) / a * a
+fn table_region_up(schema_v: i64, a: i64) -> i64 {
+    (schema_v + a - 1) / a * a
 }
 
 /// THE LAYOUT (internal/tablecook/region.go's Layout): the root at the base
@@ -3179,14 +3179,14 @@ fn table_region_up(v: i64, a: i64) -> i64 {
 #[cfg(feature = "cook")]
 pub fn table_region_layout(
     g: &TableNodeGraph,
-    root_size: i64,
-    root_align: i64,
+    schema_root_size: i64,
+    schema_root_align: i64,
     layout: fn(u64) -> Option<(i64, i64)>,
     extent: fn(u64, &Rc<dyn Any>) -> i64,
-    order: u64,
+    schema_order: u64,
 ) -> Result<TableRegionWriter<'_>, String> {
-    let mut align = root_align.max(8);
-    let mut offset = root_size;
+    let mut align = schema_root_align.max(8);
+    let mut offset = schema_root_size;
     let mut offsets = Vec::with_capacity(g.records.len() + 1);
     offsets.push(0);
     for rec in g.records.iter() {
@@ -3213,7 +3213,7 @@ pub fn table_region_layout(
         }
     }
     let bytes = table_region_up(offset, align);
-    Ok(TableRegionWriter { data: vec![0u8; bytes as usize], order, align, graph: g, offsets, ok: true })
+    Ok(TableRegionWriter { data: vec![0u8; bytes as usize], order: schema_order, align, graph: g, offsets, ok: true })
 }
 
 #[cfg(feature = "cook")]
@@ -3223,91 +3223,91 @@ impl TableRegionWriter<'_> {
     }
 
     /// One scalar of width bytes at a region offset, in the cook's byte order.
-    pub fn put(&mut self, at: i64, value: u64, width: u32) {
-        let at = at as usize;
-        for i in 0..width as usize {
-            let shift = if self.order == 2 { width as usize - 1 - i } else { i };
-            self.data[at + i] = (value >> (shift * 8)) as u8;
+    pub fn put(&mut self, schema_at: i64, schema_value: u64, schema_width: u32) {
+        let schema_at = schema_at as usize;
+        for schema_i in 0..schema_width as usize {
+            let schema_shift = if self.order == 2 { schema_width as usize - 1 - schema_i } else { schema_i };
+            self.data[schema_at + schema_i] = (schema_value >> (schema_shift * 8)) as u8;
         }
     }
 
     /// A float32 as its bit pattern; a NaN or an infinity refuses (§3.3).
-    pub fn put_f32(&mut self, at: i64, value: f32) {
-        if !value.is_finite() {
+    pub fn put_f32(&mut self, schema_at: i64, schema_value: f32) {
+        if !schema_value.is_finite() {
             self.ok = false;
             return;
         }
-        self.put(at, value.to_bits() as u64, 4);
+        self.put(schema_at, schema_value.to_bits() as u64, 4);
     }
 
     /// A float64 as its bit pattern; a NaN or an infinity refuses (§3.3).
-    pub fn put_f64(&mut self, at: i64, value: f64) {
-        if !value.is_finite() {
+    pub fn put_f64(&mut self, schema_at: i64, schema_value: f64) {
+        if !schema_value.is_finite() {
             self.ok = false;
             return;
         }
-        self.put(at, value.to_bits(), 8);
+        self.put(schema_at, schema_value.to_bits(), 8);
     }
 
     /// A 128-bit integer: a big-endian region holds its high half first, as
     /// it holds a u64 with its high byte first (§7.2).
-    pub fn put_wide(&mut self, at: i64, value: u128) {
-        let bytes = if self.order == 2 { value.to_be_bytes() } else { value.to_le_bytes() };
-        self.data[at as usize..at as usize + 16].copy_from_slice(&bytes);
+    pub fn put_wide(&mut self, schema_at: i64, schema_value: u128) {
+        let bytes = if self.order == 2 { schema_value.to_be_bytes() } else { schema_value.to_le_bytes() };
+        self.data[schema_at as usize..schema_at as usize + 16].copy_from_slice(&bytes);
     }
 
     /// string(N) or bytes(N): the used bytes, a zero tail, and the int32 used
     /// length at its own piece; a value over its declared bound refuses.
-    pub fn put_text(&mut self, at: i64, bytes: &[u8], bound: usize, length_at: i64) {
+    pub fn put_text(&mut self, schema_at: i64, bytes: &[u8], bound: usize, length_at: i64) {
         if bytes.len() > bound {
             self.ok = false;
             return;
         }
-        self.data[at as usize..at as usize + bytes.len()].copy_from_slice(bytes);
+        self.data[schema_at as usize..schema_at as usize + bytes.len()].copy_from_slice(bytes);
         self.put(length_at, bytes.len() as u64, 4);
     }
 
     /// A reference slot to a table node: the SELF-RELATIVE delta from the
     /// slot's own address to the node's start, and zero for null (§6.3).
-    pub fn ref_node<T>(&mut self, at: i64, node: &Option<Rc<T>>) {
+    pub fn ref_node<T>(&mut self, schema_at: i64, node: &Option<Rc<T>>) {
         match node {
-            None => self.put(at, 0, 8),
+            None => self.put(schema_at, 0, 8),
             Some(n) => {
                 let index = self.graph.node_index(n) as usize;
-                self.ref_index(at, index);
+                self.ref_index(schema_at, index);
             }
         }
     }
 
     /// A reference slot to a blob node, by the blob's identity (§2.5).
-    pub fn ref_blob(&mut self, at: i64, key: Option<usize>) {
+    pub fn ref_blob(&mut self, schema_at: i64, key: Option<usize>) {
         match key {
-            None => self.put(at, 0, 8),
-            Some(k) => {
-                let index = self.graph.blob_index(k) as usize;
-                self.ref_index(at, index);
+            None => self.put(schema_at, 0, 8),
+            Some(schema_k) => {
+                let index = self.graph.blob_index(schema_k) as usize;
+                self.ref_index(schema_at, index);
             }
         }
     }
 
-    fn ref_index(&mut self, at: i64, index: usize) {
+    fn ref_index(&mut self, schema_at: i64, index: usize) {
         if index < 2 || index > self.offsets.len() {
             self.ok = false; // a node the numbering does not carry
             return;
         }
-        let delta = self.offsets[index - 1] - at;
-        if delta == 0 {
+        let schema_delta = self.offsets[index - 1] - schema_at;
+        if schema_delta == 0 {
             self.ok = false;
             return;
         }
-        self.put(at, delta as u64, 8);
+        self.put(schema_at, schema_delta as u64, 8);
     }
 
     /// A blob node: its u32 length in the cook's order, then its bytes; the
     /// pad word and a *string blob's terminator are the buffer's zeros.
-    pub fn put_blob(&mut self, at: i64, blob: &[u8]) {
-        self.put(at, blob.len() as u64, 4);
-        let from = at as usize + 8;
+    pub fn put_blob(&mut self, schema_at: i64, blob: &[u8]) {
+        self.put(schema_at, blob.len() as u64, 4);
+        let from = schema_at as usize + 8;
         self.data[from..from + blob.len()].copy_from_slice(blob);
     }
 
@@ -3318,30 +3318,30 @@ impl TableRegionWriter<'_> {
         if !self.ok {
             return Err(String::from("invalid_value"));
         }
-        let data_offset = table_region_up(64, self.align) as usize;
+        let schema_data_offset = table_region_up(64, self.align) as usize;
         let nodes = g.records.len() + 1;
-        let total = data_offset + self.data.len() + nodes * 16;
-        let mut out = TableRegionWriter { data: vec![0u8; total], order: self.order, align: self.align, graph: g, offsets: Vec::new(), ok: true };
+        let schema_total = schema_data_offset + self.data.len() + nodes * 16;
+        let mut out = TableRegionWriter { data: vec![0u8; schema_total], order: self.order, align: self.align, graph: g, offsets: Vec::new(), ok: true };
         out.put(0, 0x4b4f4f434d484353, 8);
         out.put(8, build, 8);
         out.put(16, self.order, 8);
         out.put(24, self.data.len() as u64, 8);
         out.put(32, (nodes * 16) as u64, 8);
         out.put(40, self.align as u64, 8);
-        out.data[data_offset..data_offset + self.data.len()].copy_from_slice(&self.data);
-        let mut at = (data_offset + self.data.len()) as i64;
-        for k in 0..nodes {
-            let id = if k == 0 {
+        out.data[schema_data_offset..schema_data_offset + self.data.len()].copy_from_slice(&self.data);
+        let mut schema_at = (schema_data_offset + self.data.len()) as i64;
+        for schema_k in 0..nodes {
+            let id = if schema_k == 0 {
                 root_type
             } else {
-                match &g.records[k - 1] {
+                match &g.records[schema_k - 1] {
                     TableNodeRecord::Blob(type_id, _) => *type_id,
                     TableNodeRecord::Table(type_id, _) => *type_id,
                 }
             };
-            out.put(at, self.offsets[k] as u64, 8);
-            out.put(at + 8, id, 8);
-            at += 16;
+            out.put(schema_at, self.offsets[schema_k] as u64, 8);
+            out.put(schema_at + 8, id, 8);
+            schema_at += 16;
         }
         Ok(out.data)
     }
@@ -3359,10 +3359,10 @@ pub struct TableCarve {
 impl TableCarve {
     /// Reserve one container's whole array, count x size at align, and answer
     /// where it starts inside the extent.
-    pub fn place(&mut self, count: usize, size: i64, align: i64) -> i64 {
+    pub fn place(&mut self, schema_count: usize, size: i64, align: i64) -> i64 {
         self.at = (self.at + align - 1) / align * align;
         let start = self.at;
-        self.at += count as i64 * size;
+        self.at += schema_count as i64 * size;
         start
     }
 }
@@ -3372,17 +3372,17 @@ impl TableRegionWriter<'_> {
     /// A container's sixteen-byte slot: the SELF-RELATIVE delta from the slot
     /// to its array and the int32 count, or the null reference and zero for
     /// an empty one (§2.8, §2.9).
-    pub fn put_slot(&mut self, at: i64, array: i64, count: usize) {
-        if count == 0 {
-            self.put(at, 0, 8);
-            self.put(at + 8, 0, 4);
+    pub fn put_slot(&mut self, schema_at: i64, array: i64, schema_count: usize) {
+        if schema_count == 0 {
+            self.put(schema_at, 0, 8);
+            self.put(schema_at + 8, 0, 4);
             return;
         }
-        if count > i32::MAX as usize {
+        if schema_count > i32::MAX as usize {
             self.ok = false;
             return;
         }
-        self.put(at, (array - at) as u64, 8);
-        self.put(at + 8, count as u64, 4);
+        self.put(schema_at, (array - schema_at) as u64, 8);
+        self.put(schema_at + 8, schema_count as u64, 4);
     }
 }

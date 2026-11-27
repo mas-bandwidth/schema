@@ -1352,6 +1352,8 @@ across legs; the verdict is. The C and C++ pair keeps **`18`** for the retired `
 **`19` `layout_unsupported`** — **the ORDER is the contract**, so a second leg
 pair numbering its own set keeps the retired member's ordinal and numbers its live refusals in the same order.
 
+**C, C#, Dart, Elixir, Java and Rust, 2026-11-24:** each generated load answered `layout_newer` at step 5 until this date; each now answers `layout_unknown` with the file's hash and nothing else. A new member is APPENDED where a leg numbers its set — C `SCHEMA_TABLE_LAYOUT_UNKNOWN = 23` (past every value a C report's reason holds), Dart `layoutUnknown = 25`, Java and Rust a last enum member `layoutUnknown` / `LayoutUnknown` — so no other integer moves, and the retired `layout_newer` keeps its place and is never emitted; C# and Elixir name their refusals by string and atom and changed the name alone. Held by each leg's own versioning and roadmap tests (SPEC-CONFORMANCE.md §7).
+
 **STEP 9 IS ABOUT A FILE, NEVER ABOUT THE LOCK.** A record size of `8` or less comes off the FILE's arithmetic
 — `record_bytes` is the BUILD's, the lock's body with the eight hash bytes already added (§5.2), but `rest`,
 the tail behind the layout, is the file's. **A LINEAGE ENTRY whose
@@ -1374,6 +1376,13 @@ diagnostics (SPEC-TABLES §6.5). `widened` is the one counter; every other row i
 | the bounds pass | `out_of_range` | a ranged scalar off the plan's end, a `bits(N)` past `2^N - 1`, a union tag past the plan's arm count, an enum ordinal past the plan's top variant (a FORGED ordinal), **on the COMPILED plan exactly as on the identity one** (§4.6) |
 | `copy`, `const`, `present` | none | the op lands its value and moves nothing |
 | a clean NEW-READS-OLD of an appended field, variant, arm, flag or keyed slot | none | **the counter stays at zero**: an append the reader knows is not an event |
+
+**AN UNLAWFUL ENTRY IS NEVER CENSUSED, IN ANY SLOT.** A writer field the reader's table names nowhere marks
+the whole entry unlawful wherever it is met: at the root, inside a nested table, and in every element of an
+array of tables, not only the first. The compile lays no plan for that entry, and the load refuses
+`layout_malformed` with `unknown` at zero. A port that still counts the field as `unknown`, once or per element,
+lands values from a layout it was required to refuse. This is the reference's `tableFixedChildrenNamed`, and the
+shared case is SPEC-CONFORMANCE.md, "Unlawful handed-in lineage entry" (Elixir fixed 2026-11-24).
 
 **A check that cannot fire is not emitted.** An ordinal whose extent FILLS its storage width — 255 variants in
 a byte, 65535 in two — has no read-side check: the comparison would be `> extent` against a value of that very

@@ -23997,6 +23997,7 @@ inline bool MixedCookExtent( const Ctx & ctx, const TableCookRegion & region, ui
         table_cook_put( record + 8, (uint64_t) (uint32_t) cursor.count, 4, order );
         for ( int32_t i = 0; i < cursor.count; i++ ) // INDEX order, live elements only
         {
+            schema_assert( !( uint64_t( cursor[i] ) > 3 ) );
             table_cook_put( array + i * 1, (uint64_t) cursor[i], 1, order );
         }
     }

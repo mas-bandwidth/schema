@@ -17,6 +17,13 @@
 //     reached by an INDEX COMPARISON (this build's hash equals its own
 //     entry at index 0), without any hashOf call.
 //
+// TODAY'S REPORT (the strict read, docs/FIXED-FORM-ALGORITHM.md §5.3, §5.9
+// #15): refused, unknown, widened, hash, nonFiniteFloat, layoutHash. The
+// retired `malformed` flag is gone; a clean load is refused == none, and a
+// refusal leaves every row handed in at its declared defaults
+// (docs/SPEC-TABLES.md §6.5). The plan is TableFixedLane.lanes (11) ints an
+// entry.
+//
 // This test proves three things:
 //   1. THE CONSTANT IS THE DIGEST OF THE LAYOUT: fnv1a64 over
 //      `metaFixedLayout` reproduces `metaFixedHash`. The build laid the
@@ -27,9 +34,9 @@
 //      carries `metaFixedHash`, the load opens cleanly with no refusal,
 //      proving the build's identity path is reached (line 328 of
 //      GraphFixed.dart).
-//   3. A WIRE HASH NO ENTRY HOLDS → layout_newer: even when the wire hash
+//   3. A WIRE HASH NO ENTRY HOLDS → layout_unknown: even when the wire hash
 //      IS the fnv1a64 digest of the file's layout, the runtime refuses
-//      with `layout_newer` (file header's hash not in lineage). This is
+//      with `layout_unknown` (file header's hash not in lineage). This is
 //      the proof the runtime NEVER RE-DERIVES the hash from layout bytes:
 //      it reads the eight bytes at offset 8 and compares them to
 //      `metaFixedHash` directly.
@@ -50,7 +57,7 @@ import '../../../../build/tables-generated-dart/pointers/GraphFixed.dart'
         metaFixedNewPlan,
         metaFixedSave;
 import '../../../../build/tables-generated-dart/pointers/GraphdemoFixed.dart'
-    show Meta, TableFixedRefusal, TableFixedReport;
+    show Meta, TableFixedLane, TableFixedRefusal, TableFixedReport;
 
 int pass = 0;
 int fail = 0;
@@ -105,15 +112,15 @@ void main() {
   expect(
     'metaFixedIdentity is a flat Int32List of exactly '
         'metaFixedIdentityCount * TableFixedLane.lanes',
-    metaFixedIdentity.length == metaFixedIdentityCount * 9,
+    metaFixedIdentity.length == metaFixedIdentityCount * TableFixedLane.lanes,
     'length=${metaFixedIdentity.length}, '
-        'want=${metaFixedIdentityCount * 9}',
+        'want=${metaFixedIdentityCount * TableFixedLane.lanes}',
   );
 
   // The first entry of metaFixedIdentity is the identity lane's copy op,
   // expected (op=copy, src=0, dst=0, size=4) — the Meta record body (16
   // bytes) is two such ops; the second is the text op (tag). We pin only
-  // that it is a non-empty list of width 9, leave lane-level proof to the
+  // that it is a non-empty list of width TableFixedLane.lanes, leave lane-level proof to the
   // broader fixedform.dart battery.
 
   // ---- ROUND TRIP: A FILE WRITTEN BY THIS BUILD CARRIES metaFixedHash ----
@@ -122,10 +129,12 @@ void main() {
   //
   // Save the record and read back the header hash. The save stamps the
   // constant `metaFixedHash` at offset 8 (no recompute on the save path
-  // either).
+  // either). The tag's USED units must be well-formed text (a NUL is not:
+  // §4.5 fix 11, the writer asserts it), so the row writes "hello".
   final v = Meta()
     ..build = 7
     ..tagLength = 5;
+  v.tag.setRange(0, 5, 'hello'.codeUnits);
   final buf = Uint8List(metaFixedMeasure(1));
   final saveN = metaFixedSave(<Meta>[v], 1, buf);
   expect(
@@ -149,21 +158,32 @@ void main() {
   final n = metaFixedLoad(back, 1, buf, buf.length, metaFixedNewPlan(), report);
   expect(
     'load on own-hash file opens (identity lane reached)',
-    n == 1 && report.refused == TableFixedRefusal.none && !report.malformed,
+    n == 1 &&
+        report.refused == TableFixedRefusal.none &&
+        report.hash == metaFixedHash &&
+        report.layoutHash == 0,
     'n=$n refused=${TableFixedRefusal.name(report.refused)} '
-        'malformed=${report.malformed}',
+        'hash=0x${report.hash.toRadixString(16)} '
+        'layoutHash=0x${report.layoutHash.toRadixString(16)}',
   );
   expect(
-    'identity lane decodes the writer\'s tagLength=5',
-    back[0].tagLength == 5,
-    'tagLength=${back[0].tagLength}',
+    'identity lane decodes the writer\'s build=7',
+    back[0].build == 7,
+    'build=${back[0].build}',
+  );
+  expect(
+    'identity lane decodes the writer\'s tag "hello" (tagLength=5)',
+    back[0].tagLength == 5 &&
+        String.fromCharCodes(back[0].tag.sublist(0, 5)) == 'hello',
+    'tagLength=${back[0].tagLength} '
+        'tag=${String.fromCharCodes(back[0].tag.sublist(0, back[0].tagLength.clamp(0, 8)))}',
   );
 
   // ---- THE RUNTIME NEVER RE-DERIVES THE HASH FROM LAYOUT BYTES ----
   //
   // Plant a wire hash the lineage does NOT hold, even though the bytes
   // behind the layout WOULD fnv1a64 to it. The load refuses with
-  // `layout_newer`. A runtime that RE-DERIVED from the layout bytes on
+  // `layout_unknown`. A runtime that RE-DERIVED from the layout bytes on
   // this file would land on `metaFixedHash` and silently take the
   // identity path. The refusal below is therefore the proof the runtime
   // never recomputes.
@@ -171,7 +191,7 @@ void main() {
   final poisoned = Uint8List.fromList(buf);
   ByteData.sublistView(poisoned)
       .setUint64(8, fabricatedWireHash, Endian.little);
-  final back2 = <Meta>[Meta()];
+  final back2 = <Meta>[Meta()..build = 99];
   final report2 = TableFixedReport();
   final n2 = metaFixedLoad(
     back2,
@@ -183,14 +203,16 @@ void main() {
   );
   expect(
     'identity lane does NOT index from a recomputed hash: a wire hash no '
-        'lineage entry holds lands layout_newer, not the identity path',
+        'lineage entry holds lands layout_unknown, not the identity path',
     n2 == -1 &&
-        report2.refused == TableFixedRefusal.layoutNewer &&
+        report2.refused == TableFixedRefusal.layoutUnknown &&
         report2.layoutHash == fabricatedWireHash &&
-        !report2.malformed,
+        report2.hash == 0 &&
+        back2[0].build == 1,
     'n=$n2 refused=${TableFixedRefusal.name(report2.refused)} '
         'layoutHash=0x${report2.layoutHash.toRadixString(16)} '
-        'malformed=${report2.malformed}',
+        'hash=0x${report2.hash.toRadixString(16)} '
+        'build=${back2[0].build} (want 1, the declared default)',
   );
 
   if (fail > 0) {

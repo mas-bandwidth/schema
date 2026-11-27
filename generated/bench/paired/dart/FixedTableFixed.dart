@@ -448,7 +448,7 @@ const int fixedTableFixedIdentitySplit = 9;
 /// THE CURRENT ONE LAST (§5.2). A file is matched on its header's hash
 /// against these and on nothing else; the layout it carries is COMPARED
 /// with the bytes the lock recorded and never parsed. A hash no entry holds
-/// is `layout_newer` — ship the reader.
+/// is `layout_unknown` (§5.3 step 5).
 // dart format off
 final List<TableFixedKnownLayout> fixedTableFixedKnown = <TableFixedKnownLayout>[
   TableFixedKnownLayout(0xcde672e9249dd5e0, Uint8List.fromList(const <int>[
@@ -565,7 +565,7 @@ final List<TableFixedKnownLayout> fixedTableFixedKnown = <TableFixedKnownLayout>
 
 /// THE FLOOR: 1 + the highest RETIRED index, 0 when none is (§5.2). Below
 /// it a layout this build once served is retired and the answer is
-/// `layout_unsupported` — upgrade the client — rather than `layout_newer`.
+/// `layout_unsupported` — upgrade the client — rather than `layout_unknown`.
 const int fixedTableFixedFloor = 0;
 
 /// ONE PLAN PER LINEAGE ENTRY, built from THE LOCK'S bytes the first time
@@ -724,7 +724,7 @@ int fixedTableFixedLoad(
   final pick = tableFixedSelect(fixedTableFixedKnown, hash);
   if (pick < 0) {
     report.layoutHash = hash;
-    report.refused = TableFixedRefusal.layoutNewer;
+    report.refused = TableFixedRefusal.layoutUnknown;
     return refuse();
   }
   if (pick < fixedTableFixedFloor) {

@@ -11,7 +11,7 @@ import (
 
 // rustPlainFloatOperand finds the corpus's plain control `p` as a store's
 // operand (v.p, value.p), and not `pick`.
-var rustPlainFloatOperand = regexp.MustCompile(`\b(v|value)\.p\b`)
+var rustPlainFloatOperand = regexp.MustCompile(`\b(?:schema_)?(v|value)\.p\b`)
 
 // TestRustCompressedFloatStoresAreGuarded is the fast twin of
 // TestRustCompressedNegZeroCorpus (docs/SPEC-TABLES.md §3.3, docs/rulings.json
@@ -34,7 +34,7 @@ func TestRustCompressedFloatStoresAreGuarded(t *testing.T) {
 	// each writer's float store, by the spelling only a float store has
 	stores := map[string]string{
 		"variable": ".to_bits().to_le_bytes()",
-		"fixed":    "b[at..at + 4].copy_from_slice(&",
+		"fixed":    "schema_b[schema_at..schema_at + 4].copy_from_slice(&",
 		"json":     "json_float(",
 		"cook":     "w.put_f32(",
 	}

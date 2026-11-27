@@ -412,7 +412,7 @@ tables-rust-fixedform: build/retiredskips build/tables-generated-rust/.stamp bui
 # and the floor, hash and lineage-merge files — generates ONE CARGO WORKSPACE of
 # probe crates under build/rust-versioning-probes, and holds each row's two read
 # columns: NEW-READS-OLD lands every old value with §5.4's counters, and
-# OLD-REFUSES-NEW answers `layout_newer` before any record, on the file's hash
+# OLD-REFUSES-NEW answers `layout_unknown` before any record, on the file's hash
 # alone (§5.3). The Go leg's `tables-go-versioning` is the same target on the
 # same rows; this is its twin.
 #
@@ -1169,7 +1169,7 @@ tables-rust-byte-order:
 	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run '^TestBlockBuildAndCookWriteRust$$'
 tables-rust-byte-order-negative-control:
 	PATH="$$PATH:$(RUSTUP_BIN)" sh make/rust-overlay-control.sh rust-byte-order-control internal/codegen/rusttable/cook.go \
-		's|let shift = if order == 2 { width as usize - 1 - i } else { i };|let shift = i; // SABOTAGED: the target order ignored|' \
+		's|let schema_shift = if schema_order == 2 { schema_width as usize - 1 - schema_i } else { schema_i };|let schema_shift = schema_i; // SABOTAGED: the target order ignored|' \
 		'^TestBlockBuildAndCookWriteRust$$' "the big-endian cook's header names byte order"
 
 # I7 (docs/PORTING.md): THE OTHER ORDER'S WORD UNDER AN INTACT MAGIC, the half

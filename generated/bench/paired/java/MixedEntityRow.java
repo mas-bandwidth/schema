@@ -244,18 +244,19 @@ public final class MixedEntityRow {
                             null);
             fields[10] =
                     TableCookFieldInfo.of(
-                            "weapon",
-                            "weapon",
-                            40,
-                            1,
-                            1,
-                            false,
-                            1,
-                            false,
-                            -1,
-                            -1,
-                            TableCookStorage.UNSIGNED,
-                            null);
+                                    "weapon",
+                                    "weapon",
+                                    40,
+                                    1,
+                                    1,
+                                    false,
+                                    1,
+                                    false,
+                                    -1,
+                                    -1,
+                                    TableCookStorage.UNSIGNED,
+                                    null)
+                            .variants(15);
             fields[11] =
                     TableCookFieldInfo.of(
                             "damage",

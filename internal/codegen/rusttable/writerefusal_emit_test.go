@@ -82,13 +82,13 @@ fixed table Config
 `)
 	fixed := string(out["probe_fixed.rs"])
 	for _, want := range []string{
-		`debug_assert!(value.tag <= 2, "Effect tag outside its arm set");`,
-		`debug_assert!(value.amount >= 0 && value.amount <= 10, "amount out of range [0, 10]");`,
-		`debug_assert!(value.channel <= 63, "channel exceeds bits(6) width");`,
-		`value.items_count >= 0 && value.items_count <= 8,`,
-		`debug_assert!(table_utf8_valid(&value.label[..n]), "label is ill-formed text");`,
-		`debug_assert!(value.scale >= -524288 && value.scale <= 524288, "scale raw value out of range [-524288, 524288]");`,
-		`debug_assert!(value.grade <= 3, "grade ordinal exceeds the enum's extent");`,
+		`debug_assert!(schema_value.tag <= 2, "Effect tag outside its arm set");`,
+		`debug_assert!(schema_value.amount >= 0 && schema_value.amount <= 10, "amount out of range [0, 10]");`,
+		`debug_assert!(schema_value.channel <= 63, "channel exceeds bits(6) width");`,
+		`schema_value.items_count >= 0 && schema_value.items_count <= 8,`,
+		`debug_assert!(table_utf8_valid(&schema_value.label[..schema_n]), "label is ill-formed text");`,
+		`debug_assert!(schema_value.scale >= -524288 && schema_value.scale <= 524288, "scale raw value out of range [-524288, 524288]");`,
+		`debug_assert!(schema_value.grade <= 3, "grade ordinal exceeds the enum's extent");`,
 	} {
 		if !strings.Contains(fixed, want) {
 			t.Errorf("the fixed-form save does not emit %q", want)
@@ -96,10 +96,10 @@ fixed table Config
 	}
 	message := string(out["probe_message.rs"])
 	for _, want := range []string{
-		`debug_assert!(value.amount >= 0 && value.amount <= 10, "amount out of range [0, 10]");`,
-		`debug_assert!(value.channel <= 63, "channel exceeds bits(6) width");`,
-		`debug_assert!(table_message_utf8(&value.label[..value.label_length as usize]), "label is ill-formed text");`,
-		`debug_assert!(value.scale >= -524288 && value.scale <= 524288, "scale raw value out of range [-524288, 524288]");`,
+		`debug_assert!(schema_value.amount >= 0 && schema_value.amount <= 10, "amount out of range [0, 10]");`,
+		`debug_assert!(schema_value.channel <= 63, "channel exceeds bits(6) width");`,
+		`debug_assert!(table_message_utf8(&schema_value.label[..schema_value.label_length as usize]), "label is ill-formed text");`,
+		`debug_assert!(schema_value.scale >= -524288 && schema_value.scale <= 524288, "scale raw value out of range [-524288, 524288]");`,
 	} {
 		if !strings.Contains(message, want) {
 			t.Errorf("the message-form save does not emit %q", want)
@@ -128,7 +128,7 @@ fixed table Config
 func TestRustFixedDeprecatedEnumWriteRefused(t *testing.T) {
 	t.Parallel()
 	fixed := string(generate(t, fixedDeprecatedEnumSchema)["probe_fixed.rs"])
-	want := `debug_assert!(value.phase != 2, "invalid_value: phase holds a deprecated variant");`
+	want := `debug_assert!(schema_value.phase != 2, "invalid_value: phase holds a deprecated variant");`
 	if !strings.Contains(fixed, want) {
 		t.Errorf("the fixed-form save does not emit %q", want)
 	}

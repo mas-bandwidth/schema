@@ -1605,7 +1605,7 @@ tables-c-fixedform: build/retiredskips build/schema_test_c_fixedform build/schem
 # oracle out of build/fixedform-corpus — `old_<row>.bin`, `new_<row>.bin` and
 # the floor, hash and lineage-merge files — and holds each row's two read
 # columns: NEW-READS-OLD lands every old value with §5.4's counters, and
-# OLD-REFUSES-NEW answers `layout_newer` before any record, on the file's hash
+# OLD-REFUSES-NEW answers `layout_unknown` before any record, on the file's hash
 # alone (§5.3).
 #
 # EACH SIDE IS ITS OWN TRANSLATION UNIT AND ITS OWN BINARY. C has no namespace,

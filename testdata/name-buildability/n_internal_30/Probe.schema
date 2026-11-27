@@ -76,9 +76,6 @@ enum gate
 enum gcount
 { Zfirst, Zsecond, Zthird }
 
-enum gen
-{ Zfirst, Zsecond, Zthird }
-
 enum general
 { Zfirst, Zsecond, Zthird }
 
@@ -366,7 +363,6 @@ table NameFields1
 
 union NameArms2
 {
-    gen Inner
     general Inner
     generated Inner
     get32 Inner
@@ -380,8 +376,6 @@ union NameArms2
 
 table NameTypes2
 {
-    one0  gen
-    many0 [..4]gen
     one1  general
     many1 [..4]general
     one2  generated
@@ -404,7 +398,6 @@ table NameTypes2
 
 table NameFields2
 {
-    gen uint32
     general uint32
     generated uint32
     get32 uint32
