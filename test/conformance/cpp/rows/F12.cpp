@@ -82,7 +82,7 @@ int main()
         const int64_t n = tblfx1::FxRootFixedLoad(
             &back, 1, clean.data(), (int64_t) clean.size(),
             plan.data(), 256, NULL, &r );
-        check( n == 1 && !r.refused && !r.malformed,
+        check( n == 1 && !r.refused && !r.damaged,
                "CONTROL: the un-bent layout, under its held hash, opens" );
         check( back.keep == 42 && back.narrow == 7 && back.renamed == 99,
                "CONTROL: the record lands the fields it wrote" );
@@ -114,22 +114,26 @@ int main()
 
         // "AND CHANGES NOTHING": a refusal by name decodes nothing and moves no
         // counter, and a named refusal is never `malformed`.
-        check( !r.malformed,
+        check( !r.damaged,
                "F12: the refusal is not damage" );
         check( r.unknown == 0,
                "F12: nothing was decoded — no unknown counter" );
-        check( r.kind_mismatch == 0,
-               "F12: no kind-mismatch counter" );
+        // strict-only-read: the kind_mismatch and clamped counters are retired; a
+        // kind mismatch or an out-of-range value is now a refusal reason, so "no
+        // such counter" reads as "the refusal is not that one".
+        check( r.refuse_reason != tblfx1::kind_mismatch,
+               "F12: not a kind-mismatch refusal" );
         check( r.widened == 0,
                "F12: no widened counter" );
-        check( r.clamped == 0,
-               "F12: no clamp counter" );
+        check( r.refuse_reason != tblfx1::out_of_range,
+               "F12: not an out_of_range refusal (the retired clamp)" );
     }
 
     // THE CONTRAST THAT MAKES F12 DISCRIMINATING: a hash in NO lineage entry
-    // is a different answer — `layout_newer`, the file's hash reported — which
+    // is a different answer — `layout_unknown`, the file's hash reported — which
     // is why a held-hash-over-different-bytes must be its own name and not that
-    // one.
+    // one. (It was `layout_newer`; docs/plans/strict-only.md decision 11 retired
+    // that name: every leg answers layout_unknown.)
     {
         std::vector<uint8_t> unknown_file = clean;
         const uint64_t unknown_hash = hash + 1;
@@ -146,10 +150,10 @@ int main()
                "F12: an unknown hash also returns -1" );
         check( r.refused,
                "F12: an unknown hash is refused too" );
-        check( r.reason == tblfx1::layout_newer,
-               "F12: an unknown hash is `layout_newer`, a different name" );
+        check( r.reason == tblfx1::layout_unknown,
+               "F12: an unknown hash is `layout_unknown`, a different name" );
         check( r.layout_hash == unknown_hash,
-               "F12: and `layout_newer` reports the file's hash" );
+               "F12: and `layout_unknown` reports the file's hash" );
     }
 
     if ( failures > 0 )
