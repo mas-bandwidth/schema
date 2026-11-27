@@ -1,11 +1,11 @@
 // CARD: cell-dart-field-evolution E6 — renaming uses the declared identity
-// LAW: docs/FIXED-FORM-ALGORITHM.md:425 — "A rename THROUGH `was =` is not a
+// LAW: docs/FIXED-FORM-ALGORITHM.md §5.1 — "A rename THROUGH `was =` is not a
 // version at all: an id is the hash of the wire name and `was` keeps the old
 // one, so the layout bytes do not move and the two generations share one
-// hash."; docs/FIXED-FORM-ALGORITHM.md:1549 — "A `was =` RENAME IS PAIRED BY
+// hash."; docs/FIXED-FORM-ALGORITHM.md §5.9 #41 — "A `was =` RENAME IS PAIRED BY
 // WIRE ID IN ANY HARNESS, NEVER BY NAME. §5.2 matches a field by
 // `fnv1a64(wire name)`, so `b was = a` matches the OLD name while the VALUE
-// SURFACE is spelled with the NEW one."; docs/SPEC-TABLES.md:3259 — "Renaming
+// SURFACE is spelled with the NEW one."; docs/SPEC-TABLES.md "Renaming is not a change" — "Renaming
 // is not a change: `was = "old_name"` keeps a field's identity through a
 // rename: the wire id stays the hash of the old name."
 // CELL: dart/E6
@@ -156,7 +156,7 @@ void main() {
       v2.cfgFixedNewPlan(),
       r,
     );
-    check(n == 1, 'E6: the identity read returns');
+    check(n == 1, 'E6: the identity read returns one record (got $n)');
     final text = String.fromCharCodes(
       back[0].title.sublist(0, back[0].titleLength),
     );
@@ -165,12 +165,12 @@ void main() {
       'E6: `title` reads back the bytes it wrote under the declared identity',
     );
     check(
-      !r.malformed &&
-          r.refused == 0 &&
-          r.clamped == 0 &&
+      r.refused == v2rt.TableFixedRefusal.none &&
           r.unknown == 0 &&
           r.widened == 0,
-      'E6: the identity read is clean — no refusal, no counter moved',
+      'E6: the identity read is clean — no refusal, no counter moved '
+      '(refused=${v2rt.TableFixedRefusal.name(r.refused)} '
+      'unknown=${r.unknown} widened=${r.widened})',
     );
   }
 
