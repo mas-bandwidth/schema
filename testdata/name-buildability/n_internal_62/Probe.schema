@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum reset_array
+{ Zfirst, Zsecond, Zthird }
+
+enum reset_clear
+{ Zfirst, Zsecond, Zthird }
+
+enum reset_elem
+{ Zfirst, Zsecond, Zthird }
+
+enum reset_in_place
+{ Zfirst, Zsecond, Zthird }
+
+enum reset_store
+{ Zfirst, Zsecond, Zthird }
+
+enum reset_union
+{ Zfirst, Zsecond, Zthird }
+
+enum reset_value
+{ Zfirst, Zsecond, Zthird }
+
+enum resf
+{ Zfirst, Zsecond, Zthird }
+
+enum resize
+{ Zfirst, Zsecond, Zthird }
+
+enum resolution
+{ Zfirst, Zsecond, Zthird }
+
+enum resolve
+{ Zfirst, Zsecond, Zthird }
+
+enum resolvePayload
+{ Zfirst, Zsecond, Zthird }
+
+enum resolve_arm
+{ Zfirst, Zsecond, Zthird }
+
+enum resolve_array
+{ Zfirst, Zsecond, Zthird }
+
+enum resolve_body
+{ Zfirst, Zsecond, Zthird }
+
+enum resolve_content
+{ Zfirst, Zsecond, Zthird }
+
+enum resolve_graph
+{ Zfirst, Zsecond, Zthird }
+
+enum resolve_map
+{ Zfirst, Zsecond, Zthird }
+
+enum resolve_record
+{ Zfirst, Zsecond, Zthird }
+
+enum resolve_ref
+{ Zfirst, Zsecond, Zthird }
+
+enum resolve_union
+{ Zfirst, Zsecond, Zthird }
+
+enum resolve_value
+{ Zfirst, Zsecond, Zthird }
+
+enum resolved
+{ Zfirst, Zsecond, Zthird }
+
+enum resolved_key
+{ Zfirst, Zsecond, Zthird }
+
+enum resolving
+{ Zfirst, Zsecond, Zthird }
+
+enum rest
+{ Zfirst, Zsecond, Zthird }
+
+enum rest2
+{ Zfirst, Zsecond, Zthird }
+
+enum rest3
+{ Zfirst, Zsecond, Zthird }
+
+enum rest_pairs
+{ Zfirst, Zsecond, Zthird }
+
+enum restamp_from
+{ Zfirst, Zsecond, Zthird }
+
+enum restore
+{ Zfirst, Zsecond, Zthird }
+
+enum restoreCount
+{ Zfirst, Zsecond, Zthird }
+
+enum restoring
+{ Zfirst, Zsecond, Zthird }
+
+enum result
+{ Zfirst, Zsecond, Zthird }
+
+enum result_flags
+{ Zfirst, Zsecond, Zthird }
+
+enum resumed
+{ Zfirst, Zsecond, Zthird }
+
+enum ret
+{ Zfirst, Zsecond, Zthird }
+
+enum retSlot
+{ Zfirst, Zsecond, Zthird }
+
+enum retain
+{ Zfirst, Zsecond, Zthird }
+
+enum retainClear
+{ Zfirst, Zsecond, Zthird }
+
+enum retainLost
+{ Zfirst, Zsecond, Zthird }
+
+enum retain_capacity
+{ Zfirst, Zsecond, Zthird }
+
+enum retain_captures
+{ Zfirst, Zsecond, Zthird }
+
+enum retain_clear_placed
+{ Zfirst, Zsecond, Zthird }
+
+enum retain_count_unplaced
+{ Zfirst, Zsecond, Zthird }
+
+enum retain_depth_cap
+{ Zfirst, Zsecond, Zthird }
+
+enum retain_discard
+{ Zfirst, Zsecond, Zthird }
+
+enum retain_discard_body
+{ Zfirst, Zsecond, Zthird }
+
+enum retain_emit_body
+{ Zfirst, Zsecond, Zthird }
+
+enum retain_emit_content
+{ Zfirst, Zsecond, Zthird }
+
+enum retain_emit_framed
+{ Zfirst, Zsecond, Zthird }
+
+enum retain_emit_keyed
+{ Zfirst, Zsecond, Zthird }
+
+enum retain_emit_ref
+{ Zfirst, Zsecond, Zthird }
+
+enum retain_emit_resolve
+{ Zfirst, Zsecond, Zthird }
+
+enum retain_emit_tail
+{ Zfirst, Zsecond, Zthird }
+
+enum retain_hold_node
+{ Zfirst, Zsecond, Zthird }
+
+enum retain_keyed
+{ Zfirst, Zsecond, Zthird }
+
+enum retain_measure
+{ Zfirst, Zsecond, Zthird }
+
+enum retain_node_live
+{ Zfirst, Zsecond, Zthird }
+
+enum retain_node_path
+{ Zfirst, Zsecond, Zthird }
+
+enum retain_path_eq
+{ Zfirst, Zsecond, Zthird }
+
+enum retain_resolve
+{ Zfirst, Zsecond, Zthird }
+
+enum retain_save
+{ Zfirst, Zsecond, Zthird }
+
+enum retain_tail
+{ Zfirst, Zsecond, Zthird }
+
+enum retain_tails
+{ Zfirst, Zsecond, Zthird }
+
+enum retain_under
+{ Zfirst, Zsecond, Zthird }
+
+enum retained
+{ Zfirst, Zsecond, Zthird }
+
+enum retainedAt
+{ Zfirst, Zsecond, Zthird }
+
+enum retainedBefore
+{ Zfirst, Zsecond, Zthird }
+
+enum retainedBody0
+{ Zfirst, Zsecond, Zthird }
+
+enum retainedBody1
+{ Zfirst, Zsecond, Zthird }
+
+enum retainedElement0
+{ Zfirst, Zsecond, Zthird }
+
+enum retainedFinite
+{ Zfirst, Zsecond, Zthird }
+
+enum retainedFloatName
+{ Zfirst, Zsecond, Zthird }
+
+enum retainedIndex0
+{ Zfirst, Zsecond, Zthird }
+
+enum retainedPayload0
+{ Zfirst, Zsecond, Zthird }
+
+enum retained_idx
+{ Zfirst, Zsecond, Zthird }
+
+enum retained_mark
+{ Zfirst, Zsecond, Zthird }
+
+enum retained_no_id
+{ Zfirst, Zsecond, Zthird }
+
+enum retained_slot
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    reset_array Inner
+    reset_clear Inner
+    reset_elem Inner
+    reset_in_place Inner
+    reset_store Inner
+    reset_union Inner
+    reset_value Inner
+    resf Inner
+    resize Inner
+    resolution Inner
+}
+
+table NameTypes0
+{
+    one0  reset_array
+    many0 [..4]reset_array
+    one1  reset_clear
+    many1 [..4]reset_clear
+    one2  reset_elem
+    many2 [..4]reset_elem
+    one3  reset_in_place
+    many3 [..4]reset_in_place
+    one4  reset_store
+    many4 [..4]reset_store
+    one5  reset_union
+    many5 [..4]reset_union
+    one6  reset_value
+    many6 [..4]reset_value
+    one7  resf
+    many7 [..4]resf
+    one8  resize
+    many8 [..4]resize
+    one9  resolution
+    many9 [..4]resolution
+}
+
+table NameFields0
+{
+    reset_array uint32
+    reset_clear uint32
+    reset_elem uint32
+    reset_in_place uint32
+    reset_store uint32
+    reset_union uint32
+    reset_value uint32
+    resf uint32
+    resize uint32
+    resolution uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    resolve Inner
+    resolvePayload Inner
+    resolve_arm Inner
+    resolve_array Inner
+    resolve_body Inner
+    resolve_content Inner
+    resolve_graph Inner
+    resolve_map Inner
+    resolve_record Inner
+    resolve_ref Inner
+}
+
+table NameTypes1
+{
+    one0  resolve
+    many0 [..4]resolve
+    one1  resolvePayload
+    many1 [..4]resolvePayload
+    one2  resolve_arm
+    many2 [..4]resolve_arm
+    one3  resolve_array
+    many3 [..4]resolve_array
+    one4  resolve_body
+    many4 [..4]resolve_body
+    one5  resolve_content
+    many5 [..4]resolve_content
+    one6  resolve_graph
+    many6 [..4]resolve_graph
+    one7  resolve_map
+    many7 [..4]resolve_map
+    one8  resolve_record
+    many8 [..4]resolve_record
+    one9  resolve_ref
+    many9 [..4]resolve_ref
+}
+
+table NameFields1
+{
+    resolve uint32
+    resolvePayload uint32
+    resolve_arm uint32
+    resolve_array uint32
+    resolve_body uint32
+    resolve_content uint32
+    resolve_graph uint32
+    resolve_map uint32
+    resolve_record uint32
+    resolve_ref uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    resolve_union Inner
+    resolve_value Inner
+    resolved Inner
+    resolved_key Inner
+    resolving Inner
+    rest Inner
+    rest2 Inner
+    rest3 Inner
+    rest_pairs Inner
+    restamp_from Inner
+}
+
+table NameTypes2
+{
+    one0  resolve_union
+    many0 [..4]resolve_union
+    one1  resolve_value
+    many1 [..4]resolve_value
+    one2  resolved
+    many2 [..4]resolved
+    one3  resolved_key
+    many3 [..4]resolved_key
+    one4  resolving
+    many4 [..4]resolving
+    one5  rest
+    many5 [..4]rest
+    one6  rest2
+    many6 [..4]rest2
+    one7  rest3
+    many7 [..4]rest3
+    one8  rest_pairs
+    many8 [..4]rest_pairs
+    one9  restamp_from
+    many9 [..4]restamp_from
+}
+
+table NameFields2
+{
+    resolve_union uint32
+    resolve_value uint32
+    resolved uint32
+    resolved_key uint32
+    resolving uint32
+    rest uint32
+    rest2 uint32
+    rest3 uint32
+    rest_pairs uint32
+    restamp_from uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    restore Inner
+    restoreCount Inner
+    restoring Inner
+    result Inner
+    result_flags Inner
+    resumed Inner
+    ret Inner
+    retSlot Inner
+    retain Inner
+    retainClear Inner
+}
+
+table NameTypes3
+{
+    one0  restore
+    many0 [..4]restore
+    one1  restoreCount
+    many1 [..4]restoreCount
+    one2  restoring
+    many2 [..4]restoring
+    one3  result
+    many3 [..4]result
+    one4  result_flags
+    many4 [..4]result_flags
+    one5  resumed
+    many5 [..4]resumed
+    one6  ret
+    many6 [..4]ret
+    one7  retSlot
+    many7 [..4]retSlot
+    one8  retain
+    many8 [..4]retain
+    one9  retainClear
+    many9 [..4]retainClear
+}
+
+table NameFields3
+{
+    restore uint32
+    restoreCount uint32
+    restoring uint32
+    result uint32
+    result_flags uint32
+    resumed uint32
+    ret uint32
+    retSlot uint32
+    retain uint32
+    retainClear uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    retainLost Inner
+    retain_capacity Inner
+    retain_captures Inner
+    retain_clear_placed Inner
+    retain_count_unplaced Inner
+    retain_depth_cap Inner
+    retain_discard Inner
+    retain_discard_body Inner
+    retain_emit_body Inner
+    retain_emit_content Inner
+}
+
+table NameTypes4
+{
+    one0  retainLost
+    many0 [..4]retainLost
+    one1  retain_capacity
+    many1 [..4]retain_capacity
+    one2  retain_captures
+    many2 [..4]retain_captures
+    one3  retain_clear_placed
+    many3 [..4]retain_clear_placed
+    one4  retain_count_unplaced
+    many4 [..4]retain_count_unplaced
+    one5  retain_depth_cap
+    many5 [..4]retain_depth_cap
+    one6  retain_discard
+    many6 [..4]retain_discard
+    one7  retain_discard_body
+    many7 [..4]retain_discard_body
+    one8  retain_emit_body
+    many8 [..4]retain_emit_body
+    one9  retain_emit_content
+    many9 [..4]retain_emit_content
+}
+
+table NameFields4
+{
+    retainLost uint32
+    retain_capacity uint32
+    retain_captures uint32
+    retain_clear_placed uint32
+    retain_count_unplaced uint32
+    retain_depth_cap uint32
+    retain_discard uint32
+    retain_discard_body uint32
+    retain_emit_body uint32
+    retain_emit_content uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    retain_emit_framed Inner
+    retain_emit_keyed Inner
+    retain_emit_ref Inner
+    retain_emit_resolve Inner
+    retain_emit_tail Inner
+    retain_hold_node Inner
+    retain_keyed Inner
+    retain_measure Inner
+    retain_node_live Inner
+    retain_node_path Inner
+}
+
+table NameTypes5
+{
+    one0  retain_emit_framed
+    many0 [..4]retain_emit_framed
+    one1  retain_emit_keyed
+    many1 [..4]retain_emit_keyed
+    one2  retain_emit_ref
+    many2 [..4]retain_emit_ref
+    one3  retain_emit_resolve
+    many3 [..4]retain_emit_resolve
+    one4  retain_emit_tail
+    many4 [..4]retain_emit_tail
+    one5  retain_hold_node
+    many5 [..4]retain_hold_node
+    one6  retain_keyed
+    many6 [..4]retain_keyed
+    one7  retain_measure
+    many7 [..4]retain_measure
+    one8  retain_node_live
+    many8 [..4]retain_node_live
+    one9  retain_node_path
+    many9 [..4]retain_node_path
+}
+
+table NameFields5
+{
+    retain_emit_framed uint32
+    retain_emit_keyed uint32
+    retain_emit_ref uint32
+    retain_emit_resolve uint32
+    retain_emit_tail uint32
+    retain_hold_node uint32
+    retain_keyed uint32
+    retain_measure uint32
+    retain_node_live uint32
+    retain_node_path uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    retain_path_eq Inner
+    retain_resolve Inner
+    retain_save Inner
+    retain_tail Inner
+    retain_tails Inner
+    retain_under Inner
+    retained Inner
+    retainedAt Inner
+    retainedBefore Inner
+    retainedBody0 Inner
+}
+
+table NameTypes6
+{
+    one0  retain_path_eq
+    many0 [..4]retain_path_eq
+    one1  retain_resolve
+    many1 [..4]retain_resolve
+    one2  retain_save
+    many2 [..4]retain_save
+    one3  retain_tail
+    many3 [..4]retain_tail
+    one4  retain_tails
+    many4 [..4]retain_tails
+    one5  retain_under
+    many5 [..4]retain_under
+    one6  retained
+    many6 [..4]retained
+    one7  retainedAt
+    many7 [..4]retainedAt
+    one8  retainedBefore
+    many8 [..4]retainedBefore
+    one9  retainedBody0
+    many9 [..4]retainedBody0
+}
+
+table NameFields6
+{
+    retain_path_eq uint32
+    retain_resolve uint32
+    retain_save uint32
+    retain_tail uint32
+    retain_tails uint32
+    retain_under uint32
+    retained uint32
+    retainedAt uint32
+    retainedBefore uint32
+    retainedBody0 uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    retainedBody1 Inner
+    retainedElement0 Inner
+    retainedFinite Inner
+    retainedFloatName Inner
+    retainedIndex0 Inner
+    retainedPayload0 Inner
+    retained_idx Inner
+    retained_mark Inner
+    retained_no_id Inner
+    retained_slot Inner
+}
+
+table NameTypes7
+{
+    one0  retainedBody1
+    many0 [..4]retainedBody1
+    one1  retainedElement0
+    many1 [..4]retainedElement0
+    one2  retainedFinite
+    many2 [..4]retainedFinite
+    one3  retainedFloatName
+    many3 [..4]retainedFloatName
+    one4  retainedIndex0
+    many4 [..4]retainedIndex0
+    one5  retainedPayload0
+    many5 [..4]retainedPayload0
+    one6  retained_idx
+    many6 [..4]retained_idx
+    one7  retained_mark
+    many7 [..4]retained_mark
+    one8  retained_no_id
+    many8 [..4]retained_no_id
+    one9  retained_slot
+    many9 [..4]retained_slot
+}
+
+table NameFields7
+{
+    retainedBody1 uint32
+    retainedElement0 uint32
+    retainedFinite uint32
+    retainedFloatName uint32
+    retainedIndex0 uint32
+    retainedPayload0 uint32
+    retained_idx uint32
+    retained_mark uint32
+    retained_no_id uint32
+    retained_slot uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

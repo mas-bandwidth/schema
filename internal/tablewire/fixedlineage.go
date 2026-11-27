@@ -21,9 +21,9 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/mas-bandwidth/schema/v2/internal/lockfile"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/lockfile"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // The lineage read's refusal names, beside the identity read's.
@@ -159,6 +159,12 @@ func decodeFixedLineage(m *tabletext.Model, inst *tabletext.Instance, hash uint6
 	if reason := validator.body(rest[8:], writer); reason != "" {
 		return reason, nil
 	}
+	// THE PREFILL IS WHAT ANSWERS "ABSENT FIELD" (docs/SPEC-TABLES.md §3.4,
+	// THE LOAD step 12; §6.5): the instance returns to its declared defaults
+	// before the plan lands, so a field this older writer's layout does not
+	// carry holds its declared default, never what the caller's instance
+	// held before the read.
+	m.Clear(inst)
 	d := &lineageDecoder{m: m, report: report}
 	return d.table(root, rest[8:], inst), nil
 }

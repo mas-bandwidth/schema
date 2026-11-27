@@ -35,8 +35,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/genheader"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/genheader"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // cookHeaderBytes is §7.1's header: eight u64 words.
@@ -386,7 +386,13 @@ func (g *cookGen) assemble() []byte {
 			fmt.Fprintf(&h, "import '%s';\n", base)
 			continue
 		}
-		names := sortedKeys(syms)
+		names, prefixed := splitEnumShows(g.unit, sortedKeys(syms))
+		if prefixed {
+			h.WriteString(enumPrefixImport(base))
+		}
+		if len(names) == 0 {
+			continue
+		}
 		one := fmt.Sprintf("import '%s' show %s;", base, strings.Join(names, ", "))
 		if len(one) <= 80 {
 			h.WriteString(one + "\n")

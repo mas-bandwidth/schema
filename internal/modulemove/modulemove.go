@@ -1,6 +1,6 @@
 // Package modulemove holds the one boundary between the v3 tags cut while
 // go.mod still named the /v2 module path and the v3 tags cut after the module
-// moved to /v3 (PR #4445). Go resolves a tag vN.x.y (N >= 2) only under the
+// moved to /v3 (at v3.0.15). Go resolves a tag vN.x.y (N >= 2) only under the
 // module path ending /vN, and only when that tag's go.mod names it; a v3 tag
 // whose go.mod names /v2 resolves under neither path. `schema pin` refuses
 // every tag below the boundary, and the release gate (tools/releasetag, with
@@ -19,15 +19,13 @@ import (
 )
 
 // FirstV3ModuleTag is the first v3 release tag whose go.mod names the /v3
-// module path. Empty means there is none yet: go.mod on main still names /v2,
-// so every v3 tag (v3.0.0 to v3.0.4 are cut so) is one Go
-// cannot resolve, and all of them are refused.
+// module path. Every v3 tag below it (v3.0.0 to v3.0.14) was cut while go.mod
+// named /v2, so Go cannot resolve it, and pin refuses it.
 //
-// #4445 SETS THIS IN THE SAME COMMIT AS THE go.mod MOVE, to the version the
-// first release after the move will carry (for example "v3.1.0"). Until then
-// the release gate lets a v3 tag go out with a /v2 go.mod, because pin
-// refuses it; after it, a tag whose go.mod and boundary disagree is refused.
-const FirstV3ModuleTag = ""
+// It was set in the same commit as the go.mod move to /v3, to the version the
+// first release after the move carries. A tag whose go.mod and boundary
+// disagree is refused by the release gate.
+const FirstV3ModuleTag = "v3.0.15"
 
 // The release gate's refusals, each matched with errors.Is.
 var (

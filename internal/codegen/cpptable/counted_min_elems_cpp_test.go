@@ -23,9 +23,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/internal/tablewire"
 )
 
 const cppCountedMinElemsSchema = `package countedmin
@@ -159,11 +159,15 @@ func TestCppCountedMinElementsElideNegativeControl(t *testing.T) {
 	slowtest.Gate(t, "the C++ compiler (the leg's own toolchain)")
 	t.Parallel()
 	want := cppCountedMinEngine(t)
-	born := regexp.MustCompile(`(if \( )(value\.[a-z]+_count == 2 \) // the birth value elides)`)
+	// THE WRITER'S judgement (countedBirthRides), which the save and the
+	// message save both take: a born array rides from its count alone. The
+	// `if ( value.x_count == 2 ) // the birth value elides` spelling is the
+	// message LOAD's damage check (emitCountedRides), which no save reaches.
+	born := regexp.MustCompile(`(bool birth_rides_[a-z]+ = )(value\.[a-z]+_count != 2; // born at 2: the birth value elides)`)
 	got := cppCountedMinRun(t, func(files map[string][]byte) {
 		planted := 0
 		for name, data := range files {
-			if text := born.ReplaceAllString(string(data), "${1}false && ${2}"); text != string(data) {
+			if text := born.ReplaceAllString(string(data), "${1}true || ${2}"); text != string(data) {
 				files[name] = []byte(text)
 				planted++
 			}

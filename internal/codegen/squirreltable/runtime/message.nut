@@ -316,8 +316,8 @@ _M.AnnounceRead <- function(T, v, bytes, report) {
   if ((bytes[0]&0xff)!=1) return refuseAnnouncement(v,report,(bytes[0]&0xff)==2 ? "message_form_as_file" : "newer_form");
   if (bytes.len()<9) { if(report!=null)report.bodyDamaged=true; if("Refused" in v)v.Refused=true;else setSlot(v,"Refused",true); return false; }
   // THE RECEIVER'S TWO BOUNDS (docs/SPEC-TABLES.md §3.3): MaxEntries caps the
-  // entry count, MaxBytes the vocabulary field's own byte length. A zero MaxEntries means the default; a MaxBytes of 0 refuses (R9).
-  local maxEntries = (("MaxEntries" in v) && v.MaxEntries > 0) ? v.MaxEntries : 4096;
+  // entry count, MaxBytes the vocabulary field's own byte length. Zero permits only an empty vocabulary.
+  local maxEntries = (("MaxEntries" in v) && v.MaxEntries >= 0) ? v.MaxEntries : 4096;
   local maxBytes = ("MaxBytes" in v) ? v.MaxBytes : 65536;
   local total=bytes.len(), trailer=total-8, entries=readU64(bytes,trailer);
   if(entries<0||entries>4096||entries>(trailer-1)/8){if(report!=null)report.bodyDamaged=true;setSlot(v,"Refused",true);return false;}

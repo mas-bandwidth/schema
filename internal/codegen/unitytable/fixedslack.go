@@ -20,7 +20,7 @@ package unitytable
 import (
 	"math"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // unitySlackElem is the struct a counted array's slots past the count are

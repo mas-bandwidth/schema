@@ -8,12 +8,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v3/ir"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 const countRefusalSchema = `package countprobe
@@ -221,9 +221,11 @@ void refused(String label,Uint8List wire,int unknown) {
    check(r.refused && r.reason=='count_over_extent_cap','$label named refusal retain=$retain');
    check(r.reason!='wire_damaged','$label fabricated damage does not survive the read retain=$retain');
    check(defaults(v),'$label partial destination retain=$retain');
-   check(r.unknown==3+unknown && r.widened==5 &&
-     r.retainLost==9 &&
-     r.retained==8+(retain?unknown:0),'$label event history retain=$retain');
+   // every read zeroes the report first (docs/SPEC-TABLES.md §6.5): the
+   // seeded counters are gone and only this read's events remain
+   check(r.unknown==unknown && r.widened==0 &&
+     r.retainLost==0 &&
+     r.retained==(retain?unknown:0),'$label event history retain=$retain');
    check(store.used==0 && store.idUsed==0 && store.records.isEmpty,'$label retained state');
    if(!priorDamage) {
     final good=retain?w.rootWireLoadRetain(VALID,store,r):w.rootWireLoad(VALID,r);

@@ -17,7 +17,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // fixedFiniteNeededStruct is whether a fixed type holds a float anywhere a read

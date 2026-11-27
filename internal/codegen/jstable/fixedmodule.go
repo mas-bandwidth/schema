@@ -13,7 +13,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // generateFixedFiles emits <Base>Table.js for every unit file that declares a

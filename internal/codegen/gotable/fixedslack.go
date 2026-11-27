@@ -5,7 +5,7 @@ import (
 	"math"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 /* ---- the slots past a count ------------------------------------------------

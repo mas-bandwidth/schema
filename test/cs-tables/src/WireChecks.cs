@@ -53,13 +53,23 @@ static partial class Program
             floatReport.Reason == "non_finite_float: ProfileConfig.precision", "float widening: a signalling NaN is refused as non_finite_float");
 
         // Ref zero terminates a body; identity zero in the vocabulary is just
-        // an unknown name. Escape, no-payload and enum values remain skippable.
-        byte[] zeroId = Fixture(new byte[] { 1,31,2,99,100,2,32,0,3,30,1,4,4,42,0,0,0,0 },
+        // an unknown name. Length-framed (kind 12, the framed payload
+        // 2,99,100), no-payload and enum values remain skippable under it.
+        byte[] zeroId = Fixture(new byte[] { 1,12,2,99,100,2,32,0,3,30,1,4,4,42,0,0,0,0 },
             "zero", "future-void", "future-enum", "a");
         zeroId.AsSpan(zeroId.Length - 40, 8).Clear();
         report = new V1.TableReport();
         Check(V1.Schema.CfgLoad(cfg, zeroId, report) && cfg.A == 42 && report.Unknown == 3 && !report.Damaged,
-            "zero identity and unknown future kinds skip without swallowing the next field");
+            "zero identity and unknown fields skip without swallowing the next field");
+        // kind 31 is held by name and never written: under the zero identity,
+        // an unknown field, it is damage and the whole load refuses
+        // (docs/SPEC-TABLES.md §3, KIND 31 IS DAMAGE WHEREVER IT IS MET; R17)
+        byte[] zeroHeld = Fixture(new byte[] { 1,31,2,99,100,2,32,0,3,30,1,4,4,42,0,0,0,0 },
+            "zero", "future-void", "future-enum", "a");
+        zeroHeld.AsSpan(zeroHeld.Length - 40, 8).Clear();
+        cfg = new V1.Cfg(); report = new V1.TableReport();
+        Check(!V1.Schema.CfgLoad(cfg, zeroHeld, report) && report.Damaged && cfg.A != 42,
+            "the held kind 31 under a zero identity refuses the whole load");
         // an enum reference past the id table is damage even in a field this
         // reader does not declare (docs/SPEC-TABLES.md §6.5)
         byte[] enumPast = Fixture(new byte[] { 1,31,2,99,100,2,32,0,3,30,127,4,4,42,0,0,0,0 },

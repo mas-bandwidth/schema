@@ -4613,10 +4613,10 @@ bool benchMixedSaveMessageBody(TableBitWriter w, BenchMixed value) {
     }
   }
   {
-    if (value.gameEvent.type != 0) {
+    if ((value.gameEvent.type as int) != 0) {
       w.put(12, tableMessageRefBits);
-      assert(value.gameEvent.type >= 0 && value.gameEvent.type <= 3);
-      switch (value.gameEvent.type) {
+      assert((value.gameEvent.type as int) >= 0 && (value.gameEvent.type as int) <= 3);
+      switch ((value.gameEvent.type as int)) {
         case 0: w.put(0, tableMessageRefBits); break;
         case 1:
           w.put(68, tableMessageRefBits);
@@ -5203,7 +5203,7 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
             }
           }
         }
-        if (r.report.unknown + r.substituted == subAt && !(value.gameEvent.type != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
+        if (r.report.unknown + r.substituted == subAt && !((value.gameEvent.type as int) != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case 6294288958393922979: {
@@ -6136,9 +6136,9 @@ void benchMixedFixedWriteBody(
   for (var i = 0; i < value.statsCount; i++) {
     mixedStatFixedWriteBody(bytes, view, at + 468 + i * 8, value.stats[i]);
   }
-  assert(value.gameEvent.type >= 0 && value.gameEvent.type <= 3);
-  view.setUint8(at + 1108, value.gameEvent.type);
-  switch (value.gameEvent.type) {
+  assert((value.gameEvent.type as int) >= 0 && (value.gameEvent.type as int) <= 3);
+  view.setUint8(at + 1108, (value.gameEvent.type as int));
+  switch ((value.gameEvent.type as int)) {
     case 1:
       mixedHitEventFixedWriteBody(bytes, view, at + 1109, value.gameEvent.hit);
       break;
@@ -6300,7 +6300,7 @@ void benchMixedFixedDecode(
     initMixedStat(value.stats[i]);
   }
   value.gameEvent.type = MixedEventType(view.getUint8(at + 1108));
-  switch (value.gameEvent.type) {
+  switch ((value.gameEvent.type as int)) {
     case 0:
       break; // None, which is a tag this reader holds
     case 1:

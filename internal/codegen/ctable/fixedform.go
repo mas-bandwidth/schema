@@ -32,7 +32,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // ---------------------------------------------------------------------------
@@ -1461,6 +1461,18 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 		case *ir.Enum:
 			g.pf("%sif ( (uint64_t) %s > %du ) { (*out_of_range)++; }\n",
 				ind, expr, r.Max)
+			if g.fixedWriteCheck {
+				// A DEPRECATED VARIANT IS NEVER WRITTEN (docs/SPEC-TABLES.md
+				// §2.15 WRITE): the write check counts one, so FixedSave and
+				// SaveMessages assert it away; the read side lands it on the
+				// default instead, which is not this pass's
+				for i, v := range r.Variants {
+					if enumVariantDeprecated(r, i) {
+						g.pf("%sif ( %s == %s ) { (*out_of_range)++; } /* a deprecated variant is never written (SPEC-TABLES §2.15) */\n",
+							ind, expr, enumConst(r.Name, v))
+					}
+				}
+			}
 			return
 		}
 		return

@@ -24,9 +24,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 // The pins make/ruby-toolchain.mk builds (docs/PORT-RUBY.md, THE PIN).
@@ -269,6 +269,6 @@ func RuboCopAll(t testing.TB, dir string, paths ...string) (string, error) {
 	if rerr != nil {
 		t.Fatal(rerr)
 	}
-	args := append([]string{"--config", filepath.Join(root, "internal", "codegen", "ruby", "rubocop.yml")}, paths...)
+	args := append([]string{"--config", filepath.Join(root, "internal", "codegen", "ruby", "rubocop.yml"), "--parallel"}, paths...)
 	return runTool(t, dir, RuboCop(t), args...)
 }

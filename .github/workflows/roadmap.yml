@@ -11,7 +11,6 @@ on:
     branches: [ main ]
     paths: [ 'ROADMAP.md', 'docs/roadmap.sexp', 'docs/roadmap-evidence/**', 'tools/roadmap/**', '.github/workflows/roadmap.yml' ]
   pull_request:
-    branches: [ main ]
     paths: [ 'ROADMAP.md', 'docs/roadmap.sexp', 'docs/roadmap-evidence/**', 'tools/roadmap/**', '.github/workflows/roadmap.yml' ]
   workflow_dispatch:
   schedule:
@@ -21,7 +20,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   roadmap:
-    if: startsWith(github.head_ref, 'sprint/') == false && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    if: (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: [ self-hosted, Linux, X64, fleet, schema ]
     timeout-minutes: 2
     defaults:
@@ -65,7 +64,7 @@ jobs:
   # only, so a page main has yet to re-render reports its staleness here and
   # never reddens a push or a pull request.
   page:
-    if: startsWith(github.head_ref, 'sprint/') == false && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
     runs-on: [ self-hosted, Linux, X64, fleet, schema ]
     timeout-minutes: 2
     defaults:

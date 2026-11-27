@@ -1,12 +1,15 @@
 """Prove the no-message roster row and a healthy fixed message root."""
 
+import contextlib
 import importlib.util
+import io
 from pathlib import Path
 import sys
 import tempfile
 
 root = Path(__file__).resolve().parent
 sys.path.insert(0, str(root / "surfaces"))
+import _common  # noqa: E402
 from _common import unit_package  # noqa: E402
 
 package = unit_package("graphdemo")
@@ -32,12 +35,13 @@ with tempfile.TemporaryDirectory() as temp:
     )
     if "--negative" in sys.argv[1:]:
         message.ROOTS = message.ROOTS | {"Scene"}
-        try:
+        errors = io.StringIO()
+        with contextlib.redirect_stderr(errors):
             module.run(str(manifest), str(temp))
-        except RuntimeError as error:
-            assert "unexpectedly carries" in str(error)
-        else:
-            raise AssertionError("the planted message-root fault escaped")
+        # a fault in one case is a DRIVER ERROR: the case is named, no answer is written, the surface exits non-zero
+        assert _common.DRIVER_ERRORS == ["graph_tree"], "the planted message-root fault escaped"
+        assert "unexpectedly carries" in errors.getvalue(), errors.getvalue()
+        assert not (temp / "graph_tree").exists() and not (temp / "graph_tree.absent").exists()
         print("message applicability fault detected")
     else:
         module.run(str(manifest), str(temp))

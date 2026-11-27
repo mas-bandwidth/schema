@@ -7,16 +7,16 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	wrpacket "github.com/mas-bandwidth/schema/v2/test/conformance/write-refusal-packet"
+	"github.com/mas-bandwidth/schema/v3/compiler"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	wrpacket "github.com/mas-bandwidth/schema/v3/test/conformance/write-refusal-packet"
 )
 
 // TestWriteRefusalPacketJS holds docs/SPEC.md §5.1's packet writer on the
 // JavaScript leg: every caller-holdable value the declaration does not admit
 // is refused, and the lawful value at the same boundary is written. The leg
 // refuses in every build, so both generated modules (the runtime tier,
-// PacketWriteRefusal.js, and the flat tier, PacketWriteRefusalFlat.js) run
+// RefusalPacket.js, and the flat tier, RefusalPacketFlat.js) run
 // every row of rows.txt with NODE_ENV unset and with NODE_ENV=production.
 //
 // Three negative controls plant a defect in the EMITTER and require the
@@ -119,7 +119,7 @@ func nodeBinary(t *testing.T) string {
 	return slowtest.Tool(t, "node")
 }
 
-// runWriteRefusalPacketJS generates PacketWriteRefusal.schema for JavaScript,
+// runWriteRefusalPacketJS generates RefusalPacket.schema for JavaScript,
 // writes the probe beside the two generated modules and runs it over rows.txt
 // in each tier under each build mode. Behind slowtest.Gate: it shells out to
 // node.

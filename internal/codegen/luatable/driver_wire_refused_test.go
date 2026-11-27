@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/lua/luarun"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 // TestLuaDriverAnswersAWireRefusal runs the Lua conformance driver's wire
@@ -16,10 +16,11 @@ import (
 // MANIFEST.txt): bounds_octets_below_min, which every port refuses on the
 // wire (a [2..8] count of 1, `wire-refused`), and bounds_ends, which re-saves
 // to its own bytes. THE READ'S REFUSAL IS THE ROW'S ANSWER whatever its reason
-// (docs/rulings.json refusal-verdict-only): the driver writes <case>.absent
-// naming the reason, as test/conformance/go/main.go does, and goes on to the
-// next row. Before, it wrote nothing for a refusal other than blob_shared, and
-// the harness failed the row "expected wire refusal, driver wrote nothing".
+// (docs/rulings.json refusal-verdict-only): the driver writes <case> holding
+// `refused` and a newline and goes on to the next row. A `<case>.absent` is an
+// ABSENCE, never the refusal (ruling R13; test/conformance/README.md, "An
+// expected semantic refusal scores PASS"; docs/SPEC-CONFORMANCE.md GAP-7), so
+// the driver must not write one for this row.
 func TestLuaDriverAnswersAWireRefusal(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the pinned lua")
@@ -48,15 +49,15 @@ func TestLuaDriverAnswersAWireRefusal(t *testing.T) {
 	if b, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("the driver failed: %v\n%s", err, b)
 	}
-	if _, err := os.Stat(filepath.Join(out, "shapes_bounds_octets_below_min")); err == nil {
-		t.Fatal("the driver wrote bytes for a wire the read refuses")
-	}
-	reason, err := os.ReadFile(filepath.Join(out, "shapes_bounds_octets_below_min.absent"))
+	answer, err := os.ReadFile(filepath.Join(out, "shapes_bounds_octets_below_min"))
 	if err != nil {
-		t.Fatal("the driver wrote no .absent for the read's refusal: the row's answer is missing")
+		t.Fatalf("the driver wrote no answer for the read's refusal: %v", err)
 	}
-	if len(reason) == 0 {
-		t.Fatal("the .absent is empty, which the harness reads as a missing codec, not a refusal")
+	if string(answer) != "refused\n" {
+		t.Fatalf("the driver answered %q for a wire the read refuses, want \"refused\\n\"", answer)
+	}
+	if _, err := os.Stat(filepath.Join(out, "shapes_bounds_octets_below_min.absent")); err == nil {
+		t.Fatal("the driver wrote a .absent for a refusal: the harness counts it as an absence, never the refusal (ruling R13)")
 	}
 	want, err := os.ReadFile(filepath.Join(root, "testdata", "wire", "tables", "shapes", "bounds_ends.bin"))
 	if err != nil {

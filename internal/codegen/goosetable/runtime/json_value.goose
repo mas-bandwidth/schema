@@ -622,6 +622,9 @@ fn jw_blob(c: JvOut&, out: u8[>..]&, s: i64, d: FieldDesc) -> bool {
 
 // jw_array writes a plain array or a text list, in index order.
 recursive fn jw_array(c: JvOut&, out: u8[>..]&, s: i64, d: FieldDesc, owner: const u8[:], ord: i32, depth: i64) -> bool {
+    // the write counts every container the read does, an empty one included
+    // (docs/SPEC-TABLES.md §16.14 W2): a container past the cap is refused
+    if depth > JsonMaxDepth { return false; }
     let e = d.elem;
     guard e else { return false; }
     let made = s >= 0 && c.vals[s].made;
@@ -683,6 +686,9 @@ recursive fn jw_array(c: JvOut&, out: u8[>..]&, s: i64, d: FieldDesc, owner: con
 // jw_keyed writes an enum-keyed array as an object keyed by variant name,
 // every slot (§2.4, §16.2).
 recursive fn jw_keyed(c: JvOut&, out: u8[>..]&, s: i64, d: FieldDesc, owner: const u8[:], ord: i32, depth: i64) -> bool {
+    // the write counts every container the read does, an empty one included
+    // (docs/SPEC-TABLES.md §16.14 W2): a container past the cap is refused
+    if depth > JsonMaxDepth { return false; }
     let e = d.elem;
     guard e else { return false; }
     let keys = jv_keys(c.unit, owner, d);
@@ -729,6 +735,9 @@ fn jw_key_cmp(c: JvOut&, kd: FieldDesc, a: i64, b: i64) -> i64 {
 // jw_map writes a map as an object keyed by the KEY, in ASCENDING key order;
 // an absent `?T` value is `null` (§2.8, §16.2).
 recursive fn jw_map(c: JvOut&, out: u8[>..]&, s: i64, d: FieldDesc, owner: const u8[:], depth: i64) -> bool {
+    // the write counts every container the read does, an empty one included
+    // (docs/SPEC-TABLES.md §16.14 W2): a container past the cap is refused
+    if depth > JsonMaxDepth { return false; }
     if s < 0 || !c.vals[s].made || c.vals[s].len == 0 {
         out.append("{}");
         return true;
@@ -868,6 +877,9 @@ recursive fn jw_value(c: JvOut&, out: u8[>..]&, s: i64, d: FieldDesc, owner: con
 // `{}`, a payload-free arm's value `null`, and the arm's value takes the
 // arm's own row (§16.2).
 recursive fn jw_union(c: JvOut&, out: u8[>..]&, s: i64, d: FieldDesc, depth: i64) -> bool {
+    // the write counts every container the read does, an empty one included
+    // (docs/SPEC-TABLES.md §16.14 W2): a container past the cap is refused
+    if depth > JsonMaxDepth { return false; }
     let tag = if jv_state(c.vals, s) == ValAbsent { 0 } else { c.vals[s].bits.lo as! i64 };
     if tag == 0 {
         out.append("{}");

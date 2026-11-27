@@ -27,7 +27,7 @@ import (
 	"math/big"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // ---------------------------------------------------------------------------
@@ -59,7 +59,7 @@ func fixedScalarType(t ir.FieldType) string {
 	case ir.TNamed:
 		switch t.Ref.(type) {
 		case *ir.Enum:
-			return t.Name // the packet emitter's extension type over int
+			return dartEnumRef(t.Name) // the packet emitter's extension type over int
 		case *ir.Flags:
 			return "int" // masks, uint64 storage, as the packet classes hold it
 		}
@@ -382,6 +382,18 @@ func (g *fixedGen) loadTag(ind, lhs, at string, width int64, wrap string) {
 	g.pf("%s);\n", ind)
 }
 
+// unionTagInt reads a union's tag member as an int. A packet union's tag is
+// its <Union>Type extension type, which does not implement int (an arm's
+// static may not share a name with an int member, SPEC.md §4.6), so it is
+// read through `as int`, which the erased type makes free; a tag the fixed
+// form stores itself (unionStorageIsLocal) is an int already.
+func unionTagInt(un *ir.Union, tag string) string {
+	if unionStorageIsLocal(un) {
+		return tag
+	}
+	return "(" + tag + " as int)"
+}
+
 // unionTagType is the type a union's tag member holds, and its None: the
 // packet class's <Union>Type extension type, or a plain int for a union whose
 // storage the fixed form declares itself (unionStorageIsLocal).
@@ -455,9 +467,9 @@ func (g *fixedGen) fixedZeroFor(f *ir.Field) string {
 		if e, ok := t.Ref.(*ir.Enum); ok {
 			g.need(t.Name)
 			if f.HasDefault && f.DefVariant != "" {
-				return t.Name + "." + dartName(e.VariantWireNameOf(f.DefVariant))
+				return dartEnumRef(t.Name) + "." + dartName(e.VariantWireNameOf(f.DefVariant))
 			}
-			return t.Name + ".none"
+			return dartEnumRef(t.Name) + ".none"
 		}
 		if _, ok := t.Ref.(*ir.Flags); ok {
 			if f.HasDefault && f.DefInt != nil {
@@ -813,10 +825,11 @@ func (g *fixedGen) emitWriteElement(f *ir.Field, base string, at int64, expr, in
 				[]string{"bytes", "view", fixedOff(base, at), expr}, ";")
 			return
 		case *ir.Union:
-			g.pf("%sassert(%s.type >= 0 && %s.type <= %d);\n", ind, expr, expr, len(r.Variants))
+			tagInt := unionTagInt(r, expr+".type")
+			g.pf("%sassert(%s >= 0 && %s <= %d);\n", ind, tagInt, tagInt, len(r.Variants))
 			tag := fixedUnionTagBytes(r)
-			g.storeTag(ind, fixedOff(base, at), tag, expr+".type")
-			g.pf("%sswitch (%s.type) {\n", ind, expr)
+			g.storeTag(ind, fixedOff(base, at), tag, tagInt)
+			g.pf("%sswitch (%s) {\n", ind, tagInt)
 			for i, v := range r.Variants {
 				g.pf("%s  case %d:\n", ind, i+1)
 				if v.F != nil { // §3.4: a payload-free arm writes only its tag.
@@ -830,6 +843,10 @@ func (g *fixedGen) emitWriteElement(f *ir.Field, base string, at int64, expr, in
 			// the ORDINAL is the variant's POSITION IN THE LAYOUT, from 1, and
 			// 0 is None — which is the value the declaration already carries
 			g.pf("%sassert(%s >= 0 && %s <= %d);\n", ind, expr, expr, len(r.Variants))
+			// §2.15 WRITE: a deprecated variant is never written
+			if cond := enumNotDeprecated(r, expr); cond != "" {
+				g.pf("%sassert(%s, 'deprecated variant is never written (SPEC-TABLES 2.15)');\n", ind, cond)
+			}
 			g.storeTag(ind, fixedOff(base, at), int64(r.StorageBits/8), expr)
 			return
 		}
@@ -1060,7 +1077,7 @@ func (g *fixedGen) emitDecodeElement(f *ir.Field, base string, at int64, expr, i
 			tag := fixedUnionTagBytes(r)
 			tagType, tagNone := g.unionTagType(r)
 			g.loadTag(ind, expr+".type", fixedOff(base, at), tag, tagType)
-			g.pf("%sswitch (%s.type) {\n", ind, expr)
+			g.pf("%sswitch (%s) {\n", ind, unionTagInt(r, expr+".type"))
 			g.pf("%s  case 0:\n%s    break; // None, which is a tag this reader holds\n", ind, ind)
 			for i, v := range r.Variants {
 				g.pf("%s  case %d:\n", ind, i+1)
@@ -1081,7 +1098,7 @@ func (g *fixedGen) emitDecodeElement(f *ir.Field, base string, at int64, expr, i
 			return
 		case *ir.Enum:
 			g.need(r.Name)
-			g.loadTag(ind, expr, fixedOff(base, at), int64(r.StorageBits/8), r.Name)
+			g.loadTag(ind, expr, fixedOff(base, at), int64(r.StorageBits/8), dartEnumRef(r.Name))
 			// AN ORDINAL PAST THE LAST VARIANT REFUSES THE READ out_of_range
 			// (§3.4, docs/plans/strict-only.md): the ordinal is the variant's
 			// POSITION IN THE LAYOUT, from 1, and the layout lists this
@@ -1093,7 +1110,7 @@ func (g *fixedGen) emitDecodeElement(f *ir.Field, base string, at int64, expr, i
 			// so both plans refuse the same forged ordinal.
 			if n := len(r.Variants); n > 0 {
 				g.pf("%sif (%s > %d) {\n", ind, expr, n)
-				g.pf("%s  %s = %s.none;\n", ind, expr, r.Name)
+				g.pf("%s  %s = %s.none;\n", ind, expr, dartEnumRef(r.Name))
 				g.pf("%s  report.refused = TableFixedRefusal.outOfRange;\n", ind)
 				g.pf("%s}\n", ind)
 			}
@@ -1522,7 +1539,7 @@ func (g *fixedGen) emitFiniteElement(f, named *ir.Field, expr, ind string) {
 			g.pf("%s}\n", ind)
 		}
 	case *ir.Union:
-		g.pf("%sswitch (%s.type) {\n", ind, expr)
+		g.pf("%sswitch (%s) {\n", ind, unionTagInt(r, expr+".type"))
 		for i, v := range r.Variants {
 			if v.F == nil || !fixedFieldHoldsFloat(v.F, map[string]bool{}) {
 				continue

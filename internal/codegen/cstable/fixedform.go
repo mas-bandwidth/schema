@@ -6,7 +6,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 const (
@@ -436,9 +436,19 @@ func (b *fixedRootBuild) scalarOp(f *ir.Field) byte {
 
 func (b *fixedRootBuild) flatSpanSetter(fieldExpr, elemType string, elemBytes int64) string {
 	if elemType == "byte" {
-		return fmt.Sprintf("(t, b, l) => { if (%s != null) b.Slice(0, global::System.Math.Min(b.Length, %s.Length)).CopyTo(%s); }", fieldExpr, fieldExpr, fieldExpr)
+		return byteSlotSetter(fieldExpr)
 	}
 	return fmt.Sprintf("(t, b, l) => { if (%s != null) TableFixedWire.ReadLittle<%s>(b.Slice(0, global::System.Math.Min(b.Length, %s.Length * %d)), %s); }", fieldExpr, elemType, fieldExpr, elemBytes, fieldExpr)
+}
+
+// byteSlotSetter lands a byte span slot WHOLE (docs/SPEC-TABLES.md §3.4, THE
+// PREFILL IS WHAT ANSWERS "ABSENT FIELD"; §6.5): the writer's bytes, then
+// zero past them. An older writer's shorter span marks the slot landed, so
+// the hole list never resets it. Without the clear, the reader's bytes past
+// the writer's length would keep the caller's old value. TableFixedWire.ReadLittle
+// holds the same rule for wider elements.
+func byteSlotSetter(fieldExpr string) string {
+	return fmt.Sprintf("(t, b, l) => { if (%s != null) { int c = global::System.Math.Min(b.Length, %s.Length); b.Slice(0, c).CopyTo(%s); %s.AsSpan(c).Clear(); } }", fieldExpr, fieldExpr, fieldExpr, fieldExpr)
 }
 
 func (b *fixedRootBuild) countElementSlots(f *ir.Field) int {
@@ -968,7 +978,7 @@ func (b *fixedRootBuild) buildPayload(owner *ir.Struct, f *ir.Field, expr string
 		})
 		bufSlot := len(b.slots)
 		b.slots = append(b.slots, fixedSlot{
-			setBytes: fmt.Sprintf("(t, b, l) => { if (%s != null) b.Slice(0, global::System.Math.Min(b.Length, %s.Length)).CopyTo(%s); }", fieldExpr, fieldExpr, fieldExpr),
+			setBytes: byteSlotSetter(fieldExpr),
 			reset:    bufferReset(f, fieldExpr),
 		})
 		b.entries = append(b.entries, fixedBlockEntry{
@@ -1001,7 +1011,7 @@ func (b *fixedRootBuild) buildPayload(owner *ir.Struct, f *ir.Field, expr string
 		})
 		bufSlot := len(b.slots)
 		b.slots = append(b.slots, fixedSlot{
-			setBytes: fmt.Sprintf("(t, b, l) => { if (%s != null) b.Slice(0, global::System.Math.Min(b.Length, %s.Length)).CopyTo(%s); }", fieldExpr, fieldExpr, fieldExpr),
+			setBytes: byteSlotSetter(fieldExpr),
 			reset:    bufferReset(f, fieldExpr),
 		})
 		b.entries = append(b.entries, fixedBlockEntry{
@@ -1445,7 +1455,7 @@ func (b *fixedRootBuild) buildPayloadSlotsAndPlan(owner *ir.Struct, f *ir.Field,
 		})
 		bufSlot := len(b.slots)
 		b.slots = append(b.slots, fixedSlot{
-			setBytes: fmt.Sprintf("(t, b, l) => { if (%s != null) b.Slice(0, global::System.Math.Min(b.Length, %s.Length)).CopyTo(%s); }", fieldExpr, fieldExpr, fieldExpr),
+			setBytes: byteSlotSetter(fieldExpr),
 			reset:    bufferReset(f, fieldExpr),
 		})
 		b.addPlan(fixedPlanEntry{
@@ -1468,7 +1478,7 @@ func (b *fixedRootBuild) buildPayloadSlotsAndPlan(owner *ir.Struct, f *ir.Field,
 		})
 		bufSlot := len(b.slots)
 		b.slots = append(b.slots, fixedSlot{
-			setBytes: fmt.Sprintf("(t, b, l) => { if (%s != null) b.Slice(0, global::System.Math.Min(b.Length, %s.Length)).CopyTo(%s); }", fieldExpr, fieldExpr, fieldExpr),
+			setBytes: byteSlotSetter(fieldExpr),
 			reset:    bufferReset(f, fieldExpr),
 		})
 		b.addPlan(fixedPlanEntry{
@@ -1537,6 +1547,10 @@ func (g *tableGen) emitFixedWriteBody(st *ir.Struct) {
 	g.pf("// %s's stores. The template — the hash, then zeros — is memcpy'd first,\n", name)
 	g.pf("// which is also what zero-fills every byte of declared slack.\n")
 	g.pf("public static void %sFixedWriteBody(Span<byte> b, %s value)\n{\n", name, name)
+	// A null record handed to the writer is a value of the wrong kind
+	// (DW-TABLE-SHAPE): a debug assert, as every write contract on this leg
+	// is (docs/SPEC.md §5.1). A release build writes the record's zeros.
+	g.pf("    System.Diagnostics.Debug.Assert(value != null, \"a null %s is written\");\n", name)
 	g.pf("    if (value == null) return;\n")
 	off := int64(0)
 	for _, f := range st.Fields {

@@ -7,12 +7,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/check"
-	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/check"
+	"github.com/mas-bandwidth/schema/v3/internal/parser"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/ir"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 // A `bytes(N)` DESTINATION ROW IS AN ARRAY'S: dest the buffer, aux the live
@@ -556,6 +556,15 @@ func javaTools(t *testing.T) (javac, javaBin string) {
 		if try(jc, j) {
 			return jc, j
 		}
+	}
+	// UNDER SCHEMA_REQUIRE_CORPUS (every make tables-java-* gate) OR THE CI
+	// SLOW HALF (ci-full.yml's unit-codegen-java rows), A MISSING JDK IS A
+	// FAILURE, never a skip: a skipped test exits 0, so the gate would read
+	// green having compiled nothing (slowtest.CorpusRequired). Found
+	// 2026-11-24 when three Java gates went red on main: the make targets'
+	// comments promised this and javaTools skipped anyway.
+	if slowtest.CorpusRequired() {
+		t.Fatalf("no working javac, and SCHEMA_REQUIRE_CORPUS (or CI with SCHEMA_SLOW=1) makes that a failure: set JAVAC/JAVA or install a JDK")
 	}
 	t.Skip("no working javac (set JAVAC/JAVA or install a JDK)")
 	return "", ""

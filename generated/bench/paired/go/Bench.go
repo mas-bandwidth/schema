@@ -1203,6 +1203,9 @@ func WriteBenchMixed(stream *serialize.WriteStream, value *BenchMixed) error {
 	_ = stream.SerializeBits64(&w10, 64) // sticky: the stream latches the first error and Err reports it
 	w5 := uint32(f36 >> 39)
 	_ = stream.SerializeBits(&w5, 9) // sticky: the stream latches the first error and Err reports it
+	if value.ServerTime < 0 || value.ServerTime > 16776960 {
+		return serialize.ErrValueOutOfRange
+	}
 	fixedValue := int64(value.ServerTime)
 	stream.SerializeFixed64(&fixedValue, 24, 8, 0, 65535)
 	if value.EntitiesCount < 1 || value.EntitiesCount > 8 {
@@ -1575,7 +1578,13 @@ func WriteBenchMixed(stream *serialize.WriteStream, value *BenchMixed) error {
 	w13 := f45 >> 8
 	_ = stream.SerializeBits64(&w13, 56) // sticky: the stream latches the first error and Err reports it
 	stream.SerializeUint128(&value.WideKey)
+	if value.Flux.Cmp(serialize.Int128{Lo: 0x0, Hi: 0xfffffff000000000}) < 0 || value.Flux.Cmp(serialize.Int128{Lo: 0x0, Hi: 0x1000000000}) > 0 {
+		return serialize.ErrValueOutOfRange
+	}
 	stream.SerializeInt128(&value.Flux, serialize.Int128{Lo: 0x0, Hi: 0xfffffff000000000}, serialize.Int128{Lo: 0x0, Hi: 0x1000000000})
+	if value.Ping > 64000 {
+		return serialize.ErrValueOutOfRange
+	}
 	fixedValue2 := int64(value.Ping)
 	stream.SerializeFixed64(&fixedValue2, 8, 8, 0, 250)
 	reservedValue := uint32(0)

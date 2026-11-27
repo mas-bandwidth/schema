@@ -11,9 +11,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testinputs"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 // Derive names from the same value, reader and writer vectors as the complete
@@ -133,6 +134,7 @@ func TestPythonVtEvolutionCICoverage(t *testing.T) {
 	if strings.Count(string(planner), "/^TestPythonVtEvolution$/d") != 1 {
 		t.Fatal("complete Evolution parent must be delegated exactly once")
 	}
+	testinputs.Make(t, "compiler", "internal/codegen/python", "internal/codegen/pythontable")
 	cmd := testproc.Command(t, "sh", filepath.Join(root, "tools/python-ci-rows.sh"))
 	cmd.Dir = root
 	out, err := cmd.CombinedOutput()
@@ -182,7 +184,7 @@ func TestPythonVtEvolutionCICoverage(t *testing.T) {
 	parent, coverage := 0, 0
 	for _, row := range rows {
 		targets[row.Target]++
-		if row.Package != "github.com/mas-bandwidth/schema/v2/internal/codegen/pythontable" || row.Target != "" {
+		if row.Package != "github.com/mas-bandwidth/schema/v3/internal/codegen/pythontable" || row.Target != "" {
 			continue
 		}
 		re, err := regexp.Compile("^" + row.Test + "$")

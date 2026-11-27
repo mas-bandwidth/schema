@@ -24,7 +24,7 @@ import (
 	"math"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // csSlackElemNonZero is whether one element of f (f's array shape aside) has a
