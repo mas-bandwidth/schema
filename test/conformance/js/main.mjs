@@ -1503,12 +1503,20 @@ const args = process.argv.slice(2);
 // region measure and the saved bytes. The protocol is the twin of the Go and C
 // legs (test/conformance/go/wire_fuzz.go, test/c-tables/wire_fuzz_main.c).
 async function wireFuzz() {
-  const readExact = (n) => {
+  // THE STREAM ENDS ONLY BETWEEN FRAMES (test/conformance/harness/wireeof.go):
+  // null is EOF before the first byte, which only a caller that names no
+  // `where` may take as the end. EOF after a first byte is a truncated frame,
+  // and so is EOF where `where` names a part that must be there: it fails
+  // loudly and the cut bytes never reach a codec.
+  const readExact = (n, where) => {
     const buf = Buffer.alloc(n);
     let off = 0;
     while (off < n) {
       const r = readSync(0, buf, off, n - off, null);
-      if (r === 0) { return null; }
+      if (r === 0) {
+        if (off === 0 && where === undefined) { return null; }
+        fail("wire-fuzz: the stream ended inside " + (where ?? "a frame") + " (" + off + " of " + n + " bytes)");
+      }
       off += r;
     }
     return buf;
@@ -1710,12 +1718,11 @@ async function wireFuzz() {
   writeSync(1, known);
 
   for (;;) {
-    const head = readExact(8);
-    if (head === null) { break; }
+    const head = readExact(4);
+    if (head === null) { break; } // the harness closed the stream between frames
     const index = head.readUInt32LE(0);
-    const size = head.readUInt32LE(4);
-    const wireBuf = readExact(size);
-    if (wireBuf === null) { break; }
+    const size = readExact(4, "a mutant length").readUInt32LE(0);
+    const wireBuf = readExact(size, "a mutant");
     const wire = new Uint8Array(wireBuf.buffer, wireBuf.byteOffset, wireBuf.byteLength);
     const codec = roster[index];
 

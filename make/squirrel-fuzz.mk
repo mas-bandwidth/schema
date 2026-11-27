@@ -26,11 +26,11 @@ SQUIRREL_WIRE_FUZZ_OUTSIDE_SEEDS := 219
 .PHONY: tables-squirrel-wire-fuzz
 tables-squirrel-wire-fuzz: build/conformance-harness build/conformance-squirrel toolchain-squirrel
 	@mkdir -p build/wire-fuzz
-	./build/conformance-harness wire-fuzz --driver "$(SQ) test/conformance/squirrel/wirefuzz.nut" --seed 1 --n 2000 --failed build/wire-fuzz/failed-squirrel.bin > build/wire-fuzz/squirrel-plain.log 2>&1; \
+	./build/conformance-harness wire-fuzz --driver "test/conformance/squirrel/wirefuzz-driver" --seed 1 --n 2000 --failed build/wire-fuzz/failed-squirrel.bin > build/wire-fuzz/squirrel-plain.log 2>&1; \
 		status=$$?; cat build/wire-fuzz/squirrel-plain.log; test $$status -eq 0
 	@grep -qE ', $(SQUIRREL_WIRE_FUZZ_ABSENT_SEEDS) seeds absent \(' build/wire-fuzz/squirrel-plain.log || { \
 		echo "tables-squirrel-wire-fuzz: the plain arm's absent seed count is not the $(SQUIRREL_WIRE_FUZZ_ABSENT_SEEDS) registered: $$(grep -oE '[0-9]+ seeds absent' build/wire-fuzz/squirrel-plain.log || echo none absent)"; exit 1; }
-	./build/conformance-harness wire-fuzz --driver "$(SQ) test/conformance/squirrel/wirefuzz.nut builder" --builder --seed 1 --n 2000 --failed build/wire-fuzz/failed-squirrel-builder.bin > build/wire-fuzz/squirrel-builder.log 2>&1; \
+	./build/conformance-harness wire-fuzz --driver "test/conformance/squirrel/wirefuzz-driver builder" --builder --seed 1 --n 2000 --failed build/wire-fuzz/failed-squirrel-builder.bin > build/wire-fuzz/squirrel-builder.log 2>&1; \
 		status=$$?; cat build/wire-fuzz/squirrel-builder.log; test $$status -eq 0
 	@grep -qE ', $(SQUIRREL_WIRE_FUZZ_OUTSIDE_SEEDS) seeds outside the arm,' build/wire-fuzz/squirrel-builder.log || { \
 		echo "tables-squirrel-wire-fuzz: the builder arm's outside seed count is not the $(SQUIRREL_WIRE_FUZZ_OUTSIDE_SEEDS) registered: $$(grep -oE '[0-9]+ seeds outside the arm' build/wire-fuzz/squirrel-builder.log || echo none outside)"; exit 1; }
