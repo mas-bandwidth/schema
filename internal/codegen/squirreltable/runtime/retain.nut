@@ -13,6 +13,7 @@ local _require = vargv[1];
 // required once here, never per call (a require walks the name)
 local L = _require("schema_table_load");
 local S = _require("schema_table_save");
+local R = _require("schema_table_refusal");
 
 local NODE_TABLE_ID = 0xffffffffffffffff;
 local BUILD_VERSION_ID = 0xfffffffffffffffe;
@@ -453,6 +454,11 @@ local resetPlaced = function(T, store) {
 };
 
 _M.LoadRetain <- function(T, rootName, bytes, store, report) {
+  // EVERY READ ZEROES A SUPPLIED REPORT IN FULL as its first act (§6.5, the
+  // retain family included): the plain load's own reset, then the two counters
+  // the retaining load adds. They start at zero here and ACCUMULATE through
+  // the capture; SaveRetain adds to what this load left (§6.6).
+  R.resetReport(report);
   store.recs <- [];
   store.used <- 0;
   if (!("capacity" in store)) store.capacity <- 0;

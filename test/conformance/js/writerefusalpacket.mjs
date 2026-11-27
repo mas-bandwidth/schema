@@ -21,8 +21,8 @@ if (tier !== "runtime" && tier !== "flat") {
 }
 const { WriteStream } = await import(pathToFileURL(serializeIndex).href);
 const generated = pathToFileURL(generatedDir + "/");
-const runtime = await import(new URL("PacketWriteRefusal.js", generated).href);
-const flat = await import(new URL("PacketWriteRefusalFlat.js", generated).href);
+const runtime = await import(new URL("RefusalPacket.js", generated).href);
+const flat = await import(new URL("RefusalPacketFlat.js", generated).href);
 
 function hexBytes(text) {
   if (text.length % 2 !== 0 || !/^[0-9A-Fa-f]*$/.test(text)) { throw new Error(JSON.stringify(text) + " is not hex"); }
@@ -51,6 +51,13 @@ function apply(value, op, arg) {
     case "text_fill": value.text.fill(0x61, 0, n); value.textLength = n; break;
     case "fixed_constant": value.fixedConstant = n; break;
     case "reserved_zero": value.reservedZero = n; break;
+    case "trio_len": value.trio = new Array(n).fill(0); break;
+    case "trio_elem": value.trio[0] = n; break;
+    case "ints_elem": value.ints[0] = n; value.intsCount = 1; break;
+    case "pick_small": value.pick.type = runtime.PickType.Small; value.pick.small.v = n; break;
+    case "huge": value.huge = BigInt(arg); break; // int128 storage is a BigInt
+    case "fx": value.fx = n; break; // fixed(16, 16) storage is the raw Number
+    case "ufx": value.ufx = BigInt(arg); break; // ufixed(32, 32) storage is the raw BigInt (past 2^53)
     default: throw new Error("unknown op " + JSON.stringify(op));
   }
 }

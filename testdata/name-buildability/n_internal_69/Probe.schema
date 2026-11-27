@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum stamped
+{ Zfirst, Zsecond, Zthird }
+
+enum stand
+{ Zfirst, Zsecond, Zthird }
+
+enum standard
+{ Zfirst, Zsecond, Zthird }
+
+enum start
+{ Zfirst, Zsecond, Zthird }
+
+enum start1
+{ Zfirst, Zsecond, Zthird }
+
+enum startAt
+{ Zfirst, Zsecond, Zthird }
+
+enum startBit
+{ Zfirst, Zsecond, Zthird }
+
+enum startByte
+{ Zfirst, Zsecond, Zthird }
+
+enum startFail
+{ Zfirst, Zsecond, Zthird }
+
+enum startLen
+{ Zfirst, Zsecond, Zthird }
+
+enum start_align
+{ Zfirst, Zsecond, Zthird }
+
+enum start_edges
+{ Zfirst, Zsecond, Zthird }
+
+enum start_p
+{ Zfirst, Zsecond, Zthird }
+
+enum start_pos
+{ Zfirst, Zsecond, Zthird }
+
+enum start_slot
+{ Zfirst, Zsecond, Zthird }
+
+enum starts
+{ Zfirst, Zsecond, Zthird }
+
+enum state
+{ Zfirst, Zsecond, Zthird }
+
+enum state_of
+{ Zfirst, Zsecond, Zthird }
+
+enum stated
+{ Zfirst, Zsecond, Zthird }
+
+enum states
+{ Zfirst, Zsecond, Zthird }
+
+enum stats
+{ Zfirst, Zsecond, Zthird }
+
+enum status
+{ Zfirst, Zsecond, Zthird }
+
+enum step
+{ Zfirst, Zsecond, Zthird }
+
+enum stepOver
+{ Zfirst, Zsecond, Zthird }
+
+enum steps
+{ Zfirst, Zsecond, Zthird }
+
+enum sticky
+{ Zfirst, Zsecond, Zthird }
+
+enum stop
+{ Zfirst, Zsecond, Zthird }
+
+enum stopped
+{ Zfirst, Zsecond, Zthird }
+
+enum storage
+{ Zfirst, Zsecond, Zthird }
+
+enum storageBits
+{ Zfirst, Zsecond, Zthird }
+
+enum storage_bits_for
+{ Zfirst, Zsecond, Zthird }
+
+enum storage_end
+{ Zfirst, Zsecond, Zthird }
+
+enum storage_width
+{ Zfirst, Zsecond, Zthird }
+
+enum store
+{ Zfirst, Zsecond, Zthird }
+
+enum storeInteger
+{ Zfirst, Zsecond, Zthird }
+
+enum store_buffer
+{ Zfirst, Zsecond, Zthird }
+
+enum store_bytes
+{ Zfirst, Zsecond, Zthird }
+
+enum store_record
+{ Zfirst, Zsecond, Zthird }
+
+enum stored
+{ Zfirst, Zsecond, Zthird }
+
+enum stored_arm_edges
+{ Zfirst, Zsecond, Zthird }
+
+enum stored_count
+{ Zfirst, Zsecond, Zthird }
+
+enum stored_edges
+{ Zfirst, Zsecond, Zthird }
+
+enum storing
+{ Zfirst, Zsecond, Zthird }
+
+enum straight
+{ Zfirst, Zsecond, Zthird }
+
+enum strfind
+{ Zfirst, Zsecond, Zthird }
+
+enum strict
+{ Zfirst, Zsecond, Zthird }
+
+enum strictBefore
+{ Zfirst, Zsecond, Zthird }
+
+enum strictVariable
+{ Zfirst, Zsecond, Zthird }
+
+enum strict_ann
+{ Zfirst, Zsecond, Zthird }
+
+enum strict_refusal
+{ Zfirst, Zsecond, Zthird }
+
+enum strict_value
+{ Zfirst, Zsecond, Zthird }
+
+enum strictly
+{ Zfirst, Zsecond, Zthird }
+
+enum stride
+{ Zfirst, Zsecond, Zthird }
+
+enum strideOffset
+{ Zfirst, Zsecond, Zthird }
+
+enum stride_align
+{ Zfirst, Zsecond, Zthird }
+
+enum strides
+{ Zfirst, Zsecond, Zthird }
+
+enum stringBlob
+{ Zfirst, Zsecond, Zthird }
+
+enum stringBlobTokens
+{ Zfirst, Zsecond, Zthird }
+
+enum stringId
+{ Zfirst, Zsecond, Zthird }
+
+enum stringKey
+{ Zfirst, Zsecond, Zthird }
+
+enum stringOk
+{ Zfirst, Zsecond, Zthird }
+
+enum stringOrigins
+{ Zfirst, Zsecond, Zthird }
+
+enum stringOriginsSweep
+{ Zfirst, Zsecond, Zthird }
+
+enum string_blob_id
+{ Zfirst, Zsecond, Zthird }
+
+enum string_blob_type_id
+{ Zfirst, Zsecond, Zthird }
+
+enum string_edge
+{ Zfirst, Zsecond, Zthird }
+
+enum string_lone_surrogate
+{ Zfirst, Zsecond, Zthird }
+
+enum string_not_utf8
+{ Zfirst, Zsecond, Zthird }
+
+enum string_only
+{ Zfirst, Zsecond, Zthird }
+
+enum string_shape
+{ Zfirst, Zsecond, Zthird }
+
+enum strings
+{ Zfirst, Zsecond, Zthird }
+
+enum stripped
+{ Zfirst, Zsecond, Zthird }
+
+enum structs
+{ Zfirst, Zsecond, Zthird }
+
+enum structural
+{ Zfirst, Zsecond, Zthird }
+
+enum structuralKind
+{ Zfirst, Zsecond, Zthird }
+
+enum structural_arm
+{ Zfirst, Zsecond, Zthird }
+
+enum stub_index
+{ Zfirst, Zsecond, Zthird }
+
+enum stub_record
+{ Zfirst, Zsecond, Zthird }
+
+enum stub_slot
+{ Zfirst, Zsecond, Zthird }
+
+enum stubs
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    stamped Inner
+    stand Inner
+    standard Inner
+    start Inner
+    start1 Inner
+    startAt Inner
+    startBit Inner
+    startByte Inner
+    startFail Inner
+    startLen Inner
+}
+
+table NameTypes0
+{
+    one0  stamped
+    many0 [..4]stamped
+    one1  stand
+    many1 [..4]stand
+    one2  standard
+    many2 [..4]standard
+    one3  start
+    many3 [..4]start
+    one4  start1
+    many4 [..4]start1
+    one5  startAt
+    many5 [..4]startAt
+    one6  startBit
+    many6 [..4]startBit
+    one7  startByte
+    many7 [..4]startByte
+    one8  startFail
+    many8 [..4]startFail
+    one9  startLen
+    many9 [..4]startLen
+}
+
+table NameFields0
+{
+    stamped uint32
+    stand uint32
+    standard uint32
+    start uint32
+    start1 uint32
+    startAt uint32
+    startBit uint32
+    startByte uint32
+    startFail uint32
+    startLen uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    start_align Inner
+    start_edges Inner
+    start_p Inner
+    start_pos Inner
+    start_slot Inner
+    starts Inner
+    state Inner
+    state_of Inner
+    stated Inner
+    states Inner
+}
+
+table NameTypes1
+{
+    one0  start_align
+    many0 [..4]start_align
+    one1  start_edges
+    many1 [..4]start_edges
+    one2  start_p
+    many2 [..4]start_p
+    one3  start_pos
+    many3 [..4]start_pos
+    one4  start_slot
+    many4 [..4]start_slot
+    one5  starts
+    many5 [..4]starts
+    one6  state
+    many6 [..4]state
+    one7  state_of
+    many7 [..4]state_of
+    one8  stated
+    many8 [..4]stated
+    one9  states
+    many9 [..4]states
+}
+
+table NameFields1
+{
+    start_align uint32
+    start_edges uint32
+    start_p uint32
+    start_pos uint32
+    start_slot uint32
+    starts uint32
+    state uint32
+    state_of uint32
+    stated uint32
+    states uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    stats Inner
+    status Inner
+    step Inner
+    stepOver Inner
+    steps Inner
+    sticky Inner
+    stop Inner
+    stopped Inner
+    storage Inner
+    storageBits Inner
+}
+
+table NameTypes2
+{
+    one0  stats
+    many0 [..4]stats
+    one1  status
+    many1 [..4]status
+    one2  step
+    many2 [..4]step
+    one3  stepOver
+    many3 [..4]stepOver
+    one4  steps
+    many4 [..4]steps
+    one5  sticky
+    many5 [..4]sticky
+    one6  stop
+    many6 [..4]stop
+    one7  stopped
+    many7 [..4]stopped
+    one8  storage
+    many8 [..4]storage
+    one9  storageBits
+    many9 [..4]storageBits
+}
+
+table NameFields2
+{
+    stats uint32
+    status uint32
+    step uint32
+    stepOver uint32
+    steps uint32
+    sticky uint32
+    stop uint32
+    stopped uint32
+    storage uint32
+    storageBits uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    storage_bits_for Inner
+    storage_end Inner
+    storage_width Inner
+    store Inner
+    storeInteger Inner
+    store_buffer Inner
+    store_bytes Inner
+    store_record Inner
+    stored Inner
+    stored_arm_edges Inner
+}
+
+table NameTypes3
+{
+    one0  storage_bits_for
+    many0 [..4]storage_bits_for
+    one1  storage_end
+    many1 [..4]storage_end
+    one2  storage_width
+    many2 [..4]storage_width
+    one3  store
+    many3 [..4]store
+    one4  storeInteger
+    many4 [..4]storeInteger
+    one5  store_buffer
+    many5 [..4]store_buffer
+    one6  store_bytes
+    many6 [..4]store_bytes
+    one7  store_record
+    many7 [..4]store_record
+    one8  stored
+    many8 [..4]stored
+    one9  stored_arm_edges
+    many9 [..4]stored_arm_edges
+}
+
+table NameFields3
+{
+    storage_bits_for uint32
+    storage_end uint32
+    storage_width uint32
+    store uint32
+    storeInteger uint32
+    store_buffer uint32
+    store_bytes uint32
+    store_record uint32
+    stored uint32
+    stored_arm_edges uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    stored_count Inner
+    stored_edges Inner
+    storing Inner
+    straight Inner
+    strfind Inner
+    strict Inner
+    strictBefore Inner
+    strictVariable Inner
+    strict_ann Inner
+    strict_refusal Inner
+}
+
+table NameTypes4
+{
+    one0  stored_count
+    many0 [..4]stored_count
+    one1  stored_edges
+    many1 [..4]stored_edges
+    one2  storing
+    many2 [..4]storing
+    one3  straight
+    many3 [..4]straight
+    one4  strfind
+    many4 [..4]strfind
+    one5  strict
+    many5 [..4]strict
+    one6  strictBefore
+    many6 [..4]strictBefore
+    one7  strictVariable
+    many7 [..4]strictVariable
+    one8  strict_ann
+    many8 [..4]strict_ann
+    one9  strict_refusal
+    many9 [..4]strict_refusal
+}
+
+table NameFields4
+{
+    stored_count uint32
+    stored_edges uint32
+    storing uint32
+    straight uint32
+    strfind uint32
+    strict uint32
+    strictBefore uint32
+    strictVariable uint32
+    strict_ann uint32
+    strict_refusal uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    strict_value Inner
+    strictly Inner
+    stride Inner
+    strideOffset Inner
+    stride_align Inner
+    strides Inner
+    stringBlob Inner
+    stringBlobTokens Inner
+    stringId Inner
+    stringKey Inner
+}
+
+table NameTypes5
+{
+    one0  strict_value
+    many0 [..4]strict_value
+    one1  strictly
+    many1 [..4]strictly
+    one2  stride
+    many2 [..4]stride
+    one3  strideOffset
+    many3 [..4]strideOffset
+    one4  stride_align
+    many4 [..4]stride_align
+    one5  strides
+    many5 [..4]strides
+    one6  stringBlob
+    many6 [..4]stringBlob
+    one7  stringBlobTokens
+    many7 [..4]stringBlobTokens
+    one8  stringId
+    many8 [..4]stringId
+    one9  stringKey
+    many9 [..4]stringKey
+}
+
+table NameFields5
+{
+    strict_value uint32
+    strictly uint32
+    stride uint32
+    strideOffset uint32
+    stride_align uint32
+    strides uint32
+    stringBlob uint32
+    stringBlobTokens uint32
+    stringId uint32
+    stringKey uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    stringOk Inner
+    stringOrigins Inner
+    stringOriginsSweep Inner
+    string_blob_id Inner
+    string_blob_type_id Inner
+    string_edge Inner
+    string_lone_surrogate Inner
+    string_not_utf8 Inner
+    string_only Inner
+    string_shape Inner
+}
+
+table NameTypes6
+{
+    one0  stringOk
+    many0 [..4]stringOk
+    one1  stringOrigins
+    many1 [..4]stringOrigins
+    one2  stringOriginsSweep
+    many2 [..4]stringOriginsSweep
+    one3  string_blob_id
+    many3 [..4]string_blob_id
+    one4  string_blob_type_id
+    many4 [..4]string_blob_type_id
+    one5  string_edge
+    many5 [..4]string_edge
+    one6  string_lone_surrogate
+    many6 [..4]string_lone_surrogate
+    one7  string_not_utf8
+    many7 [..4]string_not_utf8
+    one8  string_only
+    many8 [..4]string_only
+    one9  string_shape
+    many9 [..4]string_shape
+}
+
+table NameFields6
+{
+    stringOk uint32
+    stringOrigins uint32
+    stringOriginsSweep uint32
+    string_blob_id uint32
+    string_blob_type_id uint32
+    string_edge uint32
+    string_lone_surrogate uint32
+    string_not_utf8 uint32
+    string_only uint32
+    string_shape uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    strings Inner
+    stripped Inner
+    structs Inner
+    structural Inner
+    structuralKind Inner
+    structural_arm Inner
+    stub_index Inner
+    stub_record Inner
+    stub_slot Inner
+    stubs Inner
+}
+
+table NameTypes7
+{
+    one0  strings
+    many0 [..4]strings
+    one1  stripped
+    many1 [..4]stripped
+    one2  structs
+    many2 [..4]structs
+    one3  structural
+    many3 [..4]structural
+    one4  structuralKind
+    many4 [..4]structuralKind
+    one5  structural_arm
+    many5 [..4]structural_arm
+    one6  stub_index
+    many6 [..4]stub_index
+    one7  stub_record
+    many7 [..4]stub_record
+    one8  stub_slot
+    many8 [..4]stub_slot
+    one9  stubs
+    many9 [..4]stubs
+}
+
+table NameFields7
+{
+    strings uint32
+    stripped uint32
+    structs uint32
+    structural uint32
+    structuralKind uint32
+    structural_arm uint32
+    stub_index uint32
+    stub_record uint32
+    stub_slot uint32
+    stubs uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

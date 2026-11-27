@@ -498,6 +498,8 @@ static partial class Program
             case Tabledemo.RootConfig root: return Tabledemo.Schema.RootConfigFixedSave(root, buffer);
             case Tabledemo.LoadoutConfig loadout: return Tabledemo.Schema.LoadoutConfigFixedSave(loadout, buffer);
             case Tabledemo.CountedMin counted: return Tabledemo.Schema.CountedMinFixedSave(counted, buffer);
+            case Tabledemo.Moods moods: return Tabledemo.Schema.MoodsFixedSave(moods, buffer);
+            case Tabledemo.MoodField moodField: return Tabledemo.Schema.MoodFieldFixedSave(moodField, buffer);
             case Scalardemo.SimState sim: return Scalardemo.Schema.SimStateFixedSave(sim, buffer);
             case Cooktorture.TortureFixedWref tfw: return Cooktorture.Schema.TortureFixedWrefFixedSave(tfw, buffer);
             case Shapes.FixedBounds fb: return Shapes.Schema.FixedBoundsFixedSave(fb, buffer);
@@ -522,6 +524,69 @@ static partial class Program
         if (kind == "bytes") { foreach (byte b in WriteRefusalBytes(text)) { spelled.Append(b == 0 ? "\\u0000" : ((char)b).ToString()); } }
         else { foreach (char u in WriteRefusalUnits(text)) { spelled.Append(u == 0 ? "\\u0000" : u.ToString()); } }
         return json.Contains("\"" + spelled + "\"", StringComparison.Ordinal) ? "wrote" : "misspelled";
+    }
+
+    // A VALUE OF THE WRONG KIND (`write-refusal-shape` kind `shape`,
+    // DW-TABLE-SHAPE). C#'s types hold one such value and no other: null, in a
+    // place whose type is a class (a record field, an arm payload, an element
+    // of a class array, the whole value). It is put there and the row is
+    // written, so the answer is the writer's own. Every other token, and null
+    // in a value-type place, is one the compiler refuses before any writer
+    // runs: false, `unrepresentable`. An arm `u.arm` selects the arm.
+    static bool WriteRefusalShape(object root, string path, string token, out object written)
+    {
+        written = root;
+        if (token != "null") { return false; }
+        if (path == ".")
+        {
+            if (root.GetType().IsValueType) { return false; }
+            written = null;
+            return true;
+        }
+        string[] segments = path.Split('.');
+        object holder = root;
+        // a struct on the way is a boxed copy: a null set beyond it would not
+        // reach the root, so such a place is said, never set
+        bool viaStruct = root.GetType().IsValueType;
+        for (int i = 0; ; i++)
+        {
+            string seg = segments[i];
+            int bracket = seg.IndexOf('[');
+            string member = WriteRefusalPascal(bracket >= 0 ? seg.Substring(0, bracket) : seg);
+            FieldInfo f = holder.GetType().GetField(member, BindingFlags.Public | BindingFlags.Instance);
+            if (f == null) { throw new InvalidOperationException("write-refusal-shape: missing field " + member + " on " + holder.GetType().FullName); }
+            bool last = i == segments.Length - 1;
+            object container = f.GetValue(holder);
+            int idx = bracket >= 0 ? int.Parse(seg.Substring(bracket + 1, seg.IndexOf(']') - bracket - 1), CultureInfo.InvariantCulture) : -1;
+            if (last)
+            {
+                Type place = bracket >= 0 ? (container as Array)?.GetType().GetElementType() : f.FieldType;
+                if (place == null || place.IsValueType) { return false; }
+                if (viaStruct) { throw new InvalidOperationException("write-refusal-shape: " + path + " passes through a struct"); }
+                if (bracket >= 0)
+                {
+                    // `f[i]` is the array's first i elements as loaded, then the value
+                    Array arr = (Array)container;
+                    if (idx >= arr.Length)
+                    {
+                        Array grown = Array.CreateInstance(arr.GetType().GetElementType(), idx + 1);
+                        Array.Copy(arr, grown, arr.Length);
+                        f.SetValue(holder, grown);
+                        arr = grown;
+                    }
+                    arr.SetValue(null, idx);
+                    FieldInfo count = holder.GetType().GetField(member + "Count", BindingFlags.Public | BindingFlags.Instance);
+                    if (count != null) { count.SetValue(holder, idx + 1); }
+                    return true;
+                }
+                FieldInfo tag = holder.GetType().GetField("Type", BindingFlags.Public | BindingFlags.Instance);
+                if (tag != null && tag.FieldType.IsEnum && Enum.IsDefined(tag.FieldType, member)) { tag.SetValue(holder, Enum.Parse(tag.FieldType, member)); }
+                f.SetValue(holder, null);
+                return true;
+            }
+            holder = bracket >= 0 ? WriteRefusalElementGet(container, idx) : container;
+            viaStruct |= holder.GetType().IsValueType;
+        }
     }
 
     static int SurfaceWriteRefusal(string outDir, string surface)
@@ -562,7 +627,16 @@ static partial class Program
                 return 1;
             }
             string verdict;
-            if (!WriteRefusalSet(codec, wire, value, f[5], f[6], f[7])) { verdict = "unrepresentable"; }
+            if (f[6] == "shape")
+            {
+                if (!WriteRefusalShape(value, f[5], f[7], out object shaped)) { verdict = "unrepresentable"; }
+                else
+                {
+                    byte[] buffer = new byte[1 << 20];
+                    verdict = WriteRefusalSave(() => codec.Save(shaped, buffer));
+                }
+            }
+            else if (!WriteRefusalSet(codec, wire, value, f[5], f[6], f[7])) { verdict = "unrepresentable"; }
             else
             {
                 byte[] buffer = new byte[1 << 20];

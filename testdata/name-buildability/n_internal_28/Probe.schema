@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum finished
+{ Zfirst, Zsecond, Zthird }
+
+enum finite
+{ Zfirst, Zsecond, Zthird }
+
+enum finiteF32
+{ Zfirst, Zsecond, Zthird }
+
+enum finiteF64
+{ Zfirst, Zsecond, Zthird }
+
+enum finiteScratch
+{ Zfirst, Zsecond, Zthird }
+
+enum finite_i
+{ Zfirst, Zsecond, Zthird }
+
+enum finite_why
+{ Zfirst, Zsecond, Zthird }
+
+enum first
+{ Zfirst, Zsecond, Zthird }
+
+enum first1
+{ Zfirst, Zsecond, Zthird }
+
+enum firstChildren
+{ Zfirst, Zsecond, Zthird }
+
+enum firstKey
+{ Zfirst, Zsecond, Zthird }
+
+enum firstKind
+{ Zfirst, Zsecond, Zthird }
+
+enum firstSize
+{ Zfirst, Zsecond, Zthird }
+
+enum firstUseBad
+{ Zfirst, Zsecond, Zthird }
+
+enum first_char
+{ Zfirst, Zsecond, Zthird }
+
+enum first_key_length
+{ Zfirst, Zsecond, Zthird }
+
+enum first_length
+{ Zfirst, Zsecond, Zthird }
+
+enum first_quote
+{ Zfirst, Zsecond, Zthird }
+
+enum first_use_order
+{ Zfirst, Zsecond, Zthird }
+
+enum fit
+{ Zfirst, Zsecond, Zthird }
+
+enum fits
+{ Zfirst, Zsecond, Zthird }
+
+enum fixed128Params
+{ Zfirst, Zsecond, Zthird }
+
+enum fixed64Params
+{ Zfirst, Zsecond, Zthird }
+
+enum fixedBody
+{ Zfirst, Zsecond, Zthird }
+
+enum fixedCapacity
+{ Zfirst, Zsecond, Zthird }
+
+enum fixedDamage
+{ Zfirst, Zsecond, Zthird }
+
+enum fixedFor
+{ Zfirst, Zsecond, Zthird }
+
+enum fixedKind
+{ Zfirst, Zsecond, Zthird }
+
+enum fixedMethod
+{ Zfirst, Zsecond, Zthird }
+
+enum fixedParams
+{ Zfirst, Zsecond, Zthird }
+
+enum fixedReader
+{ Zfirst, Zsecond, Zthird }
+
+enum fixedRefuse
+{ Zfirst, Zsecond, Zthird }
+
+enum fixedWidth
+{ Zfirst, Zsecond, Zthird }
+
+enum fixedWriteBody
+{ Zfirst, Zsecond, Zthird }
+
+enum fixed_array
+{ Zfirst, Zsecond, Zthird }
+
+enum fixed_bits_f32
+{ Zfirst, Zsecond, Zthird }
+
+enum fixed_bits_f64
+{ Zfirst, Zsecond, Zthird }
+
+enum fixed_f32_bits
+{ Zfirst, Zsecond, Zthird }
+
+enum fixed_format_ok
+{ Zfirst, Zsecond, Zthird }
+
+enum fixed_i32
+{ Zfirst, Zsecond, Zthird }
+
+enum fixed_kind_bits
+{ Zfirst, Zsecond, Zthird }
+
+enum fixed_lt_i128
+{ Zfirst, Zsecond, Zthird }
+
+enum fixed_lt_u128
+{ Zfirst, Zsecond, Zthird }
+
+enum fixed_put
+{ Zfirst, Zsecond, Zthird }
+
+enum fixed_put_bool
+{ Zfirst, Zsecond, Zthird }
+
+enum fixed_put_zeros
+{ Zfirst, Zsecond, Zthird }
+
+enum fixed_read_bits
+{ Zfirst, Zsecond, Zthird }
+
+enum fixed_record_codecs
+{ Zfirst, Zsecond, Zthird }
+
+enum fixed_refusal
+{ Zfirst, Zsecond, Zthird }
+
+enum fixed_text
+{ Zfirst, Zsecond, Zthird }
+
+enum fixed_u128_group32
+{ Zfirst, Zsecond, Zthird }
+
+enum fixed_u128_set_group32
+{ Zfirst, Zsecond, Zthird }
+
+enum fixed_u32
+{ Zfirst, Zsecond, Zthird }
+
+enum fixed_u64
+{ Zfirst, Zsecond, Zthird }
+
+enum fixed_write_bits
+{ Zfirst, Zsecond, Zthird }
+
+enum fixes
+{ Zfirst, Zsecond, Zthird }
+
+enum fk
+{ Zfirst, Zsecond, Zthird }
+
+enum fkind
+{ Zfirst, Zsecond, Zthird }
+
+enum fl
+{ Zfirst, Zsecond, Zthird }
+
+enum flag
+{ Zfirst, Zsecond, Zthird }
+
+enum flag_names
+{ Zfirst, Zsecond, Zthird }
+
+enum flags
+{ Zfirst, Zsecond, Zthird }
+
+enum flagsOf
+{ Zfirst, Zsecond, Zthird }
+
+enum flagsValue
+{ Zfirst, Zsecond, Zthird }
+
+enum flags_bits
+{ Zfirst, Zsecond, Zthird }
+
+enum flat
+{ Zfirst, Zsecond, Zthird }
+
+enum flatten
+{ Zfirst, Zsecond, Zthird }
+
+enum flavour
+{ Zfirst, Zsecond, Zthird }
+
+enum flds
+{ Zfirst, Zsecond, Zthird }
+
+enum flo
+{ Zfirst, Zsecond, Zthird }
+
+enum float32Bits
+{ Zfirst, Zsecond, Zthird }
+
+enum float32FromBits
+{ Zfirst, Zsecond, Zthird }
+
+enum float32_round
+{ Zfirst, Zsecond, Zthird }
+
+enum float64Bits
+{ Zfirst, Zsecond, Zthird }
+
+enum float64Parts
+{ Zfirst, Zsecond, Zthird }
+
+enum floatAdmitted
+{ Zfirst, Zsecond, Zthird }
+
+enum floatBitsAreFinite
+{ Zfirst, Zsecond, Zthird }
+
+enum floatFinite
+{ Zfirst, Zsecond, Zthird }
+
+enum floatIsDefault
+{ Zfirst, Zsecond, Zthird }
+
+enum floatStep
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    finished Inner
+    finite Inner
+    finiteF32 Inner
+    finiteF64 Inner
+    finiteScratch Inner
+    finite_i Inner
+    finite_why Inner
+    first Inner
+    first1 Inner
+    firstChildren Inner
+}
+
+table NameTypes0
+{
+    one0  finished
+    many0 [..4]finished
+    one1  finite
+    many1 [..4]finite
+    one2  finiteF32
+    many2 [..4]finiteF32
+    one3  finiteF64
+    many3 [..4]finiteF64
+    one4  finiteScratch
+    many4 [..4]finiteScratch
+    one5  finite_i
+    many5 [..4]finite_i
+    one6  finite_why
+    many6 [..4]finite_why
+    one7  first
+    many7 [..4]first
+    one8  first1
+    many8 [..4]first1
+    one9  firstChildren
+    many9 [..4]firstChildren
+}
+
+table NameFields0
+{
+    finished uint32
+    finite uint32
+    finiteF32 uint32
+    finiteF64 uint32
+    finiteScratch uint32
+    finite_i uint32
+    finite_why uint32
+    first uint32
+    first1 uint32
+    firstChildren uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    firstKey Inner
+    firstKind Inner
+    firstSize Inner
+    firstUseBad Inner
+    first_char Inner
+    first_key_length Inner
+    first_length Inner
+    first_quote Inner
+    first_use_order Inner
+    fit Inner
+}
+
+table NameTypes1
+{
+    one0  firstKey
+    many0 [..4]firstKey
+    one1  firstKind
+    many1 [..4]firstKind
+    one2  firstSize
+    many2 [..4]firstSize
+    one3  firstUseBad
+    many3 [..4]firstUseBad
+    one4  first_char
+    many4 [..4]first_char
+    one5  first_key_length
+    many5 [..4]first_key_length
+    one6  first_length
+    many6 [..4]first_length
+    one7  first_quote
+    many7 [..4]first_quote
+    one8  first_use_order
+    many8 [..4]first_use_order
+    one9  fit
+    many9 [..4]fit
+}
+
+table NameFields1
+{
+    firstKey uint32
+    firstKind uint32
+    firstSize uint32
+    firstUseBad uint32
+    first_char uint32
+    first_key_length uint32
+    first_length uint32
+    first_quote uint32
+    first_use_order uint32
+    fit uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    fits Inner
+    fixed128Params Inner
+    fixed64Params Inner
+    fixedBody Inner
+    fixedCapacity Inner
+    fixedDamage Inner
+    fixedFor Inner
+    fixedKind Inner
+    fixedMethod Inner
+    fixedParams Inner
+}
+
+table NameTypes2
+{
+    one0  fits
+    many0 [..4]fits
+    one1  fixed128Params
+    many1 [..4]fixed128Params
+    one2  fixed64Params
+    many2 [..4]fixed64Params
+    one3  fixedBody
+    many3 [..4]fixedBody
+    one4  fixedCapacity
+    many4 [..4]fixedCapacity
+    one5  fixedDamage
+    many5 [..4]fixedDamage
+    one6  fixedFor
+    many6 [..4]fixedFor
+    one7  fixedKind
+    many7 [..4]fixedKind
+    one8  fixedMethod
+    many8 [..4]fixedMethod
+    one9  fixedParams
+    many9 [..4]fixedParams
+}
+
+table NameFields2
+{
+    fits uint32
+    fixed128Params uint32
+    fixed64Params uint32
+    fixedBody uint32
+    fixedCapacity uint32
+    fixedDamage uint32
+    fixedFor uint32
+    fixedKind uint32
+    fixedMethod uint32
+    fixedParams uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    fixedReader Inner
+    fixedRefuse Inner
+    fixedWidth Inner
+    fixedWriteBody Inner
+    fixed_array Inner
+    fixed_bits_f32 Inner
+    fixed_bits_f64 Inner
+    fixed_f32_bits Inner
+    fixed_format_ok Inner
+    fixed_i32 Inner
+}
+
+table NameTypes3
+{
+    one0  fixedReader
+    many0 [..4]fixedReader
+    one1  fixedRefuse
+    many1 [..4]fixedRefuse
+    one2  fixedWidth
+    many2 [..4]fixedWidth
+    one3  fixedWriteBody
+    many3 [..4]fixedWriteBody
+    one4  fixed_array
+    many4 [..4]fixed_array
+    one5  fixed_bits_f32
+    many5 [..4]fixed_bits_f32
+    one6  fixed_bits_f64
+    many6 [..4]fixed_bits_f64
+    one7  fixed_f32_bits
+    many7 [..4]fixed_f32_bits
+    one8  fixed_format_ok
+    many8 [..4]fixed_format_ok
+    one9  fixed_i32
+    many9 [..4]fixed_i32
+}
+
+table NameFields3
+{
+    fixedReader uint32
+    fixedRefuse uint32
+    fixedWidth uint32
+    fixedWriteBody uint32
+    fixed_array uint32
+    fixed_bits_f32 uint32
+    fixed_bits_f64 uint32
+    fixed_f32_bits uint32
+    fixed_format_ok uint32
+    fixed_i32 uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    fixed_kind_bits Inner
+    fixed_lt_i128 Inner
+    fixed_lt_u128 Inner
+    fixed_put Inner
+    fixed_put_bool Inner
+    fixed_put_zeros Inner
+    fixed_read_bits Inner
+    fixed_record_codecs Inner
+    fixed_refusal Inner
+    fixed_text Inner
+}
+
+table NameTypes4
+{
+    one0  fixed_kind_bits
+    many0 [..4]fixed_kind_bits
+    one1  fixed_lt_i128
+    many1 [..4]fixed_lt_i128
+    one2  fixed_lt_u128
+    many2 [..4]fixed_lt_u128
+    one3  fixed_put
+    many3 [..4]fixed_put
+    one4  fixed_put_bool
+    many4 [..4]fixed_put_bool
+    one5  fixed_put_zeros
+    many5 [..4]fixed_put_zeros
+    one6  fixed_read_bits
+    many6 [..4]fixed_read_bits
+    one7  fixed_record_codecs
+    many7 [..4]fixed_record_codecs
+    one8  fixed_refusal
+    many8 [..4]fixed_refusal
+    one9  fixed_text
+    many9 [..4]fixed_text
+}
+
+table NameFields4
+{
+    fixed_kind_bits uint32
+    fixed_lt_i128 uint32
+    fixed_lt_u128 uint32
+    fixed_put uint32
+    fixed_put_bool uint32
+    fixed_put_zeros uint32
+    fixed_read_bits uint32
+    fixed_record_codecs uint32
+    fixed_refusal uint32
+    fixed_text uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    fixed_u128_group32 Inner
+    fixed_u128_set_group32 Inner
+    fixed_u32 Inner
+    fixed_u64 Inner
+    fixed_write_bits Inner
+    fixes Inner
+    fk Inner
+    fkind Inner
+    fl Inner
+    flag Inner
+}
+
+table NameTypes5
+{
+    one0  fixed_u128_group32
+    many0 [..4]fixed_u128_group32
+    one1  fixed_u128_set_group32
+    many1 [..4]fixed_u128_set_group32
+    one2  fixed_u32
+    many2 [..4]fixed_u32
+    one3  fixed_u64
+    many3 [..4]fixed_u64
+    one4  fixed_write_bits
+    many4 [..4]fixed_write_bits
+    one5  fixes
+    many5 [..4]fixes
+    one6  fk
+    many6 [..4]fk
+    one7  fkind
+    many7 [..4]fkind
+    one8  fl
+    many8 [..4]fl
+    one9  flag
+    many9 [..4]flag
+}
+
+table NameFields5
+{
+    fixed_u128_group32 uint32
+    fixed_u128_set_group32 uint32
+    fixed_u32 uint32
+    fixed_u64 uint32
+    fixed_write_bits uint32
+    fixes uint32
+    fk uint32
+    fkind uint32
+    fl uint32
+    flag uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    flag_names Inner
+    flags Inner
+    flagsOf Inner
+    flagsValue Inner
+    flags_bits Inner
+    flat Inner
+    flatten Inner
+    flavour Inner
+    flds Inner
+    flo Inner
+}
+
+table NameTypes6
+{
+    one0  flag_names
+    many0 [..4]flag_names
+    one1  flags
+    many1 [..4]flags
+    one2  flagsOf
+    many2 [..4]flagsOf
+    one3  flagsValue
+    many3 [..4]flagsValue
+    one4  flags_bits
+    many4 [..4]flags_bits
+    one5  flat
+    many5 [..4]flat
+    one6  flatten
+    many6 [..4]flatten
+    one7  flavour
+    many7 [..4]flavour
+    one8  flds
+    many8 [..4]flds
+    one9  flo
+    many9 [..4]flo
+}
+
+table NameFields6
+{
+    flag_names uint32
+    flags uint32
+    flagsOf uint32
+    flagsValue uint32
+    flags_bits uint32
+    flat uint32
+    flatten uint32
+    flavour uint32
+    flds uint32
+    flo uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    float32Bits Inner
+    float32FromBits Inner
+    float32_round Inner
+    float64Bits Inner
+    float64Parts Inner
+    floatAdmitted Inner
+    floatBitsAreFinite Inner
+    floatFinite Inner
+    floatIsDefault Inner
+    floatStep Inner
+}
+
+table NameTypes7
+{
+    one0  float32Bits
+    many0 [..4]float32Bits
+    one1  float32FromBits
+    many1 [..4]float32FromBits
+    one2  float32_round
+    many2 [..4]float32_round
+    one3  float64Bits
+    many3 [..4]float64Bits
+    one4  float64Parts
+    many4 [..4]float64Parts
+    one5  floatAdmitted
+    many5 [..4]floatAdmitted
+    one6  floatBitsAreFinite
+    many6 [..4]floatBitsAreFinite
+    one7  floatFinite
+    many7 [..4]floatFinite
+    one8  floatIsDefault
+    many8 [..4]floatIsDefault
+    one9  floatStep
+    many9 [..4]floatStep
+}
+
+table NameFields7
+{
+    float32Bits uint32
+    float32FromBits uint32
+    float32_round uint32
+    float64Bits uint32
+    float64Parts uint32
+    floatAdmitted uint32
+    floatBitsAreFinite uint32
+    floatFinite uint32
+    floatIsDefault uint32
+    floatStep uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

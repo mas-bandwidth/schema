@@ -99,6 +99,7 @@ static partial class Program
         public string Root;
         public Func<byte[], Report, object> PartialLoad;
         public bool Region; // this codec carries a region read (wire-fuzz-region)
+        public bool Builder; // this codec carries a builder read (wire-fuzz-builder, BindBuilder)
         public Func<byte[], Report, object> VariableLoad; // a fixed root's variable-form read; framing only
         public Func<byte[], Report, object> Load;   // null on refusal
         public Func<object, long> Measure;
@@ -2841,6 +2842,10 @@ static partial class Program
             string root = Encoding.UTF8.GetString(input.ReadBytes(input.ReadUInt16()));
             byte form = input.ReadByte(), retain = input.ReadByte();
             Codec found=Find(unit,root);
+            // THE BUILDER ARM IS THE BUILDER READ'S: a root with no builder binding is
+            // answered absent, which the harness names, and never falls through to a
+            // read that cannot report the builder's completion.
+            if (builder && found != null && !found.Builder) { found = null; }
             roster[i] = retain == 0 || found?.Retain!=null?found:null;
             // a variable root has no message form, so no form-2 binding
             if ((form == 2 || form == 5) && (retain != 0 || builder || roster[i]?.MessageLoad == null)) { roster[i] = null; }
@@ -2941,7 +2946,7 @@ static partial class Program
         {
             // Form-1 wire and its five conformance surfaces. Unsupported constructs
             // remain explicit per-case absences, as in the other language drivers.
-            Console.Out.Write("wire\nmessage\nmessage-prior\ncook-write\nreport\nframing\njson-read\njson-write\njson-hostile\nblock\nblock-foreign\nblock-dump\nforgery\nblock-reason\nretain\nretain-save\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\nwrite-refusal-cook\nwrite-refusal-block\nannounce\nread-into\njson-write-into\nunit shapes\n");
+            Console.Out.Write("wire\nmessage\nmessage-prior\ncook-write\nreport\nframing\njson-read\njson-write\njson-hostile\nblock\nblock-foreign\nblock-dump\nforgery\nblock-reason\nretain\nretain-save\nretain-refusal\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\nwrite-refusal-cook\nwrite-refusal-block\nwrite-refusal-shape\nannounce\nread-into\njson-write-into\nunit shapes\n");
             return 0;
         }
         if (args.Length < 3)
@@ -2954,6 +2959,7 @@ static partial class Program
         {
             case "retain": return SurfaceRetain(outDir,false);
             case "retain-save": return SurfaceRetain(outDir,true);
+            case "retain-refusal": return SurfaceRetainRefusal(outDir);
             case "wire": return SurfaceWire(outDir);
             case "message": return SurfaceMessage(outDir, false);
             case "message-prior": return SurfaceMessage(outDir, true);
@@ -2973,7 +2979,8 @@ static partial class Program
             case "write-refusal-message":
             case "write-refusal-cook":
             case "write-refusal-block":
-            case "write-refusal-json": return SurfaceWriteRefusal(outDir, surface);
+            case "write-refusal-json":
+            case "write-refusal-shape": return SurfaceWriteRefusal(outDir, surface);
             case "announce": return SurfaceAnnounce(outDir);
             case "read-into": return SurfaceReadInto(outDir);
             case "json-write-into": return SurfaceJsonWriteInto(outDir);

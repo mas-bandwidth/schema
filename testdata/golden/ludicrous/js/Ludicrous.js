@@ -118,6 +118,9 @@ export function WriteFixedProbe(stream, value) {
   if (!stream.serializeFixed(NUMBER_SCRATCH, 32, 0, 0, 1000000)) {
     return false;
   }
+  if (value.samples == null || value.samples.length !== 2) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
+    return false;
+  }
   for (let i = 0; i < 2; i++) {
     if (!globalThis.Number.isInteger(value.samples[i]) || value.samples[i] < -524288 || value.samples[i] > 524288) {
       return false;
@@ -223,6 +226,9 @@ export function WriteUnsignedProbe(stream, value) {
   }
   NUMBER_SCRATCH.value = value.ticks;
   if (!stream.serializeFixed(NUMBER_SCRATCH, 32, 0, 0, 1000000)) {
+    return false;
+  }
+  if (value.samples == null || value.samples.length !== 2) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
     return false;
   }
   for (let i = 0; i < 2; i++) {

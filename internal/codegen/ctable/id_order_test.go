@@ -65,12 +65,11 @@ func TestCWireIdOrder(t *testing.T) {
 	}
 	const anchor = "if ( next_ref == UINT64_MAX || (end == order.size && next_ref - 1 != r->id_count) )"
 	out, err = runCNodeRecordTerminatorProbe(t, u, body.String(), func(files map[string][]byte) error {
-		const name = "ProbeTable.h"
-		s := string(files[name])
-		if strings.Count(s, anchor) != 1 {
-			return fmt.Errorf("id-order control anchor absent or repeated")
+		// the anchor is the exact check, matched by its C tokens because cfmt
+		// lays the emitted C out, and it must occur exactly once
+		if err := cPlantOnce(files, anchor, "if ( end < -1 )"); err != nil {
+			return fmt.Errorf("id-order control anchor: %w", err)
 		}
-		files[name] = []byte(strings.Replace(s, anchor, "if ( end < -1 )", 1))
 		return nil
 	})
 	if err == nil || !strings.Contains(out, "id-order unused-empty") {

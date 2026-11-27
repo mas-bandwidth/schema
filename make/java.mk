@@ -961,8 +961,17 @@ test-java: tables-java-json-differential
 # little-endian and big-endian cooked images byte-for-byte.
 .PHONY: tables-java-block-build
 tables-java-block-build:
-	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
-		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run '^TestBlockBuildAndCookWriteJava$$'
+	@mkdir -p build/java-block-build
+	@SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run '^TestBlockBuildAndCookWriteJava$$' \
+		> build/java-block-build/log 2>&1 || { grep -E -- '--- FAIL|_test.go:' build/java-block-build/log | head -40; tail -20 build/java-block-build/log; exit 1; }
+	@if grep -q -- '--- SKIP' build/java-block-build/log; then \
+		echo "tables-java-block-build: a test SKIPPED under SCHEMA_REQUIRE_CORPUS=1"; grep -- '--- SKIP' build/java-block-build/log; exit 1; \
+	fi
+	@grep -q -- '--- PASS: TestBlockBuildAndCookWriteJava ' build/java-block-build/log || \
+		{ echo "tables-java-block-build: TestBlockBuildAndCookWriteJava did not run to a PASS"; tail -20 build/java-block-build/log; exit 1; }
+	@grep -q -- '--- PASS: TestBlockBuildAndCookWriteJava/cook_refusal_debug_negative_control ' build/java-block-build/log || \
+		{ echo "tables-java-block-build: the cook count negative control did not run to a PASS"; tail -20 build/java-block-build/log; exit 1; }
 	@echo 'tables Java block builder and cook writer: block_render, block_padded and cook-write match the committed reference bytes'
 
 test-java: tables-java-block-build
@@ -1058,7 +1067,7 @@ test-java: tables-java-keyed
 # must red TestKeyedArrayIndexingJava ON ITS OWN END AND ONLY THERE: a control
 # that reds both ends at once could not tell a symmetric guard from a broken one.
 JAVA_KEYED_SABOTAGE := build/java-keyed-sabotage
-JAVA_KEYED_COMPARE := "Integer.compareUnsigned(%s - 1, %d) >= 0", key, max)
+JAVA_KEYED_COMPARE := "java.lang.Integer.compareUnsigned(%s - 1, %d) >= 0", key, max)
 tables-java-keyed-negative-control:
 	@rm -rf $(JAVA_KEYED_SABOTAGE) && mkdir -p $(JAVA_KEYED_SABOTAGE)
 	@set -e; for end in upper lower; do \
@@ -1082,6 +1091,28 @@ tables-java-keyed-negative-control:
 		grep -m1 -- "$$red" $$d/log; \
 		echo "negative control: dropping the $$end bound reds the keyed accessor on that end only"; \
 	done
+
+# A DEPRECATED VARIANT IS NEVER WRITTEN, Java side (docs/SPEC-TABLES.md §2.15
+# WRITE): under -ea the variable, fixed and message saves throw on `Old` and
+# write `Fierce`, scalar and element (tables/examples MoodField, Moods). The
+# negative control drops each writer's assert in turn and wants exactly that
+# writer's refusal lines red. EACH test must run to its own PASS.
+.PHONY: tables-java-deprecated-write
+tables-java-deprecated-write:
+	@mkdir -p build/java-deprecated
+	@SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run '^TestJavaDeprecatedVariant(NeverWritten|NegativeControl)$$' \
+		> build/java-deprecated/log 2>&1 || { grep -E -- '--- FAIL|_test.go:' build/java-deprecated/log | head -40; exit 1; }
+	@if grep -q -- '--- SKIP' build/java-deprecated/log; then \
+		echo "tables-java-deprecated-write: a test SKIPPED under SCHEMA_REQUIRE_CORPUS=1"; grep -- '--- SKIP' build/java-deprecated/log; exit 1; \
+	fi
+	@grep -q -- '--- PASS: TestJavaDeprecatedVariantNeverWritten ' build/java-deprecated/log || \
+		{ echo "tables-java-deprecated-write: TestJavaDeprecatedVariantNeverWritten did not run to a PASS"; tail -20 build/java-deprecated/log; exit 1; }
+	@grep -q -- '--- PASS: TestJavaDeprecatedVariantNegativeControl ' build/java-deprecated/log || \
+		{ echo "tables-java-deprecated-write: TestJavaDeprecatedVariantNegativeControl did not run to a PASS"; tail -20 build/java-deprecated/log; exit 1; }
+	@grep 'negative control: with the' build/java-deprecated/log
+	@echo 'tables Java: every binary writer refuses a deprecated variant and writes the live one (§2.15)'
+test-java: tables-java-deprecated-write
 
 # FINITE TABLE FLOATS, Java side (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27:
 # "Tables go finite-only too, same rule as packets"): every read refuses a NaN
@@ -2613,7 +2644,7 @@ JAVA_WRITE_REFUSAL_MESSAGE_CONTROL := build/conformance-java-write-refusal-messa
 conformance-negative-control-java-write-refusal-message: build/conformance-harness build-conformance-java
 	@rm -rf $(JAVA_WRITE_REFUSAL_MESSAGE_CONTROL) && mkdir -p $(JAVA_WRITE_REFUSAL_MESSAGE_CONTROL)/generated $(JAVA_WRITE_REFUSAL_MESSAGE_CONTROL)/classes
 	@cp build/tables-generated-java/backend/*.java $(JAVA_WRITE_REFUSAL_MESSAGE_CONTROL)/generated/
-	@sed -i.orig 's/assert Long\.compareUnsigned((v\.quantity) & 0xffL, 0x63L) <= 0;/assert true; \/\/ SABOTAGED: quantity upper bound removed/' \
+	@sed -i.orig 's/assert java\.lang\.Long\.compareUnsigned((v\.quantity) & 0xffL, 0x63L) <= 0;/assert true; \/\/ SABOTAGED: quantity upper bound removed/' \
 		$(JAVA_WRITE_REFUSAL_MESSAGE_CONTROL)/generated/StorePurchaseMessage.java
 	@! cmp -s $(JAVA_WRITE_REFUSAL_MESSAGE_CONTROL)/generated/StorePurchaseMessage.java \
 		$(JAVA_WRITE_REFUSAL_MESSAGE_CONTROL)/generated/StorePurchaseMessage.java.orig || \
