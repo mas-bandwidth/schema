@@ -270,10 +270,11 @@ static SCHEMA_UNUSED int table_json_read_graph( TableWorker * worker, void * roo
 {
     TableJsonGraphIn graph;
     TableJsonIn in;
+    TableJsonKeyPool pool;
     TableReport ignored = {0};
     int ok;
     memset(&graph,0,sizeof(graph)); graph.worker = worker; graph.labels.allocator=worker->arena!=NULL ? worker->arena->allocator : table_default_allocator();
-    memset(&in,0,sizeof(in)); in.text = text; in.size = bytes; in.report = report ? report : &ignored; in.graph = &graph;
+    memset(&in,0,sizeof(in)); in.text = text; in.size = bytes; in.report = report ? report : &ignored; in.graph = &graph; pool.top = 0; in.pool = &pool;
     if ( root == NULL || worker->arena == NULL || text == NULL || bytes < 0 ) { in.report->refused=1, in.report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
     info->reset(root);
     if ( bytes >= 3 && (uint8_t) text[0] == 0xEF && (uint8_t) text[1] == 0xBB && (uint8_t) text[2] == 0xBF ) { in.pos = 3; }
@@ -498,20 +499,7 @@ static SCHEMA_UNUSED int table_json_map_hash_add(TableJsonIn * in,TableJsonKeys 
 {
     uint64_t hash=1469598103934665603ULL; int64_t mask,i; int32_t k;
     for(k=0;k<length;k++) { hash=(hash^(uint64_t)(unsigned char)key[k])*1099511628211ULL; }
-    if((keys->count+1)*2>keys->capacity) {
-        const int64_t capacity=keys->capacity==0 ? kTableJsonKeysLocal : keys->capacity*2; TableJsonKey * grown; int64_t j;
-        if((uint64_t)capacity>SIZE_MAX/sizeof(TableJsonKey)) { in->bad=1; return -1; }
-        grown=(TableJsonKey *)schema_allocate(capacity*(int64_t)sizeof(TableJsonKey));
-        if(grown==NULL) { in->bad=1; return -1; }
-        memset(grown,0,(size_t)capacity*sizeof(TableJsonKey));
-        for(j=0;j<keys->capacity;j++) {
-            if(keys->slots[j].at==0) { continue; }
-            i=(int64_t)(keys->slots[j].hash&(uint64_t)(capacity-1));
-            while(grown[i].at!=0) { i=(i+1)&(capacity-1); }
-            grown[i]=keys->slots[j];
-        }
-        table_json_keys_free(keys); keys->slots=grown; keys->capacity=capacity;
-    }
+    if((keys->count+1)*2>keys->capacity && !table_json_keys_grow(in,keys)) { return -1; }
     mask=keys->capacity-1;
     for(i=(int64_t)(hash&(uint64_t)mask);keys->slots[i].at!=0;i=(i+1)&mask) { if(keys->slots[i].hash==hash) { return 0; } }
     keys->slots[i].at=1; keys->slots[i].hash=hash; keys->count++; return 1;
@@ -530,7 +518,7 @@ static SCHEMA_UNUSED int table_json_read_map(TableJsonIn * in,void * storage,con
         wide=(char *)table_allocate(graph->labels.allocator,(int64_t)key->array_bound+1);
         if(wide==NULL) { in->bad=1; return 0; }
     }
-    table_json_keys_init(&held);
+    table_json_keys_init(in,&held);
     ok=table_json_read_map_entries(in,(TableSequence *)storage,f,depth,&held,wide);
     table_json_keys_free(&held);
     table_release(graph->labels.allocator,wide);
