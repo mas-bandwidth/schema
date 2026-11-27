@@ -21,8 +21,8 @@
 # emitter's. Each sabotaged corpus is still analyzer-silent, and each control
 # must go red for exactly its reason.
 #
-# packet-void stays C and C++ only (make/checks/packet-void.mk), as it is for
-# every other port, so moo carries no leg of it.
+# PACKET VOID is the shared corpus (make/checks/packet-void.mk): moo answers
+# every case of testdata/wire/packet-void/cases.txt in packet-void-moo below.
 MOO_PACKET_DRIVER := build/moo-packet/driver
 
 .PHONY: moo-packet-driver
@@ -137,3 +137,17 @@ packet-end-moo-negative-control: packet-end-moo
 		echo 'NEGATIVE CONTROL FAILED: the moo end-check removal failed another case'; \
 		cat build/packet-end/moo-negative/log; exit 1; fi
 	@echo 'packet end moo negative control: the removed end check accepts trailing data and non-zero padding'
+
+# PACKET VOID (SPEC §4.8): payload-free union arms cost exactly their tag
+# bits. The shared corpus (testdata/wire/packet-void/cases.txt,
+# make/checks/packet-void.mk): test/packet-void/moo/main.moo answers every
+# case and tools/casegate refuses a case with no answer. The driver hands
+# the pins directory, cases.txt with it, in as inputs[<file name>].
+MOO_PACKET_VOID_RUN = -analyze -schema test/packet-void/Void.schema -inputs testdata/wire/packet-void \
+	-main test/packet-void/moo/main.moo
+
+.PHONY: packet-void-moo
+packet-void-moo: toolchain-moo moo-packet-driver build/casegate
+	$(call packet_void_gate,moo) $(MOO_PACKET_DRIVER) $(MOO_PACKET_VOID_RUN)
+
+test-moo: packet-void-moo

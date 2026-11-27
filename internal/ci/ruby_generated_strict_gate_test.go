@@ -11,9 +11,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/ruby/rubyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/compiler"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/ruby/rubyrun"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 )
 
 func rubyStrictGateUnits(t *testing.T, root string) map[string]map[string][]byte {
@@ -58,7 +58,7 @@ func rubyStrictGateUnits(t *testing.T, root string) map[string]map[string][]byte
 		"bench/corpus/RealWorld.schema",
 		"test/packet-text/Text.schema",
 		"test/packet-finite/ruby/PacketFinite.schema",
-		"test/packet-void/ruby/Ruby.schema",
+		"test/packet-void/Void.schema",
 	} {
 		loadGen(single, []string{filepath.Join(root, filepath.FromSlash(single))})
 	}

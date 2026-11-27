@@ -8,7 +8,10 @@
 # every row the checker accepts in every target and builds and loads it with
 # that target's own toolchain. It runs nightly only
 # (.github/workflows/schema-name-buildability.yml): it is minutes of every
-# toolchain, and the fast lane's two minutes are law.
+# toolchain, and the fast lane's two minutes are law. It also runs the
+# compiler's TestEveryAcceptedCorpusRowGeneratesEverywhere: every accepted row
+# generated in memory in every target, so a name a target refuses at generate
+# that the checker accepts is named on its own (SPEC §4.6, Emitter name rules).
 #
 # The toolchains are this Makefile's own variables, handed to the test under
 # the same names; Elixir's interpreter is BEAM_PATH on PATH. The per-target
@@ -30,6 +33,7 @@ name-buildability: dist-lua dist-luau dist-moo dist-squirrel dist-goose dist-lob
 	SERIALIZE="$(abspath $(SERIALIZE))" SERIALIZE_C="$(abspath $(SERIALIZE_C))" SERIALIZE_CS="$(abspath $(SERIALIZE_CS))" \
 	SERIALIZE_GO="$(abspath $(SERIALIZE_GO))" SERIALIZE_RS="$(abspath $(SERIALIZE_RS))" \
 	go test -count=1 -timeout=0 -parallel $(NAME_BUILDABILITY_PARALLEL) -run '^TestNameBuildability$$' ./tools/namebuild || status=$$?; \
+	SCHEMA_SLOW=1 go test -count=1 -timeout=0 -tags schema_leg_moo -run '^TestEveryAcceptedCorpusRowGeneratesEverywhere$$' ./compiler || status=$$?; \
 	if [ -f $(NAME_BUILDABILITY_SUMMARY) ]; then cat $(NAME_BUILDABILITY_SUMMARY); \
 	else echo "NAME-BUILDABILITY FAILED: no summary at $(NAME_BUILDABILITY_SUMMARY) (the run stopped before its last line)"; status=1; fi; \
 	exit $$status

@@ -14,8 +14,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/internal/ast"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/ast"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // resolveTextListField resolves `rules [..16]string(64)`, `[..16]?string(64)`,

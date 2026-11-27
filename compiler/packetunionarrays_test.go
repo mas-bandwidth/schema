@@ -9,8 +9,8 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/moo"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/mootable"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/moo"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/mootable"
 )
 
 // packetUnionTargets is every language the release carries; a target missing

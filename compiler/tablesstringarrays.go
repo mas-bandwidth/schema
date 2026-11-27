@@ -8,7 +8,7 @@ package compiler
 import (
 	"fmt"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // refuseTextForms is the named refusal [Compiler.Generate] gives every target

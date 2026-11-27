@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/lobster"
 )
 
 // The three descriptor rows have one verdict under both contracts. Each id in

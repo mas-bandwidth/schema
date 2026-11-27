@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/fixedproof"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 )
 
 // THE BIRTH VALUE OF A COUNTED ARRAY IN C# (unity) (docs/SPEC-TABLES.md

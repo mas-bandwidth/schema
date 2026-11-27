@@ -1,13 +1,13 @@
 // Package publicapi is the acceptance gate on what a user outside this module
 // is promised: a Go module of their own builds the schema CLI by its package
 // path and gets the compiler this repo builds, and a generator written against
-// github.com/mas-bandwidth/schema/v2/compiler and .../ir alone registers and
+// github.com/mas-bandwidth/schema/v3/compiler and .../ir alone registers and
 // emits the same bytes as one computed in-module.
 //
 // Two legs, because the claim has two halves.
 //
 // TestExternalModuleBuildsTheCLI requires this module from a throwaway module
-// and builds github.com/mas-bandwidth/schema/v2/cmd/schema there by its
+// and builds github.com/mas-bandwidth/schema/v3/cmd/schema there by its
 // package path, as go install does for a user; the CLI may import internal/,
 // because it is inside this module. Then both binaries run the full command
 // matrix over both corpora and every emitted file is compared byte for byte.
@@ -37,9 +37,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/compiler"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // the corpora, from this package's directory.
@@ -118,7 +118,7 @@ func run(t *testing.T, binPath string, args ...string) string {
 
 // TestExternalModuleBuildsTheCLI is the acceptance test of the user's
 // promise: a module of the user's own that requires this one builds the CLI by
-// its package path, as `go install github.com/mas-bandwidth/schema/v2/cmd/schema@<ref>`
+// its package path, as `go install github.com/mas-bandwidth/schema/v3/cmd/schema@<ref>`
 // does. cmd/schema is inside this module, so its imports of internal/ are
 // legal there, and its //go:embed files (help/ai.md) come with the module.
 func TestExternalModuleBuildsTheCLI(t *testing.T) {
@@ -135,7 +135,7 @@ func TestExternalModuleBuildsTheCLI(t *testing.T) {
 	if err := os.MkdirAll(clientDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	gomod := fmt.Sprintf("module schemacli\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/schema/v2 v2.0.0\n\nreplace github.com/mas-bandwidth/schema/v2 => %q\n", root)
+	gomod := fmt.Sprintf("module schemacli\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/schema/v3 v3.0.0\n\nreplace github.com/mas-bandwidth/schema/v3 => %q\n", root)
 	if err := os.WriteFile(filepath.Join(clientDir, "go.mod"), []byte(gomod), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -143,7 +143,7 @@ func TestExternalModuleBuildsTheCLI(t *testing.T) {
 	inRepo := filepath.Join(work, "schema-inrepo")
 	external := filepath.Join(work, "schema-external")
 	goBuild(t, filepath.Join(root, "cmd", "schema"), ".", inRepo)
-	goBuild(t, clientDir, "github.com/mas-bandwidth/schema/v2/cmd/schema", external)
+	goBuild(t, clientDir, "github.com/mas-bandwidth/schema/v3/cmd/schema", external)
 
 	// the reporting commands: identical text, including the protocol id and
 	// the projection the id hashes. check is silent on success (its answer is

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/goose/gooserun"
 )
 
 // TestGooseKindHeldEscapeRefuses (R17: the newer reader reads old data, never
