@@ -2041,6 +2041,25 @@ packet-end-dart-negative-control: packet-end-dart
 
 test-dart: packet-end-dart packet-end-dart-negative-control
 
+# THE PACKET-VOID LEG (SPEC §4.8; make/checks/packet-void.mk): payload-free
+# union arms cost exactly their tag bits. The driver answers every case of
+# testdata/wire/packet-void/cases.txt through tools/casegate, on the JIT with
+# --enable-asserts (the writer's contract asserts live) and as a compiled exe.
+build/packet-void/dart/.stamp: bin/schema test/packet-void/Void.schema
+	@rm -rf build/packet-void/dart && mkdir -p build/packet-void/dart
+	./bin/schema generate --lang dart --out build/packet-void/dart $(PACKET_VOID_SCHEMA)
+	@touch $@
+
+.PHONY: packet-void-dart
+packet-void-dart: build/casegate build/packet-void/dart/.stamp
+	$(DART) analyze build/packet-void/dart test/packet-void/dart
+	$(DART) format --set-exit-if-changed --output=none build/packet-void/dart test/packet-void/dart
+	$(call packet_void_gate,dart) $(DART) --enable-asserts test/packet-void/dart/main.dart $(PACKET_VOID_PINS)
+	$(DART) compile exe -o build/packet-void/dart/checker test/packet-void/dart/main.dart >/dev/null
+	$(call packet_void_gate,dart) ./build/packet-void/dart/checker $(PACKET_VOID_PINS)
+
+test-dart: packet-void-dart
+
 # PACKET COMPRESSED FLOATS HOLD THEIR RANGE (docs/SPEC.md §5.1 row 10,
 # docs/PACKET-WIRE-ALGORITHM.md §2.5): the writer checks the value finite and
 # inside [min, max] before quantizing, and the integer clamp after rounding

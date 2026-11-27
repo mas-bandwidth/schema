@@ -1,8 +1,9 @@
 // Tagged unions of type payloads and named payload-free arms (SPEC §4.8),
 // held two ways under both pinned interpreters and mypy --strict.
 //
-// The leg's half of test/packet-void reads and writes its SPEC-calculated
-// wire byte for byte: a void arm spends exactly its tag bits.
+// The leg's driver of test/packet-void answers every case of the family's one
+// case file (testdata/wire/packet-void/cases.txt) against the Go oracle's
+// pins, judged by internal/casegate: a void arm spends exactly its tag bits.
 //
 // A small fixture schema of this test's own (unionOracleSchema) uses the union
 // kind alone and beside the core's kinds (bool, enum, flags, integers, a type,
@@ -22,10 +23,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v3/internal/casegate"
 	"github.com/mas-bandwidth/schema/v3/internal/codegen/golang"
 	"github.com/mas-bandwidth/schema/v3/internal/codegen/python/pyrun"
 	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
@@ -33,37 +36,32 @@ import (
 	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
-// packetVoidPythonFixture returns the Python half of test/packet-void: a
-// schema whose unions use only the kinds the packet core carries, the probe
-// that reads and writes it, and the SPEC-calculated wire it must match.
-func packetVoidPythonFixture(t *testing.T) (schema, probe, goldens string) {
+// loadPacketVoidPython returns the Python leg of test/packet-void: the
+// generated code of the family's one schema, and the inputs its driver reads
+// beside it (main.py, cases.txt and every pin of testdata/wire/packet-void),
+// with the case names and the leg's owed lines internal/casegate judges its
+// answers against.
+func loadPacketVoidPython(t *testing.T) (files map[string][]byte, pkg string, inputs map[string][]byte, cases []string, owed map[string]string) {
 	t.Helper()
-	dir := filepath.Join(repoRoot(t), "test", "packet-void")
-	return filepath.Join(dir, "python", "Python.schema"),
-		filepath.Join(dir, "python", "main.py"),
-		filepath.Join(dir, "python", "goldens.txt")
-}
-
-func loadPacketVoidPython(t *testing.T) (files map[string][]byte, pkg string, probe, goldens []byte) {
-	t.Helper()
-	schema, probePath, goldensPath := packetVoidPythonFixture(t)
-	u := loadPythonUnit(t, schema)
+	root := repoRoot(t)
+	u := loadPythonUnit(t, filepath.Join(root, "test", "packet-void", "Void.schema"))
 	generated, err := Generate(u)
 	if err != nil {
 		t.Fatalf("generate the packet-void fixture: %v", err)
 	}
-	probe, err = os.ReadFile(probePath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	goldens, err = os.ReadFile(goldensPath)
-	if err != nil {
-		t.Fatal(err)
-	}
 	if blocker := rootBlocker(u, "Mixed"); blocker != "" {
 		t.Fatalf("the union root is on the golden harness's skip list, blocked by %s", blocker)
 	}
-	return generated, u.Package, probe, goldens
+	inputs, cases, owed, err = casegate.Inputs(filepath.Join(root, "testdata", "wire", "packet-void"), "python")
+	if err != nil {
+		t.Fatal(err)
+	}
+	probe, err := os.ReadFile(filepath.Join(root, "test", "packet-void", "python", "main.py"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	inputs["main.py"] = probe
+	return generated, u.Package, inputs, cases, owed
 }
 
 // unionOracleSchema is the union kind alone (Action: payload arms between
@@ -545,19 +543,18 @@ func TestPythonPacketUnions(t *testing.T) {
 	}{{"current", pyrun.Run}, {"floor", pyrun.RunFloor}}
 	t.Run("packet-void", func(t *testing.T) {
 		t.Parallel()
-		files, pkg, probe, goldens := loadPacketVoidPython(t)
+		files, pkg, inputs, cases, owed := loadPacketVoidPython(t)
 		for _, run := range interpreters {
 			t.Run(run.name, func(t *testing.T) {
 				t.Parallel()
 				dir := t.TempDir()
 				writeTree(t, dir, files)
-				got := strings.TrimSpace(string(run.fn(t, dir, "main.py", map[string][]byte{
-					"main.py":     probe,
-					"goldens.txt": goldens,
-				})))
-				if got != "ok" {
-					t.Fatalf("packet-void unions under %s:\n%s", run.name, got)
+				got := run.fn(t, dir, "main.py", inputs)
+				red, summary := casegate.Verdict("packet-void-python-"+run.name, "python", 0, got, cases, owed)
+				if len(red) > 0 {
+					t.Fatalf("packet-void unions under %s:\n%s\n%s", run.name, strings.Join(red, "\n"), got)
 				}
+				t.Log(summary)
 				out, err := pyrun.Analyze(t, dir, pkg)
 				if err != nil || !strings.Contains(out, "Success: no issues found") {
 					t.Fatalf("packet-void unions under %s: mypy --strict: %v\n%s", run.name, err, out)
@@ -599,25 +596,36 @@ func TestPythonPacketUnionsNegativeControl(t *testing.T) {
 	t.Parallel()
 	t.Run("void-arm-bit", func(t *testing.T) {
 		t.Parallel()
-		files, pkg, probe, goldens := loadPacketVoidPython(t)
-		module := pkg + "/Python.py"
+		files, pkg, inputs, _, _ := loadPacketVoidPython(t)
+		module := pkg + "/Void.py"
 		text := string(files[module])
-		const anchor = "        if self.type == 2:\n            self.payload._s_write(stream)\n"
-		if strings.Count(text, anchor) != 1 {
-			t.Fatalf("the Mixed writer anchor matched %d times:\n%s", strings.Count(text, anchor), text)
+		// Late has the same payload arm at tag 2, so the anchor is sought
+		// inside the Mixed class alone: from its header to the next class.
+		start := strings.Index(text, "\nclass Mixed:\n")
+		if start < 0 {
+			t.Fatalf("no Mixed class in the generated module:\n%s", text)
 		}
-		const planted = "        if self.type == 1 or self.type == 3:\n" +
+		end := strings.Index(text[start+1:], "\nclass ")
+		if end < 0 {
+			t.Fatalf("no class after Mixed in the generated module:\n%s", text)
+		}
+		end += start + 1
+		class := text[start:end]
+		const anchor = "        if self.type == 2:\n            self.payload._s_write(stream)\n"
+		if strings.Count(class, anchor) != 1 {
+			t.Fatalf("the Mixed writer anchor matched %d times:\n%s", strings.Count(class, anchor), class)
+		}
+		const planted = "        if self.type == 1:\n" +
 			"            _s_ri.value = 1\n" +
 			"            _s_serialize_int(_s_ri, 0, 1)\n"
-		files[module] = []byte(strings.Replace(text, anchor, planted+anchor, 1))
+		files[module] = []byte(text[:start] + strings.Replace(class, anchor, planted+anchor, 1) + text[end:])
 		dir := t.TempDir()
 		writeTree(t, dir, files)
-		out, _, err := pyrun.Try(t, pyrun.Interpreter(t), dir, "main.py", map[string][]byte{
-			"main.py":     probe,
-			"goldens.txt": goldens,
-		})
-		if err == nil || !strings.Contains(out, "FAILED: write mixed-ping") {
-			t.Fatalf("the planted void-arm bit did not go red on the write marker (err %v):\n%s", err, out)
+		out, _, err := pyrun.Try(t, pyrun.Interpreter(t), dir, "main.py", inputs)
+		// The ping tag 01 with the planted bit set above it is 05.
+		const marker = "case mixed-ping FAILED: write 05, pin 01"
+		if err != nil || !slices.Contains(strings.Split(out, "\n"), marker) {
+			t.Fatalf("the planted void-arm bit did not go red on %q (err %v):\n%s", marker, err, out)
 		}
 	})
 	t.Run("unused-tag-read", func(t *testing.T) {
