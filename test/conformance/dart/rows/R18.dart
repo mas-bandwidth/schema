@@ -1,14 +1,20 @@
-// R18 — a clamp that cannot fire is not emitted, and nothing moves.
+// R18 — a check that cannot fire is not emitted, and nothing moves.
 //
-// The law (docs/FIXED-FORM-ALGORITHM.md:950, §5.4): an ordinal whose extent
-// FILLS its storage width — 255 variants in a byte, 65535 in two — has no
-// read-side clamp, because `> extent` against a value of that very width is
-// a comparison no value satisfies. The elided check never clamped, so the
-// counter it would have moved never moved either. The same rule already
-// applies to a ranged scalar whose declared end sits on its width's limit,
-// and to a bits(N) width clamp where N is the storage width. A port that
-// emits the tautology instead is still conforming; this leg drops it, and
-// this test pins the emission as well as the silence.
+// The law (docs/FIXED-FORM-ALGORITHM.md §5.4, "A check that cannot fire is
+// not emitted"): an ordinal whose extent FILLS its storage width — 255
+// variants in a byte, 65535 in two — has no read-side check, because
+// `> extent` against a value of that very width is a comparison no value
+// satisfies. The same rule applies to a ranged scalar whose declared end sits
+// on its width's limit, and to a bits(N) width check where N is the storage
+// width. A port that emits the tautology instead is still conforming; this
+// leg drops it, and this test pins the emission as well as the silence.
+//
+// TODAY'S LAW FOR A CHECK THAT DOES FIRE is STRICT (§4.5, §4.6, §5.3 step 11;
+// the retired-behaviour table, row 16): a ranged scalar, a bits(N), or an
+// ordinal past the WRITER's range or set REFUSES THE WHOLE LOAD as
+// `out_of_range` — nothing is clamped and nothing is counted as clamped — and
+// after the refusal every row handed in holds its declared defaults
+// (SPEC-TABLES §6.5). The controls in part C hold the Dart leg to that.
 //
 // THE CORPUS. tables/examples/Ranges.schema is the law's own scalar data:
 // every integer width four ways — both bounds at the limits (`*_span`),
@@ -19,10 +25,11 @@
 // has no Dart backend emission — make/dart.mk generates only
 // examples/pointers/block/v1/v2/p1/p3 — so no 255-ordinal decode exists to
 // inspect on this leg. The test therefore proves the ordinal half the way
-// the corpus allows: every byte- or half-word-loaded `> N` clamp the
+// the corpus allows: every byte- or half-word-loaded `> N` check the
 // emitter DID write can fire (N strictly below the load width's maximum),
 // the widest corpus enum lands its top variant with no counter moving, and
-// a forged ordinal past the top lands None and counts exactly one.
+// a forged ordinal past the top refuses out_of_range with the row at its
+// declared defaults.
 //
 // Exit 0 green / exit 1 red, one printed line per assertion.
 // Run as: dart run test/conformance/dart/rows/R18.dart
@@ -94,7 +101,7 @@ void main() {
   );
 
   // A span field's load line is `value.xSpan = view.get...(at...);` — no
-  // angle bracket. Any `<` or `>` on a line naming a span field is a clamp
+  // angle bracket. Any `<` or `>` on a line naming a span field is a check
   // the law forbids.
   bool fieldHasComparison(String body, String field) {
     for (final line in body.split('\n')) {
@@ -133,7 +140,7 @@ void main() {
   }
   for (final field in <String>['b32', 'b64']) {
     expect(
-      'emission: $field carries no width clamp',
+      'emission: $field carries no width check',
       widthsBody.isNotEmpty && !fieldHasComparison(widthsBody, field),
       '$field fills the storage its wire kind gives it, '
       'so 2^N - 1 cannot fire',
@@ -141,7 +148,7 @@ void main() {
   }
 
   // The scan is not vacuous: the neighbours one step inside the limits DO
-  // carry exactly their one live end, and the narrow bits widths clamp.
+  // carry exactly their one live end, and the narrow bits widths check.
   for (final probe in <String>[
     'value.i8Low > 126',
     'value.i8High < -127',
@@ -157,14 +164,14 @@ void main() {
     expect(
       'emission: live end still written ($probe)',
       fixed.contains(probe),
-      'the one-sided neighbour of a span field must keep its live clamp',
+      'the one-sided neighbour of a span field must keep its live check',
     );
   }
 
-  // Every byte- or half-word-loaded `> N` clamp can fire: N is strictly
+  // Every byte- or half-word-loaded `> N` check can fire: N is strictly
   // below what the load width holds (255 for a byte, 65535 for two). This
-  // covers the ordinal clamps (`value.grade > 3` over getUint8) and any
-  // byte-loaded ranged clamp alike; a 255-variant enum would need
+  // covers the ordinal checks (`value.grade > 3` over getUint8) and any
+  // byte-loaded ranged check alike; a 255-variant enum would need
   // `> 255` here, which no value satisfies.
   final ordinalClamps = <RegExp>[
     RegExp(
@@ -188,22 +195,22 @@ void main() {
     }
   }
   expect(
-    'emission: a corpus ordinal clamp is seen',
+    'emission: a corpus ordinal check is seen',
     clampCount > 0,
     'no getUint8/16 load followed by `> N` found at all',
   );
   expect(
-    'emission: no emitted byte/half-word clamp is a tautology',
+    'emission: no emitted byte/half-word check is a tautology',
     clampCount > 0 && tautology.isEmpty,
-    tautology.isEmpty ? 'no `> N` clamp seen' : 'cannot fire: $tautology',
+    tautology.isEmpty ? 'no `> N` check seen' : 'cannot fire: $tautology',
   );
   expect(
-    'emission: the corpus enum keeps its live clamp (grade > 3)',
+    'emission: the corpus enum keeps its live check (grade > 3)',
     fixed.contains('value.grade > 3'),
     'Grade has 3 variants in one byte; `> 3` can fire and must stay',
   );
 
-  // ---- B. NOTHING MOVES: storage-limit extremes land exact, clamped == 0 --
+  // ---- B. NOTHING MOVES: storage-limit extremes land exact, no refusal --
   {
     final v = tbd.RangedUnsigned()
       ..u8Span = 255
@@ -237,12 +244,12 @@ void main() {
           back[0].u32Span == 4294967295 &&
           back[0].u64Span == 0xffffffffffffffff &&
           back[0].counts[0] == 0xffffffffffffffff &&
-          r.clamped == 0 &&
-          !r.malformed &&
+          r.unknown == 0 &&
+          r.widened == 0 &&
           r.refused == tbd.TableFixedRefusal.none,
       'n=$n u8Span=${back[0].u8Span} u16Span=${back[0].u16Span} '
       'u32Span=${back[0].u32Span} u64Span=${back[0].u64Span} '
-      'clamped=${r.clamped} refused=${r.refused}',
+      'unknown=${r.unknown} refused=${tbd.TableFixedRefusal.name(r.refused)}',
     );
   }
   {
@@ -296,11 +303,11 @@ void main() {
           back[1].i64Span == 9223372036854775807 &&
           back[0].edges[0] == -32768 &&
           back[0].edges[2] == 32767 &&
-          r.clamped == 0 &&
-          !r.malformed &&
+          r.unknown == 0 &&
+          r.widened == 0 &&
           r.refused == tbd.TableFixedRefusal.none,
       'n=$n i8Span=${back[0].i8Span}/${back[1].i8Span} '
-      'clamped=${r.clamped} refused=${r.refused}',
+      'unknown=${r.unknown} refused=${tbd.TableFixedRefusal.name(r.refused)}',
     );
   }
   {
@@ -337,16 +344,16 @@ void main() {
           back[0].b64 == 0xffffffffffffffff &&
           back[0].b12 == 4095 &&
           back[0].b48 == 281474976710655 &&
-          r.clamped == 0 &&
-          !r.malformed &&
+          r.unknown == 0 &&
+          r.widened == 0 &&
           r.refused == tbd.TableFixedRefusal.none,
       'n=$n b32=${back[0].b32} b64=${back[0].b64} '
-      'clamped=${r.clamped} refused=${r.refused}',
+      'unknown=${r.unknown} refused=${tbd.TableFixedRefusal.name(r.refused)}',
     );
   }
   {
     // The widest corpus enum's top variant: Difficulty.hard = 3 of 3 in one
-    // byte. The `> 3` clamp exists but cannot fire on a legal value.
+    // byte. The `> 3` check exists but cannot fire on a legal value.
     final v = tbd.GlobalSettings()..difficulty = Difficulty.hard;
     final file = Uint8List(pack.globalSettingsFixedMeasure(1));
     expect(
@@ -369,24 +376,27 @@ void main() {
       'enum top: the top variant lands, nothing moves',
       n == 1 &&
           back[0].difficulty == Difficulty.hard &&
-          r.clamped == 0 &&
-          !r.malformed &&
+          r.unknown == 0 &&
+          r.widened == 0 &&
           r.refused == tbd.TableFixedRefusal.none,
       'n=$n difficulty=${back[0].difficulty} '
-      'clamped=${r.clamped} refused=${r.refused}',
+      'unknown=${r.unknown} refused=${tbd.TableFixedRefusal.name(r.refused)}',
     );
   }
 
-  // ---- C. THE PASS RUNS AT ALL: one step past a live end clamps and ----
-  // counts exactly one. Each forgery pokes one vector byte behind an
-  // untouched hash and layout, so the read stays on the identity plan.
+  // ---- C. THE CHECK RUNS AT ALL: one step past a live end REFUSES the ----
+  // whole load as out_of_range (§4.5, §4.6, §5.3 step 11): -1, no counter
+  // moved, and the row handed in — which holds a NON-default value in the
+  // forged field — back at its declared defaults, never the clamped value.
+  // Each forgery pokes one vector byte behind an untouched hash and layout,
+  // so the read stays on the identity plan.
   {
     final v = tbd.RangedUnsigned();
     final file = Uint8List(rng.rangedUnsignedFixedMeasure(1));
     rng.rangedUnsignedFixedSave(<tbd.RangedUnsigned>[v], 1, file);
     final bodyAt = rng.rangedUnsignedFixedHeaderBytes + 8;
     file[bodyAt + 1] = 255; // u8Low, one past its max of 254
-    final back = <tbd.RangedUnsigned>[tbd.RangedUnsigned()];
+    final back = <tbd.RangedUnsigned>[tbd.RangedUnsigned()..u8Low = 100];
     final r = tbd.TableFixedReport();
     final n = rng.rangedUnsignedFixedLoad(
       back,
@@ -396,10 +406,17 @@ void main() {
       rng.rangedUnsignedFixedNewPlan(),
       r,
     );
+    final want = tbd.RangedUnsigned().u8Low;
     expect(
-      'control: u8Low=255 clamps to 254 and counts one',
-      n == 1 && back[0].u8Low == 254 && r.clamped == 1,
-      'n=$n u8Low=${back[0].u8Low} clamped=${r.clamped}',
+      'control: u8Low=255 refuses out_of_range, row at its defaults',
+      n == -1 &&
+          r.refused == tbd.TableFixedRefusal.outOfRange &&
+          r.unknown == 0 &&
+          r.widened == 0 &&
+          back[0].u8Low == want &&
+          back[0].u8Low != 254,
+      'n=$n refused=${tbd.TableFixedRefusal.name(r.refused)} '
+      'u8Low=${back[0].u8Low} (default $want, clamp would be 254)',
     );
   }
   {
@@ -408,7 +425,7 @@ void main() {
     rng.rangedSignedFixedSave(<tbd.RangedSigned>[v], 1, file);
     final bodyAt = rng.rangedSignedFixedHeaderBytes + 8;
     ByteData.sublistView(file).setInt8(bodyAt + 2, -128); // i8High < -127
-    final back = <tbd.RangedSigned>[tbd.RangedSigned()];
+    final back = <tbd.RangedSigned>[tbd.RangedSigned()..i8High = 50];
     final r = tbd.TableFixedReport();
     final n = rng.rangedSignedFixedLoad(
       back,
@@ -418,10 +435,17 @@ void main() {
       rng.rangedSignedFixedNewPlan(),
       r,
     );
+    final want = tbd.RangedSigned().i8High;
     expect(
-      'control: i8High=-128 clamps to -127 and counts one',
-      n == 1 && back[0].i8High == -127 && r.clamped == 1,
-      'n=$n i8High=${back[0].i8High} clamped=${r.clamped}',
+      'control: i8High=-128 refuses out_of_range, row at its defaults',
+      n == -1 &&
+          r.refused == tbd.TableFixedRefusal.outOfRange &&
+          r.unknown == 0 &&
+          r.widened == 0 &&
+          back[0].i8High == want &&
+          back[0].i8High != -127,
+      'n=$n refused=${tbd.TableFixedRefusal.name(r.refused)} '
+      'i8High=${back[0].i8High} (default $want, clamp would be -127)',
     );
   }
   {
@@ -432,7 +456,7 @@ void main() {
     ByteData.sublistView(
       file,
     ).setUint32(bodyAt + 20, 4096, Endian.little); // b12, one past 4095
-    final back = <tbd.RangedWidths>[tbd.RangedWidths()];
+    final back = <tbd.RangedWidths>[tbd.RangedWidths()..b12 = 77];
     final r = tbd.TableFixedReport();
     final n = rng.rangedWidthsFixedLoad(
       back,
@@ -442,21 +466,30 @@ void main() {
       rng.rangedWidthsFixedNewPlan(),
       r,
     );
+    final want = tbd.RangedWidths().b12;
     expect(
-      'control: b12=4096 clamps to 4095 and counts one',
-      n == 1 && back[0].b12 == 4095 && r.clamped == 1,
-      'n=$n b12=${back[0].b12} clamped=${r.clamped}',
+      'control: b12=4096 refuses out_of_range, row at its defaults',
+      n == -1 &&
+          r.refused == tbd.TableFixedRefusal.outOfRange &&
+          r.unknown == 0 &&
+          r.widened == 0 &&
+          back[0].b12 == want &&
+          back[0].b12 != 4095,
+      'n=$n refused=${tbd.TableFixedRefusal.name(r.refused)} '
+      'b12=${back[0].b12} (default $want, clamp would be 4095)',
     );
   }
   {
-    // A forged ordinal past the top variant lands None and counts one
-    // (§5.4: the bounds pass counts a forged ordinal remapped to None).
+    // A forged ordinal past the top variant refuses out_of_range (§4.6): it
+    // is neither landed as None nor counted.
     final v = tbd.GlobalSettings();
     final file = Uint8List(pack.globalSettingsFixedMeasure(1));
     pack.globalSettingsFixedSave(<tbd.GlobalSettings>[v], 1, file);
     final bodyAt = pack.globalSettingsFixedHeaderBytes + 8;
     file[bodyAt + 4] = 9; // difficulty, past the top variant 3
-    final back = <tbd.GlobalSettings>[tbd.GlobalSettings()];
+    final back = <tbd.GlobalSettings>[
+      tbd.GlobalSettings()..difficulty = Difficulty.hard,
+    ];
     final r = tbd.TableFixedReport();
     final n = pack.globalSettingsFixedLoad(
       back,
@@ -466,10 +499,18 @@ void main() {
       pack.globalSettingsFixedNewPlan(),
       r,
     );
+    final want = tbd.GlobalSettings().difficulty;
     expect(
-      'control: forged ordinal 9 lands None and counts one',
-      n == 1 && back[0].difficulty == Difficulty.none && r.clamped == 1,
-      'n=$n difficulty=${back[0].difficulty} clamped=${r.clamped}',
+      'control: forged ordinal 9 refuses out_of_range, row at its defaults',
+      n == -1 &&
+          r.refused == tbd.TableFixedRefusal.outOfRange &&
+          r.unknown == 0 &&
+          r.widened == 0 &&
+          back[0].difficulty == want &&
+          back[0].difficulty != Difficulty.none,
+      'n=$n refused=${tbd.TableFixedRefusal.name(r.refused)} '
+      'difficulty=${back[0].difficulty} (default $want, the retired '
+      'remap would be None)',
     );
   }
 

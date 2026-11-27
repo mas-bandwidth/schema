@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/python/pyrun"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -24,6 +24,7 @@ func TestPythonSurfaceCLI(t *testing.T) {
 	if !strings.Contains(string(data), "Root.block = None") {
 		t.Fatal("CLI did not select wire surface")
 	}
+	// testinputs:none — "python" is the --lang value; the child is the CLI this package builds
 	cmd := exec.Command(bin, "generate", "--lang", "python", "--surface", "bad", "--out", out, dir)
 	result, err := cmd.CombinedOutput()
 	if err == nil || !strings.Contains(string(result), "unknown surface") {
@@ -33,6 +34,7 @@ func TestPythonSurfaceCLI(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(forms, "Probe.schema"), []byte("package probe\ntable Root | forms = \"wire,json\" { value int32 }\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
+	// testinputs:none — "python" is the --lang value; the child is the CLI this package builds
 	cmd = exec.Command(bin, "generate", "--lang", "python", "--surface", "wire,cook", "--out", out, forms)
 	result, err = cmd.CombinedOutput()
 	if err == nil || !strings.Contains(string(result), "Root") || !strings.Contains(string(result), "cook") || !strings.Contains(string(result), "wire,json") {

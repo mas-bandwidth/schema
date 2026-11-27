@@ -16,7 +16,12 @@
 #           the single-read corpus migration (harness/migrate_fixed.go) no
 #           `report` row reaches the variable walk's unknown-field skip
 #           (measured: under this sabotage `report` stays 127/127), so
-#           `report` is not on this control's list.
+#           `report` is not on this control's list. `read-into` turns red
+#           too: its ri_retain row's lawful read is RT2's wire through the
+#           RT1 root (testdata/wire/tables/retain_rt2.bin), whose fields RT1
+#           does not declare, so the sabotaged load refuses the lawful read
+#           (measured on e83c60259f: the tblrt1 read-into unit stops on its
+#           fresh-read assertion and the surface's driver exits 1).
 #   walk    json.lobster's field-key match never matches the first declared
 #           field: json-read, json-hostile and cook-write (whose input recipes
 #           use JSON) turn red. Json-write and wire stay green, locating the
@@ -85,9 +90,18 @@ write-refusal)
     ;;
 write-refusal-fixed)
     # the emitter's checked body no longer refuses a non-finite float: the
-    # finite test is emitted behind `false and`
+    # finite test is emitted behind `false and`. One expression per width:
+    # `\|` is a GNU sed extension that BSD sed (macOS) reads as a literal, so
+    # an alternation here patched nothing on the macOS fleet.
     source=internal/codegen/lobstertable/fixedevolve.go
-    sed -e '/return false\\n", ind, expr, ind)$/ s/if not schema_rt\.finite_f\(32\|64\)(%s):/if false and not schema_rt.finite_f\1(%s):/' "$source" > "$out/runtime.lobster"
+    sed -e '/return false\\n", ind, expr, ind)$/ s/if not schema_rt\.finite_f32(%s):/if false and not schema_rt.finite_f32(%s):/' \
+        -e '/return false\\n", ind, expr, ind)$/ s/if not schema_rt\.finite_f64(%s):/if false and not schema_rt.finite_f64(%s):/' "$source" > "$out/runtime.lobster"
+    # both widths, or the control tests half the rule
+    n=$(grep -c 'if false and not schema_rt\.finite_f' "$out/runtime.lobster" || true)
+    if [ "$n" != 2 ]; then
+        echo "NEGATIVE CONTROL: the $mode sabotage patched $n finite checks in $source, want exactly 2 (f32, f64)" >&2
+        exit 1
+    fi
     ;;
 write-refusal-message)
     # the message writer's scalar admission check is taken out
@@ -127,7 +141,7 @@ if build/conformance-harness run --drivers "$out/drivers.txt" --work "$out/work"
 fi
 red=$(grep -oE '^ *lobster / [a-z-]+' "$out/log" | sed 's/^ *lobster \/ //' | sort -u | tr '\n' ' ')
 case "$mode" in
-report) want="framing report retain retain-save " ; green="wire json-read cook-write" ;;
+report) want="framing read-into report retain retain-save " ; green="wire json-read cook-write" ;;
 framing) want="framing " ; green="wire report retain" ;;
 cycle)  want="framing " ; green="wire report retain" ;;
 walk)   want="cook-write json-hostile json-read " ; green="wire json-write" ;;

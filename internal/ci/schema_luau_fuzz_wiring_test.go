@@ -120,7 +120,7 @@ func TestSchemaLuauHostileCorpusAndWireFuzzWiring(t *testing.T) {
 		"make schema-luau-runs-hostile-corpus-negative-control")
 	// NIGHTLY AND DISPATCH ONLY (the owner, 2026-11-15: "I want everything that is
 	// not light moved to nightly test now." "no exceptions."): no push and no
-	// pull request starts the corpus workflow; those run only ci-fast.yml.
+	// pull request starts the corpus workflow; those run only ci-fast-nightly.yml.
 	for _, p := range nightlyOnlyTriggerProblems(workflow) {
 		t.Errorf("schema-luau-runs-hostile-corpus.yml: %s", p)
 	}

@@ -5,6 +5,8 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v3/internal/testinputs"
 )
 
 // TestRegistryCoversEveryTarget holds the language registry's lists (Makefile,
@@ -56,6 +58,7 @@ func registryComplete(t *testing.T, args ...string) (string, error) {
 	if _, err := exec.LookPath("make"); err != nil {
 		t.Skipf("this gate reads the make registry: %v", err)
 	}
+	testinputs.Make(t)
 	cmd := exec.Command("make", append([]string{"--no-print-directory", "-s", "registry-complete"}, args...)...)
 	cmd.Dir = repoRootDir(t)
 	cmd.Env = append(os.Environ(), "SCHEMA_SKIP_LEGS=")
@@ -70,6 +73,7 @@ func registryNA(t *testing.T) string {
 	if _, err := exec.LookPath("make"); err != nil {
 		t.Skipf("this gate reads the make registry: %v", err)
 	}
+	testinputs.Make(t)
 	cmd := exec.Command("make", "--no-print-directory", "-s", "registry-na")
 	cmd.Dir = repoRootDir(t)
 	cmd.Env = append(os.Environ(), "SCHEMA_SKIP_LEGS=")

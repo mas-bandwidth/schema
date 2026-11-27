@@ -33,58 +33,58 @@ pub const ARMS_AGREE_MAX_BITS: u64 = 24;
 pub const ARMS_AGREE_MAX_BYTES: usize = 8;
 
 #[inline(always)]
-pub fn write_arms_agree(stream: &mut WriteStream<'_>, value: &ArmsAgree) -> Result {
-    debug_assert!(value.lead < 1 << 5, "lead above the bits(5) wire width");
-    let f0: u64 = u64::from(value.lead);
-    let f1: u64 = u64::from(value.flag);
+pub fn write_arms_agree(schema_stream: &mut WriteStream<'_>, schema_value: &ArmsAgree) -> Result {
+    debug_assert!(schema_value.lead < 1 << 5, "lead above the bits(5) wire width");
+    let schema_f0: u64 = u64::from(schema_value.lead);
+    let schema_f1: u64 = u64::from(schema_value.flag);
     // word 0, 6 bits: lead[0..5], flag[0..1]
-    stream.serialize_bits(&mut ((f0 | (f1 << 5)) as u32), 6)?;
-    if value.flag {
-        debug_assert!(value.a < 1 << 11, "a above the bits(11) wire width");
+    schema_stream.serialize_bits(&mut ((schema_f0 | (schema_f1 << 5)) as u32), 6)?;
+    if schema_value.flag {
+        debug_assert!(schema_value.a < 1 << 11, "a above the bits(11) wire width");
         {
-            let mut raw_value = value.a;
-            stream.serialize_bits(&mut raw_value, 11)?;
+            let mut schema_raw_value = schema_value.a;
+            schema_stream.serialize_bits(&mut schema_raw_value, 11)?;
         }
     } else {
-        debug_assert!(value.b < 1 << 11, "b above the bits(11) wire width");
+        debug_assert!(schema_value.b < 1 << 11, "b above the bits(11) wire width");
         {
-            let mut raw_value = value.b;
-            stream.serialize_bits(&mut raw_value, 11)?;
+            let mut schema_raw_value = schema_value.b;
+            schema_stream.serialize_bits(&mut schema_raw_value, 11)?;
         }
     }
-    debug_assert!(value.tail < 1 << 7, "tail above the bits(7) wire width");
+    debug_assert!(schema_value.tail < 1 << 7, "tail above the bits(7) wire width");
     {
-        let mut raw_value = value.tail;
-        stream.serialize_bits(&mut raw_value, 7)?;
+        let mut schema_raw_value = schema_value.tail;
+        schema_stream.serialize_bits(&mut schema_raw_value, 7)?;
     }
     Ok(())
 }
 
 #[inline]
-pub fn read_arms_agree(stream: &mut ReadStream<'_>, value: &mut ArmsAgree) -> Result {
-    read_arms_agree_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_arms_agree(schema_stream: &mut ReadStream<'_>, schema_value: &mut ArmsAgree) -> Result {
+    read_arms_agree_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[inline]
-pub(crate) fn read_arms_agree_body(stream: &mut ReadStream<'_>, value: &mut ArmsAgree) -> Result {
-    let mut c: u32 = 0;
+pub(crate) fn read_arms_agree_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut ArmsAgree) -> Result {
+    let mut schema_c: u32 = 0;
     // word 0, 6 bits: lead[0..5], flag[0..1]
-    stream.serialize_bits(&mut c, 6)?;
-    let c0 = u64::from(c);
-    let v0: u64 = c0 & 0x1f;
-    value.lead = v0 as u32;
-    let v1: u64 = (c0 >> 5) & 0x1;
-    value.flag = v1 != 0;
-    if value.flag {
-        stream.serialize_bits(&mut value.a, 11)?;
-        value.b = 0;
+    schema_stream.serialize_bits(&mut schema_c, 6)?;
+    let schema_c0 = u64::from(schema_c);
+    let schema_v0: u64 = schema_c0 & 0x1f;
+    schema_value.lead = schema_v0 as u32;
+    let schema_v1: u64 = (schema_c0 >> 5) & 0x1;
+    schema_value.flag = schema_v1 != 0;
+    if schema_value.flag {
+        schema_stream.serialize_bits(&mut schema_value.a, 11)?;
+        schema_value.b = 0;
     } else {
-        stream.serialize_bits(&mut value.b, 11)?;
-        value.a = 0;
+        schema_stream.serialize_bits(&mut schema_value.b, 11)?;
+        schema_value.a = 0;
     }
-    stream.serialize_bits(&mut value.tail, 7)?;
+    schema_stream.serialize_bits(&mut schema_value.tail, 7)?;
     Ok(())
 }
 
@@ -113,58 +113,58 @@ pub const ARMS_DISAGREE_MAX_BITS: u64 = 24;
 pub const ARMS_DISAGREE_MAX_BYTES: usize = 8;
 
 #[inline(always)]
-pub fn write_arms_disagree(stream: &mut WriteStream<'_>, value: &ArmsDisagree) -> Result {
-    debug_assert!(value.lead < 1 << 5, "lead above the bits(5) wire width");
-    let f0: u64 = u64::from(value.lead);
-    let f1: u64 = u64::from(value.flag);
+pub fn write_arms_disagree(schema_stream: &mut WriteStream<'_>, schema_value: &ArmsDisagree) -> Result {
+    debug_assert!(schema_value.lead < 1 << 5, "lead above the bits(5) wire width");
+    let schema_f0: u64 = u64::from(schema_value.lead);
+    let schema_f1: u64 = u64::from(schema_value.flag);
     // word 0, 6 bits: lead[0..5], flag[0..1]
-    stream.serialize_bits(&mut ((f0 | (f1 << 5)) as u32), 6)?;
-    if value.flag {
-        debug_assert!(value.a < 1 << 11, "a above the bits(11) wire width");
+    schema_stream.serialize_bits(&mut ((schema_f0 | (schema_f1 << 5)) as u32), 6)?;
+    if schema_value.flag {
+        debug_assert!(schema_value.a < 1 << 11, "a above the bits(11) wire width");
         {
-            let mut raw_value = value.a;
-            stream.serialize_bits(&mut raw_value, 11)?;
+            let mut schema_raw_value = schema_value.a;
+            schema_stream.serialize_bits(&mut schema_raw_value, 11)?;
         }
     } else {
-        debug_assert!(value.b < 1 << 3, "b above the bits(3) wire width");
+        debug_assert!(schema_value.b < 1 << 3, "b above the bits(3) wire width");
         {
-            let mut raw_value = value.b;
-            stream.serialize_bits(&mut raw_value, 3)?;
+            let mut schema_raw_value = schema_value.b;
+            schema_stream.serialize_bits(&mut schema_raw_value, 3)?;
         }
     }
-    debug_assert!(value.tail < 1 << 7, "tail above the bits(7) wire width");
+    debug_assert!(schema_value.tail < 1 << 7, "tail above the bits(7) wire width");
     {
-        let mut raw_value = value.tail;
-        stream.serialize_bits(&mut raw_value, 7)?;
+        let mut schema_raw_value = schema_value.tail;
+        schema_stream.serialize_bits(&mut schema_raw_value, 7)?;
     }
     Ok(())
 }
 
 #[inline]
-pub fn read_arms_disagree(stream: &mut ReadStream<'_>, value: &mut ArmsDisagree) -> Result {
-    read_arms_disagree_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_arms_disagree(schema_stream: &mut ReadStream<'_>, schema_value: &mut ArmsDisagree) -> Result {
+    read_arms_disagree_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[inline]
-pub(crate) fn read_arms_disagree_body(stream: &mut ReadStream<'_>, value: &mut ArmsDisagree) -> Result {
-    let mut c: u32 = 0;
+pub(crate) fn read_arms_disagree_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut ArmsDisagree) -> Result {
+    let mut schema_c: u32 = 0;
     // word 0, 6 bits: lead[0..5], flag[0..1]
-    stream.serialize_bits(&mut c, 6)?;
-    let c0 = u64::from(c);
-    let v0: u64 = c0 & 0x1f;
-    value.lead = v0 as u32;
-    let v1: u64 = (c0 >> 5) & 0x1;
-    value.flag = v1 != 0;
-    if value.flag {
-        stream.serialize_bits(&mut value.a, 11)?;
-        value.b = 0;
+    schema_stream.serialize_bits(&mut schema_c, 6)?;
+    let schema_c0 = u64::from(schema_c);
+    let schema_v0: u64 = schema_c0 & 0x1f;
+    schema_value.lead = schema_v0 as u32;
+    let schema_v1: u64 = (schema_c0 >> 5) & 0x1;
+    schema_value.flag = schema_v1 != 0;
+    if schema_value.flag {
+        schema_stream.serialize_bits(&mut schema_value.a, 11)?;
+        schema_value.b = 0;
     } else {
-        stream.serialize_bits(&mut value.b, 3)?;
-        value.a = 0;
+        schema_stream.serialize_bits(&mut schema_value.b, 3)?;
+        schema_value.a = 0;
     }
-    stream.serialize_bits(&mut value.tail, 7)?;
+    schema_stream.serialize_bits(&mut schema_value.tail, 7)?;
     Ok(())
 }
 
@@ -189,50 +189,50 @@ pub const ARM_EMPTY_MAX_BITS: u64 = 32;
 pub const ARM_EMPTY_MAX_BYTES: usize = 8;
 
 #[inline(always)]
-pub fn write_arm_empty(stream: &mut WriteStream<'_>, value: &ArmEmpty) -> Result {
-    debug_assert!(value.lead < 1 << 5, "lead above the bits(5) wire width");
-    let f0: u64 = u64::from(value.lead);
-    let f1: u64 = u64::from(value.flag);
+pub fn write_arm_empty(schema_stream: &mut WriteStream<'_>, schema_value: &ArmEmpty) -> Result {
+    debug_assert!(schema_value.lead < 1 << 5, "lead above the bits(5) wire width");
+    let schema_f0: u64 = u64::from(schema_value.lead);
+    let schema_f1: u64 = u64::from(schema_value.flag);
     // word 0, 6 bits: lead[0..5], flag[0..1]
-    stream.serialize_bits(&mut ((f0 | (f1 << 5)) as u32), 6)?;
-    if value.flag {
-        debug_assert!(value.a < 1 << 19, "a above the bits(19) wire width");
+    schema_stream.serialize_bits(&mut ((schema_f0 | (schema_f1 << 5)) as u32), 6)?;
+    if schema_value.flag {
+        debug_assert!(schema_value.a < 1 << 19, "a above the bits(19) wire width");
         {
-            let mut raw_value = value.a;
-            stream.serialize_bits(&mut raw_value, 19)?;
+            let mut schema_raw_value = schema_value.a;
+            schema_stream.serialize_bits(&mut schema_raw_value, 19)?;
         }
     }
-    debug_assert!(value.tail < 1 << 7, "tail above the bits(7) wire width");
+    debug_assert!(schema_value.tail < 1 << 7, "tail above the bits(7) wire width");
     {
-        let mut raw_value = value.tail;
-        stream.serialize_bits(&mut raw_value, 7)?;
+        let mut schema_raw_value = schema_value.tail;
+        schema_stream.serialize_bits(&mut schema_raw_value, 7)?;
     }
     Ok(())
 }
 
 #[inline]
-pub fn read_arm_empty(stream: &mut ReadStream<'_>, value: &mut ArmEmpty) -> Result {
-    read_arm_empty_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_arm_empty(schema_stream: &mut ReadStream<'_>, schema_value: &mut ArmEmpty) -> Result {
+    read_arm_empty_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[inline]
-pub(crate) fn read_arm_empty_body(stream: &mut ReadStream<'_>, value: &mut ArmEmpty) -> Result {
-    let mut c: u32 = 0;
+pub(crate) fn read_arm_empty_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut ArmEmpty) -> Result {
+    let mut schema_c: u32 = 0;
     // word 0, 6 bits: lead[0..5], flag[0..1]
-    stream.serialize_bits(&mut c, 6)?;
-    let c0 = u64::from(c);
-    let v0: u64 = c0 & 0x1f;
-    value.lead = v0 as u32;
-    let v1: u64 = (c0 >> 5) & 0x1;
-    value.flag = v1 != 0;
-    if value.flag {
-        stream.serialize_bits(&mut value.a, 19)?;
+    schema_stream.serialize_bits(&mut schema_c, 6)?;
+    let schema_c0 = u64::from(schema_c);
+    let schema_v0: u64 = schema_c0 & 0x1f;
+    schema_value.lead = schema_v0 as u32;
+    let schema_v1: u64 = (schema_c0 >> 5) & 0x1;
+    schema_value.flag = schema_v1 != 0;
+    if schema_value.flag {
+        schema_stream.serialize_bits(&mut schema_value.a, 19)?;
     } else {
-        value.a = 0;
+        schema_value.a = 0;
     }
-    stream.serialize_bits(&mut value.tail, 7)?;
+    schema_stream.serialize_bits(&mut schema_value.tail, 7)?;
     Ok(())
 }
 
@@ -269,79 +269,79 @@ pub const ARMS_NESTED_MAX_BITS: u64 = 40;
 pub const ARMS_NESTED_MAX_BYTES: usize = 8;
 
 #[inline(always)]
-pub fn write_arms_nested(stream: &mut WriteStream<'_>, value: &ArmsNested) -> Result {
-    debug_assert!(value.lead < 1 << 3, "lead above the bits(3) wire width");
-    let f0: u64 = u64::from(value.lead);
-    let f1: u64 = u64::from(value.outer);
+pub fn write_arms_nested(schema_stream: &mut WriteStream<'_>, schema_value: &ArmsNested) -> Result {
+    debug_assert!(schema_value.lead < 1 << 3, "lead above the bits(3) wire width");
+    let schema_f0: u64 = u64::from(schema_value.lead);
+    let schema_f1: u64 = u64::from(schema_value.outer);
     // word 0, 4 bits: lead[0..3], outer[0..1]
-    stream.serialize_bits(&mut ((f0 | (f1 << 3)) as u32), 4)?;
-    if value.outer {
+    schema_stream.serialize_bits(&mut ((schema_f0 | (schema_f1 << 3)) as u32), 4)?;
+    if schema_value.outer {
         {
-            let mut bool_value = value.inner;
-            stream.serialize_bool(&mut bool_value)?;
+            let mut schema_bool_value = schema_value.inner;
+            schema_stream.serialize_bool(&mut schema_bool_value)?;
         }
-        if value.inner {
-            debug_assert!(value.x < 1 << 29, "x above the bits(29) wire width");
+        if schema_value.inner {
+            debug_assert!(schema_value.x < 1 << 29, "x above the bits(29) wire width");
             {
-                let mut raw_value = value.x;
-                stream.serialize_bits(&mut raw_value, 29)?;
+                let mut schema_raw_value = schema_value.x;
+                schema_stream.serialize_bits(&mut schema_raw_value, 29)?;
             }
         } else {
-            debug_assert!(value.y < 1 << 5, "y above the bits(5) wire width");
+            debug_assert!(schema_value.y < 1 << 5, "y above the bits(5) wire width");
             {
-                let mut raw_value = value.y;
-                stream.serialize_bits(&mut raw_value, 5)?;
+                let mut schema_raw_value = schema_value.y;
+                schema_stream.serialize_bits(&mut schema_raw_value, 5)?;
             }
         }
     } else {
-        debug_assert!(value.z < 1 << 13, "z above the bits(13) wire width");
+        debug_assert!(schema_value.z < 1 << 13, "z above the bits(13) wire width");
         {
-            let mut raw_value = value.z;
-            stream.serialize_bits(&mut raw_value, 13)?;
+            let mut schema_raw_value = schema_value.z;
+            schema_stream.serialize_bits(&mut schema_raw_value, 13)?;
         }
     }
-    debug_assert!(value.tail < 1 << 6, "tail above the bits(6) wire width");
+    debug_assert!(schema_value.tail < 1 << 6, "tail above the bits(6) wire width");
     {
-        let mut raw_value = value.tail;
-        stream.serialize_bits(&mut raw_value, 6)?;
+        let mut schema_raw_value = schema_value.tail;
+        schema_stream.serialize_bits(&mut schema_raw_value, 6)?;
     }
     Ok(())
 }
 
 #[inline]
-pub fn read_arms_nested(stream: &mut ReadStream<'_>, value: &mut ArmsNested) -> Result {
-    read_arms_nested_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_arms_nested(schema_stream: &mut ReadStream<'_>, schema_value: &mut ArmsNested) -> Result {
+    read_arms_nested_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[inline]
-pub(crate) fn read_arms_nested_body(stream: &mut ReadStream<'_>, value: &mut ArmsNested) -> Result {
-    let mut c: u32 = 0;
+pub(crate) fn read_arms_nested_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut ArmsNested) -> Result {
+    let mut schema_c: u32 = 0;
     // word 0, 4 bits: lead[0..3], outer[0..1]
-    stream.serialize_bits(&mut c, 4)?;
-    let c0 = u64::from(c);
-    let v0: u64 = c0 & 0x7;
-    value.lead = v0 as u32;
-    let v1: u64 = (c0 >> 3) & 0x1;
-    value.outer = v1 != 0;
-    if value.outer {
-        stream.serialize_bool(&mut value.inner)?;
-        if value.inner {
-            stream.serialize_bits(&mut value.x, 29)?;
-            value.y = 0;
+    schema_stream.serialize_bits(&mut schema_c, 4)?;
+    let schema_c0 = u64::from(schema_c);
+    let schema_v0: u64 = schema_c0 & 0x7;
+    schema_value.lead = schema_v0 as u32;
+    let schema_v1: u64 = (schema_c0 >> 3) & 0x1;
+    schema_value.outer = schema_v1 != 0;
+    if schema_value.outer {
+        schema_stream.serialize_bool(&mut schema_value.inner)?;
+        if schema_value.inner {
+            schema_stream.serialize_bits(&mut schema_value.x, 29)?;
+            schema_value.y = 0;
         } else {
-            stream.serialize_bits(&mut value.y, 5)?;
-            value.x = 0;
+            schema_stream.serialize_bits(&mut schema_value.y, 5)?;
+            schema_value.x = 0;
         }
-        value.z = 0;
+        schema_value.z = 0;
     } else {
-        stream.serialize_bits(&mut value.z, 13)?;
-        value.inner = false;
-        value.x = 0;
-        value.y = 0;
+        schema_stream.serialize_bits(&mut schema_value.z, 13)?;
+        schema_value.inner = false;
+        schema_value.x = 0;
+        schema_value.y = 0;
     }
-    stream.serialize_bits(&mut value.tail, 6)?;
+    schema_stream.serialize_bits(&mut schema_value.tail, 6)?;
     Ok(())
 }
 
@@ -371,72 +371,72 @@ pub const ARM_ALIGN_MAX_BITS: u64 = 55;
 pub const ARM_ALIGN_MAX_BYTES: usize = 8;
 
 #[inline(always)]
-pub fn write_arm_align(stream: &mut WriteStream<'_>, value: &ArmAlign) -> Result {
-    debug_assert!(value.lead < 1 << 5, "lead above the bits(5) wire width");
-    let f0: u64 = u64::from(value.lead);
-    let f1: u64 = u64::from(value.flag);
+pub fn write_arm_align(schema_stream: &mut WriteStream<'_>, schema_value: &ArmAlign) -> Result {
+    debug_assert!(schema_value.lead < 1 << 5, "lead above the bits(5) wire width");
+    let schema_f0: u64 = u64::from(schema_value.lead);
+    let schema_f1: u64 = u64::from(schema_value.flag);
     // word 0, 6 bits: lead[0..5], flag[0..1]
-    stream.serialize_bits(&mut ((f0 | (f1 << 5)) as u32), 6)?;
-    if value.flag {
-        debug_assert!(value.s_length >= 0 && value.s_length <= 4, "s_length out of range [0, 4]");
-        debug_assert!(!value.s[..value.s_length as usize].contains(&0), "s holds a zero byte");
-        debug_assert!(std::str::from_utf8(&value.s[..value.s_length as usize]).is_ok(), "s is not well-formed UTF-8");
+    schema_stream.serialize_bits(&mut ((schema_f0 | (schema_f1 << 5)) as u32), 6)?;
+    if schema_value.flag {
+        debug_assert!(schema_value.s_length >= 0 && schema_value.s_length <= 4, "s_length out of range [0, 4]");
+        debug_assert!(!schema_value.s[..schema_value.s_length as usize].contains(&0), "s holds a zero byte");
+        debug_assert!(std::str::from_utf8(&schema_value.s[..schema_value.s_length as usize]).is_ok(), "s is not well-formed UTF-8");
         {
-            let mut offset_value = value.s_length as u32;
-            stream.serialize_bits(&mut offset_value, 3)?; // the length guards the slice (§6.3)
+            let mut schema_offset_value = schema_value.s_length as u32;
+            schema_stream.serialize_bits(&mut schema_offset_value, 3)?; // the length guards the slice (§6.3)
         }
-        stream.write_bytes(&value.s[..value.s_length as usize]); // borrowed in place: the write side never mutates (infallible: returns () in serialize.rs 2.0.0)
+        schema_stream.write_bytes(&schema_value.s[..schema_value.s_length as usize]); // borrowed in place: the write side never mutates (infallible: returns () in serialize.rs 2.0.0)
     } else {
-        debug_assert!(value.b < 1 << 10, "b above the bits(10) wire width");
+        debug_assert!(schema_value.b < 1 << 10, "b above the bits(10) wire width");
         {
-            let mut raw_value = value.b;
-            stream.serialize_bits(&mut raw_value, 10)?;
+            let mut schema_raw_value = schema_value.b;
+            schema_stream.serialize_bits(&mut schema_raw_value, 10)?;
         }
     }
-    debug_assert!(value.tail < 1 << 7, "tail above the bits(7) wire width");
+    debug_assert!(schema_value.tail < 1 << 7, "tail above the bits(7) wire width");
     {
-        let mut raw_value = value.tail;
-        stream.serialize_bits(&mut raw_value, 7)?;
+        let mut schema_raw_value = schema_value.tail;
+        schema_stream.serialize_bits(&mut schema_raw_value, 7)?;
     }
     Ok(())
 }
 
 #[inline]
-pub fn read_arm_align(stream: &mut ReadStream<'_>, value: &mut ArmAlign) -> Result {
-    read_arm_align_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_arm_align(schema_stream: &mut ReadStream<'_>, schema_value: &mut ArmAlign) -> Result {
+    read_arm_align_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[allow(clippy::needless_range_loop)]
 #[inline]
-pub(crate) fn read_arm_align_body(stream: &mut ReadStream<'_>, value: &mut ArmAlign) -> Result {
-    let mut c: u32 = 0;
+pub(crate) fn read_arm_align_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut ArmAlign) -> Result {
+    let mut schema_c: u32 = 0;
     // word 0, 6 bits: lead[0..5], flag[0..1]
-    stream.serialize_bits(&mut c, 6)?;
-    let c0 = u64::from(c);
-    let v0: u64 = c0 & 0x1f;
-    value.lead = v0 as u32;
-    let v1: u64 = (c0 >> 5) & 0x1;
-    value.flag = v1 != 0;
-    if value.flag {
-        stream.serialize_int(&mut value.s_length, 0, 4)?; // the length guards the slice (§6.3)
-        stream.serialize_bytes(&mut value.s[..value.s_length as usize])?;
-        if std::str::from_utf8(&value.s[..value.s_length as usize]).is_err() {
+    schema_stream.serialize_bits(&mut schema_c, 6)?;
+    let schema_c0 = u64::from(schema_c);
+    let schema_v0: u64 = schema_c0 & 0x1f;
+    schema_value.lead = schema_v0 as u32;
+    let schema_v1: u64 = (schema_c0 >> 5) & 0x1;
+    schema_value.flag = schema_v1 != 0;
+    if schema_value.flag {
+        schema_stream.serialize_int(&mut schema_value.s_length, 0, 4)?; // the length guards the slice (§6.3)
+        schema_stream.serialize_bytes(&mut schema_value.s[..schema_value.s_length as usize])?;
+        if std::str::from_utf8(&schema_value.s[..schema_value.s_length as usize]).is_err() {
             return Err(Error::Validation); // malformed UTF-8 (SPEC §4.7)
         }
-        for i in 0..value.s_length as usize {
-            if value.s[i] == 0 {
+        for schema_i in 0..schema_value.s_length as usize {
+            if schema_value.s[schema_i] == 0 {
                 return Err(Error::Validation);
             }
         }
-        value.b = 0;
+        schema_value.b = 0;
     } else {
-        stream.serialize_bits(&mut value.b, 10)?;
-        value.s = [0; 4];
-        value.s_length = 0;
+        schema_stream.serialize_bits(&mut schema_value.b, 10)?;
+        schema_value.s = [0; 4];
+        schema_value.s_length = 0;
     }
-    stream.serialize_bits(&mut value.tail, 7)?;
+    schema_stream.serialize_bits(&mut schema_value.tail, 7)?;
     Ok(())
 }
 
@@ -467,74 +467,74 @@ pub const ARM_ARRAY_MAX_BYTES: usize = 8;
 
 #[allow(clippy::needless_range_loop)]
 #[inline(always)]
-pub fn write_arm_array(stream: &mut WriteStream<'_>, value: &ArmArray) -> Result {
-    debug_assert!(value.lead < 1 << 5, "lead above the bits(5) wire width");
-    let f0: u64 = u64::from(value.lead);
-    let f1: u64 = u64::from(value.flag);
+pub fn write_arm_array(schema_stream: &mut WriteStream<'_>, schema_value: &ArmArray) -> Result {
+    debug_assert!(schema_value.lead < 1 << 5, "lead above the bits(5) wire width");
+    let schema_f0: u64 = u64::from(schema_value.lead);
+    let schema_f1: u64 = u64::from(schema_value.flag);
     // word 0, 6 bits: lead[0..5], flag[0..1]
-    stream.serialize_bits(&mut ((f0 | (f1 << 5)) as u32), 6)?;
-    if value.flag {
-        debug_assert!(value.items_count >= 0 && value.items_count <= 3, "items_count out of range [0, 3]");
+    schema_stream.serialize_bits(&mut ((schema_f0 | (schema_f1 << 5)) as u32), 6)?;
+    if schema_value.flag {
+        debug_assert!(schema_value.items_count >= 0 && schema_value.items_count <= 3, "items_count out of range [0, 3]");
         {
-            let mut offset_value = value.items_count as u32;
-            stream.serialize_bits(&mut offset_value, 2)?; // the count guards the loop (§6.3)
+            let mut schema_offset_value = schema_value.items_count as u32;
+            schema_stream.serialize_bits(&mut schema_offset_value, 2)?; // the count guards the loop (§6.3)
         }
-        for i in 0..value.items_count as usize {
-            debug_assert!(value.items[i] <= 8191, "items[i] out of range [0, 8191]");
+        for schema_i in 0..schema_value.items_count as usize {
+            debug_assert!(schema_value.items[schema_i] <= 8191, "items[schema_i] out of range [0, 8191]");
             {
-                let mut offset_value = value.items[i] as u32;
-                stream.serialize_bits(&mut offset_value, 13)?;
+                let mut schema_offset_value = schema_value.items[schema_i] as u32;
+                schema_stream.serialize_bits(&mut schema_offset_value, 13)?;
             }
         }
     } else {
-        debug_assert!(value.b < 1 << 9, "b above the bits(9) wire width");
+        debug_assert!(schema_value.b < 1 << 9, "b above the bits(9) wire width");
         {
-            let mut raw_value = value.b;
-            stream.serialize_bits(&mut raw_value, 9)?;
+            let mut schema_raw_value = schema_value.b;
+            schema_stream.serialize_bits(&mut schema_raw_value, 9)?;
         }
     }
-    debug_assert!(value.tail < 1 << 7, "tail above the bits(7) wire width");
+    debug_assert!(schema_value.tail < 1 << 7, "tail above the bits(7) wire width");
     {
-        let mut raw_value = value.tail;
-        stream.serialize_bits(&mut raw_value, 7)?;
+        let mut schema_raw_value = schema_value.tail;
+        schema_stream.serialize_bits(&mut schema_raw_value, 7)?;
     }
     Ok(())
 }
 
 #[inline]
-pub fn read_arm_array(stream: &mut ReadStream<'_>, value: &mut ArmArray) -> Result {
-    read_arm_array_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_arm_array(schema_stream: &mut ReadStream<'_>, schema_value: &mut ArmArray) -> Result {
+    read_arm_array_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[allow(clippy::needless_range_loop)]
 #[inline]
-pub(crate) fn read_arm_array_body(stream: &mut ReadStream<'_>, value: &mut ArmArray) -> Result {
-    let mut c: u32 = 0;
+pub(crate) fn read_arm_array_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut ArmArray) -> Result {
+    let mut schema_c: u32 = 0;
     // word 0, 6 bits: lead[0..5], flag[0..1]
-    stream.serialize_bits(&mut c, 6)?;
-    let c0 = u64::from(c);
-    let v0: u64 = c0 & 0x1f;
-    value.lead = v0 as u32;
-    let v1: u64 = (c0 >> 5) & 0x1;
-    value.flag = v1 != 0;
-    if value.flag {
-        stream.serialize_int(&mut value.items_count, 0, 3)?; // the count guards the loop (§6.3)
-        for i in 0..value.items_count as usize {
+    schema_stream.serialize_bits(&mut schema_c, 6)?;
+    let schema_c0 = u64::from(schema_c);
+    let schema_v0: u64 = schema_c0 & 0x1f;
+    schema_value.lead = schema_v0 as u32;
+    let schema_v1: u64 = (schema_c0 >> 5) & 0x1;
+    schema_value.flag = schema_v1 != 0;
+    if schema_value.flag {
+        schema_stream.serialize_int(&mut schema_value.items_count, 0, 3)?; // the count guards the loop (§6.3)
+        for schema_i in 0..schema_value.items_count as usize {
             {
-                let mut range_value: i32 = 0;
-                stream.serialize_int(&mut range_value, 0, 8191)?;
-                value.items[i] = range_value as u16;
+                let mut schema_range_value: i32 = 0;
+                schema_stream.serialize_int(&mut schema_range_value, 0, 8191)?;
+                schema_value.items[schema_i] = schema_range_value as u16;
             }
         }
-        value.b = 0;
+        schema_value.b = 0;
     } else {
-        stream.serialize_bits(&mut value.b, 9)?;
-        value.items = [0; 3];
-        value.items_count = 0;
+        schema_stream.serialize_bits(&mut schema_value.b, 9)?;
+        schema_value.items = [0; 3];
+        schema_value.items_count = 0;
     }
-    stream.serialize_bits(&mut value.tail, 7)?;
+    schema_stream.serialize_bits(&mut schema_value.tail, 7)?;
     Ok(())
 }
 
@@ -552,25 +552,25 @@ pub const NARROW_MAX_BITS: u64 = 3;
 pub const NARROW_MAX_BYTES: usize = 8;
 
 #[inline(always)]
-pub fn write_narrow(stream: &mut WriteStream<'_>, value: &Narrow) -> Result {
-    debug_assert!(value.n < 1 << 3, "n above the bits(3) wire width");
+pub fn write_narrow(schema_stream: &mut WriteStream<'_>, schema_value: &Narrow) -> Result {
+    debug_assert!(schema_value.n < 1 << 3, "n above the bits(3) wire width");
     {
-        let mut raw_value = value.n;
-        stream.serialize_bits(&mut raw_value, 3)?;
+        let mut schema_raw_value = schema_value.n;
+        schema_stream.serialize_bits(&mut schema_raw_value, 3)?;
     }
     Ok(())
 }
 
 #[inline]
-pub fn read_narrow(stream: &mut ReadStream<'_>, value: &mut Narrow) -> Result {
-    read_narrow_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_narrow(schema_stream: &mut ReadStream<'_>, schema_value: &mut Narrow) -> Result {
+    read_narrow_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[inline]
-pub(crate) fn read_narrow_body(stream: &mut ReadStream<'_>, value: &mut Narrow) -> Result {
-    stream.serialize_bits(&mut value.n, 3)?;
+pub(crate) fn read_narrow_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut Narrow) -> Result {
+    schema_stream.serialize_bits(&mut schema_value.n, 3)?;
     Ok(())
 }
 
@@ -588,25 +588,25 @@ pub const WIDE_MAX_BITS: u64 = 37;
 pub const WIDE_MAX_BYTES: usize = 8;
 
 #[inline(always)]
-pub fn write_wide(stream: &mut WriteStream<'_>, value: &Wide) -> Result {
-    debug_assert!(value.w < 1 << 37, "w above the bits(37) wire width");
+pub fn write_wide(schema_stream: &mut WriteStream<'_>, schema_value: &Wide) -> Result {
+    debug_assert!(schema_value.w < 1 << 37, "w above the bits(37) wire width");
     {
-        let mut raw_value = value.w;
-        stream.serialize_bits64(&mut raw_value, 37)?;
+        let mut schema_raw_value = schema_value.w;
+        schema_stream.serialize_bits64(&mut schema_raw_value, 37)?;
     }
     Ok(())
 }
 
 #[inline]
-pub fn read_wide(stream: &mut ReadStream<'_>, value: &mut Wide) -> Result {
-    read_wide_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_wide(schema_stream: &mut ReadStream<'_>, schema_value: &mut Wide) -> Result {
+    read_wide_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[inline]
-pub(crate) fn read_wide_body(stream: &mut ReadStream<'_>, value: &mut Wide) -> Result {
-    stream.serialize_bits64(&mut value.w, 37)?;
+pub(crate) fn read_wide_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut Wide) -> Result {
+    schema_stream.serialize_bits64(&mut schema_value.w, 37)?;
     Ok(())
 }
 
@@ -628,14 +628,14 @@ impl UnevenType {
 }
 
 impl core::fmt::Display for UnevenType {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.write_str(self.as_str())
+    fn fmt(&self, schema_f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        schema_f.write_str(self.as_str())
     }
 }
 
 /// Debug/log name for any `UnevenType` value, out-of-set included.
-pub fn enum_name_uneven_type(value: UnevenType) -> &'static str {
-    match value.0 {
+pub fn enum_name_uneven_type(schema_value: UnevenType) -> &'static str {
+    match schema_value.0 {
         0 => "None",
         1 => "Narrow",
         2 => "Wide",
@@ -659,49 +659,49 @@ pub enum Uneven {
 pub const UNEVEN_MAX_BITS: u64 = 39;
 pub const UNEVEN_MAX_BYTES: usize = 8;
 
-pub fn write_uneven(stream: &mut WriteStream<'_>, value: &Uneven) -> Result {
-    match value {
+pub fn write_uneven(schema_stream: &mut WriteStream<'_>, schema_value: &Uneven) -> Result {
+    match schema_value {
         Uneven::None => {
-            let mut offset_value: u32 = 0;
-            stream.serialize_bits(&mut offset_value, 2)?;
+            let mut schema_offset_value: u32 = 0;
+            schema_stream.serialize_bits(&mut schema_offset_value, 2)?;
             Ok(()) // no payload — the tag is the whole wire (SPEC §4.8)
         }
-        Uneven::Narrow(arm) => {
-            let mut offset_value: u32 = 1;
-            stream.serialize_bits(&mut offset_value, 2)?;
-            write_narrow(stream, arm)
+        Uneven::Narrow(schema_arm) => {
+            let mut schema_offset_value: u32 = 1;
+            schema_stream.serialize_bits(&mut schema_offset_value, 2)?;
+            write_narrow(schema_stream, schema_arm)
         }
-        Uneven::Wide(arm) => {
-            let mut offset_value: u32 = 2;
-            stream.serialize_bits(&mut offset_value, 2)?;
-            write_wide(stream, arm)
+        Uneven::Wide(schema_arm) => {
+            let mut schema_offset_value: u32 = 2;
+            schema_stream.serialize_bits(&mut schema_offset_value, 2)?;
+            write_wide(schema_stream, schema_arm)
         }
     }
 }
 
 #[inline]
-pub fn read_uneven(stream: &mut ReadStream<'_>, value: &mut Uneven) -> Result {
-    read_uneven_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_uneven(schema_stream: &mut ReadStream<'_>, schema_value: &mut Uneven) -> Result {
+    read_uneven_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[inline]
-pub(crate) fn read_uneven_body(stream: &mut ReadStream<'_>, value: &mut Uneven) -> Result {
-    let mut tag_value: i32 = 0;
-    stream.serialize_int(&mut tag_value, 0, 2)?; // rejects a tag above the count (SPEC §4.8)
-    match tag_value {
+pub(crate) fn read_uneven_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut Uneven) -> Result {
+    let mut schema_tag_value: i32 = 0;
+    schema_stream.serialize_int(&mut schema_tag_value, 0, 2)?; // rejects a tag above the count (SPEC §4.8)
+    match schema_tag_value {
         1 => {
-            let mut arm = Narrow::default();
-            read_narrow_body(stream, &mut arm)?;
-            *value = Uneven::Narrow(arm);
+            let mut schema_arm = Narrow::default();
+            read_narrow_body(schema_stream, &mut schema_arm)?;
+            *schema_value = Uneven::Narrow(schema_arm);
         }
         2 => {
-            let mut arm = Wide::default();
-            read_wide_body(stream, &mut arm)?;
-            *value = Uneven::Wide(arm);
+            let mut schema_arm = Wide::default();
+            read_wide_body(schema_stream, &mut schema_arm)?;
+            *schema_value = Uneven::Wide(schema_arm);
         }
-        _ => *value = Uneven::None,
+        _ => *schema_value = Uneven::None,
     }
     Ok(())
 }
@@ -722,33 +722,33 @@ pub const HOLDS_UNEVEN_MAX_BITS: u64 = 55;
 pub const HOLDS_UNEVEN_MAX_BYTES: usize = 8;
 
 #[inline(always)]
-pub fn write_holds_uneven(stream: &mut WriteStream<'_>, value: &HoldsUneven) -> Result {
-    debug_assert!(value.lead < 1 << 5, "lead above the bits(5) wire width");
+pub fn write_holds_uneven(schema_stream: &mut WriteStream<'_>, schema_value: &HoldsUneven) -> Result {
+    debug_assert!(schema_value.lead < 1 << 5, "lead above the bits(5) wire width");
     {
-        let mut raw_value = value.lead;
-        stream.serialize_bits(&mut raw_value, 5)?;
+        let mut schema_raw_value = schema_value.lead;
+        schema_stream.serialize_bits(&mut schema_raw_value, 5)?;
     }
-    write_uneven(stream, &value.u)?;
-    debug_assert!(value.tail < 1 << 11, "tail above the bits(11) wire width");
+    write_uneven(schema_stream, &schema_value.u)?;
+    debug_assert!(schema_value.tail < 1 << 11, "tail above the bits(11) wire width");
     {
-        let mut raw_value = value.tail;
-        stream.serialize_bits(&mut raw_value, 11)?;
+        let mut schema_raw_value = schema_value.tail;
+        schema_stream.serialize_bits(&mut schema_raw_value, 11)?;
     }
     Ok(())
 }
 
 #[inline]
-pub fn read_holds_uneven(stream: &mut ReadStream<'_>, value: &mut HoldsUneven) -> Result {
-    read_holds_uneven_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_holds_uneven(schema_stream: &mut ReadStream<'_>, schema_value: &mut HoldsUneven) -> Result {
+    read_holds_uneven_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[inline]
-pub(crate) fn read_holds_uneven_body(stream: &mut ReadStream<'_>, value: &mut HoldsUneven) -> Result {
-    stream.serialize_bits(&mut value.lead, 5)?;
-    read_uneven_body(stream, &mut value.u)?;
-    stream.serialize_bits(&mut value.tail, 11)?;
+pub(crate) fn read_holds_uneven_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut HoldsUneven) -> Result {
+    schema_stream.serialize_bits(&mut schema_value.lead, 5)?;
+    read_uneven_body(schema_stream, &mut schema_value.u)?;
+    schema_stream.serialize_bits(&mut schema_value.tail, 11)?;
     Ok(())
 }
 
@@ -770,44 +770,44 @@ pub const ARR_UNEVEN_MAX_BYTES: usize = 16;
 
 #[allow(clippy::needless_range_loop)]
 #[inline(always)]
-pub fn write_arr_uneven(stream: &mut WriteStream<'_>, value: &ArrUneven) -> Result {
-    debug_assert!(value.lead < 1 << 5, "lead above the bits(5) wire width");
+pub fn write_arr_uneven(schema_stream: &mut WriteStream<'_>, schema_value: &ArrUneven) -> Result {
+    debug_assert!(schema_value.lead < 1 << 5, "lead above the bits(5) wire width");
     {
-        let mut raw_value = value.lead;
-        stream.serialize_bits(&mut raw_value, 5)?;
+        let mut schema_raw_value = schema_value.lead;
+        schema_stream.serialize_bits(&mut schema_raw_value, 5)?;
     }
-    debug_assert!(value.items_count >= 0 && value.items_count <= 3, "items_count out of range [0, 3]");
+    debug_assert!(schema_value.items_count >= 0 && schema_value.items_count <= 3, "items_count out of range [0, 3]");
     {
-        let mut offset_value = value.items_count as u32;
-        stream.serialize_bits(&mut offset_value, 2)?; // the count guards the loop (§6.3)
+        let mut schema_offset_value = schema_value.items_count as u32;
+        schema_stream.serialize_bits(&mut schema_offset_value, 2)?; // the count guards the loop (§6.3)
     }
-    for i in 0..value.items_count as usize {
-        write_uneven(stream, &value.items[i])?;
+    for schema_i in 0..schema_value.items_count as usize {
+        write_uneven(schema_stream, &schema_value.items[schema_i])?;
     }
-    debug_assert!(value.tail < 1 << 3, "tail above the bits(3) wire width");
+    debug_assert!(schema_value.tail < 1 << 3, "tail above the bits(3) wire width");
     {
-        let mut raw_value = value.tail;
-        stream.serialize_bits(&mut raw_value, 3)?;
+        let mut schema_raw_value = schema_value.tail;
+        schema_stream.serialize_bits(&mut schema_raw_value, 3)?;
     }
     Ok(())
 }
 
 #[inline]
-pub fn read_arr_uneven(stream: &mut ReadStream<'_>, value: &mut ArrUneven) -> Result {
-    read_arr_uneven_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_arr_uneven(schema_stream: &mut ReadStream<'_>, schema_value: &mut ArrUneven) -> Result {
+    read_arr_uneven_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[allow(clippy::needless_range_loop)]
 #[inline]
-pub(crate) fn read_arr_uneven_body(stream: &mut ReadStream<'_>, value: &mut ArrUneven) -> Result {
-    stream.serialize_bits(&mut value.lead, 5)?;
-    stream.serialize_int(&mut value.items_count, 0, 3)?; // the count guards the loop (§6.3)
-    for i in 0..value.items_count as usize {
-        read_uneven_body(stream, &mut value.items[i])?;
+pub(crate) fn read_arr_uneven_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut ArrUneven) -> Result {
+    schema_stream.serialize_bits(&mut schema_value.lead, 5)?;
+    schema_stream.serialize_int(&mut schema_value.items_count, 0, 3)?; // the count guards the loop (§6.3)
+    for schema_i in 0..schema_value.items_count as usize {
+        read_uneven_body(schema_stream, &mut schema_value.items[schema_i])?;
     }
-    stream.serialize_bits(&mut value.tail, 3)?;
+    schema_stream.serialize_bits(&mut schema_value.tail, 3)?;
     Ok(())
 }
 
@@ -834,95 +834,95 @@ pub const REGAIN_AFTER_ALIGN_MAX_BYTES: usize = 24;
 
 #[allow(clippy::needless_range_loop)]
 #[inline(always)]
-pub fn write_regain_after_align(stream: &mut WriteStream<'_>, value: &RegainAfterAlign) -> Result {
-    debug_assert!(value.lead < 1 << 5, "lead above the bits(5) wire width");
+pub fn write_regain_after_align(schema_stream: &mut WriteStream<'_>, schema_value: &RegainAfterAlign) -> Result {
+    debug_assert!(schema_value.lead < 1 << 5, "lead above the bits(5) wire width");
     {
-        let mut raw_value = value.lead;
-        stream.serialize_bits(&mut raw_value, 5)?;
+        let mut schema_raw_value = schema_value.lead;
+        schema_stream.serialize_bits(&mut schema_raw_value, 5)?;
     }
-    debug_assert!(value.items_count >= 0 && value.items_count <= 3, "items_count out of range [0, 3]");
+    debug_assert!(schema_value.items_count >= 0 && schema_value.items_count <= 3, "items_count out of range [0, 3]");
     {
-        let mut offset_value = value.items_count as u32;
-        stream.serialize_bits(&mut offset_value, 2)?; // the count guards the loop (§6.3)
+        let mut schema_offset_value = schema_value.items_count as u32;
+        schema_stream.serialize_bits(&mut schema_offset_value, 2)?; // the count guards the loop (§6.3)
     }
-    for i in 0..value.items_count as usize {
-        debug_assert!(value.items[i] <= 8191, "items[i] out of range [0, 8191]");
+    for schema_i in 0..schema_value.items_count as usize {
+        debug_assert!(schema_value.items[schema_i] <= 8191, "items[schema_i] out of range [0, 8191]");
         {
-            let mut offset_value = value.items[i] as u32;
-            stream.serialize_bits(&mut offset_value, 13)?;
+            let mut schema_offset_value = schema_value.items[schema_i] as u32;
+            schema_stream.serialize_bits(&mut schema_offset_value, 13)?;
         }
     }
-    debug_assert!(value.s_length >= 0 && value.s_length <= 4, "s_length out of range [0, 4]");
-    debug_assert!(!value.s[..value.s_length as usize].contains(&0), "s holds a zero byte");
-    debug_assert!(std::str::from_utf8(&value.s[..value.s_length as usize]).is_ok(), "s is not well-formed UTF-8");
+    debug_assert!(schema_value.s_length >= 0 && schema_value.s_length <= 4, "s_length out of range [0, 4]");
+    debug_assert!(!schema_value.s[..schema_value.s_length as usize].contains(&0), "s holds a zero byte");
+    debug_assert!(std::str::from_utf8(&schema_value.s[..schema_value.s_length as usize]).is_ok(), "s is not well-formed UTF-8");
     {
-        let mut offset_value = value.s_length as u32;
-        stream.serialize_bits(&mut offset_value, 3)?; // the length guards the slice (§6.3)
+        let mut schema_offset_value = schema_value.s_length as u32;
+        schema_stream.serialize_bits(&mut schema_offset_value, 3)?; // the length guards the slice (§6.3)
     }
-    stream.write_bytes(&value.s[..value.s_length as usize]); // borrowed in place: the write side never mutates (infallible: returns () in serialize.rs 2.0.0)
-    debug_assert!(value.q < 1 << 29, "q above the bits(29) wire width");
-    debug_assert!(value.r < 1 << 19, "r above the bits(19) wire width");
-    debug_assert!(value.tail < 1 << 4, "tail above the bits(4) wire width");
-    let f0: u64 = u64::from(value.p);
-    let f1: u64 = u64::from(value.q);
-    let f2: u64 = u64::from(value.r);
-    let f3: u64 = u64::from(value.tail);
+    schema_stream.write_bytes(&schema_value.s[..schema_value.s_length as usize]); // borrowed in place: the write side never mutates (infallible: returns () in serialize.rs 2.0.0)
+    debug_assert!(schema_value.q < 1 << 29, "q above the bits(29) wire width");
+    debug_assert!(schema_value.r < 1 << 19, "r above the bits(19) wire width");
+    debug_assert!(schema_value.tail < 1 << 4, "tail above the bits(4) wire width");
+    let schema_f0: u64 = u64::from(schema_value.p);
+    let schema_f1: u64 = u64::from(schema_value.q);
+    let schema_f2: u64 = u64::from(schema_value.r);
+    let schema_f3: u64 = u64::from(schema_value.tail);
     // word 0, 32 bits: p[0..32]
-    stream.serialize_bits(&mut (f0 as u32), 32)?;
+    schema_stream.serialize_bits(&mut (schema_f0 as u32), 32)?;
     // word 1, 32 bits: q[0..29], r[0..3]
-    stream.serialize_bits(&mut ((f1 | (f2 << 29)) as u32), 32)?;
+    schema_stream.serialize_bits(&mut ((schema_f1 | (schema_f2 << 29)) as u32), 32)?;
     // word 2, 20 bits: r[3..19], tail[0..4]
-    stream.serialize_bits(&mut (((f2 >> 3) | (f3 << 16)) as u32), 20)?;
+    schema_stream.serialize_bits(&mut (((schema_f2 >> 3) | (schema_f3 << 16)) as u32), 20)?;
     Ok(())
 }
 
 #[inline]
-pub fn read_regain_after_align(stream: &mut ReadStream<'_>, value: &mut RegainAfterAlign) -> Result {
-    read_regain_after_align_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_regain_after_align(schema_stream: &mut ReadStream<'_>, schema_value: &mut RegainAfterAlign) -> Result {
+    read_regain_after_align_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[allow(clippy::needless_range_loop)]
 #[inline]
-pub(crate) fn read_regain_after_align_body(stream: &mut ReadStream<'_>, value: &mut RegainAfterAlign) -> Result {
-    stream.serialize_bits(&mut value.lead, 5)?;
-    stream.serialize_int(&mut value.items_count, 0, 3)?; // the count guards the loop (§6.3)
-    for i in 0..value.items_count as usize {
+pub(crate) fn read_regain_after_align_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut RegainAfterAlign) -> Result {
+    schema_stream.serialize_bits(&mut schema_value.lead, 5)?;
+    schema_stream.serialize_int(&mut schema_value.items_count, 0, 3)?; // the count guards the loop (§6.3)
+    for schema_i in 0..schema_value.items_count as usize {
         {
-            let mut range_value: i32 = 0;
-            stream.serialize_int(&mut range_value, 0, 8191)?;
-            value.items[i] = range_value as u16;
+            let mut schema_range_value: i32 = 0;
+            schema_stream.serialize_int(&mut schema_range_value, 0, 8191)?;
+            schema_value.items[schema_i] = schema_range_value as u16;
         }
     }
-    stream.serialize_int(&mut value.s_length, 0, 4)?; // the length guards the slice (§6.3)
-    stream.serialize_bytes(&mut value.s[..value.s_length as usize])?;
-    if std::str::from_utf8(&value.s[..value.s_length as usize]).is_err() {
+    schema_stream.serialize_int(&mut schema_value.s_length, 0, 4)?; // the length guards the slice (§6.3)
+    schema_stream.serialize_bytes(&mut schema_value.s[..schema_value.s_length as usize])?;
+    if std::str::from_utf8(&schema_value.s[..schema_value.s_length as usize]).is_err() {
         return Err(Error::Validation); // malformed UTF-8 (SPEC §4.7)
     }
-    for i in 0..value.s_length as usize {
-        if value.s[i] == 0 {
+    for schema_i in 0..schema_value.s_length as usize {
+        if schema_value.s[schema_i] == 0 {
             return Err(Error::Validation);
         }
     }
-    let mut c: u32 = 0;
+    let mut schema_c: u32 = 0;
     // word 0, 32 bits: p[0..32]
-    stream.serialize_bits(&mut c, 32)?;
-    let c0 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c0 = u64::from(schema_c);
     // word 1, 32 bits: q[0..29], r[0..3]
-    stream.serialize_bits(&mut c, 32)?;
-    let c1 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c1 = u64::from(schema_c);
     // word 2, 20 bits: r[3..19], tail[0..4]
-    stream.serialize_bits(&mut c, 20)?;
-    let c2 = u64::from(c);
-    let v0: u64 = c0 & 0xffffffff;
-    value.p = v0 as u32;
-    let v1: u64 = c1 & 0x1fffffff;
-    value.q = v1 as u32;
-    let v2: u64 = ((c1 >> 29) | (c2 << 3)) & 0x7ffff;
-    value.r = v2 as u32;
-    let v3: u64 = (c2 >> 16) & 0xf;
-    value.tail = v3 as u32;
+    schema_stream.serialize_bits(&mut schema_c, 20)?;
+    let schema_c2 = u64::from(schema_c);
+    let schema_v0: u64 = schema_c0 & 0xffffffff;
+    schema_value.p = schema_v0 as u32;
+    let schema_v1: u64 = schema_c1 & 0x1fffffff;
+    schema_value.q = schema_v1 as u32;
+    let schema_v2: u64 = ((schema_c1 >> 29) | (schema_c2 << 3)) & 0x7ffff;
+    schema_value.r = schema_v2 as u32;
+    let schema_v3: u64 = (schema_c2 >> 16) & 0xf;
+    schema_value.tail = schema_v3 as u32;
     Ok(())
 }
 

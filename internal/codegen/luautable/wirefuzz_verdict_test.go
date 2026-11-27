@@ -27,13 +27,14 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/compiler"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/luau"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/luautable"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testinputs"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 // luauFuzzPipeUnits is the subset of the corpus the verdict-pipe tests stage:
@@ -172,6 +173,7 @@ func luauFuzzHost(t *testing.T) string {
 		rel := filepath.Join("build", "luaufuzzhost", "luaufuzzhost")
 		full := filepath.Join(root, rel)
 		if _, err := os.Stat(full); err != nil {
+			testinputs.Build(t)
 			cmd := testproc.Command(t, "make", rel)
 			cmd.Dir = root
 			if out, merr := cmd.CombinedOutput(); merr != nil {

@@ -41,11 +41,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/python/pyrun"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // pyKeyedRowCases is every manifest instance and report row the row holds:
@@ -82,6 +82,10 @@ var pyKeyedRowCases = []string{
 	"varevo_v1_ping_as_v3", "varevo_v2_as_v3", "varevo_v2_full",
 	"varevo_v3_compat", "varevo_v3_compat_as_v1", "varevo_v3_default_containers",
 	"varevo_v3_full", "varevo_v3_full_as_v1", "varevo_v3_rollback",
+	// the R17 flags pair and the 2026-11-22 surfaces (#4843, Wave 3)
+	"r17_flags_inside_width", "r17_flags_past_width", "surf_arrays_full",
+	// the value-defaults unit (tblvaluedefaults)
+	"vd_fixed_defaults", "vd_fixed_values", "vd_var_defaults", "vd_var_values",
 	// the F-092 grown-bound evolution document (#4544)
 	"widenbound_evodoc",
 }

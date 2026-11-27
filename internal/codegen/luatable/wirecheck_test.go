@@ -6,9 +6,11 @@ package luatable
 // to the wire's own rules, the bytes its walk skips or reads last-wins
 // included. The framing surface's vectors (docs/LAYERS/1-framing.md) are the
 // rows: each verdict in the manifest was derived from the law, never from a
-// leg, and the strict load must answer it. Ten rows read when this check is
-// switched off: repeated or unused IDs, damaged field and collection bodies,
-// and damaged node-table framing. The negative control pins that partition.
+// leg, and the strict load must answer it. The rows in luaWireCheckOnly read
+// when this check is switched off, each one a wire-alone condition the walk
+// does not hold again: the id table, bytes left inside a collection L, an
+// element kind no reader can skip, nesting past depth 128, the node table and
+// the pointer graph. The negative control pins that partition.
 
 import (
 	"bufio"
@@ -20,8 +22,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/lua/luarun"
+	"github.com/mas-bandwidth/schema/v3/internal/wirealone"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // luaWireCheckCall is the strict load's one call of the check, and
@@ -38,15 +41,33 @@ func withoutWireCheck(t *testing.T, files map[string][]byte) {
 	editLoad(t, files, luaWireCheckCall, luaWireCheckOff, 1)
 }
 
+// luaWireCheckExceptions are the rows of WIRE-ALONE.txt
+// (testdata/conformance/tables, internal/wirealone) that Lua's walk refuses
+// as well as its wire check, so they stay refused with the check off. Each
+// carries the reason; every other row of the file is the check's alone.
+var luaWireCheckExceptions = map[string]string{
+	"node_type_node_table_id":      "the walk refuses a node record typed by a reserved id itself (load.lua, A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS), so the check is never the only refusal",
+	"node_type_build_version_id":   "the walk refuses a node record typed by a reserved id itself (load.lua, A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS), so the check is never the only refusal",
+	"node_type_vocabulary_id":      "the walk refuses a node record typed by a reserved id itself (load.lua, A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS), so the check is never the only refusal",
+	"graph_string_blob_ill_formed": "the walk decodes a string blob record wherever it is reached from and refuses ill-formed text itself (load.lua, utf8_ok)",
+	"graph_string_blob_zero_byte":  "the walk decodes a string blob record wherever it is reached from and refuses a zero byte itself (load.lua, utf8_ok)",
+	"node_unknown_to_fixed_reader": "Lua reads this form-1 vector at the fixed root Cfg through its variable twin, where the node table is the root body's own and the walk parses it, refusing the malformed record itself (load.lua, THE NODE RECORDS)",
+}
+
 // luaWireCheckOnly are the framing rows the walk reads and only the wire
-// check refuses.
-var luaWireCheckOnly = []string{
-	"array_L0_inert", "array_L1_inert", "frame_repeat_last_wins",
-	"frame_unknown_id_length", "frame_unknown_id_reference", "keyed_L1_inert",
-	"map_L1_inert", "node_table_twice", "frame_unreferenced_entry",
-	"node_record_bytes_after_terminator",
-	"varevo_cycle_known_via_unknown", "varevo_cycle_root_via_unknown",
-	"varevo_cycle_two_unknowns", "varevo_cycle_unknown_self",
+// check refuses: every row of WIRE-ALONE.txt but Lua's exceptions. Each breaks
+// a condition docs/SPEC-TABLES.md §6.5 lists as DECIDABLE FROM THE WIRE ALONE,
+// which the strict load holds in wire_check before the walk decodes a byte,
+// so the walk never needs to hold it again. The strict-load test holds that
+// each is refused by the check itself (report.wireAlone); the negative
+// control holds that the walk alone reads each and that nothing else moves.
+func luaWireCheckOnly(t *testing.T) []string {
+	t.Helper()
+	rows, err := wirealone.Owned(filepath.Join("..", "..", ".."), luaWireCheckExceptions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return rows
 }
 
 type luaFramingRow struct {
@@ -90,61 +111,96 @@ for line in inputs.rows:gmatch("[^\n]+") do
   local name, root = line:match("^(%S+) (%S+)$")
   local r = {}
   local v = load.Load(T, root, inputs["wire:" .. name], r, load.NewState())
-  print(name .. " " .. (v ~= nil and "read" or "refused"))
+  print(name .. " " .. (v ~= nil and "read" or "refused") .. " " .. (r.wireAlone and "check" or "walk"))
 end
 `
 
-// luaFramingVerdicts runs every framing row through the strict load of its
-// unit's emitted Lua, edited by edit when it is not nil, and answers each
-// row's verdict.
-func luaFramingVerdicts(t *testing.T, rows []luaFramingRow, units map[string][]string, edit func(map[string][]byte)) map[string]string {
+// luaFramingAnswer is one framing row as the strict load answers it: the
+// verdict, and whether the refusal is the wire-alone check (report.wireAlone:
+// the check refused before the walk decoded a byte).
+type luaFramingAnswer struct {
+	verdict string
+	byCheck bool
+}
+
+// luaFramingGroup is the rows one emitted module reads: a unit as declared, or
+// a unit with one declared fixed root read through its variable twin.
+type luaFramingGroup struct {
+	unit, twin string
+	rows       []luaFramingRow
+}
+
+// luaFramingUnit loads a manifest unit from its source paths.
+func luaFramingUnit(t *testing.T, paths []string) *ir.Unit {
 	t.Helper()
-	byUnit := map[string][]luaFramingRow{}
-	for _, row := range rows {
-		byUnit[row.unit] = append(byUnit[row.unit], row)
+	var full []string
+	for _, p := range paths {
+		full = append(full, filepath.Join("..", "..", "..", p))
 	}
-	got := map[string]string{}
-	keys := make([]string, 0, len(byUnit))
-	for k := range byUnit {
+	return luarun.LoadUnit(t, full...)
+}
+
+// luaFramingAnswers runs every framing row through the strict load of the
+// emitted Lua of its unit, edited by edit when it is not nil, and answers each
+// row.
+//
+// A FORM-1 VECTOR AT A DECLARED FIXED ROOT IS READ THROUGH THE VARIABLE TWIN
+// OF THAT ROOT (docs/SPEC-TABLES.md §3.4, "The framing battery is no
+// exception"; framingVariableUnit in test/conformance/harness/generate.go, the
+// oracle): the same declaration with its class variable, every fixed root
+// alike. Load at the fixed root itself refuses form 1 as previous_form before
+// it decodes a byte, so a vector read there answers that one refusal whatever
+// it holds: a lawful row (an empty bounded list, a counted array at its Min)
+// is refused, and a damaged one passes for the wrong reason. Each twin is its
+// own module, so no other root of the unit changes class.
+func luaFramingAnswers(t *testing.T, rows []luaFramingRow, units map[string][]string, edit func(map[string][]byte)) map[string]luaFramingAnswer {
+	t.Helper()
+	declared := map[string]*ir.Unit{}
+	groups := map[string]*luaFramingGroup{}
+	wires := map[string][]byte{}
+	for _, row := range rows {
+		paths := units[row.unit]
+		if len(paths) == 0 {
+			t.Fatalf("the manifest names no unit %q", row.unit)
+		}
+		u := declared[row.unit]
+		if u == nil {
+			u = luaFramingUnit(t, paths)
+			declared[row.unit] = u
+		}
+		wire, err := os.ReadFile(filepath.Join("..", "..", "..", row.wire))
+		if err != nil {
+			t.Fatal(err)
+		}
+		wires[row.name] = wire
+		key, twin := row.unit, ""
+		if st := u.Tables[row.root]; st != nil && st.FixedDeclared {
+			if len(wire) > 0 && wire[0] == 3 {
+				t.Fatalf("%s: a form-3 vector at the fixed root %s %s; this probe reads form-1 vectors only", row.name, row.unit, row.root)
+			}
+			key, twin = row.unit+"."+row.root, row.root
+		}
+		g := groups[key]
+		if g == nil {
+			g = &luaFramingGroup{unit: row.unit, twin: twin}
+			groups[key] = g
+		}
+		g.rows = append(g.rows, row)
+	}
+	keys := make([]string, 0, len(groups))
+	for k := range groups {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
+	got := map[string]luaFramingAnswer{}
 	for _, key := range keys {
-		paths := units[key]
-		if len(paths) == 0 {
-			t.Fatalf("the manifest names no unit %q", key)
-		}
-		var full []string
-		for _, p := range paths {
-			full = append(full, filepath.Join("..", "..", "..", p))
-		}
-		// R1.Cfg is a fixed root, while its framing corpus deliberately
-		// exercises form 1. Compile a checked variable twin retaining every
-		// existing field and wire name; an unused pointer makes its mode
-		// variable without altering the pinned bytes.
-		if key == "tblr1" {
-			if len(full) != 1 {
-				t.Fatal("tblr1 framing twin expects one source")
+		g := groups[key]
+		u := luaFramingUnit(t, units[g.unit])
+		if g.twin != "" {
+			u.Tables[g.twin].FixedDeclared = false
+			if !ir.VariableTables(u)[g.twin] {
+				t.Fatalf("%s %s: the framing twin is not variable", g.unit, g.twin)
 			}
-			source, err := os.ReadFile(full[0])
-			if err != nil {
-				t.Fatal(err)
-			}
-			const anchor = "fixed table Cfg\n{"
-			if strings.Count(string(source), anchor) != 1 {
-				t.Fatal("Cfg source twin anchor changed")
-			}
-			twin := strings.Replace(string(source), anchor, "table Cfg\n{\n    framing_probe *FramingProbe", 1)
-			twin += "\ntable FramingProbe { value int32 }\n"
-			path := filepath.Join(t.TempDir(), "R1.schema")
-			if err := os.WriteFile(path, []byte(twin), 0600); err != nil {
-				t.Fatal(err)
-			}
-			full = []string{path}
-		}
-		u := luarun.LoadUnit(t, full...)
-		if key == "tblr1" && !ir.VariableTables(u)["Cfg"] {
-			t.Fatal("Cfg framing twin is not variable")
 		}
 		files, err := Generate(u)
 		if err != nil {
@@ -160,19 +216,33 @@ func luaFramingVerdicts(t *testing.T, rows []luaFramingRow, units map[string][]s
 		}
 		inputs := map[string][]byte{"module": []byte(ModuleName(u))}
 		var list strings.Builder
-		for _, row := range byUnit[key] {
-			wire, err := os.ReadFile(filepath.Join("..", "..", "..", row.wire))
-			if err != nil {
-				t.Fatal(err)
-			}
-			inputs["wire:"+row.name] = wire
+		for _, row := range g.rows {
+			inputs["wire:"+row.name] = wires[row.name]
 			list.WriteString(row.name + " " + row.root + "\n")
 		}
 		inputs["rows"] = []byte(list.String())
 		for line := range strings.SplitSeq(strings.TrimSpace(string(luarun.Run(t, dir, "main.lua", inputs))), "\n") {
-			name, verdict, _ := strings.Cut(line, " ")
-			got[name] = verdict
+			w := strings.Fields(line)
+			if len(w) != 3 {
+				t.Fatalf("%s: the probe answered %q", key, line)
+			}
+			got[w[0]] = luaFramingAnswer{verdict: w[1], byCheck: w[2] == "check"}
 		}
+	}
+	for _, row := range rows {
+		if _, ok := got[row.name]; !ok {
+			t.Fatalf("%s: the probe gave no answer", row.name)
+		}
+	}
+	return got
+}
+
+// luaFramingVerdicts is luaFramingAnswers with the verdicts alone.
+func luaFramingVerdicts(t *testing.T, rows []luaFramingRow, units map[string][]string, edit func(map[string][]byte)) map[string]string {
+	t.Helper()
+	got := map[string]string{}
+	for name, a := range luaFramingAnswers(t, rows, units, edit) {
+		got[name] = a.verdict
 	}
 	return got
 }
@@ -182,15 +252,15 @@ func luaFramingVerdicts(t *testing.T, rows []luaFramingRow, units map[string][]s
 func TestLuaStrictLoadAnswersTheFramingVectors(t *testing.T) {
 	t.Parallel()
 	rows, units := luaFramingRows(t)
-	got := luaFramingVerdicts(t, rows, units, nil)
+	got := luaFramingAnswers(t, rows, units, nil)
 	for _, row := range rows {
-		if got[row.name] != row.verdict {
-			t.Errorf("%s (%s %s): the strict load answers %q, the law %q", row.name, row.unit, row.root, got[row.name], row.verdict)
+		if got[row.name].verdict != row.verdict {
+			t.Errorf("%s (%s %s): the strict load answers %q, the law %q", row.name, row.unit, row.root, got[row.name].verdict, row.verdict)
 		}
 	}
-	for _, name := range luaWireCheckOnly {
-		if got[name] != "refused" {
-			t.Errorf("%s: the strict load answers %q, want refused", name, got[name])
+	for _, name := range luaWireCheckOnly(t) {
+		if a := got[name]; a.verdict != "refused" || !a.byCheck {
+			t.Errorf("%s: the strict load answers %q (refused by the wire check: %v), want refused by the wire check", name, a.verdict, a.byCheck)
 		}
 	}
 }
@@ -209,7 +279,7 @@ func TestLuaWireCheckNegativeControl(t *testing.T) {
 		}
 	}
 	sort.Strings(moved)
-	want := slices.Clone(luaWireCheckOnly)
+	want := luaWireCheckOnly(t)
 	sort.Strings(want)
 	if !slices.Equal(moved, want) {
 		t.Fatalf("NEGATIVE CONTROL FAILED: with the wire check off the rows that moved are\n  %v\nwant exactly\n  %v", moved, want)
@@ -292,5 +362,72 @@ end
 	})))
 	if got != "read\nwire_damaged\nwire_damaged\nread" {
 		t.Fatalf("first-use and reusable state: %q", got)
+	}
+}
+
+// luaFramingLawfulTwins are the lawful framing rows at a declared fixed root
+// other than tblr1 Cfg: an empty bounded list and a counted array at its Min
+// (docs/SPEC-TABLES.md §2.3, §3.4). Each reads at the variable twin; at the
+// fixed root itself the same form-1 bytes are previous_form.
+var luaFramingLawfulTwins = []string{"twin_listdemo_bounded_empty", "sp_count_min_at", "twin_count_min_at_form1"}
+
+// TestLuaFramingReadsEveryFixedRootThroughItsTwin is the regression for
+// nightly run 45130315968: the framing probe read only tblr1 Cfg through its
+// variable twin, so every form-1 vector at listdemo Bounded and tabledemo
+// CountedMin was read at the fixed root and answered previous_form, the lawful
+// rows above included. Every framing row at a declared fixed root must answer
+// its manifest verdict through the twin, and the lawful ones must still be
+// previous_form at the fixed root, so the twin is what reads them.
+func TestLuaFramingReadsEveryFixedRootThroughItsTwin(t *testing.T) {
+	t.Parallel()
+	rows, units := luaFramingRows(t)
+	byName := map[string]luaFramingRow{}
+	var fixed []luaFramingRow
+	declared := map[string]*ir.Unit{}
+	for _, row := range rows {
+		byName[row.name] = row
+		u := declared[row.unit]
+		if u == nil {
+			u = luaFramingUnit(t, units[row.unit])
+			declared[row.unit] = u
+		}
+		if st := u.Tables[row.root]; st != nil && st.FixedDeclared && row.unit != "tblr1" {
+			fixed = append(fixed, row)
+		}
+	}
+	got := luaFramingAnswers(t, fixed, units, nil)
+	for _, row := range fixed {
+		if got[row.name].verdict != row.verdict {
+			t.Errorf("%s (%s %s): through the variable twin the strict load answers %q, the law %q", row.name, row.unit, row.root, got[row.name].verdict, row.verdict)
+		}
+	}
+	probe := `local i = require("inputs")
+local r = {}
+local v = require("load").Load(require(i.module), i.root, i.wire, r)
+print(v == nil and tostring(r.reason) or "read")
+`
+	for _, name := range luaFramingLawfulTwins {
+		row, ok := byName[name]
+		if !ok || row.verdict != "read" || got[name].verdict == "" {
+			t.Fatalf("%s: the manifest holds no lawful framing row at a fixed root by that name", name)
+		}
+		u := luaFramingUnit(t, units[row.unit])
+		files, err := Generate(u)
+		if err != nil {
+			t.Fatal(err)
+		}
+		dir := t.TempDir()
+		luarun.WriteFiles(t, dir, files)
+		if err := os.WriteFile(filepath.Join(dir, "main.lua"), []byte(probe), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		wire, err := os.ReadFile(filepath.Join("..", "..", "..", row.wire))
+		if err != nil {
+			t.Fatal(err)
+		}
+		at := strings.TrimSpace(string(luarun.Run(t, dir, "main.lua", map[string][]byte{"module": []byte(ModuleName(u)), "root": []byte(row.root), "wire": wire})))
+		if at != "previous_form" {
+			t.Errorf("%s: at the fixed root %s %s the strict load answers %q, want previous_form", name, row.unit, row.root, at)
+		}
 	}
 }

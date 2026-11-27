@@ -1,0 +1,682 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum fshift
+{ Zfirst, Zsecond, Zthird }
+
+enum fstart
+{ Zfirst, Zsecond, Zthird }
+
+enum fsub
+{ Zfirst, Zsecond, Zthird }
+
+enum ftag
+{ Zfirst, Zsecond, Zthird }
+
+enum fuRep
+{ Zfirst, Zsecond, Zthird }
+
+enum full
+{ Zfirst, Zsecond, Zthird }
+
+enum fun
+{ Zfirst, Zsecond, Zthird }
+
+enum fv
+{ Zfirst, Zsecond, Zthird }
+
+enum fv32
+{ Zfirst, Zsecond, Zthird }
+
+enum fval
+{ Zfirst, Zsecond, Zthird }
+
+enum fvalue
+{ Zfirst, Zsecond, Zthird }
+
+enum fx
+{ Zfirst, Zsecond, Zthird }
+
+enum g
+{ Zfirst, Zsecond, Zthird }
+
+enum g2
+{ Zfirst, Zsecond, Zthird }
+
+enum g_field
+{ Zfirst, Zsecond, Zthird }
+
+enum g_name
+{ Zfirst, Zsecond, Zthird }
+
+enum g_step
+{ Zfirst, Zsecond, Zthird }
+
+enum gap
+{ Zfirst, Zsecond, Zthird }
+
+enum gate
+{ Zfirst, Zsecond, Zthird }
+
+enum gcount
+{ Zfirst, Zsecond, Zthird }
+
+enum general
+{ Zfirst, Zsecond, Zthird }
+
+enum generated
+{ Zfirst, Zsecond, Zthird }
+
+enum get32
+{ Zfirst, Zsecond, Zthird }
+
+enum get64
+{ Zfirst, Zsecond, Zthird }
+
+enum getLimbs
+{ Zfirst, Zsecond, Zthird }
+
+enum getOwnVocab
+{ Zfirst, Zsecond, Zthird }
+
+enum gets
+{ Zfirst, Zsecond, Zthird }
+
+enum given
+{ Zfirst, Zsecond, Zthird }
+
+enum gl
+{ Zfirst, Zsecond, Zthird }
+
+enum goff
+{ Zfirst, Zsecond, Zthird }
+
+enum good
+{ Zfirst, Zsecond, Zthird }
+
+enum got
+{ Zfirst, Zsecond, Zthird }
+
+enum got2
+{ Zfirst, Zsecond, Zthird }
+
+enum grammar
+{ Zfirst, Zsecond, Zthird }
+
+enum graph
+{ Zfirst, Zsecond, Zthird }
+
+enum grd
+{ Zfirst, Zsecond, Zthird }
+
+enum group
+{ Zfirst, Zsecond, Zthird }
+
+enum growStack
+{ Zfirst, Zsecond, Zthird }
+
+enum grown
+{ Zfirst, Zsecond, Zthird }
+
+enum grows
+{ Zfirst, Zsecond, Zthird }
+
+enum gsrc
+{ Zfirst, Zsecond, Zthird }
+
+enum gt
+{ Zfirst, Zsecond, Zthird }
+
+enum guard2
+{ Zfirst, Zsecond, Zthird }
+
+enum guardCount
+{ Zfirst, Zsecond, Zthird }
+
+enum guardHolds
+{ Zfirst, Zsecond, Zthird }
+
+enum guardIndex
+{ Zfirst, Zsecond, Zthird }
+
+enum guardLen
+{ Zfirst, Zsecond, Zthird }
+
+enum guardOff
+{ Zfirst, Zsecond, Zthird }
+
+enum guard_ok
+{ Zfirst, Zsecond, Zthird }
+
+enum guard_out
+{ Zfirst, Zsecond, Zthird }
+
+enum guard_pool
+{ Zfirst, Zsecond, Zthird }
+
+enum guarded
+{ Zfirst, Zsecond, Zthird }
+
+enum guards
+{ Zfirst, Zsecond, Zthird }
+
+enum guards_used
+{ Zfirst, Zsecond, Zthird }
+
+enum gw
+{ Zfirst, Zsecond, Zthird }
+
+enum gw2
+{ Zfirst, Zsecond, Zthird }
+
+enum h
+{ Zfirst, Zsecond, Zthird }
+
+enum h0
+{ Zfirst, Zsecond, Zthird }
+
+enum hLo
+{ Zfirst, Zsecond, Zthird }
+
+enum hPrefix
+{ Zfirst, Zsecond, Zthird }
+
+enum h_begin
+{ Zfirst, Zsecond, Zthird }
+
+enum h_end
+{ Zfirst, Zsecond, Zthird }
+
+enum h_ok
+{ Zfirst, Zsecond, Zthird }
+
+enum hadHasValue
+{ Zfirst, Zsecond, Zthird }
+
+enum half
+{ Zfirst, Zsecond, Zthird }
+
+enum handle
+{ Zfirst, Zsecond, Zthird }
+
+enum handled
+{ Zfirst, Zsecond, Zthird }
+
+enum has
+{ Zfirst, Zsecond, Zthird }
+
+enum hasCycle
+{ Zfirst, Zsecond, Zthird }
+
+enum hasExtent
+{ Zfirst, Zsecond, Zthird }
+
+enum hasExtentRecord
+{ Zfirst, Zsecond, Zthird }
+
+enum hasExtentUnion
+{ Zfirst, Zsecond, Zthird }
+
+enum hasGuards
+{ Zfirst, Zsecond, Zthird }
+
+enum hasLabel
+{ Zfirst, Zsecond, Zthird }
+
+enum hasLast
+{ Zfirst, Zsecond, Zthird }
+
+enum hasNode
+{ Zfirst, Zsecond, Zthird }
+
+enum hasRange
+{ Zfirst, Zsecond, Zthird }
+
+enum hasValue
+{ Zfirst, Zsecond, Zthird }
+
+enum hasZero
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    fshift Inner
+    fstart Inner
+    fsub Inner
+    ftag Inner
+    fuRep Inner
+    full Inner
+    fun Inner
+    fv Inner
+    fv32 Inner
+    fval Inner
+}
+
+table NameTypes0
+{
+    one0  fshift
+    many0 [..4]fshift
+    one1  fstart
+    many1 [..4]fstart
+    one2  fsub
+    many2 [..4]fsub
+    one3  ftag
+    many3 [..4]ftag
+    one4  fuRep
+    many4 [..4]fuRep
+    one5  full
+    many5 [..4]full
+    one6  fun
+    many6 [..4]fun
+    one7  fv
+    many7 [..4]fv
+    one8  fv32
+    many8 [..4]fv32
+    one9  fval
+    many9 [..4]fval
+}
+
+table NameFields0
+{
+    fshift uint32
+    fstart uint32
+    fsub uint32
+    ftag uint32
+    fuRep uint32
+    full uint32
+    fun uint32
+    fv uint32
+    fv32 uint32
+    fval uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    fvalue Inner
+    fx Inner
+    g Inner
+    g2 Inner
+    g_field Inner
+    g_name Inner
+    g_step Inner
+    gap Inner
+    gate Inner
+    gcount Inner
+}
+
+table NameTypes1
+{
+    one0  fvalue
+    many0 [..4]fvalue
+    one1  fx
+    many1 [..4]fx
+    one2  g
+    many2 [..4]g
+    one3  g2
+    many3 [..4]g2
+    one4  g_field
+    many4 [..4]g_field
+    one5  g_name
+    many5 [..4]g_name
+    one6  g_step
+    many6 [..4]g_step
+    one7  gap
+    many7 [..4]gap
+    one8  gate
+    many8 [..4]gate
+    one9  gcount
+    many9 [..4]gcount
+}
+
+table NameFields1
+{
+    fvalue uint32
+    fx uint32
+    g uint32
+    g2 uint32
+    g_field uint32
+    g_name uint32
+    g_step uint32
+    gap uint32
+    gate uint32
+    gcount uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    general Inner
+    generated Inner
+    get32 Inner
+    get64 Inner
+    getLimbs Inner
+    getOwnVocab Inner
+    gets Inner
+    given Inner
+    gl Inner
+}
+
+table NameTypes2
+{
+    one1  general
+    many1 [..4]general
+    one2  generated
+    many2 [..4]generated
+    one3  get32
+    many3 [..4]get32
+    one4  get64
+    many4 [..4]get64
+    one5  getLimbs
+    many5 [..4]getLimbs
+    one6  getOwnVocab
+    many6 [..4]getOwnVocab
+    one7  gets
+    many7 [..4]gets
+    one8  given
+    many8 [..4]given
+    one9  gl
+    many9 [..4]gl
+}
+
+table NameFields2
+{
+    general uint32
+    generated uint32
+    get32 uint32
+    get64 uint32
+    getLimbs uint32
+    getOwnVocab uint32
+    gets uint32
+    given uint32
+    gl uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    goff Inner
+    good Inner
+    got Inner
+    got2 Inner
+    grammar Inner
+    graph Inner
+    grd Inner
+    group Inner
+    growStack Inner
+    grown Inner
+}
+
+table NameTypes3
+{
+    one0  goff
+    many0 [..4]goff
+    one1  good
+    many1 [..4]good
+    one2  got
+    many2 [..4]got
+    one3  got2
+    many3 [..4]got2
+    one4  grammar
+    many4 [..4]grammar
+    one5  graph
+    many5 [..4]graph
+    one6  grd
+    many6 [..4]grd
+    one7  group
+    many7 [..4]group
+    one8  growStack
+    many8 [..4]growStack
+    one9  grown
+    many9 [..4]grown
+}
+
+table NameFields3
+{
+    goff uint32
+    good uint32
+    got uint32
+    got2 uint32
+    grammar uint32
+    graph uint32
+    grd uint32
+    group uint32
+    growStack uint32
+    grown uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    grows Inner
+    gsrc Inner
+    gt Inner
+    guard2 Inner
+    guardCount Inner
+    guardHolds Inner
+    guardIndex Inner
+    guardLen Inner
+    guardOff Inner
+    guard_ok Inner
+}
+
+table NameTypes4
+{
+    one0  grows
+    many0 [..4]grows
+    one1  gsrc
+    many1 [..4]gsrc
+    one2  gt
+    many2 [..4]gt
+    one3  guard2
+    many3 [..4]guard2
+    one4  guardCount
+    many4 [..4]guardCount
+    one5  guardHolds
+    many5 [..4]guardHolds
+    one6  guardIndex
+    many6 [..4]guardIndex
+    one7  guardLen
+    many7 [..4]guardLen
+    one8  guardOff
+    many8 [..4]guardOff
+    one9  guard_ok
+    many9 [..4]guard_ok
+}
+
+table NameFields4
+{
+    grows uint32
+    gsrc uint32
+    gt uint32
+    guard2 uint32
+    guardCount uint32
+    guardHolds uint32
+    guardIndex uint32
+    guardLen uint32
+    guardOff uint32
+    guard_ok uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    guard_out Inner
+    guard_pool Inner
+    guarded Inner
+    guards Inner
+    guards_used Inner
+    gw Inner
+    gw2 Inner
+    h Inner
+    h0 Inner
+    hLo Inner
+}
+
+table NameTypes5
+{
+    one0  guard_out
+    many0 [..4]guard_out
+    one1  guard_pool
+    many1 [..4]guard_pool
+    one2  guarded
+    many2 [..4]guarded
+    one3  guards
+    many3 [..4]guards
+    one4  guards_used
+    many4 [..4]guards_used
+    one5  gw
+    many5 [..4]gw
+    one6  gw2
+    many6 [..4]gw2
+    one7  h
+    many7 [..4]h
+    one8  h0
+    many8 [..4]h0
+    one9  hLo
+    many9 [..4]hLo
+}
+
+table NameFields5
+{
+    guard_out uint32
+    guard_pool uint32
+    guarded uint32
+    guards uint32
+    guards_used uint32
+    gw uint32
+    gw2 uint32
+    h uint32
+    h0 uint32
+    hLo uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    hPrefix Inner
+    h_begin Inner
+    h_end Inner
+    h_ok Inner
+    hadHasValue Inner
+    half Inner
+    handle Inner
+    handled Inner
+    has Inner
+    hasCycle Inner
+}
+
+table NameTypes6
+{
+    one0  hPrefix
+    many0 [..4]hPrefix
+    one1  h_begin
+    many1 [..4]h_begin
+    one2  h_end
+    many2 [..4]h_end
+    one3  h_ok
+    many3 [..4]h_ok
+    one4  hadHasValue
+    many4 [..4]hadHasValue
+    one5  half
+    many5 [..4]half
+    one6  handle
+    many6 [..4]handle
+    one7  handled
+    many7 [..4]handled
+    one8  has
+    many8 [..4]has
+    one9  hasCycle
+    many9 [..4]hasCycle
+}
+
+table NameFields6
+{
+    hPrefix uint32
+    h_begin uint32
+    h_end uint32
+    h_ok uint32
+    hadHasValue uint32
+    half uint32
+    handle uint32
+    handled uint32
+    has uint32
+    hasCycle uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    hasExtent Inner
+    hasExtentRecord Inner
+    hasExtentUnion Inner
+    hasGuards Inner
+    hasLabel Inner
+    hasLast Inner
+    hasNode Inner
+    hasRange Inner
+    hasValue Inner
+    hasZero Inner
+}
+
+table NameTypes7
+{
+    one0  hasExtent
+    many0 [..4]hasExtent
+    one1  hasExtentRecord
+    many1 [..4]hasExtentRecord
+    one2  hasExtentUnion
+    many2 [..4]hasExtentUnion
+    one3  hasGuards
+    many3 [..4]hasGuards
+    one4  hasLabel
+    many4 [..4]hasLabel
+    one5  hasLast
+    many5 [..4]hasLast
+    one6  hasNode
+    many6 [..4]hasNode
+    one7  hasRange
+    many7 [..4]hasRange
+    one8  hasValue
+    many8 [..4]hasValue
+    one9  hasZero
+    many9 [..4]hasZero
+}
+
+table NameFields7
+{
+    hasExtent uint32
+    hasExtentRecord uint32
+    hasExtentUnion uint32
+    hasGuards uint32
+    hasLabel uint32
+    hasLast uint32
+    hasNode uint32
+    hasRange uint32
+    hasValue uint32
+    hasZero uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

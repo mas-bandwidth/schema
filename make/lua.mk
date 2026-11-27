@@ -509,6 +509,22 @@ packet-end-lua-negative-control: packet-end-lua
 		cat build/packet-end/lua-negative/log; echo 'NEGATIVE CONTROL FAILED: a check other than the end check went red'; exit 1; fi
 	@echo 'packet end Lua negative control: removed end check accepts the trailing byte and the set padding'
 
+# ---------------------------------------------------------------- packet void
+# SPEC §4.8: payload-free union arms cost exactly their tag bits. The shared
+# corpus (testdata/wire/packet-void/cases.txt, make/checks/packet-void.mk):
+# test/packet-void/lua answers every case and tools/casegate refuses a case
+# with no answer.
+build/packet-void/lua/.stamp: bin/schema test/packet-void/Void.schema
+	@rm -rf build/packet-void/lua && mkdir -p build/packet-void/lua
+	./bin/schema generate --lang lua --out build/packet-void/lua/generated $(PACKET_VOID_SCHEMA)
+	@touch $@
+
+.PHONY: packet-void-lua
+packet-void-lua: toolchain-lua build/packet-void/lua/.stamp build/casegate
+	$(call packet_void_gate,lua) $(LUA) test/packet-void/lua/main.lua build/packet-void/lua/generated $(PACKET_VOID_PINS)
+
+test-lua: packet-void-lua
+
 # Compressed-float packet writes must refuse values outside their range.
 build/packet-write-cfloat/lua/.stamp: bin/schema test/packet-write-cfloat/PacketCFloat.schema
 	@rm -rf build/packet-write-cfloat/lua && mkdir -p build/packet-write-cfloat/lua

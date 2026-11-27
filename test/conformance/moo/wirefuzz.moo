@@ -785,11 +785,16 @@ for i = 1, total do
 end
 host.write(reply)
 
+-- THE STREAM ENDS ONLY BETWEEN FRAMES (test/conformance/harness/wireeof.go):
+-- no index byte at EOF is the clean close; one to three are a truncated
+-- frame, never a close, and a cut length or body fails below.
 while true do
-	local index = u32()
-	if index == nil then
-		break -- the harness closed the stream
+	local ib: buffer = host.read(4)
+	if buffer.len(ib) == 0 then
+		break -- the harness closed the stream between frames
 	end
+	assert(buffer.len(ib) == 4, "wirefuzz: the stream ended inside a mutant index")
+	local index = buffer.readu32(ib, 0)
 	local n = u32()
 	assert(n ~= nil, "wirefuzz: the stream ended inside a mutant header")
 	local wire = readExact(n)

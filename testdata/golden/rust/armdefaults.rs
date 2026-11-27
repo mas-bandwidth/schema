@@ -37,41 +37,41 @@ pub const DEFAULT_ARM_MAX_BYTES: usize = 16;
 
 #[allow(clippy::needless_range_loop)]
 #[inline(always)]
-pub fn write_default_arm(stream: &mut WriteStream<'_>, value: &DefaultArm) -> Result {
-    debug_assert!(value.entries_count >= 0 && value.entries_count <= 2, "entries_count out of range [0, 2]");
+pub fn write_default_arm(schema_stream: &mut WriteStream<'_>, schema_value: &DefaultArm) -> Result {
+    debug_assert!(schema_value.entries_count >= 0 && schema_value.entries_count <= 2, "entries_count out of range [0, 2]");
     {
-        let mut offset_value = value.entries_count as u32;
-        stream.serialize_bits(&mut offset_value, 2)?; // the count guards the loop (§6.3)
+        let mut schema_offset_value = schema_value.entries_count as u32;
+        schema_stream.serialize_bits(&mut schema_offset_value, 2)?; // the count guards the loop (§6.3)
     }
-    for i in 0..value.entries_count as usize {
-        write_probe_config(stream, &value.entries[i])?;
+    for schema_i in 0..schema_value.entries_count as usize {
+        write_probe_config(schema_stream, &schema_value.entries[schema_i])?;
     }
-    debug_assert!(value.marker <= 7, "marker out of range [0, 7]");
+    debug_assert!(schema_value.marker <= 7, "marker out of range [0, 7]");
     {
-        let mut offset_value = value.marker as u32;
-        stream.serialize_bits(&mut offset_value, 3)?;
+        let mut schema_offset_value = schema_value.marker as u32;
+        schema_stream.serialize_bits(&mut schema_offset_value, 3)?;
     }
     Ok(())
 }
 
 #[inline]
-pub fn read_default_arm(stream: &mut ReadStream<'_>, value: &mut DefaultArm) -> Result {
-    read_default_arm_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_default_arm(schema_stream: &mut ReadStream<'_>, schema_value: &mut DefaultArm) -> Result {
+    read_default_arm_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[allow(clippy::needless_range_loop)]
 #[inline]
-pub(crate) fn read_default_arm_body(stream: &mut ReadStream<'_>, value: &mut DefaultArm) -> Result {
-    stream.serialize_int(&mut value.entries_count, 0, 2)?; // the count guards the loop (§6.3)
-    for i in 0..value.entries_count as usize {
-        read_probe_config_body(stream, &mut value.entries[i])?;
+pub(crate) fn read_default_arm_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut DefaultArm) -> Result {
+    schema_stream.serialize_int(&mut schema_value.entries_count, 0, 2)?; // the count guards the loop (§6.3)
+    for schema_i in 0..schema_value.entries_count as usize {
+        read_probe_config_body(schema_stream, &mut schema_value.entries[schema_i])?;
     }
     {
-        let mut range_value: i32 = 0;
-        stream.serialize_int(&mut range_value, 0, 7)?;
-        value.marker = range_value as u8;
+        let mut schema_range_value: i32 = 0;
+        schema_stream.serialize_int(&mut schema_range_value, 0, 7)?;
+        schema_value.marker = schema_range_value as u8;
     }
     Ok(())
 }
@@ -94,14 +94,14 @@ impl DefaultChoiceType {
 }
 
 impl core::fmt::Display for DefaultChoiceType {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.write_str(self.as_str())
+    fn fmt(&self, schema_f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        schema_f.write_str(self.as_str())
     }
 }
 
 /// Debug/log name for any `DefaultChoiceType` value, out-of-set included.
-pub fn enum_name_default_choice_type(value: DefaultChoiceType) -> &'static str {
-    match value.0 {
+pub fn enum_name_default_choice_type(schema_value: DefaultChoiceType) -> &'static str {
+    match schema_value.0 {
         0 => "None",
         1 => "First",
         2 => "Second",
@@ -125,49 +125,49 @@ pub enum DefaultChoice {
 pub const DEFAULT_CHOICE_MAX_BITS: u64 = 79;
 pub const DEFAULT_CHOICE_MAX_BYTES: usize = 16;
 
-pub fn write_default_choice(stream: &mut WriteStream<'_>, value: &DefaultChoice) -> Result {
-    match value {
+pub fn write_default_choice(schema_stream: &mut WriteStream<'_>, schema_value: &DefaultChoice) -> Result {
+    match schema_value {
         DefaultChoice::None => {
-            let mut offset_value: u32 = 0;
-            stream.serialize_bits(&mut offset_value, 2)?;
+            let mut schema_offset_value: u32 = 0;
+            schema_stream.serialize_bits(&mut schema_offset_value, 2)?;
             Ok(()) // no payload — the tag is the whole wire (SPEC §4.8)
         }
-        DefaultChoice::First(arm) => {
-            let mut offset_value: u32 = 1;
-            stream.serialize_bits(&mut offset_value, 2)?;
-            write_default_arm(stream, arm)
+        DefaultChoice::First(schema_arm) => {
+            let mut schema_offset_value: u32 = 1;
+            schema_stream.serialize_bits(&mut schema_offset_value, 2)?;
+            write_default_arm(schema_stream, schema_arm)
         }
-        DefaultChoice::Second(arm) => {
-            let mut offset_value: u32 = 2;
-            stream.serialize_bits(&mut offset_value, 2)?;
-            write_default_arm(stream, arm)
+        DefaultChoice::Second(schema_arm) => {
+            let mut schema_offset_value: u32 = 2;
+            schema_stream.serialize_bits(&mut schema_offset_value, 2)?;
+            write_default_arm(schema_stream, schema_arm)
         }
     }
 }
 
 #[inline]
-pub fn read_default_choice(stream: &mut ReadStream<'_>, value: &mut DefaultChoice) -> Result {
-    read_default_choice_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_default_choice(schema_stream: &mut ReadStream<'_>, schema_value: &mut DefaultChoice) -> Result {
+    read_default_choice_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[inline]
-pub(crate) fn read_default_choice_body(stream: &mut ReadStream<'_>, value: &mut DefaultChoice) -> Result {
-    let mut tag_value: i32 = 0;
-    stream.serialize_int(&mut tag_value, 0, 2)?; // rejects a tag above the count (SPEC §4.8)
-    match tag_value {
+pub(crate) fn read_default_choice_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut DefaultChoice) -> Result {
+    let mut schema_tag_value: i32 = 0;
+    schema_stream.serialize_int(&mut schema_tag_value, 0, 2)?; // rejects a tag above the count (SPEC §4.8)
+    match schema_tag_value {
         1 => {
-            let mut arm = DefaultArm::new();
-            read_default_arm_body(stream, &mut arm)?;
-            *value = DefaultChoice::First(arm);
+            let mut schema_arm = DefaultArm::new();
+            read_default_arm_body(schema_stream, &mut schema_arm)?;
+            *schema_value = DefaultChoice::First(schema_arm);
         }
         2 => {
-            let mut arm = DefaultArm::new();
-            read_default_arm_body(stream, &mut arm)?;
-            *value = DefaultChoice::Second(arm);
+            let mut schema_arm = DefaultArm::new();
+            read_default_arm_body(schema_stream, &mut schema_arm)?;
+            *schema_value = DefaultChoice::Second(schema_arm);
         }
-        _ => *value = DefaultChoice::None,
+        _ => *schema_value = DefaultChoice::None,
     }
     Ok(())
 }
@@ -186,21 +186,21 @@ pub const DEFAULT_CHOICE_PACKET_MAX_BITS: u64 = 79;
 pub const DEFAULT_CHOICE_PACKET_MAX_BYTES: usize = 16;
 
 #[inline(always)]
-pub fn write_default_choice_packet(stream: &mut WriteStream<'_>, value: &DefaultChoicePacket) -> Result {
-    write_default_choice(stream, &value.choice)?;
+pub fn write_default_choice_packet(schema_stream: &mut WriteStream<'_>, schema_value: &DefaultChoicePacket) -> Result {
+    write_default_choice(schema_stream, &schema_value.choice)?;
     Ok(())
 }
 
 #[inline]
-pub fn read_default_choice_packet(stream: &mut ReadStream<'_>, value: &mut DefaultChoicePacket) -> Result {
-    read_default_choice_packet_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_default_choice_packet(schema_stream: &mut ReadStream<'_>, schema_value: &mut DefaultChoicePacket) -> Result {
+    read_default_choice_packet_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[inline]
-pub(crate) fn read_default_choice_packet_body(stream: &mut ReadStream<'_>, value: &mut DefaultChoicePacket) -> Result {
-    read_default_choice_body(stream, &mut value.choice)?;
+pub(crate) fn read_default_choice_packet_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut DefaultChoicePacket) -> Result {
+    read_default_choice_body(schema_stream, &mut schema_value.choice)?;
     Ok(())
 }
 
@@ -232,29 +232,29 @@ pub const DEFAULT_BULK_ARM_MAX_BITS: u64 = 102;
 pub const DEFAULT_BULK_ARM_MAX_BYTES: usize = 16;
 
 #[inline(always)]
-pub fn write_default_bulk_arm(stream: &mut WriteStream<'_>, value: &DefaultBulkArm) -> Result {
-    write_default_arm(stream, &value.payload)?;
-    debug_assert!(value.data_length >= 0 && value.data_length <= 2, "data_length out of range [0, 2]");
+pub fn write_default_bulk_arm(schema_stream: &mut WriteStream<'_>, schema_value: &DefaultBulkArm) -> Result {
+    write_default_arm(schema_stream, &schema_value.payload)?;
+    debug_assert!(schema_value.data_length >= 0 && schema_value.data_length <= 2, "data_length out of range [0, 2]");
     {
-        let mut offset_value = value.data_length as u32;
-        stream.serialize_bits(&mut offset_value, 2)?; // the length guards the slice (§6.3)
+        let mut schema_offset_value = schema_value.data_length as u32;
+        schema_stream.serialize_bits(&mut schema_offset_value, 2)?; // the length guards the slice (§6.3)
     }
-    stream.write_bytes(&value.data[..value.data_length as usize]); // borrowed in place: the write side never mutates (infallible: returns () in serialize.rs 2.0.0)
+    schema_stream.write_bytes(&schema_value.data[..schema_value.data_length as usize]); // borrowed in place: the write side never mutates (infallible: returns () in serialize.rs 2.0.0)
     Ok(())
 }
 
 #[inline]
-pub fn read_default_bulk_arm(stream: &mut ReadStream<'_>, value: &mut DefaultBulkArm) -> Result {
-    read_default_bulk_arm_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_default_bulk_arm(schema_stream: &mut ReadStream<'_>, schema_value: &mut DefaultBulkArm) -> Result {
+    read_default_bulk_arm_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[inline]
-pub(crate) fn read_default_bulk_arm_body(stream: &mut ReadStream<'_>, value: &mut DefaultBulkArm) -> Result {
-    read_default_arm_body(stream, &mut value.payload)?;
-    stream.serialize_int(&mut value.data_length, 0, 2)?; // the length guards the slice (§6.3)
-    stream.serialize_bytes(&mut value.data[..value.data_length as usize])?;
+pub(crate) fn read_default_bulk_arm_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut DefaultBulkArm) -> Result {
+    read_default_arm_body(schema_stream, &mut schema_value.payload)?;
+    schema_stream.serialize_int(&mut schema_value.data_length, 0, 2)?; // the length guards the slice (§6.3)
+    schema_stream.serialize_bytes(&mut schema_value.data[..schema_value.data_length as usize])?;
     Ok(())
 }
 
@@ -276,14 +276,14 @@ impl DefaultBulkChoiceType {
 }
 
 impl core::fmt::Display for DefaultBulkChoiceType {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.write_str(self.as_str())
+    fn fmt(&self, schema_f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        schema_f.write_str(self.as_str())
     }
 }
 
 /// Debug/log name for any `DefaultBulkChoiceType` value, out-of-set included.
-pub fn enum_name_default_bulk_choice_type(value: DefaultBulkChoiceType) -> &'static str {
-    match value.0 {
+pub fn enum_name_default_bulk_choice_type(schema_value: DefaultBulkChoiceType) -> &'static str {
+    match schema_value.0 {
         0 => "None",
         1 => "First",
         2 => "Second",
@@ -307,49 +307,49 @@ pub enum DefaultBulkChoice {
 pub const DEFAULT_BULK_CHOICE_MAX_BITS: u64 = 104;
 pub const DEFAULT_BULK_CHOICE_MAX_BYTES: usize = 16;
 
-pub fn write_default_bulk_choice(stream: &mut WriteStream<'_>, value: &DefaultBulkChoice) -> Result {
-    match value {
+pub fn write_default_bulk_choice(schema_stream: &mut WriteStream<'_>, schema_value: &DefaultBulkChoice) -> Result {
+    match schema_value {
         DefaultBulkChoice::None => {
-            let mut offset_value: u32 = 0;
-            stream.serialize_bits(&mut offset_value, 2)?;
+            let mut schema_offset_value: u32 = 0;
+            schema_stream.serialize_bits(&mut schema_offset_value, 2)?;
             Ok(()) // no payload — the tag is the whole wire (SPEC §4.8)
         }
-        DefaultBulkChoice::First(arm) => {
-            let mut offset_value: u32 = 1;
-            stream.serialize_bits(&mut offset_value, 2)?;
-            write_default_bulk_arm(stream, arm)
+        DefaultBulkChoice::First(schema_arm) => {
+            let mut schema_offset_value: u32 = 1;
+            schema_stream.serialize_bits(&mut schema_offset_value, 2)?;
+            write_default_bulk_arm(schema_stream, schema_arm)
         }
-        DefaultBulkChoice::Second(arm) => {
-            let mut offset_value: u32 = 2;
-            stream.serialize_bits(&mut offset_value, 2)?;
-            write_default_bulk_arm(stream, arm)
+        DefaultBulkChoice::Second(schema_arm) => {
+            let mut schema_offset_value: u32 = 2;
+            schema_stream.serialize_bits(&mut schema_offset_value, 2)?;
+            write_default_bulk_arm(schema_stream, schema_arm)
         }
     }
 }
 
 #[inline]
-pub fn read_default_bulk_choice(stream: &mut ReadStream<'_>, value: &mut DefaultBulkChoice) -> Result {
-    read_default_bulk_choice_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_default_bulk_choice(schema_stream: &mut ReadStream<'_>, schema_value: &mut DefaultBulkChoice) -> Result {
+    read_default_bulk_choice_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[inline]
-pub(crate) fn read_default_bulk_choice_body(stream: &mut ReadStream<'_>, value: &mut DefaultBulkChoice) -> Result {
-    let mut tag_value: i32 = 0;
-    stream.serialize_int(&mut tag_value, 0, 2)?; // rejects a tag above the count (SPEC §4.8)
-    match tag_value {
+pub(crate) fn read_default_bulk_choice_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut DefaultBulkChoice) -> Result {
+    let mut schema_tag_value: i32 = 0;
+    schema_stream.serialize_int(&mut schema_tag_value, 0, 2)?; // rejects a tag above the count (SPEC §4.8)
+    match schema_tag_value {
         1 => {
-            let mut arm = DefaultBulkArm::new();
-            read_default_bulk_arm_body(stream, &mut arm)?;
-            *value = DefaultBulkChoice::First(arm);
+            let mut schema_arm = DefaultBulkArm::new();
+            read_default_bulk_arm_body(schema_stream, &mut schema_arm)?;
+            *schema_value = DefaultBulkChoice::First(schema_arm);
         }
         2 => {
-            let mut arm = DefaultBulkArm::new();
-            read_default_bulk_arm_body(stream, &mut arm)?;
-            *value = DefaultBulkChoice::Second(arm);
+            let mut schema_arm = DefaultBulkArm::new();
+            read_default_bulk_arm_body(schema_stream, &mut schema_arm)?;
+            *schema_value = DefaultBulkChoice::Second(schema_arm);
         }
-        _ => *value = DefaultBulkChoice::None,
+        _ => *schema_value = DefaultBulkChoice::None,
     }
     Ok(())
 }

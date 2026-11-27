@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/lua/luarun"
 )
 
 // A FLOAT32 TOKEN LANDS ON THE NEAREST FLOAT32, rounded once

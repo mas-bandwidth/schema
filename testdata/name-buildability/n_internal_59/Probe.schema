@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum readGroups
+{ Zfirst, Zsecond, Zthird }
+
+enum readGroups128
+{ Zfirst, Zsecond, Zthird }
+
+enum readInt
+{ Zfirst, Zsecond, Zthird }
+
+enum readInt128
+{ Zfirst, Zsecond, Zthird }
+
+enum readInt16FromWriter
+{ Zfirst, Zsecond, Zthird }
+
+enum readInt64
+{ Zfirst, Zsecond, Zthird }
+
+enum readKeyed
+{ Zfirst, Zsecond, Zthird }
+
+enum readLeb
+{ Zfirst, Zsecond, Zthird }
+
+enum readLength
+{ Zfirst, Zsecond, Zthird }
+
+enum readMap
+{ Zfirst, Zsecond, Zthird }
+
+enum readMapEntry
+{ Zfirst, Zsecond, Zthird }
+
+enum readObject
+{ Zfirst, Zsecond, Zthird }
+
+enum readOpened
+{ Zfirst, Zsecond, Zthird }
+
+enum readPair
+{ Zfirst, Zsecond, Zthird }
+
+enum readPayload
+{ Zfirst, Zsecond, Zthird }
+
+enum readPointerCell
+{ Zfirst, Zsecond, Zthird }
+
+enum readPrim
+{ Zfirst, Zsecond, Zthird }
+
+enum readRecord
+{ Zfirst, Zsecond, Zthird }
+
+enum readReset
+{ Zfirst, Zsecond, Zthird }
+
+enum readScalar
+{ Zfirst, Zsecond, Zthird }
+
+enum readShape
+{ Zfirst, Zsecond, Zthird }
+
+enum readStrict
+{ Zfirst, Zsecond, Zthird }
+
+enum readStruct
+{ Zfirst, Zsecond, Zthird }
+
+enum readTable
+{ Zfirst, Zsecond, Zthird }
+
+enum readTableKeys
+{ Zfirst, Zsecond, Zthird }
+
+enum readText
+{ Zfirst, Zsecond, Zthird }
+
+enum readTextList
+{ Zfirst, Zsecond, Zthird }
+
+enum readU16
+{ Zfirst, Zsecond, Zthird }
+
+enum readU32
+{ Zfirst, Zsecond, Zthird }
+
+enum readU64
+{ Zfirst, Zsecond, Zthird }
+
+enum readUint128
+{ Zfirst, Zsecond, Zthird }
+
+enum readUnion
+{ Zfirst, Zsecond, Zthird }
+
+enum readValue
+{ Zfirst, Zsecond, Zthird }
+
+enum read_arm
+{ Zfirst, Zsecond, Zthird }
+
+enum read_arm_n
+{ Zfirst, Zsecond, Zthird }
+
+enum read_arm_payload
+{ Zfirst, Zsecond, Zthird }
+
+enum read_arm_plain
+{ Zfirst, Zsecond, Zthird }
+
+enum read_array_body
+{ Zfirst, Zsecond, Zthird }
+
+enum read_array_field
+{ Zfirst, Zsecond, Zthird }
+
+enum read_body_fields
+{ Zfirst, Zsecond, Zthird }
+
+enum read_bool_element
+{ Zfirst, Zsecond, Zthird }
+
+enum read_bytes_field
+{ Zfirst, Zsecond, Zthird }
+
+enum read_element_codec
+{ Zfirst, Zsecond, Zthird }
+
+enum read_entry
+{ Zfirst, Zsecond, Zthird }
+
+enum read_enum_element
+{ Zfirst, Zsecond, Zthird }
+
+enum read_f32
+{ Zfirst, Zsecond, Zthird }
+
+enum read_field_codec
+{ Zfirst, Zsecond, Zthird }
+
+enum read_float_element
+{ Zfirst, Zsecond, Zthird }
+
+enum read_form1
+{ Zfirst, Zsecond, Zthird }
+
+enum read_int_element
+{ Zfirst, Zsecond, Zthird }
+
+enum read_json
+{ Zfirst, Zsecond, Zthird }
+
+enum read_json_field
+{ Zfirst, Zsecond, Zthird }
+
+enum read_json_integer
+{ Zfirst, Zsecond, Zthird }
+
+enum read_json_keyed
+{ Zfirst, Zsecond, Zthird }
+
+enum read_json_timestamp
+{ Zfirst, Zsecond, Zthird }
+
+enum read_keyed_field
+{ Zfirst, Zsecond, Zthird }
+
+enum read_keyed_inner
+{ Zfirst, Zsecond, Zthird }
+
+enum read_keys
+{ Zfirst, Zsecond, Zthird }
+
+enum read_map_field
+{ Zfirst, Zsecond, Zthird }
+
+enum read_map_inner
+{ Zfirst, Zsecond, Zthird }
+
+enum read_name
+{ Zfirst, Zsecond, Zthird }
+
+enum read_node_table
+{ Zfirst, Zsecond, Zthird }
+
+enum read_null
+{ Zfirst, Zsecond, Zthird }
+
+enum read_ok
+{ Zfirst, Zsecond, Zthird }
+
+enum read_optional_array
+{ Zfirst, Zsecond, Zthird }
+
+enum read_optional_field
+{ Zfirst, Zsecond, Zthird }
+
+enum read_pointer
+{ Zfirst, Zsecond, Zthird }
+
+enum read_pointer_array_field
+{ Zfirst, Zsecond, Zthird }
+
+enum read_string_element
+{ Zfirst, Zsecond, Zthird }
+
+enum read_table_body
+{ Zfirst, Zsecond, Zthird }
+
+enum read_table_element
+{ Zfirst, Zsecond, Zthird }
+
+enum read_union_array_field
+{ Zfirst, Zsecond, Zthird }
+
+enum read_union_payload
+{ Zfirst, Zsecond, Zthird }
+
+enum read_unknown_field
+{ Zfirst, Zsecond, Zthird }
+
+enum read_variant_name
+{ Zfirst, Zsecond, Zthird }
+
+enum read_wide
+{ Zfirst, Zsecond, Zthird }
+
+enum read_wide_token
+{ Zfirst, Zsecond, Zthird }
+
+enum read_widened
+{ Zfirst, Zsecond, Zthird }
+
+enum read_widened_scalar
+{ Zfirst, Zsecond, Zthird }
+
+enum reader
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    readGroups Inner
+    readGroups128 Inner
+    readInt Inner
+    readInt128 Inner
+    readInt16FromWriter Inner
+    readInt64 Inner
+    readKeyed Inner
+    readLeb Inner
+    readLength Inner
+    readMap Inner
+}
+
+table NameTypes0
+{
+    one0  readGroups
+    many0 [..4]readGroups
+    one1  readGroups128
+    many1 [..4]readGroups128
+    one2  readInt
+    many2 [..4]readInt
+    one3  readInt128
+    many3 [..4]readInt128
+    one4  readInt16FromWriter
+    many4 [..4]readInt16FromWriter
+    one5  readInt64
+    many5 [..4]readInt64
+    one6  readKeyed
+    many6 [..4]readKeyed
+    one7  readLeb
+    many7 [..4]readLeb
+    one8  readLength
+    many8 [..4]readLength
+    one9  readMap
+    many9 [..4]readMap
+}
+
+table NameFields0
+{
+    readGroups uint32
+    readGroups128 uint32
+    readInt uint32
+    readInt128 uint32
+    readInt16FromWriter uint32
+    readInt64 uint32
+    readKeyed uint32
+    readLeb uint32
+    readLength uint32
+    readMap uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    readMapEntry Inner
+    readObject Inner
+    readOpened Inner
+    readPair Inner
+    readPayload Inner
+    readPointerCell Inner
+    readPrim Inner
+    readRecord Inner
+    readReset Inner
+    readScalar Inner
+}
+
+table NameTypes1
+{
+    one0  readMapEntry
+    many0 [..4]readMapEntry
+    one1  readObject
+    many1 [..4]readObject
+    one2  readOpened
+    many2 [..4]readOpened
+    one3  readPair
+    many3 [..4]readPair
+    one4  readPayload
+    many4 [..4]readPayload
+    one5  readPointerCell
+    many5 [..4]readPointerCell
+    one6  readPrim
+    many6 [..4]readPrim
+    one7  readRecord
+    many7 [..4]readRecord
+    one8  readReset
+    many8 [..4]readReset
+    one9  readScalar
+    many9 [..4]readScalar
+}
+
+table NameFields1
+{
+    readMapEntry uint32
+    readObject uint32
+    readOpened uint32
+    readPair uint32
+    readPayload uint32
+    readPointerCell uint32
+    readPrim uint32
+    readRecord uint32
+    readReset uint32
+    readScalar uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    readShape Inner
+    readStrict Inner
+    readStruct Inner
+    readTable Inner
+    readTableKeys Inner
+    readText Inner
+    readTextList Inner
+    readU16 Inner
+    readU32 Inner
+    readU64 Inner
+}
+
+table NameTypes2
+{
+    one0  readShape
+    many0 [..4]readShape
+    one1  readStrict
+    many1 [..4]readStrict
+    one2  readStruct
+    many2 [..4]readStruct
+    one3  readTable
+    many3 [..4]readTable
+    one4  readTableKeys
+    many4 [..4]readTableKeys
+    one5  readText
+    many5 [..4]readText
+    one6  readTextList
+    many6 [..4]readTextList
+    one7  readU16
+    many7 [..4]readU16
+    one8  readU32
+    many8 [..4]readU32
+    one9  readU64
+    many9 [..4]readU64
+}
+
+table NameFields2
+{
+    readShape uint32
+    readStrict uint32
+    readStruct uint32
+    readTable uint32
+    readTableKeys uint32
+    readText uint32
+    readTextList uint32
+    readU16 uint32
+    readU32 uint32
+    readU64 uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    readUint128 Inner
+    readUnion Inner
+    readValue Inner
+    read_arm Inner
+    read_arm_n Inner
+    read_arm_payload Inner
+    read_arm_plain Inner
+    read_array_body Inner
+    read_array_field Inner
+    read_body_fields Inner
+}
+
+table NameTypes3
+{
+    one0  readUint128
+    many0 [..4]readUint128
+    one1  readUnion
+    many1 [..4]readUnion
+    one2  readValue
+    many2 [..4]readValue
+    one3  read_arm
+    many3 [..4]read_arm
+    one4  read_arm_n
+    many4 [..4]read_arm_n
+    one5  read_arm_payload
+    many5 [..4]read_arm_payload
+    one6  read_arm_plain
+    many6 [..4]read_arm_plain
+    one7  read_array_body
+    many7 [..4]read_array_body
+    one8  read_array_field
+    many8 [..4]read_array_field
+    one9  read_body_fields
+    many9 [..4]read_body_fields
+}
+
+table NameFields3
+{
+    readUint128 uint32
+    readUnion uint32
+    readValue uint32
+    read_arm uint32
+    read_arm_n uint32
+    read_arm_payload uint32
+    read_arm_plain uint32
+    read_array_body uint32
+    read_array_field uint32
+    read_body_fields uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    read_bool_element Inner
+    read_bytes_field Inner
+    read_element_codec Inner
+    read_entry Inner
+    read_enum_element Inner
+    read_f32 Inner
+    read_field_codec Inner
+    read_float_element Inner
+    read_form1 Inner
+    read_int_element Inner
+}
+
+table NameTypes4
+{
+    one0  read_bool_element
+    many0 [..4]read_bool_element
+    one1  read_bytes_field
+    many1 [..4]read_bytes_field
+    one2  read_element_codec
+    many2 [..4]read_element_codec
+    one3  read_entry
+    many3 [..4]read_entry
+    one4  read_enum_element
+    many4 [..4]read_enum_element
+    one5  read_f32
+    many5 [..4]read_f32
+    one6  read_field_codec
+    many6 [..4]read_field_codec
+    one7  read_float_element
+    many7 [..4]read_float_element
+    one8  read_form1
+    many8 [..4]read_form1
+    one9  read_int_element
+    many9 [..4]read_int_element
+}
+
+table NameFields4
+{
+    read_bool_element uint32
+    read_bytes_field uint32
+    read_element_codec uint32
+    read_entry uint32
+    read_enum_element uint32
+    read_f32 uint32
+    read_field_codec uint32
+    read_float_element uint32
+    read_form1 uint32
+    read_int_element uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    read_json Inner
+    read_json_field Inner
+    read_json_integer Inner
+    read_json_keyed Inner
+    read_json_timestamp Inner
+    read_keyed_field Inner
+    read_keyed_inner Inner
+    read_keys Inner
+    read_map_field Inner
+    read_map_inner Inner
+}
+
+table NameTypes5
+{
+    one0  read_json
+    many0 [..4]read_json
+    one1  read_json_field
+    many1 [..4]read_json_field
+    one2  read_json_integer
+    many2 [..4]read_json_integer
+    one3  read_json_keyed
+    many3 [..4]read_json_keyed
+    one4  read_json_timestamp
+    many4 [..4]read_json_timestamp
+    one5  read_keyed_field
+    many5 [..4]read_keyed_field
+    one6  read_keyed_inner
+    many6 [..4]read_keyed_inner
+    one7  read_keys
+    many7 [..4]read_keys
+    one8  read_map_field
+    many8 [..4]read_map_field
+    one9  read_map_inner
+    many9 [..4]read_map_inner
+}
+
+table NameFields5
+{
+    read_json uint32
+    read_json_field uint32
+    read_json_integer uint32
+    read_json_keyed uint32
+    read_json_timestamp uint32
+    read_keyed_field uint32
+    read_keyed_inner uint32
+    read_keys uint32
+    read_map_field uint32
+    read_map_inner uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    read_name Inner
+    read_node_table Inner
+    read_null Inner
+    read_ok Inner
+    read_optional_array Inner
+    read_optional_field Inner
+    read_pointer Inner
+    read_pointer_array_field Inner
+    read_string_element Inner
+    read_table_body Inner
+}
+
+table NameTypes6
+{
+    one0  read_name
+    many0 [..4]read_name
+    one1  read_node_table
+    many1 [..4]read_node_table
+    one2  read_null
+    many2 [..4]read_null
+    one3  read_ok
+    many3 [..4]read_ok
+    one4  read_optional_array
+    many4 [..4]read_optional_array
+    one5  read_optional_field
+    many5 [..4]read_optional_field
+    one6  read_pointer
+    many6 [..4]read_pointer
+    one7  read_pointer_array_field
+    many7 [..4]read_pointer_array_field
+    one8  read_string_element
+    many8 [..4]read_string_element
+    one9  read_table_body
+    many9 [..4]read_table_body
+}
+
+table NameFields6
+{
+    read_name uint32
+    read_node_table uint32
+    read_null uint32
+    read_ok uint32
+    read_optional_array uint32
+    read_optional_field uint32
+    read_pointer uint32
+    read_pointer_array_field uint32
+    read_string_element uint32
+    read_table_body uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    read_table_element Inner
+    read_union_array_field Inner
+    read_union_payload Inner
+    read_unknown_field Inner
+    read_variant_name Inner
+    read_wide Inner
+    read_wide_token Inner
+    read_widened Inner
+    read_widened_scalar Inner
+    reader Inner
+}
+
+table NameTypes7
+{
+    one0  read_table_element
+    many0 [..4]read_table_element
+    one1  read_union_array_field
+    many1 [..4]read_union_array_field
+    one2  read_union_payload
+    many2 [..4]read_union_payload
+    one3  read_unknown_field
+    many3 [..4]read_unknown_field
+    one4  read_variant_name
+    many4 [..4]read_variant_name
+    one5  read_wide
+    many5 [..4]read_wide
+    one6  read_wide_token
+    many6 [..4]read_wide_token
+    one7  read_widened
+    many7 [..4]read_widened
+    one8  read_widened_scalar
+    many8 [..4]read_widened_scalar
+    one9  reader
+    many9 [..4]reader
+}
+
+table NameFields7
+{
+    read_table_element uint32
+    read_union_array_field uint32
+    read_union_payload uint32
+    read_unknown_field uint32
+    read_variant_name uint32
+    read_wide uint32
+    read_wide_token uint32
+    read_widened uint32
+    read_widened_scalar uint32
+    reader uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

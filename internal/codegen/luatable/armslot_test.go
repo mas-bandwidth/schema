@@ -4,7 +4,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // TestLuaArmSlotKeepsTheDiscriminator holds the value representation of a table

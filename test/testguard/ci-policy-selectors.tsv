@@ -1,10 +1,10 @@
-# testguard config for the ci-policy (selectors) row of .github/workflows/ci-fast.yml.
+# testguard config for the ci-policy (selectors) row of .github/workflows/ci-fast-nightly.yml.
 # Every package the row's go test runs is a suite; every test that runs has
 # an empty file under the baseline directory; skips are ledgered here by test.
 # go run ./tools/testguard help check
-# The record lines run the row's go test as ci-fast.yml's ci-policy step does
+# The record lines run the row's go test as ci-fast-nightly.yml's ci-policy step does
 # (keep them the same); `go run ./tools/testguard baseline --config THIS` runs
 # them and writes the entries for the tests that ran and are not listed.
 record	go test -json -run '^(TestFastPlan|TestOptVerify)' ./internal/ci/ > "$TESTGUARD_RECORD/ci.jsonl"
-suite	github.com/mas-bandwidth/schema/v2/internal/ci
+suite	github.com/mas-bandwidth/schema/v3/internal/ci
 baseline	test/testguard/ci-policy-selectors

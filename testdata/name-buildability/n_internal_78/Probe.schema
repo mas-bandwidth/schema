@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum walk_id_order
+{ Zfirst, Zsecond, Zthird }
+
+enum walk_keyed_slot
+{ Zfirst, Zsecond, Zthird }
+
+enum walk_map
+{ Zfirst, Zsecond, Zthird }
+
+enum walk_payload
+{ Zfirst, Zsecond, Zthird }
+
+enum walk_text_bytes
+{ Zfirst, Zsecond, Zthird }
+
+enum walk_union
+{ Zfirst, Zsecond, Zthird }
+
+enum walked
+{ Zfirst, Zsecond, Zthird }
+
+enum want
+{ Zfirst, Zsecond, Zthird }
+
+enum wantByte
+{ Zfirst, Zsecond, Zthird }
+
+enum wantRank
+{ Zfirst, Zsecond, Zthird }
+
+enum wantType
+{ Zfirst, Zsecond, Zthird }
+
+enum wantTypeId
+{ Zfirst, Zsecond, Zthird }
+
+enum want_guarded
+{ Zfirst, Zsecond, Zthird }
+
+enum want_hi
+{ Zfirst, Zsecond, Zthird }
+
+enum want_pads
+{ Zfirst, Zsecond, Zthird }
+
+enum wanted
+{ Zfirst, Zsecond, Zthird }
+
+enum wants
+{ Zfirst, Zsecond, Zthird }
+
+enum was
+{ Zfirst, Zsecond, Zthird }
+
+enum wasFirst
+{ Zfirst, Zsecond, Zthird }
+
+enum was_oor
+{ Zfirst, Zsecond, Zthird }
+
+enum was_seen
+{ Zfirst, Zsecond, Zthird }
+
+enum way
+{ Zfirst, Zsecond, Zthird }
+
+enum wb
+{ Zfirst, Zsecond, Zthird }
+
+enum wc
+{ Zfirst, Zsecond, Zthird }
+
+enum wcArray
+{ Zfirst, Zsecond, Zthird }
+
+enum wcBody
+{ Zfirst, Zsecond, Zthird }
+
+enum wcClose
+{ Zfirst, Zsecond, Zthird }
+
+enum wcContent
+{ Zfirst, Zsecond, Zthird }
+
+enum wcDamage
+{ Zfirst, Zsecond, Zthird }
+
+enum wcFail
+{ Zfirst, Zsecond, Zthird }
+
+enum wcGraph
+{ Zfirst, Zsecond, Zthird }
+
+enum wcHeader
+{ Zfirst, Zsecond, Zthird }
+
+enum wcKeyed
+{ Zfirst, Zsecond, Zthird }
+
+enum wcLeb
+{ Zfirst, Zsecond, Zthird }
+
+enum wcOpen
+{ Zfirst, Zsecond, Zthird }
+
+enum wcPayload
+{ Zfirst, Zsecond, Zthird }
+
+enum wcRecords
+{ Zfirst, Zsecond, Zthird }
+
+enum wcScalar
+{ Zfirst, Zsecond, Zthird }
+
+enum wcStep
+{ Zfirst, Zsecond, Zthird }
+
+enum wcUnion
+{ Zfirst, Zsecond, Zthird }
+
+enum wcUse
+{ Zfirst, Zsecond, Zthird }
+
+enum wc_fixed_width
+{ Zfirst, Zsecond, Zthird }
+
+enum wc_id
+{ Zfirst, Zsecond, Zthird }
+
+enum wc_non_finite
+{ Zfirst, Zsecond, Zthird }
+
+enum wc_refuse
+{ Zfirst, Zsecond, Zthird }
+
+enum wc_set
+{ Zfirst, Zsecond, Zthird }
+
+enum wc_structural
+{ Zfirst, Zsecond, Zthird }
+
+enum wc_text
+{ Zfirst, Zsecond, Zthird }
+
+enum we
+{ Zfirst, Zsecond, Zthird }
+
+enum weak
+{ Zfirst, Zsecond, Zthird }
+
+enum well
+{ Zfirst, Zsecond, Zthird }
+
+enum wfail
+{ Zfirst, Zsecond, Zthird }
+
+enum wfixed
+{ Zfirst, Zsecond, Zthird }
+
+enum what
+{ Zfirst, Zsecond, Zthird }
+
+enum whatever
+{ Zfirst, Zsecond, Zthird }
+
+enum whether
+{ Zfirst, Zsecond, Zthird }
+
+enum whi
+{ Zfirst, Zsecond, Zthird }
+
+enum which
+{ Zfirst, Zsecond, Zthird }
+
+enum whole
+{ Zfirst, Zsecond, Zthird }
+
+enum whole_str
+{ Zfirst, Zsecond, Zthird }
+
+enum why
+{ Zfirst, Zsecond, Zthird }
+
+enum wid
+{ Zfirst, Zsecond, Zthird }
+
+enum wide
+{ Zfirst, Zsecond, Zthird }
+
+enum wideArg
+{ Zfirst, Zsecond, Zthird }
+
+enum wideCompare
+{ Zfirst, Zsecond, Zthird }
+
+enum wideDecl
+{ Zfirst, Zsecond, Zthird }
+
+enum wideField
+{ Zfirst, Zsecond, Zthird }
+
+enum wideFixed
+{ Zfirst, Zsecond, Zthird }
+
+enum wideIllFormed
+{ Zfirst, Zsecond, Zthird }
+
+enum wideKind
+{ Zfirst, Zsecond, Zthird }
+
+enum wideLimits
+{ Zfirst, Zsecond, Zthird }
+
+enum wideOf
+{ Zfirst, Zsecond, Zthird }
+
+enum widePair
+{ Zfirst, Zsecond, Zthird }
+
+enum wideSigned
+{ Zfirst, Zsecond, Zthird }
+
+enum wideStore
+{ Zfirst, Zsecond, Zthird }
+
+enum wideToken
+{ Zfirst, Zsecond, Zthird }
+
+enum wideWidth
+{ Zfirst, Zsecond, Zthird }
+
+enum wide_bits
+{ Zfirst, Zsecond, Zthird }
+
+enum wide_clamp
+{ Zfirst, Zsecond, Zthird }
+
+enum wide_decimal
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    walk_id_order Inner
+    walk_keyed_slot Inner
+    walk_map Inner
+    walk_payload Inner
+    walk_text_bytes Inner
+    walk_union Inner
+    walked Inner
+    want Inner
+    wantByte Inner
+    wantRank Inner
+}
+
+table NameTypes0
+{
+    one0  walk_id_order
+    many0 [..4]walk_id_order
+    one1  walk_keyed_slot
+    many1 [..4]walk_keyed_slot
+    one2  walk_map
+    many2 [..4]walk_map
+    one3  walk_payload
+    many3 [..4]walk_payload
+    one4  walk_text_bytes
+    many4 [..4]walk_text_bytes
+    one5  walk_union
+    many5 [..4]walk_union
+    one6  walked
+    many6 [..4]walked
+    one7  want
+    many7 [..4]want
+    one8  wantByte
+    many8 [..4]wantByte
+    one9  wantRank
+    many9 [..4]wantRank
+}
+
+table NameFields0
+{
+    walk_id_order uint32
+    walk_keyed_slot uint32
+    walk_map uint32
+    walk_payload uint32
+    walk_text_bytes uint32
+    walk_union uint32
+    walked uint32
+    want uint32
+    wantByte uint32
+    wantRank uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    wantType Inner
+    wantTypeId Inner
+    want_guarded Inner
+    want_hi Inner
+    want_pads Inner
+    wanted Inner
+    wants Inner
+    was Inner
+    wasFirst Inner
+    was_oor Inner
+}
+
+table NameTypes1
+{
+    one0  wantType
+    many0 [..4]wantType
+    one1  wantTypeId
+    many1 [..4]wantTypeId
+    one2  want_guarded
+    many2 [..4]want_guarded
+    one3  want_hi
+    many3 [..4]want_hi
+    one4  want_pads
+    many4 [..4]want_pads
+    one5  wanted
+    many5 [..4]wanted
+    one6  wants
+    many6 [..4]wants
+    one7  was
+    many7 [..4]was
+    one8  wasFirst
+    many8 [..4]wasFirst
+    one9  was_oor
+    many9 [..4]was_oor
+}
+
+table NameFields1
+{
+    wantType uint32
+    wantTypeId uint32
+    want_guarded uint32
+    want_hi uint32
+    want_pads uint32
+    wanted uint32
+    wants uint32
+    was uint32
+    wasFirst uint32
+    was_oor uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    was_seen Inner
+    way Inner
+    wb Inner
+    wc Inner
+    wcArray Inner
+    wcBody Inner
+    wcClose Inner
+    wcContent Inner
+    wcDamage Inner
+    wcFail Inner
+}
+
+table NameTypes2
+{
+    one0  was_seen
+    many0 [..4]was_seen
+    one1  way
+    many1 [..4]way
+    one2  wb
+    many2 [..4]wb
+    one3  wc
+    many3 [..4]wc
+    one4  wcArray
+    many4 [..4]wcArray
+    one5  wcBody
+    many5 [..4]wcBody
+    one6  wcClose
+    many6 [..4]wcClose
+    one7  wcContent
+    many7 [..4]wcContent
+    one8  wcDamage
+    many8 [..4]wcDamage
+    one9  wcFail
+    many9 [..4]wcFail
+}
+
+table NameFields2
+{
+    was_seen uint32
+    way uint32
+    wb uint32
+    wc uint32
+    wcArray uint32
+    wcBody uint32
+    wcClose uint32
+    wcContent uint32
+    wcDamage uint32
+    wcFail uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    wcGraph Inner
+    wcHeader Inner
+    wcKeyed Inner
+    wcLeb Inner
+    wcOpen Inner
+    wcPayload Inner
+    wcRecords Inner
+    wcScalar Inner
+    wcStep Inner
+    wcUnion Inner
+}
+
+table NameTypes3
+{
+    one0  wcGraph
+    many0 [..4]wcGraph
+    one1  wcHeader
+    many1 [..4]wcHeader
+    one2  wcKeyed
+    many2 [..4]wcKeyed
+    one3  wcLeb
+    many3 [..4]wcLeb
+    one4  wcOpen
+    many4 [..4]wcOpen
+    one5  wcPayload
+    many5 [..4]wcPayload
+    one6  wcRecords
+    many6 [..4]wcRecords
+    one7  wcScalar
+    many7 [..4]wcScalar
+    one8  wcStep
+    many8 [..4]wcStep
+    one9  wcUnion
+    many9 [..4]wcUnion
+}
+
+table NameFields3
+{
+    wcGraph uint32
+    wcHeader uint32
+    wcKeyed uint32
+    wcLeb uint32
+    wcOpen uint32
+    wcPayload uint32
+    wcRecords uint32
+    wcScalar uint32
+    wcStep uint32
+    wcUnion uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    wcUse Inner
+    wc_fixed_width Inner
+    wc_id Inner
+    wc_non_finite Inner
+    wc_refuse Inner
+    wc_set Inner
+    wc_structural Inner
+    wc_text Inner
+    we Inner
+    weak Inner
+}
+
+table NameTypes4
+{
+    one0  wcUse
+    many0 [..4]wcUse
+    one1  wc_fixed_width
+    many1 [..4]wc_fixed_width
+    one2  wc_id
+    many2 [..4]wc_id
+    one3  wc_non_finite
+    many3 [..4]wc_non_finite
+    one4  wc_refuse
+    many4 [..4]wc_refuse
+    one5  wc_set
+    many5 [..4]wc_set
+    one6  wc_structural
+    many6 [..4]wc_structural
+    one7  wc_text
+    many7 [..4]wc_text
+    one8  we
+    many8 [..4]we
+    one9  weak
+    many9 [..4]weak
+}
+
+table NameFields4
+{
+    wcUse uint32
+    wc_fixed_width uint32
+    wc_id uint32
+    wc_non_finite uint32
+    wc_refuse uint32
+    wc_set uint32
+    wc_structural uint32
+    wc_text uint32
+    we uint32
+    weak uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    well Inner
+    wfail Inner
+    wfixed Inner
+    what Inner
+    whatever Inner
+    whether Inner
+    whi Inner
+    which Inner
+    whole Inner
+    whole_str Inner
+}
+
+table NameTypes5
+{
+    one0  well
+    many0 [..4]well
+    one1  wfail
+    many1 [..4]wfail
+    one2  wfixed
+    many2 [..4]wfixed
+    one3  what
+    many3 [..4]what
+    one4  whatever
+    many4 [..4]whatever
+    one5  whether
+    many5 [..4]whether
+    one6  whi
+    many6 [..4]whi
+    one7  which
+    many7 [..4]which
+    one8  whole
+    many8 [..4]whole
+    one9  whole_str
+    many9 [..4]whole_str
+}
+
+table NameFields5
+{
+    well uint32
+    wfail uint32
+    wfixed uint32
+    what uint32
+    whatever uint32
+    whether uint32
+    whi uint32
+    which uint32
+    whole uint32
+    whole_str uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    why Inner
+    wid Inner
+    wide Inner
+    wideArg Inner
+    wideCompare Inner
+    wideDecl Inner
+    wideField Inner
+    wideFixed Inner
+    wideIllFormed Inner
+    wideKind Inner
+}
+
+table NameTypes6
+{
+    one0  why
+    many0 [..4]why
+    one1  wid
+    many1 [..4]wid
+    one2  wide
+    many2 [..4]wide
+    one3  wideArg
+    many3 [..4]wideArg
+    one4  wideCompare
+    many4 [..4]wideCompare
+    one5  wideDecl
+    many5 [..4]wideDecl
+    one6  wideField
+    many6 [..4]wideField
+    one7  wideFixed
+    many7 [..4]wideFixed
+    one8  wideIllFormed
+    many8 [..4]wideIllFormed
+    one9  wideKind
+    many9 [..4]wideKind
+}
+
+table NameFields6
+{
+    why uint32
+    wid uint32
+    wide uint32
+    wideArg uint32
+    wideCompare uint32
+    wideDecl uint32
+    wideField uint32
+    wideFixed uint32
+    wideIllFormed uint32
+    wideKind uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    wideLimits Inner
+    wideOf Inner
+    widePair Inner
+    wideSigned Inner
+    wideStore Inner
+    wideToken Inner
+    wideWidth Inner
+    wide_bits Inner
+    wide_clamp Inner
+    wide_decimal Inner
+}
+
+table NameTypes7
+{
+    one0  wideLimits
+    many0 [..4]wideLimits
+    one1  wideOf
+    many1 [..4]wideOf
+    one2  widePair
+    many2 [..4]widePair
+    one3  wideSigned
+    many3 [..4]wideSigned
+    one4  wideStore
+    many4 [..4]wideStore
+    one5  wideToken
+    many5 [..4]wideToken
+    one6  wideWidth
+    many6 [..4]wideWidth
+    one7  wide_bits
+    many7 [..4]wide_bits
+    one8  wide_clamp
+    many8 [..4]wide_clamp
+    one9  wide_decimal
+    many9 [..4]wide_decimal
+}
+
+table NameFields7
+{
+    wideLimits uint32
+    wideOf uint32
+    widePair uint32
+    wideSigned uint32
+    wideStore uint32
+    wideToken uint32
+    wideWidth uint32
+    wide_bits uint32
+    wide_clamp uint32
+    wide_decimal uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

@@ -46,6 +46,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `goose-hostile/` | Goose hostile-corpus runner | `make schema-goose-runs-hostile-corpus` | `make schema-goose-runs-hostile-corpus` |
 | `goose-ludicrous/` | Goose int128 tests | `make test-goose` | `make test-goose` |
 | `guard/` | C++ include-guard test | `./build/schema_test_guard` | `./build/schema_test_guard` |
+| `happy/` | per-PR happy path: one round trip per language (make/happy-path.mk) | `make happy-c` | `make happy-<lang>` |
 | `java/` | Java packet tests | `make test-java` | `make test-java` |
 | `java-fixedform/` | Java fixed-form tests | `make test-java` | `make test-java` |
 | `java-hostile/` | Java hostile-corpus runner | `make schema-java-runs-hostile-corpus` | `make schema-java-runs-hostile-corpus` |
@@ -64,18 +65,19 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `message-one-encoding/` | message form one-encoding fixture | `make test-go` | `go test -run TestSpecMessageFormHasOneEncoding ./compiler/` |
 | `moo-runtime-home/` | moo runtime-home check | `make tables-moo-runtime-home` | `make tables-moo-runtime-home` |
 | `non-canonical/` | non-canonical spelling wire vectors | `go test -run TestCorpusNonCanonicalSpellings ./compiler/` | `go test -run TestCorpusNonCanonicalSpellings ./compiler/` |
-| `packet-cfloat-endpoints/` | accepted compressed-float packet endpoints | `make packet-cfloat-endpoints-go` | `make packet-cfloat-endpoints-go` |
+| `packet-cfloat-endpoints/` | accepted compressed-float packet endpoints | `make packet-cfloat-endpoints-go, make packet-cfloat-endpoints-js` | `make packet-cfloat-endpoints-go packet-cfloat-endpoints-js` |
 | `packet-defaults/` | packet default-value gates | `make test` | `make test` |
 | `packet-end/` | packet end-check fixture | `make test-go` | `go test -run TestSpecPacketEndIsChecked ./compiler/` |
 | `packet-finite/` | packet finite-float gates | `make test-go, make test-dart, make test-elixir, make test-lua, make test-luau` | `make packet-finite-go packet-finite-dart packet-finite-elixir packet-finite-lua packet-finite-luau` |
 | `packet-text/` | packet UTF-8 gates | `make test` | `make test` |
-| `packet-void/` | packet void-arm gates | `make test` | `make test` |
+| `packet-void/` | packet void-arm drivers, one per leg, over testdata/wire/packet-void/cases.txt | `make packet-void-<leg>` | `make packet-void-pins` |
 | `packet-write-bareint/` | packet Write bare-integer width fixture | `go test -run TestSpecPacketWriteBareIntWidth ./compiler/` | `go test -run TestSpecPacketWriteBareIntWidth ./compiler/` |
 | `packet-write-cfloat/` | packet Write compressed-float range fixture | `make test-go` | `go test -run TestSpecPacketWriteRefusesOffRangeCompressedFloat ./compiler/` |
 | `packet-write-refusal/` | packet Write refusal fixtures for the assert legs | `make test-c, make test-cpp, make test-cs, make test-unity, make test-rust, make test-java, make test-dart` | `make packet-write-refusal-rust` |
 | `packet-write-text/` | packet text write contract fixtures | `go test -run TestSpecPacketWriteChecksText ./compiler/` | `go test -run TestSpecPacketWriteChecksText ./compiler/` |
 | `pointer-target-type/` | pointer target-type fixtures | `go test -run TestSpecPointerTargetTypeChecked ./compiler/` | `go test -run TestSpecPointerTargetTypeChecked ./compiler/` |
 | `proof/` | 3.0.0 proof snapshot (internal gate) | `make proof` | `make proof-write` |
+| `registry/` | the test registry: every test, language, tier, type and stored query | `go run ./tools/schema-test run --group pr` | `go run ./tools/schema-test coverage` |
 | `rust/` | Rust packet tests | `make test-rust` | `make test-rust` |
 | `rust-agree/` | Rust accessor/descriptor agreement gate | `make tables-rust-accessor-descriptor-agreement` | `make tables-rust-accessor-descriptor-agreement` |
 | `rust-alloc/` | Rust allocation gate, per read path | `make tables-rust-alloc` | `make tables-rust-alloc` |

@@ -1,8 +1,12 @@
 package rusttable
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 // TestRustWriteRefusalEmitted pins the write contract's refusals in the
@@ -78,13 +82,13 @@ fixed table Config
 `)
 	fixed := string(out["probe_fixed.rs"])
 	for _, want := range []string{
-		`debug_assert!(value.tag <= 2, "Effect tag outside its arm set");`,
-		`debug_assert!(value.amount >= 0 && value.amount <= 10, "amount out of range [0, 10]");`,
-		`debug_assert!(value.channel <= 63, "channel exceeds bits(6) width");`,
-		`value.items_count >= 0 && value.items_count <= 8,`,
-		`debug_assert!(table_utf8_valid(&value.label[..n]), "label is ill-formed text");`,
-		`debug_assert!(value.scale >= -524288 && value.scale <= 524288, "scale raw value out of range [-524288, 524288]");`,
-		`debug_assert!(value.grade <= 3, "grade ordinal exceeds the enum's extent");`,
+		`debug_assert!(schema_value.tag <= 2, "Effect tag outside its arm set");`,
+		`debug_assert!(schema_value.amount >= 0 && schema_value.amount <= 10, "amount out of range [0, 10]");`,
+		`debug_assert!(schema_value.channel <= 63, "channel exceeds bits(6) width");`,
+		`schema_value.items_count >= 0 && schema_value.items_count <= 8,`,
+		`debug_assert!(table_utf8_valid(&schema_value.label[..schema_n]), "label is ill-formed text");`,
+		`debug_assert!(schema_value.scale >= -524288 && schema_value.scale <= 524288, "scale raw value out of range [-524288, 524288]");`,
+		`debug_assert!(schema_value.grade <= 3, "grade ordinal exceeds the enum's extent");`,
 	} {
 		if !strings.Contains(fixed, want) {
 			t.Errorf("the fixed-form save does not emit %q", want)
@@ -92,13 +96,76 @@ fixed table Config
 	}
 	message := string(out["probe_message.rs"])
 	for _, want := range []string{
-		`debug_assert!(value.amount >= 0 && value.amount <= 10, "amount out of range [0, 10]");`,
-		`debug_assert!(value.channel <= 63, "channel exceeds bits(6) width");`,
-		`debug_assert!(table_message_utf8(&value.label[..value.label_length as usize]), "label is ill-formed text");`,
-		`debug_assert!(value.scale >= -524288 && value.scale <= 524288, "scale raw value out of range [-524288, 524288]");`,
+		`debug_assert!(schema_value.amount >= 0 && schema_value.amount <= 10, "amount out of range [0, 10]");`,
+		`debug_assert!(schema_value.channel <= 63, "channel exceeds bits(6) width");`,
+		`debug_assert!(table_message_utf8(&schema_value.label[..schema_value.label_length as usize]), "label is ill-formed text");`,
+		`debug_assert!(schema_value.scale >= -524288 && schema_value.scale <= 524288, "scale raw value out of range [-524288, 524288]");`,
 	} {
 		if !strings.Contains(message, want) {
 			t.Errorf("the message-form save does not emit %q", want)
 		}
+	}
+}
+
+const fixedDeprecatedEnumSchema = `package probe
+
+enum Phase
+{
+    Live
+    Old | deprecated
+    Next
+}
+
+fixed table Config
+{
+    few   [2..4]int32
+    phase Phase
+}
+`
+
+// TestRustFixedDeprecatedEnumWriteRefused pins the §2.15 debug assertion on
+// a fixed Row's deprecated enum ordinal.
+func TestRustFixedDeprecatedEnumWriteRefused(t *testing.T) {
+	t.Parallel()
+	fixed := string(generate(t, fixedDeprecatedEnumSchema)["probe_fixed.rs"])
+	want := `debug_assert!(schema_value.phase != 2, "invalid_value: phase holds a deprecated variant");`
+	if !strings.Contains(fixed, want) {
+		t.Errorf("the fixed-form save does not emit %q", want)
+	}
+}
+
+func TestRustFixedDeprecatedEnumWriteRefusedNative(t *testing.T) {
+	keyedRequireRustc(t)
+	dir := t.TempDir()
+	layoutRustUnit(t, dir, "probe", generate(t, fixedDeprecatedEnumSchema))
+	const main = `
+#![allow(dead_code, unused_imports)]
+mod probe;
+use probe::*;
+
+fn main() {
+    let measured = config_fixed_measure(1);
+    for phase in [1, 3] {
+        let row = ConfigRow { phase, ..ConfigRow::default() };
+        let mut buffer = vec![0; measured];
+        assert_eq!(config_fixed_save(&[row], &mut buffer), Some(measured));
+    }
+    let row = ConfigRow { phase: 2, ..ConfigRow::default() };
+    let mut buffer = vec![0; measured];
+    let _ = config_fixed_save(&[row], &mut buffer);
+}
+`
+	if err := os.WriteFile(filepath.Join(dir, "main.rs"), []byte(main), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	compile := testproc.Command(t, "rustc", "--edition", "2024", "-A", "warnings", "-o", "run", "main.rs")
+	compile.Dir = dir
+	if out, err := compile.CombinedOutput(); err != nil {
+		t.Fatalf("native Rust compile: %v\n%s", err, out)
+	}
+	run := testproc.Command(t, filepath.Join(dir, "run"))
+	run.Dir = dir
+	if out, err := run.CombinedOutput(); err == nil || !strings.Contains(string(out), "invalid_value: phase holds a deprecated variant") {
+		t.Fatalf("native debug save did not assert on the deprecated variant: %v\n%s", err, out)
 	}
 }

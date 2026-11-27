@@ -14,7 +14,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/testinputs"
 )
 
 func TestPythonHandtextCISelection(t *testing.T) {
@@ -75,6 +76,7 @@ func TestPythonCISupportCoversEveryPrerequisite(t *testing.T) {
 	slowtest.Gate(t, "make (Python support prerequisite closure)")
 	run := func(args ...string) string {
 		t.Helper()
+		testinputs.Make(t)
 		cmd := exec.Command("make", args...)
 		cmd.Dir = repoRoot(t)
 		out, err := cmd.CombinedOutput()
@@ -324,6 +326,7 @@ fi
 `, 0o700)
 			write("bin/make", "#!/bin/sh\nmkdir -p build/fixedform-corpus build/conformance-python\nprintf generated > build/conformance-python/unit.py\nprintf wire > build/fixedform-corpus/old_int_widen.bin\nprintf manifest > build/fixedform-corpus/manifest.txt\ntouch build/fixedform-corpus/.stamp\n", 0o700)
 			run := func(mode string, vars ...string) ([]byte, error) {
+				testinputs.Files(t, script)
 				cmd := exec.Command("sh", script, mode)
 				cmd.Dir = root
 				cmd.Env = append(stripEnv(os.Environ(), "PATH"), "PATH="+filepath.Join(root, "bin")+":"+os.Getenv("PATH"))
@@ -355,6 +358,7 @@ fi
 				if name == "damaged generated units" {
 					file = "conformance-python/unit.py"
 				}
+				// testinputs:none — damages the fixture archive in the test's own directory; reads no repository file
 				cmd := exec.Command("sh", "-ec", "mkdir unpack; tar -xf build/python-ci-fixed-corpus.tar -C unpack; printf damaged > unpack/"+file+"; tar -cf build/python-ci-fixed-corpus.tar -C unpack .")
 				cmd.Dir = root
 				if out, err := cmd.CombinedOutput(); err != nil {

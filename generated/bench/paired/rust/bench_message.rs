@@ -23,439 +23,439 @@ pub fn mixed_entity_message_default() -> MixedEntityRow {
 
 /// One MixedEntity body (§3.3): each field off its declared default, then the zero
 /// reference.
-pub fn mixed_entity_save_message_body(w: &mut TableBitWriter, value: &MixedEntityRow) -> bool {
-    let dflt = mixed_entity_message_default();
+pub fn mixed_entity_save_message_body(schema_w: &mut TableBitWriter, schema_value: &MixedEntityRow) -> bool {
+    let schema_dflt = mixed_entity_message_default();
     {
-        if value.entity_id != dflt.entity_id {
-            w.put(31, TABLE_MESSAGE_REF_BITS);
-            debug_assert!(value.entity_id <= 4095, "entity_id exceeds bits(12) width");
-            table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 12, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.entity_id as u64, 0);
+        if schema_value.entity_id != schema_dflt.entity_id {
+            schema_w.put(31, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(schema_value.entity_id <= 4095, "entity_id exceeds bits(12) width");
+            table_message_write_scalar(schema_w, &TableMessageShape { packing: 1, bits: 12, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, schema_value.entity_id as u64, 0);
         }
     }
     {
-        if value.pos_x != dflt.pos_x {
-            w.put(32, TABLE_MESSAGE_REF_BITS);
-            debug_assert!(value.pos_x >= -16383 && value.pos_x <= 16383, "pos_x out of range [-16383, 16383]");
-            table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 15, base_lo: 0xffffffffffffc001, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.pos_x as i64 as u64, 0);
+        if schema_value.pos_x != schema_dflt.pos_x {
+            schema_w.put(32, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(schema_value.pos_x >= -16383 && schema_value.pos_x <= 16383, "pos_x out of range [-16383, 16383]");
+            table_message_write_scalar(schema_w, &TableMessageShape { packing: 1, bits: 15, base_lo: 0xffffffffffffc001, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, schema_value.pos_x as i64 as u64, 0);
         }
     }
     {
-        if value.pos_y != dflt.pos_y {
-            w.put(33, TABLE_MESSAGE_REF_BITS);
-            debug_assert!(value.pos_y >= -16383 && value.pos_y <= 16383, "pos_y out of range [-16383, 16383]");
-            table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 15, base_lo: 0xffffffffffffc001, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.pos_y as i64 as u64, 0);
+        if schema_value.pos_y != schema_dflt.pos_y {
+            schema_w.put(33, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(schema_value.pos_y >= -16383 && schema_value.pos_y <= 16383, "pos_y out of range [-16383, 16383]");
+            table_message_write_scalar(schema_w, &TableMessageShape { packing: 1, bits: 15, base_lo: 0xffffffffffffc001, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, schema_value.pos_y as i64 as u64, 0);
         }
     }
     {
-        if value.pos_z != dflt.pos_z {
-            w.put(34, TABLE_MESSAGE_REF_BITS);
-            debug_assert!(value.pos_z >= -16383 && value.pos_z <= 16383, "pos_z out of range [-16383, 16383]");
-            table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 15, base_lo: 0xffffffffffffc001, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.pos_z as i64 as u64, 0);
+        if schema_value.pos_z != schema_dflt.pos_z {
+            schema_w.put(34, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(schema_value.pos_z >= -16383 && schema_value.pos_z <= 16383, "pos_z out of range [-16383, 16383]");
+            table_message_write_scalar(schema_w, &TableMessageShape { packing: 1, bits: 15, base_lo: 0xffffffffffffc001, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, schema_value.pos_z as i64 as u64, 0);
         }
     }
     {
-        if value.yaw != dflt.yaw {
-            w.put(35, TABLE_MESSAGE_REF_BITS);
-            debug_assert!(value.yaw <= 511, "yaw exceeds bits(9) width");
-            table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 9, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.yaw as u64, 0);
+        if schema_value.yaw != schema_dflt.yaw {
+            schema_w.put(35, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(schema_value.yaw <= 511, "yaw exceeds bits(9) width");
+            table_message_write_scalar(schema_w, &TableMessageShape { packing: 1, bits: 9, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, schema_value.yaw as u64, 0);
         }
     }
     {
-        if value.pitch != dflt.pitch {
-            w.put(36, TABLE_MESSAGE_REF_BITS);
-            debug_assert!(value.pitch <= 511, "pitch exceeds bits(9) width");
-            table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 9, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.pitch as u64, 0);
+        if schema_value.pitch != schema_dflt.pitch {
+            schema_w.put(36, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(schema_value.pitch <= 511, "pitch exceeds bits(9) width");
+            table_message_write_scalar(schema_w, &TableMessageShape { packing: 1, bits: 9, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, schema_value.pitch as u64, 0);
         }
     }
     {
-        if value.vel_x != dflt.vel_x {
-            w.put(37, TABLE_MESSAGE_REF_BITS);
-            debug_assert!(value.vel_x >= -2048 && value.vel_x <= 2047, "vel_x out of range [-2048, 2047]");
-            table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 12, base_lo: 0xfffffffffffff800, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.vel_x as i64 as u64, 0);
+        if schema_value.vel_x != schema_dflt.vel_x {
+            schema_w.put(37, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(schema_value.vel_x >= -2048 && schema_value.vel_x <= 2047, "vel_x out of range [-2048, 2047]");
+            table_message_write_scalar(schema_w, &TableMessageShape { packing: 1, bits: 12, base_lo: 0xfffffffffffff800, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, schema_value.vel_x as i64 as u64, 0);
         }
     }
     {
-        if value.vel_y != dflt.vel_y {
-            w.put(38, TABLE_MESSAGE_REF_BITS);
-            debug_assert!(value.vel_y >= -2048 && value.vel_y <= 2047, "vel_y out of range [-2048, 2047]");
-            table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 12, base_lo: 0xfffffffffffff800, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.vel_y as i64 as u64, 0);
+        if schema_value.vel_y != schema_dflt.vel_y {
+            schema_w.put(38, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(schema_value.vel_y >= -2048 && schema_value.vel_y <= 2047, "vel_y out of range [-2048, 2047]");
+            table_message_write_scalar(schema_w, &TableMessageShape { packing: 1, bits: 12, base_lo: 0xfffffffffffff800, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, schema_value.vel_y as i64 as u64, 0);
         }
     }
     {
-        if value.vel_z != dflt.vel_z {
-            w.put(39, TABLE_MESSAGE_REF_BITS);
-            debug_assert!(value.vel_z >= -2048 && value.vel_z <= 2047, "vel_z out of range [-2048, 2047]");
-            table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 12, base_lo: 0xfffffffffffff800, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.vel_z as i64 as u64, 0);
+        if schema_value.vel_z != schema_dflt.vel_z {
+            schema_w.put(39, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(schema_value.vel_z >= -2048 && schema_value.vel_z <= 2047, "vel_z out of range [-2048, 2047]");
+            table_message_write_scalar(schema_w, &TableMessageShape { packing: 1, bits: 12, base_lo: 0xfffffffffffff800, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, schema_value.vel_z as i64 as u64, 0);
         }
     }
     {
-        if value.health != dflt.health {
-            w.put(40, TABLE_MESSAGE_REF_BITS);
-            debug_assert!(value.health >= 0 && value.health <= 1000, "health out of range [0, 1000]");
-            table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 10, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.health as i64 as u64, 0);
+        if schema_value.health != schema_dflt.health {
+            schema_w.put(40, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(schema_value.health >= 0 && schema_value.health <= 1000, "health out of range [0, 1000]");
+            table_message_write_scalar(schema_w, &TableMessageShape { packing: 1, bits: 10, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, schema_value.health as i64 as u64, 0);
         }
     }
     {
-        if value.weapon != dflt.weapon {
-            w.put(41, TABLE_MESSAGE_REF_BITS);
-            match value.weapon {
-                0 => w.put(0, TABLE_MESSAGE_REF_BITS),
-                1 => w.put(53, TABLE_MESSAGE_REF_BITS),
-                2 => w.put(54, TABLE_MESSAGE_REF_BITS),
-                3 => w.put(55, TABLE_MESSAGE_REF_BITS),
-                4 => w.put(56, TABLE_MESSAGE_REF_BITS),
-                5 => w.put(57, TABLE_MESSAGE_REF_BITS),
-                6 => w.put(58, TABLE_MESSAGE_REF_BITS),
-                7 => w.put(59, TABLE_MESSAGE_REF_BITS),
-                8 => w.put(60, TABLE_MESSAGE_REF_BITS),
-                9 => w.put(61, TABLE_MESSAGE_REF_BITS),
-                10 => w.put(62, TABLE_MESSAGE_REF_BITS),
-                11 => w.put(63, TABLE_MESSAGE_REF_BITS),
-                12 => w.put(64, TABLE_MESSAGE_REF_BITS),
-                13 => w.put(65, TABLE_MESSAGE_REF_BITS),
-                14 => w.put(66, TABLE_MESSAGE_REF_BITS),
-                15 => w.put(67, TABLE_MESSAGE_REF_BITS),
+        if schema_value.weapon != schema_dflt.weapon {
+            schema_w.put(41, TABLE_MESSAGE_REF_BITS);
+            match schema_value.weapon {
+                0 => schema_w.put(0, TABLE_MESSAGE_REF_BITS),
+                1 => schema_w.put(53, TABLE_MESSAGE_REF_BITS),
+                2 => schema_w.put(54, TABLE_MESSAGE_REF_BITS),
+                3 => schema_w.put(55, TABLE_MESSAGE_REF_BITS),
+                4 => schema_w.put(56, TABLE_MESSAGE_REF_BITS),
+                5 => schema_w.put(57, TABLE_MESSAGE_REF_BITS),
+                6 => schema_w.put(58, TABLE_MESSAGE_REF_BITS),
+                7 => schema_w.put(59, TABLE_MESSAGE_REF_BITS),
+                8 => schema_w.put(60, TABLE_MESSAGE_REF_BITS),
+                9 => schema_w.put(61, TABLE_MESSAGE_REF_BITS),
+                10 => schema_w.put(62, TABLE_MESSAGE_REF_BITS),
+                11 => schema_w.put(63, TABLE_MESSAGE_REF_BITS),
+                12 => schema_w.put(64, TABLE_MESSAGE_REF_BITS),
+                13 => schema_w.put(65, TABLE_MESSAGE_REF_BITS),
+                14 => schema_w.put(66, TABLE_MESSAGE_REF_BITS),
+                15 => schema_w.put(67, TABLE_MESSAGE_REF_BITS),
                 _ => return false,
             }
         }
     }
     {
-        if value.damage != dflt.damage {
-            w.put(42, TABLE_MESSAGE_REF_BITS);
-            debug_assert!(value.damage >> 8 == 0, "flags MixedDamage bits name no variant");
-            table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 8, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.damage, 0);
+        if schema_value.damage != schema_dflt.damage {
+            schema_w.put(42, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(schema_value.damage >> 8 == 0, "flags MixedDamage bits name no variant");
+            table_message_write_scalar(schema_w, &TableMessageShape { packing: 1, bits: 8, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, schema_value.damage, 0);
         }
     }
     {
-        if value.moving != dflt.moving {
-            w.put(43, TABLE_MESSAGE_REF_BITS);
-            w.put(if value.moving { 1 } else { 0 }, 1);
+        if schema_value.moving != schema_dflt.moving {
+            schema_w.put(43, TABLE_MESSAGE_REF_BITS);
+            schema_w.put(if schema_value.moving { 1 } else { 0 }, 1);
         }
     }
     {
-        if value.firing != dflt.firing {
-            w.put(44, TABLE_MESSAGE_REF_BITS);
-            w.put(if value.firing { 1 } else { 0 }, 1);
+        if schema_value.firing != schema_dflt.firing {
+            schema_w.put(44, TABLE_MESSAGE_REF_BITS);
+            schema_w.put(if schema_value.firing { 1 } else { 0 }, 1);
         }
     }
-    w.put(0, TABLE_MESSAGE_REF_BITS);
-    !w.overflow
+    schema_w.put(0, TABLE_MESSAGE_REF_BITS);
+    !schema_w.overflow
 }
 
 /// One MixedEntity body against the ENDPOINT's vocabulary (§3.3): a field this build
 /// cannot name is skipped by the endpoint's shape and counted unknown, a kind the
 /// declaration widened is decoded exactly and counted widened, and any other
 /// kind is a kind mismatch, skipped.
-pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabulary, report: &mut TableReport, value: &mut MixedEntityRow) -> bool {
-    *value = mixed_entity_message_default();
-    let mut seen = TableMessageSeen::default();
-    let same_build = v.build_version == BUILD_VERSION;
-    let mut next_field = 0usize;
-    let dflt = mixed_entity_message_default();
+pub fn mixed_entity_load_message_body(schema_r: &mut TableBitReader, schema_v: &TableVocabulary, schema_report: &mut TableReport, schema_value: &mut MixedEntityRow) -> bool {
+    *schema_value = mixed_entity_message_default();
+    let mut schema_seen = TableMessageSeen::default();
+    let schema_same_build = schema_v.build_version == BUILD_VERSION;
+    let mut schema_next_field = 0usize;
+    let schema_dflt = mixed_entity_message_default();
     loop {
-        let Some(reference) = r.get(v.ref_bits) else { report.damaged = true; return false; };
-        if reference == 0 { return true; }
-        let Some(entry) = v.entry(reference).copied() else { report.damaged = true; return false; };
-        if entry.id >= 0xffff_ffff_ffff_fffd { report.damaged = true; return false; }
-        if !seen.once(v.seen_key(reference)) { report.damaged = true; return false; }
-        match entry.id {
+        let Some(schema_reference) = schema_r.get(schema_v.ref_bits) else { schema_report.damaged = true; return false; };
+        if schema_reference == 0 { return true; }
+        let Some(schema_entry) = schema_v.entry(schema_reference).copied() else { schema_report.damaged = true; return false; };
+        if schema_entry.id >= 0xffff_ffff_ffff_fffd { schema_report.damaged = true; return false; }
+        if !schema_seen.once(schema_v.seen_key(schema_reference)) { schema_report.damaged = true; return false; }
+        match schema_entry.id {
             0x23fcfd6678e36712 => {
-                if same_build && next_field > 0 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
-                next_field = 1;
-                let mut widened = false;
-                let unknown_before = report.unknown;
+                if schema_same_build && schema_next_field > 0 { schema_report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                schema_next_field = 1;
+                let mut schema_widened = false;
+                let schema_unknown_before = schema_report.unknown;
                 'f1: {
-                    if entry.kind != 7 || entry.shape.elem != 0 {
-                        if entry.shape.elem == 0 && table_message_widens(entry.kind, 7) {
-                            widened = true;
+                    if schema_entry.kind != 7 || schema_entry.shape.elem != 0 {
+                        if schema_entry.shape.elem == 0 && table_message_widens(schema_entry.kind, 7) {
+                            schema_widened = true;
                         } else {
-                            report.damaged = true;
-                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
+                            schema_report.damaged = true;
+                            if !table_message_skip_field(schema_r, schema_v, &schema_entry, 0) { schema_report.damaged = true; return false; }
                             break 'f1;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
-                        let mut x = table_message_unsigned(entry.kind, lo, hi);
-                        if x > 4095 { x = 4095; report.out_of_range("MixedEntity.entity_id"); }
-                        value.entity_id = x as u32;
+                        let Some((schema_lo, schema_hi)) = table_message_read_scalar(schema_r, schema_entry.kind, &schema_entry.shape) else { schema_report.damaged = true; return false; };
+                        let mut schema_x = table_message_unsigned(schema_entry.kind, schema_lo, schema_hi);
+                        if schema_x > 4095 { schema_x = 4095; schema_report.out_of_range("MixedEntity.entity_id"); }
+                        schema_value.entity_id = schema_x as u32;
                     }
-                    if same_build && report.unknown == unknown_before {
-                        let rides = value.entity_id != dflt.entity_id;
-                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    if schema_same_build && schema_report.unknown == schema_unknown_before {
+                        let schema_rides = schema_value.entity_id != schema_dflt.entity_id;
+                        if !schema_rides { schema_report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
                     }
-                    if widened { report.widened += 1; }
+                    if schema_widened { schema_report.widened += 1; }
                 }
             }
             0xcb4b37357667310e => {
-                if same_build && next_field > 1 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
-                next_field = 2;
-                let mut widened = false;
-                let unknown_before = report.unknown;
+                if schema_same_build && schema_next_field > 1 { schema_report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                schema_next_field = 2;
+                let mut schema_widened = false;
+                let schema_unknown_before = schema_report.unknown;
                 'f2: {
-                    if entry.kind != 4 || entry.shape.elem != 0 {
-                        if entry.shape.elem == 0 && table_message_widens(entry.kind, 4) {
-                            widened = true;
+                    if schema_entry.kind != 4 || schema_entry.shape.elem != 0 {
+                        if schema_entry.shape.elem == 0 && table_message_widens(schema_entry.kind, 4) {
+                            schema_widened = true;
                         } else {
-                            report.damaged = true;
-                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
+                            schema_report.damaged = true;
+                            if !table_message_skip_field(schema_r, schema_v, &schema_entry, 0) { schema_report.damaged = true; return false; }
                             break 'f2;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
-                        let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < -16383i128 { x = -16383i128; report.out_of_range("MixedEntity.pos_x"); } else if x > 16383i128 { x = 16383i128; report.out_of_range("MixedEntity.pos_x"); }
-                        value.pos_x = x as i32;
+                        let Some((schema_lo, schema_hi)) = table_message_read_scalar(schema_r, schema_entry.kind, &schema_entry.shape) else { schema_report.damaged = true; return false; };
+                        let mut schema_x = table_message_signed(schema_entry.kind, schema_lo, schema_hi);
+                        if schema_x < -16383i128 { schema_x = -16383i128; schema_report.out_of_range("MixedEntity.pos_x"); } else if schema_x > 16383i128 { schema_x = 16383i128; schema_report.out_of_range("MixedEntity.pos_x"); }
+                        schema_value.pos_x = schema_x as i32;
                     }
-                    if same_build && report.unknown == unknown_before {
-                        let rides = value.pos_x != dflt.pos_x;
-                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    if schema_same_build && schema_report.unknown == schema_unknown_before {
+                        let schema_rides = schema_value.pos_x != schema_dflt.pos_x;
+                        if !schema_rides { schema_report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
                     }
-                    if widened { report.widened += 1; }
+                    if schema_widened { schema_report.widened += 1; }
                 }
             }
             0xcb4b3835766732c1 => {
-                if same_build && next_field > 2 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
-                next_field = 3;
-                let mut widened = false;
-                let unknown_before = report.unknown;
+                if schema_same_build && schema_next_field > 2 { schema_report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                schema_next_field = 3;
+                let mut schema_widened = false;
+                let schema_unknown_before = schema_report.unknown;
                 'f3: {
-                    if entry.kind != 4 || entry.shape.elem != 0 {
-                        if entry.shape.elem == 0 && table_message_widens(entry.kind, 4) {
-                            widened = true;
+                    if schema_entry.kind != 4 || schema_entry.shape.elem != 0 {
+                        if schema_entry.shape.elem == 0 && table_message_widens(schema_entry.kind, 4) {
+                            schema_widened = true;
                         } else {
-                            report.damaged = true;
-                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
+                            schema_report.damaged = true;
+                            if !table_message_skip_field(schema_r, schema_v, &schema_entry, 0) { schema_report.damaged = true; return false; }
                             break 'f3;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
-                        let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < -16383i128 { x = -16383i128; report.out_of_range("MixedEntity.pos_y"); } else if x > 16383i128 { x = 16383i128; report.out_of_range("MixedEntity.pos_y"); }
-                        value.pos_y = x as i32;
+                        let Some((schema_lo, schema_hi)) = table_message_read_scalar(schema_r, schema_entry.kind, &schema_entry.shape) else { schema_report.damaged = true; return false; };
+                        let mut schema_x = table_message_signed(schema_entry.kind, schema_lo, schema_hi);
+                        if schema_x < -16383i128 { schema_x = -16383i128; schema_report.out_of_range("MixedEntity.pos_y"); } else if schema_x > 16383i128 { schema_x = 16383i128; schema_report.out_of_range("MixedEntity.pos_y"); }
+                        schema_value.pos_y = schema_x as i32;
                     }
-                    if same_build && report.unknown == unknown_before {
-                        let rides = value.pos_y != dflt.pos_y;
-                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    if schema_same_build && schema_report.unknown == schema_unknown_before {
+                        let schema_rides = schema_value.pos_y != schema_dflt.pos_y;
+                        if !schema_rides { schema_report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
                     }
-                    if widened { report.widened += 1; }
+                    if schema_widened { schema_report.widened += 1; }
                 }
             }
             0xcb4b353576672da8 => {
-                if same_build && next_field > 3 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
-                next_field = 4;
-                let mut widened = false;
-                let unknown_before = report.unknown;
+                if schema_same_build && schema_next_field > 3 { schema_report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                schema_next_field = 4;
+                let mut schema_widened = false;
+                let schema_unknown_before = schema_report.unknown;
                 'f4: {
-                    if entry.kind != 4 || entry.shape.elem != 0 {
-                        if entry.shape.elem == 0 && table_message_widens(entry.kind, 4) {
-                            widened = true;
+                    if schema_entry.kind != 4 || schema_entry.shape.elem != 0 {
+                        if schema_entry.shape.elem == 0 && table_message_widens(schema_entry.kind, 4) {
+                            schema_widened = true;
                         } else {
-                            report.damaged = true;
-                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
+                            schema_report.damaged = true;
+                            if !table_message_skip_field(schema_r, schema_v, &schema_entry, 0) { schema_report.damaged = true; return false; }
                             break 'f4;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
-                        let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < -16383i128 { x = -16383i128; report.out_of_range("MixedEntity.pos_z"); } else if x > 16383i128 { x = 16383i128; report.out_of_range("MixedEntity.pos_z"); }
-                        value.pos_z = x as i32;
+                        let Some((schema_lo, schema_hi)) = table_message_read_scalar(schema_r, schema_entry.kind, &schema_entry.shape) else { schema_report.damaged = true; return false; };
+                        let mut schema_x = table_message_signed(schema_entry.kind, schema_lo, schema_hi);
+                        if schema_x < -16383i128 { schema_x = -16383i128; schema_report.out_of_range("MixedEntity.pos_z"); } else if schema_x > 16383i128 { schema_x = 16383i128; schema_report.out_of_range("MixedEntity.pos_z"); }
+                        schema_value.pos_z = schema_x as i32;
                     }
-                    if same_build && report.unknown == unknown_before {
-                        let rides = value.pos_z != dflt.pos_z;
-                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    if schema_same_build && schema_report.unknown == schema_unknown_before {
+                        let schema_rides = schema_value.pos_z != schema_dflt.pos_z;
+                        if !schema_rides { schema_report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
                     }
-                    if widened { report.widened += 1; }
+                    if schema_widened { schema_report.widened += 1; }
                 }
             }
             0xb54d8e19798e16e8 => {
-                if same_build && next_field > 4 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
-                next_field = 5;
-                let mut widened = false;
-                let unknown_before = report.unknown;
+                if schema_same_build && schema_next_field > 4 { schema_report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                schema_next_field = 5;
+                let mut schema_widened = false;
+                let schema_unknown_before = schema_report.unknown;
                 'f5: {
-                    if entry.kind != 7 || entry.shape.elem != 0 {
-                        if entry.shape.elem == 0 && table_message_widens(entry.kind, 7) {
-                            widened = true;
+                    if schema_entry.kind != 7 || schema_entry.shape.elem != 0 {
+                        if schema_entry.shape.elem == 0 && table_message_widens(schema_entry.kind, 7) {
+                            schema_widened = true;
                         } else {
-                            report.damaged = true;
-                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
+                            schema_report.damaged = true;
+                            if !table_message_skip_field(schema_r, schema_v, &schema_entry, 0) { schema_report.damaged = true; return false; }
                             break 'f5;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
-                        let mut x = table_message_unsigned(entry.kind, lo, hi);
-                        if x > 511 { x = 511; report.out_of_range("MixedEntity.yaw"); }
-                        value.yaw = x as u32;
+                        let Some((schema_lo, schema_hi)) = table_message_read_scalar(schema_r, schema_entry.kind, &schema_entry.shape) else { schema_report.damaged = true; return false; };
+                        let mut schema_x = table_message_unsigned(schema_entry.kind, schema_lo, schema_hi);
+                        if schema_x > 511 { schema_x = 511; schema_report.out_of_range("MixedEntity.yaw"); }
+                        schema_value.yaw = schema_x as u32;
                     }
-                    if same_build && report.unknown == unknown_before {
-                        let rides = value.yaw != dflt.yaw;
-                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    if schema_same_build && schema_report.unknown == schema_unknown_before {
+                        let schema_rides = schema_value.yaw != schema_dflt.yaw;
+                        if !schema_rides { schema_report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
                     }
-                    if widened { report.widened += 1; }
+                    if schema_widened { schema_report.widened += 1; }
                 }
             }
             0x53a9f665a90cc1b1 => {
-                if same_build && next_field > 5 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
-                next_field = 6;
-                let mut widened = false;
-                let unknown_before = report.unknown;
+                if schema_same_build && schema_next_field > 5 { schema_report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                schema_next_field = 6;
+                let mut schema_widened = false;
+                let schema_unknown_before = schema_report.unknown;
                 'f6: {
-                    if entry.kind != 7 || entry.shape.elem != 0 {
-                        if entry.shape.elem == 0 && table_message_widens(entry.kind, 7) {
-                            widened = true;
+                    if schema_entry.kind != 7 || schema_entry.shape.elem != 0 {
+                        if schema_entry.shape.elem == 0 && table_message_widens(schema_entry.kind, 7) {
+                            schema_widened = true;
                         } else {
-                            report.damaged = true;
-                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
+                            schema_report.damaged = true;
+                            if !table_message_skip_field(schema_r, schema_v, &schema_entry, 0) { schema_report.damaged = true; return false; }
                             break 'f6;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
-                        let mut x = table_message_unsigned(entry.kind, lo, hi);
-                        if x > 511 { x = 511; report.out_of_range("MixedEntity.pitch"); }
-                        value.pitch = x as u32;
+                        let Some((schema_lo, schema_hi)) = table_message_read_scalar(schema_r, schema_entry.kind, &schema_entry.shape) else { schema_report.damaged = true; return false; };
+                        let mut schema_x = table_message_unsigned(schema_entry.kind, schema_lo, schema_hi);
+                        if schema_x > 511 { schema_x = 511; schema_report.out_of_range("MixedEntity.pitch"); }
+                        schema_value.pitch = schema_x as u32;
                     }
-                    if same_build && report.unknown == unknown_before {
-                        let rides = value.pitch != dflt.pitch;
-                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    if schema_same_build && schema_report.unknown == schema_unknown_before {
+                        let schema_rides = schema_value.pitch != schema_dflt.pitch;
+                        if !schema_rides { schema_report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
                     }
-                    if widened { report.widened += 1; }
+                    if schema_widened { schema_report.widened += 1; }
                 }
             }
             0x6cede6b6eb60ee67 => {
-                if same_build && next_field > 6 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
-                next_field = 7;
-                let mut widened = false;
-                let unknown_before = report.unknown;
+                if schema_same_build && schema_next_field > 6 { schema_report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                schema_next_field = 7;
+                let mut schema_widened = false;
+                let schema_unknown_before = schema_report.unknown;
                 'f7: {
-                    if entry.kind != 4 || entry.shape.elem != 0 {
-                        if entry.shape.elem == 0 && table_message_widens(entry.kind, 4) {
-                            widened = true;
+                    if schema_entry.kind != 4 || schema_entry.shape.elem != 0 {
+                        if schema_entry.shape.elem == 0 && table_message_widens(schema_entry.kind, 4) {
+                            schema_widened = true;
                         } else {
-                            report.damaged = true;
-                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
+                            schema_report.damaged = true;
+                            if !table_message_skip_field(schema_r, schema_v, &schema_entry, 0) { schema_report.damaged = true; return false; }
                             break 'f7;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
-                        let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < -2048i128 { x = -2048i128; report.out_of_range("MixedEntity.vel_x"); } else if x > 2047i128 { x = 2047i128; report.out_of_range("MixedEntity.vel_x"); }
-                        value.vel_x = x as i32;
+                        let Some((schema_lo, schema_hi)) = table_message_read_scalar(schema_r, schema_entry.kind, &schema_entry.shape) else { schema_report.damaged = true; return false; };
+                        let mut schema_x = table_message_signed(schema_entry.kind, schema_lo, schema_hi);
+                        if schema_x < -2048i128 { schema_x = -2048i128; schema_report.out_of_range("MixedEntity.vel_x"); } else if schema_x > 2047i128 { schema_x = 2047i128; schema_report.out_of_range("MixedEntity.vel_x"); }
+                        schema_value.vel_x = schema_x as i32;
                     }
-                    if same_build && report.unknown == unknown_before {
-                        let rides = value.vel_x != dflt.vel_x;
-                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    if schema_same_build && schema_report.unknown == schema_unknown_before {
+                        let schema_rides = schema_value.vel_x != schema_dflt.vel_x;
+                        if !schema_rides { schema_report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
                     }
-                    if widened { report.widened += 1; }
+                    if schema_widened { schema_report.widened += 1; }
                 }
             }
             0x6cede5b6eb60ecb4 => {
-                if same_build && next_field > 7 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
-                next_field = 8;
-                let mut widened = false;
-                let unknown_before = report.unknown;
+                if schema_same_build && schema_next_field > 7 { schema_report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                schema_next_field = 8;
+                let mut schema_widened = false;
+                let schema_unknown_before = schema_report.unknown;
                 'f8: {
-                    if entry.kind != 4 || entry.shape.elem != 0 {
-                        if entry.shape.elem == 0 && table_message_widens(entry.kind, 4) {
-                            widened = true;
+                    if schema_entry.kind != 4 || schema_entry.shape.elem != 0 {
+                        if schema_entry.shape.elem == 0 && table_message_widens(schema_entry.kind, 4) {
+                            schema_widened = true;
                         } else {
-                            report.damaged = true;
-                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
+                            schema_report.damaged = true;
+                            if !table_message_skip_field(schema_r, schema_v, &schema_entry, 0) { schema_report.damaged = true; return false; }
                             break 'f8;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
-                        let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < -2048i128 { x = -2048i128; report.out_of_range("MixedEntity.vel_y"); } else if x > 2047i128 { x = 2047i128; report.out_of_range("MixedEntity.vel_y"); }
-                        value.vel_y = x as i32;
+                        let Some((schema_lo, schema_hi)) = table_message_read_scalar(schema_r, schema_entry.kind, &schema_entry.shape) else { schema_report.damaged = true; return false; };
+                        let mut schema_x = table_message_signed(schema_entry.kind, schema_lo, schema_hi);
+                        if schema_x < -2048i128 { schema_x = -2048i128; schema_report.out_of_range("MixedEntity.vel_y"); } else if schema_x > 2047i128 { schema_x = 2047i128; schema_report.out_of_range("MixedEntity.vel_y"); }
+                        schema_value.vel_y = schema_x as i32;
                     }
-                    if same_build && report.unknown == unknown_before {
-                        let rides = value.vel_y != dflt.vel_y;
-                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    if schema_same_build && schema_report.unknown == schema_unknown_before {
+                        let schema_rides = schema_value.vel_y != schema_dflt.vel_y;
+                        if !schema_rides { schema_report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
                     }
-                    if widened { report.widened += 1; }
+                    if schema_widened { schema_report.widened += 1; }
                 }
             }
             0x6cede8b6eb60f1cd => {
-                if same_build && next_field > 8 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
-                next_field = 9;
-                let mut widened = false;
-                let unknown_before = report.unknown;
+                if schema_same_build && schema_next_field > 8 { schema_report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                schema_next_field = 9;
+                let mut schema_widened = false;
+                let schema_unknown_before = schema_report.unknown;
                 'f9: {
-                    if entry.kind != 4 || entry.shape.elem != 0 {
-                        if entry.shape.elem == 0 && table_message_widens(entry.kind, 4) {
-                            widened = true;
+                    if schema_entry.kind != 4 || schema_entry.shape.elem != 0 {
+                        if schema_entry.shape.elem == 0 && table_message_widens(schema_entry.kind, 4) {
+                            schema_widened = true;
                         } else {
-                            report.damaged = true;
-                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
+                            schema_report.damaged = true;
+                            if !table_message_skip_field(schema_r, schema_v, &schema_entry, 0) { schema_report.damaged = true; return false; }
                             break 'f9;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
-                        let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < -2048i128 { x = -2048i128; report.out_of_range("MixedEntity.vel_z"); } else if x > 2047i128 { x = 2047i128; report.out_of_range("MixedEntity.vel_z"); }
-                        value.vel_z = x as i32;
+                        let Some((schema_lo, schema_hi)) = table_message_read_scalar(schema_r, schema_entry.kind, &schema_entry.shape) else { schema_report.damaged = true; return false; };
+                        let mut schema_x = table_message_signed(schema_entry.kind, schema_lo, schema_hi);
+                        if schema_x < -2048i128 { schema_x = -2048i128; schema_report.out_of_range("MixedEntity.vel_z"); } else if schema_x > 2047i128 { schema_x = 2047i128; schema_report.out_of_range("MixedEntity.vel_z"); }
+                        schema_value.vel_z = schema_x as i32;
                     }
-                    if same_build && report.unknown == unknown_before {
-                        let rides = value.vel_z != dflt.vel_z;
-                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    if schema_same_build && schema_report.unknown == schema_unknown_before {
+                        let schema_rides = schema_value.vel_z != schema_dflt.vel_z;
+                        if !schema_rides { schema_report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
                     }
-                    if widened { report.widened += 1; }
+                    if schema_widened { schema_report.widened += 1; }
                 }
             }
             0x7f69d4b5288ba9cf => {
-                if same_build && next_field > 9 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
-                next_field = 10;
-                let mut widened = false;
-                let unknown_before = report.unknown;
+                if schema_same_build && schema_next_field > 9 { schema_report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                schema_next_field = 10;
+                let mut schema_widened = false;
+                let schema_unknown_before = schema_report.unknown;
                 'f10: {
-                    if entry.kind != 4 || entry.shape.elem != 0 {
-                        if entry.shape.elem == 0 && table_message_widens(entry.kind, 4) {
-                            widened = true;
+                    if schema_entry.kind != 4 || schema_entry.shape.elem != 0 {
+                        if schema_entry.shape.elem == 0 && table_message_widens(schema_entry.kind, 4) {
+                            schema_widened = true;
                         } else {
-                            report.damaged = true;
-                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
+                            schema_report.damaged = true;
+                            if !table_message_skip_field(schema_r, schema_v, &schema_entry, 0) { schema_report.damaged = true; return false; }
                             break 'f10;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
-                        let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < 0i128 { x = 0i128; report.out_of_range("MixedEntity.health"); } else if x > 1000i128 { x = 1000i128; report.out_of_range("MixedEntity.health"); }
-                        value.health = x as i32;
+                        let Some((schema_lo, schema_hi)) = table_message_read_scalar(schema_r, schema_entry.kind, &schema_entry.shape) else { schema_report.damaged = true; return false; };
+                        let mut schema_x = table_message_signed(schema_entry.kind, schema_lo, schema_hi);
+                        if schema_x < 0i128 { schema_x = 0i128; schema_report.out_of_range("MixedEntity.health"); } else if schema_x > 1000i128 { schema_x = 1000i128; schema_report.out_of_range("MixedEntity.health"); }
+                        schema_value.health = schema_x as i32;
                     }
-                    if same_build && report.unknown == unknown_before {
-                        let rides = value.health != dflt.health;
-                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    if schema_same_build && schema_report.unknown == schema_unknown_before {
+                        let schema_rides = schema_value.health != schema_dflt.health;
+                        if !schema_rides { schema_report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
                     }
-                    if widened { report.widened += 1; }
+                    if schema_widened { schema_report.widened += 1; }
                 }
             }
             0xa0b610205f2c6e01 => {
-                if same_build && next_field > 10 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
-                next_field = 11;
-                let unknown_before = report.unknown;
+                if schema_same_build && schema_next_field > 10 { schema_report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                schema_next_field = 11;
+                let schema_unknown_before = schema_report.unknown;
                 'f11: {
-                    if entry.kind != 30 || entry.shape.elem != 0 {
-                        report.damaged = true;
-                        if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
+                    if schema_entry.kind != 30 || schema_entry.shape.elem != 0 {
+                        schema_report.damaged = true;
+                        if !table_message_skip_field(schema_r, schema_v, &schema_entry, 0) { schema_report.damaged = true; return false; }
                         break 'f11;
                     }
                     {
-                        let Some(reference) = r.get(v.ref_bits) else { report.damaged = true; return false; };
-                        if reference == 0 {
-                            value.weapon = 0;
+                        let Some(schema_reference) = schema_r.get(schema_v.ref_bits) else { schema_report.damaged = true; return false; };
+                        if schema_reference == 0 {
+                            schema_value.weapon = 0;
                         } else {
-                            let Some(id) = v.name(reference) else { report.damaged = true; return false; };
-                            value.weapon = match id {
+                            let Some(id) = schema_v.name(schema_reference) else { schema_report.damaged = true; return false; };
+                            schema_value.weapon = match id {
                                 0xa790eee12766cf0c => 1,
                                 0x9fbfefa835da8476 => 2,
                                 0x188bbb1783928a95 => 3,
@@ -471,88 +471,88 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                                 0x35e53bc341129217 => 13,
                                 0x2cc8282fb0de8831 => 14,
                                 0x20bada21bc8cb334 => 15,
-                                _ => { report.unknown += 1; 0 }
+                                _ => { schema_report.unknown += 1; 0 }
                             };
                         }
                     }
-                    if same_build && report.unknown == unknown_before {
-                        let rides = value.weapon != dflt.weapon;
-                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    if schema_same_build && schema_report.unknown == schema_unknown_before {
+                        let schema_rides = schema_value.weapon != schema_dflt.weapon;
+                        if !schema_rides { schema_report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
                     }
                 }
             }
             0x7f6308be8ab37fc0 => {
-                if same_build && next_field > 11 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
-                next_field = 12;
-                let mut widened = false;
-                let unknown_before = report.unknown;
+                if schema_same_build && schema_next_field > 11 { schema_report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                schema_next_field = 12;
+                let mut schema_widened = false;
+                let schema_unknown_before = schema_report.unknown;
                 'f12: {
-                    if entry.kind != 9 || entry.shape.elem != 0 {
-                        if entry.shape.elem == 0 && table_message_widens(entry.kind, 9) {
-                            widened = true;
+                    if schema_entry.kind != 9 || schema_entry.shape.elem != 0 {
+                        if schema_entry.shape.elem == 0 && table_message_widens(schema_entry.kind, 9) {
+                            schema_widened = true;
                         } else {
-                            report.damaged = true;
-                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
+                            schema_report.damaged = true;
+                            if !table_message_skip_field(schema_r, schema_v, &schema_entry, 0) { schema_report.damaged = true; return false; }
                             break 'f12;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
-                        let x = table_message_unsigned(entry.kind, lo, hi);
-                        if x >> 8 != 0 { report.out_of_range("MixedEntity.damage"); }
-                        value.damage = x as u64;
+                        let Some((schema_lo, schema_hi)) = table_message_read_scalar(schema_r, schema_entry.kind, &schema_entry.shape) else { schema_report.damaged = true; return false; };
+                        let schema_x = table_message_unsigned(schema_entry.kind, schema_lo, schema_hi);
+                        if schema_x >> 8 != 0 { schema_report.out_of_range("MixedEntity.damage"); }
+                        schema_value.damage = schema_x as u64;
                     }
-                    if same_build && report.unknown == unknown_before {
-                        let rides = value.damage != dflt.damage;
-                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    if schema_same_build && schema_report.unknown == schema_unknown_before {
+                        let schema_rides = schema_value.damage != schema_dflt.damage;
+                        if !schema_rides { schema_report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
                     }
-                    if widened { report.widened += 1; }
+                    if schema_widened { schema_report.widened += 1; }
                 }
             }
             0x11a44fc1d1243da7 => {
-                if same_build && next_field > 12 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
-                next_field = 13;
-                let unknown_before = report.unknown;
+                if schema_same_build && schema_next_field > 12 { schema_report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                schema_next_field = 13;
+                let schema_unknown_before = schema_report.unknown;
                 'f13: {
-                    if entry.kind != 1 || entry.shape.elem != 0 {
-                        report.damaged = true;
-                        if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
+                    if schema_entry.kind != 1 || schema_entry.shape.elem != 0 {
+                        schema_report.damaged = true;
+                        if !table_message_skip_field(schema_r, schema_v, &schema_entry, 0) { schema_report.damaged = true; return false; }
                         break 'f13;
                     }
                     {
-                        let Some((lo, _hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
-                        value.moving = (lo as u8) != 0;
+                        let Some((schema_lo, _hi)) = table_message_read_scalar(schema_r, schema_entry.kind, &schema_entry.shape) else { schema_report.damaged = true; return false; };
+                        schema_value.moving = (schema_lo as u8) != 0;
                     }
-                    if same_build && report.unknown == unknown_before {
-                        let rides = value.moving != dflt.moving;
-                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    if schema_same_build && schema_report.unknown == schema_unknown_before {
+                        let schema_rides = schema_value.moving != schema_dflt.moving;
+                        if !schema_rides { schema_report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
                     }
                 }
             }
             0x7674cfd19b9031ca => {
-                if same_build && next_field > 13 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
-                next_field = 14;
-                let unknown_before = report.unknown;
+                if schema_same_build && schema_next_field > 13 { schema_report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                schema_next_field = 14;
+                let schema_unknown_before = schema_report.unknown;
                 'f14: {
-                    if entry.kind != 1 || entry.shape.elem != 0 {
-                        report.damaged = true;
-                        if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
+                    if schema_entry.kind != 1 || schema_entry.shape.elem != 0 {
+                        schema_report.damaged = true;
+                        if !table_message_skip_field(schema_r, schema_v, &schema_entry, 0) { schema_report.damaged = true; return false; }
                         break 'f14;
                     }
                     {
-                        let Some((lo, _hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
-                        value.firing = (lo as u8) != 0;
+                        let Some((schema_lo, _hi)) = table_message_read_scalar(schema_r, schema_entry.kind, &schema_entry.shape) else { schema_report.damaged = true; return false; };
+                        schema_value.firing = (schema_lo as u8) != 0;
                     }
-                    if same_build && report.unknown == unknown_before {
-                        let rides = value.firing != dflt.firing;
-                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    if schema_same_build && schema_report.unknown == schema_unknown_before {
+                        let schema_rides = schema_value.firing != schema_dflt.firing;
+                        if !schema_rides { schema_report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
                     }
                 }
             }
             _ => {
-                if same_build { report.damaged = true; return false; } // a field the record does not declare (§3.3 (b))
-                report.unknown += 1;
-                if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
+                if schema_same_build { schema_report.damaged = true; return false; } // a field the record does not declare (§3.3 (b))
+                schema_report.unknown += 1;
+                if !table_message_skip_field(schema_r, schema_v, &schema_entry, 0) { schema_report.damaged = true; return false; }
             }
         }
     }
@@ -566,96 +566,96 @@ pub fn mixed_stat_message_default() -> MixedStatRow {
 
 /// One MixedStat body (§3.3): each field off its declared default, then the zero
 /// reference.
-pub fn mixed_stat_save_message_body(w: &mut TableBitWriter, value: &MixedStatRow) -> bool {
-    let dflt = mixed_stat_message_default();
+pub fn mixed_stat_save_message_body(schema_w: &mut TableBitWriter, schema_value: &MixedStatRow) -> bool {
+    let schema_dflt = mixed_stat_message_default();
     {
-        if value.stat_id != dflt.stat_id {
-            w.put(51, TABLE_MESSAGE_REF_BITS);
-            table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 8, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.stat_id as u64, 0);
+        if schema_value.stat_id != schema_dflt.stat_id {
+            schema_w.put(51, TABLE_MESSAGE_REF_BITS);
+            table_message_write_scalar(schema_w, &TableMessageShape { packing: 1, bits: 8, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, schema_value.stat_id as u64, 0);
         }
     }
     {
-        if value.delta != dflt.delta {
-            w.put(52, TABLE_MESSAGE_REF_BITS);
-            debug_assert!(value.delta >= -512 && value.delta <= 511, "delta out of range [-512, 511]");
-            table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 10, base_lo: 0xfffffffffffffe00, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.delta as i64 as u64, 0);
+        if schema_value.delta != schema_dflt.delta {
+            schema_w.put(52, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(schema_value.delta >= -512 && schema_value.delta <= 511, "delta out of range [-512, 511]");
+            table_message_write_scalar(schema_w, &TableMessageShape { packing: 1, bits: 10, base_lo: 0xfffffffffffffe00, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, schema_value.delta as i64 as u64, 0);
         }
     }
-    w.put(0, TABLE_MESSAGE_REF_BITS);
-    !w.overflow
+    schema_w.put(0, TABLE_MESSAGE_REF_BITS);
+    !schema_w.overflow
 }
 
 /// One MixedStat body against the ENDPOINT's vocabulary (§3.3): a field this build
 /// cannot name is skipped by the endpoint's shape and counted unknown, a kind the
 /// declaration widened is decoded exactly and counted widened, and any other
 /// kind is a kind mismatch, skipped.
-pub fn mixed_stat_load_message_body(r: &mut TableBitReader, v: &TableVocabulary, report: &mut TableReport, value: &mut MixedStatRow) -> bool {
-    *value = mixed_stat_message_default();
-    let mut seen = TableMessageSeen::default();
-    let same_build = v.build_version == BUILD_VERSION;
-    let mut next_field = 0usize;
-    let dflt = mixed_stat_message_default();
+pub fn mixed_stat_load_message_body(schema_r: &mut TableBitReader, schema_v: &TableVocabulary, schema_report: &mut TableReport, schema_value: &mut MixedStatRow) -> bool {
+    *schema_value = mixed_stat_message_default();
+    let mut schema_seen = TableMessageSeen::default();
+    let schema_same_build = schema_v.build_version == BUILD_VERSION;
+    let mut schema_next_field = 0usize;
+    let schema_dflt = mixed_stat_message_default();
     loop {
-        let Some(reference) = r.get(v.ref_bits) else { report.damaged = true; return false; };
-        if reference == 0 { return true; }
-        let Some(entry) = v.entry(reference).copied() else { report.damaged = true; return false; };
-        if entry.id >= 0xffff_ffff_ffff_fffd { report.damaged = true; return false; }
-        if !seen.once(v.seen_key(reference)) { report.damaged = true; return false; }
-        match entry.id {
+        let Some(schema_reference) = schema_r.get(schema_v.ref_bits) else { schema_report.damaged = true; return false; };
+        if schema_reference == 0 { return true; }
+        let Some(schema_entry) = schema_v.entry(schema_reference).copied() else { schema_report.damaged = true; return false; };
+        if schema_entry.id >= 0xffff_ffff_ffff_fffd { schema_report.damaged = true; return false; }
+        if !schema_seen.once(schema_v.seen_key(schema_reference)) { schema_report.damaged = true; return false; }
+        match schema_entry.id {
             0x80ab75f0866dbf65 => {
-                if same_build && next_field > 0 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
-                next_field = 1;
-                let unknown_before = report.unknown;
+                if schema_same_build && schema_next_field > 0 { schema_report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                schema_next_field = 1;
+                let schema_unknown_before = schema_report.unknown;
                 'f15: {
-                    if entry.kind != 6 || entry.shape.elem != 0 {
-                        report.damaged = true;
-                        if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
+                    if schema_entry.kind != 6 || schema_entry.shape.elem != 0 {
+                        schema_report.damaged = true;
+                        if !table_message_skip_field(schema_r, schema_v, &schema_entry, 0) { schema_report.damaged = true; return false; }
                         break 'f15;
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
-                        let mut x = table_message_unsigned(entry.kind, lo, hi);
-                        if x > 255 { x = 255; report.out_of_range("MixedStat.stat_id"); }
-                        value.stat_id = x as u32;
+                        let Some((schema_lo, schema_hi)) = table_message_read_scalar(schema_r, schema_entry.kind, &schema_entry.shape) else { schema_report.damaged = true; return false; };
+                        let mut schema_x = table_message_unsigned(schema_entry.kind, schema_lo, schema_hi);
+                        if schema_x > 255 { schema_x = 255; schema_report.out_of_range("MixedStat.stat_id"); }
+                        schema_value.stat_id = schema_x as u32;
                     }
-                    if same_build && report.unknown == unknown_before {
-                        let rides = value.stat_id != dflt.stat_id;
-                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    if schema_same_build && schema_report.unknown == schema_unknown_before {
+                        let schema_rides = schema_value.stat_id != schema_dflt.stat_id;
+                        if !schema_rides { schema_report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
                     }
                 }
             }
             0x52076675ec13a0c1 => {
-                if same_build && next_field > 1 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
-                next_field = 2;
-                let mut widened = false;
-                let unknown_before = report.unknown;
+                if schema_same_build && schema_next_field > 1 { schema_report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                schema_next_field = 2;
+                let mut schema_widened = false;
+                let schema_unknown_before = schema_report.unknown;
                 'f16: {
-                    if entry.kind != 4 || entry.shape.elem != 0 {
-                        if entry.shape.elem == 0 && table_message_widens(entry.kind, 4) {
-                            widened = true;
+                    if schema_entry.kind != 4 || schema_entry.shape.elem != 0 {
+                        if schema_entry.shape.elem == 0 && table_message_widens(schema_entry.kind, 4) {
+                            schema_widened = true;
                         } else {
-                            report.damaged = true;
-                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
+                            schema_report.damaged = true;
+                            if !table_message_skip_field(schema_r, schema_v, &schema_entry, 0) { schema_report.damaged = true; return false; }
                             break 'f16;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
-                        let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < -512i128 { x = -512i128; report.out_of_range("MixedStat.delta"); } else if x > 511i128 { x = 511i128; report.out_of_range("MixedStat.delta"); }
-                        value.delta = x as i32;
+                        let Some((schema_lo, schema_hi)) = table_message_read_scalar(schema_r, schema_entry.kind, &schema_entry.shape) else { schema_report.damaged = true; return false; };
+                        let mut schema_x = table_message_signed(schema_entry.kind, schema_lo, schema_hi);
+                        if schema_x < -512i128 { schema_x = -512i128; schema_report.out_of_range("MixedStat.delta"); } else if schema_x > 511i128 { schema_x = 511i128; schema_report.out_of_range("MixedStat.delta"); }
+                        schema_value.delta = schema_x as i32;
                     }
-                    if same_build && report.unknown == unknown_before {
-                        let rides = value.delta != dflt.delta;
-                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    if schema_same_build && schema_report.unknown == schema_unknown_before {
+                        let schema_rides = schema_value.delta != schema_dflt.delta;
+                        if !schema_rides { schema_report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
                     }
-                    if widened { report.widened += 1; }
+                    if schema_widened { schema_report.widened += 1; }
                 }
             }
             _ => {
-                if same_build { report.damaged = true; return false; } // a field the record does not declare (§3.3 (b))
-                report.unknown += 1;
-                if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
+                if schema_same_build { schema_report.damaged = true; return false; } // a field the record does not declare (§3.3 (b))
+                schema_report.unknown += 1;
+                if !table_message_skip_field(schema_r, schema_v, &schema_entry, 0) { schema_report.damaged = true; return false; }
             }
         }
     }
@@ -669,164 +669,164 @@ pub fn mixed_hit_event_message_default() -> MixedHitEventRow {
 
 /// One MixedHitEvent body (§3.3): each field off its declared default, then the zero
 /// reference.
-pub fn mixed_hit_event_save_message_body(w: &mut TableBitWriter, value: &MixedHitEventRow) -> bool {
-    let dflt = mixed_hit_event_message_default();
+pub fn mixed_hit_event_save_message_body(schema_w: &mut TableBitWriter, schema_value: &MixedHitEventRow) -> bool {
+    let schema_dflt = mixed_hit_event_message_default();
     {
-        if value.target_id != dflt.target_id {
-            w.put(45, TABLE_MESSAGE_REF_BITS);
-            debug_assert!(value.target_id <= 4095, "target_id exceeds bits(12) width");
-            table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 12, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.target_id as u64, 0);
+        if schema_value.target_id != schema_dflt.target_id {
+            schema_w.put(45, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(schema_value.target_id <= 4095, "target_id exceeds bits(12) width");
+            table_message_write_scalar(schema_w, &TableMessageShape { packing: 1, bits: 12, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, schema_value.target_id as u64, 0);
         }
     }
     {
-        if value.damage != dflt.damage {
-            w.put(46, TABLE_MESSAGE_REF_BITS);
-            debug_assert!(value.damage >= 0 && value.damage <= 4095, "damage out of range [0, 4095]");
-            table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 12, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.damage as i64 as u64, 0);
+        if schema_value.damage != schema_dflt.damage {
+            schema_w.put(46, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(schema_value.damage >= 0 && schema_value.damage <= 4095, "damage out of range [0, 4095]");
+            table_message_write_scalar(schema_w, &TableMessageShape { packing: 1, bits: 12, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, schema_value.damage as i64 as u64, 0);
         }
     }
     {
-        if value.hit_kind != dflt.hit_kind {
-            w.put(47, TABLE_MESSAGE_REF_BITS);
-            debug_assert!(value.hit_kind >= 0 && value.hit_kind <= 7, "hit_kind out of range [0, 7]");
-            table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 3, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.hit_kind as i64 as u64, 0);
+        if schema_value.hit_kind != schema_dflt.hit_kind {
+            schema_w.put(47, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(schema_value.hit_kind >= 0 && schema_value.hit_kind <= 7, "hit_kind out of range [0, 7]");
+            table_message_write_scalar(schema_w, &TableMessageShape { packing: 1, bits: 3, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, schema_value.hit_kind as i64 as u64, 0);
         }
     }
     {
-        if value.crit != dflt.crit {
-            w.put(48, TABLE_MESSAGE_REF_BITS);
-            w.put(if value.crit { 1 } else { 0 }, 1);
+        if schema_value.crit != schema_dflt.crit {
+            schema_w.put(48, TABLE_MESSAGE_REF_BITS);
+            schema_w.put(if schema_value.crit { 1 } else { 0 }, 1);
         }
     }
-    w.put(0, TABLE_MESSAGE_REF_BITS);
-    !w.overflow
+    schema_w.put(0, TABLE_MESSAGE_REF_BITS);
+    !schema_w.overflow
 }
 
 /// One MixedHitEvent body against the ENDPOINT's vocabulary (§3.3): a field this build
 /// cannot name is skipped by the endpoint's shape and counted unknown, a kind the
 /// declaration widened is decoded exactly and counted widened, and any other
 /// kind is a kind mismatch, skipped.
-pub fn mixed_hit_event_load_message_body(r: &mut TableBitReader, v: &TableVocabulary, report: &mut TableReport, value: &mut MixedHitEventRow) -> bool {
-    *value = mixed_hit_event_message_default();
-    let mut seen = TableMessageSeen::default();
-    let same_build = v.build_version == BUILD_VERSION;
-    let mut next_field = 0usize;
-    let dflt = mixed_hit_event_message_default();
+pub fn mixed_hit_event_load_message_body(schema_r: &mut TableBitReader, schema_v: &TableVocabulary, schema_report: &mut TableReport, schema_value: &mut MixedHitEventRow) -> bool {
+    *schema_value = mixed_hit_event_message_default();
+    let mut schema_seen = TableMessageSeen::default();
+    let schema_same_build = schema_v.build_version == BUILD_VERSION;
+    let mut schema_next_field = 0usize;
+    let schema_dflt = mixed_hit_event_message_default();
     loop {
-        let Some(reference) = r.get(v.ref_bits) else { report.damaged = true; return false; };
-        if reference == 0 { return true; }
-        let Some(entry) = v.entry(reference).copied() else { report.damaged = true; return false; };
-        if entry.id >= 0xffff_ffff_ffff_fffd { report.damaged = true; return false; }
-        if !seen.once(v.seen_key(reference)) { report.damaged = true; return false; }
-        match entry.id {
+        let Some(schema_reference) = schema_r.get(schema_v.ref_bits) else { schema_report.damaged = true; return false; };
+        if schema_reference == 0 { return true; }
+        let Some(schema_entry) = schema_v.entry(schema_reference).copied() else { schema_report.damaged = true; return false; };
+        if schema_entry.id >= 0xffff_ffff_ffff_fffd { schema_report.damaged = true; return false; }
+        if !schema_seen.once(schema_v.seen_key(schema_reference)) { schema_report.damaged = true; return false; }
+        match schema_entry.id {
             0xb7bc9ac015a25050 => {
-                if same_build && next_field > 0 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
-                next_field = 1;
-                let mut widened = false;
-                let unknown_before = report.unknown;
+                if schema_same_build && schema_next_field > 0 { schema_report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                schema_next_field = 1;
+                let mut schema_widened = false;
+                let schema_unknown_before = schema_report.unknown;
                 'f17: {
-                    if entry.kind != 7 || entry.shape.elem != 0 {
-                        if entry.shape.elem == 0 && table_message_widens(entry.kind, 7) {
-                            widened = true;
+                    if schema_entry.kind != 7 || schema_entry.shape.elem != 0 {
+                        if schema_entry.shape.elem == 0 && table_message_widens(schema_entry.kind, 7) {
+                            schema_widened = true;
                         } else {
-                            report.damaged = true;
-                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
+                            schema_report.damaged = true;
+                            if !table_message_skip_field(schema_r, schema_v, &schema_entry, 0) { schema_report.damaged = true; return false; }
                             break 'f17;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
-                        let mut x = table_message_unsigned(entry.kind, lo, hi);
-                        if x > 4095 { x = 4095; report.out_of_range("MixedHitEvent.target_id"); }
-                        value.target_id = x as u32;
+                        let Some((schema_lo, schema_hi)) = table_message_read_scalar(schema_r, schema_entry.kind, &schema_entry.shape) else { schema_report.damaged = true; return false; };
+                        let mut schema_x = table_message_unsigned(schema_entry.kind, schema_lo, schema_hi);
+                        if schema_x > 4095 { schema_x = 4095; schema_report.out_of_range("MixedHitEvent.target_id"); }
+                        schema_value.target_id = schema_x as u32;
                     }
-                    if same_build && report.unknown == unknown_before {
-                        let rides = value.target_id != dflt.target_id;
-                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    if schema_same_build && schema_report.unknown == schema_unknown_before {
+                        let schema_rides = schema_value.target_id != schema_dflt.target_id;
+                        if !schema_rides { schema_report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
                     }
-                    if widened { report.widened += 1; }
+                    if schema_widened { schema_report.widened += 1; }
                 }
             }
             0x7f6308be8ab37fc0 => {
-                if same_build && next_field > 1 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
-                next_field = 2;
-                let mut widened = false;
-                let unknown_before = report.unknown;
+                if schema_same_build && schema_next_field > 1 { schema_report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                schema_next_field = 2;
+                let mut schema_widened = false;
+                let schema_unknown_before = schema_report.unknown;
                 'f18: {
-                    if entry.kind != 4 || entry.shape.elem != 0 {
-                        if entry.shape.elem == 0 && table_message_widens(entry.kind, 4) {
-                            widened = true;
+                    if schema_entry.kind != 4 || schema_entry.shape.elem != 0 {
+                        if schema_entry.shape.elem == 0 && table_message_widens(schema_entry.kind, 4) {
+                            schema_widened = true;
                         } else {
-                            report.damaged = true;
-                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
+                            schema_report.damaged = true;
+                            if !table_message_skip_field(schema_r, schema_v, &schema_entry, 0) { schema_report.damaged = true; return false; }
                             break 'f18;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
-                        let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < 0i128 { x = 0i128; report.out_of_range("MixedHitEvent.damage"); } else if x > 4095i128 { x = 4095i128; report.out_of_range("MixedHitEvent.damage"); }
-                        value.damage = x as i32;
+                        let Some((schema_lo, schema_hi)) = table_message_read_scalar(schema_r, schema_entry.kind, &schema_entry.shape) else { schema_report.damaged = true; return false; };
+                        let mut schema_x = table_message_signed(schema_entry.kind, schema_lo, schema_hi);
+                        if schema_x < 0i128 { schema_x = 0i128; schema_report.out_of_range("MixedHitEvent.damage"); } else if schema_x > 4095i128 { schema_x = 4095i128; schema_report.out_of_range("MixedHitEvent.damage"); }
+                        schema_value.damage = schema_x as i32;
                     }
-                    if same_build && report.unknown == unknown_before {
-                        let rides = value.damage != dflt.damage;
-                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    if schema_same_build && schema_report.unknown == schema_unknown_before {
+                        let schema_rides = schema_value.damage != schema_dflt.damage;
+                        if !schema_rides { schema_report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
                     }
-                    if widened { report.widened += 1; }
+                    if schema_widened { schema_report.widened += 1; }
                 }
             }
             0x01fbc365b059b925 => {
-                if same_build && next_field > 2 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
-                next_field = 3;
-                let mut widened = false;
-                let unknown_before = report.unknown;
+                if schema_same_build && schema_next_field > 2 { schema_report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                schema_next_field = 3;
+                let mut schema_widened = false;
+                let schema_unknown_before = schema_report.unknown;
                 'f19: {
-                    if entry.kind != 4 || entry.shape.elem != 0 {
-                        if entry.shape.elem == 0 && table_message_widens(entry.kind, 4) {
-                            widened = true;
+                    if schema_entry.kind != 4 || schema_entry.shape.elem != 0 {
+                        if schema_entry.shape.elem == 0 && table_message_widens(schema_entry.kind, 4) {
+                            schema_widened = true;
                         } else {
-                            report.damaged = true;
-                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
+                            schema_report.damaged = true;
+                            if !table_message_skip_field(schema_r, schema_v, &schema_entry, 0) { schema_report.damaged = true; return false; }
                             break 'f19;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
-                        let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < 0i128 { x = 0i128; report.out_of_range("MixedHitEvent.hit_kind"); } else if x > 7i128 { x = 7i128; report.out_of_range("MixedHitEvent.hit_kind"); }
-                        value.hit_kind = x as i32;
+                        let Some((schema_lo, schema_hi)) = table_message_read_scalar(schema_r, schema_entry.kind, &schema_entry.shape) else { schema_report.damaged = true; return false; };
+                        let mut schema_x = table_message_signed(schema_entry.kind, schema_lo, schema_hi);
+                        if schema_x < 0i128 { schema_x = 0i128; schema_report.out_of_range("MixedHitEvent.hit_kind"); } else if schema_x > 7i128 { schema_x = 7i128; schema_report.out_of_range("MixedHitEvent.hit_kind"); }
+                        schema_value.hit_kind = schema_x as i32;
                     }
-                    if same_build && report.unknown == unknown_before {
-                        let rides = value.hit_kind != dflt.hit_kind;
-                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    if schema_same_build && schema_report.unknown == schema_unknown_before {
+                        let schema_rides = schema_value.hit_kind != schema_dflt.hit_kind;
+                        if !schema_rides { schema_report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
                     }
-                    if widened { report.widened += 1; }
+                    if schema_widened { schema_report.widened += 1; }
                 }
             }
             0x126167908c9aa52d => {
-                if same_build && next_field > 3 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
-                next_field = 4;
-                let unknown_before = report.unknown;
+                if schema_same_build && schema_next_field > 3 { schema_report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                schema_next_field = 4;
+                let schema_unknown_before = schema_report.unknown;
                 'f20: {
-                    if entry.kind != 1 || entry.shape.elem != 0 {
-                        report.damaged = true;
-                        if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
+                    if schema_entry.kind != 1 || schema_entry.shape.elem != 0 {
+                        schema_report.damaged = true;
+                        if !table_message_skip_field(schema_r, schema_v, &schema_entry, 0) { schema_report.damaged = true; return false; }
                         break 'f20;
                     }
                     {
-                        let Some((lo, _hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
-                        value.crit = (lo as u8) != 0;
+                        let Some((schema_lo, _hi)) = table_message_read_scalar(schema_r, schema_entry.kind, &schema_entry.shape) else { schema_report.damaged = true; return false; };
+                        schema_value.crit = (schema_lo as u8) != 0;
                     }
-                    if same_build && report.unknown == unknown_before {
-                        let rides = value.crit != dflt.crit;
-                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    if schema_same_build && schema_report.unknown == schema_unknown_before {
+                        let schema_rides = schema_value.crit != schema_dflt.crit;
+                        if !schema_rides { schema_report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
                     }
                 }
             }
             _ => {
-                if same_build { report.damaged = true; return false; } // a field the record does not declare (§3.3 (b))
-                report.unknown += 1;
-                if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
+                if schema_same_build { schema_report.damaged = true; return false; } // a field the record does not declare (§3.3 (b))
+                schema_report.unknown += 1;
+                if !table_message_skip_field(schema_r, schema_v, &schema_entry, 0) { schema_report.damaged = true; return false; }
             }
         }
     }
@@ -840,103 +840,103 @@ pub fn mixed_chat_event_message_default() -> MixedChatEventRow {
 
 /// One MixedChatEvent body (§3.3): each field off its declared default, then the zero
 /// reference.
-pub fn mixed_chat_event_save_message_body(w: &mut TableBitWriter, value: &MixedChatEventRow) -> bool {
-    let dflt = mixed_chat_event_message_default();
+pub fn mixed_chat_event_save_message_body(schema_w: &mut TableBitWriter, schema_value: &MixedChatEventRow) -> bool {
+    let schema_dflt = mixed_chat_event_message_default();
     {
-        if value.channel != dflt.channel {
-            w.put(29, TABLE_MESSAGE_REF_BITS);
-            debug_assert!(value.channel >= 0 && value.channel <= 3, "channel out of range [0, 3]");
-            table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 2, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.channel as i64 as u64, 0);
+        if schema_value.channel != schema_dflt.channel {
+            schema_w.put(29, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(schema_value.channel >= 0 && schema_value.channel <= 3, "channel out of range [0, 3]");
+            table_message_write_scalar(schema_w, &TableMessageShape { packing: 1, bits: 2, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, schema_value.channel as i64 as u64, 0);
         }
     }
     {
-        if value.speaker != dflt.speaker {
-            w.put(30, TABLE_MESSAGE_REF_BITS);
-            debug_assert!(value.speaker <= 4095, "speaker exceeds bits(12) width");
-            table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 12, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.speaker as u64, 0);
+        if schema_value.speaker != schema_dflt.speaker {
+            schema_w.put(30, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(schema_value.speaker <= 4095, "speaker exceeds bits(12) width");
+            table_message_write_scalar(schema_w, &TableMessageShape { packing: 1, bits: 12, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, schema_value.speaker as u64, 0);
         }
     }
-    w.put(0, TABLE_MESSAGE_REF_BITS);
-    !w.overflow
+    schema_w.put(0, TABLE_MESSAGE_REF_BITS);
+    !schema_w.overflow
 }
 
 /// One MixedChatEvent body against the ENDPOINT's vocabulary (§3.3): a field this build
 /// cannot name is skipped by the endpoint's shape and counted unknown, a kind the
 /// declaration widened is decoded exactly and counted widened, and any other
 /// kind is a kind mismatch, skipped.
-pub fn mixed_chat_event_load_message_body(r: &mut TableBitReader, v: &TableVocabulary, report: &mut TableReport, value: &mut MixedChatEventRow) -> bool {
-    *value = mixed_chat_event_message_default();
-    let mut seen = TableMessageSeen::default();
-    let same_build = v.build_version == BUILD_VERSION;
-    let mut next_field = 0usize;
-    let dflt = mixed_chat_event_message_default();
+pub fn mixed_chat_event_load_message_body(schema_r: &mut TableBitReader, schema_v: &TableVocabulary, schema_report: &mut TableReport, schema_value: &mut MixedChatEventRow) -> bool {
+    *schema_value = mixed_chat_event_message_default();
+    let mut schema_seen = TableMessageSeen::default();
+    let schema_same_build = schema_v.build_version == BUILD_VERSION;
+    let mut schema_next_field = 0usize;
+    let schema_dflt = mixed_chat_event_message_default();
     loop {
-        let Some(reference) = r.get(v.ref_bits) else { report.damaged = true; return false; };
-        if reference == 0 { return true; }
-        let Some(entry) = v.entry(reference).copied() else { report.damaged = true; return false; };
-        if entry.id >= 0xffff_ffff_ffff_fffd { report.damaged = true; return false; }
-        if !seen.once(v.seen_key(reference)) { report.damaged = true; return false; }
-        match entry.id {
+        let Some(schema_reference) = schema_r.get(schema_v.ref_bits) else { schema_report.damaged = true; return false; };
+        if schema_reference == 0 { return true; }
+        let Some(schema_entry) = schema_v.entry(schema_reference).copied() else { schema_report.damaged = true; return false; };
+        if schema_entry.id >= 0xffff_ffff_ffff_fffd { schema_report.damaged = true; return false; }
+        if !schema_seen.once(schema_v.seen_key(schema_reference)) { schema_report.damaged = true; return false; }
+        match schema_entry.id {
             0xa5013e9ad5caeda4 => {
-                if same_build && next_field > 0 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
-                next_field = 1;
-                let mut widened = false;
-                let unknown_before = report.unknown;
+                if schema_same_build && schema_next_field > 0 { schema_report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                schema_next_field = 1;
+                let mut schema_widened = false;
+                let schema_unknown_before = schema_report.unknown;
                 'f21: {
-                    if entry.kind != 4 || entry.shape.elem != 0 {
-                        if entry.shape.elem == 0 && table_message_widens(entry.kind, 4) {
-                            widened = true;
+                    if schema_entry.kind != 4 || schema_entry.shape.elem != 0 {
+                        if schema_entry.shape.elem == 0 && table_message_widens(schema_entry.kind, 4) {
+                            schema_widened = true;
                         } else {
-                            report.damaged = true;
-                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
+                            schema_report.damaged = true;
+                            if !table_message_skip_field(schema_r, schema_v, &schema_entry, 0) { schema_report.damaged = true; return false; }
                             break 'f21;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
-                        let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < 0i128 { x = 0i128; report.out_of_range("MixedChatEvent.channel"); } else if x > 3i128 { x = 3i128; report.out_of_range("MixedChatEvent.channel"); }
-                        value.channel = x as i32;
+                        let Some((schema_lo, schema_hi)) = table_message_read_scalar(schema_r, schema_entry.kind, &schema_entry.shape) else { schema_report.damaged = true; return false; };
+                        let mut schema_x = table_message_signed(schema_entry.kind, schema_lo, schema_hi);
+                        if schema_x < 0i128 { schema_x = 0i128; schema_report.out_of_range("MixedChatEvent.channel"); } else if schema_x > 3i128 { schema_x = 3i128; schema_report.out_of_range("MixedChatEvent.channel"); }
+                        schema_value.channel = schema_x as i32;
                     }
-                    if same_build && report.unknown == unknown_before {
-                        let rides = value.channel != dflt.channel;
-                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    if schema_same_build && schema_report.unknown == schema_unknown_before {
+                        let schema_rides = schema_value.channel != schema_dflt.channel;
+                        if !schema_rides { schema_report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
                     }
-                    if widened { report.widened += 1; }
+                    if schema_widened { schema_report.widened += 1; }
                 }
             }
             0xfbf1ac4d96ebd022 => {
-                if same_build && next_field > 1 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
-                next_field = 2;
-                let mut widened = false;
-                let unknown_before = report.unknown;
+                if schema_same_build && schema_next_field > 1 { schema_report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                schema_next_field = 2;
+                let mut schema_widened = false;
+                let schema_unknown_before = schema_report.unknown;
                 'f22: {
-                    if entry.kind != 7 || entry.shape.elem != 0 {
-                        if entry.shape.elem == 0 && table_message_widens(entry.kind, 7) {
-                            widened = true;
+                    if schema_entry.kind != 7 || schema_entry.shape.elem != 0 {
+                        if schema_entry.shape.elem == 0 && table_message_widens(schema_entry.kind, 7) {
+                            schema_widened = true;
                         } else {
-                            report.damaged = true;
-                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
+                            schema_report.damaged = true;
+                            if !table_message_skip_field(schema_r, schema_v, &schema_entry, 0) { schema_report.damaged = true; return false; }
                             break 'f22;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
-                        let mut x = table_message_unsigned(entry.kind, lo, hi);
-                        if x > 4095 { x = 4095; report.out_of_range("MixedChatEvent.speaker"); }
-                        value.speaker = x as u32;
+                        let Some((schema_lo, schema_hi)) = table_message_read_scalar(schema_r, schema_entry.kind, &schema_entry.shape) else { schema_report.damaged = true; return false; };
+                        let mut schema_x = table_message_unsigned(schema_entry.kind, schema_lo, schema_hi);
+                        if schema_x > 4095 { schema_x = 4095; schema_report.out_of_range("MixedChatEvent.speaker"); }
+                        schema_value.speaker = schema_x as u32;
                     }
-                    if same_build && report.unknown == unknown_before {
-                        let rides = value.speaker != dflt.speaker;
-                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    if schema_same_build && schema_report.unknown == schema_unknown_before {
+                        let schema_rides = schema_value.speaker != schema_dflt.speaker;
+                        if !schema_rides { schema_report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
                     }
-                    if widened { report.widened += 1; }
+                    if schema_widened { schema_report.widened += 1; }
                 }
             }
             _ => {
-                if same_build { report.damaged = true; return false; } // a field the record does not declare (§3.3 (b))
-                report.unknown += 1;
-                if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
+                if schema_same_build { schema_report.damaged = true; return false; } // a field the record does not declare (§3.3 (b))
+                schema_report.unknown += 1;
+                if !table_message_skip_field(schema_r, schema_v, &schema_entry, 0) { schema_report.damaged = true; return false; }
             }
         }
     }
@@ -950,103 +950,103 @@ pub fn mixed_pickup_event_message_default() -> MixedPickupEventRow {
 
 /// One MixedPickupEvent body (§3.3): each field off its declared default, then the zero
 /// reference.
-pub fn mixed_pickup_event_save_message_body(w: &mut TableBitWriter, value: &MixedPickupEventRow) -> bool {
-    let dflt = mixed_pickup_event_message_default();
+pub fn mixed_pickup_event_save_message_body(schema_w: &mut TableBitWriter, schema_value: &MixedPickupEventRow) -> bool {
+    let schema_dflt = mixed_pickup_event_message_default();
     {
-        if value.item_id != dflt.item_id {
-            w.put(49, TABLE_MESSAGE_REF_BITS);
-            debug_assert!(value.item_id <= 1023, "item_id exceeds bits(10) width");
-            table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 10, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.item_id as u64, 0);
+        if schema_value.item_id != schema_dflt.item_id {
+            schema_w.put(49, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(schema_value.item_id <= 1023, "item_id exceeds bits(10) width");
+            table_message_write_scalar(schema_w, &TableMessageShape { packing: 1, bits: 10, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, schema_value.item_id as u64, 0);
         }
     }
     {
-        if value.amount != dflt.amount {
-            w.put(50, TABLE_MESSAGE_REF_BITS);
-            debug_assert!(value.amount >= 0 && value.amount <= 255, "amount out of range [0, 255]");
-            table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 8, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.amount as i64 as u64, 0);
+        if schema_value.amount != schema_dflt.amount {
+            schema_w.put(50, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(schema_value.amount >= 0 && schema_value.amount <= 255, "amount out of range [0, 255]");
+            table_message_write_scalar(schema_w, &TableMessageShape { packing: 1, bits: 8, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, schema_value.amount as i64 as u64, 0);
         }
     }
-    w.put(0, TABLE_MESSAGE_REF_BITS);
-    !w.overflow
+    schema_w.put(0, TABLE_MESSAGE_REF_BITS);
+    !schema_w.overflow
 }
 
 /// One MixedPickupEvent body against the ENDPOINT's vocabulary (§3.3): a field this build
 /// cannot name is skipped by the endpoint's shape and counted unknown, a kind the
 /// declaration widened is decoded exactly and counted widened, and any other
 /// kind is a kind mismatch, skipped.
-pub fn mixed_pickup_event_load_message_body(r: &mut TableBitReader, v: &TableVocabulary, report: &mut TableReport, value: &mut MixedPickupEventRow) -> bool {
-    *value = mixed_pickup_event_message_default();
-    let mut seen = TableMessageSeen::default();
-    let same_build = v.build_version == BUILD_VERSION;
-    let mut next_field = 0usize;
-    let dflt = mixed_pickup_event_message_default();
+pub fn mixed_pickup_event_load_message_body(schema_r: &mut TableBitReader, schema_v: &TableVocabulary, schema_report: &mut TableReport, schema_value: &mut MixedPickupEventRow) -> bool {
+    *schema_value = mixed_pickup_event_message_default();
+    let mut schema_seen = TableMessageSeen::default();
+    let schema_same_build = schema_v.build_version == BUILD_VERSION;
+    let mut schema_next_field = 0usize;
+    let schema_dflt = mixed_pickup_event_message_default();
     loop {
-        let Some(reference) = r.get(v.ref_bits) else { report.damaged = true; return false; };
-        if reference == 0 { return true; }
-        let Some(entry) = v.entry(reference).copied() else { report.damaged = true; return false; };
-        if entry.id >= 0xffff_ffff_ffff_fffd { report.damaged = true; return false; }
-        if !seen.once(v.seen_key(reference)) { report.damaged = true; return false; }
-        match entry.id {
+        let Some(schema_reference) = schema_r.get(schema_v.ref_bits) else { schema_report.damaged = true; return false; };
+        if schema_reference == 0 { return true; }
+        let Some(schema_entry) = schema_v.entry(schema_reference).copied() else { schema_report.damaged = true; return false; };
+        if schema_entry.id >= 0xffff_ffff_ffff_fffd { schema_report.damaged = true; return false; }
+        if !schema_seen.once(schema_v.seen_key(schema_reference)) { schema_report.damaged = true; return false; }
+        match schema_entry.id {
             0x9e7fd06d864fbd56 => {
-                if same_build && next_field > 0 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
-                next_field = 1;
-                let mut widened = false;
-                let unknown_before = report.unknown;
+                if schema_same_build && schema_next_field > 0 { schema_report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                schema_next_field = 1;
+                let mut schema_widened = false;
+                let schema_unknown_before = schema_report.unknown;
                 'f23: {
-                    if entry.kind != 7 || entry.shape.elem != 0 {
-                        if entry.shape.elem == 0 && table_message_widens(entry.kind, 7) {
-                            widened = true;
+                    if schema_entry.kind != 7 || schema_entry.shape.elem != 0 {
+                        if schema_entry.shape.elem == 0 && table_message_widens(schema_entry.kind, 7) {
+                            schema_widened = true;
                         } else {
-                            report.damaged = true;
-                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
+                            schema_report.damaged = true;
+                            if !table_message_skip_field(schema_r, schema_v, &schema_entry, 0) { schema_report.damaged = true; return false; }
                             break 'f23;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
-                        let mut x = table_message_unsigned(entry.kind, lo, hi);
-                        if x > 1023 { x = 1023; report.out_of_range("MixedPickupEvent.item_id"); }
-                        value.item_id = x as u32;
+                        let Some((schema_lo, schema_hi)) = table_message_read_scalar(schema_r, schema_entry.kind, &schema_entry.shape) else { schema_report.damaged = true; return false; };
+                        let mut schema_x = table_message_unsigned(schema_entry.kind, schema_lo, schema_hi);
+                        if schema_x > 1023 { schema_x = 1023; schema_report.out_of_range("MixedPickupEvent.item_id"); }
+                        schema_value.item_id = schema_x as u32;
                     }
-                    if same_build && report.unknown == unknown_before {
-                        let rides = value.item_id != dflt.item_id;
-                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    if schema_same_build && schema_report.unknown == schema_unknown_before {
+                        let schema_rides = schema_value.item_id != schema_dflt.item_id;
+                        if !schema_rides { schema_report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
                     }
-                    if widened { report.widened += 1; }
+                    if schema_widened { schema_report.widened += 1; }
                 }
             }
             0x8113fe7ea2b16969 => {
-                if same_build && next_field > 1 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
-                next_field = 2;
-                let mut widened = false;
-                let unknown_before = report.unknown;
+                if schema_same_build && schema_next_field > 1 { schema_report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                schema_next_field = 2;
+                let mut schema_widened = false;
+                let schema_unknown_before = schema_report.unknown;
                 'f24: {
-                    if entry.kind != 4 || entry.shape.elem != 0 {
-                        if entry.shape.elem == 0 && table_message_widens(entry.kind, 4) {
-                            widened = true;
+                    if schema_entry.kind != 4 || schema_entry.shape.elem != 0 {
+                        if schema_entry.shape.elem == 0 && table_message_widens(schema_entry.kind, 4) {
+                            schema_widened = true;
                         } else {
-                            report.damaged = true;
-                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
+                            schema_report.damaged = true;
+                            if !table_message_skip_field(schema_r, schema_v, &schema_entry, 0) { schema_report.damaged = true; return false; }
                             break 'f24;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
-                        let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < 0i128 { x = 0i128; report.out_of_range("MixedPickupEvent.amount"); } else if x > 255i128 { x = 255i128; report.out_of_range("MixedPickupEvent.amount"); }
-                        value.amount = x as i32;
+                        let Some((schema_lo, schema_hi)) = table_message_read_scalar(schema_r, schema_entry.kind, &schema_entry.shape) else { schema_report.damaged = true; return false; };
+                        let mut schema_x = table_message_signed(schema_entry.kind, schema_lo, schema_hi);
+                        if schema_x < 0i128 { schema_x = 0i128; schema_report.out_of_range("MixedPickupEvent.amount"); } else if schema_x > 255i128 { schema_x = 255i128; schema_report.out_of_range("MixedPickupEvent.amount"); }
+                        schema_value.amount = schema_x as i32;
                     }
-                    if same_build && report.unknown == unknown_before {
-                        let rides = value.amount != dflt.amount;
-                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    if schema_same_build && schema_report.unknown == schema_unknown_before {
+                        let schema_rides = schema_value.amount != schema_dflt.amount;
+                        if !schema_rides { schema_report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
                     }
-                    if widened { report.widened += 1; }
+                    if schema_widened { schema_report.widened += 1; }
                 }
             }
             _ => {
-                if same_build { report.damaged = true; return false; } // a field the record does not declare (§3.3 (b))
-                report.unknown += 1;
-                if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
+                if schema_same_build { schema_report.damaged = true; return false; } // a field the record does not declare (§3.3 (b))
+                schema_report.unknown += 1;
+                if !table_message_skip_field(schema_r, schema_v, &schema_entry, 0) { schema_report.damaged = true; return false; }
             }
         }
     }
@@ -1066,227 +1066,227 @@ pub fn bench_mixed_message_default() -> BenchMixedRow {
 // The ride loop indexes the row's storage by the declared count: an
 // iterator would turn an off-contract short row into a silent short write.
 #[allow(clippy::needless_range_loop)]
-pub fn bench_mixed_save_message_body(w: &mut TableBitWriter, value: &BenchMixedRow) -> bool {
-    let dflt = bench_mixed_message_default();
+pub fn bench_mixed_save_message_body(schema_w: &mut TableBitWriter, schema_value: &BenchMixedRow) -> bool {
+    let schema_dflt = bench_mixed_message_default();
     {
-        if value.sequence != dflt.sequence {
-            w.put(1, TABLE_MESSAGE_REF_BITS);
-            table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 16, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.sequence as u64, 0);
+        if schema_value.sequence != schema_dflt.sequence {
+            schema_w.put(1, TABLE_MESSAGE_REF_BITS);
+            table_message_write_scalar(schema_w, &TableMessageShape { packing: 1, bits: 16, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, schema_value.sequence as u64, 0);
         }
     }
     {
-        if value.ack_sequence != dflt.ack_sequence {
-            w.put(2, TABLE_MESSAGE_REF_BITS);
-            debug_assert!(value.ack_sequence >= 0 && value.ack_sequence <= 65535, "ack_sequence out of range [0, 65535]");
-            table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 16, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.ack_sequence as i64 as u64, 0);
+        if schema_value.ack_sequence != schema_dflt.ack_sequence {
+            schema_w.put(2, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(schema_value.ack_sequence >= 0 && schema_value.ack_sequence <= 65535, "ack_sequence out of range [0, 65535]");
+            table_message_write_scalar(schema_w, &TableMessageShape { packing: 1, bits: 16, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, schema_value.ack_sequence as i64 as u64, 0);
         }
     }
     {
-        if value.ack_bits != dflt.ack_bits {
-            w.put(3, TABLE_MESSAGE_REF_BITS);
-            table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 32, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.ack_bits as u64, 0);
+        if schema_value.ack_bits != schema_dflt.ack_bits {
+            schema_w.put(3, TABLE_MESSAGE_REF_BITS);
+            table_message_write_scalar(schema_w, &TableMessageShape { packing: 1, bits: 32, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, schema_value.ack_bits as u64, 0);
         }
     }
     {
-        if value.session_id != dflt.session_id {
-            w.put(4, TABLE_MESSAGE_REF_BITS);
-            table_message_write_scalar(w, &TableMessageShape { packing: 0, bits: 64, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.session_id, 0);
+        if schema_value.session_id != schema_dflt.session_id {
+            schema_w.put(4, TABLE_MESSAGE_REF_BITS);
+            table_message_write_scalar(schema_w, &TableMessageShape { packing: 0, bits: 64, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, schema_value.session_id, 0);
         }
     }
     {
-        if value.client_id != dflt.client_id {
-            w.put(5, TABLE_MESSAGE_REF_BITS);
-            table_message_write_scalar(w, &TableMessageShape { packing: 0, bits: 32, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.client_id as u64, 0);
+        if schema_value.client_id != schema_dflt.client_id {
+            schema_w.put(5, TABLE_MESSAGE_REF_BITS);
+            table_message_write_scalar(schema_w, &TableMessageShape { packing: 0, bits: 32, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, schema_value.client_id as u64, 0);
         }
     }
     {
-        if value.nonce != dflt.nonce {
-            w.put(6, TABLE_MESSAGE_REF_BITS);
-            table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 64, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.nonce, 0);
+        if schema_value.nonce != schema_dflt.nonce {
+            schema_w.put(6, TABLE_MESSAGE_REF_BITS);
+            table_message_write_scalar(schema_w, &TableMessageShape { packing: 1, bits: 64, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, schema_value.nonce, 0);
         }
     }
     {
-        if value.world_time != dflt.world_time {
-            w.put(7, TABLE_MESSAGE_REF_BITS);
-            debug_assert!(value.world_time >= -1000000000000 && value.world_time <= 1000000000000, "world_time out of range [-1000000000000, 1000000000000]");
-            table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 41, base_lo: 0xffffff172b5af000, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.world_time as u64, 0);
+        if schema_value.world_time != schema_dflt.world_time {
+            schema_w.put(7, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(schema_value.world_time >= -1000000000000 && schema_value.world_time <= 1000000000000, "world_time out of range [-1000000000000, 1000000000000]");
+            table_message_write_scalar(schema_w, &TableMessageShape { packing: 1, bits: 41, base_lo: 0xffffff172b5af000, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, schema_value.world_time as u64, 0);
         }
     }
     {
-        if value.frame_tick != dflt.frame_tick {
-            w.put(8, TABLE_MESSAGE_REF_BITS);
-            debug_assert!(value.frame_tick <= 281474976710655, "frame_tick exceeds bits(48) width");
-            table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 48, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.frame_tick, 0);
+        if schema_value.frame_tick != schema_dflt.frame_tick {
+            schema_w.put(8, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(schema_value.frame_tick <= 281474976710655, "frame_tick exceeds bits(48) width");
+            table_message_write_scalar(schema_w, &TableMessageShape { packing: 1, bits: 48, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, schema_value.frame_tick, 0);
         }
     }
     {
-        if value.server_time != dflt.server_time {
-            w.put(9, TABLE_MESSAGE_REF_BITS);
-            debug_assert!(value.server_time >= 0 && value.server_time <= 16776960, "server_time raw value out of range [0, 16776960]");
-            table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 24, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.server_time as i64 as u64, 0);
+        if schema_value.server_time != schema_dflt.server_time {
+            schema_w.put(9, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(schema_value.server_time >= 0 && schema_value.server_time <= 16776960, "server_time raw value out of range [0, 16776960]");
+            table_message_write_scalar(schema_w, &TableMessageShape { packing: 1, bits: 24, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, schema_value.server_time as i64 as u64, 0);
         }
     }
     {
-        debug_assert!(value.entities_count >= 1 && value.entities_count <= 8, "the declared count is the bound (docs/SPEC-TABLES.md §3.4)");
-        if value.entities_count > 0 && (value.entities_count != 1 || (0..1).any(|i| { let mut probe = TableBitWriter::measure(); !mixed_entity_save_message_body(&mut probe, &value.entities[i]) || probe.bits > TABLE_MESSAGE_REF_BITS as u64 })) {
-            w.put(10, TABLE_MESSAGE_REF_BITS);
-            w.put((value.entities_count as u64).wrapping_sub(1), 3);
-            for i in 0..(value.entities_count as usize) {
-                if !mixed_entity_save_message_body(w, &value.entities[i]) { return false; }
+        debug_assert!(schema_value.entities_count >= 1 && schema_value.entities_count <= 8, "the declared count is the bound (docs/SPEC-TABLES.md §3.4)");
+        if schema_value.entities_count > 0 && (schema_value.entities_count != 1 || (0..1).any(|schema_i| { let mut probe = TableBitWriter::measure(); !mixed_entity_save_message_body(&mut probe, &schema_value.entities[schema_i]) || probe.bits > TABLE_MESSAGE_REF_BITS as u64 })) {
+            schema_w.put(10, TABLE_MESSAGE_REF_BITS);
+            schema_w.put((schema_value.entities_count as u64).wrapping_sub(1), 3);
+            for schema_i in 0..(schema_value.entities_count as usize) {
+                if !mixed_entity_save_message_body(schema_w, &schema_value.entities[schema_i]) { return false; }
             }
         }
     }
     {
-        debug_assert!(value.stats_count >= 0 && value.stats_count <= 80, "the declared count is the bound (docs/SPEC-TABLES.md §3.4)");
-        if value.stats_count > 0 {
-            w.put(11, TABLE_MESSAGE_REF_BITS);
-            w.put((value.stats_count as u64).wrapping_sub(0), 7);
-            for i in 0..(value.stats_count as usize) {
-                if !mixed_stat_save_message_body(w, &value.stats[i]) { return false; }
+        debug_assert!(schema_value.stats_count >= 0 && schema_value.stats_count <= 80, "the declared count is the bound (docs/SPEC-TABLES.md §3.4)");
+        if schema_value.stats_count > 0 {
+            schema_w.put(11, TABLE_MESSAGE_REF_BITS);
+            schema_w.put((schema_value.stats_count as u64).wrapping_sub(0), 7);
+            for schema_i in 0..(schema_value.stats_count as usize) {
+                if !mixed_stat_save_message_body(schema_w, &schema_value.stats[schema_i]) { return false; }
             }
         }
     }
     {
-        if value.game_event.tag() != 0 {
-            w.put(12, TABLE_MESSAGE_REF_BITS);
-            match value.game_event.tag() {
-                0 => w.put(0, TABLE_MESSAGE_REF_BITS),
+        if schema_value.game_event.tag() != 0 {
+            schema_w.put(12, TABLE_MESSAGE_REF_BITS);
+            match schema_value.game_event.tag() {
+                0 => schema_w.put(0, TABLE_MESSAGE_REF_BITS),
                 1 => {
-                    w.put(68, TABLE_MESSAGE_REF_BITS);
-                    let Some(arm25) = value.game_event.hit() else { return false; };
-                    if !mixed_hit_event_save_message_body(w, &arm25) { return false; }
+                    schema_w.put(68, TABLE_MESSAGE_REF_BITS);
+                    let Some(schema_arm25) = schema_value.game_event.hit() else { return false; };
+                    if !mixed_hit_event_save_message_body(schema_w, &schema_arm25) { return false; }
                 }
                 2 => {
-                    w.put(69, TABLE_MESSAGE_REF_BITS);
-                    let Some(arm26) = value.game_event.chat() else { return false; };
-                    if !mixed_chat_event_save_message_body(w, &arm26) { return false; }
+                    schema_w.put(69, TABLE_MESSAGE_REF_BITS);
+                    let Some(schema_arm26) = schema_value.game_event.chat() else { return false; };
+                    if !mixed_chat_event_save_message_body(schema_w, &schema_arm26) { return false; }
                 }
                 3 => {
-                    w.put(70, TABLE_MESSAGE_REF_BITS);
-                    let Some(arm27) = value.game_event.pickup() else { return false; };
-                    if !mixed_pickup_event_save_message_body(w, &arm27) { return false; }
+                    schema_w.put(70, TABLE_MESSAGE_REF_BITS);
+                    let Some(schema_arm27) = schema_value.game_event.pickup() else { return false; };
+                    if !mixed_pickup_event_save_message_body(schema_w, &schema_arm27) { return false; }
                 }
                 _ => return false,
             }
         }
     }
     {
-        if (0..4).any(|i| value.loadout[i] != dflt.loadout[i]) {
-            w.put(13, TABLE_MESSAGE_REF_BITS);
-            w.put(4u64.wrapping_sub(4), 0);
-            w.align();
-            for i in 0..4usize {
-                table_message_write_scalar(w, &TableMessageShape { packing: 0, bits: 8, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.loadout[i] as u64, 0);
+        if (0..4).any(|schema_i| schema_value.loadout[schema_i] != schema_dflt.loadout[schema_i]) {
+            schema_w.put(13, TABLE_MESSAGE_REF_BITS);
+            schema_w.put(4u64.wrapping_sub(4), 0);
+            schema_w.align();
+            for schema_i in 0..4usize {
+                table_message_write_scalar(schema_w, &TableMessageShape { packing: 0, bits: 8, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, schema_value.loadout[schema_i] as u64, 0);
             }
         }
     }
     {
-        debug_assert!(value.player_name_length >= 0 && value.player_name_length <= 15, "the declared length is the bound (docs/SPEC-TABLES.md §3.4)");
-        if value.player_name_length > 0 {
-            w.put(14, TABLE_MESSAGE_REF_BITS);
-            debug_assert!(table_message_utf8(&value.player_name[..value.player_name_length as usize]), "player_name is ill-formed text");
-            w.put(value.player_name_length as u64, 4);
-            w.raw(&value.player_name[..value.player_name_length as usize]);
+        debug_assert!(schema_value.player_name_length >= 0 && schema_value.player_name_length <= 15, "the declared length is the bound (docs/SPEC-TABLES.md §3.4)");
+        if schema_value.player_name_length > 0 {
+            schema_w.put(14, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(table_message_utf8(&schema_value.player_name[..schema_value.player_name_length as usize]), "player_name is ill-formed text");
+            schema_w.put(schema_value.player_name_length as u64, 4);
+            schema_w.raw(&schema_value.player_name[..schema_value.player_name_length as usize]);
         }
     }
     {
-        debug_assert!(value.payload_length >= 0 && value.payload_length <= 16, "the declared length is the bound (docs/SPEC-TABLES.md §3.4)");
-        if value.payload_length > 0 {
-            w.put(15, TABLE_MESSAGE_REF_BITS);
-            w.put((value.payload_length as u64).wrapping_sub(0), 5);
-            w.align();
-            for i in 0..(value.payload_length as usize) {
-                table_message_write_scalar(w, &TableMessageShape { packing: 0, bits: 8, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.payload[i] as u64, 0);
+        debug_assert!(schema_value.payload_length >= 0 && schema_value.payload_length <= 16, "the declared length is the bound (docs/SPEC-TABLES.md §3.4)");
+        if schema_value.payload_length > 0 {
+            schema_w.put(15, TABLE_MESSAGE_REF_BITS);
+            schema_w.put((schema_value.payload_length as u64).wrapping_sub(0), 5);
+            schema_w.align();
+            for schema_i in 0..(schema_value.payload_length as usize) {
+                table_message_write_scalar(schema_w, &TableMessageShape { packing: 0, bits: 8, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, schema_value.payload[schema_i] as u64, 0);
             }
         }
     }
     {
-        if value.aim_x != dflt.aim_x {
-            w.put(16, TABLE_MESSAGE_REF_BITS);
-            debug_assert!(!value.aim_x.is_finite() || (value.aim_x >= f32::from_bits(0xbf800000) && value.aim_x <= f32::from_bits(0x3f800000)), "aim_x out of range");
-            if !value.aim_x.is_finite() { return false; }
-            table_message_write_scalar(w, &TableMessageShape { packing: 2, bits: 8, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0xbf800000), qdelta: f32::from_bits(0x40000000), qcount: 200 }, value.aim_x.to_bits() as u64, 0);
+        if schema_value.aim_x != schema_dflt.aim_x {
+            schema_w.put(16, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(!schema_value.aim_x.is_finite() || (schema_value.aim_x >= f32::from_bits(0xbf800000) && schema_value.aim_x <= f32::from_bits(0x3f800000)), "aim_x out of range");
+            if !schema_value.aim_x.is_finite() { return false; }
+            table_message_write_scalar(schema_w, &TableMessageShape { packing: 2, bits: 8, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0xbf800000), qdelta: f32::from_bits(0x40000000), qcount: 200 }, schema_value.aim_x.to_bits() as u64, 0);
         }
     }
     {
-        if value.aim_y != dflt.aim_y {
-            w.put(17, TABLE_MESSAGE_REF_BITS);
-            debug_assert!(!value.aim_y.is_finite() || (value.aim_y >= f32::from_bits(0xbf800000) && value.aim_y <= f32::from_bits(0x3f800000)), "aim_y out of range");
-            if !value.aim_y.is_finite() { return false; }
-            table_message_write_scalar(w, &TableMessageShape { packing: 2, bits: 8, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0xbf800000), qdelta: f32::from_bits(0x40000000), qcount: 200 }, value.aim_y.to_bits() as u64, 0);
+        if schema_value.aim_y != schema_dflt.aim_y {
+            schema_w.put(17, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(!schema_value.aim_y.is_finite() || (schema_value.aim_y >= f32::from_bits(0xbf800000) && schema_value.aim_y <= f32::from_bits(0x3f800000)), "aim_y out of range");
+            if !schema_value.aim_y.is_finite() { return false; }
+            table_message_write_scalar(schema_w, &TableMessageShape { packing: 2, bits: 8, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0xbf800000), qdelta: f32::from_bits(0x40000000), qcount: 200 }, schema_value.aim_y.to_bits() as u64, 0);
         }
     }
     {
-        if value.aim_z != dflt.aim_z {
-            w.put(18, TABLE_MESSAGE_REF_BITS);
-            debug_assert!(!value.aim_z.is_finite() || (value.aim_z >= f32::from_bits(0xbf800000) && value.aim_z <= f32::from_bits(0x3f800000)), "aim_z out of range");
-            if !value.aim_z.is_finite() { return false; }
-            table_message_write_scalar(w, &TableMessageShape { packing: 2, bits: 8, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0xbf800000), qdelta: f32::from_bits(0x40000000), qcount: 200 }, value.aim_z.to_bits() as u64, 0);
+        if schema_value.aim_z != schema_dflt.aim_z {
+            schema_w.put(18, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(!schema_value.aim_z.is_finite() || (schema_value.aim_z >= f32::from_bits(0xbf800000) && schema_value.aim_z <= f32::from_bits(0x3f800000)), "aim_z out of range");
+            if !schema_value.aim_z.is_finite() { return false; }
+            table_message_write_scalar(schema_w, &TableMessageShape { packing: 2, bits: 8, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0xbf800000), qdelta: f32::from_bits(0x40000000), qcount: 200 }, schema_value.aim_z.to_bits() as u64, 0);
         }
     }
     {
-        if value.recoil.to_bits() != dflt.recoil.to_bits() {
-            w.put(19, TABLE_MESSAGE_REF_BITS);
-            if !value.recoil.is_finite() { return false; }
-            table_message_write_scalar(w, &TableMessageShape { packing: 0, bits: 32, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.recoil.to_bits() as u64, 0);
+        if schema_value.recoil.to_bits() != schema_dflt.recoil.to_bits() {
+            schema_w.put(19, TABLE_MESSAGE_REF_BITS);
+            if !schema_value.recoil.is_finite() { return false; }
+            table_message_write_scalar(schema_w, &TableMessageShape { packing: 0, bits: 32, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, schema_value.recoil.to_bits() as u64, 0);
         }
     }
     {
-        if value.drift.to_bits() != dflt.drift.to_bits() {
-            w.put(20, TABLE_MESSAGE_REF_BITS);
-            if !value.drift.is_finite() { return false; }
-            table_message_write_scalar(w, &TableMessageShape { packing: 0, bits: 64, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.drift.to_bits(), 0);
+        if schema_value.drift.to_bits() != schema_dflt.drift.to_bits() {
+            schema_w.put(20, TABLE_MESSAGE_REF_BITS);
+            if !schema_value.drift.is_finite() { return false; }
+            table_message_write_scalar(schema_w, &TableMessageShape { packing: 0, bits: 64, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, schema_value.drift.to_bits(), 0);
         }
     }
     {
-        if value.wide_key != dflt.wide_key {
-            w.put(21, TABLE_MESSAGE_REF_BITS);
-            table_message_write_scalar(w, &TableMessageShape { packing: 0, bits: 128, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.wide_key.0 as u64, (value.wide_key.0 >> 64) as u64);
+        if schema_value.wide_key != schema_dflt.wide_key {
+            schema_w.put(21, TABLE_MESSAGE_REF_BITS);
+            table_message_write_scalar(schema_w, &TableMessageShape { packing: 0, bits: 128, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, schema_value.wide_key.0 as u64, (schema_value.wide_key.0 >> 64) as u64);
         }
     }
     {
-        if value.flux != dflt.flux {
-            w.put(22, TABLE_MESSAGE_REF_BITS);
-            debug_assert!(value.flux.0 >= -1267650600228229401496703205376 && value.flux.0 <= 1267650600228229401496703205376, "flux out of range [-1267650600228229401496703205376, 1267650600228229401496703205376]");
-            table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 102, base_lo: 0x0, base_hi: 0xfffffff000000000, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.flux.0 as u64, (value.flux.0 >> 64) as u64);
+        if schema_value.flux != schema_dflt.flux {
+            schema_w.put(22, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(schema_value.flux.0 >= -1267650600228229401496703205376 && schema_value.flux.0 <= 1267650600228229401496703205376, "flux out of range [-1267650600228229401496703205376, 1267650600228229401496703205376]");
+            table_message_write_scalar(schema_w, &TableMessageShape { packing: 1, bits: 102, base_lo: 0x0, base_hi: 0xfffffff000000000, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, schema_value.flux.0 as u64, (schema_value.flux.0 >> 64) as u64);
         }
     }
     {
-        if value.ping != dflt.ping {
-            w.put(23, TABLE_MESSAGE_REF_BITS);
-            debug_assert!(value.ping <= 64000, "ping raw value out of range [0, 64000]");
-            table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 16, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.ping as u64, 0);
+        if schema_value.ping != schema_dflt.ping {
+            schema_w.put(23, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(schema_value.ping <= 64000, "ping raw value out of range [0, 64000]");
+            table_message_write_scalar(schema_w, &TableMessageShape { packing: 1, bits: 16, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, schema_value.ping as u64, 0);
         }
     }
     {
-        if value.crc_hint != dflt.crc_hint {
-            w.put(24, TABLE_MESSAGE_REF_BITS);
-            debug_assert!(value.crc_hint <= 16777215, "crc_hint exceeds bits(24) width");
-            table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 24, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.crc_hint as u64, 0);
+        if schema_value.crc_hint != schema_dflt.crc_hint {
+            schema_w.put(24, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(schema_value.crc_hint <= 16777215, "crc_hint exceeds bits(24) width");
+            table_message_write_scalar(schema_w, &TableMessageShape { packing: 1, bits: 24, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, schema_value.crc_hint as u64, 0);
         }
     }
     {
-        if value.has_extra != dflt.has_extra {
-            w.put(25, TABLE_MESSAGE_REF_BITS);
-            w.put(if value.has_extra { 1 } else { 0 }, 1);
+        if schema_value.has_extra != schema_dflt.has_extra {
+            schema_w.put(25, TABLE_MESSAGE_REF_BITS);
+            schema_w.put(if schema_value.has_extra { 1 } else { 0 }, 1);
         }
     }
     {
-        if value.extra != dflt.extra {
-            w.put(26, TABLE_MESSAGE_REF_BITS);
-            debug_assert!(value.extra >= 0 && value.extra <= 255, "extra out of range [0, 255]");
-            table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 8, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.extra as i64 as u64, 0);
+        if schema_value.extra != schema_dflt.extra {
+            schema_w.put(26, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(schema_value.extra >= 0 && schema_value.extra <= 255, "extra out of range [0, 255]");
+            table_message_write_scalar(schema_w, &TableMessageShape { packing: 1, bits: 8, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, schema_value.extra as i64 as u64, 0);
         }
     }
     {
-        if value.idle_ticks != dflt.idle_ticks {
-            w.put(27, TABLE_MESSAGE_REF_BITS);
-            debug_assert!(value.idle_ticks >= 0 && value.idle_ticks <= 15, "idle_ticks out of range [0, 15]");
-            table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 4, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.idle_ticks as i64 as u64, 0);
+        if schema_value.idle_ticks != schema_dflt.idle_ticks {
+            schema_w.put(27, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(schema_value.idle_ticks >= 0 && schema_value.idle_ticks <= 15, "idle_ticks out of range [0, 15]");
+            table_message_write_scalar(schema_w, &TableMessageShape { packing: 1, bits: 4, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, schema_value.idle_ticks as i64 as u64, 0);
         }
     }
-    w.put(0, TABLE_MESSAGE_REF_BITS);
-    !w.overflow
+    schema_w.put(0, TABLE_MESSAGE_REF_BITS);
+    !schema_w.overflow
 }
 
 /// One BenchMixed body against the ENDPOINT's vocabulary (§3.3): a field this build
@@ -1294,780 +1294,780 @@ pub fn bench_mixed_save_message_body(w: &mut TableBitWriter, value: &BenchMixedR
 /// declaration widened is decoded exactly and counted widened, and any other
 /// kind is a kind mismatch, skipped.
 #[allow(clippy::needless_range_loop)]
-pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary, report: &mut TableReport, value: &mut BenchMixedRow) -> bool {
-    *value = bench_mixed_message_default();
-    let mut seen = TableMessageSeen::default();
-    let same_build = v.build_version == BUILD_VERSION;
-    let mut next_field = 0usize;
-    let dflt = bench_mixed_message_default();
+pub fn bench_mixed_load_message_body(schema_r: &mut TableBitReader, schema_v: &TableVocabulary, schema_report: &mut TableReport, schema_value: &mut BenchMixedRow) -> bool {
+    *schema_value = bench_mixed_message_default();
+    let mut schema_seen = TableMessageSeen::default();
+    let schema_same_build = schema_v.build_version == BUILD_VERSION;
+    let mut schema_next_field = 0usize;
+    let schema_dflt = bench_mixed_message_default();
     loop {
-        let Some(reference) = r.get(v.ref_bits) else { report.damaged = true; return false; };
-        if reference == 0 { return true; }
-        let Some(entry) = v.entry(reference).copied() else { report.damaged = true; return false; };
-        if entry.id >= 0xffff_ffff_ffff_fffd { report.damaged = true; return false; }
-        if !seen.once(v.seen_key(reference)) { report.damaged = true; return false; }
-        match entry.id {
+        let Some(schema_reference) = schema_r.get(schema_v.ref_bits) else { schema_report.damaged = true; return false; };
+        if schema_reference == 0 { return true; }
+        let Some(schema_entry) = schema_v.entry(schema_reference).copied() else { schema_report.damaged = true; return false; };
+        if schema_entry.id >= 0xffff_ffff_ffff_fffd { schema_report.damaged = true; return false; }
+        if !schema_seen.once(schema_v.seen_key(schema_reference)) { schema_report.damaged = true; return false; }
+        match schema_entry.id {
             0xaa38aca481f528a8 => {
-                if same_build && next_field > 0 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
-                next_field = 1;
-                let mut widened = false;
-                let unknown_before = report.unknown;
+                if schema_same_build && schema_next_field > 0 { schema_report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                schema_next_field = 1;
+                let mut schema_widened = false;
+                let schema_unknown_before = schema_report.unknown;
                 'f28: {
-                    if entry.kind != 7 || entry.shape.elem != 0 {
-                        if entry.shape.elem == 0 && table_message_widens(entry.kind, 7) {
-                            widened = true;
+                    if schema_entry.kind != 7 || schema_entry.shape.elem != 0 {
+                        if schema_entry.shape.elem == 0 && table_message_widens(schema_entry.kind, 7) {
+                            schema_widened = true;
                         } else {
-                            report.damaged = true;
-                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
+                            schema_report.damaged = true;
+                            if !table_message_skip_field(schema_r, schema_v, &schema_entry, 0) { schema_report.damaged = true; return false; }
                             break 'f28;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
-                        let mut x = table_message_unsigned(entry.kind, lo, hi);
-                        if x > 65535 { x = 65535; report.out_of_range("BenchMixed.sequence"); }
-                        value.sequence = x as u32;
+                        let Some((schema_lo, schema_hi)) = table_message_read_scalar(schema_r, schema_entry.kind, &schema_entry.shape) else { schema_report.damaged = true; return false; };
+                        let mut schema_x = table_message_unsigned(schema_entry.kind, schema_lo, schema_hi);
+                        if schema_x > 65535 { schema_x = 65535; schema_report.out_of_range("BenchMixed.sequence"); }
+                        schema_value.sequence = schema_x as u32;
                     }
-                    if same_build && report.unknown == unknown_before {
-                        let rides = value.sequence != dflt.sequence;
-                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    if schema_same_build && schema_report.unknown == schema_unknown_before {
+                        let schema_rides = schema_value.sequence != schema_dflt.sequence;
+                        if !schema_rides { schema_report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
                     }
-                    if widened { report.widened += 1; }
+                    if schema_widened { schema_report.widened += 1; }
                 }
             }
             0x0dbe005c56697c3e => {
-                if same_build && next_field > 1 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
-                next_field = 2;
-                let mut widened = false;
-                let unknown_before = report.unknown;
+                if schema_same_build && schema_next_field > 1 { schema_report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                schema_next_field = 2;
+                let mut schema_widened = false;
+                let schema_unknown_before = schema_report.unknown;
                 'f29: {
-                    if entry.kind != 4 || entry.shape.elem != 0 {
-                        if entry.shape.elem == 0 && table_message_widens(entry.kind, 4) {
-                            widened = true;
+                    if schema_entry.kind != 4 || schema_entry.shape.elem != 0 {
+                        if schema_entry.shape.elem == 0 && table_message_widens(schema_entry.kind, 4) {
+                            schema_widened = true;
                         } else {
-                            report.damaged = true;
-                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
+                            schema_report.damaged = true;
+                            if !table_message_skip_field(schema_r, schema_v, &schema_entry, 0) { schema_report.damaged = true; return false; }
                             break 'f29;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
-                        let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < 0i128 { x = 0i128; report.out_of_range("BenchMixed.ack_sequence"); } else if x > 65535i128 { x = 65535i128; report.out_of_range("BenchMixed.ack_sequence"); }
-                        value.ack_sequence = x as i32;
+                        let Some((schema_lo, schema_hi)) = table_message_read_scalar(schema_r, schema_entry.kind, &schema_entry.shape) else { schema_report.damaged = true; return false; };
+                        let mut schema_x = table_message_signed(schema_entry.kind, schema_lo, schema_hi);
+                        if schema_x < 0i128 { schema_x = 0i128; schema_report.out_of_range("BenchMixed.ack_sequence"); } else if schema_x > 65535i128 { schema_x = 65535i128; schema_report.out_of_range("BenchMixed.ack_sequence"); }
+                        schema_value.ack_sequence = schema_x as i32;
                     }
-                    if same_build && report.unknown == unknown_before {
-                        let rides = value.ack_sequence != dflt.ack_sequence;
-                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    if schema_same_build && schema_report.unknown == schema_unknown_before {
+                        let schema_rides = schema_value.ack_sequence != schema_dflt.ack_sequence;
+                        if !schema_rides { schema_report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
                     }
-                    if widened { report.widened += 1; }
+                    if schema_widened { schema_report.widened += 1; }
                 }
             }
             0x9bae0da8b829ee03 => {
-                if same_build && next_field > 2 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
-                next_field = 3;
-                let mut widened = false;
-                let unknown_before = report.unknown;
+                if schema_same_build && schema_next_field > 2 { schema_report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                schema_next_field = 3;
+                let mut schema_widened = false;
+                let schema_unknown_before = schema_report.unknown;
                 'f30: {
-                    if entry.kind != 8 || entry.shape.elem != 0 {
-                        if entry.shape.elem == 0 && table_message_widens(entry.kind, 8) {
-                            widened = true;
+                    if schema_entry.kind != 8 || schema_entry.shape.elem != 0 {
+                        if schema_entry.shape.elem == 0 && table_message_widens(schema_entry.kind, 8) {
+                            schema_widened = true;
                         } else {
-                            report.damaged = true;
-                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
+                            schema_report.damaged = true;
+                            if !table_message_skip_field(schema_r, schema_v, &schema_entry, 0) { schema_report.damaged = true; return false; }
                             break 'f30;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
-                        let mut x = table_message_unsigned(entry.kind, lo, hi);
-                        if x > 4294967295 { x = 4294967295; report.out_of_range("BenchMixed.ack_bits"); }
-                        value.ack_bits = x as u32;
+                        let Some((schema_lo, schema_hi)) = table_message_read_scalar(schema_r, schema_entry.kind, &schema_entry.shape) else { schema_report.damaged = true; return false; };
+                        let mut schema_x = table_message_unsigned(schema_entry.kind, schema_lo, schema_hi);
+                        if schema_x > 4294967295 { schema_x = 4294967295; schema_report.out_of_range("BenchMixed.ack_bits"); }
+                        schema_value.ack_bits = schema_x as u32;
                     }
-                    if same_build && report.unknown == unknown_before {
-                        let rides = value.ack_bits != dflt.ack_bits;
-                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    if schema_same_build && schema_report.unknown == schema_unknown_before {
+                        let schema_rides = schema_value.ack_bits != schema_dflt.ack_bits;
+                        if !schema_rides { schema_report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
                     }
-                    if widened { report.widened += 1; }
+                    if schema_widened { schema_report.widened += 1; }
                 }
             }
             0xb7d7b5650a590b05 => {
-                if same_build && next_field > 3 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
-                next_field = 4;
-                let mut widened = false;
-                let unknown_before = report.unknown;
+                if schema_same_build && schema_next_field > 3 { schema_report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                schema_next_field = 4;
+                let mut schema_widened = false;
+                let schema_unknown_before = schema_report.unknown;
                 'f31: {
-                    if entry.kind != 9 || entry.shape.elem != 0 {
-                        if entry.shape.elem == 0 && table_message_widens(entry.kind, 9) {
-                            widened = true;
+                    if schema_entry.kind != 9 || schema_entry.shape.elem != 0 {
+                        if schema_entry.shape.elem == 0 && table_message_widens(schema_entry.kind, 9) {
+                            schema_widened = true;
                         } else {
-                            report.damaged = true;
-                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
+                            schema_report.damaged = true;
+                            if !table_message_skip_field(schema_r, schema_v, &schema_entry, 0) { schema_report.damaged = true; return false; }
                             break 'f31;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
-                        let x = table_message_unsigned(entry.kind, lo, hi);
-                        value.session_id = x as u64;
+                        let Some((schema_lo, schema_hi)) = table_message_read_scalar(schema_r, schema_entry.kind, &schema_entry.shape) else { schema_report.damaged = true; return false; };
+                        let schema_x = table_message_unsigned(schema_entry.kind, schema_lo, schema_hi);
+                        schema_value.session_id = schema_x as u64;
                     }
-                    if same_build && report.unknown == unknown_before {
-                        let rides = value.session_id != dflt.session_id;
-                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    if schema_same_build && schema_report.unknown == schema_unknown_before {
+                        let schema_rides = schema_value.session_id != schema_dflt.session_id;
+                        if !schema_rides { schema_report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
                     }
-                    if widened { report.widened += 1; }
+                    if schema_widened { schema_report.widened += 1; }
                 }
             }
             0x6d7b98e2d095967e => {
-                if same_build && next_field > 4 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
-                next_field = 5;
-                let mut widened = false;
-                let unknown_before = report.unknown;
+                if schema_same_build && schema_next_field > 4 { schema_report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                schema_next_field = 5;
+                let mut schema_widened = false;
+                let schema_unknown_before = schema_report.unknown;
                 'f32: {
-                    if entry.kind != 8 || entry.shape.elem != 0 {
-                        if entry.shape.elem == 0 && table_message_widens(entry.kind, 8) {
-                            widened = true;
+                    if schema_entry.kind != 8 || schema_entry.shape.elem != 0 {
+                        if schema_entry.shape.elem == 0 && table_message_widens(schema_entry.kind, 8) {
+                            schema_widened = true;
                         } else {
-                            report.damaged = true;
-                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
+                            schema_report.damaged = true;
+                            if !table_message_skip_field(schema_r, schema_v, &schema_entry, 0) { schema_report.damaged = true; return false; }
                             break 'f32;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
-                        let x = table_message_unsigned(entry.kind, lo, hi);
-                        value.client_id = x as u32;
+                        let Some((schema_lo, schema_hi)) = table_message_read_scalar(schema_r, schema_entry.kind, &schema_entry.shape) else { schema_report.damaged = true; return false; };
+                        let schema_x = table_message_unsigned(schema_entry.kind, schema_lo, schema_hi);
+                        schema_value.client_id = schema_x as u32;
                     }
-                    if same_build && report.unknown == unknown_before {
-                        let rides = value.client_id != dflt.client_id;
-                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    if schema_same_build && schema_report.unknown == schema_unknown_before {
+                        let schema_rides = schema_value.client_id != schema_dflt.client_id;
+                        if !schema_rides { schema_report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
                     }
-                    if widened { report.widened += 1; }
+                    if schema_widened { schema_report.widened += 1; }
                 }
             }
             0x73a94c71d60dc0d8 => {
-                if same_build && next_field > 5 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
-                next_field = 6;
-                let mut widened = false;
-                let unknown_before = report.unknown;
+                if schema_same_build && schema_next_field > 5 { schema_report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                schema_next_field = 6;
+                let mut schema_widened = false;
+                let schema_unknown_before = schema_report.unknown;
                 'f33: {
-                    if entry.kind != 9 || entry.shape.elem != 0 {
-                        if entry.shape.elem == 0 && table_message_widens(entry.kind, 9) {
-                            widened = true;
+                    if schema_entry.kind != 9 || schema_entry.shape.elem != 0 {
+                        if schema_entry.shape.elem == 0 && table_message_widens(schema_entry.kind, 9) {
+                            schema_widened = true;
                         } else {
-                            report.damaged = true;
-                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
+                            schema_report.damaged = true;
+                            if !table_message_skip_field(schema_r, schema_v, &schema_entry, 0) { schema_report.damaged = true; return false; }
                             break 'f33;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
-                        let mut x = table_message_unsigned(entry.kind, lo, hi);
-                        if x > 18446744073709551615u128 { x = 18446744073709551615u128; report.out_of_range("BenchMixed.nonce"); }
-                        value.nonce = x as u64;
+                        let Some((schema_lo, schema_hi)) = table_message_read_scalar(schema_r, schema_entry.kind, &schema_entry.shape) else { schema_report.damaged = true; return false; };
+                        let mut schema_x = table_message_unsigned(schema_entry.kind, schema_lo, schema_hi);
+                        if schema_x > 18446744073709551615u128 { schema_x = 18446744073709551615u128; schema_report.out_of_range("BenchMixed.nonce"); }
+                        schema_value.nonce = schema_x as u64;
                     }
-                    if same_build && report.unknown == unknown_before {
-                        let rides = value.nonce != dflt.nonce;
-                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    if schema_same_build && schema_report.unknown == schema_unknown_before {
+                        let schema_rides = schema_value.nonce != schema_dflt.nonce;
+                        if !schema_rides { schema_report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
                     }
-                    if widened { report.widened += 1; }
+                    if schema_widened { schema_report.widened += 1; }
                 }
             }
             0x3eee6b51be54fc85 => {
-                if same_build && next_field > 6 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
-                next_field = 7;
-                let mut widened = false;
-                let unknown_before = report.unknown;
+                if schema_same_build && schema_next_field > 6 { schema_report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                schema_next_field = 7;
+                let mut schema_widened = false;
+                let schema_unknown_before = schema_report.unknown;
                 'f34: {
-                    if entry.kind != 5 || entry.shape.elem != 0 {
-                        if entry.shape.elem == 0 && table_message_widens(entry.kind, 5) {
-                            widened = true;
+                    if schema_entry.kind != 5 || schema_entry.shape.elem != 0 {
+                        if schema_entry.shape.elem == 0 && table_message_widens(schema_entry.kind, 5) {
+                            schema_widened = true;
                         } else {
-                            report.damaged = true;
-                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
+                            schema_report.damaged = true;
+                            if !table_message_skip_field(schema_r, schema_v, &schema_entry, 0) { schema_report.damaged = true; return false; }
                             break 'f34;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
-                        let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < -1000000000000i128 { x = -1000000000000i128; report.out_of_range("BenchMixed.world_time"); } else if x > 1000000000000i128 { x = 1000000000000i128; report.out_of_range("BenchMixed.world_time"); }
-                        value.world_time = x as i64;
+                        let Some((schema_lo, schema_hi)) = table_message_read_scalar(schema_r, schema_entry.kind, &schema_entry.shape) else { schema_report.damaged = true; return false; };
+                        let mut schema_x = table_message_signed(schema_entry.kind, schema_lo, schema_hi);
+                        if schema_x < -1000000000000i128 { schema_x = -1000000000000i128; schema_report.out_of_range("BenchMixed.world_time"); } else if schema_x > 1000000000000i128 { schema_x = 1000000000000i128; schema_report.out_of_range("BenchMixed.world_time"); }
+                        schema_value.world_time = schema_x as i64;
                     }
-                    if same_build && report.unknown == unknown_before {
-                        let rides = value.world_time != dflt.world_time;
-                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    if schema_same_build && schema_report.unknown == schema_unknown_before {
+                        let schema_rides = schema_value.world_time != schema_dflt.world_time;
+                        if !schema_rides { schema_report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
                     }
-                    if widened { report.widened += 1; }
+                    if schema_widened { schema_report.widened += 1; }
                 }
             }
             0x7bbc035f7b6d0112 => {
-                if same_build && next_field > 7 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
-                next_field = 8;
-                let mut widened = false;
-                let unknown_before = report.unknown;
+                if schema_same_build && schema_next_field > 7 { schema_report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                schema_next_field = 8;
+                let mut schema_widened = false;
+                let schema_unknown_before = schema_report.unknown;
                 'f35: {
-                    if entry.kind != 9 || entry.shape.elem != 0 {
-                        if entry.shape.elem == 0 && table_message_widens(entry.kind, 9) {
-                            widened = true;
+                    if schema_entry.kind != 9 || schema_entry.shape.elem != 0 {
+                        if schema_entry.shape.elem == 0 && table_message_widens(schema_entry.kind, 9) {
+                            schema_widened = true;
                         } else {
-                            report.damaged = true;
-                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
+                            schema_report.damaged = true;
+                            if !table_message_skip_field(schema_r, schema_v, &schema_entry, 0) { schema_report.damaged = true; return false; }
                             break 'f35;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
-                        let mut x = table_message_unsigned(entry.kind, lo, hi);
-                        if x > 281474976710655 { x = 281474976710655; report.out_of_range("BenchMixed.frame_tick"); }
-                        value.frame_tick = x as u64;
+                        let Some((schema_lo, schema_hi)) = table_message_read_scalar(schema_r, schema_entry.kind, &schema_entry.shape) else { schema_report.damaged = true; return false; };
+                        let mut schema_x = table_message_unsigned(schema_entry.kind, schema_lo, schema_hi);
+                        if schema_x > 281474976710655 { schema_x = 281474976710655; schema_report.out_of_range("BenchMixed.frame_tick"); }
+                        schema_value.frame_tick = schema_x as u64;
                     }
-                    if same_build && report.unknown == unknown_before {
-                        let rides = value.frame_tick != dflt.frame_tick;
-                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    if schema_same_build && schema_report.unknown == schema_unknown_before {
+                        let schema_rides = schema_value.frame_tick != schema_dflt.frame_tick;
+                        if !schema_rides { schema_report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
                     }
-                    if widened { report.widened += 1; }
+                    if schema_widened { schema_report.widened += 1; }
                 }
             }
             0x3c460475f9be69c6 => {
-                if same_build && next_field > 8 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
-                next_field = 9;
-                let unknown_before = report.unknown;
+                if schema_same_build && schema_next_field > 8 { schema_report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                schema_next_field = 9;
+                let schema_unknown_before = schema_report.unknown;
                 'f36: {
-                    if entry.kind != 22 || entry.shape.elem != 0 {
-                        report.damaged = true;
-                        if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
+                    if schema_entry.kind != 22 || schema_entry.shape.elem != 0 {
+                        schema_report.damaged = true;
+                        if !table_message_skip_field(schema_r, schema_v, &schema_entry, 0) { schema_report.damaged = true; return false; }
                         break 'f36;
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
-                        let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < 0i128 { x = 0i128; report.out_of_range("BenchMixed.server_time"); } else if x > 16776960i128 { x = 16776960i128; report.out_of_range("BenchMixed.server_time"); }
-                        value.server_time = x as i32;
+                        let Some((schema_lo, schema_hi)) = table_message_read_scalar(schema_r, schema_entry.kind, &schema_entry.shape) else { schema_report.damaged = true; return false; };
+                        let mut schema_x = table_message_signed(schema_entry.kind, schema_lo, schema_hi);
+                        if schema_x < 0i128 { schema_x = 0i128; schema_report.out_of_range("BenchMixed.server_time"); } else if schema_x > 16776960i128 { schema_x = 16776960i128; schema_report.out_of_range("BenchMixed.server_time"); }
+                        schema_value.server_time = schema_x as i32;
                     }
-                    if same_build && report.unknown == unknown_before {
-                        let rides = value.server_time != dflt.server_time;
-                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    if schema_same_build && schema_report.unknown == schema_unknown_before {
+                        let schema_rides = schema_value.server_time != schema_dflt.server_time;
+                        if !schema_rides { schema_report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
                     }
                 }
             }
             0x935d0fb07bb3822a => {
-                if same_build && next_field > 9 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
-                next_field = 10;
-                let unknown_before = report.unknown;
+                if schema_same_build && schema_next_field > 9 { schema_report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                schema_next_field = 10;
+                let schema_unknown_before = schema_report.unknown;
                 'f37: {
-                    if entry.kind != 14 || entry.shape.elem != 13 {
-                        report.damaged = true;
-                        if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
+                    if schema_entry.kind != 14 || schema_entry.shape.elem != 13 {
+                        schema_report.damaged = true;
+                        if !table_message_skip_field(schema_r, schema_v, &schema_entry, 0) { schema_report.damaged = true; return false; }
                         break 'f37;
                     }
                     {
-                        let Some(n) = table_message_count(r, &entry.shape) else { report.damaged = true; return false; };
-                        if entry.shape.elem == 6 && !r.align() { report.damaged = true; return false; }
-                        let element38 = TableMessageEntry { id: 0, kind: entry.shape.elem, shape: entry.element, element: TableMessageShape::default(), first: 0 };
-                        if n < 1 { report.damaged = true; return false; }
-                        let keep = core::cmp::min(n, 8);
-                        if keep < n { report.damaged = true; }
-                        let width = table_message_value_bits(element38.kind, &element38.shape);
-                        let walk = if width >= 0 { keep } else { n };
-                        for i in 0..walk {
-                            let mut scratch: MixedEntityRow = Default::default();
-                            let p: &mut MixedEntityRow = if i < keep { &mut value.entities[i as usize] } else { &mut scratch };
-                            if !mixed_entity_load_message_body(r, v, report, &mut (*p)) { return false; }
+                        let Some(schema_n) = table_message_count(schema_r, &schema_entry.shape) else { schema_report.damaged = true; return false; };
+                        if schema_entry.shape.elem == 6 && !schema_r.align() { schema_report.damaged = true; return false; }
+                        let schema_element38 = TableMessageEntry { id: 0, kind: schema_entry.shape.elem, shape: schema_entry.element, element: TableMessageShape::default(), first: 0 };
+                        if schema_n < 1 { schema_report.damaged = true; return false; }
+                        let schema_keep = core::cmp::min(schema_n, 8);
+                        if schema_keep < schema_n { schema_report.damaged = true; }
+                        let schema_width = table_message_value_bits(schema_element38.kind, &schema_element38.shape);
+                        let schema_walk = if schema_width >= 0 { schema_keep } else { schema_n };
+                        for schema_i in 0..schema_walk {
+                            let mut schema_scratch: MixedEntityRow = Default::default();
+                            let schema_p: &mut MixedEntityRow = if schema_i < schema_keep { &mut schema_value.entities[schema_i as usize] } else { &mut schema_scratch };
+                            if !mixed_entity_load_message_body(schema_r, schema_v, schema_report, &mut (*schema_p)) { return false; }
                         }
-                        if walk < n && !r.skip((n - walk) * width as u64) { report.damaged = true; return false; }
-                        value.entities_count = keep as i32;
+                        if schema_walk < schema_n && !schema_r.skip((schema_n - schema_walk) * schema_width as u64) { schema_report.damaged = true; return false; }
+                        schema_value.entities_count = schema_keep as i32;
                     }
-                    if same_build && report.unknown == unknown_before {
-                        let rides = value.entities_count > 0 && (value.entities_count != 1 || (0..1).any(|i| { let mut probe = TableBitWriter::measure(); !mixed_entity_save_message_body(&mut probe, &value.entities[i]) || probe.bits > TABLE_MESSAGE_REF_BITS as u64 }));
-                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    if schema_same_build && schema_report.unknown == schema_unknown_before {
+                        let schema_rides = schema_value.entities_count > 0 && (schema_value.entities_count != 1 || (0..1).any(|schema_i| { let mut probe = TableBitWriter::measure(); !mixed_entity_save_message_body(&mut probe, &schema_value.entities[schema_i]) || probe.bits > TABLE_MESSAGE_REF_BITS as u64 }));
+                        if !schema_rides { schema_report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
                     }
                 }
             }
             0xee639cad45b1994c => {
-                if same_build && next_field > 10 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
-                next_field = 11;
-                let unknown_before = report.unknown;
+                if schema_same_build && schema_next_field > 10 { schema_report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                schema_next_field = 11;
+                let schema_unknown_before = schema_report.unknown;
                 'f39: {
-                    if entry.kind != 14 || entry.shape.elem != 13 {
-                        report.damaged = true;
-                        if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
+                    if schema_entry.kind != 14 || schema_entry.shape.elem != 13 {
+                        schema_report.damaged = true;
+                        if !table_message_skip_field(schema_r, schema_v, &schema_entry, 0) { schema_report.damaged = true; return false; }
                         break 'f39;
                     }
                     {
-                        let Some(n) = table_message_count(r, &entry.shape) else { report.damaged = true; return false; };
-                        if entry.shape.elem == 6 && !r.align() { report.damaged = true; return false; }
-                        let element40 = TableMessageEntry { id: 0, kind: entry.shape.elem, shape: entry.element, element: TableMessageShape::default(), first: 0 };
-                        let keep = core::cmp::min(n, 80);
-                        if keep < n { report.damaged = true; }
-                        let width = table_message_value_bits(element40.kind, &element40.shape);
-                        let walk = if width >= 0 { keep } else { n };
-                        for i in 0..walk {
-                            let mut scratch: MixedStatRow = Default::default();
-                            let p: &mut MixedStatRow = if i < keep { &mut value.stats[i as usize] } else { &mut scratch };
-                            if !mixed_stat_load_message_body(r, v, report, &mut (*p)) { return false; }
+                        let Some(schema_n) = table_message_count(schema_r, &schema_entry.shape) else { schema_report.damaged = true; return false; };
+                        if schema_entry.shape.elem == 6 && !schema_r.align() { schema_report.damaged = true; return false; }
+                        let schema_element40 = TableMessageEntry { id: 0, kind: schema_entry.shape.elem, shape: schema_entry.element, element: TableMessageShape::default(), first: 0 };
+                        let schema_keep = core::cmp::min(schema_n, 80);
+                        if schema_keep < schema_n { schema_report.damaged = true; }
+                        let schema_width = table_message_value_bits(schema_element40.kind, &schema_element40.shape);
+                        let schema_walk = if schema_width >= 0 { schema_keep } else { schema_n };
+                        for schema_i in 0..schema_walk {
+                            let mut schema_scratch: MixedStatRow = Default::default();
+                            let schema_p: &mut MixedStatRow = if schema_i < schema_keep { &mut schema_value.stats[schema_i as usize] } else { &mut schema_scratch };
+                            if !mixed_stat_load_message_body(schema_r, schema_v, schema_report, &mut (*schema_p)) { return false; }
                         }
-                        if walk < n && !r.skip((n - walk) * width as u64) { report.damaged = true; return false; }
-                        value.stats_count = keep as i32;
+                        if schema_walk < schema_n && !schema_r.skip((schema_n - schema_walk) * schema_width as u64) { schema_report.damaged = true; return false; }
+                        schema_value.stats_count = schema_keep as i32;
                     }
-                    if same_build && report.unknown == unknown_before {
-                        let rides = value.stats_count > 0;
-                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    if schema_same_build && schema_report.unknown == schema_unknown_before {
+                        let schema_rides = schema_value.stats_count > 0;
+                        if !schema_rides { schema_report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
                     }
                 }
             }
             0x2e35dc5321aa5790 => {
-                if same_build && next_field > 11 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
-                next_field = 12;
-                let unknown_before = report.unknown;
+                if schema_same_build && schema_next_field > 11 { schema_report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                schema_next_field = 12;
+                let schema_unknown_before = schema_report.unknown;
                 'f41: {
-                    if entry.kind != 15 || entry.shape.elem != 0 {
-                        report.damaged = true;
-                        if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
+                    if schema_entry.kind != 15 || schema_entry.shape.elem != 0 {
+                        schema_report.damaged = true;
+                        if !table_message_skip_field(schema_r, schema_v, &schema_entry, 0) { schema_report.damaged = true; return false; }
                         break 'f41;
                     }
                     {
-                        let Some(reference) = r.get(v.ref_bits) else { report.damaged = true; return false; };
-                        if reference == 0 {
-                            value.game_event.set_none();
+                        let Some(schema_reference) = schema_r.get(schema_v.ref_bits) else { schema_report.damaged = true; return false; };
+                        if schema_reference == 0 {
+                            schema_value.game_event.set_none();
                         } else {
-                            let Some(arm_entry42) = v.entry(reference).copied() else { report.damaged = true; return false; };
-                            if arm_entry42.id >= 0xffff_ffff_ffff_fffd || arm_entry42.kind == 0 { report.damaged = true; return false; }
-                            match arm_entry42.id {
+                            let Some(schema_arm_entry42) = schema_v.entry(schema_reference).copied() else { schema_report.damaged = true; return false; };
+                            if schema_arm_entry42.id >= 0xffff_ffff_ffff_fffd || schema_arm_entry42.kind == 0 { schema_report.damaged = true; return false; }
+                            match schema_arm_entry42.id {
                                 0x33732819300680aa => {
                                     'a43: {
-                                        if arm_entry42.kind != 13 || arm_entry42.shape.elem != 0 {
-                                            value.game_event.set_none();
-                                            report.damaged = true;
-                                            if !table_message_skip(r, v, &arm_entry42, 0) { report.damaged = true; return false; }
+                                        if schema_arm_entry42.kind != 13 || schema_arm_entry42.shape.elem != 0 {
+                                            schema_value.game_event.set_none();
+                                            schema_report.damaged = true;
+                                            if !table_message_skip(schema_r, schema_v, &schema_arm_entry42, 0) { schema_report.damaged = true; return false; }
                                             break 'a43;
                                         }
-                                        let mut arm44: MixedHitEventRow = Default::default();
-                                        if !mixed_hit_event_load_message_body(r, v, report, &mut arm44) { return false; }
-                                        value.game_event.set_hit(arm44);
+                                        let mut schema_arm44: MixedHitEventRow = Default::default();
+                                        if !mixed_hit_event_load_message_body(schema_r, schema_v, schema_report, &mut schema_arm44) { return false; }
+                                        schema_value.game_event.set_hit(schema_arm44);
                                     }
                                 }
                                 0xf2a38d910b5b348b => {
                                     'a45: {
-                                        if arm_entry42.kind != 13 || arm_entry42.shape.elem != 0 {
-                                            value.game_event.set_none();
-                                            report.damaged = true;
-                                            if !table_message_skip(r, v, &arm_entry42, 0) { report.damaged = true; return false; }
+                                        if schema_arm_entry42.kind != 13 || schema_arm_entry42.shape.elem != 0 {
+                                            schema_value.game_event.set_none();
+                                            schema_report.damaged = true;
+                                            if !table_message_skip(schema_r, schema_v, &schema_arm_entry42, 0) { schema_report.damaged = true; return false; }
                                             break 'a45;
                                         }
-                                        let mut arm46: MixedChatEventRow = Default::default();
-                                        if !mixed_chat_event_load_message_body(r, v, report, &mut arm46) { return false; }
-                                        value.game_event.set_chat(arm46);
+                                        let mut schema_arm46: MixedChatEventRow = Default::default();
+                                        if !mixed_chat_event_load_message_body(schema_r, schema_v, schema_report, &mut schema_arm46) { return false; }
+                                        schema_value.game_event.set_chat(schema_arm46);
                                     }
                                 }
                                 0x9fa3a41c86ecb765 => {
                                     'a47: {
-                                        if arm_entry42.kind != 13 || arm_entry42.shape.elem != 0 {
-                                            value.game_event.set_none();
-                                            report.damaged = true;
-                                            if !table_message_skip(r, v, &arm_entry42, 0) { report.damaged = true; return false; }
+                                        if schema_arm_entry42.kind != 13 || schema_arm_entry42.shape.elem != 0 {
+                                            schema_value.game_event.set_none();
+                                            schema_report.damaged = true;
+                                            if !table_message_skip(schema_r, schema_v, &schema_arm_entry42, 0) { schema_report.damaged = true; return false; }
                                             break 'a47;
                                         }
-                                        let mut arm48: MixedPickupEventRow = Default::default();
-                                        if !mixed_pickup_event_load_message_body(r, v, report, &mut arm48) { return false; }
-                                        value.game_event.set_pickup(arm48);
+                                        let mut schema_arm48: MixedPickupEventRow = Default::default();
+                                        if !mixed_pickup_event_load_message_body(schema_r, schema_v, schema_report, &mut schema_arm48) { return false; }
+                                        schema_value.game_event.set_pickup(schema_arm48);
                                     }
                                 }
                                 _ => {
-                                    value.game_event.set_none();
-                                    report.unknown += 1;
-                                    if !table_message_skip(r, v, &arm_entry42, 0) { report.damaged = true; return false; }
+                                    schema_value.game_event.set_none();
+                                    schema_report.unknown += 1;
+                                    if !table_message_skip(schema_r, schema_v, &schema_arm_entry42, 0) { schema_report.damaged = true; return false; }
                                 }
                             }
                         }
                     }
-                    if value.game_event.tag() == 0 && report.unknown == unknown_before { report.damaged = true; return false; } // a union written with arm reference 0 (§3.3 (c))
-                    if same_build && report.unknown == unknown_before {
-                        let rides = value.game_event.tag() != 0;
-                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    if schema_value.game_event.tag() == 0 && schema_report.unknown == schema_unknown_before { schema_report.damaged = true; return false; } // a union written with arm reference 0 (§3.3 (c))
+                    if schema_same_build && schema_report.unknown == schema_unknown_before {
+                        let schema_rides = schema_value.game_event.tag() != 0;
+                        if !schema_rides { schema_report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
                     }
                 }
             }
             0x5759ce7586bbb5a3 => {
-                if same_build && next_field > 12 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
-                next_field = 13;
-                let unknown_before = report.unknown;
+                if schema_same_build && schema_next_field > 12 { schema_report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                schema_next_field = 13;
+                let schema_unknown_before = schema_report.unknown;
                 'f49: {
-                    if entry.kind != 14 || entry.shape.elem != 6 {
-                        report.damaged = true;
-                        if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
+                    if schema_entry.kind != 14 || schema_entry.shape.elem != 6 {
+                        schema_report.damaged = true;
+                        if !table_message_skip_field(schema_r, schema_v, &schema_entry, 0) { schema_report.damaged = true; return false; }
                         break 'f49;
                     }
                     {
-                        let Some(n) = table_message_count(r, &entry.shape) else { report.damaged = true; return false; };
-                        if entry.shape.elem == 6 && !r.align() { report.damaged = true; return false; }
-                        let element50 = TableMessageEntry { id: 0, kind: entry.shape.elem, shape: entry.element, element: TableMessageShape::default(), first: 0 };
-                        let keep = core::cmp::min(n, 4);
-                        if keep < n { report.damaged = true; }
-                        let width = table_message_value_bits(element50.kind, &element50.shape);
-                        let walk = if width >= 0 { keep } else { n };
-                        for i in 0..walk {
-                            let mut scratch: u8 = Default::default();
-                            let p: &mut u8 = if i < keep { &mut value.loadout[i as usize] } else { &mut scratch };
+                        let Some(schema_n) = table_message_count(schema_r, &schema_entry.shape) else { schema_report.damaged = true; return false; };
+                        if schema_entry.shape.elem == 6 && !schema_r.align() { schema_report.damaged = true; return false; }
+                        let schema_element50 = TableMessageEntry { id: 0, kind: schema_entry.shape.elem, shape: schema_entry.element, element: TableMessageShape::default(), first: 0 };
+                        let schema_keep = core::cmp::min(schema_n, 4);
+                        if schema_keep < schema_n { schema_report.damaged = true; }
+                        let schema_width = table_message_value_bits(schema_element50.kind, &schema_element50.shape);
+                        let schema_walk = if schema_width >= 0 { schema_keep } else { schema_n };
+                        for schema_i in 0..schema_walk {
+                            let mut schema_scratch: u8 = Default::default();
+                            let schema_p: &mut u8 = if schema_i < schema_keep { &mut schema_value.loadout[schema_i as usize] } else { &mut schema_scratch };
                             {
-                                let Some((lo, hi)) = table_message_read_scalar(r, element50.kind, &element50.shape) else { report.damaged = true; return false; };
-                                let x = table_message_unsigned(element50.kind, lo, hi);
-                                (*p) = x as u8;
+                                let Some((schema_lo, schema_hi)) = table_message_read_scalar(schema_r, schema_element50.kind, &schema_element50.shape) else { schema_report.damaged = true; return false; };
+                                let schema_x = table_message_unsigned(schema_element50.kind, schema_lo, schema_hi);
+                                (*schema_p) = schema_x as u8;
                             }
                         }
-                        if walk < n && !r.skip((n - walk) * width as u64) { report.damaged = true; return false; }
+                        if schema_walk < schema_n && !schema_r.skip((schema_n - schema_walk) * schema_width as u64) { schema_report.damaged = true; return false; }
                     }
-                    if same_build && report.unknown == unknown_before {
-                        let rides = (0..4).any(|i| value.loadout[i] != dflt.loadout[i]);
-                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    if schema_same_build && schema_report.unknown == schema_unknown_before {
+                        let schema_rides = (0..4).any(|schema_i| schema_value.loadout[schema_i] != schema_dflt.loadout[schema_i]);
+                        if !schema_rides { schema_report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
                     }
                 }
             }
             0x13a62f542cf8e86e => {
-                if same_build && next_field > 13 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
-                next_field = 14;
-                let unknown_before = report.unknown;
+                if schema_same_build && schema_next_field > 13 { schema_report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                schema_next_field = 14;
+                let schema_unknown_before = schema_report.unknown;
                 'f51: {
-                    if entry.kind != 12 || entry.shape.elem != 0 {
-                        report.damaged = true;
-                        if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
+                    if schema_entry.kind != 12 || schema_entry.shape.elem != 0 {
+                        schema_report.damaged = true;
+                        if !table_message_skip_field(schema_r, schema_v, &schema_entry, 0) { schema_report.damaged = true; return false; }
                         break 'f51;
                     }
                     {
-                        let Some(n) = table_message_count(r, &entry.shape) else { report.damaged = true; return false; };
-                        if !r.align() { report.damaged = true; return false; }
-                        let buf = r.buffer;
-                        let start = (r.offset / 8) as usize;
-                        if !r.skip(n * 8) { report.damaged = true; return false; }
-                        let text = &buf[start..start + n as usize];
-                        if !table_message_utf8(text) { report.damaged = true; return false; }
-                        let kept = table_message_utf8_clamp(text, core::cmp::min(n as usize, 15));
-                        if kept < n as usize { report.damaged = true; }
-                        value.player_name.fill(0);
-                        value.player_name[..kept].copy_from_slice(&text[..kept]);
-                        value.player_name_length = kept as i32;
+                        let Some(schema_n) = table_message_count(schema_r, &schema_entry.shape) else { schema_report.damaged = true; return false; };
+                        if !schema_r.align() { schema_report.damaged = true; return false; }
+                        let schema_buf = schema_r.buffer;
+                        let schema_start = (schema_r.offset / 8) as usize;
+                        if !schema_r.skip(schema_n * 8) { schema_report.damaged = true; return false; }
+                        let schema_text = &schema_buf[schema_start..schema_start + schema_n as usize];
+                        if !table_message_utf8(schema_text) { schema_report.damaged = true; return false; }
+                        let schema_kept = table_message_utf8_clamp(schema_text, core::cmp::min(schema_n as usize, 15));
+                        if schema_kept < schema_n as usize { schema_report.damaged = true; }
+                        schema_value.player_name.fill(0);
+                        schema_value.player_name[..schema_kept].copy_from_slice(&schema_text[..schema_kept]);
+                        schema_value.player_name_length = schema_kept as i32;
                     }
-                    if same_build && report.unknown == unknown_before {
-                        let rides = value.player_name_length > 0;
-                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    if schema_same_build && schema_report.unknown == schema_unknown_before {
+                        let schema_rides = schema_value.player_name_length > 0;
+                        if !schema_rides { schema_report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
                     }
                 }
             }
             0xcfb8a9d063b5e9e5 => {
-                if same_build && next_field > 14 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
-                next_field = 15;
-                let unknown_before = report.unknown;
+                if schema_same_build && schema_next_field > 14 { schema_report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                schema_next_field = 15;
+                let schema_unknown_before = schema_report.unknown;
                 'f52: {
-                    if entry.kind != 14 || entry.shape.elem != 6 {
-                        report.damaged = true;
-                        if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
+                    if schema_entry.kind != 14 || schema_entry.shape.elem != 6 {
+                        schema_report.damaged = true;
+                        if !table_message_skip_field(schema_r, schema_v, &schema_entry, 0) { schema_report.damaged = true; return false; }
                         break 'f52;
                     }
                     {
-                        let Some(n) = table_message_count(r, &entry.shape) else { report.damaged = true; return false; };
-                        if !r.align() { report.damaged = true; return false; }
-                        let buf = r.buffer;
-                        let start = (r.offset / 8) as usize;
-                        if !r.skip(n * 8) { report.damaged = true; return false; }
-                        let kept = core::cmp::min(n as usize, 16);
-                        if kept < n as usize { report.damaged = true; }
-                        value.payload.fill(0);
-                        value.payload[..kept].copy_from_slice(&buf[start..start + kept]);
-                        value.payload_length = kept as i32;
+                        let Some(schema_n) = table_message_count(schema_r, &schema_entry.shape) else { schema_report.damaged = true; return false; };
+                        if !schema_r.align() { schema_report.damaged = true; return false; }
+                        let schema_buf = schema_r.buffer;
+                        let schema_start = (schema_r.offset / 8) as usize;
+                        if !schema_r.skip(schema_n * 8) { schema_report.damaged = true; return false; }
+                        let schema_kept = core::cmp::min(schema_n as usize, 16);
+                        if schema_kept < schema_n as usize { schema_report.damaged = true; }
+                        schema_value.payload.fill(0);
+                        schema_value.payload[..schema_kept].copy_from_slice(&schema_buf[schema_start..schema_start + schema_kept]);
+                        schema_value.payload_length = schema_kept as i32;
                     }
-                    if same_build && report.unknown == unknown_before {
-                        let rides = value.payload_length > 0;
-                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    if schema_same_build && schema_report.unknown == schema_unknown_before {
+                        let schema_rides = schema_value.payload_length > 0;
+                        if !schema_rides { schema_report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
                     }
                 }
             }
             0xdbaf7be5e24296c9 => {
-                if same_build && next_field > 15 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
-                next_field = 16;
+                if schema_same_build && schema_next_field > 15 { schema_report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                schema_next_field = 16;
                 'f53: {
-                    if entry.kind != 10 || entry.shape.elem != 0 {
-                        report.damaged = true;
-                        if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
+                    if schema_entry.kind != 10 || schema_entry.shape.elem != 0 {
+                        schema_report.damaged = true;
+                        if !table_message_skip_field(schema_r, schema_v, &schema_entry, 0) { schema_report.damaged = true; return false; }
                         break 'f53;
                     }
                     {
-                        let Some((lo, _hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
-                        let mut x = if table_finite_f32(lo as u32) { f32::from_bits(lo as u32) } else { report.non_finite("BenchMixed.aim_x"); 0.0 };
-                        if x < f32::from_bits(0xbf800000) { x = f32::from_bits(0xbf800000); report.out_of_range("BenchMixed.aim_x"); } else if x > f32::from_bits(0x3f800000) { x = f32::from_bits(0x3f800000); report.out_of_range("BenchMixed.aim_x"); }
-                        if x == 0.0 { x = 0.0; }
-                        value.aim_x = x;
+                        let Some((schema_lo, _hi)) = table_message_read_scalar(schema_r, schema_entry.kind, &schema_entry.shape) else { schema_report.damaged = true; return false; };
+                        let mut schema_x = if table_finite_f32(schema_lo as u32) { f32::from_bits(schema_lo as u32) } else { schema_report.non_finite("BenchMixed.aim_x"); 0.0 };
+                        if schema_x < f32::from_bits(0xbf800000) { schema_x = f32::from_bits(0xbf800000); schema_report.out_of_range("BenchMixed.aim_x"); } else if schema_x > f32::from_bits(0x3f800000) { schema_x = f32::from_bits(0x3f800000); schema_report.out_of_range("BenchMixed.aim_x"); }
+                        if schema_x == 0.0 { schema_x = 0.0; }
+                        schema_value.aim_x = schema_x;
                     }
                 }
             }
             0xdbaf7ae5e2429516 => {
-                if same_build && next_field > 16 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
-                next_field = 17;
+                if schema_same_build && schema_next_field > 16 { schema_report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                schema_next_field = 17;
                 'f54: {
-                    if entry.kind != 10 || entry.shape.elem != 0 {
-                        report.damaged = true;
-                        if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
+                    if schema_entry.kind != 10 || schema_entry.shape.elem != 0 {
+                        schema_report.damaged = true;
+                        if !table_message_skip_field(schema_r, schema_v, &schema_entry, 0) { schema_report.damaged = true; return false; }
                         break 'f54;
                     }
                     {
-                        let Some((lo, _hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
-                        let mut x = if table_finite_f32(lo as u32) { f32::from_bits(lo as u32) } else { report.non_finite("BenchMixed.aim_y"); 0.0 };
-                        if x < f32::from_bits(0xbf800000) { x = f32::from_bits(0xbf800000); report.out_of_range("BenchMixed.aim_y"); } else if x > f32::from_bits(0x3f800000) { x = f32::from_bits(0x3f800000); report.out_of_range("BenchMixed.aim_y"); }
-                        if x == 0.0 { x = 0.0; }
-                        value.aim_y = x;
+                        let Some((schema_lo, _hi)) = table_message_read_scalar(schema_r, schema_entry.kind, &schema_entry.shape) else { schema_report.damaged = true; return false; };
+                        let mut schema_x = if table_finite_f32(schema_lo as u32) { f32::from_bits(schema_lo as u32) } else { schema_report.non_finite("BenchMixed.aim_y"); 0.0 };
+                        if schema_x < f32::from_bits(0xbf800000) { schema_x = f32::from_bits(0xbf800000); schema_report.out_of_range("BenchMixed.aim_y"); } else if schema_x > f32::from_bits(0x3f800000) { schema_x = f32::from_bits(0x3f800000); schema_report.out_of_range("BenchMixed.aim_y"); }
+                        if schema_x == 0.0 { schema_x = 0.0; }
+                        schema_value.aim_y = schema_x;
                     }
                 }
             }
             0xdbaf79e5e2429363 => {
-                if same_build && next_field > 17 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
-                next_field = 18;
+                if schema_same_build && schema_next_field > 17 { schema_report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                schema_next_field = 18;
                 'f55: {
-                    if entry.kind != 10 || entry.shape.elem != 0 {
-                        report.damaged = true;
-                        if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
+                    if schema_entry.kind != 10 || schema_entry.shape.elem != 0 {
+                        schema_report.damaged = true;
+                        if !table_message_skip_field(schema_r, schema_v, &schema_entry, 0) { schema_report.damaged = true; return false; }
                         break 'f55;
                     }
                     {
-                        let Some((lo, _hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
-                        let mut x = if table_finite_f32(lo as u32) { f32::from_bits(lo as u32) } else { report.non_finite("BenchMixed.aim_z"); 0.0 };
-                        if x < f32::from_bits(0xbf800000) { x = f32::from_bits(0xbf800000); report.out_of_range("BenchMixed.aim_z"); } else if x > f32::from_bits(0x3f800000) { x = f32::from_bits(0x3f800000); report.out_of_range("BenchMixed.aim_z"); }
-                        if x == 0.0 { x = 0.0; }
-                        value.aim_z = x;
+                        let Some((schema_lo, _hi)) = table_message_read_scalar(schema_r, schema_entry.kind, &schema_entry.shape) else { schema_report.damaged = true; return false; };
+                        let mut schema_x = if table_finite_f32(schema_lo as u32) { f32::from_bits(schema_lo as u32) } else { schema_report.non_finite("BenchMixed.aim_z"); 0.0 };
+                        if schema_x < f32::from_bits(0xbf800000) { schema_x = f32::from_bits(0xbf800000); schema_report.out_of_range("BenchMixed.aim_z"); } else if schema_x > f32::from_bits(0x3f800000) { schema_x = f32::from_bits(0x3f800000); schema_report.out_of_range("BenchMixed.aim_z"); }
+                        if schema_x == 0.0 { schema_x = 0.0; }
+                        schema_value.aim_z = schema_x;
                     }
                 }
             }
             0x9cef31fff7e2e457 => {
-                if same_build && next_field > 18 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
-                next_field = 19;
-                let unknown_before = report.unknown;
+                if schema_same_build && schema_next_field > 18 { schema_report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                schema_next_field = 19;
+                let schema_unknown_before = schema_report.unknown;
                 'f56: {
-                    if entry.kind != 10 || entry.shape.elem != 0 {
-                        report.damaged = true;
-                        if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
+                    if schema_entry.kind != 10 || schema_entry.shape.elem != 0 {
+                        schema_report.damaged = true;
+                        if !table_message_skip_field(schema_r, schema_v, &schema_entry, 0) { schema_report.damaged = true; return false; }
                         break 'f56;
                     }
                     {
-                        let Some((lo, _hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
-                        let x = if table_finite_f32(lo as u32) { f32::from_bits(lo as u32) } else { report.non_finite("BenchMixed.recoil"); 0.0 };
-                        value.recoil = x;
+                        let Some((schema_lo, _hi)) = table_message_read_scalar(schema_r, schema_entry.kind, &schema_entry.shape) else { schema_report.damaged = true; return false; };
+                        let schema_x = if table_finite_f32(schema_lo as u32) { f32::from_bits(schema_lo as u32) } else { schema_report.non_finite("BenchMixed.recoil"); 0.0 };
+                        schema_value.recoil = schema_x;
                     }
-                    if same_build && report.unknown == unknown_before {
-                        let rides = value.recoil.to_bits() != dflt.recoil.to_bits();
-                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    if schema_same_build && schema_report.unknown == schema_unknown_before {
+                        let schema_rides = schema_value.recoil.to_bits() != schema_dflt.recoil.to_bits();
+                        if !schema_rides { schema_report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
                     }
                 }
             }
             0x5ab3f9c9341f6c04 => {
-                if same_build && next_field > 19 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
-                next_field = 20;
-                let mut widened = false;
-                let unknown_before = report.unknown;
+                if schema_same_build && schema_next_field > 19 { schema_report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                schema_next_field = 20;
+                let mut schema_widened = false;
+                let schema_unknown_before = schema_report.unknown;
                 'f57: {
-                    if entry.kind != 11 || entry.shape.elem != 0 {
-                        if entry.shape.elem == 0 && table_message_widens(entry.kind, 11) {
-                            widened = true;
+                    if schema_entry.kind != 11 || schema_entry.shape.elem != 0 {
+                        if schema_entry.shape.elem == 0 && table_message_widens(schema_entry.kind, 11) {
+                            schema_widened = true;
                         } else {
-                            report.damaged = true;
-                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
+                            schema_report.damaged = true;
+                            if !table_message_skip_field(schema_r, schema_v, &schema_entry, 0) { schema_report.damaged = true; return false; }
                             break 'f57;
                         }
                     }
                     {
-                        let Some((lo, _hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
-                        let x = if entry.kind == 10 { if table_finite_f32(lo as u32) { f64::from(f32::from_bits(lo as u32)) } else { report.non_finite("BenchMixed.drift"); 0.0 } } else if table_finite_f64(lo) { f64::from_bits(lo) } else { report.non_finite("BenchMixed.drift"); 0.0 };
-                        value.drift = x;
+                        let Some((schema_lo, _hi)) = table_message_read_scalar(schema_r, schema_entry.kind, &schema_entry.shape) else { schema_report.damaged = true; return false; };
+                        let schema_x = if schema_entry.kind == 10 { if table_finite_f32(schema_lo as u32) { f64::from(f32::from_bits(schema_lo as u32)) } else { schema_report.non_finite("BenchMixed.drift"); 0.0 } } else if table_finite_f64(schema_lo) { f64::from_bits(schema_lo) } else { schema_report.non_finite("BenchMixed.drift"); 0.0 };
+                        schema_value.drift = schema_x;
                     }
-                    if same_build && report.unknown == unknown_before {
-                        let rides = value.drift.to_bits() != dflt.drift.to_bits();
-                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    if schema_same_build && schema_report.unknown == schema_unknown_before {
+                        let schema_rides = schema_value.drift.to_bits() != schema_dflt.drift.to_bits();
+                        if !schema_rides { schema_report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
                     }
-                    if widened { report.widened += 1; }
+                    if schema_widened { schema_report.widened += 1; }
                 }
             }
             0xa3348580461faf16 => {
-                if same_build && next_field > 20 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
-                next_field = 21;
-                let mut widened = false;
-                let unknown_before = report.unknown;
+                if schema_same_build && schema_next_field > 20 { schema_report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                schema_next_field = 21;
+                let mut schema_widened = false;
+                let schema_unknown_before = schema_report.unknown;
                 'f58: {
-                    if entry.kind != 19 || entry.shape.elem != 0 {
-                        if entry.shape.elem == 0 && table_message_widens(entry.kind, 19) {
-                            widened = true;
+                    if schema_entry.kind != 19 || schema_entry.shape.elem != 0 {
+                        if schema_entry.shape.elem == 0 && table_message_widens(schema_entry.kind, 19) {
+                            schema_widened = true;
                         } else {
-                            report.damaged = true;
-                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
+                            schema_report.damaged = true;
+                            if !table_message_skip_field(schema_r, schema_v, &schema_entry, 0) { schema_report.damaged = true; return false; }
                             break 'f58;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
-                        let x = table_message_unsigned(entry.kind, lo, hi);
-                        value.wide_key = TableU128(x);
+                        let Some((schema_lo, schema_hi)) = table_message_read_scalar(schema_r, schema_entry.kind, &schema_entry.shape) else { schema_report.damaged = true; return false; };
+                        let schema_x = table_message_unsigned(schema_entry.kind, schema_lo, schema_hi);
+                        schema_value.wide_key = TableU128(schema_x);
                     }
-                    if same_build && report.unknown == unknown_before {
-                        let rides = value.wide_key != dflt.wide_key;
-                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    if schema_same_build && schema_report.unknown == schema_unknown_before {
+                        let schema_rides = schema_value.wide_key != schema_dflt.wide_key;
+                        if !schema_rides { schema_report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
                     }
-                    if widened { report.widened += 1; }
+                    if schema_widened { schema_report.widened += 1; }
                 }
             }
             0xd61bdd7908af2642 => {
-                if same_build && next_field > 21 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
-                next_field = 22;
-                let mut widened = false;
-                let unknown_before = report.unknown;
+                if schema_same_build && schema_next_field > 21 { schema_report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                schema_next_field = 22;
+                let mut schema_widened = false;
+                let schema_unknown_before = schema_report.unknown;
                 'f59: {
-                    if entry.kind != 18 || entry.shape.elem != 0 {
-                        if entry.shape.elem == 0 && table_message_widens(entry.kind, 18) {
-                            widened = true;
+                    if schema_entry.kind != 18 || schema_entry.shape.elem != 0 {
+                        if schema_entry.shape.elem == 0 && table_message_widens(schema_entry.kind, 18) {
+                            schema_widened = true;
                         } else {
-                            report.damaged = true;
-                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
+                            schema_report.damaged = true;
+                            if !table_message_skip_field(schema_r, schema_v, &schema_entry, 0) { schema_report.damaged = true; return false; }
                             break 'f59;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
-                        let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < -1267650600228229401496703205376i128 { x = -1267650600228229401496703205376i128; report.out_of_range("BenchMixed.flux"); } else if x > 1267650600228229401496703205376i128 { x = 1267650600228229401496703205376i128; report.out_of_range("BenchMixed.flux"); }
-                        value.flux = TableI128(x);
+                        let Some((schema_lo, schema_hi)) = table_message_read_scalar(schema_r, schema_entry.kind, &schema_entry.shape) else { schema_report.damaged = true; return false; };
+                        let mut schema_x = table_message_signed(schema_entry.kind, schema_lo, schema_hi);
+                        if schema_x < -1267650600228229401496703205376i128 { schema_x = -1267650600228229401496703205376i128; schema_report.out_of_range("BenchMixed.flux"); } else if schema_x > 1267650600228229401496703205376i128 { schema_x = 1267650600228229401496703205376i128; schema_report.out_of_range("BenchMixed.flux"); }
+                        schema_value.flux = TableI128(schema_x);
                     }
-                    if same_build && report.unknown == unknown_before {
-                        let rides = value.flux != dflt.flux;
-                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    if schema_same_build && schema_report.unknown == schema_unknown_before {
+                        let schema_rides = schema_value.flux != schema_dflt.flux;
+                        if !schema_rides { schema_report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
                     }
-                    if widened { report.widened += 1; }
+                    if schema_widened { schema_report.widened += 1; }
                 }
             }
             0xbf30e00dc53307a9 => {
-                if same_build && next_field > 22 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
-                next_field = 23;
-                let unknown_before = report.unknown;
+                if schema_same_build && schema_next_field > 22 { schema_report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                schema_next_field = 23;
+                let schema_unknown_before = schema_report.unknown;
                 'f60: {
-                    if entry.kind != 26 || entry.shape.elem != 0 {
-                        report.damaged = true;
-                        if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
+                    if schema_entry.kind != 26 || schema_entry.shape.elem != 0 {
+                        schema_report.damaged = true;
+                        if !table_message_skip_field(schema_r, schema_v, &schema_entry, 0) { schema_report.damaged = true; return false; }
                         break 'f60;
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
-                        let mut x = table_message_unsigned(entry.kind, lo, hi);
-                        if x > 64000u128 { x = 64000u128; report.out_of_range("BenchMixed.ping"); }
-                        value.ping = x as u16;
+                        let Some((schema_lo, schema_hi)) = table_message_read_scalar(schema_r, schema_entry.kind, &schema_entry.shape) else { schema_report.damaged = true; return false; };
+                        let mut schema_x = table_message_unsigned(schema_entry.kind, schema_lo, schema_hi);
+                        if schema_x > 64000u128 { schema_x = 64000u128; schema_report.out_of_range("BenchMixed.ping"); }
+                        schema_value.ping = schema_x as u16;
                     }
-                    if same_build && report.unknown == unknown_before {
-                        let rides = value.ping != dflt.ping;
-                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    if schema_same_build && schema_report.unknown == schema_unknown_before {
+                        let schema_rides = schema_value.ping != schema_dflt.ping;
+                        if !schema_rides { schema_report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
                     }
                 }
             }
             0x560d6527ccd8515f => {
-                if same_build && next_field > 23 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
-                next_field = 24;
-                let mut widened = false;
-                let unknown_before = report.unknown;
+                if schema_same_build && schema_next_field > 23 { schema_report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                schema_next_field = 24;
+                let mut schema_widened = false;
+                let schema_unknown_before = schema_report.unknown;
                 'f61: {
-                    if entry.kind != 8 || entry.shape.elem != 0 {
-                        if entry.shape.elem == 0 && table_message_widens(entry.kind, 8) {
-                            widened = true;
+                    if schema_entry.kind != 8 || schema_entry.shape.elem != 0 {
+                        if schema_entry.shape.elem == 0 && table_message_widens(schema_entry.kind, 8) {
+                            schema_widened = true;
                         } else {
-                            report.damaged = true;
-                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
+                            schema_report.damaged = true;
+                            if !table_message_skip_field(schema_r, schema_v, &schema_entry, 0) { schema_report.damaged = true; return false; }
                             break 'f61;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
-                        let mut x = table_message_unsigned(entry.kind, lo, hi);
-                        if x > 16777215 { x = 16777215; report.out_of_range("BenchMixed.crc_hint"); }
-                        value.crc_hint = x as u32;
+                        let Some((schema_lo, schema_hi)) = table_message_read_scalar(schema_r, schema_entry.kind, &schema_entry.shape) else { schema_report.damaged = true; return false; };
+                        let mut schema_x = table_message_unsigned(schema_entry.kind, schema_lo, schema_hi);
+                        if schema_x > 16777215 { schema_x = 16777215; schema_report.out_of_range("BenchMixed.crc_hint"); }
+                        schema_value.crc_hint = schema_x as u32;
                     }
-                    if same_build && report.unknown == unknown_before {
-                        let rides = value.crc_hint != dflt.crc_hint;
-                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    if schema_same_build && schema_report.unknown == schema_unknown_before {
+                        let schema_rides = schema_value.crc_hint != schema_dflt.crc_hint;
+                        if !schema_rides { schema_report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
                     }
-                    if widened { report.widened += 1; }
+                    if schema_widened { schema_report.widened += 1; }
                 }
             }
             0xc08292176cfd8672 => {
-                if same_build && next_field > 24 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
-                next_field = 25;
-                let unknown_before = report.unknown;
+                if schema_same_build && schema_next_field > 24 { schema_report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                schema_next_field = 25;
+                let schema_unknown_before = schema_report.unknown;
                 'f62: {
-                    if entry.kind != 1 || entry.shape.elem != 0 {
-                        report.damaged = true;
-                        if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
+                    if schema_entry.kind != 1 || schema_entry.shape.elem != 0 {
+                        schema_report.damaged = true;
+                        if !table_message_skip_field(schema_r, schema_v, &schema_entry, 0) { schema_report.damaged = true; return false; }
                         break 'f62;
                     }
                     {
-                        let Some((lo, _hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
-                        value.has_extra = (lo as u8) != 0;
+                        let Some((schema_lo, _hi)) = table_message_read_scalar(schema_r, schema_entry.kind, &schema_entry.shape) else { schema_report.damaged = true; return false; };
+                        schema_value.has_extra = (schema_lo as u8) != 0;
                     }
-                    if same_build && report.unknown == unknown_before {
-                        let rides = value.has_extra != dflt.has_extra;
-                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    if schema_same_build && schema_report.unknown == schema_unknown_before {
+                        let schema_rides = schema_value.has_extra != schema_dflt.has_extra;
+                        if !schema_rides { schema_report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
                     }
                 }
             }
             0xfd29ee12a979cb69 => {
-                if same_build && next_field > 25 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
-                next_field = 26;
-                let mut widened = false;
-                let unknown_before = report.unknown;
+                if schema_same_build && schema_next_field > 25 { schema_report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                schema_next_field = 26;
+                let mut schema_widened = false;
+                let schema_unknown_before = schema_report.unknown;
                 'f63: {
-                    if entry.kind != 4 || entry.shape.elem != 0 {
-                        if entry.shape.elem == 0 && table_message_widens(entry.kind, 4) {
-                            widened = true;
+                    if schema_entry.kind != 4 || schema_entry.shape.elem != 0 {
+                        if schema_entry.shape.elem == 0 && table_message_widens(schema_entry.kind, 4) {
+                            schema_widened = true;
                         } else {
-                            report.damaged = true;
-                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
+                            schema_report.damaged = true;
+                            if !table_message_skip_field(schema_r, schema_v, &schema_entry, 0) { schema_report.damaged = true; return false; }
                             break 'f63;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
-                        let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < 0i128 { x = 0i128; report.out_of_range("BenchMixed.extra"); } else if x > 255i128 { x = 255i128; report.out_of_range("BenchMixed.extra"); }
-                        value.extra = x as i32;
+                        let Some((schema_lo, schema_hi)) = table_message_read_scalar(schema_r, schema_entry.kind, &schema_entry.shape) else { schema_report.damaged = true; return false; };
+                        let mut schema_x = table_message_signed(schema_entry.kind, schema_lo, schema_hi);
+                        if schema_x < 0i128 { schema_x = 0i128; schema_report.out_of_range("BenchMixed.extra"); } else if schema_x > 255i128 { schema_x = 255i128; schema_report.out_of_range("BenchMixed.extra"); }
+                        schema_value.extra = schema_x as i32;
                     }
-                    if same_build && report.unknown == unknown_before {
-                        let rides = value.extra != dflt.extra;
-                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    if schema_same_build && schema_report.unknown == schema_unknown_before {
+                        let schema_rides = schema_value.extra != schema_dflt.extra;
+                        if !schema_rides { schema_report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
                     }
-                    if widened { report.widened += 1; }
+                    if schema_widened { schema_report.widened += 1; }
                 }
             }
             0x78101ac0aa8cbcfe => {
-                if same_build && next_field > 26 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
-                next_field = 27;
-                let mut widened = false;
-                let unknown_before = report.unknown;
+                if schema_same_build && schema_next_field > 26 { schema_report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                schema_next_field = 27;
+                let mut schema_widened = false;
+                let schema_unknown_before = schema_report.unknown;
                 'f64: {
-                    if entry.kind != 4 || entry.shape.elem != 0 {
-                        if entry.shape.elem == 0 && table_message_widens(entry.kind, 4) {
-                            widened = true;
+                    if schema_entry.kind != 4 || schema_entry.shape.elem != 0 {
+                        if schema_entry.shape.elem == 0 && table_message_widens(schema_entry.kind, 4) {
+                            schema_widened = true;
                         } else {
-                            report.damaged = true;
-                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
+                            schema_report.damaged = true;
+                            if !table_message_skip_field(schema_r, schema_v, &schema_entry, 0) { schema_report.damaged = true; return false; }
                             break 'f64;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
-                        let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < 0i128 { x = 0i128; report.out_of_range("BenchMixed.idle_ticks"); } else if x > 15i128 { x = 15i128; report.out_of_range("BenchMixed.idle_ticks"); }
-                        value.idle_ticks = x as i32;
+                        let Some((schema_lo, schema_hi)) = table_message_read_scalar(schema_r, schema_entry.kind, &schema_entry.shape) else { schema_report.damaged = true; return false; };
+                        let mut schema_x = table_message_signed(schema_entry.kind, schema_lo, schema_hi);
+                        if schema_x < 0i128 { schema_x = 0i128; schema_report.out_of_range("BenchMixed.idle_ticks"); } else if schema_x > 15i128 { schema_x = 15i128; schema_report.out_of_range("BenchMixed.idle_ticks"); }
+                        schema_value.idle_ticks = schema_x as i32;
                     }
-                    if same_build && report.unknown == unknown_before {
-                        let rides = value.idle_ticks != dflt.idle_ticks;
-                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    if schema_same_build && schema_report.unknown == schema_unknown_before {
+                        let schema_rides = schema_value.idle_ticks != schema_dflt.idle_ticks;
+                        if !schema_rides { schema_report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
                     }
-                    if widened { report.widened += 1; }
+                    if schema_widened { schema_report.widened += 1; }
                 }
             }
             _ => {
-                if same_build { report.damaged = true; return false; } // a field the record does not declare (§3.3 (b))
-                report.unknown += 1;
-                if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
+                if schema_same_build { schema_report.damaged = true; return false; } // a field the record does not declare (§3.3 (b))
+                schema_report.unknown += 1;
+                if !table_message_skip_field(schema_r, schema_v, &schema_entry, 0) { schema_report.damaged = true; return false; }
             }
         }
     }

@@ -1163,6 +1163,9 @@ function M.WriteProbeArray(stream: any, value: ProbeArray): boolean
 	if type(value.Samples) ~= "table" then -- the array's table storage
 		return false
 	end
+	if #value.Samples ~= 2 then -- a [N]T holds exactly N values (SPEC §5.1)
+		return false
+	end
 	for i = 1, 2 do
 		if type(value.Samples[i]) ~= "table" then -- each live record has table storage
 			return false

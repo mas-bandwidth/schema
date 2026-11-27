@@ -1756,17 +1756,28 @@ defmodule Benchtable.Table do
     end
   end
 
+  # A VALUE OF THE WRONG KIND (docs/SPEC-CONFORMANCE.md DW-TABLE-SHAPE) is
+  # refused by the ArgumentError the fixed save answers as invalid_value, never
+  # read as another kind: a record is a map (nil, its defaults), a list a
+  # proper list, a bool true or false.
   defp fixed_class_value_from_table(f, value) do
     case Map.get(f, :t) do
       :table ->
-        if is_map(value),
-          do: fixed_class_from_table(Map.fetch!(f, :elem), value),
-          else: fixed_class_from_table(Map.fetch!(f, :elem), %{})
+        cond do
+          is_map(value) -> fixed_class_from_table(Map.fetch!(f, :elem), value)
+          value == nil -> fixed_class_from_table(Map.fetch!(f, :elem), %{})
+          true -> raise(ArgumentError, "expected a record for #{f.name}")
+        end
 
       :list ->
-        if is_list(value),
+        if fixed_class_proper_list?(value),
           do: fixed_class_list_from_table(f, value),
           else: raise(ArgumentError, "expected list for #{f.name}")
+
+      :bool ->
+        if is_boolean(value),
+          do: value,
+          else: raise(ArgumentError, "expected true or false for #{f.name}")
 
       :union ->
         fixed_class_union_from_table(f, value)
@@ -1782,6 +1793,10 @@ defmodule Benchtable.Table do
     end
   end
 
+  defp fixed_class_proper_list?([]), do: true
+  defp fixed_class_proper_list?([_ | rest]), do: fixed_class_proper_list?(rest)
+  defp fixed_class_proper_list?(_), do: false
+
   defp fixed_class_list_from_table(f, value) do
     Enum.map(value, fn e -> fixed_class_elem_from_table(f, e) end)
   end
@@ -1791,8 +1806,11 @@ defmodule Benchtable.Table do
       Map.get(f, :elem_kind) == 13 and is_map(value) ->
         fixed_class_from_table(Map.fetch!(f, :elem), value)
 
-      Map.get(f, :elem_kind) == 13 ->
+      Map.get(f, :elem_kind) == 13 and value == nil ->
         fixed_class_from_table(Map.fetch!(f, :elem), %{})
+
+      Map.get(f, :elem_kind) == 13 ->
+        raise(ArgumentError, "expected a record element for #{f.name}")
 
       Map.get(f, :elem_kind) == 15 ->
         fixed_class_union_from_table(f, value)
@@ -1895,6 +1913,11 @@ defmodule Benchtable.Table do
 
   def save(table, {root, nodes}) when is_map(root) and is_tuple(nodes),
     do: save_graph(table, root, nodes)
+
+  # anything else is no value of a table: a number, a string, nil or a list as
+  # the whole value is refused by name, never a FunctionClauseError
+  # (docs/SPEC-CONFORMANCE.md DW-TABLE-SHAPE)
+  def save(_table, _value), do: {:error, :invalid_value}
 
   defp save_graph(table, value, directory) do
     desc = Map.fetch!(@tables, table)
@@ -2009,9 +2032,13 @@ defmodule Benchtable.Table do
   # index 1, the first node is 2). A node reached twice is one record. A node
   # is {type_id, kind, table_name, number, content}: kind :blob for a byte
   # buffer, :table for a pointer pointee.
-  defp save_collect_nodes(desc, value, acc, seen, dir) do
+  # a record is a map: anything else in a record's place (a list element, an
+  # arm's payload) is refused, never read as one (DW-TABLE-SHAPE)
+  defp save_collect_nodes(desc, value, acc, seen, dir) when is_map(value) do
     save_collect_fields(desc.fields, desc, value, {acc, seen}, dir)
   end
+
+  defp save_collect_nodes(_desc, _value, _acc, _seen, _dir), do: throw(:invalid_value)
 
   defp save_collect_fields([], _desc, _value, state, _dir), do: state
 
@@ -2101,6 +2128,10 @@ defmodule Benchtable.Table do
     save_collect_table_list(desc, rest, acc, seen, dir)
   end
 
+  # a list is a proper list: a number, a string or an improper tail in a
+  # list's place is refused (DW-TABLE-SHAPE)
+  defp save_collect_table_list(_desc, _other, _acc, _seen, _dir), do: throw(:invalid_value)
+
   # a union's selected arm is a field line (docs/SPEC-TABLES.md §2.6, §3.1):
   # its nodes are visited where the union sits, exactly as a field's are.
   defp save_collect_union_nodes(_union, nil, acc, seen, _dir), do: {acc, seen}
@@ -2152,6 +2183,11 @@ defmodule Benchtable.Table do
   # save_collect_list_nodes numbers an unbounded array's elements: table
   # elements recurse, pointer elements are node numbers, union elements read
   # their set arm.
+  # a number or a string in a list's place is refused before any element is
+  # read (DW-TABLE-SHAPE)
+  defp save_collect_list_nodes(_f, elements, _acc, _seen, _dir) when not is_list(elements),
+    do: throw(:invalid_value)
+
   defp save_collect_list_nodes(%{elem_kind: 13} = f, elements, acc, seen, dir) do
     save_collect_table_list(Map.fetch!(@tables, f.elem), elements, acc, seen, dir)
   end
@@ -5505,7 +5541,14 @@ defmodule Benchtable.Table do
         throw(:invalid_value)
 
       true ->
-        n = length(values)
+        # an IMPROPER list ([1 | 2]) is no list of elements: refused, never a
+        # badarg out of length/1 (DW-TABLE-SHAPE)
+        n =
+          try do
+            length(values)
+          rescue
+            ArgumentError -> throw(:invalid_value)
+          end
 
         # a [N]T carries exactly N elements: shorter or longer refuses, never
         # padded or cut (docs/SPEC.md §5.1, SF-34)
@@ -5563,6 +5606,12 @@ defmodule Benchtable.Table do
 
   defp write_value(%{t: :table}, v) do
     if v != nil and not is_map(v), do: throw(:invalid_value)
+  end
+
+  # a bool is true or false: 1, "x" or nil in a bool's place is refused, never
+  # written as its truthiness (DW-TABLE-SHAPE)
+  defp write_value(%{t: :bool}, v) do
+    if not is_boolean(v), do: throw(:invalid_value)
   end
 
   defp write_value(_f, _v), do: :ok
@@ -6442,6 +6491,21 @@ defmodule Benchtable.Table do
     end
   end
 
+  # THE CAP COUNTS EVERY CONTAINER THE WRITER WRITES (docs/SPEC-TABLES.md
+  # §16.14 W2): an array or text list (an empty [] included), a map's object
+  # and an enum-keyed array's object are judged at their own depth, refused
+  # past 128 as a table value is, because the read counts every container it
+  # walks (§16.2) and the write must never spell a text its reader refuses
+  # (Go's internal/tabletext containerCap). An absent optional writes null,
+  # not a container; a union's object is judged in json_arm.
+  defp json_field(%{t: t} = f, v, depth)
+       when t in [:list, :map, :keyed] and depth > 128 and
+              not (v == nil and is_map_key(f, :optional) and
+                     :erlang.map_get(:optional, f) == true) do
+    Process.put(:elixir_json_refuse, true)
+    "null"
+  end
+
   defp json_field(%{t: :list} = f, elements, depth) when is_list(elements) do
     if Map.get(f, :array) == :counted and
          (length(elements) < Map.get(f, :min_count, 0) or length(elements) > f.array_bound),
@@ -6567,6 +6631,14 @@ defmodule Benchtable.Table do
 
         ["{", Enum.intersperse(rows, ","), "\n", indent(depth), "}"]
     end
+  end
+
+  # a flags value is an array of names, a container the read counts, so the
+  # cap counts it at its own depth, [] included (§16.14 W2), a field's or an
+  # array element's alike
+  defp json_field(%{t: :int, flags: _}, _v, depth) when depth > 128 do
+    Process.put(:elixir_json_refuse, true)
+    "null"
   end
 
   defp json_field(%{t: :int, flags: names}, v, depth) do
@@ -6879,6 +6951,13 @@ defmodule Benchtable.Table do
 
   # a union is an object with ONE key, the arm's name, and None is {}
   # (docs/SPEC-TABLES.md §2.6, §16.2); a payload-free arm's value is null.
+  # Either is a container the cap counts at its own depth (§16.14 W2), a
+  # union field's or a union array element's alike.
+  defp json_arm(_union, _sel, depth) when depth > 128 do
+    Process.put(:elixir_json_refuse, true)
+    "null"
+  end
+
   defp json_arm(_union, nil, _depth), do: "{}"
 
   defp json_arm(union, {arm, payload}, depth) do
@@ -9725,8 +9804,10 @@ defmodule Benchtable.Table do
   defp cook_lay_writes(_writes, _at, _size, _parts), do: :overlap
 
   # Retention requires a variable root (docs/SPEC-TABLES.md §6.6).
-  # Refuse before inspecting input or changing the caller's report and stores.
-  def load_retain(_table, _data, retain, report), do: {:error, :fixed_root, report, retain}
+  # Refuse before inspecting input, into a zeroed report (§6.5: the supplied
+  # report is never read) and with the stores unchanged.
+  def load_retain(_table, _data, retain, _report),
+    do: {:error, :fixed_root, empty_report(), retain}
 
   def measure_retain(_table, _value, _retain), do: {:error, :fixed_root}
 

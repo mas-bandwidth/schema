@@ -7,7 +7,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // THE VIEW (docs/SPEC-TABLES.md §8): the Rust leg's descriptors for EVERY

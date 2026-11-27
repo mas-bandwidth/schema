@@ -3,8 +3,8 @@ package luatable
 // THE FIVE CELLS THE STRICT-100 AUDIT CUT, ON THE STRICT READ
 // (docs/roadmap-evidence/lua.sexp; internal/codegen/luatable/wirecheck_test.go):
 // port/lua/vt/id-table-wire, unbounded-arrays, enum-keyed-arrays, maps and
-// variable-class share the framing wire-check negative control. The ten
-// rows in luaWireCheckOnly are partitioned by feature below: disabling the
+// variable-class share the framing wire-check negative control. The rows
+// in luaWireCheckOnly are partitioned by feature below: disabling the
 // check must make each read, while every other manifest verdict stays fixed.
 // The malformed unknown node record remains refused independently of the
 // wire-check and is asserted separately. The legal null pointer reads.
@@ -21,11 +21,11 @@ var luaVTFramingCells = []struct {
 	cell    string
 	vectors []string
 }{
-	{"enum-keyed-arrays", []string{"keyed_L1_inert"}},
-	{"id-table-wire", []string{"frame_repeat_last_wins", "frame_unknown_id_length", "frame_unknown_id_reference", "frame_unreferenced_entry"}},
+	{"enum-keyed-arrays", []string{"keyed_L1_inert", "depth_keyed_129"}},
+	{"id-table-wire", []string{"frame_repeat_last_wins", "frame_unknown_id_length", "frame_unknown_id_reference", "frame_unreferenced_entry", "skipped_ids_out_of_order"}},
 	{"maps", []string{"map_L1_inert"}},
-	{"unbounded-arrays", []string{"array_L0_inert", "array_L1_inert"}},
-	{"variable-class", []string{"node_table_twice", "node_record_bytes_after_terminator", "varevo_cycle_known_via_unknown", "varevo_cycle_root_via_unknown", "varevo_cycle_two_unknowns", "varevo_cycle_unknown_self"}},
+	{"unbounded-arrays", []string{"array_L0_inert", "array_L1_inert", "depth_arrays_129", "array_elem_kind_16_count_1", "array_elem_kind_31_count_1", "array_elem_kind_32_count_2", "array_elem_reserved_count_0", "array_elem_unassigned_count_0", "array_elem_zero_count_0"}},
+	{"variable-class", []string{"node_table_twice", "node_record_bytes_after_terminator", "varevo_cycle_known_via_unknown", "varevo_cycle_root_via_unknown", "varevo_cycle_two_unknowns", "varevo_cycle_unknown_self", "depth_tables_129", "depth_tables_5000", "depth_union_tables_65", "union_chain_unknown_deep", "union_chain_unknown_past_bound", "graph_unknown_type_self", "graph_unknown_type_pair", "graph_listnode_unknown_self", "graph_unknown_to_root", "graph_unknown_type_unreached", "graph_string_blob_unreached", "graph_blob_two_unknown_fields", "graph_blob_two_unknown_elements"}},
 }
 
 // luaVTFramingPins answers the manifest verdict of every vector the five
@@ -50,7 +50,7 @@ func luaVTFramingPins(t *testing.T, rows []luaFramingRow) map[string]bool {
 			}
 		}
 	}
-	want := slices.Clone(luaWireCheckOnly)
+	want := luaWireCheckOnly(t)
 	sort.Strings(want)
 	got := make([]string, 0, len(claimed))
 	for v := range claimed {

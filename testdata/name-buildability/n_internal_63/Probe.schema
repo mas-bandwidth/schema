@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum retaining
+{ Zfirst, Zsecond, Zthird }
+
+enum retains
+{ Zfirst, Zsecond, Zthird }
+
+enum retention
+{ Zfirst, Zsecond, Zthird }
+
+enum retired
+{ Zfirst, Zsecond, Zthird }
+
+enum retiredBefore
+{ Zfirst, Zsecond, Zthird }
+
+enum retired_variants
+{ Zfirst, Zsecond, Zthird }
+
+enum returned
+{ Zfirst, Zsecond, Zthird }
+
+enum returns
+{ Zfirst, Zsecond, Zthird }
+
+enum reuse
+{ Zfirst, Zsecond, Zthird }
+
+enum rev
+{ Zfirst, Zsecond, Zthird }
+
+enum rf
+{ Zfirst, Zsecond, Zthird }
+
+enum rfail
+{ Zfirst, Zsecond, Zthird }
+
+enum rfc3339
+{ Zfirst, Zsecond, Zthird }
+
+enum rhs
+{ Zfirst, Zsecond, Zthird }
+
+enum rid
+{ Zfirst, Zsecond, Zthird }
+
+enum ride
+{ Zfirst, Zsecond, Zthird }
+
+enum rides
+{ Zfirst, Zsecond, Zthird }
+
+enum rides_table
+{ Zfirst, Zsecond, Zthird }
+
+enum rids
+{ Zfirst, Zsecond, Zthird }
+
+enum ridx
+{ Zfirst, Zsecond, Zthird }
+
+enum right
+{ Zfirst, Zsecond, Zthird }
+
+enum rkey
+{ Zfirst, Zsecond, Zthird }
+
+enum rl
+{ Zfirst, Zsecond, Zthird }
+
+enum rm
+{ Zfirst, Zsecond, Zthird }
+
+enum rn
+{ Zfirst, Zsecond, Zthird }
+
+enum rname
+{ Zfirst, Zsecond, Zthird }
+
+enum rode
+{ Zfirst, Zsecond, Zthird }
+
+enum rok
+{ Zfirst, Zsecond, Zthird }
+
+enum rollback
+{ Zfirst, Zsecond, Zthird }
+
+enum room
+{ Zfirst, Zsecond, Zthird }
+
+enum room64
+{ Zfirst, Zsecond, Zthird }
+
+enum room_hi
+{ Zfirst, Zsecond, Zthird }
+
+enum room_lo
+{ Zfirst, Zsecond, Zthird }
+
+enum root
+{ Zfirst, Zsecond, Zthird }
+
+enum rootAlign
+{ Zfirst, Zsecond, Zthird }
+
+enum rootBody
+{ Zfirst, Zsecond, Zthird }
+
+enum rootBytes
+{ Zfirst, Zsecond, Zthird }
+
+enum rootEdges
+{ Zfirst, Zsecond, Zthird }
+
+enum rootElemSizes
+{ Zfirst, Zsecond, Zthird }
+
+enum rootExtent
+{ Zfirst, Zsecond, Zthird }
+
+enum rootMark
+{ Zfirst, Zsecond, Zthird }
+
+enum rootName
+{ Zfirst, Zsecond, Zthird }
+
+enum rootObj
+{ Zfirst, Zsecond, Zthird }
+
+enum rootOldNode
+{ Zfirst, Zsecond, Zthird }
+
+enum rootOnlyEdgeStart
+{ Zfirst, Zsecond, Zthird }
+
+enum rootPayloadSizes
+{ Zfirst, Zsecond, Zthird }
+
+enum rootReader
+{ Zfirst, Zsecond, Zthird }
+
+enum rootScan
+{ Zfirst, Zsecond, Zthird }
+
+enum rootSize
+{ Zfirst, Zsecond, Zthird }
+
+enum rootType
+{ Zfirst, Zsecond, Zthird }
+
+enum rootTypeId
+{ Zfirst, Zsecond, Zthird }
+
+enum rootVal
+{ Zfirst, Zsecond, Zthird }
+
+enum rootVisible
+{ Zfirst, Zsecond, Zthird }
+
+enum root_at
+{ Zfirst, Zsecond, Zthird }
+
+enum root_blobs
+{ Zfirst, Zsecond, Zthird }
+
+enum root_carve
+{ Zfirst, Zsecond, Zthird }
+
+enum root_cls
+{ Zfirst, Zsecond, Zthird }
+
+enum root_desc
+{ Zfirst, Zsecond, Zthird }
+
+enum root_entry
+{ Zfirst, Zsecond, Zthird }
+
+enum root_field
+{ Zfirst, Zsecond, Zthird }
+
+enum root_from_json
+{ Zfirst, Zsecond, Zthird }
+
+enum root_from_json_bytes
+{ Zfirst, Zsecond, Zthird }
+
+enum root_from_json_into
+{ Zfirst, Zsecond, Zthird }
+
+enum root_json_count
+{ Zfirst, Zsecond, Zthird }
+
+enum root_json_fields
+{ Zfirst, Zsecond, Zthird }
+
+enum root_json_ptr
+{ Zfirst, Zsecond, Zthird }
+
+enum root_json_read
+{ Zfirst, Zsecond, Zthird }
+
+enum root_json_write
+{ Zfirst, Zsecond, Zthird }
+
+enum root_load_measure
+{ Zfirst, Zsecond, Zthird }
+
+enum root_load_walk
+{ Zfirst, Zsecond, Zthird }
+
+enum root_n
+{ Zfirst, Zsecond, Zthird }
+
+enum root_open
+{ Zfirst, Zsecond, Zthird }
+
+enum root_ptr
+{ Zfirst, Zsecond, Zthird }
+
+enum root_ref
+{ Zfirst, Zsecond, Zthird }
+
+enum root_slice
+{ Zfirst, Zsecond, Zthird }
+
+enum root_stub
+{ Zfirst, Zsecond, Zthird }
+
+enum root_tab
+{ Zfirst, Zsecond, Zthird }
+
+enum root_to_json
+{ Zfirst, Zsecond, Zthird }
+
+enum root_to_json_both
+{ Zfirst, Zsecond, Zthird }
+
+enum root_to_json_checked
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    retaining Inner
+    retains Inner
+    retention Inner
+    retired Inner
+    retiredBefore Inner
+    retired_variants Inner
+    returned Inner
+    returns Inner
+    reuse Inner
+    rev Inner
+}
+
+table NameTypes0
+{
+    one0  retaining
+    many0 [..4]retaining
+    one1  retains
+    many1 [..4]retains
+    one2  retention
+    many2 [..4]retention
+    one3  retired
+    many3 [..4]retired
+    one4  retiredBefore
+    many4 [..4]retiredBefore
+    one5  retired_variants
+    many5 [..4]retired_variants
+    one6  returned
+    many6 [..4]returned
+    one7  returns
+    many7 [..4]returns
+    one8  reuse
+    many8 [..4]reuse
+    one9  rev
+    many9 [..4]rev
+}
+
+table NameFields0
+{
+    retaining uint32
+    retains uint32
+    retention uint32
+    retired uint32
+    retiredBefore uint32
+    retired_variants uint32
+    returned uint32
+    returns uint32
+    reuse uint32
+    rev uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    rf Inner
+    rfail Inner
+    rfc3339 Inner
+    rhs Inner
+    rid Inner
+    ride Inner
+    rides Inner
+    rides_table Inner
+    rids Inner
+    ridx Inner
+}
+
+table NameTypes1
+{
+    one0  rf
+    many0 [..4]rf
+    one1  rfail
+    many1 [..4]rfail
+    one2  rfc3339
+    many2 [..4]rfc3339
+    one3  rhs
+    many3 [..4]rhs
+    one4  rid
+    many4 [..4]rid
+    one5  ride
+    many5 [..4]ride
+    one6  rides
+    many6 [..4]rides
+    one7  rides_table
+    many7 [..4]rides_table
+    one8  rids
+    many8 [..4]rids
+    one9  ridx
+    many9 [..4]ridx
+}
+
+table NameFields1
+{
+    rf uint32
+    rfail uint32
+    rfc3339 uint32
+    rhs uint32
+    rid uint32
+    ride uint32
+    rides uint32
+    rides_table uint32
+    rids uint32
+    ridx uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    right Inner
+    rkey Inner
+    rl Inner
+    rm Inner
+    rn Inner
+    rname Inner
+    rode Inner
+    rok Inner
+    rollback Inner
+    room Inner
+}
+
+table NameTypes2
+{
+    one0  right
+    many0 [..4]right
+    one1  rkey
+    many1 [..4]rkey
+    one2  rl
+    many2 [..4]rl
+    one3  rm
+    many3 [..4]rm
+    one4  rn
+    many4 [..4]rn
+    one5  rname
+    many5 [..4]rname
+    one6  rode
+    many6 [..4]rode
+    one7  rok
+    many7 [..4]rok
+    one8  rollback
+    many8 [..4]rollback
+    one9  room
+    many9 [..4]room
+}
+
+table NameFields2
+{
+    right uint32
+    rkey uint32
+    rl uint32
+    rm uint32
+    rn uint32
+    rname uint32
+    rode uint32
+    rok uint32
+    rollback uint32
+    room uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    room64 Inner
+    room_hi Inner
+    room_lo Inner
+    root Inner
+    rootAlign Inner
+    rootBody Inner
+    rootBytes Inner
+    rootEdges Inner
+    rootElemSizes Inner
+    rootExtent Inner
+}
+
+table NameTypes3
+{
+    one0  room64
+    many0 [..4]room64
+    one1  room_hi
+    many1 [..4]room_hi
+    one2  room_lo
+    many2 [..4]room_lo
+    one3  root
+    many3 [..4]root
+    one4  rootAlign
+    many4 [..4]rootAlign
+    one5  rootBody
+    many5 [..4]rootBody
+    one6  rootBytes
+    many6 [..4]rootBytes
+    one7  rootEdges
+    many7 [..4]rootEdges
+    one8  rootElemSizes
+    many8 [..4]rootElemSizes
+    one9  rootExtent
+    many9 [..4]rootExtent
+}
+
+table NameFields3
+{
+    room64 uint32
+    room_hi uint32
+    room_lo uint32
+    root uint32
+    rootAlign uint32
+    rootBody uint32
+    rootBytes uint32
+    rootEdges uint32
+    rootElemSizes uint32
+    rootExtent uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    rootMark Inner
+    rootName Inner
+    rootObj Inner
+    rootOldNode Inner
+    rootOnlyEdgeStart Inner
+    rootPayloadSizes Inner
+    rootReader Inner
+    rootScan Inner
+    rootSize Inner
+    rootType Inner
+}
+
+table NameTypes4
+{
+    one0  rootMark
+    many0 [..4]rootMark
+    one1  rootName
+    many1 [..4]rootName
+    one2  rootObj
+    many2 [..4]rootObj
+    one3  rootOldNode
+    many3 [..4]rootOldNode
+    one4  rootOnlyEdgeStart
+    many4 [..4]rootOnlyEdgeStart
+    one5  rootPayloadSizes
+    many5 [..4]rootPayloadSizes
+    one6  rootReader
+    many6 [..4]rootReader
+    one7  rootScan
+    many7 [..4]rootScan
+    one8  rootSize
+    many8 [..4]rootSize
+    one9  rootType
+    many9 [..4]rootType
+}
+
+table NameFields4
+{
+    rootMark uint32
+    rootName uint32
+    rootObj uint32
+    rootOldNode uint32
+    rootOnlyEdgeStart uint32
+    rootPayloadSizes uint32
+    rootReader uint32
+    rootScan uint32
+    rootSize uint32
+    rootType uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    rootTypeId Inner
+    rootVal Inner
+    rootVisible Inner
+    root_at Inner
+    root_blobs Inner
+    root_carve Inner
+    root_cls Inner
+    root_desc Inner
+    root_entry Inner
+    root_field Inner
+}
+
+table NameTypes5
+{
+    one0  rootTypeId
+    many0 [..4]rootTypeId
+    one1  rootVal
+    many1 [..4]rootVal
+    one2  rootVisible
+    many2 [..4]rootVisible
+    one3  root_at
+    many3 [..4]root_at
+    one4  root_blobs
+    many4 [..4]root_blobs
+    one5  root_carve
+    many5 [..4]root_carve
+    one6  root_cls
+    many6 [..4]root_cls
+    one7  root_desc
+    many7 [..4]root_desc
+    one8  root_entry
+    many8 [..4]root_entry
+    one9  root_field
+    many9 [..4]root_field
+}
+
+table NameFields5
+{
+    rootTypeId uint32
+    rootVal uint32
+    rootVisible uint32
+    root_at uint32
+    root_blobs uint32
+    root_carve uint32
+    root_cls uint32
+    root_desc uint32
+    root_entry uint32
+    root_field uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    root_from_json Inner
+    root_from_json_bytes Inner
+    root_from_json_into Inner
+    root_json_count Inner
+    root_json_fields Inner
+    root_json_ptr Inner
+    root_json_read Inner
+    root_json_write Inner
+    root_load_measure Inner
+    root_load_walk Inner
+}
+
+table NameTypes6
+{
+    one0  root_from_json
+    many0 [..4]root_from_json
+    one1  root_from_json_bytes
+    many1 [..4]root_from_json_bytes
+    one2  root_from_json_into
+    many2 [..4]root_from_json_into
+    one3  root_json_count
+    many3 [..4]root_json_count
+    one4  root_json_fields
+    many4 [..4]root_json_fields
+    one5  root_json_ptr
+    many5 [..4]root_json_ptr
+    one6  root_json_read
+    many6 [..4]root_json_read
+    one7  root_json_write
+    many7 [..4]root_json_write
+    one8  root_load_measure
+    many8 [..4]root_load_measure
+    one9  root_load_walk
+    many9 [..4]root_load_walk
+}
+
+table NameFields6
+{
+    root_from_json uint32
+    root_from_json_bytes uint32
+    root_from_json_into uint32
+    root_json_count uint32
+    root_json_fields uint32
+    root_json_ptr uint32
+    root_json_read uint32
+    root_json_write uint32
+    root_load_measure uint32
+    root_load_walk uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    root_n Inner
+    root_open Inner
+    root_ptr Inner
+    root_ref Inner
+    root_slice Inner
+    root_stub Inner
+    root_tab Inner
+    root_to_json Inner
+    root_to_json_both Inner
+    root_to_json_checked Inner
+}
+
+table NameTypes7
+{
+    one0  root_n
+    many0 [..4]root_n
+    one1  root_open
+    many1 [..4]root_open
+    one2  root_ptr
+    many2 [..4]root_ptr
+    one3  root_ref
+    many3 [..4]root_ref
+    one4  root_slice
+    many4 [..4]root_slice
+    one5  root_stub
+    many5 [..4]root_stub
+    one6  root_tab
+    many6 [..4]root_tab
+    one7  root_to_json
+    many7 [..4]root_to_json
+    one8  root_to_json_both
+    many8 [..4]root_to_json_both
+    one9  root_to_json_checked
+    many9 [..4]root_to_json_checked
+}
+
+table NameFields7
+{
+    root_n uint32
+    root_open uint32
+    root_ptr uint32
+    root_ref uint32
+    root_slice uint32
+    root_stub uint32
+    root_tab uint32
+    root_to_json uint32
+    root_to_json_both uint32
+    root_to_json_checked uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

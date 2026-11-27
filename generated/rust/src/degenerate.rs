@@ -23,56 +23,56 @@ pub const VEC2_MAX_BITS: u64 = 128;
 pub const VEC2_MAX_BYTES: usize = 16;
 
 #[inline(always)]
-pub fn write_vec2(stream: &mut WriteStream<'_>, value: &Vec2) -> Result {
-    debug_assert!(value.x.is_finite(), "x is not finite");
-    debug_assert!(value.y.is_finite(), "y is not finite");
-    let f0: u64 = value.x.to_bits();
-    let f1: u64 = value.y.to_bits();
+pub fn write_vec2(schema_stream: &mut WriteStream<'_>, schema_value: &Vec2) -> Result {
+    debug_assert!(schema_value.x.is_finite(), "x is not finite");
+    debug_assert!(schema_value.y.is_finite(), "y is not finite");
+    let schema_f0: u64 = schema_value.x.to_bits();
+    let schema_f1: u64 = schema_value.y.to_bits();
     // word 0, 32 bits: x[0..32]
-    stream.serialize_bits(&mut (f0 as u32), 32)?;
+    schema_stream.serialize_bits(&mut (schema_f0 as u32), 32)?;
     // word 1, 32 bits: x[32..64]
-    stream.serialize_bits(&mut ((f0 >> 32) as u32), 32)?;
+    schema_stream.serialize_bits(&mut ((schema_f0 >> 32) as u32), 32)?;
     // word 2, 32 bits: y[0..32]
-    stream.serialize_bits(&mut (f1 as u32), 32)?;
+    schema_stream.serialize_bits(&mut (schema_f1 as u32), 32)?;
     // word 3, 32 bits: y[32..64]
-    stream.serialize_bits(&mut ((f1 >> 32) as u32), 32)?;
+    schema_stream.serialize_bits(&mut ((schema_f1 >> 32) as u32), 32)?;
     Ok(())
 }
 
 #[inline]
-pub fn read_vec2(stream: &mut ReadStream<'_>, value: &mut Vec2) -> Result {
-    read_vec2_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_vec2(schema_stream: &mut ReadStream<'_>, schema_value: &mut Vec2) -> Result {
+    read_vec2_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[inline]
-pub(crate) fn read_vec2_body(stream: &mut ReadStream<'_>, value: &mut Vec2) -> Result {
-    let mut c: u32 = 0;
+pub(crate) fn read_vec2_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut Vec2) -> Result {
+    let mut schema_c: u32 = 0;
     // word 0, 32 bits: x[0..32]
-    stream.serialize_bits(&mut c, 32)?;
-    let c0 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c0 = u64::from(schema_c);
     // word 1, 32 bits: x[32..64]
-    stream.serialize_bits(&mut c, 32)?;
-    let c1 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c1 = u64::from(schema_c);
     // word 2, 32 bits: y[0..32]
-    stream.serialize_bits(&mut c, 32)?;
-    let c2 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c2 = u64::from(schema_c);
     // word 3, 32 bits: y[32..64]
-    stream.serialize_bits(&mut c, 32)?;
-    let c3 = u64::from(c);
-    let v0: u64 = c0 | (c1 << 32);
-    if v0 & 0x7ff0000000000000 == 0x7ff0000000000000 {
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c3 = u64::from(schema_c);
+    let schema_v0: u64 = schema_c0 | (schema_c1 << 32);
+    if schema_v0 & 0x7ff0000000000000 == 0x7ff0000000000000 {
         // a NaN or infinity pattern is refused on its raw bits (SPEC §4.3)
         return Err(Error::Stream(serialize::Error::NonFiniteFloat));
     }
-    value.x = f64::from_bits(v0);
-    let v1: u64 = c2 | (c3 << 32);
-    if v1 & 0x7ff0000000000000 == 0x7ff0000000000000 {
+    schema_value.x = f64::from_bits(schema_v0);
+    let schema_v1: u64 = schema_c2 | (schema_c3 << 32);
+    if schema_v1 & 0x7ff0000000000000 == 0x7ff0000000000000 {
         // a NaN or infinity pattern is refused on its raw bits (SPEC §4.3)
         return Err(Error::Stream(serialize::Error::NonFiniteFloat));
     }
-    value.y = f64::from_bits(v1);
+    schema_value.y = f64::from_bits(schema_v1);
     Ok(())
 }
 
@@ -91,28 +91,28 @@ pub const SPAN_F64_MAX_BYTES: usize = 16;
 
 #[allow(clippy::needless_range_loop)]
 #[inline(always)]
-pub fn write_span_f64(stream: &mut WriteStream<'_>, value: &SpanF64) -> Result {
-    for i in 0..2 {
+pub fn write_span_f64(schema_stream: &mut WriteStream<'_>, schema_value: &SpanF64) -> Result {
+    for schema_i in 0..2 {
         {
-            let mut float_value = value.values[i];
-            stream.serialize_f64(&mut float_value)?;
+            let mut schema_float_value = schema_value.values[schema_i];
+            schema_stream.serialize_f64(&mut schema_float_value)?;
         }
     }
     Ok(())
 }
 
 #[inline]
-pub fn read_span_f64(stream: &mut ReadStream<'_>, value: &mut SpanF64) -> Result {
-    read_span_f64_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_span_f64(schema_stream: &mut ReadStream<'_>, schema_value: &mut SpanF64) -> Result {
+    read_span_f64_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[allow(clippy::needless_range_loop)]
 #[inline]
-pub(crate) fn read_span_f64_body(stream: &mut ReadStream<'_>, value: &mut SpanF64) -> Result {
-    for i in 0..2 {
-        stream.serialize_f64(&mut value.values[i])?;
+pub(crate) fn read_span_f64_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut SpanF64) -> Result {
+    for schema_i in 0..2 {
+        schema_stream.serialize_f64(&mut schema_value.values[schema_i])?;
     }
     Ok(())
 }
@@ -132,28 +132,28 @@ pub const SPAN_U64_MAX_BYTES: usize = 16;
 
 #[allow(clippy::needless_range_loop)]
 #[inline(always)]
-pub fn write_span_u64(stream: &mut WriteStream<'_>, value: &SpanU64) -> Result {
-    for i in 0..2 {
+pub fn write_span_u64(schema_stream: &mut WriteStream<'_>, schema_value: &SpanU64) -> Result {
+    for schema_i in 0..2 {
         {
-            let mut raw_value = value.values[i];
-            stream.serialize_bits64(&mut raw_value, 64)?;
+            let mut schema_raw_value = schema_value.values[schema_i];
+            schema_stream.serialize_bits64(&mut schema_raw_value, 64)?;
         }
     }
     Ok(())
 }
 
 #[inline]
-pub fn read_span_u64(stream: &mut ReadStream<'_>, value: &mut SpanU64) -> Result {
-    read_span_u64_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_span_u64(schema_stream: &mut ReadStream<'_>, schema_value: &mut SpanU64) -> Result {
+    read_span_u64_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[allow(clippy::needless_range_loop)]
 #[inline]
-pub(crate) fn read_span_u64_body(stream: &mut ReadStream<'_>, value: &mut SpanU64) -> Result {
-    for i in 0..2 {
-        stream.serialize_bits64(&mut value.values[i], 64)?;
+pub(crate) fn read_span_u64_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut SpanU64) -> Result {
+    for schema_i in 0..2 {
+        schema_stream.serialize_bits64(&mut schema_value.values[schema_i], 64)?;
     }
     Ok(())
 }
@@ -173,31 +173,31 @@ pub const SPAN_I64_MAX_BYTES: usize = 16;
 
 #[allow(clippy::needless_range_loop)]
 #[inline(always)]
-pub fn write_span_i64(stream: &mut WriteStream<'_>, value: &SpanI64) -> Result {
-    for i in 0..2 {
+pub fn write_span_i64(schema_stream: &mut WriteStream<'_>, schema_value: &SpanI64) -> Result {
+    for schema_i in 0..2 {
         {
-            let mut raw_value = value.values[i] as u64;
-            stream.serialize_bits64(&mut raw_value, 64)?;
+            let mut schema_raw_value = schema_value.values[schema_i] as u64;
+            schema_stream.serialize_bits64(&mut schema_raw_value, 64)?;
         }
     }
     Ok(())
 }
 
 #[inline]
-pub fn read_span_i64(stream: &mut ReadStream<'_>, value: &mut SpanI64) -> Result {
-    read_span_i64_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_span_i64(schema_stream: &mut ReadStream<'_>, schema_value: &mut SpanI64) -> Result {
+    read_span_i64_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[allow(clippy::needless_range_loop)]
 #[inline]
-pub(crate) fn read_span_i64_body(stream: &mut ReadStream<'_>, value: &mut SpanI64) -> Result {
-    for i in 0..2 {
+pub(crate) fn read_span_i64_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut SpanI64) -> Result {
+    for schema_i in 0..2 {
         {
-            let mut raw_value: u64 = 0;
-            stream.serialize_bits64(&mut raw_value, 64)?;
-            value.values[i] = raw_value as i64;
+            let mut schema_raw_value: u64 = 0;
+            schema_stream.serialize_bits64(&mut schema_raw_value, 64)?;
+            schema_value.values[schema_i] = schema_raw_value as i64;
         }
     }
     Ok(())
@@ -218,28 +218,28 @@ pub const SPAN_ONE_MAX_BYTES: usize = 8;
 
 #[allow(clippy::needless_range_loop)]
 #[inline(always)]
-pub fn write_span_one(stream: &mut WriteStream<'_>, value: &SpanOne) -> Result {
-    for i in 0..1 {
+pub fn write_span_one(schema_stream: &mut WriteStream<'_>, schema_value: &SpanOne) -> Result {
+    for schema_i in 0..1 {
         {
-            let mut raw_value = value.values[i];
-            stream.serialize_bits64(&mut raw_value, 64)?;
+            let mut schema_raw_value = schema_value.values[schema_i];
+            schema_stream.serialize_bits64(&mut schema_raw_value, 64)?;
         }
     }
     Ok(())
 }
 
 #[inline]
-pub fn read_span_one(stream: &mut ReadStream<'_>, value: &mut SpanOne) -> Result {
-    read_span_one_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_span_one(schema_stream: &mut ReadStream<'_>, schema_value: &mut SpanOne) -> Result {
+    read_span_one_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[allow(clippy::needless_range_loop)]
 #[inline]
-pub(crate) fn read_span_one_body(stream: &mut ReadStream<'_>, value: &mut SpanOne) -> Result {
-    for i in 0..1 {
-        stream.serialize_bits64(&mut value.values[i], 64)?;
+pub(crate) fn read_span_one_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut SpanOne) -> Result {
+    for schema_i in 0..1 {
+        schema_stream.serialize_bits64(&mut schema_value.values[schema_i], 64)?;
     }
     Ok(())
 }
@@ -259,31 +259,31 @@ pub const SPAN_CHUNK_MAX_BYTES: usize = 8;
 
 #[allow(clippy::needless_range_loop)]
 #[inline(always)]
-pub fn write_span_chunk(stream: &mut WriteStream<'_>, value: &SpanChunk) -> Result {
-    for i in 0..4 {
+pub fn write_span_chunk(schema_stream: &mut WriteStream<'_>, schema_value: &SpanChunk) -> Result {
+    for schema_i in 0..4 {
         {
-            let mut raw_value = value.values[i] as u32;
-            stream.serialize_bits(&mut raw_value, 16)?;
+            let mut schema_raw_value = schema_value.values[schema_i] as u32;
+            schema_stream.serialize_bits(&mut schema_raw_value, 16)?;
         }
     }
     Ok(())
 }
 
 #[inline]
-pub fn read_span_chunk(stream: &mut ReadStream<'_>, value: &mut SpanChunk) -> Result {
-    read_span_chunk_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_span_chunk(schema_stream: &mut ReadStream<'_>, schema_value: &mut SpanChunk) -> Result {
+    read_span_chunk_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[allow(clippy::needless_range_loop)]
 #[inline]
-pub(crate) fn read_span_chunk_body(stream: &mut ReadStream<'_>, value: &mut SpanChunk) -> Result {
-    for i in 0..4 {
+pub(crate) fn read_span_chunk_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut SpanChunk) -> Result {
+    for schema_i in 0..4 {
         {
-            let mut raw_value: u32 = 0;
-            stream.serialize_bits(&mut raw_value, 16)?;
-            value.values[i] = raw_value as u16;
+            let mut schema_raw_value: u32 = 0;
+            schema_stream.serialize_bits(&mut schema_raw_value, 16)?;
+            schema_value.values[schema_i] = schema_raw_value as u16;
         }
     }
     Ok(())
@@ -305,34 +305,34 @@ pub const SPAN_TAIL_MAX_BYTES: usize = 24;
 
 #[allow(clippy::needless_range_loop)]
 #[inline(always)]
-pub fn write_span_tail(stream: &mut WriteStream<'_>, value: &SpanTail) -> Result {
-    for i in 0..2 {
+pub fn write_span_tail(schema_stream: &mut WriteStream<'_>, schema_value: &SpanTail) -> Result {
+    for schema_i in 0..2 {
         {
-            let mut float_value = value.values[i];
-            stream.serialize_f64(&mut float_value)?;
+            let mut schema_float_value = schema_value.values[schema_i];
+            schema_stream.serialize_f64(&mut schema_float_value)?;
         }
     }
     {
-        let mut raw_value = value.tail;
-        stream.serialize_bits(&mut raw_value, 32)?;
+        let mut schema_raw_value = schema_value.tail;
+        schema_stream.serialize_bits(&mut schema_raw_value, 32)?;
     }
     Ok(())
 }
 
 #[inline]
-pub fn read_span_tail(stream: &mut ReadStream<'_>, value: &mut SpanTail) -> Result {
-    read_span_tail_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_span_tail(schema_stream: &mut ReadStream<'_>, schema_value: &mut SpanTail) -> Result {
+    read_span_tail_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[allow(clippy::needless_range_loop)]
 #[inline]
-pub(crate) fn read_span_tail_body(stream: &mut ReadStream<'_>, value: &mut SpanTail) -> Result {
-    for i in 0..2 {
-        stream.serialize_f64(&mut value.values[i])?;
+pub(crate) fn read_span_tail_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut SpanTail) -> Result {
+    for schema_i in 0..2 {
+        schema_stream.serialize_f64(&mut schema_value.values[schema_i])?;
     }
-    stream.serialize_bits(&mut value.tail, 32)?;
+    schema_stream.serialize_bits(&mut schema_value.tail, 32)?;
     Ok(())
 }
 
@@ -352,37 +352,37 @@ pub const SPAN_TWICE_MAX_BYTES: usize = 32;
 
 #[allow(clippy::needless_range_loop)]
 #[inline(always)]
-pub fn write_span_twice(stream: &mut WriteStream<'_>, value: &SpanTwice) -> Result {
-    for i in 0..2 {
+pub fn write_span_twice(schema_stream: &mut WriteStream<'_>, schema_value: &SpanTwice) -> Result {
+    for schema_i in 0..2 {
         {
-            let mut float_value = value.a[i];
-            stream.serialize_f64(&mut float_value)?;
+            let mut schema_float_value = schema_value.a[schema_i];
+            schema_stream.serialize_f64(&mut schema_float_value)?;
         }
     }
-    for i in 0..2 {
+    for schema_i in 0..2 {
         {
-            let mut float_value = value.b[i];
-            stream.serialize_f64(&mut float_value)?;
+            let mut schema_float_value = schema_value.b[schema_i];
+            schema_stream.serialize_f64(&mut schema_float_value)?;
         }
     }
     Ok(())
 }
 
 #[inline]
-pub fn read_span_twice(stream: &mut ReadStream<'_>, value: &mut SpanTwice) -> Result {
-    read_span_twice_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_span_twice(schema_stream: &mut ReadStream<'_>, schema_value: &mut SpanTwice) -> Result {
+    read_span_twice_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[allow(clippy::needless_range_loop)]
 #[inline]
-pub(crate) fn read_span_twice_body(stream: &mut ReadStream<'_>, value: &mut SpanTwice) -> Result {
-    for i in 0..2 {
-        stream.serialize_f64(&mut value.a[i])?;
+pub(crate) fn read_span_twice_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut SpanTwice) -> Result {
+    for schema_i in 0..2 {
+        schema_stream.serialize_f64(&mut schema_value.a[schema_i])?;
     }
-    for i in 0..2 {
-        stream.serialize_f64(&mut value.b[i])?;
+    for schema_i in 0..2 {
+        schema_stream.serialize_f64(&mut schema_value.b[schema_i])?;
     }
     Ok(())
 }
@@ -403,42 +403,42 @@ pub const TRIO_MAX_BITS: u64 = 64;
 pub const TRIO_MAX_BYTES: usize = 8;
 
 #[inline(always)]
-pub fn write_trio(stream: &mut WriteStream<'_>, value: &Trio) -> Result {
-    debug_assert!(value.a < 1 << 20, "a above the bits(20) wire width");
-    debug_assert!(value.b < 1 << 20, "b above the bits(20) wire width");
-    debug_assert!(value.c < 1 << 24, "c above the bits(24) wire width");
-    let f0: u64 = u64::from(value.a);
-    let f1: u64 = u64::from(value.b);
-    let f2: u64 = u64::from(value.c);
+pub fn write_trio(schema_stream: &mut WriteStream<'_>, schema_value: &Trio) -> Result {
+    debug_assert!(schema_value.a < 1 << 20, "a above the bits(20) wire width");
+    debug_assert!(schema_value.b < 1 << 20, "b above the bits(20) wire width");
+    debug_assert!(schema_value.c < 1 << 24, "c above the bits(24) wire width");
+    let schema_f0: u64 = u64::from(schema_value.a);
+    let schema_f1: u64 = u64::from(schema_value.b);
+    let schema_f2: u64 = u64::from(schema_value.c);
     // word 0, 32 bits: a[0..20], b[0..12]
-    stream.serialize_bits(&mut ((f0 | (f1 << 20)) as u32), 32)?;
+    schema_stream.serialize_bits(&mut ((schema_f0 | (schema_f1 << 20)) as u32), 32)?;
     // word 1, 32 bits: b[12..20], c[0..24]
-    stream.serialize_bits(&mut (((f1 >> 12) | (f2 << 8)) as u32), 32)?;
+    schema_stream.serialize_bits(&mut (((schema_f1 >> 12) | (schema_f2 << 8)) as u32), 32)?;
     Ok(())
 }
 
 #[inline]
-pub fn read_trio(stream: &mut ReadStream<'_>, value: &mut Trio) -> Result {
-    read_trio_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_trio(schema_stream: &mut ReadStream<'_>, schema_value: &mut Trio) -> Result {
+    read_trio_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[inline]
-pub(crate) fn read_trio_body(stream: &mut ReadStream<'_>, value: &mut Trio) -> Result {
-    let mut c: u32 = 0;
+pub(crate) fn read_trio_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut Trio) -> Result {
+    let mut schema_c: u32 = 0;
     // word 0, 32 bits: a[0..20], b[0..12]
-    stream.serialize_bits(&mut c, 32)?;
-    let c0 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c0 = u64::from(schema_c);
     // word 1, 32 bits: b[12..20], c[0..24]
-    stream.serialize_bits(&mut c, 32)?;
-    let c1 = u64::from(c);
-    let v0: u64 = c0 & 0xfffff;
-    value.a = v0 as u32;
-    let v1: u64 = ((c0 >> 20) | (c1 << 12)) & 0xfffff;
-    value.b = v1 as u32;
-    let v2: u64 = (c1 >> 8) & 0xffffff;
-    value.c = v2 as u32;
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c1 = u64::from(schema_c);
+    let schema_v0: u64 = schema_c0 & 0xfffff;
+    schema_value.a = schema_v0 as u32;
+    let schema_v1: u64 = ((schema_c0 >> 20) | (schema_c1 << 12)) & 0xfffff;
+    schema_value.b = schema_v1 as u32;
+    let schema_v2: u64 = (schema_c1 >> 8) & 0xffffff;
+    schema_value.c = schema_v2 as u32;
     Ok(())
 }
 
@@ -456,21 +456,21 @@ pub const TRIO_SOLE_MAX_BITS: u64 = 64;
 pub const TRIO_SOLE_MAX_BYTES: usize = 8;
 
 #[inline(always)]
-pub fn write_trio_sole(stream: &mut WriteStream<'_>, value: &TrioSole) -> Result {
-    write_trio(stream, &value.inner)?;
+pub fn write_trio_sole(schema_stream: &mut WriteStream<'_>, schema_value: &TrioSole) -> Result {
+    write_trio(schema_stream, &schema_value.inner)?;
     Ok(())
 }
 
 #[inline]
-pub fn read_trio_sole(stream: &mut ReadStream<'_>, value: &mut TrioSole) -> Result {
-    read_trio_sole_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_trio_sole(schema_stream: &mut ReadStream<'_>, schema_value: &mut TrioSole) -> Result {
+    read_trio_sole_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[inline]
-pub(crate) fn read_trio_sole_body(stream: &mut ReadStream<'_>, value: &mut TrioSole) -> Result {
-    read_trio_body(stream, &mut value.inner)?;
+pub(crate) fn read_trio_sole_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut TrioSole) -> Result {
+    read_trio_body(schema_stream, &mut schema_value.inner)?;
     Ok(())
 }
 
@@ -488,21 +488,21 @@ pub const VEC3_SOLE_MAX_BITS: u64 = 192;
 pub const VEC3_SOLE_MAX_BYTES: usize = 24;
 
 #[inline(always)]
-pub fn write_vec3_sole(stream: &mut WriteStream<'_>, value: &Vec3Sole) -> Result {
-    write_vec3(stream, &value.v)?;
+pub fn write_vec3_sole(schema_stream: &mut WriteStream<'_>, schema_value: &Vec3Sole) -> Result {
+    write_vec3(schema_stream, &schema_value.v)?;
     Ok(())
 }
 
 #[inline]
-pub fn read_vec3_sole(stream: &mut ReadStream<'_>, value: &mut Vec3Sole) -> Result {
-    read_vec3_sole_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_vec3_sole(schema_stream: &mut ReadStream<'_>, schema_value: &mut Vec3Sole) -> Result {
+    read_vec3_sole_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[inline]
-pub(crate) fn read_vec3_sole_body(stream: &mut ReadStream<'_>, value: &mut Vec3Sole) -> Result {
-    read_vec3_body(stream, &mut value.v)?;
+pub(crate) fn read_vec3_sole_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut Vec3Sole) -> Result {
+    read_vec3_body(schema_stream, &mut schema_value.v)?;
     Ok(())
 }
 
@@ -521,27 +521,27 @@ pub const TRIO_FIRST_MAX_BITS: u64 = 80;
 pub const TRIO_FIRST_MAX_BYTES: usize = 16;
 
 #[inline(always)]
-pub fn write_trio_first(stream: &mut WriteStream<'_>, value: &TrioFirst) -> Result {
-    write_trio(stream, &value.inner)?;
-    debug_assert!(value.trailer < 1 << 16, "trailer above the bits(16) wire width");
+pub fn write_trio_first(schema_stream: &mut WriteStream<'_>, schema_value: &TrioFirst) -> Result {
+    write_trio(schema_stream, &schema_value.inner)?;
+    debug_assert!(schema_value.trailer < 1 << 16, "trailer above the bits(16) wire width");
     {
-        let mut raw_value = value.trailer;
-        stream.serialize_bits(&mut raw_value, 16)?;
+        let mut schema_raw_value = schema_value.trailer;
+        schema_stream.serialize_bits(&mut schema_raw_value, 16)?;
     }
     Ok(())
 }
 
 #[inline]
-pub fn read_trio_first(stream: &mut ReadStream<'_>, value: &mut TrioFirst) -> Result {
-    read_trio_first_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_trio_first(schema_stream: &mut ReadStream<'_>, schema_value: &mut TrioFirst) -> Result {
+    read_trio_first_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[inline]
-pub(crate) fn read_trio_first_body(stream: &mut ReadStream<'_>, value: &mut TrioFirst) -> Result {
-    read_trio_body(stream, &mut value.inner)?;
-    stream.serialize_bits(&mut value.trailer, 16)?;
+pub(crate) fn read_trio_first_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut TrioFirst) -> Result {
+    read_trio_body(schema_stream, &mut schema_value.inner)?;
+    schema_stream.serialize_bits(&mut schema_value.trailer, 16)?;
     Ok(())
 }
 
@@ -565,97 +565,97 @@ pub const TRIO_STRADDLE_MAX_BITS: u64 = 408;
 pub const TRIO_STRADDLE_MAX_BYTES: usize = 56;
 
 #[inline(always)]
-pub fn write_trio_straddle(stream: &mut WriteStream<'_>, value: &TrioStraddle) -> Result {
-    let f0: u64 = value.pad0;
-    let f1: u64 = value.pad1;
-    let f2: u64 = value.pad2;
-    let f3: u64 = value.pad3;
+pub fn write_trio_straddle(schema_stream: &mut WriteStream<'_>, schema_value: &TrioStraddle) -> Result {
+    let schema_f0: u64 = schema_value.pad0;
+    let schema_f1: u64 = schema_value.pad1;
+    let schema_f2: u64 = schema_value.pad2;
+    let schema_f3: u64 = schema_value.pad3;
     // word 0, 32 bits: pad0[0..32]
-    stream.serialize_bits(&mut (f0 as u32), 32)?;
+    schema_stream.serialize_bits(&mut (schema_f0 as u32), 32)?;
     // word 1, 32 bits: pad0[32..64]
-    stream.serialize_bits(&mut ((f0 >> 32) as u32), 32)?;
+    schema_stream.serialize_bits(&mut ((schema_f0 >> 32) as u32), 32)?;
     // word 2, 32 bits: pad1[0..32]
-    stream.serialize_bits(&mut (f1 as u32), 32)?;
+    schema_stream.serialize_bits(&mut (schema_f1 as u32), 32)?;
     // word 3, 32 bits: pad1[32..64]
-    stream.serialize_bits(&mut ((f1 >> 32) as u32), 32)?;
+    schema_stream.serialize_bits(&mut ((schema_f1 >> 32) as u32), 32)?;
     // word 4, 32 bits: pad2[0..32]
-    stream.serialize_bits(&mut (f2 as u32), 32)?;
+    schema_stream.serialize_bits(&mut (schema_f2 as u32), 32)?;
     // word 5, 32 bits: pad2[32..64]
-    stream.serialize_bits(&mut ((f2 >> 32) as u32), 32)?;
+    schema_stream.serialize_bits(&mut ((schema_f2 >> 32) as u32), 32)?;
     // word 6, 32 bits: pad3[0..32]
-    stream.serialize_bits(&mut (f3 as u32), 32)?;
+    schema_stream.serialize_bits(&mut (schema_f3 as u32), 32)?;
     // word 7, 32 bits: pad3[32..64]
-    stream.serialize_bits(&mut ((f3 >> 32) as u32), 32)?;
-    debug_assert!(value.pad5 < 1 << 24, "pad5 above the bits(24) wire width");
-    let f0: u64 = value.pad4;
-    let f1: u64 = u64::from(value.pad5);
+    schema_stream.serialize_bits(&mut ((schema_f3 >> 32) as u32), 32)?;
+    debug_assert!(schema_value.pad5 < 1 << 24, "pad5 above the bits(24) wire width");
+    let schema_f0: u64 = schema_value.pad4;
+    let schema_f1: u64 = u64::from(schema_value.pad5);
     // word 0, 32 bits: pad4[0..32]
-    stream.serialize_bits(&mut (f0 as u32), 32)?;
+    schema_stream.serialize_bits(&mut (schema_f0 as u32), 32)?;
     // word 1, 32 bits: pad4[32..64]
-    stream.serialize_bits(&mut ((f0 >> 32) as u32), 32)?;
+    schema_stream.serialize_bits(&mut ((schema_f0 >> 32) as u32), 32)?;
     // word 2, 24 bits: pad5[0..24]
-    stream.serialize_bits(&mut (f1 as u32), 24)?;
-    write_trio(stream, &value.inner)?;
+    schema_stream.serialize_bits(&mut (schema_f1 as u32), 24)?;
+    write_trio(schema_stream, &schema_value.inner)?;
     Ok(())
 }
 
 #[inline]
-pub fn read_trio_straddle(stream: &mut ReadStream<'_>, value: &mut TrioStraddle) -> Result {
-    read_trio_straddle_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_trio_straddle(schema_stream: &mut ReadStream<'_>, schema_value: &mut TrioStraddle) -> Result {
+    read_trio_straddle_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[inline]
-pub(crate) fn read_trio_straddle_body(stream: &mut ReadStream<'_>, value: &mut TrioStraddle) -> Result {
-    let mut c: u32 = 0;
+pub(crate) fn read_trio_straddle_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut TrioStraddle) -> Result {
+    let mut schema_c: u32 = 0;
     // word 0, 32 bits: pad0[0..32]
-    stream.serialize_bits(&mut c, 32)?;
-    let c0 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c0 = u64::from(schema_c);
     // word 1, 32 bits: pad0[32..64]
-    stream.serialize_bits(&mut c, 32)?;
-    let c1 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c1 = u64::from(schema_c);
     // word 2, 32 bits: pad1[0..32]
-    stream.serialize_bits(&mut c, 32)?;
-    let c2 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c2 = u64::from(schema_c);
     // word 3, 32 bits: pad1[32..64]
-    stream.serialize_bits(&mut c, 32)?;
-    let c3 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c3 = u64::from(schema_c);
     // word 4, 32 bits: pad2[0..32]
-    stream.serialize_bits(&mut c, 32)?;
-    let c4 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c4 = u64::from(schema_c);
     // word 5, 32 bits: pad2[32..64]
-    stream.serialize_bits(&mut c, 32)?;
-    let c5 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c5 = u64::from(schema_c);
     // word 6, 32 bits: pad3[0..32]
-    stream.serialize_bits(&mut c, 32)?;
-    let c6 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c6 = u64::from(schema_c);
     // word 7, 32 bits: pad3[32..64]
-    stream.serialize_bits(&mut c, 32)?;
-    let c7 = u64::from(c);
-    let v0: u64 = c0 | (c1 << 32);
-    value.pad0 = v0;
-    let v1: u64 = c2 | (c3 << 32);
-    value.pad1 = v1;
-    let v2: u64 = c4 | (c5 << 32);
-    value.pad2 = v2;
-    let v3: u64 = c6 | (c7 << 32);
-    value.pad3 = v3;
-    let mut c: u32 = 0;
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c7 = u64::from(schema_c);
+    let schema_v0: u64 = schema_c0 | (schema_c1 << 32);
+    schema_value.pad0 = schema_v0;
+    let schema_v1: u64 = schema_c2 | (schema_c3 << 32);
+    schema_value.pad1 = schema_v1;
+    let schema_v2: u64 = schema_c4 | (schema_c5 << 32);
+    schema_value.pad2 = schema_v2;
+    let schema_v3: u64 = schema_c6 | (schema_c7 << 32);
+    schema_value.pad3 = schema_v3;
+    let mut schema_c: u32 = 0;
     // word 0, 32 bits: pad4[0..32]
-    stream.serialize_bits(&mut c, 32)?;
-    let c0 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c0 = u64::from(schema_c);
     // word 1, 32 bits: pad4[32..64]
-    stream.serialize_bits(&mut c, 32)?;
-    let c1 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c1 = u64::from(schema_c);
     // word 2, 24 bits: pad5[0..24]
-    stream.serialize_bits(&mut c, 24)?;
-    let c2 = u64::from(c);
-    let v0: u64 = c0 | (c1 << 32);
-    value.pad4 = v0;
-    let v1: u64 = c2 & 0xffffff;
-    value.pad5 = v1 as u32;
-    read_trio_body(stream, &mut value.inner)?;
+    schema_stream.serialize_bits(&mut schema_c, 24)?;
+    let schema_c2 = u64::from(schema_c);
+    let schema_v0: u64 = schema_c0 | (schema_c1 << 32);
+    schema_value.pad4 = schema_v0;
+    let schema_v1: u64 = schema_c2 & 0xffffff;
+    schema_value.pad5 = schema_v1 as u32;
+    read_trio_body(schema_stream, &mut schema_value.inner)?;
     Ok(())
 }
 

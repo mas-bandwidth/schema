@@ -31,8 +31,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/ccommon"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/ccommon"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // Qualify returns files with every unit-declared file-scope name qualified
@@ -179,11 +179,10 @@ func qualify(n string, k kind, pkg string) (string, bool) {
 	case strings.HasPrefix(n, "schema_"):
 		return "schema_" + lower + "_" + n[len("schema_"):], true
 	case k == kindType && !screaming(n):
-		s := ir.RustSnake(n)
-		if !strings.HasSuffix(s, "_t") {
-			s += "_t"
-		}
-		return lower + "_" + s, true
+		// the _t suffix is added to every type, even one already ending in
+		// _t, so the spelling is injective: placed is <pkg>_placed_t and
+		// placed_t is <pkg>_placed_t_t, never one name (SPEC §4.6)
+		return lower + "_" + ir.RustSnake(n) + "_t", true
 	case screaming(n):
 		return upper + "_" + n, true
 	case strings.ToLower(n) != n:

@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum extent3_i
+{ Zfirst, Zsecond, Zthird }
+
+enum extent3_in
+{ Zfirst, Zsecond, Zthird }
+
+enum extent3_out
+{ Zfirst, Zsecond, Zthird }
+
+enum extent4
+{ Zfirst, Zsecond, Zthird }
+
+enum extent4_array
+{ Zfirst, Zsecond, Zthird }
+
+enum extent4_i
+{ Zfirst, Zsecond, Zthird }
+
+enum extent4_in
+{ Zfirst, Zsecond, Zthird }
+
+enum extent4_out
+{ Zfirst, Zsecond, Zthird }
+
+enum extent5
+{ Zfirst, Zsecond, Zthird }
+
+enum extent5_array
+{ Zfirst, Zsecond, Zthird }
+
+enum extent5_i
+{ Zfirst, Zsecond, Zthird }
+
+enum extent5_in
+{ Zfirst, Zsecond, Zthird }
+
+enum extent5_out
+{ Zfirst, Zsecond, Zthird }
+
+enum extent6
+{ Zfirst, Zsecond, Zthird }
+
+enum extent6_array
+{ Zfirst, Zsecond, Zthird }
+
+enum extent6_i
+{ Zfirst, Zsecond, Zthird }
+
+enum extent6_in
+{ Zfirst, Zsecond, Zthird }
+
+enum extent6_out
+{ Zfirst, Zsecond, Zthird }
+
+enum extentAlign
+{ Zfirst, Zsecond, Zthird }
+
+enum extentAt
+{ Zfirst, Zsecond, Zthird }
+
+enum extentBase
+{ Zfirst, Zsecond, Zthird }
+
+enum extent_body
+{ Zfirst, Zsecond, Zthird }
+
+enum extent_body1
+{ Zfirst, Zsecond, Zthird }
+
+enum extent_body1_count
+{ Zfirst, Zsecond, Zthird }
+
+enum extent_body2
+{ Zfirst, Zsecond, Zthird }
+
+enum extent_body2_count
+{ Zfirst, Zsecond, Zthird }
+
+enum extent_body3
+{ Zfirst, Zsecond, Zthird }
+
+enum extent_body3_count
+{ Zfirst, Zsecond, Zthird }
+
+enum extent_body4
+{ Zfirst, Zsecond, Zthird }
+
+enum extent_body4_count
+{ Zfirst, Zsecond, Zthird }
+
+enum extent_body5
+{ Zfirst, Zsecond, Zthird }
+
+enum extent_body5_count
+{ Zfirst, Zsecond, Zthird }
+
+enum extent_g1
+{ Zfirst, Zsecond, Zthird }
+
+enum extent_g1_at
+{ Zfirst, Zsecond, Zthird }
+
+enum extent_g1_target
+{ Zfirst, Zsecond, Zthird }
+
+enum extent_g2
+{ Zfirst, Zsecond, Zthird }
+
+enum extent_g2_at
+{ Zfirst, Zsecond, Zthird }
+
+enum extent_g2_target
+{ Zfirst, Zsecond, Zthird }
+
+enum extent_i1
+{ Zfirst, Zsecond, Zthird }
+
+enum extent_i2
+{ Zfirst, Zsecond, Zthird }
+
+enum extent_i3
+{ Zfirst, Zsecond, Zthird }
+
+enum extent_i4
+{ Zfirst, Zsecond, Zthird }
+
+enum extent_o1
+{ Zfirst, Zsecond, Zthird }
+
+enum extent_o1_at
+{ Zfirst, Zsecond, Zthird }
+
+enum extent_o1_target
+{ Zfirst, Zsecond, Zthird }
+
+enum extent_ok
+{ Zfirst, Zsecond, Zthird }
+
+enum extent_start
+{ Zfirst, Zsecond, Zthird }
+
+enum extra
+{ Zfirst, Zsecond, Zthird }
+
+enum exts
+{ Zfirst, Zsecond, Zthird }
+
+enum f
+{ Zfirst, Zsecond, Zthird }
+
+enum f0
+{ Zfirst, Zsecond, Zthird }
+
+enum f1
+{ Zfirst, Zsecond, Zthird }
+
+enum f10
+{ Zfirst, Zsecond, Zthird }
+
+enum f11
+{ Zfirst, Zsecond, Zthird }
+
+enum f12
+{ Zfirst, Zsecond, Zthird }
+
+enum f13
+{ Zfirst, Zsecond, Zthird }
+
+enum f2
+{ Zfirst, Zsecond, Zthird }
+
+enum f3
+{ Zfirst, Zsecond, Zthird }
+
+enum f32Bits
+{ Zfirst, Zsecond, Zthird }
+
+enum f32OfToken
+{ Zfirst, Zsecond, Zthird }
+
+enum f32Scratch
+{ Zfirst, Zsecond, Zthird }
+
+enum f32ToDouble
+{ Zfirst, Zsecond, Zthird }
+
+enum f32Value
+{ Zfirst, Zsecond, Zthird }
+
+enum f32_of
+{ Zfirst, Zsecond, Zthird }
+
+enum f32_step
+{ Zfirst, Zsecond, Zthird }
+
+enum f32_tie
+{ Zfirst, Zsecond, Zthird }
+
+enum f32frombits
+{ Zfirst, Zsecond, Zthird }
+
+enum f32tmp
+{ Zfirst, Zsecond, Zthird }
+
+enum f4
+{ Zfirst, Zsecond, Zthird }
+
+enum f5
+{ Zfirst, Zsecond, Zthird }
+
+enum f6
+{ Zfirst, Zsecond, Zthird }
+
+enum f64_bits
+{ Zfirst, Zsecond, Zthird }
+
+enum f7
+{ Zfirst, Zsecond, Zthird }
+
+enum f8
+{ Zfirst, Zsecond, Zthird }
+
+enum f9
+{ Zfirst, Zsecond, Zthird }
+
+enum f_at
+{ Zfirst, Zsecond, Zthird }
+
+enum f_e_1
+{ Zfirst, Zsecond, Zthird }
+
+enum f_e_2
+{ Zfirst, Zsecond, Zthird }
+
+enum f_e_3
+{ Zfirst, Zsecond, Zthird }
+
+enum f_e_4
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    extent3_i Inner
+    extent3_in Inner
+    extent3_out Inner
+    extent4 Inner
+    extent4_array Inner
+    extent4_i Inner
+    extent4_in Inner
+    extent4_out Inner
+    extent5 Inner
+    extent5_array Inner
+}
+
+table NameTypes0
+{
+    one0  extent3_i
+    many0 [..4]extent3_i
+    one1  extent3_in
+    many1 [..4]extent3_in
+    one2  extent3_out
+    many2 [..4]extent3_out
+    one3  extent4
+    many3 [..4]extent4
+    one4  extent4_array
+    many4 [..4]extent4_array
+    one5  extent4_i
+    many5 [..4]extent4_i
+    one6  extent4_in
+    many6 [..4]extent4_in
+    one7  extent4_out
+    many7 [..4]extent4_out
+    one8  extent5
+    many8 [..4]extent5
+    one9  extent5_array
+    many9 [..4]extent5_array
+}
+
+table NameFields0
+{
+    extent3_i uint32
+    extent3_in uint32
+    extent3_out uint32
+    extent4 uint32
+    extent4_array uint32
+    extent4_i uint32
+    extent4_in uint32
+    extent4_out uint32
+    extent5 uint32
+    extent5_array uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    extent5_i Inner
+    extent5_in Inner
+    extent5_out Inner
+    extent6 Inner
+    extent6_array Inner
+    extent6_i Inner
+    extent6_in Inner
+    extent6_out Inner
+    extentAlign Inner
+    extentAt Inner
+}
+
+table NameTypes1
+{
+    one0  extent5_i
+    many0 [..4]extent5_i
+    one1  extent5_in
+    many1 [..4]extent5_in
+    one2  extent5_out
+    many2 [..4]extent5_out
+    one3  extent6
+    many3 [..4]extent6
+    one4  extent6_array
+    many4 [..4]extent6_array
+    one5  extent6_i
+    many5 [..4]extent6_i
+    one6  extent6_in
+    many6 [..4]extent6_in
+    one7  extent6_out
+    many7 [..4]extent6_out
+    one8  extentAlign
+    many8 [..4]extentAlign
+    one9  extentAt
+    many9 [..4]extentAt
+}
+
+table NameFields1
+{
+    extent5_i uint32
+    extent5_in uint32
+    extent5_out uint32
+    extent6 uint32
+    extent6_array uint32
+    extent6_i uint32
+    extent6_in uint32
+    extent6_out uint32
+    extentAlign uint32
+    extentAt uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    extentBase Inner
+    extent_body Inner
+    extent_body1 Inner
+    extent_body1_count Inner
+    extent_body2 Inner
+    extent_body2_count Inner
+    extent_body3 Inner
+    extent_body3_count Inner
+    extent_body4 Inner
+    extent_body4_count Inner
+}
+
+table NameTypes2
+{
+    one0  extentBase
+    many0 [..4]extentBase
+    one1  extent_body
+    many1 [..4]extent_body
+    one2  extent_body1
+    many2 [..4]extent_body1
+    one3  extent_body1_count
+    many3 [..4]extent_body1_count
+    one4  extent_body2
+    many4 [..4]extent_body2
+    one5  extent_body2_count
+    many5 [..4]extent_body2_count
+    one6  extent_body3
+    many6 [..4]extent_body3
+    one7  extent_body3_count
+    many7 [..4]extent_body3_count
+    one8  extent_body4
+    many8 [..4]extent_body4
+    one9  extent_body4_count
+    many9 [..4]extent_body4_count
+}
+
+table NameFields2
+{
+    extentBase uint32
+    extent_body uint32
+    extent_body1 uint32
+    extent_body1_count uint32
+    extent_body2 uint32
+    extent_body2_count uint32
+    extent_body3 uint32
+    extent_body3_count uint32
+    extent_body4 uint32
+    extent_body4_count uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    extent_body5 Inner
+    extent_body5_count Inner
+    extent_g1 Inner
+    extent_g1_at Inner
+    extent_g1_target Inner
+    extent_g2 Inner
+    extent_g2_at Inner
+    extent_g2_target Inner
+    extent_i1 Inner
+    extent_i2 Inner
+}
+
+table NameTypes3
+{
+    one0  extent_body5
+    many0 [..4]extent_body5
+    one1  extent_body5_count
+    many1 [..4]extent_body5_count
+    one2  extent_g1
+    many2 [..4]extent_g1
+    one3  extent_g1_at
+    many3 [..4]extent_g1_at
+    one4  extent_g1_target
+    many4 [..4]extent_g1_target
+    one5  extent_g2
+    many5 [..4]extent_g2
+    one6  extent_g2_at
+    many6 [..4]extent_g2_at
+    one7  extent_g2_target
+    many7 [..4]extent_g2_target
+    one8  extent_i1
+    many8 [..4]extent_i1
+    one9  extent_i2
+    many9 [..4]extent_i2
+}
+
+table NameFields3
+{
+    extent_body5 uint32
+    extent_body5_count uint32
+    extent_g1 uint32
+    extent_g1_at uint32
+    extent_g1_target uint32
+    extent_g2 uint32
+    extent_g2_at uint32
+    extent_g2_target uint32
+    extent_i1 uint32
+    extent_i2 uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    extent_i3 Inner
+    extent_i4 Inner
+    extent_o1 Inner
+    extent_o1_at Inner
+    extent_o1_target Inner
+    extent_ok Inner
+    extent_start Inner
+    extra Inner
+    exts Inner
+    f Inner
+}
+
+table NameTypes4
+{
+    one0  extent_i3
+    many0 [..4]extent_i3
+    one1  extent_i4
+    many1 [..4]extent_i4
+    one2  extent_o1
+    many2 [..4]extent_o1
+    one3  extent_o1_at
+    many3 [..4]extent_o1_at
+    one4  extent_o1_target
+    many4 [..4]extent_o1_target
+    one5  extent_ok
+    many5 [..4]extent_ok
+    one6  extent_start
+    many6 [..4]extent_start
+    one7  extra
+    many7 [..4]extra
+    one8  exts
+    many8 [..4]exts
+    one9  f
+    many9 [..4]f
+}
+
+table NameFields4
+{
+    extent_i3 uint32
+    extent_i4 uint32
+    extent_o1 uint32
+    extent_o1_at uint32
+    extent_o1_target uint32
+    extent_ok uint32
+    extent_start uint32
+    extra uint32
+    exts uint32
+    f uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    f0 Inner
+    f1 Inner
+    f10 Inner
+    f11 Inner
+    f12 Inner
+    f13 Inner
+    f2 Inner
+    f3 Inner
+    f32Bits Inner
+    f32OfToken Inner
+}
+
+table NameTypes5
+{
+    one0  f0
+    many0 [..4]f0
+    one1  f1
+    many1 [..4]f1
+    one2  f10
+    many2 [..4]f10
+    one3  f11
+    many3 [..4]f11
+    one4  f12
+    many4 [..4]f12
+    one5  f13
+    many5 [..4]f13
+    one6  f2
+    many6 [..4]f2
+    one7  f3
+    many7 [..4]f3
+    one8  f32Bits
+    many8 [..4]f32Bits
+    one9  f32OfToken
+    many9 [..4]f32OfToken
+}
+
+table NameFields5
+{
+    f0 uint32
+    f1 uint32
+    f10 uint32
+    f11 uint32
+    f12 uint32
+    f13 uint32
+    f2 uint32
+    f3 uint32
+    f32Bits uint32
+    f32OfToken uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    f32Scratch Inner
+    f32ToDouble Inner
+    f32Value Inner
+    f32_of Inner
+    f32_step Inner
+    f32_tie Inner
+    f32frombits Inner
+    f32tmp Inner
+    f4 Inner
+    f5 Inner
+}
+
+table NameTypes6
+{
+    one0  f32Scratch
+    many0 [..4]f32Scratch
+    one1  f32ToDouble
+    many1 [..4]f32ToDouble
+    one2  f32Value
+    many2 [..4]f32Value
+    one3  f32_of
+    many3 [..4]f32_of
+    one4  f32_step
+    many4 [..4]f32_step
+    one5  f32_tie
+    many5 [..4]f32_tie
+    one6  f32frombits
+    many6 [..4]f32frombits
+    one7  f32tmp
+    many7 [..4]f32tmp
+    one8  f4
+    many8 [..4]f4
+    one9  f5
+    many9 [..4]f5
+}
+
+table NameFields6
+{
+    f32Scratch uint32
+    f32ToDouble uint32
+    f32Value uint32
+    f32_of uint32
+    f32_step uint32
+    f32_tie uint32
+    f32frombits uint32
+    f32tmp uint32
+    f4 uint32
+    f5 uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    f6 Inner
+    f64_bits Inner
+    f7 Inner
+    f8 Inner
+    f9 Inner
+    f_at Inner
+    f_e_1 Inner
+    f_e_2 Inner
+    f_e_3 Inner
+    f_e_4 Inner
+}
+
+table NameTypes7
+{
+    one0  f6
+    many0 [..4]f6
+    one1  f64_bits
+    many1 [..4]f64_bits
+    one2  f7
+    many2 [..4]f7
+    one3  f8
+    many3 [..4]f8
+    one4  f9
+    many4 [..4]f9
+    one5  f_at
+    many5 [..4]f_at
+    one6  f_e_1
+    many6 [..4]f_e_1
+    one7  f_e_2
+    many7 [..4]f_e_2
+    one8  f_e_3
+    many8 [..4]f_e_3
+    one9  f_e_4
+    many9 [..4]f_e_4
+}
+
+table NameFields7
+{
+    f6 uint32
+    f64_bits uint32
+    f7 uint32
+    f8 uint32
+    f9 uint32
+    f_at uint32
+    f_e_1 uint32
+    f_e_2 uint32
+    f_e_3 uint32
+    f_e_4 uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

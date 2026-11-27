@@ -37,10 +37,10 @@ use crate::*;
 /// The bytes between a narrower arm and the widest are declared slack and
 /// they stay the template's zeros, which this function reaches by not
 /// touching them (§3.4).
-pub fn mixed_event_fixed_write_body(b: &mut [u8], value: &MixedEventRow) {
-    debug_assert!(value.tag <= 3, "MixedEvent tag outside its arm set");
-    b[0] = value.tag;
-    match value.tag {
+pub fn mixed_event_fixed_write_body(schema_b: &mut [u8], schema_value: &MixedEventRow) {
+    debug_assert!(schema_value.tag <= 3, "MixedEvent tag outside its arm set");
+    schema_b[0] = schema_value.tag;
+    match schema_value.tag {
         1 => {
             // SAFETY: THE TAG NAMES THE LIVE ARM — the twin's whole contract,
             // and the same one the C reference's storage struct carries. The
@@ -49,9 +49,9 @@ pub fn mixed_event_fixed_write_body(b: &mut [u8], value: &MixedEventRow) {
             // every bool, and a zero self-relative delta is the null
             // reference — so a Row whose tag was set without its arm reads a
             // zero payload rather than an invalid one.
-            let arm = unsafe { value.arms.hit };
-            let at = 1;
-            mixed_hit_event_fixed_write_body(&mut b[at..at + 13], &arm);
+            let schema_arm = unsafe { schema_value.arms.hit };
+            let schema_at = 1;
+            mixed_hit_event_fixed_write_body(&mut schema_b[schema_at..schema_at + 13], &schema_arm);
         }
         2 => {
             // SAFETY: THE TAG NAMES THE LIVE ARM — the twin's whole contract,
@@ -61,9 +61,9 @@ pub fn mixed_event_fixed_write_body(b: &mut [u8], value: &MixedEventRow) {
             // every bool, and a zero self-relative delta is the null
             // reference — so a Row whose tag was set without its arm reads a
             // zero payload rather than an invalid one.
-            let arm = unsafe { value.arms.chat };
-            let at = 1;
-            mixed_chat_event_fixed_write_body(&mut b[at..at + 8], &arm);
+            let schema_arm = unsafe { schema_value.arms.chat };
+            let schema_at = 1;
+            mixed_chat_event_fixed_write_body(&mut schema_b[schema_at..schema_at + 8], &schema_arm);
         }
         3 => {
             // SAFETY: THE TAG NAMES THE LIVE ARM — the twin's whole contract,
@@ -73,93 +73,93 @@ pub fn mixed_event_fixed_write_body(b: &mut [u8], value: &MixedEventRow) {
             // every bool, and a zero self-relative delta is the null
             // reference — so a Row whose tag was set without its arm reads a
             // zero payload rather than an invalid one.
-            let arm = unsafe { value.arms.pickup };
-            let at = 1;
-            mixed_pickup_event_fixed_write_body(&mut b[at..at + 8], &arm);
+            let schema_arm = unsafe { schema_value.arms.pickup };
+            let schema_at = 1;
+            mixed_pickup_event_fixed_write_body(&mut schema_b[schema_at..schema_at + 8], &schema_arm);
         }
         _ => {} // None, a payload-free arm, and any tag no arm of this build names: the tag is all of it
     }
 }
 
 /// MixedEvent: one union image landed in the value — the tag, then the live arm.
-pub fn mixed_event_fixed_scatter(b: &[u8], value: &mut MixedEventRow, report: &mut TableFixedReport) {
+pub fn mixed_event_fixed_scatter(schema_b: &[u8], schema_value: &mut MixedEventRow, schema_report: &mut TableFixedReport) {
     // nothing of the caller's previous value survives: the empty union first,
     // and then the tag and the one arm it names
-    *value = MixedEventRow::default();
-    let tag_raw = b[0];
+    *schema_value = MixedEventRow::default();
+    let schema_tag_raw = schema_b[0];
     // A TAG PAST THE ARM COUNT IS OUT OF RANGE, as a count past its bound is:
     // it lands as None and counts one held rather than selecting nothing
     // silently.
-    if tag_raw > 3 {
-        if report.slack == 0 { report.held += 1; }
+    if schema_tag_raw > 3 {
+        if schema_report.slack == 0 { schema_report.held += 1; }
     } else {
-        value.tag = tag_raw;
+        schema_value.tag = schema_tag_raw;
     }
-    match value.tag {
+    match schema_value.tag {
         1 => {
-            let mut arm = MixedHitEventRow::default();
+            let mut schema_arm = MixedHitEventRow::default();
             {
-                let at = 1;
-                mixed_hit_event_fixed_scatter(&b[at..at + 13], &mut arm, report);
+                let schema_at = 1;
+                mixed_hit_event_fixed_scatter(&schema_b[schema_at..schema_at + 13], &mut schema_arm, schema_report);
             }
-            value.arms.hit = arm; // a WRITE of a union field, which is safe
+            schema_value.arms.hit = schema_arm; // a WRITE of a union field, which is safe
         }
         2 => {
-            let mut arm = MixedChatEventRow::default();
+            let mut schema_arm = MixedChatEventRow::default();
             {
-                let at = 1;
-                mixed_chat_event_fixed_scatter(&b[at..at + 8], &mut arm, report);
+                let schema_at = 1;
+                mixed_chat_event_fixed_scatter(&schema_b[schema_at..schema_at + 8], &mut schema_arm, schema_report);
             }
-            value.arms.chat = arm; // a WRITE of a union field, which is safe
+            schema_value.arms.chat = schema_arm; // a WRITE of a union field, which is safe
         }
         3 => {
-            let mut arm = MixedPickupEventRow::default();
+            let mut schema_arm = MixedPickupEventRow::default();
             {
-                let at = 1;
-                mixed_pickup_event_fixed_scatter(&b[at..at + 8], &mut arm, report);
+                let schema_at = 1;
+                mixed_pickup_event_fixed_scatter(&schema_b[schema_at..schema_at + 8], &mut schema_arm, schema_report);
             }
-            value.arms.pickup = arm; // a WRITE of a union field, which is safe
+            schema_value.arms.pickup = schema_arm; // a WRITE of a union field, which is safe
         }
         _ => {} // None and payload-free arms: the overlay stays the zeros the default laid down
     }
 }
 
 /// MixedEvent: true when a DEAD byte of this union image is not zero.
-pub fn mixed_event_fixed_dead(b: &[u8]) -> bool {
-    let _ = b;
-    let tag = b[0] as u64;
-    if tag == 0 {
-        return b[1..14].iter().any(|&x| x != 0);
+pub fn mixed_event_fixed_dead(schema_b: &[u8]) -> bool {
+    let _ = schema_b;
+    let schema_tag = schema_b[0] as u64;
+    if schema_tag == 0 {
+        return schema_b[1..14].iter().any(|&schema_x| schema_x != 0);
     }
-    match tag {
+    match schema_tag {
         1 => {
             {
-                let at = 1;
-                if mixed_hit_event_fixed_dead(&b[at..at + 13]) {
+                let schema_at = 1;
+                if mixed_hit_event_fixed_dead(&schema_b[schema_at..schema_at + 13]) {
                     return true;
                 }
             }
             false
         }
         2 => {
-            if b[9..14].iter().any(|&x| x != 0) {
+            if schema_b[9..14].iter().any(|&schema_x| schema_x != 0) {
                 return true;
             }
             {
-                let at = 1;
-                if mixed_chat_event_fixed_dead(&b[at..at + 8]) {
+                let schema_at = 1;
+                if mixed_chat_event_fixed_dead(&schema_b[schema_at..schema_at + 8]) {
                     return true;
                 }
             }
             false
         }
         3 => {
-            if b[9..14].iter().any(|&x| x != 0) {
+            if schema_b[9..14].iter().any(|&schema_x| schema_x != 0) {
                 return true;
             }
             {
-                let at = 1;
-                if mixed_pickup_event_fixed_dead(&b[at..at + 8]) {
+                let schema_at = 1;
+                if mixed_pickup_event_fixed_dead(&schema_b[schema_at..schema_at + 8]) {
                     return true;
                 }
             }
@@ -172,26 +172,26 @@ pub fn mixed_event_fixed_dead(b: &[u8]) -> bool {
 /// MixedEvent's read-side bounds: the arm THE TAG NAMES, and no other — the
 /// overlay behind a narrower arm is bytes nobody wrote.
 #[allow(clippy::manual_range_contains)] // the clamp count is a bitwise OR on purpose (no branch)
-pub fn mixed_event_fixed_clamp_body(value: &mut MixedEventRow, oor: &mut i32, damaged: &mut i32) {
-    let _ = (&oor, &damaged);
-    match value.tag {
+pub fn mixed_event_fixed_clamp_body(schema_value: &mut MixedEventRow, schema_oor: &mut i32, schema_damaged: &mut i32) {
+    let _ = (&schema_oor, &schema_damaged);
+    match schema_value.tag {
         1 => {
             // SAFETY: the tag was just matched against `hit`.
-            let mut arm = unsafe { value.arms.hit };
-            mixed_hit_event_fixed_clamp_body(&mut arm, oor, damaged);
-            value.arms.hit = arm; // a WRITE of a union field, which is safe
+            let mut schema_arm = unsafe { schema_value.arms.hit };
+            mixed_hit_event_fixed_clamp_body(&mut schema_arm, schema_oor, schema_damaged);
+            schema_value.arms.hit = schema_arm; // a WRITE of a union field, which is safe
         }
         2 => {
             // SAFETY: the tag was just matched against `chat`.
-            let mut arm = unsafe { value.arms.chat };
-            mixed_chat_event_fixed_clamp_body(&mut arm, oor, damaged);
-            value.arms.chat = arm; // a WRITE of a union field, which is safe
+            let mut schema_arm = unsafe { schema_value.arms.chat };
+            mixed_chat_event_fixed_clamp_body(&mut schema_arm, schema_oor, schema_damaged);
+            schema_value.arms.chat = schema_arm; // a WRITE of a union field, which is safe
         }
         3 => {
             // SAFETY: the tag was just matched against `pickup`.
-            let mut arm = unsafe { value.arms.pickup };
-            mixed_pickup_event_fixed_clamp_body(&mut arm, oor, damaged);
-            value.arms.pickup = arm; // a WRITE of a union field, which is safe
+            let mut schema_arm = unsafe { schema_value.arms.pickup };
+            mixed_pickup_event_fixed_clamp_body(&mut schema_arm, schema_oor, schema_damaged);
+            schema_value.arms.pickup = schema_arm; // a WRITE of a union field, which is safe
         }
         _ => {} // None, and any arm with no bound of its own
     }
@@ -200,47 +200,47 @@ pub fn mixed_event_fixed_clamp_body(value: &mut MixedEventRow, oor: &mut i32, da
 /// MixedEntity's stores, at constant offsets into a body the caller zeroed.
 /// The zeros are the template, and they are also what fills every byte of
 /// declared slack without this function touching it (§3.4).
-pub fn mixed_entity_fixed_write_body(b: &mut [u8], value: &MixedEntityRow) {
-    debug_assert!(value.entity_id <= 4095, "entity_id exceeds bits(12) width");
-    let at = 0;
-    b[at..at + 4].copy_from_slice(&value.entity_id.to_le_bytes());
-    debug_assert!(value.pos_x >= -16383 && value.pos_x <= 16383, "pos_x out of range [-16383, 16383]");
-    let at = 4;
-    b[at..at + 4].copy_from_slice(&(value.pos_x as u32).to_le_bytes());
-    debug_assert!(value.pos_y >= -16383 && value.pos_y <= 16383, "pos_y out of range [-16383, 16383]");
-    let at = 8;
-    b[at..at + 4].copy_from_slice(&(value.pos_y as u32).to_le_bytes());
-    debug_assert!(value.pos_z >= -16383 && value.pos_z <= 16383, "pos_z out of range [-16383, 16383]");
-    let at = 12;
-    b[at..at + 4].copy_from_slice(&(value.pos_z as u32).to_le_bytes());
-    debug_assert!(value.yaw <= 511, "yaw exceeds bits(9) width");
-    let at = 16;
-    b[at..at + 4].copy_from_slice(&value.yaw.to_le_bytes());
-    debug_assert!(value.pitch <= 511, "pitch exceeds bits(9) width");
-    let at = 20;
-    b[at..at + 4].copy_from_slice(&value.pitch.to_le_bytes());
-    debug_assert!(value.vel_x >= -2048 && value.vel_x <= 2047, "vel_x out of range [-2048, 2047]");
-    let at = 24;
-    b[at..at + 4].copy_from_slice(&(value.vel_x as u32).to_le_bytes());
-    debug_assert!(value.vel_y >= -2048 && value.vel_y <= 2047, "vel_y out of range [-2048, 2047]");
-    let at = 28;
-    b[at..at + 4].copy_from_slice(&(value.vel_y as u32).to_le_bytes());
-    debug_assert!(value.vel_z >= -2048 && value.vel_z <= 2047, "vel_z out of range [-2048, 2047]");
-    let at = 32;
-    b[at..at + 4].copy_from_slice(&(value.vel_z as u32).to_le_bytes());
-    debug_assert!(value.health >= 0 && value.health <= 1000, "health out of range [0, 1000]");
-    let at = 36;
-    b[at..at + 4].copy_from_slice(&(value.health as u32).to_le_bytes());
-    debug_assert!(value.weapon <= 15, "weapon ordinal exceeds the enum's extent");
-    let at = 40;
-    b[at..at + 1].copy_from_slice(&value.weapon.to_le_bytes());
-    debug_assert!(value.damage >> 8 == 0, "damage has a flags bit at or above its width 8");
-    let at = 41;
-    b[at..at + 8].copy_from_slice(&value.damage.to_le_bytes());
-    let at = 49;
-    b[at] = u8::from(value.moving);
-    let at = 50;
-    b[at] = u8::from(value.firing);
+pub fn mixed_entity_fixed_write_body(schema_b: &mut [u8], schema_value: &MixedEntityRow) {
+    debug_assert!(schema_value.entity_id <= 4095, "entity_id exceeds bits(12) width");
+    let schema_at = 0;
+    schema_b[schema_at..schema_at + 4].copy_from_slice(&schema_value.entity_id.to_le_bytes());
+    debug_assert!(schema_value.pos_x >= -16383 && schema_value.pos_x <= 16383, "pos_x out of range [-16383, 16383]");
+    let schema_at = 4;
+    schema_b[schema_at..schema_at + 4].copy_from_slice(&(schema_value.pos_x as u32).to_le_bytes());
+    debug_assert!(schema_value.pos_y >= -16383 && schema_value.pos_y <= 16383, "pos_y out of range [-16383, 16383]");
+    let schema_at = 8;
+    schema_b[schema_at..schema_at + 4].copy_from_slice(&(schema_value.pos_y as u32).to_le_bytes());
+    debug_assert!(schema_value.pos_z >= -16383 && schema_value.pos_z <= 16383, "pos_z out of range [-16383, 16383]");
+    let schema_at = 12;
+    schema_b[schema_at..schema_at + 4].copy_from_slice(&(schema_value.pos_z as u32).to_le_bytes());
+    debug_assert!(schema_value.yaw <= 511, "yaw exceeds bits(9) width");
+    let schema_at = 16;
+    schema_b[schema_at..schema_at + 4].copy_from_slice(&schema_value.yaw.to_le_bytes());
+    debug_assert!(schema_value.pitch <= 511, "pitch exceeds bits(9) width");
+    let schema_at = 20;
+    schema_b[schema_at..schema_at + 4].copy_from_slice(&schema_value.pitch.to_le_bytes());
+    debug_assert!(schema_value.vel_x >= -2048 && schema_value.vel_x <= 2047, "vel_x out of range [-2048, 2047]");
+    let schema_at = 24;
+    schema_b[schema_at..schema_at + 4].copy_from_slice(&(schema_value.vel_x as u32).to_le_bytes());
+    debug_assert!(schema_value.vel_y >= -2048 && schema_value.vel_y <= 2047, "vel_y out of range [-2048, 2047]");
+    let schema_at = 28;
+    schema_b[schema_at..schema_at + 4].copy_from_slice(&(schema_value.vel_y as u32).to_le_bytes());
+    debug_assert!(schema_value.vel_z >= -2048 && schema_value.vel_z <= 2047, "vel_z out of range [-2048, 2047]");
+    let schema_at = 32;
+    schema_b[schema_at..schema_at + 4].copy_from_slice(&(schema_value.vel_z as u32).to_le_bytes());
+    debug_assert!(schema_value.health >= 0 && schema_value.health <= 1000, "health out of range [0, 1000]");
+    let schema_at = 36;
+    schema_b[schema_at..schema_at + 4].copy_from_slice(&(schema_value.health as u32).to_le_bytes());
+    debug_assert!(schema_value.weapon <= 15, "weapon ordinal exceeds the enum's extent");
+    let schema_at = 40;
+    schema_b[schema_at..schema_at + 1].copy_from_slice(&schema_value.weapon.to_le_bytes());
+    debug_assert!(schema_value.damage >> 8 == 0, "damage has a flags bit at or above its width 8");
+    let schema_at = 41;
+    schema_b[schema_at..schema_at + 8].copy_from_slice(&schema_value.damage.to_le_bytes());
+    let schema_at = 49;
+    schema_b[schema_at] = u8::from(schema_value.moving);
+    let schema_at = 50;
+    schema_b[schema_at] = u8::from(schema_value.firing);
 }
 
 /// MixedEntity: one record image landed in the value, field by field.
@@ -248,135 +248,135 @@ pub fn mixed_entity_fixed_write_body(b: &mut [u8], value: &MixedEntityRow) {
 /// Every field is written, so nothing of the caller's previous value survives:
 /// a field the record did not carry took its declared default in the PREFILL,
 /// which is §3.4's whole answer to an absent field.
-pub fn mixed_entity_fixed_scatter(b: &[u8], value: &mut MixedEntityRow, report: &mut TableFixedReport) {
-    let _ = &report;
+pub fn mixed_entity_fixed_scatter(schema_b: &[u8], schema_value: &mut MixedEntityRow, schema_report: &mut TableFixedReport) {
+    let _ = &schema_report;
     {
-        let at = 0;
-        let raw = u32::from_le_bytes(b[at..at + 4].try_into().expect("the declared width"));
-        value.entity_id = raw;
+        let schema_at = 0;
+        let schema_raw = u32::from_le_bytes(schema_b[schema_at..schema_at + 4].try_into().expect("the declared width"));
+        schema_value.entity_id = schema_raw;
     }
     {
-        let at = 4;
-        let raw = u32::from_le_bytes(b[at..at + 4].try_into().expect("the declared width"));
-        value.pos_x = raw as i32;
+        let schema_at = 4;
+        let schema_raw = u32::from_le_bytes(schema_b[schema_at..schema_at + 4].try_into().expect("the declared width"));
+        schema_value.pos_x = schema_raw as i32;
     }
     {
-        let at = 8;
-        let raw = u32::from_le_bytes(b[at..at + 4].try_into().expect("the declared width"));
-        value.pos_y = raw as i32;
+        let schema_at = 8;
+        let schema_raw = u32::from_le_bytes(schema_b[schema_at..schema_at + 4].try_into().expect("the declared width"));
+        schema_value.pos_y = schema_raw as i32;
     }
     {
-        let at = 12;
-        let raw = u32::from_le_bytes(b[at..at + 4].try_into().expect("the declared width"));
-        value.pos_z = raw as i32;
+        let schema_at = 12;
+        let schema_raw = u32::from_le_bytes(schema_b[schema_at..schema_at + 4].try_into().expect("the declared width"));
+        schema_value.pos_z = schema_raw as i32;
     }
     {
-        let at = 16;
-        let raw = u32::from_le_bytes(b[at..at + 4].try_into().expect("the declared width"));
-        value.yaw = raw;
+        let schema_at = 16;
+        let schema_raw = u32::from_le_bytes(schema_b[schema_at..schema_at + 4].try_into().expect("the declared width"));
+        schema_value.yaw = schema_raw;
     }
     {
-        let at = 20;
-        let raw = u32::from_le_bytes(b[at..at + 4].try_into().expect("the declared width"));
-        value.pitch = raw;
+        let schema_at = 20;
+        let schema_raw = u32::from_le_bytes(schema_b[schema_at..schema_at + 4].try_into().expect("the declared width"));
+        schema_value.pitch = schema_raw;
     }
     {
-        let at = 24;
-        let raw = u32::from_le_bytes(b[at..at + 4].try_into().expect("the declared width"));
-        value.vel_x = raw as i32;
+        let schema_at = 24;
+        let schema_raw = u32::from_le_bytes(schema_b[schema_at..schema_at + 4].try_into().expect("the declared width"));
+        schema_value.vel_x = schema_raw as i32;
     }
     {
-        let at = 28;
-        let raw = u32::from_le_bytes(b[at..at + 4].try_into().expect("the declared width"));
-        value.vel_y = raw as i32;
+        let schema_at = 28;
+        let schema_raw = u32::from_le_bytes(schema_b[schema_at..schema_at + 4].try_into().expect("the declared width"));
+        schema_value.vel_y = schema_raw as i32;
     }
     {
-        let at = 32;
-        let raw = u32::from_le_bytes(b[at..at + 4].try_into().expect("the declared width"));
-        value.vel_z = raw as i32;
+        let schema_at = 32;
+        let schema_raw = u32::from_le_bytes(schema_b[schema_at..schema_at + 4].try_into().expect("the declared width"));
+        schema_value.vel_z = schema_raw as i32;
     }
     {
-        let at = 36;
-        let raw = u32::from_le_bytes(b[at..at + 4].try_into().expect("the declared width"));
-        value.health = raw as i32;
+        let schema_at = 36;
+        let schema_raw = u32::from_le_bytes(schema_b[schema_at..schema_at + 4].try_into().expect("the declared width"));
+        schema_value.health = schema_raw as i32;
     }
     {
-        let at = 40;
-        let raw = u8::from_le_bytes(b[at..at + 1].try_into().expect("the declared width"));
-        if raw > 15 {
-            if report.slack == 0 { report.held += 1; }
-            value.weapon = 0;
+        let schema_at = 40;
+        let schema_raw = u8::from_le_bytes(schema_b[schema_at..schema_at + 1].try_into().expect("the declared width"));
+        if schema_raw > 15 {
+            if schema_report.slack == 0 { schema_report.held += 1; }
+            schema_value.weapon = 0;
         } else {
-            value.weapon = raw;
+            schema_value.weapon = schema_raw;
         }
     }
     {
-        let at = 41;
-        let raw = u64::from_le_bytes(b[at..at + 8].try_into().expect("the declared width"));
-        if raw >> 8 != 0 && report.slack == 0 {
-            report.held += 1;
+        let schema_at = 41;
+        let schema_raw = u64::from_le_bytes(schema_b[schema_at..schema_at + 8].try_into().expect("the declared width"));
+        if schema_raw >> 8 != 0 && schema_report.slack == 0 {
+            schema_report.held += 1;
         }
-        value.damage = raw;
+        schema_value.damage = schema_raw;
     }
     {
-        let at = 49;
-        if b[at] > 1 && report.slack == 0 {
-            report.damaged = true;
+        let schema_at = 49;
+        if schema_b[schema_at] > 1 && schema_report.slack == 0 {
+            schema_report.damaged = true;
         }
-        value.moving = b[at] == 1;
+        schema_value.moving = schema_b[schema_at] == 1;
     }
     {
-        let at = 50;
-        if b[at] > 1 && report.slack == 0 {
-            report.damaged = true;
+        let schema_at = 50;
+        if schema_b[schema_at] > 1 && schema_report.slack == 0 {
+            schema_report.damaged = true;
         }
-        value.firing = b[at] == 1;
+        schema_value.firing = schema_b[schema_at] == 1;
     }
 }
 
 /// MixedEntity: true when a DEAD byte of this record image is not zero.
-pub fn mixed_entity_fixed_dead(b: &[u8]) -> bool {
-    let _ = b;
+pub fn mixed_entity_fixed_dead(schema_b: &[u8]) -> bool {
+    let _ = schema_b;
     false
 }
 
 /// MixedEntity's read-side bounds: every RANGED SCALAR held to its declared min
 /// and max, over the storage a read can have written.
 #[allow(clippy::manual_range_contains)] // the clamp count is a bitwise OR on purpose (no branch)
-pub fn mixed_entity_fixed_clamp_body(value: &mut MixedEntityRow, oor: &mut i32, damaged: &mut i32) {
-    let _ = (&oor, &damaged);
-    *oor += (value.entity_id > 4095) as i32; // bits(12)'s own width
-    value.entity_id = value.entity_id.min(4095);
-    *oor += ((value.pos_x < -16383_i32) | (value.pos_x > 16383_i32)) as i32;
-    value.pos_x = value.pos_x.clamp(-16383_i32, 16383_i32);
-    *oor += ((value.pos_y < -16383_i32) | (value.pos_y > 16383_i32)) as i32;
-    value.pos_y = value.pos_y.clamp(-16383_i32, 16383_i32);
-    *oor += ((value.pos_z < -16383_i32) | (value.pos_z > 16383_i32)) as i32;
-    value.pos_z = value.pos_z.clamp(-16383_i32, 16383_i32);
-    *oor += (value.yaw > 511) as i32; // bits(9)'s own width
-    value.yaw = value.yaw.min(511);
-    *oor += (value.pitch > 511) as i32; // bits(9)'s own width
-    value.pitch = value.pitch.min(511);
-    *oor += ((value.vel_x < -2048_i32) | (value.vel_x > 2047_i32)) as i32;
-    value.vel_x = value.vel_x.clamp(-2048_i32, 2047_i32);
-    *oor += ((value.vel_y < -2048_i32) | (value.vel_y > 2047_i32)) as i32;
-    value.vel_y = value.vel_y.clamp(-2048_i32, 2047_i32);
-    *oor += ((value.vel_z < -2048_i32) | (value.vel_z > 2047_i32)) as i32;
-    value.vel_z = value.vel_z.clamp(-2048_i32, 2047_i32);
-    *oor += ((value.health < 0_i32) | (value.health > 1000_i32)) as i32;
-    value.health = value.health.clamp(0_i32, 1000_i32);
+pub fn mixed_entity_fixed_clamp_body(schema_value: &mut MixedEntityRow, schema_oor: &mut i32, schema_damaged: &mut i32) {
+    let _ = (&schema_oor, &schema_damaged);
+    *schema_oor += (schema_value.entity_id > 4095) as i32; // bits(12)'s own width
+    schema_value.entity_id = schema_value.entity_id.min(4095);
+    *schema_oor += ((schema_value.pos_x < -16383_i32) | (schema_value.pos_x > 16383_i32)) as i32;
+    schema_value.pos_x = schema_value.pos_x.clamp(-16383_i32, 16383_i32);
+    *schema_oor += ((schema_value.pos_y < -16383_i32) | (schema_value.pos_y > 16383_i32)) as i32;
+    schema_value.pos_y = schema_value.pos_y.clamp(-16383_i32, 16383_i32);
+    *schema_oor += ((schema_value.pos_z < -16383_i32) | (schema_value.pos_z > 16383_i32)) as i32;
+    schema_value.pos_z = schema_value.pos_z.clamp(-16383_i32, 16383_i32);
+    *schema_oor += (schema_value.yaw > 511) as i32; // bits(9)'s own width
+    schema_value.yaw = schema_value.yaw.min(511);
+    *schema_oor += (schema_value.pitch > 511) as i32; // bits(9)'s own width
+    schema_value.pitch = schema_value.pitch.min(511);
+    *schema_oor += ((schema_value.vel_x < -2048_i32) | (schema_value.vel_x > 2047_i32)) as i32;
+    schema_value.vel_x = schema_value.vel_x.clamp(-2048_i32, 2047_i32);
+    *schema_oor += ((schema_value.vel_y < -2048_i32) | (schema_value.vel_y > 2047_i32)) as i32;
+    schema_value.vel_y = schema_value.vel_y.clamp(-2048_i32, 2047_i32);
+    *schema_oor += ((schema_value.vel_z < -2048_i32) | (schema_value.vel_z > 2047_i32)) as i32;
+    schema_value.vel_z = schema_value.vel_z.clamp(-2048_i32, 2047_i32);
+    *schema_oor += ((schema_value.health < 0_i32) | (schema_value.health > 1000_i32)) as i32;
+    schema_value.health = schema_value.health.clamp(0_i32, 1000_i32);
 }
 
 /// MixedStat's stores, at constant offsets into a body the caller zeroed.
 /// The zeros are the template, and they are also what fills every byte of
 /// declared slack without this function touching it (§3.4).
-pub fn mixed_stat_fixed_write_body(b: &mut [u8], value: &MixedStatRow) {
-    debug_assert!(value.stat_id <= 255, "stat_id exceeds bits(8) width");
-    let at = 0;
-    b[at..at + 4].copy_from_slice(&value.stat_id.to_le_bytes());
-    debug_assert!(value.delta >= -512 && value.delta <= 511, "delta out of range [-512, 511]");
-    let at = 4;
-    b[at..at + 4].copy_from_slice(&(value.delta as u32).to_le_bytes());
+pub fn mixed_stat_fixed_write_body(schema_b: &mut [u8], schema_value: &MixedStatRow) {
+    debug_assert!(schema_value.stat_id <= 255, "stat_id exceeds bits(8) width");
+    let schema_at = 0;
+    schema_b[schema_at..schema_at + 4].copy_from_slice(&schema_value.stat_id.to_le_bytes());
+    debug_assert!(schema_value.delta >= -512 && schema_value.delta <= 511, "delta out of range [-512, 511]");
+    let schema_at = 4;
+    schema_b[schema_at..schema_at + 4].copy_from_slice(&(schema_value.delta as u32).to_le_bytes());
 }
 
 /// MixedStat: one record image landed in the value, field by field.
@@ -384,52 +384,52 @@ pub fn mixed_stat_fixed_write_body(b: &mut [u8], value: &MixedStatRow) {
 /// Every field is written, so nothing of the caller's previous value survives:
 /// a field the record did not carry took its declared default in the PREFILL,
 /// which is §3.4's whole answer to an absent field.
-pub fn mixed_stat_fixed_scatter(b: &[u8], value: &mut MixedStatRow, report: &mut TableFixedReport) {
-    let _ = &report;
+pub fn mixed_stat_fixed_scatter(schema_b: &[u8], schema_value: &mut MixedStatRow, schema_report: &mut TableFixedReport) {
+    let _ = &schema_report;
     {
-        let at = 0;
-        let raw = u32::from_le_bytes(b[at..at + 4].try_into().expect("the declared width"));
-        value.stat_id = raw;
+        let schema_at = 0;
+        let schema_raw = u32::from_le_bytes(schema_b[schema_at..schema_at + 4].try_into().expect("the declared width"));
+        schema_value.stat_id = schema_raw;
     }
     {
-        let at = 4;
-        let raw = u32::from_le_bytes(b[at..at + 4].try_into().expect("the declared width"));
-        value.delta = raw as i32;
+        let schema_at = 4;
+        let schema_raw = u32::from_le_bytes(schema_b[schema_at..schema_at + 4].try_into().expect("the declared width"));
+        schema_value.delta = schema_raw as i32;
     }
 }
 
 /// MixedStat: true when a DEAD byte of this record image is not zero.
-pub fn mixed_stat_fixed_dead(b: &[u8]) -> bool {
-    let _ = b;
+pub fn mixed_stat_fixed_dead(schema_b: &[u8]) -> bool {
+    let _ = schema_b;
     false
 }
 
 /// MixedStat's read-side bounds: every RANGED SCALAR held to its declared min
 /// and max, over the storage a read can have written.
 #[allow(clippy::manual_range_contains)] // the clamp count is a bitwise OR on purpose (no branch)
-pub fn mixed_stat_fixed_clamp_body(value: &mut MixedStatRow, oor: &mut i32, damaged: &mut i32) {
-    let _ = (&oor, &damaged);
-    *oor += (value.stat_id > 255) as i32; // bits(8)'s own width
-    value.stat_id = value.stat_id.min(255);
-    *oor += ((value.delta < -512_i32) | (value.delta > 511_i32)) as i32;
-    value.delta = value.delta.clamp(-512_i32, 511_i32);
+pub fn mixed_stat_fixed_clamp_body(schema_value: &mut MixedStatRow, schema_oor: &mut i32, schema_damaged: &mut i32) {
+    let _ = (&schema_oor, &schema_damaged);
+    *schema_oor += (schema_value.stat_id > 255) as i32; // bits(8)'s own width
+    schema_value.stat_id = schema_value.stat_id.min(255);
+    *schema_oor += ((schema_value.delta < -512_i32) | (schema_value.delta > 511_i32)) as i32;
+    schema_value.delta = schema_value.delta.clamp(-512_i32, 511_i32);
 }
 
 /// MixedHitEvent's stores, at constant offsets into a body the caller zeroed.
 /// The zeros are the template, and they are also what fills every byte of
 /// declared slack without this function touching it (§3.4).
-pub fn mixed_hit_event_fixed_write_body(b: &mut [u8], value: &MixedHitEventRow) {
-    debug_assert!(value.target_id <= 4095, "target_id exceeds bits(12) width");
-    let at = 0;
-    b[at..at + 4].copy_from_slice(&value.target_id.to_le_bytes());
-    debug_assert!(value.damage >= 0 && value.damage <= 4095, "damage out of range [0, 4095]");
-    let at = 4;
-    b[at..at + 4].copy_from_slice(&(value.damage as u32).to_le_bytes());
-    debug_assert!(value.hit_kind >= 0 && value.hit_kind <= 7, "hit_kind out of range [0, 7]");
-    let at = 8;
-    b[at..at + 4].copy_from_slice(&(value.hit_kind as u32).to_le_bytes());
-    let at = 12;
-    b[at] = u8::from(value.crit);
+pub fn mixed_hit_event_fixed_write_body(schema_b: &mut [u8], schema_value: &MixedHitEventRow) {
+    debug_assert!(schema_value.target_id <= 4095, "target_id exceeds bits(12) width");
+    let schema_at = 0;
+    schema_b[schema_at..schema_at + 4].copy_from_slice(&schema_value.target_id.to_le_bytes());
+    debug_assert!(schema_value.damage >= 0 && schema_value.damage <= 4095, "damage out of range [0, 4095]");
+    let schema_at = 4;
+    schema_b[schema_at..schema_at + 4].copy_from_slice(&(schema_value.damage as u32).to_le_bytes());
+    debug_assert!(schema_value.hit_kind >= 0 && schema_value.hit_kind <= 7, "hit_kind out of range [0, 7]");
+    let schema_at = 8;
+    schema_b[schema_at..schema_at + 4].copy_from_slice(&(schema_value.hit_kind as u32).to_le_bytes());
+    let schema_at = 12;
+    schema_b[schema_at] = u8::from(schema_value.crit);
 }
 
 /// MixedHitEvent: one record image landed in the value, field by field.
@@ -437,61 +437,61 @@ pub fn mixed_hit_event_fixed_write_body(b: &mut [u8], value: &MixedHitEventRow) 
 /// Every field is written, so nothing of the caller's previous value survives:
 /// a field the record did not carry took its declared default in the PREFILL,
 /// which is §3.4's whole answer to an absent field.
-pub fn mixed_hit_event_fixed_scatter(b: &[u8], value: &mut MixedHitEventRow, report: &mut TableFixedReport) {
-    let _ = &report;
+pub fn mixed_hit_event_fixed_scatter(schema_b: &[u8], schema_value: &mut MixedHitEventRow, schema_report: &mut TableFixedReport) {
+    let _ = &schema_report;
     {
-        let at = 0;
-        let raw = u32::from_le_bytes(b[at..at + 4].try_into().expect("the declared width"));
-        value.target_id = raw;
+        let schema_at = 0;
+        let schema_raw = u32::from_le_bytes(schema_b[schema_at..schema_at + 4].try_into().expect("the declared width"));
+        schema_value.target_id = schema_raw;
     }
     {
-        let at = 4;
-        let raw = u32::from_le_bytes(b[at..at + 4].try_into().expect("the declared width"));
-        value.damage = raw as i32;
+        let schema_at = 4;
+        let schema_raw = u32::from_le_bytes(schema_b[schema_at..schema_at + 4].try_into().expect("the declared width"));
+        schema_value.damage = schema_raw as i32;
     }
     {
-        let at = 8;
-        let raw = u32::from_le_bytes(b[at..at + 4].try_into().expect("the declared width"));
-        value.hit_kind = raw as i32;
+        let schema_at = 8;
+        let schema_raw = u32::from_le_bytes(schema_b[schema_at..schema_at + 4].try_into().expect("the declared width"));
+        schema_value.hit_kind = schema_raw as i32;
     }
     {
-        let at = 12;
-        if b[at] > 1 && report.slack == 0 {
-            report.damaged = true;
+        let schema_at = 12;
+        if schema_b[schema_at] > 1 && schema_report.slack == 0 {
+            schema_report.damaged = true;
         }
-        value.crit = b[at] == 1;
+        schema_value.crit = schema_b[schema_at] == 1;
     }
 }
 
 /// MixedHitEvent: true when a DEAD byte of this record image is not zero.
-pub fn mixed_hit_event_fixed_dead(b: &[u8]) -> bool {
-    let _ = b;
+pub fn mixed_hit_event_fixed_dead(schema_b: &[u8]) -> bool {
+    let _ = schema_b;
     false
 }
 
 /// MixedHitEvent's read-side bounds: every RANGED SCALAR held to its declared min
 /// and max, over the storage a read can have written.
 #[allow(clippy::manual_range_contains)] // the clamp count is a bitwise OR on purpose (no branch)
-pub fn mixed_hit_event_fixed_clamp_body(value: &mut MixedHitEventRow, oor: &mut i32, damaged: &mut i32) {
-    let _ = (&oor, &damaged);
-    *oor += (value.target_id > 4095) as i32; // bits(12)'s own width
-    value.target_id = value.target_id.min(4095);
-    *oor += ((value.damage < 0_i32) | (value.damage > 4095_i32)) as i32;
-    value.damage = value.damage.clamp(0_i32, 4095_i32);
-    *oor += ((value.hit_kind < 0_i32) | (value.hit_kind > 7_i32)) as i32;
-    value.hit_kind = value.hit_kind.clamp(0_i32, 7_i32);
+pub fn mixed_hit_event_fixed_clamp_body(schema_value: &mut MixedHitEventRow, schema_oor: &mut i32, schema_damaged: &mut i32) {
+    let _ = (&schema_oor, &schema_damaged);
+    *schema_oor += (schema_value.target_id > 4095) as i32; // bits(12)'s own width
+    schema_value.target_id = schema_value.target_id.min(4095);
+    *schema_oor += ((schema_value.damage < 0_i32) | (schema_value.damage > 4095_i32)) as i32;
+    schema_value.damage = schema_value.damage.clamp(0_i32, 4095_i32);
+    *schema_oor += ((schema_value.hit_kind < 0_i32) | (schema_value.hit_kind > 7_i32)) as i32;
+    schema_value.hit_kind = schema_value.hit_kind.clamp(0_i32, 7_i32);
 }
 
 /// MixedChatEvent's stores, at constant offsets into a body the caller zeroed.
 /// The zeros are the template, and they are also what fills every byte of
 /// declared slack without this function touching it (§3.4).
-pub fn mixed_chat_event_fixed_write_body(b: &mut [u8], value: &MixedChatEventRow) {
-    debug_assert!(value.channel >= 0 && value.channel <= 3, "channel out of range [0, 3]");
-    let at = 0;
-    b[at..at + 4].copy_from_slice(&(value.channel as u32).to_le_bytes());
-    debug_assert!(value.speaker <= 4095, "speaker exceeds bits(12) width");
-    let at = 4;
-    b[at..at + 4].copy_from_slice(&value.speaker.to_le_bytes());
+pub fn mixed_chat_event_fixed_write_body(schema_b: &mut [u8], schema_value: &MixedChatEventRow) {
+    debug_assert!(schema_value.channel >= 0 && schema_value.channel <= 3, "channel out of range [0, 3]");
+    let schema_at = 0;
+    schema_b[schema_at..schema_at + 4].copy_from_slice(&(schema_value.channel as u32).to_le_bytes());
+    debug_assert!(schema_value.speaker <= 4095, "speaker exceeds bits(12) width");
+    let schema_at = 4;
+    schema_b[schema_at..schema_at + 4].copy_from_slice(&schema_value.speaker.to_le_bytes());
 }
 
 /// MixedChatEvent: one record image landed in the value, field by field.
@@ -499,47 +499,47 @@ pub fn mixed_chat_event_fixed_write_body(b: &mut [u8], value: &MixedChatEventRow
 /// Every field is written, so nothing of the caller's previous value survives:
 /// a field the record did not carry took its declared default in the PREFILL,
 /// which is §3.4's whole answer to an absent field.
-pub fn mixed_chat_event_fixed_scatter(b: &[u8], value: &mut MixedChatEventRow, report: &mut TableFixedReport) {
-    let _ = &report;
+pub fn mixed_chat_event_fixed_scatter(schema_b: &[u8], schema_value: &mut MixedChatEventRow, schema_report: &mut TableFixedReport) {
+    let _ = &schema_report;
     {
-        let at = 0;
-        let raw = u32::from_le_bytes(b[at..at + 4].try_into().expect("the declared width"));
-        value.channel = raw as i32;
+        let schema_at = 0;
+        let schema_raw = u32::from_le_bytes(schema_b[schema_at..schema_at + 4].try_into().expect("the declared width"));
+        schema_value.channel = schema_raw as i32;
     }
     {
-        let at = 4;
-        let raw = u32::from_le_bytes(b[at..at + 4].try_into().expect("the declared width"));
-        value.speaker = raw;
+        let schema_at = 4;
+        let schema_raw = u32::from_le_bytes(schema_b[schema_at..schema_at + 4].try_into().expect("the declared width"));
+        schema_value.speaker = schema_raw;
     }
 }
 
 /// MixedChatEvent: true when a DEAD byte of this record image is not zero.
-pub fn mixed_chat_event_fixed_dead(b: &[u8]) -> bool {
-    let _ = b;
+pub fn mixed_chat_event_fixed_dead(schema_b: &[u8]) -> bool {
+    let _ = schema_b;
     false
 }
 
 /// MixedChatEvent's read-side bounds: every RANGED SCALAR held to its declared min
 /// and max, over the storage a read can have written.
 #[allow(clippy::manual_range_contains)] // the clamp count is a bitwise OR on purpose (no branch)
-pub fn mixed_chat_event_fixed_clamp_body(value: &mut MixedChatEventRow, oor: &mut i32, damaged: &mut i32) {
-    let _ = (&oor, &damaged);
-    *oor += ((value.channel < 0_i32) | (value.channel > 3_i32)) as i32;
-    value.channel = value.channel.clamp(0_i32, 3_i32);
-    *oor += (value.speaker > 4095) as i32; // bits(12)'s own width
-    value.speaker = value.speaker.min(4095);
+pub fn mixed_chat_event_fixed_clamp_body(schema_value: &mut MixedChatEventRow, schema_oor: &mut i32, schema_damaged: &mut i32) {
+    let _ = (&schema_oor, &schema_damaged);
+    *schema_oor += ((schema_value.channel < 0_i32) | (schema_value.channel > 3_i32)) as i32;
+    schema_value.channel = schema_value.channel.clamp(0_i32, 3_i32);
+    *schema_oor += (schema_value.speaker > 4095) as i32; // bits(12)'s own width
+    schema_value.speaker = schema_value.speaker.min(4095);
 }
 
 /// MixedPickupEvent's stores, at constant offsets into a body the caller zeroed.
 /// The zeros are the template, and they are also what fills every byte of
 /// declared slack without this function touching it (§3.4).
-pub fn mixed_pickup_event_fixed_write_body(b: &mut [u8], value: &MixedPickupEventRow) {
-    debug_assert!(value.item_id <= 1023, "item_id exceeds bits(10) width");
-    let at = 0;
-    b[at..at + 4].copy_from_slice(&value.item_id.to_le_bytes());
-    debug_assert!(value.amount >= 0 && value.amount <= 255, "amount out of range [0, 255]");
-    let at = 4;
-    b[at..at + 4].copy_from_slice(&(value.amount as u32).to_le_bytes());
+pub fn mixed_pickup_event_fixed_write_body(schema_b: &mut [u8], schema_value: &MixedPickupEventRow) {
+    debug_assert!(schema_value.item_id <= 1023, "item_id exceeds bits(10) width");
+    let schema_at = 0;
+    schema_b[schema_at..schema_at + 4].copy_from_slice(&schema_value.item_id.to_le_bytes());
+    debug_assert!(schema_value.amount >= 0 && schema_value.amount <= 255, "amount out of range [0, 255]");
+    let schema_at = 4;
+    schema_b[schema_at..schema_at + 4].copy_from_slice(&(schema_value.amount as u32).to_le_bytes());
 }
 
 /// MixedPickupEvent: one record image landed in the value, field by field.
@@ -547,139 +547,139 @@ pub fn mixed_pickup_event_fixed_write_body(b: &mut [u8], value: &MixedPickupEven
 /// Every field is written, so nothing of the caller's previous value survives:
 /// a field the record did not carry took its declared default in the PREFILL,
 /// which is §3.4's whole answer to an absent field.
-pub fn mixed_pickup_event_fixed_scatter(b: &[u8], value: &mut MixedPickupEventRow, report: &mut TableFixedReport) {
-    let _ = &report;
+pub fn mixed_pickup_event_fixed_scatter(schema_b: &[u8], schema_value: &mut MixedPickupEventRow, schema_report: &mut TableFixedReport) {
+    let _ = &schema_report;
     {
-        let at = 0;
-        let raw = u32::from_le_bytes(b[at..at + 4].try_into().expect("the declared width"));
-        value.item_id = raw;
+        let schema_at = 0;
+        let schema_raw = u32::from_le_bytes(schema_b[schema_at..schema_at + 4].try_into().expect("the declared width"));
+        schema_value.item_id = schema_raw;
     }
     {
-        let at = 4;
-        let raw = u32::from_le_bytes(b[at..at + 4].try_into().expect("the declared width"));
-        value.amount = raw as i32;
+        let schema_at = 4;
+        let schema_raw = u32::from_le_bytes(schema_b[schema_at..schema_at + 4].try_into().expect("the declared width"));
+        schema_value.amount = schema_raw as i32;
     }
 }
 
 /// MixedPickupEvent: true when a DEAD byte of this record image is not zero.
-pub fn mixed_pickup_event_fixed_dead(b: &[u8]) -> bool {
-    let _ = b;
+pub fn mixed_pickup_event_fixed_dead(schema_b: &[u8]) -> bool {
+    let _ = schema_b;
     false
 }
 
 /// MixedPickupEvent's read-side bounds: every RANGED SCALAR held to its declared min
 /// and max, over the storage a read can have written.
 #[allow(clippy::manual_range_contains)] // the clamp count is a bitwise OR on purpose (no branch)
-pub fn mixed_pickup_event_fixed_clamp_body(value: &mut MixedPickupEventRow, oor: &mut i32, damaged: &mut i32) {
-    let _ = (&oor, &damaged);
-    *oor += (value.item_id > 1023) as i32; // bits(10)'s own width
-    value.item_id = value.item_id.min(1023);
-    *oor += ((value.amount < 0_i32) | (value.amount > 255_i32)) as i32;
-    value.amount = value.amount.clamp(0_i32, 255_i32);
+pub fn mixed_pickup_event_fixed_clamp_body(schema_value: &mut MixedPickupEventRow, schema_oor: &mut i32, schema_damaged: &mut i32) {
+    let _ = (&schema_oor, &schema_damaged);
+    *schema_oor += (schema_value.item_id > 1023) as i32; // bits(10)'s own width
+    schema_value.item_id = schema_value.item_id.min(1023);
+    *schema_oor += ((schema_value.amount < 0_i32) | (schema_value.amount > 255_i32)) as i32;
+    schema_value.amount = schema_value.amount.clamp(0_i32, 255_i32);
 }
 
 /// BenchMixed's stores, at constant offsets into a body the caller zeroed.
 /// The zeros are the template, and they are also what fills every byte of
 /// declared slack without this function touching it (§3.4).
-pub fn bench_mixed_fixed_write_body(b: &mut [u8], value: &BenchMixedRow) {
-    debug_assert!(value.sequence <= 65535, "sequence exceeds bits(16) width");
-    let at = 0;
-    b[at..at + 4].copy_from_slice(&value.sequence.to_le_bytes());
-    debug_assert!(value.ack_sequence >= 0 && value.ack_sequence <= 65535, "ack_sequence out of range [0, 65535]");
-    let at = 4;
-    b[at..at + 4].copy_from_slice(&(value.ack_sequence as u32).to_le_bytes());
-    let at = 8;
-    b[at..at + 4].copy_from_slice(&value.ack_bits.to_le_bytes());
-    let at = 12;
-    b[at..at + 8].copy_from_slice(&value.session_id.to_le_bytes());
-    let at = 20;
-    b[at..at + 4].copy_from_slice(&value.client_id.to_le_bytes());
-    let at = 24;
-    b[at..at + 8].copy_from_slice(&value.nonce.to_le_bytes());
-    debug_assert!(value.world_time >= -1000000000000 && value.world_time <= 1000000000000, "world_time out of range [-1000000000000, 1000000000000]");
-    let at = 32;
-    b[at..at + 8].copy_from_slice(&(value.world_time as u64).to_le_bytes());
-    debug_assert!(value.frame_tick <= 281474976710655, "frame_tick exceeds bits(48) width");
-    let at = 40;
-    b[at..at + 8].copy_from_slice(&value.frame_tick.to_le_bytes());
-    debug_assert!(value.server_time >= 0 && value.server_time <= 16776960, "server_time raw value out of range [0, 16776960]");
-    let at = 48;
-    b[at..at + 4].copy_from_slice(&(value.server_time as u32).to_le_bytes());
+pub fn bench_mixed_fixed_write_body(schema_b: &mut [u8], schema_value: &BenchMixedRow) {
+    debug_assert!(schema_value.sequence <= 65535, "sequence exceeds bits(16) width");
+    let schema_at = 0;
+    schema_b[schema_at..schema_at + 4].copy_from_slice(&schema_value.sequence.to_le_bytes());
+    debug_assert!(schema_value.ack_sequence >= 0 && schema_value.ack_sequence <= 65535, "ack_sequence out of range [0, 65535]");
+    let schema_at = 4;
+    schema_b[schema_at..schema_at + 4].copy_from_slice(&(schema_value.ack_sequence as u32).to_le_bytes());
+    let schema_at = 8;
+    schema_b[schema_at..schema_at + 4].copy_from_slice(&schema_value.ack_bits.to_le_bytes());
+    let schema_at = 12;
+    schema_b[schema_at..schema_at + 8].copy_from_slice(&schema_value.session_id.to_le_bytes());
+    let schema_at = 20;
+    schema_b[schema_at..schema_at + 4].copy_from_slice(&schema_value.client_id.to_le_bytes());
+    let schema_at = 24;
+    schema_b[schema_at..schema_at + 8].copy_from_slice(&schema_value.nonce.to_le_bytes());
+    debug_assert!(schema_value.world_time >= -1000000000000 && schema_value.world_time <= 1000000000000, "world_time out of range [-1000000000000, 1000000000000]");
+    let schema_at = 32;
+    schema_b[schema_at..schema_at + 8].copy_from_slice(&(schema_value.world_time as u64).to_le_bytes());
+    debug_assert!(schema_value.frame_tick <= 281474976710655, "frame_tick exceeds bits(48) width");
+    let schema_at = 40;
+    schema_b[schema_at..schema_at + 8].copy_from_slice(&schema_value.frame_tick.to_le_bytes());
+    debug_assert!(schema_value.server_time >= 0 && schema_value.server_time <= 16776960, "server_time raw value out of range [0, 16776960]");
+    let schema_at = 48;
+    schema_b[schema_at..schema_at + 4].copy_from_slice(&(schema_value.server_time as u32).to_le_bytes());
     debug_assert!(
-        value.entities_count >= 1 && value.entities_count <= 8,
+        schema_value.entities_count >= 1 && schema_value.entities_count <= 8,
         "the declared count is the bound (docs/SPEC-TABLES.md §3.4)"
     );
-    b[52..56].copy_from_slice(&(value.entities_count as u32).to_le_bytes());
-    for i in 0..value.entities_count.clamp(0, 8) as usize {
-        let at = 56 + i * 51;
-        mixed_entity_fixed_write_body(&mut b[at..at + 51], &value.entities[i]);
+    schema_b[52..56].copy_from_slice(&(schema_value.entities_count as u32).to_le_bytes());
+    for schema_i in 0..schema_value.entities_count.clamp(0, 8) as usize {
+        let schema_at = 56 + schema_i * 51;
+        mixed_entity_fixed_write_body(&mut schema_b[schema_at..schema_at + 51], &schema_value.entities[schema_i]);
     }
     debug_assert!(
-        value.stats_count >= 0 && value.stats_count <= 80,
+        schema_value.stats_count >= 0 && schema_value.stats_count <= 80,
         "the declared count is the bound (docs/SPEC-TABLES.md §3.4)"
     );
-    b[464..468].copy_from_slice(&(value.stats_count as u32).to_le_bytes());
-    for i in 0..value.stats_count.clamp(0, 80) as usize {
-        let at = 468 + i * 8;
-        mixed_stat_fixed_write_body(&mut b[at..at + 8], &value.stats[i]);
+    schema_b[464..468].copy_from_slice(&(schema_value.stats_count as u32).to_le_bytes());
+    for schema_i in 0..schema_value.stats_count.clamp(0, 80) as usize {
+        let schema_at = 468 + schema_i * 8;
+        mixed_stat_fixed_write_body(&mut schema_b[schema_at..schema_at + 8], &schema_value.stats[schema_i]);
     }
-    let at = 1108;
-    mixed_event_fixed_write_body(&mut b[at..at + 14], &value.game_event);
-    for i in 0..4 {
-        let at = 1122 + i;
-        b[at..at + 1].copy_from_slice(&value.loadout[i].to_le_bytes());
-    }
-    debug_assert!(
-        value.player_name_length >= 0 && value.player_name_length <= 15,
-        "the declared length is the bound (docs/SPEC-TABLES.md §3.4)"
-    );
-    b[1126..1130].copy_from_slice(&(value.player_name_length as u32).to_le_bytes());
-    {
-        let n = value.player_name_length.clamp(0, 15) as usize;
-        debug_assert!(table_utf8_valid(&value.player_name[..n]), "player_name is ill-formed text");
-        b[1130..1130 + n].copy_from_slice(&value.player_name[..n]);
+    let schema_at = 1108;
+    mixed_event_fixed_write_body(&mut schema_b[schema_at..schema_at + 14], &schema_value.game_event);
+    for schema_i in 0..4 {
+        let schema_at = 1122 + schema_i;
+        schema_b[schema_at..schema_at + 1].copy_from_slice(&schema_value.loadout[schema_i].to_le_bytes());
     }
     debug_assert!(
-        value.payload_length >= 0 && value.payload_length <= 16,
+        schema_value.player_name_length >= 0 && schema_value.player_name_length <= 15,
         "the declared length is the bound (docs/SPEC-TABLES.md §3.4)"
     );
-    b[1145..1149].copy_from_slice(&(value.payload_length as u32).to_le_bytes());
+    schema_b[1126..1130].copy_from_slice(&(schema_value.player_name_length as u32).to_le_bytes());
     {
-        let n = value.payload_length.clamp(0, 16) as usize;
-        b[1149..1149 + n].copy_from_slice(&value.payload[..n]);
+        let schema_n = schema_value.player_name_length.clamp(0, 15) as usize;
+        debug_assert!(table_utf8_valid(&schema_value.player_name[..schema_n]), "player_name is ill-formed text");
+        schema_b[1130..1130 + schema_n].copy_from_slice(&schema_value.player_name[..schema_n]);
     }
-    debug_assert!(!value.aim_x.is_finite() || (value.aim_x >= f32::from_bits(0xbf800000) && value.aim_x <= f32::from_bits(0x3f800000)), "aim_x out of range");
-    let at = 1165;
-    b[at..at + 4].copy_from_slice(&(if value.aim_x == 0.0 { 0.0 } else { value.aim_x }).to_le_bytes());
-    debug_assert!(!value.aim_y.is_finite() || (value.aim_y >= f32::from_bits(0xbf800000) && value.aim_y <= f32::from_bits(0x3f800000)), "aim_y out of range");
-    let at = 1169;
-    b[at..at + 4].copy_from_slice(&(if value.aim_y == 0.0 { 0.0 } else { value.aim_y }).to_le_bytes());
-    debug_assert!(!value.aim_z.is_finite() || (value.aim_z >= f32::from_bits(0xbf800000) && value.aim_z <= f32::from_bits(0x3f800000)), "aim_z out of range");
-    let at = 1173;
-    b[at..at + 4].copy_from_slice(&(if value.aim_z == 0.0 { 0.0 } else { value.aim_z }).to_le_bytes());
-    let at = 1177;
-    b[at..at + 4].copy_from_slice(&value.recoil.to_le_bytes());
-    let at = 1181;
-    b[at..at + 8].copy_from_slice(&value.drift.to_le_bytes());
-    let at = 1189;
-    b[at..at + 16].copy_from_slice(&value.wide_key.0.to_le_bytes());
-    debug_assert!(value.flux.0 >= -1267650600228229401496703205376 && value.flux.0 <= 1267650600228229401496703205376, "flux out of range [-1267650600228229401496703205376, 1267650600228229401496703205376]");
-    let at = 1205;
-    b[at..at + 16].copy_from_slice(&value.flux.0.to_le_bytes());
-    debug_assert!(value.ping <= 64000, "ping raw value out of range <= 64000");
-    let at = 1221;
-    b[at..at + 2].copy_from_slice(&value.ping.to_le_bytes());
-    debug_assert!(value.crc_hint <= 16777215, "crc_hint exceeds bits(24) width");
-    let at = 1223;
-    b[at..at + 4].copy_from_slice(&value.crc_hint.to_le_bytes());
-    let at = 1227;
-    b[at] = u8::from(value.has_extra);
-    debug_assert!(value.extra >= 0 && value.extra <= 255, "extra out of range [0, 255]");
-    let at = 1228;
-    b[at..at + 4].copy_from_slice(&(value.extra as u32).to_le_bytes());
-    debug_assert!(value.idle_ticks >= 0 && value.idle_ticks <= 15, "idle_ticks out of range [0, 15]");
-    let at = 1232;
-    b[at..at + 4].copy_from_slice(&(value.idle_ticks as u32).to_le_bytes());
+    debug_assert!(
+        schema_value.payload_length >= 0 && schema_value.payload_length <= 16,
+        "the declared length is the bound (docs/SPEC-TABLES.md §3.4)"
+    );
+    schema_b[1145..1149].copy_from_slice(&(schema_value.payload_length as u32).to_le_bytes());
+    {
+        let schema_n = schema_value.payload_length.clamp(0, 16) as usize;
+        schema_b[1149..1149 + schema_n].copy_from_slice(&schema_value.payload[..schema_n]);
+    }
+    debug_assert!(!schema_value.aim_x.is_finite() || (schema_value.aim_x >= f32::from_bits(0xbf800000) && schema_value.aim_x <= f32::from_bits(0x3f800000)), "aim_x out of range");
+    let schema_at = 1165;
+    schema_b[schema_at..schema_at + 4].copy_from_slice(&(if schema_value.aim_x == 0.0 { 0.0 } else { schema_value.aim_x }).to_le_bytes());
+    debug_assert!(!schema_value.aim_y.is_finite() || (schema_value.aim_y >= f32::from_bits(0xbf800000) && schema_value.aim_y <= f32::from_bits(0x3f800000)), "aim_y out of range");
+    let schema_at = 1169;
+    schema_b[schema_at..schema_at + 4].copy_from_slice(&(if schema_value.aim_y == 0.0 { 0.0 } else { schema_value.aim_y }).to_le_bytes());
+    debug_assert!(!schema_value.aim_z.is_finite() || (schema_value.aim_z >= f32::from_bits(0xbf800000) && schema_value.aim_z <= f32::from_bits(0x3f800000)), "aim_z out of range");
+    let schema_at = 1173;
+    schema_b[schema_at..schema_at + 4].copy_from_slice(&(if schema_value.aim_z == 0.0 { 0.0 } else { schema_value.aim_z }).to_le_bytes());
+    let schema_at = 1177;
+    schema_b[schema_at..schema_at + 4].copy_from_slice(&schema_value.recoil.to_le_bytes());
+    let schema_at = 1181;
+    schema_b[schema_at..schema_at + 8].copy_from_slice(&schema_value.drift.to_le_bytes());
+    let schema_at = 1189;
+    schema_b[schema_at..schema_at + 16].copy_from_slice(&schema_value.wide_key.0.to_le_bytes());
+    debug_assert!(schema_value.flux.0 >= -1267650600228229401496703205376 && schema_value.flux.0 <= 1267650600228229401496703205376, "flux out of range [-1267650600228229401496703205376, 1267650600228229401496703205376]");
+    let schema_at = 1205;
+    schema_b[schema_at..schema_at + 16].copy_from_slice(&schema_value.flux.0.to_le_bytes());
+    debug_assert!(schema_value.ping <= 64000, "ping raw value out of range <= 64000");
+    let schema_at = 1221;
+    schema_b[schema_at..schema_at + 2].copy_from_slice(&schema_value.ping.to_le_bytes());
+    debug_assert!(schema_value.crc_hint <= 16777215, "crc_hint exceeds bits(24) width");
+    let schema_at = 1223;
+    schema_b[schema_at..schema_at + 4].copy_from_slice(&schema_value.crc_hint.to_le_bytes());
+    let schema_at = 1227;
+    schema_b[schema_at] = u8::from(schema_value.has_extra);
+    debug_assert!(schema_value.extra >= 0 && schema_value.extra <= 255, "extra out of range [0, 255]");
+    let schema_at = 1228;
+    schema_b[schema_at..schema_at + 4].copy_from_slice(&(schema_value.extra as u32).to_le_bytes());
+    debug_assert!(schema_value.idle_ticks >= 0 && schema_value.idle_ticks <= 15, "idle_ticks out of range [0, 15]");
+    let schema_at = 1232;
+    schema_b[schema_at..schema_at + 4].copy_from_slice(&(schema_value.idle_ticks as u32).to_le_bytes());
 }
 
 /// BenchMixed: one record image landed in the value, field by field.
@@ -687,226 +687,226 @@ pub fn bench_mixed_fixed_write_body(b: &mut [u8], value: &BenchMixedRow) {
 /// Every field is written, so nothing of the caller's previous value survives:
 /// a field the record did not carry took its declared default in the PREFILL,
 /// which is §3.4's whole answer to an absent field.
-pub fn bench_mixed_fixed_scatter(b: &[u8], value: &mut BenchMixedRow, report: &mut TableFixedReport) {
-    let _ = &report;
+pub fn bench_mixed_fixed_scatter(schema_b: &[u8], schema_value: &mut BenchMixedRow, schema_report: &mut TableFixedReport) {
+    let _ = &schema_report;
     {
-        let at = 0;
-        let raw = u32::from_le_bytes(b[at..at + 4].try_into().expect("the declared width"));
-        value.sequence = raw;
+        let schema_at = 0;
+        let schema_raw = u32::from_le_bytes(schema_b[schema_at..schema_at + 4].try_into().expect("the declared width"));
+        schema_value.sequence = schema_raw;
     }
     {
-        let at = 4;
-        let raw = u32::from_le_bytes(b[at..at + 4].try_into().expect("the declared width"));
-        value.ack_sequence = raw as i32;
+        let schema_at = 4;
+        let schema_raw = u32::from_le_bytes(schema_b[schema_at..schema_at + 4].try_into().expect("the declared width"));
+        schema_value.ack_sequence = schema_raw as i32;
     }
     {
-        let at = 8;
-        let raw = u32::from_le_bytes(b[at..at + 4].try_into().expect("the declared width"));
-        value.ack_bits = raw;
+        let schema_at = 8;
+        let schema_raw = u32::from_le_bytes(schema_b[schema_at..schema_at + 4].try_into().expect("the declared width"));
+        schema_value.ack_bits = schema_raw;
     }
     {
-        let at = 12;
-        let raw = u64::from_le_bytes(b[at..at + 8].try_into().expect("the declared width"));
-        value.session_id = raw;
+        let schema_at = 12;
+        let schema_raw = u64::from_le_bytes(schema_b[schema_at..schema_at + 8].try_into().expect("the declared width"));
+        schema_value.session_id = schema_raw;
     }
     {
-        let at = 20;
-        let raw = u32::from_le_bytes(b[at..at + 4].try_into().expect("the declared width"));
-        value.client_id = raw;
+        let schema_at = 20;
+        let schema_raw = u32::from_le_bytes(schema_b[schema_at..schema_at + 4].try_into().expect("the declared width"));
+        schema_value.client_id = schema_raw;
     }
     {
-        let at = 24;
-        let raw = u64::from_le_bytes(b[at..at + 8].try_into().expect("the declared width"));
-        value.nonce = raw;
+        let schema_at = 24;
+        let schema_raw = u64::from_le_bytes(schema_b[schema_at..schema_at + 8].try_into().expect("the declared width"));
+        schema_value.nonce = schema_raw;
     }
     {
-        let at = 32;
-        let raw = u64::from_le_bytes(b[at..at + 8].try_into().expect("the declared width"));
-        value.world_time = raw as i64;
+        let schema_at = 32;
+        let schema_raw = u64::from_le_bytes(schema_b[schema_at..schema_at + 8].try_into().expect("the declared width"));
+        schema_value.world_time = schema_raw as i64;
     }
     {
-        let at = 40;
-        let raw = u64::from_le_bytes(b[at..at + 8].try_into().expect("the declared width"));
-        value.frame_tick = raw;
+        let schema_at = 40;
+        let schema_raw = u64::from_le_bytes(schema_b[schema_at..schema_at + 8].try_into().expect("the declared width"));
+        schema_value.frame_tick = schema_raw;
     }
     {
-        let at = 48;
-        let raw = u32::from_le_bytes(b[at..at + 4].try_into().expect("the declared width"));
-        value.server_time = raw as i32;
+        let schema_at = 48;
+        let schema_raw = u32::from_le_bytes(schema_b[schema_at..schema_at + 4].try_into().expect("the declared width"));
+        schema_value.server_time = schema_raw as i32;
     }
     {
-        let raw = i32::from_le_bytes(b[52..56].try_into().expect("four bytes"));
-        let held = raw.clamp(1, 8);
-        if held != raw && report.slack == 0 {
-            report.held += 1;
+        let schema_raw = i32::from_le_bytes(schema_b[52..56].try_into().expect("four bytes"));
+        let schema_held = schema_raw.clamp(1, 8);
+        if schema_held != schema_raw && schema_report.slack == 0 {
+            schema_report.held += 1;
         }
-        value.entities_count = held;
+        schema_value.entities_count = schema_held;
     }
-    for i in 0..8 {
-        let slack = u32::from(i as i32 >= value.entities_count);
-        report.slack += slack;
+    for schema_i in 0..8 {
+        let schema_slack = u32::from(schema_i as i32 >= schema_value.entities_count);
+        schema_report.slack += schema_slack;
         {
-            let at = 56 + i * 51;
-            mixed_entity_fixed_scatter(&b[at..at + 51], &mut value.entities[i], report);
+            let schema_at = 56 + schema_i * 51;
+            mixed_entity_fixed_scatter(&schema_b[schema_at..schema_at + 51], &mut schema_value.entities[schema_i], schema_report);
         }
-        report.slack -= slack;
+        schema_report.slack -= schema_slack;
     }
     {
-        let raw = i32::from_le_bytes(b[464..468].try_into().expect("four bytes"));
-        let held = raw.clamp(0, 80);
-        if held != raw && report.slack == 0 {
-            report.held += 1;
+        let schema_raw = i32::from_le_bytes(schema_b[464..468].try_into().expect("four bytes"));
+        let schema_held = schema_raw.clamp(0, 80);
+        if schema_held != schema_raw && schema_report.slack == 0 {
+            schema_report.held += 1;
         }
-        value.stats_count = held;
+        schema_value.stats_count = schema_held;
     }
-    for i in 0..80 {
-        let slack = u32::from(i as i32 >= value.stats_count);
-        report.slack += slack;
+    for schema_i in 0..80 {
+        let schema_slack = u32::from(schema_i as i32 >= schema_value.stats_count);
+        schema_report.slack += schema_slack;
         {
-            let at = 468 + i * 8;
-            mixed_stat_fixed_scatter(&b[at..at + 8], &mut value.stats[i], report);
+            let schema_at = 468 + schema_i * 8;
+            mixed_stat_fixed_scatter(&schema_b[schema_at..schema_at + 8], &mut schema_value.stats[schema_i], schema_report);
         }
-        report.slack -= slack;
+        schema_report.slack -= schema_slack;
     }
     {
-        let at = 1108;
-        mixed_event_fixed_scatter(&b[at..at + 14], &mut value.game_event, report);
+        let schema_at = 1108;
+        mixed_event_fixed_scatter(&schema_b[schema_at..schema_at + 14], &mut schema_value.game_event, schema_report);
     }
-    for i in 0..4 {
+    for schema_i in 0..4 {
         {
-            let at = 1122 + i;
-            let raw = u8::from_le_bytes(b[at..at + 1].try_into().expect("the declared width"));
-            value.loadout[i] = raw;
+            let schema_at = 1122 + schema_i;
+            let schema_raw = u8::from_le_bytes(schema_b[schema_at..schema_at + 1].try_into().expect("the declared width"));
+            schema_value.loadout[schema_i] = schema_raw;
         }
     }
     {
-        let raw = i32::from_le_bytes(b[1126..1130].try_into().expect("four bytes"));
-        let held = raw.clamp(0, 15);
-        if held != raw && report.slack == 0 {
-            report.held += 1;
+        let schema_raw = i32::from_le_bytes(schema_b[1126..1130].try_into().expect("four bytes"));
+        let schema_held = schema_raw.clamp(0, 15);
+        if schema_held != schema_raw && schema_report.slack == 0 {
+            schema_report.held += 1;
         }
-        value.player_name_length = held;
+        schema_value.player_name_length = schema_held;
     }
-    value.player_name = [0u8; 16];
-    value.player_name[..15].copy_from_slice(&b[1130..1145]);
-    value.player_name[value.player_name_length as usize] = 0; // the used length terminates the buffer
+    schema_value.player_name = [0u8; 16];
+    schema_value.player_name[..15].copy_from_slice(&schema_b[1130..1145]);
+    schema_value.player_name[schema_value.player_name_length as usize] = 0; // the used length terminates the buffer
     {
-        let raw = i32::from_le_bytes(b[1145..1149].try_into().expect("four bytes"));
-        let held = raw.clamp(0, 16);
-        if held != raw && report.slack == 0 {
-            report.held += 1;
+        let schema_raw = i32::from_le_bytes(schema_b[1145..1149].try_into().expect("four bytes"));
+        let schema_held = schema_raw.clamp(0, 16);
+        if schema_held != schema_raw && schema_report.slack == 0 {
+            schema_report.held += 1;
         }
-        value.payload_length = held;
+        schema_value.payload_length = schema_held;
     }
-    value.payload.copy_from_slice(&b[1149..1165]);
+    schema_value.payload.copy_from_slice(&schema_b[1149..1165]);
     {
-        let at = 1165;
-        value.aim_x = f32::from_le_bytes(b[at..at + 4].try_into().expect("four bytes"));
-    }
-    {
-        let at = 1169;
-        value.aim_y = f32::from_le_bytes(b[at..at + 4].try_into().expect("four bytes"));
+        let schema_at = 1165;
+        schema_value.aim_x = f32::from_le_bytes(schema_b[schema_at..schema_at + 4].try_into().expect("four bytes"));
     }
     {
-        let at = 1173;
-        value.aim_z = f32::from_le_bytes(b[at..at + 4].try_into().expect("four bytes"));
+        let schema_at = 1169;
+        schema_value.aim_y = f32::from_le_bytes(schema_b[schema_at..schema_at + 4].try_into().expect("four bytes"));
     }
     {
-        let at = 1177;
-        value.recoil = f32::from_le_bytes(b[at..at + 4].try_into().expect("four bytes"));
+        let schema_at = 1173;
+        schema_value.aim_z = f32::from_le_bytes(schema_b[schema_at..schema_at + 4].try_into().expect("four bytes"));
     }
     {
-        let at = 1181;
-        value.drift = f64::from_le_bytes(b[at..at + 8].try_into().expect("eight bytes"));
+        let schema_at = 1177;
+        schema_value.recoil = f32::from_le_bytes(schema_b[schema_at..schema_at + 4].try_into().expect("four bytes"));
     }
     {
-        let at = 1189;
-        let raw = u128::from_le_bytes(b[at..at + 16].try_into().expect("the declared width"));
-        value.wide_key = TableU128(raw);
+        let schema_at = 1181;
+        schema_value.drift = f64::from_le_bytes(schema_b[schema_at..schema_at + 8].try_into().expect("eight bytes"));
     }
     {
-        let at = 1205;
-        let raw = u128::from_le_bytes(b[at..at + 16].try_into().expect("the declared width"));
-        value.flux = TableI128(raw as i128);
+        let schema_at = 1189;
+        let schema_raw = u128::from_le_bytes(schema_b[schema_at..schema_at + 16].try_into().expect("the declared width"));
+        schema_value.wide_key = TableU128(schema_raw);
     }
     {
-        let at = 1221;
-        let raw = u16::from_le_bytes(b[at..at + 2].try_into().expect("the declared width"));
-        value.ping = raw;
+        let schema_at = 1205;
+        let schema_raw = u128::from_le_bytes(schema_b[schema_at..schema_at + 16].try_into().expect("the declared width"));
+        schema_value.flux = TableI128(schema_raw as i128);
     }
     {
-        let at = 1223;
-        let raw = u32::from_le_bytes(b[at..at + 4].try_into().expect("the declared width"));
-        value.crc_hint = raw;
+        let schema_at = 1221;
+        let schema_raw = u16::from_le_bytes(schema_b[schema_at..schema_at + 2].try_into().expect("the declared width"));
+        schema_value.ping = schema_raw;
     }
     {
-        let at = 1227;
-        if b[at] > 1 && report.slack == 0 {
-            report.damaged = true;
+        let schema_at = 1223;
+        let schema_raw = u32::from_le_bytes(schema_b[schema_at..schema_at + 4].try_into().expect("the declared width"));
+        schema_value.crc_hint = schema_raw;
+    }
+    {
+        let schema_at = 1227;
+        if schema_b[schema_at] > 1 && schema_report.slack == 0 {
+            schema_report.damaged = true;
         }
-        value.has_extra = b[at] == 1;
+        schema_value.has_extra = schema_b[schema_at] == 1;
     }
     {
-        let at = 1228;
-        let raw = u32::from_le_bytes(b[at..at + 4].try_into().expect("the declared width"));
-        value.extra = raw as i32;
+        let schema_at = 1228;
+        let schema_raw = u32::from_le_bytes(schema_b[schema_at..schema_at + 4].try_into().expect("the declared width"));
+        schema_value.extra = schema_raw as i32;
     }
     {
-        let at = 1232;
-        let raw = u32::from_le_bytes(b[at..at + 4].try_into().expect("the declared width"));
-        value.idle_ticks = raw as i32;
+        let schema_at = 1232;
+        let schema_raw = u32::from_le_bytes(schema_b[schema_at..schema_at + 4].try_into().expect("the declared width"));
+        schema_value.idle_ticks = schema_raw as i32;
     }
 }
 
 /// BenchMixed: true when a DEAD byte of this record image is not zero.
-pub fn bench_mixed_fixed_dead(b: &[u8]) -> bool {
-    let _ = b;
+pub fn bench_mixed_fixed_dead(schema_b: &[u8]) -> bool {
+    let _ = schema_b;
     {
-        let count = i32::from_le_bytes(b[52..56].try_into().expect("four bytes")).clamp(0, 8) as usize;
-        if b[56 + count * 51..464].iter().any(|&x| x != 0) {
+        let schema_count = i32::from_le_bytes(schema_b[52..56].try_into().expect("four bytes")).clamp(0, 8) as usize;
+        if schema_b[56 + schema_count * 51..464].iter().any(|&schema_x| schema_x != 0) {
             return true;
         }
-        for i in 0..count {
+        for schema_i in 0..schema_count {
             {
-                let at = 56 + i * 51;
-                if mixed_entity_fixed_dead(&b[at..at + 51]) {
+                let schema_at = 56 + schema_i * 51;
+                if mixed_entity_fixed_dead(&schema_b[schema_at..schema_at + 51]) {
                     return true;
                 }
             }
         }
     }
     {
-        let count = i32::from_le_bytes(b[464..468].try_into().expect("four bytes")).clamp(0, 80) as usize;
-        if b[468 + count * 8..1108].iter().any(|&x| x != 0) {
+        let schema_count = i32::from_le_bytes(schema_b[464..468].try_into().expect("four bytes")).clamp(0, 80) as usize;
+        if schema_b[468 + schema_count * 8..1108].iter().any(|&schema_x| schema_x != 0) {
             return true;
         }
-        for i in 0..count {
+        for schema_i in 0..schema_count {
             {
-                let at = 468 + i * 8;
-                if mixed_stat_fixed_dead(&b[at..at + 8]) {
+                let schema_at = 468 + schema_i * 8;
+                if mixed_stat_fixed_dead(&schema_b[schema_at..schema_at + 8]) {
                     return true;
                 }
             }
         }
     }
     {
-        let at = 1108;
-        if mixed_event_fixed_dead(&b[at..at + 14]) {
+        let schema_at = 1108;
+        if mixed_event_fixed_dead(&schema_b[schema_at..schema_at + 14]) {
             return true;
         }
     }
-    for i in 0..4 {
-        let _ = i;
+    for schema_i in 0..4 {
+        let _ = schema_i;
     }
     {
-        let used = i32::from_le_bytes(b[1126..1130].try_into().expect("four bytes")).clamp(0, 15) as usize;
-        if b[1130 + used..1145].iter().any(|&x| x != 0) {
+        let schema_used = i32::from_le_bytes(schema_b[1126..1130].try_into().expect("four bytes")).clamp(0, 15) as usize;
+        if schema_b[1130 + schema_used..1145].iter().any(|&schema_x| schema_x != 0) {
             return true;
         }
     }
     {
-        let used = i32::from_le_bytes(b[1145..1149].try_into().expect("four bytes")).clamp(0, 16) as usize;
-        if b[1149 + used..1165].iter().any(|&x| x != 0) {
+        let schema_used = i32::from_le_bytes(schema_b[1145..1149].try_into().expect("four bytes")).clamp(0, 16) as usize;
+        if schema_b[1149 + schema_used..1165].iter().any(|&schema_x| schema_x != 0) {
             return true;
         }
     }
@@ -916,73 +916,73 @@ pub fn bench_mixed_fixed_dead(b: &[u8]) -> bool {
 /// BenchMixed's read-side bounds: every RANGED SCALAR held to its declared min
 /// and max, over the storage a read can have written.
 #[allow(clippy::manual_range_contains)] // the clamp count is a bitwise OR on purpose (no branch)
-pub fn bench_mixed_fixed_clamp_body(value: &mut BenchMixedRow, oor: &mut i32, damaged: &mut i32) {
-    let _ = (&oor, &damaged);
-    *oor += (value.sequence > 65535) as i32; // bits(16)'s own width
-    value.sequence = value.sequence.min(65535);
-    *oor += ((value.ack_sequence < 0_i32) | (value.ack_sequence > 65535_i32)) as i32;
-    value.ack_sequence = value.ack_sequence.clamp(0_i32, 65535_i32);
-    *oor += ((value.world_time < -1000000000000_i64) | (value.world_time > 1000000000000_i64)) as i32;
-    value.world_time = value.world_time.clamp(-1000000000000_i64, 1000000000000_i64);
-    *oor += (value.frame_tick > 281474976710655) as i32; // bits(48)'s own width
-    value.frame_tick = value.frame_tick.min(281474976710655);
-    *oor += ((value.server_time < 0_i32) | (value.server_time > 16776960_i32)) as i32;
-    value.server_time = value.server_time.clamp(0_i32, 16776960_i32);
-    for i in 0..value.entities_count.clamp(0, 8) as usize {
-        mixed_entity_fixed_clamp_body(&mut value.entities[i], oor, damaged);
+pub fn bench_mixed_fixed_clamp_body(schema_value: &mut BenchMixedRow, schema_oor: &mut i32, schema_damaged: &mut i32) {
+    let _ = (&schema_oor, &schema_damaged);
+    *schema_oor += (schema_value.sequence > 65535) as i32; // bits(16)'s own width
+    schema_value.sequence = schema_value.sequence.min(65535);
+    *schema_oor += ((schema_value.ack_sequence < 0_i32) | (schema_value.ack_sequence > 65535_i32)) as i32;
+    schema_value.ack_sequence = schema_value.ack_sequence.clamp(0_i32, 65535_i32);
+    *schema_oor += ((schema_value.world_time < -1000000000000_i64) | (schema_value.world_time > 1000000000000_i64)) as i32;
+    schema_value.world_time = schema_value.world_time.clamp(-1000000000000_i64, 1000000000000_i64);
+    *schema_oor += (schema_value.frame_tick > 281474976710655) as i32; // bits(48)'s own width
+    schema_value.frame_tick = schema_value.frame_tick.min(281474976710655);
+    *schema_oor += ((schema_value.server_time < 0_i32) | (schema_value.server_time > 16776960_i32)) as i32;
+    schema_value.server_time = schema_value.server_time.clamp(0_i32, 16776960_i32);
+    for schema_i in 0..schema_value.entities_count.clamp(0, 8) as usize {
+        mixed_entity_fixed_clamp_body(&mut schema_value.entities[schema_i], schema_oor, schema_damaged);
     }
-    for i in 0..value.stats_count.clamp(0, 80) as usize {
-        mixed_stat_fixed_clamp_body(&mut value.stats[i], oor, damaged);
+    for schema_i in 0..schema_value.stats_count.clamp(0, 80) as usize {
+        mixed_stat_fixed_clamp_body(&mut schema_value.stats[schema_i], schema_oor, schema_damaged);
     }
-    mixed_event_fixed_clamp_body(&mut value.game_event, oor, damaged);
-    if !table_utf8_valid(&value.player_name[..value.player_name_length.clamp(0, 15) as usize]) {
-        value.player_name = [0u8; 16];
-        value.player_name_length = 0;
-        *damaged += 1;
+    mixed_event_fixed_clamp_body(&mut schema_value.game_event, schema_oor, schema_damaged);
+    if !table_utf8_valid(&schema_value.player_name[..schema_value.player_name_length.clamp(0, 15) as usize]) {
+        schema_value.player_name = [0u8; 16];
+        schema_value.player_name_length = 0;
+        *schema_damaged += 1;
     }
-    *oor += ((value.aim_x < -1.0_f32) | (value.aim_x > 1.0_f32)) as i32;
-    value.aim_x = value.aim_x.clamp(-1.0_f32, 1.0_f32);
-    if value.aim_x == 0.0_f32 {
-        value.aim_x = 0.0_f32;
+    *schema_oor += ((schema_value.aim_x < -1.0_f32) | (schema_value.aim_x > 1.0_f32)) as i32;
+    schema_value.aim_x = schema_value.aim_x.clamp(-1.0_f32, 1.0_f32);
+    if schema_value.aim_x == 0.0_f32 {
+        schema_value.aim_x = 0.0_f32;
     }
-    *oor += ((value.aim_y < -1.0_f32) | (value.aim_y > 1.0_f32)) as i32;
-    value.aim_y = value.aim_y.clamp(-1.0_f32, 1.0_f32);
-    if value.aim_y == 0.0_f32 {
-        value.aim_y = 0.0_f32;
+    *schema_oor += ((schema_value.aim_y < -1.0_f32) | (schema_value.aim_y > 1.0_f32)) as i32;
+    schema_value.aim_y = schema_value.aim_y.clamp(-1.0_f32, 1.0_f32);
+    if schema_value.aim_y == 0.0_f32 {
+        schema_value.aim_y = 0.0_f32;
     }
-    *oor += ((value.aim_z < -1.0_f32) | (value.aim_z > 1.0_f32)) as i32;
-    value.aim_z = value.aim_z.clamp(-1.0_f32, 1.0_f32);
-    if value.aim_z == 0.0_f32 {
-        value.aim_z = 0.0_f32;
+    *schema_oor += ((schema_value.aim_z < -1.0_f32) | (schema_value.aim_z > 1.0_f32)) as i32;
+    schema_value.aim_z = schema_value.aim_z.clamp(-1.0_f32, 1.0_f32);
+    if schema_value.aim_z == 0.0_f32 {
+        schema_value.aim_z = 0.0_f32;
     }
-    *oor += ((value.flux.0 < -1267650600228229401496703205376_i128) | (value.flux.0 > 1267650600228229401496703205376_i128)) as i32;
-    value.flux.0 = value.flux.0.clamp(-1267650600228229401496703205376_i128, 1267650600228229401496703205376_i128);
-    *oor += (value.ping > 64000_u16) as i32;
-    value.ping = value.ping.min(64000_u16);
-    *oor += (value.crc_hint > 16777215) as i32; // bits(24)'s own width
-    value.crc_hint = value.crc_hint.min(16777215);
-    *oor += ((value.extra < 0_i32) | (value.extra > 255_i32)) as i32;
-    value.extra = value.extra.clamp(0_i32, 255_i32);
-    *oor += ((value.idle_ticks < 0_i32) | (value.idle_ticks > 15_i32)) as i32;
-    value.idle_ticks = value.idle_ticks.clamp(0_i32, 15_i32);
+    *schema_oor += ((schema_value.flux.0 < -1267650600228229401496703205376_i128) | (schema_value.flux.0 > 1267650600228229401496703205376_i128)) as i32;
+    schema_value.flux.0 = schema_value.flux.0.clamp(-1267650600228229401496703205376_i128, 1267650600228229401496703205376_i128);
+    *schema_oor += (schema_value.ping > 64000_u16) as i32;
+    schema_value.ping = schema_value.ping.min(64000_u16);
+    *schema_oor += (schema_value.crc_hint > 16777215) as i32; // bits(24)'s own width
+    schema_value.crc_hint = schema_value.crc_hint.min(16777215);
+    *schema_oor += ((schema_value.extra < 0_i32) | (schema_value.extra > 255_i32)) as i32;
+    schema_value.extra = schema_value.extra.clamp(0_i32, 255_i32);
+    *schema_oor += ((schema_value.idle_ticks < 0_i32) | (schema_value.idle_ticks > 15_i32)) as i32;
+    schema_value.idle_ticks = schema_value.idle_ticks.clamp(0_i32, 15_i32);
 }
 
 /// BenchMixed's finite rule (docs/SPEC-TABLES.md §3.3): the first float holding a
 /// NaN or an infinity, named <Owner>.<field>, or "" when every float is finite.
-pub fn bench_mixed_fixed_finite_body(value: &BenchMixedRow) -> &'static str {
-    if !value.aim_x.is_finite() {
+pub fn bench_mixed_fixed_finite_body(schema_value: &BenchMixedRow) -> &'static str {
+    if !schema_value.aim_x.is_finite() {
         return "BenchMixed.aim_x";
     }
-    if !value.aim_y.is_finite() {
+    if !schema_value.aim_y.is_finite() {
         return "BenchMixed.aim_y";
     }
-    if !value.aim_z.is_finite() {
+    if !schema_value.aim_z.is_finite() {
         return "BenchMixed.aim_z";
     }
-    if !value.recoil.is_finite() {
+    if !schema_value.recoil.is_finite() {
         return "BenchMixed.recoil";
     }
-    if !value.drift.is_finite() {
+    if !schema_value.drift.is_finite() {
         return "BenchMixed.drift";
     }
     ""
