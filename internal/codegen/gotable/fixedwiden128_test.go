@@ -4,7 +4,7 @@ import (
 	"encoding/binary"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/tables/goruntime"
+	"github.com/mas-bandwidth/schema/v3/tables/goruntime"
 )
 
 // TestGoFixedWidenTo128IsExact drives the fixed plan interpreter's widen arm

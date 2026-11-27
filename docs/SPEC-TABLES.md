@@ -4978,6 +4978,15 @@ one document rather than two.
   | `32` no payload | `L`, then `L` bytes, and this form writes `L = 0` |
   | `36` timestamp | 8 bytes, two's complement, little-endian: NANOSECONDS SINCE THE UNIX EPOCH, `0` being the zero time `1970-01-01T00:00:00Z` (SPEC.md §4.13). The payload is the `i64`'s and the KIND is not `5`: a field respelled between `int64` and `timestamp` is a kind mismatch that refuses the WHOLE load `kind_mismatch`, never reinterpreted, defaulted or counted, and NEITHER SPELLING WIDENS INTO THE OTHER (R14; §4, THE ONE WIDENING RULE). Every count is a legal value — the wire has no range to check — and what a target refuses is a time its own time type holds and no count names, at the point a time enters the field, by name (SPEC.md §4.13). **`35` IS NOT THIS KIND'S NUMBER:** `35` is the fixed layout's optional wrapper (§3.4), a LAYOUT kind that never rides a record, and the next number the wire has free is `36` |
 
+  **Variable-length text and bytes carry their used extent.** For a
+  `string(N)` field or selected arm, `L` gives the number of used UTF-8
+  bytes in the payload. The declaration bounds this byte length by `N`.
+  For a `bytes(N)` field or selected arm, the kind `14` array count is
+  the number of used bytes and is at most `N`. Each kind `6` element
+  contributes one byte. The outer `L` covers the array body, including the
+  element kind and count. The writer emits exactly the used bytes of each
+  value, with no terminator or spare capacity.
+
   **A `1` BOOL'S PAYLOAD IS ONE BYTE, AND `0` AND `1` ARE THE ONLY LEGAL VALUES.**
   A writer writes only `0` or `1`. On the VARIABLE wire any OTHER byte is
   damage: the whole load refuses `wire_damaged` (§4, §6.5). The FIXED form
@@ -5142,7 +5151,7 @@ one document rather than two.
   | an `enum` | `30` | the reference's own length | the variant id reference |
   | a `flags` mask | `9` | `8` | the u64 mask |
   | a `string(N)` | `12` | the length | the bytes, no terminator, a kind `12` payload without its own `L`. Ill-formed UTF-8 and a zero byte are damage, the whole load discarded (§4) |
-  | a `bytes(N)` | `14` | the array body's length | the array body: element kind `6`, `N`, then the bytes |
+  | a `bytes(N)` | `14` | the array body's length | element kind `6`, the used byte count, then exactly that many bytes |
   | an array `[N]T` / `[..N]T` | `14` | the array body's length | the array body: element kind, `N`, then the elements, a kind `14` payload without its own `L`, its header read inside the ARM's `L` (above) |
   | a pointer `*T` | `17` | the index's own length | the node index, null as `0` (§3.1) |
   | a union | `15` | the inner arm id's length, or that plus the inner kind byte, its `L` and its payload | the union payload in its place: the inner arm id reference, then its kind, its own `L` and its payload when the id is not `0` |
@@ -7404,7 +7413,15 @@ is the checkout's emitters, not a claim that a release tag already said so.
   register the fixed tables of the unit, and what they reach, as the message
   roots and slots, and a variable table registers none, so the batch verbs
   answer for fixed roots only.
-- **Goose** emits no message form.
+- **Goose** (`internal/codegen/goosetable/messageform.go`) emits the unit's
+  announcement as `MessageAnnouncement` when the unit declares a fixed root.
+  Each declared fixed root exposes `<Root>Announce`, `<Root>AnnounceRefused`,
+  `<Root>MeasureMessages`, `<Root>SaveMessages`, and `<Root>LoadMessages`.
+  The announcement is a byte slice. Its root-level refusal flag is true and
+  the slice is empty when the vocabulary exceeds 4096 entries. The generated
+  runtime's `schema_rt::announce_read` resolves a peer announcement into a
+  `MsgVocabulary` for the batch reader. Variable roots expose no batch verbs.
+  See the [Goose fixed-root message example](SPEC-CONFORMANCE.md#goose-fixed-root-messages).
 - **Elixir** (`internal/codegen/elixirtable/elixirtable.go`, `messageform.go`)
   emits `<Package>.TableMessage` when the unit has a fixed root and does not
   emit it otherwise. The module carries the announcement (`announce`,
@@ -12905,7 +12922,10 @@ count lies below its array's `Min` or above its bound, or whose length is
 negative, is REFUSED (`Cook` writes nothing, `CookMeasure` answers `-1`); it is
 never clamped to the bound and written. A NaN or an infinity in a plain float
 is refused (row 7), as the save refuses it. A leg whose measure and write
-share one body refuses in both.
+share one body refuses in both. **These `CookMeasure` refusal answers are for a
+pointered root, whose reached graph determines its size. A fixed root is the
+exception stated below: its `CookMeasure` is the layout constant even for an
+invalid value, and its `Cook` alone runs the value checks before writing.**
 
 **A BUILD CAN WRITE A COOK, AND THE BYTES ARE THE TOOL'S.** `schema cook` is
 the reference and stays it: a generated writer is held to the tool's output
@@ -13907,7 +13927,7 @@ here?" — §2.2's own distinction between machinery and columns.
 
 **Shared is the default; standalone is the named option.** The Go target's
 home file imports `tables/goruntime` in this module
-(`github.com/mas-bandwidth/schema/v2/tables/goruntime`) and aliases the
+(`github.com/mas-bandwidth/schema/v3/tables/goruntime`) and aliases the
 shared declarations in (`runtime` unset, empty or `shared`). With the
 generator option `runtime: standalone` the unit instead carries the
 table-independent runtime in its home file, and that output is byte-identical
@@ -13938,7 +13958,7 @@ compile error naming `goruntime.Version`, never a run-time surprise.
 Mixing is not a supported state and nothing is negotiated.
 
 **What compiles a shared unit.** A module that compiles a default-generated
-unit requires `github.com/mas-bandwidth/schema/v2` and resolves it to the
+unit requires `github.com/mas-bandwidth/schema/v3` and resolves it to the
 schema checkout (a `replace` to it, or the released module), beside
 `serialize.go`: the generated code imports `tables/goruntime` and nothing else
 of schema's. Every module this repository writes or commits around generated
@@ -16815,6 +16835,13 @@ carries three accessors where C++ carries a tag offset and an arm offset.
   caller's; the read path allocates nothing beyond it. Fields the text does
   not mention keep their storage defaults (SPEC §4.2: zero, or the
   specified default), exactly as an absent field on the wire does (§4).
+  **In C that holds for the repeated-key check too** (§16.2): every open
+  object's key set is carved from ONE pool of 512 slots on the read's entry
+  frame, never from the walk's own frames and never from the heap, so a
+  text whose open objects' sets fit the pool (an object of up to 127 keys
+  at the top) reads with no allocator call. A set that outgrows the pool
+  moves to the heap, so no object is ever too wide to check. `make
+  tables-c-soak` counts the allocator calls over the corpus and owes zero.
 - **`ToJson` writes ONE instance as ONE text**, every field, in declaration
   order, defaults included — a text is for people and tools, and a text
   that elides is a text a reader has to know the schema to complete.
@@ -16931,6 +16958,16 @@ inside it) are read and the 130th nested container refuses `malformed`. **The wr
 the same containers in the same unit** (W2): every object and array it writes,
 an empty `[]` or `{}` included, so a writer never emits a text its own reader
 refuses.
+
+**LEAF-CONTAINER BOUNDARY VECTORS.** Let `Node` be a variable table with
+`next *Node`, `marks Mark` for a one-variant `flags Mark`, and
+`words [..1]string(2)`. Nest a terminal `{"marks":["Hot"]}` or
+`{"words":["x"]}` under 127 `{"next":` objects and their closing braces.
+The terminal flags array or text list is at depth 128 and READS. Nest it under
+128 such objects and that leaf container is at depth 129 and REFUSES. These
+are portable construction recipes: they require no implementation-specific
+root or generated identifier, and the declared `json_max_depth` below remains
+the number both verdicts straddle.
 
 **A SCHEMA-NAME STRING IS CAPPED AT 255 BYTES, wherever the read meets one** —
 an object key that names a field, an enum variant name, a flags element, a

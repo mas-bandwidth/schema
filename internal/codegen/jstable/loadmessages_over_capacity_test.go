@@ -3,7 +3,7 @@ package jstable
 import (
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v3/internal/tablewire"
 )
 
 // TestJsLoadMessagesOverCapacityReturnsZero holds docs/SPEC-TABLES.md §3.3's

@@ -36,7 +36,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/internal/wireabsent"
+	"github.com/mas-bandwidth/schema/v3/internal/wireabsent"
 )
 
 func main() {

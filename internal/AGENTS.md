@@ -7,6 +7,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `ast/` | parsed *.schema form | `go test ./internal/parser` | `go test ./internal/parser` |
 | `atomicfile/` | the one publisher every CLI write goes through | `go test ./internal/atomicfile` | `go test ./internal/atomicfile` |
 | `baseline/` | tables baseline pins | `go test ./internal/baseline` | `go test ./internal/baseline` |
+| `casegate/` | shared-corpus answer judge (every case answered, owed ledger exact) | `go test ./internal/casegate` | `go test ./internal/casegate` |
 | `check/` | resolve, check, lower to IR | `go test ./internal/check` | `go test ./internal/check` |
 | `ci/` | workflow pin and SDK gates | `go test ./internal/ci` | `go test ./internal/ci` |
 | [codegen/](codegen/AGENTS.md) | per-language emitters | `go test ./internal/codegen/...` | `go test ./internal/codegen/...` |

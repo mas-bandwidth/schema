@@ -18,6 +18,15 @@ union Mixed
     payload DefaultArm
 }
 
+// A void arm after a payload arm: the tag after the payload tag still costs
+// only its tag bits.
+union Late
+{
+    ping
+    payload DefaultArm
+    pong
+}
+
 union Tags
 {
     ping

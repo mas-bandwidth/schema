@@ -5,10 +5,10 @@ import (
 	"maps"
 	"path/filepath"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
-	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/cqualify"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/ctable"
+	"github.com/mas-bandwidth/schema/v3/compiler"
+	cgen "github.com/mas-bandwidth/schema/v3/internal/codegen/c"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/cqualify"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/ctable"
 )
 
 // pairedUnit is the unit generated/bench/paired is emitted from.

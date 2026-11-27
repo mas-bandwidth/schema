@@ -26,7 +26,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // The kind numbers of §3's closed set the card's constructs spend, named here
@@ -4373,5 +4373,14 @@ func (g *wireGen) emitWireWriteAssert(f *ir.Field, expr, ind string) {
 		if _, _, ok := fixedFloatClampEnds(f); ok {
 			g.pf("%sassert(!%s.isFinite || (%s));\n", ind, expr, floatRangeCond(f, expr, "_rangeF32"))
 		}
+	}
+}
+
+// emitDeprecatedVariantAssert is the cook writers' debug check for a
+// deprecated variant (SPEC-TABLES §2.15), in the one spelling the variable
+// and fixed writers use, so every Dart writer refuses with the same message.
+func emitDeprecatedVariantAssert(pf func(string, ...any), e *ir.Enum, expr, ind string) {
+	if cond := enumNotDeprecated(e, expr); cond != "" {
+		pf("%sassert(%s, 'deprecated variant is never written (SPEC-TABLES 2.15)');\n", ind, cond)
 	}
 }

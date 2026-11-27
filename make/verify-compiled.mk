@@ -95,7 +95,7 @@ _verify-$(1)-fuzz-json: build/conformance-harness $$(VERIFY_FUZZ_DEPS_$(1))
 _verify-$(1)-fuzz-message: build/conformance-harness $$(VERIFY_FUZZ_DEPS_$(1))
 	@mkdir -p build/verify
 	DOTNET="$$(DOTNET)" JAVA="$$(JAVA)" BEAM_PATH="$$(BEAM_PATH)" $$(WFR_ENV_$(1)) \
-		./build/conformance-harness message-fuzz --only $(1) \
+		./build/conformance-harness message-fuzz --only $(1) $$(call MESSAGE_ABSENT,$(1)) \
 		--seed $$(VERIFY_FUZZ_SEED) --n $$(VERIFY_MESSAGE_FUZZ_N) \
 		--failed build/verify/message-fuzz-$(1)
 
@@ -145,7 +145,7 @@ $(foreach leg,$(VERIFY_COMPILED_LEGS),$(eval $(call verify_compiled_fuzz_rules,$
 .PHONY: _verify-cpp-conformance _verify-cpp-conformance-1 _verify-cpp-conformance-2 verify-cpp-conformance-1 verify-cpp-conformance-2 _verify-cpp-bench
 _verify-cpp-conformance: _verify-cpp-conformance-1 _verify-cpp-conformance-2
 
-_verify-cpp-conformance-1: build/schema_test build/schema_test_ludicrous packet-defaults-cpp packet-void-cpp build/packet-text/cpp/driver build/packet-text/harness conformance-rows-cpp build/schema_test_tables
+_verify-cpp-conformance-1: build/schema_test build/schema_test_ludicrous packet-defaults-cpp packet-void-cpp build/packet-text/cpp/driver build/packet-text/harness conformance-rows-pr-cpp build/schema_test_tables
 	./build/schema_test
 	./build/schema_test_tables
 	./build/schema_test_ludicrous
@@ -166,7 +166,7 @@ _verify-cpp-bench: bin/schema generated/bench/cpp/.stamp generated/bench/tables/
 # ---- c ----
 
 .PHONY: _verify-c-conformance _verify-c-bench
-_verify-c-conformance: build/conformance-harness build/conformance-c build/schema_test_c build/schema_test_c_ludicrous packet-defaults-c packet-utf8-c packet-void-c table-base64-c conformance-rows-c
+_verify-c-conformance: build/conformance-harness build/conformance-c build/schema_test_c build/schema_test_c_ludicrous packet-defaults-c packet-utf8-c packet-void-c table-base64-c conformance-rows-pr-c
 	cd test/c && ../../build/schema_test_c
 	cd test/c-ludicrous && ../../build/schema_test_c_ludicrous
 	@rm -rf build/verify/conformance-c && mkdir -p build/verify/conformance-c $(VERIFY_RESULTS_DIR)
@@ -180,7 +180,7 @@ _verify-c-bench: bin/schema generated/bench/c/.stamp generated/bench/tables/c/.s
 # ---- cs ----
 
 .PHONY: _verify-cs-conformance _verify-cs-bench
-_verify-cs-conformance: toolchain-cs build/conformance-harness build-conformance-cs build-cs-cook generated/cs/.stamp generated/cs-ludicrous/.stamp
+_verify-cs-conformance: announcement-entry-budget-cs toolchain-cs build/conformance-harness build-conformance-cs build-cs-cook generated/cs/.stamp generated/cs-ludicrous/.stamp
 	@rm -rf build/verify/conformance-cs && mkdir -p build/verify/conformance-cs $(VERIFY_RESULTS_DIR)
 	@set -e; \
 		(cd test/cs && $(DOTNET) run -c Release --nologo) & p1=$$!; \
@@ -196,7 +196,7 @@ _verify-cs-bench: toolchain-cs bin/schema generated/bench/cs/.stamp tables-cs-be
 # ---- unity ----
 
 .PHONY: _verify-unity-conformance _verify-unity-bench
-_verify-unity-conformance: toolchain-unity build/conformance-harness build/conformance-unity/.stamp unity-wire
+_verify-unity-conformance: announcement-entry-budget-unity toolchain-unity build/conformance-harness build/conformance-unity/.stamp unity-wire
 	@rm -rf build/verify/conformance-unity && mkdir -p build/verify/conformance-unity $(VERIFY_RESULTS_DIR)
 	./build/conformance-harness run --only unity --claims --work build/verify/conformance-unity --results $(VERIFY_RESULTS_DIR)/unity.json
 
@@ -231,7 +231,7 @@ _verify-go-bench: bin/schema generated/bench/go/.stamp generated/bench/tables/go
 # ---- rust ----
 
 .PHONY: _verify-rust-conformance _verify-rust-bench
-_verify-rust-conformance: build/conformance-harness build/conformance-rust generated/rust/.stamp generated/rust-ludicrous/.stamp packet-utf8-rust conformance-rows-rust
+_verify-rust-conformance: build/conformance-harness build/conformance-rust generated/rust/.stamp generated/rust-ludicrous/.stamp packet-utf8-rust conformance-rows-pr-rust
 	@rm -rf build/verify/conformance-rust && mkdir -p build/verify/conformance-rust $(VERIFY_RESULTS_DIR)
 	@set -e; \
 		(cd test/rust && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet --release) & p1=$$!; \
@@ -268,7 +268,7 @@ _verify-java-packet-main: toolchain-java build/java-test/.stamp
 _verify-java-packet-ludicrous: toolchain-java build/java-test-ludicrous/.stamp
 	cd test/java-ludicrous && $(JAVA) -ea -cp ../../build/java-test-ludicrous Main
 
-_verify-java-conformance: toolchain-java build/conformance-harness build-conformance-java _verify-java-packet-main-ea _verify-java-packet-main _verify-java-packet-ludicrous packet-defaults-java packet-utf8-java packet-finite-java conformance-rows-java
+_verify-java-conformance: toolchain-java build/conformance-harness build-conformance-java _verify-java-packet-main-ea _verify-java-packet-main _verify-java-packet-ludicrous packet-defaults-java packet-utf8-java packet-finite-java conformance-rows-pr-java
 	@rm -rf build/verify/conformance-java && mkdir -p build/verify/conformance-java $(VERIFY_RESULTS_DIR)
 	JAVA="$(JAVA)" JAVAC="$(JAVAC)" ./build/conformance-harness run --only java --claims --work build/verify/conformance-java --results $(VERIFY_RESULTS_DIR)/java.json
 
@@ -290,7 +290,7 @@ _verify-java-bench: toolchain-java bin/schema generated/bench/java/.stamp cards-
 # ---- dart ----
 
 .PHONY: _verify-dart-conformance _verify-dart-packets _verify-dart-bench
-_verify-dart-packets: build/mustrun toolchain-dart generated/dart/.stamp generated/dart-ludicrous/.stamp packet-defaults-dart packet-utf8-dart packet-finite-dart conformance-rows-dart
+_verify-dart-packets: build/mustrun toolchain-dart generated/dart/.stamp generated/dart-ludicrous/.stamp packet-defaults-dart packet-utf8-dart packet-finite-dart conformance-rows-pr-dart
 	cd test/dart && "$(CURDIR)/$(MUSTRUN)" -name test-dart-main -count $(DART_MAIN_CHECKS) -- $(DART) --enable-asserts main.dart
 	cd test/dart-ludicrous && "$(CURDIR)/$(MUSTRUN)" -name test-dart-ludicrous -count $(DART_LUDICROUS_CHECKS) -- $(DART) --enable-asserts main.dart
 

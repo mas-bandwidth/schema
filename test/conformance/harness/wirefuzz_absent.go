@@ -12,7 +12,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/internal/wireabsent"
+	"github.com/mas-bandwidth/schema/v3/internal/wireabsent"
 )
 
 // THE ABSENT-ROOT RULE (docs/SPEC-CONFORMANCE.md W-ROSTER, docs/SPEC-TABLES.md

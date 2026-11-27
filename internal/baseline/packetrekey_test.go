@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/baseline"
+	"github.com/mas-bandwidth/schema/v3/internal/baseline"
 )
 
 // TestPacketRekeyIsReported (F-003): on the PACKET wire an enum-keyed array's

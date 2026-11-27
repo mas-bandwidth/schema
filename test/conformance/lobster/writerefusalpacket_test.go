@@ -26,10 +26,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster/lobsterrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	wrpacket "github.com/mas-bandwidth/schema/v2/test/conformance/write-refusal-packet"
+	"github.com/mas-bandwidth/schema/v3/compiler"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/lobster/lobsterrun"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	wrpacket "github.com/mas-bandwidth/schema/v3/test/conformance/write-refusal-packet"
 )
 
 const root = "../../.."

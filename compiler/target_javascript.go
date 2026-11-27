@@ -7,9 +7,9 @@ package compiler
 import (
 	"fmt"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/jstable"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/js"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/jstable"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // jsTarget emits JavaScript ES modules.

@@ -3,7 +3,7 @@ package gotable
 import (
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 )
 
 // TestGoFixedTruncatedIsMalformedNamedTruncated pins SPEC-TABLES §3.4 and §6.5:
