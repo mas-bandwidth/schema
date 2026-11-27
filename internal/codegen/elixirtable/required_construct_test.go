@@ -53,7 +53,7 @@ func TestRequiredConstructElixir(t *testing.T) {
  ptr *Kid }
  table Guard { on bool
  if on { needed int32 | required } }
- table Range { n int32 | min=5, required }
+ table MinFive { n int32 | min=5, required }
  table GuardRange { on bool
  if on { n int32 | min=5, required } }
  table Branch { outer bool
@@ -204,15 +204,15 @@ for input<- ["{}","{\"outer\":false}","{\"outer\":true,\"inner\":false,\"no\":0}
 end
 Probe.missing(T.from_json("Branch","{\"outer\":true,\"inner\":true}"),"yes")
 Probe.missing(T.from_json("Branch","{\"outer\":true,\"inner\":false}"),"no")
-Probe.check(T.save("Range",%{})=={:error,:invalid_value},"required invalid storage zero wire")
-Probe.check(T.to_json("Range",%{})=={:error,:invalid_value},"required invalid storage zero JSON")
-Probe.check(T.cook_measure("Range",%{})==-1,"required invalid storage zero cook")
+Probe.check(T.save("MinFive",%{})=={:error,:invalid_value},"required invalid storage zero wire")
+Probe.check(T.to_json("MinFive",%{})=={:error,:invalid_value},"required invalid storage zero JSON")
+Probe.check(T.cook_measure("MinFive",%{})==-1,"required invalid storage zero cook")
 {:ok,_}=T.save("GuardRange",%{"on"=>false,"n"=>0})
 {:ok,_}=T.to_json("GuardRange",%{"on"=>false,"n"=>0})
 Probe.check(T.cook_measure("GuardRange",%{"on"=>false,"n"=>0})>0,"inactive required range cook")
 Probe.check(T.save("GuardRange",%{"on"=>true,"n"=>0})=={:error,:invalid_value},"active required range wire")
 Probe.check(T.cook_measure("GuardRange",%{"on"=>true,"n"=>0})==-1,"active required range cook")
-{:ok,_}=T.save("Range",%{"n"=>5})
+{:ok,_}=T.save("MinFive",%{"n"=>5})
 for input<- ["{\"child\":{}}","{\"items\":[{}]}","{\"items\":[{},{}]}","{\"tags\":{\"1\":{}}}","{\"ptr\":{}}"] do
  Probe.missing(T.from_json("Nest",input),"x")
 end
@@ -227,7 +227,8 @@ end
 {:error,:missing_required,prefix}=T.from_json("Nest","{\"noise\":1,\"items\":[{},{}]}")
 Probe.check(prefix.unknown==1 and prefix.missing_required==1,"JSON refusal prefix")
 {:ok,_,reuse,_}=T.load_retain("All",wire,store,Map.put(zero,:missing_required,3))
-Probe.check(reuse.missing_required==3,"reused clean report")
+# a read clears the report it is handed (SPEC-TABLES §6.5, §6.6): the caller's 3 is gone
+Probe.check(Enum.all?(reuse,fn {k,v}->v==(if k==:reason,do: "",else: 0) end),"reused clean report: "<>inspect(reuse))
 {:error,:malformed,reused,_}=T.load_retain("All",bad,store,zero |> Map.put(:missing_required,3) |> Map.put(:reason,"old refusal"))
 Probe.check(reused.reason=="wire_damaged","reused failing report")
 IO.puts("REQUIRED_OK")
