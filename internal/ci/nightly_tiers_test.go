@@ -22,11 +22,18 @@ import (
 // the decision to the tree:
 //
 //   fast       the gate has a pull-request form: rows of
-//              .github/nightly-fast-rows.txt, run by ci-fast.yml nightly-fast
-//   covered    named ci-fast.yml jobs (or rows) already catch what it catches
+//              .github/nightly-fast-rows.txt, run by ci-fast-nightly.yml nightly-fast
+//   covered    named ci-fast-nightly.yml jobs (or rows) already catch what it catches
 //   held       a fast form is written but held off the PR tier, and the row
 //              names the red run that holds it
 //   not-a-gate a release, a tag, or a reusable workflow, not a check
+//   happy-path the old per-PR lane, nightly since 2026-11-25 (the owner: per
+//              pull request ONLY compile + one simple happy path per
+//              language); its per-PR form is ci-fast.yml happy-path
+//
+// Since 2026-11-25 the fast and covered forms run in ci-fast-nightly.yml,
+// which is nightly too: the per-PR tier is ci-fast.yml happy-path alone
+// (TestPerPRIsTheHappyPathOnly).
 //
 // A new nightly-only workflow with no row in docs/CI-TIERS.md is red here by
 // name, and so is a row naming a job, a row or a make target that is not there.
@@ -88,7 +95,7 @@ func TestEveryNightlyOnlyGateHasAPRTierForm(t *testing.T) {
 		t.Fatal("no workflow parsed as nightly-only: the trigger scan matched nothing")
 	}
 
-	fast, err := os.ReadFile(filepath.Join(dir, "ci-fast.yml"))
+	fast, err := os.ReadFile(filepath.Join(dir, "ci-fast-nightly.yml"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +106,17 @@ func TestEveryNightlyOnlyGateHasAPRTierForm(t *testing.T) {
 		}
 	}
 	if !jobs["nightly-fast"] {
-		t.Fatal("ci-fast.yml has no nightly-fast job: the nightly gates' fast forms run nowhere")
+		t.Fatal("ci-fast-nightly.yml has no nightly-fast job: the nightly gates' fast forms run nowhere")
+	}
+	perPR, err := os.ReadFile(filepath.Join(dir, "ci-fast.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	perPRJobs := map[string]bool{}
+	for line := range strings.SplitSeq(string(perPR), "\n") {
+		if m := regexp.MustCompile("^  ([a-z0-9-]+):$").FindStringSubmatch(line); m != nil {
+			perPRJobs[m[1]] = true
+		}
 	}
 
 	f, err := os.Open(filepath.Join(root, filepath.FromSlash(nightlyrows.RegistryPath)))
@@ -154,21 +171,25 @@ func TestEveryNightlyOnlyGateHasAPRTierForm(t *testing.T) {
 					usedRows[n[1]] = true
 				case jobs[n[1]]:
 				default:
-					t.Errorf("%s: %s names %q, which is no row of %s and no ci-fast.yml job", where, wf, n[1], nightlyrows.RegistryPath)
+					t.Errorf("%s: %s names %q, which is no row of %s and no ci-fast-nightly.yml job", where, wf, n[1], nightlyrows.RegistryPath)
 				}
 			}
 		case "held":
 			if !regexp.MustCompile("run [0-9]{8,}").MatchString(form + m[4]) {
 				t.Errorf("%s: %s is held but names no red run (\"run <id>\") that holds it", where, wf)
 			}
+		case "happy-path":
+			if len(names) != 1 || names[0][1] != "happy-path" || !perPRJobs["happy-path"] {
+				t.Errorf("%s: %s is happy-path but does not name `happy-path`, the ci-fast.yml job", where, wf)
+			}
 		case "not-a-gate":
 		default:
-			t.Errorf("%s: %s has decision %q; want fast, covered, held or not-a-gate", where, wf, decision)
+			t.Errorf("%s: %s has decision %q; want fast, covered, held, happy-path or not-a-gate", where, wf, decision)
 		}
 	}
 	for _, wf := range nightlyOnly {
 		if _, ok := decided[wf]; !ok {
-			t.Errorf("%s runs only on a schedule or a dispatch, and docs/CI-TIERS.md does not decide it: give it a row in %s (fast) or name the ci-fast.yml jobs that catch what it catches (covered)", wf, nightlyrows.RegistryPath)
+			t.Errorf("%s runs only on a schedule or a dispatch, and docs/CI-TIERS.md does not decide it: give it a row in %s (fast) or name the ci-fast-nightly.yml jobs that catch what it catches (covered)", wf, nightlyrows.RegistryPath)
 		}
 	}
 	for wf := range decided {
