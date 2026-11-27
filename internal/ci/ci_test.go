@@ -1511,6 +1511,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"ci-fast.yml:happy-path",
 		"ci-full.yml:conformance",
 		"ci-full.yml:conformance-matrix",
+		"ci-full.yml:conformance-rows",
 		"ci-full.yml:cpp-lock",
 		"ci-full.yml:cs-fuzz",
 		"ci-full.yml:cs-tables",

@@ -104,14 +104,30 @@ test-go: tables-go-shared-runtime
 # umbrella target below keeps `make test-go` and the local run whole. Each
 # half runs ONLY its own rows (-run, anchored): before, both halves ran the
 # whole package and the names were only checked, so the split saved nothing.
+#
+# THE NAMES ARE READ OFF THE ROWS DIRECTORY, never copied: every
+# `func TestRow…(t *testing.T)` in test/conformance/go/rows, sorted, split into
+# two halves by count. A row added is a row run, and the run-proof requires a
+# `--- PASS` for each. (The hand-copied halves this replaced listed 46 of the
+# 47 rows; TestRowR20FloatWidensExactly was in neither.)
+GO_ROWS        := $(sort $(shell sed -n 's/^func \(TestRow[A-Za-z0-9_]*\)(t \*testing\.T).*/\1/p' test/conformance/go/rows/*_test.go))
+GO_ROWS_N      := $(words $(GO_ROWS))
+GO_ROWS_HALF   := $(shell expr \( $(GO_ROWS_N) + 1 \) / 2)
+GO_ROWS_A      := $(wordlist 1,$(GO_ROWS_HALF),$(GO_ROWS))
+GO_ROWS_B      := $(wordlist $(shell expr $(GO_ROWS_HALF) + 1),$(GO_ROWS_N),$(GO_ROWS))
+GO_ROWS_EMPTY  :=
+GO_ROWS_SPACE  := $(GO_ROWS_EMPTY) $(GO_ROWS_EMPTY)
+go_rows_run     = '^($(subst $(GO_ROWS_SPACE),|,$(strip $(1))))$$'
 conformance-go-rows-a: build/tables-generated-go/.stamp tables-go-sibling-runtime
+	@test -n "$(GO_ROWS_A)" || { echo "conformance-go-rows-a: no TestRow function found in test/conformance/go/rows"; exit 1; }
 	cd test/conformance/go && SLOWGATE_LOG_DIR="$(CURDIR)/build/slowgate" sh $(CURDIR)/test/slowgate/proof conformance-go-rows-a \
-		'TestRowC12 TestRowC13 TestRowC14 TestRowC14WriterRefusesOutOfRange TestRowC7 TestRowC8 TestRowC8WriterRefusesOutOfRange TestRowCountedArraysValidData TestRowE5 TestRowF12 TestRowF8 TestRowF8NegativeControl TestRowF8RaggedTailByName TestRowFloat32ValuesNonFiniteRefused TestRowFloat32ValuesValidData TestRowP2 TestRowP3 TestRowR10 TestRowR14 TestRowR14LayoutRecordTooLargeByName TestRowR15 TestRowR17 TestRowR19 TestRowR20' \
-		./rows/ -count=1 -timeout 600s -run '^(TestRowC12|TestRowC13|TestRowC14|TestRowC14WriterRefusesOutOfRange|TestRowC7|TestRowC8|TestRowC8WriterRefusesOutOfRange|TestRowCountedArraysValidData|TestRowE5|TestRowF12|TestRowF8|TestRowF8NegativeControl|TestRowF8RaggedTailByName|TestRowFloat32ValuesNonFiniteRefused|TestRowFloat32ValuesValidData|TestRowP2|TestRowP3|TestRowR10|TestRowR14|TestRowR14LayoutRecordTooLargeByName|TestRowR15|TestRowR17|TestRowR19|TestRowR20)$$'
+		'$(GO_ROWS_A)' \
+		./rows/ -count=1 -timeout 600s -run $(call go_rows_run,$(GO_ROWS_A))
 conformance-go-rows-b: build/tables-generated-go/.stamp tables-go-sibling-runtime
+	@test -n "$(GO_ROWS_B)" || { echo "conformance-go-rows-b: no TestRow function found in test/conformance/go/rows"; exit 1; }
 	cd test/conformance/go && SLOWGATE_LOG_DIR="$(CURDIR)/build/slowgate" sh $(CURDIR)/test/slowgate/proof conformance-go-rows-b \
-		'TestRowR19NegativeControl TestRowR20AddedFieldDefault TestRowR20DroppedFieldUnknown TestRowR20NarrowIntWidensExactly TestRowR20SameWidthBaseline TestRowR20ShortStringSlackZeros TestRowR20VocabularyIdentity TestRowR22 TestRowR26 TestRowR26NegativeControl TestRowR27 TestRowR31 TestRowR6 TestRowR7 TestRowW12 TestRowW12NegativeControl TestRowW13 TestRowW2 TestRowW2WriterRefusesTheOldPayload TestRowW3 TestRowW4 TestRowW7' \
-		./rows/ -count=1 -timeout 600s -run '^(TestRowR19NegativeControl|TestRowR20AddedFieldDefault|TestRowR20DroppedFieldUnknown|TestRowR20NarrowIntWidensExactly|TestRowR20SameWidthBaseline|TestRowR20ShortStringSlackZeros|TestRowR20VocabularyIdentity|TestRowR22|TestRowR26|TestRowR26NegativeControl|TestRowR27|TestRowR31|TestRowR6|TestRowR7|TestRowW12|TestRowW12NegativeControl|TestRowW13|TestRowW2|TestRowW2WriterRefusesTheOldPayload|TestRowW3|TestRowW4|TestRowW7)$$'
+		'$(GO_ROWS_B)' \
+		./rows/ -count=1 -timeout 600s -run $(call go_rows_run,$(GO_ROWS_B))
 conformance-go-rows: conformance-go-rows-a conformance-go-rows-b
 test-go: conformance-go-rows
 
@@ -142,7 +158,7 @@ conformance-go-rows-negative-control: build/tables-generated-go/.stamp build/fix
 	@printf 'package main\n\nimport "testing"\n\nfunc TestRowZZPlanted(t *testing.T) { t.Parallel(); t.Fatal("planted failing row") }\n' > build/rows-planted/_ZZ_planted_test.go
 	@printf '{"Replace":{"%s/test/conformance/go/rows/ZZ_planted_test.go":"%s/build/rows-planted/_ZZ_planted_test.go"}}\n' "$(CURDIR)" "$(CURDIR)" > build/rows-planted/overlay.json
 	@if cd test/conformance/go && SLOWGATE_LOG_DIR="$(CURDIR)/build/slowgate" sh $(CURDIR)/test/slowgate/proof conformance-go-rows-negative-control \
-		'TestRowC12 TestRowC13 TestRowC14 TestRowC14WriterRefusesOutOfRange TestRowC7 TestRowC8 TestRowC8WriterRefusesOutOfRange TestRowCountedArraysValidData TestRowE5 TestRowF12 TestRowF8 TestRowF8NegativeControl TestRowF8RaggedTailByName TestRowFloat32ValuesNonFiniteRefused TestRowFloat32ValuesValidData TestRowP2 TestRowP3 TestRowR10 TestRowR14 TestRowR14LayoutRecordTooLargeByName TestRowR15 TestRowR17 TestRowR19 TestRowR19NegativeControl TestRowR20AddedFieldDefault TestRowR20DroppedFieldUnknown TestRowR20NarrowIntWidensExactly TestRowR20SameWidthBaseline TestRowR20ShortStringSlackZeros TestRowR20VocabularyIdentity TestRowR20 TestRowR22 TestRowR26 TestRowR26NegativeControl TestRowR27 TestRowR31 TestRowR6 TestRowR7 TestRowW12 TestRowW12NegativeControl TestRowW13 TestRowW2 TestRowW2WriterRefusesTheOldPayload TestRowW3 TestRowW4 TestRowW7' \
+		'$(GO_ROWS)' \
 		./rows/ -count=1 -timeout 600s -overlay=$(CURDIR)/build/rows-planted/overlay.json > $(CURDIR)/build/rows-planted/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the planted failing row left the gate green"; \
 		cat $(CURDIR)/build/rows-planted/log; exit 1; fi

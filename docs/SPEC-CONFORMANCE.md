@@ -146,6 +146,42 @@ OWES) and is repeated here as the rule for the suite:
   `harness wire-fuzz` refuses the run, naming the file, when a vector is on disk
   and not in the index or in the index and not on disk (SPEC-TABLES.md §4.2).
   A new vector is added to the index in the commit that adds the file.
+- **MF-ROSTER: every message-fuzz root is answered or ledgered.** A root of
+  the message-fuzz roster that a leg answers with nothing (no known message
+  in any case) is dead, and `harness message-fuzz` is red on a dead root the
+  leg's `test/conformance/message-absent/<leg>.tsv` does not name, and on a
+  line there naming a root the leg now answers. Lines are `<unit>.<Root>`, a
+  tab, and the reason; the set is exact.
+- **Every conformance row file runs.** A leg's row list is its directory
+  `test/conformance/<leg>/rows/`, never a list copied by hand: `make
+  conformance-rows-<leg>` (tools/conformancerows) builds and runs every row
+  file, and Go's rows are named off the `TestRow*` functions of its rows
+  directory. A row the leg cannot answer yet is named, with its cause, in
+  `test/conformance/<leg>/rows-owed.tsv`; an owed row still runs, a failing
+  row the ledger does not name is red, and a ledgered row that passes is red
+  until its line is removed. A ledger line's cause is the failure itself,
+  read off the row's log (the compiler's error, the exception and its
+  message, the failed check): a banner around it ("error: compilation
+  failed", "Unhandled exception:", "N passed, M failed") or a line of the
+  row's own source is refused, and the line must state exactly the cause
+  the run prints for the row, so an owed row whose failure changed is red,
+  naming both causes (a person's note rides in an optional third column,
+  never compared). A row on any leg but Rust with no way to fail (no
+  non-zero exit or return from main, throw, raise or assert) checked
+  nothing and is red when it exits 0, the twin of a Rust row whose test
+  binary ran no test. The rows run nightly (ci-full.yml `conformance-rows`,
+  every leg; per pull request CI is the happy path only, #5052). Ten rows
+  also run in the legs' verify targets, the ones those targets ran by hand list before (c F4 F10 F12, cpp R15, dart E8 R8 R13,
+  java F10 R8, rust F8): `make conformance-rows-pr-<leg>` runs them through the
+  same runner, ledger and cause match (`-rows`), each against only the units
+  it reads, as a prerequisite of the leg's verify target, and
+  internal/ci/conformance_rows_pr_test.go fails when a verify target or a
+  list drops one.
+- **Every §5.6 fixed-form retirement is ledgered.** The fixed-form gates of the
+  native legs print a `SKIP`/`RETIRED` line for each test retired by
+  FIXED-FORM-ALGORITHM.md §5.6; `tools/retiredskips` holds the printed set to
+  the leg's lines of `test/conformance/fixed-retired.json` exactly, so a new
+  unledgered skip, or a ledgered retirement that no longer prints, is red.
 
 **The rules the 2026-11-22 surfaces carry**, each with its lawful twin beside
 the refusal (`MANIFEST.txt`, "THE 2026-11-22 SURFACES"):
