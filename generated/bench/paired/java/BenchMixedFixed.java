@@ -380,6 +380,9 @@ public final class BenchMixedFixed {
         for (int i = 0; i < v.entitiesCount; i++) {
             MixedEntityFixed.scatter(b, at + 56 + i * 51 + 0, v.entities[i], r, live, checkDead);
         }
+        for (int slackI2 = v.entitiesCount; slackI2 < v.entities.length; slackI2++) {
+            v.entities[slackI2].reset();
+        }
         {
             int n = TableFixed.get32(b, at + 464);
             if (n < 0) {
@@ -405,6 +408,9 @@ public final class BenchMixedFixed {
         }
         for (int i = 0; i < v.statsCount; i++) {
             MixedStatFixed.scatter(b, at + 468 + i * 8 + 0, v.stats[i], r, live, checkDead);
+        }
+        for (int slackI3 = v.statsCount; slackI3 < v.stats.length; slackI3++) {
+            v.stats[slackI3].reset();
         }
         MixedEventFixed.scatter(b, at + 1108, v.gameEvent, r, live, checkDead);
         for (int i = 0; i < 4; i++) {

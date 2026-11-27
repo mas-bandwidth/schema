@@ -30,6 +30,11 @@ func TestMain(m *testing.M) {
 		jsonFuzzSyntheticDriver(os.Args[1:])
 		os.Exit(0)
 	}
+	// THE TEST BINARY AS A REFUSING WIRE-FUZZ LEG
+	// (wirefuzz_verdict_loop_test.go): it answers on its pipes and exits.
+	if os.Getenv(refusingLegEnv) != "" {
+		refusingWireLeg()
+	}
 	root, err := treeRoot()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)

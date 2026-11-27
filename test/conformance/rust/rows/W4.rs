@@ -3,6 +3,22 @@
 // "read slack unspecified" (docs/roadmap.sexp:3346, roadmap row live-extents,
 // audit schema#898, matrix schema#876; docs/FIXED-FORM-ALGORITHM.md:346).
 //
+// THE LAW MOVED, TWICE, and this row follows it as the Go row
+// (test/conformance/go/rows/W4_test.go) and the cpp row (cpp/rows/W4.cpp) do:
+//   * docs/rulings.json fixed-dead-bytes-are-zero (2026-11-10) supersedes the
+//     slack rule quoted below: a counted array's slots past its count are
+//     DEAD, and a non-zero dead byte refuses the whole load as wire damage in
+//     the CHECK pass, before any record lands (docs/FIXED-FORM-ALGORITHM.md
+//     §4.5 `count` row, §5.3 step 11); every row handed in stays at its
+//     declared default (R4).
+//   * docs/rulings.json strict-only-read (2026-11-03): no read clamps; a LIVE
+//     value past its declared range refuses the whole load out_of_range.
+// Each old assertion is mapped in place: "garbage slack reads clean, moves no
+// counter" -> "garbage slack refuses as damage, lands nothing, moves no
+// counter"; the control's "the live 999 clamps to 10 and counts one" -> "the
+// live 999 refuses out_of_range and lands nothing". The quotes below are the
+// row's ORIGINAL law, kept for that mapping.
+//
 // THE LAW, the read's half of the slack rule, in the two places it is written:
 //
 //   docs/FIXED-FORM-ALGORITHM.md:346 (§4.6, the bounds pass):
@@ -131,14 +147,28 @@ fn w4_penetration_at(body_at: usize, i: usize) -> usize {
 }
 
 /// The leg's own read, driver-shaped: one call, the whole production path.
-fn w4_load(file: &[u8]) -> (usize, [RootConfigRow; 1], TableFixedReport) {
+/// The caller's row is POISONED first (weapons_count 5), so a refused load
+/// that leaves it at its declared default is R4's reset and not a no-op.
+fn w4_load(file: &[u8]) -> (Option<usize>, [RootConfigRow; 1], TableFixedReport) {
     let mut back = [RootConfigRow::default(); 1];
+    back[0].weapons_count = 5;
     let mut plan = [TableFixedEntry::default(); 1024];
     let mut remap = [0u16; 1024];
     let mut report = TableFixedReport::default();
-    let n = root_config_fixed_load(&mut back, file, &mut plan, &mut remap, &mut report)
-        .expect("the read returns: the law says garbage slack is not a refusal");
+    let n = root_config_fixed_load(&mut back, file, &mut plan, &mut remap, &mut report);
     (n, back, report)
+}
+
+/// R4: every row handed in to a refused load holds its DECLARED default —
+/// tables/examples/Tables.schema's RootConfig declares no `=` on
+/// `version_note string(16)` or `weapons [..8]WeaponConfig`, so the empty
+/// text and a count of 0 (the caller's poisoned 5 replaced) — and none of the
+/// file's live values (penetration 3 and 7, the note "W4-slack") landed.
+fn w4_at_defaults(v: &RootConfigRow) -> bool {
+    v.weapons_count == 0
+        && v.version_note_length == 0
+        && v.weapons[0].penetration != 3
+        && v.weapons[1].penetration != 7
 }
 
 // ---------------------------------------------------------------------------
@@ -146,7 +176,7 @@ fn w4_load(file: &[u8]) -> (usize, [RootConfigRow; 1], TableFixedReport) {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn w4_garbage_slack_is_unspecified_on_read_and_moves_no_counter() {
+fn w4_garbage_slack_is_dead_and_refuses_as_damage() {
     let v = w4_record();
     let need = root_config_fixed_measure(1);
     let mut clean = vec![0u8; need];
@@ -171,9 +201,10 @@ fn w4_garbage_slack_is_unspecified_on_read_and_moves_no_counter() {
 
     // THE CLEAN TWIN READS CLEAN: the same read with the writer's own bytes.
     let (n, back, report) = w4_load(&clean);
-    assert_eq!(n, 1, "the clean record reads");
+    assert_eq!(n, Some(1), "the clean record reads");
+    // strict-only-read: was `oor == 0`; `held` is the runtime's out-of-range mark
     assert!(
-        report.oor == 0 && !report.damaged && !report.refused,
+        report.held == 0 && !report.damaged && !report.refused,
         "the clean twin moves no counter: {report:?}"
     );
     assert_eq!(back[0].weapons[1].penetration, 7, "the clean twin's live value lands");
@@ -196,37 +227,44 @@ fn w4_garbage_slack_is_unspecified_on_read_and_moves_no_counter() {
         );
     }
 
-    // THE LAW, WHOLE: the garbage slack is not malformed, not a refusal, and
-    // moves no counter — the read validates the USED UNITS ONLY, and the
-    // bounds pass walks the two live elements and never the six slack.
-    let (n, back, report) = w4_load(&forged);
-    assert_eq!(n, 1, "the record with garbage slack still reads: UNSPECIFIED ON READ, AND NOT A REFUSAL");
+    // THE LAW, WHOLE, AS RULED NOW (fixed-dead-bytes-are-zero): the garbage in
+    // the dead slots refuses the whole load as wire DAMAGE in the CHECK pass
+    // (was: "not malformed, not a refusal"), before any record lands — and it
+    // is the dead-byte rule, not the bounds pass walking the slack: the reason
+    // is not out_of_range and no out-of-range mark is left (was: `oor == 0`).
+    let (n, back_forged, report) = w4_load(&forged);
+    assert_eq!(n, None, "the record with garbage in its dead slots refuses the whole load");
     assert!(
-        !report.damaged && !report.refused && report.reason == TableFixedReason::None,
-        "non-zero slack is not malformed and not a refusal: {report:?}"
+        report.damaged && report.reason != TableFixedReason::OutOfRange,
+        "non-zero dead bytes are wire damage, not an out_of_range refusal: {report:?}"
     );
     assert_eq!(
-        report.oor, 0,
-        "NON-ZERO SLACK MOVES NO COUNTER — the bounds pass walked the slack: {report:?}"
+        report.held, 0,
+        "the bounds pass never walked the dead slots: {report:?}"
     );
     assert_eq!(
         report.unknown, 0,
         "the garbage slack censuses nothing unknown: {report:?}"
     );
-    assert_eq!(
-        report.mismatch, 0,
-        "the garbage slack moves no kind counter: {report:?}"
+    // strict-only-read: was `mismatch == 0`; a kind mismatch refuses by name now
+    assert_ne!(
+        report.reason, TableFixedReason::KindMismatch,
+        "the garbage slack is no kind mismatch: {report:?}"
     );
     assert_eq!(
         report.widened, 0,
         "the garbage slack moves no widening counter: {report:?}"
     );
+    // was: "the live units read correctly" on the forged file — a refused load
+    // lands nothing, so the forged read holds the declared defaults (R4) ...
+    assert!(
+        w4_at_defaults(&back_forged[0]),
+        "a refused load lands nothing: the row holds its declared default (R4)"
+    );
 
-    // AND THE LIVE UNITS READ CORRECTLY, exactly as the peer's clean half
-    // wrote them: the count, the two live weapons' every bounded field, and
-    // the string's used units. The slack's own contents in the value are
-    // UNSPECIFIED — the law says the read never looks at them, so this test
-    // does not either.
+    // ... and the LIVE UNITS READ CORRECTLY on the clean twin, the same file
+    // with zero in its dead slots: the count, the two live weapons' every
+    // bounded field, and the string's used units.
     assert_eq!(back[0].weapons_count, 2, "the count is a used unit and reads");
     assert_eq!(back[0].version_note_length, 8, "the string's length reads");
     assert_eq!(
@@ -256,26 +294,30 @@ fn w4_garbage_slack_is_unspecified_on_read_and_moves_no_counter() {
 // the control, run on every invocation: the law is not true trivially
 // ---------------------------------------------------------------------------
 
-/// THE SAME FILE, ONE COUNT BYTE MOVED — the six stained bytes that were
-/// slack become one live element and five slack — and the read's whole
-/// answer flips, on nothing else: the third slot's 999 is LIVE now, the
-/// pass walks it, and the no-counter result above was the live extent's and
-/// nothing but. The clamped read still returns — a clamp is tolerant, never
-/// a refusal — which is the second half of the same law.
+/// THE SAME FILE, ONE COUNT BYTE MOVED — the third slot becomes LIVE and
+/// the stain in it is a live value past its declared max. To see the bounds
+/// pass and not the dead-byte rule, the five slots still dead are zeroed
+/// back (they would refuse as damage on their own): the only fault left is
+/// the live 999, and strict-only-read refuses the whole load out_of_range
+/// (was: "the clamped read still returns, a clamp is never a refusal").
 #[test]
-fn w4_control_the_same_bytes_made_live_are_clamped_and_counted() {
+fn w4_control_the_same_bytes_made_live_refuse_out_of_range() {
     let v = w4_record();
     let need = root_config_fixed_measure(1);
     let mut clean = vec![0u8; need];
     root_config_fixed_save(&[v], &mut clean).expect("the record saves");
     let body_at = w4_body_at(&clean);
 
+    // slot 2 alone carries the stain; slots 3..8 keep the writer's zeros
     let mut forged = clean.clone();
     let stain = 999i32.to_le_bytes();
-    for i in 2..8 {
-        let at = w4_penetration_at(body_at, i);
-        forged[at..at + 4].copy_from_slice(&stain);
-    }
+    let at = w4_penetration_at(body_at, 2);
+    forged[at..at + 4].copy_from_slice(&stain);
+
+    // with the count at 2 the stain is DEAD and refuses as damage, not range
+    let (n, _, report) = w4_load(&forged);
+    assert_eq!(n, None, "a stain in a dead slot refuses the load");
+    assert!(report.damaged && report.held == 0, "as damage, not out_of_range: {report:?}");
 
     // the count byte is the ONLY byte that moves: body+20 (write_body's
     // b[20..24]), the same forge either way.
@@ -292,26 +334,29 @@ fn w4_control_the_same_bytes_made_live_are_clamped_and_counted() {
     );
 
     let (n, back, report) = w4_load(&live);
-    assert_eq!(n, 1, "a clamping read still returns: a clamp is never a refusal");
+    // strict-only-read: was "a clamping read still returns", "clamped, not
+    // refused", "counted exactly one", "lands clamped to 10"
+    assert_eq!(n, None, "an out-of-range LIVE element refuses the whole load");
     assert!(
-        !report.damaged && !report.refused,
-        "an out-of-range LIVE element is clamped, not refused: {report:?}"
+        report.refused && !report.damaged && report.reason == TableFixedReason::OutOfRange,
+        "the stained slot made LIVE is walked by the bounds pass and refuses out_of_range: {report:?}"
     );
-    assert_eq!(
-        report.oor, 1,
-        "the stained slot made LIVE is walked and counted — exactly the one: {report:?}"
+    assert_eq!(report.held, 0, "REFUSE is total: no mark left standing: {report:?}");
+    // was: "the clean live elements beside it are untouched" and "the raised
+    // count reads back" — a refusal lands none of them (R4)
+    assert!(
+        w4_at_defaults(&back[0]),
+        "a refused load lands nothing: the live 999, its neighbours and the count hold their defaults"
     );
-    assert_eq!(
-        back[0].weapons[2].penetration, 10,
-        "the live 999 lands clamped to the declared max"
-    );
-    assert_eq!(
-        back[0].weapons[0].penetration, 3,
-        "the clean live element beside it is untouched"
-    );
-    assert_eq!(
-        back[0].weapons[1].penetration, 7,
-        "the clean live element beside it is untouched"
-    );
+
+    // and the same live slot AT the declared max (10) reads: the bound is inclusive
+    let mut at_max = live.clone();
+    let at = w4_penetration_at(body_at, 2);
+    at_max[at..at + 4].copy_from_slice(&10i32.to_le_bytes());
+    let (n, back, report) = w4_load(&at_max);
+    assert_eq!(n, Some(1), "a live value at the declared max reads: {report:?}");
+    assert_eq!(back[0].weapons[2].penetration, 10, "the live 10 lands");
+    assert_eq!(back[0].weapons[0].penetration, 3, "the clean live element beside it lands");
+    assert_eq!(back[0].weapons[1].penetration, 7, "the clean live element beside it lands");
     assert_eq!(back[0].weapons_count, 3, "the raised count reads back");
 }

@@ -173,6 +173,12 @@ func mustAbs(t *testing.T, path string) string {
 
 const serializeStub = `package serialize
 
+import "errors"
+
+// ErrValueOutOfRange is the write-side refusal the generated Go returns for a
+// value its wire cannot carry (serialize.go names it the same way).
+var ErrValueOutOfRange = errors.New("serialize: value out of range")
+
 type Int128 struct{ Lo, Hi uint64 }
 type Uint128 struct{ Lo, Hi uint64 }
 

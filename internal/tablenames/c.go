@@ -561,7 +561,7 @@ func init() {
 		// to hide it in, so every spelling of it is a unit-level name; the two
 		// MACROS it defines lead with SCHEMA_ and are reserved by internal/check
 		// instead, which is where this backend's macros are claimed. §5.3's two
-		// refusal REASONS (layout_newer, layout_unsupported) lead with SCHEMA_ too
+		// refusal REASONS (layout_unknown, layout_unsupported) lead with SCHEMA_ too
 		// and belong with their enum's siblings — none of the refusal reasons are
 		// registered here, and registering one would be a claim nothing needs.
 		Name{Name: "TableFixedCompiler", What: "the fixed form's plan compiler state (§3.4)"},
@@ -639,7 +639,7 @@ func init() {
 		Name{Name: "TableFixedKnownLayout", What: "the fixed form: one locked layout of a lineage entry — its hash, its bytes and its record size (§5.2)"},
 		Name{Name: "TableFixedLineagePlan", What: "the fixed form: one lineage entry's plan, built from the lock's bytes off every load path (§5.2)"},
 		Name{Name: "table_fixed_select", What: "the fixed form: the header's hash selects a known layout, or refuses (§5.3)"},
-		Name{Name: "table_fixed_refuse_hash", What: "the fixed form: a refusal that carries THE FILE'S hash — layout_newer and layout_unsupported (§5.3)"},
+		Name{Name: "table_fixed_refuse_hash", What: "the fixed form: a refusal that carries THE FILE'S hash — layout_unknown and layout_unsupported (§5.3)"},
 		Name{Name: "TableFixedPlanCache", What: "the plan cache BY HASH, so a compile is paid once per endpoint and never once per record"},
 		Name{Name: "TableFixedPlanCacheSlot", What: "one cached compiled plan: hash, plan pointer, count, record_bytes"},
 		Name{Name: "kTableFixedPlanCacheCapacity", What: "the plan cache's named bound: 64, overflow is a miss"},

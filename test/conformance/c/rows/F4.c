@@ -16,7 +16,7 @@
    THE CHECK IS STEP 3 AND THE HASH SELECT IS STEPS 5 AND 6, so the header's
    hash is irrelevant to it: a truncated layout is refused layout_malformed
    even for a hash in no lineage, where the hash select alone would have
-   answered layout_newer. And the comparison is `>` and not `>=`: a file that
+   answered layout_unknown. And the comparison is `>` and not `>=`: a file that
    ends EXACTLY at the layout's end (20 + L == bytes) is not truncated -- it
    holds zero records and reads.
 
@@ -32,7 +32,7 @@
      - minimal: twenty zeroed bytes, the form byte at 0, an unknown hash at
        8 (0xDEADBEEFCAFEF00D, in no lineage), L = 1 at 16 -- the smallest
        vector the law admits, claiming one more layout byte than the file
-       holds, under a hash that would name layout_newer if the select ran
+       holds, under a hash that would name layout_unknown if the select ran
        first;
      - boundary: the extent stops exactly at the layout's end,
        bytes = 20 + L, the record dropped whole -- NOT layout_malformed, and holds no record: wire_damaged;
@@ -155,7 +155,7 @@ int main( void )
     /* THE MINIMAL VECTOR FROM THE LAW, AND THE ORDER: twenty bytes that are
        all header, claiming L = 1, under a hash in no lineage. 20 + 1 > 20,
        and the length is read (step 3) before the hash select (steps 5 and
-       6), so the answer is layout_malformed and not layout_newer. */
+       6), so the answer is layout_malformed and not layout_unknown. */
     memset( tiny, 0, sizeof( tiny ) );
     tiny[0] = TBLV1_K_TABLE_FIXED_FORM;
     tblv1_table_fixed_put64( tiny + TBLV1_K_TABLE_FIXED_HASH_AT, 0xDEADBEEFCAFEF00Dull );

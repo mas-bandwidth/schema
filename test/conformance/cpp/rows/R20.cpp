@@ -94,7 +94,9 @@ static void field_append_case()
            "R20/added-field: the writer's own fields land exactly" );
     check( back.w == 77,
            "R20/added-field: the field the reader added lands its DECLARED DEFAULT (w == 77)" );
-    check( r.unknown == 0 && r.widened == 0 && r.clamped == 0 && !r.malformed && !r.refused,
+    // strict-only-read: a kind mismatch, an out-of-range value and a repeat now refuse the
+    // whole load (no counter), so the retired zero counts read as not refused, not damaged.
+    check( r.unknown == 0 && r.widened == 0 && !r.damaged && !r.refused,
            "R20/added-field: no counter moved — an append is not a widen" );
 }
 
@@ -122,7 +124,9 @@ static void field_deprecate_case()
            "R20/deprecated-field: a,b,c exact — the deprecated field KEEPS its slot and lands on every plan" );
     check( r.unknown == 0,
            "R20/deprecated-field: `unknown` does not move for a deprecated field the reader has (bill 12.3 #3)" );
-    check( r.widened == 0 && r.clamped == 0 && !r.malformed && !r.refused,
+    // strict-only-read: a kind mismatch, an out-of-range value and a repeat now refuse the
+    // whole load (no counter), so the retired zero counts read as not refused, not damaged.
+    check( r.widened == 0 && !r.damaged && !r.refused,
            "R20/deprecated-field: nothing else fired" );
 }
 
@@ -157,7 +161,9 @@ static void int_widen_case()
         check( back.lead == 0xAAAAAAAAu && back.trail == 0xBBBBBBBBu,
                "R20/int-widen: lead and trail bracket the row exactly" );
         check( r.widened == 1, "R20/int-widen: `widened` counts exactly once per widened field" );
-        check( r.unknown == 0 && r.clamped == 0 && !r.malformed && !r.refused,
+        // strict-only-read: a kind mismatch, an out-of-range value and a repeat now refuse the
+        // whole load (no counter), so the retired zero counts read as not refused, not damaged.
+        check( r.unknown == 0 && !r.damaged && !r.refused,
                "R20/int-widen: nothing else fired" );
     }
 }
@@ -194,7 +200,9 @@ static void float_widen_case()
     check( back.lead == 0xAAAAAAAAu && back.trail == 0xBBBBBBBBu,
            "R20/float-widen: lead and trail bracket the row exactly" );
     check( r.widened == 1, "R20/float-widen: `widened` counts exactly once" );
-    check( r.unknown == 0 && r.clamped == 0 && !r.malformed && !r.refused,
+    // strict-only-read: a kind mismatch, an out-of-range value and a repeat now refuse the
+    // whole load (no counter), so the retired zero counts read as not refused, not damaged.
+    check( r.unknown == 0 && !r.damaged && !r.refused,
            "R20/float-widen: nothing else fired" );
 }
 
@@ -225,7 +233,9 @@ static void string_grow_case()
     bool slack = true;
     for ( int i = 8; i < 16; ++i ) slack = slack && back.text[i] == 0;
     check( slack, "R20/string: the reader's slack (slots 8..15) is template ZEROS" );
-    check( r.unknown == 0 && r.widened == 0 && r.clamped == 0 && !r.malformed && !r.refused,
+    // strict-only-read: a kind mismatch, an out-of-range value and a repeat now refuse the
+    // whole load (no counter), so the retired zero counts read as not refused, not damaged.
+    check( r.unknown == 0 && r.widened == 0 && !r.damaged && !r.refused,
            "R20/string: a capacity that grew moves no counter" );
 }
 
@@ -253,7 +263,9 @@ static void array_bounded_grow_case()
     bool slack = true;
     for ( int i = 4; i < 8; ++i ) slack = slack && back.vals[i] == 0;
     check( slack, "R20/array: the reader's slack (slots 4..7) is template ZEROS" );
-    check( r.unknown == 0 && r.widened == 0 && r.clamped == 0 && !r.malformed && !r.refused,
+    // strict-only-read: a kind mismatch, an out-of-range value and a repeat now refuse the
+    // whole load (no counter), so the retired zero counts read as not refused, not damaged.
+    check( r.unknown == 0 && r.widened == 0 && !r.damaged && !r.refused,
            "R20/array: a bound that grew moves no counter" );
 }
 
@@ -281,7 +293,9 @@ static void enum_append_case()
     check( back.tier == vnew_enum_append::Tier::Gold,
            "R20/enum: an old Gold record reads Gold — the writer's ordinal IS the reader's" );
     check( back.seq == 9, "R20/enum: the scalar behind the enum lands exactly" );
-    check( r.unknown == 0 && r.widened == 0 && r.clamped == 0 && !r.malformed && !r.refused,
+    // strict-only-read: a kind mismatch, an out-of-range value and a repeat now refuse the
+    // whole load (no counter), so the retired zero counts read as not refused, not damaged.
+    check( r.unknown == 0 && r.widened == 0 && !r.damaged && !r.refused,
            "R20/enum: an appended variant moves no counter" );
 }
 
