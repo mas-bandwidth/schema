@@ -48,14 +48,14 @@ impl Weapon {
 }
 
 impl core::fmt::Display for Weapon {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.write_str(self.as_str())
+    fn fmt(&self, schema_f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        schema_f.write_str(self.as_str())
     }
 }
 
 /// Debug/log name for any `Weapon` value, out-of-set included.
-pub fn enum_name_weapon(value: Weapon) -> &'static str {
-    match value.0 {
+pub fn enum_name_weapon(schema_value: Weapon) -> &'static str {
+    match schema_value.0 {
         0 => "None",
         1 => "Laser",
         2 => "Missile",
@@ -86,8 +86,8 @@ pub const PROBE_FLAGS_DAMAGED: ProbeFlags = 1 << 2;
 pub const PROBE_FLAGS_COUNT: i64 = 3; // the declared variant count (SPEC §4.2)
 
 /// Debug/log name for bit `i` of `ProbeFlags` — out-of-range bits name as `"???"`.
-pub fn flag_name_probe_flags(bit: u32) -> &'static str {
-    match bit {
+pub fn flag_name_probe_flags(schema_bit: u32) -> &'static str {
+    match schema_bit {
         0 => "Armed",
         1 => "Cloaked",
         2 => "Damaged",
@@ -97,36 +97,36 @@ pub fn flag_name_probe_flags(bit: u32) -> &'static str {
 
 /// Renders the set bits of `value` as `"A|B"` — `"0"` for the empty set,
 /// bits past the declared variants as hex.
-pub fn flag_names_probe_flags(value: ProbeFlags) -> String {
-    let mut names = String::new();
-    if value & (1 << 0) != 0 {
-        if !names.is_empty() {
-            names.push('|');
+pub fn flag_names_probe_flags(schema_value: ProbeFlags) -> String {
+    let mut schema_names = String::new();
+    if schema_value & (1 << 0) != 0 {
+        if !schema_names.is_empty() {
+            schema_names.push('|');
         }
-        names.push_str(flag_name_probe_flags(0));
+        schema_names.push_str(flag_name_probe_flags(0));
     }
-    if value & (1 << 1) != 0 {
-        if !names.is_empty() {
-            names.push('|');
+    if schema_value & (1 << 1) != 0 {
+        if !schema_names.is_empty() {
+            schema_names.push('|');
         }
-        names.push_str(flag_name_probe_flags(1));
+        schema_names.push_str(flag_name_probe_flags(1));
     }
-    if value & (1 << 2) != 0 {
-        if !names.is_empty() {
-            names.push('|');
+    if schema_value & (1 << 2) != 0 {
+        if !schema_names.is_empty() {
+            schema_names.push('|');
         }
-        names.push_str(flag_name_probe_flags(2));
+        schema_names.push_str(flag_name_probe_flags(2));
     }
-    if value >> 3 != 0 {
-        if !names.is_empty() {
-            names.push('|');
+    if schema_value >> 3 != 0 {
+        if !schema_names.is_empty() {
+            schema_names.push('|');
         }
-        names.push_str(&format!("{:#x}", (value >> 3) << 3));
+        schema_names.push_str(&format!("{:#x}", (schema_value >> 3) << 3));
     }
-    if names.is_empty() {
-        names.push('0');
+    if schema_names.is_empty() {
+        schema_names.push('0');
     }
-    names
+    schema_names
 }
 
 // type ProbeHeader
@@ -144,48 +144,48 @@ pub const PROBE_HEADER_MAX_BITS: u64 = 87;
 pub const PROBE_HEADER_MAX_BYTES: usize = 16;
 
 #[inline(always)]
-pub fn write_probe_header(stream: &mut WriteStream<'_>, value: &ProbeHeader) -> Result {
-    debug_assert!(value.version < 1 << 3, "version above the bits(3) wire width");
-    let f0: u64 = 171_u64; // const(171, 8) — SPEC §4.3
-    let f1: u64 = u64::from(value.version);
-    let f2: u64 = 0; // reserved(5) — zeros on the wire
+pub fn write_probe_header(schema_stream: &mut WriteStream<'_>, schema_value: &ProbeHeader) -> Result {
+    debug_assert!(schema_value.version < 1 << 3, "version above the bits(3) wire width");
+    let schema_f0: u64 = 171_u64; // const(171, 8) — SPEC §4.3
+    let schema_f1: u64 = u64::from(schema_value.version);
+    let schema_f2: u64 = 0; // reserved(5) — zeros on the wire
     // word 0, 16 bits: const(171)[0..8], version[0..3], reserved[0..5]
-    stream.serialize_bits(&mut ((f0 | (f1 << 8) | (f2 << 11)) as u32), 16)?;
-    stream.serialize_align()?;
+    schema_stream.serialize_bits(&mut ((schema_f0 | (schema_f1 << 8) | (schema_f2 << 11)) as u32), 16)?;
+    schema_stream.serialize_align()?;
     {
-        let mut raw_value = value.probe_id;
-        stream.serialize_bits64(&mut raw_value, 64)?;
+        let mut schema_raw_value = schema_value.probe_id;
+        schema_stream.serialize_bits64(&mut schema_raw_value, 64)?;
     }
     Ok(())
 }
 
 #[inline]
-pub fn read_probe_header(stream: &mut ReadStream<'_>, value: &mut ProbeHeader) -> Result {
-    read_probe_header_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_probe_header(schema_stream: &mut ReadStream<'_>, schema_value: &mut ProbeHeader) -> Result {
+    read_probe_header_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[inline]
-pub(crate) fn read_probe_header_body(stream: &mut ReadStream<'_>, value: &mut ProbeHeader) -> Result {
-    let mut c: u32 = 0;
+pub(crate) fn read_probe_header_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut ProbeHeader) -> Result {
+    let mut schema_c: u32 = 0;
     // word 0, 16 bits: const(171)[0..8], version[0..3], reserved[0..5]
-    stream.serialize_bits(&mut c, 16)?;
-    let c0 = u64::from(c);
-    let v0: u64 = c0 & 0xff;
-    if v0 != 171 {
+    schema_stream.serialize_bits(&mut schema_c, 16)?;
+    let schema_c0 = u64::from(schema_c);
+    let schema_v0: u64 = schema_c0 & 0xff;
+    if schema_v0 != 171 {
         // const(171, 8): a read rejects any other value (SPEC §4.3)
         return Err(Error::Validation);
     }
-    let v1: u64 = (c0 >> 8) & 0x7;
-    value.version = v1 as u32;
-    let v2: u64 = (c0 >> 11) & 0x1f;
-    if v2 != 0 {
+    let schema_v1: u64 = (schema_c0 >> 8) & 0x7;
+    schema_value.version = schema_v1 as u32;
+    let schema_v2: u64 = (schema_c0 >> 11) & 0x1f;
+    if schema_v2 != 0 {
         // reserved(5): a read rejects nonzero (SPEC §4.3)
         return Err(Error::Validation);
     }
-    stream.serialize_align()?; // rejects nonzero padding (SPEC §4.3)
-    stream.serialize_bits64(&mut value.probe_id, 64)?;
+    schema_stream.serialize_align()?; // rejects nonzero padding (SPEC §4.3)
+    schema_stream.serialize_bits64(&mut schema_value.probe_id, 64)?;
     Ok(())
 }
 
@@ -207,72 +207,72 @@ pub const PROBE_BITS_MAX_BITS: u64 = 202;
 pub const PROBE_BITS_MAX_BYTES: usize = 32;
 
 #[inline(always)]
-pub fn write_probe_bits(stream: &mut WriteStream<'_>, value: &ProbeBits) -> Result {
-    debug_assert!(value.small < 1 << 9, "small above the bits(9) wire width");
-    debug_assert!(value.boundary < 1 << 33, "boundary above the bits(33) wire width");
-    let f0: u64 = u64::from(value.small);
-    let f1: u64 = value.boundary;
-    let f2: u64 = value.wide;
-    let f3: u64 = value.sensor as u64;
-    let f4: u64 = value.nonce;
+pub fn write_probe_bits(schema_stream: &mut WriteStream<'_>, schema_value: &ProbeBits) -> Result {
+    debug_assert!(schema_value.small < 1 << 9, "small above the bits(9) wire width");
+    debug_assert!(schema_value.boundary < 1 << 33, "boundary above the bits(33) wire width");
+    let schema_f0: u64 = u64::from(schema_value.small);
+    let schema_f1: u64 = schema_value.boundary;
+    let schema_f2: u64 = schema_value.wide;
+    let schema_f3: u64 = schema_value.sensor as u64;
+    let schema_f4: u64 = schema_value.nonce;
     // word 0, 32 bits: small[0..9], boundary[0..23]
-    stream.serialize_bits(&mut ((f0 | (f1 << 9)) as u32), 32)?;
+    schema_stream.serialize_bits(&mut ((schema_f0 | (schema_f1 << 9)) as u32), 32)?;
     // word 1, 32 bits: boundary[23..33], wide[0..22]
-    stream.serialize_bits(&mut (((f1 >> 23) | (f2 << 10)) as u32), 32)?;
+    schema_stream.serialize_bits(&mut (((schema_f1 >> 23) | (schema_f2 << 10)) as u32), 32)?;
     // word 2, 32 bits: wide[22..54]
-    stream.serialize_bits(&mut ((f2 >> 22) as u32), 32)?;
+    schema_stream.serialize_bits(&mut ((schema_f2 >> 22) as u32), 32)?;
     // word 3, 32 bits: wide[54..64], sensor[0..22]
-    stream.serialize_bits(&mut (((f2 >> 54) | (f3 << 10)) as u32), 32)?;
+    schema_stream.serialize_bits(&mut (((schema_f2 >> 54) | (schema_f3 << 10)) as u32), 32)?;
     // word 4, 32 bits: sensor[22..32], nonce[0..22]
-    stream.serialize_bits(&mut (((f3 >> 22) | (f4 << 10)) as u32), 32)?;
+    schema_stream.serialize_bits(&mut (((schema_f3 >> 22) | (schema_f4 << 10)) as u32), 32)?;
     // word 5, 32 bits: nonce[22..54]
-    stream.serialize_bits(&mut ((f4 >> 22) as u32), 32)?;
+    schema_stream.serialize_bits(&mut ((schema_f4 >> 22) as u32), 32)?;
     // word 6, 10 bits: nonce[54..64]
-    stream.serialize_bits(&mut ((f4 >> 54) as u32), 10)?;
+    schema_stream.serialize_bits(&mut ((schema_f4 >> 54) as u32), 10)?;
     Ok(())
 }
 
 #[inline]
-pub fn read_probe_bits(stream: &mut ReadStream<'_>, value: &mut ProbeBits) -> Result {
-    read_probe_bits_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_probe_bits(schema_stream: &mut ReadStream<'_>, schema_value: &mut ProbeBits) -> Result {
+    read_probe_bits_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[inline]
-pub(crate) fn read_probe_bits_body(stream: &mut ReadStream<'_>, value: &mut ProbeBits) -> Result {
-    let mut c: u32 = 0;
+pub(crate) fn read_probe_bits_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut ProbeBits) -> Result {
+    let mut schema_c: u32 = 0;
     // word 0, 32 bits: small[0..9], boundary[0..23]
-    stream.serialize_bits(&mut c, 32)?;
-    let c0 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c0 = u64::from(schema_c);
     // word 1, 32 bits: boundary[23..33], wide[0..22]
-    stream.serialize_bits(&mut c, 32)?;
-    let c1 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c1 = u64::from(schema_c);
     // word 2, 32 bits: wide[22..54]
-    stream.serialize_bits(&mut c, 32)?;
-    let c2 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c2 = u64::from(schema_c);
     // word 3, 32 bits: wide[54..64], sensor[0..22]
-    stream.serialize_bits(&mut c, 32)?;
-    let c3 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c3 = u64::from(schema_c);
     // word 4, 32 bits: sensor[22..32], nonce[0..22]
-    stream.serialize_bits(&mut c, 32)?;
-    let c4 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c4 = u64::from(schema_c);
     // word 5, 32 bits: nonce[22..54]
-    stream.serialize_bits(&mut c, 32)?;
-    let c5 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c5 = u64::from(schema_c);
     // word 6, 10 bits: nonce[54..64]
-    stream.serialize_bits(&mut c, 10)?;
-    let c6 = u64::from(c);
-    let v0: u64 = c0 & 0x1ff;
-    value.small = v0 as u32;
-    let v1: u64 = ((c0 >> 9) | (c1 << 23)) & 0x1ffffffff;
-    value.boundary = v1;
-    let v2: u64 = (c1 >> 10) | (c2 << 22) | (c3 << 54);
-    value.wide = v2;
-    let v3: u64 = ((c3 >> 10) | (c4 << 22)) & 0xffffffff;
-    value.sensor = (v3 as i64) as u32;
-    let v4: u64 = (c4 >> 10) | (c5 << 22) | (c6 << 54);
-    value.nonce = v4;
+    schema_stream.serialize_bits(&mut schema_c, 10)?;
+    let schema_c6 = u64::from(schema_c);
+    let schema_v0: u64 = schema_c0 & 0x1ff;
+    schema_value.small = schema_v0 as u32;
+    let schema_v1: u64 = ((schema_c0 >> 9) | (schema_c1 << 23)) & 0x1ffffffff;
+    schema_value.boundary = schema_v1;
+    let schema_v2: u64 = (schema_c1 >> 10) | (schema_c2 << 22) | (schema_c3 << 54);
+    schema_value.wide = schema_v2;
+    let schema_v3: u64 = ((schema_c3 >> 10) | (schema_c4 << 22)) & 0xffffffff;
+    schema_value.sensor = (schema_v3 as i64) as u32;
+    let schema_v4: u64 = (schema_c4 >> 10) | (schema_c5 << 22) | (schema_c6 << 54);
+    schema_value.nonce = schema_v4;
     Ok(())
 }
 
@@ -323,113 +323,113 @@ pub const PROBE_SAMPLE_MAX_BYTES: usize = 40;
 
 #[allow(clippy::needless_range_loop)]
 #[inline(always)]
-pub fn write_probe_sample(stream: &mut WriteStream<'_>, value: &ProbeSample) -> Result {
+pub fn write_probe_sample(schema_stream: &mut WriteStream<'_>, schema_value: &ProbeSample) -> Result {
     {
-        let mut bool_value = value.active;
-        stream.serialize_bool(&mut bool_value)?;
+        let mut schema_bool_value = schema_value.active;
+        schema_stream.serialize_bool(&mut schema_bool_value)?;
     }
-    debug_assert!(value.orientation.is_finite() && value.orientation >= -180.0_f32 && value.orientation <= 180.0_f32, "orientation out of range [-180.0_f32, 180.0_f32]");
+    debug_assert!(schema_value.orientation.is_finite() && schema_value.orientation >= -180.0_f32 && schema_value.orientation <= 180.0_f32, "orientation out of range [-180.0_f32, 180.0_f32]");
     {
-        let mut compressed_value = value.orientation;
-        stream.serialize_compressed_float_precomputed(&mut compressed_value, 36000, 16, 360.0_f32, -180.0_f32)?; // compressed float [-180.0, 180.0] @ 0.01, constants folded at generation
+        let mut schema_compressed_value = schema_value.orientation;
+        schema_stream.serialize_compressed_float_precomputed(&mut schema_compressed_value, 36000, 16, 360.0_f32, -180.0_f32)?; // compressed float [-180.0, 180.0] @ 0.01, constants folded at generation
     }
-    let f0: u64 = u64::from(value.raw_delta as u32);
-    let f1: u64 = value.big_delta as u64;
+    let schema_f0: u64 = u64::from(schema_value.raw_delta as u32);
+    let schema_f1: u64 = schema_value.big_delta as u64;
     // word 0, 32 bits: raw_delta[0..32]
-    stream.serialize_bits(&mut (f0 as u32), 32)?;
+    schema_stream.serialize_bits(&mut (schema_f0 as u32), 32)?;
     // word 1, 32 bits: big_delta[0..32]
-    stream.serialize_bits(&mut (f1 as u32), 32)?;
+    schema_stream.serialize_bits(&mut (schema_f1 as u32), 32)?;
     // word 2, 32 bits: big_delta[32..64]
-    stream.serialize_bits(&mut ((f1 >> 32) as u32), 32)?;
-    if value.active {
-        debug_assert!(value.weapon.0 <= 15, "weapon above the Weapon wire range [0, 15]");
-        let f0: u64 = u64::from(value.weapon.0);
-        let f1: u64 = u64::from(value.has_target);
+    schema_stream.serialize_bits(&mut ((schema_f1 >> 32) as u32), 32)?;
+    if schema_value.active {
+        debug_assert!(schema_value.weapon.0 <= 15, "weapon above the Weapon wire range [0, 15]");
+        let schema_f0: u64 = u64::from(schema_value.weapon.0);
+        let schema_f1: u64 = u64::from(schema_value.has_target);
         // word 0, 5 bits: weapon[0..4], has_target[0..1]
-        stream.serialize_bits(&mut ((f0 | (f1 << 4)) as u32), 5)?;
-        if value.has_target {
+        schema_stream.serialize_bits(&mut ((schema_f0 | (schema_f1 << 4)) as u32), 5)?;
+        if schema_value.has_target {
             {
-                let mut raw_value = value.target_id as u32;
-                stream.serialize_bits(&mut raw_value, 16)?;
+                let mut schema_raw_value = schema_value.target_id as u32;
+                schema_stream.serialize_bits(&mut schema_raw_value, 16)?;
             }
         }
     } else {
         {
-            let mut raw_value = value.idle_ticks;
-            stream.serialize_bits(&mut raw_value, 32)?;
+            let mut schema_raw_value = schema_value.idle_ticks;
+            schema_stream.serialize_bits(&mut schema_raw_value, 32)?;
         }
     }
-    debug_assert!(value.samples_count >= 1 && value.samples_count <= 8, "samples_count out of range [1, 8]");
+    debug_assert!(schema_value.samples_count >= 1 && schema_value.samples_count <= 8, "samples_count out of range [1, 8]");
     {
-        let mut offset_value = (value.samples_count as u32).wrapping_sub((1_i32) as u32);
-        stream.serialize_bits(&mut offset_value, 3)?; // the count guards the loop (§6.3)
+        let mut schema_offset_value = (schema_value.samples_count as u32).wrapping_sub((1_i32) as u32);
+        schema_stream.serialize_bits(&mut schema_offset_value, 3)?; // the count guards the loop (§6.3)
     }
-    for i in 0..value.samples_count as usize {
+    for schema_i in 0..schema_value.samples_count as usize {
         {
-            let mut raw_value = value.samples[i] as u32;
-            stream.serialize_bits(&mut raw_value, 16)?;
+            let mut schema_raw_value = schema_value.samples[schema_i] as u32;
+            schema_stream.serialize_bits(&mut schema_raw_value, 16)?;
         }
     }
     Ok(())
 }
 
 #[inline]
-pub fn read_probe_sample(stream: &mut ReadStream<'_>, value: &mut ProbeSample) -> Result {
-    read_probe_sample_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_probe_sample(schema_stream: &mut ReadStream<'_>, schema_value: &mut ProbeSample) -> Result {
+    read_probe_sample_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[allow(clippy::needless_range_loop)]
 #[inline]
-pub(crate) fn read_probe_sample_body(stream: &mut ReadStream<'_>, value: &mut ProbeSample) -> Result {
-    stream.serialize_bool(&mut value.active)?;
-    stream.serialize_compressed_float_precomputed(&mut value.orientation, 36000, 16, 360.0_f32, -180.0_f32)?; // compressed float [-180.0, 180.0] @ 0.01, constants folded at generation
-    let mut c: u32 = 0;
+pub(crate) fn read_probe_sample_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut ProbeSample) -> Result {
+    schema_stream.serialize_bool(&mut schema_value.active)?;
+    schema_stream.serialize_compressed_float_precomputed(&mut schema_value.orientation, 36000, 16, 360.0_f32, -180.0_f32)?; // compressed float [-180.0, 180.0] @ 0.01, constants folded at generation
+    let mut schema_c: u32 = 0;
     // word 0, 32 bits: raw_delta[0..32]
-    stream.serialize_bits(&mut c, 32)?;
-    let c0 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c0 = u64::from(schema_c);
     // word 1, 32 bits: big_delta[0..32]
-    stream.serialize_bits(&mut c, 32)?;
-    let c1 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c1 = u64::from(schema_c);
     // word 2, 32 bits: big_delta[32..64]
-    stream.serialize_bits(&mut c, 32)?;
-    let c2 = u64::from(c);
-    let v0: u64 = c0 & 0xffffffff;
-    value.raw_delta = v0 as i32;
-    let v1: u64 = c1 | (c2 << 32);
-    value.big_delta = v1 as i64;
-    if value.active {
-        let mut c: u32 = 0;
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c2 = u64::from(schema_c);
+    let schema_v0: u64 = schema_c0 & 0xffffffff;
+    schema_value.raw_delta = schema_v0 as i32;
+    let schema_v1: u64 = schema_c1 | (schema_c2 << 32);
+    schema_value.big_delta = schema_v1 as i64;
+    if schema_value.active {
+        let mut schema_c: u32 = 0;
         // word 0, 5 bits: weapon[0..4], has_target[0..1]
-        stream.serialize_bits(&mut c, 5)?;
-        let c0 = u64::from(c);
-        let v0: u64 = c0 & 0xf;
-        value.weapon = Weapon(v0 as u8);
-        let v1: u64 = (c0 >> 4) & 0x1;
-        value.has_target = v1 != 0;
-        if value.has_target {
+        schema_stream.serialize_bits(&mut schema_c, 5)?;
+        let schema_c0 = u64::from(schema_c);
+        let schema_v0: u64 = schema_c0 & 0xf;
+        schema_value.weapon = Weapon(schema_v0 as u8);
+        let schema_v1: u64 = (schema_c0 >> 4) & 0x1;
+        schema_value.has_target = schema_v1 != 0;
+        if schema_value.has_target {
             {
-                let mut raw_value: u32 = 0;
-                stream.serialize_bits(&mut raw_value, 16)?;
-                value.target_id = raw_value as u16;
+                let mut schema_raw_value: u32 = 0;
+                schema_stream.serialize_bits(&mut schema_raw_value, 16)?;
+                schema_value.target_id = schema_raw_value as u16;
             }
         } else {
-            value.target_id = 0;
+            schema_value.target_id = 0;
         }
-        value.idle_ticks = 0;
+        schema_value.idle_ticks = 0;
     } else {
-        stream.serialize_bits(&mut value.idle_ticks, 32)?;
-        value.weapon = Weapon::NONE;
-        value.has_target = false;
-        value.target_id = 0;
+        schema_stream.serialize_bits(&mut schema_value.idle_ticks, 32)?;
+        schema_value.weapon = Weapon::NONE;
+        schema_value.has_target = false;
+        schema_value.target_id = 0;
     }
-    stream.serialize_int(&mut value.samples_count, 1, 8)?; // the count guards the loop (§6.3)
-    for i in 0..value.samples_count as usize {
+    schema_stream.serialize_int(&mut schema_value.samples_count, 1, 8)?; // the count guards the loop (§6.3)
+    for schema_i in 0..schema_value.samples_count as usize {
         {
-            let mut raw_value: u32 = 0;
-            stream.serialize_bits(&mut raw_value, 16)?;
-            value.samples[i] = raw_value as u16;
+            let mut schema_raw_value: u32 = 0;
+            schema_stream.serialize_bits(&mut schema_raw_value, 16)?;
+            schema_value.samples[schema_i] = schema_raw_value as u16;
         }
     }
     Ok(())
@@ -449,27 +449,27 @@ pub const PROBE_RING_MAX_BITS: u64 = 16;
 pub const PROBE_RING_MAX_BYTES: usize = 8;
 
 #[inline(always)]
-pub fn write_probe_ring(stream: &mut WriteStream<'_>, value: &ProbeRing) -> Result {
+pub fn write_probe_ring(schema_stream: &mut WriteStream<'_>, schema_value: &ProbeRing) -> Result {
     {
-        let mut raw_value = value.radius as u32;
-        stream.serialize_bits(&mut raw_value, 16)?;
+        let mut schema_raw_value = schema_value.radius as u32;
+        schema_stream.serialize_bits(&mut schema_raw_value, 16)?;
     }
     Ok(())
 }
 
 #[inline]
-pub fn read_probe_ring(stream: &mut ReadStream<'_>, value: &mut ProbeRing) -> Result {
-    read_probe_ring_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_probe_ring(schema_stream: &mut ReadStream<'_>, schema_value: &mut ProbeRing) -> Result {
+    read_probe_ring_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[inline]
-pub(crate) fn read_probe_ring_body(stream: &mut ReadStream<'_>, value: &mut ProbeRing) -> Result {
+pub(crate) fn read_probe_ring_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut ProbeRing) -> Result {
     {
-        let mut raw_value: u32 = 0;
-        stream.serialize_bits(&mut raw_value, 16)?;
-        value.radius = raw_value as u16;
+        let mut schema_raw_value: u32 = 0;
+        schema_stream.serialize_bits(&mut schema_raw_value, 16)?;
+        schema_value.radius = schema_raw_value as u16;
     }
     Ok(())
 }
@@ -489,35 +489,35 @@ pub const PROBE_SLAB_MAX_BITS: u64 = 15;
 pub const PROBE_SLAB_MAX_BYTES: usize = 8;
 
 #[inline(always)]
-pub fn write_probe_slab(stream: &mut WriteStream<'_>, value: &ProbeSlab) -> Result {
-    debug_assert!(value.width <= 100, "width out of range [0, 100]");
-    let f0: u64 = u64::from(value.width as u32);
-    let f1: u64 = u64::from(value.height);
+pub fn write_probe_slab(schema_stream: &mut WriteStream<'_>, schema_value: &ProbeSlab) -> Result {
+    debug_assert!(schema_value.width <= 100, "width out of range [0, 100]");
+    let schema_f0: u64 = u64::from(schema_value.width as u32);
+    let schema_f1: u64 = u64::from(schema_value.height);
     // word 0, 15 bits: width[0..7], height[0..8]
-    stream.serialize_bits(&mut ((f0 | (f1 << 7)) as u32), 15)?;
+    schema_stream.serialize_bits(&mut ((schema_f0 | (schema_f1 << 7)) as u32), 15)?;
     Ok(())
 }
 
 #[inline]
-pub fn read_probe_slab(stream: &mut ReadStream<'_>, value: &mut ProbeSlab) -> Result {
-    read_probe_slab_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_probe_slab(schema_stream: &mut ReadStream<'_>, schema_value: &mut ProbeSlab) -> Result {
+    read_probe_slab_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[inline]
-pub(crate) fn read_probe_slab_body(stream: &mut ReadStream<'_>, value: &mut ProbeSlab) -> Result {
-    let mut c: u32 = 0;
+pub(crate) fn read_probe_slab_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut ProbeSlab) -> Result {
+    let mut schema_c: u32 = 0;
     // word 0, 15 bits: width[0..7], height[0..8]
-    stream.serialize_bits(&mut c, 15)?;
-    let c0 = u64::from(c);
-    let v0: u64 = c0 & 0x7f;
-    if v0 > 100 {
+    schema_stream.serialize_bits(&mut schema_c, 15)?;
+    let schema_c0 = u64::from(schema_c);
+    let schema_v0: u64 = schema_c0 & 0x7f;
+    if schema_v0 > 100 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    value.width = (v0 as i32) as u8;
-    let v1: u64 = (c0 >> 7) & 0xff;
-    value.height = v1 as u8;
+    schema_value.width = (schema_v0 as i32) as u8;
+    let schema_v1: u64 = (schema_c0 >> 7) & 0xff;
+    schema_value.height = schema_v1 as u8;
     Ok(())
 }
 
@@ -539,14 +539,14 @@ impl ProbeShapeType {
 }
 
 impl core::fmt::Display for ProbeShapeType {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.write_str(self.as_str())
+    fn fmt(&self, schema_f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        schema_f.write_str(self.as_str())
     }
 }
 
 /// Debug/log name for any `ProbeShapeType` value, out-of-set included.
-pub fn enum_name_probe_shape_type(value: ProbeShapeType) -> &'static str {
-    match value.0 {
+pub fn enum_name_probe_shape_type(schema_value: ProbeShapeType) -> &'static str {
+    match schema_value.0 {
         0 => "None",
         1 => "Ring",
         2 => "Slab",
@@ -570,49 +570,49 @@ pub enum ProbeShape {
 pub const PROBE_SHAPE_MAX_BITS: u64 = 18;
 pub const PROBE_SHAPE_MAX_BYTES: usize = 8;
 
-pub fn write_probe_shape(stream: &mut WriteStream<'_>, value: &ProbeShape) -> Result {
-    match value {
+pub fn write_probe_shape(schema_stream: &mut WriteStream<'_>, schema_value: &ProbeShape) -> Result {
+    match schema_value {
         ProbeShape::None => {
-            let mut offset_value: u32 = 0;
-            stream.serialize_bits(&mut offset_value, 2)?;
+            let mut schema_offset_value: u32 = 0;
+            schema_stream.serialize_bits(&mut schema_offset_value, 2)?;
             Ok(()) // no payload — the tag is the whole wire (SPEC §4.8)
         }
-        ProbeShape::Ring(arm) => {
-            let mut offset_value: u32 = 1;
-            stream.serialize_bits(&mut offset_value, 2)?;
-            write_probe_ring(stream, arm)
+        ProbeShape::Ring(schema_arm) => {
+            let mut schema_offset_value: u32 = 1;
+            schema_stream.serialize_bits(&mut schema_offset_value, 2)?;
+            write_probe_ring(schema_stream, schema_arm)
         }
-        ProbeShape::Slab(arm) => {
-            let mut offset_value: u32 = 2;
-            stream.serialize_bits(&mut offset_value, 2)?;
-            write_probe_slab(stream, arm)
+        ProbeShape::Slab(schema_arm) => {
+            let mut schema_offset_value: u32 = 2;
+            schema_stream.serialize_bits(&mut schema_offset_value, 2)?;
+            write_probe_slab(schema_stream, schema_arm)
         }
     }
 }
 
 #[inline]
-pub fn read_probe_shape(stream: &mut ReadStream<'_>, value: &mut ProbeShape) -> Result {
-    read_probe_shape_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_probe_shape(schema_stream: &mut ReadStream<'_>, schema_value: &mut ProbeShape) -> Result {
+    read_probe_shape_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[inline]
-pub(crate) fn read_probe_shape_body(stream: &mut ReadStream<'_>, value: &mut ProbeShape) -> Result {
-    let mut tag_value: i32 = 0;
-    stream.serialize_int(&mut tag_value, 0, 2)?; // rejects a tag above the count (SPEC §4.8)
-    match tag_value {
+pub(crate) fn read_probe_shape_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut ProbeShape) -> Result {
+    let mut schema_tag_value: i32 = 0;
+    schema_stream.serialize_int(&mut schema_tag_value, 0, 2)?; // rejects a tag above the count (SPEC §4.8)
+    match schema_tag_value {
         1 => {
-            let mut arm = ProbeRing::default();
-            read_probe_ring_body(stream, &mut arm)?;
-            *value = ProbeShape::Ring(arm);
+            let mut schema_arm = ProbeRing::default();
+            read_probe_ring_body(schema_stream, &mut schema_arm)?;
+            *schema_value = ProbeShape::Ring(schema_arm);
         }
         2 => {
-            let mut arm = ProbeSlab::default();
-            read_probe_slab_body(stream, &mut arm)?;
-            *value = ProbeShape::Slab(arm);
+            let mut schema_arm = ProbeSlab::default();
+            read_probe_slab_body(schema_stream, &mut schema_arm)?;
+            *schema_value = ProbeShape::Slab(schema_arm);
         }
-        _ => *value = ProbeShape::None,
+        _ => *schema_value = ProbeShape::None,
     }
     Ok(())
 }
@@ -636,44 +636,44 @@ pub const PROBE_COLLIDER_MAX_BYTES: usize = 16;
 
 #[allow(clippy::needless_range_loop)]
 #[inline(always)]
-pub fn write_probe_collider(stream: &mut WriteStream<'_>, value: &ProbeCollider) -> Result {
+pub fn write_probe_collider(schema_stream: &mut WriteStream<'_>, schema_value: &ProbeCollider) -> Result {
     {
-        let mut raw_value = value.armor as u32;
-        stream.serialize_bits(&mut raw_value, 8)?;
+        let mut schema_raw_value = schema_value.armor as u32;
+        schema_stream.serialize_bits(&mut schema_raw_value, 8)?;
     }
-    write_probe_shape(stream, &value.shape)?;
-    write_probe_shape(stream, &value.backup)?;
-    debug_assert!(value.extras_count >= 0 && value.extras_count <= 2, "extras_count out of range [0, 2]");
+    write_probe_shape(schema_stream, &schema_value.shape)?;
+    write_probe_shape(schema_stream, &schema_value.backup)?;
+    debug_assert!(schema_value.extras_count >= 0 && schema_value.extras_count <= 2, "extras_count out of range [0, 2]");
     {
-        let mut offset_value = value.extras_count as u32;
-        stream.serialize_bits(&mut offset_value, 2)?; // the count guards the loop (§6.3)
+        let mut schema_offset_value = schema_value.extras_count as u32;
+        schema_stream.serialize_bits(&mut schema_offset_value, 2)?; // the count guards the loop (§6.3)
     }
-    for i in 0..value.extras_count as usize {
-        write_probe_shape(stream, &value.extras[i])?;
+    for schema_i in 0..schema_value.extras_count as usize {
+        write_probe_shape(schema_stream, &schema_value.extras[schema_i])?;
     }
     Ok(())
 }
 
 #[inline]
-pub fn read_probe_collider(stream: &mut ReadStream<'_>, value: &mut ProbeCollider) -> Result {
-    read_probe_collider_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_probe_collider(schema_stream: &mut ReadStream<'_>, schema_value: &mut ProbeCollider) -> Result {
+    read_probe_collider_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[allow(clippy::needless_range_loop)]
 #[inline]
-pub(crate) fn read_probe_collider_body(stream: &mut ReadStream<'_>, value: &mut ProbeCollider) -> Result {
+pub(crate) fn read_probe_collider_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut ProbeCollider) -> Result {
     {
-        let mut raw_value: u32 = 0;
-        stream.serialize_bits(&mut raw_value, 8)?;
-        value.armor = raw_value as u8;
+        let mut schema_raw_value: u32 = 0;
+        schema_stream.serialize_bits(&mut schema_raw_value, 8)?;
+        schema_value.armor = schema_raw_value as u8;
     }
-    read_probe_shape_body(stream, &mut value.shape)?;
-    read_probe_shape_body(stream, &mut value.backup)?;
-    stream.serialize_int(&mut value.extras_count, 0, 2)?; // the count guards the loop (§6.3)
-    for i in 0..value.extras_count as usize {
-        read_probe_shape_body(stream, &mut value.extras[i])?;
+    read_probe_shape_body(schema_stream, &mut schema_value.shape)?;
+    read_probe_shape_body(schema_stream, &mut schema_value.backup)?;
+    schema_stream.serialize_int(&mut schema_value.extras_count, 0, 2)?; // the count guards the loop (§6.3)
+    for schema_i in 0..schema_value.extras_count as usize {
+        read_probe_shape_body(schema_stream, &mut schema_value.extras[schema_i])?;
     }
     Ok(())
 }
@@ -705,37 +705,37 @@ pub const PROBE_CONFIG_MAX_BITS: u64 = 36;
 pub const PROBE_CONFIG_MAX_BYTES: usize = 8;
 
 #[inline(always)]
-pub fn write_probe_config(stream: &mut WriteStream<'_>, value: &ProbeConfig) -> Result {
-    debug_assert!(value.preferred.0 <= 15, "preferred above the Weapon wire range [0, 15]");
-    let f0: u64 = u64::from(value.retries as u32);
-    let f1: u64 = u64::from(value.preferred.0);
+pub fn write_probe_config(schema_stream: &mut WriteStream<'_>, schema_value: &ProbeConfig) -> Result {
+    debug_assert!(schema_value.preferred.0 <= 15, "preferred above the Weapon wire range [0, 15]");
+    let schema_f0: u64 = u64::from(schema_value.retries as u32);
+    let schema_f1: u64 = u64::from(schema_value.preferred.0);
     // word 0, 32 bits: retries[0..32]
-    stream.serialize_bits(&mut (f0 as u32), 32)?;
+    schema_stream.serialize_bits(&mut (schema_f0 as u32), 32)?;
     // word 1, 4 bits: preferred[0..4]
-    stream.serialize_bits(&mut (f1 as u32), 4)?;
+    schema_stream.serialize_bits(&mut (schema_f1 as u32), 4)?;
     Ok(())
 }
 
 #[inline]
-pub fn read_probe_config(stream: &mut ReadStream<'_>, value: &mut ProbeConfig) -> Result {
-    read_probe_config_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_probe_config(schema_stream: &mut ReadStream<'_>, schema_value: &mut ProbeConfig) -> Result {
+    read_probe_config_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[inline]
-pub(crate) fn read_probe_config_body(stream: &mut ReadStream<'_>, value: &mut ProbeConfig) -> Result {
-    let mut c: u32 = 0;
+pub(crate) fn read_probe_config_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut ProbeConfig) -> Result {
+    let mut schema_c: u32 = 0;
     // word 0, 32 bits: retries[0..32]
-    stream.serialize_bits(&mut c, 32)?;
-    let c0 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c0 = u64::from(schema_c);
     // word 1, 4 bits: preferred[0..4]
-    stream.serialize_bits(&mut c, 4)?;
-    let c1 = u64::from(c);
-    let v0: u64 = c0 & 0xffffffff;
-    value.retries = v0 as i32;
-    let v1: u64 = c1 & 0xf;
-    value.preferred = Weapon(v1 as u8);
+    schema_stream.serialize_bits(&mut schema_c, 4)?;
+    let schema_c1 = u64::from(schema_c);
+    let schema_v0: u64 = schema_c0 & 0xffffffff;
+    schema_value.retries = schema_v0 as i32;
+    let schema_v1: u64 = schema_c1 & 0xf;
+    schema_value.preferred = Weapon(schema_v1 as u8);
     Ok(())
 }
 
@@ -767,28 +767,28 @@ pub const PROBE_ARRAY_MAX_BYTES: usize = 80;
 
 #[allow(clippy::needless_range_loop)]
 #[inline(always)]
-pub fn write_probe_array(stream: &mut WriteStream<'_>, value: &ProbeArray) -> Result {
-    for i in 0..2 {
-        write_probe_sample(stream, &value.samples[i])?;
+pub fn write_probe_array(schema_stream: &mut WriteStream<'_>, schema_value: &ProbeArray) -> Result {
+    for schema_i in 0..2 {
+        write_probe_sample(schema_stream, &schema_value.samples[schema_i])?;
     }
-    write_probe_config(stream, &value.config)?;
+    write_probe_config(schema_stream, &schema_value.config)?;
     Ok(())
 }
 
 #[inline]
-pub fn read_probe_array(stream: &mut ReadStream<'_>, value: &mut ProbeArray) -> Result {
-    read_probe_array_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_probe_array(schema_stream: &mut ReadStream<'_>, schema_value: &mut ProbeArray) -> Result {
+    read_probe_array_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[allow(clippy::needless_range_loop)]
 #[inline]
-pub(crate) fn read_probe_array_body(stream: &mut ReadStream<'_>, value: &mut ProbeArray) -> Result {
-    for i in 0..2 {
-        read_probe_sample_body(stream, &mut value.samples[i])?;
+pub(crate) fn read_probe_array_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut ProbeArray) -> Result {
+    for schema_i in 0..2 {
+        read_probe_sample_body(schema_stream, &mut schema_value.samples[schema_i])?;
     }
-    read_probe_config_body(stream, &mut value.config)?;
+    read_probe_config_body(schema_stream, &mut schema_value.config)?;
     Ok(())
 }
 
@@ -804,21 +804,21 @@ pub const HEARTBEAT_MAX_BITS: u64 = 0;
 pub const HEARTBEAT_MAX_BYTES: usize = 0;
 
 #[inline(always)]
-pub fn write_heartbeat(stream: &mut WriteStream<'_>, value: &Heartbeat) -> Result {
-    let _ = (stream, value); // empty body — presence is the payload (SPEC §4.6)
+pub fn write_heartbeat(schema_stream: &mut WriteStream<'_>, schema_value: &Heartbeat) -> Result {
+    let _ = (schema_stream, schema_value); // empty body — presence is the payload (SPEC §4.6)
     Ok(())
 }
 
 #[inline]
-pub fn read_heartbeat(stream: &mut ReadStream<'_>, value: &mut Heartbeat) -> Result {
-    read_heartbeat_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_heartbeat(schema_stream: &mut ReadStream<'_>, schema_value: &mut Heartbeat) -> Result {
+    read_heartbeat_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[inline]
-pub(crate) fn read_heartbeat_body(stream: &mut ReadStream<'_>, value: &mut Heartbeat) -> Result {
-    let _ = (stream, value);
+pub(crate) fn read_heartbeat_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut Heartbeat) -> Result {
+    let _ = (schema_stream, schema_value);
     Ok(())
 }
 
@@ -839,54 +839,54 @@ pub const TEST_MAX_BITS: u64 = 46;
 pub const TEST_MAX_BYTES: usize = 8;
 
 #[inline(always)]
-pub fn write_test(stream: &mut WriteStream<'_>, value: &Test) -> Result {
-    debug_assert!(value.test_b >= 0 && value.test_b <= 1000, "test_b out of range [0, 1000]");
-    debug_assert!(value.test_c >= 0 && value.test_c <= 1000, "test_c out of range [0, 1000]");
-    debug_assert!(value.test_d >= 0 && value.test_d <= 1000, "test_d out of range [0, 1000]");
-    let f0: u64 = u64::from(value.test_a);
-    let f1: u64 = u64::from(value.test_b as u32);
-    let f2: u64 = u64::from(value.test_c as u32);
-    let f3: u64 = u64::from(value.test_d as u32);
+pub fn write_test(schema_stream: &mut WriteStream<'_>, schema_value: &Test) -> Result {
+    debug_assert!(schema_value.test_b >= 0 && schema_value.test_b <= 1000, "test_b out of range [0, 1000]");
+    debug_assert!(schema_value.test_c >= 0 && schema_value.test_c <= 1000, "test_c out of range [0, 1000]");
+    debug_assert!(schema_value.test_d >= 0 && schema_value.test_d <= 1000, "test_d out of range [0, 1000]");
+    let schema_f0: u64 = u64::from(schema_value.test_a);
+    let schema_f1: u64 = u64::from(schema_value.test_b as u32);
+    let schema_f2: u64 = u64::from(schema_value.test_c as u32);
+    let schema_f3: u64 = u64::from(schema_value.test_d as u32);
     // word 0, 32 bits: test_a[0..16], test_b[0..10], test_c[0..6]
-    stream.serialize_bits(&mut ((f0 | (f1 << 16) | (f2 << 26)) as u32), 32)?;
+    schema_stream.serialize_bits(&mut ((schema_f0 | (schema_f1 << 16) | (schema_f2 << 26)) as u32), 32)?;
     // word 1, 14 bits: test_c[6..10], test_d[0..10]
-    stream.serialize_bits(&mut (((f2 >> 6) | (f3 << 4)) as u32), 14)?;
+    schema_stream.serialize_bits(&mut (((schema_f2 >> 6) | (schema_f3 << 4)) as u32), 14)?;
     Ok(())
 }
 
 #[inline]
-pub fn read_test(stream: &mut ReadStream<'_>, value: &mut Test) -> Result {
-    read_test_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_test(schema_stream: &mut ReadStream<'_>, schema_value: &mut Test) -> Result {
+    read_test_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[inline]
-pub(crate) fn read_test_body(stream: &mut ReadStream<'_>, value: &mut Test) -> Result {
-    let mut c: u32 = 0;
+pub(crate) fn read_test_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut Test) -> Result {
+    let mut schema_c: u32 = 0;
     // word 0, 32 bits: test_a[0..16], test_b[0..10], test_c[0..6]
-    stream.serialize_bits(&mut c, 32)?;
-    let c0 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c0 = u64::from(schema_c);
     // word 1, 14 bits: test_c[6..10], test_d[0..10]
-    stream.serialize_bits(&mut c, 14)?;
-    let c1 = u64::from(c);
-    let v0: u64 = c0 & 0xffff;
-    value.test_a = v0 as u16;
-    let v1: u64 = (c0 >> 16) & 0x3ff;
-    if v1 > 1000 {
+    schema_stream.serialize_bits(&mut schema_c, 14)?;
+    let schema_c1 = u64::from(schema_c);
+    let schema_v0: u64 = schema_c0 & 0xffff;
+    schema_value.test_a = schema_v0 as u16;
+    let schema_v1: u64 = (schema_c0 >> 16) & 0x3ff;
+    if schema_v1 > 1000 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    value.test_b = (v1 as i32) as i16;
-    let v2: u64 = ((c0 >> 26) | (c1 << 6)) & 0x3ff;
-    if v2 > 1000 {
+    schema_value.test_b = (schema_v1 as i32) as i16;
+    let schema_v2: u64 = ((schema_c0 >> 26) | (schema_c1 << 6)) & 0x3ff;
+    if schema_v2 > 1000 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    value.test_c = (v2 as i32) as i16;
-    let v3: u64 = (c1 >> 4) & 0x3ff;
-    if v3 > 1000 {
+    schema_value.test_c = (schema_v2 as i32) as i16;
+    let schema_v3: u64 = (schema_c1 >> 4) & 0x3ff;
+    if schema_v3 > 1000 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    value.test_d = (v3 as i32) as i16;
+    schema_value.test_d = (schema_v3 as i32) as i16;
     Ok(())
 }
 
@@ -914,27 +914,27 @@ pub const BLOCK_MAX_BITS: u64 = 16018;
 pub const BLOCK_MAX_BYTES: usize = 2008;
 
 #[inline(always)]
-pub fn write_block(stream: &mut WriteStream<'_>, value: &Block) -> Result {
-    debug_assert!(value.data_length >= 0 && value.data_length <= 2000, "data_length out of range [0, 2000]");
+pub fn write_block(schema_stream: &mut WriteStream<'_>, schema_value: &Block) -> Result {
+    debug_assert!(schema_value.data_length >= 0 && schema_value.data_length <= 2000, "data_length out of range [0, 2000]");
     {
-        let mut offset_value = value.data_length as u32;
-        stream.serialize_bits(&mut offset_value, 11)?; // the length guards the slice (§6.3)
+        let mut schema_offset_value = schema_value.data_length as u32;
+        schema_stream.serialize_bits(&mut schema_offset_value, 11)?; // the length guards the slice (§6.3)
     }
-    stream.write_bytes(&value.data[..value.data_length as usize]); // borrowed in place: the write side never mutates (infallible: returns () in serialize.rs 2.0.0)
+    schema_stream.write_bytes(&schema_value.data[..schema_value.data_length as usize]); // borrowed in place: the write side never mutates (infallible: returns () in serialize.rs 2.0.0)
     Ok(())
 }
 
 #[inline]
-pub fn read_block(stream: &mut ReadStream<'_>, value: &mut Block) -> Result {
-    read_block_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_block(schema_stream: &mut ReadStream<'_>, schema_value: &mut Block) -> Result {
+    read_block_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[inline]
-pub(crate) fn read_block_body(stream: &mut ReadStream<'_>, value: &mut Block) -> Result {
-    stream.serialize_int(&mut value.data_length, 0, MAX_BLOCK_SIZE as i32)?; // the length guards the slice (§6.3)
-    stream.serialize_bytes(&mut value.data[..value.data_length as usize])?;
+pub(crate) fn read_block_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut Block) -> Result {
+    schema_stream.serialize_int(&mut schema_value.data_length, 0, MAX_BLOCK_SIZE as i32)?; // the length guards the slice (§6.3)
+    schema_stream.serialize_bytes(&mut schema_value.data[..schema_value.data_length as usize])?;
     Ok(())
 }
 
@@ -962,35 +962,35 @@ pub const CHAT_MAX_BITS: u64 = 2064;
 pub const CHAT_MAX_BYTES: usize = 264;
 
 #[inline(always)]
-pub fn write_chat(stream: &mut WriteStream<'_>, value: &Chat) -> Result {
-    debug_assert!(value.text_length >= 0 && value.text_length <= 256, "text_length out of range [0, 256]");
-    debug_assert!(!value.text[..value.text_length as usize].contains(&0), "text holds a zero byte");
-    debug_assert!(std::str::from_utf8(&value.text[..value.text_length as usize]).is_ok(), "text is not well-formed UTF-8");
+pub fn write_chat(schema_stream: &mut WriteStream<'_>, schema_value: &Chat) -> Result {
+    debug_assert!(schema_value.text_length >= 0 && schema_value.text_length <= 256, "text_length out of range [0, 256]");
+    debug_assert!(!schema_value.text[..schema_value.text_length as usize].contains(&0), "text holds a zero byte");
+    debug_assert!(std::str::from_utf8(&schema_value.text[..schema_value.text_length as usize]).is_ok(), "text is not well-formed UTF-8");
     {
-        let mut offset_value = value.text_length as u32;
-        stream.serialize_bits(&mut offset_value, 9)?; // the length guards the slice (§6.3)
+        let mut schema_offset_value = schema_value.text_length as u32;
+        schema_stream.serialize_bits(&mut schema_offset_value, 9)?; // the length guards the slice (§6.3)
     }
-    stream.write_bytes(&value.text[..value.text_length as usize]); // borrowed in place: the write side never mutates (infallible: returns () in serialize.rs 2.0.0)
+    schema_stream.write_bytes(&schema_value.text[..schema_value.text_length as usize]); // borrowed in place: the write side never mutates (infallible: returns () in serialize.rs 2.0.0)
     Ok(())
 }
 
 #[inline]
-pub fn read_chat(stream: &mut ReadStream<'_>, value: &mut Chat) -> Result {
-    read_chat_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_chat(schema_stream: &mut ReadStream<'_>, schema_value: &mut Chat) -> Result {
+    read_chat_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[allow(clippy::needless_range_loop)]
 #[inline]
-pub(crate) fn read_chat_body(stream: &mut ReadStream<'_>, value: &mut Chat) -> Result {
-    stream.serialize_int(&mut value.text_length, 0, MAX_CHAT_LENGTH as i32)?; // the length guards the slice (§6.3)
-    stream.serialize_bytes(&mut value.text[..value.text_length as usize])?;
-    if std::str::from_utf8(&value.text[..value.text_length as usize]).is_err() {
+pub(crate) fn read_chat_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut Chat) -> Result {
+    schema_stream.serialize_int(&mut schema_value.text_length, 0, MAX_CHAT_LENGTH as i32)?; // the length guards the slice (§6.3)
+    schema_stream.serialize_bytes(&mut schema_value.text[..schema_value.text_length as usize])?;
+    if std::str::from_utf8(&schema_value.text[..schema_value.text_length as usize]).is_err() {
         return Err(Error::Validation); // malformed UTF-8 (SPEC §4.7)
     }
-    for i in 0..value.text_length as usize {
-        if value.text[i] == 0 {
+    for schema_i in 0..schema_value.text_length as usize {
+        if schema_value.text[schema_i] == 0 {
             return Err(Error::Validation);
         }
     }
@@ -1013,33 +1013,33 @@ pub const PROBE_REPORT_MAX_BITS: u64 = 141;
 pub const PROBE_REPORT_MAX_BYTES: usize = 24;
 
 #[inline(always)]
-pub fn write_probe_report(stream: &mut WriteStream<'_>, value: &ProbeReport) -> Result {
-    write_probe_header(stream, &value.header)?;
-    debug_assert!(value.flags < 1 << 8, "flags has a mask bit above the 8-bit wire width");
+pub fn write_probe_report(schema_stream: &mut WriteStream<'_>, schema_value: &ProbeReport) -> Result {
+    write_probe_header(schema_stream, &schema_value.header)?;
+    debug_assert!(schema_value.flags < 1 << 8, "flags has a mask bit above the 8-bit wire width");
     {
-        let mut flags_value = value.flags as u32;
-        stream.serialize_bits(&mut flags_value, 8)?;
+        let mut schema_flags_value = schema_value.flags as u32;
+        schema_stream.serialize_bits(&mut schema_flags_value, 8)?;
     }
-    write_test(stream, &value.echo)?;
+    write_test(schema_stream, &schema_value.echo)?;
     Ok(())
 }
 
 #[inline]
-pub fn read_probe_report(stream: &mut ReadStream<'_>, value: &mut ProbeReport) -> Result {
-    read_probe_report_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_probe_report(schema_stream: &mut ReadStream<'_>, schema_value: &mut ProbeReport) -> Result {
+    read_probe_report_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[inline]
-pub(crate) fn read_probe_report_body(stream: &mut ReadStream<'_>, value: &mut ProbeReport) -> Result {
-    read_probe_header_body(stream, &mut value.header)?;
+pub(crate) fn read_probe_report_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut ProbeReport) -> Result {
+    read_probe_header_body(schema_stream, &mut schema_value.header)?;
     {
-        let mut flags_value: u32 = 0;
-        stream.serialize_bits(&mut flags_value, 8)?;
-        value.flags = flags_value as ProbeFlags;
+        let mut schema_flags_value: u32 = 0;
+        schema_stream.serialize_bits(&mut schema_flags_value, 8)?;
+        schema_value.flags = schema_flags_value as ProbeFlags;
     }
-    read_test_body(stream, &mut value.echo)?;
+    read_test_body(schema_stream, &mut schema_value.echo)?;
     Ok(())
 }
 
@@ -1110,206 +1110,206 @@ pub const TEST_DATA_MAX_BYTES: usize = 344;
 
 #[allow(clippy::needless_range_loop)]
 #[inline(always)]
-pub fn write_test_data(stream: &mut WriteStream<'_>, value: &TestData) -> Result {
-    debug_assert!(value.a >= -100 && value.a <= 100, "a out of range [-100, 100]");
-    debug_assert!(value.b >= -100 && value.b <= 100, "b out of range [-100, 100]");
-    debug_assert!(value.c >= -100 && value.c <= 150, "c out of range [-100, 150]");
-    debug_assert!(value.d < 1 << 8, "d above the bits(8) wire width");
-    debug_assert!(value.e < 1 << 8, "e above the bits(8) wire width");
-    debug_assert!(value.f < 1 << 8, "f above the bits(8) wire width");
-    let f0: u64 = u64::from((value.a as u32).wrapping_sub((-100_i32) as u32));
-    let f1: u64 = u64::from((value.b as u32).wrapping_sub((-100_i32) as u32));
-    let f2: u64 = u64::from((value.c as u32).wrapping_sub((-100_i32) as u32));
-    let f3: u64 = u64::from(value.d);
-    let f4: u64 = u64::from(value.e);
-    let f5: u64 = u64::from(value.f);
-    let f6: u64 = u64::from(value.g);
+pub fn write_test_data(schema_stream: &mut WriteStream<'_>, schema_value: &TestData) -> Result {
+    debug_assert!(schema_value.a >= -100 && schema_value.a <= 100, "a out of range [-100, 100]");
+    debug_assert!(schema_value.b >= -100 && schema_value.b <= 100, "b out of range [-100, 100]");
+    debug_assert!(schema_value.c >= -100 && schema_value.c <= 150, "c out of range [-100, 150]");
+    debug_assert!(schema_value.d < 1 << 8, "d above the bits(8) wire width");
+    debug_assert!(schema_value.e < 1 << 8, "e above the bits(8) wire width");
+    debug_assert!(schema_value.f < 1 << 8, "f above the bits(8) wire width");
+    let schema_f0: u64 = u64::from((schema_value.a as u32).wrapping_sub((-100_i32) as u32));
+    let schema_f1: u64 = u64::from((schema_value.b as u32).wrapping_sub((-100_i32) as u32));
+    let schema_f2: u64 = u64::from((schema_value.c as u32).wrapping_sub((-100_i32) as u32));
+    let schema_f3: u64 = u64::from(schema_value.d);
+    let schema_f4: u64 = u64::from(schema_value.e);
+    let schema_f5: u64 = u64::from(schema_value.f);
+    let schema_f6: u64 = u64::from(schema_value.g);
     // word 0, 32 bits: a[0..8], b[0..8], c[0..8], d[0..8]
-    stream.serialize_bits(&mut ((f0 | (f1 << 8) | (f2 << 16) | (f3 << 24)) as u32), 32)?;
+    schema_stream.serialize_bits(&mut ((schema_f0 | (schema_f1 << 8) | (schema_f2 << 16) | (schema_f3 << 24)) as u32), 32)?;
     // word 1, 17 bits: e[0..8], f[0..8], g[0..1]
-    stream.serialize_bits(&mut ((f4 | (f5 << 8) | (f6 << 16)) as u32), 17)?;
-    debug_assert!(value.items_count >= 0 && value.items_count <= 16, "items_count out of range [0, 16]");
+    schema_stream.serialize_bits(&mut ((schema_f4 | (schema_f5 << 8) | (schema_f6 << 16)) as u32), 17)?;
+    debug_assert!(schema_value.items_count >= 0 && schema_value.items_count <= 16, "items_count out of range [0, 16]");
     {
-        let mut offset_value = value.items_count as u32;
-        stream.serialize_bits(&mut offset_value, 5)?; // the count guards the loop (§6.3)
+        let mut schema_offset_value = schema_value.items_count as u32;
+        schema_stream.serialize_bits(&mut schema_offset_value, 5)?; // the count guards the loop (§6.3)
     }
-    for i in 0..value.items_count as usize {
-        debug_assert!(value.items[i] >= 0 && value.items[i] <= 255, "items[i] out of range [0, 255]");
+    for schema_i in 0..schema_value.items_count as usize {
+        debug_assert!(schema_value.items[schema_i] >= 0 && schema_value.items[schema_i] <= 255, "items[schema_i] out of range [0, 255]");
         {
-            let mut offset_value = value.items[i] as u32;
-            stream.serialize_bits(&mut offset_value, 8)?;
+            let mut schema_offset_value = schema_value.items[schema_i] as u32;
+            schema_stream.serialize_bits(&mut schema_offset_value, 8)?;
         }
     }
     {
-        let mut float_value = value.float_value;
-        stream.serialize_f32(&mut float_value)?;
+        let mut schema_float_value = schema_value.float_value;
+        schema_stream.serialize_f32(&mut schema_float_value)?;
     }
-    debug_assert!(value.compressed_float_value.is_finite() && value.compressed_float_value >= 0.0_f32 && value.compressed_float_value <= 10.0_f32, "compressed_float_value out of range [0.0_f32, 10.0_f32]");
+    debug_assert!(schema_value.compressed_float_value.is_finite() && schema_value.compressed_float_value >= 0.0_f32 && schema_value.compressed_float_value <= 10.0_f32, "compressed_float_value out of range [0.0_f32, 10.0_f32]");
     {
-        let mut compressed_value = value.compressed_float_value;
-        stream.serialize_compressed_float_precomputed(&mut compressed_value, 1000, 10, 10.0_f32, 0.0_f32)?; // compressed float [0.0, 10.0] @ 0.01, constants folded at generation
+        let mut schema_compressed_value = schema_value.compressed_float_value;
+        schema_stream.serialize_compressed_float_precomputed(&mut schema_compressed_value, 1000, 10, 10.0_f32, 0.0_f32)?; // compressed float [0.0, 10.0] @ 0.01, constants folded at generation
     }
-    debug_assert!(value.double_value.is_finite(), "double_value is not finite");
-    let f0: u64 = value.double_value.to_bits();
-    let f1: u64 = u64::from(value.int8_value as u8);
-    let f2: u64 = u64::from(value.int16_value as u16);
-    let f3: u64 = u64::from(value.uint8_value);
-    let f4: u64 = u64::from(value.uint16_value);
-    let f5: u64 = u64::from(value.uint32_value);
-    let f6: u64 = value.uint64_value;
+    debug_assert!(schema_value.double_value.is_finite(), "double_value is not finite");
+    let schema_f0: u64 = schema_value.double_value.to_bits();
+    let schema_f1: u64 = u64::from(schema_value.int8_value as u8);
+    let schema_f2: u64 = u64::from(schema_value.int16_value as u16);
+    let schema_f3: u64 = u64::from(schema_value.uint8_value);
+    let schema_f4: u64 = u64::from(schema_value.uint16_value);
+    let schema_f5: u64 = u64::from(schema_value.uint32_value);
+    let schema_f6: u64 = schema_value.uint64_value;
     // word 0, 32 bits: double_value[0..32]
-    stream.serialize_bits(&mut (f0 as u32), 32)?;
+    schema_stream.serialize_bits(&mut (schema_f0 as u32), 32)?;
     // word 1, 32 bits: double_value[32..64]
-    stream.serialize_bits(&mut ((f0 >> 32) as u32), 32)?;
+    schema_stream.serialize_bits(&mut ((schema_f0 >> 32) as u32), 32)?;
     // word 2, 32 bits: int8_value[0..8], int16_value[0..16], uint8_value[0..8]
-    stream.serialize_bits(&mut ((f1 | (f2 << 8) | (f3 << 24)) as u32), 32)?;
+    schema_stream.serialize_bits(&mut ((schema_f1 | (schema_f2 << 8) | (schema_f3 << 24)) as u32), 32)?;
     // word 3, 32 bits: uint16_value[0..16], uint32_value[0..16]
-    stream.serialize_bits(&mut ((f4 | (f5 << 16)) as u32), 32)?;
+    schema_stream.serialize_bits(&mut ((schema_f4 | (schema_f5 << 16)) as u32), 32)?;
     // word 4, 32 bits: uint32_value[16..32], uint64_value[0..16]
-    stream.serialize_bits(&mut (((f5 >> 16) | (f6 << 16)) as u32), 32)?;
+    schema_stream.serialize_bits(&mut (((schema_f5 >> 16) | (schema_f6 << 16)) as u32), 32)?;
     // word 5, 32 bits: uint64_value[16..48]
-    stream.serialize_bits(&mut ((f6 >> 16) as u32), 32)?;
+    schema_stream.serialize_bits(&mut ((schema_f6 >> 16) as u32), 32)?;
     // word 6, 16 bits: uint64_value[48..64]
-    stream.serialize_bits(&mut ((f6 >> 48) as u32), 16)?;
-    debug_assert!(value.int64_range >= -1000000000000 && value.int64_range <= 1000000000000, "int64_range out of range [-1000000000000, 1000000000000]");
-    let f0: u64 = value.int64_full as u64;
-    let f1: u64 = (value.int64_range as u64).wrapping_sub((-1000000000000_i64) as u64);
+    schema_stream.serialize_bits(&mut ((schema_f6 >> 48) as u32), 16)?;
+    debug_assert!(schema_value.int64_range >= -1000000000000 && schema_value.int64_range <= 1000000000000, "int64_range out of range [-1000000000000, 1000000000000]");
+    let schema_f0: u64 = schema_value.int64_full as u64;
+    let schema_f1: u64 = (schema_value.int64_range as u64).wrapping_sub((-1000000000000_i64) as u64);
     // word 0, 32 bits: int64_full[0..32]
-    stream.serialize_bits(&mut (f0 as u32), 32)?;
+    schema_stream.serialize_bits(&mut (schema_f0 as u32), 32)?;
     // word 1, 32 bits: int64_full[32..64]
-    stream.serialize_bits(&mut ((f0 >> 32) as u32), 32)?;
+    schema_stream.serialize_bits(&mut ((schema_f0 >> 32) as u32), 32)?;
     // word 2, 32 bits: int64_range[0..32]
-    stream.serialize_bits(&mut (f1 as u32), 32)?;
+    schema_stream.serialize_bits(&mut (schema_f1 as u32), 32)?;
     // word 3, 9 bits: int64_range[32..41]
-    stream.serialize_bits(&mut ((f1 >> 32) as u32), 9)?;
-    stream.serialize_align()?;
-    stream.write_bytes(&value.fixed_bytes); // byte-aligned [N]u8 — bulk copy, wire-identical to the per-byte loop (infallible: returns () in serialize.rs 2.0.0)
-    debug_assert!(value.text_length >= 0 && value.text_length <= 255, "text_length out of range [0, 255]");
-    debug_assert!(!value.text[..value.text_length as usize].contains(&0), "text holds a zero byte");
-    debug_assert!(std::str::from_utf8(&value.text[..value.text_length as usize]).is_ok(), "text is not well-formed UTF-8");
+    schema_stream.serialize_bits(&mut ((schema_f1 >> 32) as u32), 9)?;
+    schema_stream.serialize_align()?;
+    schema_stream.write_bytes(&schema_value.fixed_bytes); // byte-aligned [N]u8 — bulk copy, wire-identical to the per-byte loop (infallible: returns () in serialize.rs 2.0.0)
+    debug_assert!(schema_value.text_length >= 0 && schema_value.text_length <= 255, "text_length out of range [0, 255]");
+    debug_assert!(!schema_value.text[..schema_value.text_length as usize].contains(&0), "text holds a zero byte");
+    debug_assert!(std::str::from_utf8(&schema_value.text[..schema_value.text_length as usize]).is_ok(), "text is not well-formed UTF-8");
     {
-        let mut offset_value = value.text_length as u32;
-        stream.serialize_bits(&mut offset_value, 8)?; // the length guards the slice (§6.3)
+        let mut schema_offset_value = schema_value.text_length as u32;
+        schema_stream.serialize_bits(&mut schema_offset_value, 8)?; // the length guards the slice (§6.3)
     }
-    stream.write_bytes(&value.text[..value.text_length as usize]); // borrowed in place: the write side never mutates (infallible: returns () in serialize.rs 2.0.0)
+    schema_stream.write_bytes(&schema_value.text[..schema_value.text_length as usize]); // borrowed in place: the write side never mutates (infallible: returns () in serialize.rs 2.0.0)
     Ok(())
 }
 
 #[inline]
-pub fn read_test_data(stream: &mut ReadStream<'_>, value: &mut TestData) -> Result {
-    read_test_data_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_test_data(schema_stream: &mut ReadStream<'_>, schema_value: &mut TestData) -> Result {
+    read_test_data_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[allow(clippy::needless_range_loop)]
 #[inline]
-pub(crate) fn read_test_data_body(stream: &mut ReadStream<'_>, value: &mut TestData) -> Result {
-    let mut c: u32 = 0;
+pub(crate) fn read_test_data_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut TestData) -> Result {
+    let mut schema_c: u32 = 0;
     // word 0, 32 bits: a[0..8], b[0..8], c[0..8], d[0..8]
-    stream.serialize_bits(&mut c, 32)?;
-    let c0 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c0 = u64::from(schema_c);
     // word 1, 17 bits: e[0..8], f[0..8], g[0..1]
-    stream.serialize_bits(&mut c, 17)?;
-    let c1 = u64::from(c);
-    let v0: u64 = c0 & 0xff;
-    if v0 > 200 {
+    schema_stream.serialize_bits(&mut schema_c, 17)?;
+    let schema_c1 = u64::from(schema_c);
+    let schema_v0: u64 = schema_c0 & 0xff;
+    if schema_v0 > 200 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    value.a = (v0 as u32).wrapping_add((-100_i32) as u32) as i32;
-    let v1: u64 = (c0 >> 8) & 0xff;
-    if v1 > 200 {
+    schema_value.a = (schema_v0 as u32).wrapping_add((-100_i32) as u32) as i32;
+    let schema_v1: u64 = (schema_c0 >> 8) & 0xff;
+    if schema_v1 > 200 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    value.b = (v1 as u32).wrapping_add((-100_i32) as u32) as i32;
-    let v2: u64 = (c0 >> 16) & 0xff;
-    if v2 > 250 {
+    schema_value.b = (schema_v1 as u32).wrapping_add((-100_i32) as u32) as i32;
+    let schema_v2: u64 = (schema_c0 >> 16) & 0xff;
+    if schema_v2 > 250 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    value.c = (v2 as u32).wrapping_add((-100_i32) as u32) as i32;
-    let v3: u64 = (c0 >> 24) & 0xff;
-    value.d = v3 as u32;
-    let v4: u64 = c1 & 0xff;
-    value.e = v4 as u32;
-    let v5: u64 = (c1 >> 8) & 0xff;
-    value.f = v5 as u32;
-    let v6: u64 = (c1 >> 16) & 0x1;
-    value.g = v6 != 0;
-    stream.serialize_int(&mut value.items_count, 0, 16)?; // the count guards the loop (§6.3)
-    for i in 0..value.items_count as usize {
-        stream.serialize_int(&mut value.items[i], 0, 255)?;
+    schema_value.c = (schema_v2 as u32).wrapping_add((-100_i32) as u32) as i32;
+    let schema_v3: u64 = (schema_c0 >> 24) & 0xff;
+    schema_value.d = schema_v3 as u32;
+    let schema_v4: u64 = schema_c1 & 0xff;
+    schema_value.e = schema_v4 as u32;
+    let schema_v5: u64 = (schema_c1 >> 8) & 0xff;
+    schema_value.f = schema_v5 as u32;
+    let schema_v6: u64 = (schema_c1 >> 16) & 0x1;
+    schema_value.g = schema_v6 != 0;
+    schema_stream.serialize_int(&mut schema_value.items_count, 0, 16)?; // the count guards the loop (§6.3)
+    for schema_i in 0..schema_value.items_count as usize {
+        schema_stream.serialize_int(&mut schema_value.items[schema_i], 0, 255)?;
     }
-    stream.serialize_f32(&mut value.float_value)?;
-    stream.serialize_compressed_float_precomputed(&mut value.compressed_float_value, 1000, 10, 10.0_f32, 0.0_f32)?; // compressed float [0.0, 10.0] @ 0.01, constants folded at generation
-    let mut c: u32 = 0;
+    schema_stream.serialize_f32(&mut schema_value.float_value)?;
+    schema_stream.serialize_compressed_float_precomputed(&mut schema_value.compressed_float_value, 1000, 10, 10.0_f32, 0.0_f32)?; // compressed float [0.0, 10.0] @ 0.01, constants folded at generation
+    let mut schema_c: u32 = 0;
     // word 0, 32 bits: double_value[0..32]
-    stream.serialize_bits(&mut c, 32)?;
-    let c0 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c0 = u64::from(schema_c);
     // word 1, 32 bits: double_value[32..64]
-    stream.serialize_bits(&mut c, 32)?;
-    let c1 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c1 = u64::from(schema_c);
     // word 2, 32 bits: int8_value[0..8], int16_value[0..16], uint8_value[0..8]
-    stream.serialize_bits(&mut c, 32)?;
-    let c2 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c2 = u64::from(schema_c);
     // word 3, 32 bits: uint16_value[0..16], uint32_value[0..16]
-    stream.serialize_bits(&mut c, 32)?;
-    let c3 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c3 = u64::from(schema_c);
     // word 4, 32 bits: uint32_value[16..32], uint64_value[0..16]
-    stream.serialize_bits(&mut c, 32)?;
-    let c4 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c4 = u64::from(schema_c);
     // word 5, 32 bits: uint64_value[16..48]
-    stream.serialize_bits(&mut c, 32)?;
-    let c5 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c5 = u64::from(schema_c);
     // word 6, 16 bits: uint64_value[48..64]
-    stream.serialize_bits(&mut c, 16)?;
-    let c6 = u64::from(c);
-    let v0: u64 = c0 | (c1 << 32);
-    if v0 & 0x7ff0000000000000 == 0x7ff0000000000000 {
+    schema_stream.serialize_bits(&mut schema_c, 16)?;
+    let schema_c6 = u64::from(schema_c);
+    let schema_v0: u64 = schema_c0 | (schema_c1 << 32);
+    if schema_v0 & 0x7ff0000000000000 == 0x7ff0000000000000 {
         // a NaN or infinity pattern is refused on its raw bits (SPEC §4.3)
         return Err(Error::Stream(serialize::Error::NonFiniteFloat));
     }
-    value.double_value = f64::from_bits(v0);
-    let v1: u64 = c2 & 0xff;
-    value.int8_value = v1 as u8 as i8;
-    let v2: u64 = (c2 >> 8) & 0xffff;
-    value.int16_value = v2 as u16 as i16;
-    let v3: u64 = (c2 >> 24) & 0xff;
-    value.uint8_value = v3 as u8;
-    let v4: u64 = c3 & 0xffff;
-    value.uint16_value = v4 as u16;
-    let v5: u64 = ((c3 >> 16) | (c4 << 16)) & 0xffffffff;
-    value.uint32_value = v5 as u32;
-    let v6: u64 = (c4 >> 16) | (c5 << 16) | (c6 << 48);
-    value.uint64_value = v6;
-    let mut c: u32 = 0;
+    schema_value.double_value = f64::from_bits(schema_v0);
+    let schema_v1: u64 = schema_c2 & 0xff;
+    schema_value.int8_value = schema_v1 as u8 as i8;
+    let schema_v2: u64 = (schema_c2 >> 8) & 0xffff;
+    schema_value.int16_value = schema_v2 as u16 as i16;
+    let schema_v3: u64 = (schema_c2 >> 24) & 0xff;
+    schema_value.uint8_value = schema_v3 as u8;
+    let schema_v4: u64 = schema_c3 & 0xffff;
+    schema_value.uint16_value = schema_v4 as u16;
+    let schema_v5: u64 = ((schema_c3 >> 16) | (schema_c4 << 16)) & 0xffffffff;
+    schema_value.uint32_value = schema_v5 as u32;
+    let schema_v6: u64 = (schema_c4 >> 16) | (schema_c5 << 16) | (schema_c6 << 48);
+    schema_value.uint64_value = schema_v6;
+    let mut schema_c: u32 = 0;
     // word 0, 32 bits: int64_full[0..32]
-    stream.serialize_bits(&mut c, 32)?;
-    let c0 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c0 = u64::from(schema_c);
     // word 1, 32 bits: int64_full[32..64]
-    stream.serialize_bits(&mut c, 32)?;
-    let c1 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c1 = u64::from(schema_c);
     // word 2, 32 bits: int64_range[0..32]
-    stream.serialize_bits(&mut c, 32)?;
-    let c2 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c2 = u64::from(schema_c);
     // word 3, 9 bits: int64_range[32..41]
-    stream.serialize_bits(&mut c, 9)?;
-    let c3 = u64::from(c);
-    let v0: u64 = c0 | (c1 << 32);
-    value.int64_full = v0 as i64;
-    let v1: u64 = (c2 | (c3 << 32)) & 0x1ffffffffff;
-    if v1 > 2000000000000 {
+    schema_stream.serialize_bits(&mut schema_c, 9)?;
+    let schema_c3 = u64::from(schema_c);
+    let schema_v0: u64 = schema_c0 | (schema_c1 << 32);
+    schema_value.int64_full = schema_v0 as i64;
+    let schema_v1: u64 = (schema_c2 | (schema_c3 << 32)) & 0x1ffffffffff;
+    if schema_v1 > 2000000000000 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    value.int64_range = v1.wrapping_add((-1000000000000_i64) as u64) as i64;
-    stream.serialize_align()?; // rejects nonzero padding (SPEC §4.3)
-    stream.serialize_bytes(&mut value.fixed_bytes)?; // byte-aligned [N]u8 — bulk copy, wire-identical to the per-byte loop
-    stream.serialize_int(&mut value.text_length, 0, 255)?; // the length guards the slice (§6.3)
-    stream.serialize_bytes(&mut value.text[..value.text_length as usize])?;
-    if std::str::from_utf8(&value.text[..value.text_length as usize]).is_err() {
+    schema_value.int64_range = schema_v1.wrapping_add((-1000000000000_i64) as u64) as i64;
+    schema_stream.serialize_align()?; // rejects nonzero padding (SPEC §4.3)
+    schema_stream.serialize_bytes(&mut schema_value.fixed_bytes)?; // byte-aligned [N]u8 — bulk copy, wire-identical to the per-byte loop
+    schema_stream.serialize_int(&mut schema_value.text_length, 0, 255)?; // the length guards the slice (§6.3)
+    schema_stream.serialize_bytes(&mut schema_value.text[..schema_value.text_length as usize])?;
+    if std::str::from_utf8(&schema_value.text[..schema_value.text_length as usize]).is_err() {
         return Err(Error::Validation); // malformed UTF-8 (SPEC §4.7)
     }
-    for i in 0..value.text_length as usize {
-        if value.text[i] == 0 {
+    for schema_i in 0..schema_value.text_length as usize {
+        if schema_value.text[schema_i] == 0 {
             return Err(Error::Validation);
         }
     }
@@ -1331,31 +1331,31 @@ pub const COMPRESSED_PROBE_MAX_BITS: u64 = 24;
 pub const COMPRESSED_PROBE_MAX_BYTES: usize = 8;
 
 #[inline(always)]
-pub fn write_compressed_probe(stream: &mut WriteStream<'_>, value: &CompressedProbe) -> Result {
-    debug_assert!(value.boundary.is_finite() && value.boundary >= 0.0_f32 && value.boundary <= 10.0_f32, "boundary out of range [0.0_f32, 10.0_f32]");
+pub fn write_compressed_probe(schema_stream: &mut WriteStream<'_>, schema_value: &CompressedProbe) -> Result {
+    debug_assert!(schema_value.boundary.is_finite() && schema_value.boundary >= 0.0_f32 && schema_value.boundary <= 10.0_f32, "boundary out of range [0.0_f32, 10.0_f32]");
     {
-        let mut compressed_value = value.boundary;
-        stream.serialize_compressed_float_precomputed(&mut compressed_value, 1000, 10, 10.0_f32, 0.0_f32)?; // compressed float [0.0, 10.0] @ 0.01, constants folded at generation
+        let mut schema_compressed_value = schema_value.boundary;
+        schema_stream.serialize_compressed_float_precomputed(&mut schema_compressed_value, 1000, 10, 10.0_f32, 0.0_f32)?; // compressed float [0.0, 10.0] @ 0.01, constants folded at generation
     }
-    debug_assert!(value.offset.is_finite() && value.offset >= -5.0_f32 && value.offset <= 5.0_f32, "offset out of range [-5.0_f32, 5.0_f32]");
+    debug_assert!(schema_value.offset.is_finite() && schema_value.offset >= -5.0_f32 && schema_value.offset <= 5.0_f32, "offset out of range [-5.0_f32, 5.0_f32]");
     {
-        let mut compressed_value = value.offset;
-        stream.serialize_compressed_float_precomputed(&mut compressed_value, 10000, 14, 10.0_f32, -5.0_f32)?; // compressed float [-5.0, 5.0] @ 0.001, constants folded at generation
+        let mut schema_compressed_value = schema_value.offset;
+        schema_stream.serialize_compressed_float_precomputed(&mut schema_compressed_value, 10000, 14, 10.0_f32, -5.0_f32)?; // compressed float [-5.0, 5.0] @ 0.001, constants folded at generation
     }
     Ok(())
 }
 
 #[inline]
-pub fn read_compressed_probe(stream: &mut ReadStream<'_>, value: &mut CompressedProbe) -> Result {
-    read_compressed_probe_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_compressed_probe(schema_stream: &mut ReadStream<'_>, schema_value: &mut CompressedProbe) -> Result {
+    read_compressed_probe_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[inline]
-pub(crate) fn read_compressed_probe_body(stream: &mut ReadStream<'_>, value: &mut CompressedProbe) -> Result {
-    stream.serialize_compressed_float_precomputed(&mut value.boundary, 1000, 10, 10.0_f32, 0.0_f32)?; // compressed float [0.0, 10.0] @ 0.01, constants folded at generation
-    stream.serialize_compressed_float_precomputed(&mut value.offset, 10000, 14, 10.0_f32, -5.0_f32)?; // compressed float [-5.0, 5.0] @ 0.001, constants folded at generation
+pub(crate) fn read_compressed_probe_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut CompressedProbe) -> Result {
+    schema_stream.serialize_compressed_float_precomputed(&mut schema_value.boundary, 1000, 10, 10.0_f32, 0.0_f32)?; // compressed float [0.0, 10.0] @ 0.01, constants folded at generation
+    schema_stream.serialize_compressed_float_precomputed(&mut schema_value.offset, 10000, 14, 10.0_f32, -5.0_f32)?; // compressed float [-5.0, 5.0] @ 0.001, constants folded at generation
     Ok(())
 }
 

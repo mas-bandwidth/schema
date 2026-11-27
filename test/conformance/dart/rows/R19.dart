@@ -138,9 +138,9 @@ void check(bool ok, String what) {
 }
 
 String why(vnew.TableFixedReport r) =>
-    'refused=\${r.refused} malformed=\${r.malformed} '
-    'unknown=\${r.unknown} kind=\${r.kindMismatch} clamped=\${r.clamped} '
-    'widened=\${r.widened} duplicate=\${r.duplicate}';
+    'refused=\${vnew.TableFixedRefusal.name(r.refused)} '
+    'unknown=\${r.unknown} '
+    'widened=\${r.widened}';
 
 void main() {
 $body
@@ -166,8 +166,8 @@ String _fieldAppendProbe() => '''
   check(back[0].x == 11 && back[0].y == 22 && back[0].z == 33,
       'field_append: old values did not land');
   check(back[0].w == 77, 'field_append: appended field not its default: \${back[0].w}');
-  check(report.unknown == 0 && report.kindMismatch == 0 &&
-        report.clamped == 0 && report.widened == 0 && report.duplicate == 0,
+  check(report.refused == vnew.TableFixedRefusal.none &&
+        report.unknown == 0 && report.widened == 0,
       'field_append: counters moved: \${why(report)}');
 ''';
 
@@ -186,8 +186,8 @@ String _enumAppendProbe() => '''
   check(back[0].tier == vnewDecl.Tier.gold,
       'enum_append: Gold did not land: \${back[0].tier}');
   check(back[0].seq == 9, 'enum_append: seq did not land: \${back[0].seq}');
-  check(report.unknown == 0 && report.kindMismatch == 0 &&
-        report.clamped == 0 && report.widened == 0 && report.duplicate == 0,
+  check(report.refused == vnew.TableFixedRefusal.none &&
+        report.unknown == 0 && report.widened == 0,
       'enum_append: counters moved: \${why(report)}');
 ''';
 
@@ -210,8 +210,8 @@ String _unionAppendProbe() => '''
   check(back[0].pick.alpha.m == 7,
       'union_append: payload did not land: \${back[0].pick.alpha.m}');
   check(back[0].seq == 5, 'union_append: seq did not land: \${back[0].seq}');
-  check(report.unknown == 0 && report.kindMismatch == 0 &&
-        report.clamped == 0 && report.widened == 0 && report.duplicate == 0,
+  check(report.refused == vnew.TableFixedRefusal.none &&
+        report.unknown == 0 && report.widened == 0,
       'union_append: counters moved: \${why(report)}');
 ''';
 
@@ -227,8 +227,8 @@ String _flagsAppendProbe() => '''
   final report = vnew.TableFixedReport();
   final n = vnew.lineageFixedLoad(back, 1, buf, buf.length, plan, report);
   check(n == 1, 'flags_append: n=\$n \${why(report)}');
-  check(report.unknown == 0 && report.kindMismatch == 0 &&
-        report.clamped == 0 && report.widened == 0 && report.duplicate == 0,
+  check(report.refused == vnew.TableFixedRefusal.none &&
+        report.unknown == 0 && report.widened == 0,
       'flags_append: counters moved: \${why(report)}');
 ''';
 
@@ -246,8 +246,8 @@ String _keyedArrayEnumAppendProbe() => '''
   check(n == 1, 'keyed_array_enum_append: n=\$n \${why(report)}');
   check(back[0].slots[3].n == 7,
       'keyed_array_enum_append: appended slot not element default: \${back[0].slots[3].n}');
-  check(report.unknown == 0 && report.kindMismatch == 0 &&
-        report.clamped == 0 && report.widened == 0 && report.duplicate == 0,
+  check(report.refused == vnew.TableFixedRefusal.none &&
+        report.unknown == 0 && report.widened == 0,
       'keyed_array_enum_append: counters moved: \${why(report)}');
 ''';
 

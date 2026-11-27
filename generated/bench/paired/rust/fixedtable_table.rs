@@ -859,8 +859,8 @@ pub fn fixed_table_from_json_bytes(text: &[u8], report: &mut TableReport) -> Opt
 /// order, every byte the fields do not cover left zero.
 #[cfg(feature = "cook")]
 #[allow(unused_variables, clippy::identity_op)]
-pub fn fixed_table_cook_body(v: &FixedTable, w: &mut TableRegionWriter, at: i64) {
-    bench_mixed_cook_body(&v.value, w, at);
+pub fn fixed_table_cook_body(schema_v: &FixedTable, w: &mut TableRegionWriter, schema_at: i64) {
+    bench_mixed_cook_body(&schema_v.value, w, schema_at);
 }
 
 /// One table node's cooked record size and alignment, by its type id (§7.2).
@@ -890,20 +890,20 @@ fn cook_record_write(_type_id: u64, _node: &Rc<dyn Any>, w: &mut TableRegionWrit
 /// writes from the same wire. Err names the refusal (§7.6) and nothing is
 /// produced: a bad byte order, a count or a length over its declared bound.
 #[cfg(feature = "cook")]
-pub fn fixed_table_cook_write(v: &FixedTable, order: u64) -> Result<Vec<u8>, String> {
-    if order != 1 && order != 2 {
+pub fn fixed_table_cook_write(schema_v: &FixedTable, schema_order: u64) -> Result<Vec<u8>, String> {
+    if schema_order != 1 && schema_order != 2 {
         return Err(String::from("invalid_value"));
     }
     let mut g = TableNodeGraph::new();
-    fixed_table_number(v, &mut g);
+    fixed_table_number(schema_v, &mut g);
     if g.invalid_required { return Err(String::from("invalid_value: required range")); }
-    let mut w = table_region_layout(&g, 1376, 16, cook_record_layout, cook_record_extent, order)?;
-    fixed_table_cook_body(v, &mut w, 0);
-    for k in 0..g.records.len() {
-        let at = w.offsets[k + 1];
-        match &g.records[k] {
-            TableNodeRecord::Blob(_, blob) => w.put_blob(at, blob),
-            TableNodeRecord::Table(type_id, node) => cook_record_write(*type_id, node, &mut w, at),
+    let mut w = table_region_layout(&g, 1376, 16, cook_record_layout, cook_record_extent, schema_order)?;
+    fixed_table_cook_body(schema_v, &mut w, 0);
+    for schema_k in 0..g.records.len() {
+        let schema_at = w.offsets[schema_k + 1];
+        match &g.records[schema_k] {
+            TableNodeRecord::Blob(_, blob) => w.put_blob(schema_at, blob),
+            TableNodeRecord::Table(type_id, node) => cook_record_write(*type_id, node, &mut w, schema_at),
         }
     }
     w.finish(&g, 0x85df369cdca746b3, super::BUILD_VERSION)

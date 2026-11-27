@@ -294,7 +294,7 @@ func TestLobsterRetainUnknownNegativeControl(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const anchor = "                so_bytes(w, so_take(inner))\n"
+	const anchor = "                so_bytes(w, so_take(sub_out))\n"
 	if n := strings.Count(string(src), anchor); n != 1 {
 		t.Fatalf("the retained-tail anchor is in the emitted runtime %d times, want 1", n)
 	}

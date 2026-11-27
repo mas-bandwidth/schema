@@ -28,64 +28,64 @@ pub const RENDER_SPRITE_MAX_BITS: u64 = 138;
 pub const RENDER_SPRITE_MAX_BYTES: usize = 24;
 
 #[inline(always)]
-pub fn write_render_sprite(stream: &mut WriteStream<'_>, value: &RenderSprite) -> Result {
-    debug_assert!(value.team.0 <= 2, "team above the Team wire range [0, 2]");
-    let f0: u64 = value.sort_key;
-    let f1: u64 = u64::from(value.mesh_id);
-    let f2: u64 = u64::from(value.material_id);
-    let f3: u64 = u64::from(value.layer);
-    let f4: u64 = u64::from(value.team.0);
+pub fn write_render_sprite(schema_stream: &mut WriteStream<'_>, schema_value: &RenderSprite) -> Result {
+    debug_assert!(schema_value.team.0 <= 2, "team above the Team wire range [0, 2]");
+    let schema_f0: u64 = schema_value.sort_key;
+    let schema_f1: u64 = u64::from(schema_value.mesh_id);
+    let schema_f2: u64 = u64::from(schema_value.material_id);
+    let schema_f3: u64 = u64::from(schema_value.layer);
+    let schema_f4: u64 = u64::from(schema_value.team.0);
     // word 0, 32 bits: sort_key[0..32]
-    stream.serialize_bits(&mut (f0 as u32), 32)?;
+    schema_stream.serialize_bits(&mut (schema_f0 as u32), 32)?;
     // word 1, 32 bits: sort_key[32..64]
-    stream.serialize_bits(&mut ((f0 >> 32) as u32), 32)?;
+    schema_stream.serialize_bits(&mut ((schema_f0 >> 32) as u32), 32)?;
     // word 2, 32 bits: mesh_id[0..32]
-    stream.serialize_bits(&mut (f1 as u32), 32)?;
+    schema_stream.serialize_bits(&mut (schema_f1 as u32), 32)?;
     // word 3, 32 bits: material_id[0..32]
-    stream.serialize_bits(&mut (f2 as u32), 32)?;
+    schema_stream.serialize_bits(&mut (schema_f2 as u32), 32)?;
     // word 4, 10 bits: layer[0..8], team[0..2]
-    stream.serialize_bits(&mut ((f3 | (f4 << 8)) as u32), 10)?;
+    schema_stream.serialize_bits(&mut ((schema_f3 | (schema_f4 << 8)) as u32), 10)?;
     Ok(())
 }
 
 #[inline]
-pub fn read_render_sprite(stream: &mut ReadStream<'_>, value: &mut RenderSprite) -> Result {
-    read_render_sprite_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_render_sprite(schema_stream: &mut ReadStream<'_>, schema_value: &mut RenderSprite) -> Result {
+    read_render_sprite_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[inline]
-pub(crate) fn read_render_sprite_body(stream: &mut ReadStream<'_>, value: &mut RenderSprite) -> Result {
-    let mut c: u32 = 0;
+pub(crate) fn read_render_sprite_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut RenderSprite) -> Result {
+    let mut schema_c: u32 = 0;
     // word 0, 32 bits: sort_key[0..32]
-    stream.serialize_bits(&mut c, 32)?;
-    let c0 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c0 = u64::from(schema_c);
     // word 1, 32 bits: sort_key[32..64]
-    stream.serialize_bits(&mut c, 32)?;
-    let c1 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c1 = u64::from(schema_c);
     // word 2, 32 bits: mesh_id[0..32]
-    stream.serialize_bits(&mut c, 32)?;
-    let c2 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c2 = u64::from(schema_c);
     // word 3, 32 bits: material_id[0..32]
-    stream.serialize_bits(&mut c, 32)?;
-    let c3 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c3 = u64::from(schema_c);
     // word 4, 10 bits: layer[0..8], team[0..2]
-    stream.serialize_bits(&mut c, 10)?;
-    let c4 = u64::from(c);
-    let v0: u64 = c0 | (c1 << 32);
-    value.sort_key = v0;
-    let v1: u64 = c2 & 0xffffffff;
-    value.mesh_id = v1 as u32;
-    let v2: u64 = c3 & 0xffffffff;
-    value.material_id = v2 as u32;
-    let v3: u64 = c4 & 0xff;
-    value.layer = v3 as u8;
-    let v4: u64 = (c4 >> 8) & 0x3;
-    if v4 > 2 {
+    schema_stream.serialize_bits(&mut schema_c, 10)?;
+    let schema_c4 = u64::from(schema_c);
+    let schema_v0: u64 = schema_c0 | (schema_c1 << 32);
+    schema_value.sort_key = schema_v0;
+    let schema_v1: u64 = schema_c2 & 0xffffffff;
+    schema_value.mesh_id = schema_v1 as u32;
+    let schema_v2: u64 = schema_c3 & 0xffffffff;
+    schema_value.material_id = schema_v2 as u32;
+    let schema_v3: u64 = schema_c4 & 0xff;
+    schema_value.layer = schema_v3 as u8;
+    let schema_v4: u64 = (schema_c4 >> 8) & 0x3;
+    if schema_v4 > 2 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    value.team = Team(v4 as u8);
+    schema_value.team = Team(schema_v4 as u8);
     Ok(())
 }
 
@@ -118,48 +118,48 @@ pub const RENDER_BLOCK_MAX_BYTES: usize = 1120;
 
 #[allow(clippy::needless_range_loop)]
 #[inline(always)]
-pub fn write_render_block(stream: &mut WriteStream<'_>, value: &RenderBlock) -> Result {
-    let f0: u64 = u64::from(value.worker_index);
-    let f1: u64 = u64::from(value.sprite_count_hint);
+pub fn write_render_block(schema_stream: &mut WriteStream<'_>, schema_value: &RenderBlock) -> Result {
+    let schema_f0: u64 = u64::from(schema_value.worker_index);
+    let schema_f1: u64 = u64::from(schema_value.sprite_count_hint);
     // word 0, 32 bits: worker_index[0..32]
-    stream.serialize_bits(&mut (f0 as u32), 32)?;
+    schema_stream.serialize_bits(&mut (schema_f0 as u32), 32)?;
     // word 1, 32 bits: sprite_count_hint[0..32]
-    stream.serialize_bits(&mut (f1 as u32), 32)?;
-    debug_assert!(value.sprites_count >= 0 && value.sprites_count <= 64, "sprites_count out of range [0, 64]");
+    schema_stream.serialize_bits(&mut (schema_f1 as u32), 32)?;
+    debug_assert!(schema_value.sprites_count >= 0 && schema_value.sprites_count <= 64, "sprites_count out of range [0, 64]");
     {
-        let mut offset_value = value.sprites_count as u32;
-        stream.serialize_bits(&mut offset_value, 7)?; // the count guards the loop (§6.3)
+        let mut schema_offset_value = schema_value.sprites_count as u32;
+        schema_stream.serialize_bits(&mut schema_offset_value, 7)?; // the count guards the loop (§6.3)
     }
-    for i in 0..value.sprites_count as usize {
-        write_render_sprite(stream, &value.sprites[i])?;
+    for schema_i in 0..schema_value.sprites_count as usize {
+        write_render_sprite(schema_stream, &schema_value.sprites[schema_i])?;
     }
     Ok(())
 }
 
 #[inline]
-pub fn read_render_block(stream: &mut ReadStream<'_>, value: &mut RenderBlock) -> Result {
-    read_render_block_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_render_block(schema_stream: &mut ReadStream<'_>, schema_value: &mut RenderBlock) -> Result {
+    read_render_block_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[allow(clippy::needless_range_loop)]
 #[inline]
-pub(crate) fn read_render_block_body(stream: &mut ReadStream<'_>, value: &mut RenderBlock) -> Result {
-    let mut c: u32 = 0;
+pub(crate) fn read_render_block_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut RenderBlock) -> Result {
+    let mut schema_c: u32 = 0;
     // word 0, 32 bits: worker_index[0..32]
-    stream.serialize_bits(&mut c, 32)?;
-    let c0 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c0 = u64::from(schema_c);
     // word 1, 32 bits: sprite_count_hint[0..32]
-    stream.serialize_bits(&mut c, 32)?;
-    let c1 = u64::from(c);
-    let v0: u64 = c0 & 0xffffffff;
-    value.worker_index = v0 as u32;
-    let v1: u64 = c1 & 0xffffffff;
-    value.sprite_count_hint = v1 as u32;
-    stream.serialize_int(&mut value.sprites_count, 0, RENDER_BLOCK_MAX_SPRITES as i32)?; // the count guards the loop (§6.3)
-    for i in 0..value.sprites_count as usize {
-        read_render_sprite_body(stream, &mut value.sprites[i])?;
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c1 = u64::from(schema_c);
+    let schema_v0: u64 = schema_c0 & 0xffffffff;
+    schema_value.worker_index = schema_v0 as u32;
+    let schema_v1: u64 = schema_c1 & 0xffffffff;
+    schema_value.sprite_count_hint = schema_v1 as u32;
+    schema_stream.serialize_int(&mut schema_value.sprites_count, 0, RENDER_BLOCK_MAX_SPRITES as i32)?; // the count guards the loop (§6.3)
+    for schema_i in 0..schema_value.sprites_count as usize {
+        read_render_sprite_body(schema_stream, &mut schema_value.sprites[schema_i])?;
     }
     Ok(())
 }

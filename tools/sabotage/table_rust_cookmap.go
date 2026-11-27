@@ -4,8 +4,8 @@ package main
 // three negative controls, each against internal/codegen/rusttable/cookcarve.go.
 func init() {
 	sabotages["rust-cookmap-unsorted"] = []edit{{
-		old: `"%sorder.sort_by(|&a, &b| %s);\n"`,
-		new: `"%slet _ = |a: usize, b: usize| %s; order.reverse(); // SABOTAGED: the entries unsorted\n"`,
+		old: `"%sschema_order.sort_by(|&a, &b| %s);\n"`,
+		new: `"%slet _ = |a: usize, b: usize| %s; schema_order.reverse(); // SABOTAGED: the entries unsorted\n"`,
 	}}
 	sabotages["rust-cookmap-wide-extent"] = []edit{{
 		old: `	return ir.CookExtentStart(u, st)`,
