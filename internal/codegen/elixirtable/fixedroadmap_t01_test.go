@@ -113,7 +113,7 @@ func TestFixedRoadmapT01Framing(t *testing.T) {
   <<head::binary-size(8), _::binary-size(8), rest::binary>> = data
   forged = <<head::binary, 0x0EADBEEFCAFEF00D::little-unsigned-64, rest::binary>>
   {ftag, freason, freport} = load(forged)
-  check(ftag == :error and freason == :layout_newer and freport.layout_hash == 0x0EADBEEFCAFEF00D,
+  check(ftag == :error and freason == :layout_unknown and freport.layout_hash == 0x0EADBEEFCAFEF00D,
     "own layout bytes under a hash in no entry are never identity: #{inspect({ftag, freason})}")`)
 		}},
 
@@ -210,7 +210,7 @@ func TestFixedRoadmapT01Framing(t *testing.T) {
     {:previous_form, <<1, 0, 0, 0, 0, 0, 0, 0, 0, 0>>, [], 0},
     {:message_form_as_file, <<2, 0, 0>>, [], 0},
     {:newer_form, <<9>> <> binary_part(data, 1, byte_size(data) - 1), [], 0},
-    {:layout_newer, <<head::binary, 0x0EADBEEFCAFEF00D::little-unsigned-64, rest::binary>>, [], 0x0EADBEEFCAFEF00D},
+    {:layout_unknown, <<head::binary, 0x0EADBEEFCAFEF00D::little-unsigned-64, rest::binary>>, [], 0x0EADBEEFCAFEF00D},
     {:layout_malformed, binary_part(data, 0, 20 + l - 1), [], 0},
     {:layout_malformed, <<binary_part(data, 0, 24)::binary, Bitwise.bxor(:binary.at(data, 24), 0xFF), binary_part(data, 25, byte_size(data) - 25)::binary>>, [], 0},
     {:plan_too_large, data, [plan_capacity: 1], 0},

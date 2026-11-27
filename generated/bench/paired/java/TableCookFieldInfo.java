@@ -48,6 +48,13 @@ public final class TableCookFieldInfo {
     /** a COMPRESSED float (§3.3): its -0 is cooked as +0, the bits +0 cooks. */
     public boolean compressed;
 
+    /**
+     * an ENUM slot: writable[o] says ordinal o may be cooked. 0 (unset) and every live variant may;
+     * a deprecated variant (§2.15) and an ordinal past the variant set (docs/SPEC.md §5.1 row 5)
+     * may not. null for any other slot.
+     */
+    public boolean[] writable;
+
     public TableCookInfo record() {
         return recordRef == null ? null : recordRef.get();
     }
@@ -61,6 +68,16 @@ public final class TableCookFieldInfo {
     /** a [M..N] counted array's declared minimum element count. */
     public TableCookFieldInfo minCount(int min) {
         this.arrayMin = min;
+        return this;
+    }
+
+    /** this field as an ENUM of the given variant count, the listed ordinals deprecated. */
+    public TableCookFieldInfo variants(int count, int... deprecated) {
+        this.writable = new boolean[count + 1];
+        java.util.Arrays.fill(this.writable, true);
+        for (int o : deprecated) {
+            this.writable[o] = false;
+        }
         return this;
     }
 

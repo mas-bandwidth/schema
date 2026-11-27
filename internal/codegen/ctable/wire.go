@@ -858,9 +858,12 @@ func unitHasWriteBound(u *ir.Unit) bool {
 		return true
 	}
 	// ROWS 1, 2 AND 10 (docs/SPEC.md §5.1): a range, a bits width or a
-	// compressed float is a variable Save's debug assert too
+	// compressed float is a variable Save's debug assert too. ROW 5 (docs/SPEC.md
+	// §5.1; SPEC-TABLES §2.15, §7.6): the cook writer refuses an enum ordinal
+	// past its variant set, or a deprecated one, with schema_assert
+	// (cookEnumRefused), so an enum field or union arm takes the hook as well
 	bounded := func(f *ir.Field) bool {
-		return f.Array == ir.ArrayCounted || f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.IsTextList() ||
+		return enumRef(f) != nil || f.Array == ir.ArrayCounted || f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.IsTextList() ||
 			f.HasFloatRange || f.Type.Kind == ir.TBits || tableHasRawRange(f)
 	}
 	names := ir.TableClosure(u)

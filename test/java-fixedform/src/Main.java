@@ -665,16 +665,16 @@ public final class Main {
         // and the loader never takes that path: the HASH is what selects the plan
         // — which under §5.3 it does by SELECTING OUT OF THE LINEAGE, so a
         // stranger's file is not compiled at all. An FX1 build that never locked
-        // FX2's layout answers layout_newer, and it carries the FILE's hash.
+        // FX2's layout answers layout_unknown, and it carries the FILE's hash.
         {
             final tblfx1.FxRootFixed.Value[] right = { new tblfx1.FxRootFixed.Value() };
             final tblfx1.TableFixed.Report r = new tblfx1.TableFixed.Report();
             final int n = tblfx1.FxRootFixed.load(right, 1, fx2,
                     tblfx1.TableFixed.plan(1024), new short[1024], tblfx1.FxRootFixed.image(), r);
-            check(n < 0 && r.refused && r.reason == tblfx1.TableFixed.Reason.layoutNewer,
-                    "REFUSED BY NAME: a layout this build never locked is layout_newer");
+            check(n < 0 && r.refused && r.reason == tblfx1.TableFixed.Reason.layoutUnknown,
+                    "REFUSED BY NAME: a layout this build never locked is layout_unknown");
             check(r.layoutHash == tblfx1.TableFixed.get64(fx2, tblfx1.TableFixed.hashAt),
-                    "layout_newer reports THE FILE'S hash, and nothing else");
+                    "layout_unknown reports THE FILE'S hash, and nothing else");
             check(!r.damaged, "a refusal by name never sets malformed too");
         }
 
@@ -710,7 +710,7 @@ public final class Main {
             // — a hash the lineage holds whose layout bytes differ — is
             // layout_malformed, and the versioning harness's
             // hash_known_bytes_differ row is where it is asserted.
-            check(n < 0 && r.refused && r.reason == tblfx1.TableFixed.Reason.layoutNewer,
+            check(n < 0 && r.refused && r.reason == tblfx1.TableFixed.Reason.layoutUnknown,
                     "REFUSED BY NAME: a header hash no lineage entry holds");
             check(!r.damaged, "a lying header is a refusal and never damage");
         }
@@ -721,7 +721,7 @@ public final class Main {
         //    plan slice is checked against the selected LINEAGE plan's entry
         //    count and never written through. A build with no lineage has only
         //    its identity plan, so a one-entry slice can no longer reach the
-        //    check here — a stranger's file is layout_newer before any plan is
+        //    check here — a stranger's file is layout_unknown before any plan is
         //    selected — and the control moves to the lineage harness with it.
         {
             retired("negativeControls: the plan_too_large control",
@@ -1024,7 +1024,7 @@ public final class Main {
         // THE SIX FAMILIES §5.6 RETIRES, each a FORWARD read or a run-time walk
         // of a stranger's layout — the two things "the fixed table reads
         // backward, never forward" removed. Under §5.3 every one of these files
-        // now comes back `layout_newer`, which is the right answer and not a
+        // now comes back `layout_unknown`, which is the right answer and not a
         // regression, and the coverage moves to the LINEAGE harness
         // (internal/codegen/javatable/fixedversioning_test.go) where the reader
         // is built with the writer's layout in its lineage.
@@ -1033,7 +1033,7 @@ public final class Main {
         retired("anOlderWriter",
                 "NEW-READS-OLD on FX1/FX2: held by the versioning harness's field_append, nested_append and rename_without_was rows");
         retired("aNewerWriter",
-                "a FORWARD read, which is now layout_newer by name: held by the harness's OLD-REFUSES-NEW column on every row");
+                "a FORWARD read, which is now layout_unknown by name: held by the harness's OLD-REFUSES-NEW column on every row");
         retired("anOptional",
                 "T into ?T across a pair: held by the harness's optional_add row, both columns");
         retired("theSlide",

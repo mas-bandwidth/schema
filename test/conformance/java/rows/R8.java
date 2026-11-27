@@ -1,15 +1,15 @@
-// R8 — A HASH IN NO LINEAGE ENTRY → layout_newer, REPORTING THE FILE'S HASH
+// R8 — A HASH IN NO LINEAGE ENTRY → layout_unknown, REPORTING THE FILE'S HASH
 // AND NOTHING ELSE (docs/roadmap.sexp java/R8). The law is
 // docs/FIXED-FORM-ALGORITHM.md:887: "the hash is in no lineage entry |
-// layout_newer | the file's hash, and nothing else". The refusal table (:906)
-// pins the answer's shape: `layout_newer` ALSO sets `layout_hash` to THE
+// layout_unknown | the file's hash, and nothing else". The refusal table (:906)
+// pins the answer's shape: `layout_unknown` ALSO sets `layout_hash` to THE
 // FILE'S hash and nothing else — not this build's constant, not a hash of the
 // layout bytes behind it, which no runtime computes (:867).
 //
 // THE VECTOR is built from the law through the PRODUCTION WRITER, CfgFixed.save,
 // whose every byte the law fixes. The header hash is then XORed to a value no
 // lineage entry holds — a hash no reader's compile-time constants list. The
-// reader must refuse layout_newer and carry THE FILE'S HASH, exactly as given,
+// reader must refuse layout_unknown and carry THE FILE'S HASH, exactly as given,
 // with no counter moving and nothing decoded.
 //
 // Run from the repository root against the conformance classpath:
@@ -68,9 +68,9 @@ public final class R8 {
 
         check(n == -1, "a hash in no lineage entry is refused (load returned " + n + ")");
         check(r.refused, "the load refuses");
-        check(r.reason == TableFixed.Reason.layoutNewer,
-                "the refusal is by the name layoutNewer (got " + r.reason + ")");
-        check(!r.damaged, "layoutNewer is a refusal, not malformed");
+        check(r.reason == TableFixed.Reason.layoutUnknown,
+                "the refusal is by the name layoutUnknown (got " + r.reason + ")");
+        check(!r.damaged, "layoutUnknown is a refusal, not malformed");
         check(r.layoutHash == given,
                 "the report carries THE FILE'S HASH and nothing else: 0x"
                         + Long.toHexString(given) + "L as given (got 0x"

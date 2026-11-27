@@ -56,7 +56,7 @@ namespace Blockhome
         public ulong BuildVersionRemote, BuildVersionOwn;
         // LayoutHash is THE FILE'S hash, and it is LAST on the report (§5.9 #15) —
         // a member at the end rather than a field inserted among the counters,
-        // because the report is a type callers already hold. layout_newer reports
+        // because the report is a type callers already hold. layout_unknown reports
         // it "AND NOTHING ELSE" (§5.3); layout_unsupported reports it too (§5.9
         // #7), the operator's other answer. Zero on every other path.
         public ulong LayoutHash;
@@ -487,8 +487,8 @@ namespace Blockhome
     // A fixed table reads BACKWARD and never forward. A file is matched on the eight
     // bytes of its header's hash against the lineage the BUILD laid down, and the
     // layout it carries is held to a BYTE COMPARISON against the bytes the lock
-    // recorded — never walked. A hash the lineage does not hold is layout_newer
-    // (ship the reader); a hash it holds below the floor is layout_unsupported
+    // recorded — never walked. A hash the lineage does not hold is layout_unknown
+    // (§5.3 step 5); a hash it holds below the floor is layout_unsupported
     // (upgrade the client). Those are the operator's two distinct answers.
 
     // TableFixedKnownLayout is one locked layout: the wire hash a file is matched
@@ -5443,6 +5443,10 @@ namespace Blockhome
                     // a cooked float is finite (docs/SPEC-TABLES.md §3.3): a debug
                     // assert, as every write check on this leg is (docs/SPEC.md §5.1)
                     System.Diagnostics.Debug.Assert(!((f.Kind == 10 || f.Kind == 11) && i < live && NonFiniteBits(f.Kind, f.GetRaw(value, i))));
+                    // an enum slot holds None or a live variant (docs/SPEC.md §5.1 row 5;
+                    // SPEC-TABLES §2.15, §7.6): an ordinal past the set or a deprecated variant
+                    // fires in NativePlace's probe pass, before the header or the clear
+                    System.Diagnostics.Debug.Assert(!(f.Kind == 30 && i < live && (f.GetRaw(value, i) > (ulong)f.EnumMax || f.GetRaw(value, i) != 0 && f.EnumDeprecated != null && f.EnumDeprecated(f.GetRaw(value, i)))));
                     long element = at + (long)i * f.NativeElementSize, before = extent;
                     if (!NativeElement(ref w, element, value, f, i, extentAt, ref extent)) { return false; }
                     if (!f.Dynamic && f.Counted && i >= live && extent != before) { return false; }
@@ -7623,7 +7627,7 @@ namespace Blockhome
             // not an exception: the record loop runs the list it was handed.
             // THE HEADER'S HASH SELECTS A KNOWN LAYOUT, and nothing else does
             // (§5.3 step 5). The FIRST index whose hash matches; -1 for a hash the
-            // lineage does not hold, which is layout_newer.
+            // lineage does not hold, which is layout_unknown.
             public static int Select(ReadOnlySpan<TableFixedKnownLayout> known, ulong hash)
             {
                 for (int i = 0; i < known.Length; ++i)

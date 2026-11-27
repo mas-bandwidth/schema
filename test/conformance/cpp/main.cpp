@@ -3225,6 +3225,17 @@ int main( int argc, char ** argv )
     if ( surface == "block-dump" ) return surface_block_dump( out );
     if ( surface == "forgery" ) return surface_forgery( out );
     if ( surface == "block-reason" ) return surface_block_reason( out );
+#ifdef NDEBUG
+    // C++ is an ASSERT LEG (docs/SPEC.md §5.1; the ruling `write-refusal`): its
+    // write checks are schema_assert, and a release build carries none. A
+    // driver built with NDEBUG answers no write-refusal row, so the harness
+    // never credits a release build with a refusal.
+    if ( surface.rfind( "write-refusal", 0 ) == 0 )
+    {
+        fprintf( stderr, "driver: %s: this C++ driver was built with NDEBUG; an assert leg answers the write contract from its debug build only\n", surface.c_str() );
+        return 1;
+    }
+#endif
     if ( surface == "write-refusal" || surface == "write-refusal-fixed" || surface == "write-refusal-message" ||
          surface == "write-refusal-json" || surface == "write-refusal-cook" || surface == "write-refusal-block" ||
          surface == "write-refusal-shape" )
