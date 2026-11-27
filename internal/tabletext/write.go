@@ -252,6 +252,19 @@ func (m *Model) writeValue(w *writer, inst *Instance, depth int) error {
 	return nil
 }
 
+// containerCap refuses a container — an array, a text list, a map's object,
+// an enum-keyed array's object or a union's object — at a depth past the cap,
+// an empty `[]` or `{}` included. The read counts every container it walks
+// (docs/SPEC-TABLES.md §16.2), so the write counts the same ones in the same
+// unit (§16.14 W2), or it writes a text its own reader refuses. A table value
+// is judged by writeValue and writePointer.
+func containerCap(depth int, f *ir.Field) error {
+	if depth > maxJsonDepth {
+		return fmt.Errorf("field %s: a container at depth %d, past the depth cap of %d — the write counts every container the read does (docs/SPEC-TABLES.md §16.14 W2)", f.Name, depth, maxJsonDepth)
+	}
+	return nil
+}
+
 // writePointer renders the node a pointer slot names (docs/SPEC-TABLES.md
 // §16.7): null as `null`, a node named once as its object in place, and a node
 // named more than once DEFINED at its first occurrence — `&node` first, then its
@@ -337,6 +350,9 @@ func (m *Model) writeField(w *writer, fv *Field, depth int) error {
 	case f.IsTextList():
 		return m.writeTextList(w, fv, depth)
 	case f.Array != ir.ArrayNone:
+		if err := containerCap(depth, f); err != nil {
+			return err
+		}
 		count := int(f.ArrayBound)
 		if f.CountedOnWire() {
 			count = fv.Count
@@ -368,6 +384,9 @@ func (m *Model) writeField(w *writer, fv *Field, depth int) error {
 // rule the plain array's writer follows.
 func (m *Model) writeTextList(w *writer, fv *Field, depth int) error {
 	f := fv.Def
+	if err := containerCap(depth, f); err != nil {
+		return err
+	}
 	count := int(f.ArrayBound)
 	if f.CountedOnWire() {
 		count = fv.Count
@@ -401,6 +420,9 @@ func (m *Model) writeTextList(w *writer, fv *Field, depth int) error {
 // spells its keys as strings of digits.
 func (m *Model) writeMap(w *writer, fv *Field, depth int) error {
 	f := fv.Def
+	if err := containerCap(depth, f); err != nil {
+		return err
+	}
 	if len(fv.Entries) == 0 {
 		w.raw("{}")
 		return nil
@@ -459,6 +481,9 @@ func mapKeyText(f *ir.Field, entry *Instance) []byte {
 // slot, so the storage holds none for it and nothing is written for it.
 func (m *Model) writeKeyed(w *writer, fv *Field, depth int) error {
 	f := fv.Def
+	if err := containerCap(depth, f); err != nil {
+		return err
+	}
 	n := KeyedSlotCount(f)
 	if n <= KeyedFirstSlot() {
 		w.raw("{}")
@@ -487,7 +512,11 @@ func (m *Model) writeKeyed(w *writer, fv *Field, depth int) error {
 
 func (m *Model) writeScalar(w *writer, cell *Cell, f *ir.Field, depth int) error {
 	if un := UnionOf(f); un != nil {
-		// a union is an object with ONE key, the arm's name; None is {}
+		// a union is an object with ONE key, the arm's name; None is {}, and
+		// either is a container the depth cap counts (§16.14 W2)
+		if err := containerCap(depth, f); err != nil {
+			return err
+		}
 		if cell.U == 0 {
 			w.raw("{}")
 			return nil
@@ -558,6 +587,11 @@ func (m *Model) writeScalar(w *writer, cell *Cell, f *ir.Field, depth int) error
 		return nil
 	}
 	if fl := FlagsOf(f); fl != nil {
+		// a flags value is an array of names, a container the read counts
+		// (readFlags), so the cap counts it too, `[]` included (§16.14 W2)
+		if err := containerCap(depth, f); err != nil {
+			return err
+		}
 		bits := cell.U
 		if bits == 0 {
 			w.raw("[]")
