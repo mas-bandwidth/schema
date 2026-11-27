@@ -29,9 +29,10 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testinputs"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 type goReportRow struct {
@@ -79,6 +80,7 @@ func goEnsureGeneratedTables(t *testing.T, root string) {
 	_ = os.RemoveAll(filepath.Join(root, "build", "tables-generated-go"))
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
+	testinputs.Build(t, "test/conformance/go")
 	cmd := testproc.CommandContext(t, ctx, "make", "build/conformance-go")
 	cmd.Dir = root
 	if out, err := cmd.CombinedOutput(); err != nil {
@@ -254,6 +256,13 @@ func goDriverCheckAll(t *testing.T, root, bin string, reports []goReportRow, ret
 			wrong = append(wrong, fmt.Sprintf("retain/%s: missing answer", r.name))
 			continue
 		}
+		if r.saves == "refused" {
+			// a refused row has no values file: the one read's verdict is the answer
+			if !bytes.Equal(got, []byte("refused\n")) {
+				wrong = append(wrong, fmt.Sprintf("retain/%s: answered %q, want the refusal", r.name, got))
+			}
+			continue
+		}
 		wantVal, err := os.ReadFile(filepath.Join(root, "testdata", "conformance", "tables", "retain-values", r.name+".json"))
 		if err != nil {
 			t.Fatal(err)
@@ -266,7 +275,7 @@ func goDriverCheckAll(t *testing.T, root, bin string, reports []goReportRow, ret
 
 	retainSaveOut := goDriverRunSurface(t, root, bin, manifest, "retain-save")
 	for _, r := range retains {
-		if r.saves == "-" {
+		if r.saves == "-" || r.saves == "refused" {
 			continue
 		}
 		got, err := os.ReadFile(filepath.Join(retainSaveOut, r.name))

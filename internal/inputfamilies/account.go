@@ -22,14 +22,20 @@ var Account = map[string][]string{
 	"packet-defaults":         {"testdata/wire/packet-defaults/*.bin"},
 	"packet-end":              {"testdata/wire/packet-end/*.bin"},
 	"packet-finite":           {"test/packet-finite/*.schema"},
-	"packet-void":             {"test/packet-void/*.schema"},
+	"packet-void":             {"test/packet-void/Void.schema", "testdata/wire/packet-void/cases.txt", "testdata/wire/packet-void/*.bin"},
 	"packet-write-bareint":    {"test/packet-write-bareint/*.schema", "test/packet-write-bareint/cases.txt"},
 	"packet-write-cfloat":     {"test/packet-write-cfloat/*.schema", "test/packet-write-cfloat/cases.txt"},
 	"packet-cfloat-endpoints": {"test/packet-cfloat-endpoints/*.schema", "test/packet-cfloat-endpoints/ratio-endpoints.txt"},
-	"table-write-bounds":      {"testdata/conformance/table-write-bounds/*.schema", "testdata/conformance/table-write-bounds/*.bin", "testdata/conformance/table-write-bounds/ACCEPTED-WRITE-BOUNDS.txt"},
-	"packet-write-text":       {"test/packet-write-text/*.schema", "test/packet-write-text/cases.txt"},
-	"conformance-corpus":      {"testdata/conformance/tables/MANIFEST.txt", "testdata/conformance/tables/wire/*.bin"},
-	"hostile-corpus":          {"internal/ci/hostilecorpus/corpus/manifest.tsv", "internal/ci/hostilecorpus/corpus/inputs/*"},
+	"table-write-bounds": {
+		"testdata/conformance/table-write-bounds/*.schema",
+		"testdata/conformance/table-write-bounds/WRITE-BOUNDS.txt",
+		"testdata/conformance/table-write-bounds/*.bin",
+		"testdata/conformance/table-write-bounds/*.json",
+		"testdata/conformance/table-write-bounds/wire/*.bin",
+	},
+	"packet-write-text":  {"test/packet-write-text/*.schema", "test/packet-write-text/cases.txt"},
+	"conformance-corpus": {"testdata/conformance/tables/MANIFEST.txt", "testdata/conformance/tables/wire/*.bin"},
+	"hostile-corpus":     {"internal/ci/hostilecorpus/corpus/manifest.tsv", "internal/ci/hostilecorpus/corpus/inputs/*"},
 }
 
 // AccountExclude names files that sit inside an accounted directory but
@@ -50,7 +56,6 @@ var AccountExclude = map[string]map[string]bool{
 // <dir>/<leg>/*.schema reads that schema instead of <dir>/*.schema.
 var perLegSchemaFamilies = map[string]bool{
 	"packet-finite":     true,
-	"packet-void":       true,
 	"packet-write-text": true,
 }
 

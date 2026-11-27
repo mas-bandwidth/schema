@@ -21,6 +21,7 @@ public final class BenchMixedRetain {
         if (report == null) {
             report = new TableVariable.Report();
         }
+        report.reset();
         if (retain == null) {
             return BenchMixedVariable.load(data, report);
         }

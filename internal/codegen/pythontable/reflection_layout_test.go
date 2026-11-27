@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/python/pyrun"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 const reflectionLayoutProbe = pyrun.ImportPrelude + `import importlib, struct
@@ -230,7 +230,7 @@ func reflectionLayoutWant(u *ir.Unit) string {
 			min, max := 0.0, 0.0
 			isCompressed := f.Type.Kind == ir.TFloat32 && f.HasFloatRange
 			if isCompressed {
-				min, max = f.FMin, f.FMax
+				min, max = float64(float32(f.FMin)), float64(float32(f.FMax))
 			}
 			fmt.Fprintf(&b, "meta %s.%s guard=%x required=%v retired=%v wide=%s ids=%s keys=%s variants_deprecated=%s f32=%v frange=%v min=%016x max=%016x vocab=%s vmax=%d names=%s key_names=%s\n", st.Name, f.Name, f.Guard, f.Required, f.Deprecated, wide, strings.Join(ids, ","), strings.Join(keys, ","), strings.Join(retired, ","), f.Type.Kind == ir.TFloat32, isCompressed, math.Float64bits(min), math.Float64bits(max), vocabKind, vocabMax, strings.Join(vocabNames, ","), strings.Join(keyNames, ","))
 			if un, ok := f.Type.Ref.(*ir.Union); ok {

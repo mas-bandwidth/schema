@@ -7,6 +7,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v3/internal/testinputs"
 )
 
 // TestCFormatGateProvesItRan drives make/checks/c-clean-format.sh, the engine
@@ -49,6 +51,7 @@ func TestCFormatGateProvesItRan(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
+		testinputs.Files(t, script)
 		cmd := exec.Command("sh", append([]string{script, "allow.txt"}, trees...)...)
 		cmd.Dir = dir
 		cmd.Env = append(os.Environ(), "CLANG_FORMAT="+filepath.Join(dir, "format"), "OUT="+filepath.Join(dir, "out"))

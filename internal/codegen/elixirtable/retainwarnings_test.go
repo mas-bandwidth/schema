@@ -1,12 +1,13 @@
 package elixirtable
 
 import (
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 	"os"
 	"path/filepath"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testinputs"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 // The generic retaining payload clause cannot receive enum/union branches:
@@ -30,6 +31,7 @@ func TestRetainScalarFallbackCompilesWithoutWarningsElixir(t *testing.T) {
 		t.Fatal(err)
 	}
 	args := append([]string{gate, compiler, "-o", filepath.Join(dir, "ebin")}, names...)
+	testinputs.Files(t, gate)
 	cmd := testproc.Command(t, "sh", args...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "PATH="+otpBin(t)+string(os.PathListSeparator)+os.Getenv("PATH"))

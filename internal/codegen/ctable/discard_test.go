@@ -10,13 +10,13 @@ import (
 	"strings"
 	"testing"
 
-	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	cgen "github.com/mas-bandwidth/schema/v3/internal/codegen/c"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v3/ir"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4; Glenn, 2026-10-31:
@@ -204,7 +204,8 @@ int main( void )
 `
 
 // discardSabotage is one read's discard removed from the emitted source (each
-// pair a from and its replacement), and the rows the probe must then fail:
+// pair a from and its replacement; the from is matched by its C tokens and must
+// occur exactly once), and the rows the probe must then fail:
 // those rows, every one of them, and no other.
 type discardSabotage struct {
 	name  string
@@ -250,15 +251,10 @@ func discardProbeRun(t *testing.T, sabotage *discardSabotage) ([]string, string)
 	}
 	maps.Copy(files, tables)
 	if sabotage != nil {
+		// each target is the exact code, whitespace-tolerant because cfmt lays
+		// the emitted C out, and it must match exactly once (cPlantOnce)
 		for _, pair := range sabotage.pairs {
-			patched := false
-			for name, data := range files {
-				if src := string(data); strings.Contains(src, pair[0]) {
-					files[name] = []byte(strings.ReplaceAll(src, pair[0], pair[1]))
-					patched = true
-				}
-			}
-			if !patched {
+			if err := cPlantOnce(files, pair[0], pair[1]); err != nil {
 				var near []string
 				for _, data := range files {
 					for line := range strings.SplitSeq(string(data), "\n") {
@@ -267,7 +263,7 @@ func discardProbeRun(t *testing.T, sabotage *discardSabotage) ([]string, string)
 						}
 					}
 				}
-				t.Fatalf("the %s sabotage patches nothing: no emitted file carries %q; the discards emitted:\n%s", sabotage.name, pair[0], strings.Join(near, "\n"))
+				t.Fatalf("the %s sabotage patches nothing: %v; the discards emitted:\n%s", sabotage.name, err, strings.Join(near, "\n"))
 			}
 		}
 	}

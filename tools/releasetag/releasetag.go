@@ -42,7 +42,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/internal/modulemove"
+	"github.com/mas-bandwidth/schema/v3/internal/modulemove"
 )
 
 // The refusals, each matched with errors.Is.

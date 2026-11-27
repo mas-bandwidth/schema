@@ -3795,6 +3795,17 @@ local writeValue: (W, any, any, number) -> boolean
 local writeField: (W, any, any, any, number) -> boolean
 local writeFields: (W, any, any, number, boolean) -> (boolean, boolean)
 
+-- containerCap refuses a container (an array, a text list, a map's object, an
+-- enum-keyed array's object or a union's object) at a depth past the cap, an
+-- empty `[]` or `{}` included: the write counts every container the read does
+-- (docs/SPEC-TABLES.md §16.14 W2). A table value is judged by writeValue.
+local function containerCap(w: W, fd: any, depth: number): boolean
+	if depth > MAX_DEPTH then
+		return fail(w, "field " .. tostring(fd.name) .. ": a container past the depth cap of 128 (docs/SPEC-TABLES.md §16.14 W2)")
+	end
+	return true
+end
+
 local function writePointer(w: W, node: any, t: string, depth: number): boolean
 	if node == nil or node == false then
 		emit(w, "null")
@@ -3858,6 +3869,9 @@ end
 local function writeScalar(w: W, fd: any, v: any, depth: number): boolean
 	local s = fd.s
 	if s == "union" then
+		if not containerCap(w, fd, depth) then
+			return false
+		end
 		local ud = St.lookup(fd.t)
 		local tag = v.Type
 		if tag == 0 then
@@ -3901,6 +3915,10 @@ local function writeScalar(w: W, fd: any, v: any, depth: number): boolean
 	end
 	local names = flagsOf(fd)
 	if names ~= nil then
+		-- a flags value's array is a container too (§16.14 W2)
+		if not containerCap(w, fd, depth) then
+			return false
+		end
 		local low, high = v[1], v[2]
 		if low == 0 and high == 0 then
 			emit(w, "[]")
@@ -3955,6 +3973,9 @@ local function writeScalar(w: W, fd: any, v: any, depth: number): boolean
 end
 
 local function writeArray(w: W, fd: any, rec: any, depth: number): boolean
+	if not containerCap(w, fd, depth) then
+		return false
+	end
 	local v = rec[fd.slot]
 	local e = fd.e
 	local n = fd.bound
@@ -4009,6 +4030,9 @@ local function writeArray(w: W, fd: any, rec: any, depth: number): boolean
 end
 
 local function writeKeyed(w: W, fd: any, rec: any, depth: number): boolean
+	if not containerCap(w, fd, depth) then
+		return false
+	end
 	local v = rec[fd.slot]
 	local n = fd.bound
 	local e = fd.e
@@ -4050,6 +4074,9 @@ local function writeKeyed(w: W, fd: any, rec: any, depth: number): boolean
 end
 
 local function writeMap(w: W, fd: any, rec: any, depth: number): boolean
+	if not containerCap(w, fd, depth) then
+		return false
+	end
 	local entries = rec[fd.slot]
 	if #entries == 0 then
 		emit(w, "{}")

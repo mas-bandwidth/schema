@@ -8,6 +8,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v3/internal/testinputs"
 )
 
 // Run the workflow's actual packaging step with the two already approved
@@ -71,6 +73,7 @@ func TestCppPositiveFeatureCorpusPack(t *testing.T) {
 			}
 		}
 	}
+	testinputs.Files(t, ".github/workflows/nightly-conformance.yml")
 	cmd := exec.Command("bash", "-e", "-c", strings.Join(lines, "\n"))
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "FEATURE_OUTCOME=success")

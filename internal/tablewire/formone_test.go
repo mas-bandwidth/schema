@@ -3,7 +3,7 @@ package tablewire_test
 import (
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
 )
 
 // formOneModel is the corpus unit with every table declared VARIABLE, which is

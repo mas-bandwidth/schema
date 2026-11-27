@@ -1,0 +1,684 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum indegree
+{ Zfirst, Zsecond, Zthird }
+
+enum indent
+{ Zfirst, Zsecond, Zthird }
+
+enum index
+{ Zfirst, Zsecond, Zthird }
+
+enum index0
+{ Zfirst, Zsecond, Zthird }
+
+enum index1
+{ Zfirst, Zsecond, Zthird }
+
+enum indexBits
+{ Zfirst, Zsecond, Zthird }
+
+enum indexOfBlob
+{ Zfirst, Zsecond, Zthird }
+
+enum indexOfTable
+{ Zfirst, Zsecond, Zthird }
+
+enum indexPath
+{ Zfirst, Zsecond, Zthird }
+
+enum indexValue
+{ Zfirst, Zsecond, Zthird }
+
+enum index_2
+{ Zfirst, Zsecond, Zthird }
+
+enum index_child
+{ Zfirst, Zsecond, Zthird }
+
+enum index_offsets
+{ Zfirst, Zsecond, Zthird }
+
+enum index_peer
+{ Zfirst, Zsecond, Zthird }
+
+enum indexed
+{ Zfirst, Zsecond, Zthird }
+
+enum indices
+{ Zfirst, Zsecond, Zthird }
+
+enum info
+{ Zfirst, Zsecond, Zthird }
+
+enum inherited_inactive
+{ Zfirst, Zsecond, Zthird }
+
+enum init_stubs
+{ Zfirst, Zsecond, Zthird }
+
+enum inline_scratch
+{ Zfirst, Zsecond, Zthird }
+
+enum innerArgw
+{ Zfirst, Zsecond, Zthird }
+
+enum inner_body
+{ Zfirst, Zsecond, Zthird }
+
+enum inner_cls
+{ Zfirst, Zsecond, Zthird }
+
+enum inner_f
+{ Zfirst, Zsecond, Zthird }
+
+enum inner_fd
+{ Zfirst, Zsecond, Zthird }
+
+enum inp
+{ Zfirst, Zsecond, Zthird }
+
+enum ins
+{ Zfirst, Zsecond, Zthird }
+
+enum insert_leb
+{ Zfirst, Zsecond, Zthird }
+
+enum insertion
+{ Zfirst, Zsecond, Zthird }
+
+enum inside
+{ Zfirst, Zsecond, Zthird }
+
+enum inst
+{ Zfirst, Zsecond, Zthird }
+
+enum install_block_eligibility
+{ Zfirst, Zsecond, Zthird }
+
+enum instrument
+{ Zfirst, Zsecond, Zthird }
+
+enum int128_cmp
+{ Zfirst, Zsecond, Zthird }
+
+enum int128_cmp_signed
+{ Zfirst, Zsecond, Zthird }
+
+enum int128_neg
+{ Zfirst, Zsecond, Zthird }
+
+enum int128mod
+{ Zfirst, Zsecond, Zthird }
+
+enum int32Arg
+{ Zfirst, Zsecond, Zthird }
+
+enum int32_t
+{ Zfirst, Zsecond, Zthird }
+
+enum intAdmits
+{ Zfirst, Zsecond, Zthird }
+
+enum intAdmitted
+{ Zfirst, Zsecond, Zthird }
+
+enum intAt
+{ Zfirst, Zsecond, Zthird }
+
+enum intBounds
+{ Zfirst, Zsecond, Zthird }
+
+enum intDigits
+{ Zfirst, Zsecond, Zthird }
+
+enum intEnd
+{ Zfirst, Zsecond, Zthird }
+
+enum intErr
+{ Zfirst, Zsecond, Zthird }
+
+enum intLen
+{ Zfirst, Zsecond, Zthird }
+
+enum intLength
+{ Zfirst, Zsecond, Zthird }
+
+enum intMatch
+{ Zfirst, Zsecond, Zthird }
+
+enum intPart
+{ Zfirst, Zsecond, Zthird }
+
+enum intStart
+{ Zfirst, Zsecond, Zthird }
+
+enum intValue
+{ Zfirst, Zsecond, Zthird }
+
+enum intWidth
+{ Zfirst, Zsecond, Zthird }
+
+enum int_bits
+{ Zfirst, Zsecond, Zthird }
+
+enum int_cmp
+{ Zfirst, Zsecond, Zthird }
+
+enum int_greater
+{ Zfirst, Zsecond, Zthird }
+
+enum int_less
+{ Zfirst, Zsecond, Zthird }
+
+enum int_ok
+{ Zfirst, Zsecond, Zthird }
+
+enum int_text
+{ Zfirst, Zsecond, Zthird }
+
+enum intact
+{ Zfirst, Zsecond, Zthird }
+
+enum integerAdmits
+{ Zfirst, Zsecond, Zthird }
+
+enum integerBits
+{ Zfirst, Zsecond, Zthird }
+
+enum integerKind
+{ Zfirst, Zsecond, Zthird }
+
+enum integerOnly
+{ Zfirst, Zsecond, Zthird }
+
+enum integerToken
+{ Zfirst, Zsecond, Zthird }
+
+enum integerVal
+{ Zfirst, Zsecond, Zthird }
+
+enum integerValue
+{ Zfirst, Zsecond, Zthird }
+
+enum integer_text
+{ Zfirst, Zsecond, Zthird }
+
+enum integers
+{ Zfirst, Zsecond, Zthird }
+
+enum integral
+{ Zfirst, Zsecond, Zthird }
+
+enum integral_digits
+{ Zfirst, Zsecond, Zthird }
+
+enum integrity
+{ Zfirst, Zsecond, Zthird }
+
+enum integrityHolds
+{ Zfirst, Zsecond, Zthird }
+
+enum integrityMismatch
+{ Zfirst, Zsecond, Zthird }
+
+enum integrityOpen
+{ Zfirst, Zsecond, Zthird }
+
+enum intern
+{ Zfirst, Zsecond, Zthird }
+
+enum interpretInteger
+{ Zfirst, Zsecond, Zthird }
+
+enum interpretIntegerExact
+{ Zfirst, Zsecond, Zthird }
+
+enum into
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    indegree Inner
+    indent Inner
+    index Inner
+    index0 Inner
+    index1 Inner
+    indexBits Inner
+    indexOfBlob Inner
+    indexOfTable Inner
+    indexPath Inner
+    indexValue Inner
+}
+
+table NameTypes0
+{
+    one0  indegree
+    many0 [..4]indegree
+    one1  indent
+    many1 [..4]indent
+    one2  index
+    many2 [..4]index
+    one3  index0
+    many3 [..4]index0
+    one4  index1
+    many4 [..4]index1
+    one5  indexBits
+    many5 [..4]indexBits
+    one6  indexOfBlob
+    many6 [..4]indexOfBlob
+    one7  indexOfTable
+    many7 [..4]indexOfTable
+    one8  indexPath
+    many8 [..4]indexPath
+    one9  indexValue
+    many9 [..4]indexValue
+}
+
+table NameFields0
+{
+    indegree uint32
+    indent uint32
+    index uint32
+    index0 uint32
+    index1 uint32
+    indexBits uint32
+    indexOfBlob uint32
+    indexOfTable uint32
+    indexPath uint32
+    indexValue uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    index_2 Inner
+    index_child Inner
+    index_offsets Inner
+    index_peer Inner
+    indexed Inner
+    indices Inner
+    infinity Inner
+    info Inner
+    inherited_inactive Inner
+    init_stubs Inner
+}
+
+table NameTypes1
+{
+    one0  index_2
+    many0 [..4]index_2
+    one1  index_child
+    many1 [..4]index_child
+    one2  index_offsets
+    many2 [..4]index_offsets
+    one3  index_peer
+    many3 [..4]index_peer
+    one4  indexed
+    many4 [..4]indexed
+    one5  indices
+    many5 [..4]indices
+    one7  info
+    many7 [..4]info
+    one8  inherited_inactive
+    many8 [..4]inherited_inactive
+    one9  init_stubs
+    many9 [..4]init_stubs
+}
+
+table NameFields1
+{
+    index_2 uint32
+    index_child uint32
+    index_offsets uint32
+    index_peer uint32
+    indexed uint32
+    indices uint32
+    infinity uint32
+    info uint32
+    inherited_inactive uint32
+    init_stubs uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    inline_scratch Inner
+    innerArgw Inner
+    inner_body Inner
+    inner_cls Inner
+    inner_f Inner
+    inner_fd Inner
+    inp Inner
+    ins Inner
+    insert_leb Inner
+    insertion Inner
+}
+
+table NameTypes2
+{
+    one0  inline_scratch
+    many0 [..4]inline_scratch
+    one1  innerArgw
+    many1 [..4]innerArgw
+    one2  inner_body
+    many2 [..4]inner_body
+    one3  inner_cls
+    many3 [..4]inner_cls
+    one4  inner_f
+    many4 [..4]inner_f
+    one5  inner_fd
+    many5 [..4]inner_fd
+    one6  inp
+    many6 [..4]inp
+    one7  ins
+    many7 [..4]ins
+    one8  insert_leb
+    many8 [..4]insert_leb
+    one9  insertion
+    many9 [..4]insertion
+}
+
+table NameFields2
+{
+    inline_scratch uint32
+    innerArgw uint32
+    inner_body uint32
+    inner_cls uint32
+    inner_f uint32
+    inner_fd uint32
+    inp uint32
+    ins uint32
+    insert_leb uint32
+    insertion uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    inside Inner
+    inst Inner
+    install_block_eligibility Inner
+    instrument Inner
+    int128_cmp Inner
+    int128_cmp_signed Inner
+    int128_neg Inner
+    int128mod Inner
+    int32Arg Inner
+    int32_t Inner
+}
+
+table NameTypes3
+{
+    one0  inside
+    many0 [..4]inside
+    one1  inst
+    many1 [..4]inst
+    one2  install_block_eligibility
+    many2 [..4]install_block_eligibility
+    one3  instrument
+    many3 [..4]instrument
+    one4  int128_cmp
+    many4 [..4]int128_cmp
+    one5  int128_cmp_signed
+    many5 [..4]int128_cmp_signed
+    one6  int128_neg
+    many6 [..4]int128_neg
+    one7  int128mod
+    many7 [..4]int128mod
+    one8  int32Arg
+    many8 [..4]int32Arg
+    one9  int32_t
+    many9 [..4]int32_t
+}
+
+table NameFields3
+{
+    inside uint32
+    inst uint32
+    install_block_eligibility uint32
+    instrument uint32
+    int128_cmp uint32
+    int128_cmp_signed uint32
+    int128_neg uint32
+    int128mod uint32
+    int32Arg uint32
+    int32_t uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    intAdmits Inner
+    intAdmitted Inner
+    intAt Inner
+    intBounds Inner
+    intDigits Inner
+    intEnd Inner
+    intErr Inner
+    intLen Inner
+    intLength Inner
+    intMatch Inner
+}
+
+table NameTypes4
+{
+    one0  intAdmits
+    many0 [..4]intAdmits
+    one1  intAdmitted
+    many1 [..4]intAdmitted
+    one2  intAt
+    many2 [..4]intAt
+    one3  intBounds
+    many3 [..4]intBounds
+    one4  intDigits
+    many4 [..4]intDigits
+    one5  intEnd
+    many5 [..4]intEnd
+    one6  intErr
+    many6 [..4]intErr
+    one7  intLen
+    many7 [..4]intLen
+    one8  intLength
+    many8 [..4]intLength
+    one9  intMatch
+    many9 [..4]intMatch
+}
+
+table NameFields4
+{
+    intAdmits uint32
+    intAdmitted uint32
+    intAt uint32
+    intBounds uint32
+    intDigits uint32
+    intEnd uint32
+    intErr uint32
+    intLen uint32
+    intLength uint32
+    intMatch uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    intPart Inner
+    intStart Inner
+    intValue Inner
+    intWidth Inner
+    int_bits Inner
+    int_cmp Inner
+    int_greater Inner
+    int_less Inner
+    int_ok Inner
+    int_text Inner
+}
+
+table NameTypes5
+{
+    one0  intPart
+    many0 [..4]intPart
+    one1  intStart
+    many1 [..4]intStart
+    one2  intValue
+    many2 [..4]intValue
+    one3  intWidth
+    many3 [..4]intWidth
+    one4  int_bits
+    many4 [..4]int_bits
+    one5  int_cmp
+    many5 [..4]int_cmp
+    one6  int_greater
+    many6 [..4]int_greater
+    one7  int_less
+    many7 [..4]int_less
+    one8  int_ok
+    many8 [..4]int_ok
+    one9  int_text
+    many9 [..4]int_text
+}
+
+table NameFields5
+{
+    intPart uint32
+    intStart uint32
+    intValue uint32
+    intWidth uint32
+    int_bits uint32
+    int_cmp uint32
+    int_greater uint32
+    int_less uint32
+    int_ok uint32
+    int_text uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    intact Inner
+    integerAdmits Inner
+    integerBits Inner
+    integerKind Inner
+    integerOnly Inner
+    integerToken Inner
+    integerVal Inner
+    integerValue Inner
+    integer_text Inner
+    integers Inner
+}
+
+table NameTypes6
+{
+    one0  intact
+    many0 [..4]intact
+    one1  integerAdmits
+    many1 [..4]integerAdmits
+    one2  integerBits
+    many2 [..4]integerBits
+    one3  integerKind
+    many3 [..4]integerKind
+    one4  integerOnly
+    many4 [..4]integerOnly
+    one5  integerToken
+    many5 [..4]integerToken
+    one6  integerVal
+    many6 [..4]integerVal
+    one7  integerValue
+    many7 [..4]integerValue
+    one8  integer_text
+    many8 [..4]integer_text
+    one9  integers
+    many9 [..4]integers
+}
+
+table NameFields6
+{
+    intact uint32
+    integerAdmits uint32
+    integerBits uint32
+    integerKind uint32
+    integerOnly uint32
+    integerToken uint32
+    integerVal uint32
+    integerValue uint32
+    integer_text uint32
+    integers uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    integral Inner
+    integral_digits Inner
+    integrity Inner
+    integrityHolds Inner
+    integrityMismatch Inner
+    integrityOpen Inner
+    intern Inner
+    interpretInteger Inner
+    interpretIntegerExact Inner
+    into Inner
+}
+
+table NameTypes7
+{
+    one0  integral
+    many0 [..4]integral
+    one1  integral_digits
+    many1 [..4]integral_digits
+    one2  integrity
+    many2 [..4]integrity
+    one3  integrityHolds
+    many3 [..4]integrityHolds
+    one4  integrityMismatch
+    many4 [..4]integrityMismatch
+    one5  integrityOpen
+    many5 [..4]integrityOpen
+    one6  intern
+    many6 [..4]intern
+    one7  interpretInteger
+    many7 [..4]interpretInteger
+    one8  interpretIntegerExact
+    many8 [..4]interpretIntegerExact
+    one9  into
+    many9 [..4]into
+}
+
+table NameFields7
+{
+    integral uint32
+    integral_digits uint32
+    integrity uint32
+    integrityHolds uint32
+    integrityMismatch uint32
+    integrityOpen uint32
+    intern uint32
+    interpretInteger uint32
+    interpretIntegerExact uint32
+    into uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

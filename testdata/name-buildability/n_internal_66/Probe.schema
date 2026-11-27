@@ -1,0 +1,684 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum seed
+{ Zfirst, Zsecond, Zthird }
+
+enum seen
+{ Zfirst, Zsecond, Zthird }
+
+enum seen0
+{ Zfirst, Zsecond, Zthird }
+
+enum seenBig
+{ Zfirst, Zsecond, Zthird }
+
+enum seenBody
+{ Zfirst, Zsecond, Zthird }
+
+enum seenBodyLevels
+{ Zfirst, Zsecond, Zthird }
+
+enum seenBytes
+{ Zfirst, Zsecond, Zthird }
+
+enum seenDepth
+{ Zfirst, Zsecond, Zthird }
+
+enum seenField
+{ Zfirst, Zsecond, Zthird }
+
+enum seenFieldMark
+{ Zfirst, Zsecond, Zthird }
+
+enum seenHigh
+{ Zfirst, Zsecond, Zthird }
+
+enum seenIds
+{ Zfirst, Zsecond, Zthird }
+
+enum seenInline
+{ Zfirst, Zsecond, Zthird }
+
+enum seenKey
+{ Zfirst, Zsecond, Zthird }
+
+enum seenKeys
+{ Zfirst, Zsecond, Zthird }
+
+enum seenRaw
+{ Zfirst, Zsecond, Zthird }
+
+enum seenRefs
+{ Zfirst, Zsecond, Zthird }
+
+enum seenSlotMark
+{ Zfirst, Zsecond, Zthird }
+
+enum seenStride
+{ Zfirst, Zsecond, Zthird }
+
+enum seenUsed
+{ Zfirst, Zsecond, Zthird }
+
+enum seenValue
+{ Zfirst, Zsecond, Zthird }
+
+enum seenVersion
+{ Zfirst, Zsecond, Zthird }
+
+enum seenVocabulary
+{ Zfirst, Zsecond, Zthird }
+
+enum seenWide
+{ Zfirst, Zsecond, Zthird }
+
+enum seen_at
+{ Zfirst, Zsecond, Zthird }
+
+enum seen_below
+{ Zfirst, Zsecond, Zthird }
+
+enum seen_blob
+{ Zfirst, Zsecond, Zthird }
+
+enum seen_byName
+{ Zfirst, Zsecond, Zthird }
+
+enum seen_count
+{ Zfirst, Zsecond, Zthird }
+
+enum seen_first
+{ Zfirst, Zsecond, Zthird }
+
+enum seen_ids_inline
+{ Zfirst, Zsecond, Zthird }
+
+enum seen_ids_len
+{ Zfirst, Zsecond, Zthird }
+
+enum seen_idx
+{ Zfirst, Zsecond, Zthird }
+
+enum seen_node
+{ Zfirst, Zsecond, Zthird }
+
+enum seen_node_table
+{ Zfirst, Zsecond, Zthird }
+
+enum seen_ref
+{ Zfirst, Zsecond, Zthird }
+
+enum seen_tags
+{ Zfirst, Zsecond, Zthird }
+
+enum seen_their
+{ Zfirst, Zsecond, Zthird }
+
+enum seen_unknown
+{ Zfirst, Zsecond, Zthird }
+
+enum seen_val
+{ Zfirst, Zsecond, Zthird }
+
+enum seen_words
+{ Zfirst, Zsecond, Zthird }
+
+enum seg
+{ Zfirst, Zsecond, Zthird }
+
+enum segment
+{ Zfirst, Zsecond, Zthird }
+
+enum segment_ref
+{ Zfirst, Zsecond, Zthird }
+
+enum segments
+{ Zfirst, Zsecond, Zthird }
+
+enum segs
+{ Zfirst, Zsecond, Zthird }
+
+enum sel
+{ Zfirst, Zsecond, Zthird }
+
+enum selected
+{ Zfirst, Zsecond, Zthird }
+
+enum selection
+{ Zfirst, Zsecond, Zthird }
+
+enum sent
+{ Zfirst, Zsecond, Zthird }
+
+enum sep
+{ Zfirst, Zsecond, Zthird }
+
+enum separately
+{ Zfirst, Zsecond, Zthird }
+
+enum separator
+{ Zfirst, Zsecond, Zthird }
+
+enum seq
+{ Zfirst, Zsecond, Zthird }
+
+enum sequence
+{ Zfirst, Zsecond, Zthird }
+
+enum serial
+{ Zfirst, Zsecond, Zthird }
+
+enum serialVersionUID
+{ Zfirst, Zsecond, Zthird }
+
+enum serializeStream
+{ Zfirst, Zsecond, Zthird }
+
+enum serialize_bitpacker_store_word
+{ Zfirst, Zsecond, Zthird }
+
+enum serialize_bits_write_check
+{ Zfirst, Zsecond, Zthird }
+
+enum serialize_f32_from_bits
+{ Zfirst, Zsecond, Zthird }
+
+enum serialize_f64_bits
+{ Zfirst, Zsecond, Zthird }
+
+enum serialize_fail
+{ Zfirst, Zsecond, Zthird }
+
+enum serialize_packer_read
+{ Zfirst, Zsecond, Zthird }
+
+enum serialize_packer_write
+{ Zfirst, Zsecond, Zthird }
+
+enum serialize_read_check
+{ Zfirst, Zsecond, Zthird }
+
+enum setBit16
+{ Zfirst, Zsecond, Zthird }
+
+enum setBytes
+{ Zfirst, Zsecond, Zthird }
+
+enum setDouble
+{ Zfirst, Zsecond, Zthird }
+
+enum setPath
+{ Zfirst, Zsecond, Zthird }
+
+enum setRaw
+{ Zfirst, Zsecond, Zthird }
+
+enum setRawReport
+{ Zfirst, Zsecond, Zthird }
+
+enum setSlot
+{ Zfirst, Zsecond, Zthird }
+
+enum setWide
+{ Zfirst, Zsecond, Zthird }
+
+enum set_from_bound
+{ Zfirst, Zsecond, Zthird }
+
+enum set_present
+{ Zfirst, Zsecond, Zthird }
+
+enum set_union
+{ Zfirst, Zsecond, Zthird }
+
+enum setmetatable
+{ Zfirst, Zsecond, Zthird }
+
+enum settle
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    seed Inner
+    seen Inner
+    seen0 Inner
+    seenBig Inner
+    seenBody Inner
+    seenBodyLevels Inner
+    seenBytes Inner
+    seenDepth Inner
+    seenField Inner
+    seenFieldMark Inner
+}
+
+table NameTypes0
+{
+    one0  seed
+    many0 [..4]seed
+    one1  seen
+    many1 [..4]seen
+    one2  seen0
+    many2 [..4]seen0
+    one3  seenBig
+    many3 [..4]seenBig
+    one4  seenBody
+    many4 [..4]seenBody
+    one5  seenBodyLevels
+    many5 [..4]seenBodyLevels
+    one6  seenBytes
+    many6 [..4]seenBytes
+    one7  seenDepth
+    many7 [..4]seenDepth
+    one8  seenField
+    many8 [..4]seenField
+    one9  seenFieldMark
+    many9 [..4]seenFieldMark
+}
+
+table NameFields0
+{
+    seed uint32
+    seen uint32
+    seen0 uint32
+    seenBig uint32
+    seenBody uint32
+    seenBodyLevels uint32
+    seenBytes uint32
+    seenDepth uint32
+    seenField uint32
+    seenFieldMark uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    seenHigh Inner
+    seenIds Inner
+    seenInline Inner
+    seenKey Inner
+    seenKeys Inner
+    seenRaw Inner
+    seenRefs Inner
+    seenSlotMark Inner
+    seenStride Inner
+    seenUsed Inner
+}
+
+table NameTypes1
+{
+    one0  seenHigh
+    many0 [..4]seenHigh
+    one1  seenIds
+    many1 [..4]seenIds
+    one2  seenInline
+    many2 [..4]seenInline
+    one3  seenKey
+    many3 [..4]seenKey
+    one4  seenKeys
+    many4 [..4]seenKeys
+    one5  seenRaw
+    many5 [..4]seenRaw
+    one6  seenRefs
+    many6 [..4]seenRefs
+    one7  seenSlotMark
+    many7 [..4]seenSlotMark
+    one8  seenStride
+    many8 [..4]seenStride
+    one9  seenUsed
+    many9 [..4]seenUsed
+}
+
+table NameFields1
+{
+    seenHigh uint32
+    seenIds uint32
+    seenInline uint32
+    seenKey uint32
+    seenKeys uint32
+    seenRaw uint32
+    seenRefs uint32
+    seenSlotMark uint32
+    seenStride uint32
+    seenUsed uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    seenValue Inner
+    seenVersion Inner
+    seenVocabulary Inner
+    seenWide Inner
+    seen_at Inner
+    seen_below Inner
+    seen_blob Inner
+    seen_byName Inner
+    seen_count Inner
+    seen_first Inner
+}
+
+table NameTypes2
+{
+    one0  seenValue
+    many0 [..4]seenValue
+    one1  seenVersion
+    many1 [..4]seenVersion
+    one2  seenVocabulary
+    many2 [..4]seenVocabulary
+    one3  seenWide
+    many3 [..4]seenWide
+    one4  seen_at
+    many4 [..4]seen_at
+    one5  seen_below
+    many5 [..4]seen_below
+    one6  seen_blob
+    many6 [..4]seen_blob
+    one7  seen_byName
+    many7 [..4]seen_byName
+    one8  seen_count
+    many8 [..4]seen_count
+    one9  seen_first
+    many9 [..4]seen_first
+}
+
+table NameFields2
+{
+    seenValue uint32
+    seenVersion uint32
+    seenVocabulary uint32
+    seenWide uint32
+    seen_at uint32
+    seen_below uint32
+    seen_blob uint32
+    seen_byName uint32
+    seen_count uint32
+    seen_first uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    seen_ids_inline Inner
+    seen_ids_len Inner
+    seen_idx Inner
+    seen_node Inner
+    seen_node_table Inner
+    seen_ref Inner
+    seen_tags Inner
+    seen_their Inner
+    seen_unknown Inner
+    seen_val Inner
+}
+
+table NameTypes3
+{
+    one0  seen_ids_inline
+    many0 [..4]seen_ids_inline
+    one1  seen_ids_len
+    many1 [..4]seen_ids_len
+    one2  seen_idx
+    many2 [..4]seen_idx
+    one3  seen_node
+    many3 [..4]seen_node
+    one4  seen_node_table
+    many4 [..4]seen_node_table
+    one5  seen_ref
+    many5 [..4]seen_ref
+    one6  seen_tags
+    many6 [..4]seen_tags
+    one7  seen_their
+    many7 [..4]seen_their
+    one8  seen_unknown
+    many8 [..4]seen_unknown
+    one9  seen_val
+    many9 [..4]seen_val
+}
+
+table NameFields3
+{
+    seen_ids_inline uint32
+    seen_ids_len uint32
+    seen_idx uint32
+    seen_node uint32
+    seen_node_table uint32
+    seen_ref uint32
+    seen_tags uint32
+    seen_their uint32
+    seen_unknown uint32
+    seen_val uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    seen_words Inner
+    seg Inner
+    segment Inner
+    segment_ref Inner
+    segments Inner
+    segs Inner
+    sel Inner
+    selected Inner
+    selection Inner
+    sent Inner
+}
+
+table NameTypes4
+{
+    one0  seen_words
+    many0 [..4]seen_words
+    one1  seg
+    many1 [..4]seg
+    one2  segment
+    many2 [..4]segment
+    one3  segment_ref
+    many3 [..4]segment_ref
+    one4  segments
+    many4 [..4]segments
+    one5  segs
+    many5 [..4]segs
+    one6  sel
+    many6 [..4]sel
+    one7  selected
+    many7 [..4]selected
+    one8  selection
+    many8 [..4]selection
+    one9  sent
+    many9 [..4]sent
+}
+
+table NameFields4
+{
+    seen_words uint32
+    seg uint32
+    segment uint32
+    segment_ref uint32
+    segments uint32
+    segs uint32
+    sel uint32
+    selected uint32
+    selection uint32
+    sent uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    sep Inner
+    separately Inner
+    separator Inner
+    seq Inner
+    sequence Inner
+    serial Inner
+    serialVersionUID Inner
+    serializeStream Inner
+    serialize_bitpacker_store_word Inner
+    serialize_bits_write_check Inner
+}
+
+table NameTypes5
+{
+    one0  sep
+    many0 [..4]sep
+    one1  separately
+    many1 [..4]separately
+    one2  separator
+    many2 [..4]separator
+    one3  seq
+    many3 [..4]seq
+    one4  sequence
+    many4 [..4]sequence
+    one5  serial
+    many5 [..4]serial
+    one6  serialVersionUID
+    many6 [..4]serialVersionUID
+    one7  serializeStream
+    many7 [..4]serializeStream
+    one8  serialize_bitpacker_store_word
+    many8 [..4]serialize_bitpacker_store_word
+    one9  serialize_bits_write_check
+    many9 [..4]serialize_bits_write_check
+}
+
+table NameFields5
+{
+    sep uint32
+    separately uint32
+    separator uint32
+    seq uint32
+    sequence uint32
+    serial uint32
+    serialVersionUID uint32
+    serializeStream uint32
+    serialize_bitpacker_store_word uint32
+    serialize_bits_write_check uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    serialize_f32_from_bits Inner
+    serialize_f64_bits Inner
+    serialize_fail Inner
+    serialize_fixed Inner
+    serialize_packer_read Inner
+    serialize_packer_write Inner
+    serialize_read_check Inner
+    setBit16 Inner
+    setBytes Inner
+    setDouble Inner
+}
+
+table NameTypes6
+{
+    one0  serialize_f32_from_bits
+    many0 [..4]serialize_f32_from_bits
+    one1  serialize_f64_bits
+    many1 [..4]serialize_f64_bits
+    one2  serialize_fail
+    many2 [..4]serialize_fail
+    one4  serialize_packer_read
+    many4 [..4]serialize_packer_read
+    one5  serialize_packer_write
+    many5 [..4]serialize_packer_write
+    one6  serialize_read_check
+    many6 [..4]serialize_read_check
+    one7  setBit16
+    many7 [..4]setBit16
+    one8  setBytes
+    many8 [..4]setBytes
+    one9  setDouble
+    many9 [..4]setDouble
+}
+
+table NameFields6
+{
+    serialize_f32_from_bits uint32
+    serialize_f64_bits uint32
+    serialize_fail uint32
+    serialize_fixed uint32
+    serialize_packer_read uint32
+    serialize_packer_write uint32
+    serialize_read_check uint32
+    setBit16 uint32
+    setBytes uint32
+    setDouble uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    setPath Inner
+    setRaw Inner
+    setRawReport Inner
+    setSlot Inner
+    setWide Inner
+    set_from_bound Inner
+    set_present Inner
+    set_union Inner
+    setmetatable Inner
+    settle Inner
+}
+
+table NameTypes7
+{
+    one0  setPath
+    many0 [..4]setPath
+    one1  setRaw
+    many1 [..4]setRaw
+    one2  setRawReport
+    many2 [..4]setRawReport
+    one3  setSlot
+    many3 [..4]setSlot
+    one4  setWide
+    many4 [..4]setWide
+    one5  set_from_bound
+    many5 [..4]set_from_bound
+    one6  set_present
+    many6 [..4]set_present
+    one7  set_union
+    many7 [..4]set_union
+    one8  setmetatable
+    many8 [..4]setmetatable
+    one9  settle
+    many9 [..4]settle
+}
+
+table NameFields7
+{
+    setPath uint32
+    setRaw uint32
+    setRawReport uint32
+    setSlot uint32
+    setWide uint32
+    set_from_bound uint32
+    set_present uint32
+    set_union uint32
+    setmetatable uint32
+    settle uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

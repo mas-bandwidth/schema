@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
+	"github.com/mas-bandwidth/schema/v3/internal/fixedproof"
 )
 
 // TestSquirrelFixedFormGrownBound reads the grown-bound versioning rows

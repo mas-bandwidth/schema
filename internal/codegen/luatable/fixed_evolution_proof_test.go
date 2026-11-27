@@ -20,9 +20,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/lua/luarun"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 type luaEvoUnit struct {
@@ -224,8 +224,12 @@ func TestLuaFixedEvolutionReports(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "lua (it runs the emitted fixed-form runtime)")
 	g := luaEvoGen(t, luaEvoSource(t, "package probe\nfixed table R\n{\n    a int8 = 0 | min = -128, max = 127\n    b uint8\n}\n"), nil)
-	if src := string(g.files["fixed.lua"]); strings.Contains(src, "repeatedKey") || strings.Contains(src, "duplicate") {
+	if src := string(g.files["fixed.lua"]); luaFixedCountsRepeatedKey(src) {
 		t.Errorf("E9: the fixed runtime counts a repeated key")
+	}
+	// the reversed witness: a runtime that counts one is seen
+	if !luaFixedCountsRepeatedKey("    report.repeatedKey = 0\n    report.repeatedKey = report.repeatedKey + 1\n") {
+		t.Errorf("E9: the repeated-key check does not see a counted key")
 	}
 	var bodies [][]byte
 	for x := range 256 {
@@ -594,4 +598,17 @@ func TestLuaFixedEvolutionHostileInput(t *testing.T) {
 	if got := gab.load(t, "A", aFile); got.head != "ok 1 w0 u0" || got.dump["r0.x"] != "111" || got.dump["r0.trail"] != "287454020" {
 		t.Errorf("P4: the right plan: %s %v", got.head, got.dump)
 	}
+}
+
+// luaFixedCountsRepeatedKey reports whether a fixed runtime's source counts a
+// repeated key (E9: a fixed record has no keys to repeat). The one lawful
+// mention is the reset of the caller's report, report.repeatedKey = 0: every
+// counter of the report a read is handed is overwritten with this read's own
+// (docs/SPEC-TABLES.md §6.5; f259a7aa3a), and a fixed read's repeated-key
+// count is zero. Any other mention, or a duplicate check, is a count.
+func luaFixedCountsRepeatedKey(src string) bool {
+	if strings.Contains(src, "duplicate") {
+		return true
+	}
+	return strings.Count(src, "repeatedKey") != strings.Count(src, "report.repeatedKey = 0\n")
 }

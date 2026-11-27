@@ -9,10 +9,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/cpp"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testinputs"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 // The wide-list fixture entered the generated corpus without entering the
@@ -93,6 +94,7 @@ func TestCppWidelistWarningInventory(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(work, "allow.txt"), []byte(selected.String()), 0600); err != nil {
 		t.Fatal(err)
 	}
+	testinputs.Make(t)
 	cmd := testproc.Command(t, "sh", filepath.Join(repo, "make/checks/cpp-clean-warnings.sh"), "allow.txt", "check", "build/tables-generated")
 	cmd.Dir = work
 	cmd.Env = append(os.Environ(), "CLANGXX="+clang, "SERIALIZE_DIR="+serialize, "JOBS=2", "OUT=build/warning-inventory")

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -37,10 +38,24 @@ func TestCppConformanceDriverHasEveryMessageCodec(t *testing.T) {
 	if len(want) == 0 {
 		t.Fatal("the manifest names no message rows: the parse is wrong")
 	}
+	_, registry, ok := bytes.Cut(src, []byte("static const MsgCodec msg_codecs[] = {"))
+	if !ok {
+		t.Fatal("the C++ driver has no message codec registry")
+	}
+	registry, _, ok = bytes.Cut(registry, []byte("};"))
+	if !ok {
+		t.Fatal("the C++ driver's message codec registry is unterminated")
+	}
+	// The manifest names the registry key and root. The second argument is
+	// the generated C++ namespace, which can differ from the registry key.
+	registration := regexp.MustCompile(`(?m)^[ \t]*MSGCODEC\(\s*"([^"]+)"\s*,\s*(?:\w+::)*\w+\s*,\s*(\w+)\s*\),`)
+	registered := map[[2]string]bool{}
+	for _, row := range registration.FindAllSubmatch(registry, -1) {
+		registered[[2]string{string(row[1]), string(row[2])}] = true
+	}
 	for _, key := range want {
-		spelled := fmt.Sprintf("MSGCODEC( %q, %s, %s ),", key.unit, key.unit, key.root)
-		if !bytes.Contains(src, []byte(spelled)) {
-			t.Errorf("test/conformance/cpp/main.cpp has no %s: the manifest's message row %s needs it", spelled, key.row)
+		if !registered[[2]string{key.unit, key.root}] {
+			t.Errorf("test/conformance/cpp/main.cpp has no message codec for %s.%s: the manifest's message row %s needs it", key.unit, key.root, key.row)
 		}
 	}
 }

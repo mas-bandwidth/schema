@@ -19,7 +19,7 @@ import (
 	"math"
 	"math/big"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // fixedPrefillBytes is the body image a read starts from: zero everywhere SPEC

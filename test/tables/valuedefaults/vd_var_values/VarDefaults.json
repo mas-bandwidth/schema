@@ -1,0 +1,37 @@
+{
+  "s": "",
+  "b": "",
+  "f": [],
+  "item": {"s": "other", "b": "eno=", "f": ["Crouch"], "n": 7},
+  "counted": [
+    {"s": "", "b": "", "f": [], "n": 1},
+    {"s": "x", "b": "AQID", "f": ["Jump", "Crouch", "Fly"], "n": 2},
+    {"s": "dflt", "b": "YWI=", "f": ["Jump", "Fly"], "n": 3}
+  ],
+  "pair": [
+    {"s": "p0", "b": "AA==", "f": ["Fly"], "n": 0},
+    {"s": "dflt", "b": "YWI=", "f": ["Jump", "Fly"], "n": -1}
+  ],
+  "list": [
+    {"s": "", "b": "YWI=", "f": ["Jump", "Fly"], "n": 0},
+    {"s": "dflt", "b": "", "f": ["Jump", "Fly"], "n": 0},
+    {"s": "dflt", "b": "YWI=", "f": [], "n": 0}
+  ],
+  "keyed": {
+    "Alpha": {"s": "alpha", "b": "YWJj", "f": ["Jump"], "n": 10},
+    "Beta": {"s": "dflt", "b": "YWI=", "f": ["Jump", "Fly"], "n": 0},
+    "Gamma": {"s": "", "b": "", "f": [], "n": 0}
+  },
+  "by_id": {
+    "0": {"s": "", "b": "", "f": [], "n": 0},
+    "255": {"s": "maxkey", "b": "/w==", "f": ["Crouch", "Fly"], "n": 255}
+  },
+  "opt": {"s": "opt", "b": "b3A=", "f": ["Jump", "Crouch"], "n": 5},
+  "leaf": {
+    "s": "",
+    "b": "",
+    "f": [],
+    "next": {"s": "tail", "b": "dGw=", "f": ["Jump", "Crouch", "Fly"], "next": null}
+  },
+  "pick": {"item": {"s": "", "b": "", "f": [], "n": 9}}
+}

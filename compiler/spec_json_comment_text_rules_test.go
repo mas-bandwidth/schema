@@ -49,7 +49,9 @@ func TestSpecJsonCommentTextRules(t *testing.T) {
 
 		mustState(t, "W2 read and write measure the cap in one unit",
 			w2, "THE DEPTH CAP IS 128, AND READ AND WRITE MEASURE IT IN ONE UNIT")
-		mustState(t, "W2 the write judges each table or type value",
+		mustState(t, "W2 the write judges every container it writes, as the read does",
+			w2, "judges it at EVERY CONTAINER IT WRITES, exactly as the read judges it at every")
+		mustNotState(t, "W2 no longer says the write judges table and type values only",
 			w2, "judges it at each table or type value (W3)")
 		mustNotState(t, "W2 no longer says the caps are different units",
 			w2, "which is a different unit")

@@ -141,7 +141,8 @@ ELIXIR_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
 	tblscalars2:test/tables/Scalars2.schema \
 	tblfixedevo:test/tables/fixedevo \
 	tblvarevo1:test/tables/varevo/VarEvo1.schema tblvarevo2:test/tables/varevo/VarEvo2.schema tblvarevo3:test/tables/varevo/VarEvo3.schema \
-	cooktorture:test/tables/cooktorture/CookTorture.schema cooktorturewide:test/tables/cooktorturewide/CookTortureWide.schema \
+	cooktorture:test/tables/cooktorture/CookTorture.schema cooktorturewide:test/tables/cooktorturewide/CookTortureWide.schema tblvaluedefaults:test/tables/ValueDefaults.schema \
+	packetunions:test/tables/packetunions/PacketUnions.schema \
 	tblrt1:test/tables/RT1.schema tblrt2:test/tables/RT2.schema tblrt3:test/tables/RT3.schema \
 	tblg1:test/tables/G1.schema widelist:tables/widelist \
 	shapes:test/tables/shapes \
@@ -149,7 +150,7 @@ ELIXIR_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
 	tblsurf:test/tables/surfaces/Surfaces.schema tblann4096:test/tables/announce4096/Announce.schema tblann4097:test/tables/announce4097/Announce.schema \
 	featurewitnesses:testdata/conformance/feature-witnesses/full/Features.schema
 
-build/tables-generated-elixir/.stamp: bin/schema make/elixir.mk testdata/conformance/feature-witnesses/full/Features.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_SCALARS) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema $(wildcard tables/stream/*.schema) test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/widenbound/WidenBoundPeer.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/G1.schema $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_BACKEND) $(wildcard tables/widelist/*.schema) test/tables/shapes/Shapes.schema test/tables/prior/PriorNarrow.schema test/tables/surfaces/Surfaces.schema test/tables/announce4096/Announce.schema test/tables/announce4097/Announce.schema
+build/tables-generated-elixir/.stamp: bin/schema make/elixir.mk testdata/conformance/feature-witnesses/full/Features.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_SCALARS) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema $(wildcard tables/stream/*.schema) test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/widenbound/WidenBoundPeer.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/G1.schema $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_BACKEND) $(wildcard tables/widelist/*.schema) test/tables/shapes/Shapes.schema test/tables/prior/PriorNarrow.schema test/tables/surfaces/Surfaces.schema test/tables/announce4096/Announce.schema test/tables/announce4097/Announce.schema test/tables/ValueDefaults.schema
 	@mkdir -p build/tables-generated-elixir
 	@if ! jobs=$$(nproc 2>/dev/null); then if ! jobs=$$(sysctl -n hw.ncpu 2>/dev/null); then jobs=4; fi; fi; \
 	printf '%s\n' $(ELIXIR_TABLE_UNITS) | xargs -P "$$jobs" -n 4 sh -c 'for unit in "$$@"; do name=$${unit%%:*}; path=$${unit#*:}; rm -rf "build/tables-generated-elixir/$$name"; ./bin/schema generate --lang elixir --out "build/tables-generated-elixir/$$name" $$path || exit 255; done' _
@@ -299,15 +300,27 @@ test-elixir: tables-elixir-emit-format-negative-control
 CONFORMANCE_NEGATIVE_ELIXIR_HOSTILE_DUP := build/elixir-hostile-dup-negative
 ELIXIR_HOSTILE_DUP_SED := -e 's|if MapSet.member?(seen, name), do: throw(:wire_damaged)|if false and MapSet.member?(seen, name), do: throw(:wire_damaged)|' \
 	-e 's|false <- MapSet.member?(seen, key),|false <- Process.get(:elixir_keyed_obj_depth) != depth and MapSet.member?(seen, key),|' \
-	-e 's|^      json_value(bin, depth)$$|      if Enum.any?(@tables, fn {_, d} -> Enum.any?(d.fields, \&(\&1.t == :keyed and Map.get(\&1, :json_key, \&1.name) == key)) end) do prev = Process.put(:elixir_keyed_obj_depth, depth); try do json_value(bin, depth) after if prev == nil, do: Process.delete(:elixir_keyed_obj_depth), else: Process.put(:elixir_keyed_obj_depth, prev) end else json_value(bin, depth) end|'
+	-e 's|^      json_value(bin, depth + 1)$$|      if Enum.any?(@tables, fn {_, d} -> Enum.any?(d.fields, \&(\&1.t == :keyed and Map.get(\&1, :json_key, \&1.name) == key)) end) do prev = Process.put(:elixir_keyed_obj_depth, depth + 1); try do json_value(bin, depth + 1) after if prev == nil, do: Process.delete(:elixir_keyed_obj_depth), else: Process.put(:elixir_keyed_obj_depth, prev) end else json_value(bin, depth + 1) end|'
+# Each dup sabotage expression must land exactly once: one whose anchor
+# drifted leaves the reader whole and the control green (census G23: the
+# keyed-object call moved to json_value(bin, depth + 1), the third expression
+# stopped applying, and the other two still changed the file).
+ELIXIR_HOSTILE_DUP_APPLIED := 'if false and MapSet.member?(seen, name), do: throw(:wire_damaged)' \
+	'false <- Process.get(:elixir_keyed_obj_depth) != depth and MapSet.member?(seen, key),' \
+	'prev = Process.put(:elixir_keyed_obj_depth, depth + 1); try do json_value(bin, depth + 1)'
 ELIXIR_HOSTILE_DUP_ROWS := keyed-duplicate-mixed keyed-duplicate-none keyed-duplicate-slot keyed-duplicate-unknown
 CONFORMANCE_NEGATIVE_ELIXIR_HOSTILE_F32 := build/elixir-hostile-f32-negative
 ELIXIR_HOSTILE_F32_SED := -e 's|e > 127 -> :error|e > 127 -> json_f32_bits(0x7F7FFFFF)|'
 ELIXIR_HOSTILE_F32_ROWS := num-float32-midpoint num-float32-overflow
 
-# $(call ELIXIR_HOSTILE_CONTROL,dir,sedvar,rows,what)
+# $(call ELIXIR_HOSTILE_CONTROL,dir,sedvar,rows,what[,applied])
+# applied: fixed strings the sabotage leaves in the file, each required once.
 define ELIXIR_HOSTILE_CONTROL
 	$(call ELIXIR_SABOTAGED_BUILD,$(1),internal/codegen/elixirtable/variableform.go,$(2))
+	@for anchor in $(5); do \
+		n=$$(grep -cF "$$anchor" $(1)/sabotaged.go.txt); \
+		if [ "$$n" != 1 ]; then echo "NEGATIVE CONTROL: the sabotage [$$anchor] landed $$n times, want 1"; exit 1; fi; \
+	done
 	@if ELIXIR_TABLES_EBIN=$(CURDIR)/$(1)/ebin ./build/conformance-harness run --only elixir --work $(1)/work > $(1)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: $(4) left the json-hostile surface green"; exit 1; \
 	fi
@@ -320,7 +333,7 @@ endef
 
 .PHONY: tables-elixir-json-hostile-dup-negative-control tables-elixir-json-hostile-f32-negative-control
 tables-elixir-json-hostile-dup-negative-control: build/conformance-harness
-	$(call ELIXIR_HOSTILE_CONTROL,$(CONFORMANCE_NEGATIVE_ELIXIR_HOSTILE_DUP),ELIXIR_HOSTILE_DUP_SED,$(ELIXIR_HOSTILE_DUP_ROWS),an uncounted repeated enum-keyed slot)
+	$(call ELIXIR_HOSTILE_CONTROL,$(CONFORMANCE_NEGATIVE_ELIXIR_HOSTILE_DUP),ELIXIR_HOSTILE_DUP_SED,$(ELIXIR_HOSTILE_DUP_ROWS),an uncounted repeated enum-keyed slot,$(ELIXIR_HOSTILE_DUP_APPLIED))
 	@echo "elixir json-hostile dup negative control: an uncounted repeated slot reds exactly its four rows"
 
 tables-elixir-json-hostile-f32-negative-control: build/conformance-harness
@@ -852,13 +865,13 @@ tables-elixir-alloc-pin: build/conformance-elixir-manifest/manifest.txt
 # THE AUDIT'S NEGATIVE CONTROL, and it is what makes the audit an instrument
 # rather than a number: the EMITTER is sabotaged (variableform.go, through
 # ELIXIR_SABOTAGED_BUILD) so every generated load also builds sixteen refc
-# binaries and a thousand-cell list and frees them at once, and every pinned
+# binaries and a ten-thousand-cell list and frees them at once, and every pinned
 # case must go over its budget on the heap-word column AND on the binary-call
 # column — each counted on its own from the audit's output, so a column that
 # lost its teeth is found on its own. A gate that cannot go red is not a gate.
 CONFORMANCE_NEGATIVE_ELIXIR_ALLOC := build/elixir-alloc-negative
-ELIXIR_ALLOC_SED := -e 's|^  def load(table, data) when is_binary(data), do: variable_read(table, data)$$|  def load(table, data) when is_binary(data), do: (_ = Enum.map(1..16, fn _ -> :binary.copy(<<0>>, 65) end) ++ List.duplicate(0, 1000); variable_read(table, data))|' \
-	-e 's|runtime = withFixedClassWire(u, ns, runtime)|runtime = strings.ReplaceAll(withFixedClassWire(u, ns, runtime), "  defp fixed_class_report(report) do", "  defp fixed_class_report(report) do _ = Enum.map(1..16, fn _ -> :binary.copy(<<0>>, 65) end) ++ List.duplicate(0, 1000);")|'
+ELIXIR_ALLOC_SED := -e 's|^  def load(table, data) when is_binary(data), do: variable_read(table, data)$$|  def load(table, data) when is_binary(data), do: (_ = Enum.map(1..16, fn _ -> :binary.copy(<<0>>, 65) end) ++ List.duplicate(0, 10000); variable_read(table, data))|' \
+	-e 's|runtime = withFixedClassWire(u, ns, runtime)|runtime = strings.ReplaceAll(withFixedClassWire(u, ns, runtime), "  defp fixed_class_report(report) do", "  defp fixed_class_report(report) do _ = Enum.map(1..16, fn _ -> :binary.copy(<<0>>, 65) end) ++ List.duplicate(0, 10000);")|'
 
 .PHONY: tables-elixir-alloc-negative-control
 tables-elixir-alloc-negative-control: build/conformance-elixir-manifest/manifest.txt
@@ -866,7 +879,7 @@ tables-elixir-alloc-negative-control: build/conformance-elixir-manifest/manifest
 	@if ELIXIR_TABLES_EBIN=$(CURDIR)/$(CONFORMANCE_NEGATIVE_ELIXIR_ALLOC)/ebin $(ELIXIR) test/elixir-alloc/main.exs \
 			build/conformance-elixir-manifest/manifest.txt $(ELIXIR_PIN_OTP) $(ELIXIR_PIN_ELIXIR) audit $(ELIXIR_ALLOC_BUDGET) \
 			> $(CONFORMANCE_NEGATIVE_ELIXIR_ALLOC)/log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: the audit passed with sixteen refc binaries and a thousand-cell list added to every generated load"; \
+		echo "NEGATIVE CONTROL FAILED: the audit passed with sixteen refc binaries and a ten-thousand-cell list added to every generated load"; \
 		cat $(CONFORMANCE_NEGATIVE_ELIXIR_ALLOC)/log; exit 1; fi
 	@cases=$$(grep -c '^[a-z]' $(ELIXIR_ALLOC_BUDGET)); \
 	over=$$(grep 'over its pinned budget' $(CONFORMANCE_NEGATIVE_ELIXIR_ALLOC)/log); \
@@ -875,7 +888,7 @@ tables-elixir-alloc-negative-control: build/conformance-elixir-manifest/manifest
 		{ echo "NEGATIVE CONTROL FAILED: the heap words column did not red every one of the $$cases pinned cases"; cat $(CONFORMANCE_NEGATIVE_ELIXIR_ALLOC)/log; exit 1; }; \
 	[ "$$(echo "$$over" | grep -c 'binary calls')" -eq "$$cases" ] || \
 		{ echo "NEGATIVE CONTROL FAILED: the binary calls column did not red every one of the $$cases pinned cases"; cat $(CONFORMANCE_NEGATIVE_ELIXIR_ALLOC)/log; exit 1; }; \
-	echo "elixir alloc negative control: sixteen refc binaries and a thousand-cell list per generated load red the heap words and binary calls columns of all $$cases pinned cases"
+	echo "elixir alloc negative control: sixteen refc binaries and a ten-thousand-cell list per generated load red the heap words and binary calls columns of all $$cases pinned cases"
 
 # THE AUDIT'S RUNTIME CONTROL, as tables-elixir-runtime-pin-negative-control is
 # the pin's: the audit run with a pin nothing is running must refuse, name the
@@ -1404,13 +1417,13 @@ build/elixir-fixedform/.stamp: bin/schema $(ELIXIR_FIXED_SCHEMAS) make/elixir.mk
 	@touch $@
 
 .PHONY: tables-elixir-fixed-form
-tables-elixir-fixed-form: build/elixir-fixedform/.stamp build/fixedform-corpus/.stamp
+tables-elixir-fixed-form: build/retiredskips build/elixir-fixedform/.stamp build/fixedform-corpus/.stamp
 	# The fixed modules and FixedRuntime.ex are the emitters' raw output;
 	# this holds both, and the hand-written driver,
 	# to Elixir 1.20.4.
 	$(MIX) format --check-formatted build/elixir-fixedform/gen/*/*Fixed.ex \
 		build/elixir-fixedform/gen/*/FixedRuntime.ex test/elixir-fixedform/main.exs
-	$(ELIXIR) -pa build/elixir-fixedform/ebin test/elixir-fixedform/main.exs build/fixedform-corpus
+	./build/retiredskips -leg elixir -- sh -c '$(ELIXIR) -pa build/elixir-fixedform/ebin test/elixir-fixedform/main.exs build/fixedform-corpus'
 
 # THE PAIRED CORPUS (docs/SPEC-TABLES.md §3.4): the bench's own sixty-four
 # logical records on the PACKET wire and on this one. The C++ reference writes
@@ -2356,3 +2369,19 @@ packet-end-elixir-negative-control: packet-end-elixir
 	@echo 'packet end Elixir negative control: removing the end check accepts the trailing and padding vectors'
 
 test-elixir: packet-end-elixir packet-end-elixir-negative-control
+
+# Payload-free union arms cost exactly their tag bits (SPEC §4.8): the leg's
+# half of test/packet-void. The driver answers every case of
+# testdata/wire/packet-void/cases.txt against the Go oracle's pins, and
+# tools/casegate judges its answers (make/checks/packet-void.mk).
+build/packet-void/elixir/.stamp: bin/schema $(PACKET_VOID_SCHEMA) make/elixir.mk
+	@rm -rf build/packet-void/elixir && mkdir -p build/packet-void/elixir
+	./bin/schema generate --lang elixir --out build/packet-void/elixir $(PACKET_VOID_SCHEMA)
+	@touch $@
+
+.PHONY: packet-void-elixir
+packet-void-elixir: build/packet-void/elixir/.stamp build/casegate
+	$(MIX) format --check-formatted build/packet-void/elixir/*.ex test/packet-void/elixir/*.exs
+	@rm -rf build/packet-void/elixir-beam && mkdir -p build/packet-void/elixir-beam
+	$(ELIXIRC_STRICT) -o build/packet-void/elixir-beam build/packet-void/elixir/*.ex
+	$(call packet_void_gate,elixir) env PATH="$(BEAM_PATH):$$PATH" $(lastword $(ELIXIR)) test/packet-void/elixir/main.exs $(PACKET_VOID_PINS)

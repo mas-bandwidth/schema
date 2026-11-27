@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/moo/moorun"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/moo/moorun"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 )
 
 // THE BASE64 CARRIER (docs/SPEC-TABLES.md §16.8): textcarrier.moo's encode is

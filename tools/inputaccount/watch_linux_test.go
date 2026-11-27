@@ -132,3 +132,54 @@ func TestCheckExtraOnePass(t *testing.T) {
 		})
 	}
 }
+
+// A wrong-input canary on a .bin file beside a .schema file must not force a
+// schema rebuild (-W) and must fail unless the leg itself exits nonzero.
+func TestWrongCanaryOnBinDoesNotForceSchema(t *testing.T) {
+	const dir = "testdata/conformance/table-write-bounds"
+	const schema = dir + "/TableWriteBounds.schema"
+	const manifest = dir + "/WRITE-BOUNDS.txt"
+	const bin = dir + "/torture_var_wref.bin"
+	for _, tc := range []struct {
+		name   string
+		recipe string
+		code   int
+		want   string
+	}{
+		{"leg fails on flipped bin", "cat " + bin + "; exit 1", 0, "canary wrong table-write-bounds c"},
+		{"leg exits zero without reading schema", "cat " + bin, 1, "CANARY FAILED wrong table-write-bounds c"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Chdir(t.TempDir())
+			write := func(name, data string) {
+				t.Helper()
+				if err := os.MkdirAll(filepath.Dir(name), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(name, []byte(data), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			write(schema, "package writebounds\n")
+			write(manifest, "unit writebounds\n")
+			write(bin, "\x10\x20")
+			write("make/native-table-write-bounds.mk", "")
+			write("Makefile",
+				"stamp: "+schema+"\n\t@echo rebuilt >> rebuilt\n\t@touch stamp\n"+
+					".PHONY: table-write-bounds-c\n"+
+					"table-write-bounds-c: stamp\n\t@"+tc.recipe+"\n")
+			write("stamp", "")
+			var stdout, stderr bytes.Buffer
+			code := run([]string{"-j", "2", "-family", "table-write-bounds", "-leg", "c", "-canary", "wrong"}, &stdout, &stderr)
+			if code != tc.code || !strings.Contains(stderr.String(), tc.want) {
+				t.Fatalf("exit = %d, want %d and %q; log:\n%s", code, tc.code, tc.want, &stderr)
+			}
+			if _, err := os.Stat("rebuilt"); !os.IsNotExist(err) {
+				t.Fatalf("wrong canary on .bin forced schema rebuild: %v", err)
+			}
+			if strings.Contains(stderr.String(), "-W "+schema) {
+				t.Fatalf("wrong canary passed -W for unmodified schema:\n%s", &stderr)
+			}
+		})
+	}
+}
