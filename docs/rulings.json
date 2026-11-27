@@ -429,6 +429,14 @@
         "if there is ever any uncertainty about how to read something, and it is weird or not a natural case for somebody sending us well formed data, the answer is always reject."
       ],
       "source": "the maintainer, relayed verbatim by the coordinator from the live session of 2026-11-17: the standing principle that an uncertain or unnatural read is refused, applied to a blob record outside the root's closure named from a declared slot"
+    },
+    {
+      "id": "every-test-is-a-shared-corpus",
+      "date": "2026-11-24",
+      "quotes": [
+        "basically every test that we do should be some form of this rowan, and we already have several of them"
+      ],
+      "source": "the maintainer, live session of 2026-11-24, after cross-leg audits found each parity gap was a test family added for some legs and not others. Every test is a shared corpus: its cases are defined once (a manifest, a vector file, testdata), every leg's driver answers every case, and the harness refuses a missing answer; absent is red, and a gap still owed sits in an exact-set ledger with its cause. The fixed form's corpus manifest is one such corpus (internal/fixedvector.EveryRoot). It makes no case not applicable."
     }
   ]
 }

@@ -1860,6 +1860,20 @@ scaled integer the bytes hold beside the real it means, because a bare number sa
 `present` companion as the wire's `1`/`0` and never C++'s `true`/`false`** (§5.9 #40 speaks of `1`), and a field
 the dump did not set carries its schema default.
 
+**`refuse=<reason>` IS THE REFERENCE'S OWN VERDICT** (docs/rulings.json every-test-is-a-shared-corpus). Where the
+reference's strict read refuses a file whole, its line carries `refuse=` in the head, before `values=`, naming the
+reason the report gave in the one vocabulary (`wire_damaged`, `out_of_range`, ...). The dump reads every file it
+writes back through the reader that owns it — the writer's own schema, the dead-byte root for a dead-byte vector,
+the NEW reader for a `hostile_` or `past_` forge — and refuses to write a line whose refusal it cannot name. A
+line without `refuse=` is a file the reference reads, and a conforming read of it lands `records=` records and
+every value of `values=`, with `expect=` (what the reader landed) laid over it, or, on a forged line with no
+`expect=`, the `forged=` cell laid over the stored value it reached. **EVERY LEG ANSWERS EVERY LINE**:
+`internal/fixedvector.EveryRoot` walks the manifest, judges each answer against its line — the refusal by name,
+or the record count and every landed value — and is red on any line left unanswered; a leg's `TestMain` runs
+through `fixedvector.Main`, which is red unless that run left the record of a complete walk. A read and a write
+wrong the same way save the reference's bytes back unchanged, so the rewrite alone proves nothing about the
+values.
+
 **FOUR THINGS THE MANIFEST MUST NOT SAY, each one a thing an audit of the corpus caught it saying.** A line is
 what A READER WILL PRODUCE from the bytes, not a transcript of the stores the dump made.
 
