@@ -38,7 +38,7 @@
   <ItemGroup>
     <Compile Include="src/*.cs" />
     <Compile Include="../../../generated/bench/tables/cs/*.cs"
-             Exclude="../../../generated/bench/tables/cs/*Block.cs;../../../generated/bench/tables/cs/*Cook.cs" />
+             Exclude="../../../generated/bench/tables/cs/*Block.cs;../../../generated/bench/tables/cs/*Cook.cs;../../../generated/bench/tables/cs/*BlockFill.cs" />
     <Compile Include="$(SerializeCsRoot)/src/Serialize.cs" />
     <Compile Include="$(SerializeCsRoot)/src/Int128Pair.cs" />
   </ItemGroup>
