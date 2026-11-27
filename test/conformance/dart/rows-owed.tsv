@@ -1,0 +1,8 @@
+# Conformance rows the dart leg owes: every row file under test/conformance/dart/rows/ runs
+# (tools/conformancerows), and these still fail. Exact set: a failing row not named
+# here is red, and a row named here that passes is red until its line goes.
+# Each line is <row> TAB owed: <cause> [TAB <note>]: the cause is exactly what the run
+# prints for the row (a mismatch is red), and the note is a person's, never compared.
+# Measured at this PR's head (5c89252 and the round-2 fixes) on vision, 2026-11-24, with CONFORMANCE_ROWS_MEASURED.
+R16	owed: does not build: test/conformance/dart/rows/R16.dart:62:14: Error: The getter 'malformed' isn't defined for the type 'TableFixedReport'.	the row is out of date, not the leg: docs/SPEC-TABLES.md (THE READ REPORT) retired this counter, so the row owes the fix
+W9	owed: fails: the row has no failure path (no non-zero exit or return from main, throw, raise or assert): it checks nothing, and a row that checks nothing is not a pass	the row prints RED or GREEN and always exits 0, so the runner cannot see its verdict

@@ -1,0 +1,353 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum attach
+{ Zfirst, Zsecond, Zthird }
+
+enum attempted
+{ Zfirst, Zsecond, Zthird }
+
+enum attr
+{ Zfirst, Zsecond, Zthird }
+
+enum attr_accessor
+{ Zfirst, Zsecond, Zthird }
+
+enum attr_reader
+{ Zfirst, Zsecond, Zthird }
+
+enum attrib
+{ Zfirst, Zsecond, Zthird }
+
+enum attribLength
+{ Zfirst, Zsecond, Zthird }
+
+enum attrib_len
+{ Zfirst, Zsecond, Zthird }
+
+enum attribution
+{ Zfirst, Zsecond, Zthird }
+
+enum attributionBytes
+{ Zfirst, Zsecond, Zthird }
+
+enum attributionCapacity
+{ Zfirst, Zsecond, Zthird }
+
+enum attribution_length
+{ Zfirst, Zsecond, Zthird }
+
+enum au
+{ Zfirst, Zsecond, Zthird }
+
+enum aux
+{ Zfirst, Zsecond, Zthird }
+
+enum auxAt
+{ Zfirst, Zsecond, Zthird }
+
+enum av
+{ Zfirst, Zsecond, Zthird }
+
+enum avail
+{ Zfirst, Zsecond, Zthird }
+
+enum away
+{ Zfirst, Zsecond, Zthird }
+
+enum ax
+{ Zfirst, Zsecond, Zthird }
+
+enum az
+{ Zfirst, Zsecond, Zthird }
+
+enum b
+{ Zfirst, Zsecond, Zthird }
+
+enum b0
+{ Zfirst, Zsecond, Zthird }
+
+enum b1
+{ Zfirst, Zsecond, Zthird }
+
+enum b16
+{ Zfirst, Zsecond, Zthird }
+
+enum b2
+{ Zfirst, Zsecond, Zthird }
+
+enum b3
+{ Zfirst, Zsecond, Zthird }
+
+enum b32
+{ Zfirst, Zsecond, Zthird }
+
+enum b4
+{ Zfirst, Zsecond, Zthird }
+
+enum b5
+{ Zfirst, Zsecond, Zthird }
+
+enum b6
+{ Zfirst, Zsecond, Zthird }
+
+enum b64
+{ Zfirst, Zsecond, Zthird }
+
+enum b64Text
+{ Zfirst, Zsecond, Zthird }
+
+enum b64decode
+{ Zfirst, Zsecond, Zthird }
+
+enum b64encode
+{ Zfirst, Zsecond, Zthird }
+
+enum b64encodedLen
+{ Zfirst, Zsecond, Zthird }
+
+enum b64val
+{ Zfirst, Zsecond, Zthird }
+
+enum b7
+{ Zfirst, Zsecond, Zthird }
+
+enum bHi
+{ Zfirst, Zsecond, Zthird }
+
+enum bInf
+{ Zfirst, Zsecond, Zthird }
+
+enum bLo
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    attach Inner
+    attempted Inner
+    attr Inner
+    attr_accessor Inner
+    attr_reader Inner
+    attrib Inner
+    attribLength Inner
+    attrib_len Inner
+    attribution Inner
+    attributionBytes Inner
+}
+
+table NameTypes0
+{
+    one0  attach
+    many0 [..4]attach
+    one1  attempted
+    many1 [..4]attempted
+    one2  attr
+    many2 [..4]attr
+    one3  attr_accessor
+    many3 [..4]attr_accessor
+    one4  attr_reader
+    many4 [..4]attr_reader
+    one5  attrib
+    many5 [..4]attrib
+    one6  attribLength
+    many6 [..4]attribLength
+    one7  attrib_len
+    many7 [..4]attrib_len
+    one8  attribution
+    many8 [..4]attribution
+    one9  attributionBytes
+    many9 [..4]attributionBytes
+}
+
+table NameFields0
+{
+    attach uint32
+    attempted uint32
+    attr uint32
+    attr_accessor uint32
+    attr_reader uint32
+    attrib uint32
+    attribLength uint32
+    attrib_len uint32
+    attribution uint32
+    attributionBytes uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    attributionCapacity Inner
+    attribution_length Inner
+    au Inner
+    aux Inner
+    auxAt Inner
+    av Inner
+    avail Inner
+    away Inner
+    ax Inner
+    az Inner
+}
+
+table NameTypes1
+{
+    one0  attributionCapacity
+    many0 [..4]attributionCapacity
+    one1  attribution_length
+    many1 [..4]attribution_length
+    one2  au
+    many2 [..4]au
+    one3  aux
+    many3 [..4]aux
+    one4  auxAt
+    many4 [..4]auxAt
+    one5  av
+    many5 [..4]av
+    one6  avail
+    many6 [..4]avail
+    one7  away
+    many7 [..4]away
+    one8  ax
+    many8 [..4]ax
+    one9  az
+    many9 [..4]az
+}
+
+table NameFields1
+{
+    attributionCapacity uint32
+    attribution_length uint32
+    au uint32
+    aux uint32
+    auxAt uint32
+    av uint32
+    avail uint32
+    away uint32
+    ax uint32
+    az uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    b Inner
+    b0 Inner
+    b1 Inner
+    b16 Inner
+    b2 Inner
+    b3 Inner
+    b32 Inner
+    b4 Inner
+    b5 Inner
+    b6 Inner
+}
+
+table NameTypes2
+{
+    one0  b
+    many0 [..4]b
+    one1  b0
+    many1 [..4]b0
+    one2  b1
+    many2 [..4]b1
+    one3  b16
+    many3 [..4]b16
+    one4  b2
+    many4 [..4]b2
+    one5  b3
+    many5 [..4]b3
+    one6  b32
+    many6 [..4]b32
+    one7  b4
+    many7 [..4]b4
+    one8  b5
+    many8 [..4]b5
+    one9  b6
+    many9 [..4]b6
+}
+
+table NameFields2
+{
+    b uint32
+    b0 uint32
+    b1 uint32
+    b16 uint32
+    b2 uint32
+    b3 uint32
+    b32 uint32
+    b4 uint32
+    b5 uint32
+    b6 uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    b64 Inner
+    b64Text Inner
+    b64decode Inner
+    b64encode Inner
+    b64encodedLen Inner
+    b64val Inner
+    b7 Inner
+    bHi Inner
+    bInf Inner
+    bLo Inner
+}
+
+table NameTypes3
+{
+    one0  b64
+    many0 [..4]b64
+    one1  b64Text
+    many1 [..4]b64Text
+    one2  b64decode
+    many2 [..4]b64decode
+    one3  b64encode
+    many3 [..4]b64encode
+    one4  b64encodedLen
+    many4 [..4]b64encodedLen
+    one5  b64val
+    many5 [..4]b64val
+    one6  b7
+    many6 [..4]b7
+    one7  bHi
+    many7 [..4]bHi
+    one8  bInf
+    many8 [..4]bInf
+    one9  bLo
+    many9 [..4]bLo
+}
+
+table NameFields3
+{
+    b64 uint32
+    b64Text uint32
+    b64decode uint32
+    b64encode uint32
+    b64encodedLen uint32
+    b64val uint32
+    b7 uint32
+    bHi uint32
+    bInf uint32
+    bLo uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}

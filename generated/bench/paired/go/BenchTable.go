@@ -124,10 +124,10 @@ type MixedStatRow struct {
 	Delta  int32
 }
 type MixedEventRow struct {
-	_       [0]uint32
-	Type    uint8
-	_       [3]byte
-	Payload [16]byte
+	_              [0]uint32
+	Type           uint8
+	_              [3]byte
+	schema_payload [16]byte
 }
 
 // BuildVersion is the unit's build version (mas-bandwidth/schema docs/SPEC-TABLES.md §20): the
@@ -8659,8 +8659,8 @@ var MixedEntityTableFields = []TableFieldInfo{
 		CookOffset: 40, CookElemSize: 1, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: 15,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
-		EnumName:    func(v uint64) string { return EnumNameMixedWeapon(MixedWeapon(v)) },
-		VariantID:   func(v uint64) uint64 { id, _ := MixedWeapon(v).TableEnumID(); return id },
+		EnumName:    func(schema_v uint64) string { return EnumNameMixedWeapon(MixedWeapon(schema_v)) },
+		VariantID:   func(schema_v uint64) uint64 { id, _ := MixedWeapon(schema_v).TableEnumID(); return id },
 		EnumDefault: 0, EnumDeprecated: nil,
 		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
@@ -8671,7 +8671,7 @@ var MixedEntityTableFields = []TableFieldInfo{
 		CookOffset: 48, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: 7,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
-		EnumName:    func(v uint64) string { return FlagNameMixedDamage(int(v)) },
+		EnumName:    func(schema_v uint64) string { return FlagNameMixedDamage(int(schema_v)) },
 		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
 		KeyTypeName: "", KeyName: nil, KeyID: nil,

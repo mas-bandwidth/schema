@@ -11,11 +11,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/compiler"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // retainFull is a capacity no corpus wire reaches: FORMAT.md's `full`.
@@ -24,9 +24,12 @@ const retainFull = 1 << 20
 // retainRow is one `retain` row of the tables manifest (FORMAT.md):
 // <case> <unit> <root> <wire> <capacity> <ids> <save>, with the legacy
 // <counters> <save lost> columns between ids and saves in the accepted
-// ten-field syntax. The row pins the verdict (every row is readable) and the
-// save; the counters are evolution diagnostics, held to the Go reference engine
-// and never pinned.
+// ten-field syntax. The row pins the verdict and the save: <save> `refused`
+// is a row every leg owes refused (FORMAT.md; test/conformance/harness
+// manifest.go RetainCase.Refused; R17, kind 31 is held by name and never
+// written, so a wire carrying it refuses the whole retaining load), any other
+// row is readable. The counters are evolution diagnostics, held to the Go
+// reference engine and never pinned.
 type retainRow struct {
 	caseName, unit, root, wire, capacity, ids, saves string
 }
@@ -158,6 +161,12 @@ func goRetain(t *testing.T, u *ir.Unit, rootName string, wire []byte, capacity, 
 	keep := &tablewire.Retain{Capacity: capacity, IdCapacity: ids}
 	var rep tabletext.Report
 	ok, err := tablewire.DecodeRetain(m, inst, wire, keep, &rep)
+	if err != nil && !tablewire.Refused(err) && !tablewire.ReadRefusal(err) {
+		// an error that is not a refusal (a form, fixed or message refusal,
+		// or a named read refusal such as wire_damaged) is the engine
+		// failing, never a verdict: a refused row must not pass on it
+		t.Fatalf("the Go engine failed, not refused: %v", err)
+	}
 	if err != nil || rep.Refused || !ok {
 		return retainOut{}
 	}
@@ -175,7 +184,8 @@ func goRetain(t *testing.T, u *ir.Unit, rootName string, wire []byte, capacity, 
 
 // TestMooRetainAnswersTheManifest answers every `retain` row of the tables
 // manifest (docs/SPEC-TABLES.md §6.6; FORMAT.md) under the one strict read:
-// every row is readable, so the retaining load answers the whole value at the
+// a `refused` row is refused by moo and by the Go engine; every other row is
+// readable, so the retaining load answers the whole value at the
 // row's capacities (`short` is one byte under what a `full` load used), and
 // the save is the pinned file byte for byte. Each row is also held to the Go
 // reference engine (internal/tablewire DecodeRetain, EncodeRetain) at the same
@@ -190,7 +200,7 @@ func TestMooRetainAnswersTheManifest(t *testing.T) {
 		t.Fatal("the manifest names no retain row")
 	}
 	cache := map[string]*generatedUnit{}
-	pinned := 0
+	pinned, refusedRows := 0, 0
 	for _, row := range rows {
 		g := cache[row.unit]
 		if g == nil {
@@ -213,6 +223,18 @@ func TestMooRetainAnswersTheManifest(t *testing.T) {
 			capacity = mooRetain(t, g, row.root, wire, retainFull, ids).used - 1
 		}
 		got := mooRetain(t, g, row.root, wire, capacity, ids)
+		if row.saves == "refused" {
+			// a refused row: the retaining load answers no value, and the Go
+			// engine refuses it too
+			if got.value {
+				t.Errorf("%s: the row owes refused and the read answered a value: %v", row.caseName, got)
+			}
+			if oracle := goRetain(t, g.unit, row.root, wire, capacity, ids); oracle.value {
+				t.Errorf("%s: the row owes refused and the Go engine answered a value: %v", row.caseName, oracle)
+			}
+			refusedRows++
+			continue
+		}
 		if !got.value || got.saveErr != "" {
 			t.Errorf("%s: the read refused a readable row, or the save failed: value=%v %s", row.caseName, got.value, got.saveErr)
 			continue
@@ -233,6 +255,9 @@ func TestMooRetainAnswersTheManifest(t *testing.T) {
 	}
 	if pinned == 0 {
 		t.Fatal("no retain row pins a save")
+	}
+	if refusedRows == 0 {
+		t.Fatal("no retain row owes refused: the refused verdict went unexercised")
 	}
 }
 

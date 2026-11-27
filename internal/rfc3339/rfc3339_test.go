@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mas-bandwidth/schema/v2/internal/rfc3339"
+	"github.com/mas-bandwidth/schema/v3/internal/rfc3339"
 )
 
 // TestStrictRFC3339 pins the one timestamp text parser (docs/SPEC-TABLES.md

@@ -568,7 +568,7 @@ function _M.WriteFixedProbe(stream: any, v: any): boolean
   if type(v.Ticks) ~= "number" or v.Ticks % 1 ~= 0 or v.Ticks < 0 or v.Ticks > 1000000 then return false end
   BITS.value = v.Ticks
   if not stream:serializeBits(BITS, 20) then return false end -- the Q format's raw offset (SPEC §4.3)
-  if type(v.Samples) ~= "table" then return false end
+  if type(v.Samples) ~= "table" or #v.Samples ~= 2 then return false end -- a [N]T holds exactly N values (SPEC §5.1)
   for _i = 1, 2 do
     if type(v.Samples[_i]) ~= "number" or v.Samples[_i] % 1 ~= 0 or v.Samples[_i] < -524288 or v.Samples[_i] > 524288 then return false end
     BITS.value = v.Samples[_i] + 524288
@@ -598,7 +598,7 @@ function _M.WriteUnsignedProbe(stream: any, v: any): boolean
   if type(v.Ticks) ~= "number" or v.Ticks % 1 ~= 0 or v.Ticks < 0 or v.Ticks > 1000000 then return false end
   BITS.value = v.Ticks
   if not stream:serializeBits(BITS, 20) then return false end -- the Q format's raw offset (SPEC §4.3)
-  if type(v.Samples) ~= "table" then return false end
+  if type(v.Samples) ~= "table" or #v.Samples ~= 2 then return false end -- a [N]T holds exactly N values (SPEC §5.1)
   for _i = 1, 2 do
     if type(v.Samples[_i]) ~= "number" or v.Samples[_i] % 1 ~= 0 or v.Samples[_i] < 0 or v.Samples[_i] > 1048576 then return false end
     BITS.value = v.Samples[_i]

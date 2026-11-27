@@ -8,10 +8,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/tablecook"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/internal/tablewire"
 )
 
 // cookWriteProbe loads inputs.wire through table_load.moo and cooks the value
@@ -138,7 +138,7 @@ func TestMooCookWriteMatchesTheTool(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted table_cookwrite.moo)")
 	t.Parallel()
 	rows := cookWriteRows(t)
-	fails, answered, cache := cookWriteFailures(t, rows, nil)
+	fails, answered, cache := cookWriteFailures(t, rows, nil, false)
 	for _, f := range fails {
 		t.Error(f)
 	}
@@ -160,11 +160,14 @@ func TestMooCookWriteMatchesTheTool(t *testing.T) {
 // answers what differs from the tool's files, the cases answered clean, and
 // the generated units; mutate, when set, plants a defect in a unit's emitted
 // files first (the negative controls).
-func cookWriteFailures(t *testing.T, rows []cookWriteRow, mutate func(*testing.T, *generatedUnit)) (fails []string, answered int, cache map[string]*generatedUnit) {
+func cookWriteFailures(t *testing.T, rows []cookWriteRow, mutate func(*testing.T, *generatedUnit), first bool) (fails []string, answered int, cache map[string]*generatedUnit) {
 	t.Helper()
 	units, _ := readManifest(t)
 	cache = map[string]*generatedUnit{}
 	for _, cw := range rows {
+		if first && len(fails) > 0 {
+			break
+		}
 		row := cw.row
 		g, ok := cache[row.unit]
 		if !ok {
@@ -507,7 +510,7 @@ v.Xs = { 1, 2 }`, "refuse invalid_value Gate.xs"},
 // refusalFailures asks every refusal case of the emitted runtime and answers
 // each answer that is not the case's; mutate, when set, plants a defect in the
 // unit's emitted files first (the negative controls).
-func refusalFailures(t *testing.T, mutate func(*testing.T, *generatedUnit)) ([]string, *generatedUnit) {
+func refusalFailures(t *testing.T, mutate func(*testing.T, *generatedUnit), first bool) ([]string, *generatedUnit) {
 	t.Helper()
 	g := generateFiles(t, map[string]string{"Probe.schema": refusalSource})
 	if mutate != nil {
@@ -515,6 +518,9 @@ func refusalFailures(t *testing.T, mutate func(*testing.T, *generatedUnit)) ([]s
 	}
 	var fails []string
 	for _, c := range refusalCases {
+		if first && len(fails) > 0 {
+			break
+		}
 		main := "--!strict\n" + g.requireAll() + `local T = require("./ProbeTable")
 local St = require("./schema_tables")
 local W = require("./table_cookwrite")
@@ -566,7 +572,7 @@ end
 func TestMooCookWriteRefusals(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted table_cookwrite.moo)")
 	t.Parallel()
-	fails, g := refusalFailures(t, nil)
+	fails, g := refusalFailures(t, nil, false)
 	for _, f := range fails {
 		t.Error(f)
 	}
@@ -627,22 +633,29 @@ func TestMooCookWriteNegativeControls(t *testing.T) {
 		{"textnull", plant("table_cookwrite.moo", "if x == nil or x == \"\" then\n\t\treturn true", "if x == nil then\n\t\treturn true"), false, true, false},
 		{"textempty", plant("table_cookread.moo", "v[slot] = if blob == nil then \"\" else buffer.tostring(blob)", "v[slot] = if blob == nil then nil else buffer.tostring(blob)"), false, true, false},
 	} {
-		if c.manifest {
-			fails, _, _ := cookWriteFailures(t, cookWriteRows(t), c.mutate)
-			if len(fails) == 0 {
-				t.Errorf("%s: the manifest gate is still green with the defect planted", c.name)
+		// Each plant needs only its gate red, so each gate stops at its
+		// first finding (the full corpus runs clean once, in the tests
+		// above), and the plants are independent units, so they run side
+		// by side.
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			if c.manifest {
+				fails, _, _ := cookWriteFailures(t, cookWriteRows(t), c.mutate, true)
+				if len(fails) == 0 {
+					t.Errorf("%s: the manifest gate is still green with the defect planted", c.name)
+				}
 			}
-		}
-		if c.constructs {
-			if fails, _ := constructFailures(t, c.mutate); len(fails) == 0 {
-				t.Errorf("%s: the constructs gate is still green with the defect planted", c.name)
+			if c.constructs {
+				if fails, _ := constructFailures(t, c.mutate); len(fails) == 0 {
+					t.Errorf("%s: the constructs gate is still green with the defect planted", c.name)
+				}
 			}
-		}
-		if c.refusals {
-			if fails, _ := refusalFailures(t, c.mutate); len(fails) == 0 {
-				t.Errorf("%s: the refusals gate is still green with the defect planted", c.name)
+			if c.refusals {
+				if fails, _ := refusalFailures(t, c.mutate, true); len(fails) == 0 {
+					t.Errorf("%s: the refusals gate is still green with the defect planted", c.name)
+				}
 			}
-		}
+		})
 	}
 }
 
@@ -659,7 +672,7 @@ func TestMooCookWideListExtent(t *testing.T) {
 	if len(rows) != 1 {
 		t.Fatalf("wide list corpus row count %d", len(rows))
 	}
-	fails, answered, cache := cookWriteFailures(t, rows, nil)
+	fails, answered, cache := cookWriteFailures(t, rows, nil, false)
 	for _, f := range fails {
 		t.Error(f)
 	}

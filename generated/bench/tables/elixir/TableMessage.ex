@@ -1666,6 +1666,10 @@ defmodule Benchtable.TableMessage do
     # first one the walk meets, and outranks any damage after it: no body is
     # delivered.
     :non_finite_float -> {:error, :non_finite_float}
+    # A FIELD OR AN ARM WHOSE ANNOUNCED KIND OR ELEMENT KIND IS NOT ONE THIS
+    # READER'S DECLARATION READS refuses the whole batch by name
+    # (docs/SPEC-TABLES.md §3.3, §4): no body is delivered.
+    :kind_mismatch -> {:error, :kind_mismatch}
   end
 
   defp load_messages_raw(%__MODULE__{announced: true}, <<2>>, _capacity),
@@ -1989,7 +1993,7 @@ defmodule Benchtable.TableMessage do
   end
 
   # a declaration of the scope (a table name, or {:union, name}) judges its own
-  # field; a field the scope does not declare (a peer at another build, an
+  # field; a field the scope does not declare (a writer at another build, an
   # unbound root) falls back to the merge over every declaration of its id and kind
   defp field_rule(entry, scope, true) when scope != nil,
     do: Map.get(scoped_rules(), {scope, entry.id, entry.kind})
@@ -2152,6 +2156,13 @@ defmodule Benchtable.TableMessage do
                     _ -> :malformed
                   end
 
+                # A KIND THAT MOVED REFUSES THE WHOLE BATCH kind_mismatch
+                # (docs/SPEC-TABLES.md §3.3), never damage, and the first
+                # refusal the walk meets is the batch's, as the Go engine's
+                # first-set refusal is
+                :kind_mismatch ->
+                  throw(:kind_mismatch)
+
                 _ ->
                   :malformed
               end
@@ -2181,36 +2192,64 @@ defmodule Benchtable.TableMessage do
         if own_build?(vocab), do: :undeclared, else: :skip
 
       {index, raw, rule, sub, _range} ->
-        if own_build?(vocab) do
-          exact = raw == Map.get(entry, :raw)
+        exact = own_build?(vocab) and raw == Map.get(entry, :raw)
 
-          if exact and index <= last,
-            do: :out_of_order,
-            else: {:ok, {index, exact, rule, sub}}
-        else
-          if peer_kind_compatible?(entry.kind, raw) do
-            {:ok, {index, false, rule, sub}}
-          else
-            :kind_mismatch
-          end
+        cond do
+          exact and index <= last -> :out_of_order
+          exact -> {:ok, {index, true, rule, sub}}
+          not writer_kind_compatible?(entry, raw) -> :kind_mismatch
+          true -> {:ok, {index, false, rule, sub}}
         end
     end
   end
 
-  defp peer_kind_compatible?(from, raw) do
+  # THE ANNOUNCED KIND AND ELEMENT KIND AGAINST THIS READER'S OWN
+  # (docs/SPEC-TABLES.md §3.3, §4: "An array's ELEMENT KIND is part of its
+  # identity"), at every build version, as the Go engine's messageWidens holds
+  # them at a field and an arm: the two agree, or the kind widens over the same
+  # element kind, or both are arrays (14) whose element kind widens. Nothing
+  # else reads; an enum-keyed array (16) whose element kind moved refuses. raw
+  # is this reader's own entry behind a leading 1 (entry/1's :raw); 0 is an arm
+  # with no entry of its own.
+  defp writer_kind_compatible?(_entry, 0), do: true
+
+  defp writer_kind_compatible?(entry, raw) do
     case :binary.encode_unsigned(raw) do
-      <<1, _id::little-unsigned-64, to, _::binary>> ->
-        from == to or
-          (from >= 2 and from <= 5 and ((to > from and to <= 5) or to == 18)) or
-          (from >= 6 and from <= 9 and ((to > from and to <= 9) or to == 19)) or
-          (from >= 20 and from <= 24 and to > from and to <= 24) or
-          (from >= 25 and from <= 29 and to > from and to <= 29) or
-          (from == 10 and to == 11)
+      <<1, own::binary>> ->
+        case entry_shape(own) do
+          {:ok, mine, _} ->
+            {from, from_elem} = {entry.kind, element_kind(entry)}
+            {to, to_elem} = {mine.kind, element_kind(mine)}
+
+            cond do
+              from_elem == to_elem -> from == to or kind_widens?(from, to)
+              from == to and to == 14 -> kind_widens?(from_elem, to_elem)
+              true -> false
+            end
+
+          # this reader's own entry always decodes: one that does not is
+          # refused, never guessed at
+          :error ->
+            false
+        end
 
       _ ->
-        true
+        false
     end
   end
+
+  defp element_kind(%{element: %{kind: elem}}), do: elem
+  defp element_kind(_entry), do: 0
+
+  # THE ONE WIDENING RULE (docs/SPEC-TABLES.md §4; ir.TableKindWidens): an
+  # integer kind to a wider one of the same signedness, 128 bits included, or
+  # f32 to f64. Nothing else widens, a fixed-point kind included.
+  defp kind_widens?(from, to) when to in [3, 4, 5], do: from >= 2 and from < to
+  defp kind_widens?(from, 18), do: from >= 2 and from <= 5
+  defp kind_widens?(from, to) when to in [7, 8, 9], do: from >= 6 and from < to
+  defp kind_widens?(from, 19), do: from >= 6 and from <= 9
+  defp kind_widens?(10, 11), do: true
+  defp kind_widens?(_from, _to), do: false
 
   # THE READ HOLDS THIS READER'S OWN DECLARED RANGE (docs/SPEC-TABLES.md §3.3,
   # §4). A ranged integer rides as its offset from the announced base in the
@@ -2669,6 +2708,15 @@ defmodule Benchtable.TableMessage do
             elem = Map.get(entry, :element)
             known = arm_known?(sub, entry.id)
             arm = if known, do: arm_sub(sub, entry.id), else: nil
+
+            # AN ARM THIS READER NAMES is held to its own kind and element
+            # kind exactly as a field is (docs/SPEC-TABLES.md §3.3, §4; the Go
+            # engine's union read): a moved kind refuses the batch
+            # kind_mismatch, a widening reads
+            own_arm = if known, do: arm_raw(sub, entry.id), else: nil
+
+            if is_integer(own_arm) and not writer_kind_compatible?(entry, own_arm),
+              do: throw(:kind_mismatch)
 
             case read_value(vocab, entry.kind, entry.shape, elem, rest, depth + 1, arm) do
               {:ok, value, rest2} ->

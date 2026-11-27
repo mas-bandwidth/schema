@@ -5,15 +5,17 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/fixedproof"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testinputs"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 func TestPythonFixedProofCISelection(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "make (fixed proof CI row selection)")
+	testinputs.Make(t)
 	cmd := testproc.Command(t, "make", "-s", "python-fixed-proof-ci-patterns")
 	cmd.Dir = "../../.."
 	out, err := cmd.CombinedOutput()

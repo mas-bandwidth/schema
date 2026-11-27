@@ -1,7 +1,7 @@
 package gotable
 
 import (
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 	"strings"
 )
 
@@ -64,7 +64,7 @@ func (g *tableGen) emitListRead(f *ir.Field, ind string) {
 	case tkTable:
 		g.pf("%selem,ok:=sub.Body();if !ok {%s};\n", j, stop)
 		g.retainReadPath("elem", "r", "i")
-		g.pf("if !%sLoadBody(&elem,p) {return false};\n", f.Type.Name)
+		g.pf("if !%sLoadBody"+g.rt()+"(&elem,p) {return false};\n", f.Type.Name)
 		g.emitCarveReturn("sub", "elem", j)
 		g.pf("%sif elem.Offset!=int64(len(elem.Buffer)) {%s}\n", j, stop)
 	case tkUnion:
@@ -83,7 +83,7 @@ func (g *tableGen) emitListWrite(f *ir.Field, expr, writer, ind string, framed b
 	body := g.nextWireWriter()
 	typ := containerElementType(g.unit, f)
 	kind := ir.TableWireElemKind(f)
-	g.pf("%s{\n%s mark:=%s.Ids.Count;%s:=TableWriter{Measuring:true,Ids:%s.Ids}\n", ind, ind, writer, body, writer)
+	g.pf("%s{\n%s mark:=%s.Ids.Count;%s:=Table"+g.rt()+"Writer{Measuring:true,Ids:%s.Ids}\n", ind, ind, writer, body, writer)
 	for pass := range 2 {
 		w := body
 		if pass == 1 {
@@ -267,7 +267,7 @@ func tableRegionPack(root unsafe.Pointer,info *TableTypeInfo,a *TableArena) ([]b
 // authoring allocation callback knows about the arena's chunk representation.
 const tableJSONListSource = `
 func tableJSONWriteList(out *tableJSONOut,holder unsafe.Pointer,f *TableFieldInfo,depth int32) bool {
- count:=*(*int32)(unsafe.Add(holder,8));if count<0{return false};if count==0{out.text("[]");return true};ref:=*(*int64)(holder);if ref==0{return false};p:=unsafe.Add(holder,ref);out.put('[');for i := range count {if i>0{out.put(',')};out.line(depth+1);if !tableJSONWriteScalar(out,unsafe.Add(p,uintptr(i)*uintptr(f.ElemSize)),f,depth+1){return false}};out.line(depth);out.put(']');return true
+ if depth>tableJSONMaxDepth{return false};count:=*(*int32)(unsafe.Add(holder,8));if count<0{return false};if count==0{out.text("[]");return true};ref:=*(*int64)(holder);if ref==0{return false};p:=unsafe.Add(holder,ref);out.put('[');for i := range count {if i>0{out.put(',')};out.line(depth+1);if !tableJSONWriteScalar(out,unsafe.Add(p,uintptr(i)*uintptr(f.ElemSize)),f,depth+1){return false}};out.line(depth);out.put(']');return true
 }
 func tableJSONReadList(in *tableJSONIn,holder unsafe.Pointer,f *TableFieldInfo,depth int32) bool {
  if in.peek()!='['||in.graph==nil||in.graph.listAdd==nil {in.bad=true;return false};in.pos++;clear(unsafe.Slice((*byte)(holder),16));shape:=tableJSONElementShape(f)

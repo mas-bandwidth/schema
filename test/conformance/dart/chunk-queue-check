@@ -1,0 +1,46 @@
+#!/bin/sh
+# The wire-fuzz driver's stdin queue (ChunkQueue in test/conformance/dart/main.dart).
+#
+#   chunk-queue-check test <dart>      the unit test must pass against the
+#                                      ChunkQueue block sliced out of main.dart
+#   chunk-queue-check control <dart>   the same test against the planted
+#                                      front-removal reader (the code the
+#                                      driver used to carry) must go RED
+#
+# main.dart cannot be imported by a test (it pulls every generated unit), so the
+# block between its BEGIN/END ChunkQueue markers is sliced into a file of its
+# own: the code under test is the code the driver ships, not a copy. A control
+# that fails to run (a compile error) is not detection: the red must be the
+# test's own "copied ... bytes" line.
+set -eu
+mode=$1 dart=$2
+here=$(cd "$(dirname "$0")" && pwd)
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+cp "$here/chunk_queue_test.dart" "$tmp/chunk_queue_test.dart"
+case "$mode" in
+test)
+	{
+		echo "import 'dart:collection';"
+		echo "import 'dart:typed_data';"
+		sed -n '/^\/\/ BEGIN ChunkQueue/,/^\/\/ END ChunkQueue/p' "$here/main.dart"
+	} >"$tmp/chunk_queue.dart"
+	grep -q '^class ChunkQueue' "$tmp/chunk_queue.dart" || { echo "chunk-queue-check: no ChunkQueue block in main.dart" >&2; exit 1; }
+	exec "$dart" --enable-asserts "$tmp/chunk_queue_test.dart"
+	;;
+control)
+	cp "$here/negative-control-chunk-queue/chunk_queue.dart" "$tmp/chunk_queue.dart"
+	if "$dart" --enable-asserts "$tmp/chunk_queue_test.dart" >"$tmp/out" 2>&1; then
+		cat "$tmp/out"
+		echo "chunk-queue-check: the planted front-removal reader passed the test" >&2
+		exit 1
+	fi
+	cat "$tmp/out"
+	grep -q 'FAIL: copied ' "$tmp/out" || { echo "chunk-queue-check: red, but not on the copy bound" >&2; exit 1; }
+	echo "chunk-queue-check: planted front-removal reader is red, as it must be"
+	;;
+*)
+	echo "usage: chunk-queue-check test|control <dart>" >&2
+	exit 2
+	;;
+esac

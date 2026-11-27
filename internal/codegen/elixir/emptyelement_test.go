@@ -8,9 +8,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testinputs"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 // TestElixirPacketEmptyElementCompilesClean holds the rule that every legal
@@ -74,6 +75,7 @@ type Tags
 		t.Fatal(err)
 	}
 	args := append([]string{gate, elixircBin, "-o", ebin}, names...)
+	testinputs.Files(t, gate)
 	cmd := testproc.Command(t, "sh", args...)
 	cmd.Dir = dir
 	cmd.Env = toolchainEnv(elixirBin)

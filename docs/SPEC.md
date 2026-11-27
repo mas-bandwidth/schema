@@ -1336,7 +1336,11 @@ it (§4.6).
   in the range's own width (clz over 32 or 64 bits as the range demands); no
   zigzag on the wire, ever.
 - **`align` emits zero bits up to the next byte boundary — zero bits when
-  already aligned**; readers verify the padding is zero.
+  already aligned**; readers verify the padding is zero. This holds for an
+  align inside an array or union element as for any other (a string's or
+  bytes' own align included): whatever the element before it wrote, an
+  element's padding is zero and its first field carries only its own bits
+  (SPEC-CONFORMANCE, align padding inside array elements).
 - **Length prefixes** (`string(N)`, `bytes(N)`, `[..N]T`,
   `[Min..N]T`) are ranged integers over their declared count range, per the
   rows below.
@@ -1864,8 +1868,76 @@ All compile errors with positions:
   `math`, `slices`, `strconv`, `sync`, `time`, `utf8`), Luau's and moo's
   `buffer` library, C#'s `Debug` and `InlineBuffer<N>` (`InlineBuffer4`,
   any length N), the 128-bit support classes `Int128` and
-  `UInt128` (Dart, Java), and Elixir's support module `PacketRuntime`. A
+  `UInt128` (Dart, Java), Dart's built-in identifiers, which can name no
+  class or extension type (`abstract`, `as`, `covariant`, `deferred`,
+  `dynamic`, `export`, `extension`, `external`, `factory`, `Function`, `get`,
+  `implements`, `import`, `interface`, `late`, `library`, `mixin`,
+  `operator`, `part`, `required`, `set`, `static`, `typedef`), Elixir's
+  support module `PacketRuntime`, and every macro the serialize runtime
+  header `serialize.h` defines, which the generated C++ includes (C++: a
+  function-like macro such as `write_int` or `serialize_fixed` expands at
+  the `(` of a value-initialised `E()` or a conversion `E( v )`, an
+  object-like one such as `SERIALIZE_DEBUG` everywhere; the 94 of serialize
+  v2.1.6). A field or a union arm may take such a name: a member is spelled
+  only after `.` or as a declarator, where no function-like macro reaches. A
   reserved word or a claimed name above takes its own diagnostic instead.
+- **Generator-name safety:** the names generated code declares for itself
+  inside its functions (locals, parameters, loop variables: `v`, `r`, `w`,
+  `kind`, `len`, `at`, `vid`, ...) never hide a schema name, so a name the
+  checker accepts may be any of them, as an enum, a field or a union arm, and
+  is never refused for it. An emitter spells a schema name where no local of
+  its own can reach it (the Dart table libraries spell an enum whose name
+  starts lowercase through the import prefix `$enums`, which no schema
+  identifier can spell) or names its locals so none can equal one (the Dart
+  `enumName<E>` parameter is `$value` for an enum named `value`; the C++
+  table header spells a declared name that starts lowercase from the
+  global root, `::<package>::name`, wherever a parameter, a local, a loop
+  variable or a lambda's parameter of the same name may be in scope: the
+  reset `value.many[tail] = ::probe::count();`, the descriptors'
+  conversions `::probe::v( v )` and the enum codecs' parameter types,
+  `TableEnumRef( TableIds & ids, ::probe::ids value, ... )`; a name that
+  starts with a capital is spelled bare, as before, since no generated
+  local does). A field or an arm named like a libc type the unit also
+  declares (`int32_t`) stays a member in C++: the pass that writes the
+  emitter's own uses of the platform's type as `::int32_t` leaves a
+  member's declarator (`Inner int32_t;`), its reads in a member function
+  (`return int32_t;`, `&int32_t`) and `offsetof( T, int32_t )` bare. Where a
+  target has no spelling a schema identifier cannot take, a generator-owned
+  name carries the prefix `schema_`, which the checker refuses on every
+  declaration (the Go descriptor closures' parameter `schema_v`, the Java
+  `enumName<E>` parameter `schema_value`, the Go union record's payload
+  extent `schema_payload`). A name a generator derives from schema names is
+  a one-to-one function of them (two declarations never derive one name:
+  the Dart text form's helpers are `schema_textName_<E>` and
+  `schema_textFromName_<E>`, not `<e>Name` and `<e>FromName`, which met at
+  `daysFromName` for enums `days` and `daysFrom`), and it is spelled by the
+  emitter, never made by rewriting emitted text that holds schema names (a
+  rewrite of `depth` or `SaveBody` reaches a field or arm of that name). A
+  Dart union's tag type does not implement int, so an arm may share a name
+  with any int member (`sign`, `floor`, `isNaN`). A name a target reserves
+  outright is refused at check for every target, naming it: a declaration
+  spelled `main` in Dart, which reserves `main` for the entry point.
+  The Rust packet layer spells an enum as a tuple struct, which no let,
+  parameter, loop or match binding may shadow, so every binding the Rust
+  packet emitter declares, every binding of the table files that glob-import
+  the crate (the fixed, message, block and cook modules and the message and
+  cook runtimes), and the cooked union setter's parameter, carries the
+  `schema_` prefix no declaration may take (`schema_value`,
+  `schema_stream`, `schema_c0`, ...). A helper derived from two names is
+  injective: a Rust table enum's JSON names are its associated
+  `json_name` and `from_json_name`, never free functions spelled from its
+  name, which `days` and `daysFrom` would share. What a target cannot
+  rename is refused at check for every target: Rust's 2024 keyword `gen`,
+  and the modules the generated crate's lib.rs declares (each file's
+  lowercased basename always; with tables, `tables`, the table runtimes
+  and each file's `_table`, `_cook`, `_records` and other table modules).
+  The proof is the corpus rows `n_internal_*` of
+  testdata/name-buildability: every such name the table emitters of all 18
+  targets declare, each used as an enum, a table field and a union arm, and
+  the nightly builds every row in every target. A (target, row) that does
+  not build yet is written in the corpus's owed.txt with its cause, an exact
+  set: the nightly fails on a failure the ledger does not name and on a
+  ledgered pair that builds.
 - **Emitter name rules:** the checker also runs the rules a target's
   emitter holds itself (for Ruby and Python, the emitter's whole name check
   under every surface a generate can select: a Ruby declaration's constant,
@@ -1873,11 +1945,42 @@ All compile errors with positions:
   and no other declaration's, so `foo_bar` beside `FooBar` is refused; a
   Python package is no standard-library module and no declaration a
   builtin; in both, no field or arm starts with `__` or the helper prefix
-  `_s_` or spells a member the generated class defines; a Goose namespace is
-  no reserved one) and the C and C++ wire-header name
+  `_s_` or spells a member the generated class defines; for Goose, the
+  target's whole generate, so every name two writers of the one Goose
+  namespace both declare (`_fleetFields` for a table `fleet` beside an enum
+  `_fleetFields`) and every refusal by name it makes are the checker's, and a
+  Goose namespace is no reserved one; for both C# targets, no declaration
+  named `unmanaged`, the constraint keyword the generated
+  `where T : unmanaged` spells, which a type of that name in the unit's
+  namespace would replace; for Lobster, no declaration named like a Lobster
+  keyword or the float literals `nan` and `infinity`, which its lexer never
+  reads as an identifier) and the C and C++ wire-header name
   (`<Base>Wire.h`, so `Other.schema` beside `OtherWire.schema` collides), and
+  a member (a field of a `type` or `table`, or a union arm, packet or
+  table-closure) spelled like a named type some member of the same
+  declaration is declared with, its own or a sibling's (an enum `kind`
+  beside a field or arm `kind kind`, or `kind Kind2` beside `mode kind`: C++
+  refuses the member as a declaration that changes the meaning of the type
+  name, comparing the name as written, and Dart as a member that hides the
+  type in the class body, comparing its lowerCamel spelling, so a field
+  `Kind kind` is refused for Dart; `kind Kind` is two names in every target
+  and builds, as does a field `kind` on a declaration none of whose members
+  uses the type `kind`), and
   refuses for every target, naming the target, a unit one of them refuses,
-  so those names are refused at check rather than at generate.
+  so those names are refused at check rather than at generate. Every refusal
+  by name a target makes at generate is one of these, or one of the rules
+  above: the name-buildability nightly generates every accepted row of
+  testdata/name-buildability in every target
+  (compiler, `TestEveryAcceptedCorpusRowGeneratesEverywhere`), and the
+  fast lane holds that each emitter-rule row is refused at generate once the
+  rules are taken away (`TestEmitterNameRulesAreTheOnlyGuard`). Where an
+  emitter can keep two generated names apart it does, and nothing is refused: C gives every type
+  the suffix `_t`, even a name already ending in `_t`, so `placed` and
+  `placed_t` are `<pkg>_placed_t` and `<pkg>_placed_t_t`; the Goose view
+  names a vocabulary's rows `_<name>VocabularyRows`, a suffix no other Goose
+  name ends in, so an enum `fooView` beside `foo` builds; the Elixir file
+  module steps aside to `<Base>File` when a declaration lowers to its name
+  (an enum `other` beside `Other.schema`).
 
 ### 4.7 Strings and byte blocks — byte strings, one shape
 
@@ -2743,7 +2846,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8, 10 and 11
 
   - `SaveMessages`: 1–8 every build
 
-  - packet `Write`: 1–8 every build, on the flat and the per-field path alike; 10 not yet held; 11 unrepresentable (the storage is `intN`/`uintN`)
+  - packet `Write`: 1–8 and 10 every build, on the flat and the per-field path alike, returning `serialize.ErrValueOutOfRange` and never panicking (row 1 covers a ranged `int128` and a `fixed`/`ufixed` raw value, refused before the runtime call); 11 unrepresentable (the storage is `intN`/`uintN`)
 
 - **JavaScript**
 
@@ -2751,7 +2854,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8, 10 and 11
 
   - `SaveMessages`: 1–9 every build (9: a `flags` value that is negative or holds a bit at or above its declared width, `invalid_value`); a `[N]T` or enum-keyed array whose length is not exactly `N` is refused, never cut at `N`
 
-  - packet `Write`: the flat tier 1–7 every build, whatever `NODE_ENV` says; 8, 10 and 11 every build on the flat and the runtime tier
+  - packet `Write`: the flat tier 1–7 every build, whatever `NODE_ENV` says; 8, 10 and 11 every build on the flat and the runtime tier; a `[N]T` whose length is not exactly `N` is refused on both tiers, never cut at `N` (SF-20, held by `write-refusal-packet` `fixed_long` and `fixed_short`)
 
 - **Elixir**
 
@@ -2767,7 +2870,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8, 10 and 11
 
   - `SaveMessages`: 1–8 every build
 
-  - packet `Write`: 1–6, 8, 10 and 11 every build; 7 raises
+  - packet `Write`: 1–6, 8, 10 and 11 every build; 7 raises; a `[N]T` whose length is not exactly `N` is refused, never cut at `N` (SF-20)
 
 - **Luau**
 
@@ -2775,7 +2878,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8, 10 and 11
 
   - `SaveMessages`: no value encoder: it carries encoded bodies
 
-  - packet `Write`: 1–6, 8 and 10 every build; 7 raises; 11 every build, held by `packet-write-bareint-luau`
+  - packet `Write`: 1–6, 8 and 10 every build; 7 raises; 11 every build, held by `packet-write-bareint-luau`; a `[N]T` whose length is not exactly `N` is refused, never cut at `N` (SF-20)
 
 - **Squirrel**
 
@@ -2783,7 +2886,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8, 10 and 11
 
   - `SaveMessages`: 1–8 every build
 
-  - packet `Write`: 2–6 every build; 1 every build, raising for `int32` and `int64`; 7 raises; 11 every build, held by `packet-write-bareint-squirrel` (a negative `uint64` is the same 64 bits as one in the width, docs/PORT-SQUIRREL.md); 8 and 10 every build, refusing with `false`
+  - packet `Write`: 2–6 every build; 1 every build, raising for an `int32` or `int64` field (the runtime's write-misuse trap) and refusing with `false` for every other kind, wherever it rides (an `int16` element or arm payload, an `int128`, a `fixed` raw value); a `[N]T` whose length is not exactly `N` refused with `false`, never cut at `N` (SF-20); 7 raises; 11 every build, held by `packet-write-bareint-squirrel` (a negative `uint64` is the same 64 bits as one in the width, docs/PORT-SQUIRREL.md); 8 and 10 every build, refusing with `false`
 
 - **MOO**
 
@@ -2791,7 +2894,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8, 10 and 11
 
   - `SaveMessages`: 1–8 every build
 
-  - packet `Write`: 1–8 and 10 every build; 11 every build, held by `packet-write-bareint-moo`
+  - packet `Write`: 1–8 and 10 every build; 11 every build, held by `packet-write-bareint-moo`; a `[N]T` whose length is not exactly `N` is refused, never cut at `N` (SF-20)
 
 - **Goose**
 
@@ -2799,7 +2902,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8, 10 and 11
 
   - `SaveMessages`: 1–9 every build (9: a `flags` bit at or above its declared width, `MsgRefuseInvalidValue`)
 
-  - packet `Write`: 1–8 and 10 every build, each returning a `SERIALIZE_ERROR_*` kind (value out of range, invalid UTF-8 or embedded NUL), not `SaveRefuseInvalidValue`, which is the file save's name; 11 unrepresentable (the storage is `iN`/`uN`)
+  - packet `Write`: 1–8 and 10 every build, each returning a `SERIALIZE_ERROR_*` kind (value out of range, invalid UTF-8 or embedded NUL), not `SaveRefuseInvalidValue`, which is the file save's name; 11 unrepresentable (the storage is `iN`/`uN`); a `[N]T` of another length unrepresentable (the storage is a `T[N]`)
 
 - **Lobster**
 
@@ -2807,7 +2910,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8, 10 and 11
 
   - `SaveMessages`: 1–8 and 10 every build
 
-  - packet `Write`: 1 and 3–6 and 10 debug (a Lobster `assert`, removed by `--runtime-no-asserts`); 2 (`bits(N)`) traps in every build, in the runtime (`serialize: value must fit in bits`), because the emitter writes no assert for it; 11 debug (signed narrow) and every build (unsigned narrow), held by `packet-write-bareint-lobster`; 7 traps
+  - packet `Write`: 1 and 3–6 and 10 debug (a Lobster `assert`, removed by `--runtime-no-asserts`), a `[N]T` whose length is not exactly `N` included (SF-20); 2 (`bits(N)`) traps in every build, in the runtime (`serialize: value must fit in bits`), because the emitter writes no assert for it; 11 debug (signed narrow) and every build (unsigned narrow), held by `packet-write-bareint-lobster`; 7 traps
 
 - **Python**
 
@@ -2831,8 +2934,10 @@ field and saving it. `write-refusal` saves through the variable-form `Save`,
 through the text writer. The fifth, `write-refusal-packet`, holds the packet
 `Write` on a generated type carrying one field per row: a ranged scalar, a
 `bits(7)` past its width, an enum ordinal, a union tag, a counted array's
-count, a `string`'s length and content, and a constant or reserved-range
-field's only lawful value. The Go leg runs it as `TestWriteRefusalPacket` in
+count, a `string`'s length and content, a constant or reserved-range
+field's only lawful value, a `[3]int16` handed four values and two, a ranged
+`int16` as a fixed-array element, a counted-array element and a union arm's
+payload, an `int128` and a `fixed(16, 16)` raw value. The Go leg runs it as `TestWriteRefusalPacket` in
 test/conformance/harness, with a negative control that changes the emitter's
 upper-bound comparison and requires the boundary row to go red. The every-build
 scripting legs answer the same rows from test/conformance/write-refusal-packet

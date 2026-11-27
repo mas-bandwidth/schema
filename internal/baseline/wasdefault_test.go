@@ -3,7 +3,7 @@ package baseline_test
 import (
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/baseline"
+	"github.com/mas-bandwidth/schema/v3/internal/baseline"
 )
 
 const wasDefaultSrc = `package fixture

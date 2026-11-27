@@ -21,6 +21,7 @@ public final class FixedTableRetain {
         if (report == null) {
             report = new TableVariable.Report();
         }
+        report.reset();
         if (retain == null) {
             return FixedTableVariable.load(data, report);
         }

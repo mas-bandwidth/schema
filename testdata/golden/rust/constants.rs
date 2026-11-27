@@ -18,8 +18,8 @@ pub enum Error {
 }
 
 impl From<serialize::Error> for Error {
-    fn from(e: serialize::Error) -> Error {
-        Error::Stream(e)
+    fn from(schema_e: serialize::Error) -> Error {
+        Error::Stream(schema_e)
     }
 }
 

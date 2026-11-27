@@ -1,0 +1,6 @@
+package depth
+
+type Inner
+{
+    a uint8
+}

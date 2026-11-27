@@ -20,7 +20,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // ---- readers of this leg's output -------------------------------------------
@@ -93,12 +93,12 @@ fixed table BoundsT
 	if clamp == "" {
 		t.Fatal("C7: bounds_t_fixed_clamp_body is not emitted for a ranged scalar")
 	}
-	t06Has(t, clamp, "*oor += ((value.x < -5_i32) | (value.x > 5_i32)) as i32;",
+	t06Has(t, clamp, "*schema_oor += ((schema_value.x < -5_i32) | (schema_value.x > 5_i32)) as i32;",
 		"C7 the ranged scalar's two declared ends, counted ONCE as one bitwise OR")
-	t06Has(t, clamp, "value.x = value.x.clamp(-5_i32, 5_i32);",
+	t06Has(t, clamp, "schema_value.x = schema_value.x.clamp(-5_i32, 5_i32);",
 		"C7 the value takes the declared min and max")
 	load := t06Load(t, text, "BoundsT")
-	scatter := strings.Index(load, "bounds_t_fixed_scatter(&image")
+	scatter := strings.Index(load, "bounds_t_fixed_scatter(&schema_image")
 	pass := strings.Index(load, "bounds_t_fixed_clamp_body(&mut")
 	if scatter < 0 || pass < 0 || pass < scatter {
 		t.Errorf("C7: the bounds pass is not straight-line code AFTER the scatter over storage:\n%s", load)
@@ -133,7 +133,7 @@ fixed table CF
 		t.Fatal("R30: cf_fixed_write_body is not emitted")
 	}
 	// The float rides as itself, with -0 stored as +0 (negative-zero rule).
-	t06Has(t, write, "(if value.q == 0.0 { 0.0 } else { value.q }).to_le_bytes()",
+	t06Has(t, write, "(if schema_value.q == 0.0 { 0.0 } else { schema_value.q }).to_le_bytes()",
 		"R30 a compressed float rides as the float, not as a quantized index")
 	if strings.Contains(write, "resolution") || strings.Contains(write, ".round(") {
 		t.Error("R30: the writer quantizes a compressed float; on this form it rides as the float")
@@ -212,11 +212,11 @@ fixed table T
 	if scatter == "" {
 		t.Fatal("C9: pick_fixed_scatter is not emitted")
 	}
-	t06Has(t, scatter, "if tag_raw > 2 {",
+	t06Has(t, scatter, "if schema_tag_raw > 2 {",
 		"C9 a tag past the arm count is compared against this build's arm count")
 	t06Has(t, scatter, "report.held += 1;",
 		"C9 a tag past the arm count is held for the load's out_of_range refusal")
-	t06Has(t, scatter, "*value = PickRow::default();",
+	t06Has(t, scatter, "*schema_value = PickRow::default();",
 		"C9 an out-of-range tag lands None: the empty union first")
 }
 
@@ -242,7 +242,7 @@ fixed table T
 	if scatter == "" {
 		t.Fatal("C10: t_fixed_scatter is not emitted")
 	}
-	t06Has(t, scatter, "if raw > 3 {",
+	t06Has(t, scatter, "if schema_raw > 3 {",
 		"C10 an ordinal past the enum's top wire value is out of range")
 	t06Has(t, scatter, "report.held += 1;",
 		"C10 an out-of-range ordinal is held for the load's out_of_range refusal")
@@ -268,10 +268,10 @@ fixed table T
 	if scatter == "" {
 		t.Fatal("C12: t_fixed_scatter is not emitted")
 	}
-	t06Has(t, scatter, "if b[at] > 1 && report.slack == 0 {",
+	t06Has(t, scatter, "if schema_b[schema_at] > 1 && schema_report.slack == 0 {",
 		"C12 a live bool byte past 1 is checked")
 	t06Has(t, scatter, "report.damaged = true;", "C12 a live bool byte past 1 is damage")
-	t06Has(t, scatter, "value.ok = b[at] == 1;", "C12 a bool byte lands as `byte == 1`")
+	t06Has(t, scatter, "schema_value.ok = schema_b[schema_at] == 1;", "C12 a bool byte lands as `byte == 1`")
 }
 
 // ---- rust/C13 ----------------------------------------------------------------
@@ -291,12 +291,12 @@ fixed table T
 	if scatter == "" {
 		t.Fatal("C13: t_fixed_scatter is not emitted")
 	}
-	t06Has(t, scatter, "if b[0] > 1 && report.slack == 0 {",
+	t06Has(t, scatter, "if schema_b[0] > 1 && schema_report.slack == 0 {",
 		"C13 a live present byte past 1 is checked")
 	t06Has(t, scatter, "report.damaged = true;", "C13 a live present byte past 1 is damage")
-	t06Has(t, scatter, "value.link_present = b[0] == 1;",
+	t06Has(t, scatter, "schema_value.link_present = schema_b[0] == 1;",
 		"C13 a present flag byte lands as `byte == 1`")
-	if present, payload := strings.Index(scatter, "value.link_present = b[0] == 1;"),
+	if present, payload := strings.Index(scatter, "schema_value.link_present = schema_b[0] == 1;"),
 		strings.Index(scatter, "value.link = "); present < 0 || payload < 0 || present > payload {
 		t.Errorf("C13: the present flag is not read before the payload it guards:\n%s", scatter)
 	}
@@ -310,8 +310,8 @@ fixed table T
 // present byte carries the damage check and no `report.held`.
 func t06R17(t *testing.T) {
 	for _, tc := range []struct{ name, src, check, want string }{
-		{"bool", "package probe\n\nfixed table T { ok bool }\n", "if b[at] > 1 && report.slack == 0 {", "value.ok = b[at] == 1;"},
-		{"present", "package probe\n\nfixed table T { link ?int32 }\n", "if b[0] > 1 && report.slack == 0 {", "value.link_present = b[0] == 1;"},
+		{"bool", "package probe\n\nfixed table T { ok bool }\n", "if schema_b[schema_at] > 1 && schema_report.slack == 0 {", "schema_value.ok = schema_b[schema_at] == 1;"},
+		{"present", "package probe\n\nfixed table T { link ?int32 }\n", "if schema_b[0] > 1 && schema_report.slack == 0 {", "schema_value.link_present = schema_b[0] == 1;"},
 	} {
 		scatter := t06Fn(t06Fixed(t, tc.src), "t_fixed_scatter")
 		if scatter == "" {
@@ -450,7 +450,7 @@ fixed table T
 	if scatter == "" {
 		t.Fatal("C2: t_fixed_scatter is not emitted")
 	}
-	t06Has(t, scatter, "let held = raw.clamp(0, 4);",
+	t06Has(t, scatter, "let schema_held = schema_raw.clamp(0, 4);",
 		"C2 the count clamps to the reader's declared bound")
 }
 
@@ -478,9 +478,9 @@ fixed table T
 }
 `)
 	load := t06Load(t, text, "T")
-	t06Has(t, load, "let n = rest.len() / record_bytes;",
+	t06Has(t, load, "let schema_n = schema_rest.len() / schema_record_bytes;",
 		"R11 the record count is the file's, divided by the LOCK's record size")
-	t06Has(t, load, "table_fixed_run(entries, guards, table, &record[8..], &mut image, report);",
+	t06Has(t, load, "table_fixed_run(schema_entries, schema_guards, table, &record[8..], &mut schema_image, schema_report);",
 		"R11 one plan runs per read, selected for its lineage entry")
 }
 

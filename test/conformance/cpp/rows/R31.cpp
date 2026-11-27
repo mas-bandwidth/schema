@@ -247,12 +247,14 @@ static void clause2_64bit_ordinal_temporary()
     uint64_t landed = 0;
     std::memcpy(&landed, dst, 8);
 
-    // With a 64-bit temporary: raw = 2^32, which is > map[0] = 1, so v = 0,
-    // clamped++. With a 32-bit temporary: raw = 0, which is == 0, so v = 0,
-    // but clamped does NOT fire (raw == 0 means "none").
-    check(r.clamped == 1,
+    // With a 64-bit temporary: raw = 2^32, which is > map[0] = 1, so v = 0 and
+    // the run refuses out_of_range. With a 32-bit temporary: raw = 0, which is
+    // == 0, so v = 0 and nothing refuses (raw == 0 means "none").
+    // strict-only-read: was "clamped == 1"; the retired counter is the
+    // out_of_range refusal now (plans/strict-only.md decision 1).
+    check(r.refused && r.refuse_reason == tblfu1::out_of_range,
           "64bit-ordinal-temporary",
-          "width-8 ordinal of 2^32: clamped==1 (uint32_t temp would read 0, not count clamped)");
+          "width-8 ordinal of 2^32 refuses out_of_range (a uint32_t temp would read 0 and not refuse)");
     check(landed == 0,
           "64bit-ordinal-lands-none",
           "the ordinal lands 0 (None) because 2^32 is past the writer's 1 variant");
@@ -261,15 +263,16 @@ static void clause2_64bit_ordinal_temporary()
     std::memset(src, 0, sizeof(src));
     src[0] = 1;  // ordinal 1 in LE
     std::memset(dst, 0xAB, sizeof(dst));
-    r.clamped = 0;
+    r = tblfu1::TableReport();
     tblfu1::TableFixedRun(plan, 1, 1, src, dst, &r);
     std::memcpy(&landed, dst, 8);
     check(landed == 0,
           "64bit-ordinal-in-range",
           "ordinal 1 maps to remap[1]=0 (the writer's sole variant)");
-    check(r.clamped == 0,
+    // strict-only-read: was "clamped == 0"
+    check(!r.refused && !r.damaged,
           "64bit-ordinal-in-range-no-clamp",
-          "ordinal 1 is within range, clamped==0");
+          "ordinal 1 is within range: not refused");
 }
 
 // ---------------------------------------------------------------------------
@@ -303,7 +306,7 @@ static void clause3_remap_table_writer_length()
         plan[0].guard = kTableFixedNoGuard;
         plan[0].argw = 1;
 
-        // Ordinal 4 is past the length word (3) → None + clamped
+        // Ordinal 4 is past the length word (3) → None + the out_of_range refusal
         uint8_t src[8];
         uint32_t ord = 4;
         std::memcpy(src, &ord, 4);
@@ -320,23 +323,25 @@ static void clause3_remap_table_writer_length()
         check(landed == 0,
               "remap-past-length-word",
               "ordinal 4 past length-word 3: lands 0 (None)");
-        check(r.clamped == 1,
+        // strict-only-read: was "clamped == 1"
+        check(r.refused && r.refuse_reason == out_of_range,
               "remap-past-length-clamped",
-              "ordinal past the length word counts clamped");
+              "ordinal past the length word refuses out_of_range (the retired clamped)");
 
         // Ordinal 2 is within range → remap[2] = 1
         std::memset(dst, 0xAB, sizeof(dst));
         ord = 2;
         std::memcpy(src, &ord, 4);
-        r.clamped = 0;
+        r = TableReport();
         TableFixedRun(plan, 1, 1, src, dst, &r);
         std::memcpy(&landed, dst, 8);
         check(landed == 1,
               "remap-within-range",
               "ordinal 2 remaps to 1 via the length-3 table");
-        check(r.clamped == 0,
+        // strict-only-read: was "clamped == 0"
+        check(!r.refused && !r.damaged,
               "remap-within-range-no-clamp",
-              "ordinal within range: clamped==0");
+              "ordinal within range: not refused");
     }
 
     // Test 2: The overflow check — n > 65535 refuses during compile
@@ -404,7 +409,9 @@ static void integration_full_roundtrip()
     check(back.pick.plain.n == 123,
           "integration-union-payload",
           "union payload lands exactly");
-    check(r.clamped == 0 && r.widened == 0 && r.unknown == 0 && !r.refused && !r.malformed,
+    // strict-only-read: a kind mismatch, an out-of-range value and a repeat now refuse the
+    // whole load (no counter), so the retired zero counts read as not refused, not damaged.
+    check(r.widened == 0 && r.unknown == 0 && !r.refused && !r.damaged,
           "integration-no-counters",
           "clean read: no counters moved");
 }

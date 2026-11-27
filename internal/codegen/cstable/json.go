@@ -28,7 +28,7 @@
 //     members claim nothing at unit scope (docs/SPEC-TABLES.md §11).
 package cstable
 
-import "github.com/mas-bandwidth/schema/v2/ir"
+import "github.com/mas-bandwidth/schema/v3/ir"
 
 // emitJsonSurface emits one closure member's text-form surface: three thin
 // wrappers over the generic walk, each naming a descriptor and nothing else.
@@ -686,7 +686,9 @@ public static class TableJson
         if (f.Kind == 17) { return WritePointer(ref o, owner, f, index, depth); }
         if (f.Arms != null)
         {
-            // a union is an object with ONE key, the arm's name; None is {}
+            // a union is an object with ONE key, the arm's name; None is {}, and
+            // either is a container the depth cap counts (docs/SPEC-TABLES.md 16.14 W2)
+            if (depth > MaxDepth) { return false; }
             object union = f.GetChild(owner, index);
             ulong tag = f.Arms.GetTag(union);
             if (tag == 0)
@@ -740,6 +742,9 @@ public static class TableJson
         }
         if (IsFlags(f))
         {
+            // a flags value is an array of names, a container the read counts,
+            // an empty [] included (docs/SPEC-TABLES.md 16.14 W2)
+            if (depth > MaxDepth) { return false; }
             ulong bits = f.GetRaw(owner, index);
             if (bits == 0)
             {
@@ -828,7 +833,9 @@ public static class TableJson
             // one entry per SLOT, keyed by the variant that owns it, so
             // inserting a variant next season moves nothing in the text either.
             // Slot i holds the key i + 1: nothing is stored for None, so
-            // nothing is written for it.
+            // nothing is written for it. The object, an empty {} included, is
+            // a container the depth cap counts (docs/SPEC-TABLES.md 16.14 W2).
+            if (depth > MaxDepth) { return false; }
             o.Put((byte)'{');
             bool first = true;
             for (int slot = 0; slot < f.ArrayBound; slot++)
@@ -851,6 +858,9 @@ public static class TableJson
         }
         if (f.IsArray)
         {
+            // an array or a text list, an empty [] included, is a container
+            // the depth cap counts, as the read counts it (docs/SPEC-TABLES.md 16.14 W2)
+            if (depth > MaxDepth) { return false; }
             int count = Count(value, f);
             if (count == 0)
             {

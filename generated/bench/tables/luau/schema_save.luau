@@ -362,6 +362,10 @@ local function bound_shift(v: any, fbits: number): any
 end
 
 local function valid_scalar(e: any, v: any): boolean
+ -- a bool is a Luau boolean, or nil (the field at its default): 1 or "x" in a
+ -- bool's place is refused, never written as its truthiness
+ -- (docs/SPEC-CONFORMANCE.md DW-TABLE-SHAPE)
+ if e.s == "bool" then return v == nil or typeof(v) == "boolean" end
  if e.s == "float" then
   if typeof(v) ~= "number" then return false end
   v = held_float(e, v)
@@ -399,7 +403,9 @@ local function valid_scalar(e: any, v: any): boolean
 end
 
 local function valid_text(e: any, b: any, n: any): boolean
- if typeof(b) ~= "buffer" then return n == 0 end
+ -- text is a buffer, or nil (empty): a number or a table in its place is
+ -- refused whatever length beside it says (DW-TABLE-SHAPE)
+ if typeof(b) ~= "buffer" then return b == nil and n == 0 end
  if typeof(n) ~= "number" or n < 0 or n ~= math.floor(n) or n > buffer.len(b) then return false end
  if e.bound ~= nil and e.bound > 0 and n > e.bound then return false end
  return e.s == "bytes" or utf8_ok(b, 0, n)
@@ -932,6 +938,10 @@ local function write_field(c: any, fd: any, w: any, v: any): boolean
  elseif s == "text" then
   if not valid_text(fd, val, typeof(val) == "buffer" and buffer.len(val) or 0) then return false end
  elseif s == "arr" then
+  -- an array is a Luau table or a buffer, or nil (empty): a number or a
+  -- string in its place is refused, whatever count beside it says
+  -- (DW-TABLE-SHAPE)
+  if val ~= nil and typeof(val) ~= "table" and typeof(val) ~= "buffer" then return false end
   local n = live_count(fd, v, val)
   if typeof(n) ~= "number" or n ~= math.floor(n) or n < (fd.min or 0) or (not fd.unbounded and n > fd.bound) then return false end
   if typeof(val) == "buffer" and buffer.len(val) < n then return false end

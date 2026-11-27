@@ -17,11 +17,11 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/mas-bandwidth/schema/v2/internal/ast"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/ccommon"
-	"github.com/mas-bandwidth/schema/v2/internal/goname"
-	"github.com/mas-bandwidth/schema/v2/internal/tablenames"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/ast"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/ccommon"
+	"github.com/mas-bandwidth/schema/v3/internal/goname"
+	"github.com/mas-bandwidth/schema/v3/internal/tablenames"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // wstringRefusalMsg is the one diagnostic every spelling of wstring takes.
@@ -3598,8 +3598,9 @@ var reservedLanguages = []struct {
 		append cap clear close complex copy delete imag len make max min new panic print println real recover
 		any bool comparable complex64 complex128 error float32 float64 int int8 int16 int32 int64 rune string
 		uint uint8 uint16 uint32 uint64 uintptr iota nil`},
+	// gen is reserved in Rust 2024, the edition the generated crate builds with.
 	{"Rust", []string{"rust"}, `abstract as async await become box break char const continue crate do dyn
-		else enum extern false final fn for if impl in let loop macro match mod move mut
+		else enum extern false final fn for gen if impl in let loop macro match mod move mut
 		override priv pub ref return self Self static struct super trait true try type typeof
 		unsafe unsized use virtual where while yield`},
 	// Java's keywords and literals, the contextual words a simple identifier
@@ -4281,6 +4282,23 @@ func (c *checker) checkClaimedNames() {
 		}
 	}
 
+	// THE RUST CRATE'S MODULE NAMES. lib.rs declares one module per schema
+	// file (its lowercased basename), the table layer's per-file modules beside
+	// it, the table runtimes, and the public `tables` module, all at the crate
+	// root, where a declaration is glob re-exported too. A declaration named
+	// like one of them is E0255 where lib.rs re-exports it by name, and is
+	// silently shadowed by the module everywhere else, so the crate root loses
+	// the user's type. Claimed for every target (SPEC §4.6): a file's own module
+	// always, and the table layer's modules in a unit with tables, as the
+	// table runtime's other names are (ClaimedWithATable, above). Last of the
+	// unit-level claims, so a name one of them already holds stays theirs.
+	for _, gen := range RustModuleNames(c.fileBases(), len(c.tables) > 0) {
+		if _, taken := registry[gen]; taken {
+			continue // a unit name claimed above (unit_view, serialize, announce): one module, never a user's collision
+		}
+		add(gen, "a module of the generated Rust crate (lib.rs)", unitPos)
+	}
+
 	declNames := make([]string, 0, len(c.astDecls))
 	for name := range c.astDecls {
 		declNames = append(declNames, name)
@@ -4302,6 +4320,7 @@ func (c *checker) checkClaimedNames() {
 	// registry so initChat and init_chat both meet Chat's initChat helper.
 	addDart := func(name, what string, pos ast.Pos, siblings ...string) {
 		mapped := ir.DartMemberName(name)
+		refuseDartMain(c, mapped, what, pos)
 		if !slices.Contains(siblings, mapped) {
 			add(mapped, what, pos)
 		}
@@ -4316,6 +4335,7 @@ func (c *checker) checkClaimedNames() {
 		// object) cannot take a TypeScript predefined type's name. A const is
 		// a value, and flags emit only their masks, count and name functions,
 		// so neither binds the name as a type and both keep it.
+		refuseDartMain(c, name, fmt.Sprintf("declaration %s", name), d.DeclPos())
 		if jsDeclBindsAType(d) && slices.Contains(TypeScriptPredefinedTypeNames(), name) {
 			c.errf(d.DeclPos(), "declaration %s becomes a class or type in the generated JavaScript and its TypeScript declarations, and TypeScript refuses a class or type named after its predefined type %s; rename at the source (SPEC §4.6)", name, name)
 		}
@@ -5107,6 +5127,20 @@ func (c *checker) cReservedMacros() map[string]bool {
 		}
 	}
 	return out
+}
+
+// refuseDartMain refuses a declaration whose top-level Dart spelling is
+// main (SPEC §4.6): Dart reserves main to the entry point, and a library that
+// declares main as anything but a function does not compile. Dart spells a
+// type, table, enum or union verbatim and a const or flags mask through the
+// member mapping (ir.DartMemberName), so both are tested. No emitter rename
+// can carry the name: an enum's type IS its schema name, so it is refused at
+// check for every target, naming Dart.
+func refuseDartMain(c *checker, spelled, what string, pos ast.Pos) {
+	if spelled != "main" {
+		return
+	}
+	c.errf(pos, "%s is spelled main in the generated Dart, and Dart reserves a library's main for the entry point, a function; rename at the source (SPEC §4.6)", what)
 }
 
 // reserveCPrefix refuses one generated C spelling that the generator already

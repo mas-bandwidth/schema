@@ -1,0 +1,682 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum table_fixed_outers_hold
+{ Zfirst, Zsecond, Zthird }
+
+enum table_fixed_tag
+{ Zfirst, Zsecond, Zthird }
+
+enum table_fixed_tag_seen
+{ Zfirst, Zsecond, Zthird }
+
+enum table_id
+{ Zfirst, Zsecond, Zthird }
+
+enum table_ids
+{ Zfirst, Zsecond, Zthird }
+
+enum table_ids_all_used
+{ Zfirst, Zsecond, Zthird }
+
+enum table_index
+{ Zfirst, Zsecond, Zthird }
+
+enum table_kind_width
+{ Zfirst, Zsecond, Zthird }
+
+enum table_message_batch_open
+{ Zfirst, Zsecond, Zthird }
+
+enum table_message_kind_width
+{ Zfirst, Zsecond, Zthird }
+
+enum table_message_ranged
+{ Zfirst, Zsecond, Zthird }
+
+enum table_message_read_scalar
+{ Zfirst, Zsecond, Zthird }
+
+enum table_message_skip_at
+{ Zfirst, Zsecond, Zthird }
+
+enum table_message_skip_ranged
+{ Zfirst, Zsecond, Zthird }
+
+enum table_message_unsigned
+{ Zfirst, Zsecond, Zthird }
+
+enum table_off
+{ Zfirst, Zsecond, Zthird }
+
+enum table_path
+{ Zfirst, Zsecond, Zthird }
+
+enum table_present
+{ Zfirst, Zsecond, Zthird }
+
+enum table_registry
+{ Zfirst, Zsecond, Zthird }
+
+enum table_scalar_read
+{ Zfirst, Zsecond, Zthird }
+
+enum table_shape
+{ Zfirst, Zsecond, Zthird }
+
+enum tag
+{ Zfirst, Zsecond, Zthird }
+
+enum tagAt
+{ Zfirst, Zsecond, Zthird }
+
+enum tagW
+{ Zfirst, Zsecond, Zthird }
+
+enum tagWidth
+{ Zfirst, Zsecond, Zthird }
+
+enum tag_bytes
+{ Zfirst, Zsecond, Zthird }
+
+enum tag_offset
+{ Zfirst, Zsecond, Zthird }
+
+enum tag_size
+{ Zfirst, Zsecond, Zthird }
+
+enum tags
+{ Zfirst, Zsecond, Zthird }
+
+enum tagsStride
+{ Zfirst, Zsecond, Zthird }
+
+enum tail
+{ Zfirst, Zsecond, Zthird }
+
+enum tail_bits
+{ Zfirst, Zsecond, Zthird }
+
+enum tail_start
+{ Zfirst, Zsecond, Zthird }
+
+enum take
+{ Zfirst, Zsecond, Zthird }
+
+enum taken
+{ Zfirst, Zsecond, Zthird }
+
+enum takes
+{ Zfirst, Zsecond, Zthird }
+
+enum takesNull
+{ Zfirst, Zsecond, Zthird }
+
+enum target
+{ Zfirst, Zsecond, Zthird }
+
+enum targetIds
+{ Zfirst, Zsecond, Zthird }
+
+enum targetTypeId
+{ Zfirst, Zsecond, Zthird }
+
+enum target_at
+{ Zfirst, Zsecond, Zthird }
+
+enum target_class
+{ Zfirst, Zsecond, Zthird }
+
+enum target_cls
+{ Zfirst, Zsecond, Zthird }
+
+enum target_desc
+{ Zfirst, Zsecond, Zthird }
+
+enum target_id
+{ Zfirst, Zsecond, Zthird }
+
+enum target_name
+{ Zfirst, Zsecond, Zthird }
+
+enum target_val
+{ Zfirst, Zsecond, Zthird }
+
+enum target_value
+{ Zfirst, Zsecond, Zthird }
+
+enum targets
+{ Zfirst, Zsecond, Zthird }
+
+enum tb
+{ Zfirst, Zsecond, Zthird }
+
+enum tbl
+{ Zfirst, Zsecond, Zthird }
+
+enum tc
+{ Zfirst, Zsecond, Zthird }
+
+enum tcAt
+{ Zfirst, Zsecond, Zthird }
+
+enum tc_i
+{ Zfirst, Zsecond, Zthird }
+
+enum tcls
+{ Zfirst, Zsecond, Zthird }
+
+enum td
+{ Zfirst, Zsecond, Zthird }
+
+enum tdesc
+{ Zfirst, Zsecond, Zthird }
+
+enum te
+{ Zfirst, Zsecond, Zthird }
+
+enum tee
+{ Zfirst, Zsecond, Zthird }
+
+enum tel
+{ Zfirst, Zsecond, Zthird }
+
+enum tells
+{ Zfirst, Zsecond, Zthird }
+
+enum ten
+{ Zfirst, Zsecond, Zthird }
+
+enum term
+{ Zfirst, Zsecond, Zthird }
+
+enum terminated
+{ Zfirst, Zsecond, Zthird }
+
+enum terminator
+{ Zfirst, Zsecond, Zthird }
+
+enum terminators
+{ Zfirst, Zsecond, Zthird }
+
+enum test
+{ Zfirst, Zsecond, Zthird }
+
+enum tested
+{ Zfirst, Zsecond, Zthird }
+
+enum text
+{ Zfirst, Zsecond, Zthird }
+
+enum textAt
+{ Zfirst, Zsecond, Zthird }
+
+enum textBlob
+{ Zfirst, Zsecond, Zthird }
+
+enum textBytes
+{ Zfirst, Zsecond, Zthird }
+
+enum textCat
+{ Zfirst, Zsecond, Zthird }
+
+enum textIllFormed
+{ Zfirst, Zsecond, Zthird }
+
+enum textListOf
+{ Zfirst, Zsecond, Zthird }
+
+enum textOk
+{ Zfirst, Zsecond, Zthird }
+
+enum textRefusal
+{ Zfirst, Zsecond, Zthird }
+
+enum textSlot
+{ Zfirst, Zsecond, Zthird }
+
+enum textTotalKeeps
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    table_fixed_outers_hold Inner
+    table_fixed_tag Inner
+    table_fixed_tag_seen Inner
+    table_id Inner
+    table_ids Inner
+    table_ids_all_used Inner
+    table_index Inner
+    table_kind_width Inner
+    table_message_batch_open Inner
+    table_message_kind_width Inner
+}
+
+table NameTypes0
+{
+    one0  table_fixed_outers_hold
+    many0 [..4]table_fixed_outers_hold
+    one1  table_fixed_tag
+    many1 [..4]table_fixed_tag
+    one2  table_fixed_tag_seen
+    many2 [..4]table_fixed_tag_seen
+    one3  table_id
+    many3 [..4]table_id
+    one4  table_ids
+    many4 [..4]table_ids
+    one5  table_ids_all_used
+    many5 [..4]table_ids_all_used
+    one6  table_index
+    many6 [..4]table_index
+    one7  table_kind_width
+    many7 [..4]table_kind_width
+    one8  table_message_batch_open
+    many8 [..4]table_message_batch_open
+    one9  table_message_kind_width
+    many9 [..4]table_message_kind_width
+}
+
+table NameFields0
+{
+    table_fixed_outers_hold uint32
+    table_fixed_tag uint32
+    table_fixed_tag_seen uint32
+    table_id uint32
+    table_ids uint32
+    table_ids_all_used uint32
+    table_index uint32
+    table_kind_width uint32
+    table_message_batch_open uint32
+    table_message_kind_width uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    table_message_ranged Inner
+    table_message_read_scalar Inner
+    table_message_skip_at Inner
+    table_message_skip_ranged Inner
+    table_message_unsigned Inner
+    table_off Inner
+    table_path Inner
+    table_present Inner
+    table_registry Inner
+    table_scalar_read Inner
+}
+
+table NameTypes1
+{
+    one0  table_message_ranged
+    many0 [..4]table_message_ranged
+    one1  table_message_read_scalar
+    many1 [..4]table_message_read_scalar
+    one2  table_message_skip_at
+    many2 [..4]table_message_skip_at
+    one3  table_message_skip_ranged
+    many3 [..4]table_message_skip_ranged
+    one4  table_message_unsigned
+    many4 [..4]table_message_unsigned
+    one5  table_off
+    many5 [..4]table_off
+    one6  table_path
+    many6 [..4]table_path
+    one7  table_present
+    many7 [..4]table_present
+    one8  table_registry
+    many8 [..4]table_registry
+    one9  table_scalar_read
+    many9 [..4]table_scalar_read
+}
+
+table NameFields1
+{
+    table_message_ranged uint32
+    table_message_read_scalar uint32
+    table_message_skip_at uint32
+    table_message_skip_ranged uint32
+    table_message_unsigned uint32
+    table_off uint32
+    table_path uint32
+    table_present uint32
+    table_registry uint32
+    table_scalar_read uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    table_shape Inner
+    tag Inner
+    tagAt Inner
+    tagW Inner
+    tagWidth Inner
+    tag_bytes Inner
+    tag_offset Inner
+    tag_size Inner
+    tags Inner
+}
+
+table NameTypes2
+{
+    one0  table_shape
+    many0 [..4]table_shape
+    one2  tag
+    many2 [..4]tag
+    one3  tagAt
+    many3 [..4]tagAt
+    one4  tagW
+    many4 [..4]tagW
+    one5  tagWidth
+    many5 [..4]tagWidth
+    one6  tag_bytes
+    many6 [..4]tag_bytes
+    one7  tag_offset
+    many7 [..4]tag_offset
+    one8  tag_size
+    many8 [..4]tag_size
+    one9  tags
+    many9 [..4]tags
+}
+
+table NameFields2
+{
+    table_shape uint32
+    tag uint32
+    tagAt uint32
+    tagW uint32
+    tagWidth uint32
+    tag_bytes uint32
+    tag_offset uint32
+    tag_size uint32
+    tags uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    tagsStride Inner
+    tail Inner
+    tail_bits Inner
+    tail_start Inner
+    take Inner
+    taken Inner
+    takes Inner
+    takesNull Inner
+    target Inner
+    targetIds Inner
+}
+
+table NameTypes3
+{
+    one0  tagsStride
+    many0 [..4]tagsStride
+    one1  tail
+    many1 [..4]tail
+    one2  tail_bits
+    many2 [..4]tail_bits
+    one3  tail_start
+    many3 [..4]tail_start
+    one4  take
+    many4 [..4]take
+    one5  taken
+    many5 [..4]taken
+    one6  takes
+    many6 [..4]takes
+    one7  takesNull
+    many7 [..4]takesNull
+    one8  target
+    many8 [..4]target
+    one9  targetIds
+    many9 [..4]targetIds
+}
+
+table NameFields3
+{
+    tagsStride uint32
+    tail uint32
+    tail_bits uint32
+    tail_start uint32
+    take uint32
+    taken uint32
+    takes uint32
+    takesNull uint32
+    target uint32
+    targetIds uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    targetTypeId Inner
+    target_at Inner
+    target_class Inner
+    target_cls Inner
+    target_desc Inner
+    target_id Inner
+    target_name Inner
+    target_val Inner
+    target_value Inner
+    targets Inner
+}
+
+table NameTypes4
+{
+    one0  targetTypeId
+    many0 [..4]targetTypeId
+    one1  target_at
+    many1 [..4]target_at
+    one2  target_class
+    many2 [..4]target_class
+    one3  target_cls
+    many3 [..4]target_cls
+    one4  target_desc
+    many4 [..4]target_desc
+    one5  target_id
+    many5 [..4]target_id
+    one6  target_name
+    many6 [..4]target_name
+    one7  target_val
+    many7 [..4]target_val
+    one8  target_value
+    many8 [..4]target_value
+    one9  targets
+    many9 [..4]targets
+}
+
+table NameFields4
+{
+    targetTypeId uint32
+    target_at uint32
+    target_class uint32
+    target_cls uint32
+    target_desc uint32
+    target_id uint32
+    target_name uint32
+    target_val uint32
+    target_value uint32
+    targets uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    tb Inner
+    tbl Inner
+    tc Inner
+    tcAt Inner
+    tc_i Inner
+    tcls Inner
+    td Inner
+    tdesc Inner
+    te Inner
+    tee Inner
+}
+
+table NameTypes5
+{
+    one0  tb
+    many0 [..4]tb
+    one1  tbl
+    many1 [..4]tbl
+    one2  tc
+    many2 [..4]tc
+    one3  tcAt
+    many3 [..4]tcAt
+    one4  tc_i
+    many4 [..4]tc_i
+    one5  tcls
+    many5 [..4]tcls
+    one6  td
+    many6 [..4]td
+    one7  tdesc
+    many7 [..4]tdesc
+    one8  te
+    many8 [..4]te
+    one9  tee
+    many9 [..4]tee
+}
+
+table NameFields5
+{
+    tb uint32
+    tbl uint32
+    tc uint32
+    tcAt uint32
+    tc_i uint32
+    tcls uint32
+    td uint32
+    tdesc uint32
+    te uint32
+    tee uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    tel Inner
+    tells Inner
+    ten Inner
+    term Inner
+    terminated Inner
+    terminator Inner
+    terminators Inner
+    test Inner
+    tested Inner
+    text Inner
+}
+
+table NameTypes6
+{
+    one0  tel
+    many0 [..4]tel
+    one1  tells
+    many1 [..4]tells
+    one2  ten
+    many2 [..4]ten
+    one3  term
+    many3 [..4]term
+    one4  terminated
+    many4 [..4]terminated
+    one5  terminator
+    many5 [..4]terminator
+    one6  terminators
+    many6 [..4]terminators
+    one7  test
+    many7 [..4]test
+    one8  tested
+    many8 [..4]tested
+    one9  text
+    many9 [..4]text
+}
+
+table NameFields6
+{
+    tel uint32
+    tells uint32
+    ten uint32
+    term uint32
+    terminated uint32
+    terminator uint32
+    terminators uint32
+    test uint32
+    tested uint32
+    text uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    textAt Inner
+    textBlob Inner
+    textBytes Inner
+    textCat Inner
+    textIllFormed Inner
+    textListOf Inner
+    textOk Inner
+    textRefusal Inner
+    textSlot Inner
+    textTotalKeeps Inner
+}
+
+table NameTypes7
+{
+    one0  textAt
+    many0 [..4]textAt
+    one1  textBlob
+    many1 [..4]textBlob
+    one2  textBytes
+    many2 [..4]textBytes
+    one3  textCat
+    many3 [..4]textCat
+    one4  textIllFormed
+    many4 [..4]textIllFormed
+    one5  textListOf
+    many5 [..4]textListOf
+    one6  textOk
+    many6 [..4]textOk
+    one7  textRefusal
+    many7 [..4]textRefusal
+    one8  textSlot
+    many8 [..4]textSlot
+    one9  textTotalKeeps
+    many9 [..4]textTotalKeeps
+}
+
+table NameFields7
+{
+    textAt uint32
+    textBlob uint32
+    textBytes uint32
+    textCat uint32
+    textIllFormed uint32
+    textListOf uint32
+    textOk uint32
+    textRefusal uint32
+    textSlot uint32
+    textTotalKeeps uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

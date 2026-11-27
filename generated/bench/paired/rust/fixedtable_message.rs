@@ -100,61 +100,61 @@ static FIXED_TABLE_MESSAGE_DEFAULTS: [u8; 1236] = [
 /// FixedTable at its declared defaults (SPEC §4.2): the value a body that carries
 /// no field of it decodes to (§3.3).
 pub fn fixed_table_message_default() -> FixedTableRow {
-    let mut value = FixedTableRow::default();
-    fixed_table_fixed_scatter(&FIXED_TABLE_MESSAGE_DEFAULTS, &mut value, &mut TableFixedReport::default());
-    value
+    let mut schema_value = FixedTableRow::default();
+    fixed_table_fixed_scatter(&FIXED_TABLE_MESSAGE_DEFAULTS, &mut schema_value, &mut TableFixedReport::default());
+    schema_value
 }
 
 /// One FixedTable body (§3.3): each field off its declared default, then the zero
 /// reference.
-pub fn fixed_table_save_message_body(w: &mut TableBitWriter, value: &FixedTableRow) -> bool {
+pub fn fixed_table_save_message_body(schema_w: &mut TableBitWriter, schema_value: &FixedTableRow) -> bool {
     {
-        let mut probe1 = TableBitWriter::measure();
-        if !bench_mixed_save_message_body(&mut probe1, &value.value) { return false; }
-        if probe1.bits > TABLE_MESSAGE_REF_BITS as u64 {
-            w.put(28, TABLE_MESSAGE_REF_BITS);
-            if !bench_mixed_save_message_body(w, &value.value) { return false; }
+        let mut schema_probe1 = TableBitWriter::measure();
+        if !bench_mixed_save_message_body(&mut schema_probe1, &schema_value.value) { return false; }
+        if schema_probe1.bits > TABLE_MESSAGE_REF_BITS as u64 {
+            schema_w.put(28, TABLE_MESSAGE_REF_BITS);
+            if !bench_mixed_save_message_body(schema_w, &schema_value.value) { return false; }
         }
     }
-    w.put(0, TABLE_MESSAGE_REF_BITS);
-    !w.overflow
+    schema_w.put(0, TABLE_MESSAGE_REF_BITS);
+    !schema_w.overflow
 }
 
 /// One FixedTable body against the ENDPOINT's vocabulary (§3.3): a field this build
 /// cannot name is skipped by the endpoint's shape and counted unknown, a kind the
 /// declaration widened is decoded exactly and counted widened, and any other
 /// kind is a kind mismatch, skipped.
-pub fn fixed_table_load_message_body(r: &mut TableBitReader, v: &TableVocabulary, report: &mut TableReport, value: &mut FixedTableRow) -> bool {
-    *value = fixed_table_message_default();
-    let mut seen = TableMessageSeen::default();
-    let same_build = v.build_version == BUILD_VERSION;
-    let mut next_field = 0usize;
+pub fn fixed_table_load_message_body(schema_r: &mut TableBitReader, schema_v: &TableVocabulary, schema_report: &mut TableReport, schema_value: &mut FixedTableRow) -> bool {
+    *schema_value = fixed_table_message_default();
+    let mut schema_seen = TableMessageSeen::default();
+    let schema_same_build = schema_v.build_version == BUILD_VERSION;
+    let mut schema_next_field = 0usize;
     loop {
-        let Some(reference) = r.get(v.ref_bits) else { report.damaged = true; return false; };
-        if reference == 0 { return true; }
-        let Some(entry) = v.entry(reference).copied() else { report.damaged = true; return false; };
-        if entry.id >= 0xffff_ffff_ffff_fffd { report.damaged = true; return false; }
-        if !seen.once(v.seen_key(reference)) { report.damaged = true; return false; }
-        match entry.id {
+        let Some(schema_reference) = schema_r.get(schema_v.ref_bits) else { schema_report.damaged = true; return false; };
+        if schema_reference == 0 { return true; }
+        let Some(schema_entry) = schema_v.entry(schema_reference).copied() else { schema_report.damaged = true; return false; };
+        if schema_entry.id >= 0xffff_ffff_ffff_fffd { schema_report.damaged = true; return false; }
+        if !schema_seen.once(schema_v.seen_key(schema_reference)) { schema_report.damaged = true; return false; }
+        match schema_entry.id {
             0x7ce4fd9430e80cea => {
-                if same_build && next_field > 0 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
-                next_field = 1;
-                let unknown_before = report.unknown;
+                if schema_same_build && schema_next_field > 0 { schema_report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                schema_next_field = 1;
+                let schema_unknown_before = schema_report.unknown;
                 'f2: {
-                    if entry.kind != 13 || entry.shape.elem != 0 {
-                        report.damaged = true;
-                        if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
+                    if schema_entry.kind != 13 || schema_entry.shape.elem != 0 {
+                        schema_report.damaged = true;
+                        if !table_message_skip_field(schema_r, schema_v, &schema_entry, 0) { schema_report.damaged = true; return false; }
                         break 'f2;
                     }
-                    let start = r.offset;
-                    if !bench_mixed_load_message_body(r, v, report, &mut value.value) { return false; }
-                    if same_build && report.unknown == unknown_before && r.offset - start <= v.ref_bits as u64 { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    let schema_start = schema_r.offset;
+                    if !bench_mixed_load_message_body(schema_r, schema_v, schema_report, &mut schema_value.value) { return false; }
+                    if schema_same_build && schema_report.unknown == schema_unknown_before && schema_r.offset - schema_start <= schema_v.ref_bits as u64 { schema_report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
                 }
             }
             _ => {
-                if same_build { report.damaged = true; return false; } // a field the record does not declare (§3.3 (b))
-                report.unknown += 1;
-                if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
+                if schema_same_build { schema_report.damaged = true; return false; } // a field the record does not declare (§3.3 (b))
+                schema_report.unknown += 1;
+                if !table_message_skip_field(schema_r, schema_v, &schema_entry, 0) { schema_report.damaged = true; return false; }
             }
         }
     }
@@ -162,48 +162,48 @@ pub fn fixed_table_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
 
 /// MeasureMessages (§3.3): the byte count SaveMessages writes for this batch,
 /// or -1. "M ABOVE 256 ON THE WRITE SIDE IS A REFUSAL BY NAME".
-pub fn fixed_table_measure_messages(values: &[FixedTableRow], report: &mut TableReport) -> i64 {
-    if values.is_empty() || values.len() > TABLE_MESSAGE_BATCH_MAX {
-        report.refuse(TableReason::BatchTooLarge);
+pub fn fixed_table_measure_messages(schema_values: &[FixedTableRow], schema_report: &mut TableReport) -> i64 {
+    if schema_values.is_empty() || schema_values.len() > TABLE_MESSAGE_BATCH_MAX {
+        schema_report.refuse(TableReason::BatchTooLarge);
         return -1;
     }
-    let mut w = TableBitWriter::measure();
-    for value in values {
-        if !fixed_table_save_message_body(&mut w, value) {
+    let mut schema_w = TableBitWriter::measure();
+    for schema_value in schema_values {
+        if !fixed_table_save_message_body(&mut schema_w, schema_value) {
             return -1;
         }
     }
-    w.align();
-    if w.overflow {
+    schema_w.align();
+    if schema_w.overflow {
         return -1;
     }
-    2 + (w.bits / 8) as i64
+    2 + (schema_w.bits / 8) as i64
 }
 
 /// SaveMessages (§3.3): the form byte, M - 1, then every body as one continuous
 /// bit stream padded to a byte once at its end. The byte count, or -1 for a
 /// refusal or a buffer too short.
-pub fn fixed_table_save_messages(values: &[FixedTableRow], buffer: &mut [u8], report: &mut TableReport) -> i64 {
-    if values.is_empty() || values.len() > TABLE_MESSAGE_BATCH_MAX {
-        report.refuse(TableReason::BatchTooLarge);
+pub fn fixed_table_save_messages(schema_values: &[FixedTableRow], buffer: &mut [u8], schema_report: &mut TableReport) -> i64 {
+    if schema_values.is_empty() || schema_values.len() > TABLE_MESSAGE_BATCH_MAX {
+        schema_report.refuse(TableReason::BatchTooLarge);
         return -1;
     }
     if buffer.len() < 2 {
         return -1;
     }
     buffer[0] = TABLE_WIRE_MESSAGE_FORM;
-    buffer[1] = (values.len() - 1) as u8;
-    let mut w = TableBitWriter::new(&mut buffer[2..]);
-    for value in values {
-        if !fixed_table_save_message_body(&mut w, value) {
+    buffer[1] = (schema_values.len() - 1) as u8;
+    let mut schema_w = TableBitWriter::new(&mut buffer[2..]);
+    for schema_value in schema_values {
+        if !fixed_table_save_message_body(&mut schema_w, schema_value) {
             return -1;
         }
     }
-    w.align();
-    if w.overflow {
+    schema_w.align();
+    if schema_w.overflow {
         return -1;
     }
-    2 + (w.bits / 8) as i64
+    2 + (schema_w.bits / 8) as i64
 }
 
 /// LoadMessages (§3.3): one batch into the caller's storage against the ENDPOINT's
@@ -222,42 +222,42 @@ pub fn fixed_table_save_messages(values: &[FixedTableRow], buffer: &mut [u8], re
 ///
 /// RULING R4: after ANY refusal, every value handed in (the whole slice, not
 /// only the batch's count) holds its declared default.
-pub fn fixed_table_load_messages(values: &mut [FixedTableRow], vocabulary: &TableVocabulary, data: &[u8], report: &mut TableReport) -> (usize, bool) {
-    let (count, whole) = fixed_table_load_messages_walk(values, vocabulary, data, report);
-    if !whole {
-        for value in values.iter_mut() {
-            *value = fixed_table_message_default();
+pub fn fixed_table_load_messages(schema_values: &mut [FixedTableRow], schema_vocabulary: &TableVocabulary, data: &[u8], schema_report: &mut TableReport) -> (usize, bool) {
+    let (schema_count, schema_whole) = fixed_table_load_messages_walk(schema_values, schema_vocabulary, data, schema_report);
+    if !schema_whole {
+        for schema_value in schema_values.iter_mut() {
+            *schema_value = fixed_table_message_default();
         }
         return (0, false);
     }
-    (count, true)
+    (schema_count, true)
 }
 
 /// The walk under LoadMessages: on a refusal it returns (0, false) and leaves
 /// the reset of every value handed in to the caller above (R4).
-fn fixed_table_load_messages_walk(values: &mut [FixedTableRow], vocabulary: &TableVocabulary, data: &[u8], report: &mut TableReport) -> (usize, bool) {
-    *report = TableReport::default();
-    let Some(count) = table_message_batch_open(vocabulary, data, report) else {
+fn fixed_table_load_messages_walk(schema_values: &mut [FixedTableRow], schema_vocabulary: &TableVocabulary, data: &[u8], schema_report: &mut TableReport) -> (usize, bool) {
+    *schema_report = TableReport::default();
+    let Some(schema_count) = table_message_batch_open(schema_vocabulary, data, schema_report) else {
         return (0, false);
     };
-    if count > values.len() {
-        return (0, report.refuse(TableReason::BatchTooLarge)); // a refused batch returns a count of 0 (§3.3)
+    if schema_count > schema_values.len() {
+        return (0, schema_report.refuse(TableReason::BatchTooLarge)); // a refused batch returns a count of 0 (§3.3)
     }
-    let mut r = TableBitReader::new(&data[2..]);
-    for value in values.iter_mut().take(count) {
-        if !fixed_table_load_message_body(&mut r, vocabulary, report, value) || report.damaged || !report.non_finite_float.is_empty() {
-            if !report.non_finite_float.is_empty() {
-                return (0, report.refuse(TableReason::NonFiniteFloat));
+    let mut schema_r = TableBitReader::new(&data[2..]);
+    for schema_value in schema_values.iter_mut().take(schema_count) {
+        if !fixed_table_load_message_body(&mut schema_r, schema_vocabulary, schema_report, schema_value) || schema_report.damaged || !schema_report.non_finite_float.is_empty() {
+            if !schema_report.non_finite_float.is_empty() {
+                return (0, schema_report.refuse(TableReason::NonFiniteFloat));
             }
-            if !report.oor_field.is_empty() {
-                return (0, report.refuse(TableReason::OutOfRange));
+            if !schema_report.oor_field.is_empty() {
+                return (0, schema_report.refuse(TableReason::OutOfRange));
             }
             return (0, false);
         }
     }
-    if !table_message_batch_close(&mut r, report) {
+    if !table_message_batch_close(&mut schema_r, schema_report) {
         return (0, false);
     }
-    (count, true)
+    (schema_count, true)
 }
 

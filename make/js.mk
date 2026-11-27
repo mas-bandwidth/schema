@@ -91,6 +91,7 @@ build/tables-generated-js/.stamp: make/js.mk bin/schema testdata/conformance/fea
 	@mkdir -p build/tables-generated-js
 	./bin/schema generate --lang js --out build/tables-generated-js/features testdata/conformance/feature-witnesses/full/Features.schema
 	./bin/schema generate --lang js --out build/tables-generated-js/examples tables/examples
+	./bin/schema generate --lang js --out build/tables-generated-js/writebounds testdata/conformance/table-write-bounds/TableWriteBounds.schema
 	# the POINTERED unit: its FIXED surface is refused by name for every
 	# pointered table (§3.4, §11), its two ACCELERATORS are emitted all the same
 	# (§7, §19) — this is where the cook's JS read side comes from — and its
@@ -609,8 +610,8 @@ build/js-fixed-optional/.stamp: bin/schema test/js-tables/fixedoptional_corpus.c
 # that adds or removes a check changes it.
 JS_FIXED_FORM_CHECKS := 191
 .PHONY: tables-js-fixed-form
-tables-js-fixed-form: build/mustrun build/js-fixed/.stamp build/js-fixed-corpus/.stamp build/js-fixed-optional/.stamp build/fixedform-corpus/.stamp
-	cd $(CURDIR) && $(MUSTRUN) -name tables-js-fixed-form -count $(JS_FIXED_FORM_CHECKS) -- $(NODE) test/js-tables/fixedform.mjs build/js-fixed build/js-fixed-corpus build/js-fixed-optional build/fixedform-corpus
+tables-js-fixed-form: build/retiredskips build/mustrun build/js-fixed/.stamp build/js-fixed-corpus/.stamp build/js-fixed-optional/.stamp build/fixedform-corpus/.stamp
+	cd $(CURDIR) && ./build/retiredskips -leg js -- $(MUSTRUN) -name tables-js-fixed-form -count $(JS_FIXED_FORM_CHECKS) -- $(NODE) test/js-tables/fixedform.mjs build/js-fixed build/js-fixed-corpus build/js-fixed-optional build/fixedform-corpus
 
 # THE VERSIONING HALF OF THE FIXED FORM ON THE JAVASCRIPT LEG (§5 of
 # docs/FIXED-FORM-ALGORITHM.md, the rows of docs/FIXED-FORM-VERSIONING-TESTS.md).
@@ -654,6 +655,27 @@ tables-js-block-build:
 	@echo 'tables JS block build: the built extent is the Go builder own bytes, and this leg reader opens it'
 
 test-js: tables-js-block-build
+
+# A DEPRECATED VARIANT IS NEVER WRITTEN, BY THE VARIABLE SAVE (docs/SPEC-TABLES.md
+# §2.15 WRITE; JavaScript refuses in every build). The shared wref_/fref_enum_*
+# rows reach this leg's fixed save only, since their roots are fixed tables, so
+# TestJsDeprecatedVariantNeverWritten holds the variable save. It takes node
+# through the slow gate, so a bare `go test` skips it: this target requires it
+# to run to its PASS and refuses a SKIP.
+.PHONY: tables-js-deprecated-write
+tables-js-deprecated-write:
+	@mkdir -p build/js-deprecated
+	@SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) \
+		go test ./internal/codegen/jstable/ -count=1 -timeout 600s -v -run '^TestJsDeprecatedVariantNeverWritten$$' \
+		> build/js-deprecated/log 2>&1 || { grep -E -- '--- FAIL|_test.go:' build/js-deprecated/log | head -40; exit 1; }
+	@if grep -q -- '--- SKIP' build/js-deprecated/log; then \
+		echo "tables-js-deprecated-write: a test SKIPPED under SCHEMA_REQUIRE_CORPUS=1"; grep -- '--- SKIP' build/js-deprecated/log; exit 1; \
+	fi
+	@grep -q -- '--- PASS: TestJsDeprecatedVariantNeverWritten ' build/js-deprecated/log || \
+		{ echo "tables-js-deprecated-write: TestJsDeprecatedVariantNeverWritten did not run to a PASS"; tail -20 build/js-deprecated/log; exit 1; }
+	@echo 'tables JS: the variable save refuses a deprecated variant and writes the live one (§2.15)'
+
+test-js: tables-js-deprecated-write
 
 .PHONY: tables-js-cook-write-rows
 tables-js-cook-write-rows:
@@ -1878,7 +1900,17 @@ test-js: tables-js-helper-closure
 
 # the leg's generated units move with every unit schema the conformance
 # manifest names, not only with the ones listed above
-build/tables-generated-js/.stamp: $(CONFORMANCE_UNIT_SCHEMAS)
+build/tables-generated-js/.stamp: $(CONFORMANCE_UNIT_SCHEMAS) testdata/conformance/table-write-bounds/TableWriteBounds.schema
+
+.PHONY: table-write-bounds-js
+table-write-bounds-js: build/conformance-harness build/tables-generated-js/.stamp
+	NODE="$(NODE)" ./build/conformance-harness run --only js --surfaces write-refusal,wire,json-read,json-write --complete \
+		--manifest testdata/conformance/table-write-bounds/WRITE-BOUNDS.txt \
+		--json testdata/conformance/table-write-bounds \
+		--work build/conformance-write-bounds-js
+
+test-js: table-write-bounds-js
+
 
 # THE PER-COMMIT SMOKE COUNT (card green-fit-fuzz-smoke): ci-full.yml's js-fuzz
 # rows run the enumerated pass and JS_FUZZ_SMOKE_N seeded random mutants per
@@ -1920,6 +1952,20 @@ packet-end-js-negative-control: packet-end-js
 	@grep -Fq 'FAILED: packet end flat trailing.bin' build/packet-end/js-negative/log || \
 		{ echo 'NEGATIVE CONTROL FAILED: JavaScript failed for another reason'; cat build/packet-end/js-negative/log; exit 1; }
 	@echo 'packet end JavaScript negative control: the flat end check removal reds the trailing-byte vector'
+
+# THE PACKET-VOID CORPUS, JavaScript (SPEC §4.8; make/checks/packet-void.mk):
+# the driver answers every case of testdata/wire/packet-void/cases.txt through
+# both generated tiers, runtime and flat, checked and production;
+# tools/casegate refuses a case with no answer.
+.PHONY: packet-void-js
+build/packet-void/js/.stamp: bin/schema test/packet-void/Void.schema make/js.mk
+	@rm -f build/packet-void/js/*.js build/packet-void/js/*.d.ts
+	./bin/schema generate --lang js --out build/packet-void/js $(PACKET_VOID_SCHEMA)
+	@touch $@
+
+packet-void-js: build/packet-void/js/.stamp build/casegate
+	$(call packet_void_gate,js) $(NODE) test/packet-void/js/main.mjs $(PACKET_VOID_PINS) build/packet-void/js
+	NODE_ENV=production $(call packet_void_gate,js) $(NODE) test/packet-void/js/main.mjs $(PACKET_VOID_PINS) build/packet-void/js
 
 # THE PACKET-WRITE COMPRESSED-FLOAT CHECK (docs/SPEC.md §5.1 row 10,
 # docs/PACKET-WIRE-ALGORITHM.md §2.5): every shared case in

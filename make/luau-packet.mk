@@ -188,3 +188,27 @@ packet-end-luau-negative-control: packet-end-luau
 	@echo 'packet-end Luau negative control: a missing end check fails the trailing byte and padding refusals'
 
 test-luau: packet-end-luau packet-end-luau-negative-control
+
+# ---------------------------------------------------------------- packet void
+# SPEC §4.8: payload-free union arms cost exactly their tag bits. The shared
+# corpus (testdata/wire/packet-void/cases.txt, make/checks/packet-void.mk):
+# test/packet-void/luau answers every case and tools/casegate refuses a case
+# with no answer. pins.luau carries cases.txt and every pin in as hex (the
+# interpreter has no io library); the gate ends with luau-analyze.
+LUAU_PACKET_VOID_INPUTS := testdata/wire/packet-void/cases.txt $(wildcard testdata/wire/packet-void/*.bin)
+build/packet-void/luau/.stamp: $(LUAU_PACKET_SCHEMA) test/packet-void/Void.schema \
+	test/packet-void/luau/main.luau $(LUAU_PACKET_VOID_INPUTS)
+	$(call luau-packet-generate,build/packet-void/luau,test/packet-void/Void.schema)
+	cp test/packet-void/luau/main.luau build/packet-void/luau/main.luau
+	{ printf 'return {\n'; \
+	  for f in $(LUAU_PACKET_VOID_INPUTS); do \
+		printf '\t["%s"] = "%s",\n' "$$(basename $$f)" "$$(od -An -v -tx1 $$f | tr -d ' \n')"; \
+	  done; printf '}\n'; } > build/packet-void/luau/pins.luau
+	@touch $@
+
+.PHONY: packet-void-luau
+packet-void-luau: toolchain-luau build/packet-void/luau/.stamp build/casegate
+	$(call packet_void_gate,luau) sh -c 'cd build/packet-void/luau && exec $(LUAU) main.luau'
+	cd build/packet-void/luau && $(LUAU_ANALYZE) *.luau
+
+test-luau: packet-void-luau

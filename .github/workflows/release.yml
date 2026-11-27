@@ -132,10 +132,13 @@ jobs:
       # schema latest releases aren't just tags, but are real github
       # releases"). v3.0.0 and v3.0.1 left here as bare tags. This step runs
       # only after `make release` pushed the tag, makes the release on that
-      # tag and never makes a tag itself (--verify-tag). The body is GitHub's
-      # generated change list; the dispatcher replaces it with written notes,
-      # and a release that moves a protocol id or the build version says so
-      # first (docs/VERSIONING.md).
+      # tag and never makes a tag itself (--verify-tag). The body is the pull
+      # requests merged since the previous v tag and the compare link, written
+      # by tools/releasenotes and never over 100,000 characters: v3.0.14's
+      # first dispatch failed here on --generate-notes, whose body for 349
+      # commits passed GitHub's 125,000 (HTTP 422). The dispatcher may replace
+      # it with written notes, and a release that moves a protocol id or the
+      # build version says so first (docs/VERSIONING.md).
       #
       # IT IS A DRAFT UNTIL ITS ASSETS ARE THERE (F-171): v3.0.2 to v3.0.5 were
       # public and latest 29 to 107 s before their first binary, and a failed
@@ -145,7 +148,8 @@ jobs:
       # latest. If this step fails the tag is already pushed and a re-dispatch
       # refuses the version, so finish by hand, then re-run the assets job:
       #
-      #   gh release create vX.Y.Z --verify-tag --title vX.Y.Z --generate-notes --draft
+      #   go run ./tools/releasenotes -version vX.Y.Z -out build/release-notes.md
+      #   gh release create vX.Y.Z --verify-tag --title vX.Y.Z --notes-file build/release-notes.md --draft
       - name: make the GitHub release, as a draft
         env:
           GH_TOKEN: ${{ github.token }}
@@ -153,7 +157,8 @@ jobs:
           VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
-          gh release create "$VERSION" --verify-tag --title "$VERSION" --generate-notes --draft
+          go run ./tools/releasenotes -version "$VERSION" -out build/release-notes.md
+          gh release create "$VERSION" --verify-tag --title "$VERSION" --notes-file build/release-notes.md --draft
 
   assets:
     needs: release

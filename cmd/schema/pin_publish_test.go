@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/atomicfile"
+	"github.com/mas-bandwidth/schema/v3/internal/atomicfile"
 )
 
 // pinPublishTree is two packages at v2.5.0 and the changes that move both to

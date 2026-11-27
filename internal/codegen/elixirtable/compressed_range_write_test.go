@@ -8,16 +8,17 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 // A COMPRESSED FLOAT'S DECLARED RANGE IS THE FIXED SAVE'S CONTRACT
 // (docs/SPEC-TABLES.md §3.3, §3.4). The Go reference engine refuses a fixed
 // save of a compressed float outside [min, max] (invalid_value) and writes
-// nothing; this leg's write-side checks refuse in every build, and its fixed
-// save refuses a breached contract by raising ArgumentError, the way it
-// already does for a ranged integer (R.ranged) and a count (R.count). Before
+// nothing; this leg's write-side checks refuse in every build: the fixed
+// writer raises ArgumentError for a breached contract, the way it does for a
+// ranged integer (R.ranged) and a count (R.count), and save/2 answers it as
+// {:error, :invalid_value} (R10: a writer refusal is an answer). Before
 // this, the leaf, array, counted, keyed and union-arm stores went through
 // cf32_bits alone and wrote the out-of-range value.
 //
@@ -98,10 +99,15 @@ for {name, path, v, expect} <- [ROWS] do
     end
 
   case {expect, got} do
-    {:refused, {:refused, why}} ->
-      if String.contains?(why, "outside the declared range"),
-        do: IO.puts("ok #{name}"),
-        else: fail.("#{name}: refused for another reason: #{why}")
+    # A WRITER REFUSAL IS AN ANSWER, NEVER A RAISE (R10): save/2 rescues the
+    # fixed writer's ArgumentError as {:error, :invalid_value}. The row's only
+    # change from the lawful base is the value at its path, and the in-range
+    # rows write their exact bytes, so the refusal is the range's.
+    {:refused, {:error, :invalid_value}} ->
+      IO.puts("ok #{name}")
+
+    {_, {:refused, why}} ->
+      fail.("#{name}: the fixed save of #{v} raised instead of answering: #{why}")
 
     {:refused, other} ->
       fail.("#{name}: the fixed save of #{v} was not refused: #{inspect(other, limit: 8)}")

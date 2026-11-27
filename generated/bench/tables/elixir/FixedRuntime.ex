@@ -616,6 +616,20 @@ defmodule Benchtable.FixedRuntime do
   end
 
   @doc """
+  `ordinal`, or ArgumentError when it names a deprecated variant.
+
+  A DEPRECATED VARIANT IS NEVER WRITTEN (docs/SPEC-TABLES.md §2.15 WRITE): a
+  reader lands it as a default, so a writer that wrote it would hand the
+  endpoint a different value with no refusal to say so. Every build refuses.
+  """
+  def live_variant(ordinal, retired) do
+    if ordinal in retired,
+      do: raise(ArgumentError, "#{ordinal} is a deprecated variant and is never written")
+
+    ordinal
+  end
+
+  @doc """
   The length of `list`, or ArgumentError when it is outside `min..max`.
 
   A `[Min..Max]T` COUNT IS THE ONE NUMBER A COUNTED ARRAY PUTS ON THE WIRE,
@@ -1097,12 +1111,16 @@ defmodule Benchtable.FixedRuntime do
         end
       end)
 
-    # EVERY FIELD OF THEIRS I COULD NOT NAME IS ONE `unknown`, and the bytes it
-    # occupies are stepped over because no entry ever names them.
+    # A FIELD OF THEIRS I COULD NOT NAME MAKES THE ENTRY UNLAWFUL (§5.2, §5.4,
+    # §5.9 #30; the Go reference's tableFixedChildrenNamed): a lawful older
+    # writer names only fields the reader retains, so a removed field is never
+    # counted and stepped over. The mark is set for EVERY slot, census or not,
+    # and lineage_lane_of turns it into the lane's refusal, layout_malformed;
+    # COMPILE lays no plan, and a file under the entry's hash refuses whole.
     report =
       Enum.reduce(offsets(theirs, ti, their_children), report, fn tc, report ->
         case find_id(mine, mi, my_children, 0, id_at(theirs, tc)) do
-          nil -> if census, do: bump(report, :unknown), else: report
+          nil -> Map.update(report, :unlawful, 1, &(&1 + 1))
           _ -> report
         end
       end)
@@ -2381,6 +2399,11 @@ defmodule Benchtable.FixedRuntime do
         # (§5.9 #6): it rides in the lane, and LOAD carries it onto the report
         # ONCE, after the record loop, on a read that RETURNS.
         case compile(theirs, mine, dst, capacity, report()) do
+          {:ok, _plan, _made, %{unlawful: n}} when n > 0 ->
+            # AN UNLAWFUL ENTRY IS REFUSED, NEVER COUNTED (§5.4): no plan is laid
+            # for it, and a file under its hash refuses layout_malformed.
+            {:error, :layout_malformed}
+
           {:ok, plan, made, census} ->
             {:ok, plan, k.record_bytes - 8, made, census.unknown, Map.get(census, :mismatch, 0)}
 

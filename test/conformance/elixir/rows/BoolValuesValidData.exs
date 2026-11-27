@@ -1,13 +1,17 @@
 # BoolValuesValidData — Boolean values: valid-data write/read acceptance
 # (docs/SPEC-TABLES.md §3.4, the bool kind).
 #
-# THE LAW (§3.4): a bool is one byte, written as 0 for false and 1 for true;
-# a read accepts any nonzero byte as true and normalises it to true in the
-# returned struct, and a write emits 1 for true and 0 for false.
+# THE LAW (docs/FIXED-FORM-ALGORITHM.md §5, the bool row; SPEC-TABLES §4.5,
+# §6.5; ruled 2026-11-03): a bool is one byte, written as 0 for false and 1
+# for true; a read lands 0 and 1 as false and true, and ANY OTHER BYTE refuses
+# the whole load `wire_damaged` in the check pass before any record lands. No
+# writer emits one, and a byte such as 0x02 or 0x7F is neither stored verbatim
+# nor normalized. (This row once asserted the retired "nonzero is true" law.)
 #
 # THE PRODUCTION PATH THIS ASSERTS:
-#   Tabledemo.TablesFixed.weapon_config_fixed_load/2 reads the bool byte by
-#   `f_homing != 0`. The write path is `if(v_homing, do: 1, else: 0)::unsigned-8`.
+#   Tabledemo.TablesFixed.weapon_config_fixed_load/1 refuses a bool byte that
+#   is not 0 or 1 with {:error, :wire_damaged, report}. The write path is
+#   `if(v_homing, do: 1, else: 0)::unsigned-8`.
 #
 # THIS TEST REACHES THE GENERATED CODE THE WAY THE LEG'S OWN CONFORMANCE
 # DRIVER DOES: the table beams compiled into build/elixir-tables-ebin by
@@ -139,37 +143,23 @@ defmodule TestRowBoolValuesValidData do
     end
   end
 
-  defp check_hostile_normalisation(fails, tf, header, layout, body_bytes, homing_body_offset, file_header_size, layout_size, record_hash_size) do
-    homing_offset = file_header_size + layout_size + record_hash_size + homing_body_offset
+  defp check_hostile_normalisation(fails, tf, header, layout, body_bytes, homing_body_offset, _file_header_size, _layout_size, _record_hash_size) do
+    # Plant each hostile byte where the homing bool lives: 0x02 (the smallest
+    # byte that is neither false nor true), 0x7F and 0xFF. Each must refuse the
+    # whole load wire_damaged; a load that lands a value (normalized to true or
+    # stored verbatim) is the failure.
+    Enum.reduce([0x02, 0x7F, 0xFF], fails, fn byte, fails ->
+      what = "hostile 0x#{Integer.to_string(byte, 16) |> String.pad_leading(2, "0")}"
+      file = build_file(tf, header, layout, body_bytes, %{offset: homing_body_offset, byte: byte})
 
-    # Plant a hostile nonzero byte (0x7F) where the homing bool lives.
-    file = build_file(tf, header, layout, body_bytes, %{offset: homing_body_offset, byte: 0x7F})
+      case tf.weapon_config_fixed_load(file) do
+        {:error, :wire_damaged, _report} ->
+          fails
 
-    case tf.weapon_config_fixed_load(file) do
-      {:ok, [loaded], report} ->
-        fails =
-          if loaded.homing == true,
-            do: fails,
-            else: ["hostile 0x7F: homing should normalise to true, got #{inspect(loaded.homing)}" | fails]
-
-        fails =
-          if report.unknown == 0 and report.widened == 0 and report.layout_hash == 0,
-            do: fails,
-            else: ["hostile 0x7F: counters not clean (normalisation is not a clamp): #{inspect(report)}" | fails]
-
-        # Resave: the write path must emit 1, not 0x7F.
-        resaved = tf.weapon_config_fixed_save([loaded])
-
-        fails =
-          if :binary.at(resaved, homing_offset) == 1,
-            do: fails,
-            else: ["hostile 0x7F: resaved homing byte should be 1, got #{:binary.at(resaved, homing_offset)}" | fails]
-
-        fails
-
-      other ->
-        ["hostile 0x7F: weapon_config_fixed_load returned #{inspect(other)}" | fails]
-    end
+        other ->
+          ["#{what}: weapon_config_fixed_load must refuse wire_damaged, returned #{inspect(other)}" | fails]
+      end
+    end)
   end
 end
 

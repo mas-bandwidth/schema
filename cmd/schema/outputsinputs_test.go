@@ -16,7 +16,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/atomicfile"
+	"github.com/mas-bandwidth/schema/v3/internal/atomicfile"
 )
 
 // inputTree is a pack tree as the reviewer's reproduction has it: a field

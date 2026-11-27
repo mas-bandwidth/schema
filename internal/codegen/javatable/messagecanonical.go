@@ -3,7 +3,7 @@ package javatable
 import (
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // emitLoadPayloadCanonical emits one message field's payload read, then the

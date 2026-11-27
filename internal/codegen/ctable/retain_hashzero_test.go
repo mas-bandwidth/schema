@@ -7,10 +7,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 func cRetainHashZeroProbe(t *testing.T, sabotage bool) (string, error) {
@@ -93,11 +93,10 @@ func cRetainHashZeroProbe(t *testing.T, sabotage bool) (string, error) {
 	if sabotage {
 		mutate = func(files map[string][]byte) error {
 			const anchor = "table_retain_put64(b,id==0?UINT64_MAX:id)"
-			src := string(files["ProbeTable.h"])
-			if strings.Count(src, anchor) != 1 {
-				return fmt.Errorf("control anchor count %d", strings.Count(src, anchor))
+			// matched by its C tokens (cfmt lays the emitted C out), exactly once
+			if err := cPlantOnce(files, anchor, "table_retain_put64(b,id)"); err != nil {
+				return fmt.Errorf("control anchor: %w", err)
 			}
-			files["ProbeTable.h"] = []byte(strings.Replace(src, anchor, "table_retain_put64(b,id)", 1))
 			return nil
 		}
 	}

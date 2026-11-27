@@ -815,53 +815,53 @@ public final class Bench {
 
     // enumNameMixedWeapon: debug/log/tooling name for any MixedWeapon storage value —
     // out-of-set values (wire-legal up to the declared max) name as "???"
-    public static java.lang.String enumNameMixedWeapon(long value) {
-        if (value == MixedWeapon.NONE) {
+    public static java.lang.String enumNameMixedWeapon(long schema_value) {
+        if (schema_value == MixedWeapon.NONE) {
             return "None";
         }
-        if (value == MixedWeapon.FISTS) {
+        if (schema_value == MixedWeapon.FISTS) {
             return "Fists";
         }
-        if (value == MixedWeapon.PISTOL) {
+        if (schema_value == MixedWeapon.PISTOL) {
             return "Pistol";
         }
-        if (value == MixedWeapon.SHOTGUN) {
+        if (schema_value == MixedWeapon.SHOTGUN) {
             return "Shotgun";
         }
-        if (value == MixedWeapon.RIFLE) {
+        if (schema_value == MixedWeapon.RIFLE) {
             return "Rifle";
         }
-        if (value == MixedWeapon.SNIPER) {
+        if (schema_value == MixedWeapon.SNIPER) {
             return "Sniper";
         }
-        if (value == MixedWeapon.SMG) {
+        if (schema_value == MixedWeapon.SMG) {
             return "Smg";
         }
-        if (value == MixedWeapon.ROCKET) {
+        if (schema_value == MixedWeapon.ROCKET) {
             return "Rocket";
         }
-        if (value == MixedWeapon.GRENADE) {
+        if (schema_value == MixedWeapon.GRENADE) {
             return "Grenade";
         }
-        if (value == MixedWeapon.PLASMA) {
+        if (schema_value == MixedWeapon.PLASMA) {
             return "Plasma";
         }
-        if (value == MixedWeapon.RAILGUN) {
+        if (schema_value == MixedWeapon.RAILGUN) {
             return "Railgun";
         }
-        if (value == MixedWeapon.FLAMER) {
+        if (schema_value == MixedWeapon.FLAMER) {
             return "Flamer";
         }
-        if (value == MixedWeapon.MINE) {
+        if (schema_value == MixedWeapon.MINE) {
             return "Mine";
         }
-        if (value == MixedWeapon.TURRET) {
+        if (schema_value == MixedWeapon.TURRET) {
             return "Turret";
         }
-        if (value == MixedWeapon.DRONE) {
+        if (schema_value == MixedWeapon.DRONE) {
             return "Drone";
         }
-        if (value == MixedWeapon.REPAIR) {
+        if (schema_value == MixedWeapon.REPAIR) {
             return "Repair";
         }
         return "???";
@@ -1694,17 +1694,17 @@ public final class Bench {
 
     // enumNameMixedEventType: debug/log/tooling name for any MixedEventType storage value —
     // out-of-set values (wire-legal up to the declared max) name as "???"
-    public static java.lang.String enumNameMixedEventType(long value) {
-        if (value == MixedEventType.NONE) {
+    public static java.lang.String enumNameMixedEventType(long schema_value) {
+        if (schema_value == MixedEventType.NONE) {
             return "None";
         }
-        if (value == MixedEventType.HIT) {
+        if (schema_value == MixedEventType.HIT) {
             return "Hit";
         }
-        if (value == MixedEventType.CHAT) {
+        if (schema_value == MixedEventType.CHAT) {
             return "Chat";
         }
-        if (value == MixedEventType.PICKUP) {
+        if (schema_value == MixedEventType.PICKUP) {
             return "Pickup";
         }
         return "???";

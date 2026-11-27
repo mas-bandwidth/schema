@@ -1,0 +1,4 @@
+# THE RETAIN-REFUSAL ROWS A LEG DOES NOT ANSWER YET (test/conformance/harness/
+# retainrefusal.go). One line per leg and case: `<leg> <case> owed: <cause>`.
+# The set is exact: a ledgered case the leg answers correctly is RED until its
+# line is removed, and a failing case with no line is RED.
