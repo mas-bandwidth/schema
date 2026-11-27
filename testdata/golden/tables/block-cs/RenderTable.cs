@@ -3749,7 +3749,7 @@ namespace Blockdemo
 
         // THE FLOOR: below it a layout this build once served is RETIRED, and the
         // answer is layout_unsupported — upgrade the client — rather than
-        // layout_newer, which is ship the reader (§5.2).
+        // layout_unknown, a hash outside the lineage (§5.2, §5.3 step 5).
         public const int RenderCameraFixedFloor = 0;
 
         // ONE PLAN PER LINEAGE ENTRY, laid down from THE LOCK'S bytes in this
@@ -3867,7 +3867,7 @@ namespace Blockdemo
             int pick = TableFixedWire.Select(RenderCameraFixedKnown, hash);
             if (pick < 0)
             {
-                if (report != null) { report.Refused = true; report.Reason = "layout_newer"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }
+                if (report != null) { report.Refused = true; report.Reason = "layout_unknown"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
             if (pick < RenderCameraFixedFloor)
@@ -4523,7 +4523,7 @@ namespace Blockdemo
 
         // THE FLOOR: below it a layout this build once served is RETIRED, and the
         // answer is layout_unsupported — upgrade the client — rather than
-        // layout_newer, which is ship the reader (§5.2).
+        // layout_unknown, a hash outside the lineage (§5.2, §5.3 step 5).
         public const int RenderShipFixedFloor = 0;
 
         // ONE PLAN PER LINEAGE ENTRY, laid down from THE LOCK'S bytes in this
@@ -4645,7 +4645,7 @@ namespace Blockdemo
             int pick = TableFixedWire.Select(RenderShipFixedKnown, hash);
             if (pick < 0)
             {
-                if (report != null) { report.Refused = true; report.Reason = "layout_newer"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }
+                if (report != null) { report.Refused = true; report.Reason = "layout_unknown"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
             if (pick < RenderShipFixedFloor)
@@ -5250,7 +5250,7 @@ namespace Blockdemo
 
         // THE FLOOR: below it a layout this build once served is RETIRED, and the
         // answer is layout_unsupported — upgrade the client — rather than
-        // layout_newer, which is ship the reader (§5.2).
+        // layout_unknown, a hash outside the lineage (§5.2, §5.3 step 5).
         public const int RenderTurretFixedFloor = 0;
 
         // ONE PLAN PER LINEAGE ENTRY, laid down from THE LOCK'S bytes in this
@@ -5372,7 +5372,7 @@ namespace Blockdemo
             int pick = TableFixedWire.Select(RenderTurretFixedKnown, hash);
             if (pick < 0)
             {
-                if (report != null) { report.Refused = true; report.Reason = "layout_newer"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }
+                if (report != null) { report.Refused = true; report.Reason = "layout_unknown"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
             if (pick < RenderTurretFixedFloor)
@@ -5992,7 +5992,7 @@ namespace Blockdemo
 
         // THE FLOOR: below it a layout this build once served is RETIRED, and the
         // answer is layout_unsupported — upgrade the client — rather than
-        // layout_newer, which is ship the reader (§5.2).
+        // layout_unknown, a hash outside the lineage (§5.2, §5.3 step 5).
         public const int RenderMissileFixedFloor = 0;
 
         // ONE PLAN PER LINEAGE ENTRY, laid down from THE LOCK'S bytes in this
@@ -6114,7 +6114,7 @@ namespace Blockdemo
             int pick = TableFixedWire.Select(RenderMissileFixedKnown, hash);
             if (pick < 0)
             {
-                if (report != null) { report.Refused = true; report.Reason = "layout_newer"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }
+                if (report != null) { report.Refused = true; report.Reason = "layout_unknown"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
             if (pick < RenderMissileFixedFloor)
@@ -6738,7 +6738,7 @@ namespace Blockdemo
 
         // THE FLOOR: below it a layout this build once served is RETIRED, and the
         // answer is layout_unsupported — upgrade the client — rather than
-        // layout_newer, which is ship the reader (§5.2).
+        // layout_unknown, a hash outside the lineage (§5.2, §5.3 step 5).
         public const int RenderDynamicPropFixedFloor = 0;
 
         // ONE PLAN PER LINEAGE ENTRY, laid down from THE LOCK'S bytes in this
@@ -6860,7 +6860,7 @@ namespace Blockdemo
             int pick = TableFixedWire.Select(RenderDynamicPropFixedKnown, hash);
             if (pick < 0)
             {
-                if (report != null) { report.Refused = true; report.Reason = "layout_newer"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }
+                if (report != null) { report.Refused = true; report.Reason = "layout_unknown"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
             if (pick < RenderDynamicPropFixedFloor)
@@ -7485,7 +7485,7 @@ namespace Blockdemo
 
         // THE FLOOR: below it a layout this build once served is RETIRED, and the
         // answer is layout_unsupported — upgrade the client — rather than
-        // layout_newer, which is ship the reader (§5.2).
+        // layout_unknown, a hash outside the lineage (§5.2, §5.3 step 5).
         public const int RenderStaticPropFixedFloor = 0;
 
         // ONE PLAN PER LINEAGE ENTRY, laid down from THE LOCK'S bytes in this
@@ -7607,7 +7607,7 @@ namespace Blockdemo
             int pick = TableFixedWire.Select(RenderStaticPropFixedKnown, hash);
             if (pick < 0)
             {
-                if (report != null) { report.Refused = true; report.Reason = "layout_newer"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }
+                if (report != null) { report.Refused = true; report.Reason = "layout_unknown"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
             if (pick < RenderStaticPropFixedFloor)
@@ -8240,7 +8240,7 @@ namespace Blockdemo
 
         // THE FLOOR: below it a layout this build once served is RETIRED, and the
         // answer is layout_unsupported — upgrade the client — rather than
-        // layout_newer, which is ship the reader (§5.2).
+        // layout_unknown, a hash outside the lineage (§5.2, §5.3 step 5).
         public const int RenderCosmeticPropFixedFloor = 0;
 
         // ONE PLAN PER LINEAGE ENTRY, laid down from THE LOCK'S bytes in this
@@ -8362,7 +8362,7 @@ namespace Blockdemo
             int pick = TableFixedWire.Select(RenderCosmeticPropFixedKnown, hash);
             if (pick < 0)
             {
-                if (report != null) { report.Refused = true; report.Reason = "layout_newer"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }
+                if (report != null) { report.Refused = true; report.Reason = "layout_unknown"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
             if (pick < RenderCosmeticPropFixedFloor)
@@ -8966,7 +8966,7 @@ namespace Blockdemo
 
         // THE FLOOR: below it a layout this build once served is RETIRED, and the
         // answer is layout_unsupported — upgrade the client — rather than
-        // layout_newer, which is ship the reader (§5.2).
+        // layout_unknown, a hash outside the lineage (§5.2, §5.3 step 5).
         public const int RenderLaserFixedFloor = 0;
 
         // ONE PLAN PER LINEAGE ENTRY, laid down from THE LOCK'S bytes in this
@@ -9088,7 +9088,7 @@ namespace Blockdemo
             int pick = TableFixedWire.Select(RenderLaserFixedKnown, hash);
             if (pick < 0)
             {
-                if (report != null) { report.Refused = true; report.Reason = "layout_newer"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }
+                if (report != null) { report.Refused = true; report.Reason = "layout_unknown"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
             if (pick < RenderLaserFixedFloor)
@@ -9709,7 +9709,7 @@ namespace Blockdemo
 
         // THE FLOOR: below it a layout this build once served is RETIRED, and the
         // answer is layout_unsupported — upgrade the client — rather than
-        // layout_newer, which is ship the reader (§5.2).
+        // layout_unknown, a hash outside the lineage (§5.2, §5.3 step 5).
         public const int RenderExplosionFixedFloor = 0;
 
         // ONE PLAN PER LINEAGE ENTRY, laid down from THE LOCK'S bytes in this
@@ -9831,7 +9831,7 @@ namespace Blockdemo
             int pick = TableFixedWire.Select(RenderExplosionFixedKnown, hash);
             if (pick < 0)
             {
-                if (report != null) { report.Refused = true; report.Reason = "layout_newer"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }
+                if (report != null) { report.Refused = true; report.Reason = "layout_unknown"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
             if (pick < RenderExplosionFixedFloor)

@@ -37,12 +37,12 @@ cards-go-conformance: cards-conformance-go
 # after the object pass finished. Compiling both main TUs first alongside one
 # shared $(CONFORMANCE_OBJECTS) pass eliminates the duplicate work and file race
 # and overlaps the main TUs with the generated objects.
-build/conformance-cpp-objs/_main/conformance_main.o: test/conformance/cpp/main.cpp build/tables-generated/.stamp $(wildcard $(SERIALIZE)/*.h)
+build/conformance-cpp-objs/_main/conformance_main.o: test/conformance/cpp/main.cpp test/conformance/cpp/codecs.h build/tables-generated/.stamp $(wildcard $(SERIALIZE)/*.h)
 	@mkdir -p $(@D)
 	$(CXX) $(TABLES_CXXFLAGS) $(CONFORMANCE_INCLUDES) -c $< -o $@
 
 .PHONY: _verify-cpp-fuzz-bins
-_verify-cpp-fuzz-bins: build/tables-generated/.stamp test/conformance/cpp/main.cpp test/tables/wire_fuzz_main.cpp
+_verify-cpp-fuzz-bins: build/tables-generated/.stamp test/conformance/cpp/main.cpp test/conformance/cpp/codecs.h test/tables/wire_fuzz_main.cpp
 	@mkdir -p build
 	@$(MAKE) --no-print-directory \
 		build/conformance-cpp-objs/_main/conformance_main.o \

@@ -125,7 +125,7 @@ public final class R23 {
                             + " layoutHash=" + r.layoutHash + " (want n=1, clean, layoutHash=0)");
         }
 
-        // A LAYOUT REFUSAL (layoutNewer): the file's hash not in the lineage.
+        // A LAYOUT REFUSAL (layoutUnknown): the file's hash not in the lineage.
         // The report carries THE FILE'S HASH in layoutHash.
         {
             final byte[] lying = file.clone();
@@ -134,9 +134,9 @@ public final class R23 {
             final TableFixed.Report r = new TableFixed.Report();
             CellFixed.load(out, 1, lying, CellFixed.identityPlan(), new short[8],
                     CellFixed.image(), r);
-            check(r.refused && r.reason == TableFixed.Reason.layoutNewer
+            check(r.refused && r.reason == TableFixed.Reason.layoutUnknown
                     && r.layoutHash == given && !r.damaged,
-                    "layoutNewer carries THE FILE'S HASH (0x" + Long.toHexString(given)
+                    "layoutUnknown carries THE FILE'S HASH (0x" + Long.toHexString(given)
                             + "L): refused=" + r.refused + " reason=" + r.reason
                             + " layoutHash=0x" + Long.toHexString(r.layoutHash)
                             + " malformed=" + r.damaged);

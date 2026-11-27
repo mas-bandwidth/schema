@@ -178,6 +178,9 @@ func TestSquirrelViewMatchesTheGoView(t *testing.T) {
 		tables, err := squirreltable.Generate(u)
 		if err != nil {
 			t.Logf("refused %s: %v", mu.key, err)
+			t.Run(mu.key, func(t *testing.T) {
+				t.Error("a row that did not run: the Squirrel table surface refuses this manifest unit, so its view is not compared with the Go view: " + err.Error())
+			})
 			continue
 		}
 		add(mu.key, u, files, tables)

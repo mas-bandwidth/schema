@@ -56,7 +56,7 @@ namespace Benchtable
         public ulong BuildVersionRemote, BuildVersionOwn;
         // LayoutHash is THE FILE'S hash, and it is LAST on the report (§5.9 #15) —
         // a member at the end rather than a field inserted among the counters,
-        // because the report is a type callers already hold. layout_newer reports
+        // because the report is a type callers already hold. layout_unknown reports
         // it "AND NOTHING ELSE" (§5.3); layout_unsupported reports it too (§5.9
         // #7), the operator's other answer. Zero on every other path.
         public ulong LayoutHash;
@@ -487,8 +487,8 @@ namespace Benchtable
     // A fixed table reads BACKWARD and never forward. A file is matched on the eight
     // bytes of its header's hash against the lineage the BUILD laid down, and the
     // layout it carries is held to a BYTE COMPARISON against the bytes the lock
-    // recorded — never walked. A hash the lineage does not hold is layout_newer
-    // (ship the reader); a hash it holds below the floor is layout_unsupported
+    // recorded — never walked. A hash the lineage does not hold is layout_unknown
+    // (§5.3 step 5); a hash it holds below the floor is layout_unsupported
     // (upgrade the client). Those are the operator's two distinct answers.
 
     // TableFixedKnownLayout is one locked layout: the wire hash a file is matched
@@ -7705,7 +7705,7 @@ namespace Benchtable
             // not an exception: the record loop runs the list it was handed.
             // THE HEADER'S HASH SELECTS A KNOWN LAYOUT, and nothing else does
             // (§5.3 step 5). The FIRST index whose hash matches; -1 for a hash the
-            // lineage does not hold, which is layout_newer.
+            // lineage does not hold, which is layout_unknown.
             public static int Select(ReadOnlySpan<TableFixedKnownLayout> known, ulong hash)
             {
                 for (int i = 0; i < known.Length; ++i)
@@ -10614,7 +10614,7 @@ namespace Benchtable
 
         // THE FLOOR: below it a layout this build once served is RETIRED, and the
         // answer is layout_unsupported — upgrade the client — rather than
-        // layout_newer, which is ship the reader (§5.2).
+        // layout_unknown, a hash outside the lineage (§5.2, §5.3 step 5).
         public const int TableEntityFixedFloor = 0;
 
         // ONE PLAN PER LINEAGE ENTRY, laid down from THE LOCK'S bytes in this
@@ -10735,7 +10735,7 @@ namespace Benchtable
             int pick = TableFixedWire.Select(TableEntityFixedKnown, hash);
             if (pick < 0)
             {
-                if (report != null) { report.Refused = true; report.Reason = "layout_newer"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }
+                if (report != null) { report.Refused = true; report.Reason = "layout_unknown"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
             if (pick < TableEntityFixedFloor)
@@ -11220,7 +11220,7 @@ namespace Benchtable
 
         // THE FLOOR: below it a layout this build once served is RETIRED, and the
         // answer is layout_unsupported — upgrade the client — rather than
-        // layout_newer, which is ship the reader (§5.2).
+        // layout_unknown, a hash outside the lineage (§5.2, §5.3 step 5).
         public const int TableStatFixedFloor = 0;
 
         // ONE PLAN PER LINEAGE ENTRY, laid down from THE LOCK'S bytes in this
@@ -11341,7 +11341,7 @@ namespace Benchtable
             int pick = TableFixedWire.Select(TableStatFixedKnown, hash);
             if (pick < 0)
             {
-                if (report != null) { report.Refused = true; report.Reason = "layout_newer"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }
+                if (report != null) { report.Refused = true; report.Reason = "layout_unknown"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
             if (pick < TableStatFixedFloor)
@@ -13290,7 +13290,7 @@ namespace Benchtable
 
         // THE FLOOR: below it a layout this build once served is RETIRED, and the
         // answer is layout_unsupported — upgrade the client — rather than
-        // layout_newer, which is ship the reader (§5.2).
+        // layout_unknown, a hash outside the lineage (§5.2, §5.3 step 5).
         public const int TableMixedFixedFloor = 0;
 
         // ONE PLAN PER LINEAGE ENTRY, laid down from THE LOCK'S bytes in this
@@ -13412,7 +13412,7 @@ namespace Benchtable
             int pick = TableFixedWire.Select(TableMixedFixedKnown, hash);
             if (pick < 0)
             {
-                if (report != null) { report.Refused = true; report.Reason = "layout_newer"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }
+                if (report != null) { report.Refused = true; report.Reason = "layout_unknown"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
             if (pick < TableMixedFixedFloor)

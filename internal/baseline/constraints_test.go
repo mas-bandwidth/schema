@@ -411,6 +411,9 @@ func TestEveryReaderConstraintMovesTheProjection(t *testing.T) {
 				if len(refusals)+len(warns) == 0 {
 					if row.owner != "" {
 						t.Logf("%s: RECORDED BUT SILENT, and owned elsewhere: %s", h.name, row.owner)
+						t.Run(h.name, func(t *testing.T) {
+							t.Error("a row that did not run: the baseline check draws no finding for this row in this holder, and the finding is owed by " + row.owner)
+						})
 						continue
 					}
 					t.Errorf("%s: THE CHECK IS SILENT: %q -> %q moves the projection and draws no finding while the old save %s %s",
