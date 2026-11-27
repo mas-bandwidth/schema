@@ -30,6 +30,9 @@
          red (docs/SPEC-TABLES.md §19.5's negative-control rule). -->
     <BlockGeneratedDir Condition="'$(BlockGeneratedDir)' == ''">../../build/tables-generated-cs/block</BlockGeneratedDir>
     <BlockHomeGeneratedDir Condition="'$(BlockHomeGeneratedDir)' == ''">../../build/tables-generated-cs/blockhome</BlockHomeGeneratedDir>
+    <!-- and the examples unit's, so `make tables-cs-block-compile` can build
+         this project over a tree it generated for itself -->
+    <BlockExamplesGeneratedDir Condition="'$(BlockExamplesGeneratedDir)' == ''">../../build/tables-generated-cs/examples</BlockExamplesGeneratedDir>
   </PropertyGroup>
 
   <ItemGroup>
@@ -47,8 +50,16 @@
          layout contract is a GENERATION-TIME gate and not only a throw the
          first time somebody opens a block. Compiling is half of it — a
          projected array where an inline one belongs does not compile the same
-         — and src/LayoutGate.cs runs each unit's Verify() for the other half. -->
-    <Compile Include="../../build/tables-generated-cs/examples/*.cs" Exclude="../../build/tables-generated-cs/examples/*Table.cs;../../build/tables-generated-cs/examples/*View.cs;../../build/tables-generated-cs/examples/*Region.cs" />
+         — and src/LayoutGate.cs runs each unit's Verify() for the other half.
+
+         And with NO TABLE SOURCE: the block and cook pair builds without
+         <Base>Table.cs (docs/SPEC-TABLES.md §19.2, §7), so the files that
+         need the table storage classes stay out — the table sources, the
+         unit's View and Region, and <Package>BlockFill.cs, the Begin
+         overloads that take a managed value. A pair that names a table
+         symbol fails here; `make tables-cs-block-compile` runs this build on
+         every pull request that touches the C# generator. -->
+    <Compile Include="$(BlockExamplesGeneratedDir)/*.cs" Exclude="$(BlockExamplesGeneratedDir)/*Table.cs;$(BlockExamplesGeneratedDir)/*View.cs;$(BlockExamplesGeneratedDir)/*Region.cs;$(BlockExamplesGeneratedDir)/*BlockFill.cs" />
     <Compile Include="../../../serialize.cs/src/Serialize.cs" />
     <Compile Include="../../../serialize.cs/src/Int128Pair.cs" />
   </ItemGroup>
