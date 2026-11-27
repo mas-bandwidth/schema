@@ -1602,6 +1602,9 @@ generated table tree: `clang-format` for C++ and C, `gofmt` and `go vet` for
 Go, `dotnet format` for C#, `google-java-format` for Java, `eslint` for
 JavaScript, `dart format` and the analyzer for Dart, `cargo clippy` for Rust,
 and `mix format` for Elixir.
+A formatter or analyzer that fails to run (a crash or any nonzero exit of its own) is
+a red gate by name. It is never read as drift, and a ratchet entry does not
+excuse it: the C gate reads the formatter's exit status for that reason.
 The Java leg's formatter pin, style, lint flags and gates are on
 [docs/JAVA-DIALECT.md](JAVA-DIALECT.md).
 
