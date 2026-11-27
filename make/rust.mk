@@ -2036,6 +2036,25 @@ packet-end-rust-negative-control: packet-end-rust
 
 test-rust: packet-end-rust packet-end-rust-negative-control
 
+# THE PACKET-VOID LEG (SPEC §4.8; make/checks/packet-void.mk): payload-free
+# union arms cost exactly their tag bits. The driver answers every case of
+# testdata/wire/packet-void/cases.txt through tools/casegate, in a debug
+# build (the writer's debug_assert! contracts live) and a release build.
+build/packet-void/rust/.stamp: bin/schema test/packet-void/Void.schema make/rust.mk
+	@rm -rf build/packet-void/rust/generated && mkdir -p build/packet-void/rust/generated/src
+	./bin/schema generate --lang rust --out build/packet-void/rust/generated/src $(PACKET_VOID_SCHEMA)
+	@printf '[package]\nname = "packetvoid"\nversion = "0.0.0"\nedition = "2024"\n\n[dependencies]\nserialize = { package = "serialize-official", path = "%s/$(SERIALIZE_RS)" }\n' "$(CURDIR)" > build/packet-void/rust/generated/Cargo.toml
+	@touch $@
+
+.PHONY: packet-void-rust
+packet-void-rust: build/casegate build/packet-void/rust/.stamp
+	cd test/packet-void/rust && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --target-dir ../../../build/packet-void/rust/target
+	cd test/packet-void/rust && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --release --target-dir ../../../build/packet-void/rust/target
+	$(call packet_void_gate,rust) ./build/packet-void/rust/target/debug/packet-void-test $(PACKET_VOID_PINS)
+	$(call packet_void_gate,rust) ./build/packet-void/rust/target/release/packet-void-test $(PACKET_VOID_PINS)
+
+test-rust: packet-void-rust
+
 # Packet Write holds row 8 (SPEC §5.1) in a Rust debug build: the driver
 # writes every shared case and catches the writer's debug_assert! panic as
 # the refusal; well-formed twins are written and read back byte-exact. A

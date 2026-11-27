@@ -5,6 +5,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | dir | purpose | guard | command |
 | --- | --- | --- | --- |
 | `agentsmap/` | AGENTS.md generator and drift guard | `go test ./tools/agentsmap` | `make map` |
+| `casegate/` | runs a leg driver and refuses an unanswered shared-corpus case | `go test ./tools/casegate` | `go test ./tools/casegate` |
 | `cellmerge/` | three-way PORTING.md row merge for diff3 hunks | `go test ./tools/cellmerge` | `go run ./tools/cellmerge docs/PORTING.md` |
 | `conformancerows/` | runs every conformance row file of a leg against its rows-owed.tsv ledger | `go test ./tools/conformancerows` | `make conformance-rows-LEG` |
 | `errdiscard/` | refuses an error dropped in cmd/ or tools/ with no reason | `go test ./internal/errdiscard` | `make errdiscard` |

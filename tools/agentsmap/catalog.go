@@ -87,6 +87,7 @@ var catalog = []Entry{
 	e("internal/ast", "parsed *.schema form", "go test ./internal/parser", "go test ./internal/parser"),
 	e("internal/atomicfile", "the one publisher every CLI write goes through", "go test ./internal/atomicfile", "go test ./internal/atomicfile"),
 	e("internal/baseline", "tables baseline pins", "go test ./internal/baseline", "go test ./internal/baseline"),
+	e("internal/casegate", "shared-corpus answer judge (every case answered, owed ledger exact)", "go test ./internal/casegate", "go test ./internal/casegate"),
 	e("internal/check", "resolve, check, lower to IR", "go test ./internal/check", "go test ./internal/check"),
 	e("internal/ci", "workflow pin and SDK gates", "go test ./internal/ci", "go test ./internal/ci"),
 	page("internal/codegen", "per-language emitters", "go test ./internal/codegen/...", "go test ./internal/codegen/..."),
@@ -211,6 +212,7 @@ var catalog = []Entry{
 
 	// tools/
 	e("tools/agentsmap", "AGENTS.md generator and drift guard", "go test ./tools/agentsmap", "make map"),
+	e("tools/casegate", "runs a leg driver and refuses an unanswered shared-corpus case", "go test ./tools/casegate", "go test ./tools/casegate"),
 	e("tools/cellmerge", "three-way PORTING.md row merge for diff3 hunks", "go test ./tools/cellmerge", "go run ./tools/cellmerge docs/PORTING.md"),
 	e("tools/fixedtwin", "fixed-form twin", "go test ./tools/fixedtwin", "go test ./tools/fixedtwin"),
 	e("tools/gotestreport", "go test -json row report and skip ledger", "go test ./tools/gotestreport", "go run ./tools/gotestreport -skips .github/skip-ledger.txt build/go-test-json"),
@@ -322,7 +324,7 @@ var catalog = []Entry{
 	e("test/packet-write-text", "packet text write contract fixtures", "go test -run TestSpecPacketWriteChecksText ./compiler/", "go test -run TestSpecPacketWriteChecksText ./compiler/"),
 	e("test/packet-cfloat-endpoints", "accepted compressed-float packet endpoints", "make packet-cfloat-endpoints-go", "make packet-cfloat-endpoints-go"),
 	e("test/packet-write-cfloat", "packet Write compressed-float range fixture", "make test-go", "go test -run TestSpecPacketWriteRefusesOffRangeCompressedFloat ./compiler/"),
-	e("test/packet-void", "packet void-arm gates", "make test", "make test"),
+	e("test/packet-void", "packet void-arm drivers, one per leg, over testdata/wire/packet-void/cases.txt", "make packet-void-<leg>", "make packet-void-pins"),
 	e("test/pointer-target-type", "pointer target-type fixtures", "go test -run TestSpecPointerTargetTypeChecked ./compiler/", "go test -run TestSpecPointerTargetTypeChecked ./compiler/"),
 	e("test/proof", "3.0.0 proof snapshot (internal gate)", "make proof", "make proof-write"),
 	e("test/registry", "the test registry: every test, language, tier, type and stored query", "go run ./tools/schema-test run --group pr", "go run ./tools/schema-test coverage"),

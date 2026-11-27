@@ -2357,3 +2357,19 @@ packet-end-elixir-negative-control: packet-end-elixir
 	@echo 'packet end Elixir negative control: removing the end check accepts the trailing and padding vectors'
 
 test-elixir: packet-end-elixir packet-end-elixir-negative-control
+
+# Payload-free union arms cost exactly their tag bits (SPEC §4.8): the leg's
+# half of test/packet-void. The driver answers every case of
+# testdata/wire/packet-void/cases.txt against the Go oracle's pins, and
+# tools/casegate judges its answers (make/checks/packet-void.mk).
+build/packet-void/elixir/.stamp: bin/schema $(PACKET_VOID_SCHEMA) make/elixir.mk
+	@rm -rf build/packet-void/elixir && mkdir -p build/packet-void/elixir
+	./bin/schema generate --lang elixir --out build/packet-void/elixir $(PACKET_VOID_SCHEMA)
+	@touch $@
+
+.PHONY: packet-void-elixir
+packet-void-elixir: build/packet-void/elixir/.stamp build/casegate
+	$(MIX) format --check-formatted build/packet-void/elixir/*.ex test/packet-void/elixir/*.exs
+	@rm -rf build/packet-void/elixir-beam && mkdir -p build/packet-void/elixir-beam
+	$(ELIXIRC_STRICT) -o build/packet-void/elixir-beam build/packet-void/elixir/*.ex
+	$(call packet_void_gate,elixir) env PATH="$(BEAM_PATH):$$PATH" $(lastword $(ELIXIR)) test/packet-void/elixir/main.exs $(PACKET_VOID_PINS)
