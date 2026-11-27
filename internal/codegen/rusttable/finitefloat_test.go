@@ -683,7 +683,7 @@ func TestRustFiniteFloatNegativeControl(t *testing.T) {
 			{".is_finite() { return false; }", ".is_finite() && false { return false; }"},
 		}, []string{"message/writer-refuses/"}},
 		{"fixed-read", [][2]string{
-			{"        if !why.is_empty() {\n            for value in values.iter_mut()", "        if false && !why.is_empty() {\n            for value in values.iter_mut()"},
+			{"        if !why.is_empty() {\n            report.widened = widened_before;\n            return report.refuse_non_finite(why);", "        if false && !why.is_empty() {\n            report.widened = widened_before;\n            return report.refuse_non_finite(why);"},
 		}, []string{"fixed/read-refuses/"}},
 		{"fixed-writer", [][2]string{
 			{"if values.iter().any(|value| !", "if false && values.iter().any(|value| !"},
