@@ -194,7 +194,9 @@ func TestSquirrelFixedFormAgreesWithTheByteOracle(t *testing.T) {
 	// (docs/FIXED-FORM-ALGORITHM.md §5.2, §5.3 step 5): the NEW build ships
 	// with the lineage that holds the OLD layout and reads an old file, the
 	// appended field landing its declared default even into a reused row;
-	// the OLD build holds no newer layout, so a new file is refused.
+	// the OLD build holds no newer layout, so a new file is refused, and the
+	// row it was handed holds its declared default (A = 5), not the caller's 7
+	// (docs/SPEC-TABLES.md, THE CALLER'S VALUES AFTER A REFUSAL; FL-03).
 	oldU := fixedSynthetic(t, "package vroot\nfixed table VR { a int32 = 5 }\n")
 	newU := fixedSynthetic(t, "package vroot\nfixed table VR { a int32 = 5\n b int32 = 11 }\n")
 	oldEntry, ok := squirreltable.FixedLineageOf(oldU, "VR")
@@ -221,7 +223,7 @@ func TestSquirrelFixedFormAgreesWithTheByteOracle(t *testing.T) {
   local nv = N.VR(); nv.A = 43; nv.B = 44; local nb = blob(256); local nm = N.VRFixedSave(nb, [nv]);
   local nb2 = blob(nm); for (local i = 0; i < nm; i++) nb2[i] = nb[i];
   local ov = O.VR(); ov.A = 7; local got2 = O.VRFixedLoad(nb2, [ov], null);
-  if (got2 != -1 || ov.A != 7) print("VERSION-NEW-OLD:" + got2 + ":" + O.FixedReason + ":A=" + ov.A + "\n");
+  if (got2 != -1 || ov.A != 5) print("VERSION-NEW-OLD:" + got2 + ":" + O.FixedReason + ":A=" + ov.A + "\n");
 }
 `)
 	// Named refusals, each reached by one forged layout.
