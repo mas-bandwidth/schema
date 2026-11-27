@@ -1,9 +1,21 @@
 # CI tiers: what a pull request runs, and what waits for the night
 
-The pull-request tier (`.github/workflows/ci-fast.yml`) keeps every job within
-two minutes. Anything heavier runs in a workflow that starts only on a schedule
-or on `gh workflow run` (nightly-only). A gate that runs **only** there checks
-nothing a pull request changes until the night after it lands.
+**The pull-request tier is the happy path, and only the happy path** (the
+owner, 2026-11-25, live: per pull request, schema runs ONLY compile + one
+simple happy path per language, one job of two minutes or less; everything
+else is nightly). `.github/workflows/ci-fast.yml` is one job, `happy-path`: it
+builds `bin/schema` once and runs `make happy-<lang>` for every language
+(make/happy-path.mk: generate `test/happy/Happy.schema`, compile it with
+`test/happy/<lang>`, write one value, read it back, compare), timing each.
+`internal/ci` `TestPerPRIsTheHappyPathOnly` refuses any other job, action,
+make target or test runner in it.
+
+Everything else runs in a workflow that starts only on a schedule or on `gh
+workflow run` (nightly-only). The jobs that were the per-PR lane until
+2026-11-25 are `.github/workflows/ci-fast-nightly.yml`, which on its schedule
+selects every package and every leg. A gate that runs **only** there checks
+nothing a pull request changes until the night after it lands; since
+2026-11-25 that is every gate but the happy path, by the owner's ruling.
 
 That happened on 2026-11-22. The strict Ruby gate
 (`schema-ruby-generated-strict-gate`: `ruby -w`, RuboCop, RBS, Steep) ran only in
@@ -12,12 +24,82 @@ reached main. Worse, the fleet job of `ruby-leg.yml` had been falling back to
 `make ruby-toolchain-check` whenever `make -n test-ruby` failed, and it did: run
 44994557579 ran the toolchain check alone. The strict gate ran nowhere.
 
+## Every job and its tier
+
+The owner, 2026-11-24: "please fix this properly now. I have zero patience for
+tests not running when they are supposed to." Before that day every job of
+ci-fast.yml, roadmap.yml, caa-self-test.yml and python-leg.yml opened its `if:`
+with `startsWith(github.head_ref, 'sprint/') == false`, and cla.yml's CAA did
+the same for a same-repository branch. Pull requests #4999, #5003 and #5004
+merged that night with all 29 checks SKIPPED, and GitHub showed nothing red.
+
+**No job decides whether it runs by a branch name, a ref or a label.** Every
+pull request gets the same per-PR tier, whatever its head or base branch is
+called; every push to main gets the main tier. The one condition about where a
+pull request comes from is the fork guard,
+`github.event.pull_request.head.repo.full_name == github.repository`: a fork's
+code never runs on the fleet's self-hosted runners. It is keyed on the
+repository, never on a branch name. What a job checks may still follow the
+diff (the `plan` job's selection) and the base (`.github/actions/merge-main`).
+A pull-request trigger carries no `branches:` filter.
+
+Each per-PR group is one job, or a matrix of jobs, and every one of them
+finishes within two minutes on a fleet runner (`timeout-minutes: 2`). A group
+that grows past that is cut into more rows or shards. It is never given a
+longer timeout, made report-only or skipped.
+
+The tiers:
+
+- **per-PR**: a same-repository pull request.
+- **fork-PR**: a pull request from a fork.
+- **main**: a push to main.
+- **nightly**: the schedule.
+- **dispatch**: `gh workflow run`.
+- **comment**: a pull-request comment.
+
+A workflow that runs only on a schedule or a dispatch is listed whole in the
+next table. Every job of every other workflow is a row here.
+
+`internal/ci` holds the workflows to this table in both directions:
+
+- **`TestNoJobRunsOnABranchName`** refuses any `if:`, in a job or a step, that
+  reads `github.head_ref`, `github.base_ref`, `github.ref`, `github.ref_name`, a
+  pull request's `head.ref` or `base.ref`, or its labels. It also refuses a
+  `branches:` filter on a pull-request trigger. It then evaluates every
+  pull-request job for heads named `sprint/...`, `sprint-group/...`, `rowan/...`
+  and `feature`, for bases main, `sprint/...` and dev, and with and without a
+  label, and fails on any job whose answer changes.
+- **`TestEveryJobHasItsTierInCITiers`** fails for:
+  - a job with no row;
+  - a row naming no job;
+  - a row whose tiers differ from the tiers the workflow gives the job, as
+    evaluated from its triggers and `if:` with every plan output set.
+- **`TestEveryPerPRGroupRunsOnEveryPullRequest`** fails for a per-PR row that
+  is not a ci-fast.yml job, or that a pull request from a `sprint/` branch does
+  not run, and for any per-PR group but the one, `happy-path`.
+
+| Job | Workflow | Tiers | Selected by |
+|---|---|---|---|
+| `fork-pull-request` | `ci-fast.yml` | fork-PR | always red: a fork's pull request runs no code here |
+| `happy-path` | `ci-fast.yml` | per-PR, main, dispatch | always: compile + one round trip per language, `make happy-<lang>` for every leg of make/happy-path.mk, each timed |
+| `caa-self-test` | `caa-self-test.yml` | per-PR, main, dispatch | trigger paths: the CAA workflow, its script, tools/pgroup, go.mod |
+| `caa` | `cla.yml` | per-PR, fork-PR, comment | pull_request_target, and a signing or `recheck` comment |
+| `roadmap` | `roadmap.yml` | per-PR, main, nightly, dispatch | trigger paths: ROADMAP.md, docs/roadmap*, tools/roadmap |
+| `page` | `roadmap.yml` | nightly, dispatch | always |
+| `tag` | `promotion-tag.yml` | main | always |
+
 ## The rule
 
 Every nightly-only workflow gets one decision, recorded in the table below.
 
+Since 2026-11-25 the fast and covered forms below are jobs and rows of
+`ci-fast-nightly.yml`, which runs nightly too: they are each gate's light
+form, run every night beside the gate itself, and no longer per pull request.
+The pull-request tier is `ci-fast.yml` `happy-path` alone.
+
 | Decision | What it means |
 |---|---|
+| happy-path | The old per-PR lane (`ci-fast-nightly.yml`), nightly by the owner's ruling of 2026-11-25. Its per-PR form is `ci-fast.yml` `happy-path`. |
 | fast | The gate has a **pull-request form**: rows of [`.github/nightly-fast-rows.txt`](../.github/nightly-fast-rows.txt). The `nightly-fast` job of ci-fast.yml runs a row when the diff touches the row's leg, a path it names, or the broad rule. Each row fits two minutes. The nightly workflow still runs the whole gate and its planted controls. |
 | covered | Named ci-fast.yml jobs (or rows) already run the same check on the pull-request tier. The notes say what, if anything, only the night still sees. |
 | held | A fast form exists but is kept off the pull-request tier because the gate is red on main. The row names the red run; it joins the PR tier when main is green. |
@@ -70,7 +152,7 @@ Nightly times are the newest completed scheduled run of each workflow on the fle
 | `schema-luau-generated-analyze-strict-gate.yml` | fast | `strict-luau` | 21 s with its control (run 44979785127) |
 | `schema-moo-generated-analyze-strict-gate.yml` | fast | `strict-moo` | 23 s (run 44981804000); the pin control stays nightly |
 | `schema-lobster-generated-strict-gate.yml` | fast | `strict-lobster` | 19 s (run 44999452012) |
-| `schema-dart-nightly-fuzz.yml` | fast | `replay-dart`, `verify-leg` | replay 16 s (run 44980533495); the 24M-case campaign (127 s) stays nightly; verify-leg (dart, fuzz) runs the seeded smoke |
+| `schema-dart-nightly-fuzz.yml` | fast | `replay-dart`, `verify-dart-fuzz` | replay 16 s (run 44980533495); the 24M-case campaign (127 s) stays nightly; verify-dart-fuzz runs the seeded smoke |
 | `schema-lua-nightly-fuzz.yml` | fast | `replay-lua`, `verify-leg` | the 600 s campaign stays nightly |
 | `schema-luau-nightly-fuzz.yml` | fast | `replay-luau`, `verify-leg` | the 600 s campaign stays nightly |
 | `schema-moo-nightly-fuzz.yml` | covered | `verify-leg`, `ci-policy` | verify-leg (moo, fuzz) runs the seeded wire, JSON and message fuzz; ci-policy runs the wiring test; the 100-round campaign (195 s) stays nightly |
@@ -82,11 +164,13 @@ Nightly times are the newest completed scheduled run of each workflow on the fle
 | `schema-engine-is-the-oracle.yml` | covered | `ci-policy` | TestSchemaEngineIsTheOracle* are not slow-gated, so ci-policy runs them on every pull request |
 | `schema-name-buildability.yml` | covered | `go-test-touched`, `verify-leg` | `go-test-touched` runs `internal/check` (`TestNameBuildabilityCorpus`, holding every probe row's checker verdict) and per-leg codegen tests; building and loading all 18 targets across every accepted probe row (`make name-buildability`) stays nightly |
 | `lobster-fixed-proof-qualification.yml` | fast | `lobster-fixed-proof` | the four fixed-proof gates against the live C++ corpus: 63 s nightly (run 44994152761), 50 s cold on amd-2 |
+| `schema-test-nightly.yml` | covered | `schema-test` | the one test driver (docs/TEST-REGISTRY.md). The `schema-test` job runs the registry's `pr` group (unit and functional, every language whose adapter has landed, every language-free test) on every pull request and prints the coverage matrix. Only the night runs the `nightly` group: every tier in every language, where each instance of a language with no adapter is MISSING and red by design, the work list |
 | `tla-nightly.yml` | covered | `ci-policy` | TestTLARunsHashEveryModelAndConfig: a model, config or EXTENDed module that changes without its TLC run recorded again is red on the pull request; TLC itself (148 s) runs nightly |
 | `nightly-conformance.yml` | covered | `verify-leg` | verify-leg runs each touched leg's conformance with --claims. Only the night sees a diff that touches more than four legs or the shared roots (verify-leg then selects no rows), and the cpp-writes job (1333 s) |
 | `ci-full.yml` | covered | `go-test-touched`, `verify-leg`, `lang-clean`, `lang-lint`, `generated-current`, `block-gate`, `vet`, `golangci-lint-fast`, `lint-fast`, `nightly-fast`, `appendix-java-announcement-budgets`, `appendix-go-fixed`, `appendix-python-fixed` | ci-fast is ci-full selected by path. Only the night sees windows, msvc, big-endian, the negative-controls matrix, pins and vuln: none has a two-minute form |
 | `python-leg-nightly.yml` | covered | `verify-leg`, `hostile-python`, `bounds-python` | test-python on macOS (2041 s) is nightly; the Linux rows run per Python diff |
 | `python-leg.yml` | covered | `verify-leg`, `hostile-python`, `bounds-python` | the dispatch form of the above |
+| `ci-fast-nightly.yml` | happy-path | `happy-path` | every job of the old per-PR lane, unchanged in what it checks; on the schedule the plan selects every package and every leg (the leg gates too), with no timeout (the nightly rule) |
 | `leg.yml` | not-a-gate | | reusable (workflow_call); certify.yml calls it |
 | `release.yml` | not-a-gate | | cuts a release |
 

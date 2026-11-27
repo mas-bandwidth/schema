@@ -128,6 +128,7 @@ var catalog = []Entry{
 	e("internal/tabletext", "table JSON text", "go test ./internal/tabletext", "go test ./internal/tabletext"),
 	e("internal/testinputs", "repository files a test's child process reads, recorded for the go test cache", "go test ./internal/testinputs", "go test ./internal/testinputs"),
 	e("internal/testproc", "bounded child processes for tests", "go test ./internal/testproc", "go test ./internal/testproc"),
+	e("internal/testreg", "the test registry: load, select, shard, run, cover", "go run ./tools/schema-test run --group pr", "go run ./tools/schema-test coverage"),
 	e("internal/tablewire", "table wire codecs", "go test ./internal/tablewire", "go test ./internal/tablewire"),
 	e("internal/vacuous", "Go tests that pass checking nothing", "go test ./internal/vacuous", "go test ./internal/ci -run TestEveryGoTestCanFail"),
 	e("internal/version", "binary version stamp", "go test ./internal/version", "go test ./internal/version"),
@@ -238,6 +239,7 @@ var catalog = []Entry{
 	e("tools/releasetargets", "certify release-gates planner from make's database", "go test ./tools/releasetargets", "go run ./tools/releasetargets -fixtures tools/releasetargets/testdata/f066"),
 	e("tools/roadmap", "ROADMAP.md table honesty", "go test ./tools/roadmap", "go test ./tools/roadmap"),
 	e("tools/sabotage", "negative-control sabotages", "go test ./tools/negativecontrols", "go run ./tools/sabotage"),
+	e("tools/schema-test", "the one test driver: run, list, coverage", "go run ./tools/schema-test run --group pr", "go run ./tools/schema-test run --group nightly"),
 	e("tools/slowgatescan", "SCHEMA_SLOW recipe scan", "make slow-gate-scan", "make slow-gate-scan"),
 	e("tools/tlcrun", "TLC runner held to tla/RUNS.tsv", "go test ./tools/tlcrun", "bash tla/run-tlc.sh"),
 	e("tools/treelock", "generated-tree lock", "go test ./tools/treelock", "go test ./tools/treelock"),
@@ -246,6 +248,7 @@ var catalog = []Entry{
 
 	// test/
 	e("test/bench", "C++ bench drivers", "make test", "./build/schema_test_bench"),
+	e("test/happy", "per-PR happy path: one round trip per language (make/happy-path.mk)", "make happy-c", "make happy-<lang>"),
 	e("test/c", "C packet tests", "make test-c", "make test-c"),
 	e("test/c-ludicrous", "C int128 tests", "make test-c", "make test-c"),
 	e("test/c-hostile", "C hostile-corpus runner", "make schema-c-runs-hostile-corpus", "make schema-c-runs-hostile-corpus"),
@@ -319,6 +322,7 @@ var catalog = []Entry{
 	e("test/packet-void", "packet void-arm gates", "make test", "make test"),
 	e("test/pointer-target-type", "pointer target-type fixtures", "go test -run TestSpecPointerTargetTypeChecked ./compiler/", "go test -run TestSpecPointerTargetTypeChecked ./compiler/"),
 	e("test/proof", "3.0.0 proof snapshot (internal gate)", "make proof", "make proof-write"),
+	e("test/registry", "the test registry: every test, language, tier, type and stored query", "go run ./tools/schema-test run --group pr", "go run ./tools/schema-test coverage"),
 	e("test/rust", "Rust packet tests", "make test-rust", "make test-rust"),
 	e("test/rust-agree", "Rust accessor/descriptor agreement gate", "make tables-rust-accessor-descriptor-agreement", "make tables-rust-accessor-descriptor-agreement"),
 	e("test/rust-alloc", "Rust allocation gate, per read path", "make tables-rust-alloc", "make tables-rust-alloc"),
