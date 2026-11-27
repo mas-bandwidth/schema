@@ -110,7 +110,7 @@ func TestRulingsR2R5R9PortRows(t *testing.T) {
 		{"R5 unity", unitytable.Generate, []string{"LoadMeasureParts(TableTypeInfo type"}},
 		// R9: a caller's MaxBytes of 0 refuses and never means the default
 		{"R9 js", jstable.Generate, []string{"if (n > globalThis.BigInt(v.MaxBytes))"}},
-		{"R9 rust", rusttable.Generate, []string{"if length > vocabulary.max_bytes as u64"}},
+		{"R9 rust", rusttable.Generate, []string{"if schema_length > schema_vocabulary.max_bytes as u64"}},
 		{"R9 java", javatable.Generate, []string{"long limit = v.maxBytes < 0 ? 0L : (long) v.maxBytes;"}},
 		{"R9 cs", cstable.Generate, []string{"(ulong)(v.MaxBytes < 0 ? 0 : v.MaxBytes)"}},
 		{"R9 unity", unitytable.Generate, []string{"(ulong)(v.MaxBytes < 0 ? 0 : v.MaxBytes)"}},

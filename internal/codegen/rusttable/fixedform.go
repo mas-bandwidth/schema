@@ -1614,7 +1614,7 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 		g.pf("        entries: vec![vec![TableFixedEntry::default(); %s_FIXED_PLAN_CAP]; %d],\n", up, len(lineage))
 		g.pf("        guards: vec![vec![TableFixedGuard::default(); %s_FIXED_GUARD_CAP]; %d],\n", up, len(lineage))
 		g.pf("        remap: vec![vec![0u16; %s_FIXED_REMAP_CAP]; %d],\n", up, len(lineage))
-		g.pf("        schema_count: [0usize; %d],\n", len(lineage))
+		g.pf("        count: [0usize; %d],\n", len(lineage))
 		g.pf("        unknown: [0u32; %d],\n", len(lineage))
 		g.pf("        kind_changed: [0u32; %d],\n", len(lineage))
 		g.pf("        reason: [TableFixedReason::None; %d],\n", len(lineage))
@@ -2263,7 +2263,7 @@ func (g *gen) emitFixedTextContentAt(f *ir.Field, bufExpr, lenExpr, ind string) 
 	g.pf("%sif !%s {\n", ind, call)
 	g.pf("%s    %s\n", ind, zero)
 	if f.Type.Kind == ir.TString && f.HasDefault && len(f.DefBytes) > 0 {
-		g.pf("%s    %s[..%d].copy_from_slice(schema_b%s); // the declared default\n",
+		g.pf("%s    %s[..%d].copy_from_slice(b%s); // the declared default\n",
 			ind, bufExpr, len(f.DefBytes), fixedRustByteString(f.DefBytes))
 		g.pf("%s    %s = %d;\n", ind, lenExpr, len(f.DefBytes))
 	} else {

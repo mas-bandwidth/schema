@@ -118,10 +118,10 @@ table Node
 		if !strings.Contains(text, "pub struct NodeCook") {
 			t.Errorf("%s declares no NodeCook", name)
 		}
-		if !strings.Contains(text, "pub unsafe fn open(bytes: *const u8, length: u64) -> Option<NodeCook>") {
+		if !strings.Contains(text, "pub unsafe fn open(bytes: *const u8, schema_length: u64) -> Option<NodeCook>") {
 			t.Errorf("%s declares NodeCook without the pointer-and-length open", name)
 		}
-		if !strings.Contains(text, "pub unsafe fn node_at(slot: *const i64) -> *const NodeRow") {
+		if !strings.Contains(text, "pub unsafe fn node_at(schema_slot: *const i64) -> *const NodeRow") {
 			t.Errorf("%s declares NodeCook without node_at, which is how a reference is dereferenced (§6.3)", name)
 		}
 	}
