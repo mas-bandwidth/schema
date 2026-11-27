@@ -11,10 +11,15 @@
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <AssemblyName>cell-cs-scalar-defaults-valid-data</AssemblyName>
     <TablesGeneratedDir Condition="'$(TablesGeneratedDir)' == ''">../../../../../build/tables-generated-cs</TablesGeneratedDir>
+    <SerializeCsDir Condition="'$(SerializeCsDir)' == ''">../../../../../../serialize.cs</SerializeCsDir>
   </PropertyGroup>
 
   <ItemGroup>
     <Compile Include="Program.cs" />
+    <!-- the generated unit carries packet messages, which build on the pinned
+         serialize.cs runtime (the sibling checkout CI makes beside the repo) -->
+    <Compile Include="$(SerializeCsDir)/src/Serialize.cs" />
+    <Compile Include="$(SerializeCsDir)/src/Int128Pair.cs" />
     <Compile Include="$(TablesGeneratedDir)/scalars/*.cs" />
   </ItemGroup>
 

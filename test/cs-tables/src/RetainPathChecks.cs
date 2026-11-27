@@ -29,7 +29,7 @@ static partial class Program
                 Check(!report.Damaged && !report.Refused && report.Retained==5 && stores[0].Count==5,"nested union and element retention paths");
                 byte[] saved=new byte[R1.Schema.RootMeasureRetain((IntPtr)region,ref stores[0])];
                 Check(R1.Schema.RootSaveRetain((IntPtr)region,ref stores[0],saved,new R1.TableReport())==saved.Length && saved.AsSpan().SequenceEqual(original),"nested retention paths reproduce writer values");
-                ((R1.RootRow*)region)->Choice.Type=R1.ChoiceType.One;
+                ((R1.RootRow*)region)->Choice.Type=(byte)R1.ChoiceType.One;
                 byte[] changed=new byte[R1.Schema.RootMeasureRetain((IntPtr)region,ref stores[0])];
                 var save=new R1.TableReport(); R1.Schema.RootSaveRetain((IntPtr)region,ref stores[0],changed,save);
                 Check(save.RetainLost==2,"switching an arm loses only its descendants");

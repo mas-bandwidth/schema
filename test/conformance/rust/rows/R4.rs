@@ -121,7 +121,7 @@ fn hash_includes_digest() {
     // file header and looks it up in the lineage — it never re-derives.
     // A buggy runtime using table_fixed_hash(layout) would compute
     // hash_layout_only, which does NOT match the correct hash and would
-    // refuse a valid file as layout_unknown.
+    // refuse a valid file as layout_unknown (§5.3 step 5).
     assert_ne!(
         hash_layout_only, hash_with_digest,
         "the runtime hash function table_fixed_hash hashes block bytes only, \

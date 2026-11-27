@@ -1712,15 +1712,35 @@ func (g *fixedGen) emitScatterLoop(f *ir.Field, base int64, count, buf, at, expr
 	g.pf("%s}\n", ind)
 }
 
-// emitScatterSlack zeros the unused slots of a counted array. Scatter walks
+// emitScatterSlack resets the unused slots of a counted array. Scatter walks
 // Count, never the bound; a reused value's slack would otherwise keep what
-// it held. Primitive arrays fill; object slots keep their constructor instances.
+// it held. Primitive arrays fill with zero; a struct or union slot is reset to
+// its declared defaults in place, and a 128-bit slot takes the field's default.
+// The refusal reset of load lands the defaults image through this scatter, so
+// this is also what makes EVERY slot of a refused-into value hold its declared
+// default (docs/SPEC-TABLES.md §6.5, THE CALLER'S VALUES AFTER A REFUSAL: "no
+// value keeps what the caller held before the call"; docs/FIXED-FORM-ALGORITHM.md
+// §5.3, "REFUSE is total"). Kept object instances are reset, never replaced,
+// so a caller holding a slot's instance sees the same object.
 func (g *fixedGen) emitScatterSlack(f *ir.Field, expr, live string, indent int) {
-	zero := slackZero(fixedScalarType(f.Type))
+	ind := strings.Repeat(" ", indent)
+	typ := fixedScalarType(f.Type)
+	if typ == "Int128" || typ == "UInt128" {
+		g.pf("%sif (%s < %s.length) { java.util.Arrays.fill(%s, %s, %s.length, %s.Value.%s); }\n",
+			ind, live, expr, expr, live, expr, fixedClass(g.owner), fixedWideDefaultName(f))
+		return
+	}
+	if fixedIsObject(f.Type) {
+		slackI := fmt.Sprintf("slackI%d", g.resetSerial)
+		g.resetSerial++
+		g.pf("%sfor (int %s = %s; %s < %s.length; %s++) { %s[%s].reset(); }\n",
+			ind, slackI, live, slackI, expr, slackI, expr, slackI)
+		return
+	}
+	zero := slackZero(typ)
 	if zero == "" {
 		return
 	}
-	ind := strings.Repeat(" ", indent)
 	g.pf("%sif (%s < %s.length) { java.util.Arrays.fill(%s, %s, %s.length, %s); }\n",
 		ind, live, expr, expr, live, expr, zero)
 }

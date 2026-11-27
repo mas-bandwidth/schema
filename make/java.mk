@@ -1761,6 +1761,7 @@ build/conformance-java/.stamp: build/tables-generated-java/.stamp test/conforman
 		build/tables-generated-java/m1/*.java build/tables-generated-java/m2/*.java \
 		build/tables-generated-java/a1/*.java build/tables-generated-java/a2/*.java \
 		build/tables-generated-java/g1/*.java \
+		build/tables-generated-java/fx1/*.java build/tables-generated-java/fx2/*.java build/tables-generated-java/ut/*.java \
 		build/tables-generated-java/k1/*.java build/tables-generated-java/k2/*.java \
 		build/tables-generated-java/backend/*.java build/tables-generated-java/vocab/*.java \
 		build/tables-generated-java/vocab9/*.java \

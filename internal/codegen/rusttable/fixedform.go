@@ -1783,7 +1783,7 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    // carries is TAKEN AS GIVEN — the definitions digest is not on the wire,\n")
 	g.pf("    // so the number cannot be re-derived from a file — and it is looked up in\n")
 	g.pf("    // the lineage the BUILD laid down. A hash no entry holds is layout_unknown\n")
-	g.pf("    // (§5.3 step 5), and there is nothing to try.\n")
+	g.pf("    // (§5.3 step 5, SPEC-TABLES §21.3): nothing proves it newer, nothing to try.\n")
 	g.pf("    let Some(found) = %s_FIXED_LINEAGE.iter().position(|k| k.hash == hash) else {\n", up)
 	g.pf("        // THE FILE'S HASH, AND NOTHING ELSE (bill §12.4).\n")
 	g.pf("        return report.refuse_layout(TableFixedReason::LayoutUnknown, hash);\n    };\n")

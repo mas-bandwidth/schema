@@ -103,10 +103,10 @@ fn r23_static_members_and_layout_hash() {
 
     // only the layout refusals carry the file's hash, and it is THE FILE'S.
     let file_hash = table_fixed_hash(b"the file's own bytes");
-    let mut newer = TableFixedReport::default();
-    let _ = newer.refuse_layout::<()>(TableFixedReason::LayoutUnknown, file_hash);
+    let mut unknown = TableFixedReport::default();
+    let _ = unknown.refuse_layout::<()>(TableFixedReason::LayoutUnknown, file_hash);
     check(
-        newer.layout_hash == file_hash,
+        unknown.layout_hash == file_hash,
         "a layout refusal carries THE FILE'S hash (table_fixed_hash) in layout_hash",
     );
 

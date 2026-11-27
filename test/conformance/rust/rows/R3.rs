@@ -7,7 +7,7 @@
 // docs/FIXED-FORM-ALGORITHM.md:507-509 (COMPILE loop):
 //   if i < R.floor:  -- RETIRED. The hash stays KNOWN, so a file
 //     R.plans[i] := NONE  -- carrying it is named layout_unsupported and
-//                           -- never layout_unknown; its PLAN IS NEVER BUILT
+//                           -- never layout_newer; its PLAN IS NEVER BUILT
 //
 // docs/FIXED-FORM-ALGORITHM.md:830 (LOAD step 6):
 //   if i < R.floor:  REFUSE layout_unsupported, reporting h
@@ -15,11 +15,12 @@
 // docs/FIXED-FORM-ALGORITHM.md:888 (condition table):
 //   the hash is in the lineage, below the floor | layout_unsupported | the file's hash
 //
-// docs/FIXED-FORM-ALGORITHM.md:552-553:
+// docs/FIXED-FORM-ALGORITHM.md:791-793:
 //   The floor is one number and the lineage is one array, so "retired" is an
 //   index cut and the operator's two answers stay distinct: below the floor is
 //   layout_unsupported (upgrade the client), outside the lineage is
-//   layout_unknown (ship the reader).
+//   layout_unknown (a hash this build's lineage does not hold; §5.3 step 5,
+//   SPEC-TABLES §21.3: layout_newer is retired and no read answers it).
 //
 // This test uses FE_ROOT (tblfe1), whose lineage has ONE entry (this build's
 // own layout) and floor = 0.  With floor = 0 the emitter omits the floor
@@ -138,7 +139,7 @@ fn r3_floor_law() {
     check(n2.is_none(), "a stranger's hash is refused");
     check(
         report2.reason.name() == "layout_unknown",
-        "outside the lineage is layout_unknown, NOT layout_unsupported",
+        "outside the lineage is layout_unknown (§5.3 step 5), NOT layout_unsupported",
     );
     check(
         report2.layout_hash == stranger_hash,
@@ -150,18 +151,24 @@ fn r3_floor_law() {
     );
     check(report2.refused, "a refusal by name sets the refused flag");
     check(
+        // strict-only-read (docs/rulings.json): `mismatch` and `oor` are
+        // retired; their runtime successors are `kind_changed` and `held`
         report2.widened == 0
             && report2.unknown == 0
-            && report2.mismatch == 0
-            && report2.oor == 0,
+            && report2.kind_changed == 0
+            && report2.held == 0,
         "REFUSE is TOTAL: no counter moves",
     );
-    let fresh = FeRootRow::default();
+    // RULING R4 (the generated load's own doc: "EVERY refusal ... leaves every
+    // row handed in at its declared default"): the refused load now RESETS the
+    // row to the DECLARED defaults (test/tables/FE1.schema: grade = Silver,
+    // effect no arm, tail = 7) rather than leaving the caller's bytes as they
+    // were. FeRootRow::default() is the cooked zero form, not the declaration,
+    // so the oracle is the schema's own values; and none of the file's values
+    // (grade Bronze, tail 99, boost 42) is among them, so nothing was decoded.
     check(
-        values2[0].grade == fresh.grade
-            && values2[0].tail == fresh.tail
-            && values2[0].effect.tag() == fresh.effect.tag(),
-        "REFUSE wrote no destination bytes",
+        values2[0].grade == 2 && values2[0].tail == 7 && values2[0].effect.tag() == 0,
+        "REFUSE decoded nothing: the row holds its declared defaults (R4)",
     );
 
     assert_eq!(

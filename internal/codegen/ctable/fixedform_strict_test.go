@@ -544,7 +544,8 @@ func TestCFixedFormSourcesStrict(t *testing.T) {
 `)
 	})
 
-	// c/R8: unknown hash refuses layout_unknown with the file's hash.
+	// c/R8: unknown hash refuses layout_unknown with the file's hash (§5.3 step 5,
+	// SPEC-TABLES §21.3; layout_newer is retired and no read answers it).
 	t.Run("c/R8_layout_unknown", func(t *testing.T) {
 		t.Parallel()
 		older := cReadSchema(t, "VOLD_field_append")

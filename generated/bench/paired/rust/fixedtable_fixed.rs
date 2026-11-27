@@ -445,7 +445,7 @@ fn fixed_table_fixed_load_records(
     // carries is TAKEN AS GIVEN — the definitions digest is not on the wire,
     // so the number cannot be re-derived from a file — and it is looked up in
     // the lineage the BUILD laid down. A hash no entry holds is layout_unknown
-    // (§5.3 step 5), and there is nothing to try.
+    // (§5.3 step 5, SPEC-TABLES §21.3): nothing proves it newer, nothing to try.
     let Some(found) = FIXED_TABLE_FIXED_LINEAGE.iter().position(|k| k.hash == hash) else {
         // THE FILE'S HASH, AND NOTHING ELSE (bill §12.4).
         return report.refuse_layout(TableFixedReason::LayoutUnknown, hash);

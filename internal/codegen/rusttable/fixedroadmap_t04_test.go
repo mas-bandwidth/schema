@@ -256,7 +256,8 @@ func t04R10(t *testing.T) {
 // ---- rust/R15 -----------------------------------------------------------------
 
 // t04R15 holds rust/R15 to §5.6's retirement list and §5.3 step 5: the four
-// forward-read clamps are gone, and each is `layout_unknown` now. A hash the
+// forward-read clamps are gone, and each is `layout_unknown` now (§5.3 step 5,
+// SPEC-TABLES §21.3: `layout_newer` is retired and no read answers it). A hash the
 // lineage does not hold is refused BEFORE any record and before any plan
 // selection, on the file's hash; the count and text clamps that REMAIN are the
 // writer's bounds carried by the plan (bill §12.5), which only a backward read
