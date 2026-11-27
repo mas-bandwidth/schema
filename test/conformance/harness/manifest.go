@@ -500,19 +500,20 @@ type Manifest struct {
 // `unrepresentable`.
 type WriteRefusal struct {
 	// Form is the writer the row drives, and the line kind and surface it
-	// travels under: "" the variable-form Save (`write-refusal`), "fixed" the
+	// travels under: "" the root's file-form Save (`write-refusal`), "fixed" the
 	// fixed form's FixedSave (`write-refusal-fixed`), "message" SaveMessages
 	// against the connection named in Unit (`write-refusal-message`), and
 	// "json" the text writer (`write-refusal-json`).
-	Form    string
-	Name    string
-	Unit    string
-	Root    string
-	Wire    string
-	Path    string
-	Kind    string
-	Value   string
-	Verdict string
+	Form     string
+	Name     string
+	Unit     string
+	Root     string
+	Wire     string
+	Path     string
+	Kind     string
+	Value    string
+	Verdict  string
+	SaveWire string
 }
 
 // writeRefusalKinds is the closed set a row's Kind is drawn from.
@@ -1004,9 +1005,9 @@ func ReadManifest(path, jsonDir string) (m *Manifest, err error) {
 		case "write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json", "write-refusal-cook", "write-refusal-block", "write-refusal-shape":
 			// write-refusal[-form] <case> <unit> <root> <wire> <path> <kind> <value> <verdict>
 			// (a message row's <unit> is a connection key)
-			// The DERIVED manifest carries the line without its verdict.
-			if len(f) != 9 && len(f) != 8 {
-				return nil, fmt.Errorf("%s: write-refusal takes case, unit, root, wire, path, kind, value, verdict", where)
+			// The DERIVED manifest carries the line without its verdict or pin path.
+			if len(f) < 8 || len(f) > 10 {
+				return nil, fmt.Errorf("%s: write-refusal takes case, unit, root, wire, path, kind, value, verdict and an optional save-wire pin", where)
 			}
 			if !writeRefusalKinds[f[6]] {
 				return nil, fmt.Errorf("%s: %q is not a write-refusal kind", where, f[6])
@@ -1027,11 +1028,17 @@ func ReadManifest(path, jsonDir string) (m *Manifest, err error) {
 				return nil, fmt.Errorf("%s: path . (the whole value) takes kind shape alone", where)
 			}
 			wr := WriteRefusal{Form: writeRefusalForms[f[0]], Name: f[1], Unit: f[2], Root: f[3], Wire: f[4], Path: f[5], Kind: f[6], Value: f[7]}
-			if len(f) == 9 {
+			if len(f) >= 9 && (len(f) != 9 || f[8] != "save-wire") {
 				if f[8] != "refused" && f[8] != "wrote" {
 					return nil, fmt.Errorf("%s: %q is not a write verdict: a save is `refused` or `wrote`", where, f[8])
 				}
 				wr.Verdict = f[8]
+			}
+			if len(f) == 10 {
+				if wr.Form != "" || wr.Verdict != "wrote" {
+					return nil, fmt.Errorf("%s: a save-wire pin requires a wrote row on write-refusal", where)
+				}
+				wr.SaveWire = f[9]
 			}
 			m.WriteRefusals = append(m.WriteRefusals, wr)
 		case "forgery":
