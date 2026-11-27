@@ -49,19 +49,19 @@ static void check( int ok, const char * what )
 int main( void )
 {
     static uint8_t file[16384];
-    const TableFixedEntry * count = NULL;
-    Cfg v, back;
-    TableReport r;
+    const tblv1_table_fixed_entry_t * count = NULL;
+    tblv1_cfg_t v, back;
+    tblv1_table_report_t r;
     uint8_t * body;
     int64_t n;
     int i;
 
     /* The identity plan carries the count op for items, bound Max = 8. */
-    for ( i = 0; i < cfg_fixed_plan_count; ++i )
+    for ( i = 0; i < tblv1_cfg_fixed_plan_count; ++i )
     {
-        if ( cfg_fixed_plan[i].op == kTableFixedCount && cfg_fixed_plan[i].dst == (uint32_t) offsetof( Cfg, items_count ) )
+        if ( tblv1_cfg_fixed_plan[i].op == TBLV1_K_TABLE_FIXED_COUNT && tblv1_cfg_fixed_plan[i].dst == (uint32_t) offsetof( tblv1_cfg_t, items_count ) )
         {
-            count = &cfg_fixed_plan[i];
+            count = &tblv1_cfg_fixed_plan[i];
         }
     }
     check( count != NULL, "c/C2: the identity plan carries a count op for items" );
@@ -69,26 +69,26 @@ int main( void )
     check( count->size == 8, "c/C2: the count op's bound is Max, in ELEMENTS (8, not the field's 32 bytes)" );
 
     /* THE BOUNDARY: count == Max is lawful and counts nothing. */
-    cfg_reset( &v );
+    tblv1_cfg_reset( &v );
     v.items_count = 8;
     for ( i = 0; i < 8; ++i ) { v.items[i] = 100 + i; }
-    n = cfg_fixed_save( &v, 1, file, (int64_t) sizeof( file ) );
-    check( n == cfg_fixed_measure( 1 ), "c/C2: the boundary record (items_count == Max) saves" );
+    n = tblv1_cfg_fixed_save( &v, 1, file, (int64_t) sizeof( file ) );
+    check( n == tblv1_cfg_fixed_measure( 1 ), "c/C2: the boundary record (items_count == Max) saves" );
     memset( &r, 0, sizeof( r ) );
-    check( cfg_fixed_load( &back, 1, file, n, NULL, 0, NULL, &r ) == 1, "c/C2 BOUNDARY: count == Max reads" );
+    check( tblv1_cfg_fixed_load( &back, 1, file, n, NULL, 0, NULL, &r ) == 1, "c/C2 BOUNDARY: count == Max reads" );
     check( back.items_count == 8 && back.items[0] == 100 && back.items[7] == 107,
            "c/C2 BOUNDARY: count == Max lands whole" );
     check( !r.refused, "c/C2 BOUNDARY: count == Max reads clean — the bound is v > Max, never v >= Max" );
 
     /* THE FORGE: one field — the count word — to 1000 > Max. */
-    body = file + kTableFixedHeaderBytes + 4 + (int64_t) sizeof( cfg_fixed_layout ) + 8;
-    table_fixed_put32( body + count->src, 1000u );
+    body = file + TBLV1_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( tblv1_cfg_fixed_layout ) + 8;
+    tblv1_table_fixed_put32( body + count->src, 1000u );
 
     memset( &back, 0, sizeof( back ) );
     memset( &r, 0, sizeof( r ) );
-    check( cfg_fixed_load( &back, 1, file, n, NULL, 0, NULL, &r ) == -1,
+    check( tblv1_cfg_fixed_load( &back, 1, file, n, NULL, 0, NULL, &r ) == -1,
            "c/C2: a count forged past Max refuses the whole load" );
-    check( r.refused && r.refuse_reason == SCHEMA_TABLE_REFUSE_OUT_OF_RANGE,
+    check( r.refused && r.refuse_reason == SCHEMA_TBLV1_TABLE_REFUSE_OUT_OF_RANGE,
            "c/C2: the refusal is out_of_range" );
     check( back.items_count == 0,
            "c/C2: a refusal lands nothing — the count stays at its reset 0" );

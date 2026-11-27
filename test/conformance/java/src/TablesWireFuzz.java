@@ -384,15 +384,17 @@ public final class TablesWireFuzz {
 
         byte[] head = new byte[1 + 5 * 4 + 2 + 8 + 2 * 4 + 8];
         while (true) {
-            long index;
-            try {
-                index = readU32(in);
-            } catch (EOFException done) {
+            // THE STREAM ENDS ONLY BETWEEN FRAMES (test/conformance/harness/
+            // wireeof.go): no index byte at EOF is the clean close; one to
+            // three are a truncated frame, and so is a cut length or body.
+            int first = in.read();
+            if (first < 0) {
                 break;
             }
-            long size = readU32(in);
+            long index = readU32After(in, first, "a mutant index");
+            long size = readU32After(in, readByteOr(in, "a mutant length"), "a mutant length");
             byte[] wire = new byte[(int) size];
-            readFully(in, wire);
+            readFullyOr(in, wire, "a mutant");
             if (index >= roster.length || roster[(int) index] == null) {
                 System.err.println("wire-fuzz: a mutant for roster entry " + index + ", which this leg answered absent");
                 System.exit(1);
@@ -430,6 +432,37 @@ public final class TablesWireFuzz {
             out.flush();
         }
         out.flush();
+    }
+
+    private static void truncated(String where) {
+        System.err.println("wire-fuzz: the stream ended inside " + where);
+        System.exit(1);
+    }
+
+    private static int readByteOr(InputStream in, String where) throws IOException {
+        int b = in.read();
+        if (b < 0) {
+            truncated(where);
+        }
+        return b;
+    }
+
+    private static void readFullyOr(InputStream in, byte[] b, String where) throws IOException {
+        int got = 0;
+        while (got < b.length) {
+            int r = in.read(b, got, b.length - got);
+            if (r < 0) {
+                truncated(where);
+            }
+            got += r;
+        }
+    }
+
+    // the u32 whose first byte is already read: the other three must follow
+    private static long readU32After(InputStream in, int first, String where) throws IOException {
+        byte[] b = new byte[3];
+        readFullyOr(in, b, where);
+        return (first & 0xffL) | (b[0] & 0xffL) << 8 | (b[1] & 0xffL) << 16 | (b[2] & 0xffL) << 24;
     }
 
     private static int readByte(InputStream in) throws IOException {

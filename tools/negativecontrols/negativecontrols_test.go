@@ -714,7 +714,7 @@ func TestAToolBoundGroupInstallsItsTool(t *testing.T) {
 		lint, dart, ruby := false, false, false
 		for _, target := range g.Targets {
 			lint = lint || strings.Contains(target, "golangci-lint")
-			dart = dart || strings.HasPrefix(target, "schema-dart-")
+			dart = dart || strings.HasPrefix(target, "schema-dart-") || strings.Contains(target, "negative-control-dart-")
 			ruby = ruby || strings.HasPrefix(target, "ruby-")
 		}
 		if ruby && g.Ruby == "" {

@@ -20,7 +20,14 @@
 //
 // The negative control rewrites the saved bytes so weapon 0's union tag is
 // 0 (None) and verifies the read lands None — proving the tag is the fact
-// that selects the arm.
+// that selects the arm. THE LAW MOVED under it (docs/rulings.json
+// fixed-dead-bytes-are-zero, 2026-11-10): tag 0 makes the arm's bytes DEAD,
+// so the buff payload still on the wire refuses the whole load as wire
+// damage; the "tag selects the arm" half is now shown with the dead payload
+// zeroed too. And strict-only-read (docs/rulings.json): the second control's
+// flipped byte puts `amount` past its declared max 100, which refuses the
+// load out_of_range instead of reaching the value; an in-range flip still
+// reaches it.
 //
 //   rustc --edition 2021 --test \
 //       --extern tabledemo=<tabledemo rlib> -L <tabledemo deps dir> \
@@ -32,7 +39,7 @@
 
 use tabledemo::{
     root_config_fixed_load, root_config_fixed_measure, root_config_fixed_save,
-    BuffRow, DebuffRow, RootConfigRow, TableFixedEntry, TableFixedReport,
+    BuffRow, DebuffRow, RootConfigRow, TableFixedEntry, TableFixedReason, TableFixedReport,
     TABLE_FIXED_HEADER_BYTES, ROOT_CONFIG_FIXED_BLOCK,
 };
 
@@ -102,8 +109,10 @@ fn test_union_arrays_valid_data_write_read() {
     let n = root_config_fixed_load(&mut back, &file, &mut plan, &mut remap, &mut report)
         .expect("read succeeds");
     check(n == 1, "arrays of unions: the reader reads one record");
-    check(report.oor == 0 && !report.damaged && !report.refused,
-          "arrays of unions: a clean read — no counter moved");
+    // strict-only-read (docs/rulings.json): the retired clamp count `oor == 0` is now
+    // "no out_of_range refusal": a value past its bound refuses the whole load.
+    check(report.reason.name() == "none" && !report.damaged && !report.refused,
+          "arrays of unions: a clean read — not refused (no out_of_range), not damaged");
 
     let b = &back[0];
     check(b.weapons_count == 2, "arrays of unions: weapons_count == 2 read back");
@@ -146,9 +155,26 @@ fn test_union_arrays_valid_data_write_read() {
     let mut plan2 = [TableFixedEntry::default(); 1024];
     let mut remap2 = [0u16; 1024];
     let mut report2 = TableFixedReport::default();
+    let n2 = root_config_fixed_load(&mut back2, &broken, &mut plan2, &mut remap2, &mut report2);
+    // fixed-dead-bytes-are-zero: the buff payload (2.5f) under a None tag is
+    // dead and non-zero, so the whole load refuses as damage, nothing lands
+    check(n2.is_none(), "arrays of unions NEGATIVE CONTROL: a None tag over a live payload refuses the load");
+    check(report2.damaged, "arrays of unions NEGATIVE CONTROL: the non-zero dead arm bytes are wire damage");
+    check(back2[0].weapons_count == 0,
+          "arrays of unions NEGATIVE CONTROL: a refused load lands nothing (declared default count 0)");
+
+    // the same sabotage with the now-dead arm payload ZEROED: the tag alone
+    // moved, and the read lands None for weapon 0 — the tag selects the arm
+    let mult_at = tag0_at + 1;
+    for k in 0..4 {
+        broken[mult_at + k] = 0;
+    }
+    let mut back2 = [RootConfigRow::default(); 1];
+    let mut report2 = TableFixedReport::default();
     let n2 = root_config_fixed_load(&mut back2, &broken, &mut plan2, &mut remap2, &mut report2)
         .expect("reader opens the sabotaged file");
-    check(n2 == 1, "arrays of unions NEGATIVE CONTROL: the reader opens the sabotaged file");
+    check(n2 == 1 && !report2.damaged && !report2.refused,
+          "arrays of unions NEGATIVE CONTROL: the reader opens the sabotaged file (dead payload zeroed)");
 
     // The sabotaged weapon's effect tag is 0 (None)
     check(back2[0].weapons[0].effect.tag() == 0,
@@ -177,9 +203,23 @@ fn test_union_arrays_valid_data_write_read() {
     let mut plan3 = [TableFixedEntry::default(); 1024];
     let mut remap3 = [0u16; 1024];
     let mut report3 = TableFixedReport::default();
-    let n3 = root_config_fixed_load(&mut back3, &broken2, &mut plan3, &mut remap3, &mut report3)
+    let n3 = root_config_fixed_load(&mut back3, &broken2, &mut plan3, &mut remap3, &mut report3);
+    // strict-only-read: 42 ^ 0xFF in the low byte is 213, past `amount`'s
+    // declared max 100 (tables/examples/Tables.schema: Debuff.amount | min = 0,
+    // max = 100), so the whole load refuses out_of_range (was: "the reader
+    // opens the sabotaged file")
+    check(n3.is_none(), "arrays of unions NEGATIVE CONTROL 2: an out-of-range arm payload refuses the load");
+    check(report3.refused && report3.reason == TableFixedReason::OutOfRange,
+          "arrays of unions NEGATIVE CONTROL 2: refused out_of_range");
+
+    // an IN-RANGE corruption of the same byte (42 -> 43) reads, and reaches the value
+    let mut broken3 = file.clone();
+    broken3[debuff_amount_at] = 43;
+    let mut back3 = [RootConfigRow::default(); 1];
+    let mut report3 = TableFixedReport::default();
+    let n3 = root_config_fixed_load(&mut back3, &broken3, &mut plan3, &mut remap3, &mut report3)
         .expect("reader opens the sabotaged file");
-    check(n3 == 1, "arrays of unions NEGATIVE CONTROL 2: the reader opens the sabotaged file");
+    check(n3 == 1, "arrays of unions NEGATIVE CONTROL 2: the reader opens the in-range sabotaged file");
 
     // The debuff amount is now corrupted — should NOT equal 42
     let debuff3 = back3[0].weapons[1].effect.debuff().expect("debuff arm selected");

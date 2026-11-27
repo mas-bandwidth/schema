@@ -379,6 +379,23 @@ func startWireLeg(command string, roots []*wireRoot) (*wireLeg, error) {
 	// vocabulary is a pure function of the build version and both sides
 	// derive the same one, so the roster names the form and never carries an
 	// announcement.
+	if _, err := stdin.Write(encodeWireRoster(roots)); err != nil {
+		return nil, fmt.Errorf("the leg closed its input during the roster: %w", err)
+	}
+	leg.known = make([]bool, len(roots))
+	for i := range roots {
+		b, err := leg.stdout.ReadByte()
+		if err != nil {
+			return nil, fmt.Errorf("the leg did not answer the roster: %w\n%s", err, leg.stderr.String())
+		}
+		leg.known[i] = b != 0
+	}
+	return leg, nil
+}
+
+// encodeWireRoster is the roster frame startWireLeg writes, and the one
+// the end-of-stream check (wireeof.go) sends ahead of each truncation.
+func encodeWireRoster(roots []*wireRoot) []byte {
 	var roster bytes.Buffer
 	_ = binary.Write(&roster, binary.LittleEndian, uint32(len(roots)))
 	for _, r := range roots {
@@ -400,18 +417,7 @@ func startWireLeg(command string, roots []*wireRoot) (*wireLeg, error) {
 		}
 		roster.WriteByte(retain)
 	}
-	if _, err := stdin.Write(roster.Bytes()); err != nil {
-		return nil, fmt.Errorf("the leg closed its input during the roster: %w", err)
-	}
-	leg.known = make([]bool, len(roots))
-	for i := range roots {
-		b, err := leg.stdout.ReadByte()
-		if err != nil {
-			return nil, fmt.Errorf("the leg did not answer the roster: %w\n%s", err, leg.stderr.String())
-		}
-		leg.known[i] = b != 0
-	}
-	return leg, nil
+	return roster.Bytes()
 }
 
 func (l *wireLeg) send(rootIndex int, data []byte) error {

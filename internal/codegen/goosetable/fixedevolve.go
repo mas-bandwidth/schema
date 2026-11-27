@@ -247,6 +247,7 @@ func (e *fixedEvolveEmit) emitRoot(st *ir.Struct) {
 	}
 	e.g.Declare(n + "FixedEvolveFloor")
 	e.g.Declare(n + "FixedEvolveLoad")
+	e.g.Declare("_" + n + "FixedEvolveLoadWalk")
 	e.p("let %sFixedEvolveFloor: i64 = %d;\n", n, floor)
 	for i, en := range olds {
 		e.emitEntry(n, i+1, en, st)
