@@ -108,7 +108,7 @@ func TestSquirrelForgeryFuzz(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tmpSchema := filepath.Join(t.TempDir(), "Cook.schema")
+	tmpSchema := filepath.Join(t.TempDir(), "Chain.schema")
 	if err := os.WriteFile(tmpSchema, []byte("package sqcook\ntable Node { x int32\n next *Node }\ntable Root { head *Node\n label string(16) }\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}

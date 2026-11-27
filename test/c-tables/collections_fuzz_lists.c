@@ -29,6 +29,11 @@ const ConformanceCodec * conformance_codecs_listdemo(int * count) {
  }; *count=(int)(sizeof(codecs)/sizeof(codecs[0]));return codecs;
 }
 
+/* The write-refusal hooks serve the conformance driver, which links
+   test/conformance/c/wref.c (conformance_write_refusal_integer behind
+   CONFORMANCE_WREF_*). The collections fuzz binary links no wref.c and runs no
+   write-refusal case, so it builds without them. */
+#if !defined( SCHEMA_C_COLLECTIONS_FUZZ )
 int conformance_write_refusal_set_listdemo( const char * root, void * value, const char * path,
                                             const char * kind, const char * text )
 {
@@ -71,3 +76,4 @@ int conformance_write_refusal_write_listdemo( int surface, const char * root, co
     (void) buffer; (void) capacity; (void) wrote;
     return 0;
 }
+#endif
