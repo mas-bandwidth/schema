@@ -117,15 +117,15 @@ func (e *MessageRefusal) Error() string {
 // direction, the one it writes with and the one it reads with, and neither is
 // the other's. A body from an endpoint that never announced is refused by name.
 type Vocabulary struct {
-	// THE BOUND IS TWO NUMBERS, because an entry is no longer a fixed width:
-	// an announcement above either is refused by name before an entry is
-	// touched. A zero MaxEntries means the conforming default
-	// ([ir.TableVocabularyMaxEntries]). The byte bound is set by
-	// [Vocabulary.SetMaxBytes] and a caller's 0 there refuses every
-	// non-empty vocabulary: it never means the default (R9, 2026-11-22). A
-	// vocabulary whose bound was never set holds the conforming default,
-	// [ir.TableVocabularyMaxBytes].
+	// THE BOUND IS TWO NUMBERS because an entry is no longer a fixed width.
+	// A positive MaxEntries is the receiver's entry bound. The zero value
+	// uses [ir.TableVocabularyMaxEntries] unless [Vocabulary.SetMaxEntries]
+	// explicitly sets zero. A byte bound set by [Vocabulary.SetMaxBytes]
+	// also takes zero literally, with [ir.TableVocabularyMaxBytes] as its
+	// default.
 	MaxEntries int
+
+	maxEntriesSet bool
 
 	maxBytes    int
 	maxBytesSet bool
@@ -159,8 +159,15 @@ func (v *Vocabulary) Announced() bool { return v.announced }
 // announced build version is not its own.
 func (v *Vocabulary) BuildVersion() uint64 { return v.buildVersion }
 
+// SetMaxEntries declares the receiver's entry bound. An explicit zero
+// accepts only an empty vocabulary.
+func (v *Vocabulary) SetMaxEntries(n int) {
+	v.MaxEntries = n
+	v.maxEntriesSet = true
+}
+
 func (v *Vocabulary) bound() int {
-	if v.MaxEntries > 0 {
+	if v.maxEntriesSet || v.MaxEntries > 0 {
 		return v.MaxEntries
 	}
 	return ir.TableVocabularyMaxEntries

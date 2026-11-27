@@ -31,16 +31,16 @@ func (g *tableGen) emitArmStorage(v ir.UnionVariant) {
 		g.noteRef(f.Type.Name)
 		g.pf("        TableRef %s; // *%s — a node index on the wire (§3.1)\n", v.Name, f.Type.Name)
 	case f.Type.Kind == ir.TString:
-		g.pf("        struct { char value[%d + 1]; int32_t value_length; } %s; // string(%d)\n", f.Type.Size, v.Name, f.Type.Size)
+		g.pf("        struct\n        {\n            char value[%d + 1];\n            int32_t value_length;\n        } %s; // string(%d)\n", f.Type.Size, v.Name, f.Type.Size)
 	case f.Type.Kind == ir.TBytes:
-		g.pf("        struct { uint8_t value[%d]; int32_t value_length; } %s; // bytes(%d)\n", f.Type.Size, v.Name, f.Type.Size)
+		g.pf("        struct\n        {\n            uint8_t value[%d];\n            int32_t value_length;\n        } %s; // bytes(%d)\n", f.Type.Size, v.Name, f.Type.Size)
 	case f.Array == ir.ArrayCounted:
 		g.noteRef(f.Type.Name)
 		align16 := ""
 		if !f.Type.Pointer && f.Type.Width == 128 && (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TFixed) {
 			align16 = "alignas( 16 ) "
 		}
-		g.pf("        %sstruct { %s value[%d]; int32_t value_count; } %s; // [..%d]%s\n",
+		g.pf("        %sstruct\n        {\n            %s value[%d];\n            int32_t value_count;\n        } %s; // [..%d]%s\n",
 			align16, g.armElementType(v), f.ArrayBound, v.Name, f.ArrayBound, ir.TableTypeSpelling(f))
 	case f.Array == ir.ArrayFixed:
 		g.noteRef(f.Type.Name)
@@ -147,23 +147,23 @@ func (g *tableGen) emitArmMeasure(v ir.UnionVariant, base, into, ind, onBad, sfx
 	case v.Body():
 		g.noteRef(v.Type)
 		g.pf("%s{\n%s    const int64_t %s = %s;\n", ind, ind, body, g.measureCall(g.unionField, v.Type, value))
-		g.pf("%s    if ( %s < 0 ) { %s }\n", ind, body, onBad)
+		g.emitIfBlock(ind+"    ", fmt.Sprintf("if ( %s < 0 )", body), onBad, "")
 		g.pf("%s    %s += %s; // the arm's own table body (§3)\n%s}\n", ind, into, body, ind)
 	case f.Type.Blob():
 		blob, index := "arm_blob"+sfx, "arm_index"+sfx
 		g.pf("%s{\n%s    const TableBlob * %s = TableBlobAt( ctx, %s );\n", ind, ind, blob, value)
 		g.pf("%s    uint64_t %s = 0;\n", ind, index)
-		g.pf("%s    if ( %s != NULL && !TableNumberingIndex( numbering, (const void *) %s, %s ) ) { %s }\n", ind, blob, blob, index, onBad)
+		g.emitIfBlock(ind+"    ", fmt.Sprintf("if ( %s != NULL && !TableNumberingIndex( numbering, (const void *) %s, %s ) )", blob, blob, index), onBad, "")
 		g.pf("%s    %s += TableLebBytes( %s ); // a node index, null as 0 (§3.1)\n%s}\n", ind, into, index, ind)
 	case f.Type.Pointer && f.Array == ir.ArrayNone:
 		t, pointee, index := f.Type.Name, "arm_pointee"+sfx, "arm_index"+sfx
 		g.pf("%s{\n%s    const %s * %s = %sAt( ctx, %s );\n", ind, ind, t, pointee, t, value)
 		g.pf("%s    uint64_t %s = 0;\n", ind, index)
-		g.pf("%s    if ( %s != NULL && !TableNumberingIndex( numbering, (const void *) %s, %s ) ) { %s }\n", ind, pointee, pointee, index, onBad)
+		g.emitIfBlock(ind+"    ", fmt.Sprintf("if ( %s != NULL && !TableNumberingIndex( numbering, (const void *) %s, %s ) )", pointee, pointee, index), onBad, "")
 		g.pf("%s    %s += TableLebBytes( %s ); // a node index, null as 0 (§3.1)\n%s}\n", ind, into, index, ind)
 	case f.Type.Kind == ir.TString:
 		g.storageAssert(ind, count, f.Type.Size)
-		g.pf("%sif ( !TableUtf8Valid( (const uint8_t *) %s, (uint64_t) %s ) ) { %s } // well-formed, no zero byte (§2.6, §2.13)\n", ind, value, count, onBad)
+		g.emitIfBlock(ind, fmt.Sprintf("if ( !TableUtf8Valid( (const uint8_t *) %s, (uint64_t) %s ) )", value, count), onBad, " // well-formed, no zero byte (§2.6, §2.13)")
 		g.pf("%s%s += %s; // the string's bytes under the arm's L\n", ind, into, count)
 	case f.Type.Kind == ir.TBytes:
 		g.storageAssert(ind, count, f.Type.Size)
@@ -183,7 +183,7 @@ func (g *tableGen) emitArmMeasure(v ir.UnionVariant, base, into, ind, onBad, sfx
 		ref := "arm_variant" + sfx
 		g.pf("%s{\n%s    uint64_t %s = 0;\n", ind, ind, ref)
 		g.emitDeprecatedVariantAssert(f, value, ind+"    ")
-		g.pf("%s    if ( !TableEnumRef( ids, %s, %s ) ) { %s } // no variant names this value\n", ind, value, ref, onBad)
+		g.emitIfBlock(ind+"    ", fmt.Sprintf("if ( !TableEnumRef( ids, %s, %s ) )", value, ref), onBad, " // no variant names this value")
 		g.pf("%s    %s += TableLebBytes( %s ); // the variant's reference\n%s}\n", ind, into, ref, ind)
 	case kind == tkUnion:
 		un := f.Type.Ref.(*ir.Union)
@@ -210,22 +210,22 @@ func (g *tableGen) emitArmSave(v ir.UnionVariant, base, ind, onBad, sfx string) 
 	index := "arm_index" + sfx
 	switch {
 	case v.Body():
-		g.pf("%sif ( !%s ) { %s }\n", ind, g.saveCall(g.unionField, v.Type, value), onBad)
+		g.pf("%[1]sif ( !%[2]s )\n%[1]s{\n%[1]s    %[3]s\n%[1]s}\n", ind, g.saveCall(g.unionField, v.Type, value), onBad)
 	case f.Type.Blob():
 		blob := "arm_blob" + sfx
 		g.pf("%s{\n%s    const TableBlob * %s = TableBlobAt( ctx, %s );\n", ind, ind, blob, value)
 		g.pf("%s    uint64_t %s = 0;\n", ind, index)
-		g.pf("%s    if ( %s != NULL && !TableNumberingIndex( numbering, (const void *) %s, %s ) ) { %s }\n", ind, blob, blob, index, onBad)
+		g.emitIfBlock(ind+"    ", fmt.Sprintf("if ( %s != NULL && !TableNumberingIndex( numbering, (const void *) %s, %s ) )", blob, blob, index), onBad, "")
 		g.pf("%s    w.putleb( %s ); // a node index, null as 0 (§3.1)\n%s}\n", ind, index, ind)
 	case f.Type.Pointer && f.Array == ir.ArrayNone:
 		t, pointee := f.Type.Name, "arm_pointee"+sfx
 		g.pf("%s{\n%s    const %s * %s = %sAt( ctx, %s );\n", ind, ind, t, pointee, t, value)
 		g.pf("%s    uint64_t %s = 0;\n", ind, index)
-		g.pf("%s    if ( %s != NULL && !TableNumberingIndex( numbering, (const void *) %s, %s ) ) { %s }\n", ind, pointee, pointee, index, onBad)
+		g.emitIfBlock(ind+"    ", fmt.Sprintf("if ( %s != NULL && !TableNumberingIndex( numbering, (const void *) %s, %s ) )", pointee, pointee, index), onBad, "")
 		g.pf("%s    w.putleb( %s ); // a node index, null as 0 (§3.1)\n%s}\n", ind, index, ind)
 	case f.Type.Kind == ir.TString:
 		g.storageAssert(ind, count, f.Type.Size)
-		g.pf("%sif ( !TableUtf8Valid( (const uint8_t *) %s, (uint64_t) %s ) ) { %s }\n", ind, value, count, onBad)
+		g.emitIfBlock(ind, fmt.Sprintf("if ( !TableUtf8Valid( (const uint8_t *) %s, (uint64_t) %s ) )", value, count), onBad, "")
 		g.pf("%sw.raw( %s, %s );\n", ind, value, count)
 	case f.Type.Kind == ir.TBytes:
 		g.storageAssert(ind, count, f.Type.Size)
@@ -288,8 +288,7 @@ func (g *tableGen) emitArmLoad(v ir.UnionVariant, base, ind, rdr, tag, none, sfx
 	kind := tableScalarKind(f)
 	value, count := armValue(base, v), armCount(base, v)
 	if w := armWireLength(v); w > 0 {
-		g.pf("%sif ( %s.size != %d ) { %s = %s; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)\n",
-			ind, rdr, w, tag, none)
+		g.emitIfBlock(ind, fmt.Sprintf("if ( %s.size != %d )", rdr, w), fmt.Sprintf("%s = %s; r.report->damaged = true; break;", tag, none), " // an L that is not the kind's width is that arm's own framing damage (§3)")
 	}
 	switch {
 	case v.Body():
@@ -299,8 +298,7 @@ func (g *tableGen) emitArmLoad(v ir.UnionVariant, base, ind, rdr, tag, none, sfx
 		// terminator is not the last byte of its `L` is framing damage — the
 		// payload stops, the union reads None, and the enclosing body
 		// continues past the arm by `L`.
-		g.pf("%sif ( %s.offset != %s.size ) { %s = %s; r.report->damaged = true; break; }\n",
-			ind, rdr, rdr, tag, none)
+		g.emitIfBlock(ind, fmt.Sprintf("if ( %s.offset != %s.size )", rdr, rdr), fmt.Sprintf("%s = %s; r.report->damaged = true; break;", tag, none), "")
 	case f.Type.Blob(), f.Type.Pointer && f.Array == ir.ArrayNone:
 		g.emitNodeIndexLoad(f, value, ind, rdr,
 			[]string{fmt.Sprintf("%s = %s;", tag, none), "r.report->damaged = true;", "break;"}, sfx, true)
@@ -416,12 +414,13 @@ func (g *tableGen) emitArmLoad(v ir.UnionVariant, base, ind, rdr, tag, none, sfx
 			g.pf("%s                if ( %s != %d )\n%s                {\n", ind, innerKind, armWireKind(in), ind)
 			g.emitArmWiden(in, value, innerKind, inner, value+".type",
 				un.Name+"Type::"+ir.GoExportName(in.Name), un.Name+"Type::None", ind+"                    ")
-			g.pf("%s                    %s.type = %sType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;\n%s                }\n", ind, value, un.Name, ind)
+			g.emitStatements(ind+"                    ", fmt.Sprintf("%s.type = %sType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;", value, un.Name))
+			g.pf("%s                }\n", ind)
 			g.pf("%s                %s.type = %sType::%s;\n", ind, value, un.Name, ir.GoExportName(in.Name))
 			g.emitArmLoad(in, value, ind+"                ", inner, value+".type", un.Name+"Type::None", sfx+"a")
 			g.pf("%s                break;\n%s            }\n", ind, ind)
 		}
-		g.pf("%[1]s            default:\n%[1]s                r.report->unknown++;\n%[1]s                %[2]s break; // an arm this reader cannot name\n", ind, g.retainLostInline())
+		g.pf("%[1]s            default:\n%[1]s                r.report->unknown++;\n%[1]s                %[2]sbreak; // an arm this reader cannot name\n", ind, g.retainLostLead(ind+"                "))
 		g.pf("%s        }\n", ind)
 		g.pf("%s        %s.offset += (int64_t) %s;\n", ind, rdr, length)
 		g.pf("%s    }\n", ind)
