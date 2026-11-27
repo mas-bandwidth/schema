@@ -552,9 +552,10 @@ func (w *tableCookWriter) value(p unsafe.Pointer, f *TableFieldInfo, at int64, r
 		w.put(at+8, hi, 8)
 		return true
 	}
+	// An enum slot holds None or a live variant (mas-bandwidth/schema docs/SPEC.md §5.1 row 5; SPEC-TABLES §2.15): an ordinal past EnumMax or a deprecated variant refuses.
 	// A cooked float is finite (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3): NaN and infinity refuse, and a compressed float's -0 is written as +0.
 	value := tableJSONGetRaw(p, f.ElemSize)
-	if f.EnumDeprecated != nil && f.EnumDeprecated(value) {
+	if f.VariantID != nil && tableEnumPast(value, f) || f.EnumDeprecated != nil && f.EnumDeprecated(value) {
 		return false
 	}
 	if f.Kind == 1 || f.HasRange && (f.Kind == 10 && value == 0x80000000 || f.Kind == 11 && value == 0x8000000000000000) {
@@ -568,6 +569,9 @@ func (w *tableCookWriter) value(p unsafe.Pointer, f *TableFieldInfo, at int64, r
 	}
 	w.put(at, value, width)
 	return true
+}
+func tableEnumPast(value uint64, f *TableFieldInfo) bool {
+	return f.EnumMax >= 0 && value > uint64(f.EnumMax) /* #nosec G115 -- EnumMax is checked non-negative on the left of the and */
 }
 func tableCookFixed(p unsafe.Pointer, t *TableTypeInfo, buffer []byte, order TableByteOrder) bool {
 	if p == nil || order != TableByteOrderLittle && order != TableByteOrderBig {
