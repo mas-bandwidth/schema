@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum wide_div10
+{ Zfirst, Zsecond, Zthird }
+
+enum wide_frac
+{ Zfirst, Zsecond, Zthird }
+
+enum wide_int
+{ Zfirst, Zsecond, Zthird }
+
+enum wide_less
+{ Zfirst, Zsecond, Zthird }
+
+enum wide_less_signed
+{ Zfirst, Zsecond, Zthird }
+
+enum wide_less_unsigned
+{ Zfirst, Zsecond, Zthird }
+
+enum wide_low
+{ Zfirst, Zsecond, Zthird }
+
+enum wide_mul_add
+{ Zfirst, Zsecond, Zthird }
+
+enum wide_mul_small
+{ Zfirst, Zsecond, Zthird }
+
+enum wide_neg
+{ Zfirst, Zsecond, Zthird }
+
+enum wide_parse
+{ Zfirst, Zsecond, Zthird }
+
+enum wide_ranged_holds
+{ Zfirst, Zsecond, Zthird }
+
+enum wide_shl
+{ Zfirst, Zsecond, Zthird }
+
+enum wide_shr
+{ Zfirst, Zsecond, Zthird }
+
+enum wide_text
+{ Zfirst, Zsecond, Zthird }
+
+enum wide_token_parts
+{ Zfirst, Zsecond, Zthird }
+
+enum wide_ucmp
+{ Zfirst, Zsecond, Zthird }
+
+enum widen
+{ Zfirst, Zsecond, Zthird }
+
+enum widen32
+{ Zfirst, Zsecond, Zthird }
+
+enum widenF32
+{ Zfirst, Zsecond, Zthird }
+
+enum widenFloat
+{ Zfirst, Zsecond, Zthird }
+
+enum widenScratch
+{ Zfirst, Zsecond, Zthird }
+
+enum widened
+{ Zfirst, Zsecond, Zthird }
+
+enum widenedBefore
+{ Zfirst, Zsecond, Zthird }
+
+enum widened_decoded
+{ Zfirst, Zsecond, Zthird }
+
+enum widened_i
+{ Zfirst, Zsecond, Zthird }
+
+enum widened_keep
+{ Zfirst, Zsecond, Zthird }
+
+enum widened_key
+{ Zfirst, Zsecond, Zthird }
+
+enum widened_v
+{ Zfirst, Zsecond, Zthird }
+
+enum widens
+{ Zfirst, Zsecond, Zthird }
+
+enum wider
+{ Zfirst, Zsecond, Zthird }
+
+enum widest
+{ Zfirst, Zsecond, Zthird }
+
+enum widestArm
+{ Zfirst, Zsecond, Zthird }
+
+enum width
+{ Zfirst, Zsecond, Zthird }
+
+enum width_of
+{ Zfirst, Zsecond, Zthird }
+
+enum window
+{ Zfirst, Zsecond, Zthird }
+
+enum wire
+{ Zfirst, Zsecond, Zthird }
+
+enum wireCheck
+{ Zfirst, Zsecond, Zthird }
+
+enum wireDamage
+{ Zfirst, Zsecond, Zthird }
+
+enum wireFail
+{ Zfirst, Zsecond, Zthird }
+
+enum wireKind
+{ Zfirst, Zsecond, Zthird }
+
+enum wireNonFinite
+{ Zfirst, Zsecond, Zthird }
+
+enum wire_after
+{ Zfirst, Zsecond, Zthird }
+
+enum wire_blob_names
+{ Zfirst, Zsecond, Zthird }
+
+enum wire_bytes
+{ Zfirst, Zsecond, Zthird }
+
+enum wire_crc32c_table
+{ Zfirst, Zsecond, Zthird }
+
+enum wire_edge_owner
+{ Zfirst, Zsecond, Zthird }
+
+enum wire_edges
+{ Zfirst, Zsecond, Zthird }
+
+enum wire_file
+{ Zfirst, Zsecond, Zthird }
+
+enum wire_file_bytes
+{ Zfirst, Zsecond, Zthird }
+
+enum wire_first
+{ Zfirst, Zsecond, Zthird }
+
+enum wire_fits
+{ Zfirst, Zsecond, Zthird }
+
+enum wire_hash
+{ Zfirst, Zsecond, Zthird }
+
+enum wire_id
+{ Zfirst, Zsecond, Zthird }
+
+enum wire_nodes
+{ Zfirst, Zsecond, Zthird }
+
+enum wire_of
+{ Zfirst, Zsecond, Zthird }
+
+enum wire_open
+{ Zfirst, Zsecond, Zthird }
+
+enum wire_ready
+{ Zfirst, Zsecond, Zthird }
+
+enum wire_reason
+{ Zfirst, Zsecond, Zthird }
+
+enum wire_skip
+{ Zfirst, Zsecond, Zthird }
+
+enum wire_take
+{ Zfirst, Zsecond, Zthird }
+
+enum without
+{ Zfirst, Zsecond, Zthird }
+
+enum withoutTrailer
+{ Zfirst, Zsecond, Zthird }
+
+enum without_newlines
+{ Zfirst, Zsecond, Zthird }
+
+enum witness
+{ Zfirst, Zsecond, Zthird }
+
+enum wk
+{ Zfirst, Zsecond, Zthird }
+
+enum wkey
+{ Zfirst, Zsecond, Zthird }
+
+enum wkw
+{ Zfirst, Zsecond, Zthird }
+
+enum wl_guard
+{ Zfirst, Zsecond, Zthird }
+
+enum wl_required
+{ Zfirst, Zsecond, Zthird }
+
+enum wlo
+{ Zfirst, Zsecond, Zthird }
+
+enum wn
+{ Zfirst, Zsecond, Zthird }
+
+enum wname
+{ Zfirst, Zsecond, Zthird }
+
+enum wnon
+{ Zfirst, Zsecond, Zthird }
+
+enum wok
+{ Zfirst, Zsecond, Zthird }
+
+enum word
+{ Zfirst, Zsecond, Zthird }
+
+enum wordIdx
+{ Zfirst, Zsecond, Zthird }
+
+enum words
+{ Zfirst, Zsecond, Zthird }
+
+enum wordsAt
+{ Zfirst, Zsecond, Zthird }
+
+enum wordsCount
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    wide_div10 Inner
+    wide_frac Inner
+    wide_int Inner
+    wide_less Inner
+    wide_less_signed Inner
+    wide_less_unsigned Inner
+    wide_low Inner
+    wide_mul_add Inner
+    wide_mul_small Inner
+    wide_neg Inner
+}
+
+table NameTypes0
+{
+    one0  wide_div10
+    many0 [..4]wide_div10
+    one1  wide_frac
+    many1 [..4]wide_frac
+    one2  wide_int
+    many2 [..4]wide_int
+    one3  wide_less
+    many3 [..4]wide_less
+    one4  wide_less_signed
+    many4 [..4]wide_less_signed
+    one5  wide_less_unsigned
+    many5 [..4]wide_less_unsigned
+    one6  wide_low
+    many6 [..4]wide_low
+    one7  wide_mul_add
+    many7 [..4]wide_mul_add
+    one8  wide_mul_small
+    many8 [..4]wide_mul_small
+    one9  wide_neg
+    many9 [..4]wide_neg
+}
+
+table NameFields0
+{
+    wide_div10 uint32
+    wide_frac uint32
+    wide_int uint32
+    wide_less uint32
+    wide_less_signed uint32
+    wide_less_unsigned uint32
+    wide_low uint32
+    wide_mul_add uint32
+    wide_mul_small uint32
+    wide_neg uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    wide_parse Inner
+    wide_ranged_holds Inner
+    wide_shl Inner
+    wide_shr Inner
+    wide_text Inner
+    wide_token_parts Inner
+    wide_ucmp Inner
+    widen Inner
+    widen32 Inner
+    widenF32 Inner
+}
+
+table NameTypes1
+{
+    one0  wide_parse
+    many0 [..4]wide_parse
+    one1  wide_ranged_holds
+    many1 [..4]wide_ranged_holds
+    one2  wide_shl
+    many2 [..4]wide_shl
+    one3  wide_shr
+    many3 [..4]wide_shr
+    one4  wide_text
+    many4 [..4]wide_text
+    one5  wide_token_parts
+    many5 [..4]wide_token_parts
+    one6  wide_ucmp
+    many6 [..4]wide_ucmp
+    one7  widen
+    many7 [..4]widen
+    one8  widen32
+    many8 [..4]widen32
+    one9  widenF32
+    many9 [..4]widenF32
+}
+
+table NameFields1
+{
+    wide_parse uint32
+    wide_ranged_holds uint32
+    wide_shl uint32
+    wide_shr uint32
+    wide_text uint32
+    wide_token_parts uint32
+    wide_ucmp uint32
+    widen uint32
+    widen32 uint32
+    widenF32 uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    widenFloat Inner
+    widenScratch Inner
+    widened Inner
+    widenedBefore Inner
+    widened_decoded Inner
+    widened_i Inner
+    widened_keep Inner
+    widened_key Inner
+    widened_v Inner
+    widens Inner
+}
+
+table NameTypes2
+{
+    one0  widenFloat
+    many0 [..4]widenFloat
+    one1  widenScratch
+    many1 [..4]widenScratch
+    one2  widened
+    many2 [..4]widened
+    one3  widenedBefore
+    many3 [..4]widenedBefore
+    one4  widened_decoded
+    many4 [..4]widened_decoded
+    one5  widened_i
+    many5 [..4]widened_i
+    one6  widened_keep
+    many6 [..4]widened_keep
+    one7  widened_key
+    many7 [..4]widened_key
+    one8  widened_v
+    many8 [..4]widened_v
+    one9  widens
+    many9 [..4]widens
+}
+
+table NameFields2
+{
+    widenFloat uint32
+    widenScratch uint32
+    widened uint32
+    widenedBefore uint32
+    widened_decoded uint32
+    widened_i uint32
+    widened_keep uint32
+    widened_key uint32
+    widened_v uint32
+    widens uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    wider Inner
+    widest Inner
+    widestArm Inner
+    width Inner
+    width_of Inner
+    window Inner
+    wire Inner
+    wireCheck Inner
+    wireDamage Inner
+    wireFail Inner
+}
+
+table NameTypes3
+{
+    one0  wider
+    many0 [..4]wider
+    one1  widest
+    many1 [..4]widest
+    one2  widestArm
+    many2 [..4]widestArm
+    one3  width
+    many3 [..4]width
+    one4  width_of
+    many4 [..4]width_of
+    one5  window
+    many5 [..4]window
+    one6  wire
+    many6 [..4]wire
+    one7  wireCheck
+    many7 [..4]wireCheck
+    one8  wireDamage
+    many8 [..4]wireDamage
+    one9  wireFail
+    many9 [..4]wireFail
+}
+
+table NameFields3
+{
+    wider uint32
+    widest uint32
+    widestArm uint32
+    width uint32
+    width_of uint32
+    window uint32
+    wire uint32
+    wireCheck uint32
+    wireDamage uint32
+    wireFail uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    wireKind Inner
+    wireNonFinite Inner
+    wire_after Inner
+    wire_blob_names Inner
+    wire_bytes Inner
+    wire_crc32c_table Inner
+    wire_edge_owner Inner
+    wire_edges Inner
+    wire_file Inner
+    wire_file_bytes Inner
+}
+
+table NameTypes4
+{
+    one0  wireKind
+    many0 [..4]wireKind
+    one1  wireNonFinite
+    many1 [..4]wireNonFinite
+    one2  wire_after
+    many2 [..4]wire_after
+    one3  wire_blob_names
+    many3 [..4]wire_blob_names
+    one4  wire_bytes
+    many4 [..4]wire_bytes
+    one5  wire_crc32c_table
+    many5 [..4]wire_crc32c_table
+    one6  wire_edge_owner
+    many6 [..4]wire_edge_owner
+    one7  wire_edges
+    many7 [..4]wire_edges
+    one8  wire_file
+    many8 [..4]wire_file
+    one9  wire_file_bytes
+    many9 [..4]wire_file_bytes
+}
+
+table NameFields4
+{
+    wireKind uint32
+    wireNonFinite uint32
+    wire_after uint32
+    wire_blob_names uint32
+    wire_bytes uint32
+    wire_crc32c_table uint32
+    wire_edge_owner uint32
+    wire_edges uint32
+    wire_file uint32
+    wire_file_bytes uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    wire_first Inner
+    wire_fits Inner
+    wire_hash Inner
+    wire_id Inner
+    wire_nodes Inner
+    wire_of Inner
+    wire_open Inner
+    wire_ready Inner
+    wire_reason Inner
+    wire_skip Inner
+}
+
+table NameTypes5
+{
+    one0  wire_first
+    many0 [..4]wire_first
+    one1  wire_fits
+    many1 [..4]wire_fits
+    one2  wire_hash
+    many2 [..4]wire_hash
+    one3  wire_id
+    many3 [..4]wire_id
+    one4  wire_nodes
+    many4 [..4]wire_nodes
+    one5  wire_of
+    many5 [..4]wire_of
+    one6  wire_open
+    many6 [..4]wire_open
+    one7  wire_ready
+    many7 [..4]wire_ready
+    one8  wire_reason
+    many8 [..4]wire_reason
+    one9  wire_skip
+    many9 [..4]wire_skip
+}
+
+table NameFields5
+{
+    wire_first uint32
+    wire_fits uint32
+    wire_hash uint32
+    wire_id uint32
+    wire_nodes uint32
+    wire_of uint32
+    wire_open uint32
+    wire_ready uint32
+    wire_reason uint32
+    wire_skip uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    wire_take Inner
+    without Inner
+    withoutTrailer Inner
+    without_newlines Inner
+    witness Inner
+    wk Inner
+    wkey Inner
+    wkw Inner
+    wl_guard Inner
+    wl_required Inner
+}
+
+table NameTypes6
+{
+    one0  wire_take
+    many0 [..4]wire_take
+    one1  without
+    many1 [..4]without
+    one2  withoutTrailer
+    many2 [..4]withoutTrailer
+    one3  without_newlines
+    many3 [..4]without_newlines
+    one4  witness
+    many4 [..4]witness
+    one5  wk
+    many5 [..4]wk
+    one6  wkey
+    many6 [..4]wkey
+    one7  wkw
+    many7 [..4]wkw
+    one8  wl_guard
+    many8 [..4]wl_guard
+    one9  wl_required
+    many9 [..4]wl_required
+}
+
+table NameFields6
+{
+    wire_take uint32
+    without uint32
+    withoutTrailer uint32
+    without_newlines uint32
+    witness uint32
+    wk uint32
+    wkey uint32
+    wkw uint32
+    wl_guard uint32
+    wl_required uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    wlo Inner
+    wn Inner
+    wname Inner
+    wnon Inner
+    wok Inner
+    word Inner
+    wordIdx Inner
+    words Inner
+    wordsAt Inner
+    wordsCount Inner
+}
+
+table NameTypes7
+{
+    one0  wlo
+    many0 [..4]wlo
+    one1  wn
+    many1 [..4]wn
+    one2  wname
+    many2 [..4]wname
+    one3  wnon
+    many3 [..4]wnon
+    one4  wok
+    many4 [..4]wok
+    one5  word
+    many5 [..4]word
+    one6  wordIdx
+    many6 [..4]wordIdx
+    one7  words
+    many7 [..4]words
+    one8  wordsAt
+    many8 [..4]wordsAt
+    one9  wordsCount
+    many9 [..4]wordsCount
+}
+
+table NameFields7
+{
+    wlo uint32
+    wn uint32
+    wname uint32
+    wnon uint32
+    wok uint32
+    word uint32
+    wordIdx uint32
+    words uint32
+    wordsAt uint32
+    wordsCount uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

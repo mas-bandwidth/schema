@@ -28,8 +28,8 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/goose"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // cookModule is the cook's runtime module.

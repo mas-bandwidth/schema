@@ -57,7 +57,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // FixedRuntimeModule is the fixed form's shared runtime, emitted once per unit
@@ -583,6 +583,13 @@ func (g *gen) fixedScalarWriteCheck(f *ir.Field, expr string, width int64, ind s
 	if f.Type.Kind == ir.TNamed {
 		if extent, ranged := fixedEnumExtent(f, width); ranged {
 			g.pf("%sdebug_assert!(%s <= %d, \"%s ordinal exceeds the enum's extent\");\n", ind, expr, extent, f.Name)
+		}
+		if dep := fixedEnumNotDeprecated(f, expr); dep != "" {
+			// A DEPRECATED VARIANT IS NEVER WRITTEN (docs/SPEC-TABLES.md §2.15
+			// WRITE): the Row holds the ordinal as plain storage, so the fixed
+			// writer refuses it here; Rust write checks are debug asserts
+			// (docs/SPEC.md §5.1), as the variable writer's enumRef is.
+			g.pf("%sdebug_assert!(%s, \"invalid_value: %s holds a deprecated variant\");\n", ind, dep, f.Name)
 		}
 		if w, held := fixedFlagsWidth(f); held {
 			// A FLAGS MASK IS HELD TO W (docs/SPEC-TABLES.md §4, A TABLE LOAD
@@ -1135,6 +1142,23 @@ func fixedEnumExtent(f *ir.Field, width int64) (int64, bool) {
 		return 0, false
 	}
 	return en.Max, true
+}
+
+// fixedEnumNotDeprecated is the condition a fixed-form ENUM leaf's ordinal
+// holds when it names no deprecated variant (variant i is ordinal i+1), or ""
+// when the field is no enum or its enum declares none.
+func fixedEnumNotDeprecated(f *ir.Field, expr string) string {
+	en, ok := f.Type.Ref.(*ir.Enum)
+	if !ok {
+		return ""
+	}
+	var conds []string
+	for i := range en.Variants {
+		if variantDeprecated(en, i) {
+			conds = append(conds, fmt.Sprintf("%s != %d", expr, i+1))
+		}
+	}
+	return strings.Join(conds, " && ")
 }
 
 // fixedSlotType is ONE slot's Rust type in the Row — the cooked spelling,
@@ -1759,7 +1783,7 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    // carries is TAKEN AS GIVEN — the definitions digest is not on the wire,\n")
 	g.pf("    // so the number cannot be re-derived from a file — and it is looked up in\n")
 	g.pf("    // the lineage the BUILD laid down. A hash no entry holds is layout_unknown\n")
-	g.pf("    // (§5.3 step 5), and there is nothing to try.\n")
+	g.pf("    // (§5.3 step 5, SPEC-TABLES §21.3): nothing proves it newer, nothing to try.\n")
 	g.pf("    let Some(found) = %s_FIXED_LINEAGE.iter().position(|k| k.hash == hash) else {\n", up)
 	g.pf("        // THE FILE'S HASH, AND NOTHING ELSE (bill §12.4).\n")
 	g.pf("        return report.refuse_layout(TableFixedReason::LayoutUnknown, hash);\n    };\n")

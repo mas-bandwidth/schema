@@ -31,8 +31,8 @@ import (
 	"strings"
 	"testing"
 
-	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	cgen "github.com/mas-bandwidth/schema/v3/internal/codegen/c"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // cT01Macros is the shared C: the poison, the reset, and the two answers a
@@ -317,7 +317,9 @@ func cT01IdentityLane(t *testing.T, corpus string) {
 // FILE's hash, byte for byte, and not one destination byte may change. The hash
 // alone decides: stranger hashes stamped over a file whose layout bytes are the
 // lock's own, and a file cut after its layout (no record at all), answer the
-// same.
+// same. The name is layout_unknown and never layout_newer: §5.3 "STEP 5's
+// ANSWER IS `layout_unknown`, IN EVERY LEG, AND `layout_newer` IS RETIRED"
+// (SPEC-TABLES §21.3) — nothing in the lineage proves a hash newer.
 func cT01LayoutUnknown(t *testing.T, corpus string) {
 	older := cReadSchema(t, "VOLD_field_append")
 	newFile := filepath.Join(corpus, "new_field_append.bin")

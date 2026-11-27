@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 )
 
 // TestRegistryDiscoversAPlantedLanguage is the registry gate
@@ -141,6 +141,7 @@ func discover(t *testing.T, tree string, wantBenchExit int) map[string]string {
 	}
 	out["matrix"] = string(m)
 
+	// testinputs:none — runs the copy of bench/tables/run.sh that copyTree read through os, which go test records
 	bench := exec.Command("sh", "bench/tables/run.sh", "--only", "zz", "--bare")
 	bench.Dir = tree
 	var stdout, stderr bytes.Buffer
@@ -160,6 +161,7 @@ func discover(t *testing.T, tree string, wantBenchExit int) map[string]string {
 	}
 	out["bench"] = stdout.String()
 
+	// testinputs:none — runs make over the copies of Makefile and make/ that copyTree read through os, which go test records
 	mk := exec.Command("make", "-s", "registry")
 	mk.Dir = tree
 	registry, err := mk.Output()

@@ -1,0 +1,7 @@
+# Conformance rows the rust leg owes: every row file under test/conformance/rust/rows/ runs
+# (tools/conformancerows), and these still fail. Exact set: a failing row not named
+# here is red, and a row named here that passes is red until its line goes.
+# Each line is <row> TAB owed: <cause> [TAB <note>]: the cause is exactly what the run
+# prints for the row (a mismatch is red), and the note is a person's, never compared.
+# Measured at this PR's head (5c89252 and the round-2 fixes) on vision, 2026-11-24, with CONFORMANCE_ROWS_MEASURED.
+W13	owed: fails: thread 'cell_hash_is_the_cpp_reference' panicked at test/conformance/rust/rows/W13.rs:156:5: assertion `left == right` failed: Cell hash: rust 0x210ba0ea336b070f, C++ reference 0x70cc58293abe4686

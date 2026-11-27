@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/lua/luarun"
 )
 
 var luaGrownBoundRows = []struct {
@@ -90,12 +90,17 @@ func TestLuaFixedFormGrownBoundOnTheReferenceBytes(t *testing.T) {
 // rows to go red.
 func TestLuaFixedFormGrownBoundNegativeControl(t *testing.T) {
 	t.Parallel()
-	const anchor = "          t[i] = L.zero_elem(T, d.elem)\n"
+	// the padding loop of decode_old_value's fixed and enum-keyed arm; the
+	// sabotage keeps the loop and drops its one statement, so the absent
+	// slots stay nil (ac2283e0e3 moved the loop two columns left, which left
+	// the old ten-space anchor matching nothing)
+	const anchor = "      for i = n + 1, d.bound do\n        t[i] = L.zero_elem(T, d.elem)\n      end\n"
+	const sabotaged = "      for i = n + 1, d.bound do\n      end\n"
 	err := luaGrownBound(t, func(src []byte) []byte {
 		if n := strings.Count(string(src), anchor); n != 1 {
 			t.Fatalf("fixed.lua carries the anchor %d times, want 1", n)
 		}
-		return []byte(strings.Replace(string(src), anchor, "", 1))
+		return []byte(strings.Replace(string(src), anchor, sabotaged, 1))
 	})
 	if err == nil {
 		t.Fatal("the grown bound still reads with the padding taken out of fixed.lua")

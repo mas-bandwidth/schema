@@ -3,7 +3,7 @@ package tabletext_test
 import (
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
 )
 
 func birthField(t *testing.T, v *tabletext.Instance, name string) *tabletext.Field {

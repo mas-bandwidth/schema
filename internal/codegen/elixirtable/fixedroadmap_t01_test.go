@@ -18,7 +18,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // t01Probe runs body inside the generated probe of `reader`, with R aliased to

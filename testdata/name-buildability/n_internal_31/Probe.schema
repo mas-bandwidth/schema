@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum has_child
+{ Zfirst, Zsecond, Zthird }
+
+enum has_exp
+{ Zfirst, Zsecond, Zthird }
+
+enum has_first
+{ Zfirst, Zsecond, Zthird }
+
+enum has_guard_check
+{ Zfirst, Zsecond, Zthird }
+
+enum has_point
+{ Zfirst, Zsecond, Zthird }
+
+enum has_unreachable
+{ Zfirst, Zsecond, Zthird }
+
+enum has_variant_ids
+{ Zfirst, Zsecond, Zthird }
+
+enum hashAt
+{ Zfirst, Zsecond, Zthird }
+
+enum hashHi
+{ Zfirst, Zsecond, Zthird }
+
+enum hashLo
+{ Zfirst, Zsecond, Zthird }
+
+enum have
+{ Zfirst, Zsecond, Zthird }
+
+enum haveLast
+{ Zfirst, Zsecond, Zthird }
+
+enum hb
+{ Zfirst, Zsecond, Zthird }
+
+enum hc
+{ Zfirst, Zsecond, Zthird }
+
+enum hd
+{ Zfirst, Zsecond, Zthird }
+
+enum hdr
+{ Zfirst, Zsecond, Zthird }
+
+enum head
+{ Zfirst, Zsecond, Zthird }
+
+enum head8
+{ Zfirst, Zsecond, Zthird }
+
+enum headBytes
+{ Zfirst, Zsecond, Zthird }
+
+enum header
+{ Zfirst, Zsecond, Zthird }
+
+enum headerBytes
+{ Zfirst, Zsecond, Zthird }
+
+enum headerEnd
+{ Zfirst, Zsecond, Zthird }
+
+enum heap
+{ Zfirst, Zsecond, Zthird }
+
+enum heapsorted
+{ Zfirst, Zsecond, Zthird }
+
+enum held
+{ Zfirst, Zsecond, Zthird }
+
+enum held_float
+{ Zfirst, Zsecond, Zthird }
+
+enum held_length
+{ Zfirst, Zsecond, Zthird }
+
+enum here
+{ Zfirst, Zsecond, Zthird }
+
+enum hex4
+{ Zfirst, Zsecond, Zthird }
+
+enum hexBytes
+{ Zfirst, Zsecond, Zthird }
+
+enum hexOf
+{ Zfirst, Zsecond, Zthird }
+
+enum hex_name
+{ Zfirst, Zsecond, Zthird }
+
+enum hex_val
+{ Zfirst, Zsecond, Zthird }
+
+enum hexat
+{ Zfirst, Zsecond, Zthird }
+
+enum hf
+{ Zfirst, Zsecond, Zthird }
+
+enum hg
+{ Zfirst, Zsecond, Zthird }
+
+enum hh
+{ Zfirst, Zsecond, Zthird }
+
+enum hhi
+{ Zfirst, Zsecond, Zthird }
+
+enum hi
+{ Zfirst, Zsecond, Zthird }
+
+enum hi1
+{ Zfirst, Zsecond, Zthird }
+
+enum hi16
+{ Zfirst, Zsecond, Zthird }
+
+enum hi2
+{ Zfirst, Zsecond, Zthird }
+
+enum hiHi
+{ Zfirst, Zsecond, Zthird }
+
+enum hiLo
+{ Zfirst, Zsecond, Zthird }
+
+enum hiNibble
+{ Zfirst, Zsecond, Zthird }
+
+enum hi_b_hi
+{ Zfirst, Zsecond, Zthird }
+
+enum hi_lane
+{ Zfirst, Zsecond, Zthird }
+
+enum hi_magnitude
+{ Zfirst, Zsecond, Zthird }
+
+enum hi_mask
+{ Zfirst, Zsecond, Zthird }
+
+enum hi_raw
+{ Zfirst, Zsecond, Zthird }
+
+enum hif
+{ Zfirst, Zsecond, Zthird }
+
+enum high
+{ Zfirst, Zsecond, Zthird }
+
+enum him3
+{ Zfirst, Zsecond, Zthird }
+
+enum him6
+{ Zfirst, Zsecond, Zthird }
+
+enum hint
+{ Zfirst, Zsecond, Zthird }
+
+enum hit
+{ Zfirst, Zsecond, Zthird }
+
+enum hiw
+{ Zfirst, Zsecond, Zthird }
+
+enum hm
+{ Zfirst, Zsecond, Zthird }
+
+enum hn
+{ Zfirst, Zsecond, Zthird }
+
+enum hold
+{ Zfirst, Zsecond, Zthird }
+
+enum holderField
+{ Zfirst, Zsecond, Zthird }
+
+enum holderIndex
+{ Zfirst, Zsecond, Zthird }
+
+enum holderMisuse
+{ Zfirst, Zsecond, Zthird }
+
+enum holds
+{ Zfirst, Zsecond, Zthird }
+
+enum hole
+{ Zfirst, Zsecond, Zthird }
+
+enum holeN
+{ Zfirst, Zsecond, Zthird }
+
+enum hole_buf
+{ Zfirst, Zsecond, Zthird }
+
+enum holes
+{ Zfirst, Zsecond, Zthird }
+
+enum home
+{ Zfirst, Zsecond, Zthird }
+
+enum homeBuild
+{ Zfirst, Zsecond, Zthird }
+
+enum homeBytes
+{ Zfirst, Zsecond, Zthird }
+
+enum honest
+{ Zfirst, Zsecond, Zthird }
+
+enum host_magic
+{ Zfirst, Zsecond, Zthird }
+
+enum hostile
+{ Zfirst, Zsecond, Zthird }
+
+enum hour
+{ Zfirst, Zsecond, Zthird }
+
+enum hours
+{ Zfirst, Zsecond, Zthird }
+
+enum how
+{ Zfirst, Zsecond, Zthird }
+
+enum hr
+{ Zfirst, Zsecond, Zthird }
+
+enum hs
+{ Zfirst, Zsecond, Zthird }
+
+enum huge
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    has_child Inner
+    has_exp Inner
+    has_first Inner
+    has_guard_check Inner
+    has_point Inner
+    has_unreachable Inner
+    has_variant_ids Inner
+    hashAt Inner
+    hashHi Inner
+    hashLo Inner
+}
+
+table NameTypes0
+{
+    one0  has_child
+    many0 [..4]has_child
+    one1  has_exp
+    many1 [..4]has_exp
+    one2  has_first
+    many2 [..4]has_first
+    one3  has_guard_check
+    many3 [..4]has_guard_check
+    one4  has_point
+    many4 [..4]has_point
+    one5  has_unreachable
+    many5 [..4]has_unreachable
+    one6  has_variant_ids
+    many6 [..4]has_variant_ids
+    one7  hashAt
+    many7 [..4]hashAt
+    one8  hashHi
+    many8 [..4]hashHi
+    one9  hashLo
+    many9 [..4]hashLo
+}
+
+table NameFields0
+{
+    has_child uint32
+    has_exp uint32
+    has_first uint32
+    has_guard_check uint32
+    has_point uint32
+    has_unreachable uint32
+    has_variant_ids uint32
+    hashAt uint32
+    hashHi uint32
+    hashLo uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    have Inner
+    haveLast Inner
+    hb Inner
+    hc Inner
+    hd Inner
+    hdr Inner
+    head Inner
+    head8 Inner
+    headBytes Inner
+    header Inner
+}
+
+table NameTypes1
+{
+    one0  have
+    many0 [..4]have
+    one1  haveLast
+    many1 [..4]haveLast
+    one2  hb
+    many2 [..4]hb
+    one3  hc
+    many3 [..4]hc
+    one4  hd
+    many4 [..4]hd
+    one5  hdr
+    many5 [..4]hdr
+    one6  head
+    many6 [..4]head
+    one7  head8
+    many7 [..4]head8
+    one8  headBytes
+    many8 [..4]headBytes
+    one9  header
+    many9 [..4]header
+}
+
+table NameFields1
+{
+    have uint32
+    haveLast uint32
+    hb uint32
+    hc uint32
+    hd uint32
+    hdr uint32
+    head uint32
+    head8 uint32
+    headBytes uint32
+    header uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    headerBytes Inner
+    headerEnd Inner
+    heap Inner
+    heapsorted Inner
+    held Inner
+    held_float Inner
+    held_length Inner
+    here Inner
+    hex4 Inner
+    hexBytes Inner
+}
+
+table NameTypes2
+{
+    one0  headerBytes
+    many0 [..4]headerBytes
+    one1  headerEnd
+    many1 [..4]headerEnd
+    one2  heap
+    many2 [..4]heap
+    one3  heapsorted
+    many3 [..4]heapsorted
+    one4  held
+    many4 [..4]held
+    one5  held_float
+    many5 [..4]held_float
+    one6  held_length
+    many6 [..4]held_length
+    one7  here
+    many7 [..4]here
+    one8  hex4
+    many8 [..4]hex4
+    one9  hexBytes
+    many9 [..4]hexBytes
+}
+
+table NameFields2
+{
+    headerBytes uint32
+    headerEnd uint32
+    heap uint32
+    heapsorted uint32
+    held uint32
+    held_float uint32
+    held_length uint32
+    here uint32
+    hex4 uint32
+    hexBytes uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    hexOf Inner
+    hex_name Inner
+    hex_val Inner
+    hexat Inner
+    hf Inner
+    hg Inner
+    hh Inner
+    hhi Inner
+    hi Inner
+    hi1 Inner
+}
+
+table NameTypes3
+{
+    one0  hexOf
+    many0 [..4]hexOf
+    one1  hex_name
+    many1 [..4]hex_name
+    one2  hex_val
+    many2 [..4]hex_val
+    one3  hexat
+    many3 [..4]hexat
+    one4  hf
+    many4 [..4]hf
+    one5  hg
+    many5 [..4]hg
+    one6  hh
+    many6 [..4]hh
+    one7  hhi
+    many7 [..4]hhi
+    one8  hi
+    many8 [..4]hi
+    one9  hi1
+    many9 [..4]hi1
+}
+
+table NameFields3
+{
+    hexOf uint32
+    hex_name uint32
+    hex_val uint32
+    hexat uint32
+    hf uint32
+    hg uint32
+    hh uint32
+    hhi uint32
+    hi uint32
+    hi1 uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    hi16 Inner
+    hi2 Inner
+    hiHi Inner
+    hiLo Inner
+    hiNibble Inner
+    hi_b_hi Inner
+    hi_lane Inner
+    hi_magnitude Inner
+    hi_mask Inner
+    hi_raw Inner
+}
+
+table NameTypes4
+{
+    one0  hi16
+    many0 [..4]hi16
+    one1  hi2
+    many1 [..4]hi2
+    one2  hiHi
+    many2 [..4]hiHi
+    one3  hiLo
+    many3 [..4]hiLo
+    one4  hiNibble
+    many4 [..4]hiNibble
+    one5  hi_b_hi
+    many5 [..4]hi_b_hi
+    one6  hi_lane
+    many6 [..4]hi_lane
+    one7  hi_magnitude
+    many7 [..4]hi_magnitude
+    one8  hi_mask
+    many8 [..4]hi_mask
+    one9  hi_raw
+    many9 [..4]hi_raw
+}
+
+table NameFields4
+{
+    hi16 uint32
+    hi2 uint32
+    hiHi uint32
+    hiLo uint32
+    hiNibble uint32
+    hi_b_hi uint32
+    hi_lane uint32
+    hi_magnitude uint32
+    hi_mask uint32
+    hi_raw uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    hif Inner
+    high Inner
+    him3 Inner
+    him6 Inner
+    hint Inner
+    hit Inner
+    hiw Inner
+    hm Inner
+    hn Inner
+    hold Inner
+}
+
+table NameTypes5
+{
+    one0  hif
+    many0 [..4]hif
+    one1  high
+    many1 [..4]high
+    one2  him3
+    many2 [..4]him3
+    one3  him6
+    many3 [..4]him6
+    one4  hint
+    many4 [..4]hint
+    one5  hit
+    many5 [..4]hit
+    one6  hiw
+    many6 [..4]hiw
+    one7  hm
+    many7 [..4]hm
+    one8  hn
+    many8 [..4]hn
+    one9  hold
+    many9 [..4]hold
+}
+
+table NameFields5
+{
+    hif uint32
+    high uint32
+    him3 uint32
+    him6 uint32
+    hint uint32
+    hit uint32
+    hiw uint32
+    hm uint32
+    hn uint32
+    hold uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    holderField Inner
+    holderIndex Inner
+    holderMisuse Inner
+    holds Inner
+    hole Inner
+    holeN Inner
+    hole_buf Inner
+    holes Inner
+    home Inner
+    homeBuild Inner
+}
+
+table NameTypes6
+{
+    one0  holderField
+    many0 [..4]holderField
+    one1  holderIndex
+    many1 [..4]holderIndex
+    one2  holderMisuse
+    many2 [..4]holderMisuse
+    one3  holds
+    many3 [..4]holds
+    one4  hole
+    many4 [..4]hole
+    one5  holeN
+    many5 [..4]holeN
+    one6  hole_buf
+    many6 [..4]hole_buf
+    one7  holes
+    many7 [..4]holes
+    one8  home
+    many8 [..4]home
+    one9  homeBuild
+    many9 [..4]homeBuild
+}
+
+table NameFields6
+{
+    holderField uint32
+    holderIndex uint32
+    holderMisuse uint32
+    holds uint32
+    hole uint32
+    holeN uint32
+    hole_buf uint32
+    holes uint32
+    home uint32
+    homeBuild uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    homeBytes Inner
+    honest Inner
+    host_magic Inner
+    hostile Inner
+    hour Inner
+    hours Inner
+    how Inner
+    hr Inner
+    hs Inner
+    huge Inner
+}
+
+table NameTypes7
+{
+    one0  homeBytes
+    many0 [..4]homeBytes
+    one1  honest
+    many1 [..4]honest
+    one2  host_magic
+    many2 [..4]host_magic
+    one3  hostile
+    many3 [..4]hostile
+    one4  hour
+    many4 [..4]hour
+    one5  hours
+    many5 [..4]hours
+    one6  how
+    many6 [..4]how
+    one7  hr
+    many7 [..4]hr
+    one8  hs
+    many8 [..4]hs
+    one9  huge
+    many9 [..4]huge
+}
+
+table NameFields7
+{
+    homeBytes uint32
+    honest uint32
+    host_magic uint32
+    hostile uint32
+    hour uint32
+    hours uint32
+    how uint32
+    hr uint32
+    hs uint32
+    huge uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

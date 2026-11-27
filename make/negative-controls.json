@@ -1900,8 +1900,8 @@
     },
     {
       "name": "dart-conformance-c",
-      "when": "pull-request",
-      "why": "slice 3 of 5 of dart-conformance, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 180: conformance-negative-control-dart-walk 48 s.",
+      "when": "nightly",
+      "why": "slice 3 of 5 of dart-conformance (split 2026-11-10), nightly since 2026-11-24. Measured 2026-11-24 on amd-1, a schema runner host (16 threads, load average 10 to 26 before each target, its runners busy as usual), from a fresh clone at 87ed2c15e2, one target at a time under make -j4 in a four-thread nova-reserve slot: build/conformance-harness 17 s, build/conformance-dart 65 s (a prerequisite of the control since it links every unit its lists do not name), conformance-negative-control-dart-walk 147 s, red on json-read as it must be. That is past the two-minute job before the job's own checkout, so it runs nightly beside dart-wire-nightly. The cause is the full unit link, not the check: test/conformance/dart/negative-control regenerates the sabotaged units, links every other unit and AOT-compiles the whole of main.dart before the harness runs. The shorter time this row gave before was not a failed build: on main the control built then too, and that time came from a different bench and an earlier tree. Returning it per PR is owed in docs/roadmap.sexp, review-owed/ci-tools/dart-wire-control-per-pr.",
       "targets": [
         "conformance-negative-control-dart-walk"
       ],
@@ -1909,8 +1909,8 @@
     },
     {
       "name": "dart-conformance-d",
-      "when": "pull-request",
-      "why": "slice 4 of 5 of dart-conformance, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 180: conformance-negative-control-dart-zero 47 s.",
+      "when": "nightly",
+      "why": "slice 4 of 5 of dart-conformance (split 2026-11-10), nightly since 2026-11-24. Measured 2026-11-24 on amd-1, a schema runner host (16 threads, load average 10 to 26 before each target, its runners busy as usual), from a fresh clone at 87ed2c15e2, one target at a time under make -j4 in a four-thread nova-reserve slot: build/conformance-harness 17 s, build/conformance-dart 65 s (a prerequisite of the control since it links every unit its lists do not name), conformance-negative-control-dart-zero 109 s, red on json-hostile as it must be. That is past the two-minute job before the job's own checkout, so it runs nightly beside dart-wire-nightly. The cause is the full unit link, not the check: test/conformance/dart/negative-control regenerates the sabotaged units, links every other unit and AOT-compiles the whole of main.dart before the harness runs. The shorter time this row gave before was not a failed build: on main the control built then too, and that time came from a different bench and an earlier tree. Returning it per PR is owed in docs/roadmap.sexp, review-owed/ci-tools/dart-wire-control-per-pr.",
       "targets": [
         "conformance-negative-control-dart-zero"
       ],
@@ -1918,8 +1918,8 @@
     },
     {
       "name": "dart-conformance-e",
-      "when": "pull-request",
-      "why": "slice 5 of 5 of dart-conformance, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 180: conformance-negative-control-dart-framing 47 s.",
+      "when": "nightly",
+      "why": "slice 5 of 5 of dart-conformance (split 2026-11-10), nightly since 2026-11-24. Measured 2026-11-24 on amd-1, a schema runner host (16 threads, load average 10 to 26 before each target, its runners busy as usual), from a fresh clone at 87ed2c15e2, one target at a time under make -j4 in a four-thread nova-reserve slot: build/conformance-harness 17 s, build/conformance-dart 65 s (a prerequisite of the control since it links every unit its lists do not name), conformance-negative-control-dart-framing 153 s, red on framing as it must be. That is past the two-minute job before the job's own checkout, so it runs nightly beside dart-wire-nightly. The cause is the full unit link, not the check: test/conformance/dart/negative-control regenerates the sabotaged units, links every other unit and AOT-compiles the whole of main.dart before the harness runs. The shorter time this row gave before was not a failed build: on main the control built then too, and that time came from a different bench and an earlier tree. Returning it per PR is owed in docs/roadmap.sexp, review-owed/ci-tools/dart-wire-control-per-pr.",
       "targets": [
         "conformance-negative-control-dart-framing"
       ],
@@ -1937,17 +1937,34 @@
     {
       "name": "dart-conformance-2-b",
       "when": "pull-request",
-      "why": "slice 2 of 4 of dart-conformance-2, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 180: conformance-negative-control-dart-block 45 s, tables-dart-usage-negative-control 10 s.",
+      "why": "slice 2 of 4 of dart-conformance-2, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Measured 2026-11-24 on amd-1, a schema runner host (16 threads, load average 10 to 26 before each target, its runners busy as usual), from a fresh clone at 87ed2c15e2, one target at a time under make -j4 in a four-thread nova-reserve slot: build/conformance-harness 17 s, build/conformance-dart 65 s (a prerequisite of the control since it links every unit its lists do not name), tables-dart-usage-negative-control 5 s. Its twin conformance-negative-control-dart-block moved to the nightly row dart-block-nightly the same day.",
       "targets": [
-        "conformance-negative-control-dart-block",
         "tables-dart-usage-negative-control"
+      ],
+      "dart": "3.13.2"
+    },
+    {
+      "name": "dart-block-nightly",
+      "when": "nightly",
+      "why": "conformance-negative-control-dart-block, from the pull-request row dart-conformance-2-b, nightly since 2026-11-24. Measured 2026-11-24 on amd-1, a schema runner host (16 threads, load average 10 to 26 before each target, its runners busy as usual), from a fresh clone at 87ed2c15e2, one target at a time under make -j4 in a four-thread nova-reserve slot: build/conformance-harness 17 s, build/conformance-dart 65 s (a prerequisite of the control since it links every unit its lists do not name), conformance-negative-control-dart-block 124 s, red on forgery as it must be. That is past the two-minute job before the job's own checkout, so it runs nightly beside dart-wire-nightly. The cause is the full unit link, not the check: test/conformance/dart/negative-control regenerates the sabotaged units, links every other unit and AOT-compiles the whole of main.dart before the harness runs. The 45 s dart-conformance-2-b gave for it before was not a failed build: on main the control built then too, and that time came from a different bench and an earlier tree. Returning it per PR is owed in docs/roadmap.sexp, review-owed/ci-tools/dart-wire-control-per-pr.",
+      "targets": [
+        "conformance-negative-control-dart-block"
       ],
       "dart": "3.13.2"
     },
     {
       "name": "dart-conformance-2-c",
       "when": "pull-request",
-      "why": "slice 3 of 4 of dart-conformance-2, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 180: tables-dart-wire-fuzz-negative-control 42 s.",
+      "why": "slice 3 of 4 of dart-conformance-2, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on vision (a shared 64-thread bench, three threads reserved, load average about 210), 2026-11-24: dart-chunk-queue-negative-control 20 s. Its twin tables-dart-wire-fuzz-negative-control moved to the nightly row dart-wire-nightly the same day.",
+      "targets": [
+        "dart-chunk-queue-negative-control"
+      ],
+      "dart": "3.13.2"
+    },
+    {
+      "name": "dart-wire-nightly",
+      "when": "nightly",
+      "why": "the Dart wire negative control (test/conformance/dart/negative-control wire): the wire emitter's widened count is sabotaged and the wire fuzzer must go red on the report comparison. It moved here from the pull-request row dart-conformance-2-c on 2026-11-24. It ran 163 s on vision (a shared 64-thread bench, three threads reserved, load average about 210), past the 2-minute per-commit cap, against 20 s for dart-chunk-queue-negative-control, the row's other control. The time is the full unit link, not the check: the control regenerates the sabotaged units, links every other unit from build/conformance-dart and AOT-compiles the whole of main.dart before the fuzzer runs. The row's 42 s before 2026-11-24 was not a failed build: on main the control built then too, and that time came from a different bench and an earlier tree. Returning it per PR is owed in docs/roadmap.sexp, review-owed/ci-tools/dart-wire-control-per-pr.",
       "targets": [
         "tables-dart-wire-fuzz-negative-control"
       ],
@@ -2532,7 +2549,7 @@
     {
       "name": "goose-wire-verdict",
       "when": "pull-request",
-      "why": "The Goose variable-table wire-fuzz verdict control (make/goose.mk), one target, tables-goose-wire-fuzz-verdict-negative-control. The recipe does not say what it sabotages. Measured on intel on 2026-11-09, exit 0. The recipe prints no control-step duration, so this row uses the make wall (time -p real), 5.27 s. The same log's go test line is ok github.com/mas-bandwidth/schema/v2/internal/codegen/goosetable 3.899s. 5.27 s is under 110 s, so the row stays on the pull request.",
+      "why": "The Goose variable-table wire-fuzz verdict control (make/goose.mk), one target, tables-goose-wire-fuzz-verdict-negative-control. The recipe does not say what it sabotages. Measured on intel on 2026-11-09, exit 0. The recipe prints no control-step duration, so this row uses the make wall (time -p real), 5.27 s. The same log's go test line is ok github.com/mas-bandwidth/schema/v3/internal/codegen/goosetable 3.899s. 5.27 s is under 110 s, so the row stays on the pull request.",
       "targets": [
         "tables-goose-wire-fuzz-verdict-negative-control"
       ]
@@ -2540,7 +2557,7 @@
     {
       "name": "lobster-wire-verdict",
       "when": "pull-request",
-      "why": "The Lobster variable-table wire-fuzz verdict control (make/lobster-fuzz.mk), one target, tables-lobster-wire-fuzz-verdict-negative-control. The recipe says the negative control plants its fault in the generated artifact the VM compiles and does not name that fault. Measured on intel on 2026-11-09, exit 0. The recipe prints no control-step duration, so this row uses the make wall (time -p real), 2.91 s. The same log's go test line is ok github.com/mas-bandwidth/schema/v2/internal/codegen/lobstertable 1.396s. 2.91 s is under 110 s, so the row stays on the pull request.",
+      "why": "The Lobster variable-table wire-fuzz verdict control (make/lobster-fuzz.mk), one target, tables-lobster-wire-fuzz-verdict-negative-control. The recipe says the negative control plants its fault in the generated artifact the VM compiles and does not name that fault. Measured on intel on 2026-11-09, exit 0. The recipe prints no control-step duration, so this row uses the make wall (time -p real), 2.91 s. The same log's go test line is ok github.com/mas-bandwidth/schema/v3/internal/codegen/lobstertable 1.396s. 2.91 s is under 110 s, so the row stays on the pull request.",
       "targets": [
         "tables-lobster-wire-fuzz-verdict-negative-control"
       ],

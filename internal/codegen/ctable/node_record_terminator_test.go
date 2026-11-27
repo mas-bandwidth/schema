@@ -6,7 +6,6 @@
 package ctable
 
 import (
-	"bytes"
 	"encoding/binary"
 	"fmt"
 	"maps"
@@ -16,11 +15,11 @@ import (
 	"strings"
 	"testing"
 
-	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	cgen "github.com/mas-bandwidth/schema/v3/internal/codegen/c"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/ir"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 const cNodeRecordTerminatorSchema = `package graphdemo
@@ -200,16 +199,13 @@ func TestCNodeRecordEndsAtTerminatorNegativeControl(t *testing.T) {
     return failures != 0;
 `, cBytes(cNodeRecordTerminatorWire(t, u, true)))
 	mutate := func(files map[string][]byte) error {
-		const check = "if(!nodes->refused && body.offset!=body.size)"
-		hit := false
-		for name, data := range files {
-			if bytes.Contains(data, []byte(check)) {
-				files[name] = bytes.ReplaceAll(data, []byte(check), []byte("if(0)"))
-				hit = true
-			}
-		}
-		if !hit {
-			return fmt.Errorf("the generated C carries no record-whole check to remove")
+		// the record-whole check after the plain body load, which the region
+		// and builder reads share; the retaining read's copy follows
+		// list_node_load_body_retain and is not what this probe reads. Matched
+		// by its C tokens (cfmt lays the emitted C out), exactly once.
+		const check = "list_node_load_body( &body, (ListNode *) value ); if(!nodes->refused && body.offset!=body.size)"
+		if err := cPlantOnce(files, check, "list_node_load_body( &body, (ListNode *) value ); if(0)"); err != nil {
+			return fmt.Errorf("the generated C carries no record-whole check to remove: %w", err)
 		}
 		return nil
 	}

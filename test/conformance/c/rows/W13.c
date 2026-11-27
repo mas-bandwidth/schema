@@ -32,10 +32,15 @@ static void check( int ok, const char * what )
 }
 
 /* --- C++ reference constants from build/tables-generated-cpp/fx1/FX1Table.h --- */
-/* Emitted by internal/codegen/cpptable/fixedform.go from the same schema. */
-static const uint64_t cpp_fx_root_hash   = 0x4000ff732f26789aull;
+/* Emitted by internal/codegen/cpptable/fixedform.go from the same schema.
+   The two hashes were re-pinned on 2026-11-24 from `schema generate --lang cpp
+   test/tables/FX1.schema` (FxRootFixedHash, FxNestedFixedHash): the v2
+   definitions digest (WireLaw 3, docs/FIXED-FORM-ALGORITHM.md §5.2) moved
+   every fixed root's hash, from 0x4000ff732f26789a and 0x0e1d2c15925551c4.
+   The layout bytes and body sizes below did not move. */
+static const uint64_t cpp_fx_root_hash   = 0x36f1901eee4aa47aull;
 static const int64_t  cpp_fx_root_body   = 64;
-static const uint64_t cpp_fx_nested_hash = 0x0e1d2c15925551c4ull;
+static const uint64_t cpp_fx_nested_hash = 0x75b0c86a2402de3cull;
 static const int64_t  cpp_fx_nested_body = 8;
 
 /* The C++ reference layout bytes for FxRoot, from
@@ -60,37 +65,37 @@ static const uint8_t cpp_fx_root_layout[] = {
 
 static void test_fx_hash( void )
 {
-    check( fx_root_fixed_hash == cpp_fx_root_hash,
+    check( tblfx1_fx_root_fixed_hash == cpp_fx_root_hash,
            "FX root hash == C++ reference" );
-    check( fx_nested_fixed_hash == cpp_fx_nested_hash,
+    check( tblfx1_fx_nested_fixed_hash == cpp_fx_nested_hash,
            "FX nested hash == C++ reference" );
 }
 
 static void test_fx_body_bytes( void )
 {
-    check( fx_root_fixed_body_bytes == cpp_fx_root_body,
+    check( tblfx1_fx_root_fixed_body_bytes == cpp_fx_root_body,
            "FX root body bytes == C++ reference" );
-    check( fx_nested_fixed_body_bytes == cpp_fx_nested_body,
+    check( tblfx1_fx_nested_fixed_body_bytes == cpp_fx_nested_body,
            "FX nested body bytes == C++ reference" );
 }
 
 static void test_fx_record_bytes( void )
 {
-    check( fx_root_fixed_record_bytes == 8 + cpp_fx_root_body,
+    check( tblfx1_fx_root_fixed_record_bytes == 8 + cpp_fx_root_body,
            "FX root record bytes == 8 + body" );
-    check( fx_nested_fixed_record_bytes == 8 + cpp_fx_nested_body,
+    check( tblfx1_fx_nested_fixed_record_bytes == 8 + cpp_fx_nested_body,
            "FX nested record bytes == 8 + body" );
 }
 
 static void test_fx_layout_length( void )
 {
-    check( fx_root_fixed_layout_bytes == (int64_t) sizeof( cpp_fx_root_layout ),
+    check( tblfx1_fx_root_fixed_layout_bytes == (int64_t) sizeof( cpp_fx_root_layout ),
            "FX root layout bytes == C++ reference layout length" );
 }
 
 static void test_fx_layout_bytes( void )
 {
-    check( memcmp( fx_root_fixed_layout, cpp_fx_root_layout,
+    check( memcmp( tblfx1_fx_root_fixed_layout, cpp_fx_root_layout,
                    sizeof( cpp_fx_root_layout ) ) == 0,
            "FX root layout bytes == C++ reference (byte-identical)" );
 }
@@ -104,19 +109,19 @@ static void test_negative_control( void )
     size_t i;
     int changed = 0;
 
-    check( sizeof( altered ) >= (size_t) fx_root_fixed_layout_bytes,
+    check( sizeof( altered ) >= (size_t) tblfx1_fx_root_fixed_layout_bytes,
            "NEGATIVE CONTROL: the alteration buffer is large enough" );
 
-    memcpy( altered, fx_root_fixed_layout, (size_t) fx_root_fixed_layout_bytes );
+    memcpy( altered, tblfx1_fx_root_fixed_layout, (size_t) tblfx1_fx_root_fixed_layout_bytes );
     /* flip the first non-zero byte past the 4-byte header */
-    for ( i = 4; i < (size_t) fx_root_fixed_layout_bytes; i++ )
+    for ( i = 4; i < (size_t) tblfx1_fx_root_fixed_layout_bytes; i++ )
     {
         if ( altered[i] != 0 ) { altered[i] ^= 0xFF; changed = 1; break; }
     }
     check( changed, "NEGATIVE CONTROL: found a non-zero byte to flip" );
 
-    wrong_hash = table_fixed_hash_of( altered, fx_root_fixed_layout_bytes );
-    check( wrong_hash != fx_root_fixed_hash,
+    wrong_hash = tblfx1_table_fixed_hash_of( altered, tblfx1_fx_root_fixed_layout_bytes );
+    check( wrong_hash != tblfx1_fx_root_fixed_hash,
            "NEGATIVE CONTROL: a flipped layout byte produces a different hash" );
 }
 

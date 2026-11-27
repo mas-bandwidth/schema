@@ -1,11 +1,15 @@
 package js
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/check"
-	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v3/internal/check"
+	"github.com/mas-bandwidth/schema/v3/internal/parser"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 // SF-24 (docs/silent-failure-audit-1122.md): the packet Write of a statically
@@ -14,8 +18,6 @@ import (
 // field with no error. The write refuses a storage that is not a Uint8Array of
 // at least N bytes (docs/SPEC.md section 5.1: JavaScript refuses in every
 // build), and it refuses BEFORE the first byte of the field is written.
-//
-// Pure test: it reads the emitted Write, no node, no real time.
 const bulkBytesShortSchema = `package bulkshort
 
 type T {
@@ -54,4 +56,62 @@ func TestBulkByteArrayWriteRefusesShortStorage(t *testing.T) {
 	if !strings.Contains(body[guardAt:copyAt], "return false;") {
 		t.Fatalf("the short-storage guard must refuse with false:\n%s", body)
 	}
+
+	t.Run("caller-storage", func(t *testing.T) {
+		slowtest.Gate(t, "node and the serialize.js runtime (it calls the generated packet writer)")
+		node := jsFlatNode(t)
+		serializeDir := serializeJSDir(t)
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, "package.json"), []byte(`{"type":"module"}`), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		nm := filepath.Join(dir, "node_modules", "@mas-bandwidth")
+		if err := os.MkdirAll(nm, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(serializeDir, filepath.Join(nm, "serialize")); err != nil {
+			t.Fatal(err)
+		}
+		for name, data := range out {
+			if err := os.WriteFile(filepath.Join(dir, name), data, 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		const harness = `import * as S from "@mas-bandwidth/serialize";
+import * as M from "./BulkShort.js";
+
+function write(storage) {
+  const value = new M.T();
+  value.data = storage;
+  const bytes = new Uint8Array(8);
+  bytes.fill(0x5a);
+  const stream = new S.WriteStream(bytes);
+  const ok = M.WriteT(stream, value);
+  if (ok) stream.flush();
+  return {ok, bytes};
+}
+
+const short = write(Uint8Array.of(1, 2, 3));
+if (short.ok || !short.bytes.every((b) => b === 0x5a)) {
+  throw new Error("sf24_short: short caller storage was accepted or wrote bytes");
+}
+
+const exact = write(Uint8Array.of(1, 2, 3, 4));
+if (!exact.ok || exact.bytes.slice(0, 4).join(",") !== "1,2,3,4") {
+  throw new Error("sf24_exact: exact caller storage was refused or written incorrectly");
+}
+console.log("sf24_short refused; sf24_exact accepted");
+`
+		if err := os.WriteFile(filepath.Join(dir, "run.mjs"), []byte(harness), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		cmd := testproc.Command(t, node, filepath.Join(dir, "run.mjs"))
+		got, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("node: %v\n%s", err, got)
+		}
+		if strings.TrimSpace(string(got)) != "sf24_short refused; sf24_exact accepted" {
+			t.Fatalf("unexpected node output: %s", got)
+		}
+	})
 }

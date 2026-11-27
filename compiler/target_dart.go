@@ -5,9 +5,9 @@ package compiler
 import (
 	"fmt"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/dart"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/darttable"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/dart"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/darttable"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // dartTarget emits Dart 3.
@@ -30,6 +30,9 @@ func (t dartTarget) Generate(u *ir.Unit, opts Options) (map[string][]byte, error
 // §5.2's backward read was inert on this leg however long the committed lock's
 // lineage was.
 func (dartTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage) (map[string][]byte, error) {
+	if err := dartMemberNames(u); err != nil {
+		return nil, err
+	}
 	if err := refuseValueDefaults(u, "dart"); err != nil {
 		return nil, err
 	}

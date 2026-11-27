@@ -27,7 +27,7 @@ tables-dart-view: bin/schema test/dart-tables/view_main.dart
 		./bin/schema generate --lang dart --out build/dart-view/$$dir $$source; \
 		sed "s|VIEW_LIBRARY|$$dir/$${cap}View.dart|" test/dart-tables/view_main.dart > build/dart-view/$$pkg-main.dart; \
 		$(DART) build/dart-view/$$pkg-main.dart > build/dart-view/$$pkg.listing \
-	) & pids="$$pids $$!"; done; for pid in $$pids; do wait $$pid; done
+	) & pids="$$pids $$!"; done; rc=0; for pid in $$pids; do wait $$pid || rc=1; done; exit $$rc
 	SCHEMA_VIEW_LISTING_DIR="$(CURDIR)/build/dart-view" go test -count=1 -timeout=0 ./internal/viewlisting -run TestUnitViewListingMatchesTheIR
 	@echo "Dart unit registry: $(words $(VIEW_CORPUS)) units match the independent listing"
 
@@ -123,6 +123,77 @@ tables-dart-bench-gate: generated/bench/tables/dart/.stamp
 test-dart: tables-dart-bench-gate
 BENCH_TABLES_LEGS += generated/bench/tables/dart/.stamp
 
+# THE DART CORPUS'S ONE GENERATION LIST, parameterised by generator binary and
+# build root ($(2) holds tables-generated-dart and tables-generated-dart-scalars)
+# as make/cs.mk's tables_generate_cs is: test/conformance/dart/negative-control
+# regenerates every unit the driver reads from a sabotaged compiler through
+# tables-dart-generate-into below, and a second copy of these lines there fell
+# behind the driver (2026-11-23: prior, shapes, surfaces, the announcement
+# units, valuedefaults and packetunions), so the control stopped compiling.
+# The units' notes, in list order:
+#   the POINTERED unit: form 1 for Scene, form 3 and cook beside it.
+#   widelist: 128-bit list elements, the cook's node-alignment row (§2.8, §6.2)
+#   backend, vocab and vocab9 are also the MESSAGE FORM's units (docs/SPEC-TABLES.md
+#   §3.3): the conformance driver's `message` surface reads their batches.
+#   tables/scalars beside the tree, not in it: the standalone and clean gates
+#   walk this tree, and the conformance driver reads its form-1 library from
+#   there. The packet emitter writes Int128.dart beside a table-only 128-bit
+#   unit, so its form-3 libraries resolve under the strict analyzer too.
+#   RT1 is the RETAIN surfaces' unit (docs/SPEC-TABLES.md §6.6).
+#   the REPORT surface's remaining readers (docs/SPEC-TABLES.md §4, §5): the
+#   pointer-presence middle P2, the id-table pair K1/K2, the arm retypes A2,
+#   and Scalars2 (beside the tree, as tables/scalars is, for its Int128.dart).
+#   THE 2026-11-22 SURFACES (test/conformance/README.md): tblsurf's roots plus
+#   the announcement-cap units tblann4096 and tblann4097.
+define tables_generate_dart
+	$(1) generate --lang dart --out $(2)/tables-generated-dart/features testdata/conformance/feature-witnesses/full/Features.schema
+	$(1) generate --lang dart --out $(2)/tables-generated-dart/examples tables/examples
+	$(1) generate --lang dart --out $(2)/tables-generated-dart/writebounds testdata/conformance/table-write-bounds/TableWriteBounds.schema
+	$(1) generate --lang dart --out $(2)/tables-generated-dart/pointers tables/pointers
+	$(1) generate --lang dart --out $(2)/tables-generated-dart/blobs tables/blobs
+	$(1) generate --lang dart --out $(2)/tables-generated-dart/lists tables/lists
+	$(1) generate --lang dart --out $(2)/tables-generated-dart/maps tables/maps
+	$(1) generate --lang dart --out $(2)/tables-generated-dart/widelist tables/widelist
+	$(1) generate --lang dart --out $(2)/tables-generated-dart/messages tables/messages
+	$(1) generate --lang dart --out $(2)/tables-generated-dart/backend tables/backend
+	$(1) generate --lang dart --out $(2)/tables-generated-dart/stream tables/stream
+	$(1) generate --lang dart --out $(2)/tables-generated-dart/vocab tables/vocab
+	$(1) generate --lang dart --out $(2)/tables-generated-dart/vocab9 tables/vocab9
+	$(1) generate --lang dart --out $(2)/tables-generated-dart-scalars/scalars tables/scalars
+	$(1) generate --lang dart --out $(2)/tables-generated-dart/block tables/block
+	$(1) generate --lang dart --out $(2)/tables-generated-dart/blockhome tables/blockhome
+	$(1) generate --lang dart --out $(2)/tables-generated-dart/v1 test/tables/V1.schema
+	$(1) generate --lang dart --out $(2)/tables-generated-dart/v2 test/tables/V2.schema
+	$(1) generate --lang dart --out $(2)/tables-generated-dart/w1 test/tables/W1.schema
+	$(1) generate --lang dart --out $(2)/tables-generated-dart/w2 test/tables/W2.schema
+	$(1) generate --lang dart --out $(2)/tables-generated-dart/r1 test/tables/R1.schema
+	$(1) generate --lang dart --out $(2)/tables-generated-dart/r2 test/tables/R2.schema
+	$(1) generate --lang dart --out $(2)/tables-generated-dart/p1 test/tables/P1.schema
+	$(1) generate --lang dart --out $(2)/tables-generated-dart/p3 test/tables/P3.schema
+	$(1) generate --lang dart --out $(2)/tables-generated-dart/g1 test/tables/G1.schema
+	$(1) generate --lang dart --out $(2)/tables-generated-dart/m1 test/tables/M1.schema
+	$(1) generate --lang dart --out $(2)/tables-generated-dart/m2 test/tables/M2.schema
+	$(1) generate --lang dart --out $(2)/tables-generated-dart/rt1 test/tables/RT1.schema
+	$(1) generate --lang dart --out $(2)/tables-generated-dart/p2 test/tables/P2.schema
+	$(1) generate --lang dart --out $(2)/tables-generated-dart/k1 test/tables/K1.schema
+	$(1) generate --lang dart --out $(2)/tables-generated-dart/k2 test/tables/K2.schema
+	$(1) generate --lang dart --out $(2)/tables-generated-dart/a2 test/tables/A2.schema
+	$(1) generate --lang dart --out $(2)/tables-generated-dart-scalars/scalars2 test/tables/Scalars2.schema
+	$(1) generate --lang dart --out $(2)/tables-generated-dart-scalars/fixedevo test/tables/fixedevo
+	$(1) generate --lang dart --out $(2)/tables-generated-dart/varevo1 test/tables/varevo/VarEvo1.schema
+	$(1) generate --lang dart --out $(2)/tables-generated-dart/varevo2 test/tables/varevo/VarEvo2.schema
+	$(1) generate --lang dart --out $(2)/tables-generated-dart-scalars/varevo3 test/tables/varevo/VarEvo3.schema
+	$(1) generate --lang dart --out $(2)/tables-generated-dart/prior test/tables/prior/PriorNarrow.schema
+	$(1) generate --lang dart --out $(2)/tables-generated-dart-scalars/shapes test/tables/shapes/Shapes.schema
+	$(1) generate --lang dart --out $(2)/tables-generated-dart/cooktorture test/tables/cooktorture/CookTorture.schema
+	$(1) generate --lang dart --out $(2)/tables-generated-dart-scalars/cooktorturewide test/tables/cooktorturewide/CookTortureWide.schema
+	$(1) generate --lang dart --out $(2)/tables-generated-dart/surfaces test/tables/surfaces
+	$(1) generate --lang dart --out $(2)/tables-generated-dart/tblann4096 test/tables/announce4096/Announce.schema
+	$(1) generate --lang dart --out $(2)/tables-generated-dart/tblann4097 test/tables/announce4097/Announce.schema
+	$(1) generate --lang dart --out $(2)/tables-generated-dart/valuedefaults test/tables/ValueDefaults.schema
+	$(1) generate --lang dart --out $(2)/tables-generated-dart/packetunions test/tables/packetunions/PacketUnions.schema
+endef
+
 # The same corpus through the DART table backend (docs/SPEC-TABLES.md): the tables
 # corpus plus the evolution pair, generated at build time into build/ —
 # test-only, never part of the committed generated/ tree. The full unit is
@@ -131,65 +202,7 @@ BENCH_TABLES_LEGS += generated/bench/tables/dart/.stamp
 # carried root also owns form 1, including the V, W and R evolution pairs.
 build/tables-generated-dart/.stamp: bin/schema testdata/conformance/feature-witnesses/full/Features.schema $(wildcard tables/backend/*.schema) $(wildcard tables/maps/*.schema) $(wildcard tables/widelist/*.schema) $(wildcard tables/messages/*.schema) $(wildcard tables/scalars/*.schema) $(wildcard tables/stream/*.schema) $(wildcard tables/vocab/*.schema) $(wildcard tables/vocab9/*.schema) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P3.schema test/tables/G1.schema test/tables/M1.schema test/tables/M2.schema test/tables/P2.schema test/tables/K1.schema test/tables/K2.schema test/tables/A2.schema test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/prior/PriorNarrow.schema test/tables/shapes/Shapes.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema test/tables/RT1.schema test/tables/surfaces/Surfaces.schema test/tables/announce4096/Announce.schema test/tables/announce4097/Announce.schema test/tables/ValueDefaults.schema test/tables/packetunions/PacketUnions.schema
 	@mkdir -p build/tables-generated-dart
-	./bin/schema generate --lang dart --out build/tables-generated-dart/features testdata/conformance/feature-witnesses/full/Features.schema
-	./bin/schema generate --lang dart --out build/tables-generated-dart/examples tables/examples
-	# the POINTERED unit: form 1 for Scene, form 3 and cook beside it.
-	./bin/schema generate --lang dart --out build/tables-generated-dart/pointers tables/pointers
-	./bin/schema generate --lang dart --out build/tables-generated-dart/blobs tables/blobs
-	./bin/schema generate --lang dart --out build/tables-generated-dart/lists tables/lists
-	./bin/schema generate --lang dart --out build/tables-generated-dart/maps tables/maps
-	# widelist: 128-bit list elements, the cook's node-alignment row (§2.8, §6.2)
-	./bin/schema generate --lang dart --out build/tables-generated-dart/widelist tables/widelist
-	./bin/schema generate --lang dart --out build/tables-generated-dart/messages tables/messages
-	# backend, vocab and vocab9 are also the MESSAGE FORM's units (docs/SPEC-TABLES.md
-	# §3.3): the conformance driver's `message` surface reads their batches.
-	./bin/schema generate --lang dart --out build/tables-generated-dart/backend tables/backend
-	./bin/schema generate --lang dart --out build/tables-generated-dart/stream tables/stream
-	./bin/schema generate --lang dart --out build/tables-generated-dart/vocab tables/vocab
-	./bin/schema generate --lang dart --out build/tables-generated-dart/vocab9 tables/vocab9
-	# tables/scalars beside the tree, not in it: the standalone and clean gates
-	# walk this tree, and the conformance driver reads its form-1 library from
-	# there. The packet emitter writes Int128.dart beside a table-only 128-bit
-	# unit, so its form-3 libraries resolve under the strict analyzer too.
-	./bin/schema generate --lang dart --out build/tables-generated-dart-scalars/scalars tables/scalars
-	./bin/schema generate --lang dart --out build/tables-generated-dart/block tables/block
-	./bin/schema generate --lang dart --out build/tables-generated-dart/blockhome tables/blockhome
-	./bin/schema generate --lang dart --out build/tables-generated-dart/v1 test/tables/V1.schema
-	./bin/schema generate --lang dart --out build/tables-generated-dart/v2 test/tables/V2.schema
-	./bin/schema generate --lang dart --out build/tables-generated-dart/w1 test/tables/W1.schema
-	./bin/schema generate --lang dart --out build/tables-generated-dart/w2 test/tables/W2.schema
-	./bin/schema generate --lang dart --out build/tables-generated-dart/r1 test/tables/R1.schema
-	./bin/schema generate --lang dart --out build/tables-generated-dart/r2 test/tables/R2.schema
-	./bin/schema generate --lang dart --out build/tables-generated-dart/p1 test/tables/P1.schema
-	./bin/schema generate --lang dart --out build/tables-generated-dart/p3 test/tables/P3.schema
-	./bin/schema generate --lang dart --out build/tables-generated-dart/g1 test/tables/G1.schema
-	./bin/schema generate --lang dart --out build/tables-generated-dart/m1 test/tables/M1.schema
-	./bin/schema generate --lang dart --out build/tables-generated-dart/m2 test/tables/M2.schema
-	# RT1 is the RETAIN surfaces' unit (docs/SPEC-TABLES.md §6.6).
-	./bin/schema generate --lang dart --out build/tables-generated-dart/rt1 test/tables/RT1.schema
-	# the REPORT surface's remaining readers (docs/SPEC-TABLES.md §4, §5): the
-	# pointer-presence middle P2, the id-table pair K1/K2, the arm retypes A2,
-	# and Scalars2 (beside the tree, as tables/scalars is, for its Int128.dart).
-	./bin/schema generate --lang dart --out build/tables-generated-dart/p2 test/tables/P2.schema
-	./bin/schema generate --lang dart --out build/tables-generated-dart/k1 test/tables/K1.schema
-	./bin/schema generate --lang dart --out build/tables-generated-dart/k2 test/tables/K2.schema
-	./bin/schema generate --lang dart --out build/tables-generated-dart/a2 test/tables/A2.schema
-	./bin/schema generate --lang dart --out build/tables-generated-dart-scalars/scalars2 test/tables/Scalars2.schema
-	./bin/schema generate --lang dart --out build/tables-generated-dart-scalars/fixedevo test/tables/fixedevo
-	./bin/schema generate --lang dart --out build/tables-generated-dart/varevo1 test/tables/varevo/VarEvo1.schema
-	./bin/schema generate --lang dart --out build/tables-generated-dart/varevo2 test/tables/varevo/VarEvo2.schema
-	./bin/schema generate --lang dart --out build/tables-generated-dart-scalars/varevo3 test/tables/varevo/VarEvo3.schema
-	./bin/schema generate --lang dart --out build/tables-generated-dart/prior test/tables/prior/PriorNarrow.schema
-	./bin/schema generate --lang dart --out build/tables-generated-dart-scalars/shapes test/tables/shapes/Shapes.schema
-	./bin/schema generate --lang dart --out build/tables-generated-dart/cooktorture test/tables/cooktorture/CookTorture.schema
-	./bin/schema generate --lang dart --out build/tables-generated-dart-scalars/cooktorturewide test/tables/cooktorturewide/CookTortureWide.schema
-	# THE 2026-11-22 SURFACES (test/conformance/README.md): tblsurf's roots plus
-	# the announcement-cap units tblann4096 and tblann4097.
-	./bin/schema generate --lang dart --out build/tables-generated-dart/surfaces test/tables/surfaces
-	./bin/schema generate --lang dart --out build/tables-generated-dart/tblann4096 test/tables/announce4096/Announce.schema
-	./bin/schema generate --lang dart --out build/tables-generated-dart/tblann4097 test/tables/announce4097/Announce.schema
-	./bin/schema generate --lang dart --out build/tables-generated-dart/valuedefaults test/tables/ValueDefaults.schema
-	./bin/schema generate --lang dart --out build/tables-generated-dart/packetunions test/tables/packetunions/PacketUnions.schema
+	$(call tables_generate_dart,./bin/schema,build)
 	@touch $@
 
 # THE DART TABLE SOURCES ARE FORMAT-CANONICAL. `dart format` is the language's
@@ -675,16 +688,38 @@ tables-dart-order-negative-control: build/tables-generated-dart/.stamp build/coo
 CARDS_DART_STAMP := build/tables-generated-dart/cards/.stamp
 # The form-1 framing rows for CountedMin use the same schema declaration
 # in the variable class. Canonical output still uses the fixed class.
-build/tables-generated-dart-framing/countedmin/.stamp: bin/schema make/dart.mk tables/examples/Tables.schema
+DART_COUNTED_MIN_VARIABLE := build/tables-dart-counted-min-variable/CountedMin.schema
+$(DART_COUNTED_MIN_VARIABLE): make/dart.mk tables/examples/Tables.schema
 	@test "$$(grep -c '^fixed table CountedMin$$' tables/examples/Tables.schema)" = 1
 	@mkdir -p build/tables-dart-counted-min-variable
-	sed -n '/^package tabledemo$$/p; /^fixed table CountedMin$$/,/^}/p' tables/examples/Tables.schema | sed 's/^fixed table CountedMin$$/table CountedMin/' > build/tables-dart-counted-min-variable/CountedMin.schema
-	./bin/schema generate --lang dart --out build/tables-generated-dart-framing/countedmin build/tables-dart-counted-min-variable/CountedMin.schema
+	sed -n '/^package tabledemo$$/p; /^fixed table CountedMin$$/,/^}/p' tables/examples/Tables.schema | sed 's/^fixed table CountedMin$$/table CountedMin/' > $@
+
+build/tables-generated-dart-framing/countedmin/.stamp: bin/schema $(DART_COUNTED_MIN_VARIABLE)
+	./bin/schema generate --lang dart --out build/tables-generated-dart-framing/countedmin $(DART_COUNTED_MIN_VARIABLE)
 	@touch $@
 
+# Dart is an ASSERT LEG: its write checks are debug asserts (an unpaired
+# surrogate, a zero byte, a range), and an assert leg answers the
+# write-refusal and json-write-refusal rows from a build where the check is
+# active (test/conformance/harness/run.go). The AOT driver is that build.
 build/conformance-dart: build/tables-generated-dart/.stamp $(CARDS_DART_STAMP) build/tables-generated-dart-framing/countedmin/.stamp test/conformance/dart/main.dart
 	@mkdir -p build
-	$(DART) compile exe -o $@ test/conformance/dart/main.dart >/dev/null
+	$(DART) compile exe --enable-asserts -o $@ test/conformance/dart/main.dart >/dev/null
+
+# Every unit build/conformance-dart reads, into any build root, from any
+# compiler: the corpus list above, the cards unit and the CountedMin framing
+# unit. test/conformance/dart/negative-control builds its sabotaged driver on
+# this, so the control cannot fall behind the driver's imports again.
+#   make tables-dart-generate-into GEN=<schema binary> OUT=<root>/build
+.PHONY: tables-dart-generate-into
+tables-dart-generate-into: $(DART_COUNTED_MIN_VARIABLE)
+	@test -n "$(GEN)" && test -n "$(OUT)" || { echo "tables-dart-generate-into: GEN and OUT are both required" >&2; exit 1; }
+	@mkdir -p $(OUT)/tables-generated-dart
+	@set -e; pids=""; \
+	$(subst $(tables_zero_cost_nl), & pids="$$pids $$!"; ,$(call tables_generate_dart,$(GEN),$(OUT))) & pids="$$pids $$!"; \
+	$(GEN) generate --lang dart --out $(OUT)/tables-generated-dart/cards tables/cards & pids="$$pids $$!"; \
+	$(GEN) generate --lang dart --out $(OUT)/tables-generated-dart-framing/countedmin $(DART_COUNTED_MIN_VARIABLE) & pids="$$pids $$!"; \
+	rc=0; for pid in $$pids; do wait $$pid || rc=1; done; exit $$rc
 
 # THE FORM-1 COOK WRITER'S NEGATIVE CONTROL (docs/SPEC-TABLES.md §2.6, §3, §7.6):
 # the cook-write rows of messagedemo (an ARRAY OF UNIONS at three depths) and
@@ -712,7 +747,8 @@ define dart-cookwrite-nc-leg
 	@sed -e "s|../../../build/$(4)/|$(CURDIR)/$(DART_COOKWRITE_NC)/$(1)/generated/|g" \
 	     -e "s|../../../build/|$(CURDIR)/build/|g" \
 		test/conformance/dart/main.dart > $(DART_COOKWRITE_NC)/$(1)/main.dart
-	$(DART) compile exe -o $(DART_COOKWRITE_NC)/$(1)/driver-bin $(DART_COOKWRITE_NC)/$(1)/main.dart >/dev/null
+	@# built as build/conformance-dart is, asserts on: Dart answers the write-refusal rows by debug assert, and a copy without them turns every refusal row red, not only this plant's cook-write rows
+	$(DART) compile exe --enable-asserts -o $(DART_COOKWRITE_NC)/$(1)/driver-bin $(DART_COOKWRITE_NC)/$(1)/main.dart >/dev/null
 	@printf 'dart %s/build/conformance-dart\n' "$(CURDIR)" > $(DART_COOKWRITE_NC)/$(1)/clean-drivers.txt
 	@# loud-ok: the harness's status covers every surface of the leg; this target's verdict is the named row read from the log below, and a missing row is red
 	@./build/conformance-harness run --drivers $(DART_COOKWRITE_NC)/$(1)/clean-drivers.txt \
@@ -732,9 +768,9 @@ define dart-cookwrite-nc-leg
 	@grep -q "dart / cook-write: $(6)" $(DART_COOKWRITE_NC)/$(1)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on a $(6) cook-write row"; \
 		  tail -30 $(DART_COOKWRITE_NC)/$(1)/log; exit 1; }
-	@awk '/^FAILURES$$/ { f = 1; next } f && /^  dart \/ / { sub(/^  /, ""); print }' \
-		$(DART_COOKWRITE_NC)/$(1)/log | grep -v "dart / cook-write: $(6)" \
-		| LC_ALL=C sort > $(DART_COOKWRITE_NC)/$(1)/other-failures.txt
+	@# the own rows are dropped inside awk, not by grep -v: under pipefail a grep -v left with no line exits 1, and the clean outcome (no other row red) failed the target with no message
+	@awk '/^FAILURES$$/ { f = 1; next } f && /^  dart \/ / && index($$0, "dart / cook-write: $(6)") == 0 { sub(/^  /, ""); print }' \
+		$(DART_COOKWRITE_NC)/$(1)/log | LC_ALL=C sort > $(DART_COOKWRITE_NC)/$(1)/other-failures.txt
 	@if grep -v -F -x -f $(DART_COOKWRITE_NC)/$(1)/clean-failures.txt \
 			$(DART_COOKWRITE_NC)/$(1)/other-failures.txt | grep . >/dev/null; then \
 		echo "NEGATIVE CONTROL FAILED: the $(1) sabotage turned another row red too"; \
@@ -838,8 +874,16 @@ build/dart-fixed/.stamp: bin/schema bench/corpus/Bench.schema bench/corpus/Fixed
 	@$(DART) format build/dart-fixed >/dev/null
 	@touch $@
 
+# HB, the unit test/conformance/dart/rows/C12.dart imports
+# (build/hb-dart/HBFixed.dart): make/conformance-rows.mk builds it for the
+# Dart rows.
+build/hb-dart/.stamp: bin/schema test/tables/HB.schema make/dart.mk
+	@rm -rf build/hb-dart
+	./bin/schema generate --lang dart --out build/hb-dart test/tables/HB.schema
+	@touch $@
+
 .PHONY: tables-dart-fixed-form
-tables-dart-fixed-form: build/dart-fixed/.stamp build/fixedform-corpus/.stamp build/fixedform-bench-corpus/.stamp
+tables-dart-fixed-form: build/retiredskips build/dart-fixed/.stamp build/fixedform-corpus/.stamp build/fixedform-bench-corpus/.stamp
 	$(DART) analyze --no-fatal-warnings build/dart-fixed test/dart-tables/fixedform.dart
 	$(DART) format --set-exit-if-changed --output=none test/dart-tables/fixedform.dart
 	@for f in build/dart-fixed/*/*Fixed.dart; do \
@@ -847,10 +891,10 @@ tables-dart-fixed-form: build/dart-fixed/.stamp build/fixedform-corpus/.stamp bu
 			{ echo "dart format drift in $$f"; exit 1; }; \
 	done
 	@echo "tables Dart fixed form: every generated library is format-canonical"
-	$(DART) --enable-asserts test/dart-tables/fixedform.dart build/fixedform-corpus build/fixedform-bench-corpus
+	./build/retiredskips -leg dart -- $(DART) --enable-asserts test/dart-tables/fixedform.dart build/fixedform-corpus build/fixedform-bench-corpus
 	@mkdir -p build
 	$(DART) compile exe -o build/dart_fixedform test/dart-tables/fixedform.dart >/dev/null
-	./build/dart_fixedform build/fixedform-corpus build/fixedform-bench-corpus
+	./build/retiredskips -leg dart -- ./build/dart_fixedform build/fixedform-corpus build/fixedform-bench-corpus
 
 # ITS NEGATIVE CONTROL: move ONE byte of the write template and the leg must go
 # red against the reference's corpus. Without this the byte comparison could be
@@ -1743,22 +1787,22 @@ include make/schema-dart-generated-strict-analyze-gate.mk
 # removes the text_holds_zero refusal (docs/SPEC-TABLES.md §16.3) and turns
 # exactly the two carried json-hostile zero rows red. Nothing tracked is written.
 .PHONY: conformance-negative-control-dart-walk conformance-negative-control-dart-zero
-conformance-negative-control-dart-walk: build/conformance-harness
+conformance-negative-control-dart-walk: build/conformance-harness build/conformance-dart
 	sh test/conformance/dart/negative-control walk "$(DART)"
 
-conformance-negative-control-dart-zero: build/conformance-harness
+conformance-negative-control-dart-zero: build/conformance-harness build/conformance-dart
 	sh test/conformance/dart/negative-control zero "$(DART)"
 
 # THE FRAMING SURFACE'S (docs/LAYERS/1-framing.md F6): the 4096-entry id-table
 # maximum out of the reader, and `framing` goes red on frame_entries_4097 alone.
 .PHONY: conformance-negative-control-dart-framing
-conformance-negative-control-dart-framing: build/conformance-harness
+conformance-negative-control-dart-framing: build/conformance-harness build/conformance-dart
 	sh test/conformance/dart/negative-control framing "$(DART)"
 
 # THE SHARED-NODE LABEL'S (M14): _writePtr writes every node in place, so the
 # &node label is gone and `json-write` goes red on graph_shared alone.
 .PHONY: conformance-negative-control-dart-share
-conformance-negative-control-dart-share: build/conformance-harness
+conformance-negative-control-dart-share: build/conformance-harness build/conformance-dart
 	sh test/conformance/dart/negative-control share "$(DART)"
 
 # PER-CASE ABSENT (I4): the driver's `<case>.absent` writes renamed away, so
@@ -1770,7 +1814,7 @@ conformance-negative-control-dart-absent: build/conformance-harness build/confor
 # THE BLOCK FORM'S OWN (I11): the pitch check out of the block Open, the forged
 # image block_pitch open, `forgery` red on that row alone.
 .PHONY: conformance-negative-control-dart-block
-conformance-negative-control-dart-block: build/conformance-harness
+conformance-negative-control-dart-block: build/conformance-harness build/conformance-dart
 	sh test/conformance/dart/negative-control block "$(DART)"
 
 test-dart: conformance-negative-control-dart-block
@@ -1817,17 +1861,33 @@ tables-dart-wire-fuzz-smoke: build/conformance-harness build/conformance-dart
 	$(MAKE) tables-dart-wire-fuzz SEED=$(SEED) N=$(DART_FUZZ_SMOKE_N)
 
 tables-dart-wire-fuzz: build/conformance-harness build/conformance-dart
-	SCHEMA_DART_ROSTER_DRIVER="$(CURDIR)/build/conformance-dart" sh test/slowgate/proof tables-dart-wire-fuzz 'TestDartRetainingRosterAllRoots TestDartBuilderRefusalAndRetentionVectors TestDartReservedNodeTypeVectors' -timeout=0 -count=1 ./test/conformance/harness -run '^TestDart(RetainingRosterAllRoots|BuilderRefusalAndRetentionVectors|ReservedNodeTypeVectors)$$'
+	SCHEMA_DART_ROSTER_DRIVER="$(CURDIR)/build/conformance-dart" sh test/slowgate/proof tables-dart-wire-fuzz 'TestDartRetainingRosterAllRoots TestDartPlainRosterAllRoots TestDartBuilderRefusalAndRetentionVectors TestDartReservedNodeTypeVectors' -timeout=0 -count=1 ./test/conformance/harness -run '^TestDart(RetainingRosterAllRoots|PlainRosterAllRoots|BuilderRefusalAndRetentionVectors|ReservedNodeTypeVectors)$$'
 	./build/conformance-harness wire-fuzz --builder --driver 'build/conformance-dart wire-fuzz' --seed $(SEED) --n $(N)
 
 # Its control: the emitter's counted-list `widened` count is removed
 # (tools/sabotage table-dart-wire-widen), every unit the driver reads is
 # regenerated from that compiler and the driver rebuilt on the copy, and the
 # fuzzer must go red on the report comparison, at seed 1 with no random pass.
-tables-dart-wire-fuzz-negative-control: build/conformance-harness
+tables-dart-wire-fuzz-negative-control: build/conformance-harness build/conformance-dart
 	sh test/conformance/dart/negative-control wire "$(DART)"
 
 test-dart: tables-dart-wire-fuzz tables-dart-wire-fuzz-negative-control
+
+# THE DRIVER'S STDIN QUEUE is linear: ChunkQueue in test/conformance/dart/
+# main.dart (the block between its BEGIN/END ChunkQueue markers, which
+# chunk-queue-check slices out) keeps chunks and a read offset instead of
+# removing each frame from the front of one growing list (quadratic with 256
+# large mutants queued, against the harness's 30 s per-mutant limit). The unit
+# test counts bytes copied, with no clock, and its control runs the same test
+# against the old reader.
+.PHONY: dart-chunk-queue-test dart-chunk-queue-negative-control
+dart-chunk-queue-test:
+	sh test/conformance/dart/chunk-queue-check test "$(DART)"
+
+dart-chunk-queue-negative-control:
+	sh test/conformance/dart/chunk-queue-check control "$(DART)"
+
+test-dart: dart-chunk-queue-test dart-chunk-queue-negative-control
 
 # DAMAGE DISCARDS THE WHOLE LOAD on the Dart leg (docs/SPEC-TABLES.md §4):
 # damage inside a nested body makes WireLoad hand back the type's defaults
@@ -1879,7 +1939,23 @@ test-dart: conformance-dart-text-boundary
 
 # the leg's generated units move with every unit schema the conformance
 # manifest names, not only with the ones listed above
-build/tables-generated-dart/.stamp: $(CONFORMANCE_UNIT_SCHEMAS)
+build/tables-generated-dart/.stamp: $(CONFORMANCE_UNIT_SCHEMAS) testdata/conformance/table-write-bounds/TableWriteBounds.schema
+
+build/conformance-write-bounds-dart.dill: build/tables-generated-dart/.stamp $(CARDS_DART_STAMP) build/tables-generated-dart-framing/countedmin/.stamp test/conformance/dart/main.dart
+	@mkdir -p build
+	$(DART) --enable-asserts --snapshot-kind=kernel --snapshot=$@ test/conformance/dart/main.dart >/dev/null
+
+.PHONY: table-write-bounds-dart
+table-write-bounds-dart: build/conformance-harness build/conformance-write-bounds-dart.dill
+	@printf 'dart %s --enable-asserts %s/build/conformance-write-bounds-dart.dill\n' "$(DART)" "$(CURDIR)" > build/conformance-write-bounds-dart.drivers
+	./build/conformance-harness run --drivers build/conformance-write-bounds-dart.drivers \
+		--only dart --surfaces write-refusal,wire,json-read,json-write --complete \
+		--manifest testdata/conformance/table-write-bounds/WRITE-BOUNDS.txt \
+		--json testdata/conformance/table-write-bounds \
+		--work build/conformance-write-bounds-dart
+
+test-dart: table-write-bounds-dart
+
 
 # A FORGED ORDINAL REFUSES (STRICT 100; docs/SPEC-TABLES.md §4,
 # docs/plans/strict-only.md). TestFixedVersioningForgedOrdinalBothPlans reads an
@@ -1992,6 +2068,25 @@ packet-end-dart-negative-control: packet-end-dart
 
 test-dart: packet-end-dart packet-end-dart-negative-control
 
+# THE PACKET-VOID LEG (SPEC §4.8; make/checks/packet-void.mk): payload-free
+# union arms cost exactly their tag bits. The driver answers every case of
+# testdata/wire/packet-void/cases.txt through tools/casegate, on the JIT with
+# --enable-asserts (the writer's contract asserts live) and as a compiled exe.
+build/packet-void/dart/.stamp: bin/schema test/packet-void/Void.schema
+	@rm -rf build/packet-void/dart && mkdir -p build/packet-void/dart
+	./bin/schema generate --lang dart --out build/packet-void/dart $(PACKET_VOID_SCHEMA)
+	@touch $@
+
+.PHONY: packet-void-dart
+packet-void-dart: build/casegate build/packet-void/dart/.stamp
+	$(DART) analyze build/packet-void/dart test/packet-void/dart
+	$(DART) format --set-exit-if-changed --output=none build/packet-void/dart test/packet-void/dart
+	$(call packet_void_gate,dart) $(DART) --enable-asserts test/packet-void/dart/main.dart $(PACKET_VOID_PINS)
+	$(DART) compile exe -o build/packet-void/dart/checker test/packet-void/dart/main.dart >/dev/null
+	$(call packet_void_gate,dart) ./build/packet-void/dart/checker $(PACKET_VOID_PINS)
+
+test-dart: packet-void-dart
+
 # PACKET COMPRESSED FLOATS HOLD THEIR RANGE (docs/SPEC.md §5.1 row 10,
 # docs/PACKET-WIRE-ALGORITHM.md §2.5): the writer checks the value finite and
 # inside [min, max] before quantizing, and the integer clamp after rounding
@@ -2103,3 +2198,22 @@ packet-write-refusal-dart-negative-control: packet-write-refusal-dart
 	@echo 'packet write refusal Dart negative control: with no upper-bound assert scalar_high is written and nothing else goes red'
 
 test-dart: packet-write-refusal-dart packet-write-refusal-dart-negative-control
+
+# A DEPRECATED VARIANT IS NEVER WRITTEN, Dart block builder (docs/SPEC-TABLES.md
+# §2.15 WRITE): under --enable-asserts <root>BlockBuild throws on `Old` and
+# writes `Fierce` and `Calm`, scalar and element (the Mood, Moods and MoodField
+# of tables/examples). No corpus row reaches this writer, so this leg test is
+# the gate, and it must run to its own PASS.
+.PHONY: tables-dart-deprecated-block-write
+tables-dart-deprecated-block-write:
+	@mkdir -p build/dart-deprecated-block
+	@SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 DART=$(DART) \
+		go test ./internal/codegen/darttable/ -count=1 -timeout 600s -v -run '^TestDartBlockBuildRefusesDeprecatedVariant$$' \
+		> build/dart-deprecated-block/log 2>&1 || { grep -E -- '--- FAIL|_test.go:' build/dart-deprecated-block/log | head -40; exit 1; }
+	@if grep -q -- '--- SKIP' build/dart-deprecated-block/log; then \
+		echo "tables-dart-deprecated-block-write: a test SKIPPED under SCHEMA_REQUIRE_CORPUS=1"; grep -- '--- SKIP' build/dart-deprecated-block/log; exit 1; \
+	fi
+	@grep -q -- '--- PASS: TestDartBlockBuildRefusesDeprecatedVariant ' build/dart-deprecated-block/log || \
+		{ echo "tables-dart-deprecated-block-write: TestDartBlockBuildRefusesDeprecatedVariant did not run to a PASS"; tail -20 build/dart-deprecated-block/log; exit 1; }
+	@echo 'tables Dart: the block builder refuses a deprecated variant and writes the live ones (§2.15)'
+test-dart: tables-dart-deprecated-block-write

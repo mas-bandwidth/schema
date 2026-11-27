@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/lua/luarun"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 )
 
 // luaStrictCorpusSourceCheck holds internal/codegen/luatable/json_test.go and
@@ -281,7 +281,7 @@ func runLuaStrictCorpus(t *testing.T, patch func([]byte) ([]byte, error)) error 
 	// skipped unknown object: read through the strict J.FromJson.
 	dir := t.TempDir()
 	schemaPath := filepath.Join(dir, "N.schema")
-	if err := os.WriteFile(schemaPath, []byte(`package n
+	if err := os.WriteFile(schemaPath, []byte(`package jsonnulls
 union Payload
 {
     data *bytes

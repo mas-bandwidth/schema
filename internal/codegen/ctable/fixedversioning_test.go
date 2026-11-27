@@ -46,13 +46,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/check"
-	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
-	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/check"
+	cgen "github.com/mas-bandwidth/schema/v3/internal/codegen/c"
+	"github.com/mas-bandwidth/schema/v3/internal/parser"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/ir"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 // ---- the rows ---------------------------------------------------------------
@@ -278,7 +278,8 @@ func TestFixedVersioningOldRefusesNew(t *testing.T) {
 // The floor is ONE NUMBER and the lineage is ONE ARRAY, so "retired" is an
 // index cut and the operator's two answers stay distinct: below the floor is
 // `layout_unsupported` (upgrade the client), outside the lineage is
-// `layout_unknown` (ship the reader). §5.2, §5.7's three floor rows.
+// `layout_unknown` (§5.3 step 5; layout_unknown is retired,
+// SPEC-TABLES §21.3). §5.2, §5.7's three floor rows.
 
 func TestFixedVersioningFloor(t *testing.T) {
 	corpus := cFixedCorpus(t)

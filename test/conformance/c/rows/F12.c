@@ -131,7 +131,9 @@ int main( void )
        and `layout_hash` carries the FILE'S hash (§5.9 #7). The held-hash
        lie above is layout_malformed for a DIFFERENCE in the bytes; this is
        layout_unknown for an UNKNOWN hash — the operator's two distinct
-       answers, and the contrast is what makes F12 discriminating. */
+       answers, and the contrast is what makes F12 discriminating. The name
+       is layout_unknown and never the retired layout_newer (§5.3 "STEP 5's
+       ANSWER IS layout_unknown, IN EVERY LEG", SPEC-TABLES §21.3). */
     memcpy( other, clean, (size_t) total_bytes );
     tblk1_table_fixed_put64( other + TBLK1_K_TABLE_FIXED_HASH_AT, unknown_hash );
     tblk1_table_fixed_put64( other + TBLK1_K_TABLE_FIXED_HEADER_BYTES + 4 + lock_layout_bytes, unknown_hash );

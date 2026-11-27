@@ -11,6 +11,12 @@ func waitStatusRead(toks []token, k int, ctx shellContext) bool {
 	if ctx.errexit || startsStrict(toks) {
 		return true
 	}
+	return waitStatusReadInText(toks, k, ctx)
+}
+
+// waitStatusReadInText is waitStatusRead without the shell's -e: whether the
+// text itself reads the wait's status.
+func waitStatusReadInText(toks []token, k int, ctx shellContext) bool {
 	end := k + 1
 	for end < len(toks) && !toks[end].op {
 		end++
@@ -57,4 +63,18 @@ func waitStatusRead(toks []token, k int, ctx shellContext) bool {
 		return false
 	}
 	return true
+}
+
+// waitStopsAtFirstFailure reports whether the "wait PID" at index k is the
+// body of a loop that only -e reads: "for p in $pids; do wait $p; done"
+// under set -e exits at the first job that failed and leaves every later job
+// running, unwaited, after make has returned (#4956). The loop must read each
+// status itself and decide once every job is done:
+// rc=0; for p in $pids; do wait "$p" || rc=1; done; exit $rc.
+func waitStopsAtFirstFailure(toks []token, k int, ctx shellContext) bool {
+	s := statementStart(toks, k)
+	if s == 0 || toks[s-1].op || toks[s-1].text != "do" {
+		return false
+	}
+	return !waitStatusReadInText(toks, k, ctx)
 }

@@ -6,8 +6,8 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // Kinds 20–29 announced RAW ride at the kind's storage width, two's complement

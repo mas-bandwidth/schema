@@ -7,6 +7,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v3/internal/testinputs"
 )
 
 // conformanceCompilerRuntimes are the compilers the Python and Ruby
@@ -81,6 +83,7 @@ func TestConformanceCompilersRebuildOnTheirRuntime(t *testing.T) {
 			t.Fatalf("%s has no SERIALIZE_PIN: this check would pass over the file it exists for", dirs[0])
 		}
 	}
+	testinputs.Make(t)
 	cmd := exec.Command("make", "-pq", "--no-print-directory", "build/schema-python", "build/schema-ruby")
 	cmd.Dir = root
 	out := makeQueryOutput(t, cmd) // -q exits 1 when a target is out of date; the database is printed either way

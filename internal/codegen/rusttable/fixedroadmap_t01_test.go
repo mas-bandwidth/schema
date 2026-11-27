@@ -7,10 +7,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/ir"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 // THE ROADMAP'S FRAMING TASKS ON THE RUST LEG (docs/roadmap.sexp node
@@ -148,7 +148,8 @@ fn v_t01_f10() {
     }
 }
 
-/// R8 (§5.3 step 4): "a hash in no entry is layout_unknown", reporting THE FILE'S
+/// R8 (§5.3 step 5, SPEC-TABLES §21.3): "a hash in no entry is layout_unknown"
+/// (layout_newer is retired and no read answers it), reporting THE FILE'S
 /// HASH AND NOTHING ELSE: the whole report is exactly refused, the reason and
 /// the hash.
 #[test]

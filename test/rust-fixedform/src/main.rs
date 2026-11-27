@@ -453,7 +453,9 @@ fn the_negative_controls(dir: &str) {
         );
     }
 
-    // 2b. A HEADER THAT LIES ABOUT THE LAYOUT BEHIND IT is `layout_unknown`, AND
+    // 2b. A HEADER THAT LIES ABOUT THE LAYOUT BEHIND IT is `layout_unknown` (§5.3
+    //     step 5, SPEC-TABLES §21.3; `layout_newer` is retired and no read answers
+    //     it), AND
     //     THAT IS THE BETTER CONTROL (§5.3's own row). The hash is TAKEN AS
     //     GIVEN and nothing is recomputed from the wire, so a flipped hash is
     //     simply a version this build's lineage does not hold: the refusal

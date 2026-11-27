@@ -8,11 +8,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/internal/tablewire"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testinputs"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 func TestElixirVoidUnionNative(t *testing.T) {
@@ -45,6 +46,7 @@ func TestElixirVoidUnionNative(t *testing.T) {
 			// OTP29 emits some type diagnostics outside its warning counter; use
 			// the repository's strict wrapper rather than trusting the flag alone.
 			args := append([]string{strict, filepath.Join(filepath.Dir(elixirBin), "elixirc"), "--warnings-as-errors", "-o", ebin}, names...)
+			testinputs.Files(t, strict)
 			cmd := testproc.Command(t, "sh", args...)
 			cmd.Dir = dir
 			cmd.Env = append(os.Environ(), "PATH="+otpBin(t)+string(os.PathListSeparator)+os.Getenv("PATH"))
@@ -151,7 +153,7 @@ const voidUnionRequiredContext = `
  ptr *Kid }
  table Guard { on bool
  if on { needed int32 | required } }
- table Range { n int32 | min=5, required }
+ table MinFive { n int32 | min=5, required }
  table GuardRange { on bool
  if on { n int32 | min=5, required } }
  table Branch { outer bool

@@ -9,12 +9,12 @@ import (
 	"strings"
 	"testing"
 
-	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	javacodegen "github.com/mas-bandwidth/schema/v3/internal/codegen/java"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/internal/tablewire"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 type blobSharedReportCase struct {
@@ -163,12 +163,10 @@ public final class BlobSharedReportDriver {
                         checks++;
                         continue;
                     }
-                    // a plain load zeroes the report at its start (as Go's does); the retain
-                    // read keeps the caller's history
-                    int wantUnknown = retaining ? 11 + history : 0;
-                    int wantWidened = retaining ? 13 : 0;
-                    if (report.unknown != wantUnknown || report.widened != wantWidened) {
-                        fail("history " + (retaining ? "preserved " : "reset ") + why);
+                    // every read, the retaining one included, clears the report it is
+                    // handed (SPEC-TABLES §6.5, §6.6): the caller's history is gone
+                    if (report.unknown != 0 || report.widened != 0) {
+                        fail("history not cleared " + why + " unknown=" + report.unknown + " widened=" + report.widened);
                     }
                     if (name.startsWith("distinct_")) {
                         if (v.a == null || v.b == null || v.c == null || v.d == null || v.c == v.d) {

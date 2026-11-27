@@ -8,10 +8,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/compiler"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // priorRows answers the corpus's prior-writer rows by name.
@@ -28,7 +28,7 @@ func priorRows(t *testing.T, m *Manifest) map[string]MessageDrift {
 
 // TestMessagePriorWriterIsRangesApart holds what the rows claim about their
 // writer: it is today's schema with every ranged declaration twice as wide,
-// `mask` two bits wider, Perms one flag longer (R17) and the three kind fields int32, so nothing but those
+// `mask` two bits wider, Perms one flag longer (R17), the three kind fields int32 and the element-kind fields one element kind apart, so nothing but those
 // declarations separates the writer from the reader.
 func TestMessagePriorWriterIsRangesApart(t *testing.T) {
 	t.Chdir(conformanceRoot(t))
@@ -52,9 +52,11 @@ func TestMessagePriorWriterIsRangesApart(t *testing.T) {
 		"narrowed int16", "narrowed int32", "retyped  string(16)", "retyped  int32", "widened  int64", "widened  int32",
 		"restring string(16)", "restring int64", "stamp    timestamp", "stamp    int64", "max = 240", "max = 250",
 		"flags Perms { Read, Write }", "flags Perms { Read, Write, Exec }",
+		"vals   [..2]uint8", "vals   [..2]int32", "elems     [..4]uint8", "elems     [..4]int32", "elempair  [2]uint8", "elempair  [2]int32",
+		"elemkeyed [Axis]uint8", "elemkeyed [Axis]int32", "elemcells [..2]uint8", "elemcells [..2]Cell", "elemgrown [..4]uint16", "elemgrown [..4]uint8",
 	).Replace(narrow)
 	if wide != want {
-		t.Errorf("PriorWide is not PriorNarrow with each range widened to max = 100, mask to bits(7), the three kind fields int32, restring and stamp int64 (R14) , band max = 250 (R15) and Perms one flag longer (R17)")
+		t.Errorf("PriorWide is not PriorNarrow with each range widened to max = 100, mask to bits(7), the three kind fields int32, restring and stamp int64 (R14) , band max = 250 (R15) Perms one flag longer (R17), and the element-kind fields moved (an int32, a Cell or a uint8 element where the reader declares uint8 or uint16)")
 	}
 }
 

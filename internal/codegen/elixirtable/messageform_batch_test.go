@@ -30,11 +30,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v3/ir"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 // messageBatchRow is one `message` manifest line: the file-form wire and the
@@ -193,7 +193,7 @@ func TestMessageFormBatchElixir(t *testing.T) {
 	// tables-elixir-message-batch's -run filter reaches them.
 	t.Run("bounds", func(t *testing.T) {
 		t.Parallel()
-		u := messageLoadUnit(t, root, units["backenddemo"])
+		u := unitFrom(t, boundsProbeSchema)
 		tables, err := Generate(u)
 		if err != nil {
 			t.Fatalf("generate: %v", err)
@@ -207,16 +207,16 @@ func TestMessageFormBatchElixir(t *testing.T) {
 			t.Fatal(err)
 		}
 		ns := ir.GoExportName(u.Package)
-		// The hand-built announcements ride the ids of LoginRequest's own
+		// The hand-built announcements ride the ids of the Bounds root's own
 		// fields, so the bound read keeps their values under the peer's
 		// shapes; the build version is another, so no order or default is
-		// judged.
-		login := u.Tables["LoginRequest"]
-		if login == nil || len(login.Fields) < 2 {
-			t.Fatalf("LoginRequest has %d fields", len(login.Fields))
-		}
-		id0 := ir.TableFieldEntry(login.Fields[0]).Id
-		id1 := ir.TableFieldEntry(login.Fields[1]).Id
+		// judged. Each placeholder entry rides the field that declares the
+		// kind it announces: a peer entry whose kind differs from the
+		// reader's declaration is a KIND MISMATCH, which refuses the batch
+		// on both the read and the write (docs/SPEC-TABLES.md §4), so a
+		// probe riding a string on a uint64 field tests that refusal and
+		// never reaches the bound it is written for.
+		ids := boundsProbeIDs(t, u)
 
 		t.Run("source", func(t *testing.T) {
 			t.Parallel()
@@ -225,7 +225,7 @@ func TestMessageFormBatchElixir(t *testing.T) {
 
 		t.Run("values", func(t *testing.T) {
 			t.Parallel()
-			out, err := runElixirModuleProbe(t, module, boundsValuesProbe(ns, id0, id1))
+			out, err := runElixirModuleProbe(t, module, boundsValuesProbe(ns, ids))
 			if err != nil {
 				t.Fatalf("%v\n%s", err, out)
 			}
@@ -234,7 +234,7 @@ func TestMessageFormBatchElixir(t *testing.T) {
 		t.Run("known_bad_descending_range", func(t *testing.T) {
 			t.Parallel()
 			bad := sabotageDescendingEmptyRange(t, module)
-			out, err := runElixirModuleProbe(t, bad, boundsDescendingProbe(ns, id0, id1))
+			out, err := runElixirModuleProbe(t, bad, boundsDescendingProbe(ns, ids))
 			if err == nil || !strings.Contains(out, "empty text") || strings.Contains(out, "control did not restore") || strings.Contains(out, "CompileError") || strings.Contains(out, "SyntaxError") {
 				t.Fatalf("known-bad descending range did not fail for the empty-text reason:\nerr=%v\n%s", err, out)
 			}
@@ -243,7 +243,7 @@ func TestMessageFormBatchElixir(t *testing.T) {
 		t.Run("known_bad_count_loop", func(t *testing.T) {
 			t.Parallel()
 			bad := sabotageCountLoop(t, module)
-			out, err := runElixirModuleProbe(t, bad, boundsCountProbe(ns, id0, id1))
+			out, err := runElixirModuleProbe(t, bad, boundsCountProbe(ns, ids))
 			if err == nil || !strings.Contains(out, "count-driven zero-progress materialization") || strings.Contains(out, "control did not restore") || strings.Contains(out, "CompileError") || strings.Contains(out, "SyntaxError") {
 				t.Fatalf("known-bad count loop did not fail for the count-driven reason:\nerr=%v\n%s", err, out)
 			}
@@ -252,7 +252,7 @@ func TestMessageFormBatchElixir(t *testing.T) {
 		t.Run("known_bad_declared_capacity_cap", func(t *testing.T) {
 			t.Parallel()
 			bad := sabotageDeclaredCapacityCap(t, module)
-			out, err := runElixirModuleProbe(t, bad, boundsDeclaredProbe(ns, id0, id1))
+			out, err := runElixirModuleProbe(t, bad, boundsDeclaredProbe(ns, ids))
 			if err == nil || !strings.Contains(out, "declared capacity shrank") || strings.Contains(out, "control did not restore") || strings.Contains(out, "CompileError") || strings.Contains(out, "SyntaxError") {
 				t.Fatalf("known-bad declared capacity cap did not fail for the element-cap reason:\nerr=%v\n%s", err, out)
 			}
@@ -717,7 +717,7 @@ func runElixirModuleProbe(t *testing.T, module []byte, probe string) (string, er
 	return string(out), err
 }
 
-func boundsValuesProbe(ns string, id0, id1 uint64) string {
+func boundsValuesProbe(ns string, ids map[string]uint64) string {
 	return boundsProbe(ns, boundsValueFns, `
     empty_text_and_lengths()
     small_arrays()
@@ -726,31 +726,94 @@ func boundsValuesProbe(ns string, id0, id1 uint64) string {
     second_body_damage()
     fixed_nine_last_field()
     declared_capacity_above_budget()
-`, id0, id1)
+`, ids)
 }
 
-func boundsDescendingProbe(ns string, id0, id1 uint64) string {
+func boundsDescendingProbe(ns string, ids map[string]uint64) string {
 	return boundsProbe(ns, boundsDescendingFn, `
     descending_control()
-`, id0, id1)
+`, ids)
 }
 
-func boundsCountProbe(ns string, id0, id1 uint64) string {
+func boundsCountProbe(ns string, ids map[string]uint64) string {
 	return boundsProbe(ns, boundsCountFn, `
     count_control()
-`, id0, id1)
+`, ids)
 }
 
-func boundsDeclaredProbe(ns string, id0, id1 uint64) string {
+func boundsDeclaredProbe(ns string, ids map[string]uint64) string {
 	return boundsProbe(ns, boundsDeclaredFn, `
     declared_capacity_control()
-`, id0, id1)
+`, ids)
 }
 
-func boundsProbe(ns, fns, body string, id0, id1 uint64) string {
-	fns = strings.ReplaceAll(fns, "0x1000", fmt.Sprintf("%#x", id0))
-	fns = strings.ReplaceAll(fns, "0x1001", fmt.Sprintf("%#x", id1))
-	fns = strings.ReplaceAll(fns, "0x2000", fmt.Sprintf("%#x", id1))
+// boundsProbeSchema is the root the bounds probes bind their hand-built
+// announcements to: one field per (placeholder, announced kind) pair the
+// probes spell, each declaring that kind, so no entry is a kind mismatch.
+// The bound write holds each declared field to its own write rule
+// (docs/SPEC.md §5.1), so the declarations admit every value the probes
+// write: the arrays hold tables, whose elements carry no integer rule (the
+// probes write :name, :none and small integers under the peer's element
+// kinds), and note is wide enough for the 70,000-byte text.
+const boundsProbeSchema = `package boundsprobe
+
+fixed table Bounds
+{
+    text  string(255)
+    list  [..255]Cell
+    small uint8
+    note  string(70000)
+    run   [..255]Cell
+}
+
+fixed table Cell
+{
+    e int32
+}
+`
+
+// boundsProbeIDs maps each placeholder entry the probes spell, by its
+// announced kind byte, to the id of the Bounds field declaring that kind.
+func boundsProbeIDs(t *testing.T, u *ir.Unit) map[string]uint64 {
+	t.Helper()
+	st := u.Tables["Bounds"]
+	if st == nil {
+		t.Fatal("the bounds probe unit declares no Bounds table")
+	}
+	field := map[string]uint64{}
+	for _, f := range st.Fields {
+		field[f.Name] = ir.TableFieldEntry(f).Id
+	}
+	ids := map[string]uint64{}
+	for placeholder, name := range map[string]string{
+		"entry(0x1000, <<12": "text",
+		"entry(0x1000, <<14": "list",
+		"entry(0x1001, <<6":  "small",
+		"entry(0x1001, <<12": "note",
+		"entry(0x2000, <<14": "run",
+	} {
+		id, ok := field[name]
+		if !ok {
+			t.Fatalf("Bounds declares no field %s", name)
+		}
+		ids[placeholder] = id
+	}
+	return ids
+}
+
+// boundsProbe rewrites every placeholder entry to the field id that declares
+// its kind. A placeholder left over is an entry no field declares, and the
+// probe would test a kind mismatch instead of its bound, so it panics.
+func boundsProbe(ns, fns, body string, ids map[string]uint64) string {
+	for placeholder, id := range ids {
+		_, kind, _ := strings.Cut(placeholder, ", ")
+		fns = strings.ReplaceAll(fns, placeholder, fmt.Sprintf("entry(%#x, %s", id, kind))
+	}
+	for _, left := range []string{"0x1000", "0x1001", "0x2000"} {
+		if strings.Contains(fns, left) {
+			panic("bounds probe: placeholder " + left + " rides a kind no Bounds field declares")
+		}
+	}
 	return fmt.Sprintf(`# GENERATED BY internal/codegen/elixirtable/messageform_batch_test.go.
 defmodule Probe do
   import Bitwise
@@ -872,12 +935,12 @@ const boundsElixirHelpers = `
         2, 0, 0, 0, 0, 0, 0, 0>>
   end
 
-  # a hand-built announcement at build version 0, bound to LoginRequest: its
+  # a hand-built announcement at build version 0, bound to Bounds: its
   # entries ride that root's own field ids, and another build's batch is not
   # judged for declaration order or defaults
   defp read!(words) do
     with {:ok, vocab} <- M.announce_read(announce(words)),
-         {:ok, bound} <- M.for_root(vocab, "LoginRequest") do
+         {:ok, bound} <- M.for_root(vocab, "Bounds") do
       bound
     else
       other -> raise "announce_read #{inspect(other)}"

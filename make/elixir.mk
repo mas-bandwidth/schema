@@ -300,15 +300,27 @@ test-elixir: tables-elixir-emit-format-negative-control
 CONFORMANCE_NEGATIVE_ELIXIR_HOSTILE_DUP := build/elixir-hostile-dup-negative
 ELIXIR_HOSTILE_DUP_SED := -e 's|if MapSet.member?(seen, name), do: throw(:wire_damaged)|if false and MapSet.member?(seen, name), do: throw(:wire_damaged)|' \
 	-e 's|false <- MapSet.member?(seen, key),|false <- Process.get(:elixir_keyed_obj_depth) != depth and MapSet.member?(seen, key),|' \
-	-e 's|^      json_value(bin, depth)$$|      if Enum.any?(@tables, fn {_, d} -> Enum.any?(d.fields, \&(\&1.t == :keyed and Map.get(\&1, :json_key, \&1.name) == key)) end) do prev = Process.put(:elixir_keyed_obj_depth, depth); try do json_value(bin, depth) after if prev == nil, do: Process.delete(:elixir_keyed_obj_depth), else: Process.put(:elixir_keyed_obj_depth, prev) end else json_value(bin, depth) end|'
+	-e 's|^      json_value(bin, depth + 1)$$|      if Enum.any?(@tables, fn {_, d} -> Enum.any?(d.fields, \&(\&1.t == :keyed and Map.get(\&1, :json_key, \&1.name) == key)) end) do prev = Process.put(:elixir_keyed_obj_depth, depth + 1); try do json_value(bin, depth + 1) after if prev == nil, do: Process.delete(:elixir_keyed_obj_depth), else: Process.put(:elixir_keyed_obj_depth, prev) end else json_value(bin, depth + 1) end|'
+# Each dup sabotage expression must land exactly once: one whose anchor
+# drifted leaves the reader whole and the control green (census G23: the
+# keyed-object call moved to json_value(bin, depth + 1), the third expression
+# stopped applying, and the other two still changed the file).
+ELIXIR_HOSTILE_DUP_APPLIED := 'if false and MapSet.member?(seen, name), do: throw(:wire_damaged)' \
+	'false <- Process.get(:elixir_keyed_obj_depth) != depth and MapSet.member?(seen, key),' \
+	'prev = Process.put(:elixir_keyed_obj_depth, depth + 1); try do json_value(bin, depth + 1)'
 ELIXIR_HOSTILE_DUP_ROWS := keyed-duplicate-mixed keyed-duplicate-none keyed-duplicate-slot keyed-duplicate-unknown
 CONFORMANCE_NEGATIVE_ELIXIR_HOSTILE_F32 := build/elixir-hostile-f32-negative
 ELIXIR_HOSTILE_F32_SED := -e 's|e > 127 -> :error|e > 127 -> json_f32_bits(0x7F7FFFFF)|'
 ELIXIR_HOSTILE_F32_ROWS := num-float32-midpoint num-float32-overflow
 
-# $(call ELIXIR_HOSTILE_CONTROL,dir,sedvar,rows,what)
+# $(call ELIXIR_HOSTILE_CONTROL,dir,sedvar,rows,what[,applied])
+# applied: fixed strings the sabotage leaves in the file, each required once.
 define ELIXIR_HOSTILE_CONTROL
 	$(call ELIXIR_SABOTAGED_BUILD,$(1),internal/codegen/elixirtable/variableform.go,$(2))
+	@for anchor in $(5); do \
+		n=$$(grep -cF "$$anchor" $(1)/sabotaged.go.txt); \
+		if [ "$$n" != 1 ]; then echo "NEGATIVE CONTROL: the sabotage [$$anchor] landed $$n times, want 1"; exit 1; fi; \
+	done
 	@if ELIXIR_TABLES_EBIN=$(CURDIR)/$(1)/ebin ./build/conformance-harness run --only elixir --work $(1)/work > $(1)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: $(4) left the json-hostile surface green"; exit 1; \
 	fi
@@ -321,7 +333,7 @@ endef
 
 .PHONY: tables-elixir-json-hostile-dup-negative-control tables-elixir-json-hostile-f32-negative-control
 tables-elixir-json-hostile-dup-negative-control: build/conformance-harness
-	$(call ELIXIR_HOSTILE_CONTROL,$(CONFORMANCE_NEGATIVE_ELIXIR_HOSTILE_DUP),ELIXIR_HOSTILE_DUP_SED,$(ELIXIR_HOSTILE_DUP_ROWS),an uncounted repeated enum-keyed slot)
+	$(call ELIXIR_HOSTILE_CONTROL,$(CONFORMANCE_NEGATIVE_ELIXIR_HOSTILE_DUP),ELIXIR_HOSTILE_DUP_SED,$(ELIXIR_HOSTILE_DUP_ROWS),an uncounted repeated enum-keyed slot,$(ELIXIR_HOSTILE_DUP_APPLIED))
 	@echo "elixir json-hostile dup negative control: an uncounted repeated slot reds exactly its four rows"
 
 tables-elixir-json-hostile-f32-negative-control: build/conformance-harness
@@ -1405,13 +1417,13 @@ build/elixir-fixedform/.stamp: bin/schema $(ELIXIR_FIXED_SCHEMAS) make/elixir.mk
 	@touch $@
 
 .PHONY: tables-elixir-fixed-form
-tables-elixir-fixed-form: build/elixir-fixedform/.stamp build/fixedform-corpus/.stamp
+tables-elixir-fixed-form: build/retiredskips build/elixir-fixedform/.stamp build/fixedform-corpus/.stamp
 	# The fixed modules and FixedRuntime.ex are the emitters' raw output;
 	# this holds both, and the hand-written driver,
 	# to Elixir 1.20.4.
 	$(MIX) format --check-formatted build/elixir-fixedform/gen/*/*Fixed.ex \
 		build/elixir-fixedform/gen/*/FixedRuntime.ex test/elixir-fixedform/main.exs
-	$(ELIXIR) -pa build/elixir-fixedform/ebin test/elixir-fixedform/main.exs build/fixedform-corpus
+	./build/retiredskips -leg elixir -- sh -c '$(ELIXIR) -pa build/elixir-fixedform/ebin test/elixir-fixedform/main.exs build/fixedform-corpus'
 
 # THE PAIRED CORPUS (docs/SPEC-TABLES.md §3.4): the bench's own sixty-four
 # logical records on the PACKET wire and on this one. The C++ reference writes
@@ -2213,7 +2225,7 @@ tables-elixir-view: bin/schema test/elixir-view/view_main.exs
 		esac; \
 		$(ELIXIR) -r $$gen/UnitView.ex test/elixir-view/view_main.exs $$pkg > build/elixir-view/$$pkg.listing; \
 		if [ "$$pkg" = tabledemo ]; then $(ELIXIR) -r $$gen/UnitView.ex test/elixir-view/view_main.exs $$pkg --unflattened > build/elixir-view/unflattened.listing; fi \
-	) & pids="$$pids $$!"; done; for pid in $$pids; do wait $$pid; done
+	) & pids="$$pids $$!"; done; rc=0; for pid in $$pids; do wait $$pid || rc=1; done; exit $$rc
 	SCHEMA_VIEW_LISTING_DIR=$(CURDIR)/build/elixir-view go test ./internal/viewlisting -count=1 -timeout 600s -run TestUnitViewListingMatchesTheIR
 	@mkdir -p build/elixir-view/negative
 	@cp build/elixir-view/unflattened.listing build/elixir-view/negative/tabledemo.listing
@@ -2366,3 +2378,19 @@ packet-end-elixir-negative-control: packet-end-elixir
 	@echo 'packet end Elixir negative control: removing the end check accepts the trailing and padding vectors'
 
 test-elixir: packet-end-elixir packet-end-elixir-negative-control
+
+# Payload-free union arms cost exactly their tag bits (SPEC §4.8): the leg's
+# half of test/packet-void. The driver answers every case of
+# testdata/wire/packet-void/cases.txt against the Go oracle's pins, and
+# tools/casegate judges its answers (make/checks/packet-void.mk).
+build/packet-void/elixir/.stamp: bin/schema $(PACKET_VOID_SCHEMA) make/elixir.mk
+	@rm -rf build/packet-void/elixir && mkdir -p build/packet-void/elixir
+	./bin/schema generate --lang elixir --out build/packet-void/elixir $(PACKET_VOID_SCHEMA)
+	@touch $@
+
+.PHONY: packet-void-elixir
+packet-void-elixir: build/packet-void/elixir/.stamp build/casegate
+	$(MIX) format --check-formatted build/packet-void/elixir/*.ex test/packet-void/elixir/*.exs
+	@rm -rf build/packet-void/elixir-beam && mkdir -p build/packet-void/elixir-beam
+	$(ELIXIRC_STRICT) -o build/packet-void/elixir-beam build/packet-void/elixir/*.ex
+	$(call packet_void_gate,elixir) env PATH="$(BEAM_PATH):$$PATH" $(lastword $(ELIXIR)) test/packet-void/elixir/main.exs $(PACKET_VOID_PINS)

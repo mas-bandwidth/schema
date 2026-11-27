@@ -67,6 +67,8 @@ static unsafe partial class Program
                 case "listdemo Ints": DiscardInts(name, wire); break;
                 case "listdemo Bounded": DiscardBounded(name, wire); break;
                 case "graphdemo ListNode": DiscardListNode(name, wire); break;
+                case "graphdemo Scene": DiscardScene(name, wire); break;
+                case "tabledemo CountedMin": DiscardCountedMin(name, wire); break;
                 case "tblvarevo1 EvoDoc": DiscardEvoDoc(name, wire); break;
                 default: Check(false, Discard + name + ": no entry point for root " + key); continue;
             }
@@ -180,6 +182,42 @@ static unsafe partial class Program
             Check(!G.Schema.ListNodeLoadBuilder(builder, wire, b) && (b.Damaged || b.Refused), Discard + name + ": builder load answers false, refused");
             Check(builder.GetRoot()->Value == 0 && builder.GetRoot()->Next == 0, Discard + name + ": builder root is back at its declared defaults");
         }
+    }
+
+    // graphdemo Scene, the variable root the depth, element-kind, unknown-type
+    // and node-type framing vectors name: every entry point a variable root has.
+    static void DiscardScene(string name, byte[] wire)
+    {
+        G.Scene v = new G.Scene();
+        byte[] t0 = new byte[G.Schema.SceneToJsonMeasure(v)]; G.Schema.SceneToJson(v, t0);
+        var report = new G.TableReport();
+        Check(!G.Schema.SceneLoad(v, wire, report) && (report.Damaged || report.Refused), Discard + name + ": managed load answers false, refused");
+        long m1 = G.Schema.SceneToJsonMeasure(v);
+        byte[] t1 = m1 >= 0 ? new byte[m1] : Array.Empty<byte>();
+        if (m1 >= 0) { G.Schema.SceneToJson(v, t1); }
+        Check(m1 >= 0 && t0.AsSpan().SequenceEqual(t1), Discard + name + ": managed load hands back the declared defaults");
+        DiscardNativeG(name, wire,
+            (r, c, w, rep) => (IntPtr)G.Schema.SceneLoad(r, c, w, rep),
+            (IntPtr r, long c, byte[] w, ref G.TableRetain s, G.TableReport rep) => (IntPtr)G.Schema.SceneLoadRetain(r, c, w, ref s, rep));
+        using (var builder = new G.SceneBuilder())
+        {
+            var b = new G.TableReport();
+            Check(!G.Schema.SceneLoadBuilder(builder, wire, b) && (b.Damaged || b.Refused), Discard + name + ": builder load answers false, refused");
+            Check(builder.GetRoot()->Version == 1 && builder.GetRoot()->Ground.Depth == 0, Discard + name + ": builder root is back at its declared defaults");
+        }
+    }
+
+    // CountedMin is a fixed root: the managed load is its one entry point.
+    static void DiscardCountedMin(string name, byte[] wire)
+    {
+        var v = new Tabledemo.CountedMin();
+        byte[] t0 = new byte[Tabledemo.Schema.CountedMinToJsonMeasure(v)]; Tabledemo.Schema.CountedMinToJson(v, t0);
+        var report = new Tabledemo.TableReport();
+        Check(!Tabledemo.Schema.CountedMinLoad(v, wire, report) && (report.Damaged || report.Refused), Discard + name + ": managed load answers false, refused");
+        long m1 = Tabledemo.Schema.CountedMinToJsonMeasure(v);
+        byte[] t1 = m1 >= 0 ? new byte[m1] : Array.Empty<byte>();
+        if (m1 >= 0) { Tabledemo.Schema.CountedMinToJson(v, t1); }
+        Check(m1 >= 0 && t0.AsSpan().SequenceEqual(t1), Discard + name + ": managed load hands back the declared defaults");
     }
 
     static void DiscardEvoDoc(string name, byte[] wire)

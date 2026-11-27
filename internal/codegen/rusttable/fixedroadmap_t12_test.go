@@ -27,10 +27,11 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/ir"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testinputs"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 func TestFixedRoadmapRustT12FramingText(t *testing.T) {
@@ -405,6 +406,7 @@ func t12FixedFormRun(t *testing.T, corpus string) string {
 			return
 		}
 		rustMakeMu.Lock()
+		testinputs.Build(t, "test/conformance/rust")
 		cmd := testproc.Command(t, "make", "-C", repo, "tables-rust-fixedform")
 		cmd.Env = os.Environ()
 		out, err := cmd.CombinedOutput()

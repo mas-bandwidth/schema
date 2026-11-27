@@ -18,42 +18,12 @@ for mode in wire json; do
     fi
     printf '{"Replace":{"%s/%s":"%s/%s/source.gotext"}}\n' "$PWD" "$source" "$PWD" "$dir" > "$dir/overlay.json"
     go build -overlay="$dir/overlay.json" -o "$dir/schema" ./cmd/schema
-    for unit in examples block v1 v2 p1 p3 k1 k2 messages m1 m2 a1 a2 scalars scalars2 fixedevo varevo1 varevo2 varevo3 cooktorture cooktorturewide caption pointers blobs p2 w1 w2 lists widelist maps stream g1 backend vocab vocab9 r1 r2 rt1 featurewitnesses; do
-        case "$unit" in
-            examples|block|messages) input=tables/$unit ;;
-            v1) input=test/tables/V1.schema ;; v2) input=test/tables/V2.schema ;;
-            p1) input=test/tables/P1.schema ;; p3) input=test/tables/P3.schema ;;
-            k1) input=test/tables/K1.schema ;; k2) input=test/tables/K2.schema ;;
-            m1) input=test/tables/M1.schema ;; m2) input=test/tables/M2.schema ;;
-            a1) input=test/tables/A1.schema ;; a2) input=test/tables/A2.schema ;;
-            scalars) input=tables/scalars ;;
-            scalars2) input=test/tables/Scalars2.schema ;;
-            fixedevo) input=test/tables/fixedevo ;;
-            varevo1) input=test/tables/varevo/VarEvo1.schema ;;
-            varevo2) input=test/tables/varevo/VarEvo2.schema ;;
-            varevo3) input=test/tables/varevo/VarEvo3.schema ;;
-            cooktorture) input=test/tables/cooktorture/CookTorture.schema ;;
-            cooktorturewide) input=test/tables/cooktorturewide/CookTortureWide.schema ;;
-            pointers) input=tables/pointers ;;
-            blobs) input=tables/blobs ;;
-            p2) input=test/tables/P2.schema ;;
-            w1) input=test/tables/W1.schema ;;
-            w2) input=test/tables/W2.schema ;;
-            lists) input=tables/lists ;;
-            widelist) input=tables/widelist ;;
-            maps) input=tables/maps ;;
-            stream) input=tables/stream ;;
-            g1) input=test/tables/G1.schema ;;
-            backend) input=tables/backend ;;
-            vocab) input=tables/vocab ;;
-            vocab9) input=tables/vocab9 ;;
-            r1) input=test/tables/R1.schema ;;
-            r2) input=test/tables/R2.schema ;;
-            rt1) input=test/tables/RT1.schema ;;
-            featurewitnesses) input=testdata/conformance/feature-witnesses/full/Features.schema ;;
-        esac
-        "$dir/schema" generate --lang cs --out "$dir/generated/$unit" "$input"
-    done
+    # Every unit the driver reads, from make/cs.mk's one generation list
+    # (tables_generate_cs): a hand list here fell behind the driver when
+    # shapes, prior and surfaces arrived (2026-11-23), and the control stopped
+    # compiling. A stale unit from an earlier run is removed first.
+    rm -rf "$dir/generated"
+    "${MAKE:-make}" -s --no-print-directory tables-cs-generate-into GEN="$dir/schema" OUT="$dir/generated"
     "$dotnet" build test/conformance/cs --nologo -v quiet -p:RunAnalyzers=false \
         -p:TablesGeneratedDir="$PWD/$dir/generated" \
         -p:BaseIntermediateOutputPath="$PWD/$dir/obj/" -o "$dir/checker"

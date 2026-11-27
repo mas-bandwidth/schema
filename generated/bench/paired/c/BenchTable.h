@@ -1293,15 +1293,20 @@ enum
     SCHEMA_BENCH_TABLE_LAYOUT_RECORD_TOO_LARGE = 16, /* a record size past §3.4's 65536-byte bound: a size this build will not decode */
     SCHEMA_BENCH_TABLE_PREVIOUS_FORM = 17,           /* a FORM BYTE this form is AHEAD of: the variable form handed to a fixed reader (§3) */
     /* THE BACKWARD-READ REFUSALS (docs/FIXED-FORM-ALGORITHM.md §5.3, bill §4,
-       §6b). A hash this reader's LINEAGE does not hold is layout_unknown (§5.3
-       step 5; layout_newer is retired and never emitted); a hash the lineage holds BELOW THE FLOOR is
-       layout_unsupported — upgrade the client. They are the operator's two
-       distinct answers and both carry the FILE'S hash (§5.9 #7).
+       §6b). A hash this reader's LINEAGE does not hold is layout_unknown
+       (SCHEMA_TABLE_LAYOUT_UNKNOWN below); a hash the lineage holds BELOW THE
+       FLOOR is layout_unsupported — upgrade the client. They are the
+       operator's two distinct answers and both carry the FILE'S hash (§5.9 #7).
 
        THE VALUES ARE THIS LEG'S OWN AND THE NAMES ARE THE REFERENCE'S, which is
        the rule the ten above already state: the C enum numbers a set the C++
        enum orders, so a leg agrees on the NAME an endpoint is refused by and never
-       on the integer. These two take 18 and 19 in the order §5.3 names them. */
+       on the integer.
+
+       LAYOUT_NEWER IS RESERVED, NEVER EMITTED (docs/FIXED-FORM-ALGORITHM.md §5.3
+       "STEP 5's ANSWER IS layout_unknown, IN EVERY LEG, AND layout_newer IS
+       RETIRED", SPEC-TABLES §21.3, decided 2026-11-03): nothing proves a hash
+       newer, so no read answers it. It keeps its value so no number moves. */
     SCHEMA_BENCH_TABLE_LAYOUT_NEWER = 18,
     SCHEMA_BENCH_TABLE_LAYOUT_UNSUPPORTED = 19,
     /* A CONTENT RULE REFUSAL (docs/FIXED-FORM-ALGORITHM.md §4.5, fix 11): a
@@ -1309,12 +1314,12 @@ enum
        by name, the verdict the packet reader gives, this form having no L to
        continue past. Nothing is decoded and no counter moves. */
     SCHEMA_BENCH_TABLE_TEXT_ILL_FORMED = 20,
-    /* §5.3 STEP 5'S ANSWER, IN EVERY LEG (decided 2026-11-03): a header hash in
-       no lineage entry. Nothing in the lineage proves a hash newer, so no read
-       answers SCHEMA_TABLE_LAYOUT_NEWER; it keeps its value so no other number
-       moves, and this one takes 23, past every value a report's reason holds
-       (21 and 22 are the shared ones). It reports THE FILE'S hash and nothing
-       else. */
+    /* §5.3 STEP 5: a header hash in NO lineage entry. A newer writer, an older
+       layout nobody locked, another table's file and a damaged hash byte are
+       indistinguishable here, so the one answer is "a layout hash this build's
+       lineage does not hold", and the report carries THE FILE'S hash and
+       nothing else. Appended after every existing reason value (21 is
+       NON_FINITE_FLOAT, 22 BUILD_VERSION_MISMATCH) so nothing is renumbered. */
     SCHEMA_BENCH_TABLE_LAYOUT_UNKNOWN = 23
 };
 
@@ -3454,8 +3459,10 @@ static SCHEMA_UNUSED int32_t bench_table_fixed_select( const bench_table_fixed_k
     return -1;
 }
 
-/* THE TWO REFUSALS THAT REPORT THE FILE'S HASH (§5.3, §5.9 #7). REFUSE IS
-   TOTAL: no counter moves and not one destination byte is written. */
+/* THE TWO REFUSALS THAT REPORT THE FILE'S HASH (§5.3, §5.9 #7):
+   layout_unknown (step 5, a hash in no lineage entry) and layout_unsupported
+   (step 6, below the floor). REFUSE IS TOTAL: no counter moves and not one
+   destination byte is written. */
 static SCHEMA_UNUSED int64_t bench_table_fixed_refuse_hash( bench_table_report_t * report, int reason, uint64_t hash )
 {
     report->refused = 1;
@@ -17195,8 +17202,8 @@ static SCHEMA_UNUSED int schema_bench_bench_mixed_body_pack_( struct bench_table
     bench_table_cook_put( at + 40, (uint64_t) value->world_time, 8, order );
     bench_table_cook_put( at + 48, (uint64_t) value->frame_tick, 8, order );
     bench_table_cook_put( at + 56, (uint64_t) value->server_time, 4, order );
-    if ( value->entities_count < 1 || value->entities_count > 8 ) { return 0; }
     schema_assert( 1 <= value->entities_count && value->entities_count <= 8 );
+    if ( value->entities_count < 1 || value->entities_count > 8 ) { return 0; }
     {
         int32_t cook_i1;
         for ( cook_i1 = 0; cook_i1 < value->entities_count && cook_i1 < 8; cook_i1++ )

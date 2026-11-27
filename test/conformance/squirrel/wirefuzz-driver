@@ -1,0 +1,24 @@
+#!/bin/sh
+# THE SQUIRREL LEG's wire-fuzz driver (test/conformance/README.md, "The
+# wire-fuzz driver"): test/conformance/squirrel/wirefuzz.nut under the pinned
+# interpreter ($SQ, which make exports; sq on PATH otherwise), on the
+# harness's pipe. Arguments go to the script (`builder` for the builder arm).
+#
+# sq EXITS 0 ON A RUNTIME ERROR (it prints "AN ERROR HAS OCCURRED" to stderr),
+# as test/conformance/squirrel/driver says, so a script that raised (a frame
+# cut short at EOF among them, test/conformance/harness/wireeof.go) would leave
+# as a clean close. Its stderr is kept, passed on, and an error in it is exit 1.
+#
+# The working directory is the repository root.
+#
+# usage: ./build/conformance-harness wire-fuzz --driver "test/conformance/squirrel/wirefuzz-driver [builder]"
+sq=${SQ:-sq}
+err=$(mktemp "${TMPDIR:-/tmp}/sq-wirefuzz.XXXXXX") || exit 1
+trap 'rm -f "$err"' EXIT
+status=0
+"$sq" test/conformance/squirrel/wirefuzz.nut "$@" 2>"$err" || status=$?
+cat "$err" >&2
+if grep -q 'AN ERROR HAS OCCURRED' "$err"; then
+	exit 1
+fi
+exit "$status"

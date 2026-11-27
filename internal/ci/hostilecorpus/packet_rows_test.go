@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v3/internal/testinputs"
 )
 
 // TestPacketRowsAndEmptyGuard requires the corpus to carry a packet row for
@@ -70,6 +72,7 @@ func TestPacketRowsAndEmptyGuard(t *testing.T) {
 	if err := os.WriteFile(manifest, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	testinputs.Files(t, "make/hostile-packet-units.sh")
 	cmd := exec.Command("sh", filepath.Join(root, "make", "hostile-packet-units.sh"), "go", filepath.Join(tmp, "out"), manifest)
 	cmd.Dir = root
 	out, err := cmd.CombinedOutput()

@@ -13,10 +13,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/check"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster/lobsterrun"
-	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/check"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/lobster/lobsterrun"
+	"github.com/mas-bandwidth/schema/v3/internal/parser"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // TestSkeletonFixture is the one fixture `schema new-leg lobster` laid down,
@@ -349,6 +349,17 @@ func lit(w uint64) string {
 
 func unitFromDir(t *testing.T, dir string) *ir.Unit {
 	t.Helper()
+	u, errs := checkDir(t, dir)
+	if len(errs) != 0 {
+		t.Fatalf("check: %v", errs)
+	}
+	return u
+}
+
+// checkDir parses and checks every schema under dir and returns the
+// checker's errors instead of failing on them.
+func checkDir(t *testing.T, dir string) (*ir.Unit, []error) {
+	t.Helper()
 	paths, err := filepath.Glob(filepath.Join(dir, "*.schema"))
 	if err != nil || len(paths) == 0 {
 		t.Fatalf("no schema files under %s: %v", dir, err)
@@ -367,11 +378,7 @@ func unitFromDir(t *testing.T, dir string) *ir.Unit {
 		}
 		files = append(files, check.SourceFile{Path: p, Name: name, Base: strings.TrimSuffix(name, ".schema"), Bytes: src, AST: tree})
 	}
-	u, errs := check.Unit(files)
-	if len(errs) != 0 {
-		t.Fatalf("check: %v", errs)
-	}
-	return u
+	return check.Unit(files)
 }
 
 func writeAll(t *testing.T, dir string, files map[string][]byte) {

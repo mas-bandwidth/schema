@@ -357,6 +357,9 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 		f16 := uint64(int32(value.F015Int)+21) & 0x3f
 		w5 := f14 | f15<<32 | f16<<42
 		_ = stream.SerializeBits64(&w5, 48) // sticky: the stream latches the first error and Err reports it
+		if value.F016Fixed < -37748736 || value.F016Fixed > 37748736 {
+			return serialize.ErrValueOutOfRange
+		}
 		fixedValue := int64(value.F016Fixed)
 		stream.SerializeFixed64(&fixedValue, 12, 20, -36, 36)
 		if value.F017Uint > 4606 {
@@ -381,6 +384,9 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	_ = stream.SerializeBits64(&w6, 64) // sticky: the stream latches the first error and Err reports it
 	w7 := f18>>53 | f19<<11
 	_ = stream.SerializeBits64(&w7, 43) // sticky: the stream latches the first error and Err reports it
+	if value.F021Ufixed > 102977536 {
+		return serialize.ErrValueOutOfRange
+	}
 	fixedValue2 := int64(value.F021Ufixed)
 	stream.SerializeFixed64(&fixedValue2, 20, 12, 0, 25141)
 	if math.Float32bits(value.F022F32)&0x7f800000 == 0x7f800000 { // NaN and the infinities are not values of the type
@@ -399,6 +405,9 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	_ = stream.SerializeBits64(&w8, 64) // sticky: the stream latches the first error and Err reports it
 	w9 := uint32(f22 >> 7)
 	_ = stream.SerializeBits(&w9, 25) // sticky: the stream latches the first error and Err reports it
+	if value.F025Fixed < -30464 || value.F025Fixed > 30464 {
+		return serialize.ErrValueOutOfRange
+	}
 	fixedValue3 := int64(value.F025Fixed)
 	stream.SerializeFixed64(&fixedValue3, 8, 8, -119, 119)
 	if value.F026Bits > 511 { // a value above the bits(9) wire width cannot ride
@@ -470,6 +479,9 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	_ = stream.SerializeBits64(&w11, 64) // sticky: the stream latches the first error and Err reports it
 	w12 := f30>>10 | f31<<8 | f32<<22 | f33<<31 | f34<<34 | f12<<35 | f13<<36
 	_ = stream.SerializeBits64(&w12, 55) // sticky: the stream latches the first error and Err reports it
+	if value.F040Fixed < -20480 || value.F040Fixed > 20480 {
+		return serialize.ErrValueOutOfRange
+	}
 	fixedValue4 := int64(value.F040Fixed)
 	stream.SerializeFixed64(&fixedValue4, 4, 12, -5, 5)
 	if value.F041Int < -55 || value.F041Int > 55 {
@@ -512,6 +524,9 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 		return serialize.ErrNonFiniteFloat
 	}
 	stream.SerializeFloat64(&value.F048F64)
+	if value.F049Ufixed > 49152 {
+		return serialize.ErrValueOutOfRange
+	}
 	fixedValue5 := int64(value.F049Ufixed)
 	stream.SerializeFixed64(&fixedValue5, 2, 14, 0, 3)
 	stream.SerializeBool(&value.F050Bool)
@@ -604,6 +619,9 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	_ = stream.SerializeBits64(&w19, 64) // sticky: the stream latches the first error and Err reports it
 	w20 := uint32(f54>>59 | f55<<5 | f56<<14)
 	_ = stream.SerializeBits(&w20, 20) // sticky: the stream latches the first error and Err reports it
+	if value.F066Ufixed > 32768 {
+		return serialize.ErrValueOutOfRange
+	}
 	fixedValue6 := int64(value.F066Ufixed)
 	stream.SerializeFixed64(&fixedValue6, 2, 14, 0, 2)
 	if math.Float32bits(value.F067Cf32)&0x7f800000 == 0x7f800000 { // NaN and the infinities are not values of the type
@@ -721,6 +739,9 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	f73 := uint64(value.F083Enum) & 0x7
 	w24 := f70 | f71<<1 | f72<<30 | f73<<55
 	_ = stream.SerializeBits64(&w24, 58) // sticky: the stream latches the first error and Err reports it
+	if value.F084Ufixed > 128 {
+		return serialize.ErrValueOutOfRange
+	}
 	fixedValue7 := int64(value.F084Ufixed)
 	stream.SerializeFixed64(&fixedValue7, 1, 7, 0, 1)
 	if value.F085Bits > 2097151 { // a value above the bits(21) wire width cannot ride
@@ -768,6 +789,9 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	_ = stream.SerializeBits64(&w27, 64) // sticky: the stream latches the first error and Err reports it
 	w28 := f82>>25 | f83<<39
 	_ = stream.SerializeBits64(&w28, 40) // sticky: the stream latches the first error and Err reports it
+	if value.F095Fixed < -103350272 || value.F095Fixed > 103350272 {
+		return serialize.ErrValueOutOfRange
+	}
 	fixedValue8 := int64(value.F095Fixed)
 	stream.SerializeFixed64(&fixedValue8, 16, 16, -1577, 1577)
 	if value.F096Bits > 262143 { // a value above the bits(18) wire width cannot ride

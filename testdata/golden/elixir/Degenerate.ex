@@ -216,6 +216,10 @@ defmodule Example.Degenerate do
   """
   @spec write_vec2!(Example.Vec2.t()) :: binary()
   def write_vec2!(value) do
+    if not is_struct(value, Example.Vec2) do
+      raise ArgumentError, "value is not a Vec2"
+    end
+
     %{x: value_x, y: value_y} = value
     data = put_f64(<<>>, value_x)
     put_f64(data, value_y)
@@ -306,6 +310,14 @@ defmodule Example.Degenerate do
   """
   @spec write_span_f64!(Example.SpanF64.t()) :: binary()
   def write_span_f64!(value) do
+    if not is_struct(value, Example.SpanF64) do
+      raise ArgumentError, "value is not a SpanF64"
+    end
+
+    if not is_list(value.values) do
+      raise ArgumentError, "value.values is not a list"
+    end
+
     if length(value.values) != 2 do
       raise ArgumentError, "value.values must hold exactly 2 elements"
     end
@@ -400,6 +412,14 @@ defmodule Example.Degenerate do
   """
   @spec write_span_u64!(Example.SpanU64.t()) :: binary()
   def write_span_u64!(value) do
+    if not is_struct(value, Example.SpanU64) do
+      raise ArgumentError, "value is not a SpanU64"
+    end
+
+    if not is_list(value.values) do
+      raise ArgumentError, "value.values is not a list"
+    end
+
     if length(value.values) != 2 do
       raise ArgumentError, "value.values must hold exactly 2 elements"
     end
@@ -494,6 +514,14 @@ defmodule Example.Degenerate do
   """
   @spec write_span_i64!(Example.SpanI64.t()) :: binary()
   def write_span_i64!(value) do
+    if not is_struct(value, Example.SpanI64) do
+      raise ArgumentError, "value is not a SpanI64"
+    end
+
+    if not is_list(value.values) do
+      raise ArgumentError, "value.values is not a list"
+    end
+
     if length(value.values) != 2 do
       raise ArgumentError, "value.values must hold exactly 2 elements"
     end
@@ -588,6 +616,14 @@ defmodule Example.Degenerate do
   """
   @spec write_span_one!(Example.SpanOne.t()) :: binary()
   def write_span_one!(value) do
+    if not is_struct(value, Example.SpanOne) do
+      raise ArgumentError, "value is not a SpanOne"
+    end
+
+    if not is_list(value.values) do
+      raise ArgumentError, "value.values is not a list"
+    end
+
     if length(value.values) != 1 do
       raise ArgumentError, "value.values must hold exactly 1 elements"
     end
@@ -682,6 +718,14 @@ defmodule Example.Degenerate do
   """
   @spec write_span_chunk!(Example.SpanChunk.t()) :: binary()
   def write_span_chunk!(value) do
+    if not is_struct(value, Example.SpanChunk) do
+      raise ArgumentError, "value is not a SpanChunk"
+    end
+
+    if not is_list(value.values) do
+      raise ArgumentError, "value.values is not a list"
+    end
+
     if length(value.values) != 4 do
       raise ArgumentError, "value.values must hold exactly 4 elements"
     end
@@ -776,7 +820,15 @@ defmodule Example.Degenerate do
   """
   @spec write_span_tail!(Example.SpanTail.t()) :: binary()
   def write_span_tail!(value) do
+    if not is_struct(value, Example.SpanTail) do
+      raise ArgumentError, "value is not a SpanTail"
+    end
+
     %{values: value_values, tail: value_tail} = value
+
+    if not is_list(value_values) do
+      raise ArgumentError, "value.values is not a list"
+    end
 
     if length(value_values) != 2 do
       raise ArgumentError, "value.values must hold exactly 2 elements"
@@ -897,7 +949,15 @@ defmodule Example.Degenerate do
   """
   @spec write_span_twice!(Example.SpanTwice.t()) :: binary()
   def write_span_twice!(value) do
+    if not is_struct(value, Example.SpanTwice) do
+      raise ArgumentError, "value is not a SpanTwice"
+    end
+
     %{a: value_a, b: value_b} = value
+
+    if not is_list(value_a) do
+      raise ArgumentError, "value.a is not a list"
+    end
 
     if length(value_a) != 2 do
       raise ArgumentError, "value.a must hold exactly 2 elements"
@@ -906,6 +966,10 @@ defmodule Example.Degenerate do
     scratch_bits = 0
     scratch = 0
     {data, scratch, scratch_bits} = wZspan_twiceZa(value_a, <<>>, scratch, scratch_bits)
+
+    if not is_list(value_b) do
+      raise ArgumentError, "value.b is not a list"
+    end
 
     if length(value_b) != 2 do
       raise ArgumentError, "value.b must hold exactly 2 elements"
@@ -1000,6 +1064,10 @@ defmodule Example.Degenerate do
   """
   @spec write_trio!(Example.Trio.t()) :: binary()
   def write_trio!(value) do
+    if not is_struct(value, Example.Trio) do
+      raise ArgumentError, "value is not a Trio"
+    end
+
     %{a: value_a, b: value_b, c: value_c} = value
 
     if not is_integer(value_a) do
@@ -1141,6 +1209,14 @@ defmodule Example.Degenerate do
   """
   @spec write_trio_sole!(Example.TrioSole.t()) :: binary()
   def write_trio_sole!(value) do
+    if not is_struct(value, Example.TrioSole) do
+      raise ArgumentError, "value is not a TrioSole"
+    end
+
+    if not is_struct(value.inner, Example.Trio) do
+      raise ArgumentError, "value.inner is not a Trio"
+    end
+
     %{a: value_inner_a, b: value_inner_b, c: value_inner_c} = value.inner
 
     if not is_integer(value_inner_a) do
@@ -1283,6 +1359,14 @@ defmodule Example.Degenerate do
   """
   @spec write_vec3_sole!(Example.Vec3Sole.t()) :: binary()
   def write_vec3_sole!(value) do
+    if not is_struct(value, Example.Vec3Sole) do
+      raise ArgumentError, "value is not a Vec3Sole"
+    end
+
+    if not is_struct(value.v, Example.Vec3) do
+      raise ArgumentError, "value.v is not a Vec3"
+    end
+
     %{x: value_v_x, y: value_v_y, z: value_v_z} = value.v
     data = put_f64(<<>>, value_v_x)
     data = put_f64(data, value_v_y)
@@ -1376,7 +1460,16 @@ defmodule Example.Degenerate do
   """
   @spec write_trio_first!(Example.TrioFirst.t()) :: binary()
   def write_trio_first!(value) do
+    if not is_struct(value, Example.TrioFirst) do
+      raise ArgumentError, "value is not a TrioFirst"
+    end
+
     %{inner: value_inner, trailer: value_trailer} = value
+
+    if not is_struct(value_inner, Example.Trio) do
+      raise ArgumentError, "value.inner is not a Trio"
+    end
+
     %{a: value_inner_a, b: value_inner_b, c: value_inner_c} = value_inner
 
     if not is_integer(value_inner_a) do
@@ -1546,6 +1639,10 @@ defmodule Example.Degenerate do
   """
   @spec write_trio_straddle!(Example.TrioStraddle.t()) :: binary()
   def write_trio_straddle!(value) do
+    if not is_struct(value, Example.TrioStraddle) do
+      raise ArgumentError, "value is not a TrioStraddle"
+    end
+
     %{
       pad0: value_pad0,
       pad1: value_pad1,
@@ -1665,6 +1762,11 @@ defmodule Example.Degenerate do
     v = value_pad5 &&& 0xFFFFFF
     sc9 = scratch
     scratch = v
+
+    if not is_struct(value_inner, Example.Trio) do
+      raise ArgumentError, "value.inner is not a Trio"
+    end
+
     %{a: value_inner_a, b: value_inner_b, c: value_inner_c} = value_inner
 
     if not is_integer(value_inner_a) do
