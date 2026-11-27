@@ -15,7 +15,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/squirrel/sqrun"
 )
 
 const equalStringsSchema = "package probe\n\ntable Root\n{\n    a *string\n    b *string\n    child *Child\n}\n\ntable Child\n{\n    c *string\n}\n"

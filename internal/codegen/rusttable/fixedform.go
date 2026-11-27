@@ -57,7 +57,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // FixedRuntimeModule is the fixed form's shared runtime, emitted once per unit

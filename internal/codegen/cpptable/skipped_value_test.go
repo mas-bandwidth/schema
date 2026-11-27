@@ -8,10 +8,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/cpp"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 const cppSkippedValueProbe = `
@@ -134,12 +134,15 @@ int main( int argc, char ** argv )
 
     // ONE NAME AT TWO SHAPES is still one id: a nested body naming both slots
     // names the field twice (§3.3). The set is fixed, so the repeat beyond it
-    // is caught too.
+    // is caught too. The vocabulary is built here, so it states what
+    // AnnounceRead resolves for the repeat check (TableMessageSeenOnce): the
+    // slot of each id's FIRST entry, 1 for the second entry of id 100.
+    // (TestCppMessageSeenSetIsOffTheFrame holds AnnounceRead to resolving it.)
     static TableMessageEntry dup_entries[3];
     TableVocabulary dup( dup_entries, 3 );
     dup_entries[0].id = 100; dup_entries[0].kind = 0;
     dup_entries[1].id = 101; dup_entries[1].kind = 0;
-    dup_entries[2].id = 100; dup_entries[2].kind = 0;
+    dup_entries[2].id = 100; dup_entries[2].kind = 0; dup_entries[2].seen_first = 1;
     dup.count = 3;
     dup.ref_bits = TableBitsRequired( 0, 3 );
     dup.announced = true;

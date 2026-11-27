@@ -19,13 +19,14 @@ package cstable
 // gate that accepts the sabotaged wire proves nothing about the real one.
 
 import (
+	"bytes"
 	"encoding/hex"
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/internal/tablewire"
 )
 
 const unboundedMapsStrictProbe = `
@@ -102,8 +103,10 @@ const unboundedMapsStrictNegativeProbe = `
 }
 `
 
-// unboundedMapsDupWire builds, through the neutral model and writer, a
-// wire whose by_name map holds the key "a" twice (values 1 and 2).
+// unboundedMapsDupWire builds a wire whose by_name map holds the key "a"
+// twice (values 1 and 2). The Go encoder refuses a map that repeats a key, so
+// the neutral writer encodes the lawful keys "a" and "b" and the second key's
+// bytes are then rewritten by hand: a hostile input the reader must refuse.
 func unboundedMapsDupWire(t *testing.T) string {
 	t.Helper()
 	u := unitFrom(t, unboundedTextSchema)
@@ -118,9 +121,9 @@ func unboundedMapsDupWire(t *testing.T) string {
 	if byName == nil {
 		t.Fatal("by_name field not found")
 	}
-	for _, v := range []int32{1, 2} {
+	for i, v := range []int32{1, 2} {
 		entry := m.New(byName.Def.MapEntry)
-		entry.Fields[0].Cell.Str = []byte("a")
+		entry.Fields[0].Cell.Str = []byte{byte('a' + i)}
 		entry.Fields[0].Count = 1
 		entry.Fields[1].Cell.I = int64(v)
 		entry.Fields[1].Cell.U = uint64(int64(v))
@@ -128,8 +131,14 @@ func unboundedMapsDupWire(t *testing.T) string {
 	}
 	wire, err := tablewire.Encode(m, inst)
 	if err != nil {
-		t.Fatalf("neutral duplicate-key encode: %v", err)
+		t.Fatalf("neutral encode of the two lawful keys: %v", err)
 	}
+	// The second key is the text cell kind 12, length 1, "b". Make it "a".
+	second := []byte{0x0c, 0x01, 'b'}
+	if n := bytes.Count(wire, second); n != 1 {
+		t.Fatalf("the second key cell %x appears %d times in the wire %x, want once", second, n, wire)
+	}
+	wire = bytes.Replace(wire, second, []byte{0x0c, 0x01, 'a'}, 1)
 	return hex.EncodeToString(wire)
 }
 

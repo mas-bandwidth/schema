@@ -34,7 +34,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 )
 
 // Value is one landed value of a corpus file: the manifest's path (`r0.v`,

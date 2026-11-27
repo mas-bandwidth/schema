@@ -20,7 +20,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // the plan's ops, and the whole set. The IDENTITY plan carries copy, count,

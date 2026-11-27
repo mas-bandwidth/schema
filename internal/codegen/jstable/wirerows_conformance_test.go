@@ -110,31 +110,41 @@ func wireRowGaps(manifest, driver []string, uncarried map[string]string) []strin
 	return problems
 }
 
-// manifestWireRoots is the manifest's distinct (unit, root) pairs over its
-// `instance` and `report` lines, the rows the wire and report surfaces read.
+// manifestWireRoots is every registered conformance manifest's distinct
+// (unit, root) pair over its `instance` and `report` lines, the rows the wire
+// and report surfaces read. WRITE-BOUNDS is a separate, focused manifest, but
+// its wire surface uses this same driver table.
 func manifestWireRoots(t *testing.T) []string {
 	t.Helper()
-	f, err := os.Open(filepath.Join("..", "..", "..", "testdata", "conformance", "tables", "MANIFEST.txt"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer f.Close()
 	seen := map[string]bool{}
 	var roots []string
-	s := bufio.NewScanner(f)
-	for s.Scan() {
-		fields := strings.Fields(s.Text())
-		if len(fields) < 4 || (fields[0] != "instance" && fields[0] != "report") {
-			continue
+	for _, path := range []string{
+		filepath.Join("..", "..", "..", "testdata", "conformance", "tables", "MANIFEST.txt"),
+		filepath.Join("..", "..", "..", "testdata", "conformance", "table-write-bounds", "WRITE-BOUNDS.txt"),
+	} {
+		f, err := os.Open(path)
+		if err != nil {
+			t.Fatal(err)
 		}
-		key := fields[2] + "/" + fields[3]
-		if !seen[key] {
-			seen[key] = true
-			roots = append(roots, key)
+		s := bufio.NewScanner(f)
+		for s.Scan() {
+			fields := strings.Fields(s.Text())
+			if len(fields) < 4 || (fields[0] != "instance" && fields[0] != "report") {
+				continue
+			}
+			key := fields[2] + "/" + fields[3]
+			if !seen[key] {
+				seen[key] = true
+				roots = append(roots, key)
+			}
 		}
-	}
-	if err := s.Err(); err != nil {
-		t.Fatal(err)
+		if err := s.Err(); err != nil {
+			f.Close()
+			t.Fatal(err)
+		}
+		if err := f.Close(); err != nil {
+			t.Fatal(err)
+		}
 	}
 	sort.Strings(roots)
 	if len(roots) == 0 {

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/python/pyrun"
 )
 
 // TestPythonTableCoreShapeBench measures the two code shapes D1 names for the

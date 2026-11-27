@@ -9,7 +9,7 @@ package ir_test
 import (
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // every position a kind can be declared in, each spelling a kind nothing else

@@ -31,8 +31,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/goose"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 func init() {
@@ -127,7 +127,7 @@ func generateViewModule(u *ir.Unit, names map[string]string) (map[string][]byte,
 	base := ViewModule(u)
 	for _, f := range u.Files {
 		if strings.EqualFold(f.Base, base) {
-			return nil, fmt.Errorf("schema file %s.schema collides with the unit's view module %s.goose, which the Goose target writes for package %s (docs/SPEC-TABLES.md §8.5); rename the file", f.Base, base, u.Package)
+			return nil, goose.NameErr(fmt.Errorf("schema file %s.schema collides with the unit's view module %s.goose, which the Goose target writes for package %s (docs/SPEC-TABLES.md §8.5); rename the file", f.Base, base, u.Package))
 		}
 	}
 	g := goose.NewGen(u, &ir.File{Base: base}, names)
@@ -382,7 +382,10 @@ func (v *viewGen) declarations(set []*ir.Struct, table bool) []string {
 // vocabulary is one ViewVocabulary row with its variant rows.
 func (v *viewGen) vocabulary(name string, max int64, bits, payloadOffset int64, rows []string, doc string, tags []string) string {
 	g := v.g
-	variants := "_" + name + "ViewVariants"
+	// the suffix ends in no other suffix the Goose target declares under _<name>
+	// and no other ends in it, so an enum fooView no longer meets the view of
+	// foo (_fooViewVariants was both; name-buildability n_internal_21, 32, 44, 68)
+	variants := "_" + name + "VocabularyRows"
 	g.Declare(variants)
 	g.Pf("let %s: ViewVariant[%d] = [\n    %s,\n];\n", variants, len(rows), strings.Join(rows, ",\n    "))
 	var l lit

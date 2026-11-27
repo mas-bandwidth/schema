@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/viewlisting"
+	"github.com/mas-bandwidth/schema/v3/internal/viewlisting"
 )
 
 // TestViewConstantListsItsSignedValue holds §8.3's one sentence about a

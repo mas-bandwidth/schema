@@ -1,0 +1,20 @@
+# Paired variable-table writer arguments for SPEC.md §5.1 rows 1–4.
+unit writebounds testdata/conformance/table-write-bounds/TableWriteBounds.schema
+instance torture_var_wref           writebounds     TortureVarWref   testdata/conformance/table-write-bounds/torture_var_wref.bin
+instance sfw_raw_payload           writebounds TortureVarWref   testdata/conformance/table-write-bounds/wire/sfw_raw_payload.bin
+instance sfw_arm_raw_payload       writebounds TortureVarWref   testdata/conformance/table-write-bounds/wire/sfw_arm_raw_payload.bin
+instance sfw_arm_arr_payload       writebounds TortureVarWref   testdata/conformance/table-write-bounds/wire/sfw_arm_arr_payload.bin
+write-refusal       sfw_opt_arr_long      writebounds TortureVarWref  testdata/conformance/table-write-bounds/torture_var_wref.bin opt_arr           count   4     refused
+write-refusal       sfw_opt_arr_ok        writebounds TortureVarWref  testdata/conformance/table-write-bounds/torture_var_wref.bin opt_arr           count   3     wrote testdata/conformance/table-write-bounds/expected/torture_var_wref_resized.bin
+write-refusal       sfw_arm_bits_wide     writebounds TortureVarWref  testdata/conformance/table-write-bounds/torture_var_wref.bin arm_bits.a_bits   int     8192  refused
+write-refusal       sfw_arm_bits_ok       writebounds TortureVarWref  testdata/conformance/table-write-bounds/torture_var_wref.bin arm_bits.a_bits   int     8191  wrote
+write-refusal       sfw_arm_range_high    writebounds TortureVarWref  testdata/conformance/table-write-bounds/torture_var_wref.bin arm_range.a_range int     11    refused
+write-refusal       sfw_arm_range_max     writebounds TortureVarWref  testdata/conformance/table-write-bounds/torture_var_wref.bin arm_range.a_range int     10    wrote
+write-refusal       sfw_arm_range_low     writebounds TortureVarWref  testdata/conformance/table-write-bounds/torture_var_wref.bin arm_range.a_range int     -1    refused
+write-refusal       sfw_arm_range_min     writebounds TortureVarWref  testdata/conformance/table-write-bounds/torture_var_wref.bin arm_range.a_range int     0     wrote
+write-refusal       sfw_arm_str_long      writebounds TortureVarWref  testdata/conformance/table-write-bounds/torture_var_wref.bin arm_str.a_str     length  9     refused
+write-refusal       sfw_arm_str_ok        writebounds TortureVarWref  testdata/conformance/table-write-bounds/torture_var_wref.bin arm_str.a_str     length  8     wrote
+write-refusal       sfw_slot_high         writebounds TortureVarWref  testdata/conformance/table-write-bounds/torture_var_wref.bin chan_lim[1]       int     51    refused
+write-refusal       sfw_slot_max          writebounds TortureVarWref  testdata/conformance/table-write-bounds/torture_var_wref.bin chan_lim[1]       int     50    wrote
+write-refusal       sfw_slot_low          writebounds TortureVarWref  testdata/conformance/table-write-bounds/torture_var_wref.bin chan_lim[1]       int     -1    refused
+write-refusal       sfw_slot_min          writebounds TortureVarWref  testdata/conformance/table-write-bounds/torture_var_wref.bin chan_lim[1]       int     0     wrote

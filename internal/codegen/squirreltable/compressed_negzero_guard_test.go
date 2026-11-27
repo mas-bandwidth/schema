@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirreltable"
+	"github.com/mas-bandwidth/schema/v3/compiler"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/squirreltable"
 )
 
 // TestSquirrelCompressedFloatStoresAreGuarded is the fast twin of
@@ -65,8 +65,11 @@ func TestSquirrelCompressedFloatStoresAreGuarded(t *testing.T) {
 	if fn := body("save.nut", save, "local floatIsDefault = function("); !strings.Contains(fn, "((a & 0x7fffffff) == 0 && (b & 0x7fffffff) == 0)") {
 		t.Errorf("save.nut floatIsDefault elides a compressed float by the -0 bits:\n%s", fn)
 	}
-	before("save.nut", "fixedWriteElement (the fixed form a fixed table's Save writes)", body("save.nut", save, "fixedWriteElement = function("),
-		"e.fmin != null && (bits & (e.f32 ? 0x7fffffff : 0x7fffffffffffffff)) == 0) bits = 0;", "putFixedU(out, off, e.f32 ? 4 : 8, bits)")
+	// a fixed table's Save is the generated fixed writer, held below: the
+	// runtime writes no fixed body of its own
+	if fn := body("save.nut", save, "local saveFixed = function("); !strings.Contains(fn, `T[c.name + "FixedSave"](out, [value])`) || strings.Contains(fn, "putFixedU") {
+		t.Errorf("save.nut saveFixed writes a fixed body itself instead of through <Root>FixedSave:\n%s", fn)
+	}
 
 	cook := src("cookwrite.nut")
 	if fn := body("cookwrite.nut", cook, "local joinField = function("); !strings.Contains(fn, `fmin = ("fmin" in fd) ? fd.fmin : null`) {

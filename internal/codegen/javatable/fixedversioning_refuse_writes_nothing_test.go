@@ -15,13 +15,13 @@ package javatable
 // after it (v.w at 88, no 0x5A left). REFUSE IS TOTAL: every counter is 0.
 import (
 	"encoding/binary"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 // the 0x5A poison as a java int32 reads back as this one number.

@@ -4,7 +4,7 @@ import (
 	"math/big"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // The WIDE kinds' text (docs/SPEC-TABLES.md §16.2): a 128-bit integer is a

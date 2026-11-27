@@ -7,11 +7,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testinputs"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
-// TestFastPlanSelectsNewLegScaffold runs ci-fast.yml's own NEW-LEG SCAFFOLD
+// TestFastPlanSelectsNewLegScaffold runs ci-fast-nightly.yml's own NEW-LEG SCAFFOLD
 // block (in `plan`'s pick step) over the committed cases in
 // testdata/newleg-plan.json, from the repository root where the block reads
 // compiler/newleg.go and asks `go list -deps` for the scaffold's import
@@ -21,18 +21,18 @@ import (
 // changed the scaffold's imports and no per-commit row ran its fixture).
 func TestFastPlanSelectsNewLegScaffold(t *testing.T) {
 	root := repoRoot(t)
-	data, err := os.ReadFile(filepath.Join(root, ".github/workflows/ci-fast.yml"))
+	data, err := os.ReadFile(filepath.Join(root, ".github/workflows/ci-fast-nightly.yml"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	wf := string(data)
 	_, tail, ok := strings.Cut(wf, "          # THE NEW-LEG SCAFFOLD (newleg-scaffold, #4541).")
 	if !ok {
-		t.Fatal("ci-fast.yml has no NEW-LEG SCAFFOLD block in plan")
+		t.Fatal("ci-fast-nightly.yml has no NEW-LEG SCAFFOLD block in plan")
 	}
 	block, _, ok := strings.Cut(tail, "          # END OF THE NEW-LEG SCAFFOLD.")
 	if !ok {
-		t.Fatal("ci-fast.yml's NEW-LEG SCAFFOLD block has no end marker")
+		t.Fatal("ci-fast-nightly.yml's NEW-LEG SCAFFOLD block has no end marker")
 	}
 	_, block, _ = strings.Cut(block, "\n")
 	var script strings.Builder
@@ -52,13 +52,14 @@ func TestFastPlanSelectsNewLegScaffold(t *testing.T) {
 		"        run: go test -count=1 ./cmd/schema -run '^TestNewLegZigWritesSkeletonAndFixturePasses$'",
 	} {
 		if !strings.Contains(wf, want) {
-			t.Errorf("ci-fast.yml lacks %q", want)
+			t.Errorf("ci-fast-nightly.yml lacks %q", want)
 		}
 	}
 	_, job, _ := strings.Cut(wf, "  newleg-scaffold:\n")
 	job, _, _ = strings.Cut(job, "\n\n  # ")
-	if !strings.Contains(job, "SCHEMA_SLOW: '1'") || !strings.Contains(job, "timeout-minutes: 2") {
-		t.Errorf("newleg-scaffold must set SCHEMA_SLOW=1 and keep the two-minute bound:\n%s", job)
+	// nightly since 2026-11-25: no timeout-minutes (the nightly rule)
+	if !strings.Contains(job, "SCHEMA_SLOW: '1'") {
+		t.Errorf("newleg-scaffold must set SCHEMA_SLOW=1:\n%s", job)
 	}
 
 	raw, err := os.ReadFile(filepath.Join("testdata", "newleg-plan.json"))
@@ -89,7 +90,7 @@ func TestFastPlanSelectsNewLegScaffold(t *testing.T) {
 					t.Fatalf("case names %s, which the tree does not hold: %v", f, err)
 				}
 			}
-			testinputs.Files(t, ".github/workflows/ci-fast.yml")
+			testinputs.Files(t, ".github/workflows/ci-fast-nightly.yml")
 			cmd := testproc.Command(t, "bash", "-euo", "pipefail", "-c", script.String())
 			cmd.Dir = root
 			cmd.Env = append(scriptEnv(os.Environ()), "files="+strings.Join(c.Files, "\n"))

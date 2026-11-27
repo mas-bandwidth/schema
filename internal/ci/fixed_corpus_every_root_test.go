@@ -34,7 +34,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/provesran"
+	"github.com/mas-bandwidth/schema/v3/internal/provesran"
 )
 
 // fixedCorpusEveryRootOwed is every leg whose tests do not yet answer every
