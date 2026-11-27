@@ -3,7 +3,7 @@
 # A gate whose only workflow runs on a schedule or on dispatch checks nothing a
 # pull request changes until the night after it lands: the strict Ruby gate
 # ran only nightly, and a RuboCop offense reached main (2026-11-22). Each row
-# here is the fast form of one such gate. ci-fast.yml runs it, as a row of its
+# here is the fast form of one such gate. ci-fast-nightly.yml runs it (nightly since 2026-11-25), as a row of its
 # nightly-fast job, on any push or pull request that touches the row leg, or a
 # path its paths pattern matches, or the broad rule; a diff to this file runs
 # every row. Each row fits the two-minute job cap: its nightly job time on the
