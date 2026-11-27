@@ -669,6 +669,73 @@ SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -v \
   -run 'Test(Go|Python)FixedLoadCapacityWitness'
 ```
 
+### A member named like a type its declaration uses
+
+The checker refuses, for every target, a member spelled like a named type
+some member of the same declaration is declared with: a field of a `type` or
+a `table`, or a union arm (packet or table-closure), named like its own type
+or a sibling's. C++ declares `kind kind = kind::None;` (or `kind mode;` then
+`Kind2 kind;`) in the struct, which g++ refuses as a declaration that changes
+the meaning of `kind`, and Dart declares `kind kind = kind.none;` in the
+class, where the member hides the type in the whole class body
+([SPEC §4.6](SPEC.md#46-shape-checks), Emitter name rules). C++ compares the
+member as written and Dart its lowerCamel spelling, so a field `Kind kind`
+is refused for Dart alone.
+
+Each of `Inner`, `Cased`, `Pair` and `U` below is refused on its own: `Cased`
+names Dart, the others C++ and Dart.
+
+```schema
+package probe
+enum kind { Alpha, Beta, Gamma }
+enum Kind2 { A, B }
+type Inner { kind kind }
+type Cased { Kind kind }
+type Pair
+{
+    mode kind
+    kind Kind2
+}
+union U { kind kind }
+```
+
+Rename the member (`mode kind`) or the type (`kind Kind`, two names in every
+target) for an accepted schema; a field `kind` on a declaration whose members
+use no type `kind` is accepted too. `TestMemberNamedLikeAType` checks every
+refusal above, a packet union's arm, the targets each refusal names, that the
+diagnostic cites SPEC §4.6 once, and six accepted spellings. The
+name-buildability rows (`testdata/name-buildability`, held by
+`TestNameBuildabilityCorpus` at check and built in all 18 targets by the
+nightly `tools/namebuild`) hold the same cases:
+
+| Row | Verdict | What it holds |
+|---|---|---|
+| `e_kind` | refused, C++ and Dart | a field `kind kind` |
+| `e_kind_arm` | refused, C++ and Dart | a table union arm `kind kind` |
+| `e_kind_case` | refused, Dart | a field `Kind kind` |
+| `e_kind_sibling` | refused, C++ and Dart | `kind Kind2` beside `mode kind` |
+| `e_kind_upper` | builds | a field `kind Kind` |
+| `e_kind_other_owner` | builds | `kind Kind2` on a type that does not use `kind` |
+
+### A table-closure union in the Dart fixed form
+
+A union with an enum or flags arm is a table-closure construct
+([SPEC-TABLES §2.6](SPEC-TABLES.md)), assembled beside the decl stream, so the
+Dart packet emitter never declares its class. A table that holds one gets the
+union's storage class (`U`, `zeroU`, a plain-int tag) from its own
+`<Base>Fixed.dart`, never an import of a packet class that does not exist.
+
+```schema
+package probe
+enum Mode { Alpha, Beta, Gamma }
+union U { mode Mode }
+table Rec { pick U }
+```
+
+`TestFixedFormDeclaresATableClosureUnion` (internal/codegen/darttable) checks
+an enum arm, a flags arm and two enum arms; the name-buildability row
+`u_enum_arm_table` builds the same schema in all 18 targets, Dart's
+`dart analyze` included.
 ### Announcement vocabulary entry budget
 
 Use a fresh receiver for each row. Compile the variable-only `tables/blobs`
