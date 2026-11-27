@@ -148,7 +148,8 @@ fn v_t01_f10() {
     }
 }
 
-/// R8 (§5.3 step 4): "a hash in no entry is layout_newer", reporting THE FILE'S
+/// R8 (§5.3 step 5, SPEC-TABLES §21.3): "a hash in no entry is layout_unknown"
+/// (layout_newer is retired and no read answers it), reporting THE FILE'S
 /// HASH AND NOTHING ELSE: the whole report is exactly refused, the reason and
 /// the hash.
 #[test]
@@ -160,12 +161,12 @@ fn v_t01_r8() {
         assert!(n.is_none(), "a hash in no entry must refuse: {:?}", report);
         let want = TableFixedReport {
             refused: true,
-            reason: TableFixedReason::LayoutNewer,
+            reason: TableFixedReason::LayoutUnknown,
             layout_hash: forged,
             ..TableFixedReport::default()
         };
-        assert_eq!(report, want, "layout_newer reports the file's hash {forged:#018x} and NOTHING ELSE");
-        assert!(t01_defaulted(&values), "layout_newer left a row off its declared default");
+        assert_eq!(report, want, "layout_unknown reports the file's hash {forged:#018x} and NOTHING ELSE");
+        assert!(t01_defaulted(&values), "layout_unknown left a row off its declared default");
     }
 }
 
@@ -258,7 +259,7 @@ fn v_t01_r13() {
         ("previous_form", edit(&|d| d[0] = 1), 3, 4096, "previous_form"),
         ("message_form_as_file", edit(&|d| d[0] = 2), 3, 4096, "message_form_as_file"),
         ("newer_form", edit(&|d| d[0] = 9), 3, 4096, "newer_form"),
-        ("layout_newer", edit(&|d| d[8] ^= 0xFF), 3, 4096, "layout_newer"),
+        ("layout_unknown", edit(&|d| d[8] ^= 0xFF), 3, 4096, "layout_unknown"),
         ("layout_malformed", edit(&|d| d[TABLE_FIXED_HEADER_BYTES + 4] ^= 0xFF), 3, 4096, "layout_malformed"),
         ("layout_past_the_file", edit(&|d| d[TABLE_FIXED_HEADER_BYTES..TABLE_FIXED_HEADER_BYTES + 4].copy_from_slice(&u32::MAX.to_le_bytes())), 3, 4096, "layout_malformed"),
         ("batch_too_large", own.clone(), 2, 4096, "batch_too_large"),
