@@ -10,6 +10,7 @@
 //	harness run                   run every registered driver, print the matrix
 //	harness matrix                print the CI matrix the registry implies
 //	harness wire-fuzz             fuzz one language's tolerant wire read against the engine
+//	harness wire-eof              a leg's wire-fuzz driver must fail loudly on a truncated frame
 //	harness cross-read            the C++ reference reads what one leg wrote (the nightly)
 //	harness coverage              the nightly's coverage table, from its rows
 //
@@ -88,6 +89,10 @@ func usage() {
              a LoadMeasure inside the framing's bound, for every mutant
              (docs/SPEC-TABLES.md §4.2). --seed and --n size the random pass;
              the enumerated passes run whatever N is.
+  wire-eof   end one leg's wire-fuzz stream (--driver) cleanly after the roster
+             and then inside a frame (1 to 3 index bytes, a cut length, a cut
+             body), and require a clean exit only for the clean close and a
+             loud failure, with no reply, for every cut (wireeof.go).
   json-fuzz  generate deterministic adversarial and mutated JSON inputs across
              fixed and variable roots, run the compiler engine as oracle, and
              verify FromJson verdict, canonical ToJson, Save wire, and
@@ -163,6 +168,7 @@ func main() {
 	builder := fs.Bool("builder", false, "compare mutable builder completion, reports and successful saved values (wire-fuzz only)")
 	mixedBuilder := fs.Bool("mixed-builder", false, "full roster: mutable oracle for variable file roots, existing fixed/message oracles (wire-fuzz only)")
 	retain := fs.Bool("retain", false, "run the RETENTION ARM: both engines' retaining paths over the variable-class file roots (docs/SPEC-TABLES.md §6.6; wire-fuzz only)")
+	deadLedger := fs.String("dead-root-ledger", "", "the leg's ledger of message-fuzz roster roots it answers 0 for, matched as an exact set; a dead root it does not name fails the run (message-fuzz only)")
 	failed := fs.String("failed", "build/wire-fuzz/failed.bin", "where a failing mutant is written (wire-fuzz only)")
 	finiteOwed := fs.String("finite-owed", "", "the docs/roadmap.sexp card that owes this leg the finite float rule (docs/SPEC-TABLES.md §3.3): a mutant the oracle refuses as non_finite_float is counted and not compared (wire-fuzz only)")
 	vectors := fs.String("vectors", defaultVectors, "the pinned-vector index (wire-fuzz only)")
@@ -277,7 +283,7 @@ func main() {
 			fatalf("%v", err)
 		}
 	case "message-fuzz":
-		if err := messageFuzz(os.Stdout, m, messageFuzzOptions{driver: *driver, only: *only, work: *work, failed: *failed, replay: *replay, unit: *unit, root: *root, jsonDir: *jsonDir, seed: *seed, n: *n, maxMutants: *maxMutants}); err != nil {
+		if err := messageFuzz(os.Stdout, m, messageFuzzOptions{driver: *driver, only: *only, work: *work, failed: *failed, replay: *replay, unit: *unit, root: *root, jsonDir: *jsonDir, seed: *seed, n: *n, maxMutants: *maxMutants, deadLedger: *deadLedger}); err != nil {
 			fatalf("%v", err)
 		}
 	case "wire-fuzz":
@@ -286,6 +292,14 @@ func main() {
 		}
 		if err := wireFuzz(m, wireFuzzOptions{shard: *shard, shards: *shards, maxMutants: *maxMutants, timeout: *timeout, driver: *driver, seed: *seed, n: *n, replay: *replay, unit: *unit, root: *root, message: *message, failed: *failed, vectors: *vectors, retain: *retain, builder: *builder, mixedBuilder: *mixedBuilder, finiteOwed: *finiteOwed}); err != nil {
 			fatalf("%v", err)
+		}
+	case "wire-eof":
+		ok, err := wireEOF(os.Stdout, m, wireFuzzOptions{driver: *driver, builder: *builder, mixedBuilder: *mixedBuilder, retain: *retain})
+		if err != nil {
+			fatalf("wire-eof: %v", err)
+		}
+		if !ok {
+			os.Exit(1)
 		}
 	case "cook-differential":
 		ok, err := cookDifferential(os.Stdout, m, *driver, *work)

@@ -966,26 +966,36 @@ struct TableReader
             case 2:
             case 6:
             case 20:
-            case 25: if ( r.has( 1 ) ) { r.offset += 1; } return false;
+            case 25:
+                if ( r.has( 1 ) ) { r.offset += 1; }
+                return false;
             case 3:
             case 7:
             case 21:
-            case 26: if ( r.has( 2 ) ) { r.offset += 2; } return false;
+            case 26:
+                if ( r.has( 2 ) ) { r.offset += 2; }
+                return false;
             case 4:
             case 8:
             case 10:
             case 22:
-            case 27: if ( r.has( 4 ) ) { r.offset += 4; } return false;
+            case 27:
+                if ( r.has( 4 ) ) { r.offset += 4; }
+                return false;
             case 5:
             case 9:
             case 11:
             case 23:
             case 28:
-            case 36: if ( r.has( 8 ) ) { r.offset += 8; } return false;
+            case 36:
+                if ( r.has( 8 ) ) { r.offset += 8; }
+                return false;
             case 18:
             case 19:
             case 24:
-            case 29: if ( r.has( 16 ) ) { r.offset += 16; } return false;
+            case 29:
+                if ( r.has( 16 ) ) { r.offset += 16; }
+                return false;
             case 17:
             case 30:
             {
@@ -1552,11 +1562,30 @@ inline int32_t TableStrictWidth( uint8_t kind )
 {
     switch ( kind )
     {
-        case 1: case 2: case 6: case 20: case 25: return 1;
-        case 3: case 7: case 21: case 26: return 2;
-        case 4: case 8: case 10: case 22: case 27: return 4;
-        case 5: case 9: case 11: case 23: case 28: case 36: return 8;
-        case 18: case 19: case 24: case 29: return 16;
+        case 1:
+        case 2:
+        case 6:
+        case 20:
+        case 25: return 1;
+        case 3:
+        case 7:
+        case 21:
+        case 26: return 2;
+        case 4:
+        case 8:
+        case 10:
+        case 22:
+        case 27: return 4;
+        case 5:
+        case 9:
+        case 11:
+        case 23:
+        case 28:
+        case 36: return 8;
+        case 18:
+        case 19:
+        case 24:
+        case 29: return 16;
     }
     return 0;
 }
@@ -1580,7 +1609,11 @@ inline bool TableStrictScalar( TableStrict & s, const uint8_t * b, uint8_t kind 
     // visible in the raw little-endian wire bytes, including skipped fields.
     const bool non_finite32 = kind == 10 && ( b[3] & 0x7f ) == 0x7f && ( b[2] & 0x80 ) != 0;
     const bool non_finite64 = kind == 11 && ( b[7] & 0x7f ) == 0x7f && ( b[6] & 0xf0 ) == 0xf0;
-    if ( non_finite32 || non_finite64 ) { s.refusal = non_finite_float; return false; }
+    if ( non_finite32 || non_finite64 )
+    {
+        s.refusal = non_finite_float;
+        return false;
+    }
     return true;
 }
 
@@ -1593,7 +1626,11 @@ inline bool TableStrictFailed( const TableStrict & s, TableReport * report )
         report->reason = count_over_extent_cap;
         report->refuse_reason = count_over_extent_cap;
     }
-    else { report->damaged = true; report->refuse_reason = wire_damaged; }
+    else
+    {
+        report->damaged = true;
+        report->refuse_reason = wire_damaged;
+    }
     return false;
 }
 
@@ -1684,7 +1721,9 @@ inline bool TableStrictContent( TableStrict & s, const uint8_t * b, int64_t n, u
             if ( depth >= kTableStrictMaxDepth ) { return false; }
             return TableStrictKeyed( s, b, n, depth + 1 );
         }
-        case 15: case 17: case 30:
+        case 15:
+        case 17:
+        case 30:
         {
             TableReport ignored;
             TableReader r( b, n, &ignored, s.ids );
@@ -1730,7 +1769,11 @@ inline bool TableStrictPayload( TableStrict & s, TableReader & r, uint8_t kind, 
         }
         case 15:
             return TableStrictUnion( s, r, depth );
-        case 12: case 32: case 13: case 14: case 16:
+        case 12:
+        case 32:
+        case 13:
+        case 14:
+        case 16:
         {
             uint64_t n = 0;
             if ( !r.getleb( n ) || !r.room( n ) ) { return false; } // L4
@@ -1779,7 +1822,11 @@ inline bool TableStrictArray( TableStrict & s, const uint8_t * b, int64_t n, int
     uint64_t count = 0;
     if ( !r.getleb( count ) ) { return false; }
     // the cap applies even when this array belongs to an unknown field
-    if ( count > 0x7FFFFFFFull ) { s.refusal = count_over_extent_cap; return false; }
+    if ( count > 0x7FFFFFFFull )
+    {
+        s.refusal = count_over_extent_cap;
+        return false;
+    }
     for ( uint64_t i = 0; i < count; i++ )
     {
         if ( !TableStrictPayload( s, r, elem, depth ) ) { return false; }
@@ -1797,7 +1844,11 @@ inline bool TableStrictKeyed( TableStrict & s, const uint8_t * b, int64_t n, int
     uint64_t count = 0;
     if ( !r.getleb( count ) ) { return false; }
     // the cap applies even when this keyed array belongs to an unknown field
-    if ( count > 0x7FFFFFFFull ) { s.refusal = count_over_extent_cap; return false; }
+    if ( count > 0x7FFFFFFFull )
+    {
+        s.refusal = count_over_extent_cap;
+        return false;
+    }
     uint64_t seen[kTableStrictSeenWords];
     for ( int32_t w = 0; w < kTableStrictSeenWords; w++ ) { seen[w] = 0; }
     for ( uint64_t i = 0; i < count; i++ )
@@ -3158,7 +3209,10 @@ inline bool TableMessageSeenOnce( const TableMessageSeenBody & body, uint64_t re
         {
             const int32_t mid = ( kept + high ) / 2;
             if ( vocabulary.seen_starts[mid] <= at ) { kept = mid + 1; }
-            else { high = mid; }
+            else
+            {
+                high = mid;
+            }
         }
         if ( last < kept ) { entry->seen_below[last >> 6] |= uint64_t( 1 ) << ( last & 63 ); }
         TableMessageSeenKeepBelow( *entry, kept );
@@ -3515,8 +3569,16 @@ inline bool TableFloatFinite( double d ) { return TableBitsFinite64( table_doubl
 // float, the +0 bits for its -0 and the bits as held for any other value. A
 // plain float never comes here: its -0 is a value and rides bit-exact. The Go
 // oracle is internal/tabletext's StoredFloat.
-inline uint32_t TableStoredFloatBits( float f ) { const uint32_t b = table_float_to_bits( f ); return b == 0x80000000u ? 0u : b; }
-inline uint64_t TableStoredFloatBits( double d ) { const uint64_t b = table_double_to_bits( d ); return b == 0x8000000000000000ull ? 0u : b; }
+inline uint32_t TableStoredFloatBits( float f )
+{
+    const uint32_t b = table_float_to_bits( f );
+    return b == 0x80000000u ? 0u : b;
+}
+inline uint64_t TableStoredFloatBits( double d )
+{
+    const uint64_t b = table_double_to_bits( d );
+    return b == 0x8000000000000000ull ? 0u : b;
+}
 
 // THE FIXED FORM'S THREE REASON NAMES THE COOKED FORM ALSO SPELLS
 // (docs/FIXED-FORM-ALGORITHM.md §5.3, docs/SPEC-TABLES.md §3.4, §11): every
@@ -3967,10 +4029,32 @@ inline uint64_t TableFixedLoadNative( const uint8_t * src, uint32_t size )
     }
     switch ( size )
     {
-        case 1: { uint8_t t = 0; memcpy( &t, src, 1 ); v = t; break; }
-        case 2: { uint16_t t = 0; memcpy( &t, src, 2 ); v = t; break; }
-        case 4: { uint32_t t = 0; memcpy( &t, src, 4 ); v = t; break; }
-        case 8: { memcpy( &v, src, 8 ); break; }
+        case 1:
+        {
+            uint8_t t = 0;
+            memcpy( &t, src, 1 );
+            v = t;
+            break;
+        }
+        case 2:
+        {
+            uint16_t t = 0;
+            memcpy( &t, src, 2 );
+            v = t;
+            break;
+        }
+        case 4:
+        {
+            uint32_t t = 0;
+            memcpy( &t, src, 4 );
+            v = t;
+            break;
+        }
+        case 8:
+        {
+            memcpy( &v, src, 8 );
+            break;
+        }
         default: break;
     }
     return v;
@@ -4290,12 +4374,24 @@ inline bool TableFixedEntryTagArg( const TableFixedEntry & e, uint32_t tag,
         for ( int32_t j = 0; j < (int32_t) e.guard_count; ++j )
         {
             const TableFixedGuardLink & l = *(const TableFixedGuardLink *) (const void *) ( (const uint8_t *) guard_pool + e.guard_index + j * (int32_t) sizeof( TableFixedGuardLink ) );
-            if ( l.guard == tag ) { arg = (int64_t) l.arg; return true; }
+            if ( l.guard == tag )
+            {
+                arg = (int64_t) l.arg;
+                return true;
+            }
         }
         return false;
     }
-    if ( e.guard == tag ) { arg = (int64_t) e.arg; return true; }
-    if ( e.guard2 == tag ) { arg = (int64_t) e.arg2; return true; }
+    if ( e.guard == tag )
+    {
+        arg = (int64_t) e.arg;
+        return true;
+    }
+    if ( e.guard2 == tag )
+    {
+        arg = (int64_t) e.arg2;
+        return true;
+    }
     return false;
 }
 
@@ -4330,14 +4426,14 @@ inline bool TableFixedDeadSpan( const TableFixedEntry * plan, int32_t count, con
     {
         const TableFixedEntry & e = plan[i];
         if ( e.op == kTableFixedConst && e.src == tag_at && e.aux == 0 &&
-             TableFixedGuardHolds( e, src, guard_pool ) )
+            TableFixedGuardHolds( e, src, guard_pool ) )
         {
             lineage_union = true;
             if ( e.dstsize != 0 ) { arm_count = e.dstsize; }
         }
         else if ( e.op == kTableFixedCopy && e.aux != 0 &&
-                  e.src <= tag_at && (int64_t) e.src + (int64_t) e.size == arm &&
-                  TableFixedGuardHolds( e, src, guard_pool ) )
+            e.src <= tag_at && (int64_t) e.src + (int64_t) e.size == arm &&
+            TableFixedGuardHolds( e, src, guard_pool ) )
         {
             arm_count = e.aux;
         }
@@ -4350,12 +4446,16 @@ inline bool TableFixedDeadSpan( const TableFixedEntry * plan, int32_t count, con
             {
                 const TableFixedGuardLink & l = *(const TableFixedGuardLink *) (const void *) ( (const uint8_t *) guard_pool + e.guard_index + j * (int32_t) sizeof( TableFixedGuardLink ) );
                 if ( l.guard == tag_at ) { break; }
-                if ( TableFixedTagAt( src, l.guard, l.argw ) != l.arg ) { outer_ok = false; break; }
+                if ( TableFixedTagAt( src, l.guard, l.argw ) != l.arg )
+                {
+                    outer_ok = false;
+                    break;
+                }
             }
             if ( !outer_ok ) { continue; }
         }
         else if ( e.guard == tag_at && e.guard2 != kTableFixedNoGuard &&
-                  TableFixedTagAt( src, e.guard2, e.argw2 ) != e.arg2 )
+            TableFixedTagAt( src, e.guard2, e.argw2 ) != e.arg2 )
         {
             continue;
         }
@@ -4467,17 +4567,17 @@ inline bool TableFixedRefuseScan( const TableFixedEntry * plan, int32_t count, i
         {
             // guard2 is the OUTER tag of a two-lane entry, guard the inner one.
             const bool outer_holds = e.guard2 == kTableFixedNoGuard ||
-                                     TableFixedTagAt( src, e.guard2, e.argw2 ) == e.arg2;
+                TableFixedTagAt( src, e.guard2, e.argw2 ) == e.arg2;
             if ( outer_holds && e.guard != kTableFixedNoGuard && !TableFixedTagSeen( plan, i, e.guard, guard_pool ) &&
-                 !TableFixedInAbsentPayload( plan, count, src, (int64_t) e.guard ) &&
-                 !TableFixedDeadSpan( plan, count, src, e.guard, e.argw, guard_pool ) )
+                !TableFixedInAbsentPayload( plan, count, src, (int64_t) e.guard ) &&
+                !TableFixedDeadSpan( plan, count, src, e.guard, e.argw, guard_pool ) )
             {
                 why = wire_damaged;
                 return true;
             }
             if ( e.guard2 != kTableFixedNoGuard && !TableFixedTagSeen( plan, i, e.guard2, guard_pool ) &&
-                 !TableFixedInAbsentPayload( plan, count, src, (int64_t) e.guard2 ) &&
-                 !TableFixedDeadSpan( plan, count, src, e.guard2, e.argw2, guard_pool ) )
+                !TableFixedInAbsentPayload( plan, count, src, (int64_t) e.guard2 ) &&
+                !TableFixedDeadSpan( plan, count, src, e.guard2, e.argw2, guard_pool ) )
             {
                 why = wire_damaged;
                 return true;
@@ -7297,11 +7397,30 @@ inline int32_t TableGraphWidth( uint8_t kind )
 {
     switch ( kind )
     {
-        case 1: case 2: case 6: case 20: case 25: return 1;
-        case 3: case 7: case 21: case 26: return 2;
-        case 4: case 8: case 10: case 22: case 27: return 4;
-        case 5: case 9: case 11: case 23: case 28: case 36: return 8;
-        case 18: case 19: case 24: case 29: return 16;
+        case 1:
+        case 2:
+        case 6:
+        case 20:
+        case 25: return 1;
+        case 3:
+        case 7:
+        case 21:
+        case 26: return 2;
+        case 4:
+        case 8:
+        case 10:
+        case 22:
+        case 27: return 4;
+        case 5:
+        case 9:
+        case 11:
+        case 23:
+        case 28:
+        case 36: return 8;
+        case 18:
+        case 19:
+        case 24:
+        case 29: return 16;
     }
     return 0;
 }
@@ -7314,7 +7433,11 @@ inline bool TableGraphPayload( TableGraphCollect & c, TableReader & r, uint8_t k
     const int32_t width = TableGraphWidth( kind );
     if ( width > 0 )
     {
-        if ( !r.has( width ) ) { c.damaged = true; return false; }
+        if ( !r.has( width ) )
+        {
+            c.damaged = true;
+            return false;
+        }
         r.offset += width;
         return true;
     }
@@ -7323,22 +7446,42 @@ inline bool TableGraphPayload( TableGraphCollect & c, TableReader & r, uint8_t k
         case 17:
         {
             uint64_t index = 0;
-            if ( !r.getleb( index ) ) { c.damaged = true; return false; }
-            if ( !c.edge( c.ctx, index ) ) { c.damaged = true; return false; }
+            if ( !r.getleb( index ) )
+            {
+                c.damaged = true;
+                return false;
+            }
+            if ( !c.edge( c.ctx, index ) )
+            {
+                c.damaged = true;
+                return false;
+            }
             return true;
         }
         case 30:
         {
             uint64_t ref = 0;
-            if ( !r.getleb( ref ) || c.ids == NULL || ref > (uint64_t) c.ids->count ) { c.damaged = true; return false; }
+            if ( !r.getleb( ref ) || c.ids == NULL || ref > (uint64_t) c.ids->count )
+            {
+                c.damaged = true;
+                return false;
+            }
             return true;
         }
         case 15:
             return TableGraphUnion( c, r, depth );
-        case 12: case 32: case 13: case 14: case 16:
+        case 12:
+        case 32:
+        case 13:
+        case 14:
+        case 16:
         {
             uint64_t n = 0;
-            if ( !r.getleb( n ) || !r.room( n ) ) { c.damaged = true; return false; }
+            if ( !r.getleb( n ) || !r.room( n ) )
+            {
+                c.damaged = true;
+                return false;
+            }
             const uint8_t * b = r.buffer + r.offset;
             r.offset += (int64_t) n;
             return TableGraphContent( c, b, (int64_t) n, kind, depth );
@@ -7350,22 +7493,50 @@ inline bool TableGraphPayload( TableGraphCollect & c, TableReader & r, uint8_t k
 
 inline bool TableGraphBody( TableGraphCollect & c, const uint8_t * b, int64_t n, bool root, bool exact, int depth )
 {
-    if ( depth > kTableGraphMaxDepth ) { c.damaged = true; return false; }
+    if ( depth > kTableGraphMaxDepth )
+    {
+        c.damaged = true;
+        return false;
+    }
     TableReport ignored;
     TableReader r( b, n, &ignored, c.ids );
     for ( ;; )
     {
         uint64_t ref = 0;
-        if ( !r.getleb( ref ) ) { c.damaged = true; return false; }
-        if ( ref == 0 ) { if ( exact && r.offset != n ) { c.damaged = true; return false; } return true; }
-        if ( c.ids == NULL || ref > (uint64_t) c.ids->count || !r.has( 1 ) ) { c.damaged = true; return false; }
+        if ( !r.getleb( ref ) )
+        {
+            c.damaged = true;
+            return false;
+        }
+        if ( ref == 0 )
+        {
+            if ( exact && r.offset != n )
+            {
+                c.damaged = true;
+                return false;
+            }
+            return true;
+        }
+        if ( c.ids == NULL || ref > (uint64_t) c.ids->count || !r.has( 1 ) )
+        {
+            c.damaged = true;
+            return false;
+        }
         const uint64_t id = c.ids->at( ref );
         const uint8_t kind = r.get8();
         if ( id == kTableNodeTableFieldId )
         {
-            if ( !root || kind != 12 ) { c.damaged = true; return false; }
+            if ( !root || kind != 12 )
+            {
+                c.damaged = true;
+                return false;
+            }
             uint64_t len = 0;
-            if ( !r.getleb( len ) || !r.room( len ) ) { c.damaged = true; return false; }
+            if ( !r.getleb( len ) || !r.room( len ) )
+            {
+                c.damaged = true;
+                return false;
+            }
             r.offset += (int64_t) len;
             continue;
         }
@@ -7378,57 +7549,126 @@ inline bool TableGraphContent( TableGraphCollect & c, const uint8_t * b, int64_t
     const int32_t width = TableGraphWidth( kind );
     if ( width > 0 )
     {
-        if ( n != width ) { c.damaged = true; return false; }
+        if ( n != width )
+        {
+            c.damaged = true;
+            return false;
+        }
         return true;
     }
     switch ( kind )
     {
         case 12:
-            if ( !TableUtf8Valid( b, (uint64_t) n ) ) { c.damaged = true; return false; }
+            if ( !TableUtf8Valid( b, (uint64_t) n ) )
+            {
+                c.damaged = true;
+                return false;
+            }
             return true;
         case 31: // KIND 31 IS HELD BY NAME AND NEVER WRITTEN (R17): damage, as 33 and 34
             c.damaged = true;
             return false;
         case 32:
-            if ( n != 0 ) { c.damaged = true; return false; }
+            if ( n != 0 )
+            {
+                c.damaged = true;
+                return false;
+            }
             return true;
         case 13:
-            if ( depth >= kTableGraphMaxDepth ) { c.damaged = true; return false; }
+            if ( depth >= kTableGraphMaxDepth )
+            {
+                c.damaged = true;
+                return false;
+            }
             return TableGraphBody( c, b, n, false, true, depth + 1 );
         case 14:
         {
-            if ( depth >= kTableGraphMaxDepth ) { c.damaged = true; return false; }
-            if ( n < 2 ) { c.damaged = true; return false; }
+            if ( depth >= kTableGraphMaxDepth )
+            {
+                c.damaged = true;
+                return false;
+            }
+            if ( n < 2 )
+            {
+                c.damaged = true;
+                return false;
+            }
             TableReport ignored;
             TableReader r( b + 1, n - 1, &ignored, c.ids );
             const uint8_t elem = b[0];
             // THE ELEMENT KIND IS CLOSED, judged before any element and under
             // a count of 0 (docs/SPEC-TABLES.md §3, §4).
-            if ( !TableArrayElementKind( elem ) ) { c.damaged = true; c.closed_kind = true; return false; }
+            if ( !TableArrayElementKind( elem ) )
+            {
+                c.damaged = true;
+                c.closed_kind = true;
+                return false;
+            }
             uint64_t count = 0;
-            if ( !r.getleb( count ) ) { c.damaged = true; return false; }
-            if ( count > (uint64_t) ( r.size - r.offset ) ) { c.damaged = true; return false; }
-            for ( uint64_t i = 0; i < count; i++ ) { if ( !TableGraphPayload( c, r, elem, depth + 1 ) ) { return false; } }
+            if ( !r.getleb( count ) )
+            {
+                c.damaged = true;
+                return false;
+            }
+            if ( count > (uint64_t) ( r.size - r.offset ) )
+            {
+                c.damaged = true;
+                return false;
+            }
+            for ( uint64_t i = 0; i < count; i++ )
+            {
+                if ( !TableGraphPayload( c, r, elem, depth + 1 ) ) { return false; }
+            }
             return true;
         }
         case 16:
         {
-            if ( depth >= kTableGraphMaxDepth ) { c.damaged = true; return false; }
-            if ( n < 2 ) { c.damaged = true; return false; }
+            if ( depth >= kTableGraphMaxDepth )
+            {
+                c.damaged = true;
+                return false;
+            }
+            if ( n < 2 )
+            {
+                c.damaged = true;
+                return false;
+            }
             TableReport ignored;
             TableReader r( b + 1, n - 1, &ignored, c.ids );
             const uint8_t elem = b[0];
             // THE KEYED BODY'S ELEMENT KIND IS ITS OWN CLOSED LIST (§3, §4).
-            if ( !TableKeyedElementKind( elem ) ) { c.damaged = true; c.closed_kind = true; return false; }
+            if ( !TableKeyedElementKind( elem ) )
+            {
+                c.damaged = true;
+                c.closed_kind = true;
+                return false;
+            }
             uint64_t count = 0;
-            if ( !r.getleb( count ) ) { c.damaged = true; return false; }
-            if ( count > (uint64_t) ( r.size - r.offset ) ) { c.damaged = true; return false; }
+            if ( !r.getleb( count ) )
+            {
+                c.damaged = true;
+                return false;
+            }
+            if ( count > (uint64_t) ( r.size - r.offset ) )
+            {
+                c.damaged = true;
+                return false;
+            }
             for ( uint64_t i = 0; i < count; i++ )
             {
                 uint64_t key = 0;
-                if ( !r.getleb( key ) || key == 0 || c.ids == NULL || key > (uint64_t) c.ids->count ) { c.damaged = true; return false; }
+                if ( !r.getleb( key ) || key == 0 || c.ids == NULL || key > (uint64_t) c.ids->count )
+                {
+                    c.damaged = true;
+                    return false;
+                }
                 uint64_t len = 0;
-                if ( !r.getleb( len ) || !r.room( len ) ) { c.damaged = true; return false; }
+                if ( !r.getleb( len ) || !r.room( len ) )
+                {
+                    c.damaged = true;
+                    return false;
+                }
                 const uint8_t * eb = r.buffer + r.offset;
                 r.offset += (int64_t) len;
                 if ( !TableGraphContent( c, eb, (int64_t) len, elem, depth + 1 ) ) { return false; }
@@ -7441,12 +7681,17 @@ inline bool TableGraphContent( TableGraphCollect & c, const uint8_t * b, int64_t
             TableReader r( b, n, &ignored, c.ids );
             return TableGraphUnion( c, r, depth );
         }
-        case 17: case 30:
+        case 17:
+        case 30:
         {
             TableReport ignored;
             TableReader r( b, n, &ignored, c.ids );
             if ( !TableGraphPayload( c, r, kind, depth ) ) { return false; }
-            if ( r.offset != n ) { c.damaged = true; return false; }
+            if ( r.offset != n )
+            {
+                c.damaged = true;
+                return false;
+            }
             return true;
         }
     }
@@ -7457,18 +7702,34 @@ inline bool TableGraphContent( TableGraphCollect & c, const uint8_t * b, int64_t
 inline bool TableGraphUnion( TableGraphCollect & c, TableReader & r, int depth )
 {
     uint64_t ref = 0;
-    if ( !r.getleb( ref ) ) { c.damaged = true; return false; }
+    if ( !r.getleb( ref ) )
+    {
+        c.damaged = true;
+        return false;
+    }
     if ( ref == 0 ) { return true; }
-    if ( c.ids == NULL || ref > (uint64_t) c.ids->count || !r.has( 1 ) ) { c.damaged = true; return false; }
+    if ( c.ids == NULL || ref > (uint64_t) c.ids->count || !r.has( 1 ) )
+    {
+        c.damaged = true;
+        return false;
+    }
     const uint8_t kind = r.get8();
     uint64_t len = 0;
-    if ( !r.getleb( len ) || !r.room( len ) ) { c.damaged = true; return false; }
+    if ( !r.getleb( len ) || !r.room( len ) )
+    {
+        c.damaged = true;
+        return false;
+    }
     const uint8_t * b = r.buffer + r.offset;
     r.offset += (int64_t) len;
     const bool structural = kind == 13 || kind == 14 || kind == 15 || kind == 16;
     if ( structural )
     {
-        if ( depth >= kTableGraphMaxDepth ) { c.damaged = true; return false; }
+        if ( depth >= kTableGraphMaxDepth )
+        {
+            c.damaged = true;
+            return false;
+        }
         if ( !TableGraphContent( c, b, (int64_t) len, kind, depth + 1 ) ) { return false; }
     }
     else if ( !TableGraphContent( c, b, (int64_t) len, kind, depth ) ) { return false; }
@@ -7486,7 +7747,11 @@ inline bool TableGraphCountEdge( void * ctx, uint64_t index )
 {
     TableGraphCount * c = (TableGraphCount *) ctx;
     if ( index == 0 ) { return true; }
-    if ( index - 1 >= (uint64_t) c->count ) { c->bad = true; return false; }
+    if ( index - 1 >= (uint64_t) c->count )
+    {
+        c->bad = true;
+        return false;
+    }
     c->nodes[index - 1].type_id += 1;
     return true;
 }
@@ -7510,9 +7775,17 @@ inline bool TableGraphKahnEdge( void * ctx, uint64_t index )
 {
     TableGraphKahn * k = (TableGraphKahn *) ctx;
     if ( index == 0 ) { return true; }
-    if ( index - 1 >= (uint64_t) k->count ) { k->bad = true; return false; }
+    if ( index - 1 >= (uint64_t) k->count )
+    {
+        k->bad = true;
+        return false;
+    }
     TableNodeDirEntry & e = k->nodes[index - 1];
-    if ( ( e.type_id & kTableGraphQueued ) != 0 || e.type_id == 0 ) { k->bad = true; return false; }
+    if ( ( e.type_id & kTableGraphQueued ) != 0 || e.type_id == 0 )
+    {
+        k->bad = true;
+        return false;
+    }
     e.type_id -= 1;
     if ( e.type_id == 0 ) { TableGraphKahnPush( *k, (int64_t) index - 1 ); }
     return true;
@@ -7531,19 +7804,30 @@ inline bool TableGraphReachEdge( void * ctx, uint64_t index )
 {
     TableGraphReach * r = (TableGraphReach *) ctx;
     if ( index == 0 ) { return true; }
-    if ( index - 1 >= (uint64_t) r->count ) { r->bad = true; return false; }
+    if ( index - 1 >= (uint64_t) r->count )
+    {
+        r->bad = true;
+        return false;
+    }
     const int64_t t = (int64_t) index - 1;
     if ( ( r->nodes[t].type_id & kTableGraphVisited ) != 0 ) { return true; }
     r->nodes[t].type_id = kTableGraphVisited;
     if ( r->tail < 0 ) { r->head = t; }
-    else { r->nodes[r->tail].type_id = kTableGraphVisited | (uint64_t) ( t + 1 ); }
+    else
+    {
+        r->nodes[r->tail].type_id = kTableGraphVisited | (uint64_t) ( t + 1 );
+    }
     r->tail = t;
     return true;
 }
 
 inline bool TableGraphParseNode( TableGraphCollect & c, const uint8_t * wire, int64_t wire_bytes, uint64_t start, bool root )
 {
-    if ( start > (uint64_t) wire_bytes ) { c.damaged = true; return false; }
+    if ( start > (uint64_t) wire_bytes )
+    {
+        c.damaged = true;
+        return false;
+    }
     return TableGraphBody( c, wire + start, wire_bytes - (int64_t) start, root, root, 0 );
 }
 
@@ -7604,7 +7888,10 @@ inline bool TableGraphCheck( const uint8_t * wire, int64_t wire_bytes, const Tab
     }
 
     TableGraphKahn kahn = { scratch, n, -1, 0, false };
-    for ( int64_t i = 0; i < n; i++ ) { if ( scratch[i].type_id == 0 ) { TableGraphKahnPush( kahn, i ); } }
+    for ( int64_t i = 0; i < n; i++ )
+    {
+        if ( scratch[i].type_id == 0 ) { TableGraphKahnPush( kahn, i ); }
+    }
     while ( kahn.head >= 0 )
     {
         const int64_t p = kahn.head;
@@ -7661,7 +7948,12 @@ inline bool TableStrictWalk( const uint8_t * body, int64_t body_bytes, const Tab
         TableNodeScan scan = TableNodeScanBegin( body, body_bytes, &ignored, &table );
         while ( TableNodeScanNext( scan, type_id, rec, len ) )
         {
-            if ( scan.type_ref > s.next_ref ) { report->damaged = true; report->refuse_reason = wire_damaged; return false; }
+            if ( scan.type_ref > s.next_ref )
+            {
+                report->damaged = true;
+                report->refuse_reason = wire_damaged;
+                return false;
+            }
             if ( scan.type_ref == s.next_ref ) { s.next_ref++; }
             // a blob record is its bytes; the graph check reads its text (§3.1)
             if ( type_id != kTableBytesTypeId && type_id != kTableStringTypeId )
@@ -7670,7 +7962,12 @@ inline bool TableStrictWalk( const uint8_t * body, int64_t body_bytes, const Tab
             }
             records++;
         }
-        if ( !TableNodeScanWhole( scan ) ) { report->damaged = true; report->refuse_reason = wire_damaged; return false; }
+        if ( !TableNodeScanWhole( scan ) )
+        {
+            report->damaged = true;
+            report->refuse_reason = wire_damaged;
+            return false;
+        }
     }
     if ( s.next_ref - 1 != (uint64_t) table.count )
     {
@@ -7682,7 +7979,11 @@ inline bool TableStrictWalk( const uint8_t * body, int64_t body_bytes, const Tab
     TableNodeDirEntry * scratch = records + 1 <= 64
         ? inline_scratch
         : (TableNodeDirEntry *) table_allocate( allocator, ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry ) );
-    if ( scratch == NULL ) { report->damaged = true; return false; }
+    if ( scratch == NULL )
+    {
+        report->damaged = true;
+        return false;
+    }
     const bool ok = TableGraphCheck( body, body_bytes, &table, scratch, records + 1, report );
     if ( scratch != inline_scratch ) { table_release( allocator, scratch ); }
     return ok;
@@ -7951,7 +8252,12 @@ struct TableRetainIds
         }
         if ( known.count != before )
         {
-            if ( count >= kTableProbeBound ) { known.truncate( before ); overflow = true; return 1; }
+            if ( count >= kTableProbeBound )
+            {
+                known.truncate( before );
+                overflow = true;
+                return 1;
+            }
             known_slot[(int32_t) k - 1] = ++count;
         }
         return (uint64_t) known_slot[(int32_t) k - 1];
@@ -8189,7 +8495,11 @@ inline int64_t TableRetainInFramed( TableRetainIn & s, uint8_t kind, int64_t len
 
 inline int64_t TableRetainInContent( TableRetainIn & s, uint8_t kind, int64_t length, int32_t depth )
 {
-    if ( depth > kTableRetainWalkDepthMax ) { s.too_deep = true; return -1; }
+    if ( depth > kTableRetainWalkDepthMax )
+    {
+        s.too_deep = true;
+        return -1;
+    }
     if ( length < 0 || s.at + length > s.size ) { return -1; }
     const int64_t end = s.at + length;
     const int64_t began = s.out_at;
@@ -9361,7 +9671,8 @@ struct Chunk
 };
 
 // FrameType: union Frame's tag — None = 0, then each variant in declared order (SPEC §4.8)
-enum class FrameType : uint8_t {
+enum class FrameType : uint8_t
+{
     None = 0,
     Header = 1,
     Chunk = 2,
@@ -9970,7 +10281,11 @@ inline bool HeaderLoadMessageBody( TableBitReader & r, const TableVocabulary & v
                 break;
             }
             default:
-                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
+                if ( vocabulary.build_version == BuildVersion )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 report->unknown++;
                 if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
@@ -10530,7 +10845,14 @@ inline int64_t FeedMeasureBody( const Ctx & ctx, const TableNumbering & numberin
     }
     {
         bool any_pair = false;
-        for ( int32_t i = 0; i < 2; i++ ) { if ( ChunkAt( ctx, value.pair[i] ) != NULL ) { any_pair = true; break; } }
+        for ( int32_t i = 0; i < 2; i++ )
+        {
+            if ( ChunkAt( ctx, value.pair[i] ) != NULL )
+            {
+                any_pair = true;
+                break;
+            }
+        }
         if ( any_pair )
         {
             const uint64_t ref_pair = ids.ref_at( 0, 0x0369250deb889a31ull );
@@ -10577,7 +10899,10 @@ inline bool FeedSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                 }
                 w.header( arm_ref, 13 );
                 w.putleb( (uint64_t) arm_payload ); // header
-                if ( !HeaderSaveBody( w, ids, value.frame.header ) ) { return false; }
+                if ( !HeaderSaveBody( w, ids, value.frame.header ) )
+                {
+                    return false;
+                }
                 break;
             }
             case FrameType::Chunk:
@@ -10591,7 +10916,10 @@ inline bool FeedSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                 }
                 w.header( arm_ref, 13 );
                 w.putleb( (uint64_t) arm_payload ); // chunk
-                if ( !ChunkSaveBody( ctx, numbering, w, ids, value.frame.chunk ) ) { return false; }
+                if ( !ChunkSaveBody( ctx, numbering, w, ids, value.frame.chunk ) )
+                {
+                    return false;
+                }
                 break;
             }
             case FrameType::Link:
@@ -10658,7 +10986,14 @@ inline bool FeedSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
     }
     {
         bool any_pair = false;
-        for ( int32_t i = 0; i < 2; i++ ) { if ( ChunkAt( ctx, value.pair[i] ) != NULL ) { any_pair = true; break; } }
+        for ( int32_t i = 0; i < 2; i++ )
+        {
+            if ( ChunkAt( ctx, value.pair[i] ) != NULL )
+            {
+                any_pair = true;
+                break;
+            }
+        }
         if ( any_pair )
         {
             const uint64_t ref_pair = ids.ref_at( 0, 0x0369250deb889a31ull );
@@ -10803,149 +11138,164 @@ inline bool FeedLoadBody( TableReader & r, const TableNodeMap & nodes, Feed & va
                 if ( arm_ref == 0 ) { value.frame.type = FrameType::None; } // empty: the reference is the whole payload
                 else
                 {
-                if ( arm_ref > (uint64_t) r.ids->count )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                const uint64_t arm_id = r.ids->at( arm_ref );
-                if ( !r.has( 1 ) )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                const uint8_t arm_kind = r.get8();
-                uint64_t body_len = 0;
-                if ( !r.getleb( body_len ) || !r.room( body_len ) )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                {
-                    TableReader sub( r.buffer + r.offset, (int64_t) body_len, r.report, r.ids );
-                    switch ( arm_id ) // the arm's NAME hash (docs/SPEC-TABLES.md §5)
+                    if ( arm_ref > (uint64_t) r.ids->count )
                     {
-                        case 0x3a506cb501761960ull: // header
+                        r.report->damaged = true;
+                        return false;
+                    }
+                    const uint64_t arm_id = r.ids->at( arm_ref );
+                    if ( !r.has( 1 ) )
+                    {
+                        r.report->damaged = true;
+                        return false;
+                    }
+                    const uint8_t arm_kind = r.get8();
+                    uint64_t body_len = 0;
+                    if ( !r.getleb( body_len ) || !r.room( body_len ) )
+                    {
+                        r.report->damaged = true;
+                        return false;
+                    }
+                    {
+                        TableReader sub( r.buffer + r.offset, (int64_t) body_len, r.report, r.ids );
+                        switch ( arm_id ) // the arm's NAME hash (docs/SPEC-TABLES.md §5)
                         {
-                            if ( arm_kind != 13 )
+                            case 0x3a506cb501761960ull: // header
                             {
-                                // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
-                                // arm skips by L, the union reads None, and the parent reads on
-                                value.frame.type = FrameType::None;
-                                r.report->refused = true;
-                                r.report->refuse_reason = kind_mismatch;
-                                break;
-                            }
-                            value.frame.type = FrameType::Header;
-                            HeaderLoadBody( sub, value.frame.header );
-                            if ( sub.offset != sub.size ) { value.frame.type = FrameType::None; r.report->damaged = true; break; }
-                            break;
-                        }
-                        case 0x0f838176873c8e22ull: // chunk
-                        {
-                            if ( arm_kind != 13 )
-                            {
-                                // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
-                                // arm skips by L, the union reads None, and the parent reads on
-                                value.frame.type = FrameType::None;
-                                r.report->refused = true;
-                                r.report->refuse_reason = kind_mismatch;
-                                break;
-                            }
-                            value.frame.type = FrameType::Chunk;
-                            ChunkLoadBody( sub, nodes, value.frame.chunk );
-                            if ( sub.offset != sub.size ) { value.frame.type = FrameType::None; r.report->damaged = true; break; }
-                            break;
-                        }
-                        case 0xbf4b9bad694f4809ull: // link
-                        {
-                            if ( arm_kind != 17 )
-                            {
-                                // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
-                                // arm skips by L, the union reads None, and the parent reads on
-                                value.frame.type = FrameType::None;
-                                r.report->refused = true;
-                                r.report->refuse_reason = kind_mismatch;
-                                break;
-                            }
-                            value.frame.type = FrameType::Link;
-                            {
-                                uint64_t node_index = 0;
-                                if ( !sub.getleb( node_index ) )
+                                if ( arm_kind != 13 )
                                 {
+                                    // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
+                                    // arm skips by L, the union reads None, and the parent reads on
                                     value.frame.type = FrameType::None;
-                                    r.report->damaged = true;
+                                    r.report->refused = true;
+                                    r.report->refuse_reason = kind_mismatch;
                                     break;
                                 }
+                                value.frame.type = FrameType::Header;
+                                HeaderLoadBody( sub, value.frame.header );
                                 if ( sub.offset != sub.size )
                                 {
                                     value.frame.type = FrameType::None;
                                     r.report->damaged = true;
                                     break;
                                 }
-                                TableNodeResolve( nodes, value.frame.link, node_index, 0xcf4368dcf951e082ull, r.report ); // *Chunk
+                                break;
                             }
-                            break;
-                        }
-                        case 0x56d7ab194448a4f3ull: // tag
-                        {
-                            if ( arm_kind != 8 )
+                            case 0x0f838176873c8e22ull: // chunk
                             {
-                                if ( TableKindWidens( arm_kind, 8 ) )
+                                if ( arm_kind != 13 )
                                 {
-                                    // WIDENED AT AN ARM (§4): the payload decodes at its own width; an L
-                                    // that is not that width is the arm's own framing damage (§3)
-                                    if ( sub.size != TableKindWidth( arm_kind ) )
-                                    {
-                                        value.frame.type = FrameType::None;
-                                        r.report->damaged = true;
-                                        break;
-                                    }
-                                    memset( (void *) &value.frame.tag, 0, sizeof( value.frame.tag ) ); // selection establishes the arm (§2.6)
-                                    uint64_t widened_v = 0;
-                                    if ( !TableReadUnsignedAt( sub, arm_kind, widened_v ) )
-                                    {
-                                        value.frame.type = FrameType::None;
-                                        r.report->damaged = true;
-                                        break;
-                                    }
-                                    uint32_t decoded_v = (uint32_t) widened_v;
-                                    value.frame.tag = decoded_v;
-                                    value.frame.type = FrameType::Tag;
-                                    r.report->widened++;
+                                    // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
+                                    // arm skips by L, the union reads None, and the parent reads on
+                                    value.frame.type = FrameType::None;
+                                    r.report->refused = true;
+                                    r.report->refuse_reason = kind_mismatch;
                                     break;
                                 }
-                                // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
-                                // arm skips by L, the union reads None, and the parent reads on
-                                value.frame.type = FrameType::None;
-                                r.report->refused = true;
-                                r.report->refuse_reason = kind_mismatch;
+                                value.frame.type = FrameType::Chunk;
+                                ChunkLoadBody( sub, nodes, value.frame.chunk );
+                                if ( sub.offset != sub.size )
+                                {
+                                    value.frame.type = FrameType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                }
                                 break;
                             }
-                            value.frame.type = FrameType::Tag;
-                            if ( sub.size != 4 ) { value.frame.type = FrameType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
-                            if ( !sub.has( 4 ) )
+                            case 0xbf4b9bad694f4809ull: // link
                             {
-                                value.frame.type = FrameType::None;
-                                r.report->damaged = true;
+                                if ( arm_kind != 17 )
+                                {
+                                    // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
+                                    // arm skips by L, the union reads None, and the parent reads on
+                                    value.frame.type = FrameType::None;
+                                    r.report->refused = true;
+                                    r.report->refuse_reason = kind_mismatch;
+                                    break;
+                                }
+                                value.frame.type = FrameType::Link;
+                                {
+                                    uint64_t node_index = 0;
+                                    if ( !sub.getleb( node_index ) )
+                                    {
+                                        value.frame.type = FrameType::None;
+                                        r.report->damaged = true;
+                                        break;
+                                    }
+                                    if ( sub.offset != sub.size )
+                                    {
+                                        value.frame.type = FrameType::None;
+                                        r.report->damaged = true;
+                                        break;
+                                    }
+                                    TableNodeResolve( nodes, value.frame.link, node_index, 0xcf4368dcf951e082ull, r.report ); // *Chunk
+                                }
                                 break;
                             }
-                            uint32_t decoded_v = uint32_t( sub.get32() );
-                            value.frame.tag = decoded_v;
-                            break;
+                            case 0x56d7ab194448a4f3ull: // tag
+                            {
+                                if ( arm_kind != 8 )
+                                {
+                                    if ( TableKindWidens( arm_kind, 8 ) )
+                                    {
+                                        // WIDENED AT AN ARM (§4): the payload decodes at its own width; an L
+                                        // that is not that width is the arm's own framing damage (§3)
+                                        if ( sub.size != TableKindWidth( arm_kind ) )
+                                        {
+                                            value.frame.type = FrameType::None;
+                                            r.report->damaged = true;
+                                            break;
+                                        }
+                                        memset( (void *) &value.frame.tag, 0, sizeof( value.frame.tag ) ); // selection establishes the arm (§2.6)
+                                        uint64_t widened_v = 0;
+                                        if ( !TableReadUnsignedAt( sub, arm_kind, widened_v ) )
+                                        {
+                                            value.frame.type = FrameType::None;
+                                            r.report->damaged = true;
+                                            break;
+                                        }
+                                        uint32_t decoded_v = (uint32_t) widened_v;
+                                        value.frame.tag = decoded_v;
+                                        value.frame.type = FrameType::Tag;
+                                        r.report->widened++;
+                                        break;
+                                    }
+                                    // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
+                                    // arm skips by L, the union reads None, and the parent reads on
+                                    value.frame.type = FrameType::None;
+                                    r.report->refused = true;
+                                    r.report->refuse_reason = kind_mismatch;
+                                    break;
+                                }
+                                value.frame.type = FrameType::Tag;
+                                if ( sub.size != 4 )
+                                {
+                                    value.frame.type = FrameType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                } // an L that is not the kind's width is that arm's own framing damage (§3)
+                                if ( !sub.has( 4 ) )
+                                {
+                                    value.frame.type = FrameType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                }
+                                uint32_t decoded_v = uint32_t( sub.get32() );
+                                value.frame.tag = decoded_v;
+                                break;
+                            }
+                            default:
+                                // an arm this reader cannot name: the value reads EMPTY and
+                                // the body is skipped by its length, never misdecoded. The
+                                // reset is explicit, not the prefill's: a repeated field id
+                                // must not leave an arm decoded by an earlier occurrence
+                                // standing (docs/SPEC-TABLES.md §4).
+                                value.frame.type = FrameType::None;
+                                r.report->unknown++;
+                                break;
                         }
-                        default:
-                            // an arm this reader cannot name: the value reads EMPTY and
-                            // the body is skipped by its length, never misdecoded. The
-                            // reset is explicit, not the prefill's: a repeated field id
-                            // must not leave an arm decoded by an earlier occurrence
-                            // standing (docs/SPEC-TABLES.md §4).
-                            value.frame.type = FrameType::None;
-                            r.report->unknown++;
-                            break;
                     }
-                }
-                r.offset += (int64_t) body_len;
+                    r.offset += (int64_t) body_len;
                 }
                 break;
             }
@@ -11241,20 +11591,15 @@ constexpr uint64_t HeaderFixedHash = 0xc52f4a5e5c2a93b4ull; // fnv1a64 over the 
 constexpr uint8_t HeaderFixedLayout[] = {
     0x02, 0x00, 0x00, 0x00, 0x40, 0xab, 0xcf, 0xf0, 0xc3, 0x3f, 0xd8, 0x75, 0x0d, 0x14, 0x00, 0x00,
     0x00, 0x01, 0x00, 0x00, 0x00, 0x86, 0x1b, 0x63, 0x8e, 0xba, 0xad, 0xbc, 0xc4, 0x0c, 0x14, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-};
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 constexpr int64_t HeaderFixedLayoutBytes = (int64_t) sizeof( HeaderFixedLayout );
 
 // MY SIDE of the layout, one row per entry: the storage facts a layout
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst HeaderFixedDst[] = {
-    {
-        0, 0, 0, 0, 0
-    }, // Header
-    {
-        20, 0, 0, 0, 1
-    }, // name
+    { 0, 0, 0, 0, 0 }, // Header
+    { 20, 0, 0, 0, 1 }, // name
 };
 
 // THE IDENTITY PLAN, coalesced out of 1 leaves by the schema compiler —
@@ -11308,13 +11653,11 @@ inline void HeaderFixedSetFloorForTest( int32_t index ) { HeaderFixedFloorLive =
 constexpr uint8_t HeaderFixedKnown0Layout[] = {
     0x02, 0x00, 0x00, 0x00, 0x40, 0xab, 0xcf, 0xf0, 0xc3, 0x3f, 0xd8, 0x75, 0x0d, 0x14, 0x00, 0x00,
     0x00, 0x01, 0x00, 0x00, 0x00, 0x86, 0x1b, 0x63, 0x8e, 0xba, 0xad, 0xbc, 0xc4, 0x0c, 0x14, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-};
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 constexpr uint8_t HeaderFixedKnown1Layout[] = {
     0x02, 0x00, 0x00, 0x00, 0x40, 0xab, 0xcf, 0xf0, 0xc3, 0x3f, 0xd8, 0x75, 0x0d, 0x14, 0x00, 0x00,
     0x00, 0x01, 0x00, 0x00, 0x00, 0x86, 0x1b, 0x63, 0x8e, 0xba, 0xad, 0xbc, 0xc4, 0x0c, 0x14, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-};
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 constexpr TableFixedKnownLayout HeaderFixedKnown[] = {
     { 0xaaf88cbc7745c547ull, HeaderFixedKnown0Layout, 38, 28 }, // lock
     { 0xc52f4a5e5c2a93b4ull, HeaderFixedKnown1Layout, 38, 28 }, // identity
@@ -11367,16 +11710,19 @@ inline int64_t HeaderFixedSave( const Header * values, int64_t count, uint8_t * 
 // R4: every refusal leaves ALL `capacity` rows at their declared defaults, so a direct call
 // holds the same rule as FixedLoad. The body below is the walk itself.
 inline int64_t HeaderFixedLoadWalkBody( Header * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
 inline int64_t HeaderFixedLoadWalk( Header * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
     const int64_t n = HeaderFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
     if ( n < 0 || report->damaged || report->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { HeaderReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { HeaderReset( values[k] ); }
+        }
         return -1;
     }
     return n;
@@ -11385,7 +11731,7 @@ inline int64_t HeaderFixedLoadWalk( Header * values, int64_t capacity, const uin
 // HeaderFixedLoadWalkBody is the STRICT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps
 // every recovered record, with the counters counted onto the report passed.
 inline int64_t HeaderFixedLoadWalkBody( Header * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
@@ -11402,8 +11748,8 @@ inline int64_t HeaderFixedLoadWalkBody( Header * values, int64_t capacity, const
     {
         report->refused = true;
         report->reason = data[0] == kTableWireForm ? TableMessageReason::previous_form
-                       : data[0] == kTableWireMessageForm ? TableMessageReason::message_form_as_file
-                       : TableMessageReason::newer_form;
+            : data[0] == kTableWireMessageForm     ? TableMessageReason::message_form_as_file
+                                                   : TableMessageReason::newer_form;
         return -1;
     }
     if ( bytes < kTableFixedHeaderBytes + 4 )
@@ -11417,7 +11763,12 @@ inline int64_t HeaderFixedLoadWalkBody( Header * values, int64_t capacity, const
     // spendable later.
     for ( int32_t i = 1; i < kTableFixedHashAt; ++i )
     {
-        if ( data[i] != 0 ) { report->damaged = true; report->reason = TableFixedReason::reserved_not_zero; return -1; }
+        if ( data[i] != 0 )
+        {
+            report->damaged = true;
+            report->reason = TableFixedReason::reserved_not_zero;
+            return -1;
+        }
     }
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
     if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes )
@@ -11433,7 +11784,11 @@ inline int64_t HeaderFixedLoadWalkBody( Header * values, int64_t capacity, const
     int32_t lineage_at = -1;
     for ( int32_t i = 0; i < HeaderFixedLineageCount; ++i )
     {
-        if ( HeaderFixedLineage[i] == hash ) { lineage_at = i; break; }
+        if ( HeaderFixedLineage[i] == hash )
+        {
+            lineage_at = i;
+            break;
+        }
     }
     if ( lineage_at < 0 )
     {
@@ -11456,7 +11811,9 @@ inline int64_t HeaderFixedLoadWalkBody( Header * values, int64_t capacity, const
     const TableFixedKnownLayout & known = HeaderFixedKnown[lineage_at];
     if ( (int64_t) layout_bytes != known.layout_bytes || memcmp( layout, known.layout, (size_t) layout_bytes ) != 0 )
     {
-        report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1;
+        report->refused = true;
+        report->reason = TableMessageReason::layout_malformed;
+        return -1;
     }
     const TableFixedEntry * entries = HeaderFixedPlan;
     int32_t entry_count = HeaderFixedPlanCount;
@@ -11511,8 +11868,8 @@ inline int64_t HeaderFixedLoadWalkBody( Header * values, int64_t capacity, const
             int32_t compiled_guarded = 0;
             uint32_t fill_at = 0;
             const int32_t made = TableFixedCompile( parsed, HeaderFixedLayout, (int32_t) HeaderFixedLayoutBytes, HeaderFixedDst,
-                                                   HeaderFixedCover, HeaderFixedCoverCount,
-                                                   dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
+                HeaderFixedCover, HeaderFixedCoverCount,
+                dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
             if ( made < 0 )
             {
                 report->refused = true;
@@ -11597,7 +11954,9 @@ inline int64_t HeaderFixedLoadWalkBody( Header * values, int64_t capacity, const
         {
             for ( int64_t j = 0; j < k; ++j ) { HeaderReset( values[j] ); }
             report->widened = batch_widened;
-            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+            report->refused = true;
+            report->reason = TableMessageReason::no_layout;
+            return -1;
         }
         for ( int32_t i = 0; i < entry_count; ++i )
         {
@@ -11645,7 +12004,7 @@ inline int64_t HeaderFixedLoadWalkBody( Header * values, int64_t capacity, const
         // the counters back to what they were before the batch.
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, HeaderFixedGuards, NULL );
         TableFixedClampKnownRanges( HeaderFixedKnownRanges[lineage_at], HeaderFixedKnownRangeCounts[lineage_at],
-                                    (uint8_t *) &values[k], report );
+            (uint8_t *) &values[k], report );
         if ( !HeaderFixedClamp( values[k], report ) )
         {
             for ( int64_t j = 0; j <= k; ++j ) { HeaderReset( values[j] ); }
@@ -11664,7 +12023,7 @@ inline int64_t HeaderFixedLoadWalkBody( Header * values, int64_t capacity, const
 // them, on EVERY refusal (R4), so no partial value survives. A supplied report receives THIS
 // read's report. unknown and widened alone never refuse.
 inline int64_t HeaderFixedLoad( Header * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     TableReport * out = report != NULL ? report : &local;
@@ -11672,7 +12031,10 @@ inline int64_t HeaderFixedLoad( Header * values, int64_t capacity, const uint8_t
     const int64_t n = HeaderFixedLoadWalk( values, capacity, data, bytes, plan, plan_capacity, cache, out );
     if ( n < 0 || out->damaged || out->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { HeaderReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { HeaderReset( values[k] ); }
+        }
         return -1;
     }
     return n;
@@ -11702,7 +12064,7 @@ inline bool ChunkNumberEdges( const Ctx & ctx, TableNumbering & numbering, const
                 node.save = &TableNodeSaveThunk<Ctx, Chunk>;
                 node.pack_bytes = +[]( const void * pack_ctx, const void * pack_node ) -> int64_t { return ChunkPackBytes( *(const Ctx *) pack_ctx, *(const Chunk *) pack_node ); };
                 node.pack_copy = +[]( const void * pack_ctx, const void * pack_src, void * pack_dst, uint8_t * pack_base, int64_t pack_capacity ) -> bool { return ChunkPackCopy( *(const Ctx *) pack_ctx, *(const Chunk *) pack_src, pack_dst, pack_base, pack_capacity ); };
-                node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return ChunkPackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const Chunk *) pack_src, *( Chunk * ) pack_dst, pack_base ); };
+                node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return ChunkPackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const Chunk *) pack_src, *(Chunk *) pack_dst, pack_base ); };
                 node.walk = +[]( const void * walk_ctx, TableNumbering & walk_numbering, const void * walk_node ) -> bool { return ChunkNumberEdges( *(const Ctx *) walk_ctx, walk_numbering, *(const Chunk *) walk_node ); };
                 node.close = false;
                 node.hint = 0;
@@ -11712,32 +12074,32 @@ inline bool ChunkNumberEdges( const Ctx & ctx, TableNumbering & numbering, const
     }
     for ( int32_t k = 0; k < value.links_count && k < 2; k++ ) // links: [..2]*Chunk
     {
-    {
-        const Chunk * pointee = ChunkAt( ctx, value.links[k] ); // links
-        if ( pointee != NULL )
         {
-            const TablePackEntry * found = TablePackMapFind( numbering.seen, (const void *) pointee );
-            if ( found != NULL )
+            const Chunk * pointee = ChunkAt( ctx, value.links[k] ); // links
+            if ( pointee != NULL )
             {
-                if ( found->open != 0 ) { return false; } // a data cycle
-            }
-            else
-            {
-                TableNodeEntry node;
-                node.node = (const void *) pointee;
-                node.type_id = 0xcf4368dcf951e082ull; // fnv1a64( "Chunk" )
-                node.measure = &TableNodeMeasureThunk<Ctx, Chunk>;
-                node.save = &TableNodeSaveThunk<Ctx, Chunk>;
-                node.pack_bytes = +[]( const void * pack_ctx, const void * pack_node ) -> int64_t { return ChunkPackBytes( *(const Ctx *) pack_ctx, *(const Chunk *) pack_node ); };
-                node.pack_copy = +[]( const void * pack_ctx, const void * pack_src, void * pack_dst, uint8_t * pack_base, int64_t pack_capacity ) -> bool { return ChunkPackCopy( *(const Ctx *) pack_ctx, *(const Chunk *) pack_src, pack_dst, pack_base, pack_capacity ); };
-                node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return ChunkPackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const Chunk *) pack_src, *( Chunk * ) pack_dst, pack_base ); };
-                node.walk = +[]( const void * walk_ctx, TableNumbering & walk_numbering, const void * walk_node ) -> bool { return ChunkNumberEdges( *(const Ctx *) walk_ctx, walk_numbering, *(const Chunk *) walk_node ); };
-                node.close = false;
-                node.hint = 0;
-                if ( !TableNumberingWorkPush( numbering, node ) ) { return false; }
+                const TablePackEntry * found = TablePackMapFind( numbering.seen, (const void *) pointee );
+                if ( found != NULL )
+                {
+                    if ( found->open != 0 ) { return false; } // a data cycle
+                }
+                else
+                {
+                    TableNodeEntry node;
+                    node.node = (const void *) pointee;
+                    node.type_id = 0xcf4368dcf951e082ull; // fnv1a64( "Chunk" )
+                    node.measure = &TableNodeMeasureThunk<Ctx, Chunk>;
+                    node.save = &TableNodeSaveThunk<Ctx, Chunk>;
+                    node.pack_bytes = +[]( const void * pack_ctx, const void * pack_node ) -> int64_t { return ChunkPackBytes( *(const Ctx *) pack_ctx, *(const Chunk *) pack_node ); };
+                    node.pack_copy = +[]( const void * pack_ctx, const void * pack_src, void * pack_dst, uint8_t * pack_base, int64_t pack_capacity ) -> bool { return ChunkPackCopy( *(const Ctx *) pack_ctx, *(const Chunk *) pack_src, pack_dst, pack_base, pack_capacity ); };
+                    node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return ChunkPackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const Chunk *) pack_src, *(Chunk *) pack_dst, pack_base ); };
+                    node.walk = +[]( const void * walk_ctx, TableNumbering & walk_numbering, const void * walk_node ) -> bool { return ChunkNumberEdges( *(const Ctx *) walk_ctx, walk_numbering, *(const Chunk *) walk_node ); };
+                    node.close = false;
+                    node.hint = 0;
+                    if ( !TableNumberingWorkPush( numbering, node ) ) { return false; }
+                }
             }
         }
-    }
     }
     return true;
 }
@@ -11777,11 +12139,22 @@ inline bool ChunkNumber( const Ctx & ctx, TableNumbering & numbering, const Chun
             continue;
         }
         if ( !TableNumberingAppend( numbering, work ) ) { return false; }
-        if ( work.walk == NULL ) { TablePackMapClose( numbering.seen, work.node, slot ); continue; } // a blob reaches nothing
+        if ( work.walk == NULL )
+        {
+            TablePackMapClose( numbering.seen, work.node, slot );
+            continue;
+        } // a blob reaches nothing
         TableNodeEntry close;
-        close.node = work.node; close.type_id = 0; close.measure = NULL; close.save = NULL;
-        close.pack_bytes = NULL; close.pack_copy = NULL; close.pack_slots = NULL; close.walk = NULL;
-        close.close = true; close.hint = slot;
+        close.node = work.node;
+        close.type_id = 0;
+        close.measure = NULL;
+        close.save = NULL;
+        close.pack_bytes = NULL;
+        close.pack_copy = NULL;
+        close.pack_slots = NULL;
+        close.walk = NULL;
+        close.close = true;
+        close.hint = slot;
         if ( !TableNumberingWorkPush( numbering, close ) ) { return false; }
         const int64_t first = numbering.work_count;
         if ( !work.walk( (const void *) &ctx, numbering, work.node ) ) { return false; }
@@ -11805,7 +12178,7 @@ inline bool ChunkCycleSlots( const Ctx & ctx, TableCycle & cycle, const Chunk & 
     if ( !TableCycleEdge( cycle, value.next ) ) { return false; } // next
     for ( int32_t k = 0; k < value.links_count && k < 2; k++ ) // links: [..2]*Chunk
     {
-    if ( !TableCycleEdge( cycle, value.links[k] ) ) { return false; } // links
+        if ( !TableCycleEdge( cycle, value.links[k] ) ) { return false; } // links
     }
     return true;
 }
@@ -11847,16 +12220,16 @@ inline bool ChunkPackSlots( const Ctx & ctx, TablePackMap & seen, const Chunk & 
     }
     for ( int32_t k = 0; k < src.links_count && k < 2; k++ ) // links: [..2]*Chunk
     {
-    {
-        dst.links[k].value = 0; // links
-        const Chunk * pointee = ChunkAt( ctx, src.links[k] );
-        if ( pointee != NULL )
         {
-            const TablePackEntry * entry = TablePackMapFind( seen, (const void *) pointee );
-            if ( entry == NULL ) { return false; } // the numbering and the pack disagree
-            dst.links[k].value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.links[k] );
+            dst.links[k].value = 0; // links
+            const Chunk * pointee = ChunkAt( ctx, src.links[k] );
+            if ( pointee != NULL )
+            {
+                const TablePackEntry * entry = TablePackMapFind( seen, (const void *) pointee );
+                if ( entry == NULL ) { return false; } // the numbering and the pack disagree
+                dst.links[k].value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.links[k] );
+            }
         }
-    }
     }
     return true;
 }
@@ -11876,93 +12249,93 @@ inline bool FeedNumberEdges( const Ctx & ctx, TableNumbering & numbering, const 
         }
         case FrameType::Link:
         {
-    {
-        const Chunk * pointee = ChunkAt( ctx, value.frame.link ); // link
-        if ( pointee != NULL )
-        {
-            const TablePackEntry * found = TablePackMapFind( numbering.seen, (const void *) pointee );
-            if ( found != NULL )
             {
-                if ( found->open != 0 ) { return false; } // a data cycle
+                const Chunk * pointee = ChunkAt( ctx, value.frame.link ); // link
+                if ( pointee != NULL )
+                {
+                    const TablePackEntry * found = TablePackMapFind( numbering.seen, (const void *) pointee );
+                    if ( found != NULL )
+                    {
+                        if ( found->open != 0 ) { return false; } // a data cycle
+                    }
+                    else
+                    {
+                        TableNodeEntry node;
+                        node.node = (const void *) pointee;
+                        node.type_id = 0xcf4368dcf951e082ull; // fnv1a64( "Chunk" )
+                        node.measure = &TableNodeMeasureThunk<Ctx, Chunk>;
+                        node.save = &TableNodeSaveThunk<Ctx, Chunk>;
+                        node.pack_bytes = +[]( const void * pack_ctx, const void * pack_node ) -> int64_t { return ChunkPackBytes( *(const Ctx *) pack_ctx, *(const Chunk *) pack_node ); };
+                        node.pack_copy = +[]( const void * pack_ctx, const void * pack_src, void * pack_dst, uint8_t * pack_base, int64_t pack_capacity ) -> bool { return ChunkPackCopy( *(const Ctx *) pack_ctx, *(const Chunk *) pack_src, pack_dst, pack_base, pack_capacity ); };
+                        node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return ChunkPackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const Chunk *) pack_src, *(Chunk *) pack_dst, pack_base ); };
+                        node.walk = +[]( const void * walk_ctx, TableNumbering & walk_numbering, const void * walk_node ) -> bool { return ChunkNumberEdges( *(const Ctx *) walk_ctx, walk_numbering, *(const Chunk *) walk_node ); };
+                        node.close = false;
+                        node.hint = 0;
+                        if ( !TableNumberingWorkPush( numbering, node ) ) { return false; }
+                    }
+                }
             }
-            else
-            {
-                TableNodeEntry node;
-                node.node = (const void *) pointee;
-                node.type_id = 0xcf4368dcf951e082ull; // fnv1a64( "Chunk" )
-                node.measure = &TableNodeMeasureThunk<Ctx, Chunk>;
-                node.save = &TableNodeSaveThunk<Ctx, Chunk>;
-                node.pack_bytes = +[]( const void * pack_ctx, const void * pack_node ) -> int64_t { return ChunkPackBytes( *(const Ctx *) pack_ctx, *(const Chunk *) pack_node ); };
-                node.pack_copy = +[]( const void * pack_ctx, const void * pack_src, void * pack_dst, uint8_t * pack_base, int64_t pack_capacity ) -> bool { return ChunkPackCopy( *(const Ctx *) pack_ctx, *(const Chunk *) pack_src, pack_dst, pack_base, pack_capacity ); };
-                node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return ChunkPackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const Chunk *) pack_src, *( Chunk * ) pack_dst, pack_base ); };
-                node.walk = +[]( const void * walk_ctx, TableNumbering & walk_numbering, const void * walk_node ) -> bool { return ChunkNumberEdges( *(const Ctx *) walk_ctx, walk_numbering, *(const Chunk *) walk_node ); };
-                node.close = false;
-                node.hint = 0;
-                if ( !TableNumberingWorkPush( numbering, node ) ) { return false; }
-            }
-        }
-    }
             break;
         }
         default: break;
     }
     for ( int32_t k = 0; k < value.parts_count && k < 4; k++ ) // parts: [..4]*Chunk
     {
-    {
-        const Chunk * pointee = ChunkAt( ctx, value.parts[k] ); // parts
-        if ( pointee != NULL )
         {
-            const TablePackEntry * found = TablePackMapFind( numbering.seen, (const void *) pointee );
-            if ( found != NULL )
+            const Chunk * pointee = ChunkAt( ctx, value.parts[k] ); // parts
+            if ( pointee != NULL )
             {
-                if ( found->open != 0 ) { return false; } // a data cycle
-            }
-            else
-            {
-                TableNodeEntry node;
-                node.node = (const void *) pointee;
-                node.type_id = 0xcf4368dcf951e082ull; // fnv1a64( "Chunk" )
-                node.measure = &TableNodeMeasureThunk<Ctx, Chunk>;
-                node.save = &TableNodeSaveThunk<Ctx, Chunk>;
-                node.pack_bytes = +[]( const void * pack_ctx, const void * pack_node ) -> int64_t { return ChunkPackBytes( *(const Ctx *) pack_ctx, *(const Chunk *) pack_node ); };
-                node.pack_copy = +[]( const void * pack_ctx, const void * pack_src, void * pack_dst, uint8_t * pack_base, int64_t pack_capacity ) -> bool { return ChunkPackCopy( *(const Ctx *) pack_ctx, *(const Chunk *) pack_src, pack_dst, pack_base, pack_capacity ); };
-                node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return ChunkPackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const Chunk *) pack_src, *( Chunk * ) pack_dst, pack_base ); };
-                node.walk = +[]( const void * walk_ctx, TableNumbering & walk_numbering, const void * walk_node ) -> bool { return ChunkNumberEdges( *(const Ctx *) walk_ctx, walk_numbering, *(const Chunk *) walk_node ); };
-                node.close = false;
-                node.hint = 0;
-                if ( !TableNumberingWorkPush( numbering, node ) ) { return false; }
+                const TablePackEntry * found = TablePackMapFind( numbering.seen, (const void *) pointee );
+                if ( found != NULL )
+                {
+                    if ( found->open != 0 ) { return false; } // a data cycle
+                }
+                else
+                {
+                    TableNodeEntry node;
+                    node.node = (const void *) pointee;
+                    node.type_id = 0xcf4368dcf951e082ull; // fnv1a64( "Chunk" )
+                    node.measure = &TableNodeMeasureThunk<Ctx, Chunk>;
+                    node.save = &TableNodeSaveThunk<Ctx, Chunk>;
+                    node.pack_bytes = +[]( const void * pack_ctx, const void * pack_node ) -> int64_t { return ChunkPackBytes( *(const Ctx *) pack_ctx, *(const Chunk *) pack_node ); };
+                    node.pack_copy = +[]( const void * pack_ctx, const void * pack_src, void * pack_dst, uint8_t * pack_base, int64_t pack_capacity ) -> bool { return ChunkPackCopy( *(const Ctx *) pack_ctx, *(const Chunk *) pack_src, pack_dst, pack_base, pack_capacity ); };
+                    node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return ChunkPackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const Chunk *) pack_src, *(Chunk *) pack_dst, pack_base ); };
+                    node.walk = +[]( const void * walk_ctx, TableNumbering & walk_numbering, const void * walk_node ) -> bool { return ChunkNumberEdges( *(const Ctx *) walk_ctx, walk_numbering, *(const Chunk *) walk_node ); };
+                    node.close = false;
+                    node.hint = 0;
+                    if ( !TableNumberingWorkPush( numbering, node ) ) { return false; }
+                }
             }
         }
-    }
     }
     for ( int32_t k = 0; k < 2; k++ ) // pair: [2]*Chunk
     {
-    {
-        const Chunk * pointee = ChunkAt( ctx, value.pair[k] ); // pair
-        if ( pointee != NULL )
         {
-            const TablePackEntry * found = TablePackMapFind( numbering.seen, (const void *) pointee );
-            if ( found != NULL )
+            const Chunk * pointee = ChunkAt( ctx, value.pair[k] ); // pair
+            if ( pointee != NULL )
             {
-                if ( found->open != 0 ) { return false; } // a data cycle
-            }
-            else
-            {
-                TableNodeEntry node;
-                node.node = (const void *) pointee;
-                node.type_id = 0xcf4368dcf951e082ull; // fnv1a64( "Chunk" )
-                node.measure = &TableNodeMeasureThunk<Ctx, Chunk>;
-                node.save = &TableNodeSaveThunk<Ctx, Chunk>;
-                node.pack_bytes = +[]( const void * pack_ctx, const void * pack_node ) -> int64_t { return ChunkPackBytes( *(const Ctx *) pack_ctx, *(const Chunk *) pack_node ); };
-                node.pack_copy = +[]( const void * pack_ctx, const void * pack_src, void * pack_dst, uint8_t * pack_base, int64_t pack_capacity ) -> bool { return ChunkPackCopy( *(const Ctx *) pack_ctx, *(const Chunk *) pack_src, pack_dst, pack_base, pack_capacity ); };
-                node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return ChunkPackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const Chunk *) pack_src, *( Chunk * ) pack_dst, pack_base ); };
-                node.walk = +[]( const void * walk_ctx, TableNumbering & walk_numbering, const void * walk_node ) -> bool { return ChunkNumberEdges( *(const Ctx *) walk_ctx, walk_numbering, *(const Chunk *) walk_node ); };
-                node.close = false;
-                node.hint = 0;
-                if ( !TableNumberingWorkPush( numbering, node ) ) { return false; }
+                const TablePackEntry * found = TablePackMapFind( numbering.seen, (const void *) pointee );
+                if ( found != NULL )
+                {
+                    if ( found->open != 0 ) { return false; } // a data cycle
+                }
+                else
+                {
+                    TableNodeEntry node;
+                    node.node = (const void *) pointee;
+                    node.type_id = 0xcf4368dcf951e082ull; // fnv1a64( "Chunk" )
+                    node.measure = &TableNodeMeasureThunk<Ctx, Chunk>;
+                    node.save = &TableNodeSaveThunk<Ctx, Chunk>;
+                    node.pack_bytes = +[]( const void * pack_ctx, const void * pack_node ) -> int64_t { return ChunkPackBytes( *(const Ctx *) pack_ctx, *(const Chunk *) pack_node ); };
+                    node.pack_copy = +[]( const void * pack_ctx, const void * pack_src, void * pack_dst, uint8_t * pack_base, int64_t pack_capacity ) -> bool { return ChunkPackCopy( *(const Ctx *) pack_ctx, *(const Chunk *) pack_src, pack_dst, pack_base, pack_capacity ); };
+                    node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return ChunkPackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const Chunk *) pack_src, *(Chunk *) pack_dst, pack_base ); };
+                    node.walk = +[]( const void * walk_ctx, TableNumbering & walk_numbering, const void * walk_node ) -> bool { return ChunkNumberEdges( *(const Ctx *) walk_ctx, walk_numbering, *(const Chunk *) walk_node ); };
+                    node.close = false;
+                    node.hint = 0;
+                    if ( !TableNumberingWorkPush( numbering, node ) ) { return false; }
+                }
             }
         }
-    }
     }
     return true;
 }
@@ -12002,11 +12375,22 @@ inline bool FeedNumber( const Ctx & ctx, TableNumbering & numbering, const Feed 
             continue;
         }
         if ( !TableNumberingAppend( numbering, work ) ) { return false; }
-        if ( work.walk == NULL ) { TablePackMapClose( numbering.seen, work.node, slot ); continue; } // a blob reaches nothing
+        if ( work.walk == NULL )
+        {
+            TablePackMapClose( numbering.seen, work.node, slot );
+            continue;
+        } // a blob reaches nothing
         TableNodeEntry close;
-        close.node = work.node; close.type_id = 0; close.measure = NULL; close.save = NULL;
-        close.pack_bytes = NULL; close.pack_copy = NULL; close.pack_slots = NULL; close.walk = NULL;
-        close.close = true; close.hint = slot;
+        close.node = work.node;
+        close.type_id = 0;
+        close.measure = NULL;
+        close.save = NULL;
+        close.pack_bytes = NULL;
+        close.pack_copy = NULL;
+        close.pack_slots = NULL;
+        close.walk = NULL;
+        close.close = true;
+        close.hint = slot;
         if ( !TableNumberingWorkPush( numbering, close ) ) { return false; }
         const int64_t first = numbering.work_count;
         if ( !work.walk( (const void *) &ctx, numbering, work.node ) ) { return false; }
@@ -12036,18 +12420,18 @@ inline bool FeedCycleSlots( const Ctx & ctx, TableCycle & cycle, const Feed & va
         }
         case FrameType::Link:
         {
-    if ( !TableCycleEdge( cycle, value.frame.link ) ) { return false; } // link
+            if ( !TableCycleEdge( cycle, value.frame.link ) ) { return false; } // link
             break;
         }
         default: break;
     }
     for ( int32_t k = 0; k < value.parts_count && k < 4; k++ ) // parts: [..4]*Chunk
     {
-    if ( !TableCycleEdge( cycle, value.parts[k] ) ) { return false; } // parts
+        if ( !TableCycleEdge( cycle, value.parts[k] ) ) { return false; } // parts
     }
     for ( int32_t k = 0; k < 2; k++ ) // pair: [2]*Chunk
     {
-    if ( !TableCycleEdge( cycle, value.pair[k] ) ) { return false; } // pair
+        if ( !TableCycleEdge( cycle, value.pair[k] ) ) { return false; } // pair
     }
     return true;
 }
@@ -12086,45 +12470,45 @@ inline bool FeedPackSlots( const Ctx & ctx, TablePackMap & seen, const Feed & sr
         }
         case FrameType::Link:
         {
-    {
-        dst.frame.link.value = 0; // link
-        const Chunk * pointee = ChunkAt( ctx, src.frame.link );
-        if ( pointee != NULL )
-        {
-            const TablePackEntry * entry = TablePackMapFind( seen, (const void *) pointee );
-            if ( entry == NULL ) { return false; } // the numbering and the pack disagree
-            dst.frame.link.value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.frame.link );
-        }
-    }
+            {
+                dst.frame.link.value = 0; // link
+                const Chunk * pointee = ChunkAt( ctx, src.frame.link );
+                if ( pointee != NULL )
+                {
+                    const TablePackEntry * entry = TablePackMapFind( seen, (const void *) pointee );
+                    if ( entry == NULL ) { return false; } // the numbering and the pack disagree
+                    dst.frame.link.value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.frame.link );
+                }
+            }
             break;
         }
         default: break;
     }
     for ( int32_t k = 0; k < src.parts_count && k < 4; k++ ) // parts: [..4]*Chunk
     {
-    {
-        dst.parts[k].value = 0; // parts
-        const Chunk * pointee = ChunkAt( ctx, src.parts[k] );
-        if ( pointee != NULL )
         {
-            const TablePackEntry * entry = TablePackMapFind( seen, (const void *) pointee );
-            if ( entry == NULL ) { return false; } // the numbering and the pack disagree
-            dst.parts[k].value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.parts[k] );
+            dst.parts[k].value = 0; // parts
+            const Chunk * pointee = ChunkAt( ctx, src.parts[k] );
+            if ( pointee != NULL )
+            {
+                const TablePackEntry * entry = TablePackMapFind( seen, (const void *) pointee );
+                if ( entry == NULL ) { return false; } // the numbering and the pack disagree
+                dst.parts[k].value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.parts[k] );
+            }
         }
-    }
     }
     for ( int32_t k = 0; k < 2; k++ ) // pair: [2]*Chunk
     {
-    {
-        dst.pair[k].value = 0; // pair
-        const Chunk * pointee = ChunkAt( ctx, src.pair[k] );
-        if ( pointee != NULL )
         {
-            const TablePackEntry * entry = TablePackMapFind( seen, (const void *) pointee );
-            if ( entry == NULL ) { return false; } // the numbering and the pack disagree
-            dst.pair[k].value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.pair[k] );
+            dst.pair[k].value = 0; // pair
+            const Chunk * pointee = ChunkAt( ctx, src.pair[k] );
+            if ( pointee != NULL )
+            {
+                const TablePackEntry * entry = TablePackMapFind( seen, (const void *) pointee );
+                if ( entry == NULL ) { return false; } // the numbering and the pack disagree
+                dst.pair[k].value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.pair[k] );
+            }
         }
-    }
     }
     return true;
 }
@@ -12227,9 +12611,17 @@ inline bool ChunkBuilder::Lock()
         for ( int64_t k = 0; ok && k < numbering.count; k++ )
         {
             const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
-            if ( bytes < 0 ) { ok = false; break; }
+            if ( bytes < 0 )
+            {
+                ok = false;
+                break;
+            }
             TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-            if ( entry == NULL ) { ok = false; break; }
+            if ( entry == NULL )
+            {
+                ok = false;
+                break;
+            }
             measured = TableAlignUp64( measured );
             entry->offset = measured;
             measured += bytes;
@@ -12253,9 +12645,17 @@ inline bool ChunkBuilder::Lock()
         for ( int64_t k = 0; ok && k < numbering.count; k++ )
         {
             const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
-            if ( bytes < 0 ) { ok = false; break; }
+            if ( bytes < 0 )
+            {
+                ok = false;
+                break;
+            }
             TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-            if ( entry == NULL ) { ok = false; break; }
+            if ( entry == NULL )
+            {
+                ok = false;
+                break;
+            }
             used = TableAlignUp64( used );
             entry->offset = used;
             used += bytes;
@@ -12280,14 +12680,22 @@ inline bool ChunkBuilder::Lock()
     for ( int64_t k = 0; ok && k < numbering.count; k++ )
     {
         const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-        if ( entry == NULL ) { ok = false; break; }
+        if ( entry == NULL )
+        {
+            ok = false;
+            break;
+        }
         ok = numbering.entries[k].pack_copy( (const void *) &ctx, numbering.entries[k].node, packed + entry->offset, packed, total );
     }
-    if ( ok ) { ok = ChunkPackSlots( ctx, numbering.seen, root, *( Chunk * ) packed, packed ); }
+    if ( ok ) { ok = ChunkPackSlots( ctx, numbering.seen, root, *(Chunk *) packed, packed ); }
     for ( int64_t k = 0; ok && k < numbering.count; k++ )
     {
         const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-        if ( entry == NULL ) { ok = false; break; }
+        if ( entry == NULL )
+        {
+            ok = false;
+            break;
+        }
         if ( numbering.entries[k].pack_slots != NULL ) { ok = numbering.entries[k].pack_slots( (const void *) &ctx, numbering.seen, numbering.entries[k].node, packed + entry->offset, packed ); } // a blob has no slots
     }
     TableNumberingShutdown( numbering );
@@ -13139,9 +13547,17 @@ inline bool FeedBuilder::Lock()
         for ( int64_t k = 0; ok && k < numbering.count; k++ )
         {
             const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
-            if ( bytes < 0 ) { ok = false; break; }
+            if ( bytes < 0 )
+            {
+                ok = false;
+                break;
+            }
             TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-            if ( entry == NULL ) { ok = false; break; }
+            if ( entry == NULL )
+            {
+                ok = false;
+                break;
+            }
             measured = TableAlignUp64( measured );
             entry->offset = measured;
             measured += bytes;
@@ -13165,9 +13581,17 @@ inline bool FeedBuilder::Lock()
         for ( int64_t k = 0; ok && k < numbering.count; k++ )
         {
             const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
-            if ( bytes < 0 ) { ok = false; break; }
+            if ( bytes < 0 )
+            {
+                ok = false;
+                break;
+            }
             TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-            if ( entry == NULL ) { ok = false; break; }
+            if ( entry == NULL )
+            {
+                ok = false;
+                break;
+            }
             used = TableAlignUp64( used );
             entry->offset = used;
             used += bytes;
@@ -13192,14 +13616,22 @@ inline bool FeedBuilder::Lock()
     for ( int64_t k = 0; ok && k < numbering.count; k++ )
     {
         const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-        if ( entry == NULL ) { ok = false; break; }
+        if ( entry == NULL )
+        {
+            ok = false;
+            break;
+        }
         ok = numbering.entries[k].pack_copy( (const void *) &ctx, numbering.entries[k].node, packed + entry->offset, packed, total );
     }
-    if ( ok ) { ok = FeedPackSlots( ctx, numbering.seen, root, *( Feed * ) packed, packed ); }
+    if ( ok ) { ok = FeedPackSlots( ctx, numbering.seen, root, *(Feed *) packed, packed ); }
     for ( int64_t k = 0; ok && k < numbering.count; k++ )
     {
         const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
-        if ( entry == NULL ) { ok = false; break; }
+        if ( entry == NULL )
+        {
+            ok = false;
+            break;
+        }
         if ( numbering.entries[k].pack_slots != NULL ) { ok = numbering.entries[k].pack_slots( (const void *) &ctx, numbering.seen, numbering.entries[k].node, packed + entry->offset, packed ); } // a blob has no slots
     }
     TableNumberingShutdown( numbering );
@@ -14543,7 +14975,14 @@ inline int64_t FeedMeasureBodyRetain( const Ctx & ctx, const TableNumbering & nu
     }
     {
         bool any_pair = false;
-        for ( int32_t i = 0; i < 2; i++ ) { if ( ChunkAt( ctx, value.pair[i] ) != NULL ) { any_pair = true; break; } }
+        for ( int32_t i = 0; i < 2; i++ )
+        {
+            if ( ChunkAt( ctx, value.pair[i] ) != NULL )
+            {
+                any_pair = true;
+                break;
+            }
+        }
         if ( any_pair )
         {
             const uint64_t ref_pair = ids.ref_at( 0, 0x0369250deb889a31ull );
@@ -14591,7 +15030,10 @@ inline bool FeedSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
                 }
                 w.header( arm_ref, 13 );
                 w.putleb( (uint64_t) arm_payload ); // header
-                if ( !HeaderSaveBodyRetain( w, ids, value.frame.header, retain, TableRetainStepInto( path, 1, (uint32_t) ( 0 ) ) ) ) { return false; }
+                if ( !HeaderSaveBodyRetain( w, ids, value.frame.header, retain, TableRetainStepInto( path, 1, (uint32_t) ( 0 ) ) ) )
+                {
+                    return false;
+                }
                 break;
             }
             case FrameType::Chunk:
@@ -14605,7 +15047,10 @@ inline bool FeedSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
                 }
                 w.header( arm_ref, 13 );
                 w.putleb( (uint64_t) arm_payload ); // chunk
-                if ( !ChunkSaveBodyRetain( ctx, numbering, w, ids, value.frame.chunk, retain, TableRetainStepInto( path, 1, (uint32_t) ( 1 ) ) ) ) { return false; }
+                if ( !ChunkSaveBodyRetain( ctx, numbering, w, ids, value.frame.chunk, retain, TableRetainStepInto( path, 1, (uint32_t) ( 1 ) ) ) )
+                {
+                    return false;
+                }
                 break;
             }
             case FrameType::Link:
@@ -14672,7 +15117,14 @@ inline bool FeedSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
     }
     {
         bool any_pair = false;
-        for ( int32_t i = 0; i < 2; i++ ) { if ( ChunkAt( ctx, value.pair[i] ) != NULL ) { any_pair = true; break; } }
+        for ( int32_t i = 0; i < 2; i++ )
+        {
+            if ( ChunkAt( ctx, value.pair[i] ) != NULL )
+            {
+                any_pair = true;
+                break;
+            }
+        }
         if ( any_pair )
         {
             const uint64_t ref_pair = ids.ref_at( 0, 0x0369250deb889a31ull );
@@ -14824,149 +15276,165 @@ inline bool FeedLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Fee
                 if ( arm_ref == 0 ) { value.frame.type = FrameType::None; } // empty: the reference is the whole payload
                 else
                 {
-                if ( arm_ref > (uint64_t) r.ids->count )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                const uint64_t arm_id = r.ids->at( arm_ref );
-                if ( !r.has( 1 ) )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                const uint8_t arm_kind = r.get8();
-                uint64_t body_len = 0;
-                if ( !r.getleb( body_len ) || !r.room( body_len ) )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                {
-                    TableReader sub( r.buffer + r.offset, (int64_t) body_len, r.report, r.ids );
-                    switch ( arm_id ) // the arm's NAME hash (docs/SPEC-TABLES.md §5)
+                    if ( arm_ref > (uint64_t) r.ids->count )
                     {
-                        case 0x3a506cb501761960ull: // header
+                        r.report->damaged = true;
+                        return false;
+                    }
+                    const uint64_t arm_id = r.ids->at( arm_ref );
+                    if ( !r.has( 1 ) )
+                    {
+                        r.report->damaged = true;
+                        return false;
+                    }
+                    const uint8_t arm_kind = r.get8();
+                    uint64_t body_len = 0;
+                    if ( !r.getleb( body_len ) || !r.room( body_len ) )
+                    {
+                        r.report->damaged = true;
+                        return false;
+                    }
+                    {
+                        TableReader sub( r.buffer + r.offset, (int64_t) body_len, r.report, r.ids );
+                        switch ( arm_id ) // the arm's NAME hash (docs/SPEC-TABLES.md §5)
                         {
-                            if ( arm_kind != 13 )
+                            case 0x3a506cb501761960ull: // header
                             {
-                                // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
-                                // arm skips by L, the union reads None, and the parent reads on
-                                value.frame.type = FrameType::None;
-                                r.report->refused = true;
-                                r.report->refuse_reason = kind_mismatch;
-                                break;
-                            }
-                            value.frame.type = FrameType::Header;
-                            HeaderLoadBodyRetain( sub, value.frame.header, retain, TableRetainStepInto( path, 1, (uint32_t) ( 0 ) ) );
-                            if ( sub.offset != sub.size ) { value.frame.type = FrameType::None; r.report->damaged = true; break; }
-                            break;
-                        }
-                        case 0x0f838176873c8e22ull: // chunk
-                        {
-                            if ( arm_kind != 13 )
-                            {
-                                // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
-                                // arm skips by L, the union reads None, and the parent reads on
-                                value.frame.type = FrameType::None;
-                                r.report->refused = true;
-                                r.report->refuse_reason = kind_mismatch;
-                                break;
-                            }
-                            value.frame.type = FrameType::Chunk;
-                            ChunkLoadBodyRetain( sub, nodes, value.frame.chunk, retain, TableRetainStepInto( path, 1, (uint32_t) ( 1 ) ) );
-                            if ( sub.offset != sub.size ) { value.frame.type = FrameType::None; r.report->damaged = true; break; }
-                            break;
-                        }
-                        case 0xbf4b9bad694f4809ull: // link
-                        {
-                            if ( arm_kind != 17 )
-                            {
-                                // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
-                                // arm skips by L, the union reads None, and the parent reads on
-                                value.frame.type = FrameType::None;
-                                r.report->refused = true;
-                                r.report->refuse_reason = kind_mismatch;
-                                break;
-                            }
-                            value.frame.type = FrameType::Link;
-                            {
-                                uint64_t node_index = 0;
-                                if ( !sub.getleb( node_index ) )
+                                if ( arm_kind != 13 )
                                 {
+                                    // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
+                                    // arm skips by L, the union reads None, and the parent reads on
                                     value.frame.type = FrameType::None;
-                                    r.report->damaged = true;
+                                    r.report->refused = true;
+                                    r.report->refuse_reason = kind_mismatch;
                                     break;
                                 }
+                                value.frame.type = FrameType::Header;
+                                HeaderLoadBodyRetain( sub, value.frame.header, retain, TableRetainStepInto( path, 1, (uint32_t) ( 0 ) ) );
                                 if ( sub.offset != sub.size )
                                 {
                                     value.frame.type = FrameType::None;
                                     r.report->damaged = true;
                                     break;
                                 }
-                                TableNodeResolve( nodes, value.frame.link, node_index, 0xcf4368dcf951e082ull, r.report ); // *Chunk
+                                break;
                             }
-                            break;
-                        }
-                        case 0x56d7ab194448a4f3ull: // tag
-                        {
-                            if ( arm_kind != 8 )
+                            case 0x0f838176873c8e22ull: // chunk
                             {
-                                if ( TableKindWidens( arm_kind, 8 ) )
+                                if ( arm_kind != 13 )
                                 {
-                                    // WIDENED AT AN ARM (§4): the payload decodes at its own width; an L
-                                    // that is not that width is the arm's own framing damage (§3)
-                                    if ( sub.size != TableKindWidth( arm_kind ) )
-                                    {
-                                        value.frame.type = FrameType::None;
-                                        r.report->damaged = true;
-                                        break;
-                                    }
-                                    memset( (void *) &value.frame.tag, 0, sizeof( value.frame.tag ) ); // selection establishes the arm (§2.6)
-                                    uint64_t widened_v = 0;
-                                    if ( !TableReadUnsignedAt( sub, arm_kind, widened_v ) )
-                                    {
-                                        value.frame.type = FrameType::None;
-                                        r.report->damaged = true;
-                                        break;
-                                    }
-                                    uint32_t decoded_v = (uint32_t) widened_v;
-                                    value.frame.tag = decoded_v;
-                                    value.frame.type = FrameType::Tag;
-                                    r.report->widened++;
+                                    // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
+                                    // arm skips by L, the union reads None, and the parent reads on
+                                    value.frame.type = FrameType::None;
+                                    r.report->refused = true;
+                                    r.report->refuse_reason = kind_mismatch;
                                     break;
                                 }
-                                // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
-                                // arm skips by L, the union reads None, and the parent reads on
-                                value.frame.type = FrameType::None;
-                                r.report->refused = true;
-                                r.report->refuse_reason = kind_mismatch;
+                                value.frame.type = FrameType::Chunk;
+                                ChunkLoadBodyRetain( sub, nodes, value.frame.chunk, retain, TableRetainStepInto( path, 1, (uint32_t) ( 1 ) ) );
+                                if ( sub.offset != sub.size )
+                                {
+                                    value.frame.type = FrameType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                }
                                 break;
                             }
-                            value.frame.type = FrameType::Tag;
-                            if ( sub.size != 4 ) { value.frame.type = FrameType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
-                            if ( !sub.has( 4 ) )
+                            case 0xbf4b9bad694f4809ull: // link
                             {
-                                value.frame.type = FrameType::None;
-                                r.report->damaged = true;
+                                if ( arm_kind != 17 )
+                                {
+                                    // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
+                                    // arm skips by L, the union reads None, and the parent reads on
+                                    value.frame.type = FrameType::None;
+                                    r.report->refused = true;
+                                    r.report->refuse_reason = kind_mismatch;
+                                    break;
+                                }
+                                value.frame.type = FrameType::Link;
+                                {
+                                    uint64_t node_index = 0;
+                                    if ( !sub.getleb( node_index ) )
+                                    {
+                                        value.frame.type = FrameType::None;
+                                        r.report->damaged = true;
+                                        break;
+                                    }
+                                    if ( sub.offset != sub.size )
+                                    {
+                                        value.frame.type = FrameType::None;
+                                        r.report->damaged = true;
+                                        break;
+                                    }
+                                    TableNodeResolve( nodes, value.frame.link, node_index, 0xcf4368dcf951e082ull, r.report ); // *Chunk
+                                }
                                 break;
                             }
-                            uint32_t decoded_v = uint32_t( sub.get32() );
-                            value.frame.tag = decoded_v;
-                            break;
+                            case 0x56d7ab194448a4f3ull: // tag
+                            {
+                                if ( arm_kind != 8 )
+                                {
+                                    if ( TableKindWidens( arm_kind, 8 ) )
+                                    {
+                                        // WIDENED AT AN ARM (§4): the payload decodes at its own width; an L
+                                        // that is not that width is the arm's own framing damage (§3)
+                                        if ( sub.size != TableKindWidth( arm_kind ) )
+                                        {
+                                            value.frame.type = FrameType::None;
+                                            r.report->damaged = true;
+                                            break;
+                                        }
+                                        memset( (void *) &value.frame.tag, 0, sizeof( value.frame.tag ) ); // selection establishes the arm (§2.6)
+                                        uint64_t widened_v = 0;
+                                        if ( !TableReadUnsignedAt( sub, arm_kind, widened_v ) )
+                                        {
+                                            value.frame.type = FrameType::None;
+                                            r.report->damaged = true;
+                                            break;
+                                        }
+                                        uint32_t decoded_v = (uint32_t) widened_v;
+                                        value.frame.tag = decoded_v;
+                                        value.frame.type = FrameType::Tag;
+                                        r.report->widened++;
+                                        break;
+                                    }
+                                    // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
+                                    // arm skips by L, the union reads None, and the parent reads on
+                                    value.frame.type = FrameType::None;
+                                    r.report->refused = true;
+                                    r.report->refuse_reason = kind_mismatch;
+                                    break;
+                                }
+                                value.frame.type = FrameType::Tag;
+                                if ( sub.size != 4 )
+                                {
+                                    value.frame.type = FrameType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                } // an L that is not the kind's width is that arm's own framing damage (§3)
+                                if ( !sub.has( 4 ) )
+                                {
+                                    value.frame.type = FrameType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                }
+                                uint32_t decoded_v = uint32_t( sub.get32() );
+                                value.frame.tag = decoded_v;
+                                break;
+                            }
+                            default:
+                                // an arm this reader cannot name: the value reads EMPTY and
+                                // the body is skipped by its length, never misdecoded. The
+                                // reset is explicit, not the prefill's: a repeated field id
+                                // must not leave an arm decoded by an earlier occurrence
+                                // standing (docs/SPEC-TABLES.md §4).
+                                value.frame.type = FrameType::None;
+                                r.report->unknown++;
+                                r.report->retain_lost++;
+                                break;
                         }
-                        default:
-                            // an arm this reader cannot name: the value reads EMPTY and
-                            // the body is skipped by its length, never misdecoded. The
-                            // reset is explicit, not the prefill's: a repeated field id
-                            // must not leave an arm decoded by an earlier occurrence
-                            // standing (docs/SPEC-TABLES.md §4).
-                            value.frame.type = FrameType::None;
-                            r.report->unknown++; r.report->retain_lost++;
-                            break;
                     }
-                }
-                r.offset += (int64_t) body_len;
+                    r.offset += (int64_t) body_len;
                 }
                 break;
             }
@@ -15190,6 +15658,7 @@ inline const Chunk * ChunkLoadRetain( uint8_t * region, int64_t region_bytes, co
 {
     TableReport ignored;
     TableReport * out = report != NULL ? report : &ignored;
+    *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const int32_t non_finite_before = out->non_finite_floats;
     const bool damaged_before = out->damaged;
     out->damaged = false;
@@ -15555,6 +16024,7 @@ inline const Feed * FeedLoadRetain( uint8_t * region, int64_t region_bytes, cons
 {
     TableReport ignored;
     TableReport * out = report != NULL ? report : &ignored;
+    *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const int32_t non_finite_before = out->non_finite_floats;
     const bool damaged_before = out->damaged;
     out->damaged = false;
@@ -16082,8 +16552,12 @@ inline bool FeedCookBody( const Ctx & ctx, const TableCookRegion & region, uint8
         table_cook_put( at + 8, (uint64_t) value.frame.type, 1, order ); // the tag; None is the tag alone
         switch ( value.frame.type )
         {
-            case FrameType::Header: if ( !HeaderCookBody( at + 8 + 8, value.frame.header, order ) ) { return false; } break;
-            case FrameType::Chunk: if ( !ChunkCookBody( ctx, region, at + 8 + 8, value.frame.chunk, order ) ) { return false; } break;
+            case FrameType::Header:
+                if ( !HeaderCookBody( at + 8 + 8, value.frame.header, order ) ) { return false; }
+                break;
+            case FrameType::Chunk:
+                if ( !ChunkCookBody( ctx, region, at + 8 + 8, value.frame.chunk, order ) ) { return false; }
+                break;
             case FrameType::Link:
             {
                 if ( !table_cook_ref( region, at + 8 + 8, (const void *) ChunkAt( ctx, value.frame.link ), order ) ) { return false; } // link

@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum vLo
+{ Zfirst, Zsecond, Zthird }
+
+enum v_holder
+{ Zfirst, Zsecond, Zthird }
+
+enum v_name
+{ Zfirst, Zsecond, Zthird }
+
+enum v_str
+{ Zfirst, Zsecond, Zthird }
+
+enum val
+{ Zfirst, Zsecond, Zthird }
+
+enum val16
+{ Zfirst, Zsecond, Zthird }
+
+enum val2
+{ Zfirst, Zsecond, Zthird }
+
+enum val_end
+{ Zfirst, Zsecond, Zthird }
+
+enum val_fd
+{ Zfirst, Zsecond, Zthird }
+
+enum val_field
+{ Zfirst, Zsecond, Zthird }
+
+enum val_node
+{ Zfirst, Zsecond, Zthird }
+
+enum val_storage
+{ Zfirst, Zsecond, Zthird }
+
+enum val_str
+{ Zfirst, Zsecond, Zthird }
+
+enum valid
+{ Zfirst, Zsecond, Zthird }
+
+enum validUTF8
+{ Zfirst, Zsecond, Zthird }
+
+enum validUnit
+{ Zfirst, Zsecond, Zthird }
+
+enum valid_ek
+{ Zfirst, Zsecond, Zthird }
+
+enum valid_scalar
+{ Zfirst, Zsecond, Zthird }
+
+enum valid_str
+{ Zfirst, Zsecond, Zthird }
+
+enum valid_text
+{ Zfirst, Zsecond, Zthird }
+
+enum validate
+{ Zfirst, Zsecond, Zthird }
+
+enum validateParams
+{ Zfirst, Zsecond, Zthird }
+
+enum validate_table_graph
+{ Zfirst, Zsecond, Zthird }
+
+enum validate_utf8_bytes
+{ Zfirst, Zsecond, Zthird }
+
+enum valname
+{ Zfirst, Zsecond, Zthird }
+
+enum vals
+{ Zfirst, Zsecond, Zthird }
+
+enum value
+{ Zfirst, Zsecond, Zthird }
+
+enum value2
+{ Zfirst, Zsecond, Zthird }
+
+enum value32
+{ Zfirst, Zsecond, Zthird }
+
+enum valueArm
+{ Zfirst, Zsecond, Zthird }
+
+enum valueBits
+{ Zfirst, Zsecond, Zthird }
+
+enum valueMisuse
+{ Zfirst, Zsecond, Zthird }
+
+enum valueOk
+{ Zfirst, Zsecond, Zthird }
+
+enum valueShape
+{ Zfirst, Zsecond, Zthird }
+
+enum valueText
+{ Zfirst, Zsecond, Zthird }
+
+enum value_codec
+{ Zfirst, Zsecond, Zthird }
+
+enum value_default
+{ Zfirst, Zsecond, Zthird }
+
+enum value_field
+{ Zfirst, Zsecond, Zthird }
+
+enum value_fn
+{ Zfirst, Zsecond, Zthird }
+
+enum value_length
+{ Zfirst, Zsecond, Zthird }
+
+enum value_path
+{ Zfirst, Zsecond, Zthird }
+
+enum value_piece
+{ Zfirst, Zsecond, Zthird }
+
+enum value_present
+{ Zfirst, Zsecond, Zthird }
+
+enum values
+{ Zfirst, Zsecond, Zthird }
+
+enum valuesBound
+{ Zfirst, Zsecond, Zthird }
+
+enum valuesStride
+{ Zfirst, Zsecond, Zthird }
+
+enum values_count
+{ Zfirst, Zsecond, Zthird }
+
+enum variable
+{ Zfirst, Zsecond, Zthird }
+
+enum variableForm
+{ Zfirst, Zsecond, Zthird }
+
+enum variableRoot
+{ Zfirst, Zsecond, Zthird }
+
+enum variable_class_keys
+{ Zfirst, Zsecond, Zthird }
+
+enum variable_node_decode
+{ Zfirst, Zsecond, Zthird }
+
+enum variable_node_edges
+{ Zfirst, Zsecond, Zthird }
+
+enum variable_node_link_record
+{ Zfirst, Zsecond, Zthird }
+
+enum variable_node_stub_alloc
+{ Zfirst, Zsecond, Zthird }
+
+enum variable_record_save
+{ Zfirst, Zsecond, Zthird }
+
+enum variant
+{ Zfirst, Zsecond, Zthird }
+
+enum variantIndex
+{ Zfirst, Zsecond, Zthird }
+
+enum variantRef
+{ Zfirst, Zsecond, Zthird }
+
+enum variant_deprecated
+{ Zfirst, Zsecond, Zthird }
+
+enum variant_id
+{ Zfirst, Zsecond, Zthird }
+
+enum variant_ids
+{ Zfirst, Zsecond, Zthird }
+
+enum variant_name
+{ Zfirst, Zsecond, Zthird }
+
+enum variant_names
+{ Zfirst, Zsecond, Zthird }
+
+enum variants
+{ Zfirst, Zsecond, Zthird }
+
+enum variants_has
+{ Zfirst, Zsecond, Zthird }
+
+enum vcls
+{ Zfirst, Zsecond, Zthird }
+
+enum vd
+{ Zfirst, Zsecond, Zthird }
+
+enum vdesc
+{ Zfirst, Zsecond, Zthird }
+
+enum ve
+{ Zfirst, Zsecond, Zthird }
+
+enum verdict
+{ Zfirst, Zsecond, Zthird }
+
+enum version
+{ Zfirst, Zsecond, Zthird }
+
+enum versionCount
+{ Zfirst, Zsecond, Zthird }
+
+enum version_seen
+{ Zfirst, Zsecond, Zthird }
+
+enum versions
+{ Zfirst, Zsecond, Zthird }
+
+enum vertices
+{ Zfirst, Zsecond, Zthird }
+
+enum verts
+{ Zfirst, Zsecond, Zthird }
+
+enum vf
+{ Zfirst, Zsecond, Zthird }
+
+enum vi
+{ Zfirst, Zsecond, Zthird }
+
+enum vid
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    vLo Inner
+    v_holder Inner
+    v_name Inner
+    v_str Inner
+    val Inner
+    val16 Inner
+    val2 Inner
+    val_end Inner
+    val_fd Inner
+    val_field Inner
+}
+
+table NameTypes0
+{
+    one0  vLo
+    many0 [..4]vLo
+    one1  v_holder
+    many1 [..4]v_holder
+    one2  v_name
+    many2 [..4]v_name
+    one3  v_str
+    many3 [..4]v_str
+    one4  val
+    many4 [..4]val
+    one5  val16
+    many5 [..4]val16
+    one6  val2
+    many6 [..4]val2
+    one7  val_end
+    many7 [..4]val_end
+    one8  val_fd
+    many8 [..4]val_fd
+    one9  val_field
+    many9 [..4]val_field
+}
+
+table NameFields0
+{
+    vLo uint32
+    v_holder uint32
+    v_name uint32
+    v_str uint32
+    val uint32
+    val16 uint32
+    val2 uint32
+    val_end uint32
+    val_fd uint32
+    val_field uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    val_node Inner
+    val_storage Inner
+    val_str Inner
+    valid Inner
+    validUTF8 Inner
+    validUnit Inner
+    valid_ek Inner
+    valid_scalar Inner
+    valid_str Inner
+    valid_text Inner
+}
+
+table NameTypes1
+{
+    one0  val_node
+    many0 [..4]val_node
+    one1  val_storage
+    many1 [..4]val_storage
+    one2  val_str
+    many2 [..4]val_str
+    one3  valid
+    many3 [..4]valid
+    one4  validUTF8
+    many4 [..4]validUTF8
+    one5  validUnit
+    many5 [..4]validUnit
+    one6  valid_ek
+    many6 [..4]valid_ek
+    one7  valid_scalar
+    many7 [..4]valid_scalar
+    one8  valid_str
+    many8 [..4]valid_str
+    one9  valid_text
+    many9 [..4]valid_text
+}
+
+table NameFields1
+{
+    val_node uint32
+    val_storage uint32
+    val_str uint32
+    valid uint32
+    validUTF8 uint32
+    validUnit uint32
+    valid_ek uint32
+    valid_scalar uint32
+    valid_str uint32
+    valid_text uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    validate Inner
+    validateParams Inner
+    validate_table_graph Inner
+    validate_utf8_bytes Inner
+    valname Inner
+    vals Inner
+    value Inner
+    value2 Inner
+    value32 Inner
+    valueArm Inner
+}
+
+table NameTypes2
+{
+    one0  validate
+    many0 [..4]validate
+    one1  validateParams
+    many1 [..4]validateParams
+    one2  validate_table_graph
+    many2 [..4]validate_table_graph
+    one3  validate_utf8_bytes
+    many3 [..4]validate_utf8_bytes
+    one4  valname
+    many4 [..4]valname
+    one5  vals
+    many5 [..4]vals
+    one6  value
+    many6 [..4]value
+    one7  value2
+    many7 [..4]value2
+    one8  value32
+    many8 [..4]value32
+    one9  valueArm
+    many9 [..4]valueArm
+}
+
+table NameFields2
+{
+    validate uint32
+    validateParams uint32
+    validate_table_graph uint32
+    validate_utf8_bytes uint32
+    valname uint32
+    vals uint32
+    value uint32
+    value2 uint32
+    value32 uint32
+    valueArm uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    valueBits Inner
+    valueMisuse Inner
+    valueOk Inner
+    valueShape Inner
+    valueText Inner
+    value_codec Inner
+    value_default Inner
+    value_field Inner
+    value_fn Inner
+    value_length Inner
+}
+
+table NameTypes3
+{
+    one0  valueBits
+    many0 [..4]valueBits
+    one1  valueMisuse
+    many1 [..4]valueMisuse
+    one2  valueOk
+    many2 [..4]valueOk
+    one3  valueShape
+    many3 [..4]valueShape
+    one4  valueText
+    many4 [..4]valueText
+    one5  value_codec
+    many5 [..4]value_codec
+    one6  value_default
+    many6 [..4]value_default
+    one7  value_field
+    many7 [..4]value_field
+    one8  value_fn
+    many8 [..4]value_fn
+    one9  value_length
+    many9 [..4]value_length
+}
+
+table NameFields3
+{
+    valueBits uint32
+    valueMisuse uint32
+    valueOk uint32
+    valueShape uint32
+    valueText uint32
+    value_codec uint32
+    value_default uint32
+    value_field uint32
+    value_fn uint32
+    value_length uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    value_path Inner
+    value_piece Inner
+    value_present Inner
+    values Inner
+    valuesBound Inner
+    valuesStride Inner
+    values_count Inner
+    variable Inner
+    variableForm Inner
+    variableRoot Inner
+}
+
+table NameTypes4
+{
+    one0  value_path
+    many0 [..4]value_path
+    one1  value_piece
+    many1 [..4]value_piece
+    one2  value_present
+    many2 [..4]value_present
+    one3  values
+    many3 [..4]values
+    one4  valuesBound
+    many4 [..4]valuesBound
+    one5  valuesStride
+    many5 [..4]valuesStride
+    one6  values_count
+    many6 [..4]values_count
+    one7  variable
+    many7 [..4]variable
+    one8  variableForm
+    many8 [..4]variableForm
+    one9  variableRoot
+    many9 [..4]variableRoot
+}
+
+table NameFields4
+{
+    value_path uint32
+    value_piece uint32
+    value_present uint32
+    values uint32
+    valuesBound uint32
+    valuesStride uint32
+    values_count uint32
+    variable uint32
+    variableForm uint32
+    variableRoot uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    variable_class_keys Inner
+    variable_node_decode Inner
+    variable_node_edges Inner
+    variable_node_link_record Inner
+    variable_node_stub_alloc Inner
+    variable_record_save Inner
+    variant Inner
+    variantIndex Inner
+    variantRef Inner
+    variant_deprecated Inner
+}
+
+table NameTypes5
+{
+    one0  variable_class_keys
+    many0 [..4]variable_class_keys
+    one1  variable_node_decode
+    many1 [..4]variable_node_decode
+    one2  variable_node_edges
+    many2 [..4]variable_node_edges
+    one3  variable_node_link_record
+    many3 [..4]variable_node_link_record
+    one4  variable_node_stub_alloc
+    many4 [..4]variable_node_stub_alloc
+    one5  variable_record_save
+    many5 [..4]variable_record_save
+    one6  variant
+    many6 [..4]variant
+    one7  variantIndex
+    many7 [..4]variantIndex
+    one8  variantRef
+    many8 [..4]variantRef
+    one9  variant_deprecated
+    many9 [..4]variant_deprecated
+}
+
+table NameFields5
+{
+    variable_class_keys uint32
+    variable_node_decode uint32
+    variable_node_edges uint32
+    variable_node_link_record uint32
+    variable_node_stub_alloc uint32
+    variable_record_save uint32
+    variant uint32
+    variantIndex uint32
+    variantRef uint32
+    variant_deprecated uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    variant_id Inner
+    variant_ids Inner
+    variant_name Inner
+    variant_names Inner
+    variants Inner
+    variants_has Inner
+    vcls Inner
+    vd Inner
+    vdesc Inner
+    ve Inner
+}
+
+table NameTypes6
+{
+    one0  variant_id
+    many0 [..4]variant_id
+    one1  variant_ids
+    many1 [..4]variant_ids
+    one2  variant_name
+    many2 [..4]variant_name
+    one3  variant_names
+    many3 [..4]variant_names
+    one4  variants
+    many4 [..4]variants
+    one5  variants_has
+    many5 [..4]variants_has
+    one6  vcls
+    many6 [..4]vcls
+    one7  vd
+    many7 [..4]vd
+    one8  vdesc
+    many8 [..4]vdesc
+    one9  ve
+    many9 [..4]ve
+}
+
+table NameFields6
+{
+    variant_id uint32
+    variant_ids uint32
+    variant_name uint32
+    variant_names uint32
+    variants uint32
+    variants_has uint32
+    vcls uint32
+    vd uint32
+    vdesc uint32
+    ve uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    verdict Inner
+    version Inner
+    versionCount Inner
+    version_seen Inner
+    versions Inner
+    vertices Inner
+    verts Inner
+    vf Inner
+    vi Inner
+    vid Inner
+}
+
+table NameTypes7
+{
+    one0  verdict
+    many0 [..4]verdict
+    one1  version
+    many1 [..4]version
+    one2  versionCount
+    many2 [..4]versionCount
+    one3  version_seen
+    many3 [..4]version_seen
+    one4  versions
+    many4 [..4]versions
+    one5  vertices
+    many5 [..4]vertices
+    one6  verts
+    many6 [..4]verts
+    one7  vf
+    many7 [..4]vf
+    one8  vi
+    many8 [..4]vi
+    one9  vid
+    many9 [..4]vid
+}
+
+table NameFields7
+{
+    verdict uint32
+    version uint32
+    versionCount uint32
+    version_seen uint32
+    versions uint32
+    vertices uint32
+    verts uint32
+    vf uint32
+    vi uint32
+    vid uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

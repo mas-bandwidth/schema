@@ -1,6 +1,6 @@
 package rusttable
 
-import "github.com/mas-bandwidth/schema/v2/ir"
+import "github.com/mas-bandwidth/schema/v3/ir"
 
 // fixedRuntimeModule is the FIXED FORM's shared runtime (docs/SPEC-TABLES.md
 // §3.4), emitted once per unit that carries a fixed root: the plan entry, the
@@ -238,9 +238,11 @@ pub enum TableFixedReason {
     PlanTooLarge,
     /// more records than the caller has room for: nothing is decoded
     BatchTooLarge,
-    /// RETIRED (§5.3 step 5, decided 2026-11-03): nothing in the lineage
-    /// proves a hash newer, so no read answers it. It keeps its place so no
-    /// other variant moves; a hash in no lineage entry is LayoutUnknown.
+    /// RESERVED, NEVER EMITTED (docs/FIXED-FORM-ALGORITHM.md §5.3 "STEP 5's
+    /// ANSWER IS layout_unknown, IN EVERY LEG, AND layout_newer IS
+    /// RETIRED", SPEC-TABLES §21.3, decided 2026-11-03). Nothing proves a hash
+    /// newer, so no read answers it; step 5 is LayoutUnknown. The variant stays
+    /// where it is so no discriminant moves.
     LayoutNewer,
     /// A HASH THE LINEAGE HOLDS, BELOW THE FLOOR (§5.3 step 6). The operator
     /// RETIRED that layout, with the lock's own --retire edit, and the entry
@@ -286,10 +288,12 @@ pub enum TableFixedReason {
     /// A WRITER'S OPTIONAL READ INTO A READER'S BARE FIELD (rulings 2026-11-22, R2):
     /// the reader cannot hold an absent value, so the lineage refuses by name.
     KindMismatch,
-    /// A HASH THE LINEAGE DOES NOT HOLD (§5.3 step 5's answer, in every leg).
-    /// A fixed table reads BACKWARD and never forward, so there is nothing to
-    /// try and no layout to walk. The report carries THE FILE'S HASH AND
-    /// NOTHING ELSE (bill §12.4). Appended, so no variant above moves.
+    /// A HASH THE LINEAGE DOES NOT HOLD (docs/FIXED-FORM-ALGORITHM.md §5.3
+    /// step 5, SPEC-TABLES §21.3). A newer writer, an older layout nobody
+    /// locked, another table's file and a damaged hash byte cannot be told
+    /// apart here, so the one answer is "a layout hash this build's lineage
+    /// does not hold". The report carries THE FILE'S HASH AND NOTHING ELSE
+    /// (§5.9 #7). Appended last so no existing variant moves.
     LayoutUnknown,
 }
 

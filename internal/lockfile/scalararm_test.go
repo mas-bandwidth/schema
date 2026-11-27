@@ -19,7 +19,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/lockfile"
+	"github.com/mas-bandwidth/schema/v3/internal/lockfile"
 )
 
 // originWith is a union with one record arm and the scalar arms given, held by

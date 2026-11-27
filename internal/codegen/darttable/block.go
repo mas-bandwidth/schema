@@ -32,8 +32,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/genheader"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/genheader"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 type blockGen struct {
@@ -150,7 +150,13 @@ func (g *blockGen) assemble() []byte {
 			fmt.Fprintf(&h, "import '%s';\n", base)
 			continue
 		}
-		names := sortedKeys(syms)
+		names, prefixed := splitEnumShows(g.unit, sortedKeys(syms))
+		if prefixed {
+			h.WriteString(enumPrefixImport(base))
+		}
+		if len(names) == 0 {
+			continue
+		}
 		one := fmt.Sprintf("import '%s' show %s;", base, strings.Join(names, ", "))
 		if len(one) <= 80 {
 			h.WriteString(one + "\n")
@@ -904,8 +910,8 @@ func (g *blockGen) scalarGetter(ind string, f *ir.Field, head, at string) {
 		// an enum reads as the packet emitter's extension type over int:
 		// the same bits, typed (erased at compile time, so free)
 		g.need(g.unit.DeclFile[e.Name]+".dart", e.Name)
-		head = e.Name + strings.TrimPrefix(head, "int")
-		g.arrow(ind, head, e.Name+"("+g.readAt(f, at)+")")
+		head = dartEnumRef(e.Name) + strings.TrimPrefix(head, "int")
+		g.arrow(ind, head, dartEnumRef(e.Name)+"("+g.readAt(f, at)+")")
 		return
 	}
 	if f.Type.Kind != ir.TFloat32 && f.Type.Kind != ir.TFloat64 {

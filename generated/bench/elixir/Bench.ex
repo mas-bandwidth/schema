@@ -496,6 +496,10 @@ defmodule Bench.Bench do
   """
   @spec write_bench_packet!(Bench.BenchPacket.t()) :: binary()
   def write_bench_packet!(value) do
+    if not is_struct(value, Bench.BenchPacket) do
+      raise ArgumentError, "value is not a BenchPacket"
+    end
+
     %{
       a: value_a,
       b: value_b,
@@ -602,6 +606,11 @@ defmodule Bench.Bench do
 
     v = value_bits23 &&& 0x7FFFFF
     scratch = scratch ||| v <<< 17
+
+    if not is_boolean(value_flag) do
+      raise ArgumentError, "value.flag is not a boolean"
+    end
+
     v = if value_flag, do: 1, else: 0
     scratch = scratch ||| v <<< 40
     v = f32_bits(value_x)
@@ -646,6 +655,10 @@ defmodule Bench.Bench do
     scratch = scratch >>> 32
     # align: zero-pad to the byte boundary (SPEC §4.3)
     data = <<data::binary, scratch>>
+
+    if not is_list(value_blob) do
+      raise ArgumentError, "value.blob is not a list"
+    end
 
     if length(value_blob) != 17 do
       raise ArgumentError, "value.blob must hold exactly 17 elements"
@@ -798,6 +811,10 @@ defmodule Bench.Bench do
   """
   @spec write_bench_ints!(Bench.BenchInts.t()) :: binary()
   def write_bench_ints!(value) do
+    if not is_struct(value, Bench.BenchInts) do
+      raise ArgumentError, "value is not a BenchInts"
+    end
+
     %{
       f0: value_f0,
       f1: value_f1,
@@ -1107,6 +1124,10 @@ defmodule Bench.Bench do
   """
   @spec write_bench_bits!(Bench.BenchBits.t()) :: binary()
   def write_bench_bits!(value) do
+    if not is_struct(value, Bench.BenchBits) do
+      raise ArgumentError, "value is not a BenchBits"
+    end
+
     %{
       b7: value_b7,
       b13: value_b13,
@@ -1511,6 +1532,10 @@ defmodule Bench.Bench do
   """
   @spec write_mixed_entity!(Bench.MixedEntity.t()) :: binary()
   def write_mixed_entity!(value) do
+    if not is_struct(value, Bench.MixedEntity) do
+      raise ArgumentError, "value is not a MixedEntity"
+    end
+
     %{
       entity_id: value_entity_id,
       pos_x: value_pos_x,
@@ -1684,14 +1709,28 @@ defmodule Bench.Bench do
     v = Bench.MixedWeapon.to_int(value_weapon)
     scratch = scratch ||| v <<< 41
 
+    if not is_integer(value_damage) do
+      raise ArgumentError, "value.damage is not an integer"
+    end
+
     if value_damage >>> 8 != 0 do
       raise ArgumentError, "value.damage holds a mask bit above the 8-bit wire"
     end
 
     v = value_damage
     scratch = scratch ||| v <<< 45
+
+    if not is_boolean(value_moving) do
+      raise ArgumentError, "value.moving is not a boolean"
+    end
+
     v = if value_moving, do: 1, else: 0
     scratch = scratch ||| v <<< 53
+
+    if not is_boolean(value_firing) do
+      raise ArgumentError, "value.firing is not a boolean"
+    end
+
     v = if value_firing, do: 1, else: 0
     scratch = scratch ||| v <<< 54
 
@@ -1843,6 +1882,10 @@ defmodule Bench.Bench do
   """
   @spec write_mixed_stat!(Bench.MixedStat.t()) :: binary()
   def write_mixed_stat!(value) do
+    if not is_struct(value, Bench.MixedStat) do
+      raise ArgumentError, "value is not a MixedStat"
+    end
+
     %{stat_id: value_stat_id, delta: value_delta} = value
 
     if not is_integer(value_stat_id) do
@@ -1970,6 +2013,10 @@ defmodule Bench.Bench do
   """
   @spec write_mixed_hit_event!(Bench.MixedHitEvent.t()) :: binary()
   def write_mixed_hit_event!(value) do
+    if not is_struct(value, Bench.MixedHitEvent) do
+      raise ArgumentError, "value is not a MixedHitEvent"
+    end
+
     %{
       target_id: value_target_id,
       damage: value_damage,
@@ -2021,6 +2068,11 @@ defmodule Bench.Bench do
 
     v = value_hit_kind
     scratch = scratch ||| v <<< 24
+
+    if not is_boolean(value_crit) do
+      raise ArgumentError, "value.crit is not a boolean"
+    end
+
     v = if value_crit, do: 1, else: 0
     scratch = scratch ||| v <<< 27
     data = <<scratch::little-size(3)-unit(8)>>
@@ -2129,6 +2181,10 @@ defmodule Bench.Bench do
   """
   @spec write_mixed_chat_event!(Bench.MixedChatEvent.t()) :: binary()
   def write_mixed_chat_event!(value) do
+    if not is_struct(value, Bench.MixedChatEvent) do
+      raise ArgumentError, "value is not a MixedChatEvent"
+    end
+
     %{channel: value_channel, speaker: value_speaker} = value
 
     if not is_integer(value_channel) do
@@ -2255,6 +2311,10 @@ defmodule Bench.Bench do
   """
   @spec write_mixed_pickup_event!(Bench.MixedPickupEvent.t()) :: binary()
   def write_mixed_pickup_event!(value) do
+    if not is_struct(value, Bench.MixedPickupEvent) do
+      raise ArgumentError, "value is not a MixedPickupEvent"
+    end
+
     %{item_id: value_item_id, amount: value_amount} = value
 
     if not is_integer(value_item_id) do
@@ -2402,13 +2462,13 @@ defmodule Bench.Bench do
         nil ->
           0
 
-        {:hit, _} ->
+        {:hit, %Bench.MixedHitEvent{}} ->
           1
 
-        {:chat, _} ->
+        {:chat, %Bench.MixedChatEvent{}} ->
           2
 
-        {:pickup, _} ->
+        {:pickup, %Bench.MixedPickupEvent{}} ->
           3
 
         value_other ->
@@ -2472,6 +2532,11 @@ defmodule Bench.Bench do
 
           v = value_hit_hit_kind
           scratch = scratch ||| v <<< 26
+
+          if not is_boolean(value_hit_crit) do
+            raise ArgumentError, "value.hit.crit is not a boolean"
+          end
+
           v = if value_hit_crit, do: 1, else: 0
           scratch = scratch ||| v <<< 29
           data = <<data::binary, scratch::little-size(3)-unit(8)>>
@@ -2729,6 +2794,10 @@ defmodule Bench.Bench do
   """
   @spec write_bench_mixed!(Bench.BenchMixed.t()) :: binary()
   def write_bench_mixed!(value) do
+    if not is_struct(value, Bench.BenchMixed) do
+      raise ArgumentError, "value is not a BenchMixed"
+    end
+
     %{
       sequence: value_sequence,
       ack_sequence: value_ack_sequence,
@@ -2917,6 +2986,11 @@ defmodule Bench.Bench do
     sc8 = scratch
     scratch = scratch >>> 48
     scratch = scratch ||| v <<< 1
+
+    if not is_list(value_entities) do
+      raise ArgumentError, "value.entities is not a list"
+    end
+
     n = length(value_entities)
 
     if n < 1 do
@@ -2942,6 +3016,10 @@ defmodule Bench.Bench do
     {data, scratch, scratch_bits} =
       wZbench_mixedZentities(value_entities, data, scratch, scratch_bits)
 
+    if not is_list(value_stats) do
+      raise ArgumentError, "value.stats is not a list"
+    end
+
     n = length(value_stats)
 
     if n > 80 do
@@ -2962,13 +3040,13 @@ defmodule Bench.Bench do
         nil ->
           0
 
-        {:hit, _} ->
+        {:hit, %Bench.MixedHitEvent{}} ->
           1
 
-        {:chat, _} ->
+        {:chat, %Bench.MixedChatEvent{}} ->
           2
 
-        {:pickup, _} ->
+        {:pickup, %Bench.MixedPickupEvent{}} ->
           3
 
         value_game_event_other ->
@@ -3040,6 +3118,11 @@ defmodule Bench.Bench do
           v = value_game_event_hit_hit_kind
           scratch = scratch ||| v <<< scratch_bits
           scratch_bits = scratch_bits + 3
+
+          if not is_boolean(value_game_event_hit_crit) do
+            raise ArgumentError, "value.game_event.hit.crit is not a boolean"
+          end
+
           v = if value_game_event_hit_crit, do: 1, else: 0
           scratch = scratch ||| v <<< scratch_bits
           scratch_bits = scratch_bits + 1
@@ -3140,12 +3223,20 @@ defmodule Bench.Bench do
           {data, scratch, scratch_bits}
       end
 
+    if not is_list(value_loadout) do
+      raise ArgumentError, "value.loadout is not a list"
+    end
+
     if length(value_loadout) != 4 do
       raise ArgumentError, "value.loadout must hold exactly 4 elements"
     end
 
     {data, scratch, scratch_bits} =
       wZbench_mixedZloadout(value_loadout, data, scratch, scratch_bits)
+
+    if not is_binary(value_player_name) do
+      raise ArgumentError, "value.player_name is not a binary"
+    end
 
     if byte_size(value_player_name) > 15 do
       raise ArgumentError, "value.player_name longer than the declared 15-byte bound"
@@ -3170,6 +3261,10 @@ defmodule Bench.Bench do
     data = if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
     # the used bytes ride whole — the stream is byte-aligned here
     data = <<data::binary, value_player_name::binary>>
+
+    if not is_binary(value_payload) do
+      raise ArgumentError, "value.payload is not a binary"
+    end
 
     if byte_size(value_payload) > 16 do
       raise ArgumentError, "value.payload longer than the declared 16-byte bound"
@@ -3313,6 +3408,11 @@ defmodule Bench.Bench do
 
     v = value_crc_hint &&& 0xFFFFFF
     scratch = v
+
+    if not is_boolean(value_has_extra) do
+      raise ArgumentError, "value.has_extra is not a boolean"
+    end
+
     v = if value_has_extra, do: 1, else: 0
     scratch = scratch ||| v <<< 24
 
@@ -3903,6 +4003,10 @@ defmodule Bench.Bench do
   defp wZbench_mixedZentities([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
   defp wZbench_mixedZentities([e | rest], data, scratch, scratch_bits) do
+    if not is_struct(e, Bench.MixedEntity) do
+      raise ArgumentError, "e is not a MixedEntity"
+    end
+
     %{
       entity_id: e_entity_id,
       pos_x: e_pos_x,
@@ -4091,6 +4195,10 @@ defmodule Bench.Bench do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 4
 
+    if not is_integer(e_damage) do
+      raise ArgumentError, "e.damage is not an integer"
+    end
+
     if e_damage >>> 8 != 0 do
       raise ArgumentError, "e.damage holds a mask bit above the 8-bit wire"
     end
@@ -4098,9 +4206,19 @@ defmodule Bench.Bench do
     v = e_damage
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
+
+    if not is_boolean(e_moving) do
+      raise ArgumentError, "e.moving is not a boolean"
+    end
+
     v = if e_moving, do: 1, else: 0
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
+
+    if not is_boolean(e_firing) do
+      raise ArgumentError, "e.firing is not a boolean"
+    end
+
     v = if e_firing, do: 1, else: 0
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
@@ -4118,6 +4236,10 @@ defmodule Bench.Bench do
   defp wZbench_mixedZstats([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
   defp wZbench_mixedZstats([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
+    if not is_struct(e1, Bench.MixedStat) do
+      raise ArgumentError, "e is not a MixedStat"
+    end
+
     %{stat_id: e1_stat_id, delta: e1_delta} = e1
 
     if not is_integer(e1_stat_id) do
@@ -4151,6 +4273,11 @@ defmodule Bench.Bench do
     v = e1_delta + 512
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 10
+
+    if not is_struct(e2, Bench.MixedStat) do
+      raise ArgumentError, "e is not a MixedStat"
+    end
+
     %{stat_id: e2_stat_id, delta: e2_delta} = e2
 
     if not is_integer(e2_stat_id) do
@@ -4184,6 +4311,11 @@ defmodule Bench.Bench do
     v = e2_delta + 512
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 10
+
+    if not is_struct(e3, Bench.MixedStat) do
+      raise ArgumentError, "e is not a MixedStat"
+    end
+
     %{stat_id: e3_stat_id, delta: e3_delta} = e3
 
     if not is_integer(e3_stat_id) do
@@ -4221,6 +4353,11 @@ defmodule Bench.Bench do
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 10
+
+    if not is_struct(e4, Bench.MixedStat) do
+      raise ArgumentError, "e is not a MixedStat"
+    end
+
     %{stat_id: e4_stat_id, delta: e4_delta} = e4
 
     if not is_integer(e4_stat_id) do
@@ -4262,6 +4399,10 @@ defmodule Bench.Bench do
   end
 
   defp wZbench_mixedZstats([e | rest], data, scratch, scratch_bits) do
+    if not is_struct(e, Bench.MixedStat) do
+      raise ArgumentError, "e is not a MixedStat"
+    end
+
     %{stat_id: e_stat_id, delta: e_delta} = e
 
     if not is_integer(e_stat_id) do

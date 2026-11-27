@@ -2767,6 +2767,13 @@ function L.Load(T, name, bytes, report, state, into)
   r.wireDamaged = false
   r.reason = nil
   r.wireAlone = nil
+  -- EVERY READ ZEROES A SUPPLIED REPORT IN FULL (§6.5): the retention counters,
+  -- the count refusal and the out-of-range field belong to the report too
+  r.retained = 0
+  r.retainLost = 0
+  r.countRefusal = nil
+  r.outOfRangeField = nil
+  r.nonFiniteFloat = nil
   state = state or L.NewState()
   -- A FIXED-CLASS ROOT'S FILE IS FORM 3 (docs/SPEC-TABLES.md §3.4): a form-1
   -- file is previous_form, refused before anything decodes, so nothing moves and

@@ -5,7 +5,7 @@ import (
 	"math"
 	"math/big"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // Validate before invoking recursive IR layout helpers. Memoized expansion is

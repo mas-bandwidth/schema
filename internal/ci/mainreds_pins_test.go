@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/provesran"
+	"github.com/mas-bandwidth/schema/v3/internal/provesran"
 )
 
 // mainRedsSiblingPins is one CI sibling tag and the make variable that owns

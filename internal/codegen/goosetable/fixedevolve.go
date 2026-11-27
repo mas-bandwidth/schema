@@ -21,8 +21,8 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/goose"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // FixedEvolutionEntry is ONE locked layout of one fixed table, the facts
@@ -247,6 +247,7 @@ func (e *fixedEvolveEmit) emitRoot(st *ir.Struct) {
 	}
 	e.g.Declare(n + "FixedEvolveFloor")
 	e.g.Declare(n + "FixedEvolveLoad")
+	e.g.Declare("_" + n + "FixedEvolveLoadWalk")
 	e.p("let %sFixedEvolveFloor: i64 = %d;\n", n, floor)
 	for i, en := range olds {
 		e.emitEntry(n, i+1, en, st)

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // TableRuntimeModule is the shared module a unit with tables grows for the

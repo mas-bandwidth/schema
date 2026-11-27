@@ -118,23 +118,23 @@ public final class RealWorld {
 
     // enumNamePacketMode: debug/log/tooling name for any PacketMode storage value —
     // out-of-set values (wire-legal up to the declared max) name as "???"
-    public static java.lang.String enumNamePacketMode(long value) {
-        if (value == PacketMode.NONE) {
+    public static java.lang.String enumNamePacketMode(long schema_value) {
+        if (schema_value == PacketMode.NONE) {
             return "None";
         }
-        if (value == PacketMode.IDLE) {
+        if (schema_value == PacketMode.IDLE) {
             return "Idle";
         }
-        if (value == PacketMode.ACTIVE) {
+        if (schema_value == PacketMode.ACTIVE) {
             return "Active";
         }
-        if (value == PacketMode.COMBAT) {
+        if (schema_value == PacketMode.COMBAT) {
             return "Combat";
         }
-        if (value == PacketMode.DOCKED) {
+        if (schema_value == PacketMode.DOCKED) {
             return "Docked";
         }
-        if (value == PacketMode.WARPING) {
+        if (schema_value == PacketMode.WARPING) {
             return "Warping";
         }
         return "???";

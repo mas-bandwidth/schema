@@ -12,14 +12,15 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/check"
-	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/cqualify"
-	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/check"
+	cgen "github.com/mas-bandwidth/schema/v3/internal/codegen/c"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/cqualify"
+	"github.com/mas-bandwidth/schema/v3/internal/parser"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/ir"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testinputs"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 var cFixedFormSourceFiles = []string{
@@ -119,6 +120,7 @@ func cStrictCorpus(t *testing.T) string {
 		return cached
 	}
 	cStrictCorpusOnce.Do(func() {
+		testinputs.Build(t)
 		cmd := testproc.Command(t, "make", "-C", "../../..", "tables-fixedform-corpus")
 		out, err := cmd.CombinedOutput()
 		if err != nil {
@@ -542,7 +544,8 @@ func TestCFixedFormSourcesStrict(t *testing.T) {
 `)
 	})
 
-	// c/R8: unknown hash refuses layout_unknown with the file's hash.
+	// c/R8: unknown hash refuses layout_unknown with the file's hash (§5.3 step 5,
+	// SPEC-TABLES §21.3; layout_newer is retired and no read answers it).
 	t.Run("c/R8_layout_unknown", func(t *testing.T) {
 		t.Parallel()
 		older := cReadSchema(t, "VOLD_field_append")

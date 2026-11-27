@@ -39,7 +39,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/provesran"
+	"github.com/mas-bandwidth/schema/v3/internal/provesran"
 )
 
 var (
@@ -464,11 +464,11 @@ func TestGeneratedTreeAndPinsRunAfterTheMergeNegativeControl(t *testing.T) {
 // internal/ci/ci_test.go that modernize flags; its PR passed only because the
 // full `lint` job skips an unlabelled pull request into fixed-table-form, and
 // the red then fired on the branch push alone — after merge. So modernize must
-// ride the fast lane: ci-fast.yml's `lint-fast` has no `full-ci` gate and runs
+// ride the fast lane: ci-fast-nightly.yml's `lint-fast` has no `full-ci` gate and runs
 // on every pull-request push, and the `modernize` step is where the same check
 // that bites on the push bites on the PR.
 func TestModernizeRunsOnEveryPullRequest(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join(repoRoot(t), ".github", "workflows", "ci-fast.yml"))
+	data, err := os.ReadFile(filepath.Join(repoRoot(t), ".github", "workflows", "ci-fast-nightly.yml"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -476,24 +476,24 @@ func TestModernizeRunsOnEveryPullRequest(t *testing.T) {
 
 	cond := jobIfCondition(body, "lint-fast")
 	if strings.Contains(cond, "full-ci") {
-		t.Errorf("ci-fast.yml's lint-fast job gates on the full-ci label (%q): a pull request into fixed-table-form skips it, so a modernize red lands with nothing able to see it until the push (issue #1424)", cond)
+		t.Errorf("ci-fast-nightly.yml's lint-fast job gates on the full-ci label (%q): a pull request into fixed-table-form skips it, so a modernize red lands with nothing able to see it until the push (issue #1424)", cond)
 	}
 	// the fast lane runs the fleet's installed v0.23.0 binary (a `go run` build
 	// of the tool ran past the two-minute cap); ci-full.yml's pin is the same
 	// version, and a runner without the binary is a loud red, never a skip
 	lint := yamlJobs(body)["lint-fast"]
 	if !strings.Contains(lint, "- name: modernize") || !strings.Contains(lint, "modernize ./...") {
-		t.Error("ci-fast.yml's lint-fast no longer carries the modernize step — it must run on every pull request, as ci-full.yml's lint job runs it on the push (issue #1424)")
+		t.Error("ci-fast-nightly.yml's lint-fast no longer carries the modernize step — it must run on every pull request, as ci-full.yml's lint job runs it on the push (issue #1424)")
 	}
 	if !strings.Contains(lint, `modernize-0\.23\.0/`) || !strings.Contains(lint, "tool missing: modernize 0.23.0") {
-		t.Error("ci-fast.yml's modernize step must refuse, by name, a runner whose modernize is not the pinned v0.23.0")
+		t.Error("ci-fast-nightly.yml's modernize step must refuse, by name, a runner whose modernize is not the pinned v0.23.0")
 	}
 	full, err := os.ReadFile(filepath.Join(repoRoot(t), ".github", "workflows", "ci-full.yml"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(string(full), "modernize/cmd/modernize@v0.23.0") {
-		t.Error("ci-full.yml's modernize pin is not v0.23.0, the version ci-fast.yml's fleet binary is held to: bump both together")
+		t.Error("ci-full.yml's modernize pin is not v0.23.0, the version ci-fast-nightly.yml's fleet binary is held to: bump both together")
 	}
 }
 
@@ -534,15 +534,15 @@ func ciMakeTargetsAfter(args string) []string {
 }
 
 // ciPullRequestMakeTargets reads every `make <target>` the pull-request gate,
-// ci-fast.yml, invokes by name, comments stripped.
+// ci-fast-nightly.yml, invokes by name, comments stripped.
 func ciPullRequestMakeTargets(t *testing.T, root string) []string {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "ci-fast.yml"))
+	data, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "ci-fast-nightly.yml"))
 	if err != nil {
-		t.Fatalf("ci-fast.yml is the pull-request gate this test reads: %v", err)
+		t.Fatalf("ci-fast-nightly.yml is the pull-request gate this test reads: %v", err)
 	}
 	var targets []string
-	for _, l := range lines("ci-fast.yml", string(data)) {
+	for _, l := range lines("ci-fast-nightly.yml", string(data)) {
 		for _, m := range ciMakeInvocation.FindAllStringSubmatch(l.text, -1) {
 			targets = append(targets, ciMakeTargetsAfter(m[1])...)
 		}
@@ -563,7 +563,7 @@ func ciInvokesTarget(targets []string, name string) bool {
 
 // TestTheFixedFormHarnessesRunPerPullRequest (issue #857) is a listing check:
 // every fixed-form harness the tables page's build gate names must be invoked
-// by some job in the pull-request gate, .github/workflows/ci-fast.yml, so a
+// by some job in the pull-request gate, .github/workflows/ci-fast-nightly.yml, so a
 // change to what the loader takes cannot leave a red tip behind two green pull
 // requests.
 //
@@ -575,8 +575,8 @@ func ciInvokesTarget(targets []string, name string) bool {
 // test/tables/fixedform_main.cpp:984 and test/c-tables/fixedform_v1.c:75, too
 // few arguments to *FixedLoad — while #855 (which added the plan-cache
 // argument) and #856 (which added a caller) were each green at their own head.
-// This tree splits the pull-request gate into ci-fast.yml (per push) and
-// ci-full.yml (per merge); the harnesses ride ci-fast.yml's per-leg fixed-form
+// This tree splits the pull-request gate into ci-fast-nightly.yml (per push) and
+// ci-full.yml (per merge); the harnesses ride ci-fast-nightly.yml's per-leg fixed-form
 // jobs, and this listing holds them there.
 func TestTheFixedFormHarnessesRunPerPullRequest(t *testing.T) {
 	targets := ciPullRequestMakeTargets(t, repoRoot(t))
@@ -587,7 +587,7 @@ func TestTheFixedFormHarnessesRunPerPullRequest(t *testing.T) {
 	fixedFormHarnesses := []string{"tables-fixedform", "tables-c-fixedform"}
 	for _, harness := range fixedFormHarnesses {
 		if !ciInvokesTarget(targets, harness) {
-			t.Errorf("no job in ci-fast.yml runs `make %s`: the fixed-form harness is built by no pull-request job, so two green pull requests can leave a red tip (issue #857). Add a job that runs the harness — or a fast shard of it — to .github/workflows/ci-fast.yml.", harness)
+			t.Errorf("no job in ci-fast-nightly.yml runs `make %s`: the fixed-form harness is built by no pull-request job, so two green pull requests can leave a red tip (issue #857). Add a job that runs the harness — or a fast shard of it — to .github/workflows/ci-fast-nightly.yml.", harness)
 		}
 	}
 }
@@ -611,6 +611,13 @@ type ciEvent struct {
 	GoCorpusResult string   // needs.go-fixed-corpus.result, success when omitted
 	PRPins         string   // needs.pr-select.outputs.pins (ci-full.yml)
 	PRCS           string   // needs.pr-select.outputs.cs (ci-full.yml)
+
+	// issue_comment (cla.yml): the comment and the thread it is on
+	CommentBody string // github.event.comment.body
+	CommentUser string // github.event.comment.user.login
+	CommentBot  bool   // github.event.comment.user.type == 'Bot'
+	IssueIsPR   bool   // github.event.issue.pull_request is set
+	IssueUser   string // github.event.issue.user.login
 }
 
 type selfHostedJob struct {
@@ -821,6 +828,10 @@ func evalCIExpr(expr string, ev ciEvent) (bool, error) {
 		}
 		lhs = strings.TrimSpace(lhs)
 		want := strings.Trim(strings.TrimSpace(rhs), `"'`)
+		if lhs == "github.event.comment.body" {
+			// contains() on a string is case-insensitive in Actions
+			return strings.Contains(strings.ToLower(ev.CommentBody), strings.ToLower(want)), nil
+		}
 		if lhs == "needs.plan.outputs.rows" {
 			rows, err := resolveCIToken(lhs, ev)
 			if err != nil {
@@ -954,6 +965,24 @@ func resolveCIToken(tok string, ev ciEvent) (string, error) {
 	switch tok {
 	case "true", "false":
 		return tok, nil
+	case "null":
+		return "", nil
+	case "github.event.comment.body":
+		return ev.CommentBody, nil
+	case "github.event.comment.user.login":
+		return ev.CommentUser, nil
+	case "github.event.comment.user.type":
+		if ev.CommentBot {
+			return "Bot", nil
+		}
+		return "User", nil
+	case "github.event.issue.pull_request":
+		if ev.IssueIsPR {
+			return "<pull_request>", nil
+		}
+		return "", nil
+	case "github.event.issue.user.login":
+		return ev.IssueUser, nil
 	case "github.event_name":
 		return ev.Name, nil
 	case "github.repository":
@@ -1198,21 +1227,22 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 	for _, job := range []string{"leg-gate", "leg-gate-cpp", "leg-gate-lobster", "leg-gate-rust", "leg-gate-squirrel"} {
 		pr := sameRepoMainUnlabeled
 		pr.PlanLegs = `["cpp","go","lobster","rust","squirrel"]`
-		if ok, _ := jobSelectsSelfHosted(wfs["ci-fast.yml"], job, pr); ok {
-			errs = append(errs, fmt.Sprintf("same-repo PR into main ran ci-fast.yml:%s; the leg gates run on dispatch only", job))
+		if ok, _ := jobSelectsSelfHosted(wfs["ci-fast-nightly.yml"], job, pr); ok {
+			errs = append(errs, fmt.Sprintf("same-repo PR into main ran ci-fast-nightly.yml:%s; the leg gates run on dispatch only", job))
 		}
 	}
-	for _, wantKey := range []string{
-		"ci-fast.yml:golangci-lint-fast",
-		"ci-fast.yml:generated-current",
-		"ci-fast.yml:lang-clean",
-		"ci-fast.yml:lang-lint",
-		"ci-fast.yml:verify-leg",
-	} {
-		wfName, jobName, _ := strings.Cut(wantKey, ":")
-		ok, err := jobSelectsSelfHosted(wfs[wfName], jobName, sameRepoMainUnlabeled)
-		if err != nil || !ok {
-			errs = append(errs, fmt.Sprintf("same-repo PR into main did not select self-hosted %s (err=%v)", wantKey, err))
+	// THE PER-PR TIER IS THE HAPPY PATH ONLY (the owner, 2026-11-25): a
+	// same-repository pull request selects ci-fast.yml happy-path, and no job
+	// of the nightly lane.
+	if ok, err := jobSelectsSelfHosted(wfs["ci-fast.yml"], "happy-path", sameRepoMainUnlabeled); err != nil || !ok {
+		errs = append(errs, fmt.Sprintf("same-repo PR into main did not select self-hosted ci-fast.yml:happy-path (err=%v)", err))
+	}
+	for _, sh := range shJobs {
+		if sh.Workflow != "ci-fast-nightly.yml" {
+			continue
+		}
+		if ok, _ := jobSelectsSelfHosted(wfs[sh.Workflow], sh.Job, sameRepoMainUnlabeled); ok {
+			errs = append(errs, fmt.Sprintf("same-repo PR into main ran %s; the nightly lane runs on its schedule and on dispatch only", sh.Key()))
 		}
 	}
 	// ONLY THE FAST LANE RUNS ON A PUSH OR A PULL REQUEST (the owner,
@@ -1221,7 +1251,7 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 	// dispatch (nightly_test.go).
 	errs = append(errs, nightlyOnlyErrors(wfs)...)
 	// 4. Stream-to-dev PR (sprint/schema-* -> dev): automatically covered by
-	// ci-fast.yml (lang-lint included) and ci-full.yml's per-PR jobs.
+	// ci-fast-nightly.yml (lang-lint included) and ci-full.yml's per-PR jobs.
 	streamToDevPR := ciEvent{
 		Name:     "pull_request",
 		Branch:   "dev",
@@ -1231,82 +1261,76 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 		PlanPkgs: planPkgs,
 		PlanLegs: planLegs,
 	}
+	if ok, err := jobRunsInWorkflow(wfs["ci-fast.yml"], "happy-path", streamToDevPR); err != nil || !ok {
+		errs = append(errs, fmt.Sprintf("stream-to-dev PR did not run ci-fast.yml:happy-path (err=%v)", err))
+	}
 	for _, job := range []string{"plan", "lint-fast", "ci-policy", "block-gate", "go-test-touched"} {
-		if ok, err := jobRunsInWorkflow(wfs["ci-fast.yml"], job, streamToDevPR); err != nil || !ok {
-			errs = append(errs, fmt.Sprintf("stream-to-dev PR did not run ci-fast.yml:%s (err=%v)", job, err))
+		if ok, _ := jobRunsInWorkflow(wfs["ci-fast-nightly.yml"], job, streamToDevPR); ok {
+			errs = append(errs, fmt.Sprintf("stream-to-dev PR ran ci-fast-nightly.yml:%s; the nightly lane runs on its schedule and on dispatch only", job))
 		}
 	}
-	if ok, _ := jobRunsInWorkflow(wfs["ci-fast.yml"], "leg-gate", streamToDevPR); ok {
-		errs = append(errs, "stream-to-dev PR ran ci-fast.yml:leg-gate below main")
+	if ok, _ := jobRunsInWorkflow(wfs["ci-fast-nightly.yml"], "leg-gate", streamToDevPR); ok {
+		errs = append(errs, "stream-to-dev PR ran ci-fast-nightly.yml:leg-gate below main")
 	}
-	if ok, _ := jobRunsInWorkflow(wfs["ci-fast.yml"], "leg-gate-lobster", streamToDevPR); ok {
-		errs = append(errs, "stream-to-dev PR ran ci-fast.yml:leg-gate-lobster below main")
+	if ok, _ := jobRunsInWorkflow(wfs["ci-fast-nightly.yml"], "leg-gate-lobster", streamToDevPR); ok {
+		errs = append(errs, "stream-to-dev PR ran ci-fast-nightly.yml:leg-gate-lobster below main")
 	}
-	if ok, _ := jobRunsInWorkflow(wfs["ci-fast.yml"], "leg-gate-squirrel", streamToDevPR); ok {
-		errs = append(errs, "stream-to-dev PR ran ci-fast.yml:leg-gate-squirrel below main")
+	if ok, _ := jobRunsInWorkflow(wfs["ci-fast-nightly.yml"], "leg-gate-squirrel", streamToDevPR); ok {
+		errs = append(errs, "stream-to-dev PR ran ci-fast-nightly.yml:leg-gate-squirrel below main")
 	}
-	if ok, _ := jobRunsInWorkflow(wfs["ci-fast.yml"], "leg-gate-cpp", streamToDevPR); ok {
-		errs = append(errs, "stream-to-dev PR ran ci-fast.yml:leg-gate-cpp below main")
+	if ok, _ := jobRunsInWorkflow(wfs["ci-fast-nightly.yml"], "leg-gate-cpp", streamToDevPR); ok {
+		errs = append(errs, "stream-to-dev PR ran ci-fast-nightly.yml:leg-gate-cpp below main")
 	}
-	if ok, _ := jobRunsInWorkflow(wfs["ci-fast.yml"], "leg-gate-rust", streamToDevPR); ok {
-		errs = append(errs, "stream-to-dev PR ran ci-fast.yml:leg-gate-rust below main")
+	if ok, _ := jobRunsInWorkflow(wfs["ci-fast-nightly.yml"], "leg-gate-rust", streamToDevPR); ok {
+		errs = append(errs, "stream-to-dev PR ran ci-fast-nightly.yml:leg-gate-rust below main")
 	}
 	// the Rust probe row runs exactly when the plan selects the Rust leg
 	rustIntoMain := sameRepoMainUnlabeled
 	rustIntoMain.Name = "workflow_dispatch"
 	rustIntoMain.PlanLegs = `["rust"]`
-	if ok, err := jobSelectsSelfHosted(wfs["ci-fast.yml"], "leg-gate-rust", rustIntoMain); err != nil || !ok {
-		errs = append(errs, fmt.Sprintf("a dispatch selecting the Rust leg did not run ci-fast.yml:leg-gate-rust (err=%v)", err))
+	if ok, err := jobSelectsSelfHosted(wfs["ci-fast-nightly.yml"], "leg-gate-rust", rustIntoMain); err != nil || !ok {
+		errs = append(errs, fmt.Sprintf("a dispatch selecting the Rust leg did not run ci-fast-nightly.yml:leg-gate-rust (err=%v)", err))
 	}
-	if ok, _ := jobSelectsSelfHosted(wfs["ci-fast.yml"], "leg-gate-rust", sameRepoMainUnlabeled); ok {
-		errs = append(errs, "ci-fast.yml:leg-gate-rust ran with no Rust leg in the plan")
+	if ok, _ := jobSelectsSelfHosted(wfs["ci-fast-nightly.yml"], "leg-gate-rust", sameRepoMainUnlabeled); ok {
+		errs = append(errs, "ci-fast-nightly.yml:leg-gate-rust ran with no Rust leg in the plan")
 	}
 	// the C++ parts run exactly when the plan selects the C++ leg
 	cppIntoMain := sameRepoMainUnlabeled
 	cppIntoMain.Name = "workflow_dispatch"
 	cppIntoMain.PlanLegs = `["cpp"]`
-	if ok, err := jobSelectsSelfHosted(wfs["ci-fast.yml"], "leg-gate-cpp", cppIntoMain); err != nil || !ok {
-		errs = append(errs, fmt.Sprintf("a dispatch selecting the C++ leg did not run ci-fast.yml:leg-gate-cpp (err=%v)", err))
+	if ok, err := jobSelectsSelfHosted(wfs["ci-fast-nightly.yml"], "leg-gate-cpp", cppIntoMain); err != nil || !ok {
+		errs = append(errs, fmt.Sprintf("a dispatch selecting the C++ leg did not run ci-fast-nightly.yml:leg-gate-cpp (err=%v)", err))
 	}
-	if ok, _ := jobSelectsSelfHosted(wfs["ci-fast.yml"], "leg-gate-cpp", sameRepoMainUnlabeled); ok {
-		errs = append(errs, "ci-fast.yml:leg-gate-cpp ran with no C++ leg in the plan")
+	if ok, _ := jobSelectsSelfHosted(wfs["ci-fast-nightly.yml"], "leg-gate-cpp", sameRepoMainUnlabeled); ok {
+		errs = append(errs, "ci-fast-nightly.yml:leg-gate-cpp ran with no C++ leg in the plan")
 	}
 	// the Lobster rows run exactly when the plan selects the Lobster leg
 	lobsterIntoMain := sameRepoMainUnlabeled
 	lobsterIntoMain.Name = "workflow_dispatch"
 	lobsterIntoMain.PlanLegs = `["lobster"]`
-	if ok, err := jobSelectsSelfHosted(wfs["ci-fast.yml"], "leg-gate-lobster", lobsterIntoMain); err != nil || !ok {
-		errs = append(errs, fmt.Sprintf("a dispatch selecting the Lobster leg did not run ci-fast.yml:leg-gate-lobster (err=%v)", err))
+	if ok, err := jobSelectsSelfHosted(wfs["ci-fast-nightly.yml"], "leg-gate-lobster", lobsterIntoMain); err != nil || !ok {
+		errs = append(errs, fmt.Sprintf("a dispatch selecting the Lobster leg did not run ci-fast-nightly.yml:leg-gate-lobster (err=%v)", err))
 	}
-	if ok, _ := jobSelectsSelfHosted(wfs["ci-fast.yml"], "leg-gate-lobster", sameRepoMainUnlabeled); ok {
-		errs = append(errs, "ci-fast.yml:leg-gate-lobster ran with no Lobster leg in the plan")
+	if ok, _ := jobSelectsSelfHosted(wfs["ci-fast-nightly.yml"], "leg-gate-lobster", sameRepoMainUnlabeled); ok {
+		errs = append(errs, "ci-fast-nightly.yml:leg-gate-lobster ran with no Lobster leg in the plan")
 	}
 	// the Squirrel card rows run exactly when the plan selects the Squirrel leg
 	squirrelIntoMain := sameRepoMainUnlabeled
 	squirrelIntoMain.Name = "workflow_dispatch"
 	squirrelIntoMain.PlanLegs = `["squirrel"]`
-	if ok, err := jobSelectsSelfHosted(wfs["ci-fast.yml"], "leg-gate-squirrel", squirrelIntoMain); err != nil || !ok {
-		errs = append(errs, fmt.Sprintf("a dispatch selecting the Squirrel leg did not run ci-fast.yml:leg-gate-squirrel (err=%v)", err))
+	if ok, err := jobSelectsSelfHosted(wfs["ci-fast-nightly.yml"], "leg-gate-squirrel", squirrelIntoMain); err != nil || !ok {
+		errs = append(errs, fmt.Sprintf("a dispatch selecting the Squirrel leg did not run ci-fast-nightly.yml:leg-gate-squirrel (err=%v)", err))
 	}
-	if ok, _ := jobSelectsSelfHosted(wfs["ci-fast.yml"], "leg-gate-squirrel", sameRepoMainUnlabeled); ok {
-		errs = append(errs, "ci-fast.yml:leg-gate-squirrel ran with no Squirrel leg in the plan")
+	if ok, _ := jobSelectsSelfHosted(wfs["ci-fast-nightly.yml"], "leg-gate-squirrel", sameRepoMainUnlabeled); ok {
+		errs = append(errs, "ci-fast-nightly.yml:leg-gate-squirrel ran with no Squirrel leg in the plan")
 	}
-	for _, wantKey := range []string{
-		"ci-fast.yml:golangci-lint-fast",
-		"ci-fast.yml:generated-current",
-		"ci-fast.yml:lang-clean",
-		"ci-fast.yml:lang-lint",
-		"ci-fast.yml:verify-leg",
-	} {
-		wfName, jobName, _ := strings.Cut(wantKey, ":")
-		if ok, err := jobSelectsSelfHosted(wfs[wfName], jobName, streamToDevPR); err != nil || !ok {
-			errs = append(errs, fmt.Sprintf("stream-to-dev PR did not select self-hosted %s (err=%v)", wantKey, err))
-		}
+	if ok, err := jobSelectsSelfHosted(wfs["ci-fast.yml"], "happy-path", streamToDevPR); err != nil || !ok {
+		errs = append(errs, fmt.Sprintf("stream-to-dev PR did not select self-hosted ci-fast.yml:happy-path (err=%v)", err))
 	}
 
-	// CI fast and CI full run on a pull request whatever its base. A sprint
-	// card branch is not main, dev, or fixed-table-form, and neither is an
-	// arbitrary feature branch. Push triggers are unchanged.
+	// CI fast (the happy path) runs on a pull request whatever its base. A
+	// sprint card branch is not main, dev, or fixed-table-form, and neither is
+	// an arbitrary feature branch. Push triggers are unchanged.
 	unnamedBase := ciEvent{
 		Name:     "pull_request",
 		Branch:   "feature/not-a-named-base",
@@ -1316,13 +1340,11 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 		PlanPkgs: planPkgs,
 		PlanLegs: planLegs,
 	}
-	for _, job := range []string{"plan", "lint-fast", "ci-policy", "block-gate", "go-test-touched"} {
-		if ok, err := jobRunsInWorkflow(wfs["ci-fast.yml"], job, unnamedBase); err != nil || !ok {
-			errs = append(errs, fmt.Sprintf("PR into an unnamed base did not run ci-fast.yml:%s (err=%v)", job, err))
-		}
+	if ok, err := jobRunsInWorkflow(wfs["ci-fast.yml"], "happy-path", unnamedBase); err != nil || !ok {
+		errs = append(errs, fmt.Sprintf("PR into an unnamed base did not run ci-fast.yml:happy-path (err=%v)", err))
 	}
-	if ok, _ := jobRunsInWorkflow(wfs["ci-fast.yml"], "leg-gate", unnamedBase); ok {
-		errs = append(errs, "PR into an unnamed base ran ci-fast.yml:leg-gate below main")
+	if ok, _ := jobRunsInWorkflow(wfs["ci-fast-nightly.yml"], "leg-gate", unnamedBase); ok {
+		errs = append(errs, "PR into an unnamed base ran ci-fast-nightly.yml:leg-gate")
 	}
 	forkUnnamed := unnamedBase
 	forkUnnamed.HeadRepo = forkRepo
@@ -1383,12 +1405,19 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 	if workflowTriggersOn(wfs["ci-fast.yml"], schedEv) {
 		errs = append(errs, "ci-fast.yml triggered on schedule")
 	}
+	// the old per-PR lane runs on the schedule (2026-11-25), its always-on
+	// gates and the leg gates the plan selects
+	for _, job := range []string{"plan", "ci-policy", "go-test-touched", "leg-gate", "verdict"} {
+		if ok, err := jobSelectsSelfHosted(wfs["ci-fast-nightly.yml"], job, schedEv); err != nil || !ok {
+			errs = append(errs, fmt.Sprintf("schedule did not select self-hosted ci-fast-nightly.yml:%s (err=%v)", job, err))
+		}
+	}
 
 	// 8. workflow_dispatch runs every self-hosted job of a workflow it can
 	// start, except a job whose own if: is an explicit list of events that
 	// does not name it (a push-and-pull-request replay, say).
 	// The plan here selects the Lobster leg too, whose rows are a job of
-	// their own (ci-fast.yml leg-gate-lobster) gated on that selection.
+	// their own (ci-fast-nightly.yml leg-gate-lobster) gated on that selection.
 	// leg-gate-squirrel, leg-gate-cpp and leg-gate-rust are gated the same way
 	// on theirs.
 	dispatchEv := ciEvent{
@@ -1397,7 +1426,7 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 		Repo:           repo,
 		PlanPkgs:       planPkgs,
 		PlanLegs:       `["cpp","go","lobster","rust","squirrel"]`,
-		PlanVerifyLegs: `["dart","elixir"]`,
+		PlanVerifyLegs: `["cpp","dart","elixir"]`,
 		PlanDartCorpus: "true",
 		PlanCppCorpus:  "true",
 	}
@@ -1416,9 +1445,9 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 		}
 	}
 
-	// 9. Concurrency groups in ci-fast.yml and ci-full.yml must include
+	// 9. Concurrency groups in ci-fast-nightly.yml and ci-full.yml must include
 	// ${{ github.ref }} so independent stream PRs never serialize all CI.
-	for _, wfName := range []string{"ci-fast.yml", "ci-full.yml"} {
+	for _, wfName := range []string{"ci-fast.yml", "ci-fast-nightly.yml", "ci-full.yml"} {
 		if !strings.Contains(wfs[wfName], "${{ github.event.pull_request.number || format('{0}-{1}', github.event_name, github.ref) }}") {
 			errs = append(errs, fmt.Sprintf("%s concurrency group does not key on the pull request number or ${{ github.event_name }}-${{ github.ref }} (would serialize CI across refs)", wfName))
 		}
@@ -1449,35 +1478,40 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"certify.yml:test",
 		"certify.yml:verdict",
 		"certify.yml:vuln",
-		"ci-fast.yml:block-gate",
-		"ci-fast.yml:build-cpp-conformance-account",
-		"ci-fast.yml:ci-policy",
-		"ci-fast.yml:generated-current",
-		"ci-fast.yml:go-fixed-corpus",
-		"ci-fast.yml:go-test-touched",
-		"ci-fast.yml:golangci-lint-fast",
-		"ci-fast.yml:input-family",
-		"ci-fast.yml:input-family-cpp-conformance",
-		"ci-fast.yml:input-family-dart-conformance",
-		"ci-fast.yml:lang-clean",
-		"ci-fast.yml:lang-lint",
-		"ci-fast.yml:leg-gate",
-		"ci-fast.yml:leg-gate-cpp",
-		"ci-fast.yml:leg-gate-lobster",
-		"ci-fast.yml:leg-gate-rust",
-		"ci-fast.yml:leg-gate-squirrel",
-		"ci-fast.yml:lint-fast",
-		"ci-fast.yml:newleg-scaffold",
-		"ci-fast.yml:nightly-fast",
-		"ci-fast.yml:pins",
-		"ci-fast.yml:plan",
-		"ci-fast.yml:verdict",
-		"ci-fast.yml:verify-dart-conformance",
-		"ci-fast.yml:verify-elixir-conformance",
-		"ci-fast.yml:verify-leg",
-		"ci-fast.yml:vet",
+		"ci-fast-nightly.yml:block-gate",
+		"ci-fast-nightly.yml:build-cpp-conformance-account",
+		"ci-fast-nightly.yml:ci-policy",
+		"ci-fast-nightly.yml:generated-current",
+		"ci-fast-nightly.yml:go-fixed-corpus",
+		"ci-fast-nightly.yml:go-test-touched",
+		"ci-fast-nightly.yml:golangci-lint-fast",
+		"ci-fast-nightly.yml:input-family",
+		"ci-fast-nightly.yml:input-family-cpp-conformance",
+		"ci-fast-nightly.yml:input-family-dart-conformance",
+		"ci-fast-nightly.yml:lang-clean",
+		"ci-fast-nightly.yml:lang-lint",
+		"ci-fast-nightly.yml:leg-gate",
+		"ci-fast-nightly.yml:leg-gate-cpp",
+		"ci-fast-nightly.yml:leg-gate-lobster",
+		"ci-fast-nightly.yml:leg-gate-rust",
+		"ci-fast-nightly.yml:leg-gate-squirrel",
+		"ci-fast-nightly.yml:lint-fast",
+		"ci-fast-nightly.yml:newleg-scaffold",
+		"ci-fast-nightly.yml:nightly-fast",
+		"ci-fast-nightly.yml:pins",
+		"ci-fast-nightly.yml:plan",
+		"ci-fast-nightly.yml:schema-test",
+		"ci-fast-nightly.yml:verdict",
+		"ci-fast-nightly.yml:verify-cpp-conformance",
+		"ci-fast-nightly.yml:verify-dart-conformance",
+		"ci-fast-nightly.yml:verify-dart-fuzz",
+		"ci-fast-nightly.yml:verify-elixir-conformance",
+		"ci-fast-nightly.yml:verify-leg",
+		"ci-fast-nightly.yml:vet",
+		"ci-fast.yml:happy-path",
 		"ci-full.yml:conformance",
 		"ci-full.yml:conformance-matrix",
+		"ci-full.yml:conformance-rows",
 		"ci-full.yml:cpp-lock",
 		"ci-full.yml:cs-fuzz",
 		"ci-full.yml:cs-tables",
@@ -1578,6 +1612,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"schema-squirrel-resource-bounds.yml:nightly",
 		"schema-squirrel-runs-hostile-corpus.yml:fast",
 		"schema-squirrel-runs-hostile-corpus.yml:nightly",
+		"schema-test-nightly.yml:nightly",
 		"schema-unity-runs-hostile-corpus.yml:corpus",
 		"schema-unity-runs-hostile-corpus.yml:negative-control",
 		"tla-nightly.yml:tlc",
@@ -1621,23 +1656,23 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		newSubstr string
 		wantErr   string
 	}{
-		// The fork guard on ci-fast's plan is what keeps every job that needs
-		// it (lang-lint, go-test-touched, the leg gates) off the fleet for a
-		// fork: with skipped needs modelled, dropping plan's guard admits
-		// plan itself and lang-lint, whose own guard is the second layer.
+		// The fork guard on ci-fast.yml's happy-path is what keeps a fork's
+		// code off the fleet: dropping it admits a fork's pull request.
 		{
-			name:      "drop ci-fast plan same-repo PR guard",
+			name:      "drop ci-fast happy-path same-repo PR guard",
 			workflow:  "ci-fast.yml",
-			oldSubstr: "  plan:\n    if: startsWith(github.head_ref, 'sprint/') == false && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)\n",
-			newSubstr: "  plan:\n    if: startsWith(github.head_ref, 'sprint/') == false\n",
-			wantErr:   "ci-fast.yml:plan admits fork PR",
+			oldSubstr: "  happy-path:\n    if: (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)\n",
+			newSubstr: "  happy-path:\n    if: github.event_name != 'schedule'\n",
+			wantErr:   "ci-fast.yml:happy-path admits fork PR",
 		},
+		// the nightly lane back on pull requests (the owner, 2026-11-25: per
+		// pull request ONLY compile + one simple happy path per language)
 		{
-			name:      "drop ci-fast plan and lang-lint same-repo PR guards",
-			workflow:  "ci-fast.yml",
-			oldSubstr: "github.event.pull_request.head.repo.full_name == github.repository",
-			newSubstr: "github.repository == github.repository",
-			wantErr:   "ci-fast.yml:lang-lint admits fork PR",
+			name:      "restore a pull_request trigger on ci-fast-nightly",
+			workflow:  "ci-fast-nightly.yml",
+			oldSubstr: "\non:\n",
+			newSubstr: "\non:\n  pull_request:\n",
+			wantErr:   "ci-fast-nightly.yml triggers on pull_request",
 		},
 		{
 			name:      "restore a pull_request trigger on the Dart strict analyze lens",
@@ -1679,9 +1714,9 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		{
 			name:      "restore a named-base filter on ci-fast pull_request",
 			workflow:  "ci-fast.yml",
-			oldSubstr: "  # every pull request, whatever its base: sprint landings target sprint/<stream> branches, not main\n  pull_request:\n  workflow_dispatch:\n",
-			newSubstr: "  # every pull request, whatever its base: sprint landings target sprint/<stream> branches, not main\n  pull_request:\n    branches: [ main, dev, fixed-table-form ]\n  workflow_dispatch:\n",
-			wantErr:   "PR into an unnamed base did not run ci-fast.yml:plan",
+			oldSubstr: "  # every pull request, whatever its base\n  pull_request:\n  workflow_dispatch:\n",
+			newSubstr: "  # every pull request, whatever its base\n  pull_request:\n    branches: [ main, dev, fixed-table-form ]\n  workflow_dispatch:\n",
+			wantErr:   "PR into an unnamed base did not run ci-fast.yml:happy-path",
 		},
 		{
 			name:      "serialize ci-fast concurrency across refs",

@@ -14,10 +14,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/lua/luarun"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // mqaProbe runs one Lua probe over a unit, its announcement and a batch, and
@@ -102,9 +102,12 @@ assert(values[1].cf == ` + mqLuaNumber(want) + `, "cf = " .. tostring(values[1].
 assert(values[1].tokens[1] == 101 and values[1].tokens[3] == 303, "tokens")
 local fresh = T.NewRoot()
 fresh.cf = ` + mqLuaNumber(3.5) + `
-fresh.tokens = { [1] = 101, [3] = 303 }
-local written = T.SaveMessages("Root", vocab, { fresh })
-assert(written ~= nil, "save refused")
+-- an enum-keyed array is a sequence of E.Max, key k at index k (docs/PORT-LUA.md,
+-- THE TYPE MAPPING): Beta holds its default, never a hole, which the writer
+-- refuses as invalid_value (f259a7aa3a)
+fresh.tokens = { 101, 0, 303 }
+local written, why = T.SaveMessages("Root", vocab, { fresh })
+assert(written ~= nil, "save refused: " .. tostring(why))
 io.write((written:gsub(".", function(c) return string.format("%02x", c:byte()) end)), "\n")
 `
 	got := mqaHex(t, mqaProbe(t, unit, announce, batch, roundTrip))

@@ -2417,7 +2417,7 @@ int readEmptyBBits(EmptyB value, ByteData view, int numBits, int bitOffset) {
 }
 
 // EmptyUnionType: union EmptyUnion's tag — None = 0, then each variant in declared order (SPEC §4.8)
-extension type const EmptyUnionType(int _value) implements int {
+extension type const EmptyUnionType(int _value) {
   static const EmptyUnionType none = EmptyUnionType(0);
   static const EmptyUnionType a = EmptyUnionType(1);
   static const EmptyUnionType b = EmptyUnionType(2);
@@ -2427,7 +2427,7 @@ extension type const EmptyUnionType(int _value) implements int {
 // enumNameEmptyUnionType: debug/log/tooling name for any EmptyUnionType wire value —
 // out-of-set values (wire-legal up to the declared max) name as '???'
 String enumNameEmptyUnionType(int value) {
-  switch (value) {
+  switch (EmptyUnionType(value)) {
     case EmptyUnionType.none:
       return 'None';
     case EmptyUnionType.a:
@@ -2471,9 +2471,9 @@ int writeEmptyUnion(EmptyUnion value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
-  assert(value.type >= 0);
-  assert(value.type <= 2);
-  v = value.type & 0x3;
+  assert((value.type as int) >= 0);
+  assert((value.type as int) <= 2);
+  v = (value.type as int) & 0x3;
   scratch |= v << scratchBits;
   scratchBits += 2;
   switch (value.type) {
@@ -2603,9 +2603,9 @@ int writeHoldsEmptyUnion(HoldsEmptyUnion value, ByteData view) {
   var v = 0;
   assert(value.lead >= 0);
   assert(value.lead <= 31);
-  assert(value.u.type >= 0);
-  assert(value.u.type <= 2);
-  v = (value.lead & 0x1f) | ((value.u.type & 0x3) << 5);
+  assert((value.u.type as int) >= 0);
+  assert((value.u.type as int) <= 2);
+  v = (value.lead & 0x1f) | (((value.u.type as int) & 0x3) << 5);
   scratch |= v << scratchBits;
   scratchBits += 7;
   switch (value.u.type) {

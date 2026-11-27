@@ -5,7 +5,7 @@ import (
 	"math/big"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 func (g *blockGen) emitBlockBuild(bl *ir.BlockLayout) {
@@ -29,12 +29,60 @@ func (g *blockGen) emitBlockBuild(bl *ir.BlockLayout) {
 	}
 	g.hf("        block = new %sBlock((byte*)pointer, at); return true;\n    }\n\n", n)
 	g.hf("    public static bool Begin(out %sBlock block, %sBlockStorage storage, in %sCounts counts, out TableBlockRefusal refusal) { return Begin(out block, storage.Pointer, storage.Capacity, counts, out refusal); }\n", n, n, n)
-	g.emitBlockBuildValue(bl)
 	g.hf("    public ref %sBlockProjection WritableProjection { get { return ref *(%sBlockProjection*)basePointer; } }\n", n, n)
 	for _, a := range bl.Arrays {
 		name := member(a.Field)
 		g.hf("    public Span<%sRow> %sWritableSpan { get { var p = (%sBlockProjection*)basePointer; return new Span<%sRow>(basePointer + p->%s.OffsetOf, (int)p->%s.Count); } }\n", a.ElemName, name, n, a.ElemName, name, name)
 	}
+}
+
+// generateBlockFill emits <Package>BlockFill.cs, the Begin overloads that take
+// a table's managed VALUE and check it before they settle a block's layout.
+// They are the one block symbol that names a table wire storage class, and
+// that class lives in <Base>Table.cs, which the accelerator pair never
+// compiles: <Base>Block.cs and <Base>Cook.cs build together and with no
+// table source at all (docs/SPEC-TABLES.md §19.2, §7), and <Base>Table.cs
+// carries not one block symbol. So they sit in a file of their own, one per
+// unit, beside both, completing the handle as a second part of the partial
+// <Table>Block struct. A consumer that blocks only from counts never compiles
+// it; a consumer that blocks a managed value compiles it with both.
+func generateBlockFill(u *ir.Unit, blocks *ir.BlockUnit) (string, []byte) {
+	if !anyBlockForm(u, blocks) {
+		return "", nil
+	}
+	g := &blockGen{unit: u, blocks: blocks}
+	for _, f := range u.Files {
+		for _, st := range f.Tables {
+			if !st.CarriesForm("block") {
+				continue
+			}
+			bl := blocks.Block(st.Name)
+			if bl == nil {
+				continue
+			}
+			g.hf("// %s's block, begun from a managed %s: every bound the value must keep is\n", st.Name, st.Name)
+			g.hf("// checked first, and a value that breaks one begins no block.\n")
+			g.hf("public unsafe readonly partial struct %sBlock\n{\n", st.Name)
+			g.emitBlockBuildValue(bl)
+			g.hf("}\n\n")
+		}
+	}
+	var h strings.Builder
+	h.WriteString(generatedFrom(nil, u))
+	h.WriteString("// SPDX-License-Identifier: NONE — this generated output is yours, under terms of\n")
+	h.WriteString("// your choice. See the LICENSE exception in the schema compiler; the compiler is\n")
+	h.WriteString("// AGPL-3.0, its output is not.\n")
+	fmt.Fprintf(&h, "// package %s — the BLOCK FORM begun from a managed value (docs/SPEC-TABLES.md §19).\n", u.Package)
+	h.WriteString("//\n")
+	h.WriteString("// The BRIDGE between the two halves: these Begin overloads take the table\n")
+	h.WriteString("// wire's storage class from <Base>Table.cs and complete the block handle in\n")
+	h.WriteString("// <Base>Block.cs. Compile this file only beside both; the block and cook\n")
+	h.WriteString("// pair compiles without it, and without any table source.\n\n")
+	h.WriteString("using System;\n\n")
+	fmt.Fprintf(&h, "namespace %s\n{\n\n", capitalize(u.Package))
+	h.WriteString(indent4(g.handles.String()))
+	h.WriteString("\n}\n")
+	return capitalize(u.Package) + "BlockFill.cs", []byte(h.String())
 }
 
 func (g *blockGen) emitBlockBuildValue(bl *ir.BlockLayout) {

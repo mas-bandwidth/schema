@@ -1,3 +1,5 @@
+import sys
+sys.dont_write_bytecode = True  # never write a __pycache__ into the tree
 import contextlib
 import importlib.machinery
 import importlib.util
@@ -17,7 +19,7 @@ loader.exec_module(m)
 
 
 def native(package="gotable", name="TestReady", action="pass", output=""):
-    pkg = "github.com/mas-bandwidth/schema/v2/" + m.package_path(package)
+    pkg = "github.com/mas-bandwidth/schema/v3/" + m.package_path(package)
     return "\n".join(json.dumps(x) for x in [
         {"Package":pkg,"Action":"run","Test":name},
         {"Package":pkg,"Action":"output","Test":name,"Output":output},
@@ -63,7 +65,11 @@ class FakeRunner(m.Runner):
             text += "\n" + native(self.lang).splitlines()[-1]
         elif name.startswith("packet-"):
             text = "OK"
-            if name == "packet-schema_test_random":
+            _, label, index = (name.split("-") + ["", ""])[:3]
+            variable = m.PACKET_COUNTS.get((self.lang, label, int(index) if index.isdigit() else -1))
+            if variable:
+                text = f"ran {m.packet_count(self.root, self.lang, variable)}, failed 0"
+            elif name == "packet-schema_test_random":
                 text = "OK (50000 iterations, seed 42)"
             elif self.lang == "dart" and name.endswith("-1"):
                 text = "Generated: /tmp/mock-packet"
@@ -369,7 +375,7 @@ class Contracts(unittest.TestCase):
             self.assertEqual(expected.count(before),1)
             expected=expected.replace(before,after)
         self.assertEqual(copied,expected)
-        self.assertEqual(len(receipt["replacements"]),2)
+        self.assertEqual(len(receipt["replacements"]),3)
         runner.temporary.cleanup()
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp)
@@ -389,8 +395,34 @@ class Contracts(unittest.TestCase):
             self.assertTrue(m.packet_result(text))
         self.assertTrue(m.packet_result("OK (0 iterations, seed 2)",random=True))
 
+    def test_counted_packet_primaries(self):
+        # go, elixir, js and dart primaries print "ran N, failed M" (tools/mustrun);
+        # nightly 45119714773 read them for OK and called every one incomplete
+        ok=dict(count=525,variable="GO_MAIN_CHECKS")
+        self.assertEqual(m.packet_result("checking\nran 525, failed 0\n",**ok),[])
+        for text in ("OK\n","ran 525, failed 1\n","ran 524, failed 0\n","ran 0, failed 0\n",
+                     "ran 525, failed 0\nran 525, failed 0\n","","test: ran 525, failed 0\n"):
+            self.assertTrue(m.packet_result(text,**ok),text)
+        self.assertTrue(m.packet_result("ran 525, failed 0\n",count=None,variable="GO_MAIN_CHECKS"))
+        # every mapped variable is registered once, and is the one the make
+        # recipe hands mustrun for the same program
+        recipes={"normal":"test/{0} &&","ludicrous":"test/{0}-ludicrous &&"}
+        for (lang,label,index),variable in m.PACKET_COUNTS.items():
+            self.assertIsNotNone(m.packet_count(ROOT,lang,variable),variable)
+            mk=(ROOT/"make"/(lang+".mk")).read_text()
+            self.assertIn("-count $("+variable+")",mk,variable)
+            self.assertTrue(any(recipes[label].format(lang) in line and "$("+variable+")" in line
+                                for line in mk.splitlines()),variable)
+        for lang in ("go","elixir","js","dart"):
+            self.assertTrue(any(k[0]==lang for k in m.PACKET_COUNTS),lang)
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp)/"make").mkdir()
+            (Path(tmp)/"make"/"go.mk").write_text("GO_MAIN_CHECKS := 5\nGO_MAIN_CHECKS := 6\n")
+            self.assertIsNone(m.packet_count(tmp,"go","GO_MAIN_CHECKS"))
+            self.assertIsNone(m.packet_count(tmp,"go","GO_LUDICROUS_CHECKS"))
+
     def test_every_native_retirement_requires_exact_marker_and_current_replacement(self):
-        self.assertEqual(sum(map(len,m.RETIRED_NATIVE.values())),68)
+        self.assertEqual(sum(map(len,m.RETIRED_NATIVE.values())),67)
         for lang, entries in m.RETIRED_NATIVE.items():
             for marker, required in entries.items():
                 with self.subTest(lang=lang,marker=marker), contextlib.redirect_stdout(io.StringIO()):
@@ -502,8 +534,10 @@ class Contracts(unittest.TestCase):
         self.assertFalse(targets-set(blocks),sorted(targets-set(blocks)))
         self.assertEqual(m.WIRE_CONTROLS["cs"],
                          "tables-cs-pack-negative-control tables-cs-retain-negative-control")
-        outer={name for name in targets if any(m.re.search(r"\bgo test\b|test/slowgate/proof",line)
-                                                for line in blocks[name])}
+        def outer_calls(name):
+            return sum(1 for line in blocks[name]
+                       if not line.lstrip().startswith("#") and m.re.search(r"\bgo test\b|test/slowgate/proof",line))
+        outer={name for name in targets if outer_calls(name)}
         # Goose's gates run go test in their own recipes; the readiness run
         # executes them through goose_uncapped_makefile, which uncaps each.
         goose_outer={name for name in outer if name.startswith("tables-goose-")}
@@ -514,7 +548,24 @@ class Contracts(unittest.TestCase):
         # verdict-pipe controls.
         python_outer={name for name in outer if "python" in name}
         ruby_outer={name for name in outer if "ruby" in name}
-        self.assertEqual(outer-goose_outer-moo_outer-python_outer-ruby_outer,{"tables-view","tables-fixed-twin"})
+        cpp_outer=outer-goose_outer-moo_outer-python_outer-ruby_outer
+        self.assertEqual(cpp_outer,{"tables-view","tables-fixed-twin","tables-lists"})
+        # and the C++ external gates' runner uncaps every go test line those
+        # recipes hold: a reviewed replacement names each one.
+        runner=FakeRunner(ROOT,"cpp")
+        m.run_external(runner,"cpp")
+        reviewed=json.loads((runner.out/"Makefile.uncapped.json").read_text())["replacements"]
+        runner.temporary.cleanup()
+        for name in sorted(cpp_outer):
+            for line in blocks[name]:
+                if m.re.search(r"\bgo test\b",line):
+                    self.assertTrue(any(before in line for before in reviewed),
+                                    f"{name}: outer go test not uncapped by run_external: {line.strip()}")
+        # The exact count of outer Go calls per C++ target: the readiness run
+        # uncaps exactly three call sites (run_external), so a further call
+        # added to a listed recipe would run capped and must turn this red.
+        self.assertEqual({name:outer_calls(name) for name in cpp_outer},
+                         {"tables-view":1,"tables-fixed-twin":1,"tables-lists":1})
         self.assertEqual(moo_outer,set(m.FIXED_GATES["moo"].split()))
         self.assertEqual(goose_outer,set(m.FIXED_GATES["goose"].split()))
         runner=FakeRunner(ROOT,"python")

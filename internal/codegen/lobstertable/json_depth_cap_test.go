@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster/lobsterrun"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/lobster"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/lobster/lobsterrun"
 )
 
 // jsonDepthCapSchema puts a table one level inside each kind of container the

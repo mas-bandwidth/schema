@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum f_e_5
+{ Zfirst, Zsecond, Zthird }
+
+enum f_e_6
+{ Zfirst, Zsecond, Zthird }
+
+enum f_e_7
+{ Zfirst, Zsecond, Zthird }
+
+enum f_end
+{ Zfirst, Zsecond, Zthird }
+
+enum f_finite
+{ Zfirst, Zsecond, Zthird }
+
+enum f_holder
+{ Zfirst, Zsecond, Zthird }
+
+enum fact
+{ Zfirst, Zsecond, Zthird }
+
+enum facts
+{ Zfirst, Zsecond, Zthird }
+
+enum fadd
+{ Zfirst, Zsecond, Zthird }
+
+enum fail
+{ Zfirst, Zsecond, Zthird }
+
+enum failNothing
+{ Zfirst, Zsecond, Zthird }
+
+enum failed
+{ Zfirst, Zsecond, Zthird }
+
+enum falign
+{ Zfirst, Zsecond, Zthird }
+
+enum fallback
+{ Zfirst, Zsecond, Zthird }
+
+enum fallbackId
+{ Zfirst, Zsecond, Zthird }
+
+enum fam
+{ Zfirst, Zsecond, Zthird }
+
+enum families
+{ Zfirst, Zsecond, Zthird }
+
+enum family
+{ Zfirst, Zsecond, Zthird }
+
+enum fast
+{ Zfirst, Zsecond, Zthird }
+
+enum fb
+{ Zfirst, Zsecond, Zthird }
+
+enum fbits
+{ Zfirst, Zsecond, Zthird }
+
+enum fc
+{ Zfirst, Zsecond, Zthird }
+
+enum fd
+{ Zfirst, Zsecond, Zthird }
+
+enum fdiv
+{ Zfirst, Zsecond, Zthird }
+
+enum fds
+{ Zfirst, Zsecond, Zthird }
+
+enum fe
+{ Zfirst, Zsecond, Zthird }
+
+enum few
+{ Zfirst, Zsecond, Zthird }
+
+enum fhi
+{ Zfirst, Zsecond, Zthird }
+
+enum fi
+{ Zfirst, Zsecond, Zthird }
+
+enum fid
+{ Zfirst, Zsecond, Zthird }
+
+enum fidx
+{ Zfirst, Zsecond, Zthird }
+
+enum field
+{ Zfirst, Zsecond, Zthird }
+
+enum fieldAt
+{ Zfirst, Zsecond, Zthird }
+
+enum fieldBits
+{ Zfirst, Zsecond, Zthird }
+
+enum fieldById
+{ Zfirst, Zsecond, Zthird }
+
+enum fieldEnd
+{ Zfirst, Zsecond, Zthird }
+
+enum fieldEntry
+{ Zfirst, Zsecond, Zthird }
+
+enum fieldExtent
+{ Zfirst, Zsecond, Zthird }
+
+enum fieldID
+{ Zfirst, Zsecond, Zthird }
+
+enum fieldIndex
+{ Zfirst, Zsecond, Zthird }
+
+enum fieldIndexMaps
+{ Zfirst, Zsecond, Zthird }
+
+enum fieldKind
+{ Zfirst, Zsecond, Zthird }
+
+enum fieldLength
+{ Zfirst, Zsecond, Zthird }
+
+enum fieldMaps
+{ Zfirst, Zsecond, Zthird }
+
+enum fieldName
+{ Zfirst, Zsecond, Zthird }
+
+enum fieldOf
+{ Zfirst, Zsecond, Zthird }
+
+enum field_align
+{ Zfirst, Zsecond, Zthird }
+
+enum field_annotations
+{ Zfirst, Zsecond, Zthird }
+
+enum field_bytes
+{ Zfirst, Zsecond, Zthird }
+
+enum field_deprecated
+{ Zfirst, Zsecond, Zthird }
+
+enum field_extent_align
+{ Zfirst, Zsecond, Zthird }
+
+enum field_has_extent
+{ Zfirst, Zsecond, Zthird }
+
+enum field_pieces
+{ Zfirst, Zsecond, Zthird }
+
+enum field_ref
+{ Zfirst, Zsecond, Zthird }
+
+enum field_skipped
+{ Zfirst, Zsecond, Zthird }
+
+enum field_span
+{ Zfirst, Zsecond, Zthird }
+
+enum field_value
+{ Zfirst, Zsecond, Zthird }
+
+enum field_value_end
+{ Zfirst, Zsecond, Zthird }
+
+enum fields
+{ Zfirst, Zsecond, Zthird }
+
+enum fieldsById
+{ Zfirst, Zsecond, Zthird }
+
+enum fields_by_json
+{ Zfirst, Zsecond, Zthird }
+
+enum fileHash
+{ Zfirst, Zsecond, Zthird }
+
+enum fileHeaderBytes
+{ Zfirst, Zsecond, Zthird }
+
+enum fill
+{ Zfirst, Zsecond, Zthird }
+
+enum fillBuf
+{ Zfirst, Zsecond, Zthird }
+
+enum fillCount
+{ Zfirst, Zsecond, Zthird }
+
+enum fill_at
+{ Zfirst, Zsecond, Zthird }
+
+enum fill_json_object
+{ Zfirst, Zsecond, Zthird }
+
+enum filled
+{ Zfirst, Zsecond, Zthird }
+
+enum fills
+{ Zfirst, Zsecond, Zthird }
+
+enum fin
+{ Zfirst, Zsecond, Zthird }
+
+enum findDescField
+{ Zfirst, Zsecond, Zthird }
+
+enum findField
+{ Zfirst, Zsecond, Zthird }
+
+enum findNameSlot
+{ Zfirst, Zsecond, Zthird }
+
+enum findSlot
+{ Zfirst, Zsecond, Zthird }
+
+enum find_field_name
+{ Zfirst, Zsecond, Zthird }
+
+enum find_key
+{ Zfirst, Zsecond, Zthird }
+
+enum finish
+{ Zfirst, Zsecond, Zthird }
+
+enum finish_frame
+{ Zfirst, Zsecond, Zthird }
+
+enum finish_varint
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    f_e_5 Inner
+    f_e_6 Inner
+    f_e_7 Inner
+    f_end Inner
+    f_finite Inner
+    f_holder Inner
+    fact Inner
+    facts Inner
+    fadd Inner
+    fail Inner
+}
+
+table NameTypes0
+{
+    one0  f_e_5
+    many0 [..4]f_e_5
+    one1  f_e_6
+    many1 [..4]f_e_6
+    one2  f_e_7
+    many2 [..4]f_e_7
+    one3  f_end
+    many3 [..4]f_end
+    one4  f_finite
+    many4 [..4]f_finite
+    one5  f_holder
+    many5 [..4]f_holder
+    one6  fact
+    many6 [..4]fact
+    one7  facts
+    many7 [..4]facts
+    one8  fadd
+    many8 [..4]fadd
+    one9  fail
+    many9 [..4]fail
+}
+
+table NameFields0
+{
+    f_e_5 uint32
+    f_e_6 uint32
+    f_e_7 uint32
+    f_end uint32
+    f_finite uint32
+    f_holder uint32
+    fact uint32
+    facts uint32
+    fadd uint32
+    fail uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    failNothing Inner
+    failed Inner
+    falign Inner
+    fallback Inner
+    fallbackId Inner
+    fam Inner
+    families Inner
+    family Inner
+    fast Inner
+    fb Inner
+}
+
+table NameTypes1
+{
+    one0  failNothing
+    many0 [..4]failNothing
+    one1  failed
+    many1 [..4]failed
+    one2  falign
+    many2 [..4]falign
+    one3  fallback
+    many3 [..4]fallback
+    one4  fallbackId
+    many4 [..4]fallbackId
+    one5  fam
+    many5 [..4]fam
+    one6  families
+    many6 [..4]families
+    one7  family
+    many7 [..4]family
+    one8  fast
+    many8 [..4]fast
+    one9  fb
+    many9 [..4]fb
+}
+
+table NameFields1
+{
+    failNothing uint32
+    failed uint32
+    falign uint32
+    fallback uint32
+    fallbackId uint32
+    fam uint32
+    families uint32
+    family uint32
+    fast uint32
+    fb uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    fbits Inner
+    fc Inner
+    fd Inner
+    fdiv Inner
+    fds Inner
+    fe Inner
+    few Inner
+    fhi Inner
+    fi Inner
+    fid Inner
+}
+
+table NameTypes2
+{
+    one0  fbits
+    many0 [..4]fbits
+    one1  fc
+    many1 [..4]fc
+    one2  fd
+    many2 [..4]fd
+    one3  fdiv
+    many3 [..4]fdiv
+    one4  fds
+    many4 [..4]fds
+    one5  fe
+    many5 [..4]fe
+    one6  few
+    many6 [..4]few
+    one7  fhi
+    many7 [..4]fhi
+    one8  fi
+    many8 [..4]fi
+    one9  fid
+    many9 [..4]fid
+}
+
+table NameFields2
+{
+    fbits uint32
+    fc uint32
+    fd uint32
+    fdiv uint32
+    fds uint32
+    fe uint32
+    few uint32
+    fhi uint32
+    fi uint32
+    fid uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    fidx Inner
+    field Inner
+    fieldAt Inner
+    fieldBits Inner
+    fieldById Inner
+    fieldEnd Inner
+    fieldEntry Inner
+    fieldExtent Inner
+    fieldID Inner
+    fieldIndex Inner
+}
+
+table NameTypes3
+{
+    one0  fidx
+    many0 [..4]fidx
+    one1  field
+    many1 [..4]field
+    one2  fieldAt
+    many2 [..4]fieldAt
+    one3  fieldBits
+    many3 [..4]fieldBits
+    one4  fieldById
+    many4 [..4]fieldById
+    one5  fieldEnd
+    many5 [..4]fieldEnd
+    one6  fieldEntry
+    many6 [..4]fieldEntry
+    one7  fieldExtent
+    many7 [..4]fieldExtent
+    one8  fieldID
+    many8 [..4]fieldID
+    one9  fieldIndex
+    many9 [..4]fieldIndex
+}
+
+table NameFields3
+{
+    fidx uint32
+    field uint32
+    fieldAt uint32
+    fieldBits uint32
+    fieldById uint32
+    fieldEnd uint32
+    fieldEntry uint32
+    fieldExtent uint32
+    fieldID uint32
+    fieldIndex uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    fieldIndexMaps Inner
+    fieldKind Inner
+    fieldLength Inner
+    fieldMaps Inner
+    fieldName Inner
+    fieldOf Inner
+    field_align Inner
+    field_annotations Inner
+    field_bytes Inner
+    field_deprecated Inner
+}
+
+table NameTypes4
+{
+    one0  fieldIndexMaps
+    many0 [..4]fieldIndexMaps
+    one1  fieldKind
+    many1 [..4]fieldKind
+    one2  fieldLength
+    many2 [..4]fieldLength
+    one3  fieldMaps
+    many3 [..4]fieldMaps
+    one4  fieldName
+    many4 [..4]fieldName
+    one5  fieldOf
+    many5 [..4]fieldOf
+    one6  field_align
+    many6 [..4]field_align
+    one7  field_annotations
+    many7 [..4]field_annotations
+    one8  field_bytes
+    many8 [..4]field_bytes
+    one9  field_deprecated
+    many9 [..4]field_deprecated
+}
+
+table NameFields4
+{
+    fieldIndexMaps uint32
+    fieldKind uint32
+    fieldLength uint32
+    fieldMaps uint32
+    fieldName uint32
+    fieldOf uint32
+    field_align uint32
+    field_annotations uint32
+    field_bytes uint32
+    field_deprecated uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    field_extent_align Inner
+    field_has_extent Inner
+    field_pieces Inner
+    field_ref Inner
+    field_skipped Inner
+    field_span Inner
+    field_value Inner
+    field_value_end Inner
+    fields Inner
+    fieldsById Inner
+}
+
+table NameTypes5
+{
+    one0  field_extent_align
+    many0 [..4]field_extent_align
+    one1  field_has_extent
+    many1 [..4]field_has_extent
+    one2  field_pieces
+    many2 [..4]field_pieces
+    one3  field_ref
+    many3 [..4]field_ref
+    one4  field_skipped
+    many4 [..4]field_skipped
+    one5  field_span
+    many5 [..4]field_span
+    one6  field_value
+    many6 [..4]field_value
+    one7  field_value_end
+    many7 [..4]field_value_end
+    one8  fields
+    many8 [..4]fields
+    one9  fieldsById
+    many9 [..4]fieldsById
+}
+
+table NameFields5
+{
+    field_extent_align uint32
+    field_has_extent uint32
+    field_pieces uint32
+    field_ref uint32
+    field_skipped uint32
+    field_span uint32
+    field_value uint32
+    field_value_end uint32
+    fields uint32
+    fieldsById uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    fields_by_json Inner
+    fileHash Inner
+    fileHeaderBytes Inner
+    fill Inner
+    fillBuf Inner
+    fillCount Inner
+    fill_at Inner
+    fill_json_object Inner
+    filled Inner
+    fills Inner
+}
+
+table NameTypes6
+{
+    one0  fields_by_json
+    many0 [..4]fields_by_json
+    one1  fileHash
+    many1 [..4]fileHash
+    one2  fileHeaderBytes
+    many2 [..4]fileHeaderBytes
+    one3  fill
+    many3 [..4]fill
+    one4  fillBuf
+    many4 [..4]fillBuf
+    one5  fillCount
+    many5 [..4]fillCount
+    one6  fill_at
+    many6 [..4]fill_at
+    one7  fill_json_object
+    many7 [..4]fill_json_object
+    one8  filled
+    many8 [..4]filled
+    one9  fills
+    many9 [..4]fills
+}
+
+table NameFields6
+{
+    fields_by_json uint32
+    fileHash uint32
+    fileHeaderBytes uint32
+    fill uint32
+    fillBuf uint32
+    fillCount uint32
+    fill_at uint32
+    fill_json_object uint32
+    filled uint32
+    fills uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    fin Inner
+    findDescField Inner
+    findField Inner
+    findNameSlot Inner
+    findSlot Inner
+    find_field_name Inner
+    find_key Inner
+    finish Inner
+    finish_frame Inner
+    finish_varint Inner
+}
+
+table NameTypes7
+{
+    one0  fin
+    many0 [..4]fin
+    one1  findDescField
+    many1 [..4]findDescField
+    one2  findField
+    many2 [..4]findField
+    one3  findNameSlot
+    many3 [..4]findNameSlot
+    one4  findSlot
+    many4 [..4]findSlot
+    one5  find_field_name
+    many5 [..4]find_field_name
+    one6  find_key
+    many6 [..4]find_key
+    one7  finish
+    many7 [..4]finish
+    one8  finish_frame
+    many8 [..4]finish_frame
+    one9  finish_varint
+    many9 [..4]finish_varint
+}
+
+table NameFields7
+{
+    fin uint32
+    findDescField uint32
+    findField uint32
+    findNameSlot uint32
+    findSlot uint32
+    find_field_name uint32
+    find_key uint32
+    finish uint32
+    finish_frame uint32
+    finish_varint uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

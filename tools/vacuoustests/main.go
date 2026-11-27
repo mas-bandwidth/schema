@@ -12,7 +12,7 @@ import (
 	"flag"
 	"os"
 
-	"github.com/mas-bandwidth/schema/v2/internal/vacuous"
+	"github.com/mas-bandwidth/schema/v3/internal/vacuous"
 )
 
 func main() {

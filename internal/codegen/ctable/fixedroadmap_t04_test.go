@@ -20,7 +20,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // ---- fixtures and readers of this leg's output ------------------------------
@@ -255,7 +255,8 @@ func cT04R10(t *testing.T) {
 // ---- c/R15 ------------------------------------------------------------------
 
 // cT04R15 holds c/R15 to §5.6's retirement list and §5.3 step 5: the four
-// forward-read clamps are gone, and each is `layout_unknown` now. A hash the
+// forward-read clamps are gone, and each is `layout_unknown` now (§5.3 step 5,
+// SPEC-TABLES §21.3: `layout_newer` is retired and no read answers it). A hash the
 // lineage does not hold is refused BEFORE any record and before any plan
 // selection, on the file's hash; the count and text clamps that REMAIN are the
 // writer's bounds carried by the plan, which only a backward read over a locked

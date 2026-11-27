@@ -28,7 +28,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/provesran"
+	"github.com/mas-bandwidth/schema/v3/internal/provesran"
 )
 
 // memaccessCallRe finds a memset/memcpy/memmove invocation, with or without the

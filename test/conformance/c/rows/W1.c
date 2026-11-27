@@ -24,8 +24,8 @@
 int main(void)
 {
     /* Create a Fleet with all default values */
-    Fleet fleet;
-    fleet_reset(&fleet);
+    tblw1_fleet_t fleet;
+    tblw1_fleet_reset(&fleet);
     
     /* Allocate a buffer - larger than any expected wire size */
     uint8_t *buffer = (uint8_t *)malloc(256);
@@ -36,7 +36,7 @@ int main(void)
     memset(buffer, 0xFF, 256);  /* Fill with non-zero to catch any extra writes */
     
     /* Save using table_graph_save which writes the full wire format */
-    int64_t saved = table_graph_save(NULL, &fleet, &schema_tblw1_fleet_node_type_, buffer, 256, table_default_allocator());
+    int64_t saved = tblw1_table_graph_save(NULL, &fleet, &schema_tblw1_fleet_node_type_, buffer, 256, tblw1_table_default_allocator());
     if (saved < 0) {
         fprintf(stderr, "FAIL: table_graph_save\n");
         free(buffer);

@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/compiler"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
 )
 
 // base64Row is one JSON text read into a bytes(N) field: its unit and root,

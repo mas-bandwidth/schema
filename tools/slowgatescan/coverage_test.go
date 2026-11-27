@@ -12,8 +12,8 @@ import (
 func TestAdversarialDisabledOrUnrelatedCIStep(t *testing.T) {
 	// A synthetic transcript with one required test in ./compiler
 	transcript := strings.Join([]string{
-		`{"Action":"output","Package":"github.com/mas-bandwidth/schema/v2/compiler","Test":"TestRequiredGate","Output":"` + gateSkipMarker + `\n"}`,
-		`{"Action":"pass","Package":"github.com/mas-bandwidth/schema/v2/compiler"}`,
+		`{"Action":"output","Package":"github.com/mas-bandwidth/schema/v3/compiler","Test":"TestRequiredGate","Output":"` + gateSkipMarker + `\n"}`,
+		`{"Action":"pass","Package":"github.com/mas-bandwidth/schema/v3/compiler"}`,
 	}, "\n")
 
 	tmpDir := t.TempDir()
@@ -70,10 +70,10 @@ jobs:
 func TestAdversarialSameTestNameInDifferentPackages(t *testing.T) {
 	// Two tests with the same name "TestRequiredGate": one in ./compiler, one in ./internal/codegen/gotable
 	transcript := strings.Join([]string{
-		`{"Action":"output","Package":"github.com/mas-bandwidth/schema/v2/compiler","Test":"TestRequiredGate","Output":"` + gateSkipMarker + `\n"}`,
-		`{"Action":"pass","Package":"github.com/mas-bandwidth/schema/v2/compiler"}`,
-		`{"Action":"output","Package":"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable","Test":"TestRequiredGate","Output":"` + gateSkipMarker + `\n"}`,
-		`{"Action":"pass","Package":"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable"}`,
+		`{"Action":"output","Package":"github.com/mas-bandwidth/schema/v3/compiler","Test":"TestRequiredGate","Output":"` + gateSkipMarker + `\n"}`,
+		`{"Action":"pass","Package":"github.com/mas-bandwidth/schema/v3/compiler"}`,
+		`{"Action":"output","Package":"github.com/mas-bandwidth/schema/v3/internal/codegen/gotable","Test":"TestRequiredGate","Output":"` + gateSkipMarker + `\n"}`,
+		`{"Action":"pass","Package":"github.com/mas-bandwidth/schema/v3/internal/codegen/gotable"}`,
 	}, "\n")
 
 	tmpDir := t.TempDir()
@@ -149,8 +149,8 @@ jobs:
 // Adversarial Control 3: Restricted -run pattern does not credit non-matching tests.
 func TestAdversarialRestrictedRunPattern(t *testing.T) {
 	transcript := strings.Join([]string{
-		`{"Action":"output","Package":"github.com/mas-bandwidth/schema/v2/compiler","Test":"TestRequiredGate","Output":"` + gateSkipMarker + `\n"}`,
-		`{"Action":"pass","Package":"github.com/mas-bandwidth/schema/v2/compiler"}`,
+		`{"Action":"output","Package":"github.com/mas-bandwidth/schema/v3/compiler","Test":"TestRequiredGate","Output":"` + gateSkipMarker + `\n"}`,
+		`{"Action":"pass","Package":"github.com/mas-bandwidth/schema/v3/compiler"}`,
 	}, "\n")
 
 	tmpDir := t.TempDir()
@@ -185,8 +185,8 @@ jobs:
 // Adversarial Control 4: An actually selecting lane credits the test.
 func TestAdversarialActuallySelectingLane(t *testing.T) {
 	transcript := strings.Join([]string{
-		`{"Action":"output","Package":"github.com/mas-bandwidth/schema/v2/compiler","Test":"TestRequiredGate","Output":"` + gateSkipMarker + `\n"}`,
-		`{"Action":"pass","Package":"github.com/mas-bandwidth/schema/v2/compiler"}`,
+		`{"Action":"output","Package":"github.com/mas-bandwidth/schema/v3/compiler","Test":"TestRequiredGate","Output":"` + gateSkipMarker + `\n"}`,
+		`{"Action":"pass","Package":"github.com/mas-bandwidth/schema/v3/compiler"}`,
 	}, "\n")
 
 	tmpDir := t.TempDir()
@@ -232,8 +232,8 @@ jobs:
 
 func TestAdversarialSchemaSlowTrueDoesNotCredit(t *testing.T) {
 	transcript := strings.Join([]string{
-		`{"Action":"output","Package":"github.com/mas-bandwidth/schema/v2/compiler","Test":"TestRequiredGate","Output":"` + gateSkipMarker + `\n"}`,
-		`{"Action":"pass","Package":"github.com/mas-bandwidth/schema/v2/compiler"}`,
+		`{"Action":"output","Package":"github.com/mas-bandwidth/schema/v3/compiler","Test":"TestRequiredGate","Output":"` + gateSkipMarker + `\n"}`,
+		`{"Action":"pass","Package":"github.com/mas-bandwidth/schema/v3/compiler"}`,
 	}, "\n")
 
 	tmpDir := t.TempDir()
@@ -266,8 +266,8 @@ jobs:
 
 func TestAdversarialSchemaSlow10DoesNotCredit(t *testing.T) {
 	transcript := strings.Join([]string{
-		`{"Action":"output","Package":"github.com/mas-bandwidth/schema/v2/compiler","Test":"TestRequiredGate","Output":"` + gateSkipMarker + `\n"}`,
-		`{"Action":"pass","Package":"github.com/mas-bandwidth/schema/v2/compiler"}`,
+		`{"Action":"output","Package":"github.com/mas-bandwidth/schema/v3/compiler","Test":"TestRequiredGate","Output":"` + gateSkipMarker + `\n"}`,
+		`{"Action":"pass","Package":"github.com/mas-bandwidth/schema/v3/compiler"}`,
 	}, "\n")
 
 	tmpDir := t.TempDir()
@@ -298,8 +298,8 @@ jobs:
 
 func TestAdversarialCommentedCommandDoesNotCredit(t *testing.T) {
 	transcript := strings.Join([]string{
-		`{"Action":"output","Package":"github.com/mas-bandwidth/schema/v2/compiler","Test":"TestRequiredGate","Output":"` + gateSkipMarker + `\n"}`,
-		`{"Action":"pass","Package":"github.com/mas-bandwidth/schema/v2/compiler"}`,
+		`{"Action":"output","Package":"github.com/mas-bandwidth/schema/v3/compiler","Test":"TestRequiredGate","Output":"` + gateSkipMarker + `\n"}`,
+		`{"Action":"pass","Package":"github.com/mas-bandwidth/schema/v3/compiler"}`,
 	}, "\n")
 
 	tmpDir := t.TempDir()
@@ -332,8 +332,8 @@ jobs:
 
 func TestAdversarialCompoundDirectoryChangeRefused(t *testing.T) {
 	transcript := strings.Join([]string{
-		`{"Action":"output","Package":"github.com/mas-bandwidth/schema/v2/compiler","Test":"TestRequiredGate","Output":"` + gateSkipMarker + `\n"}`,
-		`{"Action":"pass","Package":"github.com/mas-bandwidth/schema/v2/compiler"}`,
+		`{"Action":"output","Package":"github.com/mas-bandwidth/schema/v3/compiler","Test":"TestRequiredGate","Output":"` + gateSkipMarker + `\n"}`,
+		`{"Action":"pass","Package":"github.com/mas-bandwidth/schema/v3/compiler"}`,
 	}, "\n")
 
 	tmpDir := t.TempDir()
@@ -367,9 +367,9 @@ jobs:
 func TestAdversarialMalformedOrTruncatedJSONStreamRefused(t *testing.T) {
 	// One complete gate event and one truncated gate event
 	transcript := strings.Join([]string{
-		`{"Action":"output","Package":"github.com/mas-bandwidth/schema/v2/compiler","Test":"TestRequiredGate","Output":"` + gateSkipMarker + `\n"}`,
-		`{"Action":"pass","Package":"github.com/mas-bandwidth/schema/v2/compiler"}`,
-		`{"Action":"output","Package":"github.com/mas-bandwidth/schema/v2/compiler","Test":"TestTrunc`,
+		`{"Action":"output","Package":"github.com/mas-bandwidth/schema/v3/compiler","Test":"TestRequiredGate","Output":"` + gateSkipMarker + `\n"}`,
+		`{"Action":"pass","Package":"github.com/mas-bandwidth/schema/v3/compiler"}`,
+		`{"Action":"output","Package":"github.com/mas-bandwidth/schema/v3/compiler","Test":"TestTrunc`,
 	}, "\n")
 
 	tmpDir := t.TempDir()
@@ -428,8 +428,8 @@ func TestAdversarialMissingGateIdentityRefused(t *testing.T) {
 
 func TestAdversarialExplicitlyDisabledStepCondition(t *testing.T) {
 	transcript := strings.Join([]string{
-		`{"Action":"output","Package":"github.com/mas-bandwidth/schema/v2/compiler","Test":"TestRequiredGate","Output":"` + gateSkipMarker + `\n"}`,
-		`{"Action":"pass","Package":"github.com/mas-bandwidth/schema/v2/compiler"}`,
+		`{"Action":"output","Package":"github.com/mas-bandwidth/schema/v3/compiler","Test":"TestRequiredGate","Output":"` + gateSkipMarker + `\n"}`,
+		`{"Action":"pass","Package":"github.com/mas-bandwidth/schema/v3/compiler"}`,
 	}, "\n")
 
 	tmpDir := t.TempDir()
@@ -465,8 +465,8 @@ jobs:
 // does not have `go test` at command position and must NOT credit compiler.TestRequiredGate.
 func TestAdversarialEchoGoTestNotCredited(t *testing.T) {
 	transcript := strings.Join([]string{
-		`{"Action":"output","Package":"github.com/mas-bandwidth/schema/v2/compiler","Test":"TestRequiredGate","Output":"` + gateSkipMarker + `\n"}`,
-		`{"Action":"pass","Package":"github.com/mas-bandwidth/schema/v2/compiler"}`,
+		`{"Action":"output","Package":"github.com/mas-bandwidth/schema/v3/compiler","Test":"TestRequiredGate","Output":"` + gateSkipMarker + `\n"}`,
+		`{"Action":"pass","Package":"github.com/mas-bandwidth/schema/v3/compiler"}`,
 	}, "\n")
 
 	tmpDir := t.TempDir()
@@ -501,8 +501,8 @@ jobs:
 // like `unset SCHEMA_SLOW` is unsupported and causes the whole run block to be refused.
 func TestAdversarialUnsetSchemaSlowMultilineNotCredited(t *testing.T) {
 	transcript := strings.Join([]string{
-		`{"Action":"output","Package":"github.com/mas-bandwidth/schema/v2/compiler","Test":"TestRequiredGate","Output":"` + gateSkipMarker + `\n"}`,
-		`{"Action":"pass","Package":"github.com/mas-bandwidth/schema/v2/compiler"}`,
+		`{"Action":"output","Package":"github.com/mas-bandwidth/schema/v3/compiler","Test":"TestRequiredGate","Output":"` + gateSkipMarker + `\n"}`,
+		`{"Action":"pass","Package":"github.com/mas-bandwidth/schema/v3/compiler"}`,
 	}, "\n")
 
 	tmpDir := t.TempDir()
@@ -536,7 +536,7 @@ jobs:
 }
 func TestSerializeGoMissingSkipUsesRecognizedMarker(t *testing.T) {
 	t.Parallel()
-	line := "{\"Action\":\"output\",\"Package\":\"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable\",\"Test\":\"TestNeedsSerializeGo\",\"Output\":\"" + gateSkipMarker + ": missing; run make deps\\n\"}" + "\n{\"Action\":\"pass\",\"Package\":\"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable\"}"
+	line := "{\"Action\":\"output\",\"Package\":\"github.com/mas-bandwidth/schema/v3/internal/codegen/gotable\",\"Test\":\"TestNeedsSerializeGo\",\"Output\":\"" + gateSkipMarker + ": missing; run make deps\\n\"}" + "\n{\"Action\":\"pass\",\"Package\":\"github.com/mas-bandwidth/schema/v3/internal/codegen/gotable\"}"
 	logPath := filepath.Join(t.TempDir(), "serialize-go-skip.log")
 	if err := os.WriteFile(logPath, []byte(line), 0o644); err != nil {
 		t.Fatal(err)

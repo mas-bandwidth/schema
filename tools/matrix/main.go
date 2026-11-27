@@ -111,7 +111,7 @@ func proofCommand(root string, args []string) int {
 	stale := ""
 	committed, err := os.ReadFile(filepath.Join(root, proofPath))
 	if err != nil || string(committed) != string(MarshalProof(p)) {
-		stale = proofPath + " is stale: it is not the proof these results compute; run `go run ./tools/matrix proof -write` and commit it"
+		stale = proofPath + " is stale: it is not the proof these results compute; run `go run ./tools/matrix proof -write` over these same results and commit it (CI full keeps the snapshot it computes as the proof-snapshot artifact)"
 	}
 	parity := parityError(AtParity(p, in.InProgress))
 	if *report != "" {

@@ -209,7 +209,8 @@ void fixed_fx1_form_headers( const uint8_t * data, int64_t bytes )
 }
 
 /* CASE 3: A NEWER WRITER — under §5.6 a file whose hash this build's lineage
-   does not hold refuses as layout_unknown before any record is touched. */
+   does not hold refuses as layout_unknown (§5.3 step 5, SPEC-TABLES §21.3;
+   layout_newer is retired) before any record is touched. */
 void fixed_fx1_read_fx2( const uint8_t * data, int64_t bytes )
 {
     tblfx1_fx_root_t back;

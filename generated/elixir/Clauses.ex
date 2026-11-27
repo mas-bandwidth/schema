@@ -298,6 +298,14 @@ defmodule Example.Clauses do
   """
   @spec write_w13!(Example.W13.t()) :: binary()
   def write_w13!(value) do
+    if not is_struct(value, Example.W13) do
+      raise ArgumentError, "value is not a W13"
+    end
+
+    if not is_list(value.items) do
+      raise ArgumentError, "value.items is not a list"
+    end
+
     n = length(value.items)
 
     if n > 12 do
@@ -401,6 +409,14 @@ defmodule Example.Clauses do
   """
   @spec write_w17!(Example.W17.t()) :: binary()
   def write_w17!(value) do
+    if not is_struct(value, Example.W17) do
+      raise ArgumentError, "value is not a W17"
+    end
+
+    if not is_list(value.items) do
+      raise ArgumentError, "value.items is not a list"
+    end
+
     n = length(value.items)
 
     if n > 9 do
@@ -504,6 +520,14 @@ defmodule Example.Clauses do
   """
   @spec write_w26!(Example.W26.t()) :: binary()
   def write_w26!(value) do
+    if not is_struct(value, Example.W26) do
+      raise ArgumentError, "value is not a W26"
+    end
+
+    if not is_list(value.items) do
+      raise ArgumentError, "value.items is not a list"
+    end
+
     n = length(value.items)
 
     if n > 6 do
@@ -607,6 +631,14 @@ defmodule Example.Clauses do
   """
   @spec write_w1!(Example.W1.t()) :: binary()
   def write_w1!(value) do
+    if not is_struct(value, Example.W1) do
+      raise ArgumentError, "value is not a W1"
+    end
+
+    if not is_list(value.items) do
+      raise ArgumentError, "value.items is not a list"
+    end
+
     n = length(value.items)
 
     if n > 20 do
@@ -710,6 +742,14 @@ defmodule Example.Clauses do
   """
   @spec write_w52!(Example.W52.t()) :: binary()
   def write_w52!(value) do
+    if not is_struct(value, Example.W52) do
+      raise ArgumentError, "value is not a W52"
+    end
+
+    if not is_list(value.items) do
+      raise ArgumentError, "value.items is not a list"
+    end
+
     n = length(value.items)
 
     if n > 3 do
@@ -811,6 +851,14 @@ defmodule Example.Clauses do
   """
   @spec write_w50!(Example.W50.t()) :: binary()
   def write_w50!(value) do
+    if not is_struct(value, Example.W50) do
+      raise ArgumentError, "value is not a W50"
+    end
+
+    if not is_list(value.items) do
+      raise ArgumentError, "value.items is not a list"
+    end
+
     n = length(value.items)
 
     if n > 3 do
@@ -912,6 +960,14 @@ defmodule Example.Clauses do
   """
   @spec write_f13!(Example.F13.t()) :: binary()
   def write_f13!(value) do
+    if not is_struct(value, Example.F13) do
+      raise ArgumentError, "value is not a F13"
+    end
+
+    if not is_list(value.items) do
+      raise ArgumentError, "value.items is not a list"
+    end
+
     if length(value.items) != 7 do
       raise ArgumentError, "value.items must hold exactly 7 elements"
     end
@@ -1006,6 +1062,10 @@ defmodule Example.Clauses do
   """
   @spec write_tri3!(Example.Tri3.t()) :: binary()
   def write_tri3!(value) do
+    if not is_struct(value, Example.Tri3) do
+      raise ArgumentError, "value is not a Tri3"
+    end
+
     %{a: value_a, b: value_b} = value
 
     if not is_integer(value_a) do
@@ -1129,6 +1189,14 @@ defmodule Example.Clauses do
   """
   @spec write_arr_tri3!(Example.ArrTri3.t()) :: binary()
   def write_arr_tri3!(value) do
+    if not is_struct(value, Example.ArrTri3) do
+      raise ArgumentError, "value is not a ArrTri3"
+    end
+
+    if not is_list(value.items) do
+      raise ArgumentError, "value.items is not a list"
+    end
+
     n = length(value.items)
 
     if n > 10 do
@@ -1232,6 +1300,10 @@ defmodule Example.Clauses do
   """
   @spec write_eleven!(Example.Eleven.t()) :: binary()
   def write_eleven!(value) do
+    if not is_struct(value, Example.Eleven) do
+      raise ArgumentError, "value is not a Eleven"
+    end
+
     %{a: value_a, b: value_b} = value
 
     if not is_integer(value_a) do
@@ -1357,6 +1429,14 @@ defmodule Example.Clauses do
   """
   @spec write_arr_eleven!(Example.ArrEleven.t()) :: binary()
   def write_arr_eleven!(value) do
+    if not is_struct(value, Example.ArrEleven) do
+      raise ArgumentError, "value is not a ArrEleven"
+    end
+
+    if not is_list(value.items) do
+      raise ArgumentError, "value.items is not a list"
+    end
+
     if length(value.items) != 9 do
       raise ArgumentError, "value.items must hold exactly 9 elements"
     end
@@ -1450,8 +1530,11 @@ defmodule Example.Clauses do
   ArgumentError — always on, since the BEAM has no compile-out assert.
   """
   @spec write_empty_a!(Example.EmptyA.t()) :: binary()
-  def write_empty_a!(_value) do
-    # empty body — presence is the payload (SPEC §4.6)
+  def write_empty_a!(value) do
+    if not is_struct(value, Example.EmptyA) do
+      raise ArgumentError, "value is not a EmptyA"
+    end
+
     <<>>
   end
 
@@ -1535,8 +1618,11 @@ defmodule Example.Clauses do
   ArgumentError — always on, since the BEAM has no compile-out assert.
   """
   @spec write_empty_b!(Example.EmptyB.t()) :: binary()
-  def write_empty_b!(_value) do
-    # empty body — presence is the payload (SPEC §4.6)
+  def write_empty_b!(value) do
+    if not is_struct(value, Example.EmptyB) do
+      raise ArgumentError, "value is not a EmptyB"
+    end
+
     <<>>
   end
 
@@ -1638,10 +1724,10 @@ defmodule Example.Clauses do
         nil ->
           0
 
-        {:a, _} ->
+        {:a, %Example.EmptyA{}} ->
           1
 
-        {:b, _} ->
+        {:b, %Example.EmptyB{}} ->
           2
 
         value_other ->
@@ -1756,6 +1842,10 @@ defmodule Example.Clauses do
   """
   @spec write_holds_empty_union!(Example.HoldsEmptyUnion.t()) :: binary()
   def write_holds_empty_union!(value) do
+    if not is_struct(value, Example.HoldsEmptyUnion) do
+      raise ArgumentError, "value is not a HoldsEmptyUnion"
+    end
+
     %{lead: value_lead, u: value_u, tail: value_tail} = value
 
     if not is_integer(value_lead) do
@@ -1778,10 +1868,10 @@ defmodule Example.Clauses do
         nil ->
           0
 
-        {:a, _} ->
+        {:a, %Example.EmptyA{}} ->
           1
 
-        {:b, _} ->
+        {:b, %Example.EmptyB{}} ->
           2
 
         value_u_other ->
@@ -1924,6 +2014,10 @@ defmodule Example.Clauses do
   """
   @spec write_strs!(Example.Strs.t()) :: binary()
   def write_strs!(value) do
+    if not is_struct(value, Example.Strs) do
+      raise ArgumentError, "value is not a Strs"
+    end
+
     %{lead: value_lead, s: value_s, b: value_b, tail: value_tail} = value
 
     if not is_integer(value_lead) do
@@ -1940,6 +2034,10 @@ defmodule Example.Clauses do
 
     v = value_lead &&& 0x1F
     scratch = v
+
+    if not is_binary(value_s) do
+      raise ArgumentError, "value.s is not a binary"
+    end
 
     if byte_size(value_s) > 8 do
       raise ArgumentError, "value.s longer than the declared 8-byte bound"
@@ -1961,6 +2059,10 @@ defmodule Example.Clauses do
     data = <<data::binary, scratch>>
     # the used bytes ride whole — the stream is byte-aligned here
     data = <<data::binary, value_s::binary>>
+
+    if not is_binary(value_b) do
+      raise ArgumentError, "value.b is not a binary"
+    end
 
     if byte_size(value_b) > 8 do
       raise ArgumentError, "value.b longer than the declared 8-byte bound"
@@ -2121,6 +2223,10 @@ defmodule Example.Clauses do
   """
   @spec write_arr_nested!(Example.ArrNested.t()) :: binary()
   def write_arr_nested!(value) do
+    if not is_struct(value, Example.ArrNested) do
+      raise ArgumentError, "value is not a ArrNested"
+    end
+
     %{lead: value_lead, items: value_items, tail: value_tail} = value
 
     if not is_integer(value_lead) do
@@ -2137,6 +2243,11 @@ defmodule Example.Clauses do
 
     v = value_lead &&& 0x1F
     scratch = v
+
+    if not is_list(value_items) do
+      raise ArgumentError, "value.items is not a list"
+    end
+
     n = length(value_items)
 
     if n > 4 do
@@ -2270,6 +2381,10 @@ defmodule Example.Clauses do
   """
   @spec write_sole!(Example.Sole.t()) :: binary()
   def write_sole!(value) do
+    if not is_struct(value, Example.Sole) do
+      raise ArgumentError, "value is not a Sole"
+    end
+
     if not is_integer(value.only) do
       raise ArgumentError, "value.only is not an integer"
     end
@@ -3294,6 +3409,10 @@ defmodule Example.Clauses do
   defp wZarr_tri3Zitems([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
   defp wZarr_tri3Zitems([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
+    if not is_struct(e1, Example.Tri3) do
+      raise ArgumentError, "e is not a Tri3"
+    end
+
     %{a: e1_a, b: e1_b} = e1
 
     if not is_integer(e1_a) do
@@ -3327,6 +3446,11 @@ defmodule Example.Clauses do
     v = e1_b &&& 0x3
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 2
+
+    if not is_struct(e2, Example.Tri3) do
+      raise ArgumentError, "e is not a Tri3"
+    end
+
     %{a: e2_a, b: e2_b} = e2
 
     if not is_integer(e2_a) do
@@ -3360,6 +3484,11 @@ defmodule Example.Clauses do
     v = e2_b &&& 0x3
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 2
+
+    if not is_struct(e3, Example.Tri3) do
+      raise ArgumentError, "e is not a Tri3"
+    end
+
     %{a: e3_a, b: e3_b} = e3
 
     if not is_integer(e3_a) do
@@ -3393,6 +3522,11 @@ defmodule Example.Clauses do
     v = e3_b &&& 0x3
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 2
+
+    if not is_struct(e4, Example.Tri3) do
+      raise ArgumentError, "e is not a Tri3"
+    end
+
     %{a: e4_a, b: e4_b} = e4
 
     if not is_integer(e4_a) do
@@ -3434,6 +3568,10 @@ defmodule Example.Clauses do
   end
 
   defp wZarr_tri3Zitems([e | rest], data, scratch, scratch_bits) do
+    if not is_struct(e, Example.Tri3) do
+      raise ArgumentError, "e is not a Tri3"
+    end
+
     %{a: e_a, b: e_b} = e
 
     if not is_integer(e_a) do
@@ -3613,6 +3751,10 @@ defmodule Example.Clauses do
   defp wZarr_elevenZitems([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
   defp wZarr_elevenZitems([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
+    if not is_struct(e1, Example.Eleven) do
+      raise ArgumentError, "e is not a Eleven"
+    end
+
     %{a: e1_a, b: e1_b} = e1
 
     if not is_integer(e1_a) do
@@ -3646,6 +3788,11 @@ defmodule Example.Clauses do
     v = e1_b &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
+
+    if not is_struct(e2, Example.Eleven) do
+      raise ArgumentError, "e is not a Eleven"
+    end
+
     %{a: e2_a, b: e2_b} = e2
 
     if not is_integer(e2_a) do
@@ -3679,6 +3826,11 @@ defmodule Example.Clauses do
     v = e2_b &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
+
+    if not is_struct(e3, Example.Eleven) do
+      raise ArgumentError, "e is not a Eleven"
+    end
+
     %{a: e3_a, b: e3_b} = e3
 
     if not is_integer(e3_a) do
@@ -3712,6 +3864,11 @@ defmodule Example.Clauses do
     v = e3_b &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
+
+    if not is_struct(e4, Example.Eleven) do
+      raise ArgumentError, "e is not a Eleven"
+    end
+
     %{a: e4_a, b: e4_b} = e4
 
     if not is_integer(e4_a) do
@@ -3753,6 +3910,10 @@ defmodule Example.Clauses do
   end
 
   defp wZarr_elevenZitems([e | rest], data, scratch, scratch_bits) do
+    if not is_struct(e, Example.Eleven) do
+      raise ArgumentError, "e is not a Eleven"
+    end
+
     %{a: e_a, b: e_b} = e
 
     if not is_integer(e_a) do
@@ -3834,6 +3995,10 @@ defmodule Example.Clauses do
   defp wZarr_nestedZitems([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
   defp wZarr_nestedZitems([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
+    if not is_struct(e1, Example.Eleven) do
+      raise ArgumentError, "e is not a Eleven"
+    end
+
     %{a: e1_a, b: e1_b} = e1
 
     if not is_integer(e1_a) do
@@ -3867,6 +4032,11 @@ defmodule Example.Clauses do
     v = e1_b &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
+
+    if not is_struct(e2, Example.Eleven) do
+      raise ArgumentError, "e is not a Eleven"
+    end
+
     %{a: e2_a, b: e2_b} = e2
 
     if not is_integer(e2_a) do
@@ -3900,6 +4070,11 @@ defmodule Example.Clauses do
     v = e2_b &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
+
+    if not is_struct(e3, Example.Eleven) do
+      raise ArgumentError, "e is not a Eleven"
+    end
+
     %{a: e3_a, b: e3_b} = e3
 
     if not is_integer(e3_a) do
@@ -3933,6 +4108,11 @@ defmodule Example.Clauses do
     v = e3_b &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
+
+    if not is_struct(e4, Example.Eleven) do
+      raise ArgumentError, "e is not a Eleven"
+    end
+
     %{a: e4_a, b: e4_b} = e4
 
     if not is_integer(e4_a) do
@@ -3974,6 +4154,10 @@ defmodule Example.Clauses do
   end
 
   defp wZarr_nestedZitems([e | rest], data, scratch, scratch_bits) do
+    if not is_struct(e, Example.Eleven) do
+      raise ArgumentError, "e is not a Eleven"
+    end
+
     %{a: e_a, b: e_b} = e
 
     if not is_integer(e_a) do
