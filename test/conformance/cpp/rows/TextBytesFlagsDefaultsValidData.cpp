@@ -106,9 +106,11 @@ int main()
         const int64_t n = tblw1::VesselFixedLoad(
             &back, 1, wire.data(), (int64_t) wire.size(), plan.data(), 1024, NULL, &r );
 
-        check( n == 1 && !r.refused && !r.malformed,
+        check( n == 1 && !r.refused && !r.damaged,
                "the identity read accepts the record (no refusal, no malformed)" );
-        check( r.unknown == 0 && r.kind_mismatch == 0 && r.widened == 0 && r.clamped == 0 && r.duplicate == 0,
+        // strict-only-read: a kind mismatch, an out-of-range value and a repeat now refuse the
+        // whole load (no counter), so the retired zero counts read as not refused, not damaged.
+        check( !r.refused && !r.damaged && r.unknown == 0 && r.widened == 0,
                "no counters moved on a clean read" );
 
         // string: the written value lands exactly

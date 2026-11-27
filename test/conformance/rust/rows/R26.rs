@@ -87,6 +87,7 @@ fn lawful_file() -> Vec<u8> {
 fn an_entry_that_would_not_build_is_none_never_a_throw() {
     let block = TableFixedBlock::parse(&FX_ROOT_FIXED_BLOCK).expect("the build's own layout parses");
     let mut plan: [TableFixedEntry; 0] = [];
+    let mut guards: [TableFixedGuard; 0] = [];
     let mut remap: [u16; 0] = [];
     let mut report = TableFixedReport::default();
     let made = table_fixed_compile(
@@ -94,6 +95,7 @@ fn an_entry_that_would_not_build_is_none_never_a_throw() {
         &block,
         &FX_ROOT_FIXED_COUNTED,
         &mut plan[..],
+        &mut guards[..],
         &mut remap[..],
         &mut report,
     );
@@ -105,6 +107,7 @@ fn an_entry_that_would_not_build_is_none_never_a_throw() {
     // POSITIVE CONTROL: the same walk at a capacity that holds it returns a
     // plan, so the None above is the capacity's and not the fixture's.
     let mut big = [TableFixedEntry::default(); 512];
+    let mut guards = [TableFixedGuard::default(); 1024];
     let mut remap = [0u16; 1024];
     let mut report = TableFixedReport::default();
     let made = table_fixed_compile(
@@ -112,6 +115,7 @@ fn an_entry_that_would_not_build_is_none_never_a_throw() {
         &block,
         &FX_ROOT_FIXED_COUNTED,
         &mut big[..],
+        &mut guards[..],
         &mut remap[..],
         &mut report,
     );
@@ -139,11 +143,15 @@ fn a_plan_that_does_not_fit_is_refused_by_name() {
         "a plan that does not fit: refused BY NAME — plan_too_large, the name §5.9 #36 owes",
     );
     check(
+        // strict-only-read (docs/rulings.json): the report's `mismatch` and
+        // `oor` are retired; their successors in the runtime are the compile
+        // census `kind_changed` (never landed on a read) and the out-of-range
+        // mark `held`, both zeroed by a refusal like every counter
         !report.damaged
             && report.unknown == 0
-            && report.mismatch == 0
+            && report.kind_changed == 0
             && report.widened == 0
-            && report.oor == 0,
+            && report.held == 0,
         "a plan that does not fit: a refusal by name is never malformed and moves no counter",
     );
 
@@ -176,7 +184,8 @@ fn an_entry_that_would_not_parse_is_layout_malformed_by_name() {
         "a known-hash layout that differs: refused BY NAME — layout_malformed, never a throw",
     );
     check(
-        !report.damaged && report.unknown == 0 && report.mismatch == 0,
+        // strict-only-read: `mismatch` retired; its runtime successor is `kind_changed`
+        !report.damaged && report.unknown == 0 && report.kind_changed == 0 && report.held == 0,
         "a known-hash layout that differs: a refusal by name moves no counter",
     );
 }

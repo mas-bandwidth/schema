@@ -155,7 +155,9 @@ public final class R30 {
         if (!m.find()) {
             throw new IOException("no hash constant found in " + file);
         }
-        return Long.decode(m.group(1));
+        // the hash is a u64: a value past Long.MAX_VALUE is a lawful hash, so
+        // it is parsed unsigned (Long.decode throws on the top bit)
+        return Long.parseUnsignedLong(m.group(1).substring(2), 16);
     }
 
     static int readRecordConstant(Path file) throws IOException {

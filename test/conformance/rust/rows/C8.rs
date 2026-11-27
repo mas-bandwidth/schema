@@ -2,7 +2,17 @@
 //
 // THE LAW (inlined from the spec):
 //   A fixed-point field's bounds are in VALUE UNITS and its storage is raw,
-//   so both ends are shifted by F first; a bits(N) clamps to 2^N - 1.
+//   so both ends are shifted by F first; a bits(N) is bound by 2^N - 1.
+//
+// THE LAW MOVED (docs/rulings.json strict-only-read; docs/plans/strict-only.md
+// decision 1): no read clamps. A value past the bound refuses the WHOLE load
+// out_of_range (the retired `clamped`, renamed in place) and lands nothing, as
+// test/conformance/go/rows/C8_test.go and test/conformance/cpp/rows/C8.cpp
+// assert. PART 1 goes through the load and asserts the refusal. PART 2 calls
+// the generated bounds pass (bench_mixed_fixed_clamp_body) directly: its `oor`
+// out-parameter is the out-of-range mark the load refuses on, so a count of
+// one there IS the refusal's trigger; the value it leaves is scratch the
+// refused load discards.
 //
 // This test reaches the generated Rust tables through the same fixed-form
 // load path the driver and the rust-fixedform test use.
@@ -43,8 +53,9 @@ fn c8_fixed_point_f_shift_and_bits_n() {
         let mut report = tabledemo::TableFixedReport::default();
         let n = tabledemo::ranged_widths_fixed_load(&mut back, &file, &mut plan, &mut remap, &mut report);
         check(n == Some(1), "bits(N): the clean record reads");
+        // strict-only-read: was `oor == 0`; now not refused
         check(
-            back[0].b12 == 3000 && report.oor == 0,
+            back[0].b12 == 3000 && !report.refused && !report.damaged,
             "bits(N): value inside bits(12) lands untouched",
         );
 
@@ -60,28 +71,50 @@ fn c8_fixed_point_f_shift_and_bits_n() {
         forged[body + 23] = 0x00;
         let mut report = tabledemo::TableFixedReport::default();
         let n = tabledemo::ranged_widths_fixed_load(&mut back, &forged, &mut plan, &mut remap, &mut report);
-        check(n == Some(1), "bits(N): the forged record still reads");
-        check(back[0].b12 == 4095, "bits(N): 4096 -> 4095 = 2^12 - 1");
-        check(report.oor == 1, "bits(N): counts ONE clamped");
+        // strict-only-read: was "the forged record still reads", "4096 -> 4095"
+        // and "counts ONE clamped"
+        check(n.is_none(), "bits(N): 4096 past 2^12 - 1 refuses the whole load");
+        check(
+            report.refused && !report.damaged && report.reason == tabledemo::TableFixedReason::OutOfRange,
+            "bits(N): the refusal is out_of_range (the retired clamped)",
+        );
+        check(
+            back[0].b12 == tabledemo::RangedWidthsRow::default().b12,
+            "bits(N): a refused load lands nothing (declared default)",
+        );
+
+        // 4095 = 2^12 - 1 is AT the bound: it reads
+        let mut at_bound = file.clone();
+        at_bound[body + 20] = 0xFF;
+        at_bound[body + 21] = 0x0F; // 4095 LE
+        let mut report = tabledemo::TableFixedReport::default();
+        let n = tabledemo::ranged_widths_fixed_load(&mut back, &at_bound, &mut plan, &mut remap, &mut report);
+        check(
+            n == Some(1) && back[0].b12 == 4095 && !report.refused,
+            "bits(N): 4095 = 2^12 - 1 is in the bound and lands",
+        );
 
         // bits(48) at body offset 24: u64::MAX past 2^48-1
         let mut forged = file.clone();
         for i in 0..8 { forged[body + 24 + i] = 0xFF; }
         let mut report = tabledemo::TableFixedReport::default();
-        tabledemo::ranged_widths_fixed_load(&mut back, &forged, &mut plan, &mut remap, &mut report);
+        let n = tabledemo::ranged_widths_fixed_load(&mut back, &forged, &mut plan, &mut remap, &mut report);
+        // strict-only-read: was "clamps to 2^48-1, oor == 1"
         check(
-            back[0].b48 == 0xFFFF_FFFF_FFFF && report.oor == 1,
-            "bits(N): bits(48) past 2^48-1 clamps to 2^48-1",
+            n.is_none() && report.refused && report.reason == tabledemo::TableFixedReason::OutOfRange
+                && back[0].b48 == tabledemo::RangedWidthsRow::default().b48,
+            "bits(N): bits(48) past 2^48-1 refuses out_of_range and lands nothing",
         );
 
         // bits(32) fills its lane exactly — no clamp fires
         let mut forged = file.clone();
         for i in 0..4 { forged[body + 8 + i] = 0xFF; }
         let mut report = tabledemo::TableFixedReport::default();
-        tabledemo::ranged_widths_fixed_load(&mut back, &forged, &mut plan, &mut remap, &mut report);
+        let n = tabledemo::ranged_widths_fixed_load(&mut back, &forged, &mut plan, &mut remap, &mut report);
+        // strict-only-read: was `oor == 0`
         check(
-            back[0].b32 == 0xFFFF_FFFF && report.oor == 0,
-            "bits(N): bits(32) filling its lane clamps nothing (negative control)",
+            n == Some(1) && back[0].b32 == 0xFFFF_FFFF && !report.refused && !report.damaged,
+            "bits(N): bits(32) filling its lane is in range, not refused (negative control)",
         );
     }
 
