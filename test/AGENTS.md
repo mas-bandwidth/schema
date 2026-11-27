@@ -46,6 +46,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `goose-hostile/` | Goose hostile-corpus runner | `make schema-goose-runs-hostile-corpus` | `make schema-goose-runs-hostile-corpus` |
 | `goose-ludicrous/` | Goose int128 tests | `make test-goose` | `make test-goose` |
 | `guard/` | C++ include-guard test | `./build/schema_test_guard` | `./build/schema_test_guard` |
+| `happy/` | per-PR happy path: one round trip per language (make/happy-path.mk) | `make happy-c` | `make happy-<lang>` |
 | `java/` | Java packet tests | `make test-java` | `make test-java` |
 | `java-fixedform/` | Java fixed-form tests | `make test-java` | `make test-java` |
 | `java-hostile/` | Java hostile-corpus runner | `make schema-java-runs-hostile-corpus` | `make schema-java-runs-hostile-corpus` |
@@ -76,6 +77,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `packet-write-text/` | packet text write contract fixtures | `go test -run TestSpecPacketWriteChecksText ./compiler/` | `go test -run TestSpecPacketWriteChecksText ./compiler/` |
 | `pointer-target-type/` | pointer target-type fixtures | `go test -run TestSpecPointerTargetTypeChecked ./compiler/` | `go test -run TestSpecPointerTargetTypeChecked ./compiler/` |
 | `proof/` | 3.0.0 proof snapshot (internal gate) | `make proof` | `make proof-write` |
+| `registry/` | the test registry: every test, language, tier, type and stored query | `go run ./tools/schema-test run --group pr` | `go run ./tools/schema-test coverage` |
 | `rust/` | Rust packet tests | `make test-rust` | `make test-rust` |
 | `rust-agree/` | Rust accessor/descriptor agreement gate | `make tables-rust-accessor-descriptor-agreement` | `make tables-rust-accessor-descriptor-agreement` |
 | `rust-alloc/` | Rust allocation gate, per read path | `make tables-rust-alloc` | `make tables-rust-alloc` |
@@ -90,6 +92,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `slowgate/` | SCHEMA_SLOW proof wrapper | `make slow-gate-scan` | `make slow-gate-scan` |
 | `table-base64/` | table base64 gates | `make test` | `make test` |
 | `tables/` | C++ table tests | `make test` | `./build/schema_test_tables` |
+| `testguard/` | tools/testguard configs, baselines and coverage tables for the ci-policy rows | `go test ./tools/testguard` | `go run ./tools/testguard check --config test/testguard/ci-policy-rest.tsv RECORD...` |
 | `unity/` | Unity C# packet wire tests | `make test-unity` | `make unity-wire` |
 | `unity-hostile/` | Unity C# hostile-corpus runner | `make schema-unity-runs-hostile-corpus` | `make schema-unity-runs-hostile-corpus` |
 | `verify-bitphase/` | 18-language packet 0..63 bit-phase sweep | `make verify-bitphase-js` | `./build/verify-bitphase-bin --lang all` |

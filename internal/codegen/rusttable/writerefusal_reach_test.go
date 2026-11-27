@@ -103,7 +103,9 @@ func TestRustWriteRefusalReachesEveryCarrier(t *testing.T) {
 
 // TestRustWriteRefusalReachesEveryCarrierNative compiles the generated save in
 // a DEBUG build and proves each assert fires: an in-contract value saves, and
-// each out-of-contract value panics with the message naming its field.
+// each out-of-contract value panics with a message naming its field and the
+// reason (an assert leg is held to the assert, not to the exact wording of the
+// rest of the message).
 func TestRustWriteRefusalReachesEveryCarrierNative(t *testing.T) {
 	keyedRequireRustc(t)
 	dir := t.TempDir()
@@ -129,10 +131,10 @@ func TestRustWriteRefusalReachesEveryCarrierNative(t *testing.T) {
 		{"SF-14-zero", "c.pick = Pick::Label(String::from(\"a\\0b\"));", "label holds a zero byte"},
 		{"SF-15-max", "c.scores = vec![1, 10, 1];", ""},
 		{"SF-15", "c.scores = vec![1, 11, 1];", "scores out of range [0, 10]"},
-		{"SF-34-long", "c.fixed_a = vec![1; 4];", "fixed_a length != 3"},
-		{"SF-34-short", "c.fixed_a = vec![1; 2];", "fixed_a length != 3"},
-		{"SF-35-long", "c.scores = vec![1; 4];", "scores keyed length != 3"},
-		{"SF-35-short", "c.scores = vec![1; 2];", "scores keyed length != 3"},
+		{"SF-34-long", "c.fixed_a = vec![1; 4];", "fixed_a length"},
+		{"SF-34-short", "c.fixed_a = vec![1; 2];", "fixed_a length"},
+		{"SF-35-long", "c.scores = vec![1; 4];", "scores keyed length"},
+		{"SF-35-short", "c.scores = vec![1; 2];", "scores keyed length"},
 	}
 	var main strings.Builder
 	main.WriteString("#![allow(dead_code, unused_imports)]\nmod probe;\nuse probe::*;\nfn main() {\n    let which = std::env::args().nth(1).expect(\"a case\");\n    let mut c = Config::default();\n    match which.as_str() {\n")

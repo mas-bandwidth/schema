@@ -545,6 +545,16 @@ func (e *fixedEmit) checkElem(ind int, f *ir.Field, pl place) {
 		for _, b := range scalarBounds(f) {
 			e.p(ind, "if %s { return false; }", b.over(pl.val))
 		}
+		// SPEC-TABLES §2.15 WRITE: a deprecated variant is never written; the
+		// fixed save refuses it in every build, as the JSON writer does. Only
+		// the write holds this: a read lands it (§2.15 READ), never refuses it.
+		if r, ok := f.Type.Ref.(*ir.Enum); ok && f.Type.Kind == ir.TNamed {
+			for i := range r.Variants {
+				if i < len(r.VariantDeprecated) && r.VariantDeprecated[i] {
+					e.p(ind, "if (%s as u64) == %d { return false; } // %s is deprecated (§2.15)", pl.val, i+1, r.Variants[i])
+				}
+			}
+		}
 	case kF32:
 		e.p(ind, "if (schema_rt::fixed_f32_bits(%s) & 0x7f800000) == 0x7f800000 { return false; }", pl.val)
 		if lo, hi, ok := floatBounds(f); ok {
@@ -1012,8 +1022,11 @@ func scalarBounds(f *ir.Field) []scalarBound {
 		// A MASK BIT AT OR ABOVE W REFUSES out_of_range on the read and is refused
 		// on the write (docs/SPEC-TABLES.md §4, A TABLE LOAD HOLDS A MASK TO ITS
 		// WIDTH): the bound is the mask of the W low bits
+		// A flags set's storage is already u64 (primType), so the bound
+		// compares it as it is; a cast would be redundant, and the strict
+		// Goose gate makes that warning an error.
 		if m, ok := flagsMask(f); ok {
-			return []scalarBound{{test: func(v string) string { return fmt.Sprintf("(%s as u64) > %s", v, m) }, land: m}}
+			return []scalarBound{{test: func(v string) string { return fmt.Sprintf("%s > %s", v, m) }, land: m}}
 		}
 		return nil
 	}

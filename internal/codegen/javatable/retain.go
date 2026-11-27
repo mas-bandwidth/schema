@@ -77,6 +77,10 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 	b.WriteString("    // loss, never retained silently.\n")
 	fmt.Fprintf(&b, "    public static %sVariable.Value loadRetain(byte[] data, TableRetain retain, TableVariable.Report report) {\n", st.Name)
 	b.WriteString("        if (report == null) { report = new TableVariable.Report(); }\n")
+	// §6.5: every read zeroes a supplied report in full as its first act, the
+	// retain family included (§6.6 accumulates only across the pair: SaveRetain
+	// adds to what this load left).
+	b.WriteString("        report.reset();\n")
 	b.WriteString("        if (retain == null) { return " + st.Name + "Variable.load(data, report); }\n")
 	b.WriteString("        int[] path = new int[128];\n")
 	b.WriteString("        retain.used = 0; retain.idUsed = 0; retain.nodeKeys.clear();\n")
@@ -460,7 +464,17 @@ func writeFieldSaveRetain(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.F
 	}
 	if variableUnion(f) != nil {
 		condition := "v." + varMember(f) + ".tag!=0"
-		if f.Array != ir.ArrayNone {
+		if f.Array == ir.ArrayFixed {
+			// A FIXED ARRAY OF UNIONS elides when every element is None
+			// (docs/SPEC-TABLES.md §3, §6.6), as the variable codec writes it:
+			// a None element has no arm and so no body to carry a retained
+			// record. Testing the list for emptiness instead wrote the
+			// declared bound of Nones whenever the field was absent, since a
+			// fixed array is always its bound long (nightly 45130315968).
+			m := varMember(f)
+			fmt.Fprintf(b, "        boolean rides_%s=false;for(int i=0;i<v.%s.size();i++)if(!(%s)){rides_%s=true;break;}\n", m, m, variableDefaultTest(variableElement(f), "v."+m+".get(i)"), m)
+			condition = "rides_" + m
+		} else if f.Array != ir.ArrayNone {
 			condition = variableRidesGuard(b, f, "v")
 		}
 		fmt.Fprintf(b, "if(%s){w.putLeb(w.ref(%sVariable.F_%s));w.put8(%d);path[2*depth]=%d;path[2*depth+1]=0;\n", condition, st.Name, varMember(f), variableWireKind(f), ordinal)

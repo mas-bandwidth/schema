@@ -551,7 +551,7 @@ func (g *blockGen) emitBlockHandle(bl *ir.BlockLayout) {
 	g.hf("//\n")
 	g.hf("// The bytes belong to the CONSUMER — a managed array it pinned, a NativeArray,\n")
 	g.hf("// or memory the producer handed across. Nothing here allocates.\n")
-	g.hf("public unsafe readonly struct %sBlock\n{\n", name)
+	g.hf("public unsafe readonly partial struct %sBlock\n{\n", name)
 	g.emitBlockBuild(bl)
 	g.hf("    private readonly byte* basePointer;\n")
 	g.hf("    private readonly long bytes;\n\n")

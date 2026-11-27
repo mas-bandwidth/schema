@@ -1059,5 +1059,5 @@ var codecTable = []codec{
 // surfaces is what this backend implements. A surface not listed prints as
 // ABSENT in the matrix, which is a missing FEATURE and not a failing test.
 func surfaces() []string {
-	return []string{"wire", "message", "message-prior", "report", "framing", "json-read", "json-write", "json-hostile", "cook-write", "retain", "retain-save", "cook", "cook-foreign", "block", "block-foreign", "block-dump", "forgery", "cook-forgery", "write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json", "write-refusal-cook", "write-refusal-block", "announce", "read-into", "json-write-into"}
+	return []string{"wire", "message", "message-prior", "report", "framing", "json-read", "json-write", "json-hostile", "cook-write", "retain", "retain-save", "retain-refusal", "cook", "cook-foreign", "block", "block-foreign", "block-dump", "forgery", "cook-forgery", "write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json", "write-refusal-cook", "write-refusal-block", "write-refusal-shape", "announce", "read-into", "json-write-into"}
 }

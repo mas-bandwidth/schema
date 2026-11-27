@@ -107,7 +107,16 @@ func runRetainReadSurface(t *testing.T, plant func(files map[string][]byte) int)
 // the known value at retain-values/<case>.json, or returns "".
 func retainReadSurfaceDiff(t *testing.T, root string, cases []string, got map[string][]byte) string {
 	t.Helper()
+	refused := retainRefusedCases(t, root)
 	for _, name := range cases {
+		if refused[name] {
+			// a retain row the manifest holds refused (kind 31 is held by name and
+			// never read, SPEC-TABLES.md R17) owes the refusal, and no value
+			if string(got[name]) != "refused\n" {
+				return name + ": the manifest holds this retain row refused and the answer is: " + string(got[name])
+			}
+			continue
+		}
 		text, ok := bytes.CutPrefix(got[name], []byte("read\n"))
 		if !ok {
 			return name + ": the answer is not a read: " + string(got[name])
@@ -176,4 +185,33 @@ func TestPythonRetainReadSurfaceNegativeControl(t *testing.T) {
 			t.Fatalf("planted default-root retaining load was not caught by name: %q", diff)
 		}
 	}
+}
+
+// retainRefusedCases is the retain rows whose save column is `refused`
+// (testdata/conformance/tables/FORMAT.md, retain): the manifest owes a refusal
+// for them, as the harness reads it (test/conformance/harness/manifest.go).
+func retainRefusedCases(t *testing.T, root string) map[string]bool {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(root, "testdata/conformance/tables/MANIFEST.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	refused := map[string]bool{}
+	for line := range strings.SplitSeq(string(data), "\n") {
+		f := strings.Fields(line)
+		if len(f) < 8 || f[0] != "retain" {
+			continue
+		}
+		save := f[7]
+		if len(f) == 10 {
+			save = f[8]
+		}
+		if save == "refused" {
+			refused[f[1]] = true
+		}
+	}
+	if len(refused) == 0 {
+		t.Fatal("the manifest holds no refused retain row: the refusal half of the read surface would check nothing")
+	}
+	return refused
 }

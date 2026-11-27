@@ -252,6 +252,8 @@ function TableVariableElemIsDefault(e, x) {
 
 function TableVariableUnionEdges(u, val, out, everyGuard) {
   if (val === null) { return; }
+  // a union is { arm, value }: anything else is refused, never read (DW-TABLE-SHAPE)
+  if (typeof val !== "object") { out.push({ invalid: true }); return; }
   const arm = u.byName.get(val.arm);
   if (arm === undefined || arm.void) { return; }
   if (arm.body) { TableVariableEdges(arm.c, val.value, out, everyGuard); return; }
@@ -290,6 +292,7 @@ function TableVariableWritePresent(fd, w, ids, nodes, v, retain, path) {
       TableVariableWriteInt(w, fd.kw, val);
       return true;
     case "float":
+      if (typeof val !== "number") { return false; }
       if (!TableVariableFiniteFloat(fd.f32, val)) { return TableVariableRefuseNonFinite(); }
       TableVariableHeader(w, ids, fd, fd.k);
       return TableVariableWriteFloat(w, fd, val);
@@ -815,6 +818,8 @@ const jsVariableArmsTextRuntime = `
 // ---- the text (write.go, read.go) -------------------------------------------
 
 function TableVariableJsonMap(fd, val, depth, g, out) {
+  // the write counts every container the read does (SPEC-TABLES §16.14 W2)
+  if (depth > 128) { return false; }
   if (!(val instanceof globalThis.Map) || (fd.bound > 0 && val.size > fd.bound)) { return false; }
   if (val.size === 0) { out.push("{}"); return true; }
   const ents = TableVariableMapEntries(fd, val);
@@ -832,6 +837,8 @@ function TableVariableJsonMap(fd, val, depth, g, out) {
 }
 
 function TableVariableJsonKeyed(fd, val, depth, g, out) {
+  // the write counts every container the read does (SPEC-TABLES §16.14 W2)
+  if (depth > 128) { return false; }
   if (!globalThis.Array.isArray(val) || val.length !== fd.slots.length) { return false; }
   if (fd.slots.length === 0) { out.push("{}"); return true; }
   const ind = "\n" + "  ".repeat(depth + 1);
@@ -848,6 +855,8 @@ function TableVariableJsonKeyed(fd, val, depth, g, out) {
 
 // a union is an object with ONE key, the arm's name; None is {} (§16.2)
 function TableVariableJsonUnion(u, val, depth, g, out) {
+  // a union is a container, None {} included (SPEC-TABLES §16.14 W2)
+  if (depth > 128) { return false; }
   if (val === null) { out.push("{}"); return true; }
   const arm = u.byName.get(val.arm);
   if (arm === undefined) { return false; }

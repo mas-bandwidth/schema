@@ -813,6 +813,34 @@ static int surface_message(const char * out, int prior)
  return 0;
 }
 
+
+/* THE RETAIN-REFUSAL SURFACE: the two verdicts and what the second save did
+   in <case>; the first save in <case>.before and the second in <case>.wire */
+static int surface_retain_refusal(const char * out)
+{
+ int i;
+ for(i=0;i<num_lines;i++){
+  const Line * f=lines+i;uint8_t * first,*second,*before=NULL,*after=NULL;size_t fn,sn;int64_t before_bytes=0,after_bytes=-1;int second_refused=0,rc,ok=1;
+  char name[512];const char * answer;
+  if(strcmp(f->field[0],"retain-refusal"))continue;
+  if(!(!strcmp(f->field[2],"tblrt1")&&!strcmp(f->field[3],"Node"))&&!(!strcmp(f->field[2],"tblvarevo1")&&!strcmp(f->field[3],"EvoDoc"))){if(!spill_absent(out,f->field[1]))return 1;continue;}
+  first=slurp(f->field[4],&fn);if(!first)return 1;
+  second=slurp(f->field[5],&sn);if(!second){free(first);return 1;}
+  if(!strcmp(f->field[2],"tblrt1"))rc=conformance_retain_refusal_rt1(first,(int64_t)fn,second,(int64_t)sn,&before,&before_bytes,&second_refused,&after,&after_bytes);
+  else rc=conformance_retain_refusal_varevo1(first,(int64_t)fn,second,(int64_t)sn,&before,&before_bytes,&second_refused,&after,&after_bytes);
+  free(first);free(second);
+  if(rc<0){fprintf(stderr,"retain-refusal %s failed\n",f->field[1]);return 1;}
+  if(rc==0)ok=spill(out,f->field[1],"refused\n",8);
+  else{
+   snprintf(name,sizeof(name),"%s.before",f->field[1]);ok=spill(out,name,before,(size_t)before_bytes);
+   if(ok&&after){snprintf(name,sizeof(name),"%s.wire",f->field[1]);ok=spill(out,name,after,(size_t)after_bytes);}
+   answer=second_refused?(after?"read\nrefused\nsaved\n":"read\nrefused\nsave-refused\n"):(after?"read\nread\nsaved\n":"read\nread\nsave-refused\n");
+   if(ok)ok=spill(out,f->field[1],answer,strlen(answer));
+  }
+  free(before);free(after);if(!ok)return 1;
+ }
+ return 0;
+}
 static int surface_retain(const char * out,int saved)
 {
  int i;
@@ -858,6 +886,17 @@ static int surface_write_refusal( const char * out, const char * surface, int wr
         if ( strcmp( f->field[0], surface ) != 0 ) { continue; }
         /* <surface> <case> <unit> <root> <wire> <path> <kind> <value> */
         if ( f->count < 8 ) { fprintf( stderr, "driver: short %s line\n", surface ); return 1; }
+        /* A VALUE OF THE WRONG KIND (`write-refusal-shape` kind `shape`,
+           DW-TABLE-SHAPE) is one C's types cannot hold: a field, an element
+           and an arm payload are stored by value in their declared C type, and
+           the whole value is the root struct, of which the writer's pointer
+           argument is the calling convention (as in C++). The compiler refuses
+           it before any writer runs. */
+        if ( strcmp( surface, "write-refusal-shape" ) == 0 && strcmp( f->field[6], "shape" ) == 0 )
+        {
+            if ( !spill( out, f->field[1], "unrepresentable\n", 16 ) ) { return 1; }
+            continue;
+        }
         unit = f->field[2];
         if ( writer == CONFORMANCE_WRITE_MESSAGE )
         {
@@ -931,7 +970,7 @@ static const ConformanceUnit1122 * find_unit1122( const char * unit )
 #else
     static const ConformanceUnit1122 * ( * const getters[] )( void ) = {
         conformance_unit1122_tblsurf, conformance_unit1122_tblann4096, conformance_unit1122_tblann4097,
-        conformance_unit1122_messagedemo, conformance_unit1122_backenddemo,
+        conformance_unit1122_messagedemo, conformance_unit1122_backenddemo, conformance_unit1122_tblfixedevo,
     };
     size_t i;
     for ( i = 0; i < sizeof( getters ) / sizeof( getters[0] ); i++ )
@@ -1032,7 +1071,7 @@ static int surface_read_into( const char * out )
         ConformanceText answer = { NULL, 0, 0 };
         char * end = NULL;
         long long count;
-        int ran;
+        int ran, retaining;
         if ( strcmp( f->field[0], "read-into" ) != 0 ) { continue; }
         if ( f->count < 9 ) { fprintf( stderr, "driver: short read-into line\n" ); return 1; }
         if ( strcmp( f->field[4], "fixed-nocap" ) == 0 )
@@ -1043,8 +1082,22 @@ static int surface_read_into( const char * out )
             if ( !spill( out, f->field[1], "unrepresentable\n", strlen( "unrepresentable\n" ) ) ) { return 1; }
             continue;
         }
-        u = find_unit1122( f->field[2] );
-        if ( u == NULL || u->read_into == NULL ) { fprintf( stderr, "driver: read-into %s: no read-into for unit %s\n", f->field[1], f->field[2] ); return 1; }
+        if ( strcmp( f->field[4], "retain-fixed" ) == 0 )
+        {
+            /* NO CALL TO MAKE (docs/SPEC-TABLES.md §6.6): C refuses
+               <root>_load_retain on a FIXED-class root at COMPILE time. The
+               generator defines it as a C99 macro whose expansion is a
+               negative-width bit-field (internal/codegen/ctable/retain_graph.go
+               :129, emitRetainRefusals), so surfaces_narrow_load_retain(...)
+               does not compile and no call can be handed a report */
+            if ( !spill( out, f->field[1], "unrepresentable\n", strlen( "unrepresentable\n" ) ) ) { return 1; }
+            continue;
+        }
+        /* THE RETAINING LOAD's row names tblrt1, the `retain` surface's unit
+           (retain.c), which carries no announcement and so no 1122 entry */
+        retaining = strcmp( f->field[2], "tblrt1" ) == 0;
+        u = retaining ? NULL : find_unit1122( f->field[2] );
+        if ( !retaining && ( u == NULL || u->read_into == NULL ) ) { fprintf( stderr, "driver: read-into %s: no read-into for unit %s\n", f->field[1], f->field[2] ); return 1; }
         lawful = slurp( f->field[5], &lawful_bytes );
         damaged = slurp( f->field[6], &damaged_bytes );
         if ( strcmp( f->field[8], "-" ) != 0 ) { announcement = slurp( f->field[8], &announcement_bytes ); }
@@ -1055,8 +1108,17 @@ static int surface_read_into( const char * out )
         }
         count = strtoll( f->field[7], &end, 10 );
         if ( end == NULL || *end != 0 || count < 1 ) { fprintf( stderr, "driver: read-into %s: %s is no count\n", f->field[1], f->field[7] ); return 1; }
-        ran = u->read_into( f->field[3], f->field[4], lawful, (int64_t) lawful_bytes, damaged, (int64_t) damaged_bytes, (int64_t) count,
-                            announcement, (int64_t) announcement_bytes, &answer );
+        if ( retaining )
+        {
+            ran = strcmp( f->field[3], "Node" ) == 0 && strcmp( f->field[4], "retain" ) == 0 && count == 1
+                      ? conformance_read_into_retain( lawful, (int64_t) lawful_bytes, damaged, (int64_t) damaged_bytes, &answer )
+                      : 1;
+        }
+        else
+        {
+            ran = u->read_into( f->field[3], f->field[4], lawful, (int64_t) lawful_bytes, damaged, (int64_t) damaged_bytes, (int64_t) count,
+                                announcement, (int64_t) announcement_bytes, &answer );
+        }
         free( lawful );
         free( damaged );
         free( announcement );
@@ -1142,7 +1204,7 @@ int main( int argc, char ** argv )
 #ifdef CONFORMANCE_WRITEBOUNDS_ONLY
         printf( "wire\njson-read\njson-write\nwrite-refusal\n" );
 #else
-        printf( "wire\nmessage\nmessage-prior\nretain\nretain-save\nreport\nframing\njson-read\njson-write\njson-hostile\ncook\ncook-write\ncook-reason\nblock-reason\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\nwrite-refusal-cook\nwrite-refusal-block\nannounce\nread-into\njson-write-into\nunit shapes\n" );
+        printf( "wire\nmessage\nmessage-prior\nretain\nretain-save\nretain-refusal\nreport\nframing\njson-read\njson-write\njson-hostile\ncook\ncook-write\ncook-reason\nblock-reason\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\nwrite-refusal-cook\nwrite-refusal-block\nwrite-refusal-shape\nannounce\nread-into\njson-write-into\nunit shapes\n" );
 #endif
         return 0;
     }
@@ -1154,6 +1216,7 @@ int main( int argc, char ** argv )
     out = argv[3];
     if(!strcmp(surface,"retain"))return surface_retain(out,0);
     if(!strcmp(surface,"retain-save"))return surface_retain(out,1);
+    if(!strcmp(surface,"retain-refusal"))return surface_retain_refusal(out);
     if ( strcmp( surface, "message" ) == 0 ) { return surface_message(out, 0); }
     if ( strcmp( surface, "message-prior" ) == 0 ) { return surface_message(out, 1); }
     if ( strcmp( surface, "wire" ) == 0 ) { return surface_wire( out ); }
@@ -1180,6 +1243,8 @@ int main( int argc, char ** argv )
     if ( strcmp( surface, "write-refusal-json" ) == 0 ) { return surface_write_refusal( out, surface, CONFORMANCE_WRITE_JSON ); }
     if ( strcmp( surface, "write-refusal-cook" ) == 0 ) { return surface_write_refusal( out, surface, CONFORMANCE_WRITE_COOK ); }
     if ( strcmp( surface, "write-refusal-block" ) == 0 ) { return surface_write_refusal( out, surface, CONFORMANCE_WRITE_BLOCK ); }
+    /* the shape rows' lawful twins are written as write-refusal writes them */
+    if ( strcmp( surface, "write-refusal-shape" ) == 0 ) { return surface_write_refusal( out, surface, CONFORMANCE_WRITE_VARIABLE ); }
     if ( strcmp( surface, "announce" ) == 0 ) { return surface_announce( out ); }
     if ( strcmp( surface, "read-into" ) == 0 ) { return surface_read_into( out ); }
     if ( strcmp( surface, "json-write-into" ) == 0 ) { return surface_json_write_into( out ); }

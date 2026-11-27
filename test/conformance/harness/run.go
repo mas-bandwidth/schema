@@ -27,10 +27,33 @@ import (
 )
 
 // surfaces, in the order the matrix prints them.
-var surfaces = []string{"wire", "message", "message-prior", "report", "framing", "retain", "retain-save", "json-read", "json-write", "json-hostile",
+var surfaces = []string{"wire", "message", "message-prior", "report", "framing", "retain", "retain-save", "retain-refusal", "json-read", "json-write", "json-hostile",
 	"cook", "cook-write", "cook-foreign", "block", "block-foreign", "block-dump", "forgery", "cook-forgery",
 	"write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json",
-	"write-refusal-cook", "write-refusal-block", "announce", "read-into", "json-write-into"}
+	"write-refusal-cook", "write-refusal-block", "write-refusal-shape", "announce", "read-into", "json-write-into"}
+
+// shapeLegs are the legs whose writers refuse in every build (docs/SPEC.md
+// §5.1): each OWES every `write-refusal-shape` case, so a surface it leaves
+// out of `list`, exits 2 on, or a case it answers `.absent`, is a failure and
+// never the work left (docs/SPEC-CONFORMANCE.md DW-TABLE-SHAPE). A dynamic leg
+// answers from its writer; a static one (go, goose) answers `unrepresentable`
+// for a value its types cannot hold. Python and Ruby refuse in every build
+// too (a ValueError, an InvalidValue). The assert legs list the surface as
+// well and answer from their debug build: `unrepresentable` where their types
+// cannot hold the value, their own debug refusal where they can (a null in a
+// class place); a ticked row they leave absent is red through ticked.go. The
+// reference leg lists it as it lists every surface.
+var shapeLegs = map[string]bool{"go": true, "js": true, "elixir": true, "lua": true, "luau": true, "squirrel": true, "moo": true, "goose": true, "python": true, "ruby": true}
+
+// shapeOwed is the failure a shape leg earns by leaving `how` cases of the
+// write-refusal-shape surface unanswered, or "" when the leg owes none (a
+// corpus with no shape rows owes nothing).
+func shapeOwed(lang, surface string, rows int, how string) string {
+	if surface != "write-refusal-shape" || !shapeLegs[lang] || rows == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%s refuses in every build and owes every write-refusal-shape case (docs/SPEC-CONFORMANCE.md DW-TABLE-SHAPE): %s", lang, how)
+}
 
 type driver struct {
 	lang string
@@ -75,6 +98,7 @@ const (
 	outcomeFail   = "fail"
 	outcomeAbsent = "absent" // `<case>.absent`, a missing feature
 	outcomeNamed  = "named"  // the row's named writer refusal (§2.5)
+	outcomeOwed   = "owed"   // a retain-refusal case its ledger line owes (retainrefusal.go)
 )
 
 // mark records what one case came to.
@@ -305,6 +329,9 @@ func deriveManifest(m *Manifest, path string) error {
 		}
 		fmt.Fprintf(&b, "retain %s %s %s %s %s %s\n", rc.Name, rc.Unit, rc.Root, rc.Wire, capacity, ids)
 	}
+	for _, rr := range m.RetainRefusals {
+		b.WriteString(rr.derivedLine())
+	}
 	for _, r := range m.Reports {
 		fmt.Fprintf(&b, "report %s %s %s %s\n", r.Name, r.Unit, r.Root, r.Wire)
 	}
@@ -413,7 +440,9 @@ type expectation struct {
 	verdictOnly bool
 	// unrepresentable credits `unrepresentable\n` as the answer: a
 	// read-into fixed-nocap row in a leg whose fixed load cannot omit the
-	// capacity, so the rule has no call to hold (FL-17).
+	// capacity, so the rule has no call to hold (FL-17); or a read-into
+	// retain-fixed row in a leg whose fixed-root LoadRetain is refused at
+	// compile time, so there is no call to hand a report (SPEC-TABLES §6.6).
 	unrepresentable bool
 }
 
@@ -574,6 +603,20 @@ func expectations(m *Manifest, surface string, reports map[string]string, jsonDi
 			}
 			out = append(out, expectation{name: rc.Name, want: want})
 		}
+	case "retain-refusal":
+		// THE STORE AFTER A REFUSED RETAINING READ (retainrefusal.go): the
+		// first save carries the retained records, the second carries none
+		for _, rr := range m.RetainRefusals {
+			before, err := os.ReadFile(rr.Before())
+			if err != nil {
+				return nil, fmt.Errorf("%s: the engine's first save: %w — run: make conformance-generate", rr.Name, err)
+			}
+			after, err := os.ReadFile(rr.After())
+			if err != nil {
+				return nil, fmt.Errorf("%s: the engine's second save: %w — run: make conformance-generate", rr.Name, err)
+			}
+			out = append(out, expectation{name: rr.Name, want: before, save: after})
+		}
 	case "json-write":
 		for _, i := range m.Instances {
 			if i.NoText {
@@ -708,7 +751,7 @@ func expectations(m *Manifest, surface string, reports map[string]string, jsonDi
 			if err != nil {
 				return nil, fmt.Errorf("%s: the engine's read-into answer: %w — run: make conformance-generate", r.Name, err)
 			}
-			out = append(out, expectation{name: r.Name, want: want, unrepresentable: r.Form == "fixed-nocap"})
+			out = append(out, expectation{name: r.Name, want: want, unrepresentable: r.Form == "fixed-nocap" || r.Form == "retain-fixed"})
 		}
 	case "json-write-into":
 		for _, j := range m.JSONWriteIntos {
@@ -722,7 +765,7 @@ func expectations(m *Manifest, surface string, reports map[string]string, jsonDi
 			}
 			out = append(out, expectation{name: j.Name, want: want})
 		}
-	case "write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json", "write-refusal-cook", "write-refusal-block":
+	case "write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json", "write-refusal-cook", "write-refusal-block", "write-refusal-shape":
 		// THE WRITE CONTRACT (docs/SPEC.md §5.1): a value its declaration does
 		// not admit is refused, and the lawful value at the same boundary is
 		// written. An assert leg answers from its debug build, where the
@@ -921,6 +964,10 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 		return false, fmt.Errorf("the corpus has %d must-refuse row(s) that cannot fail:\n  %s", len(problems), strings.Join(problems, "\n  "))
 	}
 
+	owedRR, err := loadRetainRefusalLedger(manifestPath, m)
+	if err != nil {
+		return false, err
+	}
 	wireRefusals := map[string]Instance{}
 	for _, instance := range m.Instances {
 		if instance.WireRefused {
@@ -1043,6 +1090,9 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 									if notAsked.has(sr.surface, e.name) {
 										continue
 									}
+									if _, owed := owedRR.owes(d.lang, sr.surface, e.name); owed {
+										continue
+									}
 									scoreAnswer(d.lang, sr.surface, sr.out, e, wireRefusals[e.name], probe)
 								}
 								if len(probe.failures) > 0 || probe.missing > probe.named {
@@ -1076,6 +1126,9 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 				}
 				if reference {
 					r.failures = append(r.failures, absentReference(s, "`list` does not name it"))
+				}
+				if why := shapeOwed(d.lang, s, len(legWant), "`list` does not name the surface"); why != "" {
+					r.failures = append(r.failures, why)
 				}
 				if opts.claims != nil {
 					opts.claims.enforce(d.lang, s, legWant, r)
@@ -1115,6 +1168,9 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 				}
 				if reference {
 					r.failures = append(r.failures, absentReference(s, "the driver exited 2"))
+				}
+				if why := shapeOwed(d.lang, s, len(legWant), "the driver exited 2 (absent)"); why != "" {
+					r.failures = append(r.failures, why)
 				}
 				if opts.claims != nil {
 					opts.claims.enforce(d.lang, s, legWant, r)
@@ -1169,7 +1225,11 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 					continue
 				}
 				pass, named, missing := r.pass, r.named, r.missing
-				scoreAnswer(d.lang, s, out, e, wireRefusals[e.name], r)
+				if why, owed := owedRR.owes(d.lang, s, e.name); owed {
+					scoreOwedRetainRefusal(w, d.lang, filepath.Join(out, e.name), e, why, r)
+				} else {
+					scoreAnswer(d.lang, s, out, e, wireRefusals[e.name], r)
+				}
 				switch {
 				case r.pass > pass:
 					r.verdict(e.name, "pass")
@@ -1185,6 +1245,11 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 			// answer on the other half (twins.go)
 			for _, name := range applyTwinRule(twinPairs(s, legWant, wireRefusals), r) {
 				_, _ = io.WriteString(w, "conformance TWIN "+d.lang+" / "+s+": "+name+" counts absent: the other half of its refusal pair was not answered\n")
+			}
+			if r.missing > 0 {
+				if why := shapeOwed(d.lang, s, len(legWant), fmt.Sprintf("%d case(s) answered absent", r.missing)); why != "" {
+					r.failures = append(r.failures, why)
+				}
 			}
 			if reference && r.missing > r.named {
 				r.failures = append(r.failures, fmt.Sprintf(
@@ -1526,6 +1591,10 @@ func scoreAnswer(lang, surface, out string, e expectation, inst Instance, r *res
 	answer := filepath.Join(out, e.name)
 	if surface == "message-prior" {
 		scorePrior(answer, e, r)
+		return
+	}
+	if surface == "retain-refusal" {
+		scoreRetainRefusal(lang, answer, e, r)
 		return
 	}
 	if e.batch != nil {

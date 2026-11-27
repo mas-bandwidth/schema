@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum outer_holds
+{ Zfirst, Zsecond, Zthird }
+
+enum outer_ok
+{ Zfirst, Zsecond, Zthird }
+
+enum outer_present
+{ Zfirst, Zsecond, Zthird }
+
+enum outer_table
+{ Zfirst, Zsecond, Zthird }
+
+enum outer_w
+{ Zfirst, Zsecond, Zthird }
+
+enum output
+{ Zfirst, Zsecond, Zthird }
+
+enum outside
+{ Zfirst, Zsecond, Zthird }
+
+enum ov
+{ Zfirst, Zsecond, Zthird }
+
+enum over
+{ Zfirst, Zsecond, Zthird }
+
+enum overBound
+{ Zfirst, Zsecond, Zthird }
+
+enum overLen
+{ Zfirst, Zsecond, Zthird }
+
+enum overflow
+{ Zfirst, Zsecond, Zthird }
+
+enum overlap
+{ Zfirst, Zsecond, Zthird }
+
+enum overlapping
+{ Zfirst, Zsecond, Zthird }
+
+enum overruns
+{ Zfirst, Zsecond, Zthird }
+
+enum oversize
+{ Zfirst, Zsecond, Zthird }
+
+enum overwritten
+{ Zfirst, Zsecond, Zthird }
+
+enum overwrote
+{ Zfirst, Zsecond, Zthird }
+
+enum own
+{ Zfirst, Zsecond, Zthird }
+
+enum ownBuild
+{ Zfirst, Zsecond, Zthird }
+
+enum ownBv
+{ Zfirst, Zsecond, Zthird }
+
+enum ownFieldElides
+{ Zfirst, Zsecond, Zthird }
+
+enum ownHash
+{ Zfirst, Zsecond, Zthird }
+
+enum ownHi
+{ Zfirst, Zsecond, Zthird }
+
+enum ownLo
+{ Zfirst, Zsecond, Zthird }
+
+enum ownNameEntryById
+{ Zfirst, Zsecond, Zthird }
+
+enum ownSlot
+{ Zfirst, Zsecond, Zthird }
+
+enum ownSlotEntry
+{ Zfirst, Zsecond, Zthird }
+
+enum ownVocab
+{ Zfirst, Zsecond, Zthird }
+
+enum own_build_version
+{ Zfirst, Zsecond, Zthird }
+
+enum own_key
+{ Zfirst, Zsecond, Zthird }
+
+enum own_version
+{ Zfirst, Zsecond, Zthird }
+
+enum owner
+{ Zfirst, Zsecond, Zthird }
+
+enum ownerName
+{ Zfirst, Zsecond, Zthird }
+
+enum owner_of
+{ Zfirst, Zsecond, Zthird }
+
+enum owners
+{ Zfirst, Zsecond, Zthird }
+
+enum p
+{ Zfirst, Zsecond, Zthird }
+
+enum p0
+{ Zfirst, Zsecond, Zthird }
+
+enum p00
+{ Zfirst, Zsecond, Zthird }
+
+enum p01
+{ Zfirst, Zsecond, Zthird }
+
+enum p1
+{ Zfirst, Zsecond, Zthird }
+
+enum p10
+{ Zfirst, Zsecond, Zthird }
+
+enum p11
+{ Zfirst, Zsecond, Zthird }
+
+enum p2
+{ Zfirst, Zsecond, Zthird }
+
+enum p3
+{ Zfirst, Zsecond, Zthird }
+
+enum pEnd
+{ Zfirst, Zsecond, Zthird }
+
+enum pStart
+{ Zfirst, Zsecond, Zthird }
+
+enum pa
+{ Zfirst, Zsecond, Zthird }
+
+enum pack
+{ Zfirst, Zsecond, Zthird }
+
+enum packOwnBatch
+{ Zfirst, Zsecond, Zthird }
+
+enum pack_base
+{ Zfirst, Zsecond, Zthird }
+
+enum pack_blob
+{ Zfirst, Zsecond, Zthird }
+
+enum pack_float
+{ Zfirst, Zsecond, Zthird }
+
+enum pack_int
+{ Zfirst, Zsecond, Zthird }
+
+enum pack_u32
+{ Zfirst, Zsecond, Zthird }
+
+enum pack_u64
+{ Zfirst, Zsecond, Zthird }
+
+enum pack_uint
+{ Zfirst, Zsecond, Zthird }
+
+enum pack_wide
+{ Zfirst, Zsecond, Zthird }
+
+enum packed
+{ Zfirst, Zsecond, Zthird }
+
+enum packed16
+{ Zfirst, Zsecond, Zthird }
+
+enum packed_offset
+{ Zfirst, Zsecond, Zthird }
+
+enum packer
+{ Zfirst, Zsecond, Zthird }
+
+enum packet
+{ Zfirst, Zsecond, Zthird }
+
+enum packing
+{ Zfirst, Zsecond, Zthird }
+
+enum padded
+{ Zfirst, Zsecond, Zthird }
+
+enum padding
+{ Zfirst, Zsecond, Zthird }
+
+enum paddingBits
+{ Zfirst, Zsecond, Zthird }
+
+enum padn
+{ Zfirst, Zsecond, Zthird }
+
+enum pads
+{ Zfirst, Zsecond, Zthird }
+
+enum pair
+{ Zfirst, Zsecond, Zthird }
+
+enum pairMisuse
+{ Zfirst, Zsecond, Zthird }
+
+enum pair_fields
+{ Zfirst, Zsecond, Zthird }
+
+enum pairs
+{ Zfirst, Zsecond, Zthird }
+
+enum pairs_at
+{ Zfirst, Zsecond, Zthird }
+
+enum pairwise
+{ Zfirst, Zsecond, Zthird }
+
+enum panicmsg
+{ Zfirst, Zsecond, Zthird }
+
+enum params128
+{ Zfirst, Zsecond, Zthird }
+
+enum params64
+{ Zfirst, Zsecond, Zthird }
+
+enum paramsMisuse
+{ Zfirst, Zsecond, Zthird }
+
+enum parent
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    outer_holds Inner
+    outer_ok Inner
+    outer_present Inner
+    outer_table Inner
+    outer_w Inner
+    output Inner
+    outside Inner
+    ov Inner
+    over Inner
+    overBound Inner
+}
+
+table NameTypes0
+{
+    one0  outer_holds
+    many0 [..4]outer_holds
+    one1  outer_ok
+    many1 [..4]outer_ok
+    one2  outer_present
+    many2 [..4]outer_present
+    one3  outer_table
+    many3 [..4]outer_table
+    one4  outer_w
+    many4 [..4]outer_w
+    one5  output
+    many5 [..4]output
+    one6  outside
+    many6 [..4]outside
+    one7  ov
+    many7 [..4]ov
+    one8  over
+    many8 [..4]over
+    one9  overBound
+    many9 [..4]overBound
+}
+
+table NameFields0
+{
+    outer_holds uint32
+    outer_ok uint32
+    outer_present uint32
+    outer_table uint32
+    outer_w uint32
+    output uint32
+    outside uint32
+    ov uint32
+    over uint32
+    overBound uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    overLen Inner
+    overflow Inner
+    overlap Inner
+    overlapping Inner
+    overruns Inner
+    oversize Inner
+    overwritten Inner
+    overwrote Inner
+    own Inner
+    ownBuild Inner
+}
+
+table NameTypes1
+{
+    one0  overLen
+    many0 [..4]overLen
+    one1  overflow
+    many1 [..4]overflow
+    one2  overlap
+    many2 [..4]overlap
+    one3  overlapping
+    many3 [..4]overlapping
+    one4  overruns
+    many4 [..4]overruns
+    one5  oversize
+    many5 [..4]oversize
+    one6  overwritten
+    many6 [..4]overwritten
+    one7  overwrote
+    many7 [..4]overwrote
+    one8  own
+    many8 [..4]own
+    one9  ownBuild
+    many9 [..4]ownBuild
+}
+
+table NameFields1
+{
+    overLen uint32
+    overflow uint32
+    overlap uint32
+    overlapping uint32
+    overruns uint32
+    oversize uint32
+    overwritten uint32
+    overwrote uint32
+    own uint32
+    ownBuild uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    ownBv Inner
+    ownFieldElides Inner
+    ownHash Inner
+    ownHi Inner
+    ownLo Inner
+    ownNameEntryById Inner
+    ownSlot Inner
+    ownSlotEntry Inner
+    ownVocab Inner
+    own_build_version Inner
+}
+
+table NameTypes2
+{
+    one0  ownBv
+    many0 [..4]ownBv
+    one1  ownFieldElides
+    many1 [..4]ownFieldElides
+    one2  ownHash
+    many2 [..4]ownHash
+    one3  ownHi
+    many3 [..4]ownHi
+    one4  ownLo
+    many4 [..4]ownLo
+    one5  ownNameEntryById
+    many5 [..4]ownNameEntryById
+    one6  ownSlot
+    many6 [..4]ownSlot
+    one7  ownSlotEntry
+    many7 [..4]ownSlotEntry
+    one8  ownVocab
+    many8 [..4]ownVocab
+    one9  own_build_version
+    many9 [..4]own_build_version
+}
+
+table NameFields2
+{
+    ownBv uint32
+    ownFieldElides uint32
+    ownHash uint32
+    ownHi uint32
+    ownLo uint32
+    ownNameEntryById uint32
+    ownSlot uint32
+    ownSlotEntry uint32
+    ownVocab uint32
+    own_build_version uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    own_key Inner
+    own_version Inner
+    owner Inner
+    ownerName Inner
+    owner_of Inner
+    owners Inner
+    p Inner
+    p0 Inner
+    p00 Inner
+    p01 Inner
+}
+
+table NameTypes3
+{
+    one0  own_key
+    many0 [..4]own_key
+    one1  own_version
+    many1 [..4]own_version
+    one2  owner
+    many2 [..4]owner
+    one3  ownerName
+    many3 [..4]ownerName
+    one4  owner_of
+    many4 [..4]owner_of
+    one5  owners
+    many5 [..4]owners
+    one6  p
+    many6 [..4]p
+    one7  p0
+    many7 [..4]p0
+    one8  p00
+    many8 [..4]p00
+    one9  p01
+    many9 [..4]p01
+}
+
+table NameFields3
+{
+    own_key uint32
+    own_version uint32
+    owner uint32
+    ownerName uint32
+    owner_of uint32
+    owners uint32
+    p uint32
+    p0 uint32
+    p00 uint32
+    p01 uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    p1 Inner
+    p10 Inner
+    p11 Inner
+    p2 Inner
+    p3 Inner
+    pEnd Inner
+    pStart Inner
+    pa Inner
+    pack Inner
+    packOwnBatch Inner
+}
+
+table NameTypes4
+{
+    one0  p1
+    many0 [..4]p1
+    one1  p10
+    many1 [..4]p10
+    one2  p11
+    many2 [..4]p11
+    one3  p2
+    many3 [..4]p2
+    one4  p3
+    many4 [..4]p3
+    one5  pEnd
+    many5 [..4]pEnd
+    one6  pStart
+    many6 [..4]pStart
+    one7  pa
+    many7 [..4]pa
+    one8  pack
+    many8 [..4]pack
+    one9  packOwnBatch
+    many9 [..4]packOwnBatch
+}
+
+table NameFields4
+{
+    p1 uint32
+    p10 uint32
+    p11 uint32
+    p2 uint32
+    p3 uint32
+    pEnd uint32
+    pStart uint32
+    pa uint32
+    pack uint32
+    packOwnBatch uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    pack_base Inner
+    pack_blob Inner
+    pack_float Inner
+    pack_int Inner
+    pack_u32 Inner
+    pack_u64 Inner
+    pack_uint Inner
+    pack_wide Inner
+    packed Inner
+    packed16 Inner
+}
+
+table NameTypes5
+{
+    one0  pack_base
+    many0 [..4]pack_base
+    one1  pack_blob
+    many1 [..4]pack_blob
+    one2  pack_float
+    many2 [..4]pack_float
+    one3  pack_int
+    many3 [..4]pack_int
+    one4  pack_u32
+    many4 [..4]pack_u32
+    one5  pack_u64
+    many5 [..4]pack_u64
+    one6  pack_uint
+    many6 [..4]pack_uint
+    one7  pack_wide
+    many7 [..4]pack_wide
+    one8  packed
+    many8 [..4]packed
+    one9  packed16
+    many9 [..4]packed16
+}
+
+table NameFields5
+{
+    pack_base uint32
+    pack_blob uint32
+    pack_float uint32
+    pack_int uint32
+    pack_u32 uint32
+    pack_u64 uint32
+    pack_uint uint32
+    pack_wide uint32
+    packed uint32
+    packed16 uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    packed_offset Inner
+    packer Inner
+    packet Inner
+    packing Inner
+    padded Inner
+    padding Inner
+    paddingBits Inner
+    padn Inner
+    pads Inner
+    pair Inner
+}
+
+table NameTypes6
+{
+    one0  packed_offset
+    many0 [..4]packed_offset
+    one1  packer
+    many1 [..4]packer
+    one2  packet
+    many2 [..4]packet
+    one3  packing
+    many3 [..4]packing
+    one4  padded
+    many4 [..4]padded
+    one5  padding
+    many5 [..4]padding
+    one6  paddingBits
+    many6 [..4]paddingBits
+    one7  padn
+    many7 [..4]padn
+    one8  pads
+    many8 [..4]pads
+    one9  pair
+    many9 [..4]pair
+}
+
+table NameFields6
+{
+    packed_offset uint32
+    packer uint32
+    packet uint32
+    packing uint32
+    padded uint32
+    padding uint32
+    paddingBits uint32
+    padn uint32
+    pads uint32
+    pair uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    pairMisuse Inner
+    pair_fields Inner
+    pairs Inner
+    pairs_at Inner
+    pairwise Inner
+    panicmsg Inner
+    params128 Inner
+    params64 Inner
+    paramsMisuse Inner
+    parent Inner
+}
+
+table NameTypes7
+{
+    one0  pairMisuse
+    many0 [..4]pairMisuse
+    one1  pair_fields
+    many1 [..4]pair_fields
+    one2  pairs
+    many2 [..4]pairs
+    one3  pairs_at
+    many3 [..4]pairs_at
+    one4  pairwise
+    many4 [..4]pairwise
+    one5  panicmsg
+    many5 [..4]panicmsg
+    one6  params128
+    many6 [..4]params128
+    one7  params64
+    many7 [..4]params64
+    one8  paramsMisuse
+    many8 [..4]paramsMisuse
+    one9  parent
+    many9 [..4]parent
+}
+
+table NameFields7
+{
+    pairMisuse uint32
+    pair_fields uint32
+    pairs uint32
+    pairs_at uint32
+    pairwise uint32
+    panicmsg uint32
+    params128 uint32
+    params64 uint32
+    paramsMisuse uint32
+    parent uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

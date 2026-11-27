@@ -253,6 +253,46 @@ glue() {
 				echo "    }"
 			fi
 		done
+		# A FIXED ROOT WITH NO GENERATED ToJson (a fixed-point field, as
+		# tblfixedevo's EvoRoot) still has text: json-write prints it through
+		# the value bridge (_<Root>FixedWrite, fixed_body_to_loaded, then
+		# json_save_table), and read-into prints through that same bridge. The
+		# read is the one conformance_load uses: <Root>FixedEvolveLoad where the
+		# root has a lineage, so an older writer's record reads (ri_fixed_lineage).
+		for r in $(sed -n 's/^fn \([A-Za-z0-9_]*\)FixedLoad(.*/\1/p' "$1"/*Table.goose); do
+			if printf '%s\n' $tojson | grep -qx "$r"; then continue; fi
+			echo "    if form == \"fixed\" && root == \"$r\" {"
+			echo "        var values: $ns::$r[>..] = [];"
+			echo "        for _ in count { values.push($ns::$r { .. }); }"
+			if grep -q "^fn ${r}FixedEvolveLoad(" "$1"/*Table.goose; then
+				echo "        var rep = schema_rt::FixedEvolveReport { .. };"
+				echo "        for step in 3 {"
+				echo "            let n = $ns::${r}FixedEvolveLoad(values[0..count], if step == 1 { damaged } else { lawful }, rep);"
+				echo "            conformance_ri_verdict(out, n >= 0 && !rep.damaged && rep.reason == 0 && rep.oor == 0);"
+			else
+				echo "        var rep = schema_rt::FixedReport { .. };"
+				echo "        for step in 3 {"
+				echo "            let n = $ns::${r}FixedLoad(values[0..count], if step == 1 { damaged } else { lawful }, rep);"
+				echo "            conformance_ri_verdict(out, n >= 0 && !rep.damaged && rep.reason == 0);"
+			fi
+			echo "            if step == 1 {"
+			echo "                for k in count {"
+			echo "                    var body: u8[>..] = [];"
+			echo "                    $ns::_${r}FixedWrite(body, values[k]);"
+			echo "                    var data: u8[>..] = [];"
+			echo "                    var vals: schema_rt::LoadVal[>..] = [];"
+			echo "                    var nodes: schema_rt::LoadNode[>..] = [];"
+			echo "                    let at = fixed_body_to_loaded(conformance_unit(), \"$r\", body, data, vals);"
+			echo "                    if at < 0 { return -2; }"
+			echo "                    var t: u8[>..] = [];"
+			echo "                    if schema_rt::json_save_table($ns::TableUnit, $ns::TextUnit, \"$r\", data, vals, nodes, at, t) < 0 { return -2; }"
+			echo "                    out.append(t);"
+			echo "                }"
+			echo "            }"
+			echo "        }"
+			echo "        return 0;"
+			echo "    }"
+		done
 		echo "    return -1;"
 		echo "}"
 		NS="$ns" perl - "$1"/*.goose <<'EOF_WREF_PERL'
@@ -1231,6 +1271,7 @@ main_units() {
 	report) awk '$1 == "report" { print $3 }' "$1" ;;
 	framing) awk '$1 == "framing" { print $3 }' "$1" ;;
 	retain | retain-save) awk '$1 == "retain" { print $3 }' "$1" ;;
+	retain-refusal) awk '$1 == "retain-refusal" { print $3 }' "$1" ;;
 	json-hostile) awk '$1 == "json-hostile" { print $3 }' "$1" ;;
 	write-refusal | write-refusal-fixed | write-refusal-json | write-refusal-cook | write-refusal-block | announce | read-into | json-write-into) awk -v s="$2" '$1 == s { print $3 }' "$1" ;;
 	write-refusal-message) awk '$1 == "connection" { u[$2] = $3 } $1 == "write-refusal-message" && ($3 in u) { print u[$3] }' "$1" ;;
@@ -1338,6 +1379,7 @@ for key in $(awk '$1 == "unit" { print $2 }' "$1"); do
 				(s == "report" && $1 == "report" && $3 == k) ||
 				(s == "framing" && $1 == "framing" && $3 == k) ||
 				((s == "retain" || s == "retain-save") && $1 == "retain" && $3 == k) ||
+				(s == "retain-refusal" && $1 == "retain-refusal" && $3 == k) ||
 				(s == "json-hostile" && $1 == "json-hostile" && $3 == k) ||
 				((s == "write-refusal" || s == "write-refusal-fixed" || s == "write-refusal-json" || s == "write-refusal-cook" || s == "write-refusal-block" || s == "announce" || s == "read-into" || s == "json-write-into") && $1 == s && $3 == k) ||
 				(s == "write-refusal-message" && $1 == "write-refusal-message" && unit_of[$3] == k) { print $2 " absent" }' "$1" >"$dir/$2.$key.out"

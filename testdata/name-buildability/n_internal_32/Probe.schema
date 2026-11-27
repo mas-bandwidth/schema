@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum i
+{ Zfirst, Zsecond, Zthird }
+
+enum i0
+{ Zfirst, Zsecond, Zthird }
+
+enum i1
+{ Zfirst, Zsecond, Zthird }
+
+enum i10
+{ Zfirst, Zsecond, Zthird }
+
+enum i128_abs_text
+{ Zfirst, Zsecond, Zthird }
+
+enum i128_of
+{ Zfirst, Zsecond, Zthird }
+
+enum i128_shl
+{ Zfirst, Zsecond, Zthird }
+
+enum i128cmp
+{ Zfirst, Zsecond, Zthird }
+
+enum i2
+{ Zfirst, Zsecond, Zthird }
+
+enum i3
+{ Zfirst, Zsecond, Zthird }
+
+enum i32At
+{ Zfirst, Zsecond, Zthird }
+
+enum i4
+{ Zfirst, Zsecond, Zthird }
+
+enum i_at
+{ Zfirst, Zsecond, Zthird }
+
+enum i_node
+{ Zfirst, Zsecond, Zthird }
+
+enum ia
+{ Zfirst, Zsecond, Zthird }
+
+enum ib
+{ Zfirst, Zsecond, Zthird }
+
+enum id2
+{ Zfirst, Zsecond, Zthird }
+
+enum idBase
+{ Zfirst, Zsecond, Zthird }
+
+enum idCap
+{ Zfirst, Zsecond, Zthird }
+
+enum idCapacity
+{ Zfirst, Zsecond, Zthird }
+
+enum idCount
+{ Zfirst, Zsecond, Zthird }
+
+enum idHi
+{ Zfirst, Zsecond, Zthird }
+
+enum idLo
+{ Zfirst, Zsecond, Zthird }
+
+enum idMark
+{ Zfirst, Zsecond, Zthird }
+
+enum idName
+{ Zfirst, Zsecond, Zthird }
+
+enum idOf
+{ Zfirst, Zsecond, Zthird }
+
+enum idOff
+{ Zfirst, Zsecond, Zthird }
+
+enum idScratch
+{ Zfirst, Zsecond, Zthird }
+
+enum idSeen
+{ Zfirst, Zsecond, Zthird }
+
+enum idStart
+{ Zfirst, Zsecond, Zthird }
+
+enum idUsed
+{ Zfirst, Zsecond, Zthird }
+
+enum id_ref
+{ Zfirst, Zsecond, Zthird }
+
+enum id_ref_record
+{ Zfirst, Zsecond, Zthird }
+
+enum id_rollback
+{ Zfirst, Zsecond, Zthird }
+
+enum id_root
+{ Zfirst, Zsecond, Zthird }
+
+enum id_slot
+{ Zfirst, Zsecond, Zthird }
+
+enum identically
+{ Zfirst, Zsecond, Zthird }
+
+enum identity
+{ Zfirst, Zsecond, Zthird }
+
+enum ids
+{ Zfirst, Zsecond, Zthird }
+
+enum idsCount
+{ Zfirst, Zsecond, Zthird }
+
+enum idsMark
+{ Zfirst, Zsecond, Zthird }
+
+enum idsRef
+{ Zfirst, Zsecond, Zthird }
+
+enum idsRollback
+{ Zfirst, Zsecond, Zthird }
+
+enum idsSeen
+{ Zfirst, Zsecond, Zthird }
+
+enum idsStart
+{ Zfirst, Zsecond, Zthird }
+
+enum ids_at
+{ Zfirst, Zsecond, Zthird }
+
+enum ids_buf
+{ Zfirst, Zsecond, Zthird }
+
+enum ids_bytes
+{ Zfirst, Zsecond, Zthird }
+
+enum ids_distinct
+{ Zfirst, Zsecond, Zthird }
+
+enum ids_e
+{ Zfirst, Zsecond, Zthird }
+
+enum ids_n
+{ Zfirst, Zsecond, Zthird }
+
+enum ids_sift
+{ Zfirst, Zsecond, Zthird }
+
+enum ids_slot
+{ Zfirst, Zsecond, Zthird }
+
+enum ids_table
+{ Zfirst, Zsecond, Zthird }
+
+enum idx
+{ Zfirst, Zsecond, Zthird }
+
+enum idx1
+{ Zfirst, Zsecond, Zthird }
+
+enum idx_map
+{ Zfirst, Zsecond, Zthird }
+
+enum idx_str
+{ Zfirst, Zsecond, Zthird }
+
+enum ignore_guard
+{ Zfirst, Zsecond, Zthird }
+
+enum ignored
+{ Zfirst, Zsecond, Zthird }
+
+enum ihi
+{ Zfirst, Zsecond, Zthird }
+
+enum ik
+{ Zfirst, Zsecond, Zthird }
+
+enum ilo
+{ Zfirst, Zsecond, Zthird }
+
+enum image
+{ Zfirst, Zsecond, Zthird }
+
+enum imageBytes
+{ Zfirst, Zsecond, Zthird }
+
+enum imageView
+{ Zfirst, Zsecond, Zthird }
+
+enum img
+{ Zfirst, Zsecond, Zthird }
+
+enum inAnnouncedKind
+{ Zfirst, Zsecond, Zthird }
+
+enum inBucket
+{ Zfirst, Zsecond, Zthird }
+
+enum inDomain
+{ Zfirst, Zsecond, Zthird }
+
+enum in_bounds
+{ Zfirst, Zsecond, Zthird }
+
+enum in_field
+{ Zfirst, Zsecond, Zthird }
+
+enum in_link
+{ Zfirst, Zsecond, Zthird }
+
+enum inactive
+{ Zfirst, Zsecond, Zthird }
+
+enum inactive_edges
+{ Zfirst, Zsecond, Zthird }
+
+enum inactive_only
+{ Zfirst, Zsecond, Zthird }
+
+enum included
+{ Zfirst, Zsecond, Zthird }
+
+enum incoming
+{ Zfirst, Zsecond, Zthird }
+
+enum incrementDigits
+{ Zfirst, Zsecond, Zthird }
+
+enum ind
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    i Inner
+    i0 Inner
+    i1 Inner
+    i10 Inner
+    i128_abs_text Inner
+    i128_of Inner
+    i128_shl Inner
+    i128cmp Inner
+    i2 Inner
+    i3 Inner
+}
+
+table NameTypes0
+{
+    one0  i
+    many0 [..4]i
+    one1  i0
+    many1 [..4]i0
+    one2  i1
+    many2 [..4]i1
+    one3  i10
+    many3 [..4]i10
+    one4  i128_abs_text
+    many4 [..4]i128_abs_text
+    one5  i128_of
+    many5 [..4]i128_of
+    one6  i128_shl
+    many6 [..4]i128_shl
+    one7  i128cmp
+    many7 [..4]i128cmp
+    one8  i2
+    many8 [..4]i2
+    one9  i3
+    many9 [..4]i3
+}
+
+table NameFields0
+{
+    i uint32
+    i0 uint32
+    i1 uint32
+    i10 uint32
+    i128_abs_text uint32
+    i128_of uint32
+    i128_shl uint32
+    i128cmp uint32
+    i2 uint32
+    i3 uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    i32At Inner
+    i4 Inner
+    i_at Inner
+    i_node Inner
+    ia Inner
+    ib Inner
+    id2 Inner
+    idBase Inner
+    idCap Inner
+    idCapacity Inner
+}
+
+table NameTypes1
+{
+    one0  i32At
+    many0 [..4]i32At
+    one1  i4
+    many1 [..4]i4
+    one2  i_at
+    many2 [..4]i_at
+    one3  i_node
+    many3 [..4]i_node
+    one4  ia
+    many4 [..4]ia
+    one5  ib
+    many5 [..4]ib
+    one6  id2
+    many6 [..4]id2
+    one7  idBase
+    many7 [..4]idBase
+    one8  idCap
+    many8 [..4]idCap
+    one9  idCapacity
+    many9 [..4]idCapacity
+}
+
+table NameFields1
+{
+    i32At uint32
+    i4 uint32
+    i_at uint32
+    i_node uint32
+    ia uint32
+    ib uint32
+    id2 uint32
+    idBase uint32
+    idCap uint32
+    idCapacity uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    idCount Inner
+    idHi Inner
+    idLo Inner
+    idMark Inner
+    idName Inner
+    idOf Inner
+    idOff Inner
+    idScratch Inner
+    idSeen Inner
+    idStart Inner
+}
+
+table NameTypes2
+{
+    one0  idCount
+    many0 [..4]idCount
+    one1  idHi
+    many1 [..4]idHi
+    one2  idLo
+    many2 [..4]idLo
+    one3  idMark
+    many3 [..4]idMark
+    one4  idName
+    many4 [..4]idName
+    one5  idOf
+    many5 [..4]idOf
+    one6  idOff
+    many6 [..4]idOff
+    one7  idScratch
+    many7 [..4]idScratch
+    one8  idSeen
+    many8 [..4]idSeen
+    one9  idStart
+    many9 [..4]idStart
+}
+
+table NameFields2
+{
+    idCount uint32
+    idHi uint32
+    idLo uint32
+    idMark uint32
+    idName uint32
+    idOf uint32
+    idOff uint32
+    idScratch uint32
+    idSeen uint32
+    idStart uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    idUsed Inner
+    id_ref Inner
+    id_ref_record Inner
+    id_rollback Inner
+    id_root Inner
+    id_slot Inner
+    identically Inner
+    identity Inner
+    ids Inner
+    idsCount Inner
+}
+
+table NameTypes3
+{
+    one0  idUsed
+    many0 [..4]idUsed
+    one1  id_ref
+    many1 [..4]id_ref
+    one2  id_ref_record
+    many2 [..4]id_ref_record
+    one3  id_rollback
+    many3 [..4]id_rollback
+    one4  id_root
+    many4 [..4]id_root
+    one5  id_slot
+    many5 [..4]id_slot
+    one6  identically
+    many6 [..4]identically
+    one7  identity
+    many7 [..4]identity
+    one8  ids
+    many8 [..4]ids
+    one9  idsCount
+    many9 [..4]idsCount
+}
+
+table NameFields3
+{
+    idUsed uint32
+    id_ref uint32
+    id_ref_record uint32
+    id_rollback uint32
+    id_root uint32
+    id_slot uint32
+    identically uint32
+    identity uint32
+    ids uint32
+    idsCount uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    idsMark Inner
+    idsRef Inner
+    idsRollback Inner
+    idsSeen Inner
+    idsStart Inner
+    ids_at Inner
+    ids_buf Inner
+    ids_bytes Inner
+    ids_distinct Inner
+    ids_e Inner
+}
+
+table NameTypes4
+{
+    one0  idsMark
+    many0 [..4]idsMark
+    one1  idsRef
+    many1 [..4]idsRef
+    one2  idsRollback
+    many2 [..4]idsRollback
+    one3  idsSeen
+    many3 [..4]idsSeen
+    one4  idsStart
+    many4 [..4]idsStart
+    one5  ids_at
+    many5 [..4]ids_at
+    one6  ids_buf
+    many6 [..4]ids_buf
+    one7  ids_bytes
+    many7 [..4]ids_bytes
+    one8  ids_distinct
+    many8 [..4]ids_distinct
+    one9  ids_e
+    many9 [..4]ids_e
+}
+
+table NameFields4
+{
+    idsMark uint32
+    idsRef uint32
+    idsRollback uint32
+    idsSeen uint32
+    idsStart uint32
+    ids_at uint32
+    ids_buf uint32
+    ids_bytes uint32
+    ids_distinct uint32
+    ids_e uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    ids_n Inner
+    ids_sift Inner
+    ids_slot Inner
+    ids_table Inner
+    idx Inner
+    idx1 Inner
+    idx_map Inner
+    idx_str Inner
+    ignore_guard Inner
+    ignored Inner
+}
+
+table NameTypes5
+{
+    one0  ids_n
+    many0 [..4]ids_n
+    one1  ids_sift
+    many1 [..4]ids_sift
+    one2  ids_slot
+    many2 [..4]ids_slot
+    one3  ids_table
+    many3 [..4]ids_table
+    one4  idx
+    many4 [..4]idx
+    one5  idx1
+    many5 [..4]idx1
+    one6  idx_map
+    many6 [..4]idx_map
+    one7  idx_str
+    many7 [..4]idx_str
+    one8  ignore_guard
+    many8 [..4]ignore_guard
+    one9  ignored
+    many9 [..4]ignored
+}
+
+table NameFields5
+{
+    ids_n uint32
+    ids_sift uint32
+    ids_slot uint32
+    ids_table uint32
+    idx uint32
+    idx1 uint32
+    idx_map uint32
+    idx_str uint32
+    ignore_guard uint32
+    ignored uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    ihi Inner
+    ik Inner
+    ilo Inner
+    image Inner
+    imageBytes Inner
+    imageView Inner
+    img Inner
+    inAnnouncedKind Inner
+    inBucket Inner
+    inDomain Inner
+}
+
+table NameTypes6
+{
+    one0  ihi
+    many0 [..4]ihi
+    one1  ik
+    many1 [..4]ik
+    one2  ilo
+    many2 [..4]ilo
+    one3  image
+    many3 [..4]image
+    one4  imageBytes
+    many4 [..4]imageBytes
+    one5  imageView
+    many5 [..4]imageView
+    one6  img
+    many6 [..4]img
+    one7  inAnnouncedKind
+    many7 [..4]inAnnouncedKind
+    one8  inBucket
+    many8 [..4]inBucket
+    one9  inDomain
+    many9 [..4]inDomain
+}
+
+table NameFields6
+{
+    ihi uint32
+    ik uint32
+    ilo uint32
+    image uint32
+    imageBytes uint32
+    imageView uint32
+    img uint32
+    inAnnouncedKind uint32
+    inBucket uint32
+    inDomain uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    in_bounds Inner
+    in_field Inner
+    in_link Inner
+    inactive Inner
+    inactive_edges Inner
+    inactive_only Inner
+    included Inner
+    incoming Inner
+    incrementDigits Inner
+    ind Inner
+}
+
+table NameTypes7
+{
+    one0  in_bounds
+    many0 [..4]in_bounds
+    one1  in_field
+    many1 [..4]in_field
+    one2  in_link
+    many2 [..4]in_link
+    one3  inactive
+    many3 [..4]inactive
+    one4  inactive_edges
+    many4 [..4]inactive_edges
+    one5  inactive_only
+    many5 [..4]inactive_only
+    one6  included
+    many6 [..4]included
+    one7  incoming
+    many7 [..4]incoming
+    one8  incrementDigits
+    many8 [..4]incrementDigits
+    one9  ind
+    many9 [..4]ind
+}
+
+table NameFields7
+{
+    in_bounds uint32
+    in_field uint32
+    in_link uint32
+    inactive uint32
+    inactive_edges uint32
+    inactive_only uint32
+    included uint32
+    incoming uint32
+    incrementDigits uint32
+    ind uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

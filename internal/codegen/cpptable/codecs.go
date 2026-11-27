@@ -599,8 +599,20 @@ func (g *tableGen) emitTableResetOne(expr, typ string, f *ir.Field) {
 		// Prefill of a field appended UNDER AN ARM reads the arm's fresh image
 		// (bill §12.6). The union constructor only sets the tag to None, so
 		// each arm is Reset to its declared defaults, then the tag is None.
-		for _, v := range un.Variants {
+		last := -1
+		for i, v := range un.Variants {
 			g.emitTableResetArm(expr, v)
+			if v.F != nil {
+				last = i
+			}
+		}
+		// A counted [A..B] arm is born at count A (SPEC §4.6), and the arms
+		// share their storage: an arm reset after it may have zeroed the
+		// count, so each such arm's birth count is stated again last.
+		for i, v := range un.Variants {
+			if i != last && v.F != nil && v.F.Array == ir.ArrayCounted && armCompanioned(v) && v.F.BornCount() > 0 {
+				g.pf("    %s = %d; // the arm's birth count, after the overlapping arms' resets (§4.6)\n", armCount(expr, v), v.F.BornCount())
+			}
 		}
 		g.pf("    %s.type = %sType::None;\n", expr, un.Name)
 		return
@@ -631,7 +643,7 @@ func (g *tableGen) emitTableResetArm(base string, v ir.UnionVariant) {
 			} else {
 				g.emitTableResetArray(expr, f.ArrayBound, typ, selfInit, f)
 			}
-			g.pf("    %s = 0;\n", armCount(base, v))
+			g.pf("    %s = %d;\n", armCount(base, v), f.BornCount()) // born at the declared minimum (SPEC §4.6)
 			return
 		}
 		g.pf("    memset( %s, 0, sizeof( %s ) );\n", expr, expr)
@@ -1067,6 +1079,7 @@ func (g *tableGen) emitArrayBodyMeasure(f *ir.Field, elemKind int, into, n, acce
 	case tkEnum:
 		g.pf("%sfor ( int32_t %s = 0; %s < %s; %s++ )\n%s{\n", ind, i, i, n, i, ind)
 		g.pf("%s    uint64_t elem_ref%s = 0;\n", ind, sfx)
+		g.emitDeprecatedVariantAssert(f, fmt.Sprintf(access, i), ind+"    ")
 		g.pf("%s    if ( !TableEnumRef( ids, %s, elem_ref%s ) ) { %s } // no variant names this value\n", ind, fmt.Sprintf(access, i), sfx, onBad)
 		g.pf("%s    %s += TableLebBytes( elem_ref%s );\n%s}\n", ind, into, sfx, ind)
 	case tkNodeIndex:
@@ -1326,6 +1339,7 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 		case kind == tkEnum:
 			g.pf("        uint64_t variant_%s = 0;\n", f.Name)
 			g.pf("        if ( !TableEnumNamed( value.%s ) ) { return -1; } // no variant names this value\n", f.Name)
+			g.emitDeprecatedVariantAssert(f, "value."+f.Name, "        ")
 			g.pf("        const uint64_t ref_%s = %s;\n", f.Name, g.wireRef(id))
 			g.pf("        if ( !TableEnumRef( ids, value.%s, variant_%s ) ) { return -1; }\n", f.Name, f.Name)
 			g.pf("        bytes += TableLebBytes( ref_%s ) + 1 + TableLebBytes( variant_%s ); // %s: the variant's reference\n", f.Name, f.Name, f.Name)
@@ -1547,6 +1561,7 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 			g.pf("    if ( value.%s != %s )\n    {\n", f.Name, g.fieldDefaultExpr(f))
 		}
 		g.pf("        if ( !TableEnumNamed( value.%s ) ) { return -1; } // no variant names this value\n", f.Name)
+		g.emitDeprecatedVariantAssert(f, "value."+f.Name, "        ")
 		g.pf("        const uint64_t ref_%s = %s;\n", f.Name, g.wireRef(id))
 		g.pf("        uint64_t variant_%s = 0;\n", f.Name)
 		g.pf("        if ( !TableEnumRef( ids, value.%s, variant_%s ) ) { return -1; }\n", f.Name, f.Name)
@@ -1640,6 +1655,7 @@ func (g *tableGen) emitKeyedSlotRides(f *ir.Field, kind int, ind, onBad string) 
 		g.pf("%[1]sif ( elem_bytes <= 1 )\n%[1]s{\n%[1]s    ids.truncate( slot_mark );\n%[1]s    continue;\n%[1]s} // an all-default slot elides\n", ind)
 	case tkEnum:
 		g.pf("%suint64_t element_ref = 0;\n", ind)
+		g.emitDeprecatedVariantAssert(f, expr, ind)
 		g.pf("%sif ( !TableEnumRef( ids, %s, element_ref ) ) { %s }\n", ind, expr, onBad)
 	}
 }
@@ -1893,6 +1909,7 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 			g.pf("        w.raw( value.%s, value.%s_length );\n", f.Name, f.Name)
 		case kind == tkEnum:
 			g.pf("        if ( !TableEnumNamed( value.%s ) ) { return false; }\n", f.Name)
+			g.emitDeprecatedVariantAssert(f, "value."+f.Name, "        ")
 			g.pf("        const uint64_t ref_%s = %s;\n", f.Name, g.wireRef(id))
 			g.pf("        uint64_t variant_%s = 0;\n", f.Name)
 			g.pf("        if ( !TableEnumRef( ids, value.%s, variant_%s ) ) { return false; }\n", f.Name, f.Name)
@@ -2140,6 +2157,7 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 			g.pf("    if ( value.%s != %s )\n    {\n", f.Name, g.fieldDefaultExpr(f))
 		}
 		g.pf("        if ( !TableEnumNamed( value.%s ) ) { return false; }\n", f.Name)
+		g.emitDeprecatedVariantAssert(f, "value."+f.Name, "        ")
 		g.pf("        const uint64_t ref_%s = %s;\n", f.Name, g.wireRef(id))
 		g.pf("        uint64_t variant_%s = 0;\n", f.Name)
 		g.pf("        if ( !TableEnumRef( ids, value.%s, variant_%s ) ) { return false; }\n", f.Name, f.Name)
@@ -2184,6 +2202,7 @@ func (g *tableGen) emitTableWriteElement(f *ir.Field, kind int, expr, ind, sfx s
 	switch kind {
 	case tkEnum:
 		g.pf("%s{\n%s    uint64_t element_ref%s = 0;\n", ind, ind, sfx)
+		g.emitDeprecatedVariantAssert(f, expr, ind+"    ")
 		g.pf("%s    if ( !TableEnumRef( ids, %s, element_ref%s ) ) { return false; }\n", ind, expr, sfx)
 		g.pf("%s    w.putleb( element_ref%s );\n%s}\n", ind, sfx, ind)
 	case tkBool:
@@ -3746,6 +3765,46 @@ func arrayMinColumn(f *ir.Field) int64 {
 		return f.ArrayMin
 	}
 	return 0
+}
+
+// enumDeprecatedOrdinals is the ordinals of e's variants marked
+// `| deprecated` (docs/SPEC-TABLES.md §2.15), in declaration order: variant i
+// is ordinal i+1, 0 is None.
+func enumDeprecatedOrdinals(e *ir.Enum) []int {
+	var out []int
+	for i := range e.Variants {
+		if i < len(e.VariantTags) && slices.Contains(e.VariantTags[i], "deprecated") {
+			out = append(out, i+1)
+		}
+	}
+	return out
+}
+
+// enumNotDeprecated is the write-side condition that expr names no deprecated
+// variant of e (spelled typ at the call site), joined with &&, or "" when e
+// marks none.
+func enumNotDeprecated(e *ir.Enum, typ, expr string) string {
+	var conds []string
+	for _, o := range enumDeprecatedOrdinals(e) {
+		conds = append(conds, fmt.Sprintf("%s != %s::%s", expr, typ, e.Variants[o-1]))
+	}
+	return strings.Join(conds, " && ")
+}
+
+// emitDeprecatedVariantAssert is THE WRITE SIDE OF A DEPRECATED VARIANT
+// (docs/SPEC-TABLES.md §2.15 WRITE): a writer never writes one. A write-side
+// check, so C++, an assert leg, holds it as a debug-only schema_assert
+// (docs/SPEC.md §5.1), the JSON writer's rule on the variable save and its
+// measure; the fixed form's write check counts it (fixedform.go). Nothing is
+// emitted for an enum that marks no variant deprecated.
+func (g *tableGen) emitDeprecatedVariantAssert(f *ir.Field, expr, ind string) {
+	e, ok := f.Type.Ref.(*ir.Enum)
+	if !ok {
+		return
+	}
+	if cond := enumNotDeprecated(e, f.Type.Name, expr); cond != "" {
+		g.pf("%sschema_assert( %s ); // a deprecated variant is never written, debug only (SPEC-TABLES §2.15)\n", ind, cond)
+	}
 }
 
 // enumDeprecatedLambda spells the descriptor's enum_deprecated column: a

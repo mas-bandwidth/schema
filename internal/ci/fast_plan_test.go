@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 )
 
 // selectorOutput returns the selector's own verdict from the combined output.
@@ -41,7 +43,7 @@ func scriptEnv(environ []string) []string {
 // Exercise the workflow's actual selector: a green plan that selects no
 // harness must not silently skip a changed C++ fixed-table regression test.
 func TestFastPlanSelectsTableFixtures(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join(repoRoot(t), ".github/workflows/ci-fast.yml"))
+	data, err := os.ReadFile(filepath.Join(repoRoot(t), ".github/workflows/ci-fast-nightly.yml"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,6 +71,7 @@ func TestFastPlanSelectsTableFixtures(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel() // each case is its own bash over a read-only script
+			testinputs.Files(t, ".github/workflows/ci-fast-nightly.yml")
 			cmd := exec.Command("bash", "-euo", "pipefail", "-c", script.String())
 			cmd.Env = append(scriptEnv(os.Environ()), "files="+tc.files)
 			out, err := cmd.CombinedOutput()
@@ -83,14 +86,14 @@ func TestFastPlanSelectsTableFixtures(t *testing.T) {
 	}
 }
 
-// TestFastPlanCoversStreamToDevAndSelectsRelevantWork verifies that ci-fast.yml's
+// TestFastPlanCoversStreamToDevAndSelectsRelevantWork verifies that ci-fast-nightly.yml's
 // plan job diffs every pull request against main, whatever its base (a lane PR
 // is checked out merged with current main, .github/actions/merge-main), defaults
 // to dev on workflow_dispatch, and selects only relevant packages and
 // legs without broadening a single-leg change into the full suite.
 func TestFastPlanCoversStreamToDevAndSelectsRelevantWork(t *testing.T) {
 	t.Parallel()
-	data, err := os.ReadFile(filepath.Join(repoRoot(t), ".github/workflows/ci-fast.yml"))
+	data, err := os.ReadFile(filepath.Join(repoRoot(t), ".github/workflows/ci-fast-nightly.yml"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +101,7 @@ func TestFastPlanCoversStreamToDevAndSelectsRelevantWork(t *testing.T) {
 
 	const wantBaseLine = "BASE: ${{ github.event_name == 'pull_request' && 'main' || 'dev' }}"
 	if !strings.Contains(wf, wantBaseLine) {
-		t.Fatalf("ci-fast.yml plan does not set %q", wantBaseLine)
+		t.Fatalf("ci-fast-nightly.yml plan does not set %q", wantBaseLine)
 	}
 
 	_, tail, ok := strings.Cut(wf, "          # THE BROAD RULE.")
@@ -157,6 +160,13 @@ func TestFastPlanCoversStreamToDevAndSelectsRelevantWork(t *testing.T) {
 			name:  "ci package only",
 			files: "internal/ci/ci_test.go",
 			want:  `no|./internal/ci|[]`,
+		},
+		{
+			// a directory whose last .go file the diff deleted is no
+			// package: working/ keeps only a note (run 45441757243)
+			name:  "deleted last go file",
+			files: "working/digesthash.go",
+			want:  `no||[]`,
 		},
 		{
 			name:  "check package selects fuzz seeds",
@@ -235,6 +245,7 @@ func TestFastPlanCoversStreamToDevAndSelectsRelevantWork(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel() // each case is its own bash over a read-only script
+			testinputs.Files(t, ".github/workflows/ci-fast-nightly.yml")
 			cmd := exec.Command("bash", "-euo", "pipefail", "-c", script.String())
 			cmd.Env = append(scriptEnv(os.Environ()), "files="+tc.files)
 			cmd.Dir = repoRoot(t)
@@ -257,7 +268,7 @@ func TestFastPlanCoversStreamToDevAndSelectsRelevantWork(t *testing.T) {
 // and a broad diff selects all three.
 func TestFastPlanSelectsLanguageLints(t *testing.T) {
 	t.Parallel()
-	data, err := os.ReadFile(filepath.Join(repoRoot(t), ".github/workflows/ci-fast.yml"))
+	data, err := os.ReadFile(filepath.Join(repoRoot(t), ".github/workflows/ci-fast-nightly.yml"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -322,6 +333,7 @@ func TestFastPlanSelectsLanguageLints(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel() // each case is its own bash over a read-only script
+			testinputs.Files(t, ".github/workflows/ci-fast-nightly.yml")
 			cmd := exec.Command("bash", "-euo", "pipefail", "-c", script.String())
 			cmd.Env = append(scriptEnv(os.Environ()), "files="+tc.files)
 			cmd.Dir = repoRoot(t)
@@ -338,7 +350,7 @@ func TestFastPlanSelectsLanguageLints(t *testing.T) {
 
 func TestFastPlanSelectsCodegenAndLanguageCleanGates(t *testing.T) {
 	t.Parallel()
-	data, err := os.ReadFile(filepath.Join(repoRoot(t), ".github/workflows/ci-fast.yml"))
+	data, err := os.ReadFile(filepath.Join(repoRoot(t), ".github/workflows/ci-fast-nightly.yml"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -378,6 +390,7 @@ func TestFastPlanSelectsCodegenAndLanguageCleanGates(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel() // each case is its own bash over a read-only script
+			testinputs.Files(t, ".github/workflows/ci-fast-nightly.yml")
 			cmd := exec.Command("bash", "-euo", "pipefail", "-c", script.String())
 			cmd.Env = append(scriptEnv(os.Environ()), "files="+tc.files)
 			cmd.Dir = repoRoot(t)

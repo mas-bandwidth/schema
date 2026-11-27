@@ -9,6 +9,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
+	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -32,6 +33,7 @@ func elixirConformanceBuild(t *testing.T, root string) {
 	t.Helper()
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
+	testinputs.Build(t, "test/conformance/elixir", "test/conformance/harness")
 	cmd := testproc.CommandContext(t, ctx, "make", "build/conformance-harness", "build-conformance-elixir")
 	cmd.Dir = root
 	out, err := cmd.CombinedOutput()

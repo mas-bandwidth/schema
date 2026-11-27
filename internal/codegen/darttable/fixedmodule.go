@@ -946,6 +946,11 @@ func (g *fixedModule) emitBlockValidateElem(f *ir.Field, expr, ind string, depth
 			g.emitBlockValidateStruct(r, expr, ind, depth+1)
 		case *ir.Enum:
 			g.pf("%sif (%s < 0 || %s > %d) return -1;\n", ind, expr, expr, len(r.Variants))
+			// §2.15 WRITE: a deprecated variant is never written, held as a
+			// DEBUG assert (SPEC.md §5.1) as the variable and fixed saves hold it
+			if cond := enumNotDeprecated(r, expr); cond != "" {
+				g.pf("%sassert(%s, 'deprecated variant is never written (SPEC-TABLES 2.15)');\n", ind, cond)
+			}
 		case *ir.Flags:
 			if len(r.Variants) < 64 {
 				mask := (uint64(1) << uint(len(r.Variants))) - 1
@@ -1067,11 +1072,18 @@ func (g *fixedModule) assemble() []byte {
 	}
 	sort.Strings(bases)
 	for _, b := range bases {
-		names := make([]string, 0, len(g.imports[b]))
+		all := make([]string, 0, len(g.imports[b]))
 		for s := range g.imports[b] {
-			names = append(names, s)
+			all = append(all, s)
 		}
-		sort.Strings(names)
+		sort.Strings(all)
+		names, prefixed := splitEnumShows(g.unit, all)
+		if prefixed {
+			h.WriteString(enumPrefixImport(b + ".dart"))
+		}
+		if len(names) == 0 {
+			continue
+		}
 		list := strings.Join(names, ", ")
 		one := fmt.Sprintf("import '%s.dart' show %s;", b, list)
 		if len(one) <= 80 {

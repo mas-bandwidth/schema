@@ -70,6 +70,7 @@ for entry in "$root"/build/*; do
 	ln -s "$entry" "$mirror/build/$name"
 done
 cp test/conformance/luau/driver test/conformance/luau/main.luau "$mirror/test/conformance/luau/"
+cp test/conformance/answer-lines.pl "$mirror/test/conformance/"
 cp build/luau-driver/units.luau "$mirror/build/luau-driver/units.luau"
 gen=$mirror/build/conformance-luau
 mkdir -p "$gen"
