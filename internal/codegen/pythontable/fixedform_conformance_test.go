@@ -8,11 +8,11 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/python/pyrun"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testinputs"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 var (
@@ -112,7 +112,7 @@ func TestPythonFixedFormWriteRefusalNegativeControl(t *testing.T) {
 	}
 	generated := ensurePythonConformanceUnits(t, repo)
 	files := map[string][]byte{}
-	for _, name := range []string{"main.py", "surfaces/_common.py", "surfaces/write-refusal-fixed.py"} {
+	for _, name := range []string{"main.py", "surfaces/_common.py", "surfaces/_mutate.py", "surfaces/write-refusal-fixed.py"} {
 		data, err := os.ReadFile(filepath.Join(repo, "test", "conformance", "python", name))
 		if err != nil {
 			t.Fatal(err)

@@ -1872,8 +1872,14 @@ All compile errors with positions:
   class or extension type (`abstract`, `as`, `covariant`, `deferred`,
   `dynamic`, `export`, `extension`, `external`, `factory`, `Function`, `get`,
   `implements`, `import`, `interface`, `late`, `library`, `mixin`,
-  `operator`, `part`, `required`, `set`, `static`, `typedef`), and Elixir's
-  support module `PacketRuntime`. A
+  `operator`, `part`, `required`, `set`, `static`, `typedef`), Elixir's
+  support module `PacketRuntime`, and every macro the serialize runtime
+  header `serialize.h` defines, which the generated C++ includes (C++: a
+  function-like macro such as `write_int` or `serialize_fixed` expands at
+  the `(` of a value-initialised `E()` or a conversion `E( v )`, an
+  object-like one such as `SERIALIZE_DEBUG` everywhere; the 94 of serialize
+  v2.1.6). A field or a union arm may take such a name: a member is spelled
+  only after `.` or as a declarator, where no function-like macro reaches. A
   reserved word or a claimed name above takes its own diagnostic instead.
 - **Generator-name safety:** the names generated code declares for itself
   inside its functions (locals, parameters, loop variables: `v`, `r`, `w`,
@@ -1883,7 +1889,48 @@ All compile errors with positions:
   its own can reach it (the Dart table libraries spell an enum whose name
   starts lowercase through the import prefix `$enums`, which no schema
   identifier can spell) or names its locals so none can equal one (the Dart
-  `enumName<E>` parameter is `$value` for an enum named `value`).
+  `enumName<E>` parameter is `$value` for an enum named `value`; the C++
+  table header spells a declared name that starts lowercase from the
+  global root, `::<package>::name`, wherever a parameter, a local, a loop
+  variable or a lambda's parameter of the same name may be in scope: the
+  reset `value.many[tail] = ::probe::count();`, the descriptors'
+  conversions `::probe::v( v )` and the enum codecs' parameter types,
+  `TableEnumRef( TableIds & ids, ::probe::ids value, ... )`; a name that
+  starts with a capital is spelled bare, as before, since no generated
+  local does). A field or an arm named like a libc type the unit also
+  declares (`int32_t`) stays a member in C++: the pass that writes the
+  emitter's own uses of the platform's type as `::int32_t` leaves a
+  member's declarator (`Inner int32_t;`), its reads in a member function
+  (`return int32_t;`, `&int32_t`) and `offsetof( T, int32_t )` bare. Where a
+  target has no spelling a schema identifier cannot take, a generator-owned
+  name carries the prefix `schema_`, which the checker refuses on every
+  declaration (the Go descriptor closures' parameter `schema_v`, the Java
+  `enumName<E>` parameter `schema_value`, the Go union record's payload
+  extent `schema_payload`). A name a generator derives from schema names is
+  a one-to-one function of them (two declarations never derive one name:
+  the Dart text form's helpers are `schema_textName_<E>` and
+  `schema_textFromName_<E>`, not `<e>Name` and `<e>FromName`, which met at
+  `daysFromName` for enums `days` and `daysFrom`), and it is spelled by the
+  emitter, never made by rewriting emitted text that holds schema names (a
+  rewrite of `depth` or `SaveBody` reaches a field or arm of that name). A
+  Dart union's tag type does not implement int, so an arm may share a name
+  with any int member (`sign`, `floor`, `isNaN`). A name a target reserves
+  outright is refused at check for every target, naming it: a declaration
+  spelled `main` in Dart, which reserves `main` for the entry point.
+  The Rust packet layer spells an enum as a tuple struct, which no let,
+  parameter, loop or match binding may shadow, so every binding the Rust
+  packet emitter declares, every binding of the table files that glob-import
+  the crate (the fixed, message, block and cook modules and the message and
+  cook runtimes), and the cooked union setter's parameter, carries the
+  `schema_` prefix no declaration may take (`schema_value`,
+  `schema_stream`, `schema_c0`, ...). A helper derived from two names is
+  injective: a Rust table enum's JSON names are its associated
+  `json_name` and `from_json_name`, never free functions spelled from its
+  name, which `days` and `daysFrom` would share. What a target cannot
+  rename is refused at check for every target: Rust's 2024 keyword `gen`,
+  and the modules the generated crate's lib.rs declares (each file's
+  lowercased basename always; with tables, `tables`, the table runtimes
+  and each file's `_table`, `_cook`, `_records` and other table modules).
   The proof is the corpus rows `n_internal_*` of
   testdata/name-buildability: every such name the table emitters of all 18
   targets declare, each used as an enum, a table field and a union arm, and
@@ -1898,11 +1945,42 @@ All compile errors with positions:
   and no other declaration's, so `foo_bar` beside `FooBar` is refused; a
   Python package is no standard-library module and no declaration a
   builtin; in both, no field or arm starts with `__` or the helper prefix
-  `_s_` or spells a member the generated class defines; a Goose namespace is
-  no reserved one) and the C and C++ wire-header name
+  `_s_` or spells a member the generated class defines; for Goose, the
+  target's whole generate, so every name two writers of the one Goose
+  namespace both declare (`_fleetFields` for a table `fleet` beside an enum
+  `_fleetFields`) and every refusal by name it makes are the checker's, and a
+  Goose namespace is no reserved one; for both C# targets, no declaration
+  named `unmanaged`, the constraint keyword the generated
+  `where T : unmanaged` spells, which a type of that name in the unit's
+  namespace would replace; for Lobster, no declaration named like a Lobster
+  keyword or the float literals `nan` and `infinity`, which its lexer never
+  reads as an identifier) and the C and C++ wire-header name
   (`<Base>Wire.h`, so `Other.schema` beside `OtherWire.schema` collides), and
+  a member (a field of a `type` or `table`, or a union arm, packet or
+  table-closure) spelled like a named type some member of the same
+  declaration is declared with, its own or a sibling's (an enum `kind`
+  beside a field or arm `kind kind`, or `kind Kind2` beside `mode kind`: C++
+  refuses the member as a declaration that changes the meaning of the type
+  name, comparing the name as written, and Dart as a member that hides the
+  type in the class body, comparing its lowerCamel spelling, so a field
+  `Kind kind` is refused for Dart; `kind Kind` is two names in every target
+  and builds, as does a field `kind` on a declaration none of whose members
+  uses the type `kind`), and
   refuses for every target, naming the target, a unit one of them refuses,
-  so those names are refused at check rather than at generate.
+  so those names are refused at check rather than at generate. Every refusal
+  by name a target makes at generate is one of these, or one of the rules
+  above: the name-buildability nightly generates every accepted row of
+  testdata/name-buildability in every target
+  (compiler, `TestEveryAcceptedCorpusRowGeneratesEverywhere`), and the
+  fast lane holds that each emitter-rule row is refused at generate once the
+  rules are taken away (`TestEmitterNameRulesAreTheOnlyGuard`). Where an
+  emitter can keep two generated names apart it does, and nothing is refused: C gives every type
+  the suffix `_t`, even a name already ending in `_t`, so `placed` and
+  `placed_t` are `<pkg>_placed_t` and `<pkg>_placed_t_t`; the Goose view
+  names a vocabulary's rows `_<name>VocabularyRows`, a suffix no other Goose
+  name ends in, so an enum `fooView` beside `foo` builds; the Elixir file
+  module steps aside to `<Base>File` when a declaration lowers to its name
+  (an enum `other` beside `Other.schema`).
 
 ### 4.7 Strings and byte blocks — byte strings, one shape
 

@@ -1426,14 +1426,14 @@ public final class Joins {
 
     // enumNameUnevenType: debug/log/tooling name for any UnevenType storage value —
     // out-of-set values (wire-legal up to the declared max) name as "???"
-    public static java.lang.String enumNameUnevenType(long value) {
-        if (value == UnevenType.NONE) {
+    public static java.lang.String enumNameUnevenType(long schema_value) {
+        if (schema_value == UnevenType.NONE) {
             return "None";
         }
-        if (value == UnevenType.NARROW) {
+        if (schema_value == UnevenType.NARROW) {
             return "Narrow";
         }
-        if (value == UnevenType.WIDE) {
+        if (schema_value == UnevenType.WIDE) {
             return "Wide";
         }
         return "???";

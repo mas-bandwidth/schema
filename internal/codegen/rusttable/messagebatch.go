@@ -26,8 +26,8 @@ import (
 	"math/big"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 type msgGen struct {
@@ -51,12 +51,19 @@ func (m *msgGen) origOf(f *ir.Field) *ir.Field {
 
 func (m *msgGen) pf(format string, args ...any) { fmt.Fprintf(&m.b, format, args...) }
 
+// tmp is a fresh numbered name. A binding takes the reserved schema_ spelling
+// (docs/SPEC.md §4.6): the message file glob-imports the crate, and a user
+// enum named arm7 is a tuple struct no binding may shadow. A loop label ('f,
+// 'a) lives in its own namespace and keeps its spelling.
 func (m *msgGen) tmp(prefix string) string {
 	m.n++
-	return fmt.Sprintf("%s%d", prefix, m.n)
+	if strings.HasPrefix(prefix, "'") {
+		return fmt.Sprintf("%s%d", prefix, m.n)
+	}
+	return fmt.Sprintf("schema_%s%d", prefix, m.n)
 }
 
-const msgBad = "{ report.damaged = true; return false; }"
+const msgBad = "{ schema_report.damaged = true; return false; }"
 
 // messageModule is <base>_message.rs: the body walkers of every type this
 // file declares that a fixed root reaches, and the three batch verbs of every
@@ -193,9 +200,9 @@ func (m *msgGen) emitDefaults(st *ir.Struct) {
 	m.pf("\n];\n\n")
 	m.pf("/// %s at its declared defaults (SPEC §4.2): the value a body that carries\n/// no field of it decodes to (§3.3).\n", st.Name)
 	m.pf("pub fn %s_message_default() -> %sRow {\n", snake, st.Name)
-	m.pf("    let mut value = %sRow::default();\n", st.Name)
-	m.pf("    %s_fixed_scatter(&%s_MESSAGE_DEFAULTS, &mut value, &mut TableFixedReport::default());\n", snake, up)
-	m.pf("    value\n}\n\n")
+	m.pf("    let mut schema_value = %sRow::default();\n", st.Name)
+	m.pf("    %s_fixed_scatter(&%s_MESSAGE_DEFAULTS, &mut schema_value, &mut TableFixedReport::default());\n", snake, up)
+	m.pf("    schema_value\n}\n\n")
 }
 
 // ---- the write -------------------------------------------------------------
@@ -262,7 +269,7 @@ func (m *msgGen) emitSaveBody(st *ir.Struct) {
 	// always ride carries no unused binding.
 	body := &msgGen{u: m.u, slots: m.slots, orig: m.orig, n: m.n}
 	for _, f := range st.Fields {
-		expr := "value." + f.Name
+		expr := "schema_value." + f.Name
 		ind := "        "
 		body.pf("    {\n")
 		if f.Type.Optional {
@@ -271,15 +278,15 @@ func (m *msgGen) emitSaveBody(st *ir.Struct) {
 		body.storageCheck(f, expr, ind)
 		rides := "true"
 		if !f.Type.Optional {
-			rides = body.rides(f, expr, "dflt."+f.Name, ind)
+			rides = body.rides(f, expr, "schema_dflt."+f.Name, ind)
 		}
 		entry := ir.TableFieldEntry(f)
 		if rides == "true" {
-			body.pf("%sw.put(%d, TABLE_MESSAGE_REF_BITS);\n", ind, body.slot(entry))
-			body.writeValue(f, entry, expr, "dflt."+f.Name, ind)
+			body.pf("%sschema_w.put(%d, TABLE_MESSAGE_REF_BITS);\n", ind, body.slot(entry))
+			body.writeValue(f, entry, expr, "schema_dflt."+f.Name, ind)
 		} else {
-			body.pf("%sif %s {\n%s    w.put(%d, TABLE_MESSAGE_REF_BITS);\n", ind, rides, ind, body.slot(entry))
-			body.writeValue(f, entry, expr, "dflt."+f.Name, ind+"    ")
+			body.pf("%sif %s {\n%s    schema_w.put(%d, TABLE_MESSAGE_REF_BITS);\n", ind, rides, ind, body.slot(entry))
+			body.writeValue(f, entry, expr, "schema_dflt."+f.Name, ind+"    ")
 			body.pf("%s}\n", ind)
 		}
 		if f.Type.Optional {
@@ -290,7 +297,7 @@ func (m *msgGen) emitSaveBody(st *ir.Struct) {
 	m.n = body.n
 	generated := body.b.String()
 	m.pf("/// One %s body (§3.3): each field off its declared default, then the zero\n/// reference.\n", st.Name)
-	if strings.Contains(generated, "for i in 0..") {
+	if strings.Contains(generated, "for schema_i in 0..") {
 		// The emitted ride loop indexes the row's storage by the declared
 		// count: an iterator would turn an off-contract short row into a
 		// silent short write instead of the indexing failure the contract
@@ -298,12 +305,12 @@ func (m *msgGen) emitSaveBody(st *ir.Struct) {
 		m.pf("// The ride loop indexes the row's storage by the declared count: an\n// iterator would turn an off-contract short row into a silent short write.\n")
 		m.pf("#[allow(clippy::needless_range_loop)]\n")
 	}
-	m.pf("pub fn %s_save_message_body(w: &mut TableBitWriter, value: &%sRow) -> bool {\n", snake, st.Name)
-	if strings.Contains(generated, "dflt.") {
-		m.pf("    let dflt = %s_message_default();\n", snake)
+	m.pf("pub fn %s_save_message_body(schema_w: &mut TableBitWriter, schema_value: &%sRow) -> bool {\n", snake, st.Name)
+	if strings.Contains(generated, "schema_dflt.") {
+		m.pf("    let schema_dflt = %s_message_default();\n", snake)
 	}
 	m.pf("%s", generated)
-	m.pf("    w.put(0, TABLE_MESSAGE_REF_BITS);\n    !w.overflow\n}\n\n")
+	m.pf("    schema_w.put(0, TABLE_MESSAGE_REF_BITS);\n    !schema_w.overflow\n}\n\n")
 }
 
 // storageCheck holds a used length or a live count outside its storage,
@@ -353,13 +360,13 @@ func (m *msgGen) rides(f *ir.Field, expr, dexpr, ind string) string {
 		switch {
 		case isStructRef(f.Type):
 			// a body the save refuses is live: the write that follows says so
-			live = fmt.Sprintf("{ let mut probe = TableBitWriter::measure(); !%s_save_message_body(&mut probe, &%s[i]) || probe.bits > TABLE_MESSAGE_REF_BITS as u64 }", ir.RustSnake(f.Type.Name), expr)
+			live = fmt.Sprintf("{ let mut probe = TableBitWriter::measure(); !%s_save_message_body(&mut probe, &%s[schema_i]) || probe.bits > TABLE_MESSAGE_REF_BITS as u64 }", ir.RustSnake(f.Type.Name), expr)
 		case isUnionRef(f.Type):
-			live = expr + "[i].tag() != 0"
+			live = expr + "[schema_i].tag() != 0"
 		default:
-			live = m.rides(msgElement(f), expr+"[i]", dexpr+"[i]", ind)
+			live = m.rides(msgElement(f), expr+"[schema_i]", dexpr+"[schema_i]", ind)
 		}
-		return fmt.Sprintf("%s_count > 0 && (%s_count != %d || (0..%d).any(|i| %s))", expr, expr, f.ArrayMin, f.ArrayMin, live)
+		return fmt.Sprintf("%s_count > 0 && (%s_count != %d || (0..%d).any(|schema_i| %s))", expr, expr, f.ArrayMin, f.ArrayMin, live)
 	case f.Array == ir.ArrayCounted:
 		return m.countedRides(f, expr, dexpr, ind)
 	case f.Array == ir.ArrayFixed:
@@ -367,9 +374,9 @@ func (m *msgGen) rides(f *ir.Field, expr, dexpr, ind string) string {
 			return "true"
 		}
 		if isUnionRef(f.Type) {
-			return fmt.Sprintf("%s.iter().any(|x| x.tag() != 0)", expr)
+			return fmt.Sprintf("%s.iter().any(|schema_x| schema_x.tag() != 0)", expr)
 		}
-		return fmt.Sprintf("(0..%d).any(|i| %s)", f.ArrayBound, scalarDiffers(f, expr+"[i]", dexpr+"[i]"))
+		return fmt.Sprintf("(0..%d).any(|schema_i| %s)", f.ArrayBound, scalarDiffers(f, expr+"[schema_i]", dexpr+"[schema_i]"))
 	case isUnionRef(f.Type):
 		return expr + ".tag() != 0"
 	}
@@ -396,15 +403,15 @@ func (m *msgGen) countedRides(f *ir.Field, expr, dexpr, ind string) string {
 		probe := m.tmp("probe")
 		m.pf("%slet mut %s = false;\n", ind, live)
 		m.pf("%sif %s_count == %d {\n", ind, expr, born)
-		m.pf("%s    for e in %s.iter().take(%d) {\n", ind, expr, born)
+		m.pf("%s    for schema_e in %s.iter().take(%d) {\n", ind, expr, born)
 		m.pf("%s        let mut %s = TableBitWriter::measure();\n", ind, probe)
-		m.pf("%s        if !%s_save_message_body(&mut %s, e) { return false; }\n", ind, ir.RustSnake(f.Type.Name), probe)
+		m.pf("%s        if !%s_save_message_body(&mut %s, schema_e) { return false; }\n", ind, ir.RustSnake(f.Type.Name), probe)
 		m.pf("%s        if %s.bits > TABLE_MESSAGE_REF_BITS as u64 { %s = true; break; }\n", ind, probe, live)
 		m.pf("%s    }\n%s}\n", ind, ind)
 	case isUnionRef(f.Type):
-		live = fmt.Sprintf("%s.iter().take(%d).any(|e| e.tag() != 0)", expr, born)
+		live = fmt.Sprintf("%s.iter().take(%d).any(|schema_e| schema_e.tag() != 0)", expr, born)
 	default:
-		live = fmt.Sprintf("%s.iter().zip(%s.iter()).take(%d).any(|(x, d)| %s)", expr, dexpr, born, scalarDiffers(f, "(*x)", "(*d)"))
+		live = fmt.Sprintf("%s.iter().zip(%s.iter()).take(%d).any(|(schema_x, d)| %s)", expr, dexpr, born, scalarDiffers(f, "(*schema_x)", "(*d)"))
 	}
 	return fmt.Sprintf("%s_count > 0 && (%s_count != %d || %s)", expr, expr, born, live)
 }
@@ -467,9 +474,9 @@ func (m *msgGen) scalarWriteCheck(f *ir.Field, expr, ind string) {
 // keyedPairs counts the slots of a keyed array that ride (§3.3).
 func (m *msgGen) keyedPairs(f *ir.Field, expr, dexpr, ind string) string {
 	pairs := m.tmp("pairs")
-	m.pf("%slet mut %s = 0u64;\n%sfor i in 0..%d {\n", ind, pairs, ind, f.ArrayBound)
+	m.pf("%slet mut %s = 0u64;\n%sfor schema_i in 0..%d {\n", ind, pairs, ind, f.ArrayBound)
 	e := msgElement(f)
-	cond := m.rides(e, expr+"[i]", dexpr+"[i]", ind+"    ")
+	cond := m.rides(e, expr+"[schema_i]", dexpr+"[schema_i]", ind+"    ")
 	m.pf("%s    if %s { %s += 1; }\n%s}\n", ind, cond, pairs, ind)
 	return pairs
 }
@@ -525,33 +532,33 @@ func (m *msgGen) writeValue(f *ir.Field, entry ir.TableVocabularyEntry, expr, de
 			typedCount = count
 			loop = fmt.Sprint(f.ArrayBound)
 		}
-		m.pf("%sw.put(%s.wrapping_sub(%d), %d);\n", ind, typedCount, entry.Shape.Min, ir.TableMessageCountBits(entry.Shape))
+		m.pf("%sschema_w.put(%s.wrapping_sub(%d), %d);\n", ind, typedCount, entry.Shape.Min, ir.TableMessageCountBits(entry.Shape))
 		if ir.TableMessageAligns(entry.Kind, entry.Shape) {
-			m.pf("%sw.align();\n", ind)
+			m.pf("%sschema_w.align();\n", ind)
 		}
-		m.pf("%sfor i in 0..%s {\n", ind, rustCount(loop, "usize"))
+		m.pf("%sfor schema_i in 0..%s {\n", ind, rustCount(loop, "usize"))
 		e := msgElement(f)
 		if f.KeyEnum != "" {
-			cond := m.rides(e, expr+"[i]", dexpr+"[i]", ind+"    ")
-			m.pf("%s    if !(%s) { continue; }\n%s    let slot: u64 = match i + 1 {", ind, cond, ind)
+			cond := m.rides(e, expr+"[schema_i]", dexpr+"[schema_i]", ind+"    ")
+			m.pf("%s    if !(%s) { continue; }\n%s    let schema_slot: u64 = match schema_i + 1 {", ind, cond, ind)
 			for i := range f.KeyEnumRef.Variants {
 				m.pf(" %d => %d,", i+1, m.nameSlot(ir.TableWireId(f.KeyEnumRef.VariantWireName(i))))
 			}
-			m.pf(" _ => 0 };\n%s    if slot == 0 { return false; }\n%s    w.put(slot, TABLE_MESSAGE_REF_BITS);\n", ind, ind)
+			m.pf(" _ => 0 };\n%s    if schema_slot == 0 { return false; }\n%s    schema_w.put(schema_slot, TABLE_MESSAGE_REF_BITS);\n", ind, ind)
 		}
-		m.writeValue(e, msgElementEntry(entry), expr+"[i]", dexpr+"[i]", ind+"    ")
+		m.writeValue(e, msgElementEntry(entry), expr+"[schema_i]", dexpr+"[schema_i]", ind+"    ")
 		m.pf("%s}\n", ind)
 	case f.Type.Kind == ir.TString:
 		m.pf("%sdebug_assert!(table_message_utf8(&%s[..%s_length as usize]), \"%s is ill-formed text\");\n", ind, expr, expr, f.Name)
-		m.pf("%sw.put(%s_length as u64, %d);\n%sw.raw(&%s[..%s_length as usize]);\n", ind, expr, ir.TableMessageCountBits(entry.Shape), ind, expr, expr)
+		m.pf("%sschema_w.put(%s_length as u64, %d);\n%sschema_w.raw(&%s[..%s_length as usize]);\n", ind, expr, ir.TableMessageCountBits(entry.Shape), ind, expr, expr)
 	case isStructRef(f.Type):
-		m.pf("%sif !%s_save_message_body(w, &%s) { return false; }\n", ind, ir.RustSnake(f.Type.Name), expr)
+		m.pf("%sif !%s_save_message_body(schema_w, &%s) { return false; }\n", ind, ir.RustSnake(f.Type.Name), expr)
 	case isUnionRef(f.Type):
 		un := f.Type.Ref.(*ir.Union)
-		m.pf("%smatch %s.tag() {\n%s    0 => w.put(0, TABLE_MESSAGE_REF_BITS),\n", ind, expr, ind)
+		m.pf("%smatch %s.tag() {\n%s    0 => schema_w.put(0, TABLE_MESSAGE_REF_BITS),\n", ind, expr, ind)
 		for i, v := range un.Variants {
 			arm := ir.TableArmEntry(v)
-			m.pf("%s    %d => {\n%s        w.put(%d, TABLE_MESSAGE_REF_BITS);\n", ind, i+1, ind, m.slot(arm))
+			m.pf("%s    %d => {\n%s        schema_w.put(%d, TABLE_MESSAGE_REF_BITS);\n", ind, i+1, ind, m.slot(arm))
 			if !v.Void() {
 				local := m.tmp("arm")
 				m.pf("%s        let Some(%s) = %s.%s() else { return false; };\n", ind, local, expr, unionRowGetter(un, v.Name))
@@ -582,15 +589,15 @@ func (m *msgGen) writeValue(f *ir.Field, entry ir.TableVocabularyEntry, expr, de
 			// are.
 			m.pf("%sdebug_assert!(%s, \"invalid_value: %s holds a deprecated variant\");\n", ind, dep, f.Name)
 		}
-		m.pf("%smatch %s {\n%s    0 => w.put(0, TABLE_MESSAGE_REF_BITS),\n", ind, expr, ind)
+		m.pf("%smatch %s {\n%s    0 => schema_w.put(0, TABLE_MESSAGE_REF_BITS),\n", ind, expr, ind)
 		for i := range e.Variants {
 			if s := m.nameSlot(ir.TableWireId(e.VariantWireName(i))); s != 0 {
-				m.pf("%s    %d => w.put(%d, TABLE_MESSAGE_REF_BITS),\n", ind, i+1, s)
+				m.pf("%s    %d => schema_w.put(%d, TABLE_MESSAGE_REF_BITS),\n", ind, i+1, s)
 			}
 		}
 		m.pf("%s    _ => return false,\n%s}\n", ind, ind)
 	case entry.Kind == 1:
-		m.pf("%sw.put(if %s { 1 } else { 0 }, 1);\n", ind, expr)
+		m.pf("%sschema_w.put(if %s { 1 } else { 0 }, 1);\n", ind, expr)
 	default:
 		m.scalarWriteCheck(f, expr, ind)
 		lo, hi := expr+" as u64", "0"
@@ -616,7 +623,7 @@ func (m *msgGen) writeValue(f *ir.Field, entry ir.TableVocabularyEntry, expr, de
 		case cookElemType(f) == "u64":
 			lo = expr
 		}
-		m.pf("%stable_message_write_scalar(w, &%s, %s, %s);\n", ind, msgShapeLiteral(entry.Kind, entry.Shape), lo, hi)
+		m.pf("%stable_message_write_scalar(schema_w, &%s, %s, %s);\n", ind, msgShapeLiteral(entry.Kind, entry.Shape), lo, hi)
 	}
 }
 
@@ -631,25 +638,25 @@ func (m *msgGen) emitLoadBody(st *ir.Struct) {
 		mine := ir.TableFieldEntry(f)
 		ind := "                "
 		body.pf("            0x%016x => {\n", mine.Id)
-		body.pf("%sif same_build && next_field > %d %s // out of the writer's order (§3.3 (b))\n", ind, i, msgBad)
-		body.pf("%snext_field = %d;\n", ind, i+1)
+		body.pf("%sif schema_same_build && schema_next_field > %d %s // out of the writer's order (§3.3 (b))\n", ind, i, msgBad)
+		body.pf("%sschema_next_field = %d;\n", ind, i+1)
 		label := body.tmp("'f")
 		widens := msgCanWiden(f, mine)
 		if widens {
-			body.pf("%slet mut widened = false;\n", ind)
+			body.pf("%slet mut schema_widened = false;\n", ind)
 		}
 		if !f.Type.Optional && !msgQuantizedExempt(f, mine) {
-			body.pf("%slet unknown_before = report.unknown;\n", ind)
+			body.pf("%slet schema_unknown_before = schema_report.unknown;\n", ind)
 		}
 		body.pf("%s%s: {\n", ind, label)
-		body.compat(f, mine, "entry", "", label, ind+"    ")
+		body.compat(f, mine, "schema_entry", "", label, ind+"    ")
 		nested := isStructRef(f.Type) && f.Array == ir.ArrayNone && f.KeyEnum == "" && !f.Type.Optional
 		if nested {
-			body.pf("%s    let start = r.offset;\n", ind)
+			body.pf("%s    let schema_start = schema_r.offset;\n", ind)
 		}
-		body.readValue(f, "value."+f.Name, "entry", ind+"    ")
+		body.readValue(f, "schema_value."+f.Name, "schema_entry", ind+"    ")
 		if f.Type.Optional {
-			body.pf("%s    value.%s_present = true;\n", ind, f.Name)
+			body.pf("%s    schema_value.%s_present = true;\n", ind, f.Name)
 		} else {
 			if isUnionRef(f.Type) && f.Array == ir.ArrayNone && f.KeyEnum == "" && !f.Required {
 				// A UNION FIELD WRITTEN WITH ARM REFERENCE 0 (§3.3 (c)): None
@@ -657,7 +664,7 @@ func (m *msgGen) emitLoadBody(st *ir.Struct) {
 				// An arm this build cannot name also reads None, and counts
 				// one unknown; a None element of an array of unions is
 				// positional and reads.
-				body.pf("%s    if value.%s.tag() == 0 && report.unknown == unknown_before %s // a union written with arm reference 0 (§3.3 (c))\n", ind, f.Name, msgBad)
+				body.pf("%s    if schema_value.%s.tag() == 0 && schema_report.unknown == schema_unknown_before %s // a union written with arm reference 0 (§3.3 (c))\n", ind, f.Name, msgBad)
 			}
 			// A FIELD STORED AT ITS DEFAULT (§3.3 (a), §4), at this reader's
 			// own build only: the save's own ride test, so a value it would
@@ -677,16 +684,16 @@ func (m *msgGen) emitLoadBody(st *ir.Struct) {
 			switch {
 			case msgQuantizedExempt(f, mine):
 			case nested:
-				body.pf("%s    if same_build && report.unknown == unknown_before && r.offset - start <= v.ref_bits as u64 %s // a field stored at its default (§3.3 (a))\n", ind, msgBad)
+				body.pf("%s    if schema_same_build && schema_report.unknown == schema_unknown_before && schema_r.offset - schema_start <= schema_v.ref_bits as u64 %s // a field stored at its default (§3.3 (a))\n", ind, msgBad)
 			default:
-				body.pf("%s    if same_build && report.unknown == unknown_before {\n", ind)
-				rides := body.rides(f, "value."+f.Name, "dflt."+f.Name, ind+"        ")
-				body.pf("%s        let rides = %s;\n%s        if !rides %s // a field stored at its default (§3.3 (a))\n", ind, rides, ind, msgBad)
+				body.pf("%s    if schema_same_build && schema_report.unknown == schema_unknown_before {\n", ind)
+				rides := body.rides(f, "schema_value."+f.Name, "schema_dflt."+f.Name, ind+"        ")
+				body.pf("%s        let schema_rides = %s;\n%s        if !schema_rides %s // a field stored at its default (§3.3 (a))\n", ind, rides, ind, msgBad)
 				body.pf("%s    }\n", ind)
 			}
 		}
 		if widens {
-			body.pf("%s    if widened { report.widened += 1; }\n", ind)
+			body.pf("%s    if schema_widened { schema_report.widened += 1; }\n", ind)
 		}
 		body.pf("%s}\n", ind)
 		body.pf("            }\n")
@@ -694,16 +701,16 @@ func (m *msgGen) emitLoadBody(st *ir.Struct) {
 	m.n = body.n
 	arms := body.b.String()
 	m.pf("/// One %s body against the ENDPOINT's vocabulary (§3.3): a field this build\n/// cannot name is skipped by the endpoint's shape and counted unknown, a kind the\n/// declaration widened is decoded exactly and counted widened, and any other\n/// kind is a kind mismatch, skipped.\n", st.Name)
-	if strings.Contains(arms, "for i in 0..") {
+	if strings.Contains(arms, "for schema_i in 0..") {
 		m.pf("#[allow(clippy::needless_range_loop)]\n")
 	}
-	m.pf("pub fn %s_load_message_body(r: &mut TableBitReader, v: &TableVocabulary, report: &mut TableReport, value: &mut %sRow) -> bool {\n", snake, st.Name)
-	m.pf("    *value = %s_message_default();\n", snake)
+	m.pf("pub fn %s_load_message_body(schema_r: &mut TableBitReader, schema_v: &TableVocabulary, schema_report: &mut TableReport, schema_value: &mut %sRow) -> bool {\n", snake, st.Name)
+	m.pf("    *schema_value = %s_message_default();\n", snake)
 	// A FIELD ID TWICE IN ONE BODY IS DAMAGE (docs/SPEC-TABLES.md §3.3), known
 	// or unknown: the ids this body has carried are one bit each by the id's
 	// ordinal, whichever slot named it, in a fixed stack set, so the test is
 	// constant work per reference and the body allocates nothing.
-	m.pf("    let mut seen = TableMessageSeen::default();\n")
+	m.pf("    let mut schema_seen = TableMessageSeen::default();\n")
 	// THE SENDER'S OWN BUILD IS THIS READER'S (docs/SPEC-TABLES.md §3.3 (a),
 	// (b); docs/rulings.json reads-refuse-non-canonical): every field's
 	// default and every record's field order are digested into the build
@@ -713,23 +720,23 @@ func (m *msgGen) emitLoadBody(st *ir.Struct) {
 	// default are spellings no conforming writer produces. Under another build
 	// version none of the three is judged. next_field is one past the ordinal
 	// of the last declared field this body carried.
-	m.pf("    let same_build = v.build_version == BUILD_VERSION;\n")
-	m.pf("    let mut next_field = 0usize;\n")
-	if strings.Contains(arms, "dflt.") {
-		m.pf("    let dflt = %s_message_default();\n", snake)
+	m.pf("    let schema_same_build = schema_v.build_version == BUILD_VERSION;\n")
+	m.pf("    let mut schema_next_field = 0usize;\n")
+	if strings.Contains(arms, "schema_dflt.") {
+		m.pf("    let schema_dflt = %s_message_default();\n", snake)
 	}
 	m.pf("    loop {\n")
-	m.pf("        let Some(reference) = r.get(v.ref_bits) else %s;\n", msgBad)
-	m.pf("        if reference == 0 { return true; }\n")
-	m.pf("        let Some(entry) = v.entry(reference).copied() else %s;\n", msgBad)
-	m.pf("        if entry.id >= 0xffff_ffff_ffff_fffd %s\n", msgBad)
-	m.pf("        if !seen.once(v.seen_key(reference)) %s\n", msgBad)
-	m.pf("        match entry.id {\n")
+	m.pf("        let Some(schema_reference) = schema_r.get(schema_v.ref_bits) else %s;\n", msgBad)
+	m.pf("        if schema_reference == 0 { return true; }\n")
+	m.pf("        let Some(schema_entry) = schema_v.entry(schema_reference).copied() else %s;\n", msgBad)
+	m.pf("        if schema_entry.id >= 0xffff_ffff_ffff_fffd %s\n", msgBad)
+	m.pf("        if !schema_seen.once(schema_v.seen_key(schema_reference)) %s\n", msgBad)
+	m.pf("        match schema_entry.id {\n")
 	m.pf("%s", arms)
 	// A FIELD THE RECORD DOES NOT DECLARE, at this reader's own build, has no
 	// place in the sender's record (§3.3 (b)); under another build it is a
 	// newer writer's field, skipped and counted (§4).
-	m.pf("            _ => {\n                if same_build %s // a field the record does not declare (§3.3 (b))\n                report.unknown += 1;\n                if !table_message_skip_field(r, v, &entry, 0) %s\n            }\n", msgBad, msgBad)
+	m.pf("            _ => {\n                if schema_same_build %s // a field the record does not declare (§3.3 (b))\n                schema_report.unknown += 1;\n                if !table_message_skip_field(schema_r, schema_v, &schema_entry, 0) %s\n            }\n", msgBad, msgBad)
 	m.pf("        }\n    }\n}\n\n")
 }
 
@@ -805,7 +812,7 @@ func (m *msgGen) compat(f *ir.Field, mine ir.TableVocabularyEntry, entry, reset,
 	m.pf("%sif %s.kind != %d || %s.shape.elem != %d {\n", ind, entry, mine.Kind, entry, mine.Shape.Elem)
 	inner := ind + "    "
 	if compat != "" {
-		m.pf("%sif %s {\n%s    widened = true;\n%s} else {\n", inner, compat, inner, inner)
+		m.pf("%sif %s {\n%s    schema_widened = true;\n%s} else {\n", inner, compat, inner, inner)
 		inner += "    "
 	}
 	// A FIELD's mismatch is skipped as a field, so a union field's explicit
@@ -816,7 +823,7 @@ func (m *msgGen) compat(f *ir.Field, mine ir.TableVocabularyEntry, entry, reset,
 		m.pf("%s%s;\n", inner, reset)
 		skip = "table_message_skip"
 	}
-	m.pf("%sreport.damaged = true;\n%sif !%s(r, v, &%s, 0) %s\n%sbreak %s;\n", inner, inner, skip, entry, msgBad, inner, label)
+	m.pf("%sschema_report.damaged = true;\n%sif !%s(schema_r, schema_v, &%s, 0) %s\n%sbreak %s;\n", inner, inner, skip, entry, msgBad, inner, label)
 	if compat != "" {
 		m.pf("%s    }\n", ind)
 	}
@@ -841,35 +848,35 @@ func (m *msgGen) readValue(f *ir.Field, expr, entry, ind string) {
 	switch {
 	case f.Type.Kind == ir.TString:
 		m.pf("%s{\n", ind)
-		m.pf("%s    let Some(n) = table_message_count(r, &%s.shape) else %s;\n", ind, entry, msgBad)
-		m.pf("%s    if !r.align() %s\n", ind, msgBad)
-		m.pf("%s    let buf = r.buffer;\n%s    let start = (r.offset / 8) as usize;\n", ind, ind)
-		m.pf("%s    if !r.skip(n * 8) %s\n", ind, msgBad)
-		m.pf("%s    let text = &buf[start..start + n as usize];\n", ind)
-		m.pf("%s    if !table_message_utf8(text) %s\n", ind, msgBad)
-		m.pf("%s    let kept = table_message_utf8_clamp(text, core::cmp::min(n as usize, %d));\n", ind, f.Type.Size)
-		m.pf("%s    if kept < n as usize { report.damaged = true; }\n", ind)
-		m.pf("%s    %s.fill(0);\n%s    %s[..kept].copy_from_slice(&text[..kept]);\n%s    %s_length = kept as i32;\n%s}\n", ind, expr, ind, expr, ind, expr, ind)
+		m.pf("%s    let Some(schema_n) = table_message_count(schema_r, &%s.shape) else %s;\n", ind, entry, msgBad)
+		m.pf("%s    if !schema_r.align() %s\n", ind, msgBad)
+		m.pf("%s    let schema_buf = schema_r.buffer;\n%s    let schema_start = (schema_r.offset / 8) as usize;\n", ind, ind)
+		m.pf("%s    if !schema_r.skip(schema_n * 8) %s\n", ind, msgBad)
+		m.pf("%s    let schema_text = &schema_buf[schema_start..schema_start + schema_n as usize];\n", ind)
+		m.pf("%s    if !table_message_utf8(schema_text) %s\n", ind, msgBad)
+		m.pf("%s    let schema_kept = table_message_utf8_clamp(schema_text, core::cmp::min(schema_n as usize, %d));\n", ind, f.Type.Size)
+		m.pf("%s    if schema_kept < schema_n as usize { schema_report.damaged = true; }\n", ind)
+		m.pf("%s    %s.fill(0);\n%s    %s[..schema_kept].copy_from_slice(&schema_text[..schema_kept]);\n%s    %s_length = schema_kept as i32;\n%s}\n", ind, expr, ind, expr, ind, expr, ind)
 	case f.Type.Kind == ir.TBytes:
 		m.pf("%s{\n", ind)
-		m.pf("%s    let Some(n) = table_message_count(r, &%s.shape) else %s;\n", ind, entry, msgBad)
-		m.pf("%s    if !r.align() %s\n", ind, msgBad)
-		m.pf("%s    let buf = r.buffer;\n%s    let start = (r.offset / 8) as usize;\n", ind, ind)
-		m.pf("%s    if !r.skip(n * 8) %s\n", ind, msgBad)
-		m.pf("%s    let kept = core::cmp::min(n as usize, %d);\n", ind, f.Type.Size)
-		m.pf("%s    if kept < n as usize { report.damaged = true; }\n", ind)
-		m.pf("%s    %s.fill(0);\n%s    %s[..kept].copy_from_slice(&buf[start..start + kept]);\n%s    %s_length = kept as i32;\n%s}\n", ind, expr, ind, expr, ind, expr, ind)
+		m.pf("%s    let Some(schema_n) = table_message_count(schema_r, &%s.shape) else %s;\n", ind, entry, msgBad)
+		m.pf("%s    if !schema_r.align() %s\n", ind, msgBad)
+		m.pf("%s    let schema_buf = schema_r.buffer;\n%s    let schema_start = (schema_r.offset / 8) as usize;\n", ind, ind)
+		m.pf("%s    if !schema_r.skip(schema_n * 8) %s\n", ind, msgBad)
+		m.pf("%s    let schema_kept = core::cmp::min(schema_n as usize, %d);\n", ind, f.Type.Size)
+		m.pf("%s    if schema_kept < schema_n as usize { schema_report.damaged = true; }\n", ind)
+		m.pf("%s    %s.fill(0);\n%s    %s[..schema_kept].copy_from_slice(&schema_buf[schema_start..schema_start + schema_kept]);\n%s    %s_length = schema_kept as i32;\n%s}\n", ind, expr, ind, expr, ind, expr, ind)
 	case f.KeyEnum != "" || f.Array != ir.ArrayNone:
 		m.readArray(f, expr, entry, ind)
 	case isStructRef(f.Type):
-		m.pf("%sif !%s_load_message_body(r, v, report, &mut %s) { return false; }\n", ind, ir.RustSnake(f.Type.Name), expr)
+		m.pf("%sif !%s_load_message_body(schema_r, schema_v, schema_report, &mut %s) { return false; }\n", ind, ir.RustSnake(f.Type.Name), expr)
 	case isUnionRef(f.Type):
 		un := f.Type.Ref.(*ir.Union)
 		arm := m.tmp("arm_entry")
 		m.pf("%s{\n", ind)
-		m.pf("%s    let Some(reference) = r.get(v.ref_bits) else %s;\n", ind, msgBad)
-		m.pf("%s    if reference == 0 {\n%s        %s.set_none();\n%s    } else {\n", ind, ind, expr, ind)
-		m.pf("%s        let Some(%s) = v.entry(reference).copied() else %s;\n", ind, arm, msgBad)
+		m.pf("%s    let Some(schema_reference) = schema_r.get(schema_v.ref_bits) else %s;\n", ind, msgBad)
+		m.pf("%s    if schema_reference == 0 {\n%s        %s.set_none();\n%s    } else {\n", ind, ind, expr, ind)
+		m.pf("%s        let Some(%s) = schema_v.entry(schema_reference).copied() else %s;\n", ind, arm, msgBad)
 		m.pf("%s        if %s.id >= 0xffff_ffff_ffff_fffd || %s.kind == 0 %s\n", ind, arm, arm, msgBad)
 		m.pf("%s        match %s.id {\n", ind, arm)
 		for _, v := range un.Variants {
@@ -879,7 +886,7 @@ func (m *msgGen) readValue(f *ir.Field, expr, entry, ind string) {
 			widens := msgCanWiden(v.F, mine)
 			m.pf("%s            0x%016x => {\n", ind, mine.Id)
 			if widens {
-				m.pf("%slet mut widened = false;\n", in)
+				m.pf("%slet mut schema_widened = false;\n", in)
 			}
 			m.pf("%s%s: {\n", in, label)
 			m.compat(v.F, mine, arm, expr+".set_none()", label, in+"    ")
@@ -902,30 +909,30 @@ func (m *msgGen) readValue(f *ir.Field, expr, entry, ind string) {
 				m.pf("%s    %s.set_%s(%s);\n", in, expr, v.Name, local)
 			}
 			if widens {
-				m.pf("%s    if widened { report.widened += 1; }\n", in)
+				m.pf("%s    if schema_widened { schema_report.widened += 1; }\n", in)
 			}
 			m.pf("%s}\n%s            }\n", in, ind)
 		}
-		m.pf("%s            _ => {\n%s                %s.set_none();\n%s                report.unknown += 1;\n%s                if !table_message_skip(r, v, &%s, 0) %s\n%s            }\n", ind, ind, expr, ind, ind, arm, msgBad, ind)
+		m.pf("%s            _ => {\n%s                %s.set_none();\n%s                schema_report.unknown += 1;\n%s                if !table_message_skip(schema_r, schema_v, &%s, 0) %s\n%s            }\n", ind, ind, expr, ind, ind, arm, msgBad, ind)
 		m.pf("%s        }\n%s    }\n%s}\n", ind, ind, ind)
 	case msgEnum(f) != nil:
 		e := msgEnum(f)
 		m.pf("%s{\n", ind)
-		m.pf("%s    let Some(reference) = r.get(v.ref_bits) else %s;\n", ind, msgBad)
-		m.pf("%s    if reference == 0 {\n%s        %s = 0;\n%s    } else {\n", ind, ind, expr, ind)
-		m.pf("%s        let Some(id) = v.name(reference) else %s;\n", ind, msgBad)
+		m.pf("%s    let Some(schema_reference) = schema_r.get(schema_v.ref_bits) else %s;\n", ind, msgBad)
+		m.pf("%s    if schema_reference == 0 {\n%s        %s = 0;\n%s    } else {\n", ind, ind, expr, ind)
+		m.pf("%s        let Some(id) = schema_v.name(schema_reference) else %s;\n", ind, msgBad)
 		m.pf("%s        %s = match id {\n", ind, expr)
 		for i := range e.Variants {
 			m.pf("%s            0x%016x => %d,\n", ind, ir.TableWireId(e.VariantWireName(i)), i+1)
 		}
-		m.pf("%s            _ => { report.unknown += 1; 0 }\n%s        };\n%s    }\n%s}\n", ind, ind, ind, ind)
+		m.pf("%s            _ => { schema_report.unknown += 1; 0 }\n%s        };\n%s    }\n%s}\n", ind, ind, ind, ind)
 	default:
 		m.pf("%s{\n", ind)
-		hi := "hi"
+		hi := "schema_hi"
 		if f.Type.Kind == ir.TBool || f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64 {
 			hi = "_hi"
 		}
-		m.pf("%s    let Some((lo, %s)) = table_message_read_scalar(r, %s.kind, &%s.shape) else %s;\n", ind, hi, entry, entry, msgBad)
+		m.pf("%s    let Some((schema_lo, %s)) = table_message_read_scalar(schema_r, %s.kind, &%s.shape) else %s;\n", ind, hi, entry, entry, msgBad)
 		m.convertScalar(f, expr, entry, ind+"    ")
 		m.pf("%s}\n", ind)
 	}
@@ -936,7 +943,7 @@ func (m *msgGen) readValue(f *ir.Field, expr, entry, ind string) {
 func (m *msgGen) convertScalar(f *ir.Field, expr, entry, ind string) {
 	switch f.Type.Kind {
 	case ir.TBool:
-		m.pf("%s%s = (lo as u8) != 0;\n", ind, expr)
+		m.pf("%s%s = (schema_lo as u8) != 0;\n", ind, expr)
 		return
 	case ir.TFloat32, ir.TFloat64:
 		// A NaN OR AN INFINITY IS REFUSED ON ITS RAW BITS, before the bits
@@ -953,9 +960,9 @@ func (m *msgGen) convertScalar(f *ir.Field, expr, entry, ind string) {
 			mut = "mut "
 		}
 		if f.Type.Kind == ir.TFloat32 {
-			m.pf("%slet %sx = if table_finite_f32(lo as u32) { f32::from_bits(lo as u32) } else { report.non_finite(%q); 0.0 };\n", ind, mut, owner)
+			m.pf("%slet %sschema_x = if table_finite_f32(schema_lo as u32) { f32::from_bits(schema_lo as u32) } else { schema_report.non_finite(%q); 0.0 };\n", ind, mut, owner)
 		} else {
-			m.pf("%slet %sx = if %s.kind == 10 { if table_finite_f32(lo as u32) { f64::from(f32::from_bits(lo as u32)) } else { report.non_finite(%q); 0.0 } } else if table_finite_f64(lo) { f64::from_bits(lo) } else { report.non_finite(%q); 0.0 };\n", ind, mut, entry, owner, owner)
+			m.pf("%slet %sschema_x = if %s.kind == 10 { if table_finite_f32(schema_lo as u32) { f64::from(f32::from_bits(schema_lo as u32)) } else { schema_report.non_finite(%q); 0.0 } } else if table_finite_f64(schema_lo) { f64::from_bits(schema_lo) } else { schema_report.non_finite(%q); 0.0 };\n", ind, mut, entry, owner, owner)
 		}
 		if f.HasFloatRange {
 			var lo, hi string
@@ -969,16 +976,16 @@ func (m *msgGen) convertScalar(f *ir.Field, expr, entry, ind string) {
 			// ONE PAST AN END REFUSES out_of_range BY NAME (§3.3), as the Go
 			// reference's message read does.
 			if lo == hi {
-				m.pf("%sif x != %s { x = %s; report.out_of_range(%q); }\n", ind, lo, lo, owner)
+				m.pf("%sif schema_x != %s { schema_x = %s; schema_report.out_of_range(%q); }\n", ind, lo, lo, owner)
 			} else {
-				m.pf("%sif x < %s { x = %s; report.out_of_range(%q); } else if x > %s { x = %s; report.out_of_range(%q); }\n", ind, lo, lo, owner, hi, hi, owner)
+				m.pf("%sif schema_x < %s { schema_x = %s; schema_report.out_of_range(%q); } else if schema_x > %s { schema_x = %s; schema_report.out_of_range(%q); }\n", ind, lo, lo, owner, hi, hi, owner)
 			}
 			// a compressed float's -0 lands as +0 (docs/rulings.json
 			// fixed-compressed-negzero): a plain float32 announced for it
 			// carries the sign bit
-			m.pf("%sif x == 0.0 { x = 0.0; }\n", ind)
+			m.pf("%sif schema_x == 0.0 { schema_x = 0.0; }\n", ind)
 		}
-		m.pf("%s%s = x;\n", ind, expr)
+		m.pf("%s%s = schema_x;\n", ind, expr)
 		return
 	}
 	// A VALUE OFF ITS DECLARED RANGE, OR A bits(N) VALUE PAST ITS WIDTH, IS
@@ -994,40 +1001,40 @@ func (m *msgGen) convertScalar(f *ir.Field, expr, entry, ind string) {
 		mut = "mut "
 	}
 	if signed {
-		m.pf("%slet %sx = table_message_signed(%s.kind, lo, hi);\n", ind, mut, entry)
+		m.pf("%slet %sschema_x = table_message_signed(%s.kind, schema_lo, schema_hi);\n", ind, mut, entry)
 	} else {
-		m.pf("%slet %sx = table_message_unsigned(%s.kind, lo, hi);\n", ind, mut, entry)
+		m.pf("%slet %sschema_x = table_message_unsigned(%s.kind, schema_lo, schema_hi);\n", ind, mut, entry)
 	}
 	if hasRange {
 		h := rustBig(rhi, signed)
 		if !signed && rlo.Sign() == 0 {
 			// An unsigned value is never below zero, so only the upper bound can fire.
-			m.pf("%sif x > %s { x = %s; report.out_of_range(%q); }\n", ind, h, h, owner)
+			m.pf("%sif schema_x > %s { schema_x = %s; schema_report.out_of_range(%q); }\n", ind, h, h, owner)
 		} else {
 			l := rustBig(rlo, signed)
 			if l == h {
-				m.pf("%sif x != %s { x = %s; report.out_of_range(%q); }\n", ind, l, l, owner)
+				m.pf("%sif schema_x != %s { schema_x = %s; schema_report.out_of_range(%q); }\n", ind, l, l, owner)
 			} else {
-				m.pf("%sif x < %s { x = %s; report.out_of_range(%q); } else if x > %s { x = %s; report.out_of_range(%q); }\n", ind, l, l, owner, h, h, owner)
+				m.pf("%sif schema_x < %s { schema_x = %s; schema_report.out_of_range(%q); } else if schema_x > %s { schema_x = %s; schema_report.out_of_range(%q); }\n", ind, l, l, owner, h, h, owner)
 			}
 		}
 	}
 	if bitsClamp {
 		max := uint64(1)<<f.Type.Width - 1
-		m.pf("%sif x > %d { x = %d; report.out_of_range(%q); }\n", ind, max, max, owner)
+		m.pf("%sif schema_x > %d { schema_x = %d; schema_report.out_of_range(%q); }\n", ind, max, max, owner)
 	}
 	if fl := isFlags(f); fl != nil && fl.WireBits < 64 {
 		// A NEWER WRITER ANNOUNCES A WIDER MASK, and the reader holds each
 		// value to its OWN W (docs/SPEC-TABLES.md §4, A TABLE LOAD HOLDS A MASK
 		// TO ITS WIDTH): a bit at or above it refuses by name as out_of_range.
-		m.pf("%sif x >> %d != 0 { report.out_of_range(%q); }\n", ind, fl.WireBits, owner)
+		m.pf("%sif schema_x >> %d != 0 { schema_report.out_of_range(%q); }\n", ind, fl.WireBits, owner)
 	}
 	typ := cookElemType(f)
 	switch typ {
 	case "TableI128", "TableU128":
-		m.pf("%s%s = %s(x);\n", ind, expr, typ)
+		m.pf("%s%s = %s(schema_x);\n", ind, expr, typ)
 	default:
-		m.pf("%s%s = x as %s;\n", ind, expr, typ)
+		m.pf("%s%s = schema_x as %s;\n", ind, expr, typ)
 	}
 }
 
@@ -1038,9 +1045,9 @@ func (m *msgGen) readArray(f *ir.Field, expr, entry, ind string) {
 	el := m.tmp("element")
 	elemType := cookElemType(f)
 	m.pf("%s{\n", ind)
-	m.pf("%s    let Some(n) = table_message_count(r, &%s.shape) else %s;\n", ind, entry, msgBad)
+	m.pf("%s    let Some(schema_n) = table_message_count(schema_r, &%s.shape) else %s;\n", ind, entry, msgBad)
 	if f.KeyEnum == "" {
-		m.pf("%s    if %s.shape.elem == 6 && !r.align() %s\n", ind, entry, msgBad)
+		m.pf("%s    if %s.shape.elem == 6 && !schema_r.align() %s\n", ind, entry, msgBad)
 	}
 	e := msgElement(f)
 	elArg := el
@@ -1053,38 +1060,38 @@ func (m *msgGen) readArray(f *ir.Field, expr, entry, ind string) {
 	if f.KeyEnum != "" {
 		// A KEYED SLOT TWICE IN ONE KEYED ARRAY IS DAMAGE (docs/SPEC-TABLES.md
 		// §3.2, §3.3): the slots this array has named are held in a fixed set.
-		m.pf("%s    let mut seen_keys = TableMessageSeen::default();\n", ind)
-		m.pf("%s    for _ in 0..n {\n", ind)
-		m.pf("%s        let Some(reference) = r.get(v.ref_bits) else %s;\n", ind, msgBad)
-		m.pf("%s        let Some(id) = v.name(reference) else %s;\n", ind, msgBad)
-		m.pf("%s        if !seen_keys.once(v.seen_key(reference)) %s\n", ind, msgBad)
-		m.pf("%s        let key: usize = match id {", ind)
+		m.pf("%s    let mut schema_seen_keys = TableMessageSeen::default();\n", ind)
+		m.pf("%s    for _ in 0..schema_n {\n", ind)
+		m.pf("%s        let Some(schema_reference) = schema_r.get(schema_v.ref_bits) else %s;\n", ind, msgBad)
+		m.pf("%s        let Some(id) = schema_v.name(schema_reference) else %s;\n", ind, msgBad)
+		m.pf("%s        if !schema_seen_keys.once(schema_v.seen_key(schema_reference)) %s\n", ind, msgBad)
+		m.pf("%s        let schema_key: usize = match id {", ind)
 		for i := range f.KeyEnumRef.Variants {
 			m.pf(" 0x%016x => %d,", ir.TableWireId(f.KeyEnumRef.VariantWireName(i)), i+1)
 		}
 		m.pf(" _ => 0 };\n")
-		m.pf("%s        let mut scratch: %s = Default::default();\n", ind, elemType)
-		m.pf("%s        let p: &mut %s = if key != 0 { &mut %s[key - 1] } else { report.unknown += 1; &mut scratch };\n", ind, elemType, expr)
-		m.readValue(e, "(*p)", elArg, ind+"        ")
+		m.pf("%s        let mut schema_scratch: %s = Default::default();\n", ind, elemType)
+		m.pf("%s        let schema_p: &mut %s = if schema_key != 0 { &mut %s[schema_key - 1] } else { schema_report.unknown += 1; &mut schema_scratch };\n", ind, elemType, expr)
+		m.readValue(e, "(*schema_p)", elArg, ind+"        ")
 		m.pf("%s    }\n", ind)
 	} else {
 		if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
 			// A COUNT BELOW THE READER's DECLARED MIN IS REFUSED (docs/SPEC.md
 			// §4.2; internal/tablewire refuses it as count_over_bound)
-			m.pf("%s    if n < %d %s\n", ind, f.ArrayMin, msgBad)
+			m.pf("%s    if schema_n < %d %s\n", ind, f.ArrayMin, msgBad)
 		}
-		m.pf("%s    let keep = core::cmp::min(n, %d);\n", ind, f.ArrayBound)
-		m.pf("%s    if keep < n { report.damaged = true; }\n", ind)
-		m.pf("%s    let width = table_message_value_bits(%s.kind, &%s.shape);\n", ind, el, el)
-		m.pf("%s    let walk = if width >= 0 { keep } else { n };\n", ind)
-		m.pf("%s    for i in 0..walk {\n", ind)
-		m.pf("%s        let mut scratch: %s = Default::default();\n", ind, elemType)
-		m.pf("%s        let p: &mut %s = if i < keep { &mut %s[i as usize] } else { &mut scratch };\n", ind, elemType, expr)
-		m.readValue(e, "(*p)", elArg, ind+"        ")
+		m.pf("%s    let schema_keep = core::cmp::min(schema_n, %d);\n", ind, f.ArrayBound)
+		m.pf("%s    if schema_keep < schema_n { schema_report.damaged = true; }\n", ind)
+		m.pf("%s    let schema_width = table_message_value_bits(%s.kind, &%s.shape);\n", ind, el, el)
+		m.pf("%s    let schema_walk = if schema_width >= 0 { schema_keep } else { schema_n };\n", ind)
+		m.pf("%s    for schema_i in 0..schema_walk {\n", ind)
+		m.pf("%s        let mut schema_scratch: %s = Default::default();\n", ind, elemType)
+		m.pf("%s        let schema_p: &mut %s = if schema_i < schema_keep { &mut %s[schema_i as usize] } else { &mut schema_scratch };\n", ind, elemType, expr)
+		m.readValue(e, "(*schema_p)", elArg, ind+"        ")
 		m.pf("%s    }\n", ind)
-		m.pf("%s    if walk < n && !r.skip((n - walk) * width as u64) %s\n", ind, msgBad)
+		m.pf("%s    if schema_walk < schema_n && !schema_r.skip((schema_n - schema_walk) * schema_width as u64) %s\n", ind, msgBad)
 		if f.Array == ir.ArrayCounted {
-			m.pf("%s    %s_count = keep as i32;\n", ind, expr)
+			m.pf("%s    %s_count = schema_keep as i32;\n", ind, expr)
 		}
 	}
 	m.pf("%s}\n", ind)
@@ -1095,54 +1102,54 @@ func (m *msgGen) readArray(f *ir.Field, expr, entry, ind string) {
 func (m *msgGen) emitBatch(st *ir.Struct) {
 	snake := ir.RustSnake(st.Name)
 	row := st.Name + "Row"
-	measureExtra, savePrefix, saveEnd, loadPrefix := "", "", "2 + (w.bits / 8) as i64", ""
+	measureExtra, savePrefix, saveEnd, loadPrefix := "", "", "2 + (schema_w.bits / 8) as i64", ""
 	if st.Integrity == "crc32c" {
 		measureExtra = "4 + "
-		savePrefix = fmt.Sprintf("    let need = %s_measure_messages(values, report);\n    if need < 0 || buffer.len() < need as usize { return -1; }\n", snake)
-		saveEnd = "let end = 2 + (w.bits / 8) as usize;\n    let sum = table_integrity_checksum(&buffer[..end]);\n    buffer[end..end + 4].copy_from_slice(&sum.to_le_bytes());\n    (end + 4) as i64"
-		loadPrefix = "    let data = if data.first() == Some(&TABLE_WIRE_MESSAGE_FORM) {\n        let Some(body) = table_integrity_body(data, 6) else {\n            report.damaged = true; report.reason = TableReason::IntegrityMismatch;\n            return (0, false);\n        };\n        body\n    } else { data };\n"
+		savePrefix = fmt.Sprintf("    let schema_need = %s_measure_messages(schema_values, schema_report);\n    if schema_need < 0 || buffer.len() < schema_need as usize { return -1; }\n", snake)
+		saveEnd = "let end = 2 + (schema_w.bits / 8) as usize;\n    let sum = table_integrity_checksum(&buffer[..end]);\n    buffer[end..end + 4].copy_from_slice(&sum.to_le_bytes());\n    (end + 4) as i64"
+		loadPrefix = "    let data = if data.first() == Some(&TABLE_WIRE_MESSAGE_FORM) {\n        let Some(schema_body) = table_integrity_body(data, 6) else {\n            schema_report.damaged = true; schema_report.reason = TableReason::IntegrityMismatch;\n            return (0, false);\n        };\n        schema_body\n    } else { data };\n"
 	}
 	m.pf(`/// MeasureMessages (§3.3): the byte count SaveMessages writes for this batch,
 /// or -1. "M ABOVE 256 ON THE WRITE SIDE IS A REFUSAL BY NAME".
-pub fn %[1]s_measure_messages(values: &[%[2]s], report: &mut TableReport) -> i64 {
-    if values.is_empty() || values.len() > TABLE_MESSAGE_BATCH_MAX {
-        report.refuse(TableReason::BatchTooLarge);
+pub fn %[1]s_measure_messages(schema_values: &[%[2]s], schema_report: &mut TableReport) -> i64 {
+    if schema_values.is_empty() || schema_values.len() > TABLE_MESSAGE_BATCH_MAX {
+        schema_report.refuse(TableReason::BatchTooLarge);
         return -1;
     }
-    let mut w = TableBitWriter::measure();
-    for value in values {
-        if !%[1]s_save_message_body(&mut w, value) {
+    let mut schema_w = TableBitWriter::measure();
+    for schema_value in schema_values {
+        if !%[1]s_save_message_body(&mut schema_w, schema_value) {
             return -1;
         }
     }
-    w.align();
-    if w.overflow {
+    schema_w.align();
+    if schema_w.overflow {
         return -1;
     }
-    %[3]s2 + (w.bits / 8) as i64
+    %[3]s2 + (schema_w.bits / 8) as i64
 }
 
 /// SaveMessages (§3.3): the form byte, M - 1, then every body as one continuous
 /// bit stream padded to a byte once at its end. The byte count, or -1 for a
 /// refusal or a buffer too short.
-pub fn %[1]s_save_messages(values: &[%[2]s], buffer: &mut [u8], report: &mut TableReport) -> i64 {
-%[4]s    if values.is_empty() || values.len() > TABLE_MESSAGE_BATCH_MAX {
-        report.refuse(TableReason::BatchTooLarge);
+pub fn %[1]s_save_messages(schema_values: &[%[2]s], buffer: &mut [u8], schema_report: &mut TableReport) -> i64 {
+%[4]s    if schema_values.is_empty() || schema_values.len() > TABLE_MESSAGE_BATCH_MAX {
+        schema_report.refuse(TableReason::BatchTooLarge);
         return -1;
     }
     if buffer.len() < 2 {
         return -1;
     }
     buffer[0] = TABLE_WIRE_MESSAGE_FORM;
-    buffer[1] = (values.len() - 1) as u8;
-    let mut w = TableBitWriter::new(&mut buffer[2..]);
-    for value in values {
-        if !%[1]s_save_message_body(&mut w, value) {
+    buffer[1] = (schema_values.len() - 1) as u8;
+    let mut schema_w = TableBitWriter::new(&mut buffer[2..]);
+    for schema_value in schema_values {
+        if !%[1]s_save_message_body(&mut schema_w, schema_value) {
             return -1;
         }
     }
-    w.align();
-    if w.overflow {
+    schema_w.align();
+    if schema_w.overflow {
         return -1;
     }
     %[5]s
@@ -1164,43 +1171,43 @@ pub fn %[1]s_save_messages(values: &[%[2]s], buffer: &mut [u8], report: &mut Tab
 ///
 /// RULING R4: after ANY refusal, every value handed in (the whole slice, not
 /// only the batch's count) holds its declared default.
-pub fn %[1]s_load_messages(values: &mut [%[2]s], vocabulary: &TableVocabulary, data: &[u8], report: &mut TableReport) -> (usize, bool) {
-    let (count, whole) = %[1]s_load_messages_walk(values, vocabulary, data, report);
-    if !whole {
-        for value in values.iter_mut() {
-            *value = %[1]s_message_default();
+pub fn %[1]s_load_messages(schema_values: &mut [%[2]s], schema_vocabulary: &TableVocabulary, data: &[u8], schema_report: &mut TableReport) -> (usize, bool) {
+    let (schema_count, schema_whole) = %[1]s_load_messages_walk(schema_values, schema_vocabulary, data, schema_report);
+    if !schema_whole {
+        for schema_value in schema_values.iter_mut() {
+            *schema_value = %[1]s_message_default();
         }
         return (0, false);
     }
-    (count, true)
+    (schema_count, true)
 }
 
 /// The walk under LoadMessages: on a refusal it returns (0, false) and leaves
 /// the reset of every value handed in to the caller above (R4).
-fn %[1]s_load_messages_walk(values: &mut [%[2]s], vocabulary: &TableVocabulary, data: &[u8], report: &mut TableReport) -> (usize, bool) {
-    *report = TableReport::default();
-%[6]s    let Some(count) = table_message_batch_open(vocabulary, data, report) else {
+fn %[1]s_load_messages_walk(schema_values: &mut [%[2]s], schema_vocabulary: &TableVocabulary, data: &[u8], schema_report: &mut TableReport) -> (usize, bool) {
+    *schema_report = TableReport::default();
+%[6]s    let Some(schema_count) = table_message_batch_open(schema_vocabulary, data, schema_report) else {
         return (0, false);
     };
-    if count > values.len() {
-        return (0, report.refuse(TableReason::BatchTooLarge)); // a refused batch returns a count of 0 (§3.3)
+    if schema_count > schema_values.len() {
+        return (0, schema_report.refuse(TableReason::BatchTooLarge)); // a refused batch returns a count of 0 (§3.3)
     }
-    let mut r = TableBitReader::new(&data[2..]);
-    for value in values.iter_mut().take(count) {
-        if !%[1]s_load_message_body(&mut r, vocabulary, report, value) || report.damaged || !report.non_finite_float.is_empty() {
-            if !report.non_finite_float.is_empty() {
-                return (0, report.refuse(TableReason::NonFiniteFloat));
+    let mut schema_r = TableBitReader::new(&data[2..]);
+    for schema_value in schema_values.iter_mut().take(schema_count) {
+        if !%[1]s_load_message_body(&mut schema_r, schema_vocabulary, schema_report, schema_value) || schema_report.damaged || !schema_report.non_finite_float.is_empty() {
+            if !schema_report.non_finite_float.is_empty() {
+                return (0, schema_report.refuse(TableReason::NonFiniteFloat));
             }
-            if !report.oor_field.is_empty() {
-                return (0, report.refuse(TableReason::OutOfRange));
+            if !schema_report.oor_field.is_empty() {
+                return (0, schema_report.refuse(TableReason::OutOfRange));
             }
             return (0, false);
         }
     }
-    if !table_message_batch_close(&mut r, report) {
+    if !table_message_batch_close(&mut schema_r, schema_report) {
         return (0, false);
     }
-    (count, true)
+    (schema_count, true)
 }
 
 `, snake, row, measureExtra, savePrefix, saveEnd, loadPrefix)
@@ -1235,16 +1242,16 @@ impl<'a> TableBitWriter<'a> {
         TableBitWriter { buffer: Default::default(), bits: 0, measuring: true, overflow: false }
     }
 
-    pub fn put(&mut self, value: u64, n: u32) {
-        if n > 64 {
+    pub fn put(&mut self, schema_value: u64, schema_n: u32) {
+        if schema_n > 64 {
             self.overflow = true;
             return;
         }
-        if n == 0 {
+        if schema_n == 0 {
             return;
         }
-        let at = self.bits;
-        self.bits += n as u64;
+        let schema_at = self.bits;
+        self.bits += schema_n as u64;
         if self.measuring {
             return;
         }
@@ -1252,18 +1259,18 @@ impl<'a> TableBitWriter<'a> {
             self.overflow = true;
             return;
         }
-        let value = if n < 64 { value & ((1u64 << n) - 1) } else { value };
-        let mut done = 0u32;
-        let mut pos = at;
-        while done < n {
-            let index = (pos >> 3) as usize;
-            let shift = (pos & 7) as u32;
-            let take = core::cmp::min(8 - shift, n - done);
-            let chunk = ((value >> done) as u8) & (((1u16 << take) - 1) as u8);
-            let keep = ((1u16 << shift) - 1) as u8;
-            self.buffer[index] = (self.buffer[index] & keep) | (chunk << shift);
-            done += take;
-            pos += take as u64;
+        let schema_value = if schema_n < 64 { schema_value & ((1u64 << schema_n) - 1) } else { schema_value };
+        let mut schema_done = 0u32;
+        let mut schema_pos = schema_at;
+        while schema_done < schema_n {
+            let schema_index = (schema_pos >> 3) as usize;
+            let schema_shift = (schema_pos & 7) as u32;
+            let schema_take = core::cmp::min(8 - schema_shift, schema_n - schema_done);
+            let schema_chunk = ((schema_value >> schema_done) as u8) & (((1u16 << schema_take) - 1) as u8);
+            let schema_keep = ((1u16 << schema_shift) - 1) as u8;
+            self.buffer[schema_index] = (self.buffer[schema_index] & schema_keep) | (schema_chunk << schema_shift);
+            schema_done += schema_take;
+            schema_pos += schema_take as u64;
         }
     }
 
@@ -1275,8 +1282,8 @@ impl<'a> TableBitWriter<'a> {
     /// Raw bytes on a byte boundary: a string's content (§3.3).
     pub fn raw(&mut self, data: &[u8]) {
         self.align();
-        for &b in data {
-            self.put(b as u64, 8);
+        for &schema_b in data {
+            self.put(schema_b as u64, 8);
         }
     }
 }
@@ -1292,25 +1299,25 @@ impl<'a> TableBitReader<'a> {
         TableBitReader { buffer, offset: 0 }
     }
 
-    pub fn get(&mut self, n: u32) -> Option<u64> {
-        let total = (self.buffer.len() as u64) * 8;
-        if n > 64 || n as u64 > total - self.offset {
+    pub fn get(&mut self, schema_n: u32) -> Option<u64> {
+        let schema_total = (self.buffer.len() as u64) * 8;
+        if schema_n > 64 || schema_n as u64 > schema_total - self.offset {
             return None;
         }
-        let mut value = 0u64;
-        for i in 0..n as u64 {
-            let at = self.offset + i;
-            value |= (((self.buffer[(at >> 3) as usize] >> (at & 7)) & 1) as u64) << i;
+        let mut schema_value = 0u64;
+        for schema_i in 0..schema_n as u64 {
+            let schema_at = self.offset + schema_i;
+            schema_value |= (((self.buffer[(schema_at >> 3) as usize] >> (schema_at & 7)) & 1) as u64) << schema_i;
         }
-        self.offset += n as u64;
-        Some(value)
+        self.offset += schema_n as u64;
+        Some(schema_value)
     }
 
-    pub fn skip(&mut self, n: u64) -> bool {
-        if n > (self.buffer.len() as u64) * 8 - self.offset {
+    pub fn skip(&mut self, schema_n: u64) -> bool {
+        if schema_n > (self.buffer.len() as u64) * 8 - self.offset {
             return false;
         }
-        self.offset += n;
+        self.offset += schema_n;
         true
     }
 
@@ -1322,13 +1329,13 @@ impl<'a> TableBitReader<'a> {
 }
 
 /// bits_required(0, n): the width of a value in [0, n], zero for n = 0 (§3.3).
-pub fn table_message_bits(n: u64) -> u32 {
-    64 - n.leading_zeros()
+pub fn table_message_bits(schema_n: u64) -> u32 {
+    64 - schema_n.leading_zeros()
 }
 
 /// A fixed-width kind's storage bytes (§3), zero for a kind with none.
-pub fn table_message_kind_width(kind: u8) -> u32 {
-    match kind {
+pub fn table_message_kind_width(schema_kind: u8) -> u32 {
+    match schema_kind {
         1 | 2 | 6 | 20 | 25 => 1,
         3 | 7 | 21 | 26 => 2,
         4 | 8 | 10 | 22 | 27 => 4,
@@ -1341,17 +1348,17 @@ pub fn table_message_kind_width(kind: u8) -> u32 {
 /// The bits one value of an entry takes on a body (§3.3's shape table): the
 /// packed width under a ranged or quantized packing, the storage width
 /// otherwise, and -1 for a kind whose value is not one fixed width.
-pub fn table_message_value_bits(kind: u8, s: &TableMessageShape) -> i64 {
-    match kind {
+pub fn table_message_value_bits(schema_kind: u8, schema_s: &TableMessageShape) -> i64 {
+    match schema_kind {
         0 | 32 => 0,
         1 => 1,
         _ => {
-            if (kind == 10 && s.packing == 2) || (s.packing == 1 && ((2..=9).contains(&kind) || (18..=29).contains(&kind))) {
-                s.bits as i64
+            if (schema_kind == 10 && schema_s.packing == 2) || (schema_s.packing == 1 && ((2..=9).contains(&schema_kind) || (18..=29).contains(&schema_kind))) {
+                schema_s.bits as i64
             } else {
-                match table_message_kind_width(kind) {
+                match table_message_kind_width(schema_kind) {
                     0 => -1,
-                    w => (w * 8) as i64,
+                    schema_w => (schema_w * 8) as i64,
                 }
             }
         }
@@ -1360,58 +1367,58 @@ pub fn table_message_value_bits(kind: u8, s: &TableMessageShape) -> i64 {
 
 /// An array's or a text's count: its offset from the declared minimum, at the
 /// width the range [min, max] needs (§3.3).
-pub fn table_message_count(r: &mut TableBitReader, s: &TableMessageShape) -> Option<u64> {
-    let raw = r.get(table_message_bits(s.max - s.min))?;
-    Some(raw + s.min)
+pub fn table_message_count(schema_r: &mut TableBitReader, schema_s: &TableMessageShape) -> Option<u64> {
+    let schema_raw = schema_r.get(table_message_bits(schema_s.max - schema_s.min))?;
+    Some(schema_raw + schema_s.min)
 }
 
 /// The widening ladder (§4): a narrower integer of the same signedness, or f32
 /// into f64, decoded exactly.
-pub fn table_message_widens(from: u8, to: u8) -> bool {
-    ((2..=5).contains(&from) && ((to > from && to <= 5) || to == 18))
-        || ((6..=9).contains(&from) && ((to > from && to <= 9) || to == 19))
-        || (from == 10 && to == 11)
+pub fn table_message_widens(from: u8, schema_to: u8) -> bool {
+    ((2..=5).contains(&from) && ((schema_to > from && schema_to <= 5) || schema_to == 18))
+        || ((6..=9).contains(&from) && ((schema_to > from && schema_to <= 9) || schema_to == 19))
+        || (from == 10 && schema_to == 11)
 }
 
 /// §3's one content rule for a string: well-formed UTF-8 with no zero byte.
-pub fn table_message_utf8(text: &[u8]) -> bool {
-    core::str::from_utf8(text).is_ok() && !text.contains(&0)
+pub fn table_message_utf8(schema_text: &[u8]) -> bool {
+    core::str::from_utf8(schema_text).is_ok() && !schema_text.contains(&0)
 }
 
 /// A clamp of well-formed UTF-8 to at most n bytes, never inside a character.
-pub fn table_message_utf8_clamp(text: &[u8], n: usize) -> usize {
-    let mut n = n;
-    while n > 0 && n < text.len() && text[n] & 0xc0 == 0x80 {
-        n -= 1;
+pub fn table_message_utf8_clamp(schema_text: &[u8], schema_n: usize) -> usize {
+    let mut schema_n = schema_n;
+    while schema_n > 0 && schema_n < schema_text.len() && schema_text[schema_n] & 0xc0 == 0x80 {
+        schema_n -= 1;
     }
-    n
+    schema_n
 }
 
 /// A value the endpoint spelled, sign-extended from its announced kind's width.
-pub fn table_message_signed(kind: u8, lo: u64, hi: u64) -> i128 {
-    match table_message_kind_width(kind) {
-        1 => lo as i8 as i128,
-        2 => lo as i16 as i128,
-        4 => lo as i32 as i128,
-        8 => lo as i64 as i128,
-        _ => (((hi as u128) << 64) | lo as u128) as i128,
+pub fn table_message_signed(schema_kind: u8, schema_lo: u64, schema_hi: u64) -> i128 {
+    match table_message_kind_width(schema_kind) {
+        1 => schema_lo as i8 as i128,
+        2 => schema_lo as i16 as i128,
+        4 => schema_lo as i32 as i128,
+        8 => schema_lo as i64 as i128,
+        _ => (((schema_hi as u128) << 64) | schema_lo as u128) as i128,
     }
 }
 
 /// A value the endpoint spelled, zero-extended from its announced kind's width.
-pub fn table_message_unsigned(kind: u8, lo: u64, hi: u64) -> u128 {
-    match table_message_kind_width(kind) {
-        1 => lo as u8 as u128,
-        2 => lo as u16 as u128,
-        4 => lo as u32 as u128,
-        8 => lo as u128,
-        _ => ((hi as u128) << 64) | lo as u128,
+pub fn table_message_unsigned(schema_kind: u8, schema_lo: u64, schema_hi: u64) -> u128 {
+    match table_message_kind_width(schema_kind) {
+        1 => schema_lo as u8 as u128,
+        2 => schema_lo as u16 as u128,
+        4 => schema_lo as u32 as u128,
+        8 => schema_lo as u128,
+        _ => ((schema_hi as u128) << 64) | schema_lo as u128,
     }
 }
 
 /// A kind whose domain is two's complement (§3.3).
-pub fn table_message_signed_kind(kind: u8) -> bool {
-    (2..=5).contains(&kind) || kind == 18 || (20..=24).contains(&kind)
+pub fn table_message_signed_kind(schema_kind: u8) -> bool {
+    (2..=5).contains(&schema_kind) || schema_kind == 18 || (20..=24).contains(&schema_kind)
 }
 
 /// A RANGED value's skip holds base plus offset to the kind's own domain, the
@@ -1419,114 +1426,114 @@ pub fn table_message_signed_kind(kind: u8) -> bool {
 /// sender's range (§3.3). The base and the offset are added exactly as the
 /// named read adds them, the wide lo/hi included, and a width of zero still
 /// holds the base.
-pub fn table_message_skip_ranged(r: &mut TableBitReader, kind: u8, width: i64, s: &TableMessageShape) -> bool {
-    if width < 0 {
+pub fn table_message_skip_ranged(schema_r: &mut TableBitReader, schema_kind: u8, schema_width: i64, schema_s: &TableMessageShape) -> bool {
+    if schema_width < 0 {
         return false;
     }
-    let width = width as u32;
-    let Some(lo) = r.get(core::cmp::min(width, 64)) else { return false };
-    let hi = if width > 64 {
-        match r.get(width - 64) {
-            Some(v) => v,
+    let schema_width = schema_width as u32;
+    let Some(schema_lo) = schema_r.get(core::cmp::min(schema_width, 64)) else { return false };
+    let schema_hi = if schema_width > 64 {
+        match schema_r.get(schema_width - 64) {
+            Some(schema_v) => schema_v,
             None => return false,
         }
     } else {
         0
     };
-    table_message_ranged(kind, ((hi as u128) << 64) | lo as u128, s).is_some()
+    table_message_ranged(schema_kind, ((schema_hi as u128) << 64) | schema_lo as u128, schema_s).is_some()
 }
 
 /// A RANGED value's base plus offset, HELD TO THE ANNOUNCED KIND's STORAGE
 /// DOMAIN and never wrapped (§3.3): the 128-bit two's-complement image of the
 /// value, or None when the sum lands outside the kind. The named read and the
 /// skip both take it, so the two give one verdict.
-pub fn table_message_ranged(kind: u8, offset: u128, s: &TableMessageShape) -> Option<u128> {
-    let bits = kind_bits(kind);
-    if table_message_signed_kind(kind) {
+pub fn table_message_ranged(schema_kind: u8, schema_offset: u128, schema_s: &TableMessageShape) -> Option<u128> {
+    let bits = kind_bits(schema_kind);
+    if table_message_signed_kind(schema_kind) {
         // Narrow announcements store a sign-extended 64-bit base; wide
         // announcements store both halves. Bias the signed domain so the
         // full unsigned offset can be added without narrowing it to i128.
         let base = if bits > 64 {
-            (((s.base_hi as u128) << 64) | s.base_lo as u128) as i128
+            (((schema_s.base_hi as u128) << 64) | schema_s.base_lo as u128) as i128
         } else {
-            s.base_lo as i64 as i128
+            schema_s.base_lo as i64 as i128
         };
-        let biased = (base as u128) ^ (1u128 << 127);
-        let sum = biased.checked_add(offset)?;
-        let value = (sum ^ (1u128 << 127)) as i128;
-        let bottom = if bits >= 128 { i128::MIN } else { -(1i128 << (bits - 1)) };
-        let top = if bits >= 128 { i128::MAX } else { (1i128 << (bits - 1)) - 1 };
-        if value >= bottom && value <= top { Some(value as u128) } else { None }
+        let schema_biased = (base as u128) ^ (1u128 << 127);
+        let sum = schema_biased.checked_add(schema_offset)?;
+        let schema_value = (sum ^ (1u128 << 127)) as i128;
+        let schema_bottom = if bits >= 128 { i128::MIN } else { -(1i128 << (bits - 1)) };
+        let schema_top = if bits >= 128 { i128::MAX } else { (1i128 << (bits - 1)) - 1 };
+        if schema_value >= schema_bottom && schema_value <= schema_top { Some(schema_value as u128) } else { None }
     } else {
-        let base = if bits > 64 { ((s.base_hi as u128) << 64) | s.base_lo as u128 } else { s.base_lo as u128 };
-        let value = base.checked_add(offset)?;
-        let top = if bits >= 128 { u128::MAX } else { (1u128 << bits) - 1 };
-        if value <= top { Some(value) } else { None }
+        let base = if bits > 64 { ((schema_s.base_hi as u128) << 64) | schema_s.base_lo as u128 } else { schema_s.base_lo as u128 };
+        let schema_value = base.checked_add(schema_offset)?;
+        let schema_top = if bits >= 128 { u128::MAX } else { (1u128 << bits) - 1 };
+        if schema_value <= schema_top { Some(schema_value) } else { None }
     }
 }
 
 /// One scalar by its shape (§3.3): the value bits, the ranged base added back,
 /// a quantized step mapped back onto its float32 range — all at the announced
 /// storage width, before the file form's clamps.
-pub fn table_message_read_scalar(r: &mut TableBitReader, kind: u8, s: &TableMessageShape) -> Option<(u64, u64)> {
-    let bits = table_message_value_bits(kind, s);
+pub fn table_message_read_scalar(schema_r: &mut TableBitReader, schema_kind: u8, schema_s: &TableMessageShape) -> Option<(u64, u64)> {
+    let bits = table_message_value_bits(schema_kind, schema_s);
     if bits < 0 {
         return None;
     }
     let bits = bits as u32;
-    let mut lo = r.get(core::cmp::min(bits, 64))?;
-    let mut hi = if bits > 64 { r.get(bits - 64)? } else { 0 };
-    if s.packing == 1 && kind != 10 {
+    let mut schema_lo = schema_r.get(core::cmp::min(bits, 64))?;
+    let mut schema_hi = if bits > 64 { schema_r.get(bits - 64)? } else { 0 };
+    if schema_s.packing == 1 && schema_kind != 10 {
         // BASE PLUS OFFSET IS HELD TO THE ANNOUNCED KIND, never wrapped and
         // never truncated to its width (§3.3): a sum outside the kind is damage.
-        let value = table_message_ranged(kind, ((hi as u128) << 64) | lo as u128, s)?;
-        lo = value as u64;
-        hi = (value >> 64) as u64;
+        let schema_value = table_message_ranged(schema_kind, ((schema_hi as u128) << 64) | schema_lo as u128, schema_s)?;
+        schema_lo = schema_value as u64;
+        schema_hi = (schema_value >> 64) as u64;
     }
-    if s.packing == 2 && kind == 10 {
+    if schema_s.packing == 2 && schema_kind == 10 {
         // AN INDEX ABOVE THE ENDPOINT's ANNOUNCED count IS BATCH DAMAGE (§3.3,
         // SPEC.md §4.3), checked on the whole wire value before any narrowing
         // and never reconstructed and held: the width spells such an index
         // whenever count is not one less than a power of two (eight bits
         // spelling 255 over a count of 200). internal/tablewire's
         // bitDecoder.float32 is the oracle.
-        if hi != 0 || lo > s.qcount as u64 {
+        if schema_hi != 0 || schema_lo > schema_s.qcount as u64 {
             return None;
         }
-        let index = lo as u32;
-        let ratio = index as f32 / s.qcount as f32;
-        let scaled = ratio * s.qdelta;
-        lo = (scaled + s.qmin).to_bits() as u64;
+        let schema_index = schema_lo as u32;
+        let schema_ratio = schema_index as f32 / schema_s.qcount as f32;
+        let schema_scaled = schema_ratio * schema_s.qdelta;
+        schema_lo = (schema_scaled + schema_s.qmin).to_bits() as u64;
     }
-    Some((lo, hi))
+    Some((schema_lo, schema_hi))
 }
 
 /// One scalar by this build's own shape (§3.3): the ranged base taken off, a
 /// float32 quantized onto its steps, then the value bits.
-pub fn table_message_write_scalar(w: &mut TableBitWriter, s: &TableMessageShape, lo: u64, hi: u64) {
-    let (mut lo, mut hi) = (lo, hi);
-    if s.packing == 1 {
-        let (diff, borrow) = lo.overflowing_sub(s.base_lo);
-        lo = diff;
-        hi = hi.wrapping_sub(s.base_hi).wrapping_sub(borrow as u64);
+pub fn table_message_write_scalar(schema_w: &mut TableBitWriter, schema_s: &TableMessageShape, schema_lo: u64, schema_hi: u64) {
+    let (mut schema_lo, mut schema_hi) = (schema_lo, schema_hi);
+    if schema_s.packing == 1 {
+        let (schema_diff, schema_borrow) = schema_lo.overflowing_sub(schema_s.base_lo);
+        schema_lo = schema_diff;
+        schema_hi = schema_hi.wrapping_sub(schema_s.base_hi).wrapping_sub(schema_borrow as u64);
     }
-    if s.packing == 2 {
-        let value = f32::from_bits(lo as u32);
-        let mut ratio = (value - s.qmin) / s.qdelta;
+    if schema_s.packing == 2 {
+        let schema_value = f32::from_bits(schema_lo as u32);
+        let mut schema_ratio = (schema_value - schema_s.qmin) / schema_s.qdelta;
         // a NaN never reaches here: the writer refuses one before the
         // quantizer runs (§3.3); the test stays so no input moves the index
         // outside [0, count]
-        if ratio.is_nan() || ratio < 0.0 {
-            ratio = 0.0;
-        } else if ratio > 1.0 {
-            ratio = 1.0;
+        if schema_ratio.is_nan() || schema_ratio < 0.0 {
+            schema_ratio = 0.0;
+        } else if schema_ratio > 1.0 {
+            schema_ratio = 1.0;
         }
-        let scaled = ratio * s.qcount as f32;
-        lo = core::cmp::min(((scaled + 0.5) as f64).floor() as u32, s.qcount) as u64;
+        let schema_scaled = schema_ratio * schema_s.qcount as f32;
+        schema_lo = core::cmp::min(((schema_scaled + 0.5) as f64).floor() as u32, schema_s.qcount) as u64;
     }
-    w.put(lo, core::cmp::min(s.bits, 64) as u32);
-    if s.bits > 64 {
-        w.put(hi, (s.bits - 64) as u32);
+    schema_w.put(schema_lo, core::cmp::min(schema_s.bits, 64) as u32);
+    if schema_s.bits > 64 {
+        schema_w.put(schema_hi, (schema_s.bits - 64) as u32);
     }
 }
 
@@ -1553,27 +1560,27 @@ impl Default for TableMessageSeen {
 
 impl TableMessageSeen {
     /// Marks a key: false when the key was named before, or is zero.
-    pub fn once(&mut self, key: u64) -> bool {
-        if key == 0 {
+    pub fn once(&mut self, schema_key: u64) -> bool {
+        if schema_key == 0 {
             return false;
         }
-        if key > TABLE_MESSAGE_SEEN_KEYS {
-            return self.past.insert(key);
+        if schema_key > TABLE_MESSAGE_SEEN_KEYS {
+            return self.past.insert(schema_key);
         }
-        let i = (key - 1) as usize;
-        let bit = 1u64 << (i & 63);
-        if self.bits[i >> 6] & bit != 0 {
+        let schema_i = (schema_key - 1) as usize;
+        let schema_bit = 1u64 << (schema_i & 63);
+        if self.bits[schema_i >> 6] & schema_bit != 0 {
             return false;
         }
-        self.bits[i >> 6] |= bit;
+        self.bits[schema_i >> 6] |= schema_bit;
         true
     }
 }
 
 /// A strict skip of one POSITIONAL value by the ENDPOINT's shape (§3.3): an
 /// array element or a union arm's payload, where a union's None is lawful.
-pub fn table_message_skip(r: &mut TableBitReader, v: &TableVocabulary, e: &TableMessageEntry, depth: u32) -> bool {
-    table_message_skip_at(r, v, e, depth, false)
+pub fn table_message_skip(schema_r: &mut TableBitReader, schema_v: &TableVocabulary, schema_e: &TableMessageEntry, schema_depth: u32) -> bool {
+    table_message_skip_at(schema_r, schema_v, schema_e, schema_depth, false)
 }
 
 /// A strict skip of one FIELD by the ENDPOINT's shape (§3.3): what a reader
@@ -1581,144 +1588,144 @@ pub fn table_message_skip(r: &mut TableBitReader, v: &TableVocabulary, e: &Table
 /// declaration's. A message field is never required, so a union FIELD's None
 /// elides and its explicit arm reference 0 is damage (§3.3 (c)), whether this
 /// reader names the field or not.
-pub fn table_message_skip_field(r: &mut TableBitReader, v: &TableVocabulary, e: &TableMessageEntry, depth: u32) -> bool {
-    table_message_skip_at(r, v, e, depth, true)
+pub fn table_message_skip_field(schema_r: &mut TableBitReader, schema_v: &TableVocabulary, schema_e: &TableMessageEntry, schema_depth: u32) -> bool {
+    table_message_skip_at(schema_r, schema_v, schema_e, schema_depth, true)
 }
 
-fn table_message_skip_at(r: &mut TableBitReader, v: &TableVocabulary, e: &TableMessageEntry, depth: u32, field: bool) -> bool {
-    if depth > 128 {
+fn table_message_skip_at(schema_r: &mut TableBitReader, schema_v: &TableVocabulary, schema_e: &TableMessageEntry, schema_depth: u32, schema_field: bool) -> bool {
+    if schema_depth > 128 {
         return false;
     }
-    let s = &e.shape;
-    match e.kind {
+    let schema_s = &schema_e.shape;
+    match schema_e.kind {
         0 | 32 => true,
-        30 => match r.get(v.ref_bits) {
+        30 => match schema_r.get(schema_v.ref_bits) {
             None => false,
             Some(0) => true,
-            Some(reference) => v.name(reference).is_some(),
+            Some(schema_reference) => schema_v.name(schema_reference).is_some(),
         },
-        13 => table_message_skip_body(r, v, depth + 1),
+        13 => table_message_skip_body(schema_r, schema_v, schema_depth + 1),
         // a node index: the fixed form's roots carry no pointer, so a body
         // that spells one names nothing this reader can resolve
         17 => false,
-        15 => match r.get(v.ref_bits) {
+        15 => match schema_r.get(schema_v.ref_bits) {
             None => false,
-            Some(0) => !field,
-            Some(reference) => match v.entry(reference).copied() {
-                Some(arm) => arm.id < 0xffff_ffff_ffff_fffd && arm.kind != 0 &&
-                    table_message_skip(r, v, &arm, depth + u32::from(matches!(arm.kind, 13..=16))),
+            Some(0) => !schema_field,
+            Some(schema_reference) => match schema_v.entry(schema_reference).copied() {
+                Some(schema_arm) => schema_arm.id < 0xffff_ffff_ffff_fffd && schema_arm.kind != 0 &&
+                    table_message_skip(schema_r, schema_v, &schema_arm, schema_depth + u32::from(matches!(schema_arm.kind, 13..=16))),
                 None => false,
             },
         },
         12 => {
-            let Some(n) = table_message_count(r, s) else { return false };
-            if n > s.max || !r.align() {
+            let Some(schema_n) = table_message_count(schema_r, schema_s) else { return false };
+            if schema_n > schema_s.max || !schema_r.align() {
                 return false;
             }
-            let start = (r.offset / 8) as usize;
-            if !r.skip(n * 8) {
+            let schema_start = (schema_r.offset / 8) as usize;
+            if !schema_r.skip(schema_n * 8) {
                 return false;
             }
             // a skipped string's bytes are held to the text rule a named read
             // applies to them, and ill-formed text is damage (§3.3, §4)
-            table_message_utf8(&r.buffer[start..start + n as usize])
+            table_message_utf8(&schema_r.buffer[schema_start..schema_start + schema_n as usize])
         }
         // 31 is held by name and never written (R17): met only as damage
         31 => false,
         10 => {
             // A PLAIN FLOAT IS FINITE, AND A QUANTIZED INDEX IS AT MOST ITS
             // COUNT (§3.3): the same raw-bits rule a named float read applies.
-            let Some(raw) = r.get(table_message_value_bits(10, s) as u32) else { return false };
-            if s.packing == 2 {
-                raw <= s.qcount as u64
+            let Some(schema_raw) = schema_r.get(table_message_value_bits(10, schema_s) as u32) else { return false };
+            if schema_s.packing == 2 {
+                schema_raw <= schema_s.qcount as u64
             } else {
-                table_finite_f32(raw as u32)
+                table_finite_f32(schema_raw as u32)
             }
         }
-        11 => match r.get(64) {
-            Some(raw) => table_finite_f64(raw),
+        11 => match schema_r.get(64) {
+            Some(schema_raw) => table_finite_f64(schema_raw),
             None => false,
         },
         14 | 16 => {
-            let Some(n) = table_message_count(r, s) else { return false };
+            let Some(schema_n) = table_message_count(schema_r, schema_s) else { return false };
             // THE COUNT'S BITS CAN SPELL ABOVE THE ANNOUNCED MAX (§3.3).
-            if n > s.max || (e.kind == 14 && s.elem == 6 && !r.align()) {
+            if schema_n > schema_s.max || (schema_e.kind == 14 && schema_s.elem == 6 && !schema_r.align()) {
                 return false;
             }
-            let element = TableMessageEntry { id: 0, kind: s.elem, shape: e.element, element: TableMessageShape::default(), first: 0 };
+            let schema_element = TableMessageEntry { id: 0, kind: schema_s.elem, shape: schema_e.element, element: TableMessageShape::default(), first: 0 };
             // A RUN OF FIXED-WIDTH ELEMENTS IS ARITHMETIC (§3.3): a float, a
             // ranged or quantized element carries a value condition, and a
             // keyed entry carries a key reference, so those are walked.
-            if e.kind == 14
-                && !matches!(element.kind, 10 | 11 | 12 | 13 | 15 | 17 | 30)
-                && element.shape.packing == 0
+            if schema_e.kind == 14
+                && !matches!(schema_element.kind, 10 | 11 | 12 | 13 | 15 | 17 | 30)
+                && schema_element.shape.packing == 0
             {
-                match table_message_value_bits(element.kind, &element.shape) {
+                match table_message_value_bits(schema_element.kind, &schema_element.shape) {
                     0 => return true,
-                    width if width > 0 => return r.skip(n * width as u64),
+                    schema_width if schema_width > 0 => return schema_r.skip(schema_n * schema_width as u64),
                     _ => {}
                 }
             }
             // A KEYED ARRAY'S KEY NAMES A DECLARED NO-PAYLOAD ENTRY AND NO KEY
             // REPEATS (§3.2, §3.3): the set is one bit per id, on the stack.
-            let mut seen = TableMessageSeen::default();
-            for _ in 0..n {
+            let mut schema_seen = TableMessageSeen::default();
+            for _ in 0..schema_n {
                 // THE KEY IS PART OF THE WALKED ELEMENT: the offset is sampled
                 // before it so a width-0 slot cannot accept the run unread.
-                let at = r.offset;
-                if e.kind == 16 {
-                    let Some(reference) = r.get(v.ref_bits) else { return false };
-                    if v.name(reference).is_none() || !seen.once(v.seen_key(reference)) {
+                let schema_at = schema_r.offset;
+                if schema_e.kind == 16 {
+                    let Some(schema_reference) = schema_r.get(schema_v.ref_bits) else { return false };
+                    if schema_v.name(schema_reference).is_none() || !schema_seen.once(schema_v.seen_key(schema_reference)) {
                         return false;
                     }
                 }
-                if !table_message_skip(r, v, &element, depth + 1) {
+                if !table_message_skip(schema_r, schema_v, &schema_element, schema_depth + 1) {
                     return false;
                 }
                 // A WALKED ELEMENT THAT CONSUMES NO BITS, its key included, is
                 // damage (§3.3): the plain-array width-0 run is the arithmetic
                 // path above, not this one.
-                if r.offset == at {
+                if schema_r.offset == schema_at {
                     return false;
                 }
             }
             true
         }
-        kind => {
-            let bits = table_message_value_bits(kind, s);
+        schema_kind => {
+            let bits = table_message_value_bits(schema_kind, schema_s);
             if bits < 0 {
                 return false;
             }
-            if s.packing == 1 && (integer_kind(kind) || fixed_kind(kind)) {
-                return table_message_skip_ranged(r, kind, bits, s);
+            if schema_s.packing == 1 && (integer_kind(schema_kind) || fixed_kind(schema_kind)) {
+                return table_message_skip_ranged(schema_r, schema_kind, bits, schema_s);
             }
-            r.skip(bits as u64)
+            schema_r.skip(bits as u64)
         }
     }
 }
 
 /// A nested body skipped whole, entry by entry, to its zero reference (§3.3).
-pub fn table_message_skip_body(r: &mut TableBitReader, v: &TableVocabulary, depth: u32) -> bool {
-    if depth > 128 {
+pub fn table_message_skip_body(schema_r: &mut TableBitReader, schema_v: &TableVocabulary, schema_depth: u32) -> bool {
+    if schema_depth > 128 {
         return false;
     }
     // A FIELD ID TWICE IN ONE BODY IS DAMAGE (§3.3), named or skipped: the set
     // is one bit per id, whichever slot carried it, on the stack. A union
     // field of a skipped body is a field, so its explicit None is damage.
-    let mut seen = TableMessageSeen::default();
+    let mut schema_seen = TableMessageSeen::default();
     loop {
-        match r.get(v.ref_bits) {
+        match schema_r.get(schema_v.ref_bits) {
             None => return false,
             Some(0) => return true,
-            Some(reference) => {
-                let Some(e) = v.entry(reference).copied() else { return false };
-                if e.id >= 0xffff_ffff_ffff_fffd {
+            Some(schema_reference) => {
+                let Some(schema_e) = schema_v.entry(schema_reference).copied() else { return false };
+                if schema_e.id >= 0xffff_ffff_ffff_fffd {
                     return false;
                 }
-                if !seen.once(v.seen_key(reference)) {
+                if !schema_seen.once(schema_v.seen_key(schema_reference)) {
                     return false;
                 }
-                if !table_message_skip_field(r, v, &e, depth) {
+                if !table_message_skip_field(schema_r, schema_v, &schema_e, schema_depth) {
                     return false;
                 }
             }
@@ -1728,21 +1735,21 @@ pub fn table_message_skip_body(r: &mut TableBitReader, v: &TableVocabulary, dept
 
 /// The batch's OPEN (§3.3): "the FORM BYTE is a whole byte and is read FIRST",
 /// a body from an endpoint that never announced is refused by name, then M - 1.
-pub fn table_message_batch_open(v: &TableVocabulary, data: &[u8], report: &mut TableReport) -> Option<usize> {
+pub fn table_message_batch_open(schema_v: &TableVocabulary, data: &[u8], schema_report: &mut TableReport) -> Option<usize> {
     if data.is_empty() {
-        report.damaged = true;
+        schema_report.damaged = true;
         return None;
     }
     if data[0] != TABLE_WIRE_MESSAGE_FORM {
-        report.refuse(TableReason::NewerForm);
+        schema_report.refuse(TableReason::NewerForm);
         return None;
     }
-    if !v.announced {
-        report.refuse(TableReason::NoVocabulary);
+    if !schema_v.announced {
+        schema_report.refuse(TableReason::NoVocabulary);
         return None;
     }
     if data.len() < 2 {
-        report.damaged = true;
+        schema_report.damaged = true;
         return None;
     }
     Some(data[1] as usize + 1)
@@ -1750,9 +1757,9 @@ pub fn table_message_batch_open(v: &TableVocabulary, data: &[u8], report: &mut T
 
 /// The batch's CLOSE (§3.3): the pad is zero bits and "BYTES AFTER THE PAD ARE
 /// MALFORMED".
-pub fn table_message_batch_close(r: &mut TableBitReader, report: &mut TableReport) -> bool {
-    if !r.align() || r.offset != (r.buffer.len() as u64) * 8 {
-        report.damaged = true;
+pub fn table_message_batch_close(schema_r: &mut TableBitReader, schema_report: &mut TableReport) -> bool {
+    if !schema_r.align() || schema_r.offset != (schema_r.buffer.len() as u64) * 8 {
+        schema_report.damaged = true;
         return false;
     }
     true

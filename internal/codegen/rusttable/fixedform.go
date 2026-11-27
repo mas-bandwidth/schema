@@ -57,7 +57,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // FixedRuntimeModule is the fixed form's shared runtime, emitted once per unit
@@ -409,23 +409,23 @@ func (g *gen) emitFixedCeilingRoot(st *ir.Struct) {
 	g.pf("/// variable form is never selected at a fixed root. No block, plan,\n")
 	g.pf("/// lineage or record size is emitted for this table.\n")
 	g.pf("pub fn %s_fixed_load(\n", name)
-	g.pf("    values: &mut [%sRow],\n", st.Name)
+	g.pf("    schema_values: &mut [%sRow],\n", st.Name)
 	g.pf("    data: &[u8],\n")
-	g.pf("    plan: &mut [TableFixedEntry],\n")
-	g.pf("    remap: &mut [u16],\n")
-	g.pf("    report: &mut TableFixedReport,\n")
+	g.pf("    schema_plan: &mut [TableFixedEntry],\n")
+	g.pf("    schema_remap: &mut [u16],\n")
+	g.pf("    schema_report: &mut TableFixedReport,\n")
 	g.pf(") -> Option<usize> {\n")
-	g.pf("    let _ = (plan, remap);\n")
-	g.pf("    *report = TableFixedReport::default();\n")
-	g.pf("    for value in values.iter_mut() {\n")
-	g.pf("        *value = %sRow::default();\n", st.Name)
+	g.pf("    let _ = (schema_plan, schema_remap);\n")
+	g.pf("    *schema_report = TableFixedReport::default();\n")
+	g.pf("    for schema_value in schema_values.iter_mut() {\n")
+	g.pf("        *schema_value = %sRow::default();\n", st.Name)
 	g.pf("    }\n")
 	g.pf("    if data.is_empty() {\n")
-	g.pf("        report.damaged = true;\n")
+	g.pf("        schema_report.damaged = true;\n")
 	g.pf("        return None;\n    }\n")
 	g.pf("    if data[0] == TABLE_FIXED_FORM {\n")
-	g.pf("        return report.refuse(TableFixedReason::LayoutRecordTooLarge);\n    }\n")
-	g.pf("    report.refuse(match data[0] {\n")
+	g.pf("        return schema_report.refuse(TableFixedReason::LayoutRecordTooLarge);\n    }\n")
+	g.pf("    schema_report.refuse(match data[0] {\n")
 	g.pf("        1 => TableFixedReason::PreviousForm,\n")
 	g.pf("        2 => TableFixedReason::MessageFormAsFile,\n")
 	g.pf("        _ => TableFixedReason::NewerForm,\n")
@@ -479,9 +479,9 @@ func (g *gen) emitFixedWriteBody(st *ir.Struct) {
 	g.pf("/// %s's stores, at constant offsets into a body the caller zeroed.\n", st.Name)
 	g.pf("/// The zeros are the template, and they are also what fills every byte of\n")
 	g.pf("/// declared slack without this function touching it (§3.4).\n")
-	g.pf("pub fn %s(b: &mut [u8], value: &%sRow) {\n", fn(st.Name, "fixed_write_body"), st.Name)
+	g.pf("pub fn %s(schema_b: &mut [u8], schema_value: &%sRow) {\n", fn(st.Name, "fixed_write_body"), st.Name)
 	if len(st.Fields) == 0 {
-		g.pf("    let _ = (b, value);\n")
+		g.pf("    let _ = (schema_b, schema_value);\n")
 	}
 	off := int64(0)
 	for _, f := range st.Fields {
@@ -500,8 +500,8 @@ func (g *gen) emitFixedWriteField(f *ir.Field, off int64) {
 		// put the zeros there — so an absent optional costs the writer the
 		// branch and not one store, and a caller's untouched payload storage
 		// never reaches the wire.
-		g.pf("    b[%d] = u8::from(value.%s_present);\n", off, f.Name)
-		g.pf("    if value.%s_present {\n", f.Name)
+		g.pf("    schema_b[%d] = u8::from(schema_value.%s_present);\n", off, f.Name)
+		g.pf("    if schema_value.%s_present {\n", f.Name)
 		g.emitFixedWritePayload(f, off+ir.TableFixedPresentBytes, 8)
 		g.pf("    }\n")
 		return
@@ -526,13 +526,13 @@ func (g *gen) emitFixedWritePayload(f *ir.Field, base int64, indent int) {
 		// declared defaults is the element's default image and not zero — a
 		// value nobody wrote, riding as if somebody had.
 		g.fixedWriteBound(f.Name+"_count", f.ArrayMin, f.ArrayBound, "count", ind)
-		g.pf("%sb[%d..%d].copy_from_slice(&(value.%s_count as u32).to_le_bytes());\n", ind, base, base+4, f.Name)
+		g.pf("%sschema_b[%d..%d].copy_from_slice(&(schema_value.%s_count as u32).to_le_bytes());\n", ind, base, base+4, f.Name)
 		g.emitFixedWriteSlots(f, base+ir.TableFixedCountBytes,
-			fmt.Sprintf("value.%s_count.clamp(0, %d) as usize", f.Name, f.ArrayBound), indent)
+			fmt.Sprintf("schema_value.%s_count.clamp(0, %d) as usize", f.Name, f.ArrayBound), indent)
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
 		g.emitFixedWriteText(f, base, indent)
 	default:
-		g.emitFixedWriteElementAt(f, fmt.Sprintf("%d", base), "value."+f.Name, indent)
+		g.emitFixedWriteElementAt(f, fmt.Sprintf("%d", base), "schema_value."+f.Name, indent)
 	}
 }
 
@@ -544,13 +544,13 @@ func (g *gen) emitFixedWritePayload(f *ir.Field, base int64, indent int) {
 func (g *gen) emitFixedWriteText(f *ir.Field, base int64, indent int) {
 	ind := strings.Repeat(" ", indent)
 	g.fixedWriteBound(f.Name+"_length", 0, f.Type.Size, "length", ind)
-	g.pf("%sb[%d..%d].copy_from_slice(&(value.%s_length as u32).to_le_bytes());\n", ind, base, base+4, f.Name)
+	g.pf("%sschema_b[%d..%d].copy_from_slice(&(schema_value.%s_length as u32).to_le_bytes());\n", ind, base, base+4, f.Name)
 	g.pf("%s{\n", ind)
-	g.pf("%s    let n = value.%s_length.clamp(0, %d) as usize;\n", ind, f.Name, f.Type.Size)
+	g.pf("%s    let schema_n = schema_value.%s_length.clamp(0, %d) as usize;\n", ind, f.Name, f.Type.Size)
 	if f.Type.Kind == ir.TString {
-		g.pf("%s    debug_assert!(table_utf8_valid(&value.%s[..n]), \"%s is ill-formed text\");\n", ind, f.Name, f.Name)
+		g.pf("%s    debug_assert!(table_utf8_valid(&schema_value.%s[..schema_n]), \"%s is ill-formed text\");\n", ind, f.Name, f.Name)
 	}
-	g.pf("%s    b[%d..%d + n].copy_from_slice(&value.%s[..n]);\n", ind, base+4, base+4, f.Name)
+	g.pf("%s    schema_b[%d..%d + schema_n].copy_from_slice(&schema_value.%s[..schema_n]);\n", ind, base+4, base+4, f.Name)
 	g.pf("%s}\n", ind)
 }
 
@@ -565,7 +565,7 @@ func (g *gen) emitFixedWriteText(f *ir.Field, base int64, indent int) {
 // row 3).
 func (g *gen) fixedWriteBound(member string, min, bound int64, what, ind string) {
 	g.pf("%sdebug_assert!(\n", ind)
-	g.pf("%s    value.%s >= %d && value.%s <= %d,\n", ind, member, min, member, bound)
+	g.pf("%s    schema_value.%s >= %d && schema_value.%s <= %d,\n", ind, member, min, member, bound)
 	g.pf("%s    \"the declared %s is the bound (docs/SPEC-TABLES.md §3.4)\"\n", ind, what)
 	g.pf("%s);\n", ind)
 }
@@ -658,43 +658,43 @@ func (g *gen) emitFixedWriteSlots(f *ir.Field, base int64, count string, indent 
 	if count == "0" {
 		return
 	}
-	g.pf("%sfor i in 0..%s {\n", strings.Repeat(" ", indent), count)
-	g.emitFixedWriteElementAt(f, fixedSlotOffset(base, elem), fmt.Sprintf("value.%s[i]", f.Name), indent+4)
+	g.pf("%sfor schema_i in 0..%s {\n", strings.Repeat(" ", indent), count)
+	g.emitFixedWriteElementAt(f, fixedSlotOffset(base, elem), fmt.Sprintf("schema_value.%s[schema_i]", f.Name), indent+4)
 	g.pf("%s}\n", strings.Repeat(" ", indent))
 }
 
 func (g *gen) emitFixedWriteElementAt(f *ir.Field, at, expr string, indent int) {
 	ind := strings.Repeat(" ", indent)
 	if name, n, nested := fixedNestedBody(f); nested {
-		g.pf("%slet at = %s;\n", ind, at)
-		g.pf("%s%s(&mut b[at..at + %d], &%s);\n", ind, fn(name, "fixed_write_body"), n, expr)
+		g.pf("%slet schema_at = %s;\n", ind, at)
+		g.pf("%s%s(&mut schema_b[schema_at..schema_at + %d], &%s);\n", ind, fn(name, "fixed_write_body"), n, expr)
 		return
 	}
 	width := ir.TableFixedElementBytes(f)
 	g.fixedScalarWriteCheck(f, expr, width, ind)
-	g.pf("%slet at = %s;\n", ind, at)
+	g.pf("%slet schema_at = %s;\n", ind, at)
 	switch f.Type.Kind {
 	case ir.TBool:
-		g.pf("%sb[at] = u8::from(%s);\n", ind, expr)
+		g.pf("%sschema_b[schema_at] = u8::from(%s);\n", ind, expr)
 	case ir.TFloat32:
-		g.pf("%sb[at..at + 4].copy_from_slice(&%s.to_le_bytes());\n", ind, rustFloatStored(f, expr))
+		g.pf("%sschema_b[schema_at..schema_at + 4].copy_from_slice(&%s.to_le_bytes());\n", ind, rustFloatStored(f, expr))
 	case ir.TFloat64:
-		g.pf("%sb[at..at + 8].copy_from_slice(&%s.to_le_bytes());\n", ind, rustFloatStored(f, expr))
+		g.pf("%sschema_b[schema_at..schema_at + 8].copy_from_slice(&%s.to_le_bytes());\n", ind, rustFloatStored(f, expr))
 	default:
 		raw := fixedRawUint(width)
 		if _, wide := fixedWide128(f); wide {
 			// THE 128-BIT SLOT IS THE ALIGNED WRAPPER (fixed_runtime's
 			// TableU128 / TableI128) and `.0` is the integer; its little-endian
 			// image is the same sixteen bytes either signedness.
-			g.pf("%sb[at..at + 16].copy_from_slice(&%s.0.to_le_bytes());\n", ind, expr)
+			g.pf("%sschema_b[schema_at..schema_at + 16].copy_from_slice(&%s.0.to_le_bytes());\n", ind, expr)
 			return
 		}
 		if cookElemType(f) == raw {
 			// already the raw storage image; a cast to its own type is noise
-			g.pf("%sb[at..at + %d].copy_from_slice(&%s.to_le_bytes());\n", ind, width, expr)
+			g.pf("%sschema_b[schema_at..schema_at + %d].copy_from_slice(&%s.to_le_bytes());\n", ind, width, expr)
 			return
 		}
-		g.pf("%sb[at..at + %d].copy_from_slice(&(%s as %s).to_le_bytes());\n", ind, width, expr, raw)
+		g.pf("%sschema_b[schema_at..schema_at + %d].copy_from_slice(&(%s as %s).to_le_bytes());\n", ind, width, expr, raw)
 	}
 }
 
@@ -714,9 +714,9 @@ func fixedWide128(f *ir.Field) (string, bool) {
 // fixedSlotOffset is one slot's offset expression inside a loop, with the
 // no-op addition a base of zero would spell left out.
 func fixedSlotOffset(base, elem int64) string {
-	step := fmt.Sprintf("i * %d", elem)
+	step := fmt.Sprintf("schema_i * %d", elem)
 	if elem == 1 {
-		step = "i"
+		step = "schema_i"
 	}
 	if base == 0 {
 		return step
@@ -752,12 +752,12 @@ func (g *gen) emitFixedScatter(st *ir.Struct) {
 	g.pf("/// Every field is written, so nothing of the caller's previous value survives:\n")
 	g.pf("/// a field the record did not carry took its declared default in the PREFILL,\n")
 	g.pf("/// which is §3.4's whole answer to an absent field.\n")
-	g.pf("pub fn %s(b: &[u8], value: &mut %sRow, report: &mut TableFixedReport) {\n",
+	g.pf("pub fn %s(schema_b: &[u8], schema_value: &mut %sRow, schema_report: &mut TableFixedReport) {\n",
 		fn(st.Name, "fixed_scatter"), st.Name)
 	if len(st.Fields) == 0 {
-		g.pf("    let _ = (b, value, report);\n")
+		g.pf("    let _ = (schema_b, schema_value, schema_report);\n")
 	}
-	g.pf("    let _ = &report;\n")
+	g.pf("    let _ = &schema_report;\n")
 	off := int64(0)
 	for _, f := range st.Fields {
 		g.emitFixedScatterField(f, off)
@@ -772,14 +772,14 @@ func (g *gen) emitFixedScatterField(f *ir.Field, off int64) {
 		// A PRESENT BYTE OTHER THAN 0 OR 1 IS DAMAGE (docs/FIXED-FORM-ALGORITHM.md
 		// §4.5), and the payload under an absent one is slack (§3.4): unspecified
 		// on read, never a refusal, so the scatter lands it at slack depth.
-		g.pf("    if b[%d] > 1 && report.slack == 0 {\n        report.damaged = true;\n    }\n", base)
+		g.pf("    if schema_b[%d] > 1 && schema_report.slack == 0 {\n        schema_report.damaged = true;\n    }\n", base)
 		slackOff := base
-		g.pf("    value.%s_present = b[%d] == 1;\n", f.Name, base)
-		g.pf("    let _slack_%d = u32::from(!value.%s_present);\n", slackOff, f.Name)
-		g.pf("    report.slack += _slack_%d;\n", slackOff)
+		g.pf("    schema_value.%s_present = schema_b[%d] == 1;\n", f.Name, base)
+		g.pf("    let _slack_%d = u32::from(!schema_value.%s_present);\n", slackOff, f.Name)
+		g.pf("    schema_report.slack += _slack_%d;\n", slackOff)
 		base += ir.TableFixedPresentBytes
 		g.emitFixedScatterValue(f, base)
-		g.pf("    report.slack -= _slack_%d;\n", slackOff)
+		g.pf("    schema_report.slack -= _slack_%d;\n", slackOff)
 		return
 	}
 	g.emitFixedScatterValue(f, base)
@@ -798,14 +798,14 @@ func (g *gen) emitFixedScatterValue(f *ir.Field, base int64) {
 		g.emitFixedScatterCountedSlots(f, base+ir.TableFixedCountBytes, f.ArrayBound)
 	case f.Type.Kind == ir.TString:
 		g.emitFixedScatterCount(f.Name+"_length", base, 0, f.Type.Size)
-		g.pf("    value.%s = [0u8; %d];\n", f.Name, f.Type.Size+1)
-		g.pf("    value.%s[..%d].copy_from_slice(&b[%d..%d]);\n", f.Name, f.Type.Size, base+4, base+4+f.Type.Size)
-		g.pf("    value.%s[value.%s_length as usize] = 0; // the used length terminates the buffer\n", f.Name, f.Name)
+		g.pf("    schema_value.%s = [0u8; %d];\n", f.Name, f.Type.Size+1)
+		g.pf("    schema_value.%s[..%d].copy_from_slice(&schema_b[%d..%d]);\n", f.Name, f.Type.Size, base+4, base+4+f.Type.Size)
+		g.pf("    schema_value.%s[schema_value.%s_length as usize] = 0; // the used length terminates the buffer\n", f.Name, f.Name)
 	case f.Type.Kind == ir.TBytes:
 		g.emitFixedScatterCount(f.Name+"_length", base, 0, f.Type.Size)
-		g.pf("    value.%s.copy_from_slice(&b[%d..%d]);\n", f.Name, base+4, base+4+f.Type.Size)
+		g.pf("    schema_value.%s.copy_from_slice(&schema_b[%d..%d]);\n", f.Name, base+4, base+4+f.Type.Size)
 	default:
-		g.emitFixedScatterElement(f, fmt.Sprintf("%d", base), "value."+f.Name, 4)
+		g.emitFixedScatterElement(f, fmt.Sprintf("%d", base), "schema_value."+f.Name, 4)
 	}
 }
 
@@ -817,10 +817,10 @@ func (g *gen) emitFixedScatterValue(f *ir.Field, base int64) {
 // (docs/SPEC.md §4.2, §5.1 row 3).
 func (g *gen) emitFixedScatterCount(member string, at, min, bound int64) {
 	g.pf("    {\n")
-	g.pf("        let raw = i32::from_le_bytes(b[%d..%d].try_into().expect(\"four bytes\"));\n", at, at+4)
-	g.pf("        let held = raw.clamp(%d, %d);\n", min, bound)
-	g.pf("        if held != raw && report.slack == 0 {\n            report.held += 1;\n        }\n")
-	g.pf("        value.%s = held;\n", member)
+	g.pf("        let schema_raw = i32::from_le_bytes(schema_b[%d..%d].try_into().expect(\"four bytes\"));\n", at, at+4)
+	g.pf("        let schema_held = schema_raw.clamp(%d, %d);\n", min, bound)
+	g.pf("        if schema_held != schema_raw && schema_report.slack == 0 {\n            schema_report.held += 1;\n        }\n")
+	g.pf("        schema_value.%s = schema_held;\n", member)
 	g.pf("    }\n")
 }
 
@@ -832,11 +832,11 @@ func (g *gen) emitFixedScatterCountedSlots(f *ir.Field, base, count int64) {
 	if count == 0 {
 		return
 	}
-	g.pf("    for i in 0..%d {\n", count)
-	g.pf("        let slack = u32::from(i as i32 >= value.%s_count);\n", f.Name)
-	g.pf("        report.slack += slack;\n")
-	g.emitFixedScatterElement(f, fixedSlotOffset(base, elem), fmt.Sprintf("value.%s[i]", f.Name), 8)
-	g.pf("        report.slack -= slack;\n")
+	g.pf("    for schema_i in 0..%d {\n", count)
+	g.pf("        let schema_slack = u32::from(schema_i as i32 >= schema_value.%s_count);\n", f.Name)
+	g.pf("        schema_report.slack += schema_slack;\n")
+	g.emitFixedScatterElement(f, fixedSlotOffset(base, elem), fmt.Sprintf("schema_value.%s[schema_i]", f.Name), 8)
+	g.pf("        schema_report.slack -= schema_slack;\n")
 	g.pf("    }\n")
 }
 
@@ -845,16 +845,16 @@ func (g *gen) emitFixedScatterSlots(f *ir.Field, base, count int64) {
 	if count == 0 {
 		return
 	}
-	g.pf("    for i in 0..%d {\n", count)
-	g.emitFixedScatterElement(f, fixedSlotOffset(base, elem), fmt.Sprintf("value.%s[i]", f.Name), 8)
+	g.pf("    for schema_i in 0..%d {\n", count)
+	g.emitFixedScatterElement(f, fixedSlotOffset(base, elem), fmt.Sprintf("schema_value.%s[schema_i]", f.Name), 8)
 	g.pf("    }\n")
 }
 
 func (g *gen) emitFixedScatterElement(f *ir.Field, at, dst string, indent int) {
 	ind := strings.Repeat(" ", indent)
 	if name, n, nested := fixedNestedBody(f); nested {
-		g.pf("%s{\n%s    let at = %s;\n", ind, ind, at)
-		g.pf("%s    %s(&b[at..at + %d], &mut %s, report);\n", ind, fn(name, "fixed_scatter"), n, dst)
+		g.pf("%s{\n%s    let schema_at = %s;\n", ind, ind, at)
+		g.pf("%s    %s(&schema_b[schema_at..schema_at + %d], &mut %s, schema_report);\n", ind, fn(name, "fixed_scatter"), n, dst)
 		g.pf("%s}\n", ind)
 		return
 	}
@@ -869,23 +869,23 @@ func (g *gen) emitFixedScatterElement(f *ir.Field, at, dst string, indent int) {
 		return fmt.Sprintf("%s%s = %s;\n", in, dst, v)
 	}
 	if binding {
-		g.pf("%s%s = {\n%s    let at = %s;\n", ind, dst, ind, at)
+		g.pf("%s%s = {\n%s    let schema_at = %s;\n", ind, dst, ind, at)
 	} else {
-		g.pf("%s{\n%s    let at = %s;\n", ind, ind, at)
+		g.pf("%s{\n%s    let schema_at = %s;\n", ind, ind, at)
 	}
 	switch f.Type.Kind {
 	case ir.TBool:
 		// A BOOL BYTE OTHER THAN 0 OR 1 IS DAMAGE (docs/FIXED-FORM-ALGORITHM.md
 		// §4.5), on live bytes only (§3.4's slack rule).
-		g.pf("%s    if b[at] > 1 && report.slack == 0 {\n%s        report.damaged = true;\n%s    }\n", ind, ind, ind)
-		g.pf("%s", set(ind+"    ", "b[at] == 1"))
+		g.pf("%s    if schema_b[schema_at] > 1 && schema_report.slack == 0 {\n%s        schema_report.damaged = true;\n%s    }\n", ind, ind, ind)
+		g.pf("%s", set(ind+"    ", "schema_b[schema_at] == 1"))
 	case ir.TFloat32:
-		g.pf("%s", set(ind+"    ", "f32::from_le_bytes(b[at..at + 4].try_into().expect(\"four bytes\"))"))
+		g.pf("%s", set(ind+"    ", "f32::from_le_bytes(schema_b[schema_at..schema_at + 4].try_into().expect(\"four bytes\"))"))
 	case ir.TFloat64:
-		g.pf("%s", set(ind+"    ", "f64::from_le_bytes(b[at..at + 8].try_into().expect(\"eight bytes\"))"))
+		g.pf("%s", set(ind+"    ", "f64::from_le_bytes(schema_b[schema_at..schema_at + 8].try_into().expect(\"eight bytes\"))"))
 	default:
 		raw := fixedRawUint(width)
-		read := fmt.Sprintf("%s::from_le_bytes(b[at..at + %d].try_into().expect(\"the declared width\"))", raw, width)
+		read := fmt.Sprintf("%s::from_le_bytes(schema_b[schema_at..schema_at + %d].try_into().expect(\"the declared width\"))", raw, width)
 		slot := g.fixedSlotType(f)
 		_, wide := fixedWide128(f)
 		_, flagsHeld := fixedFlagsWidth(f)
@@ -895,23 +895,23 @@ func (g *gen) emitFixedScatterElement(f *ir.Field, at, dst string, indent int) {
 			g.pf("%s};\n", ind)
 			return
 		}
-		g.pf("%s    let raw = %s;\n", ind, read)
+		g.pf("%s    let schema_raw = %s;\n", ind, read)
 		if w, held := fixedFlagsWidth(f); held {
 			// A MASK BIT AT OR ABOVE THE READER'S W IS OUT OF RANGE
 			// (docs/SPEC-TABLES.md §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH):
 			// it counts one held, and a held value refuses the whole batch.
-			g.pf("%s    if raw >> %d != 0 && report.slack == 0 {\n%s        report.held += 1;\n%s    }\n", ind, w, ind, ind)
+			g.pf("%s    if schema_raw >> %d != 0 && schema_report.slack == 0 {\n%s        schema_report.held += 1;\n%s    }\n", ind, w, ind, ind)
 		}
-		held := "raw"
+		held := "schema_raw"
 		if wrap, wide := fixedWide128(f); wide {
 			// the aligned wrapper takes the integer, and a signed one takes it
 			// two's complement at the same sixteen bytes
-			held = wrap + "(raw)"
+			held = wrap + "(schema_raw)"
 			if f.Type.Signed {
-				held = wrap + "(raw as i128)"
+				held = wrap + "(schema_raw as i128)"
 			}
 		} else if slot != raw {
-			held = "raw as " + slot
+			held = "schema_raw as " + slot
 		}
 		if extent, ranged := fixedEnumExtent(f, width); ranged {
 			// AN ORDINAL PAST THE DECLARED EXTENT IS OUT OF RANGE, exactly as a
@@ -920,8 +920,8 @@ func (g *gen) emitFixedScatterElement(f *ir.Field, at, dst string, indent int) {
 			// number this build has no variant for. The identity plan copies
 			// the ordinal verbatim out of a stranger's record, so the scatter is
 			// where the range is closed — the same place a count's bound is.
-			g.pf("%s    if raw > %d {\n", ind, extent)
-			g.pf("%s        if report.slack == 0 { report.held += 1; }\n", ind)
+			g.pf("%s    if schema_raw > %d {\n", ind, extent)
+			g.pf("%s        if schema_report.slack == 0 { schema_report.held += 1; }\n", ind)
 			g.pf("%s", set(ind+"        ", "0"))
 			g.pf("%s    } else {\n", ind)
 			g.pf("%s", set(ind+"        ", held))
@@ -948,8 +948,8 @@ func (g *gen) emitFixedScatterElement(f *ir.Field, at, dst string, indent int) {
 // a dead array slot or an inactive arm is dead whole and is not descended.
 func (g *gen) emitFixedDead(st *ir.Struct) {
 	g.pf("/// %s: true when a DEAD byte of this record image is not zero.\n", st.Name)
-	g.pf("pub fn %s(b: &[u8]) -> bool {\n", fn(st.Name, "fixed_dead"))
-	g.pf("    let _ = b;\n")
+	g.pf("pub fn %s(schema_b: &[u8]) -> bool {\n", fn(st.Name, "fixed_dead"))
+	g.pf("    let _ = schema_b;\n")
 	off := int64(0)
 	for _, f := range st.Fields {
 		g.emitFixedDeadField(f, off, 4)
@@ -969,14 +969,14 @@ func (g *gen) emitFixedDeadField(f *ir.Field, base int64, indent int) {
 	}
 	start := base + ir.TableFixedPresentBytes
 	payload := ir.TableFixedFieldBytes(f) - ir.TableFixedPresentBytes
-	g.pf("%sif b[%d] == 1 {\n", ind, base)
+	g.pf("%sif schema_b[%d] == 1 {\n", ind, base)
 	g.emitFixedDeadPayload(f, start, indent+4)
 	g.pf("%s}", ind)
 	if payload > 0 {
 		// Only a cleared flag (0) makes the payload dead. A present byte
 		// other than 0 or 1 is the hostile-byte path, which discards the
 		// load as damage and resets every caller row to its default.
-		g.pf(" else if b[%d] == 0 && b[%d..%d].iter().any(|&x| x != 0) {\n", base, start, start+payload)
+		g.pf(" else if schema_b[%d] == 0 && schema_b[%d..%d].iter().any(|&schema_x| schema_x != 0) {\n", base, start, start+payload)
 		g.pf("%s    return true;\n%s}", ind, ind)
 	}
 	g.pf("\n")
@@ -993,11 +993,11 @@ func (g *gen) emitFixedDeadPayload(f *ir.Field, base int64, indent int) {
 		if f.KeyEnumRef == nil || f.KeyEnumRef.Max == 0 {
 			return
 		}
-		g.pf("%sfor i in 0..%d {\n", ind, f.KeyEnumRef.Max)
+		g.pf("%sfor schema_i in 0..%d {\n", ind, f.KeyEnumRef.Max)
 		if _, _, nested := fixedNestedBody(f); nested {
 			g.emitFixedDeadElement(f, fixedSlotOffset(base, elem), indent+4)
 		} else {
-			g.pf("%s    let _ = i;\n", ind)
+			g.pf("%s    let _ = schema_i;\n", ind)
 		}
 		g.pf("%s}\n", ind)
 	case f.Array == ir.ArrayFixed:
@@ -1005,41 +1005,41 @@ func (g *gen) emitFixedDeadPayload(f *ir.Field, base int64, indent int) {
 		if f.ArrayBound == 0 {
 			return
 		}
-		g.pf("%sfor i in 0..%d {\n", ind, f.ArrayBound)
+		g.pf("%sfor schema_i in 0..%d {\n", ind, f.ArrayBound)
 		if _, _, nested := fixedNestedBody(f); nested {
 			g.emitFixedDeadElement(f, fixedSlotOffset(base, elem), indent+4)
 		} else {
-			g.pf("%s    let _ = i;\n", ind)
+			g.pf("%s    let _ = schema_i;\n", ind)
 		}
 		g.pf("%s}\n", ind)
 	case f.Array == ir.ArrayCounted:
 		elem := ir.TableFixedElementBytes(f)
 		g.pf("%s{\n", ind)
-		g.pf("%s    let count = i32::from_le_bytes(b[%d..%d].try_into().expect(\"four bytes\")).clamp(0, %d) as usize;\n",
+		g.pf("%s    let schema_count = i32::from_le_bytes(schema_b[%d..%d].try_into().expect(\"four bytes\")).clamp(0, %d) as usize;\n",
 			ind, base, base+4, f.ArrayBound)
 		if f.ArrayBound > 0 {
-			mul := fmt.Sprintf("count * %d", elem)
+			mul := fmt.Sprintf("schema_count * %d", elem)
 			if elem == 1 {
-				mul = "count"
+				mul = "schema_count"
 			}
-			g.pf("%s    if b[%d + %s..%d].iter().any(|&x| x != 0) {\n",
+			g.pf("%s    if schema_b[%d + %s..%d].iter().any(|&schema_x| schema_x != 0) {\n",
 				ind, base+ir.TableFixedCountBytes, mul, base+ir.TableFixedCountBytes+f.ArrayBound*elem)
 			g.pf("%s        return true;\n%s    }\n", ind, ind)
-			g.pf("%s    for i in 0..count {\n", ind)
+			g.pf("%s    for schema_i in 0..schema_count {\n", ind)
 			if _, _, nested := fixedNestedBody(f); nested {
 				g.emitFixedDeadElement(f, fixedSlotOffset(base+ir.TableFixedCountBytes, elem), indent+8)
 			} else {
-				g.pf("%s        let _ = i;\n", ind)
+				g.pf("%s        let _ = schema_i;\n", ind)
 			}
 			g.pf("%s    }\n", ind)
 		}
 		g.pf("%s}\n", ind)
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
 		g.pf("%s{\n", ind)
-		g.pf("%s    let used = i32::from_le_bytes(b[%d..%d].try_into().expect(\"four bytes\")).clamp(0, %d) as usize;\n",
+		g.pf("%s    let schema_used = i32::from_le_bytes(schema_b[%d..%d].try_into().expect(\"four bytes\")).clamp(0, %d) as usize;\n",
 			ind, base, base+4, f.Type.Size)
 		if f.Type.Size > 0 {
-			g.pf("%s    if b[%d + used..%d].iter().any(|&x| x != 0) {\n", ind, base+4, base+4+f.Type.Size)
+			g.pf("%s    if schema_b[%d + schema_used..%d].iter().any(|&schema_x| schema_x != 0) {\n", ind, base+4, base+4+f.Type.Size)
 			g.pf("%s        return true;\n%s    }\n", ind, ind)
 		}
 		g.pf("%s}\n", ind)
@@ -1056,8 +1056,8 @@ func (g *gen) emitFixedDeadElement(f *ir.Field, at string, indent int) {
 		return
 	}
 	ind := strings.Repeat(" ", indent)
-	g.pf("%s{\n%s    let at = %s;\n", ind, ind, at)
-	g.pf("%s    if %s(&b[at..at + %d]) {\n%s        return true;\n%s    }\n", ind, fn(name, "fixed_dead"), n, ind, ind)
+	g.pf("%s{\n%s    let schema_at = %s;\n", ind, ind, at)
+	g.pf("%s    if %s(&schema_b[schema_at..schema_at + %d]) {\n%s        return true;\n%s    }\n", ind, fn(name, "fixed_dead"), n, ind, ind)
 	g.pf("%s}\n", ind)
 }
 
@@ -1069,22 +1069,22 @@ func (g *gen) emitFixedDeadUnion(un *ir.Union) {
 	tagw := ir.TableFixedUnionTagBytes(un)
 	span := ir.TableFixedUnionBytes(un)
 	g.pf("/// %s: true when a DEAD byte of this union image is not zero.\n", un.Name)
-	g.pf("pub fn %s(b: &[u8]) -> bool {\n", fn(un.Name, "fixed_dead"))
-	g.pf("    let _ = b;\n")
+	g.pf("pub fn %s(schema_b: &[u8]) -> bool {\n", fn(un.Name, "fixed_dead"))
+	g.pf("    let _ = schema_b;\n")
 	if tagw == 1 {
-		g.pf("    let tag = b[0] as u64;\n")
+		g.pf("    let schema_tag = schema_b[0] as u64;\n")
 	} else {
-		g.pf("    let tag = %s::from_le_bytes(b[0..%d].try_into().expect(\"the tag's width\")) as u64;\n",
+		g.pf("    let schema_tag = %s::from_le_bytes(schema_b[0..%d].try_into().expect(\"the tag's width\")) as u64;\n",
 			fixedRawUint(tagw), tagw)
 	}
-	g.pf("    if tag == 0 {\n")
+	g.pf("    if schema_tag == 0 {\n")
 	if span > tagw {
-		g.pf("        return b[%d..%d].iter().any(|&x| x != 0);\n", tagw, span)
+		g.pf("        return schema_b[%d..%d].iter().any(|&schema_x| schema_x != 0);\n", tagw, span)
 	} else {
 		g.pf("        return false;\n")
 	}
 	g.pf("    }\n")
-	g.pf("    match tag {\n")
+	g.pf("    match schema_tag {\n")
 	for i, v := range un.Variants {
 		arm := int64(0)
 		var payloadSrc string
@@ -1096,7 +1096,7 @@ func (g *gen) emitFixedDeadUnion(un *ir.Union) {
 		}
 		if payloadSrc == "" {
 			if span > tagw+arm {
-				g.pf("        %d => b[%d..%d].iter().any(|&x| x != 0),\n", i+1, tagw+arm, span)
+				g.pf("        %d => schema_b[%d..%d].iter().any(|&schema_x| schema_x != 0),\n", i+1, tagw+arm, span)
 			} else {
 				g.pf("        %d => false,\n", i+1)
 			}
@@ -1104,7 +1104,7 @@ func (g *gen) emitFixedDeadUnion(un *ir.Union) {
 		}
 		g.pf("        %d => {\n", i+1)
 		if span > tagw+arm {
-			g.pf("            if b[%d..%d].iter().any(|&x| x != 0) {\n                return true;\n            }\n", tagw+arm, span)
+			g.pf("            if schema_b[%d..%d].iter().any(|&schema_x| schema_x != 0) {\n                return true;\n            }\n", tagw+arm, span)
 		}
 		g.body.WriteString(payloadSrc)
 		g.pf("            false\n        }\n")
@@ -1198,14 +1198,14 @@ func (g *gen) emitFixedWriteUnion(un *ir.Union) {
 	g.pf("/// The bytes between a narrower arm and the widest are declared slack and\n")
 	g.pf("/// they stay the template's zeros, which this function reaches by not\n")
 	g.pf("/// touching them (§3.4).\n")
-	g.pf("pub fn %s(b: &mut [u8], value: &%sRow) {\n", fn(un.Name, "fixed_write_body"), un.Name)
+	g.pf("pub fn %s(schema_b: &mut [u8], schema_value: &%sRow) {\n", fn(un.Name, "fixed_write_body"), un.Name)
 	if int64(len(un.Variants)) < tagMax(tagw) {
-		g.pf("    debug_assert!(value.tag <= %d, \"%s tag outside its arm set\");\n", len(un.Variants), un.Name)
+		g.pf("    debug_assert!(schema_value.tag <= %d, \"%s tag outside its arm set\");\n", len(un.Variants), un.Name)
 	}
 	if tagw == 1 {
-		g.pf("    b[0] = value.tag;\n")
+		g.pf("    schema_b[0] = schema_value.tag;\n")
 	} else {
-		g.pf("    b[0..%d].copy_from_slice(&value.tag.to_le_bytes());\n", tagw)
+		g.pf("    schema_b[0..%d].copy_from_slice(&schema_value.tag.to_le_bytes());\n", tagw)
 	}
 	if !unionHasPayload(un) {
 		g.pf("}\n\n")
@@ -1222,7 +1222,7 @@ func (g *gen) emitFixedWriteUnion(un *ir.Union) {
 			if v.F == nil {
 				continue
 			}
-			g.pf("    if value.tag == %d {\n", i+1)
+			g.pf("    if schema_value.tag == %d {\n", i+1)
 			g.pf("        // SAFETY: THE TAG NAMES THE LIVE ARM — the twin's whole contract,\n")
 			g.pf("        // and the same one the C reference's storage struct carries. The\n")
 			g.pf("        // tag was just matched against `%s`, and the overlay's zero form\n", v.Name)
@@ -1230,13 +1230,13 @@ func (g *gen) emitFixedWriteUnion(un *ir.Union) {
 			g.pf("        // every bool, and a zero self-relative delta is the null\n")
 			g.pf("        // reference — so a Row whose tag was set without its arm reads a\n")
 			g.pf("        // zero payload rather than an invalid one.\n")
-			g.pf("        let arm = unsafe { value.arms.%s };\n", v.Name)
-			g.emitFixedWriteArm(v.F, tagw, "arm", 8)
+			g.pf("        let schema_arm = unsafe { schema_value.arms.%s };\n", v.Name)
+			g.emitFixedWriteArm(v.F, tagw, "schema_arm", 8)
 			g.pf("    } // None, a payload-free arm, and any tag no arm of this build names: the tag is all of it\n}\n\n")
 		}
 		return
 	}
-	g.pf("    match value.tag {\n")
+	g.pf("    match schema_value.tag {\n")
 	for i, v := range un.Variants {
 		if v.F == nil {
 			continue // a payload-free arm writes nothing past the tag (docs/FIXED-FORM-ALGORITHM.md §3.1)
@@ -1249,8 +1249,8 @@ func (g *gen) emitFixedWriteUnion(un *ir.Union) {
 		g.pf("            // every bool, and a zero self-relative delta is the null\n")
 		g.pf("            // reference — so a Row whose tag was set without its arm reads a\n")
 		g.pf("            // zero payload rather than an invalid one.\n")
-		g.pf("            let arm = unsafe { value.arms.%s };\n", v.Name)
-		g.emitFixedWriteArm(v.F, tagw, "arm", 12)
+		g.pf("            let schema_arm = unsafe { schema_value.arms.%s };\n", v.Name)
+		g.emitFixedWriteArm(v.F, tagw, "schema_arm", 12)
 		g.pf("        }\n")
 	}
 	g.pf("        _ => {} // None, a payload-free arm, and any tag no arm of this build names: the tag is all of it\n")
@@ -1270,26 +1270,26 @@ func (g *gen) emitFixedWriteArm(f *ir.Field, base int64, armExpr string, indent 
 		if f.ArrayBound == 0 {
 			return
 		}
-		g.pf("%sfor i in 0..%d {\n", ind, f.ArrayBound)
-		g.emitFixedWriteElementAt(f, fixedSlotOffset(base, elem), armExpr+"[i]", indent+4)
+		g.pf("%sfor schema_i in 0..%d {\n", ind, f.ArrayBound)
+		g.emitFixedWriteElementAt(f, fixedSlotOffset(base, elem), armExpr+"[schema_i]", indent+4)
 		g.pf("%s}\n", ind)
 	case f.Array == ir.ArrayCounted:
 		elem := ir.TableFixedElementBytes(f)
 		g.pf("%sdebug_assert!(\n%s    %s.value_count >= %d && %s.value_count <= %d,\n%s    \"the declared count is the bound (docs/SPEC-TABLES.md §3.4)\"\n%s);\n",
 			ind, ind, armExpr, f.ArrayMin, armExpr, f.ArrayBound, ind, ind)
-		g.pf("%sb[%d..%d].copy_from_slice(&(%s.value_count as u32).to_le_bytes());\n", ind, base, base+4, armExpr)
-		g.pf("%sfor i in 0..%s.value_count.clamp(0, %d) as usize {\n", ind, armExpr, f.ArrayBound)
-		g.emitFixedWriteElementAt(f, fixedSlotOffset(base+ir.TableFixedCountBytes, elem), armExpr+".value[i]", indent+4)
+		g.pf("%sschema_b[%d..%d].copy_from_slice(&(%s.value_count as u32).to_le_bytes());\n", ind, base, base+4, armExpr)
+		g.pf("%sfor schema_i in 0..%s.value_count.clamp(0, %d) as usize {\n", ind, armExpr, f.ArrayBound)
+		g.emitFixedWriteElementAt(f, fixedSlotOffset(base+ir.TableFixedCountBytes, elem), armExpr+".value[schema_i]", indent+4)
 		g.pf("%s}\n", ind)
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
 		g.pf("%sdebug_assert!(\n%s    %s.value_length >= 0 && %s.value_length <= %d,\n%s    \"the declared length is the bound (docs/SPEC-TABLES.md §3.4)\"\n%s);\n",
 			ind, ind, armExpr, armExpr, f.Type.Size, ind, ind)
-		g.pf("%sb[%d..%d].copy_from_slice(&(%s.value_length as u32).to_le_bytes());\n", ind, base, base+4, armExpr)
-		g.pf("%s{\n%s    let n = %s.value_length.clamp(0, %d) as usize;\n", ind, ind, armExpr, f.Type.Size)
+		g.pf("%sschema_b[%d..%d].copy_from_slice(&(%s.value_length as u32).to_le_bytes());\n", ind, base, base+4, armExpr)
+		g.pf("%s{\n%s    let schema_n = %s.value_length.clamp(0, %d) as usize;\n", ind, ind, armExpr, f.Type.Size)
 		if f.Type.Kind == ir.TString {
-			g.pf("%s    debug_assert!(table_utf8_valid(&%s.value[..n]), \"%s is ill-formed text\");\n", ind, armExpr, f.Name)
+			g.pf("%s    debug_assert!(table_utf8_valid(&%s.value[..schema_n]), \"%s is ill-formed text\");\n", ind, armExpr, f.Name)
 		}
-		g.pf("%s    b[%d..%d + n].copy_from_slice(&%s.value[..n]);\n%s}\n", ind, base+4, base+4, armExpr, ind)
+		g.pf("%s    schema_b[%d..%d + schema_n].copy_from_slice(&%s.value[..schema_n]);\n%s}\n", ind, base+4, base+4, armExpr, ind)
 	default:
 		g.emitFixedWriteElementAt(f, fmt.Sprintf("%d", base), armExpr, indent)
 	}
@@ -1314,29 +1314,29 @@ func (g *gen) emitFixedScatterUnion(un *ir.Union) {
 	tagw := ir.TableFixedUnionTagBytes(un)
 	raw := fixedRawUint(tagw)
 	g.pf("/// %s: one union image landed in the value — the tag, then the live arm.\n", un.Name)
-	g.pf("pub fn %s(b: &[u8], value: &mut %sRow, report: &mut TableFixedReport) {\n",
+	g.pf("pub fn %s(schema_b: &[u8], schema_value: &mut %sRow, schema_report: &mut TableFixedReport) {\n",
 		fn(un.Name, "fixed_scatter"), un.Name)
 	g.pf("    // nothing of the caller's previous value survives: the empty union first,\n")
 	g.pf("    // and then the tag and the one arm it names\n")
-	g.pf("    *value = %sRow::default();\n", un.Name)
+	g.pf("    *schema_value = %sRow::default();\n", un.Name)
 	if tagw == 1 {
-		g.pf("    let tag_raw = b[0];\n")
+		g.pf("    let schema_tag_raw = schema_b[0];\n")
 	} else {
-		g.pf("    let tag_raw = %s::from_le_bytes(b[0..%d].try_into().expect(\"the tag's width\"));\n", raw, tagw)
+		g.pf("    let schema_tag_raw = %s::from_le_bytes(schema_b[0..%d].try_into().expect(\"the tag's width\"));\n", raw, tagw)
 	}
 	if int64(len(un.Variants)) < tagMax(tagw) {
 		g.pf("    // A TAG PAST THE ARM COUNT IS OUT OF RANGE, as a count past its bound is:\n")
 		g.pf("    // it lands as None and counts one held rather than selecting nothing\n")
 		g.pf("    // silently.\n")
-		g.pf("    if tag_raw > %d {\n        if report.slack == 0 { report.held += 1; }\n    } else {\n        value.tag = tag_raw;\n    }\n", len(un.Variants))
+		g.pf("    if schema_tag_raw > %d {\n        if schema_report.slack == 0 { schema_report.held += 1; }\n    } else {\n        schema_value.tag = schema_tag_raw;\n    }\n", len(un.Variants))
 	} else {
 		// EVERY VALUE OF THE TAG'S WIDTH NAMES AN ARM, so there is no
 		// out-of-range tag to clamp and a comparison here would be one the
 		// type's own limits make useless — which rustc says out loud.
 		g.pf("    // every value the tag's width holds names an arm of this build, so there\n")
 		g.pf("    // is no out-of-range ordinal here to clamp\n")
-		g.pf("    let _ = &report;\n")
-		g.pf("    value.tag = tag_raw;\n")
+		g.pf("    let _ = &schema_report;\n")
+		g.pf("    schema_value.tag = schema_tag_raw;\n")
 	}
 	if !unionHasPayload(un) {
 		g.pf("}\n\n")
@@ -1353,21 +1353,21 @@ func (g *gen) emitFixedScatterUnion(un *ir.Union) {
 			if v.F == nil {
 				continue
 			}
-			g.pf("    if value.tag == %d {\n", i+1)
+			g.pf("    if schema_value.tag == %d {\n", i+1)
 			g.emitFixedScatterArm(un, v, tagw, 8)
-			g.pf("        value.arms.%s = arm; // a WRITE of a union field, which is safe\n", v.Name)
+			g.pf("        schema_value.arms.%s = schema_arm; // a WRITE of a union field, which is safe\n", v.Name)
 			g.pf("    } // None and payload-free arms: the overlay stays the zeros the default laid down\n}\n\n")
 		}
 		return
 	}
-	g.pf("    match value.tag {\n")
+	g.pf("    match schema_value.tag {\n")
 	for i, v := range un.Variants {
 		if v.F == nil {
 			continue // a payload-free arm leaves the zeroed overlay as Default::default() laid it down (docs/FIXED-FORM-ALGORITHM.md §4.5)
 		}
 		g.pf("        %d => {\n", i+1)
 		g.emitFixedScatterArm(un, v, tagw, 12)
-		g.pf("            value.arms.%s = arm; // a WRITE of a union field, which is safe\n", v.Name)
+		g.pf("            schema_value.arms.%s = schema_arm; // a WRITE of a union field, which is safe\n", v.Name)
 		g.pf("        }\n")
 	}
 	g.pf("        _ => {} // None and payload-free arms: the overlay stays the zeros the default laid down\n")
@@ -1383,49 +1383,49 @@ func (g *gen) emitFixedScatterArm(un *ir.Union, v ir.UnionVariant, base int64, i
 	switch {
 	case f.Array == ir.ArrayFixed:
 		elem := ir.TableFixedElementBytes(f)
-		g.pf("%slet mut arm = [%s::default(); %d];\n", ind, cookElemType(f), f.ArrayBound)
+		g.pf("%slet mut schema_arm = [%s::default(); %d];\n", ind, cookElemType(f), f.ArrayBound)
 		if f.ArrayBound > 0 {
-			g.pf("%sfor i in 0..%d {\n", ind, f.ArrayBound)
-			g.emitFixedScatterElement(f, fixedSlotOffset(base, elem), "arm[i]", indent+4)
+			g.pf("%sfor schema_i in 0..%d {\n", ind, f.ArrayBound)
+			g.emitFixedScatterElement(f, fixedSlotOffset(base, elem), "schema_arm[schema_i]", indent+4)
 			g.pf("%s}\n", ind)
 		}
 	case f.Array == ir.ArrayCounted:
 		elem := ir.TableFixedElementBytes(f)
-		g.pf("%slet mut arm = %s::default();\n", ind, unionArmRowType(un, v))
-		g.pf("%s{\n%s    let raw = i32::from_le_bytes(b[%d..%d].try_into().expect(\"four bytes\"));\n", ind, ind, base, base+4)
-		g.pf("%s    let held = raw.clamp(%d, %d);\n", ind, f.ArrayMin, f.ArrayBound)
-		g.pf("%s    if held != raw && report.slack == 0 {\n%s        report.held += 1;\n%s    }\n", ind, ind, ind)
-		g.pf("%s    arm.value_count = held;\n%s}\n", ind, ind)
+		g.pf("%slet mut schema_arm = %s::default();\n", ind, unionArmRowType(un, v))
+		g.pf("%s{\n%s    let schema_raw = i32::from_le_bytes(schema_b[%d..%d].try_into().expect(\"four bytes\"));\n", ind, ind, base, base+4)
+		g.pf("%s    let schema_held = schema_raw.clamp(%d, %d);\n", ind, f.ArrayMin, f.ArrayBound)
+		g.pf("%s    if schema_held != schema_raw && schema_report.slack == 0 {\n%s        schema_report.held += 1;\n%s    }\n", ind, ind, ind)
+		g.pf("%s    schema_arm.value_count = schema_held;\n%s}\n", ind, ind)
 		if f.ArrayBound > 0 {
 			// the slots past the live count are slack (§3.4)
-			g.pf("%sfor i in 0..%d {\n", ind, f.ArrayBound)
-			g.pf("%s    let slack = u32::from(i as i32 >= arm.value_count);\n%s    report.slack += slack;\n", ind, ind)
-			g.emitFixedScatterElement(f, fixedSlotOffset(base+ir.TableFixedCountBytes, elem), "arm.value[i]", indent+4)
-			g.pf("%s    report.slack -= slack;\n", ind)
+			g.pf("%sfor schema_i in 0..%d {\n", ind, f.ArrayBound)
+			g.pf("%s    let schema_slack = u32::from(schema_i as i32 >= schema_arm.value_count);\n%s    schema_report.slack += schema_slack;\n", ind, ind)
+			g.emitFixedScatterElement(f, fixedSlotOffset(base+ir.TableFixedCountBytes, elem), "schema_arm.value[schema_i]", indent+4)
+			g.pf("%s    schema_report.slack -= schema_slack;\n", ind)
 			g.pf("%s}\n", ind)
 		}
 	case f.Type.Kind == ir.TString:
-		g.pf("%slet mut arm = %s::default();\n", ind, unionArmRowType(un, v))
-		g.pf("%s{\n%s    let raw = i32::from_le_bytes(b[%d..%d].try_into().expect(\"four bytes\"));\n", ind, ind, base, base+4)
-		g.pf("%s    let held = raw.clamp(0, %d);\n", ind, f.Type.Size)
-		g.pf("%s    if held != raw && report.slack == 0 {\n%s        report.held += 1;\n%s    }\n", ind, ind, ind)
-		g.pf("%s    arm.value_length = held;\n%s}\n", ind, ind)
-		g.pf("%sarm.value = [0u8; %d];\n", ind, f.Type.Size+1)
-		g.pf("%sarm.value[..%d].copy_from_slice(&b[%d..%d]);\n", ind, f.Type.Size, base+4, base+4+f.Type.Size)
-		g.pf("%sarm.value[arm.value_length as usize] = 0; // the used length terminates the buffer\n", ind)
+		g.pf("%slet mut schema_arm = %s::default();\n", ind, unionArmRowType(un, v))
+		g.pf("%s{\n%s    let schema_raw = i32::from_le_bytes(schema_b[%d..%d].try_into().expect(\"four bytes\"));\n", ind, ind, base, base+4)
+		g.pf("%s    let schema_held = schema_raw.clamp(0, %d);\n", ind, f.Type.Size)
+		g.pf("%s    if schema_held != schema_raw && schema_report.slack == 0 {\n%s        schema_report.held += 1;\n%s    }\n", ind, ind, ind)
+		g.pf("%s    schema_arm.value_length = schema_held;\n%s}\n", ind, ind)
+		g.pf("%sschema_arm.value = [0u8; %d];\n", ind, f.Type.Size+1)
+		g.pf("%sschema_arm.value[..%d].copy_from_slice(&schema_b[%d..%d]);\n", ind, f.Type.Size, base+4, base+4+f.Type.Size)
+		g.pf("%sschema_arm.value[schema_arm.value_length as usize] = 0; // the used length terminates the buffer\n", ind)
 	case f.Type.Kind == ir.TBytes:
-		g.pf("%slet mut arm = %s::default();\n", ind, unionArmRowType(un, v))
-		g.pf("%s{\n%s    let raw = i32::from_le_bytes(b[%d..%d].try_into().expect(\"four bytes\"));\n", ind, ind, base, base+4)
-		g.pf("%s    let held = raw.clamp(0, %d);\n", ind, f.Type.Size)
-		g.pf("%s    if held != raw && report.slack == 0 {\n%s        report.held += 1;\n%s    }\n", ind, ind, ind)
-		g.pf("%s    arm.value_length = held;\n%s}\n", ind, ind)
-		g.pf("%sarm.value.copy_from_slice(&b[%d..%d]);\n", ind, base+4, base+4+f.Type.Size)
+		g.pf("%slet mut schema_arm = %s::default();\n", ind, unionArmRowType(un, v))
+		g.pf("%s{\n%s    let schema_raw = i32::from_le_bytes(schema_b[%d..%d].try_into().expect(\"four bytes\"));\n", ind, ind, base, base+4)
+		g.pf("%s    let schema_held = schema_raw.clamp(0, %d);\n", ind, f.Type.Size)
+		g.pf("%s    if schema_held != schema_raw && schema_report.slack == 0 {\n%s        schema_report.held += 1;\n%s    }\n", ind, ind, ind)
+		g.pf("%s    schema_arm.value_length = schema_held;\n%s}\n", ind, ind)
+		g.pf("%sschema_arm.value.copy_from_slice(&schema_b[%d..%d]);\n", ind, base+4, base+4+f.Type.Size)
 	default:
 		if _, _, nested := fixedNestedBody(f); nested {
-			g.pf("%slet mut arm = %s::default();\n", ind, cookElemType(f))
-			g.emitFixedScatterElement(f, fmt.Sprintf("%d", base), "arm", indent)
+			g.pf("%slet mut schema_arm = %s::default();\n", ind, cookElemType(f))
+			g.emitFixedScatterElement(f, fmt.Sprintf("%d", base), "schema_arm", indent)
 		} else {
-			g.emitFixedScatterElement(f, fmt.Sprintf("%d", base), "let arm", indent)
+			g.emitFixedScatterElement(f, fmt.Sprintf("%d", base), "let schema_arm", indent)
 		}
 	}
 }
@@ -1532,7 +1532,7 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("];\n\n")
 	g.pf("/// THE FLOOR: 1 + the highest RETIRED index, 0 when none is (§5.2). Below it\n")
 	g.pf("/// a file is `layout_unsupported` — upgrade the client; outside the lineage\n")
-	g.pf("/// altogether it is `layout_newer` — ship the reader. A retired entry stays\n")
+	g.pf("/// altogether it is `layout_unknown` (§5.3 step 5). A retired entry stays\n")
 	g.pf("/// in the lineage forever, which is what keeps the two answers distinct.\n")
 	g.pf("pub const %s_FIXED_FLOOR: usize = %d;\n", up, floor)
 	g.pf("/// THE INDEX OF THIS BUILD'S OWN LAYOUT, which takes the IDENTITY plan.\n")
@@ -1551,9 +1551,9 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 		writerClamps = append(writerClamps, i)
 		g.pf("/// LINEAGE ENTRY %d's WRITER RANGES (§4.5): every clamp counts.\n", i)
 		g.pf("#[allow(clippy::manual_range_contains)] // the clamp count is a bitwise OR on purpose (no branch)\n")
-		g.pf("pub fn %s(value: &mut %sRow, oor: &mut i32) {\n", fn(st.Name, fmt.Sprintf("fixed_clamp_known_%d", i)), st.Name)
+		g.pf("pub fn %s(schema_value: &mut %sRow, schema_oor: &mut i32) {\n", fn(st.Name, fmt.Sprintf("fixed_clamp_known_%d", i)), st.Name)
 		for _, f := range fields {
-			g.emitFixedClampField(f, "value."+f.Name, 4)
+			g.emitFixedClampField(f, "schema_value."+f.Name, 4)
 		}
 		g.pf("}\n\n")
 	}
@@ -1619,35 +1619,35 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 		g.pf("        kind_changed: [0u32; %d],\n", len(lineage))
 		g.pf("        reason: [TableFixedReason::None; %d],\n", len(lineage))
 		g.pf("    };\n")
-		g.pf("    let mine = match TableFixedBlock::parse(&%s_FIXED_BLOCK) {\n", up)
-		g.pf("        Ok(b) => b,\n")
+		g.pf("    let schema_mine = match TableFixedBlock::parse(&%s_FIXED_BLOCK) {\n", up)
+		g.pf("        Ok(schema_b) => schema_b,\n")
 		g.pf("        Err(_) => return out, // this build's own layout is a build bug, not a wire event\n")
 		g.pf("    };\n")
-		g.pf("    for i in 0..%s_FIXED_LINEAGE.len() {\n", up)
-		g.pf("        if i == %s_FIXED_OWN {\n", up)
+		g.pf("    for schema_i in 0..%s_FIXED_LINEAGE.len() {\n", up)
+		g.pf("        if schema_i == %s_FIXED_OWN {\n", up)
 		g.pf("            continue; // the IDENTITY plan is baked: one Copy of the whole body\n        }\n")
-		g.pf("        let theirs = match TableFixedBlock::parse(%s_FIXED_LINEAGE[i].layout) {\n", up)
-		g.pf("            Ok(b) => b,\n")
+		g.pf("        let schema_theirs = match TableFixedBlock::parse(%s_FIXED_LINEAGE[schema_i].layout) {\n", up)
+		g.pf("            Ok(schema_b) => schema_b,\n")
 		g.pf("            Err(_) => {\n")
 		g.pf("                // A LINEAGE ENTRY THAT IS NOT A PARSEABLE LAYOUT is a bug in\n")
 		g.pf("                // the lock (§5.9 #8): the entry carries the name, and LOAD\n")
 		g.pf("                // refuses by it if a file ever matches that hash.\n")
-		g.pf("                out.reason[i] = TableFixedReason::LayoutMalformed;\n")
+		g.pf("                out.reason[schema_i] = TableFixedReason::LayoutMalformed;\n")
 		g.pf("                continue;\n            }\n        };\n")
-		g.pf("        let mut census = TableFixedReport::default();\n")
-		g.pf("        let (entries, guards, remap) = (&mut out.entries[i], &mut out.guards[i], &mut out.remap[i]);\n")
+		g.pf("        let mut schema_census = TableFixedReport::default();\n")
+		g.pf("        let (schema_entries, schema_guards, schema_remap) = (&mut out.entries[schema_i], &mut out.guards[schema_i], &mut out.remap[schema_i]);\n")
 		g.pf("        match table_fixed_compile(\n")
-		g.pf("            &theirs,\n            &mine,\n            &%s_FIXED_COUNTED,\n", up)
-		g.pf("            &mut entries[..],\n            &mut guards[..],\n            &mut remap[..],\n            &mut census,\n        ) {\n")
-		g.pf("            Some(n) => {\n")
-		g.pf("                out.count[i] = n;\n")
-		g.pf("                out.unknown[i] = census.unknown;\n")
-		g.pf("                out.kind_changed[i] = census.kind_changed;\n")
+		g.pf("            &schema_theirs,\n            &schema_mine,\n            &%s_FIXED_COUNTED,\n", up)
+		g.pf("            &mut schema_entries[..],\n            &mut schema_guards[..],\n            &mut schema_remap[..],\n            &mut schema_census,\n        ) {\n")
+		g.pf("            Some(schema_n) => {\n")
+		g.pf("                out.count[schema_i] = schema_n;\n")
+		g.pf("                out.unknown[schema_i] = schema_census.unknown;\n")
+		g.pf("                out.kind_changed[schema_i] = schema_census.kind_changed;\n")
 		g.pf("            }\n")
 		g.pf("            // A compile that refused BY NAME keeps its name: an entry past\n")
 		g.pf("            // the writer's record is layout_record_too_large, and only a plan\n")
 		g.pf("            // that did not fit is plan_too_large.\n")
-		g.pf("            None => out.reason[i] = if census.refused { census.reason } else { TableFixedReason::PlanTooLarge },\n")
+		g.pf("            None => out.reason[schema_i] = if schema_census.refused { schema_census.reason } else { TableFixedReason::PlanTooLarge },\n")
 		g.pf("        }\n    }\n    out\n});\n\n")
 	}
 
@@ -1656,13 +1656,13 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("/// forms) — the form byte, seven RESERVED ZERO bytes, the LAYOUT HASH at 8\n")
 	g.pf("/// and the body at 16 — then the layout behind its u32 length, then the\n")
 	g.pf("/// records back to back to the end of it (§3.4).\n")
-	g.pf("pub const fn %s_fixed_measure(count: usize) -> usize {\n", name)
+	g.pf("pub const fn %s_fixed_measure(schema_count: usize) -> usize {\n", name)
 	if st.Integrity == "crc32c" {
 		g.pf("    4 + ")
 	} else {
 		g.pf("    ")
 	}
-	g.pf("TABLE_FIXED_HEADER_BYTES + 4 + %s_FIXED_BLOCK.len() + count * %s_FIXED_RECORD_BYTES\n}\n\n", up, up)
+	g.pf("TABLE_FIXED_HEADER_BYTES + 4 + %s_FIXED_BLOCK.len() + schema_count * %s_FIXED_RECORD_BYTES\n}\n\n", up, up)
 
 	finite := fixedFiniteNeededStruct(st, map[string]bool{})
 	g.pf("/// Writes `values` as a whole fixed-form FILE. Returns the bytes written, or\n")
@@ -1671,18 +1671,18 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 		g.pf(" or a float\n/// holds a NaN or an infinity, which no form carries (docs/SPEC-TABLES.md §3.3)")
 	}
 	g.pf(".\n")
-	g.pf("pub fn %s_fixed_save(values: &[%sRow], buffer: &mut [u8]) -> Option<usize> {\n", name, st.Name)
+	g.pf("pub fn %s_fixed_save(schema_values: &[%sRow], buffer: &mut [u8]) -> Option<usize> {\n", name, st.Name)
 	g.pf("    // A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (§22.6). The write\n")
 	g.pf("    // contract is a debug assert, as this leg's other write checks are.\n")
 	g.pf("    debug_assert!(\n")
-	g.pf("        !values.is_empty(),\n")
+	g.pf("        !schema_values.is_empty(),\n")
 	g.pf("        \"a fixed-form file holds at least one record (docs/SPEC-TABLES.md §22.6)\"\n")
 	g.pf("    );\n")
-	g.pf("    let need = %s_fixed_measure(values.len());\n", name)
-	g.pf("    if buffer.len() < need {\n        return None;\n    }\n")
+	g.pf("    let schema_need = %s_fixed_measure(schema_values.len());\n", name)
+	g.pf("    if buffer.len() < schema_need {\n        return None;\n    }\n")
 	if finite {
 		g.pf("    // THE WRITER'S FINITE RULE (§3.3): a refusal writes no byte.\n")
-		g.pf("    if values.iter().any(|value| !%s(value).is_empty()) {\n        return None;\n    }\n", fn(st.Name, "fixed_finite_body"))
+		g.pf("    if schema_values.iter().any(|schema_value| !%s(schema_value).is_empty()) {\n        return None;\n    }\n", fn(st.Name, "fixed_finite_body"))
 	}
 	g.pf("    buffer[..TABLE_FIXED_HEADER_BYTES].fill(0); // the seven reserved bytes, and the rest of the header\n")
 	g.pf("    buffer[0] = TABLE_FIXED_FORM;\n")
@@ -1690,19 +1690,19 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("        .copy_from_slice(&%s_FIXED_HASH.to_le_bytes()); // the header names the layout ONCE\n", up)
 	g.pf("    buffer[TABLE_FIXED_HEADER_BYTES..TABLE_FIXED_HEADER_BYTES + 4]\n")
 	g.pf("        .copy_from_slice(&(%s_FIXED_BLOCK.len() as u32).to_le_bytes());\n", up)
-	g.pf("    let mut at = TABLE_FIXED_HEADER_BYTES + 4;\n")
-	g.pf("    buffer[at..at + %s_FIXED_BLOCK.len()].copy_from_slice(&%s_FIXED_BLOCK);\n", up, up)
-	g.pf("    at += %s_FIXED_BLOCK.len();\n", up)
-	g.pf("    for value in values {\n")
-	g.pf("        buffer[at..at + 8].copy_from_slice(&%s_FIXED_HASH.to_le_bytes());\n", up)
-	g.pf("        let body = &mut buffer[at + 8..at + %s_FIXED_RECORD_BYTES];\n", up)
-	g.pf("        body.fill(0); // the template's zeros, and every byte of declared slack with them\n")
-	g.pf("        %s(body, value);\n", fn(st.Name, "fixed_write_body"))
-	g.pf("        at += %s_FIXED_RECORD_BYTES;\n    }\n", up)
+	g.pf("    let mut schema_at = TABLE_FIXED_HEADER_BYTES + 4;\n")
+	g.pf("    buffer[schema_at..schema_at + %s_FIXED_BLOCK.len()].copy_from_slice(&%s_FIXED_BLOCK);\n", up, up)
+	g.pf("    schema_at += %s_FIXED_BLOCK.len();\n", up)
+	g.pf("    for schema_value in schema_values {\n")
+	g.pf("        buffer[schema_at..schema_at + 8].copy_from_slice(&%s_FIXED_HASH.to_le_bytes());\n", up)
+	g.pf("        let schema_body = &mut buffer[schema_at + 8..schema_at + %s_FIXED_RECORD_BYTES];\n", up)
+	g.pf("        schema_body.fill(0); // the template's zeros, and every byte of declared slack with them\n")
+	g.pf("        %s(schema_body, schema_value);\n", fn(st.Name, "fixed_write_body"))
+	g.pf("        schema_at += %s_FIXED_RECORD_BYTES;\n    }\n", up)
 	if st.Integrity == "crc32c" {
-		g.pf("    let sum = table_integrity_checksum(&buffer[..at]);\n    buffer[at..at + 4].copy_from_slice(&sum.to_le_bytes());\n")
+		g.pf("    let sum = table_integrity_checksum(&buffer[..schema_at]);\n    buffer[schema_at..schema_at + 4].copy_from_slice(&sum.to_le_bytes());\n")
 	}
-	g.pf("    Some(need)\n}\n\n")
+	g.pf("    Some(schema_need)\n}\n\n")
 
 	g.pf("/// THE READ: ONE loop over ONE plan, then the scatter. The identity plan when\n")
 	g.pf("/// the file's layout hashes to this build's own, a plan compiled once from the\n")
@@ -1726,29 +1726,29 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("/// RULING R4: EVERY refusal, damage or named, before any record lands or\n")
 	g.pf("/// after, leaves every row handed in at its declared default.\n")
 	g.pf("pub fn %s_fixed_load(\n", name)
-	g.pf("    values: &mut [%sRow],\n", st.Name)
+	g.pf("    schema_values: &mut [%sRow],\n", st.Name)
 	g.pf("    data: &[u8],\n")
-	g.pf("    plan: &mut [TableFixedEntry],\n")
-	g.pf("    remap: &mut [u16],\n")
-	g.pf("    report: &mut TableFixedReport,\n")
+	g.pf("    schema_plan: &mut [TableFixedEntry],\n")
+	g.pf("    schema_remap: &mut [u16],\n")
+	g.pf("    schema_report: &mut TableFixedReport,\n")
 	g.pf(") -> Option<usize> {\n")
-	g.pf("    *report = TableFixedReport::default();\n")
-	g.pf("    let read = %s(values, data, plan, remap, report);\n", fn(st.Name, "fixed_load_records"))
-	g.pf("    if read.is_none() {\n")
-	g.pf("        for value in values.iter_mut() {\n")
-	g.pf("            %s(&%s_FIXED_DEFAULTS, value, &mut TableFixedReport::default());\n", fn(st.Name, "fixed_scatter"), up)
+	g.pf("    *schema_report = TableFixedReport::default();\n")
+	g.pf("    let schema_read = %s(schema_values, data, schema_plan, schema_remap, schema_report);\n", fn(st.Name, "fixed_load_records"))
+	g.pf("    if schema_read.is_none() {\n")
+	g.pf("        for schema_value in schema_values.iter_mut() {\n")
+	g.pf("            %s(&%s_FIXED_DEFAULTS, schema_value, &mut TableFixedReport::default());\n", fn(st.Name, "fixed_scatter"), up)
 	g.pf("        }\n")
 	g.pf("        return None;\n")
 	g.pf("    }\n")
-	g.pf("    read\n}\n\n")
+	g.pf("    schema_read\n}\n\n")
 	g.pf("fn %s_fixed_load_records(\n", name)
-	g.pf("    values: &mut [%sRow],\n", st.Name)
+	g.pf("    schema_values: &mut [%sRow],\n", st.Name)
 	g.pf("    data: &[u8],\n")
-	g.pf("    plan: &mut [TableFixedEntry],\n")
-	g.pf("    remap: &mut [u16],\n")
-	g.pf("    report: &mut TableFixedReport,\n")
+	g.pf("    schema_plan: &mut [TableFixedEntry],\n")
+	g.pf("    schema_remap: &mut [u16],\n")
+	g.pf("    schema_report: &mut TableFixedReport,\n")
 	g.pf(") -> Option<usize> {\n")
-	g.pf("    if data.is_empty() {\n        report.damaged = true;\n        return None;\n    }\n")
+	g.pf("    if data.is_empty() {\n        schema_report.damaged = true;\n        return None;\n    }\n")
 	g.pf("    // THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):\n")
 	g.pf("    // the registry is ordered, so a byte this reader does not carry is named\n")
 	g.pf("    // by where it sits relative to this form and never by one word for both.\n")
@@ -1756,109 +1756,109 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    // is TEN bytes and a form-2 batch THREE, so a reader that measured first\n")
 	g.pf("    // would answer `malformed` for every real file of the two forms it names.\n")
 	g.pf("    if data[0] != TABLE_FIXED_FORM {\n")
-	g.pf("        return report.refuse(match data[0] {\n")
+	g.pf("        return schema_report.refuse(match data[0] {\n")
 	g.pf("            1 => TableFixedReason::PreviousForm,      // the VARIABLE form, which is older\n")
 	g.pf("            2 => TableFixedReason::MessageFormAsFile, // a batch where a FILE was expected\n")
 	g.pf("            _ => TableFixedReason::NewerForm,         // a byte no form defines\n")
 	g.pf("        });\n")
 	g.pf("    }\n")
 	if st.Integrity == "crc32c" {
-		g.pf("    let Some(data) = table_integrity_body(data, 5) else { report.damaged = true; return report.refuse(TableFixedReason::IntegrityMismatch); };\n")
+		g.pf("    let Some(data) = table_integrity_body(data, 5) else { schema_report.damaged = true; return schema_report.refuse(TableFixedReason::IntegrityMismatch); };\n")
 	}
-	g.pf("    if data.len() < TABLE_FIXED_HEADER_BYTES + 4 {\n        report.damaged = true;\n        return None;\n    }\n")
+	g.pf("    if data.len() < TABLE_FIXED_HEADER_BYTES + 4 {\n        schema_report.damaged = true;\n        return None;\n    }\n")
 	g.pf("    // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3).\n")
-	g.pf("    if data[1..TABLE_FIXED_HASH_AT].iter().any(|&b| b != 0) {\n        report.damaged = true;\n        return None;\n    }\n")
-	g.pf("    let block_bytes = u32::from_le_bytes(\n")
+	g.pf("    if data[1..TABLE_FIXED_HASH_AT].iter().any(|&schema_b| schema_b != 0) {\n        schema_report.damaged = true;\n        return None;\n    }\n")
+	g.pf("    let schema_block_bytes = u32::from_le_bytes(\n")
 	g.pf("        data[TABLE_FIXED_HEADER_BYTES..TABLE_FIXED_HEADER_BYTES + 4]\n")
 	g.pf("            .try_into()\n            .expect(\"four bytes\"),\n    ) as usize;\n")
-	g.pf("    if block_bytes > data.len() - TABLE_FIXED_HEADER_BYTES - 4 {\n")
-	g.pf("        return report.refuse(TableFixedReason::LayoutMalformed);\n    }\n")
-	g.pf("    let block = &data[TABLE_FIXED_HEADER_BYTES + 4..TABLE_FIXED_HEADER_BYTES + 4 + block_bytes];\n")
+	g.pf("    if schema_block_bytes > data.len() - TABLE_FIXED_HEADER_BYTES - 4 {\n")
+	g.pf("        return schema_report.refuse(TableFixedReason::LayoutMalformed);\n    }\n")
+	g.pf("    let block = &data[TABLE_FIXED_HEADER_BYTES + 4..TABLE_FIXED_HEADER_BYTES + 4 + schema_block_bytes];\n")
 	g.pf("    let hash = u64::from_le_bytes(\n")
 	g.pf("        data[TABLE_FIXED_HASH_AT..TABLE_FIXED_HASH_AT + 8]\n")
 	g.pf("            .try_into()\n            .expect(\"eight bytes\"),\n    ); // the header's hash; digest is not on the wire\n")
-	g.pf("    let rest = &data[TABLE_FIXED_HEADER_BYTES + 4 + block_bytes..];\n\n")
+	g.pf("    let schema_rest = &data[TABLE_FIXED_HEADER_BYTES + 4 + schema_block_bytes..];\n\n")
 	g.pf("    // SELECT BY HASH, AND NEVER PARSE A STRANGER (§5.3 steps 5 to 8). A\n")
 	g.pf("    // fixed table reads BACKWARD and never forward: the hash the header\n")
 	g.pf("    // carries is TAKEN AS GIVEN — the definitions digest is not on the wire,\n")
 	g.pf("    // so the number cannot be re-derived from a file — and it is looked up in\n")
-	g.pf("    // the lineage the BUILD laid down. A hash no entry holds is a writer ahead\n")
-	g.pf("    // of this reader, and there is nothing to try.\n")
-	g.pf("    let Some(found) = %s_FIXED_LINEAGE.iter().position(|k| k.hash == hash) else {\n", up)
+	g.pf("    // the lineage the BUILD laid down. A hash no entry holds is layout_unknown\n")
+	g.pf("    // (§5.3 step 5, SPEC-TABLES §21.3): nothing proves it newer, nothing to try.\n")
+	g.pf("    let Some(schema_found) = %s_FIXED_LINEAGE.iter().position(|schema_k| schema_k.hash == hash) else {\n", up)
 	g.pf("        // THE FILE'S HASH, AND NOTHING ELSE (bill §12.4).\n")
-	g.pf("        return report.refuse_layout(TableFixedReason::LayoutNewer, hash);\n    };\n")
+	g.pf("        return schema_report.refuse_layout(TableFixedReason::LayoutUnknown, hash);\n    };\n")
 	if floor > 0 {
-		g.pf("    if found < %s_FIXED_FLOOR {\n", up)
+		g.pf("    if schema_found < %s_FIXED_FLOOR {\n", up)
 		g.pf("        // RETIRED: the entry stays in the lineage forever, so this answer stays\n")
-		g.pf("        // distinct from `layout_newer`, and it reports the hash too (§5.9 #7).\n")
-		g.pf("        return report.refuse_layout(TableFixedReason::LayoutUnsupported, hash);\n    }\n")
+		g.pf("        // distinct from `layout_unknown`, and it reports the hash too (§5.9 #7).\n")
+		g.pf("        return schema_report.refuse_layout(TableFixedReason::LayoutUnsupported, hash);\n    }\n")
 	} else {
 		g.pf("    // NOTHING IS RETIRED, so the floor is 0 and the check below it cannot\n")
 		g.pf("    // fire: a comparison no value satisfies is not emitted, for the same\n")
 		g.pf("    // reason §5.4 does not emit a clamp that cannot fire. The moment the\n")
 		g.pf("    // operator retires an entry the floor moves and the test is here.\n")
 	}
-	g.pf("    let known = &%s_FIXED_LINEAGE[found];\n", up)
+	g.pf("    let schema_known = &%s_FIXED_LINEAGE[schema_found];\n", up)
 	g.pf("    // THE LAYOUT IS HELD TO A BYTE COMPARISON and not to §1.1's seven rules:\n")
 	g.pf("    // under a KNOWN hash a layout that differs is ONE name, a lie about a\n")
 	g.pf("    // known version (§5.3 step 7, bill §12.4).\n")
-	g.pf("    if block != known.layout {\n")
-	g.pf("        return report.refuse(TableFixedReason::LayoutMalformed);\n    }\n")
+	g.pf("    if block != schema_known.layout {\n")
+	g.pf("        return schema_report.refuse(TableFixedReason::LayoutMalformed);\n    }\n")
 	g.pf("    // THE RECORD SIZE IS THE LOCK'S, never the file's (§5.3 step 8).\n")
-	g.pf("    let record_bytes = known.record;\n")
+	g.pf("    let schema_record_bytes = schema_known.record;\n")
 	if len(lineage) > 1 {
-		g.pf("    let identity = found == %s_FIXED_OWN;\n", up)
+		g.pf("    let schema_identity = schema_found == %s_FIXED_OWN;\n", up)
 		g.pf("    // THE PLAN COMPILER IS NOT RUN BY AN IDENTITY READ (§5.9 #20): the one\n")
 		g.pf("    // per-process build happens at THE FIRST LOAD THAT SELECTS A NON-IDENTITY\n")
 		g.pf("    // ENTRY, so the lazy is forced INSIDE this branch and never beside it. A\n")
 		g.pf("    // deref above the identity test compiles every older plan the first time\n")
 		g.pf("    // anybody reads its OWN layout, which is the common read.\n")
-		g.pf("    let entries: &[TableFixedEntry];\n")
-		g.pf("    let guards: &[TableFixedGuard];\n")
+		g.pf("    let schema_entries: &[TableFixedEntry];\n")
+		g.pf("    let schema_guards: &[TableFixedGuard];\n")
 		g.pf("    let table: &[u16];\n")
-		g.pf("    let census: (u32, u32);\n")
-		g.pf("    if identity {\n")
-		g.pf("        entries = &%s_FIXED_PLAN;\n", up)
-		g.pf("        guards = &[];\n")
+		g.pf("    let schema_census: (u32, u32);\n")
+		g.pf("    if schema_identity {\n")
+		g.pf("        schema_entries = &%s_FIXED_PLAN;\n", up)
+		g.pf("        schema_guards = &[];\n")
 		g.pf("        table = &[];\n")
-		g.pf("        census = (0u32, 0u32);\n")
+		g.pf("        schema_census = (0u32, 0u32);\n")
 		g.pf("    } else {\n")
-		g.pf("        let plans = &*%s_FIXED_PLANS;\n", up)
-		g.pf("        if plans.reason[found] != TableFixedReason::None {\n")
+		g.pf("        let schema_plans = &*%s_FIXED_PLANS;\n", up)
+		g.pf("        if schema_plans.reason[schema_found] != TableFixedReason::None {\n")
 		g.pf("            // The entry's own recorded refusal: a plan past the capacity this\n")
 		g.pf("            // build declared (§5.9 #4), or a lineage entry the lock recorded as\n")
 		g.pf("            // something that is not a layout (§5.9 #8).\n")
-		g.pf("            return report.refuse(plans.reason[found]);\n        }\n")
-		g.pf("        entries = &plans.entries[found][..plans.count[found]];\n")
-		g.pf("        guards = &plans.guards[found][..];\n")
-		g.pf("        table = &plans.remap[found][..];\n")
-		g.pf("        census = (plans.unknown[found], plans.kind_changed[found]);\n")
+		g.pf("            return schema_report.refuse(schema_plans.reason[schema_found]);\n        }\n")
+		g.pf("        schema_entries = &schema_plans.entries[schema_found][..schema_plans.count[schema_found]];\n")
+		g.pf("        schema_guards = &schema_plans.guards[schema_found][..];\n")
+		g.pf("        table = &schema_plans.remap[schema_found][..];\n")
+		g.pf("        schema_census = (schema_plans.unknown[schema_found], schema_plans.kind_changed[schema_found]);\n")
 		g.pf("    }\n")
 	} else {
 		g.pf("    // A UNIT WITH NO LOCK has a lineage of ONE — its own layout — so the\n")
 		g.pf("    // identity plan is the only plan there is, and every other hash was\n")
 		g.pf("    // already refused by name above.\n")
-		g.pf("    let entries: &[TableFixedEntry] = &%s_FIXED_PLAN;\n", up)
-		g.pf("    let guards: &[TableFixedGuard] = &[];\n")
+		g.pf("    let schema_entries: &[TableFixedEntry] = &%s_FIXED_PLAN;\n", up)
+		g.pf("    let schema_guards: &[TableFixedGuard] = &[];\n")
 		g.pf("    let table: &[u16] = &[];\n")
-		g.pf("    let census = (0u32, 0u32);\n")
+		g.pf("    let schema_census = (0u32, 0u32);\n")
 	}
 	g.pf("    // THE CALLER'S PLAN SLICE IS A CAPACITY DECLARATION and is no longer\n")
 	g.pf("    // written through: the plans are the BUILD's (§5.9 #5). The selected\n")
 	g.pf("    // plan's entry count is held to it, and a plan that does not fit is\n")
 	g.pf("    // `plan_too_large` BY NAME — the name is the contract.\n")
-	g.pf("    if entries.len() > plan.len() {\n")
-	g.pf("        return report.refuse(TableFixedReason::PlanTooLarge);\n    }\n")
+	g.pf("    if schema_entries.len() > schema_plan.len() {\n")
+	g.pf("        return schema_report.refuse(TableFixedReason::PlanTooLarge);\n    }\n")
 	g.pf("    // The REMAP lane is the build's too, laid beside the plan it belongs to;\n")
 	g.pf("    // the caller's slice stays in the signature as the capacity it always was.\n")
-	g.pf("    let _ = remap;\n")
+	g.pf("    let _ = schema_remap;\n")
 	g.pf("    // A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (§5.3 step 9, §22.6):\n")
 	g.pf("    // a header and a layout followed by no record is truncation, at any\n")
 	g.pf("    // capacity. A record size of 8 or less, or a ragged tail, is the same.\n")
-	g.pf("    if rest.is_empty() || record_bytes <= 8 || !rest.len().is_multiple_of(record_bytes) {\n")
-	g.pf("        report.damaged = true;\n        return None;\n    }\n")
-	g.pf("    let n = rest.len() / record_bytes;\n")
-	g.pf("    if n > values.len() {\n        return report.refuse(TableFixedReason::BatchTooLarge);\n    }\n")
+	g.pf("    if schema_rest.is_empty() || schema_record_bytes <= 8 || !schema_rest.len().is_multiple_of(schema_record_bytes) {\n")
+	g.pf("        schema_report.damaged = true;\n        return None;\n    }\n")
+	g.pf("    let schema_n = schema_rest.len() / schema_record_bytes;\n")
+	g.pf("    if schema_n > schema_values.len() {\n        return schema_report.refuse(TableFixedReason::BatchTooLarge);\n    }\n")
 	g.pf("    // THE DEAD-BYTE CHECK PASS (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5,\n")
 	g.pf("    // §5.3 step 11; docs/rulings.json fixed-dead-bytes-are-zero): every byte\n")
 	g.pf("    // no live value covers is zero, and a non-zero one refuses the whole load\n")
@@ -1870,20 +1870,20 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	// source offsets are the file's, and refuses before any record lands.
 	deadInd := "    "
 	if len(lineage) > 1 {
-		g.pf("    if identity {\n")
+		g.pf("    if schema_identity {\n")
 		deadInd = "        "
 	}
-	g.pf("%sfor k in 0..n {\n", deadInd)
-	g.pf("%s    if %s(&rest[k * record_bytes + 8..(k + 1) * record_bytes]) {\n", deadInd, fn(st.Name, "fixed_dead"))
-	g.pf("%s        report.damaged = true;\n", deadInd)
+	g.pf("%sfor schema_k in 0..schema_n {\n", deadInd)
+	g.pf("%s    if %s(&schema_rest[schema_k * schema_record_bytes + 8..(schema_k + 1) * schema_record_bytes]) {\n", deadInd, fn(st.Name, "fixed_dead"))
+	g.pf("%s        schema_report.damaged = true;\n", deadInd)
 	g.pf("%s        return None;\n", deadInd)
 	g.pf("%s    }\n", deadInd)
 	g.pf("%s}\n", deadInd)
 	if len(lineage) > 1 {
 		g.pf("    } else {\n")
-		g.pf("        for k in 0..n {\n")
-		g.pf("            if table_fixed_dead(entries, guards, &rest[k * record_bytes + 8..(k + 1) * record_bytes]) {\n")
-		g.pf("                report.damaged = true;\n")
+		g.pf("        for schema_k in 0..schema_n {\n")
+		g.pf("            if table_fixed_dead(schema_entries, schema_guards, &schema_rest[schema_k * schema_record_bytes + 8..(schema_k + 1) * schema_record_bytes]) {\n")
+		g.pf("                schema_report.damaged = true;\n")
 		g.pf("                return None;\n")
 		g.pf("            }\n")
 		g.pf("        }\n")
@@ -1893,80 +1893,80 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    // `Copy` over the whole body, so the hole list is empty and the loop below\n")
 	g.pf("    // is a no-op. A compiled plan that leaves a field out has that field in\n")
 	g.pf("    // the list, and the declared default is what it keeps. Same loop either way.\n")
-	g.pf("    let mut cover = [0u8; %s_FIXED_BODY_BYTES];\n", up)
-	g.pf("    let mut hole_buf = [TableFixedHole::default(); %s_FIXED_BODY_BYTES];\n", up)
-	g.pf("    let hole_n = table_fixed_holes(entries, &mut cover, &mut hole_buf);\n")
-	g.pf("    let holes = &hole_buf[..hole_n];\n")
-	g.pf("    let mut image = [0u8; %s_FIXED_BODY_BYTES];\n", up)
-	g.pf("    let widened_before = report.widened;\n")
-	g.pf("    for k in 0..n {\n")
-	g.pf("        let record = &rest[k * record_bytes..(k + 1) * record_bytes];\n")
+	g.pf("    let mut schema_cover = [0u8; %s_FIXED_BODY_BYTES];\n", up)
+	g.pf("    let mut schema_hole_buf = [TableFixedHole::default(); %s_FIXED_BODY_BYTES];\n", up)
+	g.pf("    let schema_hole_n = table_fixed_holes(schema_entries, &mut schema_cover, &mut schema_hole_buf);\n")
+	g.pf("    let schema_holes = &schema_hole_buf[..schema_hole_n];\n")
+	g.pf("    let mut schema_image = [0u8; %s_FIXED_BODY_BYTES];\n", up)
+	g.pf("    let schema_widened_before = schema_report.widened;\n")
+	g.pf("    for schema_k in 0..schema_n {\n")
+	g.pf("        let record = &schema_rest[schema_k * schema_record_bytes..(schema_k + 1) * schema_record_bytes];\n")
 	g.pf("        if u64::from_le_bytes(record[..8].try_into().expect(\"eight bytes\")) != hash {\n")
-	g.pf("            report.widened = widened_before;\n")
-	g.pf("            return report.refuse(TableFixedReason::NoBlock);\n        }\n")
-	g.pf("        for h in holes {\n")
-	g.pf("            let o = h.off as usize;\n")
-	g.pf("            let z = h.size as usize;\n")
-	g.pf("            image[o..o + z].copy_from_slice(&%s_FIXED_DEFAULTS[o..o + z]);\n", up)
+	g.pf("            schema_report.widened = schema_widened_before;\n")
+	g.pf("            return schema_report.refuse(TableFixedReason::NoBlock);\n        }\n")
+	g.pf("        for schema_h in schema_holes {\n")
+	g.pf("            let schema_o = schema_h.off as usize;\n")
+	g.pf("            let schema_z = schema_h.size as usize;\n")
+	g.pf("            schema_image[schema_o..schema_o + schema_z].copy_from_slice(&%s_FIXED_DEFAULTS[schema_o..schema_o + schema_z]);\n", up)
 	g.pf("        }\n")
-	g.pf("        table_fixed_run(entries, guards, table, &record[8..], &mut image, report);\n")
-	g.pf("        %s(&image, &mut values[k], report);\n", fn(st.Name, "fixed_scatter"))
+	g.pf("        table_fixed_run(schema_entries, schema_guards, table, &record[8..], &mut schema_image, schema_report);\n")
+	g.pf("        %s(&schema_image, &mut schema_values[schema_k], schema_report);\n", fn(st.Name, "fixed_scatter"))
 	g.pf("        // DAMAGE DISCARDS THE WHOLE LOAD: a bool or present byte other than\n")
 	g.pf("        // 0 or 1 on live data (FIXED-FORM-ALGORITHM §4.5); the caller resets.\n")
-	g.pf("        if report.damaged {\n            return None;\n        }\n")
+	g.pf("        if schema_report.damaged {\n            return None;\n        }\n")
 	if finite {
 		g.pf("        // A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): the finite pass runs\n")
 		g.pf("        // FIRST, before the bounds pass, over the storage the run just wrote,\n")
 		g.pf("        // and a NaN or an infinity refuses the whole batch as\n")
 		g.pf("        // non_finite_float, naming the field. Nothing of the batch is kept:\n")
 		g.pf("        // the caller resets every row handed in (R4).\n")
-		g.pf("        let why = %s(&values[k]);\n", fn(st.Name, "fixed_finite_body"))
-		g.pf("        if !why.is_empty() {\n")
-		g.pf("            report.widened = widened_before;\n")
-		g.pf("            return report.refuse_non_finite(why);\n")
+		g.pf("        let schema_why = %s(&schema_values[schema_k]);\n", fn(st.Name, "fixed_finite_body"))
+		g.pf("        if !schema_why.is_empty() {\n")
+		g.pf("            schema_report.widened = schema_widened_before;\n")
+		g.pf("            return schema_report.refuse_non_finite(schema_why);\n")
 		g.pf("        }\n")
 	}
 	if len(writerClamps) > 0 {
 		g.pf("        // THE WRITER'S RANGES FIRST, for the entry this file selected (§4.5),\n")
 		g.pf("        // then this reader's own below.\n")
-		g.pf("        {\n            let mut oor = 0i32;\n")
+		g.pf("        {\n            let mut schema_oor = 0i32;\n")
 		if len(writerClamps) == 1 {
 			i := writerClamps[0]
-			g.pf("            if found == %d {\n                %s(&mut values[k], &mut oor);\n            }\n",
+			g.pf("            if schema_found == %d {\n                %s(&mut schema_values[schema_k], &mut schema_oor);\n            }\n",
 				i, fn(st.Name, fmt.Sprintf("fixed_clamp_known_%d", i)))
 		} else {
-			g.pf("            match found {\n")
+			g.pf("            match schema_found {\n")
 			for _, i := range writerClamps {
-				g.pf("                %d => %s(&mut values[k], &mut oor),\n", i, fn(st.Name, fmt.Sprintf("fixed_clamp_known_%d", i)))
+				g.pf("                %d => %s(&mut schema_values[schema_k], &mut schema_oor),\n", i, fn(st.Name, fmt.Sprintf("fixed_clamp_known_%d", i)))
 			}
 			g.pf("                _ => {}\n            }\n")
 		}
-		g.pf("            report.held += oor as u32;\n        }\n")
+		g.pf("            schema_report.held += schema_oor as u32;\n        }\n")
 	}
 	if fixedRangeClampNeeded(st) {
 		g.pf("        // AND THE BOUND THE LOOP DOES NOT HOLD, straight-line over the\n")
 		g.pf("        // storage the scatter just wrote: the same pass for either plan,\n")
 		g.pf("        // and only over what a read can have written (§3.4).\n")
 		g.pf("        {\n")
-		g.pf("            let mut oor = 0i32;\n")
-		g.pf("            let mut damaged = 0i32;\n")
-		g.pf("            %s(&mut values[k], &mut oor, &mut damaged);\n", fn(st.Name, "fixed_clamp_body"))
+		g.pf("            let mut schema_oor = 0i32;\n")
+		g.pf("            let mut schema_damaged = 0i32;\n")
+		g.pf("            %s(&mut schema_values[schema_k], &mut schema_oor, &mut schema_damaged);\n", fn(st.Name, "fixed_clamp_body"))
 		g.pf("            // ILL-FORMED TEXT IN THE USED UNITS IS A REFUSAL BY NAME (§4.5,\n")
 		g.pf("            // fix 11; §5.8 row 8): it is the packet reader's verdict, this form\n")
 		g.pf("            // having no `L` to continue past. REFUSE is total, so the refusal\n")
 		g.pf("            // is taken before any counter is added.\n")
-		g.pf("            if damaged != 0 {\n")
-		g.pf("                report.widened = widened_before;\n")
-		g.pf("                return report.refuse(TableFixedReason::TextIllFormed);\n            }\n")
-		g.pf("            report.held += oor as u32;\n")
+		g.pf("            if schema_damaged != 0 {\n")
+		g.pf("                schema_report.widened = schema_widened_before;\n")
+		g.pf("                return schema_report.refuse(TableFixedReason::TextIllFormed);\n            }\n")
+		g.pf("            schema_report.held += schema_oor as u32;\n")
 		g.pf("        }\n")
 	}
 	// STRICT-ONLY (docs/plans/strict-only.md): a count, a length, an ordinal,
 	// a tag or a value past its bound refuses the whole batch, and every
 	// record of the batch goes back to its declared default (R4, in the caller).
-	g.pf("        if report.held != 0 {\n")
-	g.pf("            report.widened = widened_before;\n")
-	g.pf("            return report.refuse(TableFixedReason::OutOfRange);\n")
+	g.pf("        if schema_report.held != 0 {\n")
+	g.pf("            schema_report.widened = schema_widened_before;\n")
+	g.pf("            return schema_report.refuse(TableFixedReason::OutOfRange);\n")
 	g.pf("        }\n")
 	g.pf("    }\n")
 	g.pf("    // THE COMPILE CENSUS LANDS ONCE, AFTER THE RECORD LOOP, and only on a read\n")
@@ -1974,9 +1974,9 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    // numbers, fixed when the plan was built — once per endpoint, never per record\n")
 	g.pf("    // (§5.4) — and a refusal that came after would have moved a counter, where\n")
 	g.pf("    // REFUSE IS TOTAL.\n")
-	g.pf("    report.unknown += census.0;\n")
-	g.pf("    let _ = census.1; // the compile census's kind changes stay on the plan, never a read counter\n")
-	g.pf("    Some(n)\n}\n\n")
+	g.pf("    schema_report.unknown += schema_census.0;\n")
+	g.pf("    let _ = schema_census.1; // the compile census's kind changes stay on the plan, never a read counter\n")
+	g.pf("    Some(schema_n)\n}\n\n")
 }
 
 func (g *gen) emitFixedByteArray(b []byte) {
@@ -2107,11 +2107,11 @@ func (g *gen) emitFixedClampBody(st *ir.Struct) {
 	g.pf("/// %s's read-side bounds: every RANGED SCALAR held to its declared min\n", st.Name)
 	g.pf("/// and max, over the storage a read can have written.\n")
 	g.pf("#[allow(clippy::manual_range_contains)] // the clamp count is a bitwise OR on purpose (no branch)\n")
-	g.pf("pub fn %s(value: &mut %sRow, oor: &mut i32, damaged: &mut i32) {\n", fn(st.Name, "fixed_clamp_body"), st.Name)
+	g.pf("pub fn %s(schema_value: &mut %sRow, schema_oor: &mut i32, schema_damaged: &mut i32) {\n", fn(st.Name, "fixed_clamp_body"), st.Name)
 	// a type with only one kind of bound in it uses only one of the two
-	g.pf("    let _ = (&oor, &damaged);\n")
+	g.pf("    let _ = (&schema_oor, &schema_damaged);\n")
 	for _, f := range st.Fields {
-		g.emitFixedClampField(f, "value."+f.Name, 4)
+		g.emitFixedClampField(f, "schema_value."+f.Name, 4)
 	}
 	g.pf("}\n\n")
 }
@@ -2125,8 +2125,8 @@ func (g *gen) emitFixedClampUnion(un *ir.Union) {
 	g.pf("/// %s's read-side bounds: the arm THE TAG NAMES, and no other — the\n", un.Name)
 	g.pf("/// overlay behind a narrower arm is bytes nobody wrote.\n")
 	g.pf("#[allow(clippy::manual_range_contains)] // the clamp count is a bitwise OR on purpose (no branch)\n")
-	g.pf("pub fn %s(value: &mut %sRow, oor: &mut i32, damaged: &mut i32) {\n", fn(un.Name, "fixed_clamp_body"), un.Name)
-	g.pf("    let _ = (&oor, &damaged);\n")
+	g.pf("pub fn %s(schema_value: &mut %sRow, schema_oor: &mut i32, schema_damaged: &mut i32) {\n", fn(un.Name, "fixed_clamp_body"), un.Name)
+	g.pf("    let _ = (&schema_oor, &schema_damaged);\n")
 	var bounded []int
 	for i, v := range un.Variants {
 		if fixedRangeClampField(v.F, map[string]bool{}) {
@@ -2138,22 +2138,22 @@ func (g *gen) emitFixedClampUnion(un *ir.Union) {
 		// single_match says out loud and what a reader would write by hand.
 		i := bounded[0]
 		v := un.Variants[i]
-		g.pf("    if value.tag == %d {\n", i+1)
+		g.pf("    if schema_value.tag == %d {\n", i+1)
 		g.pf("        // SAFETY: the tag was just matched against `%s`.\n", v.Name)
-		g.pf("        let mut arm = unsafe { value.arms.%s };\n", v.Name)
+		g.pf("        let mut schema_arm = unsafe { schema_value.arms.%s };\n", v.Name)
 		g.emitFixedClampArm(v.F, 8)
-		g.pf("        value.arms.%s = arm; // a WRITE of a union field, which is safe\n", v.Name)
+		g.pf("        schema_value.arms.%s = schema_arm; // a WRITE of a union field, which is safe\n", v.Name)
 		g.pf("    }\n}\n\n")
 		return
 	}
-	g.pf("    match value.tag {\n")
+	g.pf("    match schema_value.tag {\n")
 	for _, i := range bounded {
 		v := un.Variants[i]
 		g.pf("        %d => {\n", i+1)
 		g.pf("            // SAFETY: the tag was just matched against `%s`.\n", v.Name)
-		g.pf("            let mut arm = unsafe { value.arms.%s };\n", v.Name)
+		g.pf("            let mut schema_arm = unsafe { schema_value.arms.%s };\n", v.Name)
 		g.emitFixedClampArm(v.F, 12)
-		g.pf("            value.arms.%s = arm; // a WRITE of a union field, which is safe\n", v.Name)
+		g.pf("            schema_value.arms.%s = schema_arm; // a WRITE of a union field, which is safe\n", v.Name)
 		g.pf("        }\n")
 	}
 	g.pf("        _ => {} // None, and any arm with no bound of its own\n")
@@ -2167,18 +2167,18 @@ func (g *gen) emitFixedClampArm(f *ir.Field, indent int) {
 	ind := strings.Repeat(" ", indent)
 	switch {
 	case f.Array == ir.ArrayFixed:
-		g.pf("%sfor i in 0..%d {\n", ind, f.ArrayBound)
-		g.emitFixedClampElement(f, "arm[i]", indent+4)
+		g.pf("%sfor schema_i in 0..%d {\n", ind, f.ArrayBound)
+		g.emitFixedClampElement(f, "schema_arm[schema_i]", indent+4)
 		g.pf("%s}\n", ind)
 	case f.Array == ir.ArrayCounted:
-		g.pf("%sfor i in 0..arm.value_count.clamp(0, %d) as usize {\n", ind, f.ArrayBound)
-		g.emitFixedClampElement(f, "arm.value[i]", indent+4)
+		g.pf("%sfor schema_i in 0..schema_arm.value_count.clamp(0, %d) as usize {\n", ind, f.ArrayBound)
+		g.emitFixedClampElement(f, "schema_arm.value[schema_i]", indent+4)
 		g.pf("%s}\n", ind)
 	case f.Type.Kind == ir.TString:
-		g.emitFixedTextContentAt(f, "arm.value", "arm.value_length", ind)
+		g.emitFixedTextContentAt(f, "schema_arm.value", "schema_arm.value_length", ind)
 	case f.Type.Kind == ir.TBytes:
 	default:
-		g.emitFixedClampElement(f, "arm", indent)
+		g.emitFixedClampElement(f, "schema_arm", indent)
 	}
 }
 
@@ -2205,7 +2205,7 @@ func (g *gen) emitFixedClampField(f *ir.Field, expr string, indent int) {
 		// AN ABSENT OPTIONAL'S PAYLOAD IS IGNORED ON READ (§3.4), so it is not
 		// held to a bound either: what rides there is the template's zeros and
 		// nobody wrote it.
-		g.pf("%sif value.%s_present {\n", ind, f.Name)
+		g.pf("%sif schema_value.%s_present {\n", ind, f.Name)
 		g.emitFixedClampPayload(f, expr, indent+4)
 		g.pf("%s}\n", ind)
 		return
@@ -2218,18 +2218,18 @@ func (g *gen) emitFixedClampPayload(f *ir.Field, expr string, indent int) {
 	switch {
 	case f.KeyEnum != "":
 		// EVERY SLOT OF A KEYED ARRAY IS LIVE (§2.4).
-		g.pf("%sfor i in 0..%d {\n", ind, f.KeyEnumRef.Max)
-		g.emitFixedClampElement(f, expr+"[i]", indent+4)
+		g.pf("%sfor schema_i in 0..%d {\n", ind, f.KeyEnumRef.Max)
+		g.emitFixedClampElement(f, expr+"[schema_i]", indent+4)
 		g.pf("%s}\n", ind)
 	case f.Array == ir.ArrayFixed:
-		g.pf("%sfor i in 0..%d {\n", ind, f.ArrayBound)
-		g.emitFixedClampElement(f, expr+"[i]", indent+4)
+		g.pf("%sfor schema_i in 0..%d {\n", ind, f.ArrayBound)
+		g.emitFixedClampElement(f, expr+"[schema_i]", indent+4)
 		g.pf("%s}\n", ind)
 	case f.Array == ir.ArrayCounted:
 		// THE LIVE COUNT AND NEVER THE SLACK: the slack is zeros nobody wrote,
 		// and zero is out of range for an `| min = 1` field.
-		g.pf("%sfor i in 0..value.%s_count.clamp(0, %d) as usize {\n", ind, f.Name, f.ArrayBound)
-		g.emitFixedClampElement(f, expr+"[i]", indent+4)
+		g.pf("%sfor schema_i in 0..schema_value.%s_count.clamp(0, %d) as usize {\n", ind, f.Name, f.ArrayBound)
+		g.emitFixedClampElement(f, expr+"[schema_i]", indent+4)
 		g.pf("%s}\n", ind)
 	case f.Type.Kind == ir.TString:
 		// the used LENGTH is held by the scatter's `count`; what is held here
@@ -2253,7 +2253,7 @@ func (g *gen) emitFixedClampPayload(f *ir.Field, expr string, indent int) {
 // The reference zeroes the field and sets `malformed` where this page says the
 // name is owed; the packet wire refuses the whole read, and so does this form.
 func (g *gen) emitFixedTextContent(f *ir.Field, ind string) {
-	g.emitFixedTextContentAt(f, "value."+f.Name, "value."+f.Name+"_length", ind)
+	g.emitFixedTextContentAt(f, "schema_value."+f.Name, "schema_value."+f.Name+"_length", ind)
 }
 
 func (g *gen) emitFixedTextContentAt(f *ir.Field, bufExpr, lenExpr, ind string) {
@@ -2269,7 +2269,7 @@ func (g *gen) emitFixedTextContentAt(f *ir.Field, bufExpr, lenExpr, ind string) 
 	} else {
 		g.pf("%s    %s = 0;\n", ind, lenExpr)
 	}
-	g.pf("%s    *damaged += 1;\n%s}\n", ind, ind)
+	g.pf("%s    *schema_damaged += 1;\n%s}\n", ind, ind)
 }
 
 // fixedRustByteString renders a declared default as a Rust byte-string literal.
@@ -2284,7 +2284,7 @@ func fixedRustByteString(b []byte) string {
 		case c >= 0x20 && c < 0x7f:
 			sb.WriteByte(c)
 		default:
-			fmt.Fprintf(&sb, "\\x%02x", c)
+			fmt.Fprintf(&sb, "\\schema_x%02x", c)
 		}
 	}
 	sb.WriteByte('"')
@@ -2299,11 +2299,11 @@ func (g *gen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 		switch r := f.Type.Ref.(type) {
 		case *ir.Struct:
 			if fixedRangeClampNeeded(r) {
-				g.pf("%s%s(&mut %s, oor, damaged);\n", ind, fn(r.Name, "fixed_clamp_body"), expr)
+				g.pf("%s%s(&mut %s, schema_oor, schema_damaged);\n", ind, fn(r.Name, "fixed_clamp_body"), expr)
 			}
 		case *ir.Union:
 			if fixedRangeClampUnion(r) {
-				g.pf("%s%s(&mut %s, oor, damaged);\n", ind, fn(r.Name, "fixed_clamp_body"), expr)
+				g.pf("%s%s(&mut %s, schema_oor, schema_damaged);\n", ind, fn(r.Name, "fixed_clamp_body"), expr)
 			}
 		}
 		return
@@ -2352,13 +2352,13 @@ func (g *gen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 func (g *gen) emitFixedClampSelect(lhs, lo, hi string, low, high bool, ind, note string) {
 	switch {
 	case low && high:
-		g.pf("%s*oor += ((%s < %s) | (%s > %s)) as i32;%s\n", ind, lhs, lo, lhs, hi, note)
+		g.pf("%s*schema_oor += ((%s < %s) | (%s > %s)) as i32;%s\n", ind, lhs, lo, lhs, hi, note)
 		g.pf("%s%s = %s.clamp(%s, %s);\n", ind, lhs, lhs, lo, hi)
 	case low:
-		g.pf("%s*oor += (%s < %s) as i32;%s\n", ind, lhs, lo, note)
+		g.pf("%s*schema_oor += (%s < %s) as i32;%s\n", ind, lhs, lo, note)
 		g.pf("%s%s = %s.max(%s);\n", ind, lhs, lhs, lo)
 	case high:
-		g.pf("%s*oor += (%s > %s) as i32;%s\n", ind, lhs, hi, note)
+		g.pf("%s*schema_oor += (%s > %s) as i32;%s\n", ind, lhs, hi, note)
 		g.pf("%s%s = %s.min(%s);\n", ind, lhs, lhs, hi)
 	}
 }
@@ -2437,9 +2437,9 @@ func (g *gen) emitFixedFiniteBody(st *ir.Struct) {
 	}
 	g.pf("/// %s's finite rule (docs/SPEC-TABLES.md §3.3): the first float holding a\n", st.Name)
 	g.pf("/// NaN or an infinity, named <Owner>.<field>, or \"\" when every float is finite.\n")
-	g.pf("pub fn %s(value: &%sRow) -> &'static str {\n", fn(st.Name, "fixed_finite_body"), st.Name)
+	g.pf("pub fn %s(schema_value: &%sRow) -> &'static str {\n", fn(st.Name, "fixed_finite_body"), st.Name)
 	for _, f := range st.Fields {
-		g.emitFixedFiniteField(f, "value."+f.Name, 4)
+		g.emitFixedFiniteField(f, "schema_value."+f.Name, 4)
 	}
 	g.pf("    \"\"\n}\n\n")
 }
@@ -2450,7 +2450,7 @@ func (g *gen) emitFixedFiniteUnion(un *ir.Union) {
 		return
 	}
 	g.pf("/// %s's finite rule (docs/SPEC-TABLES.md §3.3): the arm THE TAG NAMES.\n", un.Name)
-	g.pf("pub fn %s(value: &%sRow) -> &'static str {\n", fn(un.Name, "fixed_finite_body"), un.Name)
+	g.pf("pub fn %s(schema_value: &%sRow) -> &'static str {\n", fn(un.Name, "fixed_finite_body"), un.Name)
 	var holding []int
 	for i, v := range un.Variants {
 		if fixedFiniteNeededField(v.F, map[string]bool{}) {
@@ -2461,16 +2461,16 @@ func (g *gen) emitFixedFiniteUnion(un *ir.Union) {
 		v := un.Variants[i]
 		ind := strings.Repeat(" ", indent)
 		g.pf("%s// SAFETY: the tag was just matched against `%s`.\n", ind, v.Name)
-		g.pf("%slet arm = unsafe { value.arms.%s };\n", ind, v.Name)
+		g.pf("%slet schema_arm = unsafe { schema_value.arms.%s };\n", ind, v.Name)
 		g.emitFixedFiniteArm(v.F, indent)
 	}
 	if len(holding) == 1 {
-		g.pf("    if value.tag == %d {\n", holding[0]+1)
+		g.pf("    if schema_value.tag == %d {\n", holding[0]+1)
 		arm(holding[0], 8)
 		g.pf("    }\n    \"\"\n}\n\n")
 		return
 	}
-	g.pf("    match value.tag {\n")
+	g.pf("    match schema_value.tag {\n")
 	for _, i := range holding {
 		g.pf("        %d => {\n", i+1)
 		arm(i, 12)
@@ -2486,15 +2486,15 @@ func (g *gen) emitFixedFiniteArm(f *ir.Field, indent int) {
 	ind := strings.Repeat(" ", indent)
 	switch f.Array {
 	case ir.ArrayFixed:
-		g.pf("%sfor i in 0..%d {\n", ind, f.ArrayBound)
-		g.emitFixedFiniteElement(f, "arm[i]", indent+4)
+		g.pf("%sfor schema_i in 0..%d {\n", ind, f.ArrayBound)
+		g.emitFixedFiniteElement(f, "schema_arm[schema_i]", indent+4)
 		g.pf("%s}\n", ind)
 	case ir.ArrayCounted:
-		g.pf("%sfor i in 0..arm.value_count.clamp(0, %d) as usize {\n", ind, f.ArrayBound)
-		g.emitFixedFiniteElement(f, "arm.value[i]", indent+4)
+		g.pf("%sfor schema_i in 0..schema_arm.value_count.clamp(0, %d) as usize {\n", ind, f.ArrayBound)
+		g.emitFixedFiniteElement(f, "schema_arm.value[schema_i]", indent+4)
 		g.pf("%s}\n", ind)
 	default:
-		g.emitFixedFiniteElement(f, "arm", indent)
+		g.emitFixedFiniteElement(f, "schema_arm", indent)
 	}
 }
 
@@ -2507,10 +2507,10 @@ func (g *gen) emitFixedFiniteField(f *ir.Field, expr string, indent int) {
 	if f.Type.Optional {
 		// an absent optional's payload is the template's zeros, never read (§3.4)
 		if f.KeyEnum == "" && f.Array == ir.ArrayNone && (f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64) {
-			g.pf("%sif value.%s_present && !%s.is_finite() {\n%s    return %q;\n%s}\n", ind, f.Name, expr, ind, g.floatOwner(f), ind)
+			g.pf("%sif schema_value.%s_present && !%s.is_finite() {\n%s    return %q;\n%s}\n", ind, f.Name, expr, ind, g.floatOwner(f), ind)
 			return
 		}
-		g.pf("%sif value.%s_present {\n", ind, f.Name)
+		g.pf("%sif schema_value.%s_present {\n", ind, f.Name)
 		g.emitFixedFinitePayload(f, expr, indent+4)
 		g.pf("%s}\n", ind)
 		return
@@ -2521,8 +2521,8 @@ func (g *gen) emitFixedFiniteField(f *ir.Field, expr string, indent int) {
 func (g *gen) emitFixedFinitePayload(f *ir.Field, expr string, indent int) {
 	ind := strings.Repeat(" ", indent)
 	loop := func(count string) {
-		g.pf("%sfor i in 0..%s {\n", ind, count)
-		g.emitFixedFiniteElement(f, expr+"[i]", indent+4)
+		g.pf("%sfor schema_i in 0..%s {\n", ind, count)
+		g.emitFixedFiniteElement(f, expr+"[schema_i]", indent+4)
 		g.pf("%s}\n", ind)
 	}
 	switch {
@@ -2532,7 +2532,7 @@ func (g *gen) emitFixedFinitePayload(f *ir.Field, expr string, indent int) {
 		loop(fmt.Sprint(f.ArrayBound))
 	case f.Array == ir.ArrayCounted:
 		// the live count and never the slack (§3.4)
-		loop(fmt.Sprintf("value.%s_count.clamp(0, %d) as usize", f.Name, f.ArrayBound))
+		loop(fmt.Sprintf("schema_value.%s_count.clamp(0, %d) as usize", f.Name, f.ArrayBound))
 	default:
 		g.emitFixedFiniteElement(f, expr, indent)
 	}
@@ -2564,5 +2564,5 @@ func (g *gen) emitFixedFiniteElement(f *ir.Field, expr string, indent int) {
 	if name == "" {
 		return
 	}
-	g.pf("%slet why = %s(&%s);\n%sif !why.is_empty() {\n%s    return why;\n%s}\n", ind, fn(name, "fixed_finite_body"), expr, ind, ind, ind)
+	g.pf("%slet schema_why = %s(&%s);\n%sif !schema_why.is_empty() {\n%s    return schema_why;\n%s}\n", ind, fn(name, "fixed_finite_body"), expr, ind, ind, ind)
 }

@@ -10,11 +10,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster/lobsterrun"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v3/compiler"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/lobster"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/lobster/lobsterrun"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/internal/tablewire"
 )
 
 // retainRow is one `retain` line of the tables manifest (docs/SPEC-TABLES.md
@@ -294,7 +294,7 @@ func TestLobsterRetainUnknownNegativeControl(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const anchor = "                so_bytes(w, so_take(inner))\n"
+	const anchor = "                so_bytes(w, so_take(sub_out))\n"
 	if n := strings.Count(string(src), anchor); n != 1 {
 		t.Fatalf("the retained-tail anchor is in the emitted runtime %d times, want 1", n)
 	}

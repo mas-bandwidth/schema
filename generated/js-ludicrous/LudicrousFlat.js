@@ -41,6 +41,9 @@ export const FlatReadSlack = 8;
 // must hold FixedProbeMaxBytes.
 export function WriteFixedProbeFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isInteger(value.angle) || value.angle < -11796480 || value.angle > 11796480) {
     return -1;
   }
@@ -64,7 +67,7 @@ export function WriteFixedProbeFlat(view, value) {
   if (!globalThis.Number.isInteger(value.ticks) || value.ticks < 0 || value.ticks > 1000000) {
     return -1;
   }
-  if (value.samples == null || value.samples.length !== 2) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
+  if (value.samples === null || typeof value.samples !== "object" || value.samples.length !== 2) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
     return -1;
   }
   v = (((value.ticks) & 0xfffff)) >>> 0;
@@ -216,6 +219,9 @@ export function ReadFixedProbeFlatBits(view, numBits, value) {
 // must hold UnsignedProbeMaxBytes.
 export function WriteUnsignedProbeFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isInteger(value.angle) || value.angle < 0 || value.angle > 23592960) {
     return -1;
   }
@@ -242,7 +248,7 @@ export function WriteUnsignedProbeFlat(view, value) {
   if (!globalThis.Number.isInteger(value.ticks) || value.ticks < 0 || value.ticks > 1000000) {
     return -1;
   }
-  if (value.samples == null || value.samples.length !== 2) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
+  if (value.samples === null || typeof value.samples !== "object" || value.samples.length !== 2) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
     return -1;
   }
   v = (((value.ticks) & 0xfffff)) >>> 0;
@@ -436,6 +442,9 @@ export function ReadUnsignedProbeFlatBits(view, numBits, value) {
 export function WriteWideProbeFlat(view, value) {
   let v = 0, lo = 0;
   let bg = 0n;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (typeof value.entityId !== "bigint" || value.entityId < 0n || value.entityId > 340282366920938463463374607431768211455n) { // a bare integer must fit its width
     return -1;
   }
@@ -677,7 +686,13 @@ export function ReadWideProbeFlatBits(view, numBits, value) {
 export function WriteLudicrousStateFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
   let bg = 0n;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isInteger(value.mode) || value.mode < 0 || value.mode > 3) { // headroom above the wire range cannot ride
+    return -1;
+  }
+  if (value.probe === null || typeof value.probe !== "object") { // a record or union value is an object (SPEC §5.1)
     return -1;
   }
   if (!globalThis.Number.isInteger(value.probe.angle) || value.probe.angle < -11796480 || value.probe.angle > 11796480) {
@@ -704,7 +719,7 @@ export function WriteLudicrousStateFlat(view, value) {
   if (!globalThis.Number.isInteger(value.probe.ticks) || value.probe.ticks < 0 || value.probe.ticks > 1000000) {
     return -1;
   }
-  if (value.probe.samples == null || value.probe.samples.length !== 2) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
+  if (value.probe.samples === null || typeof value.probe.samples !== "object" || value.probe.samples.length !== 2) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
     return -1;
   }
   lo = (((value.probe.ticks) & 0xfffff));
@@ -723,6 +738,9 @@ export function WriteLudicrousStateFlat(view, value) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (21 - sb);
     }
+  }
+  if (value.wide === null || typeof value.wide !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
   }
   if (typeof value.wide.entityId !== "bigint" || value.wide.entityId < 0n || value.wide.entityId > 340282366920938463463374607431768211455n) { // a bare integer must fit its width
     return -1;
@@ -888,6 +906,9 @@ export function WriteLudicrousStateFlat(view, value) {
   if (!globalThis.Number.isInteger(value.keysCount) || value.keysCount < 0 || value.keysCount > 4) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
     return -1;
   }
+  if (value.keys === null || typeof value.keys !== "object" || !(value.keys.length >= value.keysCount)) { // the storage holds every element the loop reads (SPEC §5.1)
+    return -1;
+  }
   v = (((value.keysCount) & 0x7)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 3;
@@ -940,6 +961,9 @@ export function WriteLudicrousStateFlat(view, value) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
+  }
+  if (typeof value.hasTarget !== "boolean") { // a bool is a boolean (SPEC §5.1)
+    return -1;
   }
   v = ((value.hasTarget ? 1 : 0)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
@@ -1618,6 +1642,9 @@ export function ReadLudicrousStateFlatBits(view, numBits, value) {
 // must hold DegenerateProbeMaxBytes.
 export function WriteDegenerateProbeFlat(view, value) {
   let lo = 0;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (value.lockedFixed !== -196608) {
     return -1;
   }
@@ -1679,6 +1706,9 @@ export function ReadDegenerateProbeFlatBits(view, numBits, value) {
 // must hold FixedVecMaxBytes.
 export function WriteFixedVecFlat(view, value) {
   let v = 0, lo = 0;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (typeof value.x !== "bigint" || value.x < -6553600000n || value.x > 6553600000n) {
     return -1;
   }
@@ -1811,6 +1841,9 @@ export function ReadFixedVecFlatBits(view, numBits, value) {
 // writer contract, in every build (SPEC §5.1). The buffer behind view
 // must hold FixedQuatMaxBytes.
 export function WriteFixedQuatFlat(view, value) {
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isInteger(value.x) || value.x < -1073741824 || value.x > 1073741824) {
     return -1;
   }

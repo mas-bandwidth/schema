@@ -419,6 +419,13 @@ lowercase hex lines.**
   declared defaults for absent fields. It returns false for a missing root
   or a different root type. Neither conversion parses JSON or wire bytes:
   `FromJson`/`ToJson` and the shared `load_table`/`save_table` own those forms.
+  `load_table` and `load_table_retain` keep the same stores promise as
+  `ToLoaded`. A load appends to the caller's value table. The node table is
+  indexed by the file's node numbering, so a load writes it from index 0,
+  growing it when the file holds more nodes. A refused load returns -1 and
+  leaves both tables exactly as the caller handed them, every length and
+  every entry, so the stores hold nothing of the refused read (FL-03;
+  `refused_stores_test.go`).
   The conformance driver's `json-read` and `json-write` surfaces compare both
   paths with committed fixtures.
 - **The variable class of the text form** (pointer graphs and `&node`,
@@ -532,9 +539,10 @@ The `goose` column of docs/PORTING.md is filled, every cell with its reason:
   nothing allocates), M10 (Goose has no allocator to hook: data stacks and
   scope exit).
 - **❌ not yet:** every other technique, each naming the card of THE CARD
-  MAP that carries it, or saying it is not yet carded. Each cites #2236,
-  the Goose port's carry-across issue, which lists what parity with the nine
-  main ports still needs, bottom layer first.
+  MAP that carries it, or saying it is not yet carded. Each cites the
+  roadmap entry `port/goose` (docs/roadmap.sexp; it carries what was #2236),
+  which lists what parity with the nine main ports still needs, bottom layer
+  first.
 
 ## THE CARD MAP
 

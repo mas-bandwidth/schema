@@ -14,6 +14,7 @@ section is cited rather than restated.
 
 ```
 MANIFEST.txt          the registry: every case, by kind
+WIRE-ALONE.txt        the framing rows a wire-alone walk owns, by class (hand-written)
 reports.txt           read/refused for every evolution case   (generated)
 report-values/<case>.json  the complete accepted evolution value (generated)
 retain-values/<case>.json  the complete accepted known retained value (generated)
@@ -111,10 +112,15 @@ json-write-into <case> <instance>
   declared defaults when it was not the taken arm — and continues into its
   payload. `<kind>` says what the
   value sets: `int` an integer (a ranged scalar, or `bits(N)`), `count` the used
-  count of the array at `<path>` (a new element is a copy of element 0, or the
-  element's declared default when the array was empty),
-  `length` the used length of the text at `<path>` (filled with `a`), `ordinal`
-  an enum by its raw ordinal, `tag` a union by its raw tag — `0` is None, `1`
+  count of the array at `<path>` (preserve the original prefix, dropping the
+  tail on shrink; on growth append copies of element 0, or the element's
+  declared default when the array was empty),
+  `length` the used length at `<path>`. Fill text with `a`. For a
+  `bytes(N)` field the length is a byte count and the fill byte is `0x61`.
+  With fixed-capacity backing storage, set the used length to the requested
+  number and fill only the available bytes. The `wref_bytes_length_ok` and
+  `wref_bytes_length` cases request 16 and 17 bytes for a 16-byte buffer.
+  `ordinal` sets an enum by its raw ordinal, `tag` a union by its raw tag — `0` is None, `1`
   the first declared arm, `n` the `n`-th; a lawful tag takes its arm at the
   arm's declared defaults, and a tag past the last arm holds no payload and is
   the value the writer refuses (rows `wref_union_tag_none`, `fref_`, `mref_`,
@@ -124,6 +130,11 @@ json-write-into <case> <instance>
   and the derived manifest withholds it. The driver writes `refused`, `wrote`
   or, where the leg's own types cannot hold the value at all, `unrepresentable`,
   which answers a `refused` row and no other.
+  A `write-refusal` row whose verdict is `wrote` may name an expected saved
+  wire after the verdict. The derived manifest withholds the verdict and
+  expected path and adds `save-wire` after the caller value. The driver
+  also writes its actual saved bytes to `<case>.wire`; the harness requires
+  byte identity with the expected saved wire.
   **The same row drives three more writers, one line kind and one surface
   each**: `write-refusal-fixed` saves the value through the fixed form's
   `FixedSave` as a batch of one; `write-refusal-message` saves it through
@@ -376,6 +387,22 @@ order and nothing else: a text surface skips a `no-text` instance, and the
 wire surface answers a `wire-refused` instance's refused load as
 `<case>.absent` holding the read's reason. Any other refused load of an
 instance stays a failure.
+
+## WIRE-ALONE.txt
+
+```
+# comment
+<class> <framing row>
+```
+
+The framing rows whose condition docs/SPEC-TABLES.md §6.5 lists as DECIDABLE
+FROM THE WIRE ALONE, one per line, tagged with the clause they break:
+`id-table`, `inert-bytes`, `element-kind`, `depth`, `node-table`, `graph`,
+`blob-shared` or `text`. A port's wire-walk control derives from it the rows
+its walk alone refuses and states only its own exceptions, each with a
+reason. `internal/wirealone` reads it, refuses an unknown class or a repeated
+row, and holds every row to a `framing` row of MANIFEST.txt pinned `refused`.
+Hand-written; a new wire-alone framing row is added here with its class.
 
 ## reports.txt
 

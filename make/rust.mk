@@ -332,7 +332,9 @@ generated/bench/rust/.stamp: bin/schema $(SCHEMAS_BENCH)
 # way it is a C++ namespace — its own package, its own protocol id, its own
 # table runtime. The crates carry a generated Cargo.toml each; nothing here is
 # checked in.
-RUST_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
+RUST_WRITE_BOUNDS_SCHEMA := testdata/conformance/table-write-bounds/TableWriteBounds.schema
+
+RUST_TABLE_UNITS := writebounds:$(RUST_WRITE_BOUNDS_SCHEMA) tabledemo:tables/examples graphdemo:tables/pointers \
 	blobdemo:tables/blobs mapdemo:tables/maps listdemo:tables/lists widelistdemo:tables/widelist \
 	messagedemo:tables/messages streamdemo:tables/stream \
 	scalars:tables/scalars tblscalars2:test/tables/Scalars2.schema tblfixedevo:test/tables/fixedevo tblvarevo1:test/tables/varevo/VarEvo1.schema tblvarevo2:test/tables/varevo/VarEvo2.schema tblvarevo3:test/tables/varevo/VarEvo3.schema cooktorture:test/tables/cooktorture/CookTorture.schema cooktorturewide:test/tables/cooktorturewide/CookTortureWide.schema packetunions:test/tables/packetunions/PacketUnions.schema blockdemo:tables/block blockhome:tables/blockhome \
@@ -361,15 +363,21 @@ RUST_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
 # those bytes (docs/SPEC-TABLES.md §3.4, §15).
 RUST_TABLE_BENCH_SCHEMAS := bench/corpus/Bench.schema bench/corpus/FixedTable.schema
 
-build/tables-generated-rust/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_SCALARS) test/tables/Scalars2.schema $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/FE1.schema test/tables/FE2.schema test/tables/FU1.schema test/tables/FU2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/G1.schema test/tables/shapes/Shapes.schema test/tables/prior/PriorNarrow.schema $(RUST_TABLE_BENCH_SCHEMAS) test/tables/surfaces/Surfaces.schema test/tables/announce4096/Announce.schema test/tables/announce4097/Announce.schema test/tables/packetunions/PacketUnions.schema
+build/tables-generated-rust/.stamp: bin/schema $(RUST_WRITE_BOUNDS_SCHEMA) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_SCALARS) test/tables/Scalars2.schema $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/FE1.schema test/tables/FE2.schema test/tables/FU1.schema test/tables/FU2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/G1.schema test/tables/shapes/Shapes.schema test/tables/prior/PriorNarrow.schema $(RUST_TABLE_BENCH_SCHEMAS) test/tables/surfaces/Surfaces.schema test/tables/announce4096/Announce.schema test/tables/announce4097/Announce.schema test/tables/packetunions/PacketUnions.schema
 	@mkdir -p build/tables-generated-rust
-	@for unit in $(RUST_TABLE_UNITS); do \
+	@# Each unit is its own crate directory, so the units generate in parallel:
+	@# serial, this loop was ~35 s of the 2-minute input-family
+	@# (conformance-corpus, rust) job (run 45423487593). A failed unit fails
+	@# the stamp, after every unit has been waited on (the loop never stops at
+	@# the first failed wait, which would leave the rest running).
+	@set -e; pids=""; for unit in $(RUST_TABLE_UNITS); do \
 		name=$${unit%%:*}; path=$${unit#*:}; \
-		rm -rf build/tables-generated-rust/$$name/src; \
-		./bin/schema generate --lang rust --out build/tables-generated-rust/$$name/src $$path || exit 1; \
+		{ rm -rf build/tables-generated-rust/$$name/src && \
+		./bin/schema generate --lang rust --out build/tables-generated-rust/$$name/src $$path && \
 		printf '[package]\nname = "%s"\nversion = "0.0.0"\nedition = "2024"\n\n[features]\ndefault = ["block", "cook"]\nblock = []\ncook = []\n\n[dependencies]\nserialize = { package = "serialize-official", path = "../../../$(SERIALIZE_RS)" }\n' $$name \
-			> build/tables-generated-rust/$$name/Cargo.toml; \
-	done
+			> build/tables-generated-rust/$$name/Cargo.toml; } & pids="$$pids $$!"; \
+	done; \
+	rc=0; for pid in $$pids; do wait $$pid || rc=1; done; exit $$rc
 	@rm -rf build/tables-generated-rust/benchfixed/src
 	./bin/schema generate --lang rust --out build/tables-generated-rust/benchfixed/src $(RUST_TABLE_BENCH_SCHEMAS)
 	@printf '[package]\nname = "benchfixed"\nversion = "0.0.0"\nedition = "2024"\n\n[features]\ndefault = ["block", "cook"]\nblock = []\ncook = []\n\n[dependencies]\nserialize = { package = "serialize-official", path = "../../../$(SERIALIZE_RS)" }\n' \
@@ -390,12 +398,12 @@ build/tables-generated-rust/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLE
 # generated writer's caller contracts are debug-only, so debug proves they FIRE
 # and release proves they are GONE and the bytes are still the reference's.
 .PHONY: tables-rust-fixedform
-tables-rust-fixedform: build/tables-generated-rust/.stamp build/fixedform-corpus/.stamp
+tables-rust-fixedform: build/retiredskips build/tables-generated-rust/.stamp build/fixedform-corpus/.stamp
 	@mkdir -p build/rust-fixedform/src
 	@cp test/rust-fixedform/Cargo.toml build/rust-fixedform/Cargo.toml
 	@cp test/rust-fixedform/src/main.rs build/rust-fixedform/src/main.rs
-	cd build/rust-fixedform && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet -- ../../build/fixedform-corpus ../../bench/paired/corpus
-	cd build/rust-fixedform && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet --release -- ../../build/fixedform-corpus ../../bench/paired/corpus
+	cd build/rust-fixedform && PATH="$(RUSTUP_BIN):$$PATH" ../retiredskips -leg rust -ledger ../../test/conformance/fixed-retired.json -- cargo run --quiet -- ../../build/fixedform-corpus ../../bench/paired/corpus
+	cd build/rust-fixedform && PATH="$(RUSTUP_BIN):$$PATH" ../retiredskips -leg rust -ledger ../../test/conformance/fixed-retired.json -- cargo run --quiet --release -- ../../build/fixedform-corpus ../../bench/paired/corpus
 
 # THE VERSIONING HALF OF THE FIXED FORM ON THE RUST LEG (§5 of
 # docs/FIXED-FORM-ALGORITHM.md, the rows of docs/FIXED-FORM-VERSIONING-TESTS.md).
@@ -449,6 +457,34 @@ build/conformance-rust: build/tables-generated-rust/.stamp test/conformance/rust
 	@rm -f $@   # replace the inode: writing over a binary another process is
 	            # running corrupts it in place, and a long soak runs this one
 	cp test/conformance/rust/target/debug/conformance-rust $@
+
+build/tables-generated-rust/writebounds/.stamp: bin/schema $(RUST_WRITE_BOUNDS_SCHEMA) make/rust.mk
+	@mkdir -p build/tables-generated-rust/writebounds
+	@rm -rf build/tables-generated-rust/writebounds/src
+	./bin/schema generate --lang rust --out build/tables-generated-rust/writebounds/src $(RUST_WRITE_BOUNDS_SCHEMA)
+	@printf '[package]\nname = "writebounds"\nversion = "0.0.0"\nedition = "2024"\n\n[features]\ndefault = ["block", "cook"]\nblock = []\ncook = []\n\n[dependencies]\nserialize = { package = "serialize-official", path = "../../../$(SERIALIZE_RS)" }\n' \
+		> build/tables-generated-rust/writebounds/Cargo.toml
+	@touch $@
+
+build/conformance-rust-writebounds: build/tables-generated-rust/writebounds/.stamp test/conformance/rust/writebounds/Cargo.toml test/conformance/rust/writebounds/src/main.rs test/conformance/rust/src/writebounds_cases.rs $(wildcard $(SERIALIZE_RS)/src/*.rs)
+	@mkdir -p build
+	cd test/conformance/rust/writebounds && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --target-dir "$(CURDIR)/build/conformance-rust-writebounds-target"
+	@rm -f $@
+	cp build/conformance-rust-writebounds-target/debug/conformance-rust-writebounds $@
+
+# Shared variable writer boundary pairs. The driver above is a debug build,
+# so the generated writer's assertions decide the refusal rows.
+.PHONY: table-write-bounds-rust
+table-write-bounds-rust: build/conformance-harness build/conformance-rust-writebounds
+	@mkdir -p build
+	@printf 'rust ./build/conformance-rust-writebounds\n' > build/conformance-write-bounds-rust.drivers
+	./build/conformance-harness run --drivers build/conformance-write-bounds-rust.drivers \
+		--only rust --surfaces write-refusal,wire,json-read,json-write --complete \
+		--manifest testdata/conformance/table-write-bounds/WRITE-BOUNDS.txt \
+		--json testdata/conformance/table-write-bounds \
+		--work build/conformance-write-bounds-rust
+
+test-rust: table-write-bounds-rust
 
 # THE PAIRED BENCH UNIT, for bench/tables/rust — the FIXED FORM's leg in
 # `bench/paired` (bench/paired/main.go, bench/tables/rust/src/main.rs).
@@ -1133,7 +1169,7 @@ tables-rust-byte-order:
 	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run '^TestBlockBuildAndCookWriteRust$$'
 tables-rust-byte-order-negative-control:
 	PATH="$$PATH:$(RUSTUP_BIN)" sh make/rust-overlay-control.sh rust-byte-order-control internal/codegen/rusttable/cook.go \
-		's|let shift = if order == 2 { width as usize - 1 - i } else { i };|let shift = i; // SABOTAGED: the target order ignored|' \
+		's|let schema_shift = if schema_order == 2 { schema_width as usize - 1 - schema_i } else { schema_i };|let schema_shift = schema_i; // SABOTAGED: the target order ignored|' \
 		'^TestBlockBuildAndCookWriteRust$$' "the big-endian cook's header names byte order"
 
 # I7 (docs/PORTING.md): THE OTHER ORDER'S WORD UNDER AN INTACT MAGIC, the half
@@ -2030,6 +2066,25 @@ packet-end-rust-negative-control: packet-end-rust
 	@echo 'packet end Rust negative control: removing the end check turns a trailing byte red'
 
 test-rust: packet-end-rust packet-end-rust-negative-control
+
+# THE PACKET-VOID LEG (SPEC §4.8; make/checks/packet-void.mk): payload-free
+# union arms cost exactly their tag bits. The driver answers every case of
+# testdata/wire/packet-void/cases.txt through tools/casegate, in a debug
+# build (the writer's debug_assert! contracts live) and a release build.
+build/packet-void/rust/.stamp: bin/schema test/packet-void/Void.schema make/rust.mk
+	@rm -rf build/packet-void/rust/generated && mkdir -p build/packet-void/rust/generated/src
+	./bin/schema generate --lang rust --out build/packet-void/rust/generated/src $(PACKET_VOID_SCHEMA)
+	@printf '[package]\nname = "packetvoid"\nversion = "0.0.0"\nedition = "2024"\n\n[dependencies]\nserialize = { package = "serialize-official", path = "%s/$(SERIALIZE_RS)" }\n' "$(CURDIR)" > build/packet-void/rust/generated/Cargo.toml
+	@touch $@
+
+.PHONY: packet-void-rust
+packet-void-rust: build/casegate build/packet-void/rust/.stamp
+	cd test/packet-void/rust && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --target-dir ../../../build/packet-void/rust/target
+	cd test/packet-void/rust && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --release --target-dir ../../../build/packet-void/rust/target
+	$(call packet_void_gate,rust) ./build/packet-void/rust/target/debug/packet-void-test $(PACKET_VOID_PINS)
+	$(call packet_void_gate,rust) ./build/packet-void/rust/target/release/packet-void-test $(PACKET_VOID_PINS)
+
+test-rust: packet-void-rust
 
 # Packet Write holds row 8 (SPEC §5.1) in a Rust debug build: the driver
 # writes every shared case and catches the writer's debug_assert! panic as

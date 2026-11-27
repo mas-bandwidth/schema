@@ -190,6 +190,10 @@ static partial class Program
     {
         return new Report { Unknown = r.Unknown, Widened = r.Widened, Refused = r.Refused, Malformed = r.Damaged };
     }
+    static Report Copy(Writebounds.TableReport r)
+    {
+        return new Report { Unknown = r.Unknown, Widened = r.Widened, Refused = r.Refused, Malformed = r.Damaged };
+    }
     static Report Copy(Cooktorture.TableReport r)
     {
         return new Report { Unknown = r.Unknown, Widened = r.Widened, Refused = r.Refused, Malformed = r.Damaged };
@@ -493,6 +497,9 @@ static partial class Program
         Row<Tblprior.Prior, Tblprior.TableReport>("tblprior", "Prior", () => new Tblprior.TableReport(), Copy,
             Tblprior.Schema.PriorLoad, Tblprior.Schema.PriorMeasure, Tblprior.Schema.PriorSave,
             Tblprior.Schema.PriorFromJson, Tblprior.Schema.PriorToJsonMeasure, Tblprior.Schema.PriorToJson),
+        Row<Writebounds.TortureVarWref, Writebounds.TableReport>("writebounds", "TortureVarWref", () => new Writebounds.TableReport(), Copy,
+            Writebounds.Schema.TortureVarWrefLoad, Writebounds.Schema.TortureVarWrefMeasure, Writebounds.Schema.TortureVarWrefSave,
+            Writebounds.Schema.TortureVarWrefFromJson, Writebounds.Schema.TortureVarWrefToJsonMeasure, Writebounds.Schema.TortureVarWrefToJson, Writebounds.Schema.TortureVarWrefLoadMeasure),
         Row<Cooktorturewide.TortureWideCook, Cooktorturewide.TableReport>("cooktorturewide", "TortureWideCook", () => new Cooktorturewide.TableReport(), Copy,
             Cooktorturewide.Schema.TortureWideCookLoad, Cooktorturewide.Schema.TortureWideCookMeasure, Cooktorturewide.Schema.TortureWideCookSave,
             Cooktorturewide.Schema.TortureWideCookFromJson, Cooktorturewide.Schema.TortureWideCookToJsonMeasure, Cooktorturewide.Schema.TortureWideCookToJson, Cooktorturewide.Schema.TortureWideCookLoadMeasure),
@@ -887,6 +894,8 @@ static partial class Program
     // proves the reader against bytes this driver did not write.
     static int SurfaceJsonRead(string outDir)
     {
+        string jsonDir = Environment.GetEnvironmentVariable("SCHEMA_CONFORMANCE_JSON_INPUT_DIR");
+        if (string.IsNullOrEmpty(jsonDir)) { jsonDir = Path.Combine("testdata", "conformance", "tables", "json"); }
         foreach (string[] f in Kind("instance"))
         {
             if (NoText(f)) { continue; }
@@ -898,7 +907,7 @@ static partial class Program
                 SpillAbsent(outDir, f[1]);
                 continue;
             }
-            string path = Path.Combine("testdata", "conformance", "tables", "json", f[1] + ".json");
+            string path = Path.Combine(jsonDir, f[1] + ".json");
             byte[] text = File.ReadAllBytes(path);
             Report report = new Report();
             object value = codec.FromJson(text, report);
@@ -2826,6 +2835,37 @@ static partial class Program
         }
     }
 
+    // THE STREAM ENDS ONLY BETWEEN FRAMES (test/conformance/harness/wireeof.go):
+    // no index byte at EOF is the clean close; one to three are a truncated
+    // frame, and so is a length or a body the stream cuts short. ReadUInt32
+    // throws alike for both and ReadBytes answers short without a word, so
+    // the frame is read through these, which exit loudly on a cut.
+    static void WireFuzzTruncated(string where)
+    {
+        Console.Error.WriteLine("wire-fuzz: the stream ended inside " + where);
+        Console.Error.Flush();
+        Environment.Exit(1);
+    }
+
+    static byte[] WireFuzzExact(BinaryReader input, int n, string where)
+    {
+        byte[] b = input.ReadBytes(n);
+        if (b.Length != n) { WireFuzzTruncated(where); }
+        return b;
+    }
+
+    static bool WireFuzzIndex(BinaryReader input, out uint index)
+    {
+        index = 0;
+        byte[] b = input.ReadBytes(4);
+        if (b.Length == 0) { return false; }
+        if (b.Length != 4) { WireFuzzTruncated("a mutant index"); }
+        index = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(b);
+        return true;
+    }
+
+    static uint WireFuzzLength(BinaryReader input) => System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(WireFuzzExact(input, 4, "a mutant length"));
+
     static int WireFuzz(bool builder = false)
     {
         using var scratch=new RetainScratch();
@@ -2861,8 +2901,8 @@ static partial class Program
         for (;;)
         {
             uint index;
-            try { index = input.ReadUInt32(); } catch (EndOfStreamException) { return 0; }
-            byte[] bytes = input.ReadBytes(checked((int)input.ReadUInt32()));
+            if (!WireFuzzIndex(input, out index)) { return 0; }
+            byte[] bytes = WireFuzzExact(input, checked((int)WireFuzzLength(input)), "a mutant");
             Codec codec = roster[index];
             if(retaining[index])
             {

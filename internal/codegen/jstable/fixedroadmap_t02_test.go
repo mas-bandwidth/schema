@@ -22,7 +22,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // t02Flat is the smallest declared fixed table: two adjacent int32 scalars.
@@ -279,7 +279,7 @@ func t02R23(t *testing.T) {
 	if load := jsFn(src, "TFixedLoad"); strings.Contains(load, "report.layoutHash =") {
 		t.Error("R23: a load path other than the two refusals sets layout_hash")
 	}
-	t02Has(t, src, "return TableFixedRefuseHash(report, TableFixedRefusal.LayoutNewer, hashLo, hashHi);", "R23 layout_newer reports the file's hash")
+	t02Has(t, src, "return TableFixedRefuseHash(report, TableFixedRefusal.LayoutUnknown, hashLo, hashHi);", "R23 layout_unknown reports the file's hash")
 	t02Has(t, src, "return TableFixedRefuseHash(report, TableFixedRefusal.LayoutUnsupported, hashLo, hashHi);", "R23 layout_unsupported reports the file's hash")
 }
 

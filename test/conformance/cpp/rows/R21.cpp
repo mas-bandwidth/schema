@@ -113,8 +113,10 @@ static void nan_refused( uint32_t bits, const char * compiled, const char * iden
     back.lead = 7u;
     vnew_float_widen::TableReport r;
     std::vector<vnew_float_widen::TableFixedEntry> plan( 4096 );
-    const int64_t n = vnew_float_widen::FloatWidenFixedLoadTolerant( &back, 1, ob.data(), (int64_t) ob.size(),
-                                                                       plan.data(), 4096, NULL, &r );
+    // strict-only-read: the tolerant entry point (FloatWidenFixedLoadTolerant) is
+    // gone; FloatWidenFixedLoad is the only read, and it refuses the same way.
+    const int64_t n = vnew_float_widen::FloatWidenFixedLoad( &back, 1, ob.data(), (int64_t) ob.size(),
+                                                               plan.data(), 4096, NULL, &r );
     check( n == -1 && r.refused && r.reason == vnew_float_widen::non_finite_float &&
            r.refuse_reason == vnew_float_widen::non_finite_float, compiled );
     check( back.lead == 1u && back.trail == 2u,
@@ -154,7 +156,9 @@ static void finite_value( float of, const char * what )
     std::memcpy( &want_bits, &want, 8 );
     check( got == want_bits, what );
     check( r.widened == 1, "R21/finite: widened counts once" );
-    check( r.unknown == 0 && r.clamped == 0 && !r.malformed && !r.refused,
+    // strict-only-read: a kind mismatch, an out-of-range value and a repeat now refuse the
+    // whole load (no counter), so the retired zero counts read as not refused, not damaged.
+    check( r.unknown == 0 && !r.damaged && !r.refused,
            "R21/finite: nothing else fired" );
 }
 

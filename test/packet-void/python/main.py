@@ -1,16 +1,25 @@
+"""The Python leg of test/packet-void (SPEC §4.8).
+
+Answers every case of cases.txt (testdata/wire/packet-void, copied beside
+this file with its pins by TestPythonPacketVoid), one
+"case <name> ok|FAILED: <why>" line each; the Go test judges the lines with
+internal/casegate. The pins are the Go oracle's bytes, never this writer's.
+"""
 import os
 import sys
+from typing import Any
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from packetvoidpython import (
+from packetvoid import (
+    Batch,
     Empty,
-    EmptyType,
     Frame,
     InvalidValue,
+    Late,
+    LateType,
     Mixed,
     MixedType,
-    Payload,
     Refused,
     Single,
     SingleType,
@@ -18,180 +27,180 @@ from packetvoidpython import (
     TagsType,
 )
 
-
-def fail(message: str) -> None:
-    print("FAILED: " + message)
-    raise SystemExit(1)
-
-
-def read_goldens() -> "dict[str, bytes]":
-    cases = {}
-    with open("goldens.txt", encoding="utf-8") as stream:
-        for line in stream:
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-            name, wire = line.split()
-            cases[name] = b"" if wire == "--" else bytes.fromhex(wire)
-    return cases
+TYPES: "dict[str, Any]" = {
+    "Mixed": Mixed,
+    "Late": Late,
+    "Tags": Tags,
+    "Single": Single,
+    "Empty": Empty,
+    "Frame": Frame,
+    "Batch": Batch,
+}
 
 
-def build(name: str) -> object:
+def mixed(tag: int) -> Mixed:
+    value = Mixed()
+    value.type = tag
+    return value
+
+
+def build(name: str) -> Any:
+    """The value of each accept case, by name; None for a name this driver
+    does not know, which is FAILED and never written with another value."""
     if name == "mixed-none":
-        return Mixed()
+        return mixed(MixedType.None_)
     if name == "mixed-ping":
-        value = Mixed()
-        value.type = MixedType.Ping
-        return value
-    if name == "mixed-pong":
-        value = Mixed()
-        value.type = MixedType.Pong
-        return value
+        return mixed(MixedType.Ping)
     if name == "mixed-payload":
-        value = Mixed()
-        value.type = MixedType.Payload
-        return value
-    if name == "frame-ping":
-        value = Frame()
-        value.lead = True
-        value.choice.type = MixedType.Ping
-        value.tail = True
-        return value
-    if name == "tags-none":
-        return Tags()
-    if name == "tags-pong":
-        value = Tags()
-        value.type = TagsType.Pong
-        return value
-    if name == "single-ack":
-        value = Single()
-        value.type = SingleType.Ack
-        return value
+        return mixed(MixedType.Payload)
+    if name in ("late-payload", "late-pong"):
+        late = Late()
+        late.type = LateType.Payload if name == "late-payload" else LateType.Pong
+        return late
+    if name in ("tags-none", "tags-ping", "tags-pong"):
+        tags = Tags()
+        tags.type = {"tags-none": TagsType.None_, "tags-ping": TagsType.Ping, "tags-pong": TagsType.Pong}[name]
+        return tags
+    if name in ("single-none", "single-ack"):
+        single = Single()
+        single.type = SingleType.Ack if name == "single-ack" else SingleType.None_
+        return single
     if name == "empty-none":
         return Empty()
-    fail("unknown golden " + name)
-    raise SystemExit(1)
+    if name == "frame-ping":
+        frame = Frame()
+        frame.lead = 5
+        frame.choice = mixed(MixedType.Ping)
+        frame.tail = 6
+        return frame
+    if name in ("batch-empty", "batch-ping", "batch-ping-payload"):
+        batch = Batch()
+        batch.values = {
+            "batch-empty": [],
+            "batch-ping": [mixed(MixedType.Ping)],
+            "batch-ping-payload": [mixed(MixedType.Ping), mixed(MixedType.Payload)],
+        }[name]
+        return batch
+    return None
 
 
-def expect_invalid(label: str, value: object) -> None:
+def build_refused(name: str) -> Any:
+    """The type's default value with the one change each refuse-write case
+    names; None for a name this driver does not know, which is FAILED. The
+    values are Any: a text tag and an integer payload are exactly what the
+    writer must refuse, and Python can hold them."""
+    value: Any
+    if name.startswith("mixed-write-"):
+        value = Mixed()
+        if name == "mixed-write-tag-negative":
+            value.type = -1
+        elif name == "mixed-write-tag-text":
+            value.type = "ping"
+        elif name == "mixed-write-tag-3":
+            value.type = 3
+        elif name == "mixed-write-payload-type":
+            value.type = MixedType.Payload
+            value.payload = 1
+        elif name == "mixed-write-marker-8":
+            value.type = MixedType.Payload
+            value.payload.marker = 8
+        else:
+            return None
+        return value
+    if name == "tags-write-tag-3":
+        value = Tags()
+        value.type = 3
+        return value
+    if name == "empty-write-tag-1":
+        value = Empty()
+        value.type = 1
+        return value
+    return None
+
+
+def select_payload() -> "tuple[bytes, str]":
+    """Reads mixed-ping's pin, then selects the payload arm the Python API's
+    way, on the value read: set the tag alone. The union keeps its payload
+    object, so the write shows what the read of the void arm left there."""
+    with open("mixed-ping.bin", "rb") as stream:
+        source = stream.read()
     try:
-        value.write()
-    except InvalidValue:
-        return
-    fail("write " + label + " was accepted")
+        value = Mixed.read(source)
+    except Refused as exc:
+        return b"", "read mixed-ping refused: " + str(exc.reason)
+    if value.type != MixedType.Ping:
+        return b"", "read mixed-ping: tag " + repr(value.type)
+    value.type = MixedType.Payload
+    return value.write(), ""
 
 
-def expect_refused(label: str, cls: object, data: bytes) -> None:
+def answer(name: str, type_name: str, verdict: str) -> str:
+    cls = TYPES.get(type_name)
+    if cls is None:
+        return "unknown type " + type_name
+    if verdict == "refuse-write":
+        bad = build_refused(name)
+        if bad is None:
+            return "unknown refuse-write case"
+        if type(bad) is not cls:
+            return "case type " + type_name + ", the driver builds another"
+        try:
+            wrote = bad.write()
+        except InvalidValue:
+            return ""
+        except Exception as exc:  # the writer's own refusal is InvalidValue, never another error
+            return "write raised " + type(exc).__name__ + ": " + str(exc) + ", want InvalidValue"
+        return "write accepted: " + bytes(wrote).hex()
+    with open(name + ".bin", "rb") as stream:
+        pin = stream.read()
+    if verdict == "refuse":
+        try:
+            cls.read(pin)
+        except Refused:
+            return ""
+        return "read accepted"
+    if verdict == "select":
+        if name != "mixed-ping-select-payload":
+            return "unknown select case"
+        got, why = select_payload()
+        if why:
+            return why
+        if got != pin:
+            return "write " + got.hex() + ", pin " + pin.hex()
+        return ""
+    if verdict != "accept":
+        return "verdict " + verdict
+    value = build(name)
+    if value is None:
+        return "unknown accept case"
+    if type(value) is not cls:
+        return "case type " + type_name + ", the driver builds another"
+    got = bytes(value.write())
+    if got != pin:
+        return "write " + got.hex() + ", pin " + pin.hex()
     try:
-        cls.read(data)
-    except Refused:
-        return
-    fail("read " + label + " was accepted")
+        back = cls.read(pin)
+    except Refused as exc:
+        return "read refused: " + str(exc.reason)
+    if back != value:
+        return "read value differs: " + repr(back)
+    if back.write() != pin:
+        return "write what was read differs"
+    return ""
 
 
 def main() -> None:
-    if MixedType.None_ != 0 or MixedType.Ping != 1 or MixedType.Payload != 2 or MixedType.Pong != 3 or MixedType.Max != 3:
-        fail("MixedType tag numbers")
-    if MixedType.NAMES != {0: "None", 1: "ping", 2: "payload", 3: "pong"}:
-        fail("MixedType name table")
-    if TagsType.Max != 2 or TagsType.Pong != 2 or SingleType.Max != 1 or SingleType.Ack != 1 or EmptyType.Max != 0:
-        fail("payload-free tag extents")
-    if Mixed.__slots__ != ("type", "payload") or Tags.__slots__ != ("type",):
-        fail("union slots")
-
-    fresh = Mixed()
-    if fresh.type != MixedType.None_ or not isinstance(fresh.payload, Payload):
-        fail("union construction")
-    if fresh.payload.count != -1 or fresh.payload.marker is not True:
-        fail("payload arm declared defaults")
-    if Frame().choice.type != MixedType.None_:
-        fail("union field construction")
-
-    # The goldens file must name exactly the cases build() knows: an emptied or
-    # shortened file would otherwise run fewer cases, or none, and still print ok.
-    goldens = read_goldens()
-    known = [
-        "mixed-none",
-        "mixed-ping",
-        "mixed-pong",
-        "mixed-payload",
-        "frame-ping",
-        "tags-none",
-        "tags-pong",
-        "single-ack",
-        "empty-none",
-    ]
-    if sorted(goldens) != sorted(known):
-        fail("goldens.txt names " + repr(sorted(goldens)) + ", want " + repr(sorted(known)))
-
-    for name, wire in goldens.items():
-        value = build(name)
-        got = value.write()
-        if got != wire:
-            fail("write " + name + ": got " + got.hex() + " want " + wire.hex())
-        try:
-            back = type(value).read(wire)
-        except Refused as exc:
-            fail("read " + name + " was refused: " + exc.reason)
-        if back != value:
-            fail("read " + name + " value differs: " + repr(back))
-        again = back.write()
-        if again != wire:
-            fail("read " + name + " write-back differs")
-        if name.startswith("mixed-"):
-            payload = back.payload
-            if not isinstance(payload, Payload) or payload.count != -1 or payload.marker is not True:
-                fail("mixed arm defaults after " + name)
-
-    # A union read is a fresh value, so an unselected payload is at its
-    # declared defaults.
-    selected = Mixed.read(b"\x01")
-    if selected.type != MixedType.Ping or selected.payload.count != -1 or selected.payload.marker is not True:
-        fail("payload defaults after a void selection")
-
-    bad = Mixed()
-    bad.type = 4
-    expect_invalid("mixed-tag-4", bad)
-    bad = Mixed()
-    bad.type = -1
-    expect_invalid("mixed-tag-negative", bad)
-    bad = Mixed()
-    bad.type = True
-    expect_invalid("mixed-tag-bool", bad)
-    bad = Mixed()
-    bad.type = MixedType.Payload
-    bad.payload = 1
-    expect_invalid("mixed-payload-type", bad)
-    bad = Mixed()
-    bad.type = MixedType.Payload
-    bad.payload.count = 40000
-    expect_invalid("mixed-payload-range", bad)
-    bad = Mixed()
-    bad.type = MixedType.Payload
-    bad.payload.marker = 1
-    expect_invalid("mixed-payload-bool", bad)
-    bad = Tags()
-    bad.type = 3
-    expect_invalid("tags-tag-3", bad)
-    bad = Empty()
-    bad.type = 1
-    expect_invalid("empty-tag", bad)
-
-    # Mixed's 2-bit tag uses all four values, so it has no unused tag: 0x04 is
-    # tag 0 with a set bit past the value.
-    expect_refused("mixed-trailing-bit", Mixed, b"\x04")
-    expect_refused("mixed-empty", Mixed, b"")
-    expect_refused("mixed-short-payload", Mixed, bytes.fromhex("feff"))
-    expect_refused("mixed-trailing", Mixed, bytes.fromhex("0100"))
-    expect_refused("frame-empty", Frame, b"")
-    expect_refused("tags-tag-3", Tags, b"\x03")
-    expect_refused("tags-trailing-bit", Tags, b"\x04")
-    expect_refused("single-empty", Single, b"")
-    expect_refused("empty-trailing", Empty, b"\x00")
-
-    if Empty().write() != b"" or Empty.read(b"") != Empty():
-        fail("empty union wire")
-    print("ok")
+    with open("cases.txt", encoding="utf-8") as stream:
+        lines = stream.read().splitlines()
+    for line in lines:
+        fields = line.split()
+        if not fields or fields[0].startswith("#"):
+            continue
+        if len(fields) < 4:
+            print("case " + fields[0] + " FAILED: a case line needs <name> <type> <verdict> <bits>")
+            continue
+        why = answer(fields[0], fields[1], fields[2])
+        print("case " + fields[0] + (" FAILED: " + why if why else " ok"))
 
 
 main()

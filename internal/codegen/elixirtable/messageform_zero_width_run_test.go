@@ -13,10 +13,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // zeroWidthArray is one array entry's shape: min, max, element kind, and the
@@ -73,11 +73,15 @@ func TestElixirMessageZeroWidthRunIsBounded(t *testing.T) {
 
 fixed table Probe
 {
-    x uint8
+    x [..2]uint8
 }
 `)
 	// The announcement names the root's own field, so the bound read holds it;
-	// only its announced shape is the peer's.
+	// only its announced shape is the peer's. The field is declared an array
+	// (kind 14), the kind every entry below announces: a peer entry whose kind
+	// differs from the reader's declaration is a KIND MISMATCH, which refuses
+	// the batch before any run is read (docs/SPEC-TABLES.md §4), so a scalar
+	// declaration would make every refusal here hollow and the control red.
 	id := ir.TableFieldEntry(u.Tables["Probe"].Fields[0]).Id
 	flat := zeroWidthAnnouncement(
 		zeroWidthEntry(id, 14, zeroWidthArray(far, far, 0, nil)),

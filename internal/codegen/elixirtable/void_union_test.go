@@ -8,12 +8,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/internal/tablewire"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testinputs"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 func TestElixirVoidUnionNative(t *testing.T) {
@@ -153,7 +153,7 @@ const voidUnionRequiredContext = `
  ptr *Kid }
  table Guard { on bool
  if on { needed int32 | required } }
- table Range { n int32 | min=5, required }
+ table MinFive { n int32 | min=5, required }
  table GuardRange { on bool
  if on { n int32 | min=5, required } }
  table Branch { outer bool

@@ -11,7 +11,7 @@ import (
 	"reflect"
 	"testing"
 
-	tabledemo "github.com/mas-bandwidth/schema/v2/internal/codegen/gotable/fuzzunit"
+	tabledemo "github.com/mas-bandwidth/schema/v3/internal/codegen/gotable/fuzzunit"
 )
 
 // fixedValueCount bounds the destination slice a fuzz input may fill. Every

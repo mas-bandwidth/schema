@@ -29,6 +29,7 @@
 #include <string>
 #include <vector>
 
+#ifndef CONFORMANCE_WRITEBOUNDS_ONLY
 #include "TablesTable.h"
 #include "WideTable.h"
 #include "FeaturesTable.h"
@@ -57,6 +58,9 @@
 #include "ShapesTable.h"
 // an ARRAY OF PACKET UNIONS in a variable and a fixed table (docs/SPEC-TABLES.md §2.6)
 #include "PacketUnionsTable.h"
+#endif
+#include "TableWriteBoundsTable.h"
+#ifndef CONFORMANCE_WRITEBOUNDS_ONLY
 // the MESSAGE FORM's units (docs/SPEC-TABLES.md §3.3): the three backend
 // messages the ruling measured, and the WIDE-VOCABULARY unit whose slots fall
 // on both sides of the one-byte boundary
@@ -123,6 +127,7 @@
 #include "announce4096/AnnounceTable.h"
 #include "announce4097/AnnounceTable.h"
 #include "BackendBlock.h"
+#endif
 
 // ---------------------------------------------------------------------------
 // the codec table: one row per (unit, root) the corpus names
@@ -201,7 +206,7 @@ struct Erase
 // read of that form (-1 refuses the whole load), and FixedSave the writer whose
 // bytes the wire goldens hold. The plan storage is the caller's (§3.4), roomy
 // enough for any writer's layout the corpus carries; no cache is shared.
-static const int32_t kFixedPlanCapacity = 4096;
+[[maybe_unused]] static const int32_t kFixedPlanCapacity = 4096; // unused by the writebounds-only driver
 
 #define CODEC( unit_key, ns, type )                                                            \
     {                                                                                          \
@@ -283,6 +288,7 @@ static const int32_t kFixedPlanCapacity = 4096;
         }                                                                                      \
     }
 
+#ifndef CONFORMANCE_WRITEBOUNDS_ONLY
 static const Codec codecs[] = {
     CODEC( "tabledemo", tabledemo, RootConfig ),
     CODEC( "tabledemo", tabledemo, ProfileConfig ),
@@ -337,6 +343,7 @@ static const Codec codecs[] = {
     CODEC( "tblvaluedefaults", tblvaluedefaults, FixedDefaults ),
     CODEC( "packetunions", tblpacketunions, ShapeMsg ),
 };
+#endif
 
 // ---------------------------------------------------------------------------
 // the VARIABLE class's rows (docs/SPEC-TABLES.md §6.2)
@@ -418,6 +425,7 @@ struct VarCodec
     }
 
 static const VarCodec var_codecs[] = {
+#ifndef CONFORMANCE_WRITEBOUNDS_ONLY
     VARCODEC( "mapdemo", mapdemo, Cells ),
     VARCODEC( "mapdemo", mapdemo, Chunks ),
     VARCODEC( "mapdemo", mapdemo, Crews ),
@@ -449,7 +457,9 @@ static const VarCodec var_codecs[] = {
     VARCODEC( "cooktorturewide", cooktorturewide, TortureWideCook ),
     VARCODEC( "shapes", shapes, Bounds ),
     VARCODEC( "packetunions", tblpacketunions, ShapeDoc ),
-
+#endif
+    VARCODEC( "writebounds", writebounds, TortureVarWref ),
+#ifndef CONFORMANCE_WRITEBOUNDS_ONLY
     VARCODEC( "graphdemo", graphdemo, Scene ),
     VARCODEC( "graphdemo", graphdemo, ListNode ),
     VARCODEC( "tblp2", tblp2, Chain ),
@@ -465,8 +475,8 @@ static const VarCodec var_codecs[] = {
     VARCODEC( "tblsurf", surfaces, Chain ),
     VARCODEC( "tblsurf", surfaces, Holder ),
     VARCODEC( "tblsurf", surfaces, Counted ),
+#endif
 };
-
 static const VarCodec * find_var_codec( const std::string & unit, const std::string & root )
 {
     for ( size_t i = 0; i < sizeof( var_codecs ) / sizeof( var_codecs[0] ); i++ )
@@ -478,11 +488,17 @@ static const VarCodec * find_var_codec( const std::string & unit, const std::str
 
 static const Codec * find_codec( const std::string & unit, const std::string & root )
 {
+#ifdef CONFORMANCE_WRITEBOUNDS_ONLY
+    (void) unit;
+    (void) root;
+    return NULL;
+#else
     for ( size_t i = 0; i < sizeof( codecs ) / sizeof( codecs[0] ); i++ )
     {
         if ( unit == codecs[i].unit && root == codecs[i].root ) return &codecs[i];
     }
     return NULL;
+#endif
 }
 
 #endif // SCHEMA_TEST_CONFORMANCE_CPP_CODECS_H

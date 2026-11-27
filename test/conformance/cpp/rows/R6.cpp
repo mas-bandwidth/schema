@@ -35,9 +35,9 @@
 // children == 0 still exercises exactly the gate under test.
 //
 // BUILD/RUN (from ./repo):
-//   c++ -std=c++17 -Wall -Wextra -Werror -Wshadow -ffp-contract=off -pthread \
-//     -Ibuild/tables-generated/examples test/conformance/cpp/rows/R6.cpp \
-//     build/tables-generated/examples/WideTable.cpp -o build/rows-cpp-R6 && \
+//   c++ -std=c++17 -Wall -Wextra -Werror -Wshadow -ffp-contract=off -pthread
+//     -Ibuild/tables-generated/examples test/conformance/cpp/rows/R6.cpp
+//     build/tables-generated/examples/WideTable.cpp -o build/rows-cpp-R6 &&
 //     ./build/rows-cpp-R6
 // (include dir and flags are the Makefile's build/conformance-cpp rule,
 // narrowed to the Wide unit this cell is about; WideTable.h needs no
@@ -173,7 +173,7 @@ int main()
             if ( tabledemo::WideBlobSave( blob, buffer, need ) == need ) {
                 tabledemo::TableReport report;
                 if ( tabledemo::WideBlobLoad( out, buffer, need, &report ) &&
-                     !report.malformed && !report.refused ) {
+                     !report.damaged && !report.refused ) {
                     round_trip = out.label_length == 2 &&
                                  std::strcmp( out.label, "ok" ) == 0 &&
                                  out.payload_length == 3 &&
@@ -198,9 +198,24 @@ int main()
         check( wide_opened, "wide-header-readable", error.empty() ? "opened" : error.c_str() );
         if ( wide_opened ) {
             std::string unused;
-            check( !file_has( "build/tables-generated/examples/WideTable.h",
-                       "WideBlobFixed", &unused ),
-                "no-form-emitted", "WideTable.h names no WideBlobFixed* symbol" );
+            // THE FORM'S SURFACES, the same list test/conformance/go/rows/R6_test.go
+            // holds. The scan was once the bare prefix "WideBlobFixed"; the writer's
+            // write contract (#3281) now emits WideBlobFixedWriteAdmits,
+            // WideBlobFixedInRange and WideBlobFixedClampBody for every table's
+            // debug-assert bounds check, form or no form, so the prefix no longer
+            // names a form. Each surface of a form is scanned by name instead.
+            static const char * const kFormSurfaces[] = {
+                "WideBlobFixedBodyBytes", "WideBlobFixedRecordBytes", "WideBlobFixedHash",
+                "WideBlobFixedLayout", "WideBlobFixedDst", "WideBlobFixedPlan",
+                "WideBlobFixedKnown", "WideBlobFixedFloor", "WideBlobFixedLineagePlans",
+                "WideBlobFixedMeasure", "WideBlobFixedSave", "WideBlobFixedLoad",
+                "WideBlobFixedWriteBody",
+            };
+            for ( const char * surface : kFormSurfaces ) {
+                const std::string what = std::string( "WideTable.h names no " ) + surface;
+                check( !file_has( "build/tables-generated/examples/WideTable.h", surface, &unused ),
+                    "no-form-emitted", what.c_str() );
+            }
             check( !file_has( "build/tables-generated/examples/WideTable.h",
                        "WideBlobFixedLineage", &unused ),
                 "no-lineage-parsed", "WideTable.h names no WideBlobFixedLineage entry" );

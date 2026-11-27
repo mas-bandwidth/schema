@@ -17,8 +17,17 @@ build/schema-ruby: $(shell find compiler internal cmd ir -name '*.go' -o -name '
 # TestConformanceCompilersRebuildOnTheirRuntime holds it.
 build/schema-ruby: $(shell find internal/codegen/ruby/runtime internal/codegen/rubytable/runtime -type f 2>/dev/null)
 
+build/packet-write-cfloat/ruby/.stamp: build/schema-ruby test/packet-write-cfloat/PacketCFloat.schema
+	./build/schema-ruby generate --lang ruby --out build/packet-write-cfloat/ruby test/packet-write-cfloat/PacketCFloat.schema
+	@touch $@
+
+.PHONY: packet-write-cfloat-ruby
+packet-write-cfloat-ruby: build/mustrun build/packet-write-cfloat/ruby/.stamp
+	$(MUSTRUN) -name packet-write-cfloat-ruby -count 10 -- $(RUBY) test/packet-write-cfloat/ruby/main.rb build/packet-write-cfloat/ruby test/packet-write-cfloat/cases.txt
+	$(MUSTRUN) -name packet-write-cfloat-ruby-floor -count 10 -- $(RUBY_FLOOR) test/packet-write-cfloat/ruby/main.rb build/packet-write-cfloat/ruby test/packet-write-cfloat/cases.txt
+
 .PHONY: test-ruby test-ruby-recipe update-goldens-ruby ruby-skeleton-negative-control
-test-ruby: ruby-toolchain-check ruby-serialize-test packet-utf8-ruby bench-ruby-gate
+test-ruby: ruby-toolchain-check ruby-serialize-test packet-utf8-ruby packet-write-cfloat-ruby bench-ruby-gate
 	$(MAKE) test-ruby-recipe
 test-ruby-recipe: ruby-toolchain-check
 	sh test/slowgate/proof test-ruby-packet 'TestRubySkeleton TestRubyIdentifierCorpus TestVendoredRubySerializeIsThePin TestRubyPacketClose TestRubyPacketCloseAnalyzer TestRubyPacketDefaults TestRubyPacketFinite TestRubyPacketVoid TestRubyPacketReadBitsAndOwnership TestRubyPacketShapeBench' -count=1 -timeout 600s -tags schema_leg_ruby -run '^(TestRubySkeleton|TestRubyIdentifierCorpus$$|TestVendoredRubySerializeIsThePin|TestRubyPacketClose$$|TestRubyPacketCloseAnalyzer$$|TestRubyPacketDefaults$$|TestRubyPacketFinite$$|TestRubyPacketVoid$$|TestRubyPacketReadBitsAndOwnership$$|TestRubyPacketShapeBench$$)' ./internal/codegen/ruby/

@@ -24,8 +24,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/goose"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // RuntimeModule is the table surface's runtime: the descriptor types
@@ -161,15 +161,24 @@ func RegisterModule(name string, fn Module) {
 // modules; a table-free unit gets nothing, so its output is the type
 // surface's alone.
 func Generate(u *ir.Unit) (map[string][]byte, error) {
+	out, _, err := GenerateClaimed(u)
+	return out, err
+}
+
+// GenerateClaimed is Generate, and also the names the unit's namespace holds
+// after it: the type surface's declarations (goose.DeclaredNames) and every
+// name the table surface, its side forms and its package modules declared.
+// A name in it is one a second declaration refuses (goose.Gen.Declare).
+func GenerateClaimed(u *ir.Unit) (map[string][]byte, map[string]string, error) {
 	if len(u.Tables) == 0 {
-		return map[string][]byte{}, nil
+		return map[string][]byte{}, map[string]string{}, nil
 	}
 	if err := Refuse(u); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	names, err := goose.DeclaredNames(u)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	out := map[string][]byte{}
 	reach := closure(u)
@@ -183,18 +192,18 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		emitFile(g, reach)
 		for _, p := range parts {
 			if err := p.fn(g); err != nil {
-				return nil, fmt.Errorf("goose %s: %s: %w", p.name, f.Base, err)
+				return nil, nil, fmt.Errorf("goose %s: %s: %w", p.name, f.Base, err)
 			}
 		}
 		if err := g.Err(); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		out[f.Base+"Table.goose"] = g.Assemble()
 	}
 	for _, m := range modules {
 		side, err := m.fn(u, names)
 		if err != nil {
-			return nil, fmt.Errorf("goose %s: %w", m.name, err)
+			return nil, nil, fmt.Errorf("goose %s: %w", m.name, err)
 		}
 		maps.Copy(out, side)
 	}
@@ -209,20 +218,20 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			surfaces = append(surfaces, p.surface)
 		}
 		if err := p.fn(g); err != nil {
-			return nil, fmt.Errorf("goose %s: %s: %w", p.name, g.Module(), err)
+			return nil, nil, fmt.Errorf("goose %s: %s: %w", p.name, g.Module(), err)
 		}
 	}
 	for _, s := range surfaces {
 		g := gens[s]
 		if err := g.Err(); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if !g.Empty() {
 			out[g.Module()+".goose"] = g.Assemble()
 		}
 	}
 	maps.Copy(out, Runtime())
-	return out, nil
+	return out, names, nil
 }
 
 // Refuse is the constructs this surface refuses before it writes: a module
@@ -243,14 +252,14 @@ func Refuse(u *ir.Unit) error {
 		for _, f := range u.Files {
 			for _, own := range []string{"", "Table", "Block", "Cook"} {
 				if strings.EqualFold(f.Base+own, m) {
-					return fmt.Errorf("schema file %s collides with the package module %s.goose, which the Goose table surface writes for package %s; rename the file", f.Base, m, u.Package)
+					return goose.NameErr(fmt.Errorf("schema file %s collides with the package module %s.goose, which the Goose table surface writes for package %s; rename the file", f.Base, m, u.Package))
 				}
 			}
 		}
 	}
 	for _, f := range u.Files {
 		if bases[strings.ToLower(f.Base+"Table")] {
-			return fmt.Errorf("schema files %s and %sTable collide — the Goose table surface writes %sTable.goose as %s's table module; rename one file", f.Base, f.Base, f.Base, f.Base)
+			return goose.NameErr(fmt.Errorf("schema files %s and %sTable collide — the Goose table surface writes %sTable.goose as %s's table module; rename one file", f.Base, f.Base, f.Base, f.Base))
 		}
 	}
 	return nil

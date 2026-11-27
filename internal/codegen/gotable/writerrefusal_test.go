@@ -89,8 +89,22 @@ func TestVariableWriterRefuses(t *testing.T) {
 	for _, edge := range []int32{0, 1000} {
 		v := good()
 		v.Health = edge
-		if n := RecSave(&v, make([]byte, 4096)); n <= 0 {
-			t.Fatalf("health %d is on the bound and must save, got %d", edge, n)
+		n := RecMeasure(&v)
+		if n <= 0 {
+			t.Fatalf("health %d is on the bound and must measure, got %d", edge, n)
+		}
+		if wrote := RecSave(&v, make([]byte, n)); wrote != n {
+			t.Fatalf("health %d is on the bound and must save %d bytes, got %d", edge, n, wrote)
+		}
+	}
+	for _, outside := range []int32{-1, 1001} {
+		v := good()
+		v.Health = outside
+		if n := RecMeasure(&v); n != -1 {
+			t.Fatalf("ordinary measure accepted health %d outside [0, 1000]: %d", outside, n)
+		}
+		if n := RecSave(&v, make([]byte, 4096)); n != -1 {
+			t.Fatalf("ordinary save accepted health %d outside [0, 1000]: %d", outside, n)
 		}
 	}
 	cases := []struct {

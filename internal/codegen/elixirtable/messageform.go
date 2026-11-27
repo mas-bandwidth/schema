@@ -35,8 +35,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // TableMessageModule is the message form's module, one per unit that declares
@@ -961,7 +961,7 @@ const messageBatchRuntimeBody = `  @batch_max 256
   end
 
   # a declaration of the scope (a table name, or {:union, name}) judges its own
-  # field; a field the scope does not declare (a peer at another build, an
+  # field; a field the scope does not declare (a writer at another build, an
   # unbound root) falls back to the merge over every declaration of its id and kind
   defp field_rule(entry, scope, true) when scope != nil,
     do: Map.get(scoped_rules(), {scope, entry.id, entry.kind})
@@ -1165,7 +1165,7 @@ const messageBatchRuntimeBody = `  @batch_max 256
         cond do
           exact and index <= last -> :out_of_order
           exact -> {:ok, {index, true, rule, sub}}
-          not peer_kind_compatible?(entry, raw) -> :kind_mismatch
+          not writer_kind_compatible?(entry, raw) -> :kind_mismatch
           true -> {:ok, {index, false, rule, sub}}
         end
     end
@@ -1179,9 +1179,9 @@ const messageBatchRuntimeBody = `  @batch_max 256
   # else reads; an enum-keyed array (16) whose element kind moved refuses. raw
   # is this reader's own entry behind a leading 1 (entry/1's :raw); 0 is an arm
   # with no entry of its own.
-  defp peer_kind_compatible?(_entry, 0), do: true
+  defp writer_kind_compatible?(_entry, 0), do: true
 
-  defp peer_kind_compatible?(entry, raw) do
+  defp writer_kind_compatible?(entry, raw) do
     case :binary.encode_unsigned(raw) do
       <<1, own::binary>> ->
         case entry_shape(own) do
@@ -1683,7 +1683,7 @@ const messageBatchRuntimeBody = `  @batch_max 256
             # kind_mismatch, a widening reads
             own_arm = if known, do: arm_raw(sub, entry.id), else: nil
 
-            if is_integer(own_arm) and not peer_kind_compatible?(entry, own_arm),
+            if is_integer(own_arm) and not writer_kind_compatible?(entry, own_arm),
               do: throw(:kind_mismatch)
 
             case read_value(vocab, entry.kind, entry.shape, elem, rest, depth + 1, arm) do

@@ -236,8 +236,8 @@ dart run --observe=0 --profile-vm=true --pause-isolates-on-exit \
 
 Run on `vision` (`go test -count=1 -timeout 600s ./bench/paired/ ./internal/ci/`):
 
-- `ok  github.com/mas-bandwidth/schema/v2/bench/paired`
-- `ok  github.com/mas-bandwidth/schema/v2/internal/ci`
+- `ok  github.com/mas-bandwidth/schema/v3/bench/paired`
+- `ok  github.com/mas-bandwidth/schema/v3/internal/ci`
 - `go run ./bench/tools/shapegate`: `clean — 47 file(s) carry shape knowledge, every one on the ledger`
 
 ## Not done, and `PATHS-PROPOSED`

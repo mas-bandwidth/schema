@@ -15,9 +15,9 @@ import (
 	"sort"
 	"strings"
 
-	javapkt "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	javapkt "github.com/mas-bandwidth/schema/v3/internal/codegen/java"
+	"github.com/mas-bandwidth/schema/v3/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // messageAnnouncementClass is the public type the announcement surface lives in.
@@ -436,7 +436,7 @@ public final class TableVocabulary {
                 // A VOCABULARY PAST A BOUND IS REFUSED BEFORE ANYTHING IS
                 // ALLOCATED: the caller's byte bound, checked from the field's
                 // own L before an entry is touched (§3.3).
-                long limit = v.maxBytes < 0 ? 0L : (long) v.maxBytes;
+                long limit = v.maxBytes < 0 ? 0L : (long) v.maxBytes; // The explicit byte limit also applies when zero (R9).
                 if (java.lang.Long.compareUnsigned(n, limit) > 0) {
                     report.refused = true;
                     report.reason = "vocabulary_too_large";

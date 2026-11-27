@@ -243,6 +243,13 @@ var platformNames = func() map[string]string {
 		"get", "implements", "import", "interface", "late", "library", "mixin", "operator", "part", "required",
 		"set", "static", "typedef")
 	put("the support module the Elixir emitter writes beside the unit, Package.PacketRuntime (Elixir)", "PacketRuntime")
+	// every macro serialize.h defines (the pinned runtime, SIBLINGS): the
+	// generated C++ includes it, a function-like one expands at the `(` of a
+	// value-initialised `E()` or a conversion `E( v )`, and an object-like one
+	// everywhere, so a declaration of that name cannot be spelled; a field or
+	// an arm can, being only ever a member after `.` or a declarator
+	put("a macro of the serialize runtime header serialize.h, which the generated C++ includes, so the name expands as the macro wherever the code spells the declaration (C++)",
+		serializeMacros...)
 	return m
 }()
 
@@ -289,4 +296,86 @@ func (c *checker) checkPlatformNames() {
 		d := c.astDecls[name]
 		c.errf(d.DeclPos(), "declaration name %q is %s — rename at the source (SPEC §4.6)", name, why)
 	}
+}
+
+// rustTableFileModuleSuffixes are the modules the Rust table layer writes per
+// schema file, after the file's own lowercased basename: <base>_table.rs and
+// the rest (internal/codegen/rusttable), and <base>_variable.rs, which lib.rs
+// declares as <base>_variable_constants.
+var rustTableFileModuleSuffixes = []string{
+	"_table", "_variable", "_variable_constants", "_records", "_cook",
+	"_fixed", "_fixed_values", "_message", "_block",
+}
+
+// rustTableUnitModules are the modules a Rust crate with tables declares once:
+// the table runtimes and registries (internal/codegen/rusttable) and the
+// public `tables` surface (internal/codegen/rust, TablesModule), and
+// tables_schema, the name lib.rs gives the packet module of a file whose
+// basename lowers to `tables`.
+var rustTableUnitModules = []string{
+	"tables", "table_enums", "variable_runtime", "card_descriptors", "cook_runtime",
+	"fixed_runtime", "block_runtime", "integrity_runtime", "message_runtime",
+	"build_version", "unit_view", "tables_schema",
+}
+
+// RustModuleNames returns every module name the generated Rust crate's
+// lib.rs can declare for a unit of the given schema file basenames, sorted:
+// each file's own module (its lowercased basename) always, and the table
+// layer's modules when the unit declares tables. The Rust emitters' tests
+// hold it to what they write (TestRustModulesAreClaimed in
+// internal/codegen/rusttable).
+func RustModuleNames(bases []string, tables bool) []string {
+	set := map[string]bool{}
+	for _, b := range bases {
+		set[strings.ToLower(b)] = true
+	}
+	if tables {
+		for _, m := range rustTableUnitModules {
+			set[m] = true
+		}
+		for _, b := range bases {
+			for _, s := range rustTableFileModuleSuffixes {
+				set[strings.ToLower(b)+s] = true
+			}
+		}
+	}
+	return slices.Sorted(maps.Keys(set))
+}
+
+// fileBases returns the unit's schema file basenames.
+func (c *checker) fileBases() []string {
+	out := make([]string, 0, len(c.files))
+	for _, f := range c.files {
+		out = append(out, f.Base)
+	}
+	return out
+}
+
+// serializeMacros are the macros serialize.h defines (serialize v2.1.6, the
+// pin in SIBLINGS), every one of them: TestSerializeMacrosMatchTheRuntime
+// holds this list equal to the header's #defines when the sibling is staged.
+var serializeMacros = []string{
+	"_CRT_SECURE_NO_WARNINGS",
+	"SERIALIZE_ALWAYS_INLINE", "SERIALIZE_BIG_ENDIAN", "SERIALIZE_BULK_COPY", "SERIALIZE_DEBUG",
+	"SERIALIZE_FLOAT_FORCE_ROUND", "SERIALIZE_H", "SERIALIZE_HAS_COMPILE_TIME_SURFACE",
+	"SERIALIZE_LITTLE_ENDIAN", "SERIALIZE_RELEASE", "SERIALIZE_RUN_TEST", "SERIALIZE_TEST_FP_CONTRACT",
+	"SERIALIZE_TEST_NOINLINE", "SERIALIZE_UINT128_DEFINED", "SERIALIZE_VERSION", "SERIALIZE_VERSION_MAJOR",
+	"SERIALIZE_VERSION_MINOR", "SERIALIZE_VERSION_PATCH",
+	"read_align", "read_bits", "read_bool", "read_bytes", "read_double", "read_end", "read_fixed",
+	"read_float", "read_int", "read_int128", "read_int64", "read_int_relative", "read_object",
+	"read_string", "read_uint128", "read_uint16", "read_uint32", "read_uint64", "read_uint8",
+	"serialize_align", "serialize_assert", "serialize_bits", "serialize_bits64_compile_time",
+	"serialize_bits_compile_time", "serialize_bool", "serialize_bool_compile_time", "serialize_bytes",
+	"serialize_check", "serialize_compressed_float", "serialize_compressed_float_precomputed",
+	"serialize_decoded_bits_fit_destination", "serialize_decoded_fits_destination",
+	"serialize_differential_check", "serialize_differential_next_lcg", "serialize_double",
+	"serialize_end", "serialize_fixed", "serialize_float", "serialize_int", "serialize_int128",
+	"serialize_int64", "serialize_int64_compile_time", "serialize_int_compile_time",
+	"serialize_int_relative", "serialize_object", "serialize_reject", "serialize_restrict",
+	"serialize_static_assert", "serialize_static_assert_join", "serialize_static_assert_join2",
+	"serialize_string", "serialize_test_next_lcg", "serialize_uint128", "serialize_uint16",
+	"serialize_uint32", "serialize_uint64", "serialize_uint8",
+	"write_align", "write_bits", "write_bool", "write_bytes", "write_double", "write_end", "write_fixed",
+	"write_float", "write_int", "write_int128", "write_int64", "write_int_relative", "write_object",
+	"write_string", "write_uint128", "write_uint16", "write_uint32", "write_uint64", "write_uint8",
 }

@@ -27,7 +27,7 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // t09Probe is one capability probe: generate the fixture's module, run the

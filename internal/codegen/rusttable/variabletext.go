@@ -13,7 +13,7 @@ import (
 	"math/big"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // emitVariableText emits the JSON text form for every table the file's codec
@@ -1125,33 +1125,39 @@ impl<'a> Jr<'a> {
 // emitEnumText emits one enum's JSON name maps: variant -> schema name for the
 // writer, schema name -> variant for the reader (docs/SPEC-TABLES.md §16.2, the
 // enum row's "the variant NAME").
+//
+// Both are ASSOCIATED functions of the enum (`E::json_name(v)`,
+// `E::from_json_name(s)`), never free functions spelled from the enum's name:
+// a free `<snake>_from_json_name` for enum `days` is the same symbol as
+// `<snake>_json_name` for enum `daysFrom`, so two user names would collide in
+// a name the generator invented (SPEC §4.6). Under the type the derivation is
+// injective by construction.
 func emitEnumText(b *strings.Builder, e *ir.Enum) {
-	write := fn(e.Name, "json_name")
-	fmt.Fprintf(b, "#[allow(dead_code)]\n")
-	fmt.Fprintf(b, "pub fn %s(v: %s) -> &'static str {\n", write, e.Name)
-	fmt.Fprintf(b, "    match v {\n")
-	fmt.Fprintf(b, "        %s::None => \"None\",\n", e.Name)
+	fmt.Fprintf(b, "impl %s {\n", e.Name)
+	fmt.Fprintf(b, "    #[allow(dead_code)]\n")
+	fmt.Fprintf(b, "    pub fn json_name(self) -> &'static str {\n")
+	fmt.Fprintf(b, "        match self {\n")
+	fmt.Fprintf(b, "            %s::None => \"None\",\n", e.Name)
 	for i, v := range e.Variants {
 		if i < len(e.VariantDeprecated) && e.VariantDeprecated[i] {
 			// A DEPRECATED VARIANT IS NEVER WRITTEN (docs/SPEC-TABLES.md §2.15):
 			// a write-side check, so a debug assert in this language (SPEC.md §5.1)
-			fmt.Fprintf(b, "        %s::%s => { debug_assert!(false, \"a deprecated variant is never written to JSON (docs/SPEC-TABLES.md §2.15)\"); %q }\n", e.Name, rustVariant(v), v)
+			fmt.Fprintf(b, "            %s::%s => { debug_assert!(false, \"a deprecated variant is never written to JSON (docs/SPEC-TABLES.md §2.15)\"); %q }\n", e.Name, rustVariant(v), v)
 			continue
 		}
-		fmt.Fprintf(b, "        %s::%s => %q,\n", e.Name, rustVariant(v), v)
+		fmt.Fprintf(b, "            %s::%s => %q,\n", e.Name, rustVariant(v), v)
 	}
-	fmt.Fprintf(b, "    }\n}\n\n")
+	fmt.Fprintf(b, "        }\n    }\n\n")
 
-	read := fn(e.Name, "from_json_name")
-	fmt.Fprintf(b, "#[allow(dead_code)]\n")
-	fmt.Fprintf(b, "pub fn %s(s: &str) -> Option<%s> {\n", read, e.Name)
-	fmt.Fprintf(b, "    match s {\n")
-	fmt.Fprintf(b, "        \"None\" => Some(%s::None),\n", e.Name)
+	fmt.Fprintf(b, "    #[allow(dead_code)]\n")
+	fmt.Fprintf(b, "    pub fn from_json_name(s: &str) -> Option<Self> {\n")
+	fmt.Fprintf(b, "        match s {\n")
+	fmt.Fprintf(b, "            \"None\" => Some(%s::None),\n", e.Name)
 	for _, v := range e.Variants {
-		fmt.Fprintf(b, "        %q => Some(%s::%s),\n", v, e.Name, rustVariant(v))
+		fmt.Fprintf(b, "            %q => Some(%s::%s),\n", v, e.Name, rustVariant(v))
 	}
-	fmt.Fprintf(b, "        _ => None,\n")
-	fmt.Fprintf(b, "    }\n}\n\n")
+	fmt.Fprintf(b, "            _ => None,\n")
+	fmt.Fprintf(b, "        }\n    }\n}\n\n")
 }
 
 // emitTextCount emits <name>_json_count: the writer's FIRST pass (§16.7), which
@@ -1275,6 +1281,18 @@ func (g *gen) fieldKey(f *ir.Field) string {
 	return f.Name
 }
 
+// emitTextContainerCap refuses a container — an array, a text list, a map's
+// object, an enum-keyed array's object or a flags value's array — written at
+// depth `d` past the cap, an empty `[]` or `{}` included. The read counts
+// every container it walks (docs/SPEC-TABLES.md §16.2), so the write counts the
+// same ones in the same unit (§16.14 W2; the oracle's containerCap in
+// internal/tabletext/write.go), through the refusal a table value past the cap
+// takes, in every build. A union's object is judged by <union>_json_write, a
+// table's by its json_write.
+func emitTextContainerCap(b *strings.Builder, d, ind string) {
+	fmt.Fprintf(b, "%sif %s > JSON_DEPTH_CAP { w.refused = true; }\n", ind, d)
+}
+
 // emitTextWriteValue emits the value writer for one field (or, for an array,
 // the array), the value's closing brace or bracket at depth `d`.
 func (g *gen) emitTextWriteValue(b *strings.Builder, f *ir.Field, x, d, ind string) {
@@ -1292,6 +1310,7 @@ func (g *gen) emitTextWriteValue(b *strings.Builder, f *ir.Field, x, d, ind stri
 		return
 	}
 	if f.Array != ir.ArrayNone {
+		emitTextContainerCap(b, d, ind)
 		switch f.Array {
 		case ir.ArrayCounted:
 			if f.ArrayMin > 0 {
@@ -1397,12 +1416,14 @@ func (g *gen) emitTextWriteOne(b *strings.Builder, f *ir.Field, x, d, ind string
 			// checks are debug asserts only
 			fmt.Fprintf(b, "%sdebug_assert!(!matches!(%s, %s), %q);\n", ind, unparen(x), pat, "invalid_value: "+f.Name+" holds a deprecated variant")
 		}
-		fmt.Fprintf(b, "%sjson_escape(%s(%s), &mut w.out);\n", ind, fn(f.Type.Name, "json_name"), unparen(x))
+		fmt.Fprintf(b, "%sjson_escape(%s::json_name(%s), &mut w.out);\n", ind, f.Type.Name, unparen(x))
 	default:
 		if fl := isFlags(f); fl != nil {
 			// a FLAGS MASK is the array of its set bits' names, in bit order
 			// (docs/SPEC-TABLES.md §16.2); a bit no variant names has no text
 			// spelling, so the writer refuses it as the oracle does
+			// the array is a container the depth cap counts, `[]` included (§16.14 W2)
+			emitTextContainerCap(b, d, ind)
 			fmt.Fprintf(b, "%s{\n", ind)
 			fmt.Fprintf(b, "%s    const NAMES: [&str; %d] = [", ind, len(fl.Variants))
 			for i, v := range fl.Variants {
@@ -1919,7 +1940,7 @@ func (g *gen) emitTextReadScalar(b *strings.Builder, f *ir.Field, dst, in string
 		e := f.Type.Ref.(*ir.Enum)
 		fmt.Fprintf(b, "%sif jr.peek() == b'\"' {\n", in)
 		fmt.Fprintf(b, "%s    if let Some(s) = jr.read_variant_name() {\n", in)
-		fmt.Fprintf(b, "%s        %s = match %s(&s) {\n", in, dst, fn(e.Name, "from_json_name"))
+		fmt.Fprintf(b, "%s        %s = match %s::from_json_name(&s) {\n", in, dst, e.Name)
 		if pat := deprecatedPattern(e); pat != "" {
 			// a deprecated variant keeps its name and reads as the field's
 			// declared default, never unknown (docs/SPEC-TABLES.md §2.15)

@@ -1740,7 +1740,7 @@ int readMixedPickupEventBits(
 }
 
 // MixedEventType: union MixedEvent's tag — None = 0, then each variant in declared order (SPEC §4.8)
-extension type const MixedEventType(int _value) implements int {
+extension type const MixedEventType(int _value) {
   static const MixedEventType none = MixedEventType(0);
   static const MixedEventType hit = MixedEventType(1);
   static const MixedEventType chat = MixedEventType(2);
@@ -1751,7 +1751,7 @@ extension type const MixedEventType(int _value) implements int {
 // enumNameMixedEventType: debug/log/tooling name for any MixedEventType wire value —
 // out-of-set values (wire-legal up to the declared max) name as '???'
 String enumNameMixedEventType(int value) {
-  switch (value) {
+  switch (MixedEventType(value)) {
     case MixedEventType.none:
       return 'None';
     case MixedEventType.hit:
@@ -1798,9 +1798,9 @@ int writeMixedEvent(MixedEvent value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
-  assert(value.type >= 0);
-  assert(value.type <= 3);
-  v = value.type & 0x3;
+  assert((value.type as int) >= 0);
+  assert((value.type as int) <= 3);
+  v = (value.type as int) & 0x3;
   scratch |= v << scratchBits;
   scratchBits += 2;
   switch (value.type) {
@@ -2321,9 +2321,9 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
       }
     }
   }
-  assert(value.gameEvent.type >= 0);
-  assert(value.gameEvent.type <= 3);
-  v = value.gameEvent.type & 0x3;
+  assert((value.gameEvent.type as int) >= 0);
+  assert((value.gameEvent.type as int) <= 3);
+  v = (value.gameEvent.type as int) & 0x3;
   scratch |= v << scratchBits;
   scratchBits += 2;
   if (scratchBits >= 64) {

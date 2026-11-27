@@ -1616,7 +1616,7 @@ end
 -- announceRead reads one announcement into the receiver's vocabulary
 -- (docs/SPEC-TABLES.md §3.3). maxBytes is the vocabulary field's byte bound,
 -- checked from its own length before an entry is touched; maxEntries is the
--- receiver's entry capacity. Zero or nil takes the conforming defaults.
+-- receiver's entry capacity. Nil takes the conforming defaults.
 -- STRICT MODE IS OPT-IN (docs/SPEC-TABLES.md §3.3): with vocab.strict set
 -- before the first announcement, one whose build version is not the unit's
 -- own is refused `build_version_mismatch`, sets no vocabulary, keeps the
@@ -1641,7 +1641,7 @@ function M.announceRead(T, vocab, data, report, maxBytes, maxEntries)
     return false
   end
   if maxBytes == nil then maxBytes = 64 * 1024 end -- a caller 0 refuses, never the default (R9)
-  if maxEntries == nil or maxEntries == 0 then maxEntries = 4096 end
+  if maxEntries == nil then maxEntries = 4096 end
   local function damage()
     report.damaged = true
     vocab.refused = true

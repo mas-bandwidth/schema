@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // THE DESCRIPTOR (docs/SPEC-TABLES.md §8.1). Beside every table's type and
@@ -348,7 +348,12 @@ func (g *Gen) enumVariants(e *ir.Enum) string {
 		}
 		parts[i] = fmt.Sprintf("{ %q, %s, %v }", e.Variants[i], IdLit(id), deprecated)
 	}
-	return "{ " + strings.Join(parts, ", ") + " }"
+	// THE LIST CARRIES ITS TYPE: moo-analyze infers an unannotated table
+	// literal element by element and gives up on a large one ("Code is too
+	// complex to typecheck"; tblann4096's 4095-variant key enum), so the
+	// literal is asserted to the descriptor's own field type, { { any } }
+	// (schema_tables.moo, keyvs and vs).
+	return "({ " + strings.Join(parts, ", ") + " } :: { { any } })"
 }
 
 // kindClass is the wide class a kind's raw value is held in by the runtime:

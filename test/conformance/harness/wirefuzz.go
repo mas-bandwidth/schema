@@ -34,9 +34,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // wireFuzzOptions is what the command line settles.
@@ -379,6 +379,23 @@ func startWireLeg(command string, roots []*wireRoot) (*wireLeg, error) {
 	// vocabulary is a pure function of the build version and both sides
 	// derive the same one, so the roster names the form and never carries an
 	// announcement.
+	if _, err := stdin.Write(encodeWireRoster(roots)); err != nil {
+		return nil, fmt.Errorf("the leg closed its input during the roster: %w", err)
+	}
+	leg.known = make([]bool, len(roots))
+	for i := range roots {
+		b, err := leg.stdout.ReadByte()
+		if err != nil {
+			return nil, fmt.Errorf("the leg did not answer the roster: %w\n%s", err, leg.stderr.String())
+		}
+		leg.known[i] = b != 0
+	}
+	return leg, nil
+}
+
+// encodeWireRoster is the roster frame startWireLeg writes, and the one
+// the end-of-stream check (wireeof.go) sends ahead of each truncation.
+func encodeWireRoster(roots []*wireRoot) []byte {
 	var roster bytes.Buffer
 	_ = binary.Write(&roster, binary.LittleEndian, uint32(len(roots)))
 	for _, r := range roots {
@@ -400,18 +417,7 @@ func startWireLeg(command string, roots []*wireRoot) (*wireLeg, error) {
 		}
 		roster.WriteByte(retain)
 	}
-	if _, err := stdin.Write(roster.Bytes()); err != nil {
-		return nil, fmt.Errorf("the leg closed its input during the roster: %w", err)
-	}
-	leg.known = make([]bool, len(roots))
-	for i := range roots {
-		b, err := leg.stdout.ReadByte()
-		if err != nil {
-			return nil, fmt.Errorf("the leg did not answer the roster: %w\n%s", err, leg.stderr.String())
-		}
-		leg.known[i] = b != 0
-	}
-	return leg, nil
+	return roster.Bytes()
 }
 
 func (l *wireLeg) send(rootIndex int, data []byte) error {
@@ -916,15 +922,8 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 		})
 		defer timer.Stop()
 	}
-	absent := 0
-	var live []*wireSeed
-	for _, s := range seeds {
-		if leg.known[seedRoot[s]] {
-			live = append(live, s)
-		} else {
-			absent++
-		}
-	}
+	// the absent roots are named, never only counted (wirefuzz_absentnames.go)
+	live, absent, absentNames := splitLiveSeeds(seeds, seedRoot, roots, leg.known)
 	if len(live) == 0 {
 		leg.kill()
 		return fmt.Errorf("the leg has a codec for none of the %d roots the corpus names", len(roots))
@@ -1053,7 +1052,7 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 		absence = fmt.Sprintf(", shard %d/%d", opts.shard, opts.shards)
 	}
 	if absent > 0 {
-		absence += fmt.Sprintf(", %d seeds absent (roots the leg has no codec for)", absent)
+		absence += absentClause(absent, absentNames)
 	}
 	if skipped > 0 {
 		// the seeds this ARM has nothing to say about: a fixed-class root gets

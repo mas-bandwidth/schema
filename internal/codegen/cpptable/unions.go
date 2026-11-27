@@ -3,7 +3,7 @@ package cpptable
 import (
 	"fmt"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // A union whose arm is a TABLE (docs/SPEC-TABLES.md §2.6) has no packet wire,
@@ -100,7 +100,7 @@ func (g *tableGen) emitTableShapes(members []*ir.Struct, unions []*ir.Union) {
 func (g *tableGen) emitTableUnion(un *ir.Union) {
 	storage := fmt.Sprintf("uint%d_t", ir.StorageBitsFor(int64(len(un.Variants))))
 	g.pf("// %sType: union %s's tag — None = 0, then each variant in declared order (SPEC §4.8)\n", un.Name, un.Name)
-	g.pf("enum class %sType : %s {\n", un.Name, storage)
+	g.pf("enum class %sType : %s\n{\n", un.Name, storage)
 	g.pf("    None = 0,\n")
 	for i, v := range un.Variants {
 		g.pf("    %s = %d,\n", ir.GoExportName(v.Name), i+1)

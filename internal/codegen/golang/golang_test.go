@@ -8,20 +8,20 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/check"
-	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/csharp"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/dart"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/elixir"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/java"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/rust"
-	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/check"
+	cgen "github.com/mas-bandwidth/schema/v3/internal/codegen/c"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/cpp"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/csharp"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/dart"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/elixir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/java"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/js"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/rust"
+	"github.com/mas-bandwidth/schema/v3/internal/parser"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/ir"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 func countAcross(files map[string][]byte, needle string) int {
@@ -307,8 +307,8 @@ func TestUnionSurfaceEmitted(t *testing.T) {
 		expectation{"pub struct ShapeType(pub u8);", 1},
 		expectation{"pub const MAX: ShapeType = ShapeType(2);", 1},
 		expectation{"pub enum Shape {", 1},
-		expectation{"pub fn write_shape(stream: &mut WriteStream<'_>, value: &Shape) -> Result {", 1},
-		expectation{"pub fn read_shape(stream: &mut ReadStream<'_>, value: &mut Shape) -> Result {", 1},
+		expectation{"pub fn write_shape(schema_stream: &mut WriteStream<'_>, schema_value: &Shape) -> Result {", 1},
+		expectation{"pub fn read_shape(schema_stream: &mut ReadStream<'_>, schema_value: &mut Shape) -> Result {", 1},
 		expectation{"pub const SHAPE_MAX_BITS: u64 = 18;", 1})
 	csFiles, csErr := csharp.Generate(u)
 	addTarget("C#", csFiles, csErr,
@@ -401,7 +401,7 @@ func TestFlagsCountAndWireBits(t *testing.T) {
 	rustFiles, rustErr := rust.Generate(u)
 	addTarget("Rust", rustFiles, rustErr,
 		expectation{"pub const CAPS_COUNT: i64 = 4;", 1},
-		expectation{"stream.serialize_bits(&mut flags_value, 4)?;", 2})
+		expectation{"schema_stream.serialize_bits(&mut schema_flags_value, 4)?;", 2})
 	csFiles, csErr := csharp.Generate(u)
 	addTarget("C#", csFiles, csErr,
 		expectation{"public const long CapsCount = 4;", 1},

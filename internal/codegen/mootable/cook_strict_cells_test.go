@@ -28,10 +28,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/tablecook"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/internal/tablewire"
 )
 
 // plantStrictCookDefect writes one planted defect into a generated
@@ -74,7 +74,7 @@ func cookStrictCellsFails(t *testing.T, mutate func(*testing.T, *generatedUnit))
 
 	// cook-write: byte-for-byte in both orders, reread equal.
 	rows := cookWriteRows(t)
-	wfails, answered, _ := cookWriteFailures(t, rows, mutate)
+	wfails, answered, _ := cookWriteFailures(t, rows, mutate, false)
 	for _, f := range wfails {
 		fails = append(fails, "cook-write: "+f)
 	}

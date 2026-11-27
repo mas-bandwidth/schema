@@ -7,12 +7,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/check"
-	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/check"
+	"github.com/mas-bandwidth/schema/v3/internal/parser"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/ir"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 // A `bytes(N)` DESTINATION ROW IS AN ARRAY'S: dest the buffer, aux the live
@@ -363,6 +363,48 @@ fixed table LiveRoot
 	}
 	if !strings.Contains(write, "Arrays.fill") {
 		t.Fatalf("counted-array write must zero slack past the live count:\n%s", write)
+	}
+}
+
+// A COUNTED ARRAY'S OBJECT SLOTS PAST THE COUNT ARE RESET, not left holding
+// what the caller's value held. The refusal reset of load lands the defaults
+// image through scatter, so a struct slot the scatter skipped kept the
+// caller's data after a refusal (docs/SPEC-TABLES.md §6.5, THE CALLER'S VALUES
+// AFTER A REFUSAL: "no value keeps what the caller held before the call"),
+// and a reused value kept a prior record's slots after a lawful read. Java's
+// W4 row holds the generated code to it end to end; this pins the emitter.
+func TestScatterCountedArrayResetsObjectSlack(t *testing.T) {
+	files := generate(t, `package probe
+
+fixed table Cell
+{
+    id int32 = 7
+}
+
+fixed table SlackRoot
+{
+    cells [..4]Cell
+    wide  [..2]uint128
+}
+`)
+	src := string(files["SlackRootFixed.java"])
+	if src == "" {
+		t.Fatal("no SlackRootFixed.java in the generated unit")
+	}
+	scatter := methodBody(src, "boolean live, boolean checkDead)")
+	if scatter == "" {
+		t.Fatal("no scatter in SlackRootFixed.java")
+	}
+	if !strings.Contains(scatter, "= v.cellsCount; slackI") || !strings.Contains(scatter, "< v.cells.length; slackI") ||
+		!strings.Contains(scatter, "v.cells[slackI") || !strings.Contains(scatter, "].reset();") {
+		t.Fatalf("a struct slot past the count must be reset in place:\n%s", scatter)
+	}
+	// the generated source is formatted, so the call is matched with its
+	// whitespace folded
+	flat := strings.Join(strings.Fields(scatter), " ")
+	if !strings.Contains(flat, "java.util.Arrays.fill( v.wide, v.wideCount, v.wide.length, SlackRootFixed.Value.__default_wide)") &&
+		!strings.Contains(flat, "java.util.Arrays.fill(v.wide, v.wideCount, v.wide.length, SlackRootFixed.Value.__default_wide)") {
+		t.Fatalf("a 128-bit slot past the count must take the field's default:\n%s", scatter)
 	}
 }
 

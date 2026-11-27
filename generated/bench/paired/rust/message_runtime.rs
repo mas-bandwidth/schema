@@ -178,9 +178,9 @@ pub struct TableVocabulary<'a> {
 }
 
 impl<'a> TableVocabulary<'a> {
-    pub fn new(entries: &'a mut [TableMessageEntry]) -> Self {
+    pub fn new(schema_entries: &'a mut [TableMessageEntry]) -> Self {
         TableVocabulary {
-            entries,
+            entries: schema_entries,
             count: 0,
             ref_bits: 1,
             build_version: 0,
@@ -193,37 +193,37 @@ impl<'a> TableVocabulary<'a> {
 
     /// THE ENTRY a reference names, counted from 1 (§3.3): one array index, no
     /// parse and no branch. Reference 0 names no entry.
-    pub fn entry(&self, reference: u64) -> Option<&TableMessageEntry> {
-        if reference == 0 || reference > self.count as u64 {
+    pub fn entry(&self, schema_reference: u64) -> Option<&TableMessageEntry> {
+        if schema_reference == 0 || schema_reference > self.count as u64 {
             return None;
         }
-        Some(&self.entries[reference as usize - 1])
+        Some(&self.entries[schema_reference as usize - 1])
     }
 
     /// THE SEEN KEY of a reference (§3.3): the entry's id ordinal, set once at
     /// announce. An entry built by hand carries no ordinal and stands for the
     /// first slot announcing its id, found by a scan of the slots before it,
     /// so two slots naming one id share a key either way.
-    pub fn seen_key(&self, reference: u64) -> u64 {
-        let Some(e) = self.entry(reference) else {
-            return reference;
+    pub fn seen_key(&self, schema_reference: u64) -> u64 {
+        let Some(schema_e) = self.entry(schema_reference) else {
+            return schema_reference;
         };
-        if e.first != 0 {
-            return e.first as u64;
+        if schema_e.first != 0 {
+            return schema_e.first as u64;
         }
-        let before = reference as usize - 1;
-        match self.entries[..before].iter().position(|x| x.id == e.id) {
-            Some(i) => i as u64 + 1,
-            None => reference,
+        let schema_before = schema_reference as usize - 1;
+        match self.entries[..schema_before].iter().position(|schema_x| schema_x.id == schema_e.id) {
+            Some(schema_i) => schema_i as u64 + 1,
+            None => schema_reference,
         }
     }
 
     /// THE ID a NAME reference spells (§3.3): an enum's variant or a keyed
     /// slot rides as a reference to a kind-0 entry, never a reserved id.
-    pub fn name(&self, reference: u64) -> Option<u64> {
-        let e = self.entry(reference)?;
-        if e.kind == 0 && e.id < 0xffff_ffff_ffff_fffd {
-            Some(e.id)
+    pub fn name(&self, schema_reference: u64) -> Option<u64> {
+        let schema_e = self.entry(schema_reference)?;
+        if schema_e.kind == 0 && schema_e.id < 0xffff_ffff_ffff_fffd {
+            Some(schema_e.id)
         } else {
             None
         }
@@ -264,159 +264,159 @@ pub fn announce(buffer: &mut [u8]) -> i64 {
 /// first announcement was refused carries no vocabulary for its life, and every
 /// announcement after it is refused as second_announcement.
 pub fn announce_read(
-    vocabulary: &mut TableVocabulary,
+    schema_vocabulary: &mut TableVocabulary,
     data: &[u8],
-    report: &mut TableReport,
+    schema_report: &mut TableReport,
 ) -> bool {
-    if vocabulary.announced || vocabulary.refused {
-        return report.refuse(TableReason::SecondAnnouncement);
+    if schema_vocabulary.announced || schema_vocabulary.refused {
+        return schema_report.refuse(TableReason::SecondAnnouncement);
     }
-    let ok = announce_read_once(vocabulary, data, report);
+    let ok = announce_read_once(schema_vocabulary, data, schema_report);
     if !ok {
-        vocabulary.refused = true;
+        schema_vocabulary.refused = true;
     }
     ok
 }
 
 fn announce_read_once(
-    vocabulary: &mut TableVocabulary,
+    schema_vocabulary: &mut TableVocabulary,
     data: &[u8],
-    report: &mut TableReport,
+    schema_report: &mut TableReport,
 ) -> bool {
     if data.is_empty() {
-        report.damaged = true;
+        schema_report.damaged = true;
         return false;
     }
     // "the FORM BYTE is a whole byte and is read FIRST" (§3.3): a form this
     // reader does not carry is a refusal by name and never damage.
     if data[0] != TABLE_WIRE_FORM {
-        return report.refuse(if data[0] == TABLE_WIRE_MESSAGE_FORM {
+        return schema_report.refuse(if data[0] == TABLE_WIRE_MESSAGE_FORM {
             TableReason::MessageFormAsFile
         } else {
             TableReason::NewerForm
         });
     }
     if data.len() < 9 {
-        report.damaged = true;
+        schema_report.damaged = true;
         return false;
     }
     // the trailer: a run of u64 ids and a u64 count at the very end (§3.3)
-    let trailer_count = read_u64(data, data.len() - 8);
-    if trailer_count > ((data.len() - 9) / 8) as u64 {
-        report.damaged = true;
+    let schema_trailer_count = read_u64(data, data.len() - 8);
+    if schema_trailer_count > ((data.len() - 9) / 8) as u64 {
+        schema_report.damaged = true;
         return false;
     }
     // "THE DISTINCTNESS CHECK IS BOUNDED WORK, and the bound is a format
     // fact" (§3): the announcement is an ordinary form-1 FILE, so a reader
     // refuses an id table over 4096 whatever the buffer would hold, before any
     // distinctness work.
-    if trailer_count > ID_TABLE_PROBE_BOUND as u64 {
-        report.damaged = true;
+    if schema_trailer_count > ID_TABLE_PROBE_BOUND as u64 {
+        schema_report.damaged = true;
         return false;
     }
-    let end = data.len() - 8 - (trailer_count * 8) as usize;
+    let end = data.len() - 8 - (schema_trailer_count * 8) as usize;
     // "a table carrying one id twice" is the whole wire malformed (§3.3),
     // proved with the open-addressing probe over a fixed 8192-slot stack table
     // rather than a pairwise scan (§3).
-    let mut probe_slots = [0u64; ID_TABLE_PROBE_SLOTS];
-    let mut probe_used = [0u64; ID_TABLE_PROBE_SLOTS / 64];
-    for i in 0..trailer_count as usize {
-        let id = read_u64(data, end + i * 8);
-        let mut h = ((id.wrapping_mul(0x9e3779b97f4a7c15) >> 51) as usize) & (ID_TABLE_PROBE_SLOTS - 1);
+    let mut schema_probe_slots = [0u64; ID_TABLE_PROBE_SLOTS];
+    let mut schema_probe_used = [0u64; ID_TABLE_PROBE_SLOTS / 64];
+    for schema_i in 0..schema_trailer_count as usize {
+        let id = read_u64(data, end + schema_i * 8);
+        let mut schema_h = ((id.wrapping_mul(0x9e3779b97f4a7c15) >> 51) as usize) & (ID_TABLE_PROBE_SLOTS - 1);
         loop {
-            let bit = 1u64 << (h & 63);
-            if (probe_used[h >> 6] & bit) == 0 {
-                probe_used[h >> 6] |= bit;
-                probe_slots[h] = id;
+            let schema_bit = 1u64 << (schema_h & 63);
+            if (schema_probe_used[schema_h >> 6] & schema_bit) == 0 {
+                schema_probe_used[schema_h >> 6] |= schema_bit;
+                schema_probe_slots[schema_h] = id;
                 break;
             }
-            if probe_slots[h] == id {
-                report.damaged = true;
+            if schema_probe_slots[schema_h] == id {
+                schema_report.damaged = true;
                 return false;
             }
-            h = (h + 1) & (ID_TABLE_PROBE_SLOTS - 1);
+            schema_h = (schema_h + 1) & (ID_TABLE_PROBE_SLOTS - 1);
         }
     }
-    let body = &data[1..end];
+    let schema_body = &data[1..end];
     // THE ANNOUNCEMENT READS TOLERANTLY, WITH EXACTLY TWO STRICT CHECKS (§3.3):
     // the build version present, exactly once, kind 9, eight bytes wide, and
     // the vocabulary present, exactly once, kind 14 over element kind 6. A
     // FAILED STRICT CHECK IS MALFORMED, not a refusal.
-    let mut at = 0usize;
-    let mut versions = 0u32;
-    let mut vocabularies = 0u32;
-    let mut terminated = false;
-    let mut vocabulary_bytes: &[u8] = &[];
-    let mut seen_refs = [0u64; ID_TABLE_PROBE_BOUND / 64];
-    let mut next_ref = 1u64;
-    let mut non_finite = false;
-    while at < body.len() {
-        let (reference, ok) = read_leb(body, &mut at);
+    let mut schema_at = 0usize;
+    let mut schema_versions = 0u32;
+    let mut schema_vocabularies = 0u32;
+    let mut schema_terminated = false;
+    let mut schema_vocabulary_bytes: &[u8] = &[];
+    let mut schema_seen_refs = [0u64; ID_TABLE_PROBE_BOUND / 64];
+    let mut schema_next_ref = 1u64;
+    let mut schema_non_finite = false;
+    while schema_at < schema_body.len() {
+        let (schema_reference, ok) = read_leb(schema_body, &mut schema_at);
         if !ok {
-            report.damaged = true;
+            schema_report.damaged = true;
             return false;
         }
-        if reference == 0 {
-            terminated = true;
+        if schema_reference == 0 {
+            schema_terminated = true;
             // "Any byte between the root's terminator and the table's first
             // entry is malformed, because no field claims it and the two ends
             // of the file have met" (§3). The terminator ends the body, so the
             // cursor must be at the body's end.
-            if at != body.len() {
-                report.damaged = true;
+            if schema_at != schema_body.len() {
+                schema_report.damaged = true;
                 return false;
             }
             break;
         }
-        if reference > trailer_count || reference > next_ref || at >= body.len() {
-            report.damaged = true;
+        if schema_reference > schema_trailer_count || schema_reference > schema_next_ref || schema_at >= schema_body.len() {
+            schema_report.damaged = true;
             return false;
         }
-        if reference == next_ref {
-            next_ref += 1;
+        if schema_reference == schema_next_ref {
+            schema_next_ref += 1;
         }
-        let ridx = (reference - 1) as usize;
-        let rbit = 1u64 << (ridx & 63);
-        if (seen_refs[ridx >> 6] & rbit) != 0 {
-            report.damaged = true;
+        let schema_ridx = (schema_reference - 1) as usize;
+        let schema_rbit = 1u64 << (schema_ridx & 63);
+        if (schema_seen_refs[schema_ridx >> 6] & schema_rbit) != 0 {
+            schema_report.damaged = true;
             return false;
         }
-        seen_refs[ridx >> 6] |= rbit;
-        let id = read_u64(data, end + ridx * 8);
-        let kind = body[at];
-        at += 1;
+        schema_seen_refs[schema_ridx >> 6] |= schema_rbit;
+        let id = read_u64(data, end + schema_ridx * 8);
+        let schema_kind = schema_body[schema_at];
+        schema_at += 1;
         if id == TABLE_BUILD_VERSION_FIELD_ID {
-            if kind != 9 || at + 8 > body.len() {
-                report.damaged = true;
+            if schema_kind != 9 || schema_at + 8 > schema_body.len() {
+                schema_report.damaged = true;
                 return false;
             }
             // "THE BUILD VERSION IS KEPT THE MOMENT IT IS READ, refusal or not"
             // (§3.3): it is not the vocabulary, and a refused announcement
             // still sets none.
-            vocabulary.build_version = read_u64(body, at);
-            at += 8;
-            versions += 1;
+            schema_vocabulary.build_version = read_u64(schema_body, schema_at);
+            schema_at += 8;
+            schema_versions += 1;
         } else if id == TABLE_MESSAGE_VOCABULARY_FIELD_ID {
-            if kind != 14 {
-                report.damaged = true;
+            if schema_kind != 14 {
+                schema_report.damaged = true;
                 return false;
             }
-            let (framed, ok) = read_leb(body, &mut at);
-            if !ok || at > body.len() || framed > (body.len() - at) as u64 {
-                report.damaged = true;
+            let (schema_framed, ok) = read_leb(schema_body, &mut schema_at);
+            if !ok || schema_at > schema_body.len() || schema_framed > (schema_body.len() - schema_at) as u64 {
+                schema_report.damaged = true;
                 return false;
             }
-            let begin = at;
-            let end_at = at + framed as usize;
-            at = end_at;
-            if begin >= end_at || body[begin] != 6 {
-                report.damaged = true;
+            let begin = schema_at;
+            let schema_end_at = schema_at + schema_framed as usize;
+            schema_at = schema_end_at;
+            if begin >= schema_end_at || schema_body[begin] != 6 {
+                schema_report.damaged = true;
                 return false;
             }
-            let mut vat = begin + 1;
-            let (length, ok) = read_leb(body, &mut vat);
-            if !ok || vat > end_at || length != (end_at - vat) as u64 {
-                report.damaged = true;
+            let mut schema_vat = begin + 1;
+            let (schema_length, ok) = read_leb(schema_body, &mut schema_vat);
+            if !ok || schema_vat > schema_end_at || schema_length != (schema_end_at - schema_vat) as u64 {
+                schema_report.damaged = true;
                 return false;
             }
             // "A VOCABULARY PAST A BOUND IS REFUSED BEFORE ANYTHING IS
@@ -424,136 +424,136 @@ fn announce_read_once(
             // length before an entry is touched.
             // A caller bound of 0 refuses every non-empty vocabulary: it never
             // means the default (rulings 2026-11-22, R9).
-            if length > vocabulary.max_bytes as u64 {
-                return report.refuse(TableReason::VocabularyTooLarge);
+            if schema_length > schema_vocabulary.max_bytes as u64 {
+                return schema_report.refuse(TableReason::VocabularyTooLarge);
             }
-            vocabulary_bytes = &body[vat..vat + length as usize];
-            vocabularies += 1;
+            schema_vocabulary_bytes = &schema_body[schema_vat..schema_vat + schema_length as usize];
+            schema_vocabularies += 1;
         } else {
             if id == TABLE_NODE_TABLE_ID {
-                report.damaged = true;
+                schema_report.damaged = true;
                 return false;
             }
             // "Every other field of its body is ordinary and strict, so an
             // unknown one is skipped and counted" (§3.3).
-            report.unknown += 1;
-            if !skip_field(body, &mut at, kind, trailer_count, &mut next_ref, &mut non_finite, 0) {
-                report.damaged = true;
+            schema_report.unknown += 1;
+            if !skip_field(schema_body, &mut schema_at, schema_kind, schema_trailer_count, &mut schema_next_ref, &mut schema_non_finite, 0) {
+                schema_report.damaged = true;
                 return false;
             }
         }
     }
-    if !terminated || next_ref - 1 != trailer_count || versions != 1 || vocabularies != 1 {
-        report.damaged = true;
+    if !schema_terminated || schema_next_ref - 1 != schema_trailer_count || schema_versions != 1 || schema_vocabularies != 1 {
+        schema_report.damaged = true;
         return false;
     }
-    if non_finite {
-        return report.refuse(TableReason::NonFiniteFloat);
+    if schema_non_finite {
+        return schema_report.refuse(TableReason::NonFiniteFloat);
     }
     // "STRICT MODE IS OPT-IN, and the default is unchanged" (§3.3).
-    if vocabulary.strict && vocabulary.build_version != BUILD_VERSION {
-        report.build_version_remote = vocabulary.build_version;
-        report.build_version_own = BUILD_VERSION;
-        return report.refuse(TableReason::BuildVersionMismatch);
+    if schema_vocabulary.strict && schema_vocabulary.build_version != BUILD_VERSION {
+        schema_report.build_version_remote = schema_vocabulary.build_version;
+        schema_report.build_version_own = BUILD_VERSION;
+        return schema_report.refuse(TableReason::BuildVersionMismatch);
     }
     // THE ENTRIES, resolved once into the caller's storage (§3.3): every width
     // is checked here and never again. An entry count above the caller's
     // capacity is refused by name before the entry is touched.
-    let mut at = 0usize;
-    let mut count = 0usize;
-    let mut node_seen = false;
-    while at < vocabulary_bytes.len() {
-        if count >= vocabulary.entries.len() {
-            return report.refuse(TableReason::VocabularyTooLarge);
+    let mut schema_at = 0usize;
+    let mut schema_count = 0usize;
+    let mut schema_node_seen = false;
+    while schema_at < schema_vocabulary_bytes.len() {
+        if schema_count >= schema_vocabulary.entries.len() {
+            return schema_report.refuse(TableReason::VocabularyTooLarge);
         }
-        let began = at;
-        let (entry, ok) = read_entry(vocabulary_bytes, &mut at);
+        let schema_began = schema_at;
+        let (schema_entry, ok) = read_entry(schema_vocabulary_bytes, &mut schema_at);
         if !ok {
-            report.damaged = true;
+            schema_report.damaged = true;
             return false;
         }
         // THE TWO RESERVED IDS OF THE ANNOUNCEMENT ITSELF ARE NOT IN THE
         // VOCABULARY (§3.3), and the node-table id takes exactly one slot.
-        if entry.id == TABLE_BUILD_VERSION_FIELD_ID || entry.id == TABLE_MESSAGE_VOCABULARY_FIELD_ID {
-            report.damaged = true;
+        if schema_entry.id == TABLE_BUILD_VERSION_FIELD_ID || schema_entry.id == TABLE_MESSAGE_VOCABULARY_FIELD_ID {
+            schema_report.damaged = true;
             return false;
         }
-        if entry.id == TABLE_NODE_TABLE_ID {
-            if node_seen {
-                report.damaged = true;
+        if schema_entry.id == TABLE_NODE_TABLE_ID {
+            if schema_node_seen {
+                schema_report.damaged = true;
                 return false;
             }
-            node_seen = true;
+            schema_node_seen = true;
         }
         // "A TRIPLE ALREADY PLACED IS NEVER PLACED TWICE" (§3.3): byte equality
         // is declared-fact equality, and a repeated is malformed.
         {
-            let (filled, rest) = vocabulary.entries.split_at_mut(count);
-            for other in filled.iter() {
-                let other_len = (other.shape.max - other.shape.min) as usize;
-                if other_len == at - began
-                    && vocabulary_bytes[other.shape.min as usize..other.shape.max as usize]
-                        == vocabulary_bytes[began..at]
+            let (schema_filled, schema_rest) = schema_vocabulary.entries.split_at_mut(schema_count);
+            for schema_other in schema_filled.iter() {
+                let schema_other_len = (schema_other.shape.max - schema_other.shape.min) as usize;
+                if schema_other_len == schema_at - schema_began
+                    && schema_vocabulary_bytes[schema_other.shape.min as usize..schema_other.shape.max as usize]
+                        == schema_vocabulary_bytes[schema_began..schema_at]
                 {
-                    report.damaged = true;
+                    schema_report.damaged = true;
                     return false;
                 }
             }
-            let slot = &mut rest[0];
-            *slot = entry;
+            let schema_slot = &mut schema_rest[0];
+            *schema_slot = schema_entry;
             // the byte extent parks in min/max until the second pass resolves it
-            slot.shape.min = began as u64;
-            slot.shape.max = at as u64;
+            schema_slot.shape.min = schema_began as u64;
+            schema_slot.shape.max = schema_at as u64;
         }
-        count += 1;
+        schema_count += 1;
     }
     // the second pass: resolve every entry in place over bytes already accepted
-    let mut at = 0usize;
-    for slot in &mut vocabulary.entries[..count] {
-        let (entry, ok) = read_entry(vocabulary_bytes, &mut at);
+    let mut schema_at = 0usize;
+    for schema_slot in &mut schema_vocabulary.entries[..schema_count] {
+        let (schema_entry, ok) = read_entry(schema_vocabulary_bytes, &mut schema_at);
         if !ok {
-            report.damaged = true;
+            schema_report.damaged = true;
             return false;
         }
-        *slot = entry;
+        *schema_slot = schema_entry;
     }
     // EACH ID's ORDINAL, once per connection (§3.3): a body's repeat test
     // is then one bit per id, whichever slot names it. The scan is quadratic
     // in the entry count, once per announcement, as the triple test above is.
-    let mut ordinals = 0u32;
-    for i in 0..count {
-        let (before, rest) = vocabulary.entries.split_at_mut(i);
-        let id = rest[0].id;
-        rest[0].first = match before.iter().find(|e| e.id == id) {
-            Some(e) => e.first,
+    let mut schema_ordinals = 0u32;
+    for schema_i in 0..schema_count {
+        let (schema_before, schema_rest) = schema_vocabulary.entries.split_at_mut(schema_i);
+        let id = schema_rest[0].id;
+        schema_rest[0].first = match schema_before.iter().find(|schema_e| schema_e.id == id) {
+            Some(schema_e) => schema_e.first,
             None => {
-                ordinals += 1;
-                ordinals
+                schema_ordinals += 1;
+                schema_ordinals
             }
         };
     }
-    vocabulary.count = count;
-    vocabulary.ref_bits = bits_required(count);
-    vocabulary.announced = true;
+    schema_vocabulary.count = schema_count;
+    schema_vocabulary.ref_bits = bits_required(schema_count);
+    schema_vocabulary.announced = true;
     true
 }
 
 // ---- the wire reader --------------------------------------------------------
 
-fn read_u64(bytes: &[u8], at: usize) -> u64 {
-    let mut v = 0u64;
-    for i in 0..8 {
-        v |= (bytes[at + i] as u64) << (8 * i);
+fn read_u64(bytes: &[u8], schema_at: usize) -> u64 {
+    let mut schema_v = 0u64;
+    for schema_i in 0..8 {
+        schema_v |= (bytes[schema_at + schema_i] as u64) << (8 * schema_i);
     }
-    v
+    schema_v
 }
 
-fn read_u32(bytes: &[u8], at: usize) -> u32 {
-    let mut v = 0u32;
-    for i in 0..4 {
-        v |= (bytes[at + i] as u32) << (8 * i);
+fn read_u32(bytes: &[u8], schema_at: usize) -> u32 {
+    let mut schema_v = 0u32;
+    for schema_i in 0..4 {
+        schema_v |= (bytes[schema_at + schema_i] as u32) << (8 * schema_i);
     }
-    v
+    schema_v
 }
 
 /// A canonical LEB128, the announcement's own integer: the announcement is a
@@ -562,58 +562,58 @@ fn read_u32(bytes: &[u8], at: usize) -> u32 {
 /// rule" (docs/SPEC-TABLES.md:3707), so the tenth byte may carry only the
 /// 64th value bit: shift 63 with a byte past 0x01 is a bit past it and is
 /// refused.
-fn read_leb(bytes: &[u8], at: &mut usize) -> (u64, bool) {
-    let mut value = 0u64;
-    let mut shift = 0u32;
-    while *at < bytes.len() {
-        let b = bytes[*at];
-        *at += 1;
-        if shift >= 64 {
+fn read_leb(bytes: &[u8], schema_at: &mut usize) -> (u64, bool) {
+    let mut schema_value = 0u64;
+    let mut schema_shift = 0u32;
+    while *schema_at < bytes.len() {
+        let schema_b = bytes[*schema_at];
+        *schema_at += 1;
+        if schema_shift >= 64 {
             return (0, false);
         }
-        if shift == 63 && b > 1 {
+        if schema_shift == 63 && schema_b > 1 {
             return (0, false);
         }
-        value |= ((b & 0x7f) as u64) << shift;
-        if b & 0x80 == 0 {
-            return if shift > 0 && b == 0 {
+        schema_value |= ((schema_b & 0x7f) as u64) << schema_shift;
+        if schema_b & 0x80 == 0 {
+            return if schema_shift > 0 && schema_b == 0 {
                 (0, false)
             } else {
-                (value, true)
+                (schema_value, true)
             };
         }
-        shift += 7;
+        schema_shift += 7;
     }
     (0, false)
 }
 
 /// bits_required(0, count), the width of a reference into a count-entry
 /// vocabulary (§3.3): one bit even for a vocabulary of no entries.
-fn bits_required(count: usize) -> u32 {
-    if count == 0 {
+fn bits_required(schema_count: usize) -> u32 {
+    if schema_count == 0 {
         return 1;
     }
-    64 - (count as u64).leading_zeros()
+    64 - (schema_count as u64).leading_zeros()
 }
 
 /// 31 is held by name and never written (R17): an announcement naming it is
 /// malformed, as one naming 33 or 34 is.
-fn known_kind(kind: u8) -> bool {
-    kind == 0 || (1..=17).contains(&kind) || (18..=29).contains(&kind) || kind == 30 || kind == 32 || kind == 36
+fn known_kind(schema_kind: u8) -> bool {
+    schema_kind == 0 || (1..=17).contains(&schema_kind) || (18..=29).contains(&schema_kind) || schema_kind == 30 || schema_kind == 32 || schema_kind == 36
 }
 
-fn integer_kind(kind: u8) -> bool {
-    (2..=9).contains(&kind) || kind == 18 || kind == 19
+fn integer_kind(schema_kind: u8) -> bool {
+    (2..=9).contains(&schema_kind) || schema_kind == 18 || schema_kind == 19
 }
 
-fn fixed_kind(kind: u8) -> bool {
-    (20..=29).contains(&kind)
+fn fixed_kind(schema_kind: u8) -> bool {
+    (20..=29).contains(&schema_kind)
 }
 
 /// The widest ranged value a kind can carry, its own storage width (§3.3): a
 /// width above it is a hostile width on the announcement.
-fn kind_bits(kind: u8) -> u64 {
-    match kind {
+fn kind_bits(schema_kind: u8) -> u64 {
+    match schema_kind {
         2 | 6 | 20 | 25 => 8,
         3 | 7 | 21 | 26 => 16,
         4 | 8 | 22 | 27 => 32,
@@ -625,60 +625,60 @@ fn kind_bits(kind: u8) -> u64 {
 /// SPEC.md §4.3's compressed-float derivation, in float32 and by nothing else
 /// (§3.3): the step count, the delta and the width. False is a non-conforming
 /// triple, which on the announcement is a hostile width.
-fn quantization(qmin: f32, qmax: f32, qres: f32) -> (u32, f32, u64, bool) {
-    if !qmin.is_finite() || !qmax.is_finite() || !qres.is_finite() || qmin >= qmax || qres <= 0.0 {
+fn quantization(schema_qmin: f32, schema_qmax: f32, schema_qres: f32) -> (u32, f32, u64, bool) {
+    if !schema_qmin.is_finite() || !schema_qmax.is_finite() || !schema_qres.is_finite() || schema_qmin >= schema_qmax || schema_qres <= 0.0 {
         return (0, 0.0, 0, false);
     }
-    let delta = qmax - qmin;
-    let mut values = delta / qres;
-    if !delta.is_finite() || !values.is_finite() {
+    let schema_delta = schema_qmax - schema_qmin;
+    let mut schema_values = schema_delta / schema_qres;
+    if !schema_delta.is_finite() || !schema_values.is_finite() {
         return (0, 0.0, 0, false);
     }
-    if values.is_nan() || values < 1.0 {
-        values = 1.0;
-    } else if values > 4294967040.0 {
-        values = 4294967040.0;
+    if schema_values.is_nan() || schema_values < 1.0 {
+        schema_values = 1.0;
+    } else if schema_values > 4294967040.0 {
+        schema_values = 4294967040.0;
     }
-    let count = values as u32;
-    let count = if (count as f32) < values { count + 1 } else { count };
-    let bits = if count == 0 {
+    let schema_count = schema_values as u32;
+    let schema_count = if (schema_count as f32) < schema_values { schema_count + 1 } else { schema_count };
+    let bits = if schema_count == 0 {
         0u64
     } else {
-        64u64 - (count as u64).leading_zeros() as u64
+        64u64 - (schema_count as u64).leading_zeros() as u64
     };
-    (count, delta, bits, true)
+    (schema_count, schema_delta, bits, true)
 }
 
 /// ONE entry: an id, a kind and the shape the kind names (§3.3). False is a
 /// HOSTILE SHAPE — bits above the kind's own domain, an array whose min
 /// exceeds its max, an element kind outside the closed set, a non-conforming
 /// quantized triple, or a shape running past the vocabulary's own bytes.
-fn read_entry(bytes: &[u8], at: &mut usize) -> (TableMessageEntry, bool) {
-    let mut e = TableMessageEntry::default();
-    if *at + 9 > bytes.len() {
-        return (e, false);
+fn read_entry(bytes: &[u8], schema_at: &mut usize) -> (TableMessageEntry, bool) {
+    let mut schema_e = TableMessageEntry::default();
+    if *schema_at + 9 > bytes.len() {
+        return (schema_e, false);
     }
-    e.id = read_u64(bytes, *at);
-    e.kind = bytes[*at + 8];
-    *at += 9;
-    if !known_kind(e.kind) {
-        return (e, false);
+    schema_e.id = read_u64(bytes, *schema_at);
+    schema_e.kind = bytes[*schema_at + 8];
+    *schema_at += 9;
+    if !known_kind(schema_e.kind) {
+        return (schema_e, false);
     }
-    let (shape, ok) = read_shape(bytes, at, e.kind);
+    let (schema_shape, ok) = read_shape(bytes, schema_at, schema_e.kind);
     if !ok {
-        return (e, false);
+        return (schema_e, false);
     }
-    e.shape = shape;
+    schema_e.shape = schema_shape;
     // "The ELEMENT's own facts ride beside the field's" (§3.3): an array's
     // element is the one nesting this wire has.
-    if e.kind == 14 || e.kind == 16 {
-        let (element, ok) = read_shape(bytes, at, e.shape.elem);
+    if schema_e.kind == 14 || schema_e.kind == 16 {
+        let (schema_element, ok) = read_shape(bytes, schema_at, schema_e.shape.elem);
         if !ok {
-            return (e, false);
+            return (schema_e, false);
         }
-        e.element = element;
+        schema_e.element = schema_element;
     }
-    (e, true)
+    (schema_e, true)
 }
 
 /// ONE shape, by the kind that names it (§3.3's shape table). Every number in
@@ -686,140 +686,140 @@ fn read_entry(bytes: &[u8], at: &mut usize) -> (TableMessageEntry, bool) {
 /// is encoded by its kind's signedness — zigzag for the signed kinds, unsigned
 /// for the unsigned kinds, sixteen bytes for the 128-bit and fixed-point kinds —
 /// and a QUANTIZED f32 carries min, max and res as float32.
-fn read_shape(bytes: &[u8], at: &mut usize, kind: u8) -> (TableMessageShape, bool) {
-    let mut s = TableMessageShape::default();
-    if integer_kind(kind) || fixed_kind(kind) || kind == 10 {
-        if *at >= bytes.len() {
-            return (s, false);
+fn read_shape(bytes: &[u8], schema_at: &mut usize, schema_kind: u8) -> (TableMessageShape, bool) {
+    let mut schema_s = TableMessageShape::default();
+    if integer_kind(schema_kind) || fixed_kind(schema_kind) || schema_kind == 10 {
+        if *schema_at >= bytes.len() {
+            return (schema_s, false);
         }
-        s.packing = bytes[*at];
-        *at += 1;
-        if s.packing == 0 {
-            return (s, true);
+        schema_s.packing = bytes[*schema_at];
+        *schema_at += 1;
+        if schema_s.packing == 0 {
+            return (schema_s, true);
         }
-        if s.packing == 1 && kind != 10 {
-            let (v, ok) = read_leb(bytes, at);
-            if !ok || v > kind_bits(kind) {
-                return (s, false);
+        if schema_s.packing == 1 && schema_kind != 10 {
+            let (schema_v, ok) = read_leb(bytes, schema_at);
+            if !ok || schema_v > kind_bits(schema_kind) {
+                return (schema_s, false);
             }
-            s.bits = v;
-            if kind == 18 || kind == 19 || fixed_kind(kind) {
-                if *at + 16 > bytes.len() {
-                    return (s, false);
+            schema_s.bits = schema_v;
+            if schema_kind == 18 || schema_kind == 19 || fixed_kind(schema_kind) {
+                if *schema_at + 16 > bytes.len() {
+                    return (schema_s, false);
                 }
-                s.base_lo = read_u64(bytes, *at);
-                s.base_hi = read_u64(bytes, *at + 8);
-                *at += 16;
-                if (20..=23).contains(&kind) {
-                    let sblo = s.base_lo as i64;
-                    let whi = if sblo < 0 { u64::MAX } else { 0 };
-                    if s.base_hi != whi {
-                        return (s, false);
+                schema_s.base_lo = read_u64(bytes, *schema_at);
+                schema_s.base_hi = read_u64(bytes, *schema_at + 8);
+                *schema_at += 16;
+                if (20..=23).contains(&schema_kind) {
+                    let schema_sblo = schema_s.base_lo as i64;
+                    let schema_whi = if schema_sblo < 0 { u64::MAX } else { 0 };
+                    if schema_s.base_hi != schema_whi {
+                        return (schema_s, false);
                     }
-                    if kind < 23 {
-                        let dom = kind_bits(kind);
-                        let mn = -(1i64 << (dom - 1));
-                        let mx = (1i64 << (dom - 1)) - 1;
-                        if sblo < mn || sblo > mx {
-                            return (s, false);
+                    if schema_kind < 23 {
+                        let schema_dom = kind_bits(schema_kind);
+                        let schema_mn = -(1i64 << (schema_dom - 1));
+                        let schema_mx = (1i64 << (schema_dom - 1)) - 1;
+                        if schema_sblo < schema_mn || schema_sblo > schema_mx {
+                            return (schema_s, false);
                         }
                     }
-                } else if (25..=28).contains(&kind) {
-                    if s.base_hi != 0 {
-                        return (s, false);
+                } else if (25..=28).contains(&schema_kind) {
+                    if schema_s.base_hi != 0 {
+                        return (schema_s, false);
                     }
-                    if kind < 28 {
-                        let dom = kind_bits(kind);
-                        if s.base_lo > (1u64 << dom) - 1 {
-                            return (s, false);
+                    if schema_kind < 28 {
+                        let schema_dom = kind_bits(schema_kind);
+                        if schema_s.base_lo > (1u64 << schema_dom) - 1 {
+                            return (schema_s, false);
                         }
                     }
                 }
-                return (s, true);
+                return (schema_s, true);
             }
-            let (v, ok) = read_leb(bytes, at);
+            let (schema_v, ok) = read_leb(bytes, schema_at);
             if !ok {
-                return (s, false);
+                return (schema_s, false);
             }
-            if (2..=5).contains(&kind) {
-                s.base_lo = (v >> 1) ^ (0u64.wrapping_sub(v & 1));
-                if kind < 5 {
-                    let dom = kind_bits(kind);
-                    let mn = -(1i64 << (dom - 1));
-                    let mx = (1i64 << (dom - 1)) - 1;
-                    let sblo = s.base_lo as i64;
-                    if sblo < mn || sblo > mx {
-                        return (s, false);
+            if (2..=5).contains(&schema_kind) {
+                schema_s.base_lo = (schema_v >> 1) ^ (0u64.wrapping_sub(schema_v & 1));
+                if schema_kind < 5 {
+                    let schema_dom = kind_bits(schema_kind);
+                    let schema_mn = -(1i64 << (schema_dom - 1));
+                    let schema_mx = (1i64 << (schema_dom - 1)) - 1;
+                    let schema_sblo = schema_s.base_lo as i64;
+                    if schema_sblo < schema_mn || schema_sblo > schema_mx {
+                        return (schema_s, false);
                     }
                 }
             } else {
-                s.base_lo = v;
-                if kind < 9 {
-                    let dom = kind_bits(kind);
-                    if s.base_lo > (1u64 << dom) - 1 {
-                        return (s, false);
+                schema_s.base_lo = schema_v;
+                if schema_kind < 9 {
+                    let schema_dom = kind_bits(schema_kind);
+                    if schema_s.base_lo > (1u64 << schema_dom) - 1 {
+                        return (schema_s, false);
                     }
                 }
             }
-            return (s, true);
+            return (schema_s, true);
         }
-        if s.packing == 2 && kind == 10 {
-            if *at + 12 > bytes.len() {
-                return (s, false);
+        if schema_s.packing == 2 && schema_kind == 10 {
+            if *schema_at + 12 > bytes.len() {
+                return (schema_s, false);
             }
-            let qmin = f32::from_bits(read_u32(bytes, *at));
-            let qmax = f32::from_bits(read_u32(bytes, *at + 4));
-            let qres = f32::from_bits(read_u32(bytes, *at + 8));
-            *at += 12;
-            let (qcount, qdelta, bits, ok) = quantization(qmin, qmax, qres);
+            let schema_qmin = f32::from_bits(read_u32(bytes, *schema_at));
+            let schema_qmax = f32::from_bits(read_u32(bytes, *schema_at + 4));
+            let schema_qres = f32::from_bits(read_u32(bytes, *schema_at + 8));
+            *schema_at += 12;
+            let (schema_qcount, schema_qdelta, bits, ok) = quantization(schema_qmin, schema_qmax, schema_qres);
             if !ok {
-                return (s, false);
+                return (schema_s, false);
             }
-            s.qmin = qmin;
-            s.qdelta = qdelta;
-            s.qcount = qcount;
-            s.bits = bits;
-            return (s, true);
+            schema_s.qmin = schema_qmin;
+            schema_s.qdelta = schema_qdelta;
+            schema_s.qcount = schema_qcount;
+            schema_s.bits = bits;
+            return (schema_s, true);
         }
-        return (s, false); // a packing outside the closed set
+        return (schema_s, false); // a packing outside the closed set
     }
-    if kind == 12 {
-        let (v, ok) = read_leb(bytes, at);
-        if !ok || v > i32::MAX as u64 {
-            return (s, false);
+    if schema_kind == 12 {
+        let (schema_v, ok) = read_leb(bytes, schema_at);
+        if !ok || schema_v > i32::MAX as u64 {
+            return (schema_s, false);
         }
-        s.max = v;
-        return (s, true);
+        schema_s.max = schema_v;
+        return (schema_s, true);
     }
-    if kind == 14 || kind == 16 {
-        if kind == 14 {
-            let (v, ok) = read_leb(bytes, at);
-            if !ok || v > 0xffff_ffff {
-                return (s, false);
+    if schema_kind == 14 || schema_kind == 16 {
+        if schema_kind == 14 {
+            let (schema_v, ok) = read_leb(bytes, schema_at);
+            if !ok || schema_v > 0xffff_ffff {
+                return (schema_s, false);
             }
-            s.min = v;
+            schema_s.min = schema_v;
         }
-        let (v, ok) = read_leb(bytes, at);
-        if !ok || v > 0xffff_ffff || v < s.min {
-            return (s, false);
+        let (schema_v, ok) = read_leb(bytes, schema_at);
+        if !ok || schema_v > 0xffff_ffff || schema_v < schema_s.min {
+            return (schema_s, false);
         }
-        s.max = v;
-        if *at >= bytes.len() {
-            return (s, false);
+        schema_s.max = schema_v;
+        if *schema_at >= bytes.len() {
+            return (schema_s, false);
         }
-        s.elem = bytes[*at];
-        *at += 1;
+        schema_s.elem = bytes[*schema_at];
+        *schema_at += 1;
         // THE ELEMENT KINDS ARE CLOSED, one list per body kind (§3.3): an
         // array of strings rides element kind 12 and is walked, while no
         // declaration produces an array or a keyed body as an element, so
         // those are damage here at the announcement.
-        let listed = known_kind(s.elem) && s.elem != 14 && s.elem != 16;
-        if !listed {
-            return (s, false);
+        let schema_listed = known_kind(schema_s.elem) && schema_s.elem != 14 && schema_s.elem != 16;
+        if !schema_listed {
+            return (schema_s, false);
         }
-        return (s, true);
+        return (schema_s, true);
     }
-    (s, true)
+    (schema_s, true)
 }
 
 /// A strict skip of an UNKNOWN field by its kind (§3.3): the ordinary
@@ -834,197 +834,197 @@ fn read_shape(bytes: &[u8], at: &mut usize, kind: u8) -> (TableMessageShape, boo
 /// (R17), so it too is damage here (§3).
 fn skip_field(
     bytes: &[u8],
-    at: &mut usize,
-    kind: u8,
-    id_count: u64,
-    next_ref: &mut u64,
-    non_finite: &mut bool,
-    depth: u32,
+    schema_at: &mut usize,
+    schema_kind: u8,
+    schema_id_count: u64,
+    schema_next_ref: &mut u64,
+    schema_non_finite: &mut bool,
+    schema_depth: u32,
 ) -> bool {
-    if depth > 128 {
+    if schema_depth > 128 {
         return false;
     }
-    match kind {
+    match schema_kind {
         1 => {
-            if *at >= bytes.len() || bytes[*at] > 1 {
+            if *schema_at >= bytes.len() || bytes[*schema_at] > 1 {
                 return false;
             }
-            *at += 1;
+            *schema_at += 1;
             true
         }
-        2 | 6 | 20 | 25 => skip_width(bytes, at, 1),
-        3 | 7 | 21 | 26 => skip_width(bytes, at, 2),
-        4 | 8 | 22 | 27 => skip_width(bytes, at, 4),
+        2 | 6 | 20 | 25 => skip_width(bytes, schema_at, 1),
+        3 | 7 | 21 | 26 => skip_width(bytes, schema_at, 2),
+        4 | 8 | 22 | 27 => skip_width(bytes, schema_at, 4),
         10 => {
-            if *at + 4 > bytes.len() {
+            if *schema_at + 4 > bytes.len() {
                 return false;
             }
-            let raw = u32::from_le_bytes([bytes[*at], bytes[*at + 1], bytes[*at + 2], bytes[*at + 3]]);
-            *at += 4;
-            if (raw & 0x7f80_0000) == 0x7f80_0000 {
-                *non_finite = true;
+            let schema_raw = u32::from_le_bytes([bytes[*schema_at], bytes[*schema_at + 1], bytes[*schema_at + 2], bytes[*schema_at + 3]]);
+            *schema_at += 4;
+            if (schema_raw & 0x7f80_0000) == 0x7f80_0000 {
+                *schema_non_finite = true;
             }
             true
         }
-        5 | 9 | 23 | 28 | 36 => skip_width(bytes, at, 8),
+        5 | 9 | 23 | 28 | 36 => skip_width(bytes, schema_at, 8),
         11 => {
-            if *at + 8 > bytes.len() {
+            if *schema_at + 8 > bytes.len() {
                 return false;
             }
-            let raw = read_u64(bytes, *at);
-            *at += 8;
-            if (raw & 0x7ff0_0000_0000_0000) == 0x7ff0_0000_0000_0000 {
-                *non_finite = true;
+            let schema_raw = read_u64(bytes, *schema_at);
+            *schema_at += 8;
+            if (schema_raw & 0x7ff0_0000_0000_0000) == 0x7ff0_0000_0000_0000 {
+                *schema_non_finite = true;
             }
             true
         }
-        18 | 19 | 24 | 29 => skip_width(bytes, at, 16),
+        18 | 19 | 24 | 29 => skip_width(bytes, schema_at, 16),
         17 => {
-            let (idx, ok) = read_leb(bytes, at);
-            ok && idx == 0
+            let (schema_idx, ok) = read_leb(bytes, schema_at);
+            ok && schema_idx == 0
         }
         30 => {
-            let (r, ok) = read_leb(bytes, at);
-            if !ok || r > id_count {
+            let (schema_r, ok) = read_leb(bytes, schema_at);
+            if !ok || schema_r > schema_id_count {
                 return false;
             }
-            if r != 0 {
-                if r > *next_ref {
+            if schema_r != 0 {
+                if schema_r > *schema_next_ref {
                     return false;
                 }
-                if r == *next_ref {
-                    *next_ref += 1;
+                if schema_r == *schema_next_ref {
+                    *schema_next_ref += 1;
                 }
             }
             true
         }
         12 => {
-            let (n, ok) = read_leb(bytes, at);
-            if !ok || n > (bytes.len() - *at) as u64 {
+            let (schema_n, ok) = read_leb(bytes, schema_at);
+            if !ok || schema_n > (bytes.len() - *schema_at) as u64 {
                 return false;
             }
-            let s = &bytes[*at..*at + n as usize];
-            *at += n as usize;
-            !s.contains(&0) && core::str::from_utf8(s).is_ok()
+            let schema_s = &bytes[*schema_at..*schema_at + schema_n as usize];
+            *schema_at += schema_n as usize;
+            !schema_s.contains(&0) && core::str::from_utf8(schema_s).is_ok()
         }
         32 => {
-            let (n, ok) = read_leb(bytes, at);
-            ok && n == 0
+            let (schema_n, ok) = read_leb(bytes, schema_at);
+            ok && schema_n == 0
         }
         13 => {
-            if depth >= 128 {
+            if schema_depth >= 128 {
                 return false;
             }
-            let (n, ok) = read_leb(bytes, at);
-            if !ok || n > (bytes.len() - *at) as u64 {
+            let (schema_n, ok) = read_leb(bytes, schema_at);
+            if !ok || schema_n > (bytes.len() - *schema_at) as u64 {
                 return false;
             }
-            let sub = &bytes[*at..*at + n as usize];
-            *at += n as usize;
-            let mut sat = 0usize;
-            let mut seen = [0u64; ID_TABLE_PROBE_BOUND / 64];
+            let schema_sub = &bytes[*schema_at..*schema_at + schema_n as usize];
+            *schema_at += schema_n as usize;
+            let mut schema_sat = 0usize;
+            let mut schema_seen = [0u64; ID_TABLE_PROBE_BOUND / 64];
             loop {
-                let (r, rok) = read_leb(sub, &mut sat);
-                if !rok {
+                let (schema_r, schema_rok) = read_leb(schema_sub, &mut schema_sat);
+                if !schema_rok {
                     return false;
                 }
-                if r == 0 {
-                    return sat == sub.len();
+                if schema_r == 0 {
+                    return schema_sat == schema_sub.len();
                 }
-                if r > id_count || r > *next_ref || sat >= sub.len() {
+                if schema_r > schema_id_count || schema_r > *schema_next_ref || schema_sat >= schema_sub.len() {
                     return false;
                 }
-                if r == *next_ref {
-                    *next_ref += 1;
+                if schema_r == *schema_next_ref {
+                    *schema_next_ref += 1;
                 }
-                let ridx = (r - 1) as usize;
-                let rbit = 1u64 << (ridx & 63);
-                if (seen[ridx >> 6] & rbit) != 0 {
+                let schema_ridx = (schema_r - 1) as usize;
+                let schema_rbit = 1u64 << (schema_ridx & 63);
+                if (schema_seen[schema_ridx >> 6] & schema_rbit) != 0 {
                     return false;
                 }
-                seen[ridx >> 6] |= rbit;
-                let k = sub[sat];
-                sat += 1;
-                if !skip_field(sub, &mut sat, k, id_count, next_ref, non_finite, depth + 1) {
+                schema_seen[schema_ridx >> 6] |= schema_rbit;
+                let schema_k = schema_sub[schema_sat];
+                schema_sat += 1;
+                if !skip_field(schema_sub, &mut schema_sat, schema_k, schema_id_count, schema_next_ref, schema_non_finite, schema_depth + 1) {
                     return false;
                 }
             }
         }
         14 | 16 => {
-            if depth >= 128 {
+            if schema_depth >= 128 {
                 return false;
             }
-            let (n, ok) = read_leb(bytes, at);
-            if !ok || n > (bytes.len() - *at) as u64 {
+            let (schema_n, ok) = read_leb(bytes, schema_at);
+            if !ok || schema_n > (bytes.len() - *schema_at) as u64 {
                 return false;
             }
-            let sub = &bytes[*at..*at + n as usize];
-            *at += n as usize;
-            skip_collection_body(sub, kind, id_count, next_ref, non_finite, depth + 1)
+            let schema_sub = &bytes[*schema_at..*schema_at + schema_n as usize];
+            *schema_at += schema_n as usize;
+            skip_collection_body(schema_sub, schema_kind, schema_id_count, schema_next_ref, schema_non_finite, schema_depth + 1)
         }
         15 => {
-            let (arm, ok) = read_leb(bytes, at);
+            let (schema_arm, ok) = read_leb(bytes, schema_at);
             if !ok {
                 return false;
             }
-            if arm == 0 {
+            if schema_arm == 0 {
                 return true;
             }
-            if arm > id_count || arm > *next_ref || *at >= bytes.len() {
+            if schema_arm > schema_id_count || schema_arm > *schema_next_ref || *schema_at >= bytes.len() {
                 return false;
             }
-            if arm == *next_ref {
-                *next_ref += 1;
+            if schema_arm == *schema_next_ref {
+                *schema_next_ref += 1;
             }
-            let ak = bytes[*at];
-            *at += 1;
-            let (n, ok) = read_leb(bytes, at);
-            if !ok || n > (bytes.len() - *at) as u64 {
+            let schema_ak = bytes[*schema_at];
+            *schema_at += 1;
+            let (schema_n, ok) = read_leb(bytes, schema_at);
+            if !ok || schema_n > (bytes.len() - *schema_at) as u64 {
                 return false;
             }
-            let sub = &bytes[*at..*at + n as usize];
-            *at += n as usize;
-            if ak == 12 {
-                !sub.contains(&0) && core::str::from_utf8(sub).is_ok()
-            } else if ak == 32 {
-                n == 0
-            } else if ak == 13 {
-                if depth >= 128 {
+            let schema_sub = &bytes[*schema_at..*schema_at + schema_n as usize];
+            *schema_at += schema_n as usize;
+            if schema_ak == 12 {
+                !schema_sub.contains(&0) && core::str::from_utf8(schema_sub).is_ok()
+            } else if schema_ak == 32 {
+                schema_n == 0
+            } else if schema_ak == 13 {
+                if schema_depth >= 128 {
                     return false;
                 }
-                let mut sat = 0usize;
-                let mut seen = [0u64; ID_TABLE_PROBE_BOUND / 64];
+                let mut schema_sat = 0usize;
+                let mut schema_seen = [0u64; ID_TABLE_PROBE_BOUND / 64];
                 loop {
-                    let (r, rok) = read_leb(sub, &mut sat);
-                    if !rok {
+                    let (schema_r, schema_rok) = read_leb(schema_sub, &mut schema_sat);
+                    if !schema_rok {
                         return false;
                     }
-                    if r == 0 {
-                        return sat == sub.len();
+                    if schema_r == 0 {
+                        return schema_sat == schema_sub.len();
                     }
-                    if r > id_count || r > *next_ref || sat >= sub.len() {
+                    if schema_r > schema_id_count || schema_r > *schema_next_ref || schema_sat >= schema_sub.len() {
                         return false;
                     }
-                    if r == *next_ref {
-                        *next_ref += 1;
+                    if schema_r == *schema_next_ref {
+                        *schema_next_ref += 1;
                     }
-                    let ridx = (r - 1) as usize;
-                    let rbit = 1u64 << (ridx & 63);
-                    if (seen[ridx >> 6] & rbit) != 0 {
+                    let schema_ridx = (schema_r - 1) as usize;
+                    let schema_rbit = 1u64 << (schema_ridx & 63);
+                    if (schema_seen[schema_ridx >> 6] & schema_rbit) != 0 {
                         return false;
                     }
-                    seen[ridx >> 6] |= rbit;
-                    let k = sub[sat];
-                    sat += 1;
-                    if !skip_field(sub, &mut sat, k, id_count, next_ref, non_finite, depth + 1) {
+                    schema_seen[schema_ridx >> 6] |= schema_rbit;
+                    let schema_k = schema_sub[schema_sat];
+                    schema_sat += 1;
+                    if !skip_field(schema_sub, &mut schema_sat, schema_k, schema_id_count, schema_next_ref, schema_non_finite, schema_depth + 1) {
                         return false;
                     }
                 }
-            } else if ak == 14 || ak == 16 {
-                skip_collection_body(sub, ak, id_count, next_ref, non_finite, depth + 1)
+            } else if schema_ak == 14 || schema_ak == 16 {
+                skip_collection_body(schema_sub, schema_ak, schema_id_count, schema_next_ref, schema_non_finite, schema_depth + 1)
             } else {
-                let mut sat = 0usize;
-                skip_field(sub, &mut sat, ak, id_count, next_ref, non_finite, depth) && sat == sub.len()
+                let mut schema_sat = 0usize;
+                skip_field(schema_sub, &mut schema_sat, schema_ak, schema_id_count, schema_next_ref, schema_non_finite, schema_depth) && schema_sat == schema_sub.len()
             }
         }
         // a kind outside the closed set is not skippable (§3)
@@ -1033,103 +1033,103 @@ fn skip_field(
 }
 
 fn skip_collection_body(
-    sub: &[u8],
-    kind: u8,
-    id_count: u64,
-    next_ref: &mut u64,
-    non_finite: &mut bool,
-    depth: u32,
+    schema_sub: &[u8],
+    schema_kind: u8,
+    schema_id_count: u64,
+    schema_next_ref: &mut u64,
+    schema_non_finite: &mut bool,
+    schema_depth: u32,
 ) -> bool {
-    if depth > 128 || sub.len() < 2 {
+    if schema_depth > 128 || schema_sub.len() < 2 {
         return false;
     }
-    let ek = sub[0];
-    let mut sat = 1usize;
-    let (cnt, cok) = read_leb(sub, &mut sat);
-    if !cok || cnt > 0x7fff_ffff {
+    let schema_ek = schema_sub[0];
+    let mut schema_sat = 1usize;
+    let (schema_cnt, schema_cok) = read_leb(schema_sub, &mut schema_sat);
+    if !schema_cok || schema_cnt > 0x7fff_ffff {
         return false;
     }
-    let valid_ek = if kind == 14 {
-        (1..=13).contains(&ek) || ek == 15 || ek == 17 || (18..=29).contains(&ek) || ek == 30 || ek == 36
+    let schema_valid_ek = if schema_kind == 14 {
+        (1..=13).contains(&schema_ek) || schema_ek == 15 || schema_ek == 17 || (18..=29).contains(&schema_ek) || schema_ek == 30 || schema_ek == 36
     } else {
-        (1..=11).contains(&ek) || ek == 13 || (18..=29).contains(&ek) || ek == 30 || ek == 36
+        (1..=11).contains(&schema_ek) || schema_ek == 13 || (18..=29).contains(&schema_ek) || schema_ek == 30 || schema_ek == 36
     };
-    if !valid_ek {
+    if !schema_valid_ek {
         return false;
     }
-    let mut seen_keys = [0u64; ID_TABLE_PROBE_BOUND / 64];
-    for _ in 0..cnt {
-        if kind == 16 {
-            let (kr, kok) = read_leb(sub, &mut sat);
-            if !kok || kr == 0 || kr > id_count || kr > *next_ref {
+    let mut schema_seen_keys = [0u64; ID_TABLE_PROBE_BOUND / 64];
+    for _ in 0..schema_cnt {
+        if schema_kind == 16 {
+            let (schema_kr, schema_kok) = read_leb(schema_sub, &mut schema_sat);
+            if !schema_kok || schema_kr == 0 || schema_kr > schema_id_count || schema_kr > *schema_next_ref {
                 return false;
             }
-            if kr == *next_ref {
-                *next_ref += 1;
+            if schema_kr == *schema_next_ref {
+                *schema_next_ref += 1;
             }
-            let kidx = (kr - 1) as usize;
-            let kbit = 1u64 << (kidx & 63);
-            if (seen_keys[kidx >> 6] & kbit) != 0 {
+            let schema_kidx = (schema_kr - 1) as usize;
+            let schema_kbit = 1u64 << (schema_kidx & 63);
+            if (schema_seen_keys[schema_kidx >> 6] & schema_kbit) != 0 {
                 return false;
             }
-            seen_keys[kidx >> 6] |= kbit;
-            let (el, lok) = read_leb(sub, &mut sat);
-            if !lok || el > (sub.len() - sat) as u64 {
+            schema_seen_keys[schema_kidx >> 6] |= schema_kbit;
+            let (schema_el, schema_lok) = read_leb(schema_sub, &mut schema_sat);
+            if !schema_lok || schema_el > (schema_sub.len() - schema_sat) as u64 {
                 return false;
             }
-            let esub = &sub[sat..sat + el as usize];
-            sat += el as usize;
-            let mut eat = 0usize;
-            if ek == 13 {
-                if depth >= 128 {
+            let schema_esub = &schema_sub[schema_sat..schema_sat + schema_el as usize];
+            schema_sat += schema_el as usize;
+            let mut schema_eat = 0usize;
+            if schema_ek == 13 {
+                if schema_depth >= 128 {
                     return false;
                 }
-                let mut bseen = [0u64; ID_TABLE_PROBE_BOUND / 64];
+                let mut schema_bseen = [0u64; ID_TABLE_PROBE_BOUND / 64];
                 loop {
-                    let (r, rok) = read_leb(esub, &mut eat);
-                    if !rok {
+                    let (schema_r, schema_rok) = read_leb(schema_esub, &mut schema_eat);
+                    if !schema_rok {
                         return false;
                     }
-                    if r == 0 {
-                        if eat != esub.len() {
+                    if schema_r == 0 {
+                        if schema_eat != schema_esub.len() {
                             return false;
                         }
                         break;
                     }
-                    if r > id_count || r > *next_ref || eat >= esub.len() {
+                    if schema_r > schema_id_count || schema_r > *schema_next_ref || schema_eat >= schema_esub.len() {
                         return false;
                     }
-                    if r == *next_ref {
-                        *next_ref += 1;
+                    if schema_r == *schema_next_ref {
+                        *schema_next_ref += 1;
                     }
-                    let ridx = (r - 1) as usize;
-                    let rbit = 1u64 << (ridx & 63);
-                    if (bseen[ridx >> 6] & rbit) != 0 {
+                    let schema_ridx = (schema_r - 1) as usize;
+                    let schema_rbit = 1u64 << (schema_ridx & 63);
+                    if (schema_bseen[schema_ridx >> 6] & schema_rbit) != 0 {
                         return false;
                     }
-                    bseen[ridx >> 6] |= rbit;
-                    let k = esub[eat];
-                    eat += 1;
-                    if !skip_field(esub, &mut eat, k, id_count, next_ref, non_finite, depth + 1) {
+                    schema_bseen[schema_ridx >> 6] |= schema_rbit;
+                    let schema_k = schema_esub[schema_eat];
+                    schema_eat += 1;
+                    if !skip_field(schema_esub, &mut schema_eat, schema_k, schema_id_count, schema_next_ref, schema_non_finite, schema_depth + 1) {
                         return false;
                     }
                 }
-            } else if !skip_field(esub, &mut eat, ek, id_count, next_ref, non_finite, depth) || eat != esub.len() {
+            } else if !skip_field(schema_esub, &mut schema_eat, schema_ek, schema_id_count, schema_next_ref, schema_non_finite, schema_depth) || schema_eat != schema_esub.len() {
                 return false;
             }
-        } else if !skip_field(sub, &mut sat, ek, id_count, next_ref, non_finite, depth) {
+        } else if !skip_field(schema_sub, &mut schema_sat, schema_ek, schema_id_count, schema_next_ref, schema_non_finite, schema_depth) {
             return false;
         }
     }
-    sat == sub.len()
+    schema_sat == schema_sub.len()
 }
 
 /// Skip a fixed-width payload of WIDTH bytes, or refuse past the buffer.
-fn skip_width(bytes: &[u8], at: &mut usize, width: usize) -> bool {
-    if *at + width > bytes.len() {
+fn skip_width(bytes: &[u8], schema_at: &mut usize, schema_width: usize) -> bool {
+    if *schema_at + schema_width > bytes.len() {
         return false;
     }
-    *at += width;
+    *schema_at += schema_width;
     true
 }
 
@@ -1158,16 +1158,16 @@ impl<'a> TableBitWriter<'a> {
         TableBitWriter { buffer: Default::default(), bits: 0, measuring: true, overflow: false }
     }
 
-    pub fn put(&mut self, value: u64, n: u32) {
-        if n > 64 {
+    pub fn put(&mut self, schema_value: u64, schema_n: u32) {
+        if schema_n > 64 {
             self.overflow = true;
             return;
         }
-        if n == 0 {
+        if schema_n == 0 {
             return;
         }
-        let at = self.bits;
-        self.bits += n as u64;
+        let schema_at = self.bits;
+        self.bits += schema_n as u64;
         if self.measuring {
             return;
         }
@@ -1175,18 +1175,18 @@ impl<'a> TableBitWriter<'a> {
             self.overflow = true;
             return;
         }
-        let value = if n < 64 { value & ((1u64 << n) - 1) } else { value };
-        let mut done = 0u32;
-        let mut pos = at;
-        while done < n {
-            let index = (pos >> 3) as usize;
-            let shift = (pos & 7) as u32;
-            let take = core::cmp::min(8 - shift, n - done);
-            let chunk = ((value >> done) as u8) & (((1u16 << take) - 1) as u8);
-            let keep = ((1u16 << shift) - 1) as u8;
-            self.buffer[index] = (self.buffer[index] & keep) | (chunk << shift);
-            done += take;
-            pos += take as u64;
+        let schema_value = if schema_n < 64 { schema_value & ((1u64 << schema_n) - 1) } else { schema_value };
+        let mut schema_done = 0u32;
+        let mut schema_pos = schema_at;
+        while schema_done < schema_n {
+            let schema_index = (schema_pos >> 3) as usize;
+            let schema_shift = (schema_pos & 7) as u32;
+            let schema_take = core::cmp::min(8 - schema_shift, schema_n - schema_done);
+            let schema_chunk = ((schema_value >> schema_done) as u8) & (((1u16 << schema_take) - 1) as u8);
+            let schema_keep = ((1u16 << schema_shift) - 1) as u8;
+            self.buffer[schema_index] = (self.buffer[schema_index] & schema_keep) | (schema_chunk << schema_shift);
+            schema_done += schema_take;
+            schema_pos += schema_take as u64;
         }
     }
 
@@ -1198,8 +1198,8 @@ impl<'a> TableBitWriter<'a> {
     /// Raw bytes on a byte boundary: a string's content (§3.3).
     pub fn raw(&mut self, data: &[u8]) {
         self.align();
-        for &b in data {
-            self.put(b as u64, 8);
+        for &schema_b in data {
+            self.put(schema_b as u64, 8);
         }
     }
 }
@@ -1215,25 +1215,25 @@ impl<'a> TableBitReader<'a> {
         TableBitReader { buffer, offset: 0 }
     }
 
-    pub fn get(&mut self, n: u32) -> Option<u64> {
-        let total = (self.buffer.len() as u64) * 8;
-        if n > 64 || n as u64 > total - self.offset {
+    pub fn get(&mut self, schema_n: u32) -> Option<u64> {
+        let schema_total = (self.buffer.len() as u64) * 8;
+        if schema_n > 64 || schema_n as u64 > schema_total - self.offset {
             return None;
         }
-        let mut value = 0u64;
-        for i in 0..n as u64 {
-            let at = self.offset + i;
-            value |= (((self.buffer[(at >> 3) as usize] >> (at & 7)) & 1) as u64) << i;
+        let mut schema_value = 0u64;
+        for schema_i in 0..schema_n as u64 {
+            let schema_at = self.offset + schema_i;
+            schema_value |= (((self.buffer[(schema_at >> 3) as usize] >> (schema_at & 7)) & 1) as u64) << schema_i;
         }
-        self.offset += n as u64;
-        Some(value)
+        self.offset += schema_n as u64;
+        Some(schema_value)
     }
 
-    pub fn skip(&mut self, n: u64) -> bool {
-        if n > (self.buffer.len() as u64) * 8 - self.offset {
+    pub fn skip(&mut self, schema_n: u64) -> bool {
+        if schema_n > (self.buffer.len() as u64) * 8 - self.offset {
             return false;
         }
-        self.offset += n;
+        self.offset += schema_n;
         true
     }
 
@@ -1245,13 +1245,13 @@ impl<'a> TableBitReader<'a> {
 }
 
 /// bits_required(0, n): the width of a value in [0, n], zero for n = 0 (§3.3).
-pub fn table_message_bits(n: u64) -> u32 {
-    64 - n.leading_zeros()
+pub fn table_message_bits(schema_n: u64) -> u32 {
+    64 - schema_n.leading_zeros()
 }
 
 /// A fixed-width kind's storage bytes (§3), zero for a kind with none.
-pub fn table_message_kind_width(kind: u8) -> u32 {
-    match kind {
+pub fn table_message_kind_width(schema_kind: u8) -> u32 {
+    match schema_kind {
         1 | 2 | 6 | 20 | 25 => 1,
         3 | 7 | 21 | 26 => 2,
         4 | 8 | 10 | 22 | 27 => 4,
@@ -1264,17 +1264,17 @@ pub fn table_message_kind_width(kind: u8) -> u32 {
 /// The bits one value of an entry takes on a body (§3.3's shape table): the
 /// packed width under a ranged or quantized packing, the storage width
 /// otherwise, and -1 for a kind whose value is not one fixed width.
-pub fn table_message_value_bits(kind: u8, s: &TableMessageShape) -> i64 {
-    match kind {
+pub fn table_message_value_bits(schema_kind: u8, schema_s: &TableMessageShape) -> i64 {
+    match schema_kind {
         0 | 32 => 0,
         1 => 1,
         _ => {
-            if (kind == 10 && s.packing == 2) || (s.packing == 1 && ((2..=9).contains(&kind) || (18..=29).contains(&kind))) {
-                s.bits as i64
+            if (schema_kind == 10 && schema_s.packing == 2) || (schema_s.packing == 1 && ((2..=9).contains(&schema_kind) || (18..=29).contains(&schema_kind))) {
+                schema_s.bits as i64
             } else {
-                match table_message_kind_width(kind) {
+                match table_message_kind_width(schema_kind) {
                     0 => -1,
-                    w => (w * 8) as i64,
+                    schema_w => (schema_w * 8) as i64,
                 }
             }
         }
@@ -1283,58 +1283,58 @@ pub fn table_message_value_bits(kind: u8, s: &TableMessageShape) -> i64 {
 
 /// An array's or a text's count: its offset from the declared minimum, at the
 /// width the range [min, max] needs (§3.3).
-pub fn table_message_count(r: &mut TableBitReader, s: &TableMessageShape) -> Option<u64> {
-    let raw = r.get(table_message_bits(s.max - s.min))?;
-    Some(raw + s.min)
+pub fn table_message_count(schema_r: &mut TableBitReader, schema_s: &TableMessageShape) -> Option<u64> {
+    let schema_raw = schema_r.get(table_message_bits(schema_s.max - schema_s.min))?;
+    Some(schema_raw + schema_s.min)
 }
 
 /// The widening ladder (§4): a narrower integer of the same signedness, or f32
 /// into f64, decoded exactly.
-pub fn table_message_widens(from: u8, to: u8) -> bool {
-    ((2..=5).contains(&from) && ((to > from && to <= 5) || to == 18))
-        || ((6..=9).contains(&from) && ((to > from && to <= 9) || to == 19))
-        || (from == 10 && to == 11)
+pub fn table_message_widens(from: u8, schema_to: u8) -> bool {
+    ((2..=5).contains(&from) && ((schema_to > from && schema_to <= 5) || schema_to == 18))
+        || ((6..=9).contains(&from) && ((schema_to > from && schema_to <= 9) || schema_to == 19))
+        || (from == 10 && schema_to == 11)
 }
 
 /// §3's one content rule for a string: well-formed UTF-8 with no zero byte.
-pub fn table_message_utf8(text: &[u8]) -> bool {
-    core::str::from_utf8(text).is_ok() && !text.contains(&0)
+pub fn table_message_utf8(schema_text: &[u8]) -> bool {
+    core::str::from_utf8(schema_text).is_ok() && !schema_text.contains(&0)
 }
 
 /// A clamp of well-formed UTF-8 to at most n bytes, never inside a character.
-pub fn table_message_utf8_clamp(text: &[u8], n: usize) -> usize {
-    let mut n = n;
-    while n > 0 && n < text.len() && text[n] & 0xc0 == 0x80 {
-        n -= 1;
+pub fn table_message_utf8_clamp(schema_text: &[u8], schema_n: usize) -> usize {
+    let mut schema_n = schema_n;
+    while schema_n > 0 && schema_n < schema_text.len() && schema_text[schema_n] & 0xc0 == 0x80 {
+        schema_n -= 1;
     }
-    n
+    schema_n
 }
 
 /// A value the endpoint spelled, sign-extended from its announced kind's width.
-pub fn table_message_signed(kind: u8, lo: u64, hi: u64) -> i128 {
-    match table_message_kind_width(kind) {
-        1 => lo as i8 as i128,
-        2 => lo as i16 as i128,
-        4 => lo as i32 as i128,
-        8 => lo as i64 as i128,
-        _ => (((hi as u128) << 64) | lo as u128) as i128,
+pub fn table_message_signed(schema_kind: u8, schema_lo: u64, schema_hi: u64) -> i128 {
+    match table_message_kind_width(schema_kind) {
+        1 => schema_lo as i8 as i128,
+        2 => schema_lo as i16 as i128,
+        4 => schema_lo as i32 as i128,
+        8 => schema_lo as i64 as i128,
+        _ => (((schema_hi as u128) << 64) | schema_lo as u128) as i128,
     }
 }
 
 /// A value the endpoint spelled, zero-extended from its announced kind's width.
-pub fn table_message_unsigned(kind: u8, lo: u64, hi: u64) -> u128 {
-    match table_message_kind_width(kind) {
-        1 => lo as u8 as u128,
-        2 => lo as u16 as u128,
-        4 => lo as u32 as u128,
-        8 => lo as u128,
-        _ => ((hi as u128) << 64) | lo as u128,
+pub fn table_message_unsigned(schema_kind: u8, schema_lo: u64, schema_hi: u64) -> u128 {
+    match table_message_kind_width(schema_kind) {
+        1 => schema_lo as u8 as u128,
+        2 => schema_lo as u16 as u128,
+        4 => schema_lo as u32 as u128,
+        8 => schema_lo as u128,
+        _ => ((schema_hi as u128) << 64) | schema_lo as u128,
     }
 }
 
 /// A kind whose domain is two's complement (§3.3).
-pub fn table_message_signed_kind(kind: u8) -> bool {
-    (2..=5).contains(&kind) || kind == 18 || (20..=24).contains(&kind)
+pub fn table_message_signed_kind(schema_kind: u8) -> bool {
+    (2..=5).contains(&schema_kind) || schema_kind == 18 || (20..=24).contains(&schema_kind)
 }
 
 /// A RANGED value's skip holds base plus offset to the kind's own domain, the
@@ -1342,114 +1342,114 @@ pub fn table_message_signed_kind(kind: u8) -> bool {
 /// sender's range (§3.3). The base and the offset are added exactly as the
 /// named read adds them, the wide lo/hi included, and a width of zero still
 /// holds the base.
-pub fn table_message_skip_ranged(r: &mut TableBitReader, kind: u8, width: i64, s: &TableMessageShape) -> bool {
-    if width < 0 {
+pub fn table_message_skip_ranged(schema_r: &mut TableBitReader, schema_kind: u8, schema_width: i64, schema_s: &TableMessageShape) -> bool {
+    if schema_width < 0 {
         return false;
     }
-    let width = width as u32;
-    let Some(lo) = r.get(core::cmp::min(width, 64)) else { return false };
-    let hi = if width > 64 {
-        match r.get(width - 64) {
-            Some(v) => v,
+    let schema_width = schema_width as u32;
+    let Some(schema_lo) = schema_r.get(core::cmp::min(schema_width, 64)) else { return false };
+    let schema_hi = if schema_width > 64 {
+        match schema_r.get(schema_width - 64) {
+            Some(schema_v) => schema_v,
             None => return false,
         }
     } else {
         0
     };
-    table_message_ranged(kind, ((hi as u128) << 64) | lo as u128, s).is_some()
+    table_message_ranged(schema_kind, ((schema_hi as u128) << 64) | schema_lo as u128, schema_s).is_some()
 }
 
 /// A RANGED value's base plus offset, HELD TO THE ANNOUNCED KIND's STORAGE
 /// DOMAIN and never wrapped (§3.3): the 128-bit two's-complement image of the
 /// value, or None when the sum lands outside the kind. The named read and the
 /// skip both take it, so the two give one verdict.
-pub fn table_message_ranged(kind: u8, offset: u128, s: &TableMessageShape) -> Option<u128> {
-    let bits = kind_bits(kind);
-    if table_message_signed_kind(kind) {
+pub fn table_message_ranged(schema_kind: u8, schema_offset: u128, schema_s: &TableMessageShape) -> Option<u128> {
+    let bits = kind_bits(schema_kind);
+    if table_message_signed_kind(schema_kind) {
         // Narrow announcements store a sign-extended 64-bit base; wide
         // announcements store both halves. Bias the signed domain so the
         // full unsigned offset can be added without narrowing it to i128.
         let base = if bits > 64 {
-            (((s.base_hi as u128) << 64) | s.base_lo as u128) as i128
+            (((schema_s.base_hi as u128) << 64) | schema_s.base_lo as u128) as i128
         } else {
-            s.base_lo as i64 as i128
+            schema_s.base_lo as i64 as i128
         };
-        let biased = (base as u128) ^ (1u128 << 127);
-        let sum = biased.checked_add(offset)?;
-        let value = (sum ^ (1u128 << 127)) as i128;
-        let bottom = if bits >= 128 { i128::MIN } else { -(1i128 << (bits - 1)) };
-        let top = if bits >= 128 { i128::MAX } else { (1i128 << (bits - 1)) - 1 };
-        if value >= bottom && value <= top { Some(value as u128) } else { None }
+        let schema_biased = (base as u128) ^ (1u128 << 127);
+        let sum = schema_biased.checked_add(schema_offset)?;
+        let schema_value = (sum ^ (1u128 << 127)) as i128;
+        let schema_bottom = if bits >= 128 { i128::MIN } else { -(1i128 << (bits - 1)) };
+        let schema_top = if bits >= 128 { i128::MAX } else { (1i128 << (bits - 1)) - 1 };
+        if schema_value >= schema_bottom && schema_value <= schema_top { Some(schema_value as u128) } else { None }
     } else {
-        let base = if bits > 64 { ((s.base_hi as u128) << 64) | s.base_lo as u128 } else { s.base_lo as u128 };
-        let value = base.checked_add(offset)?;
-        let top = if bits >= 128 { u128::MAX } else { (1u128 << bits) - 1 };
-        if value <= top { Some(value) } else { None }
+        let base = if bits > 64 { ((schema_s.base_hi as u128) << 64) | schema_s.base_lo as u128 } else { schema_s.base_lo as u128 };
+        let schema_value = base.checked_add(schema_offset)?;
+        let schema_top = if bits >= 128 { u128::MAX } else { (1u128 << bits) - 1 };
+        if schema_value <= schema_top { Some(schema_value) } else { None }
     }
 }
 
 /// One scalar by its shape (§3.3): the value bits, the ranged base added back,
 /// a quantized step mapped back onto its float32 range — all at the announced
 /// storage width, before the file form's clamps.
-pub fn table_message_read_scalar(r: &mut TableBitReader, kind: u8, s: &TableMessageShape) -> Option<(u64, u64)> {
-    let bits = table_message_value_bits(kind, s);
+pub fn table_message_read_scalar(schema_r: &mut TableBitReader, schema_kind: u8, schema_s: &TableMessageShape) -> Option<(u64, u64)> {
+    let bits = table_message_value_bits(schema_kind, schema_s);
     if bits < 0 {
         return None;
     }
     let bits = bits as u32;
-    let mut lo = r.get(core::cmp::min(bits, 64))?;
-    let mut hi = if bits > 64 { r.get(bits - 64)? } else { 0 };
-    if s.packing == 1 && kind != 10 {
+    let mut schema_lo = schema_r.get(core::cmp::min(bits, 64))?;
+    let mut schema_hi = if bits > 64 { schema_r.get(bits - 64)? } else { 0 };
+    if schema_s.packing == 1 && schema_kind != 10 {
         // BASE PLUS OFFSET IS HELD TO THE ANNOUNCED KIND, never wrapped and
         // never truncated to its width (§3.3): a sum outside the kind is damage.
-        let value = table_message_ranged(kind, ((hi as u128) << 64) | lo as u128, s)?;
-        lo = value as u64;
-        hi = (value >> 64) as u64;
+        let schema_value = table_message_ranged(schema_kind, ((schema_hi as u128) << 64) | schema_lo as u128, schema_s)?;
+        schema_lo = schema_value as u64;
+        schema_hi = (schema_value >> 64) as u64;
     }
-    if s.packing == 2 && kind == 10 {
+    if schema_s.packing == 2 && schema_kind == 10 {
         // AN INDEX ABOVE THE ENDPOINT's ANNOUNCED count IS BATCH DAMAGE (§3.3,
         // SPEC.md §4.3), checked on the whole wire value before any narrowing
         // and never reconstructed and held: the width spells such an index
         // whenever count is not one less than a power of two (eight bits
         // spelling 255 over a count of 200). internal/tablewire's
         // bitDecoder.float32 is the oracle.
-        if hi != 0 || lo > s.qcount as u64 {
+        if schema_hi != 0 || schema_lo > schema_s.qcount as u64 {
             return None;
         }
-        let index = lo as u32;
-        let ratio = index as f32 / s.qcount as f32;
-        let scaled = ratio * s.qdelta;
-        lo = (scaled + s.qmin).to_bits() as u64;
+        let schema_index = schema_lo as u32;
+        let schema_ratio = schema_index as f32 / schema_s.qcount as f32;
+        let schema_scaled = schema_ratio * schema_s.qdelta;
+        schema_lo = (schema_scaled + schema_s.qmin).to_bits() as u64;
     }
-    Some((lo, hi))
+    Some((schema_lo, schema_hi))
 }
 
 /// One scalar by this build's own shape (§3.3): the ranged base taken off, a
 /// float32 quantized onto its steps, then the value bits.
-pub fn table_message_write_scalar(w: &mut TableBitWriter, s: &TableMessageShape, lo: u64, hi: u64) {
-    let (mut lo, mut hi) = (lo, hi);
-    if s.packing == 1 {
-        let (diff, borrow) = lo.overflowing_sub(s.base_lo);
-        lo = diff;
-        hi = hi.wrapping_sub(s.base_hi).wrapping_sub(borrow as u64);
+pub fn table_message_write_scalar(schema_w: &mut TableBitWriter, schema_s: &TableMessageShape, schema_lo: u64, schema_hi: u64) {
+    let (mut schema_lo, mut schema_hi) = (schema_lo, schema_hi);
+    if schema_s.packing == 1 {
+        let (schema_diff, schema_borrow) = schema_lo.overflowing_sub(schema_s.base_lo);
+        schema_lo = schema_diff;
+        schema_hi = schema_hi.wrapping_sub(schema_s.base_hi).wrapping_sub(schema_borrow as u64);
     }
-    if s.packing == 2 {
-        let value = f32::from_bits(lo as u32);
-        let mut ratio = (value - s.qmin) / s.qdelta;
+    if schema_s.packing == 2 {
+        let schema_value = f32::from_bits(schema_lo as u32);
+        let mut schema_ratio = (schema_value - schema_s.qmin) / schema_s.qdelta;
         // a NaN never reaches here: the writer refuses one before the
         // quantizer runs (§3.3); the test stays so no input moves the index
         // outside [0, count]
-        if ratio.is_nan() || ratio < 0.0 {
-            ratio = 0.0;
-        } else if ratio > 1.0 {
-            ratio = 1.0;
+        if schema_ratio.is_nan() || schema_ratio < 0.0 {
+            schema_ratio = 0.0;
+        } else if schema_ratio > 1.0 {
+            schema_ratio = 1.0;
         }
-        let scaled = ratio * s.qcount as f32;
-        lo = core::cmp::min(((scaled + 0.5) as f64).floor() as u32, s.qcount) as u64;
+        let schema_scaled = schema_ratio * schema_s.qcount as f32;
+        schema_lo = core::cmp::min(((schema_scaled + 0.5) as f64).floor() as u32, schema_s.qcount) as u64;
     }
-    w.put(lo, core::cmp::min(s.bits, 64) as u32);
-    if s.bits > 64 {
-        w.put(hi, (s.bits - 64) as u32);
+    schema_w.put(schema_lo, core::cmp::min(schema_s.bits, 64) as u32);
+    if schema_s.bits > 64 {
+        schema_w.put(schema_hi, (schema_s.bits - 64) as u32);
     }
 }
 
@@ -1476,27 +1476,27 @@ impl Default for TableMessageSeen {
 
 impl TableMessageSeen {
     /// Marks a key: false when the key was named before, or is zero.
-    pub fn once(&mut self, key: u64) -> bool {
-        if key == 0 {
+    pub fn once(&mut self, schema_key: u64) -> bool {
+        if schema_key == 0 {
             return false;
         }
-        if key > TABLE_MESSAGE_SEEN_KEYS {
-            return self.past.insert(key);
+        if schema_key > TABLE_MESSAGE_SEEN_KEYS {
+            return self.past.insert(schema_key);
         }
-        let i = (key - 1) as usize;
-        let bit = 1u64 << (i & 63);
-        if self.bits[i >> 6] & bit != 0 {
+        let schema_i = (schema_key - 1) as usize;
+        let schema_bit = 1u64 << (schema_i & 63);
+        if self.bits[schema_i >> 6] & schema_bit != 0 {
             return false;
         }
-        self.bits[i >> 6] |= bit;
+        self.bits[schema_i >> 6] |= schema_bit;
         true
     }
 }
 
 /// A strict skip of one POSITIONAL value by the ENDPOINT's shape (§3.3): an
 /// array element or a union arm's payload, where a union's None is lawful.
-pub fn table_message_skip(r: &mut TableBitReader, v: &TableVocabulary, e: &TableMessageEntry, depth: u32) -> bool {
-    table_message_skip_at(r, v, e, depth, false)
+pub fn table_message_skip(schema_r: &mut TableBitReader, schema_v: &TableVocabulary, schema_e: &TableMessageEntry, schema_depth: u32) -> bool {
+    table_message_skip_at(schema_r, schema_v, schema_e, schema_depth, false)
 }
 
 /// A strict skip of one FIELD by the ENDPOINT's shape (§3.3): what a reader
@@ -1504,144 +1504,144 @@ pub fn table_message_skip(r: &mut TableBitReader, v: &TableVocabulary, e: &Table
 /// declaration's. A message field is never required, so a union FIELD's None
 /// elides and its explicit arm reference 0 is damage (§3.3 (c)), whether this
 /// reader names the field or not.
-pub fn table_message_skip_field(r: &mut TableBitReader, v: &TableVocabulary, e: &TableMessageEntry, depth: u32) -> bool {
-    table_message_skip_at(r, v, e, depth, true)
+pub fn table_message_skip_field(schema_r: &mut TableBitReader, schema_v: &TableVocabulary, schema_e: &TableMessageEntry, schema_depth: u32) -> bool {
+    table_message_skip_at(schema_r, schema_v, schema_e, schema_depth, true)
 }
 
-fn table_message_skip_at(r: &mut TableBitReader, v: &TableVocabulary, e: &TableMessageEntry, depth: u32, field: bool) -> bool {
-    if depth > 128 {
+fn table_message_skip_at(schema_r: &mut TableBitReader, schema_v: &TableVocabulary, schema_e: &TableMessageEntry, schema_depth: u32, schema_field: bool) -> bool {
+    if schema_depth > 128 {
         return false;
     }
-    let s = &e.shape;
-    match e.kind {
+    let schema_s = &schema_e.shape;
+    match schema_e.kind {
         0 | 32 => true,
-        30 => match r.get(v.ref_bits) {
+        30 => match schema_r.get(schema_v.ref_bits) {
             None => false,
             Some(0) => true,
-            Some(reference) => v.name(reference).is_some(),
+            Some(schema_reference) => schema_v.name(schema_reference).is_some(),
         },
-        13 => table_message_skip_body(r, v, depth + 1),
+        13 => table_message_skip_body(schema_r, schema_v, schema_depth + 1),
         // a node index: the fixed form's roots carry no pointer, so a body
         // that spells one names nothing this reader can resolve
         17 => false,
-        15 => match r.get(v.ref_bits) {
+        15 => match schema_r.get(schema_v.ref_bits) {
             None => false,
-            Some(0) => !field,
-            Some(reference) => match v.entry(reference).copied() {
-                Some(arm) => arm.id < 0xffff_ffff_ffff_fffd && arm.kind != 0 &&
-                    table_message_skip(r, v, &arm, depth + u32::from(matches!(arm.kind, 13..=16))),
+            Some(0) => !schema_field,
+            Some(schema_reference) => match schema_v.entry(schema_reference).copied() {
+                Some(schema_arm) => schema_arm.id < 0xffff_ffff_ffff_fffd && schema_arm.kind != 0 &&
+                    table_message_skip(schema_r, schema_v, &schema_arm, schema_depth + u32::from(matches!(schema_arm.kind, 13..=16))),
                 None => false,
             },
         },
         12 => {
-            let Some(n) = table_message_count(r, s) else { return false };
-            if n > s.max || !r.align() {
+            let Some(schema_n) = table_message_count(schema_r, schema_s) else { return false };
+            if schema_n > schema_s.max || !schema_r.align() {
                 return false;
             }
-            let start = (r.offset / 8) as usize;
-            if !r.skip(n * 8) {
+            let schema_start = (schema_r.offset / 8) as usize;
+            if !schema_r.skip(schema_n * 8) {
                 return false;
             }
             // a skipped string's bytes are held to the text rule a named read
             // applies to them, and ill-formed text is damage (§3.3, §4)
-            table_message_utf8(&r.buffer[start..start + n as usize])
+            table_message_utf8(&schema_r.buffer[schema_start..schema_start + schema_n as usize])
         }
         // 31 is held by name and never written (R17): met only as damage
         31 => false,
         10 => {
             // A PLAIN FLOAT IS FINITE, AND A QUANTIZED INDEX IS AT MOST ITS
             // COUNT (§3.3): the same raw-bits rule a named float read applies.
-            let Some(raw) = r.get(table_message_value_bits(10, s) as u32) else { return false };
-            if s.packing == 2 {
-                raw <= s.qcount as u64
+            let Some(schema_raw) = schema_r.get(table_message_value_bits(10, schema_s) as u32) else { return false };
+            if schema_s.packing == 2 {
+                schema_raw <= schema_s.qcount as u64
             } else {
-                table_finite_f32(raw as u32)
+                table_finite_f32(schema_raw as u32)
             }
         }
-        11 => match r.get(64) {
-            Some(raw) => table_finite_f64(raw),
+        11 => match schema_r.get(64) {
+            Some(schema_raw) => table_finite_f64(schema_raw),
             None => false,
         },
         14 | 16 => {
-            let Some(n) = table_message_count(r, s) else { return false };
+            let Some(schema_n) = table_message_count(schema_r, schema_s) else { return false };
             // THE COUNT'S BITS CAN SPELL ABOVE THE ANNOUNCED MAX (§3.3).
-            if n > s.max || (e.kind == 14 && s.elem == 6 && !r.align()) {
+            if schema_n > schema_s.max || (schema_e.kind == 14 && schema_s.elem == 6 && !schema_r.align()) {
                 return false;
             }
-            let element = TableMessageEntry { id: 0, kind: s.elem, shape: e.element, element: TableMessageShape::default(), first: 0 };
+            let schema_element = TableMessageEntry { id: 0, kind: schema_s.elem, shape: schema_e.element, element: TableMessageShape::default(), first: 0 };
             // A RUN OF FIXED-WIDTH ELEMENTS IS ARITHMETIC (§3.3): a float, a
             // ranged or quantized element carries a value condition, and a
             // keyed entry carries a key reference, so those are walked.
-            if e.kind == 14
-                && !matches!(element.kind, 10 | 11 | 12 | 13 | 15 | 17 | 30)
-                && element.shape.packing == 0
+            if schema_e.kind == 14
+                && !matches!(schema_element.kind, 10 | 11 | 12 | 13 | 15 | 17 | 30)
+                && schema_element.shape.packing == 0
             {
-                match table_message_value_bits(element.kind, &element.shape) {
+                match table_message_value_bits(schema_element.kind, &schema_element.shape) {
                     0 => return true,
-                    width if width > 0 => return r.skip(n * width as u64),
+                    schema_width if schema_width > 0 => return schema_r.skip(schema_n * schema_width as u64),
                     _ => {}
                 }
             }
             // A KEYED ARRAY'S KEY NAMES A DECLARED NO-PAYLOAD ENTRY AND NO KEY
             // REPEATS (§3.2, §3.3): the set is one bit per id, on the stack.
-            let mut seen = TableMessageSeen::default();
-            for _ in 0..n {
+            let mut schema_seen = TableMessageSeen::default();
+            for _ in 0..schema_n {
                 // THE KEY IS PART OF THE WALKED ELEMENT: the offset is sampled
                 // before it so a width-0 slot cannot accept the run unread.
-                let at = r.offset;
-                if e.kind == 16 {
-                    let Some(reference) = r.get(v.ref_bits) else { return false };
-                    if v.name(reference).is_none() || !seen.once(v.seen_key(reference)) {
+                let schema_at = schema_r.offset;
+                if schema_e.kind == 16 {
+                    let Some(schema_reference) = schema_r.get(schema_v.ref_bits) else { return false };
+                    if schema_v.name(schema_reference).is_none() || !schema_seen.once(schema_v.seen_key(schema_reference)) {
                         return false;
                     }
                 }
-                if !table_message_skip(r, v, &element, depth + 1) {
+                if !table_message_skip(schema_r, schema_v, &schema_element, schema_depth + 1) {
                     return false;
                 }
                 // A WALKED ELEMENT THAT CONSUMES NO BITS, its key included, is
                 // damage (§3.3): the plain-array width-0 run is the arithmetic
                 // path above, not this one.
-                if r.offset == at {
+                if schema_r.offset == schema_at {
                     return false;
                 }
             }
             true
         }
-        kind => {
-            let bits = table_message_value_bits(kind, s);
+        schema_kind => {
+            let bits = table_message_value_bits(schema_kind, schema_s);
             if bits < 0 {
                 return false;
             }
-            if s.packing == 1 && (integer_kind(kind) || fixed_kind(kind)) {
-                return table_message_skip_ranged(r, kind, bits, s);
+            if schema_s.packing == 1 && (integer_kind(schema_kind) || fixed_kind(schema_kind)) {
+                return table_message_skip_ranged(schema_r, schema_kind, bits, schema_s);
             }
-            r.skip(bits as u64)
+            schema_r.skip(bits as u64)
         }
     }
 }
 
 /// A nested body skipped whole, entry by entry, to its zero reference (§3.3).
-pub fn table_message_skip_body(r: &mut TableBitReader, v: &TableVocabulary, depth: u32) -> bool {
-    if depth > 128 {
+pub fn table_message_skip_body(schema_r: &mut TableBitReader, schema_v: &TableVocabulary, schema_depth: u32) -> bool {
+    if schema_depth > 128 {
         return false;
     }
     // A FIELD ID TWICE IN ONE BODY IS DAMAGE (§3.3), named or skipped: the set
     // is one bit per id, whichever slot carried it, on the stack. A union
     // field of a skipped body is a field, so its explicit None is damage.
-    let mut seen = TableMessageSeen::default();
+    let mut schema_seen = TableMessageSeen::default();
     loop {
-        match r.get(v.ref_bits) {
+        match schema_r.get(schema_v.ref_bits) {
             None => return false,
             Some(0) => return true,
-            Some(reference) => {
-                let Some(e) = v.entry(reference).copied() else { return false };
-                if e.id >= 0xffff_ffff_ffff_fffd {
+            Some(schema_reference) => {
+                let Some(schema_e) = schema_v.entry(schema_reference).copied() else { return false };
+                if schema_e.id >= 0xffff_ffff_ffff_fffd {
                     return false;
                 }
-                if !seen.once(v.seen_key(reference)) {
+                if !schema_seen.once(schema_v.seen_key(schema_reference)) {
                     return false;
                 }
-                if !table_message_skip_field(r, v, &e, depth) {
+                if !table_message_skip_field(schema_r, schema_v, &schema_e, schema_depth) {
                     return false;
                 }
             }
@@ -1651,21 +1651,21 @@ pub fn table_message_skip_body(r: &mut TableBitReader, v: &TableVocabulary, dept
 
 /// The batch's OPEN (§3.3): "the FORM BYTE is a whole byte and is read FIRST",
 /// a body from an endpoint that never announced is refused by name, then M - 1.
-pub fn table_message_batch_open(v: &TableVocabulary, data: &[u8], report: &mut TableReport) -> Option<usize> {
+pub fn table_message_batch_open(schema_v: &TableVocabulary, data: &[u8], schema_report: &mut TableReport) -> Option<usize> {
     if data.is_empty() {
-        report.damaged = true;
+        schema_report.damaged = true;
         return None;
     }
     if data[0] != TABLE_WIRE_MESSAGE_FORM {
-        report.refuse(TableReason::NewerForm);
+        schema_report.refuse(TableReason::NewerForm);
         return None;
     }
-    if !v.announced {
-        report.refuse(TableReason::NoVocabulary);
+    if !schema_v.announced {
+        schema_report.refuse(TableReason::NoVocabulary);
         return None;
     }
     if data.len() < 2 {
-        report.damaged = true;
+        schema_report.damaged = true;
         return None;
     }
     Some(data[1] as usize + 1)
@@ -1673,9 +1673,9 @@ pub fn table_message_batch_open(v: &TableVocabulary, data: &[u8], report: &mut T
 
 /// The batch's CLOSE (§3.3): the pad is zero bits and "BYTES AFTER THE PAD ARE
 /// MALFORMED".
-pub fn table_message_batch_close(r: &mut TableBitReader, report: &mut TableReport) -> bool {
-    if !r.align() || r.offset != (r.buffer.len() as u64) * 8 {
-        report.damaged = true;
+pub fn table_message_batch_close(schema_r: &mut TableBitReader, schema_report: &mut TableReport) -> bool {
+    if !schema_r.align() || schema_r.offset != (schema_r.buffer.len() as u64) * 8 {
+        schema_report.damaged = true;
         return false;
     }
     true
