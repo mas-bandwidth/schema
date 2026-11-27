@@ -36,7 +36,7 @@ import (
 	"math"
 	"math/big"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // emitStructFunctions emits MaxBits/MaxBytes, the Zero helper, and the split

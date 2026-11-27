@@ -8,7 +8,7 @@
 // elixirtable without an import cycle.
 package fixedclosure
 
-import "github.com/mas-bandwidth/schema/v2/ir"
+import "github.com/mas-bandwidth/schema/v3/ir"
 
 // Roots is every table of the unit the fixed form is emitted for, in
 // declaration order: ir.TableFixedFormRoots (which applies the record ceiling

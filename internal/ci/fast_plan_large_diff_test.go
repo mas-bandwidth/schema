@@ -11,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/provesran"
-	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
+	"github.com/mas-bandwidth/schema/v3/internal/provesran"
+	"github.com/mas-bandwidth/schema/v3/internal/testinputs"
 )
 
 // echoIntoGrep is a condition decided by a pipeline whose left side can die of
