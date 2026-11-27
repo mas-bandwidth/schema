@@ -4,6 +4,16 @@ See the [2026-11-23 coverage supplement](#2026-11-23-coverage-supplement) for
 the release and integration snapshots. The original index below records its
 2026-11-22 snapshot.
 
+**The test addenda.** Every test the repository runs is part of the
+specification as a spec addendum, one page per tier, generated from the test
+registry (`test/registry/registry.jsonl`) by `schema-test addenda` and held to
+it in CI: [SPEC-TESTS.md](SPEC-TESTS.md) (the adapter contract, the languages
+and the types, with links to each tier's page),
+[SPEC-TESTS-UNIT.md](SPEC-TESTS-UNIT.md),
+[SPEC-TESTS-FUNCTIONAL.md](SPEC-TESTS-FUNCTIONAL.md) and
+[SPEC-TESTS-NIGHTLY.md](SPEC-TESTS-NIGHTLY.md). A shared test case this index
+names is a row there once its family has moved into the registry.
+
 Glenn, 2026-11-22: "the next step I would like to see is you getting the spec
 finalized with everything we have fixed, and the test cases in it."
 
