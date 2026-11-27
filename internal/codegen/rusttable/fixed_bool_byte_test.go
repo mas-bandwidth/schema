@@ -14,7 +14,8 @@ import (
 // every caller row back at its declared defaults. A NON-ZERO DEAD BYTE REFUSES
 // TOO (docs/rulings.json fixed-dead-bytes-are-zero): the payload under an
 // absent optional and the slots past a counted array's count are dead, and a
-// non-zero one refuses the whole load before any record lands.
+// non-zero one refuses the whole load before any record lands, and leaves
+// every row handed in at its declared defaults (docs/SPEC-TABLES.md §6.5).
 // tables-rust-bool-byte-negative-control takes the scatter's check out and
 // requires this test red.
 const rustBoolByteUnit = `package bprobe
@@ -103,8 +104,12 @@ func TestFixedBoolByteIsDamageRust(t *testing.T) {
         if got.is_some() || !report.damaged || report.refused {
             failures.push(format!("{name}: a non-zero dead byte must refuse the whole load: {:?} {:?}", got, report));
         }
-        if !values[0].ok || !values[0].opt_present || values[0].flags_count != 1 || values[0].pick.tag != 1 {
-            failures.push(format!("{name}: a refused load changed the caller's destination"));
+        // THE CALLER'S VALUES AFTER A REFUSAL (docs/SPEC-TABLES.md §6.5;
+        // docs/FIXED-FORM-ALGORITHM.md, REFUSE is total): every row handed
+        // in holds its declared defaults, never what the caller held before
+        if values[0].ok || values[0].opt_present || values[0].flags_count != 0 || values[0].flags[0]
+            || values[0].fixedflags != [false, false] || values[0].pick.tag != 0 {
+            failures.push(format!("{name}: a refused load left a row other than its declared defaults"));
         }
     }
     if failures.is_empty() { println!("FIXED_BOOL_BYTE ok"); }
